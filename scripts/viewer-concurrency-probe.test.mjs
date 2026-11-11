@@ -22,7 +22,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 
-import { GATE_SHARDS, parseTap, readRecords, report, reportedFiles, selectFiles, selectionCommand } from './viewer-concurrency-probe.mjs';
+import { GATE_SHARDS, gateFileCount, parseTap, readRecords, report, reportedFiles, selectFiles, selectionCommand } from './viewer-concurrency-probe.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..');
@@ -52,20 +52,16 @@ function concurrencyArgs(extraEnv) {
   return r.stdout.split('\n').filter((a) => a.startsWith('--test-concurrency=')); // @source-text-assertion-ok filters the argv a stub tsx received, not a source file
 }
 
-/** The gate's rule, as test.yml writes it (Actions' contains() on an array: case-insensitive string equality). */
-const gateResolves = (v) => (['2', '3', '4'].includes(String(v ?? '').toLowerCase()) ? v : '1');
-
-test("apps/viewer's script and the gate bound VIEWER_TEST_CONCURRENCY the same way: only 2, 3 or 4 change anything", () => {
+test("apps/viewer's script bounds VIEWER_TEST_CONCURRENCY: only 2, 3 or 4 change anything, everything else is 1", () => {
   for (const [v, want] of [[undefined, '1'], ['', '1'], ['1', '1'], ['2', '2'], ['3', '3'], ['4', '4'], ['5', '1'], ['8', '1'], [' 2', '1'], ['2 ', '1'], ['two', '1'], ['0', '1'], ['-1', '1'], ['2;rm', '1']]) {
     const env = v === undefined ? {} : { VIEWER_TEST_CONCURRENCY: v };
-    assert.deepEqual(concurrencyArgs(env), [`--test-concurrency=${want}`], `script, ${JSON.stringify(v)}`);
-    assert.equal(gateResolves(v), want, `gate, ${JSON.stringify(v)}`);
+    assert.deepEqual(concurrencyArgs(env), [`--test-concurrency=${want}`], JSON.stringify(v));
   }
 });
 
-test('the gate step reads the repo variable through that bound', () => {
+test('the gate step hands the repo variable to that script, which is the one place it is bounded', () => {
   const env = TEST_YML.jobs['viewer-tests'].steps.find((s) => s.id === 'viewer_tests').env;
-  assert.equal(env.VIEWER_TEST_CONCURRENCY, `\${{ contains(fromJSON('["2","3","4"]'), vars.VIEWER_TEST_CONCURRENCY) && vars.VIEWER_TEST_CONCURRENCY || '1' }}`);
+  assert.equal(env.VIEWER_TEST_CONCURRENCY, '${{ vars.VIEWER_TEST_CONCURRENCY }}');
   assert.equal(TEST_YML.jobs['viewer-tests'].strategy.matrix.shard.length, 16, 'the gate keeps sixteen shards');
 });
 
@@ -98,7 +94,6 @@ test('#9791 review: the probe counts every file that reported a result, whether 
 });
 
 test('#9791 review: a runner that wrote no file list (killed mid-shard) reported nothing, and the report fails on it', () => {
-  assert.deepEqual(reportedFiles(null, '/x'), []);
   assert.throws(() => reportedFiles('not json', '/x'), 'garbled output is an error the caller logs, not silently no files');
   assert.throws(() => reportedFiles('{"a":1}', '/x'));
   const selected = ['src/a.test.ts', 'src/b.test.ts'];
@@ -119,8 +114,12 @@ test('#9791 CodeRabbit: no record directory (every shard failed before uploading
 test('on the real tree, the 8-way and 16-way selections are the same files, so a full report matches the gate', () => {
   const base = { ...process.env, TEST_PATTERN: '' };
   const all = selectFiles({ ...base, TEST_SHARDS: '', TEST_SHARD: '' });
-  let gateCount = 0;
-  for (let s = 0; s < GATE_SHARDS; s++) gateCount += selectFiles({ ...base, TEST_SHARDS: String(GATE_SHARDS), TEST_SHARD: String(s) }).length;
+  // The gate's count two ways: its 16 shards selected through the real
+  // pipeline, and in-process by the same selector (what the report uses).
+  let viaPipeline = 0;
+  for (let s = 0; s < GATE_SHARDS; s++) viaPipeline += selectFiles({ ...base, TEST_SHARDS: String(GATE_SHARDS), TEST_SHARD: String(s) }).length;
+  const gateCount = gateFileCount(all);
+  assert.equal(gateCount, viaPipeline);
   assert.equal(gateCount, all.length);
   const records = Array.from({ length: 8 }, (_, s) => rec(s, selectFiles({ ...base, TEST_SHARDS: '8', TEST_SHARD: String(s) })));
   const out = report(records, all, gateCount, 8);
@@ -131,7 +130,7 @@ test('on the real tree, the 8-way and 16-way selections are the same files, so a
 
 function rec(shard, files, extra = {}) {
   return {
-    shard, files, reported: files, jobStartedAt: 1_000, endedAt: 1_000 + 120_000, testStepSeconds: 100, exitCode: 0, concurrency: '2',
+    shard, reported: files, jobStartedAt: 1_000, endedAt: 1_000 + 120_000, testStepSeconds: 100, exitCode: 0, concurrency: '2',
     counts: { tests: files.length, pass: files.length, fail: 0, cancelled: 0 }, failures: [], ...extra,
   };
 }

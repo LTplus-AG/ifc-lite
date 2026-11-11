@@ -4,24 +4,17 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * .github/workflows/viewer-concurrency-probe.yml: the whole viewer suite at
- * `VIEWER_TEST_CONCURRENCY=2` over 8 shards instead of 1 over 16, after a
- * main push's Test run, so the gate's concurrency can be decided from CI
- * numbers rather than the 19 s vs 70 s local measurement in #3061.
- *
- * Its own workflow, so it never holds the Test run open or touches the
- * queue, and OFF unless `VIEWER_CONCURRENCY_PROBE=on`. `--shard` exits 0
- * whenever it could record what happened, test failures included.
- * `--report` exits 1 when a test failed at concurrency 2 or when fewer files
- * REPORTED a result than the 16-shard gate selects, so either shows as a
- * failed probe run.
+ * The steps of .github/workflows/viewer-concurrency-probe.yml (why it exists
+ * and when it runs is in that file's header). `--shard` exits 0 whenever it
+ * could record what happened, test failures included. `--report` exits 1
+ * when a test failed or when fewer files REPORTED a result than the 16-shard
+ * gate selects.
  *
  *   node scripts/viewer-concurrency-probe.mjs --shard
  *     TEST_SHARDS, TEST_SHARD, VIEWER_TEST_CONCURRENCY, JOB_STARTED_AT (epoch
  *     seconds, the job's first step), OUT (record path). Runs apps/viewer's
- *     own `test` script and records the files it selected, the files that
- *     reported a result (scripts/lib/test-file-reporter.mjs), wall time
- *     and failures.
+ *     own `test` script and records the files that reported a result
+ *     (scripts/lib/test-file-reporter.mjs), wall time and failures.
  *   node scripts/viewer-concurrency-probe.mjs --report
  *     RECORDS (dir of shard records), EXPECTED_SHARDS. Writes the summary.
  */
@@ -32,6 +25,7 @@ import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { isMainEntry } from './lib/is-main-entry.mjs';
+import { MANIFEST_PATH, parseManifest, selectShard } from './viewer-test-shards.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const VIEWER = join(REPO_ROOT, 'apps/viewer');
@@ -57,13 +51,19 @@ export function selectFiles(env) {
   return r.stdout.split('\n').filter(Boolean);
 }
 
+/** Files the 16-shard gate selects from `allFiles`, by the selector the gate's script runs. */
+export function gateFileCount(allFiles) {
+  const manifest = parseManifest(readFileSync(MANIFEST_PATH, 'utf8'));
+  let n = 0;
+  for (let s = 0; s < GATE_SHARDS; s++) n += selectShard(allFiles, manifest, s, GATE_SHARDS).length;
+  return n;
+}
+
 /**
  * The files test-file-reporter.mjs saw report, relative to apps/viewer.
- * `null` text (no output: a killed runner writes none) is no files. Output
- * that is not a JSON array of paths throws, so the caller reports why.
+ * Output that is not a JSON array of paths throws, so the caller reports why.
  */
 export function reportedFiles(text, viewerRoot) {
-  if (text === null) return [];
   const abs = JSON.parse(text);
   if (!Array.isArray(abs) || abs.some((f) => typeof f !== 'string')) throw new Error('file list is not a JSON array of paths');
   return abs.map((f) => relative(viewerRoot, f).split('\\').join('/'));
@@ -109,7 +109,7 @@ export function readRecords(dir) {
 }
 
 const SUMMARY = /^# (tests|pass|fail|cancelled|skipped|todo|duration_ms) ([\d.]+)$/;
-const TOP_FAIL = /^not ok \d+ - (.*?)(?: # TODO\b.*)?$/;
+const TOP_FAIL = /^not ok \d+ - (.*)$/;
 
 /** Closing counts and top-level failure titles of a node:test TAP stream. */
 export function parseTap(text) {
@@ -126,7 +126,6 @@ export function parseTap(text) {
 
 function shard(env) {
   const started = Date.now();
-  const files = selectFiles(env);
   const tapFile = `${env.OUT}.tap`;
   const filesFile = `${env.OUT}.files`;
   const r = spawnSync('pnpm', ['--filter', '@ifc-lite/viewer', 'run', 'test'], {
@@ -149,9 +148,7 @@ function shard(env) {
   const jobStarted = Number(env.JOB_STARTED_AT) * 1000;
   return {
     shard: Number(env.TEST_SHARD),
-    shards: Number(env.TEST_SHARDS),
     concurrency: env.VIEWER_TEST_CONCURRENCY ?? '',
-    files,
     reported,
     testStepSeconds: (ended - started) / 1000,
     jobStartedAt: Number.isFinite(jobStarted) && jobStarted > 0 ? jobStarted : started,
@@ -217,15 +214,13 @@ export function run(argv, env = process.env) {
   if (argv[0] === '--shard') {
     const record = shard(env);
     writeFileSync(env.OUT, `${JSON.stringify(record)}\n`);
-    console.log(`[viewer-concurrency-probe] shard ${record.shard}/${record.shards} at concurrency ${record.concurrency}: ${record.files.length} files, ${record.testStepSeconds.toFixed(0)} s, exit ${record.exitCode}`);
+    console.log(`[viewer-concurrency-probe] shard ${record.shard}/${env.TEST_SHARDS} at concurrency ${record.concurrency}: ${record.reported.length} files reported, ${record.testStepSeconds.toFixed(0)} s, exit ${record.exitCode}`);
     return 0;
   }
   if (argv[0] === '--report') {
     const records = readRecords(env.RECORDS);
     const allFiles = selectFiles({ ...env, TEST_SHARDS: '', TEST_SHARD: '', TEST_PATTERN: '' });
-    let gateCount = 0;
-    for (let s = 0; s < GATE_SHARDS; s++) gateCount += selectFiles({ ...env, TEST_SHARDS: String(GATE_SHARDS), TEST_SHARD: String(s), TEST_PATTERN: '' }).length;
-    const out = report(records, allFiles, gateCount, Number(env.EXPECTED_SHARDS));
+    const out = report(records, allFiles, gateFileCount(allFiles), Number(env.EXPECTED_SHARDS));
     for (const l of out.lines) console.log(l);
     if (env.GITHUB_STEP_SUMMARY) appendFileSync(env.GITHUB_STEP_SUMMARY, `${out.lines.join('\n')}\n`);
     if (!out.complete || out.failed > 0) {

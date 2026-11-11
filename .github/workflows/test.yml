@@ -1361,12 +1361,11 @@ jobs:
           NODE_OPTIONS: --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml
           TEST_SHARDS: '16'
           TEST_SHARD: ${{ matrix.shard }}
-          # The VIEWER_TEST_CONCURRENCY repo variable: only "2", "3" or "4"
-          # change anything. Unset or any other value is 1, today's setting
-          # (see the `--test-concurrency=1` note above this job); apps/viewer's
-          # script applies the same bound. viewer-concurrency-probe.yml
-          # measures 2 on CI after a main push run, when switched on.
-          VIEWER_TEST_CONCURRENCY: ${{ contains(fromJSON('["2","3","4"]'), vars.VIEWER_TEST_CONCURRENCY) && vars.VIEWER_TEST_CONCURRENCY || '1' }}
+          # The VIEWER_TEST_CONCURRENCY repo variable, bounded by apps/viewer's
+          # test script: only "2", "3" or "4" change anything; unset or any
+          # other value is 1, today's setting (see the `--test-concurrency=1`
+          # note above this job). viewer-concurrency-probe.yml measures 2.
+          VIEWER_TEST_CONCURRENCY: ${{ vars.VIEWER_TEST_CONCURRENCY }}
       - name: Mergify CI Upload
         if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('apps/viewer/mergify-junit.xml') != ''
         continue-on-error: true

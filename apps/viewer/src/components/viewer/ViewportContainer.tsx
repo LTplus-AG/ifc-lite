@@ -72,6 +72,7 @@ import type { PointCloudAsset } from '@ifc-lite/geometry';
 import { type IfcDataStore } from '@ifc-lite/parser';
 import { getEffectiveGeoreference, hasDeclaredCrs, offersCesium } from '@/lib/geo/effective-georef';
 import { usePlacementProjectionKind } from '@/lib/geo/use-placement-projection-kind';
+import { markLoadIntent } from '@/lib/load-intent';
 
 /**
  * The primary container for the 3D viewport, managing IFC model loading,
@@ -422,6 +423,7 @@ export function ViewportContainer() {
   // Window drops on any viewer chrome route through the same guarded loader.
   // Unsupported WebGPU reports through the shared load-error card (#5851).
   const handleDrop = useCallback((dataTransfer: DataTransfer) => {
+    markLoadIntent(); // before any await: start-screen idle work stands down (load-intent.ts)
     // Capture live handles synchronously — the DataTransferItemList is neutered
     // once the drop event returns, so this must run before any await.
     const handlesPromise = handlesFromDataTransfer(dataTransfer);
@@ -461,6 +463,7 @@ export function ViewportContainer() {
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     if (files.length === 0) return;
+    markLoadIntent();
     // Reset while the event still owns this input; Retry uses the captured Files.
     e.target.value = '';
     const attempt = () => {
@@ -484,6 +487,7 @@ export function ViewportContainer() {
   // live handle per file so the model can be refreshed from disk. Falls back to
   // the hidden <input type="file"> on browsers without the API.
   const handleOpenClick = useCallback(async () => {
+    markLoadIntent(); // the picker may stay open for seconds
     if (!guardWebGpu(() => { void handleOpenClick(); })) return;
     if (!supportsFileSystemAccess()) {
       fileInputRef.current?.click();

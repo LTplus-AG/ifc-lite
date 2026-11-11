@@ -39,6 +39,7 @@ import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
 import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
 import { trackUiEvent } from '@/lib/analytics';
 import { onFieldTelemetry } from '@/lib/perf/fieldTelemetryLoader';
+import { markLoadIntent } from '@/lib/load-intent';
 
 /** Formats named under the actions, derived from the one extension list so
  *  the copy can never advertise less (or more) than the picker accepts. */
@@ -79,6 +80,7 @@ export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentF
   // The sample the tours use ships with the viewer (#5840) and goes through
   // the same `loadFile` as every other open.
   const loadDemo = async () => {
+    markLoadIntent(); // the sample is fetched before the load starts
     // Which way in a first visit takes; the panel empty state reports the same pair.
     trackUiEvent('onboarding_surface', { surface: 'welcome_card', action: 'load_sample' });
     setDemoLoading(true);
@@ -102,6 +104,7 @@ export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentF
   };
 
   const openRecent = async (file: RecentFileEntry) => {
+    markLoadIntent(); // read from the recent-file cache before the load starts
     const cached = await getCachedFile(file);
     if (cached) {
       await loadFile(cached);

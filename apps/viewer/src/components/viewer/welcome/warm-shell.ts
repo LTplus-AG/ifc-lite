@@ -14,19 +14,14 @@
  *
  * The render runs as a transition, so React yields to input while it builds the
  * shell; only its commit is one task. Skipped (the shell then mounts on the
- * first open, as before) when the kill switch `perf.warmShell=0` is set, when
- * the browser reports under 4 GB of device memory or asks to save data, and
- * while the tab is hidden (it then waits for the tab to become visible).
+ * first open, as before) with the kill switch `perf.warmShell=0`, on a browser
+ * that reports under 4 GB of device memory or asks to save data, and when a
+ * file is opened first; it waits while the tab is hidden. The gate and the
+ * scheduling load lazily (warm-shell-schedule.ts), off the entry chunk.
  */
 
 import { startTransition, useEffect, useState } from 'react';
-import { readPerfFlag } from '@/lib/perf/flags';
 import { holdBootSettled } from '@/lib/boot-settled';
-import { scheduleWhenIdle, warmRuntimeEnvironment, warmRuntimeRefusal } from '@/lib/warm-runtime-gate';
-
-function refused(): boolean {
-  return warmRuntimeRefusal(warmRuntimeEnvironment(readPerfFlag('warmShell'))) !== null;
-}
 
 /** Once the shell has been warmed in this page, a remounted container mounts it at once. */
 let warmedInPage = false;
@@ -35,17 +30,13 @@ let warmedInPage = false;
  * Held from module evaluation, so it is pending before the first commit.
  */
 const settleBoot = holdBootSettled('warm-shell');
-const rendererReady = () => typeof (globalThis as { __ifc_lite_render_stats__?: unknown }).__ifc_lite_render_stats__ === 'function';
 
-/** Settle boot once the warm shell's renderer has initialised (its debug hooks install on init). */
-function settleWhenRendererReady(): void {
-  let frames = 0;
-  const poll = () => {
-    if (rendererReady() || ++frames > 600) { settleBoot(); return; }
-    requestAnimationFrame(poll);
-  };
-  poll();
-}
+const loadSchedule = () => import('./warm-shell-schedule').catch((err: unknown) => {
+  // A missing chunk (a deploy rotated it) only costs the warm-up: the first open mounts the shell.
+  console.warn('[warm-shell] warm-up unavailable:', err);
+  settleBoot();
+  return null;
+});
 
 /**
  * True once the viewer shell should be mounted under the welcome layer.
@@ -59,12 +50,19 @@ function settleWhenRendererReady(): void {
 export function useWarmShell(eligible: boolean, decided: boolean, welcome: boolean): boolean {
   const [warm, setWarm] = useState(warmedInPage);
   useEffect(() => {
-    if (warm || typeof window === 'undefined') return;
-    if (!welcome) { settleBoot(); return; }
-    if (!eligible) { if (decided) settleBoot(); return; }
-    if (refused()) { settleBoot(); return; }
-    return scheduleWhenIdle(() => startTransition(() => { warmedInPage = true; setWarm(true); }));
+    if (warm) return;
+    if (!welcome || (decided && !eligible)) { settleBoot(); return; }
+    if (!eligible) return;
+    let cancel: (() => void) | null = null;
+    let disposed = false;
+    void loadSchedule().then((schedule) => {
+      if (!schedule || disposed) return;
+      cancel = schedule.scheduleWarmShell(() => startTransition(() => { warmedInPage = true; setWarm(true); }), settleBoot);
+    });
+    return () => { disposed = true; cancel?.(); };
   }, [eligible, decided, welcome, warm]);
-  useEffect(() => { if (warm && eligible) settleWhenRendererReady(); }, [warm, eligible]);
+  useEffect(() => {
+    if (warm && eligible) void loadSchedule().then((schedule) => schedule?.settleWhenRendererReady(settleBoot));
+  }, [warm, eligible]);
   return warm && eligible;
 }

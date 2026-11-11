@@ -627,7 +627,7 @@ export function ViewportContainer() {
   const shellMounted = !welcome || warmShell;
   return (
     <div
-      className={welcome ? 'relative h-full w-full bg-zinc-50 dark:bg-[#111219] text-zinc-900 dark:text-zinc-50 overflow-hidden' : 'relative h-full w-full bg-zinc-50 overflow-hidden'}
+      className="relative h-full w-full bg-zinc-50 overflow-hidden"
       data-viewport
     >
       {shellMounted && (

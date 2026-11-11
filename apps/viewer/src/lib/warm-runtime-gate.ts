@@ -6,27 +6,22 @@
  * When the viewer may prepare its runtime before the first file (fixed load
  * floor): never on a browser that reports under 4 GB of device memory or asks
  * to save data, never while the tab is hidden, and only once the main thread is
- * idle. Each piece has its own kill switch.
+ * idle. Each piece has its own kill switch. Loaded lazily by each piece, so
+ * none of this is in the viewer's entry chunk.
  */
 
-interface WarmRuntimeEnvironment {
-  readonly disabled: boolean;
-  readonly deviceMemoryGB?: number;
-  readonly saveData?: boolean;
+/** A perf flag's raw value turns its piece off: `0`/`false`, as a URL string (`?perf.warmShell=0`) or a value. */
+function switchedOff(raw: unknown): boolean {
+  return raw === 0 || raw === false || raw === '0' || raw === 'false';
 }
 
-/** Why this browser must not warm up early, or null when it may. */
-export function warmRuntimeRefusal(env: WarmRuntimeEnvironment): 'disabled' | 'save-data' | 'low-memory' | null {
-  if (env.disabled) return 'disabled';
-  if (env.saveData === true) return 'save-data';
-  if (env.deviceMemoryGB !== undefined && env.deviceMemoryGB < 4) return 'low-memory';
-  return null;
-}
-
-/** This browser's environment; `killSwitch` is the raw value of the piece's perf flag. */
-export function warmRuntimeEnvironment(killSwitch: unknown): WarmRuntimeEnvironment {
-  const nav = navigator as Navigator & { deviceMemory?: number; connection?: { saveData?: boolean } };
-  return { disabled: killSwitch === 0 || killSwitch === false, deviceMemoryGB: nav.deviceMemory, saveData: nav.connection?.saveData };
+/**
+ * Whether this browser may warm up before the first file. `killSwitch` is the
+ * raw value of the piece's perf flag; the rest is read from `navigator`.
+ */
+export function mayWarmUp(killSwitch: unknown, nav: Navigator & { deviceMemory?: number; connection?: { saveData?: boolean } } = navigator): boolean {
+  if (switchedOff(killSwitch) || nav.connection?.saveData === true) return false;
+  return nav.deviceMemory === undefined || nav.deviceMemory >= 4;
 }
 
 /**

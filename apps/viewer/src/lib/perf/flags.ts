@@ -156,7 +156,7 @@ export const PERF_FLAGS = [
     id: 'warmShell',
     kind: 'kill-switch',
     owner: '@louistrue',
-    removalCondition: 'Delete the flag and the mount-on-first-open path once the idle-mounted viewer shell has shipped for two releases with no boot, memory or device-loss report.',
+    removalCondition: 'Delete once the idle-mounted viewer shell has shipped two releases with no boot, memory or device-loss report.',
     introducedAt: '2026-11-11',
     default: true,
     bindings: { urlParam: 'perf.warmShell' },

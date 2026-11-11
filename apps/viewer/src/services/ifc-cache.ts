@@ -323,7 +323,7 @@ export async function setCached(
   fileSize: number,
   sourceBuffer?: ArrayBuffer,
   meta?: CacheEntryMeta,
-): Promise<void> {
+): Promise<SceneSnapshotWrite | null> {
   try {
     // A connection verified live, so a write does not silently skip just
     // because the memo was holding a closed one (the quota guard below opens
@@ -334,7 +334,7 @@ export async function setCached(
     // 100s of MB): refuse oversized records and LRU-evict older entries when the
     // origin quota is tight, so a large write can't blow the quota app-wide.
     const roomOk = await ensureRoomForEntry(db, entryBytes(buffer, sourceBuffer), key);
-    if (!roomOk) return; // non-fatal: a cache miss next open is a slow load, not a crash
+    if (!roomOk) return null; // non-fatal: a cache miss next open is a slow load, not a crash
 
     // A cache write must NEVER break the load (AGENTS.md; task blocker #2): every
     // failure mode here is caught and turned into a non-fatal skip. We resolve
@@ -342,12 +342,14 @@ export async function setCached(
     // wire the transaction's abort/error too — a QuotaExceededError or a
     // blob-too-large record on Safari often surfaces as a tx abort rather than a
     // request error, and without this the promise would hang forever.
-    await new Promise<void>((resolve) => {
+    // The write's identity, once its transaction committed: a scene snapshot attaches to exactly this write.
+    return await new Promise<SceneSnapshotWrite | null>((resolve) => {
       let settled = false;
-      const done = () => {
+      const createdAt = Date.now();
+      const done = (stored = false) => {
         if (settled) return;
         settled = true;
-        resolve();
+        resolve(stored ? { createdAt, fullSourceHash: meta?.fullSourceHash } : null);
       };
       let tx: IDBTransaction;
       try {
@@ -370,13 +372,13 @@ export async function setCached(
         sourceBuffer,
         fileName,
         fileSize,
-        createdAt: Date.now(),
+        createdAt,
         lastModified: meta?.lastModified,
         fullSourceHash: meta?.fullSourceHash,
         sourceContentKey: meta?.sourceContentKey,
       };
 
-      tx.oncomplete = () => done();
+      tx.oncomplete = () => done(true);
       tx.onabort = () => {
         console.warn('[IFC Cache] Cache write transaction aborted (quota / blob too large); skipping', tx.error);
         done();
@@ -402,6 +404,7 @@ export async function setCached(
     });
   } catch (err) {
     console.warn('[IFC Cache] Cache write failed:', err);
+    return null;
   }
 }
 

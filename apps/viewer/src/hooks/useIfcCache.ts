@@ -11,8 +11,10 @@
 
 import { useCallback } from 'react';
 import {
+  BinaryCacheReader,
   BinaryCacheWriter,
   openGeometryChunksV13,
+  SectionType,
   toCacheDataStore,
   type CacheDataStore,
   type GeometryData,
@@ -20,6 +22,7 @@ import {
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { decodeCachedMetadata, loadFederatedCacheHit, readCachedInstancedShards, type CacheLoadResult } from './ifcCacheDecode.js';
 import { adoptCachedSceneSnapshot, captureSceneSnapshotOfHit, publishAdoptedSceneMeshes, abandonAdoptedSceneSnapshot, type AdoptedSceneSnapshot } from './sceneSnapshotLoad.js';
+import type { SnapshotEntry } from './sceneSnapshotWrite.js';
 import { makeColdGeometryProvider } from '../utils/coldGeometryProvider.js';
 import { getGlobalRenderer } from './useBCF.js';
 import type { MeshData } from '@ifc-lite/geometry';
@@ -177,7 +180,7 @@ export function useIfcCache() {
           firstVisible = adopted.firstVisible;
           allMeshes = await publishAdoptedSceneMeshes(adopted, open, modelId, cacheResult, cacheKey, isStale, trace, appendGeometryBatch);
         } else {
-          if (await captureSceneSnapshotOfHit(cacheResult, cacheKey, { headerInfo }, isStale)) {
+          if (await captureSceneSnapshotOfHit(cacheResult, cacheKey, { headerInfo }, isStale, trace)) {
             return { success: false, meshCount: 0, totalVertices: 0, totalTriangles: 0 };
           }
           getGlobalRenderer()?.getScene().limitStreamingFragments(CACHE_FIRST_PAINT_INDICES);
@@ -314,7 +317,7 @@ export function useIfcCache() {
     sourceBuffer: ArrayBuffer | SharedArrayBuffer,
     fileName: string,
     options: { lastModified?: number; fullSourceHash?: Promise<string | undefined> } = {}
-  ): Promise<void> => {
+  ): Promise<SnapshotEntry | null> => {
     // The raw source is never persisted (cacheTier.ts `planCacheWrite`): on
     // re-open the freshly read file buffer rehydrates the lazy accessors, so a
     // stored copy would only be deserialized next to it. `sourceBuffer` is read
@@ -341,9 +344,10 @@ export function useIfcCache() {
       const cacheDataStore: CacheDataStore = toCacheDataStore(dataStore);
 
       console.log('[useIfcCache] Writing cache buffer...');
+      let meshOrder: readonly MeshData[] | undefined;
       const cacheBuffer = await writer.write(cacheDataStore, geometry, new Uint8Array(sourceBuffer), {
         includeGeometry: true, compressGeometryChunksInWorker: true,
-        omitSourceHash: true,
+        omitSourceHash: true, onGeometryOrder: (ordered) => { meshOrder = ordered; },
       });
       console.log('[useIfcCache] Cache buffer written:', cacheBuffer.byteLength, 'bytes');
 
@@ -351,7 +355,7 @@ export function useIfcCache() {
       const fullSourceHash = await options.fullSourceHash;
 
       console.log('[useIfcCache] Saving to cache storage...');
-      await setCached(
+      const write = await setCached(
         cacheKey,
         cacheBuffer,
         fileName,
@@ -359,10 +363,15 @@ export function useIfcCache() {
         undefined,
         { lastModified, fullSourceHash, sourceContentKey: dataStore.source.contentKey ?? undefined },
       );
+      if (!write) return null;
       console.log(`[useIfcCache] ✓ Cache saved successfully (mtime=${lastModified ?? 'n/a'}, fullHash=${fullSourceHash ? 'yes' : 'no'})`);
+      // A snapshot reopen reads the shards straight from the entry, at the offsets written here.
+      const shards = new BinaryCacheReader().readHeader(cacheBuffer).sections.find((s) => s.type === SectionType.InstancedShards);
+      return { cacheKey, write, shards: shards ? { offset: shards.offset, size: shards.size } : null, meshOrder };
     } catch (err) {
       console.error('[useIfcCache] Failed to cache model:', err);
       console.error('[useIfcCache] Error stack:', err instanceof Error ? err.stack : 'No stack trace');
+      return null;
     }
   }, []);
 

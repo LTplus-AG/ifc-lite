@@ -1,0 +1,12 @@
+diff --git a/packages/create/src/in-store/structural-derive-facts.ts b/packages/create/src/in-store/structural-derive-facts.ts
+--- a/packages/create/src/in-store/structural-derive-facts.ts
++++ b/packages/create/src/in-store/structural-derive-facts.ts
+@@ -68,7 +68,7 @@ function loadBearingIn(sets: Sets): boolean | null {
+ 
+ /** Occurrence `Pset_*Common.LoadBearing`, then the type's. */
+ function readLoadBearing(store: IfcDataStore, view: MutablePropertyView, id: number): boolean | null {
+-  return loadBearingIn(view.getForEntity(id));
++  return loadBearingIn(view.getForEntity(id)) ?? loadBearingIn(extractTypePropertiesOnDemand(store, id)?.properties ?? []);
+ }
+ 
+ export function readStructuralDerivationFacts(store: IfcDataStore, editor: StoreEditor): StructuralDerivationFacts {

@@ -901,6 +901,31 @@ ifc-lite mutate model.ifc --type IfcWall --where "Pset_WallCommon.IsExternal=tru
 
 ---
 
+### `derive-structural` - Derive a structural analysis model
+
+Derive an `IfcStructuralAnalysisModel` from the physical model in the same file: beams, columns and members become curve members on their axis, slabs and walls become surface members on their mid-plane, member ends within the tolerance share a node, and footings or piles carry supports. When no footing carries a node, the lowest nodes become supports and the report flags them as guessed. Every member and node is linked to its physical element with `IfcRelAssignsToProduct`. Elements that already have a structural counterpart are skipped, so running it again writes nothing. Elements it cannot idealise (tessellated bodies, curved sweeps, non-rectangular walls) are skipped and listed with the reason. Works on IFC2X3, IFC4 and IFC4X3.
+
+```bash
+ifc-lite derive-structural model.ifc --out analytical.ifc
+ifc-lite derive-structural model.ifc --dry-run --json
+ifc-lite derive-structural model.ifc --tolerance 0.1 --support fixed --out analytical.ifc
+```
+
+**Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--out <file>` | Output IFC with the analysis model (omit with `--dry-run`) |
+| `--tolerance <m>` | Member ends closer than this share a node, in metres (default 0.05) |
+| `--load-bearing-unknown <p>` | Elements without `LoadBearing`: `include` (default, reported as assumed) or `skip` |
+| `--support <type>` | Support condition: `pinned` (default) or `fixed` |
+| `--dry-run` | Plan and report only; write nothing |
+| `--json` | Report as JSON: counts, skipped elements with reasons, guessed supports, unconnected member ends |
+
+Scripts reach the same steps through `bim.store.planStructuralDerivation(modelId, options)` and `bim.store.deriveStructuralAnalysisModel(modelId, options)`.
+
+---
+
 ### `generate-spaces` - Derive IfcSpace
 
 Derive IfcSpace volumes from the building's walls (room footprints), using storey datums for floor-to-floor height, and write the augmented IFC.
@@ -1870,6 +1895,7 @@ The `semantic` command reads JSON/SPARQL providers, generates shared profile art
 | `stats` | Auto-calculated model KPIs and health check |
 | `mutate` | Modify properties/attributes and save |
 | `generate-spaces` | Derive IfcSpace from walls (slab/roof-aware height) |
+| `derive-structural` | Derive a linked structural analysis model from beams, columns, slabs, walls |
 | `storey` | Author storeys; geometry follows ("storey --help" for actions) |
 | `ask` | Natural language BIM queries |
 | `view` | Interactive 3D viewer in browser |

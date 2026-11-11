@@ -241,6 +241,27 @@ export class StoreNamespace extends StoreGroupNamespace {
     return this.backend.store.addMember(modelId, storeyExpressId, params);
   }
 
+  /**
+   * Plan an analytical model from the physical one: members, nodes, supports
+   * and a report of what was skipped and guessed (#9668). Writes nothing.
+   */
+  planStructuralDerivation(modelId: string, options?: Parameters<NonNullable<StoreBackendMethods['planStructuralDerivation']>>[1]): ReturnType<NonNullable<StoreBackendMethods['planStructuralDerivation']>> {
+    const plan = this.backend.store.planStructuralDerivation;
+    if (!plan) throw new Error('bim.store.planStructuralDerivation: not available on this backend');
+    return plan.call(this.backend.store, modelId, options);
+  }
+
+  /**
+   * Derive and write one IfcStructuralAnalysisModel linked to the physical
+   * elements. Elements already linked to a structural item are skipped, so a
+   * second run refuses rather than duplicating.
+   */
+  deriveStructuralAnalysisModel(modelId: string, options?: Parameters<NonNullable<StoreBackendMethods['deriveStructuralAnalysisModel']>>[1]): ReturnType<NonNullable<StoreBackendMethods['deriveStructuralAnalysisModel']>> {
+    const derive = this.backend.store.deriveStructuralAnalysisModel;
+    if (!derive) throw new Error('bim.store.deriveStructuralAnalysisModel: not available on this backend');
+    return derive.call(this.backend.store, modelId, options);
+  }
+
   // -- Cost / 5D authoring on a loaded model (#4857 PR A) --------------------
   // Panel is read-only by design; these methods are for scripts (SDK / CLI /
   // MCP / sandbox). See docs/guide/cost-panel.md "Authoring from scripts".

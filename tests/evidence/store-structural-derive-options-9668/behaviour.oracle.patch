@@ -1,0 +1,12 @@
+diff --git a/packages/sdk/src/store-structural-derive.ts b/packages/sdk/src/store-structural-derive.ts
+--- a/packages/sdk/src/store-structural-derive.ts
++++ b/packages/sdk/src/store-structural-derive.ts
+@@ -44,7 +44,7 @@ export function createStructuralDerivationStoreBackend(
+   return {
+     planStructuralDerivation: (modelId, options) => plan(modelId, options).plan,
+     deriveStructuralAnalysisModel(modelId, options) {
+-      const { model, plan: derived } = plan(modelId);
++      const { model, plan: derived } = plan(modelId, options);
+       const { analysisModelId } = applyStructuralDerivation(model.editor, model.store, derived);
+       return { analysisModel: { modelId: model.modelId, expressId: analysisModelId }, report: derived.report };
+     },

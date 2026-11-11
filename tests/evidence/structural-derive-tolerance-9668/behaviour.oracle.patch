@@ -1,0 +1,12 @@
+diff --git a/packages/create/src/in-store/structural-derive-plan.ts b/packages/create/src/in-store/structural-derive-plan.ts
+--- a/packages/create/src/in-store/structural-derive-plan.ts
++++ b/packages/create/src/in-store/structural-derive-plan.ts
+@@ -58,7 +58,7 @@ function clusterEnds(points: Vec3[], tolerance: number): number[] {
+     const [x, y, z] = cell(p);
+     for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
+       for (const j of grid.get(`${x + dx},${y + dy},${z + dz}`) ?? []) {
+-        if (length(sub(p, points[j])) <= 0) parent[find(i)] = find(j);
++        if (length(sub(p, points[j])) <= tolerance) parent[find(i)] = find(j);
+       }
+     }
+     const key = `${x},${y},${z}`;

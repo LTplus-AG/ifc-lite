@@ -22,6 +22,7 @@ import {
   type AnnotationsForStorey,
 } from '../lib/overlay-parse/symbolic-parse.js';
 import { ensureParseFor, getParseFor, subscribeToParseCache } from './symbolic-parse-cache.js';
+import { runAfterLoadIdle } from '../lib/perf/afterLoadIdle.js';
 import { useOverlayChannelGate } from './useOverlayChannelGate.js';
 import {
   buildSymbolicLineChannels,
@@ -77,8 +78,10 @@ function useAnnotationParseTrigger(enabled: boolean, stores: SymbolicActiveStore
 
   useEffect(() => {
     if (!enabled) return undefined;
-    ensureParseFor(stores.map((s) => ({ store: s.store, mutationView: s.mutationView })));
-    return subscribeToParseCache(() => setVersion((v) => v + 1));
+    // A load in progress publishes its store before it is interactive: parse after it settles.
+    const cancel = runAfterLoadIdle(() => { ensureParseFor(stores.map((s) => ({ store: s.store, mutationView: s.mutationView }))); });
+    const unsubscribe = subscribeToParseCache(() => setVersion((v) => v + 1));
+    return () => { cancel(); unsubscribe(); };
   }, [enabled, stores]);
 
   return version;

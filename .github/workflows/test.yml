@@ -163,8 +163,6 @@ jobs:
       # (scripts/ci-release-lane.mjs): the path filter is then withheld, so
       # every path-gated lane skips. Missing or garbled runs the filter.
       release_lane: ${{ steps.release.outputs.lane || 'full' }}
-      # `true` when `release-pr` runs: a lean run, or a shadow run that would be.
-      release_checks: ${{ steps.release.outputs.checks || 'false' }}
       # `true` when the WASM source is byte-identical to the published release
       # tag, so `build` can fetch the prebuilt bundle instead of compiling
       # wasm32. See the `build` job and scripts/ci-wasm-prebuilt-eligible.sh.
@@ -227,6 +225,21 @@ jobs:
           else
             node scripts/check-release-late-changesets.mjs --context "${CONTEXT}" --base "${BASE}"
           fi
+      # THE RELEASE PR LEAN LANE (scripts/ci-release-lane.mjs). Same polarity
+      # as the fast lane: only the exact output `lean` withholds the filter.
+      # Before the no-op probe, which needs to know whether the lane holds now.
+      - name: Decide the release PR lane
+        id: release
+        continue-on-error: true
+        env:
+          CI_RELEASE_LANE: ${{ vars.CI_RELEASE_LANE }}
+          HEAD_REF: ${{ github.head_ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          REPO: ${{ github.repository }}
+          BASE_REF: ${{ github.base_ref }}
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          PR_DRAFT: ${{ github.event.pull_request.draft }}
+        run: node scripts/ci-release-lane.mjs --decide
       # THE NO-OP EDIT PROBE. Only an `edited` event can be a no-op, so the
       # step is skipped on every other event and costs nothing there; on an
       # `edited` it is one check-runs read. `noop=true` requires BOTH a
@@ -237,6 +250,10 @@ jobs:
         if: github.event_name == 'pull_request' && github.event.action == 'edited'
         env:
           GH_TOKEN: ${{ github.token }}
+          # A lean verdict replays only while the lean lane still holds:
+          # `Release PR checks` runs only in a lean run, so its success on this
+          # head means the verdict being replayed may have skipped lanes.
+          REFUSE_REPLAY_AFTER: ${{ steps.release.outputs.lane != 'lean' && 'Release PR checks' || '' }}
         run: node scripts/ci-verdict-replay.mjs --probe
       # THE PUSH REPLAY, both halves (scripts/ci-push-replay.mjs). A PR run
       # records the exact tree it tests -- GitHub records neither the merge
@@ -263,18 +280,6 @@ jobs:
           PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
           HEAD_REF: ${{ github.head_ref }}
         run: node scripts/ci-pr-lane.mjs --decide
-      # THE RELEASE PR LEAN LANE (scripts/ci-release-lane.mjs). Same polarity
-      # as the fast lane: only the exact output `lean` withholds the filter.
-      - name: Decide the release PR lane
-        id: release
-        continue-on-error: true
-        env:
-          CI_RELEASE_LANE: ${{ vars.CI_RELEASE_LANE }}
-          HEAD_REF: ${{ github.head_ref }}
-          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
-          REPO: ${{ github.repository }}
-          BASE_REF: ${{ github.base_ref }}
-        run: node scripts/ci-release-lane.mjs --decide
       # A fast or lean run records no tree: the push replay would otherwise skip, on
       # main, the lanes this run never executed.
       - name: Record the tree this PR run tests
@@ -3973,15 +3978,17 @@ jobs:
           fi
 
   # The release PR's own checks, for the lean lane (scripts/ci-release-lane.mjs).
-  # Runs only when `changes` chose it (or shadow would have), so it is skipped
-  # on every other run. In lean mode the jobs that normally carry these steps
+  # Runs ONLY in a lean run, so it is skipped on every other run, shadow
+  # included (every lane runs there); its success on a head therefore marks a
+  # lean verdict, which the no-op probe refuses to replay unless the lane
+  # still holds. In lean mode the jobs that normally carry these steps
   # (lint, node-guards, docs-checks) are skipped with the path filter; the
   # lean decision already refused any diff that moves more than versions, so
   # the API-surface and build-dependent checks have nothing to compare.
   release-pr:
     name: Release PR checks
     needs: changes
-    if: needs.changes.outputs.release_checks == 'true' && needs.changes.outputs.noop != 'true'
+    if: needs.changes.outputs.release_lane == 'lean' && needs.changes.outputs.noop != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -4098,6 +4105,8 @@ jobs:
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
           REPO: ${{ github.repository }}
           BASE_REF: ${{ github.base_ref }}
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          PR_DRAFT: ${{ github.event.pull_request.draft }}
           LANE: ${{ needs.changes.outputs.release_lane }}
           NEEDS: ${{ toJSON(needs) }}
         run: node scripts/ci-release-lane.mjs --verify

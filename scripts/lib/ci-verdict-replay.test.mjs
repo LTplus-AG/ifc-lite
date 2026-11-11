@@ -110,7 +110,7 @@ test('runIdOf reads the run id from an Actions details_url and nothing else', ()
 
 // ---------------------------------------------------------------- the CLI
 
-function cli(args, files) {
+function cli(args, files, extraEnv = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'verdict-replay-'));
   try {
     const argv = [CLI, ...args];
@@ -129,7 +129,9 @@ function cli(args, files) {
     const output = join(dir, 'output.txt');
     writeFileSync(output, '');
     argv.push('--output', output);
-    const env = { ...process.env };
+    const env = { ...process.env, ...extraEnv };
+    delete env.REFUSE_REPLAY_AFTER;
+    if (extraEnv.REFUSE_REPLAY_AFTER !== undefined) env.REFUSE_REPLAY_AFTER = extraEnv.REFUSE_REPLAY_AFTER;
     delete env.GITHUB_EVENT_PATH;
     delete env.GITHUB_EVENT_NAME;
     delete env.GITHUB_OUTPUT;
@@ -148,6 +150,21 @@ test('--probe: a body edit of a head with a verdict is noop=true', () => {
   assert.equal(r.code, 0, r.out);
   assert.match(r.outputs, /^noop=true$/m); // @source-text-assertion-ok not source text: the CLI is spawned over fixture files and its stdout/GITHUB_OUTPUT is what is asserted
   assert.match(r.out, /already exists \(success, run 100/); // @source-text-assertion-ok not source text: the CLI is spawned over fixture files and its stdout/GITHUB_OUTPUT is what is asserted
+});
+
+test('--probe: REFUSE_REPLAY_AFTER refuses to replay a head where that reduced-lane check succeeded (#9783)', () => {
+  // A release PR's lean verdict skipped lanes; once the lean lane stops
+  // holding, a body edit must run in full rather than replay that green.
+  const edit = prEvent('edited', { body: { from: 'x' } });
+  const lean = [...GREEN, run('Release PR checks', 100, 'completed', 'success', '2026-09-11T10:50:00Z')];
+  const refused = cli(['--probe', '--run-id', '300'], { event: edit, checkRuns: lean }, { REFUSE_REPLAY_AFTER: 'Release PR checks' });
+  assert.equal(refused.code, 0, refused.out);
+  assert.match(refused.outputs, /^noop=false$/m); // @source-text-assertion-ok not source text: the CLI is spawned over fixture files and its stdout/GITHUB_OUTPUT is what is asserted
+  // The marker skipped (every non-lean run), on another head, or the variable
+  // empty (the lane holds now): the replay proceeds exactly as before.
+  const skipped = [...GREEN, run('Release PR checks', 100, 'completed', 'skipped', '2026-09-11T10:50:00Z'), run('Release PR checks', 90, 'completed', 'success', '2026-09-11T10:00:00Z', OTHER)];
+  assert.match(cli(['--probe', '--run-id', '300'], { event: edit, checkRuns: skipped }, { REFUSE_REPLAY_AFTER: 'Release PR checks' }).outputs, /^noop=true$/m); // @source-text-assertion-ok not source text: the CLI is spawned over fixture files and its stdout/GITHUB_OUTPUT is what is asserted
+  assert.match(cli(['--probe', '--run-id', '300'], { event: edit, checkRuns: lean }, { REFUSE_REPLAY_AFTER: '' }).outputs, /^noop=true$/m); // @source-text-assertion-ok not source text: the CLI is spawned over fixture files and its stdout/GITHUB_OUTPUT is what is asserted
 });
 
 test('--probe: a body edit of a head with a RED verdict is still noop=true (the replay will be red)', () => {

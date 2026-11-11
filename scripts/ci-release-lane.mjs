@@ -12,48 +12,52 @@
  * diff is package.json versions, CHANGELOGs, Cargo versions and deleted
  * changesets; no lane but the release-specific ones can say anything new.
  *
- * WHY IT IS SOUND. The PR reaches `main` only through Mergify's `release`
- * queue (.mergify.yml), which tests it on a `mergify/merge-queue/*` draft
- * (observed: draft #8727 for #8665). ci-pr-lane.mjs gives a batch branch the
- * full lanes, and the queue's merge conditions require `Viewer tests
- * (shard 0)` and `Rust tests (feature builds)`, which a lean run skips and
- * which `rust-full` runs on a pull_request only for a batch. So the queue,
- * not this run, is the full gate. `--decide` re-reads .mergify.yml and runs
- * full when that route is not there.
+ * WHY IT IS HELD. A lean run is sound only if the PR cannot reach `main`
+ * except through Mergify's `release` queue, whose merge conditions require the
+ * full lanes and whose two-step CI makes Mergify test on a
+ * `mergify/merge-queue/*` draft (observed: draft #8727 for #8665), where
+ * ci-pr-lane.mjs runs every lane. `releaseQueueRoute` checks the config and
+ * that this PR meets the queue's entry conditions. But a lean run turns the
+ * required aggregate green, and whether a PR with green required checks can
+ * be merged directly is set outside this repository (the `main` ruleset). So
+ * the lean lane is held behind OWNER_ALLOWS_LEAN, and `on` reports like
+ * `shadow` until the owner releases it.
  *
  * THE SWITCH is the repo variable `CI_RELEASE_LANE`:
  *   unset / `off`  today's behaviour.
  *   `shadow`       every lane runs; the aggregate's summary lists what the
  *                  lean lane would have skipped and whether any of it failed.
- *   `on`           the release PR runs `changes` (late-changeset gate),
- *                  `rust-semver`, `silent-revert` and `release-pr` (changeset,
- *                  bump-level, Rust major-offset and README checks) and skips
- *                  the rest.
+ *   `on`           held: as `shadow`. With OWNER_ALLOWS_LEAN, the release PR
+ *                  runs `changes` (late-changeset gate), `rust-semver`,
+ *                  `silent-revert` and `release-pr` (changeset, bump-level,
+ *                  Rust major-offset and README checks) and skips the rest.
  * Any other value is `off`. Lean needs ALL of: a `pull_request` into `main`,
  * head ref exactly `changeset-release/main`, the head in this repository (a
- * fork's branch of that name runs full), the Mergify route above, and a diff
- * that only moves versions (`diffProblems`). Anything else runs full.
+ * fork's branch of that name runs full), the Mergify route above, a diff that
+ * only moves versions (`diffProblems`), and the owner's release of the hold.
  *
  * FAIL CLOSED, BY POLARITY. `changes` withholds its path-filter outputs only
  * when this step printed exactly `lane=lean`; a crash, an empty or a garbled
  * output runs the path filter and every lane. The aggregate re-derives the
  * decision (`--verify`) and fails a lean run it cannot justify, because it
- * counts `skipped` as a pass.
+ * counts `skipped` as a pass. A body-only edit does not replay a lean verdict
+ * unless the lane still holds: `release-pr` runs only in a lean run, and the
+ * no-op probe refuses to replay a head where it succeeded (test.yml).
  *
- *   node scripts/ci-release-lane.mjs --decide   `changes` job; writes lane/checks outputs
+ *   node scripts/ci-release-lane.mjs --decide   `changes` job; writes the lane output
  *   node scripts/ci-release-lane.mjs --verify   aggregate; exit 1 on an unjustified lean run
  *
  * Inputs: GITHUB_EVENT_NAME, CI_RELEASE_LANE, HEAD_REF, HEAD_REPO, REPO,
- * BASE_REF; for --verify also LANE (the `changes` output) and NEEDS
+ * BASE_REF, PR_LABELS (JSON array of names), PR_DRAFT; for --verify also LANE (the `changes` output) and NEEDS
  * (`toJSON(needs)`). Both read the PR's diff as `git diff HEAD~1 HEAD` on the
  * merge-ref checkout, so they need fetch-depth 2.
  */
 
 import { appendFileSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { basename } from 'node:path';
 
 import { isMainEntry } from './lib/is-main-entry.mjs';
+import { diffProblems } from './lib/release-version-diff.mjs';
 
 export const RELEASE_HEAD_REF = 'changeset-release/main';
 export const MODES = ['off', 'shadow', 'on'];
@@ -67,9 +71,6 @@ export const QUEUE_FULL_CHECKS = [
   'check-success=Viewer tests (shard 0)',
   'check-success=Rust tests (feature builds)',
 ];
-
-// `rust-version` (the MSRV) is not a version bump, hence the lookbehind.
-const VERSION_VALUE = /(?<![\w-])version\s*=\s*"[^"]*"/g;
 
 /**
  * Queue rules from .mergify.yml, read by indentation. Deliberately narrow:
@@ -114,99 +115,70 @@ export function parseQueueRules(text) {
   return rules;
 }
 
-/** Does .mergify.yml route the release PR through a queue that runs the full gate? */
-export function releaseQueueRoute(text) {
+/**
+ * Does .mergify.yml route THIS release PR through a queue that runs the full
+ * gate? Three parts:
+ *  - the rule takes the release head and the PR meets its other entry
+ *    conditions now (`label=`, `-draft`). `status-success=`/`check-success=`
+ *    entry conditions only delay queueing, so they are not judged here; any
+ *    other condition is unknown and refuses.
+ *  - its merge conditions require the full-lane checks.
+ *  - its CI is two-step (merge conditions present and not the queue
+ *    conditions). Mergify checks a PR in place, or merges it without a draft,
+ *    only when the CI is single-step (docs.mergify.com/merge-queue/rules,
+ *    `allow_inplace_checks`), so two-step means the full lanes run on a
+ *    `mergify/merge-queue/*` draft, where ci-pr-lane.mjs runs every lane.
+ *
+ * @param {string} text  .mergify.yml
+ * @param {{ labels?: string[], draft?: boolean }} pr
+ */
+export function releaseQueueRoute(text, { labels = [], draft = true } = {}) {
   const rule = parseQueueRules(text).find((r) => r.queue.includes(`head=${RELEASE_HEAD_REF}`));
   if (!rule) return { ok: false, reason: `no Mergify queue rule takes head=${RELEASE_HEAD_REF}` };
+  for (const c of rule.queue) {
+    if (c === `head=${RELEASE_HEAD_REF}` || /^(status|check)-success=/.test(c)) continue;
+    if (c === '-draft') {
+      if (draft !== false) return { ok: false, reason: `the PR is a draft (or its draft state is unknown), so Mergify queue \`${rule.name}\` will not take it` };
+      continue;
+    }
+    const label = /^label=(.+)$/.exec(c);
+    if (label) {
+      if (!labels.includes(label[1])) return { ok: false, reason: `the PR lacks \`${label[1]}\`, so Mergify queue \`${rule.name}\` will not take it` };
+      continue;
+    }
+    return { ok: false, reason: `Mergify queue \`${rule.name}\` has an entry condition this script cannot judge: ${c}` };
+  }
   const missing = QUEUE_FULL_CHECKS.filter((c) => !rule.merge.includes(c));
   if (missing.length > 0) return { ok: false, reason: `Mergify queue \`${rule.name}\` does not require ${missing.join(', ')}` };
-  return { ok: true, reason: `Mergify queue \`${rule.name}\` gates the merge on the full lanes` };
+  const sameAsQueue = rule.merge.length === rule.queue.length && rule.merge.every((c) => rule.queue.includes(c));
+  if (sameAsQueue) return { ok: false, reason: `Mergify queue \`${rule.name}\` is single-step CI, so Mergify may judge the PR's own run in place` };
+  return { ok: true, reason: `Mergify queue \`${rule.name}\` takes this PR and gates the merge on the full lanes of a draft` };
 }
 
 /**
- * Only `version` may move. Internal dependencies use `workspace:` specifiers
- * and .changeset/config.json sets bumpVersionsWithWorkspaceProtocolOnly, so a
- * release never rewrites a dependency map.
+ * THE OWNER'S HOLD. A lean run makes the required aggregate green on the
+ * release PR, and nothing in this repository can stop a direct merge of a PR
+ * whose required checks are green: the queue route above is checked when the
+ * run starts, a label can be removed after it, and making a lean run leave
+ * the aggregate red would also keep the PR out of the queue, because Mergify
+ * injects branch-protection checks as queue conditions by default
+ * (`branch_protection_injection_mode: queue`). Whether a direct merge is
+ * possible is set outside the repository: today the `main` ruleset lets only
+ * Mergify update `main`. Until the owner decides to rely on that (#9783),
+ * `on` behaves as `shadow`.
  */
-function onlyVersionsMoved(before, after) {
-  const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
-  const moved = [...keys].find((k) => k !== 'version' && JSON.stringify(before[k]) !== JSON.stringify(after[k]));
-  return moved ? `\`${moved}\` changed` : null;
-}
-
-/**
- * Pairs every removed line with an added line in each hunk; a pair may differ
- * only in a `version = "..."` value, on a bare `version =` line (a package's
- * own version, or Cargo.lock's) or on a `path =` dependency (an internal
- * crate). A `checksum` change (an external crate moved in Cargo.lock), an
- * external requirement, `rust-version` or any other edit is a problem.
- */
-function onlyCargoVersionsMoved(unifiedDiff) {
-  const hunks = String(unifiedDiff).split(/^@@.*$/m).slice(1);
-  for (const hunk of hunks) {
-    const lines = hunk.split('\n');
-    const minus = lines.filter((l) => l.startsWith('-')).map((l) => l.slice(1));
-    const plus = lines.filter((l) => l.startsWith('+')).map((l) => l.slice(1));
-    if (minus.length !== plus.length) return 'lines were added or removed';
-    for (let i = 0; i < minus.length; i++) {
-      const internal = /^\s*version\s*=/.test(plus[i]) || /\bpath\s*=/.test(plus[i]);
-      if (!internal || minus[i].replace(VERSION_VALUE, 'version=""') !== plus[i].replace(VERSION_VALUE, 'version=""')) return `\`${plus[i].trim()}\` is not a version change`;
-    }
-  }
-  return null;
-}
-
-/**
- * What in the PR's diff is not a version bump. Empty means lean is allowed.
- *
- * @param {{ status: string, path: string }[]} entries  `git diff --name-status`
- * @param {{ show: (rev: string, path: string) => string, diff: (path: string) => string }} git
- * @returns {string[]}
- */
-export function diffProblems(entries, git) {
-  const problems = [];
-  if (entries.length === 0) problems.push('the diff is empty or unreadable');
-  for (const { status, path } of entries) {
-    const name = basename(path);
-    let problem = null;
-    if (/^\.changeset\/[^/]+\.md$/.test(path) && name !== 'README.md') {
-      if (status !== 'D') problem = 'a changeset may only be consumed (deleted)';
-    } else if (name === 'CHANGELOG.md') {
-      if (status !== 'M' && status !== 'A') problem = `status ${status}`;
-      else {
-        try {
-          git.show('HEAD', path.replace(/CHANGELOG\.md$/, 'package.json'));
-        } catch {
-          problem = 'no package.json beside it, so changesets did not write it';
-        }
-      }
-    } else if (name === 'package.json') {
-      if (status !== 'M') problem = `status ${status}`;
-      else {
-        try {
-          problem = onlyVersionsMoved(JSON.parse(git.show('HEAD~1', path)), JSON.parse(git.show('HEAD', path)));
-        } catch (err) {
-          problem = `unreadable (${err.message})`;
-        }
-      }
-    } else if (name === 'Cargo.toml' || name === 'Cargo.lock') {
-      problem = status === 'M' ? onlyCargoVersionsMoved(git.diff(path)) : `status ${status}`;
-    } else {
-      problem = 'not a release file';
-    }
-    if (problem) problems.push(`${path}: ${problem}`);
-  }
-  return problems;
-}
+export const OWNER_ALLOWS_LEAN = false;
 
 /**
  * Pure decision.
  *
  * @param {{ event?: string, mode?: string, headRef?: string, headRepo?: string, repo?: string, baseRef?: string,
- *   mergify?: () => string, diff?: () => string[] }} input  `mergify` and `diff` are read only when needed
+ *   labels?: string, draft?: string, mergify?: () => string, diff?: () => string[], ownerAllowsLean?: boolean }} input
+ *   `labels` is the JSON array of PR label names and `draft` the string `true`/`false`, as test.yml passes them.
+ *   `mergify` and `diff` are read only when needed.
  * @returns {{ lane: 'lean'|'full', mode: string, wouldBeLean: boolean, reason: string, warning?: string }}
  */
-export function decideReleaseLane({ event, mode, headRef, headRepo, repo, baseRef, mergify, diff }) {
+export function decideReleaseLane({ event, mode, headRef, headRepo, repo, baseRef, labels, draft, mergify, diff, ownerAllowsLean = OWNER_ALLOWS_LEAN }) {
   const raw = String(mode ?? '').toLowerCase();
   const m = raw === '' ? 'off' : raw;
   const full = (reason, extra = {}) => ({ lane: 'full', mode: MODES.includes(m) ? m : 'off', wouldBeLean: false, reason, ...extra });
@@ -218,9 +190,11 @@ export function decideReleaseLane({ event, mode, headRef, headRepo, repo, baseRe
   if (!repo || headRepo !== repo) return full(`head is in ${JSON.stringify(headRepo)}, not this repository`);
   let route;
   try {
-    route = releaseQueueRoute(mergify());
+    const names = JSON.parse(labels ?? 'null');
+    if (!Array.isArray(names) || names.some((n) => typeof n !== 'string')) throw new Error('PR_LABELS is not a JSON array of strings');
+    route = releaseQueueRoute(mergify(), { labels: names, draft: draft === 'true' ? true : draft === 'false' ? false : undefined });
   } catch (err) {
-    route = { ok: false, reason: `.mergify.yml unreadable (${err.message})` };
+    route = { ok: false, reason: `the queue route is unreadable (${err.message})` };
   }
   if (!route.ok) return full(`${route.reason}, so this run is the only gate`, { warning: `release lane refused: ${route.reason}` });
   let problems;
@@ -231,6 +205,7 @@ export function decideReleaseLane({ event, mode, headRef, headRepo, repo, baseRe
   }
   if (problems.length > 0) return full(`the diff is more than a version bump: ${problems.slice(0, 5).join('; ')}`);
   if (m === 'shadow') return { lane: 'full', mode: m, wouldBeLean: true, reason: 'shadow mode: full lanes run, lean lane reported' };
+  if (!ownerAllowsLean) return { lane: 'full', mode: m, wouldBeLean: true, reason: 'CI_RELEASE_LANE=on, but the lean lane is held until the owner decides how release PRs reach main (OWNER_ALLOWS_LEAN); full lanes run, lean lane reported', warning: 'CI_RELEASE_LANE=on is held (OWNER_ALLOWS_LEAN=false); running the full lanes' };
   return { lane: 'lean', mode: m, wouldBeLean: true, reason: `CI_RELEASE_LANE=on on the release PR; ${route.reason}` };
 }
 
@@ -259,9 +234,9 @@ export function verifyReleaseLane(input) {
     if (notRun.length > 0) return { ok: false, lines: [`❌ RELEASE_CHECKS_DID_NOT_PASS: a lean run needs every kept job to succeed: ${notRun.map((j) => `\`${j}\` was ${resultOf(j)}`).join(', ')}.`] };
     return { ok: true, lines: ['## Release PR lean lane (`CI_RELEASE_LANE=on`)', '', d.reason, '', 'Skipped on purpose; the `release` merge queue runs them:', '', ...listed] };
   }
-  if (d.mode === 'shadow' && d.wouldBeLean) {
+  if (d.wouldBeLean && d.lane !== 'lean') {
     const failed = skippedByLean.filter((j) => resultOf(j) === 'failure');
-    const lines = ['## Release PR lean lane, shadow mode (`CI_RELEASE_LANE=shadow`)', '', 'Every lane ran. The lean lane would have skipped:', '', ...listed];
+    const lines = [`## Release PR lean lane, reported only (\`CI_RELEASE_LANE=${d.mode}\`)`, '', d.reason, '', 'Every lane ran. The lean lane would have skipped:', '', ...listed];
     lines.push('', failed.length > 0 ? `⚠️ The lean lane would have deferred a failure to the merge queue: ${failed.join(', ')}.` : 'None of them failed; the lean lane would have reached the same verdict.');
     return { ok: true, lines };
   }
@@ -291,6 +266,8 @@ export function run(argv, env = process.env, cwd = process.cwd()) {
     headRepo: env.HEAD_REPO,
     repo: env.REPO,
     baseRef: env.BASE_REF,
+    labels: env.PR_LABELS,
+    draft: env.PR_DRAFT,
     mergify: () => readFileSync(`${cwd}/.mergify.yml`, 'utf8'),
     diff: () => diffProblems(git.entries(), git),
   };
@@ -299,7 +276,7 @@ export function run(argv, env = process.env, cwd = process.cwd()) {
     if (d.warning) console.log(`::warning::${d.warning}`);
     console.log(`[ci-release-lane] lane=${d.lane} mode=${d.mode}: ${d.reason}`);
     if (!env.GITHUB_OUTPUT) throw new Error('GITHUB_OUTPUT is not set; refusing to decide into nowhere');
-    appendFileSync(env.GITHUB_OUTPUT, `lane=${d.lane}\nchecks=${d.wouldBeLean}\n`);
+    appendFileSync(env.GITHUB_OUTPUT, `lane=${d.lane}\n`);
     return 0;
   }
   if (argv[0] === '--verify') {

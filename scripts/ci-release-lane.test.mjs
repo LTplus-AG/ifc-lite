@@ -21,14 +21,15 @@ import { parse } from 'yaml';
 
 import {
   LEAN_KEPT_JOBS,
+  OWNER_ALLOWS_LEAN,
   QUEUE_FULL_CHECKS,
   RELEASE_HEAD_REF,
   decideReleaseLane,
-  diffProblems,
   parseQueueRules,
   releaseQueueRoute,
   verifyReleaseLane,
 } from './ci-release-lane.mjs';
+import { diffProblems } from './lib/release-version-diff.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..');
@@ -47,8 +48,12 @@ const BASE = {
   headRepo: 'o/r',
   repo: 'o/r',
   baseRef: 'main',
+  labels: JSON.stringify(['mergify-trial']),
+  draft: 'false',
   mergify: () => MERGIFY,
   diff: () => [],
+  // The lean path itself, as it would run once the owner releases the hold.
+  ownerAllowsLean: true,
 };
 const decide = (over = {}) => decideReleaseLane({ ...BASE, ...over });
 
@@ -68,6 +73,20 @@ test('unset and `off` are today\'s behaviour, and so is any unknown value', () =
     assert.equal(d.wouldBeLean, false);
     assert.match(d.warning ?? '', /not one of off, shadow, on/); // @source-text-assertion-ok subject is the decision's returned message
   }
+});
+
+test('HELD (#9783): `on` runs the full lanes and reports, until the owner releases OWNER_ALLOWS_LEAN', () => {
+  // A lean run turns the required aggregate green, and nothing in the repo
+  // stops a direct merge of a PR with green required checks. The hold is the
+  // shipped default; this pins it so releasing it is a reviewed diff.
+  assert.equal(OWNER_ALLOWS_LEAN, false);
+  const { ownerAllowsLean: _ignored, ...shipped } = BASE;
+  const d = decideReleaseLane(shipped);
+  assert.equal(d.lane, 'full');
+  assert.equal(d.wouldBeLean, true, 'still reported, like shadow');
+  assert.match(d.warning ?? '', /held/); // @source-text-assertion-ok subject is the decision's returned message
+  const v = verifyReleaseLane({ ...shipped, lane: 'lean', needs: needsJson() });
+  assert.equal(v.ok, false, 'a lean output while held is unjustified');
 });
 
 test('`on` gives the release PR the lean lane; `shadow` runs full and records it', () => {
@@ -114,6 +133,28 @@ test('REFUSE: no full-gate Mergify route for the release PR means this run is th
   assert.equal(decide({ mergify: () => '' }).lane, 'full');
 });
 
+test('REFUSE: the PR must meet the release queue\'s entry conditions now (label, not a draft)', () => {
+  // #8761 carried no labels: Mergify would never queue it, so nothing would
+  // run its full lanes before a merge.
+  for (const labels of ['[]', '["unqueued"]', 'null', 'garbage', '[1]']) {
+    const d = decide({ labels });
+    assert.equal(d.lane, 'full', labels);
+    assert.equal(d.wouldBeLean, false, labels);
+  }
+  for (const draft of ['true', '', undefined]) assert.equal(decide({ draft }).lane, 'full', String(draft));
+});
+
+test('REFUSE: a queue Mergify could check in place, or an entry condition this script cannot judge', () => {
+  // Mergify judges the PR's own run (in place, or merges without a draft)
+  // only for single-step CI: merge_conditions empty or equal to the queue's.
+  const rule = parseQueueRules(MERGIFY).find((r) => r.name === 'release');
+  const singleStep = `queue_rules:\n  - name: release\n    queue_conditions:\n${[...rule.queue, ...QUEUE_FULL_CHECKS].map((c) => `      - ${c}`).join('\n')}\n    merge_conditions:\n${[...rule.queue, ...QUEUE_FULL_CHECKS].map((c) => `      - ${c}`).join('\n')}\n`;
+  assert.match(releaseQueueRoute(singleStep, { labels: ['mergify-trial'], draft: false }).reason, /single-step/); // @source-text-assertion-ok subject is the returned reason
+  const unknown = MERGIFY.replace('      - head=changeset-release/main\n    merge_conditions', '      - head=changeset-release/main\n      - base=main\n    merge_conditions');
+  assert.notEqual(unknown, MERGIFY, 'the fixture edit applied');
+  assert.match(releaseQueueRoute(unknown, { labels: ['mergify-trial'], draft: false }).reason, /cannot judge: base=main/); // @source-text-assertion-ok subject is the returned reason
+});
+
 test('REFUSE: a diff that moves more than versions, or cannot be read, runs full', () => {
   assert.equal(decide({ diff: () => ['src/x.ts: not a release file'] }).lane, 'full');
   assert.equal(decide({ diff: () => { throw new Error('bad revision HEAD~1'); } }).lane, 'full');
@@ -132,7 +173,7 @@ test('the inputs are read only when the cheap checks pass (no git on an ordinary
 test('the narrow queue-rule reader agrees with a YAML parse of the real .mergify.yml', () => {
   const real = parse(MERGIFY).queue_rules.map((r) => ({ name: r.name, queue: r.queue_conditions ?? [], merge: r.merge_conditions ?? [] }));
   assert.deepEqual(parseQueueRules(MERGIFY), real);
-  const route = releaseQueueRoute(MERGIFY);
+  const route = releaseQueueRoute(MERGIFY, { labels: ['mergify-trial'], draft: false });
   assert.equal(route.ok, true, route.reason);
 });
 
@@ -157,14 +198,26 @@ function fakeGit(files) {
     diff: (path) => files[path].diff,
   };
 }
+/** A Cargo file pair as the rule reads it: `git diff -U0` plus the new text. Lines are replaced, never added. */
+function cargo(before, after) {
+  const b = before.split('\n');
+  const a = after.split('\n');
+  assert.equal(a.length, b.length, 'fixture replaces lines only');
+  const diff = a.map((l, i) => (l === b[i] ? '' : `@@ -${i + 1} +${i + 1} @@\n-${b[i]}\n+${l}\n`)).join('');
+  return { diff, after };
+}
+const crate = (v, dep = 'ifc-lite-core = { version = "=2.0.0", path = "../core" }') => `[package]\nname = "ifc-lite-x"\nversion = "${v}"\nrust-version = "1.75"\n\n[dependencies]\n${dep}\nserde = { version = "1.0.1", features = ["derive"] }\n\n[dependencies.ifc-lite-geom]\npath = "../geom"\nversion = "=2.0.0"\n\n[dependencies.external]\nversion = "1.0.0"\n`;
+const lock = (internal, external = '1.0.0') => `[[package]]\nname = "ifc-lite-core"\nversion = "${internal}"\ndependencies = [\n "serde",\n]\n\n[[package]]\nname = "external"\nversion = "${external}"\nsource = "git+https://example.com/x?rev=abc#abc"\n`;
 const pkg = (version, extra = {}) => JSON.stringify({ name: '@ifc-lite/x', version, dependencies: { '@ifc-lite/core': 'workspace:*', lodash: '^4.0.0' }, ...extra });
 
 test('DIFF: a real release shape passes', () => {
   const files = {
     'packages/x/package.json': { before: pkg('1.0.0'), after: pkg('1.1.0') },
     'packages/new/package.json': { after: pkg('0.1.0') },
-    'rust/core/Cargo.toml': { diff: '@@ -3 +3 @@\n-version = "2.0.0"\n+version = "2.1.0"\n' },
-    'Cargo.lock': { diff: '@@ -10 +10 @@\n-version = "2.0.0"\n+version = "2.1.0"\n@@ -40 +40 @@\n- ifc-lite-core = { version = "=2.0.0", path = "x" }\n+ ifc-lite-core = { version = "=2.1.0", path = "x" }\n' },
+    // Package version, an inline path dependency and a `[dependencies.<n>]`
+    // table with a path: every internal shape changesets/sync-versions writes.
+    'rust/core/Cargo.toml': cargo(crate('2.0.0'), crate('2.1.0', 'ifc-lite-core = { version = "=2.1.0", path = "../core" }').replace('path = "../geom"\nversion = "=2.0.0"', 'path = "../geom"\nversion = "=2.1.0"')),
+    'Cargo.lock': cargo(lock('2.0.0'), lock('2.1.0')),
   };
   const entries = [
     { status: 'D', path: '.changeset/brave-owls-sing.md' },
@@ -183,11 +236,15 @@ test('DIFF: everything that is not a version bump is named', () => {
     'b/package.json': { before: pkg('1.0.0'), after: JSON.stringify({ ...JSON.parse(pkg('1.0.0')), dependencies: { '@ifc-lite/core': 'workspace:*', lodash: '^4.1.0' } }) },
     'c/package.json': { before: pkg('1.0.0'), after: JSON.stringify({ ...JSON.parse(pkg('1.0.0')), dependencies: { '@ifc-lite/core': 'file:../x', lodash: '^4.0.0' } }) },
     'd/package.json': { before: '{', after: '{}' },
-    'Cargo.toml': { diff: '@@ -9 +9 @@\n-serde = "1.0.1"\n+serde = "1.0.2"\n' },
-    'Cargo.lock': { diff: '@@ -9,2 +9,2 @@\n-version = "1.0.1"\n-checksum = "aa"\n+version = "1.0.2"\n+checksum = "bb"\n' },
-    'rust/x/Cargo.toml': { diff: '@@ -9,0 +10 @@\n+features = ["x"]\n' },
-    'rust/y/Cargo.toml': { diff: '@@ -4 +4 @@\n-rust-version = "1.75"\n+rust-version = "1.85"\n' },
-    'rust/z/Cargo.toml': { diff: '@@ -9 +9 @@\n-serde = { version = "1.0.1", features = ["derive"] }\n+serde = { version = "2.0.0", features = ["derive"] }\n' },
+    'Cargo.toml': cargo(crate('2.0.0', 'serde_json = "1.0.1"'), crate('2.0.0', 'serde_json = "1.0.2"')),
+    // An external crate in Cargo.lock: it has a `source`, so its version is not ours.
+    'Cargo.lock': cargo(lock('2.0.0'), lock('2.0.0', '1.0.1')),
+    'rust/x/Cargo.toml': { diff: '@@ -9,0 +10 @@\n+features = ["x"]\n', after: crate('2.0.0') },
+    'rust/y/Cargo.toml': cargo(crate('2.0.0'), crate('2.0.0').replace('rust-version = "1.75"', 'rust-version = "1.85"')),
+    'rust/z/Cargo.toml': cargo(crate('2.0.0'), crate('2.0.0').replace('serde = { version = "1.0.1"', 'serde = { version = "2.0.0"')),
+    // #9783 review: an external dependency in TABLE form, bare `version =` line.
+    'rust/t/Cargo.toml': cargo(crate('2.0.0'), crate('2.0.0').replace('[dependencies.external]\nversion = "1.0.0"', '[dependencies.external]\nversion = "1.1.0"')),
+    'rust/w/Cargo.toml': cargo('[workspace.dependencies.external]\nversion = "1.0.0"\n', '[workspace.dependencies.external]\nversion = "1.1.0"\n'),
   };
   const entries = [
     { status: 'A', path: '.changeset/new.md' },
@@ -201,6 +258,8 @@ test('DIFF: everything that is not a version bump is named', () => {
     { status: 'M', path: 'rust/x/Cargo.toml' },
     { status: 'M', path: 'rust/y/Cargo.toml' },
     { status: 'M', path: 'rust/z/Cargo.toml' },
+    { status: 'M', path: 'rust/t/Cargo.toml' },
+    { status: 'M', path: 'rust/w/Cargo.toml' },
     { status: 'A', path: 'docs/CHANGELOG.md' },
   ];
   const problems = diffProblems(entries, fakeGit(files));
@@ -287,21 +346,22 @@ function cli(args, env, cwd) {
   const r = spawnSync(process.execPath, [CLI, ...args], {
     cwd,
     encoding: 'utf8',
-    env: { PATH: process.env.PATH, GITHUB_OUTPUT: out, GITHUB_EVENT_NAME: 'pull_request', CI_RELEASE_LANE: 'on', HEAD_REF: RELEASE_HEAD_REF, HEAD_REPO: 'o/r', REPO: 'o/r', BASE_REF: 'main', ...env },
+    env: { PATH: process.env.PATH, GITHUB_OUTPUT: out, GITHUB_EVENT_NAME: 'pull_request', CI_RELEASE_LANE: 'on', HEAD_REF: RELEASE_HEAD_REF, HEAD_REPO: 'o/r', REPO: 'o/r', BASE_REF: 'main', PR_LABELS: '["mergify-trial"]', PR_DRAFT: 'false', ...env },
   });
   const outputs = Object.fromEntries(readFileSync(out, 'utf8').split('\n').filter(Boolean).map((l) => l.split('=')));
   return { code: r.status, stdout: r.stdout, stderr: r.stderr, outputs };
 }
 
-test('CLI --decide on a real version-bump commit is lean; one more source file makes it full', () => {
-  const lean = cli(['--decide'], {}, repo(versionBump));
-  assert.equal(lean.code, 0, lean.stderr);
-  assert.deepEqual(lean.outputs, { lane: 'lean', checks: 'true' });
+test('CLI --decide on a real version-bump commit: held, so full and reported; one more source file says why not lean', () => {
+  const held = cli(['--decide'], {}, repo(versionBump));
+  assert.equal(held.code, 0, held.stderr);
+  assert.deepEqual(held.outputs, { lane: 'full' });
+  assert.match(held.stdout, /::warning::.*held/); // @source-text-assertion-ok subject is the CLI's printed annotation
   const mixed = cli(['--decide'], {}, repo((d) => { versionBump(d); writeFileSync(join(d, 'src.ts'), 'export const x = 1;\n'); }));
-  assert.deepEqual(mixed.outputs, { lane: 'full', checks: 'false' });
+  assert.deepEqual(mixed.outputs, { lane: 'full' });
   assert.match(mixed.stdout, /src\.ts: not a release file/); // @source-text-assertion-ok subject is the CLI's printed reason
-  const off = cli(['--decide'], { CI_RELEASE_LANE: '' }, repo(versionBump));
-  assert.deepEqual(off.outputs, { lane: 'full', checks: 'false' });
+  const unlabelled = cli(['--decide'], { PR_LABELS: '[]' }, repo(versionBump));
+  assert.match(unlabelled.stdout, /lacks `mergify-trial`/); // @source-text-assertion-ok subject is the CLI's printed reason
 });
 
 test('CLI FAIL CLOSED: no GITHUB_OUTPUT writes nothing and exits 1; --verify exits 1 on an unjustified lean', () => {
@@ -309,8 +369,9 @@ test('CLI FAIL CLOSED: no GITHUB_OUTPUT writes nothing and exits 1; --verify exi
   assert.equal(cli(['--decide'], { GITHUB_OUTPUT: '' }, dir).code, 1);
   assert.equal(cli([], {}, dir).code, 1);
   const needs = needsJson('skipped', Object.fromEntries(LEAN_KEPT_JOBS.map((j) => [j, 'success'])));
-  assert.equal(cli(['--verify'], { LANE: 'lean', NEEDS: needs }, dir).code, 0);
-  assert.equal(cli(['--verify'], { LANE: 'lean', NEEDS: needs, HEAD_REPO: 'fork/r' }, dir).code, 1);
+  // While held, no lean output can be justified.
+  assert.equal(cli(['--verify'], { LANE: 'lean', NEEDS: needs }, dir).code, 1);
+  assert.equal(cli(['--verify'], { LANE: 'full', NEEDS: needsJson() }, dir).code, 0);
 });
 
 // ---------------------------------------------------------------- the wiring
@@ -327,6 +388,14 @@ test('WIRING: `changes` decides with continue-on-error and withholds only on the
     assert.match(steps[s].if, /steps\.release\.outputs\.lane != 'lean'/, id); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML
   }
   assert.match(jobs.changes.outputs.release_lane, /steps\.release\.outputs\.lane \|\| 'full'/); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML
+  // The no-op probe runs after the decision and is told to refuse a lean
+  // verdict whenever the lane does not hold now (#9783 review).
+  const probe = steps.findIndex((x) => x.id === 'noop');
+  assert.ok(at < probe, 'the decision precedes the no-op probe');
+  // The literal workflow expression this test pins, not a template string.
+  // eslint-disable-next-line no-template-curly-in-string
+  assert.equal(steps[probe].env.REFUSE_REPLAY_AFTER, "${{ steps.release.outputs.lane != 'lean' && 'Release PR checks' || '' }}");
+  for (const k of ['PR_LABELS', 'PR_DRAFT']) assert.ok(step.env[k], `the decision reads ${k}`);
   for (const [key, job] of Object.entries(jobs)) {
     assert.ok(!/release_lane\s*==\s*'full'/.test(String(job.if ?? '')), `${key} must never gate on release_lane == 'full'`); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML
   }
@@ -335,7 +404,7 @@ test('WIRING: `changes` decides with continue-on-error and withholds only on the
 test('WIRING: every job a lean run keeps is outside the path filter; every other lane is behind it', () => {
   // `changes` withholds its filter outputs, so a lane runs in a lean run only
   // if its `if` does not need one. Pin that the kept set is exactly that set.
-  const filterKeys = Object.keys(jobs.changes.outputs).filter((k) => !['noop', 'replay', 'replay_run', 'replay_queue', 'lane', 'batch', 'release_lane', 'release_checks', 'wasm_prebuilt'].includes(k)); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML
+  const filterKeys = Object.keys(jobs.changes.outputs).filter((k) => !['noop', 'replay', 'replay_run', 'replay_queue', 'lane', 'batch', 'release_lane', 'wasm_prebuilt'].includes(k)); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML
   const pathGated = (job) => filterKeys.some((k) => new RegExp(`needs\\.changes\\.outputs\\.${k} == 'true'`).test(String(job.if ?? ''))); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML
   for (const j of jobs.test.needs) {
     const job = jobs[j];
@@ -348,7 +417,9 @@ test('WIRING: every job a lean run keeps is outside the path filter; every other
 
 test('WIRING: release-pr runs the release checks and is judged by the aggregate', () => {
   const job = jobs['release-pr'];
-  assert.match(job.if, /needs\.changes\.outputs\.release_checks == 'true'/); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML
+  // Lean runs only, so its success on a head marks a lean verdict (the probe's REFUSE_REPLAY_AFTER).
+  assert.equal(job.if, "needs.changes.outputs.release_lane == 'lean' && needs.changes.outputs.noop != 'true'");
+  assert.equal(job.name, 'Release PR checks');
   const runs = job.steps.map((s) => s.run).filter(Boolean);
   for (const s of ['check-changesets.mjs', 'check-changeset-bump.mjs', 'check-rust-major-offset.mjs', 'check-package-readmes.mjs']) {
     assert.ok(runs.some((r) => r.includes(s)), s); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML

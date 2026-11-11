@@ -6666,3 +6666,23 @@ Lessons:
   Answering those with `Zero` before the I512 compare kept output identical on 29 models,
   but geometry time moved 0.0%: the compares were cheap. A high miss count is not a high
   cost; time it before building on it.
+
+## CLI geometry export is 12-19x slower than the native core (un-shipped lever, 2026-11-11)
+
+- **Measured gap (untimed, shared host, n=3):** `ifc-lite export --format glb` takes 15.0 s on
+  Holter (177 MB) against a 1.25 s native `perf_probe` full load (32 threads). On advanced_model
+  it takes 4.3 s against 0.22 s. The CLI runs a full TypeScript `parseColumnar` first (Holter
+  ~4.0 s), then one single-threaded wasm `exportGlb` (Holter 8.9 s). Inputs of 64 MB or more
+  take the bounded GLB assembler, which meshes the model twice because the wasm binding fixes
+  `single_pass_budget_bytes` at 0. Python, FFI and server already run the native rayon core.
+- **Option A, inside the current wasm path:** skip the TS parse for unfiltered obj/glb/usd
+  exports and set a single-pass budget for the bounded assembler. Both are byte-identical by
+  construction. Estimate: Holter ~6-7 s, advanced ~3 s. Effort S-M.
+- **Option B, native addon:** a napi-rs crate over `ifc-lite-export`/`ifc-lite-processing`
+  (not over the FFI, which only returns JSON meshes), shipped per platform with a wasm
+  fallback. Estimate: Holter ~2 s, advanced ~0.8 s. It needs a distribution decision by the
+  maintainer. It also needs an identity decision: local-frame storage defaults on in wasm and
+  off natively, and the documented libm trig gap means native normals can differ.
+- **Not recommended: a Node `worker_threads` wasm pool.** The browser pool is Web Worker-only
+  and does not feed the GLB assembler. Staying byte-identical needs a new Rust shard/merge API,
+  and that lands at ~4-6 s on Holter.

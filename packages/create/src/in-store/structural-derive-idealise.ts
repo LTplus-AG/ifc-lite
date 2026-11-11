@@ -8,14 +8,20 @@
  * the reason the prism cannot be idealised.
  */
 
+import { vecCross as cross, vecLen as length } from '../ifc-creator-math.js';
 import type { PrismFact, Vec3 } from './structural-derive-types.js';
 
 export const add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 export const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 export const scale = (a: Vec3, k: number): Vec3 => [a[0] * k, a[1] * k, a[2] * k];
 export const dot = (a: Vec3, b: Vec3): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-export const cross = (a: Vec3, b: Vec3): Vec3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-export const length = (a: Vec3): number => Math.hypot(a[0], a[1], a[2]);
+
+/** Twice the area of a planar polygon, along its normal (counter-clockwise positive). */
+export function areaVector(polygon: readonly Vec3[]): Vec3 {
+  let area: Vec3 = [0, 0, 0];
+  for (let i = 1; i + 1 < polygon.length; i++) area = add(area, cross(sub(polygon[i], polygon[0]), sub(polygon[i + 1], polygon[0])));
+  return area;
+}
 
 /** Below this |cos| between extrusion and outline normal the prism is oblique (about 2.6 degrees). */
 const PERPENDICULAR_COS = 0.999;
@@ -40,8 +46,7 @@ function prismFrame(prism: PrismFact): PrismFrame | string {
   const { outline, extrusion } = prism;
   if (outline.length < 3) return 'profile outline has fewer than three points';
   const origin = outline[0];
-  let area: Vec3 = [0, 0, 0];
-  for (let i = 1; i + 1 < outline.length; i++) area = add(area, cross(sub(outline[i], origin), sub(outline[i + 1], origin)));
+  const area = areaVector(outline);
   const areaSize = length(area) / 2;
   const depth = length(extrusion);
   if (!(areaSize > 1e-12) || !(depth > 1e-9)) return 'degenerate prism (zero profile area or depth)';
@@ -75,7 +80,7 @@ function prismFrame(prism: PrismFact): PrismFrame | string {
   };
 }
 
-export type LineIdealisation = { start: Vec3; end: Vec3; source: 'extrusion' | 'profile' } | { issue: string };
+type LineIdealisation = { start: Vec3; end: Vec3; source: 'extrusion' | 'profile' } | { issue: string };
 
 /** The prism's axis: along the extrusion when that is its longest side, else along a near-rectangular profile's long side. */
 export function idealiseLine(prism: PrismFact): LineIdealisation {
@@ -90,7 +95,7 @@ export function idealiseLine(prism: PrismFact): LineIdealisation {
   return { issue: 'the prism is longest across its profile, and the profile is not a near-rectangle' };
 }
 
-export type PlateIdealisation = { boundary: Vec3[]; thickness: number } | { issue: string };
+type PlateIdealisation = { boundary: Vec3[]; thickness: number } | { issue: string };
 
 /** The prism's mid-plane across its thinnest side, with that side as thickness. */
 export function idealisePlate(prism: PrismFact): PlateIdealisation {
@@ -107,13 +112,4 @@ export function idealisePlate(prism: PrismFact): PlateIdealisation {
   const a = sub(f.centre, half);
   const b = add(f.centre, half);
   return { boundary: [a, b, add(b, prism.extrusion), add(a, prism.extrusion)], thickness: f.short };
-}
-
-/** Axis-aligned bounds of the whole prism. */
-export function prismBounds(prism: PrismFact): { min: Vec3; max: Vec3 } {
-  const points = [...prism.outline, ...prism.outline.map((p) => add(p, prism.extrusion))];
-  const min: Vec3 = [Infinity, Infinity, Infinity];
-  const max: Vec3 = [-Infinity, -Infinity, -Infinity];
-  for (const p of points) for (let i = 0; i < 3; i++) { min[i] = Math.min(min[i], p[i]); max[i] = Math.max(max[i], p[i]); }
-  return { min, max };
 }

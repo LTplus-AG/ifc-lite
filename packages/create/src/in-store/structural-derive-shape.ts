@@ -6,24 +6,27 @@
  * Reads one element's shape for the structural derivation, in world metres:
  * a straight Axis representation, and the extruded prism of its Body. What
  * this reads and what it refuses is listed in `structural-derive-types.ts`;
- * every refusal returns the reason as `issue`.
+ * every refusal returns the reason as `shapeIssue`.
  */
 
+import { vecLen } from '../ifc-creator-math.js';
 import {
-  applyFrame, axis2d, axis3d, composeFrame, num, placementInAncestor, pointOf, refId, unit,
+  IDENTITY_FRAME3, applyFrame, axis2d, axis3d, composeFrame, num, placementInAncestor, pointOf, refId, unit,
   type Frame3, type GeometryEntityReader,
 } from './host-geometry-frame.js';
+import { readAxisEnds } from './extract-grids.js';
+import { mappedItemFrame } from './resolve-host.js';
+import { dot, scale, sub } from './structural-derive-idealise.js';
 import type { PrismFact, Vec3 } from './structural-derive-types.js';
 
-export interface ElementShape {
+interface ElementShape {
   axis?: [Vec3, Vec3];
   prism?: PrismFact;
-  issue?: string;
+  shapeIssue?: string;
 }
 
 type Entity = { type: string; attributes: readonly unknown[] };
 type Flat = [number, number];
-const IDENTITY: Frame3 = { o: [0, 0, 0], x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] };
 /** Mapped items and boolean operands nest; this bounds the unwrap. */
 const MAX_ITEM_DEPTH = 16;
 
@@ -53,35 +56,19 @@ function readAxis(reader: GeometryEntityReader, rep: Entity | undefined): [Vec3,
   const points = refs(line!.attributes[0]).map((id) => anyPoint(reader, id));
   if (points.length < 2 || points.some((p) => p === null)) return null;
   const a = points[0]!, b = points[points.length - 1]!;
-  const d = unit([b[0] - a[0], b[1] - a[1], b[2] - a[2]]);
-  if (!d) return null;
-  const span = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+  const span = vecLen(sub(b, a));
+  if (!(span > 0)) return null;
+  const d = scale(sub(b, a), 1 / span);
   for (const p of points) {
-    const r: Vec3 = [p![0] - a[0], p![1] - a[1], p![2] - a[2]];
-    const t = r[0] * d[0] + r[1] * d[1] + r[2] * d[2];
-    if (Math.hypot(r[0] - t * d[0], r[1] - t * d[1], r[2] - t * d[2]) > span * 1e-6) return null;
+    const r = sub(p!, a);
+    if (vecLen(sub(r, scale(d, dot(r, d)))) > span * 1e-6) return null;
   }
   return [a, b];
 }
 
-/** `IfcCartesianTransformationOperator3D` as a rigid frame; scaled or non-uniform operators are refused. */
-function operatorFrame(reader: GeometryEntityReader, ref: unknown): Frame3 | string {
-  const op = reader.entity(refId(ref) ?? 0);
-  if (upper(op) !== 'IFCCARTESIANTRANSFORMATIONOPERATOR3D') return 'mapped item target is not a uniform 3D operator';
-  const [axis1, , localOrigin, scaleValue, axis3] = op!.attributes;
-  if (scaleValue !== null && scaleValue !== undefined && num(scaleValue) !== 1) return 'mapped item is scaled';
-  const o = anyPoint(reader, localOrigin);
-  const x0 = axis1 === null || axis1 === undefined ? [1, 0, 0] as Vec3 : pointOf(reader, axis1, 'IFCDIRECTION');
-  const z0 = axis3 === null || axis3 === undefined ? [0, 0, 1] as Vec3 : pointOf(reader, axis3, 'IFCDIRECTION');
-  const z = z0 && unit(z0);
-  const y = z && x0 && unit([z[1] * x0[2] - z[2] * x0[1], z[2] * x0[0] - z[0] * x0[2], z[0] * x0[1] - z[1] * x0[0]]);
-  if (!o || !z || !y) return 'mapped item target is unreadable';
-  return { o, x: [y[1] * z[2] - y[2] * z[1], y[2] * z[0] - y[0] * z[2], y[0] * z[1] - y[1] * z[0]], y, z };
-}
-
 /** Unwrap one Body item to its extruded solid and the frame it sits in. */
 function extrusionOf(reader: GeometryEntityReader, itemId: number): { solid: Entity; frame: Frame3 } | string {
-  let frame = IDENTITY;
+  let frame = IDENTITY_FRAME3;
   let item = reader.entity(itemId);
   for (let depth = 0; depth < MAX_ITEM_DEPTH; depth++) {
     const type = upper(item);
@@ -91,14 +78,11 @@ function extrusionOf(reader: GeometryEntityReader, itemId: number): { solid: Ent
       continue;
     }
     if (type !== 'IFCMAPPEDITEM') return `Body is ${item?.type ?? 'unreadable'}, not an extrusion`;
-    const source = reader.entity(refId(item!.attributes[0]) ?? 0);
-    const target = operatorFrame(reader, item!.attributes[1]);
-    if (typeof target === 'string') return target;
-    const origin = axis3d(reader, source?.attributes[0]);
-    const items = refs(reader.entity(refId(source?.attributes[1]) ?? 0)?.attributes[3]);
-    if (!origin || items.length !== 1) return 'mapped representation is unreadable or has several items';
-    frame = composeFrame(frame, composeFrame(target, origin));
-    item = reader.entity(items[0]);
+    const mapped = mappedItemFrame(reader, item!.attributes);
+    if (!mapped) return 'mapped item is unreadable';
+    if (mapped.items.length !== 1) return `mapped representation has ${mapped.items.length} items`;
+    frame = composeFrame(frame, mapped.frame);
+    item = reader.entity(mapped.items[0]);
   }
   return 'Body items nest too deeply';
 }
@@ -108,29 +92,15 @@ function polylinePoints(reader: GeometryEntityReader, polyline: Entity): Flat[] 
   return read.every((p) => p !== null) ? read.map((p) => [p![0], p![1]]) : null;
 }
 
-/** A straight trimmed line, trimmed by Cartesian points. */
-function trimmedLinePoints(reader: GeometryEntityReader, curve: Entity | null): Flat[] | null {
-  if (upper(curve) !== 'IFCTRIMMEDCURVE' || upper(reader.entity(refId(curve!.attributes[0]) ?? 0)) !== 'IFCLINE') return null;
-  const trim = (value: unknown): Flat | null => {
-    for (const ref of Array.isArray(value) ? value : []) {
-      const p = anyPoint(reader, ref);
-      if (p) return [p[0], p[1]];
-    }
-    return null;
-  };
-  const a = trim(curve!.attributes[1]), b = trim(curve!.attributes[2]);
-  if (!a || !b) return null;
-  return curve!.attributes[3] === false || curve!.attributes[3] === '.F.' ? [b, a] : [a, b];
-}
-
-/** A composite curve of polyline and straight trimmed-line segments, joined; any other segment curve is refused. */
+/** A composite curve of polyline and straight trimmed-line segments; any other segment is refused. */
 function compositePoints(reader: GeometryEntityReader, composite: Entity): Flat[] | null {
   const points: Flat[] = [];
   for (const segmentId of refs(composite.attributes[0])) {
     const segment = reader.entity(segmentId);
-    const parent = reader.entity(refId(segment?.attributes[2]) ?? 0);
+    const parentId = refId(segment?.attributes[2]) ?? 0;
+    const parent = reader.entity(parentId);
     if (upper(segment) !== 'IFCCOMPOSITECURVESEGMENT') return null;
-    const part = upper(parent) === 'IFCPOLYLINE' ? polylinePoints(reader, parent!) : trimmedLinePoints(reader, parent);
+    const part = upper(parent) === 'IFCPOLYLINE' ? polylinePoints(reader, parent!) : readAxisEnds((id) => reader.entity(id), parentId);
     if (!part) return null;
     if (segment!.attributes[1] === false || segment!.attributes[1] === '.F.') part.reverse();
     for (const p of part) {
@@ -141,20 +111,20 @@ function compositePoints(reader: GeometryEntityReader, composite: Entity): Flat[
   return points.length > 0 ? points : null;
 }
 
-const box = (x: number, y: number): Flat[] => [[-x / 2, -y / 2], [x / 2, -y / 2], [x / 2, y / 2], [-x / 2, y / 2]];
-
-/** Bounds-only profiles: [width attribute, depth attribute] indices into the profile record. */
-const BOUNDS_PROFILES: Record<string, (a: readonly unknown[]) => [unknown, unknown]> = {
-  IFCCIRCLEPROFILEDEF: (a) => [2 * (num(a[3]) ?? NaN), 2 * (num(a[3]) ?? NaN)],
-  IFCCIRCLEHOLLOWPROFILEDEF: (a) => [2 * (num(a[3]) ?? NaN), 2 * (num(a[3]) ?? NaN)],
-  IFCELLIPSEPROFILEDEF: (a) => [2 * (num(a[3]) ?? NaN), 2 * (num(a[4]) ?? NaN)],
-  IFCISHAPEPROFILEDEF: (a) => [a[3], a[4]],
-  IFCLSHAPEPROFILEDEF: (a) => [a[4] ?? a[3], a[3]],
-  IFCTSHAPEPROFILEDEF: (a) => [a[4], a[3]],
-  IFCUSHAPEPROFILEDEF: (a) => [a[4], a[3]],
-  IFCCSHAPEPROFILEDEF: (a) => [a[4], a[3]],
+/** Parameterised profiles: their [width, depth] bounds, and whether those bounds are the outline. */
+const PARAMETERISED: Record<string, (a: readonly unknown[]) => { size: [unknown, unknown]; exact: boolean }> = {
+  IFCRECTANGLEPROFILEDEF: (a) => ({ size: [a[3], a[4]], exact: true }),
+  IFCROUNDEDRECTANGLEPROFILEDEF: (a) => ({ size: [a[3], a[4]], exact: true }),
+  IFCRECTANGLEHOLLOWPROFILEDEF: (a) => ({ size: [a[3], a[4]], exact: true }),
+  IFCCIRCLEPROFILEDEF: (a) => ({ size: [2 * (num(a[3]) ?? NaN), 2 * (num(a[3]) ?? NaN)], exact: false }),
+  IFCCIRCLEHOLLOWPROFILEDEF: (a) => PARAMETERISED.IFCCIRCLEPROFILEDEF(a),
+  IFCELLIPSEPROFILEDEF: (a) => ({ size: [2 * (num(a[3]) ?? NaN), 2 * (num(a[4]) ?? NaN)], exact: false }),
+  IFCISHAPEPROFILEDEF: (a) => ({ size: [a[3], a[4]], exact: false }),
+  IFCLSHAPEPROFILEDEF: (a) => ({ size: [a[4] ?? a[3], a[3]], exact: false }),
+  IFCTSHAPEPROFILEDEF: (a) => ({ size: [a[4], a[3]], exact: false }),
+  IFCUSHAPEPROFILEDEF: (a) => ({ size: [a[4], a[3]], exact: false }),
+  IFCCSHAPEPROFILEDEF: (a) => ({ size: [a[4], a[3]], exact: false }),
 };
-const RECTANGLES = new Set(['IFCRECTANGLEPROFILEDEF', 'IFCROUNDEDRECTANGLEPROFILEDEF', 'IFCRECTANGLEHOLLOWPROFILEDEF']);
 
 /** A profile's outline in its own 2D frame, exact or as bounds. */
 function profileOutline(reader: GeometryEntityReader, profile: Entity | null): { points: Flat[]; exact: boolean } | string {
@@ -178,16 +148,15 @@ function profileOutline(reader: GeometryEntityReader, profile: Entity | null): {
     if (Math.hypot(first[0] - last[0], first[1] - last[1]) < 1e-9) points = points.slice(0, -1);
     return { points, exact: true };
   }
-  let size: [unknown, unknown] | null = null;
-  if (RECTANGLES.has(type)) size = [a[3], a[4]];
-  else if (BOUNDS_PROFILES[type]) size = BOUNDS_PROFILES[type](a);
-  const [x, y] = size ? [num(size[0]), num(size[1])] : [null, null];
+  const parameterised = PARAMETERISED[type]?.(a);
+  const [x, y] = parameterised ? parameterised.size.map(num) : [null, null];
   if (x === null || y === null || x <= 0 || y <= 0) return `profile ${profile?.type ?? 'unreadable'} is not supported`;
   const position = axis2d(reader, a[2]);
   if (!position) return 'profile position is unreadable';
   const { o, x: dir } = position;
-  const points = box(x, y).map(([px, py]): Flat => [o[0] + dir[0] * px - dir[1] * py, o[1] + dir[1] * px + dir[0] * py]);
-  return { points, exact: RECTANGLES.has(type) };
+  const corners: Flat[] = [[-x / 2, -y / 2], [x / 2, -y / 2], [x / 2, y / 2], [-x / 2, y / 2]];
+  const points = corners.map(([px, py]): Flat => [o[0] + dir[0] * px - dir[1] * py, o[1] + dir[1] * px + dir[0] * py]);
+  return { points, exact: parameterised!.exact };
 }
 
 function readPrism(reader: GeometryEntityReader, rep: Entity | undefined, placement: Frame3, metres: number): PrismFact | string {
@@ -202,15 +171,13 @@ function readPrism(reader: GeometryEntityReader, rep: Entity | undefined, placem
   const depth = num(depthValue);
   const outline = profileOutline(reader, reader.entity(refId(sweptArea) ?? 0));
   if (typeof outline === 'string') return outline;
-  if (!solidFrame || !dir || depth === null || depth <= 0) return 'extrusion is unreadable';
+  const unitDir = dir && unit(dir);
+  if (!solidFrame || !unitDir || depth === null || depth <= 0) return 'extrusion is unreadable';
   const frame = composeFrame(placement, composeFrame(found.frame, solidFrame));
-  const toMetres = (p: Vec3): Vec3 => [p[0] * metres, p[1] * metres, p[2] * metres];
-  const unitDir = unit(dir);
-  if (!unitDir) return 'extrusion direction is zero';
-  const top = applyFrame(frame, [unitDir[0] * depth, unitDir[1] * depth, unitDir[2] * depth]);
+  const toWorld = (p: Vec3): Vec3 => scale(applyFrame(frame, p), metres);
   return {
-    outline: outline.points.map(([x, y]) => toMetres(applyFrame(frame, [x, y, 0]))),
-    extrusion: toMetres([top[0] - frame.o[0], top[1] - frame.o[1], top[2] - frame.o[2]]),
+    outline: outline.points.map(([x, y]) => toWorld([x, y, 0])),
+    extrusion: sub(toWorld(scale(unitDir, depth)), toWorld([0, 0, 0])),
     outlineExact: outline.exact,
   };
 }
@@ -218,16 +185,16 @@ function readPrism(reader: GeometryEntityReader, rep: Entity | undefined, placem
 /** Shape facts for one product; `metres` is the file's length-unit scale. */
 export function readElementShape(reader: GeometryEntityReader, productId: number, metres: number, withAxis: boolean): ElementShape {
   const product = reader.entity(productId);
-  if (!product) return { issue: 'element is unreadable' };
+  if (!product) return { shapeIssue: 'element is unreadable' };
   const placementId = refId(product.attributes[5]);
-  const placement = placementId === null ? IDENTITY : placementInAncestor(reader, placementId, null);
-  if (!placement) return { issue: 'ObjectPlacement is unreadable' };
+  const placement = placementId === null ? IDENTITY_FRAME3 : placementInAncestor(reader, placementId, null);
+  if (!placement) return { shapeIssue: 'ObjectPlacement is unreadable' };
   const reps = representations(reader, product);
   const out: ElementShape = {};
   const axis = withAxis ? readAxis(reader, reps.get('AXIS')) : null;
-  if (axis) out.axis = axis.map((p) => applyFrame(placement, p).map((v) => v * metres) as Vec3) as [Vec3, Vec3];
+  if (axis) out.axis = axis.map((p) => scale(applyFrame(placement, p), metres)) as [Vec3, Vec3];
   const prism = readPrism(reader, reps.get('BODY'), placement, metres);
-  if (typeof prism === 'string') out.issue = prism;
+  if (typeof prism === 'string') out.shapeIssue = prism;
   else out.prism = prism;
   return out;
 }

@@ -74,7 +74,7 @@ function authoredReader(store: IfcDataStore, editor: StoreEditor) {
 async function deriveBesideAuthored(path: string) {
   const { store, editor } = await load(path);
   const facts = readStructuralDerivationFacts(store, editor);
-  expect(facts.elements.every((e) => e.role === 'support' || e.idealised)).toBe(true);
+  expect(facts.elements.every((e) => e.bounds !== undefined || e.idealised)).toBe(true);
   const plan = planStructuralDerivation({ ...facts, elements: facts.elements.map((e) => ({ ...e, idealised: false })) });
   return { store, editor, plan, authored: liveStructuralExtraction(store, editor.getMutationView()) };
 }
@@ -105,8 +105,11 @@ describe('structural derivation on real physical models (#9668)', () => {
     const { store, editor } = await load(TESSELLATED);
     const plan = planStructuralDerivation(readStructuralDerivationFacts(store, editor));
     expect(plan.report.counts.curveMembers + plan.report.counts.surfaceMembers).toBe(0);
-    expect(plan.report.skipped).toHaveLength(11);
-    expect(plan.report.skipped.every((s) => s.reason === 'no-idealisable-shape' && /TRIANGULATEDFACESET/.test(s.detail))).toBe(true);
+    const [footings, others] = [plan.report.skipped.filter((s) => s.type === 'IfcFooting'), plan.report.skipped.filter((s) => s.type !== 'IfcFooting')];
+    expect(others).toHaveLength(10);
+    expect(others.every((s) => s.reason === 'no-idealisable-shape' && /TRIANGULATEDFACESET/.test(s.detail))).toBe(true);
+    // A footing needs only its body bounds, which a tessellation has.
+    expect(footings.map((s) => s.reason)).toEqual(['footing-without-member-end']);
     expect(() => applyStructuralDerivation(editor, store, plan)).toThrow(/no members/);
   });
 });

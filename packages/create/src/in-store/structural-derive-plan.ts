@@ -7,8 +7,11 @@
  * deterministic (facts order). The rules are in `structural-derive-types.ts`.
  */
 
+import { getInheritanceChainAcrossSchemas } from '@ifc-lite/parser';
+import { vecLen as length } from '../ifc-creator-math.js';
 import { prepareStructuralFace } from './_structural-face.js';
-import { idealiseLine, idealisePlate, prismBounds, add, sub, scale, dot, cross, length } from './structural-derive-idealise.js';
+import { pointInPolygon } from './room-footprint-offset.js';
+import { idealiseLine, idealisePlate, add, sub, scale, dot } from './structural-derive-idealise.js';
 import {
   DEFAULT_DERIVATION_OPTIONS,
   type MemberLoadBearing,
@@ -27,7 +30,17 @@ import {
 /** Tolerance bounds, metres. Both ends: NaN and absurd values must not fall through. */
 const MAX_TOLERANCE = 1;
 
-export function resolveDerivationOptions(options: StructuralDerivationOptions = {}): Required<StructuralDerivationOptions> {
+/** The class each role is read from; subtypes count as their parent. */
+const ROLE_CLASSES = [['curve', ['IfcBeam', 'IfcColumn', 'IfcMember']], ['surface', ['IfcSlab', 'IfcWall']], ['support', ['IfcFooting', 'IfcPile']]] as const;
+/** Every class the derivation reads, for the facts reader. */
+export const DERIVATION_CLASSES: readonly string[] = ROLE_CLASSES.flatMap(([, classes]) => classes);
+
+function roleOf(type: string): (typeof ROLE_CLASSES)[number][0] | null {
+  const chain = getInheritanceChainAcrossSchemas(type);
+  return ROLE_CLASSES.find(([, classes]) => classes.some((c) => chain.includes(c)))?.[0] ?? null;
+}
+
+function resolveDerivationOptions(options: StructuralDerivationOptions = {}): Required<StructuralDerivationOptions> {
   const resolved = { ...DEFAULT_DERIVATION_OPTIONS };
   for (const [key, value] of Object.entries(options)) if (value !== undefined) Object.assign(resolved, { [key]: value });
   const { tolerance, whenLoadBearingUnknown, supportType } = resolved;
@@ -62,37 +75,27 @@ function clusterEnds(points: Vec3[], tolerance: number): number[] {
       }
     }
     const key = `${x},${y},${z}`;
-    grid.set(key, [...(grid.get(key) ?? []), i]);
+    const bucket = grid.get(key);
+    if (bucket) bucket.push(i);
+    else grid.set(key, [i]);
   });
   return points.map((_, i) => find(i));
 }
 
-/** Point inside a planar polygon, tested in the plane's dominant projection. */
+/** Point inside a planar polygon, in the plane's dominant projection. */
 function insidePolygon(p: Vec3, polygon: Vec3[], normal: Vec3): boolean {
   const drop = [0, 1, 2].reduce((m, k) => (Math.abs(normal[k]) > Math.abs(normal[m]) ? k : m), 0);
   const [i, j] = [0, 1, 2].filter((k) => k !== drop);
-  let inside = false;
-  for (let a = 0, b = polygon.length - 1; a < polygon.length; b = a++) {
-    const pa = polygon[a], pb = polygon[b];
-    if ((pa[j] > p[j]) !== (pb[j] > p[j]) && p[i] < ((pb[i] - pa[i]) * (p[j] - pa[j])) / (pb[j] - pa[j]) + pa[i]) inside = !inside;
-  }
-  return inside;
+  return pointInPolygon(p[i], p[j], polygon.map((q) => [q[i], q[j]]));
 }
 
 /** The surface builder's own boundary checks, run here so apply never meets them. */
-function faceRefusal(boundary: Vec3[]): string | null {
+function checkFace(boundary: Vec3[]): { normal: Vec3 } | { issue: string } {
   try {
-    prepareStructuralFace(boundary);
-    return null;
+    return { normal: prepareStructuralFace(boundary).axis };
   } catch (error) {
-    return error instanceof Error ? error.message : String(error);
+    return { issue: error instanceof Error ? error.message : String(error) };
   }
-}
-
-function planeNormal(polygon: Vec3[]): Vec3 {
-  let area: Vec3 = [0, 0, 0];
-  for (let i = 1; i + 1 < polygon.length; i++) area = add(area, cross(sub(polygon[i], polygon[0]), sub(polygon[i + 1], polygon[0])));
-  return scale(area, 1 / length(area));
 }
 
 export function planStructuralDerivation(facts: StructuralDerivationFacts, options: StructuralDerivationOptions = {}): StructuralDerivationPlan {
@@ -104,12 +107,14 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
   };
 
   const lines: Line[] = [];
-  const surfaceMembers: PlannedSurfaceMember[] = [];
+  const surfaces: Array<{ member: PlannedSurfaceMember; normal: Vec3 }> = [];
   const footings: Array<{ element: PhysicalElementFact; min: Vec3; max: Vec3 }> = [];
   for (const element of facts.elements) {
-    if (element.role === 'support') {
-      if (element.prism) footings.push({ element, ...prismBounds(element.prism) });
-      else skip(element, 'no-idealisable-shape', element.shapeIssue ?? 'no extruded shape');
+    const role = roleOf(element.type);
+    if (role === null) continue;
+    if (role === 'support') {
+      if (element.bounds) footings.push({ element, ...element.bounds });
+      else skip(element, 'no-idealisable-shape', element.shapeIssue ?? 'no readable body');
       continue;
     }
     if (element.idealised) { skip(element, 'already-idealised', 'a structural item is already linked to this element'); continue; }
@@ -119,7 +124,7 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
       continue;
     }
     const loadBearing: MemberLoadBearing = element.loadBearing === true ? true : 'assumed';
-    if (element.role === 'curve') {
+    if (role === 'curve') {
       if (element.axis) {
         lines.push({ element, start: element.axis[0], end: element.axis[1], source: 'axis', loadBearing });
         continue;
@@ -130,9 +135,10 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
       continue;
     }
     const plate = element.prism ? idealisePlate(element.prism) : { issue: element.shapeIssue ?? 'no extruded shape' };
-    const faceIssue = 'issue' in plate ? plate.issue : faceRefusal(plate.boundary);
-    if (faceIssue) skip(element, 'no-idealisable-shape', faceIssue);
-    else if (!('issue' in plate)) surfaceMembers.push({ elementId: element.expressId, storeyId: element.storeyId, ...plate, loadBearing });
+    if ('issue' in plate) { skip(element, 'no-idealisable-shape', plate.issue); continue; }
+    const face = checkFace(plate.boundary);
+    if ('issue' in face) skip(element, 'no-idealisable-shape', face.issue);
+    else surfaces.push({ member: { elementId: element.expressId, storeyId: element.storeyId, ...plate, loadBearing }, normal: face.normal });
   }
 
   // Nodes: a member whose ends would merge is skipped before and after clustering.
@@ -148,22 +154,20 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
     kept = kept.filter((_, i) => !collapsed.has(i));
     roots = clusterEnds(kept.flatMap((line) => [line.start, line.end]), tolerance);
   }
-  const nodeOfRoot = new Map<number, number>();
-  const ends: Vec3[][] = [];
-  const nodes: PlannedNode[] = [];
+  // Gather each cluster's ends, then build its node once, at their mean.
+  const clusters = new Map<number, { ends: Vec3[]; first: PhysicalElementFact; elementIds: Set<number> }>();
   roots.forEach((root, endIndex) => {
     const line = kept[endIndex >> 1];
-    let index = nodeOfRoot.get(root);
-    if (index === undefined) {
-      index = nodes.length;
-      nodeOfRoot.set(root, index);
-      nodes.push({ index, position: [0, 0, 0], storeyId: line.element.storeyId, elementIds: [] });
-      ends.push([]);
-    }
-    ends[index].push(endIndex % 2 === 0 ? line.start : line.end);
-    if (!nodes[index].elementIds.includes(line.element.expressId)) nodes[index].elementIds.push(line.element.expressId);
+    const cluster = clusters.get(root) ?? { ends: [], first: line.element, elementIds: new Set<number>() };
+    cluster.ends.push(endIndex % 2 === 0 ? line.start : line.end);
+    cluster.elementIds.add(line.element.expressId);
+    clusters.set(root, cluster);
   });
-  for (const node of nodes) node.position = scale(ends[node.index].reduce(add), 1 / ends[node.index].length);
+  const nodeOfRoot = new Map<number, number>();
+  const nodes: PlannedNode[] = [...clusters].map(([root, { ends, first, elementIds }], index) => {
+    nodeOfRoot.set(root, index);
+    return { index, position: scale(ends.reduce(add), 1 / ends.length), storeyId: first.storeyId, elementIds: [...elementIds] };
+  });
   const curveMembers: PlannedCurveMember[] = kept.map((line, i) => {
     const startNode = nodeOfRoot.get(roots[2 * i])!;
     const endNode = nodeOfRoot.get(roots[2 * i + 1])!;
@@ -193,7 +197,8 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
     }
   }
 
-  const unconnectedEnds = findUnconnectedEnds(nodes, curveMembers, surfaceMembers, tolerance);
+  const surfaceMembers = surfaces.map(({ member }) => member);
+  const unconnectedEnds = findUnconnectedEnds(nodes, curveMembers, surfaces, tolerance);
   const guessedSupports = nodes.filter((node) => node.support?.guessed).map((node) => node.index);
   const members = [...curveMembers, ...surfaceMembers];
   return {
@@ -223,12 +228,11 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
 function findUnconnectedEnds(
   nodes: PlannedNode[],
   curveMembers: PlannedCurveMember[],
-  surfaceMembers: PlannedSurfaceMember[],
+  surfaces: Array<{ member: PlannedSurfaceMember; normal: Vec3 }>,
   tolerance: number,
 ): UnconnectedEnd[] {
   const degree = new Array<number>(nodes.length).fill(0);
   for (const member of curveMembers) { degree[member.startNode]++; degree[member.endNode]++; }
-  const planes = surfaceMembers.map((member) => ({ member, normal: planeNormal(member.boundary) }));
   const found: UnconnectedEnd[] = [];
   for (const node of nodes) {
     if (degree[node.index] !== 1 || node.support) continue;
@@ -240,7 +244,7 @@ function findUnconnectedEnds(
       return t > 0 && t < 1 && length(sub(p, add(member.start, scale(axis, t)))) <= tolerance;
     });
     if (onMember) { found.push({ node: node.index, landsOnElementId: onMember.elementId, landsOn: 'member-interior' }); continue; }
-    const onSurface = planes.find(({ member, normal }) =>
+    const onSurface = surfaces.find(({ member, normal }) =>
       Math.abs(dot(sub(p, member.boundary[0]), normal)) <= tolerance + member.thickness / 2 && insidePolygon(p, member.boundary, normal));
     if (onSurface) found.push({ node: node.index, landsOnElementId: onSurface.member.elementId, landsOn: 'surface-member' });
   }

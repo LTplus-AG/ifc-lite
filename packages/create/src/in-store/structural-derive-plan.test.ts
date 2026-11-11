@@ -13,15 +13,18 @@ function box(base: Vec3, x: number, y: number, extrusion: Vec3, outlineExact = t
   return { outline: [[bx, by, bz], [bx + x, by, bz], [bx + x, by + y, bz], [bx, by + y, bz]], extrusion, outlineExact };
 }
 let nextId = 100;
-function element(type: string, role: PhysicalElementFact['role'], shape: Partial<PhysicalElementFact>, more: Partial<PhysicalElementFact> = {}): PhysicalElementFact {
-  return { expressId: nextId++, type, role, name: null, storeyId: 1, loadBearing: true, idealised: false, ...shape, ...more };
+function element(type: string, shape: Partial<PhysicalElementFact>, more: Partial<PhysicalElementFact> = {}): PhysicalElementFact {
+  return { expressId: nextId++, type, name: null, storeyId: 1, loadBearing: true, idealised: false, ...shape, ...more };
 }
+/** A footing's body bounds, from its corner and size. */
+const footingAt = (min: Vec3, size: Vec3) =>
+  element('IfcFooting', { bounds: { min, max: [min[0] + size[0], min[1] + size[1], min[2] + size[2]] } }, { loadBearing: null });
 /** A 0.3 x 0.3 column from z0 to z1 centred on (x, y). */
 const column = (x: number, y: number, z0: number, z1: number, more: Partial<PhysicalElementFact> = {}) =>
-  element('IfcColumn', 'curve', { prism: box([x - 0.15, y - 0.15, z0], 0.3, 0.3, [0, 0, z1 - z0]) }, more);
+  element('IfcColumn', { prism: box([x - 0.15, y - 0.15, z0], 0.3, 0.3, [0, 0, z1 - z0]) }, more);
 /** A beam along X at height z, from x0 to x1, given by its Axis representation. */
 const beam = (x0: number, x1: number, y: number, z: number, more: Partial<PhysicalElementFact> = {}) =>
-  element('IfcBeam', 'curve', { axis: [[x0, y, z], [x1, y, z]] }, more);
+  element('IfcBeam', { axis: [[x0, y, z], [x1, y, z]] }, more);
 const facts = (...elements: PhysicalElementFact[]): StructuralDerivationFacts => ({ elements, defaultStoreyId: 1 });
 
 describe('structural derivation plan (#9668)', () => {
@@ -42,7 +45,7 @@ describe('structural derivation plan (#9668)', () => {
   it('reads a beam drawn in elevation along its long near-rectangular profile', () => {
     // Profile 6 m x 0.4 m in the XZ plane, extruded 0.2 m along Y.
     const prism: PrismFact = { outline: [[0, 0, 0], [6, 0, 0], [6, 0, 0.4], [0, 0, 0.4]], extrusion: [0, 0.2, 0], outlineExact: true };
-    const plan = planStructuralDerivation(facts(element('IfcBeam', 'curve', { prism })));
+    const plan = planStructuralDerivation(facts(element('IfcBeam', { prism })));
     expect(plan.curveMembers[0].axisSource).toBe('profile');
     expect(plan.curveMembers[0].start.map((v) => +v.toFixed(9))).toEqual([0, 0.1, 0.2]);
     expect(plan.curveMembers[0].end.map((v) => +v.toFixed(9))).toEqual([6, 0.1, 0.2]);
@@ -52,8 +55,8 @@ describe('structural derivation plan (#9668)', () => {
     // An L-shaped plate, 4 x 4, extruded 0.2: longest across the profile, area 7/16 of its bounds.
     const prism: PrismFact = { outline: [[0, 0, 0], [4, 0, 0], [4, 1, 0], [1, 1, 0], [1, 4, 0], [0, 4, 0]], extrusion: [0, 0, 0.2], outlineExact: true };
     const plan = planStructuralDerivation(facts(
-      element('IfcMember', 'curve', { prism }),
-      element('IfcBeam', 'curve', { shapeIssue: 'Body is IFCTRIANGULATEDFACESET, not an extrusion' }),
+      element('IfcMember', { prism }),
+      element('IfcBeam', { shapeIssue: 'Body is IFCTRIANGULATEDFACESET, not an extrusion' }),
     ));
     expect(plan.curveMembers).toHaveLength(0);
     expect(plan.report.skipped.map((s) => [s.type, s.reason])).toEqual([['IfcMember', 'no-idealisable-shape'], ['IfcBeam', 'no-idealisable-shape']]);
@@ -61,7 +64,7 @@ describe('structural derivation plan (#9668)', () => {
   });
 
   it('puts a slab on its mid-plane with its depth as thickness', () => {
-    const plan = planStructuralDerivation(facts(element('IfcSlab', 'surface', { prism: box([0, 0, 2.8], 5, 4, [0, 0, 0.2]) })));
+    const plan = planStructuralDerivation(facts(element('IfcSlab', { prism: box([0, 0, 2.8], 5, 4, [0, 0, 0.2]) })));
     expect(plan.surfaceMembers).toHaveLength(1);
     expect(plan.surfaceMembers[0].thickness).toBeCloseTo(0.2);
     expect(plan.surfaceMembers[0].boundary.every((p) => Math.abs(p[2] - 2.9) < 1e-9)).toBe(true);
@@ -69,7 +72,7 @@ describe('structural derivation plan (#9668)', () => {
 
   it('puts a wall on the centre line of its profile, swept up its height', () => {
     // 5 m long, 0.25 m thick footprint, 3 m tall.
-    const plan = planStructuralDerivation(facts(element('IfcWall', 'surface', { prism: box([0, 0, 0], 5, 0.25, [0, 0, 3]) })));
+    const plan = planStructuralDerivation(facts(element('IfcWall', { prism: box([0, 0, 0], 5, 0.25, [0, 0, 3]) })));
     const [wall] = plan.surfaceMembers;
     expect(wall.thickness).toBeCloseTo(0.25);
     expect(wall.boundary.map((p) => p.map((v) => +v.toFixed(9)))).toEqual([[0, 0.125, 0], [5, 0.125, 0], [5, 0.125, 3], [0, 0.125, 3]]);
@@ -78,9 +81,9 @@ describe('structural derivation plan (#9668)', () => {
   it('skips oblique, bounds-only and self-intersecting surfaces', () => {
     const bowtie: PrismFact = { outline: [[0, 0, 0], [4, 3, 0], [4, 0, 0], [0, 4, 0]], extrusion: [0, 0, 0.2], outlineExact: true };
     const plan = planStructuralDerivation(facts(
-      element('IfcSlab', 'surface', { prism: box([0, 0, 0], 4, 4, [1, 0, 0.2]) }),
-      element('IfcSlab', 'surface', { prism: box([0, 0, 0], 4, 4, [0, 0, 0.2], false) }),
-      element('IfcSlab', 'surface', { prism: bowtie }),
+      element('IfcSlab', { prism: box([0, 0, 0], 4, 4, [1, 0, 0.2]) }),
+      element('IfcSlab', { prism: box([0, 0, 0], 4, 4, [0, 0, 0.2], false) }),
+      element('IfcSlab', { prism: bowtie }),
     ));
     expect(plan.surfaceMembers).toHaveLength(0);
     expect(plan.report.skipped.map((s) => s.detail)).toEqual([
@@ -128,8 +131,8 @@ describe('structural derivation plan (#9668)', () => {
   });
 
   it('puts a support on a column end inside a footing, linked to it, not guessed', () => {
-    const footing = element('IfcFooting', 'support', { prism: box([-0.6, -0.6, -0.5], 1.2, 1.2, [0, 0, 0.5]) }, { loadBearing: null });
-    const lonely = element('IfcFooting', 'support', { prism: box([10, 10, -0.5], 1, 1, [0, 0, 0.5]) }, { loadBearing: null });
+    const footing = footingAt([-0.6, -0.6, -0.5], [1.2, 1.2, 0.5]);
+    const lonely = footingAt([10, 10, -0.5], [1, 1, 0.5]);
     const plan = planStructuralDerivation(facts(column(0, 0, 0, 3), footing, lonely));
     expect(plan.nodes.map((n) => n.support)).toEqual([{ type: 'pinned', basis: 'footing', footingId: footing.expressId, guessed: false }, undefined]);
     expect(plan.report.guessedSupports).toEqual([]);
@@ -145,7 +148,7 @@ describe('structural derivation plan (#9668)', () => {
   });
 
   it('reports, without connecting, an end that lands on a member interior or a surface member', () => {
-    const slab = element('IfcSlab', 'surface', { prism: box([4, -2, 2.9], 4, 4, [0, 0, 0.2]) });
+    const slab = element('IfcSlab', { prism: box([4, -2, 2.9], 4, 4, [0, 0, 0.2]) });
     // The ground column keeps the guessed supports away from the ends under test.
     const plan = planStructuralDerivation(facts(beam(0, 6, 0, 3), beam(3, 3, -4, 3, { axis: [[3, -4, 3], [3, 0, 3]] }), column(6, 1, 3, 6), slab, column(20, 20, 0, 3)));
     const landed = plan.report.unconnectedEnds.map((u) => [u.landsOn, u.landsOnElementId]);

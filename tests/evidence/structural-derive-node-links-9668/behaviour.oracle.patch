@@ -1,7 +1,7 @@
 diff --git a/packages/create/src/in-store/structural-derive-apply.ts b/packages/create/src/in-store/structural-derive-apply.ts
 --- a/packages/create/src/in-store/structural-derive-apply.ts
 +++ b/packages/create/src/in-store/structural-derive-apply.ts
-@@ -93,6 +93,7 @@ export function applyStructuralDerivation(
+@@ -97,6 +97,7 @@ export function applyStructuralDerivation(
        Name: `${node.support ? 'Support' : 'Node'} ${node.index + 1}`,
        ...node.support ? { BoundaryCondition: boundaryCondition(node.support.type) } : {},
      });

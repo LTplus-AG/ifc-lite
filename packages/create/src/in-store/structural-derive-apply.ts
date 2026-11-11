@@ -25,7 +25,7 @@ import { assignToStructuralGroupInStore, connectStructuralMemberToConnectionInSt
 import { addStructuralSurfaceMemberToStore } from './structural-surface-member.js';
 
 /** Written on the analysis model so a reader can tell a derived model from an authored one. */
-export const DERIVED_ANALYSIS_MODEL_DESCRIPTION = 'Derived from the physical model by ifc-lite';
+const DERIVED_ANALYSIS_MODEL_DESCRIPTION = 'Derived from the physical model by ifc-lite';
 
 function boundaryCondition(type: SupportType): StructuralBoundaryConditionParams {
   const rotation = type === 'fixed';
@@ -84,7 +84,11 @@ export function applyStructuralDerivation(
   });
 
   const links = new Map<number, number[]>();
-  const link = (elementId: number, itemId: number) => links.set(elementId, [...(links.get(elementId) ?? []), itemId]);
+  const link = (elementId: number, itemId: number) => {
+    const items = links.get(elementId);
+    if (items) items.push(itemId);
+    else links.set(elementId, [itemId]);
+  };
 
   const connectionIds = plan.nodes.map((node) => {
     const { anchor, toLocal } = placementOf(node.storeyId);
@@ -98,7 +102,7 @@ export function applyStructuralDerivation(
     return connectionId;
   });
 
-  const memberIds = new Map<number, number>();
+  const memberIds: number[] = [];
   for (const member of plan.curveMembers) {
     const { anchor, toLocal } = placementOf(member.storeyId);
     const { memberId } = addStructuralCurveMemberToStore(editor, anchor, {
@@ -106,7 +110,7 @@ export function applyStructuralDerivation(
     });
     connectStructuralMemberToConnectionInStore(editor, ownerHistoryId, memberId, connectionIds[member.startNode], random);
     connectStructuralMemberToConnectionInStore(editor, ownerHistoryId, memberId, connectionIds[member.endNode], random);
-    memberIds.set(member.elementId, memberId);
+    memberIds.push(memberId);
     link(member.elementId, memberId);
   }
   for (const member of plan.surfaceMembers) {
@@ -114,12 +118,12 @@ export function applyStructuralDerivation(
     const { memberId } = addStructuralSurfaceMemberToStore(editor, anchor, {
       Boundary: member.boundary.map(toLocal), Thickness: member.thickness, PredefinedType: 'SHELL',
     });
-    memberIds.set(member.elementId, memberId);
+    memberIds.push(memberId);
     link(member.elementId, memberId);
   }
 
   for (const [elementId, itemIds] of links) linkStructuralItemsToPhysicalInStore(editor, ownerHistoryId, elementId, itemIds, random);
   // One relationship for the whole group: IFC2X3 allows only one per group.
-  assignToStructuralGroupInStore(editor, ownerHistoryId, analysisModelId, [...memberIds.values(), ...connectionIds], random);
-  return { analysisModelId, memberIds, connectionIds };
+  assignToStructuralGroupInStore(editor, ownerHistoryId, analysisModelId, [...memberIds, ...connectionIds], random);
+  return { analysisModelId };
 }

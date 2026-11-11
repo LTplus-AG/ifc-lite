@@ -5,19 +5,15 @@
 /**
  * `ifc-lite derive-structural` — derive an IfcStructuralAnalysisModel from the
  * physical beams, columns, members, slabs, walls and footings, linked to them,
- * and write the augmented IFC (#9668). The rules are in `@ifc-lite/create`'s
+ * and write the augmented IFC (#9668). Runs `bim.store.planStructuralDerivation`
+ * and `deriveStructuralAnalysisModel`; the rules are in `@ifc-lite/create`'s
  * `structural-derive-types.ts`.
  */
 
-import { writeFile } from 'node:fs/promises';
-import { createHeadlessContext } from '../loader.js';
-import { getFlag, hasFlag, fatal, printJson } from '../output.js';
-import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
-import { extractPropertiesOnDemand } from '@ifc-lite/parser';
-import {
-  applyStructuralDerivation, planStructuralDerivation, readStructuralDerivationFacts, type StructuralDerivationOptions,
-} from '@ifc-lite/create';
+import type { StructuralDerivationOptions } from '@ifc-lite/create';
+import { createHeadlessContext } from '../loader.js';
+import { getFlag, hasFlag, fatal, printJson, writeOutput } from '../output.js';
 
 const USAGE = `Usage: ifc-lite derive-structural <file.ifc> --out <out.ifc> [options]
 
@@ -44,34 +40,29 @@ export async function deriveStructuralCommand(args: string[]): Promise<void> {
   const dryRun = hasFlag(args, '--dry-run');
   const json = hasFlag(args, '--json');
   if (!out && !dryRun) fatal('--out <file.ifc> is required (or use --dry-run to report only)');
-
-  const options: StructuralDerivationOptions = {};
   const tolerance = getFlag(args, '--tolerance');
-  if (tolerance !== undefined) options.tolerance = Number(tolerance);
-  const unknown = getFlag(args, '--load-bearing-unknown');
-  if (unknown !== undefined) options.whenLoadBearingUnknown = unknown as StructuralDerivationOptions['whenLoadBearingUnknown'];
-  const support = getFlag(args, '--support');
-  if (support !== undefined) options.supportType = support as StructuralDerivationOptions['supportType'];
+  // Unset flags stay undefined, and the plan step fills in its defaults.
+  const options: StructuralDerivationOptions = {
+    tolerance: tolerance === undefined ? undefined : Number(tolerance),
+    whenLoadBearingUnknown: getFlag(args, '--load-bearing-unknown') as StructuralDerivationOptions['whenLoadBearingUnknown'],
+    supportType: getFlag(args, '--support') as StructuralDerivationOptions['supportType'],
+  };
 
-  const { store } = await createHeadlessContext(filePath);
-  const schema = store.schemaVersion ?? 'IFC4';
-  if (schema !== 'IFC2X3' && schema !== 'IFC4' && schema !== 'IFC4X3') fatal(`derive-structural: schema ${schema} is not supported; use IFC2X3, IFC4 or IFC4X3`);
-  const view = new MutablePropertyView(null, 'default');
-  view.setOnDemandExtractor((id: number) => extractPropertiesOnDemand(store, id));
-  const editor = new StoreEditor(store, view);
-
+  const { bim, store, backend } = await createHeadlessContext(filePath);
+  // The CLI's headless backend holds one model under its fixed id.
+  const modelId = 'default';
   let plan;
   try {
-    plan = planStructuralDerivation(readStructuralDerivationFacts(store, editor), options);
+    plan = bim.store.planStructuralDerivation(modelId, options);
   } catch (error) {
     fatal(error instanceof Error ? error.message : String(error));
   }
   const { report } = plan;
   const writes = !dryRun && report.counts.curveMembers + report.counts.surfaceMembers > 0;
   if (writes) {
-    applyStructuralDerivation(editor, store, plan);
-    const exported = new StepExporter(store, view).export({ schema, applyMutations: true });
-    await writeFile(out as string, exported.content);
+    bim.store.deriveStructuralAnalysisModel(modelId, options);
+    const schema = (store.schemaVersion ?? 'IFC4') as 'IFC2X3' | 'IFC4' | 'IFC4X3';
+    await writeOutput(new StepExporter(store, backend.getMutationView() ?? undefined).export({ schema, applyMutations: true }).content, out);
   }
 
   if (json) {
@@ -86,6 +77,5 @@ export async function deriveStructuralCommand(args: string[]): Promise<void> {
   if (c.assumedLoadBearing) process.stderr.write(`${c.assumedLoadBearing} element(s) had no LoadBearing value and were assumed load-bearing\n`);
   if (report.unconnectedEnds.length) process.stderr.write(`${report.unconnectedEnds.length} member end(s) touch a member or surface they are not connected to\n`);
   for (const s of report.skipped) process.stderr.write(`skipped #${s.elementId} ${s.type}${s.name ? ` "${s.name}"` : ''}: ${s.reason} (${s.detail})\n`);
-  if (writes) process.stderr.write(`Written to ${out}\n`);
-  else process.stderr.write(dryRun ? 'Dry run: nothing written\n' : 'Nothing to derive: nothing written\n');
+  if (!writes) process.stderr.write(dryRun ? 'Dry run: nothing written\n' : 'Nothing to derive: nothing written\n');
 }

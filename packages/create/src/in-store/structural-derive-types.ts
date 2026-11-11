@@ -17,8 +17,10 @@
  *
  * Which elements. IfcBeam, IfcColumn and IfcMember become curve members;
  * IfcSlab, IfcWall and IfcWallStandardCase become surface members (the IFC4
- * StandardCase/ElementedCase subtypes of each count as their parent).
- * IfcFooting and IfcPile only place supports. An element is used when its
+ * StandardCase/ElementedCase subtypes of each count as their parent). The
+ * plan step decides this from the class; the facts carry only the class.
+ * IfcFooting and IfcPile only place supports, by the bounds of their body
+ * (any body: extrusions, tessellations, breps). An element is used when its
  * `Pset_*Common.LoadBearing` is true (occurrence first, then its type). When
  * the property is absent, `whenLoadBearingUnknown` decides: 'include' (the
  * default; such members are marked `loadBearing: 'assumed'`) or 'skip'.
@@ -51,7 +53,7 @@
  * connected (that would need meshing); it is listed in the report. Surface
  * members get no connections.
  *
- * Supports. A node inside a footing or pile's bounds (grown by `tolerance`)
+ * Supports. A node inside a footing or pile's body bounds (grown by `tolerance`)
  * is a support linked to that footing. When no footing supports any node, the
  * nodes at the lowest node elevation (within `tolerance`) become supports and
  * are flagged `guessed`. `supportType` is 'pinned' (translations fixed,
@@ -68,10 +70,8 @@
  * since it was planned. Nothing is replaced or removed.
  */
 
-export type Vec3 = [number, number, number];
-
-/** The element classes the derivation reads, by the role they play. */
-export type DerivationElementRole = 'curve' | 'surface' | 'support';
+export type { Vec3 } from './host-geometry-frame.js';
+import type { Vec3 } from './host-geometry-frame.js';
 
 /** An extruded prism in world metres: `outline` at its base, swept by `extrusion`. */
 export interface PrismFact {
@@ -85,9 +85,8 @@ export interface PrismFact {
 
 export interface PhysicalElementFact {
   expressId: number;
-  /** IFC PascalCase class, e.g. 'IfcBeam'. */
+  /** IFC PascalCase class, e.g. 'IfcBeamStandardCase'. */
   type: string;
-  role: DerivationElementRole;
   name: string | null;
   /** Containing storey; null when it has none. */
   storeyId: number | null;
@@ -100,6 +99,8 @@ export interface PhysicalElementFact {
   prism?: PrismFact;
   /** Why no prism was read. */
   shapeIssue?: string;
+  /** Body bounds in world metres; read for footings and piles only. */
+  bounds?: { min: Vec3; max: Vec3 };
 }
 
 export interface StructuralDerivationFacts {
@@ -217,8 +218,4 @@ export interface StructuralDerivationPlan {
 
 export interface StructuralDerivationApplied {
   analysisModelId: number;
-  /** Physical element id to its derived member id. */
-  memberIds: Map<number, number>;
-  /** Plan node index to its IfcStructuralPointConnection id. */
-  connectionIds: number[];
 }

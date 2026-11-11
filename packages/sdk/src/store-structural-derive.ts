@@ -38,7 +38,6 @@ export function createStructuralDerivationStoreBackend(
 ): Required<StructuralDerivationStoreBackendMethods> {
   const plan = (modelId: string, options?: StructuralDerivationOptions) => {
     const model = resolve(modelId);
-    if (model.store.schemaVersion === 'IFC5') throw new Error('bim.store structural derivation: IFC5 is not supported; use IFC2X3, IFC4 or IFC4X3.');
     return { model, plan: planStructuralDerivation(readStructuralDerivationFacts(model.store, model.editor), options) };
   };
   return {

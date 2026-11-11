@@ -213,12 +213,14 @@ test('DIFF: a real release shape without a Rust bump passes', () => {
   assert.deepEqual(diffProblems(entries, fakeGit(files)), []);
 });
 
-test('DIFF: any Cargo.toml or Cargo.lock change runs the full lanes, even a pure version bump (#9783 review)', () => {
-  // Four review rounds each found a TOML spelling a version-only rule
-  // misread, every one fail-open. The lean lane no longer judges Cargo edits.
+test('DIFF: any Cargo.toml or Cargo.lock change runs the full lanes, of any status, even a pure version bump (#9783 review)', () => {
+  // Every version-only Cargo rule tried here misread some TOML spelling,
+  // fail-open. The lean lane no longer judges Cargo edits.
   for (const path of ['Cargo.toml', 'Cargo.lock', 'rust/core/Cargo.toml', 'rust/core/fuzz/Cargo.lock']) {
-    const problems = diffProblems([{ status: 'M', path }], fakeGit({}));
-    assert.deepEqual(problems, [`${path}: a Rust version bump; the lean lane does not judge Cargo edits`], path);
+    for (const status of ['M', 'A', 'D']) {
+      const problems = diffProblems([{ status, path }], fakeGit({}));
+      assert.deepEqual(problems, [`${path}: a Cargo file changed; the lean lane does not judge Cargo edits`], `${status} ${path}`);
+    }
   }
 });
 
@@ -395,7 +397,7 @@ test('WIRING: release-pr runs the release checks and is judged by the aggregate'
   assert.equal(job.if, "needs.changes.outputs.release_lane == 'lean' && needs.changes.outputs.noop != 'true'");
   assert.equal(job.name, 'Release PR checks');
   const runs = job.steps.map((s) => s.run).filter(Boolean);
-  for (const s of ['check-changesets.mjs', 'check-changeset-bump.mjs', 'check-package-readmes.mjs']) {
+  for (const s of ['check-changesets.mjs', 'check-changeset-bump.mjs', 'check-rust-major-offset.mjs', 'check-package-readmes.mjs']) {
     assert.ok(runs.some((r) => r.includes(s)), s); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML
   }
   assert.ok(jobs.test.needs.includes('release-pr')); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML

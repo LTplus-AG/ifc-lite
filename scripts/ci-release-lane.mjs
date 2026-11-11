@@ -9,10 +9,10 @@
  * WHY. changesets/action rewrites that PR after every merge to `main`, so it
  * had 183 `Test` runs on 170 heads in the week of 2026-11-04, about 100
  * runner-hours, almost all of it the full suite testing version bumps. Its
- * diff is package.json versions, CHANGELOGs and deleted changesets (plus
- * Cargo versions when Rust crates are bumped: those releases always run in
- * full, see release-version-diff.mjs); no lane but the release-specific ones
- * can say anything new.
+ * diff is package.json versions, CHANGELOGs and deleted changesets, plus
+ * Cargo versions when Rust crates are bumped. Any Cargo change runs in full
+ * (release-version-diff.mjs), which by itself removes most of that saving:
+ * three of the four release merges before 2026-11-12 touched Cargo.lock.
  *
  * WHY IT IS HELD. A lean run is sound only if the PR cannot reach `main`
  * except through Mergify's `release` queue, whose merge conditions require the
@@ -31,8 +31,8 @@
  *                  lean lane would have skipped and whether any of it failed.
  *   `on`           held: as `shadow`. With OWNER_ALLOWS_LEAN, the release PR
  *                  runs `changes` (late-changeset gate), `rust-semver`,
- *                  `silent-revert` and `release-pr` (changeset, bump-level
- *                  and README checks) and skips the rest.
+ *                  `silent-revert` and `release-pr` (changeset, bump-level,
+ *                  Rust major-offset and README checks) and skips the rest.
  * Any other value is `off`. Lean needs ALL of: a `pull_request` into `main`,
  * head ref exactly `changeset-release/main`, the head in this repository (a
  * fork's branch of that name runs full), the Mergify route above, a diff that

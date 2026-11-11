@@ -57,10 +57,10 @@ export function diffProblems(entries, git) {
         }
       }
     } else if (name === 'Cargo.toml' || name === 'Cargo.lock') {
-      // Not judged: four review rounds each found a TOML spelling a
-      // version-only rule misread, every one fail-open (#9783). A release
-      // that bumps Rust crates runs the full lanes.
-      problem = 'a Rust version bump; the lean lane does not judge Cargo edits';
+      // Not judged: each attempt at a version-only Cargo rule was found to
+      // misread some TOML spelling, fail-open (#9783). Any Cargo change, of any
+      // status, runs the full lanes.
+      problem = 'a Cargo file changed; the lean lane does not judge Cargo edits';
     } else {
       problem = 'not a release file';
     }

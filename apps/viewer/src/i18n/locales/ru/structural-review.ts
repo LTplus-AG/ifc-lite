@@ -32,7 +32,7 @@ export const structuralReviewRu = {
   "structuralReview.derive.assumed": "Элементов без значения LoadBearing, считающихся несущими: {count}.",
   "structuralReview.derive.skipped": "Пропущенные элементы ({count})",
   "structuralReview.derive.guessed": "Предполагаемые опоры в самых нижних узлах, так как фундаментов нет ({count})",
-  "structuralReview.derive.unconnected": "Концы стержней, касающиеся элемента или пластины без соединения ({count})",
+  "structuralReview.derive.unconnected": "Узлы, касающиеся элемента или пластины без соединения ({count})",
   "structuralReview.derive.existing": "У модели уже есть построенная расчётная модель (#{id}). Повторно она не строится.",
   "structuralReview.derive.nothing": "Нечего строить: ни один несущий элемент не удалось идеализировать, или у каждого уже есть расчётный аналог.",
   "structuralReview.derive.noModel": "Загрузите модель, чтобы построить её расчётную модель.",

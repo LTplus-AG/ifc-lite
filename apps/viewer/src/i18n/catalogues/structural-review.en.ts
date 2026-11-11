@@ -30,7 +30,7 @@ export const structuralReviewEn = {
   'structuralReview.derive.assumed': '{count} elements have no LoadBearing value and are assumed load-bearing.',
   'structuralReview.derive.skipped': 'Skipped elements ({count})',
   'structuralReview.derive.guessed': 'Guessed supports, placed at the lowest nodes because no footing carries one ({count})',
-  'structuralReview.derive.unconnected': 'Member ends touching a member or surface they are not connected to ({count})',
+  'structuralReview.derive.unconnected': 'Nodes touching a member or surface they are not connected to ({count})',
   'structuralReview.derive.existing': 'This model already has a derived analysis model (#{id}). It is not derived a second time.',
   'structuralReview.derive.nothing': 'Nothing to derive: no load-bearing element could be idealised, or every one already has a structural counterpart.',
   'structuralReview.derive.noModel': 'Load a model to derive its structural analysis model.',

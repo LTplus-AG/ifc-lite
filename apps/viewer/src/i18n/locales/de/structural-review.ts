@@ -32,7 +32,7 @@ export const structuralReviewDe = {
   "structuralReview.derive.assumed": "{count} Bauteile haben keinen LoadBearing-Wert und gelten als tragend.",
   "structuralReview.derive.skipped": "Übersprungene Bauteile ({count})",
   "structuralReview.derive.guessed": "Angenommene Auflager an den tiefsten Knoten, da kein Fundament einen trägt ({count})",
-  "structuralReview.derive.unconnected": "Stabenden, die einen Stab oder eine Fläche berühren, ohne verbunden zu sein ({count})",
+  "structuralReview.derive.unconnected": "Knoten, die einen Stab oder eine Fläche berühren, ohne verbunden zu sein ({count})",
   "structuralReview.derive.existing": "Dieses Modell hat bereits ein abgeleitetes Analysemodell (#{id}). Es wird nicht ein zweites Mal abgeleitet.",
   "structuralReview.derive.nothing": "Nichts abzuleiten: Kein tragendes Bauteil ließ sich idealisieren, oder jedes hat bereits ein statisches Gegenstück.",
   "structuralReview.derive.noModel": "Laden Sie ein Modell, um sein statisches Analysemodell abzuleiten.",

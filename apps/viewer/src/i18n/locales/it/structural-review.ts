@@ -32,7 +32,7 @@ export const structuralReviewIt = {
   "structuralReview.derive.assumed": "{count} elementi non hanno un valore LoadBearing e sono considerati portanti.",
   "structuralReview.derive.skipped": "Elementi saltati ({count})",
   "structuralReview.derive.guessed": "Vincoli ipotizzati ai nodi più bassi, perché nessuna fondazione ne porta uno ({count})",
-  "structuralReview.derive.unconnected": "Estremità che toccano un elemento o una superficie senza esservi collegate ({count})",
+  "structuralReview.derive.unconnected": "Nodi che toccano un elemento o una superficie senza esservi collegati ({count})",
   "structuralReview.derive.existing": "Questo modello ha già un modello di analisi derivato (#{id}). Non viene derivato una seconda volta.",
   "structuralReview.derive.nothing": "Niente da derivare: nessun elemento portante è stato idealizzato, oppure ognuno ha già un corrispondente strutturale.",
   "structuralReview.derive.noModel": "Carica un modello per derivarne il modello di analisi strutturale.",

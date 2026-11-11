@@ -32,7 +32,7 @@ export const structuralReviewFr = {
   "structuralReview.derive.assumed": "{count} éléments n’ont pas de valeur LoadBearing et sont supposés porteurs.",
   "structuralReview.derive.skipped": "Éléments ignorés ({count})",
   "structuralReview.derive.guessed": "Appuis supposés aux nœuds les plus bas, faute de fondation ({count})",
-  "structuralReview.derive.unconnected": "Extrémités qui touchent un élément ou une surface sans y être reliées ({count})",
+  "structuralReview.derive.unconnected": "Nœuds qui touchent un élément ou une surface sans y être reliés ({count})",
   "structuralReview.derive.existing": "Ce modèle a déjà un modèle d’analyse dérivé (#{id}). Il n’est pas dérivé une seconde fois.",
   "structuralReview.derive.nothing": "Rien à dériver : aucun élément porteur n’a pu être idéalisé, ou chacun a déjà un équivalent structurel.",
   "structuralReview.derive.noModel": "Chargez un modèle pour dériver son modèle d’analyse structurelle.",

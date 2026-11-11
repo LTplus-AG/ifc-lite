@@ -1,13 +1,13 @@
-diff --git a/apps/viewer/scripts/check-structural-writes-lazy.mjs b/apps/viewer/scripts/check-structural-writes-lazy.mjs
-index 577ecb04ce..e14610430f 100644
---- a/apps/viewer/scripts/check-structural-writes-lazy.mjs
-+++ b/apps/viewer/scripts/check-structural-writes-lazy.mjs
-@@ -38,7 +38,7 @@ export async function checkStructuralWritesLazy(directory) {
-   const eager = await startupChunks(directory);
+diff --git a/apps/viewer/scripts/startup-chunks.mjs b/apps/viewer/scripts/startup-chunks.mjs
+index a6b8620097..a2ae5ad2ed 100644
+--- a/apps/viewer/scripts/startup-chunks.mjs
++++ b/apps/viewer/scripts/startup-chunks.mjs
+@@ -60,7 +60,7 @@ export async function checkLazyOnly(directory, groups, remedy, missingHint) {
    for (const [file, code] of eager) {
-     for (const signature of STRUCTURAL_WRITE_SIGNATURES) {
--      if (code.includes(signature) && file === null) throw new Error(`Startup chunk ${relative(directory, file)} contains ${signature}. ${REMEDY}`);
-+      if (code.includes(signature)) throw new Error(`Startup chunk ${relative(directory, file)} contains ${signature}. ${REMEDY}`);
+     for (const { signatures } of groups) {
+       for (const signature of signatures) {
+-        if (code.includes(signature) && file === null) throw new Error(`Startup chunk ${relative(directory, file)} contains ${signature}. ${remedy}`);
++        if (code.includes(signature)) throw new Error(`Startup chunk ${relative(directory, file)} contains ${signature}. ${remedy}`);
+       }
      }
    }
-   const lazy = [];

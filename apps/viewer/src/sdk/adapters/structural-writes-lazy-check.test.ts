@@ -49,7 +49,7 @@ const BUILDER_CODE: Record<string, string> = {
   createStructuralStoreBackend: 'throw Error(`bim.store structural authoring: schema \'${t}\' is not supported; use IFC4 or IFC4X3.`)',
 };
 const buildersWithout = (omit?: string) =>
-  Object.entries(BUILDER_CODE).filter(([name]) => name !== omit).map(([name, code]) => `function ${name}(){${code}}`).join(';');
+  Object.entries(BUILDER_CODE).filter(([name]) => name !== omit).map(([, code], i) => `function f${i}(){${code}}`).join(';');
 const BUILDERS = buildersWithout();
 
 describe('checkStructuralWritesLazy', () => {
@@ -81,7 +81,11 @@ describe('checkStructuralWritesLazy', () => {
   it('refuses a build whose lazy chunk lacks any one structural write function', async () => {
     for (const name of Object.keys(BUILDER_CODE)) {
       const dir = dist({ 'main.js': 'import("./structural.js");', 'ui.js': 'export {}', 'structural.js': buildersWithout(name) });
-      await assert.rejects(checkStructuralWritesLazy(dir), /proves nothing/, `${name} missing from the lazy chunk must be noticed`);
+      // The refusal names what is missing; each named signature must come from the omitted function's own code.
+      await assert.rejects(checkStructuralWritesLazy(dir), (error: Error) => {
+        const missing = /carries (.+) code, so this check proves nothing/.exec(error.message)?.[1].split(', ') ?? [];
+        return missing.length > 0 && missing.every((signature) => BUILDER_CODE[name].includes(signature));
+      }, `${name} missing from the lazy chunk must be noticed`);
     }
   });
 

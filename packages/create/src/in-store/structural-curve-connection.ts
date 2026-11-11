@@ -73,7 +73,8 @@ export function addStructuralCurveConnectionToStore(
   // The axis defines the connection's local z, so it must not run along the
   // edge. IFC reads it in the placement frame (Z along the edge, X = frame.u).
   const world: Point3D = given ?? (Math.abs(frame.along[2]) > 0.999 ? [1, 0, 0] : [0, 0, 1]);
-  if (vecLen(vecCross(world, frame.along)) <= 1e-9 * vecLen(world)) {
+  // Within about 0.06 degrees of the edge, the local y = z x x is numerically meaningless.
+  if (vecLen(vecCross(world, frame.along)) <= 1e-3 * vecLen(world)) {
     throw new Error('addStructuralCurveConnectionToStore: Axis must be nonzero and not parallel to the edge');
   }
   const axis = vecNorm([vecDot(frame.u, world), vecDot(frame.v, world), vecDot(frame.along, world)]);

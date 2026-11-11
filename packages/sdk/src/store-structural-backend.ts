@@ -58,8 +58,8 @@ function ref(modelId: string, expressId: number): EntityRef {
 /**
  * The `bim.store` structural methods are offered for IFC4 and IFC4X3 only.
  * The `@ifc-lite/create` builders also write IFC2X3, but this backend has not
- * been wired or tested for it. IFC5 is refused because no builder checks it
- * and `extractStructuralOnDemand` cannot read it back.
+ * been wired or tested for it. IFC5 is refused here because only some builders
+ * check it, and `extractStructuralOnDemand` cannot read it back.
  */
 const SUPPORTED_STRUCTURAL_SCHEMAS: ReadonlySet<string> = new Set(['IFC4', 'IFC4X3']);
 

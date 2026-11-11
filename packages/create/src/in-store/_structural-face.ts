@@ -24,7 +24,8 @@ function segmentsMeet([p1, p2]: readonly [Flat, Flat], [q1, q2]: readonly [Flat,
 
 /** Validate before emitting anything. Coordinates are storey-local metres. */
 export function prepareStructuralFace(points: readonly Point3D[]) {
-  if (points.length < 3 || points.some(p => p.length !== 3 || p.some(v => !Number.isFinite(v)))) {
+  const raw: unknown = points; // untyped callers (scripts, JSON) may pass anything
+  if (!Array.isArray(raw) || raw.length < 3 || raw.some(p => !Array.isArray(p) || p.length !== 3 || p.some((v: unknown) => !Number.isFinite(v)))) {
     throw new Error('Structural Face: at least three finite boundary points are required');
   }
   const origin = points[0];

@@ -187,10 +187,22 @@ describe('C2 structural surface and connection builders', () => {
     ['curve connection, bad GlobalId', (e: StoreEditor, a: SpatialAnchor) => addStructuralCurveConnectionToStore(e, a, { Start: [0, 0, 0], End: [1, 0, 0], GlobalId: 'bad' }), /GlobalId/],
     ['negative stiffness', (e: StoreEditor, a: SpatialAnchor) => addStructuralSurfaceConnectionToStore(e, a, { Boundary: tri, BoundaryCondition: { TranslationalStiffnessByAreaZ: -1 } }), /not negative/],
     ['closed ring', (e: StoreEditor, a: SpatialAnchor) => addStructuralSurfaceMemberToStore(e, a, { Boundary: [...tri, [0, 0, 0]] }), /do not repeat the first point/],
+    ['missing boundary', (e: StoreEditor, a: SpatialAnchor) => addStructuralSurfaceMemberToStore(e, a, { Boundary: undefined as never }), /at least three finite boundary points/],
+    ['string stiffness', (e: StoreEditor, a: SpatialAnchor) => addStructuralSurfaceConnectionToStore(e, a, { Boundary: tri, BoundaryCondition: { TranslationalStiffnessByAreaZ: '5' as never } }), /not negative/],
+    ['axis almost along the edge', (e: StoreEditor, a: SpatialAnchor) => addStructuralCurveConnectionToStore(e, a, { Start: [0, 0, 0], End: [2, 0, 0], Axis: [1, 1e-8, 0] }), /parallel to the edge/],
   ] as const)('writes nothing when refused: %s', async (_label, build, message) => {
     const { editor, anchor } = await fresh('IFC4');
     expect(() => build(editor, anchor)).toThrow(message);
     expect(editor.getMutationView().getNewEntities()).toHaveLength(0);
+  });
+  it('treats a null stiffness as unset on every schema', async () => {
+    for (const schema of ['IFC2X3', 'IFC4']) {
+      const { editor, anchor, roundTrip } = await fresh(schema);
+      const r = addStructuralSurfaceConnectionToStore(editor, anchor, { Boundary: tri, BoundaryCondition: { TranslationalStiffnessByAreaX: null as never, TranslationalStiffnessByAreaZ: true } });
+      const m = addStructuralSurfaceMemberToStore(editor, anchor, { Boundary: tri });
+      connectStructuralMemberToConnectionInStore(editor, anchor.ownerHistoryId, m.memberId, r.connectionId, anchor.guidRandom);
+      expect((await roundTrip()).attrs(r.boundaryConditionId!)[1]).toBeNull();
+    }
   });
   it('refuses unsupported schema-specific axis attributes', async () => {
     const { editor, anchor } = await fresh();

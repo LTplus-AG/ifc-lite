@@ -22,11 +22,22 @@ export function scheduleWarmShell(mount: () => void, settle: () => void): () => 
   return scheduleWhenIdle(mount);
 }
 
-/** Settle once the warm shell's renderer has initialised (its debug hooks install on init); give up after ~10 s of frames. */
+/**
+ * Settle once the warm shell's renderer has initialised (its debug hooks
+ * install on init). Settled means no more idle boot work is coming, not that
+ * it succeeded: a renderer that has not initialised after ~10 s of frames is
+ * reported and stops holding boot (the viewport shows its own init error, and
+ * the scoreboard records renderer readiness separately).
+ */
 export function settleWhenRendererReady(settle: () => void): void {
   let frames = 0;
   const poll = () => {
-    if (typeof (globalThis as { __ifc_lite_render_stats__?: unknown }).__ifc_lite_render_stats__ === 'function' || ++frames > 600) {
+    if (typeof (globalThis as { __ifc_lite_render_stats__?: unknown }).__ifc_lite_render_stats__ === 'function') {
+      settle();
+      return;
+    }
+    if (++frames > 600) {
+      console.warn('[warm-shell] renderer not initialised after ~10 s; boot no longer waits for it');
       settle();
       return;
     }

@@ -56,7 +56,7 @@ test('`shadow` only records; unset, `off` and typos leave labels alone', () => {
   for (const mode of ['true', ' on', 'remove']) {
     const d = decide({ mode });
     assert.equal(d.action, 'keep', mode);
-    assert.match(d.warning ?? '', /not one of off, shadow, on/); // @source-text-assertion-ok subject is the decision's returned message
+    assert.match(d.warning ?? '', /not one of off, shadow, on/);
   }
 });
 
@@ -142,14 +142,14 @@ test('CLI `on`: removes the label with one DELETE and says so in the summary', (
   const r = cli({}, ROUTES);
   assert.equal(r.d.action, 'remove');
   assert.deepEqual(r.calls.filter((c) => c.includes('DELETE')), [`api -X DELETE repos/o/r/issues/7/labels/${encodeURIComponent(FULL_LABEL)}`]);
-  assert.match(r.summary, /Removed `ci:full` from #7/); // @source-text-assertion-ok subject is the summary the run wrote
+  assert.match(r.summary, /Removed `ci:full` from #7/);
 });
 
 test('CLI `shadow`: records in the summary and never writes to the PR', () => {
   const r = cli({ CI_FULL_ONESHOT: 'shadow' }, ROUTES);
   assert.equal(r.d.action, 'would-remove');
   assert.ok(!r.calls.some((c) => c.includes('DELETE')));
-  assert.match(r.summary, /would remove `ci:full` from #7/); // @source-text-assertion-ok subject is the summary the run wrote
+  assert.match(r.summary, /would remove `ci:full` from #7/);
 });
 
 test('CLI `off`: no API call at all', () => {
@@ -175,9 +175,9 @@ test('WORKFLOW: workflow_run on Test, never runs PR code, least privilege, per-P
   assert.deepEqual(ONESHOT_YML.on, { workflow_run: { workflows: ['Test'], types: ['completed'] } });
   assert.deepEqual(ONESHOT_YML.permissions, { contents: 'read', 'pull-requests': 'write', actions: 'read' });
   const job = ONESHOT_YML.jobs.oneshot;
-  assert.match(job.if, /github\.event\.workflow_run\.event == 'pull_request'/); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML
-  assert.match(job.if, /vars\.CI_FULL_ONESHOT == 'shadow' \|\| vars\.CI_FULL_ONESHOT == 'on'/, 'off starts no job'); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML
-  assert.match(job.concurrency.group, /workflow_run\.pull_requests\[0\]\.number/); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML
+  assert.match(job.if, /github\.event\.workflow_run\.event == 'pull_request'/);
+  assert.match(job.if, /vars\.CI_FULL_ONESHOT == 'shadow' \|\| vars\.CI_FULL_ONESHOT == 'on'/, 'off starts no job');
+  assert.match(job.concurrency.group, /workflow_run\.pull_requests\[0\]\.number/);
   assert.equal(job.concurrency['cancel-in-progress'], false);
   const checkout = job.steps.find((s) => String(s.uses).startsWith('actions/checkout@'));
   // The literal workflow expression this test pins, not a template string.
@@ -185,7 +185,7 @@ test('WORKFLOW: workflow_run on Test, never runs PR code, least privilege, per-P
   assert.equal(checkout.with.ref, '${{ github.event.repository.default_branch }}');
   assert.equal(checkout.with['persist-credentials'], false);
   for (const s of job.steps) {
-    assert.ok(!/workflow_run\.head_(sha|branch)/.test(JSON.stringify(s.with ?? {})), 'no step checks out the PR head'); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML
+    assert.ok(!/workflow_run\.head_(sha|branch)/.test(JSON.stringify(s.with ?? {})), 'no step checks out the PR head');
   }
   assert.ok(job.steps.some((s) => s.run === 'node scripts/ci-full-oneshot.mjs --run'));
 });

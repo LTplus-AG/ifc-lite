@@ -88,6 +88,13 @@ export interface StructuralPointConnectionBuildResult {
   boundaryConditionId?: number;
 }
 
+/** `IfcBoundaryNodeCondition` stiffness slots, in attribute order. */
+const STIFFNESS_KEYS = [
+  'TranslationalStiffnessX', 'TranslationalStiffnessY', 'TranslationalStiffnessZ',
+  'RotationalStiffnessX', 'RotationalStiffnessY', 'RotationalStiffnessZ',
+] as const;
+type StiffnessKey = (typeof STIFFNESS_KEYS)[number];
+
 export function addStructuralPointConnectionToStore(
   editor: StoreEditor,
   anchor: SpatialAnchor,
@@ -97,26 +104,20 @@ export function addStructuralPointConnectionToStore(
   // IFC2X3 uses plain measures: -1 = rigid, 0 = free. The `{ real }` marker is
   // required: the exporter's SELECT qualification reads the IFC4 registry for
   // every target schema and would wrap a bare number as an IFC4 select member.
-  const stiffness = (value: boolean | number | undefined) => {
+  const stiffness = (key: StiffnessKey, value: boolean | number | undefined) => {
     if (value === undefined) return null;
-    if (typeof value === 'number' && !Number.isFinite(value)) throw new Error('Spring stiffness must be finite');
+    if (typeof value === 'number' && !Number.isFinite(value)) {
+      throw new Error(`addStructuralPointConnectionToStore: ${key} must be a finite spring stiffness`);
+    }
     if (!is2x3) return value;
     return { real: typeof value === 'number' ? value : value ? -1 : 0 };
   };
   // Resolved before any entity is emitted, so a refused value leaves the store untouched.
   const bc = params.BoundaryCondition;
-  const conditionAttrs = bc && [
-    bc.Name ?? null,
-    stiffness(bc.TranslationalStiffnessX),
-    stiffness(bc.TranslationalStiffnessY),
-    stiffness(bc.TranslationalStiffnessZ),
-    stiffness(bc.RotationalStiffnessX),
-    stiffness(bc.RotationalStiffnessY),
-    stiffness(bc.RotationalStiffnessZ),
-  ];
+  const conditionAttrs = bc ? [bc.Name ?? null, ...STIFFNESS_KEYS.map((key) => stiffness(key, bc[key]))] : undefined;
   const position = toNativePoint3(anchor, params.Position);
   const placementId = emitLocalPlacement(editor, anchor.storeyPlacementId, position);
-  const boundaryConditionId = conditionAttrs && editor.addEntity('IfcBoundaryNodeCondition', conditionAttrs).expressId;
+  const boundaryConditionId = conditionAttrs ? editor.addEntity('IfcBoundaryNodeCondition', conditionAttrs).expressId : undefined;
 
   const connectionId = editor.addEntity('IfcStructuralPointConnection', [
     productGuid(params, anchor.guidRandom),

@@ -164,13 +164,32 @@ describe('point connection stiffness SELECT round trips', () => {
     expect(data.connections[0].appliedCondition).toMatchObject({ name: Name, components });
   });
 
+  it('IFC2X3 writes numeric stiffness verbatim as plain measures', async () => {
+    const { editor, anchor, roundTrip } = await fresh();
+    const { boundaryConditionId } = addStructuralPointConnectionToStore(editor, anchor, {
+      Position: [4, 0, 0],
+      BoundaryCondition: { Name: 'Mixed', TranslationalStiffnessX: true, TranslationalStiffnessY: false, TranslationalStiffnessZ: 1000, RotationalStiffnessX: 2000 },
+    });
+    const { text } = await roundTrip();
+    expect(text).toContain(`#${boundaryConditionId}=IFCBOUNDARYNODECONDITION('Mixed',-1.,0.,1000.,2000.,$,$);`);
+  });
+
+  it('a null BoundaryCondition from an untyped caller writes no condition', async () => {
+    const { editor, anchor, roundTrip } = await fresh('IFC4');
+    const BoundaryCondition = null as unknown as undefined;
+    const result = addStructuralPointConnectionToStore(editor, anchor, { Position: [4, 0, 0], BoundaryCondition });
+    expect(result).not.toHaveProperty('boundaryConditionId');
+    const { attrs } = await roundTrip();
+    expect(attrs(result.connectionId)[7]).toBeNull();
+  });
+
   // A non-finite number is type-legal; IFC4 would export it as `$` and IFC2X3 would fail the whole export.
   it.each(['IFC2X3', 'IFC4', 'IFC4X3'])('%s refuses non-finite stiffness before emitting entities', async (schema) => {
     const { editor, anchor } = await fresh(schema);
     for (const value of [Number.NaN, Number.POSITIVE_INFINITY]) {
       expect(() => addStructuralPointConnectionToStore(editor, anchor, {
         Position: [4, 0, 0], BoundaryCondition: { TranslationalStiffnessX: true, RotationalStiffnessZ: value },
-      })).toThrow(/finite/);
+      })).toThrow(/RotationalStiffnessZ must be a finite/);
     }
     expect(editor.getMutationView().getNewEntities()).toHaveLength(0);
   });

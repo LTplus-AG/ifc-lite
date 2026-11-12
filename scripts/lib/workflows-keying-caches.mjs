@@ -28,11 +28,23 @@ import { posix } from 'node:path';
 
 export const WORKFLOW_FILE = /^\.github\/workflows\/[^/]+\.ya?ml$/;
 
-// A key this scan reads, on a line that is not a comment; group 1 is what precedes the
-// key (a `{` there means a flow mapping), group 2 the rest of the line.
-const keyLine = (key) => new RegExp(`^(?![ \\t]*#)((?:.*[\\s{,-])?)['"]?${key}['"]?[ \\t]*:(.*)$`, 'gm');
-const USES_KEY = keyLine('uses');
-const CACHE_DEPENDENCY_PATH_KEY = keyLine('cache-dependency-path');
+/**
+ * Every occurrence of `key:` on a line that is not a comment, several per line in a
+ * flow mapping, as [what precedes it (a `{` means a flow mapping), the rest of the line].
+ */
+function keyEntries(text, key) {
+  const re = new RegExp(`(^|[\\s{,-])['"]?${key}['"]?[ \\t]*:`, 'g');
+  const out = [];
+  for (const line of text.split('\n')) {
+    if (/^[ \t]*#/.test(line)) continue;
+    for (const m of line.matchAll(re)) out.push([line.slice(0, m.index + m[1].length), line.slice(m.index + m[0].length)]);
+  }
+  return out;
+}
+// In YAML (not in an action's scripts): a hex or unicode escape can spell a key or a call
+// the scan looks for (`"u\x73es":`, `hashFiles\x28`), and `? ` starts a complex key.
+const YAML_HIDDEN = /\\[xuU][0-9A-Fa-f]|^[ \t]*\?[ \t]/m;
+const IS_YAML = /\.ya?ml$/;
 // Expression function names are case-insensitive, and `hashFiles (` is a call.
 const HASHFILES = /hashFiles\s*\(/gi;
 const QUOTED_ARG = /^\s*(?:'([^']*)'|"([^"]*)")\s*([,)])/;
@@ -132,8 +144,9 @@ export function workflowsKeyingCaches({ root, actionFiles, symlinks, readText })
     const path = executed[i];
     const text = readText(path);
     if (typeof text !== 'string') return { unknown: `${path} could not be read` };
-    for (const m of text.matchAll(USES_KEY)) {
-      const v = scalar(m[1], m[2]);
+    if (IS_YAML.test(path) && YAML_HIDDEN.test(text)) return { unknown: `${path} has a YAML escape or complex key the scan cannot read through` };
+    for (const [before, rest] of keyEntries(text, 'uses')) {
+      const v = scalar(before, rest);
       if (v === null) return { unknown: `${path} has a uses: value the line does not show` };
       if (v.split('/').includes('..')) return { unknown: `${path} has uses: ${v}, which climbs` };
       const local = LOCAL_WORKFLOW.exec(v);
@@ -145,8 +158,8 @@ export function workflowsKeyingCaches({ root, actionFiles, symlinks, readText })
       }
     }
     const patterns = [];
-    for (const m of text.matchAll(CACHE_DEPENDENCY_PATH_KEY)) {
-      const v = scalar(m[1], m[2]);
+    for (const [before, rest] of keyEntries(text, 'cache-dependency-path')) {
+      const v = scalar(before, rest);
       if (v === null) return { unknown: `${path} has a cache-dependency-path value the line does not show` };
       patterns.push(v);
     }

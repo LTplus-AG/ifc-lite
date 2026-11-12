@@ -225,7 +225,12 @@ test('#8947 palette Plan explains measured narrow-host refusal and leaves 3D usa
       ? new window.DOMRect(0, 0, 400, 800) : real.call(this);
   };
   try {
-    act(() => { useViewerStore.getState().enterModelWorkspace(); useViewerStore.getState().setModelLayout('3d'); });
+    act(() => {
+      useViewerStore.getState().enterModelWorkspace();
+      useViewerStore.getState().setModelLayout('3d');
+      // #9296: an expanded sidebar can fold to make room; refusal requires it already folded.
+      useViewerStore.getState().setSidebarMode('collapsed');
+    });
     hosts.push(mountDestinations(<ModelWorkspaceSplit><div data-workspace-3d-probe /></ModelWorkspaceSplit>));
     await advance(20);
     assert.equal(required('[data-model-split-width]').getAttribute('data-model-split-width'), '400');

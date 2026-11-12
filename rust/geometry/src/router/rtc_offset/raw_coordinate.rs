@@ -19,7 +19,8 @@ impl GeometryRouter {
             | IfcType::IfcFacetedBrepWithVoids
             | IfcType::IfcAdvancedBrep
             | IfcType::IfcAdvancedBrepWithVoids => self.brep_first_vertex(item, decoder),
-            // A bare IfcFace meshes only on a structural member (#9668).
+            // Probed for every IfcFace; whether one meshes (a structural
+            // member's, #9668) is decided by the callers.
             IfcType::IfcFaceSurface | IfcType::IfcAdvancedFace | IfcType::IfcFace => {
                 self.face_first_vertex(item, decoder)
             }
@@ -97,7 +98,8 @@ impl GeometryRouter {
         }
         // A structural member's bare IfcFace has no registered processor but
         // still meshes (#9668), so it rebases like any other face.
-        if self.processor_for(&item.ifc_type).is_none() && !crate::processors::is_member_face_item(item, element) {
+        let member_face = || crate::processors::is_member_face_item(item, element) && self.member_face_admitted(item);
+        if self.processor_for(&item.ifc_type).is_none() && !member_face() {
             return Ok(None);
         }
         self.element_frame_rtc(element, decoder)

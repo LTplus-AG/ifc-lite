@@ -148,13 +148,6 @@ impl ItemControl {
     }
 }
 
-/// A structural member's face item (the flag is set only for those) takes
-/// the member-face processor when its type's processor is the built-in one
-/// or there is none (#9668); a registered override still wins.
-fn takes_member_face(router: &GeometryRouter, item: &DecodedEntity) -> bool {
-    matches!(router.processor_origin(&item.ifc_type), None | Some(crate::router::ProcessorOrigin::Builtin))
-}
-
 enum Lowered {
     Next(ItemPhase),
     Plan(Result<OwnedConstructor>, bool),
@@ -170,7 +163,7 @@ fn execute_source(
     router: &GeometryRouter,
     decoder: &mut EntityDecoder,
 ) -> ItemStep {
-    let selected: Option<&dyn crate::router::GeometryProcessor> = if structural && takes_member_face(router, item) {
+    let selected: Option<&dyn crate::router::GeometryProcessor> = if structural && router.member_face_admitted(item) {
         Some(&crate::processors::StructuralMemberFaceProcessor)
     } else {
         router.processor_for(&item.ifc_type).map(|processor| processor.as_ref())

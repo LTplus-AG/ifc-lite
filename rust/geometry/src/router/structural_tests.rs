@@ -754,3 +754,15 @@ fn two_outer_bounds_on_another_product_keep_main_rule_issue_9668() {
     // The same face on a structural member is two regions, 100 + 4 (AxisVM writes slabs so).
     assert!((signed_xy_area(&meshed(&face, 18)) - 104.0).abs() < 1e-5);
 }
+
+#[test]
+fn member_face_is_refused_with_the_length_unit_like_every_item_issue_9668() {
+    // A refused length unit refuses every item (#7678); a structural member's
+    // face, even one the member-face rule would mesh, is no exception.
+    let bare = surface_member(true, false).replace("#15=IFCFACESURFACE((#6),#14,.T.);", "#15=IFCFACE((#6));");
+    let mut decoder = EntityDecoder::new(&bare);
+    let member = decoder.decode_by_id(18).unwrap();
+    let mut router = GeometryRouter::new();
+    router.refuse_length_unit();
+    assert!(router.process_element(&member, &mut decoder).is_err());
+}

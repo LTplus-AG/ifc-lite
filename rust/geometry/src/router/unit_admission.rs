@@ -15,7 +15,7 @@
 //! `ifc_lite_core::LengthUnit` is the one home of the policy; this module only
 //! applies it to the router's own scale.
 
-use ifc_lite_core::{EntityDecoder, IfcType};
+use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use std::rc::Rc;
 
 use super::{GeometryProcessor, GeometryRouter};
@@ -60,6 +60,15 @@ impl GeometryRouter {
 
     /// The processor for `ifc_type`, or none when the length unit is refused.
     /// Every registry lookup in the router goes through this.
+    /// Whether a structural member's face `item` takes the member-face
+    /// processor (#9668): a face type, the length unit admitted (as
+    /// [`Self::processor_for`] requires), and no registered override.
+    pub(crate) fn member_face_admitted(&self, item: &DecodedEntity) -> bool {
+        !self.length_unit_refused
+            && crate::processors::is_member_face_type(&item.ifc_type)
+            && matches!(self.processors.origin(&item.ifc_type), None | Some(super::ProcessorOrigin::Builtin))
+    }
+
     pub(crate) fn processor_for(&self, ifc_type: &IfcType) -> Option<&Rc<dyn GeometryProcessor>> {
         if self.length_unit_refused {
             return None;

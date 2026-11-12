@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "#9668: A wall surface member takes the profile thickness; take the extrusion height instead.",
+  "key": "packages/create/src/in-store/structural-derive-idealise.ts",
+  "mutation": "tests/evidence/structural-derive-wall-thickness-9668/behaviour.oracle.patch",
+  "test": "packages/create/src/in-store/structural-derive-plan.test.ts"
+}

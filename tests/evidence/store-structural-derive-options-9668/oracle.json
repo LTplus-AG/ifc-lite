@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "#9668: bim.store.deriveStructuralAnalysisModel must honour its options; drop them.",
+  "key": "packages/sdk/src/store-structural-derive.ts",
+  "mutation": "tests/evidence/store-structural-derive-options-9668/behaviour.oracle.patch",
+  "test": "packages/sdk/src/store-structural-derive.test.ts"
+}

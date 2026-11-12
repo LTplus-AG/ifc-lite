@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { retainedCatalogueShape } from './retained-catalogue-shape';
 import { registryCatalogueShape } from './registry-catalogue-shape';
+import { structuralDeriveShape, type StructuralDeriveKey } from './structural-derive-catalogue-shape';
 import type { flowReviewEn } from './catalogues/flow-review.en';
 type ReviewKey = keyof typeof flowReviewEn extends `flowReview.${infer Key}` ? Key : never;
 /** Exact lazy keys and parameters validate contributed locales before feature code loads. */
@@ -333,7 +334,12 @@ const ifcFederationShape = {
   "applied": [],
 } as const satisfies Record<IfcFederationKey, readonly string[]>;
 
+/** The glyph overlay's tooltips (#9668); only the tooltip takes parameters. A regex, since this ships eagerly. */
+const STRUCTURAL_GLYPH_KEY = /^structuralGlyphs\.(support\.(fixed|pinned|roller|spring)|load\.(force|moment|temperature|displacement))$/;
+
 export function lazyMessageParameters(key: string): readonly string[] | null {
+  if (key === 'structuralGlyphs.tooltip') return ['entity', 'kind'];
+  if (STRUCTURAL_GLYPH_KEY.test(key)) return [];
   if (Object.hasOwn(retainedCatalogueShape, key)) {
     return retainedCatalogueShape[key as keyof typeof retainedCatalogueShape];
   }
@@ -355,6 +361,10 @@ export function lazyMessageParameters(key: string): readonly string[] | null {
   if (key.startsWith('settings.ifcFederation.')) {
     const tail = key.slice('settings.ifcFederation.'.length);
     return Object.hasOwn(ifcFederationShape, tail) ? ifcFederationShape[tail as IfcFederationKey] : null;
+  }
+  if (key.startsWith('structuralDerive.')) {
+    const tail = key.slice('structuralDerive.'.length);
+    return Object.hasOwn(structuralDeriveShape, tail) ? structuralDeriveShape[tail as StructuralDeriveKey] : null;
   }
   if (key.startsWith('reviewWorkspace.')) {
     const tail = key.slice('reviewWorkspace.'.length);

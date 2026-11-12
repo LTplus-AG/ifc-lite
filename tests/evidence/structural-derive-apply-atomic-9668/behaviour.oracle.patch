@@ -1,6 +1,7 @@
-diff --git a/packages/create/src/in-store/structural-derive-apply.ts b/packages/create/src/in-store/structural-derive-apply.ts
---- a/packages/create/src/in-store/structural-derive-apply.ts
-+++ b/packages/create/src/in-store/structural-derive-apply.ts
+diff --git b/packages/create/src/in-store/structural-derive-apply.ts a/packages/create/src/in-store/structural-derive-apply.ts
+index db5e2d100f..9986c0f353 100644
+--- b/packages/create/src/in-store/structural-derive-apply.ts
++++ a/packages/create/src/in-store/structural-derive-apply.ts
 @@ -82,7 +82,7 @@ export function applyStructuralDerivation(
    // Resolve every anchor and run every builder check before the first write.
    const [first] = [...plan.curveMembers, ...plan.surfaceMembers, ...plan.nodes].map((item) => placementOf(item.storeyId).anchor);
@@ -9,4 +10,4 @@ diff --git a/packages/create/src/in-store/structural-derive-apply.ts b/packages/
 +  return editor.runAtomic((draft) => writePlan(draft, plan, first, placementOf, random));
  }
  
- /**
+ /** Same point; NaN matches NaN, since a non-finite point is the builder's refusal, not the plan check's. */

@@ -25,6 +25,7 @@
  * Pure: no I/O, no parser access — operates entirely through the editor.
  */
 
+import { assertActivitySchema, assertEnum } from './_structural-activity.js';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { vecCross, vecNorm, assertFinitePoint3 } from '../ifc-creator-math.js';
 import type { Point3D } from '../types.js';
@@ -38,6 +39,7 @@ export type StructuralCurveMemberType =
 export interface StructuralCurveMemberInStoreParams {
   Start: [number, number, number];
   End: [number, number, number];
+  Type?: 'IfcStructuralCurveMember' | 'IfcStructuralCurveMemberVarying';
   PredefinedType?: StructuralCurveMemberType;
   Name?: string;
   Description?: string;
@@ -75,6 +77,8 @@ export function addStructuralCurveMemberToStore(
   anchor: SpatialAnchor,
   params: StructuralCurveMemberInStoreParams,
 ): StructuralCurveMemberBuildResult {
+  assertActivitySchema(anchor, 'addStructuralCurveMemberToStore');
+  assertEnum('addStructuralCurveMemberToStore', 'Type', params.Type, ['IfcStructuralCurveMember', 'IfcStructuralCurveMemberVarying']);
   const predefinedType = params.PredefinedType ?? 'NOTDEFINED';
   if (predefinedType === 'USERDEFINED' && !params.ObjectType) {
     throw new Error('addStructuralCurveMemberToStore: ObjectType is required when PredefinedType is USERDEFINED');
@@ -126,7 +130,7 @@ export function addStructuralCurveMemberToStore(
     [`#${topologyRepId}`],
   ]).expressId;
 
-  const memberId = editor.addEntity('IfcStructuralCurveMember', [
+  const attrs: Parameters<StoreEditor['addEntity']>[1] = [
     productGuid(params, anchor.guidRandom),
     ownerHistoryRef(anchor.ownerHistoryId),
     params.Name ?? 'Structural Curve Member',
@@ -136,7 +140,10 @@ export function addStructuralCurveMemberToStore(
     `#${productShapeId}`,
     `.${predefinedType}.`,
     ...(anchor.schema === 'IFC2X3' ? [] : [`#${axisDirectionId}`]), // Axis (IFC4+)
-  ]).expressId;
+  ];
+  const memberId = params.Type === 'IfcStructuralCurveMemberVarying'
+    ? editor.addEntity('IfcStructuralCurveMemberVarying', attrs).expressId
+    : editor.addEntity('IfcStructuralCurveMember', attrs).expressId;
 
   return {
     memberId,

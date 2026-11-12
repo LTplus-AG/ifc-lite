@@ -17,17 +17,16 @@
  * Every load group is shown at once: the viewer has no load group or load
  * case selection. Arrow lengths are relative within each load group.
  *
- * Clicking a glyph selects its connection or activity as a viewport click
- * selects an element (`selectPickedGlobalId`).
+ * Clicking a glyph selects its connection or activity through `onSelect`,
+ * which the eager gate supplies: importing the viewport's click selection
+ * from this lazy chunk would split those eager modules into chunks of their own.
  */
 
 import { createPortal } from 'react-dom';
 import { useEffect, useId, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
-import { toGlobalIdFromModels } from '@/store/globalId';
 import { useTranslation } from '@/i18n';
 import { useSceneLayer, useSceneProjector } from '@/components/viewport-ui/scene';
-import { selectPickedGlobalId } from '../viewport-selection';
 import { glyphPath, type Project } from './structural-glyph-paths';
 import { structuralGlyphGroups, type GlyphStyle, type SourceGroup } from './structural-glyph-groups';
 
@@ -46,7 +45,12 @@ const STROKE: Record<GlyphStyle, string> = {
  */
 const HIT_WIDTH = 5;
 
-export default function StructuralGlyphOverlay() {
+export interface StructuralGlyphOverlayProps {
+  /** Select a glyph's source entity, as a viewport click selects an element. */
+  onSelect: (modelId: string, expressId: number) => void;
+}
+
+export default function StructuralGlyphOverlay({ onSelect }: StructuralGlyphOverlayProps) {
   const { t, revision } = useTranslation();
   const models = useViewerStore((s) => s.models);
   const legacyStore = useViewerStore((s) => s.ifcDataStore);
@@ -100,9 +104,6 @@ export default function StructuralGlyphOverlay() {
 
   if (!svgLayer || groups.length === 0) return null;
 
-  const select = (group: SourceGroup) =>
-    selectPickedGlobalId(toGlobalIdFromModels(useViewerStore.getState().models, group.modelId, group.expressId));
-
   return createPortal(
     <g data-structural-glyphs fill="none" strokeLinecap="round" strokeLinejoin="round">
       {groups.map((group) => (
@@ -112,7 +113,7 @@ export default function StructuralGlyphOverlay() {
           data-structural-glyph={group.style}
           data-express-id={group.expressId}
           className="cursor-pointer"
-          onClick={(event) => { event.stopPropagation(); select(group); }}
+          onClick={(event) => { event.stopPropagation(); onSelect(group.modelId, group.expressId); }}
         >
           <path stroke={STROKE[group.style]} strokeWidth={1.75} style={{ pointerEvents: 'none' }} />
           <path stroke="transparent" strokeWidth={HIT_WIDTH} style={{ pointerEvents: 'stroke' }}>

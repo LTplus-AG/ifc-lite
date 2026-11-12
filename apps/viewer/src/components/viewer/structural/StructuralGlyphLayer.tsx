@@ -13,8 +13,14 @@
 import { lazy, Suspense, useMemo } from 'react';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
+import { toGlobalIdFromModels } from '@/store/globalId';
+import { selectPickedGlobalId } from '../viewport-selection';
 
 const StructuralGlyphOverlay = lazy(() => import('./StructuralGlyphOverlay'));
+
+/** A glyph click selects its connection or activity, as a viewport click selects an element. */
+const selectGlyphSource = (modelId: string, expressId: number) =>
+  selectPickedGlobalId(toGlobalIdFromModels(useViewerStore.getState().models, modelId, expressId));
 
 /**
  * The structural point, curve and surface connections and actions: what can
@@ -52,7 +58,7 @@ export function StructuralGlyphLayer() {
   if (!present) return null;
   return (
     <Suspense fallback={null}>
-      <StructuralGlyphOverlay />
+      <StructuralGlyphOverlay onSelect={selectGlyphSource} />
     </Suspense>
   );
 }

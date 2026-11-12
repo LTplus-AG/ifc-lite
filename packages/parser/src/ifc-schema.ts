@@ -10,7 +10,7 @@ import { getCanonicalEntityName, type SchemaEntityNameSnapshot } from './schema-
  * Do NOT hardcode entity types or attributes here; regenerate instead.
  */
 
-import { SCHEMA_REGISTRY, getAllAttributesForEntity, isKnownEntity, getInheritanceChainForEntity, getEntityMetadata } from './generated/schema-registry.js';
+import { getSchemaRegistry, getAllAttributesForEntity, isKnownEntity, getInheritanceChainForEntity, getEntityMetadata } from './generated/schema-registry.js';
 import { getSchemaRegistryForVersion } from './generated/schema-registry-by-version.js';
 import { schemaFromIdentifier } from './source-header.js';
 import { ENTITIES_IFC2X3, ENTITIES_IFC4_EXPRESS, ENTITIES_IFC4X3, IFC_DATA_TYPES, type IfcEntityInfo } from '@ifc-lite/data';
@@ -107,12 +107,22 @@ export function resolveEntityNameAlias(type: string): string {
 // None of the pin's 776 ENTITY names appears in any of these tables, so the
 // subtraction cannot change an IFC4 answer — and could not reject a pinned
 // class even if it did, because `isKnownType` falls back to `isKnownEntity`.
-const NON_ENTITY_NAMES_UPPER: ReadonlySet<string> = new Set([
-    ...IFC_DATA_TYPES.map(t => t.name.toUpperCase()),
-    ...Object.keys(SCHEMA_REGISTRY.types).map(n => n.toUpperCase()),
-    ...Object.keys(SCHEMA_REGISTRY.enums).map(n => n.toUpperCase()),
-    ...Object.keys(SCHEMA_REGISTRY.selects).map(n => n.toUpperCase()),
-]);
+// Built on first use: it reads the IFC4 pin's registry, which is decoded only
+// when something first asks (a bundle that loads this module but never asks
+// pays nothing for it).
+let nonEntityNamesUpper: ReadonlySet<string> | undefined;
+function getNonEntityNamesUpper(): ReadonlySet<string> {
+    if (nonEntityNamesUpper === undefined) {
+        const pin = getSchemaRegistry();
+        nonEntityNamesUpper = new Set([
+            ...IFC_DATA_TYPES.map(t => t.name.toUpperCase()),
+            ...Object.keys(pin.types).map(n => n.toUpperCase()),
+            ...Object.keys(pin.enums).map(n => n.toUpperCase()),
+            ...Object.keys(pin.selects).map(n => n.toUpperCase()),
+        ]);
+    }
+    return nonEntityNamesUpper;
+}
 
 /**
  * Entity-metadata lookup across the bundled schema union (2X3 + 4 + 4X3) —
@@ -128,7 +138,7 @@ const NON_ENTITY_NAMES_UPPER: ReadonlySet<string> = new Set([
  */
 function getEntityInfoAcrossSchemas(type: string): IfcEntityInfo | undefined {
     const upper = type.toUpperCase();
-    if (NON_ENTITY_NAMES_UPPER.has(upper)) return undefined;
+    if (getNonEntityNamesUpper().has(upper)) return undefined;
     return ENTITY_INFO_BY_UPPER.get(upper);
 }
 

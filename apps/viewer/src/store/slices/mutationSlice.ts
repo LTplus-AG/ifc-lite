@@ -829,7 +829,8 @@ function resolveEditReadContext(
  * keep `mutationViews.get`: inspection must not register edit state (#8947).
  */
 function writeView(get: () => ViewerState, modelId: string): MutablePropertyView | null {
-  return modelEditTarget(get(), modelId)?.view ?? null;
+  const state = get();
+  return state.mutationViews.get(modelId) ?? modelEditTarget(state, modelId)?.view ?? null;
 }
 
 /**

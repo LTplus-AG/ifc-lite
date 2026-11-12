@@ -14,7 +14,8 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { cleanup, click, render } from '@/test/render.js';
 import { viewportLightingEn } from '@/i18n/catalogues/viewport-lighting.en';
-import { MODEL_FILE_EXTENSIONS } from '@/services/supported-model-files';
+import { englishCatalogue } from '@/i18n/en';
+import { DROP_FORMAT_GROUPS, MODEL_FILE_EXTENSIONS, REFERENCE_FILE_EXTENSIONS } from '@/services/supported-model-files';
 import { ViewportWelcomeCard } from './ViewportWelcomeCard.js';
 import { fieldTelemetry } from '@/lib/perf/fieldTelemetryLoader.js';
 
@@ -91,11 +92,26 @@ describe('welcome card actions (#5840)', () => {
     assert.equal(buttonWithText(card, DEMO_LABEL ?? '')?.disabled, true);
   });
 
-  it('names model files, not ".ifc", and lists every supported format', () => {
+  it('names model files, not ".ifc", and lists every format a drop opens, by family', () => {
     const open = viewportLightingEn['viewportLighting.container.emptyState.openButton.open'] as string;
     assert.doesNotMatch(open, /\.ifc\b/, 'the picker accepts more than .ifc');
     const card = renderCard(() => Promise.resolve());
-    const text = card.textContent ?? '';
-    for (const ext of MODEL_FILE_EXTENSIONS) assert.ok(text.includes(ext), `${ext} is listed on the card`);
+    const list = card.querySelector('dl[data-welcome-formats]');
+    assert.ok(list, 'the formats render as a definition list');
+    const rows = [...list.querySelectorAll('dt')].map((dt) => [dt.textContent, dt.nextElementSibling?.textContent ?? '']);
+    assert.deepEqual(rows.map(([label]) => label), DROP_FORMAT_GROUPS.map((group) => englishCatalogue[group.labelKey]),
+      'one labelled row per family, in the order the module defines');
+    const listed = rows.flatMap(([, formats]) => formats.match(/\.\w+/g) ?? []);
+    for (const ext of [...MODEL_FILE_EXTENSIONS, ...REFERENCE_FILE_EXTENSIONS, '.splat']) {
+      assert.equal(listed.filter((e) => e === ext).length, 1, `${ext} is listed once`);
+    }
+    // `.xml` alone does not say which XML: the row names the format.
+    assert.equal(rows.find(([, formats]) => formats.includes('.xml'))?.[1], 'LandXML (.xml)');
+    for (const unlisted of ['.3dm', '.tif']) assert.ok(!listed.includes(unlisted), `${unlisted} is not advertised`);
+  });
+
+  it('offers no format list without WebGPU, where a drop cannot open anything', () => {
+    const card = renderCard(() => Promise.resolve(), false);
+    assert.equal(card.querySelector('[data-welcome-formats]'), null);
   });
 });

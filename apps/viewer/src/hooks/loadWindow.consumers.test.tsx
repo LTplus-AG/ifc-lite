@@ -167,3 +167,28 @@ it('viewport status summary counts against the FINAL store after a swap inside t
   await settleLoadWindow();
   assert.equal(hidden.at(-1), 2, 'settled: both hidden walls of the final store (the partial store has only one)');
 });
+
+it('multi-file open: A\'s overlays and hidden pill appear at A\'s settle while B, started at once, is held', async () => {
+  const storeA = await parse(), storeB = await parse();
+  useViewerStore.setState({ mutationViews: new Map(), mutationVersion: 0, hiddenEntities: new Set([10]), activeModelId: 'A' });
+  let overlays: string[][] = [];
+  let hidden: number[] = [];
+  function Probe() {
+    overlays.push(useSymbolicActiveStores().map((x) => x.modelId));
+    hidden.push(useViewportStatusSummary().objectCounts.hidden);
+    return null;
+  }
+  // loadFilesSequentially: file A starts the window.
+  act(() => useViewerStore.setState({ loading: true, ifcDataStore: storeA, models: new Map([['A', federated('A', storeA, 'pending')]]) }));
+  render(<Probe />);
+  assert.deepEqual(overlays.at(-1), [], 'A is loading: held');
+  // A finishes and file B starts at once; the store never stops loading.
+  act(() => useViewerStore.setState({ models: new Map([['A', federated('A', storeA, 'complete')], ['B', federated('B', storeB, 'pending')]]) }));
+  await settleLoadWindow();
+  assert.equal(useViewerStore.getState().loading, true, 'B is still loading');
+  assert.deepEqual(overlays.at(-1), ['A'], 'A settled: its overlays appear; B is held');
+  assert.equal(hidden.at(-1), 1, 'A\'s hidden pill appears');
+  act(() => useViewerStore.setState({ models: new Map([['A', federated('A', storeA, 'complete')], ['B', federated('B', storeB, 'complete')]]), loading: false }));
+  await settleLoadWindow();
+  assert.deepEqual(overlays.at(-1), ['A', 'B']);
+});

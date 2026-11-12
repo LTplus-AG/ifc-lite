@@ -510,5 +510,19 @@ describe('StatusBar — a federated add holds only the model that is loading', (
     assert.equal(elementsText(container), '8 elements', 'settled: A and B');
     assert.equal(hiddenPill(container), '1');
   });
+
+  it('multi-file open: A\'s count appears at A\'s settle while B, started at once, is held', async () => {
+    const storeB = await parseFixture();
+    act(() => useViewerStore.setState({ loading: true, models: new Map([['A', federated('A', store, 0, 'pending') as never]]), ifcDataStore: store, activeModelId: 'A' } as never));
+    const container = render();
+    assert.equal(elementsText(container), '— elements', 'A is loading');
+    act(() => useViewerStore.setState({ models: new Map([['A', federated('A', store, 0, 'complete') as never], ['B', federated('B', storeB, 1000, 'pending') as never]]) }));
+    await settleLoadWindow();
+    assert.equal(useViewerStore.getState().loading, true);
+    assert.equal(elementsText(container), '4 elements', 'A settled: its count, although B started loading before its frame');
+    act(() => useViewerStore.setState({ models: new Map([['A', federated('A', store, 0, 'complete') as never], ['B', federated('B', storeB, 1000, 'complete') as never]]), loading: false }));
+    await settleLoadWindow();
+    assert.equal(elementsText(container), '8 elements');
+  });
 });
 

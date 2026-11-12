@@ -25,6 +25,7 @@ export const propertyEditorDe = {
     "other": "{count} Exemplare können die Änderung übernehmen, sofern sie nicht lokal überschrieben sind."
   },
   "propertyEditor.inline.applyToType": "Auf Typ anwenden",
+  "propertyEditor.inline.overrideOnElement": "Nur an diesem Bauteil überschreiben",
   "propertyEditor.inline.keepEditing": "Weiter bearbeiten",
   "propertyEditor.valueType.string": "Zeichenkette",
   "propertyEditor.valueType.label": "Bezeichnung",

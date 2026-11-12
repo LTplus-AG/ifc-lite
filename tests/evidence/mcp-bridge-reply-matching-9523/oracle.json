@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "packages/mcp/src/bridge/session.ts",
+  "mutation": "tests/evidence/mcp-bridge-reply-matching-9523/behaviour.oracle.patch",
+  "test": "packages/mcp/src/bridge/bridge.test.ts",
+  "why": "#9523: a reply naming an unknown or earlier call must not answer the pending call."
+}

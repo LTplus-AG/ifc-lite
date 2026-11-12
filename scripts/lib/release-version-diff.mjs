@@ -71,6 +71,18 @@ function versionBumpProblem(before, after) {
 }
 
 /**
+ * pnpm-workspace.yaml's `packages` globs, each one directory level deep. Only
+ * a workspace package gets a changesets bump, so a package.json/CHANGELOG.md
+ * pair anywhere else (a test fixture, a docs sample) is not a release file
+ * (#9783 review). A test pins this list to pnpm-workspace.yaml.
+ */
+export const WORKSPACE_PACKAGE_GLOBS = ['packages/*', 'apps/*', 'examples/*'];
+const isWorkspacePackageDir = (dir) => WORKSPACE_PACKAGE_GLOBS.some((g) => {
+  const [parent] = g.split('/');
+  return posix.dirname(dir) === parent && !dir.slice(parent.length + 1).includes('/');
+});
+
+/**
  * What in the PR's diff is not a version bump. Empty means lean is allowed.
  *
  * @param {{ status: string, path: string }[]} entries  `git diff --name-status`
@@ -95,9 +107,11 @@ export function diffProblems(entries, git) {
     } else if (name === 'CHANGELOG.md') {
       if (status !== 'M' && status !== 'A') problem = `status ${status}`;
       else if (path === 'CHANGELOG.md') problem = 'changesets writes no CHANGELOG for the private root';
+      else if (!isWorkspacePackageDir(posix.dirname(path))) problem = 'not in a workspace package (pnpm-workspace.yaml), so changesets did not write it';
       else if (!changed.has(sibling(path, 'package.json'))) problem = 'its package.json did not change, so changesets did not write it';
     } else if (name === 'package.json') {
       if (status !== 'M') problem = `status ${status}`;
+      else if (path !== 'package.json' && !isWorkspacePackageDir(posix.dirname(path))) problem = 'not a workspace package (pnpm-workspace.yaml), so changesets did not bump it';
       else if (path !== 'package.json' && !changed.has(sibling(path, 'CHANGELOG.md'))) problem = 'no CHANGELOG.md beside it changed, so changesets did not bump it';
       else {
         try {

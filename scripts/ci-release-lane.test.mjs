@@ -31,7 +31,7 @@ import {
 import { QUEUE_FULL_CHECKS, RELEASE_HEAD_REF } from './lib/release-queue-route.mjs';
 import { parseNodeTap } from './lib/shard-retry.mjs';
 import { boundedSpawnSync } from './lib/bounded-process.mjs';
-import { diffProblems } from './lib/release-version-diff.mjs';
+import { WORKSPACE_PACKAGE_GLOBS, diffProblems } from './lib/release-version-diff.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..');
@@ -282,7 +282,7 @@ test('DIFF: a CHANGELOG and its package.json move together, or the diff is not a
   const files = { 'tests/fixtures/foo/package.json': { before: pkg('1.0.0'), after: pkg('1.0.1') } };
   // A version bump with no CHANGELOG is not changesets' doing: a fixture, say.
   assert.deepEqual(diffProblems([{ status: 'M', path: 'tests/fixtures/foo/package.json' }], fakeGit(files)), [
-    'tests/fixtures/foo/package.json: no CHANGELOG.md beside it changed, so changesets did not bump it',
+    'tests/fixtures/foo/package.json: not a workspace package (pnpm-workspace.yaml), so changesets did not bump it',
   ]);
   // A CHANGELOG edit with no bump: the root one, or a package that did not move.
   assert.deepEqual(diffProblems([{ status: 'M', path: 'packages/x/CHANGELOG.md' }], fakeGit({})), ['packages/x/CHANGELOG.md: its package.json did not change, so changesets did not write it']);
@@ -334,15 +334,36 @@ test('DIFF: a deleted .changeset file that changesets ignores is not a consumed 
   assert.deepEqual(diffProblems([{ status: 'D', path: '.changeset/brave-cats-sing.md' }], fakeGit({})), []);
 });
 
+test('DIFF: a package.json/CHANGELOG.md pair outside a workspace package is not a release bump (#9783 review)', () => {
+  for (const dir of ['tests/fixtures/foo', 'docs/sample', 'packages/x/fixtures/y', 'apps']) {
+    const files = { [`${dir}/package.json`]: { before: pkg('1.0.0'), after: pkg('1.0.1') } };
+    const problems = diffProblems([{ status: 'M', path: `${dir}/package.json` }, { status: 'M', path: `${dir}/CHANGELOG.md` }], fakeGit(files));
+    assert.deepEqual(problems, [
+      `${dir}/package.json: not a workspace package (pnpm-workspace.yaml), so changesets did not bump it`,
+      `${dir}/CHANGELOG.md: not in a workspace package (pnpm-workspace.yaml), so changesets did not write it`,
+    ], dir);
+  }
+  for (const dir of ['packages/x', 'apps/viewer', 'examples/basic']) {
+    const files = { [`${dir}/package.json`]: { before: pkg('1.0.0'), after: pkg('1.0.1') } };
+    assert.deepEqual(diffProblems([{ status: 'M', path: `${dir}/package.json` }, { status: 'M', path: `${dir}/CHANGELOG.md` }], fakeGit(files)), [], dir);
+  }
+});
+
+test('DIFF: the workspace package globs are pnpm-workspace.yaml\'s', () => {
+  const workspace = parse(readFileSync(new URL('../pnpm-workspace.yaml', import.meta.url), 'utf8'));
+  assert.deepEqual([...WORKSPACE_PACKAGE_GLOBS].sort(), [...workspace.packages].sort());
+  for (const g of WORKSPACE_PACKAGE_GLOBS) assert.match(g, /^[a-z]+\/\*$/, `${g}: the rule handles only one-level globs`); // @source-text-assertion-ok subject is the exported glob list
+});
+
 test('DIFF: everything that is not a version bump is named', () => {
   // Each package.json moves `version` and has a changed CHANGELOG.md beside
   // it, so it is rejected for what else it changed, not for a missing pair or
   // an unmoved version (#9783 review: test-that-cannot-fail).
   const files = {
-    'a/package.json': { before: pkg('1.0.0'), after: pkg('1.1.0', { exports: { '.': './dist/index.js' } }) },
-    'b/package.json': { before: pkg('1.0.0'), after: JSON.stringify({ ...JSON.parse(pkg('1.1.0')), dependencies: { '@ifc-lite/core': 'workspace:*', lodash: '^4.1.0' } }) },
-    'c/package.json': { before: pkg('1.0.0'), after: JSON.stringify({ ...JSON.parse(pkg('1.1.0')), dependencies: { '@ifc-lite/core': 'file:../x', lodash: '^4.0.0' } }) },
-    'd/package.json': { before: '{', after: '{}' },
+    'packages/a/package.json': { before: pkg('1.0.0'), after: pkg('1.1.0', { exports: { '.': './dist/index.js' } }) },
+    'packages/b/package.json': { before: pkg('1.0.0'), after: JSON.stringify({ ...JSON.parse(pkg('1.1.0')), dependencies: { '@ifc-lite/core': 'workspace:*', lodash: '^4.1.0' } }) },
+    'packages/c/package.json': { before: pkg('1.0.0'), after: JSON.stringify({ ...JSON.parse(pkg('1.1.0')), dependencies: { '@ifc-lite/core': 'file:../x', lodash: '^4.0.0' } }) },
+    'packages/d/package.json': { before: '{', after: '{}' },
   };
   const entries = [
     { status: 'A', path: '.changeset/new.md' },
@@ -350,11 +371,11 @@ test('DIFF: everything that is not a version bump is named', () => {
     { status: 'M', path: 'scripts/rust-major-offset.mjs' },
     { status: 'D', path: 'packages/x/CHANGELOG.md' },
     { status: 'A', path: 'packages/y/package.json' },
-    ...['a', 'b', 'c', 'd'].flatMap((p) => [{ status: 'M', path: `${p}/package.json` }, { status: 'M', path: `${p}/CHANGELOG.md` }]),
+    ...['a', 'b', 'c', 'd'].flatMap((p) => [{ status: 'M', path: `packages/${p}/package.json` }, { status: 'M', path: `packages/${p}/CHANGELOG.md` }]),
     { status: 'A', path: 'docs/CHANGELOG.md' },
   ];
   const problems = diffProblems(entries, fakeGit(files));
-  const unreadable = problems.find((l) => l.startsWith('d/package.json: unreadable (')); // @source-text-assertion-ok subject is the returned problem list
+  const unreadable = problems.find((l) => l.startsWith('packages/d/package.json: unreadable (')); // @source-text-assertion-ok subject is the returned problem list
   assert.ok(unreadable, problems.join('\n'));
   assert.deepEqual(problems.filter((l) => l !== unreadable), [
     '.changeset/new.md: a changeset may only be consumed (deleted)',
@@ -362,10 +383,10 @@ test('DIFF: everything that is not a version bump is named', () => {
     'scripts/rust-major-offset.mjs: not a release file',
     'packages/x/CHANGELOG.md: status D',
     'packages/y/package.json: status A',
-    'a/package.json: `exports` changed',
-    'b/package.json: `dependencies` changed',
-    'c/package.json: `dependencies` changed',
-    'docs/CHANGELOG.md: its package.json did not change, so changesets did not write it',
+    'packages/a/package.json: `exports` changed',
+    'packages/b/package.json: `dependencies` changed',
+    'packages/c/package.json: `dependencies` changed',
+    'docs/CHANGELOG.md: not in a workspace package (pnpm-workspace.yaml), so changesets did not write it',
   ]);
   assert.deepEqual(diffProblems([], fakeGit({})), ['the diff is empty or unreadable']);
 });

@@ -233,7 +233,7 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
    */
   const loadsOf = (activity: StructuralActivityInfo, applied: StructuralLoadInfo): StructuralLoadInfo[] | null => {
     const subsequent = activity.subsequentLoads ?? [];
-    return subsequent.every((l) => l) ? [applied, ...(subsequent as StructuralLoadInfo[])] : null;
+    return subsequent.every((l): l is StructuralLoadInfo => !!l) ? [applied, ...subsequent] : null;
   };
 
   /**

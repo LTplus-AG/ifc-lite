@@ -46,7 +46,7 @@ export const agentBridgeEn = {
   'agentBridge.panel.cancelled': 'cancelled',
   'agentBridge.panel.duration': '{ms} ms',
 
-  'agentBridge.failure.unreachable': 'Nothing answered on port {port}. Start the bridge on this computer with the command below, check the port, then pair with the code it prints. If it is running, it may have refused the connection because too many tabs were trying to pair: close them and try again.',
+  'agentBridge.failure.unreachable': 'Could not connect to the bridge on port {port}, or it dropped the connection. Start the bridge on this computer with the command below, check the port, then pair with the code it prints. If it is running, it may have refused the connection because too many tabs were trying to pair: close them and try again.',
   'agentBridge.failure.origin': 'Viewer not on ifclite.com? Start the bridge with --bridge-viewer-url {origin} so it accepts this page.',
   'agentBridge.failure.permissionDenied': 'The browser blocked the connection to this computer. In Chrome, open this site\'s settings (the icon left of the address), allow "Local network access", then try again.',
   'agentBridge.failure.pairingFailed': 'The bridge did not accept this code. A code works once and a new one is issued after each pairing: ask the agent for a fresh link (bridge_status) or copy the latest code from the bridge.',

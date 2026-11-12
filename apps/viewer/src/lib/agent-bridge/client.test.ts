@@ -140,6 +140,8 @@ describe('local agent bridge client: handshake (#9523)', () => {
     // The limits validateToolDescriptors applies, stated so a limit change shows up here by name.
     assert.ok(new TextEncoder().encode(JSON.stringify(hello.tools)).byteLength <= BRIDGE_LIMITS.maxDescriptorBytes);
     assert.ok(hello.tools.every((tool) => tool.description.length <= BRIDGE_LIMITS.maxDescriptionLength));
+    const helloBytes = new TextEncoder().encode(h.socket().sent[0]).byteLength;
+    assert.ok(helloBytes < BRIDGE_LIMITS.maxUnpairedBytes / 4, `the hello (${helloBytes} bytes) is well under the unpaired-connection budget`);
     assert.deepEqual(hello.client, { name: 'ifc-lite viewer', version: 'test' });
   });
 
@@ -360,6 +362,21 @@ describe('local agent bridge client: endings (#9523)', () => {
       assert.deepEqual(h.client.status, expected);
     });
   }
+
+  it('a socket the bridge drops before welcome with no reason (1006) is a failed connection', () => {
+    const h = harness();
+    h.client.connect();
+    h.socket().open();
+    h.socket().drop(1006);
+    assert.deepEqual(h.client.status, { kind: 'error', code: 'unreachable', port: 21517 });
+  });
+
+  it('the hello goes out in the open handler itself, with nothing awaited first', () => {
+    const h = harness();
+    h.client.connect();
+    h.socket().open();
+    assert.equal(h.socket().sent.length, 1, 'hello was sent synchronously on open');
+  });
 
   it('an error frame decides the outcome when the close code is lost', () => {
     const h = harness();

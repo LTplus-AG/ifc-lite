@@ -40,7 +40,7 @@ export const agentBridgeFr = {
   "agentBridge.panel.error": "erreur {code}",
   "agentBridge.panel.cancelled": "annulé",
   "agentBridge.panel.duration": "{ms} ms",
-  "agentBridge.failure.unreachable": "Rien n’a répondu sur le port {port}. Démarrez le pont sur cet ordinateur avec la commande ci-dessous, vérifiez le port, puis appairez avec le code affiché. S’il fonctionne déjà, il a peut-être refusé la connexion parce que trop d’onglets tentaient de s’appairer : fermez-les et réessayez.",
+  "agentBridge.failure.unreachable": "Connexion impossible au pont sur le port {port}, ou il a coupé la connexion. Démarrez le pont sur cet ordinateur avec la commande ci-dessous, vérifiez le port, puis appairez avec le code affiché. S’il fonctionne déjà, il a peut-être refusé la connexion parce que trop d’onglets tentaient de s’appairer : fermez-les et réessayez.",
   "agentBridge.failure.origin": "Visionneuse hors de ifclite.com ? Démarrez le pont avec --bridge-viewer-url {origin} pour qu’il accepte cette page.",
   "agentBridge.failure.permissionDenied": "Le navigateur a bloqué la connexion à cet ordinateur. Dans Chrome, ouvrez les paramètres du site (l’icône à gauche de l’adresse), autorisez l’accès au réseau local, puis réessayez.",
   "agentBridge.failure.pairingFailed": "Le pont n’a pas accepté ce code. Un code ne sert qu’une fois et un nouveau est émis après chaque appairage : demandez un nouveau lien à l’agent (bridge_status) ou copiez le dernier code depuis le pont.",

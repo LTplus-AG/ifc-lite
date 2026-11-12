@@ -713,3 +713,42 @@ fn disjoint_outer_bounds_are_regions_not_holes_issue_9668() {
     ).replace("IFCFACESURFACE((#6),", "IFCFACESURFACE((#6,#21),");
     assert!((signed_xy_area(&meshed(&source, 18)) - 100.0).abs() < 1e-5);
 }
+
+/// `surface_member` items on an ordinary product: an IfcBuildingElementProxy
+/// whose Body representation holds the face.
+fn proxy_with(face_source: &str) -> String {
+    face_source
+        .replace("IFCTOPOLOGYREPRESENTATION($,'Reference','Face',", "IFCSHAPEREPRESENTATION($,'Body',$,")
+        .replace(
+            "#18=IFCSTRUCTURALSURFACEMEMBER('0000000000000000000000',$,'Surface',$,$,$,#17,.SHELL.,0.2);",
+            "#18=IFCBUILDINGELEMENTPROXY('0000000000000000000000',$,'Proxy',$,$,$,#17,$,$);",
+        )
+}
+
+#[test]
+fn bare_face_on_another_product_stays_unsupported_issue_9668() {
+    // A bare IfcFace has no processor outside a structural member (main: an error).
+    let bare = proxy_with(&surface_member(true, false).replace("#15=IFCFACESURFACE((#6),#14,.T.);", "#15=IFCFACE((#6));"));
+    let mut decoder = EntityDecoder::new(&bare);
+    let proxy = decoder.decode_by_id(18).unwrap();
+    assert_eq!(proxy.ifc_type, IfcType::IfcBuildingElementProxy);
+    let error = GeometryRouter::new().process_element(&proxy, &mut decoder).unwrap_err();
+    assert!(error.to_string().contains("Unsupported representation type"), "{error}");
+}
+
+#[test]
+fn curve_bounded_plane_face_on_another_product_stays_empty_issue_9668() {
+    // Main meshes nothing for a face surface on an IfcCurveBoundedPlane.
+    let bounded = proxy_with(&surface_member(true, false).replace("#14=IFCPLANE(#13);", "#14=IFCCURVEBOUNDEDPLANE(#19,$,());#19=IFCPLANE(#13);"));
+    assert!(meshed(&bounded, 18).is_empty());
+}
+
+#[test]
+fn two_outer_bounds_on_another_product_keep_main_rule_issue_9668() {
+    // Main keeps the last outer bound as the ring and makes the earlier one a
+    // hole, so only the 2 x 2 square meshes (area 4, measured on main).
+    let face = surface_member(true, true).replace("#12=IFCFACEBOUND(#11,.T.);", "#12=IFCFACEOUTERBOUND(#11,.T.);");
+    assert!((signed_xy_area(&meshed(&proxy_with(&face), 18)) - 4.0).abs() < 1e-5);
+    // The same face on a structural member is two regions, 100 + 4 (AxisVM writes slabs so).
+    assert!((signed_xy_area(&meshed(&face, 18)) - 104.0).abs() < 1e-5);
+}

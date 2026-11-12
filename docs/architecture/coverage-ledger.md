@@ -239,7 +239,7 @@ Columns:
 | IfcExternallyDefinedSymbol | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcExternallyDefinedTextFont | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcExtrudedAreaSolid | ✅ | ✅ | — | ✅ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
-| IfcFace | ✅ | ✅ | — | ✅ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
+| IfcFace | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
 | IfcFaceBasedSurfaceModel | ✅ | ✅ | — | ✅ | ❌ | ❌ | IFC4:✅ | — |
 | IfcFaceBound | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
 | IfcFaceOuterBound | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
@@ -964,7 +964,7 @@ Columns:
 | IfcExternalSpatialElement | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcExtrudedAreaSolid | ✅ | ✅ | — | ✅ | ✅ | ✅ | IFC2X3:✅ IFC4X3:✅ | apps/landing/samples/hello-wall.ifc |
 | IfcExtrudedAreaSolidTapered | ✅ | ✅ | — | ✅ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
-| IfcFace | ✅ | ✅ | — | ✅ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | rust/geometry/tests/fixtures/issue_1985_scaled_kinds.ifc |
+| IfcFace | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | rust/geometry/tests/fixtures/issue_1985_scaled_kinds.ifc |
 | IfcFaceBasedSurfaceModel | ✅ | ✅ | — | ✅ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcFaceBound | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcFaceOuterBound | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | rust/geometry/tests/fixtures/issue_1985_scaled_kinds.ifc |
@@ -1795,7 +1795,7 @@ Columns:
 | IfcExternalSpatialElement | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcExtrudedAreaSolid | ✅ | ✅ | — | ✅ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/bath_csg_solid.ifc |
 | IfcExtrudedAreaSolidTapered | ✅ | ✅ | — | ✅ | ❌ | ❌ | IFC4:✅ | — |
-| IfcFace | ✅ | ✅ | — | ✅ | ❌ | ❌ | IFC4:✅ | — |
+| IfcFace | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcFaceBasedSurfaceModel | ✅ | ✅ | — | ✅ | ❌ | ❌ | IFC4:✅ | — |
 | IfcFaceBound | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcFaceOuterBound | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |

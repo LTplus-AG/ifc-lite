@@ -41,9 +41,9 @@ pub(super) fn validated_product_shape(
         .map_err(|error| core_error(FailureSite::ProductShape, id, error))?;
     // Same admission as `representation::product_shape`: a bare IFC2X3
     // IfcProductRepresentation only on a structural member (#9668).
-    let bare_structural = shape.ifc_type == IfcType::IfcProductRepresentation
+    let bare_structural = || shape.ifc_type == IfcType::IfcProductRepresentation
         && element.ifc_type.is_subtype_of(IfcType::IfcStructuralMember);
-    if shape.ifc_type != IfcType::IfcProductDefinitionShape && !bare_structural {
+    if shape.ifc_type != IfcType::IfcProductDefinitionShape && !bare_structural() {
         return Err(shape_error(
             shape.id,
             ShapeError::NotAProductDefinitionShape(shape.ifc_type),

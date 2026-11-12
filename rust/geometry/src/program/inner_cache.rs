@@ -41,12 +41,20 @@ impl CacheReply {
 /// is lent by its owner on every step, so an owning walk can drive it.
 pub(super) struct CacheControl {
     offset: (f64, f64, f64),
+    /// Passed on to the item: see `ItemControl::of_structural_member`.
+    structural: bool,
     state: State,
 }
 
 impl CacheControl {
     pub(super) fn new(offset: (f64, f64, f64)) -> Self {
-        Self { offset, state: State::Begin }
+        Self { offset, structural: false, state: State::Begin }
+    }
+
+    /// The item belongs to a structural member (#9668).
+    pub(super) fn of_structural_member(mut self, structural: bool) -> Self {
+        self.structural = structural;
+        self
     }
 
     pub(super) fn stage(&self) -> std::result::Result<Option<ProgramStage>, ProgramError> {
@@ -88,7 +96,7 @@ impl CacheControl {
             (State::Begin, CacheReply::Begin(Ok(CacheAdmission::Hit(mesh)))) => State::Complete(Ok(mesh)),
             (State::Begin, CacheReply::Begin(Err(error))) => State::Complete(Err(error)),
             (State::Begin, CacheReply::Begin(Ok(CacheAdmission::Miss(context)))) => {
-                State::Child(context, ItemControl::new(self.offset))
+                State::Child(context, ItemControl::new(self.offset).of_structural_member(self.structural))
             }
             (State::Child(context, mut item), CacheReply::Item(step)) => {
                 item.accept(step, router);

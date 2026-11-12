@@ -62,13 +62,22 @@ pub(super) struct ItemResult {
 pub(super) struct ItemControl {
     pub(super) retained: Option<RetainedSelection>,
     offset: (f64, f64, f64),
+    /// Set by the product walk for a structural member: its face items take
+    /// `structural_face_plan::lower_member_face` (#9668).
+    structural: bool,
     step: Option<ItemStep>,
 }
 
 impl ItemControl {
     pub(super) fn new(offset: (f64, f64, f64)) -> Self {
         let reports = ConstructionReports::default();
-        Self { retained: None, offset, step: Some(ItemStep::Source { phase: ItemPhase::LowerRtc, reports }) }
+        Self { retained: None, offset, structural: false, step: Some(ItemStep::Source { phase: ItemPhase::LowerRtc, reports }) }
+    }
+
+    /// An item of a structural member (see the `structural` field).
+    pub(super) fn of_structural_member(mut self, structural: bool) -> Self {
+        self.structural = structural;
+        self
     }
 
     pub(super) fn stage(&self) -> std::result::Result<Option<ProgramStage>, ProgramError> {
@@ -94,7 +103,7 @@ impl ItemControl {
             ItemStep::Source { phase, reports } => {
                 if let Some(selection) = &self.retained {
                     selection.execute(item, router, decoder)
-                } else { execute_source(item, self.offset, phase, reports, router, decoder) }
+                } else { execute_source(item, self.offset, self.structural, phase, reports, router, decoder) }
             }
             ItemStep::Ready(ready) => ItemStep::Complete(ready.execute()),
             ItemStep::Boolean { machine, reports } => execute_boolean(item, machine, reports, router, decoder),
@@ -139,6 +148,14 @@ impl ItemControl {
     }
 }
 
+/// A structural member's face item takes the member-face processor when its
+/// type's processor is the built-in one or there is none (#9668); a
+/// registered override still wins.
+fn is_member_face(item: &DecodedEntity, router: &GeometryRouter) -> bool {
+    matches!(item.ifc_type, IfcType::IfcFace | IfcType::IfcFaceSurface | IfcType::IfcAdvancedFace)
+        && matches!(router.processor_origin(&item.ifc_type), None | Some(crate::router::ProcessorOrigin::Builtin))
+}
+
 enum Lowered {
     Next(ItemPhase),
     Plan(Result<OwnedConstructor>, bool),
@@ -148,12 +165,20 @@ enum Lowered {
 fn execute_source(
     item: &DecodedEntity,
     offset: (f64, f64, f64),
+    structural: bool,
     phase: ItemPhase,
     prior: ConstructionReports,
     router: &GeometryRouter,
     decoder: &mut EntityDecoder,
 ) -> ItemStep {
-    let Some(processor) = router.processor_for(&item.ifc_type) else {
+    let member_face: std::rc::Rc<dyn crate::router::GeometryProcessor>;
+    let selected = if structural && is_member_face(item, router) {
+        member_face = std::rc::Rc::new(crate::processors::StructuralMemberFaceProcessor);
+        Some(&member_face)
+    } else {
+        router.processor_for(&item.ifc_type)
+    };
+    let Some(processor) = selected else {
         // No processor is registered for this type. Every `GeometryCategory`
         // with a real implementation is caught by the lookup; `MappedItem`
         // never reaches here (the gateway intercepts it first). So landing

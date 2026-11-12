@@ -656,6 +656,12 @@ selectedIds = new Set([id1, id2, id3]);
 renderer.render({ selectedIds });
 ```
 
+The renderer keeps the highlight of an unchanged selection between frames, so a
+large selection costs an orbit no more than a small one. It notices a new Set, a
+Set that grew or shrank, and, up to 4,096 ids, any edit made in place. Past that,
+swapping ids in place at the same count is picked up within a few frames rather
+than on the next one: pass a new Set for a large selection.
+
 ### Raycasting
 
 Scene raycasts and magnetic snapping include regular, batched, textured and

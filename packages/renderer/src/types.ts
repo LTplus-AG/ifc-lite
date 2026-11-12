@@ -259,7 +259,7 @@ export interface RenderOptions {
    */
   isolatedIds?: Set<number> | null;
   selectedId?: number | null;     // Currently selected mesh (for highlighting)
-  selectedIds?: Set<number>;      // Multi-selection support
+  selectedIds?: Set<number>;      // Multi-selection. Past 4,096 ids, pass a new Set (or change its size) to change it: a same-size in-place edit is seen within a few frames, not on the next (#9835)
   selectedItemId?: number;        // #4382: narrows selectedId's highlight to one representation item (geometryItemId); no effect on selectedIds
   /** `capHighlightKey(modelIndex, id)` → RGBA (0–1) painted over that element's section-cap polygons (selection / hover); compared by content each frame. */
   capHighlight?: ReadonlyMap<string, readonly [number, number, number, number]> | null;

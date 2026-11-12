@@ -17,6 +17,7 @@
 
 import type { MeshData } from '@ifc-lite/geometry';
 import { colorKey } from './chunk-grid.js';
+import { ENTITY_LANE_ID_SPAN } from './entity-color-table.js';
 import { BATCH_CONSTANTS } from './constants.js';
 import { MathUtils } from './math.js';
 import { MAX_PICK_MESH_CREATION } from './pick-mesh-budget.js';
@@ -50,9 +51,13 @@ export interface IndividualMeshGpu {
   rteOrigin: [number, number, number];
 }
 
-/** One GPU mesh standing for `pieces` same-coloured pieces of an entity. */
+/** One GPU mesh standing for `pieces` same-coloured pieces, of one entity or of a pooled selection (#9835). */
 export interface MergedMeshGpu extends IndividualMeshGpu {
-  /** The first piece merged: every piece here shares its colour, finish and model. */
+  /**
+   * The piece with the lowest entity id (the first of them): every piece here
+   * shares its colour, finish and model, and that id is the anchor a draw
+   * needs to rebuild full ids from the 24-bit vertex lane (entity-color-table.ts).
+   */
   representative: MeshData;
   pieces: number;
 }
@@ -161,6 +166,8 @@ export function uploadIndividualMesh(device: GPUDevice, meshData: MeshData, fram
 
 interface MergeGroup {
   frame: IndividualMeshFrame;
+  /** The piece with the lowest entity id so far. */
+  anchor: MeshData;
   pieces: MeshData[];
   vertices: number;
   indices: number;
@@ -170,7 +177,9 @@ interface MergeGroup {
  * Partition pieces so each group can draw as one mesh without changing what
  * any piece looks like: same model, same frame (the f32 fold is per frame, and
  * a frameless piece keeps its own origin), same colour and finish, as a batch
- * bucket has. A group fills up at `maxBytes`, one GPU buffer's worth.
+ * bucket has, and like a bucket within one 2^24 page of entity ids, so the
+ * vertex lane names each entity. A group fills up at `maxBytes`, one GPU
+ * buffer's worth.
  */
 function groupPieces(pieces: readonly MeshData[], frameOf: (meshData: MeshData) => IndividualMeshFrame, maxBytes: number): MergeGroup[] {
   const groups: MergeGroup[] = [];
@@ -181,16 +190,17 @@ function groupPieces(pieces: readonly MeshData[], frameOf: (meshData: MeshData) 
     if (vertices === 0 || indices === 0) continue;
     const frame = frameOf(piece);
     const origin = frame.sharedOrigin ?? piece.origin;
-    const key = `${piece.modelIndex ?? ''}|${frame.quantized ? 'q' : 'f'}|${frame.sharedOrigin ? 's' : 'o'}|${origin?.join() ?? ''}|${colorKey(piece.color, piece.material)}`;
+    const key = `${piece.modelIndex ?? ''}|${Math.floor(piece.expressId / ENTITY_LANE_ID_SPAN)}|${frame.quantized ? 'q' : 'f'}|${frame.sharedOrigin ? 's' : 'o'}|${origin?.join() ?? ''}|${colorKey(piece.color, piece.material)}`;
     let group = open.get(key);
     if (group && group.pieces.length > 0
       && ((group.vertices + vertices) * BATCH_CONSTANTS.BYTES_PER_VERTEX > maxBytes
         || (group.indices + indices) * BATCH_CONSTANTS.BYTES_PER_INDEX > maxBytes)) group = undefined;
     if (!group) {
-      group = { frame, pieces: [], vertices: 0, indices: 0 };
+      group = { frame, anchor: piece, pieces: [], vertices: 0, indices: 0 };
       open.set(key, group);
       groups.push(group);
     }
+    if (piece.expressId < group.anchor.expressId) group.anchor = piece;
     group.pieces.push(piece);
     group.vertices += vertices;
     group.indices += indices;
@@ -226,7 +236,7 @@ export function uploadMergedMeshes(
         firstIndex += source.length;
         firstVertex += piece.positions.length / 3;
       }
-      const representative = group.pieces[0];
+      const representative = group.anchor;
       uploaded.push({ ...uploadGeometry(device, interleaved, indices, representative, group.frame), representative, pieces: group.pieces.length });
     }
   } catch (error) {

@@ -1737,7 +1737,7 @@ export class Renderer {
         const selectedMeshes = this._selectionHighlight.resolve(this.scene, {
             selected: selectedExpressIds, selectionVersion: this._selection.getVersion(),
             hiddenIds: options.hiddenIds, isolatedIds: options.isolatedIds, visibilityVersion: newVisibilityVersion,
-            modelIndex: selectedModelIndex, itemFilterExpressId, itemFilterItemId,
+            modelIndex: selectedModelIndex, itemFilterExpressId, itemFilterItemId, pool: this.scene.getBatchedMeshes().length > 0 || this.scene.getTexturedMeshes().length > 0,
         }, (piece) => this.createMeshFromData(piece).ok, (pieces, merged) => this.createMergedMeshes(pieces, merged));
 
         let meshes = this.scene.getMeshes();

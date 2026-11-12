@@ -241,6 +241,8 @@ interface OrdinaryEntity {
  * the individual copies it replaces.
  *
  * `createPiece` and `createMerged` return whether the upload happened.
+ * @param allowPool Whether ordinary entities may pool once they pass the budget
+ *   (`SelectionHighlightInputs.pool`); false keeps one copy per piece.
  * @returns false when an upload did not happen, so the caller runs this again.
  */
 export function hydrateSelectedEntities(
@@ -251,6 +253,7 @@ export function hydrateSelectedEntities(
   itemFilterItemId: number | undefined,
   createPiece: (piece: MeshData) => boolean,
   createMerged: (pieces: readonly MeshData[], merged: MergedSelectionCoverage) => boolean,
+  allowPool = true,
 ): boolean {
   // Only built with a selection: this avoids iterating 200K+ meshes every frame otherwise.
   if (visibleSelected.size === 0) return true;
@@ -280,14 +283,15 @@ export function hydrateSelectedEntities(
     ordinary.push({ id, pieces, missing });
     ordinaryMissing += missing.length;
   }
-  if (ordinaryMissing === 0) return complete;
+  if (ordinary.length === 0) return complete;
 
-  // The individual copies these entities hold already, plus the ones still to make.
+  // The individual copies these entities hold already (a pick's, or an earlier
+  // and smaller selection's), plus the ones still to make.
   const individual = (mesh: Mesh): boolean => mesh.hydrated === true && !mesh.mergedSelection && mesh.expressId !== itemFilterExpressId
     && visibleSelected.has(mesh.expressId) && (modelIndex === undefined || mesh.modelIndex === modelIndex);
   let held = 0;
   for (const mesh of scene.getMeshes()) if (individual(mesh)) held++;
-  if (held + ordinaryMissing <= MERGE_PIECES_ABOVE) {
+  if (!allowPool || held + ordinaryMissing <= MERGE_PIECES_ABOVE) {
     for (const { missing } of ordinary) for (const piece of missing) complete = createPiece(piece) && complete;
     return complete;
   }

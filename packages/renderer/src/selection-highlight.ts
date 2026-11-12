@@ -129,6 +129,14 @@ export interface SelectionHighlightInputs {
   modelIndex: number | undefined;
   itemFilterExpressId: number | undefined;
   itemFilterItemId: number | undefined;
+  /**
+   * Whether the scene draws colour batches or textured meshes. Only then does
+   * a frame have a highlight pass, and only then do picks go through the
+   * pick-mesh plan, which keeps a merged copy out of the GPU pick. Without
+   * them the mesh pass draws every individual mesh itself and a GPU pick
+   * reports one id per mesh, so the selection keeps one copy per piece there.
+   */
+  pool: boolean;
 }
 
 type HighlightScene = Pick<Scene, 'getMeshes' | 'getMeshDataPieces' | 'getMeshDataPieceList' | 'getPickGeometryRevision'
@@ -163,6 +171,9 @@ export class SelectionHighlight {
   private itemFilterItemId: number | undefined;
   private visibilityVersion = -1;
   private revision = -1;
+  private pool = false;
+  /** Whether the last resolved frame had anything selected: a scope with no selection on either side scopes nothing. */
+  private hadSelection = false;
   private sceneMeshes: readonly Mesh[] | null = null;
   private sceneMeshCount = 0;
   private visible: ReadonlySet<number> = NO_IDS;
@@ -187,7 +198,7 @@ export class SelectionHighlight {
     if (this.changed(scene, frame)) this.retire(scene, frame);
     if (!this.pending) return this.drawn;
     const { visible, modelIndex, itemFilterExpressId, itemFilterItemId } = this;
-    const complete = hydrateSelectedEntities(scene, visible, modelIndex, itemFilterExpressId, itemFilterItemId, createPiece, createMerged);
+    const complete = hydrateSelectedEntities(scene, visible, modelIndex, itemFilterExpressId, itemFilterItemId, createPiece, createMerged, this.pool);
     this.drawn = visible.size > 0
       ? scene.getMeshes().filter((mesh) => visible.has(mesh.expressId)
         && (modelIndex === undefined || mesh.modelIndex === modelIndex)
@@ -205,7 +216,7 @@ export class SelectionHighlight {
     return frame.selectionVersion !== this.selectionVersion || frame.modelIndex !== this.modelIndex
       || frame.itemFilterExpressId !== this.itemFilterExpressId || frame.itemFilterItemId !== this.itemFilterItemId
       || frame.visibilityVersion !== this.visibilityVersion || scene.getPickGeometryRevision() !== this.revision
-      || meshes !== this.sceneMeshes || meshes.length !== this.sceneMeshCount;
+      || frame.pool !== this.pool || meshes !== this.sceneMeshes || meshes.length !== this.sceneMeshCount;
   }
 
   /** Free the highlight copies this frame's selection no longer wants, and mirror the selection onto the instanced occurrences. */
@@ -218,6 +229,10 @@ export class SelectionHighlight {
     this.itemFilterItemId = frame.itemFilterItemId;
     this.visibilityVersion = frame.visibilityVersion;
     this.revision = scene.getPickGeometryRevision();
+    this.pool = frame.pool;
+    const selects = frame.selected.size > 0;
+    const scopes = scopeChanged && (selects || this.hadSelection);
+    this.hadSelection = selects;
     this.visible = visibleSelection(frame);
     // The per-instance selected flag; the scene diffs it, and an instanced upload bumps the revision.
     scene.setInstancedSelection(frame.selected, frame.itemFilterExpressId, frame.itemFilterItemId);
@@ -225,7 +240,8 @@ export class SelectionHighlight {
     // geometry a batch already draws: freed here, or they pile up in VRAM and, for a
     // transparent entity, blend a second time over its batch. Only on such a change:
     // a pick's own copies of unselected entities stay until the selection moves.
-    if (scopeChanged) scene.disposeHydratedMeshesExcept(frame.selected, frame.modelIndex, frame.itemFilterExpressId, frame.itemFilterItemId);
+    if (scopes) scene.disposeHydratedMeshesExcept(frame.selected, frame.modelIndex, frame.itemFilterExpressId, frame.itemFilterItemId);
+    if (!frame.pool) scene.removeMeshesWhere((mesh) => mesh.mergedSelection?.ids !== undefined);
     retireStaleSelectionHydration(scene, frame.selected, frame.modelIndex, frame.itemFilterExpressId, frame.itemFilterItemId, this.visible);
     this.pending = true;
   }

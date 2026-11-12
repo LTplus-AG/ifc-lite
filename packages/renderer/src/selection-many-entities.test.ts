@@ -42,10 +42,18 @@ interface Draw { vertexBuffer: FakeBuffer; indexBuffer: FakeBuffer; indexCount: 
 const VERTEX_OR_INDEX = 48;
 
 function makeHarness() {
-  const stats = { buffers: [] as FakeBuffer[], bindGroups: 0, writes: 0, destroyedBufferDraws: 0, destroyedAtSubmit: 0, draws: [] as Draw[],
+  const stats = { buffers: [] as FakeBuffer[], bindGroups: 0, writes: 0, destroyedBufferDraws: 0, destroyedBufferWrites: 0, destroyedAtSubmit: 0, draws: [] as Draw[],
     /** The last uniform block written to each mesh uniform buffer. */
     uniforms: new Map<FakeBuffer, Uint8Array>() };
-  /** Every buffer the open frame wrote or drew: a real submit rejects the frame if one was destroyed by then. */
+  /**
+   * Every buffer the frame being rendered wrote or drew, checked at its submit.
+   * A device rejects a write to a destroyed buffer and a submit that draws one
+   * (both counted as such below). Checking the written ones again at submit is
+   * stricter than a device: it catches a frame that prepared a mesh and freed
+   * it before drawing, which is how the first cut of pooling went wrong on a
+   * real GPU. It is still weaker than a device elsewhere (bind-group resources
+   * are not followed), so the real-GPU page log remains the evidence.
+   */
   const frameBuffers = new Set<FakeBuffer>();
   let vertexBuffer: FakeBuffer | null = null;
   let indexBuffer: FakeBuffer | null = null;
@@ -75,6 +83,7 @@ function makeHarness() {
   const queue = {
     writeBuffer(buffer: FakeBuffer, offset: number, data: ArrayBufferView) {
       stats.writes++;
+      if (buffer.destroyed > 0) stats.destroyedBufferWrites++;
       frameBuffers.add(buffer);
       if (buffer.size === MESH_UNIFORM_BYTES) stats.uniforms.set(buffer, new Uint8Array(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)));
       if (buffer.usage & VERTEX_OR_INDEX) { // keep the geometry to assert on
@@ -150,8 +159,10 @@ function makeHarness() {
     scene: renderer['scene'] as Scene,
     device: device as unknown as GPUDevice,
     render(options: RenderOptions = {}) {
+      frameBuffers.clear(); // uploads between frames are not this frame's
       renderer.render({ visualEnhancement: { enabled: false }, ...options });
       assert.equal(stats.destroyedBufferDraws, 0, 'a frame drew a buffer it had already destroyed');
+      assert.equal(stats.destroyedBufferWrites, 0, 'a buffer was written after it had been destroyed');
       assert.equal(stats.destroyedAtSubmit, 0, 'a frame submitted a write or a draw of a buffer it destroyed meanwhile');
     },
   };
@@ -360,7 +371,8 @@ describe('selecting many entities (#9835)', () => {
 
   it('growing a per-piece selection past the budget replaces its copies with the pool, drawing each triangle once', () => {
     const h = makeHarness();
-    const meshes = model(600);
+    // Some glass: its copies are the ones the mesh pass goes on to write and draw.
+    const meshes = model(600, (id) => (id % 7 === 0 ? { color: [0.2, 0.4, 0.8, 0.3] } : {}));
     load(h, meshes);
     const few = frameCost(h, { selectedIds: new Set(idsOf(200)) });
     assert.equal(few.highlightDraws.length, 200 * PIECES_EACH);
@@ -411,23 +423,53 @@ describe('selecting many entities (#9835)', () => {
     assert.equal(frame.filter((draw) => label(draw) === 'transparent').length, 1, 'the glass batch, once, through the transparent pipeline');
   });
 
-  // Without batches the frame draws individual meshes itself and has no
-  // highlight pass: a selected mesh is flagged in its own uniform. That is how
-  // each per-piece copy was drawn, and it is how the pool is.
-  it('draws a pool once, flagged selected, when the scene has no batches', () => {
+  // Second review of #9916. Without batches the frame has no highlight pass:
+  // the mesh pass draws individual meshes itself, a selected one flagged in its
+  // own uniform, and a GPU pick draws them too, one id per mesh. A pool there
+  // would go through the depth-writing opaque pipeline where a glass piece's
+  // copy went through the transparent one, and would pick as one id. So such a
+  // scene keeps one copy per piece, exactly as before.
+  it('does not pool in a scene without batches: one copy per piece, drawn and picked as before', () => {
     const h = makeHarness();
     const glass: [number, number, number, number] = [0.2, 0.4, 0.8, 0.3];
-    for (const meshData of model(600, (id) => ({ color: id === 1 ? glass : GREY }))) h.scene.addMeshData(meshData);
+    const meshes = model(600, (id) => ({ color: id === 1 ? glass : GREY }));
+    for (const meshData of meshes) h.scene.addMeshData(meshData);
     const selectedIds = new Set(idsOf(600));
     h.render({ selectedIds });
-    const [pool] = hydrated(h);
-    assert.ok(pool?.mergedSelection?.ids, 'pooled');
+    const copies = hydrated(h);
+    assert.equal(copies.length, meshes.length, 'one copy per piece');
+    assert.ok(copies.every((mesh) => mesh.mergedSelection === undefined), 'nothing a GPU pick would report under another entity\'s id');
+    assert.deepEqual(sorted(new Set(copies.map((mesh) => mesh.expressId))), idsOf(600));
     const before = h.stats.draws.length;
     h.render({ selectedIds });
-    const poolDraws = h.stats.draws.slice(before).filter((draw) => draw.vertexBuffer === (pool.vertexBuffer as unknown as FakeBuffer));
-    assert.equal(poolDraws.length, 1, 'one draw');
-    const uniform = h.stats.uniforms.get(pool.uniformBuffer as unknown as FakeBuffer)!;
-    assert.equal(new Uint32Array(uniform.buffer, MESH_FLAGS_BYTE_OFFSET, 1)[0] & 1, 1, 'with the selected flag in its uniform');
+    const frame = h.stats.draws.slice(before);
+    const label = (draw: Draw) => (draw.pipeline as { label?: string } | null)?.label;
+    const glassCopies = new Set(copies.filter((mesh) => mesh.expressId === 1).map((mesh) => mesh.vertexBuffer as unknown as FakeBuffer));
+    assert.deepEqual(frame.filter((draw) => glassCopies.has(draw.vertexBuffer)).map(label), ['transparent', 'transparent'], 'the glass copies through the transparent pipeline, which writes no depth');
+    assert.equal(frame.filter((draw) => !glassCopies.has(draw.vertexBuffer)).length, meshes.length - 2, 'every other copy once');
+    for (const mesh of copies) {
+      const uniform = h.stats.uniforms.get(mesh.uniformBuffer as unknown as FakeBuffer)!;
+      assert.equal(new Uint32Array(uniform.buffer, MESH_FLAGS_BYTE_OFFSET, 1)[0] & 1, 1, 'flagged selected in its own uniform');
+    }
+  });
+
+  it('pools the copies a scene held from before it had batches, once it has them', () => {
+    const h = makeHarness();
+    const meshes = model(600);
+    for (const meshData of meshes) h.scene.addMeshData(meshData);
+    const selectedIds = new Set(idsOf(600));
+    const perPiece = frameCost(h, { selectedIds });
+    assert.equal(hydrated(h).length, meshes.length);
+
+    // The same pieces now arrive as batches (what a load does).
+    h.scene.clear();
+    load(h, meshes);
+    for (const meshData of meshes) h.renderer.createMeshFromData(meshData); // copies made per piece, e.g. by picks
+    const pooled = frameCost(h, { selectedIds });
+    assert.ok(perPiece.created.every((buffer) => buffer.destroyed === 1));
+    assert.equal(pooled.highlightDraws.length, 1, 'more copies than the budget, none missing: still pooled');
+    assert.deepEqual(pooled.drawn().triangles, expectedTriangles(meshes));
+    assert.equal(hydrated(h).length, 1);
   });
 
   // Review of #9916: 10,000 ids, one swapped in place at the same size.
@@ -585,6 +627,20 @@ describe('selecting many entities (#9835)', () => {
     h.render({});
     h.render({});
     assert.equal(hydrated(h).length, 3 * PIECES_EACH, 'copies made before the first frame (a pick, an individual-mesh scene) are still there');
+  });
+
+  // Second review of #9916: a model scope with nothing selected scopes nothing.
+  // `main` frees the copies here as well; the same predicate covers both.
+  it('frees nothing when only the model scope is set or moves while nothing is selected', () => {
+    const h = makeHarness();
+    for (const meshData of model(3)) h.renderer.createMeshFromData(meshData);
+    h.render({ selectedModelIndex: 0 });
+    assert.equal(hydrated(h).length, 3 * PIECES_EACH, 'a first frame with a model index and no selection');
+    h.render({ selectedModelIndex: 1 });
+    h.render({});
+    assert.equal(hydrated(h).length, 3 * PIECES_EACH, 'nor when that index changes or goes');
+    h.render({ selectedIds: new Set([2]) });
+    assert.deepEqual(sorted(new Set(hydrated(h).map((mesh) => mesh.expressId))), [2], 'a selection still frees the copies of what it leaves out');
   });
 
   it('leaves a pick\'s copies of unselected entities alone until the selection moves', () => {
@@ -848,6 +904,19 @@ describe('uploadMergedMeshes across entities (#9835)', () => {
     const floats = new Float32Array(written[0].buffer);
     const firstX = [0, 1, 2].map((p) => floats[p * 3 * 7]);
     assert.deepEqual(firstX, [Math.fround(0.3), Math.round(Math.fround(0.3) * 1024) / 1024, Math.fround(0.3)]);
+  });
+
+  // Second review of #9916: the fallback's key keeps the origin, so it is not a
+  // cap. Pieces that each draw against their own origin (a textured drawable
+  // does, `Scene.getIndividualMeshFrame`) cannot share a mesh: their vertices
+  // are relative to that origin, and re-basing them would stop the highlight
+  // from landing bit for bit on the surface it covers. This case is NOT fixed
+  // by pooling and costs what one copy per piece did.
+  it('still makes one mesh per piece when every piece has its own origin', () => {
+    const own = Array.from({ length: 1_200 }, (_, i) => piece(i + 1, 0));
+    const merged = uploadMergedMeshes(capture().device, own, (meshData) => ({ sharedOrigin: [meshData.expressId * 10, 0, 0], quantized: false }), true);
+    assert.equal(merged.length, 1_200, 'no better than one copy per piece, and no worse');
+    assert.ok(merged.every((mesh) => mesh.pieces === 1));
   });
 
   it('stops following the order once it would cost more draws than the copy budget, and merges like with like', () => {

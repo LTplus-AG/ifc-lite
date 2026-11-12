@@ -7,9 +7,10 @@
  * `AppliedLoad` and `SubsequentAppliedLoads`, in station order. Internal to
  * `structural-glyphs.ts`.
  *
- * Along an edge the values sit at equal steps from its start to its end, and
- * each glyph station takes the value interpolated linearly between its two
- * neighbours, so a triangular load draws as arrows growing along the member.
+ * Along an edge the values sit at equal steps from its start to its end. Each
+ * value draws at its own station, and each of the usual edge stations takes the
+ * value interpolated linearly between its two neighbours, so a triangular load
+ * draws as arrows growing along the member.
  * The `VaryingAppliedLoadLocation` aspect is not read: its `IfcPointOnCurve`
  * parameters are basis-curve parameters, and AxisVM writes 0 and 1 for the two
  * ends of edges of any length. Over a face, the first value with anything to
@@ -43,7 +44,10 @@ export function varyingParts(shape: ItemShape, loads: readonly StructuralLoadInf
     return load ? [{ load, stations: shapeStations(shape), at: shapeCentre(shape) }] : [];
   }
   const steps = loads.length - 1;
-  return EDGE_STATIONS.map((t) => {
+  // Every value's own station, plus the usual edge stations between them.
+  const knots = loads.map((_, i) => i / steps);
+  const stations = [...new Set([...EDGE_STATIONS, ...knots])].sort((x, y) => x - y);
+  return stations.map((t) => {
     const i = Math.min(steps - 1, Math.floor(t * steps));
     const at = lerp(shape.start, shape.end, t);
     return { load: mix(loads[i], loads[i + 1], t * steps - i), stations: [at], at };

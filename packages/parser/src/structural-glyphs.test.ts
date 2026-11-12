@@ -18,6 +18,7 @@ import { structuralGlyphs, type StructuralGlyph } from './structural-glyphs.js';
 import type { ItemShape } from './structural-item-geometry.js';
 import { structuralSupportKind } from './structural-support-kind.js';
 import { shapeCentre, shapeStations } from './structural-glyph-stations.js';
+import { varyingParts } from './structural-glyph-varying.js';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
@@ -871,4 +872,16 @@ it('scales multi-group actions by their case, otherwise first group (#9828)', as
   expect(relative()).toBe(0.5);
   g2.type = 'IfcStructuralLoadGroup';
   expect(relative()).toBe(1);
+});
+
+describe('varying stations (#9937 review)', () => {
+  it('draws every value at its own station, also between the usual edge stations', () => {
+    // Nine values, the only non-zero one at 1/8 of the edge: between stations 0 and 0.25.
+    const load = (z: number) => ({ expressId: 1, type: 'IfcStructuralLoadLinearForce', components: { LinearForceZ: z } });
+    const loads = [0, -10, 0, 0, 0, 0, 0, 0, 0].map(load);
+    const shape: ItemShape = { kind: 'edge', start: [0, 0, 0], end: [8, 0, 0] };
+    const parts = varyingParts(shape, loads, () => true);
+    const peak = parts.find((p) => p.load.components.LinearForceZ === -10);
+    close(peak?.at, [1, 0, 0]);
+  });
 });

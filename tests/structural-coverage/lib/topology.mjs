@@ -97,7 +97,7 @@ function topologyVertices(step, id, depth = 0) {
     case 'IFCVERTEXPOINT': return vertex({ ref: id });
     case 'IFCEDGE': case 'IFCEDGECURVE': case 'IFCSUBEDGE': return [...vertex(r.args[0]), ...vertex(r.args[1])];
     case 'IFCORIENTEDEDGE': return topologyVertices(step, refOf(r.args[2]), depth + 1);
-    case 'IFCFACE': case 'IFCFACESURFACE':
+    case 'IFCFACE': case 'IFCFACESURFACE': case 'IFCADVANCEDFACE':
       return r.args[0].flatMap((b) => {
         const loop = step.get(step.get(b)?.args[0]);
         if (loop?.type === 'IFCPOLYLOOP') return loop.args[0].map((p) => coords(step, refOf(p))).filter(Boolean);
@@ -165,7 +165,9 @@ export function meshDistance(meshes, [x, y, z], info = {}) {
     const o = m.origin ?? [0, 0, 0];
     const v = (i) => [o[0] + m.positions[3 * i], o[1] + m.positions[3 * i + 1], o[2] + m.positions[3 * i + 2]];
     for (let t = 0; t + 2 < m.indices.length; t += 3) {
-      best = Math.min(best, triangleDistance(p, v(m.indices[t]), v(m.indices[t + 1]), v(m.indices[t + 2])));
+      // A degenerate triangle measures NaN, which this comparison skips.
+      const d = triangleDistance(p, v(m.indices[t]), v(m.indices[t + 1]), v(m.indices[t + 2]));
+      if (d < best) best = d;
     }
   }
   return best;

@@ -45,8 +45,7 @@
 
 import type { IfcDataStore } from './columnar-parser.js';
 import type { StructuralActivityInfo, StructuralConnectionInfo, StructuralExtraction } from './structural-types.js';
-import { extractStructuralLoad, type StructuralLoadInfo } from './structural-load-extractor.js';
-import { EntityExtractor } from './entity-extractor.js';
+import type { StructuralLoadInfo } from './structural-load-extractor.js';
 import { structuralSupportKind, type StructuralSupportKind } from './structural-support-kind.js';
 import { add, compose, IDENTITY, ItemGeometryReader, length, normalize, rotate, scale, sub, type Frame, type ItemShape, type Vec3 } from './structural-item-geometry.js';
 import { onShape, pointAlong, pointIn, shapeCentre, shapeFrame, shapeStations } from './structural-glyph-stations.js';
@@ -227,14 +226,13 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
   const loadGroups = new Map(extraction.loadGroups.map((g) => [g.globalId, g.type]));
   const resultGroups = new Set(extraction.resultGroups.map((g) => g.globalId));
   const pending: Pending[] = [];
-  const extractor = new EntityExtractor(store.source);
   /**
    * An activity's loads in station order: `AppliedLoad`, then an IFC2X3
    * varying action's `SubsequentAppliedLoads`. Null when one of those does
    * not read: the others would land at the wrong stations.
    */
   const loadsOf = (activity: StructuralActivityInfo, applied: StructuralLoadInfo): StructuralLoadInfo[] | null => {
-    const subsequent = (activity.SubsequentAppliedLoads ?? []).map((id) => extractStructuralLoad(extractor, store, id));
+    const subsequent = activity.subsequentLoads ?? [];
     return subsequent.every((l) => l) ? [applied, ...(subsequent as StructuralLoadInfo[])] : null;
   };
 

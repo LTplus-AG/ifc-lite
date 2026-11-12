@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { deriveCatalogue } from '../tests/structural-coverage/catalogue.mjs';
 import { readStep } from '../tests/structural-coverage/lib/step.mjs';
-import { lengthScale, topologyPoints } from '../tests/structural-coverage/lib/topology.mjs';
+import { lengthScale, meshDistance, topologyPoints } from '../tests/structural-coverage/lib/topology.mjs';
 import render from '../tests/structural-coverage/probes/render.mjs';
 import renderMembers from '../tests/structural-coverage/probes/render-members.mjs';
 
@@ -96,4 +96,20 @@ test('#9668 reaction render: a non-zero reaction must draw a glyph; a zero one i
   const zero = await run({ ...file, path: 'zero.ifc', step: reaction('0.') }, []);
   assert.equal(zero.status, 'fail');
   assert.match(zero.reason, /unproven/);
+});
+
+test('#9937 review: advanced faces, degenerate triangles and lost geometry errors', async () => {
+  const face = ifc4(`#1=IFCCARTESIANPOINT((0.,0.,0.));#2=IFCCARTESIANPOINT((1.,0.,0.));#3=IFCCARTESIANPOINT((0.,1.,0.));
+#4=IFCPOLYLOOP((#1,#2,#3));#5=IFCFACEOUTERBOUND(#4,.T.);#6=IFCAXIS2PLACEMENT3D(#1,$,$);#7=IFCPLANE(#6);
+#8=IFCADVANCEDFACE((#5),#7,.T.);#9=IFCTOPOLOGYREPRESENTATION($,'Reference','Face',(#8));#10=IFCPRODUCTDEFINITIONSHAPE($,$,(#9));
+#11=IFCSTRUCTURALSURFACEMEMBER('s',$,$,$,$,$,#10,.SHELL.,0.2);`);
+  assert.deepEqual(topologyPoints(face, 11), [[0, 0, 0], [1, 0, 0], [0, 1, 0]]);
+  // A zero-area triangle next to a real one: the real one decides.
+  const mesh = { positions: new Float32Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]), indices: new Uint32Array([0, 1, 2, 3, 4, 5]) };
+  assert.equal(meshDistance([mesh], [0, 0, 0]), 0);
+  // When no carrier meshes, the reason keeps the geometry error.
+  const file = { path: 'member.ifc', schema: 'IFC4', step: ifc4(MEMBER()) };
+  const failed = await score(renderMembers, 'IFC4/IfcStructuralCurveMember', file, [['meshes:member.ifc', { error: 'geometry threw: boom' }]]);
+  assert.equal(failed.status, 'fail');
+  assert.match(failed.reason, /geometry threw: boom/);
 });

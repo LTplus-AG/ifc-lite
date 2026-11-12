@@ -119,6 +119,8 @@ export interface StructuralActivityInfo {
   VaryingAppliedLoadLocation?: number;
   /** IFC2X3 subsequent load references, in station order (model-local expressIds). */
   SubsequentAppliedLoads?: number[];
+  /** `SubsequentAppliedLoads` resolved like `appliedLoad`, one per reference; `undefined` where one does not read. */
+  subsequentLoads?: (StructuralLoadInfo | undefined)[];
   /** `IfcStructuralAction.DestabilizingLoad`; absent on reactions. */
   destabilizingLoad?: boolean;
   /** `IfcStructuralActivity.AppliedLoad`, resolved. */

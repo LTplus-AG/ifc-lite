@@ -161,10 +161,15 @@ test('SHADOW measures whatever the PR\'s queue state: an unlabelled or draft rel
   const v = verifyReleaseLane({ ...held, mode: 'shadow', labels: '[]', lane: 'full', needs: needsJson('success', { 'viewer-tests': 'failure' }) });
   assert.equal(v.ok, true);
   // Not queueable: the report is conditional, never a claim about today.
-  assert.match(v.lines.join('\n'), /Once this PR is queueable, the lean lane would defer a failure to the merge queue: viewer-tests/); // @source-text-assertion-ok subject is the returned summary
+  assert.match(v.lines.join('\n'), /The lean lane \(once this PR is queueable\) would defer a failure to the merge queue: viewer-tests/); // @source-text-assertion-ok subject is the returned summary
   assert.match(v.lines.join('\n'), /lacks `mergify-trial`/); // @source-text-assertion-ok subject is the returned summary
   const queueable = verifyReleaseLane({ ...held, mode: 'shadow', lane: 'full', needs: needsJson() });
   assert.match(queueable.lines.join('\n'), /Every lane ran\. The lean lane would skip:/); // @source-text-assertion-ok subject is the returned summary
+  // Held `on` names the hold, and the queue state when it applies; never a claim about today.
+  const heldOn = (labels, needs) => verifyReleaseLane({ ...held, mode: 'on', labels, lane: 'full', needs }).lines.join('\n');
+  assert.match(heldOn('["mergify-trial"]', needsJson()), /None of them failed\. The lean lane \(with OWNER_ALLOWS_LEAN released\) would reach the same verdict/); // @source-text-assertion-ok subject is the returned summary
+  assert.match(heldOn('[]', needsJson('success', { 'viewer-tests': 'failure' })), /The lean lane \(with OWNER_ALLOWS_LEAN released, once this PR is queueable\) would defer a failure/); // @source-text-assertion-ok subject is the returned summary
+  for (const mode of ['shadow', 'on']) assert.equal(decideReleaseLane({ ...held, mode, labels: '[]' }).queueable, false, mode);
   // A config that cannot route the PR, or a diff that is more than versions, is still not reported as lean.
   assert.equal(decideReleaseLane({ ...held, mode: 'shadow', labels: '[]', mergify: () => '' }).wouldBeLean, false);
   assert.equal(decideReleaseLane({ ...held, mode: 'shadow', labels: '[]', diff: () => ['x: not a release file'] }).wouldBeLean, false);
@@ -302,7 +307,7 @@ test('VERIFY: a lean run whose kept jobs did not all succeed fails, since skippe
 test('VERIFY: shadow reports, and flags a failure the lean lane would defer', () => {
   const clean = verify({ mode: 'shadow', lane: 'full', needs: needsJson() });
   assert.equal(clean.ok, true);
-  assert.match(clean.lines.join('\n'), /the lean lane would reach the same verdict/); // @source-text-assertion-ok subject is the returned summary
+  assert.match(clean.lines.join('\n'), /None of them failed\. The lean lane would reach the same verdict/); // @source-text-assertion-ok subject is the returned summary
   const missed = verify({ mode: 'shadow', lane: 'full', needs: needsJson('success', { 'viewer-tests': 'failure', 'rust-semver': 'failure' }) });
   assert.equal(missed.ok, true, 'shadow reports; the map judges the failure');
   assert.match(missed.lines.join('\n'), /The lean lane would defer a failure to the merge queue: viewer-tests\.$/); // @source-text-assertion-ok kept lanes are not listed as deferred

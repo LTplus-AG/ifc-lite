@@ -55,7 +55,10 @@ test('follows reusable workflows and composite actions, and lists what they hash
       '    uses: ./.github/workflows/reusable.yml',
       '  b:',
       '    steps:',
+      '      - id: fp',
+      '        run: echo "h=$(sha256sum .github/workflows/via-input.yml)" >> "$GITHUB_OUTPUT"',
       '      - uses: ./.github/actions/setup',
+      '        with: { fingerprint: "${{ steps.fp.outputs.h }}", label: "${{ needs.x.outputs.y }}" }',
       '      - uses: actions/setup-python@v5',
       '        with:',
       '          cache-dependency-path: |',
@@ -68,9 +71,11 @@ test('follows reusable workflows and composite actions, and lists what they hash
     - id: k
       run: echo "key=$(sha256sum .github/workflows/by-step.yml)" >> "$GITHUB_OUTPUT"
     - uses: actions/cache@v4
-      with: { key: '\${{ steps.k.outputs.key }}', path: x }`),
+      with: { key: '\${{ steps.k.outputs.key }}-\${{ inputs.fingerprint }}', path: x }`),
     '.github/workflows/deps.yml': '', '.github/workflows/in-run.yml': '', '.github/workflows/hashed.yml': '', '.github/workflows/by-step.yml': '',
     '.github/workflows/unrelated.yml': '',
+    // A step output passed into the action under a non-key name, then used in a key there.
+    '.github/workflows/via-input.yml': '',
   });
   assert.deepEqual(r.errors, []);
   assert.deepEqual(r.required, [
@@ -81,6 +86,7 @@ test('follows reusable workflows and composite actions, and lists what they hash
     '.github/workflows/in-run.yml',
     '.github/workflows/reusable.yml',
     ROOT,
+    '.github/workflows/via-input.yml',
   ]);
 });
 
@@ -140,6 +146,8 @@ test('what cannot be judged is an error, not a pass', () => {
     ['local action outside .github', { [ROOT]: 'jobs: { a: { steps: [ { uses: ./tools/act } ] } }', 'tools/act/action.yml': action() }],
     ['setup cache with no known default', { [ROOT]: 'jobs: { a: { steps: [ { uses: actions/setup-java@v4, with: { cache: gradle } } ] } }' }],
     ['upper-case keys', { [ROOT]: 'jobs: { a: { Steps: [ { Uses: actions/checkout@v4, With: { Path: sub } } ] } }' }],
+    ['key from a uses step output', { [ROOT]: 'jobs: { a: { steps: [ { id: k, uses: some/hash@v1, with: { path: .github/workflows/x.yml } }, { uses: actions/cache@v4, with: { key: "${{ steps.k.outputs.h }}" } } ] } }' }],
+    ['action input from needs', { [ROOT]: 'jobs: { a: { steps: [ { uses: ./.github/actions/c, with: { fingerprint: "${{ needs.b.outputs.h }}" } } ] } }', '.github/actions/c/action.yml': action('[ { uses: actions/cache@v4, with: { key: "k-${{ inputs.fingerprint }}" } } ]') }],
     ['key run hashing .github broadly', { [ROOT]: 'jobs: { a: { steps: [ { id: k, run: "echo key=$(find .github -type f | sha256sum) >> $GITHUB_OUTPUT" }, { uses: actions/cache@v4, with: { key: "${{ steps.k.outputs.key }}" } } ] } }' }],
   ]) {
     assert.notDeepEqual(check(fixture, { symlinks }).errors, [], label);

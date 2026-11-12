@@ -146,6 +146,28 @@ export function cacheKeyingFiles({ root, readText, githubFiles, symlinks }) {
     if (m.error) errors.push(`${where}: ${m.error}`);
     else for (const f of m.files) required.add(f);
   };
+  // Who calls each executed action or reusable workflow, with what `with:`: a key built
+  // from `inputs.X` inside it is traced to each caller's value of X once all are known.
+  const callers = new Map();
+  const callerOf = (target, step, steps, file) => {
+    if (!callers.has(target)) callers.set(target, []);
+    callers.get(target).push({ file, with: step?.with && typeof step.with === 'object' ? step.with : {}, steps });
+  };
+  const inputRefs = [];
+  // A value that feeds a cache key: env/needs cannot be followed; a step output is traced
+  // to its step's `run`, and a `uses:` step's output cannot be seen into.
+  const traceKeyValue = (value, steps, where) => {
+    if (/\b(?:env|needs)\./.test(value)) errors.push(`${where} is built from env or needs, which the check cannot follow`);
+    for (const [, id] of value.matchAll(STEP_OUTPUT)) {
+      const step = (steps ?? []).find((s) => s && s.id === id);
+      if (!step) errors.push(`${where} uses steps.${id}, which is not in the same steps list`);
+      else if (typeof step.run !== 'string') errors.push(`${where} uses the output of step ${id}, which runs an action the check cannot see into`);
+      else {
+        if (BROAD_RUN.test(step.run)) errors.push(`${where}: step ${id}'s run may hash .github without naming a file`);
+        for (const [p] of step.run.matchAll(GITHUB_PATH)) need(p, `${where} step ${id}`);
+      }
+    }
+  };
   for (let i = 0; i < executed.length; i += 1) {
     const file = executed[i];
     const text = readText(file);
@@ -175,6 +197,7 @@ export function cacheKeyingFiles({ root, readText, githubFiles, symlinks }) {
           const ref = posix.normalize(v);
           if (ref.startsWith('..') || ref.includes('/../')) errors.push(`${file}: uses ${v} climbs`);
           else if (/^\.github\/workflows\/[^/]+\.ya?ml$/.test(ref)) {
+            callerOf(ref, parent, steps, file);
             required.add(ref);
             if (!executed.includes(ref)) executed.push(ref);
           } else if (!ref.startsWith('.github/actions/')) {
@@ -184,7 +207,10 @@ export function cacheKeyingFiles({ root, readText, githubFiles, symlinks }) {
             required.add(dir);
             const meta = [`${dir}action.yml`, `${dir}action.yaml`].find((p) => typeof readText(p) === 'string');
             if (!meta) errors.push(`${file}: local action ${v} has no action.yml`);
-            else if (!executed.includes(meta)) executed.push(meta);
+            else {
+              callerOf(meta, parent, steps, file);
+              if (!executed.includes(meta)) executed.push(meta);
+            }
             let using;
             try {
               using = meta && lowerKeys(parseYaml(readText(meta)))?.runs?.using;
@@ -199,7 +225,8 @@ export function cacheKeyingFiles({ root, readText, githubFiles, symlinks }) {
       } else if (key === 'cache-dependency-path') {
         for (const p of value.split('\n')) need(p, file);
       } else if (KEYISH.test(key)) {
-        if (/\b(?:env|needs)\./.test(value)) errors.push(`${file}: ${key} is built from env or needs, which the check cannot follow`);
+        traceKeyValue(value, steps, `${file}: ${key}`);
+        for (const [, input] of value.matchAll(/\binputs\.([\w-]+)/g)) inputRefs.push({ file, key, input: input.toLowerCase() });
         if (key === 'cache' && steps) {
           // `cache:` under a step's `with:`; its step is the one whose `with` this is.
           const step = steps.find((s) => s && s.with === parent);
@@ -209,15 +236,13 @@ export function cacheKeyingFiles({ root, readText, githubFiles, symlinks }) {
             else if (!/^(?:false|)$/i.test(value.trim())) errors.push(`${file}: ${step.uses} cache: ${value} has no known default lockfile`);
           }
         }
-        for (const [, id] of value.matchAll(STEP_OUTPUT)) {
-          const step = (steps ?? []).find((s) => s && s.id === id);
-          if (!step) errors.push(`${file}: ${key} uses steps.${id}, which is not in the same steps list`);
-          else if (typeof step.run === 'string') {
-            if (BROAD_RUN.test(step.run)) errors.push(`${file} step ${id}: its run may hash .github without naming a file`);
-            for (const [p] of step.run.matchAll(GITHUB_PATH)) need(p, `${file} step ${id}`);
-          }
-        }
       }
+    }
+  }
+  for (const { file, key, input } of inputRefs) {
+    for (const caller of callers.get(file) ?? []) {
+      const v = caller.with[input];
+      if (typeof v === 'string') traceKeyValue(v, caller.steps, `${caller.file} -> ${file}: ${key} via inputs.${input}`);
     }
   }
   return { required: [...required].sort(), errors };

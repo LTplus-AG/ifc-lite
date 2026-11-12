@@ -34,6 +34,9 @@ export function PersistentToolHosts({ children }: { children: ReactNode }) {
   const derivationLauncher = useRef<HTMLElement | null>(null);
   const setDerivationOpen = (open: boolean) => setDerivation(current => ({ ...current, open }));
   const restoreDerivation = (event: Event) => { event.preventDefault(); if (derivationLauncher.current?.isConnected) derivationLauncher.current.focus(); };
+  /** The dialog the derivation shows while its chunk loads, or when it fails to. */
+  const derivationShell = (children: ReactNode) => <AuthorLoadDialog open={derivation.open} onOpenChange={setDerivationOpen}
+    onCloseAutoFocus={restoreDerivation} title={t('commandPalette.tool.deriveStructural.label')}>{children}</AuthorLoadDialog>;
   const alive = useRef(true);
   const bulkLauncher = useRef<HTMLElement | null>(null);
   const dataLauncher = useRef<HTMLElement | null>(null);
@@ -83,12 +86,8 @@ export function PersistentToolHosts({ children }: { children: ReactNode }) {
       </Suspense>
     </ChunkErrorBoundary>}
     {/* Keyed per opening, so a failed render or load is retried the next time. */}
-    {derivation.session > 0 && <ChunkErrorBoundary key={derivation.session} label="Structural derivation" renderFallback={fallback => (
-      <AuthorLoadDialog open={derivation.open} onOpenChange={setDerivationOpen} onCloseAutoFocus={restoreDerivation} title={t('commandPalette.tool.deriveStructural.label')}>{fallback}</AuthorLoadDialog>
-    )}>
-      <Suspense fallback={<AuthorLoadDialog open={derivation.open} onOpenChange={setDerivationOpen} onCloseAutoFocus={restoreDerivation} title={t('commandPalette.tool.deriveStructural.label')}>
-        <output>{t('shellChrome.statusBar.loadingFallback')}</output>
-      </AuthorLoadDialog>}>
+    {derivation.session > 0 && <ChunkErrorBoundary key={derivation.session} label="Structural derivation" renderFallback={derivationShell}>
+      <Suspense fallback={derivationShell(<output>{t('shellChrome.statusBar.loadingFallback')}</output>)}>
         <StructuralDerivationDialog open={derivation.open} onOpenChange={setDerivationOpen} onCloseAutoFocus={restoreDerivation} session={derivation.session} />
       </Suspense>
     </ChunkErrorBoundary>}

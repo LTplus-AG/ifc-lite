@@ -58,7 +58,7 @@ describe.each(['IFC2X3', 'IFC4', 'IFC4X3'])('%s structural lifecycle #9668', sch
     const scene = await lifecycleScene(pkgs, schema, 'point-action');
     const first = scene.editor.getNewEntity(scene.id)!;
     const attrs = [...first.attributes];
-    attrs[0] = '0SecondActivity00000000';
+    attrs[0] = '0SecondActivity'.padEnd(22, '0');
     const second = scene.editor.addEntity(first.type, attrs).expressId;
     const member = create.addStructuralCurveMemberToStore(scene.editor, scene.anchor, { Start:[0,0,0], End:[1,0,0] }).memberId;
     create.connectStructuralActivityToItemInStore(scene.editor, scene.anchor.ownerHistoryId, member, second);
@@ -72,7 +72,7 @@ describe.each(['IFC2X3', 'IFC4', 'IFC4X3'])('%s structural lifecycle #9668', sch
     const scene = await lifecycleScene(pkgs, schema, 'point-connection');
     const first = scene.editor.getNewEntity(scene.id)!;
     const attrs = [...first.attributes];
-    attrs[0] = '0SecondConnection000000';
+    attrs[0] = '0SecondConnection'.padEnd(22, '0');
     const second = scene.editor.addEntity(first.type, attrs).expressId;
     const member = create.addStructuralCurveMemberToStore(scene.editor, scene.anchor, { Start: [0,0,0], End: [1,0,0] }).memberId;
     create.connectStructuralMemberToConnectionInStore(scene.editor, scene.anchor.ownerHistoryId, member, second);

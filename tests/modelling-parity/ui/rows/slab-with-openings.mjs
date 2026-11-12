@@ -56,13 +56,22 @@ export default {
     async run(s) {
       const shots = [];
       let preview = { visible: false, width: 0, height: 0 };
+      let initialThickness = null;
       const tasks = [await task(s, 'polygon slab, six corners and Enter', async () => {
         await s.ui.click(s.page.getByRole('radio', { name: '3D', exact: true }));
         await tool(s, 'slab.place');
         await s.ui.click(s.page.getByRole('radio', { name: 'Polygon', exact: true }));
+        // The product default is 0.3 m. Set 0.2 explicitly so the later edit
+        // really thickens the host instead of writing the same value back.
+        await s.ui.click(s.page.locator('[data-command-id="slab.place"]').getByRole('spinbutton', { name: 'Thickness', exact: true }));
+        await s.ui.key('Control+A');
+        await s.ui.type('0.2');
+        await s.ui.key('Tab');
         for (const p of [[0,0],[5,0],[5,2],[3,2],[3,4],[0,4]]) await s.ui.clickWorld([...p,0]);
         await s.ui.key('Enter');
         await escape(s);
+        await inspector(s);
+        initialThickness = Number(await s.page.getByLabel('Thickness in metres', { exact: true }).inputValue());
       })];
       tasks.push(await task(s, 'opening tool: type 1.5 by 2 m and cut an enclosed shaft', async () => {
         await tool(s, 'opening.place');
@@ -114,7 +123,7 @@ export default {
       const result = await finish(s, tasks, [
         check('one L-shaped slab with six corners', step.count('IFCSLAB') === 1 && points.length >= 6, `${step.count('IFCSLAB')} slabs, ${points.length} profile points`),
         check('hover shows the 1.5 by 2 m rectangular shaft preview', preview.visible && Math.abs(preview.width/preview.height - .75) < .03, `visible ${preview.visible}; screen bounds ${preview.width} by ${preview.height} px`),
-        check('shaft remains hosted in slab after thickening', hosted && near(solid?.args[3], .3), `${voids.length} slab voids to ${openings.map(o => o?.type).join(',')}; thickness ${solid?.args[3]}; host-relative ${hosted}`),
+        check('shaft remains hosted in slab after thickening', hosted && near(initialThickness, .2) && near(solid?.args[3], .3), `${voids.length} slab voids to ${openings.map(o => o?.type).join(',')}; thickness ${initialThickness} -> ${solid?.args[3]}; host-relative ${hosted}`),
         check('shaft geometry is empty in 3D', empty && Math.abs(volume - (16-3)*.3) < .039, `volume ${volume}, expected 3.9; void ${empty}`),
         check('plan displays a closed shaft outline', planHole, 'Plan projects the slab below the standard 1.2 m cut; a closed rectangular shaft outline at the expected (2,2) centre and 1.5 by 2 m bounds is visible'),
       ]);

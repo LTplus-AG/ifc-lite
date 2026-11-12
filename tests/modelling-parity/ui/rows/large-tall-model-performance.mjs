@@ -34,7 +34,10 @@ async function armEdit(s, id) {
       return min.map((v, k) => (v + max[k]) / 2);
     };
     const baseline = before.models.values().next().value.geometryResult.meshes.filter(m => m.expressId === id);
-    globalThis.__p2_edit__ = { timeOrigin: performance.timeOrigin, started: null, mutationMs: null, replacedMs: null, drainedMs: null, totalMs: null, beforeCentre: centre(baseline), afterCentre: null };
+    const box = before.cameraCallbacks?.selectionBounds?.();
+    if (!box) throw new Error('Selected column has no render bounds');
+    const beforeCentre = ['x', 'y', 'z'].map(k => (box.min[k] + box.max[k]) / 2);
+    globalThis.__p2_edit__ = { timeOrigin: performance.timeOrigin, started: null, mutationMs: null, replacedMs: null, drainedMs: null, totalMs: null, beforeCentre, afterCentre: null };
     const result = globalThis.__p2_edit__;
     let replaced = false, done = false;
     const unsub = api.subscribe(st => {
@@ -174,27 +177,20 @@ export default {
           await s.ui.click(s.page.locator('[data-workspace-chip]'));
         }
         await escape(s);
+        // Known F5 ground truth: copied corner column on L1, whose floor
+        // is 6 m and height 3.8 m. It may be GPU-instanced and absent from the
+        // store's flat mesh list; use a real click, not a flat-mesh census.
+        const p = [0, 0, 7.9];
+        await s.harness.aim([4, 6, 8.9], p);
+        await s.ui.clickWorld(p);
         const column = await s.state(() => {
           const st = globalThis.__ifc_lite_viewer_store__.getState(), m = [...st.models.values()][0];
-          // The F5 producer's 40 original grid-bound columns cannot Move in
-          // today's product; its 1,560 copied columns have ordinary local
-          // placements. Pick a copied exterior column above the 6 m lobby.
-          const columns = m.geometryResult.meshes.filter(mesh => m.ifcDataStore.entities.getTypeName(mesh.expressId) === 'IfcColumn');
-          const bounds = mesh => {
-            const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
-            for (let i = 0; i < mesh.positions.length; i++) { const k = i % 3; min[k] = Math.min(min[k], mesh.positions[i] + (mesh.origin?.[k] ?? 0)); max[k] = Math.max(max[k], mesh.positions[i] + (mesh.origin?.[k] ?? 0)); }
-            return { id: mesh.expressId, centre: min.map((v, k) => (v + max[k]) / 2) };
-          };
-          return columns.map(bounds).filter(c => c.centre[1] > 6).sort((a, b) => a.centre[1] - b.centre[1] || b.centre[2] - a.centre[2] || a.centre[0] - b.centre[0])[0];
+          const id = st.selectedEntityId;
+          return { id, type: id === null ? null : m.ifcDataStore.entities.getTypeName(id) };
         });
-        if (!column) throw new Error('No individually rendered loaded column');
-        metrics.column = column;
-        notes.push('Edit target is a copied column above the lobby; original grid-parent columns refuse Move. The complete tower remains loaded.');
-        const p = [column.centre[0], -column.centre[2], column.centre[1]];
-        await s.harness.aim([p[0] + 4, p[1] + 6, p[2] + 1], p);
-        await s.ui.clickWorld(p);
-        const selected = await s.state(() => globalThis.__ifc_lite_viewer_store__.getState().selectedEntityId);
-        if (selected !== column.id) throw new Error(`Clicked ${selected}, expected column ${column.id}`);
+        if (column.type !== 'IfcColumn') throw new Error(`Clicked ${JSON.stringify(column)}, expected a loaded column`);
+        metrics.column = { ...column, clickedIfcPoint: p };
+        notes.push('Edit target is the copied corner column on L1; original grid-parent columns refuse Move. GPU instances are retained in the complete tower.');
         for (let i = 0; i < 5; i++) {
           await s.ui.clickWorld(p);
           const startedAt = new Date().toISOString();

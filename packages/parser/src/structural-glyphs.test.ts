@@ -458,9 +458,10 @@ describe('face stations', () => {
 
   it('anchors a face whose rows are cut thin by vertices elsewhere at its most open point', () => {
     // A 1 x 0.3 base with an uneven sawtooth left side and ten thin teeth on
-    // top. Its tallest rows (0.01 to 0.1, 0.2 to 0.29) hug the base's bottom
-    // and top edges, so a width-or-row-height score anchors 0.055 from one of
-    // them; the candidate farthest from every edge is mid-base, 0.125 clear.
+    // top. In the base its tallest rows (0.01 to 0.1, 0.2 to 0.29) hug its
+    // bottom and top edges, so a width-or-row-height score anchors 0.055 from
+    // one of them; the candidate farthest from every edge is mid-base, 0.125
+    // clear.
     const saw: [number, number, number][] = [[0, 0.3, 0], [0.01, 0.29, 0], [0, 0.2, 0], [0.01, 0.15, 0], [0, 0.1, 0], [0.01, 0.01, 0]];
     const teeth: [number, number, number][] = [];
     for (let i = 9; i >= 0; i--) {
@@ -475,6 +476,18 @@ describe('face stations', () => {
     expect(x).toBeLessThan(0.6);
     expect(y).toBeGreaterThan(0.1);
     expect(y).toBeLessThan(0.2);
+  });
+
+  it('anchors a long, very thin notched face inside it, not on a corner', () => {
+    // 1e4 long and 5e-6 tall, with a notch in its top edge that moves the
+    // vertex average off the face.
+    const h = 5e-6;
+    const polygon: [number, number, number][] = [[0, 0, 0], [1e4, 0, 0], [1e4, h, 0], [9e3, h, 0], [9e3, h / 2, 0], [1e3, h / 2, 0], [1e3, h, 0], [0, h, 0]];
+    const [x, y] = shapeCentre({ kind: 'face', polygon });
+    expect(y).toBeGreaterThan(0);
+    expect(y).toBeLessThan(h);
+    expect(x).toBeGreaterThan(0);
+    expect(x).toBeLessThan(1e4);
   });
 
   it('retains interior stations for a convex sliver', () => {

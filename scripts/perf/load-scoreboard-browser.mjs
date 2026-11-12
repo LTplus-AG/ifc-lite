@@ -26,7 +26,7 @@ import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromePids, memoryOf, vramOf } from './scenoptic-bench-sampling.mjs';
-import { COUNT_FRAMES, openAndWaitInteractive, openViewerPage, readOutputFingerprint, replacePage, waitCacheWrites, waitSceneSnapshots, webglAroundPick } from './viewer-load-probe.mjs';
+import { COUNT_FRAMES, openAndWaitInteractive, openViewerPage, readOutputFingerprint, replacePage, waitCacheWrites, waitSceneSnapshots, webglAroundPick, framesBetween } from './viewer-load-probe.mjs';
 import { browserShares, browserStages, expectedCacheTier, failedOpenIndex, gpuUnhealthy, openIdentity, stageShares, uiQuietValue } from './load-scoreboard-stats.mjs';
 import { BOOT_OBSERVERS, armAfterBootSettled, waitShellQuiet, waitUiQuiet } from './viewer-load-boot.mjs';
 import { rebaseToArm, waitCacheEntryStable, waitFirstPaint } from './load-scoreboard-lanes.mjs';
@@ -147,11 +147,12 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
     phase = label;
     const sampler = pass === 'memory' ? startMemorySampler(profileDir) : null;
     let open;
-    const framesBefore = await page.evaluate(() => globalThis.__benchFrames ?? 0);
     try { open = await openAndWaitInteractive(page, [fixture.path], { timeoutMs }); } finally { if (sampler) meta[`${label}Memory`] = sampler.stop(); }
-    // Canvas frames the viewer rendered from the pick to interactive, and whether WebGL (the start screen's mark) drew around the pick.
-    open.framesToInteractive = (await page.evaluate(() => globalThis.__benchFrames ?? 0)) - framesBefore;
-    open.webgl = webglAroundPick(await page.evaluate(() => globalThis.__benchGl ?? { draws: 0, times: [] }), open.originAbs, open.originAbs + open.interactiveMs);
+    // From in-page timestamps, at the measured boundaries (pick = originAbs .. interactive): canvas frames the viewer
+    // rendered, and whether WebGL (the start screen's mark) drew around the pick. A counter that was never installed is null.
+    const counters = await page.evaluate(() => ({ frames: globalThis.__benchFrameTimes ?? null, gl: globalThis.__benchGl ?? null }));
+    open.framesToInteractive = framesBetween(counters.frames, open.originAbs, open.originAbs + open.interactiveMs);
+    open.webgl = webglAroundPick(counters.gl, open.originAbs, open.originAbs + open.interactiveMs);
     Object.assign(open, { shell }, await waitUiQuiet(page, open.originAbs + open.interactiveMs, open.originAbs));
     if (early) open = rebaseToArm(open);
     const memory = meta[`${label}Memory`] ?? null;

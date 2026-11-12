@@ -374,7 +374,7 @@ export function renderMarkdown(summary, plan, host, samples = []) {
   const wdRows = watchdogRows(samples);
   if (wdRows.length) {
     out.push('', '## Host watchdog overlap (samples during a periodic host job pass; measurement only, cells not voided)', '',
-      '| fixture | lane | side | samples | overlapping a pass | unknown | median foreign CPU ms |', '|---|---|---|---:|---:|---:|---:|', ...wdRows);
+      '| fixture | lane | side | samples | overlapping a pass | unknown | median foreign CPU ms of overlapping samples |', '|---|---|---|---:|---:|---:|---:|', ...wdRows);
   }
   const glRows = webglPickRows(samples);
   if (glRows.length) {

@@ -141,14 +141,17 @@ export async function recordArmLanes({ sample, plan, side, fixture, cell, missin
     const armPlan = groupLanes.filter((l) => l.endsWith(suffix));
     const reopens = armPlan.some((l) => l.startsWith('browser-warm')) ? plan.warmOpens : 0;
     const armTag = sampleTagFor(tag, armLanes, armPlan, Date.now().toString(36));
+    // Each browser sample gets its own host interval, settled as soon as it ends (review #9857).
+    const host = await hostQuiet();
     const e = await sample({ side: plan.sides[side], fixture, tag: `${armTag}${suffix}`, warmOpens: reopens, pass: 'timing', arm });
+    settleHostLoad(host);
     for (const lane of armLanes) {
       const { trace, ...row } = e.lanes[lane] ?? { ok: false, error: `${lane}: not produced by the ${arm} sample` };
       const warmOpens = lane === `browser-warm${suffix}` ? e.warmOpens : undefined;
       for (const [from, to] of row.ok ? elementFileMoves([{ ...cell, lane, warmOpens }], armTag, tag) : []) {
         if (existsSync(join(traces, from))) renameSync(join(traces, from), join(traces, to));
       }
-      record({ ...common, ...row, lane, adapter: e.meta.adapter ? JSON.stringify(e.meta.adapter) : null,
+      record({ ...common, host, ...row, lane, adapter: e.meta.adapter ? JSON.stringify(e.meta.adapter) : null,
         browserVersion: e.meta.browserVersion ?? null, pageErrors: e.meta.pageErrors.length,
         gpuHealth: lane.startsWith('browser-cold') ? e.meta.gpuHealthCold ?? null : e.meta.gpuHealth ?? null,
         warmOpens }, trace ?? null);
@@ -236,7 +239,9 @@ async function run(opt) {
               const missingDefault = missing.filter((l) => DEFAULT_BROWSER.includes(l));
               if (missingDefault.length === 0) continue;
               const sampleTag = sampleTagFor(tag, missingDefault, groupLanes.filter((l) => DEFAULT_BROWSER.includes(l)), Date.now().toString(36));
+              const host = await hostQuiet();
               const s = await browser.sample({ side: plan.sides[side], fixture, tag: sampleTag, warmOpens: plan.warmOpens, pass: 'timing' });
+              settleHostLoad(host); // the timed opens only, not the memory pass that follows
               // H3: peak memory comes from a separate pass with the sampler on, never from the timed opens.
               const m = plan.memoryPass === false ? null : await browser.sample({ side: plan.sides[side], fixture, tag: `${sampleTag}-mem`, warmOpens: plan.warmOpens, pass: 'memory' });
               const adapter = s.meta.adapter ? JSON.stringify(s.meta.adapter) : null;
@@ -250,7 +255,7 @@ async function run(opt) {
                   if (existsSync(join(out, 'traces', from))) renameSync(join(out, 'traces', from), join(out, 'traces', to));
                 }
                 const mem = m?.lanes[lane];
-                record({ ...common, ...row, lane, adapter, browserVersion: s.meta.browserVersion ?? null, pageErrors: s.meta.pageErrors.length,
+                record({ ...common, host, ...row, lane, adapter, browserVersion: s.meta.browserVersion ?? null, pageErrors: s.meta.pageErrors.length,
                   peakMemoryMiB: mem?.ok ? mem.peakMemoryMiB : null, memoryPass: mem ? { ok: mem.ok, error: mem.error, memory: mem.memory,
                     interactiveMs: mem.interactiveMs, adapter: m.meta.adapter ?? null } : null,
                   gpuHealth: lane === 'browser-cold' ? s.meta.gpuHealthCold ?? null : s.meta.gpuHealth ?? null,

@@ -78,6 +78,15 @@ function hostBusyMs() {
   const [user, nice, system, , , irq, softirq, steal] = f; // idle (3) and iowait (4) are not busy
   return (user + nice + system + irq + softirq + (steal ?? 0)) * TICK_MS;
 }
+/** Our own cgroup path ("/user.slice/...") and process group: a builder there is ours (Chrome, the harness), never foreign. */
+function ownCgroupPath() { return readText('/proc/self/cgroup')?.split('\n').find((l) => l.startsWith('0::'))?.slice(3) ?? null; }
+function ownPgid() { const st = readText('/proc/self/stat'); return st ? Number(st.slice(st.lastIndexOf(')') + 2).split(' ')[2]) : null; }
+/** CPU ms a cgroup used so far (cpu.stat usage_usec; survives its processes exiting), or null when the cgroup is gone. */
+function cgroupUsageMs(path) {
+  const usec = Number(/usage_usec (\d+)/.exec(readText(`/sys/fs/cgroup${path}/cpu.stat`) ?? '')?.[1]);
+  return Number.isFinite(usec) ? usec / 1000 : null;
+}
+
 /** CPU ms this process's own cgroup (the benchmark job: harness, browsers, servers) used so far, or null. */
 function ownCgroupMs() {
   const rel = readText('/proc/self/cgroup')?.split('\n').find((l) => l.startsWith('0::'))?.slice(3);
@@ -96,13 +105,15 @@ function ownCgroupMs() {
 // one runnable task waited for a CPU, in percent), read just before the sample.
 export function classifyHostLoad({ psi, limit = 5, builders = [], groupCpuMs = {}, cpuMsLimit = 100, pressureFloor = 1.0 }) {
   const pressure = !(psi < limit);
-  const busyGroups = Object.entries(groupCpuMs).filter(([, ms]) => ms > cpuMsLimit).map(([g]) => Number(g));
+  // A builder whose CPU could not be measured (its cgroup is gone) is never idle (review #9857).
+  const busyGroups = Object.entries(groupCpuMs).filter(([, ms]) => ms === null || ms > cpuMsLimit).map(([g]) => g);
+  const unknownCpu = Object.values(groupCpuMs).some((ms) => ms === null);
   // Below the floor, pressure is noise (0.03 seen in slot 97499baf with an idle toolchain probe); unreadable pressure is never quiet.
   const builderUnderPressure = builders.length > 0 && !(psi < pressureFloor);
   const underLoad = pressure || busyGroups.length > 0 || builderUnderPressure;
   const builderState = builders.length === 0 ? 'none' : underLoad ? 'busy' : 'seen, idle';
   return { underLoad, builderState, busyGroups,
-    reason: pressure ? `CPU pressure avg10 ${psi} >= ${limit}` : busyGroups.length ? `builder group(s) ${busyGroups.join(',')} used > ${cpuMsLimit} ms CPU during the sample`
+    reason: pressure ? `CPU pressure avg10 ${psi} >= ${limit}` : busyGroups.length ? (unknownCpu ? `builder cgroup(s) ${busyGroups.join(',')} gone before the sample ended: CPU unknown` : `builder cgroup(s) ${busyGroups.join(',')} used > ${cpuMsLimit} ms CPU during the sample`)
       : builderUnderPressure ? `builder present while CPU pressure some avg10 = ${psi} >= ${pressureFloor}` : null };
 }
 
@@ -114,10 +125,13 @@ export async function hostQuiet({ limit = 5, maxWaitMs = 20000 } = {}) {
     await new Promise((r) => setTimeout(r, 1000));
     psi = cpuPressure10();
   }
-  const procs = foreignBuilders();
+  const own = ownCgroupPath(), pgid = ownPgid();
+  // Builders in our own cgroup or process group are our children, not foreign load (review #9857).
+  const procs = foreignBuilders().filter((p) => p.pgid !== pgid && (p.cgroup ?? '').slice(3) !== own);
   const pgids = [...new Set(procs.map((p) => p.pgid))];
+  const cgroups = [...new Set(procs.map((p) => (p.cgroup ?? '').slice(3)).filter(Boolean))];
   return { cpuPressureAvg10: psi, limit, waitedMs: Date.now() - started, builders: procs.map((p) => p.name), builderProcs: procs,
-    groupTicksBefore: groupTicks(pgids), hostBusyBefore: hostBusyMs(), ownCgroupBefore: ownCgroupMs(), watchdogBefore: watchdogState(), settledAt: null, startedAt: Date.now(), settled: false,
+    groupTicksBefore: groupTicks(pgids), cgroupUsageBefore: { ...Object.fromEntries(cgroups.map((c) => [c, cgroupUsageMs(c)])), ...(procs.some((p) => !p.cgroup) ? { '(no cgroup)': null } : {}) }, hostBusyBefore: hostBusyMs(), ownCgroupBefore: ownCgroupMs(), watchdogBefore: watchdogState(), settledAt: null, startedAt: Date.now(), settled: false,
     // Provisional until the sample ends (settleHostLoad): pressure alone decides now.
     ...classifyHostLoad({ psi, limit, builders: procs.map((p) => p.name) }) };
 }
@@ -137,7 +151,13 @@ export function settleHostLoad(host) {
   const sampleMs = Date.now() - host.startedAt;
   // Measurement only: affected cells are visible, nothing is voided by it.
   const overlapsWatchdogPass = overlapsWatchdog(host.watchdogBefore, watchdogState());
-  Object.assign(host, { groupCpuMs, foreignCpuMs, sampleMs, overlapsWatchdogPass, settled: true, ...classifyHostLoad({ psi: host.cpuPressureAvg10, limit: host.limit, builders: host.builders, groupCpuMs }) });
-  delete host.groupTicksBefore; delete host.hostBusyBefore; delete host.ownCgroupBefore; delete host.watchdogBefore;
+  // The decision uses cgroup totals (process counters vanish when a builder exits before the sample ends).
+  const builderCpuMs = {};
+  for (const [c, before] of Object.entries(host.cgroupUsageBefore ?? {})) {
+    const after = cgroupUsageMs(c);
+    builderCpuMs[c] = before === null || after === null ? null : Math.max(0, Math.round(after - before));
+  }
+  Object.assign(host, { groupCpuMs, builderCpuMs, foreignCpuMs, sampleMs, overlapsWatchdogPass, settled: true, ...classifyHostLoad({ psi: host.cpuPressureAvg10, limit: host.limit, builders: host.builders, groupCpuMs: builderCpuMs }) });
+  delete host.groupTicksBefore; delete host.cgroupUsageBefore; delete host.hostBusyBefore; delete host.ownCgroupBefore; delete host.watchdogBefore;
   return host;
 }

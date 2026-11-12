@@ -29,7 +29,7 @@ test('a builder group that used CPU, a builder under any pressure, or high press
   const busy = classifyHostLoad({ psi: 0, builders: ['rustc'], groupCpuMs: { 4242: 850 } });
   assert.equal(busy.underLoad, true);
   assert.equal(busy.builderState, 'busy');
-  assert.deepEqual(busy.busyGroups, [4242]);
+  assert.deepEqual(busy.busyGroups, ['4242']);
   assert.match(busy.reason, /used > 100 ms CPU/);
   assert.equal(classifyHostLoad({ psi: 1.2, builders: ['cargo'], groupCpuMs: { 1: 0 } }).underLoad, true, 'builder while pressure is at or above the 1.0 floor');
   const noise = classifyHostLoad({ psi: 0.03, builders: ['rustc'], groupCpuMs: { 2298217: 0 } });
@@ -40,23 +40,31 @@ test('a builder group that used CPU, a builder under any pressure, or high press
   assert.equal(classifyHostLoad({ psi: Number.NaN, builders: [] }).underLoad, true, 'unreadable pressure is never quiet');
 });
 
-test('settleHostLoad measures a process group\'s CPU over the sample from /proc', async () => {
+test('settleHostLoad charges a builder cgroup the CPU it used during the sample, from cpu.stat (survives exits)', async () => {
   const { settleHostLoad } = await load('./load-scoreboard.mjs');
-  const stat = readFileSync('/proc/self/stat', 'utf8');
-  const f = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
-  const pgid = Number(f[2]);
-  const ticks = () => { const s = readFileSync('/proc/self/stat', 'utf8'); const g = s.slice(s.lastIndexOf(')') + 2).split(' '); return Number(g[11]) + Number(g[12]); };
-  // This process's own ticks before the burn: a lower bound of its group's total, so the measured use is >= the burn.
-  const host = { cpuPressureAvg10: 0, limit: 5, builders: ['rustc'], builderProcs: [{ pgid }], groupTicksBefore: { [pgid]: ticks() }, settled: false };
+  const rel = readFileSync('/proc/self/cgroup', 'utf8').split('\n').find((l) => l.startsWith('0::'))?.slice(3);
+  let usage = null;
+  try { usage = Number(/usage_usec (\d+)/.exec(readFileSync(`/sys/fs/cgroup${rel}/cpu.stat`, 'utf8'))[1]) / 1000; } catch { /* no cgroup v2 here */ }
+  if (usage === null) return; // nothing to measure on this host
+  // Stand in for a foreign builder's cgroup with ours: its total before the burn, then 400 ms of CPU.
+  const host = { cpuPressureAvg10: 0, limit: 5, builders: ['rustc'], builderProcs: [{}], groupTicksBefore: {}, cgroupUsageBefore: { [rel]: usage }, settled: false, startedAt: Date.now() };
   const end = Date.now() + 400; while (Date.now() < end) { /* burn ~400 ms CPU */ }
   settleHostLoad(host);
-  assert.ok(host.groupCpuMs[pgid] >= 200, `group used ${host.groupCpuMs[pgid]} ms`);
+  assert.ok(host.builderCpuMs[rel] >= 200, `cgroup used ${host.builderCpuMs[rel]} ms`);
   assert.equal(host.underLoad, true);
-  assert.equal(host.settled, true);
-  assert.ok(host.foreignCpuMs === null || (Number.isInteger(host.foreignCpuMs) && host.foreignCpuMs >= 0), `foreign CPU recorded as ms or null (${host.foreignCpuMs})`);
-  const again = host.groupCpuMs[pgid];
+  const again = host.builderCpuMs[rel];
   settleHostLoad(host);
-  assert.equal(host.groupCpuMs[pgid], again, 'settles once; rows of one sample share it');
+  assert.equal(host.builderCpuMs[rel], again, 'settles once');
+});
+
+test('a builder whose cgroup is gone by the end of the sample is busy, never idle (review #9857)', async () => {
+  const { settleHostLoad, classifyHostLoad } = await load('./load-scoreboard.mjs');
+  const host = { cpuPressureAvg10: 0, limit: 5, builders: ['rustc'], builderProcs: [{}], groupTicksBefore: {}, cgroupUsageBefore: { '/no/such/cgroup.service': 1234 }, settled: false, startedAt: Date.now() };
+  settleHostLoad(host);
+  assert.equal(host.builderCpuMs['/no/such/cgroup.service'], null);
+  assert.equal(host.underLoad, true);
+  assert.match(host.reason, /gone before the sample ended: CPU unknown/);
+  assert.equal(classifyHostLoad({ psi: 0, builders: ['rustc'], groupCpuMs: { '(no cgroup)': null } }).underLoad, true, 'an unmeasurable builder is busy');
 });
 
 test('a sample overlaps a watchdog pass when one ran at either end or one started in between; unknown is null', async () => {
@@ -74,5 +82,5 @@ test('the report names cells with samples that overlapped a watchdog pass', asyn
   const row = (side, over, foreign) => ({ ok: true, fixture: 'Holter', lane: 'browser-cold', side, host: { overlapsWatchdogPass: over, foreignCpuMs: foreign } });
   const rows = watchdogRows([row('base', true, 9000), row('base', false, 300), row('base', false, 500), row('branch', false, 400)]);
   assert.equal(rows.length, 1, 'a cell with no overlapping sample is not listed');
-  assert.match(rows[0], /\| Holter \| browser-cold \| base \| 3 \| 1 \| 0 \| 500 \|/);
+  assert.match(rows[0], /\| Holter \| browser-cold \| base \| 3 \| 1 \| 0 \| 9000 \|/, 'the median is over the overlapping sample only (review #9857)');
 });

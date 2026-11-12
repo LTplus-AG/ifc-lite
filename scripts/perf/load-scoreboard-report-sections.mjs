@@ -24,14 +24,16 @@ export function webglPickRows(samples) {
     const known = rows.filter((r) => typeof r.webglActiveAtPick === 'boolean');
     const active = known.filter((r) => r.webglActiveAtPick).length;
     const frames = rows.map((r) => r.framesToInteractive).filter(Number.isFinite);
-    const state = known.length < rows.length ? 'UNKNOWN on some samples' : active === 0 ? 'none' : active === known.length ? 'ALL' : 'MIXED';
+    const knownState = known.length === 0 ? 'UNKNOWN' : active === 0 ? 'none' : active === known.length ? 'ALL' : 'MIXED';
+    const unknown = rows.length - known.length;
+    const state = known.length > 0 && unknown > 0 ? `${knownState} (+${unknown} unknown)` : knownState;
     return `| ${fixture} | ${lane} | ${side} | ${rows.length} | ${active} | ${state} | ${frames.length ? Math.round(median(frames)) : '—'} |`;
   });
 }
 
 /**
  * Per fixture x lane x side: samples that overlapped a host watchdog pass (host.overlapsWatchdogPass) and the median CPU
- * the rest of the host used during them (host.foreignCpuMs). Measurement only: affected cells are named, not voided.
+ * the rest of the host used during the overlapping ones (host.foreignCpuMs). Measurement only: affected cells are named, not voided.
  */
 export function watchdogRows(samples) {
   const groups = new Map();
@@ -46,7 +48,7 @@ export function watchdogRows(samples) {
     const [fixture, lane, side] = key.split('|');
     const over = rows.filter((r) => r.host.overlapsWatchdogPass === true).length;
     const unknown = rows.filter((r) => r.host.overlapsWatchdogPass === null).length;
-    const foreign = rows.map((r) => r.host.foreignCpuMs).filter(Number.isFinite);
+    const foreign = rows.filter((r) => r.host.overlapsWatchdogPass === true).map((r) => r.host.foreignCpuMs).filter(Number.isFinite);
     return `| ${fixture} | ${lane} | ${side} | ${rows.length} | ${over} | ${unknown} | ${foreign.length ? Math.round(median(foreign)) : '—'} |`;
   });
 }

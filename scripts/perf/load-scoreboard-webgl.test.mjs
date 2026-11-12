@@ -42,6 +42,15 @@ test('the report names a cell that mixes WebGL-active and quiet picks', async ()
   const rows = webglPickRows([row('base', true, 30), row('base', false, 20), row('base', false, 22), row('branch', false, 21), row('branch', null, 25)]);
   assert.equal(rows.length, 2);
   assert.match(rows.find((r) => r.includes('| base |')), /\| 3 \| 1 \| MIXED \| 22 \|/);
-  assert.match(rows.find((r) => r.includes('| branch |')), /UNKNOWN on some samples/);
+  assert.match(rows.find((r) => r.includes('| branch |')), /none \(\+1 unknown\)/);
+  const mixedUnknown = webglPickRows([row('base', true, 1), row('base', false, 1), row('base', null, 1)]);
+  assert.match(mixedUnknown[0], /MIXED \(\+1 unknown\)/, 'MIXED stays visible beside unknown samples (review #9857)');
   assert.deepEqual(webglPickRows([{ ok: true, fixture: 'F', lane: 'browser-cold', side: 'base' }]), [], 'rows without the field are skipped');
+});
+
+test('frames are counted at the measured boundaries from in-page timestamps; no counter is null (review #9857)', async () => {
+  const { framesBetween } = await load('./viewer-load-probe.mjs');
+  assert.equal(framesBetween([100, 4990, 5000, 6000, 9000, 9001], 5000, 9000), 3, 'only frames from the pick to interactive');
+  assert.equal(framesBetween(null, 5000, 9000), null, 'counter not installed');
+  assert.equal(framesBetween([1], Number.NaN, 9000), null);
 });

@@ -54,9 +54,16 @@ export const COUNT_FRAMES = () => {
   const proto = globalThis.GPUCanvasContext?.prototype;
   if (proto && !proto.__benchWrapped) {
     const orig = proto.getCurrentTexture;
-    proto.getCurrentTexture = function () { globalThis.__benchFrames = (globalThis.__benchFrames ?? 0) + 1; return orig.call(this); };
+    globalThis.__benchFrameTimes = [];
+    proto.getCurrentTexture = function () {
+      globalThis.__benchFrames = (globalThis.__benchFrames ?? 0) + 1;
+      if (globalThis.__benchFrameTimes.length < 50000) globalThis.__benchFrameTimes.push(performance.now());
+      return orig.call(this);
+    };
     proto.__benchWrapped = true;
   }
+  // Installed means present, even before the first draw: an absent counter reads as unknown, never as "no WebGL".
+  if ((globalThis.WebGLRenderingContext || globalThis.WebGL2RenderingContext) && !globalThis.__benchGl) globalThis.__benchGl = { draws: 0, times: [] };
   for (const glProto of [globalThis.WebGLRenderingContext?.prototype, globalThis.WebGL2RenderingContext?.prototype]) {
     if (!glProto || glProto.__benchGlWrapped) continue;
     for (const name of ['drawArrays', 'drawElements', 'drawArraysInstanced', 'drawElementsInstanced', 'drawRangeElements']) {
@@ -78,6 +85,14 @@ export const COUNT_FRAMES = () => {
  * `endAbs` = interactive. Active at the pick = a WebGL draw in the `windowMs` before it or during the open.
  * Null fields when the page recorded nothing (counter missing), never a silent "inactive".
  */
+/** Frames whose timestamp falls in [startAbs, endAbs] (page clock); null when the counter was not installed. */
+export function framesBetween(times, startAbs, endAbs) {
+  if (!Array.isArray(times) || !Number.isFinite(startAbs) || !Number.isFinite(endAbs)) return null;
+  let n = 0;
+  for (const t of times) if (t >= startAbs && t <= endAbs) n++;
+  return n;
+}
+
 export function webglAroundPick(gl, originAbs, endAbs, windowMs = 1000) {
   if (!gl || !Array.isArray(gl.times) || !Number.isFinite(originAbs)) {
     return { webglDrawsBeforePick: null, webglDrawsDuringOpen: null, webglLastDrawBeforePickMs: null, webglActiveAtPick: null };

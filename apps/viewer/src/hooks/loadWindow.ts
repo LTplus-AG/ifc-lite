@@ -29,6 +29,7 @@ import { isGeometryTailBusy } from './geometryTail.js';
 
 export const MAX_TAIL_WAIT_MS = 3_000;
 const BACKSTOP_MS = 100;
+const CLOSE_BACKSTOP_MS = 1_000;
 
 export interface LoadWindowDeps {
   /** True while the store is loading or geometry is streaming. */
@@ -51,6 +52,7 @@ export function createLoadWindow(deps: LoadWindowDeps): LoadWindow {
   let open = false;
   let tailSince = -1;
   let checkScheduled = false;
+  let closeScheduled = false;
 
   const set = (next: boolean): void => {
     if (next === open) return;
@@ -65,13 +67,30 @@ export function createLoadWindow(deps: LoadWindowDeps): LoadWindow {
     deps.requestFrame(run);
     deps.setTimer(run, BACKSTOP_MS);
   };
+  // Close only after the frame that shows the settled store has painted: the
+  // consumers recompute when they are told, and doing that in the same task as
+  // the settle put their whole-model walks in front of the first settled frame.
+  const closeAfterPaint = (): void => {
+    if (closeScheduled) return;
+    closeScheduled = true;
+    let done = false;
+    const finish = (): void => {
+      if (done) return;
+      done = true;
+      closeScheduled = false;
+      if (deps.storeBusy()) return; // a new load began meanwhile: still open
+      set(false);
+    };
+    deps.requestFrame(() => deps.setTimer(finish, 0));
+    deps.setTimer(finish, CLOSE_BACKSTOP_MS); // hidden tab: frames stop
+  };
   const evaluate = (): void => {
     if (deps.storeBusy()) { tailSince = -1; set(true); return; }
     if (!open) return; // nothing was loading: an idle scene is not a load window
     if (tailSince < 0) tailSince = deps.now();
     if (deps.tailBusy() && deps.now() - tailSince < MAX_TAIL_WAIT_MS) { scheduleCheck(); return; }
     tailSince = -1;
-    set(false);
+    closeAfterPaint();
   };
 
   // Observe the store from creation, not only while a consumer is subscribed:
@@ -100,7 +119,7 @@ function getViewerLoadWindow(): LoadWindow {
     subscribeStore: (listener) => useViewerStore.subscribe((s, prev) => { if (storeBusy(s) !== storeBusy(prev)) listener(); }),
     tailBusy: isGeometryTailBusy,
     now: () => performance.now(),
-    requestFrame: (fn) => { if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => fn()); },
+    requestFrame: (fn) => { if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => fn()); else setTimeout(fn, 16); },
     setTimer: (fn, ms) => { setTimeout(fn, ms); },
   });
   return viewerLoadWindow;

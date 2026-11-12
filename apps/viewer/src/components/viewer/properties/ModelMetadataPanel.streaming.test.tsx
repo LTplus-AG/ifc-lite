@@ -13,6 +13,7 @@ import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, it, mock } from 'node:test';
 import { act, useState } from 'react';
+import { settleLoadWindow } from '@/test/load-window';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { render, cleanup } from '@/test/render.js';
@@ -97,6 +98,7 @@ it('shows a dash while the load window is open and the exact counts once it sett
   assert.equal(elementsWithGeometry(panel), '—', 'a publish inside the window computes nothing');
 
   act(() => useViewerStore.setState({ geometryStreamingActive: false }));
+  await settleLoadWindow();
   assert.equal(elementsWithGeometry(panel), '3', 'settled: the exact count');
   assert.equal(buildingStoreys(panel), '1');
 });
@@ -123,5 +125,6 @@ it('waits for the whole load window, whichever model streams, and then shows the
   assert.equal(elementsWithGeometry(panel), '—', 'never the previous model\'s value');
 
   act(() => useViewerStore.setState({ geometryStreamingActive: false }));
+  await settleLoadWindow();
   assert.equal(elementsWithGeometry(panel), '3', 'settled: the displayed model\'s count');
 });

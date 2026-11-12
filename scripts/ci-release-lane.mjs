@@ -237,9 +237,8 @@ export function decideReleaseLane({ event, mode, headRef, headRepo, repo, baseRe
     route.queueable ? '' : 'once this PR is queueable',
   ].filter(Boolean);
   if (pending.length === 0) return { mode: m, lane: 'lean', reason: `CI_RELEASE_LANE=on on the release PR; ${route.queueReason}; ${route.reason}` };
-  const report = { mode: m, lane: 'full', pending };
-  if (m === 'shadow') return { ...report, reason: `shadow mode: full lanes run, lean lane reported; ${route.queueReason}` };
-  if (!ownerAllowsLean) return { ...report, reason: `CI_RELEASE_LANE=on, but the lean lane is held until the owner decides how release PRs reach main (OWNER_ALLOWS_LEAN); full lanes run, lean lane reported; ${route.queueReason}`, warning: 'CI_RELEASE_LANE=on is held (OWNER_ALLOWS_LEAN=false); running the full lanes' };
+  if (m === 'shadow') return full(`shadow mode: full lanes run, lean lane reported; ${route.queueReason}`, { pending });
+  if (!ownerAllowsLean) return full(`CI_RELEASE_LANE=on, but the lean lane is held until the owner decides how release PRs reach main (OWNER_ALLOWS_LEAN); full lanes run, lean lane reported; ${route.queueReason}`, { pending, warning: 'CI_RELEASE_LANE=on is held (OWNER_ALLOWS_LEAN=false); running the full lanes' });
   // `on`, hold released, something still pending: refused outright, naming
   // what is pending, because this run would be the last gate.
   return full(`lean lane not granted, still pending: ${pending.join(', ')}; queue state: ${route.queueReason}`, { warning: `release lane refused; still pending: ${pending.join(', ')}` });

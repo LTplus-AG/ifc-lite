@@ -10,7 +10,7 @@
  * Cargo.lock change included: a release that bumps Rust crates runs full.
  */
 
-import { basename, dirname } from 'node:path';
+import { basename, posix } from 'node:path';
 import { isChangesetName } from './pending-changesets.mjs';
 
 /**
@@ -35,10 +35,12 @@ export function diffProblems(entries, git) {
   const problems = [];
   if (entries.length === 0) problems.push('the diff is empty or unreadable');
   // Changesets writes a package's CHANGELOG exactly when it bumps that
-  // package's version, so each must come with the other. The private root is
-  // the exception: it is versioned (privatePackages.version) without a CHANGELOG.
+  // package's version, so each must come with the other. The private root
+  // package.json is the exception: it is not a workspace package, and
+  // scripts/sync-versions.js (run after `changeset version`) bumps it with no
+  // CHANGELOG.
   const changed = new Set(entries.map((e) => e.path));
-  const sibling = (path, name) => (dirname(path) === '.' ? name : `${dirname(path)}/${name}`);
+  const sibling = (path, file) => posix.join(posix.dirname(path), file);
   for (const { status, path } of entries) {
     const name = basename(path);
     let problem = null;

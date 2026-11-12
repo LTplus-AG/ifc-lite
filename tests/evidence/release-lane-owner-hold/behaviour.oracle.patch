@@ -1,7 +1,7 @@
 diff --git b/scripts/ci-release-lane.mjs a/scripts/ci-release-lane.mjs
 --- b/scripts/ci-release-lane.mjs
 +++ a/scripts/ci-release-lane.mjs
-@@ -231,7 +231,7 @@ export function decideReleaseLane({ event, mode, headRef, headRepo, repo, baseRe
+@@ -233,7 +233,7 @@ export function decideReleaseLane({ event, mode, headRef, headRepo, repo, baseRe
    // wait on a label.
    const pending = [
      m === 'shadow' ? 'with CI_RELEASE_LANE=on' : '',
@@ -9,4 +9,4 @@ diff --git b/scripts/ci-release-lane.mjs a/scripts/ci-release-lane.mjs
 +    ownerAllowsLean ? '' : 'with OWNER_ALLOWS_LEAN released',
      route.queueable ? '' : 'once this PR is queueable',
    ].filter(Boolean);
-   const base = { mode: m, wouldBeLean: true };
+   if (pending.length === 0) return { mode: m, lane: 'lean', reason: `CI_RELEASE_LANE=on on the release PR; ${route.queueReason}; ${route.reason}` };

@@ -92,8 +92,8 @@ export const QUEUE_FULL_CHECKS = [
 
 /**
  * One rule list (`queue_rules` or `pull_request_rules`) from .mergify.yml,
- * read by indentation. Deliberately narrow: anything it does not recognise
- * yields no rule or no list item, which reads as "no route" and runs full.
+ * read by indentation. Deliberately narrow: a line it does not understand
+ * marks its rule `unread`, which releaseQueueRoute refuses (runs full).
  * The tests pin both callers against a real YAML parse of the file. Each rule
  * keeps its 4-space list sections, the names of its actions, and the queue
  * its `actions.queue` names in block form (null otherwise).
@@ -141,7 +141,9 @@ function readRules(text, topKey) {
       continue;
     }
     if (/^ {4}\w+:\s*\S/.test(line)) {
-      // A scalar setting (`batch_size: 1`); a block scalar under it is not read.
+      // Only a plain scalar setting (`batch_size: 1`, `merge_method: squash`)
+      // is understood; a flow list or map, a tag or a block scalar is content.
+      if (!/^ {4}\w+:\s+[\w"'][^[\]{}]*$/.test(line)) unread();
       section = null;
       continue;
     }
@@ -189,9 +191,21 @@ export function parsePullRequestRules(text) {
  * pull_request_rules actions that cannot put a PR on a path to `main`. Any
  * other action, known or not, must be a `queue` into the release queue.
  */
-const SAFE_ACTIONS = ['comment', 'label', 'assign', 'request_reviews', 'dismiss_reviews', 'review', 'close', 'delete_head_branch', 'post_check', 'edit'];
+const SAFE_ACTIONS = ['comment', 'label', 'assign', 'request_reviews', 'dismiss_reviews', 'close', 'delete_head_branch', 'post_check'];
+
+/**
+ * Top-level .mergify.yml keys whose content cannot add a route. Any other
+ * (`extends`, `defaults`, `shared`, ...) can, and is not read: it refuses.
+ */
+const KNOWN_TOP_KEYS = ['queue_rules', 'pull_request_rules', 'priority_rules', 'merge_protections_settings'];
+
+/** Top-level lines that are not exactly `<known key>:` (as readRules sees top level). */
+function unknownTopLines(text) {
+  return String(text ?? '').split('\n').filter((l) => /^\S/.test(l) && !/^#/.test(l) && !KNOWN_TOP_KEYS.some((k) => l.trimEnd() === `${k}:`));
+}
 
 const RELEASE_HEAD = `head=${RELEASE_HEAD_REF}`;
+const PLAIN_HEAD = /^(-?)head=([\w./-]+)$/;
 
 /**
  * Mergify conditions judged for the release PR: `{ never }` when one can
@@ -201,14 +215,16 @@ const RELEASE_HEAD = `head=${RELEASE_HEAD_REF}`;
  */
 function judgeConditions(conditions, { labels, draft }) {
   // Head conditions first, so an exclusion wins whatever the order:
-  // `-head=` another branch holds; `head=` another, or `-head=` this one, never does.
+  // `-head=` another branch holds; `head=` another, or `-head=` this one,
+  // never does. Only a plain branch name is judged; any other spelling
+  // (spaces, quotes) is unknown below.
   for (const c of conditions) {
-    const head = /^(-?)head=(.+)$/.exec(c);
+    const head = PLAIN_HEAD.exec(c);
     if (head && (head[1] === '-') === (head[2] === RELEASE_HEAD_REF)) return { never: c };
   }
   const unmet = [];
   for (const c of conditions) {
-    if (/^-?head=/.test(c) || /^(status|check)-success=/.test(c)) continue;
+    if (PLAIN_HEAD.test(c) || /^(status|check)-success=/.test(c)) continue;
     if (c === '-draft') {
       if (draft !== false) unmet.push('it is a draft (or its draft state is unknown)');
       continue;
@@ -225,8 +241,9 @@ function judgeConditions(conditions, { labels, draft }) {
 
 /**
  * Does .mergify.yml route THIS release PR through a queue that runs the full
- * gate? Every rule of both lists must be read in full (a line the reader
- * does not understand refuses). Then four parts, checked in this order:
+ * gate? The file may hold only the top-level keys in KNOWN_TOP_KEYS, and
+ * every rule of both lists must be read in full (a line the reader does not
+ * understand refuses). Then four parts, checked in this order:
  *  - exactly one queue rule's conditions do not exclude the release head
  *    (any queue could take it: a rule, `@Mergifyio queue`, autoqueue), and
  *    every other entry condition of that rule is
@@ -255,12 +272,14 @@ function judgeConditions(conditions, { labels, draft }) {
  */
 export function releaseQueueRoute(text, { labels = [], draft = true } = {}) {
   const pr = { labels, draft };
-  // Every queue the release PR could enter (a rule, `@Mergifyio queue`, or
-  // autoqueue) counts, unless its conditions exclude the release head.
+  const unknownTop = unknownTopLines(text);
+  if (unknownTop.length > 0) return { ok: false, reason: `.mergify.yml has top-level line(s) this script does not read: ${unknownTop.join(', ')}` };
   const queueRules = parseQueueRules(text);
   const prRules = parsePullRequestRules(text);
   const unreadRule = [...queueRules, ...prRules].find((r) => r.unread);
   if (unreadRule) return { ok: false, reason: `Mergify rule \`${unreadRule.name}\` has lines this script cannot read` };
+  // Every queue the release PR could enter (a rule, `@Mergifyio queue`, or
+  // autoqueue) counts, unless its conditions exclude the release head.
   const takers = queueRules.map((r) => ({ r, judged: judgeConditions(r.queue, pr) })).filter((t) => !t.judged.never);
   if (takers.length === 0) return { ok: false, reason: `no Mergify queue rule takes ${RELEASE_HEAD}` };
   if (takers.length > 1) return { ok: false, reason: `more than one Mergify queue rule can take ${RELEASE_HEAD} (${takers.map((t) => t.r.name).join(', ')})` };
@@ -423,7 +442,7 @@ export function verifyReleaseLane(input) {
 }
 
 /** Output lines without Node's own warnings and crash banner. */
-const signalLines = (s) => String(s ?? '').split('\n').filter((l) => l.trim() && !/^\(node:\d+\) \w*Warning:|^\(Use `node --trace-|^Node\.js v\d/.test(l));
+const signalLines = (s) => String(s ?? '').split('\n').filter((l) => l.trim() && !/^\(node:\d+\) (\[\w+\] )?\w*Warning:|^\(Use `node --trace-|^Node\.js v\d/.test(l));
 
 /** Runs LEAN_CHECKS in `cwd`, as `release-pr` would, each with one line of its output. */
 export function runLeanChecks(cwd, scripts = LEAN_CHECKS) {

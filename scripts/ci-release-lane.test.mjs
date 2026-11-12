@@ -281,13 +281,19 @@ test('REFUSE (#9783 review): any other route that can queue or merge the release
     ['  - name: direct\n    conditions:\n      - head=changeset-release/main\n    actions:\n      merge: {}', /`direct` can merge the release PR/],
     ['  - name: unknown-action\n    conditions:\n      - head=changeset-release/main\n    actions:\n      dequeue_and_merge: {}', /`unknown-action` can dequeue_and_merge the release PR/],
     // actions it cannot read, flow style or misindented, are a refusal, not "no actions"
-    ['  - name: flow\n    conditions:\n      - label=go\n    actions: {merge: {}}', /`flow` has actions this script cannot read/],
+    ['  - name: flow\n    conditions:\n      - label=go\n    actions: {merge: {}}', /`flow` has lines this script cannot read/],
     ['  - name: deep\n    conditions:\n      - label=go\n    actions:\n        queue:\n          name: default', /`deep` has (actions|lines) this script cannot read/],
     // a merge key next to a safe action, an alias, a rule not led by `name`, a mapping where a list belongs
     ['  - name: sneaky\n    conditions:\n      - label=go\n    actions:\n      comment:\n        message: hi\n      <<: *direct_merge', /`sneaky` has lines this script cannot read/],
     ['  - name: alias\n    conditions: *conds\n    actions:\n      comment:\n        message: hi', /`alias` has lines this script cannot read/],
     ['  - conditions:\n      - label=go\n    name: late\n    actions:\n      merge: {}', /`\(unnamed: - conditions:\)` has lines this script cannot read/],
     ['  - name: mapped\n    conditions:\n      or: [label=go]\n    actions:\n      comment:\n        message: hi', /`mapped` has lines this script cannot read/],
+    // a flow-style list, and a head spelled other than a plain branch name
+    ['  - name: flowlist\n    conditions: [label=go]\n    actions:\n      comment:\n        message: hi', /`flowlist` has lines this script cannot read/],
+    ['  - name: tagged\n    conditions: !!seq [label=go]\n    actions:\n      comment:\n        message: hi', /`tagged` has lines this script cannot read/],
+    ['  - name: spaced\n    conditions:\n      - head= changeset-release/main\n    actions:\n      merge: {}', /`spaced` has a condition this script cannot judge: head= changeset-release\/main/],
+    // approving or un-drafting can unblock a merge, so they are not safe
+    ['  - name: approve\n    conditions:\n      - head=changeset-release/main\n    actions:\n      review:\n        type: APPROVE', /`approve` can review the release PR/],
     ['  - name: other\n    conditions:\n      - head=changeset-release/main\n    actions:\n      queue:\n        name: default', /`other` can queue the release PR into `default`/],
     ['  - name: inline\n    conditions:\n      - head=changeset-release/main\n    actions:\n      queue: {name: release}', /`inline` can queue the release PR into a queue this script cannot read/],
   ];
@@ -299,6 +305,11 @@ test('REFUSE (#9783 review): any other route that can queue or merge the release
   // A rule excluding the release head, or with no routing action, is no route.
   for (const r of ['  - name: ex\n    conditions:\n      - -head=changeset-release/main\n    actions:\n      queue:\n        name: default', '  - name: elsewhere\n    conditions:\n      - head=feature/x\n    actions:\n      merge: {}', '  - name: not-x\n    conditions:\n      - -head=feature/x\n      - label=go\n    actions:\n      queue:\n        name: release', '  - name: note\n    conditions:\n      - label=go\n    actions:\n      comment:\n        message: hi']) {
     assert.equal(releaseQueueRoute(extra(r), { labels: ['mergify-trial'], draft: false }).ok, true, r);
+  }
+  // A top-level key it does not read can add a route (`extends` merges another config).
+  assert.match(releaseQueueRoute(`extends: org/.github\n${MERGIFY}`, { labels: ['mergify-trial'], draft: false }).reason, /top-level line\(s\) this script does not read: extends: org\/\.github/); // @source-text-assertion-ok subject is the returned reason
+  for (const top of ['---', 'queue_rules: []', '? extends']) {
+    assert.equal(releaseQueueRoute(`${MERGIFY}\n${top}\n`, { labels: ['mergify-trial'], draft: false }).ok, false, top);
   }
   // Two queue rules taking the release head: the other could be single-step.
   const twoQueues = MERGIFY.replace('queue_rules:\n', 'queue_rules:\n  - name: release-fast\n    queue_conditions:\n      - head=changeset-release/main\n    merge_conditions:\n      - head=changeset-release/main\n');
@@ -334,7 +345,7 @@ test('SHADOW (#9783 review): the report runs the lean lane\'s own checks and lis
   // The real runner on scripts of its own: exit status and last output line; a missing script fails, never throws.
   const dir = mkdtempSync(join(TMP, 'checks-'));
   writeFileSync(join(dir, 'ok.mjs'), "console.log('first'); console.log('all good');\n");
-  writeFileSync(join(dir, 'bad.mjs'), "console.log('offset mismatch'); process.emitWarning('noise', 'ExperimentalWarning'); process.emitWarning('old', 'DeprecationWarning'); process.exitCode = 1;\n");
+  writeFileSync(join(dir, 'bad.mjs'), "console.log('offset mismatch'); process.emitWarning('noise', 'ExperimentalWarning'); process.emitWarning('old', 'DeprecationWarning', 'DEP0040'); process.exitCode = 1;\n");
   writeFileSync(join(dir, 'own.mjs'), "console.log('Warning: README missing for packages/x'); process.exitCode = 1;\n");
   assert.deepEqual(runLeanChecks(dir, ['ok.mjs', 'bad.mjs', 'own.mjs', 'gone.mjs']).map((c) => [c.script, c.ok, /Cannot find module/.test(c.tail) || c.tail]), [['ok.mjs', true, 'all good'], ['bad.mjs', false, 'offset mismatch'], ['own.mjs', false, 'Warning: README missing for packages/x'], ['gone.mjs', false, true]]);
 });

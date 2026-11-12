@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { Renderer } from './index.js';
-import type { MeshData } from '@ifc-lite/geometry';
+import type { DecodedInstancedShard, MeshData } from '@ifc-lite/geometry';
 import type { Scene } from './scene.js';
 import type { RenderOptions } from './types.js';
 import { OpaqueVisibilityPass } from './opaque-visibility-pass.js';
@@ -541,6 +541,103 @@ describe('selecting many entities (#9835)', () => {
     assert.equal(hydrated(h).filter((mesh) => mesh.expressId === 4).length, PIECES_EACH, 'kept across frames of one selection');
     h.render({ selectedIds: new Set([2]) });
     assert.equal(hydrated(h).filter((mesh) => mesh.expressId === 4).length, 0, 'freed when the selection changes');
+  });
+
+  it('shrinking a pooled selection under the budget goes back to one copy per piece, drawing each triangle once on every frame', () => {
+    const h = makeHarness();
+    const meshes = model(600);
+    load(h, meshes);
+    const many = frameCost(h, { selectedIds: new Set(idsOf(251)) });
+    assert.equal(many.highlightDraws.length, 1, 'just past the budget: pooled');
+    assert.deepEqual(many.drawn().triangles, expectedTriangles(ofEntities(meshes, idsOf(251))));
+
+    const few = frameCost(h, { selectedIds: new Set(idsOf(250)) });
+    assert.ok(many.created.every((buffer) => buffer.destroyed === 1), 'the pool is freed');
+    assert.equal(few.highlightDraws.length, 250 * PIECES_EACH, 'at the budget: one copy per piece');
+    assert.deepEqual(few.drawn().triangles, expectedTriangles(ofEntities(meshes, idsOf(250))), 'the frame that crosses the budget already draws the whole selection');
+
+    const again = frameCost(h, { selectedIds: new Set(idsOf(251)) });
+    assert.ok(few.created.every((buffer) => buffer.destroyed === 1));
+    assert.deepEqual(again.drawn().triangles, expectedTriangles(ofEntities(meshes, idsOf(251))), 'and back over it');
+  });
+
+  it('highlights a selected entity whose geometry only arrives after the selection was made', () => {
+    const h = makeHarness();
+    const meshes = model(1_000);
+    load(h, ofEntities(meshes, idsOf(999)));
+    const selectedIds = new Set(idsOf(1_000));
+    const first = frameCost(h, { selectedIds });
+    assert.deepEqual(first.drawn().triangles, expectedTriangles(ofEntities(meshes, idsOf(999))));
+
+    h.scene.appendToBatches(ofEntities(meshes, [1_000]), h.device, h.renderer['pipeline'] as never, true);
+    const streamed = frameCost(h, { selectedIds });
+    assert.ok(first.created.every((buffer) => buffer.destroyed === 0), 'the pool is not rebuilt for it');
+    assert.deepEqual(streamed.drawn().triangles, expectedTriangles(meshes));
+    assert.equal(frameCost(h, { selectedIds }).buffers, 0);
+  });
+
+  it('draws nothing freed after the model is cleared while selected, and highlights a reloaded model again', () => {
+    const h = makeHarness();
+    const meshes = model(1_000);
+    load(h, meshes);
+    const selectedIds = new Set(idsOf(1_000));
+    const first = frameCost(h, { selectedIds });
+
+    h.scene.clear();
+    const cleared = frameCost(h, { selectedIds }); // h.render fails on any draw or write of a destroyed buffer
+    assert.ok(first.created.every((buffer) => buffer.destroyed === 1));
+    assert.equal(cleared.highlightDraws.length, 0);
+
+    load(h, meshes);
+    assert.deepEqual(frameCost(h, { selectedIds }).drawn().triangles, expectedTriangles(meshes));
+  });
+
+  it('keeps the pool across a colour override: the highlight reads no colour', () => {
+    const h = makeHarness();
+    load(h, model(1_000));
+    const selectedIds = new Set(idsOf(1_000));
+    const first = frameCost(h, { selectedIds });
+    h.scene.setColorOverrides(new Map([[5, [1, 0, 0, 1]]]), h.device, h.renderer['pipeline'] as never);
+    const painted = frameCost(h, { selectedIds });
+    assert.equal(painted.buffers, 0);
+    assert.ok(first.created.every((buffer) => buffer.destroyed === 0));
+    assert.equal(painted.highlightDraws.length, 1);
+  });
+
+  // A capture, and the viewer while a focused clash is selected, pass a new Set
+  // on every frame. That must compare, not rebuild.
+  it('a new Set of the same ids on every frame compares the ids and rebuilds nothing', () => {
+    const h = makeHarness();
+    const count = 20_000;
+    load(h, model(count));
+    const first = frameCost(h, { selectedIds: new Set(idsOf(count)) });
+    const pieceLookups = countPieceLookups(h.scene);
+    const copies = [0, 1, 2].map(() => new CountingSet(idsOf(count)));
+    for (const selectedIds of copies) assert.equal(frameCost(h, { selectedIds }).buffers, 0);
+    assert.ok(first.created.every((buffer) => buffer.destroyed === 0), 'the pool is neither freed nor rebuilt');
+    assert.equal(pieceLookups.count, 0, 'no entity\'s pieces are looked up');
+    for (const selectedIds of copies) assert.ok(selectedIds.lookups <= count + 8, `${selectedIds.lookups} id reads for ${count} ids: one pass, no copy`);
+  });
+
+  it('flags instanced occurrences of the selection, whether their shard arrives before or after it', () => {
+    const shard = (entityId: number): DecodedInstancedShard => ({
+      templates: [{ positions: new Float32Array([-1, 0, -1, 1, 0, -1, 0, 0, 1]), normals: new Float32Array([0, -1, 0, 0, -1, 0, 0, -1, 0]), indices: new Uint32Array([0, 1, 2]), origin: [0, 0, 0] }],
+      instances: [{ templateIndex: 0, entityId, color: [0.4, 0.5, 0.6, 1], transform: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]) }],
+    });
+    const selectedCounts = (h: Harness) => h.scene.getInstancedTemplates().map((template) => template.selectedCount);
+    const h = makeHarness();
+    load(h, model(1_000));
+    h.scene.addInstancedShard(h.device, shard(5_001));
+    const selectedIds = new Set([...idsOf(1_000), 5_001, 5_002]);
+    h.render({ selectedIds });
+    assert.deepEqual(selectedCounts(h), [1], 'a shard loaded before the selection');
+
+    h.scene.addInstancedShard(h.device, shard(5_002));
+    h.render({ selectedIds });
+    assert.deepEqual(selectedCounts(h), [1, 1], 'and one that arrives while it is held, on the next frame');
+
+    h.render({ selectedIds: new Set(idsOf(1_000)) });
+    assert.deepEqual(selectedCounts(h), [0, 0], 'deselected with the rest');
   });
 
   it('never lets a pooled mesh stand for a hovered entity', () => {

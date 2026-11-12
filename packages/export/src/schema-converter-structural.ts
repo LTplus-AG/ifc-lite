@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 /** Browser adapter for rust/export/src/schema_structural.rs (#9668). */
-import { numberEnd, skipStepTrivia } from './step-slot-grammar.js';
+import { parseStepNumber, skipStepTrivia } from './step-slot-grammar.js';
 import { readStepSlots } from './step-argument-parser.js';
 import { getSchemaRegistryForVersion } from '@ifc-lite/parser';
 
@@ -8,11 +8,6 @@ function scalarEquals(token: string, value: string): boolean {
   const start = skipStepTrivia(token, 0);
   return start >= 0 && token.slice(start, start + value.length).toUpperCase() === value.toUpperCase()
     && skipStepTrivia(token, start + value.length) === token.length;
-}
-
-function stiffnessNumber(token: string): number {
-  const start = skipStepTrivia(token, 0), end = start < 0 ? -1 : numberEnd(token, start);
-  return end >= 0 && skipStepTrivia(token, end) === token.length ? Number(token.slice(start, end)) : NaN;
 }
 
 function stiffnessType(entity: string, index: number): string | null {
@@ -42,7 +37,7 @@ export function structuralAttributes(entity: string, args: readonly string[], fr
       if (!measure || scalarEquals(token, '$')) continue;
       if (to === 'IFC4') {
         // IFC2X3's -1 sentinel means rigid. Zero retains its measure encoding.
-        values[i] = stiffnessNumber(token) === -1 ? 'IFCBOOLEAN(.T.)' : `${measure}(${token})`;
+        values[i] = parseStepNumber(token) === -1 ? 'IFCBOOLEAN(.T.)' : `${measure}(${token})`;
       } else {
         const typed = readStepSlots(`#0=${token};`);
         if (!typed || typed.slots.length !== 1) return null;

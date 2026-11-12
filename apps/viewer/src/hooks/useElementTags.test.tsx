@@ -23,12 +23,12 @@ function drawing(entityId: number, x = 0): Drawing2D {
     stats: { cutLineCount: 0, projectionLineCount: 0, hiddenLineCount: 0, silhouetteLineCount: 0, polygonCount: 1, totalTriangles: 0, processingTimeMs: 0 } };
 }
 function Harness() {
-  const ref = useRef<HTMLDivElement>(null);
+  const ref = useRef<HTMLButtonElement>(null);
   const current = useViewerStore(s => s.drawing2D);
   const tags = useElementTags(current, { x: 0, y: 0, scale: 100 }, 'down', ref);
-  return <div ref={ref} onMouseDown={tags.handleMouseDown} onMouseMove={tags.handleMouseMove}>
+  return <button type="button" aria-label="Drawing canvas" ref={ref} onMouseDown={tags.handleMouseDown} onMouseMove={tags.handleMouseMove}>
     {tags.texts.map(tag => <span key={tag.id} data-tag-x={tag.position.x}>{tag.text}</span>)}
-  </div>;
+  </button>;
 }
 
 for (const federated of [false, true]) {

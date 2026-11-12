@@ -22,7 +22,7 @@ function inside(point: Point2D, ring: readonly Point2D[]): boolean {
 
 /** Kept inside the lazy Drawing panel; the eager store holds only tag records. */
 export function useElementTags(drawing: Drawing2D | null, transform: { x: number; y: number; scale: number },
-  axis: 'down' | 'front' | 'side', container: React.RefObject<HTMLDivElement | null>) {
+  axis: 'down' | 'front' | 'side', container: React.RefObject<HTMLElement | null>) {
   const tags = useViewerStore(s => s.tagAnnotations2D);
   const mutationVersion = useViewerStore(s => s.mutationVersion);
   const models = useViewerStore(s => s.models);

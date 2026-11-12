@@ -1294,8 +1294,7 @@ jobs:
     needs: [changes, build]
     if: (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true') && needs.changes.outputs.replay != 'true' && needs.changes.outputs.lane != 'fast'
     runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
-    # +15 only while CI_SHARD_RETRY can retry: the 8.5-minute retry plus its uploads.
-    timeout-minutes: ${{ (vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on') && 40 || 25 }}
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -1411,12 +1410,12 @@ jobs:
       - name: Mergify CI Upload (retry)
         # `on` only: in `shadow` the job keeps the first attempt's verdict, so
         # the retry stays out of Mergify's record.
-        if: (success() || failure()) && vars.CI_SHARD_RETRY == 'on' && env.HAS_MERGIFY_TOKEN == 'true' && (steps.viewer_retry.outcome == 'success' || steps.viewer_retry.outcome == 'failure') && hashFiles('apps/viewer/mergify-junit-retry.xml') != ''
+        if: (success() || failure()) && vars.CI_SHARD_RETRY == 'on' && env.HAS_MERGIFY_TOKEN == 'true' && (steps.viewer_retry.outcome == 'success' || steps.viewer_retry.outcome == 'failure') && hashFiles('apps/viewer/mergify-junit-retry-*.xml') != ''
         continue-on-error: true
         uses: ./.github/actions/mergify-upload
         with:
           token: ${{ secrets.MERGIFY_TOKEN }}
-          report_path: apps/viewer/mergify-junit-retry.xml
+          report_path: apps/viewer/mergify-junit-retry-*.xml
           test_step_outcome: ${{ steps.viewer_retry.outcome }}
           job_name: viewer-tests (shard ${{ matrix.shard }})
 
@@ -2201,9 +2200,7 @@ jobs:
     if: (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true') && ((github.event_name == 'pull_request' && needs.changes.outputs.lane != 'fast') || (github.event_name == 'merge_group' && vars.CI_PR_LANE == 'fast'))
     # Free runner — vite build + a ~2.4MB model; not compute-bound.
     runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
-    # +12 only while CI_SHARD_RETRY can retry: the 8.5-minute retry (a test may
-    # take 240 s) plus its uploads.
-    timeout-minutes: ${{ (vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on') && 32 || 20 }}
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       # #7655: working SwiftShader presentation adds real rendering work;

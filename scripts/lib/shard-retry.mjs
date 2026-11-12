@@ -35,7 +35,8 @@ export function decideMode(raw) {
   return { mode: 'off', warning: `CI_SHARD_RETRY=${JSON.stringify(String(raw))} is not one of ${MODES.join(', ')}; no retry` };
 }
 
-const OK = /^ *ok \d+ - (.*?)(?: # (SKIP|TODO)\b.*)?$/;
+const OK = /^( *)ok \d+ - (.*?)(?: # (SKIP|TODO)\b.*)?$/;
+const SUBTEST = /^( *)# Subtest: (.*)$/;
 const NOT_OK = /^( *)not ok \d+ - (.*?)(?: # (SKIP|TODO)\b.*)?$/;
 const YAML_FIELD = /^ *(location|failureType|type): '((?:[^']|'')*)'$/;
 const SUMMARY = /^# (tests|suites|pass|fail|cancelled|skipped|todo|duration_ms) ([\d.]+)$/;
@@ -50,28 +51,45 @@ function unescapeTitle(s) {
  * `# duration_ms`): a test's own stdout reaches TAP as `# ...` lines, so a
  * test printing `tests 9` must not pass for the run's summary.
  *
+ * Every result carries its `path`: the titles of the subtests that enclose
+ * it and its own, joined with ` › `, so two tests with one title in
+ * different suites stay apart.
+ *
  * @param {string} text
- * @returns {{ failures: { title: string, depth: number, location: string|null, failureType: string|null, type: string|null }[],
+ * @returns {{ failures: { title: string, path: string, depth: number, location: string|null, failureType: string|null, type: string|null }[],
  *             passed: Set<string>, summary: Record<string, number>|null }}
- * `passed` holds the titles of tests that passed (any depth), skips and todos excluded.
+ * `passed` holds the paths of TESTS that passed: skips, todos and suites
+ * (TAP `type: 'suite'`) excluded.
  */
 export function parseNodeTap(text) {
   const failures = [];
-  const passed = new Set();
+  const oks = [];
   const counts = {};
+  const stack = [];
   let open = null;
   for (const raw of String(text).split('\n')) {
     const line = raw.replace(/\r$/, '');
     const s = SUMMARY.exec(line);
     // Anything after a run of count lines means they were not the closing block.
     if (!s && line.trim() !== '') for (const k of Object.keys(counts)) delete counts[k];
+    const sub = SUBTEST.exec(line);
+    if (sub) {
+      const depth = sub[1].length / 4;
+      stack.length = depth;
+      stack[depth] = unescapeTitle(sub[2]);
+    }
+    const pathOf = (indent, title) => [...stack.slice(0, indent.length / 4), unescapeTitle(title)].join(' › ');
     const ok = OK.exec(line);
-    if (ok && !ok[2]) passed.add(unescapeTitle(ok[1]));
+    if (ok) {
+      open = { path: pathOf(ok[1], ok[2]), type: null, skipped: Boolean(ok[3]) };
+      oks.push(open);
+      continue;
+    }
     const m = NOT_OK.exec(line);
     if (m) {
       open = null;
       if (m[3] === 'TODO') continue;
-      open = { title: unescapeTitle(m[2]), depth: m[1].length / 4, location: null, failureType: null, type: null };
+      open = { title: unescapeTitle(m[2]), path: pathOf(m[1], m[2]), depth: m[1].length / 4, location: null, failureType: null, type: null };
       failures.push(open);
       continue;
     }
@@ -89,6 +107,7 @@ export function parseNodeTap(text) {
     if (f) open[f[1]] = f[2].replace(/''/g, "'");
   }
   const summary = ['tests', 'pass', 'fail', 'cancelled', 'duration_ms'].every((k) => k in counts) ? counts : null;
+  const passed = new Set(oks.filter((o) => !o.skipped && o.type !== 'suite').map((o) => o.path));
   return { failures, passed, summary };
 }
 
@@ -124,7 +143,7 @@ export function attributeViewerFailures(failures, root) {
       continue;
     }
     files.add(file);
-    if (f.failureType !== 'subtestsFailed') tests.push({ file, title: f.title });
+    if (f.failureType !== 'subtestsFailed') tests.push({ file, title: f.title, path: f.path });
   }
   return { files: [...files].sort(), tests, unattributed };
 }
@@ -182,18 +201,20 @@ export function planRetry({ mode, count, cap, unattributed = [], refusal }) {
 }
 
 /**
- * A viewer retry passed: exit 0, a complete TAP summary, at least one pass,
- * nothing failed or cancelled, and every test that failed on the first
- * attempt (`tests`) passed again: a skip or todo on retry is not a pass. A
- * file-level failure (its title is the file's path) has no test to match;
- * its file must still load and pass, which the counts cover.
+ * A viewer retry of ONE file passed: exit 0, a complete TAP summary, at least
+ * one pass, nothing failed or cancelled, and every test of that file that
+ * failed on the first attempt (`tests`) passed again under the same path: a
+ * skip, a todo or a suite is not a pass. A file-level failure (its title is
+ * the file's path) has no test to match; the file must load and pass, which
+ * the counts cover. One file per retry run, so a same-titled test in another
+ * file cannot stand in.
  */
 export function judgeViewerRetry({ exitCode, summary, passed = new Set(), tests = [] }) {
   if (exitCode !== 0) return { passed: false, reason: `the retry exited ${exitCode ?? 'by signal or timeout'}` };
   if (!summary) return { passed: false, reason: 'the retry produced no complete TAP summary' };
   if (summary.fail !== 0 || summary.cancelled !== 0) return { passed: false, reason: `the retry reported ${summary.fail} failed, ${summary.cancelled} cancelled` };
   if (!(summary.pass >= 1)) return { passed: false, reason: 'the retry ran no passing test' };
-  const missing = tests.filter((t) => t.title !== t.file && !passed.has(t.title));
+  const missing = tests.filter((t) => t.title !== t.file && !passed.has(t.path ?? t.title));
   if (missing.length > 0) return { passed: false, reason: `${missing.length} test(s) that failed did not pass on retry: ${missing.map((t) => t.title).join('; ')}` };
   return { passed: true, reason: `the retry passed (${summary.pass} passed)` };
 }
@@ -240,6 +261,15 @@ export function indexPlaywrightReport(report) {
   };
   for (const s of report?.suites ?? []) walk(s, []);
   return out;
+}
+
+/**
+ * How many retried ids count towards the cap: a test the first attempt
+ * skipped because an earlier one failed (a beforeAll, a serial group) is
+ * rerun and judged, but one flaky hook should not read as a mass failure.
+ */
+export function retryCount(ids, index) {
+  return ids.filter((id) => index?.get(id)?.status !== 'skipped').length;
 }
 
 /**

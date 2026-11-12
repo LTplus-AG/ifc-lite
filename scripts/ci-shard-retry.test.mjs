@@ -47,6 +47,7 @@ const {
   unintendedSkips,
   viewerPattern,
   oneLine,
+  retryCount,
 } = await guarded('./lib/shard-retry.mjs');
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -118,7 +119,7 @@ test('real node:test TAP: a nested assertion, an import crash and a non-zero exi
   const a = attributeViewerFailures(failures, root);
   assert.deepEqual(a.unattributed, []);
   assert.deepEqual(a.files, ['src/a.test.ts', 'src/c.test.ts', 'src/d/e.test.tsx', 'src/f.test.ts', 'src/g.test.ts', 'src/h.test.ts']);
-  assert.ok(a.tests.some((t) => t.file === 'src/a.test.ts' && t.title === 'nested fails'));
+  assert.ok(a.tests.some((t) => t.file === 'src/a.test.ts' && t.title === 'nested fails' && t.path === 'group › nested fails'));
   assert.ok(!a.tests.some((t) => t.title === 'group'), 'a parent suite that failed only through its child is not a test of its own');
 });
 
@@ -245,6 +246,34 @@ test('/code-review on #9788: a viewer retry passes only if each test that failed
   assert.equal(judgeViewerRetry({ exitCode: 0, summary: again.summary, passed: again.passed, tests }).passed, false);
   assert.equal(judgeViewerRetry({ exitCode: 0, summary: again.summary, passed: again.passed, tests: [{ file: 'src/a.test.ts', title: 'steady' }] }).passed, true);
   assert.equal(judgeViewerRetry({ exitCode: 0, summary: again.summary, passed: again.passed, tests: [{ file: 'src/a.test.ts', title: 'src/a.test.ts' }] }).passed, true, 'a file-level failure has no test title to match');
+});
+
+test('/code-review on #9788: a retried test is matched by its path, so a same-titled test or a same-named suite cannot stand in', () => {
+  const { tap } = realTap('same-titles', {
+    'src/a.test.ts': [
+      "import { describe, it } from 'node:test';",
+      "describe('a', () => { it('works', (t) => { t.skip('flaky'); }); });",
+      "describe('b', () => { it('works', () => {}); });",
+      "describe('parses', () => { it('parses', (t) => { t.skip('flaky'); }); });",
+      '',
+    ].join('\n'),
+  });
+  const again = parseNodeTap(tap);
+  assert.ok(again.passed.has('b › works'));
+  assert.ok(!again.passed.has('a › works') && !again.passed.has('works'));
+  assert.ok(!again.passed.has('parses'), 'a suite is not a passing test');
+  const judge = (path, title) => judgeViewerRetry({ exitCode: 0, summary: again.summary, passed: again.passed, tests: [{ file: 'src/a.test.ts', title, path }] }).passed;
+  assert.equal(judge('a › works', 'works'), false);
+  assert.equal(judge('parses › parses', 'parses'), false);
+  assert.equal(judge('b › works', 'works'), true);
+});
+
+test('/code-review on #9788: tests a hook failure skipped are retried but do not count towards the cap', () => {
+  const first = beforeAllFails();
+  const { ids } = readLastRun(first.lastRun);
+  assert.equal(ids.length, 4);
+  assert.equal(retryCount(ids, indexPlaywrightReport(first.report)), 1, 't1 failed; t2, t3 and the runtime skip only did not run');
+  assert.equal(retryCount(ids, null), 4);
 });
 
 test('/code-review on #9788: a failure located in a file this shard does not run is not retried', () => {

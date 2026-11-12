@@ -63,16 +63,21 @@ import {
   parseNodeTap,
   planRetry,
   readLastRun,
+  retryCount,
   summaryLines,
   viewerPattern,
 } from './lib/shard-retry.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const VIEWER_ROOT = join(REPO_ROOT, 'apps/viewer');
-/** Inside the workspace, where test.yml's `hashFiles` can see it. */
-const RETRY_JUNIT = join(VIEWER_ROOT, 'mergify-junit-retry.xml');
+/** Inside the workspace, where test.yml's `hashFiles` can see them. */
+const retryJunit = (i) => join(VIEWER_ROOT, `mergify-junit-retry-${i}.xml`);
 
-/** test.yml gives each job this much extra time while the switch is on. */
+/**
+ * Per retry run. The jobs keep today's limits (25 min viewer, 20 E2E) in every
+ * mode, so a retry that does not fit is cancelled with the job, which is red
+ * already: the first attempt failed.
+ */
 const VIEWER_RETRY_TIMEOUT = '8m';
 const E2E_RETRY_TIMEOUT = '8m';
 
@@ -130,24 +135,32 @@ function retryViewer(env, mode, reportDir) {
   const record = { kind: 'viewer', shard: env.TEST_SHARD ?? '?', mode, plan, files: attributed.files, tests: attributed.tests };
   if (!plan.retry) return record;
 
-  const retryTap = join(reportDir, 'viewer-retry.tap');
-  console.log(`[ci-shard-retry] rerunning ${attributed.files.length} file(s): ${attributed.files.join(' ')}`);
-  // coreutils `timeout`, not spawnSync's: it signals the whole process group,
-  // so the tsx/node children die with pnpm instead of outliving the verdict.
-  const r = spawnSync('timeout', ['--kill-after=30s', VIEWER_RETRY_TIMEOUT, 'pnpm', '--filter', '@ifc-lite/viewer', 'run', 'test'], {
-    cwd: REPO_ROOT,
-    stdio: 'inherit',
-    env: {
-      ...env,
-      TEST_PATTERN: viewerPattern(attributed.files),
-      // The JUnit goes to Mergify like the first attempt's, so a test that
-      // failed then passed on one SHA reads there as flaky, not broken.
-      NODE_OPTIONS: `--test-reporter=tap --test-reporter-destination=stdout --test-reporter=tap --test-reporter-destination=${retryTap} --test-reporter=junit --test-reporter-destination=${RETRY_JUNIT}`,
-    },
+  // One run per file, so each file's failures are matched only against that
+  // file's results: a same-titled test elsewhere cannot stand in.
+  const results = attributed.files.map((file, i) => {
+    const retryTap = join(reportDir, `viewer-retry-${i}.tap`);
+    console.log(`[ci-shard-retry] rerunning ${file}`);
+    // coreutils `timeout`, not spawnSync's: it signals the whole process
+    // group, so the tsx/node children die with pnpm instead of outliving it.
+    const r = spawnSync('timeout', ['--kill-after=30s', VIEWER_RETRY_TIMEOUT, 'pnpm', '--filter', '@ifc-lite/viewer', 'run', 'test'], {
+      cwd: REPO_ROOT,
+      stdio: 'inherit',
+      env: {
+        ...env,
+        TEST_PATTERN: viewerPattern([file]),
+        // JUnit for Mergify, uploaded in `on` only (test.yml).
+        NODE_OPTIONS: `--test-reporter=tap --test-reporter-destination=stdout --test-reporter=tap --test-reporter-destination=${retryTap} --test-reporter=junit --test-reporter-destination=${retryJunit(i)}`,
+      },
+    });
+    const retried = readOptional(retryTap);
+    const again = retried === null ? null : parseNodeTap(retried);
+    const verdict = judgeViewerRetry({ exitCode: r.status, summary: again?.summary ?? null, passed: again?.passed, tests: attributed.tests.filter((t) => t.file === file) });
+    return { file, ...verdict };
   });
-  const retried = readOptional(retryTap);
-  const again = retried === null ? null : parseNodeTap(retried);
-  record.result = judgeViewerRetry({ exitCode: r.status, summary: again?.summary ?? null, passed: again?.passed, tests: attributed.tests });
+  const failed = results.filter((x) => !x.passed);
+  record.result = failed.length === 0
+    ? { passed: true, reason: `all ${results.length} file(s) passed on retry` }
+    : { passed: false, reason: failed.map((x) => `${x.file}: ${x.reason}`).join('; ') };
   return record;
 }
 
@@ -177,7 +190,7 @@ function retryE2e(env, mode, reportDir) {
     const t = index?.get(id);
     return t ? { file: `${t.file}:${t.line}`, title: t.title } : { file: '?', title: `test id ${id}` };
   });
-  const plan = planRetry({ mode, count: ids.length, cap: MAX_RETRY_TESTS, refusal: refusal ?? incompleteE2eAttempt({ ids, index }) ?? undefined });
+  const plan = planRetry({ mode, count: retryCount(ids, index), cap: MAX_RETRY_TESTS, refusal: refusal ?? incompleteE2eAttempt({ ids, index }) ?? undefined });
   const record = { kind: 'e2e', shard, mode, plan, ids, tests };
   if (!plan.retry) return record;
 

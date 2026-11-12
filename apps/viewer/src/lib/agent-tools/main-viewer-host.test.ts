@@ -15,6 +15,7 @@ import assert from 'node:assert/strict';
 import { EMPTY_SOURCE_BYTES, type IfcDataStore } from '@ifc-lite/parser';
 import { createMinimalGlbDataStore } from '@/hooks/ingest/viewerModelIngest';
 import { useViewerStore } from '@/store';
+import { modelGlobalIdOwner } from '@/components/viewer/properties/global-id-check';
 import {
   WALL_GID, WALL_ID, call, configuredView, model, ok, parseHelloWall, parseStep, seed, status, viewerBim, viewerHost,
 } from '@/test/agent-tools-fixture';
@@ -154,6 +155,31 @@ describe('main viewer host resolves duplicated GlobalIds (#9523)', () => {
     useViewerStore.getState().setAttribute('dup', 20, 'GlobalId', '3movedGlobalId00000000');
     assert.equal(await resolvesTo(DUP), 10);
     assert.equal(await resolvesTo('3movedGlobalId00000000'), 20);
+  });
+
+  it('an edit that leaves the GlobalId alone does not change which duplicate answers (review: a Name edit on #10 flipped G to #10)', async () => {
+    const state = useViewerStore.getState();
+    state.setAttribute('dup', 10, 'Name', 'Renamed first');
+    assert.equal(await resolvesTo(DUP), 20, 'editing the other duplicate leaves the indexed row answering');
+    state.setAttribute('dup', 20, 'Name', 'Renamed second');
+    assert.equal(await resolvesTo(DUP), 20, 'editing the indexed duplicate leaves it answering');
+    useViewerStore.getState().undo('dup');
+    useViewerStore.getState().undo('dup');
+    assert.equal(view('dup').hasPendingChanges(), false, 'both edits undone');
+    assert.equal(await resolvesTo(DUP), 20);
+  });
+
+  it('an entity created with, or edited to, G outranks a parsed row still carrying G, as in modelGlobalIdOwner', async () => {
+    const created = view('dup').createEntity('IfcWall', [DUP, null, 'Created']);
+    assert.equal(await resolvesTo(DUP), created.expressId, 'rule 1: a session claimant wins over the parsed rows');
+    assert.equal(modelGlobalIdOwner('dup')(DUP), created.expressId, 'the viewer\'s GlobalId owner agrees');
+    // Edited away and back: the effective GlobalId equals the parsed one, so #10 is an ordinary row again.
+    useViewerStore.getState().setAttribute('dup', 10, 'GlobalId', '3otherGlobalId00000000');
+    useViewerStore.getState().setAttribute('dup', 10, 'GlobalId', DUP);
+    assert.equal(await resolvesTo(DUP), created.expressId, 'an edit back to the parsed value is no claim');
+    const second = view('dup').createEntity('IfcWall', [DUP, null, 'Created again']);
+    assert.ok(second.expressId > created.expressId);
+    assert.equal(await resolvesTo(DUP), created.expressId, 'two claimants: the lowest expressId');
   });
 
   it('with both duplicates gone, the GlobalId resolves to nothing', async () => {

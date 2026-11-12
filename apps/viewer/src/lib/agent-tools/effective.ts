@@ -51,6 +51,26 @@ function liveDuplicateOf(model: ReadyModel, rejectedId: number, isLive: (id: num
 /**
  * GlobalId → expressId over the effective entity set, built once per call.
  *
+ * The answer depends only on which GlobalId each live entity carries now,
+ * never on which entities happen to have an overlay entry: an edit to an
+ * entity's Name (or any attribute other than its GlobalId) leaves that entity
+ * exactly where an untouched row would be. Precedence, highest first:
+ *
+ *   1. An entity CREATED this session, or one whose GlobalId was EDITED to G
+ *      (its effective GlobalId differs from the parsed one). Session edits
+ *      win over the parsed file, as in the viewer's `modelGlobalIdOwner`.
+ *      Several such claimants: the lowest expressId.
+ *   2. The row the entity table indexes for G (the LAST row in table order
+ *      carrying G), unless it was deleted or its GlobalId edited away.
+ *   3. Otherwise another live source row still carrying G (`liveDuplicateOf`,
+ *      last in table order, same rule as the index).
+ *
+ * Duplicated GlobalIds in an unedited file (common in real exports) therefore
+ * resolve to the indexed (last) row. Before this resolver, the playground
+ * returned the FIRST in effective iteration order (type buckets in file
+ * order); answering that exactly would need a whole-table duplicate scan on
+ * every lookup.
+ *
  * Cost: O(K) entity reads to build, where K is the overlay's own candidate
  * set (entities with a named, positional or type override, plus entities
  * created this session), then O(1) per lookup through the entity table's
@@ -58,41 +78,38 @@ function liveDuplicateOf(model: ReadyModel, rejectedId: number, isLive: (id: num
  * user's live session, synchronously, on models of hundreds of MB. The one
  * exception is `liveDuplicateOf`, an integer-column scan on the rare path
  * where the indexed row was deleted or edited away.
- *
- * An overlay candidate answers by its effective GlobalId (so an edited or
- * created GlobalId resolves); a source id from the index is accepted only
- * when the overlay neither overrides nor deletes it (so an edited-away or
- * deleted GlobalId does not), otherwise another live row with that GlobalId
- * answers.
- *
- * Duplicated GlobalIds in an unedited file (common in real exports) resolve
- * to the row the entity table indexes, which is the LAST one in table order.
- * Before this resolver, the playground returned the FIRST in effective
- * iteration order (type buckets in file order); answering that exactly would
- * need a whole-table duplicate scan on every lookup.
  */
 export function createGlobalIdResolver(model: ReadyModel): (globalId: string) => number | undefined {
-  let overlay: { byGlobalId: Map<string, number>; overridden: Set<number> } | null = null;
+  let overlay: { claimed: Map<string, number>; movedAway: Set<number> } | null = null;
   const view = () => model.mutationView();
   const build = () => {
     const mutationView = view();
-    const overridden = new Set<number>();
-    const byGlobalId = new Map<string, number>();
+    /** GlobalId → lowest expressId created with it or edited to it (rule 1). */
+    const claimed = new Map<string, number>();
+    /** Source rows whose GlobalId was edited, so their parsed GlobalId is no longer theirs. */
+    const movedAway = new Set<number>();
     if (mutationView) {
-      for (const id of mutationView.getAttributeOverrideEntityIds()) overridden.add(id);
-      for (const { expressId } of mutationView.readNewEntityKinds()) overridden.add(expressId);
-      for (const expressId of overridden) {
-        const globalId = model.bim.entity({ modelId: model.id, expressId })?.globalId;
-        if (globalId && !byGlobalId.has(globalId)) byGlobalId.set(globalId, expressId);
+      const candidates = new Set<number>(mutationView.getAttributeOverrideEntityIds());
+      for (const { expressId } of mutationView.readNewEntityKinds()) candidates.add(expressId);
+      for (const expressId of candidates) {
+        if (mutationView.isDeleted(expressId)) continue;
+        const effective = model.bim.entity({ modelId: model.id, expressId })?.globalId ?? '';
+        const created = mutationView.hasNewEntity(expressId);
+        const parsed = created ? '' : model.store.entities.getGlobalId(expressId);
+        if (!created && effective === parsed) continue; // unchanged GlobalId: an ordinary row
+        if (!created) movedAway.add(expressId);
+        if (!effective) continue;
+        const holder = claimed.get(effective);
+        if (holder === undefined || expressId < holder) claimed.set(effective, expressId);
       }
     }
-    return { byGlobalId, overridden };
+    return { claimed, movedAway };
   };
-  const isLiveSource = (id: number) => !overlay!.overridden.has(id) && !view()?.isDeleted(id);
+  const isLiveSource = (id: number) => !overlay!.movedAway.has(id) && !view()?.isDeleted(id);
   return (globalId) => {
     overlay ??= build();
-    const edited = overlay.byGlobalId.get(globalId);
-    if (edited !== undefined) return edited;
+    const claimant = overlay.claimed.get(globalId);
+    if (claimant !== undefined) return claimant;
     const sourceId = model.store.entities.getExpressIdByGlobalId(globalId);
     if (!(sourceId > 0)) return undefined;
     if (isLiveSource(sourceId)) return sourceId;

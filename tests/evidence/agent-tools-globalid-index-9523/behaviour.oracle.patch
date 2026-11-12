@@ -1,15 +1,15 @@
 diff --git a/apps/viewer/src/lib/agent-tools/effective.ts b/apps/viewer/src/lib/agent-tools/effective.ts
-index 793a4c1024..d8310ae3b7 100644
+index 7d62064bbf..53b607298b 100644
 --- a/apps/viewer/src/lib/agent-tools/effective.ts
 +++ b/apps/viewer/src/lib/agent-tools/effective.ts
-@@ -90,10 +90,6 @@ export function createGlobalIdResolver(model: ReadyModel): (globalId: string) =>
+@@ -107,10 +107,6 @@ export function createGlobalIdResolver(model: ReadyModel): (globalId: string) =>
    };
-   const isLiveSource = (id: number) => !overlay!.overridden.has(id) && !view()?.isDeleted(id);
+   const isLiveSource = (id: number) => !overlay!.movedAway.has(id) && !view()?.isDeleted(id);
    return (globalId) => {
 -    for (const { expressId } of effectiveEntities(model)) {
 -      if (model.bim.entity({ modelId: model.id, expressId })?.globalId === globalId) return expressId;
 -    }
 -    if (globalId) return undefined;
      overlay ??= build();
-     const edited = overlay.byGlobalId.get(globalId);
-     if (edited !== undefined) return edited;
+     const claimant = overlay.claimed.get(globalId);
+     if (claimant !== undefined) return claimant;

@@ -84,18 +84,20 @@ const MIN_RETRY_MS = 60_000;
  * The retry's time budget. The jobs keep today's limits in every mode, so the
  * retry gets what is left of the job (JOB_STARTED_AT, JOB_TIMEOUT_MINUTES from
  * test.yml) minus a reserve for the uploads after it, capped at RETRY_CAP_MS.
- * Unknown start or limit: no budget, so no retry.
+ * Unknown start or limit: null, and no retry.
  */
 export function retryBudgetMs(env, now = Date.now()) {
   const started = Number(env.JOB_STARTED_AT) * 1000;
   const limit = Number(env.JOB_TIMEOUT_MINUTES) * 60_000;
-  if (!(started > 0) || !(limit > 0)) return 0;
+  if (!(started > 0) || !(limit > 0)) return null;
   return Math.min(RETRY_CAP_MS, started + limit - RESERVE_MS - now);
 }
 
 /** Turn a planned retry into a refusal when the job has no time left for it. */
 function withinBudget(plan, budget) {
-  if (!plan.retry || budget >= MIN_RETRY_MS) return plan;
+  if (!plan.retry) return plan;
+  if (budget === null) return { retry: false, reason: 'JOB_STARTED_AT or JOB_TIMEOUT_MINUTES is not set, so the job time left is unknown' };
+  if (budget >= MIN_RETRY_MS) return plan;
   return { retry: false, reason: `only ${Math.max(0, Math.round(budget / 1000))} s of the job's time is left for a retry` };
 }
 

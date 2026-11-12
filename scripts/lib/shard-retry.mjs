@@ -104,8 +104,11 @@ export function parseNodeTap(text) {
     }
     const m = NOT_OK.exec(line);
     if (m) {
-      open = null;
-      if (m[3] === 'TODO') continue;
+      // A TODO result is not a failure, but its YAML block is skipped the same way.
+      if (m[3] === 'TODO') {
+        open = { todo: true };
+        continue;
+      }
       open = { title: unescapeTitle(m[2]), path: pathOf(m[1], m[2]), depth: m[1].length / 4, location: null, failureType: null, type: null };
       failures.push(open);
       continue;
@@ -113,15 +116,7 @@ export function parseNodeTap(text) {
     if (s) {
       counts[s[1]] = Number(s[2]);
       open = null;
-      continue;
     }
-    if (!open) continue;
-    if (/^ *\.\.\.$/.test(line) || /^ *(?:ok|# Subtest:)/.test(line)) {
-      open = null;
-      continue;
-    }
-    const f = YAML_FIELD.exec(line);
-    if (f) open[f[1]] = f[2].replace(/''/g, "'");
   }
   const summary = ['tests', 'pass', 'fail', 'cancelled', 'duration_ms'].every((k) => k in counts) ? counts : null;
   const passed = new Set(oks.filter((o) => !o.skipped && o.type !== 'suite').map((o) => o.path));
@@ -293,6 +288,9 @@ export function retryCount(ids, index) {
   return ids.filter((id) => index?.get(id)?.status !== 'skipped').length;
 }
 
+/** A deliberate skip: `test.skip` or `test.fixme`, at declaration or at runtime. */
+const askedToSkip = (t) => t.expectedStatus === 'skipped' && t.annotations.some((a) => a === 'skip' || a === 'fixme');
+
 /**
  * Tests the first attempt skipped WITHOUT asking to: a failing `beforeAll` or
  * an earlier failure in a serial group skips the rest, and those tests keep
@@ -301,9 +299,6 @@ export function retryCount(ids, index) {
  * has `expectedStatus: 'skipped'` and the annotation. Both shapes reproduced
  * on the locked Playwright 1.64.1.
  */
-/** A deliberate skip: `test.skip` or `test.fixme`, at declaration or at runtime. */
-const askedToSkip = (t) => t.expectedStatus === 'skipped' && t.annotations.some((a) => a === 'skip' || a === 'fixme');
-
 export function unintendedSkips(index) {
   const out = [];
   for (const [id, t] of index) {

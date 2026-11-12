@@ -285,10 +285,27 @@ test('/code-review on #9788: a test the first attempt never ran may skip on retr
 test('/code-review on #9788: the retry gets what is left of the job, minus a reserve, capped', () => {
   const now = 1_000_000_000;
   const at = (minutesAgo) => String(Math.floor((now - minutesAgo * 60_000) / 1000));
-  assert.equal(retryBudgetMs({}, now), 0, 'no recorded start: no budget');
+  assert.equal(retryBudgetMs({}, now), null, 'no recorded start: unknown, so no retry');
   assert.equal(retryBudgetMs({ JOB_STARTED_AT: at(0), JOB_TIMEOUT_MINUTES: '20' }, now), 8 * 60_000, 'capped at 8 minutes');
   assert.equal(retryBudgetMs({ JOB_STARTED_AT: at(15), JOB_TIMEOUT_MINUTES: '20' }, now), 2 * 60_000, '20 - 15 - 3 reserve');
   assert.ok(retryBudgetMs({ JOB_STARTED_AT: at(18), JOB_TIMEOUT_MINUTES: '20' }, now) < 0);
+});
+
+test('/code-review on #9788: a TODO result\'s YAML block is skipped too', () => {
+  const tap = [
+    '# Subtest: todo one',
+    'not ok 1 - todo one # TODO later',
+    '  ---',
+    '  error: |-',
+    '    not ok 7 - injected',
+    '    ok 8 - phantom',
+    '  ...',
+    '# tests 1', '# pass 0', '# fail 0', '# cancelled 0', '# todo 1', '# duration_ms 1', '',
+  ].join('\n');
+  const parsed = parseNodeTap(tap);
+  assert.deepEqual(parsed.failures, []);
+  assert.deepEqual([...parsed.passed], []);
+  assert.equal(incompleteViewerAttempt(parsed), null);
 });
 
 test('/code-review on #9788: TAP text inside a failure\'s YAML error block is not read as results', () => {

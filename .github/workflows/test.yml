@@ -1396,6 +1396,8 @@ jobs:
           TEST_SHARD: ${{ matrix.shard }}
       - name: Upload the retry record
         if: (success() || failure()) && (steps.viewer_retry.outcome == 'success' || steps.viewer_retry.outcome == 'failure')
+        # A diagnostic: an upload error must not turn a passed retry red.
+        continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: shard-retry-viewer-${{ matrix.shard }}
@@ -2308,6 +2310,8 @@ jobs:
         run: node scripts/ci-shard-retry.mjs e2e
       - name: Upload the retry record
         if: (success() || failure()) && (steps.e2e_retry.outcome == 'success' || steps.e2e_retry.outcome == 'failure')
+        # A diagnostic: an upload error must not turn a passed retry red.
+        continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: shard-retry-e2e-${{ matrix.shard }}

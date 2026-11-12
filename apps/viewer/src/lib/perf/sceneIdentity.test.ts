@@ -22,7 +22,7 @@ const batch = (key: string, byte: number) => ({
   expressIds: new Uint32Array([7]), ordinals: new Uint32Array([0]),
   vertexData: new Uint8Array([byte, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]), indices: new Uint32Array([0, 1, 2]),
 });
-const snapshot = (batches: ReturnType<typeof batch>[]): SceneSnapshot => ({ policy: 'p', pieceCount: 1, nextSplitId: 0, sharedFrameOrigins: [], activeBuckets: [], batches });
+const snapshot = (batches: SceneSnapshot['batches']): SceneSnapshot => ({ policy: 'p', pieceCount: 1, nextSplitId: 0, sharedFrameOrigins: [], activeBuckets: [], batches });
 const sceneOf = (pieces: MeshData[]) => ({ forEachMeshData: (visit: (md: MeshData) => void) => pieces.forEach(visit) });
 
 describe('scene identity (scoreboard identity pass)', () => {

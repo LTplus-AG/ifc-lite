@@ -33,6 +33,16 @@ export default {
         await s.ui.click(dialog.getByRole('button', { name: 'Add Classification', exact: true }));
       }));
       let reviewText = null;
+      tasks.push(await task(s, 'inspect the actual Review changes dialog in plain language', async () => {
+        await s.harness.dismissToasts();
+        await s.ui.click(s.page.getByRole('tab', { name: 'File' }));
+        await s.ui.click(s.page.getByRole('button', { name: /Export modified IFC/ }).first());
+        const review = s.page.getByRole('dialog');
+        await review.waitFor({ timeout: 8000 });
+        reviewText = await review.innerText();
+        await s.ui.key('Escape');
+        await review.waitFor({ state: 'hidden', timeout: 5000 });
+      }));
       let dl = null;
       tasks.push(await task(s, 'File > Export IFC, schema IFC4, Export', async () => {
         const { page } = s;
@@ -41,7 +51,6 @@ export default {
         await s.ui.click(page.locator('[data-export-command="ifc"]'));
         const dialog = page.getByRole('dialog');
         await dialog.waitFor({ timeout: 8000 });
-        reviewText = await dialog.innerText();
         await s.ui.click(dialog.getByRole('combobox').nth(1));
         await s.ui.click(page.getByRole('option', { name: /^IFC4( \(current\))?$/ }));
         await s.ui.click(dialog.getByRole('button', { name: /^Export$/ }).last());
@@ -60,7 +69,7 @@ export default {
           { name: 'base quantities on walls', ok: q.length === 4 && q.every((values) => Number.isFinite(values.Length) && Number.isFinite(values.NetVolume)), detail: JSON.stringify(q) },
           { name: 'a property set on the walls', ok: psets.length === 4 && psets.every((names) => names.length > 0), detail: JSON.stringify(psets) },
           { name: 'export review uses plain language', ok: reviewText !== null && !/#\d+\s*=\s*IFC/i.test(reviewText), detail: reviewText?.slice(0,500) ?? 'no review dialog' },
-          { name: 'classification reference present', ok: classified, detail: classified ? 'yes' : 'none: the modelling flow assigns no classification' },
+          { name: 'classification reference present', ok: classified, detail: classified ? 'yes' : 'No classification relationship to the selected wall was exported' },
         ],
       };
     },

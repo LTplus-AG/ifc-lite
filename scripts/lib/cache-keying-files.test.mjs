@@ -9,7 +9,7 @@ import { readFileSync, readlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { cacheKeyingFiles, isListed, parseKeyingList } from './cache-keying-files.mjs';
-import { KEYING_LIST_PATH } from './cache-keying-list.mjs';
+import { KEYING_LIST_PATH, validKeyingList } from './cache-keying-list.mjs';
 
 const ROOT = '.github/workflows/test.yml';
 
@@ -118,6 +118,7 @@ test('a pattern is matched against the real files, a directory counting for all 
 test('what cannot be judged is an error, not a pass', () => {
   for (const [label, fixture, symlinks] of [
     ['non-literal hashFiles', { [ROOT]: 'env: { K: "${{ hashFiles(env.P) }}" }' }],
+    ['cache-dependency-path from an expression', { [ROOT]: 'jobs: { a: { steps: [ { uses: actions/setup-node@v4, with: { cache-dependency-path: "${{ inputs.lock }}" } } ] } }' }],
     ['climbing pattern', { [ROOT]: "env: { K: \"${{ hashFiles('../repo/.github/workflows/x.yml') }}\" }" }],
     ['absolute pattern', { [ROOT]: "env: { K: \"${{ hashFiles('/home/runner/work') }}\" }" }],
     ['glob class', { [ROOT]: "env: { K: \"${{ hashFiles('.github/[wa]*/**') }}\" }" }],
@@ -143,6 +144,15 @@ test('what cannot be judged is an error, not a pass', () => {
   ]) {
     assert.notDeepEqual(check(fixture, { symlinks }).errors, [], label);
   }
+});
+
+test('a list is well formed only if it names test.yml and every entry exists', () => {
+  const tree = ['.github/workflows/test.yml', '.github/actions/a/action.yml'];
+  assert.deepEqual(validKeyingList(['.github/workflows/test.yml', '.github/actions/a/'], tree), ['.github/workflows/test.yml', '.github/actions/a/']);
+  assert.equal(validKeyingList(['.github/actions/a/'], tree), null, 'no test.yml');
+  assert.equal(validKeyingList(['.github/workflows/test.yml', '.github/actions/gone/'], tree), null, 'a directory the tree lacks');
+  assert.equal(validKeyingList(['.github/workflows/test.yml', 'junk'], tree), null, 'junk');
+  assert.equal(validKeyingList([], tree), null, 'empty');
 });
 
 test('the list format: comments, blank lines and directory entries', () => {

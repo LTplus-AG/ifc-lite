@@ -69,6 +69,7 @@ function globRegex(pattern) {
 export function matchedFiles(raw, files) {
   const pattern = raw.trim();
   if (pattern === '' || pattern.startsWith('!')) return { files: [] };
+  if (pattern.includes('${{')) return { error: `'${pattern}' is built from an expression, which the check cannot follow` };
   if (/[[\]{}]/.test(pattern)) return { error: `'${pattern}' uses a glob class or brace the check does not expand` };
   if (pattern.startsWith('/') || pattern.startsWith('~')) return { error: `'${pattern}' is absolute` };
   const p = posix.normalize(pattern).replace(/\/$/, '');

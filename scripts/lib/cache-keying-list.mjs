@@ -15,6 +15,17 @@ export function parseKeyingList(text) {
   return text.split(/\r?\n/).map((l) => l.replace(/#.*$/, '').trim()).filter(Boolean);
 }
 
+/**
+ * The list if it is well formed for this tree: it names test.yml, and every entry names
+ * a file of `treeFiles` (a directory entry, a file below it). Otherwise null, and the
+ * caller trusts none of it: a malformed list must not let a file it misses replay.
+ */
+export function validKeyingList(entries, treeFiles, root = '.github/workflows/test.yml') {
+  if (!Array.isArray(entries) || !entries.includes(root)) return null;
+  const exists = (e) => (e.endsWith('/') ? treeFiles.some((f) => f.startsWith(e)) : treeFiles.includes(e));
+  return entries.every(exists) ? entries : null;
+}
+
 /** Whether `path` is a listed file or lies under a listed directory. */
 export function isListed(path, entries) {
   return entries.some((e) => (e.endsWith('/') ? path.startsWith(e) : path === e));

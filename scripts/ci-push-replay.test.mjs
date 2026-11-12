@@ -137,7 +137,7 @@ test('a workflow or action file not on the list does not block a replay', () => 
 
 test('a missing, empty or unreadable list blocks every workflow and action file', () => {
   assert.equal(decidePushReplay(base({ changedFiles: ['.github/workflows/test.yml'], keyingList: ['x'] })).replay, false, 'test.yml blocks whatever the list says');
-  for (const keyingList of [undefined, null, []]) {
+  for (const keyingList of [undefined, null, [], ['.github/actions/setup-wasm-build/']]) {
     for (const f of ['.github/workflows/cla.yml', '.github/actions/setup-oci-registries/action.yml']) {
       assert.equal(decidePushReplay(base({ changedFiles: [f], keyingList })).replay, false, `${f} with ${JSON.stringify(keyingList)}`);
     }
@@ -395,9 +395,15 @@ test('the probe reads the Test workflow files at the push commit', {
   // git quotes a non-ASCII path in plain --name-only output, and no listed entry matches a quote.
   assert.equal(replayFor('.github/actions/setup/\u00e9.sh'), full, 'a non-ASCII path in a listed action');
   assert.equal(replayFor('scripts/ci-cache-keying-files.txt'), full, 'the list itself');
-  // The list edit above wrote junk over it. test.yml still blocks; an unlisted file does not.
+  // The list edit above wrote junk over it: malformed, so every workflow and action file blocks.
   assert.equal(replayFor('.github/workflows/test.yml'), full, 'test.yml with a junk list');
-  assert.equal(replayFor('.github/workflows/cla.yml'), replayed, 'an unlisted workflow with a junk list');
+  assert.equal(replayFor('.github/workflows/cla.yml'), full, 'an unlisted workflow with a junk list');
+  // A list naming test.yml but also a file the tree lacks is malformed too.
+  assert.equal(replayFor(() => write('scripts/ci-cache-keying-files.txt', '.github/workflows/test.yml\n.github/actions/setup/\n.github/actions/gone/\n')), full, 'a list with a stale entry');
+  assert.equal(replayFor('.github/workflows/cla.yml'), full, 'an unlisted workflow with a stale entry');
+  // Well formed again: an unlisted workflow replays.
+  assert.equal(replayFor(() => write('scripts/ci-cache-keying-files.txt', '.github/workflows/test.yml\n.github/actions/setup/\n')), full, 'fixing the list');
+  assert.equal(replayFor('.github/workflows/cla.yml'), replayed, 'an unlisted workflow with a well-formed list');
   // A symlinked list: `cat-file` would read the link's target path as a one-entry list.
   assert.equal(replayFor(() => {
     write('scripts/real-list.txt', '.github/workflows/test.yml\n.github/actions/setup/\n');

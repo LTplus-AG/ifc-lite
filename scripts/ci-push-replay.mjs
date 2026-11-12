@@ -69,7 +69,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { gh, GhError } from './lib/gh.mjs';
 import { isBatchBranch } from './ci-pr-lane.mjs';
 import { isMainEntry } from './lib/is-main-entry.mjs';
-import { KEYING_LIST_PATH, isListed, parseKeyingList } from './lib/cache-keying-list.mjs';
+import { KEYING_LIST_PATH, isListed, parseKeyingList, validKeyingList } from './lib/cache-keying-list.mjs';
 
 export const TREE_ARTIFACT_PREFIX = 'tested-tree-';
 export const TEST_WORKFLOW_FILE = 'test.yml';
@@ -94,8 +94,8 @@ function keysMainCaches(file, keyingList) {
   // test.yml is the root every listed file is found from, so it blocks even if the list is wrong.
   if (NO_REPLAY.some((re) => re.test(file)) || file === KEYING_LIST_PATH || file === `.github/workflows/${TEST_WORKFLOW_FILE}`) return true;
   if (!WORKFLOW_OR_ACTION.test(file)) return false;
-  // Missing, empty or unreadable: trust none of it.
-  if (!Array.isArray(keyingList) || keyingList.length === 0) return true;
+  // Missing, unreadable or malformed (readInputs passes null), or not naming test.yml: trust none of it.
+  if (!Array.isArray(keyingList) || !keyingList.includes(`.github/workflows/${TEST_WORKFLOW_FILE}`)) return true;
   // GitHub runs only top-level workflow YAML; anything else under workflows/ is a file a
   // step may read, so it blocks.
   if (file.startsWith('.github/workflows/') && !TOP_LEVEL_WORKFLOW.test(file)) return true;
@@ -227,13 +227,15 @@ function readInputs(repo, pushSha, pushTree, parentSha, before) {
     }
   }
   const { queueEvidence, laterChangedFiles } = readQueueEvidence(repo, pushSha, pushTree);
-  // Only a changed workflow or action file needs the list; most pushes touch none.
-  // The list as the push commit has it; null when it is absent or unreadable.
-  // A regular file only: `cat-file` of a symlink returns its target path, which would
-  // read as a one-entry list naming nothing real.
-  const listMode = gitOrNull('ls-tree', pushSha, '--', KEYING_LIST_PATH)?.split(' ')[0];
+  // The list as the push commit has it, read on every push (two or three git calls).
+  // Null when it is absent, unreadable, not a regular file (`cat-file` of a symlink
+  // returns the target path), or malformed: it must name test.yml, and every entry a
+  // file of the pushed tree. --full-tree: pathspecs from the repo root, whatever the cwd.
+  const listMode = gitOrNull('ls-tree', '--full-tree', pushSha, '--', KEYING_LIST_PATH)?.split(' ')[0];
   const listText = listMode === '100644' || listMode === '100755' ? gitOrNull('cat-file', 'blob', `${pushSha}:${KEYING_LIST_PATH}`) : null;
-  const keyingList = listText === null ? null : parseKeyingList(listText);
+  const treeFiles = listText === null ? null : gitOrNull('ls-tree', '-z', '-r', '--full-tree', '--name-only', pushSha, '--', '.github/workflows', '.github/actions')?.split('\0').filter(Boolean);
+  const keyingList = treeFiles ? validKeyingList(parseKeyingList(listText), treeFiles) : null;
+  if (keyingList === null) console.warn(`[push-replay] ${KEYING_LIST_PATH} is missing, unreadable or malformed at ${pushSha.slice(0, 9)}; every workflow and action file blocks`);
   return { pushSha, pushTree, parentSha, before, changedFiles, pulls, runs, artifactNamesByRun, repo, queueEvidence, laterChangedFiles, keyingList };
 }
 

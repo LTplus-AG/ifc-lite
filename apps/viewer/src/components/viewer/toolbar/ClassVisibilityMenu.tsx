@@ -19,7 +19,7 @@
 
 import React from 'react';
 import {
-  Anchor,
+  ArrowDownToLine,
   Box,
   BoxSelect,
   Boxes,
@@ -238,7 +238,7 @@ export function ClassVisibilityControls({ inMenu = false, onNavigate }: { inMenu
         onChange={() => toggleTypeVisibility('ifcGrid')}
       />
       <ClassVisibilityRow
-        icon={<Anchor className="h-4 w-4 shrink-0" style={{ color: '#2bb3a3' }} />}
+        icon={<ArrowDownToLine className="h-4 w-4 shrink-0" style={{ color: '#2bb3a3' }} />}
         label={t('classVisibility.structuralGlyphs.label')}
         description={t('classVisibility.structuralGlyphs.description')}
         checked={typeVisibility.structuralGlyphs}

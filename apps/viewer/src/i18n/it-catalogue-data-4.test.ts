@@ -23,6 +23,7 @@ catalogueBatchContract('it', 8908, [
   'split-tool',
   'stair-railing',
   'storey-context',
+  'structural-glyphs',
   'structural-properties',
   'structural-review',
   'swept-disk-inspection',

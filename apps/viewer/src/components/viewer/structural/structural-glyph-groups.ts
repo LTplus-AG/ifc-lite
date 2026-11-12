@@ -20,7 +20,8 @@ import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import type { ViewerState } from '@/store';
 import type { FederatedModel } from '@/store/types';
 import { LEGACY_MODEL_ID, LEGACY_MUTATION_MODEL_ID } from '@/sdk/adapters/model-compat';
-import type { TranslationKey } from '@/i18n';
+import { registerEnglish, type TranslationKey } from '@/i18n';
+import { structuralGlyphsEn } from '@/i18n/catalogues/structural-glyphs.en';
 import { directrixDisplayPoint, type FederationPointMap } from '@/lib/analytic/directrix-frame';
 import { modelFrameMap } from '@/lib/analytic/selected-centreline-lines';
 import { displayedTranslation, placementFor } from '@/lib/model-placement/state';
@@ -39,6 +40,9 @@ export interface SourceGroup {
   /** Largest symbol size in the world, metres. */
   worldCap: number;
 }
+
+// A lazy catalogue: it loads with this chunk, not on the page's first load.
+registerEnglish(structuralGlyphsEn);
 
 type Translate = (key: TranslationKey, params?: Record<string, string>) => string;
 

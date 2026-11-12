@@ -13,6 +13,7 @@
 import type { flowReviewEn } from './catalogues/flow-review.en';
 import type { retainedGeometryEn } from './catalogues/retained-geometry.en';
 import type { registryEn } from './catalogues/registry.en';
+import type { structuralGlyphsEn } from './catalogues/structural-glyphs.en';
 
-export type LazyTranslationKey = keyof typeof flowReviewEn | keyof typeof retainedGeometryEn | keyof typeof registryEn;
+export type LazyTranslationKey = keyof typeof flowReviewEn | keyof typeof retainedGeometryEn | keyof typeof registryEn | keyof typeof structuralGlyphsEn;
 

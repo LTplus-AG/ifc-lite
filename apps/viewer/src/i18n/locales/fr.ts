@@ -149,6 +149,7 @@ import { spaceEnvelopeFr } from './fr/space-envelope';
 import { splitToolFr } from './fr/split-tool';
 import { stairRailingFr } from './fr/stair-railing';
 import { storeyContextFr } from './fr/storey-context';
+import { structuralGlyphsFr } from './fr/structural-glyphs';
 import { structuralPropertiesFr } from './fr/structural-properties';
 import { structuralReviewFr } from './fr/structural-review';
 import { sweptDiskInspectionFr } from './fr/swept-disk-inspection';
@@ -311,6 +312,7 @@ export default {
   ...splitToolFr,
   ...stairRailingFr,
   ...storeyContextFr,
+  ...structuralGlyphsFr,
   ...structuralPropertiesFr,
   ...structuralReviewFr,
   ...sweptDiskInspectionFr,

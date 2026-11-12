@@ -23,13 +23,4 @@ export const structuralPropertiesEn = {
   'properties.structural.componentValue': '{name}: {value}',
   'properties.structural.configurationDropped': '[dropped: {name}]',
   'properties.structural.configurationAt': '{components} @ {location}',
-  'structuralGlyphs.support.fixed': 'Fixed support',
-  'structuralGlyphs.support.pinned': 'Pinned support',
-  'structuralGlyphs.support.roller': 'Roller support',
-  'structuralGlyphs.support.spring': 'Spring support',
-  'structuralGlyphs.load.force': 'Force',
-  'structuralGlyphs.load.moment': 'Moment',
-  'structuralGlyphs.load.temperature': 'Temperature load',
-  'structuralGlyphs.load.displacement': 'Imposed displacement',
-  'structuralGlyphs.tooltip': '{kind} · {entity}',
 } as const;

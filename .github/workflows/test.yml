@@ -1962,6 +1962,7 @@ jobs:
           token: ${{ secrets.MERGIFY_TOKEN }}
           report_path: mergify-junit.xml
           test_step_outcome: ${{ steps.scripts_tests.outcome }}
+          job_name: scripts-tests (shard ${{ matrix.shard }})
 
   node-tests:
     name: Node tests (shard ${{ matrix.shard }}/4)

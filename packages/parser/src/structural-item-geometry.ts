@@ -46,7 +46,7 @@ export type ItemShape =
    * `IfcPlane`, z along its normal and flipped when `SameSense` is false),
    * which sets the local axes of a surface item; absent for a bare `IfcFace`.
    */
-  | { kind: 'face'; polygon: Vec3[]; surface?: Frame };
+  | { kind: 'face'; polygon: Vec3[]; innerBounds?: Vec3[][]; surface?: Frame };
 
 export const IDENTITY: Frame = { origin: [0, 0, 0], x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] };
 
@@ -227,7 +227,7 @@ export class ItemGeometryReader {
         if (local.kind === 'vertex') return { kind: 'vertex', point: toWorld(local.point) };
         if (local.kind === 'edge') return { kind: 'edge', start: toWorld(local.start), end: toWorld(local.end) };
         const surface = local.surface && { ...compose(frame, local.surface), origin: toWorld(local.surface.origin) };
-        return { kind: 'face', polygon: local.polygon.map(toWorld), ...(surface ? { surface } : {}) };
+        return { kind: 'face', polygon: local.polygon.map(toWorld), innerBounds: local.innerBounds?.map((loop) => loop.map(toWorld)), ...(surface ? { surface } : {}) };
       }
     }
     return null;
@@ -280,13 +280,18 @@ export class ItemGeometryReader {
     return { origin: frame.origin, x: frame.x, y: scale(frame.y, -1), z: scale(frame.z, -1) };
   }
 
-  /**
-   * The outer (else first) bound of a face as a polygon. Inner bounds
-   * (openings) are ignored, so a station can fall in an opening (#9828).
-   */
-  private face(e: Entity): Vec3[] | null {
+  /** All face bounds: outer (else first) polygon and the remaining openings. */
+  private face(e: Entity): Pick<Extract<ItemShape, { kind: 'face' }>, 'polygon' | 'innerBounds'> | null {
     const bounds = asRefList(e.attributes[0]).map((id) => this.entity(id));
-    const bound = bounds.find((b) => b?.type === 'IFCFACEOUTERBOUND') ?? bounds.find((b) => b?.type === 'IFCFACEBOUND');
+    const outer = bounds.find((b) => b?.type === 'IFCFACEOUTERBOUND') ?? bounds.find((b) => b?.type === 'IFCFACEBOUND');
+    const polygon = this.boundPolygon(outer);
+    const innerBounds = bounds.filter((b) => b !== outer).map((b) => this.boundPolygon(b));
+    // An unreadable opening must not silently become solid face.
+    if (!polygon || innerBounds.some((loop) => !loop)) return null;
+    return { polygon, innerBounds: innerBounds.filter((loop): loop is Vec3[] => loop !== null) };
+  }
+
+  private boundPolygon(bound: Entity | null | undefined): Vec3[] | null {
     const loop = this.entity(asRef(bound?.attributes[0]));
     if (!loop) return null;
     let polygon: Vec3[] = [];
@@ -309,9 +314,9 @@ export class ItemGeometryReader {
       return point && { kind: 'vertex', point };
     }
     if (e.type === 'IFCFACESURFACE' || e.type === 'IFCFACE') {
-      const polygon = this.face(e);
+      const face = this.face(e);
       const surface = e.type === 'IFCFACESURFACE' ? this.planeFrame(asRef(e.attributes[1]), asBoolean(e.attributes[2]) !== false) : null;
-      return polygon && { kind: 'face', polygon, ...(surface ? { surface } : {}) };
+      return face && { kind: 'face', ...face, ...(surface ? { surface } : {}) };
     }
     const edge = this.edge(id);
     return edge && { kind: 'edge', start: edge[0], end: edge[1] };

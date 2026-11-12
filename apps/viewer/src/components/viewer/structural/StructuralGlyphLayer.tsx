@@ -47,7 +47,7 @@ function hasGlyphTypes(store: IfcDataStore | null | undefined): boolean {
   return false;
 }
 
-export function StructuralGlyphLayer() {
+export function StructuralGlyphLayer({ isolatedIds }: { isolatedIds?: ReadonlySet<number> | null }) {
   const enabled = useViewerStore((s) => s.typeVisibility.structuralGlyphs);
   const models = useViewerStore((s) => s.models);
   const legacyStore = useViewerStore((s) => s.ifcDataStore);
@@ -58,7 +58,7 @@ export function StructuralGlyphLayer() {
   if (!present) return null;
   return (
     <Suspense fallback={null}>
-      <StructuralGlyphOverlay onSelect={selectGlyphSource} />
+      <StructuralGlyphOverlay onSelect={selectGlyphSource} isolatedIds={isolatedIds} />
     </Suspense>
   );
 }

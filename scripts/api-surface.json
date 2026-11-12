@@ -198,7 +198,6 @@
     "CacheWriteOptions: interface",
     "CachedEntityIndexColumns: interface",
     "ChunkInflate: type",
-    "ChunkInflatePool: class",
     "FORMAT_VERSION: const",
     "GEOMETRY_CHUNK_CELL_SIZE: const",
     "GEOMETRY_CHUNK_COMPRESS_MIN_BYTES: const",
@@ -228,6 +227,7 @@
     "decodeGeometryChunk: function",
     "extractGLBMapping: function",
     "groupMeshesIntoChunks: function",
+    "inflateRaw: const",
     "loadGLBToMeshData: function",
     "openGeometryChunksV13: function",
     "parseGLB: function",
@@ -239,6 +239,11 @@
     "toCacheDataStore: function",
     "xxhash64: function",
     "xxhash64Hex: function"
+  ],
+  "@ifc-lite/cache/chunk-inflate-pool": [
+    "ChunkInflatePool: class",
+    "ChunkInflatePoolOptions: interface",
+    "CorruptChunkError: class"
   ],
   "@ifc-lite/charts": [
     "AggregateOptions: interface",

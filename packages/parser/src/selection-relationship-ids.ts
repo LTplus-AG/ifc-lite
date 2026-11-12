@@ -66,3 +66,28 @@ export function selectionRelationshipIds(store: IfcDataStore, view: EditView, en
     return rank(left?.type) - rank(right?.type) || (left?.byteOffset ?? a) - (right?.byteOffset ?? b);
   });
 }
+
+const bursts = new WeakMap<object, Set<number>>();
+/** A synchronous bulk loop may amortize a complete inventory. Separate UI
+ * turns never accumulate toward this threshold, so the 33rd user click cannot
+ * unexpectedly pay for the model. An existing bulk inventory remains reusable. */
+export function useFullSelectionInventory(cache: { has(id: number): boolean } | undefined, subject: number | undefined): boolean {
+  if (!cache) return subject === undefined;
+  if (cache.has(-1) || subject === undefined) return true;
+  let seen = bursts.get(cache);
+  if (!seen) {
+    seen = new Set(); bursts.set(cache, seen);
+    const current = seen;
+    queueMicrotask(() => { bursts.delete(cache); current.clear(); });
+  }
+  seen.add(subject);
+  return seen.size >= 32;
+}
+
+export function selectionRelationshipCacheKey(store: IfcDataStore, view: EditView, subject: number | undefined,
+  cache: { has(id: number): boolean } | undefined, primary = subject): number {
+  if (subject === undefined || !store.source?.length || store.relationshipsPending
+    || !store.relationships?.forward?.edgeRelIds || typeof store.relationships.inverse?.getEdges !== 'function'
+    || (!view.getAttributeOverrideEntityIds && !view.getEffectiveChanges)) return -1;
+  return useFullSelectionInventory(cache, primary) ? -1 : subject;
+}

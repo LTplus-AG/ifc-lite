@@ -97,3 +97,24 @@ it('#9947 worker transport retains direct type coverage and early relationship-a
   expect(readCurrentTypeQuantities(restored, 100, view).value?.quantities[0].quantities[0].value).toBe(2.5);
   expect(probes).toBeLessThan(20);
 });
+
+it('#9947 separate selection turns never trigger the bulk inventory threshold', async () => {
+  const { store, view } = await model();
+  let reads = 0;
+  const original = store.getEntity.bind(store);
+  store.getEntity = id => { reads++; return original(id); };
+  for (let id = 100; id < 180; id++) {
+    await Promise.resolve();
+    expect(extractAllMaterialsOnDemand(store, id, view)[0]?.name).toBe('Concrete');
+  }
+  expect(reads).toBeLessThan(200);
+});
+
+it('#9947 source-backed selections do not enumerate the model classification-reference bucket', async () => {
+  const { store, view } = await model();
+  let enumerations = 0;
+  const get = store.entityIndex.byType.get.bind(store.entityIndex.byType);
+  store.entityIndex.byType.get = type => { if (type === 'IFCCLASSIFICATIONREFERENCE') enumerations++; return get(type); };
+  expect(extractClassificationsOnDemand(store, 100, view)).toEqual([]);
+  expect(enumerations).toBe(0);
+});

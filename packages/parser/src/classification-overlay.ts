@@ -5,7 +5,7 @@
 /** Model-local classification inputs as the native edit session will export (#7131). */
 import { iterateEffectiveEntities, RelationshipType } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
-import { selectionRelationshipIds } from './selection-relationship-ids.js';
+import { selectionRelationshipIds, selectionRelationshipCacheKey } from './selection-relationship-ids.js';
 import { selectionRelationshipOverlay, selectedRelationshipMembers } from './selection-relationship-overlay.js';
 
 export type { MetadataReadView as ClassificationReadView } from './effective-metadata-record.js';
@@ -20,14 +20,14 @@ interface ClassificationEdges {
 const cache = new WeakMap<IfcDataStore, WeakMap<ClassificationReadView, { revision: number; edges: Map<number | undefined, ClassificationEdges> }>>();
 
 /** Build all association/type edges once per model overlay revision; no per-element relationship scan. */
-export function classificationEdges(store: IfcDataStore, view: ClassificationReadView, entityId?: number): ClassificationEdges {
-  const cacheKey = entityId !== undefined && store.source?.length && !store.relationshipsPending && store.relationships?.inverse && (view.getAttributeOverrideEntityIds || view.getEffectiveChanges) ? entityId : -1;
+export function classificationEdges(store: IfcDataStore, view: ClassificationReadView, entityId?: number, primaryId = entityId): ClassificationEdges {
   const revision = view.getMutationRevision();
   const cached = cache.get(store)?.get(view);
+  const cacheKey = selectionRelationshipCacheKey(store, view, entityId, cached?.revision === revision ? cached.edges : undefined, primaryId);
   if (cached?.revision === revision && cached.edges.has(cacheKey)) return cached.edges.get(cacheKey)!;
   const relationTypes = ['IFCRELASSOCIATESCLASSIFICATION', 'IFCRELDEFINESBYTYPE'];
   // @raw-entity-enumeration-ok source relationship ids feed the canonical effective relationship reader; it applies deletion, edits and retypes
-  const sourceIds = selectionRelationshipIds(store, view, entityId, [RelationshipType.AssociatesClassification, RelationshipType.DefinesByType], relationTypes)
+  const sourceIds = (cacheKey === -1 ? null : selectionRelationshipIds(store, view, entityId, [RelationshipType.AssociatesClassification, RelationshipType.DefinesByType], relationTypes))
     ?? relationTypes.flatMap(type => store.entityIndex.byType.get(type) ?? []);
   for (const id of view.getTypeMutations?.().keys() ?? []) sourceIds.push(id);
   const overlay = selectionRelationshipOverlay(store.source?.length ? store : { ...store, getEntity: () => null }, view, {
@@ -41,10 +41,10 @@ export function classificationEdges(store: IfcDataStore, view: ClassificationRea
   // A source-empty transport does not carry enough attributes to reconstruct
   // edited source associations or chains. Preserve uncertainty instead of
   // treating the original forwarded rows as effective live data.
-  const unknownSourceIds = [...sourceIds,
+  const unresolvedSource = !store.source?.length && [...sourceIds,
     // @raw-entity-enumeration-ok source definition/reference ids are inspected only for live edits when their bytes are unavailable
-    ...(store.entityIndex.byType.get('IFCCLASSIFICATION') ?? []), ...(store.entityIndex.byType.get('IFCCLASSIFICATIONREFERENCE') ?? [])];
-  const unresolvedSource = !store.source?.length && unknownSourceIds.some(id => view.isDeleted(id)
+    ...(store.entityIndex.byType.get('IFCCLASSIFICATION') ?? []), ...(store.entityIndex.byType.get('IFCCLASSIFICATIONREFERENCE') ?? [])]
+    .some(id => view.isDeleted(id)
     || view.getTypeMutations?.().has(id) || view.getAttributeMutationsForEntity(id).length > 0
     || (view.getPositionalMutationsForEntity(id)?.size ?? 0) > 0);
   const edges: ClassificationEdges = { references: new Map(), types: new Map(), unresolvedSource };

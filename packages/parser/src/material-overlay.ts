@@ -9,7 +9,7 @@ import { parsedWriteValue } from './property-value-parser.js';
 import { resolveOwnMaterialDefIds } from './material-associations.js';
 import type { IfcDataStore } from './columnar-parser.js';
 import { resolveEffectiveEntityRecord, type EffectiveEntityRecord } from './effective-entity-record.js';
-import { selectionRelationshipIds } from './selection-relationship-ids.js';
+import { selectionRelationshipIds, selectionRelationshipCacheKey } from './selection-relationship-ids.js';
 import { selectionRelationshipOverlay, selectedRelationshipMembers } from './selection-relationship-overlay.js';
 
 export interface MaterialReadView extends EffectiveEntityOverlay {
@@ -66,14 +66,14 @@ export function materialRecordReader(store: IfcDataStore, view?: MaterialReadVie
 interface Edges { own: Map<number, number[]>; types: Map<number, number[]>; unavailable: boolean }
 const edgesCache = new WeakMap<IfcDataStore, WeakMap<MaterialReadView, { revision: number; data: Map<number, Edges> }>>();
 const relTypes = ['IFCRELASSOCIATESMATERIAL', 'IFCRELDEFINESBYTYPE'];
-function materialEdges(store: IfcDataStore, view: MaterialReadView, entityId: number): Edges {
-  const cacheKey = store.source?.length && !store.relationshipsPending && store.relationships?.inverse && (view.getAttributeOverrideEntityIds || view.getEffectiveChanges) ? entityId : -1;
+function materialEdges(store: IfcDataStore, view: MaterialReadView, entityId: number, primaryId = entityId): Edges {
   const revision = view.getMutationRevision?.();
   const cached = edgesCache.get(store)?.get(view);
+  const cacheKey = selectionRelationshipCacheKey(store, view, entityId, cached?.revision === revision ? cached.data : undefined, primaryId);
   if (revision !== undefined && cached?.revision === revision && cached.data.has(cacheKey)) return cached.data.get(cacheKey)!;
   // Source relationship records feed the canonical schema-derived endpoint reader.
   // @raw-entity-enumeration-ok canonical effective relationship inventory once per model/view revision
-  const ids = selectionRelationshipIds(store, view, entityId, [RelationshipType.AssociatesMaterial, RelationshipType.DefinesByType], relTypes)
+  const ids = (cacheKey === -1 ? null : selectionRelationshipIds(store, view, entityId, [RelationshipType.AssociatesMaterial, RelationshipType.DefinesByType], relTypes))
     ?? relTypes.flatMap(type => store.entityIndex.byType.get(type) ?? []);
   for (const [id, mutation] of view.getTypeMutations?.() ?? []) {
     const sourceType = store.entityIndex.byId.get(id)?.type ?? store.deferredEntityIndex?.get(id)?.type;
@@ -125,7 +125,7 @@ export function materialAssignmentState(store: IfcDataStore, entityId: number, v
       : store.relationships?.getRelated(id, RelationshipType.DefinesByType, 'inverse') ?? [];
   };
   const read = (id: number, kind: 'own' | 'types') => {
-    const current = view ? materialEdges(store, view, id) : null;
+    const current = view ? materialEdges(store, view, id, entityId) : null;
     unavailable ||= current?.unavailable ?? false;
     const edited = current?.[kind].get(id) ?? [];
     if (current && hasSource) return edited;

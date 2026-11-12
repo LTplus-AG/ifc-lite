@@ -7,7 +7,7 @@ import type { IfcDataStore } from './columnar-parser.js';
 import { getReference } from './attribute-helpers.js';
 import { normalizeIfcTypeName } from './ifc-schema.js';
 import { effectiveMetadataRecord, type MetadataReadView } from './effective-metadata-record.js';
-import { selectionRelationshipIds } from './selection-relationship-ids.js';
+import { selectionRelationshipIds, selectionRelationshipCacheKey } from './selection-relationship-ids.js';
 import { selectionRelationshipOverlay, selectedRelationshipMembers } from './selection-relationship-overlay.js';
 
 /** Existing normalized document fields; identity describes the associated native target. */
@@ -32,14 +32,14 @@ export interface DocumentInfo {
 interface DocumentEdges { references: Map<number, number[]>; types: Map<number, number[]> }
 const cache = new WeakMap<IfcDataStore, WeakMap<MetadataReadView, { revision: number; source: IfcDataStore['source']; edges: Map<number, DocumentEdges> }>>();
 
-function effectiveEdges(store: IfcDataStore, view: MetadataReadView, entityId: number): DocumentEdges {
-  const cacheKey = store.source?.length && !store.relationshipsPending && store.relationships?.inverse && (view.getAttributeOverrideEntityIds || view.getEffectiveChanges) ? entityId : -1;
+function effectiveEdges(store: IfcDataStore, view: MetadataReadView, entityId: number, primaryId = entityId): DocumentEdges {
   const revision = view.getMutationRevision();
   const previous = cache.get(store)?.get(view);
+  const cacheKey = selectionRelationshipCacheKey(store, view, entityId, previous?.revision === revision ? previous.edges : undefined, primaryId);
   if (previous?.revision === revision && previous.source === store.source && previous.edges.has(cacheKey)) return previous.edges.get(cacheKey)!;
   const kinds = ['IFCRELASSOCIATESDOCUMENT', 'IFCRELDEFINESBYTYPE'];
   // @raw-entity-enumeration-ok native source relationship ids feed the canonical effective relationship reader
-  const sourceIds = selectionRelationshipIds(store, view, entityId, [RelationshipType.AssociatesDocument, RelationshipType.DefinesByType], kinds)
+  const sourceIds = (cacheKey === -1 ? null : selectionRelationshipIds(store, view, entityId, [RelationshipType.AssociatesDocument, RelationshipType.DefinesByType], kinds))
     ?? kinds.flatMap(type => store.entityIndex.byType.get(type) ?? []);
   sourceIds.push(...(view.getTypeMutations?.().keys() ?? []));
   const overlay = selectionRelationshipOverlay(store.source?.length ? store : { ...store, getEntity: () => null }, view, {
@@ -121,8 +121,8 @@ export function extractDocumentsOnDemand(store: IfcDataStore, entityId: number, 
   const baseId = view?.resolveBaseEntityId?.(entityId) ?? entityId;
   const subjects = baseId === entityId ? [entityId] : [entityId, baseId];
   const edges = view ? effectiveEdges(store, view, entityId) : null;
-  const live = edges ? [...subjects, ...subjects.flatMap(id => effectiveEdges(store, view!, id).types.get(id) ?? [])]
-    .flatMap(id => effectiveEdges(store, view!, id).references.get(id) ?? []) : [];
+  const live = edges ? [...subjects, ...subjects.flatMap(id => effectiveEdges(store, view!, id, entityId).types.get(id) ?? [])]
+    .flatMap(id => effectiveEdges(store, view!, id, entityId).references.get(id) ?? []) : [];
   if (store.source?.length) {
     return [...new Set(edges ? live : forwardedReferences(store, subjects))].map(id => documentRecord(store, id, view));
   }

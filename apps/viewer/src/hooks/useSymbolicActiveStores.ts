@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useLoadWindowOpen } from './loadWindow.js';
+import { useLoadWindowHold } from './loadWindow.js';
 import { useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { MeshData } from '@ifc-lite/geometry';
@@ -38,20 +38,20 @@ export function useSymbolicActiveStores(): SymbolicActiveStore[] {
     })),
   );
 
-  // IfcGrid / annotation overlays wait for the load to settle (loadWindow.ts):
-  // their parse key walks the model's spatial lookups, which inside the load
-  // window ran in the drain and finalize that end the load. The cache key stays
-  // a content digest (#6421, #9621), so it cannot be made constant-time soundly.
-  const loadWindowOpen = useLoadWindowOpen();
+  // A loading model's IfcGrid / annotation overlays wait for its load to settle
+  // (loadWindow.ts): their parse key walks the model's spatial lookups, which
+  // inside the load window ran in the drain and finalize that end the load. The
+  // cache key stays a content digest (#6421, #9621), so it cannot be made
+  // constant-time soundly. A model that had settled keeps its overlays.
+  const loadHold = useLoadWindowHold();
 
   // `loading` is provenance state for the legacy primary path: true means
   // wait for an exact frame; false without one means standalone parsing.
   return useMemo(() => {
     const out: SymbolicActiveStore[] = [];
-    if (loadWindowOpen) return out;
     if (models.size > 0) {
       for (const [modelId, model] of models) {
-        if (!model.ifcDataStore) continue;
+        if (!model.ifcDataStore || loadHold.isHeld(modelId)) continue;
         out.push({
           meshes: model.geometryResult?.meshes,
           store: model.ifcDataStore,
@@ -61,7 +61,7 @@ export function useSymbolicActiveStores(): SymbolicActiveStore[] {
           translation: displayedTranslation(placement, modelId),
         });
       }
-    } else if (ifcDataStore) {
+    } else if (ifcDataStore && !loadHold.isHeld('legacy')) {
       out.push({
         meshes: geometryResult?.meshes,
         store: ifcDataStore,
@@ -72,5 +72,5 @@ export function useSymbolicActiveStores(): SymbolicActiveStore[] {
       });
     }
     return out;
-  }, [models, ifcDataStore, placement, geometryResult, loading, loadWindowOpen, mutationVersion, mutationViews]);
+  }, [models, ifcDataStore, placement, geometryResult, loading, loadHold, mutationVersion, mutationViews]);
 }

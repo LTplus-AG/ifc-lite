@@ -45,10 +45,16 @@ async function parse(): Promise<IfcDataStore> {
   return new IfcParser().parseColumnar(new TextEncoder().encode(STEP).buffer, { disableWorkerScan: true });
 }
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
-  useViewerStore.setState({ geometryStreamingActive: false, loading: false, hiddenEntities: new Set() });
+  useViewerStore.setState({ geometryStreamingActive: false, loading: false, hiddenEntities: new Set(), models: new Map(), activeModelId: null });
+  await settleLoadWindow(); // the next test starts with the window closed
 });
+
+const federated = (id: string, store: IfcDataStore, loadState: string) => ({
+  id, name: id, ifcDataStore: store, geometryResult: null, visible: true, collapsed: false,
+  idOffset: 0, maxExpressId: 100, loadState, fileSize: 1, loadedAt: 0,
+}) as never;
 
 it('symbolic overlays get no stores while the load window is open, and the loaded store once it settles', async () => {
   const store = await parse();
@@ -82,15 +88,82 @@ it('viewport status summary skips the whole-model walk in the window and counts 
 it('exports the same window for non-React consumers (the after-load queue)', async () => {
   const mod = (await import('./loadWindow.js')) as Record<string, unknown>;
   assert.equal(typeof mod.viewerLoadWindow, 'function', 'loadWindow.ts must export viewerLoadWindow');
-  const win = (mod.viewerLoadWindow as () => { isOpen(): boolean; subscribe(l: () => void): () => void })();
+  const win = (mod.viewerLoadWindow as () => { isOpen(): boolean; isHeld(id: string): boolean; subscribe(l: () => void): () => void })();
+  assert.equal(typeof win.isHeld, 'function', 'per-model hold for non-React consumers');
   assert.equal(win, (mod.viewerLoadWindow as () => unknown)(), 'one singleton');
   const seen: boolean[] = [];
   const unsubscribe = win.subscribe(() => seen.push(win.isOpen()));
   act(() => useViewerStore.setState({ loading: true }));
   assert.equal(win.isOpen(), true, 'opens with a load');
+  assert.equal(win.isHeld('legacy'), true, 'single-store mode: the store being loaded is held');
   act(() => useViewerStore.setState({ loading: false }));
   await settleLoadWindow();
   assert.equal(win.isOpen(), false, 'closes after the settled frame');
   assert.deepEqual(seen, [true, false]);
   unsubscribe();
+});
+
+it('symbolic overlays keep settled model A\'s store while B loads, and add B\'s at its settle', async () => {
+  const storeA = await parse(), storeB = await parse();
+  useViewerStore.setState({ ifcDataStore: storeA, models: new Map([['A', federated('A', storeA, 'complete')]]) });
+  let seen: string[][] = [];
+  function Probe() { seen.push(useSymbolicActiveStores().map((s) => s.modelId)); return null; }
+  render(<Probe />);
+  assert.deepEqual(seen.at(-1), ['A']);
+  seen = [];
+  act(() => useViewerStore.setState({ loading: true }));
+  act(() => useViewerStore.setState({ models: new Map([['A', federated('A', storeA, 'complete')], ['B', federated('B', storeB, 'pending')]]), geometryStreamingActive: true }));
+  assert.ok(seen.length > 0 && seen.every((ids) => ids.join() === 'A'), `A's overlays never withdrawn, B not parsed yet (saw ${JSON.stringify(seen)})`);
+  act(() => useViewerStore.setState({ models: new Map([['A', federated('A', storeA, 'complete')], ['B', federated('B', storeB, 'complete')]]), geometryStreamingActive: false, loading: false }));
+  await settleLoadWindow();
+  assert.deepEqual(seen.at(-1), ['A', 'B'], 'settled: B\'s overlays join');
+});
+
+it('symbolic overlays parse the FINAL store after a store swap inside the window', async () => {
+  const partial = await parse(), full = await parse();
+  useViewerStore.setState({ ifcDataStore: partial, models: new Map(), geometryResult: null, loading: true });
+  let seen: Array<IfcDataStore | undefined> = [];
+  function Probe() { seen.push(useSymbolicActiveStores()[0]?.store); return null; }
+  render(<Probe />);
+  act(() => useViewerStore.setState({ ifcDataStore: full }));
+  assert.equal(seen.filter((s) => s !== undefined).length, 0, 'nothing parsed inside the window');
+  act(() => useViewerStore.setState({ loading: false }));
+  await settleLoadWindow();
+  assert.equal(seen.at(-1), full, 'settled: the final store, never the partial one');
+  assert.ok(!seen.includes(partial));
+});
+
+it('viewport status summary keeps settled model A\'s hidden pill while B loads', async () => {
+  const storeA = await parse(), storeB = await parse();
+  useViewerStore.setState({
+    ifcDataStore: storeA, activeModelId: 'A', models: new Map([['A', federated('A', storeA, 'complete')]]),
+    mutationViews: new Map(), mutationVersion: 0, hiddenEntities: new Set([10]),
+  });
+  let hidden: number[] = [];
+  function Probe() { hidden.push(useViewportStatusSummary().objectCounts.hidden); return null; }
+  render(<Probe />);
+  assert.equal(hidden.at(-1), 1);
+  hidden = [];
+  act(() => useViewerStore.setState({ loading: true }));
+  act(() => useViewerStore.setState({ models: new Map([['A', federated('A', storeA, 'complete')], ['B', federated('B', storeB, 'pending')]]), geometryStreamingActive: true }));
+  assert.ok(hidden.length > 0 && hidden.every((n) => n === 1), `A's pill stays while B loads (saw ${hidden})`);
+});
+
+it('viewport status summary counts against the FINAL store after a swap inside the window', async () => {
+  const partial = await parse();
+  const full = await new IfcParser().parseColumnar(new TextEncoder().encode(STEP.replace(
+    "#30=IFCRELCONTAINEDINSPATIALSTRUCTURE",
+    "#12=IFCWALL('0Wall12000000000000000',$,'W3',$,$,$,#7,$,$);\n#30=IFCRELCONTAINEDINSPATIALSTRUCTURE",
+  ).replace('(#10,#11),#4', '(#10,#11,#12),#4')).buffer, { disableWorkerScan: true });
+  useViewerStore.setState({
+    ifcDataStore: partial, models: new Map(), geometryResult: null, mutationViews: new Map(), mutationVersion: 0,
+    hiddenEntities: new Set([10, 12]), loading: true,
+  });
+  let hidden: number[] = [];
+  function Probe() { hidden.push(useViewportStatusSummary().objectCounts.hidden); return null; }
+  render(<Probe />);
+  act(() => useViewerStore.setState({ ifcDataStore: full }));
+  act(() => useViewerStore.setState({ loading: false }));
+  await settleLoadWindow();
+  assert.equal(hidden.at(-1), 2, 'settled: both hidden walls of the final store (the partial store has only one)');
 });

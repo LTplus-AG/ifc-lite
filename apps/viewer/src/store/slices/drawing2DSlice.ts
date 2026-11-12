@@ -729,7 +729,7 @@ export const createDrawing2DSlice: StateCreator<Drawing2DSlice, [], [], Drawing2
   setTextAnnotation2DEditing: (id) => set({ textAnnotation2DEditing: id }),
 
   clearTextAnnotations2D: () => set({
-  textAnnotations2D: [],
+    textAnnotations2D: [],
     textAnnotation2DEditing: null,
   }),
 

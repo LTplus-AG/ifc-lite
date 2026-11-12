@@ -118,7 +118,7 @@ it('#9296 DXF exports real TEXT entities and scaled PDF writes the live labels',
   const { jsPDF } = await import('jspdf');
   useViewerStore.setState({ tagAnnotations2D: [tag(10), tag(20)] });
   const drawing: import('@ifc-lite/drawing-2d').Drawing2D = {
-    config: DEFAULT_SECTION_CONFIG, lines: [], cutPolygons: [], projectionPolygons: [],
+    config: { ...DEFAULT_SECTION_CONFIG, plane: { axis: 'z', position: 1, flipped: false } }, lines: [], cutPolygons: [], projectionPolygons: [],
     bounds: { min: { x: 0, y: 0 }, max: { x: 5, y: 4 } },
     stats: { cutLineCount: 0, projectionLineCount: 0, hiddenLineCount: 0, silhouetteLineCount: 0, polygonCount: 0, totalTriangles: 0, processingTimeMs: 0 },
   };
@@ -132,4 +132,12 @@ it('#9296 DXF exports real TEXT entities and scaled PDF writes the live labels',
   const output = pdf.output();
   assert.match(output, /Entrance/);
   assert.match(output, /19\.2/);
+});
+
+it('#9296 a space tag refreshes the edited net floor area', async () => {
+  const { view } = await fixture();
+  const { QuantityType } = await import('@ifc-lite/data');
+  assert.equal(resolveElementTagLabel(tag(20)), 'Office · ≈ 19.2 m²');
+  view.setQuantity(20, 'Qto_SpaceBaseQuantities', 'NetFloorArea', 21.5, QuantityType.Area);
+  assert.equal(resolveElementTagLabel(tag(20)), 'Office · ≈ 21.5 m²');
 });

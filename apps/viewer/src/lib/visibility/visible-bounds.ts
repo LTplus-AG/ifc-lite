@@ -10,7 +10,7 @@
  *
  * "Visible" is the renderer's own rule over the viewer's effective channels:
  * - `hidden`: user hides, hidden models and the structural product mode
- *   (`resolveViewHiddenEntities`, the set `useVisibilityState` returns);
+ *   (`useVisibilityState` composes `modelHiddenEntities` with `resolveViewHiddenEntities`);
  * - `isolated`: the effective isolation (storey selection, class filter and
  *   isolate intersected, `effectiveIsolatedIds`), or null for none.
  * Class toggles (spaces, openings, site, ...) are already applied: the flat

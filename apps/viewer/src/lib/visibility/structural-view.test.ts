@@ -10,6 +10,8 @@ import { fixtureModel } from '@/test/store-fixture';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { TYPE_VISIBILITY_SEMANTIC_DEFAULTS } from '@/store/constants';
 import { hasStructuralData, resolveViewHiddenEntities, structuralGlyphsVisible } from './structural-view';
+import { useViewerStore } from '@/store';
+import { resolveExportVisibility } from '@/store/exportVisibility';
 import { sceneSnapshotKey } from '@/components/viewer/sceneSnapshotOwnership';
 
 for (const count of [1,2]) {
@@ -51,3 +53,25 @@ for (const count of [1,2]) {
     assert.equal(structuralGlyphsVisible(restored),false);
   });
 }
+
+it('#9923: both preserves main export visibility for a hidden model', () => {
+  const store = createSyntheticDataStore({schemaVersion:'IFC4',fileSize:0,entities:[
+    {expressId:7,type:'IfcBeam',hasGeometry:true},
+    {expressId:9,type:'IfcBeam',hasGeometry:true},
+    {expressId:10,type:'IfcColumn',hasGeometry:true},
+    {expressId:11,type:'IfcStructuralPointConnection',hasGeometry:true},
+  ]});
+  const models = new Map(['a','b'].map((id,i)=>[id,{
+    ...fixtureModel(id,{idOffset:(i+1)*1_000_000}),ifcDataStore:store,maxExpressId:11,visible:id==='a',
+  }]));
+  const state = {...useViewerStore.getState(),models,mutationViews:new Map<string,MutablePropertyView>(),
+    hiddenEntities:new Set<number>(),isolatedEntities:null,classFilter:null,selectedStoreys:new Set<number>(),
+    lensHiddenIds:new Set<number>(),typeVisibility:{...TYPE_VISIBILITY_SEMANTIC_DEFAULTS,structuralViewMode:'both' as const},
+    toGlobalId:(modelId:string,id:number)=>toGlobalIdFromModels(models,modelId,id)};
+  assert.equal(resolveViewHiddenEntities(state),state.hiddenEntities,'both is the exact existing hide channel');
+  assert.deepEqual([...resolveExportVisibility(state,'b').hiddenLocalIds],[],
+    'main does not convert a hidden model flag into explicit hidden export products');
+  const physical = {...state,typeVisibility:{...state.typeVisibility,structuralViewMode:'physical' as const}};
+  assert.deepEqual([...resolveExportVisibility(physical,'b').hiddenLocalIds],[11],
+    'only the analytical product mask is added in physical mode');
+});

@@ -9,6 +9,7 @@
  */
 
 import { useMemo } from 'react';
+import { modelHiddenEntities } from '../lib/visibility/model-hidden-entities.js';
 import { resolveViewHiddenEntities } from '../lib/visibility/structural-view.js';
 import { useViewerStore } from '../store/index.js';
 import { useStoreyContextVisibility } from './useStoreyContext.js';
@@ -49,7 +50,7 @@ export function useVisibilityState() {
   const toGlobalId = useViewerStore((state) => state.toGlobalId);
   const hiddenEntities = useMemo(
     () => resolveViewHiddenEntities({ models, ifcDataStore, mutationViews, typeVisibility,
-      hiddenEntities: userHiddenEntities, toGlobalId }),
+      hiddenEntities: modelHiddenEntities(models, userHiddenEntities, toGlobalId), toGlobalId }),
     [models, userHiddenEntities, toGlobalId, geometryContentVersion, typeVisibility, ifcDataStore, mutationVersion, mutationViews],
   );
   const isolatedEntities = useViewerStore((state) => state.isolatedEntities);

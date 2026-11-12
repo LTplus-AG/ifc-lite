@@ -11,6 +11,7 @@ import { StepExporter } from '@ifc-lite/export';
 import { resolveExportVisibility } from '../store/exportVisibility.js';
 import { fitAllBounds } from '../lib/visibility/visible-bounds.js';
 import { structuralGlyphsVisible } from '../lib/visibility/structural-view.js';
+import { iterateEffectiveEntityIds } from '@ifc-lite/mutations';
 import { IfcParser } from '@ifc-lite/parser';
 import { useViewerStore } from '../store/index.js';
 import { useVisibilityState } from '../hooks/useViewerSelectors.js';
@@ -71,9 +72,8 @@ if (!('setStructuralViewMode' in state) || typeof state.setStructuralViewMode !=
       hiddenEntityIds:filters.hiddenLocalIds, isolatedEntityIds:filters.isolatedLocalIds ?? undefined});
     const output = typeof content === 'string' ? new TextEncoder().encode(content) : content;
     const reread = await new IfcParser().parseColumnar(output.buffer.slice(output.byteOffset,output.byteOffset+output.byteLength),{disableWorkerScan:true});
-    assert.equal(reread.entityIndex.byType.get('IFCSTRUCTURALCURVEMEMBER')?.length ?? 0,0);
-    assert.equal(reread.entityIndex.byType.get('IFCSTRUCTURALPOINTCONNECTION')?.length ?? 0,0);
-    assert.equal((reread.entityIndex.byType.get('IFCBEAM')?.length ?? 0)+(reread.entityIndex.byType.get('IFCCOLUMN')?.length ?? 0),physical.length);
+    assert.equal([...iterateEffectiveEntityIds(reread,null,['IfcStructuralCurveMember','IfcStructuralPointConnection'])].length,0);
+    assert.equal([...iterateEffectiveEntityIds(reread,null,['IfcBeam','IfcColumn'])].length,physical.length);
     // #9923: model mode and the user's Supports & loads preference are independent.
     if (useViewerStore.getState().typeVisibility.structuralGlyphs) {
       act(()=>useViewerStore.getState().toggleTypeVisibility('structuralGlyphs'));

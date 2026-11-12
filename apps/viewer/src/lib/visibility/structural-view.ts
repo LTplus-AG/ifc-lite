@@ -6,7 +6,6 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { TypeVisibility } from '@/store/types';
 import type { FederatedModel, ViewerState } from '@/store';
 import { isProductClass } from '../compare/compareScope';
-import { modelHiddenEntities } from './model-hidden-entities';
 
 export function structuralGlyphsVisible(visibility: Pick<TypeVisibility, 'structuralGlyphs' | 'structuralViewMode'>): boolean {
   return visibility.structuralGlyphs && visibility.structuralViewMode !== 'physical';
@@ -20,11 +19,11 @@ export function isAnalyticalProduct(type: string): boolean {
 export type StructuralVisibilityState = Pick<ViewerState,
   'models' | 'ifcDataStore' | 'mutationViews' | 'hiddenEntities' | 'toGlobalId' | 'typeVisibility'>;
 
-/** Shared by the viewport, visible-only exports, PDF collector and empty-view test. */
+/** Add only the structural mask; both preserves each caller's existing hidden set. */
 export function resolveViewHiddenEntities(state: StructuralVisibilityState): Set<number> {
   return structuralViewHidden(state.typeVisibility.structuralViewMode ?? 'both', state.models,
     state.ifcDataStore, state.mutationViews,
-    modelHiddenEntities(state.models, state.hiddenEntities, state.toGlobalId), state.toGlobalId);
+    state.hiddenEntities, state.toGlobalId);
 }
 
 export function hasStructuralData(state: Pick<ViewerState, 'models' | 'ifcDataStore' | 'mutationViews'>): boolean {

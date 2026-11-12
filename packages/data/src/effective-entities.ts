@@ -164,6 +164,13 @@ export interface EffectiveEntitySource {
   };
   /** A 'tabular' store (IFCX is one) has no STEP type index, so its entity table is the source. */
   readonly sourceKind?: IfcStoreBase['sourceKind'];
+  /**
+   * @deprecated Never read since #9890. The schema label used to double as the "no STEP
+   * records" marker; `sourceKind` says that now, so an `'IFC5'` label alone no longer makes
+   * the entity table the source domain. Still declared so a caller that passes it compiles.
+   * TODO(remove-by: next major of @ifc-lite/data, #9890)
+   */
+  readonly schemaVersion?: string;
 }
 
 export interface EffectiveEntity {

@@ -8,45 +8,58 @@
  *
  * A workflow file reaches a cache key in one of two ways: it is executed by the
  * run (test.yml, or a reusable workflow test.yml calls with `uses: ./...`), so
- * its own text sets keys; or a `hashFiles(...)` in an executed file hashes it.
- * Executed files are those workflows plus every file under `.github/actions/`
- * (which ci-push-replay blocks on its own). A step that merely READS another
- * workflow is test behaviour, already covered by the exact-tree evidence.
+ * its own text sets keys; or a `hashFiles(...)` or `cache-dependency-path` in an
+ * executed file hashes it. Executed files are those workflows plus every file
+ * under `.github/actions/` (which ci-push-replay blocks on its own). A step that
+ * merely READS another workflow is test behaviour, already covered by the
+ * exact-tree evidence.
  *
- * Every hashFiles argument and `cache-dependency-path` value must therefore be
- * judged. One that is not a plain literal, or a pattern that could reach
- * `.github/workflows/<x>.yml` without naming it (a wildcard, or a directory,
- * whose files hashFiles all hashes), makes the answer unknown. A key built in a
- * `run:` step from a workflow file's bytes, or by another remote action's
- * input, is not detected.
+ * THE SCAN IS AN ALLOW-LIST. Every `uses:` value, `cache-dependency-path:`
+ * value and hashFiles argument must be one of a few plain forms; anything else
+ * (a YAML tag, alias, escape, flow list, block scalar, expression, `~`, `..`)
+ * makes the answer unknown, and the caller blocks every workflow file. Each
+ * allowed pattern is then judged for whether it can reach
+ * `.github/workflows/<x>.yml`, directories included, since hashFiles hashes
+ * every file below a matched one. Not detected: a key computed in a `run:` step
+ * or a script from a workflow file's bytes, or by a remote action's other inputs.
  */
 
 import { posix } from 'node:path';
 
-// A YAML key may be quoted (`"uses":`).
-const LOCAL_USES = /['"]?uses['"]?\s*:\s*['"]?\.\/(\.github\/workflows\/[^\s'"@#]+)/g;
-const WORKFLOW_FILE = /^\.github\/workflows\/[^/]+\.ya?ml$/;
-// Read by nothing here, so unknown: a local action outside .github/actions/, or a local
-// path that climbs (`./.github/actions/../../ci/setup`).
-const LOCAL_USES_UNREAD = /['"]?uses['"]?\s*:\s*['"]?\.\/(?:(?!\.github\/(?:actions|workflows)\/)|[^\s'"]*\.\.)/;
-const REMOTE_WORKFLOW_USES = /['"]?uses['"]?\s*:\s*['"]?[\w-]+\/[\w.-]+\/\.github\/workflows\//;
-// A YAML anchor, alias or merge key: the value a line shows is not the value GitHub uses.
-// An alias (`*x`) or anchor (`&x`) as the value of a key this scan reads hides that
-// value. Anywhere else it needs no check: the scan is textual over the whole file, so
-// anchored content is read where it is defined, and hashFiles arguments sit inside an
-// expression string, where YAML aliases do not exist.
-const ALIASED_USES = /['"]?uses['"]?[ \t]*:[ \t]*[&*]/;
-// Expression function names are case-insensitive.
+export const WORKFLOW_FILE = /^\.github\/workflows\/[^/]+\.ya?ml$/;
+
+// A key this scan reads, on a line that is not a comment; group 1 is what precedes the
+// key (a `{` there means a flow mapping), group 2 the rest of the line.
+const keyLine = (key) => new RegExp(`^(?![ \\t]*#)((?:.*[\\s{,-])?)['"]?${key}['"]?[ \\t]*:(.*)$`, 'gm');
+const USES_KEY = keyLine('uses');
+const CACHE_DEPENDENCY_PATH_KEY = keyLine('cache-dependency-path');
+// Expression function names are case-insensitive, and `hashFiles (` is a call.
 const HASHFILES = /hashFiles\s*\(/gi;
 const QUOTED_ARG = /^\s*(?:'([^']*)'|"([^"]*)")\s*([,)])/;
-// An action input whose files key a cache (actions/setup-node, setup-python, ...).
-const CACHE_DEPENDENCY_PATH = /['"]?cache-dependency-path['"]?\s*:[ \t]*(.*)$/gim;
-// One scalar, ending the line or a flow-mapping entry (`, ...` / ` }`). A block scalar
-// (`|`, `>`), an alias (`*x`) or an anchored value (`&x ...`) is not plain.
-const PLAIN_VALUE = /^(?:'([^']*)'|"([^"]*)"|([^\s'"#|>,}&*][^\s#,}]*))\s*(?:[,}].*)?(?:#.*)?$/;
-const WORKFLOW_SEGMENTS = ['.github', 'workflows'];
 
-/** A hashFiles call's literal arguments, or null when one is not a quoted literal. */
+// The allowed forms. A path is plain characters only: no escapes, `~`, `!`, braces or brackets.
+const PLAIN_PATH = /^[\w./*-]+$/;
+const LOCAL_WORKFLOW = /^\.\/(\.github\/workflows\/[\w.-]+\.ya?ml)$/;
+const LOCAL_ACTION = /^\.\/\.github\/actions\/[\w.-]+(?:\/[\w.-]+)*$/;
+const REMOTE_ACTION = /^[\w.-]+\/[\w.-]+(?:\/[\w./-]+)?@[\w./-]+$/;
+const DOCKER = /^docker:\/\/\S+$/;
+
+/**
+ * The scalar a `key: <rest>` line gives: comment dropped, in a flow mapping the entry's
+ * tail (`, ...` / ` }`) too (in block context a comma is part of the scalar), one
+ * quote pair removed. Null when unquoted text starts with a YAML indicator (alias `*`,
+ * anchor `&`, tag `!`, block `|` `>`, flow `[` `{`, reserved `%` `@` backtick): then
+ * the line does not show the value.
+ */
+function scalar(before, rest) {
+  let v = rest.replace(/[ \t]+#.*$/, '').trim();
+  if (before.includes('{')) v = v.replace(/[ \t]*[,}].*$/, '');
+  const quoted = /^(['"])(.*)\1$/.exec(v);
+  if (quoted) return quoted[2];
+  return /^[*&!|>[{%@`]/.test(v) ? null : v;
+}
+
+/** A hashFiles call's quoted arguments, or null when one is not a quoted literal. */
 function hashFilesArgs(text, from) {
   const args = [];
   let rest = text.slice(from);
@@ -59,15 +72,14 @@ function hashFilesArgs(text, from) {
   }
 }
 
-const isWild = (seg) => /[*?[\]{}!]/.test(seg);
+const WORKFLOW_SEGMENTS = ['.github', 'workflows'];
+const isWild = (seg) => seg.includes('*');
 
 /** Whether one glob segment can match target segment `ti` (0 `.github`, 1 `workflows`, 2 any YAML name). */
 function segmentMatches(seg, ti) {
   if (ti === 2) return isWild(seg) || /\.ya?ml$/.test(seg);
   if (!isWild(seg)) return seg === WORKFLOW_SEGMENTS[ti];
-  if (/[[\]{}!]/.test(seg)) return true;
-  const re = new RegExp(`^${seg.replace(/[.+^$()|\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.')}$`);
-  return re.test(WORKFLOW_SEGMENTS[ti]);
+  return new RegExp(`^${seg.replace(/\./g, '\\.').replace(/\*/g, '.*')}$`).test(WORKFLOW_SEGMENTS[ti]);
 }
 
 /**
@@ -81,29 +93,14 @@ function reachesWorkflows(segs, pi = 0, ti = 0) {
   return segmentMatches(segs[pi], ti) && reachesWorkflows(segs, pi + 1, ti + 1);
 }
 
-/** For one pattern: the workflow file it names, 'none', or 'unknown' (it may reach one it does not name). */
+/** For one plain pattern: the workflow file it names, 'none', or 'unknown' (it may reach one it does not name). */
 function judgePattern(pattern) {
-  if (pattern.startsWith('!')) return 'none';
-  const p = posix.normalize(pattern);
-  // The workspace root, an absolute path that may be it, a climb out that may come back
-  // in (`../<repo>/.github`), or a directory-only trailing slash: unknown.
-  if (p === '.' || p === './' || p.startsWith('/') || p.startsWith('../') || p.endsWith('/')) return 'unknown';
-  const segs = p.split('/');
+  const segs = pattern.replace(/^\.\//, '').split('/');
+  // The workspace root, an absolute path, an empty or climbing segment, or a trailing slash.
+  if (pattern === '.' || pattern === './' || pattern.startsWith('/') || segs.some((s) => s === '' || s === '.' || s === '..')) return 'unknown';
   if (!reachesWorkflows(segs)) return 'none';
-  return segs.length === 3 && !segs.some(isWild) ? p : 'unknown';
-}
-
-/** The patterns a `cache-dependency-path:` input lists, or null when its value is not a plain scalar. */
-function cacheDependencyPaths(text) {
-  const out = [];
-  for (const m of text.matchAll(CACHE_DEPENDENCY_PATH)) {
-    const v = PLAIN_VALUE.exec(m[1].trim());
-    if (!v) return null;
-    // A double-quoted YAML scalar may hold escapes (`\n` splits it into several paths).
-    if (v[2]?.includes('\\')) return null;
-    out.push(v[1] ?? v[2] ?? v[3]);
-  }
-  return out;
+  const p = segs.join('/');
+  return WORKFLOW_FILE.test(p) && !segs.some(isWild) ? p : 'unknown';
 }
 
 /**
@@ -135,26 +132,32 @@ export function workflowsKeyingCaches({ root, actionFiles, symlinks, readText })
     const path = executed[i];
     const text = readText(path);
     if (typeof text !== 'string') return { unknown: `${path} could not be read` };
-    if (REMOTE_WORKFLOW_USES.test(text)) return { unknown: `${path} calls a reusable workflow by owner/repo` };
-    if (ALIASED_USES.test(text)) return { unknown: `${path} sets uses: through a YAML alias` };
-    if (LOCAL_USES_UNREAD.test(text)) return { unknown: `${path} uses a local action outside .github/actions/, or a climbing path` };
-    for (const [, raw] of text.matchAll(LOCAL_USES)) {
-      const ref = posix.normalize(raw);
-      // A local action directory under workflows/ is not a workflow file this scan reads.
-      if (!WORKFLOW_FILE.test(ref)) return { unknown: `${path} uses ${raw}, which is not a top-level workflow file` };
-      files.add(ref);
-      if (!executed.includes(ref)) executed.push(ref);
+    for (const m of text.matchAll(USES_KEY)) {
+      const v = scalar(m[1], m[2]);
+      if (v === null) return { unknown: `${path} has a uses: value the line does not show` };
+      if (v.split('/').includes('..')) return { unknown: `${path} has uses: ${v}, which climbs` };
+      const local = LOCAL_WORKFLOW.exec(v);
+      if (local) {
+        files.add(local[1]);
+        if (!executed.includes(local[1])) executed.push(local[1]);
+      } else if (!LOCAL_ACTION.test(v) && !(REMOTE_ACTION.test(v) && !v.includes('/.github/workflows/')) && !DOCKER.test(v)) {
+        return { unknown: `${path} has uses: ${v}, which is not a plain local or remote action` };
+      }
     }
-    const patterns = cacheDependencyPaths(text);
-    if (patterns === null) return { unknown: `${path} sets cache-dependency-path to a value that is not a plain path` };
+    const patterns = [];
+    for (const m of text.matchAll(CACHE_DEPENDENCY_PATH_KEY)) {
+      const v = scalar(m[1], m[2]);
+      if (v === null) return { unknown: `${path} has a cache-dependency-path value the line does not show` };
+      patterns.push(v);
+    }
     for (const m of text.matchAll(HASHFILES)) {
       const args = hashFilesArgs(text, m.index + m[0].length);
-      // A backslash is a YAML escape in a double-quoted scalar, or a glob escape: either way not the text shown.
-      if (args === null || args.some((a) => a.includes('\\'))) return { unknown: `${path} calls hashFiles with an argument that is not a plain literal` };
+      if (args === null) return { unknown: `${path} calls hashFiles with an argument that is not a quoted literal` };
       // @actions/glob reads each line of a pattern as its own pattern, trimmed.
       patterns.push(...args.flatMap((a) => a.split('\n').map((line) => line.trim()).filter(Boolean)));
     }
     for (const pattern of patterns) {
+      if (!PLAIN_PATH.test(pattern)) return { unknown: `${path} hashes '${pattern}', which is not a plain path` };
       const verdict = judgePattern(pattern);
       if (verdict === 'unknown') return { unknown: `${path} hashes '${pattern}', which may reach a workflow file` };
       if (verdict !== 'none') files.add(verdict);

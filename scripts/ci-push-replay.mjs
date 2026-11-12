@@ -70,7 +70,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { gh, GhError } from './lib/gh.mjs';
 import { isBatchBranch } from './ci-pr-lane.mjs';
 import { isMainEntry } from './lib/is-main-entry.mjs';
-import { workflowsKeyingCaches } from './lib/workflows-keying-caches.mjs';
+import { WORKFLOW_FILE, workflowsKeyingCaches } from './lib/workflows-keying-caches.mjs';
 
 export const TREE_ARTIFACT_PREFIX = 'tested-tree-';
 export const TEST_WORKFLOW_FILE = 'test.yml';
@@ -88,16 +88,15 @@ const NO_REPLAY = [
   /(^|\/)\.cargo\/config(\.toml)?$/,
   /^\.github\/actions\//,
 ];
-// GitHub runs only top-level workflow YAML. Anything else under workflows/ is a file a
-// step may read or hash in ways workflowsKeyingCaches does not judge, so it always blocks.
-const WORKFLOW_YAML = /^\.github\/workflows\/[^/]+\.ya?ml$/;
 const TEST_WORKFLOW_PATH = `.github/workflows/${TEST_WORKFLOW_FILE}`;
 
 /** Whether a changed path keys a cache that only a push to main writes. */
 function keysMainCaches(file, workflowFiles) {
   if (NO_REPLAY.some((re) => re.test(file))) return true;
   if (!file.startsWith('.github/workflows/')) return false;
-  if (!WORKFLOW_YAML.test(file)) return true;
+  // GitHub runs only top-level workflow YAML. Anything else under workflows/ is a file a
+  // step may read or hash in ways workflowsKeyingCaches does not judge, so it always blocks.
+  if (!WORKFLOW_FILE.test(file)) return true;
   // Unknown, or a list without test.yml (never a workflowsKeyingCaches result): trust none of it.
   if (!Array.isArray(workflowFiles) || !workflowFiles.includes(TEST_WORKFLOW_PATH)) return true;
   return workflowFiles.includes(file);

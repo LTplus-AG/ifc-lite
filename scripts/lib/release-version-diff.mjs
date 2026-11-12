@@ -5,20 +5,31 @@
 /**
  * Is a PR's diff only a release's version bump? The rule the release PR's
  * lean lane (scripts/ci-release-lane.mjs) applies before it may skip lanes:
- * consumed changesets, CHANGELOGs beside a package.json, and `version` in
- * package.json. Anything else is named as a problem, any Cargo.toml or
+ * consumed changesets, and per package a CHANGELOG with a package.json in
+ * which `version`, and only `version`, moved (the private root: the
+ * package.json alone). Anything else is named as a problem, any Cargo.toml or
  * Cargo.lock change included: a release that bumps Rust crates runs full.
  */
 
 import { basename, posix } from 'node:path';
 import { isChangesetName } from './pending-changesets.mjs';
 
+const SEMVER = /^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?$/;
+
 /**
- * Only `version` may move. Internal dependencies use `workspace:` specifiers
- * and .changeset/config.json sets bumpVersionsWithWorkspaceProtocolOnly, so a
- * release never rewrites a dependency map.
+ * `version` must move, and nothing else may. Internal dependencies use
+ * `workspace:` specifiers and .changeset/config.json sets
+ * bumpVersionsWithWorkspaceProtocolOnly, so a release never rewrites a
+ * dependency map.
  */
-function onlyVersionsMoved(before, after) {
+function versionBumpProblem(before, after) {
+  const [from, to] = [before.version, after.version].map((v) => (typeof v === 'string' ? SEMVER.exec(v) : null));
+  if (!from || !to) return `\`version\` is not semver on both sides (${JSON.stringify(before.version)} -> ${JSON.stringify(after.version)})`;
+  if (before.version === after.version) return '`version` did not move';
+  // Only the major.minor.patch core is ordered: a prerelease step keeps it,
+  // and changesets never moves it back.
+  const order = [1, 2, 3].map((i) => Math.sign(Number(to[i]) - Number(from[i]))).find((d) => d !== 0);
+  if (order < 0) return `\`version\` core moved backward (${before.version} -> ${after.version})`;
   const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
   const moved = [...keys].find((k) => k !== 'version' && JSON.stringify(before[k]) !== JSON.stringify(after[k]));
   return moved ? `\`${moved}\` changed` : null;
@@ -48,13 +59,14 @@ export function diffProblems(entries, git) {
       if (status !== 'D') problem = 'a changeset may only be consumed (deleted)';
     } else if (name === 'CHANGELOG.md') {
       if (status !== 'M' && status !== 'A') problem = `status ${status}`;
+      else if (path === 'CHANGELOG.md') problem = 'changesets writes no CHANGELOG for the private root';
       else if (!changed.has(sibling(path, 'package.json'))) problem = 'its package.json did not change, so changesets did not write it';
     } else if (name === 'package.json') {
       if (status !== 'M') problem = `status ${status}`;
       else if (path !== 'package.json' && !changed.has(sibling(path, 'CHANGELOG.md'))) problem = 'no CHANGELOG.md beside it changed, so changesets did not bump it';
       else {
         try {
-          problem = onlyVersionsMoved(JSON.parse(git.show('HEAD~1', path)), JSON.parse(git.show('HEAD', path)));
+          problem = versionBumpProblem(JSON.parse(git.show('HEAD~1', path)), JSON.parse(git.show('HEAD', path)));
         } catch (err) {
           problem = `unreadable (${err.message})`;
         }

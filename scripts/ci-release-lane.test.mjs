@@ -269,19 +269,34 @@ test('DIFF: a real release shape without a Rust bump passes', () => {
   assert.deepEqual(diffProblems(entries, fakeGit(files)), []);
 });
 
-test('DIFF: a CHANGELOG and its package.json move together, or the diff is not a release (code review)', () => {
+test('DIFF: a CHANGELOG and its package.json move together, or the diff is not a release (#9783 review)', () => {
   const files = { 'tests/fixtures/foo/package.json': { before: pkg('1.0.0'), after: pkg('1.0.1') } };
   // A version bump with no CHANGELOG is not changesets' doing: a fixture, say.
   assert.deepEqual(diffProblems([{ status: 'M', path: 'tests/fixtures/foo/package.json' }], fakeGit(files)), [
     'tests/fixtures/foo/package.json: no CHANGELOG.md beside it changed, so changesets did not bump it',
   ]);
   // A CHANGELOG edit with no bump: the root one, or a package that did not move.
-  for (const path of ['CHANGELOG.md', 'packages/x/CHANGELOG.md']) {
-    assert.deepEqual(diffProblems([{ status: 'M', path }], fakeGit({})), [`${path}: its package.json did not change, so changesets did not write it`], path);
+  assert.deepEqual(diffProblems([{ status: 'M', path: 'packages/x/CHANGELOG.md' }], fakeGit({})), ['packages/x/CHANGELOG.md: its package.json did not change, so changesets did not write it']);
+  // A package.json reformat beside a CHANGELOG edit moves no version.
+  const same = { 'packages/x/package.json': { before: pkg('1.0.0'), after: JSON.stringify(JSON.parse(pkg('1.0.0')), null, 2) } };
+  assert.deepEqual(diffProblems([{ status: 'M', path: 'packages/x/CHANGELOG.md' }, { status: 'M', path: 'packages/x/package.json' }], fakeGit(same)), ['packages/x/package.json: `version` did not move']);
+  // `version` must stay a semver string and move forward (#9783 review).
+  const bump = (before, after) => diffProblems(
+    [{ status: 'M', path: 'packages/x/CHANGELOG.md' }, { status: 'M', path: 'packages/x/package.json' }],
+    fakeGit({ 'packages/x/package.json': { before: JSON.stringify(before), after: JSON.stringify(after) } }),
+  );
+  assert.deepEqual(bump({ name: 'x', version: '1.0.0' }, { name: 'x' }), ['packages/x/package.json: `version` is not semver on both sides ("1.0.0" -> undefined)']);
+  assert.deepEqual(bump({ name: 'x', version: '1.0.0' }, { name: 'x', version: 'latest' }), ['packages/x/package.json: `version` is not semver on both sides ("1.0.0" -> "latest")']);
+  assert.deepEqual(bump({ name: 'x', version: '1.10.0' }, { name: 'x', version: '1.9.9' }), ['packages/x/package.json: `version` core moved backward (1.10.0 -> 1.9.9)']);
+  for (const [from, to] of [['1.0.0', '1.0.1'], ['1.9.9', '1.10.0'], ['0.9.0', '1.0.0-next.0'], ['1.0.0-next.0', '1.0.0-next.1'], ['1.0.0-next.1', '1.0.0']]) {
+    assert.deepEqual(bump({ name: 'x', version: from }, { name: 'x', version: to }), [], `${from} -> ${to}`);
   }
+  // The private root has no CHANGELOG, even when sync-versions.js bumps it.
+  const root = { 'package.json': { before: pkg('12.2.0'), after: pkg('12.3.0') } };
+  assert.deepEqual(diffProblems([{ status: 'A', path: 'CHANGELOG.md' }, { status: 'M', path: 'package.json' }], fakeGit(root)), ['CHANGELOG.md: changesets writes no CHANGELOG for the private root']);
 });
 
-test('QUEUE: a comment between conditions does not drop the conditions after it (code review)', () => {
+test('QUEUE: a comment between conditions does not drop the conditions after it (#9783 review)', () => {
   const text = 'queue_rules:\n  - name: release\n    queue_conditions:\n      - head=changeset-release/main\n    # entry gate\n      - label=go\n    merge_conditions:\n      - check-success=x\n';
   assert.deepEqual(parseQueueRules(text), [{ name: 'release', queue: ['head=changeset-release/main', 'label=go'], merge: ['check-success=x'] }]);
 });

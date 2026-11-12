@@ -232,7 +232,8 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
    * not read: the others would land at the wrong stations.
    */
   const loadsOf = (activity: StructuralActivityInfo, applied: StructuralLoadInfo): StructuralLoadInfo[] | null => {
-    const subsequent = activity.subsequentLoads ?? [];
+    // References without their resolved loads (an extraction built elsewhere) refuse rather than draw a uniform load.
+    const subsequent = activity.subsequentLoads ?? (activity.SubsequentAppliedLoads?.length ? [undefined] : []);
     return subsequent.every((l): l is StructuralLoadInfo => !!l) ? [applied, ...subsequent] : null;
   };
 

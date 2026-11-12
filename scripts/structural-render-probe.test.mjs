@@ -104,9 +104,14 @@ test('#9937 review: advanced faces, degenerate triangles and lost geometry error
 #8=IFCADVANCEDFACE((#5),#7,.T.);#9=IFCTOPOLOGYREPRESENTATION($,'Reference','Face',(#8));#10=IFCPRODUCTDEFINITIONSHAPE($,$,(#9));
 #11=IFCSTRUCTURALSURFACEMEMBER('s',$,$,$,$,$,#10,.SHELL.,0.2);`);
   assert.deepEqual(topologyPoints(face, 11), [[0, 0, 0], [1, 0, 0], [0, 1, 0]]);
-  // A zero-area triangle next to a real one: the real one decides.
-  const mesh = { positions: new Float32Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]), indices: new Uint32Array([0, 1, 2, 3, 4, 5]) };
-  assert.equal(meshDistance([mesh], [0, 0, 0]), 0);
+  // A zero-area triangle (two equal corners) measures NaN for a point beside its
+  // long side; the real triangle through the point decides. Render frame is Y up,
+  // so IFC (0, 0, 0.5) is render (0, 0.5, 0).
+  const mesh = {
+    positions: new Float32Array([0, 0, 0, 0, 0, 0, 0, 1, 0, -1, 0.5, -1, 1, 0.5, -1, 0, 0.5, 1]),
+    indices: new Uint32Array([0, 1, 2, 3, 4, 5]),
+  };
+  assert.equal(meshDistance([mesh], [0, 0, 0.5]), 0);
   // When no carrier meshes, the reason keeps the geometry error.
   const file = { path: 'member.ifc', schema: 'IFC4', step: ifc4(MEMBER()) };
   const failed = await score(renderMembers, 'IFC4/IfcStructuralCurveMember', file, [['meshes:member.ifc', { error: 'geometry threw: boom' }]]);

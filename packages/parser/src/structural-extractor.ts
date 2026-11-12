@@ -332,7 +332,7 @@ export function extractStructuralOnDemand(
       CausedBy: asRef(readAttr(e.type, e.attrs, 'CausedBy')),
       VaryingAppliedLoadLocation: asRef(readAttr(e.type, e.attrs, 'VaryingAppliedLoadLocation')),
       SubsequentAppliedLoads: Array.isArray(subsequentLoads) ? asRefList(subsequentLoads) : undefined,
-      subsequentLoads: Array.isArray(subsequentLoads) ? asRefList(subsequentLoads).map((id) => extractStructuralLoad(extractor, store, id, viewResource)) : undefined,
+      subsequentLoads: Array.isArray(subsequentLoads) ? subsequentLoads.map((v) => ((id) => (id === undefined ? undefined : extractStructuralLoad(extractor, store, id, viewResource)))(asRef(v))) : undefined,
       globalOrLocal: asEnum(readAttr(e.type, e.attrs, 'GlobalOrLocal')),
       destabilizingLoad: asBoolean(readAttr(e.type, e.attrs, 'DestabilizingLoad')),
       appliedLoad:

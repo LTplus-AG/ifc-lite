@@ -884,4 +884,20 @@ describe('varying stations (#9937 review)', () => {
     const peak = parts.find((p) => p.load.components.LinearForceZ === -10);
     close(peak?.at, [1, 0, 0]);
   });
+
+  it('refuses a varying action whose subsequent loads include an empty slot, rather than respace the rest', async () => {
+    const ifc = `ISO-10303-21;HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('v.ifc','',(''),(''),'','','');FILE_SCHEMA(('IFC2X3'));ENDSEC;DATA;
+#1=IFCCARTESIANPOINT((0.,0.,0.));#2=IFCCARTESIANPOINT((4.,0.,0.));#3=IFCVERTEXPOINT(#1);#4=IFCVERTEXPOINT(#2);#5=IFCEDGE(#3,#4);
+#6=IFCTOPOLOGYREPRESENTATION($,'Reference','Edge',(#5));#7=IFCPRODUCTDEFINITIONSHAPE($,$,(#6));
+#10=IFCSTRUCTURALLOADLINEARFORCE($,0.,0.,-1.,0.,0.,0.);#11=IFCSTRUCTURALLOADLINEARFORCE($,0.,0.,-3.,0.,0.,0.);
+#20=IFCSTRUCTURALLINEARACTIONVARYING(${id(20)},$,$,$,$,$,#7,#10,.GLOBAL_COORDS.,.F.,$,.TRUE_LENGTH.,$,(#11));
+#21=IFCSTRUCTURALLINEARACTIONVARYING(${id(21)},$,$,$,$,$,#7,#10,.GLOBAL_COORDS.,.F.,$,.TRUE_LENGTH.,$,($,#11));
+ENDSEC;END-ISO-10303-21;`;
+    const { glyphs } = await glyphsOf(new TextEncoder().encode(ifc));
+    // #20 draws -1 at the start growing to -3 at the end; #21's empty slot refuses it.
+    const drawn = bySource(glyphs, 20);
+    expect(drawn.map((g) => g.kind === 'force' && g.magnitude)).toEqual([1, 1.5, 2, 2.5, 3]);
+    expect(bySource(glyphs, 21)).toEqual([]);
+  });
 });
+

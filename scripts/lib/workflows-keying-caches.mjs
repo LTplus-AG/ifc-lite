@@ -172,6 +172,33 @@ function judgePattern(pattern) {
 }
 
 /**
+ * Whether a YAML structure line leaves a quoted scalar open, so it continues on the next
+ * line. Inside such a scalar a `#` line or a `key: |` line is text, which the line-based
+ * scan would read as a comment or a block scalar.
+ */
+function opensMultilineQuote(line) {
+  let single = false;
+  let double = false;
+  for (let i = 0; i < line.length; i += 1) {
+    const c = line[i];
+    if (double) {
+      if (c === '\\') i += 1;
+      else if (c === '"') double = false;
+    } else if (single) {
+      if (c === "'" && line[i + 1] === "'") i += 1;
+      else if (c === "'") single = false;
+    } else if (c === '#' && (i === 0 || /\s/.test(line[i - 1]))) break;
+    // A quote opens a quoted scalar only where a value starts; inside a plain scalar
+    // (`${{ hashFiles(' x ') }}`) it is an ordinary character.
+    else if ((c === '"' || c === "'") && /(?:^|[:[{,-])[ \t]*$/.test(line.slice(0, i))) {
+      if (c === '"') double = true;
+      else single = true;
+    }
+  }
+  return single || double;
+}
+
+/**
  * What one file says, before any judging: its `uses:` values, `cache-dependency-path:`
  * values and hashFiles patterns, or why it cannot be read. `uses:` and
  * `cache-dependency-path:` are YAML keys, read only from YAML files and outside block
@@ -196,6 +223,7 @@ export function scanFile(path, text) {
     // Neither block scalar text nor a comment line is YAML structure.
     const yamlLines = lines.filter((line, i) => !inBlock.has(i) && !isComment(line)).join('\n');
     if (YAML_HIDDEN.test(yamlLines)) return { unknown: `${path} has a YAML escape or complex key the scan cannot read through` };
+    if (lines.some((line, i) => !inBlock.has(i) && !isComment(line) && opensMultilineQuote(line))) return { unknown: `${path} has a quoted scalar over several lines` };
     if (lines.some((line, i) => !inBlock.has(i) && !isComment(line) && ESCAPED_BREAK.test(line))) return { unknown: `${path} has an escaped line break outside a block scalar` };
     for (const [key, out] of [['uses', uses], ['cache-dependency-path', cacheDependencyPaths]]) {
       for (const { before, rest, continues } of keyEntries(lines, inBlock, key)) {

@@ -148,7 +148,8 @@ test('SHADOW measures whatever the PR\'s queue state: an unlabelled or draft rel
   // The open release PR carries no labels, so a shadow that needed
   // `mergify-trial` reported nothing at all. It reports, and says why the PR
   // is not queueable; the lean decision itself still refuses.
-  const { ownerAllowsLean: _ignored, ...held } = BASE;
+  // The hold is passed explicitly, so this pins shadow and held `on`, not the constant's value.
+  const held = { ...BASE, ownerAllowsLean: false };
   for (const over of [{ labels: '[]' }, { draft: 'true' }, { labels: '[]', draft: 'true' }]) {
     for (const mode of ['shadow', 'on']) {
       const d = decideReleaseLane({ ...held, ...over, mode });
@@ -159,8 +160,11 @@ test('SHADOW measures whatever the PR\'s queue state: an unlabelled or draft rel
   }
   const v = verifyReleaseLane({ ...held, mode: 'shadow', labels: '[]', lane: 'full', needs: needsJson('success', { 'viewer-tests': 'failure' }) });
   assert.equal(v.ok, true);
-  assert.match(v.lines.join('\n'), /would have deferred a failure to the merge queue: viewer-tests/); // @source-text-assertion-ok subject is the returned summary
+  // Not queueable: the report is conditional, never a claim about today.
+  assert.match(v.lines.join('\n'), /Once this PR is queueable, the lean lane would defer a failure to the merge queue: viewer-tests/); // @source-text-assertion-ok subject is the returned summary
   assert.match(v.lines.join('\n'), /lacks `mergify-trial`/); // @source-text-assertion-ok subject is the returned summary
+  const queueable = verifyReleaseLane({ ...held, mode: 'shadow', lane: 'full', needs: needsJson() });
+  assert.match(queueable.lines.join('\n'), /Every lane ran\. The lean lane would skip:/); // @source-text-assertion-ok subject is the returned summary
   // A config that cannot route the PR, or a diff that is more than versions, is still not reported as lean.
   assert.equal(decideReleaseLane({ ...held, mode: 'shadow', labels: '[]', mergify: () => '' }).wouldBeLean, false);
   assert.equal(decideReleaseLane({ ...held, mode: 'shadow', labels: '[]', diff: () => ['x: not a release file'] }).wouldBeLean, false);
@@ -198,8 +202,9 @@ test('the narrow queue-rule reader agrees with a YAML parse of the real .mergify
   const route = releaseQueueRoute(MERGIFY, { labels: ['mergify-trial'], draft: false });
   assert.equal(route.ok, true, route.reason);
   assert.equal(route.queueable, true, route.queueReason);
-  assert.equal(releaseQueueRoute(MERGIFY, { labels: [], draft: false }).ok, true, 'a missing label is PR state, not a config refusal');
-  assert.equal(releaseQueueRoute(MERGIFY, { labels: [], draft: false }).queueable, false);
+  const unlabelled = releaseQueueRoute(MERGIFY, { labels: [], draft: false });
+  assert.equal(unlabelled.ok, true, 'a missing label is PR state, not a config refusal');
+  assert.equal(unlabelled.queueable, false);
 });
 
 test('the release queue really tests a batch: its required `Rust tests (feature builds)` runs on a PR only for a batch', () => {
@@ -294,13 +299,13 @@ test('VERIFY: a lean run whose kept jobs did not all succeed fails, since skippe
   }
 });
 
-test('VERIFY: shadow reports, and flags a failure the lean lane would have deferred', () => {
+test('VERIFY: shadow reports, and flags a failure the lean lane would defer', () => {
   const clean = verify({ mode: 'shadow', lane: 'full', needs: needsJson() });
   assert.equal(clean.ok, true);
-  assert.match(clean.lines.join('\n'), /would have reached the same verdict/); // @source-text-assertion-ok subject is the returned summary
+  assert.match(clean.lines.join('\n'), /the lean lane would reach the same verdict/); // @source-text-assertion-ok subject is the returned summary
   const missed = verify({ mode: 'shadow', lane: 'full', needs: needsJson('success', { 'viewer-tests': 'failure', 'rust-semver': 'failure' }) });
   assert.equal(missed.ok, true, 'shadow reports; the map judges the failure');
-  assert.match(missed.lines.join('\n'), /deferred a failure to the merge queue: viewer-tests\.$/); // @source-text-assertion-ok kept lanes are not listed as deferred
+  assert.match(missed.lines.join('\n'), /The lean lane would defer a failure to the merge queue: viewer-tests\.$/); // @source-text-assertion-ok kept lanes are not listed as deferred
 });
 
 test('VERIFY: a full run passes; a missing decision is reported; bad NEEDS and stale job lists fail', () => {

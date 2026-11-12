@@ -139,6 +139,8 @@ export function parseQueueRules(text) {
  *
  * @param {string} text  .mergify.yml
  * @param {{ labels?: string[], draft?: boolean }} pr
+ * @returns {{ ok: false, reason: string } | { ok: true, reason: string, queueable: boolean, queueReason: string }}
+ *   `queueable` and `queueReason` exist only when `ok`.
  */
 export function releaseQueueRoute(text, { labels = [], draft = true } = {}) {
   const rule = parseQueueRules(text).find((r) => r.queue.includes(`head=${RELEASE_HEAD_REF}`));
@@ -220,8 +222,9 @@ export function decideReleaseLane({ event, mode, headRef, headRepo, repo, baseRe
   if (problems.length > 0) return full(`the diff is more than a version bump: ${problems.slice(0, 5).join('; ')}`);
   // Shadow and the held `on` report what the lean lane would skip whatever the
   // PR's queue state, and say that state: measuring must not wait on a label.
-  if (m === 'shadow') return { lane: 'full', mode: m, wouldBeLean: true, reason: `shadow mode: full lanes run, lean lane reported; ${route.queueReason}` };
-  if (!ownerAllowsLean) return { lane: 'full', mode: m, wouldBeLean: true, reason: `CI_RELEASE_LANE=on, but the lean lane is held until the owner decides how release PRs reach main (OWNER_ALLOWS_LEAN); full lanes run, lean lane reported; ${route.queueReason}`, warning: 'CI_RELEASE_LANE=on is held (OWNER_ALLOWS_LEAN=false); running the full lanes' };
+  const queue = { queueable: route.queueable };
+  if (m === 'shadow') return { lane: 'full', mode: m, wouldBeLean: true, ...queue, reason: `shadow mode: full lanes run, lean lane reported; ${route.queueReason}` };
+  if (!ownerAllowsLean) return { lane: 'full', mode: m, wouldBeLean: true, ...queue, reason: `CI_RELEASE_LANE=on, but the lean lane is held until the owner decides how release PRs reach main (OWNER_ALLOWS_LEAN); full lanes run, lean lane reported; ${route.queueReason}`, warning: 'CI_RELEASE_LANE=on is held (OWNER_ALLOWS_LEAN=false); running the full lanes' };
   if (!route.queueable) return full(`${route.queueReason}, so this run is the only gate`, { warning: `release lane refused: ${route.queueReason}` });
   return { lane: 'lean', mode: m, wouldBeLean: true, reason: `CI_RELEASE_LANE=on on the release PR; ${route.queueReason}; ${route.reason}` };
 }
@@ -253,8 +256,11 @@ export function verifyReleaseLane(input) {
   }
   if (d.wouldBeLean && d.lane !== 'lean') {
     const failed = skippedByLean.filter((j) => resultOf(j) === 'failure');
-    const lines = [`## Release PR lean lane, reported only (\`CI_RELEASE_LANE=${d.mode}\`)`, '', d.reason, '', 'Every lane ran. The lean lane would have skipped:', '', ...listed];
-    lines.push('', failed.length > 0 ? `⚠️ The lean lane would have deferred a failure to the merge queue: ${failed.join(', ')}.` : 'None of them failed; the lean lane would have reached the same verdict.');
+    // Not queueable yet (no label, or a draft): the lean lane would refuse
+    // this PR today, so the report is conditional on the PR becoming queueable.
+    const when = d.queueable === false ? 'Once this PR is queueable, the lean lane' : 'The lean lane';
+    const lines = [`## Release PR lean lane, reported only (\`CI_RELEASE_LANE=${d.mode}\`)`, '', d.reason, '', `Every lane ran. ${when} would skip:`, '', ...listed];
+    lines.push('', failed.length > 0 ? `⚠️ ${when} would defer a failure to the merge queue: ${failed.join(', ')}.` : `None of them failed; ${when.charAt(0).toLowerCase()}${when.slice(1)} would reach the same verdict.`);
     return { ok: true, lines };
   }
   const lines = [`Release lane full: ${d.reason}.`];

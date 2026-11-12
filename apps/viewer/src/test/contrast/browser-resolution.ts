@@ -22,7 +22,7 @@ import { win32 } from 'node:path';
 
 export type ContrastBrowser =
   | { source: 'env'; executablePath: string }
-  | { source: 'system-chrome'; executablePath: string }
+  | { source: 'system-chrome' }
   | { source: 'bundled-chromium'; executablePath: string }
   | { source: 'missing' };
 
@@ -58,17 +58,18 @@ export function systemChromePaths(platform: NodeJS.Platform, env: ResolutionInpu
   }
 }
 
-/** Any non-empty `CI`, or GitHub Actions. Errs toward CI: a false "CI" fails
- *  as before, a false "local" would let a lane skip. */
+/** `CI` set to anything but empty, `0` or `false` (the rule of `isCI` in
+ *  `scripts/lib/host-preconditions.mjs`, which this TS tree cannot import), or
+ *  GitHub Actions. */
 export function isCi(env: ResolutionInput['env']): boolean {
-  return !!env.CI || env.GITHUB_ACTIONS === 'true';
+  const ci = (env.CI ?? '').trim().toLowerCase();
+  return (ci !== '' && ci !== '0' && ci !== 'false') || env.GITHUB_ACTIONS === 'true';
 }
 
 export function resolveContrastBrowser({ env, platform, exists, bundledChromiumPath }: ResolutionInput): ContrastBrowser {
   const explicit = env.IFCLITE_TEST_CHROME_EXECUTABLE;
   if (explicit) return { source: 'env', executablePath: explicit };
-  const chrome = systemChromePaths(platform, env).find(exists);
-  if (chrome) return { source: 'system-chrome', executablePath: chrome };
+  if (systemChromePaths(platform, env).some(exists)) return { source: 'system-chrome' };
   if (bundledChromiumPath && exists(bundledChromiumPath)) {
     return { source: 'bundled-chromium', executablePath: bundledChromiumPath };
   }

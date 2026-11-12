@@ -47,7 +47,7 @@ describe('contrast browser resolution order', () => {
 
   it('system Chrome comes before bundled Chromium and launches through the chrome channel, as CI does', () => {
     const browser = resolve([LINUX_CHROME, BUNDLED]);
-    assert.deepEqual(browser, { source: 'system-chrome', executablePath: LINUX_CHROME });
+    assert.deepEqual(browser, { source: 'system-chrome' });
     assert.deepEqual(contrastLaunchOptions(browser), { channel: 'chrome' });
   });
 
@@ -72,10 +72,16 @@ describe('contrast browser missing: CI fails, local skips', () => {
     }
   });
 
-  for (const env of [{ CI: 'true' }, { CI: '1' }, { GITHUB_ACTIONS: 'true' }]) {
+  for (const env of [{ CI: 'true' }, { CI: '1' }, { GITHUB_ACTIONS: 'true' }, { CI: 'false', GITHUB_ACTIONS: 'true' }]) {
     it(`under ${JSON.stringify(env)} nothing is skipped and the launch is the chrome channel, which fails as before`, () => {
       assert.equal(contrastSkipReason(missing, env), false);
       assert.deepEqual(contrastLaunchOptions(missing), { channel: 'chrome' });
+    });
+  }
+
+  for (const env of [{ CI: '' }, { CI: '0' }, { CI: 'false' }]) {
+    it(`under ${JSON.stringify(env)} it is a local run and skips`, () => {
+      assert.equal(contrastSkipReason(missing, env), CONTRAST_BROWSER_MISSING);
     });
   }
 

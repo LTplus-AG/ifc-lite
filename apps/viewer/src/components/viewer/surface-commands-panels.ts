@@ -128,8 +128,9 @@ export const PANEL_SURFACE_COMMANDS = [
   rightCommand('panel:sources', 'sources', 'cde common data environment connect provider bim360 acc trimble dalux integration remote', Cloud, true),
   {
     // #9523: opens the connect dialog. The bridge client and tool host load only after the user confirms there.
-    // Opens a dialog, not a panel: panelId is present (as undefined) so every row of this table has the field.
-    id: 'panel:agentBridge', panelId: undefined, panelGroup: panelGroupFor('sources'),
+    // A Sources-panel feature (its row lives there): it opens the connect dialog rather than the panel. Listed
+    // after panel:sources, so lookups by panelId (assistant actions) still resolve to the panel itself.
+    id: 'panel:agentBridge', panelId: 'sources', panelGroup: panelGroupFor('sources'),
     labelKey: 'commandPalette.panel.agentBridge.label',
     keywords: 'local agent mcp bridge claude desktop code ai assistant pair connect localhost',
     // A framed viewer never connects (#9523): the entry is disabled there.

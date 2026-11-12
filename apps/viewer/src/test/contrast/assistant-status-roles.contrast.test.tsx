@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { SpanQuote } from '@/components/viewer/assistant/SemanticReviewParts.js';
 import { FlowTrackingImpacts } from '@/components/viewer/assistant/FlowTrackingImpacts.js';
 import { cleanup, render } from '@/test/render.js';
-import { closeContrastBrowser, warmContrastBrowser, withThemedPage, measureTextContrastOnSurface, type Theme } from './render-harness.js';
+import { CONTRAST_BROWSER_SKIP, closeContrastBrowser, warmContrastBrowser, withThemedPage, measureTextContrastOnSurface, type Theme } from './render-harness.js';
 import { WCAG_AA_NORMAL_TEXT } from './wcag.js';
 
 before(warmContrastBrowser);
@@ -20,7 +20,7 @@ after(closeContrastBrowser);
 // raw palette even where it happened to clear AA in one theme.
 describe('assistant status roles (Refs #8802)', () => {
   for (const theme of ['light', 'dark', 'colorful'] as Theme[]) {
-    it(`verified source uses the success role and clears AA in ${theme}`, async () => {
+    it(`verified source uses the success role and clears AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       const ui = render(<SpanQuote span={{ source: 'requirements', start: 0, end: 4, quote: 'Wall' }} check={{ status: 'verified' }} />);
       const badge = ui.querySelector('span');
       assert.ok(badge, 'verified status is rendered');
@@ -33,7 +33,7 @@ describe('assistant status roles (Refs #8802)', () => {
       assert.ok(ratio >= WCAG_AA_NORMAL_TEXT, `verified source contrast ${ratio.toFixed(2)}:1 in ${theme}`);
     });
 
-    it(`tracking warning uses warning surface/border and clears AA in ${theme}`, async () => {
+    it(`tracking warning uses warning surface/border and clears AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       const ui = render(<FlowTrackingImpacts impacts={[{ nodeId: 'wall', effect: 'removed', trackingKey: 'walls', ownedElements: 2 }]} />);
       const alert = ui.querySelector('[role="alert"]');
       assert.ok(alert, 'destructive tracking impact warning is rendered');

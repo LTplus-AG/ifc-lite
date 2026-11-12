@@ -3,8 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 // #9296 U4. Real input only; unsupported sub-tasks remain explicit failed checks.
-import { task, downloadCount, nextDownload } from './driver.mjs';
-import { escape, tool, typeFields, oracleModel, openStoreyManager } from './model-ui.mjs';
+import { escape, tool, typeFields } from './model-ui.mjs';
 
 const check = (name, ok, detail) => ({ name, ok: !!ok, detail });
 async function field(s, locator, value) {

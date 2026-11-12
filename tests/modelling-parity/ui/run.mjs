@@ -143,8 +143,8 @@ async function main() {
     }
     if (args.exercises.length) await writeFile(join(args.out, 'exercises.json'), `${JSON.stringify(exerciseResults, null, 2)}\n`);
   } finally {
-    if (browser) await browser.close();
-    preview.stop();
+    try { if (browser) await browser.close(); }
+    finally { preview.stop(); }
   }
 
   if (args.frames && args.exercises.length) {

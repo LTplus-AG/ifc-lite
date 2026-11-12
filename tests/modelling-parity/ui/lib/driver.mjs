@@ -91,6 +91,7 @@ const sameMatrix = (a, b) => a && b && a.every((v, i) => Math.abs(v - b[i]) < 1e
  */
 export async function openSession(browser, baseUrl, { theme = 'light', shotsDir, label = 'session' } = {}) {
   const context = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: 1 });
+  try {
   const page = await context.newPage();
   const pageErrors = [];
   page.on('pageerror', (e) => pageErrors.push(e.message.slice(0, 300)));
@@ -260,6 +261,10 @@ export async function openSession(browser, baseUrl, { theme = 'light', shotsDir,
     async close() { await context.close().catch(() => {}); },
   };
   return session;
+  } catch (error) {
+    await context.close();
+    throw error;
+  }
 }
 
 /**

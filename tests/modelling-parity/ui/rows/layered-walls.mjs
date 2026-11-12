@@ -35,8 +35,10 @@ export default {
       tasks.push(await task(s, 'retype the wall as WT-200-L (150/50 mm)', async () => {
         await selectWall(s);
         await newType(s, 'WT-200-L');
+        const third = s.page.getByRole('button', { name: 'Remove layer 3', exact: true });
+        if (await third.isVisible()) await s.ui.click(third);
         await layer(s,1,.15,'Core');
-        await s.ui.click(s.page.getByRole('button', { name: 'Layer', exact: true }));
+        if (!(await s.page.getByLabel('Layer 2 thickness in metres', { exact: true }).count())) await s.ui.click(s.page.getByRole('button', { name: 'Layer', exact: true }));
         await layer(s,2,.05,'Finish');
         await typeScope(s);
         await applyLayers(s);

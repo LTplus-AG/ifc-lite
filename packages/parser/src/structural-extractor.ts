@@ -206,7 +206,6 @@ export function extractStructuralOnDemand(
     for (const e of list) if (e.globalId) globalIdById.set(e.expressId, e.globalId);
   }
 
-  // ── Relationship passes ────────────────────────────────────────────────
   const boundaryCondition = (id: number) => extractBoundaryCondition(extractor, store, id, viewResource);
   const relationContext: StructuralRelationContext = { schema: store.schemaVersion, readResource: readResolved, typeOf, isDeleted, boundaryCondition };
   const connectionIds = new Set(connectionRaw.map((e) => e.expressId));
@@ -255,11 +254,7 @@ export function extractStructuralOnDemand(
     }
   }
 
-  /**
-   * A group's `RelatedObjects` may hold anything, and IfcRelAssignsToGroup is
-   * not structural-specific, so each of the three directions below is narrowed
-   * to the role its field name promises rather than reporting the raw set.
-   */
+  // Narrow shared group relationships to the role each field promises.
   const gidsOf = (lists: RawEntity[][]): Set<string> =>
     new Set(lists.flat().map((e) => e.globalId).filter((g) => g.length > 0));
 
@@ -282,7 +277,6 @@ export function extractStructuralOnDemand(
       .map((id) => globalIdById.get(id))
       .filter((g): g is string => g !== undefined);
 
-  // ── Assemble ───────────────────────────────────────────────────────────
   const members: StructuralMemberInfo[] = memberRaw.map((e) => ({
     expressId: e.expressId,
     globalId: e.globalId,
@@ -293,6 +287,8 @@ export function extractStructuralOnDemand(
     physicalElementIds: physicalOfItem.get(e.expressId) ?? [],
     IfcRelConnectsStructuralMember: memberRelations.get(e.expressId) ?? [],
     thickness: asNumber(readAttr(e.type, e.attrs, 'Thickness')),
+    SubsequentThickness: asNumberList(readAttr(e.type, e.attrs, 'SubsequentThickness')),
+    VaryingThicknessLocation: asRef(readAttr(e.type, e.attrs, 'VaryingThicknessLocation')),
     connectionGlobalIds: connectionsOfMember.get(e.expressId) ?? [],
     activityGlobalIds: activitiesOfItem.get(e.expressId) ?? [],
     analysisModelGlobalIds: modelsOf(e.expressId),
@@ -321,6 +317,7 @@ export function extractStructuralOnDemand(
 
   const activities: StructuralActivityInfo[] = activityRaw.map((e) => {
     const loadId = asRef(readAttr(e.type, e.attrs, 'AppliedLoad'));
+    const subsequentLoads = readAttr(e.type, e.attrs, 'SubsequentAppliedLoads');
     return {
       expressId: e.expressId,
       globalId: e.globalId,
@@ -329,6 +326,9 @@ export function extractStructuralOnDemand(
       ...rootFields(e),
       predefinedType: asEnum(readAttr(e.type, e.attrs, 'PredefinedType')),
       ProjectedOrTrue: asEnum(readAttr(e.type, e.attrs, 'ProjectedOrTrue')),
+      CausedBy: asRef(readAttr(e.type, e.attrs, 'CausedBy')),
+      VaryingAppliedLoadLocation: asRef(readAttr(e.type, e.attrs, 'VaryingAppliedLoadLocation')),
+      SubsequentAppliedLoads: Array.isArray(subsequentLoads) ? asRefList(subsequentLoads) : undefined,
       globalOrLocal: asEnum(readAttr(e.type, e.attrs, 'GlobalOrLocal')),
       destabilizingLoad: asBoolean(readAttr(e.type, e.attrs, 'DestabilizingLoad')),
       appliedLoad:
@@ -371,6 +371,8 @@ export function extractStructuralOnDemand(
     globalId: e.globalId,
     ...rootFields(e),
     predefinedType: asEnum(readAttr(e.type, e.attrs, 'PredefinedType')),
+    OrientationOf2DPlane: asRef(readAttr(e.type, e.attrs, 'OrientationOf2DPlane')),
+    SharedPlacement: asRef(readAttr(e.type, e.attrs, 'SharedPlacement')),
     loadGroupGlobalIds: resolveGids(readAttr(e.type, e.attrs, 'LoadedBy')),
     resultGroupGlobalIds: resolveGids(readAttr(e.type, e.attrs, 'HasResults')),
     itemGlobalIds: itemsIn(e.expressId),
@@ -383,14 +385,8 @@ export function extractStructuralOnDemand(
     activities,
     loadGroups,
     resultGroups,
-    hasStructural:
-      analysisModels.length +
-        members.length +
-        connections.length +
-        activities.length +
-        loadGroups.length +
-        resultGroups.length >
-      0,
+    hasStructural: [analysisModels, members, connections, activities, loadGroups, resultGroups]
+      .some((rows) => rows.length > 0),
     // Derived from the loads rather than tracked alongside them, so the
     // extraction cannot claim a completeness its own tree contradicts. A
     // nested configuration propagates its truncation to its parent, so the

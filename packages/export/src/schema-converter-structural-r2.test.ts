@@ -76,6 +76,7 @@ describe('structural conversion reports unrepresentable data #9668', () => {
   });
 });
 
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import { IfcParser } from '@ifc-lite/parser';
 import { StepExporter } from './step-exporter.js';
 describe('explicit IFC2X3 section orientation #9668', () => {
@@ -90,6 +91,11 @@ describe('explicit IFC2X3 section orientation #9668', () => {
     const result = new StepExporter(store).export({ schema: 'IFC4' });
     expect(new TextDecoder().decode(result.content)).toContain("IFCSTRUCTURALCURVEMEMBER('0XciGbSFPUkgAKmWK4M6tc',#1,$,$,$,$,$,.RIGID_JOINED_MEMBER.,#80)");
     expect(result.stats.warnings?.join('\n') ?? '').not.toContain('Axis is required');
+    const view = new MutablePropertyView(null, 'm');
+    view.setAttribute(50, 'Name', 'Ignored edit');
+    const sourceOnly = new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: false });
+    expect(new TextDecoder().decode(sourceOnly.content)).toContain('.RIGID_JOINED_MEMBER.,#80)');
+    expect(sourceOnly.stats.warnings.join('\n')).not.toContain('Axis is required');
   });
   it('refuses to guess a section axis from a placed or ambiguous member', () => {
     const diagnostics = new EnumReconciliation();
@@ -117,4 +123,19 @@ describe('boundary conversion loss preview #9668 review regression', () => {
     expect(out).toContain('IFCLINEARSTIFFNESSMEASURE(12.)');
     expect(out).toContain('IFCROTATIONALSTIFFNESSMEASURE(67.)');
   });
+});
+
+
+describe('STEP trivia in structural stiffness values #9668 review regressions', () => {
+  it('keeps commented numeric -1 rigid and retains finite measures', () => {
+    const out = convertStepLine('#23=IFCBOUNDARYNODECONDITION($,-1./* rigid */,12./* finite */,$,$,$,$);', 'IFC2X3', 'IFC4');
+    expect(out).toContain('IFCBOOLEAN(.T.)');
+    expect(out).toContain('IFCLINEARSTIFFNESSMEASURE(12./* finite */)');
+  });
+  for (const typed of ['IFCBOOLEAN (.T.)', 'IFCBOOLEAN/*type*/( /*value*/ .T. /*tail*/ )', 'ifcboolean ( .t. )']) {
+    it(`unwraps ${typed} using the STEP slot grammar`, () => {
+      expect(convertStepLine(`#23=IFCBOUNDARYNODECONDITION($,${typed},$,$,$,$,$);`, 'IFC4', 'IFC2X3'))
+        .toBe('#23=IFCBOUNDARYNODECONDITION($,-1.,$,$,$,$,$);');
+    });
+  }
 });

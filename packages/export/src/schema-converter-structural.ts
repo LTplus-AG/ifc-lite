@@ -1,6 +1,19 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 /** Browser adapter for rust/export/src/schema_structural.rs (#9668). */
+import { numberEnd, skipStepTrivia } from './step-slot-grammar.js';
+import { readStepSlots } from './step-argument-parser.js';
 import { getSchemaRegistryForVersion } from '@ifc-lite/parser';
+
+function scalarEquals(token: string, value: string): boolean {
+  const start = skipStepTrivia(token, 0);
+  return start >= 0 && token.slice(start, start + value.length).toUpperCase() === value.toUpperCase()
+    && skipStepTrivia(token, start + value.length) === token.length;
+}
+
+function stiffnessNumber(token: string): number {
+  const start = skipStepTrivia(token, 0), end = start < 0 ? -1 : numberEnd(token, start);
+  return end >= 0 && skipStepTrivia(token, end) === token.length ? Number(token.slice(start, end)) : NaN;
+}
 
 function stiffnessType(entity: string, index: number): string | null {
   if (entity === 'IFCBOUNDARYNODECONDITIONWARPING' && index === 7) return 'IFCWARPINGMOMENTMEASURE';
@@ -26,17 +39,18 @@ export function structuralAttributes(entity: string, args: readonly string[], fr
     const values = [...args];
     for (let i = 1; i < values.length; i++) {
       const measure = stiffnessType(entity, i), token = values[i].trim();
-      if (!measure || token === '$') continue;
+      if (!measure || scalarEquals(token, '$')) continue;
       if (to === 'IFC4') {
         // IFC2X3's -1 sentinel means rigid. Zero retains its measure encoding.
-        values[i] = Number(token) === -1 ? 'IFCBOOLEAN(.T.)' : `${measure}(${token})`;
+        values[i] = stiffnessNumber(token) === -1 ? 'IFCBOOLEAN(.T.)' : `${measure}(${token})`;
       } else {
-        const typed = token.match(/^(\w+)\((.*)\)$/);
-        if (!typed) continue;
-        if (typed[1].toUpperCase() === 'IFCBOOLEAN') {
-          if (typed[2].trim() !== '.T.' && typed[2].trim() !== '.F.') return null;
-          values[i] = typed[2].trim() === '.T.' ? '-1.' : '0.';
-        } else if (typed[1].toUpperCase() === measure) values[i] = typed[2];
+        const typed = readStepSlots(`#0=${token};`);
+        if (!typed || typed.slots.length !== 1) return null;
+        if (typed.type === 'IFCBOOLEAN') {
+          if (scalarEquals(typed.slots[0], '.T.')) values[i] = '-1.';
+          else if (scalarEquals(typed.slots[0], '.F.')) values[i] = '0.';
+          else return null;
+        } else if (typed.type === measure) values[i] = typed.slots[0];
         else return null;
       }
     }

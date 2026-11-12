@@ -328,7 +328,7 @@ export function buildExportPass(input: PassBuildInput): ExportPass {
     withheldRefIds: computeWithheldRefIds(dataStore, schema, effective),
     styleFlatten: StyleFlatten.fromStore(dataStore, sourceSchema, schema),
   };
-  if (sourceSchema === 'IFC2X3' && schema === 'IFC4' && !mutationView && !options.visibleOnly
+  if (sourceSchema === 'IFC2X3' && schema === 'IFC4' && (!mutationView || !applyMutations) && !options.visibleOnly
     && !options.deltaOnly && !options.subsetEntityIds && !excludeGeometry && options.includeRelationships !== false) {
     pass.enums.structural.axes.fromStore(dataStore);
   }

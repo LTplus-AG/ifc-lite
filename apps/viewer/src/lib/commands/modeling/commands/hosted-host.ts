@@ -21,7 +21,7 @@ import { AnchorEntityReader } from '../../../../../../../packages/create/src/in-
 import { resolveSlabEditChain } from '@/lib/slab-edit';
 import { readModelEditTarget } from '@/store/slices/mutation-modelling-records';
 import { effectiveStoreyId } from '@/lib/effective-storey';
-import { pointInPolygon } from '@/lib/polygon-clip';
+import { pointInPolygon, type Point2D } from '@/lib/polygon-clip';
 import { hostPlanFrame, resolveHostAnchor } from '@ifc-lite/create';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { SnapResult, Vec2 } from '@/lib/snap/types';
@@ -178,8 +178,8 @@ export function hostUnderCursor(ctx: Pick<CommandContext, 'get' | 'modelId' | 's
       }
       cache.slabs = { key, hosts };
     }
-    const candidates = cache.slabs.hosts.filter(host => host.footprint && pointInPolygon([...host.footprint], toHostLocal(host, s.local)));
-    const height = state.session?.workplane.kind === 'storey' ? state.session.workplane.offset : 0;
+    const candidates = cache.slabs.hosts.filter(host => host.footprint && pointInPolygon(host.footprint.map<Point2D>(p => [p[0], p[1]]), [...toHostLocal(host, s.local)]));
+    const height = state.session?.workplane?.kind === 'storey' ? state.session.workplane.offset : 0;
     candidates.sort((a,b) => Math.abs(a.origin[2]+a.z[1]-height)-Math.abs(b.origin[2]+b.z[1]-height));
     return candidates.find(h => h.expressId === snapped) ?? candidates[0] ?? null;
   }

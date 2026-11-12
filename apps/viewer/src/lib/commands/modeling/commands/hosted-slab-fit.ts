@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { pointInPolygon } from '@/lib/polygon-clip';
+import { pointInPolygon, type Point2D } from '@/lib/polygon-clip';
 import type { HostHit } from './hosted-host.js';
 import type { Vec2 } from '@/lib/snap/types';
 
@@ -9,7 +9,7 @@ import type { Vec2 } from '@/lib/snap/types';
  * outline edge entering the rectangle's open interior (boundary contact fits). */
 export function slabCutFits(host: HostHit, centre: Vec2 | null, width: number, depth: number): boolean {
   if (!centre || !host.footprint) return false;
-  const polygon = [...host.footprint];
+  const polygon = host.footprint.map<Point2D>(p => [p[0], p[1]]);
   const [x, y] = centre, w = width / 2, d = depth / 2, eps = 1e-6;
   const corners: Vec2[] = [[x-w,y-d],[x+w,y-d],[x+w,y+d],[x-w,y+d]];
   const onEdge = (p: Vec2, a: Vec2, b: Vec2) => {
@@ -17,7 +17,7 @@ export function slabCutFits(host: HostHit, centre: Vec2 | null, width: number, d
     return Math.abs(cross) <= eps && p[0] >= Math.min(a[0],b[0])-eps && p[0] <= Math.max(a[0],b[0])+eps
       && p[1] >= Math.min(a[1],b[1])-eps && p[1] <= Math.max(a[1],b[1])+eps;
   };
-  if (!corners.every(p => pointInPolygon(polygon, p) || polygon.some((a,i) => onEdge(p,a,polygon[(i+1)%polygon.length])))) return false;
+  if (!corners.every(p => pointInPolygon(polygon, [...p]) || polygon.some((a,i) => onEdge(p,a,polygon[(i+1)%polygon.length])))) return false;
   return !polygon.some((a, i) => {
     const b = polygon[(i+1)%polygon.length];
     let lo = 0, hi = 1;

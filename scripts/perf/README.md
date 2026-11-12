@@ -8,6 +8,38 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
+## Immediate entity-index hand-off on large cold loads (#9823, draft)
+
+**Rejected: handing the pre-pass's entity index to the parser as soon as it
+exists, instead of deferring it for sources of 32 MB and up, gains nothing and
+costs peak memory.** Rescheduling metadata work on a saturated main thread only
+moves it. Timed A/B on Pop (exclusive, base 000532b2cc = main 12fd328582 +
+#9684 + #9747, branch 84bd81e4c7, 5 rounds, memory pass, job a8faf2a6):
+
+| fixture / lane | interactive, base -> branch | verdict |
+|---|---|---|
+| Holter cold | 3,865 -> 3,820 ms | no significant difference |
+| BWK cold | 3,416 -> 3,387 ms | no significant difference |
+| advanced_model cold | 1,514 -> 1,544 ms | no significant difference |
+| FZK cold | 587 -> 568 ms | no significant difference |
+| reopens (warm1, warm), all four | | no significant difference |
+| Holter cold peak memory | 3,761 -> 3,959 MiB (+5.3%, 2x floor 3.9%) | regression |
+
+Mechanism, Holter cold medians: the parser finishes 577 ms earlier
+(`parser.complete` 3,285 -> 2,708) and the upload drain shrinks by 554 ms
+(1,052 -> 498), because the store publication no longer lands in it. But stream
+completion moves 420 ms later (2,519 -> 2,939): the publication's main-thread
+work (hydration, store commit, panel renders) now runs during streaming,
+which is main-thread bound too. Net zero, plus the parser/geometry allocation
+overlap the deferral was added to avoid (#3921). BWK has the same shape.
+**Lesson:** on a saturated main thread, metadata work moves the end of a load
+only when it is removed, not when it is rescheduled. Coalescing store
+publications (#9830) and deferring whole-model UI derivations to settle (#9855)
+remove it; re-test an earlier hand-off only on top of those. A foreign `rustc`
+ran during the slot (12 of 120 samples under load, one round per fixture); those
+cells carry no formal verdict, and the memory regression holds on the clean
+rows alone (median 3,761 vs ~3,986 MiB).
+
 ## Warm viewer shell at boot idle (#9750, closed)
 
 **Rejected: creating the renderer and mounting the viewer shell before the

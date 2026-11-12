@@ -76,6 +76,16 @@ impl GeometryProcessor for IfcFaceSurfaceProcessor {
 /// registered processor.
 pub(crate) struct StructuralMemberFaceProcessor;
 
+/// The item types [`StructuralMemberFaceProcessor`] meshes.
+const MEMBER_FACE_TYPES: [IfcType; 3] = [IfcType::IfcFace, IfcType::IfcFaceSurface, IfcType::IfcAdvancedFace];
+
+/// Whether `item` is a face of structural member `element`: the one case the
+/// product walk hands to [`StructuralMemberFaceProcessor`]. The item type is
+/// compared first, so every other item pays one compare.
+pub(crate) fn is_member_face_item(item: &DecodedEntity, element: &DecodedEntity) -> bool {
+    MEMBER_FACE_TYPES.contains(&item.ifc_type) && element.ifc_type.is_subtype_of(IfcType::IfcStructuralMember)
+}
+
 impl GeometryProcessor for StructuralMemberFaceProcessor {
     fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
         quality: crate::TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
@@ -97,6 +107,6 @@ impl GeometryProcessor for StructuralMemberFaceProcessor {
     }
 
     fn supported_types(&self) -> Vec<IfcType> {
-        vec![IfcType::IfcFace, IfcType::IfcFaceSurface, IfcType::IfcAdvancedFace]
+        MEMBER_FACE_TYPES.to_vec()
     }
 }

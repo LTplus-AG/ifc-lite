@@ -287,7 +287,9 @@ fn structural_surface_rebases_raw_coordinates_before_f32_conversion() {
         "#15=IFCFACESURFACE((#6),#14,.T.);",
         "#15=IFCADVANCEDFACE((#6),#14,.T.,.F.);",
     );
-    for source in [face_surface, advanced_face] {
+    // A bare IfcFace (GeometryGym) on a structural member rebases too (#9668).
+    let bare_face = face_surface.replace("#15=IFCFACESURFACE((#6),#14,.T.);", "#15=IFCFACE((#6));");
+    for source in [face_surface, advanced_face, bare_face] {
         let mut decoder = EntityDecoder::new(&source);
         let entity = decoder.decode_by_id(18).unwrap();
         let mut router = GeometryRouter::new();

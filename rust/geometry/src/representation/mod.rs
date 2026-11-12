@@ -118,9 +118,9 @@ fn product_shape_with_type_check(
     // `IfcProductRepresentation`, and AxisVM writes one for every structural
     // curve member (#9668). Admitted for structural members only: elsewhere
     // it stays malformed (#7781).
-    let bare_structural = || shape.ifc_type == IfcType::IfcProductRepresentation
+    let bare_structural = shape.ifc_type == IfcType::IfcProductRepresentation
         && element.ifc_type.is_subtype_of(IfcType::IfcStructuralMember);
-    if check_type && shape.ifc_type != IfcType::IfcProductDefinitionShape && !bare_structural() {
+    if check_type && shape.ifc_type != IfcType::IfcProductDefinitionShape && !bare_structural {
         return Err(ShapeError::NotAProductDefinitionShape(shape.ifc_type));
     }
     let list = shape.get(2).ok_or(ShapeError::MissingRepresentations)?;

@@ -148,12 +148,11 @@ impl ItemControl {
     }
 }
 
-/// A structural member's face item takes the member-face processor when its
-/// type's processor is the built-in one or there is none (#9668); a
-/// registered override still wins.
-fn is_member_face(item: &DecodedEntity, router: &GeometryRouter) -> bool {
-    matches!(item.ifc_type, IfcType::IfcFace | IfcType::IfcFaceSurface | IfcType::IfcAdvancedFace)
-        && matches!(router.processor_origin(&item.ifc_type), None | Some(crate::router::ProcessorOrigin::Builtin))
+/// A structural member's face item (the flag is set only for those) takes
+/// the member-face processor when its type's processor is the built-in one
+/// or there is none (#9668); a registered override still wins.
+fn takes_member_face(router: &GeometryRouter, item: &DecodedEntity) -> bool {
+    matches!(router.processor_origin(&item.ifc_type), None | Some(crate::router::ProcessorOrigin::Builtin))
 }
 
 enum Lowered {
@@ -171,12 +170,10 @@ fn execute_source(
     router: &GeometryRouter,
     decoder: &mut EntityDecoder,
 ) -> ItemStep {
-    let member_face: std::rc::Rc<dyn crate::router::GeometryProcessor>;
-    let selected = if structural && is_member_face(item, router) {
-        member_face = std::rc::Rc::new(crate::processors::StructuralMemberFaceProcessor);
-        Some(&member_face)
+    let selected: Option<&dyn crate::router::GeometryProcessor> = if structural && takes_member_face(router, item) {
+        Some(&crate::processors::StructuralMemberFaceProcessor)
     } else {
-        router.processor_for(&item.ifc_type)
+        router.processor_for(&item.ifc_type).map(|processor| processor.as_ref())
     };
     let Some(processor) = selected else {
         // No processor is registered for this type. Every `GeometryCategory`

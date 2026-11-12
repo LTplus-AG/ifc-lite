@@ -115,7 +115,7 @@ export function scanInternalDepsDetailed(label, text) {
   if (deps.length !== openers) {
     throw offsetError(
       'UNPARSED_DEP',
-      `${label} declares ${openers} internal dependenc(ies) but only ${deps.length} could be parsed. An inline table with a nested \`{…}\` is the usual cause; both the writer and this scan would otherwise skip it silently.`
+      `${label} declares ${openers} internal dependenc(ies) but only ${deps.length} could be parsed. An inline table with a nested \`{…}\` is the usual cause; both the writer and this scan would otherwise skip it silently. Rewrite it as a flat inline table (\`ifc-lite-x = { version = "…", path = "…" }\`) or \`ifc-lite-x.workspace = true\`, or extend scripts/lib/rust-internal-deps.mjs, which sync-versions.js and this gate share.`
     );
   }
   const inherited = [];

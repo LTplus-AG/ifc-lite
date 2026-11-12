@@ -300,6 +300,9 @@ test('vacuous: a declaration the scan cannot parse is named, not skipped', (t) =
   const { code, out } = run(root);
   assert.equal(code, 1, out);
   assert.match(out, /UNPARSED_DEP/);
+  // Its own line names the repair, since the footer adds none for it (#9783 review).
+  assert.match(out, /Rewrite it as a flat inline table .* or extend scripts\/lib\/rust-internal-deps\.mjs/);
+  assert.doesNotMatch(out, /sync-versions\.js` and commit/);
 });
 
 test('vacuous: a [dependencies.ifc-lite-x] table header is named, not skipped', (t) => {

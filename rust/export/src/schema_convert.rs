@@ -27,6 +27,7 @@ fn map_2x3_to_4(t: &str) -> Option<&'static str> {
         "IFCELECTRICDISTRIBUTIONPOINT" => "IFCELECTRICDISTRIBUTIONBOARD",
         "IFCGASTERMINALTYPE" => "IFCBURNERTYPE",
         "IFCEQUIPMENTELEMENT" => "IFCBUILDINGELEMENTPROXY",
+        "IFCRELCONNECTSSTRUCTURALELEMENT" => "IFCRELASSIGNSTOPRODUCT",
         _ => return None,
     })
 }
@@ -236,8 +237,7 @@ pub fn convert_step_line(
     let mut converted = convert_record(line, cfrom, cto, express_id, checks.as_deref_mut())?;
     if let Some(checks) = checks {
         converted = checks.enums.apply(converted, cto);
-        let ifc4_downgrade = cto == "IFC4" && (cfrom == "IFC4X3" || cfrom == "IFC5");
-        ifc4_downgrade.then(|| checks.ifc4_slots.count(&converted));
+        (cto == "IFC4" && (cfrom != "IFC2X3" || converted.split('=').nth(1).is_some_and(|s| s.starts_with("IFCSTRUCTURAL")))).then(|| checks.ifc4_slots.count(&converted));
     }
     Ok(if cto == "IFC2X3" { slots.apply(converted) } else { converted })
 }
@@ -251,7 +251,7 @@ fn convert_record(
     cfrom: &'static str,
     cto: &'static str,
     express_id: u32,
-    checks: Option<&mut ConversionChecks>,
+    mut checks: Option<&mut ConversionChecks>,
 ) -> Result<String, UnrepresentedEntityError> {
     // Parse #ID=TYPE(attrs); (multi-line tolerant: rfind ')').
     let trimmed = line.trim_end();
@@ -287,13 +287,16 @@ fn convert_record(
         return Ok(line.to_string());
     };
 
+    let axis = checks.as_ref().filter(|_| cfrom == "IFC2X3" && cto == "IFC4").and_then(|c| c.structural.axes.axis(express_id, &entity_type, &args));
+    if let Some(c) = checks.as_deref_mut() { c.structural.inspect(&entity_type, &args, cfrom, cto, axis.is_some()); }
+    if let Some(axis) = axis { return Ok(format!("{prefix}{entity_type}({},{});", args.join(","), axis)); }
     if let Some(attrs) = crate::schema_structural::attributes(&entity_type, &args, cfrom, cto) {
         if crate::schema_structural::constant_action(&entity_type) {
             if let (Some(c), Some(src), Some(tgt)) = (checks, schema_attribute_names(cfrom, &entity_type), schema_attribute_names(cto, &entity_type)) {
                 c.attribute_values_dropped += values_without_a_name(&args, src, tgt);
             }
         }
-        return Ok(format!("{prefix}{entity_type}({attrs});"));
+        return Ok(format!("{prefix}{}({attrs});", rename_type(&entity_type, cfrom, cto).unwrap_or(&entity_type)));
     }
     let (plan, dropped) = match checks {
         Some(c) => (c.plans.get(&entity_type, cfrom, cto), Some(&mut c.attribute_values_dropped)),

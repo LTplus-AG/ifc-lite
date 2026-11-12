@@ -188,6 +188,10 @@ fn emit<W: std::io::Write>(
     );
     // IFC4-required `$` slots (#5307) and enum members the target lacks (#5365).
     let mut checks = crate::schema_enum::ConversionChecks::new();
+    if source_schema == "IFC2X3" && schema == "IFC4" && opts.included.is_none()
+        && opts.attribute_mutations.is_empty() && opts.copy_on_write.is_empty() {
+        checks.structural.axes = crate::schema_structural_axes::StructuralAxes::scan(content);
+    }
     // The synthesized property sets below are filled whenever the OUTPUT is
     // IFC2X3, not only when a conversion runs: an IFC2X3 source needs no
     // conversion, and the records this exporter writes for it still have to be

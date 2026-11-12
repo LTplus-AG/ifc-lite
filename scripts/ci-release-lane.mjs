@@ -97,7 +97,7 @@ export const LEAN_KEPT_JOBS = ['changes', 'rust-semver', 'silent-revert', 'relea
 export const LEAN_CHECKS = [
   'node scripts/check-rust-major-offset.mjs',
   'node scripts/docs/check-package-readmes.mjs',
-  "node --test --test-name-pattern='found the examples|registry ranges target' scripts/examples-current.test.mjs",
+  "node --test --test-reporter=tap --test-reporter-destination=stdout --test-name-pattern='found the examples|registry ranges target' scripts/examples-current.test.mjs",
 ];
 
 /**
@@ -227,15 +227,25 @@ export function verifyReleaseLane(input) {
 const signalLines = (s) => String(s ?? '').split('\n').filter((l) => l.trim() && !/^\(node:\d+\) (\[\w+\] )?\w*Warning:|^\(Use `node --trace-|^Node\.js v\d/.test(l));
 
 /**
+ * The environment LEAN_CHECKS run in: `base` without NODE_TEST_CONTEXT (a
+ * `node --test` check run from inside a test runner would report to that
+ * runner instead of exiting non-zero) and without NODE_OPTIONS (inherited
+ * options can change which tests run or how they report). test.yml sets no
+ * NODE_OPTIONS for release-pr or the aggregate, so this matches the lean
+ * lane's own steps. A `node --test` check names its TAP reporter itself (a
+ * test pins that), so a failure's message can be read.
+ */
+export function leanCheckEnv(base) {
+  const { NODE_TEST_CONTEXT: _parent, NODE_OPTIONS: _options, ...env } = base;
+  return env;
+}
+
+/**
  * Runs LEAN_CHECKS in `cwd` through bash, as a `run:` step would, each with
  * one line of its output.
  */
 export function runLeanChecks(cwd, commands = LEAN_CHECKS) {
-  // Without NODE_TEST_CONTEXT: a `node --test` check run from inside a test
-  // runner would report to that runner instead of exiting non-zero. TAP
-  // whatever Node's default reporter, so a failure's message can be read.
-  const { NODE_TEST_CONTEXT: _parent, ...rest } = process.env;
-  const env = { ...rest, NODE_OPTIONS: `${rest.NODE_OPTIONS ?? ''} --test-reporter=tap`.trim() };
+  const env = leanCheckEnv(process.env);
   return commands.map((check) => {
     // Bounded well inside the aggregate's 5-minute budget; each takes well under a second.
     const r = boundedSpawnSync('bash', ['-c', check], { cwd, env, encoding: 'utf8', timeout: 30_000 });

@@ -4014,7 +4014,7 @@ jobs:
       # registry pins: the one version-reading failure the release PR's own
       # history shows in a lane lean skips (see LEAN_CHECKS).
       - name: Check the examples' registry ranges against the workspace majors
-        run: node --test --test-name-pattern='found the examples|registry ranges target' scripts/examples-current.test.mjs
+        run: node --test --test-reporter=tap --test-reporter-destination=stdout --test-name-pattern='found the examples|registry ranges target' scripts/examples-current.test.mjs
 
   test:
     name: Build + WASM + Rust + Node

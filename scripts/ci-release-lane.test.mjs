@@ -13,7 +13,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,10 +24,13 @@ import {
   LEAN_KEPT_JOBS,
   OWNER_ALLOWS_LEAN,
   decideReleaseLane,
+  leanCheckEnv,
   runLeanChecks,
   verifyReleaseLane,
 } from './ci-release-lane.mjs';
 import { QUEUE_FULL_CHECKS, RELEASE_HEAD_REF } from './lib/release-queue-route.mjs';
+import { parseNodeTap } from './lib/shard-retry.mjs';
+import { boundedSpawnSync } from './lib/bounded-process.mjs';
 import { diffProblems } from './lib/release-version-diff.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -230,8 +233,9 @@ test('SHADOW (#9783 review): the report runs the lean lane\'s own checks and lis
   writeFileSync(join(dir, 'ok.mjs'), "console.log('first'); console.log('all good');\n");
   writeFileSync(join(dir, 'bad.mjs'), "console.log('offset mismatch'); process.emitWarning('noise', 'ExperimentalWarning'); process.emitWarning('old', 'DeprecationWarning', 'DEP0040'); process.exitCode = 1;\n");
   writeFileSync(join(dir, 'own.mjs'), "console.log('Warning: README missing for packages/x'); process.exitCode = 1;\n");
+  const red = "node --test --test-reporter=tap --test-reporter-destination=stdout --test-name-pattern='pin|x y' red.test.mjs";
   writeFileSync(join(dir, 'red.test.mjs'), "import test from 'node:test'; import assert from 'node:assert'; test('pins', () => assert.equal(1, 2, 'pinned to the old major'));\n");
-  assert.deepEqual(runLeanChecks(dir, ['node ok.mjs', 'node bad.mjs', 'node own.mjs', 'node gone.mjs', "node --test --test-name-pattern='pin|x y' red.test.mjs"]).map((c) => [c.check, c.ok, /Cannot find module/.test(c.tail) || c.tail]), [['node ok.mjs', true, 'all good'], ['node bad.mjs', false, 'offset mismatch'], ['node own.mjs', false, 'Warning: README missing for packages/x'], ['node gone.mjs', false, true], ["node --test --test-name-pattern='pin|x y' red.test.mjs", false, 'not ok - pins: pinned to the old major']]); // @source-text-assertion-ok subject is the runner's returned results
+  assert.deepEqual(runLeanChecks(dir, ['node ok.mjs', 'node bad.mjs', 'node own.mjs', 'node gone.mjs', red]).map((c) => [c.check, c.ok, /Cannot find module/.test(c.tail) || c.tail]), [['node ok.mjs', true, 'all good'], ['node bad.mjs', false, 'offset mismatch'], ['node own.mjs', false, 'Warning: README missing for packages/x'], ['node gone.mjs', false, true], [red, false, 'not ok - pins: pinned to the old major']]); // @source-text-assertion-ok subject is the runner's returned results
 });
 
 test('the release queue really tests a batch: its required `Rust tests (feature builds)` runs on a PR only for a batch', () => {
@@ -535,12 +539,28 @@ test('WIRING: release-pr runs the release checks and is judged by the aggregate'
   assert.equal(job['continue-on-error'], undefined);
   // Exactly LEAN_CHECKS, so shadow's --verify runs what a lean run would.
   assert.deepEqual(runs, LEAN_CHECKS);
-  // The examples check selects tests by title: it must still run the
-  // registry-range tests, not just the sanity test, or it passes on nothing.
+  // Nothing sets NODE_OPTIONS where the checks run, so leanCheckEnv dropping it changes nothing there.
+  for (const env of [WORKFLOW.env, job.env, jobs.test.env, ...job.steps.map((s) => s.env), jobs.test.steps.find((s) => s.run === 'node scripts/ci-release-lane.mjs --verify').env]) assert.equal(env?.NODE_OPTIONS, undefined);
+  // A `node --test` check names its TAP reporter, so the shadow report can read a failure's message.
+  for (const check of LEAN_CHECKS.filter((c) => /\bnode --test\b/.test(c))) assert.ok(check.includes('--test-reporter=tap --test-reporter-destination=stdout'), check); // @source-text-assertion-ok subject is the exported command list
+  // The examples check selects tests by title: it must run exactly the sanity
+  // test and every example's range test, nothing else (the #5960 test needs
+  // node_modules, which release-pr does not install) (#9783 review).
   const examples = LEAN_CHECKS.find((c) => c.includes('examples-current.test.mjs')); // @source-text-assertion-ok picks a command from the exported list, not source text
-  const tap = spawnSync('bash', ['-c', examples.replace('node --test', 'node --test --test-reporter=tap')], { cwd: REPO_ROOT, encoding: 'utf8', env: { PATH: process.env.PATH } });
-  assert.equal(tap.status, 0, tap.stdout + tap.stderr);
-  assert.ok((tap.stdout.match(/^ok \d+ - .*registry ranges target/gm) ?? []).length >= 2, tap.stdout); // @source-text-assertion-ok subject is the test run's own TAP output
+  // The runner's own env; pass or fail does not matter here (a stale pin is
+  // the repo's state, which examples-current reports), only what was selected.
+  const tap = boundedSpawnSync('bash', ['-c', examples], { cwd: REPO_ROOT, encoding: 'utf8', env: leanCheckEnv(process.env), timeout: 30_000 });
+  assert.equal(tap.error, undefined, String(tap.error));
+  // Only tests that ran count: a filtered one may print as `ok N - <title> # SKIP`
+  // (not seen on Node 22.14 or 26.7, which omit it; older Node unproven), which
+  // parseNodeTap drops (ci-shard-retry.test.mjs pins that); a cancelled one did not finish.
+  const { passed, failures } = parseNodeTap(tap.stdout);
+  const ran = [...passed, ...failures.filter((f) => !/^(cancelledByParent|testTimeoutFailure)$/.test(f.failureType ?? '')).map((f) => f.path)]; // @source-text-assertion-ok subject is the test run's own TAP output, parsed
+  // A non-zero exit must be explained by a failed test, never by a crash.
+  assert.ok(tap.status === 0 || failures.length > 0, tap.stdout + tap.stderr);
+  const exampleDirs = readdirSync(join(REPO_ROOT, 'examples')).filter((d) => existsSync(join(REPO_ROOT, 'examples', d, 'package.json')));
+  const expected = ['found the examples and the workspace packages', ...exampleDirs.map((dir) => `${dir}: @ifc-lite registry ranges target the current or previous workspace major`)];
+  assert.deepEqual(ran.sort(), expected.sort(), tap.stdout + tap.stderr);
   // They need no history and no install (#9783 review).
   assert.equal(job.steps[0].with['fetch-depth'], undefined);
   assert.ok(!job.steps.some((st) => /pnpm/.test(String(st.uses ?? st.run ?? ''))), 'no pnpm in release-pr'); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML
@@ -552,6 +572,10 @@ test('WIRING: release-pr runs the release checks and is judged by the aggregate'
   const checkout = jobs.test.steps[jobs.test.steps.indexOf(verifyStep) - 1];
   assert.equal(checkout.with['fetch-depth'], 2, 'verify re-reads HEAD~1');
   assert.equal(checkout.if, verifyStep.if);
+});
+
+test('leanCheckEnv: no parent test context and no inherited NODE_OPTIONS (#9783 review)', () => {
+  assert.deepEqual(leanCheckEnv({ PATH: '/bin', NODE_TEST_CONTEXT: 'child', NODE_OPTIONS: '--test-skip-pattern=registry --test-reporter=spec' }), { PATH: '/bin' });
 });
 
 test('WIRING: release.yml queues the release PR only while CI_RELEASE_LANE is exactly `on` (#9783)', () => {

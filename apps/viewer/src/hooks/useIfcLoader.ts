@@ -12,7 +12,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { attachCapturedLoad } from '@/lib/error-reports/correlation';
 import { useShallow } from 'zustand/react/shallow';
 import { type FederatedModel, useViewerStore } from '@/store';
-import { enqueueInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
+import { enqueueInstancedShards, hasPendingInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
 import { resolveLoadTessellationTier, isMeshOnlyCacheEnabled } from '../store/constants.js';
 import { createModelLoadActivity, handOffToRetry, installModelLoadCanceller, LOAD_COMPLETE, settleOwnedLoadUi, watchLoadSupersession } from './modelLoadCanceller.js';
 import type { ModelLoadOptions } from './modelLoadOptions.js';
@@ -90,6 +90,7 @@ import { pointCloudSpatialReferenceFromMetadata, preparePointCloudSpatialLoad } 
 import { removePointCloudScanCache } from './ingest/pointCloudScanCache.js';
 import { stopCopcLodStream } from './ingest/copc/copcLodStream.js';
 import { getGlobalRenderer } from './useBCF.js';
+import { createMetadataPublishGate } from './metadataPublishGate.js';
 import type { FederatedLandXmlStreamingFinalization } from './ingest/federatedLandXmlStreaming.js';
 import { openFederatedLandXmlStreamingPlan, openPrimaryLandXmlProvisional } from './ingest/landXmlGpuTransactions.js';
 import { extractModelSpatialPlacement, findReferenceSpatialModel } from './ingest/federationAlign.js';
@@ -1394,6 +1395,28 @@ export function useIfcLoader() {
         modelCompletion?.setMetadata(dataStore);
       };
 
+      // Primary loads only: hold publications while this load's geometry tail
+      // (upload drain, renderer finalize) owns the main thread, then publish the
+      // newest store once (metadataPublishGate.ts). Federated adds publish via finalizeModel.
+      const geometryTailBusy = (): boolean => {
+        if (target.kind !== 'primary' || streamCompleteMs === null || isStale()) return false;
+        const scene = getGlobalRenderer()?.getScene();
+        return !!(scene?.hasQueuedMeshes() || scene?.hasStreamingFragments() || scene?.isFinalizeInProgress()) || hasPendingInstancedShards();
+      };
+      const metadataPublish = createMetadataPublishGate<IfcDataStore>({
+        isTailBusy: geometryTailBusy,
+        publishPartial: onPartialDataStore,
+        publishFull: (dataStore) => {
+          // A held publication runs from a timer, outside the parse chain's catch.
+          try { onFullDataStore(dataStore); } catch (err) {
+            if (isStale()) return;
+            metadataFailedMs = trace.milestone('parser.failed');
+            modelCompletion?.failMetadata(err);
+          }
+        },
+      });
+      const publishPartialDataStore = (partialStore: IfcDataStore) => metadataPublish.partial(partialStore);
+
       const runMainThreadParser = async (): Promise<IfcDataStore> => {
         // Same `wasmApi` heuristic as before — desktop loads cannot share
         // the geometry processor's WASM instance with the parser without
@@ -1401,7 +1424,7 @@ export function useIfcLoader() {
         const parserWasmApi = geometryProcessor.getApi();
         return trace.span('parser.mainThread', () => new IfcParser().parseColumnar(buffer, {
           wasmApi: parserWasmApi ?? undefined,
-          onSpatialReady: onPartialDataStore,
+          onSpatialReady: publishPartialDataStore,
         }));
       };
 
@@ -1448,7 +1471,7 @@ export function useIfcLoader() {
             signal: metadataAbort.signal,
             trace, // #6979: parser-worker phase spans
             sourceFingerprint,
-            onSpatialReady: onPartialDataStore,
+            onSpatialReady: publishPartialDataStore,
             // Hold the parser's WASM scan until the pre-pass hands over
             // the entity index — but only when we know the geometry
             // path will actually emit one (parallel-streaming branch).
@@ -1472,7 +1495,7 @@ export function useIfcLoader() {
             memoryAccounting.recordPhase({ phase: 'parser-worker-fallback' });
             return runMainThreadParser();
           })
-          .then(onFullDataStore)
+          .then((dataStore) => metadataPublish.full(dataStore))
           .catch((err) => {
             if (metadataAbort.signal.aborted || isStale()) return;
             metadataFailedMs = trace.milestone('parser.failed');

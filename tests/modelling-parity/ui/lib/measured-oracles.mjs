@@ -25,7 +25,14 @@ export function layerUsage(step, wall, thicknesses) {
 }
 export function gridCarriedColumn(before, after) {
   const cols = before.of('IFCCOLUMN');
-  return cols.length > 0 && cols.every(c => {
+  const grids = before.of('IFCGRID');
+  const gridMoved = grids.length === 1 && after.of('IFCGRID').length === 1 && grids.every(g => {
+    const next = after.of('IFCGRID').find(n => n.args[0] === g.args[0]);
+    if (!next) return false;
+    const a = before.placement(g.id).origin, b = after.placement(next.id).origin;
+    return Math.abs(b[0]-a[0]-1) <= .005 && Math.abs(b[1]-a[1]) <= .005 && Math.abs(b[2]-a[2]) <= .005;
+  });
+  return gridMoved && cols.length > 0 && after.of('IFCCOLUMN').length === cols.length && cols.every(c => {
     const next = after.of('IFCCOLUMN').find(n => n.args[0] === c.args[0]);
     const bound = next && [after.get(next.args[5]), after.get(after.get(next.args[5])?.args[0])].some(p => p?.type === 'IFCGRIDPLACEMENT');
     const a = before.placement(c.id).origin, b = next && after.placement(next.id).origin;

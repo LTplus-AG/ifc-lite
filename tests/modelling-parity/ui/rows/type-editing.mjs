@@ -48,7 +48,7 @@ export default {
         check('two typed walls exported', sizes.length === 2 && step.of('IFCWALL').every((w) => typed.has(w.id)), `${sizes.length} walls; ${typed.size} typed occurrences`),
         check('both instances update to 300 mm', sizes.length === 2 && sizes.every((v) => near(v.thickness,.3)), JSON.stringify(sizes)),
         check('FireRating stored once on the shared wall type', inheritedFireRating(shared,shared.of('IFCWALL')), 'Requires one HasPropertySets reference and no occurrence copy'),
-        check('only wall 2 swaps type and thickness', !!w1 && !!w2 && typeOf(swapped,w1.id) === typeOf(step,w1.id) && typeOf(swapped,w2.id) !== typeOf(step,w2.id) && near(wallSize(swapped,swapped.get(w2.id)).thickness,.15), JSON.stringify(swapped.of('IFCWALL').map(w => ({id:w.id,type:typeOf(swapped,w.id),...wallSize(swapped,w)})))),
+        check('only wall 2 swaps type and thickness', !!w1 && !!w2 && typeOf(swapped,w1.id) === typeOf(step,w1.id) && typeOf(swapped,w2.id) !== undefined && swapped.get(typeOf(swapped,w2.id))?.args[2] === 'WT-150' && typeOf(swapped,w2.id) !== typeOf(step,w2.id) && near(wallSize(swapped,swapped.get(w1.id)).thickness,.3) && near(wallSize(swapped,swapped.get(w2.id)).thickness,.15), JSON.stringify(swapped.of('IFCWALL').map(w => ({id:w.id,type:typeOf(swapped,w.id),...wallSize(swapped,w)})))),
       ]);
     },
   };

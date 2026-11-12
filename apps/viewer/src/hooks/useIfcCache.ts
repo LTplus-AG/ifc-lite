@@ -165,7 +165,7 @@ export function useIfcCache() {
           cacheBuffer,
           geometrySection.offset,
           headerInfo.version,
-          { inflate: inflater.inflate },
+          { decode: inflater.decode },
         );
         loadedTotalVertices = open.totalVertices;
         loadedTotalTriangles = open.totalTriangles;

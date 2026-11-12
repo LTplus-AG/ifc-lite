@@ -63,12 +63,15 @@ async function entry(): Promise<{ result: CacheResult; compressedChunks: number 
     sourceBuffer, { includeGeometry: true, omitSourceHash: true });
   const header = new BinaryCacheReader().readHeader(buffer);
   const section = header.sections.find((s) => s.type === SectionType.Geometry)!;
-  const compressedChunks = openGeometryChunksV13(buffer, section.offset, header.version).chunks.filter((c) => c.flags & 1).length;
-  return { result: { buffer, sourceBuffer }, compressedChunks };
+  const chunks = openGeometryChunksV13(buffer, section.offset, header.version).chunks;
+  return { result: { buffer, sourceBuffer }, compressedChunks: chunks.filter((c) => c.flags & 1).length, chunkCount: chunks.length };
 }
 
-/** A Worker that runs the cache's real handler in this thread, counting inflate requests. */
+/** A Worker that runs the cache's real handler in this thread, counting inflate and decode requests. */
 let inflates = 0;
+let decodes = 0;
+let replies = 0;
+let terminated = 0;
 let workersStarted = 0;
 class HandlerWorker {
   onmessage: ((event: MessageEvent<unknown>) => void) | null = null;
@@ -77,12 +80,14 @@ class HandlerWorker {
   constructor() { workersStarted++; }
   postMessage(message: { op?: string }, transfers: ArrayBuffer[]): void {
     if (message.op === 'inflate') inflates++;
+    if (message.op === 'decode') decodes++;
     const received = structuredClone(message, { transfer: transfers });
     void handleCompressionRequest(received, (response, outgoing) => {
+      replies++;
       this.onmessage?.(new MessageEvent('message', { data: structuredClone(response, { transfer: outgoing }) }));
     });
   }
-  terminate(): void {}
+  terminate(): void { terminated++; }
 }
 
 let loadFromCache: ReturnType<typeof useIfcCache>['loadFromCache'] | null = null;
@@ -96,6 +101,9 @@ function Probe() {
 
 beforeEach(async () => {
   inflates = 0;
+  decodes = 0;
+  replies = 0;
+  terminated = 0;
   workersStarted = 0;
   const container = document.createElement('div');
   document.body.appendChild(container);
@@ -111,25 +119,36 @@ afterEach(async () => {
   useViewerStore.setState({ geometryResult: null, ifcDataStore: null, geometryStreamingActive: false, activeModelId: null, models: new Map() });
 });
 
-async function load(result: CacheResult): Promise<CacheLoadResult> {
+async function load(result: CacheResult, isStale: () => boolean = () => false): Promise<CacheLoadResult> {
   useViewerStore.setState({ activeModelId: 'm', models: new Map([['m', { id: 'm', geometryResult: null }]]) as never });
   let out!: CacheLoadResult;
-  await act(async () => { out = await loadFromCache!(result, 'm.ifc', 'm', undefined, undefined, () => false); });
+  await act(async () => { out = await loadFromCache!(result, 'm.ifc', 'm', undefined, undefined, isStale); });
   return out;
 }
 
 const loadedIds = () => (useViewerStore.getState().geometryResult?.meshes ?? []).map((m) => m.expressId).sort((a, b) => a - b);
 
-describe('a cache hit inflates its geometry chunks off the main thread', () => {
-  it('sends every compressed chunk to the inflate workers and loads every mesh', async () => {
+describe('a cache hit inflates and decodes its geometry chunks off the main thread', () => {
+  it('sends every chunk to the decode workers (inflate included) and loads every mesh', async () => {
     (globalThis as { Worker?: unknown }).Worker = HandlerWorker;
-    const { result, compressedChunks } = await entry();
+    const { result, compressedChunks, chunkCount } = await entry();
     assert.ok(compressedChunks >= 2, `the fixture must have compressed chunks, has ${compressedChunks}`);
     const loaded = await load(result);
     assert.equal(loaded.success, true);
-    assert.ok(workersStarted >= 1, 'the inflate workers were started');
-    assert.equal(inflates, compressedChunks, 'every compressed chunk inflated on a worker');
+    assert.ok(workersStarted >= 1, 'the decode workers were started');
+    assert.equal(decodes, chunkCount, 'every chunk decoded on a worker, once');
+    assert.equal(inflates, 0, 'no separate inflate round trip');
     assert.deepEqual(loadedIds(), meshes().map((m) => m.expressId));
+  });
+
+  it('a load superseded mid-decode (its model removed or replaced) publishes nothing and stops its workers', async () => {
+    (globalThis as { Worker?: unknown }).Worker = HandlerWorker;
+    const { result } = await entry();
+    const loaded = await load(result, () => replies >= 1); // superseded once the first chunk came back
+    assert.equal(loaded.success, false, 'the stale hit is not served');
+    assert.equal(useViewerStore.getState().geometryResult, null, 'no geometry published for the superseded load');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.ok(workersStarted >= 1 && terminated === workersStarted, `every decode worker stopped (${terminated}/${workersStarted})`);
   });
 
   it('still loads every mesh when workers are unavailable', async () => {

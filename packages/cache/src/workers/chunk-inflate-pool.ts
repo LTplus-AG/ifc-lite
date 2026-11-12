@@ -27,7 +27,9 @@
  */
 
 import { inflateRaw } from '../sections/geometry-codec.js';
-import type { ChunkInflate } from '../sections/geometry-chunks.js';
+import { decodeGeometryChunk, type ChunkDecode, type ChunkInflate } from '../sections/geometry-chunks.js';
+import { GeometryChunkFlags, type GeometryChunkInfo } from '../types.js';
+import type { MeshData } from '@ifc-lite/geometry';
 import { GeometryCompressionSession, WorkerCodecError, type CompressionWorkerPort } from './geometry-compression-client.js';
 
 /** A stored chunk that does not inflate: the cache entry is corrupt. */
@@ -61,6 +63,17 @@ class Lane {
     this.arm();
     try {
       return await this.session.inflate(stored, rawLength);
+    } finally {
+      this.owed--;
+      this.arm(true);
+    }
+  }
+
+  async decode(stored: Uint8Array, info: GeometryChunkInfo, version: number): Promise<MeshData[]> {
+    this.owed++;
+    this.arm();
+    try {
+      return await this.session.decode(stored, (info.flags & GeometryChunkFlags.DeflateRaw) !== 0, info.uncompressedLength, info.meshCount, version, info.appearanceSources);
     } finally {
       this.owed--;
       this.arm(true);
@@ -133,6 +146,43 @@ export class ChunkInflatePool {
       throw this.markCorrupt(error instanceof Error ? error : new Error(String(error)));
     }
   };
+
+  /**
+   * Inflate (when compressed) AND decode a whole chunk on a worker; pass it as `decode` to
+   * `openGeometryChunksV13`. The same failure rules as `inflate`: a worker failure decodes this and
+   * the remaining chunks here (as without workers); a chunk the worker could not decode is decoded
+   * here to tell a corrupt entry (`CorruptChunkError`) from a worker that cannot decode.
+   */
+  readonly decode: ChunkDecode = async (stored, info, version) => {
+    if (this.corrupt) throw this.corrupt;
+    if (!this.fallback) {
+      const lane = this.lanes[this.next++ % this.lanes.length];
+      try {
+        return await lane.decode(stored, info, version);
+      } catch (error) {
+        if (this.corrupt) throw this.corrupt;
+        if (error instanceof WorkerCodecError) return this.confirmDecodeHere(stored, info, version, error);
+        this.useFallback(error);
+      }
+    }
+    try {
+      return await decodeGeometryChunk(stored, info, version);
+    } catch (error) {
+      throw this.markCorrupt(error instanceof Error ? error : new Error(String(error)));
+    }
+  };
+
+  private async confirmDecodeHere(stored: Uint8Array, info: GeometryChunkInfo, version: number, workerError: Error): Promise<MeshData[]> {
+    let meshes: MeshData[];
+    try {
+      meshes = await decodeGeometryChunk(stored, info, version);
+    } catch {
+      throw this.markCorrupt(workerError);
+    }
+    if (this.corrupt) throw this.corrupt;
+    this.useFallback(workerError);
+    return meshes;
+  }
 
   /** A chunk the worker's codec refused: corrupt if it fails here too, else the worker cannot inflate. */
   private async confirmHere(stored: Uint8Array, workerError: Error): Promise<Uint8Array> {

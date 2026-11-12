@@ -182,4 +182,115 @@ describe('ChunkInflatePool', () => {
     expect(digest(await decodeAll(section, pool.inflate))).toEqual(digest(await decodeAll(section)));
     expect(pool.inflatingHere).toBe(true);
   });
+
+  describe('decode on the workers (inflate + record decode, one transfer per chunk)', () => {
+    /** Meshes in several cells sharing one pooled appearance source, so chunks reference the section pool. */
+    function pooledMeshes(): MeshData[] {
+      const shared = new Uint32Array(270).map((_, k) => 99 - (k % 100));
+      return meshes().map((m, i) => ({ ...m, geometryItemId: 7000 + i,
+        appearanceSource: { kind: 'canonical-item' as const, indices: m.indices, sourceIndices: shared } }));
+    }
+    async function decodeAllWith(section: ArrayBuffer, decode?: ChunkInflatePool['decode']) {
+      const open = openGeometryChunksV13(section, 0, FORMAT_VERSION, decode ? { decode } : {});
+      const perChunk = await Promise.all(open.chunks.map((_, i) => open.readChunk(i)));
+      return { open, perChunk, all: perChunk.flat() };
+    }
+
+    it('decodes every chunk on its workers, byte-identical to a main-thread decode, and re-links the shared pool', async () => {
+      const section = await buildGeometrySectionV13(pooledMeshes(), coordInfo, { compress: true });
+      const ports: CountingPort[] = [];
+      let decodes = 0;
+      class DecodeCountingPort extends CountingPort {
+        override postMessage(message: CompressionRequest | InflateRequest, transfers: ArrayBuffer[]): void {
+          if ('op' in message && (message as { op: string }).op === 'decode') decodes++;
+          super.postMessage(message, transfers);
+        }
+      }
+      const pool = new ChunkInflatePool(2, { createWorker: () => { const p = new DecodeCountingPort(); ports.push(p); return p; } }).start();
+      try {
+        const here = await decodeAllWith(section);
+        const there = await decodeAllWith(section, pool.decode);
+        expect(there.open.chunks.length).toBeGreaterThan(1);
+        expect(decodes).toBe(there.open.chunks.length);
+        expect(digest(there.all)).toEqual(digest(here.all));
+        // Pool identity as on the main thread: every pooled source is the section pool's own array, in every chunk.
+        const sectionPool = there.open.chunks[0].appearanceSources!;
+        const sources = new Set(there.all.map((m) => m.appearanceSource!.sourceIndices));
+        expect(sources.size).toBe(1);
+        expect(sectionPool.includes([...sources][0])).toBe(true);
+        for (const m of there.all) expect(m.appearanceSource!.indices).toBe(m.indices);
+        expect(pool.inflatingHere).toBe(false);
+      } finally {
+        pool.close();
+      }
+    });
+
+    it('transfers the mesh arrays: the worker keeps none of them', async () => {
+      const section = await buildGeometrySectionV13(meshes(), coordInfo, { compress: true });
+      const kept: ArrayBuffer[][] = [];
+      class TransferWatchingPort extends CodecPort {
+        override postMessage(message: CompressionRequest | InflateRequest, transfers: ArrayBuffer[]): void {
+          const received = structuredClone(message, { transfer: transfers });
+          void handleCompressionRequest(received, (response, outgoing) => {
+            kept.push(outgoing);
+            this.onmessage?.(new MessageEvent('message', { data: structuredClone(response, { transfer: outgoing }) }));
+          });
+        }
+      }
+      const pool = new ChunkInflatePool(1, { createWorker: () => new TransferWatchingPort() }).start();
+      try {
+        const { all } = await decodeAllWith(section, pool.decode);
+        expect(all.length).toBe(60);
+        expect(kept.length).toBeGreaterThan(0);
+        for (const buffers of kept) for (const b of buffers) expect(b.byteLength).toBe(0); // detached on the worker side
+      } finally {
+        pool.close();
+      }
+    });
+
+    it('a worker that fails mid-decode: that chunk and the rest decode on the calling thread, unchanged', async () => {
+      const section = await buildGeometrySectionV13(pooledMeshes(), coordInfo, { compress: true });
+      const ports: HoldingPort[] = [];
+      const pool = new ChunkInflatePool(1, { createWorker: () => { const p = new HoldingPort(); ports.push(p); return p; } }).start();
+      try {
+        const pending = decodeAllWith(section, pool.decode);
+        await new Promise((r) => setTimeout(r, 0));
+        expect(ports[0].received).toBeGreaterThan(0);
+        ports[0].crash();
+        const there = await pending;
+        const here = await decodeAllWith(section);
+        expect(digest(there.all)).toEqual(digest(here.all));
+        expect(pool.inflatingHere).toBe(true);
+      } finally {
+        pool.close();
+      }
+    });
+
+    it('a corrupt chunk (it fails on the worker and here) rejects as CorruptChunkError, and so do the remaining chunks', async () => {
+      const section = corruptOneChunk(await buildGeometrySectionV13(meshes(), coordInfo, { compress: true }));
+      const pool = new ChunkInflatePool(2, { createWorker: () => new CountingPort() }).start();
+      try {
+        await expect(decodeAllWith(section, pool.decode)).rejects.toBeInstanceOf(CorruptChunkError);
+        const good = await buildGeometrySectionV13(meshes(), coordInfo, { compress: true });
+        const open = openGeometryChunksV13(good, 0, FORMAT_VERSION, { decode: pool.decode });
+        await expect(open.readChunk(0)).rejects.toBeInstanceOf(CorruptChunkError);
+      } finally {
+        pool.close();
+      }
+    });
+
+    it('without workers (they cannot start), chunks decode on the calling thread exactly as without the pool', async () => {
+      const section = await buildGeometrySectionV13(pooledMeshes(), coordInfo, { compress: true });
+      const pool = new ChunkInflatePool(2, { createWorker: () => { throw new Error('no workers here'); } }).start();
+      try {
+        const there = await decodeAllWith(section, pool.decode);
+        const here = await decodeAllWith(section);
+        expect(digest(there.all)).toEqual(digest(here.all));
+        expect(pool.inflatingHere).toBe(true);
+      } finally {
+        pool.close();
+      }
+    });
+  });
 });
+

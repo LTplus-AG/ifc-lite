@@ -269,9 +269,12 @@ export function readGeometryHeadV13(reader: BufferReader, version: number = FORM
   return { headLength, meshCount, totalVertices, totalTriangles, coordinateInfo, chunks };
 }
 
-/** Decode one chunk record's stored bytes into meshes. */
 /** Inflates a stored deflate-raw chunk to its `rawLength`-byte record; the default runs on the calling thread. */
 export type ChunkInflate = (stored: Uint8Array, rawLength: number) => Promise<Uint8Array>;
+/** Inflates (when compressed) and decodes one stored chunk into meshes, e.g. on a worker (`ChunkInflatePool.decode`). */
+export type ChunkDecode = (stored: Uint8Array, info: GeometryChunkInfo, version: number) => Promise<MeshData[]>;
+
+/** Decode one chunk record's stored bytes into meshes. */
 const inflateHere: ChunkInflate = (stored) => inflateRaw(stored);
 
 export async function decodeGeometryChunk(
@@ -281,6 +284,18 @@ export async function decodeGeometryChunk(
   inflate: ChunkInflate = inflateHere,
 ): Promise<MeshData[]> {
   const raw = (info.flags & GeometryChunkFlags.DeflateRaw) ? await inflate(stored, info.uncompressedLength) : stored;
+  return decodeChunkRecords(raw, info, version);
+}
+
+/**
+ * Decode an inflated chunk record into meshes: the same on the calling thread and on a decode
+ * worker (`ChunkInflatePool.decode`). Throws on any record that does not match the directory.
+ */
+export function decodeChunkRecords(
+  raw: Uint8Array,
+  info: Pick<GeometryChunkInfo, 'meshCount' | 'uncompressedLength' | 'appearanceSources'>,
+  version: number,
+): MeshData[] {
   if (raw.byteLength !== info.uncompressedLength) {
     throw new Error(`Invalid cache: chunk decoded to ${raw.byteLength} bytes, directory says ${info.uncompressedLength}`);
   }
@@ -322,8 +337,11 @@ export function openGeometryChunksV13(
   buffer: ArrayBuffer,
   sectionOffset: number,
   version: number,
-  /** Where compressed chunks inflate, e.g. a worker pool on a cache hit (`ChunkInflatePool`). */
-  options: { inflate?: ChunkInflate } = {},
+  /**
+   * Where compressed chunks inflate, e.g. a worker pool on a cache hit (`ChunkInflatePool`); or, with
+   * `decode`, where whole chunks inflate and decode (it takes precedence over `inflate`).
+   */
+  options: { inflate?: ChunkInflate; decode?: ChunkDecode } = {},
 ): GeometryHead & { readChunk(index: number): Promise<MeshData[]> } {
   const reader = new BufferReader(buffer);
   reader.position = sectionOffset;
@@ -356,7 +374,8 @@ export function openGeometryChunksV13(
           `Invalid cache: geometry chunk ${index} range [${start}, ${end}) exceeds buffer length ${bytes.length}`,
         ));
       }
-      return decodeGeometryChunk(bytes.subarray(start, end), info, version, options.inflate);
+      const stored = bytes.subarray(start, end);
+      return options.decode ? options.decode(stored, info, version) : decodeGeometryChunk(stored, info, version, options.inflate);
     },
   };
 }

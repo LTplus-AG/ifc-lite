@@ -2,7 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { CompressionRequest, CompressionResponse, InflateRequest } from './geometry-compression-protocol.js';
+import type { CompressionRequest, CompressionResponse, DecodeRequest, InflateRequest } from './geometry-compression-protocol.js';
+import type { MeshData } from '@ifc-lite/geometry';
+import { unpackDecodedChunk } from './decoded-chunk-transfer.js';
 import { accountWorkerMessages } from '@ifc-lite/load-trace';
 
 /** The worker's codec threw on a request (the data, or the worker's codec environment), as opposed to the worker itself failing. */
@@ -15,7 +17,7 @@ export interface CompressionWorkerPort {
   onmessage: ((event: MessageEvent<unknown>) => void) | null;
   onerror: ((event: ErrorEvent) => void) | null;
   onmessageerror: ((event: MessageEvent<unknown>) => void) | null;
-  postMessage(message: CompressionRequest | InflateRequest, transfers: ArrayBuffer[]): void;
+  postMessage(message: CompressionRequest | InflateRequest | DecodeRequest, transfers: ArrayBuffer[]): void;
   terminate(): void;
 }
 
@@ -28,6 +30,12 @@ export class GeometryCompressionSession {
     /** Compress: the raw length. Inflate: the raw length the chunk directory declares. */
     length: number; inflate: boolean; resolve: (value: StoredChunk) => void; reject: (error: Error) => void;
   }>();
+
+  private readonly pendingDecode = new Map<number, {
+    meshCount: number; pool: readonly Uint32Array[] | undefined; resolve: (meshes: MeshData[]) => void; reject: (error: Error) => void;
+  }>();
+  /** The pool this session's worker holds (sent with its first decode). */
+  private sentPool: readonly Uint32Array[] | undefined;
 
   constructor(private readonly createWorker: () => CompressionWorkerPort = () =>
     new Worker(new URL('./geometry-compression.worker.js', import.meta.url), { type: 'module' })) {}
@@ -46,6 +54,27 @@ export class GeometryCompressionSession {
    */
   inflate(stored: Uint8Array, rawLength: number): Promise<Uint8Array<ArrayBuffer>> {
     return this.request(stored.slice().buffer, true, rawLength).then((chunk) => chunk.bytes);
+  }
+
+  /**
+   * Inflate (when `compressed`) and decode one stored chunk off the calling thread. `stored` is
+   * copied; the reply transfers the mesh arrays, and pool references resolve to `pool`'s own arrays.
+   */
+  decode(stored: Uint8Array, compressed: boolean, rawLength: number, meshCount: number, version: number, pool?: readonly Uint32Array[]): Promise<MeshData[]> {
+    if (this.failure) return Promise.reject(this.failure);
+    return new Promise((resolve, reject) => {
+      const id = ++this.nextId;
+      this.pendingDecode.set(id, { meshCount, pool, resolve, reject });
+      const buffer = stored.slice().buffer;
+      const samePool = pool !== undefined && pool === this.sentPool;
+      try {
+        this.start().postMessage({ id, op: 'decode', buffer, compressed, rawLength, meshCount, version,
+          ...(pool && !samePool ? { pool: [...pool] } : {}), ...(samePool ? { samePool: true as const } : {}) }, [buffer]);
+        if (pool) this.sentPool = pool;
+      } catch (error) {
+        this.fail(error instanceof Error ? error : new Error(String(error)));
+      }
+    });
   }
 
   private request(buffer: ArrayBuffer, inflate: boolean, length: number): Promise<StoredChunk> {
@@ -94,6 +123,19 @@ export class GeometryCompressionSession {
       return;
     }
     const response = value as Partial<CompressionResponse>;
+    const decoding = typeof response.id === 'number' ? this.pendingDecode.get(response.id) : undefined;
+    if (decoding) {
+      this.pendingDecode.delete(response.id!);
+      // A decode's error is about that chunk's data (the handler caught it): reject it alone.
+      if ('error' in response) { decoding.reject(new WorkerCodecError(`Chunk decode failed in the worker: ${String(response.error)}`)); return; }
+      try {
+        decoding.resolve(unpackDecodedChunk((response as { meshes?: unknown }).meshes, (response as { poolRefs?: unknown }).poolRefs, decoding.meshCount, decoding.pool));
+      } catch (error) {
+        this.fail(error instanceof Error ? error : new Error(String(error)));
+        decoding.reject(error instanceof Error ? error : new Error(String(error)));
+      }
+      return;
+    }
     const pending = typeof response.id === 'number' ? this.pending.get(response.id) : undefined;
     if (!pending) {
       this.fail(new Error('Unknown geometry compression response id'));
@@ -134,5 +176,7 @@ export class GeometryCompressionSession {
     }
     for (const pending of this.pending.values()) pending.reject(error);
     this.pending.clear();
+    for (const pending of this.pendingDecode.values()) pending.reject(error);
+    this.pendingDecode.clear();
   }
 }

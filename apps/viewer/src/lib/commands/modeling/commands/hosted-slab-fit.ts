@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { pointInPolygon, type Point2D } from '@/lib/polygon-clip';
-import type { HostHit } from './hosted-host.js';
+import { fromHostLocal, type HostHit } from './hosted-host.js';
 import type { Vec2 } from '@/lib/snap/types';
 
 /** Corners alone miss a concave notch between corners. Also reject every
@@ -33,4 +33,11 @@ export function slabCutFits(host: HostHit, centre: Vec2 | null, width: number, d
     }
     return lo < hi;
   });
+}
+
+/** One host-local rectangle shared by the solid ghost and its readable outline. */
+export function shaftOutline(host: HostHit, centre: Vec2, width: number, depth: number): Vec2[] {
+  const [x, y] = centre, w = width / 2, d = depth / 2;
+  const corners: Vec2[] = [[x-w,y-d],[x+w,y-d],[x+w,y+d],[x-w,y+d]];
+  return corners.map(p => fromHostLocal(host, p));
 }

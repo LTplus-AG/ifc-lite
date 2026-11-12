@@ -20,7 +20,8 @@
  * undo step.
  */
 
-import { slabCutFits } from './hosted-slab-fit.js';
+import { slabCutFits, shaftOutline } from './hosted-slab-fit.js';
+import { ShaftOpeningScene } from '@/components/viewer/tools/command/ShaftOpeningScene';
 import type { TranslationKey } from '@/i18n';
 import type { AuthoredElementKind } from '@/store/slices/authoringDefaultsSlice';
 import type { HostedFillKind, HostedFillSpec } from '@/store/slices/mutation-hosted-fill';
@@ -139,7 +140,7 @@ function makeHostedPlace(kind: HostedFillKind): ModelingCommand<HostedPlaceGestu
   return {
     id: `${kind}.place`,
     labelKey: LABEL[kind],
-    hud: { hint: () => HINT[kind] },
+    hud: { hint: () => HINT[kind], ...(kind === 'opening' ? { Scene: ShaftOpeningScene } : {}) },
     fields: fieldsOf(kind),
     snap: 'modeling',
     init,
@@ -181,9 +182,7 @@ function makeHostedPlace(kind: HostedFillKind): ModelingCommand<HostedPlaceGestu
       if (!ctx.workplane || !host || offset === null) return [];
       const { Width, Height, Sill } = hostedSize(kind, g, ctx);
       if (host.hostKind === 'slab' && g.position) {
-        const [x, y] = g.position, w = g.shaft.Width / 2, d = g.shaft.Depth / 2;
-        const outline = [[x-w,y-d],[x+w,y-d],[x+w,y+d],[x-w,y+d]]
-          .map(p => fromHostLocal(host, p as [number, number]));
+        const outline = shaftOutline(host, g.position, g.shaft.Width, g.shaft.Depth);
         const z = host.origin[2] - planeZ(ctx.workplane);
         const mesh = prismGhostMesh(ctx.workplane, outline, z + host.z[0] - .01, z + host.z[1] + .01, commandGhostId(ctx.get()));
         return mesh ? [mesh] : [];

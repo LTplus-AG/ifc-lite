@@ -32,6 +32,8 @@ import { setElementSize } from '@/store/slices/mutation-element-size';
 import { readHostedSlide } from './hosted-slide.js';
 import { readHost } from './hosted-host.js';
 import { typeOf } from '../authored-kinds.js';
+import { CommandScene } from '@/components/viewer/tools/command/CommandHud';
+import { renderScene } from '@/components/viewport-ui/scene/test/scene-test-support';
 import { createElementType } from '@/components/viewer/model-inspector/inspector-edits';
 
 const at = (x: number, y: number): SnapResult => ({ local: [x, y], winner: null, guides: [], locked: false });
@@ -314,6 +316,29 @@ describe('opening.place slab shaft (#9296)', () => {
     const cut = placedBodyExtent(live().dataStore, opening, live().view)!;
     assert.ok(cut.min[2] < body.min[2] && cut.max[2] > body.max[2], 'still through the thickened slab');
     assert.equal(readHostedFill(live().dataStore, opening, live().view)?.hostId, id);
+  });
+  it('draws a readable shaft outline through the command scene and follows typed dimensions (#9296)', () => {
+    const id = slab();
+    const s = useViewerStore.getState();
+    // An orthographic top camera: 100 px per metre in the render X/-Z plane.
+    useViewerStore.setState({ cameraCallbacks: { ...s.cameraCallbacks,
+      projectToScreen: p => ({ x: p.x * 100, y: -p.z * 100 }) }, selectedEntityId: id });
+    s.startCommand('opening.place');
+    act(() => commandPointerMove(at(1,1)));
+    const { container, flush } = renderScene(<CommandScene />);
+    flush();
+    const dimensions = () => {
+      const preview = container.querySelector('[data-slab-shaft-preview] polygon');
+      assert.ok(preview, 'a rectangle remains visible over the selected host');
+      const points = preview.getAttribute('points')!.split(' ').map(p => p.split(',').map(Number));
+      assert.equal(points.length, 4);
+      const xs = points.map(p => p[0]), ys = points.map(p => p[1]);
+      return [Math.max(...xs)-Math.min(...xs), Math.max(...ys)-Math.min(...ys)];
+    };
+    assert.deepEqual(dimensions(), [150,200]);
+    act(() => { writeCommandField(0, 1.2); writeCommandField(1, 1.6); });
+    flush();
+    assert.deepEqual(dimensions(), [120,160]);
   });
   it('honors a snapped slab at a wall crossing and leaves the wall uncut (#9296)', () => {
     const id = slab();

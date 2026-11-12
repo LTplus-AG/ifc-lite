@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** WebGPU device initialization */
-import { requestAdapterWithTimeout } from './adapter-request.js';
+import { claimPrerequestedRendererDevice, requestRendererDevice } from './device-request.js';
 export { ADAPTER_REQUEST_TIMEOUT_MS, requestAdapterWithTimeout } from './adapter-request.js';
 import { meterGpuDevice } from './gpu-counters.js';
 
@@ -66,10 +66,12 @@ export class WebGPUDevice {
       throw new Error('WebGPU not available');
     }
 
-    this.adapter = await requestAdapterWithTimeout(navigator.gpu);
-    if (!this.adapter) {
-      throw new Error('Failed to get GPU adapter');
-    }
+    // A device requested at the file pick (device-request.ts) when one is
+    // pending and still usable; otherwise this init requests its own.
+    // No early request: ask synchronously, so the adapter timeout starts with init.
+    const early = claimPrerequestedRendererDevice();
+    const requested = (early && await early) || await requestRendererDevice(navigator.gpu);
+    this.adapter = requested.adapter;
 
     // Snapshot the adapter's identity for device-loss telemetry (issue #2624).
     // `adapter.info` shipped in Chrome/Edge 128 and Safari 26, so the whole
@@ -97,91 +99,7 @@ export class WebGPUDevice {
       console.warn('[WebGPU] adapter.info read threw; loss telemetry will omit adapter identity:', e);
     }
 
-    // Request the adapter's maximum buffer limits. The WebGPU default maxBufferSize
-    // is 256 MiB, but a single large mesh (e.g. a multi-GB IFC that meshes to one
-    // dense geometry) can need a vertex or index buffer well beyond that — its upload
-    // then fails with "Buffer size … exceeds the max buffer size limit", the buffer is
-    // invalid, and nothing renders. Adapters commonly advertise up to 2 GiB, so raise
-    // the device limits to whatever this adapter supports. Guarded so a runtime that
-    // doesn't expose `adapter.limits` (or rejects the required limits) still gets a
-    // device with the defaults.
-    const limits = this.adapter.limits;
-    const requiredLimits: Record<string, number> = {};
-    if (limits?.maxBufferSize) {
-      requiredLimits.maxBufferSize = limits.maxBufferSize;
-    }
-    if (limits?.maxStorageBufferBindingSize) {
-      requiredLimits.maxStorageBufferBindingSize = limits.maxStorageBufferBindingSize;
-    }
-
-    // Request 'timestamp-query' when the adapter advertises it (issue #2670
-    // perf-verdict gate — see frame-timing-gpu.ts). It is an OPTIONAL feature
-    // per the WebGPU spec, not all adapters/backends support it, so it is
-    // only added to requiredFeatures when already present in
-    // adapter.features — asking for a feature the adapter doesn't have would
-    // make requestDevice() reject outright. this.hasTimestampQueryFeature()
-    // reports the outcome; nothing in the renderer requests query sets
-    // unless a caller opts into GpuFrameTimingRecorder.create().
-    const requiredFeatures: GPUFeatureName[] = [];
-    if (this.adapter.features?.has('timestamp-query')) {
-      requiredFeatures.push('timestamp-query');
-    }
-
-    // Degrade one ask at a time, most-wanted first. The two asks are NOT
-    // equally important and must not be surrendered together:
-    //
-    //  - `requiredLimits` is load-bearing for rendering at all. Without the
-    //    raise, a large IFC's vertex buffer exceeds the 256 MiB default and
-    //    "nothing renders" (see the comment on `requiredLimits` above).
-    //  - `requiredFeatures` is pure opt-in diagnostics ('timestamp-query',
-    //    which only does anything once a caller constructs a
-    //    GpuFrameTimingRecorder).
-    //
-    // A single try/catch around both would let a feature-caused rejection
-    // cost the user their render for a diagnostic they never asked for. So a
-    // rejection of the full request is retried with the LIMITS ALONE, and
-    // only a rejection of that reaches the bare request.
-    // `hasTimestampQueryFeature()` reports which stage was reached.
-    let device: GPUDevice | null = null;
-
-    // Stage 1: everything we want.
-    try {
-      device = await this.adapter.requestDevice({ requiredLimits, requiredFeatures });
-    } catch (e) {
-      if (requiredFeatures.length > 0) {
-        console.warn(
-          '[WebGPU] requestDevice() rejected the request carrying requiredFeatures; ' +
-            'retrying with the buffer limits alone (GPU timestamp queries unavailable):',
-          e,
-        );
-      }
-    }
-
-    // Stage 2: drop the optional diagnostic feature, KEEP the limits. Skipped
-    // when no feature was requested — the request would then be identical to
-    // the one that just failed, so that case degrades exactly as it did
-    // before 'timestamp-query' was ever asked for.
-    if (!device && requiredFeatures.length > 0) {
-      try {
-        device = await this.adapter.requestDevice({ requiredLimits });
-      } catch (e) {
-        console.warn('[WebGPU] requestDevice() also rejected the limits-only request:', e);
-      }
-    }
-
-    // Stage 3, last resort: some drivers reject requiredLimits they nominally
-    // advertise — fall back to a default device rather than failing to
-    // initialise the renderer entirely. This degradation is the damaging one,
-    // so it is logged rather than silent: without the raised limits a large
-    // model's geometry upload can exceed the default maxBufferSize.
-    if (!device) {
-      console.warn(
-        '[WebGPU] falling back to a default device with no required limits — ' +
-          'a large model may exceed the default maxBufferSize and fail to render.',
-      );
-      device = await this.adapter.requestDevice();
-    }
-
+    const device = requested.device;
     this.device = meterGpuDevice(device, this, () => deviceLifetime === this.deviceLifetime);
     this.format = navigator.gpu.getPreferredCanvasFormat();
     this.canvas = canvas;

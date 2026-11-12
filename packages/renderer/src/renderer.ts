@@ -16,6 +16,7 @@ import { PickSourceRevision } from './pick-source-revision.js';
  */
 
 export { WebGPUDevice, ADAPTER_REQUEST_TIMEOUT_MS, requestAdapterWithTimeout } from './device.js';
+export { prerequestRendererDevice } from './device-request.js';
 export type { AdapterInfoSnapshot } from './device.js';
 export { RenderPipeline } from './pipeline.js';
 export { Camera } from './camera.js';

@@ -90,6 +90,7 @@ import { pointCloudSpatialReferenceFromMetadata, preparePointCloudSpatialLoad } 
 import { removePointCloudScanCache } from './ingest/pointCloudScanCache.js';
 import { stopCopcLodStream } from './ingest/copc/copcLodStream.js';
 import { getGlobalRenderer } from './useBCF.js';
+import { prerequestRendererDevice } from '@ifc-lite/renderer';
 import type { FederatedLandXmlStreamingFinalization } from './ingest/federatedLandXmlStreaming.js';
 import { openFederatedLandXmlStreamingPlan, openPrimaryLandXmlProvisional } from './ingest/landXmlGpuTransactions.js';
 import { extractModelSpatialPlacement, findReferenceSpatialModel } from './ingest/federationAlign.js';
@@ -256,6 +257,7 @@ export function useIfcLoader() {
     const draping = drapeIfGeoRaster(file); if (draping) return draping; // #5942: imagery, never a model
     const geometryKernel = beginGeometryKernel(file, target, () => void loadFileRef.current?.(file, target, options)); if (geometryKernel.refused) return settleKernelRefusal(geometryKernel.refused, options?.onLoadError); // #7955 M2: out-of-scope retained requests stop before any work
     const { resetViewerState, clearAllModels } = useViewerStore.getState();
+    if (!getGlobalRenderer()) prerequestRendererDevice(); // No viewport yet: it mounts with this reset. Its device request runs beside it.
     // A primary supersedes every outstanding hook owner via the shared canceller. Federated additions capture this hook's session and remain independent.
     const currentSession = target.kind === 'primary'
       ? ++loadSessionRef.current
@@ -326,9 +328,7 @@ export function useIfcLoader() {
     // snapshot with the added file's numbers. So `last_load_*` describes the
     // last completed load, primary or federated - not the whole resident
     // scene, and after a federated add not the primary model either.
-    if (target.kind === 'primary') {
-      clearModelLoadedSnapshot();
-    }
+    if (target.kind === 'primary') clearModelLoadedSnapshot();
 
     // Records the tier the WASM tessellation path actually ran at, for the
     // resource-retry decision in the catch. Declared out here (not in the try)

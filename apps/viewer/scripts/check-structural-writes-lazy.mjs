@@ -49,9 +49,14 @@ export const STRUCTURAL_WRITE_SIGNATURES = [
   'assignToStructuralGroupInStore:',
   'addStructuralPointActionToStore',
   'addStructuralLinearActionToStore',
-  'addEntity(`IfcRelConnectsStructuralMember`',
+  'connectStructuralMemberToConnectionInStore:',
+  'addStructuralLoadToStore',
+  'addStructuralCurveActionToStore',
+  'connectStructuralElementInStore:',
   'addEntity(`IfcRelConnectsStructuralActivity`',
   'bim.store structural authoring:',
+  'editStructuralEntity: invalid',
+  'removeStructuralEntity: #',
 ];
 
 const REMEDY = 'Keep the structural write path behind src/sdk/adapters/store-adapter-structural.ts (loadStructuralWrites): '

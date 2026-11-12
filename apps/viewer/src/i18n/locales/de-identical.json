@@ -1914,5 +1914,17 @@
   "structuralGlyphs.tooltip": {
     "value": "{kind} · {entity}",
     "reason": "Composition of interpolated model values, symbols, units or shared German words; no English sentence is embedded."
+  },
+  "viewportLighting.container.emptyState.formats.ifc": {
+    "value": "IFC",
+    "reason": "Format family name on the welcome card: IFC is the schema acronym and is not localized in any language."
+  },
+  "viewportLighting.container.emptyState.formats.gltf": {
+    "value": "glTF",
+    "reason": "Format family name on the welcome card: glTF is the exact product spelling of the format and is not localized."
+  },
+  "viewportLighting.container.emptyState.formats.splats": {
+    "value": "Splats",
+    "reason": "Same spelling as the reviewed gaussianCapture.splats label for Gaussian splats; established term in this language."
   }
 }

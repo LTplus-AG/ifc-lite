@@ -44,6 +44,9 @@ function dist(files: Record<string, string>): string {
  * That is why the gate uses builder names, or text only one builder writes.
  */
 const BUILDER_CODE: Record<string, string> = {
+  editStructuralEntityInStore: 'throw Error(`editStructuralEntity: invalid field`)',
+  removeStructuralEntityInStore: 'throw Error(`removeStructuralEntity: #42 has dependents`)',
+
   addStructuralPlanarActionToStore: 'return S(t,`addStructuralPlanarActionToStore`),D(e,t,n,`IfcStructuralPlanarAction`)',
   addStructuralSurfaceActionToStore: 'return S(t,`addStructuralSurfaceActionToStore`,!0),D(e,t,n,`IfcStructuralSurfaceAction`)',
   addStructuralPointReactionToStore: 'let r=`addStructuralPointReactionToStore`;S(t,r)',
@@ -61,7 +64,10 @@ const BUILDER_CODE: Record<string, string> = {
   prepareStructuralFace: 'throw Error(`Structural Face: boundary points must be coplanar`)',
   addStructuralPointActionToStore: 'L(`addStructuralPointActionToStore`,[r.ForceX,r.ForceY])',
   addStructuralLinearActionToStore: 'L(`addStructuralLinearActionToStore`,[r.LinearForceX])',
-  connectStructuralMemberToConnectionInStore: `return e.addEntity(\`IfcRelConnectsStructuralMember\`,[c,i,null,null,\`#\${m}\`,\`#\${n}\`])`,
+  connectStructuralMemberToConnectionInStore: 'throw Error(`connectStructuralMemberToConnectionInStore: condition values must be finite`)',
+  addStructuralLoadToStore: 'let label=`addStructuralLoadToStore`',
+  addStructuralCurveActionToStore: 'let label=`addStructuralCurveActionToStore`',
+  connectStructuralElementInStore: 'throw Error(`connectStructuralElementInStore: IfcRelConnectsStructuralElement exists only in IFC2X3`)',
   connectStructuralActivityToItemInStore: `return e.addEntity(\`IfcRelConnectsStructuralActivity\`,[c,i,null,null,\`#\${m}\`,\`#\${n}\`])`,
   assignToStructuralGroupInStore: 'throw Error(`assignToStructuralGroupInStore: objectIds must be non-empty`)',
   createStructuralStoreBackend: `throw Error(\`bim.store structural authoring: schema '\${t}' is not supported; use IFC4 or IFC4X3.\`)`,

@@ -276,3 +276,10 @@ export { readStructuralDerivationFacts } from './structural-derive-facts.js';
 export { planStructuralDerivation } from './structural-derive-plan.js';
 export { applyStructuralDerivation } from './structural-derive-apply.js';
 export type { StructuralDerivationOptions, StructuralDerivationPlan, StructuralDerivationReport } from './structural-derive-types.js';
+export { editStructuralEntityInStore, type StructuralEntityEdit } from './structural-edit.js';
+export { removeStructuralEntityInStore } from './structural-remove.js';
+
+export { addStructuralLoadToStore, type StructuralLoadInStoreParams } from './structural-load.js';
+export { addStructuralCurveActionToStore, type StructuralCurveActionInStoreParams } from './structural-curve-action.js';
+export { connectStructuralElementInStore } from './structural-physical-link.js';
+export type { StructuralMemberConnectionOptions } from './_structural-connection-options.js';

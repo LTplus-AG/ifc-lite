@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { IfcParser } from './index.js';
 import { extractStructuralOnDemand } from './structural-extractor.js';
 import { structuralGlyphs, type StructuralGlyph } from './structural-glyphs.js';
+import type { ItemShape } from './structural-item-geometry.js';
 import { structuralSupportKind } from './structural-support-kind.js';
 import { shapeCentre, shapeStations } from './structural-glyph-stations.js';
 
@@ -762,4 +763,55 @@ describe('face stations', () => {
       expect(x).toBeLessThan(y);
     }
   });
+});
+
+// #9828: openings survive the source reader, placement and metre conversion.
+it('keeps stations and markers out of face openings (#9828)', async () => {
+  const opening = `
+#200=IFCCARTESIANPOINT((500.,0.,750.));
+#201=IFCCARTESIANPOINT((1500.,0.,750.));
+#202=IFCCARTESIANPOINT((1500.,0.,2250.));
+#203=IFCCARTESIANPOINT((500.,0.,2250.));
+#204=IFCPOLYLOOP((#200,#201,#202,#203));
+#205=IFCFACEBOUND(#204,.F.);
+`;
+  const { store } = await glyphsOf(new TextEncoder().encode(SYNTHETIC
+    .replace('IFCFACESURFACE((#71)', 'IFCFACESURFACE((#71,#205)')
+    .replace('ENDSEC;END-ISO', opening + 'ENDSEC;END-ISO')));
+  const { ItemGeometryReader } = await import('./structural-item-geometry.js');
+  const shape = new ItemGeometryReader(store).shape(76)!;
+  expect(shape.kind).toBe('face');
+  if (shape.kind !== 'face') return;
+  expect(shape.innerBounds).toHaveLength(1);
+  const positions = [...shapeStations(shape), shapeCentre(shape)];
+  expect(positions.length).toBeGreaterThan(1);
+  for (const [, y, z] of positions) {
+    expect(y > 0.5 && y < 1.5 && z > 1.25 && z < 2.75).toBe(false);
+  }
+  // A thin rim misses every lattice station and forces the scanline fallback.
+  const face: ItemShape = { kind: 'face', polygon: [[0,0,0],[6,0,0],[6,6,0],[0,6,0]],
+    innerBounds: [[[0.1,0.1,0],[5.9,0.1,0],[5.9,5.9,0],[0.1,5.9,0]]] };
+  for (const [x,y] of [...shapeStations(face), shapeCentre(face)]) {
+    expect(x > 0.1 && x < 5.9 && y > 0.1 && y < 5.9).toBe(false);
+  }
+});
+
+it('scales multi-group actions by their case, otherwise first group (#9828)', async () => {
+  const { store, extraction } = await glyphsOf(new TextEncoder().encode(SYNTHETIC));
+  const groups = extraction.loadGroups;
+  const g1 = groups.find((g) => g.expressId === 110)!;
+  const g2 = groups.find((g) => g.expressId === 111)!;
+  g2.type = 'IfcStructuralLoadCase';
+  const a = extraction.activities.find((a) => a.expressId === 81)!; // 5 N
+  const b = extraction.activities.find((a) => a.expressId === 83)!; // 10 N
+  a.groupGlobalIds = [g1.globalId, g2.globalId];
+  b.groupGlobalIds = [g2.globalId];
+  extraction.activities = [a,b];
+  const relative = () => {
+    const force = structuralGlyphs(store, extraction).find((g) => g.source.expressId === 81 && g.kind === 'force');
+    return force && 'relative' in force ? force.relative : undefined;
+  };
+  expect(relative()).toBe(0.5);
+  g2.type = 'IfcStructuralLoadGroup';
+  expect(relative()).toBe(1);
 });

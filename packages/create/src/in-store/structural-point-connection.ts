@@ -43,13 +43,13 @@
  *   stiffness values, so (as with the curve member) removal never has to
  *   reason about a second referrer.
  *
- *   Removal: same known gap as `structural-curve-member.ts` — see that
- *   module's doc comment for the full explanation. `StructuralPointConnectionBuildResult`
- *   exposes every owned id for the same reason.
+ *   `removeStructuralEntityInStore` reclaims the placement and condition when
+ *   no surviving entity references them. The result exposes their IDs too.
  *
  * Pure: no I/O, no parser access — operates entirely through the editor.
  */
 
+import { assertActivitySchema } from './_structural-activity.js';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { toNativePoint3, type SpatialAnchor } from './anchor.js';
 import { emitLocalPlacement, ownerHistoryRef, productGuid } from './_emit-helpers.js';
@@ -62,6 +62,7 @@ import { emitLocalPlacement, ownerHistoryRef, productGuid } from './_emit-helper
  * writes plain measures, mapping fixed/free to `-1.`/`0.`.
  */
 export interface StructuralBoundaryConditionParams {
+  WarpingStiffness?: boolean | number;
   Name?: string;
   TranslationalStiffnessX?: boolean | number;
   TranslationalStiffnessY?: boolean | number;
@@ -101,6 +102,7 @@ export function addStructuralPointConnectionToStore(
   anchor: SpatialAnchor,
   params: StructuralPointConnectionInStoreParams,
 ): StructuralPointConnectionBuildResult {
+  assertActivitySchema(anchor, 'addStructuralPointConnectionToStore');
   const is2x3 = anchor.schema === 'IFC2X3';
   // IFC2X3 uses plain measures: -1 = rigid, 0 = free. The `{ real }` marker is
   // required: the exporter's SELECT qualification reads the IFC4 registry for
@@ -115,10 +117,17 @@ export function addStructuralPointConnectionToStore(
   };
   // Resolved before any entity is emitted, so a refused value leaves the store untouched.
   const bc = params.BoundaryCondition;
-  const conditionAttrs = bc ? [bc.Name ?? null, ...STIFFNESS_KEYS.map((key) => stiffness(key, bc[key]))] : undefined;
+  const conditionAttrs: Parameters<StoreEditor['addEntity']>[1] | undefined = bc ? [bc.Name ?? null, ...STIFFNESS_KEYS.map((key) => stiffness(key, bc[key]))] : undefined;
+  if (bc?.WarpingStiffness !== undefined) {
+    const value = bc.WarpingStiffness;
+    if (typeof value !== 'boolean' && (typeof value !== 'number' || !Number.isFinite(value))) throw new Error('addStructuralPointConnectionToStore: WarpingStiffness must be finite or boolean');
+    conditionAttrs!.push(is2x3 ? { real: typeof value === 'boolean' ? (value ? -1 : 0) : value } : { typed: { type: typeof value === 'boolean' ? 'IfcBoolean' : 'IfcWarpingMomentMeasure', value } });
+  }
   const position = toNativePoint3(anchor, params.Position);
   const placementId = emitLocalPlacement(editor, anchor.storeyPlacementId, position);
-  const boundaryConditionId = conditionAttrs ? editor.addEntity('IfcBoundaryNodeCondition', conditionAttrs).expressId : undefined;
+  const boundaryConditionId = conditionAttrs ? (bc?.WarpingStiffness === undefined
+    ? editor.addEntity('IfcBoundaryNodeCondition', conditionAttrs).expressId
+    : editor.addEntity('IfcBoundaryNodeConditionWarping', conditionAttrs).expressId) : undefined;
 
   const connectionId = editor.addEntity('IfcStructuralPointConnection', [
     productGuid(params, anchor.guidRandom),

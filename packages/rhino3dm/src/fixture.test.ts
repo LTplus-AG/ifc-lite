@@ -7,6 +7,7 @@ import { writeRhino3dm, parseRhinoScene, RhinoSceneError } from './index.js';
 import type { RhinoSceneManifest, EncodedRhinoScene } from './index.js';
 import { dispose, loadRhino, type Rhino } from './runtime.js';
 
+const STOREY_TEXT: [string, string][] = [['IFC::GlobalId', '2O2Fr$t4X7Zf8NOew3FLOH'], ['IFC::Class', 'IfcBuildingStorey'], ['IFC::Elevation', '2.7']];
 // Small encoder independent of the Rust producer. Counts are scalar elements.
 function fixture(): { manifest: RhinoSceneManifest; scene: EncodedRhinoScene } {
   const blob = new Uint8Array(128), d = new DataView(blob.buffer);
@@ -18,7 +19,7 @@ function fixture(): { manifest: RhinoSceneManifest; scene: EncodedRhinoScene } {
     settings: { unitSystem: 'Meters', metersPerUnit: 1, absoluteTolerance: 0.0002, angleToleranceDegrees: 5,
       earthAnchor: { latitude: 47.3769, longitude: 8.5417, elevation: 408, modelBasePoint: [1, 2, 3], modelNorth: [0, 1, 0], modelEast: [1, 0, 0], name: 'Site' } },
     warnings: [], documentStrings: [['IFC::Schema', 'IFC4']],
-    layers: ['Project', 'Site', 'Building', 'Level 1', 'IfcWall'].map((name, i) => ({ name, parent: i === 0 ? null : i - 1, color: [128, 128, 128, 255], visible: true, locked: false })),
+    layers: ['Project', 'Site', 'Building', 'Level 1', 'IfcWall'].map((name, i) => ({ name, parent: i === 0 ? null : i - 1, color: [128, 128, 128, 255], visible: true, locked: false, userStrings: name === 'Level 1' ? STOREY_TEXT : [] })),
     materials: [{ name: 'Concrete', diffuse: [12, 34, 56], transparency: 0.25 }], groups: [{ name: 'element' }],
     meshes: [{ positions: { offset: 0, count: 9 }, normals: { offset: 72, count: 9 }, indices: { offset: 112, count: 3 } }],
     blocks: [{ name: 'Block', description: 'Repeated geometry', meshes: [0], layer: 0 }],
@@ -38,7 +39,7 @@ function objectNamed(f: InstanceType<Rhino['File3dm']>, name: string) {
 test.each([7, 8] as const)('round-trips archive %i and the v1 manifest semantics', async version => {
   const { manifest: m, scene } = fixture();
   // A separate root layer exercises visibility and locking without hiding the wall.
-  m.layers.push({ name: 'Hidden', parent: null, color: [1, 2, 3, 255], visible: false, locked: true });
+  m.layers.push({ name: 'Hidden', parent: null, color: [1, 2, 3, 255], visible: false, locked: true, userStrings: [] });
   const progress: number[][] = [];
   const { bytes, warnings, objectCount } = await writeRhino3dm(encoded(m, scene.blob), { version, onProgress: (d, t) => progress.push([d, t]) });
   expect(warnings).toEqual(m.warnings);
@@ -49,6 +50,8 @@ test.each([7, 8] as const)('round-trips archive %i and the v1 manifest semantics
     expect(file.archiveVersion).toBe(version * 10);
     expect(file.layers().get(4).fullPath).toBe('Project::Site::Building::Level 1::IfcWall');
     expect(file.layers().get(5).visible).toBe(false); expect(file.layers().get(5).locked).toBe(true);
+    // Layer user text survives the write in both archive versions; unstamped layers stay empty.
+    expect(Array.from({ length: 6 }, (_, i) => file.layers().get(i).getUserStrings())).toEqual([[], [], [], STOREY_TEXT, [], []]);
     expect(file.strings().get(0)).toEqual(['IFC::Schema', 'IFC4']);
     const material = file.materials().get(0);
     expect(material.name).toBe('Concrete'); expect(material.diffuseColor).toMatchObject({ r: 12, g: 34, b: 56 });
@@ -110,6 +113,8 @@ const invalidCases: [string, (m: RhinoSceneManifest) => void, RegExp][] = [
   ['buffer bounds', (m: RhinoSceneManifest) => m.meshes[0].positions.count = 999, /out of range/],
   ['mesh index', (m: RhinoSceneManifest) => m.blocks[0].meshes[0] = 7, /out of range/],
   ['parent ordering', (m: RhinoSceneManifest) => m.layers[0].parent = 1, /precede child/],
+  ['layer without userStrings', (m: RhinoSceneManifest) => Reflect.deleteProperty(m.layers[0], 'userStrings'), /layer\.userStrings/],
+  ['non-string layer user text', (m: RhinoSceneManifest) => Object.assign(m.layers[3], { userStrings: [['IFC::Elevation', 2.7]] }), /layer\.userStrings/],
   ['zero-vertex mesh with indices', (m: RhinoSceneManifest) => Object.assign(m.meshes[0], { positions: { offset: 0, count: 0 }, normals: null }), /triangle vertex/],
 ];
 test.each(invalidCases)('rejects %s with a typed error', (_name, mutate, message) => {

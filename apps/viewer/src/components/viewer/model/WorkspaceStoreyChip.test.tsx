@@ -30,11 +30,11 @@ import { setRequestRemesh } from '@/lib/commands/modeling/transaction';
 import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
 import { StoreyPicker } from './StoreyPicker';
 import { ViewportHud, HudPopover, HudPopoverTrigger, HudPopoverContent } from '../../viewport-ui/hud';
-import { WorkspaceStoreyChip } from './WorkspaceStoreyChip';
+import { WorkspaceStoreyControl } from './WorkspaceStoreyChip';
 import { Toaster } from '@/components/ui/toast';
 import { commitStoreyOp } from '@/store/slices/mutation-storey';
 
-const topLeft = () => document.querySelector('[data-hud-region="top-left"]');
+const topLeft = () => document.querySelector('[data-workspace-storey-control]');
 const chipButton = () => document.querySelector('[data-workspace-storey-chip]') as HTMLButtonElement | null;
 
 function openList(): HTMLButtonElement[] {
@@ -49,7 +49,7 @@ function openList(): HTMLButtonElement[] {
 beforeEach(async () => {
   await seedModelingSession();
   useViewerStore.setState({ editEnabled: false, selectedEntityId: null, levelDisplayMode: 'stacked', selectedStoreys: new Set() });
-  render(<><ViewportHud /><WorkspaceStoreyChip /></>);
+  render(<><ViewportHud /><WorkspaceStoreyControl /></>);
 });
 afterEach(() => {
   cleanup();

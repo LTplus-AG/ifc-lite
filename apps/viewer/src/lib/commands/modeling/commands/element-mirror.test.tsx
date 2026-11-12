@@ -86,13 +86,13 @@ it('#9296 Mirror typed horizontal axis exports y=14, flips door handedness and u
 for (const copy of ['alt','toggle'] as const) it(`#9296 Mirror ${copy} makes a reflected copy and one undo removes it`, async () => {
   const id = wall(), d = depth(); select(id);
   await useViewerStore.getState().startCommand('element.mirror');
-  click(0,12);
+  commandPointerDown(at(0,12));
   if (copy === 'toggle') {
     const runtime = getCommandRuntime(), Bar = runtime.command!.hud.Bar!;
     const ui = renderHud(createElement(Bar,{ gesture: runtime.gesture, ctx: runtime.ctx! }));
     const input = ui.querySelector('#mirror-keep-original'); assert.ok(input); clickHud(input);
   }
-  click(4,12,copy === 'alt');
+  commandPointerDown(at(4,12,copy === 'alt')); // touch/click with no preceding move; Alt changes on this down
   assert.equal(getCommandRuntime().command, null);
   const selected = useViewerStore.getState().selectedEntityId!;
   const { resolveEntityRef } = await import('@/store/resolveEntityRef');

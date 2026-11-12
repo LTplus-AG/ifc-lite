@@ -255,12 +255,20 @@ export const createAuthoringSessionSlice: StateCreator<ViewerState, [], [], Auth
     setWorkplane: (workplane, options = {}) => moveWorkplane(set, get, { workplane, planeRaisedForRoof: false, planeHeightPinned: options.pinned ?? true }),
 
     startCommand: (id) => {
-      const generation = ++editCommandGeneration;
+      ++editCommandGeneration;
       if (!getModelingCommand(id) && isLazyEditCommand(id)) {
+        if (!get().session && !get().enterModelWorkspace()) return;
+        get().endCommand('switch');
+        const generation = ++editCommandGeneration;
+        get().setActiveTool('command');
+        if (get().activeTool !== 'command') return;
         const session = get().session;
         return loadEditCommand(id).then(() => {
-          if (generation === editCommandGeneration && get().session === session) get().startCommand(id);
-        }).catch((error: unknown) => console.error(`[modeling] Could not load ${id}`, error));
+          if (generation === editCommandGeneration && get().session === session && get().activeTool === 'command') get().startCommand(id);
+        }).catch((error: unknown) => {
+          if (generation === editCommandGeneration && get().session === session) get().endCommand('cancel');
+          console.error(`[modeling] Could not load ${id}`, error);
+        });
       }
       if (!getModelingCommand(id)) {
         console.warn(`[modeling] Unknown command: ${id}`);

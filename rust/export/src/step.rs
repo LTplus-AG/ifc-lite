@@ -28,8 +28,16 @@ pub fn export_step(content: &[u8], opts: &StepOptions) -> std::io::Result<String
     export_step_with_stats(content, opts).map(|(s, _)| s)
 }
 
-/// Like [`export_step`] but also returns coverage stats.
+/// Like [`export_step`] but also returns coverage stats. For named warnings,
+/// use [`export_step_with_diagnostics`]; this legacy return type is unchanged.
 pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> std::io::Result<(String, StepStats)> {
+    export_step_with_diagnostics(content, opts).map(|(text, stats, _)| (text, stats))
+}
+
+/// Export STEP text, coverage counters and named conversion diagnostics.
+/// Unlike the legacy stats-only API, this reports which structural fields
+/// cannot survive the target schema without changing `StepStats`'s layout.
+pub fn export_step_with_diagnostics(content: &[u8], opts: &StepOptions) -> std::io::Result<(String, StepStats, Vec<String>)> {
     // Presized for a full re-export, where the output is within a small factor
     // of the source. Not for a subset: 200 MB filtered to a few records would
     // reserve 200 MB, and on wasm that linear memory never comes back.
@@ -43,11 +51,11 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> std::io::Re
     // always a schema-conversion failure (`emit` also propagates those through
     // this same `io::Result`, see `schema_unrepresented::UnrepresentedEntityError`'s
     // `From` impl) — genuinely fallible now, unlike the `.expect` this replaced.
-    let stats = emit(content, opts, &mut buf)?;
+    let (stats, warnings) = emit(content, opts, &mut buf)?;
     // Every byte came from the source by way of `from_utf8_lossy`, or from a
     // `format!`, so this validates rather than converts.
     let out = String::from_utf8(buf).expect("the writer emits UTF-8");
-    Ok((out, stats))
+    Ok((out, stats, warnings))
 }
 
 /// [`export_step_with_stats`], writing as it goes instead of returning the file.
@@ -70,6 +78,11 @@ pub fn export_step_to_writer<W: std::io::Write>(
     opts: &StepOptions,
     w: &mut W,
 ) -> std::io::Result<StepStats> {
+    export_step_to_writer_with_diagnostics(content, opts, w).map(|(stats, _)| stats)
+}
+
+/// Streaming counterpart of [`export_step_with_diagnostics`].
+pub fn export_step_to_writer_with_diagnostics<W: std::io::Write>(content: &[u8], opts: &StepOptions, w: &mut W) -> std::io::Result<(StepStats, Vec<String>)> {
     use std::io::Write as _;
     let mut buffered = std::io::BufWriter::with_capacity(1 << 20, w);
     let stats = emit(content, opts, &mut buffered)?;
@@ -130,7 +143,7 @@ fn emit<W: std::io::Write>(
     content: &[u8],
     opts: &StepOptions,
     out: &mut W,
-) -> std::io::Result<StepStats> {
+) -> std::io::Result<(StepStats, Vec<String>)> {
     // 1. Index every entity line (preserve source order). A repeated id keeps
     // its last record, as core does, and the rest are counted (#7682,
     // EXPORT-STEP-11).
@@ -335,7 +348,7 @@ fn emit<W: std::io::Write>(
     written = written.checked_add_signed(body.finish()?).unwrap_or(written);
     out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;
 
-    Ok(StepStats {
+    Ok((StepStats {
         total: order.len(),
         written,
         copies_refused,
@@ -349,7 +362,7 @@ fn emit<W: std::io::Write>(
         attribute_values_dropped: checks.attribute_values_dropped,
         property_mutations_refused,
         duplicate_records_dropped: index.duplicates.len(),
-    })
+    }, checks.warnings()))
 }
 
 #[cfg(test)]

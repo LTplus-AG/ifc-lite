@@ -26,6 +26,7 @@
  * "the loss report ... names each attribute it could not carry" bar).
  */
 
+import { isStructuralBoundaryCondition } from './schema-converter-structural.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import {
   convertEntityType,
@@ -42,7 +43,8 @@ export type EntityConversionKind =
   /** Same type, same attribute list: nothing lost. */
   | 'identity'
   /** Different type name (or the same name, source-schema attrs trimmed/padded),
-   *  every source attribute has a same-named home in the target. */
+   *  every source attribute has a same-named or explicitly mapped semantic home
+   *  in the target. */
   | 'renamed'
   /** Reconciled with SOME loss. Usually at least one source attribute has no
    *  home in the target schema's shape for this type (see
@@ -90,6 +92,10 @@ export function classifyEntityTypeConversion(
 
   const newType = convertEntityType(upper, fromSchema, toSchema);
   const srcAttrs = attrNameTable(fromSchema)?.get(upper);
+  // #9668: stiffness fields survive by semantic position and unit, despite
+  // renamed Linear/Translational attributes and SELECT wrappers.
+  if (isStructuralBoundaryCondition(upper) && ((fromSchema === 'IFC2X3' && toSchema === 'IFC4') || (fromSchema === 'IFC4' && toSchema === 'IFC2X3')))
+    return { targetType: upper, kind: 'renamed', droppedAttributes: [] };
   // #9668: the two linked objects survive in IFC4's analytical assignment,
   // under differently named roles. A reverse type guess is not implied.
   if (upper === 'IFCRELCONNECTSSTRUCTURALELEMENT' && fromSchema === 'IFC2X3' && toSchema === 'IFC4')

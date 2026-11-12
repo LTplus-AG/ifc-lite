@@ -124,3 +124,42 @@ mod diagnostic_tests {
         assert_eq!(out, "#50=IFCRELASSIGNSTOPRODUCT('id',#1,$,$,(#77),$,#22);");
     }
 }
+
+#[cfg(test)]
+mod review_regressions {
+    use crate::step::{export_step_with_diagnostics, export_step_to_writer_with_diagnostics, StepOptions};
+    use crate::schema_convert::convert_step_line;
+    use crate::schema_enum::ConversionChecks;
+    use crate::schema_ifc2x3_slots::Ifc2x3SlotFill;
+
+    #[test]
+    fn plain_native_diagnostics_forward_named_structural_losses_9668() {
+        for (schema, target, record, field) in [
+            ("IFC4", "IFC2X3", "#50=IFCSTRUCTURALPOINTCONNECTION('id',#1,$,$,$,$,$,#22,#77);", "ConditionCoordinateSystem"),
+            ("IFC2X3", "IFC4", "#50=IFCSTRUCTURALPOINTACTION('id',#1,$,$,$,$,$,#22,.GLOBAL_COORDS.,.F.,#77);", "CausedBy"),
+        ] {
+            let source = format!("ISO-10303-21;HEADER;FILE_SCHEMA(('{schema}'));ENDSEC;DATA;\n{record}\nENDSEC;END-ISO-10303-21;");
+            let options = StepOptions { schema: Some(target.into()), ..StepOptions::default() };
+            let (out, stats, warnings) = export_step_with_diagnostics(source.as_bytes(), &options).unwrap();
+            assert!(!out.contains("#77"));
+            assert!(warnings.iter().any(|w| w.contains(field) && w.contains("omitted")), "{warnings:?}");
+            assert_eq!(stats.attribute_values_dropped, 1);
+            let mut bytes = Vec::new();
+            let (_, streamed_warnings) = export_step_to_writer_with_diagnostics(source.as_bytes(), &options, &mut bytes).unwrap();
+            assert_eq!(bytes, out.as_bytes());
+            assert_eq!(streamed_warnings, warnings);
+            if field == "ConditionCoordinateSystem" {
+                assert!(warnings.iter().any(|w| w.contains("restraint directions")));
+            }
+        }
+    }
+
+    #[test]
+    fn native_ifc2x3_varying_action_is_unconverted_and_warned_9668() {
+        let source = "#50=IFCSTRUCTURALPLANARACTIONVARYING('id',#1,$,$,$,$,$,#22,.GLOBAL_COORDS.,.F.,$,.TRUE_LENGTH.,#88,(#23));";
+        let mut checks = ConversionChecks::new();
+        let out = convert_step_line(source, "IFC2X3", "IFC4", 50, &mut Ifc2x3SlotFill::new(None), Some(&mut checks)).unwrap();
+        assert_eq!(out, source);
+        assert!(checks.warnings().iter().any(|w| w.contains("record remains unconverted; output does not conform to IFC4")));
+    }
+}

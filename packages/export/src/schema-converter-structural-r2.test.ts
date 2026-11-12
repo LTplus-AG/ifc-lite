@@ -99,3 +99,22 @@ describe('explicit IFC2X3 section orientation #9668', () => {
     expect(diagnostics.structural.axes.axis(lines[0])).toBeUndefined();
   });
 });
+
+import { analyzeConversionLoss, classifyEntityTypeConversion } from './schema-conversion-loss-report.js';
+describe('boundary conversion loss preview #9668 review regression', () => {
+  it('does not report renamed stiffness fields as dropped in either direction', () => {
+    for (const type of ['IFCBOUNDARYNODECONDITION', 'IFCBOUNDARYNODECONDITIONWARPING', 'IFCBOUNDARYEDGECONDITION', 'IFCBOUNDARYFACECONDITION']) {
+      for (const [from, to] of [['IFC2X3', 'IFC4'], ['IFC4', 'IFC2X3']] as const) {
+        expect(classifyEntityTypeConversion(type, from, to)).toEqual({ targetType: type, kind: 'renamed', droppedAttributes: [] });
+      }
+    }
+  });
+  it('reports no loss for a populated boundary store that exports the same stiffness values', async () => {
+    const source = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n#23=IFCBOUNDARYNODECONDITION('Support',12.,23.,34.,45.,56.,67.);\nENDSEC;\nEND-ISO-10303-21;";
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(source).buffer);
+    expect(analyzeConversionLoss(store, 'IFC2X3', 'IFC4').hasLoss).toBe(false);
+    const out = new TextDecoder().decode(new StepExporter(store).export({ schema: 'IFC4' }).content);
+    expect(out).toContain('IFCLINEARSTIFFNESSMEASURE(12.)');
+    expect(out).toContain('IFCROTATIONALSTIFFNESSMEASURE(67.)');
+  });
+});

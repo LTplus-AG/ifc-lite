@@ -16,27 +16,27 @@ Why cells are not met:
 
 | Row | Level | R3 | R4 | Reason |
 |---|---|---|---|---|
-| IFC2X3/IfcStructuralCurveConnection | render | unwritten | fail | 1 problem(s) over 1 record(s): 1 of 1 record(s) with a support condition draw no glyph, e.g. ifcopenshell/generated_structural_coverage_ifc2x3.ifc#44 |
-| IFC2X3/IfcStructuralLinearAction | render | unwritten | partial | 1 problem(s) over 103 record(s): 1 of 103 record(s) with a load draw no glyph, e.g. ifcopenshell/generated_structural_coverage_ifc2x3.ifc#50 |
-| IFC2X3/IfcStructuralLinearActionVarying | render | unwritten | partial | 1 problem(s) over 132 record(s): 7 of 132 record(s) with a load draw no glyph, e.g. ifcopenshell/generated_structural_coverage_ifc2x3.ifc#58 |
-| IFC2X3/IfcStructuralPlanarAction | render | unwritten | partial | 1 problem(s) over 2 record(s): 1 of 2 record(s) with a load draw no glyph, e.g. ifcopenshell/generated_structural_coverage_ifc2x3.ifc#52 |
-| IFC2X3/IfcStructuralPlanarActionVarying | render | unwritten | fail | 1 problem(s) over 1 record(s): 1 of 1 record(s) with a load draw no glyph, e.g. ifcopenshell/generated_structural_coverage_ifc2x3.ifc#64 |
-| IFC2X3/IfcStructuralPointAction | render | unwritten | pass | every record with a support condition or load draws a glyph |
-| IFC2X3/IfcStructuralPointConnection | render | unwritten | pass | every record with a support condition or load draws a glyph |
-| IFC2X3/IfcStructuralSurfaceConnection | render | unwritten | partial | 1 problem(s) over 4 record(s): 1 of 4 record(s) with a support condition draw no glyph, e.g. ifcopenshell/generated_structural_coverage_ifc2x3.ifc#46 |
-| IFC4/IfcStructuralCurveAction | render | unwritten | partial | 1 problem(s) over 3 record(s): 1 of 3 record(s) with a load draw no glyph, e.g. ifcopenshell/generated_structural_coverage_ifc4.ifc#51 |
-| IFC4/IfcStructuralCurveConnection | render | unwritten | partial | 1 problem(s) over 10 record(s): 1 of 10 record(s) with a support condition draw no glyph, e.g. ifcopenshell/generated_structural_coverage_ifc4.ifc#41 |
-| IFC4/IfcStructuralLinearAction | render | unwritten | partial | 1 problem(s) over 481 record(s): 1 of 481 record(s) with a load draw no glyph, e.g. ifcopenshell/generated_structural_coverage_ifc4.ifc#47 |
-| IFC4/IfcStructuralPlanarAction | render | unwritten | partial | 1 problem(s) over 478 record(s): 1 of 478 record(s) with a load draw no glyph, e.g. ifcopenshell/generated_structural_coverage_ifc4.ifc#49 |
-| IFC4/IfcStructuralPointAction | render | unwritten | pass | every record with a support condition or load draws a glyph |
-| IFC4/IfcStructuralPointConnection | render | unwritten | pass | every record with a support condition or load draws a glyph |
-| IFC4/IfcStructuralSurfaceAction | render | unwritten | fail | 1 problem(s) over 1 record(s): 1 of 1 record(s) with a load draw no glyph, e.g. ifcopenshell/generated_structural_coverage_ifc4.ifc#53 |
-| IFC4/IfcStructuralSurfaceConnection | render | unwritten | fail | 1 problem(s) over 1 record(s): 1 of 1 record(s) with a support condition draw no glyph, e.g. ifcopenshell/generated_structural_coverage_ifc4.ifc#43 |
-| IFC4X3/IfcStructuralCurveAction | render | unwritten | fail | 1 problem(s) over 1 record(s): 1 of 1 record(s) with a load draw no glyph, e.g. ifcopenshell/generated_structural_coverage_ifc4x3.ifc#52 |
-| IFC4X3/IfcStructuralCurveConnection | render | unwritten | fail | 1 problem(s) over 1 record(s): 1 of 1 record(s) with a support condition draw no glyph, e.g. ifcopenshell/generated_structural_coverage_ifc4x3.ifc#42 |
-| IFC4X3/IfcStructuralLinearAction | render | unwritten | fail | 1 problem(s) over 2 record(s): 2 of 2 record(s) with a load draw no glyph, e.g. ifcopenshell/generated_structural_coverage_ifc4x3.ifc#48 |
-| IFC4X3/IfcStructuralPlanarAction | render | unwritten | fail | 1 problem(s) over 1 record(s): 1 of 1 record(s) with a load draw no glyph, e.g. ifcopenshell/generated_structural_coverage_ifc4x3.ifc#50 |
-| IFC4X3/IfcStructuralPointAction | render | unwritten | partial | 1 problem(s) over 5 record(s): 1 of 5 record(s) with a load draw no glyph, e.g. structural/puntal-alfa/portal-demo.ifc#88 |
-| IFC4X3/IfcStructuralPointConnection | render | unwritten | pass | every record with a support condition or load draws a glyph |
-| IFC4X3/IfcStructuralSurfaceAction | render | unwritten | fail | 1 problem(s) over 1 record(s): 1 of 1 record(s) with a load draw no glyph, e.g. ifcopenshell/generated_structural_coverage_ifc4x3.ifc#54 |
-| IFC4X3/IfcStructuralSurfaceConnection | render | unwritten | fail | 1 problem(s) over 1 record(s): 1 of 1 record(s) with a support condition draw no glyph, e.g. ifcopenshell/generated_structural_coverage_ifc4x3.ifc#44 |
+| IFC2X3/IfcStructuralCurveConnection | render | unwritten | fail | 1 problem(s) over 1 record(s): 1 of 1 record(s) with a restraining support condition draw no glyph, e.g. ifcopenshell/generated_structural_coverage_ifc2x3.ifc#4 |
+| IFC2X3/IfcStructuralLinearAction | render | unwritten | partial | 1 problem(s) over 103 record(s): 1 of 103 record(s) with a non-zero load draw no glyph, e.g. ifcopenshell/generated_structural_coverage_ifc2x3.ifc#50 |
+| IFC2X3/IfcStructuralLinearActionVarying | render | unwritten | partial | 1 problem(s) over 132 record(s): 7 of 132 record(s) with a non-zero load draw no glyph, e.g. ifcopenshell/generated_structural_coverage_ifc2x3.ifc#58 |
+| IFC2X3/IfcStructuralPlanarAction | render | unwritten | partial | 1 problem(s) over 2 record(s): 1 of 2 record(s) with a non-zero load draw no glyph, e.g. ifcopenshell/generated_structural_coverage_ifc2x3.ifc#52 |
+| IFC2X3/IfcStructuralPlanarActionVarying | render | unwritten | fail | 1 problem(s) over 1 record(s): 1 of 1 record(s) with a non-zero load draw no glyph, e.g. ifcopenshell/generated_structural_coverage_ifc2x3.ifc#64 |
+| IFC2X3/IfcStructuralPointAction | render | unwritten | pass | every record with a restraining support condition or non-zero load draws a glyph |
+| IFC2X3/IfcStructuralPointConnection | render | unwritten | pass | every record with a restraining support condition or non-zero load draws a glyph |
+| IFC2X3/IfcStructuralSurfaceConnection | render | unwritten | partial | 1 problem(s) over 4 record(s): 1 of 4 record(s) with a restraining support condition draw no glyph, e.g. ifcopenshell/generated_structural_coverage_ifc2x3.ifc#4 |
+| IFC4/IfcStructuralCurveAction | render | unwritten | partial | 1 problem(s) over 3 record(s): 1 of 3 record(s) with a non-zero load draw no glyph, e.g. ifcopenshell/generated_structural_coverage_ifc4.ifc#51 |
+| IFC4/IfcStructuralCurveConnection | render | unwritten | partial | 1 problem(s) over 10 record(s): 1 of 10 record(s) with a restraining support condition draw no glyph, e.g. ifcopenshell/generated_structural_coverage_ifc4.ifc#4 |
+| IFC4/IfcStructuralLinearAction | render | unwritten | partial | 1 problem(s) over 481 record(s): 1 of 481 record(s) with a non-zero load draw no glyph, e.g. ifcopenshell/generated_structural_coverage_ifc4.ifc#47 |
+| IFC4/IfcStructuralPlanarAction | render | unwritten | partial | 1 problem(s) over 478 record(s): 1 of 478 record(s) with a non-zero load draw no glyph, e.g. ifcopenshell/generated_structural_coverage_ifc4.ifc#49 |
+| IFC4/IfcStructuralPointAction | render | unwritten | pass | every record with a restraining support condition or non-zero load draws a glyph |
+| IFC4/IfcStructuralPointConnection | render | unwritten | pass | every record with a restraining support condition or non-zero load draws a glyph |
+| IFC4/IfcStructuralSurfaceAction | render | unwritten | fail | 1 problem(s) over 1 record(s): 1 of 1 record(s) with a non-zero load draw no glyph, e.g. ifcopenshell/generated_structural_coverage_ifc4.ifc#53 |
+| IFC4/IfcStructuralSurfaceConnection | render | unwritten | fail | 1 problem(s) over 1 record(s): 1 of 1 record(s) with a restraining support condition draw no glyph, e.g. ifcopenshell/generated_structural_coverage_ifc4.ifc#43 |
+| IFC4X3/IfcStructuralCurveAction | render | unwritten | fail | 1 problem(s) over 1 record(s): 1 of 1 record(s) with a non-zero load draw no glyph, e.g. ifcopenshell/generated_structural_coverage_ifc4x3.ifc#52 |
+| IFC4X3/IfcStructuralCurveConnection | render | unwritten | fail | 1 problem(s) over 1 record(s): 1 of 1 record(s) with a restraining support condition draw no glyph, e.g. ifcopenshell/generated_structural_coverage_ifc4x3.ifc#4 |
+| IFC4X3/IfcStructuralLinearAction | render | unwritten | fail | 1 problem(s) over 2 record(s): 2 of 2 record(s) with a non-zero load draw no glyph, e.g. ifcopenshell/generated_structural_coverage_ifc4x3.ifc#48 |
+| IFC4X3/IfcStructuralPlanarAction | render | unwritten | fail | 1 problem(s) over 1 record(s): 1 of 1 record(s) with a non-zero load draw no glyph, e.g. ifcopenshell/generated_structural_coverage_ifc4x3.ifc#50 |
+| IFC4X3/IfcStructuralPointAction | render | unwritten | partial | 1 problem(s) over 5 record(s): 1 of 5 record(s) with a non-zero load draw no glyph, e.g. structural/puntal-alfa/portal-demo.ifc#88 |
+| IFC4X3/IfcStructuralPointConnection | render | unwritten | pass | every record with a restraining support condition or non-zero load draws a glyph |
+| IFC4X3/IfcStructuralSurfaceAction | render | unwritten | fail | 1 problem(s) over 1 record(s): 1 of 1 record(s) with a non-zero load draw no glyph, e.g. ifcopenshell/generated_structural_coverage_ifc4x3.ifc#54 |
+| IFC4X3/IfcStructuralSurfaceConnection | render | unwritten | fail | 1 problem(s) over 1 record(s): 1 of 1 record(s) with a restraining support condition draw no glyph, e.g. ifcopenshell/generated_structural_coverage_ifc4x3.ifc#4 |

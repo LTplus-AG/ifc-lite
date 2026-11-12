@@ -55,7 +55,7 @@ function glyphSources(ctx, file) {
   return cached(ctx, `render:${file.path}`, async () => {
     try {
       const store = await storeOf(ctx, file);
-      const { glyphs } = ctx.pkgs.structuralGlyphs.structuralGlyphs(store, ctx.pkgs.parser.extractStructuralOnDemand(store));
+      const glyphs = ctx.pkgs.structuralGlyphs.structuralGlyphs(store, ctx.pkgs.parser.extractStructuralOnDemand(store));
       const drawn = new Set();
       for (const g of glyphs) if (g.position.every(Number.isFinite)) drawn.add(g.source.expressId);
       return { drawn };
@@ -76,7 +76,6 @@ export default {
       if (!carriers.length) { out.set(row.id, ctx.corpus.nothingCarries(row.schema, row.entity)); continue; }
       const problems = [];
       let checked = 0;
-      let held = 0;
       const missed = [];
       for (const file of carriers) {
         const expected = file.step.of(row.entity).filter((rec) => mustDraw(row, file.step, rec));
@@ -85,14 +84,14 @@ export default {
         if (error) { problems.push(`${file.path}: ${error}`); continue; }
         for (const rec of expected) {
           checked += 1;
-          if (drawn.has(rec.id)) held += 1;
-          else missed.push(`${file.path}#${rec.id}`);
+          if (!drawn.has(rec.id)) missed.push(`${file.path}#${rec.id}`);
         }
       }
-      if (missed.length) problems.unshift(`${missed.length} of ${checked} record(s) with a ${isConnection(row) ? 'support condition' : 'load'} draw no glyph, e.g. ${missed[0]}`);
+      const what = isConnection(row) ? 'restraining support condition' : 'non-zero load';
+      if (missed.length) problems.unshift(`${missed.length} of ${checked} record(s) with a ${what} draw no glyph, e.g. ${missed[0]}`);
       const result = checked
-        ? verdict(checked, problems, { anyHeld: held > 0 })
-        : { status: 'fail', reason: `no corpus record of ${row.entity} carries a ${isConnection(row) ? 'restraining support condition' : 'non-zero load'}, so a glyph is unproven` };
+        ? verdict(checked, problems, { anyHeld: missed.length < checked })
+        : { status: 'fail', reason: `no corpus record of ${row.entity} carries a ${what}, so a glyph is unproven` };
       out.set(row.id, { ...result, evidence: carriers.map((f) => f.path) });
     }
     return out;

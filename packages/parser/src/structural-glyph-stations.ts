@@ -10,11 +10,11 @@
 import { add, cross, dot, frameFrom, length, normalize, scale, sub, type Frame, type ItemShape, type Vec3 } from './structural-item-geometry.js';
 
 /** Fractions along an edge where a distributed load or support repeats. */
-export const EDGE_STATIONS = [0, 0.25, 0.5, 0.75, 1];
+const EDGE_STATIONS = [0, 0.25, 0.5, 0.75, 1];
 /** Lattice fractions over a face's bounding box, per axis (at most 3 x 3 arrows per face). */
 const FACE_LATTICE = [1 / 6, 1 / 2, 5 / 6];
 
-export const lerp = (a: Vec3, b: Vec3, t: number): Vec3 => add(a, scale(sub(b, a), t));
+const lerp = (a: Vec3, b: Vec3, t: number): Vec3 => add(a, scale(sub(b, a), t));
 
 /** Newell normal of a polygon, null when degenerate. */
 function polygonNormal(polygon: readonly Vec3[]): Vec3 | null {
@@ -27,7 +27,7 @@ function polygonNormal(polygon: readonly Vec3[]): Vec3 | null {
   return normalize(n);
 }
 
-export function centroid(polygon: readonly Vec3[]): Vec3 {
+function centroid(polygon: readonly Vec3[]): Vec3 {
   return scale(polygon.reduce((s, p) => add(s, p), [0, 0, 0] as Vec3), 1 / polygon.length);
 }
 
@@ -66,7 +66,7 @@ function inside(p: readonly [number, number], poly: readonly (readonly [number, 
  * in its own plane, keeping those inside the polygon. The centroid when none
  * falls inside (a thin sliver).
  */
-export function faceStations(polygon: readonly Vec3[]): Vec3[] {
+function faceStations(polygon: readonly Vec3[]): Vec3[] {
   const frame = shapeFrame({ kind: 'face', polygon: [...polygon] }, null);
   if (!frame) return [centroid(polygon)];
   const flat = polygon.map((p) => [dot(sub(p, frame.origin), frame.x), dot(sub(p, frame.origin), frame.y)] as const);

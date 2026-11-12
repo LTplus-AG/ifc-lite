@@ -23,8 +23,9 @@
 
 import { firstProjAxis, walkPlacementChain } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
+import { getEntityRefFromStore } from './columnar-parser-root-attributes.js';
 import { EntityExtractor } from './entity-extractor.js';
-import { asRef, asRefList, unwrapTyped } from './structural-step-values.js';
+import { asBoolean, asRef, asRefList, unwrapTyped } from './structural-step-values.js';
 
 export type Vec3 = readonly [number, number, number];
 
@@ -65,7 +66,7 @@ export function normalize(a: Vec3): Vec3 | null {
 export const rotate = (frame: Frame, v: Vec3): Vec3 =>
   add(add(scale(frame.x, v[0]), scale(frame.y, v[1])), scale(frame.z, v[2]));
 /** A point given in `frame`, in world coordinates. */
-export const apply = (frame: Frame, p: Vec3): Vec3 => add(frame.origin, rotate(frame, p));
+const apply = (frame: Frame, p: Vec3): Vec3 => add(frame.origin, rotate(frame, p));
 /** `outer` after `inner`: `inner` is expressed in `outer`. */
 export const compose = (outer: Frame, inner: Frame): Frame => ({
   origin: apply(outer, inner.origin),
@@ -114,12 +115,11 @@ export class ItemGeometryReader {
     this.unitScale = typeof s === 'number' && Number.isFinite(s) && s > 0 ? s : 1;
   }
 
-  entity(id: number | undefined): Entity | null {
+  private entity(id: number | undefined): Entity | null {
     if (id === undefined) return null;
     const hit = this.entities.get(id);
     if (hit !== undefined) return hit;
-    // @raw-entity-enumeration-ok geometry resources are read from source bytes; the read model already applied the mutation view to the items themselves
-    const ref = this.store.entityIndex.byId.get(id) ?? this.store.deferredEntityIndex?.get(id);
+    const ref = getEntityRefFromStore(this.store, id);
     const raw = ref ? this.extractor.extractEntity(ref) : null;
     const entity = raw ? { type: String(raw.type).toUpperCase(), attributes: raw.attributes ?? [] } : null;
     this.entities.set(id, entity);
@@ -154,7 +154,7 @@ export class ItemGeometryReader {
    * a cycle, an unreadable link or another placement kind (grid, linear):
    * a glyph is skipped rather than drawn at a guessed origin.
    */
-  placement(id: number): Frame | null {
+  private placement(id: number): Frame | null {
     const cached = this.placements.get(id);
     if (cached !== undefined) return cached;
     const chain = walkPlacementChain(id, (link) => {
@@ -241,7 +241,7 @@ export class ItemGeometryReader {
     if (!e || depth > MAX_EDGE_ELEMENT_DEPTH) return null;
     if (e.type === 'IFCORIENTEDEDGE') {
       const inner = this.edge(asRef(e.attributes[2]), depth + 1);
-      const forward = unwrapTyped(e.attributes[3]) !== false && unwrapTyped(e.attributes[3]) !== '.F.';
+      const forward = asBoolean(e.attributes[3]) !== false;
       return inner && (forward ? inner : [inner[1], inner[0]]);
     }
     if (e.type !== 'IFCEDGE' && e.type !== 'IFCEDGECURVE' && e.type !== 'IFCSUBEDGE') return null;

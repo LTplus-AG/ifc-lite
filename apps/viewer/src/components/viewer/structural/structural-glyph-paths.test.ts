@@ -3,8 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The drawing half of the structural glyph overlay (#9668): the move into a
- * model's render frame, and symbol sizes against a stub camera that projects
+ * The drawing half of the structural glyph overlay (#9668): the move to where
+ * the model is drawn, and symbol sizes against a stub camera that projects
  * `pxPerMetre` pixels per metre (x right, render Y up the screen).
  */
 
@@ -28,20 +28,24 @@ const extent = (d: string) => {
 };
 
 describe('toViewGlyphs', () => {
-  it('turns IFC Z-up metres into the model render frame, the same rule as the IfcGrid overlay', () => {
+  it('maps the position, and the direction as the difference of two mapped points', () => {
     const glyph: StructuralGlyph = { kind: 'force', distribution: 'point', position: [1, 2, 3], direction: [0, 0, -1], magnitude: 1, relative: 1, source };
-    const [view] = toViewGlyphs([glyph], {
-      originShift: { x: 10, y: 20, z: 30 },
-      wasmRtcOffset: { x: 0, y: 0, z: 0 },
-    } as Parameters<typeof toViewGlyphs>[1]);
-    // IFC (x, y, z) is render (x, z, -y), minus the Y-up origin shift.
-    assert.deepEqual(view.position, { x: 1 - 10, y: 3 - 20, z: -2 - 30 });
+    // A stand-in for the model frame: IFC Z up to render Y up, moved by (10, 20, 30).
+    const toDisplay = (p: readonly [number, number, number]) => ({ x: p[0] + 10, y: p[2] + 20, z: -p[1] + 30 });
+    const [view] = toViewGlyphs([glyph], toDisplay);
+    assert.deepEqual(view.position, { x: 11, y: 23, z: 28 });
     assert.deepEqual(view.direction, { x: 0, y: -1, z: 0 });
+  });
+
+  it('drops a glyph whose position cannot be placed', () => {
+    const glyph: StructuralGlyph = { kind: 'temperature', position: [0, 0, 0], source };
+    assert.deepEqual(toViewGlyphs([glyph], () => null), []);
   });
 });
 
 describe('glyphPath sizing', () => {
-  const support = toViewGlyphs([{ kind: 'support', support: 'pinned', position: [0, 0, 0], direction: [0, 0, 1], source }], undefined);
+  const yUp = (p: readonly [number, number, number]) => ({ x: p[0], y: p[2], z: -p[1] });
+  const support = toViewGlyphs([{ kind: 'support', support: 'pinned', position: [0, 0, 0], direction: [0, 0, 1], source }], yUp);
 
   it('keeps a support the same on-screen size when zoomed in', () => {
     const near = extent(glyphPath(support, ortho(10_000), 1));
@@ -59,7 +63,7 @@ describe('glyphPath sizing', () => {
   });
 
   it('draws a force pointing into its node, longer for the larger load of its group', () => {
-    const force = (relative: number) => toViewGlyphs([{ kind: 'force', distribution: 'point', position: [0, 0, 0], direction: [0, 0, -1], magnitude: relative, relative, source }], undefined);
+    const force = (relative: number) => toViewGlyphs([{ kind: 'force', distribution: 'point', position: [0, 0, 0], direction: [0, 0, -1], magnitude: relative, relative, source }], yUp);
     const big = points(glyphPath(force(1), ortho(10_000), 1));
     const small = points(glyphPath(force(0.2), ortho(10_000), 1));
     // The shaft runs from the tail (above, smaller y) down to the node at (500, 500).

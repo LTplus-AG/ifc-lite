@@ -4,8 +4,8 @@
 
 /**
  * Screen-space SVG paths for structural glyphs (#9668): the drawing half of
- * the overlay adapter. Input is the parser's glyph list already moved into
- * the render frame (`toViewGlyphs`); output is one SVG `d` string per source
+ * the overlay adapter. Input is the parser's glyph list moved to where its
+ * model is drawn (`toViewGlyphs`); output is one SVG `d` string per source
  * entity, rebuilt on every camera tick.
  *
  * Sizing: each symbol has a screen size in CSS px (readable at any zoom), but
@@ -14,15 +14,15 @@
  * far symbol visible.
  */
 
-import { ifcToViewerAxes, totalYupOffset } from '@/lib/geo/coordinate-frame';
-import type { CoordinateInfo } from '@ifc-lite/geometry';
-import type { StructuralGlyph, StructuralGlyphVec3 } from '@ifc-lite/parser/structural-glyphs';
+import type { StructuralGlyph } from '@ifc-lite/parser/structural-glyphs';
 
 export interface Vec3 { x: number; y: number; z: number }
 interface Point { x: number; y: number }
 export type Project = (p: Vec3) => Point | null;
+/** An IFC world point (metres, Z up) to where the model's mesh draws it, or null when it cannot be placed. */
+export type ToDisplay = (p: readonly [number, number, number]) => Vec3 | null;
 
-/** A glyph in the render frame (Y up, the model's render offset removed). */
+/** A glyph where its model is drawn (render frame, Y up). */
 export interface ViewGlyph {
   glyph: StructuralGlyph;
   position: Vec3;
@@ -38,19 +38,21 @@ const MARKER_PX = 9;
 /** Floor for any symbol, CSS px. */
 export const MIN_PX = 6;
 
-const vec = (p: StructuralGlyphVec3): Vec3 => ifcToViewerAxes({ x: p[0], y: p[1], z: p[2] });
-
 /**
- * The parser's IFC-world glyphs in the render frame of the model they came
- * from: the same rule the model's IfcGrid and IfcAnnotation overlays use
- * (`lib/geo/ifc-origin.ts`): render = Y-up(world) - totalYupOffset.
+ * The parser's IFC-world glyphs where their model is drawn. A direction is
+ * the difference of two mapped points one metre apart, so a placement that
+ * rotates the model rotates its arrows. A glyph whose position cannot be
+ * mapped is dropped.
  */
-export function toViewGlyphs(glyphs: readonly StructuralGlyph[], coordinateInfo: CoordinateInfo | undefined): ViewGlyph[] {
-  const offset = totalYupOffset(coordinateInfo);
-  return glyphs.map((glyph) => {
-    const p = vec(glyph.position);
-    const direction = 'direction' in glyph && glyph.direction ? vec(glyph.direction) : null;
-    return { glyph, position: { x: p.x - offset.x, y: p.y - offset.y, z: p.z - offset.z }, direction };
+export function toViewGlyphs(glyphs: readonly StructuralGlyph[], toDisplay: ToDisplay): ViewGlyph[] {
+  return glyphs.flatMap((glyph) => {
+    const position = toDisplay(glyph.position);
+    if (!position) return [];
+    const d = 'direction' in glyph ? glyph.direction : undefined;
+    const tip = d && toDisplay([glyph.position[0] + d[0], glyph.position[1] + d[1], glyph.position[2] + d[2]]);
+    const v = tip && { x: tip.x - position.x, y: tip.y - position.y, z: tip.z - position.z };
+    const l = v ? Math.hypot(v.x, v.y, v.z) : 0;
+    return [{ glyph, position, direction: v && l > 0 ? { x: v.x / l, y: v.y / l, z: v.z / l } : null }];
   });
 }
 

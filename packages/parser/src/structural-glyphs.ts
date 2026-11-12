@@ -34,7 +34,7 @@
  */
 
 import type { IfcDataStore } from './columnar-parser.js';
-import type { StructuralActivityInfo, StructuralExtraction } from './structural-types.js';
+import type { StructuralActivityInfo, StructuralConnectionInfo, StructuralExtraction } from './structural-types.js';
 import type { StructuralLoadInfo } from './structural-load-extractor.js';
 import { structuralSupportKind, type StructuralSupportKind } from './structural-support-kind.js';
 import { compose, IDENTITY, ItemGeometryReader, length, normalize, rotate, type Frame, type ItemShape, type Vec3 } from './structural-item-geometry.js';
@@ -68,17 +68,6 @@ export type StructuralGlyph =
   | (GlyphBase & { kind: 'displacement'; direction?: Vec3 })
   | (GlyphBase & { kind: 'temperature' });
 
-export interface StructuralGlyphSet {
-  glyphs: StructuralGlyph[];
-  /**
-   * Supported connections and actions with a load that could not be placed:
-   * no topology representation of the expected kind on the entity or the item
-   * it acts on, or a placement this reader does not follow. Never drawn at a
-   * guessed position.
-   */
-  unplaced: StructuralGlyphSource[];
-}
-
 const DISTRIBUTION: Record<ItemShape['kind'], StructuralLoadDistribution> = { vertex: 'point', edge: 'linear', face: 'planar' };
 
 /** The shape an entity type acts on: point, curve (linear) or surface (planar). */
@@ -107,7 +96,7 @@ const isTemperature = (load: StructuralLoadInfo) => /Temperature/.test(load.type
 /**
  * Whether a load has anything to draw. A bare `IfcStructuralLoad` (Axis
  * writes one per self-weight action) or an all-zero load has not, and is
- * neither drawn nor counted as unplaced.
+ * not drawn.
  */
 function drawable(load: StructuralLoadInfo): boolean {
   if (load.configuration) return load.configuration.entries.some((e) => !!e.value && drawable(e.value));
@@ -117,13 +106,27 @@ function drawable(load: StructuralLoadInfo): boolean {
 const sourceOf = (e: { expressId: number; globalId: string; type: string }): StructuralGlyphSource =>
   ({ expressId: e.expressId, globalId: e.globalId, type: e.type });
 
-type Pending = Extract<StructuralGlyph, { kind: 'force' | 'moment' }> & { group: string };
+/** The member or connection an activity acts on. */
+interface ItemRef {
+  expressId: number;
+  type: string;
+  /** A curve member's `Axis` direction (model-local expressId). */
+  Axis?: number;
+  connection?: StructuralConnectionInfo;
+}
 
-/** The support and load glyphs of one model. */
-export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtraction): StructuralGlyphSet {
+type Arrow = Extract<StructuralGlyph, { kind: 'force' | 'moment' }>;
+type Pending = Omit<Arrow, 'relative'> & { group: string };
+
+/**
+ * The support and load glyphs of one model. A supported connection or an
+ * action with a load that cannot be placed (no topology representation of the
+ * expected kind on it or on the item it acts on, or a placement this reader
+ * does not follow) draws nothing, never a glyph at a guessed position.
+ */
+export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtraction): StructuralGlyph[] {
   const reader = new ItemGeometryReader(store);
   const glyphs: StructuralGlyph[] = [];
-  const unplaced: StructuralGlyphSource[] = [];
   const shapes = new Map<number, ItemShape | null>();
   /** The shape of an item or activity; a point one may stand at its placement origin. */
   const shapeOf = (id: number, type: string) => {
@@ -132,7 +135,7 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
   };
 
   /** A point connection's condition frame, in world axes. */
-  const conditionFrame = (connection: StructuralExtraction['connections'][number]): Frame | null => {
+  const conditionFrame = (connection: StructuralConnectionInfo): Frame | null => {
     const product = reader.productFrame(connection.expressId);
     const ccs = connection.ConditionCoordinateSystem === undefined ? IDENTITY : reader.axisPlacement(connection.ConditionCoordinateSystem);
     return product && ccs ? compose(product, ccs) : null;
@@ -143,20 +146,23 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
     if (!support) continue;
     const shape = shapeOf(connection.expressId, connection.type);
     const frame = conditionFrame(connection);
-    if (!shape || !frame) { unplaced.push(sourceOf(connection)); continue; }
+    if (!shape || !frame) continue;
     const direction = normalize(frame.z) ?? [0, 0, 1];
     for (const position of shapeStations(shape)) glyphs.push({ kind: 'support', support, position, direction, source: sourceOf(connection) });
   }
 
-  const itemsByGlobalId = new Map<string, { expressId: number; type: string; Axis?: number; connection?: StructuralExtraction['connections'][number] }>();
+  const itemsByGlobalId = new Map<string, ItemRef>();
   for (const m of extraction.members) itemsByGlobalId.set(m.globalId, { expressId: m.expressId, type: m.type, Axis: m.Axis });
   for (const c of extraction.connections) itemsByGlobalId.set(c.globalId, { expressId: c.expressId, type: c.type, connection: c });
   const loadGroups = new Set(extraction.loadGroups.map((g) => g.globalId));
   const pending: Pending[] = [];
 
-  /** The frame `LOCAL_COORDS` loads of `activity` are given in. */
-  const localFrame = (activity: StructuralActivityInfo, own: boolean, shape: ItemShape): Frame | null => {
-    const item = activity.appliesToGlobalId ? itemsByGlobalId.get(activity.appliesToGlobalId) : undefined;
+  /**
+   * The frame `LOCAL_COORDS` loads are given in: for a point, the activity's
+   * own placement when it draws at its own vertex, else the connection's
+   * condition frame; along an edge or over a face, the shape's frame.
+   */
+  const localFrame = (activity: StructuralActivityInfo, item: ItemRef | undefined, own: boolean, shape: ItemShape): Frame | null => {
     if (shape.kind === 'vertex') {
       if (own || !item) return reader.productFrame(activity.expressId);
       return item.connection ? conditionFrame(item.connection) : reader.productFrame(item.expressId);
@@ -171,11 +177,11 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
     const expected = expectedShape(activity.type);
     const ownShape = shapeOf(activity.expressId, activity.type);
     const item = activity.appliesToGlobalId ? itemsByGlobalId.get(activity.appliesToGlobalId) : undefined;
-    const shape = ownShape?.kind === expected ? ownShape : item ? shapeOf(item.expressId, item.type) : null;
-    const frame = shape?.kind === expected && activity.globalOrLocal === 'LOCAL_COORDS'
-      ? localFrame(activity, ownShape?.kind === expected, shape)
-      : IDENTITY;
-    if (!shape || shape.kind !== expected || !frame) { unplaced.push(source); continue; }
+    const own = ownShape?.kind === expected;
+    const shape = own ? ownShape : item ? shapeOf(item.expressId, item.type) : null;
+    if (!shape || shape.kind !== expected) continue;
+    const frame = activity.globalOrLocal === 'LOCAL_COORDS' ? localFrame(activity, item, own, shape) : IDENTITY;
+    if (!frame) continue;
 
     const group = activity.groupGlobalIds.find((id) => loadGroups.has(id)) ?? '';
     const distribution = DISTRIBUTION[shape.kind];
@@ -195,14 +201,14 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
       const force = vector(load, FORCE);
       if (force) {
         for (const position of stations) {
-          pending.push({ kind: 'force', distribution, position, direction: world(force), magnitude: length(force), relative: 1, source, group });
+          pending.push({ kind: 'force', distribution, position, direction: world(force), magnitude: length(force), source, group });
         }
       }
       const moment = vector(load, MOMENT);
-      if (moment) pending.push({ kind: 'moment', distribution, position: at, direction: world(moment), magnitude: length(moment), relative: 1, source, group });
+      if (moment) pending.push({ kind: 'moment', distribution, position: at, direction: world(moment), magnitude: length(moment), source, group });
       const displacement = vector(load, ['Displacement']);
       if (displacement || vector(load, ['RotationalDisplacementR'])) {
-        glyphs.push(displacement ? { kind: 'displacement', position: at, direction: world(displacement), source } : { kind: 'displacement', position: at, source });
+        glyphs.push({ kind: 'displacement', position: at, source, ...(displacement ? { direction: world(displacement) } : {}) });
       }
       if (isTemperature(load)) {
         glyphs.push({ kind: 'temperature', position: at, source });
@@ -213,8 +219,9 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
   const largest = new Map<string, number>();
   const classOf = (g: Pending) => `${g.kind}|${g.distribution}|${g.group}`;
   for (const g of pending) largest.set(classOf(g), Math.max(largest.get(classOf(g)) ?? 0, g.magnitude));
-  for (const { group: _group, ...g } of pending) {
-    glyphs.push({ ...g, relative: g.magnitude / largest.get(`${g.kind}|${g.distribution}|${_group}`)! });
+  for (const p of pending) {
+    const { group: _group, ...arrow } = p;
+    glyphs.push({ ...arrow, relative: p.magnitude / largest.get(classOf(p))! });
   }
-  return { glyphs, unplaced };
+  return glyphs;
 }

@@ -24,7 +24,7 @@ async function glyphsOf(bytes: Uint8Array) {
   new Uint8Array(buffer).set(bytes);
   const store = await new IfcParser().parseColumnar(buffer);
   const extraction = extractStructuralOnDemand(store);
-  return { store, extraction, ...structuralGlyphs(store, extraction) };
+  return { store, extraction, glyphs: structuralGlyphs(store, extraction) };
 }
 
 const close = (actual: readonly number[] | undefined, expected: readonly number[]) => {
@@ -198,7 +198,7 @@ describe('structuralGlyphs on synthetic data, one kind each', () => {
   });
 
   it('marks temperature and displacement loads, skips reactions, and refuses a point load on a member', async () => {
-    const { glyphs, unplaced } = await glyphsOf(new TextEncoder().encode(SYNTHETIC));
+    const { glyphs } = await glyphsOf(new TextEncoder().encode(SYNTHETIC));
     const [temperature] = bySource(glyphs, 97);
     expect(temperature.kind).toBe('temperature');
     close(temperature.position, [1, 1, 0.5]);
@@ -208,7 +208,6 @@ describe('structuralGlyphs on synthetic data, one kind each', () => {
     expect(bySource(glyphs, 100)).toEqual([]);
     // A5 is a point action on a curve member with no vertex of its own: no position to draw it at.
     expect(bySource(glyphs, 101)).toEqual([]);
-    expect(unplaced.map((s) => s.expressId)).toEqual([101]);
   });
 });
 
@@ -253,8 +252,7 @@ describe('structuralGlyphs on real files', () => {
    */
   it('IFC2X3: little_steel_frame supports and loads match IfcOpenShell', async (ctx) => {
     if (!existsSync(fixture(LSF))) ctx.skip(`${LSF} missing — run \`pnpm fixtures\` to fetch it`);
-    const { extraction, glyphs, unplaced } = await glyphsOf(readFileSync(fixture(LSF)));
-    expect(unplaced).toEqual([]);
+    const { extraction, glyphs } = await glyphsOf(readFileSync(fixture(LSF)));
     const supports = glyphs.filter((g) => g.kind === 'support');
     const oracle: Record<number, number[]> = {
       2673: [12, 0, 0], 2964: [0, 3.7, 0], 3003: [0, 7.4, 0], 3042: [0, 0, 0], 3142: [12, 3.7, 0], 3181: [12, 7.4, 0],
@@ -297,8 +295,7 @@ describe('structuralGlyphs on real files', () => {
    */
   it('IFC4: portal_01 supports sit on the nodes and the load configuration on its stations', async (ctx) => {
     if (!existsSync(fixture(PORTAL))) ctx.skip(`${PORTAL} missing — run \`pnpm fixtures\` to fetch it`);
-    const { glyphs, unplaced } = await glyphsOf(readFileSync(fixture(PORTAL)));
-    expect(unplaced).toEqual([]);
+    const { glyphs } = await glyphsOf(readFileSync(fixture(PORTAL)));
     const supports = glyphs.filter((g) => g.kind === 'support');
     expect(supports.map((g) => [g.source.expressId, g.kind === 'support' && g.support])).toEqual([[236, 'fixed'], [271, 'fixed']]);
     close(supports[0].position, [0, 0, 0]);

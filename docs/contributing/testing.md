@@ -67,7 +67,7 @@ The viewer's contrast and layout tests (`apps/viewer/src/test/contrast/render-ha
 
 1. `IFCLITE_TEST_CHROME_EXECUTABLE`, used as given (a wrong path fails; it never falls back).
 2. System Google Chrome (`channel: 'chrome'`), which is what CI uses.
-3. Playwright's bundled Chromium, if `pnpm exec playwright install chromium` already installed it. The harness never downloads a browser.
+3. Outside CI only: Playwright's bundled Chromium, if `pnpm exec playwright install chromium` already installed it. The harness never downloads a browser, and CI never switches away from the Chrome channel.
 
 With none of them, a local run reports those tests as skipped, with the reason on each one, and the summary counts them under `skipped`, not `pass`. In CI (`CI` set, or GitHub Actions) they are never skipped: the launch fails as it always has.
 

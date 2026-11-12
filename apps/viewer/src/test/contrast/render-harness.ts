@@ -38,7 +38,7 @@
  * painted over an opaque surface.
  */
 
-import { existsSync, readFileSync } from 'node:fs';
+import { accessSync, constants, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import postcss from 'postcss';
@@ -100,8 +100,18 @@ let browserPromise: Promise<Browser> | undefined;
 const CONTRAST_BROWSER = resolveContrastBrowser({
   env: process.env,
   platform: process.platform,
-  exists: existsSync,
-  bundledChromiumPath: chromium.executablePath(),
+  isExecutable: (path) => {
+    try {
+      accessSync(path, constants.X_OK);
+      return true;
+    } catch (error) {
+      // Absent or not executable: try the next candidate. Anything else is real.
+      const { code } = error as NodeJS.ErrnoException;
+      if (code === 'ENOENT' || code === 'ENOTDIR' || code === 'EACCES') return false;
+      throw error;
+    }
+  },
+  bundledChromiumPath: () => chromium.executablePath(),
 });
 
 /** Pass as `{ skip: CONTRAST_BROWSER_SKIP }` on every `it` that renders

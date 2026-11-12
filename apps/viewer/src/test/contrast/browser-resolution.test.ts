@@ -24,8 +24,8 @@ const LINUX_CHROME = '/opt/google/chrome/chrome';
 const BUNDLED = '/home/u/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome';
 const CUSTOM = '/opt/chrome-for-testing/chrome';
 
-function resolve(present: string[], env: ResolutionInput['env'] = {}, bundledChromiumPath: string | undefined = BUNDLED) {
-  return resolveContrastBrowser({ env, platform: 'linux', exists: (p) => present.includes(p), bundledChromiumPath });
+function resolve(present: string[], env: ResolutionInput['env'] = {}, bundled: string | undefined = BUNDLED) {
+  return resolveContrastBrowser({ env, platform: 'linux', isExecutable: (p) => present.includes(p), bundledChromiumPath: () => bundled });
 }
 
 describe('contrast browser resolution order', () => {
@@ -57,6 +57,22 @@ describe('contrast browser resolution order', () => {
     assert.deepEqual(contrastLaunchOptions(installed), { executablePath: BUNDLED });
     assert.equal(resolve([]).source, 'missing');
     assert.equal(resolve([], {}, undefined).source, 'missing');
+  });
+
+  it('CI never switches to bundled Chromium: with no Chrome it stays on the chrome channel and fails', () => {
+    for (const env of [{ CI: 'true' }, { GITHUB_ACTIONS: 'true' }]) {
+      const browser = resolve([BUNDLED], env);
+      assert.equal(browser.source, 'missing');
+      assert.deepEqual(contrastLaunchOptions(browser), { channel: 'chrome' });
+      assert.equal(contrastSkipReason(browser, env), false);
+    }
+  });
+
+  it('asks playwright-core for the bundled path only when nothing earlier matched', () => {
+    const bundledChromiumPath = () => { throw new Error('Browser is not supported on current platform'); };
+    const isExecutable = (p: string) => p === LINUX_CHROME;
+    assert.equal(resolveContrastBrowser({ env: {}, platform: 'linux', isExecutable, bundledChromiumPath }).source, 'system-chrome');
+    assert.equal(resolveContrastBrowser({ env: { IFCLITE_TEST_CHROME_EXECUTABLE: CUSTOM }, platform: 'linux', isExecutable, bundledChromiumPath }).source, 'env');
   });
 });
 
@@ -99,9 +115,17 @@ describe('system Chrome locations match the chrome channel', () => {
     assert.deepEqual(systemChromePaths('win32', { LOCALAPPDATA: 'C:\\Users\\u\\AppData\\Local', PROGRAMFILES: 'C:\\Program Files', HOMEDRIVE: 'C:' }), [
       'C:\\Users\\u\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe',
       'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
       'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
     ]);
     assert.deepEqual(systemChromePaths('freebsd', {}), []);
+  });
+
+  it("agrees with playwright-core's own chrome-channel lookup on this host", async () => {
+    // Internal module, held in a variable so it types as any: this test exists
+    // to notice when a Playwright upgrade moves the table copied above.
+    const internal = 'playwright-core/lib/coreBundle';
+    const { registry } = await import(internal);
+    const found: string | undefined = registry.registry.findExecutable('chrome').executablePath('javascript');
+    if (found) assert.ok(systemChromePaths(process.platform, process.env).includes(found), found);
   });
 });

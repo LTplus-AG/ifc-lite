@@ -15,7 +15,7 @@ import {
 } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
 
-import { buildTabularDataStore, type TabularStoreTables } from '@/hooks/ingest/tabularDataStore.js';
+import { buildTabularDataStore, type TabularStoreMeta, type TabularStoreTables } from '@/hooks/ingest/tabularDataStore.js';
 
 export const PROXY_A = 1;
 export const PROXY_B = 2;
@@ -56,15 +56,15 @@ export function tabularFixtureTables(): TabularStoreTables {
   };
 }
 
-/** Millimetres the file declares, under an IFC4 label: nothing here is IFCX's. */
-export function tabularFixtureStore(): IfcDataStore {
+/** Millimetres the file declares, under an IFC4 label: none of IFCX's own values. */
+export function tabularFixtureStore(overrides: Partial<TabularStoreMeta> = {}): IfcDataStore {
   return buildTabularDataStore(tabularFixtureTables(), {
     schemaVersion: 'IFC4',
     source: new ArrayBuffer(0),
     fileSize: 4096,
-    entityCount: 3,
     parseTime: 12,
     lengthUnitScale: 0.001,
     lengthUnitSource: 'declared',
+    ...overrides,
   });
 }

@@ -15,9 +15,10 @@ import assert from 'node:assert/strict';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { federationRegistry } from '@ifc-lite/renderer';
-import { useViewerStore, type ViewerState } from '@/store';
+import { useViewerStore, type FederatedModel } from '@/store';
 import { resolveEntityRef, resolveGlobalId } from '@/store/resolveEntityRef.js';
 
+import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { PROXY_A, PROXY_B, WALL, tabularFixtureStore } from '@/test/tabular-store-fixture.js';
 import { getMaxExpressId } from './viewerModelIngest.js';
 
@@ -34,15 +35,15 @@ function meshFor(expressId: number): MeshData {
 /** Register one model per id and install them, returning each model's offset. */
 function installModels(...ids: string[]): Map<string, { idOffset: number; store: IfcDataStore }> {
   const installed = new Map<string, { idOffset: number; store: IfcDataStore }>();
-  const models = new Map<string, unknown>();
+  const models: FederatedModel[] = [];
   for (const id of ids) {
     const store = tabularFixtureStore();
     const maxExpressId = getMaxExpressId(store, [PROXY_A, PROXY_B, WALL].map(meshFor));
     const idOffset = federationRegistry.registerModel(id, maxExpressId);
     installed.set(id, { idOffset, store });
-    models.set(id, { id, name: id, visible: true, idOffset, maxExpressId, ifcDataStore: store });
+    models.push({ ...fixtureModel(id, { idOffset }), maxExpressId, ifcDataStore: store });
   }
-  useViewerStore.setState({ models: models as unknown as ViewerState['models'] });
+  useViewerStore.setState({ models: fixtureModels(...models).models });
   return installed;
 }
 

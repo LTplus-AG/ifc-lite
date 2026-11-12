@@ -22,12 +22,15 @@ export type TabularStoreTables =
 
 /** What the tables cannot say about the file they came from. */
 export interface TabularStoreMeta {
-  /** The schema the entity table's type names belong to. */
+  /**
+   * The schema the entity table's type names belong to. Carried as given, but
+   * `'IFC5'` is also how consumers recognise a store with no STEP bytes today
+   * (`iterateEffectiveEntities`, `getMaxExpressId`, the export gates).
+   */
   schemaVersion: IfcDataStore['schemaVersion'];
   /** The file's bytes, kept as the store's `source`. */
   source: ArrayBuffer;
   fileSize: number;
-  entityCount: number;
   parseTime: number;
   /** Length unit scale to SI metres. */
   lengthUnitScale: number;
@@ -40,8 +43,7 @@ export interface TabularStoreMeta {
  * Build the `IfcDataStore` for tables a reader has already populated.
  *
  * Such a store cannot route through `createSyntheticDataStore` (it builds empty
- * tables), so the accessors are attached to the populated store instead. Without
- * this, selecting an entity threw "this.store.getQuantities is not a function".
+ * tables), so the accessors are attached to the populated store instead.
  *
  * `attachDataStoreAccessors` then wires `getEntity`/`getEntitiesByType` through the
  * STEP `BufferEntitySource`, which cannot read a store whose source is not STEP and
@@ -51,17 +53,13 @@ export interface TabularStoreMeta {
  * `type`, and name/GlobalId come from the entity table via the store's other accessors.)
  */
 export function buildTabularDataStore(tables: TabularStoreTables, meta: TabularStoreMeta): IfcDataStore {
-  // Typed as `IfcStoreData`, never cast to it. This literal used to end in `as
-  // unknown as IfcStoreData`, which silenced every field inside it: when `source`
-  // became an accessor (#2183) it kept handing over a bare Uint8Array, the
-  // whole-monorepo typecheck stayed green, and every IFCX model reached consumers
-  // calling `.materialize()` on a plain array.
+  // Typed as `IfcStoreData`, never cast to it: a cast hides a wrong `source` shape (#2183).
   const storeData: IfcStoreData = {
     fileSize: meta.fileSize,
     schemaVersion: meta.schemaVersion,
     lengthUnitScale: meta.lengthUnitScale,
     lengthUnitSource: meta.lengthUnitSource,
-    entityCount: meta.entityCount,
+    entityCount: tables.entities.count,
     parseTime: meta.parseTime,
     source: contiguousSourceBytes(new Uint8Array(meta.source)),
     entityIndex: { byId: new Map(), byType: new Map() },

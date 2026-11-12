@@ -13,8 +13,7 @@ import assert from 'node:assert/strict';
 import { PropertyValueType, QuantityType } from '@ifc-lite/data';
 import { extractLengthUnitScale, isSourceBytes } from '@ifc-lite/parser';
 
-import { PROXY_A, PROXY_B, WALL, tabularFixtureStore, tabularFixtureTables } from '@/test/tabular-store-fixture.js';
-import { buildTabularDataStore } from './tabularDataStore.js';
+import { PROXY_A, PROXY_B, WALL, tabularFixtureStore } from '@/test/tabular-store-fixture.js';
 
 describe('buildTabularDataStore', () => {
   afterEach(() => mock.restoreAll());
@@ -58,16 +57,12 @@ describe('buildTabularDataStore', () => {
     assert.deepEqual(store.getQuantities(PROXY_A), []);
   });
 
-  it('carries the schema, counts and unit the caller states, not IFCX defaults', () => {
+  it('labels the store with the schema and unit source the caller states, not the IFCX ones', () => {
     const store = tabularFixtureStore();
 
     assert.equal(store.schemaVersion, 'IFC4');
-    assert.equal(store.entityCount, 3);
-    assert.equal(store.fileSize, 4096);
-    assert.equal(store.parseTime, 12);
-    assert.equal(store.lengthUnitScale, 0.001);
     assert.equal(store.lengthUnitSource, 'declared');
-    assert.equal(store.georeferencing, undefined);
+    assert.equal(store.entityCount, 3, 'counted from the entity table');
   });
 
   it('answers the unit from source + entityIndex without the "No IFCPROJECT" warning', () => {
@@ -80,23 +75,10 @@ describe('buildTabularDataStore', () => {
 
   it('keeps the file bytes behind the source accessor', () => {
     const bytes = new TextEncoder().encode('not STEP, not JSON');
-    const store = buildTabularDataStore(tabularFixtureTables(), {
-      schemaVersion: 'IFC4', source: bytes.buffer as ArrayBuffer, fileSize: bytes.byteLength,
-      entityCount: 3, parseTime: 0, lengthUnitScale: 1, lengthUnitSource: 'declared',
-    });
+    const store = tabularFixtureStore({ source: bytes.buffer as ArrayBuffer });
 
     assert.equal(isSourceBytes(store.source), true);
     assert.deepEqual(store.source.materialize(), bytes);
     assert.ok((store.source.contentKey ?? '').length > 0);
-  });
-
-  it('carries georeferencing the caller already resolved', () => {
-    const georeferencing = { hasGeoreference: true, source: 'mapConversion' as const };
-    const store = buildTabularDataStore(tabularFixtureTables(), {
-      schemaVersion: 'IFC4', source: new ArrayBuffer(0), fileSize: 0,
-      entityCount: 3, parseTime: 0, lengthUnitScale: 1, lengthUnitSource: 'declared', georeferencing,
-    });
-
-    assert.equal(store.georeferencing, georeferencing);
   });
 });

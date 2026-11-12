@@ -130,8 +130,7 @@ type IfcxStoreInput = Pick<
  * the selection-time accessor path (see viewerModelIngest.test.ts).
  *
  * The store itself is `buildTabularDataStore`'s; this names what IFCX states
- * about its file. (Raw STEP attribute lists don't exist for IFCX, so
- * `getEntity(...).attributes` is empty.)
+ * about its file.
  */
 export function buildIfcxDataStore(ifcxResult: IfcxStoreInput, buffer: ArrayBuffer): IfcDataStore {
   const georef = ifcxResult.georeferencing;
@@ -139,7 +138,6 @@ export function buildIfcxDataStore(ifcxResult: IfcxStoreInput, buffer: ArrayBuff
     schemaVersion: 'IFC5',
     source: buffer,
     fileSize: ifcxResult.fileSize,
-    entityCount: ifcxResult.entityCount,
     parseTime: ifcxResult.parseTime,
     // IFCX has no IfcUnitAssignment to read: the format's unit, assumed (nothing in the file declares it).
     lengthUnitScale: IFCX_LENGTH_UNIT_SCALE,

@@ -25,19 +25,25 @@ import { posix } from 'node:path';
 
 // A YAML key may be quoted (`"uses":`).
 const LOCAL_USES = /['"]?uses['"]?\s*:\s*['"]?\.\/(\.github\/workflows\/[^\s'"@#]+)/g;
+const WORKFLOW_FILE = /^\.github\/workflows\/[^/]+\.ya?ml$/;
 // Read by nothing here, so unknown: a local action outside .github/actions/, or a local
 // path that climbs (`./.github/actions/../../ci/setup`).
 const LOCAL_USES_UNREAD = /['"]?uses['"]?\s*:\s*['"]?\.\/(?:(?!\.github\/(?:actions|workflows)\/)|[^\s'"]*\.\.)/;
 const REMOTE_WORKFLOW_USES = /['"]?uses['"]?\s*:\s*['"]?[\w-]+\/[\w.-]+\/\.github\/workflows\//;
 // A YAML anchor, alias or merge key: the value a line shows is not the value GitHub uses.
-const YAML_ALIAS = /(?:^|[\s:\-[,{])[&*][A-Za-z_][\w-]*(?=\s|$|[,\]}])|^\s*<<\s*:/m;
+// An alias (`*x`) or anchor (`&x`) as the value of a key this scan reads hides that
+// value. Anywhere else it needs no check: the scan is textual over the whole file, so
+// anchored content is read where it is defined, and hashFiles arguments sit inside an
+// expression string, where YAML aliases do not exist.
+const ALIASED_USES = /['"]?uses['"]?[ \t]*:[ \t]*[&*]/;
 // Expression function names are case-insensitive.
-const HASHFILES = /hashFiles\(/gi;
+const HASHFILES = /hashFiles\s*\(/gi;
 const QUOTED_ARG = /^\s*(?:'([^']*)'|"([^"]*)")\s*([,)])/;
 // An action input whose files key a cache (actions/setup-node, setup-python, ...).
 const CACHE_DEPENDENCY_PATH = /['"]?cache-dependency-path['"]?\s*:[ \t]*(.*)$/gim;
-// One scalar, ending the line or a flow-mapping entry (`, ...` / ` }`). A block scalar (`|`, `>`) is not plain.
-const PLAIN_VALUE = /^(?:'([^']*)'|"([^"]*)"|([^\s'"#|>,}][^\s#,}]*))\s*(?:[,}].*)?(?:#.*)?$/;
+// One scalar, ending the line or a flow-mapping entry (`, ...` / ` }`). A block scalar
+// (`|`, `>`), an alias (`*x`) or an anchored value (`&x ...`) is not plain.
+const PLAIN_VALUE = /^(?:'([^']*)'|"([^"]*)"|([^\s'"#|>,}&*][^\s#,}]*))\s*(?:[,}].*)?(?:#.*)?$/;
 const WORKFLOW_SEGMENTS = ['.github', 'workflows'];
 
 /** A hashFiles call's literal arguments, or null when one is not a quoted literal. */
@@ -119,7 +125,7 @@ export function workflowsKeyingCaches({ root, actionFiles, symlinks, readText })
   // hashFiles follows symlinks, and a link inside .github/ can hide what an action runs.
   for (const { path, target } of symlinks) {
     const to = posix.normalize(posix.join(posix.dirname(path), target));
-    if (path.startsWith('.github/') || target.startsWith('/') || to === '.' || to.startsWith('../') || to === '.github' || to.startsWith('.github/')) {
+    if (path.startsWith('.github/') || target.startsWith('/') || to === '.' || to === '..' || to.startsWith('../') || to === '.github' || to.startsWith('.github/')) {
       return { unknown: `symlink ${path} -> ${target} may reach .github/` };
     }
   }
@@ -130,10 +136,12 @@ export function workflowsKeyingCaches({ root, actionFiles, symlinks, readText })
     const text = readText(path);
     if (typeof text !== 'string') return { unknown: `${path} could not be read` };
     if (REMOTE_WORKFLOW_USES.test(text)) return { unknown: `${path} calls a reusable workflow by owner/repo` };
-    if (YAML_ALIAS.test(text)) return { unknown: `${path} uses a YAML anchor or alias` };
+    if (ALIASED_USES.test(text)) return { unknown: `${path} sets uses: through a YAML alias` };
     if (LOCAL_USES_UNREAD.test(text)) return { unknown: `${path} uses a local action outside .github/actions/, or a climbing path` };
     for (const [, raw] of text.matchAll(LOCAL_USES)) {
       const ref = posix.normalize(raw);
+      // A local action directory under workflows/ is not a workflow file this scan reads.
+      if (!WORKFLOW_FILE.test(ref)) return { unknown: `${path} uses ${raw}, which is not a top-level workflow file` };
       files.add(ref);
       if (!executed.includes(ref)) executed.push(ref);
     }
@@ -143,7 +151,8 @@ export function workflowsKeyingCaches({ root, actionFiles, symlinks, readText })
       const args = hashFilesArgs(text, m.index + m[0].length);
       // A backslash is a YAML escape in a double-quoted scalar, or a glob escape: either way not the text shown.
       if (args === null || args.some((a) => a.includes('\\'))) return { unknown: `${path} calls hashFiles with an argument that is not a plain literal` };
-      patterns.push(...args);
+      // @actions/glob reads each line of a pattern as its own pattern, trimmed.
+      patterns.push(...args.flatMap((a) => a.split('\n').map((line) => line.trim()).filter(Boolean)));
     }
     for (const pattern of patterns) {
       const verdict = judgePattern(pattern);

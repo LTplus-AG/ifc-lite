@@ -117,7 +117,7 @@ const queued = (queueEvidence, over = {}) => base({ artifactNamesByRun: { 1: ['b
 const NAMED = ['.github/workflows/docs.yml', '.github/workflows/test.yml'];
 
 test('with the cache-keying workflow files known, those, actions and Cargo still get a full run', () => {
-  for (const f of ['Cargo.lock', 'rust/python/Cargo.lock', 'rust/core/Cargo.toml', 'rust-toolchain.toml', '.cargo/config.toml', 'rust/python/.cargo/config', '.github/workflows/test.yml', '.github/workflows/docs.yml', '.github/actions/setup-wasm-build/action.yml', '.github/actions/any/helper.mjs']) {
+  for (const f of ['Cargo.lock', 'rust/python/Cargo.lock', 'rust/core/Cargo.toml', 'rust-toolchain.toml', 'rust-toolchain', 'rust/foo/rust-toolchain.toml', '.cargo/config.toml', 'rust/python/.cargo/config', '.github/workflows/test.yml', '.github/workflows/docs.yml', '.github/actions/setup-wasm-build/action.yml', '.github/actions/any/helper.mjs']) {
     const d = decidePushReplay(base({ changedFiles: ['README.md', f], workflowFiles: NAMED }));
     assert.equal(d.replay, false, f);
     assert.ok(d.reason.includes(f), d.reason);
@@ -229,8 +229,11 @@ test('workflowsKeyingCaches is unknown when a hashFiles might reach a workflow f
     ['test', '- uses: ./ci/setup'],
     ['test', '- uses: ./.github/actions/../../ci/setup'],
     ['test', '- "uses": ./ci/setup'],
+    ['test', 'cache-dependency-path: *x.y'],
     ['test', 'x: &deps .github/workflows/x.yml\ncache-dependency-path: *deps'],
-    ['test', 'defaults: &d\n  a: 1\nb:\n  <<: *d'],
+    ['test', '- uses: *setup'],
+    ['test', '- { "uses": &a ./ci/setup }'],
+    ['test', 'cache-dependency-path: &deps .github/workflows/x.yml'],
     ['test', `key: "\${{ hashFiles('.github/work\\x66lows/x.yml') }}"`],
     ['test', "key: ${{ hashFiles('.githu\\b/workflows/x.yml') }}"],
     ['action', "key: ${{ hashFiles('**') }}"],
@@ -242,7 +245,28 @@ test('workflowsKeyingCaches is unknown when a hashFiles might reach a workflow f
       '.github/actions/a/action.yml': where === 'action' ? text : 'runs: {}',
     };
     assert.ok('unknown' in keyed(files), text);
-  }  // A quoted key is still a key, and its literal value names the file.
+  }  // @actions/glob trims each line of a pattern and reads it as its own pattern; a space
+  // before the parenthesis is still a call.
+  for (const call of ["hashFiles('a\n  .github/workflows/x.yml')", "hashFiles(' .github/workflows/x.yml ')", "hashFiles ('.github/workflows/x.yml')"]) {
+    assert.deepEqual(keyed({ [ROOT]: `key: \${{ ${call} }}` }), { files: ['.github/workflows/test.yml', '.github/workflows/x.yml'] }, call);
+  }
+  // `git show` of a directory prints a tree listing rather than failing: a local action
+  // under workflows/ must be refused, not read as an empty workflow.
+  assert.ok('unknown' in keyed({ [ROOT]: '- uses: ./.github/workflows/sub', '.github/workflows/sub': 'tree HEAD:.github/workflows/sub\n\naction.yml\n' }));
+  // `&` and `*` in scalar text are not aliases: a Rust signature in a quoted run: line
+  // (test.yml had one at 6b7e6b4a1), shell case arms, `&&` continuation lines.
+  const scalarText = [
+    '        run: grep -Fxq "+pub fn f(diff: &DiffResult) -> Doc" x.rs',
+    '        run: |',
+    '          case "$x" in',
+    '            *) fail=1 ;;',
+    '          esac',
+    '    if: >-',
+    "      a == 'b'",
+    "      && c == 'd'",
+  ].join('\n');
+  assert.deepEqual(keyed({ [ROOT]: scalarText }), { files: [ROOT] });
+  // A quoted key is still a key, and its literal value names the file.
   assert.deepEqual(keyed({ [ROOT]: '"cache-dependency-path": .github/workflows/x.yml' }), { files: ['.github/workflows/test.yml', '.github/workflows/x.yml'] });
 });
 
@@ -258,6 +282,7 @@ test('workflowsKeyingCaches is unknown when a symlink may reach .github/', () =>
   for (const link of [
     { path: 'ci/wf', target: '../.github/workflows' },
     { path: 'ci/root', target: '..' },
+    { path: 'a/b', target: '../..' },
     { path: 'ci/abs', target: '/home/runner/work/x/x/.github' },
     { path: '.github/actions/foo', target: '../../tools/foo' },
     { path: 'up', target: '../elsewhere' },

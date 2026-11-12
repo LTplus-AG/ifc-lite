@@ -8,7 +8,9 @@
  * when post-load work runs: the scene snapshot write, the symbolic overlay
  * parse, source compaction and the tier-1 search index.
  *
- * Settled (`modelLoadSettled`, the single definition): the model's record is
+ * Ready (`afterLoadReady` in afterLoad.ts): the model has settled AND the viewer's
+ * load window (hooks/loadWindow.ts) is closed, i.e. the settled frame has painted.
+ * Settled (`modelLoadSettled`): the model's record is
  * not in a load phase (`pending`, `streaming-geometry`, `hydrating-metadata`:
  * the phases streaming-refresh.ts and drawingPersistenceKey.ts treat as
  * loading), the primary geometry stream is not running for it, and none of its

@@ -11,6 +11,7 @@
 
 import { useViewerStore } from '../../store/index.js';
 import { hasPendingInstancedShards, subscribeInstancedShards } from '../../store/instancedShardQueue.js';
+import { viewerLoadWindow } from '../../hooks/loadWindow.js';
 import type { AfterLoadEnv } from './afterLoadIdle.js';
 
 export type AfterLoadJob = 'snapshot-write' | 'overlay-parse' | 'source-compaction' | 'search-index';
@@ -35,15 +36,32 @@ export function modelLoadSettled(state: ViewerState, modelId: string | null): bo
   return !LOADING.has(model.loadState);
 }
 
+/**
+ * When an after-load job may start: its model has settled AND the viewer's load window
+ * (hooks/loadWindow.ts, the one definition of "the load is over") is closed. A closed
+ * window means the frame showing the settled store has painted, so a job never runs
+ * between a model's record turning `complete` and the interactive frame. The window is
+ * global: another model's load also holds a job back, as it holds the status bar.
+ */
+export function afterLoadReady(state: ViewerState, modelId: string | null): boolean {
+  return modelLoadSettled(state, modelId) && !viewerLoadWindow().isOpen();
+}
+
+const subscribeStoreAndWindow = (listener: () => void): (() => void) => {
+  const fromStore = useViewerStore.subscribe(listener);
+  const fromWindow = viewerLoadWindow().subscribe(listener);
+  return () => { fromStore(); fromWindow(); };
+};
+
 const ENV: AfterLoadEnv = {
   getState: () => useViewerStore.getState(),
-  subscribe: (listener) => useViewerStore.subscribe(listener),
+  subscribe: subscribeStoreAndWindow,
   subscribeShards: subscribeInstancedShards,
-  settled: modelLoadSettled,
+  settled: afterLoadReady,
 };
 
 /**
- * Run `work` after `options.modelId` has settled, in an idle period, in job order
+ * Run `work` after `options.modelId` has settled and the load window has closed, in an idle period, in job order
  * (afterLoadIdle.ts). Returns a cancel: before the job starts it drops the job
  * (`onDrop` runs); after, it aborts the job's signal. Whether the model had a
  * record is taken now, so a removal while the queue loads still ends the job.
@@ -85,11 +103,11 @@ function runWhenSettledHere(options: AfterLoadOptions, hadRecord: boolean, work:
   const check = () => {
     const state = useViewerStore.getState();
     if (!jobAlive(state, options, hadRecord)) { stop(); if (started) controller.abort(); else drop(); return; }
-    if (started || !modelLoadSettled(state, options.modelId)) return;
+    if (started || !afterLoadReady(state, options.modelId)) return;
     started = true;
     void Promise.resolve().then(() => work(controller.signal)).catch(() => {}).finally(() => stop());
   };
-  const fromStore = useViewerStore.subscribe(check);
+  const fromStore = subscribeStoreAndWindow(check);
   const fromShards = subscribeInstancedShards(check);
   stop = () => { fromStore(); fromShards(); };
   check();

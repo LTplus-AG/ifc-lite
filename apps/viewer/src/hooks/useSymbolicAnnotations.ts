@@ -22,7 +22,7 @@ import {
   type AnnotationsForStorey,
 } from '../lib/overlay-parse/symbolic-parse.js';
 import { ensureParseFor, getDisplayParseFor, storeHasParse, subscribeToParseCache } from './symbolic-parse-cache.js';
-import { modelLoadSettled, runAfterModelSettled } from '../lib/perf/afterLoad.js';
+import { afterLoadReady, runAfterModelSettled } from '../lib/perf/afterLoad.js';
 import { useOverlayChannelGate } from './useOverlayChannelGate.js';
 import {
   buildSymbolicLineChannels,
@@ -89,7 +89,7 @@ function useAnnotationParseTrigger(enabled: boolean, stores: SymbolicActiveStore
     const cancels: Array<() => void> = [];
     for (const { store, mutationView, modelId: id } of stores) {
       const modelId = id === 'legacy' ? null : id;
-      if (storeHasParse(store) && modelLoadSettled(state, modelId)) now.push({ store, mutationView });
+      if (storeHasParse(store) && afterLoadReady(state, modelId)) now.push({ store, mutationView });
       else cancels.push(runAfterModelSettled({ job: 'overlay-parse', modelId, store }, () => Promise.allSettled(ensureParseFor([{ store, mutationView }]))));
     }
     if (now.length > 0) ensureParseFor(now);

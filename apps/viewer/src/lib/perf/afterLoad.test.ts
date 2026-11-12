@@ -8,6 +8,7 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { fixtureDataStore, fixtureModel } from '@/test/store-fixture';
+import { settleLoadWindow } from '@/test/load-window';
 import { useViewerStore } from '../../store/index.js';
 import type { FederatedModel } from '../../store/types.js';
 import { __setAfterLoadQueueLoaderForTests, runAfterModelSettled } from './afterLoad.js';
@@ -72,6 +73,36 @@ describe('afterLoad: the eager scheduling call', () => {
     await flushIdle();
     assert.equal(runs, 0);
     assert.equal(dropped, 1);
+  });
+
+  it('a model whose record is already complete waits for the load window: no job until the settled frame has painted', async () => {
+    // A cache hit: the finalize publish marks the record complete while the store still loads.
+    useViewerStore.setState({ loading: true } as never);
+    setModels(complete('a'));
+    let runs = 0;
+    runAfterModelSettled({ job: 'overlay-parse', modelId: 'a' }, () => { runs++; });
+    await flushIdle();
+    assert.equal(runs, 0, 'not while the load window is open (record complete, store still loading)');
+    useViewerStore.setState({ loading: false } as never); // settleLoadUi
+    await flushIdle();
+    assert.equal(runs, 0, 'not in the task that settles the load: the window closes behind the next painted frame');
+    await settleLoadWindow();
+    await flushIdle();
+    assert.equal(runs, 1, 'runs once the settled frame has painted and an idle period comes');
+  });
+
+  it('the window is global: another model\'s load holds a settled model\'s job back too', async () => {
+    useViewerStore.setState({ loading: true, geometryStreamingActive: true, activeModelId: 'b' } as never);
+    setModels(complete('a'), { ...complete('b'), loadState: 'streaming-geometry' });
+    let runs = 0;
+    runAfterModelSettled({ job: 'source-compaction', modelId: 'a' }, () => { runs++; });
+    await flushIdle();
+    assert.equal(runs, 0, 'a waits while b loads');
+    useViewerStore.setState({ loading: false, geometryStreamingActive: false } as never);
+    setModels(complete('a'), complete('b'));
+    await settleLoadWindow();
+    await flushIdle();
+    assert.equal(runs, 1);
   });
 
   describe('when the queue module does not load', () => {

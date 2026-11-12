@@ -259,3 +259,18 @@ it('#9296 picked attachment publishes its constraint to the collaboration proper
     assert.equal(getPropertyValue(doc, '/Wall', 'IfcLite_StoreyAttachment', 'TopBinding')?.value, 'Explicit');
   } finally { useViewerStore.setState({ mirrorPropertyEdit: mirror }); doc.destroy(); }
 });
+
+
+for (const kind of ['slab', 'roof'] as const) it(`#9296 an unnamed picked ${kind} keeps its derived Height read-only`, () => {
+  const s = useViewerStore.getState();
+  const wall = s.addWall(MODEL_ID, STOREY, { Start: [1, 1, 0], End: [4, 1, 0], Height: 3, Thickness: .2 });
+  const params = { Position: [0, 0, 4] as [number, number, number], Width: 6, Depth: 6, Thickness: .3, Name: '' };
+  const target = kind === 'slab' ? s.addSlab(MODEL_ID, STOREY, params) : s.addRoof(MODEL_ID, STOREY, params);
+  assert.ok('expressId' in wall && 'expressId' in target);
+  s.setSelectedEntityId(wall.expressId);
+  const ui = render(<ModelInspectorPanel />);
+  click(ui.querySelector('input[value="element"]')!);
+  act(() => selectPickedGlobalId(target.expressId));
+  assert.equal(readWallTop(MODEL_ID, wall.expressId).target?.from, `#${target.expressId}`);
+  assert.equal(ui.querySelector<HTMLInputElement>('[aria-label="Height in metres"]')?.readOnly, true);
+});

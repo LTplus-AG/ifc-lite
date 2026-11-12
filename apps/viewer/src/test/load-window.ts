@@ -13,3 +13,23 @@ import { act } from 'react';
 export async function settleLoadWindow(): Promise<void> {
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 60)); });
 }
+
+/**
+ * Run a store change that starts a load (streaming or loading) and let the load
+ * window's store-busy limit expire while it stays busy: the window closes and
+ * the consumers fall back to computing their values under main's streaming
+ * throttle (#6411). `setClock` moves the mocked `performance.now` past the limit.
+ */
+export async function expireStoreBusyCap(startBusy: () => void, setClock: (ms: number) => void): Promise<void> {
+  const { mock } = await import('node:test');
+  const { MAX_STORE_BUSY_MS } = await import('@/hooks/loadWindow');
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    act(startBusy);
+    setClock(MAX_STORE_BUSY_MS + 1);
+    act(() => mock.timers.tick(MAX_STORE_BUSY_MS));
+    act(() => mock.timers.tick(1_000)); // the close backstop
+  } finally {
+    mock.timers.reset();
+  }
+}

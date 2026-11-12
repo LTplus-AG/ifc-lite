@@ -22,7 +22,7 @@ import type { GeometryResult } from '@ifc-lite/geometry';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { countEffectiveEntityTypes } from '@ifc-lite/data';
 import { collectEffectivePhysicalEntityIds } from '@/lib/physical-objects';
-import { collectMeshedIds, countShapedObjects, sharedShapedObjectCount } from '@/lib/object-count';
+import { collectMeshedIds, countShapedObjects } from '@/lib/object-count';
 import { ownedAggregationRelationships } from '@/utils/entity-ownership';
 
 export interface ModelStats {
@@ -37,10 +37,8 @@ export interface ModelStatsGeometryContext {
   physicalIds?: ReadonlySet<number>;
   /** Whether an empty geometry result is authoritative rather than provisional. */
   geometryReady: boolean;
-  /** Resolve a renderer/global id only when it belongs to the displayed model (`modelLocalIdResolver`). */
+  /** Resolve a renderer/global id only when it belongs to the displayed model. */
   toLocalId: (globalId: number) => number | undefined;
-  /** The displayed model's id: with `physicalIds` it keys the walk shared with the status bar. */
-  modelId?: string;
 }
 
 /**
@@ -58,21 +56,19 @@ export function computeModelStats(
     return { storeys: 0, elementsWithGeometry: 0 };
   }
   const storeys = countEffectiveEntityTypes(dataStore, geometry.mutationView).get('IFCBUILDINGSTOREY') ?? 0;
-  const physicalIds = geometry.physicalIds ?? collectEffectivePhysicalEntityIds(dataStore, geometry.mutationView);
-  const relationships = ownedAggregationRelationships(dataStore, geometry.mutationView);
-  // Shared with the status bar only when the caller names the model and passes
-  // the shared physical-id set; the cache is keyed by both.
-  const elementsWithGeometry = geometry.modelId !== undefined && geometry.physicalIds
-    ? sharedShapedObjectCount({ modelId: geometry.modelId, physicalIds, geometryResult, geometryReady: geometry.geometryReady, relationships, toLocalId: geometry.toLocalId })
-    : countShapedObjects(physicalIds, { relationships, meshedIds: localMeshedIds(geometryResult, geometry.toLocalId), geometryReady: geometry.geometryReady });
-  return { storeys, elementsWithGeometry };
-}
-
-function localMeshedIds(geometryResult: GeometryResult | null | undefined, toLocalId: (id: number) => number | undefined): Set<number> {
-  const ids = new Set<number>();
+  const meshedIds = new Set<number>();
   for (const globalId of collectMeshedIds(geometryResult)) {
-    const localId = toLocalId(globalId);
-    if (localId !== undefined) ids.add(localId);
+    const localId = geometry.toLocalId(globalId);
+    if (localId !== undefined) meshedIds.add(localId);
   }
-  return ids;
+  const physicalIds = geometry.physicalIds ?? collectEffectivePhysicalEntityIds(dataStore, geometry.mutationView);
+  const elementsWithGeometry = countShapedObjects(physicalIds, {
+    relationships: ownedAggregationRelationships(dataStore, geometry.mutationView),
+    meshedIds,
+    // A still-streaming model may have no geometry result yet; the shape
+    // test must then stand aside (see `object-count.ts`'s "Before geometry
+    // exists") rather than read as zero.
+    geometryReady: geometry.geometryReady,
+  });
+  return { storeys, elementsWithGeometry };
 }

@@ -97,9 +97,9 @@ export function classifyEntityTypeConversion(
   if (isStructuralBoundaryCondition(upper) && ((fromSchema === 'IFC2X3' && toSchema === 'IFC4') || (fromSchema === 'IFC4' && toSchema === 'IFC2X3')))
     return { targetType: upper, kind: 'renamed', droppedAttributes: [] };
   // #9668: the two linked objects survive in IFC4's analytical assignment,
-  // under differently named roles. A reverse type guess is not implied.
+  // under differently named roles, but their original relationship kind is lost.
   if (upper === 'IFCRELCONNECTSSTRUCTURALELEMENT' && fromSchema === 'IFC2X3' && toSchema === 'IFC4')
-    return { targetType: newType, kind: 'renamed', droppedAttributes: [] };
+    return { targetType: newType, kind: 'lossy', droppedAttributes: [] };
   if (shouldSkipEntity(newType, toSchema)) {
     // `productProxy` keeps attributes 1 to 6 (IfcProduct's, OwnerHistory
     // through Representation, #7683) and mints the GlobalId, so what is lost

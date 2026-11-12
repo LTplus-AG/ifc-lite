@@ -195,7 +195,8 @@ export const OWNER_ALLOWS_LEAN = false;
  *   `mergify` and `diff` are read only when needed.
  * @returns {{ lane: 'lean'|'full', mode: string, wouldBeLean: boolean, pending?: string[], reason: string, warning?: string }}
  *   `pending`, on a reported-only (shadow or held) decision, names every
- *   condition still between this run and a lean one; empty means none.
+ *   condition still between this run and a lean one (never empty there:
+ *   lean is exactly the empty list).
  */
 export function decideReleaseLane({ event, mode, headRef, headRepo, repo, baseRef, labels, draft, mergify, diff, ownerAllowsLean = OWNER_ALLOWS_LEAN }) {
   const raw = String(mode ?? '').toLowerCase();
@@ -225,15 +226,21 @@ export function decideReleaseLane({ event, mode, headRef, headRepo, repo, baseRe
   if (problems.length > 0) return full(`the diff is more than a version bump: ${problems.slice(0, 5).join('; ')}`);
   // Shadow and the held `on` report what the lean lane would skip whatever the
   // PR's queue state, and say that state: measuring must not wait on a label.
+  // The ONE list of what still stands between this run and a lean one. Lean
+  // happens only when it is empty, so a condition added here cannot be left
+  // out of the report, and the report cannot list one the decision ignores.
   const pending = [
     m === 'shadow' ? 'with CI_RELEASE_LANE=on' : '',
     ownerAllowsLean ? '' : 'with OWNER_ALLOWS_LEAN released',
     route.queueable ? '' : 'once this PR is queueable',
   ].filter(Boolean);
-  if (m === 'shadow') return { lane: 'full', mode: m, wouldBeLean: true, pending, reason: `shadow mode: full lanes run, lean lane reported; ${route.queueReason}` };
-  if (!ownerAllowsLean) return { lane: 'full', mode: m, wouldBeLean: true, pending, reason: `CI_RELEASE_LANE=on, but the lean lane is held until the owner decides how release PRs reach main (OWNER_ALLOWS_LEAN); full lanes run, lean lane reported; ${route.queueReason}`, warning: 'CI_RELEASE_LANE=on is held (OWNER_ALLOWS_LEAN=false); running the full lanes' };
-  if (!route.queueable) return full(`${route.queueReason}, so this run is the only gate`, { warning: `release lane refused: ${route.queueReason}` });
-  return { lane: 'lean', mode: m, wouldBeLean: true, reason: `CI_RELEASE_LANE=on on the release PR; ${route.queueReason}; ${route.reason}` };
+  if (pending.length === 0) return { lane: 'lean', mode: m, wouldBeLean: true, reason: `CI_RELEASE_LANE=on on the release PR; ${route.queueReason}; ${route.reason}` };
+  // With the switch on and the hold released, an unqueueable PR is refused
+  // outright: its own run would be the last gate. Otherwise, report.
+  if (m === 'on' && ownerAllowsLean) return full(`${route.queueReason}, so this run is the only gate`, { warning: `release lane refused: ${route.queueReason}` });
+  const report = { lane: 'full', mode: m, wouldBeLean: true, pending };
+  if (m === 'shadow') return { ...report, reason: `shadow mode: full lanes run, lean lane reported; ${route.queueReason}` };
+  return { ...report, reason: `CI_RELEASE_LANE=on, but the lean lane is held until the owner decides how release PRs reach main (OWNER_ALLOWS_LEAN); full lanes run, lean lane reported; ${route.queueReason}`, warning: 'CI_RELEASE_LANE=on is held (OWNER_ALLOWS_LEAN=false); running the full lanes' };
 }
 
 /**
@@ -265,8 +272,7 @@ export function verifyReleaseLane(input) {
     const failed = skippedByLean.filter((j) => resultOf(j) === 'failure');
     // The decision names what still stands between this run and a lean one,
     // so the report never reads as a claim about today.
-    const pending = d.pending ?? [];
-    const lean = `The lean lane${pending.length > 0 ? ` (${pending.join(', ')})` : ''}`;
+    const lean = `The lean lane (${d.pending.join(', ')})`;
     const lines = [`## Release PR lean lane, reported only (\`CI_RELEASE_LANE=${d.mode}\`)`, '', d.reason, '', `Every lane ran. ${lean} would skip:`, '', ...listed];
     lines.push('', failed.length > 0 ? `⚠️ ${lean} would defer a failure to the merge queue: ${failed.join(', ')}.` : `None of them failed. ${lean} would reach the same verdict.`);
     return { ok: true, lines };

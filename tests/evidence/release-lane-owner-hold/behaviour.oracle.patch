@@ -2,11 +2,11 @@ diff --git b/scripts/ci-release-lane.mjs a/scripts/ci-release-lane.mjs
 --- b/scripts/ci-release-lane.mjs
 +++ a/scripts/ci-release-lane.mjs
 @@ -231,7 +231,7 @@ export function decideReleaseLane({ event, mode, headRef, headRepo, repo, baseRe
+   // out of the report, and the report cannot list one the decision ignores.
+   const pending = [
+     m === 'shadow' ? 'with CI_RELEASE_LANE=on' : '',
+-    '',
++    ownerAllowsLean ? '' : 'with OWNER_ALLOWS_LEAN released',
      route.queueable ? '' : 'once this PR is queueable',
    ].filter(Boolean);
-   if (m === 'shadow') return { lane: 'full', mode: m, wouldBeLean: true, pending, reason: `shadow mode: full lanes run, lean lane reported; ${route.queueReason}` };
--  if (false) return { lane: 'full', mode: m, wouldBeLean: true, pending, reason: `CI_RELEASE_LANE=on, but the lean lane is held until the owner decides how release PRs reach main (OWNER_ALLOWS_LEAN); full lanes run, lean lane reported; ${route.queueReason}`, warning: 'CI_RELEASE_LANE=on is held (OWNER_ALLOWS_LEAN=false); running the full lanes' };
-+  if (!ownerAllowsLean) return { lane: 'full', mode: m, wouldBeLean: true, pending, reason: `CI_RELEASE_LANE=on, but the lean lane is held until the owner decides how release PRs reach main (OWNER_ALLOWS_LEAN); full lanes run, lean lane reported; ${route.queueReason}`, warning: 'CI_RELEASE_LANE=on is held (OWNER_ALLOWS_LEAN=false); running the full lanes' };
-   if (!route.queueable) return full(`${route.queueReason}, so this run is the only gate`, { warning: `release lane refused: ${route.queueReason}` });
-   return { lane: 'lean', mode: m, wouldBeLean: true, reason: `CI_RELEASE_LANE=on on the release PR; ${route.queueReason}; ${route.reason}` };
- }
+   if (pending.length === 0) return { lane: 'lean', mode: m, wouldBeLean: true, reason: `CI_RELEASE_LANE=on on the release PR; ${route.queueReason}; ${route.reason}` };

@@ -3,5 +3,5 @@
   "key": "scripts/ci-release-lane.mjs",
   "mutation": "tests/evidence/release-lane-owner-hold/behaviour.oracle.patch",
   "test": "scripts/ci-release-lane.test.mjs",
-  "why": "Reverse application keeps the module and its exports but drops the owner's hold, so CI_RELEASE_LANE=on grants the lean lane while OWNER_ALLOWS_LEAN is false."
+  "why": "Reverse application keeps the module and its exports but drops the owner's hold from the pending list, so CI_RELEASE_LANE=on grants the lean lane while OWNER_ALLOWS_LEAN is false."
 }

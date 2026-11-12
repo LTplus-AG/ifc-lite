@@ -165,9 +165,16 @@ test('SHADOW measures whatever the PR\'s queue state: an unlabelled or draft rel
   assert.match(v.lines.join('\n'), /lacks `mergify-trial`/); // @source-text-assertion-ok subject is the returned summary
   const queueable = verifyReleaseLane({ ...held, mode: 'shadow', lane: 'full', needs: needsJson() });
   assert.match(queueable.lines.join('\n'), /Every lane ran\. The lean lane \(with CI_RELEASE_LANE=on, with OWNER_ALLOWS_LEAN released\) would skip:/); // @source-text-assertion-ok subject is the returned summary
-  // Every pending condition is named by the decision; none left means none listed.
-  assert.deepEqual(decideReleaseLane({ ...held, mode: 'shadow', ownerAllowsLean: true }).pending, ['with CI_RELEASE_LANE=on']);
-  assert.deepEqual(decideReleaseLane({ ...held, mode: 'on', labels: '[]' }).pending, ['with OWNER_ALLOWS_LEAN released', 'once this PR is queueable']);
+  // Every pending condition is named by the decision, for each way a PR can be unqueueable.
+  const pendingOf = (over) => decideReleaseLane({ ...held, ...over }).pending;
+  assert.deepEqual(pendingOf({ mode: 'shadow', ownerAllowsLean: true }), ['with CI_RELEASE_LANE=on']);
+  assert.deepEqual(pendingOf({ mode: 'shadow', labels: '[]' }), ['with CI_RELEASE_LANE=on', 'with OWNER_ALLOWS_LEAN released', 'once this PR is queueable']);
+  assert.deepEqual(pendingOf({ mode: 'on', labels: '[]' }), ['with OWNER_ALLOWS_LEAN released', 'once this PR is queueable']);
+  assert.deepEqual(pendingOf({ mode: 'on', draft: 'true' }), ['with OWNER_ALLOWS_LEAN released', 'once this PR is queueable']);
+  // Lean is exactly "nothing pending": the released, queueable `on` case.
+  const lean = decideReleaseLane({ ...held, mode: 'on', ownerAllowsLean: true });
+  assert.equal(lean.lane, 'lean');
+  assert.equal(lean.pending, undefined);
   // Held `on` names the hold, and the queue state when it applies; never a claim about today.
   const heldOn = (labels, needs) => verifyReleaseLane({ ...held, mode: 'on', labels, lane: 'full', needs }).lines.join('\n');
   assert.match(heldOn('["mergify-trial"]', needsJson()), /None of them failed\. The lean lane \(with OWNER_ALLOWS_LEAN released\) would reach the same verdict/); // @source-text-assertion-ok subject is the returned summary

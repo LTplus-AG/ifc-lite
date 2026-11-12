@@ -10,16 +10,12 @@
  *
  *   node scripts/ci-scripts-test-shards.mjs --shard=<1|2> --of=<2> [--test-reporter...=...] <files...>
  *
- * Shard 1 is a PINNED list, bin-packed from measured per-file times. Shard 2 is
- * EVERYTHING ELSE, so a test file added tomorrow runs on shard 2 without anyone
- * editing this file, and every file in the list runs on exactly one shard.
- *
- * Measured on run 43115735242 (node's count-based --test-shard): shard 2 took
- * 380 s of test time against shard 1's 110 s, because the two largest files sat
- * in it. Simulating node's three concurrent files per shard on those per-file
- * times reproduces 113 / 374 s, and gives 303 / 243 s for the split below. The
- * 303 s is one file, check-unused-locals-baseline.test.mjs, which no number of
- * shards can split.
+ * Shard 1 is a PINNED list of the heaviest files by measured time (run
+ * 43115735242); shard 2 is EVERYTHING ELSE, so a test file added tomorrow runs
+ * on shard 2 without anyone editing this file, and every file in the list runs
+ * on exactly one shard. A pinned list rather than a duration manifest such as
+ * viewer-test-shards.mjs's: at two shards the pins are the whole plan, and a
+ * renamed pin fails loudly instead of being re-placed by hash.
  *
  * Refuses rather than guesses: a pinned file missing from the list (renamed or
  * deleted: re-measure and re-pin), a shard count other than SHARD_COUNT (the
@@ -30,16 +26,14 @@ import { spawnSync } from 'node:child_process';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 
 export const SHARD_COUNT = 2;
-export const CATCH_ALL = 2;
 
-export const PINNED = Object.freeze({
-  1: Object.freeze([
-    'scripts/check-unused-locals-baseline.test.mjs', // 303 s
-    'scripts/docs/build-api-reference.test.mjs', // 231 s
-    'scripts/check-codegen-sync.test.mjs', // 64 s
-    'scripts/check-packed-workflows.test.mjs', // 43 s
-  ]),
-});
+/** Shard 1's files. Re-measure and re-pin when shard 1 stops being the heavier half. */
+export const PINNED = Object.freeze([
+  'scripts/check-unused-locals-baseline.test.mjs',
+  'scripts/docs/build-api-reference.test.mjs',
+  'scripts/check-codegen-sync.test.mjs',
+  'scripts/check-packed-workflows.test.mjs',
+]);
 
 export class ShardError extends Error {}
 
@@ -57,14 +51,14 @@ export function filesForShard(files, shard, total) {
   if (!Number.isInteger(shard) || shard < 1 || shard > SHARD_COUNT) {
     throw new ShardError(`shard ${shard} is not between 1 and ${SHARD_COUNT}`);
   }
-  if (new Set(files).size !== files.length) throw new ShardError('the file list contains duplicates');
   const listed = new Set(files);
-  const pinned = new Set(Object.values(PINNED).flat());
-  const stale = [...pinned].filter((f) => !listed.has(f));
+  if (listed.size !== files.length) throw new ShardError('the file list contains duplicates');
+  const pinned = new Set(PINNED);
+  const stale = PINNED.filter((f) => !listed.has(f));
   if (stale.length > 0) {
     throw new ShardError(`pinned file(s) not in the list: ${stale.join(', ')}. Re-measure and fix PINNED in scripts/ci-scripts-test-shards.mjs`);
   }
-  const mine = shard === CATCH_ALL ? files.filter((f) => !pinned.has(f)) : files.filter((f) => (PINNED[shard] ?? []).includes(f));
+  const mine = files.filter((f) => pinned.has(f) === (shard === 1));
   if (mine.length === 0) throw new ShardError(`shard ${shard} of ${total} would run no test file`);
   return mine;
 }

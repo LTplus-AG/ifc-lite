@@ -169,8 +169,6 @@ test('once-only printf/sort invocation still audits literal test inputs without 
   for (const step of [
     UNIQUE_TEST_STEP,
     UNIQUE_TEST_STEP.replace('sort -u', 'LC_ALL=C sort -u'),
-    // The scripts-tests shards: --test-shard picks part of the same list.
-    UNIQUE_TEST_STEP.replace('node --test ', 'node --test --test-shard="$SHARD" --test-reporter=tap '),
     // The scripts-tests runner, which runs `node --test` on its shard's part.
     UNIQUE_TEST_STEP.replace('node --test ', 'node scripts/ci-scripts-test-shards.mjs --shard="$SHARD" --of="$SHARD_TOTAL" --test-reporter=tap '),
   ]) {

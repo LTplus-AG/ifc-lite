@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -117,7 +117,7 @@ const queued = (queueEvidence, over = {}) => base({ artifactNamesByRun: { 1: ['b
 const NAMED = ['.github/workflows/docs.yml', '.github/workflows/test.yml'];
 
 test('with the cache-keying workflow files known, those, actions and Cargo still get a full run', () => {
-  for (const f of ['Cargo.lock', 'rust/core/Cargo.toml', 'rust-toolchain.toml', '.cargo/config.toml', '.github/workflows/test.yml', '.github/workflows/docs.yml', '.github/actions/setup-wasm-build/action.yml', '.github/actions/any/helper.mjs']) {
+  for (const f of ['Cargo.lock', 'rust/python/Cargo.lock', 'rust/core/Cargo.toml', 'rust-toolchain.toml', '.cargo/config.toml', 'rust/python/.cargo/config', '.github/workflows/test.yml', '.github/workflows/docs.yml', '.github/actions/setup-wasm-build/action.yml', '.github/actions/any/helper.mjs']) {
     const d = decidePushReplay(base({ changedFiles: ['README.md', f], workflowFiles: NAMED }));
     assert.equal(d.replay, false, f);
     assert.ok(d.reason.includes(f), d.reason);
@@ -158,8 +158,8 @@ test('evidence is still required when no file blocks', () => {
 });
 
 const ROOT = '.github/workflows/test.yml';
-const keyed = (files, actionFiles = Object.keys(files).filter((p) => p.startsWith('.github/actions/'))) =>
-  workflowsKeyingCaches({ root: ROOT, actionFiles, readText: (p) => files[p] ?? null });
+const keyed = (files, actionFiles = Object.keys(files).filter((p) => p.startsWith('.github/actions/')), symlinks = []) =>
+  workflowsKeyingCaches({ root: ROOT, actionFiles, symlinks, readText: (p) => files[p] ?? null });
 
 test('workflowsKeyingCaches lists test.yml, the workflows it calls, and workflow files a hashFiles hashes', () => {
   const files = {
@@ -227,6 +227,12 @@ test('workflowsKeyingCaches is unknown when a hashFiles might reach a workflow f
     ['test', "key: ${{ hashFiles('../ifc-lite/.github/workflows/x.yml') }}"],
     ['test', "key: ${{ hashFiles('.github/workflows/x.yml/') }}"],
     ['test', '- uses: ./ci/setup'],
+    ['test', '- uses: ./.github/actions/../../ci/setup'],
+    ['test', '- "uses": ./ci/setup'],
+    ['test', 'x: &deps .github/workflows/x.yml\ncache-dependency-path: *deps'],
+    ['test', 'defaults: &d\n  a: 1\nb:\n  <<: *d'],
+    ['test', `key: "\${{ hashFiles('.github/work\\x66lows/x.yml') }}"`],
+    ['test', "key: ${{ hashFiles('.githu\\b/workflows/x.yml') }}"],
     ['action', "key: ${{ hashFiles('**') }}"],
     ['reusable', "key: ${{ hashFiles('.github/workflows/*.yml') }}"],
   ]) {
@@ -236,7 +242,8 @@ test('workflowsKeyingCaches is unknown when a hashFiles might reach a workflow f
       '.github/actions/a/action.yml': where === 'action' ? text : 'runs: {}',
     };
     assert.ok('unknown' in keyed(files), text);
-  }
+  }  // A quoted key is still a key, and its literal value names the file.
+  assert.deepEqual(keyed({ [ROOT]: '"cache-dependency-path": .github/workflows/x.yml' }), { files: ['.github/workflows/test.yml', '.github/workflows/x.yml'] });
 });
 
 test('workflowsKeyingCaches is unknown when a file cannot be listed or read', () => {
@@ -244,6 +251,20 @@ test('workflowsKeyingCaches is unknown when a file cannot be listed or read', ()
   assert.ok('unknown' in keyed({ [ROOT]: 'jobs: {}' }, null), 'action files unlisted');
   assert.ok('unknown' in keyed({ [ROOT]: 'jobs: {}' }, ['.github/actions/gone/action.yml']), 'action file unreadable');
   assert.ok('unknown' in keyed({ [ROOT]: 'uses: ./.github/workflows/gone.yml' }), 'reusable workflow missing');
+  assert.ok('unknown' in keyed({ [ROOT]: 'jobs: {}' }, [], null), 'symlinks unlisted');
+});
+
+test('workflowsKeyingCaches is unknown when a symlink may reach .github/', () => {
+  for (const link of [
+    { path: 'ci/wf', target: '../.github/workflows' },
+    { path: 'ci/root', target: '..' },
+    { path: 'ci/abs', target: '/home/runner/work/x/x/.github' },
+    { path: '.github/actions/foo', target: '../../tools/foo' },
+    { path: 'up', target: '../elsewhere' },
+  ]) {
+    assert.ok('unknown' in keyed({ [ROOT]: 'jobs: {}' }, [], [link]), JSON.stringify(link));
+  }
+  assert.deepEqual(keyed({ [ROOT]: 'jobs: {}' }, [], [{ path: 'docs/latest', target: 'v2' }]), { files: [ROOT] });
 });
 
 // If this ever turns unknown, every workflow-only push runs in full again: it fails when
@@ -251,6 +272,9 @@ test('workflowsKeyingCaches is unknown when a file cannot be listed or read', ()
 test('workflowsKeyingCaches resolves this repository', () => {
   const repoRoot = fileURLToPath(new URL('..', import.meta.url));
   const actionFiles = execFileSync('git', ['ls-files', '-z', '.github/actions/'], { cwd: repoRoot, encoding: 'utf8' }).split('\0').filter(Boolean);
+  const symlinks = execFileSync('git', ['ls-files', '-z', '-s'], { cwd: repoRoot, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+    .split('\0').filter((e) => e.startsWith('120000 ')).map((e) => e.slice(e.indexOf('\t') + 1))
+    .map((path) => ({ path, target: readlinkSync(join(repoRoot, path)) }));
   const read = (p) => {
     try {
       return readFileSync(join(repoRoot, p), 'utf8');
@@ -259,7 +283,7 @@ test('workflowsKeyingCaches resolves this repository', () => {
       throw err;
     }
   };
-  const got = workflowsKeyingCaches({ root: ROOT, actionFiles, readText: read });
+  const got = workflowsKeyingCaches({ root: ROOT, actionFiles, symlinks, readText: read });
   assert.equal(got.unknown, undefined);
 });
 
@@ -498,6 +522,9 @@ test('the probe reads the Test workflow files at the push commit', {
   assert.equal(replayFor('.github/actions/é/run.sh'), full, 'a non-ASCII action path');
   // ls-tree must not quote it either, or the action can't be read and every workflow blocks.
   assert.equal(replayFor('.github/workflows/cla.yml'), 'replay=true\nreplay_run=1\nreplay_queue=false\n', 'with a non-ASCII action file present');
+  // hashFiles follows a symlink into .github/, so with one present no workflow edit replays.
+  replayFor(() => symlinkSync('.github/workflows', join(root, 'ci-wf')));
+  assert.equal(replayFor('.github/workflows/cla.yml'), full, 'a workflow edit with a symlink into .github/ present');
   // Last: it overwrites test.yml, so nothing after it would reach the fixture's action.
   assert.equal(replayFor('.github/workflows/test.yml'), full, 'test.yml itself');
 });

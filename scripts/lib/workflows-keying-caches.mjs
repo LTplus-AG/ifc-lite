@@ -23,15 +23,19 @@
 
 import { posix } from 'node:path';
 
-const LOCAL_USES = /uses:\s*['"]?\.\/(\.github\/workflows\/[^\s'"@#]+)/g;
-// A local action outside .github/actions/ is executed too, and this scan does not read it.
-const LOCAL_ACTION_ELSEWHERE = /uses:\s*['"]?\.\/(?!\.github\/(?:actions|workflows)\/)/;
-const REMOTE_WORKFLOW_USES = /uses:\s*['"]?[\w-]+\/[\w.-]+\/\.github\/workflows\//;
+// A YAML key may be quoted (`"uses":`).
+const LOCAL_USES = /['"]?uses['"]?\s*:\s*['"]?\.\/(\.github\/workflows\/[^\s'"@#]+)/g;
+// Read by nothing here, so unknown: a local action outside .github/actions/, or a local
+// path that climbs (`./.github/actions/../../ci/setup`).
+const LOCAL_USES_UNREAD = /['"]?uses['"]?\s*:\s*['"]?\.\/(?:(?!\.github\/(?:actions|workflows)\/)|[^\s'"]*\.\.)/;
+const REMOTE_WORKFLOW_USES = /['"]?uses['"]?\s*:\s*['"]?[\w-]+\/[\w.-]+\/\.github\/workflows\//;
+// A YAML anchor, alias or merge key: the value a line shows is not the value GitHub uses.
+const YAML_ALIAS = /(?:^|[\s:\-[,{])[&*][A-Za-z_][\w-]*(?=\s|$|[,\]}])|^\s*<<\s*:/m;
 // Expression function names are case-insensitive.
 const HASHFILES = /hashFiles\(/gi;
 const QUOTED_ARG = /^\s*(?:'([^']*)'|"([^"]*)")\s*([,)])/;
 // An action input whose files key a cache (actions/setup-node, setup-python, ...).
-const CACHE_DEPENDENCY_PATH = /cache-dependency-path:[ \t]*(.*)$/gim;
+const CACHE_DEPENDENCY_PATH = /['"]?cache-dependency-path['"]?\s*:[ \t]*(.*)$/gim;
 // One scalar, ending the line or a flow-mapping entry (`, ...` / ` }`). A block scalar (`|`, `>`) is not plain.
 const PLAIN_VALUE = /^(?:'([^']*)'|"([^"]*)"|([^\s'"#|>,}][^\s#,}]*))\s*(?:[,}].*)?(?:#.*)?$/;
 const WORKFLOW_SEGMENTS = ['.github', 'workflows'];
@@ -75,7 +79,6 @@ function reachesWorkflows(segs, pi = 0, ti = 0) {
 function judgePattern(pattern) {
   if (pattern.startsWith('!')) return 'none';
   const p = posix.normalize(pattern);
-  // The workspace root, or an absolute path that may be it: everything below is hashed.
   // The workspace root, an absolute path that may be it, a climb out that may come back
   // in (`../<repo>/.github`), or a directory-only trailing slash: unknown.
   if (p === '.' || p === './' || p.startsWith('/') || p.startsWith('../') || p.endsWith('/')) return 'unknown';
@@ -101,15 +104,25 @@ function cacheDependencyPaths(text) {
  * @param {{
  *   root: string,
  *   actionFiles: string[] | null,
+ *   symlinks: Array<{ path: string, target: string }> | null,
  *   readText: (path: string) => string | null,
  * }} input `root` is `.github/workflows/test.yml`; `actionFiles` every file under
- *   `.github/actions/` at the commit (null when unlisted); `readText` a file's
+ *   `.github/actions/` at the commit (null when unlisted); `symlinks` every
+ *   symlink in the tree with its target (null when unlisted); `readText` a file's
  *   text at the commit (null when absent).
  * @returns {{ files: string[] } | { unknown: string }} the sorted workflow files
  *   that key Test's caches, `root` included, or why that cannot be told.
  */
-export function workflowsKeyingCaches({ root, actionFiles, readText }) {
+export function workflowsKeyingCaches({ root, actionFiles, symlinks, readText }) {
   if (!Array.isArray(actionFiles)) return { unknown: 'the .github/actions/ files could not be listed' };
+  if (!Array.isArray(symlinks)) return { unknown: 'the symlinks could not be listed' };
+  // hashFiles follows symlinks, and a link inside .github/ can hide what an action runs.
+  for (const { path, target } of symlinks) {
+    const to = posix.normalize(posix.join(posix.dirname(path), target));
+    if (path.startsWith('.github/') || target.startsWith('/') || to === '.' || to.startsWith('../') || to === '.github' || to.startsWith('.github/')) {
+      return { unknown: `symlink ${path} -> ${target} may reach .github/` };
+    }
+  }
   const files = new Set([root]);
   const executed = [root, ...actionFiles];
   for (let i = 0; i < executed.length; i += 1) {
@@ -117,7 +130,8 @@ export function workflowsKeyingCaches({ root, actionFiles, readText }) {
     const text = readText(path);
     if (typeof text !== 'string') return { unknown: `${path} could not be read` };
     if (REMOTE_WORKFLOW_USES.test(text)) return { unknown: `${path} calls a reusable workflow by owner/repo` };
-    if (LOCAL_ACTION_ELSEWHERE.test(text)) return { unknown: `${path} uses a local action outside .github/actions/` };
+    if (YAML_ALIAS.test(text)) return { unknown: `${path} uses a YAML anchor or alias` };
+    if (LOCAL_USES_UNREAD.test(text)) return { unknown: `${path} uses a local action outside .github/actions/, or a climbing path` };
     for (const [, raw] of text.matchAll(LOCAL_USES)) {
       const ref = posix.normalize(raw);
       files.add(ref);
@@ -127,7 +141,8 @@ export function workflowsKeyingCaches({ root, actionFiles, readText }) {
     if (patterns === null) return { unknown: `${path} sets cache-dependency-path to a value that is not a plain path` };
     for (const m of text.matchAll(HASHFILES)) {
       const args = hashFilesArgs(text, m.index + m[0].length);
-      if (args === null) return { unknown: `${path} calls hashFiles with an argument that is not a quoted literal` };
+      // A backslash is a YAML escape in a double-quoted scalar, or a glob escape: either way not the text shown.
+      if (args === null || args.some((a) => a.includes('\\'))) return { unknown: `${path} calls hashFiles with an argument that is not a plain literal` };
       patterns.push(...args);
     }
     for (const pattern of patterns) {

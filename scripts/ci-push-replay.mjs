@@ -57,7 +57,9 @@
  * file under `.github/workflows/` that is not top-level YAML. A top-level
  * workflow file blocks when it can change a Test cache key
  * (lib/workflows-keying-caches.mjs): test.yml, a reusable workflow it calls, or
- * a file a `hashFiles` in them hashes. When that cannot be told, every
+ * a file that a `hashFiles` or `cache-dependency-path` in them or in an action
+ * names. When that cannot be told (a pattern that may reach a workflow, a
+ * remote or unread local `uses:`, a YAML alias, a symlink into .github/), every
  * workflow file blocks. A step that only reads another workflow is test
  * behaviour, which the exact-tree evidence already covers.
  */
@@ -80,11 +82,10 @@ export const TEST_WORKFLOW_FILE = 'test.yml';
  * replay would leave every later PR restoring a stale or cold cache.
  */
 const NO_REPLAY = [
-  /^Cargo\.(lock|toml)$/,
-  /(^|\/)Cargo\.toml$/,
+  /(^|\/)Cargo\.(lock|toml)$/,
   /^rust-toolchain\.toml$/,
-  // Part of Swatinem/rust-cache's key.
-  /^\.cargo\/config(\.toml)?$/,
+  // Part of Swatinem/rust-cache's key, at any workspace root.
+  /(^|\/)\.cargo\/config(\.toml)?$/,
   /^\.github\/actions\//,
 ];
 // GitHub runs only top-level workflow YAML. Anything else under workflows/ is a file a
@@ -233,11 +234,26 @@ function readInputs(repo, pushSha, pushTree, parentSha, before) {
     // -z: a non-ASCII path would come back quoted, and `git show` of the quoted name fails.
     // --full-tree: the pathspec is from the repo root whatever the cwd, like `git show`.
     const actionFiles = gitOrNull('ls-tree', '-z', '-r', '--full-tree', '--name-only', pushSha, '--', '.github/actions/')?.split('\0').filter(Boolean) ?? null;
-    const keyed = workflowsKeyingCaches({ root: TEST_WORKFLOW_PATH, actionFiles, readText: (path) => gitOrNull('show', `${pushSha}:${path}`) });
+    const keyed = workflowsKeyingCaches({ root: TEST_WORKFLOW_PATH, actionFiles, symlinks: symlinksAt(pushSha), readText: (path) => gitOrNull('show', `${pushSha}:${path}`) });
     if (keyed.files) workflowFiles = keyed.files;
     else console.warn(`[push-replay] cannot tell which workflow files key Test's caches at ${pushSha.slice(0, 9)} (${keyed.unknown}); every workflow file blocks`);
   }
   return { pushSha, pushTree, parentSha, before, changedFiles, pulls, runs, artifactNamesByRun, repo, queueEvidence, laterChangedFiles, workflowFiles };
+}
+
+/** Every symlink in the commit's tree with its target, or null when they cannot be read. */
+function symlinksAt(sha) {
+  const listing = gitOrNull('ls-tree', '-z', '-r', '--full-tree', sha);
+  if (listing === null) return null;
+  const links = [];
+  for (const entry of listing.split('\0').filter(Boolean)) {
+    const m = /^120000 blob ([0-9a-f]+)\t(.*)$/s.exec(entry);
+    if (!m) continue;
+    const target = gitOrNull('cat-file', 'blob', m[1]);
+    if (target === null) return null;
+    links.push({ path: m[2], target });
+  }
+  return links;
 }
 
 /** A git command's stdout, or null when it fails (absent file, bad ref); the caller then blocks. */

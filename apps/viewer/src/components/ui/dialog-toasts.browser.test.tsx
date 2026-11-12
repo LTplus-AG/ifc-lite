@@ -45,7 +45,7 @@ it('#9875 A: an error raised during a modal is visible and unobscured inside its
   act(() => toast.error('The reviewed changes could not be saved.'));
   await withThemedPage('light', document.body.innerHTML, async page => {
     await settle(page);
-    const notice = page.getByRole('dialog').getByRole('alert');
+    const notice = page.getByRole('dialog').locator('[aria-live="assertive"]');
     assert.match(await notice.innerText(), /could not be saved/);
     assert.equal(await notice.isVisible(), true);
     assert.equal(await receivesPointer(notice), true, 'the scrim must not cover the notice');

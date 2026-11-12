@@ -14,6 +14,10 @@ type StructuralMethods = ForwardedMethods & Required<StructuralDerivationStoreBa
 // Static registration below installs every method; SDK tests cover calls, overrides and super.
 // eslint-disable-next-line typescript/no-unsafe-declaration-merging
 export interface StoreStructuralNamespace {
+  addStructuralLoad(...args: Parameters<StructuralMethods['addStructuralLoad']>): EntityRef;
+  addStructuralCurveAction(...args: Parameters<StructuralMethods['addStructuralCurveAction']>): EntityRef;
+  connectStructuralElement(...args: Parameters<StructuralMethods['connectStructuralElement']>): EntityRef;
+
   editStructuralEntity(...args: Parameters<StructuralMethods['editStructuralEntity']>): EntityRef;
   removeStructuralEntity(...args: Parameters<StructuralMethods['removeStructuralEntity']>): EntityRef;
   addStructuralPlanarAction(...args: Parameters<StructuralMethods['addStructuralPlanarAction']>): EntityRef;
@@ -40,6 +44,10 @@ export interface StoreStructuralNamespace {
 export class StoreStructuralNamespace extends StoreGroupNamespace {
   static {
     const methods = {
+      addStructuralLoad: true,
+      addStructuralCurveAction: true,
+      connectStructuralElement: true,
+
       editStructuralEntity: true,
       removeStructuralEntity: true,
       addStructuralPlanarAction: true,

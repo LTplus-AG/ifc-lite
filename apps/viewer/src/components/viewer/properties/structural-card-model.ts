@@ -108,14 +108,13 @@ function fieldsOf(info: HeldRecord): { fields: Record<string, unknown>; held: [s
   const held: [string, HeldRecord][] = [];
   if (configuration) {
     // One Values item per slot, a dropped one included, so Values[i] still pairs with Locations[i].
-    const values = configuration.entries.flatMap((entry, i) => (entry.value ? [[i, entry.value] as const] : []));
     fields.Values = { refs: configuration.entries.map((entry) => entry.value?.expressId ?? { dropped: entry.dropped ?? 'unreadable' }) };
     if (configuration.locations) fields.Locations = configuration.entries.map((entry) => entry.location ?? []);
-    for (const [i, value] of values) held.push([`Values[${i}]`, value as unknown as HeldRecord]);
+    configuration.entries.forEach((entry, i) => { if (entry.value) held.push([`Values[${i}]`, entry.value as unknown as HeldRecord]); });
   }
   for (const [key, raw] of Object.entries(fields)) {
     if (isRecord(raw)) held.push([attributeOf(key), raw]);
-    else if (Array.isArray(raw) && raw.length > 0 && raw.every(isRecord)) raw.forEach((child, i) => held.push([`${key}[${i}]`, child]));
+    else if (Array.isArray(raw) && raw.every(isRecord)) raw.forEach((child, i) => held.push([`${key}[${i}]`, child]));
   }
   return { fields, held };
 }
@@ -156,7 +155,7 @@ export function structuralCardSections(data: StructuralExtraction, selection: { 
     for (const [key, raw] of Object.entries(fields)) {
       // An empty list is an unset optional aggregate (`$`), not a value.
       if (raw === undefined || raw === null || NOT_ATTRIBUTES.has(key) || (Array.isArray(raw) && raw.length === 0)) continue;
-      if (Array.isArray(raw) && raw.length > 0 && raw.every(isRecord)) continue;
+      if (Array.isArray(raw) && raw.every(isRecord)) continue;
       const attribute = attributeOf(key);
       const at = position(attribute);
       if (attributes && at === -1) continue;

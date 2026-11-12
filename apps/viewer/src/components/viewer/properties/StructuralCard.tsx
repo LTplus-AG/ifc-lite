@@ -314,7 +314,8 @@ function SectionRows({ section, format, children }: {
 
 const NO_OVERRIDES: Record<string, string> = {};
 /** Enough digits for a structural value the file states (0.0125 m, 1,000,000,000 N/m) without float noise. */
-const CARD_NUMBER: Intl.NumberFormatOptions = { maximumFractionDigits: 3, maximumSignificantDigits: 6, roundingPriority: 'morePrecision' } as Intl.NumberFormatOptions;
+// `roundingPriority` is ES2023 Intl; the viewer's lib is ES2022, hence the cast.
+const CARD_NUMBER = { maximumFractionDigits: 3, maximumSignificantDigits: 6, roundingPriority: 'morePrecision' } as Intl.NumberFormatOptions;
 
 interface CardValueFormat {
   locale: string;
@@ -331,13 +332,10 @@ interface CardValueFormat {
 /** A row value as text: numbers in the locale with the measure's unit, references by id and class. */
 function formatCardValue(row: StructuralCardRow, f: CardValueFormat): string {
   const { value } = row;
-  let unit: string | null = null;
-  const number = (n: number) => {
-    if (!row.measure) return formatLocaleNumber(f.locale, n, CARD_NUMBER);
-    const shown = f.measure(n, row.measure);
-    unit = shown.unit;
-    return formatLocaleNumber(f.locale, shown.converted ?? n, CARD_NUMBER);
-  };
+  const { measure } = row;
+  // The unit depends on the measure alone, so any finite value resolves it.
+  const unit = measure ? f.measure(0, measure).unit : null;
+  const number = (n: number) => formatLocaleNumber(f.locale, (measure ? f.measure(n, measure).converted : null) ?? n, CARD_NUMBER);
   const withUnit = (text: string) => (unit ? `${text} ${unit}` : text);
   const reference = (id: number) => {
     const target = f.entity(id);

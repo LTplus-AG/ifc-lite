@@ -304,13 +304,14 @@ describe('StructuralCard for every structural record (#9668)', () => {
     assert.match(show(1), /PredefinedTypeLOADING_3D.*LoadedBySnow case/);
   });
 
-  it('keeps a small value\'s digits and applies the user\'s display unit (#9668)', () => {
+  it('keeps a small value\'s digits (#9668)', () => {
     const thin: StructuralExtraction = { ...data, members: [{ expressId: 10, globalId: 'plate', type: 'IfcStructuralSurfaceMember',
       thickness: 0.0125, connectionGlobalIds: [], activityGlobalIds: [], analysisModelGlobalIds: [] }] };
     const plate = render(<StructuralCard structuralData={thin} selectedExpressId={10} schemaVersion="IFC4" projectUnits={ProjectUnits.empty()} />);
     assert.match(plate, /Thickness0\.0125 m/);
-    act(() => root!.unmount());
-    host?.remove();
+  });
+
+  it('applies the user\'s display unit, as the property cards do (#9668)', () => {
     const kn = render(<StructuralCard structuralData={data} selectedExpressId={40} schemaVersion="IFC4" projectUnits={ProjectUnits.empty()}
       unitDisplayOverrides={{ FORCEUNIT: 'kn' }} />);
     assert.match(kn, /ForceZ-1 kN/);

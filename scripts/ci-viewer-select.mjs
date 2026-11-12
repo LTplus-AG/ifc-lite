@@ -229,7 +229,9 @@ export function preloadsFromTestScript(script) {
 export function runnerArgs(script) {
   const m = /&&\s*(tsx\s[^&|;]*?)\s+\$files\s*$/.exec(String(script));
   if (!m) throw new Error('cannot find `tsx ... $files` in apps/viewer\'s test script; update runnerArgs');
-  return m[1].split(/\s+/);
+  // The shards read their concurrency from a shell variable (VIEWER_TEST_CONCURRENCY, default 1).
+  // This job runs without a shell, always serial, so that variable is pinned to its default.
+  return m[1].split(/\s+/).map((a) => (a === '--test-concurrency=$c' ? '--test-concurrency=1' : a));
 }
 
 /** Read the repo state the graph needs. */

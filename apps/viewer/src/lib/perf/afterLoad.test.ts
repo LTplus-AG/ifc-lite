@@ -7,6 +7,8 @@
 import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { setFlagsFromString } from 'node:v8';
+import { runInNewContext } from 'node:vm';
 import { fixtureDataStore, fixtureModel } from '@/test/store-fixture';
 import { settleLoadWindow } from '@/test/load-window';
 import { viewerLoadWindow } from '@/hooks/loadWindow';
@@ -157,6 +159,24 @@ describe('afterLoad: the eager scheduling call', () => {
     await flushIdle();
     assert.equal(runs, 0);
     assert.equal(dropped, 1);
+  });
+
+  it('a held model removed: its data store is not kept by the hold bookkeeping (review)', async () => {
+    __setOwnHoldCapForTests(CAP);
+    const ref = await (async (): Promise<WeakRef<object>> => {
+      await multiFileOpen();
+      const store = fixtureDataStore();
+      setModels({ ...complete('a'), ifcDataStore: store }, streaming('b'));
+      runAfterModelSettled({ job: 'source-compaction', modelId: 'a' }, () => {});
+      await flushIdle(); // held: the hold's start is recorded for this store
+      return new WeakRef(store);
+    })();
+    setModels(streaming('b'));
+    await flushIdle();
+    setFlagsFromString('--expose-gc');
+    const gc = runInNewContext('gc') as () => void;
+    for (let i = 0; i < 10 && ref.deref(); i++) { await ticks(1); gc(); }
+    assert.equal(ref.deref() === undefined, true, 'the removed model\'s store can be collected');
   });
 
   describe('when the queue module does not load', () => {

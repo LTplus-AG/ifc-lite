@@ -86,7 +86,7 @@ it('parses the overlay of a store published mid-load only after the load settles
     assert.equal(posts, 0, 'no parse while the load streams');
 
     await act(async () => { useViewerStore.setState({ geometryStreamingActive: false } as never); });
-    await tick();
+    await settleLoadWindow(); // the window closes behind a painted frame and a task
     assert.equal(posts, 0, 'settled: the parse waits for an idle period');
 
     await act(async () => { for (const cb of idle.splice(0)) cb({ didTimeout: false, timeRemaining: () => 50 }); });

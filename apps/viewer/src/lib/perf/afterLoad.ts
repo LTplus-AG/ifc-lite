@@ -38,8 +38,9 @@ export function modelLoadSettled(state: ViewerState, modelId: string | null): bo
 
 /** How long a settled model's own hold may last (e.g. the window stays open across a multi-file open). */
 let ownHoldCapMs = MAX_TAIL_WAIT_MS;
-/** When each held model was first seen settled, per data store (a reload under the same id is a new hold). */
-const heldSince = new Map<string, { store: unknown; since: number }>();
+/** When each held model was first seen settled, by its data store (a reload is a new store, so a new hold); weak, so a removed model's store is not kept. */
+let heldSince = new WeakMap<object, number>();
+const NO_STORE = new Map<string, object>(); // a stand-in key for a record without a store
 const capListeners = new Set<() => void>();
 
 /**
@@ -52,14 +53,18 @@ const capListeners = new Set<() => void>();
  * the legacy single-model store, held by the whole window.
  */
 export function afterLoadReady(state: ViewerState, modelId: string | null): boolean {
-  if (!modelLoadSettled(state, modelId)) { if (modelId !== null) heldSince.delete(modelId); return false; }
+  if (!modelLoadSettled(state, modelId)) {
+    const loading = modelId === null ? null : state.models.get(modelId)?.ifcDataStore;
+    if (loading) heldSince.delete(loading); // loading again: its next settle starts a new hold
+    return false;
+  }
   const loadWindow = viewerLoadWindow();
   if (modelId === null) return !loadWindow.isOpen();
-  if (!loadWindow.isHeld(modelId)) { heldSince.delete(modelId); return true; }
-  const store = state.models.get(modelId)?.ifcDataStore ?? null;
-  const held = heldSince.get(modelId);
-  if (held && held.store === store) return Date.now() - held.since >= ownHoldCapMs;
-  heldSince.set(modelId, { store, since: Date.now() });
+  const key: object = state.models.get(modelId)?.ifcDataStore ?? NO_STORE.get(modelId) ?? NO_STORE.set(modelId, {}).get(modelId)!;
+  if (!loadWindow.isHeld(modelId)) { heldSince.delete(key); NO_STORE.delete(modelId); return true; }
+  const since = heldSince.get(key);
+  if (since !== undefined) return Date.now() - since >= ownHoldCapMs;
+  heldSince.set(key, Date.now());
   setTimeout(() => { for (const listener of [...capListeners]) listener(); }, ownHoldCapMs);
   return false;
 }
@@ -67,7 +72,8 @@ export function afterLoadReady(state: ViewerState, modelId: string | null): bool
 /** Test-only: the own-hold cap; `null` restores it. */
 export function __setOwnHoldCapForTests(ms: number | null): void {
   ownHoldCapMs = ms ?? MAX_TAIL_WAIT_MS;
-  heldSince.clear();
+  heldSince = new WeakMap();
+  NO_STORE.clear();
 }
 
 const subscribeStoreAndWindow = (listener: () => void): (() => void) => {

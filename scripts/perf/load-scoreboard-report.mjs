@@ -162,9 +162,10 @@ export function summarize(plan, samples, { floors = null } = {}) {
         // whose every sample lacks it reads as inconclusive instead of dropping out of the summary.
         const unmeasured = pairs.every(([a, b]) => a === null && b === null);
         if (unmeasured && key !== 'interactiveMs' && !(EXPECTED_METRICS[lane] ?? []).includes(key)) continue;
-        const v = withAaFloor(verdictFor(pairs, { failures, aaFloor: floors?.[fx.name]?.[lane]?.[key] ?? null, minAbs, seed: 0x5eed }), floors);
+        const v = withAaFloor(verdictFor(pairs, { failures, underLoad: { base: sides.base.underLoad, branch: sides.branch.underLoad }, aaFloor: floors?.[fx.name]?.[lane]?.[key] ?? null, minAbs, seed: 0x5eed }), floors);
         verdicts[key] = unmeasured && !v.regression ? { ...v, verdict: 'inconclusive: not measured on any sample (see measurement errors)' } : v;
-        laneFloors[key] = aaNoiseFloor(pairs, { seed: 0x5eed });
+        // An A/A cell with a busy sample gives no floor: an inflated floor would hide later regressions.
+        laneFloors[key] = sides.base.underLoad + sides.branch.underLoad > 0 ? null : aaNoiseFloor(pairs, { seed: 0x5eed });
       }
       const output = outputVerdict(sides.base.fingerprints, sides.branch.fingerprints);
       lanes[lane] = { sides, verdicts, floors: laneFloors, output, primary: verdicts.interactiveMs ?? null };

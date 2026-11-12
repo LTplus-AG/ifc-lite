@@ -17,8 +17,9 @@
  * overlay-created record reads here exactly as it will be saved.
  *
  * Express ids are preserved, overlay-allocated ones included, so the mesher's
- * output keys straight back onto the model. Styles are deliberately NOT in the
- * buffer: the caller sends the load-time style wire entries instead.
+ * output keys straight back onto the model. Geometry styles use the caller's
+ * load-time wire; material appearances travel with the effective subgraph so
+ * its pre-pass can refresh their colours after edits.
  */
 
 import { asSourceBytes, type IfcDataStore } from '@ifc-lite/parser';

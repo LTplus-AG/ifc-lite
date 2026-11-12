@@ -6,6 +6,9 @@ import { iterateEffectiveEntityIds } from '@ifc-lite/mutations';
 import { effectiveMetadataRecord } from '@ifc-lite/parser';
 import type { LiveModel } from '@/lib/commands/modeling/authored-kinds';
 
+/** Model appearance data: stable across light/dark UI themes. */
+export const DEFAULT_MATERIAL_COLOUR = '#808080';
+
 const ref = (v: unknown): number => typeof v === 'number' ? v : typeof v === 'string' && /^#\d+$/.test(v) ? Number(v.slice(1)) : -1;
 const real = (v: unknown): number => typeof v === 'number' ? v : Number((v as { real?: unknown } | null)?.real);
 

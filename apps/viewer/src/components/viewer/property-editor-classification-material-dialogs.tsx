@@ -11,6 +11,7 @@
  * a `Select` via `FieldContext` rather than by cloning props onto it).
  */
 
+import { DEFAULT_MATERIAL_COLOUR } from '@/lib/authoring/material-colour';
 import { useState, useCallback } from 'react';
 import { Tag, Layers } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -171,7 +172,7 @@ export function AddMaterialDialog({ modelId, entityId, entityType }: AddMaterial
 
   const [open, setOpen] = useState(false);
   const [materialName, setMaterialName] = useState('');
-  const [colour, setColour] = useState('#808080');
+  const [colour, setColour] = useState(DEFAULT_MATERIAL_COLOUR);
   const [category, setCategory] = useState('');
   const [description, setDescription] = useState('');
 
@@ -194,7 +195,7 @@ export function AddMaterialDialog({ modelId, entityId, entityType }: AddMaterial
   return (
     <Dialog open={open} onOpenChange={(o) => {
       setOpen(o);
-      if (!o) { setMaterialName(''); setCategory(''); setDescription(''); setColour('#808080'); }
+      if (!o) { setMaterialName(''); setCategory(''); setDescription(''); setColour(DEFAULT_MATERIAL_COLOUR); }
     }}>
       <DialogTrigger asChild>
         <IconButton label={t('propertyEditor.material.trigger')} className={EDIT_TOOL_CLS}>

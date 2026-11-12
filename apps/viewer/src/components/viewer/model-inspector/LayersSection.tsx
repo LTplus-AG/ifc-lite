@@ -21,6 +21,7 @@
  * theirs before Apply, and names any occurrence that could not follow after.
  */
 
+import { DEFAULT_MATERIAL_COLOUR } from '@/lib/authoring/material-colour';
 import { useMemo, useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -72,7 +73,7 @@ export interface LayersSectionProps {
 
 let nextKey = 0;
 const row = (thickness: number, material: number | null): DraftRow =>
-  ({ key: nextKey++, thickness: formatMetres(thickness), material: material === null ? NONE : String(material), newName: '', colour: '#808080' });
+  ({ key: nextKey++, thickness: formatMetres(thickness), material: material === null ? NONE : String(material), newName: '', colour: DEFAULT_MATERIAL_COLOUR });
 
 /** Before Apply to Type: the elements that follow the type's layers, and those whose layers differ. */
 export function typeScopeOf(live: LiveModel, typeId: number): { follow: number; own: number } {

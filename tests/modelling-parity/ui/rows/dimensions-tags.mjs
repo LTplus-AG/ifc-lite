@@ -26,6 +26,7 @@ export default {
       const expectedArea = space ? initialModel.quantities(space.id).NetFloorArea : null;
       const expectedDoor = door?.args[7] || door?.args[2];
       const expectedSpace = space?.args[2];
+      const expectedModelId = await s.state(() => globalThis.__ifc_lite_viewer_store__.getState().session?.modelId);
       tasks.push(await task(s, 'setup: 2D section of the room', () => openFrontSection(s)).then(t => Object.assign(t, { setup: true })));
       const plain = await exportDrawing(s, 'svg', { count: false }).catch(() => null);
       let toolbar = [];
@@ -121,7 +122,7 @@ export default {
       }));
       const areaLabel = typeof expectedArea === 'number' ? `≈ ${Number(expectedArea.toFixed(2))} m²` : null;
       const xmlText = text => String(text ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');
-      const tagged = tags.length === 2 && [door?.id,space?.id].every(id => tags.some(tag => tag.entityId === id && typeof tag.modelId === 'string'));
+      const tagged = tags.length === 2 && [door?.id,space?.id].every(id => tags.some(tag => tag.entityId === id && tag.modelId === expectedModelId));
       const dxfTexts = (dxf?.text ?? '').split(/\r?\n0\r?\n/).filter(record => /^TEXT\r?\n/.test(record));
       return {
         tasks, notes: [], evidence: [shot, await s.shot('tags')], artifacts: { svg: renamedSvg ?? taggedSvg ?? svg, dxf },

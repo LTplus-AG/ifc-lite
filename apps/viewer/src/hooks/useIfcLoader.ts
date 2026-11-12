@@ -90,7 +90,7 @@ import { pointCloudSpatialReferenceFromMetadata, preparePointCloudSpatialLoad } 
 import { removePointCloudScanCache } from './ingest/pointCloudScanCache.js';
 import { stopCopcLodStream } from './ingest/copc/copcLodStream.js';
 import { getGlobalRenderer } from './useBCF.js';
-import { createMetadataPublishGate, holdsMetadataDuringTail } from './metadataPublishGate.js';
+import { createMetadataPublishGate, heldStoreTargetsClosedModel, loaderHoldsMetadata } from './metadataPublishGate.js';
 import { isGeometryTailBusy } from './geometryTail.js';
 import type { FederatedLandXmlStreamingFinalization } from './ingest/federatedLandXmlStreaming.js';
 import { openFederatedLandXmlStreamingPlan, openPrimaryLandXmlProvisional } from './ingest/landXmlGpuTransactions.js';
@@ -1361,12 +1361,10 @@ export function useIfcLoader() {
       const dataStorePromise = modelCompletion.metadata;
       if (target.kind === 'primary') void appearanceLoad?.finishAfter(dataStorePromise, () => useViewerStore.getState().models.get(modelId));
 
-      const onPartialDataStore = (partialStore: IfcDataStore) => {
-        if (isStale()) return;
-        if (spatialReadyMs === null) {
-          spatialReadyMs = trace.milestone('parser.spatialReady');
-          console.log(`[useIfc] Spatial tree ready for ${file.name} at ${spatialReadyMs.toFixed(0)}ms`);
-        }
+      // A store held through the tail (metadataPublishGate.ts) must not reach a primary model the user closed meanwhile; unheld, it publishes as before.
+      const closedWhileHeld = (held: boolean) => heldStoreTargetsClosedModel(held, target.kind === 'primary', useViewerStore.getState().models.has(modelId));
+      const onPartialDataStore = (partialStore: IfcDataStore, held = false) => {
+        if (isStale() || closedWhileHeld(held)) return;
         fillCalculatedStoreyHeights(partialStore);
         // PRIMARY only: setIfcDataStore writes the ACTIVE model. A federated
         // add must not touch model #1's store — it wires its own via
@@ -1374,13 +1372,12 @@ export function useIfcLoader() {
         if (target.kind === 'primary') setIfcDataStore(partialStore);
       };
 
-      const onFullDataStore = (dataStore: IfcDataStore) => {
+      const onFullDataStore = (dataStore: IfcDataStore, held = false) => {
         if (isStale()) return;
-        metadataCompleteMs = trace.milestone('parser.complete');
+        trace.milestone('parser.published');
         fillCalculatedStoreyHeights(dataStore);
-        // PRIMARY only (active-model write); federated wires via finalizeModel.
-        if (target.kind === 'primary') setIfcDataStore(dataStore);
-        console.log(`[useIfc] Data model parsing complete for ${file.name}: ${metadataCompleteMs.toFixed(0)}ms`);
+        // PRIMARY only (active-model write); federated wires via finalizeModel. Completion still settles for a closed model, as it did on arrival.
+        if (target.kind === 'primary' && !closedWhileHeld(held)) setIfcDataStore(dataStore);
         memoryAccounting.endPhase('parser-worker');
         memoryAccounting.recordPhase({ phase: 'parser-complete' });
         modelCompletion?.setMetadata(dataStore);
@@ -1388,9 +1385,14 @@ export function useIfcLoader() {
 
       // Hold publications while this primary load's geometry tail owns the main thread; publish the newest store once (metadataPublishGate.ts).
       const metadataPublish = createMetadataPublishGate<IfcDataStore>({
-        isTailBusy: () => holdsMetadataDuringTail(fileSizeMB) && target.kind === 'primary' && streamCompleteMs !== null && !isStale() && isGeometryTailBusy(),
+        isTailBusy: () => loaderHoldsMetadata({ fileSizeMB, primary: target.kind === 'primary', streamComplete: streamCompleteMs !== null, stale: isStale() }, isGeometryTailBusy),
+        onArrive: (kind) => { // parser milestones mark arrival; `parser.published` marks the full store's publication
+          if (isStale()) return;
+          if (kind === 'full') { metadataCompleteMs = trace.milestone('parser.complete'); console.log(`[useIfc] Data model parsing complete for ${file.name}: ${metadataCompleteMs.toFixed(0)}ms`); }
+          else if (spatialReadyMs === null) { spatialReadyMs = trace.milestone('parser.spatialReady'); console.log(`[useIfc] Spatial tree ready for ${file.name} at ${spatialReadyMs.toFixed(0)}ms`); }
+        },
         publishPartial: onPartialDataStore,
-        publishFull: (store) => { try { onFullDataStore(store); } catch (err) { if (!isStale()) modelCompletion?.failMetadata(err); } }, // held: runs from a timer
+        publishFull: (store, held) => { try { onFullDataStore(store, held); } catch (err) { if (!isStale()) modelCompletion?.failMetadata(err); } }, // held: runs from a timer
       });
 
       const runMainThreadParser = async (): Promise<IfcDataStore> => {

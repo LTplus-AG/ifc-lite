@@ -115,3 +115,88 @@ describe('holdsMetadataDuringTail (small loads publish at once)', () => {
     for (const mb of [35, 169, 327]) assert.equal(holds(mb), true, `${mb} MB (advanced_model, Holter, BWK) is held`);
   });
 });
+
+type GateModule = typeof import('./metadataPublishGate.js');
+/** The whole module, loaded at runtime with every export the loader uses asserted (revert oracle). */
+async function loadModule(): Promise<GateModule> {
+  const mod = (await import('./metadataPublishGate.js').catch(() => null)) as Record<string, unknown> | null;
+  for (const name of ['createMetadataPublishGate', 'loaderHoldsMetadata', 'heldStoreTargetsClosedModel']) {
+    assert.equal(typeof mod?.[name], 'function', `metadataPublishGate.ts must export ${name}`);
+  }
+  return mod as unknown as GateModule;
+}
+
+describe('arrival milestones and the published flag', () => {
+  it('reports each store when it ARRIVES, held or not, and marks a publication from the release as held', async () => {
+    const { createMetadataPublishGate } = await loadModule();
+    let busy = true, t = 0;
+    const timers: Array<() => void> = [];
+    const log: string[] = [];
+    const gate = createMetadataPublishGate<string>({
+      isTailBusy: () => busy,
+      onArrive: (kind) => log.push(`arrive:${kind}@${t}`),
+      publishPartial: (s, held) => log.push(`partial:${s}:${held}@${t}`),
+      publishFull: (s, held) => log.push(`full:${s}:${held}@${t}`),
+      now: () => t,
+      setTimer: (fn) => { timers.push(fn); },
+    });
+    gate.partial('p');
+    t = 10; gate.full('f');
+    assert.deepEqual(log, ['arrive:partial@0', 'arrive:full@10'], 'stamped on arrival, while both are held');
+    t = 50; busy = false;
+    timers.shift()!();
+    assert.deepEqual(log.slice(2), ['full:f:true@50'], 'the release publishes the newest store, flagged held');
+
+    const direct: string[] = [];
+    const open = createMetadataPublishGate<string>({
+      isTailBusy: () => false, onArrive: (k) => direct.push(`arrive:${k}`),
+      publishPartial: (s, held) => direct.push(`partial:${held}`), publishFull: (s, held) => direct.push(`full:${held}`),
+    });
+    open.partial('p'); open.full('f');
+    assert.deepEqual(direct, ['arrive:partial', 'partial:false', 'arrive:full', 'full:false'], 'unheld: arrival then publication, not held');
+  });
+});
+
+describe('loader wiring (useIfcLoader.ts)', () => {
+  it('holds only a large primary load, after its stream completed, while it is current and its tail runs', async () => {
+    const { loaderHoldsMetadata, METADATA_HOLD_MIN_MB } = await loadModule();
+    const base = { fileSizeMB: METADATA_HOLD_MIN_MB, primary: true, streamComplete: true, stale: false };
+    assert.equal(loaderHoldsMetadata(base, () => true), true);
+    assert.equal(loaderHoldsMetadata(base, () => false), false, 'no tail: publish at once');
+    assert.equal(loaderHoldsMetadata({ ...base, fileSizeMB: METADATA_HOLD_MIN_MB - 0.01 }, () => true), false, 'small load (file.size)');
+    assert.equal(loaderHoldsMetadata({ ...base, primary: false }, () => true), false, 'federated add');
+    assert.equal(loaderHoldsMetadata({ ...base, streamComplete: false }, () => true), false, 'still streaming: no tail yet');
+    assert.equal(loaderHoldsMetadata({ ...base, stale: true }, () => true), false, 'stale load');
+    let asked = false;
+    loaderHoldsMetadata({ ...base, primary: false }, () => { asked = true; return true; });
+    assert.equal(asked, false, 'the scene is not queried for a load that cannot be held');
+  });
+
+  it('a load that goes stale during the hold is released at the next poll and writes nothing', async () => {
+    const { createMetadataPublishGate, loaderHoldsMetadata } = await loadModule();
+    const state = { fileSizeMB: 177, primary: true, streamComplete: true, stale: false };
+    let t = 0;
+    const timers: Array<() => void> = [];
+    const written: string[] = [];
+    // The loader's publications return early on a stale load (onPartialDataStore / onFullDataStore).
+    const publish = (s: string) => { if (!state.stale) written.push(s); };
+    const gate = createMetadataPublishGate<string>({
+      isTailBusy: () => loaderHoldsMetadata(state, () => true),
+      publishPartial: publish, publishFull: publish, now: () => t, setTimer: (fn) => { timers.push(fn); },
+    });
+    gate.full('f');
+    assert.deepEqual(written, []);
+    state.stale = true; // superseded or cancelled while held
+    t = 16; timers.shift()!();
+    assert.equal(timers.length, 0, 'released at once, not after the 3 s limit');
+    assert.deepEqual(written, [], 'nothing reaches the store of a stale load');
+  });
+
+  it('a primary model closed during the hold does not get its held store written; unheld stores publish as on main', async () => {
+    const { heldStoreTargetsClosedModel } = await loadModule();
+    assert.equal(heldStoreTargetsClosedModel(true, true, false), true, 'held, primary, closed: skip the active-store write');
+    assert.equal(heldStoreTargetsClosedModel(true, true, true), false, 'held, still open: publish');
+    assert.equal(heldStoreTargetsClosedModel(false, true, false), false, 'unheld (arrived before the tail): unchanged from main');
+    assert.equal(heldStoreTargetsClosedModel(true, false, false), false, 'federated publishes through finalize');
+  });
+});

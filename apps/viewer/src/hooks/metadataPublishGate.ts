@@ -41,6 +41,32 @@ export function holdsMetadataDuringTail(fileSizeMB: number): boolean {
   return fileSizeMB >= METADATA_HOLD_MIN_MB;
 }
 
+/** What the loader knows when it asks whether to hold (`useIfcLoader.ts`). */
+export interface LoaderHoldState {
+  /** `file.size` in MB: the bytes picked, so a small `.ifczip` that unpacks large is never held. */
+  fileSizeMB: number;
+  /** Only a primary load writes the active store; a federated add publishes through finalize. */
+  primary: boolean;
+  /** The tail exists only after the geometry stream completed. */
+  streamComplete: boolean;
+  /** A superseded or cancelled load publishes nothing, so there is nothing to hold. */
+  stale: boolean;
+}
+
+/** The loader's hold rule: a large primary load, after its stream completed, while it is current and its geometry tail runs. */
+export function loaderHoldsMetadata(state: LoaderHoldState, isTailBusy: () => boolean): boolean {
+  return holdsMetadataDuringTail(state.fileSizeMB) && state.primary && state.streamComplete && !state.stale && isTailBusy();
+}
+
+/**
+ * A store held through the tail is not written to a primary model that the
+ * user closed meanwhile (closing does not cancel the load). Unheld, it publishes
+ * as before the gate, so a close before the store arrived behaves as on main.
+ */
+export function heldStoreTargetsClosedModel(held: boolean, primary: boolean, modelPresent: boolean): boolean {
+  return held && primary && !modelPresent;
+}
+
 export interface MetadataPublishGate<S> {
   /** The partial (hierarchy-ready) store. Dropped if the full store overtakes it while held. */
   partial(store: S): void;
@@ -51,8 +77,11 @@ export interface MetadataPublishGate<S> {
 export interface MetadataPublishGateOptions<S> {
   /** True while the geometry tail (queued uploads, streaming fragments, finalize) is running. */
   isTailBusy: () => boolean;
-  publishPartial: (store: S) => void;
-  publishFull: (store: S) => void;
+  /** Called when a store ARRIVES, held or not: the parser milestones are stamped here, not at publication. */
+  onArrive?: (kind: 'partial' | 'full') => void;
+  /** `held` is true when the store waited for the tail and is published from the release. */
+  publishPartial: (store: S, held: boolean) => void;
+  publishFull: (store: S, held: boolean) => void;
   pollMs?: number;
   maxHoldMs?: number;
   now?: () => number;
@@ -75,8 +104,8 @@ export function createMetadataPublishGate<S>(options: MetadataPublishGateOptions
     heldSince = -1;
     const full = heldFull, partial = heldPartial;
     heldFull = undefined; heldPartial = undefined;
-    if (full !== undefined) options.publishFull(full);
-    else if (partial !== undefined) options.publishPartial(partial);
+    if (full !== undefined) options.publishFull(full, true);
+    else if (partial !== undefined) options.publishPartial(partial, true);
   };
   const poll = (): void => {
     if (!options.isTailBusy() || now() - heldSince >= maxHoldMs) { release(); return; }
@@ -92,14 +121,16 @@ export function createMetadataPublishGate<S>(options: MetadataPublishGateOptions
   return {
     partial(store) {
       if (fullDone) return;
-      if (!armed && !options.isTailBusy()) { options.publishPartial(store); return; }
+      options.onArrive?.('partial');
+      if (!armed && !options.isTailBusy()) { options.publishPartial(store, false); return; }
       heldPartial = store;
       hold();
     },
     full(store) {
       if (fullDone) return;
       fullDone = true;
-      if (!armed && !options.isTailBusy()) { options.publishFull(store); return; }
+      options.onArrive?.('full');
+      if (!armed && !options.isTailBusy()) { options.publishFull(store, false); return; }
       heldFull = store;
       hold();
     },

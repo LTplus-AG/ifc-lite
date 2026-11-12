@@ -26,8 +26,9 @@ impl StructuralAxes {
             let Some(args) = split_top_level_args(&text[open + 1..close]) else { continue };
             if ty.eq_ignore_ascii_case("IFCDIRECTION") {
                 let inner = args.first().and_then(|s| s.trim().strip_prefix('(')?.strip_suffix(')'));
-                let values = inner.and_then(split_top_level_args).and_then(|v| v.iter().map(|s| s.trim().parse::<f64>().ok()).collect::<Option<Vec<_>>>());
-                if values.is_some_and(|v| v.len() == 3 && v.iter().all(|x| x.is_finite()) && v.iter().any(|x| *x != 0.0)) {
+                let dimensions = inner.and_then(split_top_level_args).map(|v| v.len());
+                let direction = ifc_lite_core::parser::StepRecord::parse(&content[start..end]).and_then(|r| r.point_at(0));
+                if dimensions == Some(3) && direction.is_some_and(|(x, y, z)| x != 0.0 || y != 0.0 || z != 0.0) {
                     result.directions.insert(id);
                 }
             } else if args.len() == 8 {
@@ -79,7 +80,8 @@ mod tests {
     fn axes_follow_schema_aliases_case_and_retained_record_selection_9668() {
         let source = std::str::from_utf8(SOURCE).unwrap();
         let mixed = source.replace("IFCDIRECTION", "IfcDirection").replace("IFCRELASSOCIATESPROFILEPROPERTIES", "IfcRelAssociatesProfileProperties");
-        for (text, target) in [(source, "IFC4_ADD2"), (mixed.as_str(), "IFC4")] {
+        let commented = source.replace("((0.,1.,0.))", "((0.,1./* axis */,0.))");
+        for (text, target) in [(source, "IFC4_ADD2"), (mixed.as_str(), "IFC4"), (commented.as_str(), "IFC4")] {
             let opts = StepOptions { schema: Some(target.into()), ..StepOptions::default() };
             let (out, stats) = export_step_with_stats(text.as_bytes(), &opts).unwrap();
             assert!(out.contains(".RIGID_JOINED_MEMBER.,#80)"), "{out}");

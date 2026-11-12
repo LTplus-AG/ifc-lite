@@ -100,7 +100,7 @@ function nameEnd(text: string, from: number): number {
  * Index past the number at `from`, or -1: one complete STEP numeric literal
  * (core's `read_step_number`), an `INTEGER` within `i64`.
  */
-export function numberEnd(text: string, from: number): number {
+function numberEnd(text: string, from: number): number {
   let i = from;
   while (i < text.length && isNumberRunCode(text.charCodeAt(i))) i++;
   const token = text.slice(from, i);
@@ -110,6 +110,12 @@ export function numberEnd(text: string, from: number): number {
     if (value > I64_MAX || value < I64_MIN) return -1;
   }
   return i;
+}
+
+/** Read one STEP number with the shared numeric grammar and surrounding trivia. */
+export function parseStepNumber(token: string): number {
+  const start = skipStepTrivia(token, 0), end = start < 0 ? -1 : numberEnd(token, start);
+  return end >= 0 && skipStepTrivia(token, end) === token.length ? Number(token.slice(start, end)) : NaN;
 }
 
 /**

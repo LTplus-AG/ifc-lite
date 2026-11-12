@@ -96,6 +96,10 @@ describe('explicit IFC2X3 section orientation #9668', () => {
     const sourceOnly = new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: false });
     expect(new TextDecoder().decode(sourceOnly.content)).toContain('.RIGID_JOINED_MEMBER.,#80)');
     expect(sourceOnly.stats.warnings.join('\n')).not.toContain('Axis is required');
+    const commentedStore = await new IfcParser().parseColumnar(new TextEncoder().encode(text.replace('((0.,1.,0.))', '((0.,1./* axis */,0.))')).buffer);
+    const commented = new StepExporter(commentedStore).export({ schema: 'IFC4' });
+    expect(new TextDecoder().decode(commented.content)).toContain('.RIGID_JOINED_MEMBER.,#80)');
+    expect(commented.stats.warnings.join('\n')).not.toContain('Axis is required');
   });
   it('refuses to guess a section axis from a placed or ambiguous member', () => {
     const diagnostics = new EnumReconciliation();
@@ -145,10 +149,12 @@ describe('irreversible structural relationship preview #9668 review regression',
   it('reports the lost relationship kind while retaining both linked objects', async () => {
     const source = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n#50=IFCRELCONNECTSSTRUCTURALELEMENT('id',#1,$,$,#22,#77);\nENDSEC;\nEND-ISO-10303-21;";
     const store = await new IfcParser().parseColumnar(new TextEncoder().encode(source).buffer);
-    const report = analyzeConversionLoss(store, 'IFC2X3', 'IFC4');
-    expect(report.hasLoss).toBe(true);
-    expect(report.entries).toMatchObject([{ sourceType: 'IFCRELCONNECTSSTRUCTURALELEMENT', targetType: 'IFCRELASSIGNSTOPRODUCT', kind: 'lossy', droppedAttributes: [] }]);
-    expect(convertStepLine("#50=IFCRELCONNECTSSTRUCTURALELEMENT('id',#1,$,$,#22,#77);", 'IFC2X3', 'IFC4'))
-      .toBe("#50=IFCRELASSIGNSTOPRODUCT('id',#1,$,$,(#77),$,#22);");
+    for (const target of ['IFC4', 'IFC4X3', 'IFC5'] as const) {
+      const report = analyzeConversionLoss(store, 'IFC2X3', target);
+      expect(report.hasLoss).toBe(true);
+      expect(report.entries).toMatchObject([{ sourceType: 'IFCRELCONNECTSSTRUCTURALELEMENT', targetType: 'IFCRELASSIGNSTOPRODUCT', kind: 'lossy', droppedAttributes: [] }]);
+      expect(convertStepLine("#50=IFCRELCONNECTSSTRUCTURALELEMENT('id',#1,$,$,#22,#77);", 'IFC2X3', target))
+        .toBe("#50=IFCRELASSIGNSTOPRODUCT('id',#1,$,$,(#77),$,#22);");
+    }
   });
 });

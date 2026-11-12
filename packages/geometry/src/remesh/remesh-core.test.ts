@@ -9,6 +9,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import type { ByteStreamingPrePassResult } from '../byte-streaming-prepass-result.js';
 import type { MeshCollection } from '@ifc-lite/wasm';
 import {
   applyRemeshConfig,
@@ -100,7 +101,7 @@ describe('remesh core (#6232)', () => {
 
 it('uses current mini-STEP material colours instead of load-time colours (#9296)', () => {
   const api = scriptedApi([7, 0, 10], emptyCollection);
-  const pre = api.buildPrePassOnce(new Uint8Array());
+  const pre = api.buildPrePassOnce(new Uint8Array()) as ByteStreamingPrePassResult;
   const current = { materialElementIds: Uint32Array.of(7), materialColorCounts: Uint32Array.of(1), materialColors: Uint8Array.of(181, 82, 59, 255) };
   api.buildPrePassOnce = () => ({ ...pre, ...current });
   const originalBatch = api.processGeometryBatch;

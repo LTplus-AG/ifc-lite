@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { beforeEach, afterEach, it } from 'node:test';
 import { StepExporter } from '@ifc-lite/export';
 import { useViewerStore } from '@/store';
-import { SAMPLE_MODEL as MODEL, GROUND_STOREY, seedAuthoringSample, parseIfc, danglingReferences } from '@/test/authoring-sample-fixture';
+import { SAMPLE_MODEL as MODEL, GROUND_STOREY, seedAuthoringSample, parseIfc } from '@/test/authoring-sample-fixture';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { setRequestRemesh, type RemeshRequest } from '../transaction';
 import { commandPointerMove, commandPointerDown, writeCommandField, commitCommand, getCommandRuntime } from '../runtime';
@@ -41,19 +41,15 @@ function exported() {
   return new StepExporter(s.models.get(MODEL)!.ifcDataStore!, s.mutationViews.get(MODEL)!).export({ schema: 'IFC4', applyMutations: true, timeStamp: '20260101T000000' }).content;
 }
 const depth = () => useViewerStore.getState().undoStacks.get(MODEL)?.length ?? 0;
-async function exportedPosition(id: number) {
-  // Resolve the actual exported placement chain, not the live store's cached read.
-  const { uprightFrame } = await import('../../../../../../../packages/create/src/in-store/element-transform-frames');
-  const { MutablePropertyView } = await import('@ifc-lite/mutations');
+async function exportedWall(id: number) {
+  const { MutablePropertyView, StoreEditor } = await import('@ifc-lite/mutations');
   const dataStore = await parseIfc(exported());
   const view = new MutablePropertyView(dataStore.properties ?? null, MODEL);
   const { configureMutationView } = await import('@/utils/configureMutationView');
   configureMutationView(view, dataStore);
-  const { AnchorEntityReader } = await import('../../../../../../../packages/create/src/in-store/resolve-anchor');
-  const reader = new AnchorEntityReader(dataStore, view);
-  const placement = Number(String(reader.entity(id)!.attributes[5]).slice(1));
-  const frame = uprightFrame({ dataStore, view }, placement);
-  assert.ok(frame); return frame;
+  const { readWallMetres } = await import('../../../../../../../packages/create/src/in-store/wall-size-edit');
+  const result = readWallMetres({ dataStore, view, editor: new StoreEditor(dataStore,view) },id);
+  assert.ok(result); return result;
 }
 
 for (const side of [-1,1]) it(`#9296 Offset exports a 5m parallel wall at y=${side*1.5}, and undoes once`, async () => {
@@ -65,11 +61,9 @@ for (const side of [-1,1]) it(`#9296 Offset exports a 5m parallel wall at y=${si
   const { resolveEntityRef } = await import('@/store/resolveEntityRef');
   const copied = resolveEntityRef(useViewerStore.getState().selectedEntityId!).expressId;
   assert.notEqual(copied,id);
-  const ends = useViewerStore.getState().readWallEndpoints(MODEL,copied)!;
+  const ends = await exportedWall(copied);
   assert.ok(Math.abs(ends.start[1]-side*1.5)<.001, JSON.stringify(ends));
   assert.ok(Math.abs(Math.hypot(ends.end[0]-ends.start[0],ends.end[1]-ends.start[1])-5)<.001);
-  const frame = await exportedPosition(copied);
-  assert.ok(Math.abs(frame.origin[1]-side*1.5)<.001);
   useViewerStore.getState().undo(MODEL); assert.equal(depth(),d); assert.deepEqual(exported(),before);
 });
 it('#9296 Offset refuses a non-wall and invalid distances without changing the graph', async () => {
@@ -77,5 +71,6 @@ it('#9296 Offset refuses a non-wall and invalid distances without changing the g
   assert.ok('expressId' in column); select(column.expressId);
   let before = exported(); await useViewerStore.getState().startCommand('element.offset'); assert.equal(commitCommand(),false); assert.deepEqual(exported(),before);
   const id = wall(0); select(id); await useViewerStore.getState().startCommand('element.offset'); before=exported();
+  assert.equal(getCommandRuntime().command?.id,'element.offset');
   for (const value of [0,-1]) { writeCommandField(0,value); assert.equal(commitCommand(),false); assert.deepEqual(exported(),before); }
 });

@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: MPL-2.0
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
+import { createElement } from 'react';
+import { render as renderHud, click as clickHud, cleanup } from '@/test/render';
 import { beforeEach, afterEach, it } from 'node:test';
 import { StepExporter } from '@ifc-lite/export';
 import { useViewerStore } from '@/store';
 import { SAMPLE_MODEL as MODEL, GROUND_STOREY, seedAuthoringSample, parseIfc, danglingReferences } from '@/test/authoring-sample-fixture';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { setRequestRemesh, type RemeshRequest } from '../transaction';
-import { commandPointerMove, commandPointerDown, writeCommandField, commitCommand, getCommandRuntime, updateCommandGesture } from '../runtime';
+import { commandPointerMove, commandPointerDown, writeCommandField, commitCommand, getCommandRuntime } from '../runtime';
 import type { SnapResult } from '@/lib/snap/types';
 import '../builtin';
 
@@ -22,7 +24,7 @@ beforeEach(async () => {
   remeshed = [];
   restore = setRequestRemesh((_get, request) => { remeshed.push(request); });
 });
-afterEach(() => { restore(); useViewerStore.getState().exitModelWorkspace(); });
+afterEach(() => { cleanup(); restore(); useViewerStore.getState().exitModelWorkspace(); });
 function wall(y = 10, end: [number, number] = [5, y]) {
   const r = useViewerStore.getState().addWall(MODEL, storey, { Start: [0,y,0], End: [...end,0], Thickness: .2, Height: 3 });
   assert.ok('expressId' in r); return r.expressId;
@@ -79,7 +81,11 @@ for (const copy of ['alt','toggle'] as const) it(`#9296 Mirror ${copy} makes a r
   const id = wall(), d = depth(); select(id);
   await useViewerStore.getState().startCommand('element.mirror');
   click(0,12);
-  if (copy === 'toggle') updateCommandGesture(g => ({ ...(g as import('./element-mirror').MirrorGesture), copy: true }));
+  if (copy === 'toggle') {
+    const runtime = getCommandRuntime(), Bar = runtime.command!.hud.Bar!;
+    const ui = renderHud(createElement(Bar,{ gesture: runtime.gesture, ctx: runtime.ctx! }));
+    const input = ui.querySelector('#mirror-keep-original'); assert.ok(input); clickHud(input);
+  }
   click(4,12,copy === 'alt');
   assert.equal(getCommandRuntime().command, null);
   const selected = useViewerStore.getState().selectedEntityId!;
@@ -113,5 +119,6 @@ it('#9296 Mirror refuses grids atomically and preserves every selected wall', as
   const grid = useViewerStore.getState().mutationViews.get(MODEL)!.getNewEntities().find(e=>e.type.toUpperCase()==='IFCGRID');
   assert.ok(grid); select(id,grid.expressId);
   const before = exported(); await useViewerStore.getState().startCommand('element.mirror');
+  assert.equal(getCommandRuntime().command?.id,'element.mirror');
   click(0,12); writeCommandField(0,0); assert.equal(commitCommand(),false); assert.deepEqual(exported(),before);
 });

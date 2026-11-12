@@ -8,10 +8,10 @@ import { updateCommandGesture } from '@/lib/commands/modeling/runtime';
 import type { CommandHudProps } from '@/lib/commands/modeling/types';
 import type { MirrorGesture } from '@/lib/commands/modeling/commands/element-mirror';
 
-export function MirrorBar({ gesture }: CommandHudProps<MirrorGesture>) {
+export function MirrorBar({ gesture, measuring }: CommandHudProps<MirrorGesture>) {
   const { t } = useTranslation();
   return <label className="flex items-center gap-2">
-    <input id="mirror-keep-original" type="checkbox" checked={gesture.copy}
+    <input id={measuring ? undefined : "mirror-keep-original"} tabIndex={measuring ? -1 : undefined} type="checkbox" checked={gesture.copy}
       onChange={event => updateCommandGesture(g => ({ ...(g as MirrorGesture), copy: event.target.checked }))} />
     {t('moveRotate.mirror.keepOriginal')}
   </label>;

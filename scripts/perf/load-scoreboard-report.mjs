@@ -8,6 +8,8 @@
  * markdown tables. Failed samples stay in the counts.
  */
 
+import { webglPickRows } from './load-scoreboard-report-sections.mjs';
+export { webglPickRows } from './load-scoreboard-report-sections.mjs';
 import { aaNoiseFloor, expectedCacheTier, median, rankShares, relativeSpread, verdictFor } from './load-scoreboard-stats.mjs';
 
 /** The lanes a plan without a `lanes` key runs: exactly the set main had before the opt-in arms. */
@@ -319,29 +321,6 @@ function verdictTable(summary, set, lanes) {
 export function laneStageRanking(summary, lane, set = 'tuning') {
   const perFixture = summary.fixtures.filter((f) => f.set === set && f.lanes[lane]).map((f) => Object.fromEntries(f.lanes[lane].sides.base.stages.map((s) => [s.stage, s.share])));
   return rankShares(perFixture);
-}
-
-/**
- * Per fixture x lane x side: how many samples had WebGL (the start screen's mark) drawing around the pick, and the
- * median canvas frames to interactive. A cell mixing both states is MIXED: on Xvfb the two states present at very
- * different cost, so its spread is part harness, not product.
- */
-export function webglPickRows(samples) {
-  const groups = new Map();
-  for (const r of samples) {
-    if (!r.ok || !BROWSER_LANES.includes(r.lane) || !('webglActiveAtPick' in r)) continue;
-    const key = `${r.fixture}|${r.lane}|${r.side}`;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(r);
-  }
-  return [...groups].map(([key, rows]) => {
-    const [fixture, lane, side] = key.split('|');
-    const known = rows.filter((r) => typeof r.webglActiveAtPick === 'boolean');
-    const active = known.filter((r) => r.webglActiveAtPick).length;
-    const frames = rows.map((r) => r.framesToInteractive).filter(Number.isFinite);
-    const state = known.length < rows.length ? 'UNKNOWN on some samples' : active === 0 ? 'none' : active === known.length ? 'ALL' : 'MIXED';
-    return `| ${fixture} | ${lane} | ${side} | ${rows.length} | ${active} | ${state} | ${frames.length ? Math.round(median(frames)) : '—'} |`;
-  });
 }
 
 export function renderMarkdown(summary, plan, host, samples = []) {

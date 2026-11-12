@@ -56,7 +56,7 @@ function dataStore(): CacheDataStore {
     quantities: new QuantityTableBuilder(strings).build(), relationships: relationships.build() };
 }
 
-async function entry(): Promise<{ result: CacheResult; compressedChunks: number }> {
+async function entry(): Promise<{ result: CacheResult; compressedChunks: number; chunkCount: number }> {
   const source = ['ISO-10303-21;', 'HEADER;', 'ENDSEC;', 'DATA;', "#1=IFCPROJECT('guid-project');", "#3=IFCBUILDING('guid-building');", 'ENDSEC;', 'END-ISO-10303-21;'].join('\n');
   const sourceBuffer = new TextEncoder().encode(source).buffer as ArrayBuffer;
   const buffer = await new BinaryCacheWriter().write(dataStore(), { meshes: meshes(), totalVertices: 30000, totalTriangles: 3000, coordinateInfo: COORD_INFO },

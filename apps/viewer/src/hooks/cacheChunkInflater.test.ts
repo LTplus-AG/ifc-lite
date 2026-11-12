@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import type { CoordinateInfo, MeshData } from '@ifc-lite/geometry';
 import { buildGeometrySectionV13, FORMAT_VERSION, openGeometryChunksV13 } from '@ifc-lite/cache';
 import { ChunkInflatePool } from '@ifc-lite/cache/chunk-inflate-pool';
+import type { CompressionWorkerPort } from '../../../../packages/cache/src/workers/geometry-compression-client.js';
 import { handleCompressionRequest } from '../../../../packages/cache/src/workers/geometry-compression-handler.js';
 import { createCacheChunkInflater } from './cacheChunkInflater.js';
 
@@ -32,7 +33,7 @@ function meshes(cells = 12): MeshData[] {
 }
 
 /** A fake worker running the real handler; `hold` keeps replies until `release()`; `crash()` fails it. */
-class Port {
+class Port implements CompressionWorkerPort {
   static all: Port[] = [];
   onmessage: ((event: MessageEvent<unknown>) => void) | null = null;
   onerror: ((event: ErrorEvent) => void) | null = null;
@@ -40,8 +41,8 @@ class Port {
   decodes = 0;
   private held: Array<() => void> = [];
   constructor(private readonly hold: boolean) { Port.all.push(this); }
-  postMessage(message: { op?: string }, transfers: ArrayBuffer[]): void {
-    if (message.op === 'decode') this.decodes++;
+  postMessage(message: Parameters<CompressionWorkerPort['postMessage']>[0], transfers: ArrayBuffer[]): void {
+    if ('op' in message && message.op === 'decode') this.decodes++;
     const received = structuredClone(message, { transfer: transfers });
     void handleCompressionRequest(received, (response, outgoing) => {
       const deliver = () => this.onmessage?.(new MessageEvent('message', { data: structuredClone(response, { transfer: outgoing }) }));

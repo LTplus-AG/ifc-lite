@@ -14,6 +14,7 @@ import {
   __resetSymbolicAnnotationsCacheForTests,
   __symbolicAnnotationsRoomFlatCacheHasForTests,
   ensureParseFor,
+  getDisplayParseFor,
   getParseFor,
 } from './symbolic-parse-cache.js';
 
@@ -122,6 +123,47 @@ describe('room symbolic cache owner identity (#4608)', () => {
         'the rebound parse includes the current room placement');
       assert.equal(workerParses, 1, 'one portable STEP source is parsed once across reconstructions');
       assert.equal(__symbolicAnnotationsRoomFlatCacheHasForTests(portableStore), true);
+    } finally {
+      __setOverlayWorkerFactoryForTest(previous);
+    }
+  });
+
+  // #9782 review: the changeset's "an overlay keeps its last parse while a re-parse is pending" holds for room-backed stores too.
+  it('a re-keyed room-backed store keeps showing its last parse until the re-parse lands', async () => {
+    const replies: Array<() => void> = [];
+    const previous = __setOverlayWorkerFactoryForTest(() => {
+      const worker = {
+        onmessage: null as ((event: { data: unknown }) => void) | null,
+        postMessage(request: { id: number }) { replies.push(() => worker.onmessage?.({ data: { id: request.id, ok: true, flat: oneFill() } })); },
+        terminate() {},
+      };
+      return worker as unknown as Worker;
+    });
+    const release = async () => { for (const reply of replies.splice(0)) reply(); await new Promise((resolve) => setTimeout(resolve, 0)); };
+    try {
+      const sharedSource = source();
+      const portableStore = { source: sharedSource, entityIndex: { byType: new Map(), byId: new Map() } } as unknown as IfcDataStore;
+      const room = store(sharedSource, portableStore, 17);
+      const first = ensureParseFor([room]);
+      await release();
+      await Promise.all(first);
+      const before = getParseFor(room);
+      assert.equal(before?.looseFills[0]?.ownerId, 17);
+
+      // An edit re-keys the store (here: its room owners are rebound); its re-parse is pending.
+      registerRoomSymbolicSource(room, {
+        dataStore: portableStore, source: sharedSource, seededIds: new Set([SOURCE_OWNER]), ownerIds: new Map([[SOURCE_OWNER, 41]]),
+        placements: new Map(), baselines: new Map(), structuredPsets: new Map(), structuredQuantities: new Map(), structuredAttributes: new Map(),
+      });
+      const pending = ensureParseFor([room]);
+      assert.equal(getParseFor(room), undefined, 'the new key has no parse yet');
+      assert.equal(getDisplayParseFor(room), before, 'the overlay keeps the last parse meanwhile');
+
+      await release();
+      await Promise.all(pending);
+      const after = getParseFor(room);
+      assert.equal(after?.looseFills[0]?.ownerId, 41);
+      assert.equal(getDisplayParseFor(room), after, 'and shows the new parse once it lands');
     } finally {
       __setOverlayWorkerFactoryForTest(previous);
     }

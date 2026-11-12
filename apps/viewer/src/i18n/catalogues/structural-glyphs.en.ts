@@ -4,7 +4,7 @@
 
 /**
  * Tooltips of the structural support and load glyphs (#9668). A lazy
- * catalogue (key types in `lazy-catalogues.ts`): `structural-glyph-groups.ts`
+ * catalogue (key types in `lazy-catalogues.ts`): `StructuralGlyphOverlay.tsx`
  * registers it when the glyph overlay chunk loads, so it adds nothing to the
  * page's first load.
  */

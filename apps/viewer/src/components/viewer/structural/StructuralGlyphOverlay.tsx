@@ -25,19 +25,27 @@
 import { createPortal } from 'react-dom';
 import { useEffect, useId, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
-import { useTranslation } from '@/i18n';
+import { registerEnglish, useTranslation } from '@/i18n';
+import { structuralGlyphsEn } from '@/i18n/catalogues/structural-glyphs.en';
 import { useSceneLayer, useSceneProjector } from '@/components/viewport-ui/scene';
 import { glyphPath, type Project } from './structural-glyph-paths';
 import { structuralGlyphGroups, type GlyphStyle, type SourceGroup } from './structural-glyph-groups';
 
-/** Stroke per style, from the theme's status and overlay tokens, so it follows light and dark. */
+/**
+ * Stroke per style, from the overlay palette (`lib/viewport-ui/overlay-theme.ts`),
+ * whose values are contrast-tested against the canvas. Not the accent: that
+ * marks the one thing being selected or dragged.
+ */
 const STROKE: Record<GlyphStyle, string> = {
-  support: 'stroke-ok',
-  force: 'stroke-danger',
-  moment: 'stroke-overlay-accent',
-  temperature: 'stroke-warn',
-  displacement: 'stroke-info',
+  support: 'stroke-status-ok',
+  force: 'stroke-status-danger',
+  moment: 'stroke-overlay-ink',
+  temperature: 'stroke-status-warn',
+  displacement: 'stroke-status-info',
 };
+
+// A lazy catalogue: it loads with this chunk, not on the page's first load.
+registerEnglish(structuralGlyphsEn);
 
 /**
  * Hit stroke, CSS px. Narrow on purpose: every load group draws at once, and

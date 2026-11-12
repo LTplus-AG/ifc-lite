@@ -238,7 +238,7 @@ export function ClassVisibilityControls({ inMenu = false, onNavigate }: { inMenu
         onChange={() => toggleTypeVisibility('ifcGrid')}
       />
       <ClassVisibilityRow
-        icon={<ArrowDownToLine className="h-4 w-4 shrink-0 text-ok" />}
+        icon={<ArrowDownToLine className="h-4 w-4 shrink-0 text-status-ok" />}
         label={t('classVisibility.structuralGlyphs.label')}
         description={t('classVisibility.structuralGlyphs.description')}
         checked={typeVisibility.structuralGlyphs}

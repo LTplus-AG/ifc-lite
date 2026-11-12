@@ -266,7 +266,10 @@ export class BridgeClient {
         : { kind: 'error', code: fromFrame as AgentBridgeErrorCode, port });
     }
     if (this.sessionId) return this.end({ kind: 'disconnected', reason: 'connection-lost' });
-    if (this.opened) return this.end({ kind: 'error', code: 'handshake-timeout', port });
+    // Opened but dropped before welcome with no reason given: the bridge drops
+    // an unpaired socket silently (1006) when it sends too much, and a 429
+    // before the upgrade looks the same. Report it as a failed connection.
+    if (this.opened) return this.end({ kind: 'error', code: 'unreachable', port });
     // Never opened: nothing listening, an origin the bridge does not allow,
     // or the browser's local network permission said no. Only the browser
     // can tell the last one apart.

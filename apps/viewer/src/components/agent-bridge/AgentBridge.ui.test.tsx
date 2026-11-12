@@ -164,7 +164,7 @@ describe('connect dialog outcomes (#9523)', () => {
     click(button(/^Connect$/));
     await waitFor(() => calls.length === 1, 'the session was asked to connect');
     assert.deepEqual(calls, [{ port: 21600, code: 'abcde fghjk' }]);
-    await waitFor(() => /Nothing answered on port 21600/.test(dialog()?.textContent ?? ''), 'the failure is explained');
+    await waitFor(() => /Could not connect to the bridge on port 21600/.test(dialog()?.textContent ?? ''), 'the failure is explained');
     assert.match(dialog()?.textContent ?? '', /npx @ifc-lite\/mcp --bridge --bridge-port 21600/);
     assert.ok(button(/^Try again$/));
   });

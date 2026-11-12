@@ -268,7 +268,7 @@ npx @ifc-lite/mcp --bridge --read-only  # tools the tab marks as mutating stay o
 `--bridge` lets a local agent (Claude Desktop, Claude Code, …) work on the
 model open in an ifc-lite browser tab: a model loaded from a cloud source, or
 one with unsaved edits. The bridge speaks MCP over stdio and forwards every tool
-call over a WebSocket on `127.0.0.1` to the paired tab, which runs it against
+call (other than `bridge_status`) over a WebSocket on `127.0.0.1` to the paired tab, which runs it against
 its model. The bridge loads no model of its own, so it takes no file arguments
 and refuses `--transport http`. It stops, freeing its port, when stdin ends,
 closes or errors, and on SIGINT or SIGTERM.
@@ -364,16 +364,27 @@ browser connectivity in Chrome (Local Network Access prompt) and Safari
   well-formed for the keywords the bridge validates (`properties` of schemas,
   `required` as strings, numeric bounds as numbers, ...). An oversized or
   malformed hello is refused; an update is rejected with a non-fatal `error`;
-  a result fails its call with a message naming the limit. Every check is
-  iterative and counts before it copies, so a value nested 30,000 deep or an
-  8-million-element array is refused cheaply rather than overflowing a stack.
-- **Tab text is clipped.** Every string taken from the tab that reaches the
-  agent or stderr (parse errors, schema paths, client names, ids) is cut to a
-  few hundred characters and its control characters are replaced, so a tab
-  cannot inflate an error past the result limit or forge a log line.
-- **No crash path.** Every WebSocket listener and timer, and the stdio line
-  handler, runs under a guard: an unexpected exception fails that socket (or
-  that line) and is logged once, and the process keeps serving.
+  a result fails its call with a message naming the limit. The size and
+  depth walk is iterative and counts before it copies, and the schema-shape
+  check recurses only after the 32-level bound has passed, so a value nested
+  30,000 deep or an 8-million-element array is refused cheaply rather than
+  overflowing a stack.
+- **What is clipped, what is bounded, what passes through.** Diagnostic
+  strings derived from tab input are cut to a few hundred characters and
+  their control characters replaced, so a tab cannot inflate an error past the
+  result limit or forge a log line. That covers error messages, log lines,
+  frame and schema error paths, and the client name and version. Tool names,
+  titles, descriptions and schemas are not clipped; they are bounded by the
+  limits above (64, 256 and 8,192 characters, 1 MiB in total, schema depth and
+  value count). Tool result content is passed through to the agent as text,
+  unaltered, newlines included, bounded only by the result limits (4 MiB,
+  64 levels, 250,000 values). It is model data, and the bridge's MCP
+  `instructions` tell the agent to treat it as data, not instructions.
+- **Guarded handlers.** Handling a frame (before and after pairing), the
+  handshake and pairing timers, socket close, the upgrade handler and the
+  stdio line handler run under a guard. An unexpected exception there fails
+  that socket (or that line) and is logged once, and the process keeps
+  serving. A frame cannot crash the process that way.
 - **Session-scoped replies.** Each pairing gets a session id, and each call an
   id unique for the bridge's lifetime. A reply that names another session, an
   unknown id or an already answered call is ignored. Calls time out after

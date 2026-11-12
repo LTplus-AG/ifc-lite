@@ -123,6 +123,16 @@ describe('item 2 and 9: tab-derived text reaching the agent or stderr is bounded
     expect(lines.find((l) => l.startsWith('paired with'))).toMatch(/^paired with evil\?\[ifc-lite-mcp bridge\]/);
   });
 
+  it('passes tool result text through unaltered (it is model data, not a diagnostic)', async () => {
+    const agent = await start();
+    const { tab, welcome } = await pairWith(agent);
+    const pending = agent.call(READ_TOOL.name);
+    const c = await tab.next('call');
+    const text = `line 1\nline 2\r\n\u0007${'z'.repeat(300_000)}`;
+    tab.reply(welcome.sessionId, c.id, textResult(text));
+    expect(resultText(await pending)).toBe(text);
+  });
+
   it('clip never stringifies objects and strips control characters', () => {
     expect(clip({ a: 1 })).toBe('a object');
     expect(clip([1, 2])).toBe('an array');

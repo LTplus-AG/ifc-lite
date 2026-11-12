@@ -307,6 +307,9 @@ function validateCallResult(raw: unknown): ParseResult<BridgeCallResult> {
   if (raw.isError !== undefined && typeof raw.isError !== 'boolean') {
     return { ok: false, error: 'result.isError must be a boolean' };
   }
+  // Result text is model data for the agent: passed through UNALTERED (newlines
+  // and all), bounded only by the result limits. It is not clipped like the
+  // bridge's own diagnostics; the MCP `instructions` tell the agent it is data.
   const value: BridgeCallResult = {
     content: (raw.content as Array<{ text: string }>).map((c) => ({ type: 'text', text: c.text })),
     ...(raw.structuredContent !== undefined ? { structuredContent: raw.structuredContent as Record<string, unknown> } : {}),

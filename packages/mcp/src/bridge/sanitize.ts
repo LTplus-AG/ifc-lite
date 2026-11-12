@@ -3,14 +3,15 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The one way tab-supplied values enter a message that reaches the agent or
- * stderr (#9523). Browser-safe.
+ * The one way tab-supplied values enter a DIAGNOSTIC message (an error the
+ * agent reads, a stderr line) (#9523). Browser-safe. Tool result content is
+ * not diagnostic: it passes through unaltered, bounded by the result limits.
  *
  * Tab data is unbounded and untrusted: stringifying a value nested 30,000 deep
  * throws, a 12 MiB string inflates a tool error past every result limit, and a
- * newline forges a log line. So nothing from the tab is interpolated directly:
- * it goes through {@link clip}, which never recurses, caps the length and
- * replaces control characters.
+ * newline forges a log line. So nothing from the tab is interpolated directly
+ * into a diagnostic: it goes through {@link clip}, which never recurses, caps
+ * the length and replaces control characters.
  */
 
 /** Longest clipped text, in characters, before the "(+N more)" suffix. */

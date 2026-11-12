@@ -4,8 +4,9 @@
 
 /**
  * Frames from a PAIRED tab (#9523): results, updates, and everything that
- * must be ignored. Every tab-derived string that reaches the agent or the log
- * is clipped (`sanitize.ts`).
+ * must be ignored. Diagnostic strings built from tab input (errors, log lines)
+ * are clipped (`sanitize.ts`); result content is passed through unaltered,
+ * already bounded by the result limits in `protocol.ts`.
  */
 
 import { BridgeErrorCode, parseTabMessage, type BridgePermission } from './bridge-protocol.js';

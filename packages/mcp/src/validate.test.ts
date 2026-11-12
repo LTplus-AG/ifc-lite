@@ -206,10 +206,18 @@ describe('validateInput reads own properties only (#9523 review of PR #9905)', (
   });
 
   it('keeps a __proto__ key as data instead of setting the prototype', () => {
-    const input = JSON.parse('{"__proto__": {"polluted": true}}') as Record<string, unknown>;
-    const result = validateInput({ type: 'object', properties: { __proto__: { type: 'object' } } }, input);
+    // Built with JSON.parse: in an object literal `__proto__: …` would SET the
+    // prototype instead of declaring a key, and the test would prove nothing.
+    const schema = JSON.parse(
+      '{"type": "object", "properties": {"__proto__": {"type": "object", "default": {"polluted": true}}}}',
+    ) as Parameters<typeof validateInput>[0];
+    expect(Object.keys(schema.properties ?? {})).toEqual(['__proto__']);
+    // The input has no `__proto__` key, so the default is what gets written:
+    // a plain `result[key] = value` would hit Object.prototype's setter here.
+    const result = validateInput(schema, {});
     const value = result.value as Record<string, unknown>;
     expect(Object.getPrototypeOf(value)).toBe(Object.prototype);
     expect(Object.prototype.hasOwnProperty.call(value, '__proto__')).toBe(true);
+    expect((value as { polluted?: unknown }).polluted).toBeUndefined();
   });
 });

@@ -42,8 +42,10 @@ test('a builder group that used CPU, a builder under any pressure, or high press
 
 test('settleHostLoad charges a builder cgroup the CPU it used during the sample, from cpu.stat (survives exits)', async () => {
   const { settleHostLoad } = await load('./load-scoreboard.mjs');
+  // @source-text-assertion-ok reads this process's live cgroup (runtime state), not source text
   const rel = readFileSync('/proc/self/cgroup', 'utf8').split('\n').find((l) => l.startsWith('0::'))?.slice(3);
   let usage = null;
+  // @source-text-assertion-ok reads the live cgroup cpu.stat counter (runtime state), not source text
   try { usage = Number(/usage_usec (\d+)/.exec(readFileSync(`/sys/fs/cgroup${rel}/cpu.stat`, 'utf8'))[1]) / 1000; } catch { /* no cgroup v2 here */ }
   if (usage === null) return; // nothing to measure on this host
   // Stand in for a foreign builder's cgroup with ours: its total before the burn, then 400 ms of CPU.
@@ -63,6 +65,7 @@ test('a builder whose cgroup is gone by the end of the sample is busy, never idl
   settleHostLoad(host);
   assert.equal(host.builderCpuMs['/no/such/cgroup.service'], null);
   assert.equal(host.underLoad, true);
+  // @source-text-assertion-ok asserts on the sampler's reason string (behaviour output), not source text
   assert.match(host.reason, /gone before the sample ended: CPU unknown/);
   assert.equal(classifyHostLoad({ psi: 0, builders: ['rustc'], groupCpuMs: { '(no cgroup)': null } }).underLoad, true, 'an unmeasurable builder is busy');
 });

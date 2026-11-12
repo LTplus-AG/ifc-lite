@@ -4,7 +4,7 @@
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { it } from 'node:test';
-import { act, useCallback, useEffect, useRef, useState } from 'react';
+import { act, useEffect, useRef, useState } from 'react';
 import { Renderer } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
 import { render, cleanup } from '@/test/render';
@@ -16,6 +16,7 @@ import { sectionNativeGeometry, sectionIndexedBounds, sourceDigest } from '@/tes
 import { isMeshVisibleInViewMode, meshClassIsPlaced } from '@/lib/type-view-visibility';
 import { subscribeViewportHealth, resetDeviceLossReportForTests } from './device-loss-report';
 import { useGeometryStreaming } from './useGeometryStreaming';
+import { discardInstancedShards, enqueueInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
 
 it('#6993/#7484 early device loss retains the real FZK flat and IFNS population after actual renderer recovery', { timeout: 30_000 }, async t => {
   const parsed = sectionNativeGeometry(t); if (!parsed) return;
@@ -51,13 +52,11 @@ it('#6993/#7484 early device loss retains the real FZK flat and IFNS population 
       const [geometry, setGeometry] = useState<MeshData[] | null>(null);
       const [streaming, setStreaming] = useState(true);
       const [epoch, setEpoch] = useState(0);
-      const [shards, setShards] = useState<Array<{ modelId: string; bytes: ArrayBuffer }> | null>(null);
-      const clearShards = useCallback(() => setShards(null), []);
       const rendererRef = useRef(renderer);
       const bounds = useRef({ min: { x: -100, y: -100, z: -100 }, max: { x: 100, y: 100, z: 100 } });
       const clearColor = useRef<[number, number, number, number]>([0, 0, 0, 1]);
       publishFlat = () => { setGeometry(flat); setStreaming(false); };
-      publishShard = () => setShards([{ modelId: 'native', bytes: native.shardBytes.slice().buffer }]);
+      publishShard = () => enqueueInstancedShards('native', [native.shardBytes.slice().buffer], instancedShardGeneration());
       useEffect(() => subscribeViewportHealth(renderer, undefined, () => {
         setEpoch(value => value + 1); completeRecovery();
       }), []);
@@ -68,11 +67,11 @@ it('#6993/#7484 early device loss retains the real FZK flat and IFNS population 
         geometryVersion: 0, geometryReplacementVersion: 0, coordinateInfo: native.coordinateInfo,
         isStreaming: streaming, modelCount: 1, geometryBoundsRef: bounds,
         pendingMeshColorUpdates: null, pendingColorUpdates: null, pendingMeshRemovals: null,
-        pendingMeshTranslations: null, pendingMeshRotations: null, pendingInstancedShards: shards,
+        pendingMeshTranslations: null, pendingMeshRotations: null,
         modelIdToIndex: modelIndices, modelIdToOffset: offsets, presentInstancedModelIndices: present,
         clearPendingMeshColorUpdates: noop, clearPendingColorUpdates: noop, clearPendingMeshRemovals: noop,
         pruneGeometryMeshes: noop, clearPendingMeshTranslations: noop, clearPendingMeshRotations: noop,
-        clearInstancedShards: clearShards, clearColorRef: clearColor,
+        clearColorRef: clearColor,
       };
       useGeometryStreaming(params);
       return <canvas />;
@@ -89,7 +88,7 @@ it('#6993/#7484 early device loss retains the real FZK flat and IFNS population 
     assert.notEqual(renderer.getGPUDevice(), firstDevice); assert.notEqual(renderer.getPipeline(), firstPipeline);
     // Native IFNS arrives after recovery, reproducing the recorded incomplete
     // population without substituting a fake shard or changing flat inputs.
-    await act(async () => publishShard());
+    await act(async () => { publishShard(); await new Promise(resolve => setTimeout(resolve, 0)); });
     const scene = renderer.getScene();
     const instances = ids.flatMap(id => scene.getInstancedMeshDataPieces(id) ?? []);
     assert.equal(instances.length, 42, 'actual native instance consumer works before the flat recovery assertion');
@@ -103,6 +102,6 @@ it('#6993/#7484 early device loss retains the real FZK flat and IFNS population 
     assert.deepEqual(sectionIndexedBounds(scene, ids), completeBounds, 'all indexed extrema retain the complete source population');
     assert.ok(ui.querySelector('canvas')); assert.equal(sourceDigest(native.source), sourceSHA);
   } finally {
-    cleanup(); renderer.destroy(); oracle.destroy(); allocation.restore();
+    cleanup(); discardInstancedShards(); renderer.destroy(); oracle.destroy(); allocation.restore();
   }
 });

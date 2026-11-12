@@ -111,7 +111,8 @@ export default {
         }
         return { counts, meshes: m.geometryResult?.meshes.length, triangles: m.geometryResult?.totalTriangles };
       });
-      if (metrics.model.counts.IfcBuildingStorey !== 40 || metrics.model.counts.IfcColumn < 1600) {
+      // The F5 producer includes a separate Roof level above 40 occupied storeys.
+      if (metrics.model.counts.IfcBuildingStorey !== 41 || metrics.model.counts.IfcColumn < 1600) {
         throw new Error(`Not the full F5 tower: ${JSON.stringify(metrics.model)}`);
       }
       await s.page.waitForFunction(() => typeof globalThis.__ifc_lite_viewer_store__.getState().cameraCallbacks?.getViewpoint === 'function');

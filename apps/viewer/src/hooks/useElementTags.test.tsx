@@ -42,8 +42,8 @@ DATA;
 #1=IFCPROJECT('0Project00000000000001',$,'Project',$,$,$,$,$,$);
 #10=IFCDOOR('0Door00000000000000010',$,'Entrance',$,$,$,$,$,2.1,0.9,$,$,$);
 ENDSEC; END-ISO-10303-21;`).buffer, { disableWorkerScan: true });
-    const first = { ...fixtureModel('m', { idOffset: federated ? 1_000_000 : 0 }), ifcDataStore: store };
-    const second = { ...fixtureModel('other', { idOffset: 2_000_000 }), ifcDataStore: store };
+    const first = { ...fixtureModel('m', { idOffset: federated ? 1_000_000 : 0 }), ifcDataStore: store, maxExpressId: 10 };
+    const second = { ...fixtureModel('other', { idOffset: 2_000_000 }), ifcDataStore: store, maxExpressId: 10 };
     const globalId = federated ? 1_000_010 : 10;
     useViewerStore.setState({ ...fixtureModels(first, ...(federated ? [second] : [])), drawing2D: drawing(globalId),
       tagAnnotations2D: [], annotation2DActiveTool: 'tag' });
@@ -77,7 +77,7 @@ DATA;
 #10=IFCDOOR('0Door00000000000000010',$,'Entrance',$,$,$,$,$,2.1,0.9,$,$,$);
 ENDSEC; END-ISO-10303-21;`).buffer, { disableWorkerScan: true });
   const source = drawing(10), paper = createDefaultSheet();
-  useViewerStore.setState({ ...fixtureModels({ ...fixtureModel('m'), ifcDataStore: store }),
+  useViewerStore.setState({ ...fixtureModels({ ...fixtureModel('m'), ifcDataStore: store, maxExpressId: 10 }),
     drawing2D: source, tagAnnotations2D: [], annotation2DActiveTool: 'tag' });
   const layout = resolveSheetTransform({ sheet: paper, axis: 'down', isPinned: false, cached: null,
     drawingBounds: { minX: 0, minY: 0, maxX: 2, maxY: 2 } }).transform;

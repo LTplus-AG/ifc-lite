@@ -94,7 +94,7 @@ describe('snapshot reopen: the stored scene is read while the renderer starts', 
 
     assert.deepEqual(events, ['read:no-renderer', 'renderer-up'], 'the snapshot was read only after the renderer came up');
     assert.ok(adopted, 'the snapshot was adopted');
-    assert.equal(scene.batchedMeshes.length > 0, true, 'the adopted batches are in the scene');
+    assert.equal(scene.getBatchedMeshes().length > 0, true, 'the adopted batches are in the scene');
   });
 
   it('a read that fails while the renderer starts still drops the hit as corrupt', async () => {
@@ -108,6 +108,6 @@ describe('snapshot reopen: the stored scene is read while the renderer starts', 
     await new Promise((resolve) => setTimeout(resolve, 40));
     ref.current = rendererFor(scene);
     await assert.rejects(adopting, /NotReadableError/);
-    assert.equal(scene.batchedMeshes.length, 0);
+    assert.equal(scene.getBatchedMeshes().length, 0);
   });
 });

@@ -11,6 +11,8 @@ type ForwardedMethods = Required<StructuralStoreBackendMethods>;
 type StructuralMethods = ForwardedMethods & Required<StructuralDerivationStoreBackendMethods>;
 
 /** Optional backend capabilities retain their exact argument and result types. */
+// Static registration below installs every method; SDK tests cover calls, overrides and super.
+// eslint-disable-next-line typescript/no-unsafe-declaration-merging
 export interface StoreStructuralNamespace {
   editStructuralEntity(...args: Parameters<StructuralMethods['editStructuralEntity']>): EntityRef;
   removeStructuralEntity(...args: Parameters<StructuralMethods['removeStructuralEntity']>): EntityRef;

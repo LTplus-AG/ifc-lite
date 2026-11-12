@@ -4,7 +4,7 @@
 
 import type { IfcAttributeValue, StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { structuralGraph } from './_structural-graph.js';
+import { structuralReader } from './_structural-graph.js';
 
 /** Exact EXPRESS attribute names in the model's schema. Geometry and owned
  * references are deliberately excluded: use the builders for new geometry. */
@@ -12,7 +12,7 @@ export type StructuralEntityEdit = Readonly<Record<string, string | number | boo
 
 /** Schema-aware scalar edits, committed together or not at all. */
 export function editStructuralEntityInStore(store: IfcDataStore, editor: StoreEditor, expressId: number, patch: StructuralEntityEdit): void {
-  const graph = structuralGraph(store, editor);
+  const graph = structuralReader(store, editor);
   const record = graph.requireStructural(expressId);
   const attributes = graph.meta(record.type)?.allAttributes ?? [];
   const effective = [...record.attributes];
@@ -34,7 +34,7 @@ export function editStructuralEntityInStore(store: IfcDataStore, editor: StoreEd
       const ids = Array.isArray(value) ? value : [value];
       if (ids.length === 0 || !aggregate && ids.length !== 1 || ids.some(id => {
         if (typeof id !== 'number') return true;
-        const target = graph.records.get(id);
+        const target = graph.read(id);
         const type = target && graph.meta(target.type);
         const allowed = graph.registry.selects[attr.type] ?? [attr.type];
         return !type || !allowed.some(t => type.name === t || type.inheritanceChain?.includes(t));

@@ -29,7 +29,8 @@ import type { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { StructuralStoreBackendMethods, StructuralStoreModelResolver } from '@ifc-lite/sdk';
 import { normalizeMutationModelId } from './mutation-view.js';
-import { recordModellingCommit } from '@/store/slices/mutation-modelling-records';
+import { recordResolvedModellingCommit } from '@/store/slices/mutation-modelling-records';
+import { completeEntityRemoval } from '@/store/slices/mutation-mesh-stash';
 import { mutationDenial } from '@/store/mutation-permission';
 import { createStoreMutationTracker } from './store-adapter-cost.js';
 import type { StoreApi } from './types.js';
@@ -113,14 +114,20 @@ export function structuralMutationTracking(
         const denial = mutationDenial(store.getState(), modelId);
         if (denial) throw new Error(denial);
         const setState = store.setState;
-        if (!setState) throw new Error('Structural editing requires a writable viewer store');
         const normalized = normalizeMutationModelId(store.getState(), modelId);
         const factory = loadedStructuralWrites(`bim.store.${name}`).createStructuralStoreBackend;
-        return recordModellingCommit({ ...store, setState }, normalized, (editor, dataStore) => {
+        const target = resolve(normalized);
+        if (!setState || !target) throw new Error(`Structural edit needs a writable model: ${normalized}`);
+        const result = recordResolvedModellingCommit({ ...store, setState }, {
+          ...target, modelId: normalized, view: target.editor.getMutationView(),
+        }, (editor, dataStore) => {
           const base = resolveModel(normalized);
           const methods = factory(() => ({ ...base, store: dataStore, editor, mutationView: editor.getMutationView() }));
           return Reflect.apply(methods[name], methods, [normalized, ...args]);
         });
+        if (name === 'removeStructuralEntity') completeEntityRemoval(store.getState, setState, normalized, result.expressId,
+          store.getState().removedNewEntities.get(`${normalized}:${result.expressId}`));
+        return result;
       }];
     }
     return [name, create(type, (...args: [string, ...unknown[]]) => {

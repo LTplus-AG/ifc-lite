@@ -13,27 +13,32 @@ const OWNED = new Set(['ObjectPlacement', 'Representation', 'Axis', 'AxisDirecti
   'RelativePlacement', 'Location', 'RefDirection', 'Representations', 'Items',
   'EdgeStart', 'EdgeEnd', 'VertexGeometry', 'Bounds', 'Bound', 'Polygon',
   'AdditionalConditions', 'ConnectionConstraint', 'SharedPlacement',
-  'EdgeElement', 'EdgeList', 'FaceSurface', 'Position']);
+  'EdgeElement', 'EdgeList', 'FaceSurface', 'Position', 'Values', 'Points']);
 
 type EntityMetadata = SchemaRegistry['entities'][string];
 type AttributeMetadata = NonNullable<EntityMetadata['allAttributes']>[number];
-interface StructuralGraph {
+interface StructuralReader {
   schema: 'IFC2X3' | 'IFC4' | 'IFC4X3';
   registry: SchemaRegistry;
-  records: Map<number, StyleEntity>;
+  read(id: number): StyleEntity | undefined;
   meta(type: string): EntityMetadata | undefined;
   edges(id: number, owned?: boolean): { target: number; index: number; attribute: AttributeMetadata }[];
   refs(value: unknown): number[];
   requireStructural(id: number): StyleEntity;
 }
 
-export function structuralGraph(store: IfcDataStore, editor: StoreEditor): StructuralGraph {
+export function structuralReader(store: IfcDataStore, editor: StoreEditor): StructuralReader {
   const schema = store.schemaVersion ?? 'IFC4';
   if (schema !== 'IFC2X3' && schema !== 'IFC4' && schema !== 'IFC4X3') {
     throw new Error(`structural edit/remove: unsupported schema ${schema}`);
   }
   const registry = getSchemaRegistryForVersion(schema);
-  const read = createStyleEntityReader(store, editor);
+  const source = createStyleEntityReader(store, editor);
+  const cache = new Map<number, StyleEntity | undefined>();
+  const read = (id: number) => {
+    if (!cache.has(id)) cache.set(id, source(id) ?? undefined);
+    return cache.get(id);
+  };
   const entities = new Map(Object.values(registry.entities).map(e => [e.name.toUpperCase(), e]));
   const meta = (type: string) => entities.get(type.toUpperCase());
   const isReference = (type: string, seen = new Set<string>()): boolean => {
@@ -44,31 +49,38 @@ export function structuralGraph(store: IfcDataStore, editor: StoreEditor): Struc
   };
   const refs = (value: unknown): number[] => (Array.isArray(value) ? value : [value])
     .flatMap(v => { const id = asRef(v); return id === null ? [] : [id]; });
-  const records = new Map([...iterateEffectiveEntityIds(store, editor.getMutationView())]
-    .flatMap(({ expressId }) => {
-      const record = read(expressId);
-      if (!record) throw new Error(`structural edit/remove: cannot inspect live entity #${expressId}`);
-      return [[expressId, record] as const];
-    }));
   const edges = (id: number, owned = false) => {
-    const record = records.get(id);
+    const record = read(id);
     if (!record) return [];
     return (meta(record.type)?.allAttributes ?? []).flatMap((a, index) =>
       isReference(a.type) && (!owned || OWNED.has(a.name))
         ? refs(record.attributes[index]).map(target => ({ target, index, attribute: a })) : []);
   };
   const requireStructural = (id: number) => {
-    const record = records.get(id);
+    const record = read(id);
     const type = record && meta(record.type);
     const chain = [...(type?.inheritanceChain ?? []), type?.name ?? ''];
     const structural = chain.some(t => /^(IfcStructural|IfcBoundary|IfcRelConnectsStructural)/.test(t));
     const structuralAssignment = record?.type === 'IfcRelAssignsToGroup'
       && edges(id).some(e => e.attribute.name === 'RelatingGroup'
-        && records.get(e.target)?.type.startsWith('IfcStructural'));
+        && read(e.target)?.type.startsWith('IfcStructural'));
     if (!record || !structural && !structuralAssignment) {
       throw new Error(`structural edit/remove: #${id} is not a live structural entity`);
     }
     return record;
   };
-  return { schema, registry, records, meta, edges, refs, requireStructural };
+  return { schema, registry, read, meta, edges, refs, requireStructural };
+}
+
+/** Removal needs incoming references from every live entity; edits only read
+ * their target and any explicitly validated relationship endpoints. */
+export function structuralGraph(store: IfcDataStore, editor: StoreEditor): StructuralReader & { records: Map<number, StyleEntity> } {
+  const reader = structuralReader(store, editor);
+  const records = new Map<number, StyleEntity>();
+  for (const { expressId } of iterateEffectiveEntityIds(store, editor.getMutationView())) {
+    const record = reader.read(expressId);
+    if (!record) throw new Error(`structural edit/remove: cannot inspect live entity #${expressId}`);
+    records.set(expressId, record);
+  }
+  return { ...reader, records };
 }

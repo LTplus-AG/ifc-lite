@@ -73,11 +73,17 @@ describe.each(['IFC2X3', 'IFC4', 'IFC4X3'])('%s structural lifecycle #9668', sch
     const first = scene.editor.getNewEntity(scene.id)!;
     const attrs = [...first.attributes];
     attrs[0] = '0SecondConnection'.padEnd(22, '0');
+    const placementId = Number(String(attrs[5]).slice(1));
     const second = scene.editor.addEntity(first.type, attrs).expressId;
     const member = create.addStructuralCurveMemberToStore(scene.editor, scene.anchor, { Start: [0,0,0], End: [1,0,0] }).memberId;
     create.connectStructuralMemberToConnectionInStore(scene.editor, scene.anchor.ownerHistoryId, member, second);
     create.removeStructuralEntityInStore(scene.store, scene.editor, scene.id);
-    const data = parser.extractStructuralOnDemand(await parse(scene.exportText()));
+    const text = scene.exportText();
+    const exported = await parse(text);
+    const data = parser.extractStructuralOnDemand(exported);
+    expect(exported.entityIndex.byId.has(placementId)).toBe(true);
+    const connection = new parser.EntityExtractor(exported.source).extractEntity(exported.entityIndex.byId.get(second)!)!;
+    expect(connection.attributes[5]).toBe(placementId);
     expect(data.connections).toHaveLength(1);
     expect(data.connections[0].appliedCondition?.components).toBeDefined();
   });

@@ -65,8 +65,6 @@ export async function sharedRemoval(pkgs, schema, stepId) {
   const scene = await lifecycleScene(pkgs, schema, stepId);
   const original = scene.editor.getNewEntity(scene.id);
   if (original.type.startsWith('IfcRel')) return null; // these builders own endpoints only by reference
-  const resources = scene.editor.getNewEntities().filter(e => e.expressId !== scene.id
-    && !scene.before.entities.has(e.expressId) && !e.type.startsWith('IfcRel')).map(e => e.expressId);
   const attrs = [...original.attributes];
   attrs[0] = '0SharedStructural'.padEnd(22, '0');
   if (schema === 'IFC2X3' && attrs[6] && original.type !== 'IfcStructuralResultGroup') {
@@ -110,14 +108,20 @@ export async function sharedRemoval(pkgs, schema, stepId) {
   const exported = readStep(created);
   const referenced = value => Array.isArray(value) ? value.flatMap(referenced)
     : value && typeof value === 'object' && 'ref' in value ? [value.ref] : [];
-  const reachable = new Set([second]);
-  const pending = [second];
-  while (pending.length) {
-    for (const id of referenced(exported.entities.get(pending.pop())?.args ?? [])) {
-      if (!reachable.has(id)) { reachable.add(id); pending.push(id); }
+  const descendants = root => {
+    const reachable = new Set([root]), pending = [root];
+    while (pending.length) {
+      for (const id of referenced(exported.entities.get(pending.pop())?.args ?? [])) {
+        if (!scene.before.entities.has(id) && !reachable.has(id)) { reachable.add(id); pending.push(id); }
+      }
     }
-  }
+    reachable.delete(root);
+    return reachable;
+  };
+  const resources = [...descendants(scene.id)];
+  const reachable = descendants(second);
   const sharedResources = resources.filter(id => reachable.has(id));
+  const exclusiveResources = resources.filter(id => !reachable.has(id));
   if (resources.length && !sharedResources.length) throw new Error('sharing scenario has no shared resource');
   const store = await parseStore(pkgs, created);
   const view = new pkgs.mutations.MutablePropertyView(null, 'shared-source');
@@ -130,6 +134,8 @@ export async function sharedRemoval(pkgs, schema, stepId) {
   if (after.entities.has(scene.id) || !after.entities.has(second) || sharedResources.some(id => !after.entities.has(id))) {
     throw new Error(`shared removal: original present=${after.entities.has(scene.id)}, second present=${after.entities.has(second)}, missing resources=${sharedResources.filter(id => !after.entities.has(id)).join(',')}`);
   }
+  const leaked = exclusiveResources.filter(id => after.entities.has(id));
+  if (leaked.length) throw new Error(`exclusive resources survived shared removal: ${leaked.join(', ')}`);
   return { created, text };
 }
 

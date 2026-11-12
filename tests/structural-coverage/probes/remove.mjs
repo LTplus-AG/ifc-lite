@@ -39,6 +39,8 @@ export default {
           await parseStore(ctx.pkgs, text);
           const after = readStep(text);
           if (ids.some(id => after.entities.has(id))) throw new Error('entity survived removal');
+          const lost = [...scene.before.entities.keys()].filter(id => !after.entities.has(id));
+          if (lost.length) throw new Error(`prerequisite entities removed: ${lost.join(', ')}`);
           if (after.entities.size !== scene.before.entities.size) throw new Error(`entity count ${after.entities.size}, expected ${scene.before.entities.size}`);
           if (dangling(after).length) throw new Error('export contains dangling references');
           saveProof(text, row.schema, step.id, 'removed');

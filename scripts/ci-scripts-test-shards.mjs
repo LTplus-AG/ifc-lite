@@ -88,12 +88,15 @@ function main() {
     const { shard, total, flags, files } = parseArgs(process.argv.slice(2));
     plan = { flags, files: filesForShard(files, shard, total), shard, total, of: files.length };
   } catch (err) {
-    console.error(`::error title=scripts-tests shard::ci-scripts-test-shards: ${err.message}`);
+    console.error(`::error title=scripts-tests shard::${err.message}`);
     process.exit(2);
   }
   console.error(`ci-scripts-test-shards: shard ${plan.shard}/${plan.total} runs ${plan.files.length} of ${plan.of} test files`);
   const run = spawnSync(process.execPath, ['--test', ...plan.flags, ...plan.files], { stdio: 'inherit' });
-  if (run.error) throw run.error;
+  if (run.error) {
+    console.error(`::error title=scripts-tests shard::could not start node --test: ${run.error.message}`);
+    process.exit(2);
+  }
   if (run.signal) console.error(`::error title=scripts-tests shard::node --test was killed by ${run.signal}`);
   process.exit(run.status ?? 1);
 }

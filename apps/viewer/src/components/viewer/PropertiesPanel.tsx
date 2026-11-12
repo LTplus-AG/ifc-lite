@@ -953,6 +953,7 @@ export function PropertiesPanel() {
       return {
         mode: 'type' as const,
         typeId,
+        typeName: dataStore.entities.getName(typeId),
         typeEntityName: view?.getNewEntity(typeId)?.type ?? dataStore.entities.getTypeName(typeId),
         affectedCount: liveTypeOccurrences(dataStore as IfcDataStore, view, typeId).length,
       };
@@ -963,6 +964,7 @@ export function PropertiesPanel() {
         mode: 'inherited' as const,
         typeId: typeProperties.typeId,
         typeEntityName: typeProperties.typeEntityName,
+        typeName: typeProperties.typeName,
         affectedCount: liveTypeOccurrences(dataStore as IfcDataStore, view, typeProperties.typeId).length,
         // The inherited value can also be overridden on the selected occurrence alone (#9296).
         occurrenceId: selectedEntity.expressId,

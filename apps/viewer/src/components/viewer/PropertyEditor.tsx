@@ -61,6 +61,7 @@ interface PropertyEditorProps {
 export interface PropertyEditScope {
   mode: 'type' | 'inherited';
   typeEntityName: string;
+  typeName: string;
   affectedCount: number;
   /** For an inherited value: the selected occurrence, which can take an override of its own. */
   occurrenceId?: number;
@@ -118,7 +119,7 @@ export function PropertyEditor({
   const commitOverride = useCallback(() => {
     const parsedValue = parseValue(value, valueType);
     if (parsedValue === PARSE_INVALID || editScope?.occurrenceId === undefined) return;
-    const target = { modelId: modelId === 'legacy' ? '__legacy__' : modelId, occurrenceId: editScope.occurrenceId, typeId: entityId, typeName: editScope.typeEntityName };
+    const target = { modelId: modelId === 'legacy' ? '__legacy__' : modelId, occurrenceId: editScope.occurrenceId, typeId: entityId, typeName: editScope.typeName };
     const done = overrideInheritedProperty(useViewerStore.getState(), target, psetName, { name: propName, value: parsedValue, type: valueType });
     if (!done.ok) return void toast.error(t('propertyEditor.property.inheritedNotCopyable', { psetName, typeName: target.typeName, names: done.uncopyable.join(', ') }));
     bumpMutationVersion(); setShowScopeConfirm(false); setIsEditing(false); onClose?.();

@@ -222,7 +222,18 @@ function awaitEntityIndex(timeoutMs: number): Promise<NonNullable<typeof pending
   });
 }
 
-type ParserInbound = ParserWorkerInputMessage | ParserWorkerEntityIndexMessage;
+/**
+ * Instantiate the engine now from a module the host already compiled, so a
+ * spare worker prepared while the page is idle starts its first real parse
+ * with the engine ready (no fetch, no compile). A failure here is not
+ * reported: the parse path's own `ensureWasmScanApi` retries from scratch.
+ */
+export interface ParserWorkerPrewarmMessage {
+  type: 'prewarm';
+  wasmModule: WebAssembly.Module;
+}
+
+type ParserInbound = ParserWorkerInputMessage | ParserWorkerEntityIndexMessage | ParserWorkerPrewarmMessage;
 
 self.onmessage = async (event: MessageEvent<ParserInbound>) => {
   const data = event.data;
@@ -239,6 +250,16 @@ self.onmessage = async (event: MessageEvent<ParserInbound>) => {
       const resolve = entityIndexWaiter;
       entityIndexWaiter = null;
       resolve(pendingEntityIndex);
+    }
+    return;
+  }
+  if (data.type === 'prewarm') {
+    if (!initPromise) {
+      initPromise = init({ module_or_path: data.wasmModule }).then(() => undefined, (err) => {
+        initPromise = null;
+        throw err;
+      });
+      initPromise.catch(() => {}); // a failed prewarm is retried by the first parse
     }
     return;
   }

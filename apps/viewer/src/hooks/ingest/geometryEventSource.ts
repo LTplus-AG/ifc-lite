@@ -15,6 +15,7 @@
  * passed inline before.
  */
 
+import { fastGeometryEvents, type FastGeometryRun } from './fastPath.js';
 import { DEFAULT_HUNG_JOB_TIMEOUT_MS, type GeometryProcessor, type StallPhaseHandle, type StreamingGeometryEvent } from '@ifc-lite/geometry';
 import { retainedKernel } from '@ifc-lite/viewer-retained';
 import { getGeomWorkerOverride } from '../../store/constants.js';
@@ -39,6 +40,8 @@ export interface GeometryEventRequest {
   modelId: string;
   /** The load's activity; a retained run installs `interrupt` so Cancel keeps what it published. */
   activity: { interrupt?: () => void; fail(message: string): string };
+  /** A small-file fast-path run started at the pick (fastPath.ts); its events replace the pool's. */
+  fastRun?: FastGeometryRun | null;
 }
 
 /** The kernel one load runs on, decided before any work. */
@@ -86,6 +89,11 @@ export function beginGeometryKernel(
 
 export function openGeometryEvents(kernel: GeometryKernelLoad, request: GeometryEventRequest): AsyncIterable<StreamingGeometryEvent> {
   if (kernel.events) return kernel.events(request);
+  if (request.fastRun) return fastGeometryEvents(request.fastRun, () => adaptiveEvents(request), request.signal);
+  return adaptiveEvents(request);
+}
+
+function adaptiveEvents(request: GeometryEventRequest): AsyncIterable<StreamingGeometryEvent> {
   return request.processor.processAdaptive(request.view, {
     signal: request.signal,
     hungJobTimeoutMs: DEFAULT_HUNG_JOB_TIMEOUT_MS, // the loader reads skippedHungElements

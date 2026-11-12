@@ -59,7 +59,12 @@ export function derivedState<T>(
         const enumeration = /^(getNewEntitiesOfType|readNewEntitiesOfType|readNewEntityKinds|getNewEntitiesReferencing)$/.test(name);
         const allCreations = name === 'getNewEntities' || name === 'readNewEntities' || (name === 'readNewEntityKinds' && args[0] === undefined);
         const call = () => {
-          const result: unknown = Reflect.apply(member, target, args);
+          // Borrow read-only snapshots rather than exposing mutable creation
+          // rows to the next atomic transaction's external-write guard.
+          const method = name === 'getNewEntity' ? target.readNewEntity
+            : name === 'getNewEntities' ? target.readNewEntities
+            : name === 'getNewEntitiesOfType' ? target.readNewEntitiesOfType : member;
+          const result: unknown = Reflect.apply(method, target, args);
           return enumeration ? Array.from(result as Iterable<unknown>) : result;
         };
         const select = (result: unknown) => allCreations

@@ -42,10 +42,12 @@ for (const [name, derive] of [['grids', grids], ['wall axes', walls], ['storeys'
     assert.ok(useViewerStore.getState().translateEntity(MODEL_ID, column, [0.5, 0, 0]).ok);
     spy.mock.resetCalls(); // count the actual derivation, not the Move planner
     assert.deepEqual(derive(), before);
+    if (name !== 'storey attachment inventory') assert.strictEqual(derive(), before, 'reuse the derivation itself');
     assert.equal(spy.mock.callCount(), 0, 'unrelated edit reuses derived IFC state');
     useViewerStore.getState().undo(MODEL_ID);
     spy.mock.resetCalls();
     assert.deepEqual(derive(), before);
+    if (name !== 'storey attachment inventory') assert.strictEqual(derive(), before, 'reuse the derivation itself');
     assert.equal(spy.mock.callCount(), 0, 'unrelated undo reuses derived IFC state');
   });
 }
@@ -78,4 +80,46 @@ it('#9296 wall placement edits and undo update axes used by workplane bounds and
   assert.notDeepEqual(walls(), before);
   useViewerStore.getState().undo(MODEL_ID);
   assert.deepEqual(walls(), before);
+});
+
+it('#9296 cached negative grid results discover a new grid and undo/redo it', () => {
+  // A different storey starts without a contained grid.
+  const t = target();
+  const read = () => storeyGridAxes(t.dataStore, t.view, 50);
+  assert.equal(read().length, 0);
+  const made = addGridIn(useViewerStore, MODEL_ID, 50, { Position: [20, 0, 0], ...rectangularGridAxes({ UOffsets: [0, 2], VOffsets: [0, 3] }) });
+  assert.ok('expressId' in made);
+  assert.equal(read().length, 4);
+  useViewerStore.getState().undo(MODEL_ID);
+  assert.equal(read().length, 0);
+  useViewerStore.getState().redo(MODEL_ID);
+  assert.equal(read().length, 4);
+});
+
+it('#9296 placement leaves changed without history still invalidate grid geometry', () => {
+  const before = grids();
+  const t = target();
+  const axis = t.view.readNewEntity(before[0].axisId)!;
+  const curveId = Number(String(axis.attributes[1]).replace('#', ''));
+  const curve = t.view.readNewEntity(curveId)!;
+  const pointId = Number(String((curve.attributes[0] as string[])[0]).replace('#', ''));
+  t.view.setPositionalAttribute(pointId, 0, [30, 40, 0], true);
+  assert.notDeepEqual(grids(), before);
+});
+
+it('#9296 failed atomic drafts preserve cached axes; publications and rollback update them', () => {
+  const before = grids();
+  const t = target();
+  const axis = before[0].axisId;
+  assert.throws(() => t.view.runAtomic(draft => {
+    draft.setPositionalAttribute(axis, 0, 'Failed');
+    throw new Error('abort');
+  }), /abort/);
+  assert.strictEqual(grids(), before);
+  const prepared = t.view.prepareAtomic(draft => draft.setPositionalAttribute(axis, 0, 'Published'));
+  assert.strictEqual(grids(), before, 'uncommitted drafts stay private');
+  prepared.commit();
+  assert.equal(grids()[0].AxisTag, 'Published');
+  prepared.rollback();
+  assert.deepEqual(grids(), before);
 });

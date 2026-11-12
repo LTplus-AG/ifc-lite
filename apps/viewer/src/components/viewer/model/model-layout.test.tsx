@@ -21,6 +21,8 @@ import { cleanup, click, render } from '@/test/render.js';
 import { seedModelingSession } from '@/test/modeling-session-fixture';
 import '@/lib/commands/modeling/builtin';
 import { HANDLE_PX, MODEL_3D_MIN_PX, PLAN_MIN_PX, effectiveModelLayout, planPaneWidth, splitFits } from './model-layout';
+// Read through the namespace so a missing helper fails these tests instead of the whole file.
+import * as modelLayout from './model-layout';
 import { ModelWorkspaceSplit } from './ModelWorkspaceSplit';
 import { ModelToolRail } from './ModelToolRail';
 
@@ -64,6 +66,21 @@ function splitWidth(width: number): () => void {
   };
   return () => { proto.getBoundingClientRect = real; };
 }
+
+describe('planPaneResize (#9296 review)', () => {
+  const planPaneResize = (...args: Parameters<typeof modelLayout.planPaneResize>) => modelLayout.planPaneResize(...args);
+  it('keeps a dragged Split width when only the window width changes', () => {
+    assert.equal(planPaneResize('split', 'split', 1600), null, 'a resize alone leaves the dragged Split be');
+    assert.equal(planPaneResize('plan', 'plan', 1600), planPaneWidth('plan', 1600), 'Plan follows the width');
+  });
+  it('sizes the pane when it is shown or the layout switches, and collapses it when hidden', () => {
+    assert.equal(planPaneResize(null, 'split', 1600), planPaneWidth('split', 1600));
+    assert.equal(planPaneResize('plan', 'split', 1600), planPaneWidth('split', 1600));
+    assert.equal(planPaneResize('split', 'plan', 1600), planPaneWidth('plan', 1600));
+    assert.equal(planPaneResize('split', null, 1600), 'collapse');
+    assert.equal(planPaneResize(null, null, 1600), null, 'a hidden pane stays as it is');
+  });
+});
 
 describe('ModelWorkspaceSplit applies the rule (#6232 M2.4)', () => {
   let restore: (() => void) | null = null;

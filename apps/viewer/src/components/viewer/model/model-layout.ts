@@ -65,6 +65,18 @@ export function planPaneWidth(layout: 'plan' | 'split', groupWidth: number): num
   return Math.max(PLAN_MIN_PX, layout === 'plan' ? most : Math.min(most, Math.round(groupWidth * SPLIT_PLAN_SHARE)));
 }
 
+/**
+ * What the plan pane needs when the shown layout or the group width changes.
+ * `prev` is the layout last applied to the pane (null while hidden). Plan
+ * follows the width; Split keeps whatever the user dragged it to, so a width
+ * change alone leaves it be (#9296 review). Hiding collapses the pane.
+ */
+export function planPaneResize(prev: 'plan' | 'split' | null, next: 'plan' | 'split' | null, groupWidth: number): 'collapse' | number | null {
+  if (!next) return prev ? 'collapse' : null;
+  if (prev === next && next === 'split') return null;
+  return planPaneWidth(next, groupWidth);
+}
+
 /** The measured pane-group width, shared with explicit layout picks when they try to make room. */
 let splitWidth = 0;
 const listeners = new Set<() => void>();

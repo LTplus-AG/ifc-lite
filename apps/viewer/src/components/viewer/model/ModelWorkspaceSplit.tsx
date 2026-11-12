@@ -24,7 +24,7 @@ import { Panel, Group as PanelGroup, Separator as PanelResizeHandle, type PanelI
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { PlanView } from '../plan/PlanView';
-import { MODEL_3D_MIN_PX, PLAN_MIN_PX, effectiveModelLayout, planPaneWidth, publishSplitWidth, splitFits } from './model-layout';
+import { MODEL_3D_MIN_PX, PLAN_MIN_PX, effectiveModelLayout, planPaneResize, planPaneWidth, publishSplitWidth, splitFits } from './model-layout';
 
 /** The split's own width (the viewport panel beside the rail), kept current. */
 function useWidth(ref: React.RefObject<HTMLElement | null>): number {
@@ -74,11 +74,16 @@ export function ModelWorkspaceSplit({ children }: { children: ReactNode }) {
   // group would otherwise restore the pane's last size, not this layout's),
   // and a plan <-> split switch (or a resize in Plan) on a mounted pane
   // resizes at once.
+  const applied = useRef<'plan' | 'split' | null>(null);
   useEffect(() => {
-    if (!inWorkspace) return;
+    if (!inWorkspace) { applied.current = null; return; }
+    const next = showPlan ? layout as 'plan' | 'split' : null;
+    const action = planPaneResize(applied.current, next, width);
+    if (action === null) return;
     const frame = requestAnimationFrame(() => {
-      if (!showPlan) planRef.current?.collapse();
-      else planRef.current?.resize(`${planPaneWidth(layout as 'plan' | 'split', width)}px`);
+      applied.current = next;
+      if (action === 'collapse') planRef.current?.collapse();
+      else planRef.current?.resize(`${action}px`);
     });
     return () => cancelAnimationFrame(frame);
   }, [inWorkspace, showPlan, layout, width]);

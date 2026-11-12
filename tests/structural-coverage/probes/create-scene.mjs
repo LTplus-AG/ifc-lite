@@ -210,15 +210,6 @@ export const SCENE = [
     }).activityId,
   },
   {
-    id: 'result-group', builder: 'addStructuralResultGroupToStore',
-    needs: ['load-group', 'PointReaction-SingleForce', 'PointReaction-SingleDisplacement'],
-    emits: { IfcStructuralResultGroup: { GlobalId: guid('Results'), TheoryType: 'FIRST_ORDER_THEORY', ResultForLoadGroup: G.group, IsLinear: true } },
-    build: ({ create, editor, anchor, done }) => create.addStructuralResultGroupToStore(editor, anchor, {
-      GlobalId: guid('Results'), TheoryType: 'FIRST_ORDER_THEORY', ResultForLoadGroup: done.get('load-group'), IsLinear: true,
-      ReactionIds: [done.get('PointReaction-SingleForce'), done.get('PointReaction-SingleDisplacement')],
-    }).resultGroupId,
-  },
-  {
     id: 'warping-support', builder: 'addStructuralPointConnectionToStore',
     emits: schema => ({ IfcBoundaryNodeConditionWarping: { Name: 'Warping', WarpingStiffness: schema === 'IFC2X3' ? 12 : { type: 'IFCWARPINGMOMENTMEASURE', value: 12 } } }),
     build: ({ create, editor, anchor }) => create.addStructuralPointConnectionToStore(editor, anchor, { Position: [0,0,0], BoundaryCondition: { Name: 'Warping', WarpingStiffness: 12 } }).connectionId,
@@ -291,6 +282,15 @@ export const SCENE = [
     emits: { IfcRelConnectsStructuralElement: { RelatedStructuralMember: G.member } },
     build: ({ create, editor, anchor, done }) => create.connectStructuralElementInStore(editor, anchor.ownerHistoryId, done.get('physical-element'), done.get('curve-member')),
   },
+  {
+    id: 'result-group', builder: 'addStructuralResultGroupToStore',
+    needs: ['load-group', 'PointReaction-SingleForce', 'PointReaction-SingleDisplacement'],
+    emits: { IfcStructuralResultGroup: { GlobalId: guid('Results'), TheoryType: 'FIRST_ORDER_THEORY', ResultForLoadGroup: G.group, IsLinear: true } },
+    build: ({ create, editor, anchor, done }) => create.addStructuralResultGroupToStore(editor, anchor, {
+      GlobalId: guid('Results'), TheoryType: 'FIRST_ORDER_THEORY', ResultForLoadGroup: done.get('load-group'), IsLinear: true,
+      ReactionIds: editor.getMutationView().getNewEntities().filter(e => /IfcStructural.*Reaction$/i.test(e.type)).map(e => e.expressId),
+    }).resultGroupId,
+  },
   analysisModel('analysis-model-ifc2x3', ['IFC2X3'], ['load-group'], [G.group]),
   analysisModel('analysis-model', ['IFC4', 'IFC4X3'], ['load-group', 'load-case'], [G.group, G.loadCase]),
   {
@@ -300,7 +300,7 @@ export const SCENE = [
       const activities = entities.filter(e => /IfcStructural.*(Action|Reaction)/i.test(e.type));
       const linked = new Set(entities.filter(e => e.type.toUpperCase() === 'IFCRELCONNECTSSTRUCTURALACTIVITY').map(e => e.attributes[5]));
       for (const activity of activities) if (!linked.has(`#${activity.expressId}`)) create.connectStructuralActivityToItemInStore(editor, anchor.ownerHistoryId, done.get('curve-member'), activity.expressId);
-      create.assignToStructuralGroupInStore(editor, anchor.ownerHistoryId, done.get('load-group'), activities.map(e => e.expressId));
+      create.assignToStructuralGroupInStore(editor, anchor.ownerHistoryId, done.get('load-group'), activities.filter(e => !/Reaction/i.test(e.type)).map(e => e.expressId));
       create.assignToStructuralGroupInStore(editor, anchor.ownerHistoryId, done.get(anchor.schema === 'IFC2X3' ? 'analysis-model-ifc2x3' : 'analysis-model'), [done.get('curve-member'), done.get('point-connection'), done.get('surface-member')]);
     },
   },

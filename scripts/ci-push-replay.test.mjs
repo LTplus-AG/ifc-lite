@@ -345,6 +345,7 @@ test('the probe reads the Test workflow files at the push commit', {
   git('init', '-q');
   write('.github/workflows/test.yml', 'jobs:\n  a:\n    steps:\n      - uses: ./.github/actions/setup\n');
   write('.github/actions/setup/action.yml', 'runs: {}\n');
+  write('.github/actions/setup/helper.sh', 'true\n');
   write('.github/workflows/named.yml', 'on: push\n');
   write('.github/workflows/cla.yml', 'on: push\n');
   write('scripts/ci-cache-keying-files.txt', '# test\n.github/workflows/test.yml\n.github/workflows/named.yml\n.github/actions/setup/\n');
@@ -389,11 +390,14 @@ test('the probe reads the Test workflow files at the push commit', {
   // From a subdirectory: the list is read from the push commit, not the cwd.
   mkdirSync(join(root, 'sub'), { recursive: true });
   assert.equal(replayFor('.github/workflows/named.yml', join(root, 'sub')), full, 'a listed workflow, probed from a subdirectory');
-  // Rename detection would list only the new, unlisted path.
-  assert.equal(replayFor(() => git('mv', '.github/workflows/named.yml', '.github/workflows/renamed.yml')), full, 'a renamed listed workflow');
+  // Rename detection would list only the new, unlisted path. The move leaves
+  // the list valid (setup/ still holds action.yml), so only --no-renames blocks it.
+  assert.equal(replayFor(() => { mkdirSync(join(root, '.github/actions/moved')); git('mv', '.github/actions/setup/helper.sh', '.github/actions/moved/helper.sh'); }), full, 'a file renamed out of a listed action');
   assert.equal(replayFor('.github/actions/setup/action.yml'), full, 'a file in a listed action');
   // git quotes a non-ASCII path in plain --name-only output, and no listed entry matches a quote.
   assert.equal(replayFor('.github/actions/setup/\u00e9.sh'), full, 'a non-ASCII path in a listed action');
+  // The list is still valid here, so the blocks above came from the changed paths (#9786 review).
+  assert.equal(replayFor('.github/workflows/cla.yml'), replayed, 'an unlisted workflow, list still valid');
   assert.equal(replayFor('scripts/ci-cache-keying-files.txt'), full, 'the list itself');
   // The list edit above wrote junk over it: malformed, so every workflow and action file blocks.
   assert.equal(replayFor('.github/workflows/test.yml'), full, 'test.yml with a junk list');

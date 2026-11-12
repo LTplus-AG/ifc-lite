@@ -24,8 +24,13 @@ function stiffnessType(entity: string, index: number): string | null {
 /** Same semantic stiffness fields; only their EXPRESS names/value wrappers changed. */
 export function isStructuralBoundaryCondition(entity: string): boolean { return stiffnessType(entity, 1) !== null; }
 
+/** One target policy shared by rewriting, preview and diagnostics. */
+export function isStructuralAssignmentConversion(entity: string, from: string, to: string): boolean {
+  return entity === 'IFCRELCONNECTSSTRUCTURALELEMENT' && from === 'IFC2X3' && ['IFC4', 'IFC4X3', 'IFC5'].includes(to);
+}
+
 export function structuralAttributes(entity: string, args: readonly string[], from: string, to: string): string | null {
-  if (entity === 'IFCRELCONNECTSSTRUCTURALELEMENT' && from === 'IFC2X3' && ['IFC4', 'IFC4X3', 'IFC5'].includes(to) && args.length === 6) {
+  if (isStructuralAssignmentConversion(entity, from, to) && args.length === 6) {
     // IFC4's analytical assignment retains both objects, but changes relationship kind.
     return `${args.slice(0, 4).join(',')},(${args[5]}),$,${args[4]}`;
   }

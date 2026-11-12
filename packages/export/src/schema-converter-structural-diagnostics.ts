@@ -2,6 +2,7 @@
 /** Matches rust/export/src/schema_structural_diagnostics.rs (#9668). */
 import { getSchemaRegistryForVersion, getCanonicalEntityName } from '@ifc-lite/parser';
 import { convertEntityType } from './schema-converter.js';
+import { isStructuralAssignmentConversion } from './schema-converter-structural.js';
 import { StructuralAxes } from './schema-converter-structural-axes.js';
 import { readStepSlots } from './step-argument-parser.js';
 
@@ -10,14 +11,15 @@ export class StructuralDiagnostics {
   private readonly losses = new Map<string, number>();
 
   inspect(line: string, from: string, to: string): void {
+    const assignment = /^\s*#\d+\s*=\s*IFCRELCONNECTSSTRUCTURALELEMENT\s*\(/i.test(line) ? readStepSlots(line) : null;
+    if (assignment && isStructuralAssignmentConversion(assignment.type, from, to)) {
+      this.record('IfcRelConnectsStructuralElement is mapped to IfcRelAssignsToProduct; the original relationship kind cannot round trip');
+      return;
+    }
     if (!((from === 'IFC2X3' && to === 'IFC4') || (from === 'IFC4' && to === 'IFC2X3'))) return;
     if (!/^\s*#\d+\s*=\s*(?:IFCSTRUCTURAL|IFCRELCONNECTSSTRUCTURAL|IFCRELASSOCIATESPROFILEPROPERTIES)/i.test(line)) return;
     const rec = readStepSlots(line);
     if (!rec || !(rec.type.startsWith('IFCSTRUCTURAL') || rec.type.startsWith('IFCRELCONNECTSSTRUCTURAL') || rec.type === 'IFCRELASSOCIATESPROFILEPROPERTIES')) return;
-    if (rec.type === 'IFCRELCONNECTSSTRUCTURALELEMENT') {
-      this.record('IfcRelConnectsStructuralElement is mapped to IfcRelAssignsToProduct; the original relationship kind cannot round trip');
-      return;
-    }
     const source = getSchemaRegistryForVersion(from), target = getSchemaRegistryForVersion(to);
     const name = getCanonicalEntityName(source, rec.type);
     if (!name) return;

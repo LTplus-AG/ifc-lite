@@ -28,14 +28,23 @@
 
 import type { GeometryMeshingSettings, StreamingGeometryEvent } from '@ifc-lite/geometry';
 import type { PickStartContext, PickStarter } from '@/hooks/ingest/pickStart';
-import { sameMeshingSettings, type FastGeometryRun } from '@/hooks/ingest/fastPath';
+import { sameMeshingSettings, type FastClaim, type FastGeometryRun } from '@/hooks/ingest/fastPath';
+import { CACHE_SIZE_THRESHOLD } from '@/utils/ifcConfig';
 
-/** Largest file the fast path takes: the uncached tier, where one engine session is fast. */
-export const FAST_PATH_MAX_BYTES = 10 * 1024 * 1024;
+/**
+ * Files the fast path takes are smaller than this: the uncached tier, so a
+ * small file can never be a cache hit that would leave a run unused.
+ */
+export const FAST_PATH_MAX_BYTES = CACHE_SIZE_THRESHOLD;
 export const HIDDEN_RELEASE_MS = 5 * 60_000;
 export const INACTIVE_RELEASE_MS = 20 * 60_000;
-/** A run that has not answered by then is abandoned; the load falls back to the normal pipeline. */
-export const FAST_RUN_TIMEOUT_MS = 15_000;
+/**
+ * A run whose FIRST event has not arrived by then is abandoned and the load
+ * meshes with the normal pipeline. The first event follows the file read and
+ * the engine init, before any meshing, so this only catches a dead worker;
+ * once events flow, the loader's own stall watchdog applies as for the pool.
+ */
+export const FAST_RUN_FIRST_EVENT_MS = 5_000;
 
 /** Settings the warm-up meshes with (any; it only compiles the engine's hot paths). */
 const WARM_SETTINGS: GeometryMeshingSettings = {
@@ -46,7 +55,7 @@ const WARM_SETTINGS: GeometryMeshingSettings = {
 /** Whether a pick may take the fast path. */
 export function fastPathEligible(ctx: PickStartContext): boolean {
   return ctx.target.kind === 'primary' && ctx.kernel.kind === 'exact' && !ctx.retry
-    && /\.ifc$/i.test(ctx.file.name) && ctx.file.size > 0 && ctx.file.size <= FAST_PATH_MAX_BYTES;
+    && /\.ifc$/i.test(ctx.file.name) && ctx.file.size > 0 && ctx.file.size < FAST_PATH_MAX_BYTES;
 }
 
 export interface FastPathDeps {
@@ -74,12 +83,14 @@ export interface FastPathDeps {
   };
   /** The meshing settings a load of this file would use, read at the pick. */
   settingsAtPick(file: File): GeometryMeshingSettings;
+  /** The `?geomWorkers=N` override the load would pass (worker storage is not readable in the worker). */
+  workerCountOverride(): number | undefined;
   registerPickStarter(starter: PickStarter): () => void;
-  setClaimer(claimer: (file: File, settings: GeometryMeshingSettings) => FastGeometryRun | null): () => void;
+  setClaimer(claimer: (file: File, settings: GeometryMeshingSettings, claim: FastClaim) => FastGeometryRun | null): () => void;
   log?(message: string): void;
 }
 
-interface GeometrySpare { worker: Worker; ready: boolean }
+interface GeometrySpare { worker: Worker; ready: boolean; settle?: () => void }
 
 export interface FastPathRuntime {
   stop(): void;
@@ -103,6 +114,7 @@ export function createFastPathRuntime(deps: FastPathDeps): FastPathRuntime | nul
     const spare = geometry;
     geometry = null;
     spare?.worker.terminate();
+    spare?.settle?.(); // a terminated worker never answers: settle a pending warm-up here
   };
 
   const releaseAll = (why: string) => {
@@ -124,14 +136,14 @@ export function createFastPathRuntime(deps: FastPathDeps): FastPathRuntime | nul
     const spare: GeometrySpare = { worker, ready: false };
     geometry = spare;
     return new Promise<void>((resolve) => {
+      spare.settle = () => { spare.settle = undefined; worker.onmessage = null; worker.onerror = null; resolve(); };
       worker.onmessage = (event: MessageEvent) => {
         const msg = event.data as { type?: string } | null;
-        worker.onmessage = null;
         if (msg?.type === 'ready' && geometry === spare) spare.ready = true;
         else if (geometry === spare) releaseGeometry();
-        resolve();
+        spare.settle?.();
       };
-      worker.onerror = () => { if (geometry === spare) releaseGeometry(); resolve(); };
+      worker.onerror = () => { if (geometry === spare) releaseGeometry(); spare.settle?.(); };
       worker.postMessage({ type: 'prewarm', wasmModule: module, warmBytes: samples, settings: WARM_SETTINGS });
     });
   };
@@ -159,6 +171,7 @@ export function createFastPathRuntime(deps: FastPathDeps): FastPathRuntime | nul
       if (!geometry) await prepareGeometry(module, samples);
       released = false;
       resetInactivity();
+      if (geometry?.ready) deps.log?.('[fast-path] spares ready');
     } catch (err) {
       deps.log?.(`[fast-path] preparation skipped: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
@@ -173,35 +186,62 @@ export function createFastPathRuntime(deps: FastPathDeps): FastPathRuntime | nul
 
   const startRun = (spare: GeometrySpare, file: File, settings: GeometryMeshingSettings): FastGeometryRun => {
     const { worker } = spare;
-    let settled = false;
+    const queue: StreamingGeometryEvent[] = [];
+    let waiter: { resolve: () => void } | null = null;
+    let ended = false;
+    let failure: Error | null = null;
+    let sawEvent = false;
     let timer: unknown = null;
-    let rejectRun: (reason: unknown) => void = () => {};
-    const finish = () => {
-      settled = true;
-      if (timer !== null) deps.clearTimer(timer);
+    const wake = () => { const w = waiter; waiter = null; w?.resolve(); };
+    const finish = (err: Error | null) => {
+      if (ended) return;
+      ended = true;
+      failure = err;
+      if (timer !== null) { deps.clearTimer(timer); timer = null; }
       worker.onmessage = null;
       worker.onerror = null;
       worker.terminate();
+      wake();
     };
-    const events = new Promise<StreamingGeometryEvent[]>((resolve, reject) => {
-      rejectRun = reject;
-      worker.onmessage = (event: MessageEvent) => {
-        const msg = event.data as { type?: string; events?: StreamingGeometryEvent[]; message?: string } | null;
-        if (msg?.type === 'result' && msg.events) { finish(); resolve(msg.events); }
-        else if (msg?.type === 'error') { finish(); reject(new Error(msg.message ?? 'fast-path worker error')); }
-      };
-      worker.onerror = (e) => { finish(); reject(new Error(e.message || 'fast-path worker failed')); };
-      timer = deps.setTimer(() => { timer = null; if (!settled) { finish(); reject(new Error('fast-path worker timed out')); } }, FAST_RUN_TIMEOUT_MS);
-      worker.postMessage({ type: 'run', file, settings });
-    });
-    events.catch(() => {}); // an unclaimed run's failure is nobody's error
+    worker.onmessage = (event: MessageEvent) => {
+      const msg = event.data as { type?: string; event?: StreamingGeometryEvent; message?: string } | null;
+      if (msg?.type === 'event' && msg.event) {
+        if (!sawEvent) { sawEvent = true; if (timer !== null) { deps.clearTimer(timer); timer = null; } }
+        queue.push(msg.event);
+        wake();
+      } else if (msg?.type === 'end') finish(null);
+      else if (msg?.type === 'error') finish(new Error(msg.message ?? 'fast-path worker error'));
+    };
+    worker.onerror = (e) => finish(new Error(e.message || 'fast-path worker failed'));
+    timer = deps.setTimer(() => { timer = null; if (!sawEvent) finish(new Error('fast-path worker sent no first event')); }, FAST_RUN_FIRST_EVENT_MS);
+    worker.postMessage({ type: 'run', file, settings, workerCountOverride: deps.workerCountOverride() });
+    const events: AsyncIterable<StreamingGeometryEvent> = {
+      [Symbol.asyncIterator]: () => ({
+        async next(): Promise<IteratorResult<StreamingGeometryEvent>> {
+          for (;;) {
+            if (queue.length > 0) return { value: queue.shift()!, done: false };
+            if (ended) {
+              if (failure) throw failure;
+              return { value: undefined, done: true };
+            }
+            await new Promise<void>((resolve) => { waiter = { resolve }; });
+          }
+        },
+      }),
+    };
     return {
       file, settings, events,
-      cancel: () => { if (!settled) { finish(); rejectRun(new Error('fast-path run cancelled')); } },
+      cancel: () => {
+        if (ended) return;
+        try { worker.postMessage({ type: 'cancel' }); } catch { /* terminated below anyway */ }
+        finish(new Error('fast-path run cancelled'));
+      },
     };
   };
 
   const starter: PickStarter = (ctx) => {
+    // Only a new primary load supersedes a pending run; a federated add never touches it.
+    if (ctx.target.kind !== 'primary') return;
     pending?.cancel();
     pending = null;
     if (!fastPathEligible(ctx) || !geometry?.ready) return;
@@ -210,15 +250,17 @@ export function createFastPathRuntime(deps: FastPathDeps): FastPathRuntime | nul
     pending = startRun(spare, ctx.file, deps.settingsAtPick(ctx.file));
   };
 
-  const claimer = (file: File, settings: GeometryMeshingSettings): FastGeometryRun | null => {
+  const claimer = (file: File, settings: GeometryMeshingSettings, claim: FastClaim): FastGeometryRun | null => {
     const run = pending;
+    // Another load's run (a federated add, or a load the pick superseded) is left alone.
+    if (!run || run.file !== file || claim.target !== 'primary') return null;
     pending = null;
-    if (!run) return null;
-    if (run.file !== file || !sameMeshingSettings(run.settings, settings)) {
+    if (!claim.sourceIsFile || !sameMeshingSettings(run.settings, settings)) {
       run.cancel();
-      deps.log?.('[fast-path] the load meshes with other settings than the pick; normal pipeline');
+      deps.log?.(`[fast-path] ${claim.sourceIsFile ? 'the load meshes with other settings than the pick' : 'the load parses other bytes than the picked file (archive)'}; normal pipeline`);
       return null;
     }
+    deps.log?.('[fast-path] run claimed');
     return run;
   };
 
@@ -226,7 +268,12 @@ export function createFastPathRuntime(deps: FastPathDeps): FastPathRuntime | nul
     deps.registerPickStarter(starter),
     deps.setClaimer(claimer),
     deps.subscribeLoading((loading) => {
-      if (loading) { cancelIdle?.(); cancelIdle = null; return; }
+      if (loading) {
+        cancelIdle?.(); cancelIdle = null;
+        // A geometry spare still warming up would mesh warm samples during the load: drop it.
+        if (geometry && !geometry.ready) releaseGeometry();
+        return;
+      }
       // The load ended: a run it never claimed (cache hit, other format, error) is dropped; refill.
       pending?.cancel();
       pending = null;

@@ -3,67 +3,61 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Small-file fast path: one spare worker that meshes a whole small model in a
- * single engine session and posts every geometry event back in one message.
+ * Small-file fast path: a spare worker that meshes the picked file while the
+ * main thread resets the interface.
  *
- * It runs the same single-session path the main thread uses for small files
- * (`processAdaptive`'s synchronous branch: pre-pass, then one geometry batch
- * over every job), so per-element output is the same as the pool's. What it
- * saves is set-up: no pool handshake, no pre-pass round trip, no worker spawn
- * or engine instantiation after the pick (the host does those at idle), and
- * the File is read here, in parallel with the interface reset on main.
+ * It makes the SAME `processAdaptive` call the loader would make
+ * (`adaptiveGeometryOptions`, shared with `geometryEventSource.ts`): below 2 MiB
+ * the single-session branch, from 2 MiB the worker pool with GPU instancing
+ * (whose workers it spawns from here), so it emits the same events, including
+ * instanced shards, `unitRefused` and `workerMemory`. What it saves is the wait:
+ * it starts at the pick, reads the File itself, and its engine (and the pool's
+ * shared engine module) was compiled at idle.
  *
  * Protocol (one run per worker; the host terminates it afterwards):
  *   prewarm { wasmModule, warmBytes[], settings } -> ready { warmMs, wasmMemoryBytes } | error
- *   run { file, settings }                        -> result { events } | error
+ *   run { file, settings, workerCountOverride }   -> event { event }* then end | error
+ *   cancel                                        -> (the run stops; nothing more is posted)
  */
 
 import { initSync } from '@ifc-lite/wasm';
-import { GeometryProcessor, type GeometryMeshingSettings, type StreamingGeometryEvent } from '@ifc-lite/geometry';
+import { compileSharedWasmModule, type GeometryMeshingSettings } from '@ifc-lite/geometry';
+import { fastRunEvents } from './fast-geometry-run.js';
 
 type Inbound =
   | { type: 'prewarm'; wasmModule: WebAssembly.Module; warmBytes: Uint8Array[]; settings: GeometryMeshingSettings }
-  | { type: 'run'; file: Blob; settings: GeometryMeshingSettings };
-
-async function mesh(bytes: Uint8Array, settings: GeometryMeshingSettings): Promise<StreamingGeometryEvent[]> {
-  const processor = new GeometryProcessor({
-    preferNative: false,
-    mergeLayers: settings.mergeLayers,
-    enableInstancing: settings.enableInstancing,
-    tessellationQuality: settings.tessellationQuality ?? undefined,
-    skipSmallCuts: settings.skipSmallCuts,
-    skipVoids: settings.skipVoids,
-  });
-  try {
-    await processor.init();
-    if (settings.geometryHashTolerance !== null) processor.enableGeometryHashes(settings.geometryHashTolerance);
-    const events: StreamingGeometryEvent[] = [];
-    // A threshold above any input keeps processAdaptive on its single-session branch.
-    for await (const event of processor.processAdaptive(bytes, { sizeThreshold: Number.MAX_SAFE_INTEGER })) events.push(event);
-    return events;
-  } finally {
-    processor.dispose();
-  }
-}
+  | { type: 'run'; file: Blob; settings: GeometryMeshingSettings; workerCountOverride?: number }
+  | { type: 'cancel' };
 
 const post = (message: unknown) => (self as unknown as Worker).postMessage(message);
+let running: AbortController | null = null;
 
 self.onmessage = async (event: MessageEvent<Inbound>) => {
   const message = event.data;
+  if (message.type === 'cancel') { running?.abort(); return; }
   try {
     if (message.type === 'prewarm') {
       const exports = initSync({ module: message.wasmModule });
       const startedAt = performance.now();
-      for (const bytes of message.warmBytes) await mesh(bytes, message.settings);
+      // The pool path compiles its own shared module in this realm; do it now, not at the pick.
+      await compileSharedWasmModule();
+      const idle = new AbortController();
+      for (const bytes of message.warmBytes) for await (const _ of fastRunEvents(bytes, message.settings, undefined, idle.signal)) { /* warm-up only */ }
       post({ type: 'ready', warmMs: performance.now() - startedAt, wasmMemoryBytes: exports.memory.buffer.byteLength });
       return;
     }
     if (message.type === 'run') {
+      const controller = new AbortController();
+      running = controller;
       const bytes = new Uint8Array(await message.file.arrayBuffer());
-      const events = await mesh(bytes, message.settings);
-      post({ type: 'result', events });
+      for await (const ev of fastRunEvents(bytes, message.settings, message.workerCountOverride, controller.signal)) {
+        if (controller.signal.aborted) return;
+        post({ type: 'event', event: ev });
+      }
+      if (!controller.signal.aborted) post({ type: 'end' });
     }
   } catch (err) {
+    if (running?.signal.aborted) return;
     post({ type: 'error', message: err instanceof Error ? err.message : String(err) });
   }
 };

@@ -19,10 +19,10 @@ import { fastGeometryEvents, type FastGeometryRun } from './fastPath.js';
 // The loader's other pre-geometry seams, re-exported so it imports one module for all of them.
 export { claimFastGeometry } from './fastPath.js';
 export { runPickStart } from './pickStart.js';
-import { DEFAULT_HUNG_JOB_TIMEOUT_MS, type GeometryProcessor, type StallPhaseHandle, type StreamingGeometryEvent } from '@ifc-lite/geometry';
+import { type GeometryProcessor, type StallPhaseHandle, type StreamingGeometryEvent } from '@ifc-lite/geometry';
 import { retainedKernel } from '@ifc-lite/viewer-retained';
 import { getGeomWorkerOverride } from '../../store/constants.js';
-import { getDynamicBatchConfig } from '../../utils/ifcConfig.js';
+import { adaptiveGeometryOptions } from './adaptiveGeometryOptions.js';
 import type { CachePlan } from '../cacheTier.js';
 
 type AdaptiveOptions = NonNullable<Parameters<GeometryProcessor['processAdaptive']>[1]>;
@@ -97,13 +97,10 @@ export function openGeometryEvents(kernel: GeometryKernelLoad, request: Geometry
 }
 
 function adaptiveEvents(request: GeometryEventRequest): AsyncIterable<StreamingGeometryEvent> {
-  return request.processor.processAdaptive(request.view, {
+  return request.processor.processAdaptive(request.view, adaptiveGeometryOptions({
+    fileSizeMB: request.fileSizeMB,
     signal: request.signal,
-    hungJobTimeoutMs: DEFAULT_HUNG_JOB_TIMEOUT_MS, // the loader reads skippedHungElements
     stallPhaseHandle: request.stallPhaseHandle,
-    sizeThreshold: 2 * 1024 * 1024, // 2MB threshold
-    // Dynamic batches: small first, then large.
-    batchSize: getDynamicBatchConfig(request.fileSizeMB),
     existingSab: request.existingSab,
     // Federated adds share the anchor's RTC origin so all models sit in
     // one coordinate space (pixel-perfect alignment, no post-shift).
@@ -119,5 +116,5 @@ function adaptiveEvents(request: GeometryEventRequest): AsyncIterable<StreamingG
     // is unaffected by the count (disjoint deterministic element slices).
     workerCountOverride: getGeomWorkerOverride(),
     trace: request.trace,
-  });
+  }));
 }

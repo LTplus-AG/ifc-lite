@@ -9,7 +9,7 @@ export const moveRotateIt = {
   'moveRotate.mirror.hintStart': "Fare clic sul primo punto dell’asse di simmetria",
   'moveRotate.mirror.hintEnd': "Fare clic sul secondo punto o digitare un angolo e Invio · Alt conserva l’originale",
   'moveRotate.mirror.keepOriginal': "Mantieni originale",
-  'moveRotate.offset.label': "Offset",
+  'moveRotate.offset.label': "Scostamento",
   'moveRotate.offset.hint': "Digitare una distanza positiva e fare clic sul lato della copia parallela",
   'moveRotate.offset.wallOnly': "Selezionare una parete diritta da sfalsare",
   'commands.model.mirror': "Specchia la selezione (area Modello)",

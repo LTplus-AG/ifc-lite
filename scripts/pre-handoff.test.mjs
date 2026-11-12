@@ -64,3 +64,15 @@ test('an oracle over contrast harness tests is a named gap, not a launch failure
   const neverAsked = () => { throw new Error('probed for a test that does not use the harness'); };
   assert.doesNotMatch(oraclePrerequisites(root, { test: plainTest }, 'unused', neverAsked) ?? '', /contrast harness/);
 });
+
+test('a contrast browser probe that cannot run is a named gap, not a thrown failure', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'handoff-contrast-probe-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  mkdirSync(join(root, 'apps/viewer/src/test'), { recursive: true });
+  writeFileSync(join(root, 'package.json'), '{}');
+  writeFileSync(join(root, 'apps/viewer/package.json'), '{"scripts":{"test":"tsx --test"}}');
+  const dynamic = 'apps/viewer/src/test/dynamic.layout.test.tsx';
+  writeFileSync(join(root, dynamic), "const h = await import('@/test/contrast/render-harness.js');\n");
+  const broken = () => { throw new Error('contrast browser probe failed: Cannot find package tsx\nstack'); };
+  assert.match(oraclePrerequisites(root, { test: dynamic }, 'unused', broken), /a contrast browser answer \(contrast browser probe failed: Cannot find package tsx\)/);
+});

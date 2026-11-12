@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkContrastSkips } from './check-contrast-skips.mjs';
-import { CONTRAST_SKIP_MARKER, contrastSkipSummary, countJunitContrastSkips } from './lib/contrast-skips.mjs';
+import { CONTRAST_SKIP_MARKER, contrastSkipSummary, countJunitContrastSkips, nodeOptionsReportToStdout } from './lib/contrast-skips.mjs';
 
 const REPORTER = fileURLToPath(new URL('./lib/contrast-skips.mjs', import.meta.url));
 const GATE = fileURLToPath(new URL('./check-contrast-skips.mjs', import.meta.url));
@@ -69,7 +69,7 @@ test('the CI gate fails when the report is missing or not named, and exits 1 fro
 test('a local run keeps its normal output and ends with the skip count', (t) => {
   const { run } = runFixture(t, 2, { args: [`--test-reporter=${REPORTER}`, '--test-reporter-destination=stdout'] });
   assert.equal(run.status, 0, run.stderr);
-  assert.match(run.stdout, /^ok 1 - runs$/m, 'default TAP output is still rendered');
+  assert.match(run.stdout, /\bruns\b/, "node's default output is still rendered");
   assert.match(run.stdout, /# skipped 3/);
   assert.ok(run.stdout.trimEnd().endsWith(contrastSkipSummary(2)), run.stdout.slice(-300));
 });
@@ -87,5 +87,24 @@ test('when NODE_OPTIONS already picks reporters (CI) it adds only the summary, n
   });
   assert.equal(run.status, 0, run.stderr);
   assert.equal(run.stdout.match(/^ok 1 - runs$/gm)?.length, 1);
+  assert.match(run.stdout, /1 contrast test\(s\) SKIPPED/);
+});
+
+test('only a NODE_OPTIONS reporter that writes to stdout suppresses the default output', () => {
+  assert.equal(nodeOptionsReportToStdout(''), false);
+  assert.equal(nodeOptionsReportToStdout(undefined), false);
+  assert.equal(nodeOptionsReportToStdout('--max-old-space-size=4096'), false);
+  assert.equal(nodeOptionsReportToStdout('--test-reporter=junit --test-reporter-destination=out.xml'), false);
+  assert.equal(nodeOptionsReportToStdout('--test-reporter=tap'), true);
+  assert.equal(nodeOptionsReportToStdout('--test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml'), true);
+});
+
+test('with only a file reporter in NODE_OPTIONS the console output is still rendered', (t) => {
+  const { run } = runFixture(t, 1, {
+    env: { NODE_OPTIONS: '--test-reporter=junit --test-reporter-destination=out.xml' },
+    args: [`--test-reporter=${REPORTER}`, '--test-reporter-destination=stdout'],
+  });
+  assert.equal(run.status, 0, run.stderr);
+  assert.match(run.stdout, /runs/);
   assert.match(run.stdout, /1 contrast test\(s\) SKIPPED/);
 });

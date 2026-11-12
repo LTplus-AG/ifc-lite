@@ -16,7 +16,7 @@
  */
 
 import { spec, tap } from 'node:test/reporters';
-import { Readable } from 'node:stream';
+import { Readable, pipeline } from 'node:stream';
 
 /** Every skip reason the contrast harness gives starts with this. */
 export const CONTRAST_SKIP_MARKER = 'contrast harness:';
@@ -41,11 +41,27 @@ export function contrastSkipSummary(count) {
     + 'Install Google Chrome, run `pnpm exec playwright install chromium`, or set IFCLITE_TEST_CHROME_EXECUTABLE.';
 }
 
+/** True when NODE_OPTIONS already sends a reporter to stdout (CI does). A
+ *  reporter without a destination of its own goes to stdout. */
+export function nodeOptionsReportToStdout(nodeOptions = '') {
+  const reporters = nodeOptions.match(/--test-reporter(?:=|\s+)(?!-)/g)?.length ?? 0;
+  const destinations = [...nodeOptions.matchAll(/--test-reporter-destination(?:=|\s+)(\S+)/g)].map((m) => m[1]);
+  return destinations.includes('stdout') || reporters > destinations.length;
+}
+
+/** node's own default reporter: spec on a terminal, and since Node 24 everywhere. */
+function defaultReporter(events) {
+  if (!process.stdout.isTTY && Number(process.versions.node.split('.')[0]) < 24) return tap(events);
+  const rendered = new spec();
+  pipeline(Readable.from(events), rendered, () => {}); // an error destroys `rendered`, failing the loop below
+  return rendered;
+}
+
 /**
- * `node --test` reporter. When NODE_OPTIONS already selects reporters (CI
- * does), it adds only the summary line, so their output is not duplicated.
- * Otherwise it also renders node's default (spec on a terminal, else TAP),
- * which naming any reporter on the command line would switch off.
+ * `node --test` reporter. When NODE_OPTIONS already sends a reporter to
+ * stdout (CI does), it adds only the summary line, so that output is not
+ * duplicated. Otherwise it also renders node's default, which naming any
+ * reporter on the command line would switch off.
  */
 export default async function* contrastSkipReporter(source) {
   let skipped = 0;
@@ -55,11 +71,10 @@ export default async function* contrastSkipReporter(source) {
       yield event;
     }
   }
-  if ((process.env.NODE_OPTIONS ?? '').includes('--test-reporter')) {
+  if (nodeOptionsReportToStdout(process.env.NODE_OPTIONS)) {
     for await (const event of counted()) void event;
   } else {
-    const output = process.stdout.isTTY ? Readable.from(counted()).pipe(new spec()) : tap(counted());
-    for await (const chunk of output) yield chunk;
+    for await (const chunk of defaultReporter(counted())) yield chunk;
   }
   if (skipped > 0) yield `\n${contrastSkipSummary(skipped)}\n`;
 }

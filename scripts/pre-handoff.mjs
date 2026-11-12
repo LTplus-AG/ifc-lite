@@ -57,17 +57,21 @@ export function runGates(root, commands, log = console.log) {
   });
 }
 
-const CONTRAST_HARNESS_IMPORT = /from\s+['"][^'"]*\/(?:render-harness|rendered-text-contrast)(?:\.js)?['"]/;
+/** Any reference to the harness module, static or dynamic. */
+const CONTRAST_HARNESS_IMPORT = /['"][^'"]*\/(?:render-harness|rendered-text-contrast)(?:\.[jt]sx?)?['"]/;
+const contrastBrowserByRoot = new Map();
 
 /** Which browser the viewer's contrast harness would use under the revert
  *  oracle, which runs tests with `CI=1`: asks the harness's own resolver. */
 export function probeContrastBrowser(root) {
+  if (contrastBrowserByRoot.has(root)) return contrastBrowserByRoot.get(root);
   const code = "const { resolveHostContrastBrowser } = await import('./src/test/contrast/browser-resolution.ts');"
     + "process.stdout.write(resolveHostContrastBrowser({ ...process.env, CI: '1' }).source);";
   const probe = spawnSync(process.execPath, ['--import', 'tsx/esm', '--input-type=module', '-e', code],
     { cwd: resolve(root, 'apps/viewer'), encoding: 'utf8', timeout: 60000 });
   if (probe.status !== 0) throw new Error(`contrast browser probe failed: ${(probe.stderr || probe.error?.message || '').trim()}`);
-  return probe.stdout.trim();
+  contrastBrowserByRoot.set(root, probe.stdout.trim());
+  return contrastBrowserByRoot.get(root);
 }
 
 /** Preflight derived runners so a missing local toolchain is explicitly skipped. */
@@ -92,9 +96,14 @@ export function oraclePrerequisites(root, oracle, base, contrastBrowser = probeC
   // which would read as a regression; name the missing browser instead.
   const contrastTests = tests.filter((path) => /\.test\.tsx?$/.test(path)
     && CONTRAST_HARNESS_IMPORT.test(readFileSync(resolve(root, path), 'utf8')));
-  if (contrastTests.length > 0 && contrastBrowser(root) === 'missing') {
-    missing.add(`Google Chrome for the contrast harness (${contrastTests.length} test file(s); `
-      + 'install it or set IFCLITE_TEST_CHROME_EXECUTABLE)');
+  if (contrastTests.length > 0) {
+    let browser;
+    try { browser = contrastBrowser(root); }
+    catch (error) { missing.add(`a contrast browser answer (${error.message.split('\n')[0]})`); }
+    if (browser === 'missing') {
+      missing.add(`Google Chrome for the contrast harness (${contrastTests.length} test file(s); `
+        + 'install it or set IFCLITE_TEST_CHROME_EXECUTABLE)');
+    }
   }
   return missing.size ? `unavailable prerequisites: ${[...missing].join(', ')}` : null;
 }

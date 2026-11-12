@@ -98,8 +98,7 @@ impl GeometryRouter {
         }
         // A structural member's bare IfcFace has no registered processor but
         // still meshes (#9668), so it rebases like any other face.
-        let member_face = || crate::processors::is_member_face_item(item, element) && self.member_face_admitted(item);
-        if self.processor_for(&item.ifc_type).is_none() && !member_face() {
+        if self.processor_for(&item.ifc_type).is_none() && !self.member_face_selected(item, element) {
             return Ok(None);
         }
         self.element_frame_rtc(element, decoder)

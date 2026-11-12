@@ -163,7 +163,8 @@ fn execute_source(
     router: &GeometryRouter,
     decoder: &mut EntityDecoder,
 ) -> ItemStep {
-    let selected: Option<&dyn crate::router::GeometryProcessor> = if structural && router.member_face_admitted(item) {
+    // `structural` is `GeometryRouter::member_face_selected`, decided by the product walk.
+    let selected: Option<&dyn crate::router::GeometryProcessor> = if structural {
         Some(&crate::processors::StructuralMemberFaceProcessor)
     } else {
         router.processor_for(&item.ifc_type).map(|processor| processor.as_ref())

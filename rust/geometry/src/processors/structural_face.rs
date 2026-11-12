@@ -83,12 +83,7 @@ const MEMBER_FACE_TYPES: [IfcType; 3] = [IfcType::IfcFace, IfcType::IfcFaceSurfa
 /// product walk hands to [`StructuralMemberFaceProcessor`]. The item type is
 /// compared first, so every other item pays one compare.
 pub(crate) fn is_member_face_item(item: &DecodedEntity, element: &DecodedEntity) -> bool {
-    is_member_face_type(&item.ifc_type) && element.ifc_type.is_subtype_of(IfcType::IfcStructuralMember)
-}
-
-/// Whether `ifc_type` is one [`StructuralMemberFaceProcessor`] meshes.
-pub(crate) fn is_member_face_type(ifc_type: &IfcType) -> bool {
-    MEMBER_FACE_TYPES.contains(ifc_type)
+    MEMBER_FACE_TYPES.contains(&item.ifc_type) && element.ifc_type.is_subtype_of(IfcType::IfcStructuralMember)
 }
 
 impl GeometryProcessor for StructuralMemberFaceProcessor {

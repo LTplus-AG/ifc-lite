@@ -199,7 +199,7 @@ impl<'a> ProductControl<'a> {
         -> Action {
         let mapped = item.ifc_type == IfcType::IfcMappedItem;
         // A structural member's face takes the member-face rule (#9668).
-        let structural = crate::processors::is_member_face_item(&item, self.element);
+        let structural = router.member_face_selected(&item, self.element);
         match (offset, self.styled) {
             (Some(_), _) if mapped => {
                 let id = item.id;

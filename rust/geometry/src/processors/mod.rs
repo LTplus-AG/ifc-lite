@@ -64,7 +64,7 @@ pub use extrusion_tapered::ExtrudedAreaSolidTaperedProcessor;
 pub use sectioned::SectionedSolidHorizontalProcessor;
 pub use structural_edge::IfcEdgeProcessor;
 pub use structural_face::IfcFaceSurfaceProcessor;
-pub(crate) use structural_face::{is_member_face_item, is_member_face_type, StructuralMemberFaceProcessor};
+pub(crate) use structural_face::{is_member_face_item, StructuralMemberFaceProcessor};
 pub use surface::SurfaceOfLinearExtrusionProcessor;
 pub use swept::{
     RevolvedAreaSolidProcessor, SurfaceCurveSweptAreaSolidProcessor, SweptDiskSolidProcessor,

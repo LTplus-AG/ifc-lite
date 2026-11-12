@@ -53,6 +53,7 @@ test('settleHostLoad measures a process group\'s CPU over the sample from /proc'
   assert.ok(host.groupCpuMs[pgid] >= 200, `group used ${host.groupCpuMs[pgid]} ms`);
   assert.equal(host.underLoad, true);
   assert.equal(host.settled, true);
+  assert.ok(host.foreignCpuMs === null || (Number.isInteger(host.foreignCpuMs) && host.foreignCpuMs >= 0), `foreign CPU recorded as ms or null (${host.foreignCpuMs})`);
   const again = host.groupCpuMs[pgid];
   settleHostLoad(host);
   assert.equal(host.groupCpuMs[pgid], again, 'settles once; rows of one sample share it');

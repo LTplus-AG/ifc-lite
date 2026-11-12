@@ -43,6 +43,20 @@ function groupTicks(pgids) {
 }
 const TICK_MS = 10; // USER_HZ = 100 on Linux
 
+/** Busy CPU ms of the whole host so far (/proc/stat "cpu" line: all but idle and iowait), or null. */
+function hostBusyMs() {
+  const f = /^cpu\s+(.+)$/m.exec(readText('/proc/stat') ?? '')?.[1]?.split(/\s+/).map(Number);
+  if (!f || f.some((x) => !Number.isFinite(x))) return null;
+  const [user, nice, system, , , irq, softirq, steal] = f; // idle (3) and iowait (4) are not busy
+  return (user + nice + system + irq + softirq + (steal ?? 0)) * TICK_MS;
+}
+/** CPU ms this process's own cgroup (the benchmark job: harness, browsers, servers) used so far, or null. */
+function ownCgroupMs() {
+  const rel = readText('/proc/self/cgroup')?.split('\n').find((l) => l.startsWith('0::'))?.slice(3);
+  const usec = rel ? Number(/usage_usec (\d+)/.exec(readText(`/sys/fs/cgroup${rel}/cpu.stat`) ?? '')?.[1]) : NaN;
+  return Number.isFinite(usec) ? usec / 1000 : null;
+}
+
 /**
  * Whether a sample was taken under load. A builder-named process alone is not load: short-lived toolchain probes
  * (`rustc -vV` from cargo metadata, rustup, rust-analyzer) show up with no CPU use and no pressure (metadata lane,
@@ -75,7 +89,7 @@ export async function hostQuiet({ limit = 5, maxWaitMs = 20000 } = {}) {
   const procs = foreignBuilders();
   const pgids = [...new Set(procs.map((p) => p.pgid))];
   return { cpuPressureAvg10: psi, limit, waitedMs: Date.now() - started, builders: procs.map((p) => p.name), builderProcs: procs,
-    groupTicksBefore: groupTicks(pgids), settled: false,
+    groupTicksBefore: groupTicks(pgids), hostBusyBefore: hostBusyMs(), ownCgroupBefore: ownCgroupMs(), settledAt: null, startedAt: Date.now(), settled: false,
     // Provisional until the sample ends (settleHostLoad): pressure alone decides now.
     ...classifyHostLoad({ psi, limit, builders: procs.map((p) => p.name) }) };
 }
@@ -86,7 +100,14 @@ export function settleHostLoad(host) {
   const after = groupTicks(Object.keys(host.groupTicksBefore ?? {}).map(Number));
   const groupCpuMs = {};
   for (const [g, before] of Object.entries(host.groupTicksBefore ?? {})) groupCpuMs[g] = Math.max(0, ((after[g] ?? before) - before) * TICK_MS);
-  Object.assign(host, { groupCpuMs, settled: true, ...classifyHostLoad({ psi: host.cpuPressureAvg10, limit: host.limit, builders: host.builders, groupCpuMs }) });
-  delete host.groupTicksBefore;
+  // Measurement only (not a flag yet): CPU the rest of the host used during the sample, whatever its process names,
+  // = host busy time minus this job's own cgroup. Recorded so a threshold can be set from real slots (B3: bursts
+  // of foreign activity every ~10 min slowed samples with no builder visible at their start).
+  const busy = hostBusyMs(), own = ownCgroupMs();
+  const foreignCpuMs = [busy, own, host.hostBusyBefore, host.ownCgroupBefore].every(Number.isFinite)
+    ? Math.max(0, Math.round((busy - host.hostBusyBefore) - (own - host.ownCgroupBefore))) : null;
+  const sampleMs = Date.now() - host.startedAt;
+  Object.assign(host, { groupCpuMs, foreignCpuMs, sampleMs, settled: true, ...classifyHostLoad({ psi: host.cpuPressureAvg10, limit: host.limit, builders: host.builders, groupCpuMs }) });
+  delete host.groupTicksBefore; delete host.hostBusyBefore; delete host.ownCgroupBefore;
   return host;
 }

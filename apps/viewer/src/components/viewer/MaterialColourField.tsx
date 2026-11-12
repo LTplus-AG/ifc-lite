@@ -13,7 +13,7 @@ export function MaterialColourField({ value, onChange }: { value: string; onChan
   const label = t('propertyEditor.material.colour');
   return <div className="flex items-center gap-2">
     <label htmlFor={id} className="text-xs">{label}</label>
-    <input aria-label={label} type="color" value={/^#[0-9a-f]{6}$/i.test(value) ? value : DEFAULT_MATERIAL_COLOUR} onChange={e => onChange(e.target.value)} />
+    <Input aria-label={label} type="color" className="h-7 w-10 cursor-pointer p-0" value={/^#[0-9a-f]{6}$/i.test(value) ? value : DEFAULT_MATERIAL_COLOUR} onChange={e => onChange(e.target.value)} />
     <Input id={id} aria-label={t('propertyEditor.material.colourHex')} value={value} onChange={e => onChange(e.target.value)} pattern="#[0-9a-fA-F]{6}" className="h-7 font-mono text-xs" />
   </div>;
 }

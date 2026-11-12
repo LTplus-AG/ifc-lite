@@ -62,17 +62,42 @@ function shellState() {
  * Wait until no long task ran for `quietMs`. Page clock = ms since navigation start.
  * The viewport's renderer (and its debug hooks) mounts with the first load, so
  * renderer readiness is recorded, not required.
+ *
+ * Longtask entries arrive asynchronously: a poll queued during a long block runs
+ * as soon as the block ends, possibly before the block is reported, and would
+ * measure its quiet from the task before the block. So a poll whose page clock
+ * advanced more than `pollMs + lateMs` since the previous one ran late (the
+ * main thread was blocked) and restarts the quiet window at itself, and the arm
+ * needs at least two polls. A poll late for a host-side reason only costs one
+ * more quiet window, outside the timed interval.
  */
-export async function waitShellQuiet(page, { quietMs = 1000, timeoutMs = 15000 } = {}) {
+export async function waitShellQuiet(page, { quietMs = 1000, timeoutMs = 15000, pollMs = 100, lateMs = 150 } = {}) {
   const started = Date.now();
   let s = await page.evaluate(shellState);
   const firstReady = s.now;
-  while (!(s.now - s.lastLongTaskEnd >= quietMs) && Date.now() - started < timeoutMs) {
-    await page.waitForTimeout(100);
+  const arm = shellArm({ quietMs, pollMs, lateMs });
+  arm.poll(s);
+  while (!arm.quiet && Date.now() - started < timeoutMs) {
+    await page.waitForTimeout(pollMs);
     s = await page.evaluate(shellState);
+    arm.poll(s);
   }
-  return { shellQuietMs: s.now, armAbs: s.now, quietWaitMs: s.now - firstReady, rendererReady: s.rendererReady, timedOut: !(s.now - s.lastLongTaskEnd >= quietMs),
-    bootLongTaskMs: s.longTaskMs, bootLongTasks: s.longTasks, countersOff: s.countersOff };
+  return { shellQuietMs: s.now, armAbs: s.now, quietWaitMs: s.now - firstReady, rendererReady: s.rendererReady, timedOut: !arm.quiet,
+    latePolls: arm.latePolls, bootLongTaskMs: s.longTaskMs, bootLongTasks: s.longTasks, countersOff: s.countersOff };
+}
+
+/** The arm rule of {@link waitShellQuiet}, fed one `{ now, lastLongTaskEnd }` poll at a time. */
+export function shellArm({ quietMs = 1000, pollMs = 100, lateMs = 150 } = {}) {
+  let prev = null, blockedUntil = -Infinity;
+  const state = { quiet: false, latePolls: 0, polls: 0 };
+  state.poll = ({ now, lastLongTaskEnd }) => {
+    state.polls++;
+    if (prev !== null && now - prev > pollMs + lateMs) { blockedUntil = now; state.latePolls++; }
+    prev = now;
+    state.quiet = state.polls >= 2 && now - Math.max(lastLongTaskEnd, blockedUntil) >= quietMs;
+    return state.quiet;
+  };
+  return state;
 }
 
 /**

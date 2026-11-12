@@ -246,6 +246,18 @@ const FRAMES = `ISO-10303-21;HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('f.if
 #211=IFCSTRUCTURALLOADPLANARFORCE('pz',$,$,-1.);
 #212=IFCSTRUCTURALPLANARACTION(${id(212)},$,'PZ',$,$,$,$,#211,.LOCAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);
 #213=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(213)},$,$,$,#209,#212);
+#220=IFCVERTEXPOINT(#200);
+#221=IFCVERTEXPOINT(#201);
+#222=IFCEDGE(#220,#221);
+#223=IFCTOPOLOGYREPRESENTATION(#3,'Reference','Edge',(#222));
+#224=IFCPRODUCTDEFINITIONSHAPE($,$,(#223));
+#225=IFCDIRECTION((0.,0.,-1.));
+#226=IFCDIRECTION((1.,0.,0.));
+#227=IFCAXIS2PLACEMENT3D(#22,#225,#226);
+#228=IFCLOCALPLACEMENT($,#227);
+#229=IFCSTRUCTURALLOADLINEARFORCE('ez',$,$,-1.,$,$,$);
+#230=IFCSTRUCTURALLINEARACTION(${id(230)},$,'EZ',$,$,#228,#224,#229,.LOCAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);
+#231=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(231)},$,$,$,#209,#230);
 ENDSEC;END-ISO-10303-21;`;
 
 describe('structuralGlyphs local frames of curve and surface items', () => {
@@ -282,6 +294,11 @@ describe('structuralGlyphs local frames of curve and surface items', () => {
     expect(forces.length).toBeGreaterThan(0);
     // Local z is +Z, so PlanarForceZ = -1 points down.
     for (const g of forces) close(g.direction, [0, 0, -1]);
+    // An edge action on the slab, under its own placement turned upside down:
+    // the slab's side still comes from the slab's placement, so down is down.
+    const edge = arrows(glyphs, 230);
+    expect(edge.length).toBeGreaterThan(0);
+    for (const g of edge) close(g.direction, [0, 0, -1]);
   });
 
   it('takes the local z of a curve action on a surface member from the surface normal', async () => {

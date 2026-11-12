@@ -1,7 +1,7 @@
 diff --git b/scripts/ci-release-lane.mjs a/scripts/ci-release-lane.mjs
 --- b/scripts/ci-release-lane.mjs
 +++ a/scripts/ci-release-lane.mjs
-@@ -209,7 +209,7 @@ export function decideReleaseLane({ event, mode, headRef, headRepo, repo, baseRe
+@@ -210,7 +210,7 @@ export function decideReleaseLane({ event, mode, headRef, headRepo, repo, baseRe
    }
    if (problems.length > 0) return full(`the diff is more than a version bump: ${problems.slice(0, 5).join('; ')}`);
    if (m === 'shadow') return { lane: 'full', mode: m, wouldBeLean: true, reason: 'shadow mode: full lanes run, lean lane reported' };

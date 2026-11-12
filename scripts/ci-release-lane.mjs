@@ -11,8 +11,9 @@
  * runner-hours, almost all of it the full suite testing version bumps. Its
  * diff is package.json versions, CHANGELOGs and deleted changesets, plus
  * Cargo versions when Rust crates are bumped. Any Cargo change runs in full
- * (release-version-diff.mjs), which by itself removes most of that saving:
- * three of the four release merges before 2026-11-12 touched Cargo.lock.
+ * (release-version-diff.mjs). Three of the last four release MERGES touched
+ * Cargo.lock; what share of the PR's many intermediate heads would still go
+ * lean is not measured, and shadow mode is how to measure it.
  *
  * WHY IT IS HELD. A lean run is sound only if the PR cannot reach `main`
  * except through Mergify's `release` queue, whose merge conditions require the

@@ -397,6 +397,13 @@ test('WIRING: release-pr runs the release checks and is judged by the aggregate'
   assert.equal(job.if, "needs.changes.outputs.release_lane == 'lean' && needs.changes.outputs.noop != 'true'");
   assert.equal(job.name, 'Release PR checks');
   const runs = job.steps.map((s) => s.run).filter(Boolean);
+  // No step may be skippable or ignorable: a check that cannot fail would
+  // still let release-pr succeed, and its success is what a lean run needs.
+  for (const step of job.steps) {
+    assert.equal(step['continue-on-error'], undefined, step.name ?? step.uses);
+    assert.equal(step.if, undefined, step.name ?? step.uses);
+  }
+  assert.equal(job['continue-on-error'], undefined);
   for (const s of ['check-changesets.mjs', 'check-changeset-bump.mjs', 'check-rust-major-offset.mjs', 'check-package-readmes.mjs']) {
     assert.ok(runs.some((r) => r.includes(s)), s); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML
   }

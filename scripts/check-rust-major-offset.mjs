@@ -56,7 +56,8 @@
  * harness (`scripts/check-rust-major-offset.test.mjs`) drives this unmodified
  * file against synthetic trees, never real repo state.
  *
- * Run via `pnpm check:rust-major-offset`, wired into the CI node-test job.
+ * Run via `pnpm check:rust-major-offset`, wired into CI's node-guards job and
+ * the release PR's lean-lane `release-pr` job (scripts/ci-release-lane.mjs).
  */
 
 import { readFileSync } from 'node:fs';

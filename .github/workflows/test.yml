@@ -3982,9 +3982,11 @@ jobs:
   # included (every lane runs there); its success on a head therefore marks a
   # lean verdict, which the no-op probe refuses to replay unless the lane
   # still holds. In lean mode the jobs that normally carry these steps
-  # (lint, node-guards, docs-checks) are skipped with the path filter; the
-  # lean decision already refused any diff that moves more than versions, so
-  # the API-surface and build-dependent checks have nothing to compare.
+  # (lint, node-guards, docs-checks) are skipped with the path filter. The
+  # lean decision refuses any diff that moves more than package versions, so
+  # checks that compare source or built output (API surface, builds) have
+  # nothing new to see; checks that read the VERSIONS still do, which is why
+  # each one a version-only diff can fail is run here.
   release-pr:
     name: Release PR checks
     needs: changes

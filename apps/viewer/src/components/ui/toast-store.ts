@@ -12,7 +12,7 @@ export interface Toast {
   dialogId?: string;
   /** Only surfaces already open at emission may inherit a surviving notice. */
   dialogScopes: ReadonlySet<symbol>;
-  /** Notifications sharing a lifecycle replace one another. */
+  /** A global operation lifecycle replaces earlier notices, even across surfaces. */
   key?: string;
   type: 'success' | 'error' | 'info';
   message: string;
@@ -89,17 +89,22 @@ function clearTimer(id: number) {
  */
 function addToast(type: Toast['type'], message: string, durationMs: number | null, action?: Toast['action'], key?: string): number {
   const dialogId = currentDialog();
-  const existing = toasts.find((t) => t.dialogId === dialogId && (key !== undefined ? t.key === key : t.key === undefined && t.type === type && t.message === message));
+  // Explicit keys identify an operation globally; unkeyed messages belong to a surface.
+  // Closing dialogs can also bring formerly independent messages to the same anchor.
+  const matching = toasts.filter((t) => key !== undefined ? t.key === key
+    : t.dialogId === dialogId && t.key === undefined && t.type === type && t.message === message);
+  const existing = matching.at(-1);
   const id = existing?.id ?? nextId++;
-  const others = toasts.filter((t) => t.id !== id);
+  const replaced = new Set(matching.map(t => t.id));
+  const others = toasts.filter((t) => !replaced.has(t.id));
   const excess = Math.max(0, others.length - (MAX_VISIBLE - 1));
   // `others` is oldest-first, so this is oldest transient, then oldest error.
   const evictOrder = [...others.filter((t) => t.type !== 'error'), ...others.filter((t) => t.type === 'error')];
   const evicted = new Set(evictOrder.slice(0, excess).map((t) => t.id));
   for (const evictedId of evicted) clearTimer(evictedId);
   const kept = others.filter((t) => !evicted.has(t.id));
-  toasts = [...kept, { id, dialogId, dialogScopes: new Set([...dialogs.values()].map(dialog => dialog.scope)), key, type, message, count: existing?.type === type && existing.message === message ? existing.count + 1 : 1, seq: nextSeq++, action }];
-  clearTimer(id);
+  toasts = [...kept, { id, dialogId, dialogScopes: new Set([...dialogs.values()].map(dialog => dialog.scope)), key, type, message, count: 1 + matching.filter(t => t.type === type && t.message === message).reduce((sum, t) => sum + t.count, 0), seq: nextSeq++, action }];
+  for (const item of matching) clearTimer(item.id);
   if (durationMs !== null) timers.set(id, setTimeout(() => dismiss(id), durationMs));
   notify();
   return id;

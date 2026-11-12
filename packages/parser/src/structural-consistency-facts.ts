@@ -22,10 +22,13 @@ import {
   type StructuralConsistencyOptions,
   type StructuralLine,
 } from './structural-consistency.js';
+import { getInheritanceChain } from './ifc-schema.js';
 import { ItemGeometryReader } from './structural-item-geometry.js';
 import { structuralCounterparts } from './structural-counterparts.js';
 import { extractStructuralOnDemand } from './structural-extractor.js';
 import type { StructuralExtraction } from './structural-types.js';
+
+const isCurveMember = (type: string) => getInheritanceChain(type).includes('IfcStructuralCurveMember');
 
 type NamedPset = { name: string; properties: ReadonlyArray<{ name: string; value: unknown }> };
 
@@ -80,11 +83,15 @@ export interface StructuralConsistencyIssuesOptions extends StructuralConsistenc
   physicalAxes?: ReadonlyMap<number, StructuralLine>;
 }
 
-/** Each curve member's edge from its topology representation, in IFC world metres. */
-function curveMemberLines(store: IfcDataStore, structural: StructuralExtraction): Map<number, StructuralLine> {
+/**
+ * The edge of each curve member assigned to an element in `physicalAxes`, in
+ * IFC world metres: the only members the axis-drift rule can compare.
+ */
+function curveMemberLines(store: IfcDataStore, structural: StructuralExtraction, physicalAxes: ReadonlyMap<number, StructuralLine>): Map<number, StructuralLine> {
   const reader = new ItemGeometryReader(store);
   const lines = new Map<number, StructuralLine>();
   for (const member of structural.members) {
+    if (!isCurveMember(member.type) || !structuralCounterparts(structural, member.expressId)?.expressIds.some((id) => physicalAxes.has(id))) continue;
     const shape = reader.shape(member.expressId);
     if (shape?.kind === 'edge') lines.set(member.expressId, [shape.start, shape.end]);
   }
@@ -95,12 +102,7 @@ function curveMemberLines(store: IfcDataStore, structural: StructuralExtraction)
 export function structuralConsistencyIssues(store: IfcDataStore, options: StructuralConsistencyIssuesOptions = {}): StructuralConsistencyIssue[] {
   const { physicalAxes, ...settings } = options;
   const structural = extractStructuralOnDemand(store);
-  if (!hasAnalyticalModel(structural)) return checkStructuralConsistency(structural, [], settings);
-  const facts = structuralConsistencyFacts(store, structural);
-  if (!physicalAxes) return checkStructuralConsistency(structural, facts, settings);
-  for (const fact of facts) {
-    const axis = physicalAxes.get(fact.expressId);
-    if (axis) fact.axis = axis;
-  }
-  return checkStructuralConsistency(structural, facts, settings, curveMemberLines(store, structural));
+  const facts = hasAnalyticalModel(structural) ? structuralConsistencyFacts(store, structural) : [];
+  const geometry = physicalAxes && { physicalAxes, memberLines: curveMemberLines(store, structural, physicalAxes) };
+  return checkStructuralConsistency(structural, facts, settings, geometry);
 }

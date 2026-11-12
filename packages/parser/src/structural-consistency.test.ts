@@ -148,14 +148,15 @@ describe('structural-unconnected-member', () => {
 });
 
 describe('structural-axis-drift', () => {
-  const beam = (axis?: StructuralLine): PhysicalElementFact => ({ ...fact(1, 'IfcBeam', true), ...(axis ? { axis } : {}) });
+  const elements = [fact(1, 'IfcBeam', true)];
   const along: StructuralLine = [[0, 0, 3], [6, 0, 3]];
-  const lines = (line: StructuralLine) => new Map([[10, line]]);
+  const lines = (line: StructuralLine, axis: StructuralLine | null = along) =>
+    ({ memberLines: new Map([[10, line]]), physicalAxes: new Map(axis ? [[1, axis]] : []) });
   const linked = model([member(10, 'IfcStructuralCurveMember', [1])]);
   const drift = (issues: StructuralConsistencyIssue[]) => issues.filter((issue) => issue.rule === 'structural-axis-drift');
 
   it('reports a member off its element\'s axis with the distance of its farther end', () => {
-    const issues = drift(checkStructuralConsistency(linked, [beam(along)], {}, lines([[0, 0.1, 3], [6, 0.3, 3.4]])));
+    const issues = drift(checkStructuralConsistency(linked, elements, {}, lines([[0, 0.1, 3], [6, 0.3, 3.4]])));
     expect(issues).toHaveLength(1);
     expect(issues[0]).toMatchObject({ entityId: 10, globalId: 'M10', target: 1, targetGlobalId: 'P1' });
     expect(issues[0].distance).toBeCloseTo(0.5, 9);
@@ -163,22 +164,23 @@ describe('structural-axis-drift', () => {
   });
 
   it('ignores ends moved along the axis, as the derivation does at joints', () => {
-    expect(drift(checkStructuralConsistency(linked, [beam(along)], {}, lines([[-0.2, 0, 3], [5.5, 0, 3]])))).toEqual([]);
+    expect(drift(checkStructuralConsistency(linked, elements, {}, lines([[-0.2, 0, 3], [5.5, 0, 3]])))).toEqual([]);
   });
 
   it(`reports only past the tolerance, default ${DEFAULT_AXIS_DRIFT_TOLERANCE} m`, () => {
     const within = lines([[0, DEFAULT_AXIS_DRIFT_TOLERANCE, 3], [6, 0, 3]]);
-    expect(drift(checkStructuralConsistency(linked, [beam(along)], {}, within))).toEqual([]);
-    expect(drift(checkStructuralConsistency(linked, [beam(along)], { axisDriftTolerance: 0.01 }, within))).toHaveLength(1);
-    expect(() => checkStructuralConsistency(linked, [beam(along)], { axisDriftTolerance: Number.NaN }, within)).toThrow(/axisDriftTolerance/);
+    expect(drift(checkStructuralConsistency(linked, elements, {}, within))).toEqual([]);
+    expect(drift(checkStructuralConsistency(linked, elements, { axisDriftTolerance: 0.01 }, within))).toHaveLength(1);
+    expect(() => checkStructuralConsistency(linked, elements, { axisDriftTolerance: Number.NaN }, within)).toThrow(/axisDriftTolerance/);
   });
 
-  it('needs both lines and a link', () => {
-    const off = lines([[0, 1, 3], [6, 1, 3]]);
-    expect(drift(checkStructuralConsistency(linked, [beam()], {}, off))).toEqual([]);
-    expect(drift(checkStructuralConsistency(linked, [beam(along)]))).toEqual([]);
-    expect(drift(checkStructuralConsistency(model([member(10, 'IfcStructuralCurveMember')]), [beam(along)], {}, off))).toEqual([]);
-    expect(drift(checkStructuralConsistency(linked, [beam([[1, 1, 1], [1, 1, 1]])], {}, off))).toEqual([]);
+  it('needs both lines, a link and the element', () => {
+    const off: StructuralLine = [[0, 1, 3], [6, 1, 3]];
+    expect(drift(checkStructuralConsistency(linked, elements, {}, lines(off, null)))).toEqual([]);
+    expect(drift(checkStructuralConsistency(linked, elements))).toEqual([]);
+    expect(drift(checkStructuralConsistency(model([member(10, 'IfcStructuralCurveMember')]), elements, {}, lines(off)))).toEqual([]);
+    expect(drift(checkStructuralConsistency(linked, [], {}, lines(off)))).toEqual([]);
+    expect(drift(checkStructuralConsistency(linked, elements, {}, lines(off, [[1, 1, 1], [1, 1, 1]])))).toEqual([]);
   });
 });
 

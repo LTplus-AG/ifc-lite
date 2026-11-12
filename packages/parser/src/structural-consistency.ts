@@ -26,18 +26,25 @@
  *   `axisDriftTolerance` from the line of a physical element it is assigned
  *   to. The distance is measured square to that line, so an end moved along
  *   the axis to meet another member (as the derivation does at joints) is not
- *   drift. Runs only for members with a line in `memberLines` and elements with
- *   an `axis` fact; surface members are not checked.
+ *   drift. Runs only when `geometry` is given, for members and elements with
+ *   a line there; surface members are not checked.
  */
 
 import { getInheritanceChain } from './ifc-schema.js';
 import { structuralCounterparts } from './structural-counterparts.js';
 import type { StructuralExtraction } from './structural-types.js';
 
-/** A point in IFC world metres, Z up. */
-export type StructuralPoint = readonly [number, number, number];
-/** A straight line from its first point to its second, in IFC world metres. */
-export type StructuralLine = readonly [StructuralPoint, StructuralPoint];
+type Point = readonly [number, number, number];
+/** A straight line from its first point to its second, in IFC world metres, Z up. */
+export type StructuralLine = readonly [Point, Point];
+
+/** The lines the axis-drift rule compares, by express id, in IFC world metres. */
+export interface StructuralGeometryFacts {
+  /** Each physical element's analytical line (the structural derivation's rule in `@ifc-lite/create`). */
+  physicalAxes: ReadonlyMap<number, StructuralLine>;
+  /** Each curve member's edge. */
+  memberLines: ReadonlyMap<number, StructuralLine>;
+}
 
 /** One physical element as the checks see it. */
 export interface PhysicalElementFact {
@@ -52,12 +59,6 @@ export interface PhysicalElementFact {
    * asks about.
    */
   loadBearing?: boolean;
-  /**
-   * The element's analytical line, when the caller can read one (the
-   * structural derivation's rule in `@ifc-lite/create`). Only the axis-drift
-   * rule reads it.
-   */
-  axis?: StructuralLine;
 }
 
 export interface StructuralConsistencyOptions {
@@ -116,7 +117,7 @@ export const hasAnalyticalModel = (structural: StructuralExtraction): boolean =>
 const isA = (type: string, bases: readonly string[]): boolean => getInheritanceChain(type).some((name) => bases.includes(name));
 
 /** How far `p` lies from the infinite line through `line`; null for a degenerate line. */
-function offLine(p: StructuralPoint, [a, b]: StructuralLine): number | null {
+function offLine(p: Point, [a, b]: StructuralLine): number | null {
   const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
   const span = Math.hypot(d[0], d[1], d[2]);
   if (!(span > 1e-9)) return null;
@@ -127,15 +128,11 @@ function offLine(p: StructuralPoint, [a, b]: StructuralLine): number | null {
 
 const label = (expressId: number, type: string, globalId: string) => `#${expressId} ${type}${globalId ? ` (${globalId})` : ''}`;
 
-/**
- * `memberLines`: each curve member's analytical line by express id, in IFC
- * world metres, for the axis-drift rule.
- */
 export function checkStructuralConsistency(
   structural: StructuralExtraction,
   elements: readonly PhysicalElementFact[],
   options: StructuralConsistencyOptions = {},
-  memberLines: ReadonlyMap<number, StructuralLine> = new Map(),
+  geometry?: StructuralGeometryFacts,
 ): StructuralConsistencyIssue[] {
   const unsetLoadBearing = options.unsetLoadBearing ?? true;
   const tolerance = options.axisDriftTolerance ?? DEFAULT_AXIS_DRIFT_TOLERANCE;
@@ -192,13 +189,14 @@ export function checkStructuralConsistency(
   }
 
   for (const member of structural.members) {
-    const line = memberLines.get(member.expressId);
-    if (!line) continue;
+    const line = geometry?.memberLines.get(member.expressId);
+    if (!geometry || !line) continue;
     for (const elementId of structuralCounterparts(structural, member.expressId)?.expressIds ?? []) {
       const fact = factById.get(elementId);
-      if (!fact?.axis) continue;
-      const start = offLine(line[0], fact.axis);
-      const end = offLine(line[1], fact.axis);
+      const axis = geometry.physicalAxes.get(elementId);
+      if (!fact || !axis) continue;
+      const start = offLine(line[0], axis);
+      const end = offLine(line[1], axis);
       if (start === null || end === null) continue;
       const distance = Math.max(start, end);
       if (distance <= tolerance) continue;

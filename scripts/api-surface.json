@@ -9156,7 +9156,6 @@
     "StructuralLoadGroupInfo: interface",
     "StructuralLoadInfo: interface",
     "StructuralMemberInfo: interface",
-    "StructuralPoint: type",
     "StructuralResultGroupInfo: interface",
     "SyntheticDataStoreOptions: interface",
     "SyntheticEntity: interface",

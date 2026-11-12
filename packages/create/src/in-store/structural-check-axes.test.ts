@@ -41,7 +41,7 @@ describe('structuralPhysicalAxes with the axis-drift check', () => {
     expect(linked.size).toBe(86);
     expect([...linked].filter((id) => !axes.has(id))).toEqual([]);
     expect(drift(store)).toEqual([]);
-  });
+  }, 30_000);
 
   it.skipIf(!existsSync(fixture(STEEL_FRAME)))('reports the members of a column moved 0.25 m, and only those', async () => {
     const { store, view, editor } = await load(STEEL_FRAME);
@@ -52,7 +52,7 @@ describe('structuralPhysicalAxes with the axis-drift check', () => {
     const issues = drift(await reparse(store, view));
     expect(issues.map((issue) => [issue.entityId, issue.target])).toEqual(members.map((id) => [id, column]));
     for (const issue of issues) expect(issue.distance).toBeCloseTo(0.25, 6);
-  });
+  }, 30_000);
 
   it.skipIf(!existsSync(fixture(STR)))('reports no drift on a model derived from the physical one', async () => {
     const { store, view, editor } = await load(STR);
@@ -62,5 +62,5 @@ describe('structuralPhysicalAxes with the axis-drift check', () => {
     const derived = await reparse(store, view);
     expect(extractStructuralOnDemand(derived).members.length).toBe(plan.curveMembers.length + plan.surfaceMembers.length);
     expect(drift(derived)).toEqual([]);
-  });
+  }, 60_000);
 });

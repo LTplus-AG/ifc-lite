@@ -148,7 +148,7 @@ afterEach(async () => {
   container = null;
 });
 
-describe('useIfcLoader: a traced cache hit spans its finalize, publish and settle', () => {
+describe('useIfcLoader: a traced cache hit spans its store publish, finalize and settle', () => {
   it('records load.finalize with finalize.identityWait and finalize.publish inside it, then load.settleUi', async () => {
     assert.equal(tracing.loadTracer.enabled, true, 'the recording tracer is on (?perfTrace=1)');
     const file = buildStepFile('cache-hit-spans.ifc', CACHE_SIZE_THRESHOLD + 4096);
@@ -173,6 +173,9 @@ describe('useIfcLoader: a traced cache hit spans its finalize, publish and settl
       assert.equal(found.length, 1, `one ${inner}`);
       assert.ok(found[0].start >= finalize[0].start && found[0].end! <= finalize[0].end!, `${inner} lies inside load.finalize`);
     }
+    const publish = span('cache.publishStore');
+    assert.equal(publish.length, 1, 'one cache.publishStore (this entry has no geometry: the metadata-only branch)');
+    assert.ok(publish[0].end! <= finalize[0].start, 'the store is published before the finalize');
     const settleUi = span('load.settleUi');
     assert.equal(settleUi.length, 1, 'one load.settleUi');
     assert.ok(settleUi[0].start >= finalize[0].end!, 'the settle follows the finalize');

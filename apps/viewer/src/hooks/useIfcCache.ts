@@ -272,7 +272,7 @@ export function useIfcCache() {
         if (isStale?.()) {
           return { success: false, meshCount: 0, totalVertices: 0, totalTriangles: 0 };
         }
-        setIfcDataStore(dataStore);
+        trace.span('cache.publishStore', () => setIfcDataStore(dataStore));
       }
 
       trace.milestone('cache.storeReady'); // #6961: spatial tree and properties are queryable from here

@@ -128,8 +128,8 @@ function offLine(line: StructuralLine, [a, b]: StructuralLine): number | null {
   const span = Math.hypot(d[0], d[1], d[2]);
   if (!(span > 1e-9)) return null;
   const u = [d[0] / span, d[1] / span, d[2] / span];
-  // The component of each end square to the axis, not a difference of squares,
-  // which loses the boundary to rounding far from the axis origin.
+  // The component of each end square to the axis: a difference of squares
+  // would lose more precision than the subtraction of the coordinates.
   return Math.max(...line.map((p) => {
     const r = [p[0] - a[0], p[1] - a[1], p[2] - a[2]];
     const along = r[0] * u[0] + r[1] * u[1] + r[2] * u[2];
@@ -152,8 +152,10 @@ function axisDrift(
       const fact = factById.get(elementId);
       const axis = physicalAxes.get(elementId);
       const distance = fact && axis ? offLine(line, axis) : null;
-      // Not greater also skips NaN, from a non-finite coordinate.
-      if (!fact || distance === null || !(distance > tolerance)) continue;
+      // Not greater also skips NaN, from a non-finite coordinate. The nanometre
+      // absorbs the rounding of map-scale coordinates, so an end exactly at
+      // the tolerance is not drift.
+      if (!fact || distance === null || !(distance > tolerance + 1e-9)) continue;
       issues.push({
         severity: 'warning', rule: 'structural-axis-drift', entityId: member.expressId, globalId: member.globalId,
         target: fact.expressId, targetGlobalId: fact.globalId, distance,

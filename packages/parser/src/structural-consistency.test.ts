@@ -182,9 +182,15 @@ describe('structural-axis-drift', () => {
     expect(() => checkStructuralConsistency(linked, elements, { axisDriftTolerance: Number.NaN }, within)).toThrow(/axisDriftTolerance/);
   });
 
-  it('does not report an end exactly at the tolerance, far from the axis origin (#9930 review)', () => {
-    const boundary = lines([[0, 0, 0], [5, 0.05, 0]], [[0, 0, 0], [5, 0, 0]]);
-    expect(drift(checkStructuralConsistency(linked, elements, {}, boundary))).toEqual([]);
+  it('does not report an end exactly at the tolerance, far along the axis or at map-scale coordinates', () => {
+    const atTolerance = (origin: StructuralLine[0], axis: StructuralLine[0]) => {
+      const at = (k: number, off: number) => [origin[0] + k * axis[0] - off * axis[1], origin[1] + k * axis[1] + off * axis[0], origin[2]] as const;
+      return lines([at(0, 0), at(5, 0.05)], [at(0, 0), at(5, 0)]);
+    };
+    for (const [origin, axis] of [[[0, 0, 0], [1, 0, 0]], [[0, 0, 0], [Math.SQRT1_2, Math.SQRT1_2, 0]], [[2600000, 1200000, 400], [1, 0, 0]]] as const) {
+      expect(drift(checkStructuralConsistency(linked, elements, {}, atTolerance(origin, axis)))).toEqual([]);
+      expect(drift(checkStructuralConsistency(linked, elements, { axisDriftTolerance: 0.0499 }, atTolerance(origin, axis)))).toHaveLength(1);
+    }
   });
 
   it('needs both lines, a link and the element', () => {

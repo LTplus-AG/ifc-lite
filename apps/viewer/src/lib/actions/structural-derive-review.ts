@@ -58,7 +58,7 @@ export function prepareStructuralDerivationReview(store: StoreApi<ViewerState>, 
   const { created, derived } = blocked ? { created: 0, derived: 0 } : lease.target.view.prepareAtomic((view) => {
     const draft = new StoreEditor(dataStore, view);
     // Only what this derivation writes, not entities already authored in the edit view.
-    const before = draft.getNewEntities().length;
+    const before = view.getNewEntityCount();
     derive.applyStructuralDerivation(draft, dataStore, plan);
     const written = draft.getNewEntities().slice(before);
     return { created: written.length, derived: written.filter(({ type }) => RECEIPT_OPS[type.toUpperCase()]).length };

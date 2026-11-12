@@ -183,3 +183,12 @@ test('a modified LandXML row is release-hosted, so the uploader still publishes 
     rmSync(modelsDir, { recursive: true, force: true });
   }
 });
+
+test('uploader refuses an upstream IFC file entry: unlicensed upstream bytes stay with their authors', () => {
+  const commit = '0123456789abcdef0123456789abcdef01234567';
+  const entry = {
+    path: 'structural/frame.ifc', sha256: 'a'.repeat(64), size: 4,
+    upstream_file: { blob_url: `https://github.com/example/models/blob/${commit}/frame.ifc`, commit },
+  };
+  assert.throws(() => assertReleaseHosted(entry), (err) => err instanceof UploadRefused && /refusing to upload structural\/frame\.ifc/.test(err.message));
+});

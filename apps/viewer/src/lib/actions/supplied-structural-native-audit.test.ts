@@ -4,7 +4,8 @@
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { assertSameNativeIfcGraph } from '@/test/native-ifc-graph';
-import { afterEach, test } from 'node:test';
+import { afterEach, before, test } from 'node:test';
+import { loadStructuralWrites } from '@/sdk/adapters/store-adapter-structural';
 import { createStructuralStoreBackend } from '@ifc-lite/sdk';
 import { extractStructuralOnDemand } from '@ifc-lite/parser';
 import { resolveSpatialAnchor } from '@ifc-lite/create';
@@ -19,6 +20,8 @@ import { readOnlyModelEditTarget } from './model-authoring-read-target';
 
 // Campaign6812 finite audit: supplied analytical geometry, restraint booleans
 // and literal load components are test inputs, never inferred engineering design.
+// The viewer's structural write path is its own chunk (#9668); its UI awaits it before preparing.
+before(() => loadStructuralWrites());
 const initial = useViewerStore.getState();
 afterEach(() => useViewerStore.setState(initial));
 async function nativeGraph() {

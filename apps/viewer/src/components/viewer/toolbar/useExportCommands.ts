@@ -20,6 +20,7 @@ import { useChangedModels } from '@/hooks/useUnexportedChanges';
 import { totalChangeCount } from '@/lib/export/model-changes';
 import { useExtensionExporters } from '@/components/extensions/useExtensionExporters';
 import { useViewerStore } from '@/store';
+import { listIonExportModels } from '../export-model-selection';
 import { buildCommandPaletteJsonEntities } from '../commandPaletteJsonExport';
 import { exportCsvFromBytes } from '@/lib/export/csv';
 import { editedModelBytes } from '@/lib/export/edited-model-bytes';
@@ -78,6 +79,8 @@ function activeModelExportNote(modelCount: number): string {
 
 export function useExportCommands(surface: ExportSurface) {
   const ifcDataStore = useViewerStore((s) => s.ifcDataStore);
+  const models = useViewerStore((s) => s.models);
+  const hasIonModel = useMemo(() => listIonExportModels(models, ifcDataStore).length > 0, [models, ifcDataStore]);
   const modelCount = useViewerStore(selectModelCount);
   // Same rule as `useFileCommands.hasModelsLoaded`: federated sessions fill
   // `models` and leave the legacy single-model `geometryResult` null.
@@ -173,13 +176,15 @@ export function useExportCommands(surface: ExportSurface) {
       ? { command, disabled: true, disabledReasonKey: RETAINED_SHAPE_ONLY_REASON }
       : retained && EXACT_ONLY_EXPORTS.has(command.id)
       ? { command, disabled: true, disabledReasonKey: RETAINED_EXACT_ONLY_REASON }
+      : command.id === 'ion'
+      ? { command, disabled: !hasIonModel, disabledReasonKey: hasIonModel ? undefined : 'ionUpload.noModel' }
       : {
         command,
         disabled: command.requires === 'dataStore' ? !ifcDataStore
           : command.requires === 'changes' ? !hasChanges
           : !canExport,
       }),
-    [ifcDataStore, canExport, hasChanges, shapeOnly, retained],
+    [ifcDataStore, canExport, hasChanges, shapeOnly, retained, hasIonModel],
   );
 
   return {

@@ -12,7 +12,7 @@ import { materializeInstances } from './scene-instance-materialization.js';
 import { InstanceSuppression } from './scene-instance-suppression.js';
 import { createSceneBatch } from './scene-batch-upload.js';
 import { SceneSnapshotLifecycle, type SceneSnapshotHost } from './scene-snapshot-lifecycle.js';
-import type { SceneSnapshot } from './scene-snapshot.js';
+import type { SceneCaptureCallback, SceneCaptureDrop, SceneSnapshot } from './scene-snapshot.js';
 import { flushQueuedMeshes } from './scene-flush.js';
 import { createStaticGpuBuffer } from './gpu-static-upload.js';
 import { createSceneAppearancePreview, rebindSceneAppearanceAccess, type SceneAppearanceAccess } from './scene-appearance-preview.js';
@@ -1797,7 +1797,7 @@ export class Scene {
     for (let i = 0; i < meshes.length; i++) {
       const fragments = this.splitMeshForStreaming(meshes[i]);
       for (let j = 0; j < fragments.length; j++) {
-        this.snapshots.notePiece(fragments[j]);
+        this.snapshots.notePiece(fragments[j], meshes[i]);
         this.meshQueue.push(fragments[j]);
       }
     }
@@ -2040,7 +2040,7 @@ export class Scene {
     // eslint-disable-next-line @typescript-eslint/no-this-alias
     const scene = this;
     const oldFragments = this.streamingFragments;
-    perfTally('render.finalize', oldFragments.length, 'fragments'); // #6957 fragment rebuilds
+    const claimed = this.snapshots.beginFinalize(oldFragments.length); // the capture armed before this finalize, if any
     const assembling = this.streamWork.beginFinalize(oldFragments); // retired by this finalize's own end
     const oldBatches = this.batchedMeshes;
     const fragmentSet = new Set(oldFragments);
@@ -2144,7 +2144,7 @@ export class Scene {
           scene.finalizeInProgress = false;
           scene.streamingFragmentIndexBudget = Number.POSITIVE_INFINITY;
           scene.streamWork.endFinalize(assembling);
-          scene.snapshots.completeCapture();
+          scene.snapshots.completeCapture(claimed, trace, span);
           trace?.end(span, { batches: createdOwned.length, chunks });
           resolve();
         } catch (err) {
@@ -2655,7 +2655,7 @@ export class Scene {
   // Finished-scene snapshot (scene-snapshot-lifecycle.ts).
   sceneSnapshotPolicy(): string { return this.snapshots.policy(); }
   isSceneSnapshotHydrating(): boolean { return this.snapshots.hydrating; }
-  captureNextFinalize(onCaptured: (snapshot: SceneSnapshot) => void): void { this.snapshots.captureNextFinalize(onCaptured); }
+  captureNextFinalize(onCaptured: SceneCaptureCallback, onDropped?: (reason: SceneCaptureDrop) => void): void { this.snapshots.captureNextFinalize(onCaptured, onDropped); }
   /** The primary model's streamed-fragment frame once its first fragment drew, for GPU records built in the geometry workers (M2); null unless fragments quantize per chunk cell, untranslated. */
   gpuRecordFrame(): { frame: [number, number, number]; cellSize: number } | null { const f = this.sharedFrameOrigins.get(0), t = this.modelTranslations.get(0); return f && this.quantizedBatchesEnabled && this.spatialChunking && !this.ephemeralStreamingMode && t[0] === 0 && t[1] === 0 && t[2] === 0 ? { frame: [f[0], f[1], f[2]], cellSize: this.spatialChunking.cellSize } : null; }
   adoptSceneSnapshot(snapshot: SceneSnapshot, device: GPUDevice, pipeline: RenderPipeline): object | null { return this.snapshots.adopt(snapshot, device, pipeline); }

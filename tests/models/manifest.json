@@ -1465,6 +1465,202 @@
         "source_method": "Deterministic generated 32-batch depth-order witness",
         "metadata_url": "https://github.com/LTplus-AG/ifc-lite/blob/baecf8adf82c53038c61c83b7b225b586f09c2eb/examples/gaussian-splat-spike/qualification-fixtures.mjs"
       }
+    },
+    {
+      "path": "structural/ifc_structuralanalysisview/E1--1-Allplan-Arch-Export.ifc",
+      "sha256": "a2bb623c147b0472774dbd77f65521d84be4b0af67ca2eee8d60be350cba2f8e",
+      "size": 18265,
+      "upstream_file": {
+        "blob_url": "https://github.com/berndhahnebach/Ifc_StructuralAnalysisView/blob/ce2f40abd666280413fadad72162db9935336154/Examples/01--slab_on_columns/E1--1-Allplan-Arch-Export.ifc",
+        "commit": "ce2f40abd666280413fadad72162db9935336154"
+      }
+    },
+    {
+      "path": "structural/ifc_structuralanalysisview/E1--3-Axis-Struc-Export.ifc",
+      "sha256": "5d60a74598b67646b28ba0b53d4b13d8e3c9ebc927a6907a5bb42869ed2dfc17",
+      "size": 99000,
+      "upstream_file": {
+        "blob_url": "https://github.com/berndhahnebach/Ifc_StructuralAnalysisView/blob/ce2f40abd666280413fadad72162db9935336154/Examples/01--slab_on_columns/E1--3-Axis-Struc-Export.ifc",
+        "commit": "ce2f40abd666280413fadad72162db9935336154"
+      }
+    },
+    {
+      "path": "structural/ifc_structuralanalysisview/house_basement_floor--Axis-Struc.ifc",
+      "sha256": "241a26f4cd2fd7aa75133f62acf182d6c073a9535daa620038c7b4010317c776",
+      "size": 1344702,
+      "upstream_file": {
+        "blob_url": "https://github.com/berndhahnebach/Ifc_StructuralAnalysisView/blob/ce2f40abd666280413fadad72162db9935336154/Examples/99--miscellaneous/house_basement_floor--Axis-Struc.ifc",
+        "commit": "ce2f40abd666280413fadad72162db9935336154"
+      }
+    },
+    {
+      "path": "structural/ifc_structuralanalysisview/little_steel_frame-3D--Axis-Struc.ifc",
+      "sha256": "a9d142521e424f6d602913321c6e2fb2d9e3d743b6532b1f8668fb85199eec23",
+      "size": 799381,
+      "upstream_file": {
+        "blob_url": "https://github.com/berndhahnebach/Ifc_StructuralAnalysisView/blob/ab9168a32edeecf80718025070c02a3799a7a1ad/Examples/99--miscellaneous/little_steel_frame-3D--Axis-Struc.ifc",
+        "commit": "ab9168a32edeecf80718025070c02a3799a7a1ad"
+      }
+    },
+    {
+      "path": "structural/ifc_structuralanalysisview/roof_truss--Axis-Struc.ifc",
+      "sha256": "d6ac5f73ad9e1cef8dd17adc3df878f9253f5dbb76c09e3cedb17c2c1e80bd10",
+      "size": 41822,
+      "upstream_file": {
+        "blob_url": "https://github.com/berndhahnebach/Ifc_StructuralAnalysisView/blob/ce2f40abd666280413fadad72162db9935336154/Examples/99--miscellaneous/roof_truss--Axis-Struc.ifc",
+        "commit": "ce2f40abd666280413fadad72162db9935336154"
+      }
+    },
+    {
+      "path": "structural/ifc_structuralanalysisview/simple_bottom_slab--Axis-Struc.ifc",
+      "sha256": "78a0b6be7fda08d61386354876a31e5295f5f0e5b449849c05da22b045e06c17",
+      "size": 53276,
+      "upstream_file": {
+        "blob_url": "https://github.com/berndhahnebach/Ifc_StructuralAnalysisView/blob/ce2f40abd666280413fadad72162db9935336154/Examples/99--miscellaneous/simple_bottom_slab--Axis-Struc.ifc",
+        "commit": "ce2f40abd666280413fadad72162db9935336154"
+      }
+    },
+    {
+      "path": "structural/ifc_structuralanalysisview/steel-joint-modelled-with-shellelements--Axis-Struc.ifc",
+      "sha256": "1e05375f274709a53dd7b27b5428749ea049ae22e19ced88afc258a875d73239",
+      "size": 443584,
+      "upstream_file": {
+        "blob_url": "https://github.com/berndhahnebach/Ifc_StructuralAnalysisView/blob/ab9168a32edeecf80718025070c02a3799a7a1ad/Examples/99--miscellaneous/steel-joint-modelled-with-shellelements--Axis-Struc.ifc",
+        "commit": "ab9168a32edeecf80718025070c02a3799a7a1ad"
+      }
+    },
+    {
+      "path": "structural/analysis-models/beam_01.ifc",
+      "sha256": "346685142c99c83ad42b74baad07388af13aa3200d11143bb0859c3b3fbfd33b",
+      "size": 8217,
+      "upstream_file": {
+        "blob_url": "https://github.com/IfcOpenShell/analysis-models/blob/768952189d8531ef9a7d181b220a73968e75f6ea/ifcFiles/beam_01.ifc",
+        "commit": "768952189d8531ef9a7d181b220a73968e75f6ea"
+      }
+    },
+    {
+      "path": "structural/analysis-models/building_01.ifc",
+      "sha256": "8e08880c5deb5407f785649965dca129466ef21e4c34eb58a48edc23c5206f6b",
+      "size": 68522,
+      "upstream_file": {
+        "blob_url": "https://github.com/IfcOpenShell/analysis-models/blob/768952189d8531ef9a7d181b220a73968e75f6ea/ifcFiles/building_01.ifc",
+        "commit": "768952189d8531ef9a7d181b220a73968e75f6ea"
+      }
+    },
+    {
+      "path": "structural/analysis-models/building_02.ifc",
+      "sha256": "635956b5ff320ada72befc4695bfae4d0517f292a38ef8e5562bf06ee680feac",
+      "size": 2023432,
+      "upstream_file": {
+        "blob_url": "https://github.com/IfcOpenShell/analysis-models/blob/6af8a5414925e999f51f527c3e244274250bda32/ifcFiles/building_02.ifc",
+        "commit": "6af8a5414925e999f51f527c3e244274250bda32"
+      }
+    },
+    {
+      "path": "structural/analysis-models/cantilever_01.ifc",
+      "sha256": "d0f398aadfadd47ba924287d6eedc5956dece9c4f6ed46d8f52b89e97d2a762f",
+      "size": 9648,
+      "upstream_file": {
+        "blob_url": "https://github.com/IfcOpenShell/analysis-models/blob/c4d1a39e0eeb32a6025f60a3986d70a75f3a1e58/ifcFiles/cantilever_01.ifc",
+        "commit": "c4d1a39e0eeb32a6025f60a3986d70a75f3a1e58"
+      }
+    },
+    {
+      "path": "structural/analysis-models/grid_of_beams.ifc",
+      "sha256": "57185d2e781d319774fbe2d200c5964a13bc0b68ea01adb930f09f6806ad894b",
+      "size": 15715,
+      "upstream_file": {
+        "blob_url": "https://github.com/IfcOpenShell/analysis-models/blob/1e51add7d6648b011ff9c5d0802ecaccc1d4c6ad/ifcFiles/grid_of_beams.ifc",
+        "commit": "1e51add7d6648b011ff9c5d0802ecaccc1d4c6ad"
+      }
+    },
+    {
+      "path": "structural/analysis-models/portal_01.ifc",
+      "sha256": "8e9bcab2c5b9d033f047d19cc2be82b1cad684cbf259b9d93a754d0f991be992",
+      "size": 15204,
+      "upstream_file": {
+        "blob_url": "https://github.com/IfcOpenShell/analysis-models/blob/768952189d8531ef9a7d181b220a73968e75f6ea/ifcFiles/portal_01.ifc",
+        "commit": "768952189d8531ef9a7d181b220a73968e75f6ea"
+      }
+    },
+    {
+      "path": "structural/analysis-models/slab_01.ifc",
+      "sha256": "d9e0e850a3864ef4c00b71c472ff652722cbef7721ffebc76c1556c5a04f8e1d",
+      "size": 4503,
+      "upstream_file": {
+        "blob_url": "https://github.com/IfcOpenShell/analysis-models/blob/1e51add7d6648b011ff9c5d0802ecaccc1d4c6ad/ifcFiles/slab_01.ifc",
+        "commit": "1e51add7d6648b011ff9c5d0802ecaccc1d4c6ad"
+      }
+    },
+    {
+      "path": "structural/analysis-models/structure_01.ifc",
+      "sha256": "fac3fc541b6d8ff2068bd1a484aee2b0828ddac55c10c058c49f20f5061d5f58",
+      "size": 9829,
+      "upstream_file": {
+        "blob_url": "https://github.com/IfcOpenShell/analysis-models/blob/1e51add7d6648b011ff9c5d0802ecaccc1d4c6ad/ifcFiles/structure_01.ifc",
+        "commit": "1e51add7d6648b011ff9c5d0802ecaccc1d4c6ad"
+      }
+    },
+    {
+      "path": "structural/ifctruss/tutorial-with-resutls.ifc",
+      "sha256": "4e8a3a1242cc4aa9b41e9038276fa9e26f8399b485a2b10446844cedcb951fe3",
+      "size": 7644,
+      "upstream_file": {
+        "blob_url": "https://github.com/IfcTruss/IfcTruss/blob/dbf2aad69f7c523a23cff338d419ee7145cc49fa/nbs/00_General/tutorial-with-resutls.ifc",
+        "commit": "dbf2aad69f7c523a23cff338d419ee7145cc49fa"
+      }
+    },
+    {
+      "path": "structural/puntal-alfa/portal-demo.ifc",
+      "sha256": "3e5c4033c527d0f77efa346ad063cae1288aeb4870a3deccd70a12860bb1df5b",
+      "size": 11427,
+      "upstream_file": {
+        "blob_url": "https://github.com/andrenon/puntal-alfa/blob/688fec48169efdce8a6d3ddcbfbb2a600ecbf451/demo/portal-demo.ifc",
+        "commit": "688fec48169efdce8a6d3ddcbfbb2a600ecbf451"
+      }
+    },
+    {
+      "path": "structural/geometrygym/shellandbeam.ifc",
+      "sha256": "c297b181ee22cbfe11391faf323b552fc0f479b5fe01d2aa7708d4766f6c76d1",
+      "size": 46365,
+      "upstream_file": {
+        "blob_url": "https://github.com/jmirtsch/GeometryGym/blob/9ffe44a9555dc128188b261c6f8cae808885a8df/Grasshopper/KarambaToIFC/shellandbeam.ifc",
+        "commit": "9ffe44a9555dc128188b261c6f8cae808885a8df"
+      }
+    },
+    {
+      "path": "structural/geometrygymifcexamples/surfaceMember.ifc",
+      "sha256": "5861fd258d3407116f0141d8b555626f1569cc45252695a107697b88286e618a",
+      "size": 5199,
+      "upstream_file": {
+        "blob_url": "https://github.com/GeometryGym/GeometryGymIFCExamples/blob/704df17aceeb229ba872d9ff699e20d9a5b36e13/ConsoleCreateSurfaceMember/surfaceMember.ifc",
+        "commit": "704df17aceeb229ba872d9ff699e20d9a5b36e13"
+      }
+    },
+    {
+      "path": "ifcopenshell/generated_structural_coverage_ifc2x3.ifc",
+      "sha256": "cb0e5e1d83bd5b35ee6076913430dfbbc2eff5ccda3207ef8a0a4597d37341ab",
+      "size": 7380
+    },
+    {
+      "path": "ifcopenshell/generated_structural_coverage_ifc4.ifc",
+      "sha256": "4411c329d2caa4b1aac1500723b9b941d36b580844a7aa8853ca8a877adbc82f",
+      "size": 8072
+    },
+    {
+      "path": "ifcopenshell/generated_structural_coverage_ifc4x3.ifc",
+      "sha256": "a0bcf13a2d8a2c4be20dab0cc3f1af2f48abd771259046bf757a5489f12d19f4",
+      "size": 8177
+    },
+    {
+      "path": "ifcopenshell/generated_structural_coverage_ifc4_reinforcement.ifc",
+      "sha256": "ff8860d43998ca921bae44e3e7710e97dde8eb3f656b5bb68cdb11be67f9ce47",
+      "size": 1281
+    },
+    {
+      "path": "modelling/saved-building.ifc",
+      "sha256": "ebc976fabf0edbb3d6511cfbc03cab660ec665e34f5e9ba0724746710ddd359d",
+      "size": 21455
     }
   ]
 }

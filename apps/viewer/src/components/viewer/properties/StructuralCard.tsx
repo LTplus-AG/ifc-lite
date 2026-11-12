@@ -28,9 +28,10 @@ import type {
   StructuralActivityInfo,
   StructuralLoadInfo,
 } from '@ifc-lite/parser';
-import { selectedStructuralMember, structuralRelatedRows } from './selectedStructuralMember';
+import { structuralCardSubject, structuralRelatedRows } from './selectedStructuralMember';
 import { PersistentCollapsible } from './PersistentCollapsible';
-import { INSPECTOR_SECTION, INSPECTOR_TRIGGER, INSPECTOR_TITLE, INSPECTOR_COUNT, INSPECTOR_CHEVRON } from './inspector-ui';
+import { RelItem } from './RelationshipsCard';
+import { INSPECTOR_SECTION, INSPECTOR_TRIGGER, INSPECTOR_TITLE, INSPECTOR_COUNT, INSPECTOR_CHEVRON, INSPECTOR_SUBHEADING } from './inspector-ui';
 
 interface StructuralCardProps {
   /** Structural read model for the current model (or null if none/unextracted). */
@@ -40,28 +41,35 @@ interface StructuralCardProps {
   /** GUID-only fallback when no local EXPRESS identity is available; must be unique in this model. */
   selectedGlobalId?: string | null;
   sourceUnavailable?: boolean;
+  /** Name and IFC class of a model-local entity, for the counterpart rows. */
+  describeEntity?: (expressId: number) => { name?: string; type: string } | null;
+  /** Select a model-local entity: the jump to a counterpart. */
+  onSelectEntity?: (expressId: number) => void;
 }
 
 export function StructuralCard({
   structuralData,
   selectedExpressId,
-  selectedGlobalId, sourceUnavailable = false,
+  selectedGlobalId, sourceUnavailable = false, describeEntity, onSelectEntity,
 }: StructuralCardProps) {
   const { t, locale } = useTranslation();
-  const member = useMemo(
-    () => selectedStructuralMember(structuralData, selectedExpressId, selectedGlobalId),
+  const subject = useMemo(
+    () => structuralCardSubject(structuralData, selectedExpressId, selectedGlobalId),
     [structuralData, selectedExpressId, selectedGlobalId],
   );
+  const member = subject?.member ?? null;
+  const counterparts = subject?.counterparts ?? null;
 
-  const related = useMemo(() => {
-    if (!member || !structuralData) return null;
-    return {
-      connections: structuralRelatedRows(structuralData.connections, member.connectionGlobalIds),
-      activities: structuralRelatedRows(structuralData.activities, member.activityGlobalIds),
-      models: structuralRelatedRows(structuralData.analysisModels, member.analysisModelGlobalIds),
-    };
-  }, [member, structuralData]);
-  if (!member || !related) return null;
+  const related = useMemo(() => ({
+    connections: structuralRelatedRows(structuralData?.connections ?? [], member?.connectionGlobalIds ?? []),
+    activities: structuralRelatedRows(structuralData?.activities ?? [], member?.activityGlobalIds ?? []),
+    models: structuralRelatedRows(structuralData?.analysisModels ?? [], member?.analysisModelGlobalIds ?? []),
+  }), [member, structuralData]);
+  const itemType = useMemo(
+    () => member?.type ?? structuralData?.connections.find(c => c.expressId === selectedExpressId)?.type,
+    [member, structuralData, selectedExpressId],
+  );
+  if (!structuralData || !subject) return null;
   const connections = related.connections.rows;
   const activities = related.activities.rows;
   const modelLabels = related.models.rows.flatMap(model => model.name ? [model.name] : []);
@@ -86,16 +94,18 @@ export function StructuralCard({
             {t('properties.structural.truncatedBadge')}
           </span>
         )}
-        <span className={INSPECTOR_COUNT}>
-          {member.type.replace(/^Ifc/, '')}
-        </span>
+        {itemType && (
+          <span className={INSPECTOR_COUNT}>
+            {itemType.replace(/^Ifc/, '')}
+          </span>
+        )}
         <ChevronDown className={INSPECTOR_CHEVRON} aria-hidden="true" />
       </CollapsibleTrigger>
       <CollapsibleContent>
         {sourceUnavailable && <output className="block p-3 text-xs text-warn">{t('properties.structural.sourceUnavailable')}</output>}
         {relatedUnavailable && <output className="block p-3 text-xs text-warn">{t('properties.structural.relatedUnavailable')}</output>}
         <div className="pb-1">
-          <div className="px-3 py-2 text-xs">
+          {member && <div className="px-3 py-2 text-xs">
             <div className="grid grid-cols-[minmax(70px,auto)_1fr] gap-x-2 gap-y-0.5 text-2xs">
               {member.predefinedType && (
                 <>
@@ -118,7 +128,19 @@ export function StructuralCard({
                 </>
               )}
             </div>
-          </div>
+          </div>}
+
+          {counterparts && (
+            <div className="px-3 py-2">
+              <div className={INSPECTOR_SUBHEADING}>
+                {t(counterparts.side === 'physical' ? 'properties.structural.physicalElements' : 'properties.structural.analyticalItems',
+                  localeCount(locale, counterparts.expressIds.length))}
+              </div>
+              {counterparts.expressIds.map((id) => (
+                <RelItem key={id} item={{ id, type: '', ...describeEntity?.(id) }} onSelect={onSelectEntity} />
+              ))}
+            </div>
+          )}
 
           {connections.length > 0 && (
             <div className="px-3 py-2 text-xs">

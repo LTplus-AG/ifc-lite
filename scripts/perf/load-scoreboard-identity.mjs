@@ -20,7 +20,8 @@
  * that verifies the reopen lanes. Timed and memory samples never set the flag.
  *
  * `LOAD_SCOREBOARD_CORRUPT_SNAPSHOT=1` is the harness proof: before every reopen
- * of the identity pass, it flips one vertex byte of every stored scene snapshot.
+ * of the identity pass, once cache writes have settled, it flips one vertex byte of every stored scene
+ * snapshot (a different byte per reopen, so a rewritten copy is never flipped back).
  * Its table CRC still passes, so the viewer adopts and draws it, and the
  * verdict must read RESTORE MISMATCH. Never set it for a board.
  */
@@ -43,9 +44,34 @@ export async function readSceneIdentity(page, { timeoutMs = 180000 } = {}) {
   }
 }
 
+/**
+ * Before leaving a page: re-read the tapped snapshots (writes that completed after the open's identity read,
+ * once cache writes have settled) and merge them into that open's record, by position (the tap list only grows).
+ */
+export async function settleIdentityWrites(page, record) {
+  if (!record?.identity?.tap) return record;
+  const deadline = Date.now() + 60000;
+  for (;;) {
+    const late = await page.evaluate(async () => {
+      const hook = globalThis.__ifc_lite_scene_identity__;
+      if (typeof hook !== 'function') return null;
+      const r = await hook({ perElement: false });
+      return { snapshots: r.snapshots, pending: r.pending };
+    });
+    if (!late) return record;
+    if (late.pending === 0 || Date.now() > deadline) {
+      record.identity.snapshots = late.snapshots;
+      if (late.pending > 0) record.identity.error = `snapshot hashing still pending after cache writes settled (${late.pending})`;
+      return record;
+    }
+    await page.waitForTimeout(250);
+  }
+}
+
 /** In page: flip one vertex byte of the first batch of every stored scene snapshot. Returns how many it altered. */
-export function corruptStoredSnapshots(page) {
-  return page.evaluate(() => new Promise((done) => {
+export function corruptStoredSnapshots(page, open = 1) {
+  // A reopen may rewrite the snapshot it adopted, flipped byte included: flip a different byte per open, never the same one back.
+  return page.evaluate((open) => new Promise((done) => {
     const open = indexedDB.open('ifc-lite-cache');
     open.onerror = () => done({ altered: 0, error: 'open failed' });
     open.onsuccess = async () => {
@@ -66,7 +92,7 @@ export function corruptStoredSnapshots(page) {
           const start = (16 + tableBytes + 15) & -16;
           const target = table.batches.find((b) => b.vertexData[1] > 0);
           if (!target) continue;
-          const at = start + target.vertexData[0] + (target.vertexData[1] >> 1);
+          const at = start + target.vertexData[0] + (((target.vertexData[1] >> 1) + 4 * open) % target.vertexData[1]);
           bytes[at] ^= 0x5a;
           entry.sceneSnapshot = new Blob([bytes]);
           await new Promise((res, rej) => {
@@ -82,7 +108,7 @@ export function corruptStoredSnapshots(page) {
         done({ altered, notes });
       } catch (e) { db.close(); done({ altered: 0, error: String(e) }); }
     };
-  }));
+  }), open);
 }
 
 /**

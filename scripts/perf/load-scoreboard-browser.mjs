@@ -32,7 +32,7 @@ import { BOOT_OBSERVERS, waitShellQuiet, waitUiQuiet } from './viewer-load-boot.
 import { rebaseToArm, waitCacheEntryStable, waitFirstPaint } from './load-scoreboard-lanes.mjs';
 import { expectSceneSnapshot, prepareWarmOpen } from './viewer-scene-snapshot.mjs';
 import { readGpuHealth } from '../../tests/benchmark/gpu-health.ts';
-import { IDENTITY_QUERY, corruptStoredSnapshots, readSceneIdentity } from './load-scoreboard-identity.mjs';
+import { IDENTITY_QUERY, corruptStoredSnapshots, readSceneIdentity, settleIdentityWrites } from './load-scoreboard-identity.mjs';
 
 export const CHROME_ARGS = ['--enable-gpu', '--enable-unsafe-webgpu', '--enable-features=Vulkan,VulkanFromANGLE,DefaultANGLEVulkan',
   '--use-angle=vulkan', '--ignore-gpu-blocklist', '--use-webgpu-power-preference=default-high-performance',
@@ -188,7 +188,14 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
         if (prep.snapshotWritten !== undefined) meta.snapshotWritten = prep.snapshotWritten;
         if (prep.failure) throw new Error(prep.failure);
         // Harness proof only: an altered stored snapshot must read RESTORE MISMATCH in the identity pass.
-        if (pass === 'identity' && process.env.LOAD_SCOREBOARD_CORRUPT_SNAPSHOT === '1') (meta.corrupted ??= []).push({ open: i, ...(await corruptStoredSnapshots(page)) });
+        if (pass === 'identity') {
+          // The viewer writes its snapshot in an idle period after interactive, often after the identity read
+          // above: wait for every cache write to close, then take the written signatures into this open's record.
+          // Only then may the control alter the stored snapshot (a pending write would overwrite the alteration).
+          meta.identityWritesSettled = await waitCacheWrites(page);
+          await settleIdentityWrites(page, meta.identityOpens.at(-1));
+          if (process.env.LOAD_SCOREBOARD_CORRUPT_SNAPSHOT === '1') (meta.corrupted ??= []).push({ open: i, ...(await corruptStoredSnapshots(page, i)) });
+        }
         await replacePage(context, page);
         page = context.pages().at(-1);
         watch(page);

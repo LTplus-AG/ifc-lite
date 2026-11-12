@@ -31,6 +31,7 @@ import type {
 } from './parser.worker.js';
 import { restashWasmPanicLocation } from './wasm-panic-forward.js';
 import { makeAbortError } from './abort-error.js';
+import { prepareSpareParserWorker, takeSpareParserWorker, type SpareParserWorkerOptions } from './spare-parser-worker.js';
 import { NOOP_LOAD_TRACE, accountWorkerMessages, enableWorkerTrace, isTraceSpansMessage, type LoadTrace } from '@ifc-lite/load-trace';
 
 export interface WorkerParserOptions extends ParseOptions {
@@ -60,6 +61,20 @@ export interface WorkerParserOptions extends ParseOptions {
    * `parser.hydrate` / `parser.hydratePartial`. Absent or disabled: no-op.
    */
   trace?: LoadTrace;
+}
+
+/** The bundled parser worker. Inline `new URL(..., import.meta.url)` is what makes Vite emit it as its own chunk. */
+function spawnParserWorker(): Worker {
+  return new Worker(new URL('./parser.worker.ts', import.meta.url), { type: 'module' });
+}
+
+/**
+ * Prepare one spare parser worker of the bundled kind (see spare-parser-worker.ts).
+ * The next `WorkerParser` without a custom `workerUrl` takes it.
+ */
+export function prepareSpareParser(options: Omit<SpareParserWorkerOptions, 'spawn'> = {}): Promise<boolean> {
+  if (!WorkerParser.isSupported()) return Promise.resolve(false);
+  return prepareSpareParserWorker({ ...options, spawn: spawnParserWorker });
 }
 
 export class WorkerParser {
@@ -134,7 +149,7 @@ export class WorkerParser {
         // Caller-supplied URLs are honored as-is.
         worker = this.workerUrl !== null
           ? new Worker(this.workerUrl, { type: 'module' })
-          : new Worker(new URL('./parser.worker.ts', import.meta.url), { type: 'module' });
+          : (takeSpareParserWorker() ?? spawnParserWorker());
       } catch (err) {
         reject(new Error(`Failed to spawn parser worker: ${err instanceof Error ? err.message : String(err)}`));
         return;

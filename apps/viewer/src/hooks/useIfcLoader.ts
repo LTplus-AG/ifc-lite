@@ -28,6 +28,8 @@ import { modelAppearanceAssets } from '../lib/appearance/model-assets.js';
 import { WorkerParser } from '@ifc-lite/parser/browser';
 import { createModelLoadCompletion } from './ingest/modelLoadCompletion.js';
 import { beginGeometryKernel, openGeometryEvents } from './ingest/geometryEventSource.js';
+import { runPickStart } from './ingest/pickStart.js';
+import { claimFastGeometry } from './ingest/fastPath.js';
 import { memoryAccounting } from '../lib/perf/memoryAccounting.js';
 import { loadTracer, nextPaintOrTimeout } from '../lib/perf/loadTrace.js';
 import { countCopy } from '@ifc-lite/load-trace'; // #6957 full source-copy counters
@@ -308,6 +310,14 @@ export function useIfcLoader() {
         }
         scene.setColdGeometryProvider(null);
       }
+    }
+
+    // The one place work may start before the reset (hooks/ingest/pickStart.ts):
+    // e.g. a spare worker meshing a small file while the interface resets.
+    const pickStart = runPickStart({ file, target, kernel: geometryKernel, retry: options?.isResourceRetry === true || options?.tierOverride !== undefined, isCurrent });
+    if (pickStart) {
+      await pickStart;
+      if (isStale()) { releaseCanceller(); return; }
     }
 
     // Track total elapsed time for complete user experience
@@ -1423,8 +1433,10 @@ export function useIfcLoader() {
       // — gate `waitForEntityIndex` so the parser doesn't hang.
       const ADAPTIVE_SYNC_THRESHOLD_MB = 2;
       const sourceFingerprint = createSourceFingerprintCell(sharedSource, useParserWorker);
+      // Small-file fast path: the geometry run a spare worker started at the pick, if its settings match.
+      const fastRun = geometryKernel.kind === 'exact' ? claimFastGeometry(file, geometryProcessor.meshingSettings()) : null;
       const geometryWillEmitEntityIndex =
-        useParserWorker
+        !fastRun && useParserWorker
         && fileSizeMB >= ADAPTIVE_SYNC_THRESHOLD_MB && geometryKernel.kind === 'exact';
 
       const startDataModelParsing = () => {
@@ -1583,7 +1595,7 @@ export function useIfcLoader() {
         const geometryEvents = openGeometryEvents(geometryKernel, {
           processor: geometryProcessor, view: geometryView, fileSizeMB, signal: geometryAbort.signal, stallPhaseHandle,
           existingSab: sharedSource ?? undefined, sharedRtcOffset: target.kind === 'federated' ? target.sharedRtcOffset : undefined,
-          onEntityIndex: parserEntityIndexHandoff, sourceFingerprint, trace, modelId, activity,
+          onEntityIndex: parserEntityIndexHandoff, sourceFingerprint, trace, modelId, activity, fastRun,
         });
         const geometryIterator = geometryEvents[Symbol.asyncIterator]();
         let geometryIteratorClosed = false;

@@ -58,7 +58,7 @@ export { type StallPhase, type StallPhaseHandle } from './stall-phase.js';
 // Cold-start prewarm: start the shared wasm fetch+compile before a file is
 // opened so the download overlaps think time instead of blocking first
 // geometry. The host app decides when (idle / intent) and affordability.
-export { prewarmSharedWasmModule } from './wasm-shared-module.js';
+export { prewarmSharedWasmModule, compileSharedWasmModule } from './wasm-shared-module.js';
 // `__IFC_LITE_*` flag bindings the host reads; the viewer registry spreads these (#6962).
 export { GEOMETRY_PERF_FLAG_BINDINGS } from './perf-flags.js';
 // Stale-deployment WASM-asset detection (#1363). The host app subscribes to
@@ -210,6 +210,16 @@ export type StreamingGeometryEvent =
 
 // QueuedNativeStreamingEvent, native stream constants, and yieldToEventLoop
 // have been extracted to ./geometry-native.ts
+
+/** See {@link GeometryProcessor.meshingSettings}. */
+export interface GeometryMeshingSettings {
+  mergeLayers: boolean;
+  enableInstancing: boolean;
+  tessellationQuality: TessellationQuality | null;
+  skipSmallCuts: boolean;
+  skipVoids: boolean;
+  geometryHashTolerance: number | null;
+}
 
 export class GeometryProcessor {
   private static largeFileByteStreamingThreshold = 256 * 1024 * 1024;
@@ -916,6 +926,24 @@ export class GeometryProcessor {
         yield* this.processStreaming(buffer, options.entityIndex, batchConfig, options.sharedRtcOffset);
       }
     }
+  }
+
+  /**
+   * The settings this processor meshes with: the same values `processParallel`
+   * forwards to every pool worker. A processor in another thread built from
+   * them (`new GeometryProcessor(...)` + `enableGeometryHashes`) produces the
+   * same per-element geometry, so a host can check that work started early on
+   * another processor matches the one it would run now.
+   */
+  meshingSettings(): GeometryMeshingSettings {
+    return {
+      mergeLayers: this.mergeLayers,
+      enableInstancing: this.enableInstancing,
+      tessellationQuality: this.tessellationQuality,
+      skipSmallCuts: this.skipSmallCuts,
+      skipVoids: this.skipVoids,
+      geometryHashTolerance: this.bridge?.getComputeGeometryHashes() ?? null,
+    };
   }
 
   /**

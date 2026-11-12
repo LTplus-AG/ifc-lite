@@ -12,4 +12,5 @@
  *   import { WorkerParser } from '@ifc-lite/parser/browser';
  */
 
-export { WorkerParser, type WorkerParserOptions } from './worker-parser.js';
+export { WorkerParser, type WorkerParserOptions, prepareSpareParser } from './worker-parser.js';
+export { hasSpareParserWorker, releaseSpareParserWorker } from './spare-parser-worker.js';

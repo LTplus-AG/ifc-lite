@@ -35,8 +35,8 @@
  *                  the lean lane's own checks (LEAN_CHECKS), and names what
  *                  still stands between this run and a lean one.
  *   `on`           the release PR runs `changes` (late-changeset gate),
- *                  `rust-semver`, `silent-revert` and `release-pr` (Rust
- *                  major-offset and README checks) and skips the rest. With
+ *                  `rust-semver`, `silent-revert` and `release-pr`
+ *                  (LEAN_CHECKS) and skips the rest. With
  *                  OWNER_ALLOWS_LEAN false, as `shadow`.
  * Any other value is `off`. Lean needs ALL of: a `pull_request` into `main`,
  * head ref exactly `changeset-release/main`, the head in this repository (a
@@ -75,15 +75,29 @@ export const MODES = ['off', 'shadow', 'on'];
 export const LEAN_KEPT_JOBS = ['changes', 'rust-semver', 'silent-revert', 'release-pr'];
 
 /**
- * What `release-pr` runs, one step each (test.yml pins the job to this list).
- * Node builtins only and no history, so `--verify` can run them on its own
- * depth-2 checkout in shadow, where `release-pr` itself does not run.
+ * What `release-pr` runs, one shell command per step, exactly as test.yml
+ * spells it (a test pins the job to this list). No install and no history
+ * (node builtins, run through bash as a `run:` step would), so `--verify`
+ * can run them on its own depth-2 checkout in shadow,
+ * where `release-pr` itself does not run.
+ *
+ * The audit behind the list (#9783): of the release PR's 200 Test runs from
+ * 2026-11-05 to 2026-11-12, 51 failed. Every failure in a step a lean run
+ * skips was examples-current.test.mjs's registry-range tests, which fail when
+ * a release moves the workspace major past the examples' pins (44 runs); the
+ * rest were runner flakes, an oracle checkout error, and the late-changeset
+ * gate `changes` keeps. Its #5960 test needs node_modules and never failed on
+ * a release head, so the name pattern leaves it out; the pattern keeps the
+ * "found the examples" test, so the check cannot pass on zero tests.
  * check-changesets.mjs and check-changeset-bump.mjs are not here: on a release
  * PR no changeset is pending and the bump check anchors on the release head
- * itself, so both pass vacuously (run on a6b915f888 merged into its base,
- * #9783 review).
+ * itself, so both pass vacuously (run on a6b915f888 merged into its base).
  */
-export const LEAN_CHECKS = ['scripts/check-rust-major-offset.mjs', 'scripts/docs/check-package-readmes.mjs'];
+export const LEAN_CHECKS = [
+  'node scripts/check-rust-major-offset.mjs',
+  'node scripts/docs/check-package-readmes.mjs',
+  "node --test --test-name-pattern='found the examples|registry ranges target' scripts/examples-current.test.mjs",
+];
 
 /**
  * THE OWNER'S HOLD. A lean run makes the required aggregate green on the
@@ -191,12 +205,12 @@ export function verifyReleaseLane(input) {
     const ran = skippedByLean.filter((j) => resultOf(j) !== 'skipped').map(row);
     // `release-pr` runs only in a lean run, so its checks run here instead.
     const checks = runChecks();
-    const checksFailed = checks.filter((c) => !c.ok).map((c) => c.script);
+    const checksFailed = checks.filter((c) => !c.ok).map((c) => c.check);
     // The decision names what still stands between this run and a lean one,
     // so the report never reads as a claim about today.
     const lean = `lean lane (${d.pending.join(', ')})`;
     const lines = [`## Release PR lean lane, reported only (\`CI_RELEASE_LANE=${d.mode}\`)`, '', d.reason, '', `Lanes that ran here and the ${lean} would skip:`, '', ...(ran.length > 0 ? ran : ['- (none: every such lane skipped on this run)'])];
-    lines.push('', `Its own checks (\`release-pr\`), run here:`, '', ...checks.map((c) => `- \`${c.script}\`: ${c.ok ? 'pass' : `FAIL: ${c.tail}`}`));
+    lines.push('', `Its own checks (\`release-pr\`), run here:`, '', ...checks.map((c) => `- \`${c.check}\`: ${c.ok ? 'pass' : `FAIL: ${c.tail}`}`));
     if (failed.length > 0) lines.push('', `⚠️ The ${lean} would defer a failure to the merge queue: ${failed.join(', ')}.`);
     if (checksFailed.length > 0) lines.push('', `⚠️ The ${lean} would fail its own checks: ${checksFailed.join(', ')}.`);
     if (failed.length === 0 && checksFailed.length === 0) lines.push('', `None of them failed. The ${lean} would reach the same verdict.`);
@@ -210,17 +224,23 @@ export function verifyReleaseLane(input) {
 /** Output lines without Node's own warnings and crash banner. */
 const signalLines = (s) => String(s ?? '').split('\n').filter((l) => l.trim() && !/^\(node:\d+\) (\[\w+\] )?\w*Warning:|^\(Use `node --trace-|^Node\.js v\d/.test(l));
 
-/** Runs LEAN_CHECKS in `cwd`, as `release-pr` would, each with one line of its output. */
-export function runLeanChecks(cwd, scripts = LEAN_CHECKS) {
-  return scripts.map((script) => {
+/**
+ * Runs LEAN_CHECKS in `cwd` through bash, as a `run:` step would, each with
+ * one line of its output.
+ */
+export function runLeanChecks(cwd, commands = LEAN_CHECKS) {
+  return commands.map((check) => {
     // Bounded well inside the aggregate's 5-minute budget; each takes well under a second.
-    const r = boundedSpawnSync(process.execPath, [script], { cwd, encoding: 'utf8', timeout: 30_000 });
-    if (r.error) return { script, ok: false, tail: r.error.message };
+    // Without NODE_TEST_CONTEXT: a `node --test` check run from inside a test
+    // runner would report to that runner instead of exiting non-zero.
+    const { NODE_TEST_CONTEXT: _parent, ...env } = process.env;
+    const r = boundedSpawnSync('bash', ['-c', check], { cwd, env, encoding: 'utf8', timeout: 30_000 });
+    if (r.error) return { check, ok: false, tail: r.error.message };
     const stderr = signalLines(r.stderr);
     const out = [...signalLines(r.stdout), ...stderr];
-    // A crash's error line says more than the stack under it.
-    const errorLine = r.status !== 0 ? stderr.find((l) => /^\w*Error\b.*:/.test(l)) : undefined;
-    return { script, ok: r.status === 0, tail: errorLine ?? out.at(-1) ?? '' };
+    // A crash's error line, or a failed test's, says more than the last line.
+    const errorLine = r.status !== 0 ? [...stderr, ...out].find((l) => /^\w*Error\b.*:|^not ok \d|^✖ /.test(l.trim())) : undefined;
+    return { check, ok: r.status === 0, tail: (errorLine ?? out.at(-1) ?? '').trim() };
   });
 }
 

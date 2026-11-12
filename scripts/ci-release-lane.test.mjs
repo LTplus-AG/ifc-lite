@@ -215,21 +215,22 @@ test('SHADOW (#9783 review): the report runs the lean lane\'s own checks and lis
   const allSkipped = verifyReleaseLane({ ...shadow, needs: needsJson('skipped', { changes: 'success' }) }).lines.join('\n');
   assert.match(allSkipped, /would skip:\n\n- \(none: every such lane skipped on this run\)/); // @source-text-assertion-ok subject is the returned summary
   const needs = needsJson('success', { 'rust-full': 'skipped' });
-  const pass = verifyReleaseLane({ ...shadow, needs, runChecks: () => LEAN_CHECKS.map((script) => ({ script, ok: true, tail: '' })) }).lines.join('\n');
-  for (const script of LEAN_CHECKS) assert.match(pass, new RegExp(`\`${script.replace(/[.]/g, '\\.')}\`: pass`)); // @source-text-assertion-ok subject is the returned summary
+  const pass = verifyReleaseLane({ ...shadow, needs, runChecks: () => LEAN_CHECKS.map((check) => ({ check, ok: true, tail: '' })) }).lines.join('\n');
+  for (const check of LEAN_CHECKS) assert.ok(pass.includes(`\`${check}\`: pass`), check); // @source-text-assertion-ok subject is the returned summary
   assert.ok(!pass.includes('`rust-full`'), 'a lane that skipped anyway is not listed'); // @source-text-assertion-ok subject is the returned summary
   assert.ok(pass.includes('`viewer-tests`: success')); // @source-text-assertion-ok subject is the returned summary
   assert.match(pass, /None of them failed/); // @source-text-assertion-ok subject is the returned summary
-  const fail = verifyReleaseLane({ ...shadow, needs, runChecks: () => [{ script: LEAN_CHECKS[0], ok: false, tail: 'offset mismatch' }] });
+  const fail = verifyReleaseLane({ ...shadow, needs, runChecks: () => [{ check: LEAN_CHECKS[0], ok: false, tail: 'offset mismatch' }] });
   assert.equal(fail.ok, true, 'shadow reports, never fails');
-  assert.match(fail.lines.join('\n'), /FAIL: offset mismatch[\s\S]*would fail its own checks: scripts\/check-rust-major-offset\.mjs/); // @source-text-assertion-ok subject is the returned summary
+  assert.match(fail.lines.join('\n'), /FAIL: offset mismatch[\s\S]*would fail its own checks: node scripts\/check-rust-major-offset\.mjs/); // @source-text-assertion-ok subject is the returned summary
   assert.doesNotMatch(fail.lines.join('\n'), /None of them failed/);
   // The real runner on scripts of its own: exit status and last output line; a missing script fails, never throws.
   const dir = mkdtempSync(join(TMP, 'checks-'));
   writeFileSync(join(dir, 'ok.mjs'), "console.log('first'); console.log('all good');\n");
   writeFileSync(join(dir, 'bad.mjs'), "console.log('offset mismatch'); process.emitWarning('noise', 'ExperimentalWarning'); process.emitWarning('old', 'DeprecationWarning', 'DEP0040'); process.exitCode = 1;\n");
   writeFileSync(join(dir, 'own.mjs'), "console.log('Warning: README missing for packages/x'); process.exitCode = 1;\n");
-  assert.deepEqual(runLeanChecks(dir, ['ok.mjs', 'bad.mjs', 'own.mjs', 'gone.mjs']).map((c) => [c.script, c.ok, /Cannot find module/.test(c.tail) || c.tail]), [['ok.mjs', true, 'all good'], ['bad.mjs', false, 'offset mismatch'], ['own.mjs', false, 'Warning: README missing for packages/x'], ['gone.mjs', false, true]]); // @source-text-assertion-ok subject is the runner's returned results
+  writeFileSync(join(dir, 'red.test.mjs'), "import test from 'node:test'; import assert from 'node:assert'; test('pins', () => assert.equal(1, 2));\n");
+  assert.deepEqual(runLeanChecks(dir, ['node ok.mjs', 'node bad.mjs', 'node own.mjs', 'node gone.mjs', "node --test --test-name-pattern='pin|x y' red.test.mjs"]).map((c) => [c.check, c.ok, /Cannot find module/.test(c.tail) || c.tail]), [['node ok.mjs', true, 'all good'], ['node bad.mjs', false, 'offset mismatch'], ['node own.mjs', false, 'Warning: README missing for packages/x'], ['node gone.mjs', false, true], ["node --test --test-name-pattern='pin|x y' red.test.mjs", false, 'not ok 1 - pins']]); // @source-text-assertion-ok subject is the runner's returned results
 });
 
 test('the release queue really tests a batch: its required `Rust tests (feature builds)` runs on a PR only for a batch', () => {
@@ -532,7 +533,13 @@ test('WIRING: release-pr runs the release checks and is judged by the aggregate'
   }
   assert.equal(job['continue-on-error'], undefined);
   // Exactly LEAN_CHECKS, so shadow's --verify runs what a lean run would.
-  assert.deepEqual(runs, LEAN_CHECKS.map((s) => `node ${s}`));
+  assert.deepEqual(runs, LEAN_CHECKS);
+  // The examples check selects tests by title: it must still run the
+  // registry-range tests, not just the sanity test, or it passes on nothing.
+  const examples = LEAN_CHECKS.find((c) => c.includes('examples-current.test.mjs')); // @source-text-assertion-ok picks a command from the exported list, not source text
+  const tap = spawnSync('bash', ['-c', examples.replace('node --test', 'node --test --test-reporter=tap')], { cwd: REPO_ROOT, encoding: 'utf8', env: { PATH: process.env.PATH } });
+  assert.equal(tap.status, 0, tap.stdout + tap.stderr);
+  assert.ok((tap.stdout.match(/^ok \d+ - .*registry ranges target/gm) ?? []).length >= 2, tap.stdout); // @source-text-assertion-ok subject is the test run's own TAP output
   // They need no history and no install (#9783 review).
   assert.equal(job.steps[0].with['fetch-depth'], undefined);
   assert.ok(!job.steps.some((st) => /pnpm/.test(String(st.uses ?? st.run ?? ''))), 'no pnpm in release-pr'); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML
@@ -557,7 +564,7 @@ test('WIRING: release.yml queues the release PR only while CI_RELEASE_LANE is ex
   assert.equal(step.if, "steps.changesets.outputs.pullRequestNumber != '' && vars.CI_RELEASE_LANE == 'on'");
   assert.equal(step['continue-on-error'], true, 'a labelling failure never fails a release run');
   // The label the queue's entry rule requires, read from .mergify.yml, not restated.
-  const entry = parse(readFileSync(join(REPO_ROOT, '.mergify.yml'), 'utf8')).pull_request_rules.find((r) => r.actions?.queue?.name === 'release');
+  const entry = parse(MERGIFY).pull_request_rules.find((r) => r.actions?.queue?.name === 'release');
   const label = entry.conditions.find((c) => c.startsWith('label=')).slice('label='.length); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML
   assert.equal(step.run, `gh pr edit "$PR" --repo "$REPO" --add-label ${label}`);
 });

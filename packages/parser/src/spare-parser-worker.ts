@@ -4,14 +4,15 @@
 
 /**
  * One spare parser worker, prepared while the page is idle so the next parse
- * does not pay the worker's start-up: loading and compiling its bundle and
- * instantiating the engine (on a 2.5 MB model that start-up is most of the
- * metadata time; the parse itself is tens of milliseconds).
+ * does not pay the worker's start-up: loading, compiling and evaluating its
+ * bundle (on a 2.5 MB model that start-up is most of the metadata time; the
+ * parse itself is tens of milliseconds).
  *
  * Optionally the spare parses a small shipped sample once (`warmSource`, never
- * the user's file) so the engine's scan and parse functions are compiled
- * before the first real file. The spare is handed out only after that warm
- * parse has finished, so a real parse never shares the worker with it.
+ * the user's file). That parse instantiates the engine through the worker's
+ * normal path and compiles its scan and parse functions before the first real
+ * file. The spare is handed out only after the warm parse has finished, so a
+ * real parse never shares the worker with it.
  *
  * At most one spare exists. `WorkerParser` takes it for its next parse (and
  * terminates it when that parse ends, as it does any parser worker); the host
@@ -29,29 +30,37 @@ interface Spare {
 let spare: Spare | null = null;
 
 export interface SpareParserWorkerOptions {
-  /** Creates the parser worker (the same bundle `WorkerParser` spawns). */
-  spawn: () => Worker;
-  /** The engine module the host already compiled; instantiated in the spare at once. */
-  wasmModule?: WebAssembly.Module | null;
+  /** Creates the parser worker (defaults to the bundled one `WorkerParser` spawns). */
+  spawn?: () => Worker;
   /** A small sample to parse once before the spare is handed out. */
   warmSource?: SharedArrayBuffer | null;
+}
+
+/** The bundled parser worker. Inline `new URL(..., import.meta.url)` is what makes Vite emit it as its own chunk. */
+export function spawnParserWorker(): Worker {
+  return new Worker(new URL('./parser.worker.ts', import.meta.url), { type: 'module' });
+}
+
+/** The same check as `WorkerParser.isSupported()`: workers, SharedArrayBuffer and cross-origin isolation. */
+function parserWorkerSupported(): boolean {
+  if (typeof Worker === 'undefined' || typeof SharedArrayBuffer === 'undefined') return false;
+  return (globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated !== false;
 }
 
 /**
  * Prepare the spare. Resolves `true` once it can be taken, `false` when one
  * already exists, the warm parse failed, or it was released first.
  */
-export function prepareSpareParserWorker(options: SpareParserWorkerOptions): Promise<boolean> {
-  if (spare) return Promise.resolve(false);
+export function prepareSpareParserWorker(options: SpareParserWorkerOptions = {}): Promise<boolean> {
+  if (spare || (!options.spawn && !parserWorkerSupported())) return Promise.resolve(false);
   let worker: Worker;
   try {
-    worker = options.spawn();
+    worker = (options.spawn ?? spawnParserWorker)();
   } catch {
     return Promise.resolve(false);
   }
   const entry: Spare = { worker, ready: false };
   spare = entry;
-  if (options.wasmModule) worker.postMessage({ type: 'prewarm', wasmModule: options.wasmModule });
   if (!options.warmSource) {
     entry.ready = true;
     return Promise.resolve(true);

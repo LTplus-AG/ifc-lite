@@ -35,7 +35,6 @@ class FakeWorker {
 
 let spawned: FakeWorker[] = [];
 const spawn = () => { const w = new FakeWorker(); spawned.push(w); return w as unknown as Worker; };
-const module = {} as WebAssembly.Module;
 
 afterEach(() => { releaseSpareParserWorker(); spawned = []; });
 
@@ -44,18 +43,18 @@ describe('spare parser worker', () => {
     expect(spareModule().WARM_PARSE_ID).toBe(WARM_PARSE_ID);
   });
 
-  it('instantiates the engine from the host module and is ready at once without a warm source', async () => {
-    expect(await prepareSpareParserWorker({ spawn, wasmModule: module })).toBe(true);
-    expect(spawned[0].posted).toEqual([{ type: 'prewarm', wasmModule: module }]);
+  it('is ready at once without a warm source, and posts nothing to the worker', async () => {
+    expect(await prepareSpareParserWorker({ spawn })).toBe(true);
+    expect(spawned[0].posted).toEqual([]);
     expect(takeSpareParserWorker()).toBe(spawned[0]);
     expect(takeSpareParserWorker()).toBeNull();
   });
 
   it('is not handed out while its warm parse runs, and is after it completes', async () => {
     const warmSource = new SharedArrayBuffer(8);
-    const ready = prepareSpareParserWorker({ spawn, wasmModule: module, warmSource });
+    const ready = prepareSpareParserWorker({ spawn, warmSource });
     const w = spawned[0];
-    expect(w.posted[1]).toMatchObject({ type: 'parse', id: WARM_PARSE_ID, source: warmSource });
+    expect(w.posted[0]).toMatchObject({ type: 'parse', id: WARM_PARSE_ID, source: warmSource });
     expect(hasSpareParserWorker()).toBe(true);
     expect(takeSpareParserWorker()).toBeNull();
     w.reply({ type: 'progress', id: WARM_PARSE_ID });

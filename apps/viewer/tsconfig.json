@@ -21,6 +21,7 @@
       "@ifc-lite/spatial": ["../../packages/spatial/src"],
       "@ifc-lite/data": ["../../packages/data/src"],
       "@ifc-lite/export": ["../../packages/export/src"],
+      "@ifc-lite/cache/chunk-inflate-pool": ["../../packages/cache/src/chunk-inflate-pool"],
       "@ifc-lite/cache": ["../../packages/cache/src"],
       "@ifc-lite/collab": ["../../packages/collab/src"],
       "@ifc-lite/sdk": ["../../packages/sdk/src"],

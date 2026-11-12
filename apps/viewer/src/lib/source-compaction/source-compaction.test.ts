@@ -131,25 +131,4 @@ describe('compactSource', () => {
     assert.equal(source.isResident, true);
     assert.equal(source.decodeUtf8(0, source.byteLength), text);
   });
-
-  it('starts the copy into the worker in an idle period, not in the task that settles the load', async () => {
-    const { bytes } = sharedSource();
-    const source = contiguousSourceBytes(bytes);
-    const idle: Array<() => void> = [];
-    const g = globalThis as { requestIdleCallback?: unknown };
-    const original = g.requestIdleCallback;
-    g.requestIdleCallback = (cb: () => void) => { idle.push(cb); return idle.length; };
-    let started = 0;
-    const counting: SourceCompressor = async (b) => { started++; return inProcess()(b); };
-    try {
-      const job = compactSource(source, { compress: counting, shouldCompress: ALWAYS });
-      for (let i = 0; i < 5; i++) await new Promise((resolve) => setTimeout(resolve, 0));
-      assert.equal(started, 0, 'nothing is sent to the worker before the page is idle');
-      for (const cb of idle.splice(0)) cb();
-      assert.equal(await job, 'compacted');
-      assert.equal(started, 1);
-    } finally {
-      g.requestIdleCallback = original;
-    }
-  });
 });

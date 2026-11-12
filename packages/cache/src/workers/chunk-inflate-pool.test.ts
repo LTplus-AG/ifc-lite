@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
 import { buildGeometrySectionV13, openGeometryChunksV13 } from '../sections/geometry-chunks.js';
 import { FORMAT_VERSION, GeometryChunkFlags } from '../types.js';
-import { ChunkInflatePool } from './chunk-inflate-pool.js';
+import { ChunkInflatePool, CorruptChunkError } from './chunk-inflate-pool.js';
 import { handleCompressionRequest } from './geometry-compression-handler.js';
 import type { CompressionWorkerPort } from './geometry-compression-client.js';
 import type { CompressionRequest, InflateRequest } from './geometry-compression-protocol.js';
@@ -60,13 +60,30 @@ class CountingPort extends CodecPort {
   }
 }
 
+/** Holds every request unanswered, so a test decides when (and whether) the worker fails. */
+class HoldingPort extends CodecPort {
+  received = 0;
+  terminated = false;
+  override postMessage(): void { this.received++; }
+  override terminate(): void { this.terminated = true; }
+  crash(): void { this.onerror?.(Object.assign(new Event('error'), { message: 'worker crashed', preventDefault() {} }) as unknown as ErrorEvent); }
+}
+
+/** The section with one compressed chunk's stored bytes overwritten: its deflate stream no longer decodes. */
+function corruptOneChunk(section: ArrayBuffer): ArrayBuffer {
+  const copy = section.slice(0);
+  const info = openGeometryChunksV13(copy, 0, FORMAT_VERSION).chunks.find((c) => c.flags & GeometryChunkFlags.DeflateRaw)!;
+  new Uint8Array(copy, info.byteOffset, info.byteLength).fill(0xff);
+  return copy;
+}
+
 describe('ChunkInflatePool', () => {
   it('inflates every compressed chunk on its workers, with output identical to inflating here', async () => {
     const section = await buildGeometrySectionV13(meshes(), coordInfo, { compress: true });
     const compressed = openGeometryChunksV13(section, 0, FORMAT_VERSION).chunks.filter((c) => c.flags & GeometryChunkFlags.DeflateRaw).length;
     expect(compressed).toBeGreaterThan(1);
     const ports: CountingPort[] = [];
-    const pool = new ChunkInflatePool(2, () => { const p = new CountingPort(); ports.push(p); return p; }).start();
+    const pool = new ChunkInflatePool(2, { createWorker: () => { const p = new CountingPort(); ports.push(p); return p; } }).start();
     try {
       expect(ports).toHaveLength(2);
       expect(digest(await decodeAll(section, pool.inflate))).toEqual(digest(await decodeAll(section)));
@@ -78,22 +95,75 @@ describe('ChunkInflatePool', () => {
     }
   });
 
-  it('falls back to inflating here when a worker fails, without changing the output', async () => {
-    const section = await buildGeometrySectionV13(meshes(), coordInfo, { compress: true });
-    const pool = new ChunkInflatePool(1, () => { throw new Error('no workers in this context'); }).start();
-    expect(pool.inflatingHere).toBe(true);
-    expect(digest(await decodeAll(section, pool.inflate))).toEqual(digest(await decodeAll(section)));
+  it('starts no worker until start() or the first compressed chunk', () => {
+    let created = 0;
+    const pool = new ChunkInflatePool(3, { createWorker: () => { created++; return new CodecPort(); } });
+    expect(created).toBe(0);
+    pool.close();
   });
 
-  it('refuses a worker reply of the wrong length and decodes correctly here instead', async () => {
+  it('a worker that fails with requests in flight: those chunks and the rest inflate here, output unchanged', async () => {
+    const section = await buildGeometrySectionV13(meshes(), coordInfo, { compress: true });
+    const port = new HoldingPort();
+    const pool = new ChunkInflatePool(1, { createWorker: () => port }).start();
+    const decoding = decodeAll(section, pool.inflate);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(port.received).toBeGreaterThan(1); // several requests are in flight when it fails
+    port.crash();
+    expect(digest(await decoding)).toEqual(digest(await decodeAll(section)));
+    expect(pool.inflatingHere).toBe(true);
+    expect(port.terminated).toBe(true);
+  });
+
+  it('a worker that stops answering is given up after stallMs: its chunks inflate here', async () => {
+    const section = await buildGeometrySectionV13(meshes(), coordInfo, { compress: true });
+    const port = new HoldingPort();
+    const pool = new ChunkInflatePool(1, { createWorker: () => port, stallMs: 30 }).start();
+    expect(digest(await decodeAll(section, pool.inflate))).toEqual(digest(await decodeAll(section)));
+    expect(pool.inflatingHere).toBe(true);
+    expect(port.terminated).toBe(true);
+  });
+
+  it('a corrupt chunk (it fails on the worker and here) rejects as CorruptChunkError and aborts the remaining inflates', async () => {
+    const section = corruptOneChunk(await buildGeometrySectionV13(meshes(), coordInfo, { compress: true }));
+    const ports: CountingPort[] = [];
+    const pool = new ChunkInflatePool(2, { createWorker: () => { const p = new CountingPort(); ports.push(p); return p; } }).start();
+    try {
+      await expect(decodeAll(section, pool.inflate)).rejects.toBeInstanceOf(CorruptChunkError);
+      const posted = ports.reduce((n, p) => n + p.inflates, 0);
+      await expect(pool.inflate(new Uint8Array(8), 8)).rejects.toBeInstanceOf(CorruptChunkError);
+      expect(ports.reduce((n, p) => n + p.inflates, 0)).toBe(posted); // nothing more goes to a worker
+      expect(pool.inflatingHere).toBe(false); // the pool never switched to inflating the rest here
+    } finally {
+      pool.close();
+    }
+  });
+
+  it('a worker whose codec cannot inflate good data: the chunk inflates here, the rest too, and the entry is not called corrupt', async () => {
+    const section = await buildGeometrySectionV13(meshes(), coordInfo, { compress: true });
+    class NoCodecPort extends CodecPort {
+      override postMessage(message: CompressionRequest | InflateRequest): void {
+        queueMicrotask(() => this.onmessage?.(new MessageEvent('message', { data: { id: message.id, error: 'DecompressionStream is not defined' } })));
+      }
+    }
+    const pool = new ChunkInflatePool(2, { createWorker: () => new NoCodecPort() }).start();
+    expect(digest(await decodeAll(section, pool.inflate))).toEqual(digest(await decodeAll(section)));
+    expect(pool.inflatingHere).toBe(true);
+  });
+
+  it('refuses a worker reply of the wrong length: that chunk and the rest decode here, output unchanged', async () => {
     const section = await buildGeometrySectionV13(meshes(), coordInfo, { compress: true });
     class ShortPort extends CodecPort {
+      received = 0;
       override postMessage(message: CompressionRequest | InflateRequest, transfers: ArrayBuffer[]): void {
+        this.received++;
         const received = structuredClone(message, { transfer: transfers });
         queueMicrotask(() => this.onmessage?.(new MessageEvent('message', { data: { id: received.id, buffer: new ArrayBuffer(3), compressed: false } })));
       }
     }
-    const pool = new ChunkInflatePool(1, () => new ShortPort()).start();
+    const port = new ShortPort();
+    const pool = new ChunkInflatePool(1, { createWorker: () => port }).start();
+    // Accepting the 3-byte reply would corrupt (or fail) the first chunk's decode.
     expect(digest(await decodeAll(section, pool.inflate))).toEqual(digest(await decodeAll(section)));
     expect(pool.inflatingHere).toBe(true);
   });

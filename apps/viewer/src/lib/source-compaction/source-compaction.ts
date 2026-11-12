@@ -44,25 +44,6 @@ export interface CompactSourceOptions {
   compress?: SourceCompressor;
   /** Size gate; defaults to the parser's `shouldCompressSource`. */
   shouldCompress?: (byteLength: number) => boolean;
-  /** Resolves when the job may start; defaults to the page's next idle period. Injected in tests. */
-  whenIdle?: () => Promise<void>;
-}
-
-const IDLE_TIMEOUT_MS = 2000;
-
-/**
- * The next idle period (at most `IDLE_TIMEOUT_MS`; at once in a hidden tab). Starting the job
- * copies the whole source into the worker on the main thread (~70 ms for a 169 MB file),
- * and the loader calls this in the task that settles the load: without the wait that copy
- * delays the first frame after the load (the viewer's "interactive" paint).
- */
-export function nextIdlePeriod(): Promise<void> {
-  return new Promise((resolve) => {
-    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return resolve();
-    const idle = (globalThis as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback;
-    if (typeof idle === 'function') idle(() => resolve(), { timeout: IDLE_TIMEOUT_MS });
-    else setTimeout(resolve, 0);
-  });
 }
 
 /**
@@ -116,13 +97,12 @@ let queue: Promise<unknown> = Promise.resolve();
  * which is exactly the state before the call).
  */
 export function compactSource(source: IfcSourceBytes, options: CompactSourceOptions = {}): Promise<CompactionOutcome> {
-  const { compress = compressInWorker, shouldCompress = shouldCompressSource, whenIdle = nextIdlePeriod } = options;
+  const { compress = compressInWorker, shouldCompress = shouldCompressSource } = options;
   if (!source.isResident || !shouldCompress(source.byteLength) || pending.has(source)) {
     return Promise.resolve('skipped');
   }
   pending.add(source);
   const job = queue
-    .then(whenIdle)
     .then(() => runCompaction(source, compress))
     .finally(() => pending.delete(source));
   queue = job;

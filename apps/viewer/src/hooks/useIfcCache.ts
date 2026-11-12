@@ -13,7 +13,6 @@ import { useCallback } from 'react';
 import {
   BinaryCacheReader,
   BinaryCacheWriter,
-  ChunkInflatePool,
   openGeometryChunksV13,
   SectionType,
   toCacheDataStore,
@@ -21,6 +20,7 @@ import {
   type GeometryData,
 } from '@ifc-lite/cache';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import { createCacheChunkInflater } from './cacheChunkInflater.js';
 import { decodeCachedMetadata, loadFederatedCacheHit, readCachedInstancedShards, type CacheLoadResult } from './ifcCacheDecode.js';
 import { adoptCachedSceneSnapshot, captureSceneSnapshotOfHit, publishAdoptedSceneMeshes, abandonAdoptedSceneSnapshot, type AdoptedSceneSnapshot } from './sceneSnapshotLoad.js';
 import type { SnapshotEntry } from './sceneSnapshotWrite.js';
@@ -45,12 +45,6 @@ const CACHE_FIRST_PAINT_INDICES = 500_000 * 3;
 export type { CacheResult } from '../services/cacheService.js';
 export type { CacheLoadResult } from './ifcCacheDecode.js';
 export { getCached, setCached, deleteCached } from '../services/cacheService.js';
-
-/** Workers inflating a hit's chunks: a few, leaving cores for the main thread and the GPU process. */
-function chunkInflateWorkers(): number {
-  const cores = typeof navigator !== 'undefined' && navigator.hardwareConcurrency ? navigator.hardwareConcurrency : 4;
-  return Math.max(1, Math.min(4, cores - 2));
-}
 
 // ============================================================================
 // Types
@@ -132,8 +126,8 @@ export function useIfcCache() {
     trace: LoadTrace = NOOP_LOAD_TRACE, // #6956: the J2 (warm open) spans land on the caller's load trace
   ): Promise<CacheLoadResult> => {
     let adopted: AdoptedSceneSnapshot | null = null;
-    // Compressed geometry chunks inflate on workers, which boot while the snapshot adopts and the metadata decodes.
-    const inflater = new ChunkInflatePool(chunkInflateWorkers()).start();
+    // Compressed geometry chunks inflate on workers, which boot while the metadata decodes (only when there are any).
+    const inflater = createCacheChunkInflater();
     try {
       const cacheLoadStart = performance.now();
 
@@ -154,7 +148,7 @@ export function useIfcCache() {
       adopted = await adoptCachedSceneSnapshot(cacheResult, modelId, isStale, trace);
 
       const { dataStore, cacheBuffer, cacheBlob, headerInfo, geometrySection } =
-        await decodeCachedMetadata(cacheResult, fallbackSourceBuffer, trace);
+        await decodeCachedMetadata(cacheResult, fallbackSourceBuffer, trace, inflater.prepare);
 
       let meshCount = 0;
       let loadedTotalVertices = 0;
@@ -190,7 +184,7 @@ export function useIfcCache() {
           firstVisible = adopted.firstVisible;
           allMeshes = await publishAdoptedSceneMeshes(adopted, open, modelId, cacheResult, cacheKey, isStale, trace, appendGeometryBatch);
         } else {
-          if (await captureSceneSnapshotOfHit(cacheResult, cacheKey, { headerInfo }, isStale, trace)) {
+          if (await captureSceneSnapshotOfHit(cacheResult, cacheKey, { headerInfo }, isStale, trace, modelId)) {
             return { success: false, meshCount: 0, totalVertices: 0, totalTriangles: 0 };
           }
           getGlobalRenderer()?.getScene().limitStreamingFragments(CACHE_FIRST_PAINT_INDICES);

@@ -5,6 +5,11 @@
 import type { CompressionRequest, CompressionResponse, InflateRequest } from './geometry-compression-protocol.js';
 import { accountWorkerMessages } from '@ifc-lite/load-trace';
 
+/** The worker's codec threw on a request (the data, or the worker's codec environment), as opposed to the worker itself failing. */
+export class WorkerCodecError extends Error {
+  override name = 'WorkerCodecError';
+}
+
 type StoredChunk = { bytes: Uint8Array<ArrayBuffer>; compressed: boolean };
 export interface CompressionWorkerPort {
   onmessage: ((event: MessageEvent<unknown>) => void) | null;
@@ -75,6 +80,14 @@ export class GeometryCompressionSession {
     this.fail(new Error('Geometry compression session closed'));
   }
 
+  /** End the session: the worker stops and every pending request rejects with `error`. */
+  abort(error: Error): void {
+    this.fail(error);
+  }
+
+  /** True once the session ended (closed, aborted or its worker failed). */
+  get failed(): boolean { return this.failure !== undefined; }
+
   private receive(value: unknown): void {
     if (!value || typeof value !== 'object') {
       this.fail(new Error('Invalid geometry compression response'));
@@ -87,7 +100,14 @@ export class GeometryCompressionSession {
       return;
     }
     if ('error' in response) {
-      this.fail(new Error(`Geometry compression failed: ${String(response.error)}`));
+      // An inflate's codec error is about that chunk's data: reject it alone and keep the worker
+      // (its handler caught the throw). A compress error still ends the session, as before.
+      if (pending.inflate) {
+        this.pending.delete(response.id!);
+        pending.reject(new WorkerCodecError(`Chunk inflate failed in the worker: ${String(response.error)}`));
+        return;
+      }
+      this.fail(new WorkerCodecError(`Geometry compression failed: ${String(response.error)}`));
       return;
     }
     if (!('buffer' in response) || !(response.buffer instanceof ArrayBuffer)

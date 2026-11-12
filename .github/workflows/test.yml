@@ -1365,6 +1365,10 @@ jobs:
       - id: viewer_tests
         run: pnpm --filter @ifc-lite/viewer run test
         continue-on-error: ${{ vars.CI_SHARD_RETRY == 'on' }}
+        # While the switch can retry, a hung first attempt stops at 23 minutes
+        # instead of eating the retry's extra job time (it would not be retried:
+        # no closing summary). Off, 25 is the job's own limit, as before.
+        timeout-minutes: ${{ (vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on') && 23 || 25 }}
         env:
           NODE_OPTIONS: --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml${{ (vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on') && format(' --test-reporter=tap --test-reporter-destination={0}/viewer-attempt1.tap', runner.temp) || '' }}
           TEST_SHARDS: '16'

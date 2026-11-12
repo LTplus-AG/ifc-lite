@@ -50,7 +50,7 @@ function unescapeTitle(s) {
  * test printing `tests 9` must not pass for the run's summary.
  *
  * @param {string} text
- * @returns {{ failures: { title: string, depth: number, location: string|null, failureType: string|null }[],
+ * @returns {{ failures: { title: string, depth: number, location: string|null, failureType: string|null, type: string|null }[],
  *             summary: Record<string, number>|null }}
  */
 export function parseNodeTap(text) {
@@ -66,7 +66,7 @@ export function parseNodeTap(text) {
     if (m) {
       open = null;
       if (m[3] === 'TODO') continue;
-      open = { title: unescapeTitle(m[2]), depth: m[1].length / 4, location: null, failureType: null };
+      open = { title: unescapeTitle(m[2]), depth: m[1].length / 4, location: null, failureType: null, type: null };
       failures.push(open);
       continue;
     }
@@ -282,10 +282,11 @@ export function judgeE2eRetry({ exitCode, ids, report }) {
 /**
  * The job-summary section for one shard.
  * @param {{ kind: string, shard: string, mode: string, plan: { retry: boolean, reason: string },
- *           tests: { file: string, title: string }[], result?: { passed: boolean, reason: string } }} r
- * @param {boolean} passed  the retry ran and passed
+ *           tests: { file: string, title: string }[], result?: { passed: boolean, reason: string },
+ *           passed: boolean }} r  `passed`: the retry ran and passed
  */
-export function summaryLines(r, passed) {
+export function summaryLines(r) {
+  const { passed } = r;
   const lines = [`## Shard retry (\`CI_SHARD_RETRY=${r.mode}\`): ${r.kind} shard ${r.shard}`, ''];
   if (!r.plan.retry) {
     lines.push(`The first attempt failed. Not retried: ${r.plan.reason}.`);

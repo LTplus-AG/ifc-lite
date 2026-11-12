@@ -177,8 +177,9 @@ export function run(argv, env = process.env) {
 
   const record = kind === 'viewer' ? retryViewer(env, mode, reportDir) : retryE2e(env, mode, reportDir);
   const passed = record.plan.retry && record.result?.passed === true;
-  writeFileSync(join(reportDir, `${kind}-retry.json`), `${JSON.stringify({ ...record, passed }, null, 2)}\n`);
-  const lines = summaryLines(record, passed);
+  const outcome = { ...record, passed };
+  writeFileSync(join(reportDir, `${kind}-retry.json`), `${JSON.stringify(outcome, null, 2)}\n`);
+  const lines = summaryLines(outcome);
   for (const l of lines) console.log(l);
   if (env.GITHUB_STEP_SUMMARY) appendFileSync(env.GITHUB_STEP_SUMMARY, `${lines.join('\n')}\n`);
   if (passed) {

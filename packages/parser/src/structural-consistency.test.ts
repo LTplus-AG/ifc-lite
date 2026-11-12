@@ -205,18 +205,25 @@ describe('structural-axis-drift', () => {
     it('over a seeded sweep of 2000 oblique ends at map-scale origins', () => {
       let seed = 1;
       const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-      let misread = 0;
+      let reportedAtTolerance = 0;
+      let missedPastTolerance = 0;
       for (let i = 0; i < 2000; i++) {
         const origin = [Math.round(1e6 + random() * 1.9e7), Math.round(1e6 + random() * 1.9e7), 400];
         const angle = random() * 2 * Math.PI;
         const at = (k: number, off: number) =>
           [origin[0] + k * Math.cos(angle) - off * Math.sin(angle), origin[1] + k * Math.sin(angle) + off * Math.cos(angle), 400] as const;
         const length = 5 + 200 * random();
-        if (drift(checkStructuralConsistency(linked, elements, {}, lines([at(0, 0), at(length, 0.05)], [at(0, 0), at(5, 0)]))).length) misread++;
+        if (drift(checkStructuralConsistency(linked, elements, {}, lines([at(0, 0), at(length, 0.05)], [at(0, 0), at(5, 0)]))).length) reportedAtTolerance++;
         // 10 micrometres past the tolerance is drift: the allowance never hides it.
-        if (!drift(checkStructuralConsistency(linked, elements, {}, lines([at(0, 0), at(length, 0.05001)], [at(0, 0), at(5, 0)]))).length) misread++;
+        if (!drift(checkStructuralConsistency(linked, elements, {}, lines([at(0, 0), at(length, 0.05001)], [at(0, 0), at(5, 0)]))).length) missedPastTolerance++;
       }
-      expect(misread).toBe(0);
+      expect({ reportedAtTolerance, missedPastTolerance }).toEqual({ reportedAtTolerance: 0, missedPastTolerance: 0 });
+    });
+
+    it('lets no wild coordinate widen the allowance past 1 micrometre', () => {
+      // A garbage z of 1e14 m would allow 0.18 m uncapped; 0.1 mm of drift must still be reported.
+      const wild = lines([[0, 0.0501, 1e14], [6, 0, 1e14]], [[0, 0, 1e14], [6, 0, 1e14]]);
+      expect(drift(checkStructuralConsistency(linked, elements, {}, wild))).toHaveLength(1);
     });
   });
 

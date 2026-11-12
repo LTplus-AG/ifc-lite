@@ -129,11 +129,13 @@ export const isA = (type: string, bases: readonly string[]): boolean => getInher
  * degenerate axis. Each coordinate is stored to half a unit in the last place
  * (ulp) of its size, and the axis direction carries that error out to each
  * end in proportion to how far along the axis it lies. So the allowance is
- * 8 ulps of the largest coordinate times (1 + along / span); the seeded sweep
- * in `structural-consistency.test.ts` misreads none, its worst case using 7%
- * of it. It is capped at 1 micrometre, so a wild coordinate cannot hide drift;
- * past the cap (an axis centimetres long under a member metres long, at map
- * coordinates) an end exactly at the tolerance can read as drift.
+ * 8 * EPSILON times the largest coordinate (8 to 16 ulps) times
+ * (1 + along / span), with headroom: the seeded sweep in
+ * `structural-consistency.test.ts` misreads none. It is capped at 1
+ * micrometre, so a wild coordinate cannot hide drift. The cap binds for a
+ * member much longer than its element's axis at map coordinates (at 2e7 m,
+ * past about 28 axis lengths); there an end exactly at the tolerance can read
+ * as drift.
  */
 function offLine(line: StructuralLine, [a, b]: StructuralLine): { distance: number; rounding: number } | null {
   const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];

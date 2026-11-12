@@ -5,10 +5,11 @@ import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, it, mock } from 'node:test';
 import { EntityExtractor } from '@ifc-lite/parser';
-import { rectangularGridAxes } from '@ifc-lite/create';
+import { MutablePropertyView } from '@ifc-lite/mutations';
+import { rectangularGridAxes, transformElementsInStore } from '@ifc-lite/create';
 import { useViewerStore } from '@/store';
 import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
-import { modelEditTarget, recordModellingEdit } from '@/store/slices/mutation-modelling-records';
+import { modelEditTarget, recordModellingEdit, recordModellingCommit } from '@/store/slices/mutation-modelling-records';
 import { addGridIn } from '@/store/slices/mutation-curtain-grid';
 import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
 import { storeyAttachmentDisplay } from '@/lib/actions/storey-attachment-display';
@@ -122,4 +123,16 @@ it('#9296 failed atomic drafts preserve cached axes; publications and rollback u
   assert.equal(grids()[0].AxisTag, 'Published');
   prepared.rollback();
   assert.deepEqual(grids(), before);
+});
+
+
+it('#9296 moving a column reads attachments only for explicitly refit products', () => {
+  const spy = mock.method(MutablePropertyView.prototype, 'getPropertyValue');
+  const result = recordModellingCommit(useViewerStore, MODEL_ID, editor => transformElementsInStore({
+    ...target(), editor, view: editor.getMutationView(), selected: [column], op: { kind: 'move', delta: [0.5, 0] },
+  }));
+  assert.deepEqual(result.remesh, [column]);
+  const unrelated = spy.mock.calls.map(call => call.arguments[0]).filter(id => id !== column);
+  assert.deepEqual(unrelated, [], 'moving a non-target cannot change another element top');
+  useViewerStore.getState().undo(MODEL_ID);
 });

@@ -222,7 +222,7 @@ export function runCodegenCli(root, schemaPath, outDir, rustDir, options = {}) {
 /**
  * Run `packages/data`'s two-stage generator (`generate-ifc-schema.ts` then
  * `emit-entity-names.ts`, the second reading the first's output) against a
- * COPY of its scripts + vendored upstream `.cs` files, so nothing is ever
+ * COPY of its scripts, table codec + vendored upstream `.cs` files, so nothing is ever
  * written into the repo tree. Mirrors the isolation technique
  * `generate-ifc-schema.test.ts` already uses for the same script.
  */
@@ -233,12 +233,9 @@ export function runDataGenerator(root, workDir) {
   mkdirSync(upstreamDir, { recursive: true });
   mkdirSync(join(workDir, 'src/ifc-schema/generated'), { recursive: true });
 
-  for (const name of ['generate-ifc-schema.ts', 'emit-entity-names.ts']) {
-    writeFileSync(join(scriptsDir, name), readFileSync(join(srcScripts, name)));
+  for (const rel of ['scripts/generate-ifc-schema.ts', 'scripts/emit-entity-names.ts', 'scripts/schema-table-module.ts', 'src/ifc-schema/table-codec.ts']) {
+    writeFileSync(join(workDir, rel), readFileSync(join(root, 'packages/data', rel)));
   }
-  // The generator encodes with, and the generated tables decode with, the
-  // package's table codec (`emit-entity-names.ts` imports the fresh tables).
-  writeFileSync(join(workDir, 'src/ifc-schema/table-codec.ts'), readFileSync(join(root, 'packages/data/src/ifc-schema/table-codec.ts')));
   for (const name of readdirSync(join(srcScripts, 'upstream')).filter((n) => n.endsWith('.g.cs'))) {
     writeFileSync(join(upstreamDir, name), readFileSync(join(srcScripts, 'upstream', name)));
   }

@@ -23,7 +23,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { encodeSchemaTable } from '../src/ifc-schema/table-codec.js';
+import { DECODER_IMPORT, tableModuleSection } from './schema-table-module.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const upstreamDir = path.join(here, 'upstream');
@@ -974,39 +974,6 @@ const VERSION_KEY: Record<IfcVersion, string> = {
 function ts(value: unknown): string {
   return JSON.stringify(value);
 }
-
-/** `ENTITIES_IFC4` -> `getEntitiesIfc4`, `IFC_DATA_TYPES` -> `getIfcDataTypes`. */
-function getterName(constName: string): string {
-  return 'get' + constName.toLowerCase().split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join('');
-}
-
-/**
- * One table as the generated module carries it: the value encoded by
- * `../src/ifc-schema/table-codec.ts`, a getter that decodes it on first call,
- * and the exported constant (decoded on load; `@__PURE__` so a bundle that
- * never reads it drops it).
- */
-function tableModuleSection(constName: string, typeName: string, value: unknown): string {
-  const getter = getterName(constName);
-  const encoded = `ENCODED_${constName}`;
-  const cache = getter.charAt(3).toLowerCase() + getter.slice(4);
-  return [
-    `const ${encoded} = ${JSON.stringify(encodeSchemaTable(value))};`,
-    '',
-    `let ${cache}: ${typeName} | undefined;`,
-    '',
-    `/** \`${constName}\`, decoded on first call and the same value afterwards. */`,
-    `export function ${getter}(): ${typeName} {`,
-    `  if (${cache} === undefined) ${cache} = decodeSchemaTable(${encoded}) as ${typeName};`,
-    `  return ${cache};`,
-    '}',
-    '',
-    `export const ${constName}: ${typeName} = /* @__PURE__ */ ${getter}();`,
-    '',
-  ].join('\n');
-}
-
-const DECODER_IMPORT = "import { decodeSchemaTable } from '../table-codec.js';\n";
 
 function emitEntities(
   classes: Record<IfcVersion, ClassInfo[]>,

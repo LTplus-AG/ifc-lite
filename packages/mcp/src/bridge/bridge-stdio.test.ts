@@ -11,13 +11,14 @@
  */
 
 import { spawn } from 'node:child_process';
+import { createServer, type AddressInfo } from 'node:net';
 import { existsSync } from 'node:fs';
 import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { StdioTransport } from '../transport/stdio.js';
 import { startBridgeServer, type RunningBridge } from './run.js';
-import { BRIDGE_STATUS_TOOL, parsePairingFragment } from './protocol.js';
+import { BRIDGE_STATUS_TOOL, parsePairingFragment } from './bridge-protocol.js';
 import { MUTATING_TOOL, READ_TOOL, pairTab, type FakeTab } from '../test/bridge-fake-tab.js';
 
 type Line = { id?: number; method?: string; result?: Record<string, unknown>; error?: unknown };
@@ -93,7 +94,7 @@ describe('7. happy path through stdio framing', () => {
     const call = await tab.next('call');
     expect(call).toMatchObject({ sessionId: welcome.sessionId, name: READ_TOOL.name, arguments: { type: 'IfcDoor' } });
     const tabError = {
-      content: [{ type: 'text', text: 'No entity of type IfcDoor' }],
+      content: [{ type: 'text' as const, text: 'No entity of type IfcDoor' }],
       structuredContent: { code: 'ENTITY_NOT_FOUND', message: 'No entity of type IfcDoor', details: { type: 'IfcDoor' } },
       isError: true,
     };
@@ -102,7 +103,7 @@ describe('7. happy path through stdio framing', () => {
 
     client.send({ id: 4, method: 'tools/call', params: { name: READ_TOOL.name, arguments: { type: 'IfcWall' } } });
     const second = await tab.next('call');
-    const ok = { content: [{ type: 'text', text: '2 walls' }], structuredContent: { count: 2 } };
+    const ok = { content: [{ type: 'text' as const, text: '2 walls' }], structuredContent: { count: 2 } };
     tab.reply(welcome.sessionId, second.id, ok);
     expect((await client.reply(4)).result).toEqual(ok);
     transport.close();
@@ -142,6 +143,41 @@ describe.skipIf(!built)('ifc-lite-mcp --bridge binary', () => {
       child.stdin.end();
     }
     expect(await closed).toBe(0);
+  }, 30_000);
+
+  it('closes the bridge and frees its port on SIGTERM', async () => {
+    const child = spawn(process.execPath, [CLI, '--bridge', '--bridge-port', '0'], { stdio: ['pipe', 'pipe', 'pipe'] });
+    let stderr = '';
+    child.stderr.setEncoding('utf8').on('data', (d: string) => { stderr += d; });
+    const closed = new Promise<number | null>((done) => child.once('close', (c) => done(c)));
+    await expect.poll(() => /ws:\/\/127\.0\.0\.1:(\d+)/.exec(stderr), { timeout: 15_000 }).not.toBeNull();
+    const port = Number(/ws:\/\/127\.0\.0\.1:(\d+)/.exec(stderr)![1]);
+    const started = Date.now();
+    child.kill('SIGTERM');
+    expect(await closed).toBe(143);
+    expect(Date.now() - started).toBeLessThan(3000);
+    expect(stderr).toContain('stopping: SIGTERM');
+    // The port is free again.
+    const probe = createServer();
+    await new Promise<void>((ok, fail) => { probe.once('error', fail); probe.listen(port, '127.0.0.1', () => ok()); });
+    await new Promise<void>((ok) => probe.close(() => ok()));
+  }, 30_000);
+
+  it('explains an occupied port instead of crashing', async () => {
+    const holder = createServer();
+    await new Promise<void>((ok) => holder.listen(0, '127.0.0.1', () => ok()));
+    const port = (holder.address() as AddressInfo).port;
+    try {
+      const child = spawn(process.execPath, [CLI, '--bridge', '--bridge-port', String(port)], { stdio: ['pipe', 'pipe', 'pipe'] });
+      let stderr = '';
+      child.stderr.setEncoding('utf8').on('data', (d: string) => { stderr += d; });
+      const code = await new Promise<number | null>((done) => child.once('close', (c) => done(c)));
+      expect(code).toBe(1);
+      expect(stderr).toContain(`port ${port} on 127.0.0.1 is in use`);
+      expect(stderr).toContain('--bridge-port');
+    } finally {
+      await new Promise<void>((ok) => holder.close(() => ok()));
+    }
   }, 30_000);
 
   it('refuses --bridge with a model file', async () => {

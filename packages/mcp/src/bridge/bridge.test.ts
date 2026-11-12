@@ -14,7 +14,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { CallToolResult, JsonRpcMessage, JsonRpcResponse, ToolDefinition } from '../protocol/index.js';
 import { startBridgeServer, type RunningBridge } from './run.js';
-import { BridgeCloseCode, BRIDGE_STATUS_TOOL, parsePairingFragment } from './protocol.js';
+import { BridgeCloseCode, BRIDGE_STATUS_TOOL, parsePairingFragment } from './bridge-protocol.js';
 import {
   MUTATING_TOOL,
   READ_TOOL,
@@ -253,20 +253,43 @@ describe('3. pairing codes', () => {
     expect(welcome.sessionId).toMatch(/[0-9a-f-]{36}/);
   });
 
-  it('retires the code after the attempt limit, so even the right code then fails', async () => {
-    const agent = await startAgent({ tuning: { maxPairingAttempts: 3 } });
+  it('slows wrong codes with a growing delay but never retires the user\'s code (rotation denial)', async () => {
+    const agent = await startAgent({ tuning: { pairingBackoffBaseMs: 80, pairingBackoffMaxMs: 400 } });
     const original = agent.bridge.pairingCode();
-    for (let i = 0; i < 3; i++) {
+    const latencies: number[] = [];
+    for (let i = 0; i < 4; i++) {
+      const started = Date.now();
       const t = await connectTab({ port: agent.bridge.port, code: `WRONG-${i}` });
+      tabs.push(t);
+      expect(await t.closed(3000)).toBe(BridgeCloseCode.PAIRING_FAILED);
+      latencies.push(Date.now() - started);
+    }
+    // 80, 160, 320, 400 (capped): each wrong code waits at least its delay.
+    expect(latencies[0]).toBeGreaterThanOrEqual(75);
+    expect(latencies[2]).toBeGreaterThanOrEqual(315);
+    expect(latencies[3]).toBeGreaterThanOrEqual(395);
+    expect(agent.bridge.pairingCode()).toBe(original);
+    const started = Date.now();
+    await pair(agent, { code: original });
+    expect(Date.now() - started).toBeLessThan(300);
+  });
+
+  it('does not feed the back-off with attempts made while a tab is paired', async () => {
+    const agent = await startAgent({ tuning: { pairingBackoffBaseMs: 100, pairingBackoffMaxMs: 5000 } });
+    const { tab } = await pair(agent);
+    for (let i = 0; i < 6; i++) {
+      const t = await connectTab({ port: agent.bridge.port, code: 'ANY' });
       tabs.push(t);
       await t.closed();
     }
-    const late = await connectTab({ port: agent.bridge.port, code: original });
-    tabs.push(late);
-    expect(await late.closed()).toBe(BridgeCloseCode.PAIRING_FAILED);
-    const fresh = agent.bridge.pairingCode();
-    expect(fresh).not.toBe(original);
-    await pair(agent, { code: fresh });
+    tab.close();
+    await expect.poll(() => agent.bridge.tab()).toBeNull();
+    const started = Date.now();
+    const wrong = await connectTab({ port: agent.bridge.port, code: 'WRONG' });
+    tabs.push(wrong);
+    await wrong.closed(3000);
+    // The first counted failure waits the base delay, not 2^6 times it.
+    expect(Date.now() - started).toBeLessThan(800);
   });
 
   it('rejects a protocol version mismatch without using up the code', async () => {

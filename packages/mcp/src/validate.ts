@@ -103,15 +103,19 @@ function walk(schema: JsonSchema, input: unknown, path: string, errors: Validati
     if (schema.properties) {
       for (const [key, sub] of Object.entries(schema.properties)) {
         const childPath = `${path}.${key}`;
-        const value = walk(sub, obj[key], childPath, errors, fillDefaults);
-        if (value !== undefined) result[key] = value;
+        // Own properties only: a schema property named `toString` or
+        // `constructor` must not read the value inherited from Object.prototype.
+        const value = walk(sub, own(obj, key), childPath, errors, fillDefaults);
+        // defineProperty, not `result[key] =`: a `__proto__` key must stay data.
+        if (value !== undefined) Object.defineProperty(result, key, { value, enumerable: true, writable: true, configurable: true });
       }
     }
     if (schema.required) {
       for (const key of schema.required) {
         // `null` counts as missing: every handler reads an absent and a null
         // field alike, so `{ global_id: null }` must not satisfy a required id.
-        if (result[key] === undefined || result[key] === null) {
+        const present = own(result, key);
+        if (present === undefined || present === null) {
           errors.push({ path: `${path}.${key}`, message: 'Required property missing' });
         }
       }
@@ -162,6 +166,10 @@ function walk(schema: JsonSchema, input: unknown, path: string, errors: Validati
   }
 
   return input;
+}
+
+function own(obj: Record<string, unknown>, key: string): unknown {
+  return Object.prototype.hasOwnProperty.call(obj, key) ? obj[key] : undefined;
 }
 
 function matchesType(t: string, v: unknown): boolean {

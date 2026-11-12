@@ -11,19 +11,16 @@
  * `bridge_status`, or after the paired tab goes away. While a tab is paired
  * there is no live code, so nothing can take its place unless the user asks.
  *
- * Wrong codes count against a small budget. Exhausting it retires the code
- * and issues a new one, so guessing restarts against fresh entropy, and the
- * new code is reported again (stderr and `bridge_status`).
+ * Wrong codes never retire the code: a peer guessing must not be able to
+ * invalidate the link the user was given. Guessing is slowed instead by
+ * `PairingBackoff` (rate-limits.ts); at that rate 100 bits are out of reach.
  */
 
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { normalizePairingCode } from './protocol.js';
+import { normalizePairingCode } from './pairing-link.js';
 
 const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 const CODE_CHARS = 20;
-
-/** Default wrong attempts allowed against one code before it is retired. */
-export const DEFAULT_MAX_PAIRING_ATTEMPTS = 5;
 
 export function generatePairingCode(): string {
   const bytes = randomBytes(CODE_CHARS);
@@ -42,12 +39,6 @@ export type PairingCheck = 'ok' | 'wrong' | 'no-code';
 export class PairingCodes {
   private code: string | null = null;
   private codeDigest: Buffer | null = null;
-  private wrongAttempts = 0;
-
-  constructor(
-    private readonly maxAttempts = DEFAULT_MAX_PAIRING_ATTEMPTS,
-    private readonly onRegenerated: (code: string) => void = () => {},
-  ) {}
 
   /** The live code, minting one if none is live. */
   current(): string {
@@ -61,24 +52,14 @@ export class PairingCodes {
     return this.code!;
   }
 
-  /**
-   * Check a presented code in constant time. `ok` consumes the code. `wrong`
-   * counts an attempt; the last allowed attempt retires the code and mints a
-   * new one.
-   */
+  /** Check a presented code in constant time. `ok` consumes the code; `wrong` leaves it live. */
   consume(presented: string): PairingCheck {
     if (this.codeDigest === null) return 'no-code';
     // Compare fixed-length digests so neither length nor content leaks timing.
     if (timingSafeEqual(digest(presented), this.codeDigest)) {
       this.code = null;
       this.codeDigest = null;
-      this.wrongAttempts = 0;
       return 'ok';
-    }
-    this.wrongAttempts++;
-    if (this.wrongAttempts >= this.maxAttempts) {
-      this.mint();
-      this.onRegenerated(this.code!);
     }
     return 'wrong';
   }
@@ -86,6 +67,5 @@ export class PairingCodes {
   private mint(): void {
     this.code = generatePairingCode();
     this.codeDigest = digest(this.code);
-    this.wrongAttempts = 0;
   }
 }

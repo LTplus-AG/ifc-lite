@@ -47,6 +47,8 @@ function printHelp(): void {
     --insecure              Allow non-loopback bind without authentication.
                             Required when combining a public --host with no
                             --token. NEVER use in production.
+                            With --bridge: accept a plain-http origin on a
+                            non-loopback host (refused otherwise).
     --bsdd <url>            Override bSDD endpoint.
     --allow <glob>          Restrict file-system access for stdio mode.
     --allow-origin <origin> Permit a browser Origin to read HTTP responses
@@ -244,6 +246,7 @@ async function runBridge(opts: CliOptions): Promise<void> {
       readOnly: opts.readOnly,
       viewerUrl: opts.bridgeViewerUrl,
       extraOrigins: opts.allowedOrigins,
+      allowInsecureOrigins: opts.insecure,
       log,
     });
   } catch (err) {
@@ -258,11 +261,25 @@ async function runBridge(opts: CliOptions): Promise<void> {
   const { server, bridge } = running;
   const transport = new StdioTransport();
   await transport.connect(server);
-  // The bridge's socket keeps the process alive; end with the MCP client.
-  process.stdin.once('end', () => {
+  // The bridge's listener keeps the process alive, so every way the MCP
+  // client can go away (or a signal) closes it and frees the port.
+  let stopping = false;
+  const stop = (why: string, exitCode: number): void => {
+    if (stopping) return;
+    stopping = true;
+    log(`stopping: ${why}`);
     transport.close();
-    void running.close();
-  });
+    void running.close().finally(() => {
+      process.exitCode = exitCode;
+      // Anything else still holding the loop must not keep the port's owner alive.
+      setTimeout(() => process.exit(exitCode), 1000).unref();
+    });
+  };
+  process.stdin.once('end', () => stop('stdin ended', 0));
+  process.stdin.once('close', () => stop('stdin closed', 0));
+  process.stdin.once('error', (err) => stop(`stdin error: ${err.message}`, 1));
+  process.once('SIGINT', () => stop('SIGINT', 130));
+  process.once('SIGTERM', () => stop('SIGTERM', 143));
   const code = bridge.pairingCode();
   log(`ready on stdio; listening on ws://127.0.0.1:${bridge.port} (read-only=${opts.readOnly})`);
   log(`allowed origins: ${bridge.allowedOrigins.join(', ')}`);

@@ -262,7 +262,7 @@ error.
 
 ```bash
 npx @ifc-lite/mcp --bridge              # stdio MCP, forwarded to one paired tab
-npx @ifc-lite/mcp --bridge --read-only  # mutations stay off whatever the tab grants
+npx @ifc-lite/mcp --bridge --read-only  # tools the tab marks as mutating stay off
 ```
 
 `--bridge` lets a local agent (Claude Desktop, Claude Code, …) work on the
@@ -270,7 +270,8 @@ model open in an ifc-lite browser tab: a model loaded from a cloud source, or
 one with unsaved edits. The bridge speaks MCP over stdio and forwards every tool
 call over a WebSocket on `127.0.0.1` to the paired tab, which runs it against
 its model. The bridge loads no model of its own, so it takes no file arguments
-and refuses `--transport http`.
+and refuses `--transport http`. It stops, freeing its port, when stdin ends,
+closes or errors, and on SIGINT or SIGTERM.
 
 **Status:** this package ships the local side only. The viewer's "Connect local
 agent" side lands separately, so nothing on ifclite.com connects yet, and
@@ -282,7 +283,8 @@ browser connectivity in Chrome (Local Network Access prompt) and Safari
 | `--bridge-port <n>` | Port on 127.0.0.1. Default `21517`; `0` picks a free one. The pairing link carries it. |
 | `--bridge-viewer-url <url>` | Base of the pairing link. Default `https://ifclite.com`. Its origin may connect. |
 | `--allow-origin <origin>` | Another browser origin that may connect (repeatable), e.g. a dev server. |
-| `--read-only` | A ceiling: mutating tools stay hidden and refused even if the tab allows changes. |
+| `--read-only` | A ceiling: tools the tab labels as mutating stay hidden and refused even if the tab allows changes. |
+| `--insecure` | Accept a plain-`http` origin on a non-loopback host (refused otherwise); prints a warning. |
 
 ### Security model
 
@@ -291,13 +293,26 @@ browser connectivity in Chrome (Local Network Access prompt) and Safari
   403) unless its `Origin` is on the allowlist and its `Host` is `127.0.0.1`,
   `localhost` or `[::1]` on the bridge's port. The Host check defeats DNS
   rebinding. The Origin check only keeps other web pages out; a local process
-  can claim any origin, so the pairing code is the authentication.
+  can claim any origin, so the pairing code is the authentication. Plain
+  `http:` origins are accepted only on loopback hosts (`localhost`,
+  `127.0.0.0/8`, `[::1]`): an `http` page elsewhere could have its script
+  replaced on the network path and leak the code. `--insecure` overrides this
+  with a warning.
 - **One-time pairing code.** 20 characters of Crockford base32 (100 bits).
-  The tab sends it in its first frame within 10 s. It is compared in constant
-  time and consumed on success; a used code never works again. Five wrong codes
-  retire it and mint a new one. While a tab is paired no code is live, so no
-  other tab can connect unless the agent asks `bridge_status` for one with
-  `pair_new_tab: true`.
+  The tab's `hello` must arrive within 10 s of the socket opening; otherwise
+  the bridge sends `HANDSHAKE_TIMEOUT`, closes with 4408, and terminates the
+  socket 250 ms later if the peer has not closed it. The code is compared in
+  constant time and consumed on success; a used code never works again. Wrong
+  codes do not retire the code, so a guessing peer cannot break the user's
+  link. Each wrong code is answered only after a delay that doubles per recent
+  failure (250 ms up to 5 s, reset after 60 s without failures or on success),
+  while its socket keeps one of the 4 unpaired slots, which bounds guessing to
+  a few attempts per second. A correct code is never delayed. While a tab is
+  paired no code is live, so no other tab can connect unless the agent asks
+  `bridge_status` for one with `pair_new_tab: true`.
+- **Dead sockets.** A socket that failed (bad frame, wrong code, timeout,
+  replaced) is ignored from then on, frees its unpaired slot at once, and is
+  terminated 250 ms after its close frame if the peer does not close.
 - **Pairing link.** `bridge_status` (always listed, because Claude Desktop
   hides a server's stderr) and stderr both give the code and a link such as
   `https://ifclite.com/#mcp-bridge=1&port=21517&code=ABCDE-FGHJK-MNPQR-STVWX`.
@@ -306,43 +321,70 @@ browser connectivity in Chrome (Local Network Access prompt) and Safari
 - **One tab at a time.** A new successful pairing replaces the paired tab: the
   old socket gets a `REPLACED` error and is closed, and its pending calls fail
   at once with `VIEWER_NOT_CONNECTED` (`details.reason: "replaced"`).
-- **Permissions.** The tab declares each tool's `readOnly` flag and the level
-  the user granted (`read-only` by default, or `read-write`). The bridge
-  enforces it as well: while the effective level is read-only, mutating tools
-  are neither listed nor forwarded, and a direct call returns `READ_ONLY`.
-  Over MCP, tools carry `annotations`: `readOnlyHint: true` for read-only
-  tools, `readOnlyHint: false, destructiveHint: true` for mutating ones, plus
-  the tab's `title` when it gives one.
-  There is no tool for writing back to a cloud source; that stays a user action
-  in the viewer.
+- **Permissions, and who enforces them.** The tab labels each tool `readOnly`
+  or not and sends the level the user granted (`read-only` by default, or
+  `read-write`). The bridge cannot see what a tool does: it trusts the tab's
+  labels. While the effective level is read-only (the tab's grant, or
+  `--read-only`), tools the tab labels mutating are neither listed nor
+  forwarded, and a direct call returns `READ_ONLY`. A tool the tab mislabels
+  `readOnly: true` would be forwarded, so the tab is the authority and must
+  refuse model-changing calls itself while read-only (the protocol requires
+  it). Over MCP, tools carry `annotations`: `readOnlyHint: true` for tools
+  labelled read-only, `readOnlyHint: false, destructiveHint: true` otherwise,
+  plus the tab's `title` when it gives one. There is no tool for writing back
+  to a cloud source; that stays a user action in the viewer.
+- **Tab-supplied data.** Tool names, titles, descriptions and results come from
+  the tab and from model data. The bridge's MCP `instructions` and
+  `bridge_status` say they are data, not instructions. Results may carry text
+  content and `structuredContent` only; images, resources (any URI) and other
+  content types fail the call.
+- **Bounds.** Inbound frames over 16 MiB close the socket with 1009, which
+  fails the pending calls (`VIEWER_NOT_CONNECTED`, reason `disconnected`).
+  Within a frame: all tool descriptors together at most 1 MiB, each
+  `inputSchema` at most 32 levels deep and 5,000 values, each result at most
+  4 MiB, 64 levels and 250,000 values. Schemas must be well-formed for the
+  keywords the bridge validates (`properties` of schemas, `required` as
+  strings, numeric bounds as numbers, ...). An oversized or malformed hello
+  is refused; an update is rejected with a non-fatal `error`; a result fails
+  its call with a message naming the limit. Every check is iterative, so a
+  value nested 20,000 deep is refused rather than overflowing a stack.
 - **Session-scoped replies.** Each pairing gets a session id, and each call an
   id unique for the bridge's lifetime. A reply that names another session, an
   unknown id or an already answered call is ignored. Calls time out after
   120 s (`TIMEOUT`, and the tab gets a `cancel`); closing the socket fails all
-  pending calls; frames are capped at 16 MiB.
+  pending calls.
 - **No tab.** Only `bridge_status` is listed, and any other call fails at once
-  with `VIEWER_NOT_CONNECTED`. The tool list changes
-  (`notifications/tools/list_changed`) on connect, disconnect and permission
-  change.
+  with `VIEWER_NOT_CONNECTED`. `notifications/tools/list_changed` is sent when
+  the listed tools can change: on connect, disconnect, replacement, and an
+  `update` that actually changes the effective permission or the tool list. At
+  most one is sent per 200 ms; no-op updates send none.
+- **Quiet logs.** Repeated stderr lines of one kind (refused connections,
+  wrong codes, stray frames) are written once, then summarised as "N more ..."
+  every 10 s.
 
 ### Wire protocol
 
 Exported browser-safe (no Node imports) as `@ifc-lite/mcp/bridge-protocol`,
-with the types, validators (`parseTabMessage`, `parseServerMessage`),
-`buildPairingUrl` and `parsePairingFragment`. The frames are
-transport-neutral JSON text objects, protocol version `1`; `--bridge` carries
-them over a loopback WebSocket at `ws://127.0.0.1:<port>/`, and another
-transport may carry the same frames later:
+with the types, validators (`parseTabMessage`, `parseServerMessage`,
+`validateToolDescriptors`), `BRIDGE_LIMITS`, `buildPairingUrl` and
+`parsePairingFragment`. The frames are transport-neutral JSON text objects,
+protocol version `1`; `--bridge` carries them over a loopback WebSocket at
+`ws://127.0.0.1:<port>/`, and another transport may carry the same frames later:
 
 | Direction | `type` | Fields |
 |-----------|--------|--------|
 | tab → bridge | `hello` (first frame) | `protocol`, `pairingCode`, `permission`, `tools[]` (`name`, `title?`, `description`, `inputSchema`, `readOnly`), `client?` |
 | bridge → tab | `welcome` | `protocol`, `sessionId`, `permission` (effective), `readOnlyCeiling`, `bridge` |
 | bridge → tab | `call` | `sessionId`, `id`, `name`, `arguments` |
-| tab → bridge | `result` | `sessionId`, `id`, `result` (an MCP `CallToolResult`, passed through unchanged) |
+| tab → bridge | `result` | `sessionId`, `id`, `result` (an MCP `CallToolResult` with text content only, passed through) |
 | bridge → tab | `cancel` | `sessionId`, `id`, `reason` (`cancelled` or `timeout`) |
 | tab → bridge | `update` | `sessionId`, `permission?`, `tools?` |
-| bridge → tab | `error` | `code`, `message`; fatal codes end the channel; on the WebSocket transport, a close with code (4400 invalid, 4401 pairing failed, 4408 handshake timeout, 4409 replaced, 4426 protocol mismatch) |
+| bridge → tab | `error` | `code`, `message`; fatal codes end the channel; on the WebSocket transport, a close with code (4400 invalid, 4401 pairing failed, 4408 handshake timeout, 4409 replaced, 4426 protocol mismatch, 4503 shutting down) |
+
+**The tab's obligation:** while `welcome.readOnlyCeiling` is true or the
+effective `permission` is `read-only`, the tab must refuse every call that
+would change the model, whatever label it sent, and answer it with an
+`isError` result.
 
 ## Roadmap
 

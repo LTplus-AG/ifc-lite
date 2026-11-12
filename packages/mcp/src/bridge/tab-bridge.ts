@@ -10,21 +10,28 @@
  *   - Listen on 127.0.0.1 only. The upgrade is refused (HTTP 403) unless the
  *     Host header is loopback on our port and the Origin is allowlisted.
  *   - The first frame must be a `hello` with the live one-time pairing code,
- *     within the handshake timeout. See `pairing.ts`.
+ *     within the handshake timeout. See `pairing.ts`. Wrong codes are answered
+ *     after a growing delay (`PairingBackoff`).
+ *   - A socket that failed or timed out is dead: every later frame from it is
+ *     ignored, its unpaired slot is freed at once, and it is terminated after
+ *     a short grace even if the peer ignores the close frame.
  *   - One tab at a time. A new successful pairing REPLACES the paired tab:
  *     the old socket gets a `REPLACED` error and is closed, and its pending
  *     calls fail at once with reason `replaced`.
- *   - Mutating tools are not forwarded while the effective permission is
- *     read-only (the tab's grant, capped by `--read-only`).
+ *   - Tools the tab labels mutating are not forwarded while the effective
+ *     permission is read-only (the tab's grant, capped by `--read-only`). The
+ *     label is the tab's; the tab must enforce read-only itself too.
+ *   - Repeated log lines are coalesced; tool-list changes are signalled only
+ *     on a real change, and at most once per throttle interval.
  *   - A pending call ends by reply, timeout, cancellation or socket close; it
  *     never waits on a tab that has gone. See `session.ts` for reply matching.
  */
 
 import { randomUUID } from 'node:crypto';
-import { createServer, type IncomingMessage, type Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
+import type { IncomingMessage, Server } from 'node:http';
 import type { Duplex } from 'node:stream';
-import { WebSocketServer, type WebSocket, type RawData } from 'ws';
+import type { WebSocketServer, WebSocket, RawData } from 'ws';
+import { listenLoopback, refuseUpgrade } from './loopback-server.js';
 import {
   BRIDGE_LIMITS,
   BRIDGE_PROTOCOL_VERSION,
@@ -34,53 +41,36 @@ import {
   parseTabMessage,
   type BridgeCallResult,
   type BridgePermission,
-  type BridgeToolDescriptor,
-} from './protocol.js';
+} from './bridge-protocol.js';
 import { hostAllowed, normalizeOrigin, originAllowed } from './guards.js';
-import { DEFAULT_MAX_PAIRING_ATTEMPTS, PairingCodes } from './pairing.js';
+import { PairingCodes } from './pairing.js';
+import {
+  DEFAULT_CALL_TIMEOUT_MS,
+  DEFAULT_CLOSE_GRACE_MS,
+  DEFAULT_HANDSHAKE_TIMEOUT_MS,
+  type TabBridgeOptions,
+  type TabSnapshot,
+} from './tab-bridge-options.js';
+import { CoalescedLog, PairingBackoff, Throttle } from './rate-limits.js';
 import { BridgeCallError, BridgeSession, failSocket, looseId, rawToString } from './session.js';
 
 export { BridgeCallError, type BridgeCallFailure } from './session.js';
 
-export interface TabBridgeOptions {
-  /** Port to bind on 127.0.0.1; 0 picks a free one. */
-  port: number;
-  /** Browser origins allowed to connect (exact scheme://host[:port]). */
-  allowedOrigins: readonly string[];
-  /** `--read-only`: mutating tools stay off whatever the tab grants. */
-  readOnlyCeiling: boolean;
-  /** Base of the pairing link. */
-  viewerUrl: string;
-  bridgeInfo: { name: string; version: string };
-  callTimeoutMs?: number;
-  handshakeTimeoutMs?: number;
-  maxMessageBytes?: number;
-  maxPairingAttempts?: number;
-  /** Unpaired sockets allowed at once; more are refused with 429. */
-  maxPendingHandshakes?: number;
-  /** One line of operator-facing log (stderr in the CLI). */
-  log?: (line: string) => void;
-}
-
-export interface TabSnapshot {
-  sessionId: string;
-  /** Effective permission: the tab's grant capped by the ceiling. */
-  permission: BridgePermission;
-  tools: readonly BridgeToolDescriptor[];
-  client?: { name: string; version?: string };
-  connectedAt: Date;
-}
-
-export const DEFAULT_CALL_TIMEOUT_MS = 120_000;
-export const DEFAULT_HANDSHAKE_TIMEOUT_MS = 10_000;
+export { DEFAULT_CALL_TIMEOUT_MS, DEFAULT_CLOSE_GRACE_MS, DEFAULT_HANDSHAKE_TIMEOUT_MS, type TabBridgeOptions, type TabSnapshot } from './tab-bridge-options.js';
 
 export class TabBridge {
   private readonly log: (line: string) => void;
   private readonly callTimeoutMs: number;
   private readonly handshakeTimeoutMs: number;
   private readonly maxPendingHandshakes: number;
+  private readonly closeGraceMs: number;
   private readonly origins = new Set<string>();
-  private readonly pairing: PairingCodes;
+  private readonly pairing = new PairingCodes();
+  private readonly backoff: PairingBackoff;
+  private readonly noisy: CoalescedLog;
+  private readonly changed: Throttle;
+  /** Sockets that failed or timed out: nothing they send is processed again. */
+  private readonly dead = new WeakSet<WebSocket>();
   private http: Server | null = null;
   private wss: WebSocketServer | null = null;
   private boundPort = 0;
@@ -94,14 +84,15 @@ export class TabBridge {
     this.callTimeoutMs = opts.callTimeoutMs ?? DEFAULT_CALL_TIMEOUT_MS;
     this.handshakeTimeoutMs = opts.handshakeTimeoutMs ?? DEFAULT_HANDSHAKE_TIMEOUT_MS;
     this.maxPendingHandshakes = opts.maxPendingHandshakes ?? 4;
+    this.closeGraceMs = opts.closeGraceMs ?? DEFAULT_CLOSE_GRACE_MS;
+    this.backoff = new PairingBackoff(opts.pairingBackoffBaseMs, opts.pairingBackoffMaxMs);
+    this.noisy = new CoalescedLog(this.log, opts.logWindowMs);
+    this.changed = new Throttle(() => this.emitChange(), opts.changeThrottleMs ?? 200);
     for (const o of opts.allowedOrigins) {
       const normal = normalizeOrigin(o);
       if (normal === null) throw new Error(`not an http(s) origin: ${o}`);
       this.origins.add(normal);
     }
-    this.pairing = new PairingCodes(opts.maxPairingAttempts ?? DEFAULT_MAX_PAIRING_ATTEMPTS, (code) => {
-      this.log(`too many wrong pairing codes; that code is retired. New pairing link: ${this.pairingUrl(code)}`);
-    });
   }
 
   get port(): number {
@@ -117,24 +108,11 @@ export class TabBridge {
   }
 
   async listen(): Promise<number> {
-    const http = createServer((_req, res) => {
-      res.writeHead(426, { 'Content-Type': 'text/plain', Connection: 'close' });
-      res.end('ifc-lite MCP bridge: WebSocket only\n');
-    });
-    const wss = new WebSocketServer({ noServer: true, maxPayload: this.opts.maxMessageBytes ?? BRIDGE_LIMITS.maxMessageBytes });
-    http.on('upgrade', (req, socket, head) => this.onUpgrade(wss, req, socket, head));
-    await new Promise<void>((resolve, reject) => {
-      http.once('error', reject);
-      // 127.0.0.1 only, never a public interface.
-      http.listen(this.opts.port, '127.0.0.1', () => {
-        http.off('error', reject);
-        resolve();
-      });
-    });
-    http.on('error', (err) => this.log(`server error: ${err.message}`));
-    this.http = http;
-    this.wss = wss;
-    this.boundPort = (http.address() as AddressInfo).port;
+    const maxPayload = this.opts.maxMessageBytes ?? BRIDGE_LIMITS.maxMessageBytes;
+    const server = await listenLoopback(this.opts.port, maxPayload, (wss, req, socket, head) => this.onUpgrade(wss, req, socket, head), this.log);
+    this.http = server.http;
+    this.wss = server.wss;
+    this.boundPort = server.port;
     return this.boundPort;
   }
 
@@ -187,13 +165,14 @@ export class TabBridge {
 
   async close(): Promise<void> {
     this.closing = true;
-    for (const ws of this.handshaking) failSocket(ws, BridgeErrorCode.SHUTTING_DOWN, 'The bridge is shutting down.', BridgeCloseCode.SHUTTING_DOWN, this.log);
-    this.handshaking.clear();
+    this.changed.cancel();
+    this.noisy.flush();
+    for (const ws of [...this.handshaking]) this.kill(ws, BridgeErrorCode.SHUTTING_DOWN, 'The bridge is shutting down.', BridgeCloseCode.SHUTTING_DOWN);
     const s = this.active;
     if (s) {
       this.active = null;
       s.failAll('shutting-down', 'The bridge is shutting down.');
-      failSocket(s.ws, BridgeErrorCode.SHUTTING_DOWN, 'The bridge is shutting down.', BridgeCloseCode.SHUTTING_DOWN, this.log);
+      this.kill(s.ws, BridgeErrorCode.SHUTTING_DOWN, 'The bridge is shutting down.', BridgeCloseCode.SHUTTING_DOWN);
     }
     const wss = this.wss;
     if (wss && wss.clients.size > 0) {
@@ -215,9 +194,8 @@ export class TabBridge {
   private onUpgrade(wss: WebSocketServer, req: IncomingMessage, socket: Duplex, head: Buffer): void {
     socket.on('error', (err) => this.log(`upgrade socket error: ${err.message}`));
     const refuse = (status: number, text: string, why: string): void => {
-      this.log(`refused a connection: ${why}`);
-      socket.end(`HTTP/1.1 ${status} ${text}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
-      socket.destroy();
+      this.noisy.note('refused connections', `refused a connection: ${why}`);
+      refuseUpgrade(socket, status, text);
     };
     if (!hostAllowed(req.headers.host, this.boundPort)) {
       return refuse(403, 'Forbidden', `Host ${JSON.stringify(req.headers.host)} is not loopback on port ${this.boundPort}`);
@@ -235,7 +213,7 @@ export class TabBridge {
     let session: BridgeSession | null = null;
     let greeted = false;
     const handshakeTimer = setTimeout(() => {
-      failSocket(ws, BridgeErrorCode.HANDSHAKE_TIMEOUT, 'No hello within the handshake timeout.', BridgeCloseCode.HANDSHAKE_TIMEOUT, this.log);
+      this.kill(ws, BridgeErrorCode.HANDSHAKE_TIMEOUT, 'No hello within the handshake timeout.', BridgeCloseCode.HANDSHAKE_TIMEOUT);
     }, this.handshakeTimeoutMs);
 
     ws.on('error', (err) => this.log(`socket error: ${err.message}`));
@@ -245,8 +223,10 @@ export class TabBridge {
       if (session && this.active === session) this.unpair(session);
     });
     ws.on('message', (data: RawData, isBinary: boolean) => {
+      // `ws` keeps delivering frames while CLOSING; a dead socket gets no say.
+      if (this.dead.has(ws)) return;
       if (isBinary) {
-        failSocket(ws, BridgeErrorCode.INVALID_MESSAGE, 'Binary frames are not part of the protocol.', BridgeCloseCode.INVALID_MESSAGE, this.log);
+        this.kill(ws, BridgeErrorCode.INVALID_MESSAGE, 'Binary frames are not part of the protocol.', BridgeCloseCode.INVALID_MESSAGE);
         return;
       }
       const text = rawToString(data);
@@ -261,8 +241,8 @@ export class TabBridge {
   }
 
   private handshake(ws: WebSocket, text: string): BridgeSession | null {
-    const reject = (code: BridgeErrorCode, message: string, closeCode: number): null => {
-      failSocket(ws, code, message, closeCode, this.log);
+    const reject = (code: BridgeErrorCode, message: string, closeCode: number, delayMs = 0): null => {
+      this.kill(ws, code, message, closeCode, delayMs);
       return null;
     };
     const parsed = parseTabMessage(text);
@@ -280,22 +260,28 @@ export class TabBridge {
       );
     }
     const check = this.pairing.consume(hello.pairingCode);
-    if (check !== 'ok') {
+    if (check === 'no-code') {
+      // Nothing to guess while paired, so this does not feed the back-off.
+      this.noisy.note('pairing attempts while paired', 'refused a pairing attempt: a tab is already paired and no code is live');
       return reject(
         BridgeErrorCode.PAIRING_FAILED,
-        check === 'no-code'
-          ? 'No pairing code is live (a tab is already paired). Ask the agent to call bridge_status with pair_new_tab for a fresh link.'
-          : 'Pairing code not accepted. Use the latest link or code from bridge_status.',
+        'No pairing code is live (a tab is already paired). Ask the agent to call bridge_status with pair_new_tab for a fresh link.',
         BridgeCloseCode.PAIRING_FAILED,
       );
     }
+    if (check === 'wrong') {
+      const delay = this.backoff.fail();
+      this.noisy.note('wrong pairing codes', `refused a wrong pairing code (answered after ${delay} ms)`);
+      return reject(BridgeErrorCode.PAIRING_FAILED, 'Pairing code not accepted. Use the latest link or code from bridge_status.', BridgeCloseCode.PAIRING_FAILED, delay);
+    }
+    this.backoff.succeed();
     this.handshaking.delete(ws);
     const previous = this.active;
     const session = new BridgeSession(ws, randomUUID(), hello.permission, hello.tools, hello.client, this.log);
     this.active = session;
     if (previous) {
       previous.failAll('replaced', 'Another viewer tab was paired and replaced this one before it answered.');
-      failSocket(previous.ws, BridgeErrorCode.REPLACED, 'Another tab was paired with this bridge.', BridgeCloseCode.REPLACED, this.log);
+      this.kill(previous.ws, BridgeErrorCode.REPLACED, 'Another tab was paired with this bridge.', BridgeCloseCode.REPLACED);
     }
     session.send({
       type: 'welcome',
@@ -307,7 +293,7 @@ export class TabBridge {
     });
     const who = hello.client ? `${hello.client.name}${hello.client.version ? ` ${hello.client.version}` : ''}` : 'a viewer tab';
     this.log(`paired with ${who}${previous ? ' (replaced the previous tab)' : ''}: ${hello.tools.length} tools, ${this.effectivePermission(session)}`);
-    this.emitChange();
+    this.changed.fire();
     return session;
   }
 
@@ -326,19 +312,45 @@ export class TabBridge {
       return;
     }
     if (msg.sessionId !== s.id) {
-      this.log(`ignored a ${msg.type} naming another session`);
+      this.noisy.note('frames naming another session', `ignored a ${msg.type} naming another session`);
       return;
     }
     if (msg.type === 'result') {
-      if (!s.settle(msg.id, msg.result)) this.log(`ignored a result for call ${msg.id}: not pending (unknown, answered or expired)`);
+      if (!s.settle(msg.id, msg.result)) this.noisy.note('stray results', `ignored a result for call ${msg.id}: not pending (unknown, answered or expired)`);
       return;
     }
     const before = this.effectivePermission(s);
+    const toolsBefore = JSON.stringify(s.tools);
     if (msg.permission !== undefined) s.tabPermission = msg.permission;
     if (msg.tools !== undefined) s.tools = msg.tools;
     const after = this.effectivePermission(s);
+    const toolsChanged = msg.tools !== undefined && JSON.stringify(msg.tools) !== toolsBefore;
     if (before !== after) this.log(`viewer permission is now ${after}`);
-    this.emitChange();
+    if (before !== after || toolsChanged) this.changed.fire();
+  }
+
+  /**
+   * Make `ws` dead now: later frames are ignored. After `delayMs` (the
+   * pairing back-off) it frees its unpaired slot, gets the error frame and a
+   * close, and is terminated `closeGraceMs` later if the peer has not closed.
+   */
+  private kill(ws: WebSocket, code: BridgeErrorCode, message: string, closeCode: number, delayMs = 0): void {
+    if (this.dead.has(ws)) return;
+    this.dead.add(ws);
+    const finish = (): void => {
+      this.handshaking.delete(ws);
+      failSocket(ws, code, message, closeCode, this.log);
+      const terminate = setTimeout(() => ws.terminate(), this.closeGraceMs);
+      terminate.unref?.();
+      ws.once('close', () => clearTimeout(terminate));
+    };
+    if (delayMs <= 0) {
+      finish();
+      return;
+    }
+    const later = setTimeout(finish, delayMs);
+    later.unref?.();
+    ws.once('close', () => clearTimeout(later));
   }
 
   /** The paired tab's socket closed: fail its calls and offer a fresh pairing link. */
@@ -347,7 +359,7 @@ export class TabBridge {
     s.failAll('disconnected', 'The viewer tab disconnected before answering.');
     if (this.closing) return;
     this.log(`viewer disconnected. To pair again open ${this.pairingUrl(this.pairing.current())}`);
-    this.emitChange();
+    this.changed.fire();
   }
 
   private effectivePermission(s: BridgeSession): BridgePermission {

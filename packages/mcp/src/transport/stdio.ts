@@ -71,12 +71,19 @@ export class StdioTransport {
     return {
       send: (message: JsonRpcMessage) => {
         if (this.closed) return;
+        let line: string;
         try {
-          const line = JSON.stringify(message) + '\n';
-          this.stdout.write(line);
+          line = JSON.stringify(message) + '\n';
         } catch (err) {
-          this.stderr.write(`[ifc-lite-mcp] failed to serialize outgoing message: ${(err as Error).message}\n`);
+          const why = (err as Error).message;
+          this.stderr.write(`[ifc-lite-mcp] failed to serialize outgoing message: ${why}\n`);
+          // A response that cannot be serialized must still answer its request,
+          // or the client waits forever. Notifications are dropped (logged above).
+          const id = 'id' in message && ('result' in message || 'error' in message) ? message.id : undefined;
+          if (id === undefined || id === null) return;
+          line = JSON.stringify(errorResponse(id, JsonRpcErrorCode.InternalError, `Response could not be serialized: ${why}`)) + '\n';
         }
+        this.stdout.write(line);
       },
     };
   }

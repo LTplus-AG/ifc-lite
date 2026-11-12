@@ -188,3 +188,28 @@ describe('validateInput', () => {
     });
   });
 });
+
+describe('validateInput reads own properties only (#9523 review of PR #9905)', () => {
+  const schema = {
+    type: 'object',
+    properties: { toString: { type: 'string' }, constructor: { type: 'string' }, valueOf: { type: 'number' } },
+    required: ['constructor'],
+  };
+
+  it('does not mistake Object.prototype members for supplied values', () => {
+    // `constructor` is inherited by every object, but it was not supplied.
+    const missing = validateInput(schema, {});
+    expect(missing.valid).toBe(false);
+    expect(missing.errors).toEqual([{ path: '$.constructor', message: 'Required property missing' }]);
+    // An omitted optional `toString`/`valueOf` is simply absent, not a function of the wrong type.
+    expect(validateInput(schema, { constructor: 'x' })).toEqual({ valid: true, errors: [], value: { constructor: 'x' } });
+  });
+
+  it('keeps a __proto__ key as data instead of setting the prototype', () => {
+    const input = JSON.parse('{"__proto__": {"polluted": true}}') as Record<string, unknown>;
+    const result = validateInput({ type: 'object', properties: { __proto__: { type: 'object' } } }, input);
+    const value = result.value as Record<string, unknown>;
+    expect(Object.getPrototypeOf(value)).toBe(Object.prototype);
+    expect(Object.prototype.hasOwnProperty.call(value, '__proto__')).toBe(true);
+  });
+});

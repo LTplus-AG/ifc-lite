@@ -43,3 +43,20 @@ export function hostAllowed(host: string | undefined, port: number): boolean {
   const portText = lower.slice(colon + 1);
   return LOOPBACK_HOSTS.has(name) && portText === String(port);
 }
+
+/** `localhost`, any 127.0.0.0/8 address, or `[::1]`, as `URL.hostname` spells them. */
+export function isLoopbackHostname(hostname: string): boolean {
+  const h = hostname.toLowerCase();
+  if (h === 'localhost' || h === '[::1]') return true;
+  return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h) && h.split('.').every((p) => Number(p) <= 255);
+}
+
+/**
+ * True when `origin` (already an http(s) origin) is plain `http:` on a host
+ * other than loopback. Such a page's script can be replaced by anyone on the
+ * network path, who would then read the pairing code from the link's fragment.
+ */
+export function isInsecureRemoteOrigin(origin: string): boolean {
+  const url = new URL(origin);
+  return url.protocol === 'http:' && !isLoopbackHostname(url.hostname);
+}

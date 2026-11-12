@@ -15,7 +15,7 @@ import {
   parsePairingFragment,
   parseTabMessage,
   validateToolDescriptors,
-} from './protocol.js';
+} from './bridge-protocol.js';
 import { generatePairingCode } from './pairing.js';
 
 const tool = { name: 'q', description: 'd', inputSchema: { type: 'object' }, readOnly: true };

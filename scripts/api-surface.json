@@ -7704,6 +7704,7 @@
     "BridgeResultMessage: interface",
     "BridgeServerMessage: type",
     "BridgeTabMessage: type",
+    "BridgeTextContent: interface",
     "BridgeToolDescriptor: interface",
     "BridgeUpdateMessage: interface",
     "BridgeWelcomeMessage: interface",

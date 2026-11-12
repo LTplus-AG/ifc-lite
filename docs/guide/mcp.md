@@ -64,7 +64,7 @@ By default the server binds `127.0.0.1`. Binding a non-loopback host requires ei
 | `--port <N>` | HTTP port (default 8765) |
 | `--host <h>` | HTTP host (default 127.0.0.1; non-loopback requires `--token` or `--insecure`) |
 | `--token <bearer>` | HTTP bearer token that maps to full scope |
-| `--insecure` | Allow a non-loopback bind without a token (development only) |
+| `--insecure` | Allow a non-loopback bind without a token (development only). With `--bridge`: accept a plain-`http` origin on a non-loopback host, with a warning |
 | `--read-only` | Hide mutation tools |
 | `--bsdd <url>` | Override the bSDD endpoint |
 | `--allow <path>` | Restrict file-system access (repeatable) |
@@ -395,20 +395,21 @@ When the viewer is open, every viewer-touching tool drives the live scene, and a
 
 ## Bridge to a browser tab
 
-`ifc-lite-mcp --bridge` lets a local agent work on the model open in an ifc-lite browser tab, including models loaded from a cloud source or carrying unsaved edits. The bridge speaks MCP over stdio to the agent and forwards tool calls over a WebSocket on `127.0.0.1` to one paired tab. It loads no model itself and takes no file arguments.
+`ifc-lite-mcp --bridge` lets a local agent work on the model open in an ifc-lite browser tab, including models loaded from a cloud source or carrying unsaved edits. The bridge speaks MCP over stdio to the agent and forwards tool calls over a WebSocket on `127.0.0.1` to one paired tab. It loads no model itself and takes no file arguments. It stops, freeing its port, when stdin ends, closes or errors, and on SIGINT or SIGTERM.
 
 ```bash
 ifc-lite-mcp --bridge              # read-write if the tab allows it
-ifc-lite-mcp --bridge --read-only  # mutations stay off whatever the tab grants
+ifc-lite-mcp --bridge --read-only  # tools the tab labels as mutating stay off whatever the tab grants
 ```
 
-- **Pairing.** The bridge mints a one-time code. The `bridge_status` tool, always listed, returns it with a link such as `https://ifclite.com/#mcp-bridge=1&port=21517&code=...`; the port and code sit in the URL fragment, which the browser never sends to a server. The same link is printed on stderr. A code works once; a wrong code counts against a small limit, after which it is replaced.
+- **Pairing.** The bridge mints a one-time code. The `bridge_status` tool, always listed, returns it with a link such as `https://ifclite.com/#mcp-bridge=1&port=21517&code=...`; the port and code sit in the URL fragment, which the browser never sends to a server. The same link is printed on stderr. The tab must send it within 10 s of connecting. A code works once. Wrong codes never retire it, but each is answered after a delay that doubles per recent failure (250 ms up to 5 s), so guessing is slow and cannot break the user's link.
 - **One tab.** A new pairing replaces the paired tab, which is disconnected. While a tab is paired no code is live; `bridge_status` with `pair_new_tab: true` issues one.
-- **Guards.** The WebSocket upgrade is refused unless the `Origin` is allowlisted (`https://ifclite.com`, the `--bridge-viewer-url` origin, `--allow-origin`) and the `Host` is loopback on the bridge port. The pairing code is the authentication; the origin check only keeps other web pages out.
-- **Permissions.** The tab marks each tool `readOnly` or not, and says whether the user allowed changes. Read-only is the default. Mutating tools are neither listed nor forwarded while read-only. There is no tool for writing back to a cloud source.
+- **Guards.** The WebSocket upgrade is refused unless the `Origin` is allowlisted (`https://ifclite.com`, the `--bridge-viewer-url` origin, `--allow-origin`) and the `Host` is loopback on the bridge port. Plain `http:` origins are accepted only on loopback hosts, unless `--insecure` is passed (with a warning). The pairing code is the authentication; the origin check only keeps other web pages out.
+- **Permissions.** The tab labels each tool `readOnly` or not, and says whether the user allowed changes. Read-only is the default. While read-only, tools the tab labels mutating are neither listed nor forwarded. The bridge cannot see what a tool does, so the labels are the tab's claim: the tab is the authority and must refuse model-changing calls itself while read-only. There is no tool for writing back to a cloud source.
+- **Tab-supplied data.** Tool names, descriptions and results come from the tab and from model data; the bridge tells the agent they are data, not instructions. Results carry text and structured content only. Descriptors, schemas and results are bounded in size and depth (see `BRIDGE_LIMITS`).
 - **No tab.** Only `bridge_status` is listed, and any other call fails at once with `VIEWER_NOT_CONNECTED`. A tab that closes fails its pending calls the same way.
 
-The tab<->bridge frame protocol is transport-neutral and exported, browser-safe, as `@ifc-lite/mcp/bridge-protocol`. Tools are listed with MCP `annotations` (`readOnlyHint`, and `destructiveHint` for mutating tools). The viewer side ships separately; until it does, nothing on ifclite.com connects, and browser connectivity in Chrome and Safari is not yet verified.
+The tab<->bridge frame protocol is transport-neutral and exported, browser-safe, as `@ifc-lite/mcp/bridge-protocol`. Tools are listed with MCP `annotations` (`readOnlyHint`, and `destructiveHint` for tools labelled mutating). The viewer side ships separately; until it does, nothing on ifclite.com connects, and browser connectivity in Chrome and Safari is not yet verified. The full security model is in the [package README](https://github.com/LTplus-AG/ifc-lite/blob/main/packages/mcp/README.md#bridge-to-a-browser-tab---bridge).
 
 ## Wiring it into a client
 

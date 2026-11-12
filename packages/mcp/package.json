@@ -31,8 +31,8 @@
       "types": "./dist/cli-args.d.ts"
     },
     "./bridge-protocol": {
-      "import": "./dist/bridge/protocol.js",
-      "types": "./dist/bridge/protocol.d.ts"
+      "import": "./dist/bridge/bridge-protocol.js",
+      "types": "./dist/bridge/bridge-protocol.d.ts"
     }
   },
   "scripts": {

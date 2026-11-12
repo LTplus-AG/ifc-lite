@@ -33,7 +33,21 @@
  * A `result` whose `sessionId` or `id` does not name a call still pending on
  * that channel is ignored, so a reply from an earlier tab, an unknown id or
  * a duplicate never answers a current call.
+ *
+ * Read-only obligation (tab side). The bridge decides whether a tool mutates
+ * ONLY from the tab's own `readOnly` label; it cannot inspect what a tool
+ * does. The tab is therefore the authority on labels and on enforcement:
+ * while `welcome.readOnlyCeiling` is true, or the effective `permission` is
+ * `read-only`, the tab MUST itself refuse every call to a tool that changes
+ * the model, whatever label it sent, and answer it with an `isError` result.
+ * The bridge's own filtering is a second line, not the guarantee.
+ *
+ * Everything the tab sends (tool names, titles, descriptions, schemas,
+ * results) reaches the agent as data from the viewer and the model, never as
+ * instructions; the bridge says so in its MCP `instructions`.
  */
+
+import { checkJsonBounds, checkSchemaShape, utf8Length } from './json-bounds.js';
 
 /** Bumped on any incompatible change. The bridge rejects any other value. */
 export const BRIDGE_PROTOCOL_VERSION = 1;
@@ -50,14 +64,30 @@ export const BRIDGE_STATUS_TOOL = 'bridge_status';
 /** Key in the pairing link's URL fragment that marks it as a bridge pairing link. */
 export const PAIRING_FRAGMENT_KEY = 'mcp-bridge';
 
-/** Bridge-side limits the tab should stay within. */
+/**
+ * Bridge-side limits the tab must stay within. A hello or update over a limit
+ * is refused (a hello fatally, an update with a non-fatal `error` frame); a
+ * result over a limit fails its call with an `isError` result naming the limit.
+ */
 export const BRIDGE_LIMITS = {
-  /** Largest single frame either side may send, in bytes. */
+  /** Largest inbound frame, in bytes. A bigger frame closes the channel (WebSocket close 1009). */
   maxMessageBytes: 16 * 1024 * 1024,
   maxTools: 256,
   maxToolNameLength: 64,
   maxDescriptionLength: 8192,
   maxTitleLength: 256,
+  /** UTF-8 bytes of all tool descriptors together (as JSON), schemas included. */
+  maxDescriptorBytes: 1024 * 1024,
+  /** Nesting depth of one tool's `inputSchema` (the schema object itself is level 1). */
+  maxSchemaDepth: 32,
+  /** JSON values (objects, arrays, scalars) in one tool's `inputSchema`. */
+  maxSchemaNodes: 5000,
+  /** UTF-8 bytes of one `result` value, as JSON. */
+  maxResultBytes: 4 * 1024 * 1024,
+  /** Nesting depth of one `result` value (the result object is level 1). */
+  maxResultDepth: 64,
+  /** JSON values in one `result` value. */
+  maxResultNodes: 250_000,
 } as const;
 
 /**
@@ -76,16 +106,23 @@ export interface BridgeToolDescriptor {
   title?: string;
   /**
    * False when the tool changes the model. Required, so a tab cannot leave a
-   * mutating tool unmarked by omission. Mutating tools (`readOnly: false`)
-   * are neither listed nor forwarded while the effective permission is
-   * `read-only`. Listed over MCP as `annotations.readOnlyHint`.
+   * mutating tool unmarked by omission. Tools labelled `readOnly: false` are
+   * neither listed nor forwarded while the effective permission is
+   * `read-only`. Listed over MCP as `annotations.readOnlyHint`. The label is
+   * the tab's claim: see the read-only obligation in the module header.
    */
   readOnly: boolean;
 }
 
-/** MCP `CallToolResult`, as the tab returns it. Passed through unchanged. */
+/** Content the bridge accepts in a result: text only. Other MCP content types (image, resource) are refused. */
+export interface BridgeTextContent {
+  type: 'text';
+  text: string;
+}
+
+/** MCP `CallToolResult`, as the tab returns it. Passed through unchanged once valid. */
 export interface BridgeCallResult {
-  content: Array<Record<string, unknown>>;
+  content: BridgeTextContent[];
   structuredContent?: Record<string, unknown>;
   isError?: boolean;
 }
@@ -127,7 +164,10 @@ export interface BridgeWelcomeMessage {
   sessionId: string;
   /** Effective permission: the tab's grant, capped by the bridge's ceiling. */
   permission: BridgePermission;
-  /** True when the bridge was started `--read-only`; mutations stay off whatever the tab grants. */
+  /**
+   * True when the bridge was started `--read-only`. The tab MUST then refuse
+   * every model-changing call itself (see the read-only obligation above).
+   */
   readOnlyCeiling: boolean;
   bridge: { name: string; version: string };
 }
@@ -220,19 +260,31 @@ export function validateToolDescriptors(raw: unknown): ParseResult<BridgeToolDes
     if (!isRecord(inputSchema) || inputSchema.type !== 'object') {
       return { ok: false, error: `tools[${i}].inputSchema must be a JSON Schema object with type 'object'` };
     }
+    const schemaError = checkJsonBounds(inputSchema, { maxDepth: BRIDGE_LIMITS.maxSchemaDepth, maxNodes: BRIDGE_LIMITS.maxSchemaNodes }, `tools[${i}].inputSchema`)
+      ?? checkSchemaShape(inputSchema, `tools[${i}].inputSchema`);
+    if (schemaError) return { ok: false, error: schemaError };
     if (typeof readOnly !== 'boolean') return { ok: false, error: `tools[${i}].readOnly must be a boolean` };
     if (title !== undefined && (typeof title !== 'string' || title.length > BRIDGE_LIMITS.maxTitleLength)) {
       return { ok: false, error: `tools[${i}].title must be a string of at most ${BRIDGE_LIMITS.maxTitleLength} characters` };
     }
     tools.push({ name, ...(title !== undefined ? { title } : {}), description, inputSchema, readOnly });
   }
+  const bytes = utf8Length(JSON.stringify(tools));
+  if (bytes > BRIDGE_LIMITS.maxDescriptorBytes) {
+    return { ok: false, error: `tool descriptors total ${bytes} bytes; the limit is ${BRIDGE_LIMITS.maxDescriptorBytes}` };
+  }
   return { ok: true, value: tools };
 }
 
 function validateCallResult(raw: unknown): ParseResult<BridgeCallResult> {
   if (!isRecord(raw)) return { ok: false, error: 'result must be an object' };
-  if (!Array.isArray(raw.content) || !raw.content.every(isRecord)) {
-    return { ok: false, error: 'result.content must be an array of objects' };
+  const bounds = checkJsonBounds(raw, { maxDepth: BRIDGE_LIMITS.maxResultDepth, maxNodes: BRIDGE_LIMITS.maxResultNodes }, 'result');
+  if (bounds) return { ok: false, error: bounds };
+  if (!Array.isArray(raw.content)) return { ok: false, error: 'result.content must be an array' };
+  for (const [i, c] of raw.content.entries()) {
+    if (!isRecord(c) || c.type !== 'text' || typeof c.text !== 'string') {
+      return { ok: false, error: `result.content[${i}] must be {type: 'text', text: string}; the bridge accepts text content only` };
+    }
   }
   if (raw.structuredContent !== undefined && !isRecord(raw.structuredContent)) {
     return { ok: false, error: 'result.structuredContent must be an object' };
@@ -240,7 +292,16 @@ function validateCallResult(raw: unknown): ParseResult<BridgeCallResult> {
   if (raw.isError !== undefined && typeof raw.isError !== 'boolean') {
     return { ok: false, error: 'result.isError must be a boolean' };
   }
-  return { ok: true, value: raw as unknown as BridgeCallResult };
+  const value: BridgeCallResult = {
+    content: (raw.content as Array<{ text: string }>).map((c) => ({ type: 'text', text: c.text })),
+    ...(raw.structuredContent !== undefined ? { structuredContent: raw.structuredContent as Record<string, unknown> } : {}),
+    ...(raw.isError !== undefined ? { isError: raw.isError } : {}),
+  };
+  const bytes = utf8Length(JSON.stringify(value));
+  if (bytes > BRIDGE_LIMITS.maxResultBytes) {
+    return { ok: false, error: `result is ${bytes} bytes; the limit is ${BRIDGE_LIMITS.maxResultBytes}` };
+  }
+  return { ok: true, value };
 }
 
 /**
@@ -327,53 +388,4 @@ export function parseServerMessage(text: string): ParseResult<BridgeServerMessag
     default:
       return { ok: false, error: `unknown message type ${JSON.stringify(raw.type)}` };
   }
-}
-
-// ── pairing link ─────────────────────────────────────────────────────────
-
-/** Canonical form of a pairing code: upper case, separators removed. */
-export function normalizePairingCode(code: string): string {
-  return code.toUpperCase().replace(/[\s-]/g, '');
-}
-
-/**
- * The link the user opens to pair a tab. Port and code travel in the URL
- * FRAGMENT, which the browser never sends to the web server:
- *
- *   https://ifclite.com/#mcp-bridge=1&port=21517&code=ABCDE-FGHJK-MNPQR-STVWX
- *
- * `mcp-bridge` carries the protocol version. Parse with {@link parsePairingFragment}.
- */
-export function buildPairingUrl(viewerUrl: string, port: number, code: string): string {
-  const url = new URL(viewerUrl);
-  const params = new URLSearchParams();
-  params.set(PAIRING_FRAGMENT_KEY, String(BRIDGE_PROTOCOL_VERSION));
-  params.set('port', String(port));
-  params.set('code', code);
-  url.hash = params.toString();
-  return url.toString();
-}
-
-export interface PairingFragment {
-  protocol: number;
-  port: number;
-  code: string;
-}
-
-/**
- * Read a pairing link's fragment (`location.hash`, with or without the
- * leading `#`). Returns null when it is not a pairing link or is malformed.
- * The tab should clear the fragment after reading it so the code does not
- * linger in history.
- */
-export function parsePairingFragment(hash: string): PairingFragment | null {
-  const params = new URLSearchParams(hash.startsWith('#') ? hash.slice(1) : hash);
-  const version = params.get(PAIRING_FRAGMENT_KEY);
-  const port = Number(params.get('port'));
-  const code = params.get('code');
-  if (version === null || code === null || code.length === 0) return null;
-  if (!Number.isInteger(port) || port < 1 || port > 65535) return null;
-  const protocol = Number(version);
-  if (!Number.isInteger(protocol)) return null;
-  return { protocol, port, code };
 }

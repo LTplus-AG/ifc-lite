@@ -7,6 +7,8 @@
  * speaks the tab half of `bridge/protocol.ts`. Used by the bridge tests only.
  */
 
+import { randomBytes } from 'node:crypto';
+import { connect as netConnect } from 'node:net';
 import WebSocket from 'ws';
 import {
   BRIDGE_PROTOCOL_VERSION,
@@ -17,7 +19,7 @@ import {
   type BridgeServerMessage,
   type BridgeToolDescriptor,
   type BridgeWelcomeMessage,
-} from '../bridge/protocol.js';
+} from '../bridge/bridge-protocol.js';
 
 export const TEST_ORIGIN = 'https://ifclite.com';
 
@@ -161,4 +163,58 @@ export async function pairTab(opts: FakeTabOptions): Promise<{ tab: FakeTab; wel
 
 export function textResult(text: string, extra: Partial<BridgeCallResult> = {}): BridgeCallResult {
   return { content: [{ type: 'text', text }], ...extra };
+}
+
+/**
+ * A hand-rolled WebSocket client that IGNORES close frames: it completes the
+ * upgrade, can send masked text frames at any time, and never answers a close.
+ * `ws` clients always answer, so this is how a misbehaving peer is modelled.
+ */
+export interface RawPeer {
+  /** Resolves with the HTTP status line once the upgrade is answered. */
+  status: Promise<string>;
+  /** Resolves when the server tears the TCP connection down. */
+  ended: Promise<void>;
+  sendText(text: string): void;
+  destroy(): void;
+}
+
+export function rawPeer(port: number, origin = TEST_ORIGIN): RawPeer {
+  const socket = netConnect(port, '127.0.0.1');
+  let resolveStatus!: (line: string) => void;
+  const status = new Promise<string>((r) => { resolveStatus = r; });
+  const ended = new Promise<void>((r) => socket.once('close', () => r()));
+  let head = '';
+  socket.on('data', (chunk: Buffer) => {
+    if (head.includes('\r\n')) return; // frames from the server are ignored, close frames included
+    head += chunk.toString('latin1');
+    if (head.includes('\r\n')) resolveStatus(head.slice(0, head.indexOf('\r\n')));
+  });
+  socket.on('error', () => { /* the server may reset us; `ended` reports it */ });
+  socket.write([
+    'GET / HTTP/1.1',
+    `Host: 127.0.0.1:${port}`,
+    'Upgrade: websocket',
+    'Connection: Upgrade',
+    `Sec-WebSocket-Key: ${randomBytes(16).toString('base64')}`,
+    'Sec-WebSocket-Version: 13',
+    `Origin: ${origin}`,
+    '', '',
+  ].join('\r\n'));
+  return {
+    status,
+    ended,
+    sendText(text) {
+      const payload = Buffer.from(text, 'utf8');
+      const mask = randomBytes(4);
+      const len = payload.length;
+      const header = len < 126
+        ? Buffer.from([0x81, 0x80 | len])
+        : Buffer.from([0x81, 0x80 | 126, len >> 8, len & 0xff]);
+      const masked = Buffer.alloc(len);
+      for (let i = 0; i < len; i++) masked[i] = payload[i] ^ mask[i % 4];
+      if (!socket.destroyed) socket.write(Buffer.concat([header, mask, masked]));
+    },
+    destroy() { socket.destroy(); },
+  };
 }

@@ -145,14 +145,14 @@ export function joinEnds(
       extended.push({ elementId: lines[i].elementId, end: endName(e), distance: best.t, toElementId: lines[best.j].elementId });
     }
     joined.add(e);
-    // Every other member whose axis passes through the joint inside its span is split there too (crossing
-    // beams); not one running along this member, whose axis never meets it.
+    // Every other member whose axis passes through the joint is split there too (crossing beams); not one
+    // running along this member, whose axis never meets it. Cuts outside a span are dropped below.
     for (const k of grid.near(best.target)) {
       if (k === i || k === best.j) continue;
       const a = ends[2 * k], v = sub(ends[2 * k + 1], a), lv = length(v);
       if (lv <= tolerance || Math.abs(dot(u, v)) >= lv * (1 - 1e-9)) continue;
       const s = dot(sub(best.target, a), v) / (lv * lv);
-      if (s * lv > tolerance && s * lv < lv - tolerance && length(sub(add(a, scale(v, s)), best.target)) <= tolerance) splits[k].push(best.target);
+      if (length(sub(add(a, scale(v, s)), best.target)) <= tolerance) splits[k].push(best.target);
     }
     if (best.otherEnd !== null) {
       const k = best.otherEnd;

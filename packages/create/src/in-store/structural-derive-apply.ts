@@ -90,17 +90,20 @@ export function applyStructuralDerivation(
  * here, before the first write; the builders' other refusals (finite points,
  * thickness) throw inside the transaction and also leave nothing.
  */
+/** Same point; NaN matches NaN, since a non-finite point is the builder's refusal, not the plan check's. */
+const samePoint = (p: Vec3, q: Vec3) => p.every((v, k) => v === q[k] || (Number.isNaN(v) && Number.isNaN(q[k])));
+
 function checkPlan(plan: StructuralDerivationPlan, toLocal: (storeyId: number | null, p: Vec3) => Vec3): void {
   const refuse = (what: string, why: string) => { throw new Error(`Structural derivation: ${what} ${why}; plan again`); };
   for (const member of plan.curveMembers) {
     const what = `the curve member of element #${member.elementId}`;
     if (!plan.nodes[member.startNode] || !plan.nodes[member.endNode]) refuse(what, 'names a node the plan does not have');
+    if (member.startNode === member.endNode) refuse(what, 'starts and ends on one node');
     if (member.start.every((v, k) => v === member.end[k])) refuse(what, 'has no length');
     // The planner copies node positions onto member ends; a plan changed since must keep them together.
-    // NaN matches NaN here; a non-finite point is the builder's refusal, not this one.
-    const same = (v: number, w: number) => v === w || (Number.isNaN(v) && Number.isNaN(w));
-    const sameAs = (p: Vec3, node: number) => p.every((v, k) => same(v, plan.nodes[node].position[k]));
-    if (!sameAs(member.start, member.startNode) || !sameAs(member.end, member.endNode)) refuse(what, 'has ends that differ from its nodes');
+    if (!samePoint(member.start, plan.nodes[member.startNode].position) || !samePoint(member.end, plan.nodes[member.endNode].position)) {
+      refuse(what, 'has ends that differ from its nodes');
+    }
   }
   for (const member of plan.surfaceMembers) {
     const what = `the surface member of element #${member.elementId}`;

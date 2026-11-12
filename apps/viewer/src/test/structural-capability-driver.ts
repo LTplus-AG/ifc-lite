@@ -45,6 +45,14 @@ if (!('setStructuralViewMode' in state) || typeof state.setStructuralViewMode !=
       }
       counts.push({models:count,mode,visible:expected.length});
     }
+    // #9923: model mode and the user's Supports & loads preference are independent.
+    if (useViewerStore.getState().typeVisibility.structuralGlyphs) {
+      act(()=>useViewerStore.getState().toggleTypeVisibility('structuralGlyphs'));
+    }
+    for (const mode of ['analytical','physical','both'] as const) {
+      act(()=>setMode(mode));
+      assert.equal(useViewerStore.getState().typeVisibility.structuralGlyphs,false, `${mode} preserves the manual glyph hide`);
+    }
     // Mode changes must compose with user hides and model visibility.
     const target = models[0];
     const id = useViewerStore.getState().toGlobalId(target.id,physical[0]);

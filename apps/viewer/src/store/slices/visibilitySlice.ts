@@ -156,10 +156,7 @@ export interface VisibilitySlice {
 export const createVisibilitySlice: StateCreator<ViewerState, [], [], VisibilitySlice> = (set, get) => ({
   // Initial state
   structuralViewMode: 'both',
-  setStructuralViewMode: (structuralViewMode) => set((s) => ({
-    structuralViewMode,
-    typeVisibility: { ...s.typeVisibility, structuralGlyphs: structuralViewMode !== 'physical' },
-  })),
+  setStructuralViewMode: (structuralViewMode) => set({ structuralViewMode }),
   hiddenEntities: new Set(),
   isolatedEntities: null,
   ghostExceptEntities: null, visibilityRevision: 0,

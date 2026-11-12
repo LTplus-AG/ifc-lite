@@ -252,6 +252,5 @@ if (isMainEntry(import.meta.url)) {
   } catch (err) {
     // Advisory: a crash is a warning, never a red check on main.
     console.log(`::warning title=Viewer concurrency probe (advisory)::${err.message}`);
-    process.exitCode = 0;
   }
 }

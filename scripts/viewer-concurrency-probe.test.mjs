@@ -199,7 +199,7 @@ test('#9791 review: the probe is its own workflow, after a main push Test run, a
   for (const [name, job] of Object.entries(rest)) {
     assert.ok([job.needs].flat().includes('plan'), `${name} needs plan`);
     const own = job.if.replace(/^\$\{\{\s*|\s*\}\}$/g, '').split(' && ');
-    assert.ok(own.includes("needs.plan.outputs.viewer_tested == 'true'"), `${name} requires plan's output`);
+    assert.ok(own.includes("needs.plan.outputs.probe == 'true'"), `${name} requires plan's output`);
   }
 });
 
@@ -224,6 +224,9 @@ test('#9791 second review: the probe is advisory: every step is continue-on-erro
     assert.match(job.name, /advisory/, key);
     for (const step of job.steps) assert.equal(step['continue-on-error'], true, `${key}: ${step.name ?? step.uses ?? step.run}`);
   }
+  // The tests run only on a complete setup, so an infra failure is a missing record, not a finding.
+  const testStep = PROBE_YML.jobs.probe.steps.find((st) => st.run === 'node scripts/viewer-concurrency-probe.mjs --shard');
+  for (const id of ['checkout', 'install', 'build', 'verify']) assert.ok(testStep.if.split(' && ').includes(`steps.${id}.outcome == 'success'`), id); // @source-text-assertion-ok checks the parsed step condition's conjuncts
   assert.deepEqual(PROBE_YML.concurrency, { group: 'viewer-concurrency-probe', 'cancel-in-progress': false });
 });
 
@@ -262,9 +265,9 @@ function planDecides({ viewerRan, scriptAtSha, expired }) {
 
 test('#9791 second review: the plan skips cleanly when the viewer did not run, the commit has no probe script, or the build expired', () => {
   // `expired`: the `.artifacts[].expired` values the API returns for build-output.
-  assert.equal(planDecides({ viewerRan: true, scriptAtSha: true, expired: ['false'] }), 'viewer_tested=true');
-  assert.equal(planDecides({ viewerRan: false, scriptAtSha: true, expired: ['false'] }), 'viewer_tested=false');
-  assert.equal(planDecides({ viewerRan: true, scriptAtSha: false, expired: ['false'] }), 'viewer_tested=false', 'a Test run from before this workflow merged');
-  assert.equal(planDecides({ viewerRan: true, scriptAtSha: true, expired: ['true'] }), 'viewer_tested=false', 'build-output expired');
-  assert.equal(planDecides({ viewerRan: true, scriptAtSha: true, expired: [] }), 'viewer_tested=false', 'no build-output at all');
+  assert.equal(planDecides({ viewerRan: true, scriptAtSha: true, expired: ['false'] }), 'probe=true');
+  assert.equal(planDecides({ viewerRan: false, scriptAtSha: true, expired: ['false'] }), 'probe=false');
+  assert.equal(planDecides({ viewerRan: true, scriptAtSha: false, expired: ['false'] }), 'probe=false', 'a Test run from before this workflow merged');
+  assert.equal(planDecides({ viewerRan: true, scriptAtSha: true, expired: ['true'] }), 'probe=false', 'build-output expired');
+  assert.equal(planDecides({ viewerRan: true, scriptAtSha: true, expired: [] }), 'probe=false', 'no build-output at all');
 });

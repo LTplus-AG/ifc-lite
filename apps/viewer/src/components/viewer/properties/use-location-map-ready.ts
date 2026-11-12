@@ -4,8 +4,7 @@
 import { useEffect, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore } from '@/store';
-import { getGlobalRenderer } from '@/hooks/useBCF';
-import { hasPendingInstancedShards } from '@/store/instancedShardQueue';
+import { isSceneSettled } from '@/lib/scene-settled';
 
 /** Keep initial WebGL setup after scene drain/finalise, then latch readiness. */
 export function useLocationMapReady(hasLocation: boolean): boolean {
@@ -18,12 +17,7 @@ export function useLocationMapReady(hasLocation: boolean): boolean {
     const check = () => {
       const state = useViewerStore.getState();
       if (state.loading || state.error || state.activeModelId !== modelId) return;
-      const scene = getGlobalRenderer()?.getScene();
-      // Finalisation empties fragments before its async rebuild ends. Both
-      // guards are required; loading=false alone precedes this whole phase.
-      // Instanced shards travel outside the store (#9628): ask their queue.
-      if (state.geometryStreamingActive || hasPendingInstancedShards()
-        || scene?.hasQueuedMeshes() || scene?.hasStreamingFragments() || scene?.isFinalizeInProgress()) {
+      if (!isSceneSettled(state)) {
         // Ten constant-time checks/sec initially, one/sec after five seconds.
         // Failed finalisation may retain fragments until device recovery; keep
         // waiting without starting WebGL or spinning at the display frame rate.

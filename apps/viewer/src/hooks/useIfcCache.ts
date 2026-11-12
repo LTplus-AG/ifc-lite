@@ -349,6 +349,7 @@ export function useIfcCache() {
       const cacheBuffer = await writer.write(cacheDataStore, geometry, new Uint8Array(sourceBuffer), {
         includeGeometry: true, compressGeometryChunksInWorker: true,
         omitSourceHash: true, onGeometryOrder: (ordered) => { meshOrder = ordered; },
+        yieldBetweenSections: true, // written while the page is interactive
       });
       console.log('[useIfcCache] Cache buffer written:', cacheBuffer.byteLength, 'bytes');
 

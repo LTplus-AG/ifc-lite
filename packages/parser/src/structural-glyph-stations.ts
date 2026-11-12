@@ -65,18 +65,21 @@ function crossings(poly: Flat, v: number): number[] {
 
 /** Even-odd point-in-polygon in 2D. */
 function inside(p: readonly [number, number], poly: Flat): boolean {
-  return crossings(poly, p[1]).filter((x) => p[0] < x).length % 2 === 1;
+  let hit = false;
+  for (const x of crossings(poly, p[1])) if (p[0] < x) hit = !hit;
+  return hit;
 }
 
 /**
  * A point inside a 2D polygon of non-zero area: the midpoint of the widest
- * span of a scanline, tried through the middle first, then between each pair
- * of adjacent vertex heights. A line between two heights passes no vertex, so
- * its crossings pair into spans whose midpoints are inside (even-odd).
+ * span of a scanline halfway between two adjacent vertex heights, the gap
+ * nearest the middle first. Such a line passes no vertex, so its crossings
+ * pair into spans whose midpoints are inside (even-odd).
  */
 function interiorPoint(poly: Flat): readonly [number, number] {
   const heights = [...new Set(poly.map((p) => p[1]))].sort((a, b) => a - b);
-  const rows = [(heights[0] + heights[heights.length - 1]) / 2, ...heights.slice(1).map((v, i) => (heights[i] + v) / 2)];
+  const middle = (heights[0] + heights[heights.length - 1]) / 2;
+  const rows = heights.slice(1).map((v, i) => (heights[i] + v) / 2).sort((a, b) => Math.abs(a - middle) - Math.abs(b - middle));
   for (const v of rows) {
     const xs = crossings(poly, v).sort((a, b) => a - b);
     let best: readonly [number, number] | undefined;
@@ -102,9 +105,8 @@ function flatten(polygon: readonly Vec3[]): { frame: Frame; flat: Flat } | null 
 const lift = (frame: Frame, u: number, v: number): Vec3 => add(frame.origin, add(scale(frame.x, u), scale(frame.y, v)));
 
 /** A point on a face: its centroid when that lies on it, else a scanline point (a notched face). */
-function faceCentre(polygon: readonly Vec3[]): Vec3 {
+function faceCentre(polygon: readonly Vec3[], face = flatten(polygon)): Vec3 {
   const c = centroid(polygon);
-  const face = flatten(polygon);
   if (!face) return c;
   const { frame, flat } = face;
   const cc = [dot(sub(c, frame.origin), frame.x), dot(sub(c, frame.origin), frame.y)] as const;
@@ -131,7 +133,7 @@ function faceStations(polygon: readonly Vec3[]): Vec3[] {
       if (inside([u, v], flat)) out.push(lift(frame, u, v));
     }
   }
-  return out.length ? out : [faceCentre(polygon)];
+  return out.length ? out : [faceCentre(polygon, face)];
 }
 
 /** Where a shape anchors a single marker: the vertex, the edge midpoint, or a point on the face. */

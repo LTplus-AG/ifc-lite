@@ -411,6 +411,19 @@ describe('face stations', () => {
     close(shapeCentre({ kind: 'face', polygon: [[0, 0, 0], [2, 0, 0], [2, 2, 0], [0, 2, 0]] }), [1, 1, 0]);
   });
 
+  it('places a notched face in a tilted, offset plane on that face', () => {
+    // The C shape turned 30 degrees about x and moved to (5, -3, 2).
+    const [c, sn] = [Math.cos(Math.PI / 6), Math.sin(Math.PI / 6)];
+    const flat: [number, number][] = [[0, 0], [1, 0], [1, 0.16], [0.16, 0.16], [0.16, 0.84], [1, 0.84], [1, 1], [0, 1]];
+    const toWorld = ([u, v]: readonly number[]): [number, number, number] => [5 + u, -3 + v * c, 2 + v * sn];
+    const polygon = flat.map(toWorld);
+    // Scanline halfway between heights 0.16 and 0.84 crosses only the spine, 0 to 0.16.
+    const stations = shapeStations({ kind: 'face', polygon });
+    expect(stations).toHaveLength(1);
+    close(stations[0], toWorld([0.08, 0.5]));
+    close(shapeCentre({ kind: 'face', polygon }), toWorld([0.08, 0.5]));
+  });
+
   it('retains interior stations for a convex sliver', () => {
     const polygon: [number, number, number][] = [[0, 0, 0], [1, 1, 0], [0.99, 1, 0]];
     const stations = shapeStations({ kind: 'face', polygon });

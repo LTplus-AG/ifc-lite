@@ -217,26 +217,26 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
   const pending: Pending[] = [];
 
   /**
-   * The frame `LOCAL_COORDS` loads are given in. An activity takes the local
-   * axes of the curve or surface item it acts on, whatever its own shape: a
-   * surface item's face frame (its reference surface, else its face normal
-   * turned to the item's placement z), an edge on it taking z from that
-   * frame; a curve item's edge frame (z towards its Axis). Without such an
-   * item, the activity's own shape: an edge with z towards the item's Axis,
-   * a face turned to its owner's placement z; a point, its own placement
-   * when it draws at its own vertex, else the connection's condition frame.
+   * The frame `LOCAL_COORDS` loads are given in. An activity's own face with
+   * a reference surface takes that surface. Otherwise an activity on a
+   * surface item takes the item's face frame (its reference surface, else
+   * its face normal turned to the item's placement z), an edge on it taking z
+   * from that frame. Otherwise: an edge, x along it and z towards the item's
+   * Axis; a point on a curve item, that item's edge frame; an own bare face,
+   * its normal turned to the activity's placement z; a point, its own
+   * placement when it draws at its own vertex, else the connection's
+   * condition frame.
    */
   const localFrame = (activity: StructuralActivityInfo, item: ItemRef | undefined, own: boolean, shape: ItemShape): Frame | null => {
+    if (own && shape.kind === 'face' && shape.surface) return shape.surface;
     const zOf = (id: number) => reader.productFrame(id)?.z ?? null;
     const host = item ? itemShape(item.expressId, item.type) : null;
-    if (item && host?.kind === 'face') {
-      const surface = shapeFrame(host, zOf(item.expressId));
-      return shape.kind === 'edge' ? shapeFrame(shape, surface?.z ?? null) : surface;
-    }
-    const axis = item ? edgeAxis(item.expressId, item.Axis) : null;
-    if (shape.kind === 'face') return shapeFrame(shape, zOf(own || !item ? activity.expressId : item.expressId));
-    if (shape.kind === 'edge') return shapeFrame(shape, axis);
-    if (host?.kind === 'edge') return shapeFrame(host, axis);
+    const surface = item && host?.kind === 'face' ? shapeFrame(host, zOf(item.expressId)) : null;
+    if (surface) return shape.kind === 'edge' ? shapeFrame(shape, surface.z) : surface;
+    if (shape.kind === 'face') return shapeFrame(shape, zOf(activity.expressId));
+    const axis = () => (item ? edgeAxis(item.expressId, item.Axis) : null);
+    if (shape.kind === 'edge') return shapeFrame(shape, axis());
+    if (host?.kind === 'edge') return shapeFrame(host, axis());
     if (own || !item) return reader.productFrame(activity.expressId);
     return item.connection ? conditionFrame(item.connection) : reader.productFrame(item.expressId);
   };

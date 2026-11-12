@@ -269,6 +269,14 @@ const FRAMES = `ISO-10303-21;HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('f.if
 #240=IFCPRODUCTDEFINITIONSHAPE($,$,(#239));
 #241=IFCSTRUCTURALPLANARACTION(${id(241)},$,'OZ',$,$,#228,#240,#211,.LOCAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);
 #242=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(242)},$,$,$,#209,#241);
+#250=IFCDIRECTION((0.,0.,1.));
+#251=IFCAXIS2PLACEMENT3D(#22,#36,#250);
+#252=IFCPLANE(#251);
+#253=IFCFACESURFACE((#35),#252,.T.);
+#254=IFCTOPOLOGYREPRESENTATION(#3,'Reference','Face',(#253));
+#255=IFCPRODUCTDEFINITIONSHAPE($,$,(#254));
+#256=IFCSTRUCTURALPLANARACTION(${id(256)},$,'OWNSURF',$,$,#20,#255,#50,.LOCAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);
+#257=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(257)},$,$,$,#43,#256);
 ENDSEC;END-ISO-10303-21;`;
 
 describe('structuralGlyphs local frames of curve and surface items', () => {
@@ -287,6 +295,13 @@ describe('structuralGlyphs local frames of curve and surface items', () => {
     expect(forces.length).toBeGreaterThan(0);
     // Surface x is world +Y; the first side runs (0, 2, 0) to (0, 2, 2), +Z.
     for (const g of forces) close(g.direction, [0, 1, 0]);
+  });
+
+  it('takes an own face reference surface over the surface item it acts on', async () => {
+    // Its own plane has x along +Z; the wall's has x along +Y.
+    const forces = arrows(await load(), 256);
+    expect(forces.length).toBeGreaterThan(0);
+    for (const g of forces) close(g.direction, [0, 0, 1]);
   });
 
   it('places a surface configuration value at its x and y in the reference surface', async () => {

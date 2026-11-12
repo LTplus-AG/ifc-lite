@@ -23,13 +23,23 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const STEP = parse(readFileSync(join(ROOT, '.github', 'workflows', 'test-red-on-main.yml'), 'utf8'))
   .jobs.report.steps.find((s) => s.name === 'Warn when the scripts-tests shards drift apart');
 
-/** Run the shipped step with `gh` printing `lines` (the step's own --jq output) and exiting `status`. */
-function runStep(lines, status = 0) {
+/**
+ * Run the shipped step against `jobs` (an Actions jobs-API page). The stub
+ * `gh` hands the step's own --jq expression to the real jq, so the filter is
+ * tested too; `status` makes gh fail instead.
+ */
+function runStep(jobs, status = 0) {
   assert.ok(STEP, 'test-red-on-main.yml has no shard-drift step');
   const dir = mkdtempSync(join(tmpdir(), 'shard-drift-'));
   try {
-    writeFileSync(join(dir, 'out.txt'), lines.map((l) => `${l}\n`).join(''));
-    writeFileSync(join(dir, 'gh'), `#!/bin/sh\ncat '${join(dir, 'out.txt')}'\nexit ${status}\n`);
+    writeFileSync(join(dir, 'jobs.json'), JSON.stringify({ jobs }));
+    writeFileSync(join(dir, 'gh'), [
+      '#!/bin/sh',
+      `[ ${status} -eq 0 ] || exit ${status}`,
+      'while [ "$#" -gt 0 ]; do if [ "$1" = --jq ]; then shift; exec jq -r "$1" ' + `'${join(dir, 'jobs.json')}'; fi; shift; done`,
+      'exit 64',
+      '',
+    ].join('\n'));
     chmodSync(join(dir, 'gh'), 0o755);
     const res = spawnSync('bash', ['-e', '-c', STEP.run], {
       encoding: 'utf8',
@@ -41,7 +51,19 @@ function runStep(lines, status = 0) {
   }
 }
 
-const job = (n, seconds) => `Node scripts tests (shard ${n}/2)\t${seconds}`;
+// The API's form, which jq's fromdateiso8601 needs: no milliseconds.
+const at = (s) => new Date(Date.UTC(2026, 10, 12, 0, 0, s)).toISOString().replace('.000Z', 'Z');
+/** A shard job whose test step took `seconds`, after `setup` seconds of other steps. */
+const job = (n, seconds, { conclusion = 'success', setup = 120 } = {}) => ({
+  name: `Node scripts tests (shard ${n}/2)`,
+  conclusion,
+  started_at: at(0),
+  completed_at: at(setup + seconds),
+  steps: [
+    { name: 'Verify fixtures', started_at: at(0), completed_at: at(setup) },
+    { name: 'Run every scripts/ test file (glob catch-all)', started_at: at(setup), completed_at: at(setup + seconds) },
+  ],
+});
 
 test('balanced shards: no warning', () => {
   assert.deepEqual(runStep([job(1, 370), job(2, 310)]), { status: 0, warnings: [] });
@@ -61,7 +83,12 @@ test('exactly at the limit does not warn; just over it does', () => {
 
 test('a run without two successful shards has nothing to compare, and does not warn', () => {
   assert.deepEqual(runStep([]), { status: 0, warnings: [] });
-  assert.deepEqual(runStep([job(1, 300)]), { status: 0, warnings: [] });
+  assert.deepEqual(runStep([job(1, 300), job(2, 30, { conclusion: 'failure' })]), { status: 0, warnings: [] });
+});
+
+test('the test step is timed, not the job: equal setup does not hide drift', () => {
+  // 445 / 178 s of tests is 2.5x; with 600 s of setup on each the JOB ratio would be ~1.35x.
+  assert.equal(runStep([job(1, 178, { setup: 600 }), job(2, 445, { setup: 600 })]).warnings.length, 1);
 });
 
 test('an unreadable run warns instead of failing', () => {

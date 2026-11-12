@@ -69,8 +69,10 @@ jobs:
 
       # The scripts-tests shards are split by a pinned list
       # (scripts/ci-scripts-test-shards.mjs) and every new test file lands on
-      # shard 2, so they drift apart. Warn when one takes over MAX_RATIO times
-      # the other; never fail, and say so when the jobs cannot be read.
+      # shard 2, so they drift apart. Warn when one shard's test step takes over
+      # MAX_RATIO times the other's (the step, not the job: setup is the same on
+      # both and would hide drift); never fail, and say so when the run cannot
+      # be read.
       - name: Warn when the scripts-tests shards drift apart
         if: always()
         env:
@@ -82,7 +84,7 @@ jobs:
         run: |
           set -uo pipefail
           if ! durations=$(gh api --paginate "repos/$REPO/actions/runs/$RUN_ID/jobs?per_page=100" \
-              --jq '.jobs[] | select((.name | startswith("Node scripts tests (shard ")) and .conclusion == "success") | "\(.name)\t\((.completed_at | fromdateiso8601) - (.started_at | fromdateiso8601))"'); then
+              --jq '.jobs[] | select((.name | startswith("Node scripts tests (shard ")) and .conclusion == "success") | [.name, (.steps[] | select(.name == "Run every scripts/ test file (glob catch-all)" and .completed_at != null) | (.completed_at | fromdateiso8601) - (.started_at | fromdateiso8601))] | select(length == 2) | "\(.[0])\t\(.[1])"'); then
             echo "::warning title=scripts-tests shard drift::could not read the jobs of run ${RUN_ID}"
             exit 0
           fi

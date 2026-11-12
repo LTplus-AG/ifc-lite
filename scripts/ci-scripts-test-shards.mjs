@@ -43,8 +43,7 @@ export class ShardError extends Error {}
 
 /**
  * This shard's files, in the order given, and the pins that no longer name a
- * listed file. A stale pin costs balance only: its file is gone or renamed,
- * so it is simply not pinned, and the caller warns.
+ * listed file.
  * @param {string[]} files the full list, every shard sees the same one
  * @param {number} shard 1-based
  * @param {number} total the number of shards the matrix expanded

@@ -8,7 +8,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { CachedEntityIndexColumns } from '@ifc-lite/cache';
-import { buildEntityIndexFromCachedColumns } from './ifcCacheDecode.js';
+import { buildEntityIndexFromCachedColumns } from './ifcCacheDecodeStore.js';
 
 /** The previous build, verbatim. */
 function reference(columns: CachedEntityIndexColumns): Map<string, number[]> {

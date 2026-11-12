@@ -151,23 +151,18 @@ function retryViewer(env, mode, reportDir) {
   return record;
 }
 
-/**
- * The E2E retry's command and environment. Only `on` reports the retry to
- * Mergify: in `shadow` the job keeps the first attempt's verdict, so the
- * retry stays out of Mergify's record. The Mergify reporter is left off the
- * `--reporter` list (which replaces the config's, `withMergify`'s entry
- * included) and MERGIFY_TOKEN is removed from the environment.
- */
+/** The E2E retry's command and environment; only `on` reports the retry to Mergify. */
 export function e2eRetryCommand({ mode, shard, lastFailedFile, env }) {
   const reporters = mode === 'on' ? 'list,@mergifyio/playwright,json' : 'list,json';
-  const { MERGIFY_TOKEN, ...rest } = env;
+  // `--reporter` replaces the config's list, withMergify's entry included.
+  const { MERGIFY_TOKEN: _token, ...rest } = env;
   return {
     args: [
       '--signal=INT', '--kill-after=30s', E2E_RETRY_TIMEOUT,
       'pnpm', 'test:e2e:ci', `--shard=${shard}`, `--reporter=${reporters}`,
       '--last-failed', `--last-failed-file=${lastFailedFile}`, '--output=test-results/retry',
     ],
-    env: mode === 'on' && MERGIFY_TOKEN !== undefined ? { ...rest, MERGIFY_TOKEN } : rest,
+    env: mode === 'on' ? env : rest,
   };
 }
 

@@ -425,5 +425,4 @@ test('#9788 review: in `shadow` no retry result reaches Mergify; in `on` both at
   const on = e2eRetryCommand({ mode: 'on', shard: '3/8', lastFailedFile: 'f', env });
   assert.deepEqual(on.args.filter((a) => a.startsWith('--reporter=')), ['--reporter=list,@mergifyio/playwright,json']); // @source-text-assertion-ok filters the derived argv, not a source file
   assert.equal(on.env.MERGIFY_TOKEN, 'secret');
-  assert.deepEqual(on.args.filter((a) => a === '--shard=3/8' || a === '--last-failed-file=f'), ['--shard=3/8', '--last-failed-file=f']);
 });

@@ -153,6 +153,13 @@ async function main(): Promise<void> {
     });
     const transport = new StdioTransport();
     await transport.connect(server);
+    // The peer stopped reading stdout (EPIPE): nothing can be answered, so leave
+    // cleanly instead of serving into a dead pipe or dying on an unhandled error.
+    transport.onClose((reason) => {
+      if (reason !== 'stdout-error') return;
+      process.exitCode = 0;
+      setTimeout(() => process.exit(0), 1000).unref();
+    });
     process.stderr.write(`[ifc-lite-mcp] ready on stdio (read-only=${opts.readOnly})\n`);
 
     if (opts.autoViewer && registry.count() > 0) {
@@ -232,6 +239,9 @@ async function main(): Promise<void> {
   }
 }
 
+/** Longest a --bridge shutdown may take, whatever stdout does. */
+const SHUTDOWN_DEADLINE_MS = 2000;
+
 async function runBridge(opts: CliOptions): Promise<void> {
   const conflict = bridgeConflict(opts);
   if (conflict) {
@@ -272,19 +282,21 @@ async function runBridge(opts: CliOptions): Promise<void> {
     if (stopping) return;
     stopping = true;
     log(`stopping: ${why}`);
-    // Bridge first: it fails every pending call with `shutting-down`, and
-    // those answers must reach the agent before the transport closes.
+    process.exitCode = exitCode;
+    // Armed FIRST, so exit is bounded even if the flush below never completes
+    // (a peer that stopped reading leaves stdout full and its callback pending).
+    setTimeout(() => process.exit(exitCode), SHUTDOWN_DEADLINE_MS).unref();
+    // Normal case: bridge first, so the `shutting-down` answers to pending
+    // calls are written and flushed before the transport closes.
     void running.close()
       .then(() => new Promise<void>((resolve) => setImmediate(resolve)))
       .then(() => new Promise<void>((resolve) => process.stdout.write('', () => resolve())))
       .finally(() => {
         transport.close();
         process.stdin.destroy();
-        process.exitCode = exitCode;
-        // Anything else still holding the loop must not keep the port's owner alive.
-        setTimeout(() => process.exit(exitCode), 1000).unref();
       });
   };
+  transport.onClose((reason) => { if (reason === 'stdout-error') stop('stdout closed by the MCP client', 0); });
   process.stdin.once('end', () => stop('stdin ended', 0));
   process.stdin.once('close', () => stop('stdin closed', 0));
   process.stdin.once('error', (err) => stop(`stdin error: ${err.message}`, 1));

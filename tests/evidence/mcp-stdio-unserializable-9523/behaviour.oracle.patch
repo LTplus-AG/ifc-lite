@@ -1,6 +1,6 @@
 --- a/packages/mcp/src/transport/stdio.ts
 +++ b/packages/mcp/src/transport/stdio.ts
-@@ -80,7 +80,7 @@ export class StdioTransport {
+@@ -106,7 +106,7 @@ export class StdioTransport {
            // A response that cannot be serialized must still answer its request,
            // or the client waits forever. Notifications are dropped (logged above).
            const id = 'id' in message && ('result' in message || 'error' in message) ? message.id : undefined;
@@ -8,4 +8,4 @@
 +          if (id === undefined || id === null) return;
            line = JSON.stringify(errorResponse(id, JsonRpcErrorCode.InternalError, `Response could not be serialized: ${why}`)) + '\n';
          }
-         this.stdout.write(line);
+         try {

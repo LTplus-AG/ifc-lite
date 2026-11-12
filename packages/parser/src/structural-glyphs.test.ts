@@ -458,9 +458,9 @@ describe('face stations', () => {
 
   it('anchors a face whose rows are cut thin by vertices elsewhere at its most open point', () => {
     // A 1 x 0.3 base with an uneven sawtooth left side and ten thin teeth on
-    // top. Its tallest row (0.2 to 0.29) hugs the top of the base, so a
-    // width-or-row-height score anchors 0.055 from that edge; the point
-    // farthest from every edge is mid-base, about 0.125 clear.
+    // top. Its tallest rows (0.01 to 0.1, 0.2 to 0.29) hug the base's bottom
+    // and top edges, so a width-or-row-height score anchors 0.055 from one of
+    // them; the candidate farthest from every edge is mid-base, 0.125 clear.
     const saw: [number, number, number][] = [[0, 0.3, 0], [0.01, 0.29, 0], [0, 0.2, 0], [0.01, 0.15, 0], [0, 0.1, 0], [0.01, 0.01, 0]];
     const teeth: [number, number, number][] = [];
     for (let i = 9; i >= 0; i--) {

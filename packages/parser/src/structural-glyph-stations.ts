@@ -91,11 +91,12 @@ function clearance([u, v]: readonly [number, number], poly: Flat): number {
  */
 function interiorPoint(poly: Flat): readonly [number, number] {
   const sorted = poly.map((p) => p[1]).sort((a, b) => a - b);
-  const hair = (sorted[sorted.length - 1] - sorted[0]) * 1e-9;
+  const extent = poly.reduce((m, [u, v]) => Math.max(m, Math.abs(u), Math.abs(v)), 0);
+  const hair = extent * 1e-9;
   const heights: number[] = [];
   for (const h of sorted) if (!heights.length || h - heights[heights.length - 1] > hair) heights.push(h);
   let best: readonly [number, number] = poly[0];
-  let farthest = 0;
+  let farthest = -1;
   for (let k = 1; k < heights.length; k++) {
     const v = (heights[k - 1] + heights[k]) / 2;
     const xs = crossings(poly, v).sort((a, b) => a - b);

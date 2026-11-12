@@ -77,7 +77,7 @@ test('a local run keeps its normal output and ends with the skip count', (t) => 
   const { run } = runFixture(t, 2, { args: [`--test-reporter=${REPORTER}`, '--test-reporter-destination=stdout'] });
   assert.equal(run.status, 0, run.stderr);
   assert.match(run.stdout, /\bruns\b/, "node's default output is still rendered");
-  assert.match(run.stdout, /# skipped 3/);
+  assert.match(run.stdout, /\bskipped 3\b/); // TAP '# skipped 3' or spec 'ℹ skipped 3' (Node 24)
   assert.ok(run.stdout.trimEnd().endsWith(lib().contrastSkipSummary(2)), run.stdout.slice(-300));
 });
 

@@ -61,8 +61,11 @@ test('an oracle over contrast harness tests is a named gap, not a launch failure
   assert.match(missing, /Google Chrome for the contrast harness \(1 test file\(s\)/);
   assert.equal(runGates(root, [{ name: 'witness', unavailable: missing, args: ['-e', 'process.exit(9)'] }], () => {})[0].result, 'SKIPPED');
   assert.doesNotMatch(oraclePrerequisites(root, { test: harnessTest }, 'unused', () => 'system-chrome') ?? '', /contrast harness/);
-  const neverAsked = () => { throw new Error('probed for a test that does not use the harness'); };
-  assert.doesNotMatch(oraclePrerequisites(root, { test: plainTest }, 'unused', neverAsked) ?? '', /contrast harness/);
+  // Counted, not thrown: oraclePrerequisites catches a probe error, so a throw here would pass unnoticed.
+  let probes = 0;
+  const counted = () => { probes += 1; return 'missing'; };
+  assert.doesNotMatch(oraclePrerequisites(root, { test: plainTest }, 'unused', counted) ?? '', /contrast/);
+  assert.equal(probes, 0, 'a test that does not use the harness is never probed');
 });
 
 test('a contrast browser probe that cannot run is a named gap, not a thrown failure', (t) => {

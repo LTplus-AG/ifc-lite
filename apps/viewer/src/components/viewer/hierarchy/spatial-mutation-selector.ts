@@ -18,11 +18,11 @@ function signature(store: IfcDataStore, view: MutablePropertyView): string {
   const revision = view.getMutationRevision();
   const cached = byView.get(view);
   if (cached?.revision === revision) return cached.signature;
-  const typeOf = (id: number) => view.readNewEntity(id)?.type ?? store.entities.getTypeName(id);
+  const typeOf = (id: number) => view.getEntityTypeMutation(id)?.newType ?? view.readNewEntity(id)?.type ?? store.entities.getTypeName(id);
   const attributes = (type: string, values: unknown[]) => isPhysicalObjectType(type)
     ? values.map((value, index) => index === 5 || index === 6 ? null : value) : values;
-  const created = view.readNewEntities().filter(row => !PLACEMENTS.has(row.type.toUpperCase()))
-    .map(row => [row.expressId, row.type, attributes(row.type, row.attributes)]);
+  const created = view.readNewEntities().filter(row => !PLACEMENTS.has(typeOf(row.expressId).toUpperCase()))
+    .map(row => [row.expressId, row.type, attributes(typeOf(row.expressId), row.attributes)]);
   const overrides = view.getAttributeOverrideEntityIds().flatMap(id => {
     const type = typeOf(id);
     if (PLACEMENTS.has(type.toUpperCase())) return [];

@@ -48,6 +48,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { isMainEntry } from './lib/is-main-entry.mjs';
+import { MANIFEST_PATH, assignShards, parseManifest } from './viewer-test-shards.mjs';
 import {
   MAX_RETRY_FILES,
   MAX_RETRY_TESTS,
@@ -58,6 +59,7 @@ import {
   indexPlaywrightReport,
   judgeE2eRetry,
   judgeViewerRetry,
+  oneLine,
   parseNodeTap,
   planRetry,
   readLastRun,
@@ -72,7 +74,7 @@ const RETRY_JUNIT = join(VIEWER_ROOT, 'mergify-junit-retry.xml');
 
 /** test.yml gives each job this much extra time while the switch is on. */
 const VIEWER_RETRY_TIMEOUT = '8m';
-const E2E_RETRY_TIMEOUT = '4m';
+const E2E_RETRY_TIMEOUT = '8m';
 
 function readOptional(path) {
   try {
@@ -100,6 +102,20 @@ function required(env, name) {
   return v;
 }
 
+/**
+ * A failure located in a file this shard does not run (a test registered from
+ * another file) would be retried by a pattern the shard filter then empties
+ * or narrows. Refuse it rather than let the other files' pass stand for it.
+ */
+function notInShard(files, env) {
+  const count = Number(env.TEST_SHARDS);
+  const shard = Number(env.TEST_SHARD);
+  if (!Number.isInteger(count) || !Number.isInteger(shard)) return 'TEST_SHARDS/TEST_SHARD are not set';
+  const assigned = assignShards(files, parseManifest(readFileSync(MANIFEST_PATH, 'utf8')), count);
+  const outside = files.filter((f) => assigned.get(f) !== shard);
+  return outside.length > 0 ? `failure(s) located in file(s) this shard does not run: ${outside.join(', ')}` : null;
+}
+
 function retryViewer(env, mode, reportDir) {
   const tap = readOptional(resolve(VIEWER_ROOT, required(env, 'TAP_FILE')));
   const first = tap === null ? null : parseNodeTap(tap);
@@ -109,7 +125,7 @@ function retryViewer(env, mode, reportDir) {
     count: attributed.files.length,
     cap: MAX_RETRY_FILES,
     unattributed: attributed.unattributed,
-    refusal: tap === null ? 'the first attempt left no TAP file' : incompleteViewerAttempt(first) ?? undefined,
+    refusal: tap === null ? 'the first attempt left no TAP file' : incompleteViewerAttempt(first) ?? notInShard(attributed.files, env) ?? undefined,
   });
   const record = { kind: 'viewer', shard: env.TEST_SHARD ?? '?', mode, plan, files: attributed.files, tests: attributed.tests };
   if (!plan.retry) return record;
@@ -130,7 +146,8 @@ function retryViewer(env, mode, reportDir) {
     },
   });
   const retried = readOptional(retryTap);
-  record.result = judgeViewerRetry({ exitCode: r.status, summary: retried === null ? null : parseNodeTap(retried).summary });
+  const again = retried === null ? null : parseNodeTap(retried);
+  record.result = judgeViewerRetry({ exitCode: r.status, summary: again?.summary ?? null, passed: again?.passed, tests: attributed.tests });
   return record;
 }
 
@@ -184,7 +201,9 @@ export function run(argv, env = process.env) {
   if (env.GITHUB_STEP_SUMMARY) appendFileSync(env.GITHUB_STEP_SUMMARY, `${lines.join('\n')}\n`);
   if (passed) {
     const verb = mode === 'on' ? 'needed a retry' : 'would have passed on retry';
-    for (const t of record.tests) console.log(`::warning title=Flaky test (${kind} shard ${record.shard})::${t.file} › ${t.title} ${verb}`);
+    // Workflow-command escaping: %, CR and LF in the message.
+    const esc = (v) => oneLine(v).replace(/%/g, '%25');
+    for (const t of record.tests) console.log(`::warning title=Flaky test (${kind} shard ${record.shard})::${esc(t.file)} › ${esc(t.title)} ${verb}`);
   }
   return passed ? 0 : 1;
 }

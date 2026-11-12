@@ -1294,8 +1294,8 @@ jobs:
     needs: [changes, build]
     if: (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true') && needs.changes.outputs.replay != 'true' && needs.changes.outputs.lane != 'fast'
     runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
-    # +10 only while CI_SHARD_RETRY can retry: room for the 8-minute retry.
-    timeout-minutes: ${{ (vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on') && 35 || 25 }}
+    # +15 only while CI_SHARD_RETRY can retry: the 8.5-minute retry plus its uploads.
+    timeout-minutes: ${{ (vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on') && 40 || 25 }}
     strategy:
       fail-fast: false
       matrix:
@@ -1365,10 +1365,6 @@ jobs:
       - id: viewer_tests
         run: pnpm --filter @ifc-lite/viewer run test
         continue-on-error: ${{ vars.CI_SHARD_RETRY == 'on' }}
-        # While the switch can retry, a hung first attempt stops at 23 minutes
-        # instead of eating the retry's extra job time (it would not be retried:
-        # no closing summary). Off, 25 is the job's own limit, as before.
-        timeout-minutes: ${{ (vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on') && 23 || 25 }}
         env:
           NODE_OPTIONS: --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml${{ (vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on') && format(' --test-reporter=tap --test-reporter-destination={0}/viewer-attempt1.tap', runner.temp) || '' }}
           TEST_SHARDS: '16'
@@ -2203,8 +2199,9 @@ jobs:
     if: (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true') && ((github.event_name == 'pull_request' && needs.changes.outputs.lane != 'fast') || (github.event_name == 'merge_group' && vars.CI_PR_LANE == 'fast'))
     # Free runner — vite build + a ~2.4MB model; not compute-bound.
     runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
-    # +6 only while CI_SHARD_RETRY can retry: room for the 4.5-minute retry.
-    timeout-minutes: ${{ (vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on') && 26 || 20 }}
+    # +12 only while CI_SHARD_RETRY can retry: the 8.5-minute retry (a test may
+    # take 240 s) plus its uploads.
+    timeout-minutes: ${{ (vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on') && 32 || 20 }}
     strategy:
       fail-fast: false
       # #7655: working SwiftShader presentation adds real rendering work;

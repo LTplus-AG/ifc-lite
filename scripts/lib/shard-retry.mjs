@@ -35,6 +35,7 @@ export function decideMode(raw) {
   return { mode: 'off', warning: `CI_SHARD_RETRY=${JSON.stringify(String(raw))} is not one of ${MODES.join(', ')}; no retry` };
 }
 
+const OK = /^ *ok \d+ - (.*?)(?: # (SKIP|TODO)\b.*)?$/;
 const NOT_OK = /^( *)not ok \d+ - (.*?)(?: # (SKIP|TODO)\b.*)?$/;
 const YAML_FIELD = /^ *(location|failureType|type): '((?:[^']|'')*)'$/;
 const SUMMARY = /^# (tests|suites|pass|fail|cancelled|skipped|todo|duration_ms) ([\d.]+)$/;
@@ -51,10 +52,12 @@ function unescapeTitle(s) {
  *
  * @param {string} text
  * @returns {{ failures: { title: string, depth: number, location: string|null, failureType: string|null, type: string|null }[],
- *             summary: Record<string, number>|null }}
+ *             passed: Set<string>, summary: Record<string, number>|null }}
+ * `passed` holds the titles of tests that passed (any depth), skips and todos excluded.
  */
 export function parseNodeTap(text) {
   const failures = [];
+  const passed = new Set();
   const counts = {};
   let open = null;
   for (const raw of String(text).split('\n')) {
@@ -62,6 +65,8 @@ export function parseNodeTap(text) {
     const s = SUMMARY.exec(line);
     // Anything after a run of count lines means they were not the closing block.
     if (!s && line.trim() !== '') for (const k of Object.keys(counts)) delete counts[k];
+    const ok = OK.exec(line);
+    if (ok && !ok[2]) passed.add(unescapeTitle(ok[1]));
     const m = NOT_OK.exec(line);
     if (m) {
       open = null;
@@ -84,7 +89,7 @@ export function parseNodeTap(text) {
     if (f) open[f[1]] = f[2].replace(/''/g, "'");
   }
   const summary = ['tests', 'pass', 'fail', 'cancelled', 'duration_ms'].every((k) => k in counts) ? counts : null;
-  return { failures, summary };
+  return { failures, passed, summary };
 }
 
 /** A viewer test path; no segment may start with `.`, so `..` cannot escape `src/`. */
@@ -176,12 +181,20 @@ export function planRetry({ mode, count, cap, unattributed = [], refusal }) {
   return { retry: true, reason: `retrying ${count}` };
 }
 
-/** A viewer retry passed: exit 0, a complete TAP summary, at least one pass, nothing failed or cancelled. */
-export function judgeViewerRetry({ exitCode, summary }) {
+/**
+ * A viewer retry passed: exit 0, a complete TAP summary, at least one pass,
+ * nothing failed or cancelled, and every test that failed on the first
+ * attempt (`tests`) passed again: a skip or todo on retry is not a pass. A
+ * file-level failure (its title is the file's path) has no test to match;
+ * its file must still load and pass, which the counts cover.
+ */
+export function judgeViewerRetry({ exitCode, summary, passed = new Set(), tests = [] }) {
   if (exitCode !== 0) return { passed: false, reason: `the retry exited ${exitCode ?? 'by signal or timeout'}` };
   if (!summary) return { passed: false, reason: 'the retry produced no complete TAP summary' };
   if (summary.fail !== 0 || summary.cancelled !== 0) return { passed: false, reason: `the retry reported ${summary.fail} failed, ${summary.cancelled} cancelled` };
   if (!(summary.pass >= 1)) return { passed: false, reason: 'the retry ran no passing test' };
+  const missing = tests.filter((t) => t.title !== t.file && !passed.has(t.title));
+  if (missing.length > 0) return { passed: false, reason: `${missing.length} test(s) that failed did not pass on retry: ${missing.map((t) => t.title).join('; ')}` };
   return { passed: true, reason: `the retry passed (${summary.pass} passed)` };
 }
 
@@ -279,6 +292,11 @@ export function judgeE2eRetry({ exitCode, ids, report }) {
   return { passed: true, reason: `all ${ids.length} retried test(s) passed` };
 }
 
+/** A title on one line, for a table cell or an annotation. */
+export function oneLine(s) {
+  return String(s).replace(/[\r\n]+/g, ' ');
+}
+
 /**
  * The job-summary section for one shard.
  * @param {{ kind: string, shard: string, mode: string, plan: { retry: boolean, reason: string },
@@ -295,7 +313,7 @@ export function summaryLines(r) {
   }
   if (r.tests.length > 0) {
     lines.push('', '| Failed on the first attempt | File |', '| --- | --- |');
-    for (const t of r.tests) lines.push(`| ${t.title.replace(/\|/g, '\\|')} | \`${t.file}\` |`);
+    for (const t of r.tests) lines.push(`| ${oneLine(t.title).replace(/\|/g, '\\|')} | \`${t.file}\` |`);
   }
   lines.push('');
   if (r.mode === 'on') {

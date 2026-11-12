@@ -46,6 +46,7 @@ const {
   readLastRun,
   unintendedSkips,
   viewerPattern,
+  oneLine,
 } = await guarded('./lib/shard-retry.mjs');
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -233,6 +234,33 @@ test('a viewer retry passes only with exit 0, a full summary, a pass, and nothin
   assert.equal(judgeViewerRetry({ exitCode: 0, summary: { ...ok, pass: 0 } }).passed, false, 'ran nothing');
 });
 
+test('/code-review on #9788: a viewer retry passes only if each test that failed passed again; a skip on retry is not a pass', () => {
+  // Real TAP: the test that failed first now skips at runtime, its neighbour passes.
+  const { tap } = realTap('retry-skips', {
+    'src/a.test.ts': "import test from 'node:test';\ntest('flaky', (t) => { t.skip('not here'); });\ntest('steady', () => {});\n",
+  });
+  const again = parseNodeTap(tap);
+  assert.equal(again.summary.fail, 0);
+  const tests = [{ file: 'src/a.test.ts', title: 'flaky' }];
+  assert.equal(judgeViewerRetry({ exitCode: 0, summary: again.summary, passed: again.passed, tests }).passed, false);
+  assert.equal(judgeViewerRetry({ exitCode: 0, summary: again.summary, passed: again.passed, tests: [{ file: 'src/a.test.ts', title: 'steady' }] }).passed, true);
+  assert.equal(judgeViewerRetry({ exitCode: 0, summary: again.summary, passed: again.passed, tests: [{ file: 'src/a.test.ts', title: 'src/a.test.ts' }] }).passed, true, 'a file-level failure has no test title to match');
+});
+
+test('/code-review on #9788: a failure located in a file this shard does not run is not retried', () => {
+  const file = 'src/hooks/useSandbox.runSupersession.test.tsx';
+  const shard = assignShards([file], parseManifest(readFileSync(MANIFEST_PATH, 'utf8')), 16).get(file);
+  const tap = join(TMP, 'other-shard.tap');
+  writeFileSync(tap, `not ok 1 - ${file}\n# tests 1\n# pass 0\n# fail 1\n# cancelled 0\n# duration_ms 1\n`);
+  const r = cli('viewer', { CI_SHARD_RETRY: 'on', TAP_FILE: tap, TEST_SHARDS: '16', TEST_SHARD: String((shard + 1) % 16) });
+  assert.equal(r.record.plan.retry, false);
+  assert.match(r.record.plan.reason, /this shard does not run/); // @source-text-assertion-ok subject is the plan's reason
+});
+
+test('titles reach the summary table and annotations on one line', () => {
+  assert.equal(oneLine('a\r\nb\nc'), 'a b c');
+});
+
 test('only a `failed` Playwright run is retried; a hang or a timeout is not', () => {
   assert.deepEqual(readLastRun('{"status":"failed","failedTests":["a","a","b"]}'), { ids: ['a', 'b'] });
   assert.ok(readLastRun('{"status":"interrupted","failedTests":["a"]}').refusal);
@@ -308,7 +336,8 @@ test('#9788 review: a retry passes only when every retried test really passed; a
 function cli(kind, env) {
   const dir = mkdtempSync(join(TMP, 'cli-'));
   const summary = join(dir, 'summary.md');
-  const code = run([kind], { REPORT_DIR: join(dir, 'out'), GITHUB_STEP_SUMMARY: summary, ...env });
+  // One shard holding every path, unless a test names a real one.
+  const code = run([kind], { REPORT_DIR: join(dir, 'out'), GITHUB_STEP_SUMMARY: summary, TEST_SHARDS: '1', TEST_SHARD: '0', ...env });
   const record = JSON.parse(readFileSync(join(dir, 'out', `${kind}-retry.json`), 'utf8'));
   return { code, record, summary: readFileSync(summary, 'utf8') };
 }

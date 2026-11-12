@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { ErrorReportHost } from './components/error-report/ErrorReportHost';
 /**
  * Main application component.
  *
@@ -13,15 +12,11 @@ import { ErrorReportHost } from './components/error-report/ErrorReportHost';
  *   /mcp[/...]         → @ifc-lite/mcp marketing surface
  */
 
-import { ViewerLayout } from './components/viewer/ViewerLayout';
-import { BimProvider } from './sdk/BimProvider';
-import { ExtensionHostProvider } from './sdk/ExtensionHostProvider';
-import { SourceHostProvider } from './services/sources/SourceHostProvider';
+import { ViewerRoot } from './components/viewer/ViewerRoot';
 import type { FileSourceProviderFactory } from './services/sources/source-host';
 import { Toaster } from './components/ui/toast';
 import { ChunkErrorBoundary } from './components/ChunkErrorBoundary';
 import { StaleDeploymentNotice } from './components/StaleDeploymentNotice';
-import { LensRuntimeHost } from './components/viewer/LensRuntimeHost';
 import { Suspense, lazy, useEffect, useState } from 'react';
 import { Analytics } from '@vercel/analytics/react';
 
@@ -42,6 +37,7 @@ const McpPlayground = lazy(() =>
 const RteGpuWitness = lazy(() =>
   import('./e2e/RteGpuWitness').then((m) => ({ default: m.RteGpuWitness })),
 );
+const RegistryLaunchRoute = lazy(() => import('./components/sources/RegistryLaunchRoute'));
 
 // Neutral full-viewport placeholder while a lazy MCP route chunk loads. Both
 // /mcp routes render on a near-black stage (McpLanding's `NIGHT` = #0a0a0c), so
@@ -76,6 +72,11 @@ export function App({ sourceProviders }: AppProps = {}) {
   const normalizedPath = pathname.length > 1 && pathname.endsWith('/')
     ? pathname.slice(0, -1)
     : pathname;
+  if (normalizedPath === '/open-artifact' || normalizedPath === '/open-artifact/callback') {
+    return <ChunkErrorBoundary key="registry-launch" label="Registry model">
+      <Suspense fallback={<RouteFallback />}><RegistryLaunchRoute sourceProviders={sourceProviders} /></Suspense>
+    </ChunkErrorBoundary>;
+  }
   if (normalizedPath === '/rte-gpu-witness') {
     return (
       <ChunkErrorBoundary key={normalizedPath} label="RTE GPU witness">
@@ -119,24 +120,7 @@ export function App({ sourceProviders }: AppProps = {}) {
     );
   }
 
-  return (
-    <>
-    {import.meta.env.VITE_MODEL_REPORTS_ENABLED === 'true' && <ErrorReportHost />}
-    <BimProvider>
-      <ExtensionHostProvider>
-        <SourceHostProvider additionalProviders={sourceProviders}>
-          <LensRuntimeHost />
-          {/* Toasts mount inside `ViewportContainer` itself (#5504, charter
-              #5478 item 22), anchored to the viewport's bottom-right above
-              the status bar, rather than the whole window's here. */}
-          <ViewerLayout />
-          <StaleDeploymentNotice />
-          <Analytics />
-        </SourceHostProvider>
-      </ExtensionHostProvider>
-    </BimProvider>
-    </>
-  );
+  return <ViewerRoot sourceProviders={sourceProviders} />;
 }
 
 export default App;

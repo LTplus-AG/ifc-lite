@@ -8,15 +8,15 @@ import { useSourceHost } from '@/services/sources/SourceHostProvider';
 import { SourceSettingsDialog } from './SourceSettingsDialog';
 import { SourceBrowser } from './SourceBrowser';
 import { SourceProviderRow } from './SourceProviderRow';
+import { useHandoffWorkspace } from '@/lib/registry/handoff-workspace';
 import { SourceFavouritesList } from './SourceFavouritesList';
 import { useSourceDownloadBatch } from './useSourceDownloadBatch';
 import type { SourceFavourite } from '@/lib/sources/favourites';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
 import { AlertCircle, Cloud, X } from 'lucide-react';
-import { useTranslation } from '@/i18n';
+import { useTranslation, type TranslationKey } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
-import type { TranslationKey } from '@/i18n';
 import { getLocale, hasActiveTranslation, resolveEnglish, selectPluralCategory } from '@/i18n/registry';
 import { useViewerStore } from '@/store';
 import { loadResolvedSourcePrefs, saveSourcePrefs } from '@/lib/sources/preferences';
@@ -113,7 +113,7 @@ export function SourcesPanel({ onClose, registryEnabled = import.meta.env?.VITE_
   const [readyProviders, setReadyProviders] = useState<ReadonlySet<string>>(() => new Set());
   const [downloadContext, setDownloadContext] = useState<{ providerId: string; projectId: string } | null>(null);
   const downloadOwner = downloadContext?.providerId ?? null;
-  const [browsing, setBrowsing] = useState<string | null>(null);
+  const [browsing, setBrowsing] = useState<string | null>(() => useHandoffWorkspace.getState().handoff ? 'oci-registry' : null);
   const [registryBusy, setRegistryBusy] = useState(false);
   const [settingsFor, setSettingsFor] = useState<string | null>(null);
   // Bumped when saved prefs change so rows/contexts re-derive configured state.

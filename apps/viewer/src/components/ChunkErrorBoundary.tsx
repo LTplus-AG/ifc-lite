@@ -75,6 +75,7 @@ const CHUNK_LABEL_KEYS = {
   'MCP page': 'viewerShell.chunkLabel.mcpPage',
   'MCP playground': 'viewerShell.chunkLabel.mcpPlayground',
   'RTE GPU witness': 'viewerShell.chunkLabel.rteGpuWitness',
+  'Registry model': 'registry.launch.title',
   'Saved runs': 'compareAnalysis.reconcile.savedTitle',
   'Material layers': 'modelInspector.layers.title',
   'Storey manager': 'storeyManager.title',

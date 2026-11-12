@@ -62,21 +62,22 @@ pub(super) struct ItemResult {
 pub(super) struct ItemControl {
     pub(super) retained: Option<RetainedSelection>,
     offset: (f64, f64, f64),
-    /// Set by the product walk for a structural member: its face items take
-    /// `structural_face_plan::lower_member_face` (#9668).
-    structural: bool,
+    /// `GeometryRouter::member_face_selected` for this item, decided by the
+    /// product walk: the item takes `StructuralMemberFaceProcessor` (#9668).
+    /// Callers must not set it any other way; nothing here re-checks it.
+    member_face: bool,
     step: Option<ItemStep>,
 }
 
 impl ItemControl {
     pub(super) fn new(offset: (f64, f64, f64)) -> Self {
         let reports = ConstructionReports::default();
-        Self { retained: None, offset, structural: false, step: Some(ItemStep::Source { phase: ItemPhase::LowerRtc, reports }) }
+        Self { retained: None, offset, member_face: false, step: Some(ItemStep::Source { phase: ItemPhase::LowerRtc, reports }) }
     }
 
-    /// An item of a structural member (see the `structural` field).
-    pub(super) fn of_structural_member(mut self, structural: bool) -> Self {
-        self.structural = structural;
+    /// See the `member_face` field.
+    pub(super) fn member_face(mut self, member_face: bool) -> Self {
+        self.member_face = member_face;
         self
     }
 
@@ -103,7 +104,7 @@ impl ItemControl {
             ItemStep::Source { phase, reports } => {
                 if let Some(selection) = &self.retained {
                     selection.execute(item, router, decoder)
-                } else { execute_source(item, self.offset, self.structural, phase, reports, router, decoder) }
+                } else { execute_source(item, self.offset, self.member_face, phase, reports, router, decoder) }
             }
             ItemStep::Ready(ready) => ItemStep::Complete(ready.execute()),
             ItemStep::Boolean { machine, reports } => execute_boolean(item, machine, reports, router, decoder),
@@ -157,14 +158,13 @@ enum Lowered {
 fn execute_source(
     item: &DecodedEntity,
     offset: (f64, f64, f64),
-    structural: bool,
+    member_face: bool,
     phase: ItemPhase,
     prior: ConstructionReports,
     router: &GeometryRouter,
     decoder: &mut EntityDecoder,
 ) -> ItemStep {
-    // `structural` is `GeometryRouter::member_face_selected`, decided by the product walk.
-    let selected: Option<&dyn crate::router::GeometryProcessor> = if structural {
+    let selected: Option<&dyn crate::router::GeometryProcessor> = if member_face {
         Some(&crate::processors::StructuralMemberFaceProcessor)
     } else {
         router.processor_for(&item.ifc_type).map(|processor| processor.as_ref())

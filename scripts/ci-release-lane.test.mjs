@@ -321,10 +321,13 @@ test('DIFF: a deleted .changeset file that changesets ignores is not a consumed 
 });
 
 test('DIFF: everything that is not a version bump is named', () => {
+  // Each package.json moves `version` and has a changed CHANGELOG.md beside
+  // it, so it is rejected for what else it changed, not for a missing pair or
+  // an unmoved version (#9783 review: test-that-cannot-fail).
   const files = {
-    'a/package.json': { before: pkg('1.0.0'), after: pkg('1.0.0', { exports: { '.': './dist/index.js' } }) },
-    'b/package.json': { before: pkg('1.0.0'), after: JSON.stringify({ ...JSON.parse(pkg('1.0.0')), dependencies: { '@ifc-lite/core': 'workspace:*', lodash: '^4.1.0' } }) },
-    'c/package.json': { before: pkg('1.0.0'), after: JSON.stringify({ ...JSON.parse(pkg('1.0.0')), dependencies: { '@ifc-lite/core': 'file:../x', lodash: '^4.0.0' } }) },
+    'a/package.json': { before: pkg('1.0.0'), after: pkg('1.1.0', { exports: { '.': './dist/index.js' } }) },
+    'b/package.json': { before: pkg('1.0.0'), after: JSON.stringify({ ...JSON.parse(pkg('1.1.0')), dependencies: { '@ifc-lite/core': 'workspace:*', lodash: '^4.1.0' } }) },
+    'c/package.json': { before: pkg('1.0.0'), after: JSON.stringify({ ...JSON.parse(pkg('1.1.0')), dependencies: { '@ifc-lite/core': 'file:../x', lodash: '^4.0.0' } }) },
     'd/package.json': { before: '{', after: '{}' },
   };
   const entries = [
@@ -333,11 +336,23 @@ test('DIFF: everything that is not a version bump is named', () => {
     { status: 'M', path: 'scripts/rust-major-offset.mjs' },
     { status: 'D', path: 'packages/x/CHANGELOG.md' },
     { status: 'A', path: 'packages/y/package.json' },
-    ...['a', 'b', 'c', 'd'].map((p) => ({ status: 'M', path: `${p}/package.json` })),
+    ...['a', 'b', 'c', 'd'].flatMap((p) => [{ status: 'M', path: `${p}/package.json` }, { status: 'M', path: `${p}/CHANGELOG.md` }]),
     { status: 'A', path: 'docs/CHANGELOG.md' },
   ];
   const problems = diffProblems(entries, fakeGit(files));
-  assert.equal(problems.length, entries.length, problems.join('\n'));
+  const unreadable = problems.find((l) => l.startsWith('d/package.json: unreadable ('));
+  assert.ok(unreadable, problems.join('\n'));
+  assert.deepEqual(problems.filter((l) => l !== unreadable), [
+    '.changeset/new.md: a changeset may only be consumed (deleted)',
+    '.changeset/config.json: not a release file',
+    'scripts/rust-major-offset.mjs: not a release file',
+    'packages/x/CHANGELOG.md: status D',
+    'packages/y/package.json: status A',
+    'a/package.json: `exports` changed',
+    'b/package.json: `dependencies` changed',
+    'c/package.json: `dependencies` changed',
+    'docs/CHANGELOG.md: its package.json did not change, so changesets did not write it',
+  ]);
   assert.deepEqual(diffProblems([], fakeGit({})), ['the diff is empty or unreadable']);
 });
 

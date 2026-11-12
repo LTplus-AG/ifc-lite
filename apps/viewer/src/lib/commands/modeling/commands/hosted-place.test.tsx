@@ -291,7 +291,7 @@ describe('opening.place slab shaft (#9296)', () => {
     assert.equal(gesture().host?.expressId, id);
     assert.equal(gesture().host?.hostKind, 'slab');
     assert.deepEqual(gesture().shaft, { Width: 1.5, Depth: 2 });
-    act(() => { writeCommandField('shaftWidth', 1.2); writeCommandField('shaftDepth', 1.6); });
+    act(() => { writeCommandField(0, 1.2); writeCommandField(1, 1.6); });
     assert.deepEqual(gesture().shaft, { Width: 1.2, Depth: 1.6 });
     assert.ok(OPENING_PLACE.ghost!(gesture(), getCommandRuntime().ctx as CommandContext).length);
     const before = undoDepth();

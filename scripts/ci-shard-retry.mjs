@@ -164,13 +164,6 @@ function retryViewer(env, mode, reportDir) {
   // file's results: a same-titled test elsewhere cannot stand in. The runs
   // share one budget, so five files take no longer than one retry did.
   const deadline = Date.now() + budget;
-  // In `on` the first file that fails again decides the shard, so stop there;
-  // `shadow` runs every file for the measurement.
-  const results = [];
-  for (const [i, file] of attributed.files.entries()) {
-    if (mode === 'on' && results.some((x) => !x.passed)) break;
-    results.push(retryOneFile(file, i));
-  }
   function retryOneFile(file, i) {
     const left = Math.floor((deadline - Date.now()) / 1000);
     if (left < 1) return { file, passed: false, reason: 'the shared retry budget ran out before this file' };
@@ -192,6 +185,14 @@ function retryViewer(env, mode, reportDir) {
     const again = retried === null ? null : parseNodeTap(retried);
     const verdict = judgeViewerRetry({ exitCode: r.status, summary: again?.summary ?? null, passed: again?.passed, tests: attributed.tests.filter((t) => t.file === file) });
     return { file, ...verdict };
+  }
+  // In `on` the first file that fails again decides the shard, so stop there;
+  // `shadow` runs every file for the measurement.
+  const results = [];
+  for (const [i, file] of attributed.files.entries()) {
+    const result = retryOneFile(file, i);
+    results.push(result);
+    if (mode === 'on' && !result.passed) break;
   }
   const failed = results.filter((x) => !x.passed);
   record.result = failed.length === 0

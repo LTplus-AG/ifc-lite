@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { IDSAuditSummary } from '@/components/viewer/IDSAuditSummary.js';
 import { SelectorFeedbackList } from '@/components/viewer/SearchModal.filter.feedback.js';
 import { cleanup, render } from '@/test/render.js';
-import { closeContrastBrowser, withThemedPage, measureTextContrastOnSurface, type Theme } from './render-harness.js';
+import { CONTRAST_BROWSER_SKIP, closeContrastBrowser, withThemedPage, measureTextContrastOnSurface, type Theme } from './render-harness.js';
 import { WCAG_AA_NORMAL_TEXT } from './wcag.js';
 
 afterEach(cleanup);
@@ -33,7 +33,7 @@ describe('root viewer status roles (Refs #8802)', () => {
       assert.ok(notice.classList.contains(`text-${state.role}`), 'status uses its colour role');
     });
     for (const theme of ['light', 'dark', 'colorful'] as Theme[]) {
-      it(`${state.name} paints its role and clears AA in ${theme}`, async () => {
+      it(`${state.name} paints its role and clears AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
         const ui = state.mount();
         const notice = ui.querySelector(state.selector);
         assert.ok(notice);

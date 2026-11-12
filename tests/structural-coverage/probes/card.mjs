@@ -21,8 +21,9 @@
  *
  * Every record of the row's entity in every carrier file is checked, as in
  * `read.mjs`. For each own attribute, every record that sets it must show that
- * attribute with the file's value; an attribute no fixture sets is unproven.
- * Pass needs every record shown and every value equal.
+ * attribute with the file's value, and every record that leaves it unset must
+ * show no value for it; an attribute no fixture sets is unproven. Pass needs
+ * every record shown and every value equal.
  */
 
 import { existsSync } from 'node:fs';
@@ -136,6 +137,9 @@ async function cardRow(ctx, model, row, carriers) {
   if (lost.length) out.push(`${lost.length} of ${records.length} record(s) on no card, e.g. ${lost[0].where}`);
   const value = (r, attr) => normalize(r.rec.args[row.attributes.indexOf(attr)], r.file.step, types);
   for (const attr of row.own) {
+    // A record whose file leaves the attribute unset (`$`) must show no value for it either.
+    const invented = records.filter((r) => r.section && value(r, attr) === null && r.section.rows.some((x) => x.attribute === attr));
+    if (invented.length) out.push(`${attr} shown for ${invented.length} record(s) the file leaves unset, e.g. ${invented[0].where}`);
     const setters = records.filter((r) => value(r, attr) !== null);
     if (!setters.length) { out.push(`${attr}: no fixture sets it, so showing it is unproven`); continue; }
     const carded = setters.filter((r) => r.section);

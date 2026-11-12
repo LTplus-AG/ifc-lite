@@ -36,6 +36,14 @@ test('a pin naming no listed file costs balance only: reported, and every listed
   assert.ok(shards[1].files.includes('scripts/renamed.test.mjs'));
 });
 
+test('with every pin gone, the shards split by position and still cover every file once', () => {
+  const moved = [...OTHERS, ...PINS.map((f) => f.replace('scripts/', 'scripts/moved/'))].sort();
+  const shards = [1, 2].map((n) => filesForShard(moved, n, SHARD_COUNT));
+  assert.deepEqual(shards[0].stale, [...PINS]);
+  assert.ok(shards.every((x) => x.files.length > 0));
+  assert.deepEqual(shards.flatMap((x) => x.files).sort(), moved);
+});
+
 test('refuses a matrix that no longer matches SHARD_COUNT', () => {
   // A matrix trimmed to one shard would otherwise run only the pinned files.
   assert.throws(() => filesForShard(LIST, 1, 1), /change both together/);
@@ -89,6 +97,8 @@ test('the CLI runs exactly its shard, and fails closed on a bad plan', () => {
     assert.equal(stale.status, 0);
     assert.match(stale.stderr, /::warning title=scripts-tests pins::/);
     assert.equal(stale.files.length, PINS.length - 1);
+    // Only shard 1 reports it, so each stale pin is one annotation, not two.
+    assert.doesNotMatch(ran(2, SHARD_COUNT, LIST.filter((f) => f !== PINS[1])).stderr, /::warning/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

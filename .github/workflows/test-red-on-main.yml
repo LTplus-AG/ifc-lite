@@ -84,17 +84,19 @@ jobs:
         run: |
           set -uo pipefail
           if ! durations=$(gh api --paginate "repos/$REPO/actions/runs/$RUN_ID/jobs?per_page=100" \
-              --jq '.jobs[] | select((.name | startswith("Node scripts tests (shard ")) and .conclusion == "success") | [.name, (.steps[] | select(.name == "Run every scripts/ test file (glob catch-all)" and .completed_at != null) | (.completed_at | fromdateiso8601) - (.started_at | fromdateiso8601))] | select(length == 2) | "\(.[0])\t\(.[1])"'); then
+              --jq '.jobs[] | select((.name | startswith("Node scripts tests (shard ")) and .conclusion == "success") | [.name, ([.steps[] | select(.name == "Run every scripts/ test file (glob catch-all)" and .completed_at != null) | (.completed_at | fromdateiso8601) - (.started_at | fromdateiso8601)] | first // "missing")] | "\(.[0])\t\(.[1])"'); then
             echo "::warning title=scripts-tests shard drift::could not read the jobs of run ${RUN_ID}"
             exit 0
           fi
           printf '%s\n' "$durations" | awk -F'\t' -v max="$MAX_RATIO" -v url="$RUN_URL" '
+            NF == 2 && $2 == "missing" { printf "::warning title=scripts-tests shard drift::%s has no finished test step to time; the step name in this filter no longer matches test.yml\n", $1; miss = 1; next }
             NF == 2 { n++; name[n] = $1; t[n] = $2 }
             END {
+              if (miss) exit 0
               if (n != 2) { printf "scripts-tests shard drift: %d successful shard job(s) in this run, nothing to compare\n", n; exit 0 }
               hi = (t[1] >= t[2]) ? 1 : 2; lo = 3 - hi
-              if (t[lo] > 0 && t[hi] / t[lo] > max + 0)
-                printf "::warning title=scripts-tests shard drift::%s took %ds, %.2fx %s (%ds), over the %sx limit. Re-pin PINNED in scripts/ci-scripts-test-shards.mjs from this run: %s\n", name[hi], t[hi], t[hi] / t[lo], name[lo], t[lo], max, url
+              if ((t[lo] <= 0 && t[hi] > 0) || (t[lo] > 0 && t[hi] / t[lo] > max + 0))
+                printf "::warning title=scripts-tests shard drift::%s took %ds against %s (%ds), over the %sx limit. Re-pin PINNED in scripts/ci-scripts-test-shards.mjs from this run: %s\n", name[hi], t[hi], name[lo], t[lo], max, url
               else
                 printf "scripts-tests shards within %sx: %s %ds, %s %ds\n", max, name[1], t[1], name[2], t[2]
             }'

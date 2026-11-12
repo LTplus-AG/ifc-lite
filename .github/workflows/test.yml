@@ -1816,6 +1816,17 @@ jobs:
     env:
       HAS_MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN != '' }}
     steps:
+      # matrix.shard only names the check run; the runner takes its shard from
+      # strategy.job-index. Fail in seconds, before setup, if they disagree.
+      - name: Check the shard name matches its index
+        env:
+          SHARD_INDEX: ${{ strategy.job-index }}
+          MATRIX_SHARD: ${{ matrix.shard }}
+        run: |
+          if [ "$((SHARD_INDEX + 1))" != "$MATRIX_SHARD" ]; then
+            echo "::error title=scripts-tests shard::this job is named shard ${MATRIX_SHARD} but runs shard $((SHARD_INDEX + 1)) (strategy.job-index ${SHARD_INDEX}); keep the matrix list as [1, 2] in order"
+            exit 2
+          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: false
@@ -1863,14 +1874,8 @@ jobs:
         env:
           SHARD_INDEX: ${{ strategy.job-index }}
           SHARD_TOTAL: ${{ strategy.job-total }}
-          # Only the check-run name; the runner uses the index. They must agree.
-          MATRIX_SHARD: ${{ matrix.shard }}
         run: |
           SHARD="$((SHARD_INDEX + 1))"
-          if [ "$SHARD" != "$MATRIX_SHARD" ]; then
-            echo "::error title=scripts-tests shard::this job is named shard ${MATRIX_SHARD} but runs shard ${SHARD} (strategy.job-index ${SHARD_INDEX}); keep the matrix list as [1, 2] in order"
-            exit 2
-          fi
           node scripts/ci-scripts-test-shards.mjs --shard="$SHARD" --of="$SHARD_TOTAL" --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml $(printf '%s\n' \
             scripts/check-asset-usage.test.mjs \
             scripts/check-changeset-bump.test.mjs \

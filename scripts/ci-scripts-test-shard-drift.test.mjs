@@ -22,6 +22,14 @@ import { parse } from 'yaml';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const STEP = parse(readFileSync(join(ROOT, '.github', 'workflows', 'test-red-on-main.yml'), 'utf8'))
   .jobs.report.steps.find((s) => s.name === 'Warn when the scripts-tests shards drift apart');
+// The fixture names the test step exactly as test.yml does, so renaming it
+// there without updating the drift filter fails these tests.
+const TEST_STEP = parse(readFileSync(join(ROOT, '.github', 'workflows', 'test.yml'), 'utf8'))
+  .jobs['scripts-tests'].steps.find((s) => s.id === 'scripts_tests')?.name;
+
+test('the system jq this harness stands in for gh --jq with is installed', () => {
+  assert.equal(spawnSync('jq', ['--version']).status, 0, 'jq is not on PATH; the stub gh below needs it');
+});
 
 /**
  * Run the shipped step against `jobs` (an Actions jobs-API page). The stub
@@ -61,7 +69,7 @@ const job = (n, seconds, { conclusion = 'success', setup = 120 } = {}) => ({
   completed_at: at(setup + seconds),
   steps: [
     { name: 'Verify fixtures', started_at: at(0), completed_at: at(setup) },
-    { name: 'Run every scripts/ test file (glob catch-all)', started_at: at(setup), completed_at: at(setup + seconds) },
+    { name: TEST_STEP, started_at: at(setup), completed_at: at(setup + seconds) },
   ],
 });
 
@@ -89,6 +97,15 @@ test('a run without two successful shards has nothing to compare, and does not w
 test('the test step is timed, not the job: equal setup does not hide drift', () => {
   // 445 / 178 s of tests is 2.5x; with 600 s of setup on each the JOB ratio would be ~1.35x.
   assert.equal(runStep([job(1, 178, { setup: 600 }), job(2, 445, { setup: 600 })]).warnings.length, 1);
+});
+
+test('a successful shard whose test step is not found warns instead of reading as balanced', () => {
+  const renamed = { ...job(2, 300), steps: [{ name: 'Some other step', started_at: at(0), completed_at: at(300) }] };
+  assert.equal(runStep([job(1, 300), renamed]).warnings.length, 1);
+});
+
+test('a zero-second faster shard is drift, not balance', () => {
+  assert.equal(runStep([job(1, 400), job(2, 0)]).warnings.length, 1);
 });
 
 test('an unreadable run warns instead of failing', () => {

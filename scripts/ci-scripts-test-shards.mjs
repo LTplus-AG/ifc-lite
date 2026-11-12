@@ -14,15 +14,15 @@
  * 43115735242); shard 2 is EVERYTHING ELSE, so a test file added tomorrow runs
  * on shard 2 without anyone editing this file, and every file in the list runs
  * on exactly one shard. A pinned list rather than a duration manifest such as
- * viewer-test-shards.mjs's: at two shards the pins are the whole plan, and a
- * renamed pin fails loudly instead of being re-placed by hash.
+ * viewer-test-shards.mjs's: at two shards the pins are the whole plan.
  *
  * Refuses a shard count other than SHARD_COUNT (the matrix changed without
  * this file), a shard that would run nothing, duplicates, and any flag that
  * could make node run less. A pin naming no listed file (renamed or deleted)
- * only warns: its file is unpinned and the balance, not coverage, suffers.
- * Each shard writes its duration to the step summary; test-red-on-main.yml
- * warns on main when the two drift apart.
+ * only warns, from shard 1: its file is unpinned and the balance, not
+ * coverage, suffers. If no pin is left, the shards split by position. Each
+ * shard writes its duration to the step summary; test-red-on-main.yml warns
+ * on main when the two drift apart.
  */
 
 import { spawnSync } from 'node:child_process';
@@ -58,9 +58,13 @@ export function filesForShard(files, shard, total) {
   }
   const listed = new Set(files);
   if (listed.size !== files.length) throw new ShardError('the file list contains duplicates');
-  const pinned = new Set(PINNED);
   const stale = PINNED.filter((f) => !listed.has(f));
-  const mine = files.filter((f) => pinned.has(f) === (shard === 1));
+  const pinned = new Set(PINNED.filter((f) => listed.has(f)));
+  // No pin left (every pinned file renamed or moved): split by position, so
+  // every file still runs exactly once, rather than leaving shard 1 empty.
+  const mine = pinned.size === 0
+    ? files.filter((_, i) => i % SHARD_COUNT === shard - 1)
+    : files.filter((f) => pinned.has(f) === (shard === 1));
   if (mine.length === 0) throw new ShardError(`shard ${shard} of ${total} would run no test file`);
   return { files: mine, stale };
 }
@@ -93,7 +97,7 @@ function main() {
     console.error(`::error title=scripts-tests shard::${err.message}`);
     process.exit(2);
   }
-  if (plan.stale.length > 0) {
+  if (plan.stale.length > 0 && plan.shard === 1) {
     console.error(
       `::warning title=scripts-tests pins::pinned file(s) not in the list, now unpinned: ${plan.stale.join(', ')}. ` +
         'Re-pin PINNED in scripts/ci-scripts-test-shards.mjs from the latest shard times.'
@@ -102,18 +106,25 @@ function main() {
   console.error(`ci-scripts-test-shards: shard ${plan.shard}/${plan.total} runs ${plan.files.length} of ${plan.of} test files`);
   const started = Date.now();
   const run = spawnSync(process.execPath, ['--test', ...plan.flags, ...plan.files], { stdio: 'inherit' });
-  if (process.env.GITHUB_STEP_SUMMARY) {
-    appendFileSync(
-      process.env.GITHUB_STEP_SUMMARY,
-      `scripts-tests shard ${plan.shard}/${plan.total}: ${plan.files.length} files, ${Math.round((Date.now() - started) / 1000)} s\n`
-    );
-  }
   if (run.error) {
     console.error(`::error title=scripts-tests shard::could not start node --test: ${run.error.message}`);
     process.exit(2);
   }
-  if (run.signal) console.error(`::error title=scripts-tests shard::node --test was killed by ${run.signal}`);
-  process.exit(run.status ?? 1);
+  if (run.signal) {
+    console.error(`::error title=scripts-tests shard::node --test was killed by ${run.signal}`);
+    process.exit(1);
+  }
+  if (process.env.GITHUB_STEP_SUMMARY) {
+    try {
+      appendFileSync(
+        process.env.GITHUB_STEP_SUMMARY,
+        `scripts-tests shard ${plan.shard}/${plan.total}: ${plan.files.length} files, ${Math.round((Date.now() - started) / 1000)} s\n`
+      );
+    } catch (err) {
+      console.error(`::warning title=scripts-tests shard::could not write the step summary: ${err.message}`);
+    }
+  }
+  process.exit(run.status);
 }
 
 if (isMainEntry(import.meta.url)) main();

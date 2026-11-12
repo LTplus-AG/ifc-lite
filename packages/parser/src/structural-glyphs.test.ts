@@ -162,7 +162,8 @@ ENDSEC;END-ISO-10303-21;`;
  * Metres, identity placements. A vertical surface member in the world YZ
  * plane whose polygon starts at (0, 2, 0), on an IfcPlane with Axis +X and
  * RefDirection +Y (surface x = +Y, y = +Z, z = +X). A curve member along +Y
- * at x = 5 with Axis +Z.
+ * at x = 5 with Axis +Z. A bare IfcFace slab at z = 10 wound clockwise seen
+ * from above (winding normal -Z) under an identity placement (z +Z).
  */
 const FRAMES = `ISO-10303-21;HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('f.ifc','',(''),(''),'','','');FILE_SCHEMA(('IFC4'));ENDSEC;DATA;
 #1=IFCPROJECT(${id(1)},$,'P',$,$,$,$,(#3),#2);
@@ -231,6 +232,20 @@ const FRAMES = `ISO-10303-21;HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('f.if
 #96=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(96)},$,$,$,#78,#95);
 #97=IFCSTRUCTURALLOADGROUP(${id(97)},$,'G',$,$,.LOAD_GROUP.,.PERMANENT_G.,.DEAD.,1.,$);
 #98=IFCRELASSIGNSTOGROUP(${id(98)},$,$,$,(#92,#95),$,#97);
+#200=IFCCARTESIANPOINT((0.,0.,10.));
+#201=IFCCARTESIANPOINT((0.,1.,10.));
+#202=IFCCARTESIANPOINT((1.,1.,10.));
+#203=IFCCARTESIANPOINT((1.,0.,10.));
+#204=IFCPOLYLOOP((#200,#201,#202,#203));
+#205=IFCFACEOUTERBOUND(#204,.T.);
+#206=IFCFACE((#205));
+#207=IFCTOPOLOGYREPRESENTATION(#3,'Reference','Face',(#206));
+#208=IFCPRODUCTDEFINITIONSHAPE($,$,(#207));
+#209=IFCSTRUCTURALSURFACEMEMBER(${id(209)},$,'Slab',$,$,#20,#208,.SHELL.,0.2);
+#210=IFCSTRUCTURALSURFACECONNECTION(${id(210)},$,'SlabBed',$,$,#20,#208,#44);
+#211=IFCSTRUCTURALLOADPLANARFORCE('pz',$,$,-1.);
+#212=IFCSTRUCTURALPLANARACTION(${id(212)},$,'PZ',$,$,$,$,#211,.LOCAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);
+#213=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(213)},$,$,$,#209,#212);
 ENDSEC;END-ISO-10303-21;`;
 
 describe('structuralGlyphs local frames of curve and surface items', () => {
@@ -256,6 +271,17 @@ describe('structuralGlyphs local frames of curve and surface items', () => {
     expect(forces).toHaveLength(2);
     close(forces[0].position, [0, 1, 0.5]);
     close(forces[1].position, [0, 1.5, 1.5]);
+  });
+
+  it('turns a bare face normal to its placement z, so support and local load agree whatever the winding', async () => {
+    const glyphs = await load();
+    const supports = bySource(glyphs, 210).filter((g) => g.kind === 'support');
+    expect(supports.length).toBeGreaterThan(0);
+    for (const g of supports) close(g.kind === 'support' ? g.direction : undefined, [0, 0, 1]);
+    const forces = arrows(glyphs, 212);
+    expect(forces.length).toBeGreaterThan(0);
+    // Local z is +Z, so PlanarForceZ = -1 points down.
+    for (const g of forces) close(g.direction, [0, 0, -1]);
   });
 
   it('takes the local z of a curve action on a surface member from the surface normal', async () => {

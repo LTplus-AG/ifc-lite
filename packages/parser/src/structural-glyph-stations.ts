@@ -35,7 +35,9 @@ function centroid(polygon: readonly Vec3[]): Vec3 {
  * The local frame of a shape, used for `LOCAL_COORDS` loads and for support
  * orientation along edges and faces. An edge: x along it, z as close to
  * `zHint` (the member's `Axis`, else world Z) as x allows. A face: its
- * reference surface frame, else z its normal and x along its first side.
+ * reference surface frame, else z its normal (turned to the side of `zHint`,
+ * the owner's placement z, so the winding does not flip it) and x along its
+ * first side.
  */
 export function shapeFrame(shape: ItemShape, zHint: Vec3 | null): Frame | null {
   if (shape.kind === 'vertex') return null;
@@ -48,7 +50,8 @@ export function shapeFrame(shape: ItemShape, zHint: Vec3 | null): Frame | null {
   }
   if (shape.surface) return shape.surface;
   const n = polygonNormal(shape.polygon);
-  return n ? frameFrom(shape.polygon[0], n, sub(shape.polygon[1], shape.polygon[0])) : null;
+  if (!n) return null;
+  return frameFrom(shape.polygon[0], zHint && dot(n, zHint) < 0 ? scale(n, -1) : n, sub(shape.polygon[1], shape.polygon[0]));
 }
 
 type Flat = readonly (readonly [number, number])[];

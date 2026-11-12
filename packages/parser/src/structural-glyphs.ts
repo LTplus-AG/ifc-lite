@@ -16,8 +16,10 @@
  * - a support at every point, curve and surface connection whose
  *   `AppliedCondition` restrains something (`structuralSupportKind`); along an
  *   edge or over a face it repeats. Its `direction` is the support frame's Z
- *   (the connection's `ConditionCoordinateSystem` when given): the symbol hangs
- *   below the node, against it.
+ *   (the connection's `ConditionCoordinateSystem` when given; along an edge,
+ *   z towards its Axis; over a face, the reference surface normal, else the
+ *   face normal on the side of the placement z): the symbol hangs below the
+ *   node, against it.
  * - for each action (reactions are results, not drawn): the force resultant of
  *   X/Y/Z as an arrow per station, the moment resultant as one moment glyph,
  *   and a marker for a displacement or a temperature load. `GLOBAL_COORDS`
@@ -166,10 +168,9 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
     const frame = conditionFrame(connection);
     if (!shape || !frame) continue;
     // A curve connection's frame has x along the edge and z towards its Axis;
-    // a surface connection's is its reference surface (z its normal), else
-    // its placement.
+    // a surface connection's is its face frame, on the side of its placement z.
     const axis = shape.kind === 'edge' ? edgeAxis(connection.expressId, connectionAxis(connection)) : null;
-    const local = shape.kind === 'face' ? shape.surface : axis && shapeFrame(shape, axis);
+    const local = shape.kind === 'face' ? shapeFrame(shape, frame.z) : axis && shapeFrame(shape, axis);
     const direction = normalize(local?.z ?? frame.z) ?? [0, 0, 1];
     for (const position of shapeStations(shape)) glyphs.push({ kind: 'support', support, position, direction, source: sourceOf(connection) });
   }
@@ -223,11 +224,13 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
    * the normal of the surface item it lies on. Over a face, its frame.
    */
   const localFrame = (activity: StructuralActivityInfo, item: ItemRef | undefined, own: boolean, shape: ItemShape): Frame | null => {
-    if (shape.kind === 'face') return shapeFrame(shape, null);
+    /** A face's z hint: its owner's placement z (the item, else the activity). */
+    const placementZ = () => reader.productFrame(item?.expressId ?? activity.expressId)?.z ?? null;
+    if (shape.kind === 'face') return shapeFrame(shape, placementZ());
     const hostShape = item ? itemShape(item.expressId, item.type) : null;
-    const axis = item ? edgeAxis(item.expressId, item.Axis) : null;
-    if (shape.kind === 'edge') return shapeFrame(shape, hostShape?.kind === 'face' ? shapeFrame(hostShape, null)?.z ?? null : axis);
-    if (hostShape && hostShape.kind !== 'vertex') return shapeFrame(hostShape, axis);
+    const hint = hostShape?.kind === 'face' ? placementZ() : item ? edgeAxis(item.expressId, item.Axis) : null;
+    if (shape.kind === 'edge') return shapeFrame(shape, hostShape?.kind === 'face' ? shapeFrame(hostShape, hint)?.z ?? null : hint);
+    if (hostShape && hostShape.kind !== 'vertex') return shapeFrame(hostShape, hint);
     if (own || !item) return reader.productFrame(activity.expressId);
     return item.connection ? conditionFrame(item.connection) : reader.productFrame(item.expressId);
   };

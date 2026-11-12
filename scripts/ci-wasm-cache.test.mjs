@@ -100,6 +100,16 @@ test('parseInputEntries strips comments and refuses paths that cannot be repo-re
   ]);
 });
 
+test('the shipped list: the README keys the cache only; the wasm-pack pin also gates the prebuilt bundle', () => {
+  // #9793 review. README.md reaches pkg/README.md, which npm does not ship;
+  // the setup-wasm-build pin builds the published bundle in release.yml.
+  const repoRoot = join(HERE, '..');
+  const all = readInputList(repoRoot);
+  const published = readInputList(repoRoot, { published: true });
+  assert.ok(all.includes('README.md') && !published.includes('README.md'));
+  assert.ok(published.includes('.github/actions/setup-wasm-build'));
+});
+
 test('published-paths leaves out cache-only entries, and names a bad entry instead of printing nothing silently', () => {
   const root = makeScriptRepo();
   try {
@@ -489,6 +499,8 @@ test('with the shipped list, editing any known build input moves the key', () =>
       'scripts/build-wasm.sh': 'scripts/build-wasm.sh',
       'scripts/test-diff-decode-leaks.sh': 'scripts/test-diff-decode-leaks.sh',
       '.github/actions/setup-wasm-build': '.github/actions/setup-wasm-build/action.yml',
+      // #9793 review: wasm-pack copies the root README into pkg/.
+      'README.md': 'README.md',
     };
     for (const [input, file] of Object.entries(known)) {
       const before = key();

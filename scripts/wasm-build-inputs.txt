@@ -31,6 +31,12 @@ Cargo.lock
 rust-toolchain.toml
 # wasm32 rustflags: max memory, stack size, +simd128.
 .cargo/config.toml
+# Root README: rust/wasm-bindings/Cargo.toml's `readme` points here and
+# wasm-pack copies it to packages/wasm/pkg/README.md, a cached file.
+# cache-only: packages/wasm/package.json's `files` does not ship it, so it
+# cannot change the published bundle. (pkg/LICENSE and pkg-diff/README.md come
+# from rust/wasm-bindings/LICENSE and rust/diff-wasm/README.md, under rust.)
+cache-only:README.md
 # wasm-pack flags, the nightly pin, CARGO_UNSTABLE_BUILD_STD, the .d.ts
 # post-processing and the engine-binary marker.
 scripts/build-wasm.sh
@@ -41,10 +47,11 @@ cache-only:scripts/test-diff-decode-leaks.sh
 # The cached build's commands, run by both workflows (the build step itself
 # may carry nothing else; scripts/lib/ci-wasm-build-step.mjs checks).
 cache-only:scripts/ci-wasm-build.sh
-# Pinned wasm-pack version and checksum. cache-only: the action also carries
-# CI-only settings (cache SHAs bumped by Dependabot), and Vercel installs its
-# own wasm-pack, so it does not gate the prebuilt npm bundle.
-cache-only:.github/actions/setup-wasm-build
+# Pinned wasm-pack version and checksum. Published, not cache-only: release.yml
+# builds the npm bundle with this pin, so a PR that moves it must not reuse the
+# old bundle. The cost: an edit to the action's CI-only settings (a Dependabot
+# SHA bump) also forces a source build until the next @ifc-lite/wasm release.
+.github/actions/setup-wasm-build
 # What the cache stores and requires (OUTPUT_DIRS, REQUIRED_OUTPUTS): a change
 # there must move the key, or every existing entry is rejected on restore and
 # cannot be overwritten.

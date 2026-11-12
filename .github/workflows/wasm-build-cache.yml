@@ -64,6 +64,15 @@ jobs:
         # Appends to $GITHUB_OUTPUT itself; stdout carries annotations.
         run: node scripts/ci-wasm-cache.mjs plan
 
+      # Under `on`, Plan turning the cache off here (a bad input list, an
+      # unkeyable build step) would leave every later step skipped and this
+      # check green without having compared anything.
+      - name: Fail when the cache is on but planned off
+        if: steps.plan.outputs.mode == 'on' && steps.plan.outputs.active != 'true'
+        run: |
+          echo "::error title=WASM build cache off on main::CI_WASM_CACHE is on but Plan turned the cache off for this push; see the Plan step's warning."
+          exit 1
+
       - name: Restore the WASM build cache
         id: restore
         if: steps.plan.outputs.active == 'true'

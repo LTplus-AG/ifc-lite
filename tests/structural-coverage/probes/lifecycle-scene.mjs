@@ -69,6 +69,28 @@ export async function sharedRemoval(pkgs, schema, stepId) {
     && !scene.before.entities.has(e.expressId) && !e.type.startsWith('IfcRel')).map(e => e.expressId);
   const attrs = [...original.attributes];
   attrs[0] = '0SharedStructural'.padEnd(22, '0');
+  if (schema === 'IFC2X3' && attrs[6] && original.type !== 'IfcStructuralResultGroup') {
+    const shape = scene.editor.getNewEntity(Number(String(attrs[6]).slice(1)));
+    if (shape?.type === 'IfcProductDefinitionShape') {
+      // IFC2X3 gives both PDS and ShapeModel a single representation owner.
+      // Duplicate those containers and share their actual topology Items.
+      const shapeAttrs = [...shape.attributes];
+      shapeAttrs[2] = shapeAttrs[2].map(ref => {
+        const representation = scene.editor.getNewEntity(Number(String(ref).slice(1)));
+        return `#${scene.editor.addEntity(representation.type, [...representation.attributes]).expressId}`;
+      });
+      attrs[6] = `#${scene.editor.addEntity(shape.type, shapeAttrs).expressId}`;
+    }
+  }
+  if (original.type === 'IfcStructuralResultGroup') {
+    // A load group has at most one SourceOfResultGroup in every schema.
+    const group = pkgs.create.addStructuralLoadGroupToStore(scene.editor, scene.anchor, { ActionType:'PERMANENT_G', ActionSource:'DEAD_LOAD_G' }).loadGroupId;
+    attrs[6] = `#${group}`;
+    if (schema === 'IFC2X3') {
+      const action = scene.editor.getNewEntities().find(e => e.type.endsWith('Action'));
+      pkgs.create.assignToStructuralGroupInStore(scene.editor, scene.anchor.ownerHistoryId, group, [action.expressId]);
+    }
+  }
   const second = scene.editor.addEntity(original.type, attrs).expressId;
   // Preserve required inverse assignments without duplicating an activity's
   // SET [0:1] link or IFC2X3's scalar group assignment.

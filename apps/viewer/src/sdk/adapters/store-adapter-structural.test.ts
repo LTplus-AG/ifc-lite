@@ -14,8 +14,7 @@
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
-import { extractStructuralOnDemand } from '@ifc-lite/parser';
-import { effectiveStructuralView } from '../../components/viewer/properties/effectiveStructuralView.js';
+import { extractStructuralOnDemand, effectiveStructuralView } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { GROUND_STOREY, SAMPLE_MODEL, seedAuthoringSample } from '@/test/authoring-sample-fixture';
 import { createStoreAdapter } from './store-adapter.js';
@@ -62,7 +61,7 @@ test('structural edit and owned removal each undo as one operation (#9668)', asy
   await loadStructuralWrites();
   const ref = api.addStructuralCurveMember(SAMPLE_MODEL, storey, member);
   const state = () => useViewerStore.getState();
-  const rows = () => extractStructuralOnDemand(dataStore, effectiveStructuralView(state().mutationViews.get(SAMPLE_MODEL) ?? view, dataStore)).members;
+  const rows = () => extractStructuralOnDemand(dataStore, effectiveStructuralView(dataStore, state().mutationViews.get(SAMPLE_MODEL) ?? view)).members;
   api.editStructuralEntity!(SAMPLE_MODEL, ref.expressId, { Name: 'Edited member', Description: 'Edited description' });
   assert.equal(rows()[0].name, 'Edited member');
   state().undo(SAMPLE_MODEL);

@@ -74,6 +74,7 @@ test('#6833 lists: the Lists panel run is stamped, cited with units and native t
   const store = await parse();
   useViewerStore.setState({ ...fixtureModels(model('arch', store)), listDefinitions: [WALLS] });
   const ui = render(renderPanelBody('lists', () => undefined));
+  await waitFor(() => ui.querySelector(`button[aria-label="Run list ${WALLS.name}"]`) !== null, 'deferred Lists library mounted');
   const run = ui.querySelector(`button[aria-label="Run list ${WALLS.name}"]`);
   assert.ok(run, 'the library offers the saved list');
   click(run);

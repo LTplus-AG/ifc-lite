@@ -228,7 +228,7 @@ function retryE2e(env, mode, reportDir) {
     return t ? { file: `${t.file}:${t.line}`, title: t.title, didNotRun: t.status === 'skipped' } : { file: '?', title: `test id ${id}` };
   });
   const budget = retryBudgetMs(env);
-  const plan = withinBudget(planRetry({ mode, count: retryCount(ids, index), cap: MAX_RETRY_TESTS, refusal: refusal ?? incompleteE2eAttempt({ ids, index }) ?? undefined }), budget);
+  const plan = withinBudget(planRetry({ mode, count: retryCount(ids, index), cap: MAX_RETRY_TESTS, refusal: refusal ?? incompleteE2eAttempt({ ids, index, errors: firstReport?.errors ?? [] }) ?? undefined }), budget);
   const record = { kind: 'e2e', shard, mode, plan, ids, tests };
   if (!plan.retry) return record;
 

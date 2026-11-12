@@ -314,15 +314,21 @@ export function unintendedSkips(index) {
 }
 
 /**
- * Refuse an E2E retry unless the first attempt's JSON report is readable and
- * every test it skipped without asking is among the ids being retried.
- * Playwright 1.64.1 already lists such tests in `.last-run.json`
- * (`didNotRun`); this holds the retry to that independently of the version.
+ * Refuse an E2E retry unless the first attempt's JSON report is readable,
+ * records no run-level error (its top-level `errors`: global setup or
+ * teardown, outside any test, which a retry of tests cannot clear), knows
+ * every failed id, and lists every test it skipped without asking among the
+ * ids being retried. Playwright 1.64.1 already lists such tests in
+ * `.last-run.json` (`didNotRun`); this holds the retry to that independently
+ * of the version.
  *
  * @returns {string|null}
  */
-export function incompleteE2eAttempt({ ids, index }) {
+export function incompleteE2eAttempt({ ids, index, errors = [] }) {
   if (!index) return "the first attempt's JSON report is missing or unreadable";
+  if (errors.length > 0) return `the first attempt recorded ${errors.length} error(s) outside any test`;
+  const unknown = ids.filter((id) => !index.has(id));
+  if (unknown.length > 0) return `${unknown.length} failed test id(s) are not in the first attempt's report`;
   const retried = new Set(ids);
   const unlisted = unintendedSkips(index).filter((id) => !retried.has(id));
   if (unlisted.length > 0) return `${unlisted.length} test(s) the first attempt skipped without asking are not in its failed list`;

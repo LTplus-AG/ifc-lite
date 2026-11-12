@@ -90,6 +90,9 @@ export const QUEUE_FULL_CHECKS = [
   'check-success=Rust tests (feature builds)',
 ];
 
+/** `<key>:` alone on a top-level line, a trailing comment allowed. */
+const isTopKey = (line, key) => line.startsWith(`${key}:`) && /^\s*(#.*)?$/.test(line.slice(key.length + 1));
+
 /**
  * One rule list (`queue_rules` or `pull_request_rules`) from .mergify.yml,
  * read by indentation. Deliberately narrow: a line it does not understand
@@ -107,32 +110,39 @@ function readRules(text, topKey) {
   // A 4-space section key, or `actions.queue` inside `actions`.
   let section = null;
   // A line this reader does not understand marks its rule `unread`, which the
-  // caller refuses: a dropped line must never read as an absent one.
-  const unread = () => {
-    if (rule) rule.unread = true;
+  // caller refuses: a dropped line must never read as an absent one. With no
+  // rule yet (content before the first `  - ` item), it starts an unnamed one.
+  const unread = (line) => {
+    if (!rule) rules.push((rule = { name: `(unnamed: ${line.trim()})`, lists: {}, actions: [], queue: null, unread: true }));
+    rule.unread = true;
   };
   for (const line of String(text ?? '').split('\n')) {
     // A comment ends nothing: one between two conditions must not drop the rest.
     if (/^\s*(#|$)/.test(line)) continue;
     if (/^\S/.test(line)) {
-      inList = line.trimEnd() === `${topKey}:`;
+      inList = isTopKey(line, topKey);
       rule = null;
       section = null;
       continue;
     }
     if (!inList) continue;
     let m = /^ {2}- name:\s*(\S.*?)\s*$/.exec(line);
-    if (m || /^ {2}\S/.test(line)) {
-      // A rule whose first key is not `name` is read as an unnamed, unread one.
-      rule = { name: m ? m[1] : `(unnamed: ${line.trim()})`, lists: {}, actions: [], queue: null, unread: !m };
+    if (m) {
+      rule = { name: m[1], lists: {}, actions: [], queue: null, unread: false };
       rules.push(rule);
       section = null;
       continue;
     }
-    if (!rule) continue;
+    if (/^ {2}\S/.test(line) || !rule) {
+      // A rule whose first key is not `name`, or content before the first item.
+      if (/^ {2}\S/.test(line)) rule = null;
+      unread(line);
+      section = null;
+      continue;
+    }
     // YAML anchors, aliases and merge keys can carry content from elsewhere.
     if (/(^|\s)(<<:|[&*][\w-]+)/.test(line)) {
-      unread();
+      unread(line);
       continue;
     }
     m = /^ {4}(\w+):\s*$/.exec(line);
@@ -141,14 +151,14 @@ function readRules(text, topKey) {
       continue;
     }
     if (/^ {4}\w+:\s*\S/.test(line)) {
-      // Only a plain scalar setting (`batch_size: 1`, `merge_method: squash`)
-      // is understood; a flow list or map, a tag or a block scalar is content.
-      if (!/^ {4}\w+:\s+[\w"'][^[\]{}]*$/.test(line)) unread();
+      // Only a plain or quoted scalar (`batch_size: 1`, `x: "{{ title }}"`) is
+      // understood; a flow list or map, a tag or a block scalar is content.
+      if (!/^ {4}\w+:\s+("[^"]*"|'[^']*'|\w[^[\]{}]*)\s*(#.*)?$/.test(line)) unread(line);
       section = null;
       continue;
     }
     if (/^ {4}\S/.test(line) || !section) {
-      unread();
+      unread(line);
       continue;
     }
     if (section.startsWith('actions')) {
@@ -158,12 +168,12 @@ function readRules(text, topKey) {
       } else if (section === 'actions.queue' && (m = /^ {8}name:\s*(\S.*?)\s*$/.exec(line))) {
         rule.queue = m[1];
       } else if (!/^ {8,}\S/.test(line)) {
-        unread();
+        unread(line);
       }
       continue;
     }
     if ((m = /^ {6}- (\S.*?)\s*$/.exec(line))) (rule.lists[section] ??= []).push(m[1]);
-    else unread();
+    else unread(line);
   }
   return rules;
 }
@@ -189,19 +199,22 @@ export function parsePullRequestRules(text) {
 
 /**
  * pull_request_rules actions that cannot put a PR on a path to `main`. Any
- * other action, known or not, must be a `queue` into the release queue.
+ * other action, known or not, must be a `queue` into the release queue. Not
+ * `comment` (a posted `@Mergifyio queue` is a route), nor `review`/`edit`
+ * (an approval or un-drafting can unblock a merge).
  */
-const SAFE_ACTIONS = ['comment', 'label', 'assign', 'request_reviews', 'dismiss_reviews', 'close', 'delete_head_branch', 'post_check'];
+const SAFE_ACTIONS = ['label', 'assign', 'request_reviews', 'dismiss_reviews', 'close', 'delete_head_branch', 'post_check'];
 
 /**
- * Top-level .mergify.yml keys whose content cannot add a route. Any other
- * (`extends`, `defaults`, `shared`, ...) can, and is not read: it refuses.
+ * Top-level .mergify.yml keys this script accounts for: the two rule lists
+ * it reads in full, and two that cannot add a route. Any other (`extends`,
+ * `defaults`, `shared`, ...) can, and is not read: it refuses.
  */
 const KNOWN_TOP_KEYS = ['queue_rules', 'pull_request_rules', 'priority_rules', 'merge_protections_settings'];
 
 /** Top-level lines that are not exactly `<known key>:` (as readRules sees top level). */
 function unknownTopLines(text) {
-  return String(text ?? '').split('\n').filter((l) => /^\S/.test(l) && !/^#/.test(l) && !KNOWN_TOP_KEYS.some((k) => l.trimEnd() === `${k}:`));
+  return String(text ?? '').split('\n').filter((l) => /^\S/.test(l) && !/^#/.test(l) && !KNOWN_TOP_KEYS.some((k) => isTopKey(l, k)));
 }
 
 const RELEASE_HEAD = `head=${RELEASE_HEAD_REF}`;
@@ -299,7 +312,7 @@ export function releaseQueueRoute(text, { labels = [], draft = true } = {}) {
     const judged = judgeConditions(r.conditions, pr);
     if (judged.never) continue;
     // No readable action is an unreadable rule, never a harmless one.
-    if (r.actions.length === 0) return { ok: false, reason: `Mergify rule \`${r.name}\` has actions this script cannot read` };
+    if (r.actions.length === 0) return { ok: false, reason: `Mergify rule \`${r.name}\` has no actions this script can read` };
     const unsafe = r.actions.filter((a) => !SAFE_ACTIONS.includes(a));
     if (unsafe.length === 0) continue;
     if (judged.unknown) return { ok: false, reason: `Mergify rule \`${r.name}\` has a condition this script cannot judge: ${judged.unknown}` };

@@ -16,19 +16,17 @@ import { expandTypes } from './query-backend-maps.js';
 import {
   checkStructuralConsistency,
   hasAnalyticalModel,
+  isA,
   LOAD_BEARING_CLASSES,
   type PhysicalElementFact,
   type StructuralConsistencyIssue,
   type StructuralConsistencyOptions,
   type StructuralLine,
 } from './structural-consistency.js';
-import { getInheritanceChain } from './ifc-schema.js';
 import { ItemGeometryReader } from './structural-item-geometry.js';
 import { structuralCounterparts } from './structural-counterparts.js';
 import { extractStructuralOnDemand } from './structural-extractor.js';
 import type { StructuralExtraction } from './structural-types.js';
-
-const isCurveMember = (type: string) => getInheritanceChain(type).includes('IfcStructuralCurveMember');
 
 type NamedPset = { name: string; properties: ReadonlyArray<{ name: string; value: unknown }> };
 
@@ -91,7 +89,7 @@ function curveMemberLines(store: IfcDataStore, structural: StructuralExtraction,
   const reader = new ItemGeometryReader(store);
   const lines = new Map<number, StructuralLine>();
   for (const member of structural.members) {
-    if (!isCurveMember(member.type) || !structuralCounterparts(structural, member.expressId)?.expressIds.some((id) => physicalAxes.has(id))) continue;
+    if (!isA(member.type, ['IfcStructuralCurveMember']) || !structuralCounterparts(structural, member.expressId)?.expressIds.some((id) => physicalAxes.has(id))) continue;
     const shape = reader.shape(member.expressId);
     if (shape?.kind === 'edge') lines.set(member.expressId, [shape.start, shape.end]);
   }

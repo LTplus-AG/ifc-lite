@@ -26,8 +26,9 @@
  *   `axisDriftTolerance` from the line of a physical element it is assigned
  *   to. The distance is measured square to that line, so an end moved along
  *   the axis to meet another member (as the derivation does at joints) is not
- *   drift. Runs only when `geometry` is given, for members and elements with
- *   a line there; surface members are not checked.
+ *   drift. Where along the axis a member lies is not checked. Runs only when
+ *   `geometry` is given, for members and elements with a line there; surface
+ *   members are not checked.
  */
 
 import { getInheritanceChain } from './ifc-schema.js';
@@ -119,7 +120,7 @@ const MISMATCH: ReadonlyArray<{ member: string; noun: string; physical: readonly
 export const hasAnalyticalModel = (structural: StructuralExtraction): boolean =>
   structural.analysisModels.length > 0 || structural.members.length > 0;
 
-const isA = (type: string, bases: readonly string[]): boolean => getInheritanceChain(type).some((name) => bases.includes(name));
+export const isA = (type: string, bases: readonly string[]): boolean => getInheritanceChain(type).some((name) => bases.includes(name));
 
 /** How far the farther end of `line` lies from the infinite line through `axis`; null for a degenerate axis. */
 function offLine(line: StructuralLine, [a, b]: StructuralLine): number | null {
@@ -169,8 +170,6 @@ export function checkStructuralConsistency(
   geometry?: StructuralGeometryFacts,
 ): StructuralConsistencyIssue[] {
   const unsetLoadBearing = options.unsetLoadBearing ?? true;
-  const tolerance = options.axisDriftTolerance ?? DEFAULT_AXIS_DRIFT_TOLERANCE;
-  if (!(tolerance >= 0)) throw new Error(`axisDriftTolerance must be a number of metres >= 0, got ${tolerance}`);
   const issues: StructuralConsistencyIssue[] = [];
   const factById = new Map(elements.map((fact) => [fact.expressId, fact]));
 
@@ -223,7 +222,11 @@ export function checkStructuralConsistency(
     }
   }
 
-  if (geometry) issues.push(...axisDrift(structural, factById, geometry, tolerance));
+  if (geometry) {
+    const tolerance = options.axisDriftTolerance ?? DEFAULT_AXIS_DRIFT_TOLERANCE;
+    if (!(tolerance >= 0)) throw new Error(`axisDriftTolerance must be a number of metres >= 0, got ${tolerance}`);
+    issues.push(...axisDrift(structural, factById, geometry, tolerance));
+  }
 
   return issues;
 }

@@ -37,6 +37,16 @@ export class CorruptChunkError extends Error {
   override name = 'CorruptChunkError';
 }
 
+/** The pool was closed (its load ended): in-flight and later requests reject with this, and nothing decodes here instead. */
+export class ChunkPoolClosedError extends Error {
+  override name = 'ChunkPoolClosedError';
+}
+
+/** `decodeOnWorkers` only: no worker can take the chunk (they failed or cannot start); decode it on demand instead. */
+export class NoChunkWorkerError extends Error {
+  override name = 'NoChunkWorkerError';
+}
+
 export interface ChunkInflatePoolOptions {
   /** Worker factory; the module worker by default. */
   createWorker?: () => CompressionWorkerPort;
@@ -110,6 +120,7 @@ export class ChunkInflatePool {
   private next = 0;
   private fallback = false;
   private corrupt: CorruptChunkError | null = null;
+  private closed = false;
 
   constructor(size: number, options: ChunkInflatePoolOptions = {}) {
     const stallMs = options.stallMs ?? STALL_MS;
@@ -118,7 +129,7 @@ export class ChunkInflatePool {
 
   /** Start every worker now, so they boot while other work runs. */
   start(): this {
-    if (this.fallback || this.corrupt) return this;
+    if (this.fallback || this.corrupt || this.closed) return this;
     try {
       for (const lane of this.lanes) lane.session.start();
     } catch (error) {
@@ -128,12 +139,15 @@ export class ChunkInflatePool {
   }
 
   readonly inflate: ChunkInflate = async (stored, rawLength) => {
+    if (this.closed) throw new ChunkPoolClosedError('chunk inflate pool closed');
     if (this.corrupt) throw this.corrupt;
     if (!this.fallback) {
       const lane = this.lanes[this.next++ % this.lanes.length];
       try {
         return await lane.inflate(stored, rawLength);
       } catch (error) {
+        // Closed while in flight (the load ended): an abort, not a worker failure; nothing inflates here.
+        if (this.closed) throw new ChunkPoolClosedError('chunk inflate pool closed');
         if (this.corrupt) throw this.corrupt;
         if (error instanceof WorkerCodecError) return this.confirmHere(stored, error);
         this.useFallback(error);
@@ -154,12 +168,15 @@ export class ChunkInflatePool {
    * here to tell a corrupt entry (`CorruptChunkError`) from a worker that cannot decode.
    */
   readonly decode: ChunkDecode = async (stored, info, version) => {
+    if (this.closed) throw new ChunkPoolClosedError('chunk inflate pool closed');
     if (this.corrupt) throw this.corrupt;
     if (!this.fallback) {
       const lane = this.lanes[this.next++ % this.lanes.length];
       try {
         return await lane.decode(stored, info, version);
       } catch (error) {
+        // Closed while in flight (the load ended): an abort, not a worker failure; nothing decodes here.
+        if (this.closed) throw new ChunkPoolClosedError('chunk inflate pool closed');
         if (this.corrupt) throw this.corrupt;
         if (error instanceof WorkerCodecError) return this.confirmDecodeHere(stored, info, version, error);
         this.useFallback(error);
@@ -169,6 +186,28 @@ export class ChunkInflatePool {
       return await decodeGeometryChunk(stored, info, version);
     } catch (error) {
       throw this.markCorrupt(error instanceof Error ? error : new Error(String(error)));
+    }
+  };
+
+  /**
+   * Decode a chunk on a worker, never on the calling thread: for work ahead of the consumer (the
+   * cache hit's prefetch). It rejects with `NoChunkWorkerError` when no worker can take it (they
+   * failed or cannot start: the pool switches to calling-thread decoding as `decode` would) and on a
+   * worker codec error, so the consumer decodes that chunk on demand, paced by its own loop, where
+   * `decode`'s rules apply (including `CorruptChunkError`).
+   */
+  readonly decodeOnWorkers: ChunkDecode = async (stored, info, version) => {
+    if (this.closed) throw new ChunkPoolClosedError('chunk inflate pool closed');
+    if (this.corrupt) throw this.corrupt;
+    if (this.fallback) throw new NoChunkWorkerError('no chunk worker');
+    const lane = this.lanes[this.next++ % this.lanes.length];
+    try {
+      return await lane.decode(stored, info, version);
+    } catch (error) {
+      if (this.closed) throw new ChunkPoolClosedError('chunk inflate pool closed');
+      if (this.corrupt) throw this.corrupt;
+      if (!(error instanceof WorkerCodecError)) this.useFallback(error);
+      throw new NoChunkWorkerError(error instanceof Error ? error.message : String(error));
     }
   };
 
@@ -200,13 +239,22 @@ export class ChunkInflatePool {
   /** True once a worker failed and chunks inflate on the calling thread. */
   get inflatingHere(): boolean { return this.fallback; }
 
+  /** End the pool (its load ended): workers stop, and pending and later requests reject with `ChunkPoolClosedError`. */
   close(): void {
+    this.closed = true;
+    this.stopLanes();
+  }
+
+  /** True once `close()` ran. */
+  get isClosed(): boolean { return this.closed; }
+
+  private stopLanes(): void {
     for (const lane of this.lanes) lane.close();
   }
 
   private markCorrupt(error: Error): CorruptChunkError {
     this.corrupt ??= new CorruptChunkError(`a geometry chunk did not inflate here or on a worker; the cache entry is corrupt (${error.message})`);
-    this.close(); // the other workers' requests reject now, as corrupt (checked first above)
+    this.stopLanes(); // the other workers' requests reject now, as corrupt (checked first above)
     return this.corrupt;
   }
 
@@ -215,6 +263,6 @@ export class ChunkInflatePool {
     this.fallback = true;
     const reason = error instanceof Error ? error.message : String(error);
     console.warn(`[cache] chunk inflate worker failed (${reason}); inflating the remaining chunks on this thread`);
-    this.close();
+    this.stopLanes();
   }
 }

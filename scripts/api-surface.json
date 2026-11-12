@@ -245,7 +245,9 @@
   "@ifc-lite/cache/chunk-inflate-pool": [
     "ChunkInflatePool: class",
     "ChunkInflatePoolOptions: interface",
-    "CorruptChunkError: class"
+    "ChunkPoolClosedError: class",
+    "CorruptChunkError: class",
+    "NoChunkWorkerError: class"
   ],
   "@ifc-lite/charts": [
     "AggregateOptions: interface",

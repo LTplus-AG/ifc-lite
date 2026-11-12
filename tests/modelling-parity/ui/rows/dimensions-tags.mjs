@@ -133,8 +133,10 @@ export default {
         if (selected !== door?.id) throw new Error(`picked #${selected}, expected the door #${door?.id}`);
         await s.ui.key('Control+k'); await s.ui.type('Properties');
         await s.ui.click(s.page.getByRole('option', { name: 'Properties', exact: true }));
+        const attributes = s.page.getByRole('button', { name: /^Attributes/ }).first();
+        await attributes.waitFor({ state: 'visible', timeout: 10000 });
         const value = s.page.getByRole('button', { name: String(door.args[2]), exact: true }).last();
-        if (!(await value.isVisible())) await s.ui.click(s.page.getByRole('button', { name: /^Attributes\b/ }).first());
+        if (!(await value.isVisible())) await s.ui.click(attributes);
         await s.ui.click(value);
         await field(s, s.page.getByRole('textbox', { name: 'Name', exact: true }), 'Parity renamed door');
         renamedSvg = await exportDrawing(s, 'svg');

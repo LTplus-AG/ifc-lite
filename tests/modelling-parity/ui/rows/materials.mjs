@@ -24,7 +24,7 @@ async function renderedBrick(s) {
   },{base64:png.toString('base64'),x,y});
 }
 async function createMaterial(s, name, colour) {
-  await s.ui.click(s.page.getByRole('button',{name:'Properties',exact:true}));
+  await s.ui.click(s.page.locator('[data-model-inspector]').getByRole('button',{name:'Properties',exact:true}));
   await s.ui.click(s.page.getByRole('button',{name:'Add material',exact:true}));
   await field(s,s.page.getByLabel('Material Name',{exact:true}),name);
   await field(s,s.page.getByLabel('Material colour hex',{exact:true}),colour);

@@ -11,7 +11,7 @@
 
 import { BufferReader, readInstancedShards, SectionType, type openGeometryChunksV13 } from '@ifc-lite/cache';
 import { decodeSceneSnapshot, type Renderer, type SceneContents, type SceneSnapshot } from '@ifc-lite/renderer';
-import { decodeInstancedShard, type CoordinateInfo, type MeshData } from '@ifc-lite/geometry';
+import { decodeInstancedShard, type CoordinateInfo, type DecodedInstancedShard, type MeshData } from '@ifc-lite/geometry';
 import type { LoadTrace } from '@ifc-lite/load-trace';
 import { useViewerStore } from '../store/index.js';
 import { noteInstancedShardModel } from '../store/instancedShardModels.js';
@@ -58,9 +58,11 @@ async function readSnapshotShards(entry: Blob, shards: SnapshotHostData['shards'
   return readInstancedShards(new BufferReader(await entry.slice(shards.offset, shards.offset + shards.size).arrayBuffer()));
 }
 
+const webGpuPresent = (): boolean => Boolean((globalThis.navigator as { gpu?: unknown } | undefined)?.gpu);
+
 /** A load mounts the viewport, so a first file can reach its hit while the renderer is still starting. */
 async function rendererReady(isStale: (() => boolean) | undefined, timeoutMs = 3000): Promise<Renderer | null> {
-  if (!(globalThis.navigator as { gpu?: unknown } | undefined)?.gpu) return null; // no WebGPU: no renderer is coming
+  if (!webGpuPresent()) return null; // no WebGPU: no renderer is coming
   const deadline = performance.now() + timeoutMs;
   for (;;) {
     const renderer = getGlobalRenderer();
@@ -70,17 +72,48 @@ async function rendererReady(isStale: (() => boolean) | undefined, timeoutMs = 3
   }
 }
 
-/** Direct, unlike a stream's queued shards (`instancedShardQueue`): the first frame is complete, and an abandoned adoption can remove them. */
-function uploadSnapshotShards(scene: SceneContents, device: GPUDevice, modelId: string, shards: ArrayBuffer[]): void {
-  if (shards.length > 0) noteInstancedShardModel(modelId);
+/** Decoded apart from the upload, so it can run before a device exists; an undecodable shard is skipped. */
+function decodeSnapshotShards(shards: ArrayBuffer[]): DecodedInstancedShard[] {
+  const decoded: DecodedInstancedShard[] = [];
   for (const bytes of shards) {
     try {
       const shard = decodeInstancedShard(new Uint8Array(bytes));
-      if (shard) scene.addInstancedShard(device, shard, 0);
+      if (shard) decoded.push(shard);
+    } catch (err) {
+      console.warn('[useIfcCache] snapshot shard did not decode, skipping:', err);
+    }
+  }
+  return decoded;
+}
+
+/** Direct, unlike a stream's queued shards (`instancedShardQueue`): the first frame is complete, and an abandoned adoption can remove them. */
+function uploadSnapshotShards(scene: SceneContents, device: GPUDevice, modelId: string, shards: DecodedInstancedShard[]): void {
+  if (shards.length > 0) noteInstancedShardModel(modelId);
+  for (const shard of shards) {
+    try {
+      scene.addInstancedShard(device, shard, 0);
     } catch (err) {
       console.warn('[useIfcCache] snapshot shard upload failed (device lost?), skipping:', err);
     }
   }
+}
+
+interface PreparedSnapshot {
+  snapshot: SceneSnapshot;
+  host: SnapshotHostData;
+  /** The entry's shard bytes, requeued to the ordinary drain if hydration refuses the adoption. */
+  shards: ArrayBuffer[];
+  decodedShards: DecodedInstancedShard[];
+}
+
+/** Read and decode the stored scene and its shards. None of it needs a device, so it runs while the renderer starts. */
+async function prepareSnapshot(sceneSnapshot: Blob, entry: Blob, trace: LoadTrace): Promise<PreparedSnapshot | null> {
+  const bytes = await trace.span('cache.snapshotRead', () => sceneSnapshot.arrayBuffer());
+  const snapshot = decodeSceneSnapshot(bytes);
+  const host = snapshot?.hostData as SnapshotHostData | undefined;
+  if (!snapshot || !host?.fitBounds || !host.sceneBounds) return null;
+  const shards = await readSnapshotShards(entry, host.shards);
+  return { snapshot, host, shards, decodedShards: decodeSnapshotShards(shards) };
 }
 
 /** Draw the entry's finished scene, or return null so the hit streams. */
@@ -91,7 +124,10 @@ export async function adoptCachedSceneSnapshot(
   trace: LoadTrace,
 ): Promise<AdoptedSceneSnapshot | null> {
   const { sceneSnapshot, sceneSnapshotKey, buffer: entry } = cacheResult;
-  if (!snapshotsEnabled() || !sceneSnapshot || !(entry instanceof Blob) || !sceneMatchesCachedGeometry()) return null;
+  if (!snapshotsEnabled() || !sceneSnapshot || !(entry instanceof Blob) || !sceneMatchesCachedGeometry() || !webGpuPresent()) return null;
+  // Started before the renderer wait. Settled into a value so an early return below leaves no unhandled
+  // rejection; a read failure is rethrown at the await, so the hit is still dropped as corrupt.
+  const preparing = prepareSnapshot(sceneSnapshot, entry, trace).then((ready) => ({ ready }), (error: unknown) => ({ error }));
   const renderer = await rendererReady(isStale);
   const device = renderer?.getGPUDevice();
   const pipeline = renderer?.getPipeline();
@@ -100,16 +136,15 @@ export async function adoptCachedSceneSnapshot(
   // Admission is asynchronous after viewport init, and a reload can get here first.
   if (snapshotKey(scene) !== sceneSnapshotKey && isQuantizedEnabled()) await renderer.enableQuantizedBatches();
   if (snapshotKey(scene) !== sceneSnapshotKey) return null;
-  const bytes = await trace.span('cache.snapshotRead', () => sceneSnapshot.arrayBuffer());
-  const snapshot = decodeSceneSnapshot(bytes);
-  const host = snapshot?.hostData as SnapshotHostData | undefined;
-  if (!snapshot || !host?.fitBounds || !host.sceneBounds || isStale?.()) return null;
-  const shards = await readSnapshotShards(entry, host.shards);
-  if (isStale?.()) return null;
+  const outcome = await preparing;
+  if ('error' in outcome) throw outcome.error;
+  const prepared = outcome.ready;
+  if (!prepared || isStale?.()) return null;
+  const { snapshot, host, shards } = prepared;
   const adoption = trace.span('scene.snapshotAdopt', () => scene.adoptSceneSnapshot(snapshot, device, pipeline), { batches: snapshot.batches.length });
   if (!adoption) return null;
   trace.milestone('scene.snapshotAdopted');
-  uploadSnapshotShards(scene, device, modelId, shards);
+  uploadSnapshotShards(scene, device, modelId, prepared.decodedShards);
   const camera = renderer.getCamera();
   camera.reset();
   fitCameraToSnapshot(renderer, host);

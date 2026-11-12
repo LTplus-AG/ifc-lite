@@ -74,11 +74,14 @@ async function worldToScreen(page, p) {
   }, p);
 }
 
-const applyView = (page, pos, target) => page.evaluate(([pos, target]) => {
+const applyView = async (page, pos, target) => {
+  await page.waitForFunction(() => { const cb = globalThis.__ifc_lite_viewer_store__?.getState().cameraCallbacks; return typeof cb?.getViewpoint === "function" && typeof cb?.applyViewpoint === "function"; }, null, { timeout: 30000 });
+  return page.evaluate(([pos, target]) => {
   const cb = globalThis.__ifc_lite_viewer_store__.getState().cameraCallbacks;
   const cur = cb.getViewpoint();
   cb.applyViewpoint({ ...cur, position: { x: pos[0], y: pos[2], z: -pos[1] }, target: { x: target[0], y: target[2], z: -target[1] }, up: { x: 0, y: 1, z: 0 } }, false);
 }, [pos, target]);
+};
 const viewMatrix = (page) => page.evaluate(() => globalThis.__ifc_lite_view_projection__());
 const sameMatrix = (a, b) => a && b && a.every((v, i) => Math.abs(v - b[i]) < 1e-5);
 
@@ -159,7 +162,7 @@ export async function openSession(browser, baseUrl, { theme = 'light', shotsDir,
   const ui = {
     /** Click a Playwright locator (a named control). */
     async click(locator, opts = {}) {
-      await locator.click({ timeout: opts.timeout ?? 5000 });
+      await clickControl(locator, { timeout: opts.timeout ?? 5000 });
       counters.clicks++;
       await settle(opts.settle ?? 150);
     },
@@ -268,9 +271,13 @@ export async function task(session, name, fn) {
   const t0 = Date.now();
   try {
     const value = await fn();
-    return { name, ok: true, ms: Date.now() - t0, actions: session.counters.clicks + session.counters.keys - before, value };
+    const result = { name, ok: true, ms: Date.now() - t0, actions: session.counters.clicks + session.counters.keys - before, value };
+    (session.completedTasks ??= []).push(result);
+    return result;
   } catch (error) {
-    return { name, ok: false, ms: Date.now() - t0, actions: session.counters.clicks + session.counters.keys - before, error: describeError(error) };
+    const result = { name, ok: false, ms: Date.now() - t0, actions: session.counters.clicks + session.counters.keys - before, error: describeError(error) };
+    (session.completedTasks ??= []).push(result);
+    return result;
   }
 }
 
@@ -296,4 +303,9 @@ export function gitSource(root) {
   const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
   const dirty = execFileSync('git', ['status', '--porcelain', '--untracked-files=no'], { cwd: root, encoding: 'utf8' }).trim().length > 0;
   return { commit, dirty };
+}
+
+export async function clickControl(locator, options) {
+  try { await locator.click(options); }
+  catch (error) { throw new Error(`Click failed: ${String(locator)}: ${error.message}`, { cause: error }); }
 }

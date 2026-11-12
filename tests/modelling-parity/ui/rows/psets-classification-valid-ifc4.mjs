@@ -1,0 +1,43 @@
+import { roofGeometry, copiedPlansMatch, uniqueWallJoins, wallEndpointsJoined, hasDwgDownload, assignedTypes, ownOpenings, wallPropertySets, wallQuantityCoverage } from '../lib/oracles.mjs';
+import { downloadCount, nextDownload, task } from '../lib/driver.mjs';
+import { escape, hudText, oracleModel, openStoreyManager, readSession, readStoreyManager, switchStorey, tool, toasts, typeFields } from '../lib/model-ui.mjs';
+import { readStep } from '../lib/step.mjs';
+import { meshIfc } from '../../probes/sdk/lib/parity.mjs';
+import { PLAN_CAM, near, nearPt, fmt, typedRoom, setupRoom, selectAt, wallsOn, openFrontSection, drawingState, exportDrawing, isPdf, isDxf, svgShapes } from '../lib/probe-helpers.mjs';
+
+export default {
+    id: 'ui.export-ifc4',
+    capability: 'psets-classification-valid-ifc4',
+    title: 'File > IFC export as IFC4 with base quantities and property sets',
+    async run(s) {
+      const tasks = [await setupRoom(s)];
+      let dl = null;
+      tasks.push(await task(s, 'File > Export IFC, schema IFC4, Export', async () => {
+        const { page } = s;
+        const before = await downloadCount(page);
+        await s.ui.click(page.getByRole('tab', { name: 'File' }));
+        await s.ui.click(page.locator('[data-export-command="ifc"]'));
+        const dialog = page.getByRole('dialog');
+        await dialog.waitFor({ timeout: 8000 });
+        await s.ui.click(dialog.getByRole('combobox').nth(1));
+        await s.ui.click(page.getByRole('option', { name: /^IFC4( \(current\))?$/ }));
+        await s.ui.click(dialog.getByRole('button', { name: /^Export$/ }).last());
+        dl = await nextDownload(page, before);
+      }));
+      const step = dl ? readStep(dl.text) : null;
+      const q = step ? wallQuantityCoverage(step) : [];
+      const psets = step ? wallPropertySets(step) : [];
+      const classified = step ? step.count('IFCCLASSIFICATIONREFERENCE') > 0 : false;
+      return {
+        tasks, notes: [], evidence: [],
+        exportText: dl?.text ?? null,
+        checks: [
+          { name: 'download is IFC4', ok: step?.schema === 'IFC4', detail: `${dl?.name ?? 'no download'} schema ${step?.schema}` },
+          { name: '4 walls in the file', ok: (step?.count('IFCWALL') ?? 0) === 4, detail: `${step?.count('IFCWALL')}` },
+          { name: 'base quantities on walls', ok: q.length === 4 && q.every((values) => Number.isFinite(values.Length) && Number.isFinite(values.NetVolume)), detail: JSON.stringify(q) },
+          { name: 'a property set on the walls', ok: psets.length === 4 && psets.every((names) => names.length > 0), detail: JSON.stringify(psets) },
+          { name: 'classification reference present', ok: classified, detail: classified ? 'yes' : 'none: the modelling flow assigns no classification' },
+        ],
+      };
+    },
+  };

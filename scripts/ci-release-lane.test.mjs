@@ -70,7 +70,7 @@ test('unset and `off` are today\'s behaviour, and so is any unknown value', () =
   for (const mode of ['true', 'lean', ' on', 'on ', 'fast']) {
     const d = decide({ mode });
     assert.equal(d.lane, 'full', JSON.stringify(mode));
-    assert.equal(d.wouldBeLean, false);
+    assert.equal(d.pending !== undefined, false);
     assert.match(d.warning ?? '', /not one of off, shadow, on/); // @source-text-assertion-ok subject is the decision's returned message
   }
 });
@@ -83,7 +83,7 @@ test('HELD (#9783): `on` runs the full lanes and reports, until the owner releas
   const { ownerAllowsLean: _ignored, ...shipped } = BASE;
   const d = decideReleaseLane(shipped);
   assert.equal(d.lane, 'full');
-  assert.equal(d.wouldBeLean, true, 'still reported, like shadow');
+  assert.equal(d.pending !== undefined, true, 'still reported, like shadow');
   assert.match(d.warning ?? '', /held/); // @source-text-assertion-ok subject is the decision's returned message
   const v = verifyReleaseLane({ ...shipped, lane: 'lean', needs: needsJson() });
   assert.equal(v.ok, false, 'a lean output while held is unjustified');
@@ -94,7 +94,7 @@ test('`on` gives the release PR the lean lane; `shadow` runs full and records it
   assert.equal(decide({ mode: 'On' }).lane, 'lean', 'case-insensitive like Actions `==`');
   const s = decide({ mode: 'shadow' });
   assert.equal(s.lane, 'full');
-  assert.equal(s.wouldBeLean, true);
+  assert.equal(s.pending !== undefined, true);
 });
 
 test('REFUSE: only a same-repo pull_request from changeset-release/main into main', () => {
@@ -115,7 +115,7 @@ test('REFUSE: only a same-repo pull_request from changeset-release/main into mai
     for (const mode of ['on', 'shadow']) {
       const d = decide({ ...c, mode });
       assert.equal(d.lane, 'full', JSON.stringify(c));
-      assert.equal(d.wouldBeLean, false, JSON.stringify(c));
+      assert.equal(d.pending !== undefined, false, JSON.stringify(c));
     }
   }
 });
@@ -139,7 +139,7 @@ test('REFUSE: the PR must meet the release queue\'s entry conditions now (label,
   for (const labels of ['[]', '["unqueued"]', 'null', 'garbage', '[1]']) {
     const d = decide({ labels });
     assert.equal(d.lane, 'full', labels);
-    assert.equal(d.wouldBeLean, false, labels);
+    assert.equal(d.pending !== undefined, false, labels);
   }
   for (const draft of ['true', '', undefined]) assert.equal(decide({ draft }).lane, 'full', String(draft));
 });
@@ -154,7 +154,7 @@ test('SHADOW measures whatever the PR\'s queue state: an unlabelled or draft rel
     for (const mode of ['shadow', 'on']) {
       const d = decideReleaseLane({ ...held, ...over, mode });
       assert.equal(d.lane, 'full', `${mode} ${JSON.stringify(over)}`);
-      assert.equal(d.wouldBeLean, true, `${mode} ${JSON.stringify(over)}`);
+      assert.equal(d.pending !== undefined, true, `${mode} ${JSON.stringify(over)}`);
       assert.match(d.reason, /will not take this PR yet/); // @source-text-assertion-ok subject is the decision's returned reason
     }
   }
@@ -175,7 +175,7 @@ test('SHADOW measures whatever the PR\'s queue state: an unlabelled or draft rel
   for (const [over, why] of [[{ labels: '[]' }, /lacks `mergify-trial`/], [{ draft: 'true' }, /is a draft/]]) {
     const refused = decideReleaseLane({ ...held, mode: 'on', ownerAllowsLean: true, ...over });
     assert.equal(refused.lane, 'full', JSON.stringify(over));
-    assert.equal(refused.wouldBeLean, false);
+    assert.equal(refused.pending !== undefined, false);
     assert.equal(refused.warning, 'release lane refused; still pending: once this PR is queueable');
     assert.match(refused.reason, why); // @source-text-assertion-ok subject is the decision's returned reason
   }
@@ -188,8 +188,8 @@ test('SHADOW measures whatever the PR\'s queue state: an unlabelled or draft rel
   assert.match(heldOn('["mergify-trial"]', needsJson()), /None of them failed\. The lean lane \(with OWNER_ALLOWS_LEAN released\) would reach the same verdict/); // @source-text-assertion-ok subject is the returned summary
   assert.match(heldOn('[]', needsJson('success', { 'viewer-tests': 'failure' })), /The lean lane \(with OWNER_ALLOWS_LEAN released, once this PR is queueable\) would defer a failure/); // @source-text-assertion-ok subject is the returned summary
   // A config that cannot route the PR, or a diff that is more than versions, is still not reported as lean.
-  assert.equal(decideReleaseLane({ ...held, mode: 'shadow', labels: '[]', mergify: () => '' }).wouldBeLean, false);
-  assert.equal(decideReleaseLane({ ...held, mode: 'shadow', labels: '[]', diff: () => ['x: not a release file'] }).wouldBeLean, false);
+  assert.equal(decideReleaseLane({ ...held, mode: 'shadow', labels: '[]', mergify: () => '' }).pending !== undefined, false);
+  assert.equal(decideReleaseLane({ ...held, mode: 'shadow', labels: '[]', diff: () => ['x: not a release file'] }).pending !== undefined, false);
 });
 
 test('REFUSE: a queue Mergify could check in place, or an entry condition this script cannot judge', () => {
@@ -206,7 +206,7 @@ test('REFUSE: a queue Mergify could check in place, or an entry condition this s
 test('REFUSE: a diff that moves more than versions, or cannot be read, runs full', () => {
   assert.equal(decide({ diff: () => ['src/x.ts: not a release file'] }).lane, 'full');
   assert.equal(decide({ diff: () => { throw new Error('bad revision HEAD~1'); } }).lane, 'full');
-  assert.equal(decide({ mode: 'shadow', diff: () => ['x'] }).wouldBeLean, false);
+  assert.equal(decide({ mode: 'shadow', diff: () => ['x'] }).pending !== undefined, false);
 });
 
 test('the inputs are read only when the cheap checks pass (no git on an ordinary PR)', () => {
@@ -274,6 +274,14 @@ test('DIFF: any Cargo.toml or Cargo.lock change runs the full lanes, of any stat
       assert.deepEqual(problems, [`${path}: a Cargo file changed; the lean lane does not judge Cargo edits`], `${status} ${path}`);
     }
   }
+});
+
+test('DIFF: a deleted .changeset file that changesets ignores is not a consumed changeset', () => {
+  // The same ignore list @changesets/read uses (scripts/lib/pending-changesets.mjs).
+  for (const path of ['.changeset/README.md', '.changeset/readme.md', '.changeset/AGENTS.md', '.changeset/CLAUDE.md', '.changeset/.hidden.md']) {
+    assert.deepEqual(diffProblems([{ status: 'D', path }], fakeGit({})), [`${path}: not a release file`], path);
+  }
+  assert.deepEqual(diffProblems([{ status: 'D', path: '.changeset/brave-cats-sing.md' }], fakeGit({})), []);
 });
 
 test('DIFF: everything that is not a version bump is named', () => {

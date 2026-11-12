@@ -11,6 +11,7 @@
  */
 
 import { basename } from 'node:path';
+import { isChangesetName } from './pending-changesets.mjs';
 
 /**
  * Only `version` may move. Internal dependencies use `workspace:` specifiers
@@ -36,7 +37,7 @@ export function diffProblems(entries, git) {
   for (const { status, path } of entries) {
     const name = basename(path);
     let problem = null;
-    if (/^\.changeset\/[^/]+\.md$/.test(path) && name !== 'README.md') {
+    if (/^\.changeset\/[^/]+$/.test(path) && isChangesetName(name)) {
       if (status !== 'D') problem = 'a changeset may only be consumed (deleted)';
     } else if (name === 'CHANGELOG.md') {
       if (status !== 'M' && status !== 'A') problem = `status ${status}`;

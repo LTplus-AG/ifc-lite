@@ -8,6 +8,11 @@ import { join } from 'node:path';
 /** @changesets/read's `ignoredMdFiles`, verbatim. */
 const IGNORED_MD = [/^README\.md$/i, 'AGENTS.md', 'CLAUDE.md', 'GEMINI.md'];
 
+/** Whether a file name in `.changeset` is a changeset, by @changesets/read's rule. */
+export function isChangesetName(name) {
+  return !name.startsWith('.') && name.endsWith('.md') && !IGNORED_MD.some((p) => (typeof p === 'string' ? p === name : p.test(name)));
+}
+
 /**
  * The pending changeset file names in `<repoRoot>/.changeset`, sorted. An
  * absent `.changeset` directory is zero pending; any other read error throws.
@@ -23,12 +28,7 @@ export function pendingChangesets(repoRoot) {
   return entries
     .filter((e) => e.isFile())
     .map((e) => e.name)
-    .filter(
-      (name) =>
-        !name.startsWith('.') &&
-        name.endsWith('.md') &&
-        !IGNORED_MD.some((p) => (typeof p === 'string' ? p === name : p.test(name)))
-    )
+    .filter(isChangesetName)
     .sort();
 }
 

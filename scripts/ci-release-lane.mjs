@@ -193,16 +193,16 @@ export const OWNER_ALLOWS_LEAN = false;
  *   labels?: string, draft?: string, mergify?: () => string, diff?: () => string[], ownerAllowsLean?: boolean }} input
  *   `labels` is the JSON array of PR label names and `draft` the string `true`/`false`, as test.yml passes them.
  *   `mergify` and `diff` are read only when needed.
- * @returns {{ lane: 'lean'|'full', mode: string, wouldBeLean: boolean, pending?: string[], reason: string, warning?: string }}
- *   `pending`, on a reported-only (shadow or held) decision, names every
+ * @returns {{ lane: 'lean'|'full', mode: string, pending?: string[], reason: string, warning?: string }}
+ *   `pending` is set exactly on a reported-only (shadow or held) decision and names every
  *   condition still between this run and a lean one (never empty there:
  *   lean is exactly the empty list).
  */
 export function decideReleaseLane({ event, mode, headRef, headRepo, repo, baseRef, labels, draft, mergify, diff, ownerAllowsLean = OWNER_ALLOWS_LEAN }) {
   const raw = String(mode ?? '').toLowerCase();
   const m = raw === '' ? 'off' : raw;
-  const full = (reason, extra = {}) => ({ lane: 'full', mode: MODES.includes(m) ? m : 'off', wouldBeLean: false, reason, ...extra });
-  if (!MODES.includes(m)) return full('unknown CI_RELEASE_LANE value', { warning: `CI_RELEASE_LANE=${JSON.stringify(String(mode))} is not one of ${MODES.join(', ')}; running the full lanes` });
+  const full = (reason, extra = {}) => ({ lane: 'full', mode: m, reason, ...extra });
+  if (!MODES.includes(m)) return full('unknown CI_RELEASE_LANE value', { mode: 'off', warning: `CI_RELEASE_LANE=${JSON.stringify(String(mode))} is not one of ${MODES.join(', ')}; running the full lanes` });
   if (m === 'off') return full('CI_RELEASE_LANE is unset or off');
   if (headRef !== RELEASE_HEAD_REF) return full('not the release PR');
   if (event !== 'pull_request') return full(`${event || 'unknown event'} always runs the full lanes`);
@@ -234,9 +234,8 @@ export function decideReleaseLane({ event, mode, headRef, headRepo, repo, baseRe
     ownerAllowsLean ? '' : 'with OWNER_ALLOWS_LEAN released',
     route.queueable ? '' : 'once this PR is queueable',
   ].filter(Boolean);
-  const base = { mode: m, wouldBeLean: true };
-  if (pending.length === 0) return { ...base, lane: 'lean', reason: `CI_RELEASE_LANE=on on the release PR; ${route.queueReason}; ${route.reason}` };
-  const report = { ...base, lane: 'full', pending };
+  if (pending.length === 0) return { mode: m, lane: 'lean', reason: `CI_RELEASE_LANE=on on the release PR; ${route.queueReason}; ${route.reason}` };
+  const report = { mode: m, lane: 'full', pending };
   if (m === 'shadow') return { ...report, reason: `shadow mode: full lanes run, lean lane reported; ${route.queueReason}` };
   if (!ownerAllowsLean) return { ...report, reason: `CI_RELEASE_LANE=on, but the lean lane is held until the owner decides how release PRs reach main (OWNER_ALLOWS_LEAN); full lanes run, lean lane reported; ${route.queueReason}`, warning: 'CI_RELEASE_LANE=on is held (OWNER_ALLOWS_LEAN=false); running the full lanes' };
   // `on`, hold released, something still pending: refused outright, naming
@@ -269,7 +268,7 @@ export function verifyReleaseLane(input) {
     if (notRun.length > 0) return { ok: false, lines: [`❌ RELEASE_CHECKS_DID_NOT_PASS: a lean run needs every kept job to succeed: ${notRun.map((j) => `\`${j}\` was ${resultOf(j)}`).join(', ')}.`] };
     return { ok: true, lines: ['## Release PR lean lane (`CI_RELEASE_LANE=on`)', '', d.reason, '', 'Skipped on purpose; the `release` merge queue runs them:', '', ...listed] };
   }
-  if (d.wouldBeLean && d.lane !== 'lean') {
+  if (d.pending) {
     const failed = skippedByLean.filter((j) => resultOf(j) === 'failure');
     // The decision names what still stands between this run and a lean one,
     // so the report never reads as a claim about today.

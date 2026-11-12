@@ -28,7 +28,8 @@
  *   the surface item's face frame, else the curve member's (x along the edge,
  *   z towards `Axis`), else its own placement or the point connection's
  *   condition frame (see `localFrame`). Load configurations draw each value
- *   at its location.
+ *   at its location: a length along an edge, or x and y in a face's reference
+ *   surface; on a bare face, which has no surface coordinates, at its centre.
  *
  * `relative` scales arrows within their load group: the largest force (or
  * moment) of the same distribution in the same group is 1. Units differ by

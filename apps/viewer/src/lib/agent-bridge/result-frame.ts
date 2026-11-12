@@ -11,6 +11,11 @@
  * failure is `toolError` (`structuredContent: { code, message, details,
  * hint }`, `isError: true`).
  *
+ * Numbers: the bridge refuses any frame with a non-finite number. Frames are
+ * built with `JSON.stringify`, which writes NaN and +/-Infinity as `null`, so a
+ * tool value the viewer cannot compute (a volume of an open shell, say)
+ * arrives as `null`, never as an invalid frame (pinned by a test).
+ *
  * A result the bridge would refuse (over `BRIDGE_LIMITS.maxResultBytes`, or
  * nested too deep, or with too many values) would fail the call, so it is
  * cut down here instead, with a note telling the agent what happened and how

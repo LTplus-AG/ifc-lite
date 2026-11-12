@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "#9668: LoadBearing falls back to the element type; read the occurrence only.",
+  "key": "packages/create/src/in-store/structural-derive-facts.ts",
+  "mutation": "tests/evidence/structural-derive-type-load-bearing-9668/behaviour.oracle.patch",
+  "test": "packages/create/src/in-store/structural-derive.test.ts"
+}

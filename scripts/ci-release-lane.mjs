@@ -66,6 +66,7 @@ import { execFileSync } from 'node:child_process';
 
 import { boundedSpawnSync } from './lib/bounded-process.mjs';
 import { isMainEntry } from './lib/is-main-entry.mjs';
+import { parseNodeTap } from './lib/shard-retry.mjs';
 import { diffProblems } from './lib/release-version-diff.mjs';
 import { RELEASE_HEAD_REF, releaseQueueRoute } from './lib/release-queue-route.mjs';
 
@@ -110,8 +111,9 @@ export const LEAN_CHECKS = [
  * possible is set outside the repository: today the `main` ruleset lets only
  * Mergify update `main`. The owner chose to rely on that (2026-11-12, #9783),
  * so the hold is released; setting it back to false makes `on` behave as
- * `shadow` again. The steps of the jobs a lean run skips are not audited for
- * version-reading checks beyond those in LEAN_CHECKS; shadow measures that.
+ * `shadow` again. Which version-reading checks a lean run keeps comes from
+ * an audit of the release PR's own history (LEAN_CHECKS); shadow keeps
+ * measuring it.
  */
 export const OWNER_ALLOWS_LEAN = true;
 
@@ -229,18 +231,24 @@ const signalLines = (s) => String(s ?? '').split('\n').filter((l) => l.trim() &&
  * one line of its output.
  */
 export function runLeanChecks(cwd, commands = LEAN_CHECKS) {
+  // Without NODE_TEST_CONTEXT: a `node --test` check run from inside a test
+  // runner would report to that runner instead of exiting non-zero. TAP
+  // whatever Node's default reporter, so a failure's message can be read.
+  const { NODE_TEST_CONTEXT: _parent, ...rest } = process.env;
+  const env = { ...rest, NODE_OPTIONS: `${rest.NODE_OPTIONS ?? ''} --test-reporter=tap`.trim() };
   return commands.map((check) => {
     // Bounded well inside the aggregate's 5-minute budget; each takes well under a second.
-    // Without NODE_TEST_CONTEXT: a `node --test` check run from inside a test
-    // runner would report to that runner instead of exiting non-zero.
-    const { NODE_TEST_CONTEXT: _parent, ...env } = process.env;
     const r = boundedSpawnSync('bash', ['-c', check], { cwd, env, encoding: 'utf8', timeout: 30_000 });
     if (r.error) return { check, ok: false, tail: r.error.message };
     const stderr = signalLines(r.stderr);
-    const out = [...signalLines(r.stdout), ...stderr];
-    // A crash's error line, or a failed test's, says more than the last line.
-    const errorLine = r.status !== 0 ? [...stderr, ...out].find((l) => /^\w*Error\b.*:|^not ok \d|^✖ /.test(l.trim())) : undefined;
-    return { check, ok: r.status === 0, tail: (errorLine ?? out.at(-1) ?? '').trim() };
+    const last = (stderr.at(-1) ?? signalLines(r.stdout).at(-1) ?? '').trim();
+    if (r.status === 0) return { check, ok: true, tail: last };
+    // A failed test's title and assertion message, or a crash's error line,
+    // says more than the last line.
+    const failed = parseNodeTap(String(r.stdout ?? '')).failures[0];
+    if (failed) return { check, ok: false, tail: `not ok - ${failed.title}${failed.error ? `: ${failed.error}` : ''}` };
+    const crash = stderr.find((l) => /^\w*Error\b.*:/.test(l.trim()));
+    return { check, ok: false, tail: (crash ?? last).trim() };
   });
 }
 

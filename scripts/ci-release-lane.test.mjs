@@ -224,13 +224,14 @@ test('SHADOW (#9783 review): the report runs the lean lane\'s own checks and lis
   assert.equal(fail.ok, true, 'shadow reports, never fails');
   assert.match(fail.lines.join('\n'), /FAIL: offset mismatch[\s\S]*would fail its own checks: node scripts\/check-rust-major-offset\.mjs/); // @source-text-assertion-ok subject is the returned summary
   assert.doesNotMatch(fail.lines.join('\n'), /None of them failed/);
-  // The real runner on scripts of its own: exit status and last output line; a missing script fails, never throws.
+  // The real runner on commands of its own: exit status and one line of output (a failed test's
+  // title and message, whatever Node's default reporter); a missing script fails, never throws.
   const dir = mkdtempSync(join(TMP, 'checks-'));
   writeFileSync(join(dir, 'ok.mjs'), "console.log('first'); console.log('all good');\n");
   writeFileSync(join(dir, 'bad.mjs'), "console.log('offset mismatch'); process.emitWarning('noise', 'ExperimentalWarning'); process.emitWarning('old', 'DeprecationWarning', 'DEP0040'); process.exitCode = 1;\n");
   writeFileSync(join(dir, 'own.mjs'), "console.log('Warning: README missing for packages/x'); process.exitCode = 1;\n");
-  writeFileSync(join(dir, 'red.test.mjs'), "import test from 'node:test'; import assert from 'node:assert'; test('pins', () => assert.equal(1, 2));\n");
-  assert.deepEqual(runLeanChecks(dir, ['node ok.mjs', 'node bad.mjs', 'node own.mjs', 'node gone.mjs', "node --test --test-name-pattern='pin|x y' red.test.mjs"]).map((c) => [c.check, c.ok, /Cannot find module/.test(c.tail) || c.tail]), [['node ok.mjs', true, 'all good'], ['node bad.mjs', false, 'offset mismatch'], ['node own.mjs', false, 'Warning: README missing for packages/x'], ['node gone.mjs', false, true], ["node --test --test-name-pattern='pin|x y' red.test.mjs", false, 'not ok 1 - pins']]); // @source-text-assertion-ok subject is the runner's returned results
+  writeFileSync(join(dir, 'red.test.mjs'), "import test from 'node:test'; import assert from 'node:assert'; test('pins', () => assert.equal(1, 2, 'pinned to the old major'));\n");
+  assert.deepEqual(runLeanChecks(dir, ['node ok.mjs', 'node bad.mjs', 'node own.mjs', 'node gone.mjs', "node --test --test-name-pattern='pin|x y' red.test.mjs"]).map((c) => [c.check, c.ok, /Cannot find module/.test(c.tail) || c.tail]), [['node ok.mjs', true, 'all good'], ['node bad.mjs', false, 'offset mismatch'], ['node own.mjs', false, 'Warning: README missing for packages/x'], ['node gone.mjs', false, true], ["node --test --test-name-pattern='pin|x y' red.test.mjs", false, 'not ok - pins: pinned to the old major']]); // @source-text-assertion-ok subject is the runner's returned results
 });
 
 test('the release queue really tests a batch: its required `Rust tests (feature builds)` runs on a PR only for a batch', () => {

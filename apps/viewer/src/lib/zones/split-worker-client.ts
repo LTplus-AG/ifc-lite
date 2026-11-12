@@ -95,28 +95,28 @@ export const splitZonesInWorker: ZoneSplitBatchFn = (request, onProgress) =>
     worker.onerror = (event) => settle(() => reject(new Error(event.message || 'the zone split worker crashed')));
     worker.onmessageerror = () => settle(() => reject(new Error('the zone split worker sent an unreadable message')));
 
-    const payload: ZoneSplitWorkerRequest = {
-      type: 'split',
-      id,
-      zones: request.zones as Zone[],
-      zoneIndex: request.zoneIndex,
-      jobs: request.jobs.map(ownedJob),
-      tolerance: request.tolerance,
-    };
-    // No transfer of the scene's arrays, on purpose: the positions and indices
-    // belong to the renderer's live scene, and transferring them would detach the
-    // buffers the model is drawn from. Each piece is sent as its own copy: a
-    // structured clone of a view copies its WHOLE buffer, and a cache hit's mesh
-    // arrays share ~1 MiB arena blocks (ArrayArena), so cloning the views would
-    // copy every block a job touches.
     try {
+      const payload: ZoneSplitWorkerRequest = {
+        type: 'split',
+        id,
+        zones: request.zones as Zone[],
+        zoneIndex: request.zoneIndex,
+        jobs: request.jobs.map(ownedJob),
+        tolerance: request.tolerance,
+      };
+      // No transfer of the scene's arrays, on purpose: the positions and indices
+      // belong to the renderer's live scene, and transferring them would detach the
+      // buffers the model is drawn from. Each piece is sent as its own copy: a
+      // structured clone of a view copies its WHOLE buffer, and a cache hit's mesh
+      // arrays share ~1 MiB arena blocks (ArrayArena), so cloning the views would
+      // copy every block a job touches.
       worker.postMessage(payload);
     } catch (error) {
-      // postMessage can itself throw (structured clone rejecting an
-      // unsupported value). Thrown after the worker and its timeout timer
-      // are already live, so without this catch the Promise executor's
-      // synchronous throw auto-rejects the returned promise while nothing
-      // calls settle() — the worker thread AND the 600s timer both leak.
+      // Copying the pieces (a detached array) or postMessage itself (structured
+      // clone rejecting an unsupported value) can throw. Thrown after the worker
+      // and its timeout timer are already live, so without this catch the Promise
+      // executor's synchronous throw auto-rejects the returned promise while
+      // nothing calls settle(): the worker thread AND the 600s timer both leak.
       settle(() => reject(error instanceof Error ? error : new Error(String(error))));
     }
   });

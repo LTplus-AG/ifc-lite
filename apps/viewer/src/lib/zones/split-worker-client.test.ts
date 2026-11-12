@@ -72,6 +72,18 @@ describe('splitZonesInWorker', () => {
     assert.equal(worker.terminated, 1, 'a postMessage throw must still terminate the worker');
   });
 
+  it('terminates the worker and clears its timeout timer when a piece cannot be copied (a detached array)', async () => {
+    const positions = new Float32Array(9);
+    structuredClone(positions.buffer, { transfer: [positions.buffer] }); // detaches it
+    let posted = 0;
+    (globalThis as { Worker?: unknown }).Worker = class extends FakeWorker { override postMessage(): void { posted++; } };
+    const promise = splitZonesInWorker({ zones: [], zoneIndex: 0, jobs: [{ globalId: 7, pieces: [{ positions, indices: new Uint32Array(3) }] }] });
+    const worker = instances[0];
+    await assert.rejects(promise);
+    assert.equal(worker.terminated, 1, 'the worker is terminated (and its 600 s timer cleared with it)');
+    assert.equal(posted, 0, 'nothing was posted');
+  });
+
   it('sends each piece as its own bytes, not the whole buffer its arrays view', async () => {
     // Mesh arrays from a cache hit are views into shared ~1 MiB arena blocks.
     const block = new ArrayBuffer(1 << 20);

@@ -122,7 +122,7 @@ export function getMaxExpressId(
 type IfcxParse = Awaited<ReturnType<typeof ParseIfcx>>;
 type IfcxStoreInput = Pick<
   IfcxParse,
-  'fileSize' | 'entityCount' | 'parseTime' | 'strings' | 'entities' | 'properties' | 'quantities' | 'relationships' | 'georeferencing'
+  'fileSize' | 'parseTime' | 'strings' | 'entities' | 'properties' | 'quantities' | 'relationships' | 'georeferencing'
 > & { spatialHierarchy?: IfcxParse['spatialHierarchy']; derivedEntities?: IfcxParse['derivedEntities'] };
 
 /**

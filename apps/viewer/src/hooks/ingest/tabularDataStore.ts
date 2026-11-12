@@ -32,7 +32,7 @@ export interface TabularStoreMeta {
   source: ArrayBuffer;
   fileSize: number;
   parseTime: number;
-  /** Length unit scale to SI metres. */
+  /** Length unit scale to SI metres. Finite and positive: the reader resolves the unit before calling. */
   lengthUnitScale: number;
   /** `'declared'` when the file states its unit, `'default'` when the format assumes one. */
   lengthUnitSource: NonNullable<IfcDataStore['lengthUnitSource']>;

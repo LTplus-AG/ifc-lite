@@ -7,6 +7,9 @@
  * Ownership is decided by `idOffset` + `maxExpressId` (`store/globalId.ts`), so
  * the models are registered the way a load does it: the watermark from
  * `getMaxExpressId`, the offset from the federation registry.
+ *
+ * Every row here has a mesh. `getMaxExpressId` only reads the entity table of
+ * an `'IFC5'` store, so an unmeshed row above the last mesh is not covered.
  */
 
 import '@/test/setup-dom.js';

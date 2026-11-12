@@ -6,7 +6,7 @@ import '@/test/setup-dom.js';
 import { beforeEach, afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readRelatedLists } from '@ifc-lite/create';
-import { extractAllMaterialsOnDemand } from '@ifc-lite/parser';
+import { IfcParser, extractAllMaterialsOnDemand } from '@ifc-lite/parser';
 import { StepExporter, serializeEntitySubgraph } from '@ifc-lite/export';
 import { useViewerStore } from '@/store';
 import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
@@ -16,6 +16,7 @@ import { AddMaterialDialog } from './property-editor-classification-material-dia
 import { LayersSection } from './model-inspector/LayersSection';
 import { applyMaterialLayers } from './model-inspector/inspector-edits';
 
+import { recordModellingEdit } from '@/store/slices/mutation-modelling-records';
 import { addMaterialAssociation } from '@/lib/authoring/associations';
 
 const setElementMaterial = (modelId: string, id: number, input: { Name: string; Color: string }) => addMaterialAssociation(modelId, id, { name: input.Name, color: input.Color }).ok;
@@ -62,7 +63,7 @@ it('Properties creates Brick with a material appearance and replaces its old mat
   assert.deepEqual(extractAllMaterialsOnDemand(store(), wall, view()).map(m => m.name), ['Concrete']);
 });
 
-it('layer creation carries its colour into the remesh subgraph (#9296 M)', () => {
+it('layer creation carries its colour into the remesh subgraph (#9296 M)', async () => {
   // The layer constructor uses the same colour-bearing create method.
   const live = { dataStore: store(), view: view() };
   const ui = render(<LayersSection modelId={MODEL_ID} live={live} kind="wall" initial={[]} elementId={wall} typeId={null} defaultThickness={0.2} />);
@@ -70,7 +71,11 @@ it('layer creation carries its colour into the remesh subgraph (#9296 M)', () =>
   assert.notEqual(set, null);
   const sub = serializeEntitySubgraph(store(), view(), { targets: new Set([wall]) });
   assert.match(new TextDecoder().decode(sub.bytes), /IFCMATERIALDEFINITIONREPRESENTATION/);
-  assert.match(String(exported()), /0\.709803/);
+  const mini = await new IfcParser().parseColumnar(sub.bytes.slice().buffer as ArrayBuffer);
+  const colours = mini.getEntitiesByType('IFCCOLOURRGB');
+  assert.equal(colours.length, 1, 'the assigned Brick appearance is in the mini STEP');
+  const rgb = colours[0].attributes.slice(1, 4);
+  assert.ok(rgb.every((v, i) => typeof v === 'number' && Math.abs(v - [181, 82, 59][i] / 255) < 1e-6), `mini STEP RGB: ${rgb}`);
   assert.ok(ui.querySelector('[data-inspector-apply-layers]'));
 });
 
@@ -102,4 +107,24 @@ it('the slab material picker replaces the association through a real selection (
   press(option, 'Enter');
   assert.deepEqual(extractAllMaterialsOnDemand(store(), added.expressId, view()).map(m => m.name), ['Steel']);
   assert.equal(readRelatedLists(store(), 'IfcRelAssociatesMaterial', view()).filter(r => r.relatedIds.includes(added.expressId)).length, 1);
+});
+
+
+it('imported material swatches find a surface style after a curve style (#9296 M)', async () => {
+  const reader = await import('@/lib/authoring/material-colour').catch(() => null);
+  assert.ok(reader?.materialColour, 'material swatch reader exists');
+  assert.equal(setElementMaterial(MODEL_ID, wall, { Name: 'Brick', Color: '#b5523b' }), true);
+  const material = [...view().getNewEntitiesOfType('IFCMATERIAL')].find(e => e.attributes[0] === 'Brick');
+  const styled = [...view().getNewEntitiesOfType('IFCSTYLEDITEM')].find(e => e.attributes[0] === null);
+  assert.ok(material && styled);
+  const styles = styled.attributes[1]; assert.ok(Array.isArray(styles));
+  const surface = styles[0]; assert.ok(typeof surface === 'string');
+  recordModellingEdit(useViewerStore, MODEL_ID, (_methods, draft) => {
+    const blue = draft.addEntity('IfcColourRgb', [null, { real: 0 }, { real: 0 }, { real: 1 }]);
+    const curve = draft.addEntity('IfcCurveStyle', ['Outline', null, null, `#${blue.expressId}`, null]);
+    const assignment = draft.addEntity('IfcPresentationStyleAssignment', [[`#${curve.expressId}`, surface]]);
+    draft.setPositionalAttribute(styled.expressId, 1, [`#${assignment.expressId}`]);
+  });
+  const imported = await new IfcParser().parseColumnar(new TextEncoder().encode(exported()).buffer as ArrayBuffer);
+  assert.equal(reader.materialColour({ dataStore: imported }, material.expressId), '#b5523b');
 });

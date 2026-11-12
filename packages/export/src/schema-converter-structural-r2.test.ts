@@ -139,3 +139,16 @@ describe('STEP trivia in structural stiffness values #9668 review regressions', 
     });
   }
 });
+
+
+describe('irreversible structural relationship preview #9668 review regression', () => {
+  it('reports the lost relationship kind while retaining both linked objects', async () => {
+    const source = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n#50=IFCRELCONNECTSSTRUCTURALELEMENT('id',#1,$,$,#22,#77);\nENDSEC;\nEND-ISO-10303-21;";
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(source).buffer);
+    const report = analyzeConversionLoss(store, 'IFC2X3', 'IFC4');
+    expect(report.hasLoss).toBe(true);
+    expect(report.entries).toMatchObject([{ sourceType: 'IFCRELCONNECTSSTRUCTURALELEMENT', targetType: 'IFCRELASSIGNSTOPRODUCT', kind: 'lossy', droppedAttributes: [] }]);
+    expect(convertStepLine("#50=IFCRELCONNECTSSTRUCTURALELEMENT('id',#1,$,$,#22,#77);", 'IFC2X3', 'IFC4'))
+      .toBe("#50=IFCRELASSIGNSTOPRODUCT('id',#1,$,$,(#77),$,#22);");
+  });
+});

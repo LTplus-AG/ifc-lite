@@ -36,7 +36,11 @@ export default {
       let elevation = null;
       tasks.push(await task(s, 'generate elevation linework', async () => {
         await s.ui.click(s.page.getByRole('button', { name: 'Projection', exact: true }).first(), { settle: 3000 });
-        elevation = await drawingState(s);
+        elevation = await s.state(() => {
+          const st = globalThis.__ifc_lite_viewer_store__.getState();
+          return { status: st.drawing2DStatus, enabled: st.drawing2DDisplayOptions.showConstructionProjection,
+            projectionLines: (st.drawing2D?.lines ?? []).filter(l => l.category === 'projection' && l.visibility !== 'hidden').length };
+        });
       }));
       return {
         tasks, notes, evidence: [planShot, sectionShot], artifacts: files,
@@ -46,7 +50,7 @@ export default {
           { name: 'section exported as SVG with geometry', ok: svgShapes(files.svg) >= 2, detail: files.svg ? `${files.svg.name}, ${svgShapes(files.svg)} shapes` : 'no SVG' },
           { name: 'section exported as DXF', ok: isDxf(files.dxf), detail: files.dxf ? `${files.dxf.name}, ${files.dxf.bytes.length} bytes` : 'no DXF' },
           { name: 'section exported as PDF', ok: isPdf(files.pdf), detail: files.pdf ? `${files.pdf.name}, ${files.pdf.bytes.length} bytes` : 'no PDF' },
-          { name: 'elevation contains linework', ok: !!elevation && elevation.lines > 0, detail: JSON.stringify(elevation) },
+          { name: 'elevation contains linework', ok: !!elevation && elevation.enabled === true && elevation.projectionLines > 0, detail: JSON.stringify(elevation) },
           { name: 'PDF geometry is at the requested drawing scale', ok: Math.abs(sectionSpanMm(extents) - 104) <= .5, detail: JSON.stringify(extents) },
         ],
       };

@@ -95,7 +95,7 @@ jobs:
               if (miss) exit 0
               if (n != 2) { printf "scripts-tests shard drift: %d successful shard job(s) in this run, nothing to compare\n", n; exit 0 }
               hi = (t[1] >= t[2]) ? 1 : 2; lo = 3 - hi
-              if ((t[lo] <= 0 && t[hi] > 0) || (t[lo] > 0 && t[hi] / t[lo] > max + 0))
+              if (t[hi] > max * t[lo])
                 printf "::warning title=scripts-tests shard drift::%s took %ds against %s (%ds), over the %sx limit. Re-pin PINNED in scripts/ci-scripts-test-shards.mjs from this run: %s\n", name[hi], t[hi], name[lo], t[lo], max, url
               else
                 printf "scripts-tests shards within %sx: %s %ds, %s %ds\n", max, name[1], t[1], name[2], t[2]

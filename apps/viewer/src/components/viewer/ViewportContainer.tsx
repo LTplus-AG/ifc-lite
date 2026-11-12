@@ -66,8 +66,7 @@ import { enqueueSourceLoad } from '@/lib/sources/loadQueue';
 import { toast, Toaster } from '@/components/ui/toast';
 import { reportFileOpenRejected } from '@/hooks/ingest/fileOpenRejected';
 import { Upload, AlertTriangle, ChevronDown, ExternalLink, Plus } from 'lucide-react';
-import { createBlankIfcFile } from '@/utils/createBlankIfc';
-import { launchModelCommand } from '@/lib/commands/modeling/keys-workspace';
+import { startBlankModel } from '@/hooks/startBlankModel';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
 import { type IfcDataStore } from '@ifc-lite/parser';
 import { getEffectiveGeoreference, hasDeclaredCrs, offersCesium } from '@/lib/geo/effective-georef';
@@ -509,14 +508,11 @@ export function ViewportContainer() {
 
   const handleStartBlank = useCallback(async () => {
     if (!guardWebGpu(() => { void handleStartBlank(); }, { replay: 'on-retry' })) return;
-    const file = createBlankIfcFile();
-    const modelId = crypto.randomUUID();
-    // Must await: loadFile() calls resetViewerState() internally, which
-    // closes any Model workspace session; entering before that races.
-    await loadFile(file, { kind: 'primary', modelId });
-    const state = useViewerStore.getState();
-    if (state.activeModelId !== modelId || state.models.get(modelId)?.loadState !== 'complete') return;
-    if (state.enterModelWorkspace({ modelId })) launchModelCommand('wall.place'); // #6232
+    try { await startBlankModel(loadFile); }
+    catch (error) {
+      console.error('[ViewportContainer] Start blank failed', error);
+      toast.error(error instanceof Error ? error.message : String(error));
+    }
   }, [guardWebGpu, loadFile]);
 
   // Issue #540 "Merge Multilayer Walls" reload. The setting changes the produced

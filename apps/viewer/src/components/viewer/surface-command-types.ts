@@ -30,6 +30,8 @@ export interface SurfaceCommandContext {
   openActivity?: () => void;
   refreshModels?: () => Promise<void>;
   openShareDialog?: () => void;
+  startBlank?: () => void;
+  loadRecovery?: import('@/hooks/loadRecoveryActions').LoadRecoveryBinding;
   /** The context menu owns the current entity and supplies its target-specific action. */
   contextAction?: () => void;
   /** Explicit focus return target for the selected-entity destination. */

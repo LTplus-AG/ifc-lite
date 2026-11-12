@@ -57,14 +57,6 @@ export interface UseGeometryStreamingParams {
    * peer's placement edit. Drained into `scene.rotateMeshesForEntities`.
    */
   pendingMeshRotations: Map<number, { angle: number; pivot: [number, number, number] }> | null;
-  /**
-   * Emit-both GPU-instancing: raw IFNS shard bytes from the geometry worker,
-   * tagged with the owning model's id, drained here via
-   * `scene.addInstancedShard` (decode + upload as instanced templates).
-   * Cleared after each drain. Inert until the wasm exposes
-   * processGeometryBatchInstanced.
-   */
-  pendingInstancedShards: Array<{ modelId: string; bytes: ArrayBuffer }> | null;
   /** Current absolute renderer-Y lifts, keyed by global entity id. New arrivals
    * inherit them before upload; later level changes still use pending deltas. */
   currentLevelY?: ReadonlyMap<number, number>;
@@ -116,7 +108,6 @@ export interface UseGeometryStreamingParams {
   pruneGeometryMeshes: (ids: Set<number>) => void;
   clearPendingMeshTranslations: () => void;
   clearPendingMeshRotations: () => void;
-  clearInstancedShards: () => void;
   clearColorRef: MutableRefObject<[number, number, number, number]>;
   releaseGeometryAfterFinalize?: boolean;
   onGeometryReleased?: () => void;

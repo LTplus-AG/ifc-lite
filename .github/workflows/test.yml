@@ -800,7 +800,7 @@ jobs:
         # hash, so without it the scorer's turbo build misses that cache.
         env:
           VITE_BUNDLE_ANALYSIS: "1"
-        run: node tests/structural-coverage/score.mjs --check tests/structural-coverage/baseline/r1.json
+        run: node tests/structural-coverage/score.mjs --check tests/structural-coverage/baseline/r3.json
 
       # A separate feature bundle exposes only the test ownership probe.
       # Do not overwrite pkg-diff or its committed production declarations.
@@ -1380,19 +1380,20 @@ jobs:
     # Give each workload its own runner and budget; keep every existing check.
     runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 25
-    env:
-      HAS_MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: false
           persist-credentials: false
+          # check-module-size.mjs and check-source-text-assertions.mjs audit
+          # against `git merge-base origin/main HEAD`, which needs history.
           # scripts/check-changeset-bump.test.mjs asserts that the gate PASSES on
           # the real repository and is not vacuous. The gate resolves its baseline
           # from the last `chore: version packages` commit, so on the default
           # depth-1 checkout it correctly REFUSES and that test fails. The gate
           # itself runs in the `lint` job, which already carries this; its TEST
-          # runs here, via the scripts/ glob catch-all, and needs the same history.
+          # runs in `scripts-tests`, via the scripts/ glob catch-all, and needs
+          # the same history.
           #
           # Not skipped on a shallow clone instead: a skipped test reads as green,
           # which is the failure mode this repo's gates exist to prevent.
@@ -1714,15 +1715,157 @@ jobs:
       # without the win32-x64 zip and nothing noticed (issue #2619).
       - name: Check server-bin platform parity
         run: node scripts/check-server-bin-targets.mjs
-      # Execute each discovered test file once. Literal paths preserve the path
-      # auditor's existing input census; globs discover every new suite. sort -u
-      # removes the overlap before Node starts any tests.
+      # The scripts/ test catch-all runs in its own job, `scripts-tests`.
       - name: Exercise IFC git history walk against the real CLI
         run: node --test tools/ifc-history/*.test.mjs
+      # Committed codegen output (packages/codegen/generated/**,
+      # packages/parser/src/generated/**, packages/data/src/ifc-schema/
+      # generated/**) had no CI freshness gate at all — a generator bug fixed
+      # by hand-patching the OUTPUT instead of the generator could live in the
+      # tree indefinitely (#3565). This regenerates every target from its
+      # committed .exp / upstream input and diffs against what's committed.
+      # Uses the codegen dist from the build artifact above when fresh, and
+      # rebuilds it (fast, single package) otherwise.
+      - name: Check codegen output freshness
+        run: pnpm run check:codegen-sync
+      # The IFC2X3 required-slot table both schema converters read on a
+      # downgrade (#4714) is generated from the EXPRESS-derived IFC2X3 registry
+      # into BOTH languages. Check it here so a schema refresh cannot leave one
+      # copy stale: the two would then disagree on which slot takes
+      # `.NOTDEFINED.`, and a hand-edit to either would leave no other trace.
+      - name: Check IFC2X3 required-slot table freshness
+        run: node scripts/generate-ifc2x3-required-slots.mjs --check
+      # Where @ifc-lite/data's C#-derived IFC4 entity table disagrees with the
+      # IFC4 EXPRESS schema (#5204). ENTITIES_IFC4_EXPRESS applies it, so a
+      # registry or table refresh must regenerate it or this fails.
+      - name: Check IFC4 EXPRESS corrections freshness
+        run: node scripts/generate-ifc4-express-corrections.mjs --check
+      # The IFC2X3 required-slot table's IFC4 twin (#5202): the slots IFC4 requires on a downgrade from
+      # IFC4X3/IFC5, generated from the EXPRESS-derived IFC4 registry.
+      - name: Check IFC4 required-slot table freshness
+        run: node scripts/generate-ifc4-required-slots.mjs --check
+      # The ledger of enum members a schema conversion can meet that the target
+      # lacks, and what the converter writes for each (#5365). A schema
+      # regeneration that adds one fails here until its rows are reviewed.
+      - name: Check enum reconciliation ledger freshness
+        run: node scripts/generate-enum-reconciliation.mjs --check
+      # The schema facts the Rust mutation-log STEP writer reads (#5941) are
+      # generated by running the TypeScript StepExporter's own functions
+      # (attrIndex, the slot classifiers, declaredNominalValueType), its parity
+      # target. A registry or exporter change that moves one fails here until
+      # the Rust table is regenerated.
+      - name: Check step-log table freshness
+        run: node scripts/generate-step-log-tables.mjs --check
+      # The sandbox `bim` ambient type surface (apps/viewer/.../bim-globals.d.ts)
+      # is generated from @ifc-lite/sandbox's NAMESPACE_SCHEMAS — the SAME schema
+      # the script editor's completions and the LLM system prompt read live.
+      # Nothing verified it, and the generator itself had stopped running, so the
+      # file was hand-edited instead: it never carried `bim.clash` at all, and
+      # lost two `create` parameters along the way (issue #2418). Uses the sandbox
+      # dist from the build artifact above; the `frontend` path filter covers both
+      # sides of the contract (packages/**, apps/viewer/**).
+      - name: Check sandbox bim-globals freshness
+        run: node scripts/generate-bim-globals.mjs --check
+      # Typecheck the built-in template scripts AGAINST that generated surface.
+      # This is the only thing that actually compiles bim-globals.d.ts, and it
+      # was run by no workflow: it sat at 193 errors (every one of them
+      # `Cannot find name 'console'`, because the sandbox `console` was never
+      # declared), which is why the drift in #2418 went unnoticed for months.
+      # Now that the declaration is generated, this also verifies every type the
+      # schema NAMES resolves — a `tsReturn` of `BimClash.Nope` fails here
+      # (#2422). No build needed: the .d.ts is self-contained and the templates
+      # import nothing.
+      # Scoped name + `--fail-if-no-match`: an unmatched pnpm filter prints
+      # "No projects matched the filters" and exits 0, so a filter that stops
+      # resolving would turn this gate green without running it. That is the
+      # same "cannot fail" shape as the `skipLibCheck` default this step was
+      # already fixed for, so it is closed here rather than left to luck.
+      - name: Check sandbox script templates typecheck
+        run: pnpm --filter=@ifc-lite/viewer --fail-if-no-match check:templates
+      # Docs upkeep guards (cheap, no build/fixtures needed — the doc-sample
+      # typecheck resolves @ifc-lite/* to each package's src via tsconfig
+      # paths). Keep the docs in lockstep with the code they describe.
+      - name: Check package READMEs
+        run: node scripts/docs/check-package-readmes.mjs
+      - name: Check doc code samples
+        run: node scripts/docs/check-doc-samples.mjs
+      - name: Check generated doc sections
+        run: node scripts/docs/generate-docs-sections.mjs --check
+      - name: Check generated coverage ledger
+        run: node scripts/generate-coverage-ledger.mjs --check
+      - name: Check generated structural coverage ledger
+        run: node scripts/generate-structural-coverage-ledger.mjs --check
+
+  # The scripts/ test catch-all, split out of `node-guards` where it was about
+  # 470 of that job's 750 seconds and made it the last lane to finish in most
+  # green PR runs. Same trigger, same setup (full history, build artifact,
+  # verified fixtures, Python 3.12), same file list. Node's own --test-shard
+  # keeps file i of that list on shard (i mod N) + 1, with N taken from
+  # strategy.job-total, so the shards partition it: no file runs twice and
+  # none is dropped.
+  scripts-tests:
+    name: Node scripts tests (shard ${{ matrix.shard }}/2)
+    needs: [changes, build]
+    if: (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true') && needs.changes.outputs.replay != 'true'
+    runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    env:
+      HAS_MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+          # scripts/check-changeset-bump.test.mjs needs the real history: its
+          # gate refuses on a depth-1 clone. See the same note in node-guards.
+          fetch-depth: 0
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Download build artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: build-output
+          path: packages
+      - name: Cache test fixtures
+        id: fixtures-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: tests/models
+          key: ci-fixtures-source-v2-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json', 'tests/models/README.md', 'tests/models/.manifest-ignore') }}
+      - name: Fetch fixtures
+        if: steps.fixtures-cache.outputs.cache-hit != 'true'
+        run: pnpm fixtures
+      # Fixture-gated tests skip when a file is missing, and a skip reads as a
+      # pass, so a partial cache must fail here rather than thin the suite.
+      - name: Verify fixtures
+        run: pnpm fixtures:check
+      # Several scripts/ tests spawn python3 (tomllib needs 3.11+); the
+      # self-hosted image does not guarantee one.
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      # Literal paths preserve the path auditor's existing input census; globs
+      # discover every new suite. sort -u removes the overlap before Node starts
+      # any tests, and --test-shard then takes this shard's half of that list.
       - name: Run every scripts/ test file (glob catch-all)
         id: scripts_tests
+        # The shard comes from the matrix the runner actually expanded, not from a
+        # second hand-kept count: trim the matrix and the remaining shards widen
+        # to cover every file, instead of one shard silently running half.
+        env:
+          SHARD_INDEX: ${{ strategy.job-index }}
+          SHARD_TOTAL: ${{ strategy.job-total }}
         run: |
-          node --test --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml $(printf '%s\n' \
+          SHARD="$((SHARD_INDEX + 1))/${SHARD_TOTAL}"
+          node --test --test-shard="$SHARD" --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml $(printf '%s\n' \
             scripts/check-asset-usage.test.mjs \
             scripts/check-changeset-bump.test.mjs \
             scripts/check-ci-aggregate-coverage.test.mjs \
@@ -1808,83 +1951,6 @@ jobs:
           token: ${{ secrets.MERGIFY_TOKEN }}
           report_path: mergify-junit.xml
           test_step_outcome: ${{ steps.scripts_tests.outcome }}
-      # Committed codegen output (packages/codegen/generated/**,
-      # packages/parser/src/generated/**, packages/data/src/ifc-schema/
-      # generated/**) had no CI freshness gate at all — a generator bug fixed
-      # by hand-patching the OUTPUT instead of the generator could live in the
-      # tree indefinitely (#3565). This regenerates every target from its
-      # committed .exp / upstream input and diffs against what's committed.
-      # Uses the codegen dist from the build artifact above when fresh, and
-      # rebuilds it (fast, single package) otherwise.
-      - name: Check codegen output freshness
-        run: pnpm run check:codegen-sync
-      # The IFC2X3 required-slot table both schema converters read on a
-      # downgrade (#4714) is generated from the EXPRESS-derived IFC2X3 registry
-      # into BOTH languages. Check it here so a schema refresh cannot leave one
-      # copy stale: the two would then disagree on which slot takes
-      # `.NOTDEFINED.`, and a hand-edit to either would leave no other trace.
-      - name: Check IFC2X3 required-slot table freshness
-        run: node scripts/generate-ifc2x3-required-slots.mjs --check
-      # Where @ifc-lite/data's C#-derived IFC4 entity table disagrees with the
-      # IFC4 EXPRESS schema (#5204). ENTITIES_IFC4_EXPRESS applies it, so a
-      # registry or table refresh must regenerate it or this fails.
-      - name: Check IFC4 EXPRESS corrections freshness
-        run: node scripts/generate-ifc4-express-corrections.mjs --check
-      # The IFC2X3 required-slot table's IFC4 twin (#5202): the slots IFC4 requires on a downgrade from
-      # IFC4X3/IFC5, generated from the EXPRESS-derived IFC4 registry.
-      - name: Check IFC4 required-slot table freshness
-        run: node scripts/generate-ifc4-required-slots.mjs --check
-      # The ledger of enum members a schema conversion can meet that the target
-      # lacks, and what the converter writes for each (#5365). A schema
-      # regeneration that adds one fails here until its rows are reviewed.
-      - name: Check enum reconciliation ledger freshness
-        run: node scripts/generate-enum-reconciliation.mjs --check
-      # The schema facts the Rust mutation-log STEP writer reads (#5941) are
-      # generated by running the TypeScript StepExporter's own functions
-      # (attrIndex, the slot classifiers, declaredNominalValueType), its parity
-      # target. A registry or exporter change that moves one fails here until
-      # the Rust table is regenerated.
-      - name: Check step-log table freshness
-        run: node scripts/generate-step-log-tables.mjs --check
-      # The sandbox `bim` ambient type surface (apps/viewer/.../bim-globals.d.ts)
-      # is generated from @ifc-lite/sandbox's NAMESPACE_SCHEMAS — the SAME schema
-      # the script editor's completions and the LLM system prompt read live.
-      # Nothing verified it, and the generator itself had stopped running, so the
-      # file was hand-edited instead: it never carried `bim.clash` at all, and
-      # lost two `create` parameters along the way (issue #2418). Uses the sandbox
-      # dist from the build artifact above; the `frontend` path filter covers both
-      # sides of the contract (packages/**, apps/viewer/**).
-      - name: Check sandbox bim-globals freshness
-        run: node scripts/generate-bim-globals.mjs --check
-      # Typecheck the built-in template scripts AGAINST that generated surface.
-      # This is the only thing that actually compiles bim-globals.d.ts, and it
-      # was run by no workflow: it sat at 193 errors (every one of them
-      # `Cannot find name 'console'`, because the sandbox `console` was never
-      # declared), which is why the drift in #2418 went unnoticed for months.
-      # Now that the declaration is generated, this also verifies every type the
-      # schema NAMES resolves — a `tsReturn` of `BimClash.Nope` fails here
-      # (#2422). No build needed: the .d.ts is self-contained and the templates
-      # import nothing.
-      # Scoped name + `--fail-if-no-match`: an unmatched pnpm filter prints
-      # "No projects matched the filters" and exits 0, so a filter that stops
-      # resolving would turn this gate green without running it. That is the
-      # same "cannot fail" shape as the `skipLibCheck` default this step was
-      # already fixed for, so it is closed here rather than left to luck.
-      - name: Check sandbox script templates typecheck
-        run: pnpm --filter=@ifc-lite/viewer --fail-if-no-match check:templates
-      # Docs upkeep guards (cheap, no build/fixtures needed — the doc-sample
-      # typecheck resolves @ifc-lite/* to each package's src via tsconfig
-      # paths). Keep the docs in lockstep with the code they describe.
-      - name: Check package READMEs
-        run: node scripts/docs/check-package-readmes.mjs
-      - name: Check doc code samples
-        run: node scripts/docs/check-doc-samples.mjs
-      - name: Check generated doc sections
-        run: node scripts/docs/generate-docs-sections.mjs --check
-      - name: Check generated coverage ledger
-        run: node scripts/generate-coverage-ledger.mjs --check
-      - name: Check generated structural coverage ledger
-        run: node scripts/generate-structural-coverage-ledger.mjs --check
 
   node-tests:
     name: Node tests (shard ${{ matrix.shard }}/4)
@@ -3578,7 +3644,7 @@ jobs:
 
   test:
     name: Build + WASM + Rust + Node
-    needs: [changes, build, revert-oracle, typecheck, lint, node-guards, node-tests, provenance-tests, viewer-tests, viewer-e2e, rust-tests, rust-retained, rust-full, rust-semver, geometry-census, csg-accept-gates, plato-check, docs-checks, docs-site, agents-md, license-headers, silent-revert, native-instructions, perf-ratchet]
+    needs: [changes, build, revert-oracle, typecheck, lint, node-guards, scripts-tests, node-tests, provenance-tests, viewer-tests, viewer-e2e, rust-tests, rust-retained, rust-full, rust-semver, geometry-census, csg-accept-gates, plato-check, docs-checks, docs-site, agents-md, license-headers, silent-revert, native-instructions, perf-ratchet]
     # Preserve failed/skipped dependency judgement, but retire cancelled workflows (#7247).
     if: ${{ !cancelled() }}
     # Free runner — the gate just inspects upstream job results.
@@ -3664,6 +3730,7 @@ jobs:
             [typecheck]="${{ needs.typecheck.result }}"
             [lint]="${{ needs.lint.result }}"
             [node-guards]="${{ needs.node-guards.result }}"
+            [scripts-tests]="${{ needs.scripts-tests.result }}"
             [node-tests]="${{ needs.node-tests.result }}"
             [provenance-tests]="${{ needs.provenance-tests.result }}"
             [viewer-tests]="${{ needs.viewer-tests.result }}"

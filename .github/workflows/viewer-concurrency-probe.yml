@@ -36,13 +36,10 @@ permissions:
   actions: read
   contents: read
 
-# One running and at most one pending run: a burst of merges must not queue
-# eight hosted jobs per push in front of required lanes. The price is that a
-# newer push replaces an older pending run, even one it has nothing to add to;
-# for a sampler that is the right trade.
-concurrency:
-  group: viewer-concurrency-probe
-  cancel-in-progress: false
+# Concurrency is set on the probe and report jobs, not here: a burst of merges
+# then keeps at most one running and one pending set of shards, and a run the
+# plan skips (switch off, nothing to measure) never enters a group, so it can
+# neither queue jobs nor cancel a pending run that had something to measure.
 
 jobs:
   # ADVISORY throughout: every step is continue-on-error and the report exits
@@ -70,15 +67,21 @@ jobs:
           RUN_ID: ${{ github.event.workflow_run.id }}
           SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          set -euo pipefail
-          skip() { echo "::notice title=Viewer concurrency probe::skipped: $1"; echo "probe=false" >> "$GITHUB_OUTPUT"; exit 0; }
-          ran=$(gh api --paginate "repos/$REPO/actions/runs/$RUN_ID/jobs?per_page=100" \
-            --jq '.jobs[] | select(.name == "Viewer tests (shard 0)" and .conclusion != "skipped") | .name' | wc -l)
-          [ "$ran" -gt 0 ] || skip "the viewer tests did not run in Test run $RUN_ID"
-          gh api "repos/$REPO/contents/scripts/viewer-concurrency-probe.mjs?ref=$SHA" --silent 2>/dev/null \
-            || skip "commit $SHA has no scripts/viewer-concurrency-probe.mjs"
-          live=$(gh api "repos/$REPO/actions/runs/$RUN_ID/artifacts?name=build-output" --jq '.artifacts[].expired' | grep -c '^false$' || true)
-          [ "$live" -gt 0 ] || skip "Test run $RUN_ID's build-output artifact has expired"
+          set -uo pipefail
+          # Every way out names its reason; an API error is never read as a verdict.
+          skip() { echo "::notice title=Viewer concurrency probe (advisory)::skipped: $1"; echo "probe=false" >> "$GITHUB_OUTPUT"; exit 0; }
+          jobs=$(gh api --paginate "repos/$REPO/actions/runs/$RUN_ID/jobs?per_page=100" --jq '.jobs[] | select(.conclusion != "skipped") | .name') \
+            || skip "could not list Test run $RUN_ID's jobs"
+          printf '%s\n' "$jobs" | grep -qx 'Viewer tests (shard 0)' || skip "the viewer tests did not run in Test run $RUN_ID"
+          if ! err=$(gh api "repos/$REPO/contents/scripts/viewer-concurrency-probe.mjs?ref=$SHA" --silent 2>&1); then
+            case "$err" in
+              *404*) skip "commit $SHA has no scripts/viewer-concurrency-probe.mjs" ;;
+              *) skip "could not check commit $SHA for the probe script: $err" ;;
+            esac
+          fi
+          expired=$(gh api "repos/$REPO/actions/runs/$RUN_ID/artifacts?name=build-output" --jq '.artifacts[].expired') \
+            || skip "could not list Test run $RUN_ID's artifacts"
+          printf '%s\n' "$expired" | grep -qx false || skip "Test run $RUN_ID has no unexpired build-output artifact"
           echo "probe=true" >> "$GITHUB_OUTPUT"
 
   probe:
@@ -87,6 +90,9 @@ jobs:
     if: needs.plan.outputs.probe == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    concurrency:
+      group: viewer-concurrency-probe-shard-${{ matrix.shard }}
+      cancel-in-progress: false
     strategy:
       fail-fast: false
       matrix:
@@ -102,9 +108,11 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
           lfs: false
           persist-credentials: false
-      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - id: pnpm
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         continue-on-error: true
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - id: node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         continue-on-error: true
         with:
           node-version: 22
@@ -141,7 +149,7 @@ jobs:
       # read as a test failure at concurrency 2. Without it this shard leaves
       # no record, and the report names it as missing.
       - name: Viewer tests at concurrency 2
-        if: steps.checkout.outcome == 'success' && steps.install.outcome == 'success' && steps.build.outcome == 'success' && steps.fixtures.outcome != 'failure' && steps.verify.outcome == 'success'
+        if: steps.checkout.outcome == 'success' && steps.pnpm.outcome == 'success' && steps.node.outcome == 'success' && steps.install.outcome == 'success' && steps.build.outcome == 'success' && steps.fixtures.outcome != 'failure' && steps.verify.outcome == 'success'
         continue-on-error: true
         run: node scripts/viewer-concurrency-probe.mjs --shard
         env:
@@ -167,6 +175,9 @@ jobs:
     if: ${{ !cancelled() && needs.plan.outputs.probe == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    concurrency:
+      group: viewer-concurrency-probe-report
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         continue-on-error: true

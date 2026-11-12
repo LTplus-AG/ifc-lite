@@ -60,8 +60,9 @@ function concurrencyArgs(extraEnv) {
   return r.stdout.split('\n').filter((a) => a.startsWith('--test-concurrency=')); // @source-text-assertion-ok filters the argv a stub tsx received, not a source file
 }
 
-test("apps/viewer's script bounds VIEWER_TEST_CONCURRENCY: only 2, 3 or 4 change anything, everything else is 1", () => {
-  for (const [v, want] of [[undefined, '1'], ['', '1'], ['1', '1'], ['2', '2'], ['3', '3'], ['4', '4'], ['5', '1'], ['8', '1'], [' 2', '1'], ['2 ', '1'], ['two', '1'], ['0', '1'], ['-1', '1'], ['2;rm', '1']]) {
+test("apps/viewer's script bounds VIEWER_TEST_CONCURRENCY: only 2, the value the probe measures, changes anything", () => {
+  // 4 is what raced #3060's fixture; 3 is unmeasured. Both stay at 1.
+  for (const [v, want] of [[undefined, '1'], ['', '1'], ['1', '1'], ['2', '2'], ['3', '1'], ['4', '1'], ['5', '1'], ['8', '1'], [' 2', '1'], ['2 ', '1'], ['two', '1'], ['0', '1'], ['-1', '1'], ['2;rm', '1']]) {
     const env = v === undefined ? {} : { VIEWER_TEST_CONCURRENCY: v };
     assert.deepEqual(concurrencyArgs(env), [`--test-concurrency=${want}`], JSON.stringify(v));
     const { VIEWER_TEST_CONCURRENCY: _d, ...base } = process.env;
@@ -226,8 +227,22 @@ test('#9791 second review: the probe is advisory: every step is continue-on-erro
   }
   // The tests run only on a complete setup, so an infra failure is a missing record, not a finding.
   const testStep = PROBE_YML.jobs.probe.steps.find((st) => st.run === 'node scripts/viewer-concurrency-probe.mjs --shard');
-  for (const id of ['checkout', 'install', 'build', 'verify']) assert.ok(testStep.if.split(' && ').includes(`steps.${id}.outcome == 'success'`), id); // @source-text-assertion-ok checks the parsed step condition's conjuncts
-  assert.deepEqual(PROBE_YML.concurrency, { group: 'viewer-concurrency-probe', 'cancel-in-progress': false });
+  for (const id of ['checkout', 'pnpm', 'node', 'install', 'build', 'verify']) assert.ok(testStep.if.split(' && ').includes(`steps.${id}.outcome == 'success'`), id); // @source-text-assertion-ok checks the parsed step condition's conjuncts
+  // Groups on the jobs that probe, so a skipped run never enters or cancels one.
+  assert.equal(PROBE_YML.concurrency, undefined);
+  // A GitHub Actions expression, compared as written.
+  // eslint-disable-next-line no-template-curly-in-string
+  assert.deepEqual(PROBE_YML.jobs.probe.concurrency, { group: 'viewer-concurrency-probe-shard-${{ matrix.shard }}', 'cancel-in-progress': false });
+  assert.deepEqual(PROBE_YML.jobs.report.concurrency, { group: 'viewer-concurrency-probe-report', 'cancel-in-progress': false });
+});
+
+test('#9791 second review: a garbled shard record is a missing shard, and the other records still report', () => {
+  const dir = mkdtempSync(join(TMP, 'records-'));
+  writeFileSync(join(dir, 'viewer-concurrency-probe-0.json'), JSON.stringify(rec(0, ['a'])));
+  writeFileSync(join(dir, 'viewer-concurrency-probe-1.json'), '{"shard": 1, "repor');
+  const records = readRecords(dir);
+  assert.deepEqual(records.map((r) => r.shard), [0]);
+  assert.equal(report(records, ['a', 'b'], 2).complete, false);
 });
 
 test('#9791 second review: a report with a shortfall warns and exits 0', () => {
@@ -239,15 +254,16 @@ test('#9791 second review: a report with a shortfall warns and exits 0', () => {
 });
 
 /** The plan step's own shell, against a stub `gh` answering each API call as the case says. */
-function planDecides({ viewerRan, scriptAtSha, expired }) {
+function planDecides({ viewerRan, scriptAtSha, expired, failing = '' }) {
   const step = probeWorkflow().jobs.plan.steps.find((s) => s.id === 'check');
   const bin = mkdtempSync(join(TMP, 'gh-'));
   writeFileSync(join(bin, 'gh'), [
     '#!/bin/sh',
     'case "$*" in',
-    `  *"/jobs?"*) ${viewerRan ? 'echo "Viewer tests (shard 0)"' : 'true'} ;;`,
-    `  *"/contents/scripts/viewer-concurrency-probe.mjs?ref="*) exit ${scriptAtSha ? 0 : 1} ;;`,
-    `  *"/artifacts?name=build-output"*) ${expired.length ? `printf '%s\\n' ${expired.join(' ')}` : 'true'} ;;`,
+    // `failing` names a call that errors (an API outage), not a verdict.
+    `  *"/jobs?"*) ${failing === 'jobs' ? 'echo "HTTP 502" >&2; exit 1' : viewerRan ? 'echo "Lint"; echo "Viewer tests (shard 0)"' : 'echo "Lint"'} ;;`,
+    `  *"/contents/scripts/viewer-concurrency-probe.mjs?ref="*) ${failing === 'contents' ? 'echo "HTTP 502" >&2; exit 1' : scriptAtSha ? 'exit 0' : 'echo "gh: Not Found (HTTP 404)" >&2; exit 1'} ;;`,
+    `  *"/artifacts?name=build-output"*) ${failing === 'artifacts' ? 'echo "HTTP 502" >&2; exit 1' : expired.length ? `printf '%s\\n' ${expired.join(' ')}` : 'true'} ;;`,
     '  *) echo "unexpected gh call: $*" >&2; exit 2 ;;',
     'esac',
     '',
@@ -260,14 +276,25 @@ function planDecides({ viewerRan, scriptAtSha, expired }) {
     env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, GITHUB_OUTPUT: out, GH_TOKEN: 'x', REPO: 'o/r', RUN_ID: '1', SHA: 'abc' },
   });
   assert.equal(r.status, 0, r.stderr);
-  return readFileSync(out, 'utf8').trim();
+  return { output: readFileSync(out, 'utf8').trim(), notice: r.stdout.trim() };
 }
 
 test('#9791 second review: the plan skips cleanly when the viewer did not run, the commit has no probe script, or the build expired', () => {
   // `expired`: the `.artifacts[].expired` values the API returns for build-output.
-  assert.equal(planDecides({ viewerRan: true, scriptAtSha: true, expired: ['false'] }), 'probe=true');
-  assert.equal(planDecides({ viewerRan: false, scriptAtSha: true, expired: ['false'] }), 'probe=false');
-  assert.equal(planDecides({ viewerRan: true, scriptAtSha: false, expired: ['false'] }), 'probe=false', 'a Test run from before this workflow merged');
-  assert.equal(planDecides({ viewerRan: true, scriptAtSha: true, expired: ['true'] }), 'probe=false', 'build-output expired');
-  assert.equal(planDecides({ viewerRan: true, scriptAtSha: true, expired: [] }), 'probe=false', 'no build-output at all');
+  const ok = { viewerRan: true, scriptAtSha: true, expired: ['false'] };
+  assert.equal(planDecides(ok).output, 'probe=true');
+  for (const [change, why] of [
+    [{ viewerRan: false }, /viewer tests did not run/],
+    [{ scriptAtSha: false }, /has no scripts\/viewer-concurrency-probe\.mjs/],
+    [{ expired: ['true'] }, /no unexpired build-output/],
+    [{ expired: [] }, /no unexpired build-output/],
+    // An API error is named as one, never read as an absent script or an expired build.
+    [{ failing: 'jobs' }, /could not list .* jobs/],
+    [{ failing: 'contents' }, /could not check commit/],
+    [{ failing: 'artifacts' }, /could not list .* artifacts/],
+  ]) {
+    const r = planDecides({ ...ok, ...change });
+    assert.equal(r.output, 'probe=false', JSON.stringify(change));
+    assert.match(r.notice, why, JSON.stringify(change)); // @source-text-assertion-ok subject is the plan step's notice output
+  }
 });

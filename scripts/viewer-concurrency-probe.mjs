@@ -55,9 +55,18 @@ export function selectFiles(env) {
   return runCut(env, '"$files"');
 }
 
-/** The `--test-concurrency` apps/viewer's script uses under `env`, as the script itself bounds it. */
+/**
+ * The `--test-concurrency` apps/viewer's script uses under `env`, as the
+ * script itself bounds it: only its leading `c=...; case ... esac;` part runs,
+ * so no file selection happens twice.
+ */
 export function scriptConcurrency(env) {
-  return runCut(env, '"$c"')[0];
+  const script = viewerTestScript();
+  const at = script.indexOf(' files=');
+  if (at <= 0) throw new Error("apps/viewer's test script no longer sets the concurrency before `files=`");
+  const r = spawnSync('sh', ['-c', `${script.slice(0, at)} printf '%s\\n' "$c"`], { cwd: VIEWER, encoding: 'utf8', env });
+  if (r.status !== 0) throw new Error(`reading the concurrency failed: ${r.stderr.trim()}`);
+  return r.stdout.trim();
 }
 
 /**
@@ -106,7 +115,16 @@ export function readRecords(dir) {
     console.log(`::warning title=Viewer concurrency probe::no shard records at ${dir}`);
     return [];
   }
-  return names.filter((f) => f.endsWith('.json')).map((f) => JSON.parse(readFileSync(join(dir, f), 'utf8')));
+  const records = [];
+  for (const f of names.filter((n) => n.endsWith('.json'))) {
+    try {
+      records.push(JSON.parse(readFileSync(join(dir, f), 'utf8')));
+    } catch (err) {
+      // A garbled record counts as a missing shard; the rest still report.
+      console.log(`::warning title=Viewer concurrency probe (advisory)::unreadable shard record ${f}: ${err.message}`);
+    }
+  }
+  return records;
 }
 
 const SUMMARY = /^# (tests|pass|fail|cancelled|skipped|todo|duration_ms) ([\d.]+)$/;

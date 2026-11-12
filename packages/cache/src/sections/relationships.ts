@@ -216,17 +216,22 @@ function readEdges(reader: BufferReader, version: number): {
   getEdges(entityId: number, type?: RelationshipType): Edge[];
   getTargets(entityId: number, type?: RelationshipType): number[];
   hasAnyEdges(entityId: number): boolean;
+  nodeIds(): Uint32Array;
 } {
   const nodeCount = reader.readUint32();
-  const offsets = new Map<number, number>();
-  const counts = new Map<number, number>();
-
+  // The node table, as written: (entityId, offset, count) per node, ascending by entity id
+  // (RelationshipGraphBuilder sorts its keys). Kept as columns: the two Maps are built only when a
+  // consumer reads `offsets`/`counts` (building them was most of this section's decode).
+  const table = reader.readUint32Array(nodeCount * 3);
+  const ids = new Uint32Array(nodeCount);
+  const nodeOffsets = new Uint32Array(nodeCount);
+  const nodeCounts = new Uint32Array(nodeCount);
+  let ascending = true;
   for (let i = 0; i < nodeCount; i++) {
-    const entityId = reader.readUint32();
-    const offset = reader.readUint32();
-    const count = reader.readUint32();
-    offsets.set(entityId, offset);
-    counts.set(entityId, count);
+    ids[i] = table[i * 3];
+    nodeOffsets[i] = table[i * 3 + 1];
+    nodeCounts[i] = table[i * 3 + 2];
+    if (i > 0 && ids[i] <= ids[i - 1]) ascending = false;
   }
 
   const edgeCount = reader.readUint32();
@@ -245,15 +250,55 @@ function readEdges(reader: BufferReader, version: number): {
   // relationshipId mixed in with the real ones instead of failing loudly.
   // Mirrors the same-shaped guards already in `strings.ts` (offset
   // monotonicity) and `entity-index.ts` (typeIndex range).
-  for (const [entityId, offset] of offsets) {
-    const count = counts.get(entityId) ?? 0;
-    if (offset + count > edgeCount) {
-      throw new Error(
-        `Corrupt cache RelationshipGraph: entity ${entityId}'s edge range ` +
-          `[${offset}, ${offset + count}) exceeds edge array length ${edgeCount}`,
-      );
+  // A table that is not strictly ascending (an older or hand-built entry) keeps the eager Maps, so a
+  // repeated id resolves as before: the last row wins, and only its range is checked.
+  let eager: { offsets: Map<number, number>; counts: Map<number, number> } | null = null;
+  const buildMaps = (): { offsets: Map<number, number>; counts: Map<number, number> } => {
+    if (eager) return eager;
+    const offsets = new Map<number, number>();
+    const counts = new Map<number, number>();
+    for (let i = 0; i < nodeCount; i++) {
+      offsets.set(ids[i], nodeOffsets[i]);
+      counts.set(ids[i], nodeCounts[i]);
+    }
+    eager = { offsets, counts };
+    return eager;
+  };
+  const rangeError = (entityId: number, offset: number, count: number) => new Error(
+    `Corrupt cache RelationshipGraph: entity ${entityId}'s edge range ` +
+      `[${offset}, ${offset + count}) exceeds edge array length ${edgeCount}`,
+  );
+  if (ascending) {
+    for (let i = 0; i < nodeCount; i++) {
+      if (nodeOffsets[i] + nodeCounts[i] > edgeCount) throw rangeError(ids[i], nodeOffsets[i], nodeCounts[i]);
+    }
+  } else {
+    const { offsets, counts } = buildMaps();
+    for (const [entityId, offset] of offsets) {
+      const count = counts.get(entityId) ?? 0;
+      if (offset + count > edgeCount) throw rangeError(entityId, offset, count);
     }
   }
+  /** Row of `entityId` in the node table, or -1. */
+  const rowOf = (entityId: number): number => {
+    if (!ascending) return -1;
+    let lo = 0, hi = nodeCount - 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >>> 1, value = ids[mid];
+      if (value === entityId) return mid;
+      if (value < entityId) lo = mid + 1; else hi = mid - 1;
+    }
+    return -1;
+  };
+  const rangeOf = (entityId: number): [number, number] | null => {
+    if (!ascending) {
+      const { offsets, counts } = buildMaps();
+      const offset = offsets.get(entityId);
+      return offset === undefined ? null : [offset, counts.get(entityId)!];
+    }
+    const row = rowOf(entityId);
+    return row < 0 ? null : [nodeOffsets[row], nodeCounts[row]];
+  };
 
   let shadowedEdgeIndex: Uint32Array | undefined;
   let shadowedGroupOffsets: Uint32Array | undefined;
@@ -268,8 +313,8 @@ function readEdges(reader: BufferReader, version: number): {
   }
 
   const edges = {
-    offsets,
-    counts,
+    get offsets(): Map<number, number> { return buildMaps().offsets; },
+    get counts(): Map<number, number> { return buildMaps().counts; },
     edgeTargets,
     edgeTypes,
     edgeRelIds,
@@ -278,10 +323,9 @@ function readEdges(reader: BufferReader, version: number): {
     shadowedRelIds,
 
     getEdges(entityId: number, type?: RelationshipType): Edge[] {
-      const offset = offsets.get(entityId);
-      if (offset === undefined) return [];
-
-      const count = counts.get(entityId)!;
+      const range = rangeOf(entityId);
+      if (!range) return [];
+      const [offset, count] = range;
       const result: Edge[] = [];
 
       for (let i = offset; i < offset + count; i++) {
@@ -311,7 +355,11 @@ function readEdges(reader: BufferReader, version: number): {
     },
 
     hasAnyEdges(entityId: number): boolean {
-      return offsets.has(entityId);
+      return rangeOf(entityId) !== null;
+    },
+
+    nodeIds(): Uint32Array {
+      return ascending ? ids : Uint32Array.from(buildMaps().offsets.keys());
     },
   };
 

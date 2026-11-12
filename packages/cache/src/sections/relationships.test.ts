@@ -260,3 +260,92 @@ describe('shadowed-rel-ids trailer corruption guard (#3782 round 3)', () => {
     expect(() => readRelationships(new BufferReader(buf), 18)).toThrow(/Corrupt cache RelationshipGraph/);
   });
 });
+
+// Reopen candidate 2b: a cache read keeps the node table as columns and builds the
+// `offsets`/`counts` Maps only when a consumer reads them.
+describe('relationship node Maps are built on first use (lazy), with identical answers', () => {
+  function graph() {
+    const b = new RelationshipGraphBuilder();
+    for (let e = 0; e < 500; e++) {
+      const id = 10_000 + e * 7;
+      b.addEdge(100 + (e % 9), id, RelationshipType.ContainsElements, 5_000 + (e % 9));
+      b.addEdge(2_000 + (e % 40), id, RelationshipType.DefinesByType, 6_000 + (e % 40));
+      b.addEdge(30_000 + e, id, RelationshipType.DefinesByProperties, 7_000 + e);
+      if (e % 5 === 0) b.addEdge(30_000 + e, id, RelationshipType.DefinesByProperties, 9_000 + e); // collapsed (shadowed) duplicate
+    }
+    return b.build();
+  }
+  const roundTrip = (g: ReturnType<typeof graph>) => {
+    const w = new BufferWriter();
+    writeRelationships(w, g);
+    return readRelationships(new BufferReader(w.build()), 27);
+  };
+  const ALL_TYPES = [undefined, RelationshipType.ContainsElements, RelationshipType.DefinesByType, RelationshipType.DefinesByProperties];
+
+  it('the lazily built Maps and every lookup equal the eagerly built graph (present and absent ids, each type)', () => {
+    const eager = graph();
+    const lazy = roundTrip(eager);
+    for (const half of ['forward', 'inverse'] as const) {
+      const ids = [...eager[half].offsets.keys()];
+      const probes = [...ids, 0, 1, 99, 10_001, 4_294_967_295];
+      for (const id of probes) {
+        expect(lazy[half].hasAnyEdges(id)).toBe(eager[half].hasAnyEdges(id));
+        for (const type of ALL_TYPES) {
+          expect(lazy[half].getEdges(id, type)).toEqual(eager[half].getEdges(id, type));
+          expect(lazy[half].getTargets(id, type)).toEqual(eager[half].getTargets(id, type));
+        }
+      }
+      expect([...lazy[half].nodeIds!()]).toEqual(ids);
+      // Read last: entries and iteration order as the builder's.
+      expect([...lazy[half].offsets.entries()]).toEqual([...eager[half].offsets.entries()]);
+      expect([...lazy[half].counts.entries()]).toEqual([...eager[half].counts.entries()]);
+    }
+    for (const type of ALL_TYPES.filter((t): t is RelationshipType => t !== undefined)) {
+      expect(lazy.getRelated(10_000, type, 'inverse')).toEqual(eager.getRelated(10_000, type, 'inverse'));
+    }
+  });
+
+  it('an early reader of `offsets` (right after the decode) gets the complete Maps, the same object every time', () => {
+    const eager = graph();
+    const lazy = roundTrip(eager);
+    const first = lazy.inverse.offsets;
+    expect(first.size).toBe(eager.inverse.offsets.size);
+    expect(lazy.inverse.offsets).toBe(first);
+    expect(lazy.inverse.counts.size).toBe(eager.inverse.counts.size);
+    // Lookups before and after the Maps exist agree.
+    expect(lazy.inverse.getEdges(10_000)).toEqual(eager.inverse.getEdges(10_000));
+  });
+
+  /** A hand-written section whose forward node table is `rows` (not necessarily ascending). */
+  function sectionWith(rows: Array<[number, number, number]>, edgeCount: number): ArrayBuffer {
+    const w = new BufferWriter();
+    w.writeUint32(rows.length);
+    for (const [id, offset, count] of rows) { w.writeUint32(id); w.writeUint32(offset); w.writeUint32(count); }
+    w.writeUint32(edgeCount);
+    w.writeTypedArray(new Uint32Array(edgeCount).map((_, i) => 900 + i));
+    w.writeTypedArray(new Uint16Array(edgeCount).fill(RelationshipType.ContainsElements));
+    w.writeTypedArray(new Uint32Array(edgeCount).map((_, i) => 800 + i));
+    const noShadowed = () => { w.writeUint32(0); w.writeTypedArray(new Uint32Array(0)); w.writeTypedArray(new Uint32Array([0])); w.writeUint32(0); w.writeTypedArray(new Uint32Array(0)); };
+    noShadowed(); // v18+ trailer: no collapsed ids
+    w.writeUint32(0); w.writeUint32(0); // inverse: empty
+    noShadowed();
+    return w.build();
+  }
+
+  it('a node table that is not ascending (unsorted, or a repeated id) reads as before: eager Maps, the last row of an id wins', () => {
+    const unsorted = readRelationships(new BufferReader(sectionWith([[5, 0, 1], [3, 1, 1], [9, 2, 1]], 3)), 27);
+    expect(unsorted.forward.getTargets(3)).toEqual([901]);
+    expect([...unsorted.forward.nodeIds!()]).toEqual([5, 3, 9]); // the Maps' order
+    const repeated = readRelationships(new BufferReader(sectionWith([[4, 0, 1], [4, 1, 2]], 3)), 27);
+    expect(repeated.forward.getTargets(4)).toEqual([901, 902]);
+    expect(repeated.forward.offsets.get(4)).toBe(1);
+  });
+
+  it('rejects an out-of-range row whether the table is ascending or not, with the same message as before', () => {
+    const message = /entity 7's edge range \[2, 5\) exceeds edge array length 3/;
+    expect(() => readRelationships(new BufferReader(sectionWith([[1, 0, 1], [7, 2, 3]], 3)), 27)).toThrow(message);
+    expect(() => readRelationships(new BufferReader(sectionWith([[9, 0, 1], [7, 2, 3]], 3)), 27)).toThrow(message);
+    // A repeated id whose LAST row is in range reads, as with the Maps (the first row was overwritten there too).
+    expect(() => readRelationships(new BufferReader(sectionWith([[4, 2, 9], [4, 0, 1]], 3)), 27)).not.toThrow();
+  });
+});

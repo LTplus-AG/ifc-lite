@@ -115,7 +115,8 @@ export function computeCanonicalParent(
     predicate: (childId: number) => boolean,
     relType: RelationshipType,
   ): void => {
-    for (const childId of relationships.inverse.offsets.keys()) {
+    // `nodeIds()` (a cache read) walks the same ids in the same order without building the Map.
+    for (const childId of relationships.inverse.nodeIds?.() ?? relationships.inverse.offsets.keys()) {
       if (canonicalParent.has(childId) || !predicate(childId)) continue;
       const edges = relationships.inverse.getEdges(childId, relType);
       if (edges.length === 0) continue;

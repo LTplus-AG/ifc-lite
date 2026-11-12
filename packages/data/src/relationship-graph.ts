@@ -50,6 +50,12 @@ export interface RelationshipEdges {
   getEdges(entityId: number, type?: RelationshipType): Edge[];
   getTargets(entityId: number, type?: RelationshipType): number[];
   hasAnyEdges(entityId: number): boolean;
+  /**
+   * The node (source) ids in the order `offsets` iterates them (ascending), without building
+   * `offsets`. Optional: a cache read provides it, so a consumer that only walks the ids does not
+   * force the read's lazily built Maps; others use `offsets.keys()`.
+   */
+  nodeIds?(): Uint32Array;
 }
 
 export interface RelationshipGraph {

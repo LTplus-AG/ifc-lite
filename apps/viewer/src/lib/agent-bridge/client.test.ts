@@ -10,7 +10,7 @@
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  BRIDGE_PROTOCOL_VERSION, BridgeCloseCode, parseTabMessage, validateToolDescriptors,
+  BRIDGE_LIMITS, BRIDGE_PROTOCOL_VERSION, BridgeCloseCode, parseTabMessage, validateToolDescriptors,
   type BridgeHelloMessage, type BridgeResultMessage,
 } from '@ifc-lite/mcp/bridge-protocol';
 import { MAIN_VIEWER_TOOL_ALLOWLIST } from '@/lib/agent-tools/main-viewer';
@@ -249,19 +249,35 @@ describe('local agent bridge client: calls (#9523)', () => {
     assert.equal(seen.length, 1);
   });
 
-  it('truncates an oversize result with a note instead of sending a frame the bridge would reject', async () => {
+  it('truncates an oversize result with a note instead of sending one the bridge would refuse', async () => {
     const big = 'x'.repeat(200_000);
-    const h = paired({ maxMessageBytes: 50_000, dispatch: async () => ({ text: big, structured: { rows: [big] }, isError: false }) });
+    const h = paired({ maxResultBytes: 50_000, dispatch: async () => ({ text: big, structured: { rows: [big] }, isError: false }) });
     call(h.socket(), 'c1');
     await flush();
-    const frame = h.socket().sent[1];
-    assert.ok(new TextEncoder().encode(frame).byteLength <= 50_000, 'the frame fits the limit');
     const result = h.socket().results()[0].result;
+    assert.ok(new TextEncoder().encode(JSON.stringify(result)).byteLength <= 50_000, 'the result fits the limit');
     const text = String(result.content[0].text);
-    assert.match(text, /\[Truncated by the viewer: the full result was \d+ bytes/);
+    assert.match(text, /\[Truncated by the viewer: the full result \(\d+ bytes\) is more than the bridge accepts/);
     assert.ok(text.startsWith('xxxx'), 'it keeps the start of the text');
-    assert.deepEqual(result.structuredContent, { truncated: true, originalBytes: JSON.parse(text.match(/was (\d+) bytes/)?.[1] ?? '0'), limitBytes: 50_000 });
+    assert.equal((result.structuredContent as { truncated: boolean }).truncated, true);
     assert.equal(h.client.status.kind, 'connected');
+  });
+
+  it('a result over the bridge\'s real limits (bytes, nesting) is cut to one the bridge validator accepts', async () => {
+    let deep: unknown = { leaf: true };
+    for (let i = 0; i < 80; i++) deep = { child: deep };
+    const outcomes: ToolOutcome[] = [
+      { text: 'y'.repeat(BRIDGE_LIMITS.maxResultBytes + 1000), structured: null, isError: false },
+      { text: 'deep', structured: { tree: deep }, isError: false },
+    ];
+    const h = paired({ dispatch: async () => outcomes.shift() as ToolOutcome });
+    call(h.socket(), 'big');
+    call(h.socket(), 'deep');
+    await flush();
+    const results = h.socket().results();
+    assert.deepEqual(results.map((r) => r.id), ['big', 'deep'], 'both frames pass parseTabMessage');
+    assert.match(String(results[0].result.content[0].text), /result is \d+ bytes; the limit is 4194304/);
+    assert.match(String(results[1].result.content[0].text), /^deep\n\n\[Truncated by the viewer/);
   });
 
   it('the activity log has tool, model, duration and outcome, never arguments or results', async () => {

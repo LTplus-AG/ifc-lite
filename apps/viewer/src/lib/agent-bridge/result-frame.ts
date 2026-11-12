@@ -11,12 +11,13 @@
  * failure is `toolError` (`structuredContent: { code, message, details,
  * hint }`, `isError: true`).
  *
- * A frame larger than the bridge accepts would close the socket, so an
- * oversize result is cut down here instead, with a note telling the agent
- * what happened and how to ask for less.
+ * A result the bridge would refuse (over `BRIDGE_LIMITS.maxResultBytes`, or
+ * nested too deep, or with too many values) would fail the call, so it is
+ * cut down here instead, with a note telling the agent what happened and how
+ * to ask for less.
  */
 
-import { BRIDGE_LIMITS, type BridgeCallResult, type BridgeResultMessage } from '@ifc-lite/mcp/bridge-protocol';
+import { BRIDGE_LIMITS, parseTabMessage, type BridgeCallResult, type BridgeResultMessage } from '@ifc-lite/mcp/bridge-protocol';
 
 /** A tool outcome, as `dispatchMainViewerTool` returns it. */
 export interface ToolOutcome {
@@ -36,7 +37,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 /** The MCP `CallToolResult` the stdio server would have returned for this outcome. */
 export function toCallToolResult(outcome: ToolOutcome): BridgeCallResult {
-  const content = [{ type: 'text', text: outcome.text }];
+  const content: BridgeCallResult['content'] = [{ type: 'text', text: outcome.text }];
   if (outcome.isError) {
     return {
       content,
@@ -69,14 +70,16 @@ function utf8Prefix(text: string, maxBytes: number): string {
 }
 
 export interface ResultFrame {
-  /** The serialised `result` frame, at most `maxBytes` UTF-8 bytes. */
+  /** The serialised `result` frame, which the bridge's own validator accepts. */
   json: string;
   truncated: boolean;
 }
 
 /**
- * Serialise the `result` frame for call `id`, cutting the result down to fit
- * `maxBytes` when it would not. A cut result keeps `isError` and, for an
+ * Serialise the `result` frame for call `id`. The frame is checked with the
+ * bridge's own validator (`parseTabMessage`: text-only content, result bytes,
+ * depth and node count) and against `maxResultBytes`; one that would be
+ * refused is cut down instead. A cut result keeps `isError` and, for an
  * error, its code; it drops `structuredContent` (which cannot be cut without
  * becoming wrong) and keeps as much text as fits, followed by a note.
  */
@@ -84,25 +87,32 @@ export function buildResultFrame(
   sessionId: string,
   id: string,
   result: BridgeCallResult,
-  maxBytes: number = BRIDGE_LIMITS.maxMessageBytes,
+  maxResultBytes: number = BRIDGE_LIMITS.maxResultBytes,
 ): ResultFrame {
   const frame = (r: BridgeCallResult): string =>
     JSON.stringify({ type: 'result', sessionId, id, result: r } satisfies BridgeResultMessage);
+  const refusal = (json: string, r: BridgeCallResult): string | null => {
+    const checked = parseTabMessage(json);
+    if (!checked.ok) return checked.error;
+    const bytes = byteLength(JSON.stringify(r));
+    return bytes > maxResultBytes ? `result is ${bytes} bytes; the limit is ${maxResultBytes}` : null;
+  };
   const full = frame(result);
-  const fullBytes = byteLength(full);
-  if (fullBytes <= maxBytes) return { json: full, truncated: false };
+  const why = refusal(full, result);
+  if (why === null) return { json: full, truncated: false };
 
+  const originalBytes = byteLength(JSON.stringify(result));
   const text = result.content
     .map((block) => (block.type === 'text' && typeof block.text === 'string' ? block.text : ''))
     .join('\n');
-  const note = `\n\n[Truncated by the viewer: the full result was ${fullBytes} bytes, over the bridge's `
-    + `${maxBytes}-byte message limit. Ask for less: a smaller limit, fewer fields, or one model_id.]`;
+  const note = `\n\n[Truncated by the viewer: the full result (${originalBytes} bytes) is more than the bridge accepts `
+    + `(${why}). Ask for less: a smaller limit, fewer fields, or one model_id.]`;
   const code = isPlainObject(result.structuredContent) && typeof result.structuredContent.code === 'string'
     ? result.structuredContent.code : undefined;
-  const marker = { truncated: true, originalBytes: fullBytes, limitBytes: maxBytes, ...(code ? { code } : {}) };
+  const marker = { truncated: true, originalBytes, limitBytes: maxResultBytes, ...(code ? { code } : {}) };
   // JSON escaping can grow text (quotes, control characters), so shrink the
-  // budget until the frame fits rather than trusting one estimate.
-  let budget = Math.max(0, maxBytes - ENVELOPE_RESERVE_BYTES);
+  // budget until the frame passes rather than trusting one estimate.
+  let budget = Math.max(0, maxResultBytes - ENVELOPE_RESERVE_BYTES);
   for (;;) {
     const cut: BridgeCallResult = {
       content: [{ type: 'text', text: utf8Prefix(text, budget) + note }],
@@ -110,7 +120,7 @@ export function buildResultFrame(
       ...(result.isError ? { isError: true } : {}),
     };
     const json = frame(cut);
-    if (byteLength(json) <= maxBytes || budget === 0) return { json, truncated: true };
+    if (refusal(json, cut) === null || budget === 0) return { json, truncated: true };
     budget = Math.floor(budget / 2);
   }
 }

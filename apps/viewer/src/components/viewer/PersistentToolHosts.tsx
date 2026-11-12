@@ -82,10 +82,11 @@ export function PersistentToolHosts({ children }: { children: ReactNode }) {
         <DataConnector open={data} onOpenChange={setData} onCloseAutoFocus={restoreData} />
       </Suspense>
     </ChunkErrorBoundary>}
-    {derivation.session > 0 && <ChunkErrorBoundary label="Structural derivation" renderFallback={fallback => (
-      <AuthorLoadDialog open={derivation.open} onOpenChange={setDerivationOpen} onCloseAutoFocus={restoreDerivation} title={t('structuralReview.derive.title')}>{fallback}</AuthorLoadDialog>
+    {/* Keyed per opening, so a failed render or load is retried the next time. */}
+    {derivation.session > 0 && <ChunkErrorBoundary key={derivation.session} label="Structural derivation" renderFallback={fallback => (
+      <AuthorLoadDialog open={derivation.open} onOpenChange={setDerivationOpen} onCloseAutoFocus={restoreDerivation} title={t('commandPalette.tool.deriveStructural.label')}>{fallback}</AuthorLoadDialog>
     )}>
-      <Suspense fallback={<AuthorLoadDialog open={derivation.open} onOpenChange={setDerivationOpen} onCloseAutoFocus={restoreDerivation} title={t('structuralReview.derive.title')}>
+      <Suspense fallback={<AuthorLoadDialog open={derivation.open} onOpenChange={setDerivationOpen} onCloseAutoFocus={restoreDerivation} title={t('commandPalette.tool.deriveStructural.label')}>
         <output>{t('shellChrome.statusBar.loadingFallback')}</output>
       </AuthorLoadDialog>}>
         <StructuralDerivationDialog open={derivation.open} onOpenChange={setDerivationOpen} onCloseAutoFocus={restoreDerivation} session={derivation.session} />

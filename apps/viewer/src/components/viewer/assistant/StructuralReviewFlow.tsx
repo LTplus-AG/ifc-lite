@@ -15,7 +15,9 @@ import { ReceiptSummary } from '../actions/ModelChangeReview';
  * derived one: load the structural write path, prepare a review, mark it stale
  * when the model changes, apply it once after acknowledgement, keep a receipt.
  */
-export function useStructuralReview<R extends { validate(): void }>(label: string) {
+export function useStructuralReview<R extends { validate(): void }>(label: string, subject: unknown,
+  /** Ask for the acknowledgement once a review is shown, and again for each review (a derivation). */
+  acknowledgeEach = false) {
   const [acknowledged, setAcknowledged] = useState(false);
   const [review, setReview] = useState<R | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -35,8 +37,9 @@ export function useStructuralReview<R extends { validate(): void }>(label: strin
         setStale(true);
       }
     });
+    // A new subject (another proposal) drops the held review, so its Apply cannot run.
     return () => { current.mounted = false; current.review = null; unsubscribe(); };
-  }, [label]);
+  }, [label, subject]);
   const refuse = (error: unknown) => {
     owner.current.review = null; setReview(null); setProblem(error instanceof Error ? error.message : String(error));
   };
@@ -54,6 +57,7 @@ export function useStructuralReview<R extends { validate(): void }>(label: strin
     try {
       const next = build();
       owner.current.review = next; setReview(next); setProblem(null); setStale(false);
+      if (acknowledgeEach) setAcknowledged(false);
     } catch (error) {
       console.warn(`[${label}] review refused`, error);
       refuse(error);
@@ -76,7 +80,7 @@ export function useStructuralReview<R extends { validate(): void }>(label: strin
       setProblem(error instanceof Error ? error.message : String(error)); setStale(true);
     } finally { owner.current.committing = false; }
   };
-  return { acknowledged, setAcknowledged, review, problem, stale, receipt, receiptProblem, writes, loadWrites, prepare, apply };
+  return { acknowledgeEach, acknowledged, setAcknowledged, review, problem, stale, receipt, receiptProblem, writes, loadWrites, prepare, apply };
 }
 
 /**
@@ -89,12 +93,14 @@ export function StructuralReviewControls<R extends { validate(): void }>({ flow,
   details: ReactNode; applyCount: number; canApply: boolean; commit: (review: R) => ModelChangeReceipt;
 }) {
   const { t } = useTranslation();
-  const { acknowledged, setAcknowledged, review, problem, stale, receipt, receiptProblem, writes, loadWrites } = flow;
+  const { acknowledgeEach, acknowledged, setAcknowledged, review, problem, stale, receipt, receiptProblem, writes, loadWrites } = flow;
+  const acknowledge = !receipt && <label className="flex items-center gap-2"><input type="checkbox" checked={acknowledged} onChange={event => setAcknowledged(event.target.checked)} />{acknowledgement}</label>;
   return <>
-    {!receipt && <label className="flex items-center gap-2"><input type="checkbox" checked={acknowledged} onChange={event => setAcknowledged(event.target.checked)} />{acknowledgement}</label>}
+    {!acknowledgeEach && acknowledge}
     {!receipt && <Button size="sm" variant="outline" disabled={!build || writes === 'loading'} onClick={() => writes === 'ready' ? build && flow.prepare(build) : loadWrites()}>{prepareLabel}</Button>}
     {review && <>
       {details}
+      {acknowledgeEach && acknowledge}
       {!receipt && <Button size="sm" disabled={stale || !canApply || !acknowledged} onClick={() => flow.apply(commit)}>{t('modelChanges.apply', { count: applyCount })}</Button>}
     </>}
     {stale && !receipt && <p role="alert">{t('modelChanges.refused.stale')}</p>}

@@ -31,6 +31,39 @@ const flowReviewShape = {
   "notSaved": ["reason"],
   "needsModel": [],
 } satisfies Record<ReviewKey, readonly string[]>;
+import type { structuralDeriveEn } from './catalogues/structural-derive.en';
+type StructuralDeriveKey = keyof typeof structuralDeriveEn extends `structuralDerive.${infer Key}` ? Key : never;
+/** The structural derivation review's keys and parameters (#9668), validated before its chunk loads. */
+const structuralDeriveShape = {
+  "hint": [],
+  "prepare": [],
+  "acknowledgement": [],
+  "counts": ["created", "curveMembers", "guessedSupports", "nodes", "supports", "surfaceMembers"],
+  "assumed": ["count"],
+  "skipped": ["count"],
+  "guessed": ["count"],
+  "unconnected": ["count"],
+  "existing": ["ids"],
+  "nothing": [],
+  "noModel": [],
+  "nodeAt": ["node", "position"],
+  "endAt": ["element", "landsOn", "node", "position"],
+  "more": ["count"],
+  "model": ["name"],
+  "moved": ["count"],
+  "movedRow": ["distance", "element", "end", "to"],
+  "free": ["count"],
+  "end.start": [],
+  "end.end": [],
+  "reason.already-idealised": [],
+  "reason.not-load-bearing": [],
+  "reason.load-bearing-unknown": [],
+  "reason.no-idealisable-shape": [],
+  "reason.shorter-than-tolerance": [],
+  "reason.footing-without-member-end": [],
+  "landsOn.member-interior": [],
+  "landsOn.surface-member": [],
+} satisfies Record<StructuralDeriveKey, readonly string[]>;
 import type { semanticAssistEn } from './catalogues/semantic-assist.en';
 
 type SemanticKey = keyof typeof semanticAssistEn extends `semanticAssist.${infer Key}` ? Key : never;
@@ -360,6 +393,10 @@ export function lazyMessageParameters(key: string): readonly string[] | null {
   if (key.startsWith('settings.ifcFederation.')) {
     const tail = key.slice('settings.ifcFederation.'.length);
     return Object.hasOwn(ifcFederationShape, tail) ? ifcFederationShape[tail as IfcFederationKey] : null;
+  }
+  if (key.startsWith('structuralDerive.')) {
+    const tail = key.slice('structuralDerive.'.length);
+    return Object.hasOwn(structuralDeriveShape, tail) ? structuralDeriveShape[tail as StructuralDeriveKey] : null;
   }
   if (key.startsWith('reviewWorkspace.')) {
     const tail = key.slice('reviewWorkspace.'.length);

@@ -32,7 +32,7 @@ export interface StructuralDerivationReview {
   created: number;
   /** The cheap staleness check, run on store updates; Apply also checks the held lease. */
   validate(): void;
-  commit(): { batchId: string; analysisModelId: number };
+  commit(): { batchId: string; analysisModelId: number; created: ReadonlyArray<{ expressId: number; type: string }> };
 }
 
 /** The model a derivation runs on: the active one, else the first loaded. */
@@ -46,11 +46,12 @@ export function prepareStructuralDerivationReview(store: StoreApi<ViewerState>, 
   if (denial) throw new Error(denial);
   const lease = readOnlyModelEditLease(state, modelId);
   if (!lease) throw new Error('The loaded model is unavailable');
-  const derive = loadedStructuralWrites('Structural derivation');
+  // Not 'Structural derivation:': that prefix is the create code's, which the lazy-writes gate looks for.
+  const derive = loadedStructuralWrites('Derive structural model');
   const { dataStore } = lease.target;
   const plan = derive.planStructuralDerivation(derive.readStructuralDerivationFacts(dataStore, lease.target.editor));
-  // Nothing to write, or a derived model already there: no dry run; the review shows why and offers no Apply.
-  const blocked = plan.curveMembers.length + plan.surfaceMembers.length === 0 || plan.derivedModelId !== null;
+  // Nothing to write, or an analysis model already there (apply would refuse): no dry run; the review shows why.
+  const blocked = plan.curveMembers.length + plan.surfaceMembers.length === 0 || plan.refusal !== null;
   const created = blocked ? 0 : lease.target.view.prepareAtomic((view) => {
     const draft = new StoreEditor(dataStore, view);
     derive.applyStructuralDerivation(draft, dataStore, plan);
@@ -70,30 +71,47 @@ export function prepareStructuralDerivationReview(store: StoreApi<ViewerState>, 
     modelId, plan, created, validate,
     commit() {
       if (used) throw new Error('This derivation has already been applied');
-      if (blocked) throw new Error('Structural derivation: this plan has nothing it may write');
+      if (blocked) throw new Error('This derivation has nothing it may write');
       validate();
       // The deep overlay comparison, only at Apply: store updates run the cheap check above.
       lease.validate();
       const batchId = crypto.randomUUID();
-      // Apply re-checks the live store (deleted elements, an existing derived model) before its first write.
-      const { analysisModelId } = recordModellingEdit(store, modelId, (_methods, draft) => derive.applyStructuralDerivation(draft, dataStore, plan), batchId);
+      // The plan the user reviewed, not a new one. Apply re-checks the live store (deleted elements, an existing
+      // analysis model) and the whole plan before its first write, and writes in its own transaction inside this edit.
+      const { analysisModelId, created } = recordModellingEdit(store, modelId, (_methods, draft) => {
+        const before = draft.getNewEntities().length;
+        const applied = derive.applyStructuralDerivation(draft, dataStore, plan);
+        return { ...applied, created: draft.getNewEntities().slice(before).map(({ expressId, type }) => ({ expressId, type })) };
+      }, batchId);
       used = true;
-      return { batchId, analysisModelId };
+      return { batchId, analysisModelId, created };
     },
   };
 }
 
-/** Apply the reviewed derivation and describe it as a receipt: one row, the derived analysis model. */
+/** Rows the receipt lists: the analysis model and every member and connection, each with its written record. */
+const RECEIPT_OPS: Record<string, 'structural.analysis.create' | 'structural.member.create' | 'structural.connection.create'> = {
+  IFCSTRUCTURALANALYSISMODEL: 'structural.analysis.create',
+  IFCSTRUCTURALCURVEMEMBER: 'structural.member.create',
+  IFCSTRUCTURALSURFACEMEMBER: 'structural.member.create',
+  IFCSTRUCTURALPOINTCONNECTION: 'structural.connection.create',
+};
+
+/** Apply the reviewed derivation and describe it as a receipt, one row per derived item. */
 export function commitStructuralDerivation(store: StoreApi<ViewerState>, review: StructuralDerivationReview, origin: string): ModelChangeReceipt {
-  const { batchId, analysisModelId } = review.commit();
+  const { batchId, created } = review.commit();
   const { modelId, plan } = review;
-  const record = effectiveMetadataRecord(store.getState().models.get(modelId)!.ifcDataStore!, analysisModelId, store.getState().mutationViews.get(modelId));
-  const globalId = record?.attributes[0];
+  const state = store.getState(), dataStore = state.models.get(modelId)!.ifcDataStore!, view = state.mutationViews.get(modelId);
+  const applied = created.flatMap(({ expressId, type }) => {
+    const op = RECEIPT_OPS[type.toUpperCase()];
+    const record = op ? effectiveMetadataRecord(dataStore, expressId, view) : null;
+    if (!op || !record) return [];
+    const globalId = record.attributes[0];
+    return [{ op, expressId, modelId, globalId: typeof globalId === 'string' ? globalId : '', field: op,
+      before: null, after: JSON.stringify({ expressId, ...record }) }];
+  }).map((row, index) => ({ index, ...row }));
   return {
     version: 1, kind: 'structural.graph', id: crypto.randomUUID(), title: 'Derived analysis model', digest: batchDigest({ modelId, plan }),
-    createdAt: new Date().toISOString(), origin, status: 'applied', batches: [{ modelId, batchId }],
-    applied: [{ index: 0, op: 'structural.analysis.create', expressId: analysisModelId, modelId, globalId: typeof globalId === 'string' ? globalId : '',
-      field: 'structural.derive', before: null, after: JSON.stringify(plan.report.counts) }],
-    skipped: [],
+    createdAt: new Date().toISOString(), origin, status: 'applied', batches: [{ modelId, batchId }], applied, skipped: [],
   };
 }

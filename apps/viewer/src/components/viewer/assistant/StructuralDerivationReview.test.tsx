@@ -34,12 +34,16 @@ test('#9668 the palette command opens the derivation review when a model is load
   await seedAuthoringSample({ bytes: FRAME });
   assert.deepEqual(paletteAvailability(command, host), { status: 'available' });
   assert.deepEqual(paletteAvailability(command, { surface: 'palette' }), { status: 'disabled', reasonKey: 'commandPalette.availability.host' }, 'refused without the dialog host');
+  useViewerStore.setState({ editEnabled: false });
+  assert.deepEqual(paletteAvailability(command, host), { status: 'disabled', reasonKey: 'commandPalette.availability.editMode' }, 'refused outside Edit mode');
 });
 
 test('#9668 derive, review the plan, acknowledge and apply, through the structural review step', async () => {
   const { dataStore, view } = await seedAuthoringSample({ bytes: FRAME });
   const root = render(<StructuralDerivationReview origin="test" />);
   await waitFor(() => button(root, /Derive and review/)?.disabled === false, 'the structural write path loads');
+  assert.match(root.textContent ?? '', new RegExp(`Model: ${useViewerStore.getState().models.get(SAMPLE_MODEL)!.name}`));
+  assert.equal(root.querySelector('input[type="checkbox"]'), null, 'nothing to acknowledge before a review');
   click(button(root, /Derive and review/)!);
   await waitFor(() => /3 curve members/.test(root.textContent ?? ''), 'the plan is shown');
   assert.match(root.textContent ?? '', /4 nodes · 1 supports, 0 guessed/);
@@ -51,6 +55,7 @@ test('#9668 derive, review the plan, acknowledge and apply, through the structur
   click(apply()!);
   await waitFor(() => !apply(), 'applied');
   assert.doesNotMatch(root.textContent ?? '', /refused|changed after/i);
+  assert.match(root.textContent ?? '', /Applied 8 changes/);
   const graph = extractStructuralOnDemand(await parseIfc(editedModelBytes(dataStore, view)));
   assert.equal(graph.analysisModels.length, 1);
   assert.equal(graph.members.length, 3);

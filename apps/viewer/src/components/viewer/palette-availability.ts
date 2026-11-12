@@ -112,6 +112,8 @@ export function paletteAvailability(command: SurfaceCommandDefinition, context: 
   if (opener) {
     if (s.loading) return blocked('commandPalette.availability.loading');
     if (!hasData) return blocked('commandPalette.availability.ifc');
+    // The derivation writes into the model, which only Edit mode allows.
+    if (id === 'model:derive-structural' && !s.editEnabled) return blocked('commandPalette.availability.editMode');
     const callback = context[opener];
     if (!callback || context.toolHostIsCurrent?.() === false) return blocked('commandPalette.availability.host');
   }

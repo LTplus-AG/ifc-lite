@@ -13,9 +13,9 @@ import { StructuralReviewControls, useStructuralReview } from './StructuralRevie
 export function StructuralGraphReview({ proposal, origin }: { proposal: StructuralProposal; origin: string }) {
   const { t } = useTranslation();
   const [approved, setApproved] = useState(() => new Set(proposal.operations.map((_, index) => index)));
-  const flow = useStructuralReview<StructuralReview>('Assistant Structural');
+  const flow = useStructuralReview<StructuralReview>('Assistant Structural', proposal);
   const { review, receipt } = flow;
-  const prepare = (selection = approved) => flow.prepare(() => prepareStructuralReview(useViewerStore, proposal, selection));
+  const prepare = (selection: ReadonlySet<number>) => flow.prepare(() => prepareStructuralReview(useViewerStore, proposal, selection));
   const delta = review?.delta ?? [];
   return <section aria-label={t('structuralReview.title')} className="mx-3 my-2 rounded border border-border p-3 text-xs space-y-2">
     <h3 className="font-medium">{proposal.title}</h3>

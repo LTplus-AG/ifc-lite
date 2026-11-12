@@ -111,6 +111,9 @@ describe('item 3: a failed or timed-out socket is dead and does not hold its slo
     peer.sendText(JSON.stringify({ type: 'hello', protocol: 1, pairingCode: code, permission: 'read-write', tools: [READ_TOOL] }));
     await sleep(150);
     expect(agent.bridge.tab()).toBeNull();
+    // Ignored outright: not even counted as an attempt, so it neither burns
+    // the code nor slows the real tab's pairing through the gate.
+    expect(agent.bridge.pairingStats()).toEqual({ attempts: 0, delayMs: 0, deferred: 0 });
     // The code was not consumed: the real tab still pairs with it.
     await paired(agent, { code });
   });

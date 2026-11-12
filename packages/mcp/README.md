@@ -283,7 +283,7 @@ browser connectivity in Chrome (Local Network Access prompt) and Safari
 | `--bridge-port <n>` | Port on 127.0.0.1. Default `21517`; `0` picks a free one. The pairing link carries it. |
 | `--bridge-viewer-url <url>` | Base of the pairing link. Default `https://ifclite.com`. Its origin REPLACES the default in the allowlist; add `--allow-origin https://ifclite.com` to keep both. |
 | `--allow-origin <origin>` | Another browser origin that may connect (repeatable), e.g. a dev server. |
-| `--read-only` | A ceiling: tools the tab labels as mutating stay hidden and refused even if the tab allows changes. |
+| `--read-only` | A ceiling: tools the tab labels as mutating stay hidden and refused even if the tab allows changes. The tab must enforce the rest. |
 | `--insecure` | Accept a plain-`http` origin on a non-loopback host (refused otherwise); prints a warning. |
 
 ### Security model
@@ -305,17 +305,26 @@ browser connectivity in Chrome (Local Network Access prompt) and Safari
   replaced on the network path and leak the code. `--insecure` overrides this
   with a warning.
 - **One-time pairing code.** 20 characters of Crockford base32 (100 bits).
-  The tab's `hello` must arrive within 10 s of the socket opening; otherwise
-  the bridge sends `HANDSHAKE_TIMEOUT`, closes with 4408, and terminates the
-  socket 250 ms later if the peer has not closed it. The code is compared in
-  constant time and consumed on success; a used code never works again. Wrong
-  codes do not retire the code, so a guessing peer cannot break the user's
-  link. Each wrong code is answered only after a delay that doubles per recent
-  failure (250 ms up to 5 s, reset after 60 s without failures or on success),
-  while its socket keeps one of the 4 unpaired slots, which bounds guessing to
-  a few attempts per second. A correct code is never delayed. While a tab is
-  paired no code is live, so no other tab can connect unless the agent asks
-  `bridge_status` for one with `pair_new_tab: true`.
+  The tab's first frame (the `hello`) must arrive within 3 s of the socket
+  opening; otherwise the bridge sends `HANDSHAKE_TIMEOUT`, closes with 4408,
+  and terminates the socket 250 ms later if the peer has not closed it. A tab
+  sends its hello as soon as the socket opens (Chrome's Local Network Access
+  prompt comes before the socket exists), so 3 s is ample on loopback. The
+  code is compared in constant time and consumed on success; a used code never
+  works again. Wrong codes do not retire the code, so a guessing peer cannot
+  break the user's link. While a tab is paired no code is live, so no other
+  tab can connect unless the agent asks `bridge_status` for one with
+  `pair_new_tab: true`.
+- **Guess rate.** With no recent wrong code, a hello is compared at once.
+  After a wrong code, the comparison of EVERY hello, right or wrong, waits for
+  the current delay: 250 ms, doubling per wrong code up to 5 s, reset after
+  60 s without one or on a success. A waiting attempt keeps its unpaired slot
+  even if its socket closes, and a socket that closed before its comparison
+  counts as a wrong code. With 4 slots the worst case is 4 comparisons per
+  delay, so at most 0.8 guesses per second once the 5 s cap is reached,
+  against 100 bits. The cost: while someone is guessing, the real tab's
+  correct code is also compared up to 5 s late, so its `welcome` can arrive
+  that late.
 - **Dead sockets.** A socket that failed (bad frame, wrong code, timeout,
   replaced) is ignored from then on, frees its unpaired slot at once, and is
   terminated 250 ms after its close frame if the peer does not close.
@@ -344,16 +353,29 @@ browser connectivity in Chrome (Local Network Access prompt) and Safari
   `bridge_status` say they are data, not instructions. Results may carry text
   content and `structuredContent` only; images, resources (any URI) and other
   content types fail the call.
-- **Bounds.** Inbound frames over 16 MiB close the socket with 1009, which
-  fails the pending calls (`VIEWER_NOT_CONNECTED`, reason `disconnected`).
-  Within a frame: all tool descriptors together at most 1 MiB, each
-  `inputSchema` at most 32 levels deep and 5,000 values, each result at most
-  4 MiB, 64 levels and 250,000 values. Schemas must be well-formed for the
-  keywords the bridge validates (`properties` of schemas, `required` as
-  strings, numeric bounds as numbers, ...). An oversized or malformed hello
-  is refused; an update is rejected with a non-fatal `error`; a result fails
-  its call with a message naming the limit. Every check is iterative, so a
-  value nested 20,000 deep is refused rather than overflowing a stack.
+- **Bounds.** Before pairing, a connection may send at most 1.25 MiB in
+  total (a hello carries at most 1 MiB of tool descriptors); more, and it is
+  dropped before anything is parsed. A paired tab's frames over 16 MiB close
+  the socket with 1009, which fails the pending calls (`VIEWER_NOT_CONNECTED`,
+  reason `disconnected`). Every frame is checked as a whole first (at most 72
+  levels deep and 300,000 values) before any field is read, and `type` (16
+  characters), `id`, `sessionId` and `pairingCode` (64 characters each) must
+  be short strings. Within a frame: all tool descriptors together at most
+  1 MiB, each `inputSchema` at most 32 levels deep and 5,000 values, each
+  result at most 4 MiB, 64 levels and 250,000 values. Schemas must be
+  well-formed for the keywords the bridge validates (`properties` of schemas,
+  `required` as strings, numeric bounds as numbers, ...). An oversized or
+  malformed hello is refused; an update is rejected with a non-fatal `error`;
+  a result fails its call with a message naming the limit. Every check is
+  iterative and counts before it copies, so a value nested 30,000 deep or an
+  8-million-element array is refused cheaply rather than overflowing a stack.
+- **Tab text is clipped.** Every string taken from the tab that reaches the
+  agent or stderr (parse errors, schema paths, client names, ids) is cut to a
+  few hundred characters and its control characters are replaced, so a tab
+  cannot inflate an error past the result limit or forge a log line.
+- **No crash path.** Every WebSocket listener and timer, and the stdio line
+  handler, runs under a guard: an unexpected exception fails that socket (or
+  that line) and is logged once, and the process keeps serving.
 - **Session-scoped replies.** Each pairing gets a session id, and each call an
   id unique for the bridge's lifetime. A reply that names another session, an
   unknown id or an already answered call is ignored. Calls time out after
@@ -367,6 +389,15 @@ browser connectivity in Chrome (Local Network Access prompt) and Safari
 - **Quiet logs.** Repeated stderr lines of one kind (refused connections,
   wrong codes, stray frames) are written once, then summarised as "N more ..."
   every 10 s.
+- **Shutdown.** On stdin end, close or error and on SIGINT/SIGTERM the bridge
+  closes first, so pending calls are answered with `VIEWER_NOT_CONNECTED`
+  (reason `shutting-down`) before stdio closes and the port is freed.
+- **Residual: local denial of service.** A local process can keep all 4
+  unpaired slots busy (four silent sockets reconnecting every 3 s), and the
+  real tab then gets HTTP 429 and has to retry. A local process is already
+  inside the trust boundary for denial of service (it could also take the
+  port first), so the bridge only narrows this window, through the 3 s first-
+  frame timeout. It cannot pair without the code.
 
 ### Wire protocol
 
@@ -391,6 +422,13 @@ protocol version `1`; `--bridge` carries them over a loopback WebSocket at
 effective `permission` is `read-only`, the tab must refuse every call that
 would change the model, whatever label it sent, and answer it with an
 `isError` result.
+
+**Timing and size the tab must tolerate:** send the `hello` within 3 s of
+the socket opening and keep it (with every frame before pairing) under
+1.25 MiB in total; keep `id`, `sessionId` and `pairingCode` at most 64
+characters and `type` at most 16; expect `welcome` (or `PAIRING_FAILED`) up
+to 5 s after the hello while someone is guessing codes; a dropped
+over-limit unpaired connection closes without an error frame (1006).
 
 ## Roadmap
 

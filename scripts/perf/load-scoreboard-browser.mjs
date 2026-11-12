@@ -32,6 +32,7 @@ import { BOOT_OBSERVERS, waitShellQuiet, waitUiQuiet } from './viewer-load-boot.
 import { rebaseToArm, waitCacheEntryStable, waitFirstPaint } from './load-scoreboard-lanes.mjs';
 import { expectSceneSnapshot, prepareWarmOpen } from './viewer-scene-snapshot.mjs';
 import { readGpuHealth } from '../../tests/benchmark/gpu-health.ts';
+import { IDENTITY_QUERY, corruptStoredSnapshots, readSceneIdentity } from './load-scoreboard-identity.mjs';
 
 export const CHROME_ARGS = ['--enable-gpu', '--enable-unsafe-webgpu', '--enable-features=Vulkan,VulkanFromANGLE,DefaultANGLEVulkan',
   '--use-angle=vulkan', '--ignore-gpu-blocklist', '--use-webgpu-power-preference=default-high-performance',
@@ -114,12 +115,12 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
   setRoot(side.dist);
   const profileDir = mkdtempSync(join(tmpdir(), 'load-scoreboard-'));
   const env = { ...process.env, VK_ICD_FILENAMES: NVIDIA_ICD, VK_DRIVER_FILES: NVIDIA_ICD };
-  const query = `?perfTrace=1${side.query ? `&${side.query}` : ''}`;
+  const query = `?perfTrace=1${side.query ? `&${side.query}` : ''}${pass === 'identity' ? `&${IDENTITY_QUERY}` : ''}`;
   const sizeMB = statSync(fixture.path).size / 2 ** 20;
   const uncached = expectedCacheTier(statSync(fixture.path).size).startsWith('none');
   const timeoutMs = Math.max(15 * 60 * 1000, sizeMB * 12 * 1000);
   const consoleLogs = [];
-  const meta = { pass, query, executablePath, chromeArgs: CHROME_ARGS, pageErrors: [], crashed: false };
+  const meta = { pass, query, executablePath, chromeArgs: CHROME_ARGS, pageErrors: [], crashed: false, identityOpens: [] };
   const lanes = { [coldLane]: { lane: coldLane, ok: false } };
   if (warmOpens > 1) lanes['browser-warm1'] = { lane: 'browser-warm1', ok: false };
   if (warmOpens > 0) lanes['browser-warm'] = { lane: 'browser-warm', ok: false };
@@ -140,6 +141,8 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
     Object.assign(open, { shell }, await waitUiQuiet(page, open.originAbs + open.interactiveMs, open.originAbs));
     if (early) open = rebaseToArm(open);
     const memory = meta[`${label}Memory`] ?? null;
+    // Identity pass (untimed, flag on): what the scene holds after this open, for the reopen verdict.
+    if (pass === 'identity') meta.identityOpens.push({ label, identity: await readSceneIdentity(page) });
     const fingerprint = await readOutputFingerprint(page);
     const f0 = (v) => (Number.isFinite(v) ? v.toFixed(0) : 'n/a');
     log?.(`  ${tag} ${pass} ${label}: first ${f0(open.firstFrameMs)} ms, interactive ${f0(open.interactiveMs)} ms, ui quiet ${open.uiQuietTimedOut ? 'capped' : `${f0(open.uiQuietMs)} ms`}, input delay ${f0(open.inputDelayMs)} ms${memory ? `, peak PSS ${f0(memory.peakPssMiB)} MiB` : ''}, path ${open.loadPaths.join(',')}`);
@@ -184,6 +187,8 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
         if (i === 1) meta.entryBeforeWarm1 = prep.entry ?? null;
         if (prep.snapshotWritten !== undefined) meta.snapshotWritten = prep.snapshotWritten;
         if (prep.failure) throw new Error(prep.failure);
+        // Harness proof only: an altered stored snapshot must read RESTORE MISMATCH in the identity pass.
+        if (pass === 'identity' && process.env.LOAD_SCOREBOARD_CORRUPT_SNAPSHOT === '1') (meta.corrupted ??= []).push({ open: i, ...(await corruptStoredSnapshots(page)) });
         await replacePage(context, page);
         page = context.pages().at(-1);
         watch(page);

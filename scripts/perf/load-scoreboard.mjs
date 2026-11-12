@@ -31,6 +31,7 @@ import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { nativeSample } from './load-scoreboard-native.mjs';
 import { BOOT_FIXTURE, BROWSER_LANES, LANES, elementDiffVerdict, elementsFileFor, renderMarkdown, summarize } from './load-scoreboard-report.mjs';
 import { browserShares, diffElements, uiQuietValue } from './load-scoreboard-stats.mjs';
+import { reopenIdentityVerdict } from './load-scoreboard-identity.mjs';
 
 const ROOT = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
@@ -107,6 +108,35 @@ export async function hostQuiet({ limit = 5, maxWaitMs = 20000 } = {}) {
   }
   const builders = foreignBuilders();
   return { cpuPressureAvg10: psi, waitedMs: Date.now() - started, builders, underLoad: !(psi < limit) || builders.length > 0 };
+}
+
+/** The identity pass runs in round 0 unless the plan turns it off; it needs reopens to verify. */
+export function identityWanted(plan, round) {
+  return round === 0 && plan.identityPass !== false && (plan.warmOpens ?? 0) > 0 && plan.lanes.some((l) => l === 'browser-warm1' || l === 'browser-warm');
+}
+
+/** Each reopen lane of an identity sample with its verdict against the sample's own earlier opens. */
+export function identityRowReopens(sample, warmOpens) {
+  const opens = sample.meta?.identityOpens ?? [];
+  const out = {};
+  const n = warmOpens;
+  for (let i = 1; i < opens.length; i++) {
+    const lane = i === n ? 'browser-warm' : i === 1 ? 'browser-warm1' : null;
+    if (lane) out[lane] = reopenIdentityVerdict(opens, i);
+  }
+  return out;
+}
+
+/** The recorded identity row: verdicts and layer signatures; per-element maps go to their own trace file. */
+export function identityRow(common, sample, warmOpens, writeFile) {
+  const opens = sample.meta?.identityOpens ?? [];
+  writeFile(`${common.fixture}-${common.side}-r${common.round}-identity.json`, JSON.stringify(opens));
+  const failed = Object.values(sample.lanes ?? {}).find((l) => l && l.ok === false && l.error);
+  return { ...common, lane: 'identity', ok: !failed, error: failed?.error ?? null, reopens: identityRowReopens(sample, warmOpens),
+    corrupted: sample.meta?.corrupted ?? null, query: sample.meta?.query ?? null,
+    opens: opens.map(({ label, identity }) => ({ label, tap: identity?.tap ?? false, error: identity?.error ?? null,
+      pieces: identity?.pieces ? { pieces: identity.pieces.pieces, elements: identity.pieces.elements, sig: identity.pieces.sig } : null,
+      instancedEntities: identity?.instancedEntities ?? null, snapshots: identity?.snapshots ?? [] })) };
 }
 
 /** Resume key of one recorded lane sample. */
@@ -226,6 +256,12 @@ async function run(opt) {
                   browserVersion: e.meta.browserVersion ?? null, pageErrors: e.meta.pageErrors.length, gpuHealth: e.meta.gpuHealthCold ?? null }, trace ?? null);
               }
               const missingDefault = missing.filter((l) => DEFAULT_BROWSER.includes(l));
+              // Reopen output identity (load-scoreboard-identity.mjs): one untimed pass per side and fixture, round 0.
+              if (identityWanted(plan, round) && pendingLanes(done, cell, ['identity']).length > 0) {
+                const id = await browser.sample({ side: plan.sides[side], fixture, tag: `${tag}-identity`, warmOpens: plan.warmOpens, pass: 'identity' });
+                record(identityRow({ ...common, ...cell }, id, plan.warmOpens, (name, body) => writeFileSync(join(out, 'traces', name), body)), null);
+                log(`  ${tag} identity: ${Object.entries(identityRowReopens(id, plan.warmOpens)).map(([l, v]) => `${l} ${v.verdict.slice(0, 80)}`).join('; ') || 'no reopen'}`);
+              }
               if (missingDefault.length === 0) continue;
               const sampleTag = sampleTagFor(tag, missingDefault, groupLanes.filter((l) => DEFAULT_BROWSER.includes(l)), Date.now().toString(36));
               const s = await browser.sample({ side: plan.sides[side], fixture, tag: sampleTag, warmOpens: plan.warmOpens, pass: 'timing' });

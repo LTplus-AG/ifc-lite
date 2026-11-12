@@ -8,6 +8,7 @@
  * markdown tables. Failed samples stay in the counts.
  */
 
+import { laneIdentityVerdict } from './load-scoreboard-identity.mjs';
 import { aaNoiseFloor, expectedCacheTier, median, rankShares, relativeSpread, verdictFor } from './load-scoreboard-stats.mjs';
 
 export const LANES = ['native-cold', 'browser-cold', 'browser-cold-early', 'browser-warm1', 'browser-warm', 'boot'];
@@ -166,8 +167,10 @@ export function summarize(plan, samples, { floors = null } = {}) {
         verdicts[key] = unmeasured && !v.regression ? { ...v, verdict: 'inconclusive: not measured on any sample (see measurement errors)' } : v;
         laneFloors[key] = aaNoiseFloor(pairs, { seed: 0x5eed });
       }
-      const output = outputVerdict(sides.base.fingerprints, sides.branch.fingerprints);
-      lanes[lane] = { sides, verdicts, floors: laneFloors, output, primary: verdicts.interactiveMs ?? null };
+      // Reopens: the identity pass (load-scoreboard-identity.mjs) verifies them against their own cold open.
+      const identity = lane === 'browser-warm1' || lane === 'browser-warm' ? laneIdentityVerdict(samples.filter((s) => s.fixture === fx.name), lane) : null;
+      const output = identity ?? outputVerdict(sides.base.fingerprints, sides.branch.fingerprints);
+      lanes[lane] = { sides, verdicts, floors: laneFloors, output, outputSource: identity ? 'identity pass' : 'timed samples', primary: verdicts.interactiveMs ?? null };
     }
     fixtures.push({ name: fx.name, set: fx.set ?? 'tuning', bytes: fx.bytes, expectedTier: Number.isFinite(fx.bytes) ? expectedCacheTier(fx.bytes) : null, lanes });
   }
@@ -228,7 +231,7 @@ function baselineTable(summary, set, lanes) {
       const warmNote = lane.startsWith('browser-warm') && /^none/.test(f.expectedTier ?? '') ? ' (no cache tier: warm = uncached reopen)' : '';
       const flags = summary.kind === 'aa' ? [l.sides.base, l.sides.branch] : [l.sides.base];
       const flagged = `${flags.reduce((a, x) => a + x.underLoad, 0)} / ${flags.reduce((a, x) => a + x.inputDelayed, 0)}`;
-      lines.push(`| ${f.name} | ${f.bytes ? (f.bytes / 2 ** 20).toFixed(1) : '—'} | ${f.expectedTier ?? '—'} | ${lane}${warmNote} | ${lane === 'native-cold' ? 'n/a (batch)' : cell(pooled('firstGeometryMs'))} | ${cell(pooled('interactiveMs'))} | ${lane === 'native-cold' ? 'n/a' : cell(pooled('uiQuietMs'))} | ${cell(pooled('peakMemoryMiB'))} | ${okFailed} | ${flagged} | ${tierCell(f, lane)} | ${l.output === 'match' ? (l.sides.base.fingerprints[0] ?? '').slice(0, 60) : l.output} |`);
+      lines.push(`| ${f.name} | ${f.bytes ? (f.bytes / 2 ** 20).toFixed(1) : '—'} | ${f.expectedTier ?? '—'} | ${lane}${warmNote} | ${lane === 'native-cold' ? 'n/a (batch)' : cell(pooled('firstGeometryMs'))} | ${cell(pooled('interactiveMs'))} | ${lane === 'native-cold' ? 'n/a' : cell(pooled('uiQuietMs'))} | ${cell(pooled('peakMemoryMiB'))} | ${okFailed} | ${flagged} | ${tierCell(f, lane)} | ${l.output === 'match' ? (l.outputSource === 'identity pass' ? 'match (identity pass: reopen = own cold, both sides)' : (l.sides.base.fingerprints[0] ?? '').slice(0, 60)) : l.output} |`);
     }
   }
   return lines.join('\n');

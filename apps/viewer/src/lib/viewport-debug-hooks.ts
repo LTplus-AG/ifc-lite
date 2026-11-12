@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { readPerfFlag } from './perf/flags.js';
+import { sceneIdentityEnabled, tappedSceneSnapshots } from './perf/sceneIdentityTap.js';
 import { appearanceSourceTriangle, MathUtils, type Renderer } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
 import { getPointCloudScanSample } from '@/hooks/ingest/pointCloudScanCache';
@@ -109,6 +110,18 @@ export function installViewportDebugHooks(
   // Opt-in only: a renderer starts with timing off, so the default install
   // still just stores the renderer (#5895 witness contract).
   if (timingFlag === true || timingFlag === 1 || timingFlag === '1') renderer.setGpuFrameTiming(true);
+  // Scoreboard identity pass only (`?perf.sceneIdentity=1`): hash what the scene holds, after the timer.
+  if (sceneIdentityEnabled()) {
+    host.__ifc_lite_scene_identity__ = async (opts?: { perElement?: boolean }) => {
+      const scene = renderer.getScene();
+      const { scenePieceIdentity } = await import('./perf/sceneIdentity.js');
+      const tap = tappedSceneSnapshots();
+      const pieces = scenePieceIdentity(scene);
+      return { hydrating: scene.isSceneSnapshotHydrating(), finalizing: scene.isFinalizeInProgress(), instancedEntities: scene.getInstancedEntityCount(),
+        pieces: { pieces: pieces.pieces, elements: pieces.elements, sig: pieces.sig, ...(opts?.perElement ? { perElement: pieces.perElement } : {}) },
+        snapshots: tap.snapshots, pending: tap.pending };
+    };
+  }
   // Constant-time read of the renderer-owned snapshot; no scene collection walks.
   host.__ifc_lite_render_frame__ = () => renderer.getFrameStats();
   host.__ifc_lite_render_stats__ = () => ({
@@ -216,6 +229,7 @@ export function clearViewportDebugHooks(): void {
   setSourceSegmentScreenProbe(null);
   delete host.__ifc_lite_render_frame__;
   delete host.__ifc_lite_render_stats__;
+  delete host.__ifc_lite_scene_identity__;
   delete host.__ifc_lite_capture_color_frame__;
   delete host.__ifc_lite_capture_color_diagnostic__;
   delete host.__ifc_lite_view_projection__;

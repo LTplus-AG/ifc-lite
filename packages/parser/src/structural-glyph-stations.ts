@@ -70,31 +70,41 @@ function inside(p: readonly [number, number], poly: Flat): boolean {
   return hit;
 }
 
+/** Distance from a 2D point to the nearest edge of a polygon. */
+function clearance([u, v]: readonly [number, number], poly: Flat): number {
+  let d = Infinity;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [ax, ay] = poly[j];
+    const [ex, ey] = [poly[i][0] - ax, poly[i][1] - ay];
+    const t = Math.max(0, Math.min(1, ((u - ax) * ex + (v - ay) * ey) / (ex * ex + ey * ey || 1)));
+    d = Math.min(d, Math.hypot(u - ax - t * ex, v - ay - t * ey));
+  }
+  return d;
+}
+
 /**
- * A point inside a 2D polygon of non-zero area, clear of its edges. Between
- * two adjacent vertex heights the polygon is a row of trapezoids; each is
- * scored by the lesser of its width (on the mid-height line) and its height,
- * and the best one's centre is returned. The mid-height line passes no
- * vertex, so its crossings pair into spans that are inside (even-odd).
- * Heights within a hair of the last kept one count as one, so float noise
- * makes no zero-height row.
+ * A point inside a 2D polygon of non-zero area, as far from its edges as the
+ * candidates allow: the span midpoints of scanlines halfway between adjacent
+ * vertex heights. Such a line passes no vertex, so its crossings pair into
+ * spans that are inside (even-odd). Heights within a hair of the last kept
+ * one count as one, so float noise makes no row on an edge.
  */
 function interiorPoint(poly: Flat): readonly [number, number] {
-  const us = poly.map((p) => p[0]);
   const sorted = poly.map((p) => p[1]).sort((a, b) => a - b);
-  const hair = Math.max(Math.max(...us) - Math.min(...us), sorted[sorted.length - 1] - sorted[0]) * 1e-9;
+  const hair = (sorted[sorted.length - 1] - sorted[0]) * 1e-9;
   const heights: number[] = [];
   for (const h of sorted) if (!heights.length || h - heights[heights.length - 1] > hair) heights.push(h);
   let best: readonly [number, number] = poly[0];
-  let clearance = 0;
+  let farthest = 0;
   for (let k = 1; k < heights.length; k++) {
     const v = (heights[k - 1] + heights[k]) / 2;
     const xs = crossings(poly, v).sort((a, b) => a - b);
     for (let i = 0; i + 1 < xs.length; i += 2) {
-      const score = Math.min(xs[i + 1] - xs[i], heights[k] - heights[k - 1]);
-      if (score > clearance) {
-        clearance = score;
-        best = [(xs[i] + xs[i + 1]) / 2, v];
+      const candidate = [(xs[i] + xs[i + 1]) / 2, v] as const;
+      const d = clearance(candidate, poly);
+      if (d > farthest) {
+        farthest = d;
+        best = candidate;
       }
     }
   }

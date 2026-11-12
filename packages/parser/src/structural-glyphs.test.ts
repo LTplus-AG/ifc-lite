@@ -448,12 +448,33 @@ describe('face stations', () => {
 
   it('anchors an inverted T in its stem, not on its thin wide foot', () => {
     // Foot 2 wide and 0.001 tall under a stem 0.1 wide and 1 tall, off centre
-    // so the vertex average (1.425, 0.25) is outside. The foot is the widest
+    // so the vertex average (1.425, 0.25075) is outside. The foot is the widest
     // span but has 0.001 of clearance; the stem has 0.1.
     const polygon: [number, number, number][] = [
       [0, 0, 0], [2, 0, 0], [2, 0.001, 0], [1.9, 0.001, 0], [1.9, 1.001, 0], [1.8, 1.001, 0], [1.8, 0.001, 0], [0, 0.001, 0],
     ];
     close(shapeCentre({ kind: 'face', polygon }), [1.85, 0.501, 0]);
+  });
+
+  it('anchors a face whose rows are cut thin by vertices elsewhere at its most open point', () => {
+    // A 1 x 0.3 base with an uneven sawtooth left side and ten thin teeth on
+    // top. Its tallest row (0.2 to 0.29) hugs the top of the base, so a
+    // width-or-row-height score anchors 0.055 from that edge; the point
+    // farthest from every edge is mid-base, about 0.125 clear.
+    const saw: [number, number, number][] = [[0, 0.3, 0], [0.01, 0.29, 0], [0, 0.2, 0], [0.01, 0.15, 0], [0, 0.1, 0], [0.01, 0.01, 0]];
+    const teeth: [number, number, number][] = [];
+    for (let i = 9; i >= 0; i--) {
+      const [l, r] = [i * 0.1 + 0.08, i * 0.1 + 0.1];
+      teeth.push([r, 0.3, 0], [r, 1.3, 0], [l, 1.3, 0], [l, 0.3, 0]);
+    }
+    const polygon: [number, number, number][] = [[0, 0, 0], [1, 0, 0], ...teeth.slice(1), ...saw];
+    const average = [0, 1].map((i) => polygon.reduce((sum, p) => sum + p[i], 0) / polygon.length);
+    expect(inside(average, polygon)).toBe(false);
+    const [x, y] = shapeCentre({ kind: 'face', polygon });
+    expect(x).toBeGreaterThan(0.4);
+    expect(x).toBeLessThan(0.6);
+    expect(y).toBeGreaterThan(0.1);
+    expect(y).toBeLessThan(0.2);
   });
 
   it('retains interior stations for a convex sliver', () => {

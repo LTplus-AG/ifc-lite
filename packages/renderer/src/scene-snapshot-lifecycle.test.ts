@@ -185,6 +185,30 @@ describe('finished-scene snapshot', () => {
     assert.strictEqual(unchanged!(), false, 'and its rebuilt batch is not the captured one');
   });
 
+  // #9915 review G3: a snapshot write held behind another model's load must not read that load as a change.
+  for (const chunking of [null, { cellSize: 100 }]) {
+    it(`a federated model added after the swap leaves the capture unchanged (spatial chunking ${chunking ? 'on' : 'off'})`, async () => {
+      const device = stubDevice();
+      const scene = freshScene();
+      scene.setSpatialChunking(chunking);
+      let unchanged: (() => boolean) | null = null;
+      scene.captureNextFinalize((_snapshot, _sources, sceneUnchanged) => { unchanged = sceneUnchanged; });
+      scene.clearFlatGeometry();
+      scene.queueMeshes(model());
+      scene.flushPending(device, pipeline, 1000);
+      await scene.finalizeStreamingAsync(device, pipeline);
+      const captured = scene.getBatchedMeshes().length;
+      // Same colour, overlapping cells, ids past the first model's: only the model index separates them.
+      const second = [triangle(101, 1), triangle(102, 3)].map((mesh) => ({ ...mesh, modelIndex: 1 }));
+      scene.queueMeshes(second);
+      scene.flushPending(device, pipeline, 1000);
+      assert.strictEqual(unchanged!(), true, 'streaming the second model does not touch the first model\'s batches');
+      await scene.finalizeStreamingAsync(device, pipeline);
+      assert.strictEqual(unchanged!(), true, 'nor does its finalize');
+      assert.ok(scene.getBatchedMeshes().length > captured, 'the second model got batches of its own');
+    });
+  }
+
   // #9728 review: a resource retry finalizes the failed attempt's partial geometry while the
   // replacement load arms its capture; that older finalize must not consume (and lose) it.
   it('leaves a capture armed during an older in-flight finalize to the finalize after it', async () => {

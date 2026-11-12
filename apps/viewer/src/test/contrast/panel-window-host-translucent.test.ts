@@ -33,7 +33,7 @@ import { createElement } from 'react';
 import { render, cleanup } from '@/test/render.js';
 import { resolve } from '@/i18n/registry';
 import { PanelWindowChromeShell } from '@/components/viewer/dock/PanelWindowHost.js';
-import { measureTextContrastOnSurface, closeContrastBrowser, type Theme } from './render-harness';
+import { CONTRAST_BROWSER_SKIP, measureTextContrastOnSurface, closeContrastBrowser, type Theme } from './render-harness';
 import { WCAG_AA_NORMAL_TEXT } from './wcag';
 
 const THEMES: Theme[] = ['light', 'dark', 'colorful'];
@@ -82,7 +82,7 @@ describe('PanelWindowHost translucent header/footer hints meet WCAG AA on their 
 
   for (const { name, part } of fixedCases) {
     for (const theme of THEMES) {
-      it(`${name} clears AA (${WCAG_AA_NORMAL_TEXT}:1) in ${theme} theme`, async () => {
+      it(`${name} clears AA (${WCAG_AA_NORMAL_TEXT}:1) in ${theme} theme`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
         const classes = readChromeClasses();
         const surfaceClassName = part === 'header' ? classes.headerSurface : classes.footerSurface;
         const textClassName = part === 'header' ? classes.headerText : '';
@@ -117,7 +117,7 @@ describe('non-vacuousness proof: reintroducing the pre-#4825 /70 opacity tier re
 
   for (const { name, surface, text } of regressedCases) {
     for (const theme of THEMES) {
-      it(`${name} in ${theme} theme measures under AA (proves the harness is non-vacuous)`, async () => {
+      it(`${name} in ${theme} theme measures under AA (proves the harness is non-vacuous)`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
         const ratio = await measureTextContrastOnSurface(theme, surface, text, readChromeClasses().backdrop);
         assert.ok(
           ratio < WCAG_AA_NORMAL_TEXT,

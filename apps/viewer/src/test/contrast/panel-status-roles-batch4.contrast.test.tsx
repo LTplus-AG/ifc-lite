@@ -9,7 +9,7 @@ import { TableMappingCard } from '@/components/viewer/actions/TableMappingCard.j
 import { BCFOutboxEntry } from '@/components/viewer/bcf/BCFOutboxEntry.js';
 import type { BcfPublication, OutboxEntry } from '@/lib/bcf-publication/outbox-types.js';
 import { cleanup, render } from '@/test/render.js';
-import { closeContrastBrowser, withThemedPage, measureTextContrastOnSurface, type Theme } from './render-harness.js';
+import { CONTRAST_BROWSER_SKIP, closeContrastBrowser, withThemedPage, measureTextContrastOnSurface, type Theme } from './render-harness.js';
 import { WCAG_AA_NORMAL_TEXT } from './wcag.js';
 
 afterEach(cleanup);
@@ -54,7 +54,7 @@ describe('panel status roles batch 4 (Refs #8802)', () => {
       assert.ok(notice.classList.contains(`text-${state.role}`), 'status uses its colour role');
     });
     for (const theme of ['light', 'dark', 'colorful'] as Theme[]) {
-      it(`${state.name} paints its role and clears AA in ${theme}`, async () => {
+      it(`${state.name} paints its role and clears AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
         const ui = state.mount();
         const notice = ui.querySelector(state.selector);
         assert.ok(notice);

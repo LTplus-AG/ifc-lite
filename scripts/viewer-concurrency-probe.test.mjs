@@ -27,7 +27,7 @@ import { parse } from 'yaml';
 // nothing asserted (as in scripts/perf/load-scoreboard-stats.test.mjs). So a
 // failed import becomes functions that fail when called. Only the error NAME
 // is reported: the oracle reads a "Cannot find module" message as a load failure.
-const { parseTap, readRecords, report, reportedFiles, scriptConcurrency, selectFiles, selectionCommand, viewerTestScript } = await import('./viewer-concurrency-probe.mjs')
+const { parseTap, readRecords, report, reportedFiles, run, scriptConcurrency, selectFiles, selectionCommand, viewerTestScript } = await import('./viewer-concurrency-probe.mjs')
   // `then` stays undefined, or awaiting the stub would call it.
   .catch((err) => new Proxy({}, { get: (_, key) => (key === 'then' ? undefined : () => assert.fail(`scripts/viewer-concurrency-probe.mjs did not load (${err.name})`)) }));
 
@@ -216,4 +216,55 @@ test('#9791 review: the probe runs only on GitHub-hosted runners, read-only, wit
   assert.equal(shard.env.VIEWER_TEST_CONCURRENCY, '2');
   assert.equal(shard.env.TEST_SHARDS, '8');
   assert.equal(PROBE_YML.jobs.probe.strategy.matrix.shard.length, 8);
+});
+
+test('#9791 second review: the probe is advisory: every step is continue-on-error, every job says so, and only one run waits', () => {
+  const PROBE_YML = probeWorkflow();
+  for (const [key, job] of Object.entries(PROBE_YML.jobs)) {
+    assert.match(job.name, /advisory/, key);
+    for (const step of job.steps) assert.equal(step['continue-on-error'], true, `${key}: ${step.name ?? step.uses ?? step.run}`);
+  }
+  assert.deepEqual(PROBE_YML.concurrency, { group: 'viewer-concurrency-probe', 'cancel-in-progress': false });
+});
+
+test('#9791 second review: a report with a shortfall warns and exits 0', () => {
+  const summary = join(TMP, 'report-summary.md');
+  writeFileSync(summary, '');
+  const code = run(['--report'], { ...process.env, RECORDS: join(TMP, 'no-records'), EXPECTED_SHARDS: '8', GITHUB_STEP_SUMMARY: summary, TEST_SHARDS: '', TEST_SHARD: '', TEST_PATTERN: '' });
+  assert.equal(code, 0);
+  assert.match(readFileSync(summary, 'utf8'), /8 shard record\(s\) missing/); // @source-text-assertion-ok subject is the generated summary
+});
+
+/** The plan step's own shell, against a stub `gh` answering each API call as the case says. */
+function planDecides({ viewerRan, scriptAtSha, expired }) {
+  const step = probeWorkflow().jobs.plan.steps.find((s) => s.id === 'check');
+  const bin = mkdtempSync(join(TMP, 'gh-'));
+  writeFileSync(join(bin, 'gh'), [
+    '#!/bin/sh',
+    'case "$*" in',
+    `  *"/jobs?"*) ${viewerRan ? 'echo "Viewer tests (shard 0)"' : 'true'} ;;`,
+    `  *"/contents/scripts/viewer-concurrency-probe.mjs?ref="*) exit ${scriptAtSha ? 0 : 1} ;;`,
+    `  *"/artifacts?name=build-output"*) ${expired.length ? `printf '%s\\n' ${expired.join(' ')}` : 'true'} ;;`,
+    '  *) echo "unexpected gh call: $*" >&2; exit 2 ;;',
+    'esac',
+    '',
+  ].join('\n'));
+  chmodSync(join(bin, 'gh'), 0o755);
+  const out = join(bin, 'output');
+  writeFileSync(out, '');
+  const r = spawnSync('bash', ['-c', step.run], {
+    encoding: 'utf8',
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, GITHUB_OUTPUT: out, GH_TOKEN: 'x', REPO: 'o/r', RUN_ID: '1', SHA: 'abc' },
+  });
+  assert.equal(r.status, 0, r.stderr);
+  return readFileSync(out, 'utf8').trim();
+}
+
+test('#9791 second review: the plan skips cleanly when the viewer did not run, the commit has no probe script, or the build expired', () => {
+  // `expired`: the `.artifacts[].expired` values the API returns for build-output.
+  assert.equal(planDecides({ viewerRan: true, scriptAtSha: true, expired: ['false'] }), 'viewer_tested=true');
+  assert.equal(planDecides({ viewerRan: false, scriptAtSha: true, expired: ['false'] }), 'viewer_tested=false');
+  assert.equal(planDecides({ viewerRan: true, scriptAtSha: false, expired: ['false'] }), 'viewer_tested=false', 'a Test run from before this workflow merged');
+  assert.equal(planDecides({ viewerRan: true, scriptAtSha: true, expired: ['true'] }), 'viewer_tested=false', 'build-output expired');
+  assert.equal(planDecides({ viewerRan: true, scriptAtSha: true, expired: [] }), 'viewer_tested=false', 'no build-output at all');
 });

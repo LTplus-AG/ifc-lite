@@ -36,35 +36,53 @@ permissions:
   actions: read
   contents: read
 
-# No concurrency group: a group keeps one pending run, and a later push whose
-# Test run had nothing to measure would evict a pending run that had.
+# One running and at most one pending run: a burst of merges must not queue
+# eight hosted jobs per push in front of required lanes. The price is that a
+# newer push replaces an older pending run, even one it has nothing to add to;
+# for a sampler that is the right trade.
+concurrency:
+  group: viewer-concurrency-probe
+  cancel-in-progress: false
 
 jobs:
-  # Probe only a Test run whose own viewer tests ran (frontend or Rust code
-  # changed, not a replay). Those need `build`, so the run also holds the
-  # `build-output` artifact the probe downloads (packages/*/dist and wasm).
+  # ADVISORY throughout: every step is continue-on-error and the report exits
+  # 0, so nothing here can show a red check on main. Findings are warnings in
+  # the report's summary.
+  #
+  # Probe only a Test run (a) whose own viewer tests ran (frontend or Rust
+  # code changed, not a replay), (b) whose commit has this probe's script (a
+  # run that started before this workflow merged, or a late re-run, does not),
+  # and (c) whose `build-output` artifact has not expired (1-day retention).
   plan:
+    name: Viewer concurrency probe, advisory (plan)
     if: vars.VIEWER_CONCURRENCY_PROBE == 'on' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository && github.event.workflow_run.conclusion != 'cancelled'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       viewer_tested: ${{ steps.check.outputs.viewer_tested }}
     steps:
-      - name: Did the Test run test the viewer
+      - name: Is there something to probe
         id: check
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.event.workflow_run.id }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
+          skip() { echo "::notice title=Viewer concurrency probe::skipped: $1"; echo "viewer_tested=false" >> "$GITHUB_OUTPUT"; exit 0; }
           ran=$(gh api --paginate "repos/$REPO/actions/runs/$RUN_ID/jobs?per_page=100" \
             --jq '.jobs[] | select(.name == "Viewer tests (shard 0)" and .conclusion != "skipped") | .name' | wc -l)
-          echo "run $RUN_ID: viewer test shard 0 ran $ran"
-          echo "viewer_tested=$([ "$ran" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          [ "$ran" -gt 0 ] || skip "the viewer tests did not run in Test run $RUN_ID"
+          gh api "repos/$REPO/contents/scripts/viewer-concurrency-probe.mjs?ref=$SHA" --silent 2>/dev/null \
+            || skip "commit $SHA has no scripts/viewer-concurrency-probe.mjs"
+          live=$(gh api "repos/$REPO/actions/runs/$RUN_ID/artifacts?name=build-output" --jq '.artifacts[].expired' | grep -c '^false$' || true)
+          [ "$live" -gt 0 ] || skip "Test run $RUN_ID's build-output artifact has expired"
+          echo "viewer_tested=true" >> "$GITHUB_OUTPUT"
 
   probe:
-    name: Viewer tests at concurrency 2 (shard ${{ matrix.shard }}/8)
+    name: Viewer tests at concurrency 2, advisory (shard ${{ matrix.shard }}/8)
     needs: plan
     if: needs.plan.outputs.viewer_tested == 'true'
     runs-on: ubuntu-latest
@@ -75,19 +93,25 @@ jobs:
         shard: [0, 1, 2, 3, 4, 5, 6, 7]
     steps:
       - name: Record the job start
+        continue-on-error: true
         run: echo "JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        continue-on-error: true
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           lfs: false
           persist-credentials: false
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        continue-on-error: true
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        continue-on-error: true
         with:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+        continue-on-error: true
       - name: Download the Test run's build artifacts
+        continue-on-error: true
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: build-output
@@ -95,17 +119,21 @@ jobs:
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ github.token }}
       - name: Cache test fixtures
+        continue-on-error: true
         id: fixtures-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: tests/models
           key: ci-fixtures-source-v2-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json', 'tests/models/README.md', 'tests/models/.manifest-ignore') }}
       - name: Fetch fixtures
+        continue-on-error: true
         if: steps.fixtures-cache.outputs.cache-hit != 'true'
         run: pnpm fixtures
       - name: Verify fixtures
+        continue-on-error: true
         run: pnpm fixtures:check
       - name: Viewer tests at concurrency 2
+        continue-on-error: true
         run: node scripts/viewer-concurrency-probe.mjs --shard
         env:
           TEST_SHARDS: '8'
@@ -113,6 +141,7 @@ jobs:
           VIEWER_TEST_CONCURRENCY: '2'
           OUT: ${{ runner.temp }}/viewer-concurrency-probe-${{ matrix.shard }}.json
       - name: Upload the shard record
+        continue-on-error: true
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -121,21 +150,22 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  # Fails when a test failed at concurrency 2 or when fewer files reported a
-  # result than the 16-shard gate selects (scripts/viewer-concurrency-probe.mjs).
+  # Warns (never fails) when a test failed at concurrency 2 or when fewer files
+  # reported a result than the 16-shard gate selects.
   report:
-    name: Viewer concurrency probe report
+    name: Viewer concurrency probe, advisory (report)
     needs: [plan, probe]
     if: ${{ !cancelled() && needs.plan.outputs.viewer_tested == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        continue-on-error: true
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           lfs: false
           persist-credentials: false
-      # No records at all is reported (and failed) by the next step.
+      # No records at all is reported by the next step.
       - name: Download the shard records
         continue-on-error: true
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -144,6 +174,7 @@ jobs:
           path: ${{ runner.temp }}/probe
           merge-multiple: true
       - name: Report
+        continue-on-error: true
         run: node scripts/viewer-concurrency-probe.mjs --report
         env:
           RECORDS: ${{ runner.temp }}/probe

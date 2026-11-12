@@ -5,10 +5,10 @@
 
 /**
  * The steps of .github/workflows/viewer-concurrency-probe.yml (why it exists
- * and when it runs is in that file's header). `--shard` exits 0 whenever it
- * could record what happened, test failures included. `--report` exits 1
- * when a test failed or when fewer files REPORTED a result than the 16-shard
- * gate selects.
+ * and when it runs is in that file's header). ADVISORY: both modes exit 0.
+ * `--report` puts a test failure at concurrency 2, or fewer files REPORTING a
+ * result than the 16-shard gate selects, in the summary and a warning
+ * annotation; a red check here would read as a red main.
  *
  *   node scripts/viewer-concurrency-probe.mjs --shard
  *     TEST_SHARDS, TEST_SHARD, VIEWER_TEST_CONCURRENCY, JOB_STARTED_AT (epoch
@@ -206,14 +206,14 @@ export function report(records, allFiles, expectedShards) {
     '',
     complete
       ? `File coverage matches the gate exactly (${ran.length} files, each once).`
-      : `❌ File coverage does NOT match the gate: ${missingShards.length} shard record(s) missing (${missingShards.join(', ') || 'none'}), ${notRun.length} file(s) reported no result${notRun.length ? ` (first: ${notRun.slice(0, 5).map((f) => `\`${f}\``).join(', ')})` : ''}, ${duplicates} reported twice, ${extra.length} reported that the gate does not run.`,
+      : `⚠️ File coverage does NOT match the gate: ${missingShards.length} shard record(s) missing (${missingShards.join(', ') || 'none'}), ${notRun.length} file(s) reported no result${notRun.length ? ` (first: ${notRun.slice(0, 5).map((f) => `\`${f}\``).join(', ')})` : ''}, ${duplicates} reported twice, ${extra.length} reported that the gate does not run.`,
     '',
     // The duration manifest is packed for 16 shards, so 8 shards take the
     // path-hash split, measured at 336-900 s per shard where LPT gives ~654 s.
     `Shard balance: ${expectedShards} shards use the path-hash split, not the gate's duration packing, so wall time and the slowest step include shard imbalance and this runner type. Compare the summed test-step minutes with the gate's.`,
   ];
   if (failed.length > 0) {
-    lines.push('', `❌ ${failed.length} shard(s) failed at this concurrency:`);
+    lines.push('', `⚠️ ${failed.length} shard(s) failed at this concurrency:`);
     for (const r of failed) lines.push(`- shard ${r.shard}: exit ${r.exitCode}${r.failures.length ? `, ${r.failures.slice(0, 10).map((t) => `\`${t}\``).join(', ')}` : ''}`);
   } else if (records.length > 0) {
     lines.push('', 'No test failed at this concurrency.');
@@ -239,8 +239,7 @@ export function run(argv, env = process.env) {
     for (const l of out.lines) console.log(l);
     if (env.GITHUB_STEP_SUMMARY) appendFileSync(env.GITHUB_STEP_SUMMARY, `${out.lines.join('\n')}\n`);
     if (!out.complete || out.failed > 0) {
-      console.log('::error title=Viewer concurrency probe::coverage short of the gate or a test failed; see the job summary');
-      return 1;
+      console.log('::warning title=Viewer concurrency probe (advisory)::coverage short of the gate or a test failed; see the job summary');
     }
     return 0;
   }
@@ -251,7 +250,8 @@ if (isMainEntry(import.meta.url)) {
   try {
     process.exitCode = run(process.argv.slice(2));
   } catch (err) {
-    console.log(`::error title=Viewer concurrency probe::${err.message}`);
-    process.exitCode = 1;
+    // Advisory: a crash is a warning, never a red check on main.
+    console.log(`::warning title=Viewer concurrency probe (advisory)::${err.message}`);
+    process.exitCode = 0;
   }
 }

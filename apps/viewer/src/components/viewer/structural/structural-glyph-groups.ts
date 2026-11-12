@@ -17,6 +17,7 @@
 import type { IfcDataStore, StructuralExtraction } from '@ifc-lite/parser';
 import { structuralGlyphs, type StructuralGlyph } from '@ifc-lite/parser/structural-glyphs';
 import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
+import { toGlobalIdFromModels } from '@/store/globalId';
 import type { ViewerState } from '@/store';
 import type { FederatedModel } from '@/store/types';
 import { LEGACY_MODEL_ID, LEGACY_MUTATION_MODEL_ID } from '@/sdk/adapters/model-compat';
@@ -63,13 +64,17 @@ const LABEL: Record<string, TranslationKey> = {
  * object until the store or its edits change, so a model-map update during
  * streaming does not reread the topology.
  */
-const glyphCache = new WeakMap<StructuralExtraction, StructuralGlyph[]>();
-function glyphsOf(store: IfcDataStore, data: StructuralExtraction): StructuralGlyph[] {
-  let glyphs = glyphCache.get(data);
-  if (!glyphs) {
-    glyphs = structuralGlyphs(store, data);
-    glyphCache.set(data, glyphs);
-  }
+const glyphCache = new WeakMap<StructuralExtraction, { key: string; glyphs: StructuralGlyph[] }>();
+function glyphsOf(store: IfcDataStore, data: StructuralExtraction, visible: (item: { expressId: number; type: string }) => boolean): StructuralGlyph[] {
+  const connections = data.connections.filter(visible);
+  const activities = data.activities.filter(visible);
+  const key = JSON.stringify([connections.map((c) => c.expressId), activities.map((a) => a.expressId)]);
+  const cached = glyphCache.get(data);
+  if (cached?.key === key) return cached.glyphs;
+  // Keep all connection records for load placement, but remove hidden actions
+  // BEFORE normalization. Hidden supports are filtered after placement.
+  const glyphs = structuralGlyphs(store, { ...data, activities }).filter((g) => visible(g.source));
+  glyphCache.set(data, { key, glyphs });
   return glyphs;
 }
 
@@ -121,7 +126,7 @@ interface ModelEntry {
 }
 
 /** Every visible model's glyph groups. A model whose data or frame fails is skipped with a warning. */
-export async function structuralGlyphGroups(state: ViewerState, t: Translate): Promise<SourceGroup[]> {
+export async function structuralGlyphGroups(state: ViewerState, t: Translate, isolatedIds: ReadonlySet<number> | null = state.isolatedEntities): Promise<SourceGroup[]> {
   const entries: ModelEntry[] = [...state.models].flatMap(([modelId, model]) => (model.visible && model.ifcDataStore
     ? [{ modelId, store: model.ifcDataStore, geometry: model.geometryResult, model, view: state.mutationViews.get(modelId) }]
     : []));
@@ -130,14 +135,14 @@ export async function structuralGlyphGroups(state: ViewerState, t: Translate): P
     entries.push({ modelId: 'legacy', store: state.ifcDataStore, geometry: state.geometryResult, view });
   }
   // One model's bad data or frame skips that model, not the others.
-  const perModel = await Promise.all(entries.map((entry) => modelGroups(state, entry, t).catch((error: unknown) => {
+  const perModel = await Promise.all(entries.map((entry) => modelGroups(state, entry, t, isolatedIds).catch((error: unknown) => {
     console.warn(`[structural-glyphs] ${entry.modelId}: glyphs not drawn`, error);
     return [];
   })));
   return perModel.flat();
 }
 
-async function modelGroups(state: ViewerState, { modelId, store, geometry, model, view }: ModelEntry, t: Translate): Promise<SourceGroup[]> {
+async function modelGroups(state: ViewerState, { modelId, store, geometry, model, view }: ModelEntry, t: Translate, isolatedIds: ReadonlySet<number> | null): Promise<SourceGroup[]> {
   const data = effectiveStructuralData(store, view);
   if (!data.hasStructural || !geometry) return [];
   const map: FederationPointMap | undefined = model ? await modelFrameMap(model, state) : undefined;
@@ -152,9 +157,12 @@ async function modelGroups(state: ViewerState, { modelId, store, geometry, model
       throw error;
     }
   };
-  // A class the embed host hides (`hideTypes`) hides its glyphs too.
-  const all = glyphsOf(store, data);
-  const hidden = state.hostHiddenIfcTypes;
-  const shown = hidden ? all.filter((g) => !isIfcTypeHiddenByHost(g.source.type, hidden)) : all;
+  const visible = (item: { expressId: number; type: string }) => {
+    const id = toGlobalIdFromModels(state.models, modelId, item.expressId);
+    return !isIfcTypeHiddenByHost(item.type, state.hostHiddenIfcTypes)
+      && !state.hiddenEntities.has(id)
+      && (isolatedIds === null || isolatedIds.has(id));
+  };
+  const shown = glyphsOf(store, data, visible);
   return groupsOf(modelId, data, toViewGlyphs(shown, toDisplay), worldCapOf(geometry.coordinateInfo), t);
 }

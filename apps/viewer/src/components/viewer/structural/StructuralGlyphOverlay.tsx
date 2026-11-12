@@ -54,11 +54,12 @@ registerEnglish(structuralGlyphsEn);
 const HIT_WIDTH = 5;
 
 interface StructuralGlyphOverlayProps {
+  isolatedIds?: ReadonlySet<number> | null;
   /** Select a glyph's source entity, as a viewport click selects an element. */
   onSelect: (modelId: string, expressId: number) => void;
 }
 
-export default function StructuralGlyphOverlay({ onSelect }: StructuralGlyphOverlayProps) {
+export default function StructuralGlyphOverlay({ onSelect, isolatedIds }: StructuralGlyphOverlayProps) {
   const { t, revision } = useTranslation();
   const models = useViewerStore((s) => s.models);
   const legacyStore = useViewerStore((s) => s.ifcDataStore);
@@ -68,6 +69,8 @@ export default function StructuralGlyphOverlay({ onSelect }: StructuralGlyphOver
   const modelPlacement = useViewerStore((s) => s.modelPlacement);
   const georefMutations = useViewerStore((s) => s.georefMutations);
   const hostHiddenIfcTypes = useViewerStore((s) => s.hostHiddenIfcTypes);
+  const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
+  const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
   const svgLayer = useSceneLayer('svg');
   const projector = useSceneProjector();
   const anchorId = useId();
@@ -79,13 +82,13 @@ export default function StructuralGlyphOverlay({ onSelect }: StructuralGlyphOver
   // re-runs it. The federation frame map is asynchronous.
   useEffect(() => {
     let cancelled = false;
-    structuralGlyphGroups(useViewerStore.getState(), t).then((next) => { if (!cancelled) setGroups(next); }, (error) => {
+    structuralGlyphGroups(useViewerStore.getState(), t, isolatedIds).then((next) => { if (!cancelled) setGroups(next); }, (error) => {
       console.warn('[structural-glyphs] could not place the glyphs', error);
       if (!cancelled) setGroups([]);
     });
     return () => { cancelled = true; };
     // `revision` changes with the locale; `t` keeps one identity.
-  }, [models, legacyStore, legacyGeometry, mutationViews, mutationVersion, modelPlacement, georefMutations, hostHiddenIfcTypes, t, revision]);
+  }, [models, legacyStore, legacyGeometry, mutationViews, mutationVersion, modelPlacement, georefMutations, hostHiddenIfcTypes, hiddenEntities, isolatedEntities, isolatedIds, t, revision]);
 
   useEffect(() => {
     if (!projector) return;
@@ -137,8 +140,8 @@ export default function StructuralGlyphOverlay({ onSelect }: StructuralGlyphOver
             select();
           }}
         >
-          <path className={STROKE[group.style]} strokeWidth={1.75} style={{ pointerEvents: 'none' }} />
-          <path stroke="transparent" strokeWidth={HIT_WIDTH} style={{ pointerEvents: 'stroke' }}>
+          <path aria-hidden="true" className={STROKE[group.style]} strokeWidth={1.75} style={{ pointerEvents: 'none' }} />
+          <path aria-hidden="true" stroke="transparent" strokeWidth={HIT_WIDTH} style={{ pointerEvents: 'stroke' }}>
             <title>{group.title}</title>
           </path>
         </g>

@@ -105,7 +105,7 @@ it('#9875 an opening dialog without a mounted panel cannot hide app notification
 });
 
 it('#9875 closing a nested modal keeps its success notice readable in the still-open parent', () => {
-  let closeChild = () => { throw new Error('Dialog not mounted'); };
+  let closeChild: () => void = () => { throw new Error('Dialog not mounted'); };
   function Nested() {
     const [open, setOpen] = useState(true);
     closeChild = () => setOpen(false);

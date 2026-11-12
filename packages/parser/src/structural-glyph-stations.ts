@@ -87,7 +87,9 @@ function clearance([u, v]: readonly [number, number], poly: Flat): number {
  * candidates allow: the span midpoints of scanlines halfway between adjacent
  * vertex heights. Such a line passes no vertex, so its crossings pair into
  * spans that are inside (even-odd). A row between two heights that differ
- * only by float noise has no clearance, so it never wins.
+ * only by float noise still yields inside candidates and wins only on its
+ * real clearance, so a rotated copy of a face may pick another, equally valid
+ * anchor.
  */
 function interiorPoint(poly: Flat): readonly [number, number] {
   const heights = [...new Set(poly.map((p) => p[1]))].sort((a, b) => a - b);

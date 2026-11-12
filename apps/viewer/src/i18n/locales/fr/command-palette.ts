@@ -70,6 +70,7 @@ export const commandPaletteFr = {
   'commandPalette.vis.site.label': 'Site',
   'commandPalette.vis.ifcAnnotations.label': 'Annotations',
   'commandPalette.vis.ifcGrid.label': 'Grilles',
+  'commandPalette.vis.structuralView.label': 'Alterner modèle analytique / physique / les deux',
   "commandPalette.vis.structuralGlyphs.label": "Appuis et charges",
   'commandPalette.vis.resetColors.label': 'Réinitialiser les couleurs',
   // ── Panels ──

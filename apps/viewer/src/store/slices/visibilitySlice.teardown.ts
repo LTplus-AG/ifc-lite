@@ -37,9 +37,11 @@ export const visibilityTeardown = defineSliceTeardown(
     'classFilter',
     'typeVisibility',
     'typeViewMode',
+    'structuralViewMode',
   ],
   {
     'session-reset': () => ({
+      structuralViewMode: 'both',
       hiddenEntities: new Set<number>(),
       isolatedEntities: null,
       ghostExceptEntities: null,
@@ -58,6 +60,7 @@ export const visibilityTeardown = defineSliceTeardown(
     // here: they are the user's persisted preferences, not scene state, and
     // `clearAllModels` has never touched them.
     'all-models-cleared': () => ({
+      structuralViewMode: 'both',
       hiddenEntities: new Set<number>(),
       isolatedEntities: null,
       ghostExceptEntities: null,

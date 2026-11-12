@@ -9,6 +9,7 @@
  */
 
 import { useMemo } from 'react';
+import { structuralViewHidden } from '../lib/visibility/structural-view.js';
 import { modelHiddenEntities } from '../lib/visibility/model-hidden-entities.js';
 import { useViewerStore } from '../store/index.js';
 import { useStoreyContextVisibility } from './useStoreyContext.js';
@@ -39,13 +40,18 @@ export function useSelectionState() {
  * viewport draws it: model visibility and the workspace storey context folded in.
  */
 export function useVisibilityState() {
+  const structuralViewMode = useViewerStore((s) => s.structuralViewMode);
+  const ifcDataStore = useViewerStore((s) => s.ifcDataStore);
+  const mutationViews = useViewerStore((s) => s.mutationViews);
+  const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const userHiddenEntities = useViewerStore((state) => state.hiddenEntities);
   const models = useViewerStore((state) => state.models);
   const geometryContentVersion = useViewerStore((state) => state.geometryContentVersion);
   const toGlobalId = useViewerStore((state) => state.toGlobalId);
   const hiddenEntities = useMemo(
-    () => modelHiddenEntities(models, userHiddenEntities, toGlobalId),
-    [models, userHiddenEntities, toGlobalId, geometryContentVersion],
+    () => structuralViewHidden(structuralViewMode, models, ifcDataStore, mutationViews,
+      modelHiddenEntities(models, userHiddenEntities, toGlobalId), toGlobalId),
+    [models, userHiddenEntities, toGlobalId, geometryContentVersion, structuralViewMode, ifcDataStore, mutationVersion, mutationViews],
   );
   const isolatedEntities = useViewerStore((state) => state.isolatedEntities);
   const userGhostExcept = useViewerStore((state) => state.ghostExceptEntities);

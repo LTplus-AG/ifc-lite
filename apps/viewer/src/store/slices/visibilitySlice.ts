@@ -44,6 +44,8 @@ import {
 
 export interface VisibilitySlice {
   // State
+  structuralViewMode: 'both' | 'physical' | 'analytical';
+  setStructuralViewMode: (mode: 'both' | 'physical' | 'analytical') => void;
   hiddenEntities: Set<number>;
   isolatedEntities: Set<number> | null;
   /** X-Ray context: when non-null, every entity NOT in this set renders ghosted
@@ -153,6 +155,11 @@ export interface VisibilitySlice {
 
 export const createVisibilitySlice: StateCreator<ViewerState, [], [], VisibilitySlice> = (set, get) => ({
   // Initial state
+  structuralViewMode: 'both',
+  setStructuralViewMode: (structuralViewMode) => set((s) => ({
+    structuralViewMode,
+    typeVisibility: { ...s.typeVisibility, structuralGlyphs: structuralViewMode !== 'physical' },
+  })),
   hiddenEntities: new Set(),
   isolatedEntities: null,
   ghostExceptEntities: null, visibilityRevision: 0,

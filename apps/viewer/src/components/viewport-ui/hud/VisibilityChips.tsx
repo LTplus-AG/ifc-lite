@@ -55,6 +55,7 @@ export function VisibilityChips() {
     lensHiddenIds: s.lensHiddenIds,
     typeVisibility: s.typeVisibility,
     typeViewMode: s.typeViewMode,
+    structuralViewMode: s.structuralViewMode,
     hasTypeGeometry: s.hasTypeGeometry,
     hostHiddenIfcTypes: s.hostHiddenIfcTypes,
   })));

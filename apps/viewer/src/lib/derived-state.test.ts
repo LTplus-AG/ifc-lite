@@ -11,6 +11,7 @@ import { useViewerStore } from '@/store';
 import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import { modelEditTarget, recordModellingEdit, recordModellingCommit } from '@/store/slices/mutation-modelling-records';
 import { addGridIn } from '@/store/slices/mutation-curtain-grid';
+import { effectiveSpatialProject } from '@/components/viewer/hierarchy/effectiveStoreyNodes';
 import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
 import { storeyAttachmentDisplay } from '@/lib/actions/storey-attachment-display';
 import { storeyGridAxes } from '@/lib/snap/sources/ifc-grid-store';
@@ -33,9 +34,10 @@ const target = () => modelEditTarget(useViewerStore.getState(), MODEL_ID)!;
 const grids = () => { const t = target(); return storeyGridAxes(t.dataStore, t.view, STOREY); };
 const walls = () => { const t = target(); return storeyWallAxes(t.dataStore, t.view, STOREY); };
 const levels = () => modelStoreys(useViewerStore.getState(), MODEL_ID);
+const spatial = () => { const t = target(); return effectiveSpatialProject(t.dataStore, t.view); };
 const attachment = () => storeyAttachmentDisplay(useViewerStore.getState(), MODEL_ID, column, '2hQBAVPOr5VxhS3Jl0O47i');
 
-for (const [name, derive] of [['grids', grids], ['wall axes', walls], ['storeys', levels], ['storey attachment inventory', attachment]] as const) {
+for (const [name, derive] of [['grids', grids], ['wall axes', walls], ['storeys', levels], ['spatial tree', spatial], ['storey attachment inventory', attachment]] as const) {
   it(`#9296 column Move and Undo do not reparse ${name}`, () => {
     const spy = mock.method(EntityExtractor.prototype, 'extractEntity');
     const before = derive();

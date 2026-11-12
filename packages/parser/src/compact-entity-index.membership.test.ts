@@ -8,6 +8,7 @@
 // the same answer.
 import { describe, it, expect } from 'vitest';
 import { CompactEntityIndex } from './compact-entity-index.js';
+import { LazyMembership } from './compact-entity-index-membership.js';
 
 function index(ids: number[]): CompactEntityIndex {
   const sorted = Uint32Array.from(ids).sort();
@@ -22,13 +23,9 @@ function probes(max: number): number[] {
   return out.concat([2 ** 31, 2 ** 32 - 1, 2 ** 32, Number.MAX_SAFE_INTEGER, 0.5]);
 }
 
-const searches = (idx: CompactEntityIndex) => {
-  const counter = { calls: 0 };
-  const proto = Object.getPrototypeOf(idx) as { binarySearch(id: number): number };
-  const original = proto.binarySearch;
-  (idx as unknown as { binarySearch(id: number): number }).binarySearch = function (this: CompactEntityIndex, id: number) { counter.calls++; return original.call(this, id); };
-  return counter;
-};
+/** `undefined` answers: the lookups LazyMembership leaves to the index's binary search. */
+const deferred = (m: LazyMembership, probes: number[]) => probes.filter((id) => m.has(id) === undefined).length;
+const sortedIds = (ids: number[]) => Uint32Array.from(ids).sort();
 
 describe('CompactEntityIndex.has membership', () => {
   // Dense ids with gaps, duplicates (#7675) and ids at every bit position of a word, including bit 31.
@@ -44,20 +41,26 @@ describe('CompactEntityIndex.has membership', () => {
     expect(probes(6000).map((id) => idx.has(id))).toEqual(answers);
   });
 
-  it('stops binary searching for membership after warm-up', () => {
-    const idx = index(ids);
-    const calls = searches(idx);
-    for (let k = 0; k < 5000; k++) idx.has(k % 6100);
-    expect(calls.calls).toBeLessThanOrEqual(256);
+  it('answers from the bitset after warm-up: the binary search is left only the first lookups', () => {
+    const m = new LazyMembership(sortedIds(ids));
+    const lookups = Array.from({ length: 5000 }, (_, k) => k % 6100);
+    expect(deferred(m, lookups)).toBe(255);
+    expect(lookups.every((id) => typeof m.has(id) === 'boolean')).toBe(true);
   });
 
   it('keeps the binary search for an id range too sparse for a bitset', () => {
     const sparse = [1, 10, 2 ** 30, 2 ** 31 + 7];
     const idx = index(sparse);
-    const calls = searches(idx);
     const answers = Array.from({ length: 600 }, (_, k) => idx.has(sparse[k % 4] + (k % 3 === 0 ? 1 : 0)));
     expect(answers).toEqual(Array.from({ length: 600 }, (_, k) => k % 3 !== 0));
-    expect(calls.calls).toBe(600);
+    expect(deferred(new LazyMembership(sortedIds(sparse)), Array.from({ length: 600 }, (_, k) => k))).toBe(600);
+  });
+
+  it('keeps the binary search, without throwing, when the bitset cannot be allocated', () => {
+    const m = new LazyMembership(sortedIds(ids), () => { throw new RangeError('Array buffer allocation failed'); });
+    const lookups = Array.from({ length: 600 }, (_, k) => k);
+    expect(() => deferred(m, lookups)).not.toThrow();
+    expect(deferred(m, lookups)).toBe(600);
   });
 
   it('answers false once the columns are detached, as the binary search did', () => {

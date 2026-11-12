@@ -20,6 +20,8 @@ on:
       - "rust/python/**"
       # The Rhino defaults test in rust/python/tests reads this viewer sample.
       - "apps/viewer/public/samples/building-architecture-rev-b.ifc"
+      # The layer user text test reads this Archicad model.
+      - "apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc"
       - "rust/processing/**"
       - "rust/geometry/**"
       - "rust/export/**"
@@ -32,6 +34,8 @@ on:
       - "rust/python/**"
       # The Rhino defaults test in rust/python/tests reads this viewer sample.
       - "apps/viewer/public/samples/building-architecture-rev-b.ifc"
+      # The layer user text test reads this Archicad model.
+      - "apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc"
       - "rust/processing/**"
       - "rust/geometry/**"
       - "rust/export/**"

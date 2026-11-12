@@ -105,13 +105,21 @@ const CONTRAST_BROWSER = resolveContrastBrowser({
       accessSync(path, constants.X_OK);
       return true;
     } catch (error) {
-      // Absent or not executable: try the next candidate. Anything else is real.
-      const { code } = error as NodeJS.ErrnoException;
-      if (code === 'ENOENT' || code === 'ENOTDIR' || code === 'EACCES') return false;
+      // Any filesystem refusal (absent, not executable, EPERM, ELOOP) means
+      // this candidate is unusable: try the next. A non-errno throw is a bug.
+      if (typeof (error as NodeJS.ErrnoException).code === 'string') return false;
       throw error;
     }
   },
-  bundledChromiumPath: () => chromium.executablePath(),
+  bundledChromiumPath: () => {
+    try {
+      return chromium.executablePath();
+    } catch (error) {
+      // Playwright ships no Chromium for this platform: nothing bundled to use.
+      process.stderr.write(`contrast harness: no bundled Chromium here (${(error as Error).message})\n`);
+      return undefined;
+    }
+  },
 });
 
 /** Pass as `{ skip: CONTRAST_BROWSER_SKIP }` on every `it` that renders

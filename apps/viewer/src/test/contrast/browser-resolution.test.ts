@@ -120,12 +120,16 @@ describe('system Chrome locations match the chrome channel', () => {
     assert.deepEqual(systemChromePaths('freebsd', {}), []);
   });
 
-  it("agrees with playwright-core's own chrome-channel lookup on this host", async () => {
+  it("agrees with playwright-core's own chrome-channel lookup on this host", async (t) => {
     // Internal module, held in a variable so it types as any: this test exists
     // to notice when a Playwright upgrade moves the table copied above.
     const internal = 'playwright-core/lib/coreBundle';
     const { registry } = await import(internal);
     const found: string | undefined = registry.registry.findExecutable('chrome').executablePath('javascript');
-    if (found) assert.ok(systemChromePaths(process.platform, process.env).includes(found), found);
+    if (!found) {
+      t.skip('no Google Chrome on this host, so there is no channel answer to compare against');
+      return;
+    }
+    assert.ok(systemChromePaths(process.platform, process.env).includes(found), found);
   });
 });

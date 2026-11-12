@@ -21,6 +21,11 @@
 
 import { win32 } from 'node:path';
 
+// The repo's CI rule for detect-and-skip guards. Plain .mjs outside the viewer:
+// a computed specifier keeps it out of the typed module graph.
+const hostPreconditions = new URL('../../../../../scripts/lib/host-preconditions.mjs', import.meta.url).href;
+const { isCI }: { isCI: (env: Record<string, string | undefined>) => boolean } = await import(hostPreconditions);
+
 export type ContrastBrowser =
   | { source: 'env'; executablePath: string }
   | { source: 'system-chrome' }
@@ -61,12 +66,11 @@ export function systemChromePaths(platform: NodeJS.Platform, env: ResolutionInpu
   }
 }
 
-/** `CI` set to anything but empty, `0` or `false` (`isCI` in
- *  `scripts/lib/host-preconditions.mjs`, which this TS tree cannot import), or
- *  additionally `GITHUB_ACTIONS=true`, which that helper does not read. */
+/** The repo's `isCI` (`CI` set to anything but empty, `0` or `false`), or
+ *  GitHub Actions, which always sets `CI` but is named here so an override of
+ *  `CI` alone cannot turn an Actions job into a local run. */
 export function isCi(env: ResolutionInput['env']): boolean {
-  const ci = (env.CI ?? '').trim().toLowerCase();
-  return (ci !== '' && ci !== '0' && ci !== 'false') || env.GITHUB_ACTIONS === 'true';
+  return isCI(env) || env.GITHUB_ACTIONS === 'true';
 }
 
 export function resolveContrastBrowser({ env, platform, isExecutable, bundledChromiumPath }: ResolutionInput): ContrastBrowser {

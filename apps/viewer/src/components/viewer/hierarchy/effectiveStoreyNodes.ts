@@ -75,9 +75,7 @@ function rebuildSpatialProject(store: IfcDataStore, view: MutablePropertyView, p
     return { ...node, children, name, elevation: record.elevation, elements };
   };
 
-  const effective = rebuild(project) ?? project;
-  cache.set(project, { view, revision: at, project: effective });
-  return effective;
+  return rebuild(project) ?? project;
 }
 
 /**

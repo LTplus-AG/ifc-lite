@@ -12,10 +12,13 @@
  *   ifc-lite-mcp ./model.ifc --read-only
  *   ifc-lite-mcp --transport http --port 8765
  *   ifc-lite-mcp --transport http --port 8765 --token abc123
+ *   ifc-lite-mcp --bridge
  */
 
 import { resolve } from 'node:path';
-import { parseArgs } from './cli-args.js';
+import { bridgeConflict, parseArgs, type CliOptions } from './cli-args.js';
+import { startBridgeServer, type RunningBridge } from './bridge/run.js';
+import { DEFAULT_BRIDGE_PORT, DEFAULT_BRIDGE_VIEWER_URL } from './bridge/protocol.js';
 import { StdioTransport } from './transport/stdio.js';
 import { routeConsoleToStderr } from './transport/stdio-console.js';
 import { HttpTransport, BearerTokenAuth, AllowAllAuth, type HttpAuthenticator, type SessionFactory } from './transport/http.js';
@@ -49,10 +52,18 @@ function printHelp(): void {
     --allow-origin <origin> Permit a browser Origin to read HTTP responses
                             cross-origin (repeatable). Default: none — visited
                             web pages cannot read responses or invoke tools.
+                            With --bridge: an extra Origin that may connect.
     --viewer                Auto-open the in-process WebGL viewer at startup.
     --viewer-port <n>       Preferred viewer port (0 = auto).
     --open                  Implies --viewer; also tries to open the URL in
                             the default browser via the OS opener.
+    --bridge                Serve the model open in an ifc-lite browser tab:
+                            stdio MCP here, forwarded to one paired tab over
+                            ws://127.0.0.1. Loads no files. Pair through the
+                            link printed below or the bridge_status tool.
+    --bridge-port <n>       Bridge port (default ${DEFAULT_BRIDGE_PORT}; 0 = pick a free one).
+    --bridge-viewer-url <u> Base of the pairing link (default
+                            ${DEFAULT_BRIDGE_VIEWER_URL}); its origin may connect.
     --version, -v           Print version.
     --help, -h              This message.
 
@@ -61,6 +72,7 @@ function printHelp(): void {
     ifc-lite-mcp ./arch.ifc ./struct.ifc --federate
     ifc-lite-mcp ./model.ifc --read-only
     ifc-lite-mcp --transport http --port 8765 --token abc
+    ifc-lite-mcp --bridge
 
   Claude Desktop config (~/.config/Claude/claude_desktop_config.json):
     {
@@ -94,6 +106,10 @@ async function main(): Promise<void> {
   if (opts.version) {
     process.stdout.write(`ifc-lite-mcp ${VERSION}\n`);
     process.exitCode = 0;
+    return;
+  }
+  if (opts.bridge) {
+    await runBridge(opts);
     return;
   }
   const scope: AuthScope = opts.readOnly ? readOnlyScope() : fullScope();
@@ -208,6 +224,50 @@ async function main(): Promise<void> {
     process.stderr.write(`Unknown transport: ${opts.transport}\n`);
     process.exit(1);
   }
+}
+
+async function runBridge(opts: CliOptions): Promise<void> {
+  const conflict = bridgeConflict(opts);
+  if (conflict) {
+    process.stderr.write(`[ifc-lite-mcp] ${conflict}\n`);
+    process.exitCode = 2;
+    return;
+  }
+  routeConsoleToStderr();
+  const log = (line: string): void => { process.stderr.write(`[ifc-lite-mcp bridge] ${line}\n`); };
+  const port = opts.bridgePort ?? DEFAULT_BRIDGE_PORT;
+  let running: RunningBridge;
+  try {
+    running = await startBridgeServer({
+      version: VERSION,
+      port,
+      readOnly: opts.readOnly,
+      viewerUrl: opts.bridgeViewerUrl,
+      extraOrigins: opts.allowedOrigins,
+      log,
+    });
+  } catch (err) {
+    const e = err as NodeJS.ErrnoException;
+    const why = e.code === 'EADDRINUSE'
+      ? `port ${port} on 127.0.0.1 is in use (another bridge running?). Pass --bridge-port <n>; the pairing link carries the port.`
+      : e.message;
+    process.stderr.write(`[ifc-lite-mcp] cannot start the bridge: ${why}\n`);
+    process.exitCode = 1;
+    return;
+  }
+  const { server, bridge } = running;
+  const transport = new StdioTransport();
+  await transport.connect(server);
+  // The bridge's socket keeps the process alive; end with the MCP client.
+  process.stdin.once('end', () => {
+    transport.close();
+    void running.close();
+  });
+  const code = bridge.pairingCode();
+  log(`ready on stdio; listening on ws://127.0.0.1:${bridge.port} (read-only=${opts.readOnly})`);
+  log(`allowed origins: ${bridge.allowedOrigins.join(', ')}`);
+  log(`to connect a viewer tab open ${bridge.pairingUrl(code)}`);
+  log(`or enter the one-time code ${code}. The agent can also call bridge_status for it.`);
 }
 
 main().catch((err: Error) => {

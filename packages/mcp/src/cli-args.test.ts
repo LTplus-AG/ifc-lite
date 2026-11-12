@@ -27,6 +27,7 @@ import {
   MCP_VALUE_FLAGS,
   MCP_BOOLEAN_FLAGS,
   MCP_SUBCOMMAND_UNSUPPORTED_FLAGS,
+  bridgeConflict,
 } from './cli-args.js';
 
 describe('MCP_VALUE_FLAGS agrees with parseArgs', () => {
@@ -68,5 +69,21 @@ describe('MCP_VALUE_FLAGS agrees with parseArgs', () => {
     expect(parseArgs(['--help']).help).toBe(true);
     expect(parseArgs(['-v']).version).toBe(true);
     expect(parseArgs(['model.ifc']).help).toBe(false);
+  });
+});
+
+describe('--bridge (#9523)', () => {
+  it('parses the bridge flags', () => {
+    const opts = parseArgs(['--bridge', '--bridge-port', '0', '--bridge-viewer-url', 'http://localhost:5173', '--allow-origin', 'https://x.test']);
+    expect(opts).toMatchObject({ bridge: true, bridgePort: 0, bridgeViewerUrl: 'http://localhost:5173', allowedOrigins: ['https://x.test'] });
+    expect(bridgeConflict(opts)).toBeNull();
+  });
+
+  it('refuses file arguments, --transport http, --viewer and a bad port', () => {
+    expect(bridgeConflict(parseArgs(['--bridge', 'model.ifc']))).toMatch(/loads no files/);
+    expect(bridgeConflict(parseArgs(['--bridge', '--transport', 'http']))).toMatch(/stdio only/);
+    expect(bridgeConflict(parseArgs(['--bridge', '--viewer']))).toMatch(/--viewer/);
+    expect(bridgeConflict(parseArgs(['--bridge', '--bridge-port', 'abc']))).toMatch(/--bridge-port/);
+    expect(bridgeConflict(parseArgs(['--transport', 'http']))).toBeNull();
   });
 });

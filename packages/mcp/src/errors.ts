@@ -25,6 +25,10 @@ export const ToolErrorCode = {
   PARSE_FAILED: 'PARSE_FAILED',
   EXTERNAL_SERVICE_FAILED: 'EXTERNAL_SERVICE_FAILED',
   RATE_LIMITED: 'RATE_LIMITED',
+  /** `--bridge`: no browser tab is paired, or the paired tab went away mid-call. */
+  VIEWER_NOT_CONNECTED: 'VIEWER_NOT_CONNECTED',
+  /** `--bridge`: the paired tab did not answer in time. */
+  TIMEOUT: 'TIMEOUT',
   INTERNAL_ERROR: 'INTERNAL_ERROR',
 } as const;
 

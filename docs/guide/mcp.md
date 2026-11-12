@@ -71,6 +71,10 @@ By default the server binds `127.0.0.1`. Binding a non-loopback host requires ei
 | `--viewer` | Auto-open the 3D viewer |
 | `--viewer-port <N>` | Preferred viewer port (0 = auto) |
 | `--open` | Auto-open the viewer **and** open its URL in the browser |
+| `--bridge` | Forward tools to a paired ifc-lite browser tab instead of loading files (see [Bridge to a browser tab](#bridge-to-a-browser-tab)) |
+| `--bridge-port <N>` | Bridge WebSocket port on 127.0.0.1 (default 21517; 0 = auto) |
+| `--bridge-viewer-url <url>` | Base of the pairing link (default `https://ifclite.com`); its origin may connect |
+| `--allow-origin <origin>` | HTTP: let a browser origin read responses. Bridge: an extra origin that may connect (repeatable) |
 
 ## Scopes and permissions
 
@@ -388,6 +392,23 @@ When the viewer is open, every viewer-touching tool drives the live scene, and a
 3. Drive the visualization with `viewer_colorize`, `viewer_color_by_property`, `viewer_isolate`, `viewer_fly_to`, `viewer_set_section`, and friends.
 4. Subscribe to `ifc-lite://viewer/selection` to be notified on each pick. `viewer_get_selection` reads the latest pick; `viewer_wait_for_selection` blocks until the next click.
 5. `viewer_close` when done.
+
+## Bridge to a browser tab
+
+`ifc-lite-mcp --bridge` lets a local agent work on the model open in an ifc-lite browser tab, including models loaded from a cloud source or carrying unsaved edits. The bridge speaks MCP over stdio to the agent and forwards tool calls over a WebSocket on `127.0.0.1` to one paired tab. It loads no model itself and takes no file arguments.
+
+```bash
+ifc-lite-mcp --bridge              # read-write if the tab allows it
+ifc-lite-mcp --bridge --read-only  # mutations stay off whatever the tab grants
+```
+
+- **Pairing.** The bridge mints a one-time code. The `bridge_status` tool, always listed, returns it with a link such as `https://ifclite.com/#mcp-bridge=1&port=21517&code=...`; the port and code sit in the URL fragment, which the browser never sends to a server. The same link is printed on stderr. A code works once; a wrong code counts against a small limit, after which it is replaced.
+- **One tab.** A new pairing replaces the paired tab, which is disconnected. While a tab is paired no code is live; `bridge_status` with `pair_new_tab: true` issues one.
+- **Guards.** The WebSocket upgrade is refused unless the `Origin` is allowlisted (`https://ifclite.com`, the `--bridge-viewer-url` origin, `--allow-origin`) and the `Host` is loopback on the bridge port. The pairing code is the authentication; the origin check only keeps other web pages out.
+- **Permissions.** The tab marks each tool `readOnly` or not, and says whether the user allowed changes. Read-only is the default. Mutating tools are neither listed nor forwarded while read-only. There is no tool for writing back to a cloud source.
+- **No tab.** Only `bridge_status` is listed, and any other call fails at once with `VIEWER_NOT_CONNECTED`. A tab that closes fails its pending calls the same way.
+
+The tab<->bridge frame protocol is transport-neutral and exported, browser-safe, as `@ifc-lite/mcp/bridge-protocol`. Tools are listed with MCP `annotations` (`readOnlyHint`, and `destructiveHint` for mutating tools). The viewer side ships separately; until it does, nothing on ifclite.com connects, and browser connectivity in Chrome and Safari is not yet verified.
 
 ## Wiring it into a client
 

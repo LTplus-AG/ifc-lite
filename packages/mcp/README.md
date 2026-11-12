@@ -258,6 +258,92 @@ stable `structuredContent.code`:
 That keeps the LLM in the loop instead of aborting the chain on a JSON-RPC
 error.
 
+## Bridge to a browser tab (`--bridge`)
+
+```bash
+npx @ifc-lite/mcp --bridge              # stdio MCP, forwarded to one paired tab
+npx @ifc-lite/mcp --bridge --read-only  # mutations stay off whatever the tab grants
+```
+
+`--bridge` lets a local agent (Claude Desktop, Claude Code, …) work on the
+model open in an ifc-lite browser tab: a model loaded from a cloud source, or
+one with unsaved edits. The bridge speaks MCP over stdio and forwards every tool
+call over a WebSocket on `127.0.0.1` to the paired tab, which runs it against
+its model. The bridge loads no model of its own, so it takes no file arguments
+and refuses `--transport http`.
+
+**Status:** this package ships the local side only. The viewer's "Connect local
+agent" side lands separately, so nothing on ifclite.com connects yet, and
+browser connectivity in Chrome (Local Network Access prompt) and Safari
+(`ws://` from an `https` page) is not yet verified.
+
+| Flag | Meaning |
+|------|---------|
+| `--bridge-port <n>` | Port on 127.0.0.1. Default `21517`; `0` picks a free one. The pairing link carries it. |
+| `--bridge-viewer-url <url>` | Base of the pairing link. Default `https://ifclite.com`. Its origin may connect. |
+| `--allow-origin <origin>` | Another browser origin that may connect (repeatable), e.g. a dev server. |
+| `--read-only` | A ceiling: mutating tools stay hidden and refused even if the tab allows changes. |
+
+### Security model
+
+- **Loopback only.** The server binds `127.0.0.1`, never another interface.
+- **Upgrade guards.** Before the WebSocket opens, the request is refused (HTTP
+  403) unless its `Origin` is on the allowlist and its `Host` is `127.0.0.1`,
+  `localhost` or `[::1]` on the bridge's port. The Host check defeats DNS
+  rebinding. The Origin check only keeps other web pages out; a local process
+  can claim any origin, so the pairing code is the authentication.
+- **One-time pairing code.** 20 characters of Crockford base32 (100 bits).
+  The tab sends it in its first frame within 10 s. It is compared in constant
+  time and consumed on success; a used code never works again. Five wrong codes
+  retire it and mint a new one. While a tab is paired no code is live, so no
+  other tab can connect unless the agent asks `bridge_status` for one with
+  `pair_new_tab: true`.
+- **Pairing link.** `bridge_status` (always listed, because Claude Desktop
+  hides a server's stderr) and stderr both give the code and a link such as
+  `https://ifclite.com/#mcp-bridge=1&port=21517&code=ABCDE-FGHJK-MNPQR-STVWX`.
+  Port and code sit in the URL fragment, which the browser does not send to the
+  web server.
+- **One tab at a time.** A new successful pairing replaces the paired tab: the
+  old socket gets a `REPLACED` error and is closed, and its pending calls fail
+  at once with `VIEWER_NOT_CONNECTED` (`details.reason: "replaced"`).
+- **Permissions.** The tab declares each tool's `readOnly` flag and the level
+  the user granted (`read-only` by default, or `read-write`). The bridge
+  enforces it as well: while the effective level is read-only, mutating tools
+  are neither listed nor forwarded, and a direct call returns `READ_ONLY`.
+  Over MCP, tools carry `annotations`: `readOnlyHint: true` for read-only
+  tools, `readOnlyHint: false, destructiveHint: true` for mutating ones, plus
+  the tab's `title` when it gives one.
+  There is no tool for writing back to a cloud source; that stays a user action
+  in the viewer.
+- **Session-scoped replies.** Each pairing gets a session id, and each call an
+  id unique for the bridge's lifetime. A reply that names another session, an
+  unknown id or an already answered call is ignored. Calls time out after
+  120 s (`TIMEOUT`, and the tab gets a `cancel`); closing the socket fails all
+  pending calls; frames are capped at 16 MiB.
+- **No tab.** Only `bridge_status` is listed, and any other call fails at once
+  with `VIEWER_NOT_CONNECTED`. The tool list changes
+  (`notifications/tools/list_changed`) on connect, disconnect and permission
+  change.
+
+### Wire protocol
+
+Exported browser-safe (no Node imports) as `@ifc-lite/mcp/bridge-protocol`,
+with the types, validators (`parseTabMessage`, `parseServerMessage`),
+`buildPairingUrl` and `parsePairingFragment`. The frames are
+transport-neutral JSON text objects, protocol version `1`; `--bridge` carries
+them over a loopback WebSocket at `ws://127.0.0.1:<port>/`, and another
+transport may carry the same frames later:
+
+| Direction | `type` | Fields |
+|-----------|--------|--------|
+| tab → bridge | `hello` (first frame) | `protocol`, `pairingCode`, `permission`, `tools[]` (`name`, `title?`, `description`, `inputSchema`, `readOnly`), `client?` |
+| bridge → tab | `welcome` | `protocol`, `sessionId`, `permission` (effective), `readOnlyCeiling`, `bridge` |
+| bridge → tab | `call` | `sessionId`, `id`, `name`, `arguments` |
+| tab → bridge | `result` | `sessionId`, `id`, `result` (an MCP `CallToolResult`, passed through unchanged) |
+| bridge → tab | `cancel` | `sessionId`, `id`, `reason` (`cancelled` or `timeout`) |
+| tab → bridge | `update` | `sessionId`, `permission?`, `tools?` |
+| bridge → tab | `error` | `code`, `message`; fatal codes end the channel; on the WebSocket transport, a close with code (4400 invalid, 4401 pairing failed, 4408 handshake timeout, 4409 replaced, 4426 protocol mismatch) |
+
 ## Roadmap
 
 Shipped: stdio + Streamable HTTP transports; query, geometry (bbox, volume,

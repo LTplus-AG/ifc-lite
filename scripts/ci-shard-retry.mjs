@@ -78,7 +78,7 @@ const retryJunit = (i) => join(VIEWER_ROOT, `mergify-junit-retry-${i}.xml`);
  * mode, so a retry that does not fit is cancelled with the job, which is red
  * already: the first attempt failed.
  */
-const VIEWER_RETRY_TIMEOUT = '8m';
+const VIEWER_RETRY_BUDGET_MS = 8 * 60_000;
 const E2E_RETRY_TIMEOUT = '8m';
 
 function readOptional(path) {
@@ -136,13 +136,17 @@ function retryViewer(env, mode, reportDir) {
   if (!plan.retry) return record;
 
   // One run per file, so each file's failures are matched only against that
-  // file's results: a same-titled test elsewhere cannot stand in.
+  // file's results: a same-titled test elsewhere cannot stand in. The runs
+  // share one budget, so five files take no longer than one retry did.
+  const deadline = Date.now() + VIEWER_RETRY_BUDGET_MS;
   const results = attributed.files.map((file, i) => {
+    const left = Math.floor((deadline - Date.now()) / 1000);
+    if (left < 1) return { file, passed: false, reason: 'the shared retry budget ran out before this file' };
     const retryTap = join(reportDir, `viewer-retry-${i}.tap`);
     console.log(`[ci-shard-retry] rerunning ${file}`);
     // coreutils `timeout`, not spawnSync's: it signals the whole process
     // group, so the tsx/node children die with pnpm instead of outliving it.
-    const r = spawnSync('timeout', ['--kill-after=30s', VIEWER_RETRY_TIMEOUT, 'pnpm', '--filter', '@ifc-lite/viewer', 'run', 'test'], {
+    const r = spawnSync('timeout', ['--kill-after=30s', `${left}s`, 'pnpm', '--filter', '@ifc-lite/viewer', 'run', 'test'], {
       cwd: REPO_ROOT,
       stdio: 'inherit',
       env: {

@@ -242,9 +242,9 @@ test('/code-review on #9788: a viewer retry passes only if each test that failed
   });
   const again = parseNodeTap(tap);
   assert.equal(again.summary.fail, 0);
-  const tests = [{ file: 'src/a.test.ts', title: 'flaky' }];
+  const tests = [{ file: 'src/a.test.ts', title: 'flaky', path: 'flaky' }];
   assert.equal(judgeViewerRetry({ exitCode: 0, summary: again.summary, passed: again.passed, tests }).passed, false);
-  assert.equal(judgeViewerRetry({ exitCode: 0, summary: again.summary, passed: again.passed, tests: [{ file: 'src/a.test.ts', title: 'steady' }] }).passed, true);
+  assert.equal(judgeViewerRetry({ exitCode: 0, summary: again.summary, passed: again.passed, tests: [{ file: 'src/a.test.ts', title: 'steady', path: 'steady' }] }).passed, true);
   assert.equal(judgeViewerRetry({ exitCode: 0, summary: again.summary, passed: again.passed, tests: [{ file: 'src/a.test.ts', title: 'src/a.test.ts' }] }).passed, true, 'a file-level failure has no test title to match');
 });
 

@@ -1,11 +1,11 @@
 diff --git a/scripts/lib/shard-retry.mjs b/scripts/lib/shard-retry.mjs
-index 908af98..7efeda0 100644
+index 8708eea..31d6d3c 100644
 --- a/scripts/lib/shard-retry.mjs
 +++ b/scripts/lib/shard-retry.mjs
 @@ -215,6 +215,7 @@ export function judgeViewerRetry({ exitCode, summary, passed = new Set(), tests
    if (summary.fail !== 0 || summary.cancelled !== 0) return { passed: false, reason: `the retry reported ${summary.fail} failed, ${summary.cancelled} cancelled` };
    if (!(summary.pass >= 1)) return { passed: false, reason: 'the retry ran no passing test' };
-   const missing = tests.filter((t) => t.title !== t.file && !passed.has(t.path ?? t.title));
+   const missing = tests.filter((t) => t.title !== t.file && !passed.has(t.path));
 +  if (missing.length > 0) return { passed: false, reason: `${missing.length} test(s) that failed did not pass on retry: ${missing.map((t) => t.title).join('; ')}` };
    return { passed: true, reason: `the retry passed (${summary.pass} passed)` };
  }

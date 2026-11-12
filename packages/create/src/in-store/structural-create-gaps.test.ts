@@ -163,10 +163,17 @@ describe('structural CREATE gaps (#9668)', () => {
     for (const AppliedLoad of [backwards, twoDimensions]) expect(() => create.addStructuralCurveActionToStore(editor, anchor, { AppliedLoad, PredefinedType: 'LINEAR' })).toThrow(/one-dimensional/);
     expect(() => create.addStructuralCurveActionToStore(editor, anchor, { AppliedLoad: mixed, PredefinedType: 'LINEAR' })).toThrow(/same entity type/);
     expect(() => create.addStructuralCurveActionToStore(editor, anchor, { AppliedLoad: points, PredefinedType: 'LINEAR' })).toThrow(/point loads require DISCRETE/);
+    for (const PredefinedType of [undefined, 'NOTDEFINED', 'USERDEFINED'] as const) {
+      expect(() => create.addStructuralCurveActionToStore(editor, anchor, { AppliedLoad: points, PredefinedType, ObjectType: 'Custom' })).toThrow(/point loads require DISCRETE/);
+      expect(() => create.addStructuralCurveActionToStore(editor, anchor, { AppliedLoad: mixed, PredefinedType, ObjectType: 'Custom' })).toThrow(/same entity type/);
+    }
     expect(editor.getMutationView().getNewEntities()).toHaveLength(before);
+    const unspecified = create.addStructuralCurveActionToStore(editor, anchor, { AppliedLoad: two });
     // Borrowed source configurations need the same validation after a reload.
     const content = new StepExporter(store, editor.getMutationView()).export({ schema, applyMutations: true }).content;
     const parsed = await new IfcParser().parseColumnar(content.buffer.slice(content.byteOffset, content.byteOffset + content.byteLength) as ArrayBuffer, { disableWorkerScan: true });
+    const exported = new EntityExtractor(parsed.source).extractEntity(parsed.entityIndex.byId.get(unspecified)!)!;
+    expect(exported.attributes[11]).toBe('.NOTDEFINED.');
     const sourceEditor = new StoreEditor(parsed, new MutablePropertyView(null, 'source'));
     expect(() => create.addStructuralCurveActionToStore(sourceEditor, anchor, { AppliedLoad: one, PredefinedType: 'LINEAR' }, parsed)).toThrow(/sample count/);
     sourceEditor.setPositionalAttribute(one, 1, [`#${load}`, `#${load}`]);

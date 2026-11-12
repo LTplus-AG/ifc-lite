@@ -223,7 +223,8 @@ export default {
         const cdp = await s.context.newCDPSession(s.page);
         try {
           await cdp.send('Profiler.enable'); await cdp.send('Profiler.start');
-          await move(s, column.id);
+          metrics.profileStartPageMs = await s.page.evaluate(() => performance.now());
+          metrics.profileEdit = await move(s, column.id);
           const { profile } = await cdp.send('Profiler.stop');
           artifacts.profile = { name: 'loaded-column-move.cpuprofile', bytes: Buffer.from(JSON.stringify(profile)) };
           await s.ui.key('Control+z', { settle: 1000 });

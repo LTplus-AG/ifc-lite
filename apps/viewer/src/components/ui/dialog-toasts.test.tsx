@@ -156,3 +156,32 @@ it('#9875 repeated errors in different surfaces preserve independent dismissal',
   assert.equal(document.querySelector('[role="dialog"] [data-dialog-notices]'), null);
   assert.ok(anchor.textContent?.includes('Export failed'), 'dismissing the modal error preserves the app failure');
 });
+
+
+it('#9875 keyed save updates replace the same operation across surfaces and after closing', () => {
+  const app = render(<Toaster />);
+  act(() => toast.error('Save failed', 'save'));
+  render(<Dialog open><DialogContent><DialogTitle>Save</DialogTitle><DialogDescription>Review</DialogDescription></DialogContent></Dialog>);
+  act(() => toast.error('Save failed', 'save'));
+  assert.ok(!app.textContent?.includes('Save failed'), 'a keyed operation moves its existing notice to its current surface');
+  assert.equal(document.querySelectorAll('button[aria-label="Dismiss notification"]').length, 1);
+  cleanup();
+  const anchor = render(<Toaster />);
+  act(() => toast.success('Saved', undefined, 'save'));
+  assert.ok(anchor.textContent?.includes('Saved'));
+  assert.ok(!anchor.textContent?.includes('Save failed'), 'success clears every earlier notice of this operation');
+  assert.equal(anchor.querySelectorAll('button[aria-label="Dismiss notification"]').length, 1);
+});
+
+it('#9875 unkeyed errors coalesce after their owning surfaces converge', () => {
+  render(<Toaster />);
+  act(() => toast.error('Repeated failure'));
+  render(<Dialog open><DialogContent><DialogTitle>Save</DialogTitle><DialogDescription>Review</DialogDescription></DialogContent></Dialog>);
+  act(() => toast.error('Repeated failure'));
+  assert.equal(document.querySelectorAll('button[aria-label="Dismiss notification"]').length, 2);
+  cleanup();
+  const anchor = render(<Toaster />);
+  act(() => toast.error('Repeated failure'));
+  assert.equal(anchor.querySelectorAll('button[aria-label="Dismiss notification"]').length, 1);
+  assert.match(anchor.textContent ?? '', /×3/, 'all three occurrences are counted without leaving a stale duplicate');
+});

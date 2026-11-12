@@ -55,8 +55,6 @@ function digestNumberSet(values: Iterable<number>): string {
 }
 
 export function visibilityFingerprint(state: ViewerStateSnapshot): string {
-  const tv = state.typeVisibility;
-
   // Include per-model visible flag and geometry mesh count so the cache
   // invalidates when model visibility is toggled or geometry finishes loading.
   const modelParts: string[] = [];
@@ -71,13 +69,7 @@ export function visibilityFingerprint(state: ViewerStateSnapshot): string {
     state.classFilter ? digestNumberSet(state.classFilter.ids) : 'none',
     digestNumberSet(state.lensHiddenIds),
     digestNumberSet(state.selectedStoreys),
-    tv.spaces ? 1 : 0,
-    tv.spatialZones ? 1 : 0,
-    tv.openings ? 1 : 0,
-    tv.virtualElements ? 1 : 0,
-    tv.site ? 1 : 0,
-    tv.ifcAnnotations ? 1 : 0,
-    tv.structuralViewMode ?? 'both',
+    JSON.stringify(state.typeVisibility),
     state.mutationVersion,
     state.models.size,
     modelParts.join(';'),

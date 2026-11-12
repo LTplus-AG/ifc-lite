@@ -10,6 +10,8 @@ export interface Toast {
   id: number;
   /** Dialog active when this notice was raised; earlier notices keep their anchor. */
   dialogId?: string;
+  /** Only surfaces already open at emission may inherit a surviving notice. */
+  dialogScopes: ReadonlySet<symbol>;
   /** Notifications sharing a lifecycle replace one another. */
   key?: string;
   type: 'success' | 'error' | 'info';
@@ -29,23 +31,27 @@ const MAX_VISIBLE = 3;
 let nextId = 0;
 let nextSeq = 0;
 let toasts: Toast[] = [];
-const dialogs = new Map<string, readonly string[]>();
+const dialogs = new Map<string, { ancestors: readonly string[]; scope: symbol }>();
 
 /** Registration is silent so Dialog can establish ownership before layout effects. */
 export function registerToastDialog(id: string, ancestors: readonly string[]): () => void {
-  dialogs.set(id, ancestors);
+  dialogs.set(id, { ancestors, scope: Symbol(id) });
   return () => {
     dialogs.delete(id);
-    // A later opening of the same dialog must not re-adopt old notices (#9875 C).
+    const next = currentDialog();
+    const scope = next ? dialogs.get(next)?.scope : undefined;
+    // A nested dialog can close on success while its parent stays open. Keep
+    // its notice readable there, but never adopt it into a later-opened modal.
     // Silent until Dialog's layout cleanup publishes the new snapshot.
-    toasts = toasts.map(item => item.dialogId === id ? { ...item, dialogId: undefined } : item);
+    toasts = toasts.map(item => item.dialogId === id
+      ? { ...item, dialogId: scope && item.dialogScopes.has(scope) ? next : undefined } : item);
   };
 }
 
 function currentDialog(): string | undefined {
   // React commits descendants before parents. Exclude covered ancestors first,
   // then let the most recently opened independent dialog own the notice.
-  const covered = new Set([...dialogs.values()].flat());
+  const covered = new Set([...dialogs.values()].flatMap(dialog => dialog.ancestors));
   let owner: string | undefined;
   for (const id of dialogs.keys()) if (!covered.has(id)) owner = id;
   return owner;
@@ -91,7 +97,7 @@ function addToast(type: Toast['type'], message: string, durationMs: number | nul
   const evicted = new Set(evictOrder.slice(0, excess).map((t) => t.id));
   for (const evictedId of evicted) clearTimer(evictedId);
   const kept = others.filter((t) => !evicted.has(t.id));
-  toasts = [...kept, { id, dialogId: currentDialog(), key, type, message, count: existing?.type === type && existing.message === message ? existing.count + 1 : 1, seq: nextSeq++, action }];
+  toasts = [...kept, { id, dialogId: currentDialog(), dialogScopes: new Set([...dialogs.values()].map(dialog => dialog.scope)), key, type, message, count: existing?.type === type && existing.message === message ? existing.count + 1 : 1, seq: nextSeq++, action }];
   clearTimer(id);
   if (durationMs !== null) timers.set(id, setTimeout(() => dismiss(id), durationMs));
   notify();

@@ -103,3 +103,42 @@ it('#9875 an opening dialog without a mounted panel cannot hide app notification
   assert.ok(anchor.textContent?.includes('Loading failed before the panel opened'));
   assert.equal(document.querySelector('[role="dialog"]'), null);
 });
+
+it('#9875 closing a nested modal keeps its success notice readable in the still-open parent', () => {
+  let closeChild = () => { throw new Error('Dialog not mounted'); };
+  function Nested() {
+    const [open, setOpen] = useState(true);
+    closeChild = () => setOpen(false);
+    return <Dialog open><DialogContent><DialogTitle>Parent</DialogTitle><DialogDescription>Review</DialogDescription>
+      <Dialog open={open}><DialogContent><DialogTitle>Child</DialogTitle><DialogDescription>Review</DialogDescription></DialogContent></Dialog>
+    </DialogContent></Dialog>;
+  }
+  const anchor = render(<Toaster />);
+  render(<Nested />);
+  act(() => toast.success('Flavor merged'));
+  act(closeChild);
+  assert.ok(document.querySelector('[role="dialog"] [data-dialog-notices]')?.textContent?.includes('Flavor merged'));
+  assert.ok(!anchor.textContent?.includes('Flavor merged'));
+});
+
+it('#9875 closing an older modal cannot promote its notice over a later-opened modal', () => {
+  let changeFirst: (open: boolean) => void = () => { throw new Error('Dialog not mounted'); };
+  let changeSecond: (open: boolean) => void = changeFirst;
+  function Surfaces() {
+    const [first, setFirst] = useState(true);
+    const [second, setSecond] = useState(false);
+    changeFirst = setFirst;
+    changeSecond = setSecond;
+    return <>
+      <Dialog open={first}><DialogContent><DialogTitle>First</DialogTitle><DialogDescription>Review</DialogDescription></DialogContent></Dialog>
+      <Dialog open={second}><DialogContent><DialogTitle>Second</DialogTitle><DialogDescription>Review</DialogDescription></DialogContent></Dialog>
+    </>;
+  }
+  const anchor = render(<Toaster />);
+  render(<Surfaces />);
+  act(() => toast.error('Earlier failure'));
+  act(() => changeSecond(true));
+  act(() => changeFirst(false));
+  assert.equal(document.querySelector('[role="dialog"] [data-dialog-notices]'), null);
+  assert.ok(anchor.textContent?.includes('Earlier failure'));
+});

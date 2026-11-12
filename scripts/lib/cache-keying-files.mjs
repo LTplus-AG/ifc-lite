@@ -33,8 +33,9 @@ import { parse as parseYaml } from 'yaml';
 export { isListed, parseKeyingList } from './cache-keying-list.mjs';
 
 // An input that names or builds a cache key: key, shared-key, prefix-key, restore-keys,
-// cache-prefix, cache-key, cache, ...
-const KEYISH = /key|cache/;
+// cache, cache-prefix, and any `*-key`/`*_key`. Not a `cache-hit` output or a
+// `wasm_cache_hit` flag, which read a cache's result rather than set its key.
+const KEYISH = /^(?:key|restore-keys|cache|cache-prefix)$|[-_]key$/;
 // What setup-node/setup-python hash for `cache:` when no cache-dependency-path is given.
 const CACHE_DEFAULTS = {
   pnpm: ['**/pnpm-lock.yaml'], npm: ['**/package-lock.json', '**/npm-shrinkwrap.json'], yarn: ['**/yarn.lock'],

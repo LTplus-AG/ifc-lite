@@ -13,4 +13,5 @@
 .github/actions/setup-docs-api/
 .github/actions/setup-report-integration/
 .github/actions/setup-revert-oracle/
+.github/actions/setup-rust-semver/
 .github/actions/setup-wasm-build/

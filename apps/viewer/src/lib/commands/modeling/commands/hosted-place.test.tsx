@@ -29,6 +29,7 @@ import { setRequestRemesh, type RemeshRequest } from '../transaction.js';
 import type { CommandContext } from '../types.js';
 import { OPENING_PLACE, WINDOW_PLACE, type HostedPlaceGesture } from './hosted-place.js';
 import { setElementSize } from '@/store/slices/mutation-element-size';
+import { readHostedSlide } from './hosted-slide.js';
 import { readHost } from './hosted-host.js';
 import { typeOf } from '../authored-kinds.js';
 import { createElementType } from '@/components/viewer/model-inspector/inspector-edits';
@@ -298,6 +299,7 @@ describe('opening.place slab shaft (#9296)', () => {
     click(1,1);
     const [opening] = created('IFCOPENINGELEMENT');
     assert.ok(opening);
+    assert.equal(readHostedSlide(useViewerStore.getState(), MODEL_ID, opening), null, 'wall slide handles are not offered for slab shafts');
     assert.equal(readHostedFill(live().dataStore, opening, live().view)?.hostId, id);
     const rel = live().view.getNewEntities().find(e => e.type.toUpperCase() === 'IFCRELVOIDSELEMENT')!;
     assert.equal(rel.attributes[4], `#${id}`);

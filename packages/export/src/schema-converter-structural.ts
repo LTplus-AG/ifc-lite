@@ -14,6 +14,10 @@ function stiffnessType(entity: string, index: number): string | null {
 }
 
 export function structuralAttributes(entity: string, args: readonly string[], from: string, to: string): string | null {
+  if (entity === 'IFCRELCONNECTSSTRUCTURALELEMENT' && from === 'IFC2X3' && ['IFC4', 'IFC4X3', 'IFC5'].includes(to) && args.length === 6) {
+    // IFC4's analytical assignment retains both objects, but changes relationship kind.
+    return `${args.slice(0, 4).join(',')},(${args[5]}),$,${args[4]}`;
+  }
   if (!((from === 'IFC2X3' && to === 'IFC4') || (from === 'IFC4' && to === 'IFC2X3'))) return null;
   if (stiffnessType(entity, 1)) {
     const values = [...args];

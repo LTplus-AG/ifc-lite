@@ -60,6 +60,8 @@ pub mod rooted_type;
 mod scene_input;
 mod schema_convert;
 mod schema_structural;
+mod schema_structural_diagnostics;
+mod schema_structural_axes;
 mod schema_mep;
 mod schema_detect;
 mod schema_ifc2x3_body;

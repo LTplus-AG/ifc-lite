@@ -157,6 +157,7 @@ fn enum_member(slot: &str) -> Option<String> {
 /// for (#7683).
 #[derive(Default)]
 pub(crate) struct ConversionChecks {
+    pub(crate) structural: crate::schema_structural_diagnostics::StructuralDiagnostics,
     pub(crate) ifc4_slots: Ifc4SlotCheck,
     pub(crate) enums: EnumReconciliation,
     /// `convert_record`'s per-type decisions, resolved once per distinct type.
@@ -176,6 +177,7 @@ impl ConversionChecks {
     pub(crate) fn warnings(&self) -> Vec<String> {
         let mut out = self.ifc4_slots.warnings();
         out.extend(self.enums.warnings());
+        out.extend(self.structural.warnings());
         out
     }
 }

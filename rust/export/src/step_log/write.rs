@@ -259,6 +259,10 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
 
     let mut slot_fill = crate::schema_ifc2x3_slots::Ifc2x3SlotFill::new(pass.fallback_owner_history());
     let mut checks = crate::schema_enum::ConversionChecks::new();
+    if source_label == "IFC2X3" && target == "IFC4" && opts.included.is_none()
+        && log.mutations.is_empty() && log.new_entities.is_empty() && log.georef_mutations.is_none() {
+        checks.structural.axes = crate::schema_structural_axes::StructuralAxes::scan(content);
+    }
     let mut flatten = crate::schema_style_flatten::StyleFlatten::for_export(content, &source_label, &target); flatten.note_all(content, pass.mutated_lines.iter().filter_map(|(id, (t, _))| Some((*id, t.as_deref()?)))
         .chain(pass.generated.iter().chain(&pass.rewritten_lines).chain(&pass.georef_lines).chain(&pass.created_lines).map(|(id, l)| (*id, l.as_str()))));
     flatten.retain_grids(|id| !pass.skip.contains(&id) && !pass.is_deleted(id));

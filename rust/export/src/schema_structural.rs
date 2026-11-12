@@ -21,6 +21,12 @@ pub(crate) fn constant_action(entity: &str) -> bool {
 }
 
 pub(crate) fn attributes(entity: &str, args: &[String], from: &str, to: &str) -> Option<String> {
+    if entity == "IFCRELCONNECTSSTRUCTURALELEMENT" && from == "IFC2X3" && matches!(to, "IFC4" | "IFC4X3" | "IFC5") && args.len() == 6 {
+        // IFC4 expresses the physical product's analytical assignment as an
+        // IfcRelAssignsToProduct. The relationship's original kind cannot be
+        // recovered on downgrade without out-of-schema metadata.
+        return Some(format!("{},({}),$,{}", args[..4].join(","), args[5], args[4]));
+    }
     if !matches!((from, to), ("IFC2X3", "IFC4") | ("IFC4", "IFC2X3")) { return None; }
     if stiffness_type(entity, 1).is_some() {
         let mut values = args.to_vec();
@@ -88,5 +94,33 @@ mod tests {
             assert!(there.ends_with(".F.,.TRUE_LENGTH.,.CONST.);"), "{there}");
             assert_eq!(convert_step_line(&there, "IFC4", "IFC2X3", 50, &mut slots, None).unwrap(), source);
         }
+    }
+}
+
+#[cfg(test)]
+mod diagnostic_tests {
+    use crate::schema_convert::convert_step_line;
+    use crate::schema_ifc2x3_slots::Ifc2x3SlotFill;
+    use crate::schema_enum::ConversionChecks;
+
+    #[test]
+    fn missing_point_fields_are_explicit_losses_not_hidden_metadata_9668() {
+        for (source, from, to, field) in [
+            ("#50=IFCSTRUCTURALPOINTACTION('id',#1,$,$,$,$,$,#22,.GLOBAL_COORDS.,.F.,#77);", "IFC2X3", "IFC4", "CausedBy"),
+            ("#50=IFCSTRUCTURALPOINTCONNECTION('id',#1,$,$,$,$,$,#22,#77);", "IFC4", "IFC2X3", "ConditionCoordinateSystem"),
+        ] {
+            let mut checks = ConversionChecks::new();
+            let out = convert_step_line(source, from, to, 50, &mut Ifc2x3SlotFill::new(None), Some(&mut checks)).unwrap();
+            assert!(!out.contains("#77"));
+            assert!(checks.warnings().iter().any(|w| w.contains(field) && w.contains("omitted")), "{:?}", checks.warnings());
+            assert_eq!(checks.attribute_values_dropped, 1);
+        }
+    }
+
+    #[test]
+    fn physical_analytical_link_retains_both_objects_in_ifc4_9668() {
+        let source = "#50=IFCRELCONNECTSSTRUCTURALELEMENT('id',#1,$,$,#22,#77);";
+        let out = convert_step_line(source, "IFC2X3", "IFC4", 50, &mut Ifc2x3SlotFill::new(None), None).unwrap();
+        assert_eq!(out, "#50=IFCRELASSIGNSTOPRODUCT('id',#1,$,$,(#77),$,#22);");
     }
 }

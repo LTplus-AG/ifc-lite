@@ -22,7 +22,7 @@ import {
   type AnnotationsForStorey,
 } from '../lib/overlay-parse/symbolic-parse.js';
 import { ensureParseFor, getDisplayParseFor, subscribeToParseCache } from './symbolic-parse-cache.js';
-import { modelLoadSettled, runAfterModelSettled } from '../lib/perf/afterLoadIdle.js';
+import { modelLoadSettled, runAfterModelSettled } from '../lib/perf/afterLoad.js';
 import { useOverlayChannelGate } from './useOverlayChannelGate.js';
 import {
   buildSymbolicLineChannels,

@@ -12,7 +12,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore } from '@/store';
 import { buildTier1Index } from '@/lib/search/tier1-index';
 import { modelLoadTrace, tracePhaseOnce } from '@/lib/perf/activeLoadTrace';
-import { runAfterModelSettled } from '@/lib/perf/afterLoadIdle';
+import { runAfterModelSettled } from '@/lib/perf/afterLoad';
 
 export function useSearchIndex(): void {
   const {

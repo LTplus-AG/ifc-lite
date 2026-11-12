@@ -33,35 +33,20 @@
  *
  * Idle: `requestIdleCallback` with a timeout, or at once in a hidden tab
  * (including a tab hidden while waiting), where no frame is at stake.
+ *
+ * Viewer code schedules through afterLoad.ts, which loads this module lazily.
  */
 
 import { useViewerStore } from '../../store/index.js';
-import { hasPendingInstancedShards, subscribeInstancedShards } from '../../store/instancedShardQueue.js';
+import { subscribeInstancedShards } from '../../store/instancedShardQueue.js';
+import { modelLoadSettled, type AfterLoadJob, type AfterLoadOptions } from './afterLoad.js';
 
-export type AfterLoadJob = 'snapshot-write' | 'overlay-parse' | 'source-compaction' | 'search-index';
+export { modelLoadSettled, type AfterLoadJob, type AfterLoadOptions };
 const ORDER: Record<AfterLoadJob, number> = { 'snapshot-write': 0, 'overlay-parse': 1, 'source-compaction': 2, 'search-index': 3 };
 const IDLE_TIMEOUT_MS = 1000;
 let holdLimitMs = 15_000;
-const LOADING: ReadonlySet<string | undefined> = new Set(['pending', 'streaming-geometry', 'hydrating-metadata']);
 
 type ViewerState = ReturnType<typeof useViewerStore.getState>;
-
-/** Whether `modelId`'s load has settled (see the module comment). `null`: the legacy single-model store. */
-export function modelLoadSettled(state: ViewerState, modelId: string | null): boolean {
-  if (hasPendingInstancedShards(modelId ?? undefined)) return false;
-  const model = modelId === null ? undefined : state.models.get(modelId);
-  if (!model) return !state.loading && !state.geometryStreamingActive;
-  if (state.geometryStreamingActive && state.activeModelId === modelId) return false;
-  return !LOADING.has(model.loadState);
-}
-
-export interface AfterLoadOptions {
-  job: AfterLoadJob;
-  /** The model the work is for; `null` for the legacy single-model store. */
-  modelId: string | null;
-  /** When given, the job also ends if the model's data store is replaced. */
-  store?: object | null;
-}
 
 interface Job extends AfterLoadOptions {
   seq: number;
@@ -182,9 +167,12 @@ function pump(): void {
  * aborts its signal. The job's promise, if it returns one, holds the next job back.
  */
 export function runAfterModelSettled(options: AfterLoadOptions, work: (signal: AbortSignal) => unknown, onDrop?: () => void): () => void {
-  const state = useViewerStore.getState();
-  const job: Job = { ...options, seq: seq++, work, controller: new AbortController(), onDrop,
-    hadRecord: options.modelId !== null && state.models.has(options.modelId) };
+  return scheduleAfterLoad(options, options.modelId !== null && useViewerStore.getState().models.has(options.modelId), work, onDrop);
+}
+
+/** `runAfterModelSettled` with whether the model had a record when the caller scheduled it (afterLoad.ts loads this module first). */
+export function scheduleAfterLoad(options: AfterLoadOptions, hadRecord: boolean, work: (signal: AbortSignal) => unknown, onDrop?: () => void): () => void {
+  const job: Job = { ...options, seq: seq++, work, controller: new AbortController(), onDrop, hadRecord };
   jobs.push(job);
   unsubscribe ??= listen();
   pump();

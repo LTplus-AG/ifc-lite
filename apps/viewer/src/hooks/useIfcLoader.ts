@@ -33,7 +33,7 @@ import { loadTracer, nextPaintOrTimeout } from '../lib/perf/loadTrace.js';
 import { countCopy } from '@ifc-lite/load-trace'; // #6957 full source-copy counters
 import { headIsZip, NO_ARCHIVE_IMAGES, sourceArrayBuffer } from './ingest/sourceBuffers.js';
 import { compactSource } from '../lib/source-compaction/source-compaction.js';
-import { runAfterModelSettled } from '../lib/perf/afterLoadIdle.js';
+import { runAfterModelSettled } from '../lib/perf/afterLoad.js';
 import {
   GeometryProcessor,
   geometryAabbAt,

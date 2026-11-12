@@ -17,9 +17,9 @@
 #           differs). `build` then compiles from source on Depot, exactly as
 #           before. The fast path can NEVER cause a stale bundle to be tested.
 #
-# This is the CI twin of the fast path in scripts/vercel-install.sh — keep the
-# WASM_SRC_PATHS list and the "any doubt → build from source" guarantee in
-# lock-step with that script.
+# This is the CI twin of the fast path in scripts/vercel-install.sh. Both read
+# their path list from scripts/wasm-build-inputs.txt; keep the "any doubt →
+# build from source" guarantee in lock-step with that script.
 set -uo pipefail
 
 log() { echo "$@" >&2; }
@@ -34,8 +34,21 @@ fi
 WASM_TAG="@ifc-lite/wasm@${WASM_VERSION}"
 # Conservative superset: any Rust workspace change invalidates the fast path,
 # even one that can't reach the wasm-bindings crate. Correctness over savings.
-# MUST match WASM_SRC_PATHS in scripts/vercel-install.sh.
-WASM_SRC_PATHS=(rust Cargo.lock Cargo.toml rust-toolchain.toml scripts/build-wasm.sh)
+# The list is scripts/wasm-build-inputs.txt, shared with scripts/vercel-install.sh
+# and the CI WASM build cache key (scripts/ci-wasm-cache.mjs). An unreadable,
+# empty or invalid list is one more uncertainty: build from source.
+# One parser for the list: `published-paths` prints nothing and exits non-zero
+# (naming the bad entry on stderr) when the list is missing or invalid, which
+# leaves the array empty.
+WASM_SRC_PATHS=()
+while IFS= read -r _line; do
+  WASM_SRC_PATHS+=("${_line}")
+done < <(node scripts/ci-wasm-cache.mjs published-paths || true)
+if [ "${#WASM_SRC_PATHS[@]}" -eq 0 ]; then
+  log "🛠  scripts/wasm-build-inputs.txt is missing, empty or invalid: build from source."
+  echo false
+  exit 0
+fi
 
 _tag_present() { git rev-parse -q --verify "refs/tags/${WASM_TAG}^{commit}" >/dev/null 2>&1; }
 
@@ -75,7 +88,7 @@ for _p in "${WASM_SRC_PATHS[@]}"; do
   if [ -z "${_at_tag}" ] && [ -z "${_at_head}" ]; then
     log "🛠  WASM_SRC_PATHS entry '${_p}' matches no file at ${WASM_TAG} or at HEAD —"
     log "    it can only ever compare nothing, so the diff below would under-report."
-    log "    Build from source, and fix the list (keep it in lock-step with scripts/vercel-install.sh)."
+    log "    Build from source, and fix scripts/wasm-build-inputs.txt."
     echo false
     exit 0
   fi

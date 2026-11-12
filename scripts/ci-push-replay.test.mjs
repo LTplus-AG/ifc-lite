@@ -10,7 +10,8 @@ import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TREE_ARTIFACT_PREFIX, decidePushReplay } from './ci-push-replay.mjs';
-import { workflowsKeyingCaches } from './lib/workflows-keying-caches.mjs';
+import { scanFile, workflowsKeyingCaches } from './lib/workflows-keying-caches.mjs';
+import { parse as parseYaml } from 'yaml';
 
 const h = (c) => c.repeat(40);
 const PUSH = h('a');
@@ -244,6 +245,9 @@ test('workflowsKeyingCaches is unknown when a hashFiles might reach a workflow f
     ['test', 'cache-dependency-path: pnpm-lock.yaml\n\n  .github/workflows/deploy.yml'],
     ['test', '- uses: actions/x@v1\n    ./ci/setup'],
     ['test', "key: ${{ hashFiles('.GitHub/Workflows/deploy.yml') }}"],
+    ['test', "key: ${{ hashFiles('repo/.github/workflows/x.yml') }}"],
+    ['test', "key: ${{ hashFiles('x/*/workflows/*.yml') }}"],
+    ['test', '      - with: {\n          node-version: "22\n         |\n          ",\n          "cache-dependency-path": ".github/workflows/z.yml"}'],
     ['test', '"us\\\n      es": ./ci/setup'],
     ['test', '- Uses: ./ci/setup'],
     ['test', '- uses: ./foo@v1'],
@@ -307,6 +311,16 @@ test('workflowsKeyingCaches is unknown when a hashFiles might reach a workflow f
     '        with: { a: b }',
   ].join('\n');
   assert.deepEqual(keyed({ [ROOT]: runBlock }), { files: ['.github/workflows/in-run.yml', ROOT] });
+  // A shell escape or ` ? ` in a run: block is not YAML; a YAML comment's hashFiles is not
+  // evaluated; an action's script `{ uses: x }` is JS; `dir/**` and `*.png` cannot reach a
+  // workflow file.
+  const notYaml = [
+    '      - run: |',
+    "          printf '\\x1b[1m' && echo \"a ? b\"",
+    '    # keyed by hashFiles(manifest) so...',
+    "    if: hashFiles('dist/**', 'test-results/**/x-*.png', '*/*/*.png') != ''",
+  ].join('\n');
+  assert.deepEqual(keyed({ [ROOT]: notYaml, '.github/actions/a/action.yml': 'runs: {}', '.github/actions/a/x.mjs': 'const step = { uses: name };' }), { files: [ROOT] });
   // `my-uses:` is another key, not `uses:`.
   assert.deepEqual(keyed({ [ROOT]: 'env: { my-uses: foo, x-cache-dependency-path: "~" }' }), { files: [ROOT] });
   // A quoted key is still a key, and its literal value names the file.
@@ -356,6 +370,36 @@ test('workflowsKeyingCaches resolves this repository', () => {
   };
   const got = workflowsKeyingCaches({ root: ROOT, actionFiles, symlinks, readText: read });
   assert.equal(got.unknown, undefined);
+});
+
+// The line scanner against a real YAML parser, on this repository's own files: every
+// `uses:`, `cache-dependency-path:` and hashFiles pattern the parser sees, the scanner
+// reports, and nothing else. A construct the scanner misreads shows up here first.
+test('scanFile agrees with a YAML parser on test.yml and the action files', () => {
+  const repoRoot = fileURLToPath(new URL('..', import.meta.url));
+  const yamlPaths = [ROOT, ...execFileSync('git', ['ls-files', '-z', '.github/actions/'], { cwd: repoRoot, encoding: 'utf8' }).split('\0').filter((f) => /\.ya?ml$/.test(f))];
+  for (const path of yamlPaths) {
+    const yamlText = readFileSync(join(repoRoot, path), 'utf8');
+    const want = { uses: [], cacheDependencyPaths: [], hashFilesPatterns: [] };
+    const walk = (node) => {
+      if (typeof node === 'string') {
+        for (const m of node.matchAll(/hashFiles\s*\(([^)]*)\)/gi)) {
+          for (const a of m[1].matchAll(/'([^']*)'|"([^"]*)"/g)) want.hashFilesPatterns.push(...(a[1] ?? a[2]).split('\n').map((l) => l.trim()).filter(Boolean));
+        }
+      } else if (Array.isArray(node)) node.forEach(walk);
+      else if (node && typeof node === 'object') {
+        for (const [k, v] of Object.entries(node)) {
+          if (/^uses$/i.test(k) && typeof v === 'string') want.uses.push(v);
+          if (/^cache-dependency-path$/i.test(k) && typeof v === 'string') want.cacheDependencyPaths.push(v);
+          walk(v);
+        }
+      }
+    };
+    walk(parseYaml(yamlText));
+    const got = scanFile(path, yamlText);
+    assert.equal(got.unknown, undefined, path);
+    for (const key of Object.keys(want)) assert.deepEqual([...got[key]].sort(), [...want[key]].sort(), `${path}: ${key}`);
+  }
 });
 
 test('the last commit of a batch replays on the batch run that tested its tree', () => {

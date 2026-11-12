@@ -33,7 +33,8 @@ export const WORKFLOW_FILE = /^\.github\/workflows\/[^/]+\.ya?ml$/;
 const indentOf = (line) => /^[ \t]*/.exec(line)[0].length;
 const isBlank = (line) => /^[ \t]*(?:#.*)?\r?$/.test(line);
 // A line that opens a block scalar (`run: |`, `- >-`); group 1 runs up to the key's column.
-const BLOCK_SCALAR_START = /^([ \t]*(?:-[ \t]+)*)(?:[^\s#][^#]*?[ \t]*:[ \t]+)?[|>][1-9+-]*[ \t]*(?:#.*)?\r?$/;
+// A key or a list dash must precede the indicator: a bare `|` line can be inside a quoted scalar.
+const BLOCK_SCALAR_START = /^([ \t]*(?:-[ \t]+)*)(?:[^\s#][^#]*?[ \t]*:[ \t]+|(?<=-[ \t]+))[|>][1-9+-]*[ \t]*(?:#.*)?\r?$/;
 
 /**
  * The indices of lines inside a YAML block scalar: after a `key: |` or `key: >` line,
@@ -47,7 +48,8 @@ function blockScalarLines(lines) {
     const m = BLOCK_SCALAR_START.exec(lines[i]);
     if (!m) continue;
     const keyCol = m[1].length;
-    for (let j = i + 1; j < lines.length && (isBlank(lines[j]) || indentOf(lines[j]) > keyCol); j += 1) inside.add(j);
+    // Only a whitespace-only line continues it; a less-indented comment line ends it.
+    for (let j = i + 1; j < lines.length && (/^[ \t]*\r?$/.test(lines[j]) || indentOf(lines[j]) > keyCol); j += 1) inside.add(j);
   }
   return inside;
 }
@@ -130,7 +132,12 @@ const isWild = (seg) => seg.includes('*');
 /** Whether one glob segment can match target segment `ti` (0 `.github`, 1 `workflows`, 2 any YAML name). */
 // Case-insensitive: hashFiles on a macOS or Windows runner is.
 function segmentMatches(seg, ti) {
-  if (ti === 2) return isWild(seg) || /\.ya?ml$/i.test(seg);
+  // A YAML name: a literal ends in .yml/.yaml; a wildcard can unless its literal tail rules it out (`*.png`).
+  if (ti === 2) {
+    if (!isWild(seg)) return /\.ya?ml$/i.test(seg);
+    const tail = seg.slice(seg.lastIndexOf('*') + 1).toLowerCase();
+    return ['.yml', '.yaml'].some((ext) => ext.endsWith(tail) || tail.endsWith(ext));
+  }
   if (!isWild(seg)) return seg.toLowerCase() === WORKFLOW_SEGMENTS[ti];
   return new RegExp(`^${seg.replace(/\./g, '\\.').replace(/\*/g, '.*')}$`, 'i').test(WORKFLOW_SEGMENTS[ti]);
 }
@@ -151,9 +158,56 @@ function judgePattern(pattern) {
   const segs = pattern.replace(/^\.\//, '').split('/');
   // The workspace root, an absolute path, an empty or climbing segment, or a trailing slash.
   if (pattern === '.' || pattern === './' || pattern.startsWith('/') || segs.some((s) => s === '' || s === '.' || s === '..')) return 'unknown';
-  if (!reachesWorkflows(segs)) return 'none';
+  if (!reachesWorkflows(segs)) {
+    // A segment below the first that can be `.github`, followed by a path into workflows/:
+    // that names the repository checked out under a directory (a checkout `path:`), which
+    // this scan does not follow. A `**` standing in for `.github` does not count.
+    const underPrefix = segs.some((seg, k) => k > 0 && seg !== '**' && segmentMatches(seg, 0) && reachesWorkflows(segs.slice(k)));
+    return underPrefix ? 'unknown' : 'none';
+  }
   const p = segs.join('/');
   return WORKFLOW_FILE.test(p) && !segs.some(isWild) ? p : 'unknown';
+}
+
+/**
+ * What one file says, before any judging: its `uses:` values, `cache-dependency-path:`
+ * values and hashFiles patterns, or why it cannot be read. `uses:` and
+ * `cache-dependency-path:` are YAML keys, read only from YAML files and outside block
+ * scalars; hashFiles is read everywhere except YAML comment lines, since `${{ }}`
+ * expands inside a run: script and an action's scripts can call @actions/glob.
+ *
+ * @param {string} path
+ * @param {string} text
+ * @returns {{ unknown: string } | { uses: string[], cacheDependencyPaths: string[], hashFilesPatterns: string[] }}
+ */
+export function scanFile(path, text) {
+  const yaml = IS_YAML.test(path);
+  const lines = text.split('\n');
+  const inBlock = yaml ? blockScalarLines(lines) : new Set();
+  const uses = [];
+  const cacheDependencyPaths = [];
+  if (yaml) {
+    const yamlLines = lines.filter((_, i) => !inBlock.has(i)).join('\n');
+    if (YAML_HIDDEN.test(yamlLines)) return { unknown: `${path} has a YAML escape or complex key the scan cannot read through` };
+    if (lines.some((line, i) => !inBlock.has(i) && ESCAPED_BREAK.test(line))) return { unknown: `${path} has an escaped line break outside a block scalar` };
+    for (const [key, out] of [['uses', uses], ['cache-dependency-path', cacheDependencyPaths]]) {
+      for (const { before, rest, continues } of keyEntries(lines, inBlock, key)) {
+        if (continues) return { unknown: `${path} has a ${key}: value folded over several lines` };
+        const v = scalar(before, rest);
+        if (v === null) return { unknown: `${path} has a ${key}: value the line does not show` };
+        out.push(v);
+      }
+    }
+  }
+  const scanned = yaml ? lines.filter((line, i) => inBlock.has(i) || !/^[ \t]*#/.test(line)).join('\n') : text;
+  const hashFilesPatterns = [];
+  for (const m of scanned.matchAll(HASHFILES)) {
+    const args = hashFilesArgs(scanned, m.index + m[0].length);
+    if (args === null) return { unknown: `${path} calls hashFiles with an argument that is not a quoted literal` };
+    // @actions/glob reads each line of a pattern as its own pattern, trimmed.
+    hashFilesPatterns.push(...args.flatMap((a) => a.split('\n').map((line) => line.trim()).filter(Boolean)));
+  }
+  return { uses, cacheDependencyPaths, hashFilesPatterns };
 }
 
 /**
@@ -185,16 +239,9 @@ export function workflowsKeyingCaches({ root, actionFiles, symlinks, readText })
     const path = executed[i];
     const text = readText(path);
     if (typeof text !== 'string') return { unknown: `${path} could not be read` };
-    const lines = text.split('\n');
-    const inBlock = IS_YAML.test(path) ? blockScalarLines(lines) : new Set();
-    if (IS_YAML.test(path)) {
-      if (YAML_HIDDEN.test(text)) return { unknown: `${path} has a YAML escape or complex key the scan cannot read through` };
-      if (lines.some((line, i) => !inBlock.has(i) && ESCAPED_BREAK.test(line))) return { unknown: `${path} has an escaped line break outside a block scalar` };
-    }
-    for (const { before, rest, continues } of keyEntries(lines, inBlock, 'uses')) {
-      if (continues) return { unknown: `${path} has a uses: value folded over several lines` };
-      const v = scalar(before, rest);
-      if (v === null) return { unknown: `${path} has a uses: value the line does not show` };
+    const scan = scanFile(path, text);
+    if (scan.unknown) return scan;
+    for (const v of scan.uses) {
       if (v.split('/').includes('..')) return { unknown: `${path} has uses: ${v}, which climbs` };
       const local = LOCAL_WORKFLOW.exec(v);
       if (local) {
@@ -204,20 +251,7 @@ export function workflowsKeyingCaches({ root, actionFiles, symlinks, readText })
         return { unknown: `${path} has uses: ${v}, which is not a plain local or remote action` };
       }
     }
-    const patterns = [];
-    for (const { before, rest, continues } of keyEntries(lines, inBlock, 'cache-dependency-path')) {
-      if (continues) return { unknown: `${path} has a cache-dependency-path value folded over several lines` };
-      const v = scalar(before, rest);
-      if (v === null) return { unknown: `${path} has a cache-dependency-path value the line does not show` };
-      patterns.push(v);
-    }
-    for (const m of text.matchAll(HASHFILES)) {
-      const args = hashFilesArgs(text, m.index + m[0].length);
-      if (args === null) return { unknown: `${path} calls hashFiles with an argument that is not a quoted literal` };
-      // @actions/glob reads each line of a pattern as its own pattern, trimmed.
-      patterns.push(...args.flatMap((a) => a.split('\n').map((line) => line.trim()).filter(Boolean)));
-    }
-    for (const pattern of patterns) {
+    for (const pattern of [...scan.cacheDependencyPaths, ...scan.hashFilesPatterns]) {
       if (!PLAIN_PATH.test(pattern)) return { unknown: `${path} hashes '${pattern}', which is not a plain path` };
       const verdict = judgePattern(pattern);
       if (verdict === 'unknown') return { unknown: `${path} hashes '${pattern}', which may reach a workflow file` };

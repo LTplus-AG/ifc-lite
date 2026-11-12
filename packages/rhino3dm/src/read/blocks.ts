@@ -73,7 +73,8 @@ export function markContents(blocks: Map<string, Block>): void {
       const block = blocks.get(id)!;
       if (block[flag]) continue;
       block[flag] = true;
-      queue.push(...parents.get(id) ?? []);
+      // One push per parent: a spread passes them as arguments, and a definition placed by enough blocks overflows the stack.
+      for (const parent of parents.get(id) ?? []) queue.push(parent);
     }
   };
   spread('drawsDots', block => block.dots.length > 0);

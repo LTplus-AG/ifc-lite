@@ -363,16 +363,29 @@ type RhinoImportResponse =
   states [test]. User-text keys are matched ignoring case, as openNURBS stores
   them.
 - **User text of a merged entity:** the union of its parts, in file order.
-  The first part's user text stays verbatim. A key and its numbered repeats
-  (`<key> #<n>`, the suffix the exporter uses for colliding names) are one
-  family, compared ignoring case and, for the `IFC` and `Rhino` sets, spaces
-  around the set name. From each later part, a value its family already holds
-  is dropped; a new value is appended under the part's key when that is free,
-  else as `<key> #<n>` with the family's next free `n` from 2. So no value is
-  lost, the first part's value is the one read for identity and the entity
-  columns, and a column the first part leaves empty is filled by the first
-  part that states it [test]. There is no warning, because differing
-  values are the normal case: the exporter writes each part's own
+  The first part's user text stays verbatim. Keys are compared ignoring case
+  and, for the `IFC` and `Rhino` sets, spaces around the set name. Two keys
+  are the same key only when they compare equal: a stated `<key> #2` (the
+  suffix the exporter uses for colliding names) is a key of its own, not a
+  repeat of `<key>`. Each entry of a later part, read in order, falls under
+  one of three cases:
+
+    1. The entity does not hold the key: the entry is appended as written.
+    2. The entity holds the key, and the value is one already merged for that
+       key, under the key or under a number generated for it: the entry is
+       dropped. This is the only case that drops anything, so an equal value
+       under a different key always stays.
+    3. The entity holds the key with other values: the entry is appended as
+       `<key> #<n>`, the key as that part writes it. `n` counts up from 2 for
+       each key and skips every name that any part of the entity states, in
+       an earlier or a later part, and every name already generated.
+
+  So a generated name never equals a stated one, and the first part to state
+  a key keeps it as written. No value is lost, the first part's value is the
+  one read for identity and the entity columns, and a column the first part
+  leaves empty is filled by the first part that states it [test]. There is no
+  warning, because differing values are the normal case: the exporter writes
+  each part's own
   `IFC::Material`, so all 16 merged elements in FZK and all 46 in duplex differ
   there and come back with `IFC::Material` and `IFC::Material #2` [ran, test].
   `layer`, `geometryType` and the `Rhino` set describe the first part;

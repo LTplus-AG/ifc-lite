@@ -51,7 +51,7 @@ test('a merged entity holds the user text of every part: new keys are added, a d
     // Keys ignore case, and a value the entity already holds is not added again.
     part('part 3', 2, ['ifc::material', 'Insulation'], ['Pset_WallCommon::IsExternal', 'true']);
     part('part 4', 3, ['IFC::Material', 'Plaster']);
-    // A spaced `IFC` set is the same key, and a value the entity holds under another number is not added again.
+    // A spaced `IFC` set is the same key. A stated `#2` is a key of its own, so it stays, and no generated name takes it.
     part('part 5', 4, ['IFC ::Material', 'Wood'], ['IFC::Material #2', 'Concrete']);
   }));
   expect(result.entities).toHaveLength(1);
@@ -60,16 +60,62 @@ test('a merged entity holds the user text of every part: new keys are added, a d
   expect(wall).toMatchObject({ globalId: WALL, name: 'Second name', description: 'from part 2', objectIds: { length: 5 } });
   expect(wall.userStrings).toEqual([
     ['IFC::GlobalId', WALL], ['IFC::Material', 'Concrete'], ['Pset_WallCommon::IsExternal', 'true'], ['IFC::Material #3', 'literal'], ['IFC ::Tag', 'a'], ['IFC::Tag', 'b'],
-    ['IFC::Material #2', 'Insulation'], ['Pset_Custom::Rating', 'A'], ['IFC::Description', 'from part 2'], ['ifc::name', 'Second name'],
-    ['IFC::Material #4', 'Plaster'], ['IFC ::Material #5', 'Wood'],
+    ['IFC::Material #4', 'Insulation'], ['Pset_Custom::Rating', 'A'], ['IFC::Description', 'from part 2'], ['ifc::name', 'Second name'],
+    ['IFC::Material #5', 'Plaster'], ['IFC ::Material #6', 'Wood'], ['IFC::Material #2', 'Concrete'],
   ]);
   expect(wall.propertySets).toEqual([
-    { name: 'IFC', properties: [['GlobalId', WALL], ['Material', 'Concrete'], ['Material #3', 'literal'], ['Tag', 'a'], ['Tag', 'b'], ['Material #2', 'Insulation'], ['name', 'Second name'], ['Material #4', 'Plaster'], ['Material #5', 'Wood']] },
+    { name: 'IFC', properties: [['GlobalId', WALL], ['Material', 'Concrete'], ['Material #3', 'literal'], ['Tag', 'a'], ['Tag', 'b'], ['Material #4', 'Insulation'], ['name', 'Second name'], ['Material #5', 'Plaster'], ['Material #6', 'Wood'], ['Material #2', 'Concrete']] },
     { name: 'Pset_WallCommon', properties: [['IsExternal', 'true']] },
     { name: 'Pset_Custom', properties: [['Rating', 'A']] },
     { name: 'Rhino', properties: [['Layer', 'Default'], ['ObjectType', 'Mesh'], ['ObjectId', first]] },
   ]);
   expect(result.warnings).toEqual([]);
+});
+
+/** The user text one wall grouped from `parts` comes back with, without its GlobalId. */
+async function mergedText(...parts: [string, string][][]): Promise<[string, string][]> {
+  const result = await readRhino3dm(await craft(c => {
+    const wall = c.group(WALL);
+    parts.forEach((userStrings, x) => c.addMesh(box(c, x), { groups: [wall], userStrings: stamp(WALL, ...userStrings) }));
+  }));
+  expect(result.entities).toHaveLength(1);
+  return result.entities[0].userStrings.slice(1);
+}
+
+// Review finding on PR #9880 (discussion_r4552470195).
+test('a key a part states as `<key> #2` is a key of its own: an equal value under another key is not a repeat', async () => {
+  const result = await readRhino3dm(await craft(c => {
+    const wall = c.group(WALL);
+    c.addMesh(box(c, 0), { groups: [wall], userStrings: stamp(WALL, ['Pset::Rating', 'A']) });
+    c.addMesh(box(c, 1), { groups: [wall], userStrings: stamp(WALL, ['Pset::Rating #2', 'A']) });
+  }));
+  const [wall] = result.entities;
+  expect(wall.userStrings).toEqual([['IFC::GlobalId', WALL], ['Pset::Rating', 'A'], ['Pset::Rating #2', 'A']]);
+  expect(wall.propertySets.find(set => set.name === 'Pset')).toEqual({ name: 'Pset', properties: [['Rating', 'A'], ['Rating #2', 'A']] });
+});
+
+test('a generated numbered key never takes a name a part states, whichever comes first in the file', async () => {
+  // The stated `X #2` comes after the value that needs a number, and before it.
+  expect(await mergedText([['X', 'a']], [['X', 'b']], [['X #2', 'c']])).toEqual([['X', 'a'], ['X #3', 'b'], ['X #2', 'c']]);
+  expect(await mergedText([['X', 'a']], [['X #2', 'c']], [['X', 'b']])).toEqual([['X', 'a'], ['X #2', 'c'], ['X #3', 'b']]);
+  // Keys ignore case, so `x #2` is taken too. A stated numbered key that differs gets a number of its own.
+  expect(await mergedText([['X', 'a'], ['x #2', 'c']], [['X', 'b'], ['X #2', 'd']])).toEqual([['X', 'a'], ['x #2', 'c'], ['X #3', 'b'], ['X #2 #2', 'd']]);
+});
+
+test('three parts: each new value gets the next number, an equal key and value is added once', async () => {
+  expect(await mergedText([['X', 'a'], ['Y', '1']], [['X', 'b'], ['Y', '1']], [['x', 'c'], ['Z', 'a']], [['X', 'b'], ['Y', '1']]))
+    .toEqual([['X', 'a'], ['Y', '1'], ['X #2', 'b'], ['x #3', 'c'], ['Z', 'a']]);
+});
+
+test('the merge follows file order: the first part keeps the plain key, and no value depends on the order', async () => {
+  const a: [string, string][] = [['X', 'a'], ['K', '1']], b: [string, string][] = [['K', '2'], ['X', 'b']], c: [string, string][] = [['X #2', 'c'], ['X', 'a']];
+  const abc = await mergedText(a, b, c), cba = await mergedText(c, b, a);
+  expect(abc).toEqual([['X', 'a'], ['K', '1'], ['K #2', '2'], ['X #3', 'b'], ['X #2', 'c']]);
+  expect(cba).toEqual([['X #2', 'c'], ['X', 'a'], ['K', '2'], ['X #3', 'b'], ['K #2', '1']]);
+  // The same file reads the same twice, and both orders hold the same values.
+  expect(await mergedText(a, b, c)).toEqual(abc);
+  const values = (text: [string, string][]) => text.map(([, value]) => value).sort();
+  expect(values(cba)).toEqual(values(abc));
 });
 
 // Review finding on PR #9880.

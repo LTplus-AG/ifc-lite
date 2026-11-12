@@ -5,7 +5,7 @@
 import { describe, expect, test } from 'vitest';
 import { readRhino3dm, RhinoReadError } from '../index.js';
 import { craft, drawnTriangles, entityBounds, patchUuid, translation, type Craft } from '../../test-support/craft.js';
-import { MAX_BLOCK_PLACEMENTS } from './blocks.js';
+import { markContents, MAX_BLOCK_PLACEMENTS, type Block } from './blocks.js';
 import { MAX_TEXT_DOTS } from './emit.js';
 
 const unit = (c: Craft) => c.box([0, 0, 0], [1, 1, 1]);
@@ -495,4 +495,18 @@ describe('frame', () => {
     for (let i = 0; i < before.length; i += 3) close([after[i], after[i + 1], after[i + 2]], [-before[i + 1], before[i], before[i + 2]], 6);
     expect(before[0]).not.toBe(0);
   });
+});
+
+// CodeRabbit finding on PR #9880: the parents of a definition were spread into one `push` call.
+test('a definition nested by more blocks than a call takes arguments is still marked through all of them', () => {
+  // Node 22 throws a RangeError from a spread of 125 000 arguments.
+  const PARENTS = 200_000, nest = { part: { kind: 'instance', definition: 'leaf' }, look: {} } as Block['nested'][number];
+  const block = (name: string, nested: Block['nested']): Block => ({ name, linked: false, meshes: [], triangles: 0, reach: [0, 0, 0], others: [], dots: [], nested, drawsDots: false, drawsGeometry: false });
+  const blocks = new Map([['leaf', block('leaf', [])]]);
+  blocks.get('leaf')!.dots.push({} as Block['dots'][number]);
+  for (let i = 0; i < PARENTS; i++) blocks.set(`parent ${i}`, block(`parent ${i}`, [nest]));
+  markContents(blocks);
+  let marked = 0;
+  for (const { drawsDots, drawsGeometry } of blocks.values()) if (drawsDots && !drawsGeometry) marked++;
+  expect(marked).toBe(PARENTS + 1);
 });

@@ -70,30 +70,31 @@ function comparable(key: string): string {
   return (split && (split.reserved === 'ifc' || split.reserved === 'rhino') ? `${split.reserved}::${split.name}` : key).toLowerCase();
 }
 
-/** A key without the ` #<n>` suffix of a numbered repeat. */
-const unnumbered = (key: string) => key.replace(/ #\d+$/, '');
-
 /**
  * The user text of a merged entity: the first part's, verbatim, then what each
- * later part adds. A key and its numbered repeats (`<key> #<n>`, the suffix
- * the exporter uses for colliding names) are one family. A later part's value
- * that the family already holds is dropped; a new value is appended under the
- * part's key when that is free, else under the family's next free number. So
- * every value stays, and the first part's is the one read as identity.
+ * later part adds, in file order. Keys are compared as `comparable` does, and
+ * only an equal key with an equal value is a repeat that is dropped; a literal
+ * `<key> #2` is a key of its own. A later part's key the entity does not hold
+ * is appended as written. A held key with a new value is appended as
+ * `<key> #<n>`, `n` counting up from 2 per key and skipping every name that
+ * any part of the entity states, so a generated name never takes a stated one.
+ * So every value stays, and the first part's is the one read as identity.
  */
 function mergeUserText(parts: ObjectFacts[]): RhinoUserStrings {
   const merged: RhinoUserStrings = [], taken = new Set<string>();
-  const families = new Map<string, { values: Set<string>; next: number }>();
+  for (const part of parts) for (const [key] of part.userStrings) taken.add(comparable(key));
+  const held = new Map<string, { values: Set<string>; next: number }>();
   parts.forEach((part, index) => {
     for (const [key, value] of part.userStrings) {
-      const base = unnumbered(key), id = comparable(base);
-      let family = families.get(id);
-      if (!family) families.set(id, family = { values: new Set(), next: 2 });
-      if (index > 0 && family.values.has(value)) continue;
-      family.values.add(value);
-      let name = key;
-      if (index > 0) while (taken.has(comparable(name))) name = `${base} #${family.next++}`;
-      taken.add(comparable(name));
+      const id = comparable(key);
+      let name = key, entry = held.get(id);
+      if (!entry) held.set(id, entry = { values: new Set(), next: 2 });
+      else if (index > 0) {
+        if (entry.values.has(value)) continue;
+        do name = `${key} #${entry.next++}`; while (taken.has(comparable(name)));
+        taken.add(comparable(name));
+      }
+      entry.values.add(value);
       merged.push([name, value]);
     }
   });

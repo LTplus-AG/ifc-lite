@@ -123,7 +123,7 @@ test('UNMAPPABLE changes select nothing and each carries a reason', () => {
   assert.match(byPath['packages/wasm/pkg/ifc-lite.d.ts'].reason, /WASM or Rust/); // @source-text-assertion-ok subject is the classifier's returned reason, not a source file
   assert.match(byPath['pnpm-lock.yaml'].reason, /configuration/); // @source-text-assertion-ok subject is the classifier's returned reason, not a source file
   assert.match(byPath['apps/viewer/src/test/fixtures/model.ifc'].reason, /read at runtime/); // @source-text-assertion-ok subject is the classifier's returned reason, not a source file
-  assert.equal(byPath['apps/viewer/src/lib/never-imported.ts'].class, 'unreached');
+  assert.equal(byPath['apps/viewer/src/lib/never-imported.ts'].class, 'deleted');
 });
 
 test('the WASM package\'s sources do not map through its opaque node; Rust changes stay unmapped', () => {

@@ -110,6 +110,10 @@ test('resolve: a workspace export maps dist back to src; one that cannot is opaq
   assert.deepEqual(resolve(IMPORTER, '@ifc-lite/sdk/nope'), { kind: 'package', name: '@ifc-lite/sdk' });
 });
 
+test('resolve: a relative path into a package dist maps back to its source', () => {
+  assert.deepEqual(resolve(IMPORTER, '../../../packages/parser/dist/deep.js'), { kind: 'file', path: 'packages/parser/src/deep.ts' });
+});
+
 test('resolve: npm packages are external and a missing relative file is recorded', () => {
   assert.deepEqual(resolve(IMPORTER, 'react'), { kind: 'external' });
   assert.deepEqual(resolve(IMPORTER, './gone.js'), { kind: 'missing', base: 'apps/viewer/src/gone.js' });

@@ -30,7 +30,9 @@
  * FAIL CLOSED. A changed file the graph cannot map (config, lockfile, build
  * scripts, WASM or Rust input, a file read at runtime) selects NOTHING extra and
  * is listed in the summary as unmapped. An error reading the diff or the graph
- * exits 1 (a red advisory job), never a green job that looked at nothing.
+ * exits 1 (a red advisory job). A run that selects nothing is green with zero
+ * tests, which is what an advisory job should say; the summary gives the
+ * counts, so green here never means "the viewer tests passed".
  *
  *   node scripts/ci-viewer-select.mjs --select <dir>
  *       writes <dir>/selection.json and <dir>/files.txt, outputs run/count
@@ -59,10 +61,9 @@ const local = (p) => posix.relative(VIEWER, p);
 export const MODES = ['off', 'shadow', 'on'];
 
 /**
- * Seconds of measured test time the job may run. The viewer shards measured
- * about 4.4 s per file at the median (apps/viewer/test-durations.json), so this
- * is roughly 95 files; with ~3 minutes of install, artifact download and
- * fixture restore the job stays near ten minutes.
+ * Seconds of measured test time (apps/viewer/test-durations.json) the job may
+ * run. With install, artifact download and fixture restore on top, the job
+ * stays near ten minutes.
  */
 export const BUDGET_SECONDS = 420;
 
@@ -138,6 +139,10 @@ export function classifyChanges(changes, graph, packages) {
     }
     if (opaque) {
       rows.push({ path, status, class: 'graph', reason: `source of ${pkgName}, which a viewer test imports opaquely` });
+      continue;
+    }
+    if (status === 'D') {
+      rows.push({ path, status, class: 'deleted', reason: 'deleted; nothing in the graph imports it' });
       continue;
     }
     if ((path.startsWith(`${VIEWER}/src/`) || pkgDir) && isCodeFile(path)) {
@@ -254,7 +259,7 @@ export function summaryLines(decision, sel) {
   lines.push(
     'Advisory only. The merge queue runs the whole viewer suite and remains the gate.',
     '',
-    `- changed files: ${sel.changes.length} (${mapped} in the viewer import graph, ${sel.changes.filter((c) => c.class === 'unreached').length} source files no viewer test imports, ${unmapped.length} unmapped)`,
+    `- changed files: ${sel.changes.length} (${mapped} in the viewer import graph, ${sel.changes.filter((c) => c.class === 'unreached').length} source files no viewer test imports, ${sel.changes.filter((c) => c.class === 'deleted').length} deletions nothing imports, ${unmapped.length} unmapped)`,
     `- viewer test files the changes reach: ${sel.selected.length} of ${sel.graph.tests}`,
     `- ${decision.runTests ? 'run' : 'would run'}: ${sel.ran.length} (about ${sel.estimatedSeconds} s of the ${sel.budgetSeconds} s budget)`,
     `- left out by the budget: ${sel.leftOut.length}`,
@@ -264,7 +269,7 @@ export function summaryLines(decision, sel) {
     lines.push(...list(unmapped, (c) => `- \`${c.path}\`: ${c.reason}`));
   }
   if (sel.leftOut.length > 0) {
-    lines.push('', `**${sel.leftOut.length} reachable test file(s) were left out by the budget** (nearest first was kept):`, '');
+    lines.push('', `**${sel.leftOut.length} reachable test file(s) were left out by the budget** (tests were taken nearest first; one that did not fit was skipped and a smaller, farther one may have run):`, '');
     lines.push(...list(sel.leftOut, (p) => `- \`${p}\``));
   }
   if (!decision.runTests) lines.push('', 'Shadow mode: no test ran.');

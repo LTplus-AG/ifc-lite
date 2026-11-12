@@ -150,7 +150,9 @@ export function createResolver({ files, aliases = [], packages = new Map() }) {
   return function resolve(importer, spec) {
     if (spec.startsWith('.')) {
       const base = posix.join(posix.dirname(importer), spec);
-      const hit = resolveFile(base);
+      // A relative path into a package's BUILT output stands for its source.
+      const dist = /^(packages\/[^/]+)\/dist\/(.+?)(?:\.d)?\.[cm]?js$/.exec(posix.normalize(base));
+      const hit = resolveFile(base) ?? (dist && resolveFile(`${dist[1]}/src/${dist[2]}`));
       return hit ? { kind: 'file', path: hit } : { kind: 'missing', base: posix.normalize(base) };
     }
     return fromAliases(spec) ?? fromPackage(spec) ?? { kind: 'external' };

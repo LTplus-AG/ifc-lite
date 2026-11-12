@@ -71,7 +71,8 @@ export function useElementTags(drawing: Drawing2D | null, transform: { x: number
     const hit = hitTestAnnotations({ screenX: e.clientX-rect.left, screenY: e.clientY-rect.top, threshold: 10,
       drawingToScreen: p => ({ x: p.x*(axis === 'side' ? -transform.scale : transform.scale)+transform.x,
         y: p.y*(axis === 'down' ? transform.scale : -transform.scale)+transform.y }),
-      texts, clouds: [], polys: [], measures: [] });
+      texts: [...state.textAnnotations2D, ...texts], clouds: state.cloudAnnotations2D,
+      polys: state.polygonArea2DResults, measures: state.measure2DResults });
     const tag = hit && tags.find(tag => tag.id === hit.id);
     if (!tag) return false;
     state.setSelectedAnnotation2D({ type: 'tag', id: tag.id });

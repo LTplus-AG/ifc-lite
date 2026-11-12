@@ -8,6 +8,7 @@ import type { RefObject } from 'react';
 import type { Renderer } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
 import { setGlobalRendererRef } from '@/hooks/useBCF';
+import { discardInstancedShards, enqueueInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
 import { isSceneSettled, whenSceneSettled } from './scene-settled';
 
 const scene = { queued: false, fragments: false, finalizing: false };
@@ -20,18 +21,22 @@ function installRenderer(): void {
 afterEach(() => {
   setGlobalRendererRef({ current: null } as RefObject<Renderer | null>);
   Object.assign(scene, { queued: false, fragments: false, finalizing: false });
-  useViewerStore.setState({ loading: false, geometryStreamingActive: false, pendingInstancedShards: null });
+  useViewerStore.setState({ loading: false, geometryStreamingActive: false });
 });
 
 it('is settled only when the store and the renderer have both finished the load', () => {
   installRenderer();
-  useViewerStore.setState({ loading: false, geometryStreamingActive: false, pendingInstancedShards: null });
+  useViewerStore.setState({ loading: false, geometryStreamingActive: false });
   assert.equal(isSceneSettled(), true);
-  for (const state of [{ loading: true }, { geometryStreamingActive: true }, { pendingInstancedShards: [{ modelId: 'm', shards: [] }] }]) {
+  for (const state of [{ loading: true }, { geometryStreamingActive: true }]) {
     useViewerStore.setState(state as never);
     assert.equal(isSceneSettled(), false, `store: ${Object.keys(state)[0]}`);
-    useViewerStore.setState({ loading: false, geometryStreamingActive: false, pendingInstancedShards: null });
+    useViewerStore.setState({ loading: false, geometryStreamingActive: false });
   }
+  // Instanced shards wait in their own queue, outside the store (#9628).
+  enqueueInstancedShards('m', [new ArrayBuffer(8)], instancedShardGeneration());
+  assert.equal(isSceneSettled(), false, 'instanced shards still queued');
+  discardInstancedShards();
   for (const key of ['queued', 'fragments', 'finalizing'] as const) {
     scene[key] = true;
     assert.equal(isSceneSettled(), false, `scene: ${key}`);

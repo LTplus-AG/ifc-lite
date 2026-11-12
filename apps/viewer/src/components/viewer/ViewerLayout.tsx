@@ -16,7 +16,7 @@ import { FlavorDialogHost } from '@/components/extensions/FlavorDialogHost';
 import { ViewportContainer } from './ViewportContainer';
 import { ModelToolRail } from './model/ModelToolRail';
 import { ModelWorkspaceSplit } from './model/ModelWorkspaceSplit';
-import { KeyboardShortcutsDialog, useKeyboardShortcutsDialog, type InfoDialogTab } from './KeyboardShortcutsDialog';
+import { KeyboardShortcutsDialog, useKeyboardShortcutsDialog } from './KeyboardShortcutsDialog';
 import { SettingsDialogHost } from './settings/SettingsDialog';
 import { ConfirmDialogHost } from '@/components/ui/confirm-dialog';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
@@ -68,6 +68,7 @@ import { dockedBottomPanel as dockedBottomPanelOf } from '@/lib/panels/rendered-
 import { useBottomPanelFlags } from '@/hooks/useBottomPanelFlags';
 import { usePanelControls } from '@/hooks/usePanelControls';
 import { useMobileLayoutMode } from '@/hooks/useMobileLayoutMode';
+import { mobileCommandPlacement } from '@/lib/layout/form-factor';
 import { useThemeDocumentClass } from './useThemeDocumentClass';
 import { EVENT_OPEN_COMMAND_PALETTE } from '@/lib/tours/events';
 import { registerKeyboardCommand } from '@/lib/commands/dispatcher';
@@ -143,23 +144,14 @@ export function ViewerLayout() {
 
   useEffect(() => {
     const openCommandPalette = () => setCommandPaletteOpen(true);
-    // With a `detail.tab` the event is a deep link (e.g. the Learn hub) and
-    // always opens; without it, it keeps its legacy toggle semantics.
-    const showShortcuts = (e: Event) => {
-      const tab = (e as CustomEvent<{ tab?: InfoDialogTab } | undefined>).detail?.tab;
-      if (tab) shortcutsDialog.openTab(tab);
-      else shortcutsDialog.toggle();
-    };
-
     window.addEventListener(EVENT_OPEN_COMMAND_PALETTE, openCommandPalette);
-    window.addEventListener('ifc-lite:show-shortcuts', showShortcuts);
     return () => {
       window.removeEventListener(EVENT_OPEN_COMMAND_PALETTE, openCommandPalette);
-      window.removeEventListener('ifc-lite:show-shortcuts', showShortcuts);
     };
-  }, [shortcutsDialog]);
+  }, []);
 
   const isMobile = useViewerStore((s) => s.isMobile);
+  const commandPlacement = useViewerStore((s) => mobileCommandPlacement(s.formFactor));
   const leftPanelCollapsed = useViewerStore((s) => s.leftPanelCollapsed);
   const rightPanelCollapsed = useViewerStore((s) => s.rightPanelCollapsed);
   const setLeftPanelCollapsed = useViewerStore((s) => s.setLeftPanelCollapsed);
@@ -240,8 +232,9 @@ export function ViewerLayout() {
 
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Keep overlays inside the visible viewport. On iOS Safari with bottom URL bar, dvh/innerHeight INCLUDES the
-  // URL bar area, so `bottom: 0` lands behind it; visualViewport.height excludes it.
+  // Keep the mobile shell inside the visible viewport. On iOS Safari with bottom URL bar, dvh/innerHeight INCLUDES
+  // the URL bar area, so `bottom: 0` lands behind it; visualViewport.height excludes it. Applied once, to the
+  // whole mobile shell (#9718): its command bar, sheets and floats all stop above the overlay.
   const bottomViewportInset = useVisualViewportBottomInset();
 
   // Hide mobile floating buttons when the empty-state "Load IFC" card shows.
@@ -287,10 +280,8 @@ export function ViewerLayout() {
             no trigger of its own) has a mounted dialog regardless of whether the export toolbar
             dropdown is open. Same persistent host pattern as `FlavorDialogHost`; `toolbar/export-commands.ts` owns the `trigger` one. */}
         <AnonymizedExportDialog surface="context_menu" />
-        {/* The compact mobile controls and the desktop ribbon share command homes. */}
-        {isMobile
-          ? <MobileToolbar />
-          : <RibbonToolbar onShowShortcuts={shortcutsDialog.toggle} />}
+        {/* The compact mobile controls (below or beside the viewport) and the desktop ribbon share command homes. */}
+        {!isMobile && <RibbonToolbar onShowShortcuts={shortcutsDialog.toggle} />}
         <WorkspaceMigrationNotice />
 
         {/* Main Content Area - Desktop Layout */}
@@ -389,9 +380,12 @@ export function ViewerLayout() {
           </div>
         )}
 
-        {/* Main Content Area - Mobile Layout */}
+        {/* Main Content Area - Mobile Layout: the viewport, then the command bar under it in thumb reach,
+            or as a rail beside it on a phone on its side (#9718). */}
         {isMobile && (
-          <div className="flex-1 min-h-0 relative overflow-hidden">
+          <div data-mobile-shell={commandPlacement} style={{ paddingBottom: bottomViewportInset }}
+            className={commandPlacement === 'side-rail' ? 'flex-1 min-h-0 flex flex-row' : 'flex-1 min-h-0 flex flex-col'}>
+          <div className="flex-1 min-h-0 min-w-0 relative overflow-hidden">
             {/* Full-screen Viewport */}
             <div className="h-full w-full">
               <ViewportContainer />
@@ -412,7 +406,6 @@ export function ViewerLayout() {
             {!leftPanelCollapsed && (
               <MobileBottomSheet
                 title={t('shellChrome.layout.hierarchyLabel')}
-                bottomInset={bottomViewportInset}
                 onClose={() => setLeftPanelCollapsed(true)}
               >
                 <HierarchyPanel />
@@ -420,14 +413,16 @@ export function ViewerLayout() {
             )}
 
             {/* Mobile Bottom Sheet — whichever single panel is open (`MobilePanelSheet`). */}
-            <MobilePanelSheet bottomInset={bottomViewportInset} analysisExtension={activeAnalysisExtension ?? null} />
+            <MobilePanelSheet analysisExtension={activeAnalysisExtension ?? null} />
 
             {/* Mobile Panels button: one entry point to every panel, Hierarchy and
                 Properties included (#5853, #8802 R6). Hidden in the empty state so the
                 "Load IFC" card stays unobstructed. */}
             {leftPanelCollapsed && rightPanelCollapsed && hasModelsLoaded && (
-              <MobilePanelLauncher bottomInset={bottomViewportInset} />
+              <MobilePanelLauncher />
             )}
+          </div>
+          <MobileToolbar placement={commandPlacement} />
           </div>
         )}
 

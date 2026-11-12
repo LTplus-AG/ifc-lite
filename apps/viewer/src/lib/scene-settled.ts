@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useViewerStore, type ViewerState } from '@/store';
 import { getGlobalRenderer } from '@/hooks/useBCF';
+import { hasPendingInstancedShards } from '@/store/instancedShardQueue';
 
 /**
  * The load is interactive. The store has left its loading state, nothing
@@ -16,7 +17,7 @@ import { getGlobalRenderer } from '@/hooks/useBCF';
  * post-stream drain and finalize keep the main thread.
  */
 export function isSceneSettled(state: ViewerState = useViewerStore.getState()): boolean {
-  if (state.loading || state.geometryStreamingActive || state.pendingInstancedShards?.length) return false;
+  if (state.loading || state.geometryStreamingActive || hasPendingInstancedShards()) return false; // shards travel outside the store (#9628)
   const scene = getGlobalRenderer()?.getScene();
   return !(scene?.hasQueuedMeshes() || scene?.hasStreamingFragments() || scene?.isFinalizeInProgress());
 }

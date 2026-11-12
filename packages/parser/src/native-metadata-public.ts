@@ -5,8 +5,9 @@
 /** The existing native metadata surface, with explicit current type quantity coverage. */
 export { resolveEffectiveEntityRecord, type EffectiveEntityRecord, type EntityRecordEdits } from './effective-entity-record.js';
 export { effectiveMetadataRecord } from './effective-metadata-record.js';
+export { effectiveStructuralView } from './effective-structural-view.js';
 export { resolveEffectiveRelationshipOverlay, effectiveRelationshipEdges, type EffectiveRelationship, type EffectiveRelationshipOverlay, type RelationshipOverlayReader } from './effective-relationship-overlay.js';
 export { effectiveSpatialMemberIds, type EffectiveSpatialContext } from './effective-spatial-members.js';
-export { effectiveStoreyId } from './effective-storey.js';
+export { effectiveStoreyId, effectiveStoreyResolver } from './effective-storey.js';
 export { readCurrentTypeQuantities, type CurrentTypeQuantityResult } from './current-type-quantities.js';
 export { readCurrentProjectUnits, type CurrentProjectUnitResult } from './current-project-units.js';

@@ -12,7 +12,6 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult, CoordinateInfo, MeshData } from '@ifc-lite/geometry';
 import type { FederatedModel } from '../types.js';
 import { appendGeometryBatchPatch } from './dataSlice.appendGeometryBatch.js';
-import { noteInstancedShardModel } from '../instancedShardModels.js';
 
 /**
  * Cross-slice state that dataSlice reads/writes via the combined store.
@@ -116,22 +115,6 @@ export interface DataSlice {
   pendingMeshEdits: PendingMeshEdits | null;
   clearPendingMeshEdits: () => void;
   /**
-   * Emit-both GPU-instancing: raw IFNS shard bytes (transferable ArrayBuffers)
-   * collated per geometry batch by the worker, tagged with the owning model's
-   * id. `useGeometryStreaming` drains them each frame via
-   * `scene.addInstancedShard` (decode + upload as instanced templates),
-   * resolving `modelId` to the renderer's `modelIndex` and to that model's
-   * express-id offset so occurrences land under the right owner and match
-   * the ids used everywhere else for that model (#1912). Additive overlay on
-   * the flat geometry; null when none pending. A primary load's `modelId`
-   * always carries idOffset 0 (the federation registry is cleared before
-   * every primary load), so the primary path behaves exactly as before this
-   * tagging was added.
-   */
-  pendingInstancedShards: Array<{ modelId: string; bytes: ArrayBuffer }> | null;
-  appendInstancedShards: (modelId: string, shards: ArrayBuffer[]) => void;
-  clearInstancedShards: () => void;
-  /**
    * Pending per-entity translations for the renderer. Authoring
    * actions (translateEntity, setEntityPosition, gizmo drag) push
    * `globalId → [dx, dy, dz]` in *renderer* frame (Y-up). The
@@ -209,7 +192,6 @@ export const createDataSlice: StateCreator<DataSlice & DataCrossSliceState, [], 
   meshColorBackup: null,
   pendingMeshRemovals: null,
   pendingMeshEdits: null,
-  pendingInstancedShards: null,
   pendingMeshTranslations: null,
   pendingMeshRotations: null,
 
@@ -354,19 +336,6 @@ export const createDataSlice: StateCreator<DataSlice & DataCrossSliceState, [], 
   replaceEntityMeshes: (modelId, byGlobalId, preAligned) =>
     set((state) => replaceEntityMeshesPatch(state, modelId, byGlobalId, preAligned)),
   clearPendingMeshEdits: () => set({ pendingMeshEdits: null }),
-
-  appendInstancedShards: (modelId, shards) => set((state) => {
-    if (shards.length > 0) noteInstancedShardModel(modelId);
-    return {
-    // Accumulate across batches — useGeometryStreaming drains once per frame.
-    pendingInstancedShards: [
-      ...(state.pendingInstancedShards ?? []),
-      ...shards.map((bytes) => ({ modelId, bytes })),
-    ],
-    };
-  }),
-
-  clearInstancedShards: () => set({ pendingInstancedShards: null }),
 
   setPendingMeshTranslations: (updates) => set((state) => {
     // Accumulate deltas across calls — a single drag-frame may

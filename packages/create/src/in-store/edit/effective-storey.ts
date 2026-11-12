@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { effectiveStoreyId as resolveEffectiveStoreyId, type IfcDataStore } from '@ifc-lite/parser';
+import { effectiveStoreyId as resolveEffectiveStoreyId, type EffectiveSpatialContext, type IfcDataStore } from '@ifc-lite/parser';
 import { edgeSurvives, RelationshipType } from '@ifc-lite/data';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { effectiveMutationRelationships, effectiveContextType } from './effective-mutation-view.js';
@@ -14,12 +14,17 @@ export function effectiveStoreyId(
   view: MutablePropertyView | null | undefined,
   selectedId: number,
 ): number | undefined {
-  if (!view?.hasPendingChanges()) return resolveEffectiveStoreyId(store, selectedId);
-  return resolveEffectiveStoreyId(store, selectedId, {
+  return resolveEffectiveStoreyId(store, selectedId, effectiveSpatialContext(store, view));
+}
+
+/** The session's spatial edits as the parser's storey walk reads them; null when nothing is pending. */
+export function effectiveSpatialContext(store: IfcDataStore, view: MutablePropertyView | null | undefined): EffectiveSpatialContext | null {
+  if (!view?.hasPendingChanges()) return null;
+  return {
     relationships: effectiveMutationRelationships(store, view),
     isDeleted: (id) => view.isDeleted(id),
     typeName: (id) => effectiveContextType(store, view, id),
-  });
+  };
 }
 
 /**

@@ -14,6 +14,7 @@ import { ViewportOverlays } from './ViewportOverlays';
 import { MobilePanelLauncher } from './MobilePanelLauncher';
 import { MobileToolbar } from './MobileToolbar';
 import { VIEW_CUBE_REACH_PX } from './viewcube-box';
+import { formFactorState } from '@/test/form-factor-state';
 
 before(warmContrastBrowser);
 after(closeContrastBrowser);
@@ -27,7 +28,7 @@ for (const [width, height] of [[320, 640], [360, 740], [375, 553], [390, 844], [
         const phone = width < 640;
         const docked = phone && height >= width;
         act(() => useViewerStore.setState({
-          isMobile: phone, loading: true, error: null, cesiumEnabled: false,
+          ...formFactorState(phone), loading: true, error: null, cesiumEnabled: false,
           loadingFileName: 'building-architecture-rev-b.ifc',
           geometryProgress: { phase: 'Processing geometry and preparing a longer phase description', percent: 42 },
           activeLoadCanceller: cancel ? () => {} : null,
@@ -37,7 +38,7 @@ for (const [width, height] of [[320, 640], [360, 740], [375, 553], [390, 844], [
             <div data-test-toolbar><MobileToolbar /></div>
             <div data-test-viewport style={{ position: 'relative', flex: 1 }}>
               <ViewportOverlays />
-              {phone && <MobilePanelLauncher bottomInset={0} />}
+              {phone && <MobilePanelLauncher />}
             </div>
           </div>
         </TooltipProvider>);

@@ -15,7 +15,8 @@
 
 import { describe, it, expect } from 'vitest';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
-import { computeValidationIssues, collectDanglingReferences } from './validate.js';
+import { computeValidationIssues } from './validate.js';
+import { collectDanglingReferences } from './validate-references.js';
 
 function buildIfc(dataLines: string[]): string {
   return [

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import '@/test/setup-dom.js';
-import { it } from 'node:test';
+import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { RefObject } from 'react';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
@@ -15,6 +15,19 @@ import { emptyPlacementState } from './state';
 import { buildPlacedSpatialIndex, createPlacementIndexSync } from './spatial-index';
 import { modelIndices } from './model-indices';
 import { settle } from '@/test/settle';
+import { discardInstancedShards, drainInstancedShards, enqueueInstancedShards, subscribeInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
+
+afterEach(() => discardInstancedShards());
+
+/** The renderer drain's part, without a renderer: hand the queued shards over. */
+const drainToRenderer = () => drainInstancedShards((shards, settle) => { for (const shard of shards) settle(shard, 'uploaded'); /* the fake scene already lists the instances */ });
+
+/** `useModelPlacementSync`'s two subscriptions: store updates and shard arrivals/drains. */
+function subscribeSync(sync: ReturnType<typeof createPlacementIndexSync>): () => void {
+  const offStore = useViewerStore.subscribe((state, previous) => sync.update(state, previous));
+  const offShards = subscribeInstancedShards((event) => sync.instancedShards(event, useViewerStore.getState()));
+  return () => { offStore(); offShards(); };
+}
 
 /** A fake renderer's scene with nothing streaming or finalizing: the placement
  * index builds only once the scene has settled (`isSceneSettled`). */
@@ -75,9 +88,9 @@ it('waits for GPU shard drain and indexes pure instances for primary and federat
     geometryResult: emptyGeometry, loadState: 'complete' } as FederatedModel;
   const federated = { ...fixtureModel('federated'), idOffset: 1000, maxExpressId: 1000,
     geometryResult: emptyGeometry, loadState: 'complete' } as FederatedModel;
-  useViewerStore.setState({ ...fixtureModels(primary, federated), modelPlacement: emptyPlacementState(),
-    pendingInstancedShards: [{ modelId: 'primary', bytes: new ArrayBuffer(1) },
-      { modelId: 'federated', bytes: new ArrayBuffer(1) }] });
+  useViewerStore.setState({ ...fixtureModels(primary, federated), modelPlacement: emptyPlacementState() });
+  enqueueInstancedShards('primary', [new ArrayBuffer(1)], instancedShardGeneration());
+  enqueueInstancedShards('federated', [new ArrayBuffer(1)], instancedShardGeneration());
   const rendererIndices = modelIndices(useViewerStore.getState().models);
   const instances = [occurrence(20, 156, rendererIndices.get('primary')!),
     occurrence(50, 1156, rendererIndices.get('federated')!)];
@@ -85,13 +98,13 @@ it('waits for GPU shard drain and indexes pure instances for primary and federat
   const fakeRenderer = { getScene: () => ({ ...SETTLED_SCENE, getAllInstancedMeshData: () => { materializations++; return instances; } }) } as unknown as Renderer;
   setGlobalRendererRef({ current: fakeRenderer } as RefObject<Renderer | null>);
   const sync = createPlacementIndexSync();
-  const unsubscribe = useViewerStore.subscribe((state, previous) => sync.update(state, previous));
+  const unsubscribe = subscribeSync(sync);
   try {
     sync.refreshMissing(useViewerStore.getState());
     await pastDebounce('a pending shard schedules no index build');
     assert.equal(primary.ifcDataStore!.spatialIndex, undefined, 'pending primary shard must block a flat-only index');
     assert.equal(federated.ifcDataStore!.spatialIndex, undefined, 'pending federated shard must block a flat-only index');
-    useViewerStore.getState().clearInstancedShards();
+    drainToRenderer();
     const first = await waitForPublication(() => primary.ifcDataStore!.spatialIndex, 'primary instance index');
     const second = await waitForPublication(() => federated.ifcDataStore!.spatialIndex, 'federated instance index');
     assert.deepEqual(first.queryAABB({ min: [20, 0, 0], max: [21, 1, 0] }), [156]);
@@ -102,10 +115,10 @@ it('waits for GPU shard drain and indexes pure instances for primary and federat
     useViewerStore.setState({ selectedEntityId: 156 });
     await pastDebounce('a selection change schedules no rebuild');
     assert.equal(materializations, 2, 'ordinary selection updates do not rematerialize instances');
-    useViewerStore.getState().appendInstancedShards('primary', [new ArrayBuffer(1)]);
+    enqueueInstancedShards('primary', [new ArrayBuffer(1)], instancedShardGeneration());
     assert.equal(primary.ifcDataStore!.spatialIndex, undefined, 'a late shard withdraws the incomplete index');
     instances.push(occurrence(80, 157, rendererIndices.get('primary')!));
-    useViewerStore.getState().clearInstancedShards();
+    drainToRenderer();
     const rebuilt = await waitForPublication(() => primary.ifcDataStore!.spatialIndex, 'late primary shard index');
     assert.deepEqual(rebuilt.queryAABB({ min: [80, 0, 0], max: [81, 1, 0] }), [157]);
     assert.equal(materializations, 3, 'the late primary shard rebuilds only its owner');
@@ -120,7 +133,7 @@ it('reschedules an index after placement sync remount cancels a pending timer (#
     indices: new Uint32Array([0, 1, 2]), normals: new Float32Array(9), color: [1, 1, 1, 1] };
   const model = { ...fixtureModel('remount'), maxExpressId: 5, loadState: 'complete',
     geometryResult: { meshes: [mesh], totalTriangles: 1 } as GeometryResult } as FederatedModel;
-  useViewerStore.setState({ ...fixtureModels(model), pendingInstancedShards: null, modelPlacement: emptyPlacementState() });
+  useViewerStore.setState({ ...fixtureModels(model), modelPlacement: emptyPlacementState() });
   const sync = createPlacementIndexSync();
   try {
     sync.refreshMissing(useViewerStore.getState());
@@ -138,7 +151,7 @@ it('rebuilds when a placement restore lands between sync subscriptions (#5275)',
     geometryResult: { meshes: [mesh], totalTriangles: 1,
       coordinateInfo: { originShift: { x: 0, y: 0, z: 0 },
         shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } } } } as GeometryResult } as FederatedModel;
-  useViewerStore.setState({ ...fixtureModels(model), pendingInstancedShards: null, modelPlacement: emptyPlacementState() });
+  useViewerStore.setState({ ...fixtureModels(model), modelPlacement: emptyPlacementState() });
   const sync = createPlacementIndexSync();
   try {
     sync.refreshMissing(useViewerStore.getState());
@@ -158,18 +171,18 @@ it('rebuilds when a placement restore lands between sync subscriptions (#5275)',
 it('indexes a drained instance when its data store arrives afterward (#5275)', async () => {
   const model = { ...fixtureModel('late-store'), ifcDataStore: null, idOffset: 0, maxExpressId: 10,
     loadState: 'complete', geometryResult: { meshes: [], totalTriangles: 0 } as unknown as GeometryResult } as FederatedModel;
-  useViewerStore.setState({ ...fixtureModels(model), pendingInstancedShards: [{ modelId: 'late-store', bytes: new ArrayBuffer(1) }],
-    modelPlacement: emptyPlacementState() });
+  useViewerStore.setState({ ...fixtureModels(model), modelPlacement: emptyPlacementState() });
+  enqueueInstancedShards('late-store', [new ArrayBuffer(1)], instancedShardGeneration());
   const mesh = { expressId: 7, modelIndex: modelIndices(useViewerStore.getState().models).get('late-store')!,
     positions: new Float32Array([30, 0, 0, 31, 0, 0, 30, 1, 0]),
     indices: new Uint32Array([0, 1, 2]), normals: new Float32Array(9), color: [1, 1, 1, 1] } as MeshData;
   const fakeRenderer = { getScene: () => ({ ...SETTLED_SCENE, getAllInstancedMeshData: () => [mesh] }) } as unknown as Renderer;
   setGlobalRendererRef({ current: fakeRenderer } as RefObject<Renderer | null>);
   const sync = createPlacementIndexSync();
-  const unsubscribe = useViewerStore.subscribe((state, previous) => sync.update(state, previous));
+  const unsubscribe = subscribeSync(sync);
   try {
     sync.refreshMissing(useViewerStore.getState());
-    useViewerStore.getState().clearInstancedShards();
+    drainToRenderer();
     await pastDebounce('a model without a data store builds no index');
     const data = fixtureModel('late-store').ifcDataStore!;
     assert.equal(data.spatialIndex, undefined);
@@ -187,7 +200,7 @@ it('replaces a flat index when an instance drains during placement-sync remount 
     indices: new Uint32Array([0, 1, 2]), normals: new Float32Array(9), color: [1, 1, 1, 1] };
   const model = { ...fixtureModel('missed-shard'), maxExpressId: 10, loadState: 'complete',
     geometryResult: { meshes: [flat], totalTriangles: 1 } as GeometryResult } as FederatedModel;
-  useViewerStore.setState({ ...fixtureModels(model), pendingInstancedShards: null, modelPlacement: emptyPlacementState() });
+  useViewerStore.setState({ ...fixtureModels(model), modelPlacement: emptyPlacementState() });
   const pieces: MeshData[] = [];
   const fakeRenderer = { getScene: () => ({ ...SETTLED_SCENE, getAllInstancedMeshData: () => pieces }) } as unknown as Renderer;
   setGlobalRendererRef({ current: fakeRenderer } as RefObject<Renderer | null>);
@@ -197,11 +210,11 @@ it('replaces a flat index when an instance drains during placement-sync remount 
     const flatIndex = await waitForPublication(() => model.ifcDataStore!.spatialIndex, 'flat index');
     assert.deepEqual(flatIndex.queryAABB({ min: [40, 0, 0], max: [41, 1, 0] }), []);
     sync.dispose();
-    useViewerStore.getState().appendInstancedShards('missed-shard', [new ArrayBuffer(1)]);
+    enqueueInstancedShards('missed-shard', [new ArrayBuffer(1)], instancedShardGeneration());
     pieces.push({ expressId: 7, modelIndex: modelIndices(useViewerStore.getState().models).get('missed-shard')!,
       positions: new Float32Array([40, 0, 0, 41, 0, 0, 40, 1, 0]),
       indices: new Uint32Array([0, 1, 2]), normals: new Float32Array(9), color: [1, 1, 1, 1] } as MeshData);
-    useViewerStore.getState().clearInstancedShards();
+    drainToRenderer();
     sync.refreshMissing(useViewerStore.getState());
     assert.equal(model.ifcDataStore!.spatialIndex, undefined, 'flat index is withdrawn after missed shard drain');
     const complete = await waitForPublication(() => model.ifcDataStore!.spatialIndex, 'complete instance index');
@@ -216,7 +229,7 @@ it('retries the same model revision after an asynchronous index build fails (#52
     indices: new Uint32Array([0, 1, 2]), normals: new Float32Array(9), color: [1, 1, 1, 1] };
   const model = { ...fixtureModel('retry-index'), maxExpressId: 9, loadState: 'complete',
     geometryResult: { meshes: [mesh], totalTriangles: 1 } as GeometryResult } as FederatedModel;
-  useViewerStore.setState({ ...fixtureModels(model), pendingInstancedShards: null, modelPlacement: emptyPlacementState() });
+  useViewerStore.setState({ ...fixtureModels(model), modelPlacement: emptyPlacementState() });
   const sync = createPlacementIndexSync();
   const originalWarn = console.warn;
   let failed = false;
@@ -341,7 +354,7 @@ it('builds no placed index while the scene is still draining or finalizing, then
     indices: new Uint32Array([0, 1, 2]), normals: new Float32Array(9), color: [1, 1, 1, 1] };
   const model = { ...fixtureModel('settling'), maxExpressId: 5, loadState: 'complete',
     geometryResult: { meshes: [mesh], totalTriangles: 1 } as GeometryResult } as FederatedModel;
-  useViewerStore.setState({ ...fixtureModels(model), pendingInstancedShards: null, modelPlacement: emptyPlacementState() });
+  useViewerStore.setState({ ...fixtureModels(model), modelPlacement: emptyPlacementState() });
   let finalizing = true;
   let materializations = 0;
   const fakeRenderer = { getScene: () => ({ ...SETTLED_SCENE, isFinalizeInProgress: () => finalizing,

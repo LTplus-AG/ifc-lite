@@ -140,7 +140,7 @@ export {
 // Structural analysis extractor: IfcStructuralAnalysisModel, the member,
 // connection and activity branches, load and result groups,
 // IfcBoundaryCondition, the structural connects-relationships and the
-// physical-to-analytical links, with their counterpart lookup.
+// physical-to-analytical links, their counterpart lookup and consistency checks.
 export {
   extractStructuralOnDemand,
   type StructuralExtraction,
@@ -150,14 +150,14 @@ export {
   type StructuralActivityInfo,
   type StructuralLoadGroupInfo,
   type StructuralResultGroupInfo,
-  type StructuralLoadInfo,
-  type StructuralLoadConfigurationInfo,
-  type StructuralLoadConfigurationEntry,
+  type StructuralLoadInfo, type StructuralLoadConfigurationInfo, type StructuralLoadConfigurationEntry,
   type StructuralLoadDropReason,
   type StructuralExtractionView,
   type BoundaryConditionInfo,
 } from './structural-extractor.js';
 export { structuralCounterparts, type StructuralCounterparts } from './structural-counterparts.js';
+export { type StructuralConsistencyIssue, type StructuralConsistencyOptions, type StructuralConsistencyRule } from './structural-consistency.js';
+export { structuralConsistencyIssues } from './structural-consistency-facts.js';
 
 // IFC4 STEP serializer for schedule entities — produces ready-to-splice
 // `#N=IFC...(...)` lines from a `ScheduleExtraction`.

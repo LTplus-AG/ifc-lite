@@ -29,7 +29,7 @@ async function armEdit(s, id) {
     const centre = meshes => {
       const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
       for (const mesh of meshes) for (let i = 0; i < mesh.positions.length; i++) {
-        const k = i % 3; min[k] = Math.min(min[k], mesh.positions[i]); max[k] = Math.max(max[k], mesh.positions[i]);
+        const k = i % 3; min[k] = Math.min(min[k], mesh.positions[i] + (mesh.origin?.[k] ?? 0)); max[k] = Math.max(max[k], mesh.positions[i] + (mesh.origin?.[k] ?? 0));
       }
       return min.map((v, k) => (v + max[k]) / 2);
     };
@@ -176,17 +176,20 @@ export default {
         await escape(s);
         const column = await s.state(() => {
           const st = globalThis.__ifc_lite_viewer_store__.getState(), m = [...st.models.values()][0];
-          // Lowest exterior column: an unobscured click from outside the tower.
+          // The F5 producer's 40 original grid-bound columns cannot Move in
+          // today's product; its 1,560 copied columns have ordinary local
+          // placements. Pick a copied exterior column above the 6 m lobby.
           const columns = m.geometryResult.meshes.filter(mesh => m.ifcDataStore.entities.getTypeName(mesh.expressId) === 'IfcColumn');
           const bounds = mesh => {
             const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
-            for (let i = 0; i < mesh.positions.length; i++) { const k = i % 3; min[k] = Math.min(min[k], mesh.positions[i]); max[k] = Math.max(max[k], mesh.positions[i]); }
+            for (let i = 0; i < mesh.positions.length; i++) { const k = i % 3; min[k] = Math.min(min[k], mesh.positions[i] + (mesh.origin?.[k] ?? 0)); max[k] = Math.max(max[k], mesh.positions[i] + (mesh.origin?.[k] ?? 0)); }
             return { id: mesh.expressId, centre: min.map((v, k) => (v + max[k]) / 2) };
           };
-          return columns.map(bounds).sort((a, b) => a.centre[1] - b.centre[1] || b.centre[2] - a.centre[2] || a.centre[0] - b.centre[0])[0];
+          return columns.map(bounds).filter(c => c.centre[1] > 6).sort((a, b) => a.centre[1] - b.centre[1] || b.centre[2] - a.centre[2] || a.centre[0] - b.centre[0])[0];
         });
         if (!column) throw new Error('No individually rendered loaded column');
         metrics.column = column;
+        notes.push('Edit target is a copied column above the lobby; original grid-parent columns refuse Move. The complete tower remains loaded.');
         const p = [column.centre[0], -column.centre[2], column.centre[1]];
         await s.harness.aim([p[0] + 4, p[1] + 6, p[2] + 1], p);
         await s.ui.clickWorld(p);

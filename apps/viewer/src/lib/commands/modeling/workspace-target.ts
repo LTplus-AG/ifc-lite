@@ -7,10 +7,10 @@ import type { ViewerState } from '@/store';
 import { fromGlobalIdFromModels } from '@/store/globalId';
 import { selectEffectiveStoreyId } from './effective-storeys';
 
-/** `preferred`, else the active model, else the first loaded: the edit target among models with a parsed store. */
+/** `preferred`, else the active model, else the first loaded model with a parsed store: the edit target. */
 export function resolveModelId(s: Pick<ViewerState, 'models' | 'activeModelId'>, preferred: string | undefined): string | null {
-  const candidates = [preferred, s.activeModelId ?? undefined, s.models.keys().next().value];
-  return candidates.find((id): id is string => id !== undefined && s.models.get(id)?.ifcDataStore != null) ?? null;
+  const hasStore = (id: string | undefined): id is string => id !== undefined && s.models.get(id)?.ifcDataStore != null;
+  return [preferred, s.activeModelId ?? undefined].find(hasStore) ?? [...s.models.keys()].find(hasStore) ?? null;
 }
 
 function selectedRef(s: ViewerState): { modelId: string; expressId: number } | null {

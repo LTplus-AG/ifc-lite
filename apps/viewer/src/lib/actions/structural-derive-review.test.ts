@@ -132,6 +132,24 @@ test('#9668 a renamed or hidden model, or an edit view opened with no edits, doe
   assert.throws(() => review.validate(), /changed after this derivation was reviewed/);
 });
 
+test('#9668 the dry-run counts leave out entities already authored in the edit view', async () => {
+  const { dataStore, view } = await seedAuthoringSample({ bytes: FRAME });
+  const clean = prepareStructuralDerivationReview(useViewerStore, SAMPLE_MODEL);
+  new StoreEditor(dataStore, view).addEntity('IfcCartesianPoint', [[1, 2, 3]]);
+  const edited = prepareStructuralDerivationReview(useViewerStore, SAMPLE_MODEL);
+  assert.ok(clean.created > 0);
+  assert.equal(edited.created, clean.created);
+  assert.equal(edited.derived, clean.derived);
+});
+
+test('#9668 the derivation targets the first model with a parsed store, not a shape-only first entry', async () => {
+  await seedAuthoringSample({ bytes: FRAME });
+  const { models } = useViewerStore.getState();
+  const shapeOnly = { ...models.get(SAMPLE_MODEL)!, id: 'shape-only', ifcDataStore: null };
+  useViewerStore.setState({ activeModelId: null, models: new Map([['shape-only', shapeOnly], ...models]) });
+  assert.equal(derivationModelId(useViewerStore.getState()), SAMPLE_MODEL);
+});
+
 test('#9668 a read-only session is refused before anything is derived', async () => {
   await seedAuthoringSample({ bytes: FRAME, editEnabled: false });
   assert.throws(() => prepareStructuralDerivationReview(useViewerStore, SAMPLE_MODEL));

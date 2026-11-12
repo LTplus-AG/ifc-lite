@@ -57,8 +57,10 @@ export function prepareStructuralDerivationReview(store: StoreApi<ViewerState>, 
   // A dry run in its own snapshot, so the held review keeps only counts: the records and the receipt's rows.
   const { created, derived } = blocked ? { created: 0, derived: 0 } : lease.target.view.prepareAtomic((view) => {
     const draft = new StoreEditor(dataStore, view);
+    // Only what this derivation writes, not entities already authored in the edit view.
+    const before = draft.getNewEntities().length;
     derive.applyStructuralDerivation(draft, dataStore, plan);
-    const written = draft.getNewEntities();
+    const written = draft.getNewEntities().slice(before);
     return { created: written.length, derived: written.filter(({ type }) => RECEIPT_OPS[type.toUpperCase()]).length };
   }).result;
   const view = state.mutationViews.get(modelId), revision = view?.getMutationRevision();

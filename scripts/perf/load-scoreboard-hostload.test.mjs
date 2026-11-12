@@ -109,15 +109,15 @@ test('a sample records package temperature at both ends and the package throttli
   assert.deepEqual(thermalDelta(none, before), { startC: null, endC: 91, throttleEvents: null, throttleMs: null });
 });
 
-test('the report lists cells with under-load, watchdog-overlap or throttled samples and the hottest reading', async () => {
-  const { hostMarksTable } = await load('./load-scoreboard-report.mjs');
-  const side = (o) => ({ underLoad: 0, watchdogOverlap: 0, throttled: 0, maxPackageC: 80, ...o });
-  const summary = { fixtures: [{ name: 'Holter', lanes: { 'browser-cold': { sides: { base: side({ throttled: 2, maxPackageC: 93 }), branch: side({ watchdogOverlap: 1 }) } } } },
-    { name: 'FZK', lanes: { 'browser-cold': { sides: { base: side(), branch: side() } } } }] };
-  const md = hostMarksTable(summary);
-  assert.match(md, /Hottest package reading in the run: 93 C/);
-  assert.match(md, /\| Holter \| browser-cold \| base \| 0 \| 0 \| 2 \| 93 \|/);
-  assert.match(md, /\| Holter \| browser-cold \| branch \| 0 \| 1 \| 0 \| 80 \|/);
-  assert.doesNotMatch(md, /\| FZK \|/);
-  assert.match(hostMarksTable({ fixtures: [] }), /unreadable\. .*No cell has/);
+test('the report names cells with throttled or unreadable-thermal samples and their hottest reading; quiet cells are omitted', async () => {
+  const { thermalRows } = await load('./load-scoreboard-report.mjs');
+  const row = (fixture, side, thermal) => ({ ok: true, fixture, lane: 'browser-cold', side, host: { thermal } });
+  const rows = thermalRows([
+    row('Holter', 'base', { startC: 91, endC: 94, throttleEvents: 3, throttleMs: 250 }),
+    row('Holter', 'base', { startC: 88, endC: 90, throttleEvents: 0, throttleMs: 0 }),
+    row('Holter', 'branch', { startC: null, endC: null, throttleEvents: null, throttleMs: null }),
+    row('FZK', 'base', { startC: 80, endC: 81, throttleEvents: 0, throttleMs: 0 }),
+  ]);
+  assert.deepEqual(rows, ['| Holter | browser-cold | base | 2 | 1 | 0 | 250 | 94 |', '| Holter | browser-cold | branch | 1 | 0 | 1 | — | — |']);
+  assert.deepEqual(thermalRows([{ ok: true, fixture: 'x', lane: 'browser-cold', side: 'base', host: {} }]), [], 'rows from a harness without the read are not reported');
 });

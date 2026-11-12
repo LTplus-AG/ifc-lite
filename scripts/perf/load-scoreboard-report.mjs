@@ -8,8 +8,8 @@
  * markdown tables. Failed samples stay in the counts.
  */
 
-import { watchdogRows, webglPickRows } from './load-scoreboard-report-sections.mjs';
-export { watchdogRows, webglPickRows } from './load-scoreboard-report-sections.mjs';
+import { thermalRows, watchdogRows, webglPickRows } from './load-scoreboard-report-sections.mjs';
+export { thermalRows, watchdogRows, webglPickRows } from './load-scoreboard-report-sections.mjs';
 import { aaNoiseFloor, expectedCacheTier, median, rankShares, relativeSpread, verdictFor } from './load-scoreboard-stats.mjs';
 
 /** The lanes a plan without a `lanes` key runs: exactly the set main had before the opt-in arms. */
@@ -178,10 +178,6 @@ export function summarize(plan, samples, { floors = null } = {}) {
           settleQuantized: ok.filter((r) => r.settleQuantized).length,
           // H9: taken while the host was busy (pre-sample check), and H2: input event dispatched >100 ms late.
           underLoad: mine.filter((r) => r.host?.underLoad).length,
-          // Measurement only: watchdog passes and package thermal throttling during the sample, and the hottest start/end reading.
-          watchdogOverlap: mine.filter((r) => r.host?.overlapsWatchdogPass === true).length,
-          throttled: mine.filter((r) => r.host?.thermal?.throttleEvents > 0).length,
-          maxPackageC: Math.max(...mine.flatMap((r) => [r.host?.thermal?.startC, r.host?.thermal?.endC]).filter(Number.isFinite)),
           inputDelayed: mine.filter((r) => (r.inputDelayMs ?? 0) > 100).length,
           stages: rankShares(ok.map(shareOf).filter(Boolean)),
           readiness: readinessOf(ok),
@@ -283,23 +279,6 @@ function baselineTable(summary, set, lanes) {
   return lines.join('\n');
 }
 
-/** Host marks per cell: under load (H9), watchdog overlap and thermal throttling (measurement only), hottest package reading. */
-export function hostMarksTable(summary) {
-  const lines = ['| fixture | lane | side | under load | watchdog overlap | throttled | max package C |', '|---|---|---|---:|---:|---:|---:|'];
-  let marked = 0;
-  for (const f of summary.fixtures) for (const [lane, l] of Object.entries(f.lanes)) for (const side of ['base', 'branch']) {
-    const x = l.sides[side];
-    if (!x) continue;
-    const hot = Number.isFinite(x.maxPackageC) ? x.maxPackageC : null;
-    if (!(x.underLoad || x.watchdogOverlap || x.throttled)) continue;
-    marked++;
-    lines.push(`| ${f.name} | ${lane} | ${side} | ${x.underLoad} | ${x.watchdogOverlap} | ${x.throttled} | ${hot ?? '—'} |`);
-  }
-  const all = summary.fixtures.flatMap((f) => Object.values(f.lanes).flatMap((l) => ['base', 'branch'].map((s) => l.sides[s]?.maxPackageC))).filter(Number.isFinite);
-  const head = `Hottest package reading in the run: ${all.length ? `${Math.max(...all)} C` : 'unreadable'}. Cells with no mark are omitted.`;
-  return marked ? `${head}\n\n${lines.join('\n')}` : `${head} No cell has an under-load, watchdog-overlap or throttled sample.`;
-}
-
 const BOOT_COLUMNS = [['shellReadyMs', 'app-shell ready ms'], ['interactiveMs', 'boot interactive ms'], ['bootLongTasks', 'long tasks'],
   ['bootLongTaskMs', 'long-task ms'], ['peakMemoryMiB', 'idle PSS MiB'], ['idleJsHeapMiB', 'idle JS heap MiB'], ['idleAgentMiB', 'idle agent MiB (no wasm)'], ['idleWasmMiB', 'idle wasm MiB'], ['idleVramMiB', 'idle GPU MiB']];
 
@@ -364,7 +343,6 @@ export function renderMarkdown(summary, plan, host, samples = []) {
     if (!summary.fixtures.some((f) => f.set === set)) continue;
     out.push(`## Verdicts (${set}): gain >= 2x noise floor`, '', verdictTable(summary, set, plan.lanes), '');
   }
-  out.push('## Host marks (under load voids a cell; watchdog overlap and thermal throttling are measurement only)', '', hostMarksTable(summary), '');
   const diffRows = summary.fixtures.flatMap((f) => BROWSER_LANES.filter((lane) => f.lanes[lane]?.elementDiff).map((lane) => {
     const d = f.lanes[lane].elementDiff, worst = d.diffs.find((x) => !x.identical);
     if (d.unverifiable) return `| ${f.name} | ${lane} | ${d.samples} | UNVERIFIABLE (${d.reason}) |`;
@@ -397,6 +375,11 @@ export function renderMarkdown(summary, plan, host, samples = []) {
   if (wdRows.length) {
     out.push('', '## Host watchdog overlap (samples during a periodic host job pass; measurement only, cells not voided)', '',
       '| fixture | lane | side | samples | overlapping a pass | unknown | median foreign CPU ms of overlapping samples |', '|---|---|---|---:|---:|---:|---:|', ...wdRows);
+  }
+  const thRows = thermalRows(samples);
+  if (thRows.length) {
+    out.push('', '## CPU package thermal throttling during samples (measurement only, cells not voided)', '',
+      '| fixture | lane | side | samples | throttled | unreadable | max throttle ms in a sample | hottest package C |', '|---|---|---|---:|---:|---:|---:|---:|', ...thRows);
   }
   const glRows = webglPickRows(samples);
   if (glRows.length) {

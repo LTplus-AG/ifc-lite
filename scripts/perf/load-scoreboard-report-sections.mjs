@@ -52,3 +52,27 @@ export function watchdogRows(samples) {
     return `| ${fixture} | ${lane} | ${side} | ${rows.length} | ${over} | ${unknown} | ${foreign.length ? Math.round(median(foreign)) : '—'} |`;
   });
 }
+
+/**
+ * Per fixture x lane x side: samples during which the CPU package throttled (host.thermal.throttleEvents > 0), samples
+ * whose thermal counters could not be read, and the hottest package temperature at a sample start or end. Measurement
+ * only (Pop ran at 91-94 C on 2026-11-12): cells are named, not voided. Cells with nothing to show are omitted.
+ */
+export function thermalRows(samples) {
+  const groups = new Map();
+  for (const r of samples) {
+    if (!r.ok || !r.host || !('thermal' in r.host)) continue;
+    const key = `${r.fixture}|${r.lane}|${r.side}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(r);
+  }
+  return [...groups].map(([key, rows]) => {
+    const [fixture, lane, side] = key.split('|');
+    const throttled = rows.filter((r) => r.host.thermal?.throttleEvents > 0).length;
+    const unknown = rows.filter((r) => !Number.isFinite(r.host.thermal?.throttleEvents)).length;
+    const temps = rows.flatMap((r) => [r.host.thermal?.startC, r.host.thermal?.endC]).filter(Number.isFinite);
+    const ms = rows.map((r) => r.host.thermal?.throttleMs).filter(Number.isFinite);
+    return { throttled, unknown, line: `| ${fixture} | ${lane} | ${side} | ${rows.length} | ${throttled} | ${unknown} | ${ms.length ? Math.max(...ms) : '—'} | ${temps.length ? Math.max(...temps) : '—'} |` };
+  }).filter((x) => x.throttled > 0 || x.unknown > 0).map((x) => x.line);
+}
+

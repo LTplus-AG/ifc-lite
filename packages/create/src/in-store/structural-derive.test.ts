@@ -194,6 +194,33 @@ describe('derive structural analysis model: session idempotence (#9668)', () => 
     expect(editor.getNewEntities().length).toBe(before);
   });
 
+  it('refuses a plan whose member ends no longer sit on their nodes', async () => {
+    const store = await parse(model('IFC4'));
+    const editor = session(store);
+    const bad = structuredClone(planStructuralDerivation(readStructuralDerivationFacts(store, editor)));
+    bad.nodes[bad.curveMembers[0].startNode].position[2] += 0.5;
+    const before = editor.getNewEntities().length;
+    expect(() => applyStructuralDerivation(editor, store, bad)).toThrow(/curve member of element #\d+ has ends that differ from its nodes/);
+    expect(editor.getNewEntities().length).toBe(before);
+  });
+
+  it('refuses a plan with a member that starts and ends on one node, writing nothing', async () => {
+    const store = await parse(model('IFC4'));
+    const editor = session(store);
+    const plan = planStructuralDerivation(readStructuralDerivationFacts(store, editor));
+    // Hand-edited plans: the member's end names its start node, with its end point left as it was, or moved
+    // onto the start too (equal end points).
+    const moved = structuredClone(plan);
+    moved.curveMembers[0].endNode = moved.curveMembers[0].startNode;
+    const equal = structuredClone(moved);
+    equal.curveMembers[0].end = [...equal.curveMembers[0].start];
+    const before = editor.getNewEntities().length;
+    for (const bad of [moved, equal]) {
+      expect(() => applyStructuralDerivation(editor, store, bad)).toThrow(/curve member of element #\d+ starts and ends on one node/);
+      expect(editor.getNewEntities().length).toBe(before);
+    }
+  });
+
   it('writes nothing when a write fails part-way through', async () => {
     const store = await parse(model('IFC4'));
     const editor = session(store);
@@ -287,14 +314,14 @@ DATA;
 #86=IFCPRODUCTDEFINITIONSHAPE($,$,(#85));
 #87=IFCBEAM('0beamBacktrack00000000',$,'Backtracking axis',$,$,#20,#86,$,$);
 #90=IFCCARTESIANPOINTLIST2D(((0.,0.),(4.,4.),(4.,0.),(0.,4.)));
-#91=IFCINDEXEDPOLYCURVE(#90,(IFCLINEINDEX((1,3,2,4,1))),.F.);
+#89=IFCINDEXEDPOLYCURVE(#90,(IFCLINEINDEX((1,3,2,4,1))),.F.);
 #97=IFCINDEXEDPOLYCURVE(#90,(IFCLINEINDEX((1,3)),IFCARCINDEX((3,2,4))),.F.);
 #98=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#97);
 #99=IFCEXTRUDEDAREASOLID(#98,#43,#44,0.2);
 #100=IFCSHAPEREPRESENTATION(#7,'Body','SweptSolid',(#99));
 #101=IFCPRODUCTDEFINITIONSHAPE($,$,(#100));
 #102=IFCSLAB('0slabArcSegments000000',$,'Arc segments',$,$,#20,#101,$,.FLOOR.);
-#92=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#91);
+#92=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#89);
 #93=IFCEXTRUDEDAREASOLID(#92,#43,#44,0.2);
 #94=IFCSHAPEREPRESENTATION(#7,'Body','SweptSolid',(#93));
 #95=IFCPRODUCTDEFINITIONSHAPE($,$,(#94));

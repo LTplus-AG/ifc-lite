@@ -24,9 +24,11 @@
  *   X/Y/Z as an arrow per station, the moment resultant as one moment glyph,
  *   and a marker for a displacement or a temperature load. `GLOBAL_COORDS`
  *   loads are in the analysis model's `SharedPlacement` axes; `LOCAL_COORDS`
- *   loads in the activity's frame: its own placement, the point connection's
- *   condition frame, or the member's (x along the edge, z towards `Axis`).
- *   Load configurations draw each value at its location.
+ *   loads in the activity's frame: its own face's reference surface, else
+ *   the surface item's face frame, else the curve member's (x along the edge,
+ *   z towards `Axis`), else its own placement or the point connection's
+ *   condition frame (see `localFrame`). Load configurations draw each value
+ *   at its location.
  *
  * `relative` scales arrows within their load group: the largest force (or
  * moment) of the same distribution in the same group is 1. Units differ by
@@ -221,18 +223,21 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
    * a reference surface takes that surface. Otherwise an activity on a
    * surface item takes the item's face frame (its reference surface, else
    * its face normal turned to the item's placement z), an edge on it taking z
-   * from that frame. Otherwise: an edge, x along it and z towards the item's
+   * from that frame; none when that face has no frame (nothing is guessed).
+   * Otherwise: an edge, x along it and z towards the item's
    * Axis; a point on a curve item, that item's edge frame; an own bare face,
    * its normal turned to the activity's placement z; a point, its own
    * placement when it draws at its own vertex, else the connection's
    * condition frame.
    */
   const localFrame = (activity: StructuralActivityInfo, item: ItemRef | undefined, own: boolean, shape: ItemShape): Frame | null => {
-    if (own && shape.kind === 'face' && shape.surface) return shape.surface;
+    if (own && shape.kind === 'face' && shape.surface) return shapeFrame(shape, null);
     const zOf = (id: number) => reader.productFrame(id)?.z ?? null;
     const host = item ? itemShape(item.expressId, item.type) : null;
-    const surface = item && host?.kind === 'face' ? shapeFrame(host, zOf(item.expressId)) : null;
-    if (surface) return shape.kind === 'edge' ? shapeFrame(shape, surface.z) : surface;
+    if (item && host?.kind === 'face') {
+      const surface = shapeFrame(host, zOf(item.expressId));
+      return surface && (shape.kind === 'edge' ? shapeFrame(shape, surface.z) : surface);
+    }
     if (shape.kind === 'face') return shapeFrame(shape, zOf(activity.expressId));
     const axis = () => (item ? edgeAxis(item.expressId, item.Axis) : null);
     if (shape.kind === 'edge') return shapeFrame(shape, axis());

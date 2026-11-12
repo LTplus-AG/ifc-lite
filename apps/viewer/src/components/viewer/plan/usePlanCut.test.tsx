@@ -14,6 +14,10 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
+import { StepExporter } from '@ifc-lite/export';
+import { IfcAPI } from '@ifc-lite/wasm';
+import { ensureRoomWasm } from '@/test/room-walls-fixture';
+import { setElementSize } from '@/store/slices/mutation-element-size';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
 import { cleanup, render } from '@/test/render.js';
@@ -96,6 +100,59 @@ describe('usePlanCutDrawing', () => {
     assert.ok(seen.length > 0, 'the wall is cut');
     for (const l of seen) {
       for (const [x, y] of [l.a, l.b]) assert.ok(x > -1e-6 && x < 4 + 1e-6 && y > -1e-6 && y < 0.2 + 1e-6, `(${x}, ${y}) inside the wall's plan`);
+    }
+  });
+
+  it('projects the enclosing slab and shaft below the cut after thickening (#9296)', async t => {
+    if (!ensureRoomWasm(t)) return;
+    const s = useViewerStore.getState();
+    const slab = s.addSlab(MODEL_ID, STOREY, { Profile: 'polygon',
+      OuterCurve: [[0,0],[5,0],[5,2],[3,2],[3,4],[0,4]], Thickness: .2, ExtrudedDirection: [0,0,-1] });
+    assert.ok('expressId' in slab);
+    const opening = s.addHostedFill(MODEL_ID, slab.expressId,
+      { kind: 'opening', params: { Position: [2,2], Width: 1.5, Depth: 2 } });
+    assert.ok('expressId' in opening);
+    assert.equal(setElementSize(useViewerStore, MODEL_ID, slab.expressId, { kind: 'slab', thickness: .3 }).ok, true);
+    const live = useViewerStore.getState();
+    const bytes = new StepExporter(live.models.get(MODEL_ID)!.ifcDataStore!, live.mutationViews.get(MODEL_ID)!)
+      .export({ schema: 'IFC4', applyMutations: true }).content;
+    const api = new IfcAPI(), meshes: MeshData[] = [];
+    try {
+      const pre = api.buildPrePassOnce(bytes);
+      const collection = api.processGeometryBatch(bytes, pre.jobs, pre.unitScale, 0,0,0,false,
+        pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors);
+      try {
+        for (let i = 0; i < collection.length; i++) {
+          const m = collection.get(i);
+          if (!m) continue;
+          try {
+            if (m.expressId === slab.expressId) {
+              const origin = m.origin;
+              meshes.push({ expressId: m.expressId, ifcType: m.ifcType,
+                positions: m.positions, normals: m.normals, indices: m.indices,
+                origin: [origin[0], origin[1], origin[2]], color: [1,1,1,1] });
+            }
+          } finally { m.free(); }
+        }
+      } finally { collection.free(); }
+    } finally { api.clearPrePassCache(); api.free(); }
+    assert.ok(meshes.length, 'real WASM host mesh');
+    const geometry = { meshes };
+    let seen: PlanCutResult['lines'] = [];
+    function Probe() {
+      seen = usePlanCutDrawing(request(0, meshes, geometry, 0)).lines;
+      return null;
+    }
+    render(<Probe />);
+    await settle();
+    const near = (a: readonly number[], b: readonly number[]) => Math.hypot(a[0]-b[0], a[1]-b[1]) < 1e-3;
+    const shaft = [[1.25,1],[2.75,1],[2.75,3],[1.25,3]];
+    for (let i = 0; i < shaft.length; i++) {
+      const a = shaft[i], b = shaft[(i+1)%shaft.length];
+      assert.ok(seen.some(l => (near(l.a,a) && near(l.b,b)) || (near(l.a,b) && near(l.b,a))), `closed shaft edge ${a} -> ${b}`);
+    }
+    for (const p of [[0,0],[5,0],[5,2],[3,2],[3,4],[0,4]]) {
+      assert.ok(seen.some(l => near(l.a,p) || near(l.b,p)), `L outline corner ${p}`);
     }
   });
 

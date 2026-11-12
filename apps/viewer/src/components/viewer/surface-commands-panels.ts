@@ -16,6 +16,7 @@ import type { BottomPanelId } from '@/lib/panels/bottom-panels';
 import { panelGroupFor, panelTitleKey } from '@/lib/panels/registry';
 import { useViewerStore } from '@/store';
 import { requestAgentBridgeDialog } from '@/lib/agent-bridge/state';
+import { isFramed } from '@/lib/agent-bridge/pairing-fragment';
 import { liftStartFold } from './welcome/useEmptyStartFold';
 import type { RightPanel } from './commandPaletteCommandsTypes';
 import type { Command } from './commandPaletteSearch';
@@ -130,7 +131,8 @@ export const PANEL_SURFACE_COMMANDS = [
     id: 'panel:agentBridge', panelGroup: panelGroupFor('sources'),
     labelKey: 'commandPalette.panel.agentBridge.label',
     keywords: 'local agent mcp bridge claude desktop code ai assistant pair connect localhost',
-    category: 'Panels', icon: Bot, surfaces: paletteOnly, enabled: alwaysEnabled,
+    // A framed viewer never connects (#9523): the entry is disabled there.
+    category: 'Panels', icon: Bot, surfaces: paletteOnly, enabled: () => !isFramed(),
     run: () => requestAgentBridgeDialog({ source: 'manual' }),
   },
   rightCommand('panel:zones', 'zones', 'zone section takt area construction location apportionment storey', Box, true),

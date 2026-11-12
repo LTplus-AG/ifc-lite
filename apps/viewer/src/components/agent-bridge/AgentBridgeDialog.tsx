@@ -29,6 +29,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { registerEnglish, useTranslation } from '@/i18n';
 import { agentBridgeEn } from '@/i18n/catalogues/agent-bridge.en';
 import { useBim } from '@/sdk/BimProvider';
+import { isFramed } from '@/lib/agent-bridge/pairing-fragment';
 import {
   updateAgentBridgeState, useAgentBridgeState, type AgentBridgeDialogRequest, type AgentBridgeStatus,
 } from '@/lib/agent-bridge/state';
@@ -82,42 +83,57 @@ export function AgentBridgeDialog({ request, onClose, load = loadSession }: Agen
   const [code, setCode] = useState(initial.code);
   const [validation, setValidation] = useState<{ code?: boolean; port?: boolean }>({});
   // Only outcomes of an attempt made in THIS dialog are shown here.
-  const [attempted, setAttempted] = useState(false);
+  const [attemptedAt, setAttemptedAt] = useState<number | null>(null);
+  const attempted = attemptedAt !== null;
   const [loading, setLoading] = useState(false);
   const session = useRef<AgentBridgeSessionModule | null>(null);
+  // Every attempt gets a token; Cancel, unmount (closed, or replaced by a
+  // newer request) and a newer attempt invalidate it, and a stale attempt
+  // never opens a socket, whatever finished loading meanwhile.
+  const attempt = useRef(0);
+  useEffect(() => () => { attempt.current++; }, []);
   const { status } = useAgentBridgeState();
   const busy = loading || (attempted && status.kind === 'connecting');
+  const framed = useMemo(() => isFramed(), []);
+  // Opened while another connection is live: say that Connect replaces it.
+  const [liveBefore] = useState(() => (status.kind === 'connected' || status.kind === 'connecting') ? status.port : null);
 
+  // Only a connection made by THIS attempt closes the dialog, not one it is replacing.
+  const connectedHere = status.kind === 'connected' && attemptedAt !== null && status.since >= attemptedAt;
   useEffect(() => {
-    if (attempted && status.kind === 'connected') onClose();
-  }, [attempted, status.kind, onClose]);
+    if (connectedHere) onClose();
+  }, [connectedHere, onClose]);
 
   const connect = async () => {
+    if (framed) return;
     const portNumber = parsePort(port);
     const codeMissing = normalizePairingCode(code).length === 0;
     setValidation({ code: codeMissing, port: portNumber === null });
     if (codeMissing || portNumber === null) return;
-    setAttempted(true);
+    const token = ++attempt.current;
+    setAttemptedAt(Date.now());
     setLoading(true);
     try {
       session.current ??= await load();
+      if (token !== attempt.current) return;
       session.current.connectAgentBridge({ port: portNumber, code, bim });
     } catch (err) {
       console.warn('[agent-bridge] the connection module failed to load', err);
-      updateAgentBridgeState({ status: { kind: 'error', code: 'unreachable', port: portNumber } });
+      if (token === attempt.current) updateAgentBridgeState({ status: { kind: 'error', code: 'unreachable', port: portNumber } });
     } finally {
-      setLoading(false);
+      if (token === attempt.current) setLoading(false);
     }
   };
 
   const cancel = () => {
+    attempt.current++;
     if (attempted && status.kind === 'connecting') session.current?.disconnectAgentBridge();
     // A failed attempt's outcome belongs to this dialog; closing it forgets it.
     if (attempted && status.kind === 'error') updateAgentBridgeState({ status: { kind: 'idle' } });
     onClose();
   };
 
-  const shownProblem = attempted ? status : initial.linkProblem;
+  const shownProblem: AgentBridgeStatus | null = framed ? { kind: 'error', code: 'framed' } : attempted ? status : initial.linkProblem;
   const portForCommand = parsePort(port) ?? DEFAULT_BRIDGE_PORT;
   return (
     <Dialog open onOpenChange={(open) => { if (!open) cancel(); }}>
@@ -128,16 +144,23 @@ export function AgentBridgeDialog({ request, onClose, load = loadSession }: Agen
             {t('agentBridge.dialog.title')}
           </DialogTitle>
           <DialogDescription>
-            {request.source === 'link' && <>{t('agentBridge.dialog.fromLink')} </>}
-            {t('agentBridge.dialog.reads')}
+            {request.source === 'link' ? t('agentBridge.dialog.fromLink') : t('agentBridge.dialog.reads', { port: portForCommand })}
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-3 text-sm">
+          <p className="rounded border px-2 py-1.5 text-center font-mono text-base font-medium" data-agent-bridge-target>
+            {t('agentBridge.dialog.target', { port: portForCommand })}
+          </p>
+          {request.source === 'link' && <p>{t('agentBridge.dialog.reads', { port: portForCommand })}</p>}
+          <p className="font-medium">{t('agentBridge.dialog.unverified')}</p>
           <ul className="list-disc space-y-1 pl-5 text-xs text-muted-foreground">
             <li>{t('agentBridge.dialog.readOnly')}</li>
-            <li>{t('agentBridge.dialog.localOnly', { port: portForCommand })}</li>
+            <li>{t('agentBridge.dialog.localOnly')}</li>
             <li>{t('agentBridge.dialog.browserPrompt')}</li>
           </ul>
+          {liveBefore !== null && !attempted && (
+            <p role="status" className="rounded border p-2 text-xs">{t('agentBridge.dialog.replaces', { port: liveBefore })}</p>
+          )}
           {request.source === 'manual' && (
             <div className="flex flex-col gap-1 text-xs">
               <span>{t('agentBridge.dialog.start')}</span>
@@ -165,7 +188,7 @@ export function AgentBridgeDialog({ request, onClose, load = loadSession }: Agen
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={cancel}>{t('agentBridge.dialog.cancel')}</Button>
-          <Button onClick={() => { void connect(); }} disabled={busy} data-agent-bridge-connect>
+          <Button onClick={() => { void connect(); }} disabled={busy || framed} data-agent-bridge-connect>
             {attempted && (status.kind === 'error' || status.kind === 'disconnected')
               ? t('agentBridge.dialog.tryAgain') : t('agentBridge.dialog.connect')}
           </Button>

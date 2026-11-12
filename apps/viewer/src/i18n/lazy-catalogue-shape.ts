@@ -349,9 +349,10 @@ const AGENT_BRIDGE_TAILS = new Set(('row.title row.description row.connect dialo
   + 'panel.activity panel.activityNote panel.noActivity panel.noModel panel.ok panel.error panel.cancelled panel.duration '
   + 'failure.unreachable failure.origin failure.permissionDenied failure.pairingFailed failure.protocolMismatch '
   + 'failure.handshakeTimeout failure.invalidMessage failure.busy failure.invalidLink ended.replaced '
-  + 'ended.bridgeShutdown ended.connectionLost ended.pageHidden').split(' '));
+  + 'ended.bridgeShutdown ended.connectionLost ended.pageHidden dialog.unverified dialog.target dialog.replaces '
+  + 'failure.framed ended.flooded row.showActivity row.hideActivity').split(' '));
 const AGENT_BRIDGE_PARAMETERS: Record<string, readonly string[]> = {
-  'dialog.localOnly': ['port'], 'panel.since': ['port', 'time'], 'panel.error': ['code'], 'panel.duration': ['ms'],
+  'dialog.reads': ['port'], 'dialog.target': ['port'], 'dialog.replaces': ['port'], 'panel.since': ['port', 'time'], 'panel.error': ['code'], 'panel.duration': ['ms'],
   'failure.unreachable': ['port'], 'failure.origin': ['origin'],
 };
 

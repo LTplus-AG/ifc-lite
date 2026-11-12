@@ -311,6 +311,99 @@ describe('local agent bridge client: calls (#9523)', () => {
   });
 });
 
+describe('local agent bridge client: a drop after pairing is always a disconnect (#9523 review)', () => {
+  for (const code of [BridgeCloseCode.INVALID_MESSAGE, BridgeCloseCode.HANDSHAKE_TIMEOUT, 1000, 1006, 1011]) {
+    it(`close ${code} after welcome is disconnected(connection-lost), never a hidden error`, () => {
+      const h = paired();
+      h.socket().drop(code);
+      assert.deepEqual(h.client.status, { kind: 'disconnected', reason: 'connection-lost' });
+    });
+  }
+
+  it('a non-fatal error frame during the session does not decide a later ordinary drop', () => {
+    const h = paired();
+    h.socket().frame({ type: 'error', code: 'INVALID_MESSAGE', message: 'one bad frame' });
+    assert.equal(h.client.status.kind, 'connected', 'a refused frame does not end the session');
+    h.socket().drop(1006);
+    assert.deepEqual(h.client.status, { kind: 'disconnected', reason: 'connection-lost' });
+  });
+});
+
+describe('local agent bridge client: a flooding peer cannot freeze the tab (#9523 review)', () => {
+  const limits = { maxRunning: 2, maxQueued: 3, callTimeoutMs: 60_000, maxArgumentBytes: 1000, floodWindowMs: 10_000, floodMaxCalls: 12 };
+
+  it('running calls never exceed the cap, the queue is bounded, excess is answered busy at once', async () => {
+    let running = 0;
+    let peak = 0;
+    const release: (() => void)[] = [];
+    const dispatch = () => new Promise<ToolOutcome>((resolve) => {
+      running++;
+      peak = Math.max(peak, running);
+      release.push(() => { running--; resolve({ text: 'ok', structured: null, isError: false }); });
+    });
+    const h = paired({ dispatch, limits });
+    for (let i = 0; i < 8; i++) call(h.socket(), `c${i}`);
+    await flush();
+    assert.equal(peak, 2, 'two run at once');
+    const busy = h.socket().results();
+    assert.deepEqual(busy.map((r) => r.id), ['c5', 'c6', 'c7'], 'past running + queued, calls are refused at once');
+    assert.ok(busy.every((r) => r.result.isError && (r.result.structuredContent as { code: string }).code === 'RATE_LIMITED'));
+    // Drain: each finished call frees a slot for the next queued one, after a yield.
+    while (release.length) {
+      release.shift()?.();
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    assert.equal(peak, 2, 'the cap held while the queue drained');
+    assert.deepEqual(h.socket().results().map((r) => r.id).sort(), ['c0', 'c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7']);
+    assert.equal(h.client.status.kind, 'connected');
+  });
+
+  it('a cancelled queued call never runs and is not answered', async () => {
+    const seen: string[] = [];
+    const release: (() => void)[] = [];
+    const h = paired({
+      limits,
+      dispatch: (name, args) => new Promise<ToolOutcome>((resolve) => { seen.push(String(args.n)); release.push(() => resolve({ text: 'ok', structured: null, isError: false })); }),
+    });
+    for (let i = 0; i < 3; i++) call(h.socket(), `c${i}`, 'count_entities', { n: i });
+    h.socket().frame({ type: 'cancel', sessionId: 'session-1', id: 'c2', reason: 'cancelled' });
+    while (release.length) { release.shift()?.(); await new Promise((resolve) => setTimeout(resolve, 5)); }
+    assert.deepEqual(seen, ['0', '1']);
+    assert.deepEqual(h.socket().results().map((r) => r.id).sort(), ['c0', 'c1']);
+  });
+
+  it('a peer that floods is disconnected with a reason, and its calls are aborted', async () => {
+    const { seen, dispatch } = blockingDispatch();
+    const h = paired({ dispatch, limits });
+    for (let i = 0; i < 20; i++) call(h.socket(), `c${i}`);
+    assert.deepEqual(h.client.status, { kind: 'disconnected', reason: 'flooded' });
+    assert.equal(h.socket().closedWith?.code, 1008);
+    assert.ok(seen.every((s) => s.signal.aborted), 'running calls were aborted');
+  });
+
+  it('a call that runs past the tab-side limit is aborted and answered TIMEOUT', async () => {
+    const { seen, dispatch } = blockingDispatch();
+    const h = paired({ dispatch, limits: { ...limits, callTimeoutMs: 10 } });
+    call(h.socket(), 'slow');
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.equal(seen[0].signal.aborted, true);
+    seen[0].resolve({ text: 'late', structured: null, isError: false });
+    await flush();
+    const result = h.socket().results()[0];
+    assert.equal(result.id, 'slow');
+    assert.equal((result.result.structuredContent as { code: string }).code, 'TIMEOUT');
+  });
+
+  it('oversized arguments are refused before any dispatch', async () => {
+    let dispatched = 0;
+    const h = paired({ limits, dispatch: async () => { dispatched++; return { text: 'ok', structured: null, isError: false }; } });
+    call(h.socket(), 'big', 'ids_validate', { ids: 'x'.repeat(5000) });
+    await flush();
+    assert.equal(dispatched, 0);
+    assert.equal((h.socket().results()[0].result.structuredContent as { code: string }).code, 'INVALID_INPUT');
+  });
+});
+
 describe('local agent bridge client: read-only obligation (#9523)', () => {
   it('a call naming a model-changing tool is answered isError by the real dispatch and never touches a model', async () => {
     const { dispatchMainViewerTool } = await import('@/lib/agent-tools/main-viewer');

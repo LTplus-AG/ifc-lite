@@ -22,6 +22,8 @@
  *     `disconnected` (or `error`) and never retries with the old code; the
  *     user pairs again with a fresh link.
  *   - Nothing here throws into the event loop.
+ *   - Calls are admitted by `CallAdmission`: a few run at once, each with a
+ *     tab-side time limit; a peer that floods is disconnected.
  *   - The activity log records tool, model, duration and outcome per call,
  *     never arguments or results.
  */
@@ -29,18 +31,19 @@
 import {
   BRIDGE_LIMITS,
   BRIDGE_PROTOCOL_VERSION,
-  BridgeCloseCode,
-  BridgeErrorCode,
   normalizePairingCode,
   parseServerMessage,
-  type BridgeCallMessage,
   type BridgeHelloMessage,
   type BridgeToolDescriptor,
 } from '@ifc-lite/mcp/bridge-protocol';
 import type {
-  AgentBridgeActivity, AgentBridgeDisconnectReason, AgentBridgeErrorCode, AgentBridgeStatus,
+  AgentBridgeActivity, AgentBridgeStatus,
 } from './state';
-import { buildResultFrame, toCallToolResult, type ToolOutcome } from './result-frame';
+import type { ToolOutcome } from './result-frame';
+import { CALL_LIMITS, type CallLimits } from './call-admission';
+import { CallRunner } from './call-runner';
+import { WELCOME_TIMEOUT_CLOSE, statusForClose } from './close-outcome';
+
 
 /** The subset of the browser `WebSocket` the client uses, so tests can inject a fake. */
 export interface WebSocketLike {
@@ -57,9 +60,6 @@ export type WebSocketConstructor = new (url: string) => WebSocketLike;
 
 /** `WebSocket.OPEN`; a constant so the client does not depend on the global. */
 const OPEN = 1;
-
-/** Close code the tab uses when it gives up waiting for `welcome` (application range). */
-const WELCOME_TIMEOUT_CLOSE = 4008;
 
 /**
  * The bridge answers a wrong code after a backoff of up to 5 s, so the tab
@@ -92,41 +92,10 @@ export interface BridgeClientOptions {
   /** Defaults to `BRIDGE_LIMITS.maxResultBytes`. */
   maxResultBytes?: number;
   now?: () => number;
+  /** Test seam over {@link CALL_LIMITS}. */
+  limits?: Partial<CallLimits>;
 }
 
-interface InFlight {
-  controller: AbortController;
-  tool: string;
-  modelId: string | null;
-  startedAt: number;
-}
-
-const FATAL_ERRORS: Record<number, AgentBridgeErrorCode> = {
-  [BridgeCloseCode.INVALID_MESSAGE]: 'invalid-message',
-  [BridgeCloseCode.PAIRING_FAILED]: 'pairing-failed',
-  [BridgeCloseCode.HANDSHAKE_TIMEOUT]: 'handshake-timeout',
-  [BridgeCloseCode.PROTOCOL_VERSION_MISMATCH]: 'protocol-mismatch',
-  [BridgeCloseCode.BUSY]: 'busy',
-  [WELCOME_TIMEOUT_CLOSE]: 'handshake-timeout',
-};
-
-const ENDINGS: Record<number, AgentBridgeDisconnectReason> = {
-  [BridgeCloseCode.REPLACED]: 'replaced',
-  [BridgeCloseCode.SHUTTING_DOWN]: 'bridge-shutdown',
-};
-
-/** The same mapping for the `error` frame the bridge sends just before a fatal close. */
-const FRAME_ERRORS: Partial<Record<string, AgentBridgeErrorCode | AgentBridgeDisconnectReason>> = {
-  [BridgeErrorCode.INVALID_MESSAGE]: 'invalid-message',
-  [BridgeErrorCode.PAIRING_FAILED]: 'pairing-failed',
-  [BridgeErrorCode.HANDSHAKE_TIMEOUT]: 'handshake-timeout',
-  [BridgeErrorCode.PROTOCOL_VERSION_MISMATCH]: 'protocol-mismatch',
-  [BridgeErrorCode.BUSY]: 'busy',
-  [BridgeErrorCode.REPLACED]: 'replaced',
-  [BridgeErrorCode.SHUTTING_DOWN]: 'bridge-shutdown',
-};
-
-const DISCONNECT_REASONS = new Set<string>(['replaced', 'bridge-shutdown', 'connection-lost', 'page-hidden']);
 
 function warn(message: string, err?: unknown): void {
   console.warn(`[agent-bridge] ${message}`, ...(err === undefined ? [] : [err]));
@@ -139,8 +108,8 @@ export class BridgeClient {
   private ended = false;
   private lastFrameError: string | null = null;
   private welcomeTimer: ReturnType<typeof setTimeout> | null = null;
-  private readonly inFlight = new Map<string, InFlight>();
-  private seq = 0;
+  private readonly limits: CallLimits;
+  private runner: CallRunner | null = null;
   private current: AgentBridgeStatus = { kind: 'idle' };
   private readonly now: () => number;
   private readonly lifecycle: BridgeClientOptions['lifecycle'];
@@ -148,6 +117,7 @@ export class BridgeClient {
 
   constructor(private readonly opts: BridgeClientOptions) {
     this.now = opts.now ?? (() => Date.now());
+    this.limits = { ...CALL_LIMITS, ...opts.limits };
     this.lifecycle = opts.lifecycle !== undefined ? opts.lifecycle : (typeof window === 'undefined' ? null : window);
   }
 
@@ -229,23 +199,38 @@ export class BridgeClient {
         }
         this.clearWelcomeTimer();
         this.sessionId = msg.sessionId;
+        this.runner = new CallRunner({
+          sessionId: msg.sessionId,
+          limits: this.limits,
+          maxResultBytes: this.opts.maxResultBytes ?? BRIDGE_LIMITS.maxResultBytes,
+          now: this.now,
+          dispatch: this.opts.dispatch,
+          modelIdFor: this.opts.modelIdFor,
+          onActivity: this.opts.onActivity,
+          send: (json) => ws.send(json),
+          isLive: () => ws === this.ws && !this.ended && ws.readyState === OPEN,
+          onFlood: () => this.end({ kind: 'disconnected', reason: 'flooded' }, 1008, 'too many calls'),
+        });
         // This client only ever grants read-only, whatever the welcome says.
         this.setStatus({ kind: 'connected', port: this.opts.port, permission: 'read-only', since: this.now() });
         return;
       }
       case 'call':
-        if (!this.sessionId || msg.sessionId !== this.sessionId) return;
-        if (this.inFlight.has(msg.id)) return;
-        void this.serve(ws, this.sessionId, msg);
+        if (!this.runner || msg.sessionId !== this.sessionId || this.runner.has(msg.id)) return;
+        this.runner.admit(msg);
         return;
-      case 'cancel': {
-        if (!this.sessionId || msg.sessionId !== this.sessionId) return;
-        this.inFlight.get(msg.id)?.controller.abort();
+      case 'cancel':
+        if (this.runner && msg.sessionId === this.sessionId) this.runner.cancel(msg.id);
         return;
-      }
       case 'error':
-        // Fatal errors are followed by a close that carries the outcome; keep
-        // the code in case the close code is lost on the way.
+        if (this.sessionId) {
+          // During a session an error frame is the bridge refusing one frame
+          // of ours; it does not decide how a later close is reported.
+          warn(`the bridge refused a frame: ${msg.code}: ${msg.message}`);
+          return;
+        }
+        // Before welcome every error frame is fatal and followed by a close;
+        // keep the code in case the close code is lost on the way.
         this.lastFrameError = msg.code;
         warn(`the bridge reported ${msg.code}: ${msg.message}`);
         return;
@@ -255,27 +240,12 @@ export class BridgeClient {
   private handleClose(ws: WebSocketLike, code: number): void {
     if (ws !== this.ws || this.ended) return;
     const port = this.opts.port;
-    const fatal = FATAL_ERRORS[code];
-    const ending = ENDINGS[code];
-    if (fatal) return this.end({ kind: 'error', code: fatal, port });
-    if (ending) return this.end({ kind: 'disconnected', reason: ending });
-    const fromFrame = this.lastFrameError ? FRAME_ERRORS[this.lastFrameError] : undefined;
-    if (fromFrame) {
-      return this.end(DISCONNECT_REASONS.has(fromFrame)
-        ? { kind: 'disconnected', reason: fromFrame as AgentBridgeDisconnectReason }
-        : { kind: 'error', code: fromFrame as AgentBridgeErrorCode, port });
-    }
-    if (this.sessionId) return this.end({ kind: 'disconnected', reason: 'connection-lost' });
-    // Opened but dropped before welcome with no reason given: the bridge drops
-    // an unpaired socket silently (1006) when it sends too much, and a 429
-    // before the upgrade looks the same. Report it as a failed connection.
-    if (this.opened) return this.end({ kind: 'error', code: 'unreachable', port });
-    // Never opened: nothing listening, an origin the bridge does not allow,
-    // or the browser's local network permission said no. Only the browser
-    // can tell the last one apart.
-    this.end({ kind: 'error', code: 'unreachable', port });
+    const status = statusForClose(code, { paired: this.sessionId !== null, opened: this.opened, frameError: this.lastFrameError, port });
+    this.lastFrameError = null;
+    this.end(status);
+    // Never opened: only the browser can tell "permission denied" from "nothing listening".
     const probe = this.opts.probePermission;
-    if (probe) {
+    if (!this.opened && probe && status.kind === 'error' && status.code === 'unreachable') {
       void probe().then((permission) => {
         if (permission === 'denied' && this.current.kind === 'error' && this.current.code === 'unreachable') {
           this.setStatus({ kind: 'error', code: 'permission-denied', port });
@@ -286,61 +256,6 @@ export class BridgeClient {
 
   // ── calls ────────────────────────────────────────────────────────────
 
-  private async serve(ws: WebSocketLike, sessionId: string, call: BridgeCallMessage): Promise<void> {
-    const entry: InFlight = {
-      controller: new AbortController(),
-      tool: call.name,
-      modelId: this.modelIdFor(call.arguments),
-      startedAt: this.now(),
-    };
-    this.inFlight.set(call.id, entry);
-    let outcome: ToolOutcome;
-    try {
-      outcome = await this.opts.dispatch(call.name, call.arguments, entry.controller.signal);
-    } catch (err) {
-      outcome = { text: err instanceof Error ? err.message : String(err), structured: null, isError: true, errorCode: 'INTERNAL_ERROR' };
-    }
-    const stillPending = this.inFlight.get(call.id) === entry;
-    if (stillPending) this.inFlight.delete(call.id);
-    const aborted = entry.controller.signal.aborted;
-    this.record(entry, aborted ? { outcome: 'cancelled', errorCode: 'CANCELLED' }
-      : outcome.isError ? { outcome: 'error', errorCode: outcome.errorCode ?? 'INTERNAL_ERROR' } : { outcome: 'ok' });
-    // A cancelled call is already settled on the bridge, and a closed socket has no one to answer.
-    if (aborted || !stillPending || ws !== this.ws || this.ended || ws.readyState !== OPEN) return;
-    try {
-      const frame = buildResultFrame(sessionId, call.id, toCallToolResult(outcome), this.opts.maxResultBytes ?? BRIDGE_LIMITS.maxResultBytes);
-      if (frame.truncated) warn(`the result of ${call.name} was more than the bridge accepts and was truncated`);
-      ws.send(frame.json);
-    } catch (err) {
-      warn(`could not send the result of ${call.name}`, err);
-    }
-  }
-
-  private modelIdFor(args: Record<string, unknown>): string | null {
-    try {
-      return this.opts.modelIdFor?.(args) ?? null;
-    } catch (err) {
-      warn('could not tell which model a call is about', err);
-      return null;
-    }
-  }
-
-  private record(entry: InFlight, result: Pick<AgentBridgeActivity, 'outcome' | 'errorCode'>): void {
-    const row: AgentBridgeActivity = {
-      seq: ++this.seq,
-      tool: entry.tool,
-      modelId: entry.modelId,
-      startedAt: entry.startedAt,
-      durationMs: Math.max(0, this.now() - entry.startedAt),
-      ...result,
-    };
-    try {
-      this.opts.onActivity?.(row);
-    } catch (err) {
-      warn('the activity listener failed', err);
-    }
-  }
-
   // ── teardown ─────────────────────────────────────────────────────────
 
   /** Final state: abort every call, drop the socket, never reconnect. */
@@ -349,8 +264,7 @@ export class BridgeClient {
     this.ended = true;
     this.clearWelcomeTimer();
     this.lifecycle?.removeEventListener('pagehide', this.onPageHide);
-    for (const call of this.inFlight.values()) call.controller.abort();
-    this.inFlight.clear();
+    this.runner?.abortAll();
     const ws = this.ws;
     if (ws && closeCode !== undefined) {
       try {

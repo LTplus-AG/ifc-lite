@@ -179,6 +179,8 @@ describe('viewer tab <-> real MCP bridge, end to end (#9523)', () => {
     const mutate = await mcp.request('tools/call', { name: 'entity_set_attribute', arguments: { global_id: WALL_GID, attribute: 'Name', value: 'x' } });
     assert.equal(mutate.isError, true);
 
+    // Rows are published in batches (every 100 ms), not per call.
+    await until(() => getAgentBridgeState().activity.length >= 3, 'the activity rows were published');
     const activity = getAgentBridgeState().activity;
     assert.deepEqual(activity.map((row) => [row.tool, row.modelId, row.outcome]).reverse(), [
       ['get_entity', 'hello', 'ok'], ['count_entities', 'hello', 'ok'], ['get_entity', 'hello', 'error'],

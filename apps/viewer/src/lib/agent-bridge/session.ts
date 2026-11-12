@@ -18,7 +18,18 @@ import { useViewerStore } from '@/store';
 import { createMainViewerToolHost, dispatchMainViewerTool, mainViewerToolDefinitions } from '@/lib/agent-tools/main-viewer';
 import type { ToolHost } from '@/lib/agent-tools/types';
 import { BridgeClient, type BridgeClientOptions, type LocalNetworkPermission } from './client';
-import { AGENT_BRIDGE_ACTIVITY_LIMIT, getAgentBridgeState, updateAgentBridgeState } from './state';
+import {
+  AGENT_BRIDGE_ACTIVITY_LIMIT, getAgentBridgeState, registerAgentBridgeControls, updateAgentBridgeState,
+  type AgentBridgeActivity, type AgentBridgeStatus,
+} from './state';
+import { isFramed } from './pairing-fragment';
+import { ENDED_KEYS } from './outcome-keys';
+import { toast } from '@/components/ui/toast';
+import { registerEnglish } from '@/i18n';
+import { resolve } from '@/i18n/registry';
+import { agentBridgeEn } from '@/i18n/catalogues/agent-bridge.en';
+
+registerEnglish(agentBridgeEn);
 
 let active: BridgeClient | null = null;
 
@@ -63,11 +74,42 @@ export interface ConnectAgentBridgeOptions {
   WebSocket?: BridgeClientOptions['WebSocket'];
 }
 
-/** Pair this tab with the bridge on `port`. Replaces any connection this tab had. */
+/** Rows not yet published to the UI state; flushed together so a burst of calls is one update. */
+let pendingRows: AgentBridgeActivity[] = [];
+let flushTimer: ReturnType<typeof setTimeout> | null = null;
+const ACTIVITY_FLUSH_MS = 100;
+
+function flushActivity(): void {
+  flushTimer = null;
+  if (pendingRows.length === 0) return;
+  const rows = pendingRows.reverse();
+  pendingRows = [];
+  updateAgentBridgeState({ activity: [...rows, ...getAgentBridgeState().activity].slice(0, AGENT_BRIDGE_ACTIVITY_LIMIT) });
+}
+
+function resetActivity(): void {
+  if (flushTimer !== null) clearTimeout(flushTimer);
+  flushTimer = null;
+  pendingRows = [];
+}
+
+/** A live connection ended while no dialog is open: say so, never silently. */
+function announceEnded(status: AgentBridgeStatus): void {
+  if (status.kind !== 'disconnected' || getAgentBridgeState().dialog) return;
+  toast.error(`${resolve('agentBridge.chip.ended')}: ${resolve(ENDED_KEYS[status.reason])}`, 'agent-bridge-ended');
+}
+
+/** Pair this tab with the bridge on `port`. Replaces any connection this tab had. Refused when framed. */
 export function connectAgentBridge({ port, code, bim, WebSocket }: ConnectAgentBridgeOptions): void {
+  if (isFramed()) {
+    updateAgentBridgeState({ status: { kind: 'error', code: 'framed', port } });
+    return;
+  }
   active?.disconnect();
   const host = createMainViewerToolHost(useViewerStore, bim);
+  resetActivity();
   updateAgentBridgeState({ activity: [] });
+  let wasConnected = false;
   const client = new BridgeClient({
     port,
     pairingCode: code,
@@ -79,12 +121,16 @@ export function connectAgentBridge({ port, code, bim, WebSocket }: ConnectAgentB
     WebSocket,
     probePermission: queryLocalNetworkPermission,
     onStatus: (status) => {
-      if (active === client) updateAgentBridgeState({ status });
+      if (active !== client) return;
+      if (status.kind !== 'connected' && status.kind !== 'connecting') flushActivity();
+      updateAgentBridgeState({ status });
+      if (wasConnected) announceEnded(status);
+      wasConnected = status.kind === 'connected';
     },
     onActivity: (entry) => {
       if (active !== client) return;
-      const activity = [entry, ...getAgentBridgeState().activity].slice(0, AGENT_BRIDGE_ACTIVITY_LIMIT);
-      updateAgentBridgeState({ activity });
+      pendingRows.push(entry);
+      flushTimer ??= setTimeout(flushActivity, ACTIVITY_FLUSH_MS);
     },
   });
   active = client;
@@ -100,6 +146,7 @@ export function disconnectAgentBridge(): void {
   }
   client.disconnect();
   active = null;
+  resetActivity();
 }
 
 /** Forget a finished connection's outcome (the user dismissed it). */
@@ -109,3 +156,5 @@ export function dismissAgentBridgeStatus(): void {
   active = null;
   updateAgentBridgeState({ status: { kind: 'idle' }, activity: [] });
 }
+
+registerAgentBridgeControls({ disconnect: disconnectAgentBridge, dismiss: dismissAgentBridgeStatus });

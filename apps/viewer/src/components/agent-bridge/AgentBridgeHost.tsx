@@ -11,7 +11,8 @@
 
 import { lazy, Suspense, useEffect } from 'react';
 import { consumePendingPairingFragment, onPairingFragment } from '@/lib/agent-bridge/pairing-fragment';
-import { closeAgentBridgeDialog, requestAgentBridgeDialog, useAgentBridgeState } from '@/lib/agent-bridge/state';
+import { closeAgentBridgeDialog, requestAgentBridgeDialog, useAgentBridgeState, type AgentBridgeStatus } from '@/lib/agent-bridge/state';
+import { useViewerStore } from '@/store';
 
 const AgentBridgeDialog = lazy(() => import('./AgentBridgeDialog').then((m) => ({ default: m.AgentBridgeDialog })));
 /** A fresh dialog per request, so a second link re-seeds the code and port. */
@@ -24,10 +25,21 @@ function requestKey(request: object): number {
 }
 
 const AgentBridgeChip = lazy(() => import('./AgentBridgeChip').then((m) => ({ default: m.AgentBridgeChip })));
+const AgentBridgeMobileIndicator = lazy(() => import('./AgentBridgeMobileIndicator').then((m) => ({ default: m.AgentBridgeMobileIndicator })));
 
-/** Opens the connect dialog when asked to, and for each pairing link the tab is opened with. */
+/** A live or just-ended connection is shown; a failed attempt stays in its dialog. */
+function visible(status: AgentBridgeStatus): boolean {
+  return status.kind === 'connecting' || status.kind === 'connected' || status.kind === 'disconnected';
+}
+
+/**
+ * Opens the connect dialog when asked to, and for each pairing link the tab is
+ * opened with. Mounted in every layout, so on the phone layout (no status bar)
+ * it also shows the persistent connection indicator.
+ */
 export function AgentBridgeHost() {
-  const { dialog } = useAgentBridgeState();
+  const { dialog, status } = useAgentBridgeState();
+  const isMobile = useViewerStore((s) => s.isMobile);
   useEffect(() => {
     const take = () => {
       const fragment = consumePendingPairingFragment();
@@ -36,13 +48,17 @@ export function AgentBridgeHost() {
     take();
     return onPairingFragment(take);
   }, []);
-  if (!dialog) return null;
-  return <Suspense fallback={null}><AgentBridgeDialog key={requestKey(dialog)} request={dialog} onClose={closeAgentBridgeDialog} /></Suspense>;
+  return (
+    <>
+      {isMobile && visible(status) && <Suspense fallback={null}><AgentBridgeMobileIndicator /></Suspense>}
+      {dialog && <Suspense fallback={null}><AgentBridgeDialog key={requestKey(dialog)} request={dialog} onClose={closeAgentBridgeDialog} /></Suspense>}
+    </>
+  );
 }
 
-/** The status-bar chip while a connection is live or has just ended. A failed attempt stays in its dialog. */
+/** The desktop status-bar chip (the status bar exists only in the desktop layout). */
 export function AgentBridgeStatusSlot() {
   const { status } = useAgentBridgeState();
-  if (status.kind === 'idle' || status.kind === 'error') return null;
+  if (!visible(status)) return null;
   return <Suspense fallback={null}><AgentBridgeChip /></Suspense>;
 }

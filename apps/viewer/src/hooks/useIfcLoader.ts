@@ -515,7 +515,6 @@ export function useIfcLoader() {
         instancedShards: ArrayBuffer[] = [],
       ): Promise<void> => {
         // A complete model carries its identity (#7022); the pass ran beside the load.
-        // Measurement (post-pixel attribution): how long a finished load waits for its identity pass.
         const sourceContentHash = await trace.span('finalize.identityWait', () => placementIdentity);
         if (isStale()) return;
         // Ordering notice (issue #1804): alignment is baked into a scan at
@@ -649,7 +648,6 @@ export function useIfcLoader() {
           idOffset = registerModelOffset(modelId, maxExpressId);
         }
 
-        // Measurement: the store commit that marks the model complete (synchronous subscribers included).
         trace.span('finalize.publish', () => updateModel(modelId, {
           ifcDataStore: dataStore,
           landXmlDocument: patch?.landXmlDocument,
@@ -1158,7 +1156,6 @@ export function useIfcLoader() {
             }
             if (cacheOutcome === 'serve') {
               const state = useViewerStore.getState();
-              // Measurement: the hit's finalize, under the cold path's span name.
               if (target.kind === 'primary') await trace.span('load.finalize', () => finalizeModel(state.ifcDataStore, state.geometryResult, getViewerSchemaVersion(state.ifcDataStore), {
                 loadState: 'complete', cacheState: 'hit',
                 loadPath: 'cache', tessellationTier: loadTessellationTier, skipSmallCuts: skipSmallCutsAtLoad,

@@ -132,10 +132,9 @@ export const isA = (type: string, bases: readonly string[]): boolean => getInher
  * 8 * EPSILON times the largest coordinate (8 to 16 ulps) times
  * (1 + along / span), with headroom: the seeded sweep in
  * `structural-consistency.test.ts` misreads none. It is capped at 1
- * micrometre, so a wild coordinate cannot hide drift. The cap binds for a
- * member much longer than its element's axis at map coordinates (at 2e7 m,
- * past about 28 axis lengths); there an end exactly at the tolerance can read
- * as drift.
+ * micrometre, so a wild coordinate cannot hide drift. The cap binds only for
+ * a member many times longer than its element's axis at map coordinates;
+ * the sweep includes such cases and still misreads none.
  */
 function offLine(line: StructuralLine, [a, b]: StructuralLine): { distance: number; rounding: number } | null {
   const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];

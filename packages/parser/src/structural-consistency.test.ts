@@ -182,6 +182,12 @@ describe('structural-axis-drift', () => {
     expect(() => checkStructuralConsistency(linked, elements, { axisDriftTolerance: Number.NaN }, within)).toThrow(/axisDriftTolerance/);
   });
 
+  it('lets no wild coordinate widen the drift allowance past 1 micrometre', () => {
+    // A garbage z of 1e14 m would allow 0.36 m uncapped; 0.1 mm of drift must still be reported.
+    const wild = lines([[0, 0.0501, 1e14], [6, 0, 1e14]], [[0, 0, 1e14], [6, 0, 1e14]]);
+    expect(drift(checkStructuralConsistency(linked, elements, {}, wild))).toHaveLength(1);
+  });
+
   describe('does not report an end exactly at the tolerance', () => {
     const oblique = [0.6, 0.8, 0] as const;
     const WEB_MERCATOR_ANGLE = 0.33590935980955805;
@@ -202,6 +208,7 @@ describe('structural-axis-drift', () => {
       });
     }
 
+    // Members up to 41 axis lengths long: some ends fall under the 1 micrometre cap.
     it('over a seeded sweep of 2000 oblique ends at map-scale origins', () => {
       let seed = 1;
       const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
@@ -218,12 +225,6 @@ describe('structural-axis-drift', () => {
         if (!drift(checkStructuralConsistency(linked, elements, {}, lines([at(0, 0), at(length, 0.05001)], [at(0, 0), at(5, 0)]))).length) missedPastTolerance++;
       }
       expect({ reportedAtTolerance, missedPastTolerance }).toEqual({ reportedAtTolerance: 0, missedPastTolerance: 0 });
-    });
-
-    it('lets no wild coordinate widen the allowance past 1 micrometre', () => {
-      // A garbage z of 1e14 m would allow 0.18 m uncapped; 0.1 mm of drift must still be reported.
-      const wild = lines([[0, 0.0501, 1e14], [6, 0, 1e14]], [[0, 0, 1e14], [6, 0, 1e14]]);
-      expect(drift(checkStructuralConsistency(linked, elements, {}, wild))).toHaveLength(1);
     });
   });
 

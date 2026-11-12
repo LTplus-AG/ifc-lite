@@ -73,6 +73,6 @@ test('a contrast browser probe that cannot run is a named gap, not a thrown fail
   writeFileSync(join(root, 'apps/viewer/package.json'), '{"scripts":{"test":"tsx --test"}}');
   const dynamic = 'apps/viewer/src/test/dynamic.layout.test.tsx';
   writeFileSync(join(root, dynamic), "const h = await import('@/test/contrast/render-harness.js');\n");
-  const broken = () => { throw new Error('contrast browser probe failed: Cannot find package tsx\nstack'); };
-  assert.match(oraclePrerequisites(root, { test: dynamic }, 'unused', broken), /a contrast browser answer \(contrast browser probe failed: Cannot find package tsx\)/);
+  const broken = () => { throw new Error('contrast browser probe failed: tsx exited 1\nstack'); };
+  assert.match(oraclePrerequisites(root, { test: dynamic }, 'unused', broken), /a contrast browser answer \(contrast browser probe failed: tsx exited 1\)/);
 });

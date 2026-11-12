@@ -12,12 +12,17 @@ import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { checkContrastSkips } from './check-contrast-skips.mjs';
-import { CONTRAST_SKIP_MARKER, contrastSkipSummary, countJunitContrastSkips, nodeOptionsReportToStdout } from './lib/contrast-skips.mjs';
+
+// Dynamic: the revert oracle deletes these modules, and a static import would
+// fail the whole file instead of letting the assertions go red.
+const gateModule = await import('./check-contrast-skips.mjs').catch(() => null);
+const libModule = await import('./lib/contrast-skips.mjs').catch(() => null);
+function gate() { assert.ok(gateModule, 'scripts/check-contrast-skips.mjs exists'); return gateModule; }
+function lib() { assert.ok(libModule, 'scripts/lib/contrast-skips.mjs exists'); return libModule; }
 
 const REPORTER = fileURLToPath(new URL('./lib/contrast-skips.mjs', import.meta.url));
 const GATE = fileURLToPath(new URL('./check-contrast-skips.mjs', import.meta.url));
-const REASON = `${CONTRAST_SKIP_MARKER} neither Google Chrome nor Playwright's Chromium found, browser tests skipped (CI fails instead).`;
+const REASON = `contrast harness: neither Google Chrome nor Playwright's Chromium found, browser tests skipped (CI fails instead).`;
 
 /** A real `node --test` run: one pass, `contrastSkips` harness skips, one unrelated skip. */
 function runFixture(t, contrastSkips, { env = {}, args = [] } = {}) {
@@ -46,20 +51,21 @@ function junitFixture(t, contrastSkips) {
 }
 
 test("counts only the harness's skips in node's own JUnit report", (t) => {
-  assert.equal(countJunitContrastSkips(readFileSync(junitFixture(t, 3), 'utf8')), 3);
-  assert.equal(countJunitContrastSkips(readFileSync(junitFixture(t, 0), 'utf8')), 0);
+  assert.equal(lib().countJunitContrastSkips(readFileSync(junitFixture(t, 3), 'utf8')), 3);
+  assert.equal(lib().countJunitContrastSkips(readFileSync(junitFixture(t, 0), 'utf8')), 0);
 });
 
 test('the CI gate fails on any contrast skip and passes on none', (t) => {
-  const failing = checkContrastSkips([junitFixture(t, 1)]);
+  const failing = gate().checkContrastSkips([junitFixture(t, 1)]);
   assert.equal(failing.ok, false);
   assert.match(failing.message, /1 contrast test\(s\) SKIPPED/);
-  assert.equal(checkContrastSkips([junitFixture(t, 0)]).ok, true);
+  assert.equal(gate().checkContrastSkips([junitFixture(t, 0)]).ok, true);
 });
 
 test('the CI gate fails when the report is missing or not named, and exits 1 from the command line', (t) => {
-  assert.equal(checkContrastSkips([]).ok, false);
-  assert.match(checkContrastSkips(['/nonexistent/report.xml']).message, /not found/);
+  gate();
+  assert.equal(gate().checkContrastSkips([]).ok, false);
+  assert.match(gate().checkContrastSkips(['/nonexistent/report.xml']).message, /not found/);
   const cli = spawnSync(process.execPath, [GATE, junitFixture(t, 2)], { encoding: 'utf8' });
   assert.equal(cli.status, 1);
   assert.match(cli.stderr, /2 contrast test\(s\) SKIPPED/);
@@ -67,20 +73,23 @@ test('the CI gate fails when the report is missing or not named, and exits 1 fro
 });
 
 test('a local run keeps its normal output and ends with the skip count', (t) => {
+  lib();
   const { run } = runFixture(t, 2, { args: [`--test-reporter=${REPORTER}`, '--test-reporter-destination=stdout'] });
   assert.equal(run.status, 0, run.stderr);
   assert.match(run.stdout, /\bruns\b/, "node's default output is still rendered");
   assert.match(run.stdout, /# skipped 3/);
-  assert.ok(run.stdout.trimEnd().endsWith(contrastSkipSummary(2)), run.stdout.slice(-300));
+  assert.ok(run.stdout.trimEnd().endsWith(lib().contrastSkipSummary(2)), run.stdout.slice(-300));
 });
 
 test('a run with no contrast skips prints no summary line', (t) => {
+  lib();
   const { run } = runFixture(t, 0, { args: [`--test-reporter=${REPORTER}`, '--test-reporter-destination=stdout'] });
   assert.equal(run.status, 0, run.stderr);
   assert.doesNotMatch(run.stdout, /contrast test\(s\) SKIPPED/);
 });
 
 test('when NODE_OPTIONS already picks reporters (CI) it adds only the summary, not a second copy of the output', (t) => {
+  lib();
   const { run } = runFixture(t, 1, {
     env: { NODE_OPTIONS: '--test-reporter=tap --test-reporter-destination=stdout' },
     args: [`--test-reporter=${REPORTER}`, '--test-reporter-destination=stdout'],
@@ -91,15 +100,16 @@ test('when NODE_OPTIONS already picks reporters (CI) it adds only the summary, n
 });
 
 test('only a NODE_OPTIONS reporter that writes to stdout suppresses the default output', () => {
-  assert.equal(nodeOptionsReportToStdout(''), false);
-  assert.equal(nodeOptionsReportToStdout(undefined), false);
-  assert.equal(nodeOptionsReportToStdout('--max-old-space-size=4096'), false);
-  assert.equal(nodeOptionsReportToStdout('--test-reporter=junit --test-reporter-destination=out.xml'), false);
-  assert.equal(nodeOptionsReportToStdout('--test-reporter=tap'), true);
-  assert.equal(nodeOptionsReportToStdout('--test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml'), true);
+  assert.equal(lib().nodeOptionsReportToStdout(''), false);
+  assert.equal(lib().nodeOptionsReportToStdout(undefined), false);
+  assert.equal(lib().nodeOptionsReportToStdout('--max-old-space-size=4096'), false);
+  assert.equal(lib().nodeOptionsReportToStdout('--test-reporter=junit --test-reporter-destination=out.xml'), false);
+  assert.equal(lib().nodeOptionsReportToStdout('--test-reporter=tap'), true);
+  assert.equal(lib().nodeOptionsReportToStdout('--test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml'), true);
 });
 
 test('with only a file reporter in NODE_OPTIONS the console output is still rendered', (t) => {
+  lib();
   const { run } = runFixture(t, 1, {
     env: { NODE_OPTIONS: '--test-reporter=junit --test-reporter-destination=out.xml' },
     args: [`--test-reporter=${REPORTER}`, '--test-reporter-destination=stdout'],

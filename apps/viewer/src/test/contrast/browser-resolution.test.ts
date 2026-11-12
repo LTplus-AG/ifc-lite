@@ -113,8 +113,10 @@ describe('the skip reason is the one the CI gate and the run summary count', () 
   it('starts with the marker in scripts/lib/contrast-skips.mjs', async () => {
     // Plain .mjs outside the viewer: a computed specifier keeps it out of the typed module graph.
     const lib = new URL('../../../../../scripts/lib/contrast-skips.mjs', import.meta.url).href;
-    const { CONTRAST_SKIP_MARKER }: { CONTRAST_SKIP_MARKER: string } = await import(lib);
-    assert.ok(CONTRAST_BROWSER_MISSING.startsWith(CONTRAST_SKIP_MARKER), CONTRAST_BROWSER_MISSING);
+    // Caught so that, with the module reverted, this assertion goes red instead of the load failing.
+    const skips: { CONTRAST_SKIP_MARKER: string } | null = await import(lib).catch(() => null);
+    assert.ok(skips, 'scripts/lib/contrast-skips.mjs exists');
+    assert.ok(CONTRAST_BROWSER_MISSING.startsWith(skips.CONTRAST_SKIP_MARKER), CONTRAST_BROWSER_MISSING);
   });
 });
 

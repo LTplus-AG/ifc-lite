@@ -37,7 +37,7 @@ export function structuralAttributes(entity: string, args: readonly string[], fr
   }
   if (entity !== 'IFCSTRUCTURALLINEARACTION' && entity !== 'IFCSTRUCTURALPLANARACTION') return null;
   const name = entity === 'IFCSTRUCTURALLINEARACTION' ? 'IfcStructuralLinearAction' : 'IfcStructuralPlanarAction';
-  const slots = (schema: 'IFC2X3' | 'IFC4') => getSchemaRegistryForVersion(schema).entities[name]?.allAttributes.map(a => a.name);
+  const slots = (schema: 'IFC2X3' | 'IFC4') => getSchemaRegistryForVersion(schema).entities[name]?.allAttributes?.map(a => a.name);
   const src = slots(from), tgt = slots(to);
   if (!src || !tgt) return null;
   return tgt.map(name => args[src.indexOf(name)] ?? (name === 'PredefinedType' ? '.CONST.' : '$')).join(',');

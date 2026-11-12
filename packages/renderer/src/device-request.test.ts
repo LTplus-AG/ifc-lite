@@ -95,7 +95,7 @@ function quietly<T>(fn: () => Promise<T>): Promise<T> {
 describe('early renderer device request', () => {
   it('init adopts the early device and requests no second one', async () => {
     const gpu = installGpu();
-    assert.equal(prerequestRendererDevice(), true);
+    assert.notEqual(prerequestRendererDevice(), null);
     await settle();
     assert.equal(gpu.devices.length, 1, 'the early request asked for the device before any renderer existed');
 
@@ -160,7 +160,7 @@ describe('early renderer device request', () => {
       prerequestRendererDevice();
       await settle();
     });
-    assert.equal(prerequestRendererDevice(), true, 'a failed request blocked the next one until its hold expired');
+    assert.notEqual(prerequestRendererDevice(), null, 'a failed request blocked the next one until its hold expired');
     await settle();
     assert.equal(gpu.devices.length, 1);
   });
@@ -178,12 +178,21 @@ describe('early renderer device request', () => {
     assert.equal(gpu.devices.length, 2);
   });
 
+  it('resolves its promise once requestDevice is in flight, before the device exists', async () => {
+    const gpu = installGpu();
+    const asked = prerequestRendererDevice();
+    assert.ok(asked);
+    assert.equal(gpu.devices.length, 0, 'precondition: nothing requested synchronously beyond the adapter');
+    await asked;
+    assert.equal(gpu.devices.length, 1, 'the promise resolved before requestDevice was issued');
+  });
+
   it('keeps one early request at a time, and makes none without WebGPU', async () => {
     installGpu();
-    assert.equal(prerequestRendererDevice(), true);
-    assert.equal(prerequestRendererDevice(), false, 'a second early request replaced the pending one');
+    assert.notEqual(prerequestRendererDevice(), null);
+    assert.equal(prerequestRendererDevice(), null, 'a second early request replaced the pending one');
     await claimPrerequestedRendererDevice();
     Object.defineProperty(globalThis, 'navigator', { value: {}, configurable: true });
-    assert.equal(prerequestRendererDevice(), false);
+    assert.equal(prerequestRendererDevice(), null);
   });
 });

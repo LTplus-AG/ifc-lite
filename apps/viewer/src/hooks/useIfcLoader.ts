@@ -257,7 +257,7 @@ export function useIfcLoader() {
     const draping = drapeIfGeoRaster(file); if (draping) return draping; // #5942: imagery, never a model
     const geometryKernel = beginGeometryKernel(file, target, () => void loadFileRef.current?.(file, target, options)); if (geometryKernel.refused) return settleKernelRefusal(geometryKernel.refused, options?.onLoadError); // #7955 M2: out-of-scope retained requests stop before any work
     const { resetViewerState, clearAllModels } = useViewerStore.getState();
-    if (!getGlobalRenderer()) prerequestRendererDevice(); // No viewport yet: it mounts with this reset. Its device request runs beside it.
+    const deviceAsked = getGlobalRenderer() ? null : prerequestRendererDevice(); // No viewport yet: it mounts with the reset below; its device request runs beside it.
     // A primary supersedes every outstanding hook owner via the shared canceller. Federated additions capture this hook's session and remain independent.
     const currentSession = target.kind === 'primary'
       ? ++loadSessionRef.current
@@ -427,6 +427,7 @@ export function useIfcLoader() {
     try {
       // Reset all viewer state before loading new file — PRIMARY ONLY. A
       // federated add must never wipe model #1; it joins the existing map.
+      if (deviceAsked) { await deviceAsked; if (isStale()) return; } // let requestDevice go out before the reset blocks the main thread
       if (target.kind === 'primary') {
         resetViewerState();
         clearAllModels();

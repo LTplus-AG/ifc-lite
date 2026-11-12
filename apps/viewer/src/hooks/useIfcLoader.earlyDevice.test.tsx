@@ -39,6 +39,7 @@ function installGpu() {
     features: new Set<string>(),
     limits: { maxBufferSize: 1 << 30, maxStorageBufferBindingSize: 1 << 29 },
     requestDevice: async () => {
+      order.push('requestDevice');
       const device = { lost: new Promise(() => {}), limits: { maxTextureDimension2D: 8192 }, features: new Set(), destroy() {} };
       devices.push(device);
       return device;
@@ -99,7 +100,7 @@ describe('useIfcLoader — the renderer device is requested at the pick (pre-pix
     await act(async () => { await hookApi!.loadFile(someFile()).catch(() => {}); });
 
     assert.equal(gpu.adapterCalls.length, 1, 'no early device request was made');
-    assert.deepEqual(order, ['requestAdapter', 'reset'], 'the device was not requested before the load reset the interface');
+    assert.deepEqual(order, ['requestAdapter', 'requestDevice', 'reset'], 'the device request was not in flight before the load reset the interface');
     assert.equal(gpu.devices.length, 1);
 
     const device = new WebGPUDevice();

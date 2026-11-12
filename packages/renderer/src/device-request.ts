@@ -34,7 +34,7 @@ export interface RequestedRendererDevice {
  * A rejection of the full request is retried with the limits alone, and only a
  * rejection of that reaches the bare last-resort request.
  */
-export async function requestRendererDevice(gpu: GPU): Promise<RequestedRendererDevice> {
+export async function requestRendererDevice(gpu: GPU, onDeviceRequested?: () => void): Promise<RequestedRendererDevice> {
   const adapter = await requestAdapterWithTimeout(gpu);
   if (!adapter) {
     throw new Error('Failed to get GPU adapter');
@@ -57,7 +57,9 @@ export async function requestRendererDevice(gpu: GPU): Promise<RequestedRenderer
   let device: GPUDevice | null = null;
   // Stage 1: everything we want.
   try {
-    device = await adapter.requestDevice({ requiredLimits, requiredFeatures });
+    const first = adapter.requestDevice({ requiredLimits, requiredFeatures });
+    onDeviceRequested?.();
+    device = await first;
   } catch (e) {
     if (requiredFeatures.length > 0) {
       console.warn(
@@ -99,15 +101,27 @@ interface EarlyRequest {
 
 let early: EarlyRequest | null = null;
 
+/** How long a caller waits for the device request to be in flight (`prerequestRendererDevice`'s promise). */
+export const DEVICE_REQUEST_WAIT_MS = 50;
+
 /**
  * Start the renderer's device request now, for the next `WebGPUDevice.init()`.
- * Returns false (and does nothing) when one is already pending or WebGPU is
+ * Returns null (and does nothing) when one is already pending or WebGPU is
  * absent. A device no renderer claims within `holdMs` is destroyed, so a load
  * that fails before its viewport mounts holds it only briefly.
+ *
+ * The request takes two steps, adapter then device, and the second can only be
+ * issued once the first resolves, which needs a turn of the event loop. A
+ * caller about to block the main thread (a load's interface reset) awaits the
+ * returned promise first: it resolves once `requestDevice` is in flight, or
+ * after {@link DEVICE_REQUEST_WAIT_MS} at most, or when the request failed.
  */
-export function prerequestRendererDevice(holdMs = PREREQUESTED_DEVICE_HOLD_MS): boolean {
+export function prerequestRendererDevice(holdMs = PREREQUESTED_DEVICE_HOLD_MS): Promise<void> | null {
   const gpu = (globalThis.navigator as { gpu?: GPU } | undefined)?.gpu;
-  if (early || !gpu) return false;
+  if (early || !gpu) return null;
+  let inFlight!: () => void;
+  const deviceRequested = new Promise<void>((resolve) => { inFlight = resolve; });
+  const bound = setTimeout(() => inFlight(), DEVICE_REQUEST_WAIT_MS);
   const entry: EarlyRequest = {
     result: Promise.resolve(null),
     lost: false,
@@ -122,7 +136,7 @@ export function prerequestRendererDevice(holdMs = PREREQUESTED_DEVICE_HOLD_MS): 
     early = null;
     clearTimeout(entry.expiry);
   };
-  entry.result = requestRendererDevice(gpu).then((requested) => {
+  entry.result = requestRendererDevice(gpu, () => inFlight()).then((requested) => {
     // A loss before the claim: the renderer must request a fresh device.
     void requested.device.lost?.then(() => {
       entry.lost = true;
@@ -133,9 +147,9 @@ export function prerequestRendererDevice(holdMs = PREREQUESTED_DEVICE_HOLD_MS): 
     console.warn('[WebGPU] early device request failed; the renderer will request its own:', err);
     if (early === entry) forget();
     return null;
-  });
+  }).finally(() => { clearTimeout(bound); inFlight(); });
   early = entry;
-  return true;
+  return deviceRequested;
 }
 
 /**

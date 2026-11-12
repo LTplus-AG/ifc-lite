@@ -159,7 +159,7 @@ export function AgentBridgeDialog({ request, onClose, load = loadSession }: Agen
             <li>{t('agentBridge.dialog.browserPrompt')}</li>
           </ul>
           {liveBefore !== null && !attempted && (
-            <p role="status" className="rounded border p-2 text-xs">{t('agentBridge.dialog.replaces', { port: liveBefore })}</p>
+            <output className="block rounded border p-2 text-xs">{t('agentBridge.dialog.replaces', { port: liveBefore })}</output>
           )}
           {request.source === 'manual' && (
             <div className="flex flex-col gap-1 text-xs">

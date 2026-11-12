@@ -130,7 +130,7 @@ const SYNTHETIC = `ISO-10303-21;HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('g
 #102=IFCSTRUCTURALLOADSINGLEFORCE('P6',1.,0.,0.,$,$,$);
 #103=IFCSTRUCTURALPOINTACTION(${id(103)},$,'A6',$,$,$,$,#102,.GLOBAL_COORDS.,.F.);
 #131=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(131)},$,$,$,#53,#103);
-#140=IFCSTRUCTURALANALYSISMODEL(${id(140)},$,'Turned',$,$,.LOADING_3D.,$,(#160),$,#23);
+#140=IFCSTRUCTURALANALYSISMODEL(${id(140)},$,'Turned',$,$,.LOADING_3D.,$,(#160,#162),$,#23);
 #160=IFCSTRUCTURALLOADGROUP(${id(160)},$,'G3',$,$,.LOAD_GROUP.,.PERMANENT_G.,.DEAD.,1.,$);
 #105=IFCSTRUCTURALPOINTACTION(${id(105)},$,'A7',$,$,$,$,#102,.GLOBAL_COORDS.,.F.);
 #132=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(132)},$,$,$,#53,#105);
@@ -139,7 +139,11 @@ const SYNTHETIC = `ISO-10303-21;HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('g
 #106=IFCSTRUCTURALPOINTACTION(${id(106)},$,'A8',$,$,$,$,#102,.GLOBAL_COORDS.,.F.);
 #133=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(133)},$,$,$,#53,#106);
 #144=IFCRELASSIGNSTOGROUP(${id(144)},$,$,$,(#106),$,#143);
-#141=IFCSTRUCTURALANALYSISMODEL(${id(141)},$,'Moved',$,$,.LOADING_3D.,$,$,$,#20);
+#141=IFCSTRUCTURALANALYSISMODEL(${id(141)},$,'Moved',$,$,.LOADING_3D.,$,(#162),$,#20);
+#162=IFCSTRUCTURALLOADGROUP(${id(162)},$,'G4',$,$,.LOAD_GROUP.,.PERMANENT_G.,.DEAD.,1.,$);
+#107=IFCSTRUCTURALPOINTACTION(${id(107)},$,'A9',$,$,$,$,#102,.GLOBAL_COORDS.,.F.);
+#134=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(134)},$,$,$,#53,#107);
+#163=IFCRELASSIGNSTOGROUP(${id(163)},$,$,$,(#107),$,#162);
 #142=IFCRELASSIGNSTOGROUP(${id(142)},$,$,$,(#103),$,#140);
 #150=IFCBOUNDARYEDGECONDITION('line',${T},${T},${T},${T},${T},${T});
 #151=IFCDIRECTION((0.,1.,0.));
@@ -228,6 +232,9 @@ describe('structuralGlyphs on synthetic data, one kind each', () => {
     // A7 reaches 'Turned' only through its load group, which the model is LoadedBy.
     const [loadedBy] = bySource(glyphs, 105);
     close(loadedBy.kind === 'force' ? loadedBy.direction : undefined, [0, 1, 0]);
+    // A9's group is loaded by both 'Turned' and 'Moved', which decides nothing: world axes.
+    const [shared] = bySource(glyphs, 107);
+    close(shared.kind === 'force' ? shared.direction : undefined, [1, 0, 0]);
     // A8's model points SharedPlacement at an IfcAxis2Placement3D, which is not a placement: refused, not drawn in world axes.
     expect(bySource(glyphs, 106)).toEqual([]);
   });

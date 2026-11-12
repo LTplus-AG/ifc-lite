@@ -120,8 +120,9 @@ export function glyphPath(glyphs: readonly ViewGlyph[], project: Project, worldC
       const axis = direction && screenAxis(project, position, p, { x: -direction.x, y: -direction.y, z: -direction.z }, worldCap);
       // The world cap measured along the longest-looking render axis, so a
       // support seen end-on keeps its size instead of shrinking to the floor.
-      // Once per source: its stations sit close together.
-      if (supportCapPx === undefined) {
+      // Once per source (its stations sit close together); a zero, from a
+      // station that would not project, is measured again at the next one.
+      if (!supportCapPx) {
         supportCapPx = 0;
         for (const a of WORLD_AXES) {
           supportCapPx = Math.max(supportCapPx, screenAxis(project, position, p, a, worldCap)?.px ?? 0);

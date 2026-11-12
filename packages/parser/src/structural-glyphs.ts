@@ -164,20 +164,34 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
   for (const m of extraction.members) itemsByGlobalId.set(m.globalId, { expressId: m.expressId, type: m.type, Axis: m.Axis, analysisModelGlobalIds: m.analysisModelGlobalIds });
   for (const c of extraction.connections) itemsByGlobalId.set(c.globalId, { expressId: c.expressId, type: c.type, Axis: connectionAxis(c), connection: c, analysisModelGlobalIds: c.analysisModelGlobalIds });
   // GLOBAL_COORDS is the analysis model's coordinate system: its
-  // SharedPlacement (IFC4 and later), else IFC world. A model reaches an
-  // activity directly, through a load group it is LoadedBy, or through the
-  // item. An unreadable SharedPlacement (null) refuses the model's loads.
+  // SharedPlacement, or IFC world when it has none (IFC2X3 has none). An
+  // unreadable SharedPlacement (null) refuses the model's loads. The model is
+  // the one the activity is assigned to, else its item's, else the one model
+  // that is LoadedBy its load group (a group several models load decides
+  // nothing), else the file's only model.
   const modelFrames = new Map<string, Frame | null>();
+  const groupModels = new Map<string, (Frame | null)[]>();
   for (const m of extraction.analysisModels) {
     const frame = reader.sharedPlacementFrame(m.expressId);
     const resolved = frame === undefined ? IDENTITY : frame;
     modelFrames.set(m.globalId, resolved);
-    for (const g of m.loadGroupGlobalIds) if (!modelFrames.has(g)) modelFrames.set(g, resolved);
+    for (const g of m.loadGroupGlobalIds) groupModels.set(g, [...(groupModels.get(g) ?? []), resolved]);
   }
   const onlyModelFrame = extraction.analysisModels.length === 1 ? modelFrames.get(extraction.analysisModels[0].globalId)! : IDENTITY;
+  const firstFrame = (ids: readonly string[], lookup: (id: string) => Frame | null | undefined): Frame | null | undefined => {
+    for (const id of ids) {
+      const frame = lookup(id);
+      if (frame !== undefined) return frame;
+    }
+    return undefined;
+  };
   const globalFrame = (activity: StructuralActivityInfo, item: ItemRef | undefined): Frame | null => {
-    for (const g of [...activity.groupGlobalIds, ...(item?.analysisModelGlobalIds ?? [])]) {
-      if (modelFrames.has(g)) return modelFrames.get(g)!;
+    const byModel = (id: string) => modelFrames.get(id);
+    const byGroup = (id: string) => { const frames = groupModels.get(id); return frames?.length === 1 ? frames[0] : undefined; };
+    // `null` (a refused model) is an answer, so no `??` between the steps.
+    for (const [ids, lookup] of [[activity.groupGlobalIds, byModel], [item?.analysisModelGlobalIds ?? [], byModel], [activity.groupGlobalIds, byGroup]] as const) {
+      const frame = firstFrame(ids, lookup);
+      if (frame !== undefined) return frame;
     }
     return onlyModelFrame;
   };

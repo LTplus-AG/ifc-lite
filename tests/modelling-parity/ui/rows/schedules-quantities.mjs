@@ -13,6 +13,7 @@ export default {
       const tasks = [await task(s,'draw two 5 m walls',async () => { await wall(s); await wall(s,3); })];
       const original = (await oracleModel(s)).step;
       const notes = [];
+      const evidence = [];
       let csv = null;
       tasks.push(await task(s,'Analyze > Lists > Wall Schedule > Export CSV',async () => {
         await s.ui.click(s.page.getByRole('tab',{name:'Analyze',exact:true}));
@@ -44,8 +45,9 @@ export default {
         await s.ui.click(typeMenu);
         await s.ui.click(s.page.getByRole('menuitem', { name: /Group by this column/ }));
         await s.ui.click(menu(/^Length/));
-        await s.ui.click(s.page.getByRole('menuitemcheckbox', { name: /Sum this column/ }));
+        await s.ui.click(s.page.getByRole('menuitemcheckbox', { name: /Sum.*this column/ }));
         totals = await readScheduleTotals(s);
+        evidence.push(await s.shot('grouped-totals'));
       }));
       tasks.push(await task(s, 'edit one wall length to 6 m and read live totals', async () => {
         await selectWall(s);
@@ -57,12 +59,14 @@ export default {
       }));
       await oracleModel(s);
       const q = original.of('IFCWALL').map((w) => original.quantities(w.id));
-      return finish(s,tasks,[
+      const result = await finish(s,tasks,[
         check('two walls have 5 m Length and positive NetVolume',q.length === 2 && q.every((v) => near(v.Length,5) && v.NetVolume > 0),JSON.stringify(q)),
         check('schedule contains the two authored walls',rows.length === 2,`${rows.length} schedule rows`),
         check('CSV contains wall lengths',!!csv && scheduleLengths(csv.text).length === 2 && scheduleLengths(csv.text).every((v) => near(v,5)),csv?.text.slice(0,600) ?? 'no schedule CSV download'),
         check('group and footer Length totals are 10 m', totals?.groups.length > 0 && near(totals.total,10) && near(totals.groups.reduce((a,b)=>a+b,0),10), JSON.stringify(totals)),
         check('group and footer totals refresh to 11 m after editing', editedTotals?.groups.length > 0 && near(editedTotals.total,11) && near(editedTotals.groups.reduce((a,b)=>a+b,0),11), JSON.stringify(editedTotals)),
       ],notes);
+      result.evidence.push(...evidence);
+      return result;
     },
   };

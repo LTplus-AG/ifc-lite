@@ -1,0 +1,58 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+#
+# Every tracked path whose content can change what scripts/build-wasm.sh and
+# scripts/test-diff-decode-leaks.sh --build-only write. One path per line;
+# `#` starts a comment. A `cache-only:` path cannot change the published npm
+# bundle (release.yml builds with BUILD_CORE=1 only), so it keys the CI cache
+# but not the prebuilt-eligibility probes. The single definition, read by:
+#
+#   scripts/ci-wasm-prebuilt-eligible.sh  CI: may the published bundle stand in?
+#   scripts/vercel-install.sh             Vercel: the same question
+#     (both through `node scripts/ci-wasm-cache.mjs published-paths`)
+#   scripts/ci-wasm-cache.mjs             CI: the WASM build cache key
+#
+# A path missing here is the one way the cache can hand a PR output built
+# from other sources, so the list errs wide. Each entry must exist at HEAD;
+# the readers refuse (and build from source) when one does not.
+
+# Every crate: sources, per-crate Cargo.toml (features, and
+# [package.metadata.wasm-pack.profile.release] wasm-opt = false), build.rs,
+# and the files crates include_str! (all under rust/).
+rust
+# Workspace manifest: members and [profile.release] (opt-level, lto,
+# codegen-units, strip, panic = abort, overflow-checks).
+Cargo.toml
+# Every dependency version, wasm-bindgen included. wasm-pack downloads the
+# wasm-bindgen CLI matching this lock, so the lock pins the bindgen too.
+Cargo.lock
+# Toolchain pin (channel, wasm32 target, rust-src for build-std).
+rust-toolchain.toml
+# wasm32 rustflags: max memory, stack size, +simd128.
+.cargo/config.toml
+# Root README: rust/wasm-bindings/Cargo.toml's `readme` points here and
+# wasm-pack copies it to packages/wasm/pkg/README.md, a cached file.
+# cache-only: packages/wasm/package.json's `files` does not ship it, so it
+# cannot change the published bundle. (pkg/LICENSE and pkg-diff/README.md come
+# from rust/wasm-bindings/LICENSE and rust/diff-wasm/README.md, under rust.)
+cache-only:README.md
+# wasm-pack flags, the nightly pin, CARGO_UNSTABLE_BUILD_STD, the .d.ts
+# post-processing and the engine-binary marker.
+scripts/build-wasm.sh
+# Sourced by build-wasm.sh with BUILD_WIDE=1 only.
+cache-only:scripts/lib/build-wasm-wide.sh
+# Builds the decode-leak probe bundle (pkg-diff-decode-test).
+cache-only:scripts/test-diff-decode-leaks.sh
+# The cached build's commands, run by both workflows (the build step itself
+# may carry nothing else; scripts/lib/ci-wasm-build-step.mjs checks).
+cache-only:scripts/ci-wasm-build.sh
+# Pinned wasm-pack version and checksum. Published, not cache-only: release.yml
+# builds the npm bundle with this pin, so a PR that moves it must not reuse the
+# old bundle. The cost: an edit to the action's CI-only settings (a Dependabot
+# SHA bump) also forces a source build until the next @ifc-lite/wasm release.
+.github/actions/setup-wasm-build
+# What the cache stores and requires (OUTPUT_DIRS, REQUIRED_OUTPUTS): a change
+# there must move the key, or every existing entry is rejected on restore and
+# cannot be overwritten.
+cache-only:scripts/ci-wasm-cache.mjs

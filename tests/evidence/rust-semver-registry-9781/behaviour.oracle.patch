@@ -1,0 +1,22 @@
+diff --git b/scripts/check-rust-semver-registry.mjs a/scripts/check-rust-semver-registry.mjs
+index 9ccb3cb123..9b02e2e238 100644
+--- b/scripts/check-rust-semver-registry.mjs
++++ a/scripts/check-rust-semver-registry.mjs
+@@ -38,7 +38,7 @@ export const NEEDS_TOOL_EXIT = 3;
+ export function registryOnlyVerdict({ crates, workspaceVersion, latestPublished }) {
+   let asked = false;
+   const ask = () => {
+-    // (a runner being asked is not recorded)
++    asked = true;
+     return { status: 1, output: '', via: null };
+   };
+   const result = checkRustSemver({ crates, workspaceVersion, latestPublished, runSemverChecks: ask, runTagBaseline: ask });
+@@ -66,7 +66,7 @@ async function main() {
+   // `report` exits 1 on a refusal, so only a final exit-0 verdict gets here.
+   if (!process.env.GITHUB_OUTPUT) return;
+   try {
+-    // (needs_cargo=false is never written)
++    appendFileSync(process.env.GITHUB_OUTPUT, 'needs_cargo=false\n');
+   } catch (err) {
+     console.warn(`⚠️ could not write needs_cargo=false (${err.message}); the full gate will run.`);
+   }

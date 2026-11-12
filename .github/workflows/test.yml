@@ -690,13 +690,57 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      # WASM BUILD CACHE (scripts/ci-wasm-cache.mjs, repo variable
+      # CI_WASM_CACHE). `off` (unset, or any other value) is the old flow:
+      # every step below reads `active != 'true'` and runs as before.
+      # `shadow` restores AND builds, then compares byte for byte; `on` lets a
+      # pull_request run (not a Mergify batch) use a verified hit and skip the
+      # toolchain, the build and the probe-bundle build. The key digests every
+      # path in scripts/wasm-build-inputs.txt plus the build env. Both decision
+      # steps are continue-on-error and their consumers test `== 'true'` (use
+      # the cache) or `!= 'false'` (build), so a crash means a source build.
+      # A PR can only read entries saved on main or on its own ref; main's are
+      # written by .github/workflows/wasm-build-cache.yml on every push.
+      - name: Plan the WASM build cache
+        id: wasmplan
+        if: needs.changes.outputs.wasm_prebuilt != 'true'
+        continue-on-error: true
+        env:
+          CI_WASM_CACHE: ${{ vars.CI_WASM_CACHE }}
+          PR_BATCH: ${{ needs.changes.outputs.batch }}
+        # The script appends to $GITHUB_OUTPUT itself; its stdout carries
+        # annotations and must not be redirected there.
+        run: node scripts/ci-wasm-cache.mjs plan
+
+      # Exact key only: a prefix match would restore another tree's build.
+      - name: Restore the WASM build cache
+        id: wasmrestore
+        if: steps.wasmplan.outputs.active == 'true'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.wasmplan.outputs.paths }}
+          key: ${{ steps.wasmplan.outputs.key }}
+
+      - name: Resolve the WASM build
+        id: wasm
+        if: steps.wasmplan.outputs.active == 'true'
+        continue-on-error: true
+        env:
+          WASM_CACHE_MODE: ${{ steps.wasmplan.outputs.mode }}
+          WASM_CACHE_VERIFY: ${{ steps.wasmplan.outputs.verify }}
+          WASM_CACHE_STORE: ${{ steps.wasmplan.outputs.store }}
+          WASM_CACHE_KEY: ${{ steps.wasmplan.outputs.key }}
+          WASM_CACHE_HIT: ${{ steps.wasmrestore.outputs.cache-hit }}
+        run: node scripts/ci-wasm-cache.mjs resolve
+
       # Rust + wasm-pack for the wasm32 build (pure-Rust CSG kernel — no
       # C++ toolchain needed since M9). Single-sourced in
       # .github/actions/setup-wasm-build so the four wasm-building
-      # workflows stay in lock-step. Skipped on the prebuilt fast path unless the
-      # imported-geometry freshness check below needs cargo.
+      # workflows stay in lock-step. Skipped on the prebuilt fast path and on
+      # a used cache hit, unless the imported-geometry freshness check below
+      # needs cargo.
       - name: Setup WASM build toolchain
-        if: needs.changes.outputs.wasm_prebuilt != 'true' || needs.changes.outputs.rust == 'true'
+        if: (needs.changes.outputs.wasm_prebuilt != 'true' && steps.wasm.outputs.build != 'false') || needs.changes.outputs.rust == 'true'
         uses: ./.github/actions/setup-wasm-build
         with:
           cache-prefix: ci-build
@@ -755,8 +799,46 @@ jobs:
       # the type-sync gate below is skipped there too, since a frontend-only PR
       # can't have changed the committed .d.ts.
       - name: Build WASM
-        if: needs.changes.outputs.wasm_prebuilt != 'true'
+        if: needs.changes.outputs.wasm_prebuilt != 'true' && steps.wasmplan.outputs.active != 'true'
         run: bash scripts/build-wasm.sh
+
+      # With the cache active the build is scripts/ci-wasm-build.sh (reset the
+      # output dirs, build the probe bundle, build the engine), the same file
+      # wasm-build-cache.yml runs and a key input. This step must stay exactly
+      # this: no `env:`, nothing else in `run:`. Build env goes at job or
+      # workflow level, where the Plan step (and so the key) sees it; Plan
+      # turns the cache off for a run whose step differs.
+      - name: Build WASM (cache active)
+        if: steps.wasmplan.outputs.active == 'true' && steps.wasm.outputs.build != 'false'
+        run: bash scripts/ci-wasm-build.sh
+
+      # Hashes of the fresh build, stored with the entry and checked on every
+      # restore. Before `Build packages`, so the entry is exactly this build.
+      # Only when something reads the manifest: a comparison, or a save
+      # (main only). A PR miss records nothing.
+      - name: Record the WASM build output
+        id: wasmrecord
+        if: steps.wasmplan.outputs.active == 'true' && steps.wasm.outputs.build == 'true' && (steps.wasm.outputs.compare == 'true' || steps.wasm.outputs.save == 'true')
+        continue-on-error: true
+        env:
+          WASM_CACHE_KEY: ${{ steps.wasmplan.outputs.key }}
+        run: node scripts/ci-wasm-cache.mjs record
+
+      # Annotates drift and never fails here: this run tests the fresh build.
+      # The strict comparison is wasm-build-cache.yml on main.
+      - name: Compare the WASM build cache with the fresh build
+        if: steps.wasm.outputs.compare == 'true' && steps.wasmrecord.outcome == 'success'
+        continue-on-error: true
+        env:
+          WASM_CACHE_MODE: ${{ steps.wasmplan.outputs.mode }}
+        run: node scripts/ci-wasm-cache.mjs compare
+
+      - name: Save the WASM build cache
+        if: steps.wasm.outputs.save == 'true' && steps.wasmrecord.outcome == 'success'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.wasmplan.outputs.paths }}
+          key: ${{ steps.wasmplan.outputs.key }}
 
       # Guard the wasm-free typecheck lane (#952): the committed
       # packages/wasm/pkg/ifc-lite.d.ts must stay in sync with the Rust source.
@@ -765,7 +847,10 @@ jobs:
       # across linux/macOS), so any diff means the committed types are stale —
       # fail the PR. Scoped to the .d.ts only; pkg/README.md and pkg/package.json
       # churn on every wasm-pack run (see AGENTS.md) and are intentionally
-      # excluded.
+      # excluded. On a used WASM cache hit the declarations are the restored
+      # build of the same inputs. The committed copies are part of the key
+      # (tracked files under the output dirs), so a hand edit to them misses
+      # the cache, builds from source and still shows here.
       - name: Verify committed wasm types are in sync
         if: needs.changes.outputs.wasm_prebuilt != 'true'
         run: |
@@ -805,9 +890,18 @@ jobs:
       # A separate feature bundle exposes only the test ownership probe.
       # Do not overwrite pkg-diff or its committed production declarations.
       # Runs after Build packages: the public-handle case imports packages/diff/dist.
+      # With the cache active the probe bundle was built (or restored) with
+      # the engine above, so only the test runs here.
       - name: Fingerprint getter ownership (actual WASM, no skips)
         if: needs.changes.outputs.wasm_prebuilt != 'true'
-        run: pnpm test:diff-decode-leaks
+        env:
+          WASM_CACHE_ACTIVE: ${{ steps.wasmplan.outputs.active }}
+        run: |
+          if [ "$WASM_CACHE_ACTIVE" = true ]; then
+            bash scripts/test-diff-decode-leaks.sh --test-only
+          else
+            pnpm test:diff-decode-leaks
+          fi
 
       - name: Verify Rust fingerprint vectors against TypeScript
         run: |
@@ -1304,6 +1398,10 @@ jobs:
     env:
       HAS_MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN != '' }}
     steps:
+      # CI_SHARD_RETRY: the retry's time budget is what is left of this job.
+      - name: Record the job start for the shard retry
+        if: vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on'
+        run: echo "JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: false
@@ -1355,12 +1453,25 @@ jobs:
       # is unchanged. The split is exact: a manifest file is packed into one
       # shard and any other path hashes to exactly one of the 16 residues, so
       # nothing is dropped or run twice; an empty selection fails the step.
+      #
+      # CI_SHARD_RETRY (scripts/ci-shard-retry.mjs) reruns only the failed
+      # files once. Unset, every expression below that names it is false or
+      # empty: no continue-on-error, no extra reporter, the retry steps skip.
+      # `on`: this step may fail, and the retry step's exit code (0 only when
+      # the retry ran and passed) plus the guard after it carry the verdict.
       - id: viewer_tests
         run: pnpm --filter @ifc-lite/viewer run test
+        continue-on-error: ${{ vars.CI_SHARD_RETRY == 'on' }}
         env:
-          NODE_OPTIONS: --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml
+          NODE_OPTIONS: --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml${{ (vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on') && format(' --test-reporter=tap --test-reporter-destination={0}/viewer-attempt1.tap', runner.temp) || '' }}
           TEST_SHARDS: '16'
           TEST_SHARD: ${{ matrix.shard }}
+          # Bounded by apps/viewer's test script, the one place the rule lives.
+          # Above 1, refresh test-durations.json only from runs at 1:
+          # scripts/lib/viewer-test-durations.mjs assumes serial files.
+          VIEWER_TEST_CONCURRENCY: ${{ vars.VIEWER_TEST_CONCURRENCY }}
+      # Before the retry, so the first attempt's results reach Mergify even if
+      # the retry runs into the job's time limit.
       - name: Mergify CI Upload
         if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('apps/viewer/mergify-junit.xml') != ''
         continue-on-error: true
@@ -1369,6 +1480,48 @@ jobs:
           token: ${{ secrets.MERGIFY_TOKEN }}
           report_path: apps/viewer/mergify-junit.xml
           test_step_outcome: ${{ steps.viewer_tests.outcome }}
+          job_name: viewer-tests (shard ${{ matrix.shard }})
+      - name: Retry the failed viewer test files once
+        id: viewer_retry
+        if: (success() || failure()) && steps.viewer_tests.outcome == 'failure' && (vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on')
+        run: node scripts/ci-shard-retry.mjs viewer
+        env:
+          CI_SHARD_RETRY: ${{ vars.CI_SHARD_RETRY }}
+          JOB_TIMEOUT_MINUTES: '25'  # this job's timeout-minutes
+          TAP_FILE: ${{ runner.temp }}/viewer-attempt1.tap
+          REPORT_DIR: ${{ runner.temp }}/shard-retry
+          TEST_SHARDS: '16'
+          TEST_SHARD: ${{ matrix.shard }}
+      - name: Upload the retry record
+        if: (success() || failure()) && (steps.viewer_retry.outcome == 'success' || steps.viewer_retry.outcome == 'failure')
+        # A diagnostic: an upload error must not turn a passed retry red.
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: shard-retry-viewer-${{ matrix.shard }}
+          path: ${{ runner.temp }}/shard-retry/viewer-retry.json
+          if-no-files-found: error
+          retention-days: 30
+      # Fail-closed backstop for `on`: the first attempt failed and was allowed
+      # to, so unless the retry step itself succeeded, fail here.
+      - name: Fail unless the retry passed
+        if: (success() || failure()) && steps.viewer_tests.outcome == 'failure' && vars.CI_SHARD_RETRY == 'on' && steps.viewer_retry.outcome != 'success'
+        run: |
+          echo "::error::The first attempt failed and the retry did not pass (retry step: ${{ steps.viewer_retry.outcome }})."
+          exit 1
+      # The retry's own results, under the same job name: Mergify classifies a
+      # test that failed and passed on one commit as flaky, so it must see both
+      # attempts. Without this a retry that passed is recorded as a failure.
+      - name: Mergify CI Upload (retry)
+        # `on` only: in `shadow` the job keeps the first attempt's verdict, so
+        # the retry stays out of Mergify's record.
+        if: (success() || failure()) && vars.CI_SHARD_RETRY == 'on' && env.HAS_MERGIFY_TOKEN == 'true' && (steps.viewer_retry.outcome == 'success' || steps.viewer_retry.outcome == 'failure') && hashFiles('apps/viewer/mergify-junit-retry-*.xml') != ''
+        continue-on-error: true
+        uses: ./.github/actions/mergify-upload
+        with:
+          token: ${{ secrets.MERGIFY_TOKEN }}
+          report_path: apps/viewer/mergify-junit-retry-*.xml
+          test_step_outcome: ${{ steps.viewer_retry.outcome }}
           job_name: viewer-tests (shard ${{ matrix.shard }})
 
   node-guards:
@@ -1799,10 +1952,10 @@ jobs:
   # The scripts/ test catch-all, split out of `node-guards` where it was about
   # 470 of that job's 750 seconds and made it the last lane to finish in most
   # green PR runs. Same trigger, same setup (full history, build artifact,
-  # verified fixtures, Python 3.12), same file list. Node's own --test-shard
-  # keeps file i of that list on shard (i mod N) + 1, with N taken from
-  # strategy.job-total, so the shards partition it: no file runs twice and
-  # none is dropped.
+  # verified fixtures, Python 3.12), same file list. ci-scripts-test-shards.mjs
+  # splits it by measured time: shard 1 runs a pinned list of the heaviest
+  # files, shard 2 everything else, so every file runs exactly once and a new
+  # file lands on shard 2.
   scripts-tests:
     name: Node scripts tests (shard ${{ matrix.shard }}/2)
     needs: [changes, build]
@@ -1816,6 +1969,17 @@ jobs:
     env:
       HAS_MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN != '' }}
     steps:
+      # matrix.shard only names the check run; the runner takes its shard from
+      # strategy.job-index. Fail in seconds, before setup, if they disagree.
+      - name: Check the shard name matches its index
+        env:
+          SHARD_INDEX: ${{ strategy.job-index }}
+          MATRIX_SHARD: ${{ matrix.shard }}
+        run: |
+          if [ "$((SHARD_INDEX + 1))" != "$MATRIX_SHARD" ]; then
+            echo "::error title=scripts-tests shard::this job is named shard ${MATRIX_SHARD} but runs shard $((SHARD_INDEX + 1)) (strategy.job-index ${SHARD_INDEX}); keep the matrix list as [1, 2] in order"
+            exit 2
+          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: false
@@ -1854,18 +2018,18 @@ jobs:
           python-version: '3.12'
       # Literal paths preserve the path auditor's existing input census; globs
       # discover every new suite. sort -u removes the overlap before Node starts
-      # any tests, and --test-shard then takes this shard's half of that list.
+      # any tests, and ci-scripts-test-shards.mjs then runs this shard's part.
       - name: Run every scripts/ test file (glob catch-all)
         id: scripts_tests
-        # The shard comes from the matrix the runner actually expanded, not from a
-        # second hand-kept count: trim the matrix and the remaining shards widen
-        # to cover every file, instead of one shard silently running half.
+        # The shard comes from the matrix the runner actually expanded, and
+        # ci-scripts-test-shards.mjs refuses a total it was not written for, so a
+        # trimmed or widened matrix fails instead of silently running a subset.
         env:
           SHARD_INDEX: ${{ strategy.job-index }}
           SHARD_TOTAL: ${{ strategy.job-total }}
         run: |
-          SHARD="$((SHARD_INDEX + 1))/${SHARD_TOTAL}"
-          node --test --test-shard="$SHARD" --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml $(printf '%s\n' \
+          SHARD="$((SHARD_INDEX + 1))"
+          node scripts/ci-scripts-test-shards.mjs --shard="$SHARD" --of="$SHARD_TOTAL" --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml $(printf '%s\n' \
             scripts/check-asset-usage.test.mjs \
             scripts/check-changeset-bump.test.mjs \
             scripts/check-ci-aggregate-coverage.test.mjs \
@@ -1951,6 +2115,7 @@ jobs:
           token: ${{ secrets.MERGIFY_TOKEN }}
           report_path: mergify-junit.xml
           test_step_outcome: ${{ steps.scripts_tests.outcome }}
+          job_name: scripts-tests (shard ${{ matrix.shard }})
 
   node-tests:
     name: Node tests (shard ${{ matrix.shard }}/4)
@@ -2227,6 +2392,10 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
+      # CI_SHARD_RETRY: the retry's time budget is what is left of this job.
+      - name: Record the job start for the shard retry
+        if: vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on'
+        run: echo "JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: false
@@ -2277,7 +2446,13 @@ jobs:
       # shell has a broken WebGPU device under software rendering.
       - name: Install Playwright video encoder
         run: pnpm exec playwright install ffmpeg
+      # CI_SHARD_RETRY (scripts/ci-shard-retry.mjs): see the viewer-tests job.
+      # Unset, `continue-on-error` is false, the reporter list and
+      # PLAYWRIGHT_JSON_OUTPUT_FILE expand to what they were, and the retry
+      # steps skip. The retry reruns `--last-failed` within this shard.
       - name: Run E2E smoke
+        id: e2e
+        continue-on-error: ${{ vars.CI_SHARD_RETRY == 'on' }}
         # E2E_GPU_STRICT=0: the runner's SwiftShader WebGPU device is
         # unstable under load (drops mid-upload), so GPU-dependent
         # assertions (pick pass, screenshot density, GPU-error
@@ -2289,10 +2464,41 @@ jobs:
           MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN }}
           MERGIFY_TEST_JOB_NAME: viewer-e2e (shard ${{ matrix.shard }})
           E2E_GPU_STRICT: '0'
+          PLAYWRIGHT_JSON_OUTPUT_FILE: ${{ (vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on') && format('{0}/e2e-attempt1.json', runner.temp) || '' }}
         # The test command must end before the 20-minute job limit so its
         # failure summary and test-results artifact survive a slow/hung test.
         # The list reporter also names completed tests while the job runs.
-        run: timeout --signal=INT --kill-after=30s 13m pnpm test:e2e:ci --shard=${{ matrix.shard }}/8 --reporter=list,@mergifyio/playwright
+        run: timeout --signal=INT --kill-after=30s 13m pnpm test:e2e:ci --shard=${{ matrix.shard }}/8 --reporter=list,@mergifyio/playwright${{ (vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on') && ',json' || '' }}
+      - name: Retry the failed E2E tests once
+        id: e2e_retry
+        if: (success() || failure()) && steps.e2e.outcome == 'failure' && (vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on')
+        env:
+          # Only `on` reports the retry to Mergify (scripts/ci-shard-retry.mjs).
+          MERGIFY_TOKEN: ${{ vars.CI_SHARD_RETRY == 'on' && secrets.MERGIFY_TOKEN || '' }}
+          MERGIFY_TEST_JOB_NAME: viewer-e2e (shard ${{ matrix.shard }})
+          E2E_GPU_STRICT: '0'
+          CI_SHARD_RETRY: ${{ vars.CI_SHARD_RETRY }}
+          JOB_TIMEOUT_MINUTES: '20'  # this job's timeout-minutes
+          E2E_SHARD: ${{ matrix.shard }}/8
+          LAST_RUN: test-results/.last-run.json
+          REPORT_JSON: ${{ runner.temp }}/e2e-attempt1.json
+          REPORT_DIR: ${{ runner.temp }}/shard-retry
+        run: node scripts/ci-shard-retry.mjs e2e
+      - name: Upload the retry record
+        if: (success() || failure()) && (steps.e2e_retry.outcome == 'success' || steps.e2e_retry.outcome == 'failure')
+        # A diagnostic: an upload error must not turn a passed retry red.
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: shard-retry-e2e-${{ matrix.shard }}
+          path: ${{ runner.temp }}/shard-retry/e2e-retry.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Fail unless the retry passed
+        if: (success() || failure()) && steps.e2e.outcome == 'failure' && vars.CI_SHARD_RETRY == 'on' && steps.e2e_retry.outcome != 'success'
+        run: |
+          echo "::error::The first attempt failed and the retry did not pass (retry step: ${{ steps.e2e_retry.outcome }})."
+          exit 1
       - name: Upload assistant browser evidence
         if: always() && hashFiles('test-results/**/assistant-*.png', 'test-results/*assistant-context*/video.webm') != ''
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -2305,7 +2511,9 @@ jobs:
           retention-days: 3
       - name: Upload E2E failure context
         # Playwright's error-context.md / traces for the failed tests only.
-        if: failure()
+        # `steps.e2e.outcome` keeps the first attempt's traces when CI_SHARD_RETRY=on
+        # let the job pass; unset, it holds only where failure() already does.
+        if: failure() || (!cancelled() && steps.e2e.outcome == 'failure')
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: e2e-test-results-${{ matrix.shard }}
@@ -3286,21 +3494,29 @@ jobs:
           lfs: false
           persist-credentials: false
 
-      # A stable toolchain, not the dated nightly in rust-toolchain.toml:
-      # cargo-semver-checks refuses a nightly outright ("rustc version is not
-      # high enough: >=1.93.0 needed, got 1.93.0-nightly"). The gate invokes it
-      # as `cargo +stable semver-checks`, so this only has to exist.
-      - name: Install stable Rust
-        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 2026-05
-        with:
-          toolchain: stable
+      # The gate calls cargo-semver-checks only for a crate whose workspace
+      # version is ahead of crates.io. This step decides everything else from
+      # registry lookups with the gate's own logic, and writes
+      # `needs_cargo=false` itself only after reporting a final verdict. Exit
+      # 1/2 is the gate's refusal; exit 3 (a crate must be compared) and any
+      # run that never wrote the output fall through to the full gate below.
+      # rust-semver-canary.yml proves the install and the tool probe weekly.
+      - name: Check crate semver against crates.io (registry only)
+        id: registry
+        run: |
+          set +e
+          node scripts/check-rust-semver-registry.mjs
+          status=$?
+          set -e
+          if [ "$status" -eq 3 ]; then exit 0; fi
+          exit "$status"
 
-      # Prebuilt binary. `cargo install cargo-semver-checks --locked` compiles
-      # it from source (~5 min).
-      - name: Install cargo-semver-checks
-        uses: taiki-e/install-action@4f5ee4a4759116abc6b10af05f20374e179d8ca3 # cargo-semver-checks (snapshot pinned 2026-08)
+      - name: Install stable Rust and cargo-semver-checks
+        if: steps.registry.outputs.needs_cargo != 'false'
+        uses: ./.github/actions/setup-rust-semver
 
       - name: Cargo cache
+        if: steps.registry.outputs.needs_cargo != 'false'
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           prefix-key: ci-rust-semver
@@ -3313,6 +3529,7 @@ jobs:
       # crates.io can no longer resolve (#7737) is rebuilt from its release
       # tag, which the script fetches itself: this shallow checkout has none.
       - name: Check crate semver against crates.io
+        if: steps.registry.outputs.needs_cargo != 'false'
         run: node scripts/check-rust-semver.mjs
 
   # AGENTS.md grew 10,123 -> 48,066 bytes in 55 days across 26 commits, strictly

@@ -11,6 +11,7 @@
  * unit-scaled). Source and created walls both include pending edits.
  */
 
+import { derivedState } from '@/lib/derived-state';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { extractWallSegmentsForStorey } from '@ifc-lite/create';
@@ -21,8 +22,14 @@ export function storeyWallAxes(
   view: MutablePropertyView,
   storeyId: number,
 ): WallAxis[] {
-  const res = extractWallSegmentsForStorey(store, storeyId, view);
-  return res.segments.map((seg, i) => ({
-    expressId: res.contributingWallIds[i], a: seg.a, b: seg.b,
-  }));
+  return derivedState(store, view, `walls:${storeyId}`, [
+    'IFCWALL', 'IFCWALLSTANDARDCASE', 'IFCWALLELEMENTEDCASE', 'IFCCURTAINWALL',
+    'IFCVIRTUALELEMENT', 'IFCPLATE', 'IFCMEMBER', 'IFCRAILING',
+    'IFCRELAGGREGATES', 'IFCRELCONTAINEDINSPATIALSTRUCTURE',
+  ], tracked => {
+    const res = extractWallSegmentsForStorey(store, storeyId, tracked);
+    return res.segments.map((seg, i) => ({
+      expressId: res.contributingWallIds[i], a: seg.a, b: seg.b,
+    }));
+  });
 }

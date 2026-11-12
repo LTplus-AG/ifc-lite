@@ -9,10 +9,12 @@
  * from the file and grids authored this session both count.
  */
 
+import { derivedState } from '@/lib/derived-state';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { extractGridAxesForStorey, type GridAxisSegment } from '@ifc-lite/create';
 
 export function storeyGridAxes(store: IfcDataStore, view: MutablePropertyView, storeyId: number): GridAxisSegment[] {
-  return extractGridAxesForStorey(store, storeyId, view).axes;
+  return derivedState(store, view, `grids:${storeyId}`, ['IFCGRID', 'IFCRELAGGREGATES', 'IFCRELCONTAINEDINSPATIALSTRUCTURE'],
+    tracked => extractGridAxesForStorey(store, storeyId, tracked).axes);
 }

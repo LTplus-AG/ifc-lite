@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { derivedState } from '@/lib/derived-state';
 import { parsePropertyValue } from '@ifc-lite/encoding';
 import { NEXT_STOREY_ABOVE, readStoreyInventory } from '@ifc-lite/create';
 import type { ViewerState } from '@/store';
@@ -18,7 +19,10 @@ export function storeyAttachmentDisplay(s: ViewerState, modelId: string, entityI
   if (raw === 'Fixed' || (propertyName.endsWith('Binding') && (raw === 'Relative' || raw === 'Explicit'))) return { text: t(raw === 'Relative' ? 'storeyManager.binding.relative' : raw === 'Explicit' ? 'storeyManager.binding.explicit' : 'storeyManager.binding.fixed'), raw };
   const target = modelEditTarget(s, modelId);
   if (!target) return raw === NEXT_STOREY_ABOVE ? { text: t('storeyManager.binding.relative'), raw } : null;
-  const inventory = readStoreyInventory(target.dataStore, target.view);
+  const inventory = derivedState(target.dataStore, target.view, 'attachment-storeys', [
+    'IFCBUILDINGSTOREY', 'IFCRELAGGREGATES', 'IFCRELNESTS', 'IFCRELVOIDSELEMENT',
+    'IFCRELFILLSELEMENT', 'IFCRELCONTAINEDINSPATIALSTRUCTURE',
+  ], tracked => readStoreyInventory(target.dataStore, tracked));
   const levels = modelStoreys(s, modelId);
   let level = inventory.storeys.find(storey => storey.GlobalId === raw);
   const relative = !!level && propertyName === 'TopConstraint' && parsePropertyValue(target.view.getPropertyValue(entityId, 'IfcLite_StoreyAttachment', 'TopBinding')).displayValue === 'Relative';

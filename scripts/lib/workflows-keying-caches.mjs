@@ -36,7 +36,8 @@ export const WORKFLOW_FILE = /^\.github\/workflows\/[^/]+\.ya?ml$/;
  */
 function keyEntries(text, key) {
   // Not after `-`: `my-uses:` is another key, and a list item's `- uses:` has a space.
-  const re = new RegExp(`(^|[\\s{[,])['"]?${key}['"]?[ \\t]*:`, 'g');
+  // Case-insensitive: action inputs are (`Cache-Dependency-Path:`), and for `uses:` it fails closed.
+  const re = new RegExp(`(^|[\\s{[,])['"]?${key}['"]?[ \\t]*:`, 'gi');
   const out = [];
   for (const line of text.split('\n')) {
     if (/^[ \t]*#/.test(line)) continue;
@@ -46,11 +47,11 @@ function keyEntries(text, key) {
 }
 // In YAML (not in an action's scripts): a hex or unicode escape can spell a key or a call
 // the scan looks for (`"u\x73es":`, `hashFiles\x28`), and `? ` starts a complex key.
-const YAML_HIDDEN = /\\[xuU][0-9A-Fa-f]|(?:^|[\s{[,])\?[ \t]/m;
+const YAML_HIDDEN = /\\[xuU][0-9A-Fa-f]|(?:^|[\s{[,])\?(?:[ \t\r]|$)/m;
 const IS_YAML = /\.ya?ml$/;
-// Expression function names are case-insensitive, and `hashFiles (` is a call (a `\t`
-// escape in a double-quoted scalar is whitespace too).
-const HASHFILES = /hashFiles(?:\s|\\t)*\(/gi;
+// Expression function names are case-insensitive, and `hashFiles (` is a call (any escape
+// in a double-quoted scalar, such as `\t` or `\n`, may decode to whitespace).
+const HASHFILES = /hashFiles(?:\s|\\.)*\(/gi;
 // An escaped line break in a double-quoted YAML scalar joins the lines (`hash\` newline
 // `Files(`). Joining every `\`-newline also matches what a shell does in run: blocks.
 const joinEscapedBreaks = (text) => text.replace(/\\\r?\n[ \t]*/g, '');
@@ -60,7 +61,8 @@ const QUOTED_ARG = /^\s*(?:'([^']*)'|"([^"]*)")\s*([,)])/;
 const PLAIN_PATH = /^[\w./*-]+$/;
 const LOCAL_WORKFLOW = /^\.\/(\.github\/workflows\/[\w.-]+\.ya?ml)$/;
 const LOCAL_ACTION = /^\.\/\.github\/actions\/[\w.-]+(?:\/[\w.-]+)*$/;
-const REMOTE_ACTION = /^[\w.-]+\/[\w.-]+(?:\/[\w./-]+)?@[\w./-]+$/;
+// An owner never starts with `.`: `./foo@v1` is a local action in directory `foo@v1`.
+const REMOTE_ACTION = /^[\w-][\w.-]*\/[\w.-]+(?:\/[\w./-]+)?@[\w./-]+$/;
 const DOCKER = /^docker:\/\/\S+$/;
 
 /**
@@ -149,8 +151,9 @@ export function workflowsKeyingCaches({ root, actionFiles, symlinks, readText })
   const executed = [root, ...actionFiles];
   for (let i = 0; i < executed.length; i += 1) {
     const path = executed[i];
-    const text = readText(path);
-    if (typeof text !== 'string') return { unknown: `${path} could not be read` };
+    const raw = readText(path);
+    if (typeof raw !== 'string') return { unknown: `${path} could not be read` };
+    const text = joinEscapedBreaks(raw);
     if (IS_YAML.test(path) && YAML_HIDDEN.test(text)) return { unknown: `${path} has a YAML escape or complex key the scan cannot read through` };
     for (const [before, rest] of keyEntries(text, 'uses')) {
       const v = scalar(before, rest);
@@ -170,9 +173,8 @@ export function workflowsKeyingCaches({ root, actionFiles, symlinks, readText })
       if (v === null) return { unknown: `${path} has a cache-dependency-path value the line does not show` };
       patterns.push(v);
     }
-    const joined = joinEscapedBreaks(text);
-    for (const m of joined.matchAll(HASHFILES)) {
-      const args = hashFilesArgs(joined, m.index + m[0].length);
+    for (const m of text.matchAll(HASHFILES)) {
+      const args = hashFilesArgs(text, m.index + m[0].length);
       if (args === null) return { unknown: `${path} calls hashFiles with an argument that is not a quoted literal` };
       // @actions/glob reads each line of a pattern as its own pattern, trimmed.
       patterns.push(...args.flatMap((a) => a.split('\n').map((line) => line.trim()).filter(Boolean)));

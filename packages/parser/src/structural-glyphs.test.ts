@@ -277,6 +277,20 @@ const FRAMES = `ISO-10303-21;HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('f.if
 #255=IFCPRODUCTDEFINITIONSHAPE($,$,(#254));
 #256=IFCSTRUCTURALPLANARACTION(${id(256)},$,'OWNSURF',$,$,#20,#255,#50,.LOCAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);
 #257=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(257)},$,$,$,#43,#256);
+#260=IFCCARTESIANPOINT((20.,0.,0.));
+#261=IFCCARTESIANPOINT((21.,0.,0.));
+#262=IFCCARTESIANPOINT((22.,0.,0.));
+#263=IFCPOLYLOOP((#260,#261,#262));
+#264=IFCFACEOUTERBOUND(#263,.T.);
+#265=IFCFACE((#264));
+#266=IFCTOPOLOGYREPRESENTATION(#3,'Reference','Face',(#265));
+#267=IFCPRODUCTDEFINITIONSHAPE($,$,(#266));
+#268=IFCSTRUCTURALSURFACEMEMBER(${id(268)},$,'Flat',$,$,#20,#267,.SHELL.,0.2);
+#269=IFCVERTEXPOINT(#261);
+#270=IFCTOPOLOGYREPRESENTATION(#3,'Reference','Vertex',(#269));
+#271=IFCPRODUCTDEFINITIONSHAPE($,$,(#270));
+#272=IFCSTRUCTURALPOINTACTION(${id(272)},$,'ONFLAT',$,$,#20,#271,#84,.LOCAL_COORDS.,.F.);
+#273=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(273)},$,$,$,#268,#272);
 ENDSEC;END-ISO-10303-21;`;
 
 describe('structuralGlyphs local frames of curve and surface items', () => {
@@ -302,6 +316,11 @@ describe('structuralGlyphs local frames of curve and surface items', () => {
     const forces = arrows(await load(), 256);
     expect(forces.length).toBeGreaterThan(0);
     for (const g of forces) close(g.direction, [0, 0, 1]);
+  });
+
+  it('draws no local load on a surface item whose face has no frame, rather than guess one', async () => {
+    // The member's face is three collinear points; the action has its own vertex.
+    expect(bySource(await load(), 272)).toEqual([]);
   });
 
   it('places a surface configuration value at its x and y in the reference surface', async () => {

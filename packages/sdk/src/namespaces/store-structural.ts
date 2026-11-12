@@ -7,7 +7,8 @@ import type { StructuralDerivationStoreBackendMethods } from '../store-structura
 import type { StructuralStoreBackendMethods } from '../store-structural-types.js';
 import type { EntityRef } from '../types.js';
 
-type StructuralMethods = Required<StructuralStoreBackendMethods & StructuralDerivationStoreBackendMethods>;
+type ForwardedMethods = Required<StructuralStoreBackendMethods>;
+type StructuralMethods = ForwardedMethods & Required<StructuralDerivationStoreBackendMethods>;
 
 /** Optional backend capabilities retain their exact argument and result types. */
 export interface StoreStructuralNamespace {
@@ -57,8 +58,8 @@ export class StoreStructuralNamespace extends StoreGroupNamespace {
       addStructuralSurfaceMember: true,
       addStructuralCurveConnection: true,
       addStructuralSurfaceConnection: true,
-    } satisfies Record<keyof StructuralMethods, true>;
-    for (const name of Object.keys(methods) as (keyof StructuralMethods)[]) {
+    } satisfies Record<keyof ForwardedMethods, true>;
+    for (const name of Object.keys(methods) as (keyof ForwardedMethods)[]) {
       Object.defineProperty(this.prototype, name, {
         configurable: true, writable: true,
         value(this: StoreStructuralNamespace, ...args: unknown[]): EntityRef {

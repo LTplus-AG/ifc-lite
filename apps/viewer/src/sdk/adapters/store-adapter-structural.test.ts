@@ -15,7 +15,7 @@ import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { extractStructuralOnDemand } from '@ifc-lite/parser';
-import { effectiveStructuralView } from '@/components/viewer/properties/effectiveStructuralView';
+import { effectiveStructuralView } from '../../components/viewer/properties/effectiveStructuralView.js';
 import { useViewerStore } from '@/store';
 import { GROUND_STOREY, SAMPLE_MODEL, seedAuthoringSample } from '@/test/authoring-sample-fixture';
 import { createStoreAdapter } from './store-adapter.js';

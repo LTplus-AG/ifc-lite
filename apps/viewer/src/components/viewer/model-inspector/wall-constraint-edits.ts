@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { readStoreyInventory, readTopAttachment, setTopConstraintInStore, type TopConstraint } from '@ifc-lite/create';
+import { PropertyValueType } from '@ifc-lite/data';
 import { useViewerStore } from '@/store';
 import { modelEditTarget, recordModellingEdit } from '@/store/slices/mutation-modelling-records';
 import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
@@ -11,11 +12,21 @@ import { commitElementSize } from '@/lib/element-size-commit';
 import { runInspectorEdit } from './inspector-edits';
 
 export function attachWallTop(modelId: string, wallId: number, constraint: TopConstraint, onError?: (reason: string) => void): boolean {
-  return runInspectorEdit(modelId, tx => recordModellingEdit(useViewerStore, modelId, (_methods, draft) => {
-    const store = tx.store.models.get(modelId)?.ifcDataStore;
-    if (!store) throw new Error('Model is no longer loaded');
-    return setTopConstraintInStore(store, draft, wallId, constraint).remesh;
-  }, tx.batchId), onError);
+  return runInspectorEdit(modelId, tx => {
+    const remesh = recordModellingEdit(useViewerStore, modelId, (_methods, draft) => {
+      const store = tx.store.models.get(modelId)?.ifcDataStore;
+      if (!store) throw new Error('Model is no longer loaded');
+      return setTopConstraintInStore(store, draft, wallId, constraint).remesh;
+    }, tx.batchId);
+    // Native graph publication covers geometry. Attachment properties are
+    // overlay mutations and use the same property mirror as inspector fields.
+    const view = useViewerStore.getState().mutationViews.get(modelId);
+    for (const name of ['TopConstraint', 'TopBinding']) {
+      const value = view?.getPropertyValue(wallId, 'IfcLite_StoreyAttachment', name);
+      if (value !== undefined && value !== null) tx.store.mirrorPropertyEdit(modelId, wallId, 'IfcLite_StoreyAttachment', name, value, PropertyValueType.Label);
+    }
+    return remesh;
+  }, onError);
 }
 
 /** Endpoints are in the home storey's frame, in metres. */

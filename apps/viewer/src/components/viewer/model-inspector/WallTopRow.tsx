@@ -8,6 +8,12 @@
  * makes the wall reach the storey above; both changes are one undo step.
  */
 
+import { PropertyValueType } from '@ifc-lite/data';
+import { commitElementSize } from '@/lib/element-size-commit';
+import { effectiveStoreyId } from '@/lib/effective-storey';
+import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
+import { fixWallTop } from '@/lib/commands/modeling/wall-top-fix';
+import { MIN_ATTACHED_HEIGHT } from '@/lib/commands/modeling/wall-top';
 import { useEffect, useMemo, useState } from 'react';
 import { parsePropertyValue } from '@ifc-lite/encoding';
 import { NEXT_STOREY_ABOVE, STOREY_ATTACHMENT_PSET, readStoreyInventory, readTopAttachment } from '@ifc-lite/create';
@@ -18,7 +24,7 @@ import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
 import type { WallTop } from '@/store/slices/authoringDefaultsSlice';
 import { storeyAttachmentDisplay } from '@/lib/actions/storey-attachment-display';
 import { CommitField, InspectorRow } from './InspectorControls';
-import { setWallDimensions } from './inspector-edits';
+import { runInspectorEdit, setWallDimensions } from './inspector-edits';
 import { attachWallTop, wallOffsets, setWallOffset } from './wall-constraint-edits';
 import { useWallTopPick, cancelWallTopPick } from '@/lib/wall-top-pick';
 
@@ -53,8 +59,41 @@ export function setWallHeightFixed(modelId: string, wallId: number, height: numb
 }
 
 /** Attach the wall to the storey above it (reaching it), or make it fixed-height. */
-export function setWallTop(modelId: string, wallId: number, top: WallTop): boolean {
-  return attachWallTop(modelId, wallId, { kind: top });
+export function setWallTop(modelId: string, wallId: number, top: WallTop, onError?: (reason: string) => void): boolean {
+  return runInspectorEdit(modelId, (tx) => {
+    const s = tx.store;
+    if (top === 'fixed') {
+      fixWallTop(tx, modelId, wallId);
+      return [];
+    }
+    const store = s.models.get(modelId)?.ifcDataStore;
+    const storeyId = store ? effectiveStoreyId(store, s.mutationViews.get(modelId), wallId) : undefined;
+    const storeys = modelStoreys(s, modelId);
+    const index = storeys.findIndex((storey) => storey.expressId === storeyId);
+    const above = index >= 0 ? storeys[index + 1] : undefined;
+    const wall = s.readWallEndpoints(modelId, wallId);
+    if (index < 0 || !wall) throw new Error(`Wall #${wallId} is not on a storey`);
+    let remesh: readonly number[] = [];
+    let attachTo = NEXT_STOREY_ABOVE;
+    if (above) {
+      const guid = s.mutationViews.get(modelId)?.getNewEntity(above.expressId)?.attributes[0] ?? store?.entities.getGlobalId(above.expressId);
+      if (typeof guid !== 'string' || !guid) throw new Error(`The storey above has no GlobalId`);
+      attachTo = guid;
+      const height = above.elevation - storeys[index].elevation - wall.start[2];
+      // As the Wall tool (`resolveWallTop`): a wall that would be a sliver stays fixed-height.
+      if (height < MIN_ATTACHED_HEIGHT) throw new Error(`Wall #${wallId} would reach the storey above at under ${MIN_ATTACHED_HEIGHT} m: it stays fixed-height`);
+      if (Math.abs(height - wall.height) > 1e-6) {
+        const outcome = commitElementSize(useViewerStore, modelId, wallId, { kind: 'wall', height });
+        if (!outcome.ok) throw new Error(outcome.reason);
+        remesh = outcome.remesh;
+      }
+    }
+    if (!s.setProperty(modelId, wallId, STOREY_ATTACHMENT_PSET, 'TopConstraint', attachTo, PropertyValueType.Label)) {
+      throw new Error(`Couldn't record the top of wall #${wallId}`);
+    }
+    if (!s.setProperty(modelId, wallId, STOREY_ATTACHMENT_PSET, 'TopBinding', 'Relative', PropertyValueType.Label)) throw new Error(`Couldn't record the top binding of wall #${wallId}`);
+    return remesh;
+  }, onError);
 }
 
 export function WallTopRow({ modelId, wallId }: { modelId: string; wallId: number }) {
@@ -79,6 +118,7 @@ export function WallTopRow({ modelId, wallId }: { modelId: string; wallId: numbe
   }, [owner]);
   const pick = () => {
     setError('');
+    useViewerStore.getState().endCommand('cancel');
     useViewerStore.getState().setActiveTool('select');
     useWallTopPick.setState({ owner, accept: globalId => {
       if (globalId === null) return;
@@ -89,7 +129,7 @@ export function WallTopRow({ modelId, wallId }: { modelId: string; wallId: numbe
       if (!type || !/^(IFCROOF|IFCSLAB|IFCSLABSTANDARDCASE|IFCSLABELEMENTEDCASE)$/.test(type)) {
         setError('Pick a slab or roof'); return;
       }
-      if (attachWallTop(modelId, wallId, type === 'IFCROOF' ? { kind: 'roof', roofId: ref.expressId } : { kind: 'slab', slabId: ref.expressId }, setError)) cancelWallTopPick();
+      if (attachWallTop(modelId, wallId, type === 'IFCROOF' ? { kind: 'roof', roofId: ref.expressId } : { kind: 'slab', slabId: ref.expressId }, setError)) { setError(''); cancelWallTopPick(); }
     } });
   };
   return (<>
@@ -99,24 +139,25 @@ export function WallTopRow({ modelId, wallId }: { modelId: string; wallId: numbe
           size="sm"
           label={t('modelingCommand.wall.top')}
           value={picking ? 'element' : top}
-          onValueChange={(next: WallTop | 'element') => { if (next === 'element') pick(); else { cancelWallTopPick(); setError(''); attachWallTop(modelId, wallId, { kind: next }, setError); } }}
+          onValueChange={(next: WallTop | 'element') => { if (next === 'element') pick(); else { cancelWallTopPick(); setError(''); setWallTop(modelId, wallId, next, setError); } }}
           options={[
             { value: 'storeyAbove', label: t('modelingCommand.wall.topStoreyAbove') },
             { value: 'element', label: t('modelingCommand.wall.topElement') },
             { value: 'fixed', label: t('modelingCommand.wall.topFixed') },
           ]}
         />
+        {top === 'element' && !picking && <button type="button" onClick={pick} className="text-2xs text-muted-foreground">{t('modelingCommand.wall.repickTop')}</button>}
         {target && <span title={target.raw} className="whitespace-normal break-words text-2xs leading-snug text-muted-foreground">{target.text}</span>}
       </div>
     </InspectorRow>
     {picking && <p role="status">{t('modelingCommand.wall.pickTop')}</p>}
     <InspectorRow label={t('modelingCommand.wall.topOffset')} htmlFor="wall-top-offset">
       <CommitField id="wall-top-offset" ariaLabel={t('modelingCommand.wall.topOffset')} value={offsets?.top?.toFixed(3) ?? ''} readOnly={offsets?.top == null}
-        onCommit={text => setWallOffset(modelId, wallId, 'top', Number(text), setError)} />
+        onCommit={text => { setError(''); return setWallOffset(modelId, wallId, 'top', text.trim() ? Number(text) : NaN, setError); }} />
     </InspectorRow>
     <InspectorRow label={t('modelingCommand.wall.baseOffset')} htmlFor="wall-base-offset">
       <CommitField id="wall-base-offset" ariaLabel={t('modelingCommand.wall.baseOffset')} value={offsets?.base.toFixed(3) ?? ''}
-        onCommit={text => setWallOffset(modelId, wallId, 'base', Number(text), setError)} />
+        onCommit={text => { setError(''); return setWallOffset(modelId, wallId, 'base', text.trim() ? Number(text) : NaN, setError); }} />
     </InspectorRow>
     {error && <p role="alert">{error}</p>}
     </>

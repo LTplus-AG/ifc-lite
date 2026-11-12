@@ -8,8 +8,8 @@
  * markdown tables. Failed samples stay in the counts.
  */
 
-import { webglPickRows } from './load-scoreboard-report-sections.mjs';
-export { webglPickRows } from './load-scoreboard-report-sections.mjs';
+import { watchdogRows, webglPickRows } from './load-scoreboard-report-sections.mjs';
+export { watchdogRows, webglPickRows } from './load-scoreboard-report-sections.mjs';
 import { aaNoiseFloor, expectedCacheTier, median, rankShares, relativeSpread, verdictFor } from './load-scoreboard-stats.mjs';
 
 /** The lanes a plan without a `lanes` key runs: exactly the set main had before the opt-in arms. */
@@ -370,6 +370,11 @@ export function renderMarkdown(summary, plan, host, samples = []) {
   if (readinessRows.length) {
     out.push('', '## Readiness components (base side medians, n>=3; ms from the clock origin of each lane, as stated above; interactive = the last of geometry finalized, metadata ready, settled + frame)', '',
       `| fixture | set | lane | ${READINESS.map(([, l]) => l).join(' | ')} | binding (count) |`, `|---|---|---|${READINESS.map(() => '---:|').join('')}---|`, ...readinessRows);
+  }
+  const wdRows = watchdogRows(samples);
+  if (wdRows.length) {
+    out.push('', '## Host watchdog overlap (samples during a periodic host job pass; measurement only, cells not voided)', '',
+      '| fixture | lane | side | samples | overlapping a pass | unknown | median foreign CPU ms |', '|---|---|---|---:|---:|---:|---:|', ...wdRows);
   }
   const glRows = webglPickRows(samples);
   if (glRows.length) {

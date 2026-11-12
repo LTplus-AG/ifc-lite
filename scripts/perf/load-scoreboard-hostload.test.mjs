@@ -58,3 +58,21 @@ test('settleHostLoad measures a process group\'s CPU over the sample from /proc'
   settleHostLoad(host);
   assert.equal(host.groupCpuMs[pgid], again, 'settles once; rows of one sample share it');
 });
+
+test('a sample overlaps a watchdog pass when one ran at either end or one started in between; unknown is null', async () => {
+  const { overlapsWatchdog } = await load('./load-scoreboard-host.mjs');
+  const idle = (t) => ({ running: false, lastTriggerUs: t });
+  assert.equal(overlapsWatchdog(idle(100), idle(100)), false, 'no pass during the sample');
+  assert.equal(overlapsWatchdog({ running: true, lastTriggerUs: 100 }, idle(100)), true, 'running at the start');
+  assert.equal(overlapsWatchdog(idle(100), { running: true, lastTriggerUs: 700 }), true, 'running at the end');
+  assert.equal(overlapsWatchdog(idle(100), idle(700)), true, 'a whole pass started and ended inside the sample');
+  assert.equal(overlapsWatchdog(null, idle(100)), null, 'unreadable state is unknown, never "no overlap"');
+});
+
+test('the report names cells with samples that overlapped a watchdog pass', async () => {
+  const { watchdogRows } = await load('./load-scoreboard-report.mjs');
+  const row = (side, over, foreign) => ({ ok: true, fixture: 'Holter', lane: 'browser-cold', side, host: { overlapsWatchdogPass: over, foreignCpuMs: foreign } });
+  const rows = watchdogRows([row('base', true, 9000), row('base', false, 300), row('base', false, 500), row('branch', false, 400)]);
+  assert.equal(rows.length, 1, 'a cell with no overlapping sample is not listed');
+  assert.match(rows[0], /\| Holter \| browser-cold \| base \| 3 \| 1 \| 0 \| 500 \|/);
+});

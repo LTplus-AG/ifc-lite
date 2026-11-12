@@ -8,6 +8,7 @@
  */
 
 import { readdirSync, readFileSync, readlinkSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 
 function readText(path) { try { return readFileSync(path, 'utf8').trim(); } catch { return null; } }
 
@@ -42,6 +43,33 @@ function groupTicks(pgids) {
   return ticks;
 }
 const TICK_MS = 10; // USER_HZ = 100 on Linux
+
+/**
+ * A periodic host job the scoreboard cannot stop (Pop: `fleet-night-watch`, a pass every 10 min that walks hundreds of
+ * checkouts while free space is low, slowing overlapping samples' worker stages; B3 slot A, reopen run4). Its state,
+ * read via `systemctl --user show` (unit from LOAD_SCOREBOARD_WATCH_UNIT, default fleet-night-watch): whether a pass
+ * runs now, and the wall-clock time of the timer's last trigger (µs since the epoch). Null when it cannot be read.
+ */
+export function watchdogState(unit = process.env.LOAD_SCOREBOARD_WATCH_UNIT ?? 'fleet-night-watch') {
+  const env = { ...process.env, XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR ?? `/run/user/${process.getuid?.() ?? 1000}` };
+  const show = (u, prop) => {
+    const r = spawnSync('systemctl', ['--user', 'show', u, '-p', prop, '--value'], { env, encoding: 'utf8', timeout: 2000 });
+    return r.status === 0 ? r.stdout.trim() : null;
+  };
+  const active = show(`${unit}.service`, 'ActiveState');
+  // LastTriggerUSec is a wall-clock string ("Thu 2026-11-12 18:35:27 CET"); `date -d` reads it, abbreviation included.
+  const lastText = show(`${unit}.timer`, 'LastTriggerUSec');
+  if (active === null || active === '' || lastText === null) return null;
+  const epoch = spawnSync('date', ['-d', lastText, '+%s'], { encoding: 'utf8', timeout: 2000 });
+  const last = epoch.status === 0 && /^\d+$/.test(epoch.stdout.trim()) ? Number(epoch.stdout.trim()) : null;
+  return { running: !['inactive', 'failed'].includes(active), lastTriggerUs: last === null ? null : last * 1e6 };
+}
+
+/** Whether a sample overlapped a watchdog pass: one ran at its start or end, or one started in between. Null when unknown. */
+export function overlapsWatchdog(before, after) {
+  if (!before || !after) return null;
+  return before.running || after.running || (before.lastTriggerUs !== null && after.lastTriggerUs !== null && after.lastTriggerUs !== before.lastTriggerUs);
+}
 
 /** Busy CPU ms of the whole host so far (/proc/stat "cpu" line: all but idle and iowait), or null. */
 function hostBusyMs() {
@@ -89,7 +117,7 @@ export async function hostQuiet({ limit = 5, maxWaitMs = 20000 } = {}) {
   const procs = foreignBuilders();
   const pgids = [...new Set(procs.map((p) => p.pgid))];
   return { cpuPressureAvg10: psi, limit, waitedMs: Date.now() - started, builders: procs.map((p) => p.name), builderProcs: procs,
-    groupTicksBefore: groupTicks(pgids), hostBusyBefore: hostBusyMs(), ownCgroupBefore: ownCgroupMs(), settledAt: null, startedAt: Date.now(), settled: false,
+    groupTicksBefore: groupTicks(pgids), hostBusyBefore: hostBusyMs(), ownCgroupBefore: ownCgroupMs(), watchdogBefore: watchdogState(), settledAt: null, startedAt: Date.now(), settled: false,
     // Provisional until the sample ends (settleHostLoad): pressure alone decides now.
     ...classifyHostLoad({ psi, limit, builders: procs.map((p) => p.name) }) };
 }
@@ -107,7 +135,9 @@ export function settleHostLoad(host) {
   const foreignCpuMs = [busy, own, host.hostBusyBefore, host.ownCgroupBefore].every(Number.isFinite)
     ? Math.max(0, Math.round((busy - host.hostBusyBefore) - (own - host.ownCgroupBefore))) : null;
   const sampleMs = Date.now() - host.startedAt;
-  Object.assign(host, { groupCpuMs, foreignCpuMs, sampleMs, settled: true, ...classifyHostLoad({ psi: host.cpuPressureAvg10, limit: host.limit, builders: host.builders, groupCpuMs }) });
-  delete host.groupTicksBefore; delete host.hostBusyBefore; delete host.ownCgroupBefore;
+  // Measurement only: affected cells are visible, nothing is voided by it.
+  const overlapsWatchdogPass = overlapsWatchdog(host.watchdogBefore, watchdogState());
+  Object.assign(host, { groupCpuMs, foreignCpuMs, sampleMs, overlapsWatchdogPass, settled: true, ...classifyHostLoad({ psi: host.cpuPressureAvg10, limit: host.limit, builders: host.builders, groupCpuMs }) });
+  delete host.groupTicksBefore; delete host.hostBusyBefore; delete host.ownCgroupBefore; delete host.watchdogBefore;
   return host;
 }

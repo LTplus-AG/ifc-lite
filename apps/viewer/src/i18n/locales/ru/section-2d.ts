@@ -26,6 +26,8 @@ export const section2dRu = {
   "section2d.tools.distance": "Расстояние",
   "section2d.tools.area": "Площадь",
   "section2d.tools.text": "Текст",
+  'section2d.tools.tag': 'Марка',
+  'section2d.tip.tag': 'Нажмите на дверь, окно или помещение для маркировки',
   "section2d.tools.cloud": "Облако изменений",
   "section2d.annotations.clear": "Очистить разметку",
   "section2d.display.group": "Отображение",

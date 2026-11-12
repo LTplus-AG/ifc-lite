@@ -46,7 +46,7 @@ it('#9296 tags read door/window marks and space Name with net floor area', async
   assert.equal(resolveElementTagLabel(tag(20)), 'Office · ≈ 19.2 m²');
 });
 
-it('#9296 labels follow current property edits, undo and deletion', async () => {
+it('#9296 labels follow current property edits and deletion', async () => {
   const { view } = await fixture();
   view.setAttribute(10, 'Name', 'Renamed <door>');
   assert.equal(resolveElementTagLabel(tag(10)), 'Renamed <door>');
@@ -108,4 +108,28 @@ it('#9296 the real SVG download contains escaped, live entity tags', async () =>
     URL.createObjectURL = original;
     await act(async () => root.unmount()); node.remove();
   }
+});
+
+it('#9296 DXF exports real TEXT entities and scaled PDF writes the live labels', async () => {
+  await fixture();
+  const { exportToDXF, parseDxf, DEFAULT_SECTION_CONFIG } = await import('@ifc-lite/drawing-2d');
+  const { elementTagsDxf, drawElementTagsPdf } = await import('./element-tag-export.js');
+  const { resolvedElementTags } = await import('./element-tags.js');
+  const { jsPDF } = await import('jspdf');
+  useViewerStore.setState({ tagAnnotations2D: [tag(10), tag(20)] });
+  const drawing: import('@ifc-lite/drawing-2d').Drawing2D = {
+    config: DEFAULT_SECTION_CONFIG, lines: [], cutPolygons: [], projectionPolygons: [],
+    bounds: { min: { x: 0, y: 0 }, max: { x: 5, y: 4 } },
+    stats: { cutLineCount: 0, projectionLineCount: 0, hiddenLineCount: 0, silhouetteLineCount: 0, polygonCount: 0, totalTriangles: 0, processingTimeMs: 0 },
+  };
+  const document = parseDxf(exportToDXF(drawing, { underlays: [elementTagsDxf(drawing, 0.175)] }));
+  const texts = document.entities.filter(entity => entity.kind === 'text');
+  assert.equal(texts.length, 2);
+  assert.ok(texts.some(entity => entity.text === 'Entrance'));
+  assert.ok(texts.some(entity => /Office.*19\.2/.test(entity.text)));
+  const pdf = new jsPDF();
+  drawElementTagsPdf(pdf, resolvedElementTags(drawing), (x, y) => ({ x: x*20+10, y: y*20+10 }));
+  const output = pdf.output();
+  assert.match(output, /Entrance/);
+  assert.match(output, /19\.2/);
 });

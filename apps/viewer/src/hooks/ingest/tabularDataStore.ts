@@ -54,6 +54,7 @@ export interface TabularStoreMeta {
  */
 export function buildTabularDataStore(tables: TabularStoreTables, meta: TabularStoreMeta): IfcDataStore {
   // Typed as `IfcStoreData`, never cast to it: a cast hides a wrong `source` shape (#2183).
+  // @raw-entity-enumeration-ok the store is being built from the reader's finished tables; no mutation view exists yet
   const storeData: IfcStoreData = {
     fileSize: meta.fileSize,
     schemaVersion: meta.schemaVersion,

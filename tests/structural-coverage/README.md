@@ -46,7 +46,7 @@ model, four checks, the CLI command, the docs page).
 | create | `probes/create.mjs` + `create-scene.mjs` | an in-store builder authors it in a blank model of the row's schema, and the STEP export declares that schema, re-parses and carries the given values |
 | edit, remove | `probes/edit.mjs`, `probes/remove.mjs` | edit/export/reparse structural values; remove exclusive subgraphs, preserve shared resources and validate references |
 | convert | `probes/convert.mjs` | it survives IFC4 -> IFC2X3 -> IFC4 (or IFC2X3 -> IFC4 -> IFC2X3) with the same values |
-| capability | `probes/capabilities.mjs` | per capability row; the link read and the docs page have probes, the rest are not written yet |
+| capability | `probes/capabilities.mjs` | per capability row; the link read, derive, analytical/physical toggle and docs page have probes |
 
 Not-applicable cells come only from `notApplicable()` in `catalogue.mjs`, by
 family or schema: only items and activities render, relationships have no card
@@ -66,6 +66,11 @@ outside derived slots, which select member a typed value is, enum values, and
 records of other entities. The registry is
 generated from the same EXPRESS as the product uses, so a codegen error there
 would be shared by the oracle and the converter.
+
+The derive probe compares the AxisVM roof truss against its authored analytical
+model within 1 mm (axis sine tolerance 0.001). Partial credit requires at least
+90% of reference/derived members to match axes, endpoints and physical links;
+below that floor it fails. Missing or extra connection records prevent a pass.
 
 ## Scoring and the ratchet
 

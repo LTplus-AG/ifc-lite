@@ -40,10 +40,9 @@ const VISIBILITY_FIELDS = {
   ghostExceptEntities: ['ghost'],
   visibilityRevision: [], // Invalidation counter, not a hiding mechanism.
   classFilter: ['classFilter'],
-  typeVisibility: ['typeVisibility'],
+  typeVisibility: ['typeVisibility', 'structuralViewMode'],
   hostHiddenIfcTypes: ['hostTypes'],
   typeViewMode: ['typeViewMode'],
-  structuralViewMode: ['structuralViewMode'],
   hasTypeGeometry: [], // Capability flag for the type view mode.
 } satisfies Record<StateKeys<VisibilitySlice>, readonly VisibilityReasonId[]>;
 
@@ -104,7 +103,7 @@ const ACTIVATE: Record<VisibilityReasonId, (lastModelOffset: number) => Partial<
   }),
   typeVisibility: () => ({ typeVisibility: { ...useViewerStore.getState().typeVisibility, site: false } }),
   typeViewMode: () => ({ typeViewMode: 'types', hasTypeGeometry: true }),
-  structuralViewMode: () => ({ structuralViewMode: 'analytical' }),
+  structuralViewMode: () => ({ typeVisibility: { ...useViewerStore.getState().typeVisibility, structuralViewMode: 'analytical' } }),
   hostTypes: () => ({ hostHiddenIfcTypes: new Set(['IFCSPACE']) }),
   // Lasting scene state (#5893): the cut/measurements and the visibility
   // toggle are independent, so activating the reason means both are on.
@@ -136,7 +135,7 @@ function seedModels(count: number): number {
     hiddenEntities: new Set(), isolatedEntities: null, ghostExceptEntities: null, classFilter: null,
     selectedStoreys: new Set(), activeLensId: null, lensHiddenIds: new Set(), lensAppliedHiddenIds: [],
     typeVisibility: { spaces: false, spatialZones: false, openings: false, virtualElements: false, site: true, ifcAnnotations: true, ifcGrid: true, structuralGlyphs: true },
-    structuralViewMode: 'both', typeViewMode: 'model', hasTypeGeometry: false, hostHiddenIfcTypes: null,
+    typeViewMode: 'model', hasTypeGeometry: false, hostHiddenIfcTypes: null,
     levelDisplayMode: 'stacked',
   });
   return (count - 1) * OFFSET;

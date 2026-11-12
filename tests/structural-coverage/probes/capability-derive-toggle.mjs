@@ -10,6 +10,8 @@ import { readStep } from '../lib/step.mjs';
 import { boundedSpawnSync } from '../../../scripts/lib/bounded-process.mjs';
 
 export const FRAME = 'structural/ifc_structuralanalysisview/roof_truss--Axis-Struc.ifc';
+// Partial credit requires at least 90% of members to match, including physical links.
+const MIN_MEMBER_MATCH_RATIO = 0.9;
 const TOLERANCE = 0.001; // one millimetre, including endpoint and line-axis drift
 const distance = (a, b) => Math.hypot(...a.map((v, i) => v - b[i]));
 const minus = (a, b) => a.map((v, i) => v - b[i]);
@@ -82,9 +84,10 @@ export function compareDerived(actual, expected) {
     return endError <= TOLERANCE && axisError <= TOLERANCE && JSON.stringify(a.links) === JSON.stringify(b.links);
   };
   const remaining = new Set(actual.members);
+  let matchedMembers = 0;
   for (const ref of expected.members) {
     const hit = [...remaining].find((a) => matches(a,ref));
-    if (hit) remaining.delete(hit);
+    if (hit) { remaining.delete(hit); matchedMembers++; }
     else problems.push(`reference member #${ref.id}: no derived match for ends ${JSON.stringify(ref.ends)}, axis and physical links ${JSON.stringify(ref.links)}`);
   }
   for (const extra of remaining) problems.push(`extra derived member #${extra.id}: ${JSON.stringify(extra)}`);
@@ -94,7 +97,10 @@ export function compareDerived(actual, expected) {
     if (hit) nodes.delete(hit); else problems.push(`reference connection #${ref.id}: no derived point with links ${JSON.stringify(ref.links)} within ${TOLERANCE} m at ${JSON.stringify(ref.position)}`);
   }
   for (const extra of nodes) problems.push(`extra derived connection #${extra.id} at ${JSON.stringify(extra.position)}`);
-  return { status: problems.length ? 'partial' : 'pass', reason: problems.join('; '), mismatches: problems, toleranceMetres: TOLERANCE, axisSineTolerance: TOLERANCE, counts: { referenceMembers: expected.members.length, derivedMembers: actual.members.length, referenceNodes: expected.nodes.length, derivedNodes: actual.nodes.length } };
+  const memberMatchRatio = matchedMembers / Math.max(1, expected.members.length, actual.members.length);
+  const status = !expected.members.length || !expected.nodes.length || memberMatchRatio < MIN_MEMBER_MATCH_RATIO
+    ? 'fail' : problems.length ? 'partial' : 'pass';
+  return { status, reason: problems.join('; '), mismatches: problems, toleranceMetres: TOLERANCE, axisSineTolerance: TOLERANCE, counts: { matchedMembers, memberMatchRatio, referenceMembers: expected.members.length, derivedMembers: actual.members.length, referenceNodes: expected.nodes.length, derivedNodes: actual.nodes.length } };
 }
 
 export async function measureDerivation(ctx,file) {

@@ -17,6 +17,22 @@ test('#9668: perturbing real derived axes, endpoints, links or connections canno
   assert.ok(actual.members.length && actual.nodes.length);
   assert.ok(actual.members.every((m)=>m.links.length));
   const control = compareDerived(actual,expected);
+  assert.equal(control.status,'partial');
+  assert.equal(control.counts.matchedMembers,13);
+  // #9923: mutate the real planner output before real apply/export, as a product regression would.
+  const shiftedContext = { ...ctx, pkgs: { ...ctx.pkgs, create: { ...ctx.pkgs.create,
+    planStructuralDerivation(...args) {
+      const plan = ctx.pkgs.create.planStructuralDerivation(...args);
+      const points = new Set([...plan.curveMembers.flatMap((m)=>[m.start,m.end]), ...plan.nodes.map((n)=>n.position)]);
+      for (const point of points) point[0] += 0.01;
+      return plan;
+    },
+  } } };
+  const shifted = await measureDerivation(shiftedContext,file);
+  const rejected = compareDerived(shifted.actual,expected);
+  assert.equal(rejected.status,'fail','a 10 mm shift of every planned member earns no capability credit');
+  assert.equal(rejected.counts.matchedMembers,0);
+  assert.equal(rejected.counts.derivedMembers,13);
   const moved = structuredClone(actual);
   moved.members[0].ends[0][0] += 1;
   assert.ok(compareDerived(moved,expected).mismatches.length > control.mismatches.length);

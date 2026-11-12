@@ -30,6 +30,7 @@
  * contract every other snapshot-style export in the viewer has.
  */
 
+import { resolveViewHiddenEntities } from '@/lib/visibility/structural-view';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { getGlobalCanvas, getGlobalRenderer } from '@/hooks/useBCF';
 import { resolveBoxSectionInputs, resolveExtraSectionInputs, resolveSectionInput } from '@/lib/section/section-plane-inputs';
@@ -73,7 +74,7 @@ export function readViewPdfSource(state: ViewerState): ViewPdfSource {
       // instanced element twice, so this is empty BY CONSTRUCTION, not by
       // omission — the #2558 guard is satisfied upstream in `gatherDrawnMeshes`.
       instancedMeshes: [],
-      hiddenEntities: state.hiddenEntities,
+      hiddenEntities: resolveViewHiddenEntities(state),
       isolatedEntities: state.isolatedEntities,
       computedIsolatedIds: computeIsolationFilterSet(state),
       typeVisibility: state.typeVisibility,

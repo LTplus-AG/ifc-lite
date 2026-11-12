@@ -66,6 +66,7 @@ export const commandPaletteIt = {
   'commandPalette.vis.site.label': 'Sito',
   'commandPalette.vis.ifcAnnotations.label': 'Annotazioni',
   'commandPalette.vis.ifcGrid.label': 'Griglie',
+  'commandPalette.availability.structural': 'Carica un modello con dati di analisi strutturale.',
   'commandPalette.vis.structuralView.label': 'Alterna modello analitico / fisico / entrambi',
   "commandPalette.vis.structuralGlyphs.label": "Vincoli e carichi",
   'commandPalette.vis.resetColors.label': 'Ripristina i colori',

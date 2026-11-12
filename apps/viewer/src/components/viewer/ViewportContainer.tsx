@@ -613,7 +613,7 @@ export function ViewportContainer() {
   const computedIsolatedIds = useVisibilityIsolation();
 
   const visibleResultEmpty = useMemo(() => isVisibleResultEmpty({
-    models: storeModels, geometryResult, hiddenEntities,
+    ...useViewerStore.getState(), models: storeModels, geometryResult, hiddenEntities,
   }, {
     meshes: filteredGeometry,
     pointClouds: mergedPointClouds,
@@ -621,7 +621,7 @@ export function ViewportContainer() {
     hasUnenumeratedInstances: [...storeModels].some(([id, model]) => model.visible
       && hasInstancedShards(id) && !model.geometryResult?.instancedGeometryHashes?.size),
   }), [storeModels, geometryResult, filteredGeometry, geometryVersion, mergedPointClouds,
-    computedIsolatedIds, hiddenEntities]);
+    computedIsolatedIds, hiddenEntities, typeVisibility, mutationVersion]);
 
   // Empty state when no file is loaded at all (show starting UI)
   // But NOT when models are loaded but just hidden - in that case show empty 3D canvas

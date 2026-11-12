@@ -283,3 +283,23 @@ describe('shared palette and ribbon commands (#5870)', () => {
     }
   });
 });
+
+it('#9923 disables the structural mode command until analytical data exists', async () => {
+  const { createSyntheticDataStore } = await import('@ifc-lite/parser');
+  const { MutablePropertyView, StoreEditor } = await import('@ifc-lite/mutations');
+  const { fixtureModel } = await import('@/test/store-fixture');
+  const registry = await loadRegistry();
+  assert.ok(registry);
+  const previous = useViewerStore.getState();
+  const store = createSyntheticDataStore({schemaVersion:'IFC4',fileSize:0,
+    entities:[{expressId:7,type:'IfcBeam',hasGeometry:true}]});
+  const view = new MutablePropertyView(null,'default');
+  try {
+    useViewerStore.setState({models:new Map([['default',{...fixtureModel('default'),ifcDataStore:store}]]),
+      ifcDataStore:store,mutationViews:new Map([['default',view]]),loading:false});
+    const row = () => registry.paletteSurfaceCommands({canEditInSession:true},()=>{}).find((r)=>r.id==='vis:structural-view');
+    assert.equal(row()?.availability?.status,'disabled','a physical-only model has nothing analytical to reveal');
+    new StoreEditor(store,view).addEntity('IfcStructuralPointConnection',['0abcdefghijklmnopqrstu',null,'Joint',null,null,null,null,null,null]);
+    assert.equal(row()?.checkAvailability?.().status,'available','an authored analytical product enables the same command');
+  } finally { useViewerStore.setState(previous); }
+});

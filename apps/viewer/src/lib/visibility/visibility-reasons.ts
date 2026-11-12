@@ -24,7 +24,7 @@
 import type { ViewerState } from '@/store';
 import type { TranslationKey } from '@/i18n';
 import { TYPE_VISIBILITY_SEMANTIC_DEFAULTS } from '@/store/constants';
-import type { TypeVisibility } from '@/store/types';
+import type { TypeVisibility, TypeVisibilityToggle } from '@/store/types';
 import { hiddenChannelAfterReset } from './lens-reset';
 
 export type VisibilityReasonId =
@@ -62,8 +62,8 @@ export interface VisibilityReason {
 }
 
 /** Class-type toggles that are ON by default but the user turned OFF. */
-export function hiddenTypeToggles(typeVisibility: TypeVisibility): (keyof TypeVisibility)[] {
-  return (Object.keys(TYPE_VISIBILITY_SEMANTIC_DEFAULTS) as (keyof TypeVisibility)[])
+export function hiddenTypeToggles(typeVisibility: TypeVisibility): TypeVisibilityToggle[] {
+  return (Object.keys(TYPE_VISIBILITY_SEMANTIC_DEFAULTS) as TypeVisibilityToggle[])
     .filter((key) => TYPE_VISIBILITY_SEMANTIC_DEFAULTS[key] && !typeVisibility[key]);
 }
 
@@ -177,7 +177,7 @@ export const VISIBILITY_REASONS: readonly VisibilityReason[] = [
     id: 'structuralViewMode',
     labelKey: 'visibilityReasons.structuralViewMode',
     resetPolicy: 'cleared',
-    isActive: (s) => s.structuralViewMode !== 'both',
+    isActive: (s) => (s.typeVisibility.structuralViewMode ?? 'both') !== 'both',
     clear: (store) => store.getState().setStructuralViewMode('both'),
   },
   {

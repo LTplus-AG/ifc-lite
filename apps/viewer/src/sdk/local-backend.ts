@@ -144,7 +144,8 @@ export class LocalBackend implements BimBackend {
         return this.storeApi.subscribe((state, prev) => {
           if (
             state.hiddenEntities !== prev.hiddenEntities ||
-            state.isolatedEntities !== prev.isolatedEntities
+            state.isolatedEntities !== prev.isolatedEntities ||
+            state.typeVisibility !== prev.typeVisibility
           ) {
             handler({});
           }

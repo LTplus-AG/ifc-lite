@@ -10,6 +10,7 @@
  * pass over its type-index keys when the model map changes.
  */
 
+import { structuralGlyphsVisible } from '@/lib/visibility/structural-view';
 import { lazy, Suspense, useMemo } from 'react';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
@@ -48,7 +49,7 @@ function hasGlyphTypes(store: IfcDataStore | null | undefined): boolean {
 }
 
 export function StructuralGlyphLayer({ isolatedIds }: { isolatedIds?: ReadonlySet<number> | null }) {
-  const enabled = useViewerStore((s) => s.typeVisibility.structuralGlyphs);
+  const enabled = useViewerStore((s) => structuralGlyphsVisible(s.typeVisibility));
   const models = useViewerStore((s) => s.models);
   const legacyStore = useViewerStore((s) => s.ifcDataStore);
   const present = useMemo(

@@ -12,7 +12,7 @@
 import type { StateCreator } from 'zustand';
 import type { ViewerState } from '../index.js';
 import { resetVisibilityReasons } from '../../lib/visibility/visibility-reasons.js';
-import type { TypeVisibility } from '../types.js';
+import type { TypeVisibility, TypeVisibilityToggle } from '../types.js';
 import {
   getPersistedTypeVisibility,
   TYPE_VISIBILITY_STORAGE_KEYS,
@@ -44,7 +44,6 @@ import {
 
 export interface VisibilitySlice {
   // State
-  structuralViewMode: 'both' | 'physical' | 'analytical';
   setStructuralViewMode: (mode: 'both' | 'physical' | 'analytical') => void;
   hiddenEntities: Set<number>;
   isolatedEntities: Set<number> | null;
@@ -90,7 +89,7 @@ export interface VisibilitySlice {
   clearAllFilters: () => void;
   showAll: () => void;
   isEntityVisible: (id: number) => boolean;
-  toggleTypeVisibility: (type: keyof TypeVisibility) => void;
+  toggleTypeVisibility: (type: TypeVisibilityToggle) => void;
   /** Restore every type-visibility toggle to its semantic default (and persist). */
   resetTypeVisibility: () => void;
   /** Set the Model/Types 3D view mode (and persist). */
@@ -155,8 +154,9 @@ export interface VisibilitySlice {
 
 export const createVisibilitySlice: StateCreator<ViewerState, [], [], VisibilitySlice> = (set, get) => ({
   // Initial state
-  structuralViewMode: 'both',
-  setStructuralViewMode: (structuralViewMode) => set({ structuralViewMode }),
+  setStructuralViewMode: (structuralViewMode) => set((s) => ({
+    typeVisibility: { ...s.typeVisibility, structuralViewMode },
+  })),
   hiddenEntities: new Set(),
   isolatedEntities: null,
   ghostExceptEntities: null, visibilityRevision: 0,

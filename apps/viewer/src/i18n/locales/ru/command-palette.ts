@@ -155,6 +155,7 @@ export const commandPaletteRu = {
   "commandPalette.vis.site.label": "Участок",
   "commandPalette.vis.ifcAnnotations.label": "Аннотации",
   "commandPalette.vis.ifcGrid.label": "Координационные оси",
+  'commandPalette.availability.structural': 'Загрузите модель с данными структурного анализа.',
   "commandPalette.vis.structuralView.label": "Переключить аналитическую / физическую / обе модели",
   "commandPalette.vis.structuralGlyphs.label": "Опоры и нагрузки",
   "commandPalette.vis.resetColors.label": "Сбросить цвета",

@@ -15,6 +15,7 @@ import type { EntityRef } from './types.js';
 import { entityRefToString, stringToEntityRef } from './types.js';
 import { useViewerStore } from './index.js';
 import { toGlobalIdFromModels } from './globalId.js';
+import { resolveViewHiddenEntities } from '../lib/visibility/structural-view';
 import { isTypeVisible } from './typeVisibilityFilter.js';
 import { collectAggregatedDescendants, type AggregationRelationships } from '../utils/aggregation.js';
 import { effectiveSpatialMembers } from '../lib/effective-spatial-members.js';
@@ -76,6 +77,8 @@ export function visibilityFingerprint(state: ViewerStateSnapshot): string {
     tv.virtualElements ? 1 : 0,
     tv.site ? 1 : 0,
     tv.ifcAnnotations ? 1 : 0,
+    tv.structuralViewMode ?? 'both',
+    state.mutationVersion,
     state.models.size,
     modelParts.join(';'),
     state.geometryResult?.meshes?.length ?? 0,
@@ -423,7 +426,7 @@ export function computeIsolationFilterSet(state: ViewerStateSnapshot): Set<numbe
 function getVisibleGlobalIds(state: ViewerStateSnapshot): Set<number> {
   const candidates = collectVisibleCandidates(state);
 
-  const globalHidden = new Set<number>(state.hiddenEntities);
+  const globalHidden = new Set<number>(resolveViewHiddenEntities(state));
   for (const id of state.lensHiddenIds) {
     globalHidden.add(id);
   }

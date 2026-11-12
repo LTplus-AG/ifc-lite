@@ -12,6 +12,7 @@
  * consumer (viewport, Cesium, basket, export) stays in lockstep.
  */
 
+import { isAnalyticalProduct } from '../lib/visibility/structural-view';
 import type { TypeVisibility } from './types.js';
 
 /** Which `typeVisibility` boolean gates each IFC class. */
@@ -26,7 +27,7 @@ type TypeVisibilityKey = keyof Pick<
  * take this rather than the full `TypeVisibility`, which also carries controls
  * with no class mapping (`ifcGrid`).
  */
-export type TypeVisibilityGate = Pick<TypeVisibility, TypeVisibilityKey>;
+export type TypeVisibilityGate = Pick<TypeVisibility, TypeVisibilityKey | 'structuralViewMode'>;
 
 /**
  * IFC class → toggle key. When the mapped toggle is `false` the class is
@@ -68,7 +69,11 @@ export function isTypeVisible(
   ifcType: string | undefined,
   typeVisibility: TypeVisibilityGate,
 ): boolean {
+  // Instanced meshes may carry no class; their owners are gated by the shared ID mask.
   if (!ifcType) return true;
+  const mode = typeVisibility.structuralViewMode ?? 'both';
+  if (mode === 'analytical' && !isAnalyticalProduct(ifcType)) return false;
+  if (mode === 'physical' && isAnalyticalProduct(ifcType)) return false;
   const key = IFC_TYPE_TO_VISIBILITY_KEY[ifcType];
   if (key === undefined) return true;
   return typeVisibility[key];

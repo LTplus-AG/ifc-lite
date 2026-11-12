@@ -178,6 +178,7 @@ export function focusClashGroup(
   // represent it. Clear it before composing the clash focus/capture state.
   const waitForPresentationReset = hiddenParticipatingModelIds.length > 0
     || state.classFilter !== null
+    || (state.typeVisibility.structuralViewMode ?? 'both') !== 'both'
     || !Object.values(state.typeVisibility).every(Boolean)
     || state.typeViewMode !== 'model';
   // BCF cannot serialize a viewer-only whole-model visibility toggle. Reveal
@@ -192,7 +193,8 @@ export function focusClashGroup(
   // Normalize them in one render before framing so the PNG and reopened
   // viewpoint agree. This deliberately leaves the user's persisted defaults
   // alone; the capture transition is presentation state, not a preference.
-  if (!Object.values(state.typeVisibility).every(Boolean) || state.typeViewMode !== 'model') {
+  if ((state.typeVisibility.structuralViewMode ?? 'both') !== 'both'
+    || !Object.values(state.typeVisibility).every(Boolean) || state.typeViewMode !== 'model') {
     useViewerStore.setState({
       typeVisibility: { ...ALL_TYPES_VISIBLE },
       typeViewMode: 'model',

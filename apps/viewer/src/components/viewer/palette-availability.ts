@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Palette-only prerequisites. Shared ribbon/context enabled predicates stay intact (#8947). */
+import { hasStructuralData } from '@/lib/visibility/structural-view';
 import { blankModelUnavailable } from '@/hooks/startBlankModel';
 import { getPlacementGeorefContext } from '@/lib/geo/placement-georef-runtime';
 import { hasRetainedReportHost } from './retained-report-destination';
@@ -107,6 +108,7 @@ export function paletteAvailability(command: SurfaceCommandDefinition, context: 
     if (hasRetainedShapeOnlyModel(s.models)) return blocked(RETAINED_SHAPE_ONLY_REASON);
   }
 
+  if (id === 'vis:structural-view' && !hasStructuralData(s)) return blocked('commandPalette.availability.structural');
   const hasData = s.ifcDataStore !== null || [...s.models.values()].some(m => m.ifcDataStore != null);
   const opener = HOST_OPENERS.get(id);
   if (opener) {

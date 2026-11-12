@@ -185,3 +185,34 @@ it('#9875 unkeyed errors coalesce after their owning surfaces converge', () => {
   assert.equal(anchor.querySelectorAll('button[aria-label="Dismiss notification"]').length, 1);
   assert.match(anchor.textContent ?? '', /×3/, 'all three occurrences are counted without leaving a stale duplicate');
 });
+
+
+it('#9875 an ineligible later modal cannot hide the eligible parent fallback', () => {
+  let closeChild: () => void = () => { throw new Error('Child not mounted'); };
+  let closeLater: () => void = () => { throw new Error('Later dialog not mounted'); };
+  function Parent() {
+    const [childOpen, setChildOpen] = useState(true);
+    closeChild = () => setChildOpen(false);
+    return <Dialog open><DialogContent><DialogTitle>Parent A</DialogTitle><DialogDescription>Review</DialogDescription>
+      <Dialog open={childOpen}><DialogContent><DialogTitle>Child B</DialogTitle><DialogDescription>Review</DialogDescription></DialogContent></Dialog>
+    </DialogContent></Dialog>;
+  }
+  function Later() {
+    const [open, setOpen] = useState(true);
+    closeLater = () => setOpen(false);
+    return <Dialog open={open}><DialogContent><DialogTitle>Later C</DialogTitle><DialogDescription>Review</DialogDescription></DialogContent></Dialog>;
+  }
+  const app = render(<Toaster />);
+  render(<Parent />);
+  act(() => toast.error('Child save failed'));
+  render(<Later />);
+  act(closeChild);
+  const dialogs = [...document.querySelectorAll('[role="dialog"]')];
+  const parent = dialogs.find(dialog => dialog.textContent?.includes('Parent A'));
+  const later = dialogs.find(dialog => dialog.textContent?.includes('Later C'));
+  assert.ok(parent?.querySelector('[data-dialog-notices]')?.textContent?.includes('Child save failed'));
+  assert.ok(!later?.querySelector('[data-dialog-notices]')?.textContent?.includes('Child save failed'));
+  assert.ok(!app.textContent?.includes('Child save failed'), 'the app anchor is not the fallback while an eligible parent survives');
+  act(closeLater);
+  assert.ok(document.querySelector('[role="dialog"] [data-dialog-notices]')?.textContent?.includes('Child save failed'), 'the error is still readable in A after C closes');
+});

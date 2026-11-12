@@ -38,22 +38,23 @@ export function registerToastDialog(id: string, ancestors: readonly string[]): (
   dialogs.set(id, { ancestors, scope: Symbol(id) });
   return () => {
     dialogs.delete(id);
-    const next = currentDialog();
-    const scope = next ? dialogs.get(next)?.scope : undefined;
     // A nested dialog can close on success while its parent stays open. Keep
     // its notice readable there, but never adopt it into a later-opened modal.
     // Silent until Dialog's layout cleanup publishes the new snapshot.
     toasts = toasts.map(item => item.dialogId === id
-      ? { ...item, dialogId: scope && item.dialogScopes.has(scope) ? next : undefined } : item);
+      ? { ...item, dialogId: currentDialog(item.dialogScopes) } : item);
   };
 }
 
-function currentDialog(): string | undefined {
+function currentDialog(scopes?: ReadonlySet<symbol>): string | undefined {
   // React commits descendants before parents. Exclude covered ancestors first,
   // then let the most recently opened independent dialog own the notice.
-  const covered = new Set([...dialogs.values()].flatMap(dialog => dialog.ancestors));
+  // Filter eligibility before ordering: a later ineligible surface must not
+  // prevent a surviving notice from returning to an already-open parent.
+  const eligible = [...dialogs].filter(([, dialog]) => !scopes || scopes.has(dialog.scope));
+  const covered = new Set(eligible.flatMap(([, dialog]) => dialog.ancestors));
   let owner: string | undefined;
-  for (const id of dialogs.keys()) if (!covered.has(id)) owner = id;
+  for (const [id] of eligible) if (!covered.has(id)) owner = id;
   return owner;
 }
 

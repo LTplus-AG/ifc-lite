@@ -163,6 +163,20 @@ describe('fast path runtime', () => {
     rt.stop();
   });
 
+  it('an idle callback that fires during a load does no work at all (no compile, no fetch)', async () => {
+    let compiles = 0;
+    let fire: (() => void) | null = null;
+    // A host whose idle callback cannot be cancelled (e.g. it was already queued when the load began).
+    const h = host({ whenIdle: (run) => { fire = run; return () => {}; }, compileModule: async () => { compiles++; return {} as WebAssembly.Module; } });
+    const rt = createFastPathRuntime(h.deps)!;
+    h.setLoading(true);
+    fire!();
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(compiles, 0);
+    assert.equal(h.workers.length, 0);
+    rt.stop();
+  });
+
   it('stops preparing when a load starts while it waits for the engine', async () => {
     let finishCompile!: (m: WebAssembly.Module) => void;
     const h = host({ compileModule: () => new Promise((r) => { finishCompile = r; }) });

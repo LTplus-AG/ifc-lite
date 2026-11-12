@@ -14,7 +14,7 @@
 import { isAbsolute, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const MODES = ['off', 'shadow', 'on'];
+const MODES = ['off', 'shadow', 'on'];
 
 /**
  * More failures than this in one shard is a real break, not a flake, and is
@@ -198,7 +198,7 @@ export function readLastRun(text) {
 
 /**
  * Every test in a Playwright JSON report, by test id.
- * @returns {Map<string, { title: string, file: string, line: number, status: string }>}
+ * @returns {Map<string, { title: string, file: string, line: number, status: string, expectedStatus: string, annotations: string[] }>}
  */
 export function indexPlaywrightReport(report) {
   const out = new Map();
@@ -248,10 +248,10 @@ export function unintendedSkips(index) {
  *
  * @returns {string|null}
  */
-export function incompleteE2eAttempt({ ids, report }) {
-  if (!report) return "the first attempt's JSON report is missing or unreadable";
+export function incompleteE2eAttempt({ ids, index }) {
+  if (!index) return "the first attempt's JSON report is missing or unreadable";
   const retried = new Set(ids);
-  const unlisted = unintendedSkips(indexPlaywrightReport(report)).filter((id) => !retried.has(id));
+  const unlisted = unintendedSkips(index).filter((id) => !retried.has(id));
   if (unlisted.length > 0) return `${unlisted.length} test(s) the first attempt skipped without asking are not in its failed list`;
   return null;
 }
@@ -276,13 +276,14 @@ export function judgeE2eRetry({ exitCode, ids, report }) {
  * The job-summary section for one shard.
  * @param {{ kind: string, shard: string, mode: string, plan: { retry: boolean, reason: string },
  *           tests: { file: string, title: string }[], result?: { passed: boolean, reason: string } }} r
+ * @param {boolean} passed  the retry ran and passed
  */
-export function summaryLines(r) {
+export function summaryLines(r, passed) {
   const lines = [`## Shard retry (\`CI_SHARD_RETRY=${r.mode}\`): ${r.kind} shard ${r.shard}`, ''];
   if (!r.plan.retry) {
     lines.push(`The first attempt failed. Not retried: ${r.plan.reason}.`);
   } else {
-    lines.push(`The first attempt failed. Retried once: **${r.result?.passed ? 'passed' : 'failed'}** (${r.result?.reason ?? 'no result'}).`);
+    lines.push(`The first attempt failed. Retried once: **${passed ? 'passed' : 'failed'}** (${r.result?.reason ?? 'no result'}).`);
   }
   if (r.tests.length > 0) {
     lines.push('', '| Failed on the first attempt | File |', '| --- | --- |');
@@ -290,11 +291,11 @@ export function summaryLines(r) {
   }
   lines.push('');
   if (r.mode === 'on') {
-    lines.push(r.plan.retry && r.result?.passed
+    lines.push(passed
       ? 'The job passes on the retry. The tests above are flaky: fix them, a retry only hides the cost.'
       : 'The job fails.');
   } else {
-    lines.push(`Shadow mode: the job keeps the first attempt's verdict (failure). With \`on\` it would have ${r.plan.retry && r.result?.passed ? 'passed' : 'failed'}.`);
+    lines.push(`Shadow mode: the job keeps the first attempt's verdict (failure). With \`on\` it would have ${passed ? 'passed' : 'failed'}.`);
   }
   return lines;
 }

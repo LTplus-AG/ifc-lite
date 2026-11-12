@@ -253,10 +253,14 @@ function realPlaywright(name, env = {}) {
   return { status: r.status, report: JSON.parse(readFileSync(json, 'utf8')), lastRun: readFileSync(join(dir, 'test-results/.last-run.json'), 'utf8') };
 }
 
+/** The failing-beforeAll run, shared by the tests that read it (one Playwright run, not two). */
+let firstAttempt;
+const beforeAllFails = () => (firstAttempt ??= realPlaywright('before-all-fails'));
+
 const byTitle = (report) => new Map([...indexPlaywrightReport(report)].map(([id, t]) => [t.title, id]));
 
 test('#9788 review: a failing beforeAll — the mass-skipped tests are in the failed list, and a retry plan that drops them is refused', () => {
-  const first = realPlaywright('before-all-fails');
+  const first = beforeAllFails();
   assert.equal(first.status, 1);
   const ids = byTitle(first.report);
   const { ids: failed, refusal } = readLastRun(first.lastRun);
@@ -265,14 +269,14 @@ test('#9788 review: a failing beforeAll — the mass-skipped tests are in the fa
   // the hook failure skipped (`didNotRun`), runtime-skip test included.
   assert.deepEqual(new Set(failed), new Set(['t1', 't2', 't3', 'runtime skip'].map((t) => ids.get(t))));
   assert.deepEqual(new Set(unintendedSkips(indexPlaywrightReport(first.report))), new Set(['t2', 't3', 'runtime skip'].map((t) => ids.get(t))));
-  assert.equal(incompleteE2eAttempt({ ids: failed, report: first.report }), null);
+  assert.equal(incompleteE2eAttempt({ ids: failed, index: indexPlaywrightReport(first.report) }), null);
   // The reviewer's case: only the test that failed is listed. Refused.
-  assert.match(incompleteE2eAttempt({ ids: [ids.get('t1')], report: first.report }) ?? '', /skipped without asking/); // @source-text-assertion-ok subject is the returned refusal
-  assert.match(incompleteE2eAttempt({ ids: failed, report: null }) ?? '', /missing or unreadable/); // @source-text-assertion-ok subject is the returned refusal
+  assert.match(incompleteE2eAttempt({ ids: [ids.get('t1')], index: indexPlaywrightReport(first.report) }) ?? '', /skipped without asking/); // @source-text-assertion-ok subject is the returned refusal
+  assert.match(incompleteE2eAttempt({ ids: failed, index: null }) ?? '', /missing or unreadable/); // @source-text-assertion-ok subject is the returned refusal
 });
 
 test('#9788 review: a retry passes only when every retried test really passed; a deliberate skip is neither unintended nor a pass', () => {
-  const first = realPlaywright('before-all-first');
+  const first = beforeAllFails();
   const { ids: failed } = readLastRun(first.lastRun);
   const retry = realPlaywright('before-all-retry', { BEFORE_ALL_PASSES: '1' });
   assert.equal(retry.status, 0);

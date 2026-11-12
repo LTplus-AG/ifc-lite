@@ -68,7 +68,7 @@ import {
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const VIEWER_ROOT = join(REPO_ROOT, 'apps/viewer');
 /** Inside the workspace, where test.yml's `hashFiles` can see it. */
-export const RETRY_JUNIT = join(VIEWER_ROOT, 'mergify-junit-retry.xml');
+const RETRY_JUNIT = join(VIEWER_ROOT, 'mergify-junit-retry.xml');
 
 /** Leaves room in the 25-minute viewer job and the 20-minute E2E job. */
 const VIEWER_RETRY_TIMEOUT_MS = 8 * 60_000;
@@ -80,6 +80,17 @@ function readOptional(path) {
   } catch (err) {
     if (err.code === 'ENOENT') return null;
     throw err;
+  }
+}
+
+/** Parsed JSON, or null when the file is missing or unreadable (logged). */
+function readJsonOptional(path, label) {
+  try {
+    const text = readOptional(path);
+    return text === null ? null : JSON.parse(text);
+  } catch (err) {
+    console.log(`::warning::${label} is unreadable (${err.message})`);
+    return null;
   }
 }
 
@@ -123,22 +134,17 @@ function retryViewer(env, mode, reportDir) {
 }
 
 function retryE2e(env, mode, reportDir) {
-  const last = readOptional(required(env, 'LAST_RUN'));
+  const lastRun = required(env, 'LAST_RUN');
+  const shard = required(env, 'E2E_SHARD');
+  const last = readOptional(lastRun);
   const { ids, refusal } = last === null ? { ids: [], refusal: 'the first attempt left no .last-run.json' } : readLastRun(last);
-  let firstReport = null;
-  try {
-    const text = readOptional(required(env, 'REPORT_JSON'));
-    firstReport = text === null ? null : JSON.parse(text);
-  } catch (err) {
-    console.log(`::warning::first attempt's JSON report is unreadable (${err.message})`);
-  }
-  const index = firstReport ? indexPlaywrightReport(firstReport) : new Map();
+  const firstReport = readJsonOptional(required(env, 'REPORT_JSON'), "the first attempt's JSON report");
+  const index = firstReport ? indexPlaywrightReport(firstReport) : null;
   const tests = ids.map((id) => {
-    const t = index.get(id);
+    const t = index?.get(id);
     return t ? { file: `${t.file}:${t.line}`, title: t.title } : { file: '?', title: `test id ${id}` };
   });
-  const plan = planRetry({ mode, count: ids.length, cap: MAX_RETRY_TESTS, refusal: refusal ?? incompleteE2eAttempt({ ids, report: firstReport }) ?? undefined });
-  const shard = required(env, 'E2E_SHARD');
+  const plan = planRetry({ mode, count: ids.length, cap: MAX_RETRY_TESTS, refusal: refusal ?? incompleteE2eAttempt({ ids, index }) ?? undefined });
   const record = { kind: 'e2e', shard, mode, plan, ids, tests };
   if (!plan.retry) return record;
 
@@ -148,7 +154,7 @@ function retryE2e(env, mode, reportDir) {
   // Playwright applies the last-failed filter AFTER sharding, so the ids
   // resolve exactly as they did in the first attempt.
   const lastFailedFile = join(reportDir, 'e2e-retry-last-run.json');
-  copyFileSync(required(env, 'LAST_RUN'), lastFailedFile);
+  copyFileSync(lastRun, lastFailedFile);
   const retryJson = join(reportDir, 'e2e-retry-report.json');
   console.log(`[ci-shard-retry] rerunning ${ids.length} test(s): ${tests.map((t) => t.title).join('; ')}`);
   const r = spawnSync('timeout', [
@@ -156,14 +162,7 @@ function retryE2e(env, mode, reportDir) {
     'pnpm', 'test:e2e:ci', `--shard=${shard}`, '--reporter=list,@mergifyio/playwright,json',
     '--last-failed', `--last-failed-file=${lastFailedFile}`, '--output=test-results/retry',
   ], { cwd: REPO_ROOT, stdio: 'inherit', env: { ...env, PLAYWRIGHT_JSON_OUTPUT_FILE: retryJson } });
-  let report = null;
-  try {
-    const text = readOptional(retryJson);
-    report = text === null ? null : JSON.parse(text);
-  } catch (err) {
-    console.log(`::warning::retry JSON report is unreadable: ${err.message}`);
-  }
-  record.result = judgeE2eRetry({ exitCode: r.status, ids, report });
+  record.result = judgeE2eRetry({ exitCode: r.status, ids, report: readJsonOptional(retryJson, "the retry's JSON report") });
   return record;
 }
 
@@ -178,7 +177,7 @@ export function run(argv, env = process.env) {
   const record = kind === 'viewer' ? retryViewer(env, mode, reportDir) : retryE2e(env, mode, reportDir);
   const passed = record.plan.retry && record.result?.passed === true;
   writeFileSync(join(reportDir, `${kind}-retry.json`), `${JSON.stringify({ ...record, passed }, null, 2)}\n`);
-  const lines = summaryLines(record);
+  const lines = summaryLines(record, passed);
   for (const l of lines) console.log(l);
   if (env.GITHUB_STEP_SUMMARY) appendFileSync(env.GITHUB_STEP_SUMMARY, `${lines.join('\n')}\n`);
   if (passed) {

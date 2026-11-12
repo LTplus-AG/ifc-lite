@@ -55,6 +55,9 @@ export interface StructuralMemberInfo {
   predefinedType?: string;
   /** `IfcStructuralSurfaceMember.Thickness`, when the file carries it. */
   thickness?: number;
+  /** IFC2X3 varying surface-member thickness stations. */
+  SubsequentThickness?: number[];
+  VaryingThicknessLocation?: number;
   /** IFC4+ direction reference (model-local expressId). */
   Axis?: number;
   /** Physical `IfcElement`s linked by assignment or IFC2X3 structural-element relations (model-local expressIds). */
@@ -110,6 +113,12 @@ export interface StructuralActivityInfo {
   /** `IfcStructuralActivity.GlobalOrLocal`, e.g. `GLOBAL_COORDS`. */
   globalOrLocal?: string;
   ProjectedOrTrue?: string;
+  /** IFC2X3 reaction that caused this action (model-local expressId). */
+  CausedBy?: number;
+  /** IFC2X3 varying-action shape aspect (model-local expressId). */
+  VaryingAppliedLoadLocation?: number;
+  /** IFC2X3 subsequent load references, in station order (model-local expressIds). */
+  SubsequentAppliedLoads?: number[];
   /** `IfcStructuralAction.DestabilizingLoad`; absent on reactions. */
   destabilizingLoad?: boolean;
   /** `IfcStructuralActivity.AppliedLoad`, resolved. */
@@ -167,6 +176,9 @@ export interface StructuralAnalysisModelInfo {
   description?: string;
   objectType?: string;
   predefinedType?: string;
+  /** Model-local placement references. */
+  OrientationOf2DPlane?: number;
+  SharedPlacement?: number;
   /** `LoadedBy` — load group globalIds. */
   loadGroupGlobalIds: string[];
   /** `HasResults` — result group globalIds. */

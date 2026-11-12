@@ -7,6 +7,16 @@ import { task } from '../lib/driver.mjs';
 import { oracleModel, escape, tool } from '../lib/model-ui.mjs';
 import { check, field, wall, layer, inspector, applyLayers, finish } from '../lib/authoring-helpers.mjs';
 
+export const colourMatches = (actual, expected) => Array.isArray(actual) && actual.length === 3 &&
+  actual.every((v,i) => Number.isFinite(v) && Math.abs(v-expected[i]) < .001);
+export function slabMaterials(step) {
+  const slabs=step.of('IFCSLAB');
+  if(slabs.length!==1) return [];
+  return step.of('IFCRELASSOCIATESMATERIAL')
+    .filter(r=>(r.args[4]??[]).some(o=>o.ref===slabs[0].id))
+    .map(r=>step.get(r.args[5])?.args[0]);
+}
+
 const hue = ([r,g,b]) => {
   const max = Math.max(r,g,b), min = Math.min(r,g,b), d = max-min;
   if (d < 12) return null;
@@ -57,6 +67,7 @@ export default {
     const hues=[];
     for(let i=0;i<pixels.length;i+=4) { const h=hue(pixels.slice(i,i+3)); if(h!==null) hues.push(h); }
     const brickShot=await s.shot('brick-colour');
+    let concreteMaterials=[];
     tasks.push(await task(s,'create a slab and replace Concrete with Steel in the inspector',async()=>{
       await tool(s,'slab.place');
       await s.ui.click(s.page.getByRole('radio',{name:'Polygon',exact:true}));
@@ -68,20 +79,22 @@ export default {
       for(const name of ['Concrete','Steel']) {
         await s.ui.click(s.page.getByRole('combobox',{name:'Material Name',exact:true}));
         await s.ui.click(s.page.getByRole('option',{name,exact:true}),{settle:1500});
+        if(name==='Concrete') concreteMaterials=slabMaterials((await oracleModel(s)).step);
       }
     }));
     const {step}=await oracleModel(s);
-    const walls=step.of('IFCWALL'), slab=step.of('IFCSLAB')[0];
+    const walls=step.of('IFCWALL');
     const assigned=walls.map(w=>assignedLayerMaterials(step,w.id));
     const brick=step.of('IFCMATERIAL').find(m=>m.args[0]==='Brick');
     const definitions=step.of('IFCMATERIALDEFINITIONREPRESENTATION').filter(r=>r.args[3]?.ref===brick?.id);
     const colors=definitions.flatMap(d=>(d.args[2]??[]).flatMap(r=>(step.get(r)?.args[3]??[]).flatMap(i=>(step.get(i)?.args[1]??[]).flatMap(st=>(step.get(st)?.args[2]??[]).map(sh=>step.get(step.get(sh)?.args[0])?.args.slice(1,4))))));
-    const rels=step.of('IFCRELASSOCIATESMATERIAL').filter(r=>(r.args[4]??[]).some(o=>o.ref===slab?.id));
+    const steelMaterials=slabMaterials(step);
     const result=await finish(s,tasks,[
       check('named material assigned through exported layers',walls.length===1 && assigned.every(n=>n.length===1&&n[0]==='Brick'),JSON.stringify(assigned)),
-      check('Brick appearance exports its chosen colour',colors.some(c=>c?.every((v,i)=>Math.abs(v-[181,82,59][i]/255)<.001)),JSON.stringify(colors)),
+      check('Brick appearance exports its chosen colour',colors.some(c=>colourMatches(c,[181,82,59].map(v=>v/255))),JSON.stringify(colors)),
       check('rendered wall hue matches Brick within 10 degrees',renderError===null&&hues.length>=25&&hues.filter(h=>distance(h,target)<10).length>=25,renderError??JSON.stringify({hues,target})),
-      check('slab has exactly one association to Steel',!!slab&&rels.length===1&&step.get(rels[0].args[5])?.args[0]==='Steel',JSON.stringify(rels)),
+      check('slab initially has exactly one association to Concrete',concreteMaterials.length===1&&concreteMaterials[0]==='Concrete',JSON.stringify(concreteMaterials)),
+      check('slab has exactly one association to Steel',steelMaterials.length===1&&steelMaterials[0]==='Steel',JSON.stringify(steelMaterials)),
     ]);
     result.evidence.push(brickShot); return result;
   },

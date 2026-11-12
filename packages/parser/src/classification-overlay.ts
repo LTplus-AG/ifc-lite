@@ -53,6 +53,7 @@ export function classificationEdges(store: IfcDataStore, view: ClassificationRea
     const index = upper === relationTypes[0] ? edges.references : upper === relationTypes[1] ? edges.types : null;
     if (!index) continue;
     for (const related of relation.related) {
+      if (cacheKey !== -1 && related !== entityId) continue;
       if (view.isDeleted(related)) continue;
       const values = index.get(related) ?? [];
       for (const target of relation.relating) if (!view.isDeleted(target) && !values.includes(target)) values.push(target);

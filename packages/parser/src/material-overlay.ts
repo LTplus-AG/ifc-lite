@@ -94,6 +94,7 @@ function materialEdges(store: IfcDataStore, view: MaterialReadView, entityId: nu
       : relation.relationshipType.toUpperCase() === relTypes[1] ? types : null;
     if (!target) continue;
     for (const recipient of relation.related) {
+      if (cacheKey !== -1 && recipient !== entityId) continue;
       if (view.isDeleted(recipient)) continue;
       const values = target.get(recipient) ?? [];
       for (const id of relation.relating) if (!view.isDeleted(id) && !values.includes(id)) values.push(id);

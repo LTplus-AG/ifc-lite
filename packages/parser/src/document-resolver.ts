@@ -55,6 +55,7 @@ function effectiveEdges(store: IfcDataStore, view: MetadataReadView, entityId: n
     const target = type === kinds[0] ? edges.references : type === kinds[1] ? edges.types : null;
     if (!target) continue;
     for (const subject of relation.related) {
+      if (cacheKey !== -1 && subject !== entityId) continue;
       if (view.isDeleted(subject)) continue;
       const values = target.get(subject) ?? [];
       for (const id of relation.relating) if (!values.includes(id)) values.push(id);

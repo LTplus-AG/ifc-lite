@@ -92,3 +92,12 @@ it('#9947 preparation retains unavailable coverage instead of throwing through m
   expect(readCurrentTypeQuantities(store, 1, view)).toEqual({ status: 'unavailable',
     reason: 'Native current type quantities are unreadable', value: null });
 });
+
+it('#9947 selecting one member does not project a shared typing row onto every sibling', async () => {
+  const members = [1, ...Array.from({ length: 500 }, (_, i) => 1000 + i)];
+  const { store, view } = await fixture([`#30=IFCRELDEFINESBYTYPE('shared',$,$,$,(${members.map(id => `#${id}`).join(',')}),#2);`]);
+  const isDeleted = view.isDeleted, siblings: number[] = [];
+  view.isDeleted = id => { if (id >= 1000 && id < 1500) siblings.push(id); return isDeleted(id); };
+  expect(extractAllMaterialsOnDemand(store, 1, view)[0]?.name).toBe('Concrete');
+  expect(siblings).toEqual([]);
+});

@@ -27,7 +27,7 @@ import { parseStore } from '../lib/packages.mjs';
 const FIXTURE = 'structural/ifc_structuralanalysisview/little_steel_frame-3D--Axis-Struc.ifc';
 const DRIFT = 0.3;
 
-const checks = (pkgs, store) => pkgs.parser.structuralConsistencyIssues(store, { physicalAxes: pkgs.create.structuralPhysicalAxes(store) });
+const checks = (pkgs, store, physicalAxes = pkgs.create.structuralPhysicalAxes(store)) => pkgs.parser.structuralConsistencyIssues(store, { physicalAxes });
 const of = (issues, rule) => issues.filter((issue) => issue.rule === rule);
 const sorted = (ids) => [...ids].sort((a, b) => a - b).join();
 const sameIds = (a, b) => sorted(a) === sorted(b);
@@ -42,12 +42,12 @@ async function scene(ctx) {
   const editor = new mutations.StoreEditor(store, view);
   // Every rule, axis drift included: the clean file must report nothing at all.
   const axes = ctx.pkgs.create.structuralPhysicalAxes(store);
-  const clean = ctx.pkgs.parser.structuralConsistencyIssues(store, { physicalAxes: axes });
+  const clean = checks(ctx.pkgs, store, axes);
   if (clean.length) throw new Error(`the unedited fixture already reports ${clean.length} issue(s), e.g. ${clean[0].message}`);
   /** The checks on the exported edit; axis drift (the costly rule) only when asked. */
-  const recheck = async ({ axes = false } = {}) => {
+  const recheck = async ({ drift = false } = {}) => {
     const edited = await parseStore(ctx.pkgs, new exporter.StepExporter(store, view).export({ schema: file.fileSchema, applyMutations: true }).content);
-    return axes ? checks(ctx.pkgs, edited) : ctx.pkgs.parser.structuralConsistencyIssues(edited);
+    return drift ? checks(ctx.pkgs, edited) : ctx.pkgs.parser.structuralConsistencyIssues(edited);
   };
   return { store, view, editor, axes, recheck, structural: ctx.pkgs.parser.extractStructuralOnDemand(store) };
 }
@@ -100,7 +100,7 @@ const axisDrift = probe('capability:check-axis-drift', 'cap/check-axis-drift', a
   if (!found) throw new Error('no linked vertical IfcColumn with a readable axis');
   const [column, members] = found;
   pkgs.create.transformElementsInStore({ dataStore: s.store, view: s.view, editor: s.editor, selected: [column], op: { kind: 'move', delta: [DRIFT, 0] } });
-  const issues = of(await s.recheck({ axes: true }), 'structural-axis-drift');
+  const issues = of(await s.recheck({ drift: true }), 'structural-axis-drift');
   const wrong = issues.filter((issue) => issue.target !== column || !(Math.abs(issue.distance - DRIFT) < 1e-6));
   if (!sameIds(issues.map((issue) => issue.entityId), members) || wrong.length) {
     throw new Error(`moved #${column} ${DRIFT} m; expected members ${JSON.stringify(members)} at ${DRIFT} m, got ${JSON.stringify(issues.map((i) => [i.entityId, i.target, i.distance]))}`);

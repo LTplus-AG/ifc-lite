@@ -134,7 +134,8 @@ describe('structural-class-mismatch', () => {
 });
 
 describe('structural-unconnected-member', () => {
-  const connected = (expressId: number, type = 'IfcStructuralCurveMember') => ({ ...member(expressId, type), connectionGlobalIds: ['C1'] });
+  const connected = (expressId: number, type = 'IfcStructuralCurveMember') =>
+    ({ ...member(expressId, type), connectionGlobalIds: ['C1'], IfcRelConnectsStructuralMember: [{ expressId: 100 + expressId, RelatedStructuralConnection: 20 }] });
 
   it('reports every member with no connection once any member is connected', () => {
     const issues = checkStructuralConsistency(model([connected(10), member(11, 'IfcStructuralCurveMember'), member(12, 'IfcStructuralSurfaceMember')]), []);

@@ -8,7 +8,7 @@
  * physical elements), issues out, in the shape `ifc-lite validate` reports.
  * `structuralConsistencyIssues` runs it on a parsed store; tests feed facts directly.
  *
- * Three rules, all warnings:
+ * Five rules, all warnings:
  * - `structural-unlinked-element`: a load-bearing beam, column, member, slab,
  *   wall, footing or pile with no structural item assigned. Runs only when the
  *   file has an analytical model (an IfcStructuralAnalysisModel or any
@@ -140,10 +140,11 @@ function axisDrift(
   const issues: StructuralConsistencyIssue[] = [];
   for (const member of structural.members) {
     const line = memberLines.get(member.expressId);
-    for (const elementId of line ? structuralCounterparts(structural, member.expressId)?.expressIds ?? [] : []) {
+    if (!line) continue;
+    for (const elementId of structuralCounterparts(structural, member.expressId)?.expressIds ?? []) {
       const fact = factById.get(elementId);
       const axis = physicalAxes.get(elementId);
-      const distance = line && fact && axis ? offLine(line, axis) : null;
+      const distance = fact && axis ? offLine(line, axis) : null;
       if (!fact || distance === null || distance <= tolerance) continue;
       issues.push({
         severity: 'warning', rule: 'structural-axis-drift', entityId: member.expressId, globalId: member.globalId,
@@ -207,8 +208,7 @@ export function checkStructuralConsistency(
     }
   }
 
-  // A relationship counts even when its connection has no GlobalId to list.
-  const connected = (member: StructuralMemberInfo) => member.connectionGlobalIds.length > 0 || (member.IfcRelConnectsStructuralMember?.length ?? 0) > 0;
+  const connected = (member: StructuralMemberInfo) => (member.IfcRelConnectsStructuralMember?.length ?? 0) > 0;
   if (structural.members.some(connected)) {
     for (const member of structural.members) {
       if (connected(member)) continue;

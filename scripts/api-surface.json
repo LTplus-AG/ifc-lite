@@ -5142,6 +5142,7 @@
     "extractWallSegmentsForStorey: function",
     "filterRoomFaces: function",
     "floorToFloorHeight: function",
+    "followTypeLayersOnRetypeInStore: function",
     "footprintDefinitionProperties: function",
     "fromNativeLength: function",
     "fromStoreyLocal: function",

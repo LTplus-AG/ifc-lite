@@ -23,17 +23,17 @@ const numberOf = (v) => (typeof v === 'number' ? v : v && typeof v === 'object' 
 function unitScale(step, unit, depth = 0) {
   if (unit?.type === 'IFCSIUNIT') return PREFIX[enumOf(unit.args[2])] ?? 1;
   if (unit?.type !== 'IFCCONVERSIONBASEDUNIT' || depth > 4) return undefined;
-  const measure = step.get(refOf(unit.args[3]));
+  const measure = step.get(unit.args[3]);
   const factor = numberOf(measure?.args[0]);
-  const base = unitScale(step, step.get(refOf(measure?.args[1])), depth + 1);
+  const base = unitScale(step, step.get(measure?.args[1]), depth + 1);
   return factor && base ? factor * base : undefined;
 }
 
 /** Metres per file length unit: the project's `LENGTHUNIT` in its `UnitsInContext`, else metres. */
 export function lengthScale(step) {
   for (const project of step.of('IfcProject')) {
-    for (const ref of step.get(refOf(project.args[8]))?.args[0] ?? []) {
-      const unit = step.get(refOf(ref));
+    for (const ref of step.get(project.args[8])?.args[0] ?? []) {
+      const unit = step.get(ref);
       if (enumOf(unit?.args[1]) === 'LENGTHUNIT') return unitScale(step, unit) ?? 1;
     }
   }
@@ -92,14 +92,14 @@ function placementFrame(step, id) {
 function topologyVertices(step, id, depth = 0) {
   const r = step.get(id);
   if (!r || depth > 16) return [];
-  const vertex = (v) => { const p = step.get(refOf(v)); return p?.type === 'IFCVERTEXPOINT' ? [coords(step, refOf(p.args[0]))].filter(Boolean) : []; };
+  const vertex = (v) => { const p = step.get(v); return p?.type === 'IFCVERTEXPOINT' ? [coords(step, refOf(p.args[0]))].filter(Boolean) : []; };
   switch (r.type) {
     case 'IFCVERTEXPOINT': return vertex({ ref: id });
     case 'IFCEDGE': case 'IFCEDGECURVE': case 'IFCSUBEDGE': return [...vertex(r.args[0]), ...vertex(r.args[1])];
     case 'IFCORIENTEDEDGE': return topologyVertices(step, refOf(r.args[2]), depth + 1);
     case 'IFCFACE': case 'IFCFACESURFACE':
       return r.args[0].flatMap((b) => {
-        const loop = step.get(refOf(step.get(refOf(b))?.args[0]));
+        const loop = step.get(step.get(b)?.args[0]);
         if (loop?.type === 'IFCPOLYLOOP') return loop.args[0].map((p) => coords(step, refOf(p))).filter(Boolean);
         if (loop?.type === 'IFCEDGELOOP') return loop.args[0].flatMap((e) => topologyVertices(step, refOf(e), depth + 1));
         return [];
@@ -116,11 +116,11 @@ export function topologyPoints(step, productId, scale = lengthScale(step)) {
   const product = step.get(productId);
   const placementId = refOf(product?.args[5]);
   const frame = placementId === undefined ? IDENTITY : placementFrame(step, placementId);
-  const shape = step.get(refOf(product?.args[6]));
+  const shape = step.get(product?.args[6]);
   if (!frame || !shape) return [];
   const points = [];
   for (const repRef of shape.args[2] ?? []) {
-    const rep = step.get(refOf(repRef));
+    const rep = step.get(repRef);
     if (rep?.type !== 'IFCTOPOLOGYREPRESENTATION') continue;
     for (const item of rep.args[3] ?? []) points.push(...topologyVertices(step, refOf(item)));
   }

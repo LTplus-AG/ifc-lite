@@ -111,10 +111,16 @@ pub(super) fn extract_face_bounds(
     decoder: &mut EntityDecoder,
     quality: TessellationQuality,
 ) -> Result<FaceBounds> {
+    Ok(classify_bounds(read_bounds(face, decoder, quality)?))
+}
+
+/// One outer ring and its holes: the last `IfcFaceOuterBound` (earlier ones
+/// become holes), else the largest unclassified bound.
+fn classify_bounds(bounds: Vec<(bool, Vec<Point3<f64>>)>) -> FaceBounds {
     let mut outer = None;
     let mut holes = Vec::new();
     let mut unclassified = Vec::new();
-    for (is_outer, points) in read_bounds(face, decoder, quality)? {
+    for (is_outer, points) in bounds {
         if is_outer {
             if let Some(previous) = outer.take() {
                 holes.push(previous);
@@ -134,23 +140,23 @@ pub(super) fn extract_face_bounds(
         outer = Some(unclassified.swap_remove(outer_index));
         holes.extend(unclassified);
     }
-    Ok(FaceBounds { outer, holes })
+    FaceBounds { outer, holes }
 }
 
-/// The outer bounds of a face whose every bound is an `IfcFaceOuterBound`,
-/// when it has more than one: each is a region of its own, not a hole of the
-/// next. AxisVM writes a structural slab as one face of many outer-bound
-/// triangles (#9668). `None` for any other face.
-pub(super) fn disjoint_outer_bounds(
+/// A face's regions, its bounds read once: each bound its own region when
+/// every bound is an `IfcFaceOuterBound` and there are several (AxisVM writes
+/// a structural slab as one face of many outer-bound triangles, #9668), else
+/// the one outer ring with its holes.
+pub(super) fn face_regions(
     face: &DecodedEntity,
     decoder: &mut EntityDecoder,
     quality: TessellationQuality,
-) -> Result<Option<Vec<Vec<Point3<f64>>>>> {
+) -> Result<Vec<FaceBounds>> {
     let bounds = read_bounds(face, decoder, quality)?;
-    if bounds.len() < 2 || bounds.iter().any(|(is_outer, _)| !is_outer) {
-        return Ok(None);
+    if bounds.len() > 1 && bounds.iter().all(|(is_outer, _)| *is_outer) {
+        return Ok(bounds.into_iter().map(|(_, points)| FaceBounds { outer: Some(points), holes: Vec::new() }).collect());
     }
-    Ok(Some(bounds.into_iter().map(|(_, points)| points).collect()))
+    Ok(vec![classify_bounds(bounds)])
 }
 
 /// Every bound of `face` with at least three points, oriented, in order, with

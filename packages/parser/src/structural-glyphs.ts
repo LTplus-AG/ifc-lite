@@ -229,8 +229,8 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
   const pending: Pending[] = [];
   const extractor = new EntityExtractor(store.source);
   /** An activity's loads in station order: `AppliedLoad`, then an IFC2X3 varying action's `SubsequentAppliedLoads`. */
-  const loadsOf = (activity: StructuralActivityInfo): StructuralLoadInfo[] => [
-    activity.appliedLoad!,
+  const loadsOf = (activity: StructuralActivityInfo, applied: StructuralLoadInfo): StructuralLoadInfo[] => [
+    applied,
     ...(activity.SubsequentAppliedLoads ?? []).map((id) => extractStructuralLoad(extractor, store, id)).filter((l): l is StructuralLoadInfo => !!l),
   ];
 
@@ -281,10 +281,11 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
 
   for (const activity of extraction.activities) {
     if (activity.kind === 'Unknown' || !activity.appliedLoad) continue;
-    const loads = loadsOf(activity);
+    const loads = loadsOf(activity, activity.appliedLoad);
     if (!loads.some(drawable)) continue;
     const source = sourceOf(activity);
-    const reaction = activity.kind === 'Reaction' ? { reaction: true as const } : {};
+    /** Every glyph of this activity: its source, and the reaction flag on a reaction. */
+    const base = { source, ...(activity.kind === 'Reaction' ? { reaction: true as const } : {}) };
     const expected = expectedShape(activity.type);
     const item = activity.appliesToGlobalId ? itemsByGlobalId.get(activity.appliesToGlobalId) : undefined;
     // An activity's own representation, else (a point on a curve or surface
@@ -324,17 +325,17 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
       const force = vector(load, FORCE);
       if (force) {
         for (const position of stations) {
-          pending.push({ kind: 'force', distribution, position, direction: world(force), magnitude: length(force), source, group, ...reaction });
+          pending.push({ kind: 'force', distribution, position, direction: world(force), magnitude: length(force), group, ...base });
         }
       }
       const moment = vector(load, MOMENT);
-      if (moment) pending.push({ kind: 'moment', distribution, position: at, direction: world(moment), magnitude: length(moment), source, group, ...reaction });
+      if (moment) pending.push({ kind: 'moment', distribution, position: at, direction: world(moment), magnitude: length(moment), group, ...base });
       const displacement = vector(load, ['Displacement']);
       if (displacement || vector(load, ['RotationalDisplacementR'])) {
-        glyphs.push({ kind: 'displacement', position: at, source, ...reaction, ...(displacement ? { direction: world(displacement) } : {}) });
+        glyphs.push({ kind: 'displacement', position: at, ...base, ...(displacement ? { direction: world(displacement) } : {}) });
       }
       if (isTemperature(load)) {
-        glyphs.push({ kind: 'temperature', position: at, source, ...reaction });
+        glyphs.push({ kind: 'temperature', position: at, ...base });
       }
     }
   }

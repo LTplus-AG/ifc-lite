@@ -41,15 +41,17 @@ pub(super) fn lower_planar(face: &DecodedEntity, decoder: &mut EntityDecoder,
         rtc: rtc_file_units.unwrap_or((0.0, 0.0, 0.0)) }))
 }
 
-/// A planar face as one region per disjoint outer bound
-/// ([`super::bounds::disjoint_outer_bounds`]), else as [`lower_planar`].
+/// A planar face as one plan per region ([`super::bounds::face_regions`]).
 pub(super) fn lower_planar_regions(face: &DecodedEntity, decoder: &mut EntityDecoder,
     quality: TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>) -> Result<Vec<FaceGeometry>> {
-    let Some(regions) = super::bounds::disjoint_outer_bounds(face, decoder, quality)? else {
-        return Ok(vec![lower_planar(face, decoder, quality, rtc_file_units)?]);
-    };
     let rtc = rtc_file_units.unwrap_or((0.0, 0.0, 0.0));
-    Ok(regions.into_iter().map(|outer| FaceGeometry::Planar(PlanarPlan { outer, hole_points: Vec::new(), rtc })).collect())
+    Ok(super::bounds::face_regions(face, decoder, quality)?
+        .into_iter()
+        .map(|bounds| match bounds.outer {
+            Some(outer) => FaceGeometry::Planar(PlanarPlan { outer, hole_points: bounds.holes, rtc }),
+            None => FaceGeometry::Empty,
+        })
+        .collect())
 }
 
 #[cfg(test)]

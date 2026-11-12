@@ -217,7 +217,7 @@ impl GeometryRouter {
                 self.shell_first_vertex(&shell, decoder)
             }
             // Structural topology
-            IfcType::IfcFaceSurface | IfcType::IfcAdvancedFace => {
+            IfcType::IfcFaceSurface | IfcType::IfcAdvancedFace | IfcType::IfcFace => {
                 self.face_first_vertex(item, decoder)
             }
             _ => None,

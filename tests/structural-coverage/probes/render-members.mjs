@@ -21,10 +21,10 @@ import { verdict } from '../lib/values.mjs';
 /** Metres between an oracle vertex and the drawn mesh, for f32 mesh positions. */
 const TOLERANCE_M = 2e-3;
 
-export const isMember = (row) => row.family === 'item' && /Member(Varying)?$/.test(row.entity);
+const isMember = (row) => row.family === 'item' && /Member(Varying)?$/.test(row.entity);
 
 /** The meshes of one file by express id, with the render frame they are in, or the error that stopped the product. */
-export function memberMeshes(ctx, file) {
+function memberMeshes(ctx, file) {
   return cached(ctx, `meshes:${file.path}`, async () => {
     const processor = new ctx.pkgs.geometry.GeometryProcessor({ enableInstancing: false });
     try {
@@ -45,7 +45,7 @@ export function memberMeshes(ctx, file) {
 }
 
 /** Why one member record is not drawn at the file's coordinates, or null when it is. */
-export function memberMiss(step, rec, drawn, scale = lengthScale(step)) {
+function memberMiss(step, rec, drawn, scale = lengthScale(step)) {
   const points = topologyPoints(step, rec.id, scale);
   if (!points.length) return 'the file gives it no topology representation';
   const meshes = drawn.byId.get(rec.id);

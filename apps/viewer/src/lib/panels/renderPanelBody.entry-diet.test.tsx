@@ -15,6 +15,7 @@ import { ExtensionHostService } from '@/services/extensions/host';
 import { cleanup, click, render, waitFor } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { useViewerStore } from '@/store';
+import { formFactorState } from '@/test/form-factor-state';
 import { resolve as translate } from '@/i18n/registry';
 import { renderPanelBody } from './renderPanelBody';
 
@@ -39,7 +40,7 @@ for (const [id, load] of [
   it(`entry diet: ${id} mounts from cold and retains the action requested before readiness`, { timeout: 30_000 }, async () => {
     const bytes = readFileSync(new URL('../../../public/samples/building-architecture.ifc', import.meta.url));
     const ifcDataStore = await new IfcParser().parseColumnar(new Uint8Array(bytes).buffer);
-    useViewerStore.setState({ ...fixtureModels({ ...fixtureModel('m'), ifcDataStore }), isMobile: false,
+    useViewerStore.setState({ ...fixtureModels({ ...fixtureModel('m'), ifcDataStore }), ...formFactorState(false),
       extensionsRequestedView: id === 'extensions' ? 'ideas' : null,
       pendingListDraft: id === 'lists' ? pendingDraft : null, generateScheduleDialogOpen: id === 'gantt', loading: false });
     const host = new ExtensionHostService({ sdk: createBimContext({ transport: {

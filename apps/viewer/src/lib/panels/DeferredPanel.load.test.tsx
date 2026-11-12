@@ -8,6 +8,7 @@ import { afterEach, it } from 'node:test';
 import { act, useState } from 'react';
 import { cleanup, click, render } from '@/test/render';
 import { useViewerStore } from '@/store';
+import { formFactorState } from '@/test/form-factor-state';
 import { DeferredPanel, type DeferredPanelLoader } from './DeferredPanel';
 
 const initial = useViewerStore.getState();
@@ -15,7 +16,7 @@ afterEach(() => { cleanup(); useViewerStore.setState(initial, true); });
 
 for (const mobile of [false, true]) for (const id of ['bcf', 'validation', 'lens', 'gantt', 'lists', 'extensions'] as const) {
   it(`#9742 ${mobile ? 'mobile' : 'desktop'} ${id} loads without suspending and preserves its mounted state`, async () => {
-    useViewerStore.setState({ isMobile: mobile });
+    useViewerStore.setState({ ...formFactorState(mobile) });
     function Feature() {
       const [count, setCount] = useState(0);
       return <button onClick={() => setCount(value => value + 1)}>Feature {count}</button>;
@@ -46,7 +47,7 @@ for (const mobile of [false, true]) for (const id of ['bcf', 'validation', 'lens
 
 for (const mobile of [false, true]) {
   it(`#9742 ${mobile ? 'mobile' : 'desktop'} loader rejection remains contained and closable`, async () => {
-    useViewerStore.setState({ isMobile: mobile });
+    useViewerStore.setState({ ...formFactorState(mobile) });
     let reject!: (error: Error) => void;
     const pending = new Promise<never>((_resolve, fail) => { reject = fail; });
     const load: DeferredPanelLoader = () => pending;

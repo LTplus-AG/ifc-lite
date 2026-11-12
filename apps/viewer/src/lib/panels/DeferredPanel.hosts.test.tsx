@@ -11,6 +11,7 @@ import { IfcParser } from '@ifc-lite/parser';
 import { cleanup, click, render } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { useViewerStore } from '@/store';
+import { formFactorState } from '@/test/form-factor-state';
 import { BottomStrip } from '@/components/viewer/BottomStrip';
 import { MobilePanelSheet } from '@/components/viewer/MobilePanelSheet';
 import { bottomPanelFlags } from './bottom-panels';
@@ -22,9 +23,9 @@ for (const [id, mobile] of [['gantt', false], ['lists', true]] as const) {
   it(`#9742 ${mobile ? 'mobile sheet' : 'docked strip'} owns the only close row while ${id} loads`, async () => {
     const bytes = readFileSync(new URL('../../../public/samples/building-architecture.ifc', import.meta.url));
     const ifcDataStore = await new IfcParser().parseColumnar(new Uint8Array(bytes).buffer);
-    useViewerStore.setState({ ...fixtureModels({ ...fixtureModel('m'), ifcDataStore }), ...bottomPanelFlags(id), loading: false, isMobile: mobile, rightPanelCollapsed: false });
+    useViewerStore.setState({ ...fixtureModels({ ...fixtureModel('m'), ifcDataStore }), ...bottomPanelFlags(id), loading: false, ...formFactorState(mobile), rightPanelCollapsed: false });
     let closed = 0;
-    render(mobile ? <MobilePanelSheet bottomInset={0} analysisExtension={null} />
+    render(mobile ? <MobilePanelSheet analysisExtension={null} />
       : <BottomStrip dockedPanel={id} analysisExtension={null} containerRef={{ current: null }} closePanel={() => { closed++; }} />);
     assert.ok(document.querySelector('output[aria-live="polite"]'), 'real cold router still announces loading');
     const close = [...document.querySelectorAll('button')].filter(button => button.getAttribute('aria-label') === 'Close');

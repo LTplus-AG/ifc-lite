@@ -5,14 +5,13 @@
 import '@/test/setup-dom.js';
 import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { getAttributeNames, extractStructuralOnDemand, EMPTY_SOURCE_BYTES, type StructuralExtraction } from '@ifc-lite/parser';
+import { getAttributeNames, effectiveStructuralView, extractStructuralOnDemand, EMPTY_SOURCE_BYTES, type StructuralExtraction } from '@ifc-lite/parser';
 import { exportAndReparse } from '@/test/properties-panel-harness';
 import { structuralEvidenceFixture as fixture } from '@/test/structural-evidence-fixture';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { createStructuralAdapter } from '@/sdk/adapters/structural-adapter';
-import { effectiveStructuralView } from '@/components/viewer/properties/effectiveStructuralView';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
-import { render, advance, cleanup } from '@/test/render';
+import { render, cleanup, waitFor } from '@/test/render';
 import { useViewerStore } from '@/store';
 import { captureEvidence } from '../evidence';
 
@@ -25,8 +24,10 @@ const force = (data: StructuralExtraction) => data.activities[0]?.appliedLoad?.c
 
 test('#7195 selected structural load matches native exported Properties metadata', async () => {
   const { file } = await fixture(); assert.equal(force(extractStructuralOnDemand(file)), 1234);
-  const ui = render(renderPanelBody('properties', () => undefined)); await advance(0);
-  assert.match(ui.textContent ?? '', /Structural Analysis/); assert.match(ui.textContent ?? '', /1[,.’'\u202f\s]?234/);
+  const ui = render(renderPanelBody('properties', () => undefined));
+  // StructuralCard is a lazy chunk (#9668): wait for it rather than one tick.
+  await waitFor(() => /Structural Analysis/.test(ui.textContent ?? ''), 'the lazy structural card never rendered');
+  assert.equal(ui.querySelector('[role="alert"]'), null, `card failed: ${ui.textContent}`); assert.match(ui.textContent ?? '', /1[,.’'\u202f\s]?234/);
   const selected = row(); assert.equal(selected.structuralStatus, 'available');
   assert.equal(selected.structural?.member.Thickness, 0.25);
   assert.equal(selected.structural?.activities[0].AppliedLoad?.components.ForceX, 1234);
@@ -38,7 +39,7 @@ test('#7195 native structural named and positional edits agree with exported pre
   view.setAttribute(memberId, 'Thickness', '0.5');
   view.setPositionalAttribute(memberId, getAttributeNames('IfcStructuralSurfaceMember').indexOf('Thickness'), 0.75);
   const saved = await exportAndReparse('native', file); assert.equal(extractStructuralOnDemand(saved).members[0].thickness, 0.75);
-  assert.equal(extractStructuralOnDemand(file, effectiveStructuralView(view, file)).members[0].thickness, 0.75);
+  assert.equal(extractStructuralOnDemand(file, effectiveStructuralView(file, view)).members[0].thickness, 0.75);
   assert.equal(row().structural?.member.Thickness, 0.75);
 });
 
@@ -47,13 +48,13 @@ test('#7195 native structural applied-load source edits agree with exported load
   const view = getOrCreateMutationView(useViewerStore, 'native'); assert.ok(view);
   view.setAttribute(loadId, 'ForceX', '2345');
   const saved = await exportAndReparse('native', file); assert.equal(force(extractStructuralOnDemand(saved)), 2345);
-  assert.equal(force(extractStructuralOnDemand(file, effectiveStructuralView(view, file))), 2345);
+  assert.equal(force(extractStructuralOnDemand(file, effectiveStructuralView(file, view))), 2345);
   assert.equal(createStructuralAdapter(useViewerStore).data('native').activities[0].appliedLoad?.components.ForceX, 2345);
 });
 
 test('#7195 native structural session-created loads and activities are readable before export', async () => {
   const { file, saved, view } = await fixture(false); assert.equal(force(extractStructuralOnDemand(saved)), 1234);
-  assert.equal(force(extractStructuralOnDemand(file, effectiveStructuralView(view, file))), 1234);
+  assert.equal(force(extractStructuralOnDemand(file, effectiveStructuralView(file, view))), 1234);
   assert.equal(row().structural?.activities[0].AppliedLoad?.components.ForceX, 1234);
 });
 

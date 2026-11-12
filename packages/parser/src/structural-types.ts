@@ -8,12 +8,40 @@
  * extractor stays orchestration and every later layer (query namespace,
  * properties card, serializer) has one place to import the contract from.
  *
- * Every cross-link is a globalId, not an expressId, matching the schedule
+ * Group/activity cross-links use globalIds, matching the schedule
  * extraction's contract: a consumer federating two models is never handed an
- * id it cannot place.
+ * id it cannot place. Physical links explicitly carry model-local expressIds.
  */
 
 import type { BoundaryConditionInfo, StructuralLoadInfo } from './structural-load-extractor.js';
+
+/** An `IfcStructuralConnectionCondition` subtype, numeric attributes keyed by EXPRESS name. */
+export interface StructuralConnectionConditionInfo {
+  expressId: number;
+  type: string;
+  name?: string;
+  components: Record<string, number>;
+}
+
+/** One `IfcRelConnectsStructuralMember` (or `IfcRelConnectsWithEccentricity`); ids are model-local. */
+export interface StructuralMemberConnectionInfo {
+  expressId: number;
+  RelatedStructuralConnection: number;
+  /** Member-end release or fixity at this connection, resolved. */
+  AppliedCondition?: BoundaryConditionInfo;
+  AdditionalConditions?: StructuralConnectionConditionInfo;
+  SupportedLength?: number;
+  ConditionCoordinateSystem?: number;
+  /** `IfcConnectionPointEccentricity`, the only constraint subtype read. */
+  ConnectionConstraint?: {
+    expressId: number;
+    EccentricityInX?: number;
+    EccentricityInY?: number;
+    EccentricityInZ?: number;
+    PointOnRelatingElement?: number;
+    PointOnRelatedElement?: number;
+  };
+}
 
 /** An `IfcStructuralMember` subtype occurrence. */
 export interface StructuralMemberInfo {
@@ -27,6 +55,12 @@ export interface StructuralMemberInfo {
   predefinedType?: string;
   /** `IfcStructuralSurfaceMember.Thickness`, when the file carries it. */
   thickness?: number;
+  /** IFC4+ direction reference (model-local expressId). */
+  Axis?: number;
+  /** Physical `IfcElement`s linked by assignment or IFC2X3 structural-element relations (model-local expressIds). */
+  physicalElementIds?: number[];
+  /** Relationship attributes, preserving each member/connection pair. */
+  IfcRelConnectsStructuralMember?: StructuralMemberConnectionInfo[];
   /** Connections this member is joined to, via IfcRelConnectsStructuralMember. */
   connectionGlobalIds: string[];
   /** Activities applied to it, via IfcRelConnectsStructuralActivity. */
@@ -45,6 +79,13 @@ export interface StructuralConnectionInfo {
   objectType?: string;
   /** The support condition, resolved from `AppliedCondition`. */
   appliedCondition?: BoundaryConditionInfo;
+  /** IFC4 `IfcStructuralCurveConnection.Axis` direction (model-local expressId). */
+  Axis?: number;
+  /** The same direction under its IFC4X3 name, `AxisDirection`. */
+  AxisDirection?: number;
+  /** IFC4+ placement reference (model-local expressId). */
+  ConditionCoordinateSystem?: number;
+  physicalElementIds?: number[];
   memberGlobalIds: string[];
   activityGlobalIds: string[];
   analysisModelGlobalIds: string[];
@@ -68,6 +109,7 @@ export interface StructuralActivityInfo {
   predefinedType?: string;
   /** `IfcStructuralActivity.GlobalOrLocal`, e.g. `GLOBAL_COORDS`. */
   globalOrLocal?: string;
+  ProjectedOrTrue?: string;
   /** `IfcStructuralAction.DestabilizingLoad`; absent on reactions. */
   destabilizingLoad?: boolean;
   /** `IfcStructuralActivity.AppliedLoad`, resolved. */

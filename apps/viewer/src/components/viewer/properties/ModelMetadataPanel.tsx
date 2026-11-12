@@ -19,7 +19,7 @@ import { useViewerStore } from '@/store';
 import { getIfcLengthUnitScale } from '@/lib/geo/effective-georef';
 import { computeModelStats } from './modelMetadataStats';
 import { effectiveEntityCount, effectiveMaxExpressId } from '@/lib/effective-entity-count';
-import { collectEffectivePhysicalEntityIds } from '@/lib/physical-objects';
+import { sharedEffectivePhysicalEntityIds } from '@/lib/physical-objects';
 import { useTranslation } from '@/i18n';
 import { ACTION_NAME_KEYS } from '@/lib/commands/action-names';
 import { formatLocaleDate, formatLocaleNumber } from '@/i18n/intlFormat';
@@ -94,7 +94,7 @@ function IfcModelMetadataPanel({ model }: { model: FederatedModel }) {
   // Membership changes with source/overlay edits, not with each streamed
   // geometry batch. Keep it stable while the shaped count catches up.
   const physicalIds = useMemo(
-    () => dataStore?.spatialHierarchy ? collectEffectivePhysicalEntityIds(dataStore, mutationView) : new Set<number>(),
+    () => dataStore?.spatialHierarchy ? sharedEffectivePhysicalEntityIds(dataStore, mutationView, mutationVersion) : new Set<number>(),
     [dataStore, mutationView, mutationVersion],
   );
 

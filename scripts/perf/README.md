@@ -381,6 +381,22 @@ Lesson: the freshness key is `getPickGeometryRevision()` plus draw-list identity
 in one does not carry to the other. The tree's typed-array layout is a heap win; the
 per-ray and post-hide wins come from the cache.
 
+## Structural builders leave the boot path (#9668)
+
+**Shipped: a small eager-bytes cut, no boot-time change.** The viewer's store adapter called
+`createStructuralStoreBackend` at boot, which linked every `@ifc-lite/create` structural
+builder into an eager chunk. That factory now loads in its own chunk behind
+`store-adapter-structural.ts`, the same shape as the storey methods (#9200); a build-tail
+gate (`check-structural-writes-lazy.mjs`) fails if a builder reaches the startup graph.
+
+Lessons. The builders minify to about 7.6 KB; the ~38 KB first estimated was their
+TypeScript source. The first cut put the collab gate and undo tracking in the lazy module
+too. Its import of an eager module made the bundler carve the shared code out of two eager
+chunks into two new ones, still eager: +2 files and only 3.3 KB saved. Keeping the
+tracking in the eager facade and leaving the lazy module nothing but the factory saved
+about 6.2 KB with the file count unchanged. A lazy module should import only what eager code
+does not already share with it, and the eager file count is the tell.
+
 ## Storey planners and the QuickJS runtime leave the boot path (#9200)
 
 **Shipped: an eager-bytes cut, no boot-time change.** Three changes, each one
@@ -6849,3 +6865,30 @@ Lessons:
 **Measured: entry and complete eager JavaScript both shrink; boot observations pending.** Lists authoring/results, the Gantt schedule UI and Extensions management were static imports of the shared panel router. The entry-specific module graph exposed those three exclusive import subtrees; reusing the existing deferred-panel boundary removes their UI from the entry and complete HTML preload closure while the eager extension host and shared feature state retain their lifecycle. Pending authoring/deep-link requests survive until mount, and tours share the same asynchronous module factories.
 
 Lesson: trace imports from the actual entry and verify emitted module ownership, rather than treating a large source file or separate manual chunk as guaranteed savings. Cold-feature tests should drive real controls after readiness; their pending-shell witness must also remain runnable when production code is reverted. The full emitted-graph lazy assertion is already a CI gate. Bundle measurements, total-JS cost and boot observations belong in the PR evidence.
+
+## Symbolic spatial keys share the mutation-view binding (#9621)
+
+**Untimed attribution; final scheduling qualification pending.** Historical
+cold and cached diagnostics identified repeated spatial-key work caused by
+different mutation-view bindings in markup restore and viewport overlays. This
+change makes those readers share the binding.
+The default annotation/grid parse still runs. Candidate parsing must start
+while the localStorage hash is pending, as on main; only the restore writes wait
+for its precedence decision. Serialising those operations broke the parse-first
+consumer and is not an acceptable optimisation. This model also still publishes a
+mutation view: the conservative source preflight admits uncertain encoded input,
+so no registration reduction is claimed for it. Provably blank sources avoid the
+restore registration in a separate functional invariant.
+
+The spatial snapshot cache held one binding per store. Restore registered a view
+then read without it, alternating that slot with the viewport's view-bound reads
+and repeatedly copying, sorting and digesting the same maps. Passing the same
+binding removes those alternations; numeric FNV preserves the old digest while
+removing per-character BigInt arithmetic. The source preflight runs outside
+render and never rejects pending overlay edits or uncertain STEP escapes.
+
+Lesson: verify which consumer invalidates a cache, and measure repeated work on
+the actual default path. A conditional restore does not imply that another
+visible overlay stops parsing. Operation-count attribution and digest-equivalence
+tests establish this mechanism; the exclusive load scoreboard remains the
+acceptance source for end-to-end timing.

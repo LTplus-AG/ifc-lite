@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "#9668: A re-run with nothing to derive must write nothing and succeed; always apply instead.",
+  "key": "packages/cli/src/commands/derive-structural.ts",
+  "mutation": "tests/evidence/derive-structural-cli-rerun-9668/behaviour.oracle.patch",
+  "test": "packages/cli/src/commands/derive-structural.test.ts"
+}

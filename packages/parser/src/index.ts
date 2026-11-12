@@ -1,7 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-
 /**
  * @ifc-lite/parser - Main parser interface
  * Supports both IFC4 (STEP) and IFC5 (IFCX/JSON) formats
@@ -138,11 +137,10 @@ export {
   type TaskDurationType,
 } from './schedule-extractor.js';
 
-// Structural analysis extractor — IfcStructuralAnalysisModel, the
-// IfcStructuralMember / IfcStructuralConnection / IfcStructuralActivity
-// branches, IfcStructuralLoadGroup / IfcStructuralLoadCase,
-// IfcStructuralResultGroup, IfcBoundaryCondition, and the two structural
-// connects-relationships.
+// Structural analysis extractor: IfcStructuralAnalysisModel, the member,
+// connection and activity branches, load and result groups,
+// IfcBoundaryCondition, the structural connects-relationships and the
+// physical-to-analytical links, their counterpart lookup and consistency checks.
 export {
   extractStructuralOnDemand,
   type StructuralExtraction,
@@ -152,13 +150,14 @@ export {
   type StructuralActivityInfo,
   type StructuralLoadGroupInfo,
   type StructuralResultGroupInfo,
-  type StructuralLoadInfo,
-  type StructuralLoadConfigurationInfo,
-  type StructuralLoadConfigurationEntry,
+  type StructuralLoadInfo, type StructuralLoadConfigurationInfo, type StructuralLoadConfigurationEntry,
   type StructuralLoadDropReason,
   type StructuralExtractionView,
   type BoundaryConditionInfo,
 } from './structural-extractor.js';
+export { structuralCounterparts, type StructuralCounterparts } from './structural-counterparts.js';
+export { type StructuralConsistencyIssue, type StructuralConsistencyOptions, type StructuralConsistencyRule } from './structural-consistency.js';
+export { structuralConsistencyIssues } from './structural-consistency-facts.js';
 
 // IFC4 STEP serializer for schedule entities — produces ready-to-splice
 // `#N=IFC...(...)` lines from a `ScheduleExtraction`.
@@ -398,3 +397,4 @@ export async function parseAuto(
 }
 
 export { findSourceProjectLengthUnit, normalizeMapUnitName } from './source-project-length-unit.js';
+export { WASM_SOURCE_BYTE_LIMIT, WasmSourceSizeError, assertWasmSourceSize } from './wasm-source-limit.js';

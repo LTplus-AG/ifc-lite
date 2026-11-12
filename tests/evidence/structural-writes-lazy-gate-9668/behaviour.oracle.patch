@@ -1,0 +1,13 @@
+diff --git a/apps/viewer/scripts/startup-chunks.mjs b/apps/viewer/scripts/startup-chunks.mjs
+index a6b8620097..a2ae5ad2ed 100644
+--- a/apps/viewer/scripts/startup-chunks.mjs
++++ b/apps/viewer/scripts/startup-chunks.mjs
+@@ -60,7 +60,7 @@ export async function checkLazyOnly(directory, groups, remedy, missingHint) {
+   for (const [file, code] of eager) {
+     for (const { signatures } of groups) {
+       for (const signature of signatures) {
+-        if (code.includes(signature) && file === null) throw new Error(`Startup chunk ${relative(directory, file)} contains ${signature}. ${remedy}`);
++        if (code.includes(signature)) throw new Error(`Startup chunk ${relative(directory, file)} contains ${signature}. ${remedy}`);
+       }
+     }
+   }

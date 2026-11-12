@@ -1,0 +1,11 @@
+diff --git a/packages/create/src/in-store/structural-derive-apply.ts b/packages/create/src/in-store/structural-derive-apply.ts
+--- a/packages/create/src/in-store/structural-derive-apply.ts
++++ b/packages/create/src/in-store/structural-derive-apply.ts
+@@ -133,6 +133,7 @@ function writePlan(
+       Name: `${node.support ? 'Support' : 'Node'} ${node.index + 1}`,
+       ...node.support ? { BoundaryCondition: boundaryCondition(node.support.type) } : {},
+     });
++    for (const elementId of node.elementIds) link(elementId, connectionId);
+     if (node.support?.footingId !== undefined) link(node.support.footingId, connectionId);
+     return connectionId;
+   });

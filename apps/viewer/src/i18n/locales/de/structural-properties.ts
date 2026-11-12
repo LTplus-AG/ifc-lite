@@ -14,6 +14,8 @@ export const structuralPropertiesDe = {
   "properties.structural.model": "Modell",
   "properties.structural.connections": "Verbindungen ({countDisplay})",
   "properties.structural.appliedLoads": "Aufgebrachte Lasten ({countDisplay})",
+  "properties.structural.analyticalItems": "Analytische Elemente ({countDisplay})",
+  "properties.structural.physicalElements": "Physische Bauteile ({countDisplay})",
   "properties.structural.noDofs": "(keine Freiheitsgrade)",
   "properties.structural.fixedDofs": {"one": "{countDisplay} Freiheitsgrad festgehalten", "other": "{countDisplay} Freiheitsgrade festgehalten"},
   "properties.structural.elasticDofs": {"one": "{countDisplay} Freiheitsgrad elastisch", "other": "{countDisplay} Freiheitsgrade elastisch"},

@@ -31,6 +31,7 @@ import { cleanup, render } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { sharedCommandsEn } from '@/i18n/catalogues/shared-commands.en';
 import { useViewerStore } from '@/store';
+import { seedArtifactModels } from '@/test/artifact-models-fixture';
 import { RibbonExportGroup } from '../ribbon/tabs/RibbonExportGroup.js';
 import { ViewTab } from '../ribbon/tabs/ViewTab.js';
 import { AnalyzeTab } from '../ribbon/tabs/AnalyzeTab.js';
@@ -138,6 +139,9 @@ const NOT_RENDERED_IN_THIS_STATE: SharedKey[] = [
   // Collaboration is unavailable in this fixture; its registry title
   // is covered by panel registry and ribbon File-tab tests.
   'workspacePanels.panel.collab',
+  // #8947: loading-only fixture has no eligible STEP model; the real
+  // loaded-model tooltip is exercised separately below.
+  'exportCommands.ion.tooltip',
   'classVisibility.pinnedDetail.descriptionIgnored',
   'classVisibility.fastGeometry.descriptionExact',
   'exportCommands.csv.item.entities',
@@ -172,6 +176,22 @@ afterEach(() => {
 });
 
 describe('shared command surfaces localization (#4918 slice 2)', () => {
+  it('#8947 translates the ion tooltip when an actual STEP model is eligible', async () => {
+    const initial = useViewerStore.getState();
+    try {
+      await seedArtifactModels();
+      const container = render(<RibbonExportGroup icons={STUB_EXPORT_ICONS} />);
+      const key = 'exportCommands.ion.tooltip';
+      assert.ok(readableStrings(container).has(sharedCommandsEn[key]));
+      registerLocale('shared-commands-pseudo', PSEUDO);
+      act(() => setLocale('shared-commands-pseudo'));
+      assert.ok(readableStrings(container).has(mark(key)));
+    } finally {
+      cleanup();
+      useViewerStore.setState(initial, true);
+    }
+  });
+
   it('translates every static key rendered across the shared ribbon surfaces', () => {
     const container = renderAllSurfaces();
     const english = readableStrings(container);

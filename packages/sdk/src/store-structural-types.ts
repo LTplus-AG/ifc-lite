@@ -17,8 +17,16 @@
  */
 
 import type {
+  StructuralCurveReactionInStoreParams,
+  StructuralPointReactionInStoreParams,
+  StructuralResultGroupInStoreParams,
+  StructuralSurfaceActionInStoreParams,
+  StructuralSurfaceReactionInStoreParams,
   StructuralAnalysisModelInStoreParams,
   StructuralCurveMemberInStoreParams,
+  StructuralSurfaceMemberInStoreParams,
+  StructuralCurveConnectionInStoreParams,
+  StructuralSurfaceConnectionInStoreParams,
   StructuralLinearActionInStoreParams,
   StructuralLoadGroupInStoreParams,
   StructuralPointActionInStoreParams,
@@ -27,6 +35,19 @@ import type {
 import type { EntityRef } from './types.js';
 
 export interface StructuralStoreBackendMethods {
+  addStructuralPlanarAction?(modelId: string, params: StructuralSurfaceActionInStoreParams): EntityRef;
+  addStructuralSurfaceAction?(modelId: string, params: StructuralSurfaceActionInStoreParams): EntityRef;
+  addStructuralPointReaction?(modelId: string, params: StructuralPointReactionInStoreParams): EntityRef;
+  addStructuralCurveReaction?(modelId: string, params: StructuralCurveReactionInStoreParams): EntityRef;
+  addStructuralSurfaceReaction?(modelId: string, params: StructuralSurfaceReactionInStoreParams): EntityRef;
+  addStructuralResultGroup?(modelId: string, params: StructuralResultGroupInStoreParams): EntityRef;
+
+  /** `IfcStructuralSurfaceMember` with planar Face topology, anchored to a storey. Optional capability. */
+  addStructuralSurfaceMember?(modelId: string, storeyExpressId: number, params: StructuralSurfaceMemberInStoreParams): EntityRef;
+  /** `IfcStructuralCurveConnection` with Edge topology, anchored to a storey. Optional capability. */
+  addStructuralCurveConnection?(modelId: string, storeyExpressId: number, params: StructuralCurveConnectionInStoreParams): EntityRef;
+  /** `IfcStructuralSurfaceConnection` with planar Face topology, anchored to a storey. Optional capability. */
+  addStructuralSurfaceConnection?(modelId: string, storeyExpressId: number, params: StructuralSurfaceConnectionInStoreParams): EntityRef;
   /** `IfcStructuralAnalysisModel` — no storey anchor (`IfcGroup`, not `IfcProduct`). */
   addStructuralAnalysisModel(modelId: string, params: StructuralAnalysisModelInStoreParams): EntityRef;
   /** `IfcStructuralCurveMember`, anchored to a storey for its `ObjectPlacement`. */

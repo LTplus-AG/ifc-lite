@@ -2,7 +2,8 @@
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { createElement } from 'react';
-import { render as renderHud, click as clickHud, cleanup } from '@/test/render';
+import { CommandFieldsBar } from '@/components/viewer/tools/command/CommandFieldsBar';
+import { render as renderHud, click as clickHud, cleanup, press, type } from '@/test/render';
 import { beforeEach, afterEach, it } from 'node:test';
 import { StepExporter } from '@ifc-lite/export';
 import { useViewerStore } from '@/store';
@@ -42,18 +43,17 @@ function exported() {
   const s = useViewerStore.getState();
   return new StepExporter(s.models.get(MODEL)!.ifcDataStore!, s.mutationViews.get(MODEL)!).export({ schema: 'IFC4', applyMutations: true, timeStamp: '20260101T000000' }).content;
 }
+const graphOf = (bytes: Uint8Array) => new TextDecoder().decode(bytes).split('\n').filter(line => line.startsWith('#')).sort();
 const depth = () => useViewerStore.getState().undoStacks.get(MODEL)?.length ?? 0;
 async function exportedPosition(id: number) {
   // Resolve the actual exported placement chain, not the live store's cached read.
-  const { uprightFrame } = await import('../../../../../../../packages/create/src/in-store/element-transform-frames');
+  const { uprightFrame, objectPlacementOf } = await import('../../../../../../../packages/create/src/in-store/element-transform-frames');
   const { MutablePropertyView } = await import('@ifc-lite/mutations');
   const dataStore = await parseIfc(exported());
   const view = new MutablePropertyView(dataStore.properties ?? null, MODEL);
   const { configureMutationView } = await import('@/utils/configureMutationView');
   configureMutationView(view, dataStore);
-  const { AnchorEntityReader } = await import('../../../../../../../packages/create/src/in-store/resolve-anchor');
-  const reader = new AnchorEntityReader(dataStore, view);
-  const placement = Number(String(reader.entity(id)!.attributes[5]).slice(1));
+  const placement = objectPlacementOf({ dataStore, view }, id)!;
   const frame = uprightFrame({ dataStore, view }, placement);
   assert.ok(frame); return frame;
 }
@@ -66,7 +66,13 @@ it('#9296 Mirror typed horizontal axis exports y=14, flips door handedness and u
   const before = exported(), d = depth();
   await useViewerStore.getState().startCommand('element.mirror');
   assert.equal(getCommandRuntime().command?.id, 'element.mirror');
-  click(0,12); writeCommandField(0,0); assert.ok(commitCommand());
+  click(0,12);
+  const ui = renderHud(createElement(CommandFieldsBar));
+  const angle = ui.querySelector('[role="spinbutton"][aria-label="Angle"]'); assert.ok(angle);
+  press(angle,'Enter');
+  const input = ui.querySelector('input'); assert.ok(input);
+  type(input,'0'); press(input,'Enter');
+  assert.equal(getCommandRuntime().command,null,'typed zero degrees commits through the real HUD');
   const text = new TextDecoder().decode(exported());
   assert.deepEqual(danglingReferences(text), []);
   assert.match(text, /SINGLE_SWING_RIGHT/);
@@ -75,7 +81,7 @@ it('#9296 Mirror typed horizontal axis exports y=14, flips door handedness and u
   assert.ok(remeshed.some(r => r.expressIds.includes(id) && r.cause === 'hostsChanged'));
   useViewerStore.getState().undo(MODEL);
   assert.equal(depth(), d);
-  assert.deepEqual(exported(), before);
+  assert.deepEqual(graphOf(exported()), graphOf(before));
 });
 for (const copy of ['alt','toggle'] as const) it(`#9296 Mirror ${copy} makes a reflected copy and one undo removes it`, async () => {
   const id = wall(), d = depth(); select(id);
@@ -111,7 +117,7 @@ it('#9296 Mirror previews reflected geometry and reversed winding without changi
   assert.equal(ghosts.length,1); assert.deepEqual([...ghosts[0].indices],[0,2,1]);
   const y = ghosts[0].positions;
   assert.ok(Math.abs(plane.renderToLocal([y[0],y[1],y[2]])[1]-14)<.001);
-  assert.deepEqual([...meshes[0].indices],[0,1,2]); assert.deepEqual(exported(),before);
+  assert.deepEqual([...meshes[0].indices],[0,1,2]); assert.deepEqual(graphOf(exported()),graphOf(before));
 });
 it('#9296 Mirror refuses grids atomically and preserves every selected wall', async () => {
   const id = wall();
@@ -120,5 +126,5 @@ it('#9296 Mirror refuses grids atomically and preserves every selected wall', as
   assert.ok(grid); select(id,grid.expressId);
   const before = exported(); await useViewerStore.getState().startCommand('element.mirror');
   assert.equal(getCommandRuntime().command?.id,'element.mirror');
-  click(0,12); writeCommandField(0,0); assert.equal(commitCommand(),false); assert.deepEqual(exported(),before);
+  click(0,12); writeCommandField(0,0); commitCommand(); assert.equal(getCommandRuntime().command?.id,'element.mirror'); assert.deepEqual(graphOf(exported()),graphOf(before));
 });

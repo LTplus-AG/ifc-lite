@@ -29,7 +29,7 @@ function axis(g: MirrorGesture): readonly [Vec2, Vec2] | null {
 export const ELEMENT_MIRROR: ModelingCommand<MirrorGesture> = {
   id: 'element.mirror', labelKey: 'moveRotate.mirror.label',
   hud: { Bar: MirrorBar, hint: g => !g.selection ? 'moveRotate.noSelection' : g.anchor ? 'moveRotate.mirror.hintEnd' : 'moveRotate.mirror.hintStart' },
-  fields: [{ id: 'angle', labelKey: 'moveRotate.field.angle', unit: 'deg', read: g => g.angle, write: (g, angle) => ({ ...g, angle }) }],
+  fields: [{ id: 'angle', labelKey: 'moveRotate.field.angle', unit: 'deg', read: g => g.angle ?? 0, write: (g, angle) => ({ ...g, angle }) }],
   snap: 'modeling',
   init(ctx) {
     const selection = readTransformSelection(ctx.get());

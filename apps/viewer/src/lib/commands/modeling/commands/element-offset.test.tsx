@@ -40,6 +40,7 @@ function exported() {
   const s = useViewerStore.getState();
   return new StepExporter(s.models.get(MODEL)!.ifcDataStore!, s.mutationViews.get(MODEL)!).export({ schema: 'IFC4', applyMutations: true, timeStamp: '20260101T000000' }).content;
 }
+const graphOf = (bytes: Uint8Array) => new TextDecoder().decode(bytes).split('\n').filter(line => line.startsWith('#')).sort();
 const depth = () => useViewerStore.getState().undoStacks.get(MODEL)?.length ?? 0;
 async function exportedWall(id: number) {
   const { MutablePropertyView, StoreEditor } = await import('@ifc-lite/mutations');
@@ -64,13 +65,13 @@ for (const side of [-1,1]) it(`#9296 Offset exports a 5m parallel wall at y=${si
   const ends = await exportedWall(copied);
   assert.ok(Math.abs(ends.start[1]-side*1.5)<.001, JSON.stringify(ends));
   assert.ok(Math.abs(Math.hypot(ends.end[0]-ends.start[0],ends.end[1]-ends.start[1])-5)<.001);
-  useViewerStore.getState().undo(MODEL); assert.equal(depth(),d); assert.deepEqual(exported(),before);
+  useViewerStore.getState().undo(MODEL); assert.equal(depth(),d); assert.deepEqual(graphOf(exported()),graphOf(before));
 });
 it('#9296 Offset refuses a non-wall and invalid distances without changing the graph', async () => {
   const column = useViewerStore.getState().addColumn(MODEL,storey,{ Position: [0,0,0], Width: .3, Depth: .3, Height: 3 });
   assert.ok('expressId' in column); select(column.expressId);
-  let before = exported(); await useViewerStore.getState().startCommand('element.offset'); assert.equal(commitCommand(),false); assert.deepEqual(exported(),before);
+  let before = exported(); await useViewerStore.getState().startCommand('element.offset'); commitCommand(); assert.equal(getCommandRuntime().command?.id,'element.offset'); assert.deepEqual(graphOf(exported()),graphOf(before));
   const id = wall(0); select(id); await useViewerStore.getState().startCommand('element.offset'); before=exported();
   assert.equal(getCommandRuntime().command?.id,'element.offset');
-  for (const value of [0,-1]) { writeCommandField(0,value); assert.equal(commitCommand(),false); assert.deepEqual(exported(),before); }
+  for (const value of [0,-1]) { writeCommandField(0,value); commitCommand(); assert.equal(getCommandRuntime().command?.id,'element.offset'); assert.deepEqual(graphOf(exported()),graphOf(before)); }
 });

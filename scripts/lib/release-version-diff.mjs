@@ -16,6 +16,12 @@ import { isChangesetName } from './pending-changesets.mjs';
 
 const SEMVER = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/;
 
+/** BigInt: numeric identifiers are unbounded, and Number loses digits past 2^53. */
+function cmpBig(x, y) {
+  const [p, q] = [BigInt(x), BigInt(y)];
+  return p === q ? 0 : p < q ? -1 : 1;
+}
+
 /**
  * Semver precedence (semver.org, section 11) of two SEMVER matches: below 0
  * when `a` is lower. A prerelease is lower than its own release, so
@@ -23,7 +29,7 @@ const SEMVER = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/;
  */
 function comparePrecedence(a, b) {
   for (const i of [1, 2, 3]) {
-    const d = Math.sign(Number(a[i]) - Number(b[i]));
+    const d = cmpBig(a[i], b[i]);
     if (d !== 0) return d;
   }
   if (a[4] === undefined || b[4] === undefined) return (a[4] === undefined) - (b[4] === undefined);
@@ -33,7 +39,8 @@ function comparePrecedence(a, b) {
     const [pn, qn] = [/^\d+$/.test(p), /^\d+$/.test(q)];
     // Numeric identifiers compare as numbers and rank below alphanumeric ones.
     if (pn && qn) {
-      if (p !== q) return Math.sign(Number(p) - Number(q));
+      const d = cmpBig(p, q);
+      if (d !== 0) return d;
     } else if (pn !== qn) {
       return pn ? -1 : 1;
     } else if (p !== q) {

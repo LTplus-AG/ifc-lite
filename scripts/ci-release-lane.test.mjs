@@ -236,7 +236,7 @@ test('the narrow queue-rule reader agrees with a YAML parse of the real .mergify
 });
 
 test('the narrow pull_request_rules reader agrees with a YAML parse of the real .mergify.yml', () => {
-  const real = parse(MERGIFY).pull_request_rules.map((r) => ({ name: r.name, conditions: r.conditions ?? [], queue: r.actions?.queue?.name ?? null }));
+  const real = parse(MERGIFY).pull_request_rules.map((r) => ({ name: r.name, conditions: r.conditions ?? [], actions: Object.keys(r.actions ?? {}), queue: r.actions?.queue?.name ?? null }));
   assert.deepEqual(parsePullRequestRules(MERGIFY), real);
 });
 
@@ -251,7 +251,7 @@ test('REFUSE (#9783 review): no pull_request_rules entry queues the release PR i
     assert.notEqual(broken, MERGIFY);
     const r = releaseQueueRoute(broken, { labels: ['mergify-trial'], draft: false });
     assert.equal(r.ok, false);
-    assert.match(r.reason, /no Mergify pull_request_rules entry queues/); // @source-text-assertion-ok subject is the returned reason
+    assert.match(r.reason, /no Mergify pull_request_rules entry queues|can queue the release PR into `default`, not `release`/); // @source-text-assertion-ok subject is the returned reason
     assert.equal(decide({ mergify: () => broken }).lane, 'full');
   }
   // An entry condition it cannot judge refuses; one it can, and the PR lacks, is PR state.
@@ -264,8 +264,36 @@ test('REFUSE (#9783 review): no pull_request_rules entry queues the release PR i
   assert.match(r.queueReason, /lacks `release-ok`/); // @source-text-assertion-ok subject is the returned reason
   // Two entry rules: either one's gaps would do, so both are named as alternatives.
   const second = labelled.replace('pull_request_rules:\n', 'pull_request_rules:\n  - name: alt\n    conditions:\n      - head=changeset-release/main\n      - label=alt-ok\n    actions:\n      queue:\n        name: release\n\n');
-  assert.match(releaseQueueRoute(second, { labels: [], draft: false }).queueReason, /lacks `alt-ok`, or it lacks `mergify-trial` and it lacks `release-ok`/); // @source-text-assertion-ok subject is the returned reason
+  // A gap the queue rule already names is not repeated per entry rule.
+  const both = releaseQueueRoute(second, { labels: [], draft: false }).queueReason;
+  assert.match(both, /will not take this PR yet: it lacks `mergify-trial`, it lacks `alt-ok`, or it lacks `release-ok`$/); // @source-text-assertion-ok subject is the returned reason
+  assert.equal(releaseQueueRoute(MERGIFY, { labels: [], draft: true }).queueReason.match(/mergify-trial/g).length, 1, 'the real config names each gap once');
   assert.equal(releaseQueueRoute(second, { labels: ['alt-ok', 'mergify-trial'], draft: false }).queueable, true, 'the queue rule itself also needs mergify-trial');
+});
+
+test('REFUSE (#9783 review): any other route that can queue or merge the release PR', () => {
+  const extra = (r) => MERGIFY.replace('pull_request_rules:\n', `pull_request_rules:\n${r}\n`);
+  const cases = [
+    // a rule with no head condition can match the release PR
+    ['  - name: any\n    conditions:\n      - label=go\n    actions:\n      queue:\n        name: default', /`any` can queue the release PR into `default`/],
+    ['  - name: m\n    conditions:\n      - label=go\n    actions:\n      merge:\n        method: squash', /`m` can merge the release PR directly/],
+    // a rule for the release head that merges, or routes elsewhere, or in a form this script cannot read
+    ['  - name: direct\n    conditions:\n      - head=changeset-release/main\n    actions:\n      merge: {}', /`direct` can merge the release PR directly/],
+    ['  - name: other\n    conditions:\n      - head=changeset-release/main\n    actions:\n      queue:\n        name: default', /`other` can queue the release PR into `default`/],
+    ['  - name: inline\n    conditions:\n      - head=changeset-release/main\n    actions:\n      queue: {name: release}', /`inline` can queue the release PR into a queue this script cannot read/],
+  ];
+  for (const [r, why] of cases) {
+    const route = releaseQueueRoute(extra(r), { labels: ['mergify-trial'], draft: false });
+    assert.equal(route.ok, false, r);
+    assert.match(route.reason, why); // @source-text-assertion-ok subject is the returned reason
+  }
+  // A rule excluding the release head, or with no routing action, is no route.
+  for (const r of ['  - name: ex\n    conditions:\n      - -head=changeset-release/main\n    actions:\n      queue:\n        name: default', '  - name: elsewhere\n    conditions:\n      - head=feature/x\n    actions:\n      merge: {}', '  - name: not-x\n    conditions:\n      - -head=feature/x\n      - label=go\n    actions:\n      queue:\n        name: release', '  - name: note\n    conditions:\n      - label=go\n    actions:\n      comment:\n        message: hi']) {
+    assert.equal(releaseQueueRoute(extra(r), { labels: ['mergify-trial'], draft: false }).ok, true, r);
+  }
+  // Two queue rules taking the release head: the other could be single-step.
+  const twoQueues = MERGIFY.replace('queue_rules:\n', 'queue_rules:\n  - name: release-fast\n    queue_conditions:\n      - head=changeset-release/main\n    merge_conditions:\n      - head=changeset-release/main\n');
+  assert.match(releaseQueueRoute(twoQueues, { labels: ['mergify-trial'], draft: false }).reason, /more than one Mergify queue rule takes head=changeset-release\/main \(release-fast, release\)/); // @source-text-assertion-ok subject is the returned reason
 });
 
 test('QUEUE: a queue action does not leak into the next rule (#9783 review)', () => {
@@ -275,6 +303,8 @@ test('QUEUE: a queue action does not leak into the next rule (#9783 review)', ()
 
 test('SHADOW (#9783 review): the report runs the lean lane\'s own checks and lists only lanes that ran', () => {
   const shadow = { ...BASE, mode: 'shadow', lane: 'full' };
+  const allSkipped = verifyReleaseLane({ ...shadow, needs: needsJson('skipped', { changes: 'success' }) }).lines.join('\n');
+  assert.match(allSkipped, /would skip:\n\n- \(none: every such lane skipped on this run\)/); // @source-text-assertion-ok subject is the returned summary
   const needs = needsJson('success', { 'rust-full': 'skipped' });
   const pass = verifyReleaseLane({ ...shadow, needs, runChecks: () => LEAN_CHECKS.map((script) => ({ script, ok: true, tail: '' })) }).lines.join('\n');
   for (const script of LEAN_CHECKS) assert.match(pass, new RegExp(`\`${script.replace(/[.]/g, '\\.')}\`: pass`));
@@ -288,7 +318,7 @@ test('SHADOW (#9783 review): the report runs the lean lane\'s own checks and lis
   // The real runner on scripts of its own: exit status and last output line; a missing script fails, never throws.
   const dir = mkdtempSync(join(TMP, 'checks-'));
   writeFileSync(join(dir, 'ok.mjs'), "console.log('first'); console.log('all good');\n");
-  writeFileSync(join(dir, 'bad.mjs'), "console.error('offset mismatch'); process.exit(1);\n");
+  writeFileSync(join(dir, 'bad.mjs'), "console.log('offset mismatch'); process.emitWarning('noise', 'ExperimentalWarning'); process.exitCode = 1;\n");
   assert.deepEqual(runLeanChecks(dir, ['ok.mjs', 'bad.mjs', 'gone.mjs']).map((c) => [c.script, c.ok, /Cannot find module/.test(c.tail) || c.tail]), [['ok.mjs', true, 'all good'], ['bad.mjs', false, 'offset mismatch'], ['gone.mjs', false, true]]);
 });
 
@@ -354,6 +384,9 @@ test('DIFF: a CHANGELOG and its package.json move together, or the diff is not a
   for (const [from, to] of [['1.10.0', '1.9.9'], ['1.0.0', '1.0.0-next.0'], ['1.0.0-next.1', '1.0.0-next.0'], ['1.0.0-next.10', '1.0.0-next.9'], ['1.0.0-next.0', '1.0.0-0'], ['1.0.0-next.0', '1.0.0-next'], ['1.0.0-rc.1', '1.0.0-beta.2'], ['1.0.0-next.0', '1.0.00-next.0']]) {
     assert.deepEqual(bump({ name: 'x', version: from }, { name: 'x', version: to }), [`packages/x/package.json: \`version\` did not move forward (${from} -> ${to})`], `${from} -> ${to}`);
   }
+  // Past 2^53 still orders (BigInt), and equal numeric identifiers go on to the next one.
+  assert.deepEqual(bump({ name: 'x', version: '1.0.0-next.9007199254740992' }, { name: 'x', version: '1.0.0-next.9007199254740993' }), []);
+  assert.deepEqual(bump({ name: 'x', version: '1.0.0-1.0' }, { name: 'x', version: '1.0.0-01.1' }), []);
   for (const [from, to] of [['1.0.0', '1.0.1'], ['1.9.9', '1.10.0'], ['0.9.0', '1.0.0-next.0'], ['1.0.0-next.0', '1.0.0-next.1'], ['1.0.0-next.9', '1.0.0-next.10'], ['1.0.0-next', '1.0.0-next.0'], ['1.0.0-beta.2', '1.0.0-rc.1'], ['1.0.0-next.1', '1.0.0']]) {
     assert.deepEqual(bump({ name: 'x', version: from }, { name: 'x', version: to }), [], `${from} -> ${to}`);
   }

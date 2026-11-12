@@ -74,7 +74,8 @@ export function connectAgentBridge({ port, code, bim, WebSocket }: ConnectAgentB
     tools: mainViewerBridgeTools(),
     dispatch: (name, args, signal) => dispatchMainViewerTool(host, name, args, { signal }),
     modelIdFor: (args) => modelIdForCall(host, args),
-    clientInfo: { name: 'ifc-lite viewer', version: __APP_VERSION__ },
+    // The Vite define is absent under the Node test runner.
+    clientInfo: { name: 'ifc-lite viewer', version: typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev' },
     WebSocket,
     probePermission: queryLocalNetworkPermission,
     onStatus: (status) => {

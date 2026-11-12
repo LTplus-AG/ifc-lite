@@ -5,7 +5,7 @@
 /** Registry-backed ribbon controls. Callers supply host inputs; the table owns execution. */
 import { forwardRef, type MouseEvent } from 'react';
 import { useTranslation } from '@/i18n';
-import { surfaceCommand, type SurfaceCommandContext, type SurfaceCommandDefinition, type SurfaceCommandId } from '../surface-commands';
+import { surfaceCommand, type SurfaceCommandContext, type SurfaceCommandDefinition, type SurfaceCommandId } from '../surface-command-registry';
 import { runSurfaceCommand } from '../surface-command-run';
 import { RibbonContentLargeButton, RibbonContentSmallButton, type RibbonContentButtonProps } from './primitives';
 

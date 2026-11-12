@@ -16,6 +16,11 @@
       "import": "./dist/geometry-class.js",
       "default": "./dist/geometry-class.js"
     },
+    "./rhino-export": {
+      "types": "./dist/rhino-export.d.ts",
+      "import": "./dist/rhino-export.js",
+      "default": "./dist/rhino-export.js"
+    },
     "./world-frame": {
       "types": "./dist/world-frame.d.ts",
       "import": "./dist/world-frame.js",

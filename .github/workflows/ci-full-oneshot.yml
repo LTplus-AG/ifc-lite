@@ -1,0 +1,69 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# One-shot `ci:full` (scripts/ci-full-oneshot.mjs). After a full-lane Test run
+# finishes on a PR's head, remove the label so later pushes go back to the
+# fast lane; the author re-applies it for another full pass. Switched by the
+# repo variable CI_FULL_ONESHOT (`off` default, `shadow`, `on`); with it unset
+# the job does not start.
+#
+# `workflow_run` runs this file and the script from the DEFAULT branch with a
+# token that can write to the base repo, so it checks out only the default
+# branch's `scripts/`, never the PR's code, and runs nothing from the PR.
+# Removing a label does not start Test: Test has no `labeled`/`unlabeled`
+# trigger. label-authority.yml only acts on `labeled` and only on `ready` and
+# `unqueued`, so it neither blocks this removal nor reacts to it.
+name: CI full one-shot
+
+on:
+  workflow_run:
+    workflows: [Test]
+    types: [completed]
+
+permissions:
+  contents: read
+  # Removing a label from a PR. `issues: write` alone 403s on a pull request
+  # (see label-authority.yml).
+  pull-requests: write
+  # Listing the finished run's jobs, the proof it ran the full lanes.
+  actions: read
+
+jobs:
+  oneshot:
+    name: CI full one-shot
+    if: github.event.workflow_run.event == 'pull_request' && (vars.CI_FULL_ONESHOT == 'shadow' || vars.CI_FULL_ONESHOT == 'on')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Decisions for one PR run one at a time, keyed on the PR's head
+    # (repository id, as findPr matches it, and branch): a fork PR's run carries no PR number, and
+    # `pull_requests` can list another repository's PR first. GitHub keeps
+    # only ONE pending run per group, so a third completion while one runs
+    # replaces the queued second and that decision is dropped. That fails
+    # safe, never removing a label wrongly, but it can cost a full pass: if
+    # the dropped decision was the newest head's green run, the label stays
+    # and the next push runs full again before it comes off.
+    concurrency:
+      group: ci-full-oneshot-${{ github.event.workflow_run.head_repository.id }}-${{ github.event.workflow_run.head_branch }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          lfs: false
+          # Only the script and what it imports (node: built-ins otherwise), so
+          # the runner's preinstalled Node is enough.
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            scripts/ci-full-oneshot.mjs
+            scripts/ci-pr-lane.mjs
+            scripts/lib/gh.mjs
+            scripts/lib/is-main-entry.mjs
+      - name: Remove ci:full after a full-lane run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          CI_FULL_ONESHOT: ${{ vars.CI_FULL_ONESHOT }}
+          CI_PR_LANE: ${{ vars.CI_PR_LANE }}
+        run: node scripts/ci-full-oneshot.mjs --run

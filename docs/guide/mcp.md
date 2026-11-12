@@ -815,3 +815,9 @@ release. Only a caller who knows the original write’s complete access scope
 should make this assertion; live vendor authorization is not qualified.
 
 Unsupported native Review mode is refused before graph effects on CLI/viewer hosts. Supplied historical parameters and Player overrides remain supported; MCP additionally supports captured native Review. Validated restored nodes are not executed or required to reacquire their former services.
+
+`mirror_elements` reflects upright products about a two-point, storey-local XY
+axis in metres, with optional `copy`. Hosted openings remain attached and door
+handedness flips. `add_classification` creates or reuses an IFC classification
+system and reference, optionally associating `objects`. `assign_classification`
+associates more objects with an existing classification or reference.

@@ -259,7 +259,7 @@ jobs:
         # v6 reads the version from the `packageManager` field in
         # package.json (`pnpm@10.8.1`); specifying `with.version` here
         # would conflict and the action errors with ERR_PNPM_BAD_PM_VERSION.
-        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
       - name: Setup Node.js
         if: steps.superseded.outputs.skip != 'true'
@@ -458,6 +458,28 @@ jobs:
           # this whole step (build, test:esm, npm publish) is already done.
           # See the comment on the "Stamp crates.io token mint time" step.
           CRATES_TOKEN_MINTED_AT_MS: ${{ steps.crates-auth-time.outputs.minted_at_ms }}
+
+      # THE RELEASE PR LEAN LANE needs the PR queueable (scripts/ci-release-lane.mjs):
+      # the `release` queue's entry rule requires `mergify-trial`. Applied only
+      # while CI_RELEASE_LANE is `on` (any case, as Actions compares), because
+      # the queue then also MERGES the release PR once its full-lane draft is
+      # green, and merging it publishes: `on` is the switch for both. `shadow`
+      # and `off` never label, and never remove a label someone applied by
+      # hand. So turning `on` off does not dequeue an open release PR: remove
+      # the label (or comment `@Mergifyio dequeue`) for that. The Test run of a
+      # just-opened release PR reads its labels before this step runs, so that
+      # one run is full; the PR is rewritten in place afterwards and keeps the
+      # label. Not a protected label (label-authority.yml guards only the
+      # ready and `unqueued` labels), so the bot may apply it. A failure here
+      # must not fail the release run: it only delays queueing.
+      - name: Queue the release PR (CI_RELEASE_LANE=on)
+        if: steps.changesets.outputs.pr-number != '' && vars.CI_RELEASE_LANE == 'on'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ steps.changesets.outputs.pr-number }}
+          REPO: ${{ github.repository }}
+        run: gh pr edit "$PR" --repo "$REPO" --add-label mergify-trial
 
       # Whether to create this version's release artifacts.
       #
@@ -757,7 +779,7 @@ jobs:
         # v6 reads the version from the `packageManager` field in
         # package.json (`pnpm@10.8.1`); specifying `with.version` here
         # would conflict and the action errors with ERR_PNPM_BAD_PM_VERSION.
-        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
       - name: Setup Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0

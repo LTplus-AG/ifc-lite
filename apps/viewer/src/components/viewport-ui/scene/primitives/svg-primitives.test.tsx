@@ -371,3 +371,16 @@ describe('Leader', () => {
     // instead of hiding — verified by reverting the fix.
   });
 });
+
+it('exposes interactive Pins but hides decorative SVG (#9828)', () => {
+  const { container, flush } = renderScene(<>
+    <Pin worldPoint={{ x: 10, y: 20, z: 0 }} title="Select viewpoint" onClick={() => {}} />
+    <Leader worldPoint={{ x: 10, y: 20, z: 0 }} offset={{ dx: 10, dy: 10 }} />
+  </>);
+  flush();
+  const pin = container.querySelector('[role="button"]')!;
+  assert.ok(pin);
+  assert.equal(pin.getAttribute('aria-label'), 'Select viewpoint');
+  assert.ok(!pin.closest('[aria-hidden="true"]'), 'Pin must have no hidden ancestor');
+  assert.equal(container.querySelector('[data-scene-primitive="leader"]')!.getAttribute('aria-hidden'), 'true');
+});

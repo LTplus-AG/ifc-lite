@@ -5,6 +5,7 @@
 import type { Catalogue } from '../../registry';
 
 export const viewportLightingDe = {
+  "viewportLighting.container.loadErrorCard.sourceTooLarge": "Diese IFC-Datei überschreitet die Ladegrenze der Browser-Engine. Jede Quelldatei muss kleiner als {limit} sein. Exportieren Sie kleinere Dateien oder verwenden Sie die native CLI bzw. den Server.",
   "viewportLighting.container.emptyState.dropOverlay.title": "Datei zum Laden ablegen",
   "viewportLighting.container.emptyState.webgpuBanner.heading": "WebGPU Nicht verfügbar",
   "viewportLighting.container.emptyState.webgpuBanner.checkBrowserSupport": "Überprüfen Sie die Browserunterstützung",

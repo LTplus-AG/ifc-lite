@@ -16,6 +16,7 @@ import { requireSecureOAuthUrl, requireSecureTokenUrl } from './bcf-server-confi
 import type { BcfServerConfig } from './bcf-server-config.js';
 import { bcfServerProfile, relayedFetch } from './bcf-server-profiles.js';
 import { completeSignIn, loadApi } from './bcf-server-session.js';
+import { bcfFetch } from './bcf-server-fetch.js';
 import { resolveTokenRelayUrl, withTokenRelay } from './bcf-token-relay.js';
 
 /** Path the popup returns to; must match what OAuth apps register. */
@@ -43,6 +44,7 @@ export interface BcfOAuthPreparation {
 }
 
 export interface PrepareBcfOAuthOptions {
+  signal?: AbortSignal;
   clientId?: string;
   clientSecret?: string;
   scope?: string;
@@ -109,7 +111,7 @@ export async function prepareBcfOAuth(
   const profile = bcfServerProfile(serverUrl);
   const { baseUrl, authInfo } = profile
     ? { baseUrl: serverUrl.trim().replace(/\/+$/, ''), authInfo: profile.authInfo }
-    : await api.discoverBcfService({ baseUrl: serverUrl });
+    : await api.discoverBcfService({ baseUrl: serverUrl, fetchFn: bcfFetch(options.signal) });
   const tokenUrl = requireSecureTokenUrl(authInfo.oauth2_token_url);
   const authEndpoint = requireSecureOAuthUrl(authInfo.oauth2_auth_url, 'authorization endpoint');
 
@@ -127,6 +129,7 @@ export async function prepareBcfOAuth(
         authInfo.oauth2_dynamic_client_reg_url,
         'client registration endpoint',
       ),
+      fetchFn: bcfFetch(options.signal),
       clientName: 'IFClite viewer',
       clientUrl: window.location.origin,
       redirectUrl: redirectUri,
@@ -165,6 +168,7 @@ export async function prepareBcfOAuth(
 export async function completeBcfOAuth(
   preparation: BcfOAuthPreparation,
   callbackUrl: string,
+  signal?: AbortSignal,
 ): Promise<BcfServerConfig> {
   const api = await loadApi();
   const { parseAuthorizationCallback } = await import('@ifc-lite/oauth-pkce');
@@ -183,19 +187,19 @@ export async function completeBcfOAuth(
   const { result: token, tokenRelay } = await withTokenRelay(
     preparation.tokenRelay,
     // The relay adds the client id and secret it holds.
-    (fetchFn) => api.exchangeAuthorizationCode({ ...grant, fetchFn }),
+    (fetchFn) => api.exchangeAuthorizationCode({ ...grant, fetchFn: bcfFetch(signal, fetchFn) }),
     () =>
       api.exchangeAuthorizationCode({
         ...grant,
         clientId: preparation.clientId,
         clientSecret: preparation.clientSecret || undefined,
         // A profiled server's token endpoint is reached through its relay.
-        ...(profile ? { fetchFn: relayedFetch(profile) } : {}),
+        fetchFn: bcfFetch(signal, profile ? relayedFetch(profile) : undefined),
       }),
   );
   return completeSignIn(preparation.serverUrl, token, {
     clientId: preparation.clientId,
     clientSecret: preparation.clientSecret,
     tokenRelay,
-  });
+  }, signal);
 }

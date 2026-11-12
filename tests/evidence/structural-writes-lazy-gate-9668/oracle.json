@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "The viewer build gate must refuse structural builder code in a startup chunk; skip that refusal and builder code reached statically or by modulepreload passes.",
+  "key": "apps/viewer/scripts/startup-chunks.mjs",
+  "mutation": "tests/evidence/structural-writes-lazy-gate-9668/behaviour.oracle.patch",
+  "test": "apps/viewer/src/sdk/adapters/structural-writes-lazy-check.test.ts"
+}

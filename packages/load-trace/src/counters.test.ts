@@ -114,6 +114,7 @@ describe('worker message accounting (#6957)', () => {
     expect(sent).toHaveLength(2); // the native post still runs for both
     expect(counters.read()).toEqual({
       'msg.geometry.out.count': 1,
+      'msg.geometry.out.transferObjects': 1,
       'msg.geometry.out.cloneBytes': 4, // the key "jobs"
       'msg.geometry.out.transferBytes': 16,
       'msg.geometry.out.sharedBytes': 0,
@@ -121,6 +122,22 @@ describe('worker message accounting (#6957)', () => {
       'msg.geometry.in.cloneBytes': 9, // the key "positions"
       'msg.geometry.in.bufferBytes': 40,
       'msg.geometry.in.sharedBytes': 0,
+    });
+  });
+
+  it('counts every transfer-list entry, in array and options form (#9605)', () => {
+    const counters = createPerfCounters();
+    counters.enable();
+    const worker = { postMessage: (_m: unknown, _t?: unknown) => {} };
+    const wrapped = accountWorkerMessages(worker, 'geometry', counters);
+    const [a, b, c] = [new ArrayBuffer(4), new ArrayBuffer(8), new ArrayBuffer(12)];
+    wrapped.postMessage({ a }, [a, b, c]);
+    const [d, e] = [new ArrayBuffer(2), new ArrayBuffer(2)];
+    wrapped.postMessage({ d }, { transfer: [d, e] });
+    expect(counters.read()).toMatchObject({
+      'msg.geometry.out.count': 2,
+      'msg.geometry.out.transferObjects': 5,
+      'msg.geometry.out.transferBytes': 28,
     });
   });
 

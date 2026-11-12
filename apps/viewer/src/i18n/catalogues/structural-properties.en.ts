@@ -13,6 +13,8 @@ export const structuralPropertiesEn = {
   'properties.structural.model': 'Model',
   'properties.structural.connections': 'Connections ({countDisplay})',
   'properties.structural.appliedLoads': 'Applied loads ({countDisplay})',
+  'properties.structural.analyticalItems': 'Analytical items ({countDisplay})',
+  'properties.structural.physicalElements': 'Physical elements ({countDisplay})',
   'properties.structural.noDofs': '(no DOFs)',
   'properties.structural.fixedDofs': { one: '{countDisplay} DOF fixed', other: '{countDisplay} DOFs fixed' },
   'properties.structural.elasticDofs': { one: '{countDisplay} DOF elastic', other: '{countDisplay} DOFs elastic' },

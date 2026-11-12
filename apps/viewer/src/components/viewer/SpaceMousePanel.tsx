@@ -10,6 +10,11 @@
  * useSpaceMouseControls; this is a thin view over the spaceMouse store
  * slice, rendered inside the Preferences dialog's Navigation section
  * (`KeyboardShortcutsDialog.tsx`) rather than floated over the viewport.
+ *
+ * "Use the 3Dconnexion driver" (#9131) is the opt-in alternative: the
+ * running 3DxWare driver moves the camera, so while it is connected the
+ * WebHID controls (connect, sensitivity, diagnostics) do not apply and are
+ * hidden. It needs no WebHID, so the switch shows in every browser.
  */
 
 import { useEffect, useId, useState } from 'react';
@@ -17,6 +22,7 @@ import { Activity, ChevronDown, ChevronUp, Copy, Unplug } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 import { AXIS_FULL_SCALE, SENSITIVITY } from '@/lib/spacemouse/constants';
 import type { SpaceMouseDiagnostics } from '@/lib/spacemouse/device';
@@ -46,7 +52,63 @@ function AxisBar({ label, value }: { label: string; value: number }) {
   );
 }
 
+/** The opt-in driver switch and its status line (#9131). */
+function DriverOption() {
+  const switchId = useId();
+  const hintId = useId();
+  const { t } = useTranslation();
+  const useDriver = useViewerStore((s) => s.spaceMouseUseDriver);
+  const setUseDriver = useViewerStore((s) => s.setSpaceMouseUseDriver);
+  const status = useViewerStore((s) => s.spaceMouseDriverStatus);
+  const error = useViewerStore((s) => s.spaceMouseDriverError);
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between gap-2">
+        <label htmlFor={switchId} className="text-xs text-foreground">
+          {t('spaceMousePanel.useDriverLabel')}
+        </label>
+        <Switch
+          id={switchId}
+          checked={useDriver}
+          onCheckedChange={setUseDriver}
+          aria-describedby={hintId}
+        />
+      </div>
+      <p id={hintId} className="text-2xs leading-snug text-muted-foreground">
+        {t('spaceMousePanel.useDriverHint')}
+      </p>
+      {status === 'connecting' && (
+        <p className="text-2xs leading-snug text-muted-foreground">{t('spaceMousePanel.driverConnecting')}</p>
+      )}
+      {status === 'connected' && (
+        <p className="text-xs text-foreground">
+          <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-status-ok align-middle" />
+          {t('spaceMousePanel.driverConnected')}
+        </p>
+      )}
+      {status === 'unavailable' && (
+        <p className="text-2xs leading-snug text-muted-foreground" title={error ?? undefined}>
+          {t('spaceMousePanel.driverUnavailable')}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function SpaceMousePanel() {
+  const driverConnected = useViewerStore((s) => s.spaceMouseDriverStatus === 'connected');
+  return (
+    <div className="flex flex-col gap-2 text-xs">
+      {!driverConnected && <WebHidOptions />}
+      <div className={cn(!driverConnected && 'border-t pt-2')}>
+        <DriverOption />
+      </div>
+    </div>
+  );
+}
+
+function WebHidOptions() {
   const sensitivityId = useId();
   const { t } = useTranslation();
 

@@ -15,10 +15,15 @@
  * The hook registers a `connect` action in the store so the SpaceMouse panel
  * can trigger the WebHID permission prompt from a click (user-gesture
  * requirement), and silently reopens a previously granted device on startup.
+ *
+ * With "Use the 3Dconnexion driver" on (#9131) it also lazily loads
+ * `lib/spacemouse-driver` and connects through the running 3DxWare driver,
+ * which then moves the camera itself. If the driver does not answer, nothing
+ * else changes: the WebHID path above stays in use.
  */
 
 import { useEffect, type MutableRefObject } from 'react';
-import type { Renderer } from '@ifc-lite/renderer';
+import type { Camera, Renderer } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
 import {
@@ -30,6 +35,11 @@ import {
 import { deltasAreZero, isInputStale, mapSixDofToCameraDeltas } from '@/lib/spacemouse/mapping';
 import { getEntityBounds } from '../../utils/viewportUtils.js';
 import { createCentreSurfaceZoom, type ZoomSurfacePickOptions } from './zoomSurface.js';
+import { createDriverCamera } from './spaceMouseDriverCamera.js';
+import type { SpaceMouseDriver } from '@/lib/spacemouse-driver/driver';
+
+/** Name shown for the viewer in the user's 3Dconnexion settings. */
+const DRIVER_APP_NAME = 'IFC-Lite';
 
 export interface UseSpaceMouseControlsParams {
   rendererRef: MutableRefObject<Renderer | null>;
@@ -38,6 +48,43 @@ export interface UseSpaceMouseControlsParams {
   selectedEntityIdRef: MutableRefObject<number | null>;
   calculateScale: () => void;
   getPickOptions: () => ZoomSurfacePickOptions;
+}
+
+/**
+ * Same behaviour as the keyboard 'F' shortcut — and, like it, delegates to
+ * `cameraCallbacks.frameSelection` rather than reimplementing framing from
+ * `selectedEntityIdRef` alone. See useKeyboardControls.ts's 'F' handler for
+ * why: `frameSelection` unions the full multi-selection set and resolves a
+ * geometry-less assembly to its aggregated parts (#1133), neither of which a
+ * local `getEntityBounds` lookup does. Shared by the WebHID fit buttons and
+ * the driver's Fit key.
+ */
+function createFitView(
+  renderer: Renderer,
+  camera: Camera,
+  { geometryRef, selectedEntityIdRef, calculateScale }: Pick<UseSpaceMouseControlsParams, 'geometryRef' | 'selectedEntityIdRef' | 'calculateScale'>,
+): () => void {
+  return () => {
+    const state = useViewerStore.getState();
+    const hasSelection = state.selectedEntityIds.size > 0 || selectedEntityIdRef.current !== null;
+    if (hasSelection && state.cameraCallbacks.frameSelection) {
+      state.cameraCallbacks.frameSelection();
+      renderer.requestRender();
+      return;
+    }
+    if (selectedEntityIdRef.current !== null) {
+      const bounds = getEntityBounds(geometryRef.current, selectedEntityIdRef.current);
+      if (bounds) {
+        void camera.frameBounds(bounds.min, bounds.max, 300);
+        renderer.requestRender();
+        calculateScale();
+        return;
+      }
+    }
+    // Nothing selected: the one Fit All, framing what is visible (#5884).
+    state.cameraCallbacks.fitAll?.();
+    renderer.requestRender();
+  };
 }
 
 export function useSpaceMouseControls(params: UseSpaceMouseControlsParams): void {
@@ -49,6 +96,7 @@ export function useSpaceMouseControls(params: UseSpaceMouseControlsParams): void
     calculateScale,
     getPickOptions,
   } = params;
+  const useDriver = useViewerStore((s) => s.spaceMouseUseDriver);
 
   useEffect(() => {
     const renderer = rendererRef.current;
@@ -68,33 +116,7 @@ export function useSpaceMouseControls(params: UseSpaceMouseControlsParams): void
     let frameId: number | null = null;
     let lastFrameTime = 0;
 
-    // Same behaviour as the keyboard 'F' shortcut — and, like it, delegates to
-    // `cameraCallbacks.frameSelection` rather than reimplementing framing
-    // from `selectedEntityIdRef` alone. See useKeyboardControls.ts's 'F'
-    // handler for why: `frameSelection` unions the full multi-selection set
-    // and resolves a geometry-less assembly to its aggregated parts (#1133),
-    // neither of which a local `getEntityBounds` lookup does.
-    const fitView = () => {
-      const state = useViewerStore.getState();
-      const hasSelection = state.selectedEntityIds.size > 0 || selectedEntityIdRef.current !== null;
-      if (hasSelection && state.cameraCallbacks.frameSelection) {
-        state.cameraCallbacks.frameSelection();
-        renderer.requestRender();
-        return;
-      }
-      if (selectedEntityIdRef.current !== null) {
-        const bounds = getEntityBounds(geometryRef.current, selectedEntityIdRef.current);
-        if (bounds) {
-          void camera.frameBounds(bounds.min, bounds.max, 300);
-          renderer.requestRender();
-          calculateScale();
-          return;
-        }
-      }
-      // Nothing selected: the one Fit All, framing what is visible (#5884).
-      state.cameraCallbacks.fitAll?.();
-      renderer.requestRender();
-    };
+    const fitView = createFitView(renderer, camera, { geometryRef, selectedEntityIdRef, calculateScale });
 
     const stopLoop = () => {
       if (frameId !== null) {
@@ -229,6 +251,48 @@ export function useSpaceMouseControls(params: UseSpaceMouseControlsParams): void
       session = null;
     };
   }, [isInitialized]);
+
+  // The opt-in 3Dconnexion driver path (#9131). Nothing from the SDK is
+  // fetched unless the setting is on; turning it off disconnects.
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer || !isInitialized || !useDriver) return;
+
+    const setStatus = useViewerStore.getState().setSpaceMouseDriverStatus;
+    let aborted = false;
+    let driver: SpaceMouseDriver | null = null;
+    setStatus('connecting');
+
+    const start = async () => {
+      const { SpaceMouseDriver } = await import('@/lib/spacemouse-driver/driver');
+      if (aborted) return;
+      const d = new SpaceMouseDriver(createDriverCamera(renderer), { appName: DRIVER_APP_NAME });
+      driver = d;
+      d.onFit = createFitView(renderer, renderer.getCamera(), { geometryRef, selectedEntityIdRef, calculateScale });
+      // Also covers a driver that starts after connect() gave up.
+      d.onStatus = () => {
+        if (!aborted) setStatus(d.connected ? 'connected' : 'unavailable', d.lastError ?? null);
+      };
+      const ok = await d.connect();
+      if (aborted) return;
+      // connect() resolving false is the expected "driver not running" case:
+      // stay on WebHID, keep the reason for the panel's tooltip.
+      setStatus(ok ? 'connected' : 'unavailable', d.lastError ?? null);
+    };
+
+    start().catch((err: unknown) => {
+      // connect() never throws; this is the lazy chunk failing to load.
+      console.warn('[spacemouse] could not load the 3Dconnexion driver module:', err);
+      if (!aborted) setStatus('unavailable', err instanceof Error ? err.message : String(err));
+    });
+
+    return () => {
+      aborted = true;
+      driver?.disconnect();
+      driver = null;
+      setStatus('off');
+    };
+  }, [isInitialized, useDriver]);
 }
 
 export default useSpaceMouseControls;

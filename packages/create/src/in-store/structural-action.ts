@@ -20,6 +20,11 @@
  *   `IfcStructuralLinearAction`'s `ConstPredefinedType` WHERE rule forces
  *   `PredefinedType = CONST` — this builder hardcodes it; there is no
  *   parameter for it, because any other value is an EXPRESS violation.
+ *   IFC2X3 layout: the point action adds `CausedBy?` after
+ *   `DestabilizingLoad`; the linear action is `..., DestabilizingLoad,
+ *   CausedBy?, ProjectedOrTrue` with no `PredefinedType`. `DestabilizingLoad`
+ *   and `ProjectedOrTrue` are mandatory there, so they default to `.F.` and
+ *   `.TRUE_LENGTH.`.
  *   Each action's `AppliedLoad` is narrowed to the load types the
  *   `SuitableLoadType` WHERE rule accepts for that subtype:
  *   `IfcStructuralLoadSingleForce` for the point action,
@@ -91,9 +96,6 @@ export function addStructuralPointActionToStore(
   anchor: Pick<SpatialAnchor, 'ownerHistoryId' | 'guidRandom' | 'schema'>,
   params: StructuralPointActionInStoreParams,
 ): StructuralPointActionBuildResult {
-  if (anchor.schema === 'IFC2X3') {
-    throw new Error('addStructuralPointActionToStore: IFC2X3 has no IfcStructuralPointAction — target IFC4 or later');
-  }
   assertLoadHasComponent('addStructuralPointActionToStore', [
     params.ForceX, params.ForceY, params.ForceZ,
     params.MomentX, params.MomentY, params.MomentZ,
@@ -118,7 +120,9 @@ export function addStructuralPointActionToStore(
     null, // Representation
     `#${loadId}`,
     `.${params.GlobalOrLocal ?? 'GLOBAL_COORDS'}.`,
-    boolAttr(params.DestabilizingLoad),
+    ...(anchor.schema === 'IFC2X3'
+      ? [boolAttr(params.DestabilizingLoad ?? false), null] // DestabilizingLoad (mandatory), CausedBy?
+      : [boolAttr(params.DestabilizingLoad)]),
   ]).expressId;
 
   return { activityId, loadId };
@@ -154,9 +158,6 @@ export function addStructuralLinearActionToStore(
   anchor: Pick<SpatialAnchor, 'ownerHistoryId' | 'guidRandom' | 'schema'>,
   params: StructuralLinearActionInStoreParams,
 ): StructuralLinearActionBuildResult {
-  if (anchor.schema === 'IFC2X3') {
-    throw new Error('addStructuralLinearActionToStore: IFC2X3 has no IfcStructuralLinearAction — target IFC4 or later');
-  }
   assertLoadHasComponent('addStructuralLinearActionToStore', [
     params.LinearForceX, params.LinearForceY, params.LinearForceZ,
     params.LinearMomentX, params.LinearMomentY, params.LinearMomentZ,
@@ -181,9 +182,9 @@ export function addStructuralLinearActionToStore(
     null, // Representation
     `#${loadId}`,
     `.${params.GlobalOrLocal ?? 'GLOBAL_COORDS'}.`,
-    boolAttr(params.DestabilizingLoad),
-    null, // ProjectedOrTrue
-    '.CONST.', // PredefinedType — EXPRESS ConstPredefinedType WHERE rule
+    ...(anchor.schema === 'IFC2X3'
+      ? [boolAttr(params.DestabilizingLoad ?? false), null, '.TRUE_LENGTH.'] // DestabilizingLoad, CausedBy?, ProjectedOrTrue
+      : [boolAttr(params.DestabilizingLoad), null, '.CONST.']), // DestabilizingLoad?, ProjectedOrTrue?, PredefinedType = CONST
   ]).expressId;
 
   return { activityId, loadId };

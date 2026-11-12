@@ -131,6 +131,23 @@ pub fn process(
     req: &ProcessingRequest,
     sink: &mut dyn ProcessingSink,
 ) -> ProcessingResult {
+    process_observed(content, req, sink).0
+}
+
+/// What a pass saw beyond its result: facts a cache must not replay across.
+#[cfg_attr(not(all(feature = "native-result-cache", not(target_arch = "wasm32"))), allow(dead_code))]
+pub(crate) struct PassObservations {
+    /// Some job ran on a thread inside a resource scope the pass did not
+    /// install (see `jobs::run_job`).
+    pub(crate) foreign_resource_scope: bool,
+}
+
+/// [`process`], also returning [`PassObservations`].
+pub(crate) fn process_observed(
+    content: &[u8],
+    req: &ProcessingRequest,
+    sink: &mut dyn ProcessingSink,
+) -> (ProcessingResult, PassObservations) {
     let total_start = mark(Mark::PipelineStart, Clock::now());
     let parse_start = Clock::now();
 
@@ -154,5 +171,8 @@ pub fn process(
 
     let resolved = resolve::resolve(content, req, sink, parse_start);
     let passed = pass::run(content, req, sink, resolved);
-    finalize::finish(content, passed, total_start, &pipeline_span)
+    let observations = PassObservations {
+        foreign_resource_scope: passed.ctx.foreign_resource_scope.load(std::sync::atomic::Ordering::Relaxed),
+    };
+    (finalize::finish(content, passed, total_start, &pipeline_span), observations)
 }

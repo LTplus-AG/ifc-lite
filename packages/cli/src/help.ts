@@ -69,6 +69,7 @@ export function buildHelp(version: string): string {
     stats     <file.ifc>                          Auto-calculated model KPIs and health check
     mutate    <file.ifc> --id N --set P=V --out F  Modify properties/attributes and save
     generate-spaces <file.ifc> --out F           Derive IfcSpace from walls (slab/roof-aware height)
+    derive-structural <file.ifc> --out F         Derive a linked structural analysis model from beams, columns, slabs, walls
     storey    <file.ifc> list|add|rename|edit|delete  Author storeys; geometry follows ("storey --help" for actions)
               list [--json]                       Storeys with elevation, floor-to-floor height and element count
               add --from S [--below] | --name N --elevation M  Add a storey (from a neighbour: its naming and spacing)

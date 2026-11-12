@@ -21,6 +21,7 @@
  */
 
 import {
+  mirrorElementsInStore, addClassificationInStore, assignClassificationInStore,
   copyBatchInStore, copyToStoreysInStore, copiesOfSelection, arrayCopyTransforms, applyNewElementTop,
   editHostedElementInStore,
   addCurtainWallToStore,
@@ -96,6 +97,18 @@ export function createModellingStoreBackendWithoutStoreys(resolve: ModellingStor
   };
 
   return {
+    mirrorElements(modelId, ids, params) {
+      const model = resolve(modelId);
+      return mirrorElementsInStore(model.store, model.editor, ids, params).map(id => ref(model.modelId, id));
+    },
+    addClassification(modelId, params) {
+      const model = resolve(modelId);
+      return ref(model.modelId, addClassificationInStore(model.store, model.editor, params));
+    },
+    assignClassification(modelId, classificationId, objects) {
+      const model = resolve(modelId);
+      return ref(model.modelId, assignClassificationInStore(model.store, model.editor, classificationId, objects));
+    },
     ...createPhysicalStoreBackend(resolve),
     ...createRoofStoreBackend(resolve),
     copyElements(modelId, expressIds, transforms) {

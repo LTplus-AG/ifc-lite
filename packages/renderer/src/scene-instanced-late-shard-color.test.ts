@@ -16,8 +16,8 @@
  *
  * The viewer's catch-up (`useColorOverlaySync`) cannot cover this one. It is
  * driven by the geometry counter, and a streaming event carrying only
- * instanced shards appends through `appendInstancedShards`, which touches
- * `pendingInstancedShards` alone: `geometryResult` does not change, so the
+ * instanced shards reaches the renderer through the viewer's shard queue
+ * (`enqueueInstancedShards`) alone: `geometryResult` does not change, so the
  * counter never bumps and the catch-up is never scheduled.
  *
  * These assert on the bytes written to the instance colour lane, the same way

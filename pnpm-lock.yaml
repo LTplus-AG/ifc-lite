@@ -215,6 +215,9 @@ importers:
 
   apps/viewer:
     dependencies:
+      '@3dconnexion/3dconnexionjs':
+        specifier: ^0.8.1
+        version: 0.8.1
       '@anthropic-ai/sdk':
         specifier: ^0.132.1
         version: 0.132.1(zod@4.6.6)
@@ -347,6 +350,9 @@ importers:
       '@ifc-lite/report-contract':
         specifier: workspace:^
         version: link:../../packages/report-contract
+      '@ifc-lite/rhino3dm':
+        specifier: workspace:^
+        version: link:../../packages/rhino3dm
       '@ifc-lite/rules':
         specifier: workspace:^
         version: link:../../packages/rules
@@ -518,6 +524,9 @@ importers:
       remark-gfm:
         specifier: ^4.0.0
         version: 4.0.1
+      rhino3dm:
+        specifier: 8.35.0
+        version: 8.35.0
       svg2pdf.js:
         specifier: ^2.8.1
         version: 2.8.1(jspdf@4.2.1)
@@ -720,6 +729,9 @@ importers:
       '@ifc-lite/report-contract':
         specifier: workspace:^
         version: link:../../packages/report-contract
+      '@ifc-lite/rhino3dm':
+        specifier: workspace:^
+        version: link:../../packages/rhino3dm
       '@ifc-lite/rules':
         specifier: workspace:^
         version: link:../../packages/rules
@@ -2728,6 +2740,9 @@ importers:
         version: 5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
 
 packages:
+
+  '@3dconnexion/3dconnexionjs@0.8.1':
+    resolution: {integrity: sha512-cQ3eCbIH9u1V9sFA+y+2ZmQzYddMC5oSOUKkWqETqfFFbFXtsesazTZ92tkWxJVndhMTumkGvMW7IyWJ1op59g==}
 
   '@75lb/deep-merge@1.1.2':
     resolution: {integrity: sha512-08K9ou5VNbheZFxM5tDWoqjA3ImC50DiuuJ2tj1yEPRfkp8lLLg6XAaJ4On+a0yAXor/8ay5gHnAIshRM44Kpw==}
@@ -7698,6 +7713,8 @@ packages:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
 
 snapshots:
+
+  '@3dconnexion/3dconnexionjs@0.8.1': {}
 
   '@75lb/deep-merge@1.1.2':
     dependencies:

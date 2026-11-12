@@ -105,7 +105,7 @@ export function buildStoreNamespace(): NamespaceSchema {
       },
       {
         name: 'addWall',
-        doc: 'Add an IfcWall from Start to End anchored to an IfcBuildingStorey. Returns the new wall entity ref.',
+        doc: 'Add an IfcWall from Start to End anchored to an IfcBuildingStorey. Returns the new wall entity ref, with notices for skipped implicit joins.',
         args: ['string', 'number', 'dump'],
         paramNames: ['modelId', 'storeyExpressId', 'params'],
         tsParamTypes: [
@@ -113,7 +113,7 @@ export function buildStoreNamespace(): NamespaceSchema {
           'number',
           '{ Start: [number, number, number]; End: [number, number, number]; Thickness: number; Height: number; Name?: string; Description?: string; ObjectType?: string; Tag?: string }',
         ],
-        tsReturn: '{ modelId: string; expressId: number }',
+        tsReturn: '{ modelId: string; expressId: number; notices?: string[] }',
         call: (sdk, args) => {
           const storeyExpressId = args[1] as number;
           requireStoreyId(storeyExpressId, 'addWall');

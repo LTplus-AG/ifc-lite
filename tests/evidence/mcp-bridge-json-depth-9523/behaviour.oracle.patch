@@ -1,0 +1,10 @@
+--- a/packages/mcp/src/bridge/json-bounds.ts
++++ b/packages/mcp/src/bridge/json-bounds.ts
+@@ -29,6 +29,7 @@ export function checkJsonBounds(value: unknown, bounds: JsonBounds, label: strin
+     const [v, depth] = stack.pop()!;
+     if (++nodes > bounds.maxNodes) return `${label} has more than ${bounds.maxNodes} values`;
+     if (typeof v !== 'object' || v === null) continue;
++    if (depth >= bounds.maxDepth) return `${label} is nested deeper than ${bounds.maxDepth} levels`;
+     const children = Array.isArray(v) ? v : Object.values(v);
+     for (const child of children) stack.push([child, depth + 1]);
+   }

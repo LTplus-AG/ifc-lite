@@ -8,6 +8,44 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
+## Warm viewer shell at boot idle (#9750, closed)
+
+**Rejected: creating the renderer and mounting the viewer shell before the
+first file gains nothing on the goal lanes and costs every visitor GPU
+memory.** #9750 mounted the viewer shell inert under the start screen and
+created the WebGPU device and pipelines at boot idle, so an open would not
+wait for `new Renderer` or pay the shell mount. Timed A/B on Pop (exclusive,
+default quiet arm, main d45ace6b65 vs 88225664de, 5 rounds, job 35cda499):
+
+| fixture / lane | interactive, main -> branch | verdict |
+|---|---|---|
+| FZK cold | +5.5% | no significant difference |
+| Holter cold | -0.1% | no significant difference |
+| Holter first reopen | +4.9% | no significant difference |
+| Holter snapshot reopen | -0.3% | no significant difference |
+| advanced_model first reopen | +19.8% (first geometry +49%) | gain (not a goal lane) |
+
+Boot, same run: idle GPU 129 -> 294 MiB (+165), idle JS+DOM agent memory
+77 -> 90 MiB (+13), peak boot PSS 659 -> 696 MiB (+37); time to interactive
+unchanged. Control with WebGL denied on both sides (no welcome mark, so no
+shared ANGLE-Vulkan driver warm-up; job 50bea912, n = 5): FZK cold 582 ->
+559 ms and Holter cold 5,389 -> 5,316 ms, both no significant difference;
+idle GPU 122 -> 261 MiB (+139). The confound described under the load
+scoreboard does not explain the missing gain.
+
+Lessons:
+- **On a 2.5 MB file the renderer is not on the critical path.** The open
+  creates the device and pipelines while the parser and geometry worker run;
+  the open waits on the worker result, not on the device. Taking the device
+  out of the open removes work that was already overlapped.
+- **A warm second load in the same tab is not a proxy for a pre-warmed
+  first load.** It is faster mostly because of tiered wasm in already-used
+  workers and warm caches along the whole path, not because the shell and
+  renderer exist.
+- Pre-creating GPU state has a fixed per-visitor cost (~140-165 MiB idle VRAM
+  here) that people who never open a file pay. Any boot pre-warm needs a
+  goal-lane gain larger than its floor before that cost is acceptable.
+
 ## Cold finalize assembles streamed batches from their fragments (#9684)
 
 **Shipped: browser-cold gain on the finalize-bound models.** Every streamed flat mesh was merged,

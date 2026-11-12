@@ -146,6 +146,37 @@ export function collectEffectivePhysicalEntityIds(
   return ids;
 }
 
+const sharedPhysicalIds = new WeakMap<IfcDataStore, Map<MutablePropertyView | null, {
+  version: number; ids: ReadonlySet<number>;
+}>>();
+
+/**
+ * `collectEffectivePhysicalEntityIds`, computed once per store, overlay view
+ * and mutation version and shared by every surface that counts objects. The
+ * status bar, its viewport summary and the model metadata panel each used to
+ * walk the whole entity index for this same set in the commit that publishes
+ * a model (NEW-4). `mutationVersion` invalidates it on any edit, because the
+ * overlay views mutate in place. The set is shared: never mutate it.
+ */
+export function sharedEffectivePhysicalEntityIds(
+  store: IfcDataStore,
+  view: MutablePropertyView | null | undefined,
+  mutationVersion: number,
+): ReadonlySet<number> {
+  let byView = sharedPhysicalIds.get(store);
+  if (!byView) {
+    byView = new Map();
+    sharedPhysicalIds.set(store, byView);
+  }
+  const key = view ?? null;
+  let cached = byView.get(key);
+  if (!cached || cached.version !== mutationVersion) {
+    cached = { version: mutationVersion, ids: collectEffectivePhysicalEntityIds(store, key) };
+    byView.set(key, cached);
+  }
+  return cached.ids;
+}
+
 /** The visibility filters that decide whether a physical object is on screen. */
 export interface VisibilityFilters {
   /** Explicitly hidden ids. */

@@ -138,6 +138,88 @@ export const SCENE = [
       Name: 'Probe case', GlobalId: G.loadCase, ActionType: 'VARIABLE_Q', ActionSource: 'LIVE_LOAD_Q', SelfWeightCoefficients: [0, 0, -1],
     }).loadGroupId,
   },
+  {
+    id: 'PlanarAction-PlanarForce', builder: 'addStructuralPlanarActionToStore',
+    emits: (schema) => ({
+      IfcStructuralPlanarAction: { GlobalId: guid('C30'), GlobalOrLocal: 'GLOBAL_COORDS' },
+      IfcStructuralLoadPlanarForce: { "PlanarForceZ": -4 },
+    }),
+    build: ({ create, editor, anchor }) => create.addStructuralPlanarActionToStore(editor, anchor, {
+      GlobalId: guid('C30'), AppliedLoad: { Type: 'IfcStructuralLoadPlanarForce', "PlanarForceZ": -4 },
+    }).activityId,
+  },
+  {
+    id: 'SurfaceAction-PlanarForce', builder: 'addStructuralSurfaceActionToStore',
+    schemas: ["IFC4", "IFC4X3"],
+    emits: (schema) => ({
+      IfcStructuralSurfaceAction: { GlobalId: guid('C31'), GlobalOrLocal: 'GLOBAL_COORDS' },
+      IfcStructuralLoadPlanarForce: { "PlanarForceZ": -5 },
+    }),
+    build: ({ create, editor, anchor }) => create.addStructuralSurfaceActionToStore(editor, anchor, {
+      GlobalId: guid('C31'), AppliedLoad: { Type: 'IfcStructuralLoadPlanarForce', "PlanarForceZ": -5 },
+    }).activityId,
+  },
+  {
+    id: 'PlanarAction-Temperature', builder: 'addStructuralPlanarActionToStore',
+    emits: (schema) => ({
+      IfcStructuralPlanarAction: { GlobalId: guid('C32'), GlobalOrLocal: 'GLOBAL_COORDS' },
+      IfcStructuralLoadTemperature: (schema === 'IFC2X3' ? { DeltaT_Constant: 12, DeltaT_Y: 2, DeltaT_Z: -3 } : { "DeltaTConstant": 12, "DeltaTY": 2, "DeltaTZ": -3 }),
+    }),
+    build: ({ create, editor, anchor }) => create.addStructuralPlanarActionToStore(editor, anchor, {
+      GlobalId: guid('C32'), AppliedLoad: { Type: 'IfcStructuralLoadTemperature', "DeltaTConstant": 12, "DeltaTY": 2, "DeltaTZ": -3 },
+    }).activityId,
+  },
+  {
+    id: 'PointReaction-SingleForce', builder: 'addStructuralPointReactionToStore',
+    emits: (schema) => ({
+      IfcStructuralPointReaction: { GlobalId: guid('C33'), GlobalOrLocal: 'GLOBAL_COORDS' },
+      IfcStructuralLoadSingleForce: { "ForceZ": 10 },
+    }),
+    build: ({ create, editor, anchor }) => create.addStructuralPointReactionToStore(editor, anchor, {
+      GlobalId: guid('C33'), AppliedLoad: { Type: 'IfcStructuralLoadSingleForce', "ForceZ": 10 },
+    }).activityId,
+  },
+  {
+    id: 'PointReaction-SingleDisplacement', builder: 'addStructuralPointReactionToStore',
+    emits: (schema) => ({
+      IfcStructuralPointReaction: { GlobalId: guid('C34'), GlobalOrLocal: 'GLOBAL_COORDS' },
+      IfcStructuralLoadSingleDisplacement: { "DisplacementZ": 0.02 },
+    }),
+    build: ({ create, editor, anchor }) => create.addStructuralPointReactionToStore(editor, anchor, {
+      GlobalId: guid('C34'), AppliedLoad: { Type: 'IfcStructuralLoadSingleDisplacement', "DisplacementZ": 0.02 },
+    }).activityId,
+  },
+  {
+    id: 'CurveReaction-LinearForce', builder: 'addStructuralCurveReactionToStore',
+    schemas: ["IFC4", "IFC4X3"],
+    emits: (schema) => ({
+      IfcStructuralCurveReaction: { GlobalId: guid('C35'), GlobalOrLocal: 'GLOBAL_COORDS' },
+      IfcStructuralLoadLinearForce: { "LinearForceZ": 2 },
+    }),
+    build: ({ create, editor, anchor }) => create.addStructuralCurveReactionToStore(editor, anchor, {
+      GlobalId: guid('C35'), AppliedLoad: { "LinearForceZ": 2 },
+    }).activityId,
+  },
+  {
+    id: 'SurfaceReaction-PlanarForce', builder: 'addStructuralSurfaceReactionToStore',
+    schemas: ["IFC4", "IFC4X3"],
+    emits: (schema) => ({
+      IfcStructuralSurfaceReaction: { GlobalId: guid('C36'), GlobalOrLocal: 'GLOBAL_COORDS' },
+      IfcStructuralLoadPlanarForce: { "PlanarForceZ": 3 },
+    }),
+    build: ({ create, editor, anchor }) => create.addStructuralSurfaceReactionToStore(editor, anchor, {
+      GlobalId: guid('C36'), AppliedLoad: { "PlanarForceZ": 3 },
+    }).activityId,
+  },
+  {
+    id: 'result-group', builder: 'addStructuralResultGroupToStore',
+    needs: ['load-group', 'PointReaction-SingleForce', 'PointReaction-SingleDisplacement'],
+    emits: { IfcStructuralResultGroup: { GlobalId: guid('Results'), TheoryType: 'FIRST_ORDER_THEORY', ResultForLoadGroup: G.group, IsLinear: true } },
+    build: ({ create, editor, anchor, done }) => create.addStructuralResultGroupToStore(editor, anchor, {
+      GlobalId: guid('Results'), TheoryType: 'FIRST_ORDER_THEORY', ResultForLoadGroup: done.get('load-group'), IsLinear: true,
+      ReactionIds: [done.get('PointReaction-SingleForce'), done.get('PointReaction-SingleDisplacement')],
+    }).resultGroupId,
+  },
   analysisModel('analysis-model-ifc2x3', ['IFC2X3'], ['load-group'], [G.group]),
   analysisModel('analysis-model', ['IFC4', 'IFC4X3'], ['load-group', 'load-case'], [G.group, G.loadCase]),
 ];

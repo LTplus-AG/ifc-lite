@@ -701,7 +701,10 @@ test('the gate runs on PRs, not only at release time', () => {
   // after npm has already gone out.
   const workflow = readFileSync(join(ROOT, '.github', 'workflows', 'test.yml'), 'utf8');
   assert.match(workflow, /run: node scripts\/check-rust-semver\.mjs/);
-  assert.match(workflow, /taiki-e\/install-action@[0-9a-f]{40} # cargo-semver-checks/);
+  // The install lives in a composite action shared with rust-semver-canary.yml.
+  assert.match(workflow, /uses: \.\/\.github\/actions\/setup-rust-semver/);
+  const setup = readFileSync(join(ROOT, '.github', 'actions', 'setup-rust-semver', 'action.yml'), 'utf8');
+  assert.match(setup, /taiki-e\/install-action@[0-9a-f]{40} # cargo-semver-checks/);
   // …and it must be one of the jobs the required check actually gates on. A
   // job nobody depends on is a job whose red is invisible.
   assert.match(workflow, /needs: \[[^\]]*\brust-semver\b[^\]]*\]/);

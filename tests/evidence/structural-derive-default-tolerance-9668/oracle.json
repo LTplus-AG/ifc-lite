@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "#9668: The default node tolerance is 0.05 m; widen it to 0.5 m.",
+  "key": "packages/create/src/in-store/structural-derive-types.ts",
+  "mutation": "tests/evidence/structural-derive-default-tolerance-9668/behaviour.oracle.patch",
+  "test": "packages/create/src/in-store/structural-derive-plan.test.ts"
+}

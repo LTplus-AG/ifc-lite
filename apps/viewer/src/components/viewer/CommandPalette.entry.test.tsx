@@ -14,12 +14,13 @@ import { useViewerStore } from '@/store';
 import { CommandPalette } from './CommandPalette.js';
 import type { BimContext } from '@ifc-lite/sdk';
 import { BimReactContext } from '@/sdk/BimProvider.js';
+import { formFactorState } from '@/test/form-factor-state';
 
 beforeEach(() => {
   setLocale('en');
   localStorage.clear();
   useViewerStore.setState({
-    isMobile: false, models: new Map(),
+    ...formFactorState(false), models: new Map(),
     sidebarActivePanel: 'properties', scriptPanelVisible: false, chatPanelVisible: false,
   });
 });

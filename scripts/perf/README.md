@@ -6924,3 +6924,25 @@ the actual default path. A conditional restore does not imply that another
 visible overlay stops parsing. Operation-count attribution and digest-equivalence
 tests establish this mechanism; the exclusive load scoreboard remains the
 acceptance source for end-to-end timing.
+
+## Skip the per-piece placement copy on a cache hit's hydrate (reopen candidate 3, sized and rejected, 2026-11-12)
+
+**Rejected before building: skipping `ModelTranslations.placeMesh`'s per-piece copy for an untranslated model would save about 5-12 ms on a Holter reopen, not the 50-60 ms the traced profile suggested, and skipping it safely needs a riskier change.**
+
+**Sizing.**
+- The estimate came from a traced (CPU-profiled) Holter snapshot reopen of main 52c82a099d + #9782 + #9785. There, `placeMesh` under `scene.snapshotHydrate` read 63 ms.
+- Running the real `ModelTranslations.placeMesh` over 56,874 Holter-shaped meshes in Node (median of 7) gives a different picture:
+
+| part | ms |
+|---|---:|
+| `placeMesh`, all meshes | 29.6 |
+| the shallow copy (`{ ...source }`) | 5.1 |
+| the two map writes per mesh | 7.0 |
+| origin and bounds arrays | 2.1 |
+
+**Why the copy must stay.**
+- `translateSceneModel` re-places the pieces held in `scene.pieces` by calling `placeMesh(piece)`. That finds the placed copy's entry and updates it in place.
+- Without a copy, a later model move would either write into the source mesh, losing the source coordinates that export and re-alignment rely on, or create a copy that no holder references.
+- Saving the whole ~30 ms means skipping placement entirely when the model has no translation. The copies would then be created on the model's first move and swapped into every holder: `scene.pieces`, `bucket.meshData`, `meshDataBucket` and the mesh registry. That was judged too risky for ~30 ms.
+
+**Lesson.** A traced profile inflates small, call-heavy JavaScript the most. The profiler more than doubled this path (63 vs 29.6 ms). Size every candidate from untraced spans, or from an untraced micro-benchmark of the real code, before ranking it. The same correction cut the expectation for the chunk-decode-on-workers step (#9925) from 150-200 ms traced to an untraced estimate of about 75-110 ms on Holter's reopens.

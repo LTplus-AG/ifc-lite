@@ -1,0 +1,15 @@
+diff --git a/apps/viewer/src/lib/agent-tools/effective.ts b/apps/viewer/src/lib/agent-tools/effective.ts
+index db597cac37..09137ddead 100644
+--- a/apps/viewer/src/lib/agent-tools/effective.ts
++++ b/apps/viewer/src/lib/agent-tools/effective.ts
+@@ -58,10 +58,6 @@ export function createGlobalIdResolver(model: ReadyModel): (globalId: string) =>
+     return { byGlobalId, overridden };
+   };
+   return (globalId) => {
+-    for (const { expressId } of effectiveEntities(model)) {
+-      if (model.bim.entity({ modelId: model.id, expressId })?.globalId === globalId) return expressId;
+-    }
+-    if (globalId) return undefined;
+     overlay ??= build();
+     const edited = overlay.byGlobalId.get(globalId);
+     if (edited !== undefined) return edited;

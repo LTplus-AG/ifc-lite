@@ -183,8 +183,10 @@ describe('writeCapturedScene', () => {
     let resolveEntry!: (value: typeof entry) => void;
     const order: string[] = [];
     const pending = write(captured(), new Promise((resolve) => { resolveEntry = resolve; }), () => false, 'ord').then((r) => { order.push('snapshot-write'); return r; });
-    runAfterModelSettled({ job: 'overlay-parse', modelId: 'ord' }, () => { order.push('overlay-parse'); });
-    await new Promise((r) => setTimeout(r, 30));
+    let overlayRan!: () => void;
+    const overlay = new Promise<void>((resolve) => { overlayRan = resolve; });
+    runAfterModelSettled({ job: 'overlay-parse', modelId: 'ord' }, () => { order.push('overlay-parse'); overlayRan(); });
+    await overlay; // bounded by the test timeout
     assert.deepEqual(order, ['overlay-parse'], 'the ready overlay job ran while the entry was being stored');
     resolveEntry(entry);
     assert.equal((await pending).outcome, 'written', 'the write runs once its entry is stored');

@@ -126,12 +126,15 @@ export class ChunkInflatePool {
         this.useFallback(error);
       }
     }
+    let raw: Uint8Array;
     try {
-      return await inflateRaw(stored);
+      raw = await inflateRaw(stored);
     } catch (error) {
       // Here, without a worker to blame: the data does not inflate, the entry is corrupt.
       throw this.markCorrupt(error instanceof Error ? error : new Error(String(error)));
     }
+    if (this.corrupt) throw this.corrupt; // another chunk found the entry corrupt meanwhile
+    return raw;
   };
 
   /** A chunk the worker's codec refused: corrupt if it fails here too, else the worker cannot inflate. */

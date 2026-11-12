@@ -17,7 +17,7 @@ import { useViewerStore } from '../../store/index.js';
 import type { FederatedModel } from '../../store/types.js';
 import { compactSource } from '../source-compaction/source-compaction.js';
 import { discardInstancedShards, drainInstancedShards, enqueueInstancedShards, instancedShardGeneration } from '../../store/instancedShardQueue.js';
-import { __resetAfterLoadIdleForTests } from './afterLoadIdle.js';
+import { __afterLoadIdleHeldForTests, __resetAfterLoadIdleForTests } from './afterLoadIdle.js';
 import { afterModelSettled, modelLoadSettled, runAfterModelSettled, type AfterLoadJob } from './afterLoad.js';
 
 const idle: IdleRequestCallback[] = [];
@@ -83,6 +83,21 @@ describe('modelLoadSettled: the one definition of "settled"', () => {
 });
 
 describe('runAfterModelSettled', () => {
+  it('cancelling a started job whose work never settles: it leaves the queue, and the queue stops listening (review)', async () => {
+    __resetAfterLoadIdleForTests(40); // a short hold limit, so the queue moves on from the stuck job
+    setModels(model('a', 'complete'));
+    let signal: AbortSignal | null = null;
+    const cancel = runAfterModelSettled({ job: 'overlay-parse', modelId: 'a' }, (s) => { signal = s; return new Promise(() => {}); });
+    await flushIdle();
+    assert.equal(signal !== null, true, 'the job started');
+    assert.equal(__afterLoadIdleHeldForTests().started, 1);
+    cancel();
+    assert.equal((signal as unknown as AbortSignal).aborted, true, 'its signal aborts');
+    assert.equal(__afterLoadIdleHeldForTests().started, 0, 'and the queue no longer holds it');
+    await new Promise((resolve) => setTimeout(resolve, 80)); // past the hold limit
+    assert.deepEqual(__afterLoadIdleHeldForTests(), { jobs: 0, started: 0, listening: false }, 'nothing left: the store and shard subscriptions end');
+  });
+
   it('waits for its model to settle, then for an idle period', async () => {
     setModels(model('a', 'streaming-geometry'));
     let runs = 0;

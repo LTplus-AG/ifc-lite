@@ -1,0 +1,95 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import '@/test/setup-dom.js';
+import { afterEach, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { act, useLayoutEffect, useState } from 'react';
+import { cleanup, render } from '@/test/render.js';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from './dialog';
+import { Toaster, toast } from './toast';
+
+afterEach(() => {
+  for (const button of document.querySelectorAll<HTMLButtonElement>('button[aria-label="Dismiss notification"]')) act(() => button.click());
+  cleanup();
+});
+
+it('#9875 a notice from a child layout effect belongs to the opening modal', () => {
+  function Failure() {
+    useLayoutEffect(() => { toast.error('Preview refused'); }, []);
+    return null;
+  }
+  render(<Toaster />);
+  render(<Dialog open><DialogContent><DialogTitle>Preview</DialogTitle><DialogDescription>Review</DialogDescription><Failure /></DialogContent></Dialog>);
+  assert.ok(document.querySelector('[role="dialog"] [data-dialog-notices]')?.textContent?.includes('Preview refused'));
+});
+
+it('#9875 the deepest modal owns a notice, and closing it preserves that notice at the app anchor', () => {
+  const anchor = render(<Toaster />);
+  render(<Dialog open><DialogContent><DialogTitle>Parent</DialogTitle><DialogDescription>Review</DialogDescription>
+    <Dialog open><DialogContent><DialogTitle>Child</DialogTitle><DialogDescription>Review</DialogDescription></DialogContent></Dialog>
+  </DialogContent></Dialog>);
+  act(() => toast.error('Child operation failed'));
+  const dialogs = [...document.querySelectorAll('[role="dialog"]')];
+  assert.equal(dialogs.length, 2);
+  assert.ok(dialogs[1]?.querySelector('[data-dialog-notices]')?.textContent?.includes('Child operation failed'));
+  assert.equal(dialogs[0]?.querySelector('[data-dialog-notices]'), null);
+  assert.ok(!anchor.textContent?.includes('Child operation failed'));
+  cleanup();
+  const nextAnchor = render(<Toaster />);
+  assert.ok(nextAnchor.textContent?.includes('Child operation failed'), 'closing the modal must not discard persistent errors');
+});
+
+it('#9875 non-modal previews keep using the app toast anchor', () => {
+  const anchor = render(<Toaster />);
+  render(<Dialog open modal={false}><DialogContent><DialogTitle>Preview</DialogTitle><DialogDescription>Review</DialogDescription></DialogContent></Dialog>);
+  act(() => toast.info('Preview updated'));
+  assert.ok(anchor.textContent?.includes('Preview updated'));
+  assert.equal(document.querySelector('[data-dialog-notices]'), null);
+});
+
+it('#9875 modal success notices remain visible for their existing lifetime', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  render(<Toaster />);
+  render(<Dialog open><DialogContent><DialogTitle>Settings</DialogTitle><DialogDescription>Review</DialogDescription></DialogContent></Dialog>);
+  const liveRegion = document.querySelector('[role="dialog"] [role="status"]');
+  assert.ok(liveRegion, 'the polite live region exists before the first notice');
+  act(() => toast.success('Settings saved'));
+  assert.equal(document.querySelector('[role="dialog"] [role="status"]'), liveRegion, 'first notice updates the existing live region');
+  assert.ok(document.querySelector('[data-dialog-notices]')?.textContent?.includes('Settings saved'));
+  act(() => t.mock.timers.tick(3000));
+  assert.equal(document.querySelector('[data-dialog-notices]'), null);
+});
+
+it('#9875 a newly opened independent modal owns notices above an older nested modal', () => {
+  render(<Toaster />);
+  render(<Dialog open><DialogContent><DialogTitle>Parent</DialogTitle><DialogDescription>Review</DialogDescription>
+    <Dialog open><DialogContent><DialogTitle>Nested</DialogTitle><DialogDescription>Review</DialogDescription></DialogContent></Dialog>
+  </DialogContent></Dialog>);
+  render(<Dialog open><DialogContent><DialogTitle>New modal</DialogTitle><DialogDescription>Review</DialogDescription></DialogContent></Dialog>);
+  act(() => toast.error('Newest modal failure'));
+  const dialogs = [...document.querySelectorAll('[role="dialog"]')];
+  assert.equal(dialogs.length, 3);
+  assert.ok(dialogs[2]?.querySelector('[data-dialog-notices]')?.textContent?.includes('Newest modal failure'));
+  assert.equal(dialogs[1]?.querySelector('[data-dialog-notices]'), null);
+});
+
+it('#9875 reopening a dialog does not re-adopt notices from its previous opening', () => {
+  let changeOpen: (open: boolean) => void = () => { throw new Error('Dialog not mounted'); };
+  function Controlled() {
+    const [open, setOpen] = useState(true);
+    changeOpen = setOpen;
+    return <Dialog open={open}><DialogContent><DialogTitle>Settings</DialogTitle><DialogDescription>Review</DialogDescription></DialogContent></Dialog>;
+  }
+  const anchor = render(<Toaster />);
+  render(<Controlled />);
+  act(() => toast.error('Previous save failed'));
+  act(() => changeOpen(false));
+  assert.ok(anchor.textContent?.includes('Previous save failed'));
+  act(() => changeOpen(true));
+  assert.ok(anchor.textContent?.includes('Previous save failed'));
+  assert.equal(document.querySelector('[role="dialog"] [data-dialog-notices]'), null);
+  act(() => toast.error('Current save failed'));
+  assert.ok(document.querySelector('[data-dialog-notices]')?.textContent?.includes('Current save failed'));
+});

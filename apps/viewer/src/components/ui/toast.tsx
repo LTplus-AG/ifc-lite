@@ -10,110 +10,18 @@
  *   toast.error('Export failed');
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSyncExternalStore } from 'react';
 import { Check, AlertCircle, Info, X } from 'lucide-react';
 import { Button } from './button';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
-
-// ─── Store (vanilla, framework-agnostic) ─────────────────────────────────
-
-interface ToastAction { label: string; onClick: () => void; dismiss?: boolean }
-
-interface Toast {
-  id: number;
-  /** Notifications sharing a lifecycle replace one another. */
-  key?: string;
-  type: 'success' | 'error' | 'info';
-  message: string;
-  /** How many identical toasts were merged into this one. */
-  count: number;
-  /** Increases every time a toast is shown or merged into; orders by recency. */
-  seq: number;
-  action?: ToastAction | ToastAction[];
-}
-
-type Listener = () => void;
-
-/** A burst of failures (e.g. repeated GPU device loss) must not bury the UI (#5603). */
-const MAX_VISIBLE = 3;
-
-let nextId = 0;
-let nextSeq = 0;
-let toasts: Toast[] = [];
-const listeners = new Set<Listener>();
-const timers = new Map<number, ReturnType<typeof setTimeout>>();
-
-function notify() {
-  for (const l of listeners) l();
-}
-
-function clearTimer(id: number) {
-  clearTimeout(timers.get(id));
-  timers.delete(id);
-}
-
-/**
- * Show a toast, or bump the count of an identical one already on screen and
- * make it the newest. `durationMs: null` keeps it until dismissed. Past
- * `MAX_VISIBLE` the oldest toasts are evicted, transient ones before errors:
- * an error stays until dismissed, so newer successes must not push it off.
- */
-function addToast(type: Toast['type'], message: string, durationMs: number | null, action?: Toast['action'], key?: string): number {
-  const existing = toasts.find((t) => key !== undefined ? t.key === key : t.key === undefined && t.type === type && t.message === message);
-  const id = existing?.id ?? nextId++;
-  const others = toasts.filter((t) => t.id !== id);
-  const excess = Math.max(0, others.length - (MAX_VISIBLE - 1));
-  // `others` is oldest-first, so this is oldest transient, then oldest error.
-  const evictOrder = [...others.filter((t) => t.type !== 'error'), ...others.filter((t) => t.type === 'error')];
-  const evicted = new Set(evictOrder.slice(0, excess).map((t) => t.id));
-  for (const evictedId of evicted) clearTimer(evictedId);
-  const kept = others.filter((t) => !evicted.has(t.id));
-  toasts = [...kept, { id, key, type, message, count: existing?.type === type && existing.message === message ? existing.count + 1 : 1, seq: nextSeq++, action }];
-  clearTimer(id);
-  if (durationMs !== null) timers.set(id, setTimeout(() => dismiss(id), durationMs));
-  notify();
-  return id;
-}
-
-function dismiss(id: number) {
-  clearTimer(id);
-  toasts = toasts.filter((t) => t.id !== id);
-  notify();
-}
-
-/** Imperative toast API. Errors stay until the user dismisses them. */
-export const toast = {
-  success: (message: string, action?: Toast['action'], key?: string): void => { addToast('success', message, action ? null : 3000, action, key); },
-  error: (message: string, key?: string): void => { addToast('error', message, null, undefined, key); },
-  info: (message: string, action?: Toast['action']): void => { addToast('info', message, action ? null : 3000, action); },
-  /**
-   * An error about an in-progress tool gesture, which means nothing once the
-   * tool is gone (#6233): it dismisses itself after `durationMs`, and the
-   * returned function dismisses it sooner (e.g. on tool exit).
-   */
-  transientError: (message: string, durationMs: number): (() => void) => {
-    const id = addToast('error', message, durationMs);
-    return () => dismiss(id);
-  },
-};
+import { dismiss, getToasts, subscribeToasts, type Toast } from './toast-store';
+export { toast } from './toast-store';
 
 // ─── React Component ──────────────────────────────────────────────────────
 
-function useToasts(): Toast[] {
-  const [, setTick] = useState(0);
-  const tickRef = useRef(0);
-
-  useEffect(() => {
-    const listener = () => {
-      tickRef.current++;
-      setTick(tickRef.current);
-    };
-    listeners.add(listener);
-    return () => { listeners.delete(listener); };
-  }, []);
-
-  return toasts;
+export function useToastItems(): Toast[] {
+  return useSyncExternalStore(subscribeToasts, getToasts, getToasts);
 }
 
 const iconMap = {
@@ -141,23 +49,12 @@ export interface ToasterProps {
   variant?: 'fixed' | 'absolute';
 }
 
-/**
- * Mount once per anchor (app root by default, or a `relative` viewport
- * container — see {@link ToasterProps.variant}). Both live regions stay
- * mounted while empty so the first toast is announced; errors go to the
- * assertive `alert` region. Each region shows its newest toast on top.
- * Mount only ONE live instance at a time: every `Toaster` reads the same
- * module-level store, so two mounted together would render every toast twice.
- */
-export function Toaster({ variant = 'fixed' }: ToasterProps = {}) {
-  const items = useToasts();
+/** Shared rows for the app anchor and modal-owned notice shelf (#9875). */
+export function ToastMessages({ items }: { items: Toast[] }) {
   const { t } = useTranslation();
-
-  const handleDismiss = useCallback((id: number) => dismiss(id), []);
-
   const renderItem = (item: Toast) => {
     const Icon = iconMap[item.type];
-    const actions: ToastAction[] = Array.isArray(item.action) ? item.action : item.action ? [item.action] : [];
+    const actions = Array.isArray(item.action) ? item.action : item.action ? [item.action] : [];
     return (
       <div
         key={item.id}
@@ -169,7 +66,7 @@ export function Toaster({ variant = 'fixed' }: ToasterProps = {}) {
         )}
       >
         <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-        <span className="text-xs font-medium flex-1 min-w-0">{item.message}</span>
+        <span className="text-xs font-medium flex-1 min-w-0 break-words">{item.message}</span>
         {item.count > 1 && (
           <span className="shrink-0 text-2xs font-semibold tabular-nums opacity-70" aria-hidden="true">
             ×{item.count}
@@ -179,7 +76,7 @@ export function Toaster({ variant = 'fixed' }: ToasterProps = {}) {
           <Button key={action.label} size="sm" variant="link"
             onClick={() => {
               action.onClick();
-              if (action.dismiss !== false) handleDismiss(item.id);
+              if (action.dismiss !== false) dismiss(item.id);
             }}
             className="shrink-0 min-h-6 rounded-sm px-1 text-xs font-semibold underline underline-offset-2 hover:bg-black/10 dark:hover:bg-white/10"
           >
@@ -187,7 +84,7 @@ export function Toaster({ variant = 'fixed' }: ToasterProps = {}) {
           </Button>
         ))}
         <button
-          onClick={() => handleDismiss(item.id)}
+          onClick={() => dismiss(item.id)}
           aria-label={t('viewerShell.toast.dismiss')}
           className="shrink-0 min-h-6 min-w-6 p-0.5 rounded-sm hover:bg-black/10 dark:hover:bg-white/10"
         >
@@ -197,13 +94,7 @@ export function Toaster({ variant = 'fixed' }: ToasterProps = {}) {
     );
   };
 
-  return (
-    <div
-      className={cn(
-        'bottom-4 right-4 z-(--z-toast) flex flex-col pointer-events-none max-w-sm',
-        variant === 'absolute' ? 'absolute' : 'fixed',
-      )}
-    >
+  return <>
       <div role="alert" aria-atomic="false" className="flex flex-col-reverse gap-2 pb-2 empty:pb-0">
         {items.filter((item) => item.type === 'error').map(renderItem)}
       </div>
@@ -212,6 +103,25 @@ export function Toaster({ variant = 'fixed' }: ToasterProps = {}) {
       <div role="status" aria-live="polite" className="flex flex-col-reverse gap-2">
         {items.filter((item) => item.type !== 'error').map(renderItem)}
       </div>
+  </>;
+}
+
+/**
+ * Mount once per anchor (app root by default, or a `relative` viewport
+ * container — see {@link ToasterProps.variant}). Both live regions stay
+ * mounted while empty so the first toast is announced; errors go to the
+ * assertive `alert` region. Each region shows its newest toast on top.
+ * Mount only ONE live instance at a time: every `Toaster` reads the same
+ * module-level store, so two mounted together would render every toast twice.
+ */
+export function Toaster({ variant = 'fixed' }: ToasterProps = {}) {
+  const items = useToastItems().filter((item) => !item.dialogId);
+  return (
+    <div data-toast-anchor className={cn(
+      'bottom-4 right-4 z-(--z-toast) flex flex-col pointer-events-none max-w-sm',
+      variant === 'absolute' ? 'absolute' : 'fixed',
+    )}>
+      <ToastMessages items={items} />
     </div>
   );
 }

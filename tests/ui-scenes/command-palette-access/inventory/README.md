@@ -1,3 +1,5 @@
+> Generated inventory reports are archived unchanged: [hashes and immutable links](archive.md). File references below refer to that snapshot; historical verdicts are not current acceptance.
+
 # Complete-feature source matrix — #8947
 
 This is the source inventory for the **separate feature-access hillclimb**. It

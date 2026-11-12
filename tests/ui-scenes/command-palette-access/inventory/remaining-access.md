@@ -1,3 +1,5 @@
+> Generated inventory reports are archived unchanged: [hashes and immutable links](archive.md). File references below refer to that snapshot; historical verdicts are not current acceptance.
+
 Read-only reconciliation for #8947 at `701972ef57c27f1e7051086cab2c3e8f731971f7`. No acceptance claim; all 813 IDs and 3994 anchors retained by reference. Authenticated `louistrue` assignment and `claimed` verified.
 
 The old run failed overall (19812 passed, 39 failed, 338 skipped). Only exact passed leaf-test names are attached in the JSON, with 1-based uncompressed log lines, test-source lines and hashes. Each selected source file is compared at 492a, 15bd and pinned 701. No current execution is inferred.

@@ -1,3 +1,5 @@
+> Generated inventory reports are archived unchanged: [hashes and immutable links](inventory/archive.md). File references below refer to that snapshot; historical verdicts are not current acceptance.
+
 # Complete command-palette feature access — #8947
 
 This is a separate hillclimb from the accepted general UX in #8946 / PR #8950.

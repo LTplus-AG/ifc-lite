@@ -1,3 +1,5 @@
+> Generated inventory reports are archived unchanged: [hashes and immutable links](archive.md). File references below refer to that snapshot; historical verdicts are not current acceptance.
+
 # Final shared-route reconciliation — source only, #8947
 
 Reviewed current production source at `285414189e9cb659d89b4acfa7bdcaf4a739760b`; this extends the immutable final shared-control report pinned to `f9d861b8`. It does not change that report or any runtime verdict. Every original identity and anchor remains in source-controls.jsonl.

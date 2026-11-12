@@ -64,7 +64,7 @@ it('#9296 anchors follow regenerated entity polygons and preserve the user offse
   assert.deepEqual(resolveElementTagAnchor(tag(10), [polygon(5)], 10), { x: 6.2, y: 1.3 });
 });
 
-it('#9296 the real SVG download contains escaped, live entity tags', async () => {
+it('#9296 drawing and sheet SVG downloads contain escaped, live entity tags', async () => {
   const { view } = await fixture();
   const { createElement, act } = await import('react');
   const { createRoot } = await import('react-dom/client');
@@ -77,6 +77,9 @@ it('#9296 the real SVG download contains escaped, live entity tags', async () =>
     lines: [], cutPolygons: [], projectionPolygons: [], bounds: { min: { x: 0, y: 0 }, max: { x: 5, y: 4 } },
     stats: { cutLineCount: 0, projectionLineCount: 0, hiddenLineCount: 0, silhouetteLineCount: 0, polygonCount: 0, totalTriangles: 0, processingTimeMs: 0 },
   };
+  let sheetEnabled = false;
+  const { createDefaultSheet } = await import('@/store/slices/sheetSlice.js');
+  const activeSheet = createDefaultSheet();
   let save: (() => void) | undefined;
   function Harness() {
     save = useDrawingExport({ drawing, displayOptions: { showHiddenLines: true, scale: 50,
@@ -84,7 +87,7 @@ it('#9296 the real SVG download contains escaped, live entity tags', async () =>
       sectionPlane: { axis: 'down', position: 1, flipped: false }, activePresetId: null,
       entityColorMap: new Map(), overridesEnabled: false, overrideEngine: new GraphicOverrideEngine(),
       measure2DResults: [], polygonArea2DResults: [], textAnnotations2D: [], cloudAnnotations2D: [],
-      sheetEnabled: false, activeSheet: null, dxfUnderlays: [], ifcDataStore: null,
+      sheetEnabled, activeSheet, dxfUnderlays: [], ifcDataStore: null,
       coordinateInfo: undefined, scanSection: { points: [] } }).handleExportSVG;
     return null;
   }
@@ -104,6 +107,13 @@ it('#9296 the real SVG download contains escaped, live entity tags', async () =>
     view.setAttribute(10, 'Name', 'Renamed entry');
     await act(async () => { save!(); });
     assert.match(await blob.text(), /Renamed entry/);
+    sheetEnabled = true;
+    await act(async () => { root.render(createElement(Harness)); });
+    await act(async () => { save!(); });
+    const sheet = new DOMParser().parseFromString(await blob.text(), 'image/svg+xml');
+    assert.equal(sheet.querySelector('parsererror'), null);
+    assert.match(sheet.querySelector('#drawing-content #element-tags')?.textContent ?? '', /Renamed entry/);
+    assert.match(sheet.querySelector('#element-tags')?.textContent ?? '', /19\.2 m²/);
   } finally {
     URL.createObjectURL = original;
     await act(async () => root.unmount()); node.remove();

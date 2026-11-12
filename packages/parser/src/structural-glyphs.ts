@@ -222,15 +222,18 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
    * own placement when it draws at its own vertex, else the connection's
    * condition frame. Along an edge: x along it, z towards the item's Axis, or
    * the normal of the surface item it lies on. Over a face, its frame. A
-   * bare face (no reference surface) is turned to its owner's placement z.
+   * bare face (no reference surface), the activity's own or the item's, is
+   * turned to the surface item's placement z, so every load on one slab and
+   * its support agree on its side.
    */
   const localFrame = (activity: StructuralActivityInfo, item: ItemRef | undefined, own: boolean, shape: ItemShape): Frame | null => {
-    // A bare face's side comes from its owner's placement z: the activity
-    // for its own face, the item for the item's.
+    // A bare face's side is the surface item's placement z, the activity's
+    // when there is no item or its placement cannot be read.
     const zOf = (id: number) => reader.productFrame(id)?.z ?? null;
-    if (shape.kind === 'face') return shapeFrame(shape, zOf(own || !item ? activity.expressId : item.expressId));
+    const side = () => (item ? zOf(item.expressId) : null) ?? zOf(activity.expressId);
+    if (shape.kind === 'face') return shapeFrame(shape, side());
     const hostShape = item ? itemShape(item.expressId, item.type) : null;
-    const hint = !item ? null : hostShape?.kind === 'face' ? zOf(item.expressId) : edgeAxis(item.expressId, item.Axis);
+    const hint = !item ? null : hostShape?.kind === 'face' ? side() : edgeAxis(item.expressId, item.Axis);
     if (shape.kind === 'edge') return shapeFrame(shape, hostShape?.kind === 'face' ? shapeFrame(hostShape, hint)?.z ?? null : hint);
     if (hostShape && hostShape.kind !== 'vertex') return shapeFrame(hostShape, hint);
     if (own || !item) return reader.productFrame(activity.expressId);

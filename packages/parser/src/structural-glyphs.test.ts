@@ -246,8 +246,10 @@ const FRAMES = `ISO-10303-21;HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('f.if
 #211=IFCSTRUCTURALLOADPLANARFORCE('pz',$,$,-1.);
 #212=IFCSTRUCTURALPLANARACTION(${id(212)},$,'PZ',$,$,$,$,#211,.LOCAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);
 #213=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(213)},$,$,$,#209,#212);
-#220=IFCVERTEXPOINT(#200);
-#221=IFCVERTEXPOINT(#201);
+#232=IFCCARTESIANPOINT((0.,0.,-10.));
+#233=IFCCARTESIANPOINT((0.,-1.,-10.));
+#220=IFCVERTEXPOINT(#232);
+#221=IFCVERTEXPOINT(#233);
 #222=IFCEDGE(#220,#221);
 #223=IFCTOPOLOGYREPRESENTATION(#3,'Reference','Edge',(#222));
 #224=IFCPRODUCTDEFINITIONSHAPE($,$,(#223));
@@ -258,6 +260,15 @@ const FRAMES = `ISO-10303-21;HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('f.if
 #229=IFCSTRUCTURALLOADLINEARFORCE('ez',$,$,-1.,$,$,$);
 #230=IFCSTRUCTURALLINEARACTION(${id(230)},$,'EZ',$,$,#228,#224,#229,.LOCAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);
 #231=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(231)},$,$,$,#209,#230);
+#234=IFCCARTESIANPOINT((1.,-1.,-10.));
+#235=IFCCARTESIANPOINT((1.,0.,-10.));
+#236=IFCPOLYLOOP((#232,#233,#234,#235));
+#237=IFCFACEOUTERBOUND(#236,.T.);
+#238=IFCFACE((#237));
+#239=IFCTOPOLOGYREPRESENTATION(#3,'Reference','Face',(#238));
+#240=IFCPRODUCTDEFINITIONSHAPE($,$,(#239));
+#241=IFCSTRUCTURALPLANARACTION(${id(241)},$,'OZ',$,$,#228,#240,#211,.LOCAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);
+#242=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(242)},$,$,$,#209,#241);
 ENDSEC;END-ISO-10303-21;`;
 
 describe('structuralGlyphs local frames of curve and surface items', () => {
@@ -294,11 +305,18 @@ describe('structuralGlyphs local frames of curve and surface items', () => {
     expect(forces.length).toBeGreaterThan(0);
     // Local z is +Z, so PlanarForceZ = -1 points down.
     for (const g of forces) close(g.direction, [0, 0, -1]);
-    // An edge action on the slab, under its own placement turned upside down:
+    // An edge action on the slab under its own placement turned upside down
+    // (local (x, y, z) is world (x, -y, -z), so its edge lies on the slab):
     // the slab's side still comes from the slab's placement, so down is down.
     const edge = arrows(glyphs, 230);
     expect(edge.length).toBeGreaterThan(0);
-    for (const g of edge) close(g.direction, [0, 0, -1]);
+    // The same for a face action on its own copy of the slab face.
+    const face = arrows(glyphs, 241);
+    expect(face.length).toBeGreaterThan(0);
+    for (const g of [...edge, ...face]) {
+      close(g.direction, [0, 0, -1]);
+      expect(g.position[2]).toBeCloseTo(10);
+    }
   });
 
   it('takes the local z of a curve action on a surface member from the surface normal', async () => {

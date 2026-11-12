@@ -85,6 +85,9 @@ export function structuralMutationTracking(
   const { create } = createStoreMutationTracker(store, resolve, 'structural');
   // One forwarding loop keeps the synchronous facade small as lazy builders grow.
   const types = {
+    addStructuralLoad: 'IFCSTRUCTURALLOAD',
+    addStructuralCurveAction: 'IFCSTRUCTURALCURVEACTION',
+    connectStructuralElement: 'IFCRELCONNECTSSTRUCTURALELEMENT',
     editStructuralEntity: 'IFCSTRUCTURALITEM',
     removeStructuralEntity: 'IFCSTRUCTURALITEM',
     addStructuralSurfaceMember: 'IFCSTRUCTURALSURFACEMEMBER',

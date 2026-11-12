@@ -6,6 +6,7 @@
  * IFC2X3 has only PlanarAction, with required DestabilizingLoad and CausedBy before ProjectedOrTrue.
  * IFC4+ PlanarAction constrains SurfaceAction to CONST. Both forms are offered explicitly.
  */
+import { varyingActionTail, type StructuralVaryingActionParams } from './_structural-varying.js';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { assertActivitySchema, assertAppliedLoad, assertEnum, assertBoolean, emitActivity, validateLoad, type ActivityAnchor, type ActivityParams, type ActivityResult } from './_structural-activity.js';
 
@@ -18,7 +19,7 @@ export interface StructuralTemperatureParams { Name?: string; DeltaTConstant?: n
 export type StructuralSurfaceLoad =
   | ({ Type: 'IfcStructuralLoadPlanarForce' } & StructuralPlanarForceParams)
   | ({ Type: 'IfcStructuralLoadTemperature' } & StructuralTemperatureParams);
-export interface StructuralSurfaceActionInStoreParams extends ActivityParams {
+export interface StructuralSurfaceActionInStoreParams extends ActivityParams, StructuralVaryingActionParams {
   AppliedLoad: StructuralSurfaceLoad;
   DestabilizingLoad?: boolean;
   ProjectedOrTrue?: 'PROJECTED_LENGTH' | 'TRUE_LENGTH';
@@ -46,15 +47,18 @@ function surfaceAction(editor: StoreEditor, anchor: ActivityAnchor, params: Stru
   if (params.ProjectedOrTrue === 'PROJECTED_LENGTH' && params.GlobalOrLocal === 'LOCAL_COORDS') {
     throw new Error(`${builder}: PROJECTED_LENGTH requires GLOBAL_COORDS`);
   }
+  const varyingTail = varyingActionTail(editor, anchor, params, params.AppliedLoad.Type, 2);
+  if (varyingTail.length) type = 'IfcStructuralPlanarActionVarying';
   const projected = `.${params.ProjectedOrTrue ?? 'TRUE_LENGTH'}.`;
   return emitActivity(anchor, params, type, params.AppliedLoad, fields,
-    anchor.schema === 'IFC2X3' ? [params.DestabilizingLoad ?? false, null, projected]
+    anchor.schema === 'IFC2X3' ? [params.DestabilizingLoad ?? false, null, projected, ...varyingTail]
       : [params.DestabilizingLoad ?? null, projected, '.CONST.'], {
       load: attrs => params.AppliedLoad.Type === 'IfcStructuralLoadPlanarForce'
         ? editor.addEntity('IfcStructuralLoadPlanarForce', attrs).expressId
         : editor.addEntity('IfcStructuralLoadTemperature', attrs).expressId,
-      activity: attrs => type === 'IfcStructuralPlanarAction'
-        ? editor.addEntity('IfcStructuralPlanarAction', attrs).expressId
-        : editor.addEntity('IfcStructuralSurfaceAction', attrs).expressId,
+      activity: attrs => type === 'IfcStructuralPlanarActionVarying'
+        ? editor.addEntity('IfcStructuralPlanarActionVarying', attrs).expressId
+        : type === 'IfcStructuralPlanarAction' ? editor.addEntity('IfcStructuralPlanarAction', attrs).expressId
+          : editor.addEntity('IfcStructuralSurfaceAction', attrs).expressId,
     });
 }

@@ -70,3 +70,33 @@ describe('C2 SDK structural store authoring', () => {
     expect(() => ns.addStructuralSurfaceConnection('m', 30, { Boundary: [[0, 0, 0], [1, 0, 0], [0, 1, 0]] })).toThrow(/addStructuralSurfaceConnection: not available/);
   });
 });
+
+// #9668: parameter extensions must reach the store through the real SDK namespace.
+describe('R2 CREATE SDK variants (#9668)', () => {
+  it.each(['IFC2X3', 'IFC4', 'IFC4X3'] as const)('%s forwards varying members, warping and eccentricity', async schema => {
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(MODEL.replace('IFC2X3', schema)).buffer, { disableWorkerScan: true });
+    const view = new MutablePropertyView(null, 'm');
+    const editor = new StoreEditor(store, view);
+    const backend = { store: createStructuralStoreBackend(() => ({ store, editor, mutationView: view, modelId: 'm', ownerHistoryId: 4 })) } as unknown as BimBackend;
+    const ns = new StoreNamespace(backend);
+    const m = ns.addStructuralCurveMember('m', 30, { Type: 'IfcStructuralCurveMemberVarying', Start: [0,0,0], End: [2,0,0] });
+    const c = ns.addStructuralPointConnection('m', 30, { Position: [0,0,0], BoundaryCondition: { WarpingStiffness: true } });
+    const rel = ns.connectStructuralMemberToConnection('m', m.expressId, c.expressId, {
+      AdditionalConditions: { Type: 'IfcSlippageConnectionCondition', SlippageX: 0.12 },
+      ConnectionConstraint: { PointOnRelatingElement: [0,0,0], EccentricityInX: 0.1, EccentricityInY: 0, EccentricityInZ: 0 },
+    });
+    expect(editor.getEntityType(rel.expressId)).toBe('IfcRelConnectsWithEccentricity');
+    const { content } = new StepExporter(store, view).export({ schema, applyMutations: true });
+    const text = new TextDecoder().decode(content);
+    expect(text).toContain('IFCSTRUCTURALCURVEMEMBERVARYING(');
+    expect(text).toContain('IFCBOUNDARYNODECONDITIONWARPING(');
+    expect(text).toContain("IFCSLIPPAGECONNECTIONCONDITION($,0.12,$,$)");
+    if (schema !== 'IFC2X3') {
+      const force = ns.addStructuralPointReaction('m', { AppliedLoad: { Type: 'IfcStructuralLoadSingleForceWarping', ForceZ: 2, WarpingMoment: 3 } });
+      const forceLoad = editor.getNewEntity(force.expressId)!.attributes[7];
+      const config = ns.addStructuralLoad('m', { Type: 'IfcStructuralLoadConfiguration', Values: [Number(String(forceLoad).slice(1))], Locations: [[0]] });
+      const action = ns.addStructuralCurveAction('m', { AppliedLoad: config.expressId, PredefinedType: 'LINEAR' });
+      expect(editor.getNewEntity(action.expressId)!.attributes[7]).toBe(`#${config.expressId}`);
+    }
+  });
+});

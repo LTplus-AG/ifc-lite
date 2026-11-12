@@ -45,6 +45,8 @@
  * Pure: no I/O, no parser access — operates entirely through the editor.
  */
 
+import { assertActivitySchema, assertBoolean, assertEnum } from './_structural-activity.js';
+import { varyingActionTail, type StructuralVaryingActionParams } from './_structural-varying.js';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { SpatialAnchor } from './anchor.js';
 import { ownerHistoryRef, productGuid } from './_emit-helpers.js';
@@ -87,6 +89,7 @@ export interface StructuralPointActionBuildResult {
  * (#5167 review). Refusing here keeps the absence from reading as success.
  */
 function assertLoadHasComponent(builder: string, components: ReadonlyArray<number | undefined>): void {
+  if (components.some(value => value !== undefined && (typeof value !== 'number' || !Number.isFinite(value)))) throw new Error(`${builder}: load components must be finite numbers`);
   if (components.some((value) => value !== undefined)) return;
   throw new Error(`${builder}: supply at least one force or moment component; an action with no load component is not a load`);
 }
@@ -96,6 +99,9 @@ export function addStructuralPointActionToStore(
   anchor: Pick<SpatialAnchor, 'ownerHistoryId' | 'guidRandom' | 'schema'>,
   params: StructuralPointActionInStoreParams,
 ): StructuralPointActionBuildResult {
+  assertActivitySchema(anchor, 'addStructuralPointActionToStore');
+  assertEnum('addStructuralPointActionToStore', 'GlobalOrLocal', params.GlobalOrLocal, ['GLOBAL_COORDS', 'LOCAL_COORDS']);
+  assertBoolean('addStructuralPointActionToStore', 'DestabilizingLoad', params.DestabilizingLoad);
   assertLoadHasComponent('addStructuralPointActionToStore', [
     params.ForceX, params.ForceY, params.ForceZ,
     params.MomentX, params.MomentY, params.MomentZ,
@@ -130,7 +136,7 @@ export function addStructuralPointActionToStore(
 
 // ── IfcStructuralLinearAction ───────────────────────────────────────────
 
-export interface StructuralLinearActionInStoreParams {
+export interface StructuralLinearActionInStoreParams extends StructuralVaryingActionParams {
   Name?: string;
   Description?: string;
   ObjectType?: string;
@@ -158,6 +164,10 @@ export function addStructuralLinearActionToStore(
   anchor: Pick<SpatialAnchor, 'ownerHistoryId' | 'guidRandom' | 'schema'>,
   params: StructuralLinearActionInStoreParams,
 ): StructuralLinearActionBuildResult {
+  const varyingTail = varyingActionTail(editor, anchor, params, 'IfcStructuralLoadLinearForce');
+  assertActivitySchema(anchor, 'addStructuralLinearActionToStore');
+  assertEnum('addStructuralLinearActionToStore', 'GlobalOrLocal', params.GlobalOrLocal, ['GLOBAL_COORDS', 'LOCAL_COORDS']);
+  assertBoolean('addStructuralLinearActionToStore', 'DestabilizingLoad', params.DestabilizingLoad);
   assertLoadHasComponent('addStructuralLinearActionToStore', [
     params.LinearForceX, params.LinearForceY, params.LinearForceZ,
     params.LinearMomentX, params.LinearMomentY, params.LinearMomentZ,
@@ -172,7 +182,7 @@ export function addStructuralLinearActionToStore(
     params.LinearMomentZ ?? null,
   ]).expressId;
 
-  const activityId = editor.addEntity('IfcStructuralLinearAction', [
+  const attrs: Parameters<StoreEditor['addEntity']>[1] = [
     productGuid(params, anchor.guidRandom),
     ownerHistoryRef(anchor.ownerHistoryId),
     params.Name ?? 'Linear Action',
@@ -185,7 +195,11 @@ export function addStructuralLinearActionToStore(
     ...(anchor.schema === 'IFC2X3'
       ? [boolAttr(params.DestabilizingLoad ?? false), null, '.TRUE_LENGTH.'] // DestabilizingLoad, CausedBy?, ProjectedOrTrue
       : [boolAttr(params.DestabilizingLoad), null, '.CONST.']), // DestabilizingLoad?, ProjectedOrTrue?, PredefinedType = CONST
-  ]).expressId;
+    ...varyingTail,
+  ];
+  const activityId = varyingTail.length
+    ? editor.addEntity('IfcStructuralLinearActionVarying', attrs).expressId
+    : editor.addEntity('IfcStructuralLinearAction', attrs).expressId;
 
   return { activityId, loadId };
 }

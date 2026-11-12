@@ -71,13 +71,11 @@ export const SCENE = [
   {
     id: 'point-connection',
     builder: 'addStructuralPointConnectionToStore',
-    // IFC2X3 names the stiffness attributes Linear* and has no boolean branch. The expected IFC2X3
-    // values follow from the decided mapping of a fixed (true) or free (false) degree of freedom, written down with the
-    // IFC2X3 builder, not copied from its output; until then `unchecked` caps the cell at partial.
+    // IFC2X3 fixed/free stiffness uses the EXPRESS measure convention -1/0.
     emits: (schema) => ({
       IfcStructuralPointConnection: { GlobalId: G.connection, Name: 'Probe support' },
       IfcBoundaryNodeCondition: schema === 'IFC2X3'
-        ? { Name: 'Probe pinned', unchecked: ['LinearStiffnessX', 'LinearStiffnessY', 'LinearStiffnessZ', 'RotationalStiffnessX', 'RotationalStiffnessY', 'RotationalStiffnessZ'] }
+        ? { Name: 'Probe pinned', LinearStiffnessX: -1, LinearStiffnessY: -1, LinearStiffnessZ: -1, RotationalStiffnessX: 0, RotationalStiffnessY: 0, RotationalStiffnessZ: 0 }
         : { Name: 'Probe pinned', TranslationalStiffnessX: FIXED, TranslationalStiffnessY: FIXED, TranslationalStiffnessZ: FIXED, RotationalStiffnessX: FREE, RotationalStiffnessY: FREE, RotationalStiffnessZ: FREE },
     }),
     build: ({ create, editor, anchor }) => create.addStructuralPointConnectionToStore(editor, anchor, {
@@ -220,8 +218,92 @@ export const SCENE = [
       ReactionIds: [done.get('PointReaction-SingleForce'), done.get('PointReaction-SingleDisplacement')],
     }).resultGroupId,
   },
+  {
+    id: 'warping-support', builder: 'addStructuralPointConnectionToStore',
+    emits: schema => ({ IfcBoundaryNodeConditionWarping: { Name: 'Warping', WarpingStiffness: schema === 'IFC2X3' ? 12 : { type: 'IFCWARPINGMOMENTMEASURE', value: 12 } } }),
+    build: ({ create, editor, anchor }) => create.addStructuralPointConnectionToStore(editor, anchor, { Position: [0,0,0], BoundaryCondition: { Name: 'Warping', WarpingStiffness: 12 } }).connectionId,
+  },
+  ...['IfcFailureConnectionCondition', 'IfcSlippageConnectionCondition'].map((Type, i) => ({
+    id: Type, builder: 'connectStructuralMemberToConnectionInStore', needs: ['curve-member', 'warping-support'],
+    emits: {
+      [Type]: i ? { Name: Type, SlippageX: 0.1, SlippageY: 0.2, SlippageZ: 0.3 } : { Name: Type, TensionFailureX: 10, CompressionFailureZ: 20 },
+      ...(i ? {} : { IfcRelConnectsWithEccentricity: { RelatingStructuralMember: G.member }, IfcConnectionPointEccentricity: { EccentricityInX: 0.1, EccentricityInY: 0.2, EccentricityInZ: 0.3 } }),
+    },
+    build: ({ create, editor, anchor, done }) => create.connectStructuralMemberToConnectionInStore(editor, anchor.ownerHistoryId, done.get('curve-member'), done.get('warping-support'), undefined, {
+      AdditionalConditions: i ? { Type, Name: Type, SlippageX: 0.1, SlippageY: 0.2, SlippageZ: 0.3 } : { Type, Name: Type, TensionFailureX: 10, CompressionFailureZ: 20 },
+      ...(i ? {} : { ConnectionConstraint: { PointOnRelatingElement: [0,0,0], PointOnRelatedElement: [0.1,0.2,0.3], EccentricityInX: 0.1, EccentricityInY: 0.2, EccentricityInZ: 0.3 } }),
+    }),
+  })),
+  {
+    id: 'varying-curve-member', builder: 'addStructuralCurveMemberToStore',
+    emits: { IfcStructuralCurveMemberVarying: { Name: 'Varying curve', PredefinedType: 'RIGID_JOINED_MEMBER' } },
+    build: ({ create, editor, anchor }) => create.addStructuralCurveMemberToStore(editor, anchor, { Type: 'IfcStructuralCurveMemberVarying', Name: 'Varying curve', Start: [0,0,0], End: [3,0,0], PredefinedType: 'RIGID_JOINED_MEMBER' }).memberId,
+  },
+  {
+    id: 'stations', builder: 'ShapeAspect scene geometry', emits: {}, needs: ['surface-member'],
+    build: ({ editor, anchor, done }) => {
+      const p = editor.addEntity('IfcCartesianPoint', [[0,0,0]]).expressId;
+      const rep = editor.addEntity('IfcShapeRepresentation', [`#${anchor.axisContextId}`, 'Reference', 'Point', [`#${p}`]]).expressId;
+      const shape = editor.getNewEntity(done.get('surface-member')).attributes[6];
+      return editor.addEntity('IfcShapeAspect', [[`#${rep}`], 'Stations', null, true, shape]).expressId;
+    },
+  },
+  {
+    id: 'varying-surface-member', builder: 'addStructuralSurfaceMemberToStore', needs: ['stations'],
+    emits: schema => ({ IfcStructuralSurfaceMemberVarying: { Name: 'Varying surface', Thickness: 0.2, ...(schema === 'IFC2X3' ? { SubsequentThickness: [0.3,0.4] } : {}) } }),
+    build: ({ create, editor, anchor, done }) => create.addStructuralSurfaceMemberToStore(editor, anchor, { Type: 'IfcStructuralSurfaceMemberVarying', Name: 'Varying surface', Boundary: [[0,0,0],[4,0,0],[4,3,0]], Thickness: 0.2, ...(anchor.schema === 'IFC2X3' ? { SubsequentThickness: [0.3,0.4], VaryingThicknessLocation: done.get('stations') } : {}) }).memberId,
+  },
+  ...['IfcStructuralLoadSingleForceWarping', 'IfcStructuralLoadSingleDisplacementDistortion'].map((Type, i) => ({
+    id: Type, builder: 'addStructuralPointReactionToStore',
+    emits: { [Type]: i ? { Name: Type, DisplacementZ: 0.02, Distortion: 0.03 } : { Name: Type, ForceZ: 10, WarpingMoment: 20 } },
+    build: ({ create, editor, anchor }) => create.addStructuralPointReactionToStore(editor, anchor, { AppliedLoad: { Type, Name: Type, ...(i ? { DisplacementZ: 0.02, Distortion: 0.03 } : { ForceZ: 10, WarpingMoment: 20 }) } }).loadId,
+  })),
+  {
+    id: 'reinforcement', builder: 'addStructuralLoadToStore', schemas: ['IFC4','IFC4X3'],
+    emits: { IfcSurfaceReinforcementArea: { Name: 'Reinforcement', SurfaceReinforcement1: [0.01,0.02], SurfaceReinforcement2: [0.03,0.04,0.05], ShearReinforcement: 0.006 } },
+    build: ({ create, editor, anchor }) => create.addStructuralLoadToStore(editor, anchor, { Type: 'IfcSurfaceReinforcementArea', Name: 'Reinforcement', SurfaceReinforcement1: [0.01,0.02], SurfaceReinforcement2: [0.03,0.04,0.05], ShearReinforcement: 0.006 }),
+  },
+  {
+    id: 'load-configuration', builder: 'addStructuralLoadToStore', schemas: ['IFC4','IFC4X3'], needs: ['IfcStructuralLoadSingleForceWarping'],
+    emits: { IfcStructuralLoadConfiguration: { Name: 'Configuration', Locations: [[0],[1]] } },
+    build: ({ create, editor, anchor, done }) => create.addStructuralLoadToStore(editor, anchor, { Type: 'IfcStructuralLoadConfiguration', Name: 'Configuration', Values: [done.get('IfcStructuralLoadSingleForceWarping'),done.get('IfcStructuralLoadSingleForceWarping')], Locations: [[0],[1]] }),
+  },
+  {
+    id: 'curve-action', builder: 'addStructuralCurveActionToStore', schemas: ['IFC4','IFC4X3'], needs: ['load-configuration'],
+    emits: { IfcStructuralCurveAction: { Name: 'Configured curve', PredefinedType: 'LINEAR' } },
+    build: ({ create, editor, anchor, done }) => create.addStructuralCurveActionToStore(editor, anchor, { Name: 'Configured curve', AppliedLoad: done.get('load-configuration'), PredefinedType: 'LINEAR' }),
+  },
+  ...['Linear', 'Planar'].map(kind => ({
+    id: `varying-${kind}`, builder: `addStructural${kind}ActionToStore`, schemas: ['IFC2X3'], needs: ['stations'],
+    emits: { [`IfcStructural${kind}ActionVarying`]: { Name: `Varying ${kind}` } },
+    build: ({ create, editor, anchor, done }) => {
+      const planar = kind === 'Planar';
+      const base = planar ? create.addStructuralPlanarActionToStore(editor, anchor, { AppliedLoad: { Type: 'IfcStructuralLoadPlanarForce', PlanarForceZ: -3 } }) : create.addStructuralLinearActionToStore(editor, anchor, { LinearForceZ: -3 });
+      return create[`addStructural${kind}ActionToStore`](editor, anchor, { Name: `Varying ${kind}`, VaryingAppliedLoadLocation: done.get('stations'), SubsequentAppliedLoads: planar ? [base.loadId, base.loadId] : [base.loadId], ...(planar ? { AppliedLoad: { Type: 'IfcStructuralLoadPlanarForce', PlanarForceZ: -2 } } : { LinearForceZ: -2 }) }).activityId;
+    },
+  })),
+  {
+    id: 'physical-element', builder: 'addBeamToStore', schemas: ['IFC2X3'], emits: {},
+    build: ({ create, editor, anchor }) => create.addBeamToStore(editor, anchor, { Start: [0,0,0], End: [5,0,0], Width: 0.2, Height: 0.3 }).beamId,
+  },
+  {
+    id: 'structural-element-link', builder: 'connectStructuralElementInStore', schemas: ['IFC2X3'], needs: ['physical-element','curve-member'],
+    emits: { IfcRelConnectsStructuralElement: { RelatedStructuralMember: G.member } },
+    build: ({ create, editor, anchor, done }) => create.connectStructuralElementInStore(editor, anchor.ownerHistoryId, done.get('physical-element'), done.get('curve-member')),
+  },
   analysisModel('analysis-model-ifc2x3', ['IFC2X3'], ['load-group'], [G.group]),
   analysisModel('analysis-model', ['IFC4', 'IFC4X3'], ['load-group', 'load-case'], [G.group, G.loadCase]),
+  {
+    id: 'complete-graph', builder: 'structural relationship builders', emits: {},
+    build: ({ create, editor, anchor, done }) => {
+      const entities = editor.getMutationView().getNewEntities();
+      const activities = entities.filter(e => /IfcStructural.*(Action|Reaction)/i.test(e.type));
+      const linked = new Set(entities.filter(e => e.type.toUpperCase() === 'IFCRELCONNECTSSTRUCTURALACTIVITY').map(e => e.attributes[5]));
+      for (const activity of activities) if (!linked.has(`#${activity.expressId}`)) create.connectStructuralActivityToItemInStore(editor, anchor.ownerHistoryId, done.get('curve-member'), activity.expressId);
+      create.assignToStructuralGroupInStore(editor, anchor.ownerHistoryId, done.get('load-group'), activities.map(e => e.expressId));
+      create.assignToStructuralGroupInStore(editor, anchor.ownerHistoryId, done.get(anchor.schema === 'IFC2X3' ? 'analysis-model-ifc2x3' : 'analysis-model'), [done.get('curve-member'), done.get('point-connection'), done.get('surface-member')]);
+    },
+  },
 ];
 
 /** The steps that run in `schema`, with `emits` resolved for it. */
@@ -234,7 +316,7 @@ export function blankModel(schema) {
 HEADER;
 FILE_DESCRIPTION(('structural coverage probe'),'2;1');
 FILE_NAME('blank.ifc','2026-01-01T00:00:00',(''),(''),'','','');
-FILE_SCHEMA(('${schema}'));
+FILE_SCHEMA(('${schema === 'IFC4X3' ? 'IFC4X3_ADD2' : schema}'));
 ENDSEC;
 DATA;
 #1=IFCPERSON($,'Probe',$,$,$,$,$,$);

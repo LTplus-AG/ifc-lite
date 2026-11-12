@@ -12,7 +12,7 @@ const ROOT_TYPES = new Set([
   'IFCRELAGGREGATES', 'IFCRELNESTS', 'IFCRELVOIDSELEMENT', 'IFCRELFILLSELEMENT',
   'IFCRELCONTAINEDINSPATIALSTRUCTURE',
 ]);
-const models = new WeakMap<IfcDataStore, WeakMap<MutablePropertyView, Map<string, Entry>>>();
+const models = new WeakMap<IfcDataStore, WeakMap<MutablePropertyView, Map<string | object, Entry>>>();
 
 function signature(value: unknown): string | undefined {
   return JSON.stringify(value, (_key, item: unknown) => {
@@ -38,7 +38,7 @@ function signature(value: unknown): string | undefined {
 export function derivedState<T>(
   store: IfcDataStore,
   view: MutablePropertyView,
-  key: string,
+  key: string | object,
   derive: (tracked: MutablePropertyView) => T,
 ): T {
   let views = models.get(store);

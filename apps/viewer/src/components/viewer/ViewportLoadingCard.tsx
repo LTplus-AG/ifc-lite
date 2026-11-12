@@ -47,7 +47,7 @@ export function ViewportLoadingCard() {
     >
       <div className="flex items-center gap-1.5">
         <Spinner size="xs" className="shrink-0 text-primary motion-reduce:animate-none" />
-        <output aria-live="polite" className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+        <output aria-live="polite" className="min-w-0 flex-1 truncate text-2xs text-muted-foreground">
           <span aria-hidden="true">{t(`viewportLighting.container.loadingCard.phase.${compactPhase(progress?.phase)}`)}</span>
           <span className="sr-only">{details}</span>
         </output>

@@ -22,7 +22,7 @@ import { useViewerStore, type FederatedModel } from '@/store';
 import { resolveEntityRef, resolveGlobalId } from '@/store/resolveEntityRef.js';
 
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
-import { PROXY_A, PROXY_B, WALL, tabularFixtureStore } from '@/test/tabular-store-fixture.js';
+import { PROXY_A, PROXY_B, WALL, WALL_GLOBAL_ID, tabularFixtureStore } from '@/test/tabular-store-fixture.js';
 import { getMaxExpressId } from './viewerModelIngest.js';
 
 function meshFor(expressId: number): MeshData {
@@ -35,12 +35,18 @@ function meshFor(expressId: number): MeshData {
   };
 }
 
-/** Register one model per id and install them, returning each model's offset. */
-function installModels(...ids: string[]): Map<string, { idOffset: number; store: IfcDataStore }> {
+/** Same express id as the first model's wall, a different GlobalId. */
+const SECOND_WALL_GLOBAL_ID = '3xYzAbCdEfGhIjKlMnOp03';
+
+/** Register one model per id (or `[id, wallGlobalId]`) and install them, returning each model's offset. */
+function installModels(
+  ...specs: Array<string | [id: string, wallGlobalId: string]>
+): Map<string, { idOffset: number; store: IfcDataStore }> {
   const installed = new Map<string, { idOffset: number; store: IfcDataStore }>();
   const models: FederatedModel[] = [];
-  for (const id of ids) {
-    const store = tabularFixtureStore();
+  for (const spec of specs) {
+    const [id, wallGlobalId] = typeof spec === 'string' ? [spec] : spec;
+    const store = tabularFixtureStore({ wallGlobalId });
     const maxExpressId = getMaxExpressId(store, [PROXY_A, PROXY_B, WALL].map(meshFor));
     const idOffset = federationRegistry.registerModel(id, maxExpressId);
     installed.set(id, { idOffset, store });
@@ -63,11 +69,11 @@ describe('resolveEntityRef over tabular stores', () => {
     const ref = resolveEntityRef(WALL);
     assert.deepEqual(ref, { modelId: 'only', expressId: WALL });
     assert.equal(store.getEntity(ref.expressId)?.type, 'IfcWall');
-    assert.equal(resolveGlobalId(WALL), '0aBcDeFgHiJkLmNoPqRs03');
+    assert.equal(resolveGlobalId(WALL), WALL_GLOBAL_ID);
   });
 
   it('models.size N: each global id resolves to its own model and row', () => {
-    const installed = installModels('first', 'second');
+    const installed = installModels('first', ['second', SECOND_WALL_GLOBAL_ID]);
     const first = installed.get('first')!;
     const second = installed.get('second')!;
     assert.ok(second.idOffset > first.idOffset, 'the second model sits above the first one\'s range');
@@ -83,6 +89,8 @@ describe('resolveEntityRef over tabular stores', () => {
     assert.equal(owner, second.store);
     assert.equal(owner.getEntity(ref.expressId)?.type, 'IfcWall');
     assert.equal(owner.getQuantities(ref.expressId)[0]?.name, 'Qto_WallBaseQuantities');
-    assert.equal(resolveGlobalId(second.idOffset + WALL), '0aBcDeFgHiJkLmNoPqRs03');
+    // Both walls are express id 3, so only the owning model's row gives the right GlobalId.
+    assert.equal(resolveGlobalId(first.idOffset + WALL), WALL_GLOBAL_ID);
+    assert.equal(resolveGlobalId(second.idOffset + WALL), SECOND_WALL_GLOBAL_ID);
   });
 });

@@ -20,14 +20,16 @@ import { buildTabularDataStore, type TabularStoreMeta, type TabularStoreTables }
 export const PROXY_A = 1;
 export const PROXY_B = 2;
 export const WALL = 3;
+export const WALL_GLOBAL_ID = '0aBcDeFgHiJkLmNoPqRs03';
 
-export function tabularFixtureTables(): TabularStoreTables {
+/** `wallGlobalId` lets two fixture models share express ids and still differ in identity. */
+export function tabularFixtureTables(wallGlobalId: string = WALL_GLOBAL_ID): TabularStoreTables {
   const strings = new StringTable();
 
   const entities = new EntityTableBuilder(3, strings);
   entities.add(PROXY_A, 'IfcBuildingElementProxy', '0aBcDeFgHiJkLmNoPqRs01', 'Object A', '', '', true);
   entities.add(PROXY_B, 'IfcBuildingElementProxy', '0aBcDeFgHiJkLmNoPqRs02', 'Object B', '', '', true);
-  entities.add(WALL, 'IfcWall', '0aBcDeFgHiJkLmNoPqRs03', 'Wall C', '', '', true);
+  entities.add(WALL, 'IfcWall', wallGlobalId, 'Wall C', '', '', true);
 
   const properties = new PropertyTableBuilder(strings);
   for (const [propName, value] of [['Supplier', 'Acme'], ['Phase', 'Shell']]) {
@@ -57,8 +59,10 @@ export function tabularFixtureTables(): TabularStoreTables {
 }
 
 /** Millimetres the file declares, under an IFC4 label: none of IFCX's own values. */
-export function tabularFixtureStore(overrides: Partial<TabularStoreMeta> = {}): IfcDataStore {
-  return buildTabularDataStore(tabularFixtureTables(), {
+export function tabularFixtureStore(
+  { wallGlobalId, ...overrides }: Partial<TabularStoreMeta> & { wallGlobalId?: string } = {},
+): IfcDataStore {
+  return buildTabularDataStore(tabularFixtureTables(wallGlobalId), {
     schemaVersion: 'IFC4',
     source: new ArrayBuffer(0),
     fileSize: 4096,

@@ -6,7 +6,8 @@ use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, IfcType};
 
 #[derive(Debug, Clone)]
 pub(crate) struct StructuralFacePlan {
-    faces: Vec<FacePlan>,
+    /// One plan for an ordinary face; one per region for a member face.
+    faces: smallvec::SmallVec<[FacePlan; 1]>,
     rtc_applied: bool,
 }
 
@@ -19,7 +20,9 @@ fn face_surface(entity: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<D
         .ok_or_else(|| Error::geometry("Failed to resolve FaceSurface"))
 }
 
-const EMPTY: StructuralFacePlan = StructuralFacePlan { faces: Vec::new(), rtc_applied: false };
+fn empty() -> StructuralFacePlan {
+    StructuralFacePlan { faces: smallvec::SmallVec::new(), rtc_applied: false }
+}
 
 /// A face surface on an `IfcPlane`, the shared face processor's rule for every
 /// product; any other surface is empty.
@@ -30,12 +33,12 @@ pub(crate) fn lower(
     rtc_file_units: Option<(f64, f64, f64)>,
 ) -> Result<StructuralFacePlan> {
     if face_surface(entity, decoder)?.ifc_type != IfcType::IfcPlane {
-        return Ok(EMPTY);
+        return Ok(empty());
     }
     // Loop winding already expresses the planar face normal, including when
     // SameSense is false. The generic face plan retains that production rule.
     Ok(StructuralFacePlan {
-        faces: vec![lower_face(entity, decoder, quality, rtc_file_units)?],
+        faces: smallvec::smallvec![lower_face(entity, decoder, quality, rtc_file_units)?],
         rtc_applied: rtc_file_units.is_some(),
     })
 }
@@ -62,11 +65,11 @@ pub(crate) fn lower_member_face(
             _ => false,
         };
         if !planar {
-            return Ok(EMPTY);
+            return Ok(empty());
         }
     }
     Ok(StructuralFacePlan {
-        faces: lower_planar_regions(entity, decoder, quality, rtc_file_units)?,
+        faces: lower_planar_regions(entity, decoder, quality, rtc_file_units)?.into(),
         rtc_applied: rtc_file_units.is_some(),
     })
 }

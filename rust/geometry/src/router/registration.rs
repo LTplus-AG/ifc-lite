@@ -33,7 +33,9 @@ impl GeometryRouter {
     /// or none (a registered or configured processor still wins). The item
     /// walk and the element-frame rebase both decide with this.
     pub(crate) fn member_face_selected(&self, item: &DecodedEntity, element: &DecodedEntity) -> bool {
-        crate::processors::is_member_face_item(item, element)
+        // The item type first: every other item pays only these compares.
+        crate::processors::MEMBER_FACE_TYPES.contains(&item.ifc_type)
+            && element.ifc_type.is_subtype_of(IfcType::IfcStructuralMember)
             && !self.length_unit_refused
             && matches!(self.processor_origin(&item.ifc_type), None | Some(ProcessorOrigin::Builtin))
     }

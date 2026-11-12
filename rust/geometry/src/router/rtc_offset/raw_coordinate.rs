@@ -89,16 +89,15 @@ impl GeometryRouter {
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Option<(f64, f64, f64)>> {
+        // A structural member's bare IfcFace has no registered processor but
+        // still meshes (#9668), so it rebases like any other face. The cheap
+        // checks come before the vertex probe.
         if !self.has_rtc_offset()
+            || (self.processor_for(&item.ifc_type).is_none() && !self.member_face_selected(item, element))
             || !self
                 .representation_item_first_vertex_meters(item, decoder)
                 .is_some_and(coord_is_large)
         {
-            return Ok(None);
-        }
-        // A structural member's bare IfcFace has no registered processor but
-        // still meshes (#9668), so it rebases like any other face.
-        if self.processor_for(&item.ifc_type).is_none() && !self.member_face_selected(item, element) {
             return Ok(None);
         }
         self.element_frame_rtc(element, decoder)

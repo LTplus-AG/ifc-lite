@@ -77,14 +77,7 @@ impl GeometryProcessor for IfcFaceSurfaceProcessor {
 pub(crate) struct StructuralMemberFaceProcessor;
 
 /// The item types [`StructuralMemberFaceProcessor`] meshes.
-const MEMBER_FACE_TYPES: [IfcType; 3] = [IfcType::IfcFace, IfcType::IfcFaceSurface, IfcType::IfcAdvancedFace];
-
-/// Whether `item` is a face of structural member `element`: the one case the
-/// product walk hands to [`StructuralMemberFaceProcessor`]. The item type is
-/// compared first, so every other item pays one compare.
-pub(crate) fn is_member_face_item(item: &DecodedEntity, element: &DecodedEntity) -> bool {
-    MEMBER_FACE_TYPES.contains(&item.ifc_type) && element.ifc_type.is_subtype_of(IfcType::IfcStructuralMember)
-}
+pub(crate) const MEMBER_FACE_TYPES: [IfcType; 3] = [IfcType::IfcFace, IfcType::IfcFaceSurface, IfcType::IfcAdvancedFace];
 
 impl GeometryProcessor for StructuralMemberFaceProcessor {
     fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
@@ -98,12 +91,6 @@ impl GeometryProcessor for StructuralMemberFaceProcessor {
     fn process(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder, _schema: &IfcSchema,
         quality: TessellationQuality) -> Result<Mesh> {
         super::structural_face_plan::lower_member_face(entity, decoder, quality, None)?.evaluate()
-    }
-
-    fn process_in_rtc_frame(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder, _schema: &IfcSchema,
-        quality: TessellationQuality, rtc_file_units: (f64, f64, f64)) -> Option<Result<Mesh>> {
-        Some(super::structural_face_plan::lower_member_face(entity, decoder, quality, Some(rtc_file_units))
-            .and_then(|plan| plan.evaluate()))
     }
 
     fn supported_types(&self) -> Vec<IfcType> {

@@ -72,6 +72,11 @@ ENDSEC;`;
   const before = readStep(grid);
   const moved = readStep(grid.replace('#1=IFCCARTESIANPOINT((0.,0.,0.))','#1=IFCCARTESIANPOINT((1.,0.,0.))').replace('#14=IFCLOCALPLACEMENT(#13,#2)','#14=IFCGRIDPLACEMENT(#12,$)'));
   assert.equal(gridCarriedColumn(before,moved),true);
+  const raised = readStep(grid.replace('#1=IFCCARTESIANPOINT((0.,0.,0.))','#1=IFCCARTESIANPOINT((1.,0.,0.))')
+    .replace('#14=IFCLOCALPLACEMENT(#13,#2)', '#14=IFCLOCALPLACEMENT(#13,#17)')
+    .replace('ENDSEC;', '#16=IFCCARTESIANPOINT((0.,0.,3.));\n#17=IFCAXIS2PLACEMENT3D(#16,$,$);\nENDSEC;'));
+  assert.equal(raised.placement(15).origin[2],3, '#9874 counterexample really raises the column');
+  assert.equal(gridCarriedColumn(before,raised),false, '#9874 grid translation must preserve column Z');
   assert.equal(gridCarriedColumn(before,before),false);
   assert.equal(gridCarriedColumn(readStep('DATA; ENDSEC;'),moved),false);
 });
@@ -108,5 +113,6 @@ ENDSEC;`));
 test('#9874 plain-language review requires visible non-STEP text', async () => {
   const { plainLanguageReview } = await import('./measured-oracles.mjs');
   for (const value of [null, '', '  \n ', '#12=IFCWALL(...)']) assert.equal(plainLanguageReview(value),false);
-  assert.equal(plainLanguageReview('4 walls added'),true);
+  assert.equal(plainLanguageReview('Review changes\nCancel\nExport'),false);
+  assert.equal(plainLanguageReview('Review changes\nNew IFCWALL #12\nEntity created\nCancel\nExport'),true);
 });

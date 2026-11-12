@@ -38,7 +38,7 @@ export function gridCarriedColumn(before, after) {
     const next = after.of('IFCCOLUMN').find(n => n.args[0] === c.args[0]);
     const bound = next && [after.get(next.args[5]), after.get(after.get(next.args[5])?.args[0])].some(p => p?.type === 'IFCGRIDPLACEMENT');
     const a = before.placement(c.id).origin, b = next && after.placement(next.id).origin;
-    return bound && Math.abs(b[0]-a[0]-1) <= .005 && Math.abs(b[1]-a[1]) <= .005;
+    return bound && Math.abs(b[0]-a[0]-1) <= .005 && Math.abs(b[1]-a[1]) <= .005 && Math.abs(b[2]-a[2]) <= .005;
   });
 }
 export function scheduleTotal(text) {
@@ -61,5 +61,6 @@ export function assignedLayerMaterials(step, wallId) {
 
 /** Missing or empty review content cannot demonstrate a readable change summary. */
 export function plainLanguageReview(text) {
-  return typeof text === 'string' && text.trim().length > 0 && !/#\d+\s*=\s*IFC/i.test(text);
+  return typeof text === 'string' && /\bNew\s+IfcWall\s+#\d+\b/i.test(text) &&
+    /\bEntity created\b/i.test(text) && !/#\d+\s*=\s*IFC/i.test(text);
 }

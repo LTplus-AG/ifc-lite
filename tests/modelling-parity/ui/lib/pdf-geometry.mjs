@@ -39,5 +39,12 @@ export async function pdfPathExtents(bytes) {
 /** The two 200 mm thick, 3 m high cut walls at 1:50; exclude text and paper frames. */
 export function sectionSpanMm(paths) {
   const cuts = paths.filter(p => Math.abs(p.heightMm-60) <= .5 && Math.abs(p.widthMm-4) <= .5);
-  return cuts.length >= 2 ? Math.max(...cuts.map(p=>p.maxXmm))-Math.min(...cuts.map(p=>p.minXmm)) : NaN;
+  const pages = new Map();
+  for (const cut of cuts) {
+    if (!pages.has(cut.page)) pages.set(cut.page, []);
+    pages.get(cut.page).push(cut);
+  }
+  const spans = [...pages.values()].filter(page => page.length >= 2)
+    .map(page => Math.max(...page.map(p=>p.maxXmm))-Math.min(...page.map(p=>p.minXmm)));
+  return spans.length ? Math.max(...spans) : NaN;
 }

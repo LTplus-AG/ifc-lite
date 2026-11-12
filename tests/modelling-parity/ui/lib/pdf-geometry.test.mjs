@@ -24,3 +24,19 @@ test('#9296 section scale excludes the paper and measures the two outer wall fac
   const extents = await pdfPathExtents(new Uint8Array(pdf.output('arraybuffer')));
   assert.ok(Math.abs(sectionSpanMm(extents)-104) < .01);
 });
+
+
+test('#9874 section walls must share a PDF page', async () => {
+  const { jsPDF } = require('jspdf');
+  const pdf = new jsPDF({ unit: 'mm' });
+  pdf.rect(10,20,4,60);
+  pdf.addPage();
+  pdf.rect(110,20,4,60);
+  const extents = await pdfPathExtents(new Uint8Array(pdf.output('arraybuffer')));
+  assert.deepEqual([...new Set(extents.map(p => p.page))],[1,2]);
+  assert.ok(Number.isNaN(sectionSpanMm(extents)), 'one cut per page is not a two-wall section');
+  pdf.addPage();
+  pdf.rect(10,20,4,60); pdf.rect(110,20,4,60);
+  const complete = await pdfPathExtents(new Uint8Array(pdf.output('arraybuffer')));
+  assert.ok(Math.abs(sectionSpanMm(complete)-104) < .01, 'measure the complete section within its own page');
+});

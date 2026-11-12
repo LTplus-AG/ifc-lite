@@ -118,3 +118,9 @@ it('#9947 source-backed selections do not enumerate the model classification-ref
   expect(extractClassificationsOnDemand(store, 100, view)).toEqual([]);
   expect(enumerations).toBe(0);
 });
+
+it('#9947 material providers without a revision token remain readable', async () => {
+  const { store } = await model();
+  const view = { isDeleted: () => false, getNewEntities: () => [], getEffectiveChanges: () => [] };
+  expect(extractAllMaterialsOnDemand(store, 100, view)[0]?.name).toBe('Concrete');
+});

@@ -69,7 +69,7 @@ const relTypes = ['IFCRELASSOCIATESMATERIAL', 'IFCRELDEFINESBYTYPE'];
 function materialEdges(store: IfcDataStore, view: MaterialReadView, entityId: number, primaryId = entityId): Edges {
   const revision = view.getMutationRevision?.();
   const cached = edgesCache.get(store)?.get(view);
-  const cacheKey = selectionRelationshipCacheKey(store, view, entityId, cached?.revision === revision ? cached.data : undefined, primaryId);
+  const cacheKey = selectionRelationshipCacheKey(store, view, entityId, cached && cached.revision === revision ? cached.data : undefined, primaryId);
   if (revision !== undefined && cached?.revision === revision && cached.data.has(cacheKey)) return cached.data.get(cacheKey)!;
   // Source relationship records feed the canonical schema-derived endpoint reader.
   // @raw-entity-enumeration-ok canonical effective relationship inventory once per model/view revision

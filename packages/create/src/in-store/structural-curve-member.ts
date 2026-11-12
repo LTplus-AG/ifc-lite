@@ -14,50 +14,13 @@
  * `PredefinedType` (`IfcStructuralCurveMemberTypeEnum`) and `Axis`
  * (`IfcDirection`, mandatory — NOT an inline list) are both own attributes
  * of this entity, not inherited. IFC2X3 has no `Axis`, so it is left out
- * there (the `IfcDirection` is still written and returned).
+ * there.
  *
- * REPRESENTATION OWNERSHIP (the part the task brief calls out explicitly):
- *
- *   `ObjectPlacement`: an `IfcLocalPlacement` chained from the storey's
- *   placement, origin at `Start`, local Z = member axis — same shape as
- *   `addBeamToStore`/`addMemberToStore`'s physical-element placements.
- *   OWNED exclusively by this member: nothing else in the model ever
- *   references it, so there is no reference-counting question, only a
- *   lifetime one (see removal note below).
- *
- *   `Representation`: an `IfcTopologyRepresentation` (`RepresentationType:
- *   'Edge'`, verified against the EXPRESS `IfcTopologyRepresentationTypes`
- *   WHERE function, which accepts `'Edge'` for a `SET` of `IfcEdge` items)
- *   holding one `IfcEdge` between two `IfcVertexPoint`s at the placement-
- *   local origin and `(0, 0, length)`. This is the buildingSMART-documented
- *   shape for an analytical member's line geometry — lighter than a solid,
- *   and the read side (`extractStructuralOnDemand`) does not need it at all
- *   (member geometry isn't part of `StructuralMemberInfo`), so it is
- *   authored for downstream tools/viewers that walk `Representation`, not
- *   for this package's own round trip. Every entity in the chain
- *   (2 points, 2 vertices, 1 edge, the topology rep, the product shape) is
- *   OWNED exclusively by this member — freshly created per call, never
- *   deduplicated or shared across members, so — like the placement — a
- *   member's owned sub-graph is a closed set with no external references
- *   to reason about.
- *
- *   What is NOT owned by the member: `anchor.axisContextId` (the model's
- *   shared `IfcGeometricRepresentationSubContext`, an existing entity this
- *   builder only references) and `anchor.storeyPlacementId` (ditto).
- *
- *   Removal: `bim.store.removeEntity` tombstones only the product row (the
- *   known #592-era gap column.ts's header comment references), so removing
- *   a member built here would currently orphan its placement chain AND its
- *   topology sub-graph — the same defect, not a new one, and NOT fixed by
- *   this builder. What this builder does instead: because nothing is
- *   shared, EVERY id in `StructuralCurveMemberBuildResult` is safe to
- *   delete unconditionally once the member itself is gone (no other entity
- *   in the model can be pointing at any of them) — so a future
- *   `removeStructuralEntityInStore` (mirroring `cost-removal.ts`'s pattern)
- *   can walk this result's ids directly with no reference-discovery pass.
- *   That follow-up function does not exist yet; this is deliberately left
- *   unresolved rather than silently ignored (see the task's PR description
- *   for the explicit call-out).
+ * The placement and topology representation are owned by this member. Shared
+ * model contexts and the parent storey placement are references, never owned.
+ * `removeStructuralEntityInStore` reclaims the owned subgraph only when no
+ * surviving entity references it. IFC2X3 has no Axis attribute, so no detached
+ * axis direction is emitted there.
  *
  * Pure: no I/O, no parser access — operates entirely through the editor.
  */
@@ -88,7 +51,8 @@ export interface StructuralCurveMemberInStoreParams {
 export interface StructuralCurveMemberBuildResult {
   memberId: number;
   placementId: number;
-  axisDirectionId: number;
+  /** Absent in IFC2X3, which has no Axis attribute. */
+  axisDirectionId?: number;
   /** The `IfcCartesianPoint` each `IfcVertexPoint` below is built on. Exposed
    *  because they are owned too: a cascade delete driven by this result would
    *  otherwise orphan both points (#5167 review). */
@@ -138,7 +102,9 @@ export function addStructuralCurveMemberToStore(
   // `IfcStructuralCurveMember.Axis` is expressed in the placement's LOCAL
   // frame, and the placement's own local Z is already the member direction
   // (set above), so the member's local axis is always world +Z here.
-  const axisDirectionId = editor.addEntity('IfcDirection', [[0, 0, 1]]).expressId;
+  const axisDirectionId = anchor.schema === 'IFC2X3'
+    ? undefined
+    : editor.addEntity('IfcDirection', [[0, 0, 1]]).expressId;
 
   // Topology geometry: an edge from the local origin to (0, 0, length) —
   // `length` is already in the file's native unit (Start/End were converted

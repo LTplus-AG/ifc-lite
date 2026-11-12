@@ -5,7 +5,7 @@ analysis domain ifc-lite reads, shows, authors and converts. The generated
 ledger is `docs/architecture/structural-coverage-ledger.md`.
 
 ```bash
-node tests/structural-coverage/score.mjs --check tests/structural-coverage/baseline/r3.json
+node tests/structural-coverage/score.mjs --check tests/structural-coverage/baseline/r4.json
 ```
 
 This writes `tests/structural-coverage/.out/summary.json` and exits 1 if
@@ -17,7 +17,7 @@ a harness error, never a product score. Without wasm-pack, `build-wasm.sh`
 keeps the wasm runtime already on disk, so scoring a Rust change needs the
 wasm toolchain. The probes run in about two seconds after building.
 
-CI runs the ratchet against the newest frozen `r<N>.json` (now `r3.json`) in the shared **Build packages +
+CI runs the ratchet against the newest frozen `r<N>.json` (now `r4.json`) in the shared **Build packages +
 WASM** job, after fixture verification and the package build. This job runs in
 both fast and full PR lanes for package, harness and manifest changes, and in
 merge-queue batches. The ledger check alone does not run the product probes.
@@ -43,7 +43,7 @@ model, four checks, the CLI command, the docs page).
 | card | not written yet | the viewer properties card shows it |
 | render | not written yet | a mesh or glyph is drawn |
 | create | `probes/create.mjs` + `create-scene.mjs` | an in-store builder authors it in a blank model of the row's schema, and the STEP export declares that schema, re-parses and carries the given values |
-| edit, remove | not written yet | in-store update and removal with sub-graph ownership |
+| edit, remove | `probes/edit.mjs`, `probes/remove.mjs` | scalar update survives structural extraction; removal reclaims exclusive resources, retains shared resources and exports no dangling references |
 | convert | `probes/convert.mjs` | it survives IFC4 -> IFC2X3 -> IFC4 (or IFC2X3 -> IFC4 -> IFC2X3) with the same values |
 | capability | `probes/capabilities.mjs` | per capability row; the link read and the docs page have probes, the rest are not written yet |
 
@@ -114,3 +114,5 @@ A new in-store builder needs no new probe: add a step to `SCENE` in
 [R2 activity/result notes](baseline/r2-notes.md): 24 new create cells, 297.5/774 cells total; rows remain 56/119.
 
 [R3 combined measurement](baseline/r3-notes.md): main after #9737 and #9763 is 288.5/774 cells; the combined branch is 312.5/774, with the same 24 new create passes. R1 and R2 remain retained.
+
+R4 adds structural edit/remove ownership probes. IFC2X3 activity-assignment removal is proven through activity cleanup; direct removal refuses its required inverse.

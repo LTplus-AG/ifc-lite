@@ -17,6 +17,7 @@
  */
 
 import {
+  editStructuralEntityInStore, removeStructuralEntityInStore, type StructuralEntityEdit,
   addStructuralPlanarActionToStore,
   addStructuralSurfaceActionToStore,
   addStructuralPointReactionToStore,
@@ -106,6 +107,16 @@ export function createStructuralStoreBackend(
   };
 
   return {
+    editStructuralEntity(modelId: string, expressId: number, patch: StructuralEntityEdit): EntityRef {
+      const model = resolve(modelId);
+      editStructuralEntityInStore(model.store, model.editor, expressId, patch);
+      return ref(model.modelId, expressId);
+    },
+    removeStructuralEntity(modelId: string, expressId: number): EntityRef {
+      const model = resolve(modelId);
+      removeStructuralEntityInStore(model.store, model.editor, expressId);
+      return ref(model.modelId, expressId);
+    },
     addStructuralPlanarAction(modelId: string, params: StructuralSurfaceActionInStoreParams): EntityRef {
       const model = resolved(modelId);
       const result = addStructuralPlanarActionToStore(model.editor, groupAnchor(model), params);

@@ -885,7 +885,7 @@ jobs:
         # hash, so without it the scorer's turbo build misses that cache.
         env:
           VITE_BUNDLE_ANALYSIS: "1"
-        run: node tests/structural-coverage/score.mjs --check tests/structural-coverage/baseline/r3.json
+        run: node tests/structural-coverage/score.mjs --check tests/structural-coverage/baseline/r4.json
 
       # A separate feature bundle exposes only the test ownership probe.
       # Do not overwrite pkg-diff or its committed production declarations.

@@ -237,3 +237,6 @@ export {
 export { addStructuralPlanarActionToStore, addStructuralSurfaceActionToStore, type StructuralSurfaceActionInStoreParams, type StructuralSurfaceActionBuildResult } from './in-store/structural-surface-action.js';
 export { addStructuralPointReactionToStore, addStructuralCurveReactionToStore, addStructuralSurfaceReactionToStore, type StructuralPointReactionInStoreParams, type StructuralCurveReactionInStoreParams, type StructuralSurfaceReactionInStoreParams, type StructuralReactionBuildResult } from './in-store/structural-reaction.js';
 export { addStructuralResultGroupToStore, type StructuralResultGroupInStoreParams, type StructuralResultGroupBuildResult } from './in-store/structural-result-group.js';
+
+export { editStructuralEntityInStore, type StructuralEntityEdit } from './in-store/structural-edit.js';
+export { removeStructuralEntityInStore } from './in-store/structural-remove.js';

@@ -15,6 +15,7 @@ import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { extractStructuralOnDemand } from '@ifc-lite/parser';
+import { effectiveStructuralView } from '@/components/viewer/properties/effectiveStructuralView';
 import { useViewerStore } from '@/store';
 import { GROUND_STOREY, SAMPLE_MODEL, seedAuthoringSample } from '@/test/authoring-sample-fixture';
 import { createStoreAdapter } from './store-adapter.js';
@@ -52,4 +53,29 @@ test('a structural call before the write path loads is refused by name, then the
   const members = extractStructuralOnDemand(dataStore, live).members;
   assert.deepEqual(members.map((row) => [row.expressId, row.name]), [[ref.expressId, 'Script member']]);
   assert.equal(useViewerStore.getState().undoStacks.get(SAMPLE_MODEL)?.length, undoBefore + 1, 'one undo step, as before the split');
+});
+
+test('structural edit and owned removal each undo as one operation (#9668)', async () => {
+  const { dataStore, view } = await seedAuthoringSample();
+  const storey = dataStore.entities.getExpressIdByGlobalId(GROUND_STOREY)!;
+  const api = createStoreAdapter(useViewerStore);
+  await loadStructuralWrites();
+  const ref = api.addStructuralCurveMember(SAMPLE_MODEL, storey, member);
+  const state = () => useViewerStore.getState();
+  const rows = () => extractStructuralOnDemand(dataStore, effectiveStructuralView(state().mutationViews.get(SAMPLE_MODEL) ?? view, dataStore)).members;
+  api.editStructuralEntity!(SAMPLE_MODEL, ref.expressId, { Name: 'Edited member', Description: 'Edited description' });
+  assert.equal(rows()[0].name, 'Edited member');
+  state().undo(SAMPLE_MODEL);
+  assert.equal(rows()[0].name, 'Script member');
+  assert.notEqual(rows()[0].description, 'Edited description');
+  state().redo(SAMPLE_MODEL);
+  assert.equal(rows()[0].name, 'Edited member');
+  const count = state().mutationViews.get(SAMPLE_MODEL)!.getNewEntities().length;
+  api.removeStructuralEntity!(SAMPLE_MODEL, ref.expressId);
+  assert.equal(rows().length, 0);
+  state().undo(SAMPLE_MODEL);
+  assert.equal(rows()[0].name, 'Edited member');
+  assert.equal(state().mutationViews.get(SAMPLE_MODEL)!.getNewEntities().length, count);
+  state().redo(SAMPLE_MODEL);
+  assert.equal(rows().length, 0);
 });

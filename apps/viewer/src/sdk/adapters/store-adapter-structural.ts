@@ -28,6 +28,9 @@
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { StructuralStoreBackendMethods, StructuralStoreModelResolver } from '@ifc-lite/sdk';
+import { normalizeMutationModelId } from './mutation-view.js';
+import { recordModellingCommit } from '@/store/slices/mutation-modelling-records';
+import { mutationDenial } from '@/store/mutation-permission';
 import { createStoreMutationTracker } from './store-adapter-cost.js';
 import type { StoreApi } from './types.js';
 
@@ -81,6 +84,8 @@ export function structuralMutationTracking(
   const { create } = createStoreMutationTracker(store, resolve, 'structural');
   // One forwarding loop keeps the synchronous facade small as lazy builders grow.
   const types = {
+    editStructuralEntity: 'IFCSTRUCTURALITEM',
+    removeStructuralEntity: 'IFCSTRUCTURALITEM',
     addStructuralSurfaceMember: 'IFCSTRUCTURALSURFACEMEMBER',
     addStructuralCurveConnection: 'IFCSTRUCTURALCURVECONNECTION',
     addStructuralSurfaceConnection: 'IFCSTRUCTURALSURFACECONNECTION',
@@ -103,6 +108,21 @@ export function structuralMutationTracking(
   } satisfies Record<keyof StructuralMethods, string>;
   const methods = Object.entries(types).map(([key, type]) => {
     const name = key as keyof StructuralMethods;
+    if (name === 'editStructuralEntity' || name === 'removeStructuralEntity') {
+      return [name, (modelId: string, ...args: unknown[]) => {
+        const denial = mutationDenial(store.getState(), modelId);
+        if (denial) throw new Error(denial);
+        const setState = store.setState;
+        if (!setState) throw new Error('Structural editing requires a writable viewer store');
+        const normalized = normalizeMutationModelId(store.getState(), modelId);
+        const factory = loadedStructuralWrites(`bim.store.${name}`).createStructuralStoreBackend;
+        return recordModellingCommit({ ...store, setState }, normalized, (editor, dataStore) => {
+          const base = resolveModel(normalized);
+          const methods = factory(() => ({ ...base, store: dataStore, editor, mutationView: editor.getMutationView() }));
+          return Reflect.apply(methods[name], methods, [normalized, ...args]);
+        });
+      }];
+    }
     return [name, create(type, (...args: [string, ...unknown[]]) => {
       const backend = live(name);
       return Reflect.apply(backend[name], backend, args);

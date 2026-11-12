@@ -17,6 +17,8 @@
 import capabilities from './capabilities.mjs';
 import convert from './convert.mjs';
 import create from './create.mjs';
+import edit from './edit.mjs';
+import remove from './remove.mjs';
 import fixture from './fixture.mjs';
 import read from './read.mjs';
 
@@ -41,8 +43,8 @@ export const PROBES = [
   ...capabilities,
   unwritten('card', 'card:structural-properties-card', 'select the entity (or the item that references it) in the viewer and assert the properties card shows its attribute values'),
   unwritten('render', 'render:mesh-or-glyph', 'load a fixture carrying the entity and assert a mesh or glyph is drawn for it'),
-  unwritten('edit', 'edit:in-store-update', 'change an attribute of the entity in a store, export, re-read and assert the new value and an intact sub-graph'),
-  unwritten('remove', 'remove:in-store-owned-subgraph', 'remove the entity in a store, export and assert it and the records it alone owns are gone, and nothing dangles'),
+  edit,
+  remove,
   unwritten('capability', 'capability:analytical-physical-toggle', 'switch the viewer between the analytical and physical model and assert which products are visible', cap('cap/analytical-physical-toggle')),
   unwritten('capability', 'capability:derive-analytical-model', 'derive members and connections from a physical frame and compare axes, ends and links to the reference analytical model', cap('cap/derive-analytical-model')),
   unwritten('capability', 'capability:check-unlinked-load-bearing', 'run the check on a fixture with a load-bearing element lacking a structural item and assert exactly that element is reported', cap('cap/check-unlinked-load-bearing')),

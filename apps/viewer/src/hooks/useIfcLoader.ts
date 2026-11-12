@@ -27,9 +27,7 @@ import { attachTextureBitmaps, type TextureBitmapStore } from '../utils/textureR
 import { modelAppearanceAssets } from '../lib/appearance/model-assets.js';
 import { WorkerParser } from '@ifc-lite/parser/browser';
 import { createModelLoadCompletion } from './ingest/modelLoadCompletion.js';
-import { beginGeometryKernel, openGeometryEvents } from './ingest/geometryEventSource.js';
-import { runPickStart } from './ingest/pickStart.js';
-import { claimFastGeometry } from './ingest/fastPath.js';
+import { beginGeometryKernel, openGeometryEvents, runPickStart, claimFastGeometry } from './ingest/geometryEventSource.js';
 import { memoryAccounting } from '../lib/perf/memoryAccounting.js';
 import { loadTracer, nextPaintOrTimeout } from '../lib/perf/loadTrace.js';
 import { countCopy } from '@ifc-lite/load-trace'; // #6957 full source-copy counters
@@ -312,15 +310,8 @@ export function useIfcLoader() {
         scene.setColdGeometryProvider(null);
       }
     }
-
-    // The one place work may start before the reset (hooks/ingest/pickStart.ts):
-    // e.g. a spare worker meshing a small file while the interface resets.
-    const pickStart = runPickStart({ file, target, kernel: geometryKernel, retry: options?.isResourceRetry === true || options?.tierOverride !== undefined, isCurrent });
-    if (pickStart) {
-      await pickStart;
-      if (isStale()) { releaseCanceller(); return; }
-    }
-
+    const pickStart = runPickStart({ file, target, kernel: geometryKernel, retry: options?.isResourceRetry === true || options?.tierOverride !== undefined, isCurrent }); // the one place work starts before the reset (ingest/pickStart.ts)
+    if (pickStart) { await pickStart; if (isStale()) { releaseCanceller(); return; } }
     // Track total elapsed time for complete user experience
     const totalStartTime = performance.now();
     const trace = loadTracer.startLoad(modelId, { journey: target.kind === 'federated' ? 'J4' : 'J1', modelKind: target.kind }, totalStartTime); // #6956
@@ -1426,14 +1417,12 @@ export function useIfcLoader() {
       // geometry-heavy files, and keep small files immediate.
       const parserWaitBudgetMs = Math.min(10_000, Math.max(1_000, fileSizeMB * 8));
       const parserEntityIndexHandoff = forwardEntityIndexTo(() => workerParserInstance, useParserWorker && fileSizeMB >= 32, parserWaitBudgetMs);
-
       // The geometry pre-pass only emits `entity-index` on the parallel
       // streaming path inside `processAdaptive`. Files smaller than the
       // sync threshold (2 MB) and the desktop-stable path don't fire it
-      // — gate `waitForEntityIndex` so the parser doesn't hang.
+      // — gate `waitForEntityIndex` so the parser doesn't hang. Nor does a fast-path run (ingest/fastPath.ts).
       const ADAPTIVE_SYNC_THRESHOLD_MB = 2;
       const sourceFingerprint = createSourceFingerprintCell(sharedSource, useParserWorker);
-      // Small-file fast path: the geometry run a spare worker started at the pick, if its settings match.
       const fastRun = geometryKernel.kind === 'exact' ? claimFastGeometry(file, geometryProcessor.meshingSettings()) : null;
       const geometryWillEmitEntityIndex =
         !fastRun && useParserWorker

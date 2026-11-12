@@ -43,7 +43,7 @@ export function Handle({
   if (!svgLayer) return null;
 
   return createPortal(
-    <g ref={ref} style={{ display: 'none' }} data-scene-primitive="handle">
+    <g aria-hidden="true" ref={ref} style={{ display: 'none' }} data-scene-primitive="handle">
       <circle
         r={radius}
         className={cn(

@@ -74,6 +74,10 @@ function inside(p: readonly [number, number], poly: Flat): boolean {
   return hit;
 }
 
+/** Openings exclude their boundary too, avoiding glyphs on a void edge. */
+const onFace = (p: readonly [number, number], poly: Flat, holes: readonly Flat[]) =>
+  inside(p, poly) && !holes.some((hole) => inside(p, hole) || clearance(p, hole) <= 1e-10);
+
 /** Distance from a 2D point to the nearest edge of a polygon. */
 function clearance([u, v]: readonly [number, number], poly: Flat): number {
   let d = Infinity;
@@ -95,16 +99,17 @@ function clearance([u, v]: readonly [number, number], poly: Flat): number {
  * real clearance, so a rotated copy of a face may pick another, equally valid
  * anchor.
  */
-function interiorPoint(poly: Flat): readonly [number, number] {
-  const heights = [...new Set(poly.map((p) => p[1]))].sort((a, b) => a - b);
+function interiorPoint(poly: Flat, holes: readonly Flat[]): readonly [number, number] {
+  const heights = [...new Set([poly, ...holes].flatMap((loop) => loop.map((p) => p[1])))].sort((a, b) => a - b);
   let best: readonly [number, number] = poly[0];
   let farthest = -1;
   for (let k = 1; k < heights.length; k++) {
     const v = (heights[k - 1] + heights[k]) / 2;
-    const xs = crossings(poly, v).sort((a, b) => a - b);
+    const xs = [poly, ...holes].flatMap((loop) => crossings(loop, v)).sort((a, b) => a - b);
     for (let i = 0; i + 1 < xs.length; i += 2) {
       const candidate = [(xs[i] + xs[i + 1]) / 2, v] as const;
-      const d = clearance(candidate, poly);
+      if (!onFace(candidate, poly, holes)) continue;
+      const d = Math.min(...[poly, ...holes].map((loop) => clearance(candidate, loop)));
       if (d > farthest) {
         farthest = d;
         best = candidate;
@@ -115,10 +120,11 @@ function interiorPoint(poly: Flat): readonly [number, number] {
 }
 
 /** A face in its own plane: the frame and the polygon's 2D coordinates in it. Null for a zero-area face. */
-function flatten(polygon: readonly Vec3[]): { frame: Frame; flat: Flat } | null {
+function flatten(polygon: readonly Vec3[], innerBounds: readonly Vec3[][] = []): { frame: Frame; flat: Flat; holes: Flat[] } | null {
   const frame = shapeFrame({ kind: 'face', polygon: [...polygon] }, null);
   if (!frame) return null;
-  return { frame, flat: polygon.map((p) => [dot(sub(p, frame.origin), frame.x), dot(sub(p, frame.origin), frame.y)] as const) };
+  const project = (loop: readonly Vec3[]): Flat => loop.map((p) => [dot(sub(p, frame.origin), frame.x), dot(sub(p, frame.origin), frame.y)] as const);
+  return { frame, flat: project(polygon), holes: innerBounds.map(project) };
 }
 
 /**
@@ -127,9 +133,9 @@ function flatten(polygon: readonly Vec3[]): { frame: Frame; flat: Flat } | null 
  */
 function faceCentre(polygon: readonly Vec3[], face = flatten(polygon)): Vec3 {
   if (!face) return centroid(polygon);
-  const { frame, flat } = face;
+  const { frame, flat, holes } = face;
   const c = [flat.reduce((s, p) => s + p[0], 0) / flat.length, flat.reduce((s, p) => s + p[1], 0) / flat.length] as const;
-  return pointIn(frame, ...(inside(c, flat) ? c : interiorPoint(flat)));
+  return pointIn(frame, ...(onFace(c, flat, holes) ? c : interiorPoint(flat, holes)));
 }
 
 /**
@@ -137,10 +143,10 @@ function faceCentre(polygon: readonly Vec3[], face = flatten(polygon)): Vec3 {
  * in its own plane, keeping those inside the polygon. One point on the face
  * when none falls inside (a thin sliver or a notched face).
  */
-function faceStations(polygon: readonly Vec3[]): Vec3[] {
-  const face = flatten(polygon);
+function faceStations(polygon: readonly Vec3[], innerBounds?: Vec3[][]): Vec3[] {
+  const face = flatten(polygon, innerBounds);
   if (!face) return [centroid(polygon)];
-  const { frame, flat } = face;
+  const { frame, flat, holes } = face;
   const us = flat.map((p) => p[0]);
   const vs = flat.map((p) => p[1]);
   const [u0, u1, v0, v1] = [Math.min(...us), Math.max(...us), Math.min(...vs), Math.max(...vs)];
@@ -149,7 +155,7 @@ function faceStations(polygon: readonly Vec3[]): Vec3[] {
     for (const fv of FACE_LATTICE) {
       const u = u0 + (u1 - u0) * fu;
       const v = v0 + (v1 - v0) * fv;
-      if (inside([u, v], flat)) out.push(pointIn(frame, u, v));
+      if (onFace([u, v], flat, holes)) out.push(pointIn(frame, u, v));
     }
   }
   return out.length ? out : [faceCentre(polygon, face)];
@@ -159,14 +165,14 @@ function faceStations(polygon: readonly Vec3[]): Vec3[] {
 export function shapeCentre(shape: ItemShape): Vec3 {
   if (shape.kind === 'vertex') return shape.point;
   if (shape.kind === 'edge') return lerp(shape.start, shape.end, 0.5);
-  return faceCentre(shape.polygon);
+  return faceCentre(shape.polygon, flatten(shape.polygon, shape.innerBounds));
 }
 
 /** Every station of a shape: one vertex, five points along an edge, or the face lattice. */
 export function shapeStations(shape: ItemShape): Vec3[] {
   if (shape.kind === 'vertex') return [shape.point];
   if (shape.kind === 'edge') return EDGE_STATIONS.map((t) => lerp(shape.start, shape.end, t));
-  return faceStations(shape.polygon);
+  return faceStations(shape.polygon, shape.innerBounds);
 }
 
 /** A point at (u, v) in a frame's x and y axes (metres). */

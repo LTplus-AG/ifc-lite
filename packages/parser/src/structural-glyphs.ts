@@ -166,9 +166,10 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
     const frame = conditionFrame(connection);
     if (!shape || !frame) continue;
     // A curve connection's frame has x along the edge and z towards its Axis;
-    // a surface connection's is its reference surface (z its normal).
+    // a surface connection's is its reference surface (z its normal), else
+    // its placement.
     const axis = shape.kind === 'edge' ? edgeAxis(connection.expressId, connectionAxis(connection)) : null;
-    const local = shape.kind === 'face' ? shapeFrame(shape, null) : axis && shapeFrame(shape, axis);
+    const local = shape.kind === 'face' ? shape.surface : axis && shapeFrame(shape, axis);
     const direction = normalize(local?.z ?? frame.z) ?? [0, 0, 1];
     for (const position of shapeStations(shape)) glyphs.push({ kind: 'support', support, position, direction, source: sourceOf(connection) });
   }

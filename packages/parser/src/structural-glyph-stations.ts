@@ -118,8 +118,6 @@ function flatten(polygon: readonly Vec3[]): { frame: Frame; flat: Flat } | null 
   return { frame, flat: polygon.map((p) => [dot(sub(p, frame.origin), frame.x), dot(sub(p, frame.origin), frame.y)] as const) };
 }
 
-
-
 /**
  * A point on a face: its vertex average when that lies on it, else a scanline
  * point (a notched face). The vertex average for a zero-area face.

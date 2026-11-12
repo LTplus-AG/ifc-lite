@@ -207,6 +207,13 @@ export function getServerStreamIntervalMs(fileSizeMB: number): number {
 // Storey Height Calculation
 // ============================================================================
 
+/** Fill a parsed store's missing storey heights from its elevations (in place); no-op when the file provides them. */
+export function fillCalculatedStoreyHeights(store: { spatialHierarchy?: { storeyHeights: Map<number, number>; storeyElevations: Map<number, number> } }): void {
+  const hierarchy = store.spatialHierarchy;
+  if (!hierarchy || hierarchy.storeyHeights.size !== 0 || hierarchy.storeyElevations.size <= 1) return;
+  for (const [storeyId, height] of calculateStoreyHeights(hierarchy.storeyElevations)) hierarchy.storeyHeights.set(storeyId, height);
+}
+
 /**
  * Calculate storey heights from elevation differences
  * When property data doesn't provide heights, we can infer them from

@@ -4,10 +4,18 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { createMetadataPublishGate } from './metadataPublishGate.js';
+import type { createMetadataPublishGate as CreateGate } from './metadataPublishGate.js';
+
+/** Loaded at runtime so a build without the gate fails these assertions instead of failing to load (revert oracle). */
+async function loadGate(): Promise<typeof CreateGate> {
+  const mod = (await import('./metadataPublishGate.js').catch(() => null)) as Record<string, unknown> | null;
+  assert.equal(typeof mod?.createMetadataPublishGate, 'function', 'metadataPublishGate.ts must export createMetadataPublishGate');
+  return mod!.createMetadataPublishGate as typeof CreateGate;
+}
 
 /** Manual clock + timer queue, so every test decides exactly when the tail ends. */
-function harness(maxHoldMs = 3_000) {
+async function harness(maxHoldMs = 3_000) {
+  const createMetadataPublishGate = await loadGate();
   let busy = false;
   let t = 0;
   const timers: Array<{ at: number; fn: () => void }> = [];
@@ -35,15 +43,15 @@ function harness(maxHoldMs = 3_000) {
 }
 
 describe('createMetadataPublishGate', () => {
-  it('publishes both stores immediately when no geometry tail is running', () => {
-    const h = harness();
+  it('publishes both stores immediately when no geometry tail is running', async () => {
+    const h = await harness();
     h.gate.partial('p'); h.gate.full('f');
     assert.deepEqual(h.published, ['partial:p', 'full:f']);
     assert.equal(h.pendingTimers(), 0, 'nothing held, nothing polled');
   });
 
-  it('holds a store during the tail and publishes only the full one when it overtook the partial', () => {
-    const h = harness();
+  it('holds a store during the tail and publishes only the full one when it overtook the partial', async () => {
+    const h = await harness();
     h.setBusy(true);
     h.gate.partial('p');
     h.advance(100);
@@ -57,8 +65,8 @@ describe('createMetadataPublishGate', () => {
     assert.deepEqual(h.published, ['full:f'], 'published exactly once');
   });
 
-  it('releases a held partial when the tail ends, then lets the full store straight through', () => {
-    const h = harness();
+  it('releases a held partial when the tail ends, then lets the full store straight through', async () => {
+    const h = await harness();
     h.setBusy(true);
     h.gate.partial('p');
     h.setBusy(false);
@@ -68,8 +76,8 @@ describe('createMetadataPublishGate', () => {
     assert.deepEqual(h.published, ['partial:p', 'full:f']);
   });
 
-  it('a full store that arrives after the partial was released during a new busy window is held, not lost', () => {
-    const h = harness();
+  it('a full store that arrives after the partial was released during a new busy window is held, not lost', async () => {
+    const h = await harness();
     h.setBusy(true); h.gate.partial('p'); h.setBusy(false); h.advance(16);
     h.setBusy(true); h.gate.full('f');
     assert.deepEqual(h.published, ['partial:p']);
@@ -77,8 +85,8 @@ describe('createMetadataPublishGate', () => {
     assert.deepEqual(h.published, ['partial:p', 'full:f']);
   });
 
-  it('never parks metadata behind a finalize that does not end', () => {
-    const h = harness(3_000);
+  it('never parks metadata behind a finalize that does not end', async () => {
+    const h = await harness(3_000);
     h.setBusy(true);
     h.gate.full('f');
     h.advance(2_990);
@@ -87,8 +95,8 @@ describe('createMetadataPublishGate', () => {
     assert.deepEqual(h.published, ['full:f'], 'released by the hold limit while still busy');
   });
 
-  it('ignores a late partial after the full store', () => {
-    const h = harness();
+  it('ignores a late partial after the full store', async () => {
+    const h = await harness();
     h.gate.full('f'); h.gate.partial('late');
     assert.deepEqual(h.published, ['full:f']);
   });

@@ -12,7 +12,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { attachCapturedLoad } from '@/lib/error-reports/correlation';
 import { useShallow } from 'zustand/react/shallow';
 import { type FederatedModel, useViewerStore } from '@/store';
-import { enqueueInstancedShards, hasPendingInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
+import { enqueueInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
 import { resolveLoadTessellationTier, isMeshOnlyCacheEnabled } from '../store/constants.js';
 import { createModelLoadActivity, handOffToRetry, installModelLoadCanceller, LOAD_COMPLETE, settleOwnedLoadUi, watchLoadSupersession } from './modelLoadCanceller.js';
 import type { ModelLoadOptions } from './modelLoadOptions.js';
@@ -60,7 +60,7 @@ import {
   calculateMeshBounds,
   createCoordinateInfo,
   getRenderIntervalMs,
-  calculateStoreyHeights,
+  fillCalculatedStoreyHeights,
 } from '../utils/localParsingUtils.js';
 import { applyColorUpdatesToMeshes } from './meshColorUpdates.js';
 // Cache hook
@@ -91,6 +91,7 @@ import { removePointCloudScanCache } from './ingest/pointCloudScanCache.js';
 import { stopCopcLodStream } from './ingest/copc/copcLodStream.js';
 import { getGlobalRenderer } from './useBCF.js';
 import { createMetadataPublishGate } from './metadataPublishGate.js';
+import { isGeometryTailBusy } from './geometryTail.js';
 import type { FederatedLandXmlStreamingFinalization } from './ingest/federatedLandXmlStreaming.js';
 import { openFederatedLandXmlStreamingPlan, openPrimaryLandXmlProvisional } from './ingest/landXmlGpuTransactions.js';
 import { extractModelSpatialPlacement, findReferenceSpatialModel } from './ingest/federationAlign.js';
@@ -1366,12 +1367,7 @@ export function useIfcLoader() {
           spatialReadyMs = trace.milestone('parser.spatialReady');
           console.log(`[useIfc] Spatial tree ready for ${file.name} at ${spatialReadyMs.toFixed(0)}ms`);
         }
-        if (partialStore.spatialHierarchy && partialStore.spatialHierarchy.storeyHeights.size === 0 && partialStore.spatialHierarchy.storeyElevations.size > 1) {
-          const calculatedHeights = calculateStoreyHeights(partialStore.spatialHierarchy.storeyElevations);
-          for (const [storeyId, height] of calculatedHeights) {
-            partialStore.spatialHierarchy.storeyHeights.set(storeyId, height);
-          }
-        }
+        fillCalculatedStoreyHeights(partialStore);
         // PRIMARY only: setIfcDataStore writes the ACTIVE model. A federated
         // add must not touch model #1's store — it wires its own via
         // finalizeModel → addModel once dataStorePromise resolves.
@@ -1381,12 +1377,7 @@ export function useIfcLoader() {
       const onFullDataStore = (dataStore: IfcDataStore) => {
         if (isStale()) return;
         metadataCompleteMs = trace.milestone('parser.complete');
-        if (dataStore.spatialHierarchy && dataStore.spatialHierarchy.storeyHeights.size === 0 && dataStore.spatialHierarchy.storeyElevations.size > 1) {
-          const calculatedHeights = calculateStoreyHeights(dataStore.spatialHierarchy.storeyElevations);
-          for (const [storeyId, height] of calculatedHeights) {
-            dataStore.spatialHierarchy.storeyHeights.set(storeyId, height);
-          }
-        }
+        fillCalculatedStoreyHeights(dataStore);
         // PRIMARY only (active-model write); federated wires via finalizeModel.
         if (target.kind === 'primary') setIfcDataStore(dataStore);
         console.log(`[useIfc] Data model parsing complete for ${file.name}: ${metadataCompleteMs.toFixed(0)}ms`);
@@ -1395,27 +1386,12 @@ export function useIfcLoader() {
         modelCompletion?.setMetadata(dataStore);
       };
 
-      // Primary loads only: hold publications while this load's geometry tail
-      // (upload drain, renderer finalize) owns the main thread, then publish the
-      // newest store once (metadataPublishGate.ts). Federated adds publish via finalizeModel.
-      const geometryTailBusy = (): boolean => {
-        if (target.kind !== 'primary' || streamCompleteMs === null || isStale()) return false;
-        const scene = getGlobalRenderer()?.getScene();
-        return !!(scene?.hasQueuedMeshes() || scene?.hasStreamingFragments() || scene?.isFinalizeInProgress()) || hasPendingInstancedShards();
-      };
+      // Hold publications while this primary load's geometry tail owns the main thread; publish the newest store once (metadataPublishGate.ts).
       const metadataPublish = createMetadataPublishGate<IfcDataStore>({
-        isTailBusy: geometryTailBusy,
+        isTailBusy: () => target.kind === 'primary' && streamCompleteMs !== null && !isStale() && isGeometryTailBusy(),
         publishPartial: onPartialDataStore,
-        publishFull: (dataStore) => {
-          // A held publication runs from a timer, outside the parse chain's catch.
-          try { onFullDataStore(dataStore); } catch (err) {
-            if (isStale()) return;
-            metadataFailedMs = trace.milestone('parser.failed');
-            modelCompletion?.failMetadata(err);
-          }
-        },
+        publishFull: (store) => { try { onFullDataStore(store); } catch (err) { if (!isStale()) modelCompletion?.failMetadata(err); } }, // held: runs from a timer
       });
-      const publishPartialDataStore = (partialStore: IfcDataStore) => metadataPublish.partial(partialStore);
 
       const runMainThreadParser = async (): Promise<IfcDataStore> => {
         // Same `wasmApi` heuristic as before — desktop loads cannot share
@@ -1424,7 +1400,7 @@ export function useIfcLoader() {
         const parserWasmApi = geometryProcessor.getApi();
         return trace.span('parser.mainThread', () => new IfcParser().parseColumnar(buffer, {
           wasmApi: parserWasmApi ?? undefined,
-          onSpatialReady: publishPartialDataStore,
+          onSpatialReady: metadataPublish.partial,
         }));
       };
 
@@ -1471,7 +1447,7 @@ export function useIfcLoader() {
             signal: metadataAbort.signal,
             trace, // #6979: parser-worker phase spans
             sourceFingerprint,
-            onSpatialReady: publishPartialDataStore,
+            onSpatialReady: metadataPublish.partial,
             // Hold the parser's WASM scan until the pre-pass hands over
             // the entity index — but only when we know the geometry
             // path will actually emit one (parallel-streaming branch).

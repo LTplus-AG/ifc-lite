@@ -152,6 +152,7 @@ describe('structural CREATE gaps (#9668)', () => {
     const twoDimensions = config([load, load], [[0, 0], [1, 1]]);
     const mixed = config([load, point], [[0], [1]]);
     const points = config([point, point], [[0], [1]]);
+    const unlocated = create.addStructuralLoadToStore(editor, anchor, { Type: 'IfcStructuralLoadConfiguration', Values: [load, load] });
     before = editor.getMutationView().getNewEntities().length;
     for (const PredefinedType of ['LINEAR', 'POLYGONAL', 'DISCRETE'] as const) {
       expect(() => create.addStructuralCurveActionToStore(editor, anchor, { AppliedLoad: load, PredefinedType })).toThrow(/requires IfcStructuralLoadConfiguration/);
@@ -166,6 +167,7 @@ describe('structural CREATE gaps (#9668)', () => {
     for (const PredefinedType of [undefined, 'NOTDEFINED', 'USERDEFINED'] as const) {
       expect(() => create.addStructuralCurveActionToStore(editor, anchor, { AppliedLoad: points, PredefinedType, ObjectType: 'Custom' })).toThrow(/point loads require DISCRETE/);
       expect(() => create.addStructuralCurveActionToStore(editor, anchor, { AppliedLoad: mixed, PredefinedType, ObjectType: 'Custom' })).toThrow(/same entity type/);
+      for (const AppliedLoad of [backwards, twoDimensions, unlocated]) expect(() => create.addStructuralCurveActionToStore(editor, anchor, { AppliedLoad, PredefinedType, ObjectType: 'Custom' })).toThrow(/one-dimensional/);
     }
     expect(editor.getMutationView().getNewEntities()).toHaveLength(before);
     const unspecified = create.addStructuralCurveActionToStore(editor, anchor, { AppliedLoad: two });

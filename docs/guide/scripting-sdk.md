@@ -542,7 +542,8 @@ including the initial `AppliedLoad`. IFC2X3 varying surfaces require the initial
 `Thickness` as well as their subsequent thicknesses. Configuration `Locations`
 must be unique. Curve actions enforce the distribution's sample shape: `LINEAR`
 uses two samples, `POLYGONAL` at least three, and `DISCRETE` at least two;
-all use matching, ascending one-dimensional locations and a single load type.
+every curve-action configuration uses matching, ascending one-dimensional locations
+and a single load type, including omitted, `NOTDEFINED`, or `USERDEFINED` distributions.
 Point-load samples require `DISCRETE`. `CONST`, `SINUS`, and `PARABOLA` accept
 individual loads rather than configurations.
 

@@ -112,9 +112,9 @@ export function createLoadWindow(deps: LoadWindowDeps): LoadWindow {
 
 const storeBusy = (s: ViewerState): boolean => s.loading || s.geometryStreamingActive;
 
-let viewerLoadWindow: LoadWindow | null = null;
+let viewerLoadWindowInstance: LoadWindow | null = null;
 function getViewerLoadWindow(): LoadWindow {
-  viewerLoadWindow ??= createLoadWindow({
+  viewerLoadWindowInstance ??= createLoadWindow({
     storeBusy: () => storeBusy(useViewerStore.getState()),
     subscribeStore: (listener) => useViewerStore.subscribe((s, prev) => { if (storeBusy(s) !== storeBusy(prev)) listener(); }),
     tailBusy: isGeometryTailBusy,
@@ -122,7 +122,7 @@ function getViewerLoadWindow(): LoadWindow {
     requestFrame: (fn) => { if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => fn()); else setTimeout(fn, 16); },
     setTimer: (fn, ms) => { setTimeout(fn, ms); },
   });
-  return viewerLoadWindow;
+  return viewerLoadWindowInstance;
 }
 
 // Created with this module: the status bar imports it at boot, before any load.

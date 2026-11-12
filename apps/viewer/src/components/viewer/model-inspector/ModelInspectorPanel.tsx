@@ -39,6 +39,8 @@ const StoreyManager = lazy(() => import('../model/storeys/StoreyManager').then((
 // The layer editor loads with its first use, off the eager bundle (#9296).
 const LayersSection = lazy(() => import('./LayersSection').then((m) => ({ default: m.LayersSection })));
 
+const MaterialSection = lazy(() => import('./MaterialSection').then(m => ({ default: m.MaterialSection })));
+
 const HOSTED: ReadonlySet<AuthoredElementKind> = new Set(['door', 'window']);
 
 export function ModelInspectorPanel({ onClose }: { onClose?: () => void }) {
@@ -243,6 +245,7 @@ function SelectionBody({ selection }: { selection: InspectorSelection }) {
           </Suspense>
         </ChunkErrorBoundary>
       )}
+      {(kind === 'slab' || kind === 'column') && !layerSet && <Suspense fallback={null}><MaterialSection modelId={modelId} elementId={expressId} live={live} /></Suspense>}
       {kind !== null && HOSTED.has(kind) && <HostingSection selection={selection} />}
     </>
   );

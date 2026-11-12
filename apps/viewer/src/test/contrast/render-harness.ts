@@ -38,7 +38,7 @@
  * painted over an opaque surface.
  */
 
-import { accessSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import postcss from 'postcss';
@@ -100,17 +100,7 @@ let browserPromise: Promise<Browser> | undefined;
 const CONTRAST_BROWSER = resolveContrastBrowser({
   env: process.env,
   platform: process.platform,
-  isPresent: (path) => {
-    try {
-      accessSync(path);
-      return true;
-    } catch (error) {
-      // Any filesystem refusal (absent, EPERM, ELOOP) means
-      // this candidate is unusable: try the next. A non-errno throw is a bug.
-      if (typeof (error as NodeJS.ErrnoException).code === 'string') return false;
-      throw error;
-    }
-  },
+  isPresent: existsSync,
   bundledChromiumPath: () => {
     try {
       return chromium.executablePath();

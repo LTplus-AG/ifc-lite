@@ -35,7 +35,7 @@ export type ContrastBrowser =
 export interface ResolutionInput {
   env: Record<string, string | undefined>;
   platform: NodeJS.Platform;
-  /** Accessible on disk: `fs.accessSync(path)` with no mode, the check
+  /** On disk, as `existsSync` sees it: an F_OK access, the check
    *  playwright-core's channel lookup (`canAccessFile`) makes. */
   isPresent: (path: string) => boolean;
   /** `chromium.executablePath()` from playwright-core, called only when needed

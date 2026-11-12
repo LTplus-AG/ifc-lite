@@ -15,6 +15,7 @@ import {
   CONTRAST_BROWSER_MISSING,
   contrastLaunchOptions,
   contrastSkipReason,
+  isCi,
   resolveContrastBrowser,
   systemChromePaths,
   type ResolutionInput,
@@ -25,7 +26,7 @@ const BUNDLED = '/home/u/.cache/ms-playwright/chromium-1248/chrome-linux64/chrom
 const CUSTOM = '/opt/chrome-for-testing/chrome';
 
 function resolve(present: string[], env: ResolutionInput['env'] = {}, bundled: string | undefined = BUNDLED) {
-  return resolveContrastBrowser({ env, platform: 'linux', isExecutable: (p) => present.includes(p), bundledChromiumPath: () => bundled });
+  return resolveContrastBrowser({ env, platform: 'linux', isPresent: (p) => present.includes(p), bundledChromiumPath: () => bundled });
 }
 
 describe('contrast browser resolution order', () => {
@@ -70,9 +71,9 @@ describe('contrast browser resolution order', () => {
 
   it('asks playwright-core for the bundled path only when nothing earlier matched', () => {
     const bundledChromiumPath = () => { throw new Error('Browser is not supported on current platform'); };
-    const isExecutable = (p: string) => p === LINUX_CHROME;
-    assert.equal(resolveContrastBrowser({ env: {}, platform: 'linux', isExecutable, bundledChromiumPath }).source, 'system-chrome');
-    assert.equal(resolveContrastBrowser({ env: { IFCLITE_TEST_CHROME_EXECUTABLE: CUSTOM }, platform: 'linux', isExecutable, bundledChromiumPath }).source, 'env');
+    const isPresent = (p: string) => p === LINUX_CHROME;
+    assert.equal(resolveContrastBrowser({ env: {}, platform: 'linux', isPresent, bundledChromiumPath }).source, 'system-chrome');
+    assert.equal(resolveContrastBrowser({ env: { IFCLITE_TEST_CHROME_EXECUTABLE: CUSTOM }, platform: 'linux', isPresent, bundledChromiumPath }).source, 'env');
   });
 });
 
@@ -127,6 +128,7 @@ describe('system Chrome locations match the chrome channel', () => {
     const { registry } = await import(internal);
     const found: string | undefined = registry.registry.findExecutable('chrome').executablePath('javascript');
     if (!found) {
+      assert.equal(isCi(process.env), false, 'CI runs the contrast harness on Google Chrome, so the channel must find it');
       t.skip('no Google Chrome on this host, so there is no channel answer to compare against');
       return;
     }

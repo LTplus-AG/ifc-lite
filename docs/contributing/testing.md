@@ -63,7 +63,7 @@ pnpm test --filter=@ifc-lite/parser -- --watch
 
 ### Browser-rendered viewer tests
 
-The viewer's contrast and layout tests (`apps/viewer/src/test/contrast/render-harness.ts` and the `*.layout.test.tsx` files that use it) render the real CSS in a headless Chromium. The harness picks the browser in this order:
+Every viewer test file that imports `apps/viewer/src/test/contrast/render-harness.ts` (the contrast tests and several layout tests) renders the real CSS in a headless Chromium. The harness picks the browser in this order:
 
 1. `IFCLITE_TEST_CHROME_EXECUTABLE`, used as given (a wrong path fails; it never falls back).
 2. System Google Chrome (`channel: 'chrome'`), which is what CI uses.

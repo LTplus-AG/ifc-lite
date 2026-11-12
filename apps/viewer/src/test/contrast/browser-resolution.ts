@@ -35,16 +35,17 @@ export type ContrastBrowser =
 export interface ResolutionInput {
   env: Record<string, string | undefined>;
   platform: NodeJS.Platform;
-  /** Executable by this user: the check the chrome channel makes. */
-  isExecutable: (path: string) => boolean;
+  /** Accessible on disk: `fs.accessSync(path)` with no mode, the check
+   *  playwright-core's channel lookup (`canAccessFile`) makes. */
+  isPresent: (path: string) => boolean;
   /** `chromium.executablePath()` from playwright-core, called only when needed
    *  (it throws on a platform Playwright ships no Chromium for). */
   bundledChromiumPath: () => string | undefined;
 }
 
 export const CONTRAST_BROWSER_MISSING =
-  'contrast harness: no Chromium found, browser tests skipped (CI fails instead). Provide one: install Google Chrome, '
-  + 'run `pnpm exec playwright install chromium`, or set IFCLITE_TEST_CHROME_EXECUTABLE to a Chromium binary.';
+  'contrast harness: neither Google Chrome nor Playwright\'s Chromium found, browser tests skipped (CI fails instead). Install Google Chrome, '
+  + 'run `pnpm exec playwright install chromium`, or set IFCLITE_TEST_CHROME_EXECUTABLE to any Chromium binary.';
 
 /** Where `channel: 'chrome'` looks, copied from playwright-core 1.64's
  *  registry (`_createChromiumChannel("chrome", ...)`) so "present" here means
@@ -73,13 +74,13 @@ export function isCi(env: ResolutionInput['env']): boolean {
   return isCI(env) || env.GITHUB_ACTIONS === 'true';
 }
 
-export function resolveContrastBrowser({ env, platform, isExecutable, bundledChromiumPath }: ResolutionInput): ContrastBrowser {
+export function resolveContrastBrowser({ env, platform, isPresent, bundledChromiumPath }: ResolutionInput): ContrastBrowser {
   const explicit = env.IFCLITE_TEST_CHROME_EXECUTABLE;
   if (explicit) return { source: 'env', executablePath: explicit };
-  if (systemChromePaths(platform, env).some(isExecutable)) return { source: 'system-chrome' };
+  if (systemChromePaths(platform, env).some(isPresent)) return { source: 'system-chrome' };
   if (isCi(env)) return { source: 'missing' };
   const bundled = bundledChromiumPath();
-  return bundled && isExecutable(bundled) ? { source: 'bundled-chromium', executablePath: bundled } : { source: 'missing' };
+  return bundled && isPresent(bundled) ? { source: 'bundled-chromium', executablePath: bundled } : { source: 'missing' };
 }
 
 /** The `skip` option for every browser-dependent test: the reason when the

@@ -13,6 +13,9 @@ function stiffnessType(entity: string, index: number): string | null {
   return null;
 }
 
+/** Same semantic stiffness fields; only their EXPRESS names/value wrappers changed. */
+export function isStructuralBoundaryCondition(entity: string): boolean { return stiffnessType(entity, 1) !== null; }
+
 export function structuralAttributes(entity: string, args: readonly string[], from: string, to: string): string | null {
   if (entity === 'IFCRELCONNECTSSTRUCTURALELEMENT' && from === 'IFC2X3' && ['IFC4', 'IFC4X3', 'IFC5'].includes(to) && args.length === 6) {
     // IFC4's analytical assignment retains both objects, but changes relationship kind.

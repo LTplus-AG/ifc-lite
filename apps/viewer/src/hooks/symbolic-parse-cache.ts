@@ -367,7 +367,7 @@ export function getDisplayParseFor(value: IfcDataStore | SymbolicParseStoreBindi
 /** Whether `store` has had an overlay parse land (any key or frame): a re-parse of it is an update, not its first parse after a load. */
 export function storeHasParse(store: IfcDataStore): boolean {
   const room = roomSymbolicSource(store);
-  return room ? (ROOM_PARSE_CACHE.get(room)?.size ?? 0) > 0 : LAST_PARSE.has(store);
+  return LAST_PARSE.has(store) || (room !== undefined && (ROOM_PARSE_CACHE.get(room)?.size ?? 0) > 0); // a rebound room source starts an empty room cache
 }
 
 /**

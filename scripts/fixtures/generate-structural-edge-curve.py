@@ -224,11 +224,9 @@ def coverage(schema: str, output: Path, reinforcement: bool = False) -> None:
     displacement = e("IfcStructuralLoadSingleDisplacement", "Coverage displacement", 0.0, 0.0, -0.002, 0.0, 0.0, 0.0)
     distortion = e("IfcStructuralLoadSingleDisplacementDistortion", "Coverage distortion", 0.0, 0.0, -0.001, 0.0, 0.0, 0.0, 0.0005)
     temperature = e("IfcStructuralLoadTemperature", "Coverage temperature", 30.0, 5.0, -5.0)
-    # Members run SPAN metres along X (see the topology below); the configuration's locations are their two ends.
-    SPAN = 4.0
     configuration = None
     if has("IfcStructuralLoadConfiguration"):
-        configuration = e("IfcStructuralLoadConfiguration", "Coverage configuration", (linear_force, linear_force), ((0.0,), (SPAN,)))
+        configuration = e("IfcStructuralLoadConfiguration", "Coverage configuration", (linear_force, linear_force), ((0.0,), (4.0,)))
     node = e("IfcBoundaryNodeCondition", "Coverage node support",
              *(stiffness("IfcLinearStiffnessMeasure", 1.0e9) for _ in range(3)), *(stiffness("IfcRotationalStiffnessMeasure", 0.0) for _ in range(3)))
     node_warping = e("IfcBoundaryNodeConditionWarping", "Coverage warping support",
@@ -317,43 +315,42 @@ def coverage(schema: str, output: Path, reinforcement: bool = False) -> None:
         rel("IfcRelDeclares", project, (analysis,))
 
     # Topology last, so every record above keeps its id: each item and activity
-    # states where it is (an IfcVertexPoint, IfcEdge or IfcFaceSurface in an
-    # IfcTopologyRepresentation), as an analysis export does. The curve members
-    # run SPAN along X, the surfaces are SPAN squares above them. Each product
-    # gets its own items.
-    def vertex(x, y, z):
-        return e("IfcVertexPoint", e("IfcCartesianPoint", (x, y, z)))
+    # states where it is in an IfcTopologyRepresentation, as an analysis export
+    # does. The curve member runs SPAN along X (its SupportedLength), the
+    # surface member is a SPAN square above it. Connections and activities
+    # share the topology of the item they sit on: the point connection is the
+    # curve member's start node, the surface connection the member's face.
+    SPAN = 5.0
 
-    def at_point():
-        return "Vertex", vertex(0.0, 0.0, 0.0)
+    def point(x, y, z):
+        return e("IfcCartesianPoint", (x, y, z))
 
-    def along(y=0.0, z=0.0):
-        return "Edge", e("IfcEdge", vertex(0.0, y, z), vertex(SPAN, y, z))
+    def edge(y=0.0, z=0.0):
+        return e("IfcEdge", e("IfcVertexPoint", point(0.0, y, z)), e("IfcVertexPoint", point(SPAN, y, z)))
 
-    def square(z=3.0):
-        corners = [e("IfcCartesianPoint", c) for c in ((0.0, 0.0, z), (SPAN, 0.0, z), (SPAN, SPAN, z), (0.0, SPAN, z))]
-        plane = e("IfcPlane", e("IfcAxis2Placement3D", e("IfcCartesianPoint", (0.0, 0.0, z)), None, None))
-        return "Face", e("IfcFaceSurface", (e("IfcFaceOuterBound", e("IfcPolyLoop", corners), True),), plane, True)
+    def face(z):
+        corners = [point(0.0, 0.0, z), point(SPAN, 0.0, z), point(SPAN, SPAN, z), point(0.0, SPAN, z)]
+        plane = e("IfcPlane", e("IfcAxis2Placement3D", corners[0], None, None))
+        return e("IfcFaceSurface", (e("IfcFaceOuterBound", e("IfcPolyLoop", corners), True),), plane, True)
 
-    def locate(product, topology):
-        kind, item = topology
+    def locate(product, kind, item):
         representation = e("IfcTopologyRepresentation", context, "Reference", kind, (item,))
-        if product.Representation:  # an IFC2X3 varying record: its shape also holds the varying aspect
-            product.Representation.Representations = product.Representation.Representations + (representation,)
+        if product.Representation is not None:  # an IFC2X3 varying record: its shape also holds the varying aspect
+            product.Representation.Representations = (representation,) + product.Representation.Representations
         else:
             product.Representation = e("IfcProductDefinitionShape", None, None, (representation,))
 
-    # An activity stands where the item it acts on does.
-    shape_of = {curve: along, surface: square, point_conn: at_point}
-    locate(curve, along())
-    locate(curve_varying, along(y=6.0))
-    locate(surface, square())
-    locate(surface_varying, square(6.0))
-    locate(point_conn, at_point())
-    locate(curve_conn, along(z=3.0))
-    locate(surface_conn, square())
+    topology = {curve: ("Edge", edge()), surface: ("Face", face(3.0))}
+    topology[point_conn] = ("Vertex", topology[curve][1].EdgeStart)
+    locate(curve, *topology[curve])
+    locate(curve_varying, "Edge", edge(y=6.0))
+    locate(surface, *topology[surface])
+    locate(surface_varying, "Face", face(6.0))
+    locate(point_conn, *topology[point_conn])
+    locate(curve_conn, "Edge", edge(z=3.0))
+    locate(surface_conn, *topology[surface])
     for activity in activities + reactions:
-        locate(activity, shape_of[host(activity)]())
+        locate(activity, *topology[host(activity)])
 
     save()
 

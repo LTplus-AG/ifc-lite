@@ -86,6 +86,7 @@ fn composite_sweep_over_the_vertex_budget_is_refused_with_the_exact_count() {
         points: (0..16385)
             .map(|i| Point3::new(0.0, 0.0, i as f64 * 0.001))
             .collect(),
+        tangents: None,
         entity_id: 77,
         roll: None,
     };
@@ -220,6 +221,7 @@ fn a_reference_parallel_to_the_tangent_anywhere_keeps_the_rmf_for_the_whole_swee
     let plan = |roll| SurfaceCurveSweepPlan {
         regions: vec![rectangle.clone()],
         points: points.clone(),
+        tangents: None,
         entity_id: 1,
         roll,
     };
@@ -273,12 +275,11 @@ fn only_a_centred_round_section_ignores_the_reference() {
     assert!(roll_of("IFCCIRCLEPROFILEDEF(.AREA.,$,#8,0.1)").is_some());
     assert!(roll_of("IFCRECTANGLEPROFILEDEF(.AREA.,$,#7,0.2,0.1)").is_some());
 }
-
-/// A 1000 m straight plan layout under a constant 1 % grade from 100 m, as an
+/// A 1000 m straight plan layout under a constant `grade` from 100 m, as an
 /// IFC4x3 `IfcGradientCurve`, swept with a 3 x 0.5 rectangle whose 3 m side
 /// the FixedReference (+Z) stands up. `range` is the solid's
 /// StartParam/EndParam.
-fn gradient_sweep(range: &str) -> String {
+fn gradient_sweep(grade: f64, range: &str) -> String {
     format!(
         "#1=IFCCARTESIANPOINT((0.,0.));\n\
         #2=IFCDIRECTION((1.,0.));\n\
@@ -288,9 +289,9 @@ fn gradient_sweep(range: &str) -> String {
         #6=IFCCURVESEGMENT(.CONTINUOUS.,#5,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(1000.),#4);\n\
         #7=IFCCOMPOSITECURVE((#6),.F.);\n\
         #8=IFCCARTESIANPOINT((0.,100.));\n\
-        #9=IFCDIRECTION((1.,0.01));\n\
+        #9=IFCDIRECTION((1.,{grade:?}));\n\
         #11=IFCAXIS2PLACEMENT2D(#8,#9);\n\
-        #12=IFCCURVESEGMENT(.CONTINUOUS.,#11,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(1000.05),#4);\n\
+        #12=IFCCURVESEGMENT(.CONTINUOUS.,#11,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(1100.),#4);\n\
         #13=IFCGRADIENTCURVE((#12),.F.,#7,$);\n\
         #14=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,3.,0.5);\n\
         #15=IFCDIRECTION((0.,0.,1.));\n\
@@ -304,26 +305,106 @@ fn assert_near(actual: [f32; 3], expected: [f64; 3]) {
     }
 }
 
-/// An `IfcGradientCurve` directrix carries its elevation: the section rides
-/// the 100 -> 110 m profile instead of the flat BaseCurve at z = 0. The
-/// grade tilts Axis1 (the projected FixedReference) by atan(0.01), so the
-/// 1.5 m half-height reaches 1.5 / sqrt(1.0001) up and 0.015 m back along x.
-#[test]
-fn gradient_curve_directrix_sweeps_along_the_vertical_profile() {
-    let (min, max) = bounds_of(&gradient_sweep("$,$"));
-    let half = 1.5 / 1.0001_f64.sqrt();
-    assert_near(min, [-0.01 * half, -0.25, 100.0 - half]);
-    assert_near(max, [1000.0 + 0.01 * half, 0.25, 110.0 + half]);
+/// Expected box of `gradient_sweep(grade, ..)` between horizontal stations
+/// `a` and `b`. The grade tilts Axis1 (the projected FixedReference) by
+/// atan(grade), so the 1.5 m half-height reaches 1.5 / sqrt(1 + grade^2) up
+/// and `grade` times that back along x.
+fn gradient_box(grade: f64, a: f64, b: f64) -> ([f64; 3], [f64; 3]) {
+    let half = 1.5 / (1.0 + grade * grade).sqrt();
+    (
+        [a - grade * half, -0.25, 100.0 + grade * a - half],
+        [b + grade * half, 0.25, 100.0 + grade * b + half],
+    )
 }
 
-/// StartParam/EndParam on an `IfcGradientCurve` directrix are its BaseCurve
-/// parameter (horizontal distance along the plan), so 300..600 sweeps that
+/// An `IfcGradientCurve` directrix carries its elevation: the section rides
+/// the 100 -> 110 m profile instead of the flat BaseCurve at z = 0.
+#[test]
+fn gradient_curve_directrix_sweeps_along_the_vertical_profile() {
+    let (min, max) = bounds_of(&gradient_sweep(0.01, "$,$"));
+    let (lo, hi) = gradient_box(0.01, 0.0, 1000.0);
+    assert_near(min, lo);
+    assert_near(max, hi);
+}
+
+/// An `IfcParameterValue` bound is the gradient curve's parameter, which is
+/// its BaseCurve's: horizontal distance along the plan. 300..600 sweeps that
 /// stretch at its own elevations. It used to fall through to the plain
 /// composite-curve trim, which cannot read an IfcCurveSegment, and was refused.
 #[test]
-fn trimmed_gradient_curve_directrix_sweeps_only_the_trimmed_stretch() {
-    let (min, max) = bounds_of(&gradient_sweep("IFCLENGTHMEASURE(300.),IFCLENGTHMEASURE(600.)"));
-    let half = 1.5 / 1.0001_f64.sqrt();
-    assert_near(min, [300.0 - 0.01 * half, -0.25, 103.0 - half]);
-    assert_near(max, [600.0 + 0.01 * half, 0.25, 106.0 + half]);
+fn parameter_trimmed_gradient_curve_directrix_sweeps_the_horizontal_stretch() {
+    let source = gradient_sweep(0.1, "IFCPARAMETERVALUE(300.),IFCPARAMETERVALUE(600.)");
+    let (min, max) = bounds_of(&source);
+    let (lo, hi) = gradient_box(0.1, 300.0, 600.0);
+    assert_near(min, lo);
+    assert_near(max, hi);
+}
+
+/// An `IfcLengthMeasure` bound is a length along the 3D directrix. On a 10 %
+/// grade, 300 and 600 m along it are 300 / sqrt(1.01) = 298.511 and 597.022 m
+/// along the plan, not 300 and 600.
+#[test]
+fn length_trimmed_gradient_curve_directrix_measures_along_the_slope() {
+    let source = gradient_sweep(0.1, "IFCLENGTHMEASURE(300.),IFCLENGTHMEASURE(600.)");
+    let (min, max) = bounds_of(&source);
+    let along = 1.01_f64.sqrt();
+    let (lo, hi) = gradient_box(0.1, 300.0 / along, 600.0 / along);
+    assert_near(min, lo);
+    assert_near(max, hi);
+}
+
+/// Two sweeps that meet on a crest share its tangent (grade 0 there), so the
+/// end cap of the first and the start cap of the second coincide. With
+/// tangents taken from the chords the two caps leaned apart by about a
+/// millimetre at the top of a 3 m section: a visible seam.
+#[test]
+fn gradient_sweeps_meeting_at_a_point_share_its_section() {
+    let crest = |range: &str| {
+        format!(
+            "#1=IFCCARTESIANPOINT((0.,0.));\n\
+            #2=IFCDIRECTION((1.,0.));\n\
+            #3=IFCVECTOR(#2,1.);\n\
+            #4=IFCLINE(#1,#3);\n\
+            #5=IFCAXIS2PLACEMENT2D(#1,#2);\n\
+            #6=IFCCURVESEGMENT(.CONTINUOUS.,#5,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(400.),#4);\n\
+            #7=IFCCOMPOSITECURVE((#6),.F.);\n\
+            #8=IFCCARTESIANPOINT((0.,100.));\n\
+            #9=IFCDIRECTION((1.,0.02));\n\
+            #11=IFCAXIS2PLACEMENT2D(#8,#9);\n\
+            #12=IFCPOLYNOMIALCURVE(#5,(0.,1.),(0.,0.02,-1.E-4),$);\n\
+            #13=IFCCURVESEGMENT(.CONTINUOUS.,#11,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(200.),#12);\n\
+            #16=IFCCARTESIANPOINT((200.,100.));\n\
+            #17=IFCDIRECTION((1.,-0.02));\n\
+            #18=IFCAXIS2PLACEMENT2D(#16,#17);\n\
+            #19=IFCCURVESEGMENT(.CONTSAMEGRADIENT.,#18,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(200.04),#4);\n\
+            #20=IFCGRADIENTCURVE((#13,#19),.F.,#7,$);\n\
+            #14=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,3.,0.5);\n\
+            #15=IFCDIRECTION((0.,0.,1.));\n\
+            #10=IFCFIXEDREFERENCESWEPTAREASOLID(#14,$,#20,{range},#15);"
+        )
+    };
+    let mesh = |range: &str| {
+        let source = crest(range);
+        let mut decoder = EntityDecoder::new(&source);
+        let entity = decoder.decode_by_id(10).unwrap();
+        SurfaceCurveSweptAreaSolidProcessor::new(IfcSchema::new())
+            .lower(&entity, &mut decoder, TessellationQuality::Medium)
+            .unwrap()
+            .unwrap()
+            .evaluate()
+            .unwrap()
+    };
+    let first = mesh("IFCPARAMETERVALUE(0.),IFCPARAMETERVALUE(100.)");
+    let second = mesh("IFCPARAMETERVALUE(100.),IFCPARAMETERVALUE(200.)");
+    // One ring of the 4-point rectangle per sample: the last ring of the
+    // first sweep against the first ring of the second.
+    let ring = 4 * 3;
+    let end_cap = &first.positions[first.positions.len() - ring..];
+    let start_cap = &second.positions[..ring];
+    for (a, b) in end_cap.iter().zip(start_cap) {
+        assert!((a - b).abs() < 1e-5, "{end_cap:?} != {start_cap:?}");
+    }
+    // The shared section stands upright: grade 0 at the crest.
+    let xs: Vec<f32> = end_cap.chunks_exact(3).map(|p| p[0]).collect();
+    assert!(xs.iter().all(|x| (x - 100.0).abs() < 1e-4), "{xs:?}");
 }

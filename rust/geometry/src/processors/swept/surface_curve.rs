@@ -10,11 +10,12 @@ use crate::{
     profile::Profile2D, profiles::ProfileProcessor, Error, Mesh, Point3, Result,
     TessellationQuality, Vector3,
 };
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
+use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::Matrix4;
 
 use super::disk::directrix_is_sweepable;
 use crate::placement::Axis2Placement;
+use crate::profiles::directrix::CurveMeasure;
 use crate::router::GeometryProcessor;
 #[path = "surface_plan.rs"]
 mod plan;
@@ -97,33 +98,33 @@ impl SurfaceCurveSweptAreaSolidProcessor {
             .resolve_ref(directrix_attr)?
             .ok_or_else(|| Error::geometry("Failed to resolve Directrix".to_string()))?;
 
-        let start_param = entity.get_float(3);
-        let end_param = entity.get_float(4);
-        // Same directrix parametrisation as IfcSweptDiskSolid (one home). A
-        // trimmed conic (the duct-elbow case) carries its own Trim1/Trim2, so
-        // the redundant solid params are a no-op there.
-        let curve_points = self.profile_processor.get_directrix_points(
-            &directrix,
-            decoder,
-            start_param,
-            end_param,
-            quality,
-        )?;
+        // Bounds are an IFC4x3 IfcCurveMeasureSelect (parameter or length).
+        // Same parametrisation as IfcSweptDiskSolid (one home). A trimmed conic
+        // (the duct-elbow case) carries its own Trim1/Trim2: a no-op there.
+        let start = CurveMeasure::read(entity, slot::IfcDirectrixCurveSweptAreaSolid::START_PARAM);
+        let end = CurveMeasure::read(entity, slot::IfcDirectrixCurveSweptAreaSolid::END_PARAM);
+        let samples =
+            self.profile_processor.get_directrix_samples(&directrix, decoder, start, end, quality)?;
 
         // Refuse a non-finite sample before the dedupe below, whose `>`
         // comparison would silently drop it (#5191).
-        if !directrix_is_sweepable(&curve_points)? {
+        if !directrix_is_sweepable(&samples.points)? {
             return Ok(None);
         }
         // Drop consecutive coincident samples — a zero-length step yields a NaN
-        // tangent in the RMF and shatters the tube.
-        let mut points: Vec<Point3<f64>> = Vec::with_capacity(curve_points.len());
-        for p in curve_points {
+        // tangent in the RMF and shatters the tube. Evaluated tangents (a
+        // gradient directrix) are kept in step with their points.
+        let mut points: Vec<Point3<f64>> = Vec::with_capacity(samples.points.len());
+        let mut tangents = samples.tangents.as_ref().map(|t| Vec::with_capacity(t.len()));
+        for (i, p) in samples.points.iter().enumerate() {
             if points
                 .last()
-                .is_none_or(|last: &Point3<f64>| (p - *last).norm() > tol::POINT_COINCIDENT_EPS)
+                .is_none_or(|last: &Point3<f64>| (p - last).norm() > tol::POINT_COINCIDENT_EPS)
             {
-                points.push(p);
+                points.push(*p);
+                if let (Some(kept), Some(all)) = (tangents.as_mut(), samples.tangents.as_ref()) {
+                    kept.push(all[i]);
+                }
             }
         }
         if points.len() < 2 {
@@ -141,6 +142,8 @@ impl SurfaceCurveSweptAreaSolidProcessor {
         for p in &mut points {
             *p = position.transform_point(p);
         }
+        let tangents: Option<Vec<_>> =
+            tangents.map(|t| t.iter().map(|t| position.transform_vector(t).normalize()).collect());
         // The placement is file data too: re-gate the placed samples (#5191).
         if !directrix_is_sweepable(&points)? {
             return Ok(None);
@@ -174,7 +177,7 @@ impl SurfaceCurveSweptAreaSolidProcessor {
             }
         };
 
-        Ok(Some(SurfaceCurveSweepPlan { regions, points, entity_id: entity.id, roll }))
+        Ok(Some(SurfaceCurveSweepPlan { regions, points, tangents, entity_id: entity.id, roll }))
     }
 }
 

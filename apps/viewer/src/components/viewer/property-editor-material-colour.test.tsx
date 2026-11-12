@@ -126,5 +126,5 @@ it('imported material swatches find a surface style after a curve style (#9296 M
     draft.setPositionalAttribute(styled.expressId, 1, [`#${assignment.expressId}`]);
   });
   const imported = await new IfcParser().parseColumnar(new TextEncoder().encode(exported()).buffer as ArrayBuffer);
-  assert.equal(reader.materialColour({ dataStore: imported }, material.expressId), '#b5523b');
+  assert.equal(reader.materialColour({ dataStore: imported, view: null }, material.expressId), '#b5523b');
 });

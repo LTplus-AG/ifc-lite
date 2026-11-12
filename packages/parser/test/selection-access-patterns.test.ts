@@ -60,7 +60,9 @@ it('#9947 bulk subjects decode a shared typing row at most once per revision', a
   view.setExpressIdWatermark(300000);
   const created = view.createEntity('IfcRelDefinesByType', ['shared', null, null, null,
     Array.from({ length: 600 }, (_, i) => 100 + i), 2]);
-  let reads = 0;
+  let reads = 0, decodes = 0;
+  const attributes = view.getAttributeMutationsForEntity.bind(view);
+  view.getAttributeMutationsForEntity = id => { if (id === created.expressId) decodes++; return attributes(id); };
   const original = view.getNewEntities.bind(view);
   view.getNewEntities = () => { reads++; return original(); };
   for (let id = 100; id < 700; id++) {
@@ -68,6 +70,7 @@ it('#9947 bulk subjects decode a shared typing row at most once per revision', a
   }
   expect(created.expressId).toBeGreaterThan(300000);
   expect(reads).toBeLessThan(10);
+  expect(decodes).toBe(1);
 });
 
 it('#9947 omitted classification subject retains the full inventory contract', async () => {

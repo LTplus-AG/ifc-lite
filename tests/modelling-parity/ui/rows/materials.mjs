@@ -15,7 +15,7 @@ const hue = ([r,g,b]) => {
 const distance = (a,b) => Math.min(Math.abs(a-b),360-Math.abs(a-b));
 async function renderedBrick(s) {
   const [x,y] = await s.worldToScreen([2.5,0,1.5]);
-  const png = await s.page.screenshot();
+  const png = await s.page.screenshot({ scale: 'css' });
   return s.page.evaluate(async ({base64,x,y}) => {
     const img = new Image(); img.src = `data:image/png;base64,${base64}`; await img.decode();
     const canvas = document.createElement('canvas'); canvas.width=img.width; canvas.height=img.height;
@@ -41,12 +41,18 @@ export default {
     })];
     // Deselect so selection highlighting cannot masquerade as the material.
     await escape(s);
-    await s.page.waitForFunction(() => {
-      const st=window.__ifc_lite_viewer_store__?.getState();
-      return st && [...st.models.values()].some(m=>m.geometryResult?.meshes.some(mesh=>Math.abs(mesh.color?.[0]-181/255)<.01&&Math.abs(mesh.color?.[1]-82/255)<.01));
-    },null,{timeout:30000});
-    await s.page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
-    const pixels=await renderedBrick(s);
+    let pixels = [];
+    let renderError = null;
+    try {
+      await s.page.waitForFunction(() => {
+        const st=window.__ifc_lite_viewer_store__?.getState();
+        return st && !st.pendingMeshEdits && [...st.models.values()].some(m=>m.geometryResult?.meshes.some(mesh=>mesh.positions.length>0));
+      },null,{timeout:30000});
+      await s.page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+      pixels=await renderedBrick(s);
+    } catch (error) {
+      renderError = error instanceof Error ? error.message : String(error);
+    }
     const target=hue([181,82,59]);
     const hues=[];
     for(let i=0;i<pixels.length;i+=4) { const h=hue(pixels.slice(i,i+3)); if(h!==null) hues.push(h); }
@@ -74,7 +80,7 @@ export default {
     const result=await finish(s,tasks,[
       check('named material assigned through exported layers',walls.length===1 && assigned.every(n=>n.length===1&&n[0]==='Brick'),JSON.stringify(assigned)),
       check('Brick appearance exports its chosen colour',colors.some(c=>c?.every((v,i)=>Math.abs(v-[181,82,59][i]/255)<.001)),JSON.stringify(colors)),
-      check('rendered wall hue matches Brick within 10 degrees',hues.length>=25&&hues.filter(h=>distance(h,target)<10).length>=25,JSON.stringify({hues,target})),
+      check('rendered wall hue matches Brick within 10 degrees',renderError===null&&hues.length>=25&&hues.filter(h=>distance(h,target)<10).length>=25,renderError??JSON.stringify({hues,target})),
       check('slab has exactly one association to Steel',!!slab&&rels.length===1&&step.get(rels[0].args[5])?.args[0]==='Steel',JSON.stringify(rels)),
     ]);
     result.evidence.push(brickShot); return result;

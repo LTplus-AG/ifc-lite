@@ -42,14 +42,9 @@ test('settleHostLoad measures a process group\'s CPU over the sample from /proc'
   const f = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
   const pgid = Number(f[2]);
   const ticks = () => { const s = readFileSync('/proc/self/stat', 'utf8'); const g = s.slice(s.lastIndexOf(')') + 2).split(' '); return Number(g[11]) + Number(g[12]); };
-  // Only this process's ticks are known exactly; other members of the group (the test runner) only add to them.
-  const host = { cpuPressureAvg10: 0, limit: 5, builders: ['rustc'], builderProcs: [{ pgid }], groupTicksBefore: { [pgid]: Infinity }, settled: false };
-  host.groupTicksBefore[pgid] = 0; // replaced below with the real group total
-  const { groupTicksFor } = { groupTicksFor: null };
-  void groupTicksFor;
-  const before = ticks();
+  // This process's own ticks before the burn: a lower bound of its group's total, so the measured use is >= the burn.
+  const host = { cpuPressureAvg10: 0, limit: 5, builders: ['rustc'], builderProcs: [{ pgid }], groupTicksBefore: { [pgid]: ticks() }, settled: false };
   const end = Date.now() + 400; while (Date.now() < end) { /* burn ~400 ms CPU */ }
-  host.groupTicksBefore[pgid] = before; // a lower bound of the group's ticks at the start
   settleHostLoad(host);
   assert.ok(host.groupCpuMs[pgid] >= 200, `group used ${host.groupCpuMs[pgid]} ms`);
   assert.equal(host.underLoad, true);

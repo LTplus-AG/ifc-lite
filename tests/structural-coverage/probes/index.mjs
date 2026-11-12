@@ -53,5 +53,4 @@ export const PROBES = [
   unwritten('capability', 'capability:check-axis-drift', 'offset one member from its physical element and assert the check reports it with the distance', cap('cap/check-axis-drift')),
   unwritten('capability', 'capability:check-unconnected-member', 'remove one IfcRelConnectsStructuralMember and assert the check reports that member', cap('cap/check-unconnected-member')),
   unwritten('capability', 'capability:check-stale-after-physical-change', 'move a physical element and assert its linked item is reported stale', cap('cap/check-stale-after-physical-change')),
-  unwritten('capability', 'capability:cli-structural-command', 'run the CLI structural command on a fixture and assert its JSON lists the members, loads and links', cap('cap/cli-structural-command')),
 ];

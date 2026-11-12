@@ -5,6 +5,7 @@
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { beforeEach, afterEach, it } from 'node:test';
+import { createCollabDoc, createEntity, setPropertyValue, getPropertyValue } from '@ifc-lite/collab';
 import { PropertyValueType } from '@ifc-lite/data';
 import { seedModelingSession, MODEL_ID, STOREY, UPPER_STOREY } from '@/test/modeling-session-fixture';
 import { useViewerStore } from '@/store';
@@ -119,6 +120,7 @@ it('#9296 wall offset controls preserve a storey top and undo each edit once', (
   assert.ok('expressId' in wall);
   const ui = render(<WallTopRow modelId={MODEL_ID} wallId={wall.expressId} />);
   assert.match(ui.textContent!, /To slab or roof…/);
+  click(ui.querySelector('input[value="storeyAbove"]')!);
   const top = ui.querySelector<HTMLInputElement>('#wall-top-offset')!;
   type(top, '-0.2'); blur(top);
   assert.equal(top.value, '-0.200');
@@ -177,6 +179,7 @@ it('#9296 the edited top offset follows a later floor-to-floor change', () => {
   const wall = s.addWall(MODEL_ID, STOREY, { Start: [0, 0, 0], End: [4, 0, 0], Height: 3, Thickness: .2 });
   assert.ok('expressId' in wall);
   const ui = render(<WallTopRow modelId={MODEL_ID} wallId={wall.expressId} />);
+  click(ui.querySelector('input[value="storeyAbove"]')!);
   const top = ui.querySelector<HTMLInputElement>('#wall-top-offset')!;
   type(top, '-0.2'); blur(top);
   act(() => { assert.ok(commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'level', edit: { kind: 'floorHeight', storeyId: STOREY, Height: 3.4 } }).ok); });
@@ -203,6 +206,7 @@ it('#9296 base offset on a fixed wall moves the wall without changing height and
   const wall = s.addWall(MODEL_ID, STOREY, { Start: [0, 0, 0], End: [4, 0, 0], Height: 3, Thickness: .2 });
   assert.ok('expressId' in wall);
   const ui = render(<WallTopRow modelId={MODEL_ID} wallId={wall.expressId} />);
+  click(ui.querySelector('input[value="storeyAbove"]')!);
   const base = ui.querySelector<HTMLInputElement>('#wall-base-offset')!;
   type(base, '5'); blur(base);
   assert.match(ui.querySelector('[role="alert"]')!.textContent!, /at least/);
@@ -211,4 +215,47 @@ it('#9296 base offset on a fixed wall moves the wall without changing height and
   type(base, '0.5'); blur(base);
   assert.equal(s.readWallEndpoints(MODEL_ID, wall.expressId)!.height, 3);
   assert.equal(s.readWallEndpoints(MODEL_ID, wall.expressId)!.start[2], .5);
+});
+
+it('#9296 roof coverage refusal appears inline and the existing target can be picked again', () => {
+  const s = useViewerStore.getState();
+  const wall = s.addWall(MODEL_ID, STOREY, { Start: [1, 1, 0], End: [4, 1, 0], Height: 3, Thickness: .2 });
+  const roof = s.addRoof(MODEL_ID, STOREY, { Position: [20, 20, 4], Width: 6, Depth: 6, Thickness: .25, EdgeSlopes: [Math.PI / 6, 0, Math.PI / 6, 0] });
+  const slab = s.addSlab(MODEL_ID, STOREY, { Position: [0, 0, 3.4], Width: 6, Depth: 6, Thickness: .3, ExtrudedDirection: [0, 0, -1] });
+  assert.ok('expressId' in wall && 'expressId' in roof && 'expressId' in slab);
+  const ui = render(<WallTopRow modelId={MODEL_ID} wallId={wall.expressId} />);
+  click(ui.querySelector('input[value="element"]')!);
+  act(() => selectPickedGlobalId(roof.expressId));
+  assert.match(ui.querySelector('[role="alert"]')!.textContent!, /does not cover/);
+  assert.equal(s.readWallEndpoints(MODEL_ID, wall.expressId)!.height, 3);
+  act(() => selectPickedGlobalId(slab.expressId));
+  const repick = [...ui.querySelectorAll('button')].find(button => button.textContent === 'Pick another slab or roof…');
+  assert.ok(repick);
+  click(repick);
+  assert.ok(ui.querySelector('[role="status"]'));
+  press(window, 'Escape');
+  assert.equal(readWallTop(MODEL_ID, wall.expressId).top, 'element');
+});
+
+
+it('#9296 picked attachment publishes its constraint to the collaboration property channel', () => {
+  const s = useViewerStore.getState(), doc = createCollabDoc();
+  createEntity(doc, '/Wall', { ifcClass: 'IfcWall' });
+  const wall = s.addWall(MODEL_ID, STOREY, { Start: [1, 1, 0], End: [4, 1, 0], Height: 3, Thickness: .2 });
+  const slab = s.addSlab(MODEL_ID, STOREY, { Position: [0, 0, 3.4], Width: 6, Depth: 6, Thickness: .3, ExtrudedDirection: [0, 0, -1] });
+  assert.ok('expressId' in wall && 'expressId' in slab);
+  const mirror = s.mirrorPropertyEdit;
+  useViewerStore.setState({ mirrorPropertyEdit: (_model, id, pset, name, value) => {
+    assert.equal(id, wall.expressId);
+    assert.equal(typeof value, 'string');
+    setPropertyValue(doc, '/Wall', pset, name, { type: 'IfcLabel', value: String(value) });
+  } });
+  try {
+    const ui = render(<WallTopRow modelId={MODEL_ID} wallId={wall.expressId} />);
+    click(ui.querySelector('input[value="element"]')!);
+    act(() => selectPickedGlobalId(slab.expressId));
+    assert.equal(getPropertyValue(doc, '/Wall', 'IfcLite_StoreyAttachment', 'TopConstraint')?.value,
+      useViewerStore.getState().mutationViews.get(MODEL_ID)!.getNewEntity(slab.expressId)!.attributes[0]);
+    assert.equal(getPropertyValue(doc, '/Wall', 'IfcLite_StoreyAttachment', 'TopBinding')?.value, 'Explicit');
+  } finally { useViewerStore.setState({ mirrorPropertyEdit: mirror }); doc.destroy(); }
 });

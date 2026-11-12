@@ -41,6 +41,7 @@ export const modelingCommandEn = {
   'modelingCommand.wall.alignRight': 'Right',
   'modelingCommand.wall.top': "Wall top",
   'modelingCommand.wall.topStoreyAbove': 'To storey above',
+  'modelingCommand.wall.repickTop': 'Pick another slab or roof…',
   'modelingCommand.wall.topElement': 'To slab or roof…',
   'modelingCommand.wall.pickTop': 'Click a slab or roof · Esc cancels',
   'modelingCommand.wall.topOffset': 'Top offset (m)',

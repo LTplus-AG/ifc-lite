@@ -43,7 +43,7 @@ for (const variant of ['fixed', 'absolute'] as const) {
       assert.ok(bounds);
       // Guarantee overlap rather than rely on particular review row counts.
       // Only position changes: the toast keeps its production stacking rules.
-      await page.getByRole('status').evaluate((region, point) => {
+      await page.locator('[role="status"]').evaluate((region, point) => {
         const stack = region.parentElement!;
         stack.style.left = `${point.x}px`;
         stack.style.top = `${point.y}px`;
@@ -57,11 +57,11 @@ for (const variant of ['fixed', 'absolute'] as const) {
       });
       assert.equal(exportReceivesPointer, true, 'Export must receive the pointer through overlapping toasts');
       // Outside the panel, the modal scrim must also intercept toast actions.
-      await page.getByRole('status').evaluate((region) => {
+      await page.locator('[role="status"]').evaluate((region) => {
         region.parentElement!.style.left = '0';
         region.parentElement!.style.top = '0';
       });
-      const action = page.getByRole('button', { name: 'Draw on', exact: true });
+      const action = page.getByRole('button', { name: 'Draw on', exact: true, includeHidden: true });
       const actionIsCovered = () => action.evaluate((element) => {
         const r = element.getBoundingClientRect();
         return !element.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2));

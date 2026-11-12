@@ -399,7 +399,9 @@ describe('structuralGlyphs local frames of curve and surface items', () => {
     expect(rest).toEqual([]);
     expect([point.distribution, point.magnitude, point.relative]).toEqual(['point', 100, 1]);
     close(point.position, [5, 1, 0]);
-    for (const g of arrows(glyphs, 95)) expect([g.distribution, g.relative]).toEqual(['linear', 1]);
+    const line = arrows(glyphs, 95);
+    expect(line).toHaveLength(5);
+    for (const g of line) expect([g.distribution, g.relative]).toEqual(['linear', 1]);
   });
 });
 
@@ -455,7 +457,9 @@ describe('structuralGlyphs on synthetic data, one kind each', () => {
     row.forEach((g, i) => close(g.position, [1, i * 0.5, 0.5]));
     row.forEach((g) => close(g.kind === 'force' ? g.direction : undefined, [0, 0, -1]));
     // LOCAL_COORDS on M1: x along the edge (+Y), z the member Axis (+Z), so local +Y is world -X.
-    bySource(glyphs, 93).forEach((g) => close(g.kind === 'force' ? g.direction : undefined, [-1, 0, 0]));
+    const local = bySource(glyphs, 93);
+    expect(local.map((g) => g.kind)).toEqual(Array(5).fill('force'));
+    local.forEach((g) => close(g.kind === 'force' ? g.direction : undefined, [-1, 0, 0]));
     const lattice = bySource(glyphs, 95);
     expect(lattice).toHaveLength(9);
     for (const g of lattice) {

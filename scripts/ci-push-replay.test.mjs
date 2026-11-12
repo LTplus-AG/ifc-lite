@@ -215,6 +215,10 @@ test('workflowsKeyingCaches is unknown when a hashFiles might reach a workflow f
     ['test', "key: ${{ hashFiles('a',\n  '**/*.yaml') }}"],
     ['test', 'uses: some-org/some-repo/.github/workflows/r.yml@main'],
     ['test', 'uses: some-org/some-repo/.github/workflows@main'],
+    // A tag or anchor in front of a block scalar or a quoted value.
+    ['test', "    - run: !!str |\n        # ${{ hashFiles('.github/workflows/o.yml') }}"],
+    ['test', "env:\n  K: !!str \"a\n    # ${{ hashFiles('.github/workflows/o.yml') }}\""],
+    ['test', "env:\n  K: &k 'a'"],
     // A quoted scalar over several lines: its `#` or `b: |` lines are text, not YAML.
     ['test', "key: \"x\n        #${{ hashFiles('.github/workflows/x.yml') }}\""],
     ['test', "key: \"a\n        b: |\n          ${{ hashFiles('.github/workflows/x.yml') }}\""],

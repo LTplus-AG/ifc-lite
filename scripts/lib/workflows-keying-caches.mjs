@@ -16,8 +16,12 @@
  *
  * THE SCAN IS AN ALLOW-LIST. Every `uses:` value, `cache-dependency-path:`
  * value and hashFiles argument must be one of a few plain forms; anything else
- * (a YAML tag, alias, escape, flow list, block scalar, expression, `~`, `..`)
- * makes the answer unknown, and the caller blocks every workflow file. Each
+ * (an escape, flow list, block scalar, expression, `~`, `..`) makes the answer
+ * unknown, and the caller blocks every workflow file. So does any YAML file
+ * with a tag, anchor or alias at the start of a block-style value or as a key,
+ * a hex or unicode escape, a complex key, an escaped line break or a quoted
+ * scalar continuing over several lines, outside block scalars and comment
+ * lines. Not covered: those forms inside a flow mapping (`{a: !x b}`). Each
  * allowed pattern is then judged for whether it can reach
  * `.github/workflows/<x>.yml`, directories included, since hashFiles hashes
  * every file below a matched one. Patterns are judged relative to the workspace
@@ -176,6 +180,11 @@ function judgePattern(pattern) {
  * line. Inside such a scalar a `#` line or a `key: |` line is text, which the line-based
  * scan would read as a comment or a block scalar.
  */
+// A tag (`!!str`), anchor (`&a`) or alias (`*a`) where a block-style value starts: the
+// line then does not show the value's form (`run: !!str |`, `K: !!str "a`), so the
+// block-scalar and quote tracking below cannot be trusted.
+const VALUE_PROPERTY = /^[ \t]*(?:-[ \t]+)*(?:[^\s#'"][^#'"]*?[ \t]*:[ \t]+)?[!&*]\S/;
+
 function opensMultilineQuote(line) {
   let single = false;
   let double = false;
@@ -223,6 +232,7 @@ export function scanFile(path, text) {
     // Neither block scalar text nor a comment line is YAML structure.
     const yamlLines = lines.filter((line, i) => !inBlock.has(i) && !isComment(line)).join('\n');
     if (YAML_HIDDEN.test(yamlLines)) return { unknown: `${path} has a YAML escape or complex key the scan cannot read through` };
+    if (lines.some((line, i) => !inBlock.has(i) && !isComment(line) && VALUE_PROPERTY.test(line))) return { unknown: `${path} has a YAML tag, anchor or alias on a value` };
     if (lines.some((line, i) => !inBlock.has(i) && !isComment(line) && opensMultilineQuote(line))) return { unknown: `${path} has a quoted scalar over several lines` };
     if (lines.some((line, i) => !inBlock.has(i) && !isComment(line) && ESCAPED_BREAK.test(line))) return { unknown: `${path} has an escaped line break outside a block scalar` };
     for (const [key, out] of [['uses', uses], ['cache-dependency-path', cacheDependencyPaths]]) {

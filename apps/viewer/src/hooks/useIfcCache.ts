@@ -245,7 +245,8 @@ export function useIfcCache() {
         const shards = readCachedInstancedShards({ dataStore, cacheBuffer, cacheBlob, headerInfo, geometrySection });
         if (shards.length > 0 && !adopted) enqueueInstancedShards(modelId, shards, shardGeneration);
 
-        setIfcDataStore(dataStore);
+        // Measurement (post-pixel attribution): the store write, with its synchronous subscribers.
+        trace.span('cache.publishStore', () => setIfcDataStore(dataStore));
 
         // Cold-storage provider (issue #1682 phase 3b): with this wired the
         // scene may drop CPU meshData for cold chunks and restore them from

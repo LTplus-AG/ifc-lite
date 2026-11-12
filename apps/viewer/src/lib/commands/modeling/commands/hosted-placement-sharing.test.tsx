@@ -13,7 +13,7 @@ import { act } from 'react';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
-import { readHostedFill, readWallJoinTarget } from '@ifc-lite/create';
+import { readHostOpeningExtents, readHostedFill, readWallJoinTarget } from '@ifc-lite/create';
 import { IfcAPI, initSync } from '@ifc-lite/wasm';
 import { AnchorEntityReader } from '../../../../../../../packages/create/src/in-store/resolve-anchor.js';
 import { insideMesh, meshWalls } from '../../../../../../../packages/create/src/in-store/wall-join-mesh.oracle.js';
@@ -136,3 +136,28 @@ for (const mode of ['single', 'multi'] as const) for (const unit of ['metre', 'm
     });
   });
 }
+
+// #9296 H: a shaft uses the same host-relative graph after export/reload.
+for (const unit of ['metre', 'millimetre'] as const) it(`slab shaft in ${unit} preserves its source host placement and one-step Undo (#9296)`, async () => {
+  await seedModelingSession({ unit, storeyOffset: [3,3] });
+  const host = built(state().addSlab(MODEL_ID, STOREY, { Position: [5,5,0], Width: 5, Depth: 4, Thickness: .2, ExtrudedDirection: [0,0,-1] }));
+  const sourceText = exportModel();
+  await seedModelingSession({ step: sourceText });
+  const { store, view } = live(), reader = new AnchorEntityReader(store, view);
+  const originalHost = reader.entity(host);
+  const restore = setRequestRemesh(() => {});
+  try {
+    state().startCommand('opening.place');
+    act(() => { commandPointerMove(at(7,7)); commandPointerDown(at(7,7)); });
+    const cuts = readHostOpeningExtents(store, host, view);
+    assert.equal(cuts.cuts.length, 1, 'a real host-relative cut was created');
+    assert.deepEqual(reader.entity(host), originalHost, 'source placement and representation remain shared unchanged');
+    const nativeScale = unit === 'metre' ? 1 : 1000;
+    const cut = cuts.cuts[0].bounds;
+    assert.ok(Math.abs((cut.min[0]+cut.max[0])/2/nativeScale - 2) < 1e-6);
+    assert.ok(Math.abs((cut.min[1]+cut.max[1])/2/nativeScale - 2) < 1e-6);
+    state().undo(MODEL_ID);
+    assert.equal(readHostOpeningExtents(store, host, view).cuts.length, 0);
+    assert.deepEqual(reader.entity(host), originalHost);
+  } finally { restore(); }
+});

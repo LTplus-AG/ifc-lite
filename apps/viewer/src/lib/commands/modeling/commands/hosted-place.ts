@@ -20,6 +20,7 @@
  * undo step.
  */
 
+import { slabCutFits } from './hosted-slab-fit.js';
 import type { TranslationKey } from '@/i18n';
 import type { AuthoredElementKind } from '@/store/slices/authoringDefaultsSlice';
 import type { HostedFillKind, HostedFillSpec } from '@/store/slices/mutation-hosted-fill';
@@ -43,6 +44,8 @@ export interface HostedPlaceGesture {
   readonly offsetLock: number | null;
   /** A bare opening's size and sill (a door's or window's are the kind's defaults). */
   readonly opening: OpeningSize;
+  readonly shaft: { readonly Width: number; readonly Depth: number };
+  readonly position: readonly [number, number] | null;
 }
 
 const OPENING_DEFAULT: OpeningSize = { Width: 1, Height: 1, Sill: 1 };
@@ -76,6 +79,7 @@ function fits(kind: HostedFillKind, g: HostedPlaceGesture, ctx: Ctx): boolean {
   const { host, offset } = g;
   if (!host || offset === null) return false;
   const { Width, Height, Sill } = hostedSize(kind, g, ctx);
+  if (host.hostKind === 'slab') return kind === 'opening' && slabCutFits(host, g.position, g.shaft.Width, g.shaft.Depth);
   return offset - Width / 2 >= host.x[0] - FIT_EPS && offset + Width / 2 <= host.x[1] + FIT_EPS
     && Sill >= host.z[0] - FIT_EPS && Sill + Height <= host.z[1] + FIT_EPS;
 }
@@ -84,6 +88,7 @@ function fits(kind: HostedFillKind, g: HostedPlaceGesture, ctx: Ctx): boolean {
 function openingField(id: keyof OpeningSize, labelKey: TranslationKey): CommandField<HostedPlaceGesture> {
   return {
     id: id.toLowerCase(), labelKey, unit: 'm', group: id === 'Sill' ? 'place' : 'dims',
+    hidden: (g) => g.host?.hostKind === 'slab',
     read: (g) => g.opening[id],
     write: (g, v) => (id === 'Sill' ? v >= 0 : v > 0) ? { ...g, opening: { ...g.opening, [id]: v } } : g,
   };
@@ -100,13 +105,19 @@ function sillDefaultField(kind: AuthoredElementKind): CommandField<HostedPlaceGe
 
 const OFFSET_FIELD: CommandField<HostedPlaceGesture> = {
   id: 'offset', labelKey: 'hostedPlace.field.offset', unit: 'm', group: 'place',
+  hidden: (g) => g.host?.hostKind === 'slab',
   read: (g) => g.offsetLock ?? g.offset,
   write: (g, v) => ({ ...g, offsetLock: v, offset: g.host ? v : g.offset }),
 };
 
 function fieldsOf(kind: HostedFillKind): readonly CommandField<HostedPlaceGesture>[] {
   if (kind === 'opening') {
-    return [OFFSET_FIELD, openingField('Sill', 'hostedPlace.field.sill'),
+    return [
+      ...(['Width', 'Depth'] as const).map((id): CommandField<HostedPlaceGesture> => ({
+        id: `shaft${id}`, labelKey: id === 'Width' ? 'modelingCommand.field.width' : 'modelingCommand.field.depth', unit: 'm', group: 'dims',
+        hidden: g => g.host?.hostKind !== 'slab', read: g => g.shaft[id],
+        write: (g, v) => v > 0 ? { ...g, shaft: { ...g.shaft, [id]: v } } : g,
+      })), OFFSET_FIELD, openingField('Sill', 'hostedPlace.field.sill'),
       openingField('Width', 'modelingCommand.field.width'), openingField('Height', 'modelingCommand.field.height')];
   }
   return [OFFSET_FIELD, sillDefaultField(kind),
@@ -116,6 +127,7 @@ function fieldsOf(kind: HostedFillKind): readonly CommandField<HostedPlaceGestur
 /** The builder parameters for the gesture, in the host's frame. */
 function specOf(kind: HostedFillKind, g: HostedPlaceGesture, ctx: Ctx): HostedFillSpec {
   const { Width, Height, Sill } = hostedSize(kind, g, ctx);
+  if (kind === 'opening' && g.host?.hostKind === 'slab' && g.position) return { kind, params: { Position: [...g.position], ...g.shaft } };
   const Offset = g.offset ?? 0;
   if (kind === 'opening') return { kind, params: { Offset, Sill, Width, Height } };
   const FrameThickness = dimOf(ctx, kind, 'FrameThickness');
@@ -123,7 +135,7 @@ function specOf(kind: HostedFillKind, g: HostedPlaceGesture, ctx: Ctx): HostedFi
 }
 
 function makeHostedPlace(kind: HostedFillKind): ModelingCommand<HostedPlaceGesture> {
-  const init = (): HostedPlaceGesture => ({ host: null, offset: null, offsetLock: null, opening: OPENING_DEFAULT });
+  const init = (): HostedPlaceGesture => ({ host: null, offset: null, offsetLock: null, opening: OPENING_DEFAULT, shaft: { Width: 1.5, Depth: 2 }, position: null });
   return {
     id: `${kind}.place`,
     labelKey: LABEL[kind],
@@ -134,8 +146,8 @@ function makeHostedPlace(kind: HostedFillKind): ModelingCommand<HostedPlaceGestu
     aimsAtElement: () => true,
     snapQuery: () => ({ anchor: null, chain: [], locks: {} }),
     pointerMove(g, s, ctx) {
-      const host = hostUnderCursor(ctx, s);
-      return { ...g, host, offset: placeOn(host, s.local, g.offsetLock, hostedSize(kind, g, ctx).Width) };
+      const host = hostUnderCursor(ctx, s, kind === 'opening');
+      return { ...g, host, position: host ? toHostLocal(host, s.local) : null, offset: placeOn(host, s.local, g.offsetLock, hostedSize(kind, g, ctx).Width) };
     },
     pointerDown: () => ({ commit: true }),
     // The first click of a double-click placed it; the second must not stack another in the same spot.
@@ -146,7 +158,7 @@ function makeHostedPlace(kind: HostedFillKind): ModelingCommand<HostedPlaceGestu
       return fits(kind, g, ctx) ? { ok: true } : { ok: false, reasonKey: 'hostedPlace.outsideHost' };
     },
     commit(g, tx) {
-      if (!g.host || g.offset === null) throw new Error('Doors, windows and openings go in a wall: point at one on this storey');
+      if (!g.host || g.offset === null) throw new Error('Point at a supported host on this storey');
       const ctx = { get: () => tx.store };
       const placed = tx.store.addHostedFill(tx.modelId, g.host.expressId, specOf(kind, g, ctx), tx.batchId);
       if ('error' in placed) throw new Error(placed.error);
@@ -168,6 +180,14 @@ function makeHostedPlace(kind: HostedFillKind): ModelingCommand<HostedPlaceGestu
       const { host, offset } = g;
       if (!ctx.workplane || !host || offset === null) return [];
       const { Width, Height, Sill } = hostedSize(kind, g, ctx);
+      if (host.hostKind === 'slab' && g.position) {
+        const [x, y] = g.position, w = g.shaft.Width / 2, d = g.shaft.Depth / 2;
+        const outline = [[x-w,y-d],[x+w,y-d],[x+w,y+d],[x-w,y+d]]
+          .map(p => fromHostLocal(host, p as [number, number]));
+        const z = host.origin[2] - planeZ(ctx.workplane);
+        const mesh = prismGhostMesh(ctx.workplane, outline, z + host.z[0] - .01, z + host.z[1] + .01, commandGhostId(ctx.get()));
+        return mesh ? [mesh] : [];
+      }
       // Through the wall's body and a hair beyond, so it reads inside the host.
       const y0 = host.y[0] - 0.01, y1 = host.y[1] + 0.01;
       const outline = [[offset - Width / 2, y0], [offset + Width / 2, y0], [offset + Width / 2, y1], [offset - Width / 2, y1]]

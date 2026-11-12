@@ -16,7 +16,7 @@ import { IfcParser } from './index.js';
 import { extractStructuralOnDemand } from './structural-extractor.js';
 import { structuralGlyphs, type StructuralGlyph } from './structural-glyphs.js';
 import { structuralSupportKind } from './structural-support-kind.js';
-import { shapeStations } from './structural-glyph-stations.js';
+import { shapeCentre, shapeStations } from './structural-glyph-stations.js';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
@@ -399,6 +399,16 @@ describe('face stations', () => {
     expect(x).toBeLessThan(0.16);
     expect(y).toBeGreaterThan(0);
     expect(y).toBeLessThan(1);
+  });
+
+  it('anchors the single marker of a notched face on the face', () => {
+    const polygon: [number, number, number][] = [
+      [0, 0, 0], [1, 0, 0], [1, 0.16, 0], [0.16, 0.16, 0], [0.16, 0.84, 0], [1, 0.84, 0], [1, 1, 0], [0, 1, 0],
+    ];
+    const centre = shapeCentre({ kind: 'face', polygon });
+    expect(inside(centre, polygon)).toBe(true);
+    // A convex face keeps its centroid.
+    close(shapeCentre({ kind: 'face', polygon: [[0, 0, 0], [2, 0, 0], [2, 2, 0], [0, 2, 0]] }), [1, 1, 0]);
   });
 
   it('retains interior stations for a convex sliver', () => {

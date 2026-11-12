@@ -50,64 +50,76 @@ export function shapeFrame(shape: ItemShape, zHint: Vec3 | null): Frame | null {
   return n ? frameFrom(shape.polygon[0], n, sub(shape.polygon[1], shape.polygon[0])) : null;
 }
 
-/** Even-odd point-in-polygon in 2D. */
-function inside(p: readonly [number, number], poly: readonly (readonly [number, number])[]): boolean {
-  let hit = false;
+type Flat = readonly (readonly [number, number])[];
+
+/** Where the edges of a 2D polygon cross the line y = v (half-open, so a vertex counts once). */
+function crossings(poly: Flat, v: number): number[] {
+  const xs: number[] = [];
   for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
     const [xi, yi] = poly[i];
     const [xj, yj] = poly[j];
-    if ((yi > p[1]) !== (yj > p[1]) && p[0] < ((xj - xi) * (p[1] - yi)) / (yj - yi) + xi) hit = !hit;
+    if ((yi > v) !== (yj > v)) xs.push(((xj - xi) * (v - yi)) / (yj - yi) + xi);
   }
-  return hit;
+  return xs;
 }
 
-/** Widest interior span of a horizontal scanline, avoiding boundary-only midpoints. */
-function interiorPoint(poly: readonly (readonly [number, number])[], v0: number, v1: number): readonly [number, number] {
-  // Try the middle, then between lattice rows. Vertex-height gaps cover thin
-  // lobes too if those lines only touch edges.
+/** Even-odd point-in-polygon in 2D. */
+function inside(p: readonly [number, number], poly: Flat): boolean {
+  return crossings(poly, p[1]).filter((x) => p[0] < x).length % 2 === 1;
+}
+
+/**
+ * A point inside a 2D polygon of non-zero area: the midpoint of the widest
+ * span of a scanline, tried through the middle first, then between each pair
+ * of adjacent vertex heights. A line between two heights passes no vertex, so
+ * its crossings pair into spans whose midpoints are inside (even-odd).
+ */
+function interiorPoint(poly: Flat): readonly [number, number] {
   const heights = [...new Set(poly.map((p) => p[1]))].sort((a, b) => a - b);
-  const rows = [0.5, 1 / 3, 2 / 3].map((f) => v0 + (v1 - v0) * f);
-  rows.push(...heights.slice(1).map((v, i) => (heights[i] + v) / 2));
+  const rows = [(heights[0] + heights[heights.length - 1]) / 2, ...heights.slice(1).map((v, i) => (heights[i] + v) / 2)];
   for (const v of rows) {
-    const xs: number[] = [];
-    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-      const [xi, yi] = poly[i];
-      const [xj, yj] = poly[j];
-      if ((yi > v) !== (yj > v)) xs.push(((xj - xi) * (v - yi)) / (yj - yi) + xi);
-    }
-    xs.sort((a, b) => a - b);
+    const xs = crossings(poly, v).sort((a, b) => a - b);
+    let best: readonly [number, number] | undefined;
     let widest = 0;
-    let point: readonly [number, number] | undefined;
     for (let i = 0; i + 1 < xs.length; i += 2) {
-      const candidate = [(xs[i] + xs[i + 1]) / 2, v] as const;
-      const width = xs[i + 1] - xs[i];
-      if (width > widest && inside(candidate, poly)) {
-        widest = width;
-        point = candidate;
+      if (xs[i + 1] - xs[i] > widest) {
+        widest = xs[i + 1] - xs[i];
+        best = [(xs[i] + xs[i + 1]) / 2, v];
       }
     }
-    if (point) return point;
+    if (best) return best;
   }
-  const centre = [poly.reduce((s, p) => s + p[0], 0) / poly.length,
-    poly.reduce((s, p) => s + p[1], 0) / poly.length] as const;
-  if (inside(centre, poly)) return centre;
-  // Degenerate/numerically collapsed spans: pull the first vertex toward
-  // the local interior between its two neighbours.
-  const first = poly[0], next = poly[1], last = poly[poly.length - 1];
-  return [first[0] + (next[0] + last[0] - 2 * first[0]) * 1e-6,
-    first[1] + (next[1] + last[1] - 2 * first[1]) * 1e-6];
+  return poly[0];
+}
+
+/** A face in its own plane: the frame and the polygon's 2D coordinates in it. Null for a zero-area face. */
+function flatten(polygon: readonly Vec3[]): { frame: Frame; flat: Flat } | null {
+  const frame = shapeFrame({ kind: 'face', polygon: [...polygon] }, null);
+  if (!frame) return null;
+  return { frame, flat: polygon.map((p) => [dot(sub(p, frame.origin), frame.x), dot(sub(p, frame.origin), frame.y)] as const) };
+}
+
+const lift = (frame: Frame, u: number, v: number): Vec3 => add(frame.origin, add(scale(frame.x, u), scale(frame.y, v)));
+
+/** A point on a face: its centroid when that lies on it, else a scanline point (a notched face). */
+function faceCentre(polygon: readonly Vec3[]): Vec3 {
+  const c = centroid(polygon);
+  const face = flatten(polygon);
+  if (!face) return c;
+  const { frame, flat } = face;
+  const cc = [dot(sub(c, frame.origin), frame.x), dot(sub(c, frame.origin), frame.y)] as const;
+  return inside(cc, flat) ? c : lift(frame, ...interiorPoint(flat));
 }
 
 /**
  * A sparse lattice of points inside a face: up to 3 x 3 over its bounding box
- * in its own plane, keeping those inside the polygon. One interior point when
- * none falls inside (a thin sliver or a notched face, whose centroid may lie
- * outside it).
+ * in its own plane, keeping those inside the polygon. One point on the face
+ * when none falls inside (a thin sliver or a notched face).
  */
 function faceStations(polygon: readonly Vec3[]): Vec3[] {
-  const frame = shapeFrame({ kind: 'face', polygon: [...polygon] }, null);
-  if (!frame) return [centroid(polygon)];
-  const flat = polygon.map((p) => [dot(sub(p, frame.origin), frame.x), dot(sub(p, frame.origin), frame.y)] as const);
+  const face = flatten(polygon);
+  if (!face) return [centroid(polygon)];
+  const { frame, flat } = face;
   const us = flat.map((p) => p[0]);
   const vs = flat.map((p) => p[1]);
   const [u0, u1, v0, v1] = [Math.min(...us), Math.max(...us), Math.min(...vs), Math.max(...vs)];
@@ -116,19 +128,17 @@ function faceStations(polygon: readonly Vec3[]): Vec3[] {
     for (const fv of FACE_LATTICE) {
       const u = u0 + (u1 - u0) * fu;
       const v = v0 + (v1 - v0) * fv;
-      if (inside([u, v], flat)) out.push(add(frame.origin, add(scale(frame.x, u), scale(frame.y, v))));
+      if (inside([u, v], flat)) out.push(lift(frame, u, v));
     }
   }
-  if (out.length) return out;
-  const [u, v] = interiorPoint(flat, v0, v1);
-  return [add(frame.origin, add(scale(frame.x, u), scale(frame.y, v)))];
+  return out.length ? out : [faceCentre(polygon)];
 }
 
-/** Where a shape anchors a single marker: the vertex, the edge midpoint, or the face centroid. */
+/** Where a shape anchors a single marker: the vertex, the edge midpoint, or a point on the face. */
 export function shapeCentre(shape: ItemShape): Vec3 {
   if (shape.kind === 'vertex') return shape.point;
   if (shape.kind === 'edge') return lerp(shape.start, shape.end, 0.5);
-  return centroid(shape.polygon);
+  return faceCentre(shape.polygon);
 }
 
 /** Every station of a shape: one vertex, five points along an edge, or the face lattice. */

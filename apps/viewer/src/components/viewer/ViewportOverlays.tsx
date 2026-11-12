@@ -73,7 +73,8 @@ export function ViewportOverlays({
   // Exactly one of the loading/error cards ever renders (#5851 nit): a
   // failure can land while `loading` has not yet flipped false for an
   // unrelated concurrent load, and the two must never occupy the same
-  // centered viewport slot at once. Error wins.
+  // viewport at once. Error wins.
+  const loading = useViewerStore((s) => s.loading);
   const hasLoadError = useViewerStore((s) => s.error !== null);
   const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
   const isMobile = useViewerStore((s) => s.isMobile);
@@ -232,7 +233,7 @@ export function ViewportOverlays({
           deliberately plain, and this sits in that row. */}
       {isMobile && (objectCounts.hidden > 0 || objectCounts.ghosted > 0) && (
         // Above the Panels button, which shares the bottom row with the Home/zoom pill.
-        <output className="absolute flex flex-col items-end gap-1"
+        <output className={`absolute flex flex-col items-end gap-1 ${loading && !hasLoadError ? '-translate-y-12' : ''}`}
           style={{ right: MOBILE_NAV_ROW[navPlacement].right, bottom: mobileNavRowClearance(navPlacement) }}>
           <span className="text-xs text-foreground/80 tabular-nums">
             {[

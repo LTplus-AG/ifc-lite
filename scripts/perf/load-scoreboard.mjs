@@ -72,6 +72,10 @@ export function loadPlan(path) {
     f.set ??= 'tuning';
   }
   if (names.size === 0) throw new Error('plan.fixtures is empty');
+  // How long after navigation the boot lane reads idle memory (default 5 s, bootSample's own default).
+  if (plan.bootIdleAfterMs !== undefined && !(Number.isFinite(plan.bootIdleAfterMs) && plan.bootIdleAfterMs >= 0 && plan.bootIdleAfterMs <= 300_000)) {
+    throw new Error(`plan.bootIdleAfterMs must be 0..300000 ms (got ${plan.bootIdleAfterMs})`);
+  }
   return plan;
 }
 
@@ -311,7 +315,7 @@ async function startBrowserLane(plan, out) {
     // Same Chrome, flags, init scripts and shell readiness as the timed lanes; no file is opened.
     boot: ({ side, tag }) => {
       root = resolve(side.dist);
-      return bootSample({ chromium, tag, log,
+      return bootSample({ chromium, tag, log, idleAfterMs: plan.bootIdleAfterMs,
         launchOptions: { env: { ...process.env, VK_ICD_FILENAMES: NVIDIA_ICD, VK_DRIVER_FILES: NVIDIA_ICD }, executablePath, headless: false,
           viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1, args: CHROME_ARGS },
         initScripts: [[COUNT_FRAMES], [BOOT_OBSERVERS, { countersOff: true }]],

@@ -186,6 +186,7 @@ export function AddMaterialDialog({ modelId, entityId, entityType }: AddMaterial
     setMaterialName('');
     setCategory('');
     setDescription('');
+    setColour(DEFAULT_MATERIAL_COLOUR);
     setOpen(false);
   }, [modelId, entityId, materialName, category, description, colour, t]);
 

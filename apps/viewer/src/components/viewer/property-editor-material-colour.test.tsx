@@ -55,6 +55,9 @@ it('Properties creates Brick with a material appearance and replaces its old mat
   assert.equal(readRelatedLists(store(), 'IfcRelAssociatesMaterial', view()).filter(r => r.relatedIds.includes(wall)).length, 1);
   assert.match(String(exported()), /IFCMATERIALDEFINITIONREPRESENTATION/);
   assert.match(String(exported()), /0\.709803/);
+  click(ui.querySelector('button')!);
+  assert.equal(input('Material colour hex').value, '#808080', 'saving resets the next material colour');
+  click([...document.querySelectorAll('button')].find(b => b.textContent === 'Cancel')!);
   s().undo(MODEL_ID);
   assert.deepEqual(extractAllMaterialsOnDemand(store(), wall, view()).map(m => m.name), ['Concrete']);
 });

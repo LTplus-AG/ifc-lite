@@ -37,7 +37,10 @@ const device = {
   limits: { maxBufferSize: 1 << 28 },
   createBuffer: ({ usage }: { usage: number }) => ({ usage, destroy() {} }),
   createBindGroup: () => ({}),
-  queue: { writeBuffer: () => {} },
+  // A streaming finalize assembles each bucket's vertex buffer from its fragments' buffers
+  // with a GPU copy (#9684); the capture keeps its CPU copy of the merged batch either way.
+  createCommandEncoder: () => ({ copyBufferToBuffer: () => {}, finish: () => ({}) }),
+  queue: { writeBuffer: () => {}, submit: () => {} },
 } as unknown as GPUDevice;
 const pipeline = { getUniformBufferSize: () => 256, getBindGroupLayout: () => ({}) } as unknown as RenderPipeline;
 

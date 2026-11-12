@@ -6,6 +6,8 @@
 // on first read, not before the load is interactive. The first read must return
 // exactly what the eager build returned.
 import { describe, it } from 'node:test';
+import v8 from 'node:v8';
+import vm from 'node:vm';
 import assert from 'node:assert/strict';
 import { StringTable, EntityTableBuilder, PropertyTableBuilder, QuantityTableBuilder, RelationshipGraphBuilder, RelationshipType } from '@ifc-lite/data';
 import { BinaryCacheWriter, type CacheDataStore } from '@ifc-lite/cache';
@@ -43,7 +45,7 @@ async function entry() {
 function counting(): { trace: LoadTrace; builds: () => number } {
   let builds = 0;
   const trace = { ...NOOP_LOAD_TRACE, enabled: false, loadId: 't', start: 0,
-    span<T>(name: string, fn: () => T): T { if (name === 'cache.onDemandMaps') builds++; return fn(); },
+    span<T>(name: string, fn: () => T): T { if (name === 'cache.onDemandMaps.lazy') builds++; return fn(); },
     begin: () => -1, end: () => {}, record: () => {}, milestone: () => 0, setAttrs: () => {}, merge: () => {}, finish: () => 0, snapshot: () => null } as LoadTrace;
   return { trace, builds: () => builds };
 }
@@ -95,5 +97,42 @@ describe('cache hit on-demand maps', () => {
       assert.equal(dataStore[key], undefined);
     }
     assert.equal(builds(), 0);
+  });
+
+  it('does not keep the decoded cache entry alive while the maps are unread', async () => {
+    v8.setFlagsFromString('--expose-gc');
+    const gc = vm.runInNewContext('gc') as () => void;
+    const { trace } = counting();
+    let entryRef!: WeakRef<ArrayBuffer>;
+    let dataStore!: Awaited<ReturnType<typeof decodeCachedMetadata>>['dataStore'];
+    await (async () => {
+      const { buffer, sourceBuffer } = await entry();
+      // A disk-backed entry, as the web cache stores it: the decode materialises its own buffer.
+      const decoded = await decodeCachedMetadata({ buffer: new Blob([buffer]), sourceBuffer } as never, undefined, trace);
+      entryRef = new WeakRef(decoded.cacheBuffer);
+      dataStore = decoded.dataStore;
+    })();
+    for (let i = 0; i < 10 && entryRef.deref(); i++) { await new Promise((r) => setTimeout(r, 0)); gc(); }
+    assert.equal(entryRef.deref(), undefined, 'the decoded entry is collectable while the maps are unread');
+    assert.ok((dataStore.onDemandPropertyMap?.size ?? 0) > 0, 'and the maps still build on first read');
+  });
+
+  it('a failed build is reported once and leaves the maps absent; property reads fall back', async () => {
+    const { trace, builds } = counting();
+    const { dataStore } = await decodeCachedMetadata(await entry(), undefined, trace);
+    dataStore.relationships.getRelated = () => { throw new Error('corrupt relationship graph'); };
+    const warnings: unknown[] = [];
+    const warn = console.warn;
+    console.warn = (...args: unknown[]) => { warnings.push(args); };
+    try {
+      assert.doesNotThrow(() => dataStore.getProperties(11));
+      assert.equal(dataStore.onDemandPropertyMap, undefined);
+      assert.equal(dataStore.onDemandQuantityMap, undefined);
+      assert.ok(Object.prototype.hasOwnProperty.call(dataStore, 'onDemandMaterialMap'));
+    } finally {
+      console.warn = warn;
+    }
+    assert.equal(builds(), 1, 'tried once, not on every read');
+    assert.equal(warnings.length, 1, 'reported once');
   });
 });

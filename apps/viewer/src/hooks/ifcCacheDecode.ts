@@ -32,9 +32,9 @@ import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import type { LoadTrace } from '@ifc-lite/load-trace';
 import { deleteCached, type CacheResult } from '../services/cacheService.js';
 import { recordFirstVisible } from '../lib/perf/loadTrace.js';
-import { rebuildSpatialHierarchy, rebuildOnDemandMaps, type OnDemandMaps } from '../utils/spatialHierarchy.js';
+import { rebuildSpatialHierarchy, type OnDemandMaps } from '../utils/spatialHierarchy.js';
 import { calculateStoreyHeights } from '../utils/localParsingUtils.js';
-import { buildEntityIndexFromCachedColumns, defineLazyOnDemandMaps, ON_DEMAND_KEYS } from './ifcCacheDecodeStore.js';
+import { buildEntityIndexFromCachedColumns, defineLazyOnDemandMaps, lazyOnDemandMapsBuilder, ON_DEMAND_KEYS } from './ifcCacheDecodeStore.js';
 
 /**
  * Map the cache's numeric {@link SchemaVersion} enum to the runtime store's
@@ -70,7 +70,7 @@ function hydrateCacheStore(
     fileSize: number;
     entityIndex: IfcDataStore['entityIndex'];
     /** Builds the on-demand property/quantity/material maps; absent without a source. */
-    onDemandMaps?: () => OnDemandMaps;
+    onDemandMaps?: () => OnDemandMaps | null;
   },
 ): IfcDataStore {
   const storeData: IfcStoreData = {
@@ -152,7 +152,7 @@ export async function decodeCachedMetadata(
   const sourceBuffer = cacheResult.sourceBuffer ?? fallbackSourceBuffer;
   let source: Uint8Array = new Uint8Array(0);
   let entityIndex: IfcDataStore['entityIndex'] = { byId: new Map(), byType: new Map() };
-  let onDemandMaps: (() => OnDemandMaps) | undefined;
+  let onDemandMaps: (() => OnDemandMaps | null) | undefined;
 
   if (sourceBuffer) {
     source = new Uint8Array(sourceBuffer);
@@ -188,12 +188,7 @@ export async function decodeCachedMetadata(
     // Rebuild on-demand maps from relationships, on first read (see defineLazyOnDemandMaps).
     // Pass entityIndex which contains ALL entity types including IfcPropertySet/IfcElementQuantity
     // (the entity table may not include these since they're filtered during fresh parse).
-    const index = entityIndex;
-    onDemandMaps = () => trace.span('cache.onDemandMaps', () => rebuildOnDemandMaps(
-      cacheStore.entities,
-      cacheStore.relationships,
-      index
-    ));
+    onDemandMaps = lazyOnDemandMapsBuilder(cacheStore.entities, cacheStore.relationships, entityIndex, trace);
   } else {
     console.warn('[useIfcCache] No source buffer in cache - on-demand property extraction disabled');
   }

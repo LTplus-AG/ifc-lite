@@ -49,6 +49,7 @@ import autoprefixer from 'autoprefixer';
 import { chromium, type Browser, type Page } from 'playwright-core';
 import { contrastRatio, type Rgba } from './wcag';
 import { extractFirstStringLiteralAfter } from './extract-classname';
+import { contrastLaunchOptions, contrastSkipReason, resolveHostContrastBrowser } from './browser-resolution';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const VIEWER_ROOT = join(__dirname, '../../../');
@@ -92,33 +93,34 @@ export function compileAppCss(): Promise<string> {
 
 let browserPromise: Promise<Browser> | undefined;
 
+// CI's "Viewer tests" lane runs this under `tsx --test`, with no
+// `playwright install`, so it relies on the runner's preinstalled Google
+// Chrome (`channel: 'chrome'`), as every project in `playwright.config.ts`
+// does. Resolution order and the CI-versus-local rule: `browser-resolution.ts`.
+const CONTRAST_BROWSER = resolveHostContrastBrowser(process.env);
+
+/** Pass as `{ skip: CONTRAST_BROWSER_SKIP }` on every `it` that renders
+ *  through this harness: a reason string when no browser exists outside CI,
+ *  `false` otherwise. Not on a `describe`: node counts no tests under a
+ *  skipped suite, so the run summary would show nothing skipped. */
+export const CONTRAST_BROWSER_SKIP = contrastSkipReason(CONTRAST_BROWSER, process.env);
+
 function getBrowser(): Promise<Browser> {
   if (!browserPromise) {
-    // `channel: 'chrome'` launches the real, preinstalled Google Chrome
-    // instead of Playwright's own bundled `chromium_headless_shell` — the
-    // same reason every Playwright project in `playwright.config.ts` pins
-    // this channel (see e.g. `viewer-e2e-ci`'s comment). This suite runs
-    // inside `apps/viewer`'s `pnpm test` (tsx --test, sharded across CI's
-    // "Viewer tests" lane, not `playwright test`), and that lane's workflow
-    // step has no `playwright install`, so the bundled browser is never
-    // downloaded there — only `channel: 'chrome'` resolves without one, on
-    // both GitHub-hosted runners (Chrome preinstalled) and the self-hosted
-    // "ifclite" runner (already relied on by the E2E lane's identical
-    // `runs-on` expression). A developer machine needs real Chrome too, same
-    // as running `pnpm test:e2e`.
-    // Qualified fleet workers may provide their installed full Chrome for Testing.
-    // An explicit path fails closed; ordinary local/CI runs retain the Chrome channel.
-    const executablePath = process.env.IFCLITE_TEST_CHROME_EXECUTABLE;
-    browserPromise = chromium.launch({ headless: true,
-      ...(executablePath ? { executablePath } : { channel: 'chrome' }) });
+    if (CONTRAST_BROWSER.source === 'bundled-chromium') {
+      process.stderr.write(`contrast harness: no Google Chrome, using Playwright's bundled Chromium at ${CONTRAST_BROWSER.executablePath}\n`);
+    }
+    browserPromise = chromium.launch({ headless: true, ...contrastLaunchOptions(CONTRAST_BROWSER) });
   }
   return browserPromise;
 }
 
 /** Compiles the CSS and launches the browser up front. Call from a `before()`
  *  hook so that one-off cost (tens of seconds on a loaded runner) is not
- *  charged to the first test against the suite's per-test timeout. */
+ *  charged to the first test against the suite's per-test timeout. A no-op
+ *  when the suites are skipped for want of a browser. */
 export async function warmContrastBrowser(): Promise<void> {
+  if (CONTRAST_BROWSER_SKIP) return;
   await Promise.all([compileAppCss(), getBrowser()]);
 }
 

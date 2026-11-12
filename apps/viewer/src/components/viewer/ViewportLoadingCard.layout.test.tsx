@@ -9,7 +9,7 @@ import { act } from 'react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useViewerStore } from '@/store';
 import { cleanup, render } from '@/test/render.js';
-import { closeContrastBrowser, warmContrastBrowser, withThemedPage } from '@/test/contrast/render-harness.js';
+import { CONTRAST_BROWSER_SKIP, closeContrastBrowser, warmContrastBrowser, withThemedPage } from '@/test/contrast/render-harness.js';
 import { ViewportOverlays } from './ViewportOverlays';
 import { MobilePanelLauncher } from './MobilePanelLauncher';
 import { MobileToolbar } from './MobileToolbar';
@@ -24,7 +24,7 @@ afterEach(cleanup);
 for (const [width, height] of [[320, 640], [360, 740], [375, 553], [390, 844], [568, 320], [592, 360], [639, 360], [1280, 800], [1600, 1000]]) {
   for (const theme of ['light', 'dark'] as const) {
     for (const cancel of [true, false]) {
-      it(`loading card clears viewport controls at ${width}x${height}, ${theme}, cancel=${cancel} (#8802)`, async () => {
+      it(`loading card clears viewport controls at ${width}x${height}, ${theme}, cancel=${cancel} (#8802)`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
         const phone = width < 640;
         const docked = phone && height >= width;
         act(() => useViewerStore.setState({

@@ -41,7 +41,7 @@ import { describe, it, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { measureTooltipTextContrast, closeContrastBrowser, type Theme } from './render-harness';
+import { CONTRAST_BROWSER_SKIP, measureTooltipTextContrast, closeContrastBrowser, type Theme } from './render-harness';
 import { extractClassNameAfter } from './extract-classname';
 import { WCAG_AA_NORMAL_TEXT } from './wcag';
 
@@ -94,7 +94,7 @@ describe('tooltip secondary text meets WCAG AA on the real popover surface (#478
 
   for (const { name, file, anchor } of fixedCases) {
     for (const theme of THEMES) {
-      it(`${name} clears AA (${WCAG_AA_NORMAL_TEXT}:1) in ${theme} theme`, async () => {
+      it(`${name} clears AA (${WCAG_AA_NORMAL_TEXT}:1) in ${theme} theme`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
         const className = extractClassNameAfter(file, anchor);
         const ratio = await measureTooltipTextContrast(theme, className);
         assert.ok(
@@ -114,7 +114,7 @@ describe('non-vacuousness proof: invisible tooltip text reddens in every theme',
   const className = 'text-popover';
 
   for (const theme of THEMES) {
-    it(`matching foreground and surface in ${theme} theme measures near 1:1`, async () => {
+    it(`matching foreground and surface in ${theme} theme measures near 1:1`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       const ratio = await measureTooltipTextContrast(theme, className);
       assert.ok(
         ratio < WCAG_AA_NORMAL_TEXT,

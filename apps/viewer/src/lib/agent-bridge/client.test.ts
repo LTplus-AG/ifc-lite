@@ -171,6 +171,17 @@ describe('local agent bridge client: handshake (#9523)', () => {
   });
 });
 
+describe('the real tool definitions pass the bridge\'s own hello validator (#9523)', () => {
+  it('a hello carrying mainViewerToolDefinitions() is accepted by parseTabMessage: schema types, additionalProperties, limits', () => {
+    const tools = mainViewerBridgeTools();
+    const hello = JSON.stringify({ type: 'hello', protocol: BRIDGE_PROTOCOL_VERSION, pairingCode: 'ABCDEFGHJKMNPQRSTVWX', permission: 'read-only', tools, client: { name: 'ifc-lite viewer', version: 'test' } });
+    const parsed = parseTabMessage(hello);
+    assert.ok(parsed.ok, `the bridge would refuse the hello: ${parsed.ok ? '' : parsed.error}`);
+    assert.equal(parsed.value.type === 'hello' && parsed.value.tools.length, 27);
+    assert.ok(new TextEncoder().encode(hello).byteLength < BRIDGE_LIMITS.maxUnpairedBytes / 4);
+  });
+});
+
 describe('local agent bridge client: calls (#9523)', () => {
   it('dispatches a call and answers with the same session and id, shaped like the stdio server', async () => {
     const seen: unknown[] = [];
@@ -197,6 +208,14 @@ describe('local agent bridge client: calls (#9523)', () => {
       structuredContent: { code: 'MODEL_NOT_FOUND', message: 'No model is loaded in the viewer.', details: {}, hint: 'Open a model.' },
       isError: true,
     });
+  });
+
+  it('NaN and Infinity in a result arrive as null in a frame the bridge validator accepts', async () => {
+    const h = paired({ dispatch: async () => ({ text: 'volume unknown', structured: { volume: Number.NaN, area: Number.POSITIVE_INFINITY, rows: [1, Number.NEGATIVE_INFINITY] }, isError: false }) });
+    call(h.socket(), 'n1');
+    await flush();
+    const [result] = h.socket().results();
+    assert.deepEqual(result.result.structuredContent, { volume: null, area: null, rows: [1, null] });
   });
 
   it('a dispatch that throws is answered as INTERNAL_ERROR instead of escaping', async () => {

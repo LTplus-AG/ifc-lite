@@ -48,11 +48,10 @@ function Viewport({ renderer, startsInitialized = true }: { renderer: Renderer; 
     modelCount: s.models.size, modelIdToIndex: indices,
     presentInstancedModelIndices: new Set(indices.values()), isInitialized, isStreaming,
     geometryBoundsRef, clearColorRef, pendingMeshColorUpdates: null, pendingColorUpdates: null,
-    pendingMeshRemovals: null, pendingMeshTranslations: null, pendingMeshRotations: null, pendingInstancedShards: null,
+    pendingMeshRemovals: null, pendingMeshTranslations: null, pendingMeshRotations: null,
     clearPendingMeshColorUpdates: s.clearPendingMeshColorUpdates, clearPendingColorUpdates: s.clearPendingColorUpdates,
     clearPendingMeshRemovals: s.clearPendingMeshRemovals, pruneGeometryMeshes: s.pruneGeometryMeshes,
-    clearPendingMeshTranslations: s.clearPendingMeshTranslations, clearPendingMeshRotations: s.clearPendingMeshRotations,
-    clearInstancedShards: s.clearInstancedShards });
+    clearPendingMeshTranslations: s.clearPendingMeshTranslations, clearPendingMeshRotations: s.clearPendingMeshRotations });
   return null;
 }
 

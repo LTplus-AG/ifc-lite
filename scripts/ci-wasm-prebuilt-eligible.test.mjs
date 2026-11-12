@@ -22,14 +22,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { CACHE_SCRIPT_LIBS } from './lib/ci-wasm-cache-fixture.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const GATE = join(HERE, 'ci-wasm-prebuilt-eligible.sh');
 const TAG = '@ifc-lite/wasm@1.0.0';
+const LIST = 'scripts/wasm-build-inputs.txt';
+const PATHS = ['rust', 'Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'scripts/build-wasm.sh'];
 
 function git(cwd, ...args) {
   execFileSync('git', args, { cwd, stdio: 'pipe' });
@@ -50,6 +53,7 @@ function makeRepo() {
   writeFileSync(join(root, 'Cargo.toml'), '[workspace]\n');
   writeFileSync(join(root, 'rust-toolchain.toml'), '[toolchain]\n');
   writeFileSync(join(root, 'scripts', 'build-wasm.sh'), 'echo build\n');
+  writeFileSync(join(root, LIST), `# shared list\n${PATHS.join('\n')}\n`);
   git(root, 'init', '-q', '.');
   git(root, 'config', 'user.email', 'harness@example.invalid');
   git(root, 'config', 'user.name', 'harness');
@@ -65,15 +69,20 @@ function changeRustSource(root) {
   git(root, 'commit', '-q', '-m', 'change the rust source since the tag');
 }
 
-/** Install the gate, optionally with one WASM_SRC_PATHS entry misspelled. */
-function installGate(root, { typo = false } = {}) {
-  let src = readFileSync(GATE, 'utf-8');
-  if (typo) {
-    const before = src;
-    src = src.replace(/^WASM_SRC_PATHS=\(rust /m, 'WASM_SRC_PATHS=(rustXX ');
-    assert.notEqual(src, before, 'the WASM_SRC_PATHS line moved — update this harness');
+/**
+ * Install the gate, optionally with one list entry misspelled. The list is
+ * edited in the working tree only, which is where the gate reads it.
+ */
+function installGate(root, { typo = false, list } = {}) {
+  writeFileSync(join(root, 'scripts', 'ci-wasm-prebuilt-eligible.sh'), readFileSync(GATE, 'utf-8'));
+  // The gate reads its list through this script's `published-paths` subcommand.
+  mkdirSync(join(root, 'scripts', 'lib'), { recursive: true });
+  copyFileSync(join(HERE, 'ci-wasm-cache.mjs'), join(root, 'scripts', 'ci-wasm-cache.mjs'));
+  for (const lib of CACHE_SCRIPT_LIBS) {
+    copyFileSync(join(HERE, 'lib', lib), join(root, 'scripts', 'lib', lib));
   }
-  writeFileSync(join(root, 'scripts', 'ci-wasm-prebuilt-eligible.sh'), src);
+  if (typo) writeFileSync(join(root, LIST), `rustXX\n${PATHS.slice(1).join('\n')}\n`);
+  if (list !== undefined) writeFileSync(join(root, LIST), list);
 }
 
 function run(root) {
@@ -146,20 +155,14 @@ test('a path deleted since the tag still counts as named, and still diffs', () =
   rmSync(root, { recursive: true, force: true });
 });
 
-test('every WASM_SRC_PATHS entry in the shipped script names something in this repo', () => {
-  // The assertion above only fires in CI once the list is already wrong. This
-  // catches the same typo at review time, against the real checkout.
-  const src = readFileSync(GATE, 'utf-8');
-  const line = src.match(/^WASM_SRC_PATHS=\((.*)\)$/m);
-  assert.ok(line, 'WASM_SRC_PATHS is no longer a single-line array — update this harness');
-  const entries = line[1].split(/\s+/).filter(Boolean);
-  assert.ok(entries.length >= 5, `expected at least 5 source paths, got ${entries.length}`);
-  const repoRoot = join(HERE, '..');
-  for (const entry of entries) {
-    const listed = execFileSync('git', ['ls-tree', '-r', '--name-only', 'HEAD', '--', entry], {
-      cwd: repoRoot,
-      encoding: 'utf-8',
-    });
-    assert.ok(listed.trim().length > 0, `WASM_SRC_PATHS entry '${entry}' matches no tracked file`);
+test('a missing, comment-only or invalid shared list is refused, never read as "no paths changed"', () => {
+  for (const list of ['# nothing listed\n', 'rust\n/etc/passwd\n', null]) {
+    const root = makeRepo();
+    installGate(root, { list: list ?? '' });
+    if (list === null) rmSync(join(root, LIST));
+    const { verdict, log } = run(root);
+    assert.equal(verdict, 'false', log);
+    assert.match(log, /wasm-build-inputs\.txt is missing, empty or invalid/);
+    rmSync(root, { recursive: true, force: true });
   }
 });

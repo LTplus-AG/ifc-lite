@@ -17,6 +17,12 @@
  */
 
 import {
+  addStructuralPlanarActionToStore,
+  addStructuralSurfaceActionToStore,
+  addStructuralPointReactionToStore,
+  addStructuralCurveReactionToStore,
+  addStructuralSurfaceReactionToStore,
+  addStructuralResultGroupToStore,
   addStructuralAnalysisModelToStore,
   addStructuralCurveMemberToStore,
   addStructuralSurfaceMemberToStore,
@@ -30,6 +36,11 @@ import {
   connectStructuralActivityToItemInStore,
   connectStructuralMemberToConnectionInStore,
   resolveSpatialAnchor,
+  type StructuralSurfaceActionInStoreParams,
+  type StructuralPointReactionInStoreParams,
+  type StructuralCurveReactionInStoreParams,
+  type StructuralSurfaceReactionInStoreParams,
+  type StructuralResultGroupInStoreParams,
   type StructuralAnalysisModelInStoreParams,
   type StructuralCurveMemberInStoreParams,
   type StructuralSurfaceMemberInStoreParams,
@@ -95,6 +106,36 @@ export function createStructuralStoreBackend(
   };
 
   return {
+    addStructuralPlanarAction(modelId: string, params: StructuralSurfaceActionInStoreParams): EntityRef {
+      const model = resolved(modelId);
+      const result = addStructuralPlanarActionToStore(model.editor, groupAnchor(model), params);
+      return ref(model.modelId, result.activityId);
+    },
+    addStructuralSurfaceAction(modelId: string, params: StructuralSurfaceActionInStoreParams): EntityRef {
+      const model = resolved(modelId);
+      const result = addStructuralSurfaceActionToStore(model.editor, groupAnchor(model), params);
+      return ref(model.modelId, result.activityId);
+    },
+    addStructuralPointReaction(modelId: string, params: StructuralPointReactionInStoreParams): EntityRef {
+      const model = resolved(modelId);
+      const result = addStructuralPointReactionToStore(model.editor, groupAnchor(model), params);
+      return ref(model.modelId, result.activityId);
+    },
+    addStructuralCurveReaction(modelId: string, params: StructuralCurveReactionInStoreParams): EntityRef {
+      const model = resolved(modelId);
+      const result = addStructuralCurveReactionToStore(model.editor, groupAnchor(model), params);
+      return ref(model.modelId, result.activityId);
+    },
+    addStructuralSurfaceReaction(modelId: string, params: StructuralSurfaceReactionInStoreParams): EntityRef {
+      const model = resolved(modelId);
+      const result = addStructuralSurfaceReactionToStore(model.editor, groupAnchor(model), params);
+      return ref(model.modelId, result.activityId);
+    },
+    addStructuralResultGroup(modelId: string, params: StructuralResultGroupInStoreParams): EntityRef {
+      const model = resolved(modelId);
+      const result = addStructuralResultGroupToStore(model.editor, groupAnchor(model), params);
+      return ref(model.modelId, result.resultGroupId);
+    },
     addStructuralSurfaceMember(modelId: string, storeyExpressId: number, params: StructuralSurfaceMemberInStoreParams): EntityRef {
       const model = resolved(modelId);
       const result = addStructuralSurfaceMemberToStore(model.editor, resolveSpatialAnchor(model.store, storeyExpressId), params);

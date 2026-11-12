@@ -8,6 +8,7 @@
 
 import { moveWithGeneratedRooms, notifySkippedRoomRotation, rotateWithGeneratedRooms } from './mutation-placement-rooms.js';
 import { createRoofIn } from './mutation-roof-create.js';
+import { modelEditTarget, readModelEditTarget } from './mutation-modelling-records.js';
 import { moveAttachedTargetIn } from './mutation-attached-target-move.js';
 import { type StateCreator } from 'zustand';
 import type { ViewerState } from '../index.js';
@@ -819,6 +820,17 @@ function resolveEditReadContext(
   return { view, editor, dataStore, scale: getModelLengthUnitScale(dataStore) };
 }
 
+/**
+ * The view a WRITE goes through: the registered one, else created and
+ * registered now, as `modelEditTarget` does for every modelling command.
+ * These actions used to find a view only because markup restore registered
+ * one for every active model; since #9621 skips sources without markup, a
+ * blank model's first wall found none and was reverted (#9848). Read paths
+ * keep `mutationViews.get`: inspection must not register edit state (#8947).
+ */
+function writeView(get: () => ViewerState, modelId: string): MutablePropertyView | null {
+  return modelEditTarget(get(), modelId)?.view ?? null;
+}
 
 /**
  * Shared dispatcher for the wall/slab/beam in-store builders. Mirrors the
@@ -840,7 +852,7 @@ function runInStoreElementBuilder(
   const dataStore = model?.ifcDataStore;
   if (!dataStore) return { error: `No model loaded for id "${modelId}"` };
 
-  const view = state.mutationViews.get(modelId);
+  const view = writeView(get, modelId);
   if (!view) return { error: 'Model has no editable mutation view yet' };
 
   const editor = getOrCreateStoreEditor(get, set, modelId);
@@ -1231,7 +1243,7 @@ export const createMutationSlice: StateCreator<
     // rawest write in the slice (a direct STEP slot overwrite); every named
     // mutation above it is gated, so leaving this one open gated nothing.
     if (!canMutate(get(), modelId)) return null;
-    const view = get().mutationViews.get(modelId);
+    const view = writeView(get, modelId);
     if (!view) return null;
 
     const editor = getOrCreateStoreEditor(get, set, modelId);
@@ -1260,7 +1272,7 @@ export const createMutationSlice: StateCreator<
 
   setPositionalAttributesBatch: (modelId, updates, continuing) => {
     // Same gate as setPositionalAttribute; one store update for the whole batch.
-    if (updates.length === 0 || !canMutate(get(), modelId) || !get().mutationViews.get(modelId)) return null;
+    if (updates.length === 0 || !canMutate(get(), modelId) || !writeView(get, modelId)) return null;
     const editor = getOrCreateStoreEditor(get, set, modelId);
     return editor ? recordMutationBatch(set, modelId, positionalMutations(editor, modelId, updates), continuing) : null;
   },
@@ -1279,7 +1291,7 @@ export const createMutationSlice: StateCreator<
     // Read the existing placement chain WITHOUT committing the edit
     // yet — we'll route the actual write through `setPositionalAttribute`
     // below so undo/redo + dirty-tracking come for free.
-    const view = get().mutationViews.get(modelId);
+    const view = writeView(get, modelId);
     if (!view) return { ok: false, reason: 'Model has no editable mutation view yet' };
     const editor = getOrCreateStoreEditor(get, set, modelId);
     if (!editor) return { ok: false, reason: 'Failed to resolve store editor' };
@@ -1357,7 +1369,7 @@ export const createMutationSlice: StateCreator<
   setEntityPosition: (modelId, expressId, position) => {
     const denial = mutationDenial(get(), modelId);
     if (denial) return { ok: false, reason: denial };
-    const view = get().mutationViews.get(modelId);
+    const view = writeView(get, modelId);
     if (!view) return { ok: false, reason: 'Model has no editable mutation view yet' };
     const editor = getOrCreateStoreEditor(get, set, modelId);
     if (!editor) return { ok: false, reason: 'Failed to resolve store editor' };
@@ -1428,7 +1440,7 @@ export const createMutationSlice: StateCreator<
       if (updated.result.ok) presentEntityRotation(get, modelId, expressId, deltaYaw, updated.mutation, updated.batch);
       return updated.result;
     }
-    const view = get().mutationViews.get(modelId);
+    const view = writeView(get, modelId);
     const dataStore = get().models.get(modelId)?.ifcDataStore;
     if (view && dataStore) {
       const editor = getOrCreateStoreEditor(get, set, modelId);
@@ -1518,7 +1530,7 @@ export const createMutationSlice: StateCreator<
   resizeWall: (modelId, expressId, newStart, newEnd, batchId) => {
     const denial = mutationDenial(get(), modelId);
     if (denial) return { ok: false, reason: denial };
-    const view = get().mutationViews.get(modelId);
+    const view = writeView(get, modelId);
     if (!view) return { ok: false, reason: 'Model has no editable mutation view yet' };
     const editor = getOrCreateStoreEditor(get, set, modelId);
     if (!editor) return { ok: false, reason: 'Failed to resolve store editor' };
@@ -1595,7 +1607,7 @@ export const createMutationSlice: StateCreator<
 
   removeEntity: (modelId, expressId, opts) => {
     if (!canMutate(get(), modelId)) return false;
-    const view = get().mutationViews.get(modelId);
+    const view = writeView(get, modelId);
     if (!view) return false;
     const editor = getOrCreateStoreEditor(get, set, modelId);
     if (!editor) return false;
@@ -1677,13 +1689,10 @@ export const createMutationSlice: StateCreator<
     const model = state.models.get(modelId);
     const dataStore = model?.ifcDataStore;
     if (!dataStore) return { error: `No model loaded for id "${modelId}"` };
-    const view = state.mutationViews.get(modelId);
-    if (!view) return { error: 'Model has no editable mutation view yet' };
-
-    // For dryRun the editor isn't strictly needed — we still create
-    // one (cheap) so the helper signature can stay uniform.
-    const editor = getOrCreateStoreEditor(get, set, modelId);
-    if (!editor) return { error: 'Failed to create store editor' };
+    // A dry run is inspection: it reads through an unregistered view (#8947).
+    const target = options?.dryRun ? readModelEditTarget(state, modelId) : modelEditTarget(state, modelId);
+    if (!target) return { error: 'Model has no editable mutation view yet' };
+    const { view, editor } = target;
 
     let result: GenerateSpacesResult;
     try {
@@ -1732,7 +1741,7 @@ export const createMutationSlice: StateCreator<
     const dataStore = model?.ifcDataStore;
     if (!dataStore) return { error: `No model loaded for id "${modelId}"` };
 
-    const view = state.mutationViews.get(modelId);
+    const view = writeView(get, modelId);
     if (!view) return { error: 'Model has no editable mutation view yet' };
 
     const sources = copySources(state, modelId, [sourceExpressId]);

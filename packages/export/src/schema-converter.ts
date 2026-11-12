@@ -323,8 +323,6 @@ function convertRecord(
   // that would partially convert a record whose positions are untrustworthy.
   const args = requireTopLevelAttributes(attrsRaw);
 
-  const structural = structuralAttributes(entityType, args, fromSchema, toSchema);
-  if (structural !== null) return `${prefix}${entityType}(${structural});`;
   const newType = convertEntityType(entityType, fromSchema, toSchema);
 
   // A record whose attribute list references an id this export is OMITTING
@@ -337,6 +335,8 @@ function convertRecord(
     return resolveUnrepresentedEntity(prefix, entityType, attrsRaw, toSchema, random, withheldRefIds !== undefined);
   }
 
+  const structural = structuralAttributes(entityType, args, fromSchema, toSchema);
+  if (structural !== null) return `${prefix}${entityType}(${structural});`;
   // No representation in the target schema: an IFCPROXY keeping their
   // IfcProduct attributes (`productProxy`) preserves ids and references.
   if (shouldSkipEntity(newType, toSchema)) {

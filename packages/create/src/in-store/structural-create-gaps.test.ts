@@ -230,4 +230,26 @@ describe('structural CREATE gaps (#9668)', () => {
     expect(text).toContain(`(#${load},#${load}),((0.),(1.))`);
   });
 
+  it('rejects supplied malformed connection points and condition objects atomically (#9860 discussion_r4550515863)', async () => {
+    const { editor, anchor, view } = await fresh('IFC4');
+    const member = create.addStructuralCurveMemberToStore(editor, anchor, { Start: [0,0,0], End: [2,0,0] }).memberId;
+    const connection = create.addStructuralPointConnectionToStore(editor, anchor, { Position: [0,0,0] }).connectionId;
+    const before = view.getNewEntities().length;
+    for (const value of [false, 0, '', null]) {
+      const PointOnRelatedElement = value as unknown as [number, number, number];
+      expect(() => create.connectStructuralMemberToConnectionInStore(editor, anchor.ownerHistoryId, member, connection, undefined, {
+        ConnectionConstraint: { PointOnRelatingElement: [0,0,0], PointOnRelatedElement, EccentricityInX: 0.1, EccentricityInY: 0, EccentricityInZ: 0 },
+      })).toThrow(/finite points/);
+      for (const key of ['AdditionalConditions', 'ConnectionConstraint']) {
+        const options = { [key]: value } as unknown as Parameters<typeof create.connectStructuralMemberToConnectionInStore>[5];
+        expect(() => create.connectStructuralMemberToConnectionInStore(editor, anchor.ownerHistoryId, member, connection, undefined, options)).toThrow(/must be .*object/);
+      }
+      expect(view.getNewEntities()).toHaveLength(before);
+    }
+    const relationship = create.connectStructuralMemberToConnectionInStore(editor, anchor.ownerHistoryId, member, connection, undefined, {
+      ConnectionConstraint: { PointOnRelatingElement: [0,0,0], EccentricityInX: 0.1, EccentricityInY: 0, EccentricityInZ: 0 },
+    });
+    expect(editor.getEntityType(relationship)).toBe('IfcRelConnectsWithEccentricity');
+  });
+
 });

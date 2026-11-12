@@ -4,6 +4,7 @@
 
 
 import { editCommand } from '../lib/command-ui.mjs';
+import { meshIfc, bboxOfParts } from '../../probes/sdk/lib/parity.mjs';
 import { task } from '../lib/driver.mjs';
 import { escape, oracleModel, tool, typeFields } from '../lib/model-ui.mjs';
 
@@ -43,14 +44,19 @@ export default {
       const beforeMirror = (await oracleModel(s)).step;
       const original = beforeMirror.wallAxes().find(w => near(w.start[1],10,.01) && near(w.end[1],10,.01));
       const guid = original && beforeMirror.get(original.id).args[0];
-      let mirrored = null, restored = null;
+      let mirrored = null, restored = null, reflectedBounds = null, mirroredFile = null;
       tasks.push(await task(s, 'mirror y=10 wall about y=12', async () => {
         await selectAt(s, [[2,10,1.5]]);
         await editCommand(s,'element.mirror');
         await s.ui.clickWorld([0,12,0]);
         await s.ui.clickWorld([4,12,0]);
         await escape(s);
-        mirrored = (await oracleModel(s)).step;
+        const exported = await oracleModel(s);
+        mirrored = exported.step;
+        mirroredFile = { name:'ui.transforms-mirrored.ifc',bytes:Buffer.from(exported.text) };
+        const entity = mirrored.of('IFCWALL').find(w => w.args[0] === guid);
+        const meshes = await meshIfc(exported.text);
+        reflectedBounds = entity ? bboxOfParts(meshes.get(entity.id)?.parts ?? []) : null;
       }));
       if (mirrored) tasks.push(await task(s,'undo mirror restores the original wall',async () => {
         await s.ui.key('Control+z',{settle:800});
@@ -60,7 +66,6 @@ export default {
         const entity = step?.of('IFCWALL').find(w => w.args[0] === guid);
         return entity && step.wallAxes().find(w => w.id === entity.id);
       };
-      const reflected = mirrored?.wallAxes().find(w => near(w.start[1],14,.01) && near(w.end[1],14,.01) && near(w.length,4,.001));
       const undone = wallWithGuid(restored);
       tasks.push(await task(s, 'array: select the y=10 wall, Shift+A, count 3, spacing 1.5, two clicks for +Y', async () => {
         await selectAt(s, [[2, 10, 1.5]]);
@@ -78,12 +83,12 @@ export default {
       const rotated = axes.some((a) => near(a.end[0] - a.start[0], 0, 1e-3) && near(a.length, 4, 1e-3));
       const arrayed = axes.filter((a) => near(a.length, 4, 1e-3) && a.start[1] > 9).length;
       return {
-        tasks, notes, evidence: [shot],
+        tasks, notes, evidence: [shot], artifacts: { mirrorIfc: mirroredFile },
         checks: [
           { name: 'move by a typed 2 m', ok: moved, detail: axes.map((a) => `${fmt(a.start)}->${fmt(a.end)}`).join(' ') },
           { name: 'rotate by a typed 90 degrees', ok: rotated, detail: rotated ? 'a vertical 4 m wall exists' : 'no vertical wall' },
           { name: 'array makes 3 walls from one', ok: arrayed >= 3, detail: `${arrayed} walls in the array region` },
-          { name: 'Mirror reflects the selected wall about y=12', ok: !!reflected && near(reflected.start[1],14,.01) && near(reflected.end[1],14,.01) && near(reflected.length,4,.001) && mirrored.count('IFCWALL') === beforeMirror.count('IFCWALL'), detail: JSON.stringify(mirrored?.wallAxes()) ?? 'Mirror gesture did not produce an exported wall' },
+          { name: 'Mirror reflects the selected wall about y=12', ok: !!reflectedBounds && near(reflectedBounds.centre[1],14,.01) && near(reflectedBounds.min[0],0,.01) && near(reflectedBounds.max[0],4,.01) && near(reflectedBounds.size[1],.2,.005) && mirrored.count('IFCWALL') === beforeMirror.count('IFCWALL'), detail: JSON.stringify(reflectedBounds) ?? 'Mirror gesture did not produce an exported wall' },
           { name: 'Undo restores the mirrored wall to y=10', ok: !!undone && near(undone.start[1],10,.01) && near(undone.end[1],10,.01) && restored.count('IFCWALL') === beforeMirror.count('IFCWALL'), detail: JSON.stringify(undone) ?? 'No completed Mirror to undo' },
         ],
       };

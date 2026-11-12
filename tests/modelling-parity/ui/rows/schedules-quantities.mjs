@@ -32,7 +32,8 @@ export default {
       let totals = null, editedTotals = null;
       tasks.push(await task(s, 'group by Type and sum Length in the schedule', async () => {
         // Column menu is adjacent to its sortable header, not a list settings mutation.
-        const menu = name => s.page.getByRole('button', { name, exact: false }).first().locator('..').getByRole('button', { name: 'Column options', exact: true });
+        const menu = name => s.page.getByRole('button', { name: 'Column options', exact: true }).locator('..')
+          .filter({ has: s.page.getByRole('button', { name }) }).getByRole('button', { name: 'Column options', exact: true });
         // The former IFC Type attribute is labelled Class in the current UI.
         let typeMenu = menu(/^Type$/);
         if (!(await typeMenu.count())) {

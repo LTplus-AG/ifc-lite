@@ -65,6 +65,9 @@ export default {
       await s.ui.clickWorld([2,4,3.4]);
       await field(s,s.page.getByLabel('Thickness in metres',{exact:true}),.3);
       await switchStorey(s,'Level 1');
+      await s.ui.click(s.page.locator('[data-storey-context]').first());
+      await s.ui.click(s.page.getByRole('radio',{name:'Show all',exact:true}));
+      await s.ui.key('Escape');
       await s.harness.aim([12,12,8],[2.5,2,1.5]);
     }));
     let picked = null, invalidPick = null;

@@ -20,8 +20,10 @@
  * makes the answer unknown, and the caller blocks every workflow file. Each
  * allowed pattern is then judged for whether it can reach
  * `.github/workflows/<x>.yml`, directories included, since hashFiles hashes
- * every file below a matched one. Not detected: a key computed in a `run:` step
- * or a script from a workflow file's bytes, or by a remote action's other inputs.
+ * every file below a matched one. Patterns are judged relative to the workspace
+ * root, where Test checks the repository out (no checkout `path:`). Not
+ * detected: a key computed in a `run:` step or a script from a workflow file's
+ * bytes (a `key:` from a step output), or by a remote action's other inputs.
  */
 
 import { posix } from 'node:path';
@@ -44,10 +46,14 @@ function keyEntries(text, key) {
 }
 // In YAML (not in an action's scripts): a hex or unicode escape can spell a key or a call
 // the scan looks for (`"u\x73es":`, `hashFiles\x28`), and `? ` starts a complex key.
-const YAML_HIDDEN = /\\[xuU][0-9A-Fa-f]|^[ \t]*\?[ \t]/m;
+const YAML_HIDDEN = /\\[xuU][0-9A-Fa-f]|(?:^|[\s{[,])\?[ \t]/m;
 const IS_YAML = /\.ya?ml$/;
-// Expression function names are case-insensitive, and `hashFiles (` is a call.
-const HASHFILES = /hashFiles\s*\(/gi;
+// Expression function names are case-insensitive, and `hashFiles (` is a call (a `\t`
+// escape in a double-quoted scalar is whitespace too).
+const HASHFILES = /hashFiles(?:\s|\\t)*\(/gi;
+// An escaped line break in a double-quoted YAML scalar joins the lines (`hash\` newline
+// `Files(`). Joining every `\`-newline also matches what a shell does in run: blocks.
+const joinEscapedBreaks = (text) => text.replace(/\\\r?\n[ \t]*/g, '');
 const QUOTED_ARG = /^\s*(?:'([^']*)'|"([^"]*)")\s*([,)])/;
 
 // The allowed forms. A path is plain characters only: no escapes, `~`, `!`, braces or brackets.
@@ -164,8 +170,9 @@ export function workflowsKeyingCaches({ root, actionFiles, symlinks, readText })
       if (v === null) return { unknown: `${path} has a cache-dependency-path value the line does not show` };
       patterns.push(v);
     }
-    for (const m of text.matchAll(HASHFILES)) {
-      const args = hashFilesArgs(text, m.index + m[0].length);
+    const joined = joinEscapedBreaks(text);
+    for (const m of joined.matchAll(HASHFILES)) {
+      const args = hashFilesArgs(joined, m.index + m[0].length);
       if (args === null) return { unknown: `${path} calls hashFiles with an argument that is not a quoted literal` };
       // @actions/glob reads each line of a pattern as its own pattern, trimmed.
       patterns.push(...args.flatMap((a) => a.split('\n').map((line) => line.trim()).filter(Boolean)));

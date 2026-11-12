@@ -236,6 +236,7 @@ test('workflowsKeyingCaches is unknown when a hashFiles might reach a workflow f
     ['test', '- {with: {cache-dependency-path: .github/workflows/*.yml}, w: {cache-dependency-path: a}}'],
     ['test', '"u\\x73es": ./ci/setup'],
     ['test', '? uses\n: ./ci/setup'],
+    ['test', '      - ? uses\n        : ./ci/setup'],
     ['test', `key: "\${{ hashFiles\\x28'.github/workflows/w.yml') }}"`],
     ['action', '- uses: "\\u002E/ci/setup"'],
     ['test', '- uses: !!str ./ci/setup'],
@@ -263,7 +264,7 @@ test('workflowsKeyingCaches is unknown when a hashFiles might reach a workflow f
     assert.ok('unknown' in keyed(files), text);
   }  // @actions/glob trims each line of a pattern and reads it as its own pattern; a space
   // before the parenthesis is still a call.
-  for (const call of ["hashFiles('a\n  .github/workflows/x.yml')", "hashFiles(' .github/workflows/x.yml ')", "hashFiles ('.github/workflows/x.yml')"]) {
+  for (const call of ["hashFiles('a\n  .github/workflows/x.yml')", "hashFiles(' .github/workflows/x.yml ')", "hashFiles ('.github/workflows/x.yml')", "hash\\\n            Files('.github/workflows/x.yml')", "hashFiles\\t('.github/workflows/x.yml')"]) {
     assert.deepEqual(keyed({ [ROOT]: `key: \${{ ${call} }}` }), { files: ['.github/workflows/test.yml', '.github/workflows/x.yml'] }, call);
   }
   // `git show` of a directory prints a tree listing rather than failing: a local action

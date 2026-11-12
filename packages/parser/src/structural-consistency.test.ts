@@ -142,6 +142,11 @@ describe('structural-unconnected-member', () => {
     expect(issues.find((issue) => issue.entityId === 11)).toMatchObject({ severity: 'warning', globalId: 'M11' });
   });
 
+  it('counts a relationship whose connection has no GlobalId as a connection', () => {
+    const related = { ...member(11, 'IfcStructuralCurveMember'), IfcRelConnectsStructuralMember: [{ expressId: 50, RelatedStructuralConnection: 20 }] };
+    expect(ids(checkStructuralConsistency(model([connected(10), related]), []), 'structural-unconnected-member')).toEqual([]);
+  });
+
   it('does not run in a file that connects no member', () => {
     expect(ids(checkStructuralConsistency(model([member(10, 'IfcStructuralCurveMember'), member(11, 'IfcStructuralSurfaceMember')]), []), 'structural-unconnected-member')).toEqual([]);
   });

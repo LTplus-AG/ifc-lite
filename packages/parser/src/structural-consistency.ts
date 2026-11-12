@@ -32,7 +32,7 @@
 
 import { getInheritanceChain } from './ifc-schema.js';
 import { structuralCounterparts } from './structural-counterparts.js';
-import type { StructuralExtraction } from './structural-types.js';
+import type { StructuralExtraction, StructuralMemberInfo } from './structural-types.js';
 
 type Point = readonly [number, number, number];
 /** A straight line from its first point to its second, in IFC world metres, Z up. */
@@ -72,7 +72,9 @@ export interface StructuralConsistencyOptions {
    * Metres a curve member's end may lie off its physical element's line
    * before the axis-drift rule reports it. Default
    * `DEFAULT_AXIS_DRIFT_TOLERANCE` (0.05), the structural derivation's default
-   * node tolerance.
+   * node tolerance. A model derived with a larger node `tolerance` can move
+   * member ends up to that far off their element's axis at joints: check it
+   * with at least that tolerance.
    */
   axisDriftTolerance?: number;
 }
@@ -116,14 +118,41 @@ export const hasAnalyticalModel = (structural: StructuralExtraction): boolean =>
 
 const isA = (type: string, bases: readonly string[]): boolean => getInheritanceChain(type).some((name) => bases.includes(name));
 
-/** How far `p` lies from the infinite line through `line`; null for a degenerate line. */
-function offLine(p: Point, [a, b]: StructuralLine): number | null {
+/** How far the farther end of `line` lies from the infinite line through `axis`; null for a degenerate axis. */
+function offLine(line: StructuralLine, [a, b]: StructuralLine): number | null {
   const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
   const span = Math.hypot(d[0], d[1], d[2]);
   if (!(span > 1e-9)) return null;
-  const r = [p[0] - a[0], p[1] - a[1], p[2] - a[2]];
-  const along = (r[0] * d[0] + r[1] * d[1] + r[2] * d[2]) / span;
-  return Math.sqrt(Math.max(0, r[0] * r[0] + r[1] * r[1] + r[2] * r[2] - along * along));
+  return Math.max(...line.map((p) => {
+    const r = [p[0] - a[0], p[1] - a[1], p[2] - a[2]];
+    const along = (r[0] * d[0] + r[1] * d[1] + r[2] * d[2]) / span;
+    return Math.sqrt(Math.max(0, r[0] * r[0] + r[1] * r[1] + r[2] * r[2] - along * along));
+  }));
+}
+
+/** The axis-drift rule: each curve member with a line, against each linked element with an axis. */
+function axisDrift(
+  structural: StructuralExtraction,
+  factById: ReadonlyMap<number, PhysicalElementFact>,
+  { memberLines, physicalAxes }: StructuralGeometryFacts,
+  tolerance: number,
+): StructuralConsistencyIssue[] {
+  const issues: StructuralConsistencyIssue[] = [];
+  for (const member of structural.members) {
+    const line = memberLines.get(member.expressId);
+    for (const elementId of line ? structuralCounterparts(structural, member.expressId)?.expressIds ?? [] : []) {
+      const fact = factById.get(elementId);
+      const axis = physicalAxes.get(elementId);
+      const distance = line && fact && axis ? offLine(line, axis) : null;
+      if (!fact || distance === null || distance <= tolerance) continue;
+      issues.push({
+        severity: 'warning', rule: 'structural-axis-drift', entityId: member.expressId, globalId: member.globalId,
+        target: fact.expressId, targetGlobalId: fact.globalId, distance,
+        message: `${label(member.expressId, member.type, member.globalId)} lies ${distance.toFixed(3)} m off the axis of ${label(fact.expressId, fact.type, fact.globalId)} (tolerance ${tolerance} m)`,
+      });
+    }
+  }
+  return issues;
 }
 
 const label = (expressId: number, type: string, globalId: string) => `#${expressId} ${type}${globalId ? ` (${globalId})` : ''}`;
@@ -178,9 +207,11 @@ export function checkStructuralConsistency(
     }
   }
 
-  if (structural.members.some((item) => item.connectionGlobalIds.length > 0)) {
+  // A relationship counts even when its connection has no GlobalId to list.
+  const connected = (member: StructuralMemberInfo) => member.connectionGlobalIds.length > 0 || (member.IfcRelConnectsStructuralMember?.length ?? 0) > 0;
+  if (structural.members.some(connected)) {
     for (const member of structural.members) {
-      if (member.connectionGlobalIds.length > 0) continue;
+      if (connected(member)) continue;
       issues.push({
         severity: 'warning', rule: 'structural-unconnected-member', entityId: member.expressId, globalId: member.globalId,
         message: `${label(member.expressId, member.type, member.globalId)} is connected to no structural connection, while other members in this file are`,
@@ -188,25 +219,7 @@ export function checkStructuralConsistency(
     }
   }
 
-  for (const member of structural.members) {
-    const line = geometry?.memberLines.get(member.expressId);
-    if (!geometry || !line) continue;
-    for (const elementId of structuralCounterparts(structural, member.expressId)?.expressIds ?? []) {
-      const fact = factById.get(elementId);
-      const axis = geometry.physicalAxes.get(elementId);
-      if (!fact || !axis) continue;
-      const start = offLine(line[0], axis);
-      const end = offLine(line[1], axis);
-      if (start === null || end === null) continue;
-      const distance = Math.max(start, end);
-      if (distance <= tolerance) continue;
-      issues.push({
-        severity: 'warning', rule: 'structural-axis-drift', entityId: member.expressId, globalId: member.globalId,
-        target: fact.expressId, targetGlobalId: fact.globalId, distance,
-        message: `${label(member.expressId, member.type, member.globalId)} lies ${distance.toFixed(3)} m off the axis of ${label(fact.expressId, fact.type, fact.globalId)} (tolerance ${tolerance} m)`,
-      });
-    }
-  }
+  if (geometry) issues.push(...axisDrift(structural, factById, geometry, tolerance));
 
   return issues;
 }

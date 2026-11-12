@@ -41,15 +41,15 @@ async function scene(ctx) {
   const view = new mutations.MutablePropertyView(null, 'capability-checks');
   const editor = new mutations.StoreEditor(store, view);
   // Every rule, axis drift included: the clean file must report nothing at all.
-  const clean = checks(ctx.pkgs, store);
+  const axes = ctx.pkgs.create.structuralPhysicalAxes(store);
+  const clean = ctx.pkgs.parser.structuralConsistencyIssues(store, { physicalAxes: axes });
   if (clean.length) throw new Error(`the unedited fixture already reports ${clean.length} issue(s), e.g. ${clean[0].message}`);
   /** The checks on the exported edit; axis drift (the costly rule) only when asked. */
   const recheck = async ({ axes = false } = {}) => {
-    const text = new TextDecoder().decode(new exporter.StepExporter(store, view).export({ schema: file.fileSchema, applyMutations: true }).content);
-    const edited = await parseStore(ctx.pkgs, text);
+    const edited = await parseStore(ctx.pkgs, new exporter.StepExporter(store, view).export({ schema: file.fileSchema, applyMutations: true }).content);
     return axes ? checks(ctx.pkgs, edited) : ctx.pkgs.parser.structuralConsistencyIssues(edited);
   };
-  return { store, view, editor, recheck, structural: ctx.pkgs.parser.extractStructuralOnDemand(store) };
+  return { store, view, editor, axes, recheck, structural: ctx.pkgs.parser.extractStructuralOnDemand(store) };
 }
 
 /** Run `body` on a fresh scene and give every covered row its verdict. */
@@ -94,7 +94,7 @@ const unlinkedLoadBearing = probe('capability:check-unlinked-load-bearing', 'cap
 });
 
 const axisDrift = probe('capability:check-axis-drift', 'cap/check-axis-drift', async (pkgs, s) => {
-  const axes = pkgs.create.structuralPhysicalAxes(s.store);
+  const { axes } = s;
   const vertical = ([a, b]) => Math.hypot(b[0] - a[0], b[1] - a[1]) < 1e-9 * Math.abs(b[2] - a[2]);
   const found = [...membersByElement(s.structural)].find(([id]) => s.editor.getEntityType(id) === 'IfcColumn' && axes.has(id) && vertical(axes.get(id)));
   if (!found) throw new Error('no linked vertical IfcColumn with a readable axis');

@@ -52,6 +52,7 @@ import { notifyResourceRetry, resolveResourceRetryTier } from '../lib/resource-r
 import { publishLoadTrace } from '../lib/perf/activeLoadTrace.js';
 import { acquireFileBuffer, type AcquiredBuffer } from '../utils/acquireFileBuffer.js';
 import { buildGeometryCacheKey } from './geometryCacheKey.js';
+import { beginEarlyCacheHit, type EarlyCacheHit } from './earlyCacheHit.js';
 import { armColdSceneCapture, coldCaptureEligible } from './sceneSnapshotLoad.js';
 import { forwardEntityIndexTo, createSourceFingerprintCell, type EntityIndexSink } from './entityIndexHandoff.js';
 import { computeSourceFingerprint, computeSourceFingerprintFromBlob } from '@ifc-lite/cache';
@@ -367,6 +368,7 @@ export function useIfcLoader() {
      */
     let geometryHandle: GeometryProcessorDisposer | null = null;
     let appearanceLoad: ReturnType<typeof modelAppearanceAssets.begin> | undefined;
+    let earlyHit: EarlyCacheHit | null = null; // W1 (earlyCacheHit.ts); every exit that did not serve it abandons it
 
     /**
      * Resource-limit recovery, shared by BOTH failure paths.
@@ -705,6 +707,47 @@ export function useIfcLoader() {
       }
 
       if (!pointCloudFormat && !USE_SERVER && detectFormat(headBuf) === 'ifc') assertWasmSourceSize(file.size);
+      // The sampled cache key is a lookup hint, validated by the mtime/full
+      // hash gates below. Placement matching uses its separate full identity.
+      // Snapshot the merge-layers flag *before* the cache lookup: it is a
+      // load-time WASM tessellation input (issue #540) and must discriminate
+      // the cache key, otherwise toggling it + reloading serves geometry built
+      // with the previous flag (issue #1107). Reused below for the
+      // GeometryProcessor so the key and the actual tessellation agree.
+      const mergeLayersAtLoad = useViewerStore.getState().mergeLayers;
+      // Snapshot the geometry-fidelity mode the same way: it is a load-time
+      // tessellation input, so it must discriminate the cache key and be reused
+      // for the GeometryProcessor. `fast` = skip sub-10% cuts + auto-low density
+      // for heavy models; `exact` = full cuts + full density.
+      const geometryModeAtLoad = useViewerStore.getState().geometryMode;
+      const skipSmallCutsAtLoad = geometryModeAtLoad === 'fast';
+      // Tessellation tier from the mode: a `?geomTier=` override wins, else
+      // auto-low for heavy models by file size in `fast` mode only (the only
+      // model-weight signal available pre-geometry, so the key stays
+      // deterministic at cache-check time). `undefined` = engine default
+      // (medium). `exact` never auto-lowers.
+      // An auto-retry after a resource-limit failure forces the tier (lowest);
+      // otherwise resolve it from the mode + file size as usual. Forcing it here
+      // (before the cache key) keeps the key and the live tessellation in
+      // agreement, so the retry re-meshes at the lower density instead of
+      // serving the failed attempt's cached bytes.
+      const loadTessellationTier = options?.tierOverride ??
+        resolveLoadTessellationTier(fileSizeMB, geometryModeAtLoad);
+      // Geometry attribution (#2388): read ONCE here, next to the tier it must
+      // be reported alongside, so every `ifc_model_loaded` capture site below
+      // states the same fact. The tier cannot stand in for it — a retry always
+      // runs at `lowest` (`lib/resource-retry.ts`) and a first attempt reaches
+      // `lowest` on its own at >= AUTO_LOWEST_TIER_MB or under a pinned
+      // `?geomTier=lowest`, so the two are indistinguishable without the flag.
+      const isResourceRetryLoad = options?.isResourceRetry === true;
+      // Desktop Tauri cache commands only accept [A-Za-z0-9_-], so the key stays filename-safe and independent of the
+      // original filename. Pinned to FORMAT_VERSION so a format bump invalidates stale entries.
+      const geometryCacheKey = (byteLength: number, fingerprintHex: string) => buildGeometryCacheKey(byteLength, fingerprintHex, mergeLayersAtLoad, undefined, skipSmallCutsAtLoad, loadTessellationTier);
+      const planCache = (byteLength: number) => geometryKernel.cachePlan(planCacheWrite(byteLength, { meshOnlyEnabled: isMeshOnlyCacheEnabled(), minSize: CACHE_SIZE_THRESHOLD, maxSourceSize: CACHE_MAX_SOURCE_SIZE, maxMeshOnlySize: CACHE_MESH_ONLY_MAX_SIZE }));
+      // W1: a primary STEP file outside any archive keys its lookup from Blob slices and may adopt its stored scene during the read below.
+      if (target.kind === 'primary' && geometryKernel.kind === 'exact' && !pointCloudFormat && !headIsZip(headBuf) && detectFormat(headBuf) === 'ifc' && planCache(file.size).shouldCache) {
+        earlyHit = beginEarlyCacheHit({ file, modelId, cacheKeyFor: geometryCacheKey, cachesSize: (n) => planCache(n).shouldCache, isStale, trace });
+      }
       const fileReadStart = performance.now();
       const acquired: AcquiredBuffer = pointCloudFormat
         ? { buffer: headBuf, view: new Uint8Array(headBuf), isShared: false }
@@ -1035,51 +1078,7 @@ export function useIfcLoader() {
         }
       }
 
-      // The sampled cache key is a lookup hint, validated by the mtime/full
-      // hash gates below. Placement matching uses its separate full identity.
-      // Snapshot the merge-layers flag *before* the cache lookup: it is a
-      // load-time WASM tessellation input (issue #540) and must discriminate
-      // the cache key, otherwise toggling it + reloading serves geometry built
-      // with the previous flag (issue #1107). Reused below for the
-      // GeometryProcessor so the key and the actual tessellation agree.
-      const mergeLayersAtLoad = useViewerStore.getState().mergeLayers;
-      // Snapshot the geometry-fidelity mode the same way: it is a load-time
-      // tessellation input, so it must discriminate the cache key and be reused
-      // for the GeometryProcessor. `fast` = skip sub-10% cuts + auto-low density
-      // for heavy models; `exact` = full cuts + full density.
-      const geometryModeAtLoad = useViewerStore.getState().geometryMode;
-      const skipSmallCutsAtLoad = geometryModeAtLoad === 'fast';
-      // Tessellation tier from the mode: a `?geomTier=` override wins, else
-      // auto-low for heavy models by file size in `fast` mode only (the only
-      // model-weight signal available pre-geometry, so the key stays
-      // deterministic at cache-check time). `undefined` = engine default
-      // (medium). `exact` never auto-lowers.
-      // An auto-retry after a resource-limit failure forces the tier (lowest);
-      // otherwise resolve it from the mode + file size as usual. Forcing it here
-      // (before the cache key) keeps the key and the live tessellation in
-      // agreement, so the retry re-meshes at the lower density instead of
-      // serving the failed attempt's cached bytes.
-      const loadTessellationTier = options?.tierOverride ??
-        resolveLoadTessellationTier(fileSizeMB, geometryModeAtLoad);
-      // Geometry attribution (#2388): read ONCE here, next to the tier it must
-      // be reported alongside, so every `ifc_model_loaded` capture site below
-      // states the same fact. The tier cannot stand in for it — a retry always
-      // runs at `lowest` (`lib/resource-retry.ts`) and a first attempt reaches
-      // `lowest` on its own at >= AUTO_LOWEST_TIER_MB or under a pinned
-      // `?geomTier=lowest`, so the two are indistinguishable without the flag.
-      const isResourceRetryLoad = options?.isResourceRetry === true;
-      // Desktop Tauri cache commands only accept [A-Za-z0-9_-], so the key
-      // stays filename-safe and independent of the original filename. Pinned
-      // to FORMAT_VERSION so a format bump invalidates stale entries (e.g. v5
-      // added the geometryClass tag the Model/Types switch needs).
-      const cacheKey = buildGeometryCacheKey(
-        buffer.byteLength,
-        sourceKeyFingerprint.hex,
-        mergeLayersAtLoad,
-        undefined,
-        skipSmallCutsAtLoad,
-        loadTessellationTier
-      );
+      const cacheKey = geometryCacheKey(buffer.byteLength, sourceKeyFingerprint.hex);
       console.log(`[useIfc] loadFile "${file.name}" session=${currentSession} mergeLayers=${mergeLayersAtLoad} geomMode=${geometryModeAtLoad} tier=${loadTessellationTier ?? 'medium'} cacheKey=${cacheKey}`);
 
       // Decide the cache tier ONCE (single source of truth for read + write, see
@@ -1088,12 +1087,7 @@ export function useIfcLoader() {
       // nothing else caches. Gating the READ on `shouldCache` too makes the kill
       // switch complete — with it off, a previously written mesh-only entry is
       // NOT served (and files outside any band skip a pointless lookup).
-      const cachePlan = geometryKernel.cachePlan(planCacheWrite(buffer.byteLength, {
-        meshOnlyEnabled: isMeshOnlyCacheEnabled(),
-        minSize: CACHE_SIZE_THRESHOLD,
-        maxSourceSize: CACHE_MAX_SOURCE_SIZE,
-        maxMeshOnlySize: CACHE_MESH_ONLY_MAX_SIZE,
-      }));
+      const cachePlan = planCache(buffer.byteLength);
 
       // Server is PRIMARY-ONLY; the cache serves both roles (a federated hit
       // registers through finalizeModel like a fresh federated parse).
@@ -1104,7 +1098,10 @@ export function useIfcLoader() {
       if (cachePlan.shouldCache && !textureBitmaps) {
         setProgress({ phase: 'Checking cache', percent: 5 });
         loadStage = 'cache-lookup';
-        const cacheResult = await trace.span('cache.lookup', () => getCached(cacheKey));
+        // The early lookup counts only under the key the bytes just read give.
+        const early = earlyHit && await earlyHit.cacheKey() === cacheKey ? earlyHit : null;
+        if (!early) earlyHit?.abandon();
+        const cacheResult = await (early ? early.lookup() : trace.span('cache.lookup', () => getCached(cacheKey)));
         if (cacheResult) {
           // The O(1) spread key only KEYS the lookup — it can't see a
           // byte-length-preserving in-place edit between its sample windows —
@@ -1137,7 +1134,7 @@ export function useIfcLoader() {
                 return finalizeModel(hit.dataStore, hit.geometry, getViewerSchemaVersion(hit.dataStore), { loadState: 'complete', cacheState: 'hit',
                   loadPath: 'cache', tessellationTier: loadTessellationTier, skipSmallCuts: skipSmallCutsAtLoad }, hit.instancedShards);
               })
-              : await loadFromCache(cacheResult, file.name, modelId, cacheKey, buffer, () => isStale(), trace);
+              : await loadFromCache(cacheResult, file.name, modelId, cacheKey, buffer, () => isStale(), trace, early?.take());
             // `loadFromCache` returns the SAME `{ success: false }` for a
             // superseded load as for an ordinary miss, so branching on
             // `success` alone would send a superseded load on to a full
@@ -2147,6 +2144,7 @@ export function useIfcLoader() {
       }));
       settleLoadUi();
     } finally {
+      earlyHit?.abandon();
       settleResumable();
       metadataAbort.abort();
       // #1959: every exit releases its ownership; actual freeing still waits

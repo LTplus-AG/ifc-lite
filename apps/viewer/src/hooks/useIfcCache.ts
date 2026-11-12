@@ -122,6 +122,7 @@ export function useIfcCache() {
      */
     isStale?: () => boolean,
     trace: LoadTrace = NOOP_LOAD_TRACE, // #6956: the J2 (warm open) spans land on the caller's load trace
+    adoptedEarly?: Promise<AdoptedSceneSnapshot | null>, // W1: begun while the file was read (earlyCacheHit.ts); owned from here
   ): Promise<CacheLoadResult> => {
     // Before any await: a reset during the IndexedDB reads supersedes this hit's shards.
     const shardGeneration = instancedShardGeneration();
@@ -136,6 +137,7 @@ export function useIfcCache() {
       // "Loading from cache" over the newer load's progress is visible to the
       // user even though no geometry moved.
       if (isStale?.()) {
+        if (adoptedEarly) adopted = await adoptedEarly; // ours to release (finally), even unserved
         return { success: false, meshCount: 0, totalVertices: 0, totalTriangles: 0 };
       }
 
@@ -143,7 +145,7 @@ export function useIfcCache() {
 
       // Reset geometry first so Viewport detects this as a new file
       setGeometryResult(null);
-      adopted = await adoptCachedSceneSnapshot(cacheResult, modelId, isStale, trace);
+      adopted = await (adoptedEarly ?? adoptCachedSceneSnapshot(cacheResult, modelId, isStale, trace));
 
       const { dataStore, cacheBuffer, cacheBlob, headerInfo, geometrySection } =
         await decodeCachedMetadata(cacheResult, fallbackSourceBuffer, trace);

@@ -40,7 +40,7 @@ import { useViewerStore } from '@/store';
 import { CACHE_SIZE_THRESHOLD } from '@/utils/ifcConfig.js';
 import { resolveLoadTessellationTier } from '@/store/constants.js';
 import { buildGeometryCacheKey } from './geometryCacheKey.js';
-import { getCached, setCached } from '../services/cacheService.js';
+import { getCacheService, getCached, setCached } from '../services/cacheService.js';
 import { useIfcLoader } from './useIfcLoader.js';
 import { hasPersistedMarkupEntryFor, useDrawing2DPersistence } from './useDrawing2DPersistence.js';
 
@@ -395,5 +395,65 @@ describe('useIfcLoader — a primary load with drawing persistence mounted hashe
     assert.deepEqual(useViewerStore.getState().measure2DResults.map((m) => m.id), ['legacy-1']);
     assert.equal(localStorage.getItem(MARKUP_PREFIX + sha256(bytes)), null);
     assert.ok(localStorage.getItem(MARKUP_PREFIX + referenceIdentity(bytes)));
+  });
+});
+
+describe('useIfcLoader — W1: a STEP hit is looked up while the file is read (pre-pixel lane)', () => {
+  /** A file whose whole-file read waits for `release` (or fails with `fail`); its Blob slices are unaffected. */
+  function heldFile(bytes: Uint8Array, name: string) {
+    const file = new File([bytes as BlobPart], name);
+    const read = file.arrayBuffer.bind(file);
+    let release!: () => void;
+    let fail!: (error: Error) => void;
+    const gate = new Promise<void>((resolve, reject) => { release = resolve; fail = reject; });
+    let released = false;
+    Object.defineProperty(file, 'arrayBuffer', { value: () => gate.then(() => { released = true; return read(); }) });
+    return { file, release, fail, released: () => released };
+  }
+  async function watchLookups() {
+    const service = await getCacheService();
+    const real = service.getCached;
+    const calls: string[] = [];
+    service.getCached = (key) => { calls.push(key); return real(key); };
+    return { calls, restore: () => { service.getCached = real; } };
+  }
+
+  it('finds the entry before the whole-file read finishes, and still serves it once the bytes agree', async () => {
+    const bytes = stepBytes(CACHE_SIZE_THRESHOLD + 4096);
+    const held = heldFile(bytes, 'w1-hit.ifc');
+    const key = await seedCacheEntry(new File([bytes as BlobPart], 'w1-hit.ifc', { lastModified: held.file.lastModified }), referenceIdentity(bytes));
+    const lookups = await watchLookups();
+    try {
+      let loading!: Promise<void>;
+      await act(async () => { loading = hookApi!.loadFile(held.file); });
+      await waitFor(() => lookups.calls.includes(key), 'the entry to be looked up');
+      assert.equal(held.released(), false, 'the lookup waited for the whole-file read');
+      held.release();
+      await act(async () => { await loading; });
+      await settle('the warm hit revalidates');
+      assert.equal(onlyModel()?.cacheState, 'hit');
+      assert.equal(lookups.calls.filter((k) => k === key).length, 1, 'the entry was looked up twice');
+    } finally {
+      lookups.restore();
+    }
+  });
+
+  it('a read that fails after the early lookup ends the load in error and serves nothing', async () => {
+    const bytes = stepBytes(CACHE_SIZE_THRESHOLD + 4096);
+    const held = heldFile(bytes, 'w1-unreadable.ifc');
+    const key = await seedCacheEntry(new File([bytes as BlobPart], 'w1-unreadable.ifc', { lastModified: held.file.lastModified }), referenceIdentity(bytes));
+    const lookups = await watchLookups();
+    try {
+      let loading!: Promise<void>;
+      await act(async () => { loading = hookApi!.loadFile(held.file); });
+      await waitFor(() => lookups.calls.includes(key), 'the entry to be looked up');
+      held.fail(new Error('NotReadableError: the file changed on disk'));
+      await act(async () => { await loading; });
+      assert.equal(onlyModel()?.loadState, 'error');
+      assert.notEqual(onlyModel()?.cacheState, 'hit', 'a load whose read failed was served from the cache');
+      assert.ok(await getCached(key), 'an unreadable source must not purge a good entry');
+    } finally {
+      lookups.restore();
+    }
   });
 });

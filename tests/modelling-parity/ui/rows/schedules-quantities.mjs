@@ -1,3 +1,4 @@
+import { readScheduleTotals } from '../lib/schedule-ui.mjs';
 import { task, downloadCount, nextDownload } from '../lib/driver.mjs';
 import { escape, tool, typeFields, oracleModel, openStoreyManager } from '../lib/model-ui.mjs';
 import { check, field, wall, selectWall, inspector, typeScope, newType, layer, applyLayers, body, wallSize, layerThicknesses, scheduleLengths, near, finish } from '../lib/authoring-helpers.mjs';
@@ -22,13 +23,32 @@ export default {
         csv = await nextDownload(s.page,before,10000);
       }));
       const rows = await s.state(() => globalThis.__ifc_lite_viewer_store__.getState().listResult?.rows ?? []);
+      const original = (await oracleModel(s)).step;
+      let totals = null, editedTotals = null;
+      tasks.push(await task(s, 'group by Type and sum Length in the schedule', async () => {
+        const column = name => s.page.getByRole('button', { name, exact: false }).filter({ hasNot: s.page.locator('[aria-label]') }).first().locator('..');
+        // Column menu is adjacent to its sortable header, not a list settings mutation.
+        const menu = name => s.page.getByRole('button', { name, exact: false }).first().locator('..').getByRole('button', { name: 'Column options', exact: true });
+        await s.ui.click(menu(/^Type$/));
+        await s.ui.click(s.page.getByRole('menuitem', { name: /Group by this column/ }));
+        await s.ui.click(menu(/^Length/));
+        await s.ui.click(s.page.getByRole('menuitemcheckbox', { name: /Sum this column/ }));
+        totals = await readScheduleTotals(s);
+      }));
+      tasks.push(await task(s, 'edit one wall length to 6 m and read live totals', async () => {
+        await selectWall(s);
+        await field(s,s.page.getByLabel('Length in metres', { exact: true }),6);
+        await s.settle(1200);
+        editedTotals = await readScheduleTotals(s);
+      }));
       const { step } = await oracleModel(s);
-      const q = step.of('IFCWALL').map((w) => step.quantities(w.id));
+      const q = original.of('IFCWALL').map((w) => original.quantities(w.id));
       return finish(s,tasks,[
         check('two walls have 5 m Length and positive NetVolume',q.length === 2 && q.every((v) => near(v.Length,5) && v.NetVolume > 0),JSON.stringify(q)),
         check('schedule contains the two authored walls',rows.length === 2,`${rows.length} schedule rows`),
         check('CSV contains wall lengths',!!csv && scheduleLengths(csv.text).length === 2 && scheduleLengths(csv.text).every((v) => near(v,5)),csv?.text.slice(0,600) ?? 'no schedule CSV download'),
-        check('grouped schedule totals',false,'not yet measured: grouping and numeric total in the schedule'),
+        check('group and footer Length totals are 10 m', totals?.groups.length > 0 && near(totals.total,10) && near(totals.groups.reduce((a,b)=>a+b,0),10), JSON.stringify(totals)),
+        check('group and footer totals refresh to 11 m after editing', editedTotals?.groups.length > 0 && near(editedTotals.total,11) && near(editedTotals.groups.reduce((a,b)=>a+b,0),11), JSON.stringify(editedTotals)),
       ]);
     },
   };

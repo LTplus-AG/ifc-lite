@@ -19,7 +19,7 @@ export async function pdfPathExtents(bytes) {
         else if (op === OPS.transform) matrix = Util.transform(matrix, args);
         else if (op === OPS.constructPath) {
           // PDF.js 6 exposes the path's min/max as its fourth argument.
-          const bounds = args[3];
+          const bounds = args[2];
           if (!bounds || bounds.length !== 4) continue;
           const points = [[bounds[0],bounds[1]],[bounds[0],bounds[3]],[bounds[2],bounds[1]],[bounds[2],bounds[3]]]
             .map(([x,y]) => [matrix[0]*x+matrix[2]*y+matrix[4],matrix[1]*x+matrix[3]*y+matrix[5]]);

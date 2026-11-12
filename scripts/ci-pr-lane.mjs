@@ -34,7 +34,8 @@
  *
  * THE LABEL is read when the run is CREATED (test.yml has no `labeled`
  * trigger, see its header), so adding `ci:full` takes effect on the next push
- * or a close-and-reopen.
+ * or a close-and-reopen. With CI_FULL_ONESHOT=on it comes off again after one
+ * full-lane run (scripts/ci-full-oneshot.mjs).
  *
  *   node scripts/ci-pr-lane.mjs --decide   `changes` job; writes lane/mode outputs
  *   node scripts/ci-pr-lane.mjs --verify   aggregate job; exit 1 on an unjustified `fast`

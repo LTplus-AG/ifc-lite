@@ -55,8 +55,9 @@ export interface IndividualMeshGpu {
 export interface MergedMeshGpu extends IndividualMeshGpu {
   /**
    * The piece with the lowest entity id (the first of them): every piece here
-   * shares its colour, finish and model, and that id is the anchor a draw
-   * needs to rebuild full ids from the 24-bit vertex lane (entity-color-table.ts).
+   * shares its model and, unless merged `anyColour`, its colour and finish, and
+   * that id is the anchor a draw needs to rebuild full ids from the 24-bit
+   * vertex lane (entity-color-table.ts).
    */
   representative: MeshData;
   pieces: number;
@@ -179,9 +180,9 @@ interface MergeGroup {
  * a frameless piece keeps its own origin), same colour and finish, as a batch
  * bucket has, and like a bucket within one 2^24 page of entity ids, so the
  * vertex lane names each entity. A group fills up at `maxBytes`, one GPU
- * buffer's worth.
+ * buffer's worth. `anyColour` drops the colour and finish from that list.
  */
-function groupPieces(pieces: readonly MeshData[], frameOf: (meshData: MeshData) => IndividualMeshFrame, maxBytes: number): MergeGroup[] {
+function groupPieces(pieces: readonly MeshData[], frameOf: (meshData: MeshData) => IndividualMeshFrame, maxBytes: number, anyColour: boolean): MergeGroup[] {
   const groups: MergeGroup[] = [];
   const open = new Map<string, MergeGroup>();
   for (const piece of pieces) {
@@ -190,7 +191,7 @@ function groupPieces(pieces: readonly MeshData[], frameOf: (meshData: MeshData) 
     if (vertices === 0 || indices === 0) continue;
     const frame = frameOf(piece);
     const origin = frame.sharedOrigin ?? piece.origin;
-    const key = `${piece.modelIndex ?? ''}|${Math.floor(piece.expressId / ENTITY_LANE_ID_SPAN)}|${frame.quantized ? 'q' : 'f'}|${frame.sharedOrigin ? 's' : 'o'}|${origin?.join() ?? ''}|${colorKey(piece.color, piece.material)}`;
+    const key = `${piece.modelIndex ?? ''}|${Math.floor(piece.expressId / ENTITY_LANE_ID_SPAN)}|${frame.quantized ? 'q' : 'f'}|${frame.sharedOrigin ? 's' : 'o'}|${origin?.join() ?? ''}|${anyColour ? '' : colorKey(piece.color, piece.material)}`;
     let group = open.get(key);
     if (group && group.pieces.length > 0
       && ((group.vertices + vertices) * BATCH_CONSTANTS.BYTES_PER_VERTEX > maxBytes
@@ -212,17 +213,24 @@ function groupPieces(pieces: readonly MeshData[], frameOf: (meshData: MeshData) 
  * Upload an entity's pieces merged: one mesh per group, so the allocations and
  * draws scale with the entity's colours and frames, not its piece count. A
  * throw part-way frees what this call already created.
+ *
+ * @param anyColour Keep pieces of every colour and finish in one mesh, in the
+ *   order given. Only for a mesh drawn as selection highlight alone, which
+ *   reads neither (`fs_main`'s selected branch): its triangles then draw in the
+ *   caller's order, as one copy per piece would. The representative no longer
+ *   stands for the colour of the rest.
  */
 export function uploadMergedMeshes(
   device: GPUDevice,
   pieces: readonly MeshData[],
   frameOf: (meshData: MeshData) => IndividualMeshFrame,
+  anyColour = false,
 ): MergedMeshGpu[] {
   const limit = Math.min(device.limits?.maxBufferSize ?? BATCH_CONSTANTS.FALLBACK_MAX_BUFFER_SIZE, BATCH_CONSTANTS.FALLBACK_MAX_BUFFER_SIZE);
   const maxBytes = Math.floor(limit * BATCH_CONSTANTS.BUFFER_SIZE_SAFETY_FACTOR);
   const uploaded: MergedMeshGpu[] = [];
   try {
-    for (const group of groupPieces(pieces, frameOf, maxBytes)) {
+    for (const group of groupPieces(pieces, frameOf, maxBytes, anyColour)) {
       const interleavedRaw = new ArrayBuffer(group.vertices * BATCH_CONSTANTS.BYTES_PER_VERTEX);
       const interleaved = new Float32Array(interleavedRaw);
       const lanes = new Uint32Array(interleavedRaw);

@@ -237,7 +237,7 @@ function drawnTriangles(draws: readonly Draw[], origins: ReadonlyMap<FakeBuffer,
       triangles.push(corners.join(','));
     }
   }
-  return { triangles: triangles.sort(), ids };
+  return { triangles: [...triangles].sort(), inDrawOrder: triangles, ids };
 }
 
 const expectedTriangles = (meshes: readonly MeshData[]): string[] => meshes.map((mesh) => Array.from(mesh.positions).join(',')).sort();
@@ -362,14 +362,35 @@ describe('selecting many entities (#9835)', () => {
     assert.deepEqual(many.drawn().triangles, expectedTriangles(meshes));
   });
 
-  it('pools per colour and per model, as the batches do', () => {
+  // The highlight writes no depth, so where glass lets highlighted surfaces
+  // overlap on screen the last one drawn shows. One copy per piece drew them in
+  // selection order; a pool split by colour would shade those pixels differently.
+  it('pools one mesh per model whatever the colours, its triangles in the selection\'s order', () => {
     const h = makeHarness();
     const meshes = model(1_000, (id) => ({ color: id % 2 ? RED : GREY, modelIndex: id > 500 ? 1 : 0 }));
     load(h, meshes);
-    const cost = frameCost(h, { selectedIds: new Set(idsOf(1_000)) });
-    assert.equal(cost.highlightDraws.length, 4, 'two colours in each of two models');
-    assert.deepEqual(cost.drawn().triangles, expectedTriangles(meshes));
-    assert.deepEqual(hydrated(h).map((mesh) => `${mesh.modelIndex}:${mesh.color[0]}`).sort(), ['0:0.5', '0:0.8', '1:0.5', '1:0.8']);
+    const selection = idsOf(1_000).reverse();
+    const cost = frameCost(h, { selectedIds: new Set(selection) });
+    assert.equal(cost.highlightDraws.length, 2, 'one mesh per model, not one per colour');
+    const inSelectionOrder = selection.flatMap((id) => meshes.filter((mesh) => mesh.expressId === id)).map((mesh) => Array.from(mesh.positions).join(','));
+    assert.deepEqual(cost.drawn().inDrawOrder, inSelectionOrder, 'drawn in the order one copy per piece would be');
+  });
+
+  it('never draws a pool holding glass as translucent geometry of its own', () => {
+    const h = makeHarness();
+    const glass: [number, number, number, number] = [0.2, 0.4, 0.8, 0.3];
+    load(h, model(1_000, (id) => ({ color: id === 1 ? glass : GREY })));
+    const selectedIds = new Set(idsOf(1_000));
+    h.render({ selectedIds });
+    const [pool] = hydrated(h);
+    assert.equal(pool.expressId, 1, 'the glass entity is the one the mesh is named after');
+    assert.equal(pool.color[3], 1);
+    assert.equal(pool.finish, undefined);
+    const before = h.stats.draws.length;
+    h.render({ selectedIds });
+    const poolDraws = h.stats.draws.slice(before).filter((draw) => draw.vertexBuffer === (pool.vertexBuffer as unknown as FakeBuffer));
+    assert.ok(poolDraws.length > 0);
+    assert.equal(poolDraws.filter((draw) => (draw.pipeline as { label?: string }).label === 'transparent').length, 0, 'only the highlight and its outline mask draw it');
   });
 
   it('keeps the pool when the same selection arrives as a new Set, and rebuilds when its ids change', () => {

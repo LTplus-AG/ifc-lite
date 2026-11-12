@@ -17,7 +17,14 @@
  * drawn three times a frame. The budget therefore holds for the selection as a
  * whole. Once its individual copies would pass `MERGE_PIECES_ABOVE`, the
  * entities that are not merged on their own pool into ONE merge, so a frame
- * costs what the selection's colours cost, however many entities it holds.
+ * costs the same however many entities the selection holds.
+ *
+ * A pool is one mesh per model and frame, with its pieces in the selection's
+ * order, not one per colour. The highlight draws without writing depth, so
+ * where translucent base geometry lets several highlighted surfaces overlap on
+ * screen, the one drawn last shows. One copy per piece drew them in selection
+ * order; a pool split by colour would reorder them and shade those pixels
+ * differently. The highlight reads no colour, so nothing needs the split.
  */
 
 import type { MeshData } from '@ifc-lite/geometry';
@@ -307,6 +314,10 @@ export function hydrateSelectedEntities(
  * Upload `pieces` merged and add them to the scene as hydrated highlight meshes.
  * Each mesh takes the lowest id it holds as its `expressId`: the anchor its draw
  * needs to rebuild full ids from the vertex lane (entity-color-table.ts).
+ *
+ * A pooled merge holds every colour, so its mesh names none: it is opaque and
+ * without a finish, which keeps the mesh pass from drawing the whole pool as
+ * translucent geometry in one piece's colour. It is only ever drawn selected.
  */
 export function addMergedSelectionMeshes(
   scene: Pick<Scene, 'addMesh'>,
@@ -315,7 +326,8 @@ export function addMergedSelectionMeshes(
   merged: MergedSelectionCoverage,
   frameOf: (meshData: MeshData) => IndividualMeshFrame,
 ): void {
-  for (const { representative, vertexBuffer, indexBuffer, indexCount, transform, rteOrigin } of uploadMergedMeshes(device, pieces, frameOf)) {
+  const pooled = merged.ids !== undefined;
+  for (const { representative, vertexBuffer, indexBuffer, indexCount, transform, rteOrigin } of uploadMergedMeshes(device, pieces, frameOf, pooled)) {
     scene.addMesh({
       expressId: representative.expressId,
       modelIndex: representative.modelIndex,
@@ -326,8 +338,8 @@ export function addMergedSelectionMeshes(
       indexCount,
       transform,
       rteOrigin,
-      color: representative.color,
-      ...(representative.material ? { finish: representative.material } : {}),
+      color: pooled ? [representative.color[0], representative.color[1], representative.color[2], 1] : representative.color,
+      ...(representative.material && !pooled ? { finish: representative.material } : {}),
       hydrated: true,
       mergedSelection: merged,
     });

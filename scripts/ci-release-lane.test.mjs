@@ -20,13 +20,16 @@ import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 
 import {
+  LEAN_CHECKS,
   LEAN_KEPT_JOBS,
   OWNER_ALLOWS_LEAN,
   QUEUE_FULL_CHECKS,
   RELEASE_HEAD_REF,
   decideReleaseLane,
+  parsePullRequestRules,
   parseQueueRules,
   releaseQueueRoute,
+  runLeanChecks,
   verifyReleaseLane,
 } from './ci-release-lane.mjs';
 import { diffProblems } from './lib/release-version-diff.mjs';
@@ -52,7 +55,7 @@ const BASE = {
   draft: 'false',
   mergify: () => MERGIFY,
   diff: () => [],
-  // The lean path itself, as it would run once the owner releases the hold.
+  // The lean path itself; the shipped OWNER_ALLOWS_LEAN is pinned in its own test.
   ownerAllowsLean: true,
 };
 const decide = (over = {}) => decideReleaseLane({ ...BASE, ...over });
@@ -75,17 +78,20 @@ test('unset and `off` are today\'s behaviour, and so is any unknown value', () =
   }
 });
 
-test('HELD (#9783): `on` runs the full lanes and reports, until the owner releases OWNER_ALLOWS_LEAN', () => {
+test('RELEASED (#9783): the owner released OWNER_ALLOWS_LEAN; false holds `on` back to reporting', () => {
   // A lean run turns the required aggregate green, and nothing in the repo
-  // stops a direct merge of a PR with green required checks. The hold is the
-  // shipped default; this pins it so releasing it is a reviewed diff.
-  assert.equal(OWNER_ALLOWS_LEAN, false);
+  // stops a direct merge of a PR with green required checks. The owner relies
+  // on the `main` ruleset (2026-11-12); this pins the choice so changing it is
+  // a reviewed diff.
+  assert.equal(OWNER_ALLOWS_LEAN, true);
   const { ownerAllowsLean: _ignored, ...shipped } = BASE;
-  const d = decideReleaseLane(shipped);
+  assert.equal(decideReleaseLane(shipped).lane, 'lean');
+  const held = { ...BASE, ownerAllowsLean: false };
+  const d = decideReleaseLane(held);
   assert.equal(d.lane, 'full');
   assert.ok(d.pending, 'still reported, like shadow');
   assert.match(d.warning ?? '', /held/); // @source-text-assertion-ok subject is the decision's returned message
-  const v = verifyReleaseLane({ ...shipped, lane: 'lean', needs: needsJson() });
+  const v = verifyReleaseLane({ ...held, lane: 'lean', needs: needsJson() });
   assert.equal(v.ok, false, 'a lean output while held is unjustified');
 });
 
@@ -227,6 +233,52 @@ test('the narrow queue-rule reader agrees with a YAML parse of the real .mergify
   const unlabelled = releaseQueueRoute(MERGIFY, { labels: [], draft: false });
   assert.equal(unlabelled.ok, true, 'a missing label is PR state, not a config refusal');
   assert.equal(unlabelled.queueable, false);
+});
+
+test('the narrow pull_request_rules reader agrees with a YAML parse of the real .mergify.yml', () => {
+  const real = parse(MERGIFY).pull_request_rules.map((r) => ({ name: r.name, conditions: r.conditions ?? [], queue: r.actions?.queue?.name ?? null }));
+  assert.deepEqual(parsePullRequestRules(MERGIFY), real);
+});
+
+test('REFUSE (#9783 review): no pull_request_rules entry queues the release PR into the release queue', () => {
+  const rule = 'head=changeset-release/main\n    actions:\n      queue:\n        name: release';
+  assert.ok(MERGIFY.includes(rule), 'fixture anchor');
+  for (const broken of [
+    MERGIFY.replace(rule, 'head=changeset-release/main\n    actions:\n      queue:\n        name: default'),
+    MERGIFY.replace(rule, 'head=changeset-release/other\n    actions:\n      queue:\n        name: release'),
+    MERGIFY.slice(0, MERGIFY.indexOf('pull_request_rules:')),
+  ]) {
+    assert.notEqual(broken, MERGIFY);
+    const r = releaseQueueRoute(broken, { labels: ['mergify-trial'], draft: false });
+    assert.equal(r.ok, false);
+    assert.match(r.reason, /no Mergify pull_request_rules entry queues/); // @source-text-assertion-ok subject is the returned reason
+    assert.equal(decide({ mergify: () => broken }).lane, 'full');
+  }
+  // An entry condition it cannot judge refuses; one it can, and the PR lacks, is PR state.
+  const odd = MERGIFY.replace(rule, 'head=changeset-release/main\n      - author=someone\n    actions:\n      queue:\n        name: release');
+  assert.match(releaseQueueRoute(odd, { labels: ['mergify-trial'], draft: false }).reason, /cannot judge: author=someone/); // @source-text-assertion-ok subject is the returned reason
+  const labelled = MERGIFY.replace(rule, 'head=changeset-release/main\n      - label=release-ok\n    actions:\n      queue:\n        name: release');
+  const r = releaseQueueRoute(labelled, { labels: ['mergify-trial'], draft: false });
+  assert.equal(r.ok, true);
+  assert.equal(r.queueable, false);
+  assert.match(r.queueReason, /lacks `release-ok`/); // @source-text-assertion-ok subject is the returned reason
+});
+
+test('SHADOW (#9783 review): the report runs the lean lane\'s own checks and lists only lanes that ran', () => {
+  const shadow = { ...BASE, mode: 'shadow', lane: 'full' };
+  const needs = needsJson('success', { 'rust-full': 'skipped' });
+  const pass = verifyReleaseLane({ ...shadow, needs, runChecks: () => LEAN_CHECKS.map((script) => ({ script, ok: true, tail: '' })) }).lines.join('\n');
+  for (const script of LEAN_CHECKS) assert.match(pass, new RegExp(`\`${script.replace(/[.]/g, '\\.')}\`: pass`));
+  assert.ok(!pass.includes('`rust-full`'), 'a lane that skipped anyway is not listed');
+  assert.ok(pass.includes('`viewer-tests`: success'));
+  assert.match(pass, /None of them failed/); // @source-text-assertion-ok subject is the returned summary
+  const fail = verifyReleaseLane({ ...shadow, needs, runChecks: () => [{ script: LEAN_CHECKS[0], ok: false, tail: 'offset mismatch' }] });
+  assert.equal(fail.ok, true, 'shadow reports, never fails');
+  assert.match(fail.lines.join('\n'), /FAIL: offset mismatch[\s\S]*would fail its own checks: scripts\/check-rust-major-offset\.mjs/); // @source-text-assertion-ok subject is the returned summary
+  assert.doesNotMatch(fail.lines.join('\n'), /None of them failed/); // @source-text-assertion-ok subject is the returned summary
+  // The real runner, on this checkout: both scripts run and pass; elsewhere they fail, never throw.
+  assert.deepEqual(runLeanChecks(REPO_ROOT).map((c) => [c.script, c.ok]), LEAN_CHECKS.map((c) => [c, true]));
+  assert.ok(runLeanChecks(TMP).every((c) => !c.ok && c.tail));
 });
 
 test('the release queue really tests a batch: its required `Rust tests (feature builds)` runs on a PR only for a batch', () => {
@@ -449,11 +501,11 @@ function cli(args, env, cwd) {
   return { code: r.status, stdout: r.stdout, stderr: r.stderr, outputs };
 }
 
-test('CLI --decide on a real version-bump commit: held, so full and reported; one more source file says why not lean', () => {
-  const held = cli(['--decide'], {}, repo(versionBump));
-  assert.equal(held.code, 0, held.stderr);
-  assert.deepEqual(held.outputs, { lane: 'full' });
-  assert.match(held.stdout, /::warning::.*held/); // @source-text-assertion-ok subject is the CLI's printed annotation
+test('CLI --decide on a real version-bump commit: lean; shadow reports; one more source file says why not lean', () => {
+  const lean = cli(['--decide'], {}, repo(versionBump));
+  assert.equal(lean.code, 0, lean.stderr);
+  assert.deepEqual(lean.outputs, { lane: 'lean' });
+  assert.deepEqual(cli(['--decide'], { CI_RELEASE_LANE: 'shadow' }, repo(versionBump)).outputs, { lane: 'full' });
   const mixed = cli(['--decide'], {}, repo((d) => { versionBump(d); writeFileSync(join(d, 'src.ts'), 'export const x = 1;\n'); }));
   assert.deepEqual(mixed.outputs, { lane: 'full' });
   assert.match(mixed.stdout, /src\.ts: not a release file/); // @source-text-assertion-ok subject is the CLI's printed reason
@@ -466,8 +518,9 @@ test('CLI FAIL CLOSED: no GITHUB_OUTPUT writes nothing and exits 1; --verify exi
   assert.equal(cli(['--decide'], { GITHUB_OUTPUT: '' }, dir).code, 1);
   assert.equal(cli([], {}, dir).code, 1);
   const needs = needsJson('skipped', Object.fromEntries(LEAN_KEPT_JOBS.map((j) => [j, 'success'])));
-  // While held, no lean output can be justified.
-  assert.equal(cli(['--verify'], { LANE: 'lean', NEEDS: needs }, dir).code, 1);
+  assert.equal(cli(['--verify'], { LANE: 'lean', NEEDS: needs }, dir).code, 0, 'justified');
+  // Under shadow no lean output can be justified.
+  assert.equal(cli(['--verify'], { CI_RELEASE_LANE: 'shadow', LANE: 'lean', NEEDS: needs }, dir).code, 1);
   assert.equal(cli(['--verify'], { LANE: 'full', NEEDS: needsJson() }, dir).code, 0);
 });
 
@@ -525,9 +578,11 @@ test('WIRING: release-pr runs the release checks and is judged by the aggregate'
     assert.equal(step.if, undefined, step.name ?? step.uses);
   }
   assert.equal(job['continue-on-error'], undefined);
-  for (const s of ['check-changesets.mjs', 'check-changeset-bump.mjs', 'check-rust-major-offset.mjs', 'check-package-readmes.mjs']) {
-    assert.ok(runs.some((r) => r.includes(s)), s); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML
-  }
+  // Exactly LEAN_CHECKS, so shadow's --verify runs what a lean run would.
+  assert.deepEqual(runs, LEAN_CHECKS.map((s) => `node ${s}`));
+  // They need no history and no install (#9783 review).
+  assert.equal(job.steps[0].with['fetch-depth'], undefined);
+  assert.ok(!job.steps.some((st) => /pnpm/.test(String(st.uses ?? st.run ?? ''))), 'no pnpm in release-pr'); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML
   assert.ok(jobs.test.needs.includes('release-pr')); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML
   const verifyStep = jobs.test.steps.find((s) => s.run === 'node scripts/ci-release-lane.mjs --verify');
   const gateAt = jobs.test.steps.findIndex((s) => s.name === 'Gate on dependencies');

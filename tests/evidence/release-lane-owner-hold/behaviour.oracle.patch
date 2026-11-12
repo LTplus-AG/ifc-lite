@@ -1,7 +1,7 @@
 diff --git b/scripts/ci-release-lane.mjs a/scripts/ci-release-lane.mjs
 --- b/scripts/ci-release-lane.mjs
 +++ a/scripts/ci-release-lane.mjs
-@@ -233,7 +233,7 @@ export function decideReleaseLane({ event, mode, headRef, headRepo, repo, baseRe
+@@ -298,7 +298,7 @@ export function decideReleaseLane({ event, mode, headRef, headRepo, repo, baseRe
    // wait on a label.
    const pending = [
      m === 'shadow' ? 'with CI_RELEASE_LANE=on' : '',

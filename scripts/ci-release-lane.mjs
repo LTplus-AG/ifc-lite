@@ -24,22 +24,23 @@
  * that this PR meets the queue's entry conditions. But a lean run turns the
  * required aggregate green, and whether a PR with green required checks can
  * be merged directly is set outside this repository (the `main` ruleset). So
- * the lean lane is held behind OWNER_ALLOWS_LEAN, and `on` reports like
- * `shadow` until the owner releases it.
+ * the lean lane sits behind OWNER_ALLOWS_LEAN, which the owner released on
+ * 2026-11-12 relying on that ruleset; false makes `on` report like `shadow`.
  *
  * THE SWITCH is the repo variable `CI_RELEASE_LANE`:
  *   unset / `off`  today's behaviour.
  *   `shadow`       every lane runs; the aggregate's summary lists what the
- *                  lean lane would skip and whether any of it failed, naming
- *                  what still stands between this run and a lean one.
- *   `on`           held: as `shadow`. With OWNER_ALLOWS_LEAN, the release PR
- *                  runs `changes` (late-changeset gate), `rust-semver`,
- *                  `silent-revert` and `release-pr` (changeset, bump-level,
- *                  Rust major-offset and README checks) and skips the rest.
+ *                  lean lane would skip and whether any of it failed, runs
+ *                  the lean lane's own checks (LEAN_CHECKS), and names what
+ *                  still stands between this run and a lean one.
+ *   `on`           the release PR runs `changes` (late-changeset gate),
+ *                  `rust-semver`, `silent-revert` and `release-pr` (Rust
+ *                  major-offset and README checks) and skips the rest. With
+ *                  OWNER_ALLOWS_LEAN false, as `shadow`.
  * Any other value is `off`. Lean needs ALL of: a `pull_request` into `main`,
  * head ref exactly `changeset-release/main`, the head in this repository (a
  * fork's branch of that name runs full), the Mergify route above, a diff that
- * only moves versions (`diffProblems`), and the owner's release of the hold.
+ * only moves versions (`diffProblems`), and OWNER_ALLOWS_LEAN.
  *
  * FAIL CLOSED, BY POLARITY. `changes` withholds its path-filter outputs only
  * when this step printed exactly `lane=lean`; a crash, an empty or a garbled
@@ -61,6 +62,7 @@
 import { appendFileSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
+import { boundedSpawnSync } from './lib/bounded-process.mjs';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 import { diffProblems } from './lib/release-version-diff.mjs';
 
@@ -70,6 +72,17 @@ export const MODES = ['off', 'shadow', 'on'];
 /** Jobs a lean run still runs. Every other job the aggregate needs is skipped. */
 export const LEAN_KEPT_JOBS = ['changes', 'rust-semver', 'silent-revert', 'release-pr'];
 
+/**
+ * What `release-pr` runs, one step each (test.yml pins the job to this list).
+ * Node builtins only and no history, so `--verify` can run them on its own
+ * depth-2 checkout in shadow, where `release-pr` itself does not run.
+ * check-changesets.mjs and check-changeset-bump.mjs are not here: on a release
+ * PR no changeset is pending and the bump check anchors on the release head
+ * itself, so both pass vacuously (run on a6b915f888 merged into its base,
+ * #9783 review).
+ */
+export const LEAN_CHECKS = ['scripts/check-rust-major-offset.mjs', 'scripts/docs/check-package-readmes.mjs'];
+
 /** The release queue must require these, or the queue is not the full gate. */
 export const QUEUE_FULL_CHECKS = [
   'check-success=Build + WASM + Rust + Node',
@@ -78,53 +91,107 @@ export const QUEUE_FULL_CHECKS = [
 ];
 
 /**
- * Queue rules from .mergify.yml, read by indentation. Deliberately narrow:
- * anything it does not recognise yields no rule, which reads as "no route"
- * and runs full. The test pins it against a real YAML parse of the file.
+ * One rule list (`queue_rules` or `pull_request_rules`) from .mergify.yml,
+ * read by indentation. Deliberately narrow: anything it does not recognise
+ * yields no rule or no list item, which reads as "no route" and runs full.
+ * The tests pin both callers against a real YAML parse of the file. Each rule
+ * keeps its 4-space list sections and the queue its `actions.queue` names.
  *
- * @param {string} text
- * @returns {{ name: string, queue: string[], merge: string[] }[]}
+ * @returns {{ name: string, lists: Record<string, string[]>, queue: string|null }[]}
  */
-export function parseQueueRules(text) {
+function readRules(text, topKey) {
   const rules = [];
-  let inQueues = false;
+  let inList = false;
   let rule = null;
-  let list = null;
+  let section = null;
+  let inQueueAction = false;
   for (const line of String(text ?? '').split('\n')) {
     // A comment ends nothing: one between two conditions must not drop the rest.
     if (/^\s*(#|$)/.test(line)) continue;
     if (/^\S/.test(line)) {
-      inQueues = /^queue_rules:\s*$/.test(line);
+      inList = line.trimEnd() === `${topKey}:`;
       rule = null;
-      list = null;
+      section = null;
       continue;
     }
-    if (!inQueues) continue;
+    if (!inList) continue;
     let m = /^ {2}- name:\s*(\S.*?)\s*$/.exec(line);
     if (m) {
-      rule = { name: m[1], queue: [], merge: [] };
+      rule = { name: m[1], lists: {}, queue: null };
       rules.push(rule);
-      list = null;
+      section = null;
       continue;
     }
-    m = /^ {4}(queue_conditions|merge_conditions):\s*$/.exec(line);
-    if (m && rule) {
-      list = m[1] === 'queue_conditions' ? rule.queue : rule.merge;
+    if (!rule) continue;
+    m = /^ {4}(\w+):\s*$/.exec(line);
+    if (m) {
+      section = m[1];
+      inQueueAction = false;
       continue;
     }
-    m = /^ {6}- (\S.*?)\s*$/.exec(line);
-    if (m && list) {
-      list.push(m[1]);
+    if (/^ {4}\S/.test(line)) {
+      section = null;
       continue;
     }
-    if (/^ {4}\S/.test(line)) list = null;
+    if (section && (m = /^ {6}- (\S.*?)\s*$/.exec(line))) {
+      (rule.lists[section] ??= []).push(m[1]);
+      continue;
+    }
+    if (section === 'actions' && /^ {6}\S/.test(line)) {
+      inQueueAction = /^ {6}queue:\s*$/.test(line);
+      continue;
+    }
+    if (inQueueAction && (m = /^ {8}name:\s*(\S.*?)\s*$/.exec(line))) rule.queue = m[1];
   }
   return rules;
 }
 
 /**
+ * @param {string} text  .mergify.yml
+ * @returns {{ name: string, queue: string[], merge: string[] }[]}
+ */
+export function parseQueueRules(text) {
+  return readRules(text, 'queue_rules').map((r) => ({ name: r.name, queue: r.lists.queue_conditions ?? [], merge: r.lists.merge_conditions ?? [] }));
+}
+
+/**
+ * Each pull_request_rule's conditions and the queue its `queue` action names (null if none).
+ *
+ * @param {string} text  .mergify.yml
+ * @returns {{ name: string, conditions: string[], queue: string|null }[]}
+ */
+export function parsePullRequestRules(text) {
+  return readRules(text, 'pull_request_rules').map((r) => ({ name: r.name, conditions: r.lists.conditions ?? [], queue: r.queue }));
+}
+
+/**
+ * Entry conditions this script can judge for the release PR, or the first one
+ * it cannot. `status-success=`/`check-success=` are skipped (see below).
+ */
+function judgeConditions(conditions, { labels, draft }) {
+  const unmet = [];
+  for (const c of conditions) {
+    if (c === `head=${RELEASE_HEAD_REF}` || /^(status|check)-success=/.test(c)) continue;
+    if (c === '-draft') {
+      if (draft !== false) unmet.push('it is a draft (or its draft state is unknown)');
+      continue;
+    }
+    const label = /^label=(.+)$/.exec(c);
+    if (label) {
+      if (!labels.includes(label[1])) unmet.push(`it lacks \`${label[1]}\``);
+      continue;
+    }
+    return { unknown: c };
+  }
+  return { unmet };
+}
+
+/**
  * Does .mergify.yml route THIS release PR through a queue that runs the full
- * gate? Three parts:
+ * gate? Four parts:
+ *  - a `pull_request_rules` entry with `head=changeset-release/main` sends
+ *    the PR to that queue (without one Mergify never queues it), judged
+ *    like the queue's own entry conditions below.
  *  - the rule takes the release head, and every other entry condition is
  *    one it can read; any other refuses (`ok: false`). Whether THIS PR meets
  *    them now (`label=`, `-draft`) is returned apart, as `queueable`, since a
@@ -132,7 +199,7 @@ export function parseQueueRules(text) {
  *    `status-success=`/`check-success=` conditions are NOT judged:
  *    their result is not known when this runs, and one that never passes
  *    keeps the PR out of the queue, leaving its own run as the last gate
- *    before a direct merge. That is the risk OWNER_ALLOWS_LEAN holds back.
+ *    before a direct merge. The owner accepted that risk (OWNER_ALLOWS_LEAN).
  *  - its merge conditions require the full-lane checks.
  *  - its CI is two-step (merge conditions present and not the queue
  *    conditions). Mergify checks a PR in place, or merges it without a draft,
@@ -150,24 +217,21 @@ export function releaseQueueRoute(text, { labels = [], draft = true } = {}) {
   if (!rule) return { ok: false, reason: `no Mergify queue rule takes head=${RELEASE_HEAD_REF}` };
   // `ok` is about the CONFIG; `unmet` is about this PR right now (a label or
   // draft state can change), reported separately so shadow can still measure.
-  const unmet = [];
-  for (const c of rule.queue) {
-    if (c === `head=${RELEASE_HEAD_REF}` || /^(status|check)-success=/.test(c)) continue;
-    if (c === '-draft') {
-      if (draft !== false) unmet.push('it is a draft (or its draft state is unknown)');
-      continue;
-    }
-    const label = /^label=(.+)$/.exec(c);
-    if (label) {
-      if (!labels.includes(label[1])) unmet.push(`it lacks \`${label[1]}\``);
-      continue;
-    }
-    return { ok: false, reason: `Mergify queue \`${rule.name}\` has an entry condition this script cannot judge: ${c}` };
-  }
+  const pr = { labels, draft };
+  const queueJudged = judgeConditions(rule.queue, pr);
+  if (queueJudged.unknown) return { ok: false, reason: `Mergify queue \`${rule.name}\` has an entry condition this script cannot judge: ${queueJudged.unknown}` };
   const missing = QUEUE_FULL_CHECKS.filter((c) => !rule.merge.includes(c));
   if (missing.length > 0) return { ok: false, reason: `Mergify queue \`${rule.name}\` does not require ${missing.join(', ')}` };
   const sameAsQueue = rule.merge.length === rule.queue.length && rule.merge.every((c) => rule.queue.includes(c));
   if (sameAsQueue) return { ok: false, reason: `Mergify queue \`${rule.name}\` is single-step CI, so Mergify may judge the PR's own run in place` };
+  const entry = parsePullRequestRules(text).filter((r) => r.queue === rule.name && r.conditions.includes(`head=${RELEASE_HEAD_REF}`));
+  if (entry.length === 0) return { ok: false, reason: `no Mergify pull_request_rules entry queues head=${RELEASE_HEAD_REF} into \`${rule.name}\`` };
+  const entryJudged = entry.map((r) => ({ r, ...judgeConditions(r.conditions, pr) }));
+  const unknownEntry = entryJudged.find((e) => e.unknown);
+  if (unknownEntry) return { ok: false, reason: `Mergify rule \`${unknownEntry.r.name}\` has a condition this script cannot judge: ${unknownEntry.unknown}` };
+  // Any one matching entry rule queues the PR; report the first one's gaps when none is met.
+  const entryUnmet = entryJudged.some((e) => e.unmet.length === 0) ? [] : entryJudged[0].unmet;
+  const unmet = [...new Set([...queueJudged.unmet, ...entryUnmet])];
   const queueable = unmet.length === 0;
   const queueReason = queueable ? `Mergify queue \`${rule.name}\` takes this PR` : `Mergify queue \`${rule.name}\` will not take this PR yet: ${unmet.join(', ')}`;
   return { ok: true, reason: `Mergify queue \`${rule.name}\` gates the merge on the full lanes of a draft`, queueable, queueReason };
@@ -182,11 +246,12 @@ export function releaseQueueRoute(text, { labels = [], draft = true } = {}) {
  * injects branch-protection checks as queue conditions by default
  * (`branch_protection_injection_mode: queue`). Whether a direct merge is
  * possible is set outside the repository: today the `main` ruleset lets only
- * Mergify update `main`. Until the owner decides to rely on that (#9783),
- * and has audited the version-reading checks the lean lane skips (see the
- * `release-pr` job in test.yml), `on` behaves as `shadow`.
+ * Mergify update `main`. The owner chose to rely on that (2026-11-12, #9783),
+ * so the hold is released; setting it back to false makes `on` behave as
+ * `shadow` again. The steps of the jobs a lean run skips are not audited for
+ * version-reading checks beyond those in LEAN_CHECKS; shadow measures that.
  */
-export const OWNER_ALLOWS_LEAN = false;
+export const OWNER_ALLOWS_LEAN = true;
 
 /**
  * Pure decision.
@@ -250,6 +315,7 @@ export function decideReleaseLane({ event, mode, headRef, headRepo, repo, baseRe
  */
 export function verifyReleaseLane(input) {
   const d = decideReleaseLane(input);
+  const runChecks = input.runChecks ?? (() => []);
   let results;
   try {
     results = JSON.parse(input.needs ?? '');
@@ -260,29 +326,47 @@ export function verifyReleaseLane(input) {
   if (unknown.length > 0) return { ok: false, lines: [`❌ ci-release-lane.mjs names job(s) the aggregate does not need: ${unknown.join(', ')}. Update LEAN_KEPT_JOBS.`] };
   const resultOf = (j) => results[j]?.result ?? 'absent';
   const skippedByLean = Object.keys(results).filter((j) => !LEAN_KEPT_JOBS.includes(j));
-  const listed = skippedByLean.map((j) => `- \`${j}\`: ${resultOf(j)}`);
+  const row = (j) => `- \`${j}\`: ${resultOf(j)}`;
   if (input.lane === 'lean') {
     if (d.lane !== 'lean') return { ok: false, lines: [`❌ UNJUSTIFIED_RELEASE_LANE: \`changes\` chose the lean lane but this run re-derives \`${d.lane}\` (${d.reason}). Skipped lanes are not a pass here.`] };
     // `skipped` passes the aggregate's map, so a kept job that did not run
     // would leave the lean run with no gate at all.
     const notRun = LEAN_KEPT_JOBS.filter((j) => resultOf(j) !== 'success');
     if (notRun.length > 0) return { ok: false, lines: [`❌ RELEASE_CHECKS_DID_NOT_PASS: a lean run needs every kept job to succeed: ${notRun.map((j) => `\`${j}\` was ${resultOf(j)}`).join(', ')}.`] };
-    return { ok: true, lines: ['## Release PR lean lane (`CI_RELEASE_LANE=on`)', '', d.reason, '', 'Skipped on purpose; the `release` merge queue runs them:', '', ...listed] };
+    return { ok: true, lines: ['## Release PR lean lane (`CI_RELEASE_LANE=on`)', '', d.reason, '', 'Skipped on purpose; the `release` merge queue runs them:', '', ...skippedByLean.map(row)] };
   }
   if (d.pending) {
     // The aggregate's own rule (`case "$r" in success|skipped) ;;`): anything
     // else, `cancelled` included, is a rejection the lean lane would defer.
     const failed = skippedByLean.filter((j) => !['success', 'skipped'].includes(resultOf(j)));
+    // A lane that skipped here skips on this PR whatever the lean lane does.
+    const ran = skippedByLean.filter((j) => resultOf(j) !== 'skipped').map(row);
+    // `release-pr` runs only in a lean run, so its checks run here instead.
+    const checks = runChecks();
+    const checksFailed = checks.filter((c) => !c.ok).map((c) => c.script);
     // The decision names what still stands between this run and a lean one,
     // so the report never reads as a claim about today.
     const lean = `The lean lane (${d.pending.join(', ')})`;
-    const lines = [`## Release PR lean lane, reported only (\`CI_RELEASE_LANE=${d.mode}\`)`, '', d.reason, '', `Every lane ran. ${lean} would skip:`, '', ...listed];
-    lines.push('', failed.length > 0 ? `⚠️ ${lean} would defer a failure to the merge queue: ${failed.join(', ')}.` : `None of them failed. ${lean} would reach the same verdict.`);
+    const lines = [`## Release PR lean lane, reported only (\`CI_RELEASE_LANE=${d.mode}\`)`, '', d.reason, '', `Every lane ran. ${lean} would skip:`, '', ...ran];
+    lines.push('', `Its own checks (\`release-pr\`), run here:`, '', ...checks.map((c) => `- \`${c.script}\`: ${c.ok ? 'pass' : `FAIL: ${c.tail}`}`));
+    if (failed.length > 0) lines.push('', `⚠️ ${lean} would defer a failure to the merge queue: ${failed.join(', ')}.`);
+    if (checksFailed.length > 0) lines.push('', `⚠️ ${lean} would fail its own checks: ${checksFailed.join(', ')}.`);
+    if (failed.length === 0 && checksFailed.length === 0) lines.push('', `None of them failed. ${lean} would reach the same verdict.`);
     return { ok: true, lines };
   }
   const lines = [`Release lane full: ${d.reason}.`];
   if (d.lane === 'lean') lines.push('⚠️ The decision re-derives as lean, but `changes` published no lean lane (the decision step failed or is missing), so every lane ran.');
   return { ok: true, lines };
+}
+
+/** Runs LEAN_CHECKS in `cwd`, as `release-pr` would; each result's last output line. */
+export function runLeanChecks(cwd) {
+  return LEAN_CHECKS.map((script) => {
+    // Bounded, so a hung check cannot hold the aggregate to the job timeout.
+    const r = boundedSpawnSync(process.execPath, [script], { cwd, encoding: 'utf8', timeout: 120_000 });
+    const tail = `${r.stdout ?? ''}${r.stderr ?? ''}`.trim().split('\n').slice(-1)[0] ?? '';
+    return { script, ok: r.status === 0, tail: r.error ? r.error.message : tail };
+  });
 }
 
 function gitReader(cwd) {
@@ -319,7 +403,7 @@ export function run(argv, env = process.env, cwd = process.cwd()) {
     return 0;
   }
   if (argv[0] === '--verify') {
-    const v = verifyReleaseLane({ ...input, lane: env.LANE, needs: env.NEEDS });
+    const v = verifyReleaseLane({ ...input, lane: env.LANE, needs: env.NEEDS, runChecks: () => runLeanChecks(cwd) });
     for (const l of v.lines) console.log(l);
     if (env.GITHUB_STEP_SUMMARY) appendFileSync(env.GITHUB_STEP_SUMMARY, `${v.lines.join('\n')}\n`);
     return v.ok ? 0 : 1;

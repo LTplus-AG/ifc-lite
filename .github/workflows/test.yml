@@ -3978,19 +3978,18 @@ jobs:
           fi
 
   # The release PR's own checks, for the lean lane (scripts/ci-release-lane.mjs).
-  # Runs ONLY in a lean run, so it is skipped on every other run, shadow
-  # included (every lane runs there); its success on a head therefore marks a
-  # lean verdict, which the no-op probe refuses to replay unless the lane
-  # still holds. In lean mode the jobs that normally carry these steps
-  # (lint, node-guards, scripts-tests, docs-checks) are skipped with the path
-  # filter. scripts-tests also runs tests that read the real versions
-  # (check-changeset-bump, sync-versions, release-version-changed). The
-  # lean decision refuses any diff that moves more than package versions, so
-  # checks that compare source or built output (API surface, builds) have
+  # Runs ONLY in a lean run, so it is skipped on every other run; its success
+  # on a head therefore marks a lean verdict, which the no-op probe refuses to
+  # replay unless the lane still holds. In shadow the aggregate's --verify runs
+  # the same scripts (LEAN_CHECKS) and reports them. In lean mode the jobs that
+  # normally carry these steps (node-guards, docs-checks) are skipped with the
+  # path filter. The lean decision refuses any diff that moves more than
+  # package versions, so checks that compare source or built output have
   # nothing new to see; checks that read the VERSIONS may still. The ones here
-  # are those known to. The other steps of the skipped jobs have NOT been
-  # audited for this; doing so is a precondition for releasing
-  # OWNER_ALLOWS_LEAN in scripts/ci-release-lane.mjs.
+  # are those known to. check-changesets and check-changeset-bump pass
+  # vacuously on a release PR (see LEAN_CHECKS), so they are not here, and
+  # neither script below needs history or node_modules. The other steps of the
+  # skipped jobs are not audited for version reads; shadow measures them.
   release-pr:
     name: Release PR checks
     needs: changes
@@ -4002,20 +4001,9 @@ jobs:
         with:
           lfs: false
           persist-credentials: false
-          # check-changeset-bump.mjs anchors on the last `chore: version
-          # packages` commit and refuses a shallow clone.
-          fetch-depth: 0
-      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
-          cache: pnpm
-      # For @changesets/parse; no build.
-      - run: pnpm install --frozen-lockfile
-      - name: Check changesets name real packages
-        run: node scripts/check-changesets.mjs
-      - name: Check changeset bump levels against the API surface
-        run: node scripts/check-changeset-bump.mjs
       # A version-only diff can still need this: it catches a release whose
       # npm versions moved while sync-versions.js left the Cargo version behind.
       - name: Check Rust crate version matches the declared major offset
@@ -4098,7 +4086,8 @@ jobs:
         run: node scripts/ci-pr-lane.mjs --verify
       # RELEASE PR LEAN LANE: same proof for `release_lane == 'lean'`
       # (scripts/ci-release-lane.mjs --verify). It re-reads the PR's diff, so
-      # it checks out the same merge commit with its base parent.
+      # it checks out the same merge commit with its base parent. In shadow it
+      # also runs the lean lane's own checks (LEAN_CHECKS) on that checkout.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: needs.changes.outputs.noop != 'true' && (needs.changes.outputs.release_lane == 'lean' || (github.event_name == 'pull_request' && github.head_ref == 'changeset-release/main' && (vars.CI_RELEASE_LANE == 'shadow' || vars.CI_RELEASE_LANE == 'on')))
         with:

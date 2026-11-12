@@ -1,11 +1,11 @@
 --- a/packages/create/src/in-store/_structural-graph.ts
 +++ b/packages/create/src/in-store/_structural-graph.ts
-@@ -13,7 +13,7 @@
-   'RelativePlacement', 'Location', 'RefDirection', 'Representations', 'Items',
-   'EdgeStart', 'EdgeEnd', 'VertexGeometry', 'Bounds', 'Bound', 'Polygon',
-   'AdditionalConditions', 'ConnectionConstraint', 'SharedPlacement',
--  'EdgeElement', 'EdgeList', 'FaceSurface', 'Position', 'Values', 'Points']);
-+  'EdgeElement', 'EdgeList', 'FaceSurface', 'Position', 'Values', 'Points', 'Segments', 'ParentCurve']);
-
- type EntityMetadata = SchemaRegistry['entities'][string];
- type AttributeMetadata = NonNullable<EntityMetadata['allAttributes']>[number];
+@@ -69,7 +69,7 @@
+     if (!record) return [];
+     const definition = meta(record.type);
+     const chain = definition?.inheritanceChain ?? [];
+-    const resource = definition !== undefined && !chain.includes('IfcRoot') && !['IfcCompositeCurve', 'IfcCompositeCurveSegment'].includes(definition.name);
++    const resource = definition !== undefined && !chain.includes('IfcRoot');
+     return (definition?.allAttributes ?? []).flatMap((a, index) =>
+       isReference(a.type) && (!owned || a.name !== 'PlacementRelTo' && (resource || OWNED.has(a.name)))
+         ? refs(record.attributes[index]).map(target => ({ target, index, attribute: a })) : [])

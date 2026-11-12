@@ -6,14 +6,12 @@ import { iterateEffectiveEntityIds, type StoreEditor } from '@ifc-lite/mutations
 import { getSchemaRegistryForVersion, type IfcDataStore, type SchemaRegistry } from '@ifc-lite/parser';
 import { asRef, createStyleEntityReader, type StyleEntity } from './style-entity-reader.js';
 
-/** The ownership boundary is attribute-based: references to other structural
- * roots, placement parents and representation contexts are never owned. */
+/** Rooted objects own only these product resources. Inside an owned resource
+ * graph, forward resource references are owned; IFC roots, representation
+ * contexts and placement parents remain borrowed. Shared resources survive. */
 const OWNED = new Set(['ObjectPlacement', 'Representation', 'Axis', 'AxisDirection',
   'AppliedCondition', 'ConditionCoordinateSystem', 'AppliedLoad', 'OrientationOf2DPlane',
-  'RelativePlacement', 'Location', 'RefDirection', 'Representations', 'Items',
-  'EdgeStart', 'EdgeEnd', 'VertexGeometry', 'Bounds', 'Bound', 'Polygon',
-  'AdditionalConditions', 'ConnectionConstraint', 'SharedPlacement',
-  'EdgeElement', 'EdgeList', 'FaceSurface', 'Position', 'Values', 'Points', 'Segments', 'ParentCurve']);
+  'AdditionalConditions', 'ConnectionConstraint', 'SharedPlacement']);
 
 type EntityMetadata = SchemaRegistry['entities'][string];
 type AttributeMetadata = NonNullable<EntityMetadata['allAttributes']>[number];
@@ -42,19 +40,45 @@ export function structuralReader(store: IfcDataStore, editor: StoreEditor): Stru
   const entities = new Map(Object.values(registry.entities).map(e => [e.name.toUpperCase(), e]));
   const meta = (type: string) => entities.get(type.toUpperCase());
   const isReference = (type: string, seen = new Set<string>()): boolean => {
-    if (registry.entities[type]) return true;
-    if (seen.has(type)) return false;
-    seen.add(type);
-    return (registry.selects[type] ?? []).some(t => isReference(t, seen));
+    const base = type.replace(/\[\]/g, ''); // nested entity aggregates, e.g. IfcCartesianPoint[]
+    if (registry.entities[base]) return true;
+    if (seen.has(base)) return false;
+    seen.add(base);
+    return (registry.selects[base] ?? []).some(t => isReference(t, seen));
   };
-  const refs = (value: unknown): number[] => (Array.isArray(value) ? value : [value])
-    .flatMap(v => { const id = asRef(v); return id === null ? [] : [id]; });
+  const refs = (value: unknown): number[] => {
+    const result: number[] = [], pending: unknown[] = [value];
+    const arrays = new Set<unknown[]>();
+    while (pending.length) {
+      const item = pending.pop();
+      if (Array.isArray(item)) {
+        // Typed primitive tuples are values. Visit array nodes once to bound
+        // overlay aliases/cycles while preserving ordinary flat-list order.
+        if (arrays.has(item) || typeof item[0] === 'string' && /^IFC/i.test(item[0])) continue;
+        arrays.add(item);
+        for (let i = item.length - 1; i >= 0; i--) pending.push(item[i]);
+      } else {
+        const id = asRef(item);
+        if (id !== null) result.push(id);
+      }
+    }
+    return result;
+  };
   const edges = (id: number, owned = false) => {
     const record = read(id);
     if (!record) return [];
-    return (meta(record.type)?.allAttributes ?? []).flatMap((a, index) =>
-      isReference(a.type) && (!owned || OWNED.has(a.name))
-        ? refs(record.attributes[index]).map(target => ({ target, index, attribute: a })) : []);
+    const definition = meta(record.type);
+    const chain = definition?.inheritanceChain ?? [];
+    const resource = definition !== undefined && !chain.includes('IfcRoot');
+    return (definition?.allAttributes ?? []).flatMap((a, index) =>
+      isReference(a.type) && (!owned || a.name !== 'PlacementRelTo' && (resource || OWNED.has(a.name)))
+        ? refs(record.attributes[index]).map(target => ({ target, index, attribute: a })) : [])
+      .filter(edge => {
+        if (!owned) return true;
+        const target = meta(read(edge.target)?.type ?? '');
+        return target !== undefined && !target.inheritanceChain?.includes('IfcRoot')
+          && !target.inheritanceChain?.includes('IfcRepresentationContext');
+      });
   };
   const requireStructural = (id: number) => {
     const record = read(id);

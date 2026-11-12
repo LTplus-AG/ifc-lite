@@ -61,9 +61,9 @@ export function structuralReader(store: IfcDataStore, editor: StoreEditor): Stru
     const type = record && meta(record.type);
     const chain = [...(type?.inheritanceChain ?? []), type?.name ?? ''];
     const structural = chain.some(t => /^(IfcStructural|IfcBoundary|IfcRelConnectsStructural)/.test(t));
-    const structuralAssignment = record?.type === 'IfcRelAssignsToGroup'
+    const structuralAssignment = type?.name === 'IfcRelAssignsToGroup'
       && edges(id).some(e => e.attribute.name === 'RelatingGroup'
-        && read(e.target)?.type.startsWith('IfcStructural'));
+        && meta(read(e.target)?.type ?? '')?.name.startsWith('IfcStructural'));
     if (!record || !structural && !structuralAssignment) {
       throw new Error(`structural edit/remove: #${id} is not a live structural entity`);
     }

@@ -14,7 +14,10 @@
 import { basename, posix } from 'node:path';
 import { isChangesetName } from './pending-changesets.mjs';
 
-const SEMVER = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/;
+// semver.org's grammar: no leading zeros in numeric identifiers, no empty ones.
+const NUM = '(?:0|[1-9]\\d*)';
+const PRE = `(?:${NUM}|\\d*[A-Za-z-][0-9A-Za-z-]*)`;
+const SEMVER = new RegExp(`^(${NUM})\\.(${NUM})\\.(${NUM})(?:-(${PRE}(?:\\.${PRE})*))?$`);
 
 /** BigInt: numeric identifiers are unbounded, and Number loses digits past 2^53. */
 function cmpBig(x, y) {

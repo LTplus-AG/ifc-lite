@@ -225,7 +225,7 @@ test('the inputs are read only when the cheap checks pass (no git on an ordinary
 // ---------------------------------------------------------------- Mergify
 
 test('the narrow queue-rule reader agrees with a YAML parse of the real .mergify.yml', () => {
-  const real = parse(MERGIFY).queue_rules.map((r) => ({ name: r.name, queue: r.queue_conditions ?? [], merge: r.merge_conditions ?? [] }));
+  const real = parse(MERGIFY).queue_rules.map((r) => ({ name: r.name, queue: r.queue_conditions ?? [], merge: r.merge_conditions ?? [], unread: false }));
   assert.deepEqual(parseQueueRules(MERGIFY), real);
   const route = releaseQueueRoute(MERGIFY, { labels: ['mergify-trial'], draft: false });
   assert.equal(route.ok, true, route.reason);
@@ -236,22 +236,22 @@ test('the narrow queue-rule reader agrees with a YAML parse of the real .mergify
 });
 
 test('the narrow pull_request_rules reader agrees with a YAML parse of the real .mergify.yml', () => {
-  const real = parse(MERGIFY).pull_request_rules.map((r) => ({ name: r.name, conditions: r.conditions ?? [], actions: Object.keys(r.actions ?? {}), queue: r.actions?.queue?.name ?? null }));
+  const real = parse(MERGIFY).pull_request_rules.map((r) => ({ name: r.name, conditions: r.conditions ?? [], actions: Object.keys(r.actions ?? {}), queue: r.actions?.queue?.name ?? null, unread: false }));
   assert.deepEqual(parsePullRequestRules(MERGIFY), real);
 });
 
 test('REFUSE (#9783 review): no pull_request_rules entry queues the release PR into the release queue', () => {
   const rule = 'head=changeset-release/main\n    actions:\n      queue:\n        name: release';
   assert.ok(MERGIFY.includes(rule), 'fixture anchor');
-  for (const broken of [
-    MERGIFY.replace(rule, 'head=changeset-release/main\n    actions:\n      queue:\n        name: default'),
-    MERGIFY.replace(rule, 'head=changeset-release/other\n    actions:\n      queue:\n        name: release'),
-    MERGIFY.slice(0, MERGIFY.indexOf('pull_request_rules:')),
+  for (const [broken, why] of [
+    [MERGIFY.replace(rule, 'head=changeset-release/main\n    actions:\n      queue:\n        name: default'), /can queue the release PR into `default`, not `release`/],
+    [MERGIFY.replace(rule, 'head=changeset-release/other\n    actions:\n      queue:\n        name: release'), /no Mergify pull_request_rules entry queues/],
+    [MERGIFY.slice(0, MERGIFY.indexOf('pull_request_rules:')), /no Mergify pull_request_rules entry queues/],
   ]) {
     assert.notEqual(broken, MERGIFY);
     const r = releaseQueueRoute(broken, { labels: ['mergify-trial'], draft: false });
     assert.equal(r.ok, false);
-    assert.match(r.reason, /no Mergify pull_request_rules entry queues|can queue the release PR into `default`, not `release`/); // @source-text-assertion-ok subject is the returned reason
+    assert.match(r.reason, why); // @source-text-assertion-ok subject is the returned reason
     assert.equal(decide({ mergify: () => broken }).lane, 'full');
   }
   // An entry condition it cannot judge refuses; one it can, and the PR lacks, is PR state.
@@ -276,9 +276,18 @@ test('REFUSE (#9783 review): any other route that can queue or merge the release
   const cases = [
     // a rule with no head condition can match the release PR
     ['  - name: any\n    conditions:\n      - label=go\n    actions:\n      queue:\n        name: default', /`any` can queue the release PR into `default`/],
-    ['  - name: m\n    conditions:\n      - label=go\n    actions:\n      merge:\n        method: squash', /`m` can merge the release PR directly/],
+    ['  - name: m\n    conditions:\n      - label=go\n    actions:\n      merge:\n        method: squash', /`m` can merge the release PR/],
     // a rule for the release head that merges, or routes elsewhere, or in a form this script cannot read
-    ['  - name: direct\n    conditions:\n      - head=changeset-release/main\n    actions:\n      merge: {}', /`direct` can merge the release PR directly/],
+    ['  - name: direct\n    conditions:\n      - head=changeset-release/main\n    actions:\n      merge: {}', /`direct` can merge the release PR/],
+    ['  - name: unknown-action\n    conditions:\n      - head=changeset-release/main\n    actions:\n      dequeue_and_merge: {}', /`unknown-action` can dequeue_and_merge the release PR/],
+    // actions it cannot read, flow style or misindented, are a refusal, not "no actions"
+    ['  - name: flow\n    conditions:\n      - label=go\n    actions: {merge: {}}', /`flow` has actions this script cannot read/],
+    ['  - name: deep\n    conditions:\n      - label=go\n    actions:\n        queue:\n          name: default', /`deep` has (actions|lines) this script cannot read/],
+    // a merge key next to a safe action, an alias, a rule not led by `name`, a mapping where a list belongs
+    ['  - name: sneaky\n    conditions:\n      - label=go\n    actions:\n      comment:\n        message: hi\n      <<: *direct_merge', /`sneaky` has lines this script cannot read/],
+    ['  - name: alias\n    conditions: *conds\n    actions:\n      comment:\n        message: hi', /`alias` has lines this script cannot read/],
+    ['  - conditions:\n      - label=go\n    name: late\n    actions:\n      merge: {}', /`\(unnamed: - conditions:\)` has lines this script cannot read/],
+    ['  - name: mapped\n    conditions:\n      or: [label=go]\n    actions:\n      comment:\n        message: hi', /`mapped` has lines this script cannot read/],
     ['  - name: other\n    conditions:\n      - head=changeset-release/main\n    actions:\n      queue:\n        name: default', /`other` can queue the release PR into `default`/],
     ['  - name: inline\n    conditions:\n      - head=changeset-release/main\n    actions:\n      queue: {name: release}', /`inline` can queue the release PR into a queue this script cannot read/],
   ];
@@ -293,7 +302,14 @@ test('REFUSE (#9783 review): any other route that can queue or merge the release
   }
   // Two queue rules taking the release head: the other could be single-step.
   const twoQueues = MERGIFY.replace('queue_rules:\n', 'queue_rules:\n  - name: release-fast\n    queue_conditions:\n      - head=changeset-release/main\n    merge_conditions:\n      - head=changeset-release/main\n');
-  assert.match(releaseQueueRoute(twoQueues, { labels: ['mergify-trial'], draft: false }).reason, /more than one Mergify queue rule takes head=changeset-release\/main \(release-fast, release\)/); // @source-text-assertion-ok subject is the returned reason
+  assert.match(releaseQueueRoute(twoQueues, { labels: ['mergify-trial'], draft: false }).reason, /more than one Mergify queue rule can take head=changeset-release\/main \(release-fast, release\)/); // @source-text-assertion-ok subject is the returned reason
+  // A queue with no head condition can take it too (autoqueue, `@Mergifyio queue open`).
+  const open = MERGIFY.replace('queue_rules:\n', 'queue_rules:\n  - name: open\n    queue_conditions:\n      - label=go\n    merge_conditions:\n      - label=go\n');
+  assert.match(releaseQueueRoute(open, { labels: ['mergify-trial'], draft: false }).reason, /more than one Mergify queue rule can take .* \(open, release\)/); // @source-text-assertion-ok subject is the returned reason
+  // An exclusion counts wherever it sits among the conditions.
+  const reordered = MERGIFY.replace('      - -head=changeset-release/main\n      - -files~=^tests/perf-ratchets/\n', '      - -files~=^tests/perf-ratchets/\n      - -head=changeset-release/main\n');
+  assert.notEqual(reordered, MERGIFY);
+  assert.equal(releaseQueueRoute(reordered, { labels: ['mergify-trial'], draft: false }).ok, true);
 });
 
 test('QUEUE: a queue action does not leak into the next rule (#9783 review)', () => {
@@ -318,8 +334,9 @@ test('SHADOW (#9783 review): the report runs the lean lane\'s own checks and lis
   // The real runner on scripts of its own: exit status and last output line; a missing script fails, never throws.
   const dir = mkdtempSync(join(TMP, 'checks-'));
   writeFileSync(join(dir, 'ok.mjs'), "console.log('first'); console.log('all good');\n");
-  writeFileSync(join(dir, 'bad.mjs'), "console.log('offset mismatch'); process.emitWarning('noise', 'ExperimentalWarning'); process.exitCode = 1;\n");
-  assert.deepEqual(runLeanChecks(dir, ['ok.mjs', 'bad.mjs', 'gone.mjs']).map((c) => [c.script, c.ok, /Cannot find module/.test(c.tail) || c.tail]), [['ok.mjs', true, 'all good'], ['bad.mjs', false, 'offset mismatch'], ['gone.mjs', false, true]]);
+  writeFileSync(join(dir, 'bad.mjs'), "console.log('offset mismatch'); process.emitWarning('noise', 'ExperimentalWarning'); process.emitWarning('old', 'DeprecationWarning'); process.exitCode = 1;\n");
+  writeFileSync(join(dir, 'own.mjs'), "console.log('Warning: README missing for packages/x'); process.exitCode = 1;\n");
+  assert.deepEqual(runLeanChecks(dir, ['ok.mjs', 'bad.mjs', 'own.mjs', 'gone.mjs']).map((c) => [c.script, c.ok, /Cannot find module/.test(c.tail) || c.tail]), [['ok.mjs', true, 'all good'], ['bad.mjs', false, 'offset mismatch'], ['own.mjs', false, 'Warning: README missing for packages/x'], ['gone.mjs', false, true]]);
 });
 
 test('the release queue really tests a batch: its required `Rust tests (feature builds)` runs on a PR only for a batch', () => {
@@ -381,12 +398,16 @@ test('DIFF: a CHANGELOG and its package.json move together, or the diff is not a
   assert.deepEqual(bump({ name: 'x', version: '1.0.0' }, { name: 'x' }), ['packages/x/package.json: `version` is not semver on both sides ("1.0.0" -> undefined)']);
   assert.deepEqual(bump({ name: 'x', version: '1.0.0' }, { name: 'x', version: 'latest' }), ['packages/x/package.json: `version` is not semver on both sides ("1.0.0" -> "latest")']);
   // Semver precedence, prerelease included: a prerelease ranks below its release (#9783 review).
-  for (const [from, to] of [['1.10.0', '1.9.9'], ['1.0.0', '1.0.0-next.0'], ['1.0.0-next.1', '1.0.0-next.0'], ['1.0.0-next.10', '1.0.0-next.9'], ['1.0.0-next.0', '1.0.0-0'], ['1.0.0-next.0', '1.0.0-next'], ['1.0.0-rc.1', '1.0.0-beta.2'], ['1.0.0-next.0', '1.0.00-next.0']]) {
+  for (const [from, to] of [['1.10.0', '1.9.9'], ['1.0.0', '1.0.0-next.0'], ['1.0.0-next.1', '1.0.0-next.0'], ['1.0.0-next.10', '1.0.0-next.9'], ['1.0.0-next.0', '1.0.0-0'], ['1.0.0-next.0', '1.0.0-next'], ['1.0.0-rc.1', '1.0.0-beta.2']]) {
     assert.deepEqual(bump({ name: 'x', version: from }, { name: 'x', version: to }), [`packages/x/package.json: \`version\` did not move forward (${from} -> ${to})`], `${from} -> ${to}`);
   }
   // Past 2^53 still orders (BigInt), and equal numeric identifiers go on to the next one.
   assert.deepEqual(bump({ name: 'x', version: '1.0.0-next.9007199254740992' }, { name: 'x', version: '1.0.0-next.9007199254740993' }), []);
-  assert.deepEqual(bump({ name: 'x', version: '1.0.0-1.0' }, { name: 'x', version: '1.0.0-01.1' }), []);
+  assert.deepEqual(bump({ name: 'x', version: '1.0.0-1.0' }, { name: 'x', version: '1.0.0-1.1' }), []);
+  // Leading zeros and empty identifiers are not semver (npm refuses them).
+  for (const bad of ['1.0.00-next.0', '01.0.0', '1.0.0-01.1', '1.0.0-next..1', '1.0.0-']) {
+    assert.deepEqual(bump({ name: 'x', version: '1.0.0-next.0' }, { name: 'x', version: bad }), [`packages/x/package.json: \`version\` is not semver on both sides ("1.0.0-next.0" -> "${bad}")`], bad);
+  }
   for (const [from, to] of [['1.0.0', '1.0.1'], ['1.9.9', '1.10.0'], ['0.9.0', '1.0.0-next.0'], ['1.0.0-next.0', '1.0.0-next.1'], ['1.0.0-next.9', '1.0.0-next.10'], ['1.0.0-next', '1.0.0-next.0'], ['1.0.0-beta.2', '1.0.0-rc.1'], ['1.0.0-next.1', '1.0.0']]) {
     assert.deepEqual(bump({ name: 'x', version: from }, { name: 'x', version: to }), [], `${from} -> ${to}`);
   }
@@ -397,7 +418,7 @@ test('DIFF: a CHANGELOG and its package.json move together, or the diff is not a
 
 test('QUEUE: a comment between conditions does not drop the conditions after it (#9783 review)', () => {
   const text = 'queue_rules:\n  - name: release\n    queue_conditions:\n      - head=changeset-release/main\n    # entry gate\n      - label=go\n    merge_conditions:\n      - check-success=x\n';
-  assert.deepEqual(parseQueueRules(text), [{ name: 'release', queue: ['head=changeset-release/main', 'label=go'], merge: ['check-success=x'] }]);
+  assert.deepEqual(parseQueueRules(text), [{ name: 'release', queue: ['head=changeset-release/main', 'label=go'], merge: ['check-success=x'], unread: false }]);
 });
 
 test('DIFF: any Cargo.toml or Cargo.lock change runs the full lanes, of any status, even a pure version bump (#9783 review)', () => {

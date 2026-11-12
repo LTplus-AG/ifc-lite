@@ -98,7 +98,7 @@ export const QUEUE_FULL_CHECKS = [
  * keeps its 4-space list sections, the names of its actions, and the queue
  * its `actions.queue` names in block form (null otherwise).
  *
- * @returns {{ name: string, lists: Record<string, string[]>, actions: string[], queue: string|null }[]}
+ * @returns {{ name: string, lists: Record<string, string[]>, actions: string[], queue: string|null, unread: boolean }[]}
  */
 function readRules(text, topKey) {
   const rules = [];
@@ -106,6 +106,11 @@ function readRules(text, topKey) {
   let rule = null;
   // A 4-space section key, or `actions.queue` inside `actions`.
   let section = null;
+  // A line this reader does not understand marks its rule `unread`, which the
+  // caller refuses: a dropped line must never read as an absent one.
+  const unread = () => {
+    if (rule) rule.unread = true;
+  };
   for (const line of String(text ?? '').split('\n')) {
     // A comment ends nothing: one between two conditions must not drop the rest.
     if (/^\s*(#|$)/.test(line)) continue;
@@ -117,42 +122,56 @@ function readRules(text, topKey) {
     }
     if (!inList) continue;
     let m = /^ {2}- name:\s*(\S.*?)\s*$/.exec(line);
-    if (m) {
-      rule = { name: m[1], lists: {}, actions: [], queue: null };
+    if (m || /^ {2}\S/.test(line)) {
+      // A rule whose first key is not `name` is read as an unnamed, unread one.
+      rule = { name: m ? m[1] : `(unnamed: ${line.trim()})`, lists: {}, actions: [], queue: null, unread: !m };
       rules.push(rule);
       section = null;
       continue;
     }
     if (!rule) continue;
+    // YAML anchors, aliases and merge keys can carry content from elsewhere.
+    if (/(^|\s)(<<:|[&*][\w-]+)/.test(line)) {
+      unread();
+      continue;
+    }
     m = /^ {4}(\w+):\s*$/.exec(line);
     if (m) {
       section = m[1];
       continue;
     }
-    if (/^ {4}\S/.test(line)) {
+    if (/^ {4}\w+:\s*\S/.test(line)) {
+      // A scalar setting (`batch_size: 1`); a block scalar under it is not read.
       section = null;
       continue;
     }
-    if (section && (m = /^ {6}- (\S.*?)\s*$/.exec(line))) {
-      (rule.lists[section] ??= []).push(m[1]);
+    if (/^ {4}\S/.test(line) || !section) {
+      unread();
       continue;
     }
-    if (section?.startsWith('actions') && (m = /^ {6}(\w+):/.exec(line))) {
-      rule.actions.push(m[1]);
-      section = /^ {6}queue:\s*$/.test(line) ? 'actions.queue' : 'actions';
+    if (section.startsWith('actions')) {
+      if ((m = /^ {6}(\w+):/.exec(line))) {
+        rule.actions.push(m[1]);
+        section = /^ {6}queue:\s*$/.test(line) ? 'actions.queue' : 'actions';
+      } else if (section === 'actions.queue' && (m = /^ {8}name:\s*(\S.*?)\s*$/.exec(line))) {
+        rule.queue = m[1];
+      } else if (!/^ {8,}\S/.test(line)) {
+        unread();
+      }
       continue;
     }
-    if (section === 'actions.queue' && (m = /^ {8}name:\s*(\S.*?)\s*$/.exec(line))) rule.queue = m[1];
+    if ((m = /^ {6}- (\S.*?)\s*$/.exec(line))) (rule.lists[section] ??= []).push(m[1]);
+    else unread();
   }
   return rules;
 }
 
 /**
  * @param {string} text  .mergify.yml
- * @returns {{ name: string, queue: string[], merge: string[] }[]}
+ * @returns {{ name: string, queue: string[], merge: string[], unread: boolean }[]}
  */
 export function parseQueueRules(text) {
-  return readRules(text, 'queue_rules').map((r) => ({ name: r.name, queue: r.lists.queue_conditions ?? [], merge: r.lists.merge_conditions ?? [] }));
+  return readRules(text, 'queue_rules').map((r) => ({ name: r.name, queue: r.lists.queue_conditions ?? [], merge: r.lists.merge_conditions ?? [], unread: r.unread }));
 }
 
 /**
@@ -160,14 +179,17 @@ export function parseQueueRules(text) {
  * `queue` action names (null if none, or not in block form).
  *
  * @param {string} text  .mergify.yml
- * @returns {{ name: string, conditions: string[], actions: string[], queue: string|null }[]}
+ * @returns {{ name: string, conditions: string[], actions: string[], queue: string|null, unread: boolean }[]}
  */
 export function parsePullRequestRules(text) {
-  return readRules(text, 'pull_request_rules').map((r) => ({ name: r.name, conditions: r.lists.conditions ?? [], actions: r.actions, queue: r.queue }));
+  return readRules(text, 'pull_request_rules').map((r) => ({ name: r.name, conditions: r.lists.conditions ?? [], actions: r.actions, queue: r.queue, unread: r.unread }));
 }
 
-/** pull_request_rules actions that put a PR on a path to `main`. */
-const ROUTING_ACTIONS = ['queue', 'merge'];
+/**
+ * pull_request_rules actions that cannot put a PR on a path to `main`. Any
+ * other action, known or not, must be a `queue` into the release queue.
+ */
+const SAFE_ACTIONS = ['comment', 'label', 'assign', 'request_reviews', 'dismiss_reviews', 'review', 'close', 'delete_head_branch', 'post_check', 'edit'];
 
 const RELEASE_HEAD = `head=${RELEASE_HEAD_REF}`;
 
@@ -178,15 +200,15 @@ const RELEASE_HEAD = `head=${RELEASE_HEAD_REF}`;
  * unmet now. `status-success=`/`check-success=` are skipped (see below).
  */
 function judgeConditions(conditions, { labels, draft }) {
+  // Head conditions first, so an exclusion wins whatever the order:
+  // `-head=` another branch holds; `head=` another, or `-head=` this one, never does.
+  for (const c of conditions) {
+    const head = /^(-?)head=(.+)$/.exec(c);
+    if (head && (head[1] === '-') === (head[2] === RELEASE_HEAD_REF)) return { never: c };
+  }
   const unmet = [];
   for (const c of conditions) {
-    if (c === RELEASE_HEAD || /^(status|check)-success=/.test(c)) continue;
-    const head = /^(-?)head=(.+)$/.exec(c);
-    if (head) {
-      // `-head=` another branch holds; `head=` another, or `-head=` this one, never does.
-      if ((head[1] === '-') === (head[2] === RELEASE_HEAD_REF)) return { never: c };
-      continue;
-    }
+    if (/^-?head=/.test(c) || /^(status|check)-success=/.test(c)) continue;
     if (c === '-draft') {
       if (draft !== false) unmet.push('it is a draft (or its draft state is unknown)');
       continue;
@@ -203,8 +225,11 @@ function judgeConditions(conditions, { labels, draft }) {
 
 /**
  * Does .mergify.yml route THIS release PR through a queue that runs the full
- * gate? Four parts, checked in this order:
- *  - the rule takes the release head, and every other entry condition is
+ * gate? Every rule of both lists must be read in full (a line the reader
+ * does not understand refuses). Then four parts, checked in this order:
+ *  - exactly one queue rule's conditions do not exclude the release head
+ *    (any queue could take it: a rule, `@Mergifyio queue`, autoqueue), and
+ *    every other entry condition of that rule is
  *    one it can read; any other refuses (`ok: false`). Whether THIS PR meets
  *    them now (`label=`, `-draft`) is returned apart, as `queueable`, since a
  *    label can change: shadow reports either way, only a lean run needs it.
@@ -218,9 +243,10 @@ function judgeConditions(conditions, { labels, draft }) {
  *    only when the CI is single-step (docs.mergify.com/merge-queue/rules,
  *    `allow_inplace_checks`), so two-step means the full lanes run on a
  *    `mergify/merge-queue/*` draft, where ci-pr-lane.mjs runs every lane.
- *  - a `pull_request_rules` entry with `head=changeset-release/main` sends
- *    the PR to that queue (without one Mergify never queues it), judged
- *    like the queue's own entry conditions.
+ *  - every pull_request_rule its conditions do not exclude, and with an
+ *    action outside SAFE_ACTIONS, only queues into that queue; at least one
+ *    does (without one Mergify never queues it). Their conditions are
+ *    judged like the queue's own.
  *
  * @param {string} text  .mergify.yml
  * @param {{ labels?: string[], draft?: boolean }} pr
@@ -228,29 +254,38 @@ function judgeConditions(conditions, { labels, draft }) {
  *   Read `queueable` only after `ok`: it is absent on a refusal.
  */
 export function releaseQueueRoute(text, { labels = [], draft = true } = {}) {
-  const takers = parseQueueRules(text).filter((r) => r.queue.includes(RELEASE_HEAD));
-  if (takers.length === 0) return { ok: false, reason: `no Mergify queue rule takes head=${RELEASE_HEAD_REF}` };
-  if (takers.length > 1) return { ok: false, reason: `more than one Mergify queue rule takes head=${RELEASE_HEAD_REF} (${takers.map((r) => r.name).join(', ')})` };
-  const [rule] = takers;
+  const pr = { labels, draft };
+  // Every queue the release PR could enter (a rule, `@Mergifyio queue`, or
+  // autoqueue) counts, unless its conditions exclude the release head.
+  const queueRules = parseQueueRules(text);
+  const prRules = parsePullRequestRules(text);
+  const unreadRule = [...queueRules, ...prRules].find((r) => r.unread);
+  if (unreadRule) return { ok: false, reason: `Mergify rule \`${unreadRule.name}\` has lines this script cannot read` };
+  const takers = queueRules.map((r) => ({ r, judged: judgeConditions(r.queue, pr) })).filter((t) => !t.judged.never);
+  if (takers.length === 0) return { ok: false, reason: `no Mergify queue rule takes ${RELEASE_HEAD}` };
+  if (takers.length > 1) return { ok: false, reason: `more than one Mergify queue rule can take ${RELEASE_HEAD} (${takers.map((t) => t.r.name).join(', ')})` };
   // `ok` is about the CONFIG; `unmet` is about this PR right now (a label or
   // draft state can change), reported separately so shadow can still measure.
-  const pr = { labels, draft };
-  const queueJudged = judgeConditions(rule.queue, pr);
-  if (queueJudged.never) return { ok: false, reason: `Mergify queue \`${rule.name}\` both takes and excludes the release head (${queueJudged.never})` };
+  const [{ r: rule, judged: queueJudged }] = takers;
   if (queueJudged.unknown) return { ok: false, reason: `Mergify queue \`${rule.name}\` has an entry condition this script cannot judge: ${queueJudged.unknown}` };
   const missing = QUEUE_FULL_CHECKS.filter((c) => !rule.merge.includes(c));
   if (missing.length > 0) return { ok: false, reason: `Mergify queue \`${rule.name}\` does not require ${missing.join(', ')}` };
   const sameAsQueue = rule.merge.length === rule.queue.length && rule.merge.every((c) => rule.queue.includes(c));
   if (sameAsQueue) return { ok: false, reason: `Mergify queue \`${rule.name}\` is single-step CI, so Mergify may judge the PR's own run in place` };
-  // Every rule that can queue or merge the release PR must be an entry into
-  // this queue: any other route could merge it without the full lanes.
+  // Every rule with an action outside SAFE_ACTIONS that the release PR can
+  // match must be an entry into this queue: any other route could merge it
+  // without the full lanes.
   const entryJudged = [];
-  for (const r of parsePullRequestRules(text)) {
-    if (!r.actions.some((a) => ROUTING_ACTIONS.includes(a))) continue;
+  for (const r of prRules) {
     const judged = judgeConditions(r.conditions, pr);
     if (judged.never) continue;
+    // No readable action is an unreadable rule, never a harmless one.
+    if (r.actions.length === 0) return { ok: false, reason: `Mergify rule \`${r.name}\` has actions this script cannot read` };
+    const unsafe = r.actions.filter((a) => !SAFE_ACTIONS.includes(a));
+    if (unsafe.length === 0) continue;
     if (judged.unknown) return { ok: false, reason: `Mergify rule \`${r.name}\` has a condition this script cannot judge: ${judged.unknown}` };
-    if (r.actions.includes('merge')) return { ok: false, reason: `Mergify rule \`${r.name}\` can merge the release PR directly` };
+    const other = unsafe.filter((a) => a !== 'queue');
+    if (other.length > 0) return { ok: false, reason: `Mergify rule \`${r.name}\` can ${other.join('/')} the release PR` };
     if (r.queue !== rule.name) return { ok: false, reason: `Mergify rule \`${r.name}\` can queue the release PR into ${r.queue ? `\`${r.queue}\`` : 'a queue this script cannot read'}, not \`${rule.name}\`` };
     entryJudged.push(judged);
   }
@@ -388,7 +423,7 @@ export function verifyReleaseLane(input) {
 }
 
 /** Output lines without Node's own warnings and crash banner. */
-const signalLines = (s) => String(s ?? '').split('\n').filter((l) => l.trim() && !/Warning:|--trace-warnings|^Node\.js v\d/.test(l));
+const signalLines = (s) => String(s ?? '').split('\n').filter((l) => l.trim() && !/^\(node:\d+\) \w*Warning:|^\(Use `node --trace-|^Node\.js v\d/.test(l));
 
 /** Runs LEAN_CHECKS in `cwd`, as `release-pr` would, each with one line of its output. */
 export function runLeanChecks(cwd, scripts = LEAN_CHECKS) {

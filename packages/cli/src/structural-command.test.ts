@@ -55,9 +55,9 @@ describe('structural command (#9668)', () => {
     expect(got.resultGroups).toEqual(data.resultGroups);
     expect(got.loads).toEqual(data.activities.filter((a) => a.kind === 'Action'));
     expect(got.reactions).toEqual(data.activities.filter((a) => a.kind === 'Reaction'));
-    expect(got.links.length).toBeGreaterThan(0);
-    expect(got.links).toEqual([...data.members, ...data.connections].flatMap((item) =>
-      (item.physicalElementIds ?? []).map(physicalElementId => ({ structuralItemId: item.expressId, physicalElementId }))));
+    // Fixture #89 links physical IfcBeam #88 to analytical member #30 (#9922).
+    // Pin the declared endpoints independently of the command's projection.
+    expect(got.links).toEqual([{ structuralItemId: 30, physicalElementId: 88 }]);
     const table = execFileSync(process.execPath, [entry, 'structural', fixture], { encoding: 'utf8' });
     expect(table).toContain('Load groups / cases');
     expect(table).toContain('Physical links');

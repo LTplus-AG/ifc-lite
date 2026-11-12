@@ -33,8 +33,12 @@ export default {
       assert.deepEqual(got.loads, data.activities.filter((a) => a.kind === 'Action'));
       assert.deepEqual(got.reactions, data.activities.filter((a) => a.kind === 'Reaction'));
       for (const key of ['analysisModels', 'connections', 'loadGroups', 'resultGroups']) assert.deepEqual(got[key], data[key]);
-      const links = [...data.members, ...data.connections].flatMap((item) =>
-        (item.physicalElementIds ?? []).map((physicalElementId) => ({ structuralItemId: item.expressId, physicalElementId })));
+      // Independent oracle: the corpus STEP relationships, not the CLI's
+      // member/connection projection (#9922). This fixture declares IFC2X3.
+      const links = file.step.of('IFCRELCONNECTSSTRUCTURALELEMENT').map((rel) => ({
+        structuralItemId: rel.args[5].ref,
+        physicalElementId: rel.args[4].ref,
+      }));
       assert.ok(links.length, 'fixture must exercise physical links');
       assert.deepEqual(got.links, links);
       const negative = run([]);

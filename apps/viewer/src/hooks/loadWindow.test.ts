@@ -17,8 +17,8 @@ async function harness() {
   const { createLoadWindow, MAX_TAIL_WAIT_MS } = await load();
   let storeBusy = false, tailBusy = false, t = 0;
   const storeListeners = new Set<() => void>();
-  const frames: Array<() => void> = [];
-  const timers: Array<() => void> = [];
+  let frames: Array<() => void> = [];
+  let timers: Array<() => void> = [];
   const win = createLoadWindow({
     storeBusy: () => storeBusy,
     subscribeStore: (l) => { storeListeners.add(l); return () => storeListeners.delete(l); },
@@ -30,10 +30,12 @@ async function harness() {
   const changes: boolean[] = [];
   win.subscribe(() => changes.push(win.isOpen()));
   const store = (busy: boolean) => { storeBusy = busy; for (const l of [...storeListeners]) l(); };
-  const frame = () => { const fns = frames.splice(0); for (const fn of fns) fn(); };
-  const timer = () => { const fns = timers.splice(0); for (const fn of fns) fn(); };
+  const frame = () => { const fns = frames; frames = []; for (const fn of fns) fn(); };
+  const timer = () => { const fns = timers; timers = []; for (const fn of fns) fn(); };
   return {
     win, changes, store, frame, timer, MAX_TAIL_WAIT_MS,
+    /** One painted frame, then the tasks queued behind it. */
+    settle: () => { frame(); timer(); },
     setTail: (busy: boolean) => { tailBusy = busy; },
     advance: (ms: number) => { t += ms; },
     pendingChecks: () => frames.length + timers.length,
@@ -59,19 +61,40 @@ describe('load window', () => {
     h.frame();
     assert.equal(h.win.isOpen(), true, 'still busy on the next frame');
     h.setTail(false);
-    h.frame();
-    assert.equal(h.win.isOpen(), false, 'tail finished: settled');
+    h.settle(); h.settle();
+    assert.equal(h.win.isOpen(), false, 'tail finished and its frame painted: settled');
     assert.deepEqual(h.changes, [true, false], 'one open, one close');
     h.timer();
     assert.equal(h.win.isOpen(), false, 'spent backstop timers do nothing after the close');
     assert.deepEqual(h.changes, [true, false]);
   });
 
-  it('re-checks from a timer when frames stop (hidden tab)', async () => {
+  it('closes only after the settled frame has painted, so consumers do not delay it', async () => {
+    const h = await harness();
+    h.store(true);
+    h.store(false); // tail idle: the load has settled
+    assert.equal(h.win.isOpen(), true, 'the settle task itself must not re-render the whole-model consumers');
+    h.frame();
+    assert.equal(h.win.isOpen(), true, 'the settled frame paints with the window still open');
+    h.timer();
+    assert.equal(h.win.isOpen(), false, 'closed in a task after that frame');
+  });
+
+  it('stays open when a new load starts before the close lands', async () => {
+    const h = await harness();
+    h.store(true); h.store(false);
+    h.store(true);
+    h.settle();
+    assert.equal(h.win.isOpen(), true);
+    assert.deepEqual(h.changes, [true]);
+  });
+
+  it('re-checks from timers when frames stop (hidden tab)', async () => {
     const h = await harness();
     h.store(true); h.setTail(true); h.store(false);
     h.setTail(false);
-    h.timer();
+    h.timer(); // the tail re-check backstop
+    h.timer(); // the close backstop
     assert.equal(h.win.isOpen(), false);
   });
 
@@ -80,13 +103,13 @@ describe('load window', () => {
     h.store(true); h.setTail(true); h.store(false);
     h.advance(h.MAX_TAIL_WAIT_MS - 1); h.frame();
     assert.equal(h.win.isOpen(), true);
-    h.advance(2); h.frame();
+    h.advance(2); h.settle(); h.settle();
     assert.equal(h.win.isOpen(), false, 'a stuck finalize must not hide the values for ever');
   });
 
   it('reopens for the next load', async () => {
     const h = await harness();
-    h.store(true); h.store(false);
+    h.store(true); h.store(false); h.settle();
     assert.equal(h.win.isOpen(), false);
     h.store(true);
     assert.equal(h.win.isOpen(), true);
@@ -103,23 +126,15 @@ describe('load window', () => {
   });
 
   it('a consumer that first subscribes during the tail, after the store flags cleared, still sees the window open', async () => {
-    const { createLoadWindow } = await load();
-    let busy = false, tail = false;
-    const storeListeners = new Set<() => void>();
-    const frames: Array<() => void> = [];
-    const win = createLoadWindow({
-      storeBusy: () => busy, subscribeStore: (l) => { storeListeners.add(l); return () => storeListeners.delete(l); },
-      tailBusy: () => tail, now: () => 0, requestFrame: (fn) => { frames.push(fn); }, setTimer: () => {},
-    });
-    // The load runs with no consumer mounted yet.
-    busy = true; for (const l of storeListeners) l();
-    tail = true; busy = false; for (const l of storeListeners) l();
-    // A panel mounts now, inside the drain/finalize.
+    const h = await harness();
+    // The load runs with no consumer looking yet.
+    h.store(true);
+    h.setTail(true); h.store(false);
     const seen: boolean[] = [];
-    win.subscribe(() => seen.push(win.isOpen()));
-    assert.equal(win.isOpen(), true, 'late consumer: the window is still open');
-    tail = false; frames.splice(0).forEach((fn) => fn());
-    assert.equal(win.isOpen(), false);
+    h.win.subscribe(() => seen.push(h.win.isOpen()));
+    assert.equal(h.win.isOpen(), true, 'late consumer: the window is still open');
+    h.setTail(false); h.settle(); h.settle();
+    assert.equal(h.win.isOpen(), false);
     assert.deepEqual(seen, [false], 'the late consumer is told when it closes');
   });
 });

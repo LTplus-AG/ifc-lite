@@ -21,6 +21,7 @@ import '@/test/setup-dom.js';
 import { describe, it, beforeEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { act, createElement } from 'react';
+import { settleLoadWindow } from '@/test/load-window';
 import { createRoot } from 'react-dom/client';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store/index.js';
@@ -333,10 +334,9 @@ it('load window: restore waits for the load to settle, then parses once', async 
     await act(async () => { root.render(createElement(Probe)); });
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     assert.equal(posts, 0, 'early read: no parse (and no spatial key) while the load window is open');
-    await act(async () => {
-      useViewerStore.setState({ geometryStreamingActive: false });
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
+    await act(async () => { useViewerStore.setState({ geometryStreamingActive: false }); });
+    await settleLoadWindow();
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     assert.equal(posts, 1, 'settled: the restore parse starts once');
   } finally {
     await act(async () => root.unmount());

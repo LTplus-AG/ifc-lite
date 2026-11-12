@@ -13,6 +13,7 @@ import '@/test/setup-dom.js';
 import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
+import { settleLoadWindow } from '@/test/load-window';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { render, cleanup } from '@/test/render.js';
 import { useViewerStore } from '@/store';
@@ -58,6 +59,7 @@ it('symbolic overlays get no stores while the load window is open, and the loade
   assert.ok(seen.length > 0 && seen.every((n) => n === 0), `early read: no store reaches the overlay parse (saw ${seen})`);
   seen = [];
   act(() => useViewerStore.setState({ geometryStreamingActive: false }));
+  await settleLoadWindow();
   assert.equal(seen.at(-1), 1, 'settled: the overlays parse the loaded store');
 });
 
@@ -73,5 +75,6 @@ it('viewport status summary skips the whole-model walk in the window and counts 
   assert.ok(hidden.every((n) => n === 0), `early read: no count, and none is shown at zero (saw ${hidden})`);
   hidden = [];
   act(() => useViewerStore.setState({ loading: false }));
+  await settleLoadWindow();
   assert.equal(hidden.at(-1), 1, 'settled: the hidden wall is counted');
 });

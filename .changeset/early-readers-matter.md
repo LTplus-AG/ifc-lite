@@ -1,5 +1,5 @@
 ---
-"@ifc-lite/create": minor
+"@ifc-lite/create": major
 "@ifc-lite/sdk": minor
 ---
 

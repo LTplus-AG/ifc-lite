@@ -141,7 +141,9 @@ export function SearchInline({ compact = false }: { compact?: boolean } = {}) {
         t1.push(record.index);
       } else {
         t0.push({ id: m.id, ifcDataStore: m.ifcDataStore });
-        if (record?.status === 'building') building += 1;
+        // Still indexing until ready or failed: the build waits for a load to
+        // settle (useSearchIndex), so a model can have no record or a pending one.
+        if (record?.status !== 'error' && record?.status !== 'ready') building += 1;
       }
     }
     return { tier0Models: t0, tier1Indexes: t1, indexingCount: building };

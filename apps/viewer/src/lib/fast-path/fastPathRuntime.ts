@@ -7,8 +7,8 @@
  * entry chunk).
  *
  * While the page is idle and no load is running it prepares two spares:
- * - a parser worker with its engine instantiated and one warm parse of a
- *   shipped sample done, which the next parse of ANY size takes
+ * - a parser worker with its bundle loaded and one warm parse of a shipped
+ *   sample done (which instantiates its engine), which the next parse of ANY size takes
  *   (`WorkerParser` picks it up), and
  * - a fast-path geometry worker (workers/fast-geometry.worker.ts), engine
  *   instantiated and warmed on shipped samples, which an eligible pick hands
@@ -68,7 +68,7 @@ export interface FastPathDeps {
   warmSamples(): Promise<Uint8Array[]>;
   spawnGeometryWorker(): Worker;
   parser: {
-    prepare(options: { wasmModule: WebAssembly.Module; warmSource: SharedArrayBuffer | null }): Promise<boolean>;
+    prepare(options: { warmSource: SharedArrayBuffer | null }): Promise<boolean>;
     has(): boolean;
     release(): void;
   };
@@ -153,7 +153,7 @@ export function createFastPathRuntime(deps: FastPathDeps): FastPathRuntime | nul
           warmSource = new SharedArrayBuffer(samples[0].byteLength);
           new Uint8Array(warmSource).set(samples[0]);
         }
-        await deps.parser.prepare({ wasmModule: module, warmSource });
+        await deps.parser.prepare({ warmSource });
       }
       if (stopped || deps.isLoading()) return;
       if (!geometry) await prepareGeometry(module, samples);

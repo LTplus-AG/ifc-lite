@@ -33,6 +33,7 @@ test('quietAtArm flags an arm inside a long task and ignores tasks after it', as
   const inside = quietAtArm([[0, 100], [2000, 500]], 2200);
   assert.equal(inside.armInsideLongTask, true, 'the arm fell inside [2000, 2500)');
   assert.equal(inside.armedEarly, true, 'an arm inside a long task is early');
+  assert.equal(inside.quietAtArmMs, 0, 'and had no quiet at all (review #9815)');
   const later = quietAtArm([[0, 100], [5000, 500]], 2100);
   assert.equal(later.quietAtArmMs, 2000, 'a task that starts after the arm does not count');
   assert.equal(later.armInsideLongTask, false, 'no task spans the arm');
@@ -42,43 +43,53 @@ test('quietAtArm flags an arm inside a long task and ignores tasks after it', as
   assert.equal(quietAtArm([[0, 1]], undefined).armedEarly, null, 'no arm time: unknown, not a pass');
 });
 
-/** A page whose main thread runs one long block; its longtask entry is delivered `deliverMs` after the block ends. */
-function blockedPage({ quietBefore, blockStart, blockEnd, deliverMs, pollCostMs = 10, pollMs = 100 }) {
-  let clock = 1100;
-  return {
-    async waitForTimeout(ms) { clock += ms; },
-    async evaluate() {
-      clock += pollCostMs;
-      if (clock > blockStart && clock < blockEnd) clock = blockEnd + 1; // the poll waits for the block
-      const delivered = clock >= blockEnd + deliverMs;
-      return { now: clock, lastLongTaskEnd: delivered ? blockEnd : quietBefore, longTaskMs: 0, longTasks: 0, rendererReady: true, countersOff: true };
-    },
-    pollMs,
-  };
+/** Block this thread for `ms` (a real long task: timers cannot run meanwhile). */
+function blockFor(ms) { const end = performance.now() + ms; while (performance.now() < end) { /* busy */ } return end; }
+
+/** watchQuietInPage on this thread with a block at `atMs` lasting `ms`, its entry never reported (the stale case). */
+async function armAround(watchQuietInPage, { atMs, ms, quietMs = 300 }) {
+  globalThis.__benchLongTasks = [];
+  let blockEnd = null;
+  const started = performance.now();
+  if (atMs !== null) setTimeout(() => { blockEnd = blockFor(ms); }, atMs);
+  const r = await watchQuietInPage({ quietMs, timeoutMs: 5000, tickMs: 16, slackMs: 50 });
+  delete globalThis.__benchLongTasks;
+  return { ...r, started, blockEnd };
 }
 
-test('waitShellQuiet never arms right after a long block whose entry was not delivered yet (quiet-arm note, 2026-11-12)', async () => {
-  const { waitShellQuiet, quietAtArm } = await load('./viewer-load-boot.mjs');
-  // Boot tasks ended at 1000; a 1.6 s welcome block runs 1500-3100; its entry arrives 40 ms after it ends.
-  const page = blockedPage({ quietBefore: 1000, blockStart: 1500, blockEnd: 3100, deliverMs: 40 });
-  const shell = await waitShellQuiet(page);
-  assert.equal(shell.timedOut, false, 'the arm settles');
-  assert.ok(shell.latePolls >= 1, 'the poll held up by the block is counted late');
-  const real = quietAtArm([[0, 1000], [1500, 1600]], shell.armAbs);
-  assert.equal(real.armedEarly, false, `armed with ${real.quietAtArmMs} ms of real quiet; must be >= 1000`);
+test('the arm waits a full quiet window after a long block whose entry was never reported (quiet-arm note, 2026-11-12)', async () => {
+  const { watchQuietInPage } = await load('./viewer-load-boot.mjs');
+  const r = await armAround(watchQuietInPage, { atMs: 100, ms: 400 });
+  assert.equal(r.timedOut, false);
+  assert.ok(r.lateTicks >= 1, 'the block was seen as a late tick');
+  assert.ok(r.armAbs - r.blockEnd >= 300, `armed ${(r.armAbs - r.blockEnd).toFixed(0)} ms after the block; must be >= 300`);
 });
 
-test('shellArm: two polls minimum, late polls restart the window, ordinary polls do not', async () => {
-  const { shellArm } = await load('./viewer-load-boot.mjs');
-  const a = shellArm();
-  assert.equal(a.poll({ now: 5000, lastLongTaskEnd: 100 }), false, 'one poll never arms, however old the last task');
-  assert.equal(a.poll({ now: 5110, lastLongTaskEnd: 100 }), true, 'a second on-time poll arms after long quiet');
-  const b = shellArm();
-  b.poll({ now: 1100, lastLongTaskEnd: 0 });
-  assert.equal(b.poll({ now: 2700, lastLongTaskEnd: 0 }), false, 'a poll 1.6 s after the previous one ran late');
-  assert.equal(b.latePolls, 1, 'counted');
-  assert.equal(b.poll({ now: 2810, lastLongTaskEnd: 0 }), false, 'the window restarted at the late poll');
-  let t = 2810;
-  while (!b.quiet) { t += 110; b.poll({ now: t, lastLongTaskEnd: 0 }); }
-  assert.ok(t - 2700 >= 1000 && t - 2700 < 1110, `arms one window after the late poll (at ${t})`);
+test('a short long task that delays a tick by less than the old 150 ms margin also restarts the window (review #9815)', async () => {
+  const { watchQuietInPage } = await load('./viewer-load-boot.mjs');
+  const r = await armAround(watchQuietInPage, { atMs: 200, ms: 100 });
+  assert.ok(r.armAbs - r.blockEnd >= 300, `armed ${(r.armAbs - r.blockEnd).toFixed(0)} ms after a 100 ms task; must be >= 300`);
+});
+
+test('a quiet page arms after one window, and a reported recent entry still counts', async () => {
+  const { watchQuietInPage } = await load('./viewer-load-boot.mjs');
+  const quiet = await armAround(watchQuietInPage, { atMs: null, ms: 0 });
+  assert.ok(quiet.armAbs - quiet.started >= 300 && quiet.armAbs - quiet.started < 600, `quiet page armed after ${(quiet.armAbs - quiet.started).toFixed(0)} ms`);
+  const now = performance.now();
+  globalThis.__benchLongTasks = [[now - 50, 150]]; // ends 100 ms in the future of `now`, as reported
+  const r = await watchQuietInPage({ quietMs: 300, timeoutMs: 5000, tickMs: 16, slackMs: 50 });
+  delete globalThis.__benchLongTasks;
+  assert.ok(r.armAbs - (now + 100) >= 300, 'a reported task end restarts the window');
+});
+
+test('waitShellQuiet arms from the in-page watcher and reports its late ticks', async () => {
+  const { waitShellQuiet } = await load('./viewer-load-boot.mjs');
+  globalThis.__benchLongTasks = [];
+  const page = { evaluate: (fn, arg) => fn(arg) };
+  setTimeout(() => blockFor(200), 50);
+  const shell = await waitShellQuiet(page, { quietMs: 300, timeoutMs: 5000 });
+  delete globalThis.__benchLongTasks;
+  assert.equal(shell.timedOut, false);
+  assert.ok(shell.lateTicks >= 1);
+  assert.equal(shell.armAbs, shell.shellQuietMs);
 });

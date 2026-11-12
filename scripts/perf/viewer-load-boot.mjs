@@ -63,41 +63,45 @@ function shellState() {
  * The viewport's renderer (and its debug hooks) mounts with the first load, so
  * renderer readiness is recorded, not required.
  *
- * Longtask entries arrive asynchronously: a poll queued during a long block runs
- * as soon as the block ends, possibly before the block is reported, and would
- * measure its quiet from the task before the block. So a poll whose page clock
- * advanced more than `pollMs + lateMs` since the previous one ran late (the
- * main thread was blocked) and restarts the quiet window at itself, and the arm
- * needs at least two polls. A poll late for a host-side reason only costs one
- * more quiet window, outside the timed interval.
+ * Longtask entries arrive asynchronously, so a poll of them can run after a task
+ * ended but before it is reported, and arm right after it (14-35 ms after the
+ * welcome mark's 1.5 s block in 9/15 picks on main d45ace6b65). The quiet is
+ * therefore watched in the page ({@link watchQuietInPage}): a timer ticks every
+ * `tickMs`, and a tick later than `tickMs + slackMs` means the main thread was
+ * blocked (a long task is 50 ms or more), which restarts the window at once,
+ * reported or not. Reported entries count too. Timer ticks leave idle periods
+ * free, so idle-started boot work is not held off by the wait.
  */
-export async function waitShellQuiet(page, { quietMs = 1000, timeoutMs = 15000, pollMs = 100, lateMs = 150 } = {}) {
-  const started = Date.now();
-  let s = await page.evaluate(shellState);
-  const firstReady = s.now;
-  const arm = shellArm({ quietMs, pollMs, lateMs });
-  arm.poll(s);
-  while (!arm.quiet && Date.now() - started < timeoutMs) {
-    await page.waitForTimeout(pollMs);
-    s = await page.evaluate(shellState);
-    arm.poll(s);
-  }
-  return { shellQuietMs: s.now, armAbs: s.now, quietWaitMs: s.now - firstReady, rendererReady: s.rendererReady, timedOut: !arm.quiet,
-    latePolls: arm.latePolls, bootLongTaskMs: s.longTaskMs, bootLongTasks: s.longTasks, countersOff: s.countersOff };
+export async function waitShellQuiet(page, { quietMs = 1000, timeoutMs = 15000, tickMs = 16, slackMs = 50 } = {}) {
+  const first = await page.evaluate(shellState);
+  const w = await page.evaluate(watchQuietInPage, { quietMs, timeoutMs, tickMs, slackMs });
+  const s = await page.evaluate(shellState);
+  return { shellQuietMs: w.armAbs, armAbs: w.armAbs, quietWaitMs: w.armAbs - first.now, rendererReady: s.rendererReady, timedOut: w.timedOut,
+    lateTicks: w.lateTicks, bootLongTaskMs: s.longTaskMs, bootLongTasks: s.longTasks, countersOff: s.countersOff };
 }
 
-/** The arm rule of {@link waitShellQuiet}, fed one `{ now, lastLongTaskEnd }` poll at a time. */
-export function shellArm({ quietMs = 1000, pollMs = 100, lateMs = 150 } = {}) {
-  let prev = null, blockedUntil = -Infinity;
-  const state = { quiet: false, latePolls: 0, polls: 0 };
-  state.poll = ({ now, lastLongTaskEnd }) => {
-    state.polls++;
-    if (prev !== null && now - prev > pollMs + lateMs) { blockedUntil = now; state.latePolls++; }
-    prev = now;
-    state.quiet = state.polls >= 2 && now - Math.max(lastLongTaskEnd, blockedUntil) >= quietMs;
-    return state.quiet;
-  };
-  return state;
+/**
+ * In page (self-contained: it runs through page.evaluate): resolve at the first moment
+ * the main thread was quiet for `quietMs`, observed directly by timer-tick gaps and by
+ * reported longtask entries. Resolves `{ armAbs, timedOut, lateTicks }` (page clock).
+ */
+export function watchQuietInPage({ quietMs = 1000, timeoutMs = 15000, tickMs = 16, slackMs = 50 } = {}) {
+  return new Promise((resolve) => {
+    const t0 = performance.now();
+    let windowStart = t0, prev = t0, lateTicks = 0;
+    const tick = () => {
+      const now = performance.now();
+      if (now - prev > tickMs + slackMs) { windowStart = now; lateTicks++; }
+      prev = now;
+      const tasks = globalThis.__benchLongTasks ?? [];
+      const lastEnd = tasks.reduce((m, [st, d]) => Math.max(m, st + d), 0);
+      const quietFrom = Math.max(windowStart, lastEnd);
+      if (now - quietFrom >= quietMs) return resolve({ armAbs: now, timedOut: false, lateTicks });
+      if (now - t0 >= timeoutMs) return resolve({ armAbs: now, timedOut: true, lateTicks });
+      setTimeout(tick, tickMs);
+    };
+    setTimeout(tick, tickMs);
+  });
 }
 
 /**
@@ -116,7 +120,8 @@ export function quietAtArm(tasks, armAbs, quietMs = 1000) {
     if (end <= armAbs) lastEnd = lastEnd === null ? end : Math.max(lastEnd, end);
     else if (start < armAbs) inside = true;
   }
-  const quiet = lastEnd === null ? null : armAbs - lastEnd;
+  // An arm inside a long task had no quiet at all.
+  const quiet = inside ? 0 : lastEnd === null ? null : armAbs - lastEnd;
   return { quietAtArmMs: quiet, armInsideLongTask: inside, armedEarly: inside || (quiet !== null && quiet < quietMs) };
 }
 

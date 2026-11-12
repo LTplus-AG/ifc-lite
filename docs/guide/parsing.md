@@ -1007,3 +1007,12 @@ If an explicit native unit is present but cannot be resolved, the collected
 quantity retains `explicitUnitUnresolved: true`; its scale is unavailable
 (`NaN`), rather than silently inheriting a project scale. Consumers must not
 publish that raw value as a physical SI measurement.
+
+Structural reads via `extractStructuralOnDemand` preserve IFC2X3 action
+references (`CausedBy`, `VaryingAppliedLoadLocation`, ordered
+`SubsequentAppliedLoads`) and varying surface-member values
+(`SubsequentThickness`, `VaryingThicknessLocation`). The analysis model exposes
+`OrientationOf2DPlane` and IFC4+ `SharedPlacement`. These reference fields use
+model-local express ids; attributes the schema does not declare are
+`undefined`. Repeated subsequent-load references remain repeated, in station
+order.

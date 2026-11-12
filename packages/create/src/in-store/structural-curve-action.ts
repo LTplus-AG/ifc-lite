@@ -29,6 +29,8 @@ export function addStructuralCurveActionToStore(editor: StoreEditor, anchor: Act
   if (!conformsTo(registry, loadType, 'IfcStructuralLoad')) throw new Error(`${label}: AppliedLoad must reference an IfcStructuralLoad`);
   const distribution = params.PredefinedType ?? 'NOTDEFINED';
   const configured = loadType === 'IfcStructuralLoadConfiguration';
+  const curveCompatible = (type: string) => ['IfcStructuralLoadLinearForce', 'IfcStructuralLoadTemperature', 'IfcStructuralLoadSingleForce', 'IfcStructuralLoadSingleDisplacement'].some(base => conformsTo(registry, type, base));
+  if (!configured && !curveCompatible(loadType)) throw new Error(`${label}: AppliedLoad must reference a curve-compatible load`);
   if (!configured && ['IfcStructuralLoadSingleForce', 'IfcStructuralLoadSingleDisplacement'].some(t => conformsTo(registry, loadType, t))) throw new Error(`${label}: point loads require a DISCRETE configuration`);
   if (['CONST', 'SINUS', 'PARABOLA'].includes(distribution) && configured) throw new Error(`${label}: ${distribution} must not use a load configuration`);
   let values: readonly unknown[] | undefined;
@@ -39,6 +41,7 @@ export function addStructuralCurveActionToStore(editor: StoreEditor, anchor: Act
     const locations = attrs[2];
     const types = values.map(v => editor.getEntityType(asRef(v) ?? 0));
     if (!types[0] || types.some(t => t !== types[0] || !conformsTo(registry, t ?? '', 'IfcStructuralLoadOrResult'))) throw new Error(`${label}: load samples must have the same entity type`);
+    if (!curveCompatible(types[0])) throw new Error(`${label}: configuration samples must reference curve-compatible loads`);
     if (distribution !== 'DISCRETE' && ['IfcStructuralLoadSingleForce', 'IfcStructuralLoadSingleDisplacement'].some(t => conformsTo(registry, types[0]!, t))) throw new Error(`${label}: point loads require DISCRETE`);
     if (!Array.isArray(locations) || locations.length !== values.length) throw new Error(`${label}: ${distribution} requires one-dimensional Locations for each value`);
     const positions = locations.map(v => Array.isArray(v) && v.length === 1 ? v[0] : undefined)

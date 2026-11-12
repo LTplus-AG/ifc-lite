@@ -154,6 +154,7 @@ describe('structural CREATE gaps (#9668)', () => {
     const { editor, anchor, store } = await fresh(schema);
     const load = create.addStructuralLinearActionToStore(editor, anchor, { LinearForceZ: -2 }).loadId;
     const point = create.addStructuralPointReactionToStore(editor, anchor, { AppliedLoad: { Type: 'IfcStructuralLoadSingleForce', ForceZ: 1 } }).loadId;
+    const planar = create.addStructuralPlanarActionToStore(editor, anchor, { AppliedLoad: { Type: 'IfcStructuralLoadPlanarForce', PlanarForceZ: -3 } }).loadId;
     const config = (Values: number[], Locations: number[][]) => create.addStructuralLoadToStore(editor, anchor, { Type: 'IfcStructuralLoadConfiguration', Values, Locations });
     let before = editor.getMutationView().getNewEntities().length;
     expect(() => create.addStructuralCurveActionToStore(editor, anchor, { AppliedLoad: point })).toThrow(/point loads require a DISCRETE configuration/);
@@ -166,6 +167,7 @@ describe('structural CREATE gaps (#9668)', () => {
     const twoDimensions = config([load, load], [[0, 0], [1, 1]]);
     const mixed = config([load, point], [[0], [1]]);
     const points = config([point, point], [[0], [1]]);
+    const planarSamples = config([planar, planar], [[0], [1]]);
     const unlocated = create.addStructuralLoadToStore(editor, anchor, { Type: 'IfcStructuralLoadConfiguration', Values: [load, load] });
     before = editor.getMutationView().getNewEntities().length;
     for (const PredefinedType of ['LINEAR', 'POLYGONAL', 'DISCRETE'] as const) {
@@ -184,12 +186,27 @@ describe('structural CREATE gaps (#9668)', () => {
       for (const AppliedLoad of [backwards, twoDimensions, unlocated]) expect(() => create.addStructuralCurveActionToStore(editor, anchor, { AppliedLoad, PredefinedType, ObjectType: 'Custom' })).toThrow(/one-dimensional/);
     }
     expect(editor.getMutationView().getNewEntities()).toHaveLength(before);
+    // #9860 discussion_r4550814124: surface loads cannot act on curves,
+    // whether borrowed directly or through homogeneous configuration samples.
+    for (const AppliedLoad of [planar, planarSamples]) {
+      for (const PredefinedType of [undefined, 'NOTDEFINED', 'USERDEFINED'] as const) {
+        expect(() => create.addStructuralCurveActionToStore(editor, anchor, { AppliedLoad, PredefinedType, ObjectType: 'Custom' })).toThrow(/curve-compatible/);
+      }
+    }
+    expect(() => create.addStructuralCurveActionToStore(editor, anchor, { AppliedLoad: planarSamples, PredefinedType: 'LINEAR' })).toThrow(/curve-compatible/);
+    expect(editor.getMutationView().getNewEntities()).toHaveLength(before);
     const unspecified = create.addStructuralCurveActionToStore(editor, anchor, { AppliedLoad: two });
+    const thermal = create.addStructuralPlanarActionToStore(editor, anchor, { AppliedLoad: { Type: 'IfcStructuralLoadTemperature', DeltaTConstant: 12 } }).loadId;
+    const discrete = create.addStructuralCurveActionToStore(editor, anchor, { AppliedLoad: points, PredefinedType: 'DISCRETE' });
+    const constant = create.addStructuralCurveActionToStore(editor, anchor, { AppliedLoad: thermal, PredefinedType: 'CONST' });
     // Borrowed source configurations need the same validation after a reload.
     const content = new StepExporter(store, editor.getMutationView()).export({ schema, applyMutations: true }).content;
     const parsed = await new IfcParser().parseColumnar(content.buffer.slice(content.byteOffset, content.byteOffset + content.byteLength) as ArrayBuffer, { disableWorkerScan: true });
     const exported = new EntityExtractor(parsed.source).extractEntity(parsed.entityIndex.byId.get(unspecified)!)!;
     expect(exported.attributes[11]).toBe('.NOTDEFINED.');
+    const extractor = new EntityExtractor(parsed.source);
+    expect(extractor.extractEntity(parsed.entityIndex.byId.get(discrete)!)!.attributes[7]).toBe(points);
+    expect(extractor.extractEntity(parsed.entityIndex.byId.get(constant)!)!.attributes[7]).toBe(thermal);
     const sourceEditor = new StoreEditor(parsed, new MutablePropertyView(null, 'source'));
     expect(() => create.addStructuralCurveActionToStore(sourceEditor, anchor, { AppliedLoad: one, PredefinedType: 'LINEAR' }, parsed)).toThrow(/sample count/);
     sourceEditor.setPositionalAttribute(one, 1, [`#${load}`, `#${load}`]);

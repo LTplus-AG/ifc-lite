@@ -547,7 +547,9 @@ must be unique. Curve actions enforce the distribution's sample shape: `LINEAR`
 uses two samples, `POLYGONAL` at least three, and `DISCRETE` at least two;
 every curve-action configuration uses matching, ascending one-dimensional locations
 and a single load type, including omitted, `NOTDEFINED`, or `USERDEFINED` distributions.
-Point-load samples require `DISCRETE`. `CONST`, `SINUS`, and `PARABOLA` accept
+Curve actions accept linear-force and temperature loads; point-force and
+point-displacement samples require `DISCRETE` configurations. Planar-force and
+reinforcement resources cannot be used as curve loads. `CONST`, `SINUS`, and `PARABOLA` accept
 individual loads rather than configurations.
 
 For direct action builders borrowing imported configurations or station aspects,

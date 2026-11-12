@@ -71,7 +71,7 @@ export async function settleIdentityWrites(page, record) {
 /** In page: flip one vertex byte of the first batch of every stored scene snapshot. Returns how many it altered. */
 export function corruptStoredSnapshots(page, open = 1) {
   // A reopen may rewrite the snapshot it adopted, flipped byte included: flip a different byte per open, never the same one back.
-  return page.evaluate((open) => new Promise((done) => {
+  return page.evaluate((reopen) => new Promise((done) => {
     const open = indexedDB.open('ifc-lite-cache');
     open.onerror = () => done({ altered: 0, error: 'open failed' });
     open.onsuccess = async () => {
@@ -92,7 +92,8 @@ export function corruptStoredSnapshots(page, open = 1) {
           const start = (16 + tableBytes + 15) & -16;
           const target = table.batches.find((b) => b.vertexData[1] > 0);
           if (!target) continue;
-          const at = start + target.vertexData[0] + (((target.vertexData[1] >> 1) + 4 * open) % target.vertexData[1]);
+          const at = start + target.vertexData[0] + (((target.vertexData[1] >> 1) + 4 * reopen) % target.vertexData[1]);
+          if (!Number.isInteger(at) || at < start || at >= bytes.length) throw new Error(`control: bad byte position ${at}`);
           bytes[at] ^= 0x5a;
           entry.sceneSnapshot = new Blob([bytes]);
           await new Promise((res, rej) => {
@@ -102,7 +103,7 @@ export function corruptStoredSnapshots(page, open = 1) {
             tx.oncomplete = res; tx.onerror = () => rej(tx.error);
           });
           altered++;
-          notes.push(`${target.key}@${at}`);
+          notes.push(`${target.key}@${at}:${(bytes[at] ^ 0x5a).toString(16)}->${bytes[at].toString(16)}`);
         }
         db.close();
         done({ altered, notes });

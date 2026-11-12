@@ -6,6 +6,7 @@ import { cacheFileBlobs, getRecentFiles, recordRecentFiles, type RecentFileEntry
 import { resolveGltfModelFiles } from '@/services/gltf-bundle';
 import { resolveGeoRasterBundles } from '@/lib/terrain-imagery/raster-bundle';
 import { toast } from '@/components/ui/toast';
+import { markLoadIntent } from '@/lib/load-intent';
 
 type Handles = (FileSystemFileHandle | undefined)[];
 type RouteFiles = (files: File[], handles?: Handles) => void;
@@ -26,6 +27,7 @@ function alignHandles(files: readonly File[], handles: Handles | undefined, reso
 
 /** Resolve compound inputs, then hand one ordinary file per model to `route`, in pick order. */
 export function prepareModelFiles(files: readonly File[], handles: Handles | undefined, route: RouteFiles, setRecentFiles?: (files: RecentFileEntry[]) => void): Promise<void> {
+  markLoadIntent(); // every picked or dropped model, before bundle preparation awaits
   const turn = queue.then(async () => {
     // #5942: a georeferenced raster travels with its world file / .prj as one
     // bundle, routed AFTER the models of the same pick so a terrain dropped

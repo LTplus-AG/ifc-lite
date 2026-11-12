@@ -49,8 +49,12 @@ pub(crate) fn constant_action(entity: &str) -> bool {
     matches!(entity, "IFCSTRUCTURALLINEARACTION" | "IFCSTRUCTURALPLANARACTION")
 }
 
+pub(crate) fn is_assignment_conversion(entity: &str, from: &str, to: &str) -> bool {
+    entity == "IFCRELCONNECTSSTRUCTURALELEMENT" && from == "IFC2X3" && matches!(to, "IFC4" | "IFC4X3" | "IFC5")
+}
+
 pub(crate) fn attributes(entity: &str, args: &[String], from: &str, to: &str) -> Option<String> {
-    if entity == "IFCRELCONNECTSSTRUCTURALELEMENT" && from == "IFC2X3" && matches!(to, "IFC4" | "IFC4X3" | "IFC5") && args.len() == 6 {
+    if is_assignment_conversion(entity, from, to) && args.len() == 6 {
         // IFC4 expresses the physical product's analytical assignment as an
         // IfcRelAssignsToProduct. The relationship's original kind cannot be
         // recovered on downgrade without out-of-schema metadata.
@@ -145,8 +149,12 @@ mod diagnostic_tests {
     #[test]
     fn physical_analytical_link_retains_both_objects_in_ifc4_9668() {
         let source = "#50=IFCRELCONNECTSSTRUCTURALELEMENT('id',#1,$,$,#22,#77);";
-        let out = convert_step_line(source, "IFC2X3", "IFC4", 50, &mut Ifc2x3SlotFill::new(None), None).unwrap();
-        assert_eq!(out, "#50=IFCRELASSIGNSTOPRODUCT('id',#1,$,$,(#77),$,#22);");
+        for target in ["IFC4", "IFC4X3", "IFC5"] {
+            let mut checks = ConversionChecks::new();
+            let out = convert_step_line(source, "IFC2X3", target, 50, &mut Ifc2x3SlotFill::new(None), Some(&mut checks)).unwrap();
+            assert_eq!(out, "#50=IFCRELASSIGNSTOPRODUCT('id',#1,$,$,(#77),$,#22);");
+            assert!(checks.warnings().iter().any(|w| w.contains("original relationship kind cannot round trip")));
+        }
     }
 }
 

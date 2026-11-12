@@ -26,7 +26,7 @@
  * "the loss report ... names each attribute it could not carry" bar).
  */
 
-import { isStructuralBoundaryCondition } from './schema-converter-structural.js';
+import { isStructuralBoundaryCondition, isStructuralAssignmentConversion } from './schema-converter-structural.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import {
   convertEntityType,
@@ -98,7 +98,7 @@ export function classifyEntityTypeConversion(
     return { targetType: upper, kind: 'renamed', droppedAttributes: [] };
   // #9668: the two linked objects survive in IFC4's analytical assignment,
   // under differently named roles, but their original relationship kind is lost.
-  if (upper === 'IFCRELCONNECTSSTRUCTURALELEMENT' && fromSchema === 'IFC2X3' && ['IFC4', 'IFC4X3', 'IFC5'].includes(toSchema))
+  if (isStructuralAssignmentConversion(upper, fromSchema, toSchema))
     return { targetType: newType, kind: 'lossy', droppedAttributes: [] };
   if (shouldSkipEntity(newType, toSchema)) {
     // `productProxy` keeps attributes 1 to 6 (IfcProduct's, OwnerHistory

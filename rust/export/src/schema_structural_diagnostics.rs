@@ -11,12 +11,12 @@ pub(crate) struct StructuralDiagnostics {
 
 impl StructuralDiagnostics {
     pub(crate) fn inspect(&mut self, entity: &str, args: &[String], from: &str, to: &str, axis_known: bool) {
-        if !matches!((from, to), ("IFC2X3", "IFC4") | ("IFC4", "IFC2X3"))
-            || !(entity.starts_with("IFCSTRUCTURAL") || entity.starts_with("IFCRELCONNECTSSTRUCTURAL") || entity == "IFCRELASSOCIATESPROFILEPROPERTIES") { return; }
-        if entity == "IFCRELCONNECTSSTRUCTURALELEMENT" {
+        if crate::schema_structural::is_assignment_conversion(entity, from, to) {
             self.record("IfcRelConnectsStructuralElement is mapped to IfcRelAssignsToProduct; the original relationship kind cannot round trip".into());
             return;
         }
+        if !matches!((from, to), ("IFC2X3", "IFC4") | ("IFC4", "IFC2X3"))
+            || !(entity.starts_with("IFCSTRUCTURAL") || entity.starts_with("IFCRELCONNECTSSTRUCTURAL") || entity == "IFCRELASSOCIATESPROFILEPROPERTIES") { return; }
         let Some(src) = schema_attribute_names(from, entity) else { return };
         let target = rename_type(entity, from, to).unwrap_or(entity);
         let Some(tgt) = schema_attribute_names(to, target) else {

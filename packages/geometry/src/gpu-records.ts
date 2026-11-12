@@ -116,32 +116,23 @@ export function originPreservesTriangleTopology(
 }
 
 /**
- * The lattice origin of a streamed bucket, from its chunk cell alone: the cell's
- * minimum corner less half a cell, on the 2^-10 lattice, in `origin`'s frame.
- * The u16 range (~64 m) then spans [cell − 16 m, cell + 48 m) for a 32 m cell.
- * Every fragment of the bucket, whichever arrives first and wherever it is
- * built, encodes against the same origin. `anchor` is the cell's anchor point
- * in source terms (`chunkCellKey`'s), `offset` the model translation.
- */
-export function cellLatticePin(anchor: Pick<MeshData, 'origin' | 'positions'>, cellSize: number, offset: readonly number[], origin: readonly number[]): [number, number, number] | undefined {
-  const o = anchor.origin, p = anchor.positions, has = p.length >= 3;
-  const pin: number[] = [];
-  for (let axis = 0; axis < 3; axis++) {
-    const cellMin = Math.floor(((o ? o[axis] : 0) + (has ? p[axis] : 0)) / cellSize) * cellSize;
-    const value = Math.floor((cellMin + offset[axis] - origin[axis] - cellSize / 2) / QUANT_STEP) * QUANT_STEP;
-    if (!Number.isFinite(value)) return undefined;
-    pin.push(value);
-  }
-  return pin as [number, number, number];
-}
-
-/**
  * One mesh's GPU records in a model frame against a bucket's lattice origin,
  * with what a batch built from it needs besides the bytes.
  */
 export interface MeshRecords {
   frame: readonly [number, number, number];
+  /**
+   * The mesh's own lattice origin: its frame-relative minimum, floored onto the
+   * 2^-10 lattice. A fragment that quantizes against another lattice-aligned
+   * origin shifts every u16 coordinate by the integer difference
+   * (`shiftedRecords`), which is exact.
+   */
   pin: readonly [number, number, number];
+  /** The f32 frame-relative bounds (`rel`) the quantizer would see for this mesh. */
+  relMin: [number, number, number];
+  relMax: [number, number, number];
+  /** Per axis, the largest u16 coordinate written (the smallest is 0). */
+  qMax: [number, number, number];
   /**
    * What was encoded: the mesh's positions array (by identity), its origin and
    * its colour salt. A copy with other positions (a split piece, a lifted
@@ -165,10 +156,10 @@ export interface MeshRecords {
 
 /**
  * The records `mergeGeometry(…, frame)` followed by `quantizeInterleaved` with
- * the lattice origin `pin` writes for `mesh`, the same bytes, or `null` when
- * that batch would not take them as they are: a triangle collapses in f32 in
- * this frame (#6515), a position is not finite, or a vertex lies outside the
- * u16 range above `pin`. `pin` must be on the 2^-10 lattice.
+ * the lattice origin `pin` (the mesh's own, see `MeshRecords.pin`) writes for
+ * `mesh`, the same bytes, or `null` when no batch could take them: a triangle
+ * collapses in f32 in this frame (#6515), a position is not finite, or the
+ * mesh spans more than the u16 lattice range on an axis.
  *
  * Per vertex, as the merge and the quantizer do it: `rel = f32(position +
  * (origin - frame))`, `q = round((rel - pin) / step)`, the oct-encoded f32
@@ -177,7 +168,6 @@ export interface MeshRecords {
 export function encodeMeshRecords(
   mesh: MeshData,
   frame: readonly [number, number, number],
-  pin: readonly [number, number, number],
 ): MeshRecords | null {
   if (!originPreservesTriangleTopology([mesh], frame)) return null;
   const p = mesh.positions, n = mesh.normals, count = (p.length / 3) | 0;
@@ -187,16 +177,28 @@ export function encodeMeshRecords(
   const rel = new Float32Array(count * 3);
   const worldMin: [number, number, number] = [Infinity, Infinity, Infinity];
   const worldMax: [number, number, number] = [-Infinity, -Infinity, -Infinity];
+  const relMin: [number, number, number] = [Infinity, Infinity, Infinity];
+  const relMax: [number, number, number] = [-Infinity, -Infinity, -Infinity];
   for (let v = 0; v < count; v++) {
     for (let axis = 0; axis < 3; axis++) {
       const at = v * 3 + axis;
       const value = (rel[at] = p[at] + delta[axis]);
-      if (!Number.isFinite(value) || value < pin[axis] || value - pin[axis] > MAX_QUANT_EXTENT) return null;
+      if (!Number.isFinite(value)) return null;
+      if (value < relMin[axis]) relMin[axis] = value;
+      if (value > relMax[axis]) relMax[axis] = value;
       const world = p[at] + (axis === 0 ? ox : axis === 1 ? oy : oz);
       if (world < worldMin[axis]) worldMin[axis] = world;
       if (world > worldMax[axis]) worldMax[axis] = world;
     }
   }
+  if (count === 0) return null;
+  // The mesh's own lattice origin, as `quantizeInterleaved` floors a batch's minimum.
+  const pin: [number, number, number] = [0, 0, 0];
+  for (let axis = 0; axis < 3; axis++) {
+    pin[axis] = Math.floor(relMin[axis] / QUANT_STEP) * QUANT_STEP;
+    if (relMax[axis] - pin[axis] > MAX_QUANT_EXTENT) return null;
+  }
+  const qMax: [number, number, number] = [0, 0, 0];
   const records = new ArrayBuffer(count * QUANT_BYTES_PER_VERTEX);
   const u16 = new Uint16Array(records), u32 = new Uint32Array(records);
   const lanes = new Uint32Array(count);
@@ -205,12 +207,17 @@ export function encodeMeshRecords(
   for (let v = 0; v < count; v++) {
     const b = v * 3;
     const w16 = v * 6;
-    for (let axis = 0; axis < 3; axis++) u16[w16 + axis] = Math.min(65535, Math.max(0, Math.round((rel[b + axis] - pin[axis]) / QUANT_STEP)));
+    for (let axis = 0; axis < 3; axis++) {
+      // In range by the extent check above (0 <= q <= 65535): no clamp is ever active.
+      const q = Math.round((rel[b + axis] - pin[axis]) / QUANT_STEP);
+      u16[w16 + axis] = q;
+      if (q > qMax[axis]) qMax[axis] = q;
+    }
     const [ex, ey] = hasNormals ? octEncode(n[b], n[b + 1], n[b + 2]) : octEncode(0, 0, 0);
     u16[w16 + 3] = (ex << 8) | ey;
     u32[v * 3 + 2] = lanes[v] = packEntityLane(ids ? ids[v] : id, salt);
   }
-  return { frame, pin, positions: p, origin: [ox, oy, oz], salt, records, worldMin, worldMax, collapseRuns: collapseRunsOf(rel, lanes, mesh.indices) };
+  return { frame, pin, relMin, relMax, qMax, positions: p, origin: [ox, oy, oz], salt, records, worldMin, worldMax, collapseRuns: collapseRunsOf(rel, lanes, mesh.indices) };
 }
 
 /** `latticeCollapsesGeometry`'s per-triangle arithmetic over one mesh's frame-relative f32 positions, as runs. */
@@ -237,6 +244,32 @@ function collapseRunsOf(rel: Float32Array, lanes: Uint32Array, indices: Uint32Ar
   }
   if (runId >= 0) runs.push(runId, runArea, runCollapsed);
   return Float64Array.from(runs);
+}
+
+/**
+ * Write `records`' 12-byte vertex records into `out` at byte `at`, re-expressed
+ * against the lattice origin `target` instead of the mesh's own `pin`. Both are
+ * multiples of the 2^-10 step, so `d = (pin - target) / step` is an integer and
+ * `round(x) + d = round(x + d)`: the bytes equal a direct encode against
+ * `target`. Returns false (writing nothing) when a shifted coordinate would leave
+ * 0..65535 on some axis; the caller then takes the merge path for the batch.
+ */
+export function shiftedRecords(records: Pick<MeshRecords, 'pin' | 'qMax' | 'records'>, target: readonly [number, number, number], out: Uint8Array, at: number): boolean {
+  const d = [0, 0, 0];
+  for (let axis = 0; axis < 3; axis++) {
+    const shift = (records.pin[axis] - target[axis]) / QUANT_STEP;
+    if (!Number.isInteger(shift) || shift < 0 || records.qMax[axis] + shift > 65535) return false;
+    d[axis] = shift;
+  }
+  out.set(new Uint8Array(records.records), at);
+  if (d[0] === 0 && d[1] === 0 && d[2] === 0) return true;
+  const count = records.records.byteLength / QUANT_BYTES_PER_VERTEX;
+  const u16 = new Uint16Array(out.buffer, out.byteOffset + at, count * 6);
+  for (let v = 0; v < count; v++) {
+    const w = v * 6;
+    u16[w] += d[0]; u16[w + 1] += d[1]; u16[w + 2] += d[2];
+  }
+  return true;
 }
 
 /** Whether `records` still describe `mesh`: the same positions array, origin and colour salt. */

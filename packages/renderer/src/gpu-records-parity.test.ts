@@ -4,17 +4,17 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { MeshData } from '@ifc-lite/geometry';
-import { batchCollapseVerdict, encodeMeshRecords, recordsDescribe, type MeshRecords } from '@ifc-lite/geometry/gpu-records';
+import { batchCollapseVerdict, encodeMeshRecords, recordsDescribe, shiftedRecords, MAX_QUANT_EXTENT, QUANT_STEP, type MeshRecords } from '@ifc-lite/geometry/gpu-records';
 import { mergeGeometry } from './scene-geometry.js';
 import { latticeCollapsesGeometry, quantizeInterleaved } from './quantize.js';
 import { originPreservesTriangleTopology } from './scene-precision.js';
-import { cellLatticePin } from './scene-stream-assembly.js';
 
 /**
- * Records encoded per mesh (in a geometry worker, M2) must be the bytes the
- * renderer's batch merge and quantizer write for the same meshes in the same
- * frame against the same lattice origin, so a fragment can be their
- * concatenation. Compared byte for byte; failures name one byte.
+ * Records encoded per mesh (in a geometry worker, M2) against the mesh's own
+ * lattice origin, then shifted to the origin the renderer's quantizer picks for
+ * the batch (`shiftedRecords`, an exact integer shift), must be the bytes the
+ * batch merge and quantizer write for the same meshes in the same frame, so a
+ * fragment can be their concatenation. Compared byte for byte; failures name one byte.
  */
 let seed = 9684;
 const random = (): number => ((seed = (seed * 1103515245 + 12345) >>> 0) / 2 ** 32);
@@ -50,26 +50,31 @@ describe('per-mesh GPU records equal the batch merge and quantizer', () => {
     { name: 'sub-millimetre rods', meshes: Array.from({ length: 8 }, (_, i) => mesh(400 + i, [4, 4 + i, 4], 0.0015)) },
   ];
   for (const { name, meshes } of cases) {
-    it(name, () => {
-      const anchor = meshes[0];
-      const frame = mergeGeometry([anchor]).origin; // the automatic frame a first fragment would pick
-      const pin = cellLatticePin(anchor, 32, [0, 0, 0], frame)!;
-      assert.ok(pin, 'a pin');
-      const encoded = meshes.map((m) => encodeMeshRecords(m, frame, pin));
-      const kept = meshes.filter((_, i) => encoded[i] !== null);
+    // The bucket's first fragment (no shared origin yet: the quantizer centres one on it) and a later fragment
+    // quantizing against an origin an earlier fragment set (lattice-aligned, below the data, within u16 range).
+    for (const shared of [false, true]) it(`${name}${shared ? ', against a shared origin' : ', first fragment'}`, () => {
+      const frame = mergeGeometry([meshes[0]]).origin; // the automatic frame a first fragment would pick
+      const encoded = meshes.map((m) => encodeMeshRecords(m, frame));
       for (const [i, m] of meshes.entries()) {
-        // Every mesh here lies inside its pin's range, so only the f32 topology check may refuse one.
+        // Every mesh here spans well under 64 m, so only the f32 topology check may refuse one.
         assert.equal(encoded[i] === null, !originPreservesTriangleTopology([m], frame), `mesh ${i}: refused exactly when its topology breaks`);
       }
+      const kept = meshes.filter((_, i) => encoded[i] !== null);
       assert.ok(kept.length > 0, `${name}: some mesh encodes`);
       const records = encoded.filter((r): r is MeshRecords => r !== null);
       const merged = mergeGeometry(kept, frame);
-      const quantized = quantizeInterleaved(merged.vertexData, 7, { min: [pin[0], pin[1], pin[2]] });
+      const relMin = [0, 1, 2].map((a) => Math.min(...records.map((r) => r.relMin[a])));
+      const lattice: { min?: [number, number, number] } = shared
+        ? { min: [0, 1, 2].map((a) => Math.floor(relMin[a] / QUANT_STEP) * QUANT_STEP - 1000 * QUANT_STEP) as [number, number, number] } : {};
+      const latticeForRecords = shared ? { min: [...lattice.min!] as [number, number, number] } : {};
+      const quantized = quantizeInterleaved(merged.vertexData, 7, lattice);
       assert.ok(quantized, 'the batch quantizes');
-      assert.deepEqual(quantized.quantMin, [pin[0], pin[1], pin[2]], 'the batch takes the pin');
+      if (shared) assert.deepEqual(quantized.quantMin, lattice.min, 'the batch takes the shared origin');
+      // What fromRecords does: the quantizer's origin (centred first fragment, or the shared one), each mesh shifted to it.
+      const target = shared ? latticeForRecords.min! : quantized.quantMin;
       const concat = new Uint8Array(records.reduce((n, r) => n + r.records.byteLength, 0));
       let at = 0;
-      for (const r of records) { concat.set(new Uint8Array(r.records), at); at += r.records.byteLength; }
+      for (const r of records) { assert.ok(shiftedRecords(r, target, concat, at), 'shift in range'); at += r.records.byteLength; }
       const difference = firstDifference(concat, new Uint8Array(quantized.vertexData));
       assert.ok(difference === null, `${name}: ${difference}`);
       const min = [0, 1, 2].map((axis) => Math.min(...records.map((r) => r.worldMin[axis])));
@@ -82,9 +87,40 @@ describe('per-mesh GPU records equal the batch merge and quantizer', () => {
     });
   }
 
+  it('the shift is exact up to the u16 limit and refused one step beyond it', () => {
+    // One mesh spanning (nearly) the full 64 m lattice range on x: its own q reaches qMax.
+    const m = mesh(700, [0, 0, 0], 1);
+    m.positions[0] = 0; m.positions[3] = MAX_QUANT_EXTENT - 2 * QUANT_STEP;
+    const r = encodeMeshRecords(m, [0, 0, 0])!;
+    assert.ok(r, 'a 64 m mesh encodes');
+    const headroom = 65535 - r.qMax[0];
+    assert.ok(headroom >= 0 && headroom < 4, `qMax ${r.qMax[0]} sits at the top of u16`);
+    const at = (k: number): [number, number, number] => [r.pin[0] - k * QUANT_STEP, r.pin[1], r.pin[2]];
+    const out = new Uint8Array(r.records.byteLength);
+    assert.ok(shiftedRecords(r, at(headroom), out, 0), 'the largest legal shift is taken');
+    const direct = new Uint16Array(r.records), shifted = new Uint16Array(out.buffer);
+    for (let v = 0; v < direct.length / 6; v++) {
+      assert.equal(shifted[v * 6], direct[v * 6] + headroom, `vertex ${v}: x shifted by exactly ${headroom}`);
+      assert.equal(shifted[v * 6 + 3], direct[v * 6 + 3], `vertex ${v}: normal untouched`);
+    }
+    assert.equal(Math.max(...Array.from({ length: direct.length / 6 }, (_, v) => shifted[v * 6])), 65535 - (65535 - r.qMax[0] - headroom), 'no wrap-around');
+    const untouched = new Uint8Array(r.records.byteLength).fill(7);
+    assert.equal(shiftedRecords(r, at(headroom + 1), untouched, 0), false, 'one step beyond u16 is refused');
+    assert.ok(untouched.every((b) => b === 7), 'a refused shift writes nothing');
+    assert.equal(shiftedRecords(r, [r.pin[0] + QUANT_STEP, r.pin[1], r.pin[2]], untouched, 0), false, 'an origin above the mesh is refused');
+    assert.equal(shiftedRecords(r, [r.pin[0] - QUANT_STEP / 2, r.pin[1], r.pin[2]], untouched, 0), false, 'an origin off the lattice is refused');
+  });
+
+  it('refuses a mesh wider than the u16 lattice range, and a non-finite one', () => {
+    const wide = mesh(500, [0, 0, 0], 2); wide.positions[0] = -1; wide.positions[3] = MAX_QUANT_EXTENT;
+    assert.equal(encodeMeshRecords(wide, [0, 0, 0]), null, 'wider than 64 m on x');
+    const bad = mesh(501, [0, 0, 0], 2); bad.positions[4] = NaN;
+    assert.equal(encodeMeshRecords(bad, [0, 0, 0]), null, 'NaN');
+  });
+
   it('records describe only the mesh they were encoded from', () => {
     const m = mesh(600, [1, 1, 1], 2);
-    const r = encodeMeshRecords(m, [0, 0, 0], [-1, -1, -1])!;
+    const r = encodeMeshRecords(m, [0, 0, 0])!;
     assert.ok(recordsDescribe(r, m), 'the encoded mesh');
     assert.ok(recordsDescribe(r, { ...m }), 'a copy sharing its positions, origin and colour (a placed primary-model mesh)');
     assert.ok(!recordsDescribe(r, { ...m, positions: new Float32Array(m.positions) }), 'other positions (a split piece, a lifted placement)');
@@ -92,11 +128,4 @@ describe('per-mesh GPU records equal the batch merge and quantizer', () => {
     assert.ok(!recordsDescribe(r, { ...m, color: [0.1, 0.9, 0.2, 1] }), 'another colour salt');
   });
 
-  it('refuses a vertex outside the u16 range above the pin, and a non-finite one', () => {
-    const m = mesh(500, [0, 0, 0], 2);
-    assert.equal(encodeMeshRecords(m, [0, 0, 0], [1, 0, 0]), null, 'below the pin');
-    assert.equal(encodeMeshRecords(m, [0, 0, 0], [-70, 0, 0]), null, 'beyond 64 m above the pin');
-    const bad = mesh(501, [0, 0, 0], 2); bad.positions[4] = NaN;
-    assert.equal(encodeMeshRecords(bad, [0, 0, 0], [-1, -1, -1]), null, 'NaN');
-  });
 });

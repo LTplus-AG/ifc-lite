@@ -11,7 +11,7 @@
  * main thread. Meshes meshed before the frame reached their worker, or by a
  * replacement worker, carry no records and take the main-thread merge.
  */
-import { cellLatticePin, encodeMeshRecords } from './gpu-records.js';
+import { encodeMeshRecords } from './gpu-records.js';
 import type { MeshData } from './types.js';
 
 /** The renderer's frame for a load's streamed fragments, and its chunk cell size. */
@@ -56,8 +56,7 @@ export function acceptRecordFrame(session: object | null, data: unknown): boolea
 export function attachGpuRecords(session: object, mesh: MeshData, transfers: ArrayBuffer[]): void {
   const known = frames.get(session);
   if (!known) return;
-  const pin = cellLatticePin(mesh, known.cellSize, [0, 0, 0], known.frame);
-  const records = pin && encodeMeshRecords(mesh, known.frame, pin);
+  const records = encodeMeshRecords(mesh, known.frame);
   if (!records) return;
   mesh.gpuRecords = records;
   transfers.push(records.records);

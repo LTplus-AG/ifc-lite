@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import type { MeshData } from './types.js';
 import { acceptRecordFrame, attachGpuRecords, relayRecordFrame } from './gpu-record-frame.js';
-import { cellLatticePin, encodeMeshRecords } from './gpu-records.js';
+import { encodeMeshRecords } from './gpu-records.js';
 
 function box(id: number, x: number): MeshData {
   const positions = new Float32Array([x, 0, 0, x + 1, 0, 0, x, 1, 0, x, 0, 1]);
@@ -28,7 +28,7 @@ describe('GPU records from the geometry workers (M2)', () => {
     expect(posted[0]).toHaveLength(1);
   });
 
-  it('a worker encodes each mesh against its session\'s frame and cell origin, and transfers the records', () => {
+  it('a worker encodes each mesh against its session\'s frame and its own lattice origin, and transfers the records', () => {
     const session = {};
     const before = box(1, 0.5);
     const transfers: ArrayBuffer[] = [];
@@ -38,9 +38,9 @@ describe('GPU records from the geometry workers (M2)', () => {
     expect(acceptRecordFrame(session, { type: 'record-frame', frame: [0.25, 0, 0], cellSize: 32 })).toBe(true);
     const after = box(2, 0.5);
     attachGpuRecords(session, after, transfers);
-    const pin = cellLatticePin(after, 32, [0, 0, 0], [0.25, 0, 0])!;
-    const expected = encodeMeshRecords(after, [0.25, 0, 0], pin)!;
-    expect(after.gpuRecords?.pin).toEqual(pin);
+    const expected = encodeMeshRecords(after, [0.25, 0, 0])!;
+    expect(after.gpuRecords?.pin).toEqual(expected.pin);
+    expect(expected.pin.every((v) => Number.isInteger(v * 1024))).toBe(true); // on the 2^-10 lattice
     expect(new Uint8Array(after.gpuRecords!.records)).toEqual(new Uint8Array(expected.records));
     expect(transfers).toEqual([after.gpuRecords!.records]);
     const other = box(3, 0.5);

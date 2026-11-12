@@ -21,7 +21,6 @@ import { Scene } from './scene.js';
 import type { RenderPipeline } from './pipeline.js';
 import type { BatchedMesh } from './types.js';
 import type { SceneSnapshot } from './scene-snapshot.js';
-import { cellLatticePin } from './scene-stream-assembly.js';
 import { encodeMeshRecords } from '@ifc-lite/geometry/gpu-records';
 
 Object.assign(globalThis, { GPUBufferUsage: { MAP_READ: 1, MAP_WRITE: 2, COPY_SRC: 4, COPY_DST: 8, INDEX: 16, VERTEX: 32, UNIFORM: 64, STORAGE: 128, INDIRECT: 256, QUERY_RESOLVE: 512 } });
@@ -265,27 +264,6 @@ describe('cold finalize work after the last batch arrived', () => {
     assertSameBatches(captured.scene, (await streamedLoad({ rebuildReference: true })).scene);
   });
 
-  it('a bucket\'s lattice origin depends on its cell, not on which fragment arrived first', async () => {
-    const forward = await streamedLoad();
-    const backward = await streamedLoad({ reversed: true });
-    // In world terms: the shared model frame is the first fragment's, so it moves with arrival order (by design).
-    const pins = (load: Load) => new Map(load.scene.getBatchedMeshes().map((b) => [b.colorKey,
-      b.quantized && b.origin ? b.quantized.min.map((v, axis) => v + b.origin![axis]) : null]));
-    const a = pins(forward), b = pins(backward);
-    assert.ok(a.size === b.size && a.size >= 10, `${a.size} vs ${b.size} batches`);
-    const moved = [...a].filter(([key, pin]) => {
-      const other = b.get(key);
-      return !pin || !other || pin.some((v, axis) => Math.abs(v - other[axis]) >= 1 / 1024);
-    }).map(([key]) => key);
-    assert.ok(moved.length === 0, `${moved.length} buckets changed their lattice origin with arrival order, e.g. ${moved[0]}`);
-    // Each origin sits 16 m below its 32 m cell, in the model frame, on the 2^-10 lattice.
-    for (const batch of forward.scene.getBatchedMeshes()) {
-      if (!batch.quantized) continue;
-      const step = batch.quantized.step;
-      assert.ok(batch.quantized.min.every((v) => Number.isInteger(v / step)), `${batch.colorKey}: lattice-aligned`);
-    }
-  });
-
   it('fragments built from per-mesh GPU records (a worker\'s, M2) draw and finalize exactly as merged ones', async () => {
     const load = async (records: boolean) => {
       const { device, work } = recordingDevice();
@@ -299,8 +277,7 @@ describe('cold finalize work after the last batch arrived', () => {
         const frame = (scene as unknown as { sharedFrameOrigins: Map<number, [number, number, number]> }).sharedFrameOrigins.get(0);
         if (records && index > 0 && frame) {
           for (const mesh of batch) {
-            const pin = cellLatticePin(mesh, 32, [0, 0, 0], frame);
-            const encoded = pin && encodeMeshRecords(mesh, frame, pin);
+            const encoded = encodeMeshRecords(mesh, frame);
             if (encoded) mesh.gpuRecords = encoded;
           }
         }
@@ -321,6 +298,33 @@ describe('cold finalize work after the last batch arrived', () => {
     assert.ok(recorded.uploads === merged.uploads, `the same vertex bytes upload: ${recorded.uploads} vs ${merged.uploads}`);
     assertSameBatches(recorded.scene, merged.scene);
     assertSameBatches(recorded.scene, (await streamedLoad({ rebuildReference: true })).scene);
+  });
+
+  it('a fragment whose records cannot share one u16 lattice range takes the merge path, counted, with the same result', async () => {
+    // Two meshes of one bucket (same colour, same 32 m cell by their first vertex), each 41 m wide, 80 m wide together:
+    // every mesh encodes, but no single u16 origin covers the fragment, so it must be built as the merge builds it (f32).
+    const wall = (id: number, first: number, far: number): MeshData => ({ expressId: id, modelIndex: 0, color: [0.4, 0.5, 0.6, 1],
+      positions: new Float32Array([first, 0, 0, far, 0, 0, first, 3, 0, far, 3, 0]), normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1]),
+      indices: new Uint32Array([0, 1, 2, 1, 3, 2]) } as MeshData);
+    const run = async (records: boolean) => {
+      const { device } = recordingDevice();
+      const scene = new Scene();
+      scene.setSpatialChunking({ cellSize: 32 }); scene.setQuantizedBatches(true);
+      scene.queueMeshes([wall(1, 1, 2)]); drain(scene, device); // fixes the model frame
+      const frame = (scene as unknown as { sharedFrameOrigins: Map<number, [number, number, number]> }).sharedFrameOrigins.get(0)!;
+      const pair = [wall(2, 1, -40), wall(3, 2, 42)];
+      if (records) for (const mesh of pair) { const r = encodeMeshRecords(mesh, frame); assert.ok(r, 'each 41 m mesh encodes'); mesh.gpuRecords = r!; }
+      perfCounters.enable();
+      const before = perfCounters.read();
+      scene.queueMeshes(pair); drain(scene, device);
+      const counted = diffCounters(perfCounters.read(), before);
+      await scene.finalizeStreamingAsync(device, pipeline, 1e9);
+      return { scene, counted };
+    };
+    const withRecords = await run(true), merged = await run(false);
+    assert.equal(withRecords.counted['render.stream.records.fallback.extent'], 1, 'the fallback is counted once');
+    assert.equal(withRecords.counted['render.stream.records.vertices'] ?? 0, 0, 'no vertices taken from records');
+    assertSameBatches(withRecords.scene, merged.scene);
   });
 
   it('a recolour that keeps the bucket key but changes the entity-lane salt rebuilds that bucket', async () => {

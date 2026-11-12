@@ -35,8 +35,6 @@ import type { BatchedMesh } from './types.js';
 import type { RenderPipeline } from './pipeline.js';
 import type { LatticeFrame } from './quantize.js';
 import { QUANT_BYTES_PER_VERTEX } from './quantize.js';
-import { cellLatticePin } from '@ifc-lite/geometry/gpu-records';
-export { cellLatticePin };
 import { BATCH_CONSTANTS } from './constants.js';
 import { TopologyMemo } from './scene-precision.js';
 import { colorSaltByte, entityLaneOf, packEntityLane } from './scene-geometry.js';
@@ -90,13 +88,10 @@ export class StreamAssembly {
     return (this.topology ??= new TopologyMemo());
   }
 
-  /**
-   * The lattice origin every fragment of `bucketKey` encodes against when it fits:
-   * `pin` (its cell's, see `cellLatticePin`) when the bucket has a cell, else the first fragment's.
-   */
-  latticeFor(bucketKey: string, pin?: [number, number, number]): LatticeFrame {
+  /** The lattice origin every fragment of `bucketKey` encodes against when it fits (set by its first fragment). */
+  latticeFor(bucketKey: string): LatticeFrame {
     let lattice = this.lattices.get(bucketKey);
-    if (!lattice) this.lattices.set(bucketKey, (lattice = pin ? { min: pin } : {}));
+    if (!lattice) this.lattices.set(bucketKey, (lattice = {}));
     return lattice;
   }
 

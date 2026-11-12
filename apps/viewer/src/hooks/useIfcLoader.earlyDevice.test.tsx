@@ -29,10 +29,11 @@ import { clearGlobalRefs, setGlobalRendererRef } from './useBCF.js';
 
 (globalThis as Record<string, unknown>).GPUTextureUsage ??= { COPY_SRC: 0x01, RENDER_ATTACHMENT: 0x10 };
 
-interface AdapterCall { loading: boolean; models: number }
+/** Order of the device request and the load's reset, as the loader makes them. */
+const order: string[] = [];
 
 function installGpu() {
-  const adapterCalls: AdapterCall[] = [];
+  const adapterCalls: string[] = [];
   const devices: object[] = [];
   const adapter = {
     features: new Set<string>(),
@@ -47,8 +48,8 @@ function installGpu() {
     configurable: true,
     value: {
       requestAdapter: async () => {
-        const state = useViewerStore.getState();
-        adapterCalls.push({ loading: state.loading, models: state.models.size });
+        adapterCalls.push('requestAdapter');
+        order.push('requestAdapter');
         return adapter;
       },
       getPreferredCanvasFormat: () => 'bgra8unorm',
@@ -67,9 +68,12 @@ function Probe(): null {
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
 
+const realReset = useViewerStore.getState().resetViewerState;
 beforeEach(async () => {
-  useViewerStore.getState().resetViewerState();
+  realReset();
   useViewerStore.getState().clearAllModels();
+  order.length = 0;
+  useViewerStore.setState({ resetViewerState: () => { order.push('reset'); realReset(); } });
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -77,6 +81,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  useViewerStore.setState({ resetViewerState: realReset });
   delete (globalThis.navigator as { gpu?: unknown }).gpu;
   clearGlobalRefs();
   const current = root;
@@ -94,7 +99,7 @@ describe('useIfcLoader — the renderer device is requested at the pick (pre-pix
     await act(async () => { await hookApi!.loadFile(someFile()).catch(() => {}); });
 
     assert.equal(gpu.adapterCalls.length, 1, 'no early device request was made');
-    assert.deepEqual(gpu.adapterCalls[0], { loading: false, models: 0 }, 'the request came after the reset instead of before it');
+    assert.deepEqual(order, ['requestAdapter', 'reset'], 'the device was not requested before the load reset the interface');
     assert.equal(gpu.devices.length, 1);
 
     const device = new WebGPUDevice();

@@ -153,6 +153,31 @@ describe('early renderer device request', () => {
     assert.equal(gpu.devices.length, 2);
   });
 
+  it('a failed early request frees the slot, so the next pick asks again at once', async () => {
+    const gpu = installGpu();
+    gpu.state.failNext = true;
+    await quietly(async () => {
+      prerequestRendererDevice();
+      await settle();
+    });
+    assert.equal(prerequestRendererDevice(), true, 'a failed request blocked the next one until its hold expired');
+    await settle();
+    assert.equal(gpu.devices.length, 1);
+  });
+
+  it('a lost early device whose destroy throws still lets init request its own', async () => {
+    const gpu = installGpu();
+    prerequestRendererDevice();
+    await settle();
+    gpu.devices[0].destroy = () => { throw new Error('backend destroy failed'); };
+    gpu.devices[0].loseNow();
+    await settle();
+    const device = new WebGPUDevice();
+    await quietly(() => device.init(makeCanvas()));
+    assert.equal(device.isInitialized(), true);
+    assert.equal(gpu.devices.length, 2);
+  });
+
   it('keeps one early request at a time, and makes none without WebGPU', async () => {
     installGpu();
     assert.equal(prerequestRendererDevice(), true);

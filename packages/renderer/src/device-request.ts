@@ -114,15 +114,24 @@ export function prerequestRendererDevice(holdMs = PREREQUESTED_DEVICE_HOLD_MS): 
     expiry: setTimeout(() => {
       if (early !== entry) return;
       early = null;
-      void entry.result.then((requested) => requested?.device.destroy());
+      void entry.result.then(releaseDevice);
     }, holdMs),
+  };
+  // A request that failed, or a device lost, stops holding the slot: the next pick can ask again at once.
+  const forget = () => {
+    early = null;
+    clearTimeout(entry.expiry);
   };
   entry.result = requestRendererDevice(gpu).then((requested) => {
     // A loss before the claim: the renderer must request a fresh device.
-    void requested.device.lost?.then(() => { entry.lost = true; });
+    void requested.device.lost?.then(() => {
+      entry.lost = true;
+      if (early === entry) { forget(); releaseDevice(requested); } // unclaimed: nobody else will release it
+    });
     return requested;
   }, (err: unknown) => {
     console.warn('[WebGPU] early device request failed; the renderer will request its own:', err);
+    if (early === entry) forget();
     return null;
   });
   early = entry;
@@ -141,7 +150,16 @@ export function claimPrerequestedRendererDevice(): Promise<RequestedRendererDevi
   clearTimeout(entry.expiry);
   return entry.result.then((requested) => {
     if (requested && !entry.lost) return requested;
-    requested?.device.destroy();
+    releaseDevice(requested);
     return null;
   });
+}
+
+/** Destroy an early device nobody will use. A backend that throws here must not fail the renderer's own request. */
+function releaseDevice(requested: RequestedRendererDevice | null): void {
+  try {
+    requested?.device.destroy();
+  } catch (err) {
+    console.warn('[WebGPU] destroying an unused early device threw:', err);
+  }
 }

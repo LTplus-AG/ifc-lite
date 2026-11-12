@@ -100,7 +100,7 @@ function nameEnd(text: string, from: number): number {
  * Index past the number at `from`, or -1: one complete STEP numeric literal
  * (core's `read_step_number`), an `INTEGER` within `i64`.
  */
-function numberEnd(text: string, from: number): number {
+export function numberEnd(text: string, from: number): number {
   let i = from;
   while (i < text.length && isNumberRunCode(text.charCodeAt(i))) i++;
   const token = text.slice(from, i);

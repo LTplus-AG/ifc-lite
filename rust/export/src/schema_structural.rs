@@ -1,6 +1,35 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Structural value conversion (#9668). EXPRESS IFC2X3_TC1 / IFC4_ADD2_TC1.
 
+use ifc_lite_core::parser::{skip_step_trivia, read_step_number, StepNumber, StepRecord};
+
+fn scalar_equals(token: &str, value: &str) -> bool {
+    let bytes = token.as_bytes();
+    let Some(start) = skip_step_trivia(bytes, 0) else { return false };
+    bytes.get(start..start + value.len()).is_some_and(|v| v.eq_ignore_ascii_case(value.as_bytes()))
+        && skip_step_trivia(bytes, start + value.len()) == Some(bytes.len())
+}
+
+fn stiffness_number(token: &str) -> Option<f64> {
+    let bytes = token.as_bytes();
+    let start = skip_step_trivia(bytes, 0)?;
+    let (number, len) = read_step_number(&bytes[start..])?;
+    if skip_step_trivia(bytes, start + len)? != bytes.len() { return None; }
+    match number { StepNumber::Integer(n) => Some(n as f64), StepNumber::Real(n) => Some(n), StepNumber::Unrepresentable(_) => None }
+}
+
+fn downgrade_stiffness(token: &str, measure: &str) -> Option<String> {
+    let wrapper = format!("#0={token};");
+    let record = StepRecord::parse(wrapper.as_bytes())?;
+    if record.attrs().count() != 1 { return None; }
+    let inner = std::str::from_utf8(record.attr(0)?).ok()?;
+    if record.keyword_is(b"IFCBOOLEAN") {
+        if scalar_equals(inner, ".T.") { Some("-1.".into()) }
+        else if scalar_equals(inner, ".F.") { Some("0.".into()) } else { None }
+    } else if record.keyword().is_some_and(|head| head.eq_ignore_ascii_case(measure)) { Some(inner.into()) }
+    else { None }
+}
+
 /// The boundary attributes changed names, but retain their order and units.
 fn stiffness_type(entity: &str, index: usize) -> Option<&'static str> {
     Some(match (entity, index) {
@@ -33,19 +62,15 @@ pub(crate) fn attributes(entity: &str, args: &[String], from: &str, to: &str) ->
         for (index, value) in values.iter_mut().enumerate().skip(1) {
             let Some(measure) = stiffness_type(entity, index) else { continue };
             let token = value.trim();
-            if token == "$" { continue; }
+            if scalar_equals(token, "$") { continue; }
             if to == "IFC4" {
                 // IFC2X3 uses -1 for an infinitely stiff restraint. Zero is a
                 // finite measure too; keeping that encoding avoids rounding.
-                *value = if token.parse::<f64>().ok() == Some(-1.0) {
+                *value = if stiffness_number(token) == Some(-1.0) {
                     "IFCBOOLEAN(.T.)".into()
                 } else { format!("{measure}({token})") };
-            } else if let Some(open) = token.find('(') {
-                let head = &token[..open];
-                let inner = token[open + 1..].strip_suffix(')')?;
-                *value = if head.eq_ignore_ascii_case("IFCBOOLEAN") {
-                    match inner.trim() { ".T." => "-1.".into(), ".F." => "0.".into(), _ => return None }
-                } else if head.eq_ignore_ascii_case(measure) { inner.into() } else { return None };
+            } else {
+                *value = downgrade_stiffness(token, measure)?;
             }
         }
         return Some(values.join(","));
@@ -161,5 +186,24 @@ mod review_regressions {
         let out = convert_step_line(source, "IFC2X3", "IFC4", 50, &mut Ifc2x3SlotFill::new(None), Some(&mut checks)).unwrap();
         assert_eq!(out, source);
         assert!(checks.warnings().iter().any(|w| w.contains("record remains unconverted; output does not conform to IFC4")));
+    }
+}
+
+#[cfg(test)]
+mod trivia_regressions {
+    use crate::schema_convert::convert_step_line;
+    use crate::schema_ifc2x3_slots::Ifc2x3SlotFill;
+
+    #[test]
+    fn stiffness_uses_step_trivia_for_sentinels_and_typed_values_9668() {
+        let source = "#23=IFCBOUNDARYNODECONDITION($,-1./* rigid */,12./* finite */,$,$,$,$);";
+        let out = convert_step_line(source, "IFC2X3", "IFC4", 23, &mut Ifc2x3SlotFill::new(None), None).unwrap();
+        assert!(out.contains("IFCBOOLEAN(.T.)"));
+        assert!(out.contains("IFCLINEARSTIFFNESSMEASURE(12./* finite */)"));
+        for typed in ["IFCBOOLEAN (.T.)", "IFCBOOLEAN/*type*/( /*value*/ .T. /*tail*/ )", "ifcboolean ( .t. )"] {
+            let source = format!("#23=IFCBOUNDARYNODECONDITION($,{typed},$,$,$,$,$);");
+            let out = convert_step_line(&source, "IFC4", "IFC2X3", 23, &mut Ifc2x3SlotFill::new(None), None).unwrap();
+            assert_eq!(out, "#23=IFCBOUNDARYNODECONDITION($,-1.,$,$,$,$,$);");
+        }
     }
 }

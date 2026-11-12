@@ -174,11 +174,12 @@ impl ConversionChecks {
     }
 
     /// Source-derived orientations are safe only for an unedited full export.
-    pub(crate) fn for_source(content: &[u8], from: &str, to: &str, opts: &crate::step_api::StepOptions, unchanged: bool) -> Self {
+    pub(crate) fn for_source(content: &[u8], from: &str, to: &str, opts: &crate::step_api::StepOptions, unchanged: bool, kept: impl Fn(u32, usize) -> bool) -> Self {
+        let (from, to) = (crate::schema_convert::canon(from), crate::schema_convert::canon(to));
         let mut checks = Self::new();
         if from == "IFC2X3" && to == "IFC4" && unchanged && opts.included.is_none()
             && opts.attribute_mutations.is_empty() && opts.copy_on_write.is_empty() {
-            checks.structural.axes = crate::schema_structural_axes::StructuralAxes::scan(content);
+            checks.structural.axes = crate::schema_structural_axes::StructuralAxes::scan(content, kept);
         }
         checks
     }

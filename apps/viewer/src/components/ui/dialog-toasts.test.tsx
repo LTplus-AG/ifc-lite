@@ -142,3 +142,17 @@ it('#9875 closing an older modal cannot promote its notice over a later-opened m
   assert.equal(document.querySelector('[role="dialog"] [data-dialog-notices]'), null);
   assert.ok(anchor.textContent?.includes('Earlier failure'));
 });
+
+
+it('#9875 repeated errors in different surfaces preserve independent dismissal', () => {
+  const anchor = render(<Toaster />);
+  act(() => toast.error('Export failed'));
+  render(<Dialog open><DialogContent><DialogTitle>Export</DialogTitle><DialogDescription>Review</DialogDescription></DialogContent></Dialog>);
+  act(() => toast.error('Export failed'));
+  const shelf = document.querySelector('[role="dialog"] [data-dialog-notices]');
+  assert.ok(shelf?.textContent?.includes('Export failed'));
+  assert.ok(anchor.textContent?.includes('Export failed'), 'the earlier app error retains its anchor');
+  act(() => shelf?.querySelector<HTMLButtonElement>('button[aria-label="Dismiss notification"]')?.click());
+  assert.equal(document.querySelector('[role="dialog"] [data-dialog-notices]'), null);
+  assert.ok(anchor.textContent?.includes('Export failed'), 'dismissing the modal error preserves the app failure');
+});

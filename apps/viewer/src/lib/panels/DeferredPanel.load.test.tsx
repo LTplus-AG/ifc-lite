@@ -40,7 +40,7 @@ for (const mobile of [false, true]) for (const id of ['bcf', 'validation', 'lens
     click([...ui.querySelectorAll('button')].find(button => button.textContent === 'Parent 0')!);
     assert.equal(feature.isConnected, true, 'parent renders do not switch the component type and remount it');
     assert.equal(feature.textContent, 'Feature 1');
-    assert.equal(ui.querySelector('output'), null);
+    assert.ok(!ui.querySelector('output'));
   });
 }
 
@@ -75,4 +75,35 @@ it('#9742 a host-owned header remains the sole exit through loading and failure'
   assert.equal(ui.querySelectorAll('button[aria-label="Close"]').length, 1);
   assert.ok([...ui.querySelectorAll('button')].some(button => button.textContent?.includes('Reload')), 'chunk boundary retains its reload action');
   click(ui.querySelector('button[aria-label="Close"]')!); assert.equal(closed, 1);
+});
+
+it('#9742 closing a pending panel leaves no timers after its module resolves', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  t.after(() => {
+    // Unmount and restore the spies while clearTimeout still uses this clock.
+    try { cleanup(); }
+    finally { t.mock.restoreAll(); t.mock.timers.reset(); }
+  });
+  const timeouts = t.mock.method(globalThis, 'setTimeout');
+  const intervals = t.mock.method(globalThis, 'setInterval');
+  const clearTimeouts = t.mock.method(globalThis, 'clearTimeout');
+  const clearIntervals = t.mock.method(globalThis, 'clearInterval');
+  let mounted = 0;
+  function Feature() { mounted++; return <span>Late feature</span>; }
+  let resolve!: (module: { default: typeof Feature }) => void;
+  const pending = new Promise<{ default: typeof Feature }>(done => { resolve = done; });
+  const ui = render(<DeferredPanel id="gantt" onClose={() => {}} load={() => pending} />);
+  assert.ok(ui.querySelector('output[aria-live="polite"]'));
+  cleanup();
+  await act(async () => { resolve({ default: Feature }); await pending; });
+  assert.equal(mounted, 0, 'a dismissed loading shell must not mount its late feature');
+  assert.equal(ui.isConnected, false);
+  // The clock never advances, so any scheduled timer is still pending unless
+  // teardown explicitly cancelled it. A future retry/poll loop must clear both.
+  for (const call of timeouts.mock.calls) {
+    assert.ok(clearTimeouts.mock.calls.some(clear => clear.arguments[0] === call.result), 'unmount cancels every pending timeout');
+  }
+  for (const call of intervals.mock.calls) {
+    assert.ok(clearIntervals.mock.calls.some(clear => clear.arguments[0] === call.result), 'unmount cancels every pending interval');
+  }
 });

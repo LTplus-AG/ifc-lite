@@ -40,7 +40,8 @@ for (const [id, accept] of [
     // The real tour preload is allowed to complete before this panel ever mounts.
     await preloadDeferredPanel(id);
     const ui = render(<ExtensionHostContext.Provider value={host}>{renderPanelBody(id, () => {})}</ExtensionHostContext.Provider>);
-    assert.equal(ui.querySelector('output'), null, 'a warm module must never paint the loading shell');
+    // Keep an intentional revert failure scalar instead of serializing a DOM graph.
+    assert.ok(!ui.querySelector('output'), 'a warm module must never paint the loading shell');
     assert.ok(ui.querySelector(`input[type="file"][accept="${accept}"]`), 'real panel content is present in the first commit');
   });
 }

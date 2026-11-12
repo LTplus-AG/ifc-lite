@@ -74,7 +74,7 @@ export interface EffectiveEntityOverlay {
 /**
  * Count effective classes without walking a large source bucket for a small
  * edit set. A caller-supplied source domain is counted through the canonical
- * iterator instead (for example IFCX, whose STEP type index is empty).
+ * iterator instead (for example a tabular store, whose STEP type index is empty).
  * Source classes with no surviving records retain a zero row.
  */
 export function countEffectiveEntityTypes(
@@ -86,12 +86,12 @@ export function countEffectiveEntityTypes(
   const byType = source.entityIndex.byType;
   const counts = new Map<string, number>();
   const tombstones = overlay?.getTombstones?.();
-  // An IFCX store's STEP index is empty; the canonical iterator walks its entity table instead (see below).
-  const ifc5Table = !sourceIds && byType.size === 0 && source.schemaVersion === 'IFC5' && !!source.entities?.expressId;
-  const walk = !!sourceIds || ifc5Table || !!(overlay && !tombstones);
+  // A tabular store's STEP index is empty; the canonical iterator walks its entity table instead (see below).
+  const tabular = !sourceIds && byType.size === 0 && source.sourceKind === 'tabular' && !!source.entities?.expressId;
+  const walk = !!sourceIds || tabular || !!(overlay && !tombstones);
   for (const [type, ids] of byType) counts.set(type, walk ? 0 : ids.length);
-  // The same zero rows for an IFCX store's source classes, so a class whose every row is deleted still reads 0.
-  if (ifc5Table && source.entities) {
+  // The same zero rows for a tabular store's source classes, so a class whose every row is deleted still reads 0.
+  if (tabular && source.entities) {
     for (const type of bucketsOf(source.entities).keys()) if (type !== 'UNKNOWN') counts.set(type, 0);
   }
   if (walk) {
@@ -152,7 +152,7 @@ export interface EffectiveEntitySource {
   readonly deferredEntityIndex?: { get(id: number): { type: string } | undefined };
   /**
    * Optional type fallback for a caller-supplied columnar source domain. `expressId` lists the table's
-   * rows: with `schemaVersion` 'IFC5' it is also the source domain when the caller supplies none.
+   * rows: with `sourceKind` 'tabular' it is also the source domain when the caller supplies none.
    */
   readonly entities?: {
     getTypeName(id: number): string;
@@ -160,8 +160,8 @@ export interface EffectiveEntitySource {
     /** See `EntityTable.typeRevision`: a retype invalidates the class buckets built over this table. */
     readonly typeRevision?: number;
   };
-  /** The model's schema. An 'IFC5' (IFCX) store has no STEP type index, so its entity table is the source. */
-  readonly schemaVersion?: string;
+  /** A 'tabular' store (IFCX is one) has no STEP type index, so its entity table is the source. */
+  readonly sourceKind?: 'step' | 'tabular';
 }
 
 export interface EffectiveEntity {
@@ -211,13 +211,13 @@ export function* iterateEffectiveEntities(
   const created = byClass ? Array.from(byClass)
     : overlay ? Array.from(overlay.readNewEntityKinds?.() ?? overlay.getNewEntities()) : [];
 
-  // An IFCX store has no STEP records, so its `entityIndex` is empty and every walk of the buckets above finds
+  // A tabular store (IFCX is one) has no STEP records, so its `entityIndex` is empty and every walk of the buckets above finds
   // nothing: no space, no material, no wall, whoever asks. The entity table is its source then, and is walked
   // here, once, for every caller, instead of each caller knowing to pass it.
   // The table is walked once per model, into buckets by class; a filtered call takes its buckets, not the table
   // (a per-element loop asking for one class would otherwise rescan the whole table per element). A queued
   // retype can move a row INTO a wanted class, so with retypes the whole table is the domain.
-  if (!sourceIds && byType.size === 0 && source.schemaVersion === 'IFC5' && source.entities?.expressId) {
+  if (!sourceIds && byType.size === 0 && source.sourceKind === 'tabular' && source.entities?.expressId) {
     sourceIds = wanted && !retypes?.size ? idsOfClasses(source.entities, wanted) : source.entities.expressId;
   }
 

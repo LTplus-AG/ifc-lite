@@ -23,6 +23,7 @@ import type { SchemaVersion } from '@/store/types';
 export interface EnergyExportSourceStore {
   source?: IfcSourceBytes;
   schemaVersion: SchemaVersion;
+  sourceKind?: 'step' | 'tabular';
 }
 
 /** Non-null pair resolved by {@link resolveEnergyExportMutationSource}. */
@@ -45,7 +46,8 @@ export interface EnergyExportMutationSource<T extends EnergyExportSourceStore> {
  * regeneration — plus a parsed data store to regenerate from, source bytes
  * for `StepExporter` to re-serialize un-mutated entities from, and a STEP
  * schema (IFC5/IFCX has no STEP representation to regenerate — that stays on
- * the raw-bytes path, unchanged from before this fix).
+ * the raw-bytes path, unchanged from before this fix). A tabular store's
+ * `source` is not STEP whatever its schema label, so it stays there too.
  *
  * `hasPendingChanges()`, not `hasChanges()`: the latter reads the
  * append-only `mutationHistory`, which `restoreNewEntity` (undo of a
@@ -66,6 +68,7 @@ export function resolveEnergyExportMutationSource<T extends EnergyExportSourceSt
     !dataStore ||
     !dataStore.source ||
     dataStore.source.length === 0 ||
+    dataStore.sourceKind === 'tabular' ||
     schemaVersion === 'IFC5'
   ) {
     return null;

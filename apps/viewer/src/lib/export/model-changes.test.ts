@@ -476,6 +476,23 @@ describe('buildChangedArtifacts', () => {
     assert.strictEqual(result.scheduleSpliced, false);
   });
 
+  it('does not splice a schedule into, or STEP-export, a tabular model labelled IFC4', async () => {
+    // Its `source` is not STEP whatever the schema label says, so it is neither
+    // a schedule target nor handed to the STEP exporter.
+    const tabular = { sourceKind: 'tabular' } as IfcDataStore;
+    const models = new Map<string, FederatedModel>([['t', mkModel('t', 'model.3dm', 'IFC4', { ifcDataStore: tabular })]]);
+    const mutationViews = new Map<string, MutablePropertyView>([['t', mkView(1)]]);
+    const state = mkState({ models, mutationViews, scheduleData: mkSchedule([0, 0]), scheduleSourceModelId: 't' });
+    assert.strictEqual(collectChangedModels(state).scheduleTargetModelId, null);
+
+    const { deps, stepCalls, ifcxCalls } = fakeDeps({ resolveStepDataStore: async () => tabular });
+    const result = await buildChangedArtifacts(state, deps);
+    assert.strictEqual(stepCalls.length, 0);
+    assert.deepStrictEqual(ifcxCalls, []);
+    assert.deepStrictEqual(result.files, []);
+    assert.deepStrictEqual(result.skipped, [{ name: 'model.3dm', reason: 'Model has no IFC STEP source to export changes into' }]);
+  });
+
   it('dedupes colliding filenames across models', async () => {
     const models = new Map<string, FederatedModel>([
       ['a', mkModel('a', 'model.ifc')],

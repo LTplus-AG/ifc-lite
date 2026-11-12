@@ -5,8 +5,8 @@
 /** bSDD lookups through the host's client (the viewer routes it through its `/api/bsdd` proxy). */
 
 import { ToolErrorCode, ToolExecutionError } from '@ifc-lite/mcp/browser';
-import { assertDispatchActive } from './cancellation.js';
-import { resolveRef } from './refs.js';
+import { assertToolActive } from './cancellation.js';
+import { entityExists, resolveRef } from './refs.js';
 import type { AgentTool, ModelFreeTool, ModelTool } from './types.js';
 
 interface BsddHttpErrorLike {
@@ -48,7 +48,7 @@ const bsdd_search: ModelFreeTool = {
     if (!query) throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: '`query` is required.' });
     try {
       const results = await host.bsdd.search(query);
-      assertDispatchActive(ctx.signal);
+      assertToolActive(ctx);
       const head = `bSDD search '${query}' — ${results.length} result(s)${results.length > 25 ? ', showing first 25' : ''}:`;
       const lines = results.slice(0, 25).map((r) => `• ${r.code || r.name} — ${r.name ?? ''}\n  ${r.uri}`);
       return { text: [head, ...lines].join('\n'), structured: { query, count: results.length, results: results.slice(0, 25) } };
@@ -65,7 +65,7 @@ const bsdd_class: ModelFreeTool = {
     if (!ifcType) throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: '`ifc_type` is required.' });
     try {
       const info = await host.bsdd.fetchClassInfo(ifcType);
-      assertDispatchActive(ctx.signal);
+      assertToolActive(ctx);
       if (!info) throw new ToolExecutionError({ code: ToolErrorCode.ENTITY_NOT_FOUND, message: `bSDD has no class for '${ifcType}'.` });
       const psetGroups = new Map<string, string[]>();
       for (const p of info.classProperties) {
@@ -95,7 +95,7 @@ const bsdd_property_sets: ModelFreeTool = {
     if (!ifcType) throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: '`ifc_type` is required.' });
     try {
       const psets = await host.bsdd.getPropertySets(ifcType);
-      assertDispatchActive(ctx.signal);
+      assertToolActive(ctx);
       const groups = Array.from(psets.entries()).map(([name, props]) => ({ name, properties: props }));
       const head = `bSDD property sets for ${ifcType} — ${groups.length} Pset(s):`;
       const lines = [head, ...groups.map((g) => `• ${g.name} (${g.properties.length} properties)`)];
@@ -112,19 +112,24 @@ const bsdd_match: ModelTool = {
     // Find related bSDD classes for an entity by IFC type. Mirrors the
     // stdio MCP path: pull the entity's IFC type, then ask bSDD for related
     // dictionary classes.
-    let expressId: number | null = null;
-    if (typeof args.express_id === 'number') expressId = args.express_id;
-    else if (typeof args.global_id === 'string') {
-      const ref = resolveRef(m, args);
-      expressId = ref.expressId;
-    }
-    if (expressId == null) {
+    if (typeof args.express_id !== 'number' && typeof args.global_id !== 'string') {
       throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: 'Provide express_id or global_id.' });
     }
-    const ifcType = m.store.entities.getTypeName(expressId) ?? 'Unknown';
+    // The effective entity: one created this session has its class, a
+    // retyped one its new class, and a deleted one is not there at all.
+    const ref = resolveRef(m, args);
+    const expressId = ref.expressId;
+    const entity = entityExists(m, expressId) ? m.bim.entity(ref) : null;
+    if (!entity) {
+      throw new ToolExecutionError({ code: ToolErrorCode.ENTITY_NOT_FOUND, message: `No entity #${expressId} in this model.` });
+    }
+    const ifcType = entity.type.trim();
+    if (!ifcType) {
+      throw new ToolExecutionError({ code: ToolErrorCode.ENTITY_NOT_FOUND, message: `Entity #${expressId} has no IFC class to match against bSDD.` });
+    }
     try {
       const candidates = await host.bsdd.searchRelatedClasses(ifcType);
-      assertDispatchActive(ctx.signal);
+      assertToolActive(ctx);
       const head = `bSDD candidates for ${ifcType} (#${expressId}) — ${candidates.length} match(es):`;
       const lines = [head, ...candidates.slice(0, 10).map((c) => `• ${c.code} — ${c.name} (${c.dictionaryUri})`)];
       if (candidates.length > 10) lines.push(`  … +${candidates.length - 10} more`);

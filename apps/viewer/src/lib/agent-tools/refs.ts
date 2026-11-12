@@ -4,20 +4,26 @@
 
 import type { EntityRef } from '@ifc-lite/sdk';
 import { ToolErrorCode, ToolExecutionError } from '@ifc-lite/mcp/browser';
-import { effectiveGlobalIdLookup } from './effective.js';
+import { createGlobalIdResolver } from './effective.js';
 import type { ReadyModel } from './types.js';
 
 /**
  * The entity a call names, always scoped to the model the call was routed to.
  * A GlobalId is looked up in the effective entity set, so an entity the user
- * created in this session resolves and a deleted one does not.
+ * created in this session resolves and a deleted one does not. A tool that
+ * resolves many GlobalIds passes one `createGlobalIdResolver(model)` for all of
+ * them, so the overlay is read once per call rather than once per id.
  */
-export function resolveRef(model: ReadyModel, args: Record<string, unknown>): EntityRef {
+export function resolveRef(
+  model: ReadyModel,
+  args: Record<string, unknown>,
+  lookup: (globalId: string) => number | undefined = createGlobalIdResolver(model),
+): EntityRef {
   if (typeof args.express_id === 'number') {
     return { modelId: model.id, expressId: args.express_id };
   }
   if (typeof args.global_id === 'string') {
-    const id = effectiveGlobalIdLookup(model, args.global_id);
+    const id = lookup(args.global_id);
     if (id !== undefined) return { modelId: model.id, expressId: id };
     throw new ToolExecutionError({
       code: ToolErrorCode.ENTITY_NOT_FOUND,
@@ -28,6 +34,18 @@ export function resolveRef(model: ReadyModel, args: Record<string, unknown>): En
     code: ToolErrorCode.INVALID_INPUT,
     message: 'Provide either global_id or express_id.',
   });
+}
+
+/**
+ * Whether the entity is in the model as the user sees it: created this
+ * session, or in the parsed file and not deleted. (`bim.entity` answers a
+ * made-up id with a placeholder record, so it cannot tell.)
+ */
+export function entityExists(model: ReadyModel, expressId: number): boolean {
+  const view = model.mutationView();
+  if (view?.hasNewEntity(expressId)) return true;
+  if (view?.isDeleted(expressId)) return false;
+  return model.store.entityIndex.byId.get(expressId) !== undefined;
 }
 
 export function refStr(ref: EntityRef): string {

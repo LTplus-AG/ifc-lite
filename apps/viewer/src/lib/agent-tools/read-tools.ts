@@ -10,7 +10,7 @@
 
 import { ToolErrorCode, ToolExecutionError, firstNonBlank } from '@ifc-lite/mcp/browser';
 import { lensMaterialNames } from '@ifc-lite/rules';
-import { effectiveEntities, effectiveEntityCount, effectiveTypeCounts } from './effective.js';
+import { createGlobalIdResolver, effectiveEntities, effectiveEntityCount, effectiveTypeCounts } from './effective.js';
 import { formatBytes, modelQuery, refStr, resolveRef } from './refs.js';
 import { containmentChain, spatialHierarchy } from './spatial.js';
 import type { AgentTool, ModelHandle, ReadyModel } from './types.js';
@@ -19,19 +19,25 @@ function isReady(model: ModelHandle): model is ReadyModel {
   return model.store !== null;
 }
 
-/** One `model_list` row. A model that cannot answer every tool also says why. */
+/**
+ * One `model_list` row. A model that cannot answer every tool also says why,
+ * and a layer of a composition counts nothing of its own: the composition is
+ * counted once, under the model that owns it.
+ */
 function modelListRow(model: ModelHandle) {
-  const counted = isReady(model)
+  const counted = isReady(model) && model.status !== 'composed-layer'
     ? { entityCount: effectiveEntityCount(model) as number | null, schema: model.store.schemaVersion as string | null }
     : { entityCount: null, schema: null };
   const row = { id: model.id, name: model.name, ...counted };
-  return model.status === 'ready' ? row : { ...row, status: model.status };
+  if (model.status === 'ready') return row;
+  return { ...row, status: model.status, ...(model.composedInto ? { composedInto: model.composedInto } : {}) };
 }
 
 function describeListRow(row: ReturnType<typeof modelListRow>): string {
   const count = row.entityCount === null ? null : `${row.entityCount.toLocaleString()} entities`;
   const status = 'status' in row ? row.status : null;
-  return `${row.name} (${[count, status].filter(Boolean).join(', ')})`;
+  const owner = 'composedInto' in row && row.composedInto ? `of '${row.composedInto}'` : null;
+  return `${row.name} (${[count, status, owner].filter(Boolean).join(', ')})`;
 }
 
 export const readTools: Record<string, AgentTool> = {
@@ -182,9 +188,10 @@ export const readTools: Record<string, AgentTool> = {
     async run(_host, m, args) {
       const gids = (args.global_ids as string[] | undefined) ?? [];
       const out: unknown[] = [];
+      const lookup = createGlobalIdResolver(m);
       for (const gid of gids.slice(0, 200)) {
         try {
-          const ref = resolveRef(m, { global_id: gid });
+          const ref = resolveRef(m, { global_id: gid }, lookup);
           out.push(m.bim.entity(ref));
         } catch {
           // An unresolvable GlobalId is reported in place as null, not as a failed call.

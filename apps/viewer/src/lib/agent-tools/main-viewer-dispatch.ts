@@ -66,7 +66,8 @@ function modelIds(models: ModelHandle[]): string {
 }
 
 /**
- * The model a call is about: the one `model_id` names, or the only loaded one.
+ * The model a call is about: the one `model_id` names, or the only loaded one
+ * (the layers of a composition count once, as their owner).
  * With several models loaded and no `model_id`, the call is refused with the
  * ids to choose from rather than guessing (the viewer's active model is UI
  * state, not something the agent can see).
@@ -91,11 +92,14 @@ export function resolveModel(host: ToolHost, args: Record<string, unknown>): Mod
       details: { modelIds: models.map((model) => model.id) },
     });
   }
-  if (models.length === 1) return models[0];
+  // Layers of one composition are one model, so a composed file alone in the
+  // viewer still counts as "the only model".
+  const answering = models.filter((model) => model.status !== 'composed-layer');
+  if (answering.length === 1) return answering[0];
   throw new ToolExecutionError({
     code: ToolErrorCode.MODEL_REQUIRED,
-    message: `${models.length} models are loaded; pass model_id to pick one: ${modelIds(models)}.`,
-    details: { modelIds: models.map((model) => model.id) },
+    message: `${answering.length} models are loaded; pass model_id to pick one: ${modelIds(answering)}.`,
+    details: { modelIds: answering.map((model) => model.id) },
     hint: 'Call model_list for the ids and names.',
   });
 }
@@ -108,7 +112,11 @@ const STATUS_MESSAGES: Record<Exclude<ModelHandle['status'], 'ready'>, (model: M
     `Model '${m.name}' was processed on the server; the tab holds its tables but not the IFC source ${tool} reads.`,
     'Reopen the file in the viewer without server processing to use this tool.',
   ],
-  'no-step-source': (m, tool) => [`Model '${m.name}' was not loaded from an IFC STEP file, so ${tool} cannot read it.`],
+  'no-step-source': (m, tool) => [`Model '${m.name}' was not loaded from an IFC STEP file (e.g. IFCX), so ${tool} cannot read it.`],
+  'composed-layer': (m) => [
+    `Model '${m.name}' is one layer of a composed model; the composition answers as model '${m.composedInto}'.`,
+    `Pass model_id '${m.composedInto}' instead.`,
+  ],
 };
 
 const STORE_IS_ENOUGH = new Set<ModelHandle['status']>(['ready', 'server-partial', 'no-step-source']);
@@ -126,7 +134,7 @@ function usableModel(model: ModelHandle, needs: Exclude<ToolNeeds, 'none'>, tool
   throw new ToolExecutionError({
     code: ToolErrorCode.UNSUPPORTED_OPERATION,
     message,
-    details: { modelId: model.id, status },
+    details: { modelId: model.id, status, ...(model.composedInto ? { composedInto: model.composedInto } : {}) },
     ...(hint ? { hint } : {}),
   });
 }
@@ -150,6 +158,22 @@ function refusal(toolName: string): AgentToolResult {
     isError: true,
     errorCode: ToolErrorCode.UNSUPPORTED_OPERATION,
   };
+}
+
+/**
+ * A model closed or replaced mid-call makes every later read return nothing,
+ * which would come back as an empty success (an IDS run that "passes"). The
+ * answer is refused instead when the id is gone or now holds another store.
+ */
+function assertModelCurrent(host: ToolHost, model: ReadyModel): void {
+  const now = host.models().find((candidate) => candidate.id === model.id);
+  if (now?.store === model.store) return;
+  throw new ToolExecutionError({
+    code: ToolErrorCode.STATE_CHANGED,
+    message: `Model '${model.name}' was ${now ? 'replaced' : 'closed'} while the call ran, so its result was discarded.`,
+    details: { modelId: model.id, reason: now ? 'replaced' : 'closed' },
+    hint: 'Call model_list and retry against the model that is open now.',
+  });
 }
 
 /** Settle as cancelled the moment `signal` aborts, instead of waiting on a lookup that cannot be interrupted. */
@@ -181,10 +205,15 @@ export async function dispatchMainViewerTool(
     }
     const input = (args ?? {}) as Record<string, unknown>;
     assertDispatchActive(ctx.signal);
-    const work = tool.needs === 'none'
-      ? tool.run(host, input, ctx)
-      : tool.run(host, usableModel(resolveModel(host, input), tool.needs, toolName), input, ctx);
-    const out = await untilAborted(work, ctx.signal);
+    if (tool.needs === 'none') {
+      const out = await untilAborted(tool.run(host, input, ctx), ctx.signal);
+      return { text: out.text, structured: out.structured, isError: false };
+    }
+    const model = usableModel(resolveModel(host, input), tool.needs, toolName);
+    const stillCurrent = () => assertModelCurrent(host, model);
+    const out = await untilAborted(tool.run(host, model, input, { signal: ctx.signal, checkpoint: stillCurrent }), ctx.signal);
+    // The work read whatever the store held; answer only if that is still this model.
+    stillCurrent();
     return { text: out.text, structured: out.structured, isError: false };
   } catch (caught) {
     const err = isAbortError(caught) ? cancelledDispatch() : caught;

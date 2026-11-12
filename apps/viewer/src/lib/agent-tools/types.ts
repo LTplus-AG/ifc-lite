@@ -22,11 +22,16 @@ import type { BimContext, BsddNamespace } from '@ifc-lite/sdk';
  * - `ready`: a parsed IFC store with its STEP source.
  * - `loading`: the model is still parsing or hydrating; retrying later works.
  * - `failed`: the load ended in an error.
- * - `no-data`: loaded without an IFC data store (GLB, point cloud, splats).
  * - `server-partial`: processed server-side; the tab holds tables, no STEP source.
- * - `no-step-source`: a store synthesised from a non-STEP source (IFCX, LandXML).
+ * - `no-data`: loaded without IFC data: no store (GLB), or a synthetic store
+ *   that exists only to give the model an id range (LandXML, point cloud, splats).
+ * - `no-step-source`: real entity data, but not from an IFC STEP file (IFCX,
+ *   whose `source` holds the IFCX JSON).
+ * - `composed-layer`: one layer of a composition whose store another model
+ *   owns (federated IFCX); `composedInto` names the model that answers for it.
  */
-export type ModelStatus = 'ready' | 'loading' | 'failed' | 'no-data' | 'server-partial' | 'no-step-source';
+export type ModelStatus =
+  | 'ready' | 'loading' | 'failed' | 'no-data' | 'server-partial' | 'no-step-source' | 'composed-layer';
 
 /** One model as the tools see it. */
 export interface ModelHandle {
@@ -35,6 +40,8 @@ export interface ModelHandle {
   name: string;
   fileSize: number;
   status: ModelStatus;
+  /** For a `composed-layer`: the id of the model that owns the shared store. */
+  composedInto?: string;
   store: IfcDataStore | null;
   /** The SDK context that reads this model, including its pending edits. */
   bim: BimContext;
@@ -57,6 +64,12 @@ export interface ToolHost {
 export interface ToolCallContext {
   /** Cancellation of the call; tools check it between asynchronous phases. */
   signal?: AbortSignal;
+  /**
+   * Called with the signal check at asynchronous phase boundaries; throws when
+   * the host can no longer stand behind the answer (the main viewer: the model
+   * was closed or replaced during the call).
+   */
+  checkpoint?: () => void;
 }
 
 /** What a tool returns on success. Failures are thrown as `ToolExecutionError`. */

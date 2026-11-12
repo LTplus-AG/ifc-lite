@@ -18,6 +18,7 @@
 
 import { BsddNamespace, type BimContext } from '@ifc-lite/sdk';
 import type { FederatedModel, ViewerState } from '@/store';
+import { isIfcxDataStore } from '@/store/types';
 import { getAllModelEntries, type ModelLike } from '@/sdk/adapters/model-compat';
 import { getMutationViewForModel } from '@/sdk/adapters/mutation-view';
 import type { StoreApi } from '@/sdk/adapters/types';
@@ -30,15 +31,55 @@ export interface MainViewerToolHostOptions {
 
 const LOADING_STATES = new Set<FederatedModel['loadState']>(['pending', 'streaming-geometry', 'hydrating-metadata']);
 
-/** Why a loaded entry can or cannot answer model tools. */
+/**
+ * Loads whose store is synthetic: entity-less (LandXML, splats) or holding one
+ * invented `IfcGeographicElement` (point cloud), with an empty `source`. They
+ * exist to give the model a federation id range, not to be read as IFC.
+ */
+const SYNTHETIC_LOAD_PATHS = new Set<FederatedModel['loadPath']>(['landxml', 'point-cloud', 'gaussian']);
+
+/** Why a loaded entry can or cannot answer model tools (layer composition is decided by the caller). */
 export function mainViewerModelStatus(entry: ModelLike, federated: FederatedModel | undefined): ModelStatus {
   if (federated?.loadState === 'error') return 'failed';
   if (LOADING_STATES.has(federated?.loadState)) return 'loading';
   const store = entry.ifcDataStore;
   if (!store) return 'no-data';
+  if (SYNTHETIC_LOAD_PATHS.has(federated?.loadPath) || federated?.landXmlDocument) return 'no-data';
   if (federated?.loadPath === 'server') return 'server-partial';
+  // IFCX keeps its JSON in `source`, so a non-empty source is not a STEP source.
+  if (isIfcxDataStore(store)) return 'no-step-source';
   if ((store.source?.byteLength ?? 0) === 0) return 'no-step-source';
   return 'ready';
+}
+
+/**
+ * Models that share one store (a federated IFCX composition publishes every
+ * layer as a model over the composed store) are one model to the tools. The
+ * owner is the model the viewer resolves selections, and so edits, to:
+ * `resolveGlobalIdFromModels` matches only models with a parse range
+ * (`maxExpressId > 0`), lowest `idOffset` first. Every other sharer is a
+ * `composed-layer` pointing at it, never a second answer for the same data.
+ */
+function compositionOwners(entries: Array<[string, ModelLike]>, state: ViewerState): Map<string, string> {
+  const sharers = new Map<object, string[]>();
+  for (const [id, entry] of entries) {
+    if (!entry.ifcDataStore) continue;
+    const ids = sharers.get(entry.ifcDataStore);
+    if (ids) ids.push(id);
+    else sharers.set(entry.ifcDataStore, [id]);
+  }
+  const ownerOf = new Map<string, string>();
+  for (const ids of sharers.values()) {
+    if (ids.length < 2) continue;
+    const ranked = ids
+      .map((id) => state.models.get(id))
+      .filter((m): m is FederatedModel => m !== undefined)
+      .sort((a, b) => a.idOffset - b.idOffset);
+    const owner = ranked.find((m) => (m.maxExpressId ?? 0) > 0) ?? ranked[0];
+    if (!owner) continue;
+    for (const id of ids) if (id !== owner.id) ownerOf.set(id, owner.id);
+  }
+  return ownerOf;
 }
 
 /**
@@ -57,15 +98,21 @@ export function createMainViewerToolHost(
     bsdd,
     models(): ModelHandle[] {
       const state: ViewerState = store.getState();
-      return getAllModelEntries(state).map(([id, entry]) => ({
-        id,
-        name: entry.name,
-        fileSize: entry.fileSize,
-        status: mainViewerModelStatus(entry, state.models.get(id)),
-        store: entry.ifcDataStore,
-        bim,
-        mutationView: () => getMutationViewForModel(store, id),
-      }));
+      const entries = getAllModelEntries(state);
+      const ownerOf = compositionOwners(entries, state);
+      return entries.map(([id, entry]) => {
+        const composedInto = ownerOf.get(id);
+        return {
+          id,
+          name: entry.name,
+          fileSize: entry.fileSize,
+          status: composedInto ? 'composed-layer' : mainViewerModelStatus(entry, state.models.get(id)),
+          ...(composedInto ? { composedInto } : {}),
+          store: entry.ifcDataStore,
+          bim,
+          mutationView: () => getMutationViewForModel(store, id),
+        };
+      });
     },
   };
 }

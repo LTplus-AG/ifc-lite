@@ -11,7 +11,7 @@
 import { parseIDS, validateIDS, type IDSDocument } from '@ifc-lite/ids';
 import { ToolErrorCode, ToolExecutionError } from '@ifc-lite/mcp/browser';
 import { createDataAccessor as createIdsDataAccessor } from '@/hooks/ids/idsDataAccessor';
-import { assertDispatchActive } from './cancellation.js';
+import { assertToolActive } from './cancellation.js';
 import { effectiveEntityCount } from './effective.js';
 import type { ReadyModel, ToolCallContext, ToolOutput } from './types.js';
 
@@ -41,7 +41,7 @@ export async function validateIdsAgainst(
     modelId: model.id,
     schemaVersion: model.store.schemaVersion,
     entityCount: effectiveEntityCount(model),
-  }, { onProgress: () => assertDispatchActive(ctx.signal) });
+  }, { onProgress: () => assertToolActive(ctx) });
   const head = `IDS '${doc.info?.title ?? 'untitled'}' · ${report.summary.passedSpecifications}/${report.summary.totalSpecifications} specs passed (${report.summary.overallPassRate.toFixed(0)}%).`;
   const lines = report.specificationResults.map((s) => {
     const ok = s.status === 'pass';

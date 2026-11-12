@@ -10,7 +10,9 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { createBimContext } from '@ifc-lite/sdk';
@@ -121,5 +123,83 @@ describe('main viewer and playground answer alike for the same unedited file (#9
       assert.equal(fromViewer.text, fromPlayground.text, tool);
       assert.deepEqual(fromViewer.structured, fromPlayground.structured, tool);
     }
+  });
+});
+
+describe('main viewer tools leave the viewer\'s state alone (#9523)', () => {
+  const ARGS: Record<string, Record<string, unknown>> = {
+    schema_describe: { type: 'IfcWall' },
+    query_entities: { type: 'IfcWall' },
+    get_entity: { express_id: WALL_ID },
+    get_entities_bulk: { global_ids: ['2JUHrTM_j3UxZiBnyBfByx'] },
+    containment_chain: { express_id: WALL_ID },
+    relationships: { express_id: WALL_ID },
+    properties_unique: { type: 'IfcWall', pset: 'Pset_WallCommon', property: 'IsExternal' },
+    geometry_bbox: { express_id: WALL_ID },
+    geometry_volume: { express_id: WALL_ID },
+    geometry_area: { express_id: WALL_ID },
+    ids_explain: { ids_xml: '<ids xmlns="http://standards.buildingsmart.org/IDS"><info><title>t</title></info><specifications/></ids>' },
+    ids_validate: { ids_xml: '<ids xmlns="http://standards.buildingsmart.org/IDS"><info><title>t</title></info><specifications/></ids>' },
+    bsdd_search: { query: 'wall' },
+    bsdd_class: { ifc_type: 'IfcWall' },
+    bsdd_property_sets: { ifc_type: 'IfcWall' },
+    bsdd_match: { express_id: WALL_ID },
+    cost_evaluate: { express_id: WALL_ID, target: 'item' },
+  };
+
+  it('all 27 allowlisted tools run without changing history, dirtiness, selection, visibility or the overlay', async () => {
+    await seedMainViewer(new Uint8Array(await readFile(HELLO_WALL)));
+    const hostWithStubBsdd = createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }), {
+      bsdd: { search: async () => [], fetchClassInfo: async () => null, getPropertySets: async () => new Map(), searchRelatedClasses: async () => [] },
+    });
+    const KEYS = ['mutationVersion', 'undoStacks', 'redoStacks', 'dirtyModels', 'selectedEntityId', 'selectedEntityIds', 'selectedEntity',
+      'hiddenEntities', 'isolatedEntities', 'mutationViews', 'models'] as const;
+    const pick = () => {
+      const state = useViewerStore.getState() as unknown as Record<string, unknown>;
+      return Object.fromEntries(KEYS.map((key) => [key, state[key]]));
+    };
+    const before = pick();
+    const view = useViewerStore.getState().mutationViews.get(MODEL_ID);
+    assert.ok(view);
+    const mutationsBefore = view.getMutationCount();
+    let ran = 0;
+    for (const name of MAIN_VIEWER_TOOL_ALLOWLIST) {
+      const result = await dispatchMainViewerTool(hostWithStubBsdd, name, ARGS[name] ?? {});
+      // A tool may refuse (no cost data, bSDD has no class); none may write.
+      assert.notEqual(result.errorCode, 'INTERNAL_ERROR', `${name}: ${result.text}`);
+      ran++;
+    }
+    assert.equal(ran, 27);
+    const after = pick();
+    for (const key of KEYS) assert.equal(after[key], before[key], `${key} was replaced by a read tool`);
+    assert.equal(view.getMutationCount(), mutationsBefore);
+    assert.equal(view.hasPendingChanges(), false);
+  });
+});
+
+describe('cost tools on the main viewer host match the playground (#9523)', () => {
+  const path = fileURLToPath(new URL('../../../../../tests/models/cost/buildingsmart-cost-composition.ifc', import.meta.url));
+  const available = existsSync(path);
+  if (!available) console.warn('skip: canonical cost fixture missing — run `pnpm fixtures`');
+
+  it('cost_data and cost_evaluate read the same values through both hosts', { skip: !available }, async () => {
+    const bytes = new Uint8Array(await readFile(path));
+    const playground = await parsePlaygroundModel(bytes.slice().buffer, 'cost.ifc');
+    const store = await new IfcParser().parseColumnar(bytes.slice().buffer, { disableWorkerScan: true });
+    const view = new MutablePropertyView(store.properties || null, 'cost');
+    configureMutationView(view, store);
+    useViewerStore.setState({
+      models: new Map([['cost', { ...fixtureModel('cost'), name: 'cost.ifc', fileSize: bytes.byteLength, ifcDataStore: store, loadState: 'complete' } as FederatedModel]]),
+      ifcDataStore: null, mutationViews: new Map([['cost', view]]),
+    });
+    const host = createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }));
+    for (const [tool, args] of [['cost_data', {}], ['cost_evaluate', { target: 'item', express_id: 42 }]] as const) {
+      const fromViewer = await dispatchMainViewerTool(host, tool, args);
+      const fromPlayground = await dispatch(playground, tool, args);
+      assert.equal(fromViewer.isError, false, `${tool}: ${fromViewer.text}`);
+      assert.deepEqual(fromViewer.structured, fromPlayground.structured, tool);
+    }
+    const evaluated = (await dispatchMainViewerTool(host, 'cost_evaluate', { target: 'item', express_id: 42 })).structured as { evaluation: { Amount: string } };
+    assert.equal(evaluated.evaluation.Amount, '2250');
   });
 });

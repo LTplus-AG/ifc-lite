@@ -5,110 +5,28 @@
 /**
  * The main viewer's read-only agent tool host (#9523), against a seeded
  * `useViewerStore` holding real parsed models: unsaved edits made through the
- * store are what the tools read, federated models never mix, and every model
- * the tools cannot read gets a specific refusal rather than an empty answer.
+ * store are what the tools read, GlobalIds resolve without walking the model,
+ * and every model the tools cannot read gets a specific refusal rather than an
+ * empty answer.
  */
 
 import { beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
-import { EMPTY_SOURCE_BYTES, IfcParser, type IfcDataStore } from '@ifc-lite/parser';
-import { MutablePropertyView } from '@ifc-lite/mutations';
-import { createBimContext } from '@ifc-lite/sdk';
-import { useViewerStore, type FederatedModel } from '@/store';
-import { LocalBackend } from '@/sdk/local-backend';
-import { fixtureModel } from '@/test/store-fixture';
-import { configureMutationView } from '@/utils/configureMutationView';
-import { createMainViewerToolHost } from './main-viewer-host.js';
-import { dispatchMainViewerTool, type AgentToolResult } from './main-viewer-dispatch.js';
+import { EMPTY_SOURCE_BYTES, type IfcDataStore } from '@ifc-lite/parser';
+import { useViewerStore } from '@/store';
+import {
+  WALL_GID, WALL_ID, call, configuredView, model, ok, parseHelloWall, seed, status, viewerBim, viewerHost,
+} from '@/test/agent-tools-fixture';
+import { dispatchMainViewerTool } from './main-viewer-dispatch.js';
 
-const HELLO_WALL = new URL('../../../public/samples/hello-wall.ifc', import.meta.url);
-const WALL_ID = 1222;
-const WALL_GID = '2JUHrTM_j3UxZiBnyBfByx';
-
-/** A second, unrelated model for federation: one wall named 'Other wall'. */
-const OTHER = `ISO-10303-21;
-HEADER;
-FILE_DESCRIPTION((''),'2;1');
-FILE_NAME('other.ifc','2024-01-01T00:00:00',(''),(''),'','','');
-FILE_SCHEMA(('IFC4'));
-ENDSEC;
-DATA;
-#1=IFCPROJECT('0proj00000000000000000',$,'P',$,$,$,$,(#20),#30);
-#20=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#21,$);
-#21=IFCAXIS2PLACEMENT3D(#22,$,$);
-#22=IFCCARTESIANPOINT((0.,0.,0.));
-#30=IFCUNITASSIGNMENT((#31));
-#31=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
-#40=IFCBUILDINGSTOREY('2hQBAVPOr5VxhS3Jl0O47h',$,'L0',$,$,#41,$,$,.ELEMENT.,0.);
-#41=IFCLOCALPLACEMENT($,#21);
-#50=IFCWALL('1wall00000000000000000',$,'Other wall',$,$,#41,$,$,.SOLIDWALL.);
-#70=IFCRELAGGREGATES('0kTvXnbbzCWw8lcMd1dR4o',$,$,$,#1,(#40));
-#71=IFCRELCONTAINEDINSPATIALSTRUCTURE('0cont00000000000000000',$,$,$,(#50),#40);
-ENDSEC;
-END-ISO-10303-21;
-`;
-
-async function helloWallBytes(): Promise<Uint8Array> {
-  return new Uint8Array(await readFile(HELLO_WALL));
-}
-
-async function parse(bytes: Uint8Array): Promise<IfcDataStore> {
-  const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
-  const store = await new IfcParser().parseColumnar(buffer, { disableWorkerScan: true });
-  store.fileSize = bytes.byteLength;
-  return store;
-}
-
-function model(id: string, store: IfcDataStore | null, extra: Partial<FederatedModel> = {}): FederatedModel {
-  return {
-    ...fixtureModel(id),
-    name: `${id}.ifc`,
-    fileSize: store?.fileSize ?? 0,
-    ifcDataStore: store,
-    loadState: 'complete',
-    ...extra,
-  } as FederatedModel;
-}
-
-/** Seed the store the way the viewer wires a loaded model: one configured overlay per IFC store. */
-function seed(models: FederatedModel[]): void {
-  const views = new Map<string, MutablePropertyView>();
-  for (const m of models) {
-    if (!m.ifcDataStore) continue;
-    const view = new MutablePropertyView(m.ifcDataStore.properties || null, m.id);
-    configureMutationView(view, m.ifcDataStore);
-    views.set(m.id, view);
-  }
-  useViewerStore.setState({
-    models: new Map(models.map((m) => [m.id, m])),
-    activeModelId: models[0]?.id ?? null,
-    ifcDataStore: null,
-    editEnabled: true,
-    mutationViews: views,
-    storeEditors: new Map(),
-    undoStacks: new Map(),
-    redoStacks: new Map(),
-    mutationBatchTags: new Map(),
-    mutationVersion: 0,
-  });
-}
-
-function host() {
-  return createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }));
-}
-
-async function call(tool: string, args: Record<string, unknown> = {}): Promise<AgentToolResult> {
-  return dispatchMainViewerTool(host(), tool, args);
-}
-
-function ok(result: AgentToolResult): AgentToolResult {
-  assert.equal(result.isError, false, `${result.errorCode ?? ''} ${result.text}`);
-  return result;
-}
+const view = (id = 'hello') => {
+  const found = useViewerStore.getState().mutationViews.get(id);
+  assert.ok(found, `a mutation view is registered for ${id}`);
+  return found;
+};
 
 describe('main viewer host reads the user\'s unsaved edits (#9523)', () => {
-  beforeEach(async () => seed([model('hello', await parse(await helloWallBytes()))]));
+  beforeEach(async () => seed([model('hello', await parseHelloWall())]));
 
   it('a property and a Name set through the store are what get_entity, query_entities and properties_unique return', async () => {
     const state = useViewerStore.getState();
@@ -140,6 +58,37 @@ describe('main viewer host reads the user\'s unsaved edits (#9523)', () => {
     assert.equal((ok(await call('query_entities', { type: 'IfcWall' })).structured as { count: number }).count, 0);
   });
 
+  it('an entity created this session resolves by its GlobalId, a deleted source entity does not', async () => {
+    const created = view().createEntity('IfcBuildingElementProxy', ['3crtd000000000000000000', null, 'Created proxy']);
+    const found = ok(await call('get_entity', { global_id: '3crtd000000000000000000' })).structured as { ref: { expressId: number }; type: string; name: string };
+    assert.deepEqual([found.ref.expressId, found.type, found.name], [created.expressId, 'IfcBuildingElementProxy', 'Created proxy']);
+
+    assert.equal(useViewerStore.getState().removeEntity('hello', WALL_ID), true);
+    const gone = await call('get_entity', { global_id: WALL_GID });
+    assert.equal(gone.errorCode, 'ENTITY_NOT_FOUND', 'the entity table still indexes it; the overlay tombstone must win');
+    const bulk = ok(await call('get_entities_bulk', { global_ids: [WALL_GID, '3crtd000000000000000000'] })).structured as { entities: unknown[] };
+    assert.equal(bulk.entities[0], null);
+    assert.ok(bulk.entities[1]);
+  });
+
+  it('GlobalId lookups read only the overlay\'s own entities, never every entity in the model', async (t) => {
+    // Two edited entities make the overlay's candidate set K = 2.
+    const state = useViewerStore.getState();
+    state.setAttribute('hello', WALL_ID, 'Name', 'Edited wall');
+    state.setAttribute('hello', 1, 'Name', 'Edited project');
+    const bim = viewerBim();
+    const entity = t.mock.method(bim, 'entity');
+    const host = viewerHost({}, bim);
+
+    ok(await call('get_entity', { global_id: WALL_GID }, host));
+    assert.ok(entity.mock.callCount() <= 2 + 1, `one lookup: K overlay reads + the answer, got ${entity.mock.callCount()}`);
+
+    entity.mock.resetCalls();
+    const ids = Array.from({ length: 200 }, () => WALL_GID);
+    ok(await call('get_entities_bulk', { global_ids: ids }, host));
+    assert.ok(entity.mock.callCount() <= 2 + ids.length, `200 lookups: K overlay reads once + one read per answer, got ${entity.mock.callCount()}`);
+  });
+
   it('validates inline IDS against the edited model and refuses an IDS path', async () => {
     const ids = `<ids xmlns="http://standards.buildingsmart.org/IDS"><info><title>Fire rating</title></info><specifications><specification name="wall fire rating" ifcVersion="IFC4"><applicability><entity><name><simpleValue>IFCWALL</simpleValue></name></entity></applicability><requirements><property><propertySet><simpleValue>Pset_WallCommon</simpleValue></propertySet><baseName><simpleValue>FireRating</simpleValue></baseName><value><simpleValue>REI60</simpleValue></value></property></requirements></specification></specifications></ids>`;
     const passed = async () => (ok(await call('ids_validate', { ids_xml: ids })).structured as { summary: { passedSpecifications: number } }).summary.passedSpecifications;
@@ -150,45 +99,44 @@ describe('main viewer host reads the user\'s unsaved edits (#9523)', () => {
     assert.equal(path.errorCode, 'INVALID_INPUT');
     assert.match(path.text, /ids_xml/);
   });
+
+  it('bsdd_match asks bSDD about the effective class and refuses a deleted entity without asking', async () => {
+    const asked: string[] = [];
+    const host = viewerHost({ bsdd: {
+      search: async () => [], fetchClassInfo: async () => null, getPropertySets: async () => new Map(),
+      searchRelatedClasses: async (type: string) => { asked.push(type); return []; },
+    } });
+    const created = view().createEntity('IfcBuildingElementProxy', ['3crtd000000000000000000', null, 'Created proxy']);
+    ok(await call('bsdd_match', { express_id: created.expressId }, host));
+    ok(await call('bsdd_match', { global_id: '3crtd000000000000000000' }, host));
+    assert.ok(useViewerStore.getState().setEntityType('hello', WALL_ID, 'IfcCovering'), 'the store accepted the retype');
+    ok(await call('bsdd_match', { express_id: WALL_ID }, host));
+    assert.deepEqual(asked, ['IfcBuildingElementProxy', 'IfcBuildingElementProxy', 'IfcCovering']);
+
+    useViewerStore.getState().removeEntity('hello', created.expressId);
+    const deleted = await call('bsdd_match', { express_id: created.expressId }, host);
+    assert.equal(deleted.errorCode, 'ENTITY_NOT_FOUND');
+    assert.equal((await call('bsdd_match', { express_id: 999_999 }, host)).errorCode, 'ENTITY_NOT_FOUND');
+    assert.equal(asked.length, 3, 'no bSDD query for an entity that is not there');
+  });
 });
 
-describe('main viewer host keeps federated models apart (#9523)', () => {
-  beforeEach(async () => seed([
-    model('hello', await parse(await helloWallBytes())),
-    model('other', await parse(new TextEncoder().encode(OTHER))),
-  ]));
-
-  it('lists both models and scopes a query to the one model_id names', async () => {
-    const list = ok(await call('model_list')).structured as { models: Array<{ id: string; entityCount: number }> };
-    assert.deepEqual(list.models.map((m) => m.id), ['hello', 'other']);
-    assert.ok(list.models.every((m) => m.entityCount > 0));
-
-    const other = ok(await call('query_entities', { model_id: 'other', type: 'IfcWall' })).structured as {
-      entities: Array<{ modelId: string; name: string }>;
-    };
-    assert.deepEqual(other.entities.map((e) => [e.modelId, e.name]), [['other', 'Other wall']]);
-    const hello = ok(await call('query_entities', { model_id: 'hello' })).structured as { entities: Array<{ modelId: string }> };
-    assert.ok(hello.entities.length > 0 && hello.entities.every((e) => e.modelId === 'hello'));
-
-    assert.equal((await call('get_entity', { model_id: 'other', global_id: WALL_GID })).errorCode, 'ENTITY_NOT_FOUND');
-    assert.equal((ok(await call('units', { model_id: 'other' })).structured as { lengthUnitScale: number }).lengthUnitScale, 0.001);
-  });
-
-  it('refuses to guess a model when model_id is omitted, naming the ids', async () => {
-    const result = await call('query_entities', { type: 'IfcWall' });
-    assert.equal(result.errorCode, 'MODEL_REQUIRED');
-    assert.deepEqual((result.structured as { modelIds: string[] }).modelIds, ['hello', 'other']);
-    assert.equal((await call('get_entity', { model_id: 'missing', express_id: 1 })).errorCode, 'MODEL_NOT_FOUND');
-  });
-
-  it('serves the legacy single-model store under its own id and the legacy aliases', async () => {
-    const store = await parse(await helloWallBytes());
-    useViewerStore.setState({ models: new Map(), ifcDataStore: store, mutationViews: new Map() });
+describe('main viewer host in legacy single-model mode (#9523)', () => {
+  it('an edit keyed under __legacy__ is what default, legacy and __legacy__ read', async () => {
+    const store = await parseHelloWall();
+    useViewerStore.setState({
+      models: new Map(), ifcDataStore: store, editEnabled: true,
+      mutationViews: new Map([['__legacy__', configuredView(store, '__legacy__')]]),
+      storeEditors: new Map(), undoStacks: new Map(), redoStacks: new Map(), mutationBatchTags: new Map(), mutationVersion: 0,
+    });
+    assert.ok(useViewerStore.getState().setProperty('__legacy__', WALL_ID, 'Pset_WallCommon', 'FireRating', 'REI60'), 'the store accepted the edit');
     const list = ok(await call('model_list')).structured as { models: Array<{ id: string }> };
     assert.deepEqual(list.models.map((m) => m.id), ['default']);
     for (const modelId of [undefined, 'default', 'legacy', '__legacy__']) {
-      const walls = ok(await call('query_entities', { type: 'IfcWall', ...(modelId ? { model_id: modelId } : {}) })).structured as { count: number };
-      assert.equal(walls.count, 1, `model_id=${modelId}`);
+      const unique = ok(await call('properties_unique', {
+        type: 'IfcWall', pset: 'Pset_WallCommon', property: 'FireRating', ...(modelId ? { model_id: modelId } : {}),
+      })).structured as { values: Array<{ value: string }> };
+      assert.deepEqual(unique.values.map((v) => v.value), ['REI60'], `model_id=${modelId}`);
     }
   });
 });
@@ -200,57 +148,80 @@ describe('main viewer host refuses models it cannot read (#9523)', () => {
     assert.equal(ok(await call('model_list')).text, 'No model loaded.');
   });
 
-  it('a model still loading, and one loaded without IFC data', async () => {
+  it('a model still loading, one without IFC data, and synthetic point-cloud / LandXML stores', async () => {
+    const synthetic = async () => ({ ...(await parseHelloWall()), source: EMPTY_SOURCE_BYTES } as IfcDataStore);
     seed([
       model('streaming', null, { loadState: 'streaming-geometry' }),
-      model('glb', null, { loadState: 'complete' }),
+      model('glb', null),
+      model('scan', await synthetic(), { loadPath: 'point-cloud' }),
+      model('terrain', await synthetic(), { loadPath: 'landxml' }),
     ]);
     const loading = await call('get_entity', { model_id: 'streaming', express_id: 1 });
     assert.equal(loading.errorCode, 'UNSUPPORTED_OPERATION');
-    assert.equal((loading.structured as { status: string }).status, 'loading');
+    assert.equal(status(loading), 'loading');
     assert.match(loading.hint ?? '', /Retry/);
-    const glb = await call('model_info', { model_id: 'glb' });
-    assert.equal((glb.structured as { status: string }).status, 'no-data');
-    const list = ok(await call('model_list')).structured as { models: Array<{ id: string; status?: string; entityCount: number | null }> };
-    assert.deepEqual(list.models.map((m) => [m.id, m.status, m.entityCount]), [['streaming', 'loading', null], ['glb', 'no-data', null]]);
+    for (const id of ['glb', 'scan', 'terrain']) assert.equal(status(await call('model_info', { model_id: id })), 'no-data', id);
+    const list = ok(await call('model_list')).structured as { models: Array<{ id: string; status?: string }> };
+    assert.deepEqual(list.models.map((m) => [m.id, m.status]), [
+      ['streaming', 'loading'], ['glb', 'no-data'], ['scan', 'no-data'], ['terrain', 'no-data'],
+    ]);
   });
 
-  it('a server-processed model: its summary reads, its entity tools refuse', async () => {
-    const store = await parse(await helloWallBytes());
-    seed([model('server', { ...store, source: EMPTY_SOURCE_BYTES } as IfcDataStore, { loadPath: 'server' })]);
-    ok(await call('model_info'));
-    const query = await call('query_entities', { type: 'IfcWall' });
+  it('a server-processed model: model_info answers from its tables like the full parse; its entity tools refuse', async () => {
+    const full = await parseHelloWall();
+    seed([model('full', full), model('server', { ...(await parseHelloWall()), source: EMPTY_SOURCE_BYTES } as IfcDataStore, { loadPath: 'server' })]);
+    const fromServer = ok(await call('model_info', { model_id: 'server' })).structured as { schema: string; entityCount: number; typeCountsTop20: unknown };
+    const fromFull = ok(await call('model_info', { model_id: 'full' })).structured as { schema: string; entityCount: number; typeCountsTop20: unknown };
+    assert.equal(fromServer.schema, 'IFC4');
+    assert.ok(fromServer.entityCount > 0);
+    assert.equal(fromServer.entityCount, fromFull.entityCount);
+    assert.deepEqual(fromServer.typeCountsTop20, fromFull.typeCountsTop20);
+    const query = await call('query_entities', { model_id: 'server', type: 'IfcWall' });
     assert.equal(query.errorCode, 'UNSUPPORTED_OPERATION');
-    assert.equal((query.structured as { status: string }).status, 'server-partial');
+    assert.equal(status(query), 'server-partial');
   });
 
   it('a store without STEP source: units and quantity measures refuse instead of assuming metres', async () => {
-    const store = await parse(await helloWallBytes());
-    seed([model('synthetic', { ...store, source: EMPTY_SOURCE_BYTES } as IfcDataStore)]);
+    seed([model('synthetic', { ...(await parseHelloWall()), source: EMPTY_SOURCE_BYTES } as IfcDataStore)]);
     for (const tool of ['units', 'geometry_volume', 'geometry_area']) {
       const result = await call(tool, { express_id: WALL_ID });
       assert.equal(result.errorCode, 'UNSUPPORTED_OPERATION', tool);
-      assert.equal((result.structured as { status: string }).status, 'no-step-source', tool);
+      assert.equal(status(result), 'no-step-source', tool);
     }
   });
 });
 
 describe('main viewer host settles every call (#9523)', () => {
-  beforeEach(async () => seed([model('hello', await parse(await helloWallBytes()))]));
+  beforeEach(async () => seed([model('hello', await parseHelloWall())]));
 
   it('a lookup that never answers settles as cancelled when the call is aborted', async () => {
     const never = new Promise<never>(() => undefined);
-    const stalled = createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }), {
-      bsdd: { search: () => never, fetchClassInfo: () => never, getPropertySets: () => never, searchRelatedClasses: () => never },
-    });
+    const stalled = viewerHost({ bsdd: { search: () => never, fetchClassInfo: () => never, getPropertySets: () => never, searchRelatedClasses: () => never } });
     const controller = new AbortController();
     const pending = dispatchMainViewerTool(stalled, 'bsdd_search', { query: 'wall' }, { signal: controller.signal });
     controller.abort();
     assert.equal((await pending).errorCode, 'CANCELLED');
   });
 
+  for (const change of ['closed', 'replaced'] as const) it(`a model ${change} during the call is an error, not an empty success`, async () => {
+    const replacement = await parseHelloWall();
+    const host = viewerHost({ bsdd: {
+      search: async () => [], fetchClassInfo: async () => null, getPropertySets: async () => new Map(),
+      searchRelatedClasses: async () => {
+        const models = new Map(useViewerStore.getState().models);
+        if (change === 'closed') models.delete('hello');
+        else models.set('hello', model('hello', replacement));
+        useViewerStore.setState({ models });
+        return [];
+      },
+    } });
+    const result = await call('bsdd_match', { express_id: WALL_ID }, host);
+    assert.equal(result.errorCode, 'STATE_CHANGED');
+    assert.equal((result.structured as { reason: string }).reason, change);
+  });
+
   it('non-object arguments are an input error, not a throw', async () => {
-    assert.equal((await dispatchMainViewerTool(host(), 'model_info', 'IfcWall')).errorCode, 'INVALID_INPUT');
-    assert.equal((await dispatchMainViewerTool(host(), 'model_info', [1])).errorCode, 'INVALID_INPUT');
+    assert.equal((await dispatchMainViewerTool(viewerHost(), 'model_info', 'IfcWall')).errorCode, 'INVALID_INPUT');
+    assert.equal((await dispatchMainViewerTool(viewerHost(), 'model_info', [1])).errorCode, 'INVALID_INPUT');
   });
 });

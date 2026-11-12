@@ -290,3 +290,58 @@ it('NEW-3: blank IFC restore never computes a spatial key or starts a worker', a
     Object.defineProperty(store, 'spatialHierarchy', { configurable: true, value: hierarchy });
   }
 });
+
+it('load window: restore waits for the load to settle, then parses once', async () => {
+  __resetDrawingMarkupRestoreForTests();
+  __resetSymbolicAnnotationsCacheForTests();
+  const modelId = 'load-window';
+  await seedStore(modelId);
+  const seeded = useViewerStore.getState().models.get(modelId)!;
+  const settledGeometry = {
+    meshes: [], totalVertices: 0, totalTriangles: 0,
+    coordinateInfo: {
+      originShift: { x: 0, y: 0, z: 0 },
+      originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
+      shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
+      hasLargeCoordinates: false,
+      wasmRtcFrame: { x: 0, y: 0, z: 0, needsShift: false },
+    },
+  };
+  // Exact RTC frame already published (nothing else blocks the parse), but the load window is open.
+  useViewerStore.setState({
+    models: new Map([[modelId, { ...seeded, loadState: 'complete', geometryResult: settledGeometry }]]),
+    geometryStreamingActive: true,
+  } as never);
+  let posts = 0;
+  const previous = __setOverlayWorkerFactoryForTest(() => {
+    const fake = {
+      onmessage: null as ((event: { data: unknown }) => void) | null,
+      onerror: null, onmessageerror: null,
+      postMessage(request: { id: number }) {
+        posts++;
+        queueMicrotask(() => fake.onmessage?.({ data: { id: request.id, ok: true, flat: createEmptyFlatSymbolic() } }));
+      },
+      terminate() {},
+    };
+    return fake as unknown as Worker;
+  });
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  function Probe(): null { useDrawingMarkupRestoreOnLoad(); return null; }
+  try {
+    await act(async () => { root.render(createElement(Probe)); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    assert.equal(posts, 0, 'early read: no parse (and no spatial key) while the load window is open');
+    await act(async () => {
+      useViewerStore.setState({ geometryStreamingActive: false });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    assert.equal(posts, 1, 'settled: the restore parse starts once');
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+    __setOverlayWorkerFactoryForTest(previous);
+    useViewerStore.setState({ geometryStreamingActive: false });
+  }
+});

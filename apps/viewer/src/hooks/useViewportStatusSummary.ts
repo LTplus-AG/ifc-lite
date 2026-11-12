@@ -28,6 +28,7 @@ import { effectiveContextType } from '@/components/viewer/EntityContextMenu.effe
 import { effectiveAttribute } from '@/lib/document/effective-binding-fields';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
+import { useLoadWindowOpen } from '@/hooks/loadWindow';
 
 export interface ViewportStatusSummary {
   /** Names of every selected storey, or `null` when none is selected. */
@@ -88,9 +89,12 @@ export function useViewportStatusSummary(): ViewportStatusSummary {
   const countView = models.size > 0
     ? (countModelId ? mutationViews.get(countModelId) : null)
     : mutationViews.get(LEGACY_MUTATION_MODEL_ID) ?? mutationViews.get(LEGACY_MODEL_ID);
+  // The whole-model walk waits for the load to settle (loadWindow.ts); the
+  // hidden/ghosted counts it feeds are only shown when above zero.
+  const loadWindowOpen = useLoadWindowOpen();
   const physicalIds = useMemo(
-    () => (ifcDataStore ? sharedEffectivePhysicalEntityIds(ifcDataStore, countView, mutationVersion) : new Set<number>()),
-    [ifcDataStore, countView, mutationVersion],
+    () => (ifcDataStore && !loadWindowOpen ? sharedEffectivePhysicalEntityIds(ifcDataStore, countView, mutationVersion) : new Set<number>()),
+    [ifcDataStore, countView, loadWindowOpen, mutationVersion],
   );
 
   const objectCounts = useMemo(

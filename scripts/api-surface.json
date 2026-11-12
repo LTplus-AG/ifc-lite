@@ -9278,6 +9278,7 @@
     "parsePath: function",
     "parseSourceHeader: function",
     "parseStepValue: function",
+    "prepareTypeQuantityRelationships: function",
     "propertyDefinitionRefsOfValue: function",
     "propertyDefinitionsInModel: function",
     "quantitySiScale: function",

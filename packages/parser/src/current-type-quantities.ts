@@ -15,6 +15,8 @@ import { appendSetsFromSecondSource, setIdentityKey } from './property-set-merge
 import type { TypeQuantityInfo } from './on-demand-extractors.js';
 import { findSourceProjectLengthUnit, normalizeMapUnitName } from './source-project-length-unit.js';
 
+import { prepareSelectionRelationships } from './selection-relationship-ids.js';
+
 const MAX_TYPE_DEFINITIONS = 256;
 const MAX_QUANTITY_REFERENCES = 4_096;
 const MAX_UNIT_READS = 512;
@@ -30,6 +32,7 @@ const unavailable = (reason: string): CurrentTypeQuantityResult => ({ status: 'u
 // Existing concrete views expose canonical quantity claims; partial metadata
 // providers retain their native-only contract. Export nomination is history-led.
 interface QuantityJournalView extends MetadataReadView {
+    hasPendingChanges?(): boolean;
     getMutations?(): readonly { type: string; entityId: number; psetName?: string; propName?: string }[];
     getQuantityMutation?(entityId: number, qsetName: string, quantityName: string): unknown;
     isQuantitySetDeleted?(entityId: number, qsetName: string): boolean;
@@ -42,11 +45,28 @@ interface CurrentInventory {
     relationships: CurrentTypeRelationships;
     quantities: Map<number, CurrentTypeQuantityResult>;
 }
+const baseRelationships = new WeakMap<IfcDataStore, { source: IfcDataStore['source']; value: CurrentTypeRelationships }>();
+const noEdits: MetadataReadView = {
+    isDeleted: () => false, getNewEntities: () => [], getNewEntity: () => null,
+    getPositionalMutationsForEntity: () => null, getAttributeMutationsForEntity: () => [],
+    getMutationRevision: () => 0, getTombstones: () => new Set(),
+};
+
+/** Prepare model-wide coverage while publishing a loaded model, before selection (#9947).
+ * Keeps global refusal semantics, including malformed unrelated rows and budgets. */
+export function prepareTypeQuantityRelationships(store: IfcDataStore): void {
+    if (baseRelationships.get(store)?.source === store.source) return;
+    if (store.relationships) prepareSelectionRelationships(store);
+    baseRelationships.set(store, { source: store.source, value: relationshipsOrRefusal(store, noEdits) });
+}
+
 const inventories = new WeakMap<IfcDataStore, WeakMap<MetadataReadView, CurrentInventory>>();
 
 /** A model-wide refusal holds for the revision, so an element-by-element walk does not re-derive it. */
 function relationshipsOrRefusal(store: IfcDataStore, view: MetadataReadView): CurrentTypeRelationships {
     try {
+        const prepared = baseRelationships.get(store);
+        if ((view as QuantityJournalView).hasPendingChanges?.() === false && prepared?.source === store.source) return prepared.value;
         return resolveCurrentTypeRelationships(store, view);
     } catch (error) {
         if (!(error instanceof CurrentQuantityRefusal)) throw error;

@@ -32,6 +32,7 @@
 
 import { configureMutationView, mutationViewBaseStore } from '@/utils/configureMutationView';
 import { getModelForRef } from '@/sdk/adapters/model-compat';
+import { prepareTypeQuantityRelationships } from '@ifc-lite/parser';
 import type { ViewerState } from './index.js';
 
 type BindingState = Pick<ViewerState, 'models' | 'ifcDataStore' | 'mutationViews'>;
@@ -58,6 +59,10 @@ export function registerMutationViewStoreBinding(store: BindingStore): void {
     if (state.models === prev.models
       && state.ifcDataStore === prev.ifcDataStore
       && state.mutationViews === prev.mutationViews) return;
+    // Model publication owns the global coverage inventory, even before a view
+    // exists. Do this once per store, never on primary-selection changes (#9947).
+    const stores = new Set([state.ifcDataStore, ...[...state.models.values()].map(model => model.ifcDataStore)]);
+    for (const data of stores) if (data?.source?.length) prepareTypeQuantityRelationships(data);
     rebindMutationViewsToCurrentStores(state);
   });
 }

@@ -232,6 +232,12 @@ const FRAMES = `ISO-10303-21;HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('f.if
 #96=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(96)},$,$,$,#78,#95);
 #97=IFCSTRUCTURALLOADGROUP(${id(97)},$,'G',$,$,.LOAD_GROUP.,.PERMANENT_G.,.DEAD.,1.,$);
 #98=IFCRELASSIGNSTOGROUP(${id(98)},$,$,$,(#92,#95),$,#97);
+#280=IFCSTRUCTURALLOADSINGLEFORCE('u1',$,$,-1.,$,$,$);
+#281=IFCSTRUCTURALPOINTACTION(${id(281)},$,'U1',$,$,#20,#83,#280,.GLOBAL_COORDS.,.F.);
+#282=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(282)},$,$,$,#78,#281);
+#283=IFCSTRUCTURALLOADSINGLEFORCE('u100',$,$,-100.,$,$,$);
+#284=IFCSTRUCTURALPOINTACTION(${id(284)},$,'U100',$,$,#20,#83,#283,.GLOBAL_COORDS.,.F.);
+#285=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(285)},$,$,$,#78,#284);
 #200=IFCCARTESIANPOINT((0.,0.,10.));
 #201=IFCCARTESIANPOINT((0.,1.,10.));
 #202=IFCCARTESIANPOINT((1.,1.,10.));
@@ -374,6 +380,15 @@ describe('structuralGlyphs local frames of curve and surface items', () => {
     close(force.position, [5, 1, 0]);
     // The member runs along world +Y, so its local x is +Y.
     close(force.direction, [0, 1, 0]);
+  });
+
+  it('scales an ungrouped action on its own, not against other ungrouped actions', async () => {
+    const glyphs = await load();
+    for (const source of [281, 284]) {
+      const [force, ...rest] = arrows(glyphs, source);
+      expect(rest).toEqual([]);
+      expect(force.relative).toBeCloseTo(1);
+    }
   });
 
   it('classifies a single force in a discrete curve configuration as a point load, scaled apart from line loads', async () => {

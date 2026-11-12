@@ -33,8 +33,9 @@
  *   without its location, at the centre.
  *
  * `relative` scales arrows within their load group: the largest force (or
- * moment) of the same distribution in the same group is 1. Units differ by
- * distribution (N, N/m, N/m2), so each scales on its own.
+ * moment) of the same distribution in the same group is 1; an action in no
+ * load group scales on its own. Units differ by distribution (N, N/m, N/m2),
+ * so each scales on its own.
  *
  * Activities on a varying linear or planar action draw their first value
  * along the whole shape (the varying stations are not read yet).
@@ -264,7 +265,8 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
     const frame = activity.globalOrLocal === 'LOCAL_COORDS' ? localFrame(activity, item, ownShape !== null, shape) : globalFrame(activity, item);
     if (!frame) continue;
 
-    const group = activity.groupGlobalIds.find((id) => loadGroups.has(id)) ?? '';
+    // An ungrouped action scales on its own, never against other ungrouped ones.
+    const group = activity.groupGlobalIds.find((id) => loadGroups.has(id)) ?? `#${activity.expressId}`;
     const centre = shapeCentre(shape);
     const world = (v: Vec3): Vec3 => normalize(rotate(frame, v)) ?? [0, 0, 1];
     const parts = activity.appliedLoad.configuration

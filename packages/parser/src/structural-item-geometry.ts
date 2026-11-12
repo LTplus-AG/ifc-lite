@@ -280,7 +280,10 @@ export class ItemGeometryReader {
     return { origin: frame.origin, x: frame.x, y: scale(frame.y, -1), z: scale(frame.z, -1) };
   }
 
-  /** The outer (else first) bound of a face as a polygon. */
+  /**
+   * The outer (else first) bound of a face as a polygon. Inner bounds
+   * (openings) are ignored, so a station can fall in an opening (#9828).
+   */
   private face(e: Entity): Vec3[] | null {
     const bounds = asRefList(e.attributes[0]).map((id) => this.entity(id));
     const bound = bounds.find((b) => b?.type === 'IFCFACEOUTERBOUND') ?? bounds.find((b) => b?.type === 'IFCFACEBOUND');

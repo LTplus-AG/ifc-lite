@@ -52,7 +52,7 @@ async function armAround(watchQuietInPage, { atMs, ms, quietMs = 300 }) {
   let blockEnd = null;
   const started = performance.now();
   if (atMs !== null) setTimeout(() => { blockEnd = blockFor(ms); }, atMs);
-  const r = await watchQuietInPage({ quietMs, timeoutMs: 5000, tickMs: 16, slackMs: 50 });
+  const r = await watchQuietInPage({ quietMs, timeoutMs: 5000, tickMs: 16, maxGapMs: 45 });
   delete globalThis.__benchLongTasks;
   return { ...r, started, blockEnd };
 }
@@ -71,13 +71,21 @@ test('a short long task that delays a tick by less than the old 150 ms margin al
   assert.ok(r.armAbs - r.blockEnd >= 300, `armed ${(r.armAbs - r.blockEnd).toFixed(0)} ms after a 100 ms task; must be >= 300`);
 });
 
+test('a 50 ms task falling late in a tick interval still restarts the window (review #9815, second finding)', async () => {
+  const { watchQuietInPage } = await load('./viewer-load-boot.mjs');
+  for (const atMs of [107, 111, 115]) { // spread over a 16 ms tick interval
+    const r = await armAround(watchQuietInPage, { atMs, ms: 50 });
+    assert.ok(r.armAbs - r.blockEnd >= 300, `task at ${atMs} ms: armed ${(r.armAbs - r.blockEnd).toFixed(0)} ms after a 50 ms task; must be >= 300`);
+  }
+});
+
 test('a quiet page arms after one window, and a reported recent entry still counts', async () => {
   const { watchQuietInPage } = await load('./viewer-load-boot.mjs');
   const quiet = await armAround(watchQuietInPage, { atMs: null, ms: 0 });
   assert.ok(quiet.armAbs - quiet.started >= 300 && quiet.armAbs - quiet.started < 600, `quiet page armed after ${(quiet.armAbs - quiet.started).toFixed(0)} ms`);
   const now = performance.now();
   globalThis.__benchLongTasks = [[now - 50, 150]]; // ends 100 ms in the future of `now`, as reported
-  const r = await watchQuietInPage({ quietMs: 300, timeoutMs: 5000, tickMs: 16, slackMs: 50 });
+  const r = await watchQuietInPage({ quietMs: 300, timeoutMs: 5000, tickMs: 16, maxGapMs: 45 });
   delete globalThis.__benchLongTasks;
   assert.ok(r.armAbs - (now + 100) >= 300, 'a reported task end restarts the window');
 });

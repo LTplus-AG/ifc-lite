@@ -67,14 +67,16 @@ function shellState() {
  * ended but before it is reported, and arm right after it (14-35 ms after the
  * welcome mark's 1.5 s block in 9/15 picks on main d45ace6b65). The quiet is
  * therefore watched in the page ({@link watchQuietInPage}): a timer ticks every
- * `tickMs`, and a tick later than `tickMs + slackMs` means the main thread was
- * blocked (a long task is 50 ms or more), which restarts the window at once,
- * reported or not. Reported entries count too. Timer ticks leave idle periods
+ * `tickMs`, and a gap of `maxGapMs` (45) or more between ticks means the main
+ * thread was blocked: a long task is 50 ms or more, so any long task makes a gap
+ * of at least 50 ms wherever it falls between two ticks. That restarts the
+ * window at once, reported or not (shorter busy spells may restart it too,
+ * which only lengthens the wait before the timer). Reported entries count too. Timer ticks leave idle periods
  * free, so idle-started boot work is not held off by the wait.
  */
-export async function waitShellQuiet(page, { quietMs = 1000, timeoutMs = 15000, tickMs = 16, slackMs = 50 } = {}) {
+export async function waitShellQuiet(page, { quietMs = 1000, timeoutMs = 15000, tickMs = 16, maxGapMs = 45 } = {}) {
   const first = await page.evaluate(shellState);
-  const w = await page.evaluate(watchQuietInPage, { quietMs, timeoutMs, tickMs, slackMs });
+  const w = await page.evaluate(watchQuietInPage, { quietMs, timeoutMs, tickMs, maxGapMs });
   const s = await page.evaluate(shellState);
   return { shellQuietMs: w.armAbs, armAbs: w.armAbs, quietWaitMs: w.armAbs - first.now, rendererReady: s.rendererReady, timedOut: w.timedOut,
     lateTicks: w.lateTicks, bootLongTaskMs: s.longTaskMs, bootLongTasks: s.longTasks, countersOff: s.countersOff };
@@ -85,13 +87,13 @@ export async function waitShellQuiet(page, { quietMs = 1000, timeoutMs = 15000, 
  * the main thread was quiet for `quietMs`, observed directly by timer-tick gaps and by
  * reported longtask entries. Resolves `{ armAbs, timedOut, lateTicks }` (page clock).
  */
-export function watchQuietInPage({ quietMs = 1000, timeoutMs = 15000, tickMs = 16, slackMs = 50 } = {}) {
+export function watchQuietInPage({ quietMs = 1000, timeoutMs = 15000, tickMs = 16, maxGapMs = 45 } = {}) {
   return new Promise((resolve) => {
     const t0 = performance.now();
     let windowStart = t0, prev = t0, lateTicks = 0;
     const tick = () => {
       const now = performance.now();
-      if (now - prev > tickMs + slackMs) { windowStart = now; lateTicks++; }
+      if (now - prev >= maxGapMs) { windowStart = now; lateTicks++; }
       prev = now;
       const tasks = globalThis.__benchLongTasks ?? [];
       const lastEnd = tasks.reduce((m, [st, d]) => Math.max(m, st + d), 0);

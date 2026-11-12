@@ -107,16 +107,12 @@ describe('runAfterModelSettled', () => {
     assert.equal(runs, 1);
   });
 
-  it('a settled model\'s job waits while another model loads (the load window is global), then runs', async () => {
+  it('a settled model\'s job runs while another model loads (only its own load holds it)', async () => {
+    await settleLoadWindow();
     setModels(model('a', 'complete'), model('b', 'streaming-geometry'));
     useViewerStore.setState({ loading: true, geometryStreamingActive: true, activeModelId: 'b' } as never);
     let runs = 0;
     runAfterModelSettled({ job: 'overlay-parse', modelId: 'a' }, () => { runs++; });
-    await flushIdle();
-    assert.equal(runs, 0, 'b\'s load window holds a\'s job back');
-    useViewerStore.setState({ loading: false, geometryStreamingActive: false } as never);
-    setModels(model('a', 'complete'), model('b', 'complete'));
-    await settleLoadWindow();
     await flushIdle();
     assert.equal(runs, 1);
   });

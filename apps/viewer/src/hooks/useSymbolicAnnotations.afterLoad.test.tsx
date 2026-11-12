@@ -97,7 +97,7 @@ it('parses the overlay of a store published mid-load only after the load settles
   }
 });
 
-it('a settled model\'s first overlay parse waits for another model\'s load (global window), re-parses at once on an edit, and shows its last parse until the new one lands', async () => {
+it('a settled model\'s overlay parses while another model loads, re-parses at once on an edit, and shows its last parse until the new one lands', async () => {
   const storeA = fixtureDataStore([{ expressId: 7, type: 'IfcAnnotation' }, { expressId: 8, type: 'IfcGrid' }]);
   storeA.source = contiguousSourceBytes(new TextEncoder().encode('model A grids'));
   storeA.schemaVersion = 'IFC4';
@@ -123,6 +123,7 @@ it('a settled model\'s first overlay parse waits for another model\'s load (glob
     return null;
   }
   try {
+    await settleLoadWindow(); // no window left open by an earlier test
     // A is on screen with its overlay; a federated add of B is in progress (the add sets `loading` for its whole run).
     useViewerStore.setState({ models: new Map([['a', model('a', storeA, 'complete')], ['b', model('b', storeB, 'streaming-geometry')]]),
       activeModelId: 'b', loading: true, geometryStreamingActive: true, mutationViews: new Map(), mutationVersion: 0 } as never);
@@ -134,18 +135,13 @@ it('a settled model\'s first overlay parse waits for another model\'s load (glob
     assert.equal(posts, 0, 'A\'s first parse is an after-load job');
     await act(async () => { for (const cb of idle.splice(0)) cb({ didTimeout: false, timeRemaining: () => 50 }); });
     await tick();
-    assert.equal(posts, 0, 'B\'s load keeps the (global) load window open: A\'s first parse waits for it');
-    // B finishes loading; the window closes behind the settled frame, then A parses in the next idle period.
-    await act(async () => { useViewerStore.setState({ models: new Map([['a', model('a', storeA, 'complete')], ['b', model('b', storeB, 'complete')]]), loading: false, geometryStreamingActive: false } as never); });
-    await settleLoadWindow();
-    for (let i = 0; i < 5 && posts === 0; i++) { await act(async () => { for (const cb of idle.splice(0)) cb({ didTimeout: false, timeRemaining: () => 50 }); }); await tick(); }
-    assert.equal(posts >= 1, true, 'A parses once B\'s load has settled');
+    assert.equal(posts, 1, 'A parses in that idle period, while B still loads: B\'s load does not hold a settled model back');
     await release();
     const before = getParseFor({ store: storeA });
     assert.ok(before, 'A\'s parse landed');
     const postsBeforeEdit = posts;
 
-    // The user edits A (no load running): A's key changes (pending changes + mutationVersion).
+    // The user edits A while B still loads: A's key changes (pending changes + mutationVersion).
     const view = new MutablePropertyView(null, 'a');
     view.deleteEntity(7);
     let pendingShown = false;

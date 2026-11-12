@@ -11,7 +11,7 @@
 
 import { useViewerStore } from '../../store/index.js';
 import { hasPendingInstancedShards, subscribeInstancedShards } from '../../store/instancedShardQueue.js';
-import { viewerLoadWindow } from '../../hooks/loadWindow.js';
+import { MAX_TAIL_WAIT_MS, viewerLoadWindow } from '../../hooks/loadWindow.js';
 import type { AfterLoadEnv } from './afterLoadIdle.js';
 
 export type AfterLoadJob = 'snapshot-write' | 'overlay-parse' | 'source-compaction' | 'search-index';
@@ -36,21 +36,45 @@ export function modelLoadSettled(state: ViewerState, modelId: string | null): bo
   return !LOADING.has(model.loadState);
 }
 
+/** How long a settled model's own hold may last (e.g. the window stays open across a multi-file open). */
+let ownHoldCapMs = MAX_TAIL_WAIT_MS;
+/** When each held model was first seen settled, per data store (a reload under the same id is a new hold). */
+const heldSince = new Map<string, { store: unknown; since: number }>();
+const capListeners = new Set<() => void>();
+
 /**
- * When an after-load job may start: its model has settled AND the viewer's load window
- * (hooks/loadWindow.ts, the one definition of "the load is over") is closed. A closed
- * window means the frame showing the settled store has painted, so a job never runs
- * between a model's record turning `complete` and the interactive frame. The window is
- * global: another model's load also holds a job back, as it holds the status bar.
+ * When an after-load job may start: its model has settled AND the load window
+ * (hooks/loadWindow.ts, the one definition of "the load is over") no longer holds
+ * THAT model, i.e. the frame showing it settled has painted. Another model's load
+ * does not hold it back: a model settled when the window opened is never held.
+ * A settled model's own hold is capped at `ownHoldCapMs` (a multi-file open keeps
+ * the window open until its last file; a load flag that never clears). `null`:
+ * the legacy single-model store, held by the whole window.
  */
 export function afterLoadReady(state: ViewerState, modelId: string | null): boolean {
-  return modelLoadSettled(state, modelId) && !viewerLoadWindow().isOpen();
+  if (!modelLoadSettled(state, modelId)) { if (modelId !== null) heldSince.delete(modelId); return false; }
+  const loadWindow = viewerLoadWindow();
+  if (modelId === null) return !loadWindow.isOpen();
+  if (!loadWindow.isHeld(modelId)) { heldSince.delete(modelId); return true; }
+  const store = state.models.get(modelId)?.ifcDataStore ?? null;
+  const held = heldSince.get(modelId);
+  if (held && held.store === store) return Date.now() - held.since >= ownHoldCapMs;
+  heldSince.set(modelId, { store, since: Date.now() });
+  setTimeout(() => { for (const listener of [...capListeners]) listener(); }, ownHoldCapMs);
+  return false;
+}
+
+/** Test-only: the own-hold cap; `null` restores it. */
+export function __setOwnHoldCapForTests(ms: number | null): void {
+  ownHoldCapMs = ms ?? MAX_TAIL_WAIT_MS;
+  heldSince.clear();
 }
 
 const subscribeStoreAndWindow = (listener: () => void): (() => void) => {
   const fromStore = useViewerStore.subscribe(listener);
   const fromWindow = viewerLoadWindow().subscribe(listener);
-  return () => { fromStore(); fromWindow(); };
+  capListeners.add(listener);
+  return () => { fromStore(); fromWindow(); capListeners.delete(listener); };
 };
 
 const ENV: AfterLoadEnv = {
@@ -61,7 +85,7 @@ const ENV: AfterLoadEnv = {
 };
 
 /**
- * Run `work` after `options.modelId` has settled and the load window has closed, in an idle period, in job order
+ * Run `work` after `options.modelId` has settled and the load window no longer holds it, in an idle period, in job order
  * (afterLoadIdle.ts). Returns a cancel: before the job starts it drops the job
  * (`onDrop` runs); after, it aborts the job's signal. Whether the model had a
  * record is taken now, so a removal while the queue loads still ends the job.

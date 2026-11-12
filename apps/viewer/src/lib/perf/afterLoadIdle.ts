@@ -9,7 +9,8 @@
  * parse, source compaction and the tier-1 search index.
  *
  * Ready (`afterLoadReady` in afterLoad.ts): the model has settled AND the viewer's
- * load window (hooks/loadWindow.ts) is closed, i.e. the settled frame has painted.
+ * load window (hooks/loadWindow.ts) no longer holds it, i.e. its settled frame has
+ * painted (a settled model's own hold is capped).
  * Settled (`modelLoadSettled`): the model's record is
  * not in a load phase (`pending`, `streaming-geometry`, `hydrating-metadata`:
  * the phases streaming-refresh.ts and drawingPersistenceKey.ts treat as

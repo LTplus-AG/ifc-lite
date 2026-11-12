@@ -12,7 +12,7 @@ import { settleLoadWindow } from '@/test/load-window';
 import { viewerLoadWindow } from '@/hooks/loadWindow';
 import { useViewerStore } from '../../store/index.js';
 import type { FederatedModel } from '../../store/types.js';
-import { __setAfterLoadQueueLoaderForTests, runAfterModelSettled } from './afterLoad.js';
+import { __setAfterLoadQueueLoaderForTests, __setOwnHoldCapForTests, runAfterModelSettled } from './afterLoad.js';
 
 const idle: IdleRequestCallback[] = [];
 const originalIdle = window.requestIdleCallback;
@@ -36,6 +36,7 @@ beforeEach(async () => {
 });
 afterEach(async () => {
   __setAfterLoadQueueLoaderForTests(null);
+  __setOwnHoldCapForTests(null);
   await reset();
   window.requestIdleCallback = originalIdle;
   useViewerStore.setState({ models: new Map(), ifcDataStore: null, loading: false, geometryStreamingActive: false } as never);
@@ -92,18 +93,70 @@ describe('afterLoad: the eager scheduling call', () => {
     assert.equal(runs, 1, 'runs once the settled frame has painted and an idle period comes');
   });
 
-  it('the window is global: another model\'s load holds a settled model\'s job back too', async () => {
-    useViewerStore.setState({ loading: true, geometryStreamingActive: true, activeModelId: 'b' } as never);
-    setModels(complete('a'), { ...complete('b'), loadState: 'streaming-geometry' });
+  // #9915 review G1/G2: each job is gated on ITS model's hold, and that hold is capped.
+  const CAP = 80;
+  const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+  const streaming = (id: string): FederatedModel => ({ ...complete(id), loadState: 'streaming-geometry' });
+  /** A multi-file open: the window opens while `a` loads; `a` settles and `b` starts before the window can close. */
+  async function multiFileOpen(): Promise<void> {
+    await settleLoadWindow();
+    useViewerStore.setState({ loading: true, geometryStreamingActive: true, activeModelId: 'a', models: new Map([['a', streaming('a')]]) } as never);
+    useViewerStore.setState({ activeModelId: 'b' } as never);
+    setModels(complete('a'), streaming('b'));
+    assert.equal(viewerLoadWindow().isHeld('a'), true, 'a was loading when the window opened: the window holds it');
+  }
+
+  it('another model\'s load does not hold a model that had settled when it began', async () => {
+    await settleLoadWindow();
+    setModels(complete('a'));
+    useViewerStore.setState({ loading: true, geometryStreamingActive: true, activeModelId: 'b', models: new Map([['a', complete('a')], ['b', streaming('b')]]) } as never);
+    assert.equal(viewerLoadWindow().isOpen(), true, 'b\'s load window is open');
     let runs = 0;
     runAfterModelSettled({ job: 'source-compaction', modelId: 'a' }, () => { runs++; });
     await flushIdle();
-    assert.equal(runs, 0, 'a waits while b loads');
-    useViewerStore.setState({ loading: false, geometryStreamingActive: false } as never);
-    setModels(complete('a'), complete('b'));
+    assert.equal(runs, 1, 'a\'s job runs while b loads');
+  });
+
+  it('a multi-file open: an earlier model\'s job runs once its own hold reaches the cap, while the later file still loads (G1)', async () => {
+    __setOwnHoldCapForTests(CAP);
+    await multiFileOpen();
+    let runs = 0;
+    runAfterModelSettled({ job: 'source-compaction', modelId: 'a' }, () => { runs++; });
+    await flushIdle();
+    assert.equal(runs, 0, 'held right after a settles: its settled frame may not have painted');
+    await wait(CAP + 20);
+    await flushIdle();
+    assert.equal(runs, 1, 'runs at the cap');
+    assert.equal(viewerLoadWindow().isOpen(), true, 'while b still loads');
+  });
+
+  it('a window that never closes: the job of the model it holds runs at the cap once that model settled (G2)', async () => {
+    __setOwnHoldCapForTests(CAP);
     await settleLoadWindow();
+    useViewerStore.setState({ loading: true, geometryStreamingActive: false, activeModelId: 'a', models: new Map([['a', streaming('a')]]) } as never);
+    setModels(complete('a')); // a settled; the load flag is never cleared
+    let runs = 0;
+    runAfterModelSettled({ job: 'search-index', modelId: 'a' }, () => { runs++; });
+    await flushIdle();
+    assert.equal(runs, 0);
+    await wait(CAP + 20);
     await flushIdle();
     assert.equal(runs, 1);
+    assert.equal(useViewerStore.getState().loading, true, 'the flag is still set');
+  });
+
+  it('a model removed while its window holds its job: the job never runs and its owner hears of the drop', async () => {
+    __setOwnHoldCapForTests(CAP);
+    await multiFileOpen();
+    let runs = 0;
+    let dropped = 0;
+    runAfterModelSettled({ job: 'source-compaction', modelId: 'a' }, () => { runs++; }, () => { dropped++; });
+    await flushIdle();
+    setModels(streaming('b'));
+    await wait(CAP + 20);
+    await flushIdle();
+    assert.equal(runs, 0);
+    assert.equal(dropped, 1);
   });
 
   describe('when the queue module does not load', () => {

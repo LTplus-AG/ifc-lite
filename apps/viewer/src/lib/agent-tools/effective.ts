@@ -4,14 +4,14 @@
 
 import { IFC_ENTITY_NAMES } from '@ifc-lite/data';
 import { iterateEffectiveEntityIds } from '@ifc-lite/mutations';
-import type { LoadedPlaygroundModel } from './playground-dispatcher.js';
+import type { ReadyModel } from './types.js';
 
 /** Read this model's source and pending overlay as one entity set. */
-export function effectiveEntities(model: LoadedPlaygroundModel, types?: readonly string[]) {
-  return iterateEffectiveEntityIds(model.store, model.backend.getMutationView(), types);
+export function effectiveEntities(model: ReadyModel, types?: readonly string[]) {
+  return iterateEffectiveEntityIds(model.store, model.mutationView(), types);
 }
 
-export function effectiveTypeCounts(model: LoadedPlaygroundModel): Map<string, number> {
+export function effectiveTypeCounts(model: ReadyModel): Map<string, number> {
   const counts = new Map<string, number>();
   for (const entity of effectiveEntities(model)) {
     const type = IFC_ENTITY_NAMES[entity.type] ?? entity.type;
@@ -20,13 +20,13 @@ export function effectiveTypeCounts(model: LoadedPlaygroundModel): Map<string, n
   return counts;
 }
 
-export function effectiveEntityCount(model: LoadedPlaygroundModel): number {
+export function effectiveEntityCount(model: ReadyModel): number {
   let count = 0;
   for (const _entity of effectiveEntities(model)) count++;
   return count;
 }
 
-export function effectiveGlobalIdLookup(model: LoadedPlaygroundModel, globalId: string): number | undefined {
+export function effectiveGlobalIdLookup(model: ReadyModel, globalId: string): number | undefined {
   for (const { expressId } of effectiveEntities(model)) {
     if (model.bim.entity({ modelId: model.id, expressId })?.globalId === globalId) return expressId;
   }

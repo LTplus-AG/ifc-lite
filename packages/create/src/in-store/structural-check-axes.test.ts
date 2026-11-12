@@ -2,10 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-// #9668: the axis-drift check on real files. An Axis export whose members sit
-// on their beams and columns reports no drift; a model derived here, with its
-// ends moved and members split at joints, reports none either; a column
-// moved sideways is reported by exactly its distance.
+// #9668: the axis-drift check on real files. The physical axes are pinned to
+// ifcopenshell's; an Axis export whose members sit on their beams and columns
+// reports no drift; a column moved sideways is reported by exactly its
+// distance. A model derived here reports no drift either: that proves the
+// joints (ends moved, members split) stay on the axis, not that the axis is
+// right, since the derivation starts from the same line. The pin covers that.
 import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { IfcParser, extractPropertiesOnDemand, extractStructuralOnDemand, structuralConsistencyIssues, type IfcDataStore } from '@ifc-lite/parser';
@@ -33,7 +35,38 @@ const reparse = (store: IfcDataStore, view: MutablePropertyView) =>
 const drift = (store: IfcDataStore) =>
   structuralConsistencyIssues(store, { physicalAxes: structuralPhysicalAxes(store) }).filter((issue) => issue.rule === 'structural-axis-drift');
 
+/**
+ * Axis endpoints of one element per symmetric profile in the steel frame, from
+ * ifcopenshell 0.9.0 and not from this package: the element's body mesh in
+ * world coordinates, the line through the centre of its section along its
+ * principal axis, from end face to end face. Rounded to 0.1 mm. The eight
+ * L 75x75x6 braces are left out: the derivation idealises an angle through its
+ * profile bounds, 25 mm off its centroid line (#9934).
+ */
+const IFCOPENSHELL_AXES: ReadonlyArray<[id: number, profile: string, a: Vec3, b: Vec3]> = [
+  [88, 'IfcBeam HE 140 A, sloped', [1.5, 0, 5], [0, 0, 6]],
+  [284, 'IfcBeam HE 240 B', [1.5, 0, 5], [10.5, 0, 5]],
+  [880, 'IfcBeam HE 140 B', [12, 0, 6], [12, 7.4, 6]],
+  [1028, 'IfcBeam 100x160', [0, 0, 6.2], [0, 7.4, 6.2]],
+  [106, 'IfcColumn HE 180 B', [1.5, 0, 5], [1.5, 0, 6]],
+  [814, 'IfcColumn HE 300 B', [12, 0, 0], [12, 0, 6]],
+];
+type Vec3 = readonly [number, number, number];
+const apart = (p: Vec3, q: Vec3) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
+
 describe('structuralPhysicalAxes with the axis-drift check', () => {
+  it.skipIf(!existsSync(fixture(STEEL_FRAME)))('puts each axis where ifcopenshell puts the element\'s centre line (#9930 review)', async () => {
+    const axes = structuralPhysicalAxes((await load(STEEL_FRAME)).store);
+    for (const [id, profile, a, b] of IFCOPENSHELL_AXES) {
+      const axis = axes.get(id);
+      expect(axis, `#${id} ${profile}`).toBeDefined();
+      const [p, q] = axis!;
+      // Either direction: the oracle does not order the ends.
+      const error = Math.min(Math.max(apart(p, a), apart(q, b)), Math.max(apart(p, b), apart(q, a)));
+      expect(error, `#${id} ${profile}: ${JSON.stringify(axis)}`).toBeLessThan(1e-4);
+    }
+  }, 30_000);
+
   it.skipIf(!existsSync(fixture(STEEL_FRAME)))('reads an axis for every linked beam and column of an Axis export, with no drift', async () => {
     const { store } = await load(STEEL_FRAME);
     const axes = structuralPhysicalAxes(store);

@@ -136,6 +136,7 @@ export function WallTopRow({ modelId, wallId }: { modelId: string; wallId: numbe
     <InspectorRow label={t('modelingCommand.wall.top')}>
       <div className="flex min-w-0 flex-col gap-0.5">
         <SegmentedControl
+          className="flex-wrap"
           size="sm"
           label={t('modelingCommand.wall.top')}
           value={picking ? 'element' : top}

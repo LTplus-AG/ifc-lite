@@ -25,6 +25,8 @@ export const WARM_PARSE_ID = 'spare-warm-parse';
 interface Spare {
   worker: Worker;
   ready: boolean;
+  /** Settles a pending warm-up; a terminated worker never answers, so release must settle it. */
+  settle?: (ok: boolean) => void;
 }
 
 let spare: Spare | null = null;
@@ -66,7 +68,11 @@ export function prepareSpareParserWorker(options: SpareParserWorkerOptions = {})
     return Promise.resolve(true);
   }
   return new Promise<boolean>((resolve) => {
+    let settled = false;
     const finish = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      entry.settle = undefined;
       worker.onmessage = null;
       worker.onerror = null;
       if (spare !== entry) { resolve(false); return; } // released meanwhile
@@ -75,6 +81,7 @@ export function prepareSpareParserWorker(options: SpareParserWorkerOptions = {})
       worker.terminate();
       resolve(false);
     };
+    entry.settle = finish;
     worker.onmessage = (event: MessageEvent) => {
       const msg = event.data as { type?: string; id?: string } | null;
       if (!msg || msg.id !== WARM_PARSE_ID) return;
@@ -104,4 +111,5 @@ export function releaseSpareParserWorker(): void {
   const entry = spare;
   spare = null;
   entry?.worker.terminate();
+  entry?.settle?.(false); // a pending warm-up resolves false instead of hanging
 }

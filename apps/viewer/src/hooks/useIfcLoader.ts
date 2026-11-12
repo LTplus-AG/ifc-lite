@@ -310,8 +310,7 @@ export function useIfcLoader() {
         scene.setColdGeometryProvider(null);
       }
     }
-    const pickStart = runPickStart({ file, target, kernel: geometryKernel, retry: options?.isResourceRetry === true || options?.tierOverride !== undefined, isCurrent }); // the one place work starts before the reset (ingest/pickStart.ts)
-    if (pickStart) { await pickStart; if (isStale()) { releaseCanceller(); return; } }
+    runPickStart({ file, target, kernel: geometryKernel, retry: options?.isResourceRetry === true || options?.tierOverride !== undefined, isCurrent }); // the one place work starts before the reset (ingest/pickStart.ts)
     // Track total elapsed time for complete user experience
     const totalStartTime = performance.now();
     const trace = loadTracer.startLoad(modelId, { journey: target.kind === 'federated' ? 'J4' : 'J1', modelKind: target.kind }, totalStartTime); // #6956
@@ -1423,7 +1422,7 @@ export function useIfcLoader() {
       // — gate `waitForEntityIndex` so the parser doesn't hang. Nor does a fast-path run (ingest/fastPath.ts).
       const ADAPTIVE_SYNC_THRESHOLD_MB = 2;
       const sourceFingerprint = createSourceFingerprintCell(sharedSource, useParserWorker);
-      const fastRun = geometryKernel.kind === 'exact' ? claimFastGeometry(file, geometryProcessor.meshingSettings()) : null;
+      const fastRun = geometryKernel.kind === 'exact' ? claimFastGeometry(file, geometryProcessor.meshingSettings(), { target: target.kind, sourceIsFile: loadedBufferByteLength === file.size }) : null;
       const geometryWillEmitEntityIndex =
         !fastRun && useParserWorker
         && fileSizeMB >= ADAPTIVE_SYNC_THRESHOLD_MB && geometryKernel.kind === 'exact';

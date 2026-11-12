@@ -80,12 +80,14 @@ describe('spare parser worker', () => {
     expect(spawned).toHaveLength(1);
   });
 
-  it('release terminates the spare, even mid-warm-up, and the warm-up then reports false', async () => {
+  it('release terminates the spare mid-warm-up and settles the warm-up (a terminated worker never answers)', async () => {
     const ready = prepareSpareParserWorker({ spawn, warmSource: new SharedArrayBuffer(8) });
     releaseSpareParserWorker();
     expect(spawned[0].terminated).toBe(true);
-    spawned[0].reply({ type: 'complete', id: WARM_PARSE_ID });
+    // No reply after terminate(): a real worker never sends one.
     expect(await ready).toBe(false);
     expect(takeSpareParserWorker()).toBeNull();
+    // The next preparation is not blocked by the released one.
+    expect(await prepareSpareParserWorker({ spawn })).toBe(true);
   });
 });

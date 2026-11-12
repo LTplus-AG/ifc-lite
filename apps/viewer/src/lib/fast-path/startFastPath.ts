@@ -11,8 +11,9 @@
 import { compileSharedWasmModule, DEFAULT_GEOM_HASH_TOLERANCE } from '@ifc-lite/geometry';
 import { hasSpareParserWorker, prepareSpareParser, releaseSpareParserWorker } from '@ifc-lite/parser/browser';
 import { useViewerStore } from '@/store';
-import { resolveLoadTessellationTier } from '@/store/constants';
-import { readPerfFlag } from '@/lib/perf/flags';
+import { getGeomWorkerOverride, resolveLoadTessellationTier } from '@/store/constants';
+import { USE_SERVER } from '@/utils/ifcConfig';
+import { getPerfFlagDefinition, readPerfFlag } from '@/lib/perf/flags';
 import { mayWarmUp, scheduleWhenIdle } from '@/lib/warm-runtime-gate';
 import { registerPickStarter } from '@/hooks/ingest/pickStart';
 import { setFastGeometryClaimer } from '@/hooks/ingest/fastPath';
@@ -36,12 +37,22 @@ async function fetchWarmSamples(): Promise<Uint8Array[]> {
 
 let runtime: FastPathRuntime | null = null;
 
+/**
+ * The switch: `?perf.fastPath=0` for a session, or the registry default
+ * (`default: true` for `fastPath` in lib/perf/flags.ts) for everyone, a
+ * one-line change. With it off nothing is prepared and every load meshes as before.
+ */
+export function fastPathSwitch(): unknown {
+  return readPerfFlag('fastPath') ?? getPerfFlagDefinition('fastPath').default;
+}
+
 /** Start the fast-path runtime once (idempotent). Returns whether it runs. */
 export function startFastPath(): boolean {
   if (runtime) return true;
   if (typeof Worker === 'undefined' || typeof document === 'undefined') return false;
   runtime = createFastPathRuntime({
-    allowed: () => mayWarmUp(readPerfFlag('fastPath')),
+    // A server-backed build meshes on the server; nothing to prepare here.
+    allowed: () => !USE_SERVER && mayWarmUp(fastPathSwitch()),
     whenIdle: scheduleWhenIdle,
     isLoading: () => useViewerStore.getState().loading,
     subscribeLoading: (listener) => {
@@ -78,6 +89,7 @@ export function startFastPath(): boolean {
         geometryHashTolerance: DEFAULT_GEOM_HASH_TOLERANCE,
       };
     },
+    workerCountOverride: getGeomWorkerOverride,
     registerPickStarter,
     setClaimer: setFastGeometryClaimer,
     log: (message) => console.log(message),

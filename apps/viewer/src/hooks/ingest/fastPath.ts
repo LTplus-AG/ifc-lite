@@ -5,13 +5,18 @@
 /**
  * The loader's side of the small-file fast path: a geometry run a spare worker
  * started at the pick (lib/fast-path/fastPathRuntime.ts, loaded lazily), which
- * the load claims at its geometry stage instead of starting the worker pool.
+ * the load claims at its geometry stage instead of starting its own pipeline.
  *
- * A run is used only when it meshed with exactly the settings the load would
- * mesh with now; otherwise it is cancelled and the normal pipeline runs. If the
- * run fails or times out, the load falls back to the normal pipeline with the
- * bytes it already holds. The run's events are the same `StreamingGeometryEvent`s
- * the single-session path yields, delivered once.
+ * The worker makes the same `processAdaptive` call the load would make
+ * (adaptiveGeometryOptions.ts), so its events are the load's events. A run is
+ * used only when:
+ * - it meshed with exactly the settings the load would mesh with now,
+ * - the load is the primary load the run was started for, and
+ * - the bytes the load will parse are the picked file's own bytes (not an
+ *   archive the loader unwrapped).
+ * Otherwise the claim returns `null` and the normal pipeline runs. A run that
+ * fails before its first event falls back to the normal pipeline; after the
+ * first event, a failure ends the stream like a failure of the worker pool.
  */
 
 import type { GeometryMeshingSettings, StreamingGeometryEvent } from '@ifc-lite/geometry';
@@ -19,13 +24,20 @@ import type { GeometryMeshingSettings, StreamingGeometryEvent } from '@ifc-lite/
 export interface FastGeometryRun {
   readonly file: File;
   readonly settings: GeometryMeshingSettings;
-  /** Every event of the run; rejects on a worker error or timeout. */
-  readonly events: Promise<StreamingGeometryEvent[]>;
+  /** The run's events, in order; one consumer. Rejects on a worker error or a missing first event. */
+  readonly events: AsyncIterable<StreamingGeometryEvent>;
   /** Stop the run and its worker (no-op once settled). */
   cancel(): void;
 }
 
-type Claimer = (file: File, settings: GeometryMeshingSettings) => FastGeometryRun | null;
+export interface FastClaim {
+  /** The load's target kind; only a primary load may use a run. */
+  target: 'primary' | 'federated';
+  /** True when the bytes the load will parse are the picked File's bytes (no archive unwrapped). */
+  sourceIsFile: boolean;
+}
+
+type Claimer = (file: File, settings: GeometryMeshingSettings, claim: FastClaim) => FastGeometryRun | null;
 let claimer: Claimer | null = null;
 
 /** Installed by the fast-path runtime once it is ready; returns the uninstall function. */
@@ -34,9 +46,9 @@ export function setFastGeometryClaimer(next: Claimer): () => void {
   return () => { if (claimer === next) claimer = null; };
 }
 
-/** The run started at the pick for this file and these settings, or `null`. */
-export function claimFastGeometry(file: File, settings: GeometryMeshingSettings): FastGeometryRun | null {
-  return claimer?.(file, settings) ?? null;
+/** The run started at the pick for this load, or `null`. */
+export function claimFastGeometry(file: File, settings: GeometryMeshingSettings, claim: FastClaim): FastGeometryRun | null {
+  return claimer?.(file, settings, claim) ?? null;
 }
 
 /** Same settings, field by field (a run meshed with other settings would not be the same geometry). */
@@ -47,23 +59,31 @@ export function sameMeshingSettings(a: GeometryMeshingSettings, b: GeometryMeshi
     && (a.geometryHashTolerance ?? null) === (b.geometryHashTolerance ?? null);
 }
 
+function untilAborted<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort));
+  });
+}
+
 /**
- * The run's events, or, if the run fails, the normal pipeline's. An abort of
- * the load cancels the run and ends the stream with the abort.
+ * The run's events. Before the first event, a failure (or an empty run) switches
+ * to `fallback()`, whose own first event re-arms the loader's stall watchdog.
+ * An abort of the load cancels the run and ends the stream with the abort.
  */
 export async function* fastGeometryEvents(
   run: FastGeometryRun,
   fallback: () => AsyncIterable<StreamingGeometryEvent>,
   signal?: AbortSignal,
 ): AsyncGenerator<StreamingGeometryEvent> {
-  let events: StreamingGeometryEvent[];
+  const it = run.events[Symbol.asyncIterator]();
+  let first: IteratorResult<StreamingGeometryEvent>;
   try {
-    events = await new Promise<StreamingGeometryEvent[]>((resolve, reject) => {
-      if (signal?.aborted) { reject(signal.reason); return; }
-      const onAbort = () => reject(signal?.reason);
-      signal?.addEventListener('abort', onAbort, { once: true });
-      run.events.then(resolve, reject).finally(() => signal?.removeEventListener('abort', onAbort));
-    });
+    first = await untilAborted(it.next(), signal);
+    if (first.done) throw new Error('fast-path run ended without events');
   } catch (err) {
     run.cancel();
     if (signal?.aborted) throw err;
@@ -71,5 +91,14 @@ export async function* fastGeometryEvents(
     yield* fallback();
     return;
   }
-  yield* events;
+  try {
+    yield first.value;
+    for (;;) {
+      const next = await untilAborted(it.next(), signal);
+      if (next.done) return;
+      yield next.value;
+    }
+  } finally {
+    run.cancel(); // no-op once the run ended; stops it when the consumer stops early
+  }
 }

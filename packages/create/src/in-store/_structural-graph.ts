@@ -13,7 +13,7 @@ const OWNED = new Set(['ObjectPlacement', 'Representation', 'Axis', 'AxisDirecti
   'RelativePlacement', 'Location', 'RefDirection', 'Representations', 'Items',
   'EdgeStart', 'EdgeEnd', 'VertexGeometry', 'Bounds', 'Bound', 'Polygon',
   'AdditionalConditions', 'ConnectionConstraint', 'SharedPlacement',
-  'EdgeElement', 'EdgeList', 'FaceSurface', 'Position', 'Values', 'Points']);
+  'EdgeElement', 'EdgeList', 'FaceSurface', 'Position', 'Values', 'Points', 'Segments', 'ParentCurve']);
 
 type EntityMetadata = SchemaRegistry['entities'][string];
 type AttributeMetadata = NonNullable<EntityMetadata['allAttributes']>[number];

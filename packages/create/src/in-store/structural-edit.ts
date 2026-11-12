@@ -14,7 +14,8 @@ export type StructuralEntityEdit = Readonly<Record<string, string | number | boo
 export function editStructuralEntityInStore(store: IfcDataStore, editor: StoreEditor, expressId: number, patch: StructuralEntityEdit): void {
   const graph = structuralReader(store, editor);
   const record = graph.requireStructural(expressId);
-  const attributes = graph.meta(record.type)?.allAttributes ?? [];
+  const type = graph.meta(record.type);
+  const attributes = type?.allAttributes ?? [];
   const effective = [...record.attributes];
   const writes: [number, IfcAttributeValue][] = [];
   for (const [name, value] of Object.entries(patch)) {
@@ -79,14 +80,14 @@ export function editStructuralEntityInStore(store: IfcDataStore, editor: StoreEd
     effective[index] = encoded;
     writes.push([index, encoded]);
   }
-  if (record.type.startsWith('IfcStructuralLoad') && !record.type.endsWith('Group') && !record.type.endsWith('Case')
+  if (type?.name.startsWith('IfcStructuralLoad') && !type.name.endsWith('Group') && !type.name.endsWith('Case')
     && !attributes.some((a, i) => a.name !== 'Name' && effective[i] != null)) {
     throw new Error('editStructuralEntity: supply at least one load component');
   }
   const objectType = attributes.findIndex(a => a.name === 'ObjectType');
   if (attributes.some((a, i) => graph.registry.enums[a.type] && effective[i] === '.USERDEFINED.')
     && objectType >= 0 && !effective[objectType]) throw new Error('editStructuralEntity: USERDEFINED requires ObjectType');
-  if (record.type === 'IfcStructuralLoadCase' && effective[5] !== '.LOAD_CASE.') {
+  if (type?.name === 'IfcStructuralLoadCase' && effective[5] !== '.LOAD_CASE.') {
     throw new Error('editStructuralEntity: IfcStructuralLoadCase requires LOAD_CASE');
   }
   editor.runAtomic(draft => {

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { StoreEditor } from '@ifc-lite/mutations';
+import { iterateEffectiveEntityIds, type StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { structuralGraph } from './_structural-graph.js';
 
@@ -10,6 +10,13 @@ import { structuralGraph } from './_structural-graph.js';
  * dependents refuse the entire operation; relationships detach or shrink.
  * Shared resources and all descendants reachable from a survivor stay live. */
 export function removeStructuralEntityInStore(store: IfcDataStore, editor: StoreEditor, expressId: number): void {
+  if (store.source.byteLength === 0) {
+    for (const { expressId: id } of iterateEffectiveEntityIds(store, editor.getMutationView())) {
+      if (!editor.getNewEntity(id)) {
+        throw new Error(`removeStructuralEntity: cannot remove #${expressId} from a source-less model; raw entity records are required to inspect ownership`);
+      }
+    }
+  }
   const graph = structuralGraph(store, editor);
   graph.requireStructural(expressId);
   // Schema inheritance covers derived links and uppercase source type names.

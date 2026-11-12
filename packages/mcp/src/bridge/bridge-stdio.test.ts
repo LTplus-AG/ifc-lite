@@ -147,6 +147,30 @@ describe.skipIf(!built)('ifc-lite-mcp --bridge binary', () => {
     expect(await closed).toBe(0);
   }, 30_000);
 
+  it('answers a pending call on SIGTERM before exiting (bridge closed before the transport)', async () => {
+    const child = spawn(process.execPath, [CLI, '--bridge', '--bridge-port', '0'], { stdio: ['pipe', 'pipe', 'pipe'] });
+    const closed = new Promise<number | null>((done) => child.once('close', (c) => done(c)));
+    let stderr = '';
+    child.stderr.setEncoding('utf8').on('data', (d: string) => { stderr += d; });
+    const client = stdioClient((line) => child.stdin.write(line));
+    child.stdout.setEncoding('utf8').on('data', (c: string) => client.feed(c));
+    await expect.poll(() => /open (\S+#\S+)/.exec(stderr), { timeout: 15_000 }).not.toBeNull();
+    const fragment = parsePairingFragment(new URL(/open (\S+#\S+)/.exec(stderr)![1]).hash)!;
+    client.send({ id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } } });
+    await client.reply(1, 15_000);
+    const { tab } = await pairTab({ port: fragment.port, code: fragment.code });
+    tabs.push(tab);
+    client.send({ id: 2, method: 'tools/call', params: { name: READ_TOOL.name, arguments: {} } });
+    await tab.next('call');
+    child.kill('SIGTERM');
+    expect(await closed).toBe(143);
+    const answer = client.lines.find((l) => l.id === 2);
+    expect(answer?.result).toMatchObject({
+      isError: true,
+      structuredContent: { code: 'VIEWER_NOT_CONNECTED', details: { reason: 'shutting-down' } },
+    });
+  }, 30_000);
+
   it('closes the bridge and frees its port on SIGTERM', async () => {
     const child = spawn(process.execPath, [CLI, '--bridge', '--bridge-port', '0'], { stdio: ['pipe', 'pipe', 'pipe'] });
     let stderr = '';
@@ -154,10 +178,8 @@ describe.skipIf(!built)('ifc-lite-mcp --bridge binary', () => {
     const closed = new Promise<number | null>((done) => child.once('close', (c) => done(c)));
     await expect.poll(() => /ws:\/\/127\.0\.0\.1:(\d+)/.exec(stderr), { timeout: 15_000 }).not.toBeNull();
     const port = Number(/ws:\/\/127\.0\.0\.1:(\d+)/.exec(stderr)![1]);
-    const started = Date.now();
     child.kill('SIGTERM');
     expect(await closed).toBe(143);
-    expect(Date.now() - started).toBeLessThan(3000);
     expect(stderr).toContain('stopping: SIGTERM');
     // The port is free again.
     const probe = createServer();

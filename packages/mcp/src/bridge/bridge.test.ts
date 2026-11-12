@@ -160,14 +160,14 @@ describe('MCP tool annotations from the tab\'s readOnly flag', () => {
 
 describe('2. closing or replacing the tab fails pending calls', () => {
   it('fails a pending call as soon as the tab closes', async () => {
-    const agent = await startAgent();
+    // A 10-minute call timeout: the call can only end inside the test's own
+    // timeout through the close path, so no wall-clock bound is needed.
+    const agent = await startAgent({ tuning: { callTimeoutMs: 600_000 } });
     const { tab } = await pair(agent);
     const pending = agent.call(READ_TOOL.name, {});
     await tab.next('call');
-    const started = Date.now();
     tab.close();
     const result = await pending;
-    expect(Date.now() - started).toBeLessThan(1000);
     expect(result.isError).toBe(true);
     expect(code(result)).toBe('VIEWER_NOT_CONNECTED');
     expect(reason(result)).toBe('disconnected');
@@ -253,43 +253,35 @@ describe('3. pairing codes', () => {
     expect(welcome.sessionId).toMatch(/[0-9a-f-]{36}/);
   });
 
-  it('slows wrong codes with a growing delay but never retires the user\'s code (rotation denial)', async () => {
-    const agent = await startAgent({ tuning: { pairingBackoffBaseMs: 80, pairingBackoffMaxMs: 400 } });
+  it('defers comparisons after a wrong code but never retires the user\'s code (rotation denial)', async () => {
+    const agent = await startAgent({ tuning: { pairingBackoffBaseMs: 50, pairingBackoffMaxMs: 200 } });
     const original = agent.bridge.pairingCode();
-    const latencies: number[] = [];
+    expect(agent.bridge.pairingStats().delayMs).toBe(0);
     for (let i = 0; i < 4; i++) {
-      const started = Date.now();
       const t = await connectTab({ port: agent.bridge.port, code: `WRONG-${i}` });
       tabs.push(t);
       expect(await t.closed(3000)).toBe(BridgeCloseCode.PAIRING_FAILED);
-      latencies.push(Date.now() - started);
     }
-    // 80, 160, 320, 400 (capped): each wrong code waits at least its delay.
-    expect(latencies[0]).toBeGreaterThanOrEqual(75);
-    expect(latencies[2]).toBeGreaterThanOrEqual(315);
-    expect(latencies[3]).toBeGreaterThanOrEqual(395);
+    // 4 failures: 50, 100, 200, capped at 200. Counted, not timed.
+    expect(agent.bridge.pairingStats()).toEqual({ attempts: 4, delayMs: 200, deferred: 0 });
     expect(agent.bridge.pairingCode()).toBe(original);
-    const started = Date.now();
     await pair(agent, { code: original });
-    expect(Date.now() - started).toBeLessThan(300);
+    // A success resets the gate.
+    expect(agent.bridge.pairingStats()).toEqual({ attempts: 5, delayMs: 0, deferred: 0 });
   });
 
-  it('does not feed the back-off with attempts made while a tab is paired', async () => {
-    const agent = await startAgent({ tuning: { pairingBackoffBaseMs: 100, pairingBackoffMaxMs: 5000 } });
+  it('does not feed the gate with attempts made while a tab is paired', async () => {
+    const agent = await startAgent();
     const { tab } = await pair(agent);
     for (let i = 0; i < 6; i++) {
       const t = await connectTab({ port: agent.bridge.port, code: 'ANY' });
       tabs.push(t);
-      await t.closed();
+      expect(await t.closed()).toBe(BridgeCloseCode.PAIRING_FAILED);
     }
     tab.close();
     await expect.poll(() => agent.bridge.tab()).toBeNull();
-    const started = Date.now();
-    const wrong = await connectTab({ port: agent.bridge.port, code: 'WRONG' });
-    tabs.push(wrong);
-    await wrong.closed(3000);
-    // The first counted failure waits the base delay, not 2^6 times it.
-    expect(Date.now() - started).toBeLessThan(800);
+    // Only the one real comparison (the pairing) was counted, and nothing is deferred.
+    expect(agent.bridge.pairingStats()).toEqual({ attempts: 1, delayMs: 0, deferred: 0 });
   });
 
   it('rejects a protocol version mismatch without using up the code', async () => {
@@ -392,11 +384,10 @@ describe('5. upgrade guards', () => {
 
 describe('6. no connected viewer', () => {
   it('lists only bridge_status and fails any other call at once', async () => {
-    const agent = await startAgent();
+    // With a 10-minute call timeout, only the immediate path can answer in time.
+    const agent = await startAgent({ tuning: { callTimeoutMs: 600_000 } });
     expect(await agent.listTools()).toEqual([BRIDGE_STATUS_TOOL]);
-    const started = Date.now();
     const result = await agent.call('query_entities', { type: 'IfcWall' });
-    expect(Date.now() - started).toBeLessThan(500);
     expect(result.isError).toBe(true);
     expect(code(result)).toBe('VIEWER_NOT_CONNECTED');
     expect(reason(result)).toBe('no-viewer');

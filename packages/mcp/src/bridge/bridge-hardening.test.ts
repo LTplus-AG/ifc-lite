@@ -81,7 +81,8 @@ describe('item 2: tab-supplied JSON is depth- and size-bounded', () => {
     tabs.push(tab);
     const deep = { ...READ_TOOL, inputSchema: { type: 'object', properties: { x: '__DEEP__' } } };
     tab.sendRaw(withDeep({ type: 'hello', protocol: 1, pairingCode: agent.bridge.pairingCode(), permission: 'read-only', tools: [deep] }, nestedJson(20_000)));
-    expect((await tab.next('error')).message).toMatch(/nested deeper than 32/);
+    // The whole-frame bound (72 levels) refuses it before the per-schema one (32).
+    expect((await tab.next('error')).message).toMatch(/frame is nested deeper than 72/);
     expect(await tab.closed()).toBe(BridgeCloseCode.INVALID_MESSAGE);
     expect((await agent.list()).map((t) => t.name)).toEqual(['bridge_status']);
   });
@@ -95,7 +96,7 @@ describe('item 2: tab-supplied JSON is depth- and size-bounded', () => {
     const result = await pending;
     expect(result.isError).toBe(true);
     expect(reason(result)).toBe('malformed-result');
-    expect(result.content[0]).toMatchObject({ text: expect.stringMatching(/nested deeper than 64/) });
+    expect(result.content[0]).toMatchObject({ text: expect.stringMatching(/frame is nested deeper than 72/) });
   });
 });
 
@@ -123,9 +124,9 @@ describe('item 3: a failed or timed-out socket is dead and does not hold its slo
     // Slots are free as soon as the sockets are dead, before they are even terminated.
     const { welcome } = await paired(agent);
     expect(welcome.sessionId).toBeTruthy();
-    const started = Date.now();
+    // Each is terminated after the 250 ms grace; without it they would hang
+    // for ws's 30 s close timeout, past this test's own timeout.
     await Promise.all(peers.map((p) => p.ended));
-    expect(Date.now() - started).toBeLessThan(2000);
   });
 
   it('refuses a fifth unpaired socket with 429 while four are open', async () => {
@@ -190,39 +191,42 @@ describe('allowlist contract (#9905 review thread): a configured viewer URL repl
 describe('item 5: noisy peers cannot flood the log', () => {
   it('logs the first refused upgrade and then one summary per window', async () => {
     const lines: string[] = [];
-    const agent = await start({ log: (l) => lines.push(l), tuning: { logWindowMs: 300 } });
+    // A 60 s window holds all 30 refusals however slow the runner; close() flushes the summary.
+    const agent = await start({ log: (l) => lines.push(l), tuning: { logWindowMs: 60_000 } });
     for (let i = 0; i < 30; i++) {
       expect(await openSocket({ port: agent.bridge.port, origin: 'https://evil.example' })).toEqual({ status: 403 });
     }
     expect(lines.filter((l) => l.startsWith('refused a connection'))).toHaveLength(1);
-    await expect.poll(() => lines).toContain('29 more refused connections in the last 300 ms');
+    await agent.r.close();
+    expect(lines).toContain('29 more refused connections in the last 60 s');
   });
 });
 
 describe('item 6: list_changed only on a real change, throttled', () => {
   it('sends no notification for 1,000 no-op updates', async () => {
-    const agent = await start();
+    // No throttle, so every real change would notify; frames are processed in order.
+    const agent = await start({ tuning: { changeThrottleMs: 0 } });
     const { tab, welcome } = await paired(agent);
-    await sleep(250);
-    const before = agent.listChanged();
+    await expect.poll(() => agent.listChanged()).toBe(1);
     for (let i = 0; i < 1000; i++) tab.sendRaw({ type: 'update', sessionId: welcome.sessionId, permission: 'read-only', tools: [READ_TOOL, MUTATING_TOOL] });
-    await sleep(400);
-    expect(agent.listChanged()).toBe(before);
+    // A final real change marks the end of the no-ops: exactly one more notification.
+    tab.sendRaw({ type: 'update', sessionId: welcome.sessionId, permission: 'read-write' });
+    await expect.poll(() => agent.listChanged()).toBe(2);
+    expect(agent.listChanged()).toBe(2);
   });
 
   it('coalesces a burst of real changes and settles on the last state', async () => {
-    const agent = await start({ tuning: { changeThrottleMs: 200 } });
+    // A 60 s throttle: the first change notifies at once, the rest of the
+    // burst waits for a trailing call far past this test, so the count is exact.
+    const agent = await start({ tuning: { changeThrottleMs: 60_000 } });
     const { tab, welcome } = await paired(agent);
-    await sleep(250);
-    const before = agent.listChanged();
+    await expect.poll(() => agent.listChanged()).toBe(1);
     for (let i = 0; i < 50; i++) {
       tab.sendRaw({ type: 'update', sessionId: welcome.sessionId, permission: i % 2 === 0 ? 'read-write' : 'read-only' });
     }
     tab.sendRaw({ type: 'update', sessionId: welcome.sessionId, permission: 'read-write' });
-    await sleep(500);
-    expect(agent.listChanged() - before).toBeGreaterThanOrEqual(1);
-    expect(agent.listChanged() - before).toBeLessThanOrEqual(3);
-    expect((await agent.list()).map((t) => t.name)).toContain(MUTATING_TOOL.name);
+    await expect.poll(async () => (await agent.list()).map((t) => t.name)).toContain(MUTATING_TOOL.name);
+    expect(agent.listChanged()).toBe(1);
   });
 
   it('keeps a tool the tab adds as mutating hidden and refused while read-only', async () => {
@@ -270,7 +274,8 @@ describe('item 7: schema properties are own properties; malformed schemas are re
 describe('item 8: aggregate limits, text-only content, provenance', () => {
   it('refuses tool descriptors over the aggregate byte limit', async () => {
     const agent = await start();
-    const big = Array.from({ length: 200 }, (_, i) => ({ ...READ_TOOL, name: `t${i}`, description: 'x'.repeat(8000) }));
+    // ~1.12 MB: over maxDescriptorBytes (1 MiB) but under maxUnpairedBytes, so the descriptor check answers.
+    const big = Array.from({ length: 140 }, (_, i) => ({ ...READ_TOOL, name: `t${i}`, description: 'x'.repeat(8000) }));
     const tab = await connectTab({ port: agent.bridge.port, code: agent.bridge.pairingCode(), tools: big });
     tabs.push(tab);
     expect((await tab.next('error')).message).toMatch(new RegExp(`limit is ${BRIDGE_LIMITS.maxDescriptorBytes}`));

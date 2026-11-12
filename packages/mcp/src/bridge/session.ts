@@ -139,7 +139,8 @@ export function rawToString(data: RawData): string {
 export function looseId(text: string, sessionId: string): string | null {
   try {
     const raw = JSON.parse(text) as { id?: unknown; sessionId?: unknown } | null;
-    return raw?.sessionId === sessionId && typeof raw.id === 'string' ? raw.id : null;
+    // Ids the bridge issues are short; a long one cannot name a pending call.
+    return raw?.sessionId === sessionId && typeof raw.id === 'string' && raw.id.length <= 64 ? raw.id : null;
   } catch {
     // Not JSON at all: there is no id to recover.
     return null;

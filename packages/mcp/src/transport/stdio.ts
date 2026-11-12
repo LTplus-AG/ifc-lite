@@ -95,7 +95,12 @@ export class StdioTransport {
       const line = this.buffer.slice(0, newline).trim();
       this.buffer = this.buffer.slice(newline + 1);
       if (line.length > 0) {
-        this.dispatch(parseMessage(line));
+        // One bad line must never take the process down with it.
+        try {
+          this.dispatch(parseMessage(line));
+        } catch (err) {
+          this.stderr.write(`[ifc-lite-mcp] failed to handle an incoming message: ${(err as Error).message}\n`);
+        }
       }
       newline = this.buffer.indexOf('\n');
     }

@@ -13,7 +13,8 @@
  *
  * Wrong codes never retire the code: a peer guessing must not be able to
  * invalidate the link the user was given. Guessing is slowed instead by
- * `PairingBackoff` (rate-limits.ts); at that rate 100 bits are out of reach.
+ * `PairingGate` (rate-limits.ts): at most 4 comparisons per 5 s during an
+ * attack, so 100 bits are out of reach.
  */
 
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
@@ -44,6 +45,11 @@ export class PairingCodes {
   current(): string {
     if (this.code === null) this.mint();
     return this.code!;
+  }
+
+  /** True when a code is live (none is while a tab is paired, until one is asked for). */
+  live(): boolean {
+    return this.code !== null;
   }
 
   /** Retire the live code (if any) and mint a fresh one. */

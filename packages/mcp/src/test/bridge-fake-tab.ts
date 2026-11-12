@@ -46,6 +46,7 @@ export interface FakeTabOptions {
   origin?: string;
   host?: string;
   protocol?: number;
+  client?: { name: string; version?: string };
 }
 
 /** Messages a socket received, with a way to wait for the next matching one. */
@@ -149,7 +150,7 @@ export async function connectTab(opts: FakeTabOptions): Promise<FakeTab> {
     pairingCode: opts.code,
     permission: opts.permission ?? 'read-only',
     tools: opts.tools ?? [READ_TOOL, MUTATING_TOOL],
-    client: { name: 'fake-tab', version: '0' },
+    client: opts.client ?? { name: 'fake-tab', version: '0' },
   });
   return opened.tab;
 }

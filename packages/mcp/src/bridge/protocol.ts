@@ -48,6 +48,7 @@
  */
 
 import { checkJsonBounds, checkSchemaShape, utf8Length } from './json-bounds.js';
+import { clip, quoted } from './sanitize.js';
 
 /** Bumped on any incompatible change. The bridge rejects any other value. */
 export const BRIDGE_PROTOCOL_VERSION = 1;
@@ -70,8 +71,22 @@ export const PAIRING_FRAGMENT_KEY = 'mcp-bridge';
  * result over a limit fails its call with an `isError` result naming the limit.
  */
 export const BRIDGE_LIMITS = {
-  /** Largest inbound frame, in bytes. A bigger frame closes the channel (WebSocket close 1009). */
+  /** Largest inbound frame on a paired session, in bytes. A bigger frame closes the channel (WebSocket close 1009). */
   maxMessageBytes: 16 * 1024 * 1024,
+  /**
+   * Inbound bytes allowed on a channel BEFORE it is paired (the hello and
+   * nothing else): enough for `maxDescriptorBytes` plus slack. More, and the
+   * channel is dropped before anything is parsed.
+   */
+  maxUnpairedBytes: 1024 * 1024 + 256 * 1024,
+  /** Nesting depth of a whole frame, checked before any field is read. */
+  maxFrameDepth: 72,
+  /** JSON values in a whole frame, checked before any field is read. */
+  maxFrameNodes: 300_000,
+  /** Length of `id`, `sessionId` and `pairingCode` strings. */
+  maxIdLength: 64,
+  /** Length of `type` strings. */
+  maxTypeLength: 16,
   maxTools: 256,
   maxToolNameLength: 64,
   maxDescriptionLength: 8192,
@@ -314,9 +329,23 @@ export function parseTabMessage(text: string): ParseResult<BridgeTabMessage> {
   try {
     raw = JSON.parse(text);
   } catch (err) {
-    return { ok: false, error: `not JSON: ${(err as Error).message}` };
+    // The engine's message can quote the input: clip it like any tab data.
+    return { ok: false, error: `not JSON: ${clip((err as Error).message, 120)}` };
   }
+  // Bound the WHOLE frame before reading any field, so no later step (a
+  // message, a log line, a stringify) ever touches an unbounded value.
+  const frameError = checkJsonBounds(raw, { maxDepth: BRIDGE_LIMITS.maxFrameDepth, maxNodes: BRIDGE_LIMITS.maxFrameNodes }, 'frame');
+  if (frameError) return { ok: false, error: frameError };
   if (!isRecord(raw)) return { ok: false, error: 'message must be a JSON object' };
+  if (typeof raw.type !== 'string' || raw.type.length > BRIDGE_LIMITS.maxTypeLength) {
+    return { ok: false, error: `message type must be a string of at most ${BRIDGE_LIMITS.maxTypeLength} characters; got ${quoted(raw.type, 32)}` };
+  }
+  for (const field of ['id', 'sessionId', 'pairingCode'] as const) {
+    const v = raw[field];
+    if (v !== undefined && (typeof v !== 'string' || v.length > BRIDGE_LIMITS.maxIdLength)) {
+      return { ok: false, error: `${field} must be a string of at most ${BRIDGE_LIMITS.maxIdLength} characters` };
+    }
+  }
   switch (raw.type) {
     case 'hello': {
       if (typeof raw.protocol !== 'number') return { ok: false, error: 'hello.protocol must be a number' };
@@ -327,8 +356,9 @@ export function parseTabMessage(text: string): ParseResult<BridgeTabMessage> {
       let client: BridgeHelloMessage['client'];
       if (raw.client !== undefined) {
         if (!isRecord(raw.client) || typeof raw.client.name !== 'string') return { ok: false, error: 'hello.client.name must be a string' };
-        client = { name: raw.client.name.slice(0, 128) };
-        if (typeof raw.client.version === 'string') client.version = raw.client.version.slice(0, 64);
+        // Shown to the agent and logged: one clipped line, never raw.
+        client = { name: clip(raw.client.name, 128) };
+        if (typeof raw.client.version === 'string') client.version = clip(raw.client.version, 64);
       }
       return {
         ok: true,
@@ -357,35 +387,6 @@ export function parseTabMessage(text: string): ParseResult<BridgeTabMessage> {
       return { ok: true, value: msg };
     }
     default:
-      return { ok: false, error: `unknown message type ${JSON.stringify(raw.type)}` };
-  }
-}
-
-/** Parse a frame from the bridge (for the tab). Lenient: checks `type` and the fields the tab acts on. */
-export function parseServerMessage(text: string): ParseResult<BridgeServerMessage> {
-  let raw: unknown;
-  try {
-    raw = JSON.parse(text);
-  } catch (err) {
-    return { ok: false, error: `not JSON: ${(err as Error).message}` };
-  }
-  if (!isRecord(raw)) return { ok: false, error: 'message must be a JSON object' };
-  switch (raw.type) {
-    case 'welcome':
-      if (typeof raw.sessionId !== 'string' || !isPermission(raw.permission)) return { ok: false, error: 'malformed welcome' };
-      return { ok: true, value: raw as unknown as BridgeWelcomeMessage };
-    case 'call':
-      if (typeof raw.sessionId !== 'string' || typeof raw.id !== 'string' || typeof raw.name !== 'string' || !isRecord(raw.arguments)) {
-        return { ok: false, error: 'malformed call' };
-      }
-      return { ok: true, value: raw as unknown as BridgeCallMessage };
-    case 'cancel':
-      if (typeof raw.sessionId !== 'string' || typeof raw.id !== 'string') return { ok: false, error: 'malformed cancel' };
-      return { ok: true, value: raw as unknown as BridgeCancelMessage };
-    case 'error':
-      if (typeof raw.code !== 'string' || typeof raw.message !== 'string') return { ok: false, error: 'malformed error' };
-      return { ok: true, value: raw as unknown as BridgeErrorMessage };
-    default:
-      return { ok: false, error: `unknown message type ${JSON.stringify(raw.type)}` };
+      return { ok: false, error: `unknown message type ${quoted(raw.type, 32)}` };
   }
 }

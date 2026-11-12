@@ -36,6 +36,8 @@ function printHelp(): void {
 
   Options:
     --read-only             Hide all mutation tools regardless of scope.
+                            With --bridge: hide and refuse the tools the tab
+                            LABELS as mutating; the tab enforces the rest.
     --federate              Mark explicitly that multiple files form one session.
     --transport <stdio|http>  Default: stdio.
     --port <n>              HTTP port (default 8765).
@@ -270,12 +272,18 @@ async function runBridge(opts: CliOptions): Promise<void> {
     if (stopping) return;
     stopping = true;
     log(`stopping: ${why}`);
-    transport.close();
-    void running.close().finally(() => {
-      process.exitCode = exitCode;
-      // Anything else still holding the loop must not keep the port's owner alive.
-      setTimeout(() => process.exit(exitCode), 1000).unref();
-    });
+    // Bridge first: it fails every pending call with `shutting-down`, and
+    // those answers must reach the agent before the transport closes.
+    void running.close()
+      .then(() => new Promise<void>((resolve) => setImmediate(resolve)))
+      .then(() => new Promise<void>((resolve) => process.stdout.write('', () => resolve())))
+      .finally(() => {
+        transport.close();
+        process.stdin.destroy();
+        process.exitCode = exitCode;
+        // Anything else still holding the loop must not keep the port's owner alive.
+        setTimeout(() => process.exit(exitCode), 1000).unref();
+      });
   };
   process.stdin.once('end', () => stop('stdin ended', 0));
   process.stdin.once('close', () => stop('stdin closed', 0));

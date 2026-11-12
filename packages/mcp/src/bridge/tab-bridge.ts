@@ -3,28 +3,15 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The loopback WebSocket end of `--bridge` (#9523): accepts one paired
- * browser tab and forwards tool calls to it.
- *
- * Rules this class owns:
- *   - Listen on 127.0.0.1 only. The upgrade is refused (HTTP 403) unless the
- *     Host header is loopback on our port and the Origin is allowlisted.
- *   - The first frame must be a `hello` with the live one-time pairing code,
- *     within the handshake timeout. See `pairing.ts`. Wrong codes are answered
- *     after a growing delay (`PairingBackoff`).
- *   - A socket that failed or timed out is dead: every later frame from it is
- *     ignored, its unpaired slot is freed at once, and it is terminated after
- *     a short grace even if the peer ignores the close frame.
- *   - One tab at a time. A new successful pairing REPLACES the paired tab:
- *     the old socket gets a `REPLACED` error and is closed, and its pending
- *     calls fail at once with reason `replaced`.
- *   - Tools the tab labels mutating are not forwarded while the effective
- *     permission is read-only (the tab's grant, capped by `--read-only`). The
- *     label is the tab's; the tab must enforce read-only itself too.
- *   - Repeated log lines are coalesced; tool-list changes are signalled only
- *     on a real change, and at most once per throttle interval.
- *   - A pending call ends by reply, timeout, cancellation or socket close; it
- *     never waits on a tab that has gone. See `session.ts` for reply matching.
+ * The loopback WebSocket end of `--bridge` (#9523): one paired tab, tool calls
+ * forwarded to it. Owns: loopback bind and upgrade guards (Host, Origin, slot
+ * cap, pre-pairing byte cap); the hello within the handshake timeout and the
+ * rate-limited code comparison (`PairingGate`); dead sockets (ignored, slot
+ * freed, terminated after a grace); one tab at a time (a new pairing REPLACES
+ * the old tab and fails its calls); refusing tools the tab labels mutating
+ * while read-only (the tab enforces too); coalesced logs and throttled change
+ * events. Listeners never throw: `guard` fails the socket instead. Reply
+ * matching lives in `session.ts`, paired frames in `session-frames.ts`.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -40,6 +27,7 @@ import {
   buildPairingUrl,
   parseTabMessage,
   type BridgeCallResult,
+  type BridgeHelloMessage,
   type BridgePermission,
 } from './bridge-protocol.js';
 import { hostAllowed, normalizeOrigin, originAllowed } from './guards.js';
@@ -50,9 +38,12 @@ import {
   DEFAULT_HANDSHAKE_TIMEOUT_MS,
   type TabBridgeOptions,
   type TabSnapshot,
+  type Slot,
 } from './tab-bridge-options.js';
-import { CoalescedLog, PairingBackoff, Throttle } from './rate-limits.js';
-import { BridgeCallError, BridgeSession, failSocket, looseId, rawToString } from './session.js';
+import { CoalescedLog, PairingGate, Throttle } from './rate-limits.js';
+import { clip } from './sanitize.js';
+import { BridgeCallError, BridgeSession, failSocket, rawToString } from './session.js';
+import { handleSessionFrame } from './session-frames.js';
 
 export { BridgeCallError, type BridgeCallFailure } from './session.js';
 
@@ -66,7 +57,7 @@ export class TabBridge {
   private readonly closeGraceMs: number;
   private readonly origins = new Set<string>();
   private readonly pairing = new PairingCodes();
-  private readonly backoff: PairingBackoff;
+  private readonly gate: PairingGate;
   private readonly noisy: CoalescedLog;
   private readonly changed: Throttle;
   /** Sockets that failed or timed out: nothing they send is processed again. */
@@ -75,7 +66,10 @@ export class TabBridge {
   private wss: WebSocketServer | null = null;
   private boundPort = 0;
   private active: BridgeSession | null = null;
-  private handshaking = new Set<WebSocket>();
+  /** Unpaired connections, each holding one of `maxPendingHandshakes` slots. */
+  private readonly slots = new Set<Slot>();
+  private readonly slotOf = new WeakMap<WebSocket, Slot>();
+  private attempts = 0;
   private listeners = new Set<() => void>();
   private closing = false;
 
@@ -85,7 +79,7 @@ export class TabBridge {
     this.handshakeTimeoutMs = opts.handshakeTimeoutMs ?? DEFAULT_HANDSHAKE_TIMEOUT_MS;
     this.maxPendingHandshakes = opts.maxPendingHandshakes ?? 4;
     this.closeGraceMs = opts.closeGraceMs ?? DEFAULT_CLOSE_GRACE_MS;
-    this.backoff = new PairingBackoff(opts.pairingBackoffBaseMs, opts.pairingBackoffMaxMs);
+    this.gate = new PairingGate(opts.pairingBackoffBaseMs, opts.pairingBackoffMaxMs);
     this.noisy = new CoalescedLog(this.log, opts.logWindowMs);
     this.changed = new Throttle(() => this.emitChange(), opts.changeThrottleMs ?? 200);
     for (const o of opts.allowedOrigins) {
@@ -139,6 +133,13 @@ export class TabBridge {
     return this.pairing.rotate();
   }
 
+  /** Comparisons made (including attempts whose peer left first), the current deferral, and attempts waiting for it. */
+  pairingStats(): { attempts: number; delayMs: number; deferred: number } {
+    let deferred = 0;
+    for (const slot of this.slots) if (slot.held) deferred++;
+    return { attempts: this.attempts, delayMs: this.gate.delay(), deferred };
+  }
+
   pairingUrl(code: string): string {
     return buildPairingUrl(this.opts.viewerUrl, this.boundPort, code);
   }
@@ -164,10 +165,14 @@ export class TabBridge {
   }
 
   async close(): Promise<void> {
+    if (this.closing) return;
     this.closing = true;
     this.changed.cancel();
     this.noisy.flush();
-    for (const ws of [...this.handshaking]) this.kill(ws, BridgeErrorCode.SHUTTING_DOWN, 'The bridge is shutting down.', BridgeCloseCode.SHUTTING_DOWN);
+    for (const slot of [...this.slots]) {
+      if (slot.ws) this.kill(slot.ws, BridgeErrorCode.SHUTTING_DOWN, 'The bridge is shutting down.', BridgeCloseCode.SHUTTING_DOWN);
+      else slot.socket.destroy();
+    }
     const s = this.active;
     if (s) {
       this.active = null;
@@ -192,37 +197,65 @@ export class TabBridge {
   // ── connection handling ──────────────────────────────────────────────
 
   private onUpgrade(wss: WebSocketServer, req: IncomingMessage, socket: Duplex, head: Buffer): void {
-    socket.on('error', (err) => this.log(`upgrade socket error: ${err.message}`));
+    socket.on('error', (err) => this.noisy.note('socket errors', `upgrade socket error: ${clip(err.message)}`));
     const refuse = (status: number, text: string, why: string): void => {
       this.noisy.note('refused connections', `refused a connection: ${why}`);
       refuseUpgrade(socket, status, text);
     };
-    if (!hostAllowed(req.headers.host, this.boundPort)) {
-      return refuse(403, 'Forbidden', `Host ${JSON.stringify(req.headers.host)} is not loopback on port ${this.boundPort}`);
+    try {
+      if (!hostAllowed(req.headers.host, this.boundPort)) {
+        return refuse(403, 'Forbidden', `Host ${clip(req.headers.host, 80)} is not loopback on port ${this.boundPort}`);
+      }
+      if (!originAllowed(req.headers.origin, this.origins)) return refuse(403, 'Forbidden', `Origin ${clip(req.headers.origin, 80)} is not allowed`);
+      if (this.closing) return refuse(503, 'Service Unavailable', 'shutting down');
+      if (this.slots.size >= this.maxPendingHandshakes) return refuse(429, 'Too Many Requests', 'too many unpaired connections');
+      const slot: Slot = { socket, ws: null, paired: false, held: false, bytes: head.length };
+      this.slots.add(slot);
+      // Count raw inbound bytes until paired, so an unpaired peer cannot make
+      // the bridge buffer or parse more than a hello needs.
+      const onData = (chunk: Buffer): void => {
+        if (slot.paired) return void socket.off('data', onData);
+        slot.bytes += chunk.length;
+        if (slot.bytes > BRIDGE_LIMITS.maxUnpairedBytes) {
+          this.noisy.note('oversized unpaired connections', `dropped an unpaired connection after ${BRIDGE_LIMITS.maxUnpairedBytes} bytes`);
+          socket.destroy();
+        }
+      };
+      socket.on('data', onData);
+      socket.once('close', () => { if (!slot.held) this.slots.delete(slot); });
+      wss.handleUpgrade(req, socket, head, (ws) => this.guard(ws, 'connection', () => this.onSocket(ws, slot)));
+    } catch (err) {
+      this.noisy.note('internal errors', `internal error on an upgrade: ${clip((err as Error).message)}`);
+      socket.destroy();
     }
-    if (!originAllowed(req.headers.origin, this.origins)) {
-      return refuse(403, 'Forbidden', `Origin ${JSON.stringify(req.headers.origin)} is not allowed`);
-    }
-    if (this.closing) return refuse(503, 'Service Unavailable', 'shutting down');
-    if (this.handshaking.size >= this.maxPendingHandshakes) return refuse(429, 'Too Many Requests', 'too many unpaired connections');
-    wss.handleUpgrade(req, socket, head, (ws) => this.onSocket(ws));
   }
 
-  private onSocket(ws: WebSocket): void {
-    this.handshaking.add(ws);
+  /** Run `fn`; an unexpected exception fails this socket and is logged, never thrown out of a listener. */
+  private guard(ws: WebSocket, what: string, fn: () => void): void {
+    try {
+      fn();
+    } catch (err) {
+      this.noisy.note('internal errors', `internal error handling a ${what}: ${clip((err as Error).message)}`);
+      this.kill(ws, BridgeErrorCode.INVALID_MESSAGE, 'The bridge could not handle that frame.', BridgeCloseCode.INVALID_MESSAGE);
+    }
+  }
+
+  private onSocket(ws: WebSocket, slot: Slot): void {
+    slot.ws = ws;
+    this.slotOf.set(ws, slot);
     let session: BridgeSession | null = null;
     let greeted = false;
-    const handshakeTimer = setTimeout(() => {
+    const handshakeTimer = setTimeout(() => this.guard(ws, 'timeout', () => {
       this.kill(ws, BridgeErrorCode.HANDSHAKE_TIMEOUT, 'No hello within the handshake timeout.', BridgeCloseCode.HANDSHAKE_TIMEOUT);
-    }, this.handshakeTimeoutMs);
+    }), this.handshakeTimeoutMs);
+    handshakeTimer.unref?.();
 
-    ws.on('error', (err) => this.log(`socket error: ${err.message}`));
-    ws.on('close', () => {
+    ws.on('error', (err) => this.noisy.note('socket errors', `socket error: ${clip(err.message)}`));
+    ws.on('close', () => this.guard(ws, 'close', () => {
       clearTimeout(handshakeTimer);
-      this.handshaking.delete(ws);
       if (session && this.active === session) this.unpair(session);
-    });
-    ws.on('message', (data: RawData, isBinary: boolean) => {
+    }));
+    ws.on('message', (data: RawData, isBinary: boolean) => this.guard(ws, 'frame', () => {
       // `ws` keeps delivering frames while CLOSING; a dead socket gets no say.
       if (this.dead.has(ws)) return;
       if (isBinary) {
@@ -233,35 +266,31 @@ export class TabBridge {
       if (!greeted) {
         greeted = true;
         clearTimeout(handshakeTimer);
-        session = this.handshake(ws, text);
+        this.handshake(ws, slot, text, (s) => { session = s; });
         return;
       }
       if (session && this.active === session) this.onSessionMessage(session, text);
-    });
+    }));
   }
 
-  private handshake(ws: WebSocket, text: string): BridgeSession | null {
-    const reject = (code: BridgeErrorCode, message: string, closeCode: number, delayMs = 0): null => {
-      this.kill(ws, code, message, closeCode, delayMs);
-      return null;
-    };
+  private handshake(ws: WebSocket, slot: Slot, text: string, paired: (s: BridgeSession) => void): void {
+    const reject = (code: BridgeErrorCode, message: string, closeCode: number): void => this.kill(ws, code, message, closeCode);
     const parsed = parseTabMessage(text);
     if (!parsed.ok || parsed.value.type !== 'hello') {
       const why = parsed.ok ? `expected hello, got ${parsed.value.type}` : parsed.error;
-      return reject(BridgeErrorCode.INVALID_MESSAGE, `First message must be a valid hello: ${why}`, BridgeCloseCode.INVALID_MESSAGE);
+      return reject(BridgeErrorCode.INVALID_MESSAGE, clip(`First message must be a valid hello: ${why}`, 300), BridgeCloseCode.INVALID_MESSAGE);
     }
     const hello = parsed.value;
     // Checked before the code, so a stale tab does not burn the user's code.
     if (hello.protocol !== BRIDGE_PROTOCOL_VERSION) {
       return reject(
         BridgeErrorCode.PROTOCOL_VERSION_MISMATCH,
-        `This bridge speaks protocol ${BRIDGE_PROTOCOL_VERSION}; the tab sent ${hello.protocol}. Update @ifc-lite/mcp or reload the viewer.`,
+        `This bridge speaks protocol ${BRIDGE_PROTOCOL_VERSION}; the tab sent ${clip(hello.protocol, 20)}. Update @ifc-lite/mcp or reload the viewer.`,
         BridgeCloseCode.PROTOCOL_VERSION_MISMATCH,
       );
     }
-    const check = this.pairing.consume(hello.pairingCode);
-    if (check === 'no-code') {
-      // Nothing to guess while paired, so this does not feed the back-off.
+    if (!this.pairing.live()) {
+      // Nothing to guess while paired, so this neither waits nor feeds the gate.
       this.noisy.note('pairing attempts while paired', 'refused a pairing attempt: a tab is already paired and no code is live');
       return reject(
         BridgeErrorCode.PAIRING_FAILED,
@@ -269,16 +298,38 @@ export class TabBridge {
         BridgeCloseCode.PAIRING_FAILED,
       );
     }
-    if (check === 'wrong') {
-      const delay = this.backoff.fail();
-      this.noisy.note('wrong pairing codes', `refused a wrong pairing code (answered after ${delay} ms)`);
-      return reject(BridgeErrorCode.PAIRING_FAILED, 'Pairing code not accepted. Use the latest link or code from bridge_status.', BridgeCloseCode.PAIRING_FAILED, delay);
+    const delay = this.gate.delay();
+    if (delay === 0) return this.compare(ws, slot, hello, paired);
+    // During an attack every comparison waits; the slot stays taken even if the peer leaves.
+    slot.held = true;
+    const later = setTimeout(() => this.guard(ws, 'pairing attempt', () => {
+      slot.held = false;
+      this.compare(ws, slot, hello, paired);
+    }), delay);
+    later.unref?.();
+  }
+
+  private compare(ws: WebSocket, slot: Slot, hello: BridgeHelloMessage, paired: (s: BridgeSession) => void): void {
+    this.attempts++;
+    if (ws.readyState !== ws.OPEN) {
+      // Left before its comparison: counts as a failed guess, and frees the slot only now.
+      this.gate.fail();
+      this.slots.delete(slot);
+      return;
     }
-    this.backoff.succeed();
-    this.handshaking.delete(ws);
+    if (this.pairing.consume(hello.pairingCode) !== 'ok') {
+      this.gate.fail();
+      this.noisy.note('wrong pairing codes', 'refused a wrong pairing code');
+      this.kill(ws, BridgeErrorCode.PAIRING_FAILED, 'Pairing code not accepted. Use the latest link or code from bridge_status.', BridgeCloseCode.PAIRING_FAILED);
+      return;
+    }
+    this.gate.succeed();
+    slot.paired = true;
+    this.slots.delete(slot);
     const previous = this.active;
     const session = new BridgeSession(ws, randomUUID(), hello.permission, hello.tools, hello.client, this.log);
     this.active = session;
+    paired(session);
     if (previous) {
       previous.failAll('replaced', 'Another viewer tab was paired and replaced this one before it answered.');
       this.kill(previous.ws, BridgeErrorCode.REPLACED, 'Another tab was paired with this bridge.', BridgeCloseCode.REPLACED);
@@ -291,66 +342,35 @@ export class TabBridge {
       readOnlyCeiling: this.opts.readOnlyCeiling,
       bridge: this.opts.bridgeInfo,
     });
+    // client name/version were clipped to one line by the parser.
     const who = hello.client ? `${hello.client.name}${hello.client.version ? ` ${hello.client.version}` : ''}` : 'a viewer tab';
     this.log(`paired with ${who}${previous ? ' (replaced the previous tab)' : ''}: ${hello.tools.length} tools, ${this.effectivePermission(session)}`);
     this.changed.fire();
-    return session;
   }
 
   private onSessionMessage(s: BridgeSession, text: string): void {
-    const parsed = parseTabMessage(text);
-    if (!parsed.ok) {
-      // A malformed reply to a pending call fails that call now, not at its timeout.
-      const id = looseId(text, s.id);
-      if (id !== null) s.failOne(id, 'malformed-result', (name) => `The viewer sent a malformed reply to '${name}': ${parsed.error}`);
-      s.send({ type: 'error', code: BridgeErrorCode.INVALID_MESSAGE, message: parsed.error });
-      return;
-    }
-    const msg = parsed.value;
-    if (msg.type === 'hello') {
-      s.send({ type: 'error', code: BridgeErrorCode.INVALID_MESSAGE, message: 'Already paired; hello is only valid as the first message.' });
-      return;
-    }
-    if (msg.sessionId !== s.id) {
-      this.noisy.note('frames naming another session', `ignored a ${msg.type} naming another session`);
-      return;
-    }
-    if (msg.type === 'result') {
-      if (!s.settle(msg.id, msg.result)) this.noisy.note('stray results', `ignored a result for call ${msg.id}: not pending (unknown, answered or expired)`);
-      return;
-    }
-    const before = this.effectivePermission(s);
-    const toolsBefore = JSON.stringify(s.tools);
-    if (msg.permission !== undefined) s.tabPermission = msg.permission;
-    if (msg.tools !== undefined) s.tools = msg.tools;
-    const after = this.effectivePermission(s);
-    const toolsChanged = msg.tools !== undefined && JSON.stringify(msg.tools) !== toolsBefore;
-    if (before !== after) this.log(`viewer permission is now ${after}`);
-    if (before !== after || toolsChanged) this.changed.fire();
+    handleSessionFrame(s, text, {
+      note: (kind, line) => this.noisy.note(kind, line),
+      log: this.log,
+      effectivePermission: () => this.effectivePermission(s),
+      changed: () => this.changed.fire(),
+    });
   }
 
   /**
-   * Make `ws` dead now: later frames are ignored. After `delayMs` (the
-   * pairing back-off) it frees its unpaired slot, gets the error frame and a
-   * close, and is terminated `closeGraceMs` later if the peer has not closed.
+   * Make `ws` dead now: later frames are ignored, its unpaired slot is freed,
+   * it gets the error frame and a close, and it is terminated `closeGraceMs`
+   * later if the peer has not closed.
    */
-  private kill(ws: WebSocket, code: BridgeErrorCode, message: string, closeCode: number, delayMs = 0): void {
+  private kill(ws: WebSocket, code: BridgeErrorCode, message: string, closeCode: number): void {
     if (this.dead.has(ws)) return;
     this.dead.add(ws);
-    const finish = (): void => {
-      this.handshaking.delete(ws);
-      failSocket(ws, code, message, closeCode, this.log);
-      const terminate = setTimeout(() => ws.terminate(), this.closeGraceMs);
-      terminate.unref?.();
-      ws.once('close', () => clearTimeout(terminate));
-    };
-    if (delayMs <= 0) {
-      finish();
-      return;
-    }
-    const later = setTimeout(finish, delayMs);
-    later.unref?.();
-    ws.once('close', () => clearTimeout(later));
+    const slot = this.slotOf.get(ws);
+    if (slot && !slot.held) this.slots.delete(slot);
+    failSocket(ws, code, message, closeCode, this.log);
+    const terminate = setTimeout(() => ws.terminate(), this.closeGraceMs);
+    terminate.unref?.();
+    ws.once('close', () => clearTimeout(terminate));
   }
 
   /** The paired tab's socket closed: fail its calls and offer a fresh pairing link. */

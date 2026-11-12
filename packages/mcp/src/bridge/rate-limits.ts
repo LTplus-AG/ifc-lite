@@ -50,32 +50,44 @@ export class CoalescedLog {
   }
 }
 
+/** Milliseconds from a monotonic clock: wall-clock jumps must not shorten or stretch an interval. */
+export const monotonicNow = (): number => performance.now();
+
 /**
- * Back-off for wrong pairing codes. Each wrong code is answered only after a
- * delay that doubles with every recent failure (base, 2x base, ... up to max),
- * and the socket keeps its unpaired slot meanwhile, so the rate of guesses is
- * bounded by the slot cap over the delay. A correct code is never delayed, and
- * failures never rotate the code, so a guessing peer cannot invalidate the
- * user's link. The count resets on success or after `resetAfterMs` quiet.
+ * Rate limit on pairing-code comparisons. With no recent failure a code is
+ * compared at once. After a failure, the COMPARISON of every handshake (right
+ * or wrong code) is deferred by the current delay, which starts at `baseMs`
+ * and doubles per failure up to `maxMs`; the count resets after `resetAfterMs`
+ * without a failure, or on a success. The caller keeps the handshake's
+ * unpaired slot occupied until its comparison runs, even if the peer closes
+ * first, and counts a peer that closed before its comparison as a failure.
+ *
+ * Worst case: `slots` comparisons per delay. With 4 slots and the 5 s cap that
+ * is 0.8 guesses per second against a 100-bit code. The cost to the real user
+ * during an attack is that their correct code is compared up to `maxMs` late.
  */
-export class PairingBackoff {
+export class PairingGate {
   private failures = 0;
-  private lastFailureAt = 0;
+  private lastFailureAt = -Infinity;
 
   constructor(
     private readonly baseMs = 250,
     private readonly maxMs = 5_000,
     private readonly resetAfterMs = 60_000,
-    private readonly now: () => number = Date.now,
+    private readonly now: () => number = monotonicNow,
   ) {}
 
-  /** Record a wrong code; returns how long to wait before answering it. */
-  fail(): number {
-    const t = this.now();
-    if (t - this.lastFailureAt > this.resetAfterMs) this.failures = 0;
-    this.failures++;
-    this.lastFailureAt = t;
+  /** How long to defer the comparison of an attempt arriving now. */
+  delay(): number {
+    if (this.failures > 0 && this.now() - this.lastFailureAt > this.resetAfterMs) this.failures = 0;
+    if (this.failures === 0) return 0;
     return Math.min(this.baseMs * 2 ** (this.failures - 1), this.maxMs);
+  }
+
+  fail(): void {
+    if (this.now() - this.lastFailureAt > this.resetAfterMs) this.failures = 0;
+    this.failures++;
+    this.lastFailureAt = this.now();
   }
 
   succeed(): void {
@@ -91,11 +103,11 @@ export class Throttle {
   private last = -Infinity;
   private timer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(private readonly fn: () => void, private readonly intervalMs: number) {}
+  constructor(private readonly fn: () => void, private readonly intervalMs: number, private readonly now: () => number = monotonicNow) {}
 
   fire(): void {
     if (this.timer) return;
-    const wait = this.last + this.intervalMs - Date.now();
+    const wait = this.last + this.intervalMs - this.now();
     if (wait <= 0) {
       this.run();
       return;
@@ -111,7 +123,7 @@ export class Throttle {
 
   private run(): void {
     this.timer = null;
-    this.last = Date.now();
+    this.last = this.now();
     this.fn();
   }
 }

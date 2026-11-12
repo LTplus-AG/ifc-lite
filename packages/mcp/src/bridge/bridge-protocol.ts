@@ -10,3 +10,4 @@
 
 export * from './protocol.js';
 export * from './pairing-link.js';
+export { parseServerMessage } from './server-frames.js';

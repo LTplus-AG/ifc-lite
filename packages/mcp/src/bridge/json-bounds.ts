@@ -13,25 +13,53 @@
  * it is deeper or larger than the limits in `BRIDGE_LIMITS`.
  */
 
+import { clip } from './sanitize.js';
+
 export interface JsonBounds {
   maxDepth: number;
   maxNodes: number;
 }
 
+/** Optional counters, for tests that pin how much work a refusal costs. */
+export interface JsonBoundsStats {
+  visited: number;
+}
+
 /**
  * Walk `value` iteratively. Returns an error string when it is deeper than
  * `maxDepth` (the root is depth 1) or has more than `maxNodes` values, else null.
+ *
+ * The budget is checked BEFORE a container's children are pushed (an array's
+ * length, an object's keys counted with early exit), so an 8-million-element
+ * array is refused after one visit instead of being copied onto the stack.
+ * `label` must be bridge-chosen text, never tab data.
  */
-export function checkJsonBounds(value: unknown, bounds: JsonBounds, label: string): string | null {
+export function checkJsonBounds(value: unknown, bounds: JsonBounds, label: string, stats?: JsonBoundsStats): string | null {
+  const tooMany = `${label} has more than ${bounds.maxNodes} values`;
   const stack: Array<[unknown, number]> = [[value, 1]];
-  let nodes = 0;
+  let nodes = 1;
   while (stack.length > 0) {
     const [v, depth] = stack.pop()!;
-    if (++nodes > bounds.maxNodes) return `${label} has more than ${bounds.maxNodes} values`;
+    if (stats) stats.visited++;
     if (typeof v !== 'object' || v === null) continue;
     if (depth >= bounds.maxDepth) return `${label} is nested deeper than ${bounds.maxDepth} levels`;
-    const children = Array.isArray(v) ? v : Object.values(v);
-    for (const child of children) stack.push([child, depth + 1]);
+    const remaining = bounds.maxNodes - nodes;
+    if (Array.isArray(v)) {
+      if (v.length > remaining) return tooMany;
+      nodes += v.length;
+      for (let i = 0; i < v.length; i++) stack.push([v[i], depth + 1]);
+      continue;
+    }
+    const record = v as Record<string, unknown>;
+    let count = 0;
+    for (const key in record) {
+      if (!Object.prototype.hasOwnProperty.call(record, key)) continue;
+      if (++count > remaining) return tooMany;
+    }
+    nodes += count;
+    for (const key in record) {
+      if (Object.prototype.hasOwnProperty.call(record, key)) stack.push([record[key], depth + 1]);
+    }
   }
   return null;
 }
@@ -62,7 +90,7 @@ export function checkSchemaShape(schema: unknown, path: string): string | null {
   if (properties !== undefined) {
     if (!isRecord(properties)) return `${path}.properties must be an object`;
     for (const [key, sub] of Object.entries(properties)) {
-      const err = checkSchemaShape(sub, `${path}.properties.${key}`);
+      const err = checkSchemaShape(sub, `${path}.properties.${clip(key, 40)}`);
       if (err) return err;
     }
   }

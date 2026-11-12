@@ -4,6 +4,8 @@
 
 /** Options and snapshot types for `TabBridge` (#9523). */
 
+import type { Duplex } from 'node:stream';
+import type { WebSocket } from 'ws';
 import type { BridgePermission, BridgeToolDescriptor } from './bridge-protocol.js';
 
 export interface TabBridgeOptions {
@@ -17,9 +19,10 @@ export interface TabBridgeOptions {
   viewerUrl: string;
   bridgeInfo: { name: string; version: string };
   callTimeoutMs?: number;
+  /** Time from socket open to the first frame. */
   handshakeTimeoutMs?: number;
   maxMessageBytes?: number;
-  /** First wrong-code delay; doubles per recent failure up to `pairingBackoffMaxMs`. */
+  /** First comparison deferral after a wrong code; doubles per recent failure up to `pairingBackoffMaxMs`. */
   pairingBackoffBaseMs?: number;
   pairingBackoffMaxMs?: number;
   /** Unpaired sockets allowed at once; more are refused with 429. */
@@ -44,5 +47,21 @@ export interface TabSnapshot {
 }
 
 export const DEFAULT_CALL_TIMEOUT_MS = 120_000;
-export const DEFAULT_HANDSHAKE_TIMEOUT_MS = 10_000;
+/**
+ * Time from the socket opening to the first frame. A tab sends its hello as
+ * soon as the socket opens (Chrome's Local Network Access prompt comes BEFORE
+ * the socket exists), so 3 s is ample on loopback, and it bounds how long a
+ * silent socket can hold one of the 4 unpaired slots.
+ */
+export const DEFAULT_HANDSHAKE_TIMEOUT_MS = 3_000;
 export const DEFAULT_CLOSE_GRACE_MS = 250;
+
+/** One unpaired connection's claim on the handshake slots. */
+export interface Slot {
+  socket: Duplex;
+  ws: WebSocket | null;
+  paired: boolean;
+  /** A deferred pairing comparison is pending: the slot stays taken even if the socket closes. */
+  held: boolean;
+  bytes: number;
+}

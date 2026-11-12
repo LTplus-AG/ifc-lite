@@ -31,6 +31,8 @@ import { TerrainImageryCard } from './TerrainImageryCard';
 import { effectiveClassificationSystems } from './effective-classification-systems';
 import { normalizeMutationModelId } from '@/sdk/adapters/mutation-view';
 import { useStreamingThrottled } from '@/hooks/useStreamingThrottled';
+import { useLoadWindowOpen } from '@/hooks/loadWindow';
+import { modelLocalIdResolver } from '@/lib/object-count';
 import { isModelStreaming } from '@/lib/streaming-refresh';
 import { GaussianCaptureMetadataPanel } from './GaussianCaptureMetadataPanel';
 
@@ -42,6 +44,9 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
     : <IfcModelMetadataPanel model={model} />;
 }
 
+/** Shown until the load settles; a number is never shown before it is final. */
+const STAT_PENDING = '—';
+
 /** IFC (and source-model) metadata: file info, schema version, entity counts, etc. */
 function IfcModelMetadataPanel({ model }: { model: FederatedModel }) {
   const { t, locale, revision } = useTranslation();
@@ -51,6 +56,10 @@ function IfcModelMetadataPanel({ model }: { model: FederatedModel }) {
   // Display-unit converter overrides (issue #1573 proposal 2).
   const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
   const fromGlobalId = useViewerStore((s) => s.fromGlobalId);
+  const resolveGlobalIdInModel = useViewerStore((s) => s.resolveGlobalIdInModel);
+  // Whole-model statistics wait for the load to settle (loadWindow.ts): computed
+  // inside the load window they ran in the drain and finalize that end the load.
+  const loadWindowOpen = useLoadWindowOpen();
   const mutationView = useViewerStore((s) => s.getMutationView?.(normalizeMutationModelId(s, model.id)));
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
 
@@ -94,8 +103,8 @@ function IfcModelMetadataPanel({ model }: { model: FederatedModel }) {
   // Membership changes with source/overlay edits, not with each streamed
   // geometry batch. Keep it stable while the shaped count catches up.
   const physicalIds = useMemo(
-    () => dataStore?.spatialHierarchy ? sharedEffectivePhysicalEntityIds(dataStore, mutationView, mutationVersion) : new Set<number>(),
-    [dataStore, mutationView, mutationVersion],
+    () => !loadWindowOpen && dataStore?.spatialHierarchy ? sharedEffectivePhysicalEntityIds(dataStore, mutationView, mutationVersion) : new Set<number>(),
+    [dataStore, loadWindowOpen, mutationView, mutationVersion],
   );
 
   // Count storeys and elements — see `modelMetadataStats.ts` for what
@@ -109,7 +118,7 @@ function IfcModelMetadataPanel({ model }: { model: FederatedModel }) {
     (held, next) => held.modelId === next.modelId && held.streaming && next.streaming,
   ).geometry;
   const stats = useMemo(
-    () => computeModelStats(dataStore, statsGeometry, {
+    () => loadWindowOpen ? null : computeModelStats(dataStore, statsGeometry, {
       mutationView,
       physicalIds,
       // A completed cache hit may validly contain no geometry result. That is
@@ -118,15 +127,11 @@ function IfcModelMetadataPanel({ model }: { model: FederatedModel }) {
         statsGeometry != null ||
         model.loadState === 'complete' ||
         model.geometryLoadState === 'complete',
-      toLocalId: (globalId) => {
-        if (model.id === 'legacy' || model.id === 'default' || model.id === '__legacy__') {
-          return globalId;
-        }
-        const ref = fromGlobalId(globalId);
-        return ref?.modelId === model.id ? ref.expressId : undefined;
-      },
+      // The same walk and id mapping as the status bar's count (object-count.ts).
+      modelId: model.id,
+      toLocalId: modelLocalIdResolver(model.id, { resolveGlobalIdInModel, fromGlobalId }),
     }),
-    [dataStore, fromGlobalId, model.geometryLoadState, statsGeometry, model.id, model.loadState, mutationView, physicalIds],
+    [dataStore, loadWindowOpen, model.geometryLoadState, statsGeometry, model.id, model.loadState, mutationView, physicalIds, fromGlobalId, resolveGlobalIdInModel],
   );
 
   // The statistics describe the model as edited; the file rows above them stay
@@ -257,12 +262,12 @@ function IfcModelMetadataPanel({ model }: { model: FederatedModel }) {
           />
           <InspectorRow
             label={model.sourceSchema ? t('properties.modelMetadata.sourcePoints') : t('properties.modelMetadata.buildingStoreys')}
-            value={formatLocaleNumber(locale, model.sourceSchema ? landXmlStats.points : stats.storeys)}
+            value={model.sourceSchema ? formatLocaleNumber(locale, landXmlStats.points) : stats ? formatLocaleNumber(locale, stats.storeys) : STAT_PENDING}
             copy={false}
           />
           <InspectorRow
             label={model.sourceSchema ? t('properties.modelMetadata.sourceOverlays') : t('properties.modelMetadata.elementsWithGeometry')}
-            value={formatLocaleNumber(locale, model.sourceSchema ? landXmlStats.overlays : stats.elementsWithGeometry)}
+            value={model.sourceSchema ? formatLocaleNumber(locale, landXmlStats.overlays) : stats ? formatLocaleNumber(locale, stats.elementsWithGeometry) : STAT_PENDING}
             copy={false}
           />
           {!model.sourceSchema && (

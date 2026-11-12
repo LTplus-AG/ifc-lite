@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "packages/create/src/in-store/_structural-graph.ts",
+  "mutation": "tests/evidence/structural-face-model-owned-9668/behaviour.oracle.patch",
+  "test": "packages/create/src/in-store/structural-face-model-ownership.test.ts",
+  "why": "#9668 / #9819: Face-based surface models own their connected face sets and complete face resource graphs, retaining shared descendants."
+}

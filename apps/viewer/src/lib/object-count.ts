@@ -170,3 +170,96 @@ export function collectMeshedIds(
   }
   return ids;
 }
+
+
+/** The model ids that address a single, legacy store with no federation offset. */
+const LEGACY_IDS = new Set(['legacy', 'default', '__legacy__']);
+
+/** The two store resolvers the canonical mapping combines. */
+export interface ModelIdResolvers {
+  /** Model-scoped: parse range, then this model's overlay ids (`resolveGlobalIdInModel`). */
+  resolveGlobalIdInModel: (modelId: string, id: number) => { expressId: number } | null | undefined;
+  /** Federation registry (`fromGlobalId`), for a model the store's model map does not hold. */
+  fromGlobalId: (id: number) => { modelId: string; expressId: number } | null | undefined;
+}
+
+/**
+ * The canonical renderer-id -> model-local-id mapping for a model's own geometry,
+ * shared by every whole-model count so they cannot disagree: the model-scoped
+ * resolver (which also knows overlay-created ids), then the federation registry
+ * restricted to this model. Only the legacy single-store ids fall back to the
+ * id itself when neither resolves (a store with no federation entry); a
+ * federated model that happens to be called `default` still resolves its offset.
+ * Undefined when the id is not this model's.
+ */
+export function modelLocalIdResolver(modelId: string, resolvers: ModelIdResolvers): (id: number) => number | undefined {
+  const identityFallback = LEGACY_IDS.has(modelId);
+  return (id) => {
+    const scoped = resolvers.resolveGlobalIdInModel(modelId, id);
+    if (scoped) return scoped.expressId;
+    const ref = resolvers.fromGlobalId(id);
+    if (ref) return ref.modelId === modelId ? ref.expressId : undefined;
+    return identityFallback ? id : undefined;
+  };
+}
+
+const modelMeshedIds = new WeakMap<object, Map<string, ReadonlySet<number>>>();
+
+/** A model's meshed ids in its own id space, built once per geometry result. */
+export function sharedModelMeshedIds(
+  modelId: string,
+  geometryResult: Parameters<typeof collectMeshedIds>[0],
+  toLocalId: (id: number) => number | undefined,
+): ReadonlySet<number> {
+  if (!geometryResult) return EMPTY_IDS;
+  let byModel = modelMeshedIds.get(geometryResult);
+  if (!byModel) modelMeshedIds.set(geometryResult, byModel = new Map());
+  let ids = byModel.get(modelId);
+  if (!ids) {
+    const local = new Set<number>();
+    for (const id of sharedMeshedIds(geometryResult)) {
+      const localId = toLocalId(id);
+      if (localId !== undefined) local.add(localId);
+    }
+    byModel.set(modelId, ids = local);
+  }
+  return ids;
+}
+const EMPTY_IDS: ReadonlySet<number> = new Set();
+
+/** Inputs of {@link sharedShapedObjectCount}: one model's effective physical ids and its geometry. */
+export interface SharedShapedCountInput {
+  /** Which model the geometry and ids belong to. */
+  modelId: string;
+  /** `sharedEffectivePhysicalEntityIds(store, view, version)`: its identity stands for all three. */
+  physicalIds: ReadonlySet<number>;
+  geometryResult: Parameters<typeof collectMeshedIds>[0];
+  geometryReady: boolean;
+  relationships?: AggregationRelationships;
+  /** From {@link modelLocalIdResolver}. */
+  toLocalId: (id: number) => number | undefined;
+}
+
+const shapedCounts = new WeakMap<ReadonlySet<number>, Map<string, { geometryResult: unknown; geometryReady: boolean; count: number }>>();
+
+/**
+ * The number of a model's physical objects that have a shape: the one walk
+ * behind the status bar's element count and the model metadata panel's
+ * "Elements with Geometry". Both read it through this memo, so a settled model
+ * pays for the walk once, not once per consumer.
+ */
+export function sharedShapedObjectCount(input: SharedShapedCountInput): number {
+  let byModel = shapedCounts.get(input.physicalIds);
+  if (!byModel) shapedCounts.set(input.physicalIds, byModel = new Map());
+  const hit = byModel.get(input.modelId);
+  // `relationships` is not part of the key: it is a function of the same store
+  // and mutation view, and a new id set is built whenever those change.
+  if (hit && hit.geometryResult === input.geometryResult && hit.geometryReady === input.geometryReady) return hit.count;
+  const count = countShapedObjects(input.physicalIds, {
+    relationships: input.relationships,
+    meshedIds: sharedModelMeshedIds(input.modelId, input.geometryResult, input.toLocalId),
+    geometryReady: input.geometryReady,
+  });
+  byModel.set(input.modelId, { geometryResult: input.geometryResult, geometryReady: input.geometryReady, count });
+  return count;
+}

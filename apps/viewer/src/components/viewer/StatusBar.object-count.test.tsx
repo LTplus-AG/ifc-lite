@@ -28,9 +28,10 @@ import 'fake-indexeddb/auto';
 // time; under plain Node it doesn't exist, so StatusBar's footer version
 // string needs a stand-in before it renders.
 (globalThis as unknown as { __APP_VERSION__: string }).__APP_VERSION__ = '0.0.0-test';
-import { describe, it, beforeEach, after, mock } from 'node:test';
+import { describe, it, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
+import { settleLoadWindow } from '@/test/load-window';
 import { createRoot, type Root } from 'react-dom/client';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
@@ -169,13 +170,14 @@ beforeEach(async () => {
     mutationViews: new Map(),
     mutationVersion: 0,
     geometryStreamingActive: false,
+    loading: false,
   });
 });
 
 /** The rendered "… elements" run, e.g. "3 / 4 elements". */
 function elementsText(container: HTMLElement): string {
   const text = container.textContent ?? '';
-  const match = /(\d[\d,.\s/]*elements?)/.exec(text);
+  const match = /((?:\d[\d,.\s/]*|—\s*)elements?)/.exec(text);
   return match ? match[1].trim() : `<no element count in ${JSON.stringify(text)}>`;
 }
 
@@ -332,64 +334,71 @@ function setMeshedIds(expressIds: readonly number[]): void {
 // count walks every one of them, twice a second on a large load. The count
 // follows the streaming refresh cadence instead and is exact once streaming
 // ends.
-describe('StatusBar — object count while geometry streams (#6411)', () => {
-  it('holds the count between refreshes and lands the exact count when streaming ends', () => {
-    let clock = 0;
-    mock.method(performance, 'now', () => clock);
+describe('StatusBar — object count waits for the load to settle (load window; supersedes #6411\'s streaming hold)', () => {
+  it('shows a dash, never a provisional 0, while geometry streams, and the exact count once the load settles', async () => {
+    useViewerStore.setState({
+      geometryStreamingActive: true,
+      geometryResult: geometry(MESHED_IDS.filter((id) => id !== 56)),
+    });
+    const container = render();
+    assert.equal(elementsText(container), '— elements', 'early read: placeholder while the load window is open');
+    act(() => useViewerStore.setState({ geometryResult: geometry(MESHED_IDS) }));
+    assert.equal(elementsText(container), '— elements', 'a publish inside the window computes nothing');
+
+    act(() => useViewerStore.setState({ geometryStreamingActive: false }));
+    assert.equal(elementsText(container), '— elements', 'the settled frame paints before the count is computed');
+    await settleLoadWindow();
+    assert.equal(elementsText(container), '4 elements', 'settled: the exact count');
+  });
+
+  it('keeps the placeholder through a store publication while the load is still loading, then counts the new store', async () => {
+    useViewerStore.setState({
+      loading: true,
+      geometryStreamingActive: false,
+      geometryResult: geometry(MESHED_IDS.filter((id) => id !== 56)),
+    });
+    const container = render();
+    assert.equal(elementsText(container), '— elements');
+    const reparsed = await parseFixture();
+    act(() => useViewerStore.setState({ ifcDataStore: reparsed, geometryResult: geometry(MESHED_IDS) }));
+    assert.equal(elementsText(container), '— elements', 'metadata inside the window waits too');
+
+    act(() => useViewerStore.setState({ loading: false }));
+    await settleLoadWindow();
+    assert.equal(elementsText(container), '4 elements', 'settled on the new store and geometry');
+  });
+
+  it('does not run the whole-model walk while the window is open', async () => {
+    const real = useViewerStore.getState().resolveGlobalIdInModel;
+    let calls = 0;
+    const model = { id: 'm1', name: 'm1', ifcDataStore: store, geometryResult: geometry(MESHED_IDS), visible: true, idOffset: 0, loadState: 'complete' };
+    useViewerStore.setState({
+      models: new Map([['m1', model as never]]),
+      geometryStreamingActive: true,
+      resolveGlobalIdInModel: (modelId: string, id: number) => { calls++; return real(modelId, id); },
+    } as never);
     try {
-      useViewerStore.setState({
-        geometryStreamingActive: true,
-        geometryResult: geometry(MESHED_IDS.filter((id) => id !== 56)),
-      });
       const container = render();
-      assert.equal(elementsText(container), '2 elements');
-
-      clock = 1;
-      act(() => useViewerStore.setState({ geometryResult: geometry(MESHED_IDS) }));
-      assert.equal(elementsText(container), '2 elements', 'a publish within the refresh window is held');
-
+      assert.equal(calls, 0, 'early read: no mesh id was mapped, so no walk ran');
       act(() => useViewerStore.setState({ geometryStreamingActive: false }));
-      assert.equal(elementsText(container), '4 elements', 'streaming ended: the exact count');
+      await settleLoadWindow();
+      assert.ok(calls > 0, 'settled: the walk ran');
+      assert.notEqual(elementsText(container), '— elements', 'settled: a number, not the placeholder');
     } finally {
-      mock.restoreAll();
+      useViewerStore.setState({ resolveGlobalIdInModel: real } as never);
     }
   });
 
-  it('passes a non-geometry change through at once, even while streaming', async () => {
-    let clock = 0;
-    mock.method(performance, 'now', () => clock);
-    try {
-      useViewerStore.setState({
-        geometryStreamingActive: true,
-        geometryResult: geometry(MESHED_IDS.filter((id) => id !== 56)),
-      });
-      const container = render();
-      assert.equal(elementsText(container), '2 elements');
-      // Metadata arriving is a new data store, not progress: it must not wait
-      // for the geometry refresh even though geometry changed with it.
-      const reparsed = await parseFixture();
-      clock = 1;
-      act(() => useViewerStore.setState({ ifcDataStore: reparsed, geometryResult: geometry(MESHED_IDS) }));
-      assert.equal(elementsText(container), '4 elements');
-    } finally {
-      mock.restoreAll();
-    }
-  });
-
-  it('refreshes a long stream once the refresh is due', () => {
-    let clock = 0;
-    mock.method(performance, 'now', () => clock);
-    try {
-      useViewerStore.setState({
-        geometryStreamingActive: true,
-        geometryResult: geometry(MESHED_IDS.filter((id) => id !== 56)),
-      });
-      const container = render();
-      clock = 60_000;
-      act(() => useViewerStore.setState({ geometryResult: geometry(MESHED_IDS) }));
-      assert.equal(elementsText(container), '4 elements');
-    } finally {
-      mock.restoreAll();
-    }
+  it('reserves the count\'s width in both states, so the settled number does not move the bar', async () => {
+    useViewerStore.setState({ geometryStreamingActive: true, geometryResult: geometry(MESHED_IDS) });
+    const container = render();
+    const count = () => container.querySelector('[data-testid="status-element-count"]');
+    const pending = count()?.className;
+    assert.equal(count()?.getAttribute('aria-busy'), 'true');
+    act(() => useViewerStore.setState({ geometryStreamingActive: false }));
+    await settleLoadWindow();
+    assert.equal(count()?.className, pending, 'same reserved box before and after');
+    assert.match(String(pending), /min-w-\[\d+ch\]/);
+    assert.equal(count()?.getAttribute('aria-busy'), null);
   });
 });

@@ -13,6 +13,7 @@ import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, it, mock } from 'node:test';
 import { act, useState } from 'react';
+import { settleLoadWindow } from '@/test/load-window';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { render, cleanup } from '@/test/render.js';
@@ -22,7 +23,7 @@ import { ModelMetadataPanel } from './ModelMetadataPanel';
 afterEach(() => {
   cleanup();
   mock.restoreAll();
-  useViewerStore.setState({ geometryStreamingActive: false });
+  useViewerStore.setState({ geometryStreamingActive: false, loading: false });
 });
 
 const STEP = `ISO-10303-21;
@@ -65,13 +66,17 @@ async function parse(): Promise<IfcDataStore> {
 
 /** The number rendered after the "Elements with Geometry" label. */
 function elementsWithGeometry(panel: HTMLElement): string {
-  const match = /Elements with Geometry\D*([\d,]+)/.exec(panel.textContent ?? '');
+  const match = /Elements with Geometry[^\d—]*([\d,]+|—)/.exec(panel.textContent ?? '');
   return match ? match[1] : `<not found in ${JSON.stringify(panel.textContent)}>`;
 }
 
-it('holds "Elements with Geometry" while streaming and shows the exact count when streaming ends (#6411)', async () => {
-  let clock = 0;
-  mock.method(performance, 'now', () => clock);
+/** The value rendered after the "Building Storeys" label. */
+function buildingStoreys(panel: HTMLElement): string {
+  const match = /Building Storeys[^\d—]*([\d,]+|—)/.exec(panel.textContent ?? '');
+  return match ? match[1] : `<not found in ${JSON.stringify(panel.textContent)}>`;
+}
+
+it('shows a dash while the load window is open and the exact counts once it settles (load window; supersedes #6411)', async () => {
   const dataStore = await parse();
   const model = (ids: number[]) => ({
     id: 'legacy', name: 'M', ifcDataStore: dataStore, geometryResult: geometry(ids),
@@ -86,40 +91,40 @@ it('holds "Elements with Geometry" while streaming and shows the exact count whe
     return <ModelMetadataPanel model={current} />;
   }
   const panel = render(<Host />);
-  assert.equal(elementsWithGeometry(panel), '1');
+  assert.equal(elementsWithGeometry(panel), '—', 'early read: placeholder, never a provisional count');
+  assert.equal(buildingStoreys(panel), '—');
 
-  clock = 1;
   act(() => setModel(model([10, 11, 12])));
-  assert.equal(elementsWithGeometry(panel), '1', 'a publish within the refresh window is held');
+  assert.equal(elementsWithGeometry(panel), '—', 'a publish inside the window computes nothing');
 
   act(() => useViewerStore.setState({ geometryStreamingActive: false }));
-  assert.equal(elementsWithGeometry(panel), '3', 'streaming ended: the exact count');
+  await settleLoadWindow();
+  assert.equal(elementsWithGeometry(panel), '3', 'settled: the exact count');
+  assert.equal(buildingStoreys(panel), '1');
 });
 
-it('holds only this model\'s own streaming geometry: another model or this one finishing passes at once (#6411)', async () => {
-  let clock = 0;
-  mock.method(performance, 'now', () => clock);
+it('waits for the whole load window, whichever model streams, and then shows the displayed model\'s own count', async () => {
   const dataStore = await parse();
   const model = (id: string, ids: number[], loadState: FederatedModel['loadState']) => ({
     id, name: id, ifcDataStore: dataStore, geometryResult: geometry(ids), loadState, fileSize: 1, loadedAt: 0,
   }) as FederatedModel;
-  // The global flag stays on throughout: another federated model is still streaming.
+  // The global flag stays on: another federated model is still streaming. The
+  // main thread is shared, so a finished model's statistics wait for it too.
   useViewerStore.setState({ geometryStreamingActive: true, mutationViews: new Map(), mutationVersion: 0 });
 
   let setModel: (m: FederatedModel) => void = () => {};
   function Host() {
-    const [current, set] = useState(model('legacy', [10], 'streaming-geometry'));
+    const [current, set] = useState(model('legacy', [10, 11], 'complete'));
     setModel = set;
     return <ModelMetadataPanel model={current} />;
   }
   const panel = render(<Host />);
-  assert.equal(elementsWithGeometry(panel), '1');
+  assert.equal(elementsWithGeometry(panel), '—');
 
-  clock = 1;
-  act(() => setModel(model('legacy', [10, 11], 'complete')));
-  assert.equal(elementsWithGeometry(panel), '2', 'this model finished: its exact count, although another model still streams');
-
-  clock = 2;
   act(() => setModel(model('default', [10, 11, 12], 'streaming-geometry')));
-  assert.equal(elementsWithGeometry(panel), '3', 'a different model never shows the previous model\'s held geometry');
+  assert.equal(elementsWithGeometry(panel), '—', 'never the previous model\'s value');
+
+  act(() => useViewerStore.setState({ geometryStreamingActive: false }));
+  await settleLoadWindow();
+  assert.equal(elementsWithGeometry(panel), '3', 'settled: the displayed model\'s count');
 });

@@ -43,9 +43,8 @@
  *   stiffness values, so (as with the curve member) removal never has to
  *   reason about a second referrer.
  *
- *   Removal: same known gap as `structural-curve-member.ts` — see that
- *   module's doc comment for the full explanation. `StructuralPointConnectionBuildResult`
- *   exposes every owned id for the same reason.
+ *   `removeStructuralEntityInStore` reclaims the placement and condition when
+ *   no surviving entity references them. The result exposes their IDs too.
  *
  * Pure: no I/O, no parser access — operates entirely through the editor.
  */

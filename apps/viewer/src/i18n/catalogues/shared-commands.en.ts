@@ -134,6 +134,8 @@ export const sharedCommandsEn = {
   'classVisibility.annotations.description': 'Text, dimensions, leaders',
   'classVisibility.grids.label': 'Grids',
   'classVisibility.grids.description': 'Structural axes',
+  'classVisibility.structuralGlyphs.label': 'Supports & loads',
+  'classVisibility.structuralGlyphs.description': 'Structural analysis symbols',
 
   'classVisibility.mergeLayers.label': 'Merge multilayer walls',
   'classVisibility.mergeLayers.description': 'Render walls as one solid · on reload',

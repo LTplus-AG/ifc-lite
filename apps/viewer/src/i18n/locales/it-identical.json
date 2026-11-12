@@ -1563,6 +1563,10 @@
     "value": "{storey} ({elevation} m)",
     "reason": "Runtime storey names and formatted elevations use the same metre symbol and punctuation in Italian."
   },
+  "structuralGlyphs.tooltip": {
+    "value": "{kind} · {entity}",
+    "reason": "Composition of interpolated model values, symbols, units or shared Italian words; no English sentence is embedded."
+  },
   "tableChanges.matchTypeTag": {
     "value": "Tag",
     "reason": "tableChanges.matchTypeTag: Exact IFC EXPRESS attribute name used by this field, not an English prose description."

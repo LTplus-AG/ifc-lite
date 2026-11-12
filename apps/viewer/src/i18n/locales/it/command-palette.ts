@@ -195,4 +195,5 @@ export const commandPaletteIt = {
   "commandPalette.availability.noLoad": "Nessun caricamento corrispondente è ancora in corso",
   "commandPalette.availability.noLoadError": "Questo errore di caricamento è terminato o è stato sostituito",
   "commandPalette.availability.noLoadRetry": "Non è disponibile un nuovo tentativo per questo errore di caricamento",
+  "commandPalette.tool.deriveStructural.label": "Derivare il modello di analisi strutturale",
 } satisfies Catalogue;

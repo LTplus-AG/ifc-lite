@@ -22,6 +22,7 @@ catalogueBatchContract('de', 8900, [
   'storey-context',
   'storey-manager',
   'structural-glyphs',
+  'structural-derive',
   'structural-properties',
   'structural-review',
   'swept-disk-inspection',

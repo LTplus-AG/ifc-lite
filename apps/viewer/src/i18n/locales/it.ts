@@ -152,6 +152,7 @@ import { storeyContextIt } from './it/storey-context';
 import { structuralGlyphsIt } from './it/structural-glyphs';
 import { structuralPropertiesIt } from './it/structural-properties';
 import { structuralReviewIt } from './it/structural-review';
+import { structuralDeriveIt } from './it/structural-derive';
 import { sweptDiskInspectionIt } from './it/swept-disk-inspection';
 import { tableCorrectionsIt } from './it/table-corrections';
 import { terrainImageryIt } from './it/terrain-imagery';
@@ -315,6 +316,7 @@ export default {
   ...structuralGlyphsIt,
   ...structuralPropertiesIt,
   ...structuralReviewIt,
+  ...structuralDeriveIt,
   ...sweptDiskInspectionIt,
   ...tableCorrectionsIt,
   ...terrainImageryIt,

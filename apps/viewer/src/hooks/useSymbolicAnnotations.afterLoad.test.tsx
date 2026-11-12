@@ -23,6 +23,7 @@ import { __setOverlayWorkerFactoryForTest } from '@/lib/overlay-parse';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { FederatedModel } from '@/store/types';
 import { fixtureModel } from '@/test/store-fixture';
+import { settleLoadWindow } from '@/test/load-window';
 import { __resetAfterLoadIdleForTests } from '@/lib/perf/afterLoadIdle';
 import { __resetSymbolicAnnotationsCacheForTests, getDisplayParseFor, getParseFor } from './symbolic-parse-cache.js';
 import { useSymbolicAnnotations } from './useSymbolicAnnotations.js';
@@ -96,7 +97,7 @@ it('parses the overlay of a store published mid-load only after the load settles
   }
 });
 
-it('a settled model\'s overlay parses while another model loads, re-parses at once on an edit, and shows its last parse until the new one lands', async () => {
+it('a settled model\'s first overlay parse waits for another model\'s load (global window), re-parses at once on an edit, and shows its last parse until the new one lands', async () => {
   const storeA = fixtureDataStore([{ expressId: 7, type: 'IfcAnnotation' }, { expressId: 8, type: 'IfcGrid' }]);
   storeA.source = contiguousSourceBytes(new TextEncoder().encode('model A grids'));
   storeA.schemaVersion = 'IFC4';
@@ -130,15 +131,21 @@ it('a settled model\'s overlay parses while another model loads, re-parses at on
     root = createRoot(container);
     await act(async () => { root!.render(<Probe />); });
     await tick();
-    assert.equal(posts, 0, 'A\'s first parse is an after-load job: it waits for an idle period');
+    assert.equal(posts, 0, 'A\'s first parse is an after-load job');
     await act(async () => { for (const cb of idle.splice(0)) cb({ didTimeout: false, timeRemaining: () => 50 }); });
     await tick();
-    assert.equal(posts, 1, 'A parses in that idle period, while B still loads: B\'s load does not hold a settled model back');
+    assert.equal(posts, 0, 'B\'s load keeps the (global) load window open: A\'s first parse waits for it');
+    // B finishes loading; the window closes behind the settled frame, then A parses in the next idle period.
+    await act(async () => { useViewerStore.setState({ models: new Map([['a', model('a', storeA, 'complete')], ['b', model('b', storeB, 'complete')]]), loading: false, geometryStreamingActive: false } as never); });
+    await settleLoadWindow();
+    for (let i = 0; i < 5 && posts === 0; i++) { await act(async () => { for (const cb of idle.splice(0)) cb({ didTimeout: false, timeRemaining: () => 50 }); }); await tick(); }
+    assert.equal(posts >= 1, true, 'A parses once B\'s load has settled');
     await release();
     const before = getParseFor({ store: storeA });
     assert.ok(before, 'A\'s parse landed');
+    const postsBeforeEdit = posts;
 
-    // The user edits A while B still loads: A's key changes (pending changes + mutationVersion).
+    // The user edits A (no load running): A's key changes (pending changes + mutationVersion).
     const view = new MutablePropertyView(null, 'a');
     view.deleteEntity(7);
     let pendingShown = false;
@@ -152,11 +159,11 @@ it('a settled model\'s overlay parses while another model loads, re-parses at on
     assert.equal(exactBefore, undefined, 'the edited key has no parse until the re-parse lands');
     assert.equal(pendingShown, true, 'meanwhile the overlay keeps A\'s last parse');
     await tick();
-    assert.equal(idle.length, 0, 'nothing waits for an idle period');
+    // No idle callback is flushed between the edit and this read: the re-parse ran at once.
     const after = getParseFor({ store: storeA, mutationView: view });
-    assert.equal(after !== undefined && after !== before, true, 'the re-parse ran at once, without waiting for B');
+    assert.equal(after !== undefined && after !== before, true, 'the re-parse of an already parsed store ran at once');
     assert.equal(getDisplayParseFor({ store: storeA, mutationView: view }) === after, true, 'and replaces the last parse');
-    assert.equal(posts, 1, 'B (still loading) is not parsed');
+    assert.equal(posts, postsBeforeEdit, 'the re-parse reuses the source parse: no new worker request');
   } finally {
     __setOverlayWorkerFactoryForTest(previous);
   }

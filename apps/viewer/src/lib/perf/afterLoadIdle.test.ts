@@ -12,6 +12,7 @@ import { setFlagsFromString } from 'node:v8';
 import { runInNewContext } from 'node:vm';
 import { contiguousSourceBytes, type IfcDataStore } from '@ifc-lite/parser';
 import { fixtureDataStore, fixtureModel } from '@/test/store-fixture';
+import { settleLoadWindow } from '@/test/load-window';
 import { useViewerStore } from '../../store/index.js';
 import type { FederatedModel } from '../../store/types.js';
 import { compactSource } from '../source-compaction/source-compaction.js';
@@ -106,11 +107,16 @@ describe('runAfterModelSettled', () => {
     assert.equal(runs, 1);
   });
 
-  it('a settled model\'s job runs while another model loads', async () => {
+  it('a settled model\'s job waits while another model loads (the load window is global), then runs', async () => {
     setModels(model('a', 'complete'), model('b', 'streaming-geometry'));
     useViewerStore.setState({ loading: true, geometryStreamingActive: true, activeModelId: 'b' } as never);
     let runs = 0;
     runAfterModelSettled({ job: 'overlay-parse', modelId: 'a' }, () => { runs++; });
+    await flushIdle();
+    assert.equal(runs, 0, 'b\'s load window holds a\'s job back');
+    useViewerStore.setState({ loading: false, geometryStreamingActive: false } as never);
+    setModels(model('a', 'complete'), model('b', 'complete'));
+    await settleLoadWindow();
     await flushIdle();
     assert.equal(runs, 1);
   });

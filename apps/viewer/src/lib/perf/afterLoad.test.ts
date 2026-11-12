@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { fixtureDataStore, fixtureModel } from '@/test/store-fixture';
 import { settleLoadWindow } from '@/test/load-window';
+import { viewerLoadWindow } from '@/hooks/loadWindow';
 import { useViewerStore } from '../../store/index.js';
 import type { FederatedModel } from '../../store/types.js';
 import { __setAfterLoadQueueLoaderForTests, runAfterModelSettled } from './afterLoad.js';
@@ -84,8 +85,8 @@ describe('afterLoad: the eager scheduling call', () => {
     await flushIdle();
     assert.equal(runs, 0, 'not while the load window is open (record complete, store still loading)');
     useViewerStore.setState({ loading: false } as never); // settleLoadUi
-    await flushIdle();
-    assert.equal(runs, 0, 'not in the task that settles the load: the window closes behind the next painted frame');
+    assert.equal(viewerLoadWindow().isOpen(), true, 'still open in the task that settles the load: it closes behind the next painted frame');
+    assert.equal(runs, 0);
     await settleLoadWindow();
     await flushIdle();
     assert.equal(runs, 1, 'runs once the settled frame has painted and an idle period comes');

@@ -169,6 +169,21 @@ describe('fast path runtime', () => {
     rt.stop();
   });
 
+  it('measurement modes prepare one spare alone (?perf.fastPath=parser | geometry)', async () => {
+    const parserOnly = host({ parts: { parser: true, geometry: false } });
+    const a = createFastPathRuntime(parserOnly.deps)!;
+    await parserOnly.runIdle();
+    assert.equal(parserOnly.workers.length, 0, 'no geometry spare');
+    assert.equal(parserOnly.parserPrepares, 1);
+    a.stop();
+    const geometryOnly = host({ parts: { parser: false, geometry: true } });
+    const b = createFastPathRuntime(geometryOnly.deps)!;
+    await ready(geometryOnly);
+    assert.equal(geometryOnly.parserPrepares, 0, 'no parser spare');
+    assert.equal(b.state().geometrySpare, 'ready');
+    b.stop();
+  });
+
   it('an idle callback that fires during a load does no work at all (no compile, no fetch)', async () => {
     let compiles = 0;
     let fire: (() => void) | null = null;

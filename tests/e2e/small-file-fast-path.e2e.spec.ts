@@ -20,8 +20,9 @@
  * Everything read back from the page is a count or a short string, never a mesh array.
  */
 
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { basename, join } from 'node:path';
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 
 const FIXTURES = [
@@ -40,10 +41,39 @@ interface LoadSummary {
   entities: number | null;
 }
 
+/** CRC-32 (IEEE), for the STORED zip below. */
+function crc32(bytes: Uint8Array): number {
+  let crc = 0xffffffff;
+  for (let i = 0; i < bytes.length; i++) {
+    crc ^= bytes[i];
+    for (let k = 0; k < 8; k++) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+/** A one-entry STORED (uncompressed) ZIP archive of `data` under `name`, written to a temp file named `outName`. */
+function zipSample(name: string, data: Uint8Array, outName: string): string {
+  const nameBytes = new TextEncoder().encode(name);
+  const crc = crc32(data);
+  const local = Buffer.alloc(30); // local file header
+  local.writeUInt32LE(0x04034b50, 0); local.writeUInt16LE(20, 4); local.writeUInt32LE(crc, 14);
+  local.writeUInt32LE(data.length, 18); local.writeUInt32LE(data.length, 22); local.writeUInt16LE(nameBytes.length, 26);
+  const central = Buffer.alloc(46); // central directory header
+  central.writeUInt32LE(0x02014b50, 0); central.writeUInt16LE(20, 4); central.writeUInt16LE(20, 6); central.writeUInt32LE(crc, 16);
+  central.writeUInt32LE(data.length, 20); central.writeUInt32LE(data.length, 24); central.writeUInt16LE(nameBytes.length, 28);
+  const centralOffset = local.length + nameBytes.length + data.length;
+  const end = Buffer.alloc(22); // end of central directory
+  end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(1, 8); end.writeUInt16LE(1, 10);
+  end.writeUInt32LE(central.length + nameBytes.length, 12); end.writeUInt32LE(centralOffset, 16);
+  const out = join(mkdtempSync(join(tmpdir(), 'fast-path-zip-')), outName);
+  writeFileSync(out, Buffer.concat([local, nameBytes, data, central, nameBytes, end]));
+  return out;
+}
+
 async function openFixture(page: Page, fixture: string): Promise<void> {
   await page.waitForFunction(() => Boolean((globalThis as Record<string, unknown>).__ifc_lite_viewer_store__));
   const previous = await page.evaluate(() => (globalThis as Record<string, any>).__IFC_LITE_LOAD_TRACE__?.latest()?.loadId ?? null);
-  await page.locator('#file-input-open').setInputFiles(join(process.cwd(), fixture));
+  await page.locator('#file-input-open').setInputFiles(fixture.startsWith('/') ? fixture : join(process.cwd(), fixture));
   await page.waitForFunction((previous) => {
     const g = globalThis as Record<string, any>;
     const load = g.__IFC_LITE_LOAD_TRACE__?.latest();
@@ -120,5 +150,23 @@ for (const FIXTURE of FIXTURES) test.describe(`small-file fast path: ${FIXTURE.s
     expect(on.summary.instanced, 'instanced templates drawn and their GPU bytes').toEqual(off.summary.instanced);
     expect(on.summary.shardsDecoded, 'instanced shards decoded').toBe(off.summary.shardsDecoded);
     expect(on.summary.entities, 'data store entities').toBe(off.summary.entities);
+  });
+});
+
+test.describe('small-file fast path: a ZIP archive named .ifc', () => {
+  const SAMPLE = 'apps/viewer/public/samples/building-architecture.ifc';
+  test.skip(!existsSync(join(process.cwd(), SAMPLE)), `${SAMPLE} missing`);
+
+  test('loads to the same scene as with the fast path off, and the spare\'s run is not used', async ({ context }) => {
+    // Generated here from the committed sample (no binary fixture): STORED, one entry, named .ifc.
+    const archive = zipSample(basename(SAMPLE), new Uint8Array(readFileSync(join(process.cwd(), SAMPLE))), 'zipped-sample.ifc');
+    const off = await load(context, archive, false);
+    const on = await load(context, archive, true);
+    expect(off.claimed).toBe(false);
+    expect(on.claimed, 'the claim is refused: the loader parses the unwrapped model, not the picked bytes').toBe(false);
+    expect(off.summary.elements.length, 'elements compared').toBeGreaterThan(0);
+    expect(on.summary.meshes).toBe(off.summary.meshes);
+    expect(differingElements(off.summary, on.summary), 'per-element mesh bytes').toEqual({ count: 0, first: [] });
+    expect(on.summary.entities).toBe(off.summary.entities);
   });
 });

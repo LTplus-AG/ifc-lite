@@ -14,7 +14,9 @@ export function inheritedFireRating(step, walls) {
   }));
   return walls.length === 2 && types.size === 1 && !types.has(undefined) && sets.length === 1 &&
     step.get([...types][0])?.args[5]?.some(r => r.ref === sets[0].id) &&
-    !step.of('IFCRELDEFINESBYPROPERTIES').some(r => r.args[5]?.ref === sets[0].id && r.args[4]?.some(v => walls.some(w => w.id === v.ref)));
+    !step.of('IFCRELDEFINESBYPROPERTIES').some(r => r.args[4]?.some(v => walls.some(w => w.id === v.ref)) &&
+      step.get(r.args[5])?.args[2] === 'Pset_WallCommon' &&
+      step.get(r.args[5])?.args[4]?.some(ref => step.get(ref)?.args[0] === 'FireRating'));
 }
 export function layerUsage(step, wall, thicknesses) {
   const rel = step.of('IFCRELASSOCIATESMATERIAL').find(r => r.args[4]?.some(v => v.ref === wall?.id));
@@ -55,4 +57,9 @@ export function assignedLayerMaterials(step, wallId) {
       if (set?.type !== 'IFCMATERIALLAYERSET') return [];
       return (set.args[0] ?? []).map(ref => step.get(step.get(ref)?.args[0])?.args[0]);
     });
+}
+
+/** Missing or empty review content cannot demonstrate a readable change summary. */
+export function plainLanguageReview(text) {
+  return typeof text === 'string' && text.trim().length > 0 && !/#\d+\s*=\s*IFC/i.test(text);
 }

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { selectWall } from '../lib/authoring-helpers.mjs';
-import { classificationOf } from '../lib/measured-oracles.mjs';
+import { classificationOf, plainLanguageReview } from '../lib/measured-oracles.mjs';
 import { wallPropertySets, wallQuantityCoverage } from '../lib/oracles.mjs';
 import { downloadCount, nextDownload, task } from '../lib/driver.mjs';
 
@@ -68,7 +68,7 @@ export default {
           { name: '4 walls in the file', ok: (step?.count('IFCWALL') ?? 0) === 4, detail: `${step?.count('IFCWALL')}` },
           { name: 'base quantities on walls', ok: q.length === 4 && q.every((values) => Number.isFinite(values.Length) && Number.isFinite(values.NetVolume)), detail: JSON.stringify(q) },
           { name: 'a property set on the walls', ok: psets.length === 4 && psets.every((names) => names.length > 0), detail: JSON.stringify(psets) },
-          { name: 'export review uses plain language', ok: reviewText !== null && !/#\d+\s*=\s*IFC/i.test(reviewText), detail: reviewText?.slice(0,500) ?? 'no review dialog' },
+          { name: 'export review uses plain language', ok: plainLanguageReview(reviewText), detail: reviewText?.slice(0,500) ?? 'no review dialog' },
           { name: 'classification reference present', ok: classified, detail: classified ? 'yes' : 'No classification relationship to the selected wall was exported' },
         ],
       };

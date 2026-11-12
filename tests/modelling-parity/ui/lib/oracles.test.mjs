@@ -94,3 +94,19 @@ test('#9874 a duplicated CSV wall cannot substitute for the other equal-length w
   assert.equal(scheduleMatchesWalls('Name,Length (m)\r\n"Wall, A",5\r\n"Wall, A",5',walls),false);
   assert.equal(scheduleMatchesWalls('Name,Length (m)\r\n"Wall, A",5\r\nWall B,6',walls),false);
 });
+
+
+test('#9874 an occurrence FireRating override cannot pass as inherited', () => {
+  const overridden = readStep(fixture.replace('ENDSEC;', `
+#20=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('REI30'),$);
+#21=IFCPROPERTYSET('override',$,'Pset_WallCommon',$,(#20));
+#22=IFCRELDEFINESBYPROPERTIES('o',$,$,$,(#1),#21);
+ENDSEC;`));
+  assert.equal(inheritedFireRating(overridden,overridden.of('IFCWALL')),false);
+});
+
+test('#9874 plain-language review requires visible non-STEP text', async () => {
+  const { plainLanguageReview } = await import('./measured-oracles.mjs');
+  for (const value of [null, '', '  \n ', '#12=IFCWALL(...)']) assert.equal(plainLanguageReview(value),false);
+  assert.equal(plainLanguageReview('4 walls added'),true);
+});

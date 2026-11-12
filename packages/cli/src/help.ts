@@ -19,6 +19,7 @@ export function buildHelp(version: string): string {
     info      <file.ifc>                          Model summary (schema, entities, storeys)
     query     <file.ifc> [--type T] [--json]      Query entities by type/properties/quantities
               [--select "IfcWall, Pset_WallCommon.FireRating=2HR"]  IfcOpenShell-style selector (classes union with --type; properties AND with --where)
+    structural <file.ifc> [--json]              Read analysis models, members, connections, loads, reactions and physical links
     props     <file.ifc> --id <N>                 All properties for a single entity
     export    <file.ifc> --format csv|json|ifc|obj|gltf|glb|jsonld|step|ifcx|usd|3dm|hbjson|dfjson  Export data / geometry / energy model
               3dm: --units source|meters|millimeters|centimeters|feet|inches

@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "packages/create/src/in-store/structural-remove.ts",
+  "mutation": "tests/evidence/structural-remove-inheritance-9668/behaviour.oracle.patch",
+  "test": "packages/create/src/in-store/structural-remove-inheritance.test.ts",
+  "why": "#9668 / #9819: Required inverse memberships include base and derived relationships in source-loaded and overlay models."
+}

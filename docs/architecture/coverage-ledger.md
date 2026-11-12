@@ -501,7 +501,7 @@ Columns:
 | IfcRelConnectsPorts | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelConnectsPortToElement | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelConnectsStructuralActivity | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | IFC4:✅ | — |
-| IfcRelConnectsStructuralElement | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcRelConnectsStructuralElement | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelConnectsStructuralMember | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcRelConnectsWithEccentricity | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelConnectsWithRealizingElements | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |

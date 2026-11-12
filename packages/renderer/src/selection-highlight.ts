@@ -27,11 +27,17 @@ const NO_IDS: ReadonlySet<number> = new Set<number>();
  * The ids of an unchanged `selectedIds` object re-read on a frame of an
  * interaction. A caller may edit its Set in place to other ids of the same
  * count, which neither the object nor its size shows. A frame at rest reads
- * every id to see that; an interactive frame, the one that has to stay cheap,
- * reads this many and carries on where the last one stopped, so such an edit
- * is seen within `size / SELECTION_IDS_VERIFIED_PER_FRAME` interactive frames.
+ * every id to see that. An interactive frame, the one that has to stay cheap,
+ * reads up to this many and carries on where the last one stopped: a Set of up
+ * to this size is still compared whole on every frame, and an edit to a larger
+ * one is seen within `size / SELECTION_IDS_VERIFIED_PER_FRAME` interactive frames.
+ *
+ * Sized by cost: one pass is a lookup per id, measured at about 0.17 ms for
+ * 16,916 ids, 1.3 ms for 65,536 and 8 ms for 300,000 (the lookups stop fitting
+ * the cache). 32,768 keeps an orbit frame's share under about half a
+ * millisecond and covers selections of tens of thousands exactly.
  */
-export const SELECTION_IDS_VERIFIED_PER_FRAME = 4096;
+export const SELECTION_IDS_VERIFIED_PER_FRAME = 32_768;
 
 /**
  * `RenderOptions.selectedId` and `selectedIds` as one set, rebuilt only when

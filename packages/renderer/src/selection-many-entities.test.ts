@@ -9,7 +9,7 @@ import type { DecodedInstancedShard, MeshData } from '@ifc-lite/geometry';
 import type { Scene } from './scene.js';
 import type { RenderOptions } from './types.js';
 import { OpaqueVisibilityPass } from './opaque-visibility-pass.js';
-import { MESH_UNIFORM_BYTES } from './mesh-rte-uniforms.js';
+import { MESH_FLAGS_BYTE_OFFSET, MESH_UNIFORM_BYTES } from './mesh-rte-uniforms.js';
 import { uploadMergedMeshes, uploadIndividualMesh } from './individual-mesh-upload.js';
 import { matchesHoveredMesh } from './selection-outline-frame.js';
 import { planPickMeshHydration } from './pick-mesh-budget.js';
@@ -42,7 +42,9 @@ interface Draw { vertexBuffer: FakeBuffer; indexBuffer: FakeBuffer; indexCount: 
 const VERTEX_OR_INDEX = 48;
 
 function makeHarness() {
-  const stats = { buffers: [] as FakeBuffer[], bindGroups: 0, writes: 0, destroyedBufferDraws: 0, destroyedAtSubmit: 0, draws: [] as Draw[] };
+  const stats = { buffers: [] as FakeBuffer[], bindGroups: 0, writes: 0, destroyedBufferDraws: 0, destroyedAtSubmit: 0, draws: [] as Draw[],
+    /** The last uniform block written to each mesh uniform buffer. */
+    uniforms: new Map<FakeBuffer, Uint8Array>() };
   /** Every buffer the open frame wrote or drew: a real submit rejects the frame if one was destroyed by then. */
   const frameBuffers = new Set<FakeBuffer>();
   let vertexBuffer: FakeBuffer | null = null;
@@ -74,6 +76,7 @@ function makeHarness() {
     writeBuffer(buffer: FakeBuffer, offset: number, data: ArrayBufferView) {
       stats.writes++;
       frameBuffers.add(buffer);
+      if (buffer.size === MESH_UNIFORM_BYTES) stats.uniforms.set(buffer, new Uint8Array(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)));
       if (buffer.usage & VERTEX_OR_INDEX) { // keep the geometry to assert on
         buffer.bytes ??= new Uint8Array(buffer.size);
         buffer.bytes.set(new Uint8Array(data.buffer, data.byteOffset, data.byteLength), offset);
@@ -308,14 +311,14 @@ describe('selecting many entities (#9835)', () => {
       h.render({ selectedIds }); // the frame at rest after it
       return { pieceLookups: pieceLookups.count, idLookups, atRest: selectedIds.lookups, count };
     };
-    const small = settledWork(20_000);
-    const large = settledWork(60_000);
+    const small = settledWork(2_000);
+    const large = settledWork(SELECTION_IDS_VERIFIED_PER_FRAME + 8_000);
     assert.equal(large.pieceLookups, 0, 'no entity\'s pieces are looked up on a frame that changed nothing');
     assert.equal(small.pieceLookups, 0);
-    // A frame re-checks a bounded slice of the ids (an in-place edit must not go
-    // unseen) and tests the drawn meshes against them: neither grows with the selection.
-    assert.equal(large.idLookups, small.idLookups, 'the ids read a frame do not grow with the selection');
-    assert.ok(large.idLookups <= 3 * (SELECTION_IDS_VERIFIED_PER_FRAME + 4), `${large.idLookups} id reads in three frames`);
+    // An orbit frame re-reads the ids (an in-place edit must not go unseen), up
+    // to a fixed number of them, and tests the drawn meshes against them.
+    assert.ok(small.idLookups <= 3 * (small.count + 8), `${small.idLookups} id reads in three frames for ${small.count} ids`);
+    assert.ok(large.idLookups <= 3 * (SELECTION_IDS_VERIFIED_PER_FRAME + 8), `${large.idLookups} id reads in three frames: capped, not ${large.count} a frame`);
     // A frame at rest reads the ids once (so an in-place edit shows at once) and still looks up no pieces.
     for (const run of [small, large]) assert.ok(run.atRest <= run.count + 8, `${run.atRest} id reads at rest for ${run.count} ids`);
   });
@@ -382,7 +385,10 @@ describe('selecting many entities (#9835)', () => {
     assert.deepEqual(cost.drawn().inDrawOrder, inSelectionOrder, 'drawn in the order one copy per piece would be');
   });
 
-  it('never draws a pool holding glass as translucent geometry of its own', () => {
+  // Review of #9916 asked which passes draw a pool that holds glass. With
+  // batches (every loaded model) the mesh pass draws no opaque individual mesh
+  // at all, and the pool is opaque, so only the highlight and its mask draw it.
+  it('draws a pool holding glass through the highlight and its outline mask only, when the model is batched', () => {
     const h = makeHarness();
     const glass: [number, number, number, number] = [0.2, 0.4, 0.8, 0.3];
     load(h, model(1_000, (id) => ({ color: id === 1 ? glass : GREY })));
@@ -394,9 +400,47 @@ describe('selecting many entities (#9835)', () => {
     assert.equal(pool.finish, undefined);
     const before = h.stats.draws.length;
     h.render({ selectedIds });
+    const frame = h.stats.draws.slice(before);
+    const label = (draw: Draw) => (draw.pipeline as { label?: string } | null)?.label;
+    const poolDraws = frame.filter((draw) => draw.vertexBuffer === (pool.vertexBuffer as unknown as FakeBuffer));
+    assert.equal(poolDraws.filter((draw) => draw.pipeline === h.SELECTION).length, 1, 'the highlight, once');
+    assert.equal(poolDraws.filter((draw) => label(draw) === 'opaque').length, 0, 'the opaque mesh pass does not draw it');
+    assert.equal(poolDraws.filter((draw) => label(draw) === 'transparent').length, 0, 'nor the transparent one');
+    assert.ok(poolDraws.length <= 3, `${poolDraws.length} draws of the pool: the highlight and at most two mask passes`);
+    // The glass itself is still drawn as glass, from its batch.
+    assert.equal(frame.filter((draw) => label(draw) === 'transparent').length, 1, 'the glass batch, once, through the transparent pipeline');
+  });
+
+  // Without batches the frame draws individual meshes itself and has no
+  // highlight pass: a selected mesh is flagged in its own uniform. That is how
+  // each per-piece copy was drawn, and it is how the pool is.
+  it('draws a pool once, flagged selected, when the scene has no batches', () => {
+    const h = makeHarness();
+    const glass: [number, number, number, number] = [0.2, 0.4, 0.8, 0.3];
+    for (const meshData of model(600, (id) => ({ color: id === 1 ? glass : GREY }))) h.scene.addMeshData(meshData);
+    const selectedIds = new Set(idsOf(600));
+    h.render({ selectedIds });
+    const [pool] = hydrated(h);
+    assert.ok(pool?.mergedSelection?.ids, 'pooled');
+    const before = h.stats.draws.length;
+    h.render({ selectedIds });
     const poolDraws = h.stats.draws.slice(before).filter((draw) => draw.vertexBuffer === (pool.vertexBuffer as unknown as FakeBuffer));
-    assert.ok(poolDraws.length > 0);
-    assert.equal(poolDraws.filter((draw) => (draw.pipeline as { label?: string }).label === 'transparent').length, 0, 'only the highlight and its outline mask draw it');
+    assert.equal(poolDraws.length, 1, 'one draw');
+    const uniform = h.stats.uniforms.get(pool.uniformBuffer as unknown as FakeBuffer)!;
+    assert.equal(new Uint32Array(uniform.buffer, MESH_FLAGS_BYTE_OFFSET, 1)[0] & 1, 1, 'with the selected flag in its uniform');
+  });
+
+  // Review of #9916: 10,000 ids, one swapped in place at the same size.
+  it('shows an in-place swap in a 10,000-id Set on the next frame, during an interaction too', () => {
+    const h = makeHarness();
+    const meshes = model(10_001);
+    load(h, meshes);
+    const selectedIds = new Set(idsOf(10_000));
+    h.render({ selectedIds, isInteracting: true });
+    selectedIds.delete(4_000);
+    selectedIds.add(10_001);
+    const after = frameCost(h, { selectedIds, isInteracting: true }).drawn();
+    assert.equal(after.ids.has(10_001) && !after.ids.has(4_000) && after.ids.size === 10_000, true);
   });
 
   it('keeps the pool when the same selection arrives as a new Set, and rebuilds when its ids change', () => {
@@ -824,17 +868,18 @@ describe('the frame\'s selection snapshot (#9835)', () => {
 
   it('hands back the same set while the same Set is passed, reading a bounded number of ids on an interactive frame', () => {
     const selection = snapshot();
-    const ids = new CountingSet(idsOf(100_000));
+    const count = 4 * SELECTION_IDS_VERIFIED_PER_FRAME;
+    const ids = new CountingSet(idsOf(count));
     const first = selection.update(null, ids, true);
     const version = selection.getVersion();
     ids.lookups = 0;
-    for (let i = 0; i < 5; i++) assert.equal(selection.update(null, ids, true), first);
-    assert.equal(ids.lookups, 5 * SELECTION_IDS_VERIFIED_PER_FRAME, 'not the 100,000 ids a frame a rebuild would read');
+    for (let i = 0; i < 3; i++) assert.equal(selection.update(null, ids, true), first);
+    assert.equal(ids.lookups, 3 * SELECTION_IDS_VERIFIED_PER_FRAME, `not the ${count} ids a frame a rebuild would read`);
     ids.lookups = 0;
     assert.equal(selection.update(null, ids), first, 'a frame at rest reads them all once, and still keeps the set');
-    assert.ok(ids.lookups <= 100_000 + 1, `${ids.lookups} id reads at rest`);
+    assert.ok(ids.lookups <= count + 1, `${ids.lookups} id reads at rest`);
     assert.equal(selection.getVersion(), version);
-    assert.equal(first.size, 100_000);
+    assert.equal(first.size, count);
   });
 
   it('sees a Set edited in place to other ids of the same count: on the next frame at rest, within a few interactive frames when large', () => {
@@ -848,16 +893,26 @@ describe('the frame\'s selection snapshot (#9835)', () => {
       assert.equal(after.has(99_999) && !after.has(2) && after.size === count, true, `${count} ids: the very next frame`);
     }
 
+    // During an interaction, a Set up to the per-frame re-read is still compared whole.
+    const within = snapshot();
+    const tenThousand = new Set(idsOf(10_000));
+    within.update(null, tenThousand, true);
+    tenThousand.delete(7);
+    tenThousand.add(99_999);
+    const next = within.update(null, tenThousand, true);
+    assert.equal(next.has(99_999) && !next.has(7), true, '10,000 ids, interactive: the very next frame');
+
     const interactive = snapshot();
-    const many = new Set(idsOf(20_000));
+    const count = 3 * SELECTION_IDS_VERIFIED_PER_FRAME + 5;
+    const many = new Set(idsOf(count));
     const before = interactive.update(null, many, true);
     many.delete(7);
-    many.add(99_999);
-    const frames = Math.ceil(20_000 / SELECTION_IDS_VERIFIED_PER_FRAME);
+    many.add(9_999_999);
+    const frames = Math.ceil(count / SELECTION_IDS_VERIFIED_PER_FRAME);
     let after = before;
     for (let i = 0; i < frames && after === before; i++) after = interactive.update(null, many, true);
-    assert.notEqual(after, before, `within ${frames} interactive frames`);
-    assert.equal(after.has(99_999), true);
+    assert.notEqual(after, before, `${count} ids, interactive: within ${frames} frames`);
+    assert.equal(after.has(9_999_999), true);
     assert.equal(after.has(7), false);
   });
 

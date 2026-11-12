@@ -668,9 +668,9 @@ geometry in GPU memory, about 28 bytes per vertex and 4 per index.
 The Set is compared by content on every frame, with one lookup per id and no
 allocation, so a new Set, a Set that grew or shrank and any edit made in place
 are seen on the next frame. The exception is a frame rendered with
-`isInteracting`: it re-reads 4,096 ids and continues on the next one, so
-swapping ids in place at the same count in a larger Set is seen within a few
-interactive frames. Passing a new Set avoids that.
+`isInteracting`: it re-reads up to 32,768 ids and continues on the next one,
+so swapping ids in place at the same count in a larger Set is seen within a
+few interactive frames. Passing a new Set avoids that.
 
 ### Raycasting
 

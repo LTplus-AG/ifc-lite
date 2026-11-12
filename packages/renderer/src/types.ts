@@ -259,7 +259,7 @@ export interface RenderOptions {
    */
   isolatedIds?: Set<number> | null;
   selectedId?: number | null;     // Currently selected mesh (for highlighting)
-  selectedIds?: Set<number>;      // Multi-selection. Re-read in full on every frame at rest; while `isInteracting`, a same-size in-place edit of a Set past 4,096 ids is seen within a few frames (#9835)
+  selectedIds?: Set<number>;      // Multi-selection. Re-read in full on every frame at rest; while `isInteracting`, a same-size in-place edit of a Set past 32,768 ids is seen within a few frames (#9835)
   selectedItemId?: number;        // #4382: narrows selectedId's highlight to one representation item (geometryItemId); no effect on selectedIds
   /** `capHighlightKey(modelIndex, id)` → RGBA (0–1) painted over that element's section-cap polygons (selection / hover); compared by content each frame. */
   capHighlight?: ReadonlyMap<string, readonly [number, number, number, number]> | null;

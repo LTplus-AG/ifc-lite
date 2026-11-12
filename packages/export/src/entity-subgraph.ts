@@ -111,8 +111,10 @@ export function serializeEntitySubgraph(
   // Material appearances are inverse references, not reachable from IfcMaterial.
   // Include only definitions of materials reached by this remesh (#9296).
   for (const id of index.byType.get('IFCMATERIALDEFINITIONREPRESENTATION') ?? []) {
-    const material = index.effectiveAttributeRef(id, 'RepresentedMaterial');
-    if (material === undefined || !walked.has(material)) continue;
+    const line = writer.line(id);
+    const slot = line === null ? undefined : readStepSlots(line)?.slots[3];
+    const material = slot === undefined ? undefined : refGroupFromArg(slot);
+    if (typeof material !== 'number' || !walked.has(material)) continue;
     for (const child of collectReferencedEntityIds(new Set([id]), store.source, index)) walked.add(child);
   }
   const owningGrid = gridReferenceContext(index, (id) => writer.line(id, false), schema);

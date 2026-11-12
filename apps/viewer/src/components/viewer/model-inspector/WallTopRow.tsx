@@ -150,7 +150,7 @@ export function WallTopRow({ modelId, wallId }: { modelId: string; wallId: numbe
         {target && <span title={target.raw} className="whitespace-normal break-words text-2xs leading-snug text-muted-foreground">{target.text}</span>}
       </div>
     </InspectorRow>
-    {picking && <p role="status">{t('modelingCommand.wall.pickTop')}</p>}
+    {picking && <output>{t('modelingCommand.wall.pickTop')}</output>}
     <InspectorRow label={t('modelingCommand.wall.topOffset')} htmlFor="wall-top-offset">
       <CommitField id="wall-top-offset" ariaLabel={t('modelingCommand.wall.topOffset')} value={offsets?.top?.toFixed(3) ?? ''} readOnly={offsets?.top == null}
         onCommit={text => { setError(''); return setWallOffset(modelId, wallId, 'top', text.trim() ? Number(text) : NaN, setError); }} />

@@ -170,7 +170,7 @@ it('#9296 invalid picks keep the wall selected; Escape cancels without an edit',
   act(() => selectPickedGlobalId(wall.expressId));
   assert.match(ui.querySelector('[role="alert"]')!.textContent!, /Pick a slab or roof/);
   press(window, 'Escape');
-  assert.equal(ui.querySelector('[role="status"]'), null);
+  assert.equal(ui.querySelector('output'), null);
   assert.equal(s.readWallEndpoints(MODEL_ID, wall.expressId)!.height, 3);
 });
 
@@ -232,7 +232,7 @@ it('#9296 roof coverage refusal appears inline and the existing target can be pi
   const repick = [...ui.querySelectorAll('button')].find(button => button.textContent === 'Pick another slab or roof…');
   assert.ok(repick);
   click(repick);
-  assert.ok(ui.querySelector('[role="status"]'));
+  assert.ok(ui.querySelector('output'));
   press(window, 'Escape');
   assert.equal(readWallTop(MODEL_ID, wall.expressId).top, 'element');
 });

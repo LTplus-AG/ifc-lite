@@ -97,6 +97,22 @@ interface EarlyRequest {
   result: Promise<RequestedRendererDevice | null>;
   lost: boolean;
   expiry: ReturnType<typeof setTimeout>;
+  /** Resolves when the host lets the renderer start its setup (see {@link PrerequestOptions.setupGate}). */
+  setupGate: Promise<unknown>;
+}
+
+/** Longest a renderer waits on a setup gate the host never opens. */
+export const SETUP_GATE_MAX_MS = 1000;
+
+export interface PrerequestOptions {
+  /** How long an unclaimed device is held before it is destroyed. */
+  holdMs?: number;
+  /**
+   * Hold the claiming renderer's setup (canvas configuration, pipelines, picker) until this settles, at most
+   * {@link SETUP_GATE_MAX_MS}. A host whose own start-up competes for the main thread (a cold load reading its file
+   * and starting workers) opens it when that work is under way; the device itself is requested at once regardless.
+   */
+  setupGate?: Promise<unknown>;
 }
 
 let early: EarlyRequest | null = null;
@@ -116,7 +132,8 @@ export const DEVICE_REQUEST_WAIT_MS = 50;
  * returned promise first: it resolves once `requestDevice` is in flight, or
  * after {@link DEVICE_REQUEST_WAIT_MS} at most, or when the request failed.
  */
-export function prerequestRendererDevice(holdMs = PREREQUESTED_DEVICE_HOLD_MS): Promise<void> | null {
+export function prerequestRendererDevice(options: number | PrerequestOptions = {}): Promise<void> | null {
+  const { holdMs = PREREQUESTED_DEVICE_HOLD_MS, setupGate } = typeof options === 'number' ? { holdMs: options } : options;
   const gpu = (globalThis.navigator as { gpu?: GPU } | undefined)?.gpu;
   if (early || !gpu) return null;
   let inFlight!: () => void;
@@ -125,6 +142,7 @@ export function prerequestRendererDevice(holdMs = PREREQUESTED_DEVICE_HOLD_MS): 
   const entry: EarlyRequest = {
     result: Promise.resolve(null),
     lost: false,
+    setupGate: setupGate ?? Promise.resolve(),
     expiry: setTimeout(() => {
       if (early !== entry) return;
       early = null;
@@ -162,7 +180,10 @@ export function claimPrerequestedRendererDevice(): Promise<RequestedRendererDevi
   if (!entry) return null;
   early = null;
   clearTimeout(entry.expiry);
-  return entry.result.then((requested) => {
+  let bound: ReturnType<typeof setTimeout> | undefined;
+  const gate = Promise.race([entry.setupGate.then(() => undefined, () => undefined),
+    new Promise<void>((resolve) => { bound = setTimeout(resolve, SETUP_GATE_MAX_MS); })]).finally(() => clearTimeout(bound));
+  return Promise.all([entry.result, gate]).then(([requested]) => {
     if (requested && !entry.lost) return requested;
     releaseDevice(requested);
     return null;

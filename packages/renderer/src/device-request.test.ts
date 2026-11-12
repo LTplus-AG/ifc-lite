@@ -19,7 +19,7 @@
 import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { WebGPUDevice } from './device.js';
-import { claimPrerequestedRendererDevice, prerequestRendererDevice } from './device-request.js';
+import { claimPrerequestedRendererDevice, prerequestRendererDevice, SETUP_GATE_MAX_MS } from './device-request.js';
 
 (globalThis as Record<string, unknown>).GPUTextureUsage ??= { COPY_SRC: 0x01, RENDER_ATTACHMENT: 0x10 };
 
@@ -185,6 +185,33 @@ describe('early renderer device request', () => {
     assert.equal(gpu.devices.length, 0, 'precondition: nothing requested synchronously beyond the adapter');
     await asked;
     assert.equal(gpu.devices.length, 1, 'the promise resolved before requestDevice was issued');
+  });
+
+  it('holds the claiming init until the host opens the setup gate, and requests nothing more', async () => {
+    const gpu = installGpu();
+    let open!: () => void;
+    prerequestRendererDevice({ setupGate: new Promise<void>((resolve) => { open = resolve; }) });
+    await settle();
+    let initialised = false;
+    const device = new WebGPUDevice();
+    const init = device.init(makeCanvas()).then(() => { initialised = true; });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.equal(gpu.devices.length, 1, 'the device was requested at once, gate or not');
+    assert.equal(initialised, false, 'setup ran before the host opened the gate');
+    open();
+    await init;
+    assert.equal(initialised, true);
+    assert.equal(gpu.devices.length, 1);
+  });
+
+  it('a gate nobody opens holds init at most SETUP_GATE_MAX_MS', async () => {
+    installGpu();
+    prerequestRendererDevice({ setupGate: new Promise<void>(() => {}) });
+    await settle();
+    const started = Date.now();
+    await new WebGPUDevice().init(makeCanvas());
+    const waited = Date.now() - started;
+    assert.ok(waited >= SETUP_GATE_MAX_MS - 50 && waited < SETUP_GATE_MAX_MS + 500, `held ${waited} ms`);
   });
 
   it('keeps one early request at a time, and makes none without WebGPU', async () => {

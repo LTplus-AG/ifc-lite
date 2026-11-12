@@ -90,7 +90,7 @@ import { pointCloudSpatialReferenceFromMetadata, preparePointCloudSpatialLoad } 
 import { removePointCloudScanCache } from './ingest/pointCloudScanCache.js';
 import { stopCopcLodStream } from './ingest/copc/copcLodStream.js';
 import { getGlobalRenderer } from './useBCF.js';
-import { prerequestRendererDevice } from '@ifc-lite/renderer';
+import { pickRendererDevice } from './ingest/rendererSetupHold.js';
 import type { FederatedLandXmlStreamingFinalization } from './ingest/federatedLandXmlStreaming.js';
 import { openFederatedLandXmlStreamingPlan, openPrimaryLandXmlProvisional } from './ingest/landXmlGpuTransactions.js';
 import { extractModelSpatialPlacement, findReferenceSpatialModel } from './ingest/federationAlign.js';
@@ -257,7 +257,7 @@ export function useIfcLoader() {
     const draping = drapeIfGeoRaster(file); if (draping) return draping; // #5942: imagery, never a model
     const geometryKernel = beginGeometryKernel(file, target, () => void loadFileRef.current?.(file, target, options)); if (geometryKernel.refused) return settleKernelRefusal(geometryKernel.refused, options?.onLoadError); // #7955 M2: out-of-scope retained requests stop before any work
     const { resetViewerState, clearAllModels } = useViewerStore.getState();
-    const deviceAsked = getGlobalRenderer() ? null : prerequestRendererDevice(); // No viewport yet: it mounts with the reset below; its device request runs beside it.
+    const setupHold = pickRendererDevice(!!getGlobalRenderer()); // No viewport yet: it mounts with the reset below. Device now; setup once the path is known (rendererSetupHold.ts).
     // A primary supersedes every outstanding hook owner via the shared canceller. Federated additions capture this hook's session and remain independent.
     const currentSession = target.kind === 'primary'
       ? ++loadSessionRef.current
@@ -427,7 +427,7 @@ export function useIfcLoader() {
     try {
       // Reset all viewer state before loading new file — PRIMARY ONLY. A
       // federated add must never wipe model #1; it joins the existing map.
-      if (deviceAsked) { await deviceAsked; if (isStale()) return; } // let requestDevice go out before the reset blocks the main thread
+      if (setupHold.asked) { await setupHold.asked; if (isStale()) return; } // let requestDevice go out before the reset blocks the main thread
       if (target.kind === 'primary') {
         resetViewerState();
         clearAllModels();
@@ -635,9 +635,7 @@ export function useIfcLoader() {
           // entity id by `idOffset`, only known now (registerModelOffset ran above).
           // AFTER addModel: the drain runs in a later task, once React committed it,
           // so Viewport.tsx's `modelIdToIndex` / `modelIdToOffset` see this model.
-          if (instancedShards.length > 0) {
-            enqueueInstancedShards(modelId, instancedShards, shardGeneration);
-          }
+          if (instancedShards.length > 0) enqueueInstancedShards(modelId, instancedShards, shardGeneration);
           return;
         }
 
@@ -678,6 +676,7 @@ export function useIfcLoader() {
         options?.onGaussianLoadSettled?.(isCurrent() ? outcome : 'cancelled'); return;
       }
       const pointCloudFormat = detectPointCloudFormat(file.name, headBuf), landXmlCandidate = format === 'landxml';
+      if (pointCloudFormat || landXmlCandidate || target.kind !== 'primary' || geometryKernel.kind !== 'exact' || headIsZip(headBuf) || detectFormat(headBuf) !== 'ifc') setupHold.release('other-path');
 
       if (landXmlCandidate && !pointCloudFormat) {
         // A .xml file is handed to the authoritative LandXML parser, which
@@ -1131,6 +1130,7 @@ export function useIfcLoader() {
             // (see its `isStale` param): `getCached` above is an awaited
             // IndexedDB read, so a second primary load can own the active
             // slot by the time this resolves.
+            setupHold.release('cache-hit'); // the stored scene needs the renderer now
             let federatedHitStore: IfcDataStore | null = null;
             const cacheLoadResult = target.kind === 'federated'
               ? await loadFederatedFromCache(cacheResult, cacheKey, buffer, () => isStale(), trace, (hit) => {
@@ -1235,7 +1235,7 @@ export function useIfcLoader() {
       // silently render the model untextured — route those through local WASM.
       if (target.kind === 'primary' && format === 'ifc' && !mergeLayersAtLoad && !textureBitmaps && USE_SERVER && SERVER_URL && SERVER_URL !== '' && geometryKernel.serverEnabled) {
         // Pass buffer directly - server uses File object for parsing, buffer is only for size checks
-        loadStage = 'server-fetch';
+        loadStage = 'server-fetch'; setupHold.release('other-path');
         if (await handleServerLoadAttempt(() => loadFromServer(file, buffer, () => isStale(), metadataAbort.signal, modelId), isStale, async () => {
           const state = useViewerStore.getState();
           await finalizeModel(state.ifcDataStore, state.geometryResult, getViewerSchemaVersion(state.ifcDataStore), { loadPath: 'server' });
@@ -1535,9 +1535,7 @@ export function useIfcLoader() {
 
       // Clear existing geometry result — PRIMARY only (federated must not
       // disturb the active model's geometry).
-      if (target.kind === 'primary') {
-        setGeometryResult(null);
-      }
+      if (target.kind === 'primary') setGeometryResult(null);
 
       // Timing instrumentation
       let batchCount = 0;
@@ -1605,7 +1603,9 @@ export function useIfcLoader() {
             batchCount,
             fileSizeMB,
           );
-          const nextResult = await pullWithStallWatchdog(geometryIterator.next(), watchdogMs, lastTotalMeshes, streamWatchdog);
+          const pull = geometryIterator.next(); // the first pull starts the pool (the parser started before it), so setup may follow
+          setupHold.release('cold-geometry');
+          const nextResult = await pullWithStallWatchdog(pull, watchdogMs, lastTotalMeshes, streamWatchdog);
 
           if (nextResult.done) {
             await closeGeometryIterator();
@@ -1992,9 +1992,7 @@ export function useIfcLoader() {
         await closeGeometryIterator?.();
       } catch (err) {
         // Close the geometry iterator to release WASM resources on failure.
-        if (closeGeometryIterator) {
-          await closeGeometryIterator();
-        }
+        if (closeGeometryIterator) await closeGeometryIterator();
         // The parser worker may be parked in `waitForEntityIndex` (the aborted
         // geometry pre-pass would have unblocked it); it self-terminates on its
         // own watchdog. Swallow the now-orphaned dataStorePromise rejection so
@@ -2148,6 +2146,7 @@ export function useIfcLoader() {
       }));
       settleLoadUi();
     } finally {
+      setupHold.release('load-ended');
       settleResumable();
       metadataAbort.abort();
       // #1959: every exit releases its ownership; actual freeing still waits

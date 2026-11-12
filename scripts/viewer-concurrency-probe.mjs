@@ -30,43 +30,36 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const VIEWER = join(REPO_ROOT, 'apps/viewer');
 const FILE_REPORTER = join(REPO_ROOT, 'scripts/lib/test-file-reporter.mjs');
 /**
- * apps/viewer's `test` script cut before tsx, then printing `print`. The cut
- * runs the script's own concurrency bound (`$c`) and file selection
- * (`$files`), so the probe reads both from the script rather than copying them.
+ * apps/viewer's `test` script cut at `marker`, then printing `$<variable>`.
+ * The probe runs the script's own parts rather than copying them: the
+ * concurrency bound (`$c`, set before ` files=`) and the file selection
+ * (`$files`, set before ` && tsx `).
  */
-export function selectionCommand(testScript, print = '"$files"') {
-  const at = testScript.indexOf(' && tsx ');
-  if (at <= 0) throw new Error("apps/viewer's test script no longer selects files before `&& tsx`");
-  return `${testScript.slice(0, at)} && printf '%s\\n' ${print}`;
+export function cutCommand(testScript, marker, variable) {
+  const at = testScript.indexOf(marker);
+  if (at <= 0) throw new Error(`apps/viewer's test script no longer has \`${marker.trim()}\` to cut at`);
+  const glue = marker.trim().startsWith('&&') ? ' &&' : '';
+  return `${testScript.slice(0, at)}${glue} printf '%s\\n' "$${variable}"`;
 }
 
 export function viewerTestScript() {
   return JSON.parse(readFileSync(join(VIEWER, 'package.json'), 'utf8')).scripts.test;
 }
 
-function runCut(env, print) {
-  const r = spawnSync('sh', ['-c', selectionCommand(viewerTestScript(), print)], { cwd: VIEWER, encoding: 'utf8', env });
-  if (r.status !== 0) throw new Error(`apps/viewer's test script failed before tsx: ${r.stderr.trim()}`);
+function runCut(env, marker, variable) {
+  const r = spawnSync('sh', ['-c', cutCommand(viewerTestScript(), marker, variable)], { cwd: VIEWER, encoding: 'utf8', env });
+  if (r.status !== 0) throw new Error(`apps/viewer's test script failed before \`${marker.trim()}\`: ${r.stderr.trim()}`);
   return r.stdout.split('\n').filter(Boolean);
 }
 
 /** The files apps/viewer's script selects under `env`. */
 export function selectFiles(env) {
-  return runCut(env, '"$files"');
+  return runCut(env, ' && tsx ', 'files');
 }
 
-/**
- * The `--test-concurrency` apps/viewer's script uses under `env`, as the
- * script itself bounds it: only its leading `c=...; case ... esac;` part runs,
- * so no file selection happens twice.
- */
+/** The `--test-concurrency` apps/viewer's script uses under `env`; no file selection runs. */
 export function scriptConcurrency(env) {
-  const script = viewerTestScript();
-  const at = script.indexOf(' files=');
-  if (at <= 0) throw new Error("apps/viewer's test script no longer sets the concurrency before `files=`");
-  const r = spawnSync('sh', ['-c', `${script.slice(0, at)} printf '%s\\n' "$c"`], { cwd: VIEWER, encoding: 'utf8', env });
-  if (r.status !== 0) throw new Error(`reading the concurrency failed: ${r.stderr.trim()}`);
-  return r.stdout.trim();
+  return runCut(env, ' files=', 'c')[0];
 }
 
 /**

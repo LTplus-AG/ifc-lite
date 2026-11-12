@@ -27,7 +27,7 @@ import { parse } from 'yaml';
 // nothing asserted (as in scripts/perf/load-scoreboard-stats.test.mjs). So a
 // failed import becomes functions that fail when called. Only the error NAME
 // is reported: the oracle reads a "Cannot find module" message as a load failure.
-const { parseTap, readRecords, report, reportedFiles, run, scriptConcurrency, selectFiles, selectionCommand, viewerTestScript } = await import('./viewer-concurrency-probe.mjs')
+const { parseTap, readRecords, report, reportedFiles, run, cutCommand, scriptConcurrency, selectFiles, viewerTestScript } = await import('./viewer-concurrency-probe.mjs')
   // `then` stays undefined, or awaiting the stub would call it.
   .catch((err) => new Proxy({}, { get: (_, key) => (key === 'then' ? undefined : () => assert.fail(`scripts/viewer-concurrency-probe.mjs did not load (${err.name})`)) }));
 
@@ -176,8 +176,9 @@ test('parseTap reads the closing counts and only top-level failures', () => {
   assert.equal(parseTap('TAP version 13\n').counts, null);
 });
 
-test('selectionCommand refuses a test script it cannot cut', () => {
-  assert.throws(() => selectionCommand('tsx --test $files'));
+test('cutCommand refuses a test script it cannot cut', () => {
+  assert.throws(() => cutCommand('tsx --test $files', ' && tsx ', 'files'));
+  assert.throws(() => cutCommand('tsx --test $files', ' files=', 'c'));
 });
 
 // ---------------------------------------------------------- the wiring

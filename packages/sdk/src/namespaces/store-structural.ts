@@ -3,10 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { StoreGroupNamespace } from './store-group.js';
+import type { StructuralDerivationStoreBackendMethods } from '../store-structural-derive.js';
 import type { StructuralStoreBackendMethods } from '../store-structural-types.js';
 import type { EntityRef } from '../types.js';
 
-type StructuralMethods = Required<StructuralStoreBackendMethods>;
+type StructuralMethods = Required<StructuralStoreBackendMethods & StructuralDerivationStoreBackendMethods>;
 
 /** Synchronous structural forwarding stays small on the viewer boot path.
  * The host supplies the builders through its lazy structural write seam.
@@ -98,7 +99,24 @@ export class StoreStructuralNamespace extends StoreGroupNamespace {
     return this.#structural('addStructuralSurfaceConnection', args);
   }
 
-  #structural<K extends keyof StructuralMethods>(name: K, args: Parameters<StructuralMethods[K]>): EntityRef {
+  /**
+   * Plan an analytical model from the physical one: members, nodes, supports
+   * and a report of what was skipped, moved and guessed (#9668). Writes nothing.
+   */
+  planStructuralDerivation(...args: Parameters<StructuralMethods['planStructuralDerivation']>): ReturnType<StructuralMethods['planStructuralDerivation']> {
+    return this.#structural('planStructuralDerivation', args);
+  }
+
+  /**
+   * Derive and write one IfcStructuralAnalysisModel linked to the physical
+   * elements (#9668). Elements already linked to a structural item are skipped;
+   * a file with an analysis model is refused unless `whenAnalysisModelExists` is 'add'.
+   */
+  deriveStructuralAnalysisModel(...args: Parameters<StructuralMethods['deriveStructuralAnalysisModel']>): ReturnType<StructuralMethods['deriveStructuralAnalysisModel']> {
+    return this.#structural('deriveStructuralAnalysisModel', args);
+  }
+
+  #structural<K extends keyof StructuralMethods>(name: K, args: Parameters<StructuralMethods[K]>): ReturnType<StructuralMethods[K]> {
     const method = this.backend.store[name];
     if (!method) throw new Error(`bim.store.${name}: not available on this backend`);
     return Reflect.apply(method, this.backend.store, args);

@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "#9668: Member ends within the tolerance must merge into one node; merge only coincident ends.",
+  "key": "packages/create/src/in-store/structural-derive-joints.ts",
+  "mutation": "tests/evidence/structural-derive-tolerance-9668/behaviour.oracle.patch",
+  "test": "packages/create/src/in-store/structural-derive-plan.test.ts"
+}

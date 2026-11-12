@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "#9668: An Axis representation in a millimetre file must be read in metres; leave it in the native unit.",
+  "key": "packages/create/src/in-store/structural-derive-shape.ts",
+  "mutation": "tests/evidence/structural-derive-axis-units-9668/behaviour.oracle.patch",
+  "test": "packages/create/src/in-store/structural-derive.test.ts"
+}

@@ -20,7 +20,6 @@ import { flushPlacementGeometry } from '@/lib/model-placement/bounds-revision';
 
 import { useEffect, useRef } from 'react';
 import { useViewerStore } from '@/store';
-import { decodeInstancedShard } from '@ifc-lite/geometry';
 import type { MeshData } from '@ifc-lite/geometry';
 import { NOOP_LOAD_TRACE } from '@ifc-lite/load-trace';
 import { toast } from '../ui/toast.js';
@@ -28,7 +27,7 @@ import { reshapeSceneKeepingPresentInstanced } from './geometry-rebuild';
 import { runGpuUpload } from './gpu-upload-guard';
 import { geometryMeshKey } from './geometry-mesh-key';
 import { createRobustFitBoundsAccumulator } from './robustFitBoundsAccumulator.js';
-import { liftNewInstancedOccurrences, placeNewMeshesAtCurrentLevel } from '@/lib/level-arrival';
+import { placeNewMeshesAtCurrentLevel } from '@/lib/level-arrival';
 import { useColorOverlaySync } from './useColorOverlaySync.js';
 import { useMeshEditDrain } from './useMeshEditDrain.js';
 import { invalidateLandXmlGpuOwnershipAfterSceneClear, takeLandXmlGpuUploaded } from '../../hooks/ingest/landXmlGpuOwnership.js';
@@ -38,12 +37,12 @@ import { activeLoadTrace, tracePhaseOnce } from '@/lib/perf/activeLoadTrace';
 
 let linearFitHintShown = false;
 
-import { applyFederationOffsetToShard } from './instancedFederationOffset.js';
 export { applyFederationOffsetToShard } from './instancedFederationOffset.js';
 
 import { refitCompletedStreamBounds } from './streamingCompletionBounds.js';
 import { fitInstanceOnlyBounds } from './streamingInstancedBounds.js';
 import { usePlacementMutationDrain } from './usePlacementMutationDrain.js';
+import { useInstancedShardDrain } from './useInstancedShardDrain.js';
 import { useFinalizationRecoveryWake } from './useFinalizationRecoveryWake.js';
 import type { UseGeometryStreamingParams } from './geometry-streaming-params.js';
 export type { UseGeometryStreamingParams } from './geometry-streaming-params.js';
@@ -89,7 +88,6 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     pendingMeshRemovals,
     pendingMeshTranslations,
     pendingMeshRotations,
-    pendingInstancedShards,
     currentLevelY,
     modelIdToIndex,
     modelIdToOffset,
@@ -100,7 +98,6 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     pruneGeometryMeshes,
     clearPendingMeshTranslations,
     clearPendingMeshRotations,
-    clearInstancedShards,
     releaseGeometryAfterFinalize = false,
     onGeometryReleased,
   } = params;
@@ -268,7 +265,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
 
     // Adopted snapshot batches own the scene until their meshes arrive.
     if (isCleared && adoptedSceneOutlivesEmptyGeometry(scene)) return;
-    if (isNewFile && takeSceneSnapshotGeometry(geometry, modelCount, renderer, { lastGeometryLengthRef, lastGeometryRef, cameraFittedRef, finalBoundsRefittedRef, geometryBoundsRef, cameraSnapshotRef })) return;
+    if (isNewFile && takeSceneSnapshotGeometry(geometry, modelCount, renderer, { lastGeometryLengthRef, lastGeometryRef, cameraFittedRef, finalBoundsRefittedRef, geometryBoundsRef, cameraSnapshotRef }, isStreaming)) return;
 
     if (isCleared) {
       reshapeSceneKeepingPresentInstanced(scene, presentInstancedModelIndices, geometry, appearanceSourceGeometry);
@@ -679,50 +676,12 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
   }, [pendingMeshColorUpdates, isInitialized, gpuRecoveryEpoch, clearPendingMeshColorUpdates]);
 
   // ─── GPU-instancing shards ───────────────────────────────────────────
-  // The geometry worker collates each batch into an IFNS shard; the loader
-  // pushes the raw bytes into pendingInstancedShards, tagged with the owning
-  // model's id. Drain here: decode, re-home each occurrence's id onto that
-  // model's express-id space, and upload under that model's modelIndex
-  // (#1912 — a federated model's shards used to be dropped before ever
-  // reaching this drain, since the loader only forwarded the primary's).
-  useEffect(() => {
-    if (pendingInstancedShards === null || !isInitialized) return;
-    const renderer = rendererRef.current;
-    if (!renderer) return;
-    const device = renderer.getGPUDevice();
-    const scene = renderer.getScene();
-    if (!device) return;
-
-    if (pendingInstancedShards.length > 0) {
-      const trace = activeLoadTrace(); // #6979: shards only arrive while a load streams
-      for (const { modelId, bytes } of pendingInstancedShards) {
-        // CRITICAL: never let a shard decode/upload throw OUT of this effect.
-        // addInstancedShard creates GPU buffers; on a degraded
-        // backend whose device is being lost (e.g. CI's SwiftShader), createBuffer
-        // throws — and an uncaught throw in a React effect tears down the Viewport
-        // subtree via the error boundary, unmounting the <canvas> entirely. Instanced
-        // overlays are non-essential, so swallow per-shard failures: the flat geometry
-        // still renders.
-        try {
-          const shard = trace.span('instanced.decode', () => decodeInstancedShard(new Uint8Array(bytes)));
-          if (!shard) continue;
-          applyFederationOffsetToShard(shard, modelIdToOffset?.get(modelId) ?? 0);
-          liftNewInstancedOccurrences(shard, currentLevelY ?? new Map());
-          const modelIndex = modelIdToIndex?.get(modelId) ?? 0;
-          trace.span('instanced.upload', () => scene.addInstancedShard(device, shard, modelIndex));
-        } catch (err) {
-          console.warn('[useGeometryStreaming] instanced shard upload failed (device lost?), skipping:', err);
-        }
-      }
-      if (geometryKernel === 'retained' && geometry?.length === 0 && !appearanceSourceGeometry?.length && scene.getInstancedModelIndices().length > 0) {
-        fitInstanceOnlyBounds({ renderer, cameraFittedRef, cameraSnapshotRef,
-          geometryBoundsRef, finalBoundsRefittedRef, lastFitPolicyKindRef, complete: false });
-        lastGeometryRef.current = geometry;
-      }
-      renderer.requestRender();
-    }
-    clearInstancedShards();
-  }, [geometryKernel, pendingInstancedShards, modelIdToIndex, modelIdToOffset, isInitialized, gpuRecoveryEpoch, clearInstancedShards]);
+  // Decoded, re-homed onto each model's express-id space (#1912) and uploaded
+  // under its modelIndex by a queue subscription, not a store-driven effect
+  // (NEW-1: two store writes and a Viewport render per streamed batch).
+  useInstancedShardDrain({ rendererRef, isInitialized, gpuRecoveryEpoch, geometryKernel, geometry,
+    appearanceSourceGeometry, currentLevelY, modelIdToIndex, modelIdToOffset, cameraFittedRef,
+    cameraSnapshotRef, geometryBoundsRef, finalBoundsRefittedRef, lastFitPolicyKindRef, lastGeometryRef });
 
   usePlacementMutationDrain({ rendererRef, isInitialized, gpuRecoveryEpoch,
     kind: 'translations', pending: pendingMeshTranslations, clearPending: clearPendingMeshTranslations });

@@ -22,6 +22,7 @@ import { renderViewerLayout } from '@/test/viewer-layout-harness.js';
 import { useViewerStore } from '@/store';
 import { resetLayout } from '@/store/layoutReset';
 import { clearRetiredToolbarStylePreference, TOOLBAR_STYLE_STORAGE_KEY } from '@/store/constants';
+import { formFactorState } from '@/test/form-factor-state';
 
 const ORIGINAL = { width: window.innerWidth, height: window.innerHeight };
 
@@ -45,7 +46,7 @@ const isMobile = () => useViewerStore.getState().isMobile;
 // A phone: rotation to 844px landscape stays mobile only because it has touch.
 Object.defineProperty(navigator, 'maxTouchPoints', { configurable: true, value: 5 });
 
-const RESET = { isMobile: false, leftPanelCollapsed: true, rightPanelCollapsed: true, layoutResetEpoch: 0 };
+const RESET = { ...formFactorState(false), leftPanelCollapsed: true, rightPanelCollapsed: true, layoutResetEpoch: 0 };
 
 beforeEach(() => useViewerStore.setState(RESET));
 

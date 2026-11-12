@@ -3,7 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { MeshData } from '@ifc-lite/geometry';
 import { acceptRecordFrame, attachGpuRecords } from '@ifc-lite/geometry/gpu-record-frame';
-import { Scene, type BatchedMesh, type RenderPipeline } from '@ifc-lite/renderer';
+import type { BatchedMesh, RenderPipeline } from '@ifc-lite/renderer';
+import { Scene } from '../../../../packages/renderer/src/scene.js';
 
 /**
  * Stream real meshes into a renderer Scene the way the viewer does (one queue

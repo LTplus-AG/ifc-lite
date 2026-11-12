@@ -180,7 +180,9 @@ impl GeometryRouter {
                     self.mapped_item_first_vertex(&item, decoder)
                 } else if item.ifc_type == IfcType::IfcFace && self.member_face_selected(&item, entity) {
                     // A structural member's bare IfcFace meshes (#9668), so it
-                    // votes like a face surface; elsewhere it stays unread.
+                    // votes like a face surface; elsewhere it stays unread. The
+                    // type compare is on purpose: face surfaces already vote
+                    // through `item_first_vertex` for every product, as on main.
                     self.face_first_vertex(&item, decoder)
                 } else {
                     self.item_first_vertex(&item, decoder)

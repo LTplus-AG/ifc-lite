@@ -32,6 +32,21 @@ describe('scene identity (scoreboard identity pass)', () => {
     assert.notDeepEqual(pieceSignature(mesh(1)), pieceSignature(mesh(2)), 'the expressId is part of it');
   });
 
+  it('placement, texture coordinates and shading are part of a piece (review #9863)', () => {
+    const base = pieceSignature(mesh(1));
+    assert.notDeepEqual(base, pieceSignature({ ...mesh(1), origin: [100, 0, 0] } as MeshData), 'a moved origin changes it');
+    assert.notDeepEqual(base, pieceSignature({ ...mesh(1), localToWorld: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 5, 0, 0, 1] } as MeshData), 'a transform changes it');
+    assert.notDeepEqual(base, pieceSignature({ ...mesh(1), uvs: new Float32Array([0, 0, 1, 0, 0, 1]) } as MeshData), 'uvs change it');
+    assert.notDeepEqual(base, pieceSignature({ ...mesh(1), shadingColor: [1, 0, 0, 1] } as MeshData), 'shading changes it');
+  });
+
+  it('a colour-merged piece counts for every contributing entity (review #9863)', () => {
+    const merged = { ...mesh(10), entityIds: new Uint32Array([10, 11, 12]) } as MeshData;
+    const id = scenePieceIdentity(sceneOf([merged]));
+    assert.equal(id.elements, 3);
+    assert.ok(id.perElement['11'] && id.perElement['12'], 'contributors are named');
+  });
+
   it('the piece layer ignores piece order and sees any changed element', () => {
     const a = scenePieceIdentity(sceneOf([mesh(1), mesh(2), mesh(3)]));
     const b = scenePieceIdentity(sceneOf([mesh(3), mesh(1), mesh(2)]));
@@ -49,6 +64,10 @@ describe('scene identity (scoreboard identity pass)', () => {
     assert.equal(s, snapshotSignature(snapshot([batch('b', 1), batch('a', 1)])), 'batch order does not matter');
     assert.notEqual(s, snapshotSignature(snapshot([batch('a', 1), batch('b', 0x81)])), 'one flipped byte changes it');
     assert.ok(s.startsWith('batches=2 sig='), s);
+    const withBounds = (min: number) => snapshot([{ ...batch('a', 1), bounds: { min: [min, 0, 0] as [number, number, number], max: [1, 1, 1] as [number, number, number] } }]);
+    assert.notEqual(snapshotSignature(withBounds(0)), snapshotSignature(withBounds(-5)), 'batch bounds are part of it (review #9863)');
+    const shared = (o: number): SceneSnapshot => ({ ...snapshot([batch('a', 1)]), sharedFrameOrigins: [[0, [o, 0, 0]]] });
+    assert.notEqual(snapshotSignature(shared(0)), snapshotSignature(shared(100)), 'shared frame origins are part of it');
   });
 
   it('with the flag off a tap records nothing', () => {

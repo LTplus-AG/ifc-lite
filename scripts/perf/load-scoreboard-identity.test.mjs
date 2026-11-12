@@ -82,9 +82,41 @@ test('identity rows map reopen i to its lane, and the report takes the reopen ou
   const timed = (side) => ({ group: 'browser', lane: 'browser-warm', fixture: 'F', round: 0, side, ok: true, interactiveMs: 100,
     fingerprint: 'UNVERIFIABLE (cache hit: no element hashes, instanced output not readable; flat output restored exactly)' });
   const idRow = (side) => ({ group: 'browser', lane: 'identity', fixture: 'F', round: 0, side, ok: true, reopens });
+  const cold = (side, fp = 'elements=2 sig=abc') => ({ group: 'browser', lane: 'browser-cold', fixture: 'F', round: 0, side, ok: true, interactiveMs: 100, fingerprint: fp });
   const without = summarize(plan, [timed('base'), timed('branch')]);
   assert.match(without.fixtures[0].lanes['browser-warm'].output, /^unverifiable/, 'timed rows alone stay unverifiable');
-  const withId = summarize(plan, [timed('base'), timed('branch'), idRow('base'), idRow('branch')]);
+  const withId = summarize(plan, [cold('base'), cold('branch'), timed('base'), timed('branch'), idRow('base'), idRow('branch')]);
   assert.equal(withId.fixtures[0].lanes['browser-warm'].output, 'match');
   assert.equal(withId.fixtures[0].lanes['browser-warm'].outputSource, 'identity pass');
+});
+
+test('review #9863: the cold lane links the sides, timed RESTORE MISMATCH wins, failed samples never match', async () => {
+  const { reopenOutputVerdict, laneIdentityVerdict, identityRowReopens } = await load('./load-scoreboard-identity.mjs');
+  assert.equal(reopenOutputVerdict('match', 'unverifiable (x)', 'match'), 'match');
+  assert.match(reopenOutputVerdict('match', 'unverifiable (x)', 'CHANGED'), /^CHANGED \(cold output CHANGED across sides/, 'different builds never read as matching');
+  assert.match(reopenOutputVerdict('match', 'unverifiable (x)', 'unverifiable (a sample has no output identity)'), /^unverifiable \(each reopen restored its own cold open, but the cold lane/);
+  assert.match(reopenOutputVerdict('match', 'RESTORE MISMATCH vs cold: flat 1/2', 'match'), /^RESTORE MISMATCH vs cold/, 'a timed restore failure is never hidden');
+  assert.equal(reopenOutputVerdict(null, 'unverifiable (x)', 'match'), null, 'no identity row: the timed verdict stands');
+  const row = (side, ok) => ({ lane: 'identity', side, ok, error: ok ? null : 'warm1: GPU device lost', reopens: { 'browser-warm': { verdict: 'match (x)', match: true } } });
+  assert.match(laneIdentityVerdict([row('base', true), row('branch', false)], 'browser-warm'), /^unverifiable \(identity pass: UNVERIFIABLE \(identity sample failed: warm1: GPU device lost/);
+  const opens = [{ label: 'cold', identity: id('P', [cap('S1')]) }, { label: 'warm1', identity: id('P') }, { label: 'warm2', identity: id('P', [adopt('S1')]) }];
+  const reopens = identityRowReopens({ meta: { identityOpens: opens }, lanes: { 'browser-warm1': { ok: true }, 'browser-warm': { ok: false, error: 'warm1: renderer crashed' } } }, 2);
+  assert.equal(reopens['browser-warm1'].match, true, 'an earlier clean reopen keeps its verdict');
+  assert.match(reopens['browser-warm'].verdict, /^UNVERIFIABLE \(identity sample failed: warm1: renderer crashed/);
+});
+
+test('review #9863: a reopen lane whose cold output differs across sides reads CHANGED in the report', async () => {
+  const { identityRowReopens } = await load('./load-scoreboard-identity.mjs');
+  const { summarize } = await load('./load-scoreboard-report.mjs');
+  const opens = [{ label: 'cold', identity: id('P', [cap('S1')]) }, { label: 'warm1', identity: id('P') }, { label: 'warm2', identity: id('P', [adopt('S1')]) }];
+  const reopens = identityRowReopens({ meta: { identityOpens: opens } }, 2);
+  const plan = { name: 'id', kind: 'compare', lanes: ['browser-cold', 'browser-warm'], rounds: 1, warmOpens: 2, fixtures: [{ name: 'F', set: 'tuning', bytes: 2 ** 25 }],
+    sides: { base: { label: 'a' }, branch: { label: 'b' } } };
+  const row = (lane, side, fingerprint) => ({ group: 'browser', lane, fixture: 'F', round: 0, side, ok: true, interactiveMs: 100, fingerprint });
+  const rows = [row('browser-cold', 'base', 'elements=2 sig=aaa'), row('browser-cold', 'branch', 'elements=2 sig=bbb'),
+    row('browser-warm', 'base', 'UNVERIFIABLE (cache hit)'), row('browser-warm', 'branch', 'UNVERIFIABLE (cache hit)'),
+    { group: 'browser', lane: 'identity', fixture: 'F', round: 0, side: 'base', ok: true, reopens }, { group: 'browser', lane: 'identity', fixture: 'F', round: 0, side: 'branch', ok: true, reopens }];
+  const out = summarize(plan, rows).fixtures[0].lanes;
+  assert.equal(out['browser-cold'].output, 'CHANGED');
+  assert.match(out['browser-warm'].output, /^CHANGED \(cold output CHANGED across sides/);
 });

@@ -203,6 +203,8 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
           // above: wait for every cache write to close, then take the written signatures into this open's record.
           // Only then may the control alter the stored snapshot (a pending write would overwrite the alteration).
           meta.identityWritesSettled = await waitCacheWrites(page);
+          // A write still pending could overwrite the control's alteration or miss its signature: no verdict from this reopen on.
+          if (meta.identityWritesSettled !== true) throw new Error('identity pass: cache writes did not settle before the reopen');
           await settleIdentityWrites(page, meta.identityOpens.at(-1));
           if (process.env.LOAD_SCOREBOARD_CORRUPT_SNAPSHOT === '1') (meta.corrupted ??= []).push({ open: i, ...(await corruptStoredSnapshots(page, i)) });
         }

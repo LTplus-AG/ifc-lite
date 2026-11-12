@@ -8,7 +8,7 @@
  * markdown tables. Failed samples stay in the counts.
  */
 
-import { laneIdentityVerdict } from './load-scoreboard-identity.mjs';
+import { laneIdentityVerdict, reopenOutputVerdict } from './load-scoreboard-identity.mjs';
 import { aaNoiseFloor, expectedCacheTier, median, rankShares, relativeSpread, verdictFor } from './load-scoreboard-stats.mjs';
 
 /** The lanes a plan without a `lanes` key runs: exactly the set main had before the opt-in arms. */
@@ -153,6 +153,12 @@ export function summarize(plan, samples, { floors = null } = {}) {
   const planFixtures = [...plan.fixtures, ...(plan.lanes.includes('boot') ? [{ name: BOOT_FIXTURE, set: 'boot' }] : [])];
   for (const fx of planFixtures) {
     const lanes = {};
+    // The cold lane's cross-side output, whatever the plan's lane order (reopen verdicts are chained through it).
+    const coldOutputOf = (name) => {
+      const cold = samples.filter((s) => s.fixture === name && s.lane === 'browser-cold' && s.ok);
+      const fp = (side) => [...new Set(cold.filter((r) => r.side === side).map((r) => r.fingerprint))];
+      return cold.length ? outputVerdict(fp('base'), fp('branch')) : undefined;
+    };
     for (const lane of plan.lanes) {
       const rows = samples.filter((s) => s.fixture === fx.name && s.lane === lane);
       if (rows.length === 0) continue;
@@ -200,8 +206,9 @@ export function summarize(plan, samples, { floors = null } = {}) {
         laneFloors[key] = sides.base.underLoad + sides.branch.underLoad > 0 ? null : aaNoiseFloor(pairs, { seed: 0x5eed });
       }
       // Reopens: the identity pass (load-scoreboard-identity.mjs) verifies them against their own cold open.
+      const timed = outputVerdict(sides.base.fingerprints, sides.branch.fingerprints);
       const identity = lane === 'browser-warm1' || lane === 'browser-warm' ? laneIdentityVerdict(samples.filter((s) => s.fixture === fx.name), lane) : null;
-      const output = identity ?? outputVerdict(sides.base.fingerprints, sides.branch.fingerprints);
+      const output = (identity === null ? null : reopenOutputVerdict(identity, timed, lanes['browser-cold']?.output ?? coldOutputOf(fx.name))) ?? timed;
       // -settled lanes: both sides must have armed the same way, or the comparison says so.
       let armProtocol = null;
       if (lane.endsWith('-settled')) {
@@ -213,7 +220,7 @@ export function summarize(plan, samples, { floors = null } = {}) {
           for (const key of Object.keys(verdicts)) verdicts[key] = { ...verdicts[key], verdict: why, pass: false, regression: false };
         }
       }
-      lanes[lane] = { sides, verdicts, floors: laneFloors, output, outputSource: identity ? 'identity pass' : 'timed samples', armProtocol, primary: verdicts.interactiveMs ?? null };
+      lanes[lane] = { sides, verdicts, floors: laneFloors, output, outputSource: identity !== null && output !== timed ? 'identity pass' : 'timed samples', armProtocol, primary: verdicts.interactiveMs ?? null };
     }
     fixtures.push({ name: fx.name, set: fx.set ?? 'tuning', bytes: fx.bytes, expectedTier: Number.isFinite(fx.bytes) ? expectedCacheTier(fx.bytes) : null, lanes });
   }

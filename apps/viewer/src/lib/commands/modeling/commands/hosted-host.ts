@@ -22,10 +22,10 @@ import { slabExtrusionFrame } from '@/lib/slab-edit-frame';
 import { readAttributes, resolvePlacementChain } from '@/lib/placement-core';
 import { resolveSlabEditChain } from '@/lib/slab-edit';
 import { readModelEditTarget } from '@/store/slices/mutation-modelling-records';
-import { effectiveStoreyId } from '@/lib/effective-storey';
+import { effectiveSpatialContext } from '@/lib/effective-storey';
 import { pointInPolygon, type Point2D } from '@/lib/polygon-clip';
 import { hostPlanFrame, resolveHostAnchor } from '@ifc-lite/create';
-import type { IfcDataStore } from '@ifc-lite/parser';
+import { effectiveStoreyId, type IfcDataStore } from '@ifc-lite/parser';
 import type { SnapResult, Vec2 } from '@/lib/snap/types';
 import { storeyWallAxes } from '@/lib/snap/sources/semantic-walls';
 import type { WallAxis } from '@/lib/snap/sources/semantic';
@@ -156,10 +156,32 @@ function over(host: HostHit, p: Vec2): boolean {
   return u >= host.x[0] - REACH && u <= host.x[1] + REACH && v >= host.y[0] - REACH && v <= host.y[1] + REACH;
 }
 
+function slabCandidates(ctx: Pick<CommandContext, 'get' | 'modelId' | 'storeyId'>, state: ViewerState, s: SnapResult): HostHit[] {
+  const store = state.models.get(ctx.modelId)?.ifcDataStore;
+  const view = state.mutationViews.get(ctx.modelId);
+  if (!store || !view) return [];
+  const cache = cacheFor(store), key = `${ctx.storeyId}:${state.mutationVersion}`;
+  if (cache.slabs?.key !== key) {
+    const reader = new AnchorEntityReader(store, view);
+    const hosts: HostHit[] = [];
+    const spatial = effectiveSpatialContext(store, view);
+    const ids = ['IFCSLAB', 'IFCSLABSTANDARDCASE', 'IFCSLABELEMENTEDCASE'].flatMap(type => [...reader.ids(type)]);
+    for (const id of ids) {
+      if (effectiveStoreyId(store, id, spatial) !== ctx.storeyId) continue;
+      const host = readHost(state, ctx.modelId, id);
+      if (host?.footprint) hosts.push(host);
+    }
+    cache.slabs = { key, hosts };
+  }
+  const candidates = cache.slabs.hosts.filter(host => host.footprint && pointInPolygon(host.footprint.map<Point2D>(p => [p[0], p[1]]), [...toHostLocal(host, s.local)]));
+  const height = state.session?.workplane?.kind === 'storey' ? state.session.workplane.offset : 0;
+  candidates.sort((a,b) => Math.abs(a.origin[2]+a.z[1]-height)-Math.abs(b.origin[2]+b.z[1]-height));
+  return candidates;
+}
+
 /**
- * The wall under the solved cursor on the session storey, or null. A snap
- * target on a wall of the session model wins; otherwise the nearest wall
- * axis whose body the cursor is over.
+ * The host under the solved cursor on the session storey. An explicit
+ * wall/slab snap wins before nearby wall-axis and slab-footprint fallbacks.
  */
 export function hostUnderCursor(ctx: Pick<CommandContext, 'get' | 'modelId' | 'storeyId'>, s: SnapResult, slabs = false): HostHit | null {
   if (ctx.storeyId === null) return null;
@@ -170,6 +192,9 @@ export function hostUnderCursor(ctx: Pick<CommandContext, 'get' | 'modelId' | 's
     const host = readHost(state, ctx.modelId, snapped);
     if (host) return host;
   }
+  const candidates = slabs ? slabCandidates(ctx, state, s) : [];
+  const snappedSlab = candidates.find(host => host.expressId === snapped);
+  if (snappedSlab) return snappedSlab;
   const ranked = axes
     .map((w) => ({ id: w.expressId, d: distanceToAxis(s.local, w) }))
     .sort((a, b) => a.d - b.d);
@@ -177,25 +202,6 @@ export function hostUnderCursor(ctx: Pick<CommandContext, 'get' | 'modelId' | 's
     const host = readHost(state, ctx.modelId, id);
     if (host && over(host, s.local)) return host;
   }
-  if (slabs) {
-    const store = state.models.get(ctx.modelId)?.ifcDataStore;
-    const view = state.mutationViews.get(ctx.modelId);
-    if (!store || !view) return null;
-    const cache = cacheFor(store), key = `${ctx.storeyId}:${state.mutationVersion}`;
-    if (cache.slabs?.key !== key) {
-      const reader = new AnchorEntityReader(store, view);
-      const hosts: HostHit[] = [];
-      for (const id of reader.ids('IFCSLAB')) {
-        if (effectiveStoreyId(store, view, id) !== ctx.storeyId) continue;
-        const host = readHost(state, ctx.modelId, id);
-        if (host?.footprint) hosts.push(host);
-      }
-      cache.slabs = { key, hosts };
-    }
-    const candidates = cache.slabs.hosts.filter(host => host.footprint && pointInPolygon(host.footprint.map<Point2D>(p => [p[0], p[1]]), [...toHostLocal(host, s.local)]));
-    const height = state.session?.workplane?.kind === 'storey' ? state.session.workplane.offset : 0;
-    candidates.sort((a,b) => Math.abs(a.origin[2]+a.z[1]-height)-Math.abs(b.origin[2]+b.z[1]-height));
-    return candidates.find(h => h.expressId === snapped) ?? candidates[0] ?? null;
-  }
-  return null;
+
+  return candidates[0] ?? null;
 }

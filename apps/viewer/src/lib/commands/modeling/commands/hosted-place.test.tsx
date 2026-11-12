@@ -315,6 +315,21 @@ describe('opening.place slab shaft (#9296)', () => {
     assert.ok(cut.min[2] < body.min[2] && cut.max[2] > body.max[2], 'still through the thickened slab');
     assert.equal(readHostedFill(live().dataStore, opening, live().view)?.hostId, id);
   });
+  it('honors a snapped slab at a wall crossing and leaves the wall uncut (#9296)', () => {
+    const id = slab();
+    const crossing = useViewerStore.getState().addWall(MODEL_ID, STOREY,
+      { Start: [0,1,0], End: [5,1,0], Thickness: .2, Height: 2.5 });
+    assert.ok('expressId' in crossing);
+    const snap: SnapResult = { ...at(1,1), winner: { kind: 'edge', source: 'mesh', local: [1,1], entity: { modelId: MODEL_ID, expressId: id } } };
+    useViewerStore.getState().startCommand('opening.place');
+    act(() => { commandPointerMove(snap); commandPointerDown(snap); });
+    const [opening] = created('IFCOPENINGELEMENT');
+    assert.ok(opening);
+    assert.equal(readHostedFill(live().dataStore, opening, live().view)?.hostId, id);
+    const voids = live().view.getNewEntities().filter(e => e.type.toUpperCase() === 'IFCRELVOIDSELEMENT');
+    assert.equal(voids.length, 1);
+    assert.equal(voids[0].attributes[4], `#${id}`);
+  });
   it('refuses a rectangle across the L notch and keeps door/window tools wall-only', () => {
     slab();
     useViewerStore.getState().startCommand('opening.place');

@@ -82,7 +82,7 @@ export interface RhinoImportEntity {
   objectIds: string[];
   /** Rhino geometry class of the first object: "Mesh", "Brep", "InstanceReference", "NurbsCurve", ... */
   geometryType: string;
-  /** Attribute User Text of the first object, verbatim, in file order. */
+  /** Attribute User Text of the first object, verbatim, in file order, then what the objects merged into it add. */
   userStrings: RhinoUserStrings;
   /** The same user text sorted into property sets, plus the `Rhino` set. All values are strings. */
   propertySets: RhinoImportPropertySet[];

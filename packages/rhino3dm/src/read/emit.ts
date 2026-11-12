@@ -8,12 +8,13 @@ import type {
   RhinoImportCurve, RhinoImportDefinition, RhinoImportInstance, RhinoImportMesh,
   RhinoImportPointCloud, RhinoImportTextDot, RhinoRgba,
 } from './types.js';
-import { determinant3, hasLinearPart, transformNormals, transformPoint, transformVectors, type Xform } from './xform.js';
+import type { RhinoVector3 } from '../types.js';
+import { determinant3, hasLinearPart, keepsF32, reach, transformNormals, transformPoint, transformVectors, type Xform } from './xform.js';
 
 export type DrawnPart = Exclude<Part, { kind: 'instance' }>;
 
-/** A block's own meshes, as the output definition and its triangle count. */
-export interface BlockMeshes { name: string; meshes: RhinoImportDefinition['meshes']; triangles: number }
+/** A block's own meshes, as the output definition, their triangle count, and per axis how far any vertex is from the block's origin. */
+export interface BlockMeshes { name: string; meshes: RhinoImportDefinition['meshes']; triangles: number; reach: RhinoVector3 }
 
 /** Reverse each triangle, for geometry placed by a mirroring transform. */
 function flipWinding(indices: Uint32Array): Uint32Array {
@@ -22,7 +23,10 @@ function flipWinding(indices: Uint32Array): Uint32Array {
   return out;
 }
 
-/** Most text dots one file may return. Dots are free of the triangle budget, so blocks could otherwise multiply them without bound. */
+/**
+ * Most text dots one file's read may visit, returned or left out as invalid. Dots are free of
+ * the triangle budget, so blocks could otherwise multiply them without bound.
+ */
 export const MAX_TEXT_DOTS = 100_000;
 
 /**
@@ -40,6 +44,10 @@ export class Emitter {
   exhausted = false;
   private readonly definitionIndex = new Map<string, number>();
   private readonly emitted = new Set<ArrayBufferLike>();
+  private readonly reaches = new WeakMap<Float32Array, RhinoVector3>();
+  private dotVisits = 0;
+  /** Parts left out as `transform:invalid` so far. They cost no triangles, so the block walk charges them itself. */
+  outOfRange = 0;
 
   constructor(private readonly bake: boolean, private trianglesLeft: number, private readonly report: Report) {}
 
@@ -48,13 +56,13 @@ export class Emitter {
     return this.meshes.length + this.instances.length + this.pointClouds.length + this.curves.length + this.textDots.length;
   }
 
-  dotsFull(): boolean { return this.textDots.length >= MAX_TEXT_DOTS; }
+  dotsFull(): boolean { return this.dotVisits >= MAX_TEXT_DOTS; }
 
   /** Count text dots left out at the limit. */
   omitDots(count: number): void {
     if (count === 0) return;
     this.report.skip('TextDot:limit', count);
-    this.report.warn('dots', () => `Stopped at ${MAX_TEXT_DOTS.toLocaleString('en-US')} text dots: ${plural(this.report.skipped['TextDot:limit'], 'text dot')} left out.`);
+    this.report.warn('dots', () => `Stopped after ${MAX_TEXT_DOTS.toLocaleString('en-US')} text dots: ${plural(this.report.skipped['TextDot:limit'], 'text dot')} left out.`);
   }
 
   /** Charge the budget, or stop drawing for the rest of the file. */
@@ -71,28 +79,40 @@ export class Emitter {
   }
 
   /**
+   * Whether a part whose origin `xform` moved to `origin` stays in the finite range. Decided from
+   * the part's reach, which is measured once, so asking again for another placement costs nothing.
+   */
+  private inRange(xform: Xform | null, origin: RhinoVector3, positions: Float32Array): boolean {
+    if (!origin.every(Number.isFinite)) return false;
+    if (!xform || !hasLinearPart(xform)) return true;
+    let extent = this.reaches.get(positions);
+    if (!extent) this.reaches.set(positions, extent = reach(positions));
+    return keepsF32(xform, extent);
+  }
+
+  /**
    * Draw one part of `object` under `xform` (null for none): the origin moves
    * in f64, the f32 offsets by the 3×3 part only. False when the budget
    * refused it. A part the transform pushes out of the finite range is counted
-   * and left out, which keeps the result free of non-finite numbers.
+   * and left out before the budget is charged, which keeps the result free of
+   * non-finite numbers and the budget for what is drawn.
    */
   draw(object: number, part: DrawnPart, xform: Xform | null, color: RhinoRgba): boolean {
     if (part.kind === 'dot' && this.dotsFull()) { this.omitDots(1); return true; }
     const at = part.kind === 'dot' ? part.position : part.origin;
     const origin = xform ? transformPoint(xform, at) : at;
     if (part.kind === 'dot') {
+      this.dotVisits++;
       if (!origin.every(Number.isFinite)) this.report.skip('TextDot:invalid');
       else this.textDots.push({ entity: object, position: origin, text: part.text, color: [...color] });
       return true;
     }
+    if (this.exhausted) return false;
+    if (!this.inRange(xform, origin, part.positions)) { this.outOfRange++; this.report.skip('transform:invalid'); return true; }
     // A curve or point cloud vertex is charged a third of a triangle, so blocks cannot multiply them without bound.
     if (!this.take(part.kind === 'mesh' ? part.indices.length / 3 : part.positions.length / 9)) return false;
     const linear = xform !== null && hasLinearPart(xform) ? xform : null;
     const positions = linear ? transformVectors(linear, part.positions) : this.own(part.positions);
-    if (!origin.every(Number.isFinite) || (linear && !positions.every(Number.isFinite))) {
-      this.report.skip('transform:invalid');
-      return true;
-    }
     if (part.kind === 'curve') this.curves.push({ entity: object, origin, positions, closed: part.closed, color: [...color] });
     else if (part.kind === 'points') this.pointClouds.push({ entity: object, origin, positions, colors: part.colors && this.own(part.colors), color: [...color] });
     else {
@@ -111,10 +131,15 @@ export class Emitter {
    * Place a block's own meshes for `object`: one instance record, or baked
    * copies under `bakeInstances`. Either way the budget is charged the block's
    * triangles once per placement. False when the budget refused it.
+   *
+   * One instance record places every mesh of its block, so a placement that
+   * may push any of them out of range is baked too: both modes draw the same.
+   * The block's reach decides that in one step, whatever the mesh count.
    */
   place(object: number, id: string, block: BlockMeshes, xform: Xform, color: RhinoRgba): boolean {
     if (block.meshes.length === 0) return true;
-    if (this.bake) {
+    if (this.exhausted) return false;
+    if (this.bake || !keepsF32(xform, block.reach)) {
       return block.meshes.every(mesh => this.draw(object, { kind: 'mesh', ...mesh }, xform, mesh.color ?? color));
     }
     if (!this.take(block.triangles)) return false;

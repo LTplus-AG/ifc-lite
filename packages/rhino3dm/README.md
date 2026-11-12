@@ -41,7 +41,8 @@ by structured clone, and every typed array can go on the transfer list.
   unique `globalId`: its `IFC::GlobalId` user text, or one derived from the
   Rhino object UUID. Objects sharing a GlobalId merge into one entity only when
   they sit in a Rhino group named that GlobalId, which is how the exporter
-  writes a multi-part element.
+  writes a multi-part element. The merged entity holds the user text of every
+  part; a key whose value differs between parts is kept as `<key> #2`.
 - **IFC class:** set the `IFC::Class` user text (Attribute User Text) on an
   object in Rhino to choose its class, for example `IfcWall`. Without it, or
   with a name that is not an instantiable IFC product class, the entity is an

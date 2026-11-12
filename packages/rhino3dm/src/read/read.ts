@@ -4,7 +4,7 @@
 
 import { discardRhino, dispose, loadRhino } from '../runtime.js';
 import { readLook, resolveAppearance, type Appearance, type Look } from './appearance.js';
-import { buildBlock, expandInstance, MAX_BLOCK_PLACEMENTS, type Block, type BlockWalk } from './blocks.js';
+import { buildBlock, expandInstance, markContents, MAX_BLOCK_PLACEMENTS, type Block, type BlockWalk } from './blocks.js';
 import { readDocument, rows as tableRows, type DocumentTables } from './document.js';
 import { Emitter } from './emit.js';
 import { extractGeometry, type Part } from './geometry.js';
@@ -71,10 +71,12 @@ function readObjects(api: ReadApi, file: RFile, tables: DocumentTables, opts: Se
 
 function readBlocks(api: ReadApi, file: RFile, rows: Map<string, ObjectRow>, tables: DocumentTables, report: Report): Map<string, Block> {
   const linkedTypes = [api.InstanceDefinitionUpdateType.Linked.value, api.InstanceDefinitionUpdateType.LinkedAndEmbedded.value];
-  return new Map(tableRows(file.instanceDefinitions(), (definition): [string, Block] => {
+  const blocks = new Map(tableRows(file.instanceDefinitions(), (definition): [string, Block] => {
     const members = definition.getObjectIds().flatMap(id => rows.get(id) ?? []);
     return [definition.id, buildBlock(definition.name, linkedTypes.includes(definition.updateType.value), members, tables, report)];
   }));
+  markContents(blocks);
+  return blocks;
 }
 
 function refusal(report: Report): RhinoReadError {

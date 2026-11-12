@@ -20,10 +20,20 @@ export interface ObjectFacts {
   groups: number[]; userStrings: RhinoUserStrings; material: string;
 }
 
-/** Look up a user string. openNURBS keys ignore case, so `ifc::globalid` is `IFC::GlobalId`. */
-export function userString(strings: RhinoUserStrings, key: string): string | undefined {
-  const wanted = key.toLowerCase();
-  return strings.find(([k]) => k.toLowerCase() === wanted)?.[1];
+/** Split a key at its first `::`. The reserved sets `IFC` and `Rhino` are matched by `reserved`: the set trimmed, case ignored. */
+function splitKey(key: string): { set: string; reserved: string; name: string } | null {
+  const at = key.indexOf('::'), set = key.slice(0, at), name = key.slice(at + 2);
+  return at > 0 && name ? { set, reserved: set.trim().toLowerCase(), name } : null;
+}
+
+/**
+ * Look up `IFC::<name>`, with the rule that sorts keys into property sets, so
+ * a key routed to the `IFC` set is the one read here. openNURBS keys ignore
+ * case, so `ifc::globalid` is `IFC::GlobalId`.
+ */
+export function ifcString(strings: RhinoUserStrings, name: string): string | undefined {
+  const wanted = name.toLowerCase();
+  return strings.find(([key]) => { const split = splitKey(key); return split?.reserved === 'ifc' && split.name.toLowerCase() === wanted; })?.[1];
 }
 
 /**
@@ -32,24 +42,62 @@ export function userString(strings: RhinoUserStrings, key: string): string | und
  * `Attribute User Text`, and so does a `Rhino::` key, because the `Rhino` set
  * holds only what the reader derives. Values stay strings: user text has no types.
  */
-function propertySets(o: ObjectFacts): RhinoImportPropertySet[] {
+function propertySets(o: ObjectFacts, userStrings: RhinoUserStrings): RhinoImportPropertySet[] {
   const sets = new Map<string, [string, string][]>();
   const put = (set: string, name: string, value: string) => {
     const properties = sets.get(set);
     if (properties) properties.push([name, value]); else sets.set(set, [[name, value]]);
   };
-  for (const [key, value] of o.userStrings) {
-    const at = key.indexOf('::'), set = key.slice(0, at), name = key.slice(at + 2);
-    const setKey = set.trim().toLowerCase();
-    if (at <= 0 || !name || setKey === 'rhino') put('Attribute User Text', key, value);
-    else if (setKey !== 'ifc') put(set, name, value);
-    else if (!COLUMN_KEYS.has(name.toLowerCase())) put('IFC', name, value);
+  // Only the first of each column key fills the column, so a second spelling of it stays a property.
+  const columns = new Set<string>();
+  for (const [key, value] of userStrings) {
+    const split = splitKey(key), column = split?.name.toLowerCase() ?? '';
+    if (!split || split.reserved === 'rhino') put('Attribute User Text', key, value);
+    else if (split.reserved !== 'ifc') put(split.set, split.name, value);
+    else if (COLUMN_KEYS.has(column) && !columns.has(column)) columns.add(column);
+    else put('IFC', split.name, value);
   }
   put('Rhino', 'Layer', o.layerPath);
   put('Rhino', 'ObjectType', o.type);
   put('Rhino', 'ObjectId', o.id);
   if (o.material) put('Rhino', 'Material', o.material);
   return Array.from(sets, ([name, properties]) => ({ name, properties }));
+}
+
+/** A key as it is compared: case ignored, and a reserved set name trimmed, so `IFC ::Name` is `IFC::Name`. */
+function comparable(key: string): string {
+  const split = splitKey(key);
+  return (split && (split.reserved === 'ifc' || split.reserved === 'rhino') ? `${split.reserved}::${split.name}` : key).toLowerCase();
+}
+
+/** A key without the ` #<n>` suffix of a numbered repeat. */
+const unnumbered = (key: string) => key.replace(/ #\d+$/, '');
+
+/**
+ * The user text of a merged entity: the first part's, verbatim, then what each
+ * later part adds. A key and its numbered repeats (`<key> #<n>`, the suffix
+ * the exporter uses for colliding names) are one family. A later part's value
+ * that the family already holds is dropped; a new value is appended under the
+ * part's key when that is free, else under the family's next free number. So
+ * every value stays, and the first part's is the one read as identity.
+ */
+function mergeUserText(parts: ObjectFacts[]): RhinoUserStrings {
+  const merged: RhinoUserStrings = [], taken = new Set<string>();
+  const families = new Map<string, { values: Set<string>; next: number }>();
+  parts.forEach((part, index) => {
+    for (const [key, value] of part.userStrings) {
+      const base = unnumbered(key), id = comparable(base);
+      let family = families.get(id);
+      if (!family) families.set(id, family = { values: new Set(), next: 2 });
+      if (index > 0 && family.values.has(value)) continue;
+      family.values.add(value);
+      let name = key;
+      if (index > 0) while (taken.has(comparable(name))) name = `${base} #${family.next++}`;
+      taken.add(comparable(name));
+      merged.push([name, value]);
+    }
+  });
+  return merged;
 }
 
 /**
@@ -62,7 +110,7 @@ function propertySets(o: ObjectFacts): RhinoImportPropertySet[] {
  */
 export function buildEntities(objects: ObjectFacts[], groupNames: string[], classes: IfcClasses, report: Report): { entities: RhinoImportEntity[]; entityOf: number[] } {
   const stated = objects.map(o => {
-    const id = userString(o.userStrings, 'IFC::GlobalId');
+    const id = ifcString(o.userStrings, 'GlobalId');
     return id !== undefined && isValidIfcGuid(id) ? id : null;
   });
   const grouped = objects.map((o, i) => stated[i] !== null && o.groups.some(g => groupNames[g] === stated[i]));
@@ -77,13 +125,12 @@ export function buildEntities(objects: ObjectFacts[], groupNames: string[], clas
       if (!reserved.has(id) && !used.has(id)) return id;
     }
   };
-  const entities: RhinoImportEntity[] = [], entityOf: number[] = [];
+  const drafts: { globalId: string; parts: ObjectFacts[] }[] = [], entityOf: number[] = [];
   objects.forEach((o, i) => {
     const id = stated[i];
     const merged = id !== null && grouped[i] ? groupEntity.get(id) : undefined;
     if (merged !== undefined) {
-      entities[merged].objectIds.push(o.id);
-      entities[merged].hidden &&= o.hidden;
+      drafts[merged].parts.push(o);
       entityOf.push(merged);
       return;
     }
@@ -91,19 +138,24 @@ export function buildEntities(objects: ObjectFacts[], groupNames: string[], clas
     if (id !== null && !own) report.warn('duplicate-id', n => `${plural(n, 'object')} repeat an IFC::GlobalId outside its group and got a new id; the stated id stays in their properties.`);
     const globalId = own ? id : derive(o, i);
     used.add(globalId);
-    if (own && grouped[i]) groupEntity.set(globalId, entities.length);
-    const className = userString(o.userStrings, 'IFC::Class')?.trim();
+    if (own && grouped[i]) groupEntity.set(globalId, drafts.length);
+    entityOf.push(drafts.length);
+    drafts.push({ globalId, parts: [o] });
+  });
+  // Columns and property sets are read once every part's user text is in.
+  const entities = drafts.map(({ globalId, parts }): RhinoImportEntity => {
+    const [first] = parts, userStrings = parts.length === 1 ? first.userStrings : mergeUserText(parts);
+    const className = ifcString(userStrings, 'Class')?.trim();
     const ifcClass = className ? classes.product(className) : null;
     if (className && !ifcClass) report.warn('class', n => `${plural(n, 'object')} name an IFC::Class that is not an IFC product class and are imported as ${FALLBACK_CLASS}.`);
-    entityOf.push(entities.length);
-    entities.push({
+    return {
       globalId, ifcClass: ifcClass ?? FALLBACK_CLASS,
-      name: userString(o.userStrings, 'IFC::Name') || o.name || o.type,
-      description: userString(o.userStrings, 'IFC::Description') ?? '',
-      objectType: userString(o.userStrings, 'IFC::ObjectType') ?? '',
-      layer: o.layer, hidden: o.hidden, objectIds: [o.id], geometryType: o.type,
-      userStrings: o.userStrings, propertySets: propertySets(o),
-    });
+      name: ifcString(userStrings, 'Name') || first.name || first.type,
+      description: ifcString(userStrings, 'Description') ?? '',
+      objectType: ifcString(userStrings, 'ObjectType') ?? '',
+      layer: first.layer, hidden: parts.every(part => part.hidden), objectIds: parts.map(part => part.id), geometryType: first.type,
+      userStrings, propertySets: propertySets(first, userStrings),
+    };
   });
   return { entities, entityOf };
 }

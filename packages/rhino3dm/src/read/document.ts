@@ -7,7 +7,7 @@ import type { RhinoColor, RhinoUserStrings, RhinoVector3 } from '../types.js';
 import { dispose } from '../runtime.js';
 import type { AppearanceTables } from './appearance.js';
 import type { IfcClasses } from './ifc-classes.js';
-import { userString } from './identity.js';
+import { ifcString } from './identity.js';
 import type { Report } from './report.js';
 import type { RFile, RLayer, ReadApi, Rgba8 } from './rhino-api.js';
 import type { RhinoImportDocument, RhinoImportLayer } from './types.js';
@@ -49,9 +49,9 @@ export function rows<T, R>(table: { count: number; get(index: number): T }, read
 }
 
 function spatialStamp(strings: RhinoUserStrings, classes: IfcClasses): RhinoImportLayer['spatial'] {
-  const globalId = userString(strings, 'IFC::GlobalId'), ifcClass = classes.spatial(userString(strings, 'IFC::Class') ?? '');
+  const globalId = ifcString(strings, 'GlobalId'), ifcClass = classes.spatial(ifcString(strings, 'Class') ?? '');
   if (!globalId || !isValidIfcGuid(globalId) || !ifcClass) return null;
-  const text = userString(strings, 'IFC::Elevation')?.trim(), elevation = text ? Number(text) : NaN;
+  const text = ifcString(strings, 'Elevation')?.trim(), elevation = text ? Number(text) : NaN;
   return { globalId, ifcClass, elevation: Number.isFinite(elevation) ? elevation : null };
 }
 
@@ -127,9 +127,9 @@ export function readDocument(api: ReadApi, file: RFile, archiveVersion: number, 
   if (metersPerUnit === null) report.warn('units', () => `The file's unit system is ${unitSystem}, which has no scale; coordinates are read as metres.`);
 
   let world: Xform | null = null;
-  const worldText = userString(strings, 'IFC::WorldFromModel');
+  const worldText = ifcString(strings, 'WorldFromModel');
   // Exports before the fix wrote the matrix under `world` too, where it must not be applied again.
-  if (worldText !== undefined && userString(strings, 'IFC::Coordinates') === 'local') {
+  if (worldText !== undefined && ifcString(strings, 'Coordinates') === 'local') {
     world = parseXform(worldText);
     if (!world) report.warn('world', () => 'IFC::WorldFromModel is not a usable 4×4 matrix; the file is shown in its own coordinates.');
   }
@@ -139,7 +139,7 @@ export function readDocument(api: ReadApi, file: RFile, archiveVersion: number, 
   return {
     document: {
       archiveVersion, application: file.applicationName, unitSystem, metersPerUnit: metersPerUnit ?? 1,
-      provenance: userString(strings, 'IFC::Exporter')?.startsWith('ifc-lite') ? 'ifc-lite' : 'rhino',
+      provenance: ifcString(strings, 'Exporter')?.startsWith('ifc-lite') ? 'ifc-lite' : 'rhino',
       frame: world ? 'ifc-world-from-model' : 'file', earthAnchor, strings,
     },
     world,

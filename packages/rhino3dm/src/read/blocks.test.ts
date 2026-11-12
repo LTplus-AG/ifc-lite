@@ -225,19 +225,83 @@ describe('guards', () => {
     expect((await readRhino3dm(bytes, { maxTriangles: 1000 })).pointClouds).toHaveLength(10);
   });
 
-  test('a placement that flattens space, or pushes coordinates out of range, is counted and left out', async () => {
+  const SCALE = [1e15, 0, 0, 0, 0, 1e15, 0, 0, 0, 0, 1e15, 0, 0, 0, 0, 1];
+
+  // Review finding on PR #9880.
+  test.each([false, true])('a placement that flattens space, or pushes coordinates out of range, is counted and left out (bakeInstances %s)', async bakeInstances => {
     const bytes = await craft(c => {
       const box = c.block('Box', [unit(c)]), far = c.block('Far', [c.box([0, 0, 0], [1e30, 1e30, 1e30])]);
       c.addInstance(box, [0, 0, 0, 5, 0, 0, 0, 5, 0, 0, 0, 5, 0, 0, 0, 1], { name: 'collapsed' });
-      c.addInstance(far, [1e15, 0, 0, 0, 0, 1e15, 0, 0, 0, 0, 1e15, 0, 0, 0, 0, 1], { name: 'overflowing' });
+      c.addInstance(far, SCALE, { name: 'overflowing' });
       // A last row other than 0 0 0 1 is a projection, which the reader does not apply.
       c.addInstance(box, [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 2], { name: 'projective' });
       c.addInstance(box, translation(1, 0, 0), { name: 'fine' });
     });
-    const baked = await readRhino3dm(bytes, { bakeInstances: true });
-    expect(baked.entities.map(e => e.name)).toEqual(['fine']);
-    expect(baked.skipped).toEqual({ 'InstanceReference:invalid': 2, 'transform:invalid': 1 });
-    expect(baked.meshes.every(m => m.positions.every(Number.isFinite) && m.normals.every(Number.isFinite) && m.origin.every(Number.isFinite))).toBe(true);
+    const result = await readRhino3dm(bytes, { bakeInstances });
+    expect(result.entities.map(e => e.name)).toEqual(['fine']);
+    expect(result.skipped).toEqual({ 'InstanceReference:invalid': 2, 'transform:invalid': 1 });
+    expect(result.meshes.every(m => m.positions.every(Number.isFinite) && m.normals.every(Number.isFinite) && m.origin.every(Number.isFinite))).toBe(true);
+    expect(result.definitions.map(d => d.name)).toEqual(bakeInstances ? [] : ['Box']);
+  });
+
+  // Review finding on PR #9880.
+  test.each([false, true])('a placement that pushes one of its meshes out of range draws the others, the same in both modes (bakeInstances %s)', async bakeInstances => {
+    const result = await readRhino3dm(await craft(c => {
+      const mixed = c.block('Mixed', [unit(c), c.box([0, 0, 0], [1e30, 1e30, 1e30])]);
+      c.addInstance(mixed, SCALE, { name: 'stretched' });
+      c.addInstance(mixed, translation(5, 0, 0), { name: 'moved' });
+    }), { bakeInstances });
+    expect(result.entities.map(e => e.name)).toEqual(['stretched', 'moved']);
+    expect(result.skipped).toEqual({ 'transform:invalid': 1 });
+    // The stretched placement keeps its unit box; the moved one keeps both meshes.
+    expect(entityBounds(result, 0)).toEqual({ min: [0, 0, 0], max: Array(3).fill(Math.fround(1e15)) });
+    expect(drawnTriangles(result)).toBe(36);
+    expect(result.instances).toHaveLength(bakeInstances ? 0 : 1);
+  });
+
+  // Review finding on PR #9880.
+  test.each([false, true])('geometry left out as out of range is not charged to the triangle budget (bakeInstances %s)', async bakeInstances => {
+    const result = await readRhino3dm(await craft(c => {
+      c.addInstance(c.block('Far', [c.box([0, 0, 0], [1e24, 1e24, 1e24])]), SCALE, { name: 'overflowing' });
+      c.addMesh(unit(c), { name: 'fine' });
+    }), { bakeInstances, maxTriangles: 12 });
+    expect(result.entities.map(e => e.name)).toEqual(['fine']);
+    expect(result.skipped).toEqual({ 'transform:invalid': 1 });
+  });
+
+  // Review finding on PR #9880.
+  test.each([false, true])('parts left out as out of range are charged to the placement budget, so they cannot stall the walk (bakeInstances %s)', async bakeInstances => {
+    // 2^12 placements of 200 meshes that the instance's scale pushes out of range: 819,200 parts that cost no triangles.
+    const bytes = await craft(c => {
+      let block = c.block('Far', Array.from({ length: 200 }, () => c.mesh([[0, 0, 0], [1e30, 0, 0], [0, 1e30, 0]], [[0, 1, 2]])));
+      for (let level = 1; level <= 12; level++) block = c.block(`Level ${level}`, [c.reference(block), c.reference(block)]);
+      c.addInstance(block, SCALE, { name: 'far' });
+      c.addMesh(unit(c), { name: 'bystander' });
+    });
+    const result = await readRhino3dm(bytes, { bakeInstances });
+    expect(result.entities.map(e => e.name)).toEqual(['bystander']);
+    expect(result.skipped['transform:invalid']).toBeGreaterThan(MAX_BLOCK_PLACEMENTS * 0.9);
+    expect(result.skipped['transform:invalid']).toBeLessThanOrEqual(MAX_BLOCK_PLACEMENTS + 200);
+    expect(result.skipped.budget).toBe(1);
+    expect(result.warnings).toEqual(['Stopped expanding blocks after 500,000 block references.']);
+  });
+
+  // Review finding on PR #9880.
+  test.each([false, true])('text dots in a block are still drawn after another member spent the triangle budget (bakeInstances %s)', async bakeInstances => {
+    const result = await readRhino3dm(await craft(c => {
+      const leaf = c.block('Leaf', [unit(c), c.textDot('leaf', [0, 0, 2])]);
+      const labelled = c.block('Labelled', [unit(c), new c.rhino.PolylineCurve([[0, 0, 0], [1, 0, 0]]), c.textDot('label', [0, 0, 1]), c.reference(leaf, translation(3, 0, 0))]);
+      c.addInstance(labelled, undefined, { name: 'first' });
+      c.addInstance(labelled, translation(0, 5, 0), { name: 'second' });
+    }), { bakeInstances, maxTriangles: 12 });
+    // One box fits. Every dot of both instances is there; the curve, the nested box and the second instance's geometry are not.
+    expect(drawnTriangles(result)).toBe(12);
+    expect(result.curves).toEqual([]);
+    expect(result.textDots.map(d => [result.entities[d.entity].name, d.text, d.position])).toEqual([
+      ['first', 'label', [0, 0, 1]], ['first', 'leaf', [3, 0, 2]], ['second', 'label', [0, 5, 1]], ['second', 'leaf', [3, 5, 2]],
+    ]);
+    expect(result.skipped).toEqual({ budget: 2 });
+    expect(result.warnings).toEqual(['Stopped at the budget of 12 triangles: 2 objects not drawn, or drawn in part.']);
   });
 
   test('a block member that is hidden or on a layer that is off is not drawn in any instance', async () => {
@@ -278,7 +342,7 @@ describe('guards', () => {
     expect(result.textDots).toHaveLength(MAX_TEXT_DOTS);
     expect(result.entities).toHaveLength(MAX_TEXT_DOTS / 4000);
     expect(result.skipped).toEqual({ 'TextDot:limit': 120_000 - MAX_TEXT_DOTS });
-    expect(result.warnings).toEqual(['Stopped at 100,000 text dots: 20,000 text dots left out.']);
+    expect(result.warnings).toEqual(['Stopped after 100,000 text dots: 20,000 text dots left out.']);
   });
 
   test('past the text dot limit a placement costs the walk one step, however many dots it holds', async () => {
@@ -293,6 +357,39 @@ describe('guards', () => {
     expect(performance.now() - started).toBeLessThan(20_000);
     expect(result.textDots).toHaveLength(MAX_TEXT_DOTS);
     expect(result.skipped).toEqual({ 'TextDot:limit': 2000 * 2 ** 17 - MAX_TEXT_DOTS });
+  });
+
+  // Review finding on PR #9880.
+  test('past the triangle budget a branch that leads to no text dot ends at once and leaves the placement budget alone', async () => {
+    // 2^20 placements, which would spend the placement budget if the walk went on looking for dots.
+    const result = await readRhino3dm(await craft(c => {
+      c.addMesh(unit(c), { name: 'box' });
+      let block = c.block('Level 0', [unit(c)]);
+      for (let level = 1; level <= 20; level++) block = c.block(`Level ${level}`, [c.reference(block), c.reference(block, translation(level, 0, 0))]);
+      c.addInstance(block, undefined, { name: 'fan' });
+      // A block that draws nothing loses nothing to the budget.
+      c.addInstance(c.block('Empty', [c.reference(PLACEHOLDER)]), undefined, { name: 'empty' });
+      c.addInstance(c.block('Label', [c.textDot('label', [0, 0, 0])]), undefined, { name: 'label' });
+    }), { maxTriangles: 12 });
+    expect(result.entities.map(e => e.name)).toEqual(['box', 'label']);
+    expect(result.skipped).toEqual({ budget: 1 });
+    expect(result.warnings).toEqual(['Stopped at the budget of 12 triangles: 1 object not drawn, or drawn in part.']);
+  });
+
+  // Review finding on PR #9880.
+  test('the text dot limit counts dots left out as invalid, so they cannot stall the walk either', async () => {
+    // 2^12 placements of 2,000 dots that the instance's scale pushes out of the f64 range: 8 million visits unless they count.
+    const bytes = await craft(c => {
+      let block = c.block('Dots', Array.from({ length: 2000 }, (_, i) => c.textDot('d', [1e300, i, 0])));
+      for (let level = 1; level <= 12; level++) block = c.block(`Level ${level}`, [c.reference(block), c.reference(block)]);
+      c.addInstance(block, SCALE, { name: 'far dots' });
+      c.addMesh(unit(c), { name: 'bystander' });
+    });
+    const result = await readRhino3dm(bytes);
+    expect(result.textDots).toEqual([]);
+    expect(result.entities.map(e => e.name)).toEqual(['bystander']);
+    expect(result.skipped).toEqual({ 'TextDot:invalid': MAX_TEXT_DOTS, 'TextDot:limit': 2000 * 2 ** 12 - MAX_TEXT_DOTS });
+    expect(result.warnings).toEqual(['Stopped after 100,000 text dots: 8,092,000 text dots left out.']);
   });
 
   test('a reference that could never be drawn keeps its own reason after the placement budget is spent', async () => {

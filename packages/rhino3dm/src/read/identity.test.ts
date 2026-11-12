@@ -40,6 +40,49 @@ test('objects sharing a GlobalId merge only inside the Rhino group named that Gl
   expect(result.warnings).toEqual(['3 objects repeat an IFC::GlobalId outside its group and got a new id; the stated id stays in their properties.']);
 });
 
+// Review finding on PR #9880.
+test('a merged entity holds the user text of every part: new keys are added, a different value is kept under a numbered key', async () => {
+  let first = '';
+  const result = await readRhino3dm(await craft(c => {
+    const wall = c.group(WALL), part = (name: string, x: number, ...more: [string, string][]) => c.addMesh(box(c, x), { name, groups: [wall], userStrings: stamp(WALL, ...more) });
+    // The first part stays verbatim, also where two of its keys compare equal.
+    first = part('part 1', 0, ['IFC::Material', 'Concrete'], ['Pset_WallCommon::IsExternal', 'true'], ['IFC::Material #3', 'literal'], ['IFC ::Tag', 'a'], ['IFC::Tag', 'b']);
+    part('part 2', 1, ['IFC::Material', 'Insulation'], ['Pset_Custom::Rating', 'A'], ['IFC::Description', 'from part 2'], ['ifc::name', 'Second name']);
+    // Keys ignore case, and a value the entity already holds is not added again.
+    part('part 3', 2, ['ifc::material', 'Insulation'], ['Pset_WallCommon::IsExternal', 'true']);
+    part('part 4', 3, ['IFC::Material', 'Plaster']);
+    // A spaced `IFC` set is the same key, and a value the entity holds under another number is not added again.
+    part('part 5', 4, ['IFC ::Material', 'Wood'], ['IFC::Material #2', 'Concrete']);
+  }));
+  expect(result.entities).toHaveLength(1);
+  const [wall] = result.entities;
+  // The first part gives the name, since it states none; the description comes from the part that has one.
+  expect(wall).toMatchObject({ globalId: WALL, name: 'Second name', description: 'from part 2', objectIds: { length: 5 } });
+  expect(wall.userStrings).toEqual([
+    ['IFC::GlobalId', WALL], ['IFC::Material', 'Concrete'], ['Pset_WallCommon::IsExternal', 'true'], ['IFC::Material #3', 'literal'], ['IFC ::Tag', 'a'], ['IFC::Tag', 'b'],
+    ['IFC::Material #2', 'Insulation'], ['Pset_Custom::Rating', 'A'], ['IFC::Description', 'from part 2'], ['ifc::name', 'Second name'],
+    ['IFC::Material #4', 'Plaster'], ['IFC ::Material #5', 'Wood'],
+  ]);
+  expect(wall.propertySets).toEqual([
+    { name: 'IFC', properties: [['GlobalId', WALL], ['Material', 'Concrete'], ['Material #3', 'literal'], ['Tag', 'a'], ['Tag', 'b'], ['Material #2', 'Insulation'], ['name', 'Second name'], ['Material #4', 'Plaster'], ['Material #5', 'Wood']] },
+    { name: 'Pset_WallCommon', properties: [['IsExternal', 'true']] },
+    { name: 'Pset_Custom', properties: [['Rating', 'A']] },
+    { name: 'Rhino', properties: [['Layer', 'Default'], ['ObjectType', 'Mesh'], ['ObjectId', first]] },
+  ]);
+  expect(result.warnings).toEqual([]);
+});
+
+// Review finding on PR #9880.
+test('an IFC key is read by the rule that sorts it, so a spaced namespace fills the column and no value is lost', async () => {
+  const result = await readRhino3dm(await craft(c => {
+    c.addMesh(box(c), { userStrings: [['IFC ::Description', 'spaced'], ['ifc::description', 'second spelling'], [' IFC::ObjectType', 'Floor'], ['IFC ::Class', 'IfcSlab'], ['IFC::Description ', 'trailing']] });
+  }));
+  const [slab] = result.entities;
+  expect(slab).toMatchObject({ description: 'spaced', objectType: 'Floor', ifcClass: 'IfcSlab' });
+  // The second spelling and the key that names no column stay as properties.
+  expect(slab.propertySets[0]).toEqual({ name: 'IFC', properties: [['description', 'second spelling'], ['Class', 'IfcSlab'], ['Description ', 'trailing']] });
+});
+
 test('a group owns its GlobalId even when an ungrouped copy comes first in the file', async () => {
   const result = await readRhino3dm(await craft(c => {
     const wall = c.group(WALL);

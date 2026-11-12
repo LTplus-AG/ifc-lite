@@ -52,6 +52,26 @@ export function determinant3(m: Xform): number {
   return m[0] * (m[5] * m[10] - m[6] * m[9]) - m[1] * (m[4] * m[10] - m[6] * m[8]) + m[2] * (m[4] * m[9] - m[5] * m[8]);
 }
 
+/** Largest finite f32. */
+const F32_MAX = 3.4028234663852886e38;
+
+/** The largest |x|, |y| and |z| among xyz triples. */
+export function reach(values: Float32Array): RhinoVector3 {
+  const out: RhinoVector3 = [0, 0, 0];
+  for (let i = 0; i < values.length; i++) out[i % 3] = Math.max(out[i % 3], Math.abs(values[i]));
+  return out;
+}
+
+/**
+ * True when the 3×3 part keeps every xyz triple within `extent` inside the f32 range. The bound
+ * is per axis, so it costs the same for any vertex count; it can refuse a part whose own
+ * vertices would just fit, by less than a factor of three at 1e38.
+ */
+export function keepsF32(m: Xform, [x, y, z]: RhinoVector3): boolean {
+  const row = (at: number) => Math.abs(m[at]) * x + Math.abs(m[at + 1]) * y + Math.abs(m[at + 2]) * z <= F32_MAX;
+  return row(0) && row(4) && row(8);
+}
+
 /** Apply the 3×3 part to every xyz triple, returning a new array. */
 export function transformVectors(m: Xform, values: Float32Array): Float32Array {
   const out = new Float32Array(values.length);

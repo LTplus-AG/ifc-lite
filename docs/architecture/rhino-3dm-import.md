@@ -202,7 +202,7 @@ export interface RhinoImport {
     hidden: boolean;                        // object hidden or any layer on its path off
     objectIds: string[];                    // Rhino UUIDs merged into this entity
     geometryType: string;                   // Rhino class: "Mesh", "Brep", "InstanceReference", "NurbsCurve", ...
-    userStrings: RhinoUserStrings;          // verbatim, in file order
+    userStrings: RhinoUserStrings;          // the first object's, verbatim and in file order, then what merged objects add
     propertySets: { name: string; properties: [string, string][] }[];
   }[];
   meshes: (RhinoImportGeometry & { entity: number; color: RhinoRgba })[];
@@ -238,12 +238,19 @@ interface RhinoImportGeometry {
   that carries its own opacity would keep it, and is a change to this
   contract left for a later version.
 - With `bakeInstances`, `definitions` and `instances` are empty and every
-  placement is a world-space copy in `meshes`. Curves, point clouds and text
-  dots inside blocks are always baked, one copy per placement. Curves and
-  point clouds are charged to the triangle budget; text dots have their own
-  limit of 100,000 per file, and the dots past it are counted as
-  `TextDot:limit` and reported in one warning. Past the limit a placement's
-  dots are counted in one step, so the limit bounds the work too [test].
+  placement is a world-space copy in `meshes`. Both modes draw the same
+  geometry: a placement that pushes any of its block's meshes out of range
+  (see `transform:invalid` below) is baked in the default mode too, so the
+  meshes that stay in range are drawn and the others counted [test]. The
+  check is on the block's reach, so it can bake a placement whose meshes all
+  fit; the geometry drawn is the same.
+- Curves, point clouds and text dots inside blocks are always baked, one copy
+  per placement. Curves and point clouds are charged to the triangle budget;
+  text dots have their own limit of 100,000 per file, and the dots past it are
+  counted as `TextDot:limit` and reported in one warning. The limit counts
+  every dot the reader visits, including one left out as `TextDot:invalid`,
+  and past it a placement's dots are counted in one step, so the limit bounds
+  the work too [test].
 - `curves[i].positions` is a polyline. A curve that is not a polyline is
   sampled at 32 points per span, at most 8,192 per curve.
 - `pointClouds[i].colors` is RGBA bytes per point, or null.
@@ -340,7 +347,7 @@ type RhinoImportResponse =
 | Rhino | Entity |
 |---|---|
 | Top-level object (not an instance definition member) that draws something | one entity |
-| Objects sharing a valid `IFC::GlobalId` **and** a group named that GlobalId | one entity, many meshes: our grouped elements, 16 in FZK, 46 in duplex [test] |
+| Objects sharing a valid `IFC::GlobalId` **and** a group named that GlobalId | one entity, many meshes, the user text of every part: our grouped elements, 16 in FZK, 46 in duplex [test] |
 | Object sharing a GlobalId already taken, without that group (a Rhino copy-paste keeps user text) | its own entity under a derived id, keeping the stated GlobalId in its properties, plus one warning per file [test] |
 | `InstanceReference` | one entity; its placements go to `instances`, or to `meshes` when baked |
 | Instance definition member | no entity of its own |
@@ -355,6 +362,21 @@ type RhinoImportResponse =
   before any id is derived, so a derived id never takes one that another object
   states [test]. User-text keys are matched ignoring case, as openNURBS stores
   them.
+- **User text of a merged entity:** the union of its parts, in file order.
+  The first part's user text stays verbatim. A key and its numbered repeats
+  (`<key> #<n>`, the suffix the exporter uses for colliding names) are one
+  family, compared ignoring case and, for the `IFC` and `Rhino` sets, spaces
+  around the set name. From each later part, a value its family already holds
+  is dropped; a new value is appended under the part's key when that is free,
+  else as `<key> #<n>` with the family's next free `n` from 2. So no value is
+  lost, the first part's value is the one read for identity and the entity
+  columns, and a column the first part leaves empty is filled by the first
+  part that states it [test]. There is no warning, because differing
+  values are the normal case: the exporter writes each part's own
+  `IFC::Material`, so all 16 merged elements in FZK and all 46 in duplex differ
+  there and come back with `IFC::Material` and `IFC::Material #2` [ran, test].
+  `layer`, `geometryType` and the `Rhino` set describe the first part;
+  `objectIds` lists them all.
 - **Class:** `IFC::Class` when it names an instantiable subtype of `IfcProduct`
   in IFC2X3, IFC4 or IFC4X3, whatever the file's provenance, so a Rhino user
   can choose the class by setting that user text. Otherwise
@@ -407,19 +429,32 @@ its winding flipped and its normals transformed by the inverse transpose
   120 MB with nothing reported [ran, then fixed]. Reaching the budget stops
   drawing for the rest of the file (text dots excepted) and reports how many
   objects were left out (`skipped.budget` and a warning). Bounding and
-  reporting are tested separately.
+  reporting are tested separately. The block walk goes on past the budget for
+  the dots, also the dots of a block whose other members did not fit, and
+  leaves each placement's meshes, curves and point clouds out in one step
+  [test]. A branch that leads to no text dot ends at once, so a file without
+  dots in blocks spends no placement budget after the triangle budget [test].
 - A **placement budget** of 500,000 block references per file bounds a fan-out
   of blocks that hold no triangles, which the triangle budget cannot see: 20
   levels that each reference the next twice are 2^20 placements [test]. Every
   reference the walk reaches is charged, drawn or skipped (missing, linked,
   cyclic, invalid), so references that draw nothing cannot stall it either
-  [test]. Once it is spent, a reference that could never be drawn still gets
-  its own reason, not `budget` [test].
+  [test]. A part that a placement pushes out of range costs no triangles, so
+  it is charged here too, as one reference [test]. Once it is spent, a
+  reference that could never be drawn still gets its own reason, not `budget`
+  [test].
 - A placement whose transform is not finite, has an entry above 1e15, flattens
   space (zero determinant) or is not affine (last row other than `0 0 0 1`) is
   counted as `InstanceReference:invalid`.
   Geometry a transform pushes out of the f32 range is counted as
-  `transform:invalid` [test].
+  `transform:invalid` [test]. That is decided before the budget is charged, so
+  geometry that is left out costs no triangles [test], and from the part's
+  largest |x|, |y| and |z|, measured once: a placement costs the same check
+  whatever the vertex count, in both modes. In the default mode one check
+  against the block's reach covers all its meshes; only a placement that fails
+  it is looked at mesh by mesh, and baked. The bound is per axis, so it can
+  refuse a part whose own vertices would just fit, by less than a factor of
+  three at 1e38 m.
 - A block member that is hidden, or on a layer that is off, is not drawn in
   any instance, as in Rhino, and is counted as `hidden-block-member` [test].
   Unlike a hidden entity it cannot be shown later, because members are not
@@ -482,11 +517,12 @@ Numbers are not guessed. The reader does the sorting: each entity carries
 | Key | Goes to |
 |---|---|
 | `IFC::GlobalId`, `IFC::Class`, `IFC::Name` | entity identity. Kept verbatim in the `IFC` set too, so a rejected value stays visible. |
-| `IFC::Description`, `IFC::ObjectType` | entity table columns |
+| `IFC::Description`, `IFC::ObjectType` | entity table columns. Only the first key that names the column fills it; a second spelling stays in set `IFC` [test]. |
 | other `IFC::*` (`ExpressId`, `Tag`, `PredefinedType`, `Container`, `ContainerGlobalId`, `Type`, `TypeGlobalId`, `Material`, `PresentationLayer`) | set `IFC` |
 | `<Set>::<Prop>` | set `<Set>`, property `<Prop>`, split at the first `::` as the exporter defines [src `user_text.rs`]. ` #2` collision suffixes stay as written. |
 | key without `::`, or with an empty set or property name | set `Attribute User Text`, under the whole key |
 | `Rhino::*` user text (any case) | set `Attribute User Text`, under the whole key, so it cannot pose as a derived fact [test] |
+| `IFC` and `Rhino` as set names | matched ignoring case and surrounding spaces, by one rule for sorting and for every `IFC::*` lookup (identity, columns, layer stamps, document strings), so `IFC ::Description` fills the column and is not also a property [test] |
 | Rhino facts | set `Rhino`: `Layer` (full path), `ObjectType`, `ObjectId` (UUID), `Material` (name). Only the reader writes this set. |
 
 Document strings and document user text go to the model metadata panel, not

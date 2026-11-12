@@ -8,7 +8,7 @@ import { isValidIfcGuid } from '@ifc-lite/encoding';
 import { describe, expect, test } from 'vitest';
 import { readRhino3dm, writeRhino3dm, type RhinoImport, type RhinoSceneManifest } from '../index.js';
 import { entityBounds } from '../../test-support/craft.js';
-import { userString } from './identity.js';
+import { ifcString } from './identity.js';
 
 /**
  * Round trip of ifc-lite's own exports: IFC fixture, Rust scene builder
@@ -65,8 +65,8 @@ describe.skipIf(missing)(`ifc-lite exports read back${missing ? ` (skipped: ${mi
     const result = await readRhino3dm(bytes);
     const stated = new Map<string, string>();
     for (const o of manifest.objects) {
-      const id = userString(o.userStrings, 'IFC::GlobalId')!;
-      if (!stated.has(id)) stated.set(id, userString(o.userStrings, 'IFC::Class')!);
+      const id = ifcString(o.userStrings, 'GlobalId')!;
+      if (!stated.has(id)) stated.set(id, ifcString(o.userStrings, 'Class')!);
     }
     expect(stated.size).toBe(distinct);
     expect(result.document).toMatchObject({ provenance: 'ifc-lite', frame: 'file' });
@@ -75,6 +75,8 @@ describe.skipIf(missing)(`ifc-lite exports read back${missing ? ` (skipped: ${mi
     expect(new Map(result.entities.map(e => [e.globalId, e.ifcClass]))).toEqual(stated);
     expect(result.entities.every(e => isValidIfcGuid(e.globalId))).toBe(true);
     expect(result.entities.filter(e => e.objectIds.length > 1)).toHaveLength(merged);
+    // Each part of a grouped element states its own material, and the merged entity keeps them all.
+    expect(result.entities.filter(e => e.userStrings.some(([key]) => key === 'IFC::Material #2'))).toHaveLength(merged);
     expect(result.entities.reduce((n, e) => n + e.objectIds.length, 0)).toBe(manifest.objects.length);
     expect(result.entities.some(e => e.ifcClass === 'IfcBuildingElementProxy' && stated.get(e.globalId) !== 'IfcBuildingElementProxy')).toBe(false);
     // The exporter hides its IfcSpace layers, and the entities follow.

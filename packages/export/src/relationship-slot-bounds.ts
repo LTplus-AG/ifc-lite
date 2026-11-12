@@ -24,7 +24,7 @@
  * is keyed off `NONREL_REF_LIST_REGISTRY_NAMES` — a map scoped to the types
  * that qualify for THAT file's own narrowing rule. `STYLE_RESCUE_TYPES` is
  * a different, independently-defined type set (`style-closure.ts`), so this
- * reads the general `ENTITY_REGISTRY_NAMES` map (`registry-entity-names.ts`)
+ * reads the general `getEntityRegistryNames()` map (`registry-entity-names.ts`)
  * instead of borrowing a gate built for an unrelated rule.
  *
  * Reads the declaration from the generated schema registry
@@ -33,7 +33,7 @@
  * answer can never drift from the schema it describes.
  */
 import { getSchemaRegistryForVersion, type SchemaVersionWithRegistry } from '@ifc-lite/parser';
-import { ENTITY_REGISTRY_NAMES } from './registry-entity-names.js';
+import { getEntityRegistryNames } from './registry-entity-names.js';
 import type { IfcSchemaVersion } from './schema-converter.js';
 
 function isRegistryVersion(version: IfcSchemaVersion): version is SchemaVersionWithRegistry {
@@ -57,7 +57,7 @@ export function readRelationshipSlotLowerBound(
   schemaVersion: IfcSchemaVersion,
 ): number | undefined {
   if (!isRegistryVersion(schemaVersion)) return undefined;
-  const registryName = ENTITY_REGISTRY_NAMES.get(entityType);
+  const registryName = getEntityRegistryNames().get(entityType);
   if (registryName === undefined) return undefined;
   const attr = getSchemaRegistryForVersion(schemaVersion).entities[registryName]?.allAttributes?.[slotIndex];
   if (attr === undefined || !(attr.isList || attr.isSet)) return undefined;

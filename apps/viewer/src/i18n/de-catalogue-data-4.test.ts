@@ -21,6 +21,7 @@ catalogueBatchContract('de', 8900, [
   'stair-railing',
   'storey-context',
   'storey-manager',
+  'structural-glyphs',
   'structural-properties',
   'structural-review',
   'swept-disk-inspection',

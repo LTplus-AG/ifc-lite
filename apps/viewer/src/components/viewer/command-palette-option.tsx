@@ -8,7 +8,7 @@ import { MatchHighlight } from '@/components/ui/match-highlight';
 import { useTranslation } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { shortcutLabel, type KeyCommandId } from '@/lib/commands/shortcut-label';
-import { SURFACE_COMMANDS, type SurfaceCommandDefinition, type SurfaceCommandIdFor } from './surface-commands';
+import { SURFACE_COMMANDS, type SurfaceCommandDefinition, type SurfaceCommandIdFor } from './surface-command-registry';
 import { EXPORT_SURFACE_COMMANDS } from './commandPaletteExports';
 import type { Command } from './commandPaletteSearch';
 import type { CsvExportType, ExportCommandId } from './toolbar/export-commands';

@@ -47,6 +47,7 @@ import { FIRST_SECTION_PLANE_NAME } from '@/lib/section/section-plane-set';
 import { restoredCutPosition } from '@/lib/section/section-distance';
 import { markActiveDrawingGenerationCompleted } from '@/lib/drawing/active-canvas-snapshot';
 import { constructionProjectionEnabled } from '@/lib/drawing/construction-projection';
+import { drawingWithMaterialLayerFills } from '@/lib/drawing/material-layer-fills';
 // The winding-robust Rust `meshOutline2d` binding (issue #979) is gitignored →
 // CI-built, so reference it defensively: against an older wasm bundle it's
 // undefined and projection falls back to the TS mesh silhouette. The wasm
@@ -600,7 +601,7 @@ export function useDrawingGeneration({
           ? createMeshOutlineProvider(meshOutline2dFn)
           : undefined;
 
-      const result = await generator.generate(
+      const result = drawingWithMaterialLayerFills(await generator.generate(
         meshesToProcess,
         config,
         {
@@ -615,8 +616,7 @@ export function useDrawingGeneration({
           onProgress: progressCallback,
         },
         projectionOn ? projectionProfiles : undefined,
-      );
-
+      )); // layers of one element fill per material (#9296)
       if (!isCurrent()) return;
 
       let completedDrawing = result;

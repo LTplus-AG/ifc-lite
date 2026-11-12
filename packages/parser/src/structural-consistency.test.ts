@@ -173,11 +173,18 @@ describe('structural-axis-drift', () => {
     expect(drift(checkStructuralConsistency(linked, elements, {}, lines([[-0.2, 0, 3], [5.5, 0, 3]])))).toEqual([]);
   });
 
-  it(`reports only past the tolerance, default ${DEFAULT_AXIS_DRIFT_TOLERANCE} m`, () => {
-    const within = lines([[0, DEFAULT_AXIS_DRIFT_TOLERANCE, 3], [6, 0, 3]]);
+  it('reports only past the tolerance, default 0.05 m', () => {
+    expect(DEFAULT_AXIS_DRIFT_TOLERANCE).toBe(0.05);
+    const within = lines([[0, 0.049, 3], [6, 0, 3]]);
     expect(drift(checkStructuralConsistency(linked, elements, {}, within))).toEqual([]);
+    expect(drift(checkStructuralConsistency(linked, elements, {}, lines([[0, 0.051, 3], [6, 0, 3]])))).toHaveLength(1);
     expect(drift(checkStructuralConsistency(linked, elements, { axisDriftTolerance: 0.01 }, within))).toHaveLength(1);
     expect(() => checkStructuralConsistency(linked, elements, { axisDriftTolerance: Number.NaN }, within)).toThrow(/axisDriftTolerance/);
+  });
+
+  it('does not report an end exactly at the tolerance, far from the axis origin (#9930 review)', () => {
+    const boundary = lines([[0, 0, 0], [5, 0.05, 0]], [[0, 0, 0], [5, 0, 0]]);
+    expect(drift(checkStructuralConsistency(linked, elements, {}, boundary))).toEqual([]);
   });
 
   it('needs both lines, a link and the element', () => {

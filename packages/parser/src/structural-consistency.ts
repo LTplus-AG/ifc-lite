@@ -127,10 +127,13 @@ function offLine(line: StructuralLine, [a, b]: StructuralLine): number | null {
   const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
   const span = Math.hypot(d[0], d[1], d[2]);
   if (!(span > 1e-9)) return null;
+  const u = [d[0] / span, d[1] / span, d[2] / span];
+  // The component of each end square to the axis, not a difference of squares,
+  // which loses the boundary to rounding far from the axis origin.
   return Math.max(...line.map((p) => {
     const r = [p[0] - a[0], p[1] - a[1], p[2] - a[2]];
-    const along = (r[0] * d[0] + r[1] * d[1] + r[2] * d[2]) / span;
-    return Math.sqrt(Math.max(0, r[0] * r[0] + r[1] * r[1] + r[2] * r[2] - along * along));
+    const along = r[0] * u[0] + r[1] * u[1] + r[2] * u[2];
+    return Math.hypot(r[0] - along * u[0], r[1] - along * u[1], r[2] - along * u[2]);
   }));
 }
 

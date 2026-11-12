@@ -43,15 +43,15 @@ const drift = (store: IfcDataStore) =>
  * and the command), rounded to 0.1 mm. STR is the file the derived-model test
  * below derives from, so its start lines are pinned too. Run once over all
  * 192 IfcBeam and IfcColumn of the two files (the script takes any ids), the
- * lines agreed to 1e-14 m, except where the oracle does not hold: the round
- * D300 columns (a circle has no unique section axes; 0.24 mm, not pinned) and
- * the eight L 75x75x6 braces. Those braces are a real gap of their own, by
+ * lines agreed to 1e-14 m, except the round D300 columns, 0.24 mm (the
+ * oracle bounds a meshed polygon in section axes a circle does not fix, so it
+ * gets its own tolerance), and the eight L 75x75x6 braces. Those braces are a real gap of their own, by
  * the file rather than the oracle: the profile is placed so its centroid is on
  * the axis, as the authored member #4984 is, and the derivation's bounds rule
  * puts the line 25 mm away (#9934). #88 is sloped with ends square to its
  * axis, so its end faces bound the line.
  */
-const IFCOPENSHELL_AXES: ReadonlyArray<[file: string, id: number, section: string, a: Vec3, b: Vec3]> = [
+const IFCOPENSHELL_AXES: ReadonlyArray<[file: string, id: number, section: string, a: Vec3, b: Vec3, tolerance?: number]> = [
   [STEEL_FRAME, 88, 'IfcBeam HE 140 A, sloped', [1.5, 0, 5], [0, 0, 6]],
   [STEEL_FRAME, 284, 'IfcBeam HE 240 B', [1.5, 0, 5], [10.5, 0, 5]],
   [STEEL_FRAME, 880, 'IfcBeam HE 140 B', [12, 0, 6], [12, 7.4, 6]],
@@ -63,6 +63,7 @@ const IFCOPENSHELL_AXES: ReadonlyArray<[file: string, id: number, section: strin
   [STR, 535, 'IfcBeam HEA180', [25.875, 3.7964, 8.105], [25.875, 9, 8.105]],
   [STR, 548, 'IfcBeam concrete 400 x 500', [33.3805, 14.16, -1.05], [40.935, 14.16, -1.05]],
   [STR, 261, 'IfcColumn concrete 300 x 300', [31.105, 12, 10.5], [31.105, 12, 12]],
+  [STR, 273, 'IfcColumn concrete D300', [21.3752, 8.3573, -0.85], [21.3752, 8.3573, 3.27], 5e-4],
 ];
 type Vec3 = readonly [number, number, number];
 const apart = (p: Vec3, q: Vec3) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
@@ -78,18 +79,18 @@ describe('structuralPhysicalAxes with the axis-drift check', () => {
     it(`puts each axis where IfcOpenShell puts the element's centre line: ${file.split('/').pop()} (#9930 review)`, async (ctx) => {
       skipWithout(ctx, file);
       const axes = structuralPhysicalAxes(await parse(readFileSync(fixture(file))));
-      for (const [, id, section, a, b] of IFCOPENSHELL_AXES.filter(([f]) => f === file)) {
+      for (const [, id, section, a, b, tolerance = PIN_TOLERANCE] of IFCOPENSHELL_AXES.filter(([f]) => f === file)) {
         const axis = axes.get(id);
         expect(axis, `#${id} ${section}`).toBeDefined();
         const [p, q] = axis!;
         // Either direction: the oracle does not order the ends.
         const error = Math.min(Math.max(apart(p, a), apart(q, b)), Math.max(apart(p, b), apart(q, a)));
-        expect(error, `#${id} ${section}: ${JSON.stringify(axis)}`).toBeLessThan(PIN_TOLERANCE);
+        expect(error, `#${id} ${section}: ${JSON.stringify(axis)}`).toBeLessThan(tolerance);
       }
     }, 30_000);
   }
 
-  it('reads an axis for every linked beam and column of an Axis export, with no drift', async (ctx) => {
+  it('reads an axis for every linked beam and column of an Axis export, with no drift past the default tolerance', async (ctx) => {
     skipWithout(ctx, STEEL_FRAME);
     const { store } = await load(STEEL_FRAME);
     const axes = structuralPhysicalAxes(store);

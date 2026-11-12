@@ -206,7 +206,12 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
           // A write still pending could overwrite the control's alteration or miss its signature: no verdict from this reopen on.
           if (meta.identityWritesSettled !== true) throw new Error('identity pass: cache writes did not settle before the reopen');
           await settleIdentityWrites(page, meta.identityOpens.at(-1));
-          if (process.env.LOAD_SCOREBOARD_CORRUPT_SNAPSHOT === '1') (meta.corrupted ??= []).push({ open: i, ...(await corruptStoredSnapshots(page, i)) });
+          if (process.env.LOAD_SCOREBOARD_CORRUPT_SNAPSHOT === '1') {
+            const corrupted = { open: i, ...(await corruptStoredSnapshots(page, i)) };
+            (meta.corrupted ??= []).push(corrupted);
+            // A control that altered nothing where a snapshot is stored proves nothing: fail the reopen (review #9863).
+            if (!uncached && !(corrupted.altered > 0)) throw new Error(`identity control altered no stored snapshot (${corrupted.error ?? 'none found'})`);
+          }
         }
         await replacePage(context, page);
         page = context.pages().at(-1);

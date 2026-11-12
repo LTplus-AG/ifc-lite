@@ -145,12 +145,13 @@ export function reopenIdentityVerdict(opens, index) {
  * pass restored its own cold output, on both sides; the cold lanes' element hashes chain it across sides.
  */
 /**
- * A reopen lane's final output verdict: a RESTORE MISMATCH seen in any timed sample wins; then the identity pass
+ * A reopen lane's final output verdict: a RESTORE MISMATCH, CHANGED or VARIED seen in the timed samples wins; then the identity pass
  * (each reopen = its own cold) is a match only when the cold lane is a cross-side match too, so two builds with
  * different output never read as matching (review #9863). Null when no identity row exists for the lane.
  */
 export function reopenOutputVerdict(identityVerdict, timedVerdict, coldVerdict) {
-  if (typeof timedVerdict === 'string' && timedVerdict.startsWith('RESTORE MISMATCH')) return timedVerdict;
+  // Positive evidence from the timed samples is never overwritten (review #9863).
+  if (typeof timedVerdict === 'string' && /^(RESTORE MISMATCH|CHANGED|VARIED)/.test(timedVerdict)) return timedVerdict;
   if (identityVerdict === null || identityVerdict === undefined) return null;
   if (identityVerdict !== 'match') return identityVerdict;
   if (coldVerdict === 'match') return 'match';
@@ -160,10 +161,10 @@ export function reopenOutputVerdict(identityVerdict, timedVerdict, coldVerdict) 
 }
 
 export function laneIdentityVerdict(rows, lane) {
-  const all = rows.filter((r) => r.lane === 'identity' && r.reopens?.[lane]);
-  if (all.length === 0) return null;
-  // A failed identity sample never supplies a match; its side is unverifiable (review #9863).
-  const mine = all.map((r) => (r.ok === false && r.reopens[lane].match ? { ...r, reopens: { ...r.reopens, [lane]: { verdict: `UNVERIFIABLE (identity sample failed: ${String(r.error ?? 'unknown').slice(0, 120)})`, match: false } } } : r));
+  // Each reopen's own status decides (identityRowReopens marks a reopen the sample failed at or after as UNVERIFIABLE);
+  // an earlier clean reopen keeps its verdict when a later one failed (review #9863).
+  const mine = rows.filter((r) => r.lane === 'identity' && r.reopens?.[lane]);
+  if (mine.length === 0) return null;
   const bySide = Object.fromEntries(['base', 'branch'].map((side) => [side, mine.filter((r) => r.side === side).map((r) => r.reopens[lane])]));
   const verdicts = [...bySide.base, ...bySide.branch];
   if (verdicts.some((v) => v.verdict.startsWith('RESTORE MISMATCH'))) return `RESTORE MISMATCH (identity pass: ${verdicts.find((v) => v.verdict.startsWith('RESTORE')).verdict.slice(0, 200)})`;
@@ -173,8 +174,15 @@ export function laneIdentityVerdict(rows, lane) {
 }
 
 /** The identity pass runs in round 0 unless the plan turns it off; it needs reopens to verify. */
+/** The default-arm reopen lane whose identity rows a reopen lane uses: output identity is a property of the build and
+ * the cache state, not of when the file was picked, so #9744's -early and -settled reopen arms share them. Null for others. */
+export function identityLaneFor(lane) {
+  const base = String(lane).replace(/-(early|settled)$/, '');
+  return base === 'browser-warm1' || base === 'browser-warm' ? base : null;
+}
+
 export function identityWanted(plan, round) {
-  return round === 0 && plan.identityPass !== false && (plan.warmOpens ?? 0) > 0 && plan.lanes.some((l) => l === 'browser-warm1' || l === 'browser-warm');
+  return round === 0 && plan.identityPass !== false && (plan.warmOpens ?? 0) > 0 && plan.lanes.some((l) => identityLaneFor(l) !== null);
 }
 
 /** Each reopen lane of an identity sample with its verdict against the sample's own earlier opens. */

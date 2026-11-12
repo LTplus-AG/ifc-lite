@@ -96,9 +96,9 @@ test('review #9863: the cold lane links the sides, timed RESTORE MISMATCH wins, 
   assert.match(reopenOutputVerdict('match', 'unverifiable (x)', 'CHANGED'), /^CHANGED \(cold output CHANGED across sides/, 'different builds never read as matching');
   assert.match(reopenOutputVerdict('match', 'unverifiable (x)', 'unverifiable (a sample has no output identity)'), /^unverifiable \(each reopen restored its own cold open, but the cold lane/);
   assert.match(reopenOutputVerdict('match', 'RESTORE MISMATCH vs cold: flat 1/2', 'match'), /^RESTORE MISMATCH vs cold/, 'a timed restore failure is never hidden');
+  assert.equal(reopenOutputVerdict('match', 'CHANGED', 'match'), 'CHANGED', 'a timed CHANGED is never hidden (review #9863)');
+  assert.equal(reopenOutputVerdict('match', 'VARIED within a side', 'match'), 'VARIED within a side', 'nor a timed VARIED');
   assert.equal(reopenOutputVerdict(null, 'unverifiable (x)', 'match'), null, 'no identity row: the timed verdict stands');
-  const row = (side, ok) => ({ lane: 'identity', side, ok, error: ok ? null : 'warm1: GPU device lost', reopens: { 'browser-warm': { verdict: 'match (x)', match: true } } });
-  assert.match(laneIdentityVerdict([row('base', true), row('branch', false)], 'browser-warm'), /^unverifiable \(identity pass: UNVERIFIABLE \(identity sample failed: warm1: GPU device lost/);
   const opens = [{ label: 'cold', identity: id('P', [cap('S1')]) }, { label: 'warm1', identity: id('P') }, { label: 'warm2', identity: id('P', [adopt('S1')]) }];
   const reopens = identityRowReopens({ meta: { identityOpens: opens }, lanes: { 'browser-warm1': { ok: true }, 'browser-warm': { ok: false, error: 'warm1: renderer crashed' } } }, 2);
   assert.equal(reopens['browser-warm1'].match, true, 'an earlier clean reopen keeps its verdict');
@@ -119,4 +119,22 @@ test('review #9863: a reopen lane whose cold output differs across sides reads C
   const out = summarize(plan, rows).fixtures[0].lanes;
   assert.equal(out['browser-cold'].output, 'CHANGED');
   assert.match(out['browser-warm'].output, /^CHANGED \(cold output CHANGED across sides/);
+});
+
+test('review #9863: a clean earlier reopen keeps its match through identityRow when a later reopen failed', async () => {
+  const { identityRow, laneIdentityVerdict } = await load('./load-scoreboard-identity.mjs');
+  const opens = [{ label: 'cold', identity: id('P', [cap('S1')]) }, { label: 'warm1', identity: id('P', [adopt('S1')]) }, { label: 'warm2', identity: id('P', [adopt('S1')]) }];
+  const sample = (side) => ({ meta: { identityOpens: opens }, lanes: { 'browser-cold': { ok: true }, 'browser-warm1': { ok: true }, 'browser-warm': { ok: false, error: 'warm2: GPU device lost' } } });
+  const rows = ['base', 'branch'].map((side) => identityRow({ fixture: 'F', side, round: 0, group: 'browser' }, sample(side), 2, () => {}));
+  assert.equal(rows[0].ok, false, 'the row records the failed sample');
+  assert.equal(laneIdentityVerdict(rows, 'browser-warm1'), 'match', 'warm1 was clean on both sides');
+  assert.match(laneIdentityVerdict(rows, 'browser-warm'), /^unverifiable \(identity pass: UNVERIFIABLE \(identity sample failed: warm2: GPU device lost/);
+});
+
+test('review #9863: -early and -settled reopen lanes use the default-arm identity rows; the pass runs for them', async () => {
+  const { identityLaneFor, identityWanted } = await load('./load-scoreboard-identity.mjs');
+  assert.equal(identityLaneFor('browser-warm-early'), 'browser-warm');
+  assert.equal(identityLaneFor('browser-warm1-settled'), 'browser-warm1');
+  assert.equal(identityLaneFor('browser-cold-settled'), null);
+  assert.equal(identityWanted({ warmOpens: 2, lanes: ['browser-cold', 'browser-warm-settled'] }, 0), true, 'a plan with only a suffixed reopen lane gets the pass');
 });

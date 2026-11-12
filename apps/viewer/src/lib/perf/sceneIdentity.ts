@@ -62,7 +62,8 @@ export function pieceSignature(md: MeshData): [number, number] {
 /** Batches sorted by key; any change to their bytes or table fields changes the signature. */
 export function snapshotSignature(snapshot: SceneSnapshot): string {
   const one = (seed: number) => {
-    let h = mixText(seed, JSON.stringify([snapshot.policy ?? '', snapshot.sharedFrameOrigins ?? null, snapshot.activeBuckets ?? null, snapshot.pieceCount, snapshot.nextSplitId]));
+    // hostData carries the camera fit adoption applies (fitCameraToSnapshot) and the shard locations (review #9863).
+    let h = mixText(seed, JSON.stringify([snapshot.policy ?? '', snapshot.sharedFrameOrigins ?? null, snapshot.activeBuckets ?? null, snapshot.pieceCount, snapshot.nextSplitId, snapshot.hostData ?? null]));
     const batches = [...snapshot.batches].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
     for (const b of batches) {
       h = mixText(h, JSON.stringify([b.key, b.color, b.finish ?? null, b.origin ?? null, b.bounds ?? null, b.quantized ?? null, b.modelIndex ?? null, b.vertexBytes]));

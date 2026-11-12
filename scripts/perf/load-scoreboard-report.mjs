@@ -8,7 +8,7 @@
  * markdown tables. Failed samples stay in the counts.
  */
 
-import { laneIdentityVerdict, reopenOutputVerdict } from './load-scoreboard-identity.mjs';
+import { identityLaneFor, laneIdentityVerdict, reopenOutputVerdict } from './load-scoreboard-identity.mjs';
 import { aaNoiseFloor, expectedCacheTier, median, rankShares, relativeSpread, verdictFor } from './load-scoreboard-stats.mjs';
 
 /** The lanes a plan without a `lanes` key runs: exactly the set main had before the opt-in arms. */
@@ -207,7 +207,8 @@ export function summarize(plan, samples, { floors = null } = {}) {
       }
       // Reopens: the identity pass (load-scoreboard-identity.mjs) verifies them against their own cold open.
       const timed = outputVerdict(sides.base.fingerprints, sides.branch.fingerprints);
-      const identity = lane === 'browser-warm1' || lane === 'browser-warm' ? laneIdentityVerdict(samples.filter((s) => s.fixture === fx.name), lane) : null;
+      const identityLane = identityLaneFor(lane);
+      const identity = identityLane ? laneIdentityVerdict(samples.filter((s) => s.fixture === fx.name), identityLane) : null;
       const output = (identity === null ? null : reopenOutputVerdict(identity, timed, lanes['browser-cold']?.output ?? coldOutputOf(fx.name))) ?? timed;
       // -settled lanes: both sides must have armed the same way, or the comparison says so.
       let armProtocol = null;

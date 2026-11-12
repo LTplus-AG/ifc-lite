@@ -170,6 +170,16 @@ describe('structural derivation plan (#9668)', () => {
     expect(plan.report.extendedEnds).toEqual([]);
   });
 
+  it('splits every member that passes through the joint, not only the first one met', () => {
+    // Two beams cross at (0, 0, 3); a column ends there.
+    const a = element('IfcBeam', { axis: [[-3, 0, 3], [3, 0, 3]] });
+    const b = element('IfcBeam', { axis: [[0, -3, 3], [0, 3, 3]] });
+    const plan = planStructuralDerivation(facts(a, b, column(0, 0, 0, 3)));
+    expect(plan.curveMembers.filter((m) => m.elementId === a.expressId)).toHaveLength(2);
+    expect(plan.curveMembers.filter((m) => m.elementId === b.expressId)).toHaveLength(2);
+    expect(plan.nodes.filter((n) => n.elementIds.length === 3)).toHaveLength(1);
+  });
+
   describe('joints between centroid axes', () => {
     /** Two 0.3 m columns, 0 to 3 m, at x = 0 and 6; a 0.3 x 0.4 m beam between their faces, top flush with theirs. */
     const portal = (beamY = 0, beamFrom = 0.15) => {

@@ -96,6 +96,9 @@ function checkPlan(plan: StructuralDerivationPlan, toLocal: (storeyId: number | 
     const what = `the curve member of element #${member.elementId}`;
     if (!plan.nodes[member.startNode] || !plan.nodes[member.endNode]) refuse(what, 'names a node the plan does not have');
     if (member.start.every((v, k) => v === member.end[k])) refuse(what, 'has no length');
+    // The planner copies node positions onto member ends; a plan changed since must keep them together.
+    const sameAs = (p: Vec3, node: number) => p.every((v, k) => v === plan.nodes[node].position[k]);
+    if (!sameAs(member.start, member.startNode) || !sameAs(member.end, member.endNode)) refuse(what, 'has ends that differ from its nodes');
   }
   for (const member of plan.surfaceMembers) {
     const what = `the surface member of element #${member.elementId}`;

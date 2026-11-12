@@ -45,7 +45,8 @@
  * extrusion when the profile is a near-rectangle thinner than the depth
  * (walls). Thickness is that thinnest side. Oblique extrusions and profiles
  * read only as bounds (I-shapes, circles) are skipped. Openings and profile
- * voids are not carried: the surface member covers the outer outline.
+ * voids are not carried: the surface member covers the outer outline. A
+ * rounded rectangle is read as its rectangle (square corners).
  *
  * Joints. Axes run through section centres, so a column top stops below the
  * beam axis and a beam end stops at the column face. Before nodes are formed,

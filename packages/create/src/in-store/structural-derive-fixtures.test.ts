@@ -159,7 +159,8 @@ describe('derived against authored analytical models (#9668)', () => {
   it.skipIf(!has(STEEL_FRAME))('steel frame: every beam and column matches its authored members within 0.05 m', async () => {
     const { plan, errors } = await curveErrors(STEEL_FRAME);
     expect(errors).toHaveLength(86);
-    expect(plan.curveMembers).toHaveLength(130);
+    expect(plan.curveMembers).toHaveLength(132);
+    expect(plan.report.unconnectedEnds).toEqual([]);
     expect(errors[errors.length - 1]).toBeLessThan(0.05);
     expect(errors[Math.floor(errors.length / 2)]).toBeLessThan(0.005);
     expect(errors[Math.floor(errors.length * 0.9)]).toBeLessThan(0.015);

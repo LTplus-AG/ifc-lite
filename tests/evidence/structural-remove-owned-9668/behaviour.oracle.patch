@@ -1,0 +1,10 @@
+--- a/packages/create/src/in-store/structural-remove.ts
++++ b/packages/create/src/in-store/structural-remove.ts
+@@ -72,6 +72,6 @@
+   }
+   editor.runAtomic(draft => {
+     for (const { id, index, value } of writes) if (!removed.has(id)) draft.setPositionalAttribute(id, index, value);
+-    for (const id of candidates) if (id === expressId) draft.removeEntity(id);
++    for (const id of candidates) if (!kept.has(id)) draft.removeEntity(id);
+   });
+ }

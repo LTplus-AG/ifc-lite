@@ -25,7 +25,7 @@ import type { StructuralStoreBackendMethods } from '../index.js';
 
 import { unsupportedOperation } from './capabilities.js';
 
-export function structuralStoreStubs(): Required<StructuralStoreBackendMethods> {
+export function structuralStoreStubs() {
   return {
     addStructuralPlanarAction: unsupportedOperation('store.addStructuralPlanarAction', 'addStructuralPlanarAction not supported in MCP v0.1; use entity_create'),
     addStructuralSurfaceAction: unsupportedOperation('store.addStructuralSurfaceAction', 'addStructuralSurfaceAction not supported in MCP v0.1; use entity_create'),
@@ -46,5 +46,5 @@ export function structuralStoreStubs(): Required<StructuralStoreBackendMethods> 
     connectStructuralMemberToConnection: unsupportedOperation('store.connectStructuralMemberToConnection', 'connectStructuralMemberToConnection not supported in MCP v0.1; use entity_create'),
     connectStructuralActivityToItem: unsupportedOperation('store.connectStructuralActivityToItem', 'connectStructuralActivityToItem not supported in MCP v0.1; use entity_create'),
     assignToStructuralGroup: unsupportedOperation('store.assignToStructuralGroup', 'assignToStructuralGroup not supported in MCP v0.1; use entity_create'),
-  };
+  } satisfies StructuralStoreBackendMethods;
 }

@@ -276,3 +276,5 @@ export { readStructuralDerivationFacts } from './structural-derive-facts.js';
 export { planStructuralDerivation } from './structural-derive-plan.js';
 export { applyStructuralDerivation } from './structural-derive-apply.js';
 export type { StructuralDerivationOptions, StructuralDerivationPlan, StructuralDerivationReport } from './structural-derive-types.js';
+export { editStructuralEntityInStore, type StructuralEntityEdit } from './structural-edit.js';
+export { removeStructuralEntityInStore } from './structural-remove.js';

@@ -78,12 +78,9 @@ function useAnnotationParseTrigger(enabled: boolean, stores: SymbolicActiveStore
 
   useEffect(() => {
     if (!enabled) return undefined;
-    // A store's FIRST parse is its model's 'overlay-parse' after-load job: once its own load has
-    // settled (another model's load holds nothing back), in an idle period. That includes a store
-    // first seen after its load settled: a cache hit can publish its store and settle in one commit,
-    // and parsing here then would put the source handoff into the settle-to-interactive window.
-    // A store already parsed (an edit or re-key of a settled model) re-parses at once. The render
-    // keeps a store's last parse meanwhile.
+    // A store's FIRST parse is its model's 'overlay-parse' after-load job (idle, after its own load
+    // settled), also when first seen after the settle (a cache hit publishes and settles in one commit).
+    // A parsed store (an edit or re-key) re-parses at once; the render keeps its last parse meanwhile.
     const state = useViewerStore.getState();
     const now: Array<Pick<SymbolicActiveStore, 'store' | 'mutationView'>> = [];
     const cancels: Array<() => void> = [];

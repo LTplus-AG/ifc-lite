@@ -71,8 +71,28 @@ export async function waitShellQuiet(page, { quietMs = 1000, timeoutMs = 15000 }
     await page.waitForTimeout(100);
     s = await page.evaluate(shellState);
   }
-  return { shellQuietMs: s.now, quietWaitMs: s.now - firstReady, rendererReady: s.rendererReady, timedOut: !(s.now - s.lastLongTaskEnd >= quietMs),
+  return { shellQuietMs: s.now, armAbs: s.now, quietWaitMs: s.now - firstReady, rendererReady: s.rendererReady, timedOut: !(s.now - s.lastLongTaskEnd >= quietMs),
     bootLongTaskMs: s.longTaskMs, bootLongTasks: s.longTasks, countersOff: s.countersOff };
+}
+
+/**
+ * The quiet the arm really had, read after the open from every long-task entry
+ * (entries arrive asynchronously, so a poll can arm before a block that just
+ * ended is reported). `quietAtArmMs` = page-clock ms from the end of the last long
+ * task that ended at or before the arm to the arm (null: no long task before it);
+ * `armInsideLongTask` = the arm fell inside a long task; `armedEarly` = less than
+ * `quietMs` of real quiet. Measurement only: it never changes the arm.
+ */
+export function quietAtArm(tasks, armAbs, quietMs = 1000) {
+  if (!Number.isFinite(armAbs)) return { quietAtArmMs: null, armInsideLongTask: null, armedEarly: null };
+  let lastEnd = null, inside = false;
+  for (const [start, dur] of tasks ?? []) {
+    const end = start + dur;
+    if (end <= armAbs) lastEnd = lastEnd === null ? end : Math.max(lastEnd, end);
+    else if (start < armAbs) inside = true;
+  }
+  const quiet = lastEnd === null ? null : armAbs - lastEnd;
+  return { quietAtArmMs: quiet, armInsideLongTask: inside, armedEarly: inside || (quiet !== null && quiet < quietMs) };
 }
 
 /**

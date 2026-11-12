@@ -473,11 +473,11 @@ jobs:
       # ready and `unqueued` labels), so the bot may apply it. A failure here
       # must not fail the release run: it only delays queueing.
       - name: Queue the release PR (CI_RELEASE_LANE=on)
-        if: steps.changesets.outputs.pullRequestNumber != '' && vars.CI_RELEASE_LANE == 'on'
+        if: steps.changesets.outputs.pr-number != '' && vars.CI_RELEASE_LANE == 'on'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
-          PR: ${{ steps.changesets.outputs.pullRequestNumber }}
+          PR: ${{ steps.changesets.outputs.pr-number }}
           REPO: ${{ github.repository }}
         run: gh pr edit "$PR" --repo "$REPO" --add-label mergify-trial
 

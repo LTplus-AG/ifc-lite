@@ -13,7 +13,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -92,6 +92,8 @@ test('RED: an offset that nothing has applied to the manifests fails, naming the
   assert.match(out, /DRIFT/);
   assert.match(out, /7\.1\.0/);
   assert.match(out, /sync-versions/);
+  // Drift's remedy is the sync, printed once however many literals drifted.
+  assert.equal(out.match(/Fix: run `node scripts\/sync-versions\.js`/g)?.length, 1, out);
 });
 
 test('GREEN: the same offset, applied — npm on 6.1.0, the crates on 7.1.0', (t) => {
@@ -328,6 +330,39 @@ test('vacuous: the crate directory list points nowhere', (t) => {
   const { code, out } = run(root);
   assert.equal(code, 1);
   assert.match(out, /MISSING_MANIFEST/);
+  // Only missing-manifest and floor failures, whose remedies are their own
+  // lines: sync-versions.js cannot repair them, so its footer is not printed (#9783 review).
+  const lines = out.split('\n').filter((l) => /^\s+- [A-Z_]+:/.test(l));
+  assert.ok(lines.length > 0 && lines.every((l) => /- (DEP_FLOOR|MISSING_MANIFEST):/.test(l)), out);
+  assert.doesNotMatch(out, /sync-versions\.js` and commit/);
+  // Nor the floor's: the missing manifest is why the count is low.
+  assert.doesNotMatch(out, /DEP_FLOOR fix:/);
+});
+
+test('remedies: a missing manifest does not hide the remedy of an unrelated root-table floor (#9783 review)', (t) => {
+  // The root [workspace.dependencies] count is not lowered by a missing member,
+  // so its floor still names its own fix, once, and the sync footer stays out.
+  const root = makeTree(t, { offsetFile: OFFSET_0, depCount: 2 });
+  rmSync(join(root, 'rust'), { recursive: true });
+  const { code, out } = run(root);
+  assert.equal(code, 1);
+  assert.match(out, /MISSING_MANIFEST/);
+  assert.equal(out.match(/DEP_FLOOR fix:/g)?.length, 1, out);
+  assert.doesNotMatch(out, /sync-versions\.js` and commit/);
+});
+
+test('remedies: an unparsable root declaration names itself, not the floor (#9783 review)', (t) => {
+  const root = makeTree(t, { offsetFile: OFFSET_0 });
+  const toml = readFileSync(join(root, 'Cargo.toml'), 'utf8');
+  const broken = toml.replace(/^(ifc-lite-\S+ = \{ )/m, '$1meta = { nested = true }, ');
+  assert.notEqual(broken, toml, 'fixture edit applied');
+  writeFileSync(join(root, 'Cargo.toml'), broken);
+  const { code, out } = run(root);
+  assert.equal(code, 1);
+  assert.match(out, /UNPARSED_DEP/);
+  // No root-table floor line blaming a shrunk table or the pattern, and no floor remedy.
+  assert.doesNotMatch(out, /in Cargo\.toml's \[workspace\.dependencies\], below the floor/, out);
+  assert.doesNotMatch(out, /DEP_FLOOR fix:/, out);
 });
 
 // ---------------------------------------------------------------------------

@@ -38,7 +38,8 @@ const REPO_ROOT = join(HERE, '..');
 const CLI = join(HERE, 'ci-release-lane.mjs');
 const MERGIFY = readFileSync(join(REPO_ROOT, '.mergify.yml'), 'utf8');
 const WORKFLOW = parse(readFileSync(join(REPO_ROOT, '.github/workflows/test.yml'), 'utf8'));
-const RELEASE_WORKFLOW = parse(readFileSync(join(REPO_ROOT, '.github/workflows/release.yml'), 'utf8'));
+const RELEASE_WORKFLOW_TEXT = readFileSync(join(REPO_ROOT, '.github/workflows/release.yml'), 'utf8');
+const RELEASE_WORKFLOW = parse(RELEASE_WORKFLOW_TEXT);
 const jobs = WORKFLOW.jobs;
 
 const TMP = mkdtempSync(join(tmpdir(), 'ci-release-lane-'));
@@ -604,11 +605,23 @@ test('WIRING: release.yml queues the release PR only while CI_RELEASE_LANE is ex
   // publishes; `shadow` must stay a pure measurement.
   const steps = RELEASE_WORKFLOW.jobs.release.steps;
   const at = steps.findIndex((s) => s.uses?.startsWith('changesets/action@')); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML
+  assert.ok(at >= 0, 'release.yml has a changesets/action step');
   const step = steps.find((s) => s.name === 'Queue the release PR (CI_RELEASE_LANE=on)');
   assert.ok(step, 'the labelling step exists');
   assert.ok(steps.indexOf(step) > at, 'it runs after changesets/action has opened or updated the PR'); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML
-  assert.equal(step.if, "steps.changesets.outputs.pullRequestNumber != '' && vars.CI_RELEASE_LANE == 'on'");
+  assert.equal(step.if, "steps.changesets.outputs.pr-number != '' && vars.CI_RELEASE_LANE == 'on'");
   assert.equal(step['continue-on-error'], true, 'a labelling failure never fails a release run');
+  // The output names must be ones the pinned changesets/action declares: a
+  // name it never sets reads as empty, and the step silently never runs
+  // (`pullRequestNumber` did, #9783 review). Bumping the action fails here
+  // until this list is refreshed from its action.yml at the new SHA.
+  const CHANGESETS_ACTION = { sha: 'ae32849d5ba541f9ae29e40e22a623bc13562f51', outputs: ['published', 'published-packages', 'has-changesets', 'pr-number'] };
+  assert.equal(steps[at].uses.split('@')[1].split(/\s/)[0], CHANGESETS_ACTION.sha, 'refresh CHANGESETS_ACTION.outputs from the new action.yml');
+  // Comment lines are prose, not reads.
+  const releaseCode = RELEASE_WORKFLOW_TEXT.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n'); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML
+  const read = [...releaseCode.matchAll(/steps\.changesets\.outputs(?:\.([\w-]+)|\[\s*['"]([^'"]+)['"]\s*\])/g)].map((m) => m[1] ?? m[2]); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML
+  assert.ok(read.includes('pr-number'));
+  for (const name of read) assert.ok(CHANGESETS_ACTION.outputs.includes(name), `release.yml reads steps.changesets.outputs.${name}, which changesets/action does not declare`);
   // The label the queue's entry rule requires, read from .mergify.yml, not restated.
   const entry = parse(MERGIFY).pull_request_rules.find((r) => r.actions?.queue?.name === 'release');
   const label = entry.conditions.find((c) => c.startsWith('label=')).slice('label='.length); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML

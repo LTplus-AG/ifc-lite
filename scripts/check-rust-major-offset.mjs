@@ -86,11 +86,22 @@ function parseRoot(argv) {
   return value;
 }
 
+const SYNC_REMEDY = [
+  `  Fix: run \`node scripts/sync-versions.js\` and commit the manifests, or correct "majorOffset" in ${OFFSET_FILE_NAME}.`,
+  '  Whether that offset is LARGE ENOUGH is a different question, answered by scripts/check-rust-semver.mjs against crates.io.',
+].join('\n');
+const FLOOR_REMEDY =
+  "  DEP_FLOOR fix: compare the manifests' internal dependency declarations with main. If they really shrank, lower the floor in scripts/lib/rust-major-offset.mjs in a reviewed change; if they did not, the pattern in scripts/lib/rust-internal-deps.mjs stopped matching them, so fix it.";
+
 const rootDir = parseRoot(process.argv.slice(2));
 const failures = [];
+// Each failure carries the remedy that repairs it (null when its own line
+// already names the fix); the footer prints each distinct remedy once.
+const remedies = new Set();
 
-function fail(code, message) {
+function fail(code, message, remedy) {
   failures.push(`${code}: ${message}`);
+  if (remedy) remedies.add(remedy);
 }
 
 let versions;
@@ -121,12 +132,16 @@ if (!workspaceMatch) {
 if (workspaceMatch[2] !== crateVersion) {
   fail(
     'DRIFT',
-    `Cargo.toml [workspace.package] version is ${workspaceMatch[2]}, but npm is at ${npmVersion} and ${OFFSET_FILE_NAME} declares majorOffset ${majorOffset}, which makes the crate version ${crateVersion}.`
+    `Cargo.toml [workspace.package] version is ${workspaceMatch[2]}, but npm is at ${npmVersion} and ${OFFSET_FILE_NAME} declares majorOffset ${majorOffset}, which makes the crate version ${crateVersion}.`,
+    SYNC_REMEDY,
   );
 }
 
 // 2. Every internal dependency literal, in the root manifest and each member.
 let workspaceLiterals = 0;
+// A manifest that could not be read, or a declaration that could not be
+// parsed, lowers the counts below; its own line then names the fix.
+let scanIncomplete = false;
 let totalLiterals = 0;
 let totalInherited = 0;
 
@@ -136,9 +151,12 @@ function checkLiterals(label, text, onCount) {
   try {
     ({ deps, inherited } = scanInternalDepsDetailed(label, text));
   } catch (error) {
-    fail(error.code ?? 'UNPARSED_DEP', error.message);
+    // The scanner's message names the declaration it cannot read; rewriting
+    // versions does not make it readable.
+    fail(error.code ?? 'UNPARSED_DEP', error.message, null);
+    scanIncomplete = true;
     onCount?.(0);
-    return;
+    return false;
   }
   let count = 0;
   for (const dep of deps) {
@@ -149,15 +167,16 @@ function checkLiterals(label, text, onCount) {
     if (dep.version === null) continue;
     count++;
     if (dep.version !== crateVersion) {
-      fail('DRIFT', `${label} pins ${dep.name} at ${dep.version}; the crate version for this release is ${crateVersion}.`);
+      fail('DRIFT', `${label} pins ${dep.name} at ${dep.version}; the crate version for this release is ${crateVersion}.`, SYNC_REMEDY);
     }
   }
   totalLiterals += count;
   totalInherited += inherited.length;
   onCount?.(count);
+  return true;
 }
 
-checkLiterals('Cargo.toml', cargoToml, (n) => {
+const rootParsed = checkLiterals('Cargo.toml', cargoToml, (n) => {
   workspaceLiterals = n;
 });
 
@@ -169,8 +188,10 @@ for (const member of RUST_MEMBER_DIRS) {
   } catch (error) {
     fail(
       'MISSING_MANIFEST',
-      `could not read rust/${member}/Cargo.toml (${error.message}). This list of crate directories is hardcoded in scripts/lib/rust-major-offset.mjs, so a rename or a move leaves both the writer and this checker silently skipping a manifest — update RUST_MEMBER_DIRS.`
+      `could not read rust/${member}/Cargo.toml (${error.message}). This list of crate directories is hardcoded in scripts/lib/rust-internal-deps.mjs, so a rename or a move leaves both the writer and this checker silently skipping a manifest — update RUST_MEMBER_DIRS.`,
+      null,
     );
+    scanIncomplete = true;
     continue;
   }
   checkLiterals(`rust/${member}/Cargo.toml`, memberToml);
@@ -178,39 +199,27 @@ for (const member of RUST_MEMBER_DIRS) {
 
 // 3. Floors. A tree where these literals cannot be found is a tree this gate
 //    did not actually inspect, whatever the comparisons above concluded.
-if (workspaceLiterals < MIN_WORKSPACE_DEP_LITERALS) {
+// An unparsable root is already a failure naming its line; its count of 0 says nothing more.
+if (rootParsed && workspaceLiterals < MIN_WORKSPACE_DEP_LITERALS) {
   fail(
     'DEP_FLOOR',
-    `found ${workspaceLiterals} internal dependency literal(s) in Cargo.toml's [workspace.dependencies], below the floor of ${MIN_WORKSPACE_DEP_LITERALS}. Either the table shrank or the pattern in scripts/lib/rust-major-offset.mjs stopped matching it; both mean sync-versions.js is no longer rewriting what this gate believes it rewrites.`
+    `found ${workspaceLiterals} internal dependency literal(s) in Cargo.toml's [workspace.dependencies], below the floor of ${MIN_WORKSPACE_DEP_LITERALS}. Either the table shrank or the pattern in scripts/lib/rust-internal-deps.mjs stopped matching it; both mean sync-versions.js is no longer rewriting what this gate believes it rewrites.`,
+    FLOOR_REMEDY,
   );
 }
 const totalDeclarations = totalLiterals + totalInherited;
 if (totalDeclarations < MIN_TOTAL_DEP_DECLARATIONS) {
   fail(
     'DEP_FLOOR',
-    `found ${totalDeclarations} internal dependency declaration(s) (${totalLiterals} version literal(s) + ${totalInherited} inherited from [workspace.dependencies]) across every manifest, below the floor of ${MIN_TOTAL_DEP_DECLARATIONS}. Refusing to report agreement over a scan this small.`
+    `found ${totalDeclarations} internal dependency declaration(s) (${totalLiterals} version literal(s) + ${totalInherited} inherited from [workspace.dependencies]) across every manifest, below the floor of ${MIN_TOTAL_DEP_DECLARATIONS}. Refusing to report agreement over a scan this small.`,
+    scanIncomplete ? null : FLOOR_REMEDY,
   );
 }
 
 if (failures.length > 0) {
   console.error('❌ Rust major-offset gate failed (#3216):\n');
   for (const line of failures) console.error(`  - ${line}`);
-  // Each footer names a remedy only for the failures it repairs: a floor
-  // failure is a shrunk table or a scanner that stopped matching, and neither
-  // sync-versions.js nor majorOffset fixes that.
-  const floorOnly = failures.every((line) => line.startsWith('DEP_FLOOR:'));
-  const footer = [`\n  Expected crate version: ${crateVersion}  (npm ${npmVersion} + majorOffset ${majorOffset})`];
-  if (!floorOnly) {
-    footer.push(
-      `  Fix: run \`node scripts/sync-versions.js\` and commit the manifests, or correct "majorOffset" in ${OFFSET_FILE_NAME}.`,
-      `  Whether that offset is LARGE ENOUGH is a different question, answered by scripts/check-rust-semver.mjs against crates.io.`,
-    );
-  }
-  if (failures.some((line) => line.startsWith('DEP_FLOOR:'))) {
-    footer.push(
-      `  DEP_FLOOR fix: compare the manifests' internal dependency declarations with main. If they really shrank, lower the floor in scripts/lib/rust-major-offset.mjs in a reviewed change; if they did not, the pattern there stopped matching them, so fix the pattern.`,
-    );
-  }
+  const footer = [`\n  Expected crate version: ${crateVersion}  (npm ${npmVersion} + majorOffset ${majorOffset})`, ...remedies];
   console.error(`${footer.join('\n')}\n`);
   process.exit(1);
 }

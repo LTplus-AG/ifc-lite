@@ -14,6 +14,7 @@ import { uploadMergedMeshes, uploadIndividualMesh } from './individual-mesh-uplo
 import { matchesHoveredMesh } from './selection-outline-frame.js';
 import { planPickMeshHydration } from './pick-mesh-budget.js';
 import { XRayEpochTracker } from './xray-alpha.js';
+import { colorSaltByte, packEntityLane } from './scene-geometry.js';
 import { SelectionSnapshot, SELECTION_IDS_VERIFIED_PER_FRAME } from './selection-highlight.js';
 
 /**
@@ -621,6 +622,7 @@ describe('selecting many entities (#9835)', () => {
 
   it('flags instanced occurrences of the selection, whether their shard arrives before or after it', () => {
     const shard = (entityId: number): DecodedInstancedShard => ({
+      carriesItemIds: false,
       templates: [{ positions: new Float32Array([-1, 0, -1, 1, 0, -1, 0, 0, 1]), normals: new Float32Array([0, -1, 0, 0, -1, 0, 0, -1, 0]), indices: new Uint32Array([0, 1, 2]), origin: [0, 0, 0] }],
       instances: [{ templateIndex: 0, entityId, color: [0.4, 0.5, 0.6, 1], transform: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]) }],
     });
@@ -661,6 +663,35 @@ describe('uploadMergedMeshes across entities (#9835)', () => {
     const merged = uploadMergedMeshes(uploadDevice(), [piece(30, 0), piece(10, 0), piece(20, 0)], () => NO_FRAME);
     assert.equal(merged.length, 1);
     assert.equal(merged[0].representative.expressId, 10);
+  });
+
+  it('writes every vertex of every piece with its own position, normal, id and colour salt', () => {
+    const written: Uint8Array[] = [];
+    const device = {
+      limits: { maxBufferSize: 1 << 28 },
+      createBuffer: (desc: { size: number }) => ({ size: desc.size, destroy() { /* no-op */ } }),
+      queue: { writeBuffer(_buffer: unknown, _offset: number, data: ArrayBufferView) { written.push(new Uint8Array(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength))); } },
+    } as unknown as GPUDevice;
+    const pieces = [
+      piece(30, 0, { color: RED, normals: new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]) }),
+      piece(10, 1, { color: GREY, normals: new Float32Array(0) }),
+    ];
+    uploadMergedMeshes(device, pieces, () => NO_FRAME, true);
+    const vertices = written[0];
+    const floats = new Float32Array(vertices.buffer);
+    const lanes = new Uint32Array(vertices.buffer);
+    const expected: number[][] = [];
+    for (const each of pieces) {
+      for (let v = 0; v < 3; v++) {
+        expected.push([
+          each.positions[v * 3], each.positions[v * 3 + 1], each.positions[v * 3 + 2],
+          each.normals.length ? each.normals[v * 3] : 0, each.normals.length ? each.normals[v * 3 + 1] : 0, each.normals.length ? each.normals[v * 3 + 2] : 0,
+          packEntityLane(each.expressId, colorSaltByte(each.color)),
+        ]);
+      }
+    }
+    const actual = expected.map((_, v) => [...floats.subarray(v * 7, v * 7 + 6), lanes[v * 7 + 6]]);
+    assert.deepEqual(actual, expected);
   });
 
   it('never puts ids of two 2^24 pages in one mesh: the 24-bit vertex lane could not tell them apart', () => {

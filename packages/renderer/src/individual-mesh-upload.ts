@@ -91,30 +91,33 @@ function writePieceVertices(interleaved: Float32Array, lanes: Uint32Array, first
     ? (v: number) => Math.round(v * 1024) / 1024
     : (v: number) => v;
   const p = meshData.positions;
+  // Everything below is the same for every vertex of the piece, so it is worked
+  // out once: a pooled selection writes millions of vertices in one go (#9835).
+  const normals = meshData.normals.length > 0 ? meshData.normals : null;
+  let encodedId = meshData.expressId >>> 0;
+  if (encodedId > MAX_ENCODED_ENTITY_ID) {
+    if (!warnedEntityIdRange) {
+      warnedEntityIdRange = true;
+      console.warn('[Renderer] expressId exceeds 24-bit seam-ID encoding range; seam lines may collide.');
+    }
+    encodedId = encodedId & MAX_ENCODED_ENTITY_ID;
+  }
+  // Stamp the SAME high-byte material-colour salt as the batch path
+  // (mergeGeometry) so this individual/selection mesh computes the
+  // identical depth nudge as its source batch — otherwise the highlight
+  // (selection pipeline, reverse-Z 'greater-equal') would z-fight or drop
+  // out against the salted base depth. Low 24 bits stay the picking id.
+  const lane = packEntityLane(encodedId, colorSaltByte(meshData.color));
   for (let i = 0; i < vertexCount; i++) {
     const base = (firstVertex + i) * FLOATS_PER_VERTEX;
     const posBase = i * 3;
     interleaved[base] = so ? snap(fr(p[posBase] + dx)) : snap(p[posBase]);
     interleaved[base + 1] = so ? snap(fr(p[posBase + 1] + dy)) : snap(p[posBase + 1]);
     interleaved[base + 2] = so ? snap(fr(p[posBase + 2] + dz)) : snap(p[posBase + 2]);
-    const hasNormals = meshData.normals.length > 0;
-    interleaved[base + 3] = hasNormals ? meshData.normals[posBase] : 0;
-    interleaved[base + 4] = hasNormals ? meshData.normals[posBase + 1] : 0;
-    interleaved[base + 5] = hasNormals ? meshData.normals[posBase + 2] : 0;
-    let encodedId = meshData.expressId >>> 0;
-    if (encodedId > MAX_ENCODED_ENTITY_ID) {
-      if (!warnedEntityIdRange) {
-        warnedEntityIdRange = true;
-        console.warn('[Renderer] expressId exceeds 24-bit seam-ID encoding range; seam lines may collide.');
-      }
-      encodedId = encodedId & MAX_ENCODED_ENTITY_ID;
-    }
-    // Stamp the SAME high-byte material-colour salt as the batch path
-    // (mergeGeometry) so this individual/selection mesh computes the
-    // identical depth nudge as its source batch — otherwise the highlight
-    // (selection pipeline, reverse-Z 'greater-equal') would z-fight or drop
-    // out against the salted base depth. Low 24 bits stay the picking id.
-    lanes[base + 6] = packEntityLane(encodedId, colorSaltByte(meshData.color));
+    interleaved[base + 3] = normals ? normals[posBase] : 0;
+    interleaved[base + 4] = normals ? normals[posBase + 1] : 0;
+    interleaved[base + 5] = normals ? normals[posBase + 2] : 0;
+    lanes[base + 6] = lane;
   }
 
 }

@@ -16,7 +16,7 @@
  * the PR's many intermediate heads would still go lean is not measured, and
  * shadow mode is how to measure it.
  *
- * WHY IT IS HELD. A lean run is sound only if the PR cannot reach `main`
+ * WHY THE OWNER'S SWITCH. A lean run is sound only if the PR cannot reach `main`
  * except through Mergify's `release` queue, whose merge conditions require the
  * full lanes and whose two-step CI makes Mergify test on a
  * `mergify/merge-queue/*` draft (observed: draft #8727 for #8665), where
@@ -187,10 +187,7 @@ function judgeConditions(conditions, { labels, draft }) {
 
 /**
  * Does .mergify.yml route THIS release PR through a queue that runs the full
- * gate? Four parts:
- *  - a `pull_request_rules` entry with `head=changeset-release/main` sends
- *    the PR to that queue (without one Mergify never queues it), judged
- *    like the queue's own entry conditions below.
+ * gate? Four parts, checked in this order:
  *  - the rule takes the release head, and every other entry condition is
  *    one it can read; any other refuses (`ok: false`). Whether THIS PR meets
  *    them now (`label=`, `-draft`) is returned apart, as `queueable`, since a
@@ -205,6 +202,9 @@ function judgeConditions(conditions, { labels, draft }) {
  *    only when the CI is single-step (docs.mergify.com/merge-queue/rules,
  *    `allow_inplace_checks`), so two-step means the full lanes run on a
  *    `mergify/merge-queue/*` draft, where ci-pr-lane.mjs runs every lane.
+ *  - a `pull_request_rules` entry with `head=changeset-release/main` sends
+ *    the PR to that queue (without one Mergify never queues it), judged
+ *    like the queue's own entry conditions.
  *
  * @param {string} text  .mergify.yml
  * @param {{ labels?: string[], draft?: boolean }} pr
@@ -363,11 +363,12 @@ export function runLeanChecks(cwd, scripts = LEAN_CHECKS) {
   return scripts.map((script) => {
     // Bounded well inside the aggregate's 5-minute budget; each takes well under a second.
     const r = boundedSpawnSync(process.execPath, [script], { cwd, encoding: 'utf8', timeout: 30_000 });
+    if (r.error) return { script, ok: false, tail: r.error.message };
     const out = `${r.stdout ?? ''}${r.stderr ?? ''}`.trim().split('\n');
     // A crash ends with Node's version banner; the error line on stderr says more.
-    const crash = /^Node\.js v\d/.test(out.at(-1) ?? '') && String(r.stderr ?? '').split('\n').find((l) => /^\w*Error\b.*:/.test(l));
-    const tail = crash || out.at(-1) || '';
-    return { script, ok: r.status === 0, tail: r.error ? r.error.message : tail };
+    const crashed = /^Node\.js v\d/.test(out.at(-1) ?? '');
+    const errorLine = crashed ? String(r.stderr ?? '').split('\n').find((l) => /^\w*Error\b.*:/.test(l)) : undefined;
+    return { script, ok: r.status === 0, tail: errorLine ?? out.at(-1) ?? '' };
   });
 }
 

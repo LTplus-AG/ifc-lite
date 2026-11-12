@@ -32,8 +32,13 @@ function comparePrecedence(a, b) {
     const [p, q] = [x[i], y[i]];
     const [pn, qn] = [/^\d+$/.test(p), /^\d+$/.test(q)];
     // Numeric identifiers compare as numbers and rank below alphanumeric ones.
-    const d = pn && qn ? Math.sign(Number(p) - Number(q)) : pn !== qn ? (pn ? -1 : 1) : p < q ? -1 : p > q ? 1 : 0;
-    if (d !== 0) return d;
+    if (pn && qn) {
+      if (p !== q) return Math.sign(Number(p) - Number(q));
+    } else if (pn !== qn) {
+      return pn ? -1 : 1;
+    } else if (p !== q) {
+      return p < q ? -1 : 1;
+    }
   }
   return Math.sign(x.length - y.length);
 }

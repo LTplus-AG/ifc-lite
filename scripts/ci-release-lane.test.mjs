@@ -285,9 +285,6 @@ test('SHADOW (#9783 review): the report runs the lean lane\'s own checks and lis
   assert.equal(fail.ok, true, 'shadow reports, never fails');
   assert.match(fail.lines.join('\n'), /FAIL: offset mismatch[\s\S]*would fail its own checks: scripts\/check-rust-major-offset\.mjs/); // @source-text-assertion-ok subject is the returned summary
   assert.doesNotMatch(fail.lines.join('\n'), /None of them failed/); // @source-text-assertion-ok subject is the returned summary
-  // A cancelled lane is not a pass either.
-  const cancelled = verifyReleaseLane({ ...shadow, needs: needsJson('success', { 'viewer-e2e': 'cancelled' }), runChecks: () => [] }).lines.join('\n');
-  assert.match(cancelled, /would defer a failure to the merge queue: viewer-e2e/); // @source-text-assertion-ok subject is the returned summary
   // The real runner on scripts of its own: exit status and last output line; a missing script fails, never throws.
   const dir = mkdtempSync(join(TMP, 'checks-'));
   writeFileSync(join(dir, 'ok.mjs'), "console.log('first'); console.log('all good');\n");

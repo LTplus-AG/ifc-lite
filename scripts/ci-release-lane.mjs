@@ -91,6 +91,8 @@ export function parseQueueRules(text) {
   let rule = null;
   let list = null;
   for (const line of String(text ?? '').split('\n')) {
+    // A comment ends nothing: one between two conditions must not drop the rest.
+    if (/^\s*(#|$)/.test(line)) continue;
     if (/^\S/.test(line)) {
       inQueues = /^queue_rules:\s*$/.test(line);
       rule = null;

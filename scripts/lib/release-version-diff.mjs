@@ -10,7 +10,7 @@
  * Cargo.lock change included: a release that bumps Rust crates runs full.
  */
 
-import { basename } from 'node:path';
+import { basename, dirname } from 'node:path';
 import { isChangesetName } from './pending-changesets.mjs';
 
 /**
@@ -34,6 +34,11 @@ function onlyVersionsMoved(before, after) {
 export function diffProblems(entries, git) {
   const problems = [];
   if (entries.length === 0) problems.push('the diff is empty or unreadable');
+  // Changesets writes a package's CHANGELOG exactly when it bumps that
+  // package's version, so each must come with the other. The private root is
+  // the exception: it is versioned (privatePackages.version) without a CHANGELOG.
+  const changed = new Set(entries.map((e) => e.path));
+  const sibling = (path, name) => (dirname(path) === '.' ? name : `${dirname(path)}/${name}`);
   for (const { status, path } of entries) {
     const name = basename(path);
     let problem = null;
@@ -41,15 +46,10 @@ export function diffProblems(entries, git) {
       if (status !== 'D') problem = 'a changeset may only be consumed (deleted)';
     } else if (name === 'CHANGELOG.md') {
       if (status !== 'M' && status !== 'A') problem = `status ${status}`;
-      else {
-        try {
-          git.show('HEAD', path.replace(/CHANGELOG\.md$/, 'package.json'));
-        } catch {
-          problem = 'no package.json beside it, so changesets did not write it';
-        }
-      }
+      else if (!changed.has(sibling(path, 'package.json'))) problem = 'its package.json did not change, so changesets did not write it';
     } else if (name === 'package.json') {
       if (status !== 'M') problem = `status ${status}`;
+      else if (path !== 'package.json' && !changed.has(sibling(path, 'CHANGELOG.md'))) problem = 'no CHANGELOG.md beside it changed, so changesets did not bump it';
       else {
         try {
           problem = onlyVersionsMoved(JSON.parse(git.show('HEAD~1', path)), JSON.parse(git.show('HEAD', path)));

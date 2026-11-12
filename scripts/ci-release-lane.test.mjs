@@ -254,15 +254,36 @@ const pkg = (version, extra = {}) => JSON.stringify({ name: '@ifc-lite/x', versi
 test('DIFF: a real release shape without a Rust bump passes', () => {
   const files = {
     'packages/x/package.json': { before: pkg('1.0.0'), after: pkg('1.1.0') },
-    'packages/new/package.json': { after: pkg('0.1.0') },
+    'packages/new/package.json': { before: pkg('0.0.0'), after: pkg('0.1.0') },
+    'package.json': { before: pkg('12.2.0'), after: pkg('12.3.0') },
   };
   const entries = [
     { status: 'D', path: '.changeset/brave-owls-sing.md' },
     { status: 'M', path: 'packages/x/CHANGELOG.md' },
     { status: 'A', path: 'packages/new/CHANGELOG.md' },
     { status: 'M', path: 'packages/x/package.json' },
+    { status: 'M', path: 'packages/new/package.json' },
+    // The private root is versioned without a CHANGELOG.
+    { status: 'M', path: 'package.json' },
   ];
   assert.deepEqual(diffProblems(entries, fakeGit(files)), []);
+});
+
+test('DIFF: a CHANGELOG and its package.json move together, or the diff is not a release (code review)', () => {
+  const files = { 'tests/fixtures/foo/package.json': { before: pkg('1.0.0'), after: pkg('1.0.1') } };
+  // A version bump with no CHANGELOG is not changesets' doing: a fixture, say.
+  assert.deepEqual(diffProblems([{ status: 'M', path: 'tests/fixtures/foo/package.json' }], fakeGit(files)), [
+    'tests/fixtures/foo/package.json: no CHANGELOG.md beside it changed, so changesets did not bump it',
+  ]);
+  // A CHANGELOG edit with no bump: the root one, or a package that did not move.
+  for (const path of ['CHANGELOG.md', 'packages/x/CHANGELOG.md']) {
+    assert.deepEqual(diffProblems([{ status: 'M', path }], fakeGit({})), [`${path}: its package.json did not change, so changesets did not write it`], path);
+  }
+});
+
+test('QUEUE: a comment between conditions does not drop the conditions after it (code review)', () => {
+  const text = 'queue_rules:\n  - name: release\n    queue_conditions:\n      - head=changeset-release/main\n    # entry gate\n      - label=go\n    merge_conditions:\n      - check-success=x\n';
+  assert.deepEqual(parseQueueRules(text), [{ name: 'release', queue: ['head=changeset-release/main', 'label=go'], merge: ['check-success=x'] }]);
 });
 
 test('DIFF: any Cargo.toml or Cargo.lock change runs the full lanes, of any status, even a pure version bump (#9783 review)', () => {

@@ -96,7 +96,7 @@ export function makeAssemblyGeometry(
   dataStore: IfcDataStore,
   modelId: string,
   models: Map<string, FederatedModel>,
-  geometricIds: Set<number> | undefined,
+  geometricIds: ReadonlySet<number> | undefined,
   geometryKnown = !!geometricIds && geometricIds.size > 0,
   view?: MutablePropertyView | null,
 ): AssemblyGeometry {

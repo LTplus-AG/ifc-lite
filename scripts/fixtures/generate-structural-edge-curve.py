@@ -284,7 +284,9 @@ def coverage(schema: str, output: Path, reinforcement: bool = False) -> None:
     def rel(name: str, *rest):
         return e(name, guid(f"{name}:{len(model.by_type(name))}"), owner, None, None, *rest)
 
-    rel("IfcRelConnectsStructuralMember", curve, point_conn, node, failure, 5.0, world)
+    # The curve member's length: its SupportedLength here, its edge in the topology below.
+    SPAN = 5.0
+    rel("IfcRelConnectsStructuralMember", curve, point_conn, node, failure, SPAN, world)
     rel("IfcRelConnectsStructuralMember", surface, curve_conn, edge, slippage, None, None)
     rel("IfcRelConnectsStructuralMember", surface, surface_conn, face, None, None, None)
     rel("IfcRelConnectsWithEccentricity", curve, point_conn, node, slippage, 2.5, world,
@@ -317,18 +319,18 @@ def coverage(schema: str, output: Path, reinforcement: bool = False) -> None:
     # Topology last, so every record above keeps its id: each item and activity
     # states where it is in an IfcTopologyRepresentation, as an analysis export
     # does. The curve member runs SPAN along X (its SupportedLength), the
-    # surface member is a SPAN square above it. Connections and activities
-    # share the topology of the item they sit on: the point connection is the
-    # curve member's start node, the surface connection the member's face.
-    SPAN = 5.0
+    # surface member is a SPAN square above it. Activities share the topology
+    # of the item they act on; the point connection is the curve member's start
+    # node, the surface connection the surface member's face, and the curve
+    # connection lies along that face's first side.
 
     def point(x, y, z):
         return e("IfcCartesianPoint", (x, y, z))
 
-    def edge(y=0.0, z=0.0):
+    def topo_edge(y=0.0, z=0.0):
         return e("IfcEdge", e("IfcVertexPoint", point(0.0, y, z)), e("IfcVertexPoint", point(SPAN, y, z)))
 
-    def face(z):
+    def topo_face(z):
         corners = [point(0.0, 0.0, z), point(SPAN, 0.0, z), point(SPAN, SPAN, z), point(0.0, SPAN, z)]
         plane = e("IfcPlane", e("IfcAxis2Placement3D", corners[0], None, None))
         return e("IfcFaceSurface", (e("IfcFaceOuterBound", e("IfcPolyLoop", corners), True),), plane, True)
@@ -340,14 +342,14 @@ def coverage(schema: str, output: Path, reinforcement: bool = False) -> None:
         else:
             product.Representation = e("IfcProductDefinitionShape", None, None, (representation,))
 
-    topology = {curve: ("Edge", edge()), surface: ("Face", face(3.0))}
+    topology = {curve: ("Edge", topo_edge()), surface: ("Face", topo_face(3.0))}
     topology[point_conn] = ("Vertex", topology[curve][1].EdgeStart)
     locate(curve, *topology[curve])
-    locate(curve_varying, "Edge", edge(y=6.0))
+    locate(curve_varying, "Edge", topo_edge(y=6.0))
     locate(surface, *topology[surface])
-    locate(surface_varying, "Face", face(6.0))
+    locate(surface_varying, "Face", topo_face(6.0))
     locate(point_conn, *topology[point_conn])
-    locate(curve_conn, "Edge", edge(z=3.0))
+    locate(curve_conn, "Edge", topo_edge(z=3.0))
     locate(surface_conn, *topology[surface])
     for activity in activities + reactions:
         locate(activity, *topology[host(activity)])

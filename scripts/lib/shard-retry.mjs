@@ -36,15 +36,18 @@ export function decideMode(raw) {
 }
 
 const NOT_OK = /^( *)not ok \d+ - (.*?)(?: # (SKIP|TODO)\b.*)?$/;
-const YAML_FIELD = /^ *(location|failureType): '((?:[^']|'')*)'$/;
-const SUMMARY = /^# (tests|suites|pass|fail|cancelled|skipped|todo) (\d+)$/;
+const YAML_FIELD = /^ *(location|failureType|type): '((?:[^']|'')*)'$/;
+const SUMMARY = /^# (tests|suites|pass|fail|cancelled|skipped|todo|duration_ms) ([\d.]+)$/;
 
 function unescapeTitle(s) {
   return s.replace(/\\(.)/g, (_, c) => (c === 'n' ? '\n' : c === 'r' ? '\r' : c === 't' ? '\t' : c));
 }
 
 /**
- * The failures and the closing counts of a node:test TAP stream.
+ * The failures and the closing counts of a node:test TAP stream. The counts
+ * are taken only from the block that ENDS the stream (through
+ * `# duration_ms`): a test's own stdout reaches TAP as `# ...` lines, so a
+ * test printing `tests 9` must not pass for the run's summary.
  *
  * @param {string} text
  * @returns {{ failures: { title: string, depth: number, location: string|null, failureType: string|null }[],
@@ -56,6 +59,9 @@ export function parseNodeTap(text) {
   let open = null;
   for (const raw of String(text).split('\n')) {
     const line = raw.replace(/\r$/, '');
+    const s = SUMMARY.exec(line);
+    // Anything after a run of count lines means they were not the closing block.
+    if (!s && line.trim() !== '') for (const k of Object.keys(counts)) delete counts[k];
     const m = NOT_OK.exec(line);
     if (m) {
       open = null;
@@ -64,7 +70,6 @@ export function parseNodeTap(text) {
       failures.push(open);
       continue;
     }
-    const s = SUMMARY.exec(line);
     if (s) {
       counts[s[1]] = Number(s[2]);
       open = null;
@@ -78,7 +83,7 @@ export function parseNodeTap(text) {
     const f = YAML_FIELD.exec(line);
     if (f) open[f[1]] = f[2].replace(/''/g, "'");
   }
-  const summary = ['tests', 'pass', 'fail', 'cancelled'].every((k) => k in counts) ? counts : null;
+  const summary = ['tests', 'pass', 'fail', 'cancelled', 'duration_ms'].every((k) => k in counts) ? counts : null;
   return { failures, summary };
 }
 
@@ -125,14 +130,16 @@ export function attributeViewerFailures(failures, root) {
  * file it was given has finished; a runner killed mid-shard leaves the `not
  * ok` lines it had already printed and no counts (reproduced with SIGTERM,
  * SIGINT and SIGKILL), and retrying those files would pass a shard whose
- * other files never ran. node counts a timed-out test as `cancelled`, so the
- * failures listed must equal `fail + cancelled`.
+ * other files never ran. node counts every failed or cancelled TEST, a
+ * `test()` whose subtest failed included, but not a `describe` suite (TAP
+ * `type: 'suite'`, e.g. one whose `before` hook threw), so the non-suite
+ * failures listed must equal `fail + cancelled` (all shapes reproduced).
  *
  * @returns {string|null} the refusal, or null when the record is complete
  */
 export function incompleteViewerAttempt({ failures, summary }) {
   if (!summary) return "the first attempt's TAP has no closing summary, so the runner did not finish the shard";
-  const listed = failures.filter((f) => f.failureType !== 'subtestsFailed').length;
+  const listed = failures.filter((f) => f.type !== 'suite').length;
   const counted = summary.fail + summary.cancelled;
   if (listed !== counted) return `the first attempt lists ${listed} failure(s) but its summary counts ${counted}`;
   return null;

@@ -70,8 +70,8 @@ const VIEWER_ROOT = join(REPO_ROOT, 'apps/viewer');
 /** Inside the workspace, where test.yml's `hashFiles` can see it. */
 const RETRY_JUNIT = join(VIEWER_ROOT, 'mergify-junit-retry.xml');
 
-/** Leaves room in the 25-minute viewer job and the 20-minute E2E job. */
-const VIEWER_RETRY_TIMEOUT_MS = 8 * 60_000;
+/** test.yml gives each job this much extra time while the switch is on. */
+const VIEWER_RETRY_TIMEOUT = '8m';
 const E2E_RETRY_TIMEOUT = '4m';
 
 function readOptional(path) {
@@ -116,10 +116,11 @@ function retryViewer(env, mode, reportDir) {
 
   const retryTap = join(reportDir, 'viewer-retry.tap');
   console.log(`[ci-shard-retry] rerunning ${attributed.files.length} file(s): ${attributed.files.join(' ')}`);
-  const r = spawnSync('pnpm', ['--filter', '@ifc-lite/viewer', 'run', 'test'], {
+  // coreutils `timeout`, not spawnSync's: it signals the whole process group,
+  // so the tsx/node children die with pnpm instead of outliving the verdict.
+  const r = spawnSync('timeout', ['--kill-after=30s', VIEWER_RETRY_TIMEOUT, 'pnpm', '--filter', '@ifc-lite/viewer', 'run', 'test'], {
     cwd: REPO_ROOT,
     stdio: 'inherit',
-    timeout: VIEWER_RETRY_TIMEOUT_MS,
     env: {
       ...env,
       TEST_PATTERN: viewerPattern(attributed.files),

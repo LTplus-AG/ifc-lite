@@ -1294,7 +1294,8 @@ jobs:
     needs: [changes, build]
     if: (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true') && needs.changes.outputs.replay != 'true' && needs.changes.outputs.lane != 'fast'
     runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
-    timeout-minutes: 25
+    # +10 only while CI_SHARD_RETRY can retry: room for the 8-minute retry.
+    timeout-minutes: ${{ (vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on') && 35 || 25 }}
     strategy:
       fail-fast: false
       matrix:
@@ -1368,6 +1369,17 @@ jobs:
           NODE_OPTIONS: --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml${{ (vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on') && format(' --test-reporter=tap --test-reporter-destination={0}/viewer-attempt1.tap', runner.temp) || '' }}
           TEST_SHARDS: '16'
           TEST_SHARD: ${{ matrix.shard }}
+      # Before the retry, so the first attempt's results reach Mergify even if
+      # the retry runs into the job's time limit.
+      - name: Mergify CI Upload
+        if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('apps/viewer/mergify-junit.xml') != ''
+        continue-on-error: true
+        uses: ./.github/actions/mergify-upload
+        with:
+          token: ${{ secrets.MERGIFY_TOKEN }}
+          report_path: apps/viewer/mergify-junit.xml
+          test_step_outcome: ${{ steps.viewer_tests.outcome }}
+          job_name: viewer-tests (shard ${{ matrix.shard }})
       - name: Retry the failed viewer test files once
         id: viewer_retry
         if: (success() || failure()) && steps.viewer_tests.outcome == 'failure' && (vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on')
@@ -1393,15 +1405,6 @@ jobs:
         run: |
           echo "::error::The first attempt failed and the retry did not pass (retry step: ${{ steps.viewer_retry.outcome }})."
           exit 1
-      - name: Mergify CI Upload
-        if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('apps/viewer/mergify-junit.xml') != ''
-        continue-on-error: true
-        uses: ./.github/actions/mergify-upload
-        with:
-          token: ${{ secrets.MERGIFY_TOKEN }}
-          report_path: apps/viewer/mergify-junit.xml
-          test_step_outcome: ${{ steps.viewer_tests.outcome }}
-          job_name: viewer-tests (shard ${{ matrix.shard }})
       # The retry's own results, under the same job name: Mergify classifies a
       # test that failed and passed on one commit as flaky, so it must see both
       # attempts. Without this a retry that passed is recorded as a failure.
@@ -2196,7 +2199,8 @@ jobs:
     if: (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true') && ((github.event_name == 'pull_request' && needs.changes.outputs.lane != 'fast') || (github.event_name == 'merge_group' && vars.CI_PR_LANE == 'fast'))
     # Free runner — vite build + a ~2.4MB model; not compute-bound.
     runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
-    timeout-minutes: 20
+    # +6 only while CI_SHARD_RETRY can retry: room for the 4.5-minute retry.
+    timeout-minutes: ${{ (vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on') && 26 || 20 }}
     strategy:
       fail-fast: false
       # #7655: working SwiftShader presentation adds real rendering work;
@@ -2317,8 +2321,8 @@ jobs:
       - name: Upload E2E failure context
         # Playwright's error-context.md / traces for the failed tests only.
         # `steps.e2e.outcome` keeps the first attempt's traces when CI_SHARD_RETRY=on
-        # let the job pass; unset, it fails only where failure() already holds.
-        if: failure() || steps.e2e.outcome == 'failure'
+        # let the job pass; unset, it holds only where failure() already does.
+        if: failure() || (!cancelled() && steps.e2e.outcome == 'failure')
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: e2e-test-results-${{ matrix.shard }}

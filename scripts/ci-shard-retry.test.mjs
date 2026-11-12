@@ -101,15 +101,22 @@ test('real node:test TAP: a nested assertion, an import crash and a non-zero exi
     'src/c.test.ts': "import './missing-module.js';\n",
     'src/d/e.test.tsx': "import test from 'node:test';\ntest('passes, then the file exits 1', () => { process.exitCode = 1; });\n",
     'src/f.test.ts': "import test from 'node:test';\ntest('times out', { timeout: 50 }, () => new Promise(() => {}));\n",
+    // /code-review on #9788: node counts a test() whose subtest failed, but not
+    // a describe suite whose before() threw (its tests count as cancelled), and
+    // a test's stdout reaches TAP as `# ...` lines that look like counts.
+    'src/g.test.ts': "import test from 'node:test';\ntest('parent', async (t) => { await t.test('child', () => { throw new Error('x'); }); });\ntest('parent 2', async (t) => { await t.test('child 2', () => { throw new Error('y'); }); });\n",
+    'src/h.test.ts': "import { describe, it, before } from 'node:test';\ndescribe('suite', () => { before(() => { throw new Error('h'); }); it('t1', () => {}); it('t2', () => {}); });\n",
+    'src/i.test.ts': "import test from 'node:test';\ntest('prints counts', () => { console.log('tests 99'); console.log('fail 0'); });\n",
   });
   assert.equal(status, 1);
   const { failures, summary } = parseNodeTap(tap);
   assert.equal(incompleteViewerAttempt({ failures, summary }), null, 'a complete run: listed failures equal fail + cancelled');
   assert.ok(summary, 'the closing counts are parsed');
-  assert.equal(summary.pass, 3);
+  assert.equal(summary.pass, 4);
+  assert.notEqual(summary.tests, 99, "a test's printed `tests 99` is not the summary");
   const a = attributeViewerFailures(failures, root);
   assert.deepEqual(a.unattributed, []);
-  assert.deepEqual(a.files, ['src/a.test.ts', 'src/c.test.ts', 'src/d/e.test.tsx', 'src/f.test.ts']);
+  assert.deepEqual(a.files, ['src/a.test.ts', 'src/c.test.ts', 'src/d/e.test.tsx', 'src/f.test.ts', 'src/g.test.ts', 'src/h.test.ts']);
   assert.ok(a.tests.some((t) => t.file === 'src/a.test.ts' && t.title === 'nested fails'));
   assert.ok(!a.tests.some((t) => t.title === 'group'), 'a parent suite that failed only through its child is not a test of its own');
 });
@@ -137,7 +144,7 @@ test('#9788 review: a first attempt cut off before its summary (runner killed) i
 });
 
 test('#9788 review: a summary that counts more failures than were listed is not retried', () => {
-  const tap = 'not ok 1 - src/a.test.ts\n# tests 3\n# pass 1\n# fail 2\n# cancelled 0\n';
+  const tap = 'not ok 1 - src/a.test.ts\n# tests 3\n# pass 1\n# fail 2\n# cancelled 0\n# duration_ms 1\n';
   assert.match(incompleteViewerAttempt(parseNodeTap(tap)) ?? '', /lists 1 failure\(s\) but its summary counts 2/); // @source-text-assertion-ok subject is the returned refusal
 });
 
@@ -161,6 +168,11 @@ test('a failure outside a viewer test file, or with no location, is unattributed
 test('a truncated TAP stream has no summary, so a retry cannot be judged passed from it', () => {
   const { summary } = parseNodeTap('TAP version 13\nok 1 - a\n# tests 1\n# pass 1\n');
   assert.equal(summary, null);
+  // Counts without the closing `# duration_ms` are not the run's summary.
+  assert.equal(parseNodeTap('not ok 1 - src/a.test.ts\n# tests 1\n# pass 0\n# fail 1\n# cancelled 0\n').summary, null);
+  // Counts a test printed, then more results and no closing block: still no summary.
+  const printed = parseNodeTap('not ok 1 - src/a.test.ts\n# tests 9\n# pass 0\n# fail 1\n# cancelled 0\n# duration_ms 5\nok 2 - later\n');
+  assert.equal(printed.summary, null);
   assert.equal(judgeViewerRetry({ exitCode: 0, summary }).passed, false);
 });
 
@@ -315,12 +327,12 @@ test('the CLI exits 1 without retrying when the first attempt cannot be read or 
   assert.equal(cutOff.record.plan.retry, false, 'no closing summary: not retried');
 
   const tap = join(TMP, 'unattributed.tap');
-  writeFileSync(tap, 'TAP version 13\nnot ok 1 - something global\n# tests 1\n# pass 0\n# fail 1\n# cancelled 0\n');
+  writeFileSync(tap, 'TAP version 13\nnot ok 1 - something global\n# tests 1\n# pass 0\n# fail 1\n# cancelled 0\n# duration_ms 1\n');
   assert.equal(cli('viewer', { CI_SHARD_RETRY: 'on', TAP_FILE: tap }).code, 1);
 
   const many = join(TMP, 'many.tap');
   const n = MAX_RETRY_FILES + 1;
-  writeFileSync(many, `${Array.from({ length: n }, (_, i) => `not ok ${i + 1} - src/f${i}.test.ts`).join('\n')}\n# tests ${n}\n# pass 0\n# fail ${n}\n# cancelled 0\n`);
+  writeFileSync(many, `${Array.from({ length: n }, (_, i) => `not ok ${i + 1} - src/f${i}.test.ts`).join('\n')}\n# tests ${n}\n# pass 0\n# fail ${n}\n# cancelled 0\n# duration_ms 1\n`);
   const tooMany = cli('viewer', { CI_SHARD_RETRY: 'on', TAP_FILE: many });
   assert.equal(tooMany.code, 1);
   assert.equal(tooMany.record.files.length, MAX_RETRY_FILES + 1);

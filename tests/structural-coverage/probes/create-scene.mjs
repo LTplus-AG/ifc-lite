@@ -245,11 +245,16 @@ export const SCENE = [
     build: ({ create, editor, anchor }) => create.addStructuralCurveMemberToStore(editor, anchor, { Type: 'IfcStructuralCurveMemberVarying', Name: 'Varying curve', Start: [0,0,0], End: [3,0,0], PredefinedType: 'RIGID_JOINED_MEMBER' }).memberId,
   },
   stationShape('stations', 3),
+  stationShape('surface-stations', 3),
   stationShape('linear-stations', 2),
   {
-    id: 'varying-surface-member', builder: 'addStructuralSurfaceMemberToStore', needs: ['stations'],
+    id: 'varying-surface-member', builder: 'addStructuralSurfaceMemberToStore', needs: ['surface-stations'],
     emits: schema => ({ IfcStructuralSurfaceMemberVarying: { Name: 'Varying surface', Thickness: 0.2, ...(schema === 'IFC2X3' ? { SubsequentThickness: [0.3,0.4] } : {}) } }),
-    build: ({ create, editor, anchor, done }) => create.addStructuralSurfaceMemberToStore(editor, anchor, { Type: 'IfcStructuralSurfaceMemberVarying', Name: 'Varying surface', Boundary: [[0,0,0],[4,0,0],[4,3,0]], Thickness: 0.2, ...(anchor.schema === 'IFC2X3' ? { SubsequentThickness: [0.3,0.4], VaryingThicknessLocation: done.get('stations') } : {}) }).memberId,
+    build: ({ create, editor, anchor, done }) => {
+      const result = create.addStructuralSurfaceMemberToStore(editor, anchor, { Type: 'IfcStructuralSurfaceMemberVarying', Name: 'Varying surface', Boundary: [[0,0,0],[4,0,0],[4,3,0],[0,3,0]], Thickness: 0.2, ...(anchor.schema === 'IFC2X3' ? { SubsequentThickness: [0.3,0.4], VaryingThicknessLocation: done.get('surface-stations') } : {}) });
+      if (anchor.schema === 'IFC2X3') editor.setPositionalAttribute(done.get('surface-stations'), 4, `#${result.productShapeId}`);
+      return result.memberId;
+    },
   },
   ...['IfcStructuralLoadSingleForceWarping', 'IfcStructuralLoadSingleDisplacementDistortion'].map((Type, i) => ({
     id: Type, builder: 'addStructuralPointReactionToStore',
@@ -262,9 +267,13 @@ export const SCENE = [
     build: ({ create, editor, anchor }) => create.addStructuralLoadToStore(editor, anchor, { Type: 'IfcSurfaceReinforcementArea', Name: 'Reinforcement', SurfaceReinforcement1: [0.01,0.02], SurfaceReinforcement2: [0.03,0.04,0.05], ShearReinforcement: 0.006 }),
   },
   {
-    id: 'load-configuration', builder: 'addStructuralLoadToStore', schemas: ['IFC4','IFC4X3'], needs: ['linear-action'],
+    id: 'configuration-second-load', builder: 'addStructuralLinearActionToStore', schemas: ['IFC4','IFC4X3'], emits: {},
+    build: ({ create, editor, anchor }) => create.addStructuralLinearActionToStore(editor, anchor, { LoadName: 'Configuration end force', LinearForceZ: -7.5 }).loadId,
+  },
+  {
+    id: 'load-configuration', builder: 'addStructuralLoadToStore', schemas: ['IFC4','IFC4X3'], needs: ['linear-action', 'configuration-second-load'],
     emits: { IfcStructuralLoadConfiguration: { Name: 'Configuration', Locations: [[0],[1]] } },
-    build: ({ create, editor, anchor, done }) => create.addStructuralLoadToStore(editor, anchor, { Type: 'IfcStructuralLoadConfiguration', Name: 'Configuration', Values: Array(2).fill(Number(editor.getNewEntity(done.get('linear-action')).attributes[7].slice(1))), Locations: [[0],[1]] }),
+    build: ({ create, editor, anchor, done }) => create.addStructuralLoadToStore(editor, anchor, { Type: 'IfcStructuralLoadConfiguration', Name: 'Configuration', Values: [Number(editor.getNewEntity(done.get('linear-action')).attributes[7].slice(1)), done.get('configuration-second-load')], Locations: [[0],[1]] }),
   },
   {
     id: 'curve-action', builder: 'addStructuralCurveActionToStore', schemas: ['IFC4','IFC4X3'], needs: ['load-configuration'],
@@ -277,7 +286,7 @@ export const SCENE = [
     build: ({ create, editor, anchor, done }) => {
       const planar = kind === 'Planar';
       const base = planar ? create.addStructuralPlanarActionToStore(editor, anchor, { AppliedLoad: { Type: 'IfcStructuralLoadPlanarForce', PlanarForceZ: -3 } }) : create.addStructuralLinearActionToStore(editor, anchor, { LinearForceZ: -3 });
-      return create[`addStructural${kind}ActionToStore`](editor, anchor, { Name: `Varying ${kind}`, VaryingAppliedLoadLocation: done.get(planar ? 'stations' : 'linear-stations'), SubsequentAppliedLoads: planar ? [base.loadId, base.loadId] : [base.loadId], ...(planar ? { AppliedLoad: { Type: 'IfcStructuralLoadPlanarForce', PlanarForceZ: -2 } } : { LinearForceZ: -2 }) }).activityId;
+      return create[`addStructural${kind}ActionToStore`](editor, anchor, { Name: `Varying ${kind}`, VaryingAppliedLoadLocation: done.get(planar ? 'stations' : 'linear-stations'), SubsequentAppliedLoads: planar ? [base.loadId, create.addStructuralPlanarActionToStore(editor, anchor, { AppliedLoad: { Type: 'IfcStructuralLoadPlanarForce', PlanarForceZ: -4 } }).loadId] : [base.loadId], ...(planar ? { AppliedLoad: { Type: 'IfcStructuralLoadPlanarForce', PlanarForceZ: -2 } } : { LinearForceZ: -2 }) }).activityId;
     },
   })),
   {

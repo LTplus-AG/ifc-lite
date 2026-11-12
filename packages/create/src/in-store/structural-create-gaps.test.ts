@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
-import { IfcParser, extractStructuralOnDemand } from '@ifc-lite/parser';
+import { IfcParser, EntityExtractor, extractStructuralOnDemand } from '@ifc-lite/parser';
 import { StoreEditor, MutablePropertyView } from '@ifc-lite/mutations';
 // The export barrel also exports geometry processors; this schema-only suite
 // intentionally loads the STEP writer without requiring a WASM runtime.
@@ -85,11 +85,23 @@ describe('structural CREATE gaps (#9668)', () => {
     // These references are borrowed; the exporter must retain their exact targets.
     if (schema === 'IFC2X3') {
       expect(text).toContain(`#${done.get('stations')},(`);
-      expect(text).toContain(`(0.3,0.4),#${done.get('stations')}`);
+      expect(text).toContain(`(0.3,0.4),#${done.get('surface-stations')}`);
+      const extractor = new EntityExtractor(parsed.source);
+      const aspect = extractor.extractEntity(parsed.entityIndex.byId.get(done.get('surface-stations'))!)!;
+      const varyingMember = extractor.extractEntity(parsed.entityIndex.byId.get(done.get('varying-surface-member'))!)!;
+      expect(aspect.attributes[4]).toBe(varyingMember.attributes[6]);
+      const planar = editor.getNewEntity(done.get('varying-Planar'))!;
+      const loadRefs = planar.attributes[13] as string[];
+      expect(new Set(loadRefs).size).toBe(2);
+      expect(text).toContain(`#${done.get('stations')},(${loadRefs.join(',')})`);
+      expect(text).toContain(`${loadRefs[0]}=IFCSTRUCTURALLOADPLANARFORCE($,$,$,-3.)`);
+      expect(text).toContain(`${loadRefs[1]}=IFCSTRUCTURALLOADPLANARFORCE($,$,$,-4.)`);
     } else {
       expect(text).toContain(`#${done.get('load-configuration')},.GLOBAL_COORDS.`);
       const linearLoad = Number(String(editor.getNewEntity(done.get('linear-action'))!.attributes[7]).slice(1));
-      expect(text).toContain(`(#${linearLoad},#${linearLoad}),((0.),(1.))`);
+      expect(text).toContain(`(#${linearLoad},#${done.get('configuration-second-load')}),((0.),(1.))`);
+      expect(text).toContain(`#${linearLoad}=IFCSTRUCTURALLOADLINEARFORCE('Probe line force',$,$,-2.5,$,$,$)`);
+      expect(text).toContain(`#${done.get('configuration-second-load')}=IFCSTRUCTURALLOADLINEARFORCE('Configuration end force',$,$,-7.5,$,$,$)`);
     }
     if (process.env.STRUCTURAL_EXPORT_DIR) writeFileSync(join(process.env.STRUCTURAL_EXPORT_DIR, `${schema}-create-gaps.ifc`), text);
     if (canValidate) {
@@ -130,6 +142,8 @@ describe('structural CREATE gaps (#9668)', () => {
     const point = create.addStructuralPointReactionToStore(editor, anchor, { AppliedLoad: { Type: 'IfcStructuralLoadSingleForce', ForceZ: 1 } }).loadId;
     const config = (Values: number[], Locations: number[][]) => create.addStructuralLoadToStore(editor, anchor, { Type: 'IfcStructuralLoadConfiguration', Values, Locations });
     let before = editor.getMutationView().getNewEntities().length;
+    expect(() => create.addStructuralCurveActionToStore(editor, anchor, { AppliedLoad: point })).toThrow(/point loads require a DISCRETE configuration/);
+    expect(editor.getMutationView().getNewEntities()).toHaveLength(before);
     expect(() => config([load, load], [[0], [0]])).toThrow(/unique/);
     expect(editor.getMutationView().getNewEntities()).toHaveLength(before);
     const one = config([load], [[0]]), two = config([load, load], [[0], [1]]);

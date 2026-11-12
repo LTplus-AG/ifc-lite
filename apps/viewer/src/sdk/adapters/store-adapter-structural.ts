@@ -110,7 +110,7 @@ export function structuralMutationTracking(
     connectStructuralActivityToItem: 'IFCRELCONNECTSSTRUCTURALACTIVITY',
     assignToStructuralGroup: 'IFCRELASSIGNSTOGROUP',
   } satisfies Record<keyof StructuralMethods, string>;
-  const methods = Object.entries(types).map(([key, type]) => {
+  const methods = Object.entries(types).map(([key]) => {
     const name = key as keyof StructuralMethods;
     if (name === 'editStructuralEntity' || name === 'removeStructuralEntity') {
       return [name, (modelId: string, ...args: unknown[]) => {
@@ -133,7 +133,11 @@ export function structuralMutationTracking(
         return result;
       }];
     }
-    return [name, create(type, (...args: [string, ...unknown[]]) => {
+    return [name, create(ref => {
+      const actual = resolve(ref.modelId)?.editor.getEntityType(ref.expressId);
+      if (!actual) throw new Error(`bim.store.${name}: created entity type is unavailable`);
+      return actual.toUpperCase();
+    }, (...args: [string, ...unknown[]]) => {
       const backend = live(name);
       return Reflect.apply(backend[name], backend, args);
     })];

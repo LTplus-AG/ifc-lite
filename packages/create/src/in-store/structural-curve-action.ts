@@ -29,6 +29,7 @@ export function addStructuralCurveActionToStore(editor: StoreEditor, anchor: Act
   if (!conformsTo(registry, loadType, 'IfcStructuralLoad')) throw new Error(`${label}: AppliedLoad must reference an IfcStructuralLoad`);
   const distribution = params.PredefinedType ?? 'NOTDEFINED';
   const configured = loadType === 'IfcStructuralLoadConfiguration';
+  if (!configured && ['IfcStructuralLoadSingleForce', 'IfcStructuralLoadSingleDisplacement'].some(t => conformsTo(registry, loadType, t))) throw new Error(`${label}: point loads require a DISCRETE configuration`);
   if (['CONST', 'SINUS', 'PARABOLA'].includes(distribution) && configured) throw new Error(`${label}: ${distribution} must not use a load configuration`);
   if (['LINEAR', 'POLYGONAL', 'DISCRETE'].includes(distribution)) {
     if (!configured) throw new Error(`${label}: ${distribution} requires IfcStructuralLoadConfiguration`);

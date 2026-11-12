@@ -160,11 +160,9 @@ export function attributeViewerFailures(failures, root) {
     // A suite is re-checked through its tests (cancelled ones included),
     // never as a test of its own: a suite is never a passing result.
     if (f.failureType !== 'subtestsFailed' && f.type !== 'suite') {
-      // didNotRun only shapes the report (summary, annotations); the retry
-      // still has to pass the test. `cancelledByParent` alone is not enough:
-      // node also uses it for a test left pending when its file's event loop
-      // drained, which did run. The message tells the two apart (Node 22.14
-      // and 22.23 alike).
+      // didNotRun shapes only the report; the retry still has to pass the
+      // test. node also uses cancelledByParent for a test left pending when
+      // its file's loop drained, which ran, hence the message check.
       tests.push({ file, title: f.title, path: f.path, didNotRun: f.failureType === 'cancelledByParent' && f.error === PARENT_CANCELLED });
     }
   }

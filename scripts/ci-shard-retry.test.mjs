@@ -106,7 +106,7 @@ test('real node:test TAP: a nested assertion, an import crash and a non-zero exi
     // A pending timer keeps the file's event loop alive, so the 50 ms timeout
     // fires on every platform: a bare never-resolving promise let CI's runner
     // drain the loop first and cancel the test instead.
-    'src/f.test.ts': "import test from 'node:test';\ntest('times out', { timeout: 50 }, () => new Promise((r) => setTimeout(r, 5000)));\n",
+    'src/f.test.ts': "import test from 'node:test';\ntest('times out', { timeout: 50 }, () => new Promise((r) => setTimeout(r, 500)));\n",
     // /code-review on #9788: node counts a test() whose subtest failed, but not
     // a describe suite whose before() threw (its tests count as cancelled), and
     // a test's stdout reaches TAP as `# ...` lines that look like counts.

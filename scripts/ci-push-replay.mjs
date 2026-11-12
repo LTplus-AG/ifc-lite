@@ -53,16 +53,14 @@
  * workflow-only full run would not re-key what a Cargo.lock change needs. Only
  * the newest runs in full.
  *
- * WORKFLOW FILES: a change to `.github/actions/` always blocks, as does any
- * file under `.github/workflows/` that is not top-level YAML. A top-level
- * workflow file blocks when it can change a Test cache key
- * (lib/workflows-keying-caches.mjs): test.yml, a reusable workflow it calls, or
- * a file that a `hashFiles` or `cache-dependency-path` in them or in an action
- * names. When that cannot be told (a pattern that may reach a workflow, a
- * `uses:` that is not a plain local, remote or docker action ref, a YAML alias
- * or escape, a symlink into .github/), every workflow file blocks. A remote
- * action's other inputs are not judged. A step that only reads another
- * workflow is test behaviour, which the exact-tree evidence already covers.
+ * WORKFLOW AND ACTION FILES: one listed in scripts/ci-cache-keying-files.txt,
+ * or the list itself, blocks; so does any file under `.github/workflows/` that is
+ * not top-level YAML. Other workflow and action files are not part of a Test
+ * run and key none of its caches, so they replay. The list is committed because
+ * this job cannot parse YAML (no install); lib/cache-keying-files.test.mjs keeps
+ * it exact with a YAML parser, in the Node guards lane of the very run whose
+ * green verdict a replay needs. A missing, empty or unreadable list blocks every
+ * workflow and action file.
  */
 
 import { appendFileSync } from 'node:fs';
@@ -71,7 +69,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { gh, GhError } from './lib/gh.mjs';
 import { isBatchBranch } from './ci-pr-lane.mjs';
 import { isMainEntry } from './lib/is-main-entry.mjs';
-import { WORKFLOW_FILE, workflowsKeyingCaches } from './lib/workflows-keying-caches.mjs';
+import { KEYING_LIST_PATH, isListed, parseKeyingList } from './lib/cache-keying-list.mjs';
 
 export const TREE_ARTIFACT_PREFIX = 'tested-tree-';
 export const TEST_WORKFLOW_FILE = 'test.yml';
@@ -87,20 +85,21 @@ const NO_REPLAY = [
   /(^|\/)rust-toolchain(\.toml)?$/,
   // Part of Swatinem/rust-cache's key, at any workspace root.
   /(^|\/)\.cargo\/config(\.toml)?$/,
-  /^\.github\/actions\//,
 ];
-const TEST_WORKFLOW_PATH = `.github/workflows/${TEST_WORKFLOW_FILE}`;
+const WORKFLOW_OR_ACTION = /^\.github\/(?:workflows|actions)\//;
+const TOP_LEVEL_WORKFLOW = /^\.github\/workflows\/[^/]+\.ya?ml$/;
 
 /** Whether a changed path keys a cache that only a push to main writes. */
-function keysMainCaches(file, workflowFiles) {
-  if (NO_REPLAY.some((re) => re.test(file))) return true;
-  if (!file.startsWith('.github/workflows/')) return false;
-  // GitHub runs only top-level workflow YAML. Anything else under workflows/ is a file a
-  // step may read or hash in ways workflowsKeyingCaches does not judge, so it always blocks.
-  if (!WORKFLOW_FILE.test(file)) return true;
-  // Unknown, or a list without test.yml (never a workflowsKeyingCaches result): trust none of it.
-  if (!Array.isArray(workflowFiles) || !workflowFiles.includes(TEST_WORKFLOW_PATH)) return true;
-  return workflowFiles.includes(file);
+function keysMainCaches(file, keyingList) {
+  // test.yml is the root every listed file is found from, so it blocks even if the list is wrong.
+  if (NO_REPLAY.some((re) => re.test(file)) || file === KEYING_LIST_PATH || file === `.github/workflows/${TEST_WORKFLOW_FILE}`) return true;
+  if (!WORKFLOW_OR_ACTION.test(file)) return false;
+  // Missing, empty or unreadable: trust none of it.
+  if (!Array.isArray(keyingList) || keyingList.length === 0) return true;
+  // GitHub runs only top-level workflow YAML; anything else under workflows/ is a file a
+  // step may read, so it blocks.
+  if (file.startsWith('.github/workflows/') && !TOP_LEVEL_WORKFLOW.test(file)) return true;
+  return isListed(file, keyingList);
 }
 
 const SHA = /^[0-9a-f]{40}$/;
@@ -141,19 +140,19 @@ const isGreenBatchRun = (r, repo) =>
  *   queueEvidence?: Array<{tree: string, runs: Array<object>}>,
  *   laterChangedFiles?: string[],
  *   rekeyAlreadyJudged?: boolean,
- *   workflowFiles?: string[] | null,
+ *   keyingList?: string[] | null,
  * }} input `queueEvidence` lists this commit's tree, then later commits' trees, each with the runs holding its artifact.
  * @returns {{replay: true, runId: number, pr: number, queue?: true} | {replay: false, reason: string}}
  */
 export function decidePushReplay(input) {
-  const { pushSha, pushTree, parentSha, before, changedFiles, pulls, runs, artifactNamesByRun, repo, queueEvidence = [], laterChangedFiles = [], rekeyAlreadyJudged = false, workflowFiles = null } = input;
+  const { pushSha, pushTree, parentSha, before, changedFiles, pulls, runs, artifactNamesByRun, repo, queueEvidence = [], laterChangedFiles = [], rekeyAlreadyJudged = false, keyingList = null } = input;
   if (!SHA.test(pushSha ?? '') || !SHA.test(pushTree ?? '')) return { replay: false, reason: 'push SHA or tree is not a full hash' };
   // One squash commit on top of the previous tip. A multi-commit push (a
   // direct push, a rebase merge) is not the shape a single PR run tested.
   if (!SHA.test(before ?? '') || parentSha !== before) {
     return { replay: false, reason: `push is not a single commit on ${String(before).slice(0, 9)}` };
   }
-  const keysCaches = (f) => keysMainCaches(f, workflowFiles);
+  const keysCaches = (f) => keysMainCaches(f, keyingList);
   const blocker = changedFiles.find(keysCaches);
   const blockerReason = `${blocker} changed; caches that only main writes must be re-keyed by a full run`;
   // A full page may be truncated, so it proves nothing: that only means a full run.
@@ -229,40 +228,17 @@ function readInputs(repo, pushSha, pushTree, parentSha, before) {
   }
   const { queueEvidence, laterChangedFiles } = readQueueEvidence(repo, pushSha, pushTree);
   // Only a changed workflow or action file needs the list; most pushes touch none.
-  let workflowFiles = null;
-  if (changedFiles.some((f) => f.startsWith('.github/workflows/'))) {
-    // The push commit's side suffices: dropping a `uses:` or hashFiles edits a file that blocks.
-    // -z: a non-ASCII path would come back quoted, and `git show` of the quoted name fails.
-    // --full-tree: the pathspec is from the repo root whatever the cwd, like `git show`.
-    const actionFiles = gitOrNull('ls-tree', '-z', '-r', '--full-tree', '--name-only', pushSha, '--', '.github/actions/')?.split('\0').filter(Boolean) ?? null;
-    const keyed = workflowsKeyingCaches({ root: TEST_WORKFLOW_PATH, actionFiles, symlinks: actionFiles ? symlinksAt(pushSha) : null, readText: (path) => gitOrNull('cat-file', 'blob', `${pushSha}:${path}`) });
-    if (keyed.files) workflowFiles = keyed.files;
-    else console.warn(`[push-replay] cannot tell which workflow files key Test's caches at ${pushSha.slice(0, 9)} (${keyed.unknown}); every workflow file blocks`);
-  }
-  return { pushSha, pushTree, parentSha, before, changedFiles, pulls, runs, artifactNamesByRun, repo, queueEvidence, laterChangedFiles, workflowFiles };
-}
-
-/** Every symlink in the commit's tree with its target, or null when they cannot be read. */
-function symlinksAt(sha) {
-  const listing = gitOrNull('ls-tree', '-z', '-r', '--full-tree', sha);
-  if (listing === null) return null;
-  const links = [];
-  for (const entry of listing.split('\0').filter(Boolean)) {
-    const m = /^120000 blob ([0-9a-f]+)\t(.*)$/s.exec(entry);
-    if (!m) continue;
-    const target = gitOrNull('cat-file', 'blob', m[1]);
-    if (target === null) return null;
-    links.push({ path: m[2], target });
-  }
-  return links;
+  // The list as the push commit has it; null when it is absent or unreadable.
+  const listText = gitOrNull('cat-file', 'blob', `${pushSha}:${KEYING_LIST_PATH}`);
+  const keyingList = listText === null ? null : parseKeyingList(listText);
+  return { pushSha, pushTree, parentSha, before, changedFiles, pulls, runs, artifactNamesByRun, repo, queueEvidence, laterChangedFiles, keyingList };
 }
 
 /** A git command's stdout, or null when it fails (absent file, bad ref); the caller then blocks. */
 function gitOrNull(...args) {
-  // Room for symlinksAt's whole-tree listing.
-  const r = spawnSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 256 * 1024 * 1024 });
+  const r = spawnSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 16 * 1024 * 1024 });
   if (r.status === 0) return r.stdout;
-  // Every caller turns null into "every workflow file blocks", so say why.
+  // A null list blocks every workflow and action file, so say why.
   console.warn(`[push-replay] git ${args.join(' ')}: ${(r.stderr || r.error?.message || 'failed').trim()}`);
   return null;
 }

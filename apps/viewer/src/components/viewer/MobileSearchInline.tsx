@@ -4,7 +4,7 @@
 
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
-import X from '~icons/lucide/x';
+import { X } from 'lucide-react';
 import { SearchInline } from './SearchInline';
 
 /** Keep one real field owner mounted on phones, including while closed (#8947).

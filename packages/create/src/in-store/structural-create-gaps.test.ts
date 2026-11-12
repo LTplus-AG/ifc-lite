@@ -190,6 +190,11 @@ describe('structural CREATE gaps (#9668)', () => {
     const line = create.addStructuralLinearActionToStore(editor, anchor, { LinearForceZ: -1 }).loadId;
     const planar = create.addStructuralPlanarActionToStore(editor, anchor, { AppliedLoad: { Type: 'IfcStructuralLoadPlanarForce', PlanarForceZ: -1 } }).loadId;
     const before = editor.getMutationView().getNewEntities().length;
+    const locations = editor.getNewEntity(two)!.attributes[0] as string[];
+    editor.setPositionalAttribute(two, 0, locations.slice(0, 1));
+    expect(() => create.addStructuralLinearActionToStore(editor, anchor, { LinearForceZ: -2, VaryingAppliedLoadLocation: two, SubsequentAppliedLoads: [line] })).toThrow(/one location per applied load/);
+    expect(editor.getMutationView().getNewEntities()).toHaveLength(before);
+    editor.setPositionalAttribute(two, 0, locations);
     expect(() => create.addStructuralLinearActionToStore(editor, anchor, { LinearForceZ: -2, VaryingAppliedLoadLocation: one, SubsequentAppliedLoads: [line] })).toThrow(/one location per applied load/);
     expect(() => create.addStructuralPlanarActionToStore(editor, anchor, { AppliedLoad: { Type: 'IfcStructuralLoadPlanarForce', PlanarForceZ: -2 }, VaryingAppliedLoadLocation: two, SubsequentAppliedLoads: [planar, planar] })).toThrow(/one location per applied load/);
     expect(() => create.addStructuralSurfaceMemberToStore(editor, anchor, { Type: 'IfcStructuralSurfaceMemberVarying', Boundary: [[0,0,0],[3,0,0],[0,3,0]], SubsequentThickness: [0.3, 0.4], VaryingThicknessLocation: three })).toThrow(/requires Thickness/);
@@ -202,6 +207,27 @@ describe('structural CREATE gaps (#9668)', () => {
     create.addStructuralLinearActionToStore(sourceEditor, anchor, { LinearForceZ: -2, VaryingAppliedLoadLocation: one, SubsequentAppliedLoads: [line] }, parsed);
     create.addStructuralLinearActionToStore(sourceEditor, anchor, { LinearForceZ: -2, VaryingAppliedLoadLocation: two, SubsequentAppliedLoads: [line] }, parsed);
     expect(new TextDecoder().decode(new StepExporter(parsed, sourceEditor.getMutationView()).export({ schema: 'IFC2X3', applyMutations: true }).content)).toContain(`#${two},(#${line})`);
+  });
+
+  it.each(['IFC4', 'IFC4X3'] as const)('%s storeless configuration validation observes pending edits (#9860 discussion_r4550397254)', async schema => {
+    const { editor, anchor, store, view } = await fresh(schema);
+    const load = create.addStructuralLinearActionToStore(editor, anchor, { LinearForceZ: -2 }).loadId;
+    const config = create.addStructuralLoadToStore(editor, anchor, { Type: 'IfcStructuralLoadConfiguration', Values: [load, load], Locations: [[0], [1]] });
+    const params = { AppliedLoad: config, PredefinedType: 'LINEAR' as const };
+    const before = view.getNewEntities().length;
+    view.setAttribute(config, 'Values', `(#${load})`);
+    expect(() => create.addStructuralCurveActionToStore(editor, anchor, params)).toThrow(/sample count/);
+    expect(view.getNewEntities()).toHaveLength(before);
+    // Positional edits override named edits, exactly as they do in STEP export.
+    editor.setPositionalAttribute(config, 1, [`#${load}`, `#${load}`]);
+    editor.setPositionalAttribute(config, 2, [[{ real: 0 }]]);
+    expect(() => create.addStructuralCurveActionToStore(editor, anchor, params)).toThrow(/Locations/);
+    expect(view.getNewEntities()).toHaveLength(before);
+    editor.setPositionalAttribute(config, 2, [[{ real: 0 }], [{ real: 1 }]]);
+    const action = create.addStructuralCurveActionToStore(editor, anchor, params);
+    const text = new TextDecoder().decode(new StepExporter(store, view).export({ schema, applyMutations: true }).content);
+    expect(text).toContain(`#${action}=IFCSTRUCTURALCURVEACTION(`);
+    expect(text).toContain(`(#${load},#${load}),((0.),(1.))`);
   });
 
 });

@@ -29,6 +29,7 @@ import { mainViewerToolDefinitions } from './main-viewer-tool-definitions.js';
 const HELLO_WALL = new URL('../../../public/samples/hello-wall.ifc', import.meta.url);
 /** The id `parsePlaygroundModel` derives from the file name, so refs compare equal across hosts. */
 const MODEL_ID = 'hello-wall';
+const WALL_GID = '2JUHrTM_j3UxZiBnyBfByx';
 const WALL_ID = 1222;
 
 async function seedMainViewer(bytes: Uint8Array) {
@@ -127,31 +128,50 @@ describe('main viewer and playground answer alike for the same unedited file (#9
 });
 
 describe('main viewer tools leave the viewer\'s state alone (#9523)', () => {
+  /** A real specification that applies to the fixture's wall and reads its Pset_WallCommon. */
+  const IDS = `<ids xmlns="http://standards.buildingsmart.org/IDS"><info><title>External walls</title></info><specifications><specification name="wall is external" ifcVersion="IFC4"><applicability><entity><name><simpleValue>IFCWALL</simpleValue></name></entity></applicability><requirements><property><propertySet><simpleValue>Pset_WallCommon</simpleValue></propertySet><baseName><simpleValue>IsExternal</simpleValue></baseName></property></requirements></specification></specifications></ids>`;
+  /** Arguments that reach each tool's implementation on hello-wall (tools absent here take none). */
   const ARGS: Record<string, Record<string, unknown>> = {
     schema_describe: { type: 'IfcWall' },
     query_entities: { type: 'IfcWall' },
-    get_entity: { express_id: WALL_ID },
-    get_entities_bulk: { global_ids: ['2JUHrTM_j3UxZiBnyBfByx'] },
+    count_entities: { group_by: 'storey' },
+    get_entity: { global_id: WALL_GID },
+    get_entities_bulk: { global_ids: [WALL_GID] },
     containment_chain: { express_id: WALL_ID },
     relationships: { express_id: WALL_ID },
     properties_unique: { type: 'IfcWall', pset: 'Pset_WallCommon', property: 'IsExternal' },
     geometry_bbox: { express_id: WALL_ID },
     geometry_volume: { express_id: WALL_ID },
     geometry_area: { express_id: WALL_ID },
-    ids_explain: { ids_xml: '<ids xmlns="http://standards.buildingsmart.org/IDS"><info><title>t</title></info><specifications/></ids>' },
-    ids_validate: { ids_xml: '<ids xmlns="http://standards.buildingsmart.org/IDS"><info><title>t</title></info><specifications/></ids>' },
+    ids_explain: { ids_xml: IDS },
+    ids_validate: { ids_xml: IDS },
     bsdd_search: { query: 'wall' },
     bsdd_class: { ifc_type: 'IfcWall' },
     bsdd_property_sets: { ifc_type: 'IfcWall' },
-    bsdd_match: { express_id: WALL_ID },
+    bsdd_match: { global_id: WALL_GID },
     cost_evaluate: { express_id: WALL_ID, target: 'item' },
   };
+  /** What each tool must show it read, so an early return cannot pass as having run. */
+  const READ: Record<string, (structured: unknown) => boolean> = {
+    query_entities: (r) => (r as { count: number }).count === 1,
+    get_entity: (r) => (r as { ref: { expressId: number } }).ref.expressId === WALL_ID,
+    get_entities_bulk: (r) => (r as { entities: unknown[] }).entities[0] != null,
+    properties_unique: (r) => (r as { total: number }).total === 1,
+    materials_list: (r) => (r as { materials: unknown[] }).materials.length > 0,
+    ids_validate: (r) => (r as { summary: { totalSpecifications: number } }).summary.totalSpecifications === 1,
+    bsdd_match: (r) => (r as { ifcType: string }).ifcType === 'IfcWall',
+    bsdd_class: (r) => (r as { code: string }).code === 'IfcWall',
+  };
 
-  it('all 27 allowlisted tools run without changing history, dirtiness, selection, visibility or the overlay', async () => {
+  it('all 27 allowlisted tools succeed without changing history, dirtiness, selection, visibility or the overlay', async () => {
     await seedMainViewer(new Uint8Array(await readFile(HELLO_WALL)));
-    const hostWithStubBsdd = createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }), {
-      bsdd: { search: async () => [], fetchClassInfo: async () => null, getPropertySets: async () => new Map(), searchRelatedClasses: async () => [] },
-    });
+    const bsddCalls: string[] = [];
+    const host = createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }), { bsdd: {
+      search: async (query: string) => { bsddCalls.push('search'); return [{ code: 'IfcWall', name: query, uri: 'u', dictionaryUri: 'd' }] as never; },
+      fetchClassInfo: async (type: string) => { bsddCalls.push('class'); return { code: type, name: type, classProperties: [] } as never; },
+      getPropertySets: async () => { bsddCalls.push('psets'); return new Map([['Pset_WallCommon', []]]) as never; },
+      searchRelatedClasses: async () => { bsddCalls.push('related'); return []; },
+    } });
     const KEYS = ['mutationVersion', 'undoStacks', 'redoStacks', 'dirtyModels', 'selectedEntityId', 'selectedEntityIds', 'selectedEntity',
       'hiddenEntities', 'isolatedEntities', 'mutationViews', 'models'] as const;
     const pick = () => {
@@ -162,14 +182,16 @@ describe('main viewer tools leave the viewer\'s state alone (#9523)', () => {
     const view = useViewerStore.getState().mutationViews.get(MODEL_ID);
     assert.ok(view);
     const mutationsBefore = view.getMutationCount();
-    let ran = 0;
+    const succeeded: string[] = [];
     for (const name of MAIN_VIEWER_TOOL_ALLOWLIST) {
-      const result = await dispatchMainViewerTool(hostWithStubBsdd, name, ARGS[name] ?? {});
-      // A tool may refuse (no cost data, bSDD has no class); none may write.
-      assert.notEqual(result.errorCode, 'INTERNAL_ERROR', `${name}: ${result.text}`);
-      ran++;
+      const result = await dispatchMainViewerTool(host, name, ARGS[name] ?? {});
+      // No expected refusals: every tool must reach and complete its implementation.
+      assert.equal(result.isError, false, `${name}: ${result.errorCode} ${result.text}`);
+      if (READ[name]) assert.ok(READ[name](result.structured), `${name} answered without reading the model: ${JSON.stringify(result.structured).slice(0, 200)}`);
+      succeeded.push(name);
     }
-    assert.equal(ran, 27);
+    assert.deepEqual(succeeded, [...MAIN_VIEWER_TOOL_ALLOWLIST]);
+    assert.deepEqual(bsddCalls, ['search', 'class', 'psets', 'related'], 'each bSDD tool reached the client');
     const after = pick();
     for (const key of KEYS) assert.equal(after[key], before[key], `${key} was replaced by a read tool`);
     assert.equal(view.getMutationCount(), mutationsBefore);

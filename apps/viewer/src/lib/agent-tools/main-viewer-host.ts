@@ -44,6 +44,10 @@ export function mainViewerModelStatus(entry: ModelLike, federated: FederatedMode
   if (LOADING_STATES.has(federated?.loadState)) return 'loading';
   const store = entry.ifcDataStore;
   if (!store) return 'no-data';
+  // A GLB added to a federation gets `createMinimalGlbDataStore` (IFC4, empty
+  // source, no entity rows) and `loadPath: 'wasm'`; only `loadFormat`, which
+  // `finalizeModel` stamps on every load, says it is geometry only.
+  if (federated?.loadFormat === 'glb') return 'no-data';
   if (SYNTHETIC_LOAD_PATHS.has(federated?.loadPath) || federated?.landXmlDocument) return 'no-data';
   if (federated?.loadPath === 'server') return 'server-partial';
   // IFCX keeps its JSON in `source`, so a non-empty source is not a STEP source.

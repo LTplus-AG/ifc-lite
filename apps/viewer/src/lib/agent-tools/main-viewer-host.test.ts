@@ -13,9 +13,10 @@
 import { beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { EMPTY_SOURCE_BYTES, type IfcDataStore } from '@ifc-lite/parser';
+import { createMinimalGlbDataStore } from '@/hooks/ingest/viewerModelIngest';
 import { useViewerStore } from '@/store';
 import {
-  WALL_GID, WALL_ID, call, configuredView, model, ok, parseHelloWall, seed, status, viewerBim, viewerHost,
+  WALL_GID, WALL_ID, call, configuredView, model, ok, parseHelloWall, parseStep, seed, status, viewerBim, viewerHost,
 } from '@/test/agent-tools-fixture';
 import { dispatchMainViewerTool } from './main-viewer-dispatch.js';
 
@@ -121,6 +122,48 @@ describe('main viewer host reads the user\'s unsaved edits (#9523)', () => {
   });
 });
 
+/** Two walls carrying one GlobalId, as real exports often do. */
+const DUPLICATES = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('dup.ifc','2024-01-01T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#10=IFCWALL('2dupGlobalId0000000000',$,'First',$,$,$,$,$,.SOLIDWALL.);
+#20=IFCWALL('2dupGlobalId0000000000',$,'Second',$,$,$,$,$,.SOLIDWALL.);
+ENDSEC;
+END-ISO-10303-21;
+`;
+const DUP = '2dupGlobalId0000000000';
+const resolvesTo = async (globalId: string) => (ok(await call('get_entity', { global_id: globalId })).structured as { ref: { expressId: number } }).ref.expressId;
+
+describe('main viewer host resolves duplicated GlobalIds (#9523)', () => {
+  beforeEach(async () => seed([model('dup', await parseStep(new TextEncoder().encode(DUPLICATES)))]));
+
+  it('unedited, a duplicated GlobalId resolves to the row the entity table indexes (the last)', async () => {
+    assert.equal(await resolvesTo(DUP), 20);
+  });
+
+  it('deleting the indexed duplicate leaves the other one resolving', async () => {
+    assert.equal(useViewerStore.getState().removeEntity('dup', 20), true);
+    assert.equal(await resolvesTo(DUP), 10);
+  });
+
+  it('editing the indexed duplicate\'s GlobalId away: the old id resolves to the other row, the new id to the edited one', async () => {
+    useViewerStore.getState().setAttribute('dup', 20, 'GlobalId', '3movedGlobalId00000000');
+    assert.equal(await resolvesTo(DUP), 10);
+    assert.equal(await resolvesTo('3movedGlobalId00000000'), 20);
+  });
+
+  it('with both duplicates gone, the GlobalId resolves to nothing', async () => {
+    const state = useViewerStore.getState();
+    state.removeEntity('dup', 20);
+    state.setAttribute('dup', 10, 'GlobalId', '3movedGlobalId00000000');
+    assert.equal((await call('get_entity', { global_id: DUP })).errorCode, 'ENTITY_NOT_FOUND');
+  });
+});
+
 describe('main viewer host in legacy single-model mode (#9523)', () => {
   it('an edit keyed under __legacy__ is what default, legacy and __legacy__ read', async () => {
     const store = await parseHelloWall();
@@ -165,6 +208,21 @@ describe('main viewer host refuses models it cannot read (#9523)', () => {
     assert.deepEqual(list.models.map((m) => [m.id, m.status]), [
       ['streaming', 'loading'], ['glb', 'no-data'], ['scan', 'no-data'], ['terrain', 'no-data'],
     ]);
+  });
+
+  it('a GLB added to a federation (minimal synthetic store, loadPath wasm) is no-data, not an empty IFC4 model', async () => {
+    const glbBytes = new ArrayBuffer(2048);
+    seed([
+      model('hello', await parseHelloWall()),
+      model('glb', createMinimalGlbDataStore(glbBytes, 3), { loadPath: 'wasm', loadFormat: 'glb', schemaVersion: 'IFC4' }),
+    ]);
+    const list = ok(await call('model_list')).structured as { models: Array<{ id: string; status?: string }> };
+    assert.deepEqual(list.models.map((m) => [m.id, m.status]), [['hello', undefined], ['glb', 'no-data']]);
+    for (const tool of ['model_info', 'units', 'query_entities']) {
+      const refused = await call(tool, { model_id: 'glb' });
+      assert.equal(refused.errorCode, 'UNSUPPORTED_OPERATION', tool);
+      assert.equal(status(refused), 'no-data', tool);
+    }
   });
 
   it('a server-processed model: model_info answers from its tables like the full parse; its entity tools refuse', async () => {

@@ -23,8 +23,9 @@ import type { BimContext, BsddNamespace } from '@ifc-lite/sdk';
  * - `loading`: the model is still parsing or hydrating; retrying later works.
  * - `failed`: the load ended in an error.
  * - `server-partial`: processed server-side; the tab holds tables, no STEP source.
- * - `no-data`: loaded without IFC data: no store (GLB), or a synthetic store
- *   that exists only to give the model an id range (LandXML, point cloud, splats).
+ * - `no-data`: loaded without IFC data: no store (a GLB opened as the primary
+ *   model), or a synthetic store that exists only to give the model an id
+ *   range (a GLB added to a federation, LandXML, point cloud, splats).
  * - `no-step-source`: real entity data, but not from an IFC STEP file (IFCX,
  *   whose `source` holds the IFCX JSON).
  * - `composed-layer`: one layer of a composition whose store another model

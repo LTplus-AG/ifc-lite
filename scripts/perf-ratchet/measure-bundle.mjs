@@ -18,6 +18,11 @@
  *   viewer-eager-js-bytes   summed raw bytes of every JS file index.html makes
  *                           the browser fetch before first paint (module
  *                           <script src> + modulepreload) (#7002)
+ *   viewer-parser-worker-js-bytes
+ *                           raw bytes of the parser worker's own chunk
+ *                           (assets/parser.worker-*.js). Every cold load starts
+ *                           this worker, and it fetches, compiles and evaluates
+ *                           the whole chunk before it can accept a parse.
  *
  * Informational (reported, never gated, #7007):
  *   viewer-entry-js-brotli  brotli bytes of the main entry chunk
@@ -44,7 +49,7 @@
  * guess, so a template change cannot silently measure the wrong file.
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, writeFileSync, existsSync, mkdirSync, statSync } from 'node:fs';
 import { brotliCompressSync, constants as zlibConstants } from 'node:zlib';
 import { execFileSync } from 'node:child_process';
 import { dirname, join, relative, resolve, sep } from 'node:path';
@@ -148,6 +153,19 @@ export function eagerJsFiles(dist, html) {
 }
 
 /**
+ * The parser worker's own chunk: the one `assets/parser.worker-*.js` Vite
+ * emits for `new Worker(new URL('./parser.worker.ts', ...))`. Chunks it imports
+ * on demand are not counted; they are not fetched before the worker runs.
+ * None or several is an error, so a renamed worker cannot measure as zero.
+ */
+export function parserWorkerFile(dist) {
+  const assets = join(dist, 'assets');
+  const names = existsSync(assets) ? readdirSync(assets).filter((n) => /^parser\.worker-[^/]*\.js$/.test(n)) : [];
+  if (names.length !== 1) throw new Error(`expected one assets/parser.worker-*.js in ${dist}, found ${names.length}${names.length ? `: ${names.join(' ')}` : ''}`);
+  return { name: names[0], file: join(assets, names[0]) };
+}
+
+/**
  * @param {{ wasm: string, dist: string, commit: string, measuredAt?: string }} opts
  */
 export function measureBundle({ wasm, dist, commit, measuredAt = new Date().toISOString() }) {
@@ -160,6 +178,8 @@ export function measureBundle({ wasm, dist, commit, measuredAt = new Date().toIS
   const eagerBytes = jsEager.map(({ file }) => readFileSync(file));
   const eagerRaw = eagerBytes.reduce((n, b) => n + b.length, 0);
   const entryBytes = readFileSync(resolveAsset(dist, entry));
+  const parserWorker = parserWorkerFile(dist);
+  const parserWorkerBytes = statSync(parserWorker.file).size;
 
   const entryName = entry.split(/[?#]/)[0].replace(/^.*\//, '');
   const eagerNames = jsEager.map(({ url }) => url.replace(/^.*\//, '')).join(' ');
@@ -174,6 +194,7 @@ export function measureBundle({ wasm, dist, commit, measuredAt = new Date().toIS
       { id: 'engine-wasm-brotli', value: brotliSize(wasmBytes), detail: `raw ${wasmBytes.length} bytes` },
       { id: 'viewer-entry-js-bytes', value: entryBytes.length, detail: entryName },
       { id: 'viewer-eager-js-bytes', value: eagerRaw, detail: `${jsEager.length} files; ${eagerNames}` },
+      { id: 'viewer-parser-worker-js-bytes', value: parserWorkerBytes, detail: parserWorker.name },
     ],
     informational: [
       { id: 'viewer-entry-js-brotli', value: entryBrotli, unit: 'bytes', detail: entryName },

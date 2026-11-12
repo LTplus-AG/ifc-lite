@@ -343,7 +343,7 @@ test('DIFF: everything that is not a version bump is named', () => {
     { status: 'A', path: 'docs/CHANGELOG.md' },
   ];
   const problems = diffProblems(entries, fakeGit(files));
-  const unreadable = problems.find((l) => l.startsWith('d/package.json: unreadable ('));
+  const unreadable = problems.find((l) => l.startsWith('d/package.json: unreadable (')); // @source-text-assertion-ok subject is the returned problem list
   assert.ok(unreadable, problems.join('\n'));
   assert.deepEqual(problems.filter((l) => l !== unreadable), [
     '.changeset/new.md: a changeset may only be consumed (deleted)',

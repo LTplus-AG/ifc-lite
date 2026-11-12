@@ -531,6 +531,11 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
           toast.info('Linear infrastructure — pan along the alignment, or select an element and press F to zoom in');
         }
       }
+    } else if (isStreaming && geometry.length > 0 && !finalBoundsRefittedRef.current) {
+      // The camera fitted on an early batch: fold each later batch's vertices into the
+      // robust-fit sums as it commits, so the stream-end refit (streamingCompletionBounds)
+      // only sorts and trims instead of scanning the whole model at once. Same result.
+      robustFitAccRef.current.scan(geometry);
     }
 
     renderer.requestRender();

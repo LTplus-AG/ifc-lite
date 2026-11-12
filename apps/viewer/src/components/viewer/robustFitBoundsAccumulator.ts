@@ -177,6 +177,13 @@ export interface RobustFitBoundsAccumulator {
   /** Fold any meshes appended since the last call (by array identity + length)
    *  into the running state, then return the same shape as `robustFitBoundsFull`. */
   update(meshes: readonly RobustFitMeshInput[], opts?: RobustFitOptions): { full: Bounds; robust: Bounds | null } | null;
+  /** Only the vertex fold of `update`: scan meshes appended since the last call
+   *  into the running sums, in index order, without the sort-and-trim. Called per
+   *  streamed commit after the camera fitted, so the stream-end `update` scans
+   *  nothing it has not seen; its result is the same either way. */
+  scan(meshes: readonly RobustFitMeshInput[]): void;
+  /** Meshes folded so far (tests, diagnostics). */
+  scanned(): number;
   /** Drop all cached state. Call on new-file / cleared-geometry transitions
    *  for memory hygiene — `update()` also self-resets on array-identity or
    *  length-shrink changes, so this is not required for correctness. */
@@ -204,7 +211,7 @@ export function createRobustFitBoundsAccumulator(): RobustFitBoundsAccumulator {
     cwX = 0; cwY = 0; cwZ = 0; totalW = 0;
   }
 
-  function update(meshes: readonly RobustFitMeshInput[], opts: RobustFitOptions = {}): { full: Bounds; robust: Bounds | null } | null {
+  function scan(meshes: readonly RobustFitMeshInput[]): void {
     // New source array, or it shrank (new file / replace) → fold from scratch.
     if (sourceRef !== meshes || meshes.length < scannedLen) {
       resetState();
@@ -237,9 +244,12 @@ export function createRobustFitBoundsAccumulator(): RobustFitBoundsAccumulator {
       }
     }
     scannedLen = meshes.length;
+  }
 
+  function update(meshes: readonly RobustFitMeshInput[], opts: RobustFitOptions = {}): { full: Bounds; robust: Bounds | null } | null {
+    scan(meshes);
     return foldRobustBounds(fMinX, fMinY, fMinZ, fMaxX, fMaxY, fMaxZ, cx, cy, cz, w, bb, proxy, cwX, cwY, cwZ, totalW, opts);
   }
 
-  return { update, reset: resetState };
+  return { update, scan, scanned: () => scannedLen, reset: resetState };
 }

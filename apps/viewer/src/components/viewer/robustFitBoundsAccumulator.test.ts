@@ -362,3 +362,50 @@ describe('robustFitBounds drops detached coordination markers (#5387)', () => {
     assert.equal(createRobustFitBoundsAccumulator().update(first, { streaming: true })?.robust, null);
   });
 });
+
+describe('robustFitBounds: per-commit scan after the camera fitted, then one stream-end update', () => {
+  // useGeometryStreaming folds each streamed commit with scan() once the camera has fitted, so the stream-end
+  // refit's update() only sorts and trims. Its result must be bit-identical to the full rescan, and to the
+  // one-shot update it replaces, for compact, georeferenced (per-element origin) and outlier-tailed models.
+  const cases: Array<{ name: string; meshes: (rng: () => number) => RobustFitMeshInput[] }> = [
+    { name: 'compact model', meshes: (rng) => Array.from({ length: 300 }, () => meshAt(rng() * 30, rng() * 30, rng() * 9, 2, 12, rng)) },
+    { name: 'georeferenced origins', meshes: (rng) => Array.from({ length: 300 }, () => ({ ...meshAt(rng() * 30, rng() * 30, rng() * 9, 2, 12, rng), origin: [2_600_000, 1_200_000, 400] as [number, number, number] })) },
+    { name: 'outlier tail (robust branch)', meshes: (rng) => clusterWithOutliers(300, 4, rng) },
+  ];
+  for (const { name, meshes: build } of cases) {
+    it(name, () => {
+      const rng = mulberry32(9684);
+      const all = build(rng);
+      const reference = robustFitBoundsFull(all, { quiet: true });
+      // The stream as it commits: the same array grows by push; the first commit fits the camera (update),
+      // every later one only scans; the stream end calls update once.
+      const streamed: RobustFitMeshInput[] = [];
+      const acc = createRobustFitBoundsAccumulator();
+      let at = 0, commit = 0;
+      while (at < all.length) {
+        const n = 1 + Math.floor(rng() * 40);
+        streamed.push(...all.slice(at, at + n)); at += n;
+        if (commit++ === 0) acc.update(streamed, { streaming: true, quiet: true }); else acc.scan(streamed);
+      }
+      assert.equal(acc.scanned(), all.length, 'every mesh was folded before the stream-end update');
+      const atEnd = acc.update(streamed, { quiet: true });
+      assert.equal(acc.scanned(), all.length, 'the stream-end update scanned nothing new');
+      assert.deepEqual(atEnd, reference, `${name}: identical to the full rescan`);
+      // And to today's path: one fit at the first commit, then a single update at the stream end.
+      const today = createRobustFitBoundsAccumulator();
+      today.update(streamed.slice(0, 1), { streaming: true, quiet: true });
+      assert.deepEqual(today.update(streamed, { quiet: true }), atEnd, `${name}: identical to the one-shot stream-end update`);
+    });
+  }
+
+  it('a new or shrunk mesh array restarts the scan, as update() does', () => {
+    const rng = mulberry32(1);
+    const a = Array.from({ length: 20 }, () => meshAt(0, 0, 0, 2, 6, rng));
+    const acc = createRobustFitBoundsAccumulator();
+    acc.scan(a);
+    assert.equal(acc.scanned(), 20);
+    const b = a.slice(0, 5);
+    assert.deepEqual(acc.update(b, { quiet: true }), robustFitBoundsFull(b, { quiet: true }), 'another array is folded from scratch');
+    assert.equal(acc.scanned(), 5);
+  });
+});

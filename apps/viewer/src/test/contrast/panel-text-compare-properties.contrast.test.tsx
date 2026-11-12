@@ -32,7 +32,7 @@ import { PropertiesPanel } from '@/components/viewer/PropertiesPanel.js';
 import { IDSPanel } from '@/components/viewer/IDSPanel.js';
 import { cleanup, click, render } from '@/test/render.js';
 import { parseStep, seedModel } from '@/test/properties-panel-harness.js';
-import { closeContrastBrowser, warmContrastBrowser } from './render-harness.js';
+import { CONTRAST_BROWSER_SKIP, closeContrastBrowser, warmContrastBrowser } from './render-harness.js';
 import {
   assertRenderedTextClears,
   assertForcedClassReddens,
@@ -131,18 +131,18 @@ const SHAPE_HASH_NOTICE = resolve('comparePanel.changeDetail.unchangedShapeHash'
 
 describe('ComparePanel secondary text contrast (#4792, #6205)', () => {
   for (const theme of THEMES) {
-    it(`CountBadge hint, data count, moved/reshaped lines and before/after arrow clear AA in ${theme}`, async () => {
+    it(`CountBadge hint, data count, moved/reshaped lines and before/after arrow clear AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       mountCompare({ sameBox: false });
       await assertRenderedTextClears(theme, snapshotRenderedDom(VIEWER_SHELL_SURFACE),
         [COUNT_BADGE_HINT, DATA_COUNT, MOVED_LINE, SIZE_LINE, ARROW], WCAG_AA_NORMAL_TEXT);
     });
 
-    it(`"shape hash differs" notice clears AA in ${theme}`, async () => {
+    it(`"shape hash differs" notice clears AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       mountCompare({ sameBox: true });
       await assertRenderedTextClears(theme, snapshotRenderedDom(VIEWER_SHELL_SURFACE), [SHAPE_HASH_NOTICE], WCAG_AA_NORMAL_TEXT);
     });
 
-    it(`non-vacuousness: text-muted-foreground/60 shrink-0 on ChangeDetailView before/after arrow reddens in ${theme}`, async (t) => {
+    it(`non-vacuousness: text-muted-foreground/60 shrink-0 on ChangeDetailView before/after arrow reddens in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async (t) => {
       mountCompare({ sameBox: false });
       const ratios = await assertForcedClassReddens(theme, ARROW, 'text-muted-foreground/60 shrink-0', WCAG_AA_NORMAL_TEXT, VIEWER_SHELL_SURFACE);
       t.diagnostic(ratios.map((r) => `${r.toFixed(2)}:1`).join(', '));
@@ -193,12 +193,12 @@ describe('PropertiesPanel "Size" row contrast (#4792, #6205)', () => {
   before(() => localStorage.removeItem(COORDINATES_DISCLOSURE_KEY));
 
   for (const theme of THEMES) {
-    it(`"Size" label and value clear AA in ${theme}`, async () => {
+    it(`"Size" label and value clear AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       await mountPropertiesSize();
       await assertRenderedTextClears(theme, snapshotRenderedDom(VIEWER_SHELL_SURFACE), [SIZE_LABEL, SIZE_VALUE], WCAG_AA_NORMAL_TEXT);
     });
 
-    it(`non-vacuousness: text-[9px] font-medium text-muted-foreground/50 on PropertiesPanel "Size" label reddens in ${theme}`, async (t) => {
+    it(`non-vacuousness: text-[9px] font-medium text-muted-foreground/50 on PropertiesPanel "Size" label reddens in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async (t) => {
       await mountPropertiesSize();
       const ratios = await assertForcedClassReddens(theme, SIZE_LABEL, 'text-[9px] font-medium text-muted-foreground/50', WCAG_AA_NORMAL_TEXT, VIEWER_SHELL_SURFACE);
       t.diagnostic(ratios.map((r) => `${r.toFixed(2)}:1`).join(', '));
@@ -250,7 +250,7 @@ function mountIdsAuditDetail(): void {
 
 describe('IDSAuditSummary issue detail contrast (#4792, #6205)', () => {
   for (const theme of THEMES) {
-    it(`"path", "facet" and detail key labels clear AA in ${theme}`, async () => {
+    it(`"path", "facet" and detail key labels clear AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       mountIdsAuditDetail();
       await assertRenderedTextClears(theme, snapshotRenderedDom(VIEWER_SHELL_SURFACE),
         [resolve('idsPanel.audit.path'), resolve('idsPanel.audit.facet'), DETAIL_KEY], WCAG_AA_NORMAL_TEXT);

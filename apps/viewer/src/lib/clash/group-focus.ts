@@ -66,6 +66,7 @@ const ALL_TYPES_VISIBLE: ViewerState['typeVisibility'] = {
   site: true,
   ifcAnnotations: true,
   ifcGrid: true,
+  structuralGlyphs: true,
 };
 
 function resolvedGuids(state: ReturnType<typeof useViewerStore.getState>, refs: Iterable<SelectionRef>): string[] {

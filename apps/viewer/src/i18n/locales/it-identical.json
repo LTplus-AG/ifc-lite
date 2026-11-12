@@ -1607,6 +1607,14 @@
     "value": "ifclite.dev →",
     "reason": "viewportLighting.container.emptyState.footer.discoverLink: Exact project/service link label; domain and GitHub/npm service names are not localized."
   },
+  "viewportLighting.container.emptyState.formats.gltf": {
+    "value": "glTF",
+    "reason": "Format family name on the welcome card: glTF is the exact product spelling of the format and is not localized."
+  },
+  "viewportLighting.container.emptyState.formats.ifc": {
+    "value": "IFC",
+    "reason": "Format family name on the welcome card: IFC is the schema acronym and is not localized in any language."
+  },
   "viewportLighting.container.emptyState.scene.metres": {
     "value": "{value} m",
     "reason": "viewportLighting.container.emptyState.scene.metres: A numeric measurement with the exact SI unit abbreviation shown in the pinned value; unit symbols are language independent."

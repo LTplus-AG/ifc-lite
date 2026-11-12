@@ -70,6 +70,48 @@ function zipSample(name: string, data: Uint8Array, outName: string): string {
   return out;
 }
 
+/**
+ * A generated IFC between 2 and 10 MiB whose elements all reuse one mapped
+ * representation (one box placed many times), so the worker pool meshes it with
+ * GPU instancing. Modelled on rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc.
+ */
+function instancedIfc(occurrences: number): string {
+  const head = [
+    "ISO-10303-21;", "HEADER;", "FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');",
+    "FILE_NAME('instanced.ifc','2026-11-13T00:00:00',(''),(''),'','','');", "FILE_SCHEMA(('IFC4'));", "ENDSEC;", "DATA;",
+    "#1=IFCCARTESIANPOINT((0.,0.,0.));", "#2=IFCAXIS2PLACEMENT3D(#1,$,$);", "#3=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);",
+    "#4=IFCUNITASSIGNMENT((#3));", "#5=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#2,$);",
+    "#6=IFCCARTESIANPOINT((0.,0.));", "#7=IFCAXIS2PLACEMENT2D(#6,$);", "#8=IFCRECTANGLEPROFILEDEF(.AREA.,$,#7,0.9,2.1);",
+    "#9=IFCDIRECTION((0.,0.,1.));", "#10=IFCCARTESIANPOINT((0.,0.,0.));", "#11=IFCAXIS2PLACEMENT3D(#10,$,$);",
+    "#12=IFCEXTRUDEDAREASOLID(#8,#11,#9,0.05);", "#13=IFCSHAPEREPRESENTATION(#5,'Body','SweptSolid',(#12));",
+    "#14=IFCCARTESIANPOINT((0.,0.,0.));", "#15=IFCAXIS2PLACEMENT3D(#14,$,$);", "#16=IFCREPRESENTATIONMAP(#15,#13);",
+    "#17=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#1,$,$);", "#18=IFCLOCALPLACEMENT($,#2);",
+    "#19=IFCSITE('0000000000000000000001',$,'Site',$,$,#18,$,$,.ELEMENT.,$,$,$,$,$);", "#20=IFCLOCALPLACEMENT(#18,#2);",
+    "#21=IFCBUILDING('0000000000000000000002',$,'Building',$,$,#20,$,$,.ELEMENT.,$,$,$);", "#22=IFCLOCALPLACEMENT(#20,#2);",
+    "#23=IFCBUILDINGSTOREY('0000000000000000000003',$,'Storey',$,$,#22,$,$,.ELEMENT.,0.);",
+    "#24=IFCPROJECT('0000000000000000000004',$,'Proj',$,$,$,$,(#5),#4);",
+  ];
+  const lines = [...head];
+  const proxies: number[] = [];
+  const guid = (n: number) => `1${n.toString(36).padStart(21, '0')}`;
+  let id = 25;
+  for (let i = 0; i < occurrences; i++) {
+    const x = (i % 100) * 1.5, y = Math.floor(i / 100) * 1.5;
+    lines.push(`#${id}=IFCMAPPEDITEM(#16,#17);`, `#${id + 1}=IFCSHAPEREPRESENTATION(#5,'Body','MappedRepresentation',(#${id}));`,
+      `#${id + 2}=IFCPRODUCTDEFINITIONSHAPE($,$,(#${id + 1}));`, `#${id + 3}=IFCCARTESIANPOINT((${x.toFixed(1)},${y.toFixed(1)},0.));`,
+      `#${id + 4}=IFCAXIS2PLACEMENT3D(#${id + 3},$,$);`, `#${id + 5}=IFCLOCALPLACEMENT(#22,#${id + 4});`,
+      `#${id + 6}=IFCDOOR('${guid(i)}',$,'Door_${i}',$,$,#${id + 5},#${id + 2},$,2.1,0.9,$,$,$);`);
+    proxies.push(id + 6);
+    id += 7;
+  }
+  lines.push(`#${id}=IFCRELAGGREGATES('0000000000000000000005',$,$,$,#24,(#19));`,
+    `#${id + 1}=IFCRELAGGREGATES('0000000000000000000006',$,$,$,#19,(#21));`,
+    `#${id + 2}=IFCRELAGGREGATES('0000000000000000000007',$,$,$,#21,(#23));`,
+    `#${id + 3}=IFCRELCONTAINEDINSPATIALSTRUCTURE('0000000000000000000008',$,$,$,(${proxies.map((p) => `#${p}`).join(',')}),#23);`,
+    'ENDSEC;', 'END-ISO-10303-21;');
+  return lines.join('\n') + '\n';
+}
+
 async function openFixture(page: Page, fixture: string): Promise<void> {
   await page.waitForFunction(() => Boolean((globalThis as Record<string, unknown>).__ifc_lite_viewer_store__));
   const previous = await page.evaluate(() => (globalThis as Record<string, any>).__IFC_LITE_LOAD_TRACE__?.latest()?.loadId ?? null);
@@ -167,6 +209,26 @@ test.describe('small-file fast path: a ZIP archive named .ifc', () => {
     expect(off.summary.elements.length, 'elements compared').toBeGreaterThan(0);
     expect(on.summary.meshes).toBe(off.summary.meshes);
     expect(differingElements(off.summary, on.summary), 'per-element mesh bytes').toEqual({ count: 0, first: [] });
+    expect(on.summary.entities).toBe(off.summary.entities);
+  });
+});
+
+test.describe('small-file fast path: a generated instanced file between 2 and 10 MiB', () => {
+  test('meshes through the worker pool with the same instancing as the normal pipeline', async ({ context }) => {
+    const text = instancedIfc(7500);
+    const bytes = Buffer.byteLength(text);
+    expect(bytes, 'the generated file is in the pool range').toBeGreaterThanOrEqual(2 * 1024 * 1024);
+    expect(bytes).toBeLessThan(10 * 1024 * 1024);
+    const path = join(mkdtempSync(join(tmpdir(), 'fast-path-instanced-')), 'instanced-doors.ifc');
+    writeFileSync(path, text);
+    const off = await load(context, path, false);
+    const on = await load(context, path, true);
+    expect(off.summary.instanced.gpuBytes ?? 0, 'the normal pipeline instances this file (else the comparison proves nothing)').toBeGreaterThan(0);
+    expect(on.claimed).toBe(true);
+    expect(on.summary.meshes, 'flat mesh count').toBe(off.summary.meshes);
+    expect(on.summary.instanced, 'instanced templates drawn and their GPU bytes').toEqual(off.summary.instanced);
+    expect(on.summary.shardsDecoded, 'instanced shards decoded').toBe(off.summary.shardsDecoded);
+    expect(differingElements(off.summary, on.summary), 'per-element flat mesh bytes').toEqual({ count: 0, first: [] });
     expect(on.summary.entities).toBe(off.summary.entities);
   });
 });

@@ -30,13 +30,13 @@ import { useSceneLayer, useSceneProjector } from '@/components/viewport-ui/scene
 import { glyphPath, type Project } from './structural-glyph-paths';
 import { structuralGlyphGroups, type GlyphStyle, type SourceGroup } from './structural-glyph-groups';
 
-/** Stroke per style; distinct hues that read on the light and the dark viewport background. */
+/** Stroke per style, from the theme's status and overlay tokens, so it follows light and dark. */
 const STROKE: Record<GlyphStyle, string> = {
-  support: '#14b8a6',
-  force: '#ef4444',
-  moment: '#a855f7',
-  temperature: '#f59e0b',
-  displacement: '#3b82f6',
+  support: 'stroke-ok',
+  force: 'stroke-danger',
+  moment: 'stroke-overlay-accent',
+  temperature: 'stroke-warn',
+  displacement: 'stroke-info',
 };
 
 /**
@@ -45,7 +45,7 @@ const STROKE: Record<GlyphStyle, string> = {
  */
 const HIT_WIDTH = 5;
 
-export interface StructuralGlyphOverlayProps {
+interface StructuralGlyphOverlayProps {
   /** Select a glyph's source entity, as a viewport click selects an element. */
   onSelect: (modelId: string, expressId: number) => void;
 }
@@ -115,7 +115,7 @@ export default function StructuralGlyphOverlay({ onSelect }: StructuralGlyphOver
           className="cursor-pointer"
           onClick={(event) => { event.stopPropagation(); onSelect(group.modelId, group.expressId); }}
         >
-          <path stroke={STROKE[group.style]} strokeWidth={1.75} style={{ pointerEvents: 'none' }} />
+          <path className={STROKE[group.style]} strokeWidth={1.75} style={{ pointerEvents: 'none' }} />
           <path stroke="transparent" strokeWidth={HIT_WIDTH} style={{ pointerEvents: 'stroke' }}>
             <title>{group.title}</title>
           </path>

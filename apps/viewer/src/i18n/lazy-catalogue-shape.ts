@@ -333,12 +333,12 @@ const ifcFederationShape = {
   "applied": [],
 } as const satisfies Record<IfcFederationKey, readonly string[]>;
 
-/** The glyph overlay's tooltips (#9668): key tails; only the tooltip takes parameters. Kept short, it ships eagerly. */
-const STRUCTURAL_GLYPH_TAILS = 'support.fixed support.pinned support.roller support.spring load.force load.moment load.temperature load.displacement'.split(' ');
+/** The glyph overlay's tooltips (#9668); only the tooltip takes parameters. A regex, since this ships eagerly. */
+const STRUCTURAL_GLYPH_KEY = /^structuralGlyphs\.(support\.(fixed|pinned|roller|spring)|load\.(force|moment|temperature|displacement))$/;
 
 export function lazyMessageParameters(key: string): readonly string[] | null {
   if (key === 'structuralGlyphs.tooltip') return ['entity', 'kind'];
-  if (key.startsWith('structuralGlyphs.') && STRUCTURAL_GLYPH_TAILS.includes(key.slice('structuralGlyphs.'.length))) return [];
+  if (STRUCTURAL_GLYPH_KEY.test(key)) return [];
   if (Object.hasOwn(retainedCatalogueShape, key)) {
     return retainedCatalogueShape[key as keyof typeof retainedCatalogueShape];
   }

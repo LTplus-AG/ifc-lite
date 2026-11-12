@@ -4,8 +4,9 @@
 
 /**
  * Tooltips of the structural support and load glyphs (#9668). A lazy
- * catalogue: it loads with the glyph overlay and registers itself
- * (`lazy-catalogues.ts`), so it adds nothing to the page's first load.
+ * catalogue (key types in `lazy-catalogues.ts`): `structural-glyph-groups.ts`
+ * registers it when the glyph overlay chunk loads, so it adds nothing to the
+ * page's first load.
  */
 import type { TranslationValue } from '../types';
 

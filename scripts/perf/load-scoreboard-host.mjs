@@ -117,6 +117,34 @@ export function classifyHostLoad({ psi, limit = 5, builders = [], groupCpuMs = {
       : builderUnderPressure ? `builder present while CPU pressure some avg10 = ${psi} >= ${pressureFloor}` : null };
 }
 
+/**
+ * Measurement only: CPU package temperature (coretemp "Package id 0", deg C) and the kernel's package thermal
+ * throttle counters (cpu0/thermal_throttle: events and total ms). Pop ran at 91-94 C on 2026-11-12, so a throttled
+ * sample must be visible. Every value is null when unreadable; nothing is voided by it.
+ */
+export function thermalState(root = '/sys') {
+  const num = (path, scale = 1) => { try { const v = Number(readFileSync(path, 'utf8').trim()); return Number.isFinite(v) ? v / scale : null; } catch { return null; } };
+  let packageC = null;
+  try {
+    for (const hw of readdirSync(`${root}/class/hwmon`)) {
+      const dir = `${root}/class/hwmon/${hw}`;
+      let name = null; try { name = readFileSync(`${dir}/name`, 'utf8').trim(); } catch { continue; }
+      if (name !== 'coretemp') continue;
+      for (const f of readdirSync(dir).filter((x) => /^temp\d+_label$/.test(x))) {
+        if (readFileSync(`${dir}/${f}`, 'utf8').trim() === 'Package id 0') packageC = num(`${dir}/${f.replace('_label', '_input')}`, 1000);
+      }
+    }
+  } catch { /* no hwmon */ }
+  const t = `${root}/devices/system/cpu/cpu0/thermal_throttle`;
+  return { packageC, packageThrottleCount: num(`${t}/package_throttle_count`), packageThrottleMs: num(`${t}/package_throttle_total_time_ms`) };
+}
+
+/** Start/end package temperature and the package throttling during a sample; a counter missing on either side is null. */
+export function thermalDelta(before, after) {
+  const d = (k) => (Number.isFinite(before?.[k]) && Number.isFinite(after?.[k]) ? Math.max(0, after[k] - before[k]) : null);
+  return { startC: before?.packageC ?? null, endC: after?.packageC ?? null, throttleEvents: d('packageThrottleCount'), throttleMs: d('packageThrottleMs') };
+}
+
 /** H9: before each sample, wait (at most 20 s) for CPU pressure avg10 < 5, and note builder-named processes. */
 export async function hostQuiet({ limit = 5, maxWaitMs = 20000 } = {}) {
   const started = Date.now();
@@ -131,7 +159,7 @@ export async function hostQuiet({ limit = 5, maxWaitMs = 20000 } = {}) {
   const pgids = [...new Set(procs.map((p) => p.pgid))];
   const cgroups = [...new Set(procs.map((p) => (p.cgroup ?? '').slice(3)).filter(Boolean))];
   return { cpuPressureAvg10: psi, limit, waitedMs: Date.now() - started, builders: procs.map((p) => p.name), builderProcs: procs,
-    groupTicksBefore: groupTicks(pgids), cgroupUsageBefore: { ...Object.fromEntries(cgroups.map((c) => [c, cgroupUsageMs(c)])), ...(procs.some((p) => !p.cgroup) ? { '(no cgroup)': null } : {}) }, hostBusyBefore: hostBusyMs(), ownCgroupBefore: ownCgroupMs(), watchdogBefore: watchdogState(), settledAt: null, startedAt: Date.now(), settled: false,
+    groupTicksBefore: groupTicks(pgids), cgroupUsageBefore: { ...Object.fromEntries(cgroups.map((c) => [c, cgroupUsageMs(c)])), ...(procs.some((p) => !p.cgroup) ? { '(no cgroup)': null } : {}) }, hostBusyBefore: hostBusyMs(), ownCgroupBefore: ownCgroupMs(), watchdogBefore: watchdogState(), thermalBefore: thermalState(), settledAt: null, startedAt: Date.now(), settled: false,
     // Provisional until the sample ends (settleHostLoad): pressure alone decides now.
     ...classifyHostLoad({ psi, limit, builders: procs.map((p) => p.name) }) };
 }
@@ -157,7 +185,8 @@ export function settleHostLoad(host) {
     const after = cgroupUsageMs(c);
     builderCpuMs[c] = before === null || after === null ? null : Math.max(0, Math.round(after - before));
   }
-  Object.assign(host, { groupCpuMs, builderCpuMs, foreignCpuMs, sampleMs, overlapsWatchdogPass, settled: true, ...classifyHostLoad({ psi: host.cpuPressureAvg10, limit: host.limit, builders: host.builders, groupCpuMs: builderCpuMs }) });
-  delete host.groupTicksBefore; delete host.cgroupUsageBefore; delete host.hostBusyBefore; delete host.ownCgroupBefore; delete host.watchdogBefore;
+  const thermal = thermalDelta(host.thermalBefore, thermalState());
+  Object.assign(host, { groupCpuMs, builderCpuMs, foreignCpuMs, sampleMs, overlapsWatchdogPass, thermal, settled: true, ...classifyHostLoad({ psi: host.cpuPressureAvg10, limit: host.limit, builders: host.builders, groupCpuMs: builderCpuMs }) });
+  delete host.groupTicksBefore; delete host.cgroupUsageBefore; delete host.hostBusyBefore; delete host.ownCgroupBefore; delete host.watchdogBefore; delete host.thermalBefore;
   return host;
 }

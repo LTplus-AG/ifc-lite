@@ -87,3 +87,37 @@ test('the report names cells with samples that overlapped a watchdog pass', asyn
   assert.equal(rows.length, 1, 'a cell with no overlapping sample is not listed');
   assert.match(rows[0], /\| Holter \| browser-cold \| base \| 3 \| 1 \| 0 \| 9000 \|/, 'the median is over the overlapping sample only (review #9857)');
 });
+
+test('a sample records package temperature at both ends and the package throttling during it; unreadable is null', async () => {
+  const { thermalState, thermalDelta } = await load('./load-scoreboard-host.mjs');
+  const { mkdtempSync, mkdirSync, writeFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { tmpdir } = await import('node:os');
+  const root = mkdtempSync(join(tmpdir(), 'thermal-'));
+  const hw = join(root, 'class/hwmon/hwmon9'), tt = join(root, 'devices/system/cpu/cpu0/thermal_throttle');
+  mkdirSync(hw, { recursive: true }); mkdirSync(tt, { recursive: true });
+  writeFileSync(join(hw, 'name'), 'coretemp\n'); writeFileSync(join(hw, 'temp1_label'), 'Package id 0\n'); writeFileSync(join(hw, 'temp1_input'), '91000\n');
+  writeFileSync(join(hw, 'temp2_label'), 'Core 0\n'); writeFileSync(join(hw, 'temp2_input'), '70000\n');
+  writeFileSync(join(tt, 'package_throttle_count'), '100\n'); writeFileSync(join(tt, 'package_throttle_total_time_ms'), '5000\n');
+  const before = thermalState(root);
+  assert.deepEqual(before, { packageC: 91, packageThrottleCount: 100, packageThrottleMs: 5000 });
+  writeFileSync(join(hw, 'temp1_input'), '94000\n'); writeFileSync(join(tt, 'package_throttle_count'), '103\n'); writeFileSync(join(tt, 'package_throttle_total_time_ms'), '5250\n');
+  assert.deepEqual(thermalDelta(before, thermalState(root)), { startC: 91, endC: 94, throttleEvents: 3, throttleMs: 250 });
+  // No sensors at all: every value null, never 0 C or "no throttling".
+  const none = thermalState(join(root, 'missing'));
+  assert.deepEqual(none, { packageC: null, packageThrottleCount: null, packageThrottleMs: null });
+  assert.deepEqual(thermalDelta(none, before), { startC: null, endC: 91, throttleEvents: null, throttleMs: null });
+});
+
+test('the report lists cells with under-load, watchdog-overlap or throttled samples and the hottest reading', async () => {
+  const { hostMarksTable } = await load('./load-scoreboard-report.mjs');
+  const side = (o) => ({ underLoad: 0, watchdogOverlap: 0, throttled: 0, maxPackageC: 80, ...o });
+  const summary = { fixtures: [{ name: 'Holter', lanes: { 'browser-cold': { sides: { base: side({ throttled: 2, maxPackageC: 93 }), branch: side({ watchdogOverlap: 1 }) } } } },
+    { name: 'FZK', lanes: { 'browser-cold': { sides: { base: side(), branch: side() } } } }] };
+  const md = hostMarksTable(summary);
+  assert.match(md, /Hottest package reading in the run: 93 C/);
+  assert.match(md, /\| Holter \| browser-cold \| base \| 0 \| 0 \| 2 \| 93 \|/);
+  assert.match(md, /\| Holter \| browser-cold \| branch \| 0 \| 1 \| 0 \| 80 \|/);
+  assert.doesNotMatch(md, /\| FZK \|/);
+  assert.match(hostMarksTable({ fixtures: [] }), /unreadable\. .*No cell has/);
+});

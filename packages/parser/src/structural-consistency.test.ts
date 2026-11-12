@@ -189,7 +189,7 @@ describe('structural-axis-drift', () => {
       ['along X at the origin', [0, 0, 0], [1, 0, 0]],
       ['at 45 degrees', [0, 0, 0], [Math.SQRT1_2, Math.SQRT1_2, 0]],
       ['at LV95 coordinates', [2600000, 1200000, 400], oblique],
-      // Found by the sweep below: a fixed 1 nm allowance misreports it (2.6e-9 m of rounding).
+      // From a 20000-end random search: a fixed 1 nm allowance misreports it (2.6e-9 m of rounding).
       ['at Web Mercator coordinates', [19492896, 17103716, 400], [Math.cos(WEB_MERCATOR_ANGLE), Math.sin(WEB_MERCATOR_ANGLE), 0]],
     ] as const;
     for (const [name, origin, axis] of cases) {
@@ -211,8 +211,10 @@ describe('structural-axis-drift', () => {
         const angle = random() * 2 * Math.PI;
         const at = (k: number, off: number) =>
           [origin[0] + k * Math.cos(angle) - off * Math.sin(angle), origin[1] + k * Math.sin(angle) + off * Math.cos(angle), 400] as const;
-        const found = drift(checkStructuralConsistency(linked, elements, {}, lines([at(0, 0), at(5 + 200 * random(), 0.05)], [at(0, 0), at(5, 0)])));
-        if (found.length) misread++;
+        const length = 5 + 200 * random();
+        if (drift(checkStructuralConsistency(linked, elements, {}, lines([at(0, 0), at(length, 0.05)], [at(0, 0), at(5, 0)]))).length) misread++;
+        // 10 micrometres past the tolerance is drift: the allowance never hides it.
+        if (!drift(checkStructuralConsistency(linked, elements, {}, lines([at(0, 0), at(length, 0.05001)], [at(0, 0), at(5, 0)]))).length) misread++;
       }
       expect(misread).toBe(0);
     });

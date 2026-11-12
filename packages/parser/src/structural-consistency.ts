@@ -129,9 +129,11 @@ export const isA = (type: string, bases: readonly string[]): boolean => getInher
  * degenerate axis. Each coordinate is stored to half a unit in the last place
  * (ulp) of its size, and the axis direction carries that error out to each
  * end in proportion to how far along the axis it lies. So the allowance is
- * 8 ulps of the largest coordinate times (1 + along / span): over 2000 seeded
- * oblique ends at map-scale coordinates (test below) none is misread. It is
- * capped at 1 micrometre, so a wild coordinate cannot hide drift.
+ * 8 ulps of the largest coordinate times (1 + along / span); the seeded sweep
+ * in `structural-consistency.test.ts` misreads none, its worst case using 7%
+ * of it. It is capped at 1 micrometre, so a wild coordinate cannot hide drift;
+ * past the cap (an axis centimetres long under a member metres long, at map
+ * coordinates) an end exactly at the tolerance can read as drift.
  */
 function offLine(line: StructuralLine, [a, b]: StructuralLine): { distance: number; rounding: number } | null {
   const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
@@ -139,18 +141,18 @@ function offLine(line: StructuralLine, [a, b]: StructuralLine): { distance: numb
   if (!(span > 1e-9)) return null;
   const u = [d[0] / span, d[1] / span, d[2] / span];
   let distance = 0;
-  let reach = 1;
+  let along = 0;
   let largest = 0;
-  for (const p of [...line, a, b]) for (const c of p) largest = Math.max(largest, Math.abs(c));
+  for (const p of [line[0], line[1], a, b]) for (const c of p) largest = Math.max(largest, Math.abs(c));
   for (const p of line) {
     const r = [p[0] - a[0], p[1] - a[1], p[2] - a[2]];
-    const along = r[0] * u[0] + r[1] * u[1] + r[2] * u[2];
+    const t = r[0] * u[0] + r[1] * u[1] + r[2] * u[2];
     // The component square to the axis: a difference of squares would lose
     // more precision than the subtraction of the coordinates.
-    distance = Math.max(distance, Math.hypot(r[0] - along * u[0], r[1] - along * u[1], r[2] - along * u[2]));
-    reach = Math.max(reach, 1 + Math.abs(along) / span);
+    distance = Math.max(distance, Math.hypot(r[0] - t * u[0], r[1] - t * u[1], r[2] - t * u[2]));
+    along = Math.max(along, Math.abs(t));
   }
-  return { distance, rounding: Math.min(8 * Number.EPSILON * largest * reach, 1e-6) };
+  return { distance, rounding: Math.min(8 * Number.EPSILON * largest * (1 + along / span), 1e-6) };
 }
 
 /** The axis-drift rule: each curve member with a line, against each linked element with an axis. */
@@ -171,11 +173,10 @@ function axisDrift(
       const off = offLine(line, axis);
       // Not greater also skips NaN, from a non-finite coordinate.
       if (!off || !(off.distance > tolerance + off.rounding)) continue;
-      const { distance } = off;
       issues.push({
         severity: 'warning', rule: 'structural-axis-drift', entityId: member.expressId, globalId: member.globalId,
-        target: fact.expressId, targetGlobalId: fact.globalId, distance,
-        message: `${label(member.expressId, member.type, member.globalId)} lies ${distance.toFixed(3)} m off the axis of ${label(fact.expressId, fact.type, fact.globalId)} (tolerance ${tolerance} m)`,
+        target: fact.expressId, targetGlobalId: fact.globalId, distance: off.distance,
+        message: `${label(member.expressId, member.type, member.globalId)} lies ${off.distance.toFixed(3)} m off the axis of ${label(fact.expressId, fact.type, fact.globalId)} (tolerance ${tolerance} m)`,
       });
     }
   }

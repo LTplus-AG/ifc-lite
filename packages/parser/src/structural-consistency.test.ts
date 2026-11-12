@@ -182,14 +182,23 @@ describe('structural-axis-drift', () => {
     expect(() => checkStructuralConsistency(linked, elements, { axisDriftTolerance: Number.NaN }, within)).toThrow(/axisDriftTolerance/);
   });
 
-  it('does not report an end exactly at the tolerance, far along the axis or at map-scale coordinates', () => {
-    const atTolerance = (origin: StructuralLine[0], axis: StructuralLine[0]) => {
-      const at = (k: number, off: number) => [origin[0] + k * axis[0] - off * axis[1], origin[1] + k * axis[1] + off * axis[0], origin[2]] as const;
-      return lines([at(0, 0), at(5, 0.05)], [at(0, 0), at(5, 0)]);
-    };
-    for (const [origin, axis] of [[[0, 0, 0], [1, 0, 0]], [[0, 0, 0], [Math.SQRT1_2, Math.SQRT1_2, 0]], [[2600000, 1200000, 400], [1, 0, 0]]] as const) {
-      expect(drift(checkStructuralConsistency(linked, elements, {}, atTolerance(origin, axis)))).toEqual([]);
-      expect(drift(checkStructuralConsistency(linked, elements, { axisDriftTolerance: 0.0499 }, atTolerance(origin, axis)))).toHaveLength(1);
+  describe('does not report an end exactly at the tolerance', () => {
+    const oblique = [0.6, 0.8, 0] as const;
+    const cases = [
+      ['along X at the origin', [0, 0, 0], [1, 0, 0]],
+      ['at 45 degrees', [0, 0, 0], [Math.SQRT1_2, Math.SQRT1_2, 0]],
+      ['at LV95 coordinates', [2600000, 1200000, 400], oblique],
+      // A case a fixed 1 nm allowance misreports (2.6e-9 m of rounding).
+      ['at Web Mercator coordinates', [19492896, 17103716, 400], [Math.cos(0.33590935980955805), Math.sin(0.33590935980955805), 0]],
+    ] as const;
+    for (const [name, origin, axis] of cases) {
+      it(name, () => {
+        // `at(k, off)`: k metres along the axis from `origin`, then `off` metres square to it in plan.
+        const at = (k: number, off: number) => [origin[0] + k * axis[0] - off * axis[1], origin[1] + k * axis[1] + off * axis[0], origin[2]] as const;
+        const endAtTolerance = lines([at(0, 0), at(5, 0.05)], [at(0, 0), at(5, 0)]);
+        expect(drift(checkStructuralConsistency(linked, elements, {}, endAtTolerance))).toEqual([]);
+        expect(drift(checkStructuralConsistency(linked, elements, { axisDriftTolerance: 0.0499 }, endAtTolerance))).toHaveLength(1);
+      });
     }
   });
 

@@ -78,7 +78,8 @@ export interface StructuralConsistencyOptions {
    * node `tolerance` off its axis; check a model derived with a larger
    * tolerance with a larger value. Eccentricities
    * (`IfcRelConnectsWithEccentricity`) are not subtracted: a member placed off
-   * its element's centre line by design is reported.
+   * its element's centre line by design is reported. A few units in the last
+   * place of the coordinates are allowed above it, for rounding.
    */
   axisDriftTolerance?: number;
 }
@@ -122,6 +123,14 @@ export const hasAnalyticalModel = (structural: StructuralExtraction): boolean =>
 
 export const isA = (type: string, bases: readonly string[]): boolean => getInheritanceChain(type).some((name) => bases.includes(name));
 
+/**
+ * What subtracting these coordinates can lose to rounding, a few units in the
+ * last place of the largest: so an end exactly at the tolerance is not drift
+ * at map-scale coordinates either, and next to nothing near the origin.
+ */
+const roundingOf = (...lines: StructuralLine[]): number =>
+  8 * Number.EPSILON * Math.max(...lines.flat(2).map(Math.abs));
+
 /** How far the farther end of `line` lies from the infinite line through `axis`; null for a degenerate axis. */
 function offLine(line: StructuralLine, [a, b]: StructuralLine): number | null {
   const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
@@ -151,11 +160,10 @@ function axisDrift(
     for (const elementId of structuralCounterparts(structural, member.expressId)?.expressIds ?? []) {
       const fact = factById.get(elementId);
       const axis = physicalAxes.get(elementId);
-      const distance = fact && axis ? offLine(line, axis) : null;
-      // Not greater also skips NaN, from a non-finite coordinate. The nanometre
-      // absorbs the rounding of map-scale coordinates, so an end exactly at
-      // the tolerance is not drift.
-      if (!fact || distance === null || !(distance > tolerance + 1e-9)) continue;
+      if (!fact || !axis) continue;
+      const distance = offLine(line, axis);
+      // Not greater also skips NaN, from a non-finite coordinate.
+      if (distance === null || !(distance > tolerance + roundingOf(line, axis))) continue;
       issues.push({
         severity: 'warning', rule: 'structural-axis-drift', entityId: member.expressId, globalId: member.globalId,
         target: fact.expressId, targetGlobalId: fact.globalId, distance,

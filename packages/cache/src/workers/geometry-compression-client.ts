@@ -41,6 +41,7 @@ export class GeometryCompressionSession {
     new Worker(new URL('./geometry-compression.worker.js', import.meta.url), { type: 'module' })) {}
 
   compress(raw: Uint8Array<ArrayBuffer>): Promise<StoredChunk> {
+    if (this.failure) return Promise.reject(this.failure); // the session's own failure comes first, as before
     if (raw.byteOffset !== 0 || raw.byteLength !== raw.buffer.byteLength) {
       return Promise.reject(new Error('Geometry compression requires an owned whole buffer'));
     }

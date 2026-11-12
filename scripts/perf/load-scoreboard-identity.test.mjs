@@ -68,7 +68,7 @@ test('a lane matches only when both sides match; any mismatch wins; a missing si
 });
 
 test('identity rows map reopen i to its lane, and the report takes the reopen output from them', async () => {
-  const { identityRowReopens, identityWanted } = await load('./load-scoreboard.mjs');
+  const { identityRowReopens, identityWanted } = await load('./load-scoreboard-identity.mjs');
   const { summarize } = await load('./load-scoreboard-report.mjs');
   const opens = [{ label: 'cold', identity: id('P', [cap('S1')]) }, { label: 'warm1', identity: id('P') }, { label: 'warm2', identity: id('P', [adopt('S1')]) }];
   const reopens = identityRowReopens({ meta: { identityOpens: opens } }, 2);

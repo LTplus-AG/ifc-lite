@@ -154,3 +154,32 @@ export function laneIdentityVerdict(rows, lane) {
   if (!all.every((v) => v.match)) return `unverifiable (identity pass: ${all.find((v) => !v.match).verdict.slice(0, 160)})`;
   return 'match';
 }
+
+/** The identity pass runs in round 0 unless the plan turns it off; it needs reopens to verify. */
+export function identityWanted(plan, round) {
+  return round === 0 && plan.identityPass !== false && (plan.warmOpens ?? 0) > 0 && plan.lanes.some((l) => l === 'browser-warm1' || l === 'browser-warm');
+}
+
+/** Each reopen lane of an identity sample with its verdict against the sample's own earlier opens. */
+export function identityRowReopens(sample, warmOpens) {
+  const opens = sample.meta?.identityOpens ?? [];
+  const out = {};
+  const n = warmOpens;
+  for (let i = 1; i < opens.length; i++) {
+    const lane = i === n ? 'browser-warm' : i === 1 ? 'browser-warm1' : null;
+    if (lane) out[lane] = reopenIdentityVerdict(opens, i);
+  }
+  return out;
+}
+
+/** The recorded identity row: verdicts and layer signatures; per-element maps go to their own trace file. */
+export function identityRow(common, sample, warmOpens, writeFile) {
+  const opens = sample.meta?.identityOpens ?? [];
+  writeFile(`${common.fixture}-${common.side}-r${common.round}-identity.json`, JSON.stringify(opens));
+  const failed = Object.values(sample.lanes ?? {}).find((l) => l && l.ok === false && l.error);
+  return { ...common, lane: 'identity', ok: !failed, error: failed?.error ?? null, reopens: identityRowReopens(sample, warmOpens),
+    corrupted: sample.meta?.corrupted ?? null, query: sample.meta?.query ?? null,
+    opens: opens.map(({ label, identity }) => ({ label, tap: identity?.tap ?? false, error: identity?.error ?? null,
+      pieces: identity?.pieces ? { pieces: identity.pieces.pieces, elements: identity.pieces.elements, sig: identity.pieces.sig } : null,
+      instancedEntities: identity?.instancedEntities ?? null, snapshots: identity?.snapshots ?? [] })) };
+}

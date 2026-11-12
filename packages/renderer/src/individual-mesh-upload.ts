@@ -169,43 +169,58 @@ export function uploadIndividualMesh(device: GPUDevice, meshData: MeshData, fram
 }
 
 interface MergeGroup {
+  key: string;
+  /** The first piece's frame: every piece here shares its origin. */
   frame: IndividualMeshFrame;
   /** The piece with the lowest entity id so far. */
   anchor: MeshData;
   pieces: MeshData[];
+  /** Each piece's own frame: the lattice snap follows the piece's batch. */
+  frames: IndividualMeshFrame[];
   vertices: number;
   indices: number;
 }
 
 /**
  * Partition pieces so each group can draw as one mesh without changing what
- * any piece looks like: same model, same frame (the f32 fold is per frame, and
- * a frameless piece keeps its own origin), same colour and finish, as a batch
- * bucket has, and like a bucket within one 2^24 page of entity ids, so the
- * vertex lane names each entity. A group fills up at `maxBytes`, one GPU
- * buffer's worth. `anyColour` drops the colour and finish from that list.
+ * any piece looks like: same model, same origin (the f32 fold is per frame, and
+ * a frameless piece keeps its own origin), and within one 2^24 page of entity
+ * ids, so the vertex lane names each entity. A group fills up at `maxBytes`,
+ * one GPU buffer's worth.
+ *
+ * Without `anyColour` a group also shares colour, finish and quantization, as
+ * a batch bucket does, and takes its pieces from anywhere in the list.
+ *
+ * With it and `inOrder`, a group is a RUN: it only takes the piece that follows
+ * its last one, so the list's order is the draw order across groups as well as
+ * within them. Whether the piece's batch is quantized is not a reason to split
+ * there: the snap is applied per piece when its vertices are written.
  */
-function groupPieces(pieces: readonly MeshData[], frameOf: (meshData: MeshData) => IndividualMeshFrame, maxBytes: number, anyColour: boolean): MergeGroup[] {
+function groupPieces(pieces: readonly MeshData[], frameOf: (meshData: MeshData) => IndividualMeshFrame, maxBytes: number, anyColour: boolean, inOrder: boolean): MergeGroup[] {
   const groups: MergeGroup[] = [];
   const open = new Map<string, MergeGroup>();
+  let last: MergeGroup | undefined;
   for (const piece of pieces) {
     const vertices = piece.positions.length / 3;
     const indices = piece.indices.length;
     if (vertices === 0 || indices === 0) continue;
     const frame = frameOf(piece);
     const origin = frame.sharedOrigin ?? piece.origin;
-    const key = `${piece.modelIndex ?? ''}|${Math.floor(piece.expressId / ENTITY_LANE_ID_SPAN)}|${frame.quantized ? 'q' : 'f'}|${frame.sharedOrigin ? 's' : 'o'}|${origin?.join() ?? ''}|${anyColour ? '' : colorKey(piece.color, piece.material)}`;
-    let group = open.get(key);
+    const where = `${piece.modelIndex ?? ''}|${Math.floor(piece.expressId / ENTITY_LANE_ID_SPAN)}|${frame.sharedOrigin ? 's' : 'o'}|${origin?.join() ?? ''}`;
+    const key = anyColour ? where : `${where}|${frame.quantized ? 'q' : 'f'}|${colorKey(piece.color, piece.material)}`;
+    let group = inOrder ? (last?.key === key ? last : undefined) : open.get(key);
     if (group && group.pieces.length > 0
       && ((group.vertices + vertices) * BATCH_CONSTANTS.BYTES_PER_VERTEX > maxBytes
         || (group.indices + indices) * BATCH_CONSTANTS.BYTES_PER_INDEX > maxBytes)) group = undefined;
     if (!group) {
-      group = { frame, anchor: piece, pieces: [], vertices: 0, indices: 0 };
-      open.set(key, group);
+      group = { key, frame, anchor: piece, pieces: [], frames: [], vertices: 0, indices: 0 };
+      if (!inOrder) open.set(key, group);
       groups.push(group);
     }
+    last = group;
     if (piece.expressId < group.anchor.expressId) group.anchor = piece;
     group.pieces.push(piece);
+    group.frames.push(frame);
     group.vertices += vertices;
     group.indices += indices;
   }
@@ -217,11 +232,16 @@ function groupPieces(pieces: readonly MeshData[], frameOf: (meshData: MeshData) 
  * draws scale with the entity's colours and frames, not its piece count. A
  * throw part-way frees what this call already created.
  *
- * @param anyColour Keep pieces of every colour and finish in one mesh, in the
- *   order given. Only for a mesh drawn as selection highlight alone, which
- *   reads neither (`fs_main`'s selected branch): its triangles then draw in the
- *   caller's order, as one copy per piece would. The representative no longer
- *   stands for the colour of the rest.
+ * @param anyColour Keep pieces of every colour and finish together, in the
+ *   order given. Only for meshes drawn as selection highlight alone, which
+ *   reads neither (`fs_main`'s selected branch). The triangles then draw in the
+ *   caller's order, as one copy per piece would: across meshes too, because a
+ *   mesh is a run of adjacent pieces that share a model and origin, and a piece
+ *   of another model or origin in between starts the next mesh. Past
+ *   {@link MERGE_PIECES_ABOVE} runs that would be a draw per piece again (a
+ *   selection alternating between two models), so the pieces are then merged
+ *   like with like and only the order within each mesh is the caller's. The
+ *   representative does not stand for the colour of the rest.
  */
 export function uploadMergedMeshes(
   device: GPUDevice,
@@ -233,15 +253,17 @@ export function uploadMergedMeshes(
   const maxBytes = Math.floor(limit * BATCH_CONSTANTS.BUFFER_SIZE_SAFETY_FACTOR);
   const uploaded: MergedMeshGpu[] = [];
   try {
-    for (const group of groupPieces(pieces, frameOf, maxBytes, anyColour)) {
+    let groups = groupPieces(pieces, frameOf, maxBytes, anyColour, anyColour);
+    if (anyColour && groups.length > MERGE_PIECES_ABOVE) groups = groupPieces(pieces, frameOf, maxBytes, true, false);
+    for (const group of groups) {
       const interleavedRaw = new ArrayBuffer(group.vertices * BATCH_CONSTANTS.BYTES_PER_VERTEX);
       const interleaved = new Float32Array(interleavedRaw);
       const lanes = new Uint32Array(interleavedRaw);
       const indices = new Uint32Array(group.indices);
       let firstVertex = 0;
       let firstIndex = 0;
-      for (const piece of group.pieces) {
-        writePieceVertices(interleaved, lanes, firstVertex, piece, group.frame);
+      for (const [i, piece] of group.pieces.entries()) {
+        writePieceVertices(interleaved, lanes, firstVertex, piece, group.frames[i]);
         const source = piece.indices;
         for (let i = 0; i < source.length; i++) indices[firstIndex + i] = source[i] + firstVertex;
         firstIndex += source.length;

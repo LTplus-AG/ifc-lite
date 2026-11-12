@@ -656,11 +656,21 @@ selectedIds = new Set([id1, id2, id3]);
 renderer.render({ selectedIds });
 ```
 
-The renderer keeps the highlight of an unchanged selection between frames, so a
-large selection costs an orbit no more than a small one. It notices a new Set, a
-Set that grew or shrank, and, up to 4,096 ids, any edit made in place. Past that,
-swapping ids in place at the same count is picked up within a few frames rather
-than on the next one: pass a new Set for a large selection.
+The renderer keeps the highlight of an unchanged selection between frames, and
+past 500 highlight copies it merges them, so the frame cost of a selection no
+longer grows with the number of selected entities. It is not free: a large
+selection draws a few merged meshes on top of the model (one per run of
+selected pieces that share a model and frame origin, more for a selection that
+spans models, 2^24 id pages or more than one GPU buffer, and for entities
+merged on their own), and those meshes hold a second copy of the selected
+geometry in GPU memory, about 28 bytes per vertex and 4 per index.
+
+The Set is compared by content on every frame, with one lookup per id and no
+allocation, so a new Set, a Set that grew or shrank and any edit made in place
+are seen on the next frame. The exception is a frame rendered with
+`isInteracting`: it re-reads 4,096 ids and continues on the next one, so
+swapping ids in place at the same count in a larger Set is seen within a few
+interactive frames. Passing a new Set avoids that.
 
 ### Raycasting
 

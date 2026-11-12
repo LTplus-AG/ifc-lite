@@ -3871,8 +3871,16 @@ describe('#8564 nearest-glass split in the render loop', () => {
 
 // #8564 review (Codex on 372b9ec): established draw order is preserved.
 describe('#8564 review: draw order around transparent IFC', () => {
-    it('#8564 review F2: IFC-only frames draw transparent partial batches where they always did, before selection hydration and transparent instances', () => {
+    // The landmark used to be the hydration call, which sat between the
+    // transparent draws and the highlight. #9835 moved hydration ahead of the
+    // frame (it frees copies, and a buffer freed after the frame wrote it fails
+    // the submit), so the order is now pinned on the highlight DRAW itself.
+    it('#8564 review F2: IFC-only frames draw transparent partial batches where they always did, before the selection highlight and transparent instances', () => {
         const h = makeHarness();
+        const HIGHLIGHT_PIPELINE = { label: 'selection' };
+        (h.renderer as unknown as Record<string, unknown>)['pipeline'] = new Proxy(h.renderer['pipeline'] as object, {
+            get: (target, prop, receiver) => (prop === 'getSelectionPipeline' ? () => HIGHLIGHT_PIPELINE : Reflect.get(target, prop, receiver)),
+        });
         const scene = sceneOf(h);
         const glassColour: [number, number, number, number] = [0.2, 0.4, 0.8, 0.5];
         scene.appendToBatches([triangle(1, GREY), triangle(2, GREY), triangle(3, glassColour), triangle(4, glassColour)], h.renderer['device'].getDevice(), h.renderer['pipeline'] as never, false);
@@ -3882,11 +3890,13 @@ describe('#8564 review: draw order around transparent IFC', () => {
         try {
             h.stats.commands.length = 0;
             h.render({ hiddenIds: new Set([4]), selectedId: 1 }); // glass {3,4} with 4 hidden: one transparent sub-batch
-            const ops = h.stats.commands.map((c) => c.op === 'setPipeline' && c.pipeline === TRANSPARENT_PIPELINE ? 'glass' : c.op);
-            const glass = ops.indexOf('glass'), hydration = ops.indexOf('hydrate');
-            assert.ok(glass >= 0 && hydration >= 0, ops.join(' '));
+            const ops = h.stats.commands.map((c) => c.op !== 'setPipeline' ? c.op : c.pipeline === TRANSPARENT_PIPELINE ? 'glass' : c.pipeline === HIGHLIGHT_PIPELINE ? 'highlight' : c.op);
+            const glass = ops.indexOf('glass'), hydration = ops.indexOf('hydrate'), highlight = ops.indexOf('highlight');
+            assert.ok(glass >= 0 && hydration >= 0 && highlight >= 0, ops.join(' '));
             assert.equal(ops[glass + 1], 'setBindGroup');
-            assert.ok(ops.indexOf('drawIndexed', glass) < hydration, `transparent sub-batch draws before selection hydration, as at 750b33165a: ${ops.join(' ')}`);
+            assert.ok(ops.indexOf('drawIndexed', glass) < highlight, `transparent sub-batch draws before the selection highlight, as at 750b33165a: ${ops.join(' ')}`);
+            assert.equal(ops.indexOf('drawIndexed', highlight) > highlight, true, 'and the highlight is drawn');
+            assert.ok(hydration < ops.indexOf('setPipeline'), `the highlight copy is built before the frame draws anything (#9835): ${ops.join(' ')}`);
         } finally {
             h.renderer.destroy();
         }

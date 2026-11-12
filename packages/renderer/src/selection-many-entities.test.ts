@@ -293,7 +293,7 @@ describe('selecting many entities (#9835)', () => {
     assert.equal(large.next.writes, small.next.writes, 'buffer writes a frame do not grow with the selection');
   });
 
-  it('a settled frame does no work per selected entity on the CPU either', () => {
+  it('an orbit frame does no work per selected entity on the CPU either, and a frame at rest only re-reads the ids', () => {
     const settledWork = (count: number) => {
       const h = makeHarness();
       load(h, model(count));
@@ -302,8 +302,11 @@ describe('selecting many entities (#9835)', () => {
       h.render({ selectedIds });
       const pieceLookups = countPieceLookups(h.scene);
       selectedIds.lookups = 0;
-      for (let i = 0; i < 3; i++) h.render({ selectedIds });
-      return { pieceLookups: pieceLookups.count, idLookups: selectedIds.lookups };
+      for (let i = 0; i < 3; i++) h.render({ selectedIds, isInteracting: true }); // an orbit
+      const idLookups = selectedIds.lookups;
+      selectedIds.lookups = 0;
+      h.render({ selectedIds }); // the frame at rest after it
+      return { pieceLookups: pieceLookups.count, idLookups, atRest: selectedIds.lookups, count };
     };
     const small = settledWork(20_000);
     const large = settledWork(60_000);
@@ -313,6 +316,8 @@ describe('selecting many entities (#9835)', () => {
     // unseen) and tests the drawn meshes against them: neither grows with the selection.
     assert.equal(large.idLookups, small.idLookups, 'the ids read a frame do not grow with the selection');
     assert.ok(large.idLookups <= 3 * (SELECTION_IDS_VERIFIED_PER_FRAME + 4), `${large.idLookups} id reads in three frames`);
+    // A frame at rest reads the ids once (so an in-place edit shows at once) and still looks up no pieces.
+    for (const run of [small, large]) assert.ok(run.atRest <= run.count + 8, `${run.atRest} id reads at rest for ${run.count} ids`);
   });
 
   it('draws exactly the selected entities, each triangle once, each vertex stamped with its own id', () => {
@@ -530,6 +535,14 @@ describe('selecting many entities (#9835)', () => {
     assert.equal(hydrated(h).length, 0);
   });
 
+  it('frees nothing on a renderer\'s first frame when nothing is selected', () => {
+    const h = makeHarness();
+    for (const meshData of model(3)) h.renderer.createMeshFromData(meshData);
+    h.render({});
+    h.render({});
+    assert.equal(hydrated(h).length, 3 * PIECES_EACH, 'copies made before the first frame (a pick, an individual-mesh scene) are still there');
+  });
+
   it('leaves a pick\'s copies of unselected entities alone until the selection moves', () => {
     const h = makeHarness();
     const meshes = model(10);
@@ -642,6 +655,75 @@ describe('selecting many entities (#9835)', () => {
     assert.deepEqual(selectedCounts(h), [0, 0], 'deselected with the rest');
   });
 
+  // Review of #9916: the primary id may also sit in the Set. Swapping it in
+  // for another id keeps the Set's size and every id it holds inside the old
+  // union, so only the union's own size shows that an entity left.
+  it('drops the highlight of an entity swapped out of the same Set in place, at the same size', () => {
+    const h = makeHarness();
+    const meshes = model(3);
+    load(h, meshes);
+    const selectedIds = new Set([2, 3]);
+    assert.deepEqual(frameCost(h, { selectedId: 1, selectedIds }).drawn().triangles, expectedTriangles(meshes));
+    selectedIds.delete(2);
+    selectedIds.add(1);
+    const after = frameCost(h, { selectedId: 1, selectedIds });
+    assert.deepEqual(after.drawn().triangles, expectedTriangles(ofEntities(meshes, [1, 3])), 'entity 2 is no longer highlighted');
+    assert.deepEqual(sorted(after.drawn().ids), [1, 3]);
+  });
+
+  it('sees a large Set edited in place at the same size on the next frame at rest', () => {
+    const h = makeHarness();
+    const count = 6_000; // past the ids an interactive frame re-reads
+    const meshes = model(count + 1);
+    load(h, meshes);
+    const selectedIds = new Set(idsOf(count));
+    h.render({ selectedIds });
+    selectedIds.delete(count); // the last id the Set iterates
+    selectedIds.add(count + 1);
+    const after = frameCost(h, { selectedIds });
+    assert.deepEqual(sorted(after.drawn().ids), [...idsOf(count - 1), count + 1]);
+  });
+
+  // Review of #9916: the hover copies were cached by id alone. A selected entity
+  // used to borrow its own selection meshes for the hover outline, which an
+  // edit evicts; inside a pool it gets hover copies, which nothing refreshed.
+  it('keeps the hover outline of a pooled entity on its geometry when that moves', () => {
+    const h = makeHarness();
+    const meshes = model(1_000);
+    load(h, meshes);
+    const selectedIds = new Set(idsOf(1_000));
+    const options: RenderOptions = { selectedIds, hoverOutline: { id: 40 } };
+    const hoverTriangles = () => {
+      const pieces = (h.renderer as unknown as { hoverMeshes: { pieces: { vertexBuffer: FakeBuffer; indexBuffer: FakeBuffer; indexCount: number; rteOrigin: [number, number, number] }[] } }).hoverMeshes.pieces;
+      assert.ok(pieces.length > 0, 'the hovered entity has hover copies of its own');
+      return drawnTriangles(pieces.map((piece) => ({ ...piece, pipeline: null })), new Map(pieces.map((piece) => [piece.vertexBuffer, piece.rteOrigin]))).triangles;
+    };
+    h.render(options);
+    assert.deepEqual(hoverTriangles(), expectedTriangles(ofEntities(meshes, [40])));
+
+    assert.equal(h.scene.translateMeshesForEntity(40, [0, 0, 9]), true);
+    h.render(options);
+    assert.deepEqual(hoverTriangles(), expectedTriangles(ofEntities(meshes, [40])), 'the outline follows the moved geometry (the test meshes were moved in place)');
+
+    const late = piece(40, 7);
+    h.scene.appendToBatches([late], h.device, h.renderer['pipeline'] as never, false);
+    h.render(options);
+    assert.deepEqual(hoverTriangles(), expectedTriangles([...ofEntities(meshes, [40]), late]), 'and takes in a piece that streams in');
+  });
+
+  // Review of #9916: pieces that share a model and frame but are not adjacent in
+  // the selection must not be drawn together, or a piece between them moves.
+  it('draws a selection that alternates between two models in the selection\'s order', () => {
+    const h = makeHarness();
+    const meshes = model(600, (id) => ({ modelIndex: Math.floor((id - 1) / 100) % 2 }));
+    load(h, meshes);
+    const selection = idsOf(600);
+    const cost = frameCost(h, { selectedIds: new Set(selection) });
+    const inSelectionOrder = selection.flatMap((id) => meshes.filter((mesh) => mesh.expressId === id)).map((mesh) => Array.from(mesh.positions).join(','));
+    assert.deepEqual(cost.drawn().inDrawOrder, inSelectionOrder);
+    assert.equal(cost.highlightDraws.length, 6, 'one mesh per run of one model');
+  });
+
   it('never lets a pooled mesh stand for a hovered entity', () => {
     const h = makeHarness();
     load(h, model(1_000));
@@ -694,6 +776,42 @@ describe('uploadMergedMeshes across entities (#9835)', () => {
     assert.deepEqual(actual, expected);
   });
 
+  const capture = () => {
+    const written: Uint8Array[] = [];
+    const device = {
+      limits: { maxBufferSize: 1 << 28 },
+      createBuffer: (desc: { size: number }) => ({ size: desc.size, destroy() { /* no-op */ } }),
+      queue: { writeBuffer(_buffer: unknown, _offset: number, data: ArrayBufferView) { written.push(new Uint8Array(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength))); } },
+    } as unknown as GPUDevice;
+    return { device, written };
+  };
+
+  // Review of #9916: A, B, C with A and C alike must draw A, B, C.
+  it('keeps the given order when pieces of one model or origin are not adjacent', () => {
+    const order = (pieces: MeshData[]) => uploadMergedMeshes(capture().device, pieces, () => NO_FRAME, true).map((mesh) => [mesh.representative.expressId, mesh.pieces]);
+    assert.deepEqual(order([piece(1, 0, { modelIndex: 0 }), piece(2, 0, { modelIndex: 1 }), piece(3, 0, { modelIndex: 0 })]), [[1, 1], [2, 1], [3, 1]], 'another model in between');
+    assert.deepEqual(order([piece(1, 0, { origin: [5, 0, 0] }), piece(2, 0, { origin: [9, 0, 0] }), piece(3, 0, { origin: [5, 0, 0] })] as MeshData[]), [[1, 1], [2, 1], [3, 1]], 'another origin in between');
+    assert.deepEqual(order([piece(1, 0), piece(2, 0), piece(3, 0)]), [[1, 3]], 'alike and adjacent: one mesh');
+  });
+
+  it('keeps pieces of quantized and plain batches in one mesh, each snapped as its own batch is', () => {
+    const { device, written } = capture();
+    const at = (x: number) => new Float32Array([x, 0, 0, x + 1, 0, 0, x, 1, 0]);
+    const pieces = [piece(1, 0, { positions: at(0.3) }), piece(2, 0, { positions: at(0.3) }), piece(3, 0, { positions: at(0.3) })];
+    const shared: [number, number, number] = [0, 0, 0];
+    const merged = uploadMergedMeshes(device, pieces, (meshData) => ({ sharedOrigin: shared, quantized: meshData.expressId === 2 }), true);
+    assert.deepEqual(merged.map((mesh) => mesh.pieces), [3], 'the lattice snap is per piece, not a reason to split the draw');
+    const floats = new Float32Array(written[0].buffer);
+    const firstX = [0, 1, 2].map((p) => floats[p * 3 * 7]);
+    assert.deepEqual(firstX, [Math.fround(0.3), Math.round(Math.fround(0.3) * 1024) / 1024, Math.fround(0.3)]);
+  });
+
+  it('stops following the order once it would cost more draws than the copy budget, and merges like with like', () => {
+    const alternating = Array.from({ length: 1_200 }, (_, i) => piece(i + 1, 0, { modelIndex: i % 2 }));
+    const merged = uploadMergedMeshes(capture().device, alternating, () => NO_FRAME, true);
+    assert.deepEqual(merged.map((mesh) => mesh.pieces), [600, 600], 'two models, two meshes: never one draw per piece');
+  });
+
   it('never puts ids of two 2^24 pages in one mesh: the 24-bit vertex lane could not tell them apart', () => {
     const PAGE = 0x1000000;
     const merged = uploadMergedMeshes(uploadDevice(), [piece(5, 0), piece(PAGE + 5, 0), piece(PAGE + 3, 0)], () => NO_FRAME);
@@ -704,35 +822,41 @@ describe('uploadMergedMeshes across entities (#9835)', () => {
 describe('the frame\'s selection snapshot (#9835)', () => {
   const snapshot = () => new SelectionSnapshot();
 
-  it('hands back the same set while the same Set is passed, reading a bounded number of ids a frame', () => {
+  it('hands back the same set while the same Set is passed, reading a bounded number of ids on an interactive frame', () => {
     const selection = snapshot();
     const ids = new CountingSet(idsOf(100_000));
-    const first = selection.update(null, ids);
+    const first = selection.update(null, ids, true);
     const version = selection.getVersion();
     ids.lookups = 0;
-    for (let i = 0; i < 5; i++) assert.equal(selection.update(null, ids), first);
+    for (let i = 0; i < 5; i++) assert.equal(selection.update(null, ids, true), first);
     assert.equal(ids.lookups, 5 * SELECTION_IDS_VERIFIED_PER_FRAME, 'not the 100,000 ids a frame a rebuild would read');
+    ids.lookups = 0;
+    assert.equal(selection.update(null, ids), first, 'a frame at rest reads them all once, and still keeps the set');
+    assert.ok(ids.lookups <= 100_000 + 1, `${ids.lookups} id reads at rest`);
     assert.equal(selection.getVersion(), version);
     assert.equal(first.size, 100_000);
   });
 
-  it('sees a Set edited in place to other ids of the same count: at once when small, within a few frames when large', () => {
-    const small = snapshot();
-    const few = new Set([1, 2, 3]);
-    small.update(null, few);
-    few.delete(2);
-    few.add(9);
-    assert.deepEqual(sorted(small.update(null, few)), [1, 3, 9], 'the very next frame');
+  it('sees a Set edited in place to other ids of the same count: on the next frame at rest, within a few interactive frames when large', () => {
+    for (const count of [3, 20_000]) {
+      const atRest = snapshot();
+      const ids = new Set(idsOf(count));
+      atRest.update(null, ids);
+      ids.delete(2);
+      ids.add(99_999);
+      const after = atRest.update(null, ids);
+      assert.equal(after.has(99_999) && !after.has(2) && after.size === count, true, `${count} ids: the very next frame`);
+    }
 
-    const large = snapshot();
+    const interactive = snapshot();
     const many = new Set(idsOf(20_000));
-    const before = large.update(null, many);
+    const before = interactive.update(null, many, true);
     many.delete(7);
     many.add(99_999);
     const frames = Math.ceil(20_000 / SELECTION_IDS_VERIFIED_PER_FRAME);
     let after = before;
-    for (let i = 0; i < frames && after === before; i++) after = large.update(null, many);
-    assert.notEqual(after, before, `within ${frames} frames`);
+    for (let i = 0; i < frames && after === before; i++) after = interactive.update(null, many, true);
+    assert.notEqual(after, before, `within ${frames} interactive frames`);
     assert.equal(after.has(99_999), true);
     assert.equal(after.has(7), false);
   });
@@ -754,6 +878,23 @@ describe('the frame\'s selection snapshot (#9835)', () => {
 
     assert.deepEqual(sorted(selection.update(null, undefined)), []);
     assert.equal(selection.getVersion(), version + 2);
+  });
+
+  // Review of #9916: every id of the Set can be inside the old union while an
+  // id has left it, when the primary is swapped into its own Set.
+  it('sees the primary swapped into its own Set for another id', () => {
+    const selection = snapshot();
+    const ids = new Set([2, 3]);
+    assert.deepEqual(sorted(selection.update(1, ids)), [1, 2, 3]);
+    const version = selection.getVersion();
+    ids.delete(2);
+    ids.add(1);
+    assert.deepEqual(sorted(selection.update(1, ids)), [1, 3]);
+    assert.equal(selection.getVersion(), version + 1);
+    // And the other way: the primary leaves the Set, at the same size.
+    ids.delete(1);
+    ids.add(7);
+    assert.deepEqual(sorted(selection.update(1, ids)), [1, 3, 7]);
   });
 
   it('sees a Set that grew or shrank in place', () => {

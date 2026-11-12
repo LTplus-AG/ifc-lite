@@ -24,21 +24,22 @@ import type { Mesh } from './types.js';
 const NO_IDS: ReadonlySet<number> = new Set<number>();
 
 /**
- * The ids of an unchanged `selectedIds` object re-checked per frame. A caller
- * may edit its Set in place to other ids of the same count, which neither the
- * object nor its size shows, so a frame still reads this many of them: a
- * selection up to this size is compared whole on every frame, a larger one in
- * turns, an edit to it being seen within `size / SELECTION_IDS_VERIFIED_PER_FRAME` frames.
+ * The ids of an unchanged `selectedIds` object re-read on a frame of an
+ * interaction. A caller may edit its Set in place to other ids of the same
+ * count, which neither the object nor its size shows. A frame at rest reads
+ * every id to see that; an interactive frame, the one that has to stay cheap,
+ * reads this many and carries on where the last one stopped, so such an edit
+ * is seen within `size / SELECTION_IDS_VERIFIED_PER_FRAME` interactive frames.
  */
 export const SELECTION_IDS_VERIFIED_PER_FRAME = 4096;
 
 /**
  * `RenderOptions.selectedId` and `selectedIds` as one set, rebuilt only when
- * they change. A frame that passes the same `selectedIds` object at the same
- * size, with the same `selectedId`, gets the previous set back after a bounded
- * re-check ({@link SELECTION_IDS_VERIFIED_PER_FRAME}), not a walk of the selection.
- * Anything else is compared by content, so a copy of an unchanged selection
- * (a capture, a fresh Set from a store) keeps the set and its version.
+ * they change. Every frame compares the content: a frame at rest in full (one
+ * lookup per id, no allocation), an interactive frame that passes the same
+ * `selectedIds` object at the same size by {@link SELECTION_IDS_VERIFIED_PER_FRAME}
+ * ids at a time. A copy of an unchanged selection (a capture, a fresh Set from
+ * a store) therefore keeps the set and its version.
  */
 export class SelectionSnapshot {
   private ids: ReadonlySet<number> = NO_IDS;
@@ -49,11 +50,15 @@ export class SelectionSnapshot {
   /** Where the bounded re-check of `sourceIds` stopped; a Set's iterator survives edits to it. */
   private cursor: Iterator<number> | undefined;
 
-  /** The selected ids for this frame. The returned set is never mutated: a change yields a new one. */
-  update(selectedId: number | null | undefined, selectedIds: ReadonlySet<number> | undefined): ReadonlySet<number> {
+  /**
+   * The selected ids for this frame. The returned set is never mutated: a change yields a new one.
+   * @param interacting `RenderOptions.isInteracting`: this frame is one of a gesture's.
+   */
+  update(selectedId: number | null | undefined, selectedIds: ReadonlySet<number> | undefined, interacting = false): ReadonlySet<number> {
     const id = selectedId ?? null;
     const size = selectedIds?.size ?? 0;
-    if (selectedIds === this.sourceIds && size === this.sourceSize && id === this.sourceId && this.verified(selectedIds)) return this.ids;
+    if (selectedIds === this.sourceIds && size === this.sourceSize && id === this.sourceId
+      && (interacting ? this.verified(id, selectedIds) : this.holds(id, selectedIds))) return this.ids;
     this.sourceIds = selectedIds;
     this.sourceSize = size;
     this.sourceId = id;
@@ -73,10 +78,16 @@ export class SelectionSnapshot {
     return this.version;
   }
 
-  /** Re-check the next ids of the same-sized `selectedIds` object; false as soon as one is not in the snapshot. */
-  private verified(selectedIds: ReadonlySet<number> | undefined): boolean {
-    if (!selectedIds || selectedIds.size === 0) return true;
+  /**
+   * Re-check the next ids of the same-sized `selectedIds` object; false as soon
+   * as one is not in the snapshot. The size of the union is checked first: the
+   * primary id may be IN the Set, so swapping it in for another id leaves every
+   * id of the Set inside the old union while an entity has left it.
+   */
+  private verified(id: number | null, selectedIds: ReadonlySet<number> | undefined): boolean {
     const ids = this.ids;
+    if ((selectedIds?.size ?? 0) + (id !== null && !selectedIds?.has(id) ? 1 : 0) !== ids.size) return false;
+    if (!selectedIds || selectedIds.size === 0) return true;
     const cursor = this.cursor ??= selectedIds.values();
     for (let budget = SELECTION_IDS_VERIFIED_PER_FRAME; budget > 0; budget--) {
       const next = cursor.next();
@@ -139,7 +150,8 @@ function visibleSelection(frame: SelectionHighlightInputs): ReadonlySet<number> 
  * rejected at submit.
  */
 export class SelectionHighlight {
-  private selectionVersion = -1;
+  /** 0 is `SelectionSnapshot`'s version before anything was selected: a renderer starts with no selection, so its first frame frees no copies. */
+  private selectionVersion = 0;
   private modelIndex: number | undefined;
   private itemFilterExpressId: number | undefined;
   private itemFilterItemId: number | undefined;

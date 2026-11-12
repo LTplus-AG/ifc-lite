@@ -19,12 +19,15 @@
  * entities that are not merged on their own pool into ONE merge, so a frame
  * costs the same however many entities the selection holds.
  *
- * A pool is one mesh per model and frame, with its pieces in the selection's
- * order, not one per colour. The highlight draws without writing depth, so
- * where translucent base geometry lets several highlighted surfaces overlap on
- * screen, the one drawn last shows. One copy per piece drew them in selection
- * order; a pool split by colour would reorder them and shade those pixels
- * differently. The highlight reads no colour, so nothing needs the split.
+ * A pool keeps its pieces in the selection's order, not grouped by colour. The
+ * highlight draws without writing depth, so where translucent base geometry
+ * lets several highlighted surfaces overlap on screen, the one drawn last
+ * shows. One copy per piece drew them in selection order; a pool split by
+ * colour would reorder them and shade those pixels differently. The highlight
+ * reads no colour, so nothing needs the split. A pool is therefore one mesh
+ * per run of adjacent pieces that share a model and frame origin (see
+ * `uploadMergedMeshes`): one mesh for a model with one frame, more when the
+ * selection moves between models, origins, 2^24 id pages or fills a buffer.
  */
 
 import type { MeshData } from '@ifc-lite/geometry';

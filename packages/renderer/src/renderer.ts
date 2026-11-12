@@ -1690,7 +1690,7 @@ export class Renderer {
         const selectedId = options.selectedId;
         const selectedIds = options.selectedIds;
         const selectedModelIndex = options.selectedModelIndex;
-        const selectedExpressIds = this._selection.update(selectedId, selectedIds);
+        const selectedExpressIds = this._selection.update(selectedId, selectedIds, options.isInteracting === true);
         const itemFilterExpressId = (options.selectedItemId !== undefined && selectedId !== undefined && selectedId !== null) ? selectedId : undefined; const itemFilterItemId = itemFilterExpressId !== undefined ? options.selectedItemId : undefined; // #4382
 
         // ─── Visibility / override epoch bookkeeping ────────────────────────
@@ -2947,7 +2947,7 @@ export class Renderer {
                 && (!hasIsolatedFilter || options.isolatedIds!.has(hovered.id)) ? hovered.id : null;
             const hoverModel = hovered?.modelIndex;
             const hoverPieces = hoverId != null && !selectedMeshesForMask.some((m) => matchesHoveredMesh(m, hoverId, hoverModel))
-                ? this.guardedHighlightUpload('hover highlight', () => this.hoverMeshes.resolve(device, hoverId, hoverModel, () => this.scene.getMeshDataPieces(hoverId, hoverModel), (m) => this.individualMeshFrame(m))) ?? []
+                ? this.guardedHighlightUpload('hover highlight', () => this.hoverMeshes.resolve(device, hoverId, hoverModel, () => this.scene.getMeshDataPieces(hoverId, hoverModel), (m) => this.individualMeshFrame(m), this.scene.getPickGeometryRevision())) ?? []
                 : (this.hoverMeshes.release(), []);
             const selectionOutline = buildSelectionOutlineFrame({
                 uniformBufferSize: this.pipeline.getUniformBufferSize(), viewProj, relativeToEyeFrame,

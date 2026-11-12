@@ -43,6 +43,25 @@ test('extractSpecifiers drops whole type-only statements, which tsx erases', () 
   assert.deepEqual(extractSpecifiers(code), ['./real.js']);
 });
 
+test('extractSpecifiers keeps an import list that holds comments', () => {
+  const code = "export {\n  // the decoder, see #123\n  decode, /* inline */ encode,\n} from './codec.js';";
+  assert.deepEqual(extractSpecifiers(code), ['./codec.js']);
+});
+
+test('a type-only strip without semicolons does not swallow the next import', () => {
+  assert.deepEqual(extractSpecifiers("export type { A }\nimport b from './b'\n"), ['./b']);
+  assert.deepEqual(extractSpecifiers("import type T from './t'\nimport c from './c'"), ['./c']);
+});
+
+test('resolve: an alias that matches but resolves nowhere falls back to the package exports', () => {
+  const r = createResolver({
+    files: new Set(['packages/p/src/index.ts']),
+    aliases: [{ pattern: '@x/p', targets: ['packages/p/moved'] }],
+    packages: new Map([['@x/p', { dir: 'packages/p', exports: { '.': './dist/index.js' } }]]),
+  });
+  assert.deepEqual(r('a.ts', '@x/p'), { kind: 'file', path: 'packages/p/src/index.ts' });
+});
+
 test('extractSpecifiers ignores runtime-built specifiers and property calls', () => {
   // A literal template-literal import in the source text under test, not a template string here.
   // eslint-disable-next-line no-template-curly-in-string

@@ -118,6 +118,10 @@ export function classifyChanges(changes, graph, packages) {
   for (const { status, path } of changes) {
     const pkgDir = sourcePackageDir(path);
     const pkgName = pkgDir && pkgByDir.get(pkgDir);
+    // A package reached opaquely runs its BUILT entry, which contains every
+    // source file of the package, so seed it alongside any file-level match.
+    const opaque = pkgName && graph.nodes.has(packageNode(pkgName)) ? packageNode(pkgName) : null;
+    if (opaque) seeds.add(opaque);
     if (status === 'D') {
       // `import './dir'` resolved to dir/index.ts records the directory itself.
       const keys = [extensionless(path), ...(/\/index\.[^/]+$/.test(path) ? [posix.dirname(path)] : [])];
@@ -132,8 +136,7 @@ export function classifyChanges(changes, graph, packages) {
       rows.push({ path, status, class: 'graph', reason: 'in the import graph' });
       continue;
     }
-    if (pkgName && graph.nodes.has(packageNode(pkgName))) {
-      seeds.add(packageNode(pkgName));
+    if (opaque) {
       rows.push({ path, status, class: 'graph', reason: `source of ${pkgName}, which a viewer test imports opaquely` });
       continue;
     }
@@ -194,7 +197,7 @@ export function runnerArgs(script) {
 
 /** Read the repo state the graph needs. */
 function loadRepo(root) {
-  const files = new Set(execFileSync('git', ['ls-files', '-z', '--', 'apps/viewer', 'packages'], { cwd: root, encoding: 'utf8', maxBuffer: 1 << 28 }).split('\0').filter(Boolean));
+  const files = new Set(execFileSync('git', ['ls-files', '-z'], { cwd: root, encoding: 'utf8', maxBuffer: 1 << 28 }).split('\0').filter(Boolean));
   const viewerPkg = JSON.parse(readFileSync(join(root, VIEWER, 'package.json'), 'utf8'));
   const tsconfig = JSON.parse(readFileSync(join(root, VIEWER, 'tsconfig.json'), 'utf8'));
   const aliases = Object.entries(tsconfig.compilerOptions?.paths ?? {}).map(([pattern, targets]) => ({

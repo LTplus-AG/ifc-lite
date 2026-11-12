@@ -132,6 +132,17 @@ test('the WASM package\'s sources do not map through its opaque node; Rust chang
   assert.equal(classify('packages/wasm/src/index.ts').seeds.size, 0);
 });
 
+test('a package file that is a graph node also seeds the package\'s opaque node', () => {
+  const src = {
+    'apps/viewer/src/f.test.ts': "import '@x/q';\nimport '../../../packages/q/src/a.js';",
+    'packages/q/src/a.ts': '',
+  };
+  const pkgs = new Map([['@x/q', { dir: 'packages/q', exports: { '.': './out/q.js' } }]]);
+  const g = buildGraph({ tests: ['apps/viewer/src/f.test.ts'], read: (p) => src[p], resolve: createResolver({ files: new Set(Object.keys(src)), packages: pkgs }) });
+  const { seeds } = classifyChanges([{ status: 'M', path: 'packages/q/src/a.ts' }], g, pkgs);
+  assert.deepEqual([...seeds].sort(), ['packages/q/src/a.ts', 'pkg:@x/q']);
+});
+
 test('a source file no viewer test imports is reported, not silently dropped', () => {
   const { rows, seeds } = classify('packages/cli/src/index.ts');
   assert.equal(seeds.size, 0);

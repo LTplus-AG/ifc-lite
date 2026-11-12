@@ -43,12 +43,15 @@ export const isViewerTest = (path) => /^apps\/viewer\/src\/.*\.test\.tsx?$/.test
 
 // `import type` / `export type` statements are erased by tsx before the test
 // runs, so they are not runtime edges. A mixed `import { type A, b }` is kept.
-const TYPE_ONLY = /(?:^|[^\w$.])(?:import|export)\s+type\s+(?:[\w$*{}\s,]+?\s+from\s*)['"][^'"\n]+['"]/g;
+// The clause is bounded (one identifier, `* as n`, or a `{...}` list) so the
+// match cannot run past the statement when there is no semicolon.
+const TYPE_ONLY = /(?:^|[^\w$.])(?:import|export)\s+type\s+(?:\{[^}]*\}|\*(?:\s*as\s+[\w$]+)?|[\w$]+)\s*from\s*['"][^'"\n]+['"]/g;
 
 const SPECIFIER_PATTERNS = [
-  // import x from 'a'; import { a, b } from 'a'; import type { T } from 'a';
-  // export * from 'a'; export { a } from 'a'; import 'a';
-  /(?:^|[^\w$.])(?:import|export)\s+(?:[\w$*{}\s,]+?\s+from\s*)?['"]([^'"\n]+)['"]/g,
+  // import x from 'a'; import { a, b } from 'a'; import x, * as n from 'a';
+  // export * from 'a'; export { a } from 'a'; import 'a'. A `{...}` list may
+  // hold comments, so it is matched as anything but `}`.
+  /(?:^|[^\w$.])(?:import|export)\s+(?:(?:type\s+)?(?:[\w$]+\s*,\s*)?(?:\{[^}]*\}|\*(?:\s*as\s+[\w$]+)?|[\w$]+)\s*from\s*)?['"]([^'"\n]+)['"]/g,
   /(?:^|[^\w$.])import\s*\(\s*['"]([^'"\n]+)['"]\s*[,)]/g,
   /(?:^|[^\w$.])require\s*\(\s*['"]([^'"\n]+)['"]\s*\)/g,
   /\bmock\.module\s*\(\s*['"]([^'"\n]+)['"]/g,
@@ -109,7 +112,9 @@ export function createResolver({ files, aliases = [], packages = new Map() }) {
         const hit = resolveFile(base);
         if (hit) return { kind: 'file', path: hit };
       }
-      return { kind: 'missing', base: posix.normalize(bases[0]) };
+      // tsx still resolves a workspace package through node_modules, so try
+      // its exports before recording the import as missing.
+      return fromPackage(spec) ?? { kind: 'missing', base: posix.normalize(bases[0]) };
     }
     return null;
   }

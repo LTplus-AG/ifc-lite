@@ -22,25 +22,14 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 
-import { existsSync } from 'node:fs';
-
-// The module under test and the new workflow are loaded when a test asks for
-// them, not at the top: when the revert oracle reverses this PR's production
-// files, every test must still run and fail on its own assertion, rather than
-// the whole file dying at load with nothing asserted.
-const probe = await import('./viewer-concurrency-probe.mjs').catch(() => null);
-function api() {
-  assert.ok(probe, 'scripts/viewer-concurrency-probe.mjs did not load');
-  return probe;
-}
-const parseTap = (...a) => api().parseTap(...a);
-const readRecords = (...a) => api().readRecords(...a);
-const report = (...a) => api().report(...a);
-const reportedFiles = (...a) => api().reportedFiles(...a);
-const scriptConcurrency = (...a) => api().scriptConcurrency(...a);
-const selectFiles = (...a) => api().selectFiles(...a);
-const selectionCommand = (...a) => api().selectionCommand(...a);
-const viewerTestScript = (...a) => api().viewerTestScript(...a);
+// When the revert oracle reverses this PR's production files, every test must
+// still run and fail on its own assertion, not the whole file at load with
+// nothing asserted (as in scripts/perf/load-scoreboard-stats.test.mjs). So a
+// failed import becomes functions that fail when called. Only the error NAME
+// is reported: the oracle reads a "Cannot find module" message as a load failure.
+const { parseTap, readRecords, report, reportedFiles, scriptConcurrency, selectFiles, selectionCommand, viewerTestScript } = await import('./viewer-concurrency-probe.mjs')
+  // `then` stays undefined, or awaiting the stub would call it.
+  .catch((err) => new Proxy({}, { get: (_, key) => (key === 'then' ? undefined : () => assert.fail(`scripts/viewer-concurrency-probe.mjs did not load (${err.name})`)) }));
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..');
@@ -49,10 +38,8 @@ const TSX = join(REPO_ROOT, 'node_modules/.bin/tsx');
 const FILE_REPORTER = join(HERE, 'lib/test-file-reporter.mjs');
 const TEST_YML = parse(readFileSync(join(REPO_ROOT, '.github/workflows/test.yml'), 'utf8'));
 const PROBE_YML_PATH = join(REPO_ROOT, '.github/workflows/viewer-concurrency-probe.yml');
-function probeWorkflow() {
-  assert.ok(existsSync(PROBE_YML_PATH), '.github/workflows/viewer-concurrency-probe.yml is missing');
-  return parse(readFileSync(PROBE_YML_PATH, 'utf8'));
-}
+/** Read inside the tests that need it, for the same reason. */
+const probeWorkflow = () => parse(readFileSync(PROBE_YML_PATH, 'utf8'));
 const TMP = mkdtempSync(join(tmpdir(), 'viewer-concurrency-probe-'));
 test.after(() => rmSync(TMP, { recursive: true, force: true }));
 

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { beforeEach, afterEach, it } from 'node:test';
@@ -37,7 +38,7 @@ function at(x: number, y: number, alt = false): SnapResult {
 function click(x: number, y: number, alt = false) { commandPointerMove(at(x,y,alt)); commandPointerDown(at(x,y,alt)); }
 function exported() {
   const s = useViewerStore.getState();
-  return new StepExporter(s.models.get(MODEL)!.ifcDataStore!, s.mutationViews.get(MODEL)!).export({ schema: 'IFC4', applyMutations: true }).content;
+  return new StepExporter(s.models.get(MODEL)!.ifcDataStore!, s.mutationViews.get(MODEL)!).export({ schema: 'IFC4', applyMutations: true, timeStamp: '20260101T000000' }).content;
 }
 const depth = () => useViewerStore.getState().undoStacks.get(MODEL)?.length ?? 0;
 async function exportedPosition(id: number) {
@@ -88,4 +89,29 @@ for (const copy of ['alt','toggle'] as const) it(`#9296 Mirror ${copy} makes a r
   const frame = await exportedPosition(copied);
   assert.ok(Math.abs(frame.origin[1]-14)<.001);
   useViewerStore.getState().undo(MODEL); assert.equal(depth(),d);
+});
+it('#9296 Mirror previews reflected geometry and reversed winding without changing IFC', async () => {
+  const id = wall(); select(id);
+  await useViewerStore.getState().startCommand('element.mirror');
+  const ctx = getCommandRuntime().ctx!;
+  const plane = ctx.workplane!;
+  const points = [[0,10,0],[5,10,0],[0,11,0]].flatMap(p => [...plane.localToRender([p[0],p[1],p[2]])]);
+  const state = useViewerStore.getState(), model = state.models.get(MODEL)!;
+  const meshes = [{ expressId: toGlobalIdFromModels(state.models,MODEL,id), positions: new Float32Array(points), normals: new Float32Array([0,1,0,0,1,0,0,1,0]), indices: new Uint32Array([0,1,2]), color: [1,1,1,1] as [number,number,number,number] }];
+  useViewerStore.setState({ models: new Map([[MODEL,{ ...model, geometryResult: { ...model.geometryResult!, meshes } }]]) });
+  const before = exported(); click(0,12); commandPointerMove(at(4,12));
+  const runtime = getCommandRuntime();
+  const ghosts = runtime.command!.ghost!(runtime.gesture,ctx);
+  assert.equal(ghosts.length,1); assert.deepEqual([...ghosts[0].indices],[0,2,1]);
+  const y = ghosts[0].positions;
+  assert.ok(Math.abs(plane.renderToLocal([y[0],y[1],y[2]])[1]-14)<.001);
+  assert.deepEqual([...meshes[0].indices],[0,1,2]); assert.deepEqual(exported(),before);
+});
+it('#9296 Mirror refuses grids atomically and preserves every selected wall', async () => {
+  const id = wall();
+  useViewerStore.getState().startCommand('grid.place'); click(20,20); click(25,25);
+  const grid = useViewerStore.getState().mutationViews.get(MODEL)!.getNewEntities().find(e=>e.type.toUpperCase()==='IFCGRID');
+  assert.ok(grid); select(id,grid.expressId);
+  const before = exported(); await useViewerStore.getState().startCommand('element.mirror');
+  click(0,12); writeCommandField(0,0); assert.equal(commitCommand(),false); assert.deepEqual(exported(),before);
 });

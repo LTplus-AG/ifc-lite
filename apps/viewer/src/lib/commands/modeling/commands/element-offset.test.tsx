@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { beforeEach, afterEach, it } from 'node:test';
@@ -37,7 +38,7 @@ function at(x: number, y: number, alt = false): SnapResult {
 function click(x: number, y: number, alt = false) { commandPointerMove(at(x,y,alt)); commandPointerDown(at(x,y,alt)); }
 function exported() {
   const s = useViewerStore.getState();
-  return new StepExporter(s.models.get(MODEL)!.ifcDataStore!, s.mutationViews.get(MODEL)!).export({ schema: 'IFC4', applyMutations: true }).content;
+  return new StepExporter(s.models.get(MODEL)!.ifcDataStore!, s.mutationViews.get(MODEL)!).export({ schema: 'IFC4', applyMutations: true, timeStamp: '20260101T000000' }).content;
 }
 const depth = () => useViewerStore.getState().undoStacks.get(MODEL)?.length ?? 0;
 async function exportedPosition(id: number) {

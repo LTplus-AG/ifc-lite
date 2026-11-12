@@ -142,14 +142,14 @@ export const RAIL_TOOLS: readonly RailTool[] = [
     run: () => { launchModelCommand('element.rotate'); },
   },
   {
-    id: 'element.mirror', group: 'edit', labelKey: 'moveRotate.mirror.label', Icon: RotateCw,
+    id: 'element.mirror', group: 'edit', labelKey: 'moveRotate.mirror.label', Icon: AlignHorizontalJustifyStart,
     shortcut: 'model.mirror', drawsOnWorkplane: true,
     isActive: commandActive('element.mirror'),
     blockedKey: (s) => (s.selectedEntityId === null ? 'moveRotate.noSelection' : null),
     run: () => { launchModelCommand('element.mirror'); },
   },
   {
-    id: 'element.offset', group: 'edit', labelKey: 'moveRotate.offset.label', Icon: RotateCw,
+    id: 'element.offset', group: 'edit', labelKey: 'moveRotate.offset.label', Icon: CopyPlus,
     shortcut: 'model.offset', drawsOnWorkplane: true,
     isActive: commandActive('element.offset'),
     blockedKey: (s) => (s.selectedEntityId === null ? 'moveRotate.noSelection' : null),

@@ -23,6 +23,24 @@
  * finalize that never ends (device loss keeps its fragments) cannot park metadata.
  */
 
+/**
+ * Holding pays only on large loads. Held, a store's commit runs after the tail
+ * instead of inside it, which saves time only when the tail keeps the main
+ * thread saturated (Holter: a 2.6 s upload drain at 100% main) or a redundant
+ * partial store is dropped. On a small scene the tail is a few frames with idle
+ * time between them, the commit fits into that idle time, and holding it only
+ * delays it: with the small-file fast path (#9900) FZK's parser finishes at
+ * ~311 ms, before its ~400-490 ms tail, so a hold would move interactive later.
+ * The boundary is the loader's existing large-load size (the entity-index
+ * deferral), below which every load publishes at once as before this gate.
+ */
+export const METADATA_HOLD_MIN_MB = 32;
+
+/** Whether this load's store publications may be held during the geometry tail. */
+export function holdsMetadataDuringTail(fileSizeMB: number): boolean {
+  return fileSizeMB >= METADATA_HOLD_MIN_MB;
+}
+
 export interface MetadataPublishGate<S> {
   /** The partial (hierarchy-ready) store. Dropped if the full store overtakes it while held. */
   partial(store: S): void;

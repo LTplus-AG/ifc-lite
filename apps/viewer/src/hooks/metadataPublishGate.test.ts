@@ -101,3 +101,17 @@ describe('createMetadataPublishGate', () => {
     assert.deepEqual(h.published, ['full:f']);
   });
 });
+
+describe('holdsMetadataDuringTail (small loads publish at once)', () => {
+  it('holds only from the large-load boundary up', async () => {
+    const mod = (await import('./metadataPublishGate.js').catch(() => null)) as Record<string, unknown> | null;
+    assert.equal(typeof mod?.holdsMetadataDuringTail, 'function', 'metadataPublishGate.ts must export holdsMetadataDuringTail');
+    const holds = mod!.holdsMetadataDuringTail as (mb: number) => boolean;
+    const boundary = mod!.METADATA_HOLD_MIN_MB as number;
+    assert.equal(boundary, 32);
+    assert.equal(holds(boundary - 0.01), false, 'just below the boundary: publish at once');
+    assert.equal(holds(boundary), true, 'at the boundary: hold during the tail');
+    for (const mb of [2.3, 2.4, 3.8, 10]) assert.equal(holds(mb), false, `${mb} MB (duplex, FZK, Office_A, fast-path limit) publishes at once`);
+    for (const mb of [35, 169, 327]) assert.equal(holds(mb), true, `${mb} MB (advanced_model, Holter, BWK) is held`);
+  });
+});

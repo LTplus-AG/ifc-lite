@@ -90,7 +90,7 @@ import { pointCloudSpatialReferenceFromMetadata, preparePointCloudSpatialLoad } 
 import { removePointCloudScanCache } from './ingest/pointCloudScanCache.js';
 import { stopCopcLodStream } from './ingest/copc/copcLodStream.js';
 import { getGlobalRenderer } from './useBCF.js';
-import { createMetadataPublishGate } from './metadataPublishGate.js';
+import { createMetadataPublishGate, holdsMetadataDuringTail } from './metadataPublishGate.js';
 import { isGeometryTailBusy } from './geometryTail.js';
 import type { FederatedLandXmlStreamingFinalization } from './ingest/federatedLandXmlStreaming.js';
 import { openFederatedLandXmlStreamingPlan, openPrimaryLandXmlProvisional } from './ingest/landXmlGpuTransactions.js';
@@ -1388,7 +1388,7 @@ export function useIfcLoader() {
 
       // Hold publications while this primary load's geometry tail owns the main thread; publish the newest store once (metadataPublishGate.ts).
       const metadataPublish = createMetadataPublishGate<IfcDataStore>({
-        isTailBusy: () => target.kind === 'primary' && streamCompleteMs !== null && !isStale() && isGeometryTailBusy(),
+        isTailBusy: () => holdsMetadataDuringTail(fileSizeMB) && target.kind === 'primary' && streamCompleteMs !== null && !isStale() && isGeometryTailBusy(),
         publishPartial: onPartialDataStore,
         publishFull: (store) => { try { onFullDataStore(store); } catch (err) { if (!isStale()) modelCompletion?.failMetadata(err); } }, // held: runs from a timer
       });

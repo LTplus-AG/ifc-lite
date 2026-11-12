@@ -128,12 +128,19 @@ export async function writeCapturedScene(
   };
   const gone = () => isStale() || captured.loadFailed();
   const abandoned = () => finish('abandoned', { reason: abandonReason(isStale, captured) });
+  // The model as it was at the swap: a removal or reload while the entry is written ends the write.
+  const atSwap = modelId === null ? undefined : useViewerStore.getState().models.get(modelId);
+  const storeAtSwap = atSwap?.ifcDataStore ?? null;
   try {
     if (await supersession(gone, entry)) return abandoned();
     const target = await entry;
     if (!target) return finish('no-entry');
+    const current = modelId === null ? undefined : useViewerStore.getState().models.get(modelId);
+    if (atSwap && (!current || (storeAtSwap !== null && current.ifcDataStore !== storeAtSwap))) {
+      return finish('abandoned', { reason: 'model-removed' });
+    }
     // Bound to the model's current store too: a reload under the same id drops it.
-    const modelStore = modelId === null ? null : useViewerStore.getState().models.get(modelId)?.ifcDataStore ?? null;
+    const modelStore = current?.ifcDataStore ?? null;
     const job = afterModelSettled({ job: 'snapshot-write', modelId, store: modelStore }, (signal) => store(target, signal).catch((err: unknown) => {
       console.warn('[useIfcCache] Scene snapshot was not stored:', err);
       return finish('failed');

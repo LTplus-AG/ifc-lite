@@ -139,6 +139,21 @@ describe('ChunkInflatePool', () => {
     }
   });
 
+  it('without workers (they cannot start), a corrupt chunk still rejects as CorruptChunkError and so do the remaining ones', async () => {
+    const section = corruptOneChunk(await buildGeometrySectionV13(meshes(), coordInfo, { compress: true }));
+    const pool = new ChunkInflatePool(2, { createWorker: () => { throw new Error('no workers here'); } }).start();
+    try {
+      expect(pool.inflatingHere).toBe(true);
+      await expect(decodeAll(section, pool.inflate)).rejects.toBeInstanceOf(CorruptChunkError);
+      const good = await buildGeometrySectionV13(meshes(), coordInfo, { compress: true });
+      const info = openGeometryChunksV13(good, 0, FORMAT_VERSION).chunks.find((c) => c.flags & GeometryChunkFlags.DeflateRaw)!;
+      await expect(pool.inflate(new Uint8Array(good, info.byteOffset, info.byteLength), info.uncompressedLength))
+        .rejects.toBeInstanceOf(CorruptChunkError); // nothing more inflates once the entry is known corrupt
+    } finally {
+      pool.close();
+    }
+  });
+
   it('a worker whose codec cannot inflate good data: the chunk inflates here, the rest too, and the entry is not called corrupt', async () => {
     const section = await buildGeometrySectionV13(meshes(), coordInfo, { compress: true });
     class NoCodecPort extends CodecPort {

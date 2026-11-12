@@ -150,6 +150,20 @@ describe('writeCapturedScene', () => {
     assert.equal((await getCached('r'))!.sceneSnapshot, undefined);
   });
 
+  it('a model removed or reloaded while its entry is written: the write is abandoned, not run as a record-less model\'s', async () => {
+    for (const [id, after] of [['re', () => new Map()], ['rl', () => new Map([['rl', { ...fixtureModel('rl'), loadState: 'complete' }]])]] as const) {
+      const entry = await entryOf(id);
+      const store = fixtureModel(id).ifcDataStore;
+      useViewerStore.setState({ loading: false, models: new Map([[id, { ...fixtureModel(id), ifcDataStore: store, loadState: 'complete' }]]) } as never);
+      let resolveEntry!: (value: typeof entry) => void;
+      const pending = write(captured(), new Promise((resolve) => { resolveEntry = resolve; }), () => false, id);
+      useViewerStore.setState({ models: after() } as never); // before the entry promise resolves
+      resolveEntry(entry);
+      assert.deepEqual(await pending, { outcome: 'abandoned', span: 'abandoned:model-removed' }, id);
+      assert.equal((await getCached(id))!.sceneSnapshot, undefined, `${id}: nothing stored`);
+    }
+  });
+
   it('a load superseded while its write runs ends the span once, as abandoned, and stores nothing', async () => {
     const entry = await entryOf('s');
     useViewerStore.setState({ loading: false });

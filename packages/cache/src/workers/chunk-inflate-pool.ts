@@ -19,6 +19,8 @@
  *   caller's corrupt-entry path (delete the entry, parse fresh) starts without
  *   delay. If it inflates here, the worker cannot inflate (its codec
  *   environment): the pool falls back as above, and the entry is kept.
+ * - A chunk that does not inflate on the calling thread (after a fallback, or
+ *   with no worker at all) is corrupt too, with the same `CorruptChunkError`.
  *
  * Workers start only on `start()` or the first compressed chunk: a
  * metadata-only entry, or one whose chunks are all stored raw, starts none.
@@ -124,7 +126,12 @@ export class ChunkInflatePool {
         this.useFallback(error);
       }
     }
-    return inflateRaw(stored);
+    try {
+      return await inflateRaw(stored);
+    } catch (error) {
+      // Here, without a worker to blame: the data does not inflate, the entry is corrupt.
+      throw this.markCorrupt(error instanceof Error ? error : new Error(String(error)));
+    }
   };
 
   /** A chunk the worker's codec refused: corrupt if it fails here too, else the worker cannot inflate. */

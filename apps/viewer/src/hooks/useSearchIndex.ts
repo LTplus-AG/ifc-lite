@@ -36,6 +36,8 @@ export function useSearchIndex(): void {
   // One AbortController per in-flight build. Lets us cancel cleanly when a
   // model is removed mid-build or when the component unmounts.
   const controllersRef = useRef<Map<string, AbortController>>(new Map());
+  // The data store each claim builds from: a store replaced under the same id replaces its claim.
+  const claimStoresRef = useRef<WeakMap<AbortController, object>>(new WeakMap());
 
   useEffect(() => {
     const controllers = controllersRef.current;
@@ -60,12 +62,21 @@ export function useSearchIndex(): void {
     // Kick off builds for models that are loaded but not yet indexed.
     for (const [modelId, model] of models) {
       if (!model.ifcDataStore) continue;
+      const claimed = controllers.get(modelId);
+      if (claimed) {
+        if (claimStoresRef.current.get(claimed) === model.ifcDataStore) continue;
+        // The store was replaced under this id while its build waited or ran: stop it (it can no longer
+        // publish) and build the current store.
+        controllers.delete(modelId);
+        claimed.abort();
+        setSearchIndexRecord(modelId, { status: 'pending', progress: 0 });
+      }
       const existing = useViewerStore.getState().searchIndexes.get(modelId);
       if (existing && existing.status !== 'pending') continue;
-      if (controllers.has(modelId)) continue;
 
       const controller = new AbortController();
       controllers.set(modelId, controller);
+      claimStoresRef.current.set(controller, model.ifcDataStore);
 
       setSearchIndexRecord(modelId, { status: 'building', progress: 0 });
 

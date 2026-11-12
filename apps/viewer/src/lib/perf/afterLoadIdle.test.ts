@@ -196,6 +196,24 @@ describe('runAfterModelSettled', () => {
     assert.equal(ref.deref() === undefined, true, 'the dropped job does not keep the store alive');
   });
 
+  it('a started job: its model\'s removal or a reload aborts its signal while it runs', async () => {
+    const store = fixtureDataStore();
+    setModels(model('a', 'complete', store), model('b', 'complete'));
+    const signals: Record<string, AbortSignal> = {};
+    const never = new Promise<void>(() => {});
+    runAfterModelSettled({ job: 'snapshot-write', modelId: 'a', store }, (signal) => { signals.a = signal; return never; });
+    await flushIdle();
+    assert.equal(signals.a?.aborted, false, 'a runs');
+    setModels(model('a', 'complete'), model('b', 'complete')); // a reload: a new store under the same id
+    assert.equal(signals.a.aborted, true, 'the reload aborts the running write');
+    __resetAfterLoadIdleForTests();
+    runAfterModelSettled({ job: 'overlay-parse', modelId: 'b' }, (signal) => { signals.b = signal; return never; });
+    await flushIdle();
+    assert.equal(signals.b?.aborted, false, 'b runs');
+    setModels();
+    assert.equal(signals.b.aborted, true, 'the removal aborts the running parse');
+  });
+
   it('a store replaced under the same model id (a reload) drops the old store\'s job', async () => {
     const old = fixtureDataStore();
     setModels(model('a', 'complete', old));

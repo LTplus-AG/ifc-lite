@@ -20,7 +20,8 @@
  *
  * Lifetime: a job is bound to its model's record. It is dropped, with every
  * reference it holds, when that record leaves `models` or its data store is
- * replaced (removal, a reload, a session reset). Its `signal` aborts then.
+ * replaced (removal, a reload, a session reset). Its `signal` aborts then,
+ * also when its work has already started and has not finished.
  *
  * Order: when several jobs are ready, the earliest `AfterLoadJob` starts first,
  * each in its own idle period. A job that returns a promise holds the next one
@@ -70,6 +71,8 @@ interface Job extends AfterLoadOptions {
 
 let seq = 0;
 let jobs: Job[] = [];
+/** Jobs whose work has started and not yet finished: removal or a reload aborts their signal too. */
+const started = new Set<Job>();
 let running = false;
 let waiting = false;
 let unsubscribe: (() => void) | null = null;
@@ -101,9 +104,12 @@ function drop(job: Job): void {
 function sweep(state: ViewerState): void {
   const gone = jobs.filter((job) => !alive(job, state));
   if (gone.length > 0) jobs = jobs.filter((job) => !gone.includes(job));
-  if (jobs.length === 0 && unsubscribe && !running) { unsubscribe(); unsubscribe = null; }
+  const stopped = [...started].filter((job) => !alive(job, state));
+  for (const job of stopped) started.delete(job);
+  if (jobs.length === 0 && started.size === 0 && unsubscribe && !running) { unsubscribe(); unsubscribe = null; }
   // After the queue is updated: an `onDrop` may write the store, which re-enters `pump`.
   for (const job of gone) drop(job);
+  for (const job of stopped) job.controller.abort();
 }
 
 function nextReady(state: ViewerState): Job | undefined {
@@ -158,15 +164,20 @@ function pump(): void {
     job.work = null;
     job.onDrop = undefined;
     running = true;
+    started.add(job);
     let limit: ReturnType<typeof setTimeout> | undefined;
     const done = Promise.resolve().then(() => work?.(job.controller.signal))
-      .then(() => {}, (error: unknown) => console.warn(`[afterLoadIdle] ${job.job} failed:`, error));
+      .then(() => {}, (error: unknown) => console.warn(`[afterLoadIdle] ${job.job} failed:`, error))
+      .finally(() => {
+        started.delete(job);
+        if (jobs.length === 0 && started.size === 0 && unsubscribe && !running) { unsubscribe(); unsubscribe = null; }
+      });
     try {
       await Promise.race([done, new Promise<void>((resolve) => { limit = setTimeout(resolve, holdLimitMs); })]);
     } finally {
       clearTimeout(limit);
       running = false;
-      if (jobs.length === 0 && unsubscribe) { unsubscribe(); unsubscribe = null; }
+      if (jobs.length === 0 && started.size === 0 && unsubscribe) { unsubscribe(); unsubscribe = null; }
       pump();
     }
   });
@@ -194,6 +205,8 @@ export function scheduleAfterLoad(with_: AfterLoadEnv, options: AfterLoadOptions
 export function __resetAfterLoadIdleForTests(holdLimit = 15_000): void {
   holdLimitMs = holdLimit;
   for (const job of jobs) drop(job);
+  for (const job of started) job.controller.abort();
+  started.clear();
   jobs = [];
   running = false;
   waiting = false;

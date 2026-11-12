@@ -106,6 +106,35 @@ describe('one search-index owner across viewer lifecycle (#3993)', () => {
     }
   });
 
+  it('a store replaced under the same id while its build runs: the old build cannot publish, the new store is indexed', async () => {
+    // Ten build chunks (20,000 rows each), so the first build yields and is still running at the swap.
+    const big = createSyntheticDataStore({ schemaVersion: 'IFC4', fileSize: 0, entities: Array.from({ length: 200_000 }, (_, i) =>
+      ({ expressId: 1_000 + i, type: 'IfcWall', name: `Wall ${i}`, globalId: `old-${i}` })) });
+    const replacement = createSyntheticDataStore({ schemaVersion: 'IFC4', fileSize: 0, entities: [
+      { expressId: 7, type: 'IfcWall', name: 'Wall new', globalId: 'new-wall' }] });
+    useViewerStore.setState({ ...fixtureModels({ ...fixtureModel('one'), ifcDataStore: big }), searchIndexes: new Map() });
+    render(<Owner />);
+    // Swap at the first chunk's progress report: the build is then provably mid-way.
+    let swappedAt = -1;
+    const stop = useViewerStore.subscribe((state) => {
+      const record = state.searchIndexes.get('one');
+      const progress = record?.status === 'building' ? record.progress ?? 0 : 0;
+      if (swappedAt >= 0 || !(progress > 0)) return;
+      swappedAt = progress;
+      const models = new Map(state.models);
+      models.set('one', { ...models.get('one')!, ifcDataStore: replacement });
+      useViewerStore.setState({ models });
+    });
+    for (let i = 0; i < 20 && useViewerStore.getState().searchIndexes.get('one')?.status !== 'ready'; i++) await settle();
+    for (let i = 0; i < 5; i++) await settle(); // let a stale build finish, if it still could publish
+    stop();
+    assert.ok(swappedAt > 0 && swappedAt < 1, `swapped mid-build (at ${swappedAt})`);
+    const s = useViewerStore.getState();
+    assert.equal(s.searchIndexes.get('one')?.status, 'ready');
+    const ids = collectSearchResults(s.models, s.searchIndexes, 'Wall').map((row) => row.expressId);
+    assert.deepEqual(ids, [7], 'the index answers from the current store only');
+  });
+
   it('builds a model published during a load only after the load settles and the page is idle', async () => {
     const idle: IdleRequestCallback[] = [];
     const originalIdle = window.requestIdleCallback;

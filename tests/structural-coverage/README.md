@@ -12,10 +12,11 @@ This writes `tests/structural-coverage/.out/summary.json` and exits 1 if
 anything dropped below the baseline. It needs the corpus on disk. Before
 importing packages, the scorer runs
 `pnpm turbo build --filter=@ifc-lite/parser... --filter=@ifc-lite/create... --filter=@ifc-lite/export...`
-so Turbo rebuilds or restores outputs that match the source. A failed build is
-a harness error, never a product score. Without wasm-pack, `build-wasm.sh`
+plus the viewer’s workspace dependencies (`--filter=@ifc-lite/viewer^...`) for the
+state-module probe, so Turbo rebuilds or restores outputs that match the source.
+A failed build is a harness error, never a product score. Without wasm-pack, `build-wasm.sh`
 keeps the wasm runtime already on disk, so scoring a Rust change needs the
-wasm toolchain. The probes run in about two seconds after building.
+wasm toolchain. The toggle probe also loads the viewer’s Node test adapter.
 
 CI runs the ratchet against the newest frozen `r<N>.json` (now `r5.json`) in the shared **Build packages +
 WASM** job, after fixture verification and the package build. This job runs in

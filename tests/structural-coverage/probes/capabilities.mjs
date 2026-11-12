@@ -19,6 +19,7 @@
  * of the catalogue.
  */
 
+import { derive, toggle } from './capability-derive-toggle.mjs';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { verdict } from '../lib/values.mjs';
@@ -143,4 +144,4 @@ const docsPage = {
   },
 };
 
-export default [linkRead, docsPage];
+export default [linkRead, docsPage, derive, toggle];

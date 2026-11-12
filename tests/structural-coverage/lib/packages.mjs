@@ -15,7 +15,7 @@ import { pathToFileURL } from 'node:url';
 import { boundedSpawnSync } from '../../../scripts/lib/bounded-process.mjs';
 
 const PACKAGES = ['parser', 'mutations', 'create', 'export'];
-const BUILD = ['turbo', 'build', '--filter=@ifc-lite/parser...', '--filter=@ifc-lite/create...', '--filter=@ifc-lite/export...'];
+const BUILD = ['turbo', 'build', '--filter=@ifc-lite/parser...', '--filter=@ifc-lite/create...', '--filter=@ifc-lite/export...', '--filter=@ifc-lite/viewer^...'];
 
 export async function loadPackages(root) {
   // Let turbo validate source/dependency hashes and rebuild or restore current

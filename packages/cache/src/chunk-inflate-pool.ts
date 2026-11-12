@@ -3,4 +3,4 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** `@ifc-lite/cache/chunk-inflate-pool`: a separate entry, so a viewer can import the pool lazily. */
-export { ChunkInflatePool, CorruptChunkError, type ChunkInflatePoolOptions } from './workers/chunk-inflate-pool.js';
+export { ChunkInflatePool, ChunkPoolClosedError, CorruptChunkError, NoChunkWorkerError, type ChunkInflatePoolOptions } from './workers/chunk-inflate-pool.js';

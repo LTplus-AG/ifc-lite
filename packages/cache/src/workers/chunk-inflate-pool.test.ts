@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
 import { buildGeometrySectionV13, openGeometryChunksV13 } from '../sections/geometry-chunks.js';
 import { FORMAT_VERSION, GeometryChunkFlags } from '../types.js';
-import { ChunkInflatePool, CorruptChunkError } from './chunk-inflate-pool.js';
+import { ChunkInflatePool, ChunkPoolClosedError, CorruptChunkError, NoChunkWorkerError } from './chunk-inflate-pool.js';
 import { handleCompressionRequest } from './geometry-compression-handler.js';
 import type { CompressionWorkerPort } from './geometry-compression-client.js';
 import type { CompressionRequest, InflateRequest } from './geometry-compression-protocol.js';
@@ -287,6 +287,69 @@ describe('ChunkInflatePool', () => {
         const here = await decodeAllWith(section);
         expect(digest(there.all)).toEqual(digest(here.all));
         expect(pool.inflatingHere).toBe(true);
+      } finally {
+        pool.close();
+      }
+    });
+  });
+
+  describe('closing and worker-only decodes (review F1, F2)', () => {
+    it('closed with decodes in flight: they reject as ChunkPoolClosedError and nothing decodes on the calling thread', async () => {
+      const section = await buildGeometrySectionV13(meshes(), coordInfo, { compress: true });
+      const ports: HoldingPort[] = [];
+      const warn = console.warn; const warnings: unknown[] = []; console.warn = (...a: unknown[]) => { warnings.push(a); };
+      const pool = new ChunkInflatePool(2, { createWorker: () => { const p = new HoldingPort(); ports.push(p); return p; } }).start();
+      try {
+        const open = openGeometryChunksV13(section, 0, FORMAT_VERSION, { decode: pool.decode });
+        const pending = open.chunks.map((_, i) => open.readChunk(i).then(() => 'decoded', (e) => e));
+        await new Promise((r) => setTimeout(r, 0));
+        expect(ports.reduce((n, p) => n + p.received, 0)).toBeGreaterThan(0);
+        pool.close(); // the load ended (superseded, model removed or replaced)
+        const outcomes = await Promise.all(pending);
+        for (const outcome of outcomes) expect(outcome).toBeInstanceOf(ChunkPoolClosedError);
+        expect(pool.inflatingHere).toBe(false); // no fallback to this thread
+        expect(warnings).toEqual([]); // no "worker failed" warning
+        await expect(pool.decode(new Uint8Array(4), open.chunks[0], FORMAT_VERSION)).rejects.toBeInstanceOf(ChunkPoolClosedError);
+      } finally {
+        console.warn = warn;
+      }
+    });
+
+    it('decodeOnWorkers: a failing worker rejects as NoChunkWorkerError (the pool falls back for on-demand decodes); it never decodes here', async () => {
+      const section = await buildGeometrySectionV13(meshes(), coordInfo, { compress: true });
+      const ports: HoldingPort[] = [];
+      const warn = console.warn; console.warn = () => {};
+      const pool = new ChunkInflatePool(1, { createWorker: () => { const p = new HoldingPort(); ports.push(p); return p; } }).start();
+      try {
+        const open = openGeometryChunksV13(section, 0, FORMAT_VERSION);
+        const info = open.chunks[0];
+        const bytes = new Uint8Array(section, info.byteOffset, info.byteLength);
+        const pending = pool.decodeOnWorkers(bytes, info, FORMAT_VERSION);
+        await new Promise((r) => setTimeout(r, 0));
+        ports[0].crash();
+        await expect(pending).rejects.toBeInstanceOf(NoChunkWorkerError);
+        expect(pool.inflatingHere).toBe(true);
+        await expect(pool.decodeOnWorkers(bytes, info, FORMAT_VERSION)).rejects.toBeInstanceOf(NoChunkWorkerError);
+        // `decode` (the caller's on-demand path) still decodes, here.
+        expect((await pool.decode(bytes, info, FORMAT_VERSION)).length).toBe(info.meshCount);
+      } finally {
+        console.warn = warn;
+        pool.close();
+      }
+    });
+
+    it('decodeOnWorkers: a worker codec error rejects as NoChunkWorkerError without giving up the workers', async () => {
+      const section = corruptOneChunk(await buildGeometrySectionV13(meshes(), coordInfo, { compress: true }));
+      const pool = new ChunkInflatePool(1, { createWorker: () => new CodecPort() }).start();
+      try {
+        const open = openGeometryChunksV13(section, 0, FORMAT_VERSION);
+        const index = open.chunks.findIndex((c) => c.flags & GeometryChunkFlags.DeflateRaw);
+        const info = open.chunks[index];
+        const bytes = new Uint8Array(section, info.byteOffset, info.byteLength);
+        await expect(pool.decodeOnWorkers(bytes, info, FORMAT_VERSION)).rejects.toBeInstanceOf(NoChunkWorkerError);
+        expect(pool.inflatingHere).toBe(false);
+        // The caller's on-demand `decode` then tells corrupt from a worker problem, as before.
+        await expect(pool.decode(bytes, info, FORMAT_VERSION)).rejects.toBeInstanceOf(CorruptChunkError);
       } finally {
         pool.close();
       }

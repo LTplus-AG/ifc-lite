@@ -13,7 +13,6 @@ import { useCallback } from 'react';
 import {
   BinaryCacheReader,
   BinaryCacheWriter,
-  openGeometryChunksV13,
   SectionType,
   toCacheDataStore,
   type CacheDataStore,
@@ -129,6 +128,8 @@ export function useIfcCache() {
     let adopted: AdoptedSceneSnapshot | null = null;
     // Compressed geometry chunks inflate on workers, which boot while the metadata decodes (only when there are any).
     const inflater = createCacheChunkInflater();
+    // Load the pool module now, while the entry is read: the header can then post the first chunks before the metadata decodes.
+    inflater.warm();
     try {
       const cacheLoadStart = performance.now();
 
@@ -161,12 +162,8 @@ export function useIfcCache() {
         // fresh streaming path's store contract (appendGeometryBatch under
         // geometryStreamingActive, so useGeometryStreaming finalizes the
         // fragments when the flag flips back off).
-        const open = openGeometryChunksV13(
-          cacheBuffer,
-          geometrySection.offset,
-          headerInfo.version,
-          { decode: inflater.decode },
-        );
+        // The inflater's head: parsed once, shared with its prefetch (one appearance-source pool for every chunk).
+        const open = inflater.head(cacheBuffer, geometrySection.offset, headerInfo.version);
         loadedTotalVertices = open.totalVertices;
         loadedTotalTriangles = open.totalTriangles;
 

@@ -1470,6 +1470,11 @@ jobs:
           # Above 1, refresh test-durations.json only from runs at 1:
           # scripts/lib/viewer-test-durations.mjs assumes serial files.
           VIEWER_TEST_CONCURRENCY: ${{ vars.VIEWER_TEST_CONCURRENCY }}
+      # The contrast harness fails rather than skips in CI when it has no
+      # browser. Check the outcome too, so a shard that skipped them for that
+      # reason can never pass (scripts/lib/contrast-skips.mjs).
+      - name: No contrast tests skipped for a missing browser
+        run: node scripts/check-contrast-skips.mjs apps/viewer/mergify-junit.xml
       # Before the retry, so the first attempt's results reach Mergify even if
       # the retry runs into the job's time limit.
       - name: Mergify CI Upload

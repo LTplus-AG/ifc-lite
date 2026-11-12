@@ -19,7 +19,9 @@
  * browser tests are skipped with {@link CONTRAST_BROWSER_MISSING}.
  */
 
+import { existsSync } from 'node:fs';
 import { win32 } from 'node:path';
+import { chromium } from 'playwright-core';
 
 // The repo's CI rule for detect-and-skip guards. Plain .mjs outside the viewer:
 // a computed specifier keeps it out of the typed module graph.
@@ -96,4 +98,23 @@ export function contrastLaunchOptions(browser: ContrastBrowser): { channel: 'chr
   return browser.source === 'env' || browser.source === 'bundled-chromium'
     ? { executablePath: browser.executablePath }
     : { channel: 'chrome' };
+}
+
+/** {@link resolveContrastBrowser} on this machine. `scripts/pre-handoff.mjs`
+ *  asks it too, with `CI=1` as the revert oracle runs tests. */
+export function resolveHostContrastBrowser(env: ResolutionInput['env']): ContrastBrowser {
+  return resolveContrastBrowser({
+    env,
+    platform: process.platform,
+    isPresent: existsSync,
+    bundledChromiumPath: () => {
+      try {
+        return chromium.executablePath();
+      } catch (error) {
+        // Playwright ships no Chromium for this platform: nothing bundled to use.
+        process.stderr.write(`contrast harness: no bundled Chromium here (${(error as Error).message})\n`);
+        return undefined;
+      }
+    },
+  });
 }

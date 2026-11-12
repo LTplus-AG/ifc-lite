@@ -109,6 +109,15 @@ describe('contrast browser missing: CI fails, local skips', () => {
   });
 });
 
+describe('the skip reason is the one the CI gate and the run summary count', () => {
+  it('starts with the marker in scripts/lib/contrast-skips.mjs', async () => {
+    // Plain .mjs outside the viewer: a computed specifier keeps it out of the typed module graph.
+    const lib = new URL('../../../../../scripts/lib/contrast-skips.mjs', import.meta.url).href;
+    const { CONTRAST_SKIP_MARKER }: { CONTRAST_SKIP_MARKER: string } = await import(lib);
+    assert.ok(CONTRAST_BROWSER_MISSING.startsWith(CONTRAST_SKIP_MARKER), CONTRAST_BROWSER_MISSING);
+  });
+});
+
 describe('system Chrome locations match the chrome channel', () => {
   it('uses the fixed Linux and macOS paths and every Windows install prefix', () => {
     assert.deepEqual(systemChromePaths('linux', {}), [LINUX_CHROME]);

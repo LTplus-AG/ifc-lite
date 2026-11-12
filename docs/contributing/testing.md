@@ -69,7 +69,7 @@ Every viewer test file that imports `apps/viewer/src/test/contrast/render-harnes
 2. System Google Chrome (`channel: 'chrome'`), which is what CI uses.
 3. Outside CI only: Playwright's bundled Chromium, if `pnpm exec playwright install chromium` already installed it. The harness never downloads a browser, and CI never switches away from the Chrome channel.
 
-With none of them, a local run reports those tests as skipped, with the reason on each one, and the summary counts them under `skipped`, not `pass`. In CI (`CI` set, or GitHub Actions) they are never skipped: the launch fails as it always has.
+With none of them, a local run reports those tests as skipped, with the reason on each one, and ends with a line starting `!! N contrast test(s) SKIPPED, not passed`. A run that prints that line has not checked contrast. In CI (`CI` set, or GitHub Actions) they are never skipped: the launch fails as it always has, and `scripts/check-contrast-skips.mjs` fails a viewer shard whose JUnit report holds any such skip. `scripts/pre-handoff.mjs` reports a revert oracle over these tests as SKIPPED, naming the missing browser, because the oracle runs with `CI=1` and the launch would otherwise fail.
 
 A new test that renders through the harness passes `{ skip: CONTRAST_BROWSER_SKIP }` on each `it`, not on its `describe`: node does not count the tests of a skipped suite, so its summary would show nothing skipped.
 

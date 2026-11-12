@@ -38,7 +38,7 @@
  * painted over an opaque surface.
  */
 
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import postcss from 'postcss';
@@ -49,7 +49,7 @@ import autoprefixer from 'autoprefixer';
 import { chromium, type Browser, type Page } from 'playwright-core';
 import { contrastRatio, type Rgba } from './wcag';
 import { extractFirstStringLiteralAfter } from './extract-classname';
-import { contrastLaunchOptions, contrastSkipReason, resolveContrastBrowser } from './browser-resolution';
+import { contrastLaunchOptions, contrastSkipReason, resolveHostContrastBrowser } from './browser-resolution';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const VIEWER_ROOT = join(__dirname, '../../../');
@@ -97,20 +97,7 @@ let browserPromise: Promise<Browser> | undefined;
 // `playwright install`, so it relies on the runner's preinstalled Google
 // Chrome (`channel: 'chrome'`), as every project in `playwright.config.ts`
 // does. Resolution order and the CI-versus-local rule: `browser-resolution.ts`.
-const CONTRAST_BROWSER = resolveContrastBrowser({
-  env: process.env,
-  platform: process.platform,
-  isPresent: existsSync,
-  bundledChromiumPath: () => {
-    try {
-      return chromium.executablePath();
-    } catch (error) {
-      // Playwright ships no Chromium for this platform: nothing bundled to use.
-      process.stderr.write(`contrast harness: no bundled Chromium here (${(error as Error).message})\n`);
-      return undefined;
-    }
-  },
-});
+const CONTRAST_BROWSER = resolveHostContrastBrowser(process.env);
 
 /** Pass as `{ skip: CONTRAST_BROWSER_SKIP }` on every `it` that renders
  *  through this harness: a reason string when no browser exists outside CI,

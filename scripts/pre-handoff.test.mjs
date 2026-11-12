@@ -45,3 +45,22 @@ test('#7955 a registered witness with an unavailable runner is explicitly skippe
   const rows = runGates(root, [{ name: 'witness', unavailable, args: ['-e', 'process.exit(9)'] }], () => {});
   assert.equal(rows[0].result, 'SKIPPED');
 });
+
+test('an oracle over contrast harness tests is a named gap, not a launch failure, when the harness has no browser', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'handoff-contrast-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  mkdirSync(join(root, 'apps/viewer/src/test/contrast'), { recursive: true });
+  writeFileSync(join(root, 'package.json'), '{}');
+  writeFileSync(join(root, 'apps/viewer/package.json'), '{"scripts":{"test":"tsx --test"}}');
+  const harnessTest = 'apps/viewer/src/test/contrast/x.contrast.test.tsx';
+  const plainTest = 'apps/viewer/src/test/contrast/plain.test.ts';
+  writeFileSync(join(root, harnessTest), "import { withThemedPage } from './render-harness.js';\n");
+  writeFileSync(join(root, plainTest), "import { contrastRatio } from './wcag';\n");
+
+  const missing = oraclePrerequisites(root, { test: harnessTest }, 'unused', () => 'missing');
+  assert.match(missing, /Google Chrome for the contrast harness \(1 test file\(s\)/);
+  assert.equal(runGates(root, [{ name: 'witness', unavailable: missing, args: ['-e', 'process.exit(9)'] }], () => {})[0].result, 'SKIPPED');
+  assert.doesNotMatch(oraclePrerequisites(root, { test: harnessTest }, 'unused', () => 'system-chrome') ?? '', /contrast harness/);
+  const neverAsked = () => { throw new Error('probed for a test that does not use the harness'); };
+  assert.doesNotMatch(oraclePrerequisites(root, { test: plainTest }, 'unused', neverAsked) ?? '', /contrast harness/);
+});

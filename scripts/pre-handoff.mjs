@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -57,8 +57,21 @@ export function runGates(root, commands, log = console.log) {
   });
 }
 
+const CONTRAST_HARNESS_IMPORT = /from\s+['"][^'"]*\/(?:render-harness|rendered-text-contrast)(?:\.js)?['"]/;
+
+/** Which browser the viewer's contrast harness would use under the revert
+ *  oracle, which runs tests with `CI=1`: asks the harness's own resolver. */
+export function probeContrastBrowser(root) {
+  const code = "const { resolveHostContrastBrowser } = await import('./src/test/contrast/browser-resolution.ts');"
+    + "process.stdout.write(resolveHostContrastBrowser({ ...process.env, CI: '1' }).source);";
+  const probe = spawnSync(process.execPath, ['--import', 'tsx/esm', '--input-type=module', '-e', code],
+    { cwd: resolve(root, 'apps/viewer'), encoding: 'utf8', timeout: 60000 });
+  if (probe.status !== 0) throw new Error(`contrast browser probe failed: ${(probe.stderr || probe.error?.message || '').trim()}`);
+  return probe.stdout.trim();
+}
+
 /** Preflight derived runners so a missing local toolchain is explicitly skipped. */
-export function oraclePrerequisites(root, oracle, base) {
+export function oraclePrerequisites(root, oracle, base, contrastBrowser = probeContrastBrowser) {
   const tests = oracle.test ? [oracle.test] : classifyDiff(parseNameStatus(execFileSync('git',
     ['diff', '--name-status', `${base}...HEAD`], { cwd: root, encoding: 'utf8' }))).test
     .map((entry) => entry.path).filter((path) => existsSync(resolve(root, path)));
@@ -74,6 +87,14 @@ export function oraclePrerequisites(root, oracle, base) {
     for (const dependency of runner.args.filter((arg) => ['tsx', 'tsx/esm'].includes(arg))) {
       if (missingDependencies(dir, [dependency]).length) missing.add(`${dependency} (run pnpm install)`);
     }
+  }
+  // Under the oracle's CI=1 the harness fails at launch instead of skipping,
+  // which would read as a regression; name the missing browser instead.
+  const contrastTests = tests.filter((path) => /\.test\.tsx?$/.test(path)
+    && CONTRAST_HARNESS_IMPORT.test(readFileSync(resolve(root, path), 'utf8')));
+  if (contrastTests.length > 0 && contrastBrowser(root) === 'missing') {
+    missing.add(`Google Chrome for the contrast harness (${contrastTests.length} test file(s); `
+      + 'install it or set IFCLITE_TEST_CHROME_EXECUTABLE)');
   }
   return missing.size ? `unavailable prerequisites: ${[...missing].join(', ')}` : null;
 }

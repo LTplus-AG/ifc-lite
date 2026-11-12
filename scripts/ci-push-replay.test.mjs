@@ -282,6 +282,8 @@ test('workflowsKeyingCaches is unknown when a hashFiles might reach a workflow f
     "      && c == 'd'",
   ].join('\n');
   assert.deepEqual(keyed({ [ROOT]: scalarText }), { files: [ROOT] });
+  // `my-uses:` is another key, not `uses:`.
+  assert.deepEqual(keyed({ [ROOT]: 'env: { my-uses: foo, x-cache-dependency-path: "~" }' }), { files: [ROOT] });
   // A quoted key is still a key, and its literal value names the file.
   assert.deepEqual(keyed({ [ROOT]: '"cache-dependency-path": .github/workflows/x.yml' }), { files: ['.github/workflows/test.yml', '.github/workflows/x.yml'] });
 });
@@ -299,6 +301,8 @@ test('workflowsKeyingCaches is unknown when a symlink may reach .github/', () =>
     { path: 'ci/wf', target: '../.github/workflows' },
     { path: 'ci/root', target: '..' },
     { path: '.github', target: 'ci' },
+    { path: 'ci/root', target: '../' },
+    { path: 'x', target: './' },
     { path: 'a/b', target: '../..' },
     { path: 'ci/abs', target: '/home/runner/work/x/x/.github' },
     { path: '.github/actions/foo', target: '../../tools/foo' },

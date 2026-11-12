@@ -33,7 +33,8 @@ export const WORKFLOW_FILE = /^\.github\/workflows\/[^/]+\.ya?ml$/;
  * flow mapping, as [what precedes it (a `{` means a flow mapping), the rest of the line].
  */
 function keyEntries(text, key) {
-  const re = new RegExp(`(^|[\\s{[,-])['"]?${key}['"]?[ \\t]*:`, 'g');
+  // Not after `-`: `my-uses:` is another key, and a list item's `- uses:` has a space.
+  const re = new RegExp(`(^|[\\s{[,])['"]?${key}['"]?[ \\t]*:`, 'g');
   const out = [];
   for (const line of text.split('\n')) {
     if (/^[ \t]*#/.test(line)) continue;
@@ -133,7 +134,7 @@ export function workflowsKeyingCaches({ root, actionFiles, symlinks, readText })
   if (!Array.isArray(symlinks)) return { unknown: 'the symlinks could not be listed' };
   // hashFiles follows symlinks, and a link inside .github/ can hide what an action runs.
   for (const { path, target } of symlinks) {
-    const to = posix.normalize(posix.join(posix.dirname(path), target));
+    const to = posix.normalize(posix.join(posix.dirname(path), target)).replace(/(.)\/$/, '$1');
     if (path === '.github' || path.startsWith('.github/') || target.startsWith('/') || to === '.' || to === '..' || to.startsWith('../') || to === '.github' || to.startsWith('.github/')) {
       return { unknown: `symlink ${path} -> ${target} may reach .github/` };
     }

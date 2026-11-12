@@ -59,9 +59,10 @@
  * (lib/workflows-keying-caches.mjs): test.yml, a reusable workflow it calls, or
  * a file that a `hashFiles` or `cache-dependency-path` in them or in an action
  * names. When that cannot be told (a pattern that may reach a workflow, a
- * remote or unread local `uses:`, a YAML alias, a symlink into .github/), every
- * workflow file blocks. A step that only reads another workflow is test
- * behaviour, which the exact-tree evidence already covers.
+ * `uses:` that is not a plain local, remote or docker action ref, a YAML alias
+ * or escape, a symlink into .github/), every workflow file blocks. A remote
+ * action's other inputs are not judged. A step that only reads another
+ * workflow is test behaviour, which the exact-tree evidence already covers.
  */
 
 import { appendFileSync } from 'node:fs';
@@ -202,7 +203,8 @@ function emit(output, key, value) {
 function readInputs(repo, pushSha, pushTree, parentSha, before) {
   // --no-renames: a moved file counts on both sides. -z: git quotes a non-ASCII path
   // otherwise, and `".github/actions/\303\251/x"` would match no blocking rule.
-  const changedFiles = git('diff', '-z', '--no-renames', '--name-only', `${parentSha}`, pushSha).split('\0').filter(Boolean);
+  // Not git(): its trim would cut a leading space off the first path.
+  const changedFiles = execFileSync('git', ['diff', '-z', '--no-renames', '--name-only', parentSha, pushSha], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).split('\0').filter(Boolean);
   const pulls = gh(['api', `repos/${repo}/commits/${pushSha}/pulls`, '--method', 'GET'], `the PRs of ${pushSha.slice(0, 9)}`);
   if (!Array.isArray(pulls)) throw new GhError('GH_BAD_SHAPE', 'commits/{sha}/pulls did not return an array');
   const merged = pulls.filter((p) => p?.merge_commit_sha === pushSha);

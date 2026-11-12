@@ -30,6 +30,8 @@ export interface StructuralDerivationReview {
   plan: StructuralDerivationPlan;
   /** Records the dry run wrote: what Apply will create. */
   created: number;
+  /** Rows the receipt will list: the analysis model, each member and each node. */
+  derived: number;
   /** The cheap staleness check, run on store updates; Apply also checks the held lease. */
   validate(): void;
   commit(): { batchId: string; analysisModelId: number; created: ReadonlyArray<{ expressId: number; type: string }> };
@@ -52,19 +54,19 @@ export function prepareStructuralDerivationReview(store: StoreApi<ViewerState>, 
   const plan = derive.planStructuralDerivation(derive.readStructuralDerivationFacts(dataStore, lease.target.editor));
   // Nothing to write, or an analysis model already there (apply would refuse): no dry run; the review shows why.
   const blocked = plan.curveMembers.length + plan.surfaceMembers.length === 0 || plan.refusal !== null;
-  // The dry run writes into the lease's draft, a detached copy that is never published.
-  let created = 0;
-  if (!blocked) {
-    const draft = new StoreEditor(dataStore, lease.target.view);
+  // A dry run in its own snapshot, so the held review keeps only counts: the records and the receipt's rows.
+  const { created, derived } = blocked ? { created: 0, derived: 0 } : lease.target.view.prepareAtomic((view) => {
+    const draft = new StoreEditor(dataStore, view);
     derive.applyStructuralDerivation(draft, dataStore, plan);
-    created = draft.getNewEntities().length;
-  }
+    const written = draft.getNewEntities();
+    return { created: written.length, derived: written.filter(({ type }) => RECEIPT_OPS[type.toUpperCase()]).length };
+  }).result;
   const view = state.mutationViews.get(modelId), revision = view?.getMutationRevision();
   const validate = () => {
     const current = store.getState(), live = current.mutationViews.get(modelId);
     // The parsed store and its edits count, not the model's name or visibility. A view registered after Prepare
-    // with no edits (an export or an editor opening the model) holds the same content.
-    const sameEdits = view ? live === view && view.getMutationRevision() === revision : !live?.getEffectiveChanges().length;
+    // with no overlay entries (an export or an editor opening the model) holds the same content.
+    const sameEdits = view ? live === view && view.getMutationRevision() === revision : !live?.hasPendingChanges();
     if (current.models.get(modelId)?.ifcDataStore !== dataStore || !sameEdits) {
       throw new Error('The model changed after this derivation was reviewed; review it again');
     }
@@ -73,7 +75,7 @@ export function prepareStructuralDerivationReview(store: StoreApi<ViewerState>, 
   };
   let used = false;
   return {
-    modelId, plan, created, validate,
+    modelId, plan, created, derived, validate,
     commit() {
       if (used) throw new Error('This derivation has already been applied');
       if (blocked) throw new Error('This derivation has nothing it may write');

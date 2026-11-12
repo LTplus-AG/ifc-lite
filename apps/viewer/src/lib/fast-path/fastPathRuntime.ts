@@ -61,6 +61,8 @@ export function fastPathEligible(ctx: PickStartContext): boolean {
 export interface FastPathDeps {
   /** Off switch and device gates (warm-runtime-gate `mayWarmUp`). */
   allowed(): boolean;
+  /** Which spares to prepare (default both); `?perf.fastPath=parser|geometry` measures one alone. */
+  parts?: { parser: boolean; geometry: boolean };
   /** `scheduleWhenIdle`: visible tab + idle main thread; returns cancel. */
   whenIdle(run: () => void): () => void;
   isLoading(): boolean;
@@ -100,6 +102,7 @@ export interface FastPathRuntime {
 
 export function createFastPathRuntime(deps: FastPathDeps): FastPathRuntime | null {
   if (!deps.allowed()) return null;
+  const parts = deps.parts ?? { parser: true, geometry: true };
 
   let geometry: GeometrySpare | null = null;
   let pending: FastGeometryRun | null = null;
@@ -151,7 +154,7 @@ export function createFastPathRuntime(deps: FastPathDeps): FastPathRuntime | nul
   const prepare = async () => {
     cancelIdle = null;
     if (stopped || preparing || deps.isLoading() || deps.isHidden()) return;
-    if (geometry && deps.parser.has()) return;
+    if ((!parts.geometry || geometry) && (!parts.parser || deps.parser.has())) return;
     preparing = true;
     try {
       const module = await deps.compileModule();
@@ -159,7 +162,7 @@ export function createFastPathRuntime(deps: FastPathDeps): FastPathRuntime | nul
       const samples = await deps.warmSamples();
       // Checked again after every await: never start a spare while a load runs.
       if (stopped || deps.isLoading()) return;
-      if (!deps.parser.has()) {
+      if (parts.parser && !deps.parser.has()) {
         let warmSource: SharedArrayBuffer | null = null;
         if (samples[0] && typeof SharedArrayBuffer !== 'undefined') {
           warmSource = new SharedArrayBuffer(samples[0].byteLength);
@@ -168,10 +171,10 @@ export function createFastPathRuntime(deps: FastPathDeps): FastPathRuntime | nul
         await deps.parser.prepare({ warmSource });
       }
       if (stopped || deps.isLoading()) return;
-      if (!geometry) await prepareGeometry(module, samples);
+      if (parts.geometry && !geometry) await prepareGeometry(module, samples);
       released = false;
       resetInactivity();
-      if (geometry?.ready) deps.log?.('[fast-path] spares ready');
+      if (!parts.geometry || geometry?.ready) deps.log?.('[fast-path] spares ready');
     } catch (err) {
       deps.log?.(`[fast-path] preparation skipped: ${err instanceof Error ? err.message : String(err)}`);
     } finally {

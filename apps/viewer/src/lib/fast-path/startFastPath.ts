@@ -53,6 +53,8 @@ export function startFastPath(): boolean {
   runtime = createFastPathRuntime({
     // A server-backed build meshes on the server; nothing to prepare here.
     allowed: () => !USE_SERVER && mayWarmUp(fastPathSwitch()),
+    // Measurement only: `?perf.fastPath=parser` or `=geometry` prepares one spare alone.
+    parts: { parser: fastPathSwitch() !== 'geometry', geometry: fastPathSwitch() !== 'parser' },
     whenIdle: scheduleWhenIdle,
     isLoading: () => useViewerStore.getState().loading,
     subscribeLoading: (listener) => {

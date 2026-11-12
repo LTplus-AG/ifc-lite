@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "#9890: a tabular store says so with sourceKind, not with an 'IFC5' label; drop the marker and an IFC4-labelled tabular store is admitted to every STEP-only export and authoring path again.",
+  "key": "apps/viewer/src/hooks/ingest/tabularDataStore.ts",
+  "mutation": "tests/evidence/store-source-kind-9890/behaviour.oracle.patch",
+  "test": "apps/viewer/src/hooks/ingest/tabularDataStore.step-gates.test.ts"
+}

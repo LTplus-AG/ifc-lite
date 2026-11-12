@@ -184,6 +184,7 @@
     "viewpointToApi: function"
   ],
   "@ifc-lite/cache": [
+    "ArrayArena: class",
     "BinaryCacheReader: class",
     "BinaryCacheWriter: class",
     "BufferReader: class",

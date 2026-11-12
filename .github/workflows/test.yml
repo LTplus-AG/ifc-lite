@@ -1398,6 +1398,10 @@ jobs:
     env:
       HAS_MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN != '' }}
     steps:
+      # CI_SHARD_RETRY: the retry's time budget is what is left of this job.
+      - name: Record the job start for the shard retry
+        if: vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on'
+        run: echo "JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: false
@@ -1449,16 +1453,25 @@ jobs:
       # is unchanged. The split is exact: a manifest file is packed into one
       # shard and any other path hashes to exactly one of the 16 residues, so
       # nothing is dropped or run twice; an empty selection fails the step.
+      #
+      # CI_SHARD_RETRY (scripts/ci-shard-retry.mjs) reruns only the failed
+      # files once. Unset, every expression below that names it is false or
+      # empty: no continue-on-error, no extra reporter, the retry steps skip.
+      # `on`: this step may fail, and the retry step's exit code (0 only when
+      # the retry ran and passed) plus the guard after it carry the verdict.
       - id: viewer_tests
         run: pnpm --filter @ifc-lite/viewer run test
+        continue-on-error: ${{ vars.CI_SHARD_RETRY == 'on' }}
         env:
-          NODE_OPTIONS: --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml
+          NODE_OPTIONS: --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml${{ (vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on') && format(' --test-reporter=tap --test-reporter-destination={0}/viewer-attempt1.tap', runner.temp) || '' }}
           TEST_SHARDS: '16'
           TEST_SHARD: ${{ matrix.shard }}
           # Bounded by apps/viewer's test script, the one place the rule lives.
           # Above 1, refresh test-durations.json only from runs at 1:
           # scripts/lib/viewer-test-durations.mjs assumes serial files.
           VIEWER_TEST_CONCURRENCY: ${{ vars.VIEWER_TEST_CONCURRENCY }}
+      # Before the retry, so the first attempt's results reach Mergify even if
+      # the retry runs into the job's time limit.
       - name: Mergify CI Upload
         if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('apps/viewer/mergify-junit.xml') != ''
         continue-on-error: true
@@ -1467,6 +1480,48 @@ jobs:
           token: ${{ secrets.MERGIFY_TOKEN }}
           report_path: apps/viewer/mergify-junit.xml
           test_step_outcome: ${{ steps.viewer_tests.outcome }}
+          job_name: viewer-tests (shard ${{ matrix.shard }})
+      - name: Retry the failed viewer test files once
+        id: viewer_retry
+        if: (success() || failure()) && steps.viewer_tests.outcome == 'failure' && (vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on')
+        run: node scripts/ci-shard-retry.mjs viewer
+        env:
+          CI_SHARD_RETRY: ${{ vars.CI_SHARD_RETRY }}
+          JOB_TIMEOUT_MINUTES: '25'  # this job's timeout-minutes
+          TAP_FILE: ${{ runner.temp }}/viewer-attempt1.tap
+          REPORT_DIR: ${{ runner.temp }}/shard-retry
+          TEST_SHARDS: '16'
+          TEST_SHARD: ${{ matrix.shard }}
+      - name: Upload the retry record
+        if: (success() || failure()) && (steps.viewer_retry.outcome == 'success' || steps.viewer_retry.outcome == 'failure')
+        # A diagnostic: an upload error must not turn a passed retry red.
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: shard-retry-viewer-${{ matrix.shard }}
+          path: ${{ runner.temp }}/shard-retry/viewer-retry.json
+          if-no-files-found: error
+          retention-days: 30
+      # Fail-closed backstop for `on`: the first attempt failed and was allowed
+      # to, so unless the retry step itself succeeded, fail here.
+      - name: Fail unless the retry passed
+        if: (success() || failure()) && steps.viewer_tests.outcome == 'failure' && vars.CI_SHARD_RETRY == 'on' && steps.viewer_retry.outcome != 'success'
+        run: |
+          echo "::error::The first attempt failed and the retry did not pass (retry step: ${{ steps.viewer_retry.outcome }})."
+          exit 1
+      # The retry's own results, under the same job name: Mergify classifies a
+      # test that failed and passed on one commit as flaky, so it must see both
+      # attempts. Without this a retry that passed is recorded as a failure.
+      - name: Mergify CI Upload (retry)
+        # `on` only: in `shadow` the job keeps the first attempt's verdict, so
+        # the retry stays out of Mergify's record.
+        if: (success() || failure()) && vars.CI_SHARD_RETRY == 'on' && env.HAS_MERGIFY_TOKEN == 'true' && (steps.viewer_retry.outcome == 'success' || steps.viewer_retry.outcome == 'failure') && hashFiles('apps/viewer/mergify-junit-retry-*.xml') != ''
+        continue-on-error: true
+        uses: ./.github/actions/mergify-upload
+        with:
+          token: ${{ secrets.MERGIFY_TOKEN }}
+          report_path: apps/viewer/mergify-junit-retry-*.xml
+          test_step_outcome: ${{ steps.viewer_retry.outcome }}
           job_name: viewer-tests (shard ${{ matrix.shard }})
 
   node-guards:
@@ -2337,6 +2392,10 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
+      # CI_SHARD_RETRY: the retry's time budget is what is left of this job.
+      - name: Record the job start for the shard retry
+        if: vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on'
+        run: echo "JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: false
@@ -2387,7 +2446,13 @@ jobs:
       # shell has a broken WebGPU device under software rendering.
       - name: Install Playwright video encoder
         run: pnpm exec playwright install ffmpeg
+      # CI_SHARD_RETRY (scripts/ci-shard-retry.mjs): see the viewer-tests job.
+      # Unset, `continue-on-error` is false, the reporter list and
+      # PLAYWRIGHT_JSON_OUTPUT_FILE expand to what they were, and the retry
+      # steps skip. The retry reruns `--last-failed` within this shard.
       - name: Run E2E smoke
+        id: e2e
+        continue-on-error: ${{ vars.CI_SHARD_RETRY == 'on' }}
         # E2E_GPU_STRICT=0: the runner's SwiftShader WebGPU device is
         # unstable under load (drops mid-upload), so GPU-dependent
         # assertions (pick pass, screenshot density, GPU-error
@@ -2399,10 +2464,41 @@ jobs:
           MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN }}
           MERGIFY_TEST_JOB_NAME: viewer-e2e (shard ${{ matrix.shard }})
           E2E_GPU_STRICT: '0'
+          PLAYWRIGHT_JSON_OUTPUT_FILE: ${{ (vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on') && format('{0}/e2e-attempt1.json', runner.temp) || '' }}
         # The test command must end before the 20-minute job limit so its
         # failure summary and test-results artifact survive a slow/hung test.
         # The list reporter also names completed tests while the job runs.
-        run: timeout --signal=INT --kill-after=30s 13m pnpm test:e2e:ci --shard=${{ matrix.shard }}/8 --reporter=list,@mergifyio/playwright
+        run: timeout --signal=INT --kill-after=30s 13m pnpm test:e2e:ci --shard=${{ matrix.shard }}/8 --reporter=list,@mergifyio/playwright${{ (vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on') && ',json' || '' }}
+      - name: Retry the failed E2E tests once
+        id: e2e_retry
+        if: (success() || failure()) && steps.e2e.outcome == 'failure' && (vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on')
+        env:
+          # Only `on` reports the retry to Mergify (scripts/ci-shard-retry.mjs).
+          MERGIFY_TOKEN: ${{ vars.CI_SHARD_RETRY == 'on' && secrets.MERGIFY_TOKEN || '' }}
+          MERGIFY_TEST_JOB_NAME: viewer-e2e (shard ${{ matrix.shard }})
+          E2E_GPU_STRICT: '0'
+          CI_SHARD_RETRY: ${{ vars.CI_SHARD_RETRY }}
+          JOB_TIMEOUT_MINUTES: '20'  # this job's timeout-minutes
+          E2E_SHARD: ${{ matrix.shard }}/8
+          LAST_RUN: test-results/.last-run.json
+          REPORT_JSON: ${{ runner.temp }}/e2e-attempt1.json
+          REPORT_DIR: ${{ runner.temp }}/shard-retry
+        run: node scripts/ci-shard-retry.mjs e2e
+      - name: Upload the retry record
+        if: (success() || failure()) && (steps.e2e_retry.outcome == 'success' || steps.e2e_retry.outcome == 'failure')
+        # A diagnostic: an upload error must not turn a passed retry red.
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: shard-retry-e2e-${{ matrix.shard }}
+          path: ${{ runner.temp }}/shard-retry/e2e-retry.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Fail unless the retry passed
+        if: (success() || failure()) && steps.e2e.outcome == 'failure' && vars.CI_SHARD_RETRY == 'on' && steps.e2e_retry.outcome != 'success'
+        run: |
+          echo "::error::The first attempt failed and the retry did not pass (retry step: ${{ steps.e2e_retry.outcome }})."
+          exit 1
       - name: Upload assistant browser evidence
         if: always() && hashFiles('test-results/**/assistant-*.png', 'test-results/*assistant-context*/video.webm') != ''
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -2415,7 +2511,9 @@ jobs:
           retention-days: 3
       - name: Upload E2E failure context
         # Playwright's error-context.md / traces for the failed tests only.
-        if: failure()
+        # `steps.e2e.outcome` keeps the first attempt's traces when CI_SHARD_RETRY=on
+        # let the job pass; unset, it holds only where failure() already does.
+        if: failure() || (!cancelled() && steps.e2e.outcome == 'failure')
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: e2e-test-results-${{ matrix.shard }}

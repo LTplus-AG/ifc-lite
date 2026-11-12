@@ -13,7 +13,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  affectedTests, buildGraph, createResolver, extractSpecifiers, isViewerTest, packageNode,
+  affectedTests, buildGraph, createResolver, distToSrc, extractSpecifiers, isViewerTest, packageNode,
 } from './viewer-import-graph.mjs';
 
 test('extractSpecifiers finds every static, dynamic, worker and loader form', () => {
@@ -51,6 +51,19 @@ test('extractSpecifiers keeps an import list that holds comments', () => {
 test('a type-only strip without semicolons does not swallow the next import', () => {
   assert.deepEqual(extractSpecifiers("export type { A }\nimport b from './b'\n"), ['./b']);
   assert.deepEqual(extractSpecifiers("import type T from './t'\nimport c from './c'"), ['./c']);
+});
+
+test('resolve: alias precedence is exact first, then the longest prefix, not object order', () => {
+  const r = createResolver({
+    files: new Set(['g/src/index.ts', 'g/src/remesh/index.ts', 'all/geometry/remesh.ts']),
+    aliases: [
+      { pattern: '@x/*', targets: ['all/*'] },
+      { pattern: '@x/geometry/*', targets: ['g/src/*'] },
+      { pattern: '@x/geometry/remesh', targets: ['g/src/remesh'] },
+    ],
+  });
+  assert.deepEqual(r('a.ts', '@x/geometry/remesh'), { kind: 'file', path: 'g/src/remesh/index.ts' });
+  assert.deepEqual(r('a.ts', '@x/geometry/index'), { kind: 'file', path: 'g/src/index.ts' });
 });
 
 test('resolve: an alias that matches but resolves nowhere falls back to the package exports', () => {
@@ -108,6 +121,12 @@ test('resolve: a workspace export maps dist back to src; one that cannot is opaq
   assert.deepEqual(resolve(IMPORTER, '@ifc-lite/sdk/review'), { kind: 'file', path: 'packages/sdk/src/review.ts' });
   assert.deepEqual(resolve(IMPORTER, '@ifc-lite/wasm'), { kind: 'package', name: '@ifc-lite/wasm' });
   assert.deepEqual(resolve(IMPORTER, '@ifc-lite/sdk/nope'), { kind: 'package', name: '@ifc-lite/sdk' });
+});
+
+test('distToSrc maps only packages/<x>/dist, at the package level', () => {
+  assert.equal(distToSrc('packages/p/dist/a/b.js'), 'packages/p/src/a/b');
+  assert.equal(distToSrc('packages/p/dist/a.d.ts'), 'packages/p/src/a');
+  assert.equal(distToSrc('apps/viewer/dist/worker.js'), null);
 });
 
 test('resolve: a relative path into a package dist maps back to its source', () => {

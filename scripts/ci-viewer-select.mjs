@@ -13,9 +13,14 @@
  * round the queue again. Running the few viewer tests a change can affect, on
  * the PR, tells the author in minutes.
  *
- * ADVISORY, NOT A GATE. The job is not in the aggregate's `needs`. The merge
- * queue still runs the whole suite and is still the gate. A pass here means
- * "the sampled tests passed", never "the viewer suite passes".
+ * ADVISORY, NOT A GATE. The job is not in the aggregate's `needs`, it carries
+ * job-level `continue-on-error`, and `--run` exits 0 when tests fail (with a
+ * warning annotation, the summary and a result file in the artifact). A red
+ * advisory job would turn the whole Test run's conclusion to failure, and
+ * scripts/ci-push-replay.mjs replays only a PR run that concluded success, so
+ * a flake here would cost a full re-run on the push to main. The merge queue
+ * still runs the whole suite and is still the gate. A pass here means "the
+ * sampled tests passed", never "the viewer suite passes".
  *
  * THE SWITCH is the repo variable `CI_PR_VIEWER_SELECT`:
  *   unset / `off`  the job is skipped by its `if:`; nothing runs.
@@ -30,14 +35,15 @@
  * FAIL CLOSED. A changed file the graph cannot map (config, lockfile, build
  * scripts, WASM or Rust input, a file read at runtime) selects NOTHING extra and
  * is listed in the summary as unmapped. An error reading the diff or the graph
- * exits 1 (a red advisory job). A run that selects nothing is green with zero
+ * exits 1, which shows on the job but cannot fail the run. A run that selects nothing is green with zero
  * tests, which is what an advisory job should say; the summary gives the
  * counts, so green here never means "the viewer tests passed".
  *
  *   node scripts/ci-viewer-select.mjs --select <dir>
  *       writes <dir>/selection.json and <dir>/files.txt, outputs run/count
  *   node scripts/ci-viewer-select.mjs --run <dir>
- *       runs <dir>/files.txt with the viewer `test` script's own tsx command
+ *       runs <dir>/files.txt with the viewer `test` script's own tsx command,
+ *       writes <dir>/result.json, and exits 0 even when tests fail
  */
 
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -100,10 +106,14 @@ export function unmappableReason(path) {
 }
 
 /**
- * The package directory whose `src/` holds `path`. packages/wasm is built from
- * Rust, so its files are never package sources here.
+ * The package directory holding `path`, and whether `path` is in its `src/`.
+ * packages/wasm is built from Rust, so it is never a source package here.
  */
-const sourcePackageDir = (path) => /^packages\/(?!wasm\/)[^/]+(?=\/src\/)/.exec(path)?.[0];
+function packageOf(path) {
+  const root = /^packages\/(?!wasm\/)[^/]+(?=\/)/.exec(path)?.[0];
+  const rest = root ? path.slice(root.length + 1) : '';
+  return { root, src: rest.startsWith('src/'), built: /^(src|generated)\//.test(rest) };
+}
 
 /**
  * Classify each changed file and collect the graph seeds.
@@ -114,20 +124,28 @@ const sourcePackageDir = (path) => /^packages\/(?!wasm\/)[^/]+(?=\/src\/)/.exec(
  */
 export function classifyChanges(changes, graph, packages) {
   const pkgByDir = new Map([...packages].map(([name, p]) => [p.dir, name]));
+  // Only data directories strictly inside an app's or package's `src/` or
+  // `public/`: a module that takes a ROOT as its working directory would
+  // otherwise claim every config file under it and hide the unmapped warning.
+  // Keyed with a trailing slash whether or not the URL literal had one.
+  const dirKeys = [...graph.missing.keys()]
+    .map((k) => (k.endsWith('/') ? k : `${k}/`))
+    .filter((k) => /^(apps|packages)\/[^/]+\/(src|public)\/.+\/$/.test(k));
+  const dirImportersOf = (k) => graph.missing.get(k) ?? graph.missing.get(k.slice(0, -1));
   const seeds = new Set();
   const rows = [];
   for (const { status, path } of changes) {
-    const pkgDir = sourcePackageDir(path);
-    const pkgName = pkgDir && pkgByDir.get(pkgDir);
-    // A package reached opaquely runs its BUILT entry, which contains every
-    // source file of the package, so seed it alongside any file-level match.
-    const opaque = pkgName && graph.nodes.has(packageNode(pkgName)) ? packageNode(pkgName) : null;
+    const pkg = packageOf(path);
+    const pkgName = pkg.root && pkgByDir.get(pkg.root);
+    // A package reached opaquely runs its BUILT entry, compiled (and bundled)
+    // from its src/ and generated/ files, so seed it alongside any file match.
+    const opaque = pkgName && pkg.built && graph.nodes.has(packageNode(pkgName)) ? packageNode(pkgName) : null;
     if (opaque) seeds.add(opaque);
     if (status === 'D') {
       // `import './dir'` resolved to dir/index.ts records the directory itself.
-      const keys = [extensionless(path), ...(/\/index\.[^/]+$/.test(path) ? [posix.dirname(path)] : [])];
-      const importers = keys.map((k) => graph.missing.get(k)).find(Boolean);
-      if (importers) {
+      const keys = [extensionless(path), ...(isCodeFile(path) && /\/index\.[^/]+$/.test(path) ? [posix.dirname(path)] : [])];
+      const importers = keys.flatMap((k) => [...(graph.missing.get(k) ?? [])]);
+      if (importers.length > 0) {
         for (const i of importers) seeds.add(i);
         rows.push({ path, status, class: 'graph', reason: 'deleted; still imported by the graph' });
         continue;
@@ -137,15 +155,27 @@ export function classifyChanges(changes, graph, packages) {
       rows.push({ path, status, class: 'graph', reason: 'in the import graph' });
       continue;
     }
+    // A data directory a module reads (`new URL('dir/', import.meta.url)`)
+    // covers the DATA files under it. Code files there are judged by imports,
+    // so a module reading `./` cannot mask unreached source.
+    const dirImporters = isCodeFile(path) ? [] : dirKeys.filter((k) => path.startsWith(k)).flatMap((k) => [...dirImportersOf(k)]);
+    if (dirImporters.length > 0) {
+      for (const i of dirImporters) seeds.add(i);
+      rows.push({ path, status, class: 'graph', reason: 'in a directory a graph module reads' });
+      continue;
+    }
     if (opaque) {
       rows.push({ path, status, class: 'graph', reason: `source of ${pkgName}, which a viewer test imports opaquely` });
       continue;
     }
-    if (status === 'D') {
+    // Only a SOURCE file can be judged by the graph. A deleted config, lockfile
+    // or runtime input stays unmapped below, with its reason.
+    const isSource = (path.startsWith(`${VIEWER}/src/`) || pkg.src) && isCodeFile(path);
+    if (isSource && status === 'D') {
       rows.push({ path, status, class: 'deleted', reason: 'deleted; nothing in the graph imports it' });
       continue;
     }
-    if ((path.startsWith(`${VIEWER}/src/`) || pkgDir) && isCodeFile(path)) {
+    if (isSource) {
       rows.push({ path, status, class: 'unreached', reason: 'source file no viewer test imports statically' });
       continue;
     }
@@ -254,19 +284,22 @@ const list = (items, fmt) => [...items.slice(0, CAP).map(fmt), ...(items.length 
 export function summaryLines(decision, sel) {
   const lines = [`## Selected viewer tests (\`CI_PR_VIEWER_SELECT=${decision.mode}\`)`, ''];
   if (!decision.select) return [...lines, `Nothing selected: ${decision.reason}.`];
-  const unmapped = sel.changes.filter((c) => c.class === 'unmapped');
+  const count = (cls) => sel.changes.filter((c) => c.class === cls).length;
   const mapped = sel.changes.filter((c) => c.class === 'graph').length;
   lines.push(
     'Advisory only. The merge queue runs the whole viewer suite and remains the gate.',
     '',
-    `- changed files: ${sel.changes.length} (${mapped} in the viewer import graph, ${sel.changes.filter((c) => c.class === 'unreached').length} source files no viewer test imports, ${sel.changes.filter((c) => c.class === 'deleted').length} deletions nothing imports, ${unmapped.length} unmapped)`,
+    `- changed files: ${sel.changes.length} (${mapped} in the viewer import graph, ${count('deleted')} deletions nothing imports, ${count('unmapped') + count('unreached')} NOT covered: ${count('unmapped')} unmapped, ${count('unreached')} reached by no static import)`,
     `- viewer test files the changes reach: ${sel.selected.length} of ${sel.graph.tests}`,
     `- ${decision.runTests ? 'run' : 'would run'}: ${sel.ran.length} (about ${sel.estimatedSeconds} s of the ${sel.budgetSeconds} s budget)`,
     `- left out by the budget: ${sel.leftOut.length}`,
   );
-  if (unmapped.length > 0) {
-    lines.push('', `**${unmapped.length} changed file(s) could not be mapped to viewer tests and selected nothing.** Viewer tests they affect are NOT covered here:`, '');
-    lines.push(...list(unmapped, (c) => `- \`${c.path}\`: ${c.reason}`));
+  // `unreached` belongs here too: "no static import reaches it" is not "no
+  // test is affected" (a runtime-built import or a read by path is invisible).
+  const uncovered = sel.changes.filter((c) => c.class === 'unmapped' || c.class === 'unreached');
+  if (uncovered.length > 0) {
+    lines.push('', `**${uncovered.length} changed file(s) could not be mapped to viewer tests or are reached by no static import, and selected nothing.** Viewer tests they affect are NOT covered here:`, '');
+    lines.push(...list(uncovered, (c) => `- \`${c.path}\`: ${c.reason}`));
   }
   if (sel.leftOut.length > 0) {
     lines.push('', `**${sel.leftOut.length} reachable test file(s) were left out by the budget** (tests were taken nearest first; one that did not fit was skipped and a smaller, farther one may have run):`, '');
@@ -297,7 +330,17 @@ export function run(argv, env = process.env, root = ROOT) {
     const [bin, ...args] = runnerArgs(pkg.scripts?.test);
     const r = spawnSync('pnpm', ['exec', bin, ...args, ...files], { cwd: join(root, VIEWER), stdio: 'inherit' });
     if (r.error) throw r.error;
-    return r.status ?? 1;
+    const status = r.status ?? 1;
+    writeFileSync(join(dir, 'result.json'), `${JSON.stringify({ files: files.length, exitCode: status, signal: r.signal ?? null })}\n`);
+    if (status !== 0) {
+      const msg = `Advisory: ${files.length} selected viewer test file(s) ran and at least one failed (exit ${status}). The merge queue runs the full suite; see the log above.`;
+      console.log(`::warning title=Selected viewer tests (advisory)::${msg}`);
+      writeSummary(env, ['', `**${msg}**`]);
+    } else {
+      writeSummary(env, ['', `${files.length} selected viewer test file(s) passed.`]);
+    }
+    // Advisory: see the header for why a failure must not fail the Test run.
+    return 0;
   }
   const decision = decideViewerSelect({
     mode: env.CI_PR_VIEWER_SELECT, event: env.GITHUB_EVENT_NAME, lane: env.LANE, headRef: env.HEAD_REF, noop: env.NOOP,

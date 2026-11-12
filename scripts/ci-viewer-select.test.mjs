@@ -79,12 +79,36 @@ const GRAPH = buildGraph({
   read: (p) => SRC[p],
   resolve: createResolver({ files: new Set(Object.keys(SRC)), packages: PACKAGES }),
 });
+/** A graph whose tests are every `*.test.ts` key of `src` (path -> source text). */
+const graphOf = (src, packages = new Map()) => buildGraph({
+  tests: Object.keys(src).filter((p) => p.endsWith('.test.ts')), read: (p) => src[p], resolve: createResolver({ files: new Set(Object.keys(src)), packages }),
+});
 const classify = (...changes) => classifyChanges(changes.map((c) => (typeof c === 'string' ? { status: 'M', path: c } : c)), GRAPH, PACKAGES);
 
 test('a file in the graph is a seed; a deletion seeds the files that still import it', () => {
   const { rows, seeds } = classify('apps/viewer/src/lib/util.ts', { status: 'D', path: 'apps/viewer/src/lib/gone.ts' });
   assert.deepEqual(rows.map((r) => r.class), ['graph', 'graph']);
   assert.deepEqual([...seeds].sort(), ['apps/viewer/src/b.test.ts', 'apps/viewer/src/lib/util.ts']);
+});
+
+test('a deleted config or runtime input stays UNMAPPED, not a harmless deletion', () => {
+  const { rows, seeds } = classify(
+    { status: 'D', path: 'apps/viewer/vite.config.ts' },
+    { status: 'D', path: 'pnpm-lock.yaml' },
+    { status: 'D', path: 'apps/viewer/src/test/fixtures/model.ifc' },
+  );
+  assert.equal(seeds.size, 0);
+  assert.deepEqual(rows.map((r) => r.class), ['unmapped', 'unmapped', 'unmapped']);
+});
+
+test('a deleted index seeds importers of the directory AND of the index file', () => {
+  const src = {
+    'apps/viewer/src/a.test.ts': "import './x/index.js';",
+    'apps/viewer/src/b.test.ts': "import './x';",
+  };
+  const g = graphOf(src);
+  const { seeds } = classifyChanges([{ status: 'D', path: 'apps/viewer/src/x/index.ts' }], g, new Map());
+  assert.deepEqual([...seeds].sort(), ['apps/viewer/src/a.test.ts', 'apps/viewer/src/b.test.ts']);
 });
 
 test('deleting a directory\'s index maps to the files importing the directory', () => {
@@ -138,9 +162,59 @@ test('a package file that is a graph node also seeds the package\'s opaque node'
     'packages/q/src/a.ts': '',
   };
   const pkgs = new Map([['@x/q', { dir: 'packages/q', exports: { '.': './out/q.js' } }]]);
-  const g = buildGraph({ tests: ['apps/viewer/src/f.test.ts'], read: (p) => src[p], resolve: createResolver({ files: new Set(Object.keys(src)), packages: pkgs }) });
+  const g = graphOf(src, pkgs);
   const { seeds } = classifyChanges([{ status: 'M', path: 'packages/q/src/a.ts' }], g, pkgs);
   assert.deepEqual([...seeds].sort(), ['packages/q/src/a.ts', 'pkg:@x/q']);
+});
+
+test('generated code outside src/ of an opaquely imported package seeds that package', () => {
+  const src = { 'apps/viewer/src/g.test.ts': "import '@x/gen/ifc4';" };
+  const pkgs = new Map([['@x/gen', { dir: 'packages/gen', exports: { './ifc4': './generated/ifc4.js' } }]]);
+  const g = graphOf(src, pkgs);
+  const { rows, seeds } = classifyChanges([{ status: 'M', path: 'packages/gen/generated/ifc4/entities.ts' }], g, pkgs);
+  assert.equal(rows[0].class, 'graph');
+  assert.deepEqual([...seeds], ['pkg:@x/gen']);
+  assert.deepEqual([...classifyChanges([{ status: 'M', path: 'packages/gen/src/schema.json' }], g, pkgs).seeds], ['pkg:@x/gen'], 'bundled data counts');
+  // A package's own tests and build scripts are not in its built entry.
+  assert.equal(classifyChanges([{ status: 'M', path: 'packages/gen/test/x.test.ts' }], g, pkgs).seeds.size, 0);
+});
+
+test('a deleted NON-code index (index.html) does not borrow its directory\'s importers', () => {
+  const src = { 'apps/viewer/src/h.test.ts': "const root = new URL('../../viewer', import.meta.url);" };
+  const g = graphOf(src);
+  const { rows, seeds } = classifyChanges([{ status: 'D', path: 'apps/viewer/index.html' }], g, new Map());
+  assert.equal(seeds.size, 0);
+  assert.equal(rows[0].class, 'unmapped');
+});
+
+test('a file under a directory a module reads (new URL(\'dir/\')) seeds that module', () => {
+  const src = { 'apps/viewer/src/i.test.ts': "const dir = new URL('./catalogues/', import.meta.url);" };
+  const g = graphOf(src);
+  const { rows, seeds } = classifyChanges([{ status: 'A', path: 'apps/viewer/src/catalogues/fr.json' }], g, new Map());
+  assert.equal(rows[0].class, 'graph');
+  assert.deepEqual([...seeds], ['apps/viewer/src/i.test.ts']);
+});
+
+test('a directory URL without a trailing slash still covers its data files; code files there are not masked', () => {
+  const src = { 'apps/viewer/src/lib/j.test.ts': "const dir = new URL('./catalogues', import.meta.url);\nconst here = new URL('./', import.meta.url);" };
+  const g = graphOf(src);
+  const { rows, seeds } = classifyChanges([
+    { status: 'M', path: 'apps/viewer/src/lib/catalogues/fr.json' },
+    { status: 'M', path: 'apps/viewer/src/lib/runtime-only.ts' },
+  ], g, new Map());
+  assert.deepEqual(rows.map((r) => r.class), ['graph', 'unreached']);
+  assert.deepEqual([...seeds], ['apps/viewer/src/lib/j.test.ts']);
+});
+
+test('a module using an app ROOT as a directory does not claim the app\'s config files', () => {
+  const src = { 'apps/viewer/src/x/r.test.ts': "const cwd = new URL('../../', import.meta.url);\nconst srcRoot = new URL('../', import.meta.url);" };
+  const g = graphOf(src);
+  const { rows, seeds } = classifyChanges([
+    { status: 'M', path: 'apps/viewer/vite.config.ts' },
+    { status: 'M', path: 'apps/viewer/src/lib/runtime-only.ts' },
+  ], g, new Map());
+  assert.equal(seeds.size, 0, 'neither the app root nor the src root claims files');
+  assert.deepEqual(rows.map((r) => r.class), ['unmapped', 'unreached']);
 });
 
 test('a source file no viewer test imports is reported, not silently dropped', () => {
@@ -296,7 +370,7 @@ test('CLI on, FAIL CLOSED: an unmappable-only change runs nothing and says why',
   assert.equal(r.code, 0, r.stderr);
   assert.deepEqual(r.outputs, { run: 'false', count: '0', artifact: 'true' });
   assert.deepEqual(r.files, []);
-  assert.match(r.summary, /2 changed file\(s\) could not be mapped to viewer tests and selected nothing/); // @source-text-assertion-ok subject is the CLI's written step summary
+  assert.match(r.summary, /2 changed file\(s\) could not be mapped to viewer tests or are reached by no static import, and selected nothing/); // @source-text-assertion-ok subject is the CLI's written step summary
   assert.match(r.summary, /`rust\/core\/src\/lib\.rs`: WASM or Rust input/); // @source-text-assertion-ok subject is the CLI's written step summary
 });
 
@@ -305,6 +379,13 @@ test('CLI on: a mixed change runs only what the mappable part reaches', () => {
   assert.deepEqual(r.files, ['src/a.test.ts']);
   assert.deepEqual(r.selection.selected, ['apps/viewer/src/a.test.ts']);
   assert.equal(r.selection.changes.find((c) => c.path === 'pnpm-lock.yaml').class, 'unmapped');
+});
+
+test('CLI: a source file no static import reaches is listed under NOT covered, not only counted', () => {
+  const r = cli(fixtureRepo({ 'apps/viewer/src/lib/loaded-at-runtime.ts': 'export const y = 1;' }), 'shadow');
+  assert.equal(r.selection.changes[0].class, 'unreached');
+  assert.match(r.summary, /NOT covered here/); // @source-text-assertion-ok subject is the CLI's written step summary
+  assert.ok(r.summary.includes('`apps/viewer/src/lib/loaded-at-runtime.ts`: source file no viewer test imports statically')); // @source-text-assertion-ok subject is the CLI's written step summary
 });
 
 test('CLI: an unreadable diff is an error, not an empty green selection', () => {
@@ -321,6 +402,40 @@ test('CLI --run refuses an empty file list rather than letting tsx glob everythi
   const r = spawnSync(process.execPath, [CLI, '--run', dir], { encoding: 'utf8' });
   assert.equal(r.status, 1);
   assert.match(r.stderr, /files\.txt is empty/); // @source-text-assertion-ok subject is the CLI's error output; the exit code is asserted above
+});
+
+function fakePnpm(exitCode) {
+  const bin = mkdtempSync(join(TMP, 'bin-'));
+  writeFileSync(join(bin, 'pnpm'), `#!/bin/sh\nexit ${exitCode}\n`, { mode: 0o755 });
+  return bin;
+}
+
+function runCli(exitCode) {
+  const root = fixtureRepo({ 'apps/viewer/src/lib/util.ts': 'export const x = 2;' });
+  const dir = mkdtempSync(join(TMP, 'run-'));
+  writeFileSync(join(dir, 'files.txt'), 'src/a.test.ts\n');
+  const summary = join(dir, 'summary.md');
+  writeFileSync(summary, '');
+  const script = `import { run } from ${JSON.stringify(CLI)}; process.exitCode = run(process.argv.slice(1), process.env, ${JSON.stringify(root)});`;
+  const r = spawnSync(process.execPath, ['--input-type=module', '-e', script, '--', '--run', dir], {
+    encoding: 'utf8', env: { PATH: `${fakePnpm(exitCode)}:${process.env.PATH}`, GITHUB_STEP_SUMMARY: summary },
+  });
+  return { ...r, result: JSON.parse(readFileSync(join(dir, 'result.json'), 'utf8')), summary: readFileSync(summary, 'utf8') };
+}
+
+test('CLI --run: failing tests are an advisory warning, exit 0, and recorded in result.json', () => {
+  const r = runCli(1);
+  assert.equal(r.status, 0, 'a test failure must not fail the Test run');
+  assert.deepEqual(r.result, { files: 1, exitCode: 1, signal: null });
+  assert.ok(r.stdout.includes('::warning title=Selected viewer tests (advisory)::')); // @source-text-assertion-ok subject is the CLI's emitted annotation
+  assert.match(r.summary, /at least one failed \(exit 1\)/); // @source-text-assertion-ok subject is the CLI's written step summary
+});
+
+test('CLI --run: passing tests exit 0 with no warning', () => {
+  const r = runCli(0);
+  assert.equal(r.status, 0);
+  assert.equal(r.result.exitCode, 0);
+  assert.ok(!r.stdout.includes('::warning')); // @source-text-assertion-ok subject is the CLI's emitted output
 });
 
 // ---------------------------------------------------------------- the wiring
@@ -359,11 +474,18 @@ test('WIRING: the select step feeds the switch inputs, and every heavy step wait
   assert.equal(steps[select].env.NOOP, '${{ needs.changes.outputs.noop }}');
   assert.equal(steps[select].env.HEAD_REF, '${{ github.head_ref }}');
   /* eslint-enable no-template-curly-in-string */
-  const upload = steps.find((s) => s.name === 'Upload the selection');
-  assert.equal(upload.if, "steps.select.outputs.artifact == 'true'");
-  for (const s of steps.slice(select + 1)) {
-    if (s === upload) continue;
+  const upload = steps.at(-1);
+  assert.equal(upload.name, 'Upload the selection', 'the upload is last, so it carries result.json');
+  assert.equal(upload.if, "always() && steps.select.outputs.artifact == 'true'");
+  for (const s of steps.slice(select + 1, -1)) {
     assert.ok(String(s.if ?? '').startsWith("steps.select.outputs.run == 'true'"), `${s.name ?? s.uses ?? s.run} must wait on run`); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML; there is no runtime to drive instead
   }
-  assert.ok(steps.at(-1).run.includes('ci-viewer-select.mjs --run')); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML; there is no runtime to drive instead
+  assert.ok(steps.at(-2).run.includes('ci-viewer-select.mjs --run')); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML; there is no runtime to drive instead
+});
+
+test('WIRING: the advisory job cannot fail the Test run, and says it is advisory', () => {
+  // A failed run is never push-replayed (scripts/ci-push-replay.mjs), so a red
+  // advisory job would re-run every lane on the push to main.
+  assert.equal(JOB['continue-on-error'], true);
+  assert.match(JOB.name, /advisory/i); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML; there is no runtime to drive instead
 });

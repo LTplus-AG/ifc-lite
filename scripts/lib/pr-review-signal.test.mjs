@@ -139,7 +139,7 @@ test('the REAL test.yml derives the lane names the REAL rollup publishes', () =>
     // The advisory selected-viewer-tests lane (scripts/ci-viewer-select.mjs).
     // Not in the aggregate's `needs`; with CI_PR_VIEWER_SELECT off it
     // publishes `skipped`, which is presence.
-    'Viewer tests (selected for this PR)',
+    'Viewer tests, advisory (selected for this PR)',
   ]) {
     assert.ok(names.includes(observed), `derived set is missing the observed lane "${observed}"`);
   }

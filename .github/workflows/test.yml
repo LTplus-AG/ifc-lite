@@ -1531,11 +1531,15 @@ jobs:
   # Switch: repo variable CI_PR_VIEWER_SELECT = off (default: this job is
   # skipped) | shadow (record the selection, run nothing) | on (run it).
   # ADVISORY: deliberately NOT in the aggregate's `needs` (see
-  # UNJUDGED_BY_DESIGN in scripts/check-ci-aggregate-coverage.mjs). A red
-  # result is visible on the PR; the merge queue's full run is the gate.
+  # UNJUDGED_BY_DESIGN in scripts/check-ci-aggregate-coverage.mjs), and it
+  # cannot fail the run: a failed Test run is never push-replayed
+  # (scripts/ci-push-replay.mjs), so a flake here would re-run every lane on
+  # main. Test failures exit 0 with a warning; continue-on-error covers the rest.
+  # The merge queue's full run is the gate.
   viewer-tests-selected:
-    name: Viewer tests (selected for this PR)
+    name: Viewer tests, advisory (selected for this PR)
     needs: [changes, build]
+    continue-on-error: true
     if: >-
       github.event_name == 'pull_request' &&
       (vars.CI_PR_VIEWER_SELECT == 'shadow' || vars.CI_PR_VIEWER_SELECT == 'on') &&
@@ -1567,16 +1571,6 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: node scripts/ci-viewer-select.mjs --select "$RUNNER_TEMP/viewer-selection"
-      # Kept per PR run so a queue failure in a viewer test can be checked
-      # against what this PR's selection covered (recall).
-      - name: Upload the selection
-        if: steps.select.outputs.artifact == 'true'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: viewer-test-selection
-          path: ${{ runner.temp }}/viewer-selection/
-          retention-days: 30
-          if-no-files-found: error
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         if: steps.select.outputs.run == 'true'
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -1608,6 +1602,17 @@ jobs:
       - name: Run the selected viewer tests
         if: steps.select.outputs.run == 'true'
         run: node scripts/ci-viewer-select.mjs --run "$RUNNER_TEMP/viewer-selection"
+      # Kept per PR run so a queue failure in a viewer test can be checked
+      # against what this PR's selection covered (recall). Last, and on
+      # always(), so it also carries result.json from the run.
+      - name: Upload the selection
+        if: always() && steps.select.outputs.artifact == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: viewer-test-selection
+          path: ${{ runner.temp }}/viewer-selection/
+          retention-days: 30
+          if-no-files-found: error
 
   node-guards:
     name: Node guards

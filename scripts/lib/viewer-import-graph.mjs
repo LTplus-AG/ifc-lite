@@ -72,6 +72,12 @@ export function extractSpecifiers(code) {
   return [...out];
 }
 
+/** `packages/<x>/dist/<rest>.js` (or `.d.ts`) -> `packages/<x>/src/<rest>`, the source a build output stands for. */
+export function distToSrc(path) {
+  const m = /^(packages\/[^/]+)\/dist\/(.+?)(?:\.d\.ts|(?:\.d)?\.[cm]?js)$/.exec(path);
+  return m ? `${m[1]}/src/${m[2]}` : null;
+}
+
 /** Strip the extension, so `a/b.ts` and a missing `a/b.js` import compare equal. */
 export const extensionless = (path) => path.replace(/\.(?:d\.)?[cm]?[jt]sx?$|\.json$/, '');
 
@@ -82,7 +88,11 @@ export const extensionless = (path) => path.replace(/\.(?:d\.)?[cm]?[jt]sx?$|\.j
  *   packages?: Map<string, { dir: string, exports?: unknown, main?: string }>,
  * }} input  repo-relative POSIX paths; alias targets repo-relative, `*` allowed
  */
-export function createResolver({ files, aliases = [], packages = new Map() }) {
+export function createResolver({ files, aliases: rawAliases = [], packages = new Map() }) {
+  // tsconfig `paths` precedence: an exact pattern first, then the longest
+  // prefix before the `*`, whatever the object order.
+  const prefixLength = ({ pattern }) => (pattern.includes('*') ? pattern.indexOf('*') : Infinity);
+  const aliases = [...rawAliases].sort((a, b) => prefixLength(b) - prefixLength(a));
   function resolveFile(base) {
     const p = posix.normalize(base);
     if (p.startsWith('..') || p.startsWith('/')) return null;
@@ -130,10 +140,9 @@ export function createResolver({ files, aliases = [], packages = new Map() }) {
     if (target === undefined && pkg.exports === undefined && sub === '.') target = pkg.main;
     if (target && typeof target === 'object') target = target.import ?? target.default ?? target.types;
     if (typeof target === 'string') {
-      const dist = /^\.\/dist\/(.+?)(?:\.d)?\.[cm]?js$|^\.\/dist\/(.+?)\.d\.ts$/.exec(target);
-      const rest = dist && (dist[1] ?? dist[2]);
-      if (rest) {
-        const hit = resolveFile(`${pkg.dir}/src/${rest}`);
+      const src = distToSrc(posix.join(pkg.dir, target));
+      if (src) {
+        const hit = resolveFile(src);
         if (hit) return { kind: 'file', path: hit };
       }
     }
@@ -151,8 +160,8 @@ export function createResolver({ files, aliases = [], packages = new Map() }) {
     if (spec.startsWith('.')) {
       const base = posix.join(posix.dirname(importer), spec);
       // A relative path into a package's BUILT output stands for its source.
-      const dist = /^(packages\/[^/]+)\/dist\/(.+?)(?:\.d)?\.[cm]?js$/.exec(posix.normalize(base));
-      const hit = resolveFile(base) ?? (dist && resolveFile(`${dist[1]}/src/${dist[2]}`));
+      const src = distToSrc(posix.normalize(base));
+      const hit = resolveFile(base) ?? (src && resolveFile(src));
       return hit ? { kind: 'file', path: hit } : { kind: 'missing', base: posix.normalize(base) };
     }
     return fromAliases(spec) ?? fromPackage(spec) ?? { kind: 'external' };

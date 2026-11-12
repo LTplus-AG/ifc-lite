@@ -242,11 +242,11 @@ test('the narrow pull_request_rules reader agrees with a YAML parse of the real 
 
 test('REFUSE (#9783 review): no pull_request_rules entry queues the release PR into the release queue', () => {
   const rule = 'head=changeset-release/main\n    actions:\n      queue:\n        name: release';
-  assert.ok(MERGIFY.includes(rule), 'fixture anchor');
+  assert.ok(MERGIFY.includes(rule), 'fixture anchor'); // @source-text-assertion-ok subject is the .mergify.yml fixture text this test edits
   for (const [broken, why] of [
     [MERGIFY.replace(rule, 'head=changeset-release/main\n    actions:\n      queue:\n        name: default'), /can queue the release PR into `default`, not `release`/],
     [MERGIFY.replace(rule, 'head=changeset-release/other\n    actions:\n      queue:\n        name: release'), /no Mergify pull_request_rules entry queues/],
-    [MERGIFY.slice(0, MERGIFY.indexOf('pull_request_rules:')), /no Mergify pull_request_rules entry queues/],
+    [MERGIFY.slice(0, MERGIFY.indexOf('pull_request_rules:')), /no Mergify pull_request_rules entry queues/], // @source-text-assertion-ok subject is the .mergify.yml fixture text this test edits
   ]) {
     assert.notEqual(broken, MERGIFY);
     const r = releaseQueueRoute(broken, { labels: ['mergify-trial'], draft: false });
@@ -339,20 +339,20 @@ test('SHADOW (#9783 review): the report runs the lean lane\'s own checks and lis
   assert.match(allSkipped, /would skip:\n\n- \(none: every such lane skipped on this run\)/); // @source-text-assertion-ok subject is the returned summary
   const needs = needsJson('success', { 'rust-full': 'skipped' });
   const pass = verifyReleaseLane({ ...shadow, needs, runChecks: () => LEAN_CHECKS.map((script) => ({ script, ok: true, tail: '' })) }).lines.join('\n');
-  for (const script of LEAN_CHECKS) assert.match(pass, new RegExp(`\`${script.replace(/[.]/g, '\\.')}\`: pass`));
-  assert.ok(!pass.includes('`rust-full`'), 'a lane that skipped anyway is not listed');
-  assert.ok(pass.includes('`viewer-tests`: success'));
+  for (const script of LEAN_CHECKS) assert.match(pass, new RegExp(`\`${script.replace(/[.]/g, '\\.')}\`: pass`)); // @source-text-assertion-ok subject is the returned summary
+  assert.ok(!pass.includes('`rust-full`'), 'a lane that skipped anyway is not listed'); // @source-text-assertion-ok subject is the returned summary
+  assert.ok(pass.includes('`viewer-tests`: success')); // @source-text-assertion-ok subject is the returned summary
   assert.match(pass, /None of them failed/); // @source-text-assertion-ok subject is the returned summary
   const fail = verifyReleaseLane({ ...shadow, needs, runChecks: () => [{ script: LEAN_CHECKS[0], ok: false, tail: 'offset mismatch' }] });
   assert.equal(fail.ok, true, 'shadow reports, never fails');
   assert.match(fail.lines.join('\n'), /FAIL: offset mismatch[\s\S]*would fail its own checks: scripts\/check-rust-major-offset\.mjs/); // @source-text-assertion-ok subject is the returned summary
-  assert.doesNotMatch(fail.lines.join('\n'), /None of them failed/); // @source-text-assertion-ok subject is the returned summary
+  assert.doesNotMatch(fail.lines.join('\n'), /None of them failed/);
   // The real runner on scripts of its own: exit status and last output line; a missing script fails, never throws.
   const dir = mkdtempSync(join(TMP, 'checks-'));
   writeFileSync(join(dir, 'ok.mjs'), "console.log('first'); console.log('all good');\n");
   writeFileSync(join(dir, 'bad.mjs'), "console.log('offset mismatch'); process.emitWarning('noise', 'ExperimentalWarning'); process.emitWarning('old', 'DeprecationWarning', 'DEP0040'); process.exitCode = 1;\n");
   writeFileSync(join(dir, 'own.mjs'), "console.log('Warning: README missing for packages/x'); process.exitCode = 1;\n");
-  assert.deepEqual(runLeanChecks(dir, ['ok.mjs', 'bad.mjs', 'own.mjs', 'gone.mjs']).map((c) => [c.script, c.ok, /Cannot find module/.test(c.tail) || c.tail]), [['ok.mjs', true, 'all good'], ['bad.mjs', false, 'offset mismatch'], ['own.mjs', false, 'Warning: README missing for packages/x'], ['gone.mjs', false, true]]);
+  assert.deepEqual(runLeanChecks(dir, ['ok.mjs', 'bad.mjs', 'own.mjs', 'gone.mjs']).map((c) => [c.script, c.ok, /Cannot find module/.test(c.tail) || c.tail]), [['ok.mjs', true, 'all good'], ['bad.mjs', false, 'offset mismatch'], ['own.mjs', false, 'Warning: README missing for packages/x'], ['gone.mjs', false, true]]); // @source-text-assertion-ok subject is the runner's returned results
 });
 
 test('the release queue really tests a batch: its required `Rust tests (feature builds)` runs on a PR only for a batch', () => {

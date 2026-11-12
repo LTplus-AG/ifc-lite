@@ -210,13 +210,54 @@ describe('load window', () => {
     assert.equal(h.win.isHeld('legacy'), true, 'no model entry: the single store is the one loading');
   });
 
-  it('holds a model added already complete during the window (cache hit) until the window closes', async () => {
+  it('releases a model added already complete during the window (cache hit) on its own settle, while the store is still loading', async () => {
     const h = await harness();
     h.store(true);
     h.model('C', 'complete');
-    assert.equal(h.win.isHeld('C'), true);
-    h.store(false); h.settle();
-    assert.equal(h.win.isHeld('C'), false);
-    assert.equal(h.win.hold().open, false);
+    assert.equal(h.win.isHeld('C'), true, 'held until its settled frame has painted');
+    h.settle();
+    assert.equal(h.win.isHeld('C'), false, 'its own settle releases it, although the store still reads loading');
+    assert.equal(h.win.isOpen(), true);
+  });
+
+  it('multi-file open: model A is released at its own settle although the next file started loading before A\'s frame', async () => {
+    const h = await harness();
+    h.store(true); // loadFilesSequentially: file A
+    h.model('A', 'pending');
+    h.setTail(true);
+    h.model('A', 'streaming-geometry');
+    h.model('A', 'complete'); // finalize ran inside A's tail
+    h.frame();
+    assert.equal(h.win.isHeld('A'), true, 'A\'s tail still runs: held');
+    h.setTail(false);
+    h.model('B', 'pending'); // file B starts at once: the store never stops loading
+    h.settle(); h.settle();
+    assert.equal(h.win.isHeld('A'), false, 'A settled and its frame painted: released');
+    assert.equal(h.win.isHeld('B'), true, 'B is loading: held');
+    assert.equal(h.win.isOpen(), true, 'the window stays open for B');
+    h.model('B', 'complete'); h.store(false); h.settle(); h.settle();
+    assert.equal(h.win.isHeld('B'), false);
+    assert.equal(h.win.isOpen(), false);
+  });
+
+  it('a model\'s release re-checks the tail behind its frame, and its tail limit still applies', async () => {
+    const h = await harness();
+    h.store(true);
+    h.model('A', 'complete'); // tail idle: the release is scheduled behind a frame
+    h.setTail(true); // B's stream starts before that frame
+    h.settle();
+    assert.equal(h.win.isHeld('A'), true, 'the tail is busy again: still held');
+    h.advance(h.MAX_TAIL_WAIT_MS + 1);
+    h.settle(); h.settle();
+    assert.equal(h.win.isHeld('A'), false, 'a tail that does not end (the next file streaming) cannot hold A past its limit');
+  });
+
+  it('a released model seen loading again is held again', async () => {
+    const h = await harness();
+    h.store(true);
+    h.model('A', 'complete'); h.settle();
+    assert.equal(h.win.isHeld('A'), false);
+    h.model('A', 'pending');
+    assert.equal(h.win.isHeld('A'), true);
   });
 });

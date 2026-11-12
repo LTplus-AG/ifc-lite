@@ -214,3 +214,23 @@ it('computes the statistics against the FINAL store after a store swap inside th
   await settleLoadWindow();
   assert.equal(elementsWithGeometry(panel), '3', 'settled: the final store\'s three walls (the partial store has two)');
 });
+
+it('multi-file open: A\'s statistics appear at A\'s settle while B, started at once, is held', async () => {
+  const dataStore = await parse();
+  const { registerModelOffset } = useViewerStore.getState();
+  const offsetA = registerModelOffset('seq-A', 100);
+  const offsetB = registerModelOffset('seq-B', 100);
+  const model = (id: string, offset: number, loadState: FederatedModel['loadState']) => ({
+    id, name: id, ifcDataStore: dataStore, geometryResult: geometry([10, 11].map((x) => x + offset)), loadState,
+    idOffset: offset, maxExpressId: 100, fileSize: 1, loadedAt: 0,
+  }) as FederatedModel;
+  act(() => useViewerStore.setState({ loading: true, mutationViews: new Map(), mutationVersion: 0, models: new Map([['seq-A', model('seq-A', offsetA, 'pending')]]) }));
+  const aDone = model('seq-A', offsetA, 'complete');
+  const panelA = render(<ModelMetadataPanel model={aDone} />);
+  act(() => useViewerStore.setState({ models: new Map([['seq-A', aDone], ['seq-B', model('seq-B', offsetB, 'pending')]]) }));
+  const panelB = render(<ModelMetadataPanel model={model('seq-B', offsetB, 'pending')} />);
+  await settleLoadWindow();
+  assert.equal(useViewerStore.getState().loading, true);
+  assert.equal(elementsWithGeometry(panelA), '2', 'A settled: its statistics, although B is loading');
+  assert.equal(elementsWithGeometry(panelB), '—', 'B is held');
+});

@@ -357,12 +357,17 @@ it('load window: restore waits while its model loads, then parses once, for the 
     const full = await parse(fixture());
     await act(async () => {
       useViewerStore.setState({
-        models: new Map([[modelId, { ...seeded, ifcDataStore: full, loadState: 'complete', geometryResult: settledGeometry }]]),
+        models: new Map([[modelId, { ...seeded, ifcDataStore: full, loadState: 'hydrating-metadata', geometryResult: settledGeometry }]]),
       } as never);
     });
     await tick();
     assert.equal(probe.posts(), 0, 'the swap inside the window parses nothing');
-    await act(async () => { useViewerStore.setState({ geometryStreamingActive: false }); });
+    await act(async () => {
+      useViewerStore.setState({
+        models: new Map([[modelId, { ...seeded, ifcDataStore: full, loadState: 'complete', geometryResult: settledGeometry }]]),
+        geometryStreamingActive: false,
+      } as never);
+    });
     await settleLoadWindow();
     await tick();
     assert.equal(probe.posts(), 1, 'settled: one restore parse, of the final store; none for the superseded one');

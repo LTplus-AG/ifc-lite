@@ -19,8 +19,13 @@
  * Per model: the window holds only the models that are loading. A model whose
  * load was complete when the window opened keeps its values (overlays, counts,
  * statistics, pills) while another model loads, unless it is seen loading again
- * (a reload) while the window is open. In single-store mode the store is the
- * one being loaded, so `legacy` is held.
+ * (a reload) while the window is open. A model that loads inside the window is
+ * released on its own settle: its state is terminal (finalize ran, so its
+ * stream is over), the geometry tail is idle (or `MAX_TAIL_WAIT_MS` has passed
+ * since it turned terminal), and a frame has painted. That does not wait for
+ * the store's loading flags, so in a multi-file open the next file's load does
+ * not keep an earlier, settled model held. In single-store mode the store is
+ * the one being loaded, so `legacy` is held until the window closes.
  *
  * Signal: `loading` and `geometryStreamingActive` come from the store. The
  * renderer publishes no event when its finalize ends, so once both flags are
@@ -78,8 +83,12 @@ const CLOSED: LoadWindowHold = { open: false, isHeld: () => false };
 export function createLoadWindow(deps: LoadWindowDeps): LoadWindow {
   const listeners = new Set<() => void>();
   let open = false;
-  /** Models whose load was complete when the window opened and that have not been seen loading since. */
+  /** Models not held: complete when the window opened, or settled inside it; not seen loading since. */
   let settled = new Set<string>();
+  /** When each loading model was first seen in a terminal state, inside this window. */
+  const terminalSince = new Map<string, number>();
+  /** Models whose release waits behind a painted frame. */
+  const releasing = new Set<string>();
   let snapshot: LoadWindowHold = CLOSED;
   let tailSince = -1;
   let busySince = -1;
@@ -108,17 +117,53 @@ export function createLoadWindow(deps: LoadWindowDeps): LoadWindow {
     if (!open) return;
     open = false;
     settled = new Set();
+    terminalSince.clear();
+    releasing.clear();
     tailSince = -1;
     publish();
   };
-  /** A model settled at open that starts loading again (a reload) is held from then on. */
+  /**
+   * A model that is not held but is seen loading again (a reload) is held from
+   * then on. A held model in a terminal state is released once the tail is idle
+   * (or its tail limit passed) and a frame has painted; the store's loading
+   * flags, which the next load of a multi-file open sets, do not delay it.
+   */
   const observeModels = (): void => {
-    if (!open || settled.size === 0) return;
+    if (!open) return;
     let changed = false;
+    let waiting = false;
     for (const [id, state] of deps.modelStates()) {
-      if (settled.has(id) && LOADING_STATES.has(state)) { settled.delete(id); changed = true; }
+      if (LOADING_STATES.has(state)) {
+        if (settled.delete(id)) changed = true;
+        terminalSince.delete(id);
+        releasing.delete(id);
+        continue;
+      }
+      if (settled.has(id) || releasing.has(id)) continue;
+      if (!terminalSince.has(id)) terminalSince.set(id, deps.now());
+      if (modelTailWaiting(id)) { waiting = true; continue; }
+      releaseAfterPaint(id);
     }
     if (changed) publish();
+    if (waiting) scheduleCheck();
+  };
+  const modelTailWaiting = (id: string): boolean =>
+    deps.tailBusy() && deps.now() - (terminalSince.get(id) ?? deps.now()) < MAX_TAIL_WAIT_MS;
+  // As the window's own close: after the frame that shows the settled model,
+  // re-checking the tail, which can start again before that frame.
+  const releaseAfterPaint = (id: string): void => {
+    releasing.add(id);
+    let done = false;
+    const finish = (): void => {
+      if (done) return;
+      done = true;
+      if (!releasing.delete(id) || !open) return; // seen loading again, or the window closed
+      if (modelTailWaiting(id)) { scheduleCheck(); return; }
+      settled.add(id);
+      publish();
+    };
+    deps.requestFrame(() => deps.setTimer(finish, 0));
+    deps.setTimer(finish, CLOSE_BACKSTOP_MS);
   };
   const busyCapped = (): boolean => busySince >= 0 && deps.now() - busySince >= MAX_STORE_BUSY_MS;
   const tailWaiting = (): boolean => deps.tailBusy() && tailSince >= 0 && deps.now() - tailSince < MAX_TAIL_WAIT_MS;

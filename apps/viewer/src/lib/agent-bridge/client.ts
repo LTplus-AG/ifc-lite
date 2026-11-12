@@ -85,7 +85,8 @@ export interface BridgeClientOptions {
   /** Asked after a connection that never opened, to tell "denied" from "not running". */
   probePermission?: () => Promise<LocalNetworkPermission>;
   welcomeTimeoutMs?: number;
-  maxMessageBytes?: number;
+  /** Defaults to `BRIDGE_LIMITS.maxResultBytes`. */
+  maxResultBytes?: number;
   now?: () => number;
 }
 
@@ -300,8 +301,8 @@ export class BridgeClient {
     // A cancelled call is already settled on the bridge, and a closed socket has no one to answer.
     if (aborted || !stillPending || ws !== this.ws || this.ended || ws.readyState !== OPEN) return;
     try {
-      const frame = buildResultFrame(sessionId, call.id, toCallToolResult(outcome), this.opts.maxMessageBytes ?? BRIDGE_LIMITS.maxMessageBytes);
-      if (frame.truncated) warn(`the result of ${call.name} was over the bridge's message limit and was truncated`);
+      const frame = buildResultFrame(sessionId, call.id, toCallToolResult(outcome), this.opts.maxResultBytes ?? BRIDGE_LIMITS.maxResultBytes);
+      if (frame.truncated) warn(`the result of ${call.name} was more than the bridge accepts and was truncated`);
       ws.send(frame.json);
     } catch (err) {
       warn(`could not send the result of ${call.name}`, err);

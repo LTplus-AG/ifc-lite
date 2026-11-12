@@ -287,8 +287,11 @@ test('DIFF: a CHANGELOG and its package.json move together, or the diff is not a
   );
   assert.deepEqual(bump({ name: 'x', version: '1.0.0' }, { name: 'x' }), ['packages/x/package.json: `version` is not semver on both sides ("1.0.0" -> undefined)']);
   assert.deepEqual(bump({ name: 'x', version: '1.0.0' }, { name: 'x', version: 'latest' }), ['packages/x/package.json: `version` is not semver on both sides ("1.0.0" -> "latest")']);
-  assert.deepEqual(bump({ name: 'x', version: '1.10.0' }, { name: 'x', version: '1.9.9' }), ['packages/x/package.json: `version` core moved backward (1.10.0 -> 1.9.9)']);
-  for (const [from, to] of [['1.0.0', '1.0.1'], ['1.9.9', '1.10.0'], ['0.9.0', '1.0.0-next.0'], ['1.0.0-next.0', '1.0.0-next.1'], ['1.0.0-next.1', '1.0.0']]) {
+  // Semver precedence, prerelease included: a prerelease ranks below its release (#9783 review).
+  for (const [from, to] of [['1.10.0', '1.9.9'], ['1.0.0', '1.0.0-next.0'], ['1.0.0-next.1', '1.0.0-next.0'], ['1.0.0-next.10', '1.0.0-next.9'], ['1.0.0-next.0', '1.0.0-0'], ['1.0.0-next.0', '1.0.0-next'], ['1.0.0-rc.1', '1.0.0-beta.2'], ['1.0.0-next.0', '1.0.00-next.0']]) {
+    assert.deepEqual(bump({ name: 'x', version: from }, { name: 'x', version: to }), [`packages/x/package.json: \`version\` did not move forward (${from} -> ${to})`], `${from} -> ${to}`);
+  }
+  for (const [from, to] of [['1.0.0', '1.0.1'], ['1.9.9', '1.10.0'], ['0.9.0', '1.0.0-next.0'], ['1.0.0-next.0', '1.0.0-next.1'], ['1.0.0-next.9', '1.0.0-next.10'], ['1.0.0-next', '1.0.0-next.0'], ['1.0.0-beta.2', '1.0.0-rc.1'], ['1.0.0-next.1', '1.0.0']]) {
     assert.deepEqual(bump({ name: 'x', version: from }, { name: 'x', version: to }), [], `${from} -> ${to}`);
   }
   // The private root has no CHANGELOG, even when sync-versions.js bumps it.

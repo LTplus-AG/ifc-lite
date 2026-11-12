@@ -14,7 +14,29 @@
 import { basename, posix } from 'node:path';
 import { isChangesetName } from './pending-changesets.mjs';
 
-const SEMVER = /^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?$/;
+const SEMVER = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/;
+
+/**
+ * Semver precedence (semver.org, section 11) of two SEMVER matches: below 0
+ * when `a` is lower. A prerelease is lower than its own release, so
+ * 1.0.0 -> 1.0.0-next.0 moves backward (#9783 review).
+ */
+function comparePrecedence(a, b) {
+  for (const i of [1, 2, 3]) {
+    const d = Math.sign(Number(a[i]) - Number(b[i]));
+    if (d !== 0) return d;
+  }
+  if (a[4] === undefined || b[4] === undefined) return (a[4] === undefined) - (b[4] === undefined);
+  const [x, y] = [a[4].split('.'), b[4].split('.')];
+  for (let i = 0; i < Math.min(x.length, y.length); i++) {
+    const [p, q] = [x[i], y[i]];
+    const [pn, qn] = [/^\d+$/.test(p), /^\d+$/.test(q)];
+    // Numeric identifiers compare as numbers and rank below alphanumeric ones.
+    const d = pn && qn ? Math.sign(Number(p) - Number(q)) : pn !== qn ? (pn ? -1 : 1) : p < q ? -1 : p > q ? 1 : 0;
+    if (d !== 0) return d;
+  }
+  return Math.sign(x.length - y.length);
+}
 
 /**
  * `version` must move, and nothing else may. Internal dependencies use
@@ -26,10 +48,8 @@ function versionBumpProblem(before, after) {
   const [from, to] = [before.version, after.version].map((v) => (typeof v === 'string' ? SEMVER.exec(v) : null));
   if (!from || !to) return `\`version\` is not semver on both sides (${JSON.stringify(before.version)} -> ${JSON.stringify(after.version)})`;
   if (before.version === after.version) return '`version` did not move';
-  // Only the major.minor.patch core is ordered: a prerelease step keeps it,
-  // and changesets never moves it back.
-  const order = [1, 2, 3].map((i) => Math.sign(Number(to[i]) - Number(from[i]))).find((d) => d !== 0);
-  if (order < 0) return `\`version\` core moved backward (${before.version} -> ${after.version})`;
+  // Changesets only moves a version forward, prerelease steps included.
+  if (comparePrecedence(to, from) <= 0) return `\`version\` did not move forward (${before.version} -> ${after.version})`;
   const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
   const moved = [...keys].find((k) => k !== 'version' && JSON.stringify(before[k]) !== JSON.stringify(after[k]));
   return moved ? `\`${moved}\` changed` : null;

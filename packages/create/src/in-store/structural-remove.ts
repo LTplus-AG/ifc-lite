@@ -12,6 +12,8 @@ import { structuralGraph } from './_structural-graph.js';
 export function removeStructuralEntityInStore(store: IfcDataStore, editor: StoreEditor, expressId: number): void {
   const graph = structuralGraph(store, editor);
   graph.requireStructural(expressId);
+  // Schema inheritance covers derived links and uppercase source type names.
+  const isA = (type: string, base: string) => graph.meta(type)?.inheritanceChain?.includes(base) ?? false;
   const removed = new Set([expressId]);
   const writes: { id: number; index: number; value: string[] | null }[] = [];
   const blockers: string[] = [];
@@ -35,17 +37,21 @@ export function removeStructuralEntityInStore(store: IfcDataStore, editor: Store
   // schema need at least one member. Refuse rather than cascade products.
   for (const id of removed) {
     const record = graph.records.get(id)!;
-    const memberRel = record.type === 'IfcRelConnectsStructuralMember';
-    const activityRel = graph.schema === 'IFC2X3' && record.type === 'IfcRelConnectsStructuralActivity';
-    const groupRel = graph.schema === 'IFC2X3' && record.type === 'IfcRelAssignsToGroup';
+    const memberRel = isA(record.type, 'IfcRelConnectsStructuralMember');
+    const activityRel = graph.schema === 'IFC2X3' && isA(record.type, 'IfcRelConnectsStructuralActivity');
+    const groupRel = graph.schema === 'IFC2X3' && isA(record.type, 'IfcRelAssignsToGroup');
     if (!memberRel && !activityRel && !groupRel) continue;
     const endpointName = memberRel ? 'RelatedStructuralConnection' : groupRel ? 'RelatingGroup' : 'RelatedStructuralActivity';
     const endpoint = graph.edges(id).find(e => e.attribute.name === endpointName)?.target;
     if (endpoint === undefined || removed.has(endpoint)) continue;
+    const family = memberRel ? 'IfcRelConnectsStructuralMember' : groupRel ? 'IfcRelAssignsToGroup' : 'IfcRelConnectsStructuralActivity';
     const alternative = [...graph.records].some(([other, candidate]) => !removed.has(other)
-      && candidate.type === record.type
+      && isA(candidate.type, family)
       && graph.edges(other).some(e => e.attribute.name === endpointName && e.target === endpoint));
-    if (!alternative) blockers.push(`${graph.records.get(endpoint)?.type} #${endpoint}.${memberRel ? 'ConnectsStructuralMembers' : groupRel ? 'IsGroupedBy' : 'AssignedToStructuralItem'}`);
+    if (!alternative) {
+      const type = graph.meta(graph.records.get(endpoint)?.type ?? '')?.name ?? 'entity';
+      blockers.push(`${type} #${endpoint}.${memberRel ? 'ConnectsStructuralMembers' : groupRel ? 'IsGroupedBy' : 'AssignedToStructuralItem'}`);
+    }
   }
   if (blockers.length) throw new Error(`removeStructuralEntity: #${expressId} has dependents: ${blockers.join(', ')}`);
   // Iterative closure, bounded by the number of live entities even for cyclic

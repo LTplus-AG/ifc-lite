@@ -105,6 +105,9 @@ test('the REAL test.yml derives the lane names the REAL rollup publishes', () =>
     'Node tests (shard 4/4)',
     // #7530: the preserved guard/script workload has its own required job.
     'Node guards',
+    // The scripts/ test catch-all, out of Node guards in two shards.
+    'Node scripts tests (shard 1/2)',
+    'Node scripts tests (shard 2/2)',
     // CI redesign step 5: the feature legs of the Rust lane, off the PR and
     // judged in the merge queue. On a PR its check run is `skipped`.
     'Rust tests (feature builds)',
@@ -136,7 +139,7 @@ test('the REAL test.yml derives the lane names the REAL rollup publishes', () =>
   ]) {
     assert.ok(names.includes(observed), `derived set is missing the observed lane "${observed}"`);
   }
-  assert.equal(names.length, 50);
+  assert.equal(names.length, 52);
 });
 
 test('FAIL CLOSED: an empty workflow file is NO_WORKFLOW_TEXT, not an empty lane set', () => {

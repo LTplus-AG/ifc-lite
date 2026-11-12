@@ -39,6 +39,7 @@ import { ScanSectionPanel } from './ScanSectionPanel.js';
 import { SpaceMousePanel } from './SpaceMousePanel.js';
 import type { SpaceMouseDiagnostics } from '@/lib/spacemouse/device';
 import type { EffectiveChange } from '@ifc-lite/mutations';
+import { formFactorState } from '@/test/form-factor-state';
 
 const PREFIXES = [
   'deviationPanel.',
@@ -134,7 +135,7 @@ function domAfterPseudo(container: HTMLElement): DomSnapshot {
 }
 
 const RESET_STATE = {
-  isMobile: false,
+  ...formFactorState(false),
   spaceMouseSupported: false,
   spaceMouseConnected: false,
   spaceMouseDeviceName: null,

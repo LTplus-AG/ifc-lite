@@ -21,6 +21,7 @@ import { setAssistantDraft } from '@/lib/assistant/composer-draft';
 import { useAssistantPlacement } from '@/lib/assistant/placement';
 import { summarizeClashes, type Clash } from '@ifc-lite/clash';
 import { findPanelAction, runPanelAction } from '@/test/panel-header.js';
+import { formFactorState } from '@/test/form-factor-state';
 
 const initial = useViewerStore.getState();
 const initialGenerationLanguage = useGenerationLanguagePreference.getState().language;
@@ -211,7 +212,7 @@ test('#7053 language extensions survive portable conversation decoding and malfo
 
 test('#7053 a floating Assistant keeps Back to Clash when the native sidebar is collapsed', () => {
   useViewerStore.setState({ sidebarActivePanel: 'clash', sidebarMode: 'expanded', rightPanelCollapsed: false,
-    isMobile: false, floatingPanels: [], poppedOutIds: [] });
+    ...formFactorState(false), floatingPanels: [], poppedOutIds: [] });
   useAssistantPlacement.setState({ placement: 'floating', returnTarget: 'clash' });
   replaceEvidence(captureEvidence('clash'));
   const ui = render(<AssistantPanel />);

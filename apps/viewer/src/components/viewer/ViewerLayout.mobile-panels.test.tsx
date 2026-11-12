@@ -28,6 +28,7 @@ import { getPanelDef, type WorkspacePanelId } from '@/lib/panels/registry';
 import { englishMessage } from '@/i18n/registry';
 import { activeBottomPanel } from '@/lib/panels/bottom-panels';
 import { resolveMobileSheet } from '@/lib/panels/mobileSheet';
+import { DESKTOP_FORM_FACTOR } from '@/lib/layout/form-factor';
 import { isCollabEnabled } from '@/lib/collab/config';
 
 const model: FederatedModel = {
@@ -74,14 +75,16 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   Object.defineProperty(window, 'innerWidth', { configurable: true, value: ORIGINAL_WIDTH });
-  useViewerStore.setState({ models: new Map(), isMobile: false, leftPanelCollapsed: true, rightPanelCollapsed: true });
+  // Through `setFormFactor`, so `isMobile` and `formFactor` are reset together (#9718).
+  useViewerStore.getState().setFormFactor(DESKTOP_FORM_FACTOR);
+  useViewerStore.setState({ models: new Map(), leftPanelCollapsed: true, rightPanelCollapsed: true });
 });
 
 describe('mobile Panels sheet (#5853)', () => {
   it('#5873 keeps Point Cloud reachable before any scan is loaded', async () => {
     act(() => useViewerStore.getState().setPointCloudAssetCount(0));
     const { MobilePanelLauncher } = await import('./MobilePanelLauncher.js');
-    const container = render(<MobilePanelLauncher bottomInset={0} />);
+    const container = render(<MobilePanelLauncher />);
     openList(container);
     const item = listItem(container, 'pointclouds');
     assert.ok(item, 'the empty Point Cloud panel must remain reachable');
@@ -100,7 +103,7 @@ describe('mobile Panels sheet (#5853)', () => {
     // Mount the real launcher without heavyweight panel bodies: a few panels
     // start remote data requests when their body mounts, which this routing
     // assertion does not need. The tests below mount the full layout.
-    const container = render(<MobilePanelLauncher bottomInset={0} />);
+    const container = render(<MobilePanelLauncher />);
     const expected = expectedRailIds();
     assert.ok(expected.length > 10, `the rail should offer many panels, got ${expected.length}`);
     openList(container);

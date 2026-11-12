@@ -118,7 +118,7 @@ describe('boundary conversion loss preview #9668 review regression', () => {
   it('does not report renamed stiffness fields as dropped in either direction', () => {
     for (const type of ['IFCBOUNDARYNODECONDITION', 'IFCBOUNDARYNODECONDITIONWARPING', 'IFCBOUNDARYEDGECONDITION', 'IFCBOUNDARYFACECONDITION']) {
       for (const [from, to] of [['IFC2X3', 'IFC4'], ['IFC4', 'IFC2X3']] as const) {
-        expect(classifyEntityTypeConversion(type, from, to)).toEqual({ targetType: type, kind: 'renamed', droppedAttributes: [] });
+        expect(classifyEntityTypeConversion(type, from, to)).toEqual({ targetType: type, kind: from === 'IFC4' ? 'lossy' : 'renamed', droppedAttributes: [] });
       }
     }
   });
@@ -129,6 +129,17 @@ describe('boundary conversion loss preview #9668 review regression', () => {
     const out = new TextDecoder().decode(new StepExporter(store).export({ schema: 'IFC4' }).content);
     expect(out).toContain('IFCLINEARSTIFFNESSMEASURE(12.)');
     expect(out).toContain('IFCROTATIONALSTIFFNESSMEASURE(67.)');
+  });
+  it('reports the IFC4 SELECT member lost when boolean false and zero measure collapse #9845', async () => {
+    const line = "#23=IFCBOUNDARYEDGECONDITION('Support',IFCBOOLEAN(.F.),IFCMODULUSOFLINEARSUBGRADEREACTIONMEASURE(0.),$,$,$,$);";
+    const source = `ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n${line}\nENDSEC;\nEND-ISO-10303-21;`;
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(source).buffer);
+    const report = analyzeConversionLoss(store, 'IFC4', 'IFC2X3');
+    expect(report.hasLoss).toBe(true);
+    expect(report.entries).toMatchObject([{ sourceType: 'IFCBOUNDARYEDGECONDITION', kind: 'lossy', droppedAttributes: [] }]);
+    expect(new TextDecoder().decode(new StepExporter(store).export({ schema: 'IFC2X3' }).content)).toContain("IFCBOUNDARYEDGECONDITION('Support',0.,0.,$,$,$,$)");
+    const there = convertStepLine(line, 'IFC4', 'IFC2X3');
+    expect(convertStepLine(there!, 'IFC2X3', 'IFC4')).not.toContain('IFCBOOLEAN(.F.)');
   });
 });
 
@@ -149,6 +160,14 @@ describe('STEP trivia in structural stiffness values #9668 review regressions', 
 
 
 describe('irreversible structural relationship preview #9668 review regression', () => {
+  it('does not claim an assignment when a withheld endpoint forces a proxy #9845', () => {
+    const diagnostics = new EnumReconciliation();
+    const source = "#50=IFCRELCONNECTSSTRUCTURALELEMENT('id',#1,$,$,#22,#77);";
+    const out = convertStepLine(source, 'IFC2X3', 'IFC4', undefined, undefined, new Set([22]), undefined, diagnostics);
+    expect(out).toContain('IFCPROXY');
+    expect(out).not.toContain('#22');
+    expect(diagnostics.warnings().join(' ')).not.toContain('mapped to IfcRelAssignsToProduct');
+  });
   it('reports the lost relationship kind while retaining both linked objects', async () => {
     const source = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n#50=IFCRELCONNECTSSTRUCTURALELEMENT('id',#1,$,$,#22,#77);\nENDSEC;\nEND-ISO-10303-21;";
     const store = await new IfcParser().parseColumnar(new TextEncoder().encode(source).buffer);

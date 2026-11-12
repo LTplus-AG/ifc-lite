@@ -95,7 +95,9 @@ export function classifyEntityTypeConversion(
   // #9668: stiffness fields survive by semantic position and unit, despite
   // renamed Linear/Translational attributes and SELECT wrappers.
   if (isStructuralBoundaryCondition(upper) && ((fromSchema === 'IFC2X3' && toSchema === 'IFC4') || (fromSchema === 'IFC4' && toSchema === 'IFC2X3')))
-    return { targetType: upper, kind: 'renamed', droppedAttributes: [] };
+    // IFC2X3 cannot retain the IFC4 SELECT member: boolean false and a zero
+    // measure both become 0, preserving stiffness but losing that distinction.
+    return { targetType: upper, kind: fromSchema === 'IFC4' ? 'lossy' : 'renamed', droppedAttributes: [] };
   // #9668: the two linked objects survive in IFC4's analytical assignment,
   // under differently named roles, but their original relationship kind is lost.
   if (isStructuralAssignmentConversion(upper, fromSchema, toSchema))

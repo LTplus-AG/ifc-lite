@@ -287,8 +287,7 @@ export function convertStepLine(
   enums?: EnumReconciliation,
 ): string | null {
   if (fromSchema === toSchema) return line;
-  enums?.structural.inspect(line, fromSchema, toSchema);
-  let converted = convertRecord(line, fromSchema, toSchema, random, withheldRefIds, fromSchema === 'IFC2X3' && toSchema === 'IFC4' ? enums?.structural.axes.axis(line) : undefined);
+  let converted = convertRecord(line, fromSchema, toSchema, random, withheldRefIds, fromSchema === 'IFC2X3' && toSchema === 'IFC4' ? enums?.structural.axes.axis(line) : undefined, enums?.structural);
   if (converted === null) return null;
   if (enums && toSchema !== 'IFC5') converted = enums.apply(converted, toSchema);
   if (toSchema === 'IFC2X3') return (slots ?? new Ifc2x3SlotFill()).apply(converted);
@@ -305,6 +304,7 @@ function convertRecord(
   random?: RandomSource,
   withheldRefIds?: ReadonlySet<number>,
   structuralAxis?: string,
+  structuralDiagnostics?: EnumReconciliation['structural'],
 ): string | null {
   // Parse: #ID=TYPE(attrs);  — tolerate whitespace around `=` and `(` (Tekla's
   // `#34498= IFCOPENINGELEMENT(`, Viadotto_Acerno's `#159655 = IFC...(`, #7742).
@@ -332,6 +332,7 @@ function convertRecord(
   if (withheldRefIds && withheldRefIds.size > 0 && referencesAnyExpressId(attrsRaw, withheldRefIds)) {
     return resolveUnrepresentedEntity(prefix, entityType, attrsRaw, toSchema, random, withheldRefIds !== undefined);
   }
+  structuralDiagnostics?.inspect(line, fromSchema, toSchema);
 
   if (structuralAxis) return `${prefix}${newType}(${args.join(',')},${structuralAxis});`;
   const structural = structuralAttributes(entityType, args, fromSchema, toSchema);

@@ -6,21 +6,24 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 /** Loaded at runtime so a build without the module fails these assertions instead of failing to load (revert oracle). */
-async function load(): Promise<{ createLoadWindow: typeof import('./loadWindow.js').createLoadWindow; MAX_TAIL_WAIT_MS: number }> {
+async function load(): Promise<{ createLoadWindow: typeof import('./loadWindow.js').createLoadWindow; MAX_TAIL_WAIT_MS: number; MAX_STORE_BUSY_MS: number }> {
   const mod = (await import('./loadWindow.js').catch(() => null)) as Record<string, unknown> | null;
   assert.equal(typeof mod?.createLoadWindow, 'function', 'loadWindow.ts must export createLoadWindow');
+  assert.equal(typeof mod?.MAX_STORE_BUSY_MS, 'number', 'loadWindow.ts must export MAX_STORE_BUSY_MS');
   return mod as never;
 }
 
 /** Manual store flags, tail flag, clock, frame and timer queues. */
 async function harness() {
-  const { createLoadWindow, MAX_TAIL_WAIT_MS } = await load();
+  const { createLoadWindow, MAX_TAIL_WAIT_MS, MAX_STORE_BUSY_MS } = await load();
   let storeBusy = false, tailBusy = false, t = 0;
+  const models = new Map<string, string | undefined>();
   const storeListeners = new Set<() => void>();
   let frames: Array<() => void> = [];
   let timers: Array<() => void> = [];
   const win = createLoadWindow({
     storeBusy: () => storeBusy,
+    modelStates: () => models.entries(),
     subscribeStore: (l) => { storeListeners.add(l); return () => storeListeners.delete(l); },
     tailBusy: () => tailBusy,
     now: () => t,
@@ -32,8 +35,13 @@ async function harness() {
   const store = (busy: boolean) => { storeBusy = busy; for (const l of [...storeListeners]) l(); };
   const frame = () => { const fns = frames; frames = []; for (const fn of fns) fn(); };
   const timer = () => { const fns = timers; timers = []; for (const fn of fns) fn(); };
+  /** Set (or with `undefined` as `remove`, delete) a model's load state and notify like a store publish. */
+  const model = (id: string, state: string | undefined, remove = false) => {
+    if (remove) models.delete(id); else models.set(id, state);
+    for (const l of [...storeListeners]) l();
+  };
   return {
-    win, changes, store, frame, timer, MAX_TAIL_WAIT_MS,
+    win, changes, store, frame, timer, model, MAX_TAIL_WAIT_MS, MAX_STORE_BUSY_MS,
     /** One painted frame, then the tasks queued behind it. */
     settle: () => { frame(); timer(); },
     setTail: (busy: boolean) => { tailBusy = busy; },
@@ -119,7 +127,7 @@ describe('load window', () => {
   it('reports an open window on the first read, before any consumer subscribed (a component mounted mid-load)', async () => {
     const { createLoadWindow } = await load();
     const win = createLoadWindow({
-      storeBusy: () => true, subscribeStore: () => () => {}, tailBusy: () => false,
+      storeBusy: () => true, modelStates: () => [], subscribeStore: () => () => {}, tailBusy: () => false,
       now: () => 0, requestFrame: () => {}, setTimer: () => {},
     });
     assert.equal(win.isOpen(), true);
@@ -136,5 +144,79 @@ describe('load window', () => {
     h.setTail(false); h.settle(); h.settle();
     assert.equal(h.win.isOpen(), false);
     assert.deepEqual(seen, [false], 'the late consumer is told when it closes');
+  });
+
+  it('re-checks the tail when it starts again between the settle check and the close (close/reopen race)', async () => {
+    const h = await harness();
+    h.store(true); h.store(false); // tail idle: the close is scheduled behind the next frame
+    h.setTail(true); // a late fragment arrives before that frame
+    h.settle();
+    assert.equal(h.win.isOpen(), true, 'the close must not land while the tail is busy again');
+    h.setTail(false);
+    h.settle(); h.settle();
+    assert.equal(h.win.isOpen(), false, 'closes once the tail is idle again');
+    assert.deepEqual(h.changes, [true, false]);
+  });
+
+  it('the tail limit still applies across a restarted tail', async () => {
+    const h = await harness();
+    h.store(true); h.store(false);
+    h.setTail(true);
+    h.settle();
+    h.advance(h.MAX_TAIL_WAIT_MS + 1);
+    h.settle(); h.settle();
+    assert.equal(h.win.isOpen(), false, 'a tail that never ends cannot keep re-arming the close');
+  });
+
+  it('closes after the store-busy limit even if loading never clears, then reopens only for a new load', async () => {
+    const h = await harness();
+    h.store(true);
+    h.advance(h.MAX_STORE_BUSY_MS - 1); h.timer();
+    assert.equal(h.win.isOpen(), true);
+    h.advance(2); h.timer();
+    h.settle();
+    assert.equal(h.win.isOpen(), false, 'a stuck loading flag must not hide the values for ever: consumers compute');
+    h.model('m', 'complete');
+    assert.equal(h.win.isOpen(), false, 'a publish while the flag is still stuck does not reopen it');
+    h.store(false);
+    h.store(true);
+    assert.equal(h.win.isOpen(), true, 'the next load opens it again');
+  });
+
+  it('holds only the loading model: a model settled when the window opened keeps its values', async () => {
+    const h = await harness();
+    h.model('A', 'complete');
+    h.store(true);
+    h.model('B', 'pending');
+    assert.equal(h.win.isOpen(), true);
+    assert.equal(h.win.isHeld('A'), false, 'A was complete when B started loading');
+    assert.equal(h.win.isHeld('B'), true);
+    h.model('B', 'complete');
+    assert.equal(h.win.isHeld('B'), true, 'B stays held until the window closes, even once its own state reads complete');
+    h.store(false); h.settle();
+    assert.equal(h.win.isHeld('B'), false, 'settled: B is computed');
+  });
+
+  it('holds a settled model again when it is seen reloading, and every model in single-store mode', async () => {
+    const h = await harness();
+    h.model('A', 'complete');
+    h.store(true);
+    const before = h.win.hold();
+    assert.equal(before.isHeld('A'), false);
+    h.model('A', 'pending'); // the same id reloaded
+    assert.equal(h.win.isHeld('A'), true);
+    assert.notEqual(h.win.hold(), before, 'a new snapshot when the held set changes (React re-renders)');
+    assert.equal(before.isHeld('A'), false, 'old snapshots are immutable');
+    assert.equal(h.win.isHeld('legacy'), true, 'no model entry: the single store is the one loading');
+  });
+
+  it('holds a model added already complete during the window (cache hit) until the window closes', async () => {
+    const h = await harness();
+    h.store(true);
+    h.model('C', 'complete');
+    assert.equal(h.win.isHeld('C'), true);
+    h.store(false); h.settle();
+    assert.equal(h.win.isHeld('C'), false);
+    assert.equal(h.win.hold().open, false);
   });
 });

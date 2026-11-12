@@ -21,8 +21,8 @@ import { StatusBarWorkspaceChip } from './StatusBarWorkspaceChip';
 import { ActivityTrayButton } from './activity/ActivityTray';
 import { FpsMemoryStats, TriangleCount } from './PerformanceStats';
 import { sharedEffectivePhysicalEntityIds } from '@/lib/physical-objects';
-import { createShapePredicate, modelLocalIdResolver, sharedModelMeshedIds, sharedShapedObjectCount } from '@/lib/object-count';
-import { useLoadWindowOpen } from '@/hooks/loadWindow';
+import { collectMeshedIds, countShapedObjects, createShapePredicate } from '@/lib/object-count';
+import { useLoadWindowHold } from '@/hooks/loadWindow';
 import { ownedAggregationRelationships } from '@/utils/entity-ownership';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { toGlobalIdFromModels } from '@/store/globalId';
@@ -36,13 +36,9 @@ import { effectiveStoreyMemberIds } from './EntityContextMenu.effective-storey';
 interface CountedModel {
   modelId: string;
   store: IfcDataStore;
-  meshedIds: ReadonlySet<number>;
+  meshedIds: Set<number>;
   geometryReady: boolean;
-  geometryResult: Parameters<typeof sharedModelMeshedIds>[1];
-  toLocalId: (id: number) => number | undefined;
 }
-
-const NO_COUNT_SOURCE = { models: new Map(), ifcDataStore: null, geometryResult: null } as const;
 
 export function StatusBar() {
   const { t } = useTranslation();
@@ -68,44 +64,47 @@ export function StatusBar() {
   // Held while geometry streams (#6411): every publish is a new `models` Map
   // and the count below walks every mesh, twice a second on a large load.
   // Only geometry is held; metadata or a model change passes at once.
-  // Whole-model counts wait for the load to settle (loadWindow.ts): computed in
-  // the load window they ran inside the drain and finalize that end the load.
-  const loadWindowOpen = useLoadWindowOpen();
-  const throttledCountSource = useStreamingThrottled(useMemo(
+  const countSource = useStreamingThrottled(useMemo(
     () => ({ models, ifcDataStore, geometryResult }),
     [models, ifcDataStore, geometryResult],
   ), (held, next) => held.ifcDataStore === next.ifcDataStore && sameModelsExceptGeometry(held.models, next.models));
-  const countSource = loadWindowOpen ? NO_COUNT_SOURCE : throttledCountSource;
-  const countedModels = useMemo<CountedModel[]>(() => {
+  // A model that is loading is left out until the load settles (loadWindow.ts):
+  // its walk ran inside the drain and finalize that end the load. A model that
+  // had settled before keeps its count while another model loads.
+  const loadHold = useLoadWindowHold();
+  const { countedModels, heldModels } = useMemo<{ countedModels: CountedModel[]; heldModels: number }>(() => {
     const { models, ifcDataStore, geometryResult } = countSource;
-    const resolvers = useViewerStore.getState();
     if (models.size > 0) {
       const out: CountedModel[] = [];
+      let held = 0;
+      const resolveInModel = useViewerStore.getState().resolveGlobalIdInModel;
       for (const model of models.values()) {
         if (!model.ifcDataStore) continue;
-        // The same walk and id mapping as the metadata panel (object-count.ts).
-        const toLocalId = modelLocalIdResolver(model.id, resolvers);
+        if (loadHold.isHeld(model.id)) { held++; continue; }
+        const toLocalId = (id: number): number => {
+          const ref = resolveInModel(model.id, id);
+          return ref?.expressId ?? id;
+        };
         out.push({
           modelId: model.id,
           store: model.ifcDataStore,
-          meshedIds: sharedModelMeshedIds(model.id, model.geometryResult, toLocalId),
+          meshedIds: collectMeshedIds(model.geometryResult, toLocalId),
           geometryReady: model.geometryResult != null,
-          geometryResult: model.geometryResult,
-          toLocalId,
         });
       }
-      return out;
+      return { countedModels: out, heldModels: held };
     }
-    const toLocalId = modelLocalIdResolver('legacy', resolvers);
-    return ifcDataStore ? [{
+    if (!ifcDataStore) return { countedModels: [], heldModels: 0 };
+    if (loadHold.isHeld('legacy')) return { countedModels: [], heldModels: 1 };
+    return { countedModels: [{
       modelId: 'legacy',
       store: ifcDataStore,
-      meshedIds: sharedModelMeshedIds('legacy', geometryResult, toLocalId),
+      meshedIds: collectMeshedIds(geometryResult),
       geometryReady: geometryResult != null,
-      geometryResult,
-      toLocalId,
-    }] : [];
-  }, [countSource]);
+    }], heldModels: 0 };
+  }, [countSource, loadHold]);
+  // Nothing settled to count yet: a dash, never a provisional 0.
+  const countPending = heldModels > 0 && countedModels.length === 0;
 
   // PERF: `state.models` is a NEW Map on every streaming batch commit
   // (`appendGeometryBatch` in dataSlice.ts rebuilds it to swap one model's
@@ -126,13 +125,14 @@ export function StatusBar() {
   }, [countedModels, models.size, mutationViews, mutationVersion]);
   const totalObjects = useMemo(() => {
     let total = 0;
-    for (const { modelId, store, geometryReady, geometryResult, toLocalId } of countedModels) {
+    for (const { modelId, store, meshedIds, geometryReady } of countedModels) {
       const physicalIds = physicalIdsByModel.get(modelId) ?? new Set<number>();
       const view = models.size > 0 ? mutationViews.get(modelId) ?? null
         : mutationViews.get(LEGACY_MUTATION_MODEL_ID) ?? mutationViews.get(LEGACY_MODEL_ID) ?? null;
-      total += sharedShapedObjectCount({
-        modelId, physicalIds, geometryResult, geometryReady, toLocalId,
+      total += countShapedObjects(physicalIds, {
         relationships: ownedAggregationRelationships(store, view),
+        meshedIds,
+        geometryReady,
       });
     }
     return total;
@@ -279,9 +279,9 @@ export function StatusBar() {
         <div className="flex items-center gap-1.5">
           <Boxes className="h-3.5 w-3.5" />
           {/* Reserved width and tabular figures, so the settled count does not move
-              the bar; a dash until the load settles, never a provisional 0. */}
-          <span className="inline-block min-w-[14ch] tabular-nums" data-testid="status-element-count" aria-busy={loadWindowOpen || undefined}>
-            {loadWindowOpen ? '—' : formatNumber(visibleElements)}
+              the bar; a dash until the load settles. */}
+          <span className="inline-block min-w-24 tabular-nums" data-testid="status-element-count" aria-busy={countPending || undefined}>
+            {countPending ? '—' : formatNumber(visibleElements)}
             {selectedStoreys.size > 0 && totalObjects !== visibleElements && (
               <span className="opacity-60"> / {formatNumber(totalObjects)}</span>
             )}

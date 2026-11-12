@@ -152,6 +152,10 @@ const SYNTHETIC = `ISO-10303-21;HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('g
 #212=IFCLOCALPLACEMENT($,#211);
 #213=IFCSTRUCTURALPOINTACTION(${id(213)},$,'A10',$,$,#212,$,#102,.GLOBAL_COORDS.,.F.);
 #214=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(214)},$,$,$,#68,#213);
+#220=IFCAXIS2PLACEMENT3D(#30,$,$);
+#217=IFCLOCALPLACEMENT($,#220);
+#218=IFCSTRUCTURALPOINTACTION(${id(218)},$,'A12',$,$,#217,$,#102,.GLOBAL_COORDS.,.F.);
+#219=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(219)},$,$,$,#68,#218);
 #215=IFCSTRUCTURALPOINTACTION(${id(215)},$,'A11',$,$,$,$,#102,.GLOBAL_COORDS.,.F.);
 #216=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(216)},$,$,$,#215,#58);
 #143=IFCSTRUCTURALANALYSISMODEL(${id(143)},$,'Broken',$,$,.LOADING_3D.,$,$,$,#24);
@@ -547,6 +551,8 @@ describe('structuralGlyphs on synthetic data, one kind each', () => {
     close(bySource(glyphs, 208)[0]?.position, [1, 1.5, 0.5]);
     // A10: origin (5, 0, 0) m is off M1 either way: nothing is drawn.
     expect(bySource(glyphs, 213)).toEqual([]);
+    // A12: own placement at the world origin (as an analysis model's often is): off M1 and no station.
+    expect(bySource(glyphs, 218)).toEqual([]);
   });
 
   it('reads an activity relation written with its two ends swapped (#9668)', async () => {

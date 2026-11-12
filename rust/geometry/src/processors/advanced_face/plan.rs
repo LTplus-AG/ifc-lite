@@ -170,7 +170,7 @@ pub(crate) fn lower_planar_regions(
             #[cfg(any(feature = "debug_geometry", feature = "observability"))]
             face_id: face.id,
             #[cfg(any(feature = "debug_geometry", feature = "observability"))]
-            surface_type: "IFCPLANE".to_string(),
+            surface_type: format!("{} (planar region)", face.ifc_type.as_str().to_uppercase()),
         })
         .collect())
 }

@@ -228,25 +228,32 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
   const resultGroups = new Set(extraction.resultGroups.map((g) => g.globalId));
   const pending: Pending[] = [];
   const extractor = new EntityExtractor(store.source);
-  /** An activity's loads in station order: `AppliedLoad`, then an IFC2X3 varying action's `SubsequentAppliedLoads`. */
-  const loadsOf = (activity: StructuralActivityInfo, applied: StructuralLoadInfo): StructuralLoadInfo[] => [
-    applied,
-    ...(activity.SubsequentAppliedLoads ?? []).map((id) => extractStructuralLoad(extractor, store, id)).filter((l): l is StructuralLoadInfo => !!l),
-  ];
+  /**
+   * An activity's loads in station order: `AppliedLoad`, then an IFC2X3
+   * varying action's `SubsequentAppliedLoads`. Null when one of those does
+   * not read: the others would land at the wrong stations.
+   */
+  const loadsOf = (activity: StructuralActivityInfo, applied: StructuralLoadInfo): StructuralLoadInfo[] | null => {
+    const subsequent = (activity.SubsequentAppliedLoads ?? []).map((id) => extractStructuralLoad(extractor, store, id));
+    return subsequent.every((l) => l) ? [applied, ...(subsequent as StructuralLoadInfo[])] : null;
+  };
 
   /**
    * A point activity's position on the curve or surface item it acts on,
    * when it has no vertex of its own: the origin of its own placement (not
-   * the item's), where that lies on the item; else that origin read in the
-   * item's edge frame (x along the edge from its start), where that lies on
-   * it. AxisVM writes the second: a station along the member as the origin's
-   * x. Anything else is not drawn.
+   * the item's), where that lies on the item; else, when the origin is a
+   * pure station (x > 0, y = z = 0), that x along the item's edge from its
+   * start, where that lies on it. AxisVM writes the second. Anything else is
+   * not drawn.
    */
   const placedOn = (activityId: number, item: ItemRef, host: ItemShape): ItemShape | null => {
     const origin = reader.placementOrigin(activityId);
     if (!origin || length(sub(origin, reader.placementOrigin(item.expressId) ?? [0, 0, 0])) < 1e-9) return null;
     if (onShape(host, origin)) return { kind: 'vertex', point: origin };
-    const frame = host.kind === 'edge' ? shapeFrame(host, edgeAxis(item.expressId, item.Axis)) : null;
+    // Only a pure station: x > 0 along the edge, nothing across it. A shared
+    // origin (0, 0, 0), e.g. the analysis model's, is never read as one.
+    const station = origin[0] > 0 && Math.abs(origin[1]) < 1e-9 && Math.abs(origin[2]) < 1e-9;
+    const frame = station && host.kind === 'edge' ? shapeFrame(host, edgeAxis(item.expressId, item.Axis)) : null;
     const along = frame && add(pointIn(frame, origin[0], origin[1]), scale(frame.z, origin[2]));
     return along && onShape(host, along) ? { kind: 'vertex', point: along } : null;
   };
@@ -282,7 +289,7 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
   for (const activity of extraction.activities) {
     if (activity.kind === 'Unknown' || !activity.appliedLoad) continue;
     const loads = loadsOf(activity, activity.appliedLoad);
-    if (!loads.some(drawable)) continue;
+    if (!loads?.some(drawable)) continue;
     const source = sourceOf(activity);
     /** Every glyph of this activity: its source, and the reaction flag on a reaction. */
     const base = { source, ...(activity.kind === 'Reaction' ? { reaction: true as const } : {}) };
@@ -341,7 +348,7 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
   }
 
   const largest = new Map<string, number>();
-  const classOf = (g: Pending) => `${g.kind}|${g.distribution}|${g.group}`;
+  const classOf = (g: Pending) => `${g.kind}|${g.distribution}|${g.group}|${g.reaction ? 'reaction' : 'action'}`;
   for (const g of pending) largest.set(classOf(g), Math.max(largest.get(classOf(g)) ?? 0, g.magnitude));
   for (const p of pending) {
     const { group: _group, ...arrow } = p;

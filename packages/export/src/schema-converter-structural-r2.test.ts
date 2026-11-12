@@ -24,6 +24,12 @@ describe('structural schema conformance #9668', () => {
     expect(there).toBe('#23=IFCBOUNDARYNODECONDITION($,-1.,0.,$,$,$,$);');
     expect(convertStepLine(there!, 'IFC2X3', 'IFC4')).toContain('IFCBOOLEAN(.T.)');
   });
+  it('honors withheld load references before structural remapping', () => {
+    const source = "#50=IFCSTRUCTURALLINEARACTION('id',#1,$,$,$,$,$,#22,.GLOBAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);";
+    const out = convertStepLine(source, 'IFC4', 'IFC2X3', undefined, undefined, new Set([22]));
+    expect(out).not.toContain('#22');
+    expect(out).toContain('IFCPROXY');
+  });
   for (const type of ['IFCSTRUCTURALLINEARACTION', 'IFCSTRUCTURALPLANARACTION']) {
     it(`${type} keeps projection out of CausedBy and supplies CONST`, () => {
       const source = `#50=${type}('id',#1,$,$,$,$,$,#22,.GLOBAL_COORDS.,.F.,$,.TRUE_LENGTH.);`;

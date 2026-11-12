@@ -1,10 +1,10 @@
 diff --git a/apps/viewer/src/components/viewer/assistant/StructuralReviewFlow.tsx b/apps/viewer/src/components/viewer/assistant/StructuralReviewFlow.tsx
 --- a/apps/viewer/src/components/viewer/assistant/StructuralReviewFlow.tsx
 +++ b/apps/viewer/src/components/viewer/assistant/StructuralReviewFlow.tsx
-@@ -95,7 +95,7 @@ export function StructuralReviewControls<R extends { validate(): void }>({ flow,
-     {!receipt && <Button size="sm" variant="outline" disabled={!build || writes === 'loading'} onClick={() => writes === 'ready' ? build && flow.prepare(build) : loadWrites()}>{prepareLabel}</Button>}
+@@ -101,7 +101,7 @@ export function StructuralReviewControls<R extends { validate(): void }>({ flow,
      {review && <>
        {details}
+       {acknowledgeEach && acknowledge}
 -      {!receipt && <Button size="sm" disabled={stale || !canApply} onClick={() => flow.apply(commit)}>{t('modelChanges.apply', { count: applyCount })}</Button>}
 +      {!receipt && <Button size="sm" disabled={stale || !canApply || !acknowledged} onClick={() => flow.apply(commit)}>{t('modelChanges.apply', { count: applyCount })}</Button>}
      </>}

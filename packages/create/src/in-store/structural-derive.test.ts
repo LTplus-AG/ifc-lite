@@ -207,12 +207,18 @@ describe('derive structural analysis model: session idempotence (#9668)', () => 
   it('refuses a plan with a member that starts and ends on one node, writing nothing', async () => {
     const store = await parse(model('IFC4'));
     const editor = session(store);
-    const bad = structuredClone(planStructuralDerivation(readStructuralDerivationFacts(store, editor)));
-    // A hand-edited plan: the member's end names its start node; its end point is left as it was.
-    bad.curveMembers[0].endNode = bad.curveMembers[0].startNode;
+    const plan = planStructuralDerivation(readStructuralDerivationFacts(store, editor));
+    // Hand-edited plans: the member's end names its start node, with its end point left as it was, or moved
+    // onto the start too (equal end points).
+    const moved = structuredClone(plan);
+    moved.curveMembers[0].endNode = moved.curveMembers[0].startNode;
+    const equal = structuredClone(moved);
+    equal.curveMembers[0].end = [...equal.curveMembers[0].start];
     const before = editor.getNewEntities().length;
-    expect(() => applyStructuralDerivation(editor, store, bad)).toThrow(/curve member of element #\d+ starts and ends on one node/);
-    expect(editor.getNewEntities().length).toBe(before);
+    for (const bad of [moved, equal]) {
+      expect(() => applyStructuralDerivation(editor, store, bad)).toThrow(/curve member of element #\d+ starts and ends on one node/);
+      expect(editor.getNewEntities().length).toBe(before);
+    }
   });
 
   it('writes nothing when a write fails part-way through', async () => {

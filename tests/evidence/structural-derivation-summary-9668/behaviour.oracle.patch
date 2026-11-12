@@ -1,7 +1,7 @@
 diff --git a/apps/viewer/src/components/viewer/assistant/StructuralDerivationReview.tsx b/apps/viewer/src/components/viewer/assistant/StructuralDerivationReview.tsx
 --- a/apps/viewer/src/components/viewer/assistant/StructuralDerivationReview.tsx
 +++ b/apps/viewer/src/components/viewer/assistant/StructuralDerivationReview.tsx
-@@ -55,7 +55,7 @@ export function StructuralDerivationReview({ origin }: { origin: string }) {
+@@ -70,7 +70,7 @@ export function StructuralDerivationReview({ origin }: { origin: string }) {
        build={modelId === null ? undefined : () => prepareStructuralDerivationReview(useViewerStore, modelId)}
        applyCount={members} canApply={(review?.created ?? 0) > 0}
        commit={(current) => commitStructuralDerivation(useViewerStore, current, origin)}

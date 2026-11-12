@@ -34,7 +34,7 @@ import { HudChip } from '@/components/viewport-ui/hud/HudChip';
 import { RegisteredPaletteOption } from '@/components/viewer/command-palette-option';
 import { resolveEnglish } from '@/i18n/registry.js';
 import { cleanup, render } from '@/test/render.js';
-import { closeContrastBrowser, warmContrastBrowser, withThemedPage, type Theme } from './render-harness.js';
+import { CONTRAST_BROWSER_SKIP, closeContrastBrowser, warmContrastBrowser, withThemedPage, type Theme } from './render-harness.js';
 import { contrastRatio } from './wcag.js';
 
 const THEMES: readonly Theme[] = ['light', 'dark', 'colorful'];
@@ -161,7 +161,7 @@ const SELECT_REFS = { refPlain: '#ref-plain', refActive: '#ref-active', refActiv
 
 describe('state language: primary, pressed, active and filtered states (Refs 8802, R4)', () => {
   for (const theme of THEMES) {
-    it(`a primary button is a solid primary fill whose label clears AA in ${theme}`, async () => {
+    it(`a primary button is a solid primary fill whose label clears AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       const ui = render(<div className="bg-background p-2"><Button data-test="primary">New topic</Button></div>);
       const p = await paint(theme, ui.innerHTML, { ...SELECT_REFS, button: '[data-test="primary"]' });
       assert.equal(p.button.background, p.refPrimary.background, `primary button in ${theme} paints bg-primary`);
@@ -175,7 +175,7 @@ describe('state language: primary, pressed, active and filtered states (Refs 880
       }
     });
 
-    it(`a pressed toggle and a checked radio wear the active state on a raised track in ${theme}`, async () => {
+    it(`a pressed toggle and a checked radio wear the active state on a raised track in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       const ui = render(
         <div className="bg-background p-2">
           <div className="flex bg-muted p-0.5">
@@ -199,7 +199,7 @@ describe('state language: primary, pressed, active and filtered states (Refs 880
       assertClears('resting toggle label', ratio(p.resting.ink, p.resting.surface), AA_TEXT, theme);
     });
 
-    it(`the selected segment wears the active state in ${theme}`, async () => {
+    it(`the selected segment wears the active state in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       const ui = render(
         <div className="bg-background p-2">
           <SegmentedControl label="Units" value="m" onValueChange={() => {}}
@@ -216,7 +216,7 @@ describe('state language: primary, pressed, active and filtered states (Refs 880
       assertClears('selected segment label', ratio(p.on.ink, p.on.surface), AA_TEXT, theme);
     });
 
-    it(`an active filter chip reads as on, not as inert text, in ${theme}`, async () => {
+    it(`an active filter chip reads as on, not as inert text, in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       const ui = render(
         <div className="bg-background">
           <div className="bg-muted/50 px-2 py-1.5"><FilterChip onClear={() => {}} clearLabel="Clear type filter">IfcWall</FilterChip></div>
@@ -228,7 +228,7 @@ describe('state language: primary, pressed, active and filtered states (Refs 880
       assertClears('filter chip clear glyph', ratio(p.clear.ink, p.clear.surface), AA_TEXT, theme);
     });
 
-    it(`an active HUD chip (isolation) keeps its surface and wears the active state in ${theme}`, async () => {
+    it(`an active HUD chip (isolation) keeps its surface and wears the active state in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       const ui = render(
         <div className="bg-canvas p-4">
           <HudChip active dismiss={{ onClick: () => {}, 'aria-label': 'Clear', icon: <span>x</span> }}>Isolated elements · 4</HudChip>
@@ -248,7 +248,7 @@ describe('state language: primary, pressed, active and filtered states (Refs 880
       assertClears('active HUD chip label', ratio(p.label.ink, p.label.surface), AA_TEXT, theme);
     });
 
-    it(`the focused palette row is tinted with an active bar, and the match is highlighted, in ${theme}`, async () => {
+    it(`the focused palette row is tinted with an active bar, and the match is highlighted, in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       const label = resolveEnglish('commandPalette.view.frame.label');
       const query = label.slice(0, 3);
       const placement = { index: 0, query, onActivate: () => {}, onHover: () => {} };

@@ -9,7 +9,7 @@ import GlobePlacementControl from '@/components/viewer/properties/GlobePlacement
 import { LocationGeoreferenceNotices } from '@/components/viewer/properties/location-georeference-notices.js';
 import { useViewerStore } from '@/store';
 import { cleanup, render } from '@/test/render.js';
-import { closeContrastBrowser, withThemedPage, measureTextContrastOnSurface, type Theme } from './render-harness.js';
+import { CONTRAST_BROWSER_SKIP, closeContrastBrowser, withThemedPage, measureTextContrastOnSurface, type Theme } from './render-harness.js';
 import { WCAG_AA_NORMAL_TEXT } from './wcag.js';
 
 const initialMode = useViewerStore.getState().cesiumGlobePlacement;
@@ -51,7 +51,7 @@ describe('properties status roles (Refs #8802)', () => {
       }
     });
     for (const theme of ['light', 'dark', 'colorful'] as Theme[]) {
-      it(`${state.name} paints the warning role and clears AA in ${theme}`, async () => {
+      it(`${state.name} paints the warning role and clears AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
         const ui = state.mount();
         const notice = ui.querySelector(state.selector);
         assert.ok(notice);

@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { DocumentPreview } from '../../components/viewer/document/DocumentPreview';
 import { DOCUMENT_VERSION } from '../../lib/document/types';
 import { CoordRow } from '../../components/viewer/properties/CoordinateDisplay';
-import { closeContrastBrowser, measureTextContrastOnSurface, measureTextHoverColors, type Theme } from './render-harness';
+import { CONTRAST_BROWSER_SKIP, closeContrastBrowser, measureTextContrastOnSurface, measureTextHoverColors, type Theme } from './render-harness';
 import { extractClassNameAfter } from './extract-classname';
 import { WCAG_AA_NORMAL_TEXT } from './wcag';
 
@@ -63,12 +63,12 @@ after(async () => {
 
 describe('semantic text surfaces meet WCAG AA (#4792)', () => {
   for (const theme of THEMES) {
-    it(`primary foreground clears AA on primary in ${theme}`, async () => {
+    it(`primary foreground clears AA on primary in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       const ratio = await measureTextContrastOnSurface(theme, 'bg-primary', 'text-primary-foreground');
       assert.ok(ratio >= WCAG_AA_NORMAL_TEXT, `primary contrast was ${ratio.toFixed(2)}:1 in ${theme}`);
     });
 
-    it(`muted foreground clears AA on muted in ${theme}`, async () => {
+    it(`muted foreground clears AA on muted in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       const ratio = await measureTextContrastOnSurface(theme, 'bg-muted', 'text-muted-foreground', 'bg-background');
       assert.ok(ratio >= WCAG_AA_NORMAL_TEXT, `muted contrast was ${ratio.toFixed(2)}:1 in ${theme}`);
     });
@@ -79,7 +79,7 @@ describe('semantic text surfaces meet WCAG AA (#4792)', () => {
       'text-neutral-500',
       'document-preview-muted',
     ]) {
-      it(`document preview ${textToken} clears AA on fixed paper in ${theme}`, async () => {
+      it(`document preview ${textToken} clears AA on fixed paper in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
         const markup = renderDocumentPreview();
         const documentPaperClass = classContaining(markup, 'document-preview-paper');
         const textClass = textToken === 'document-preview-muted'
@@ -90,7 +90,7 @@ describe('semantic text surfaces meet WCAG AA (#4792)', () => {
       });
     }
 
-    it(`search empty-state text clears AA on its real popover surface in ${theme}`, async () => {
+    it(`search empty-state text clears AA on its real popover surface in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       const searchEmptyClass = extractClassNameAfter(SEARCHABLE_SELECT, '{filtered.length === 0 && (\n              <div ');
       const ratio = await measureTextContrastOnSurface(
         theme,
@@ -101,7 +101,7 @@ describe('semantic text surfaces meet WCAG AA (#4792)', () => {
     });
 
     for (const surface of ['bg-white', 'bg-zinc-50', 'bg-zinc-100']) {
-      it(`enabled zinc-400 text clears AA on ${surface} in ${theme}`, async () => {
+      it(`enabled zinc-400 text clears AA on ${surface} in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
         const ratio = await measureTextContrastOnSurface(theme, surface, 'text-zinc-400', 'bg-background');
         assert.ok(ratio >= WCAG_AA_NORMAL_TEXT, `zinc-400 on ${surface} was ${ratio.toFixed(2)}:1 in ${theme}`);
       });
@@ -116,7 +116,7 @@ describe('semantic text surfaces meet WCAG AA (#4792)', () => {
       ['coordinate label', 'bg-background', () => classOfElementWithText(renderSecondaryCoordinate(), COORDINATE_LABEL), undefined],
       ['coordinate value', 'bg-background', () => classContaining(renderSecondaryCoordinate(), 'tabular-nums'), undefined],
     ] as const) {
-      it(`${name} clears AA on its surface in ${theme}`, async () => {
+      it(`${name} clears AA on its surface in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
         const textClass = resolveTextClass();
         const ratio = await measureTextContrastOnSurface(theme, surface, textClass, fallback);
         assert.ok(ratio >= WCAG_AA_NORMAL_TEXT, `${name} contrast was ${ratio.toFixed(2)}:1 in ${theme}`);
@@ -124,7 +124,7 @@ describe('semantic text surfaces meet WCAG AA (#4792)', () => {
     }
   }
 
-  it('keeps ModelTagEditor hover feedback above the light zinc-400 correction', async () => {
+  it('keeps ModelTagEditor hover feedback above the light zinc-400 correction', { skip: CONTRAST_BROWSER_SKIP }, async () => {
     const deleteButtonClass = extractClassNameAfter(
       MODEL_TAG_EDITOR,
       'onClick={() => deleteModelTag(tag.id)}\n                  ',

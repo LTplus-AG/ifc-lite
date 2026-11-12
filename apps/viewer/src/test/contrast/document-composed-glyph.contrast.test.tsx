@@ -13,7 +13,7 @@ import { DOCUMENT_VERSION, type DocumentSpec } from '@/lib/document/types';
 import { browserImageSize, generateDocumentPdf } from '@/lib/document/generate-document-pdf';
 import { browserReportSeams } from '@/lib/export/report/generate-report-pdf';
 import { render, cleanup, waitFor } from '@/test/render';
-import { closeContrastBrowser, warmContrastBrowser, withThemedPage } from './render-harness';
+import { CONTRAST_BROWSER_SKIP, closeContrastBrowser, warmContrastBrowser, withThemedPage } from './render-harness';
 import { assertRenderedTextClears, snapshotRenderedDom, THEMES } from './rendered-text-contrast';
 import { WCAG_AA_NORMAL_TEXT } from './wcag';
 
@@ -57,11 +57,11 @@ const defaultGlyphs = [missingTopicText, 'Default paper heading', 'Default capti
   'NOT CHECKED', /Model: Recorded building.*Recorded:/, /^Generated /, 'Page 1 / 1', 'Recorded comparison unavailable'];
 
 for (const theme of THEMES) {
-  it(`completed document metadata, caption, chart refusal and frame clear AA in ${theme} (#6610)`, async () => {
+  it(`completed document metadata, caption, chart refusal and frame clear AA in ${theme} (#6610)`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
     await assertRenderedTextClears(theme, await completed(), defaultGlyphs, WCAG_AA_NORMAL_TEXT);
   });
 
-  it(`authored pale colors remain literal while existing dark body/comment ink stays intact in ${theme} (#6610)`, async () => {
+  it(`authored pale colors remain literal while existing dark body/comment ink stays intact in ${theme} (#6610)`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
     const html = await completed({ ...sampleDocument, pageHeading: { text: 'Authored pale heading', textColor: '#969696' },
       blocks: [...sampleDocument.blocks, { kind: 'text', id: 'dark-caption', style: 'caption',
         text: 'Caption on authored black', backgroundColor: '#000000' }] });
@@ -80,7 +80,7 @@ for (const theme of THEMES) {
     });
   });
 
-  it(`heading text/font without authored color uses accessible default paint in ${theme} (#6610)`, async () => {
+  it(`heading text/font without authored color uses accessible default paint in ${theme} (#6610)`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
     const html = await completed({ ...sampleDocument, pageHeading: { text: 'Partial authored heading', font: 'times', fontSize: 16 } });
     await assertRenderedTextClears(theme, html, ['Partial authored heading'], WCAG_AA_NORMAL_TEXT);
   });
@@ -117,7 +117,7 @@ async function printed(spec: DocumentSpec) {
   } finally { await task.destroy(); }
 }
 
-it('preview accessibility paint preserves actual PDF gray ink, standard-font size and glyph geometry (#6610)', async () => {
+it('preview accessibility paint preserves actual PDF gray ink, standard-font size and glyph geometry (#6610)', { skip: CONTRAST_BROWSER_SKIP }, async () => {
   const html = await completed();
   const actual = await printed(sampleDocument);
   // PDF.js exposes the actual fill operators, independently of the preview.

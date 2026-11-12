@@ -61,6 +61,18 @@ pnpm test --filter=@ifc-lite/parser --concurrency=2 -- parse-model.test --maxWor
 pnpm test --filter=@ifc-lite/parser -- --watch
 ```
 
+### Browser-rendered viewer tests
+
+The viewer's contrast and layout tests (`apps/viewer/src/test/contrast/render-harness.ts` and the `*.layout.test.tsx` files that use it) render the real CSS in a headless Chromium. The harness picks the browser in this order:
+
+1. `IFCLITE_TEST_CHROME_EXECUTABLE`, used as given (a wrong path fails; it never falls back).
+2. System Google Chrome (`channel: 'chrome'`), which is what CI uses.
+3. Playwright's bundled Chromium, if `pnpm exec playwright install chromium` already installed it. The harness never downloads a browser.
+
+With none of them, a local run reports those tests as skipped, with the reason on each one, and the summary counts them under `skipped`, not `pass`. In CI (`CI` set, or GitHub Actions) they are never skipped: the launch fails as it always has.
+
+A new test that renders through the harness passes `{ skip: CONTRAST_BROWSER_SKIP }` on each `it`, not on its `describe`: node does not count the tests of a skipped suite, so its summary would show nothing skipped.
+
 ### Packed consumer workflows
 
 Build the public packages, then exercise the artifacts a fresh consumer installs:

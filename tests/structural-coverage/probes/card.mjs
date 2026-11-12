@@ -105,7 +105,8 @@ function cardFor(ctx, file, model, expressId) {
 function shown(value, step, types) {
   if (value && typeof value === 'object' && !Array.isArray(value)) {
     if ('ref' in value) return normalize(value, step, types);
-    if ('refs' in value) return value.refs.map((ref) => normalize({ ref }, step, types));
+    // A dropped configuration slot shows why it is empty, never the file's reference.
+    if ('refs' in value) return value.refs.map((ref) => (typeof ref === 'number' ? normalize({ ref }, step, types) : null));
     if ('globalId' in value) return value.globalId;
     if ('globalIds' in value) return value.globalIds;
   }

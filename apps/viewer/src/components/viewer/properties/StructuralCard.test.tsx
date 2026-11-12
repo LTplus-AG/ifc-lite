@@ -304,6 +304,50 @@ describe('StructuralCard for every structural record (#9668)', () => {
     assert.match(show(1), /PredefinedTypeLOADING_3D.*LoadedBySnow case/);
   });
 
+  it('keeps a small value\'s digits and applies the user\'s display unit (#9668)', () => {
+    const thin: StructuralExtraction = { ...data, members: [{ expressId: 10, globalId: 'plate', type: 'IfcStructuralSurfaceMember',
+      thickness: 0.0125, connectionGlobalIds: [], activityGlobalIds: [], analysisModelGlobalIds: [] }] };
+    const plate = render(<StructuralCard structuralData={thin} selectedExpressId={10} schemaVersion="IFC4" projectUnits={ProjectUnits.empty()} />);
+    assert.match(plate, /Thickness0\.0125 m/);
+    act(() => root!.unmount());
+    host?.remove();
+    const kn = render(<StructuralCard structuralData={data} selectedExpressId={40} schemaVersion="IFC4" projectUnits={ProjectUnits.empty()}
+      unitDisplayOverrides={{ FORCEUNIT: 'kn' }} />);
+    assert.match(kn, /ForceZ-1 kN/);
+  });
+
+  it('keeps each configuration slot in its place and says why one is empty (#9668)', () => {
+    const configured: StructuralExtraction = { ...data, activities: [{ ...data.activities[0], appliedLoad: {
+      expressId: 60, type: 'IfcStructuralLoadConfiguration', components: {}, configuration: {
+        entries: [{ dropped: 'unresolved', location: [0] }, { value: { expressId: 61, type: 'IfcStructuralLoadLinearForce', components: { LinearForceZ: -2 } }, location: [4] }],
+        locations: [[0], [4]], truncated: false } } }] };
+    const text = render(<StructuralCard structuralData={configured} selectedExpressId={40} schemaVersion="IFC4" projectUnits={ProjectUnits.empty()} />);
+    assert.match(text, /Values\[dropped: unresolved\], #61Locations\(0\), \(4\) m/);
+    assert.ok(text.includes('Values[1] · IfcStructuralLoadLinearForce #61'), text);
+  });
+
+  it('renders a condition both ends of a member share without a duplicate React key (#9668)', () => {
+    const hinge = { expressId: 21, type: 'IfcBoundaryNodeCondition', components: { TranslationalStiffnessX: true } };
+    const shared: StructuralExtraction = { ...data, members: [{ expressId: 10, globalId: 'beam', type: 'IfcStructuralCurveMember',
+      IfcRelConnectsStructuralMember: [{ expressId: 30, RelatedStructuralConnection: 20, AppliedCondition: hinge },
+        { expressId: 31, RelatedStructuralConnection: 20, AppliedCondition: hinge }],
+      connectionGlobalIds: [], activityGlobalIds: [], analysisModelGlobalIds: [] }] };
+    const errors: unknown[][] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => { errors.push(args); };
+    try {
+      const text = render(<StructuralCard structuralData={shared} selectedExpressId={10} schemaVersion="IFC4" projectUnits={ProjectUnits.empty()} />);
+      assert.equal(text.split('AppliedCondition · IfcBoundaryNodeCondition #21').length - 1, 2, text);
+    } finally {
+      console.error = original;
+    }
+    assert.ok(!errors.some((args) => String(args[0]).includes('same key')), JSON.stringify(errors));
+  });
+
+  it('omits an unset aggregate instead of showing an empty row (#9668)', () => {
+    assert.doesNotMatch(show(1), /HasResults/);
+  });
+
   it('prints no unit when the model\'s units cannot be read', () => {
     const text = render(<StructuralCard structuralData={data} selectedExpressId={40} schemaVersion="IFC4" projectUnits={null} />);
     assert.match(text, /ForceZ-1,000(?! N)/);

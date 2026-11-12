@@ -28,7 +28,7 @@ import { structuralRecord } from './selectedStructuralMember';
 export type StructuralCardValue =
   | string | number | boolean
   | readonly number[] | readonly (readonly number[])[]
-  | { readonly ref: number } | { readonly refs: readonly number[] }
+  | { readonly ref: number } | { readonly refs: readonly (number | { readonly dropped: string })[] }
   | { readonly globalId: string } | { readonly globalIds: readonly string[] };
 
 export interface StructuralCardRow {
@@ -107,8 +107,9 @@ function fieldsOf(info: HeldRecord): { fields: Record<string, unknown>; held: [s
   const fields: Record<string, unknown> = { ...rest, ...components };
   const held: [string, HeldRecord][] = [];
   if (configuration) {
+    // One Values item per slot, a dropped one included, so Values[i] still pairs with Locations[i].
     const values = configuration.entries.flatMap((entry, i) => (entry.value ? [[i, entry.value] as const] : []));
-    fields.Values = { refs: values.map(([, value]) => value.expressId) };
+    fields.Values = { refs: configuration.entries.map((entry) => entry.value?.expressId ?? { dropped: entry.dropped ?? 'unreadable' }) };
     if (configuration.locations) fields.Locations = configuration.entries.map((entry) => entry.location ?? []);
     for (const [i, value] of values) held.push([`Values[${i}]`, value as unknown as HeldRecord]);
   }
@@ -153,7 +154,8 @@ export function structuralCardSections(data: StructuralExtraction, selection: { 
     const position = (name: string) => attributes?.findIndex((a) => a.name === name) ?? -1;
     const rows: StructuralCardRow[] = [];
     for (const [key, raw] of Object.entries(fields)) {
-      if (raw === undefined || raw === null || NOT_ATTRIBUTES.has(key)) continue;
+      // An empty list is an unset optional aggregate (`$`), not a value.
+      if (raw === undefined || raw === null || NOT_ATTRIBUTES.has(key) || (Array.isArray(raw) && raw.length === 0)) continue;
       if (Array.isArray(raw) && raw.length > 0 && raw.every(isRecord)) continue;
       const attribute = attributeOf(key);
       const at = position(attribute);

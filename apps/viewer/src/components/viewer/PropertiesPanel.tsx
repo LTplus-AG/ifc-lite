@@ -1505,7 +1505,7 @@ export function PropertiesPanel() {
                         selectedGlobalId={selectedEntityGlobalId}
                         describeEntity={(expressId) => overlayAwareQuery.entityData({ modelId: selectedEntity.modelId, expressId })}
                         onSelectEntity={handleSelectRelatedEntity}
-                        schemaVersion={activeDataStore?.schemaVersion} projectUnits={quantityUnitContext.value}
+                        schemaVersion={activeDataStore?.schemaVersion} projectUnits={quantityUnitContext.value} unitDisplayOverrides={unitDisplayOverrides}
                       />
                     </Suspense>
                   </ChunkErrorBoundary>

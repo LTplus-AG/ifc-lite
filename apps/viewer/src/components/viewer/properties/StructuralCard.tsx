@@ -25,7 +25,7 @@ import { CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsi
 import { Boxes, Anchor, ArrowDownToLine, TriangleAlert, ChevronDown } from 'lucide-react';
 import { formatLocaleNumber, localeCount, useTranslation, type TranslationKey } from '@/i18n';
 import { formatLocaleList, formatLocaleValueList } from '@/i18n/intlFormat';
-import { formatMeasureUnit } from '@/lib/units/display';
+import { resolveMeasureDisplay, type UnitDisplay } from '@/lib/units/display';
 import type {
   ProjectUnits,
   StructuralExtraction,
@@ -55,12 +55,15 @@ interface StructuralCardProps {
   schemaVersion?: string;
   /** The model's declared units; null when they cannot be read, and then no unit is printed. */
   projectUnits?: ProjectUnits | null;
+  /** The user's display unit per unit type, as the property and quantity cards apply it. */
+  unitDisplayOverrides?: Record<string, string>;
 }
 
 export function StructuralCard({
   structuralData,
   selectedExpressId,
   selectedGlobalId, sourceUnavailable = false, describeEntity, onSelectEntity, schemaVersion, projectUnits = null,
+  unitDisplayOverrides = NO_OVERRIDES,
 }: StructuralCardProps) {
   const { t, locale } = useTranslation();
   const subject = useMemo(
@@ -91,7 +94,10 @@ export function StructuralCard({
   const relatedUnavailable = related.connections.unavailable || related.activities.unavailable || related.models.unavailable;
   const format = (row: StructuralCardRow) => formatCardValue(row, {
     locale,
-    unit: (measure) => (projectUnits ? formatMeasureUnit(measure, projectUnits) : null),
+    measure: (n, measure) => (projectUnits
+      ? resolveMeasureDisplay(n, measure, projectUnits, unitDisplayOverrides)
+      : { unit: null, converted: null }),
+    dropped: (reason) => t('properties.structural.configurationDropped', { name: reason }),
     entity: (id) => describeEntity?.(id) ?? null,
     group: (globalId) => groupNames.get(globalId) ?? globalId,
   });
@@ -138,8 +144,9 @@ export function StructuralCard({
                   </>
                 )}
               </SectionRows>
-              {sections.slice(1).map((section) => (
-                <div key={`${section.via}:${section.expressId}:${section.depth}`} className="mt-1.5" style={{ marginLeft: `${(section.depth - 1) * 0.5}rem` }}>
+              {sections.slice(1).map((section, i) => (
+                // One resource can be held by two parents (both ends of a member share a condition): key by position.
+                <div key={`${i}:${section.via}:${section.expressId}`} className="mt-1.5" style={{ marginLeft: `${(section.depth - 1) * 0.5}rem` }}>
                   <div className={INSPECTOR_SUBHEADING}>
                     <span className="font-mono">{section.via}</span>
                     <span> · {section.type}</span>
@@ -305,21 +312,32 @@ function SectionRows({ section, format, children }: {
   );
 }
 
+const NO_OVERRIDES: Record<string, string> = {};
+/** Enough digits for a structural value the file states (0.0125 m, 1,000,000,000 N/m) without float noise. */
+const CARD_NUMBER: Intl.NumberFormatOptions = { maximumFractionDigits: 3, maximumSignificantDigits: 6, roundingPriority: 'morePrecision' } as Intl.NumberFormatOptions;
+
 interface CardValueFormat {
   locale: string;
-  /** Unit symbol for an EXPRESS measure type, or null when none is known. */
-  unit: (measure: string) => string | null;
+  /** A number in its measure: the unit to print and the value converted to the user's display unit, if any. */
+  measure: (value: number, measure: string) => UnitDisplay;
   /** Name and IFC class of a model-local entity. */
   entity: (expressId: number) => { name?: string; type: string } | null;
   /** Display name of a load or result group. */
   group: (globalId: string) => string;
+  /** Why a load configuration slot carries no load. */
+  dropped: (reason: string) => string;
 }
 
 /** A row value as text: numbers in the locale with the measure's unit, references by id and class. */
 function formatCardValue(row: StructuralCardRow, f: CardValueFormat): string {
   const { value } = row;
-  const number = (n: number) => formatLocaleNumber(f.locale, n);
-  const unit = row.measure ? f.unit(row.measure) : null;
+  let unit: string | null = null;
+  const number = (n: number) => {
+    if (!row.measure) return formatLocaleNumber(f.locale, n, CARD_NUMBER);
+    const shown = f.measure(n, row.measure);
+    unit = shown.unit;
+    return formatLocaleNumber(f.locale, shown.converted ?? n, CARD_NUMBER);
+  };
   const withUnit = (text: string) => (unit ? `${text} ${unit}` : text);
   const reference = (id: number) => {
     const target = f.entity(id);
@@ -329,7 +347,9 @@ function formatCardValue(row: StructuralCardRow, f: CardValueFormat): string {
   if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
   if (typeof value === 'string') return value;
   if ('ref' in value) return reference(value.ref);
-  if ('refs' in value) return formatLocaleList(f.locale, value.refs.map(reference));
+  if ('refs' in value) {
+    return formatLocaleValueList(f.locale, value.refs.map((ref) => (typeof ref === 'number' ? reference(ref) : f.dropped(ref.dropped))));
+  }
   if ('globalId' in value) return f.group(value.globalId);
   if ('globalIds' in value) return formatLocaleList(f.locale, value.globalIds.map(f.group));
   const items = (value as readonly (number | readonly number[])[]).map((item) => (typeof item === 'number'

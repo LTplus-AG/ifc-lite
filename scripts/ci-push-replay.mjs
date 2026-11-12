@@ -235,7 +235,7 @@ function readInputs(repo, pushSha, pushTree, parentSha, before) {
     // -z: a non-ASCII path would come back quoted, and `git show` of the quoted name fails.
     // --full-tree: the pathspec is from the repo root whatever the cwd, like `git show`.
     const actionFiles = gitOrNull('ls-tree', '-z', '-r', '--full-tree', '--name-only', pushSha, '--', '.github/actions/')?.split('\0').filter(Boolean) ?? null;
-    const keyed = workflowsKeyingCaches({ root: TEST_WORKFLOW_PATH, actionFiles, symlinks: symlinksAt(pushSha), readText: (path) => gitOrNull('cat-file', 'blob', `${pushSha}:${path}`) });
+    const keyed = workflowsKeyingCaches({ root: TEST_WORKFLOW_PATH, actionFiles, symlinks: actionFiles ? symlinksAt(pushSha) : null, readText: (path) => gitOrNull('cat-file', 'blob', `${pushSha}:${path}`) });
     if (keyed.files) workflowFiles = keyed.files;
     else console.warn(`[push-replay] cannot tell which workflow files key Test's caches at ${pushSha.slice(0, 9)} (${keyed.unknown}); every workflow file blocks`);
   }

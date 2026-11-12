@@ -232,6 +232,8 @@ test('workflowsKeyingCaches is unknown when a hashFiles might reach a workflow f
     ['test', 'cache-dependency-path: *x.y'],
     ['test', 'x: &deps .github/workflows/x.yml\ncache-dependency-path: *deps'],
     ['test', '- uses: *setup'],
+    ['test', 'env:\n  K: &k uses\njobs:\n  a:\n    *k : ./.github/workflows/r.yml'],
+    ['test', '# top\rjobs:\r  a:\r    uses: ./ci/setup\r'],
     ['test', 'jobs: { a: { uses: ./ci/a }, b: { uses: x/y@v1 } }'],
     ['test', 'steps: [uses: ./tools/act]'],
     ['test', '- {with: {cache-dependency-path: .github/workflows/*.yml}, w: {cache-dependency-path: a}}'],
@@ -319,8 +321,13 @@ test('workflowsKeyingCaches is unknown when a hashFiles might reach a workflow f
     "          printf '\\x1b[1m' && echo \"a ? b\"",
     '    # keyed by hashFiles(manifest) so...',
     "    if: hashFiles('dist/**', 'test-results/**/x-*.png', '*/*/*.png') != ''",
+    '    # why ? because \\',
+    '    args:',
+    '      - |',
+    "        printf '\\x41 ? uses: x' \\",
+    '        done',
   ].join('\n');
-  assert.deepEqual(keyed({ [ROOT]: notYaml, '.github/actions/a/action.yml': 'runs: {}', '.github/actions/a/x.mjs': 'const step = { uses: name };' }), { files: [ROOT] });
+  assert.deepEqual(keyed({ [ROOT]: notYaml, '.github/actions/a/action.yml': 'runs: {}', '.github/actions/a/x.mjs': 'const step = { uses: name };', '.github/actions/a/README.md': '${{ hashFiles(inputs.lock) }}' }), { files: [ROOT] });
   // `my-uses:` is another key, not `uses:`.
   assert.deepEqual(keyed({ [ROOT]: 'env: { my-uses: foo, x-cache-dependency-path: "~" }' }), { files: [ROOT] });
   // A quoted key is still a key, and its literal value names the file.

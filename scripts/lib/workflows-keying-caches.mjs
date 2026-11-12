@@ -34,7 +34,7 @@ const indentOf = (line) => /^[ \t]*/.exec(line)[0].length;
 const isBlank = (line) => /^[ \t]*(?:#.*)?\r?$/.test(line);
 // A line that opens a block scalar (`run: |`, `- >-`); group 1 runs up to the key's column.
 // A key or a list dash must precede the indicator: a bare `|` line can be inside a quoted scalar.
-const BLOCK_SCALAR_START = /^([ \t]*(?:-[ \t]+)*)(?:[^\s#][^#]*?[ \t]*:[ \t]+|(?<=-[ \t]+))[|>][1-9+-]*[ \t]*(?:#.*)?\r?$/;
+const BLOCK_SCALAR_START = /^([ \t]*(?:-[ \t]+)*)(?:([^\s#][^#]*?)[ \t]*:[ \t]+|(?<=-[ \t]+))[|>][1-9+-]*[ \t]*(?:#.*)?\r?$/;
 
 /**
  * The indices of lines inside a YAML block scalar: after a `key: |` or `key: >` line,
@@ -47,7 +47,8 @@ function blockScalarLines(lines) {
     if (inside.has(i)) continue;
     const m = BLOCK_SCALAR_START.exec(lines[i]);
     if (!m) continue;
-    const keyCol = m[1].length;
+    // The parent's column: the key's, or for a bare `- |` the dash's (content may sit just past it).
+    const keyCol = m[2] === undefined ? m[1].trimEnd().length - 1 : m[1].length;
     // Only a whitespace-only line continues it; a less-indented comment line ends it.
     for (let j = i + 1; j < lines.length && (/^[ \t]*\r?$/.test(lines[j]) || indentOf(lines[j]) > keyCol); j += 1) inside.add(j);
   }
@@ -80,7 +81,8 @@ function keyEntries(lines, inBlock, key) {
 }
 // In YAML (not in an action's scripts): a hex or unicode escape can spell a key or a call
 // the scan looks for (`"u\x73es":`, `hashFiles\x28`), and `? ` starts a complex key.
-const YAML_HIDDEN = /\\[xuU][0-9A-Fa-f]|(?:^|[\s{[,])\?(?:[ \t\r]|$)/m;
+// An alias as a key (`*k : value`) hides the key's name the same way.
+const YAML_HIDDEN = /\\[xuU][0-9A-Fa-f]|(?:^|[\s{[,])\?(?:[ \t\r]|$)|(?:^|[\s{[,])\*[^\s,[\]{}]+[ \t]*:/m;
 const IS_YAML = /\.ya?ml$/;
 // Expression function names are case-insensitive, and `hashFiles (` is a call (any escape
 // in a double-quoted scalar, such as `\t` or `\n`, may decode to whitespace).
@@ -181,15 +183,20 @@ function judgePattern(pattern) {
  * @returns {{ unknown: string } | { uses: string[], cacheDependencyPaths: string[], hashFilesPatterns: string[] }}
  */
 export function scanFile(path, text) {
+  // An action's README or notes are not executed.
+  if (/\.(?:md|txt)$/i.test(path)) return { uses: [], cacheDependencyPaths: [], hashFilesPatterns: [] };
   const yaml = IS_YAML.test(path);
-  const lines = text.split('\n');
+  // YAML also breaks lines at a lone CR.
+  const lines = text.split(/\r\n|\r|\n/);
   const inBlock = yaml ? blockScalarLines(lines) : new Set();
+  const isComment = (line) => /^[ \t]*#/.test(line);
   const uses = [];
   const cacheDependencyPaths = [];
   if (yaml) {
-    const yamlLines = lines.filter((_, i) => !inBlock.has(i)).join('\n');
+    // Neither block scalar text nor a comment line is YAML structure.
+    const yamlLines = lines.filter((line, i) => !inBlock.has(i) && !isComment(line)).join('\n');
     if (YAML_HIDDEN.test(yamlLines)) return { unknown: `${path} has a YAML escape or complex key the scan cannot read through` };
-    if (lines.some((line, i) => !inBlock.has(i) && ESCAPED_BREAK.test(line))) return { unknown: `${path} has an escaped line break outside a block scalar` };
+    if (lines.some((line, i) => !inBlock.has(i) && !isComment(line) && ESCAPED_BREAK.test(line))) return { unknown: `${path} has an escaped line break outside a block scalar` };
     for (const [key, out] of [['uses', uses], ['cache-dependency-path', cacheDependencyPaths]]) {
       for (const { before, rest, continues } of keyEntries(lines, inBlock, key)) {
         if (continues) return { unknown: `${path} has a ${key}: value folded over several lines` };
@@ -199,7 +206,7 @@ export function scanFile(path, text) {
       }
     }
   }
-  const scanned = yaml ? lines.filter((line, i) => inBlock.has(i) || !/^[ \t]*#/.test(line)).join('\n') : text;
+  const scanned = yaml ? lines.filter((line, i) => inBlock.has(i) || !isComment(line)).join('\n') : lines.join('\n');
   const hashFilesPatterns = [];
   for (const m of scanned.matchAll(HASHFILES)) {
     const args = hashFilesArgs(scanned, m.index + m[0].length);

@@ -10,7 +10,9 @@
  * The one-time code must not linger in the address bar, the history entry or
  * anything that reads `location` later (analytics, share links), so the
  * bootstrap calls {@link takePairingFragment} before any other viewer module
- * runs. It only recognises and removes the fragment; it does not parse the
+ * runs, and again on `hashchange`: a link opened in the tab that already
+ * holds the model is a same-document navigation that never re-runs the boot.
+ * This module only recognises and removes the fragment; it does not parse the
  * code, open a socket or import the bridge client. Parsing and the user's
  * confirmation happen in the lazily loaded connect dialog.
  *
@@ -21,6 +23,7 @@
 const PAIRING_KEY = 'mcp-bridge';
 
 let pending: string | null = null;
+const listeners = new Set<() => void>();
 
 interface LocationLike { pathname: string; search: string; hash: string }
 interface HistoryLike { state: unknown; replaceState(data: unknown, unused: string, url?: string): void }
@@ -42,12 +45,19 @@ export function takePairingFragment(loc: LocationLike, history: HistoryLike): st
     console.warn('[agent-bridge] could not remove the pairing code from the address bar', err);
   }
   pending = hash;
+  for (const listener of [...listeners]) listener();
   return hash;
 }
 
-/** The pairing fragment taken at boot, handed out once. */
+/** The pairing fragment taken at boot or on a later `hashchange`, handed out once. */
 export function consumePendingPairingFragment(): string | null {
   const fragment = pending;
   pending = null;
   return fragment;
+}
+
+/** Called whenever a pairing fragment is taken; read it with {@link consumePendingPairingFragment}. */
+export function onPairingFragment(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
 }

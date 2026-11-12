@@ -3286,21 +3286,29 @@ jobs:
           lfs: false
           persist-credentials: false
 
-      # A stable toolchain, not the dated nightly in rust-toolchain.toml:
-      # cargo-semver-checks refuses a nightly outright ("rustc version is not
-      # high enough: >=1.93.0 needed, got 1.93.0-nightly"). The gate invokes it
-      # as `cargo +stable semver-checks`, so this only has to exist.
-      - name: Install stable Rust
-        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 2026-05
-        with:
-          toolchain: stable
+      # The gate calls cargo-semver-checks only for a crate whose workspace
+      # version is ahead of crates.io. This step decides everything else from
+      # registry lookups with the gate's own logic, and writes
+      # `needs_cargo=false` itself only after reporting a final verdict. Exit
+      # 1/2 is the gate's refusal; exit 3 (a crate must be compared) and any
+      # run that never wrote the output fall through to the full gate below.
+      # rust-semver-canary.yml proves the install and the tool probe weekly.
+      - name: Check crate semver against crates.io (registry only)
+        id: registry
+        run: |
+          set +e
+          node scripts/check-rust-semver-registry.mjs
+          status=$?
+          set -e
+          if [ "$status" -eq 3 ]; then exit 0; fi
+          exit "$status"
 
-      # Prebuilt binary. `cargo install cargo-semver-checks --locked` compiles
-      # it from source (~5 min).
-      - name: Install cargo-semver-checks
-        uses: taiki-e/install-action@4f5ee4a4759116abc6b10af05f20374e179d8ca3 # cargo-semver-checks (snapshot pinned 2026-08)
+      - name: Install stable Rust and cargo-semver-checks
+        if: steps.registry.outputs.needs_cargo != 'false'
+        uses: ./.github/actions/setup-rust-semver
 
       - name: Cargo cache
+        if: steps.registry.outputs.needs_cargo != 'false'
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           prefix-key: ci-rust-semver
@@ -3313,6 +3321,7 @@ jobs:
       # crates.io can no longer resolve (#7737) is rebuilt from its release
       # tag, which the script fetches itself: this shallow checkout has none.
       - name: Check crate semver against crates.io
+        if: steps.registry.outputs.needs_cargo != 'false'
         run: node scripts/check-rust-semver.mjs
 
   # AGENTS.md grew 10,123 -> 48,066 bytes in 55 days across 26 commits, strictly

@@ -53,7 +53,7 @@ import { publishLoadTrace } from '../lib/perf/activeLoadTrace.js';
 import { acquireFileBuffer, type AcquiredBuffer } from '../utils/acquireFileBuffer.js';
 import { buildGeometryCacheKey } from './geometryCacheKey.js';
 import { armColdSceneCapture, coldCaptureEligible } from './sceneSnapshotLoad.js';
-import { forwardEntityIndexTo, createSourceFingerprintCell, type EntityIndexSink } from './entityIndexHandoff.js';
+import { forwardEntityIndexTo, coldEntityIndexHandoffPolicy, createSourceFingerprintCell, type EntityIndexSink } from './entityIndexHandoff.js';
 import { computeSourceFingerprint, computeSourceFingerprintFromBlob } from '@ifc-lite/cache';
 import { SERVER_URL, USE_SERVER, CACHE_SIZE_THRESHOLD, CACHE_MAX_SOURCE_SIZE, CACHE_MESH_ONLY_MAX_SIZE } from '../utils/ifcConfig.js';
 import {
@@ -1411,10 +1411,9 @@ export function useIfcLoader() {
       // walked the file and built the same index.
       // `& EntityIndexSink` so a setEntityIndex that stops taking the pre-pass's counts (#3395/#3790) breaks the build HERE.
       let workerParserInstance: (WorkerParser & EntityIndexSink) | null = null;
-      // Scale the geometry head start with metadata work; bound the wait on
-      // geometry-heavy files, and keep small files immediate.
-      const parserWaitBudgetMs = Math.min(10_000, Math.max(1_000, fileSizeMB * 8));
-      const parserEntityIndexHandoff = forwardEntityIndexTo(() => workerParserInstance, useParserWorker && fileSizeMB >= 32, parserWaitBudgetMs);
+      const handoffPolicy = coldEntityIndexHandoffPolicy(fileSizeMB);
+      const parserEntityIndexHandoff = forwardEntityIndexTo(() => workerParserInstance,
+        useParserWorker && handoffPolicy.deferUntilWorkerFinishes, handoffPolicy.maximumWaitMs);
 
       // The geometry pre-pass only emits `entity-index` on the parallel
       // streaming path inside `processAdaptive`. Files smaller than the

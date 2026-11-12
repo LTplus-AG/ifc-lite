@@ -22,7 +22,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { GeometryProcessor } from '@ifc-lite/geometry';
 import type { WorkerParser } from '@ifc-lite/parser/browser';
-import { forwardEntityIndexTo, type EntityIndexSink } from './entityIndexHandoff.js';
+import { coldEntityIndexHandoffPolicy, forwardEntityIndexTo, type EntityIndexSink } from './entityIndexHandoff.js';
 
 /** The slot `useIfcLoader` assigns this callback to, read off `processAdaptive`
  *  itself so it cannot drift from what geometry actually accepts. */
@@ -218,3 +218,17 @@ const _handoffTakesExactlyTheSlotsArguments: Exactly<
 > = true;
 void _sinkIsTheParser;
 void _handoffTakesExactlyTheSlotsArguments;
+
+describe('coldEntityIndexHandoffPolicy (metadata-path L5)', () => {
+  it('hands the index over the moment it exists, at every source size', () => {
+    for (const mb of [0.5, 2, 31.9, 32, 35, 177, 343, 1050]) {
+      const policy = coldEntityIndexHandoffPolicy(mb);
+      const { sink, calls } = recordingSink();
+      const forward = forwardEntityIndexTo(() => sink, policy.deferUntilWorkerFinishes, policy.maximumWaitMs);
+      forward(IDS, STARTS, LENGTHS, 0, 0);
+      assert.equal(calls.length, 1, `${mb} MB: index must reach the parser without waiting for geometry`);
+      forward.release(); // idempotent, as on stream completion
+      assert.equal(calls.length, 1, `${mb} MB: release must not deliver the index twice`);
+    }
+  });
+});

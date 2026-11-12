@@ -238,6 +238,12 @@ test('workflowsKeyingCaches is unknown when a hashFiles might reach a workflow f
     ['test', '? uses\n: ./ci/setup'],
     ['test', '      - ? uses\n        : ./ci/setup'],
     ['test', '      - ?\n        uses\n        : ./ci/setup'],
+    // Escaped line breaks outside a block scalar, and plain scalars folded over lines.
+    ['test', "key: \"${{ hash\\\n      Files('.github/workflows/x.yml') }}\""],
+    ['test', '- name: build\\\n  uses: ./.github/workflows/r.yml'],
+    ['test', 'cache-dependency-path: pnpm-lock.yaml\n\n  .github/workflows/deploy.yml'],
+    ['test', '- uses: actions/x@v1\n    ./ci/setup'],
+    ['test', "key: ${{ hashFiles('.GitHub/Workflows/deploy.yml') }}"],
     ['test', '"us\\\n      es": ./ci/setup'],
     ['test', '- Uses: ./ci/setup'],
     ['test', '- uses: ./foo@v1'],
@@ -269,7 +275,7 @@ test('workflowsKeyingCaches is unknown when a hashFiles might reach a workflow f
     assert.ok('unknown' in keyed(files), text);
   }  // @actions/glob trims each line of a pattern and reads it as its own pattern; a space
   // before the parenthesis is still a call.
-  for (const call of ["hashFiles('a\n  .github/workflows/x.yml')", "hashFiles(' .github/workflows/x.yml ')", "hashFiles ('.github/workflows/x.yml')", "hash\\\n            Files('.github/workflows/x.yml')", "hashFiles\\t('.github/workflows/x.yml')", "hashFiles\\n('.github/workflows/x.yml')"]) {
+  for (const call of ["hashFiles('a\n  .github/workflows/x.yml')", "hashFiles(' .github/workflows/x.yml ')", "hashFiles ('.github/workflows/x.yml')", "hashFiles\\t('.github/workflows/x.yml')", "hashFiles\\n('.github/workflows/x.yml')"]) {
     assert.deepEqual(keyed({ [ROOT]: `key: \${{ ${call} }}` }), { files: ['.github/workflows/test.yml', '.github/workflows/x.yml'] }, call);
   }
   // `git show` of a directory prints a tree listing rather than failing: a local action
@@ -288,6 +294,19 @@ test('workflowsKeyingCaches is unknown when a hashFiles might reach a workflow f
     "      && c == 'd'",
   ].join('\n');
   assert.deepEqual(keyed({ [ROOT]: scalarText }), { files: [ROOT] });
+  // In a block scalar, `\` line ends and `uses:` text are a shell script's, not YAML; the
+  // hashFiles in it still counts (`\${{ }}` expands inside run:).
+  const runBlock = [
+    '    steps:',
+    '      - run: |',
+    '          echo "uses: ./not-a-key" \\',
+    '            && cache-dependency-path: ~',
+    "          echo ${{ hashFiles('.github/workflows/in-run.yml') }}",
+    '        shell: bash',
+    '      - uses: actions/x@v1',
+    '        with: { a: b }',
+  ].join('\n');
+  assert.deepEqual(keyed({ [ROOT]: runBlock }), { files: ['.github/workflows/in-run.yml', ROOT] });
   // `my-uses:` is another key, not `uses:`.
   assert.deepEqual(keyed({ [ROOT]: 'env: { my-uses: foo, x-cache-dependency-path: "~" }' }), { files: [ROOT] });
   // A quoted key is still a key, and its literal value names the file.

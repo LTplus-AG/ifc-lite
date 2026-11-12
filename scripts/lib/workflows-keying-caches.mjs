@@ -30,19 +30,50 @@ import { posix } from 'node:path';
 
 export const WORKFLOW_FILE = /^\.github\/workflows\/[^/]+\.ya?ml$/;
 
+const indentOf = (line) => /^[ \t]*/.exec(line)[0].length;
+const isBlank = (line) => /^[ \t]*(?:#.*)?\r?$/.test(line);
+// A line that opens a block scalar (`run: |`, `- >-`); group 1 runs up to the key's column.
+const BLOCK_SCALAR_START = /^([ \t]*(?:-[ \t]+)*)(?:[^\s#][^#]*?[ \t]*:[ \t]+)?[|>][1-9+-]*[ \t]*(?:#.*)?\r?$/;
+
 /**
- * Every occurrence of `key:` on a line that is not a comment, several per line in a
- * flow mapping, as [what precedes it (a `{` means a flow mapping), the rest of the line].
+ * The indices of lines inside a YAML block scalar: after a `key: |` or `key: >` line,
+ * every line indented deeper than that key (or blank). Their text is a string (a
+ * run: script), not YAML.
  */
-function keyEntries(text, key) {
+function blockScalarLines(lines) {
+  const inside = new Set();
+  for (let i = 0; i < lines.length; i += 1) {
+    if (inside.has(i)) continue;
+    const m = BLOCK_SCALAR_START.exec(lines[i]);
+    if (!m) continue;
+    const keyCol = m[1].length;
+    for (let j = i + 1; j < lines.length && (isBlank(lines[j]) || indentOf(lines[j]) > keyCol); j += 1) inside.add(j);
+  }
+  return inside;
+}
+
+/**
+ * Every occurrence of `key:` outside comments and block scalars, several per line in a
+ * flow mapping, as { before (a `{` or `[` there means flow context), rest of the line,
+ * continues (block context, and the next non-blank line is indented deeper than the
+ * key, so the value is a plain scalar folded over several lines) }.
+ */
+function keyEntries(lines, inBlock, key) {
   // Not after `-`: `my-uses:` is another key, and a list item's `- uses:` has a space.
   // Case-insensitive: action inputs are (`Cache-Dependency-Path:`), and for `uses:` it fails closed.
   const re = new RegExp(`(^|[\\s{[,])['"]?${key}['"]?[ \\t]*:`, 'gi');
   const out = [];
-  for (const line of text.split('\n')) {
-    if (/^[ \t]*#/.test(line)) continue;
-    for (const m of line.matchAll(re)) out.push([line.slice(0, m.index + m[1].length), line.slice(m.index + m[0].length)]);
-  }
+  lines.forEach((line, i) => {
+    if (inBlock.has(i) || /^[ \t]*#/.test(line)) return;
+    for (const m of line.matchAll(re)) {
+      const before = line.slice(0, m.index + m[1].length);
+      let next = i + 1;
+      while (next < lines.length && isBlank(lines[next])) next += 1;
+      // A sibling key (`with:` under `- uses:`) sits at the key's column; a folded line is deeper.
+      const continues = !/[{[]/.test(before) && next < lines.length && indentOf(lines[next]) > before.length;
+      out.push({ before, rest: line.slice(m.index + m[0].length), continues });
+    }
+  });
   return out;
 }
 // In YAML (not in an action's scripts): a hex or unicode escape can spell a key or a call
@@ -52,9 +83,9 @@ const IS_YAML = /\.ya?ml$/;
 // Expression function names are case-insensitive, and `hashFiles (` is a call (any escape
 // in a double-quoted scalar, such as `\t` or `\n`, may decode to whitespace).
 const HASHFILES = /hashFiles(?:\s|\\.)*\(/gi;
-// An escaped line break in a double-quoted YAML scalar joins the lines (`hash\` newline
-// `Files(`). Joining every `\`-newline also matches what a shell does in run: blocks.
-const joinEscapedBreaks = (text) => text.replace(/\\\r?\n[ \t]*/g, '');
+// Outside a block scalar, a line ending in `\` is an escaped line break in a
+// double-quoted scalar, which joins it to the next line (`hash\` newline `Files(`).
+const ESCAPED_BREAK = /\\\r?$/;
 const QUOTED_ARG = /^\s*(?:'([^']*)'|"([^"]*)")\s*([,)])/;
 
 // The allowed forms. A path is plain characters only: no escapes, `~`, `!`, braces or brackets.
@@ -97,10 +128,11 @@ const WORKFLOW_SEGMENTS = ['.github', 'workflows'];
 const isWild = (seg) => seg.includes('*');
 
 /** Whether one glob segment can match target segment `ti` (0 `.github`, 1 `workflows`, 2 any YAML name). */
+// Case-insensitive: hashFiles on a macOS or Windows runner is.
 function segmentMatches(seg, ti) {
-  if (ti === 2) return isWild(seg) || /\.ya?ml$/.test(seg);
-  if (!isWild(seg)) return seg === WORKFLOW_SEGMENTS[ti];
-  return new RegExp(`^${seg.replace(/\./g, '\\.').replace(/\*/g, '.*')}$`).test(WORKFLOW_SEGMENTS[ti]);
+  if (ti === 2) return isWild(seg) || /\.ya?ml$/i.test(seg);
+  if (!isWild(seg)) return seg.toLowerCase() === WORKFLOW_SEGMENTS[ti];
+  return new RegExp(`^${seg.replace(/\./g, '\\.').replace(/\*/g, '.*')}$`, 'i').test(WORKFLOW_SEGMENTS[ti]);
 }
 
 /**
@@ -151,11 +183,16 @@ export function workflowsKeyingCaches({ root, actionFiles, symlinks, readText })
   const executed = [root, ...actionFiles];
   for (let i = 0; i < executed.length; i += 1) {
     const path = executed[i];
-    const raw = readText(path);
-    if (typeof raw !== 'string') return { unknown: `${path} could not be read` };
-    const text = joinEscapedBreaks(raw);
-    if (IS_YAML.test(path) && YAML_HIDDEN.test(text)) return { unknown: `${path} has a YAML escape or complex key the scan cannot read through` };
-    for (const [before, rest] of keyEntries(text, 'uses')) {
+    const text = readText(path);
+    if (typeof text !== 'string') return { unknown: `${path} could not be read` };
+    const lines = text.split('\n');
+    const inBlock = IS_YAML.test(path) ? blockScalarLines(lines) : new Set();
+    if (IS_YAML.test(path)) {
+      if (YAML_HIDDEN.test(text)) return { unknown: `${path} has a YAML escape or complex key the scan cannot read through` };
+      if (lines.some((line, i) => !inBlock.has(i) && ESCAPED_BREAK.test(line))) return { unknown: `${path} has an escaped line break outside a block scalar` };
+    }
+    for (const { before, rest, continues } of keyEntries(lines, inBlock, 'uses')) {
+      if (continues) return { unknown: `${path} has a uses: value folded over several lines` };
       const v = scalar(before, rest);
       if (v === null) return { unknown: `${path} has a uses: value the line does not show` };
       if (v.split('/').includes('..')) return { unknown: `${path} has uses: ${v}, which climbs` };
@@ -168,7 +205,8 @@ export function workflowsKeyingCaches({ root, actionFiles, symlinks, readText })
       }
     }
     const patterns = [];
-    for (const [before, rest] of keyEntries(text, 'cache-dependency-path')) {
+    for (const { before, rest, continues } of keyEntries(lines, inBlock, 'cache-dependency-path')) {
+      if (continues) return { unknown: `${path} has a cache-dependency-path value folded over several lines` };
       const v = scalar(before, rest);
       if (v === null) return { unknown: `${path} has a cache-dependency-path value the line does not show` };
       patterns.push(v);

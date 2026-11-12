@@ -66,3 +66,33 @@ jobs:
           else
             gh issue create --repo "$REPO" --title "$title" --body "First bad commit seen: ${body}"
           fi
+
+      # The scripts-tests shards are split by a pinned list
+      # (scripts/ci-scripts-test-shards.mjs) and every new test file lands on
+      # shard 2, so they drift apart. Warn when one takes over MAX_RATIO times
+      # the other; never fail, and say so when the jobs cannot be read.
+      - name: Warn when the scripts-tests shards drift apart
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          MAX_RATIO: '1.5'
+        run: |
+          set -uo pipefail
+          if ! durations=$(gh api --paginate "repos/$REPO/actions/runs/$RUN_ID/jobs?per_page=100" \
+              --jq '.jobs[] | select((.name | startswith("Node scripts tests (shard ")) and .conclusion == "success") | "\(.name)\t\((.completed_at | fromdateiso8601) - (.started_at | fromdateiso8601))"'); then
+            echo "::warning title=scripts-tests shard drift::could not read the jobs of run ${RUN_ID}"
+            exit 0
+          fi
+          printf '%s\n' "$durations" | awk -F'\t' -v max="$MAX_RATIO" -v url="$RUN_URL" '
+            NF == 2 { n++; name[n] = $1; t[n] = $2 }
+            END {
+              if (n != 2) { printf "scripts-tests shard drift: %d successful shard job(s) in this run, nothing to compare\n", n; exit 0 }
+              hi = (t[1] >= t[2]) ? 1 : 2; lo = 3 - hi
+              if (t[lo] > 0 && t[hi] / t[lo] > max + 0)
+                printf "::warning title=scripts-tests shard drift::%s took %ds, %.2fx %s (%ds), over the %sx limit. Re-pin PINNED in scripts/ci-scripts-test-shards.mjs from this run: %s\n", name[hi], t[hi], t[hi] / t[lo], name[lo], t[lo], max, url
+              else
+                printf "scripts-tests shards within %sx: %s %ds, %s %ds\n", max, name[1], t[1], name[2], t[2]
+            }'

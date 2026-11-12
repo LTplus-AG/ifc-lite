@@ -1863,8 +1863,14 @@ jobs:
         env:
           SHARD_INDEX: ${{ strategy.job-index }}
           SHARD_TOTAL: ${{ strategy.job-total }}
+          # Only the check-run name; the runner uses the index. They must agree.
+          MATRIX_SHARD: ${{ matrix.shard }}
         run: |
           SHARD="$((SHARD_INDEX + 1))"
+          if [ "$SHARD" != "$MATRIX_SHARD" ]; then
+            echo "::error title=scripts-tests shard::this job is named shard ${MATRIX_SHARD} but runs shard ${SHARD} (strategy.job-index ${SHARD_INDEX}); keep the matrix list as [1, 2] in order"
+            exit 2
+          fi
           node scripts/ci-scripts-test-shards.mjs --shard="$SHARD" --of="$SHARD_TOTAL" --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml $(printf '%s\n' \
             scripts/check-asset-usage.test.mjs \
             scripts/check-changeset-bump.test.mjs \

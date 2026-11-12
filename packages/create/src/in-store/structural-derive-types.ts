@@ -59,7 +59,9 @@
  * point lies past the other member's free end, that end moves along its own
  * axis to it as well, by the same reach rule. When it lies inside the other
  * member, that member is split there into two curve members, both linked to
- * its element, so the joint is a real node. An end already shared with other
+ * its element, so the joint is a real node; so is every other member whose
+ * axis passes through the joint inside its span (crossing beams), unless it
+ * runs parallel to the joining member. An end already shared with other
  * members only connects to an interior it already touches (within
  * `tolerance`); it is not moved. Every moved end is in the report
  * (`extendedEnds`) with the distance moved (negative when trimmed).

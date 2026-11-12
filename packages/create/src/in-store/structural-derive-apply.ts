@@ -97,7 +97,9 @@ function checkPlan(plan: StructuralDerivationPlan, toLocal: (storeyId: number | 
     if (!plan.nodes[member.startNode] || !plan.nodes[member.endNode]) refuse(what, 'names a node the plan does not have');
     if (member.start.every((v, k) => v === member.end[k])) refuse(what, 'has no length');
     // The planner copies node positions onto member ends; a plan changed since must keep them together.
-    const sameAs = (p: Vec3, node: number) => p.every((v, k) => v === plan.nodes[node].position[k]);
+    // NaN matches NaN here; a non-finite point is the builder's refusal, not this one.
+    const same = (v: number, w: number) => v === w || (Number.isNaN(v) && Number.isNaN(w));
+    const sameAs = (p: Vec3, node: number) => p.every((v, k) => same(v, plan.nodes[node].position[k]));
     if (!sameAs(member.start, member.startNode) || !sameAs(member.end, member.endNode)) refuse(what, 'has ends that differ from its nodes');
   }
   for (const member of plan.surfaceMembers) {

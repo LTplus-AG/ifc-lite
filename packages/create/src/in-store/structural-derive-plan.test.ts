@@ -178,6 +178,10 @@ describe('structural derivation plan (#9668)', () => {
     expect(plan.curveMembers.filter((m) => m.elementId === a.expressId)).toHaveLength(2);
     expect(plan.curveMembers.filter((m) => m.elementId === b.expressId)).toHaveLength(2);
     expect(plan.nodes.filter((n) => n.elementIds.length === 3)).toHaveLength(1);
+    // A member running along the column through the joint is not split there.
+    const along = element('IfcMember', { axis: [[0, 0, 1], [0, 0, 6]] });
+    const overlap = planStructuralDerivation(facts(a, b, column(0, 0, 0, 3), along));
+    expect(overlap.curveMembers.filter((m) => m.elementId === along.expressId)).toHaveLength(1);
   });
 
   describe('joints between centroid axes', () => {

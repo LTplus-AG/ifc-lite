@@ -115,24 +115,26 @@ export default function StructuralGlyphOverlay({ onSelect }: StructuralGlyphOver
 
   return createPortal(
     <g data-structural-glyphs fill="none" strokeLinecap="round" strokeLinejoin="round">
-      {groups.map((group) => (
+      {groups.map((group) => {
+        const select = () => onSelect(group.modelId, group.expressId);
+        return (
         <g
           key={group.key}
           ref={(el) => { if (el) paths.current.set(group.key, el); else paths.current.delete(group.key); }}
           data-structural-glyph={group.style}
           data-express-id={group.expressId}
-          // Keyboard-operable like the scene `Pin`: a focusable, named button.
+          // A focusable, named button (as the scene `Pin`), with Enter and Space.
           tabIndex={0}
           // An SVG <g> in the scene layer cannot be an HTML <button>.
           // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
           role="button"
           aria-label={group.title}
           className="cursor-pointer outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-overlay-accent"
-          onClick={(event) => { event.stopPropagation(); onSelect(group.modelId, group.expressId); }}
+          onClick={(event) => { event.stopPropagation(); select(); }}
           onKeyDown={(event) => {
             if (event.key !== 'Enter' && event.key !== ' ') return;
             event.preventDefault();
-            onSelect(group.modelId, group.expressId);
+            select();
           }}
         >
           <path className={STROKE[group.style]} strokeWidth={1.75} style={{ pointerEvents: 'none' }} />
@@ -140,7 +142,8 @@ export default function StructuralGlyphOverlay({ onSelect }: StructuralGlyphOver
             <title>{group.title}</title>
           </path>
         </g>
-      ))}
+        );
+      })}
     </g>,
     svgLayer,
   );

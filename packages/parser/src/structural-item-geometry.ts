@@ -226,8 +226,8 @@ export class ItemGeometryReader {
         if (!local) continue;
         if (local.kind === 'vertex') return { kind: 'vertex', point: toWorld(local.point) };
         if (local.kind === 'edge') return { kind: 'edge', start: toWorld(local.start), end: toWorld(local.end) };
-        const surface = local.surface && compose(frame, local.surface);
-        return { kind: 'face', polygon: local.polygon.map(toWorld), ...(surface ? { surface: { ...surface, origin: scale(surface.origin, this.unitScale) } } : {}) };
+        const surface = local.surface && { ...compose(frame, local.surface), origin: toWorld(local.surface.origin) };
+        return { kind: 'face', polygon: local.polygon.map(toWorld), ...(surface ? { surface } : {}) };
       }
     }
     return null;

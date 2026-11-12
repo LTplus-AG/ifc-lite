@@ -153,6 +153,8 @@ async function modelGroups(state: ViewerState, { modelId, store, geometry, model
     }
   };
   // A class the embed host hides (`hideTypes`) hides its glyphs too.
-  const shown = glyphsOf(store, data).filter((g) => !isIfcTypeHiddenByHost(g.source.type, state.hostHiddenIfcTypes));
+  const all = glyphsOf(store, data);
+  const hidden = state.hostHiddenIfcTypes;
+  const shown = hidden ? all.filter((g) => !isIfcTypeHiddenByHost(g.source.type, hidden)) : all;
   return groupsOf(modelId, data, toViewGlyphs(shown, toDisplay), worldCapOf(geometry.coordinateInfo), t);
 }

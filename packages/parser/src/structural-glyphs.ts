@@ -38,8 +38,8 @@ import type { IfcDataStore } from './columnar-parser.js';
 import type { StructuralActivityInfo, StructuralConnectionInfo, StructuralExtraction } from './structural-types.js';
 import type { StructuralLoadInfo } from './structural-load-extractor.js';
 import { structuralSupportKind, type StructuralSupportKind } from './structural-support-kind.js';
-import { add, compose, IDENTITY, ItemGeometryReader, length, normalize, rotate, scale, type Frame, type ItemShape, type Vec3 } from './structural-item-geometry.js';
-import { pointAlong, shapeCentre, shapeFrame, shapeStations } from './structural-glyph-stations.js';
+import { compose, IDENTITY, ItemGeometryReader, length, normalize, rotate, type Frame, type ItemShape, type Vec3 } from './structural-item-geometry.js';
+import { pointAlong, pointIn, shapeCentre, shapeFrame, shapeStations } from './structural-glyph-stations.js';
 
 export type { StructuralSupportKind } from './structural-support-kind.js';
 export type { Vec3 as StructuralGlyphVec3 } from './structural-item-geometry.js';
@@ -215,14 +215,6 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
   const pending: Pending[] = [];
 
   /**
-   * The frame of a curve or surface item: x along the edge and z towards its
-   * Axis, or its reference surface. Null for a point item or no shape.
-   */
-  const itemFrame = (item: ItemRef): Frame | null => {
-    const shape = itemShape(item.expressId, item.type);
-    return shape && shape.kind !== 'vertex' ? shapeFrame(shape, edgeAxis(item.expressId, item.Axis)) : null;
-  };
-  /**
    * The frame `LOCAL_COORDS` loads are given in. A point on a curve or
    * surface item takes that item's frame; else a point takes the activity's
    * own placement when it draws at its own vertex, else the connection's
@@ -230,17 +222,13 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
    * the normal of the surface item it lies on. Over a face, its frame.
    */
   const localFrame = (activity: StructuralActivityInfo, item: ItemRef | undefined, own: boolean, shape: ItemShape): Frame | null => {
-    const host = item ? itemFrame(item) : null;
-    if (shape.kind === 'vertex') {
-      if (host) return host;
-      if (own || !item) return reader.productFrame(activity.expressId);
-      return item.connection ? conditionFrame(item.connection) : reader.productFrame(item.expressId);
-    }
-    if (shape.kind === 'edge') {
-      const onSurface = item && itemShape(item.expressId, item.type)?.kind === 'face';
-      return shapeFrame(shape, onSurface ? host!.z : item ? edgeAxis(item.expressId, item.Axis) : null);
-    }
-    return shapeFrame(shape, null);
+    if (shape.kind === 'face') return shapeFrame(shape, null);
+    const hostShape = item ? itemShape(item.expressId, item.type) : null;
+    const axis = item ? edgeAxis(item.expressId, item.Axis) : null;
+    if (shape.kind === 'edge') return shapeFrame(shape, hostShape?.kind === 'face' ? shapeFrame(hostShape, null)?.z ?? null : axis);
+    if (hostShape && hostShape.kind !== 'vertex') return shapeFrame(hostShape, axis);
+    if (own || !item) return reader.productFrame(activity.expressId);
+    return item.connection ? conditionFrame(item.connection) : reader.productFrame(item.expressId);
   };
 
   for (const activity of extraction.activities) {
@@ -267,10 +255,9 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
         if (!entry.value) return [];
         // A curve configuration's location is a length along the edge; a
         // surface one's is x and y in the reference surface.
-        const at = shape.kind === 'edge' && entry.location?.length
-          ? pointAlong(shape.start, shape.end, reader.metres(entry.location[0]))
-          : shape.kind === 'face' && shape.surface && entry.location && entry.location.length >= 2
-            ? add(shape.surface.origin, add(scale(shape.surface.x, reader.metres(entry.location[0])), scale(shape.surface.y, reader.metres(entry.location[1]))))
+        const [u, v] = (entry.location ?? []).map((l) => reader.metres(l));
+        const at = shape.kind === 'edge' && u !== undefined ? pointAlong(shape.start, shape.end, u)
+          : shape.kind === 'face' && shape.surface && v !== undefined ? pointIn(shape.surface, u, v)
             : centre;
         return [{ load: entry.value, stations: [at], at }];
       })

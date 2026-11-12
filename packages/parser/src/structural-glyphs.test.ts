@@ -236,7 +236,7 @@ ENDSEC;END-ISO-10303-21;`;
 describe('structuralGlyphs local frames of curve and surface items', () => {
   const load = async () => (await glyphsOf(new TextEncoder().encode(FRAMES))).glyphs;
   const arrows = (glyphs: StructuralGlyph[], source: number) =>
-    bySource(glyphs, source).filter((g): g is Extract<StructuralGlyph, { kind: 'force' | 'moment' }> => g.kind === 'force');
+    bySource(glyphs, source).filter((g): g is Extract<StructuralGlyph, { kind: 'force' | 'moment' }> => g.kind === 'force'); // the union member holds both kinds
 
   it('orients a surface support along the reference surface normal', async () => {
     const supports = bySource(await load(), 45).filter((g) => g.kind === 'support');
@@ -253,7 +253,7 @@ describe('structuralGlyphs local frames of curve and surface items', () => {
 
   it('places a surface configuration value at its x and y in the reference surface', async () => {
     const forces = arrows(await load(), 56);
-    expect(forces.map((g) => g.position)).toHaveLength(2);
+    expect(forces).toHaveLength(2);
     close(forces[0].position, [0, 1, 0.5]);
     close(forces[1].position, [0, 1.5, 1.5]);
   });

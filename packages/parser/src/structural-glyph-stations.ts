@@ -118,7 +118,7 @@ function flatten(polygon: readonly Vec3[]): { frame: Frame; flat: Flat } | null 
   return { frame, flat: polygon.map((p) => [dot(sub(p, frame.origin), frame.x), dot(sub(p, frame.origin), frame.y)] as const) };
 }
 
-const lift = (frame: Frame, u: number, v: number): Vec3 => add(frame.origin, add(scale(frame.x, u), scale(frame.y, v)));
+
 
 /**
  * A point on a face: its vertex average when that lies on it, else a scanline
@@ -128,7 +128,7 @@ function faceCentre(polygon: readonly Vec3[], face = flatten(polygon)): Vec3 {
   if (!face) return centroid(polygon);
   const { frame, flat } = face;
   const c = [flat.reduce((s, p) => s + p[0], 0) / flat.length, flat.reduce((s, p) => s + p[1], 0) / flat.length] as const;
-  return lift(frame, ...(inside(c, flat) ? c : interiorPoint(flat)));
+  return pointIn(frame, ...(inside(c, flat) ? c : interiorPoint(flat)));
 }
 
 /**
@@ -148,7 +148,7 @@ function faceStations(polygon: readonly Vec3[]): Vec3[] {
     for (const fv of FACE_LATTICE) {
       const u = u0 + (u1 - u0) * fu;
       const v = v0 + (v1 - v0) * fv;
-      if (inside([u, v], flat)) out.push(lift(frame, u, v));
+      if (inside([u, v], flat)) out.push(pointIn(frame, u, v));
     }
   }
   return out.length ? out : [faceCentre(polygon, face)];
@@ -167,6 +167,9 @@ export function shapeStations(shape: ItemShape): Vec3[] {
   if (shape.kind === 'edge') return EDGE_STATIONS.map((t) => lerp(shape.start, shape.end, t));
   return faceStations(shape.polygon);
 }
+
+/** A point at (u, v) in a frame's x and y axes (metres). */
+export const pointIn = (frame: Frame, u: number, v: number): Vec3 => add(frame.origin, add(scale(frame.x, u), scale(frame.y, v)));
 
 /** A distance along an edge (metres) as a point on it, clamped to its ends. */
 export function pointAlong(start: Vec3, end: Vec3, distance: number): Vec3 {

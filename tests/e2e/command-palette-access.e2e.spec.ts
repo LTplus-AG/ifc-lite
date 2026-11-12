@@ -297,7 +297,8 @@ test('palette Presentation captures a real thumbnail and restores the saved came
     }, { message: 'real renderer returns to the saved camera', timeout: 15_000 }).toBeLessThan(1e-4);
     await info.attach('presentation-playback.png', { body: await page.screenshot(), contentType: 'image/png' });
   } finally {
-    await page.getByRole('button', { name: 'Stop playback', exact: true }).click();
+    const stop = page.getByRole('button', { name: 'Stop playback', exact: true });
+    if (await stop.isVisible()) await stop.click();
   }
   await expect(page.getByRole('button', { name: 'Play all saved views (Shift+Click to loop)', exact: true })).toBeEnabled();
 });

@@ -61,7 +61,7 @@ export function mountReviewAccess() {
       <SourceHostProvider><PersistentToolHosts>
         <button data-palette-launcher onClick={() => setOpen(true)}>Commands</button>
         <CommandPalette open={open} onOpenChange={setOpen} />
-        <MobilePanelSheet bottomInset={0} analysisExtension={null} />
+        <MobilePanelSheet analysisExtension={null} />
       </PersistentToolHosts></SourceHostProvider>
     </ExtensionHostContext.Provider></BimReactContext.Provider>;
   }

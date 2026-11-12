@@ -17,7 +17,7 @@ import { cancelAssistant, replaceEvidence, useAssistant } from '@/lib/assistant/
 import { captureEvidence } from '@/lib/assistant/evidence';
 import { setAssistantDraft } from '@/lib/assistant/composer-draft';
 import { useAssistantPlacement } from '@/lib/assistant/placement';
-import { useAssistantLibrary } from '@/lib/assistant/library';
+import { assistantLibrary, useAssistantLibrary } from '@/lib/assistant/library';
 import { useAssistantPreferences } from '@/lib/assistant/reuse/preferences';
 import { useSemanticSession } from '@/lib/semantic/session';
 
@@ -43,7 +43,7 @@ afterEach(async () => {
   localStorage.clear();
 });
 async function openAssistant() {
-  host = mountDestinations(<MobilePanelSheet bottomInset={0} analysisExtension={null} />);
+  host = mountDestinations(<MobilePanelSheet analysisExtension={null} />);
   const search = searchDestination('assistant');
   // Exercise actual palette Enter activation, including its selected-row handling.
   act(() => destinationOption('panel:assistant').dispatchEvent(new MouseEvent('mousemove', { bubbles: true })));
@@ -95,7 +95,13 @@ test('#8947 loaded palette Assistant saves a captured conversation and changes t
   click(namedButton('Saved conversations'));
   type(section('Saved conversations').querySelector('input')!, 'Linked records review');
   click(namedButton('Save conversation', section('Saved conversations')));
-  await waitFor(() => useAssistantLibrary.getState().entries.some(entry => entry.name === 'Linked records review'), 'conversation persisted');
+  await waitFor(() => useAssistantLibrary.getState().entries.some(entry => entry.name === 'Linked records review'), 'conversation appears in library');
+  const saved = useAssistantLibrary.getState().entries.find(entry => entry.name === 'Linked records review');
+  assert.ok(saved);
+  await waitFor(() => useAssistantLibrary.getState().status.items[saved.id] === 'saved', 'conversation IndexedDB commit');
+  act(() => useAssistantLibrary.setState({ entries: [] }));
+  await act(async () => { assert.equal(await assistantLibrary.restore(), true); });
+  assert.deepEqual(useAssistantLibrary.getState().entries.find(entry => entry.id === saved.id), saved, 'committed conversation survives a storage restore');
   assert.ok(namedButton('Linked records review', section('Saved conversations')));
   click(namedButton('Project preferences'));
   await waitFor(() => !!document.querySelector('section[aria-label="Project preferences"] textarea'), 'scoped preferences');

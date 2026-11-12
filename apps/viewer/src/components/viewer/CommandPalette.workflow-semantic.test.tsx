@@ -46,7 +46,7 @@ function change(select: HTMLSelectElement, value: string) {
   act(() => { select.value = value; select.dispatchEvent(new window.Event('change', { bubbles: true })); });
 }
 async function openSemantic() {
-  host = mountDestinations(<MobilePanelSheet bottomInset={0} analysisExtension={null} />);
+  host = mountDestinations(<MobilePanelSheet analysisExtension={null} />);
   await launchDestination('panel:semantic', 'linked records');
   await waitFor(() => !!document.querySelector('section[aria-label="Linked records"]'), 'canonical linked-records body');
   assert.equal(document.querySelector('input[role="combobox"]'), null);
@@ -99,9 +99,14 @@ test('#8947 loaded palette Linked records selects a federated record, previews p
   const downloads: Blob[] = [];
   mock.method(URL, 'createObjectURL', (blob: Blob | MediaSource) => { assert.ok(blob instanceof Blob); downloads.push(blob); return 'blob:palette-semantic'; });
   mock.method(HTMLAnchorElement.prototype, 'click', () => {});
+  const expectedRevisions = [...useSemanticSession.getState().revisions.keys()].sort();
   click(namedButton('Save and download workspace', workspace));
   assert.equal(downloads.length, 1);
-  const serialized = await downloads[0].text(); assert.ok(serialized.includes('workspace'));
+  const serialized = await downloads[0].text();
+  // Restore the actual download, independently of the separately saved copy.
+  act(() => useSemanticSession.getState().restore(serialized));
+  assert.deepEqual(useSemanticSession.getState().pendingRevisions.map(row => row.revision).sort(), expectedRevisions);
+  assert.deepEqual(useSemanticSession.getState().document?.resources, seeded.document.resources, 'download retains the real pilot records');
   click(namedButton('Restore saved workspace', workspace));
   assert.equal(useSemanticSession.getState().revisions.size, 0, 'restore requires explicit reassociation to live models');
   assert.ok(useSemanticSession.getState().pendingRevisions.length > 0);

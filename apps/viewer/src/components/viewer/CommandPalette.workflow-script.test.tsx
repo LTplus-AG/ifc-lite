@@ -37,7 +37,7 @@ afterEach(async () => {
   useViewerStore.setState(initial, true); useSemanticSession.setState(semantic, true); localStorage.clear();
 });
 async function openScript() {
-  host = mountDestinations(<MobilePanelSheet bottomInset={0} analysisExtension={null} />);
+  host = mountDestinations(<MobilePanelSheet analysisExtension={null} />);
   await launchDestination('panel:script', 'script editor');
   await waitFor(() => !!document.querySelector('button[aria-label="Export saved script"]'), 'canonical Script editor body');
   assert.equal(document.querySelector('input[role="combobox"]'), null);

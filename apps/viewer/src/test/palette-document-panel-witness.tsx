@@ -25,7 +25,7 @@ export async function seedPanelWitness() {
 }
 export function mountPanelWitness(extra?: ReactNode) {
   return mountDestinations(<><ConfirmDialogHost />{extra}
-    <MobilePanelSheet bottomInset={0} analysisExtension={null} /></>);
+    <MobilePanelSheet analysisExtension={null} /></>);
 }
 export function element<T extends Element = HTMLElement>(selector: string, root: ParentNode = document): T {
   const found = root.querySelector<T>(selector); assert.ok(found, selector); return found;

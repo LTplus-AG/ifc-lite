@@ -100,6 +100,29 @@ describe('inline palette access (#8947)', () => {
     assert.equal(selections, 2, 'one pointer sequence commits once');
   });
 
+  it('touch close dismisses empty mobile search and exits a real result cycle (#8947)', async () => {
+    seed(); clearRecentSearches();
+    const ui = render(<MobileSearchInline />);
+    const command = inlineCommand();
+    act(() => command.action());
+    const close = ui.querySelector<HTMLButtonElement>('button[aria-label="Close"]');
+    assert.ok(close);
+    const input = ui.querySelector('input')!;
+    assert.equal(input.closest('[hidden]'), null);
+    click(close);
+    assert.ok(input.closest('[hidden]'), 'empty search has a touch dismissal without a popover');
+    act(() => { useViewerStore.getState().setSearchQuery('Wall'); command.action(); });
+    await advance(100);
+    press(input, 'Enter');
+    assert.equal(useViewerStore.getState().searchVimCycle?.results.length, 2);
+    click(close);
+    assert.equal(useViewerStore.getState().searchVimCycle, null);
+    assert.equal(useViewerStore.getState().searchOpen, false);
+    assert.ok(input.closest('[hidden]'));
+    act(() => command.action());
+    assert.equal(input.closest('[hidden]'), null, 'field remains mounted and can reopen');
+  });
+
   for (const key of ['Enter', ' '] as const) it(`native ${JSON.stringify(key)} clears real rules and opens the filter tab`, () => {
     seed();
     const ui = render(<SearchInline />);

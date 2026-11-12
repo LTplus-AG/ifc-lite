@@ -204,9 +204,11 @@ test('#8947 palette Plan Retry recovers an actual authored-wall cut after one re
     act(() => useViewerStore.getState().endCommand('cancel'));
     await waitFor(() => !!document.querySelector('[data-plan-status="failed"]'), 'cut failure was not reported');
     assert.equal(rejected, 1);
-    assert.ok(useViewerStore.getState().mutationViews.get(MODEL_ID)!.getNewEntities().some(e => e.type.toUpperCase() === 'IFCWALL'), 'real authoring command created a wall');
+    const authoredWall = useViewerStore.getState().mutationViews.get(MODEL_ID)!.getNewEntities().find(e => e.type.toUpperCase() === 'IFCWALL');
+    assert.ok(authoredWall, 'real authoring command created a wall');
+    const wallGlobalId = useViewerStore.getState().toGlobalId(MODEL_ID, authoredWall.expressId);
     click(namedButton('Retry', required('[data-plan-status="failed"]')));
-    await waitFor(() => delegated > 0 && !document.querySelector('[data-plan-status="failed"]') && !!document.querySelector('[data-plan-entity]'), 'Retry did not produce real cut geometry');
+    await waitFor(() => delegated > 0 && !document.querySelector('[data-plan-status="failed"]') && !!document.querySelector(`[data-plan-entity="${wallGlobalId}"]`), 'Retry did not cut the authored wall');
     assert.equal(rejected, 1, 'Retry did not fabricate a second failure');
   } finally {
     Drawing2DGenerator.prototype.generate = real;

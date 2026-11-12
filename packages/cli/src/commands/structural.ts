@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Read the parser's structural analysis model without changing the file. */
-import { extractStructuralOnDemand } from '@ifc-lite/parser';
+import { extractStructuralOnDemand, structuralCounterparts } from '@ifc-lite/parser';
 import { loadIfcFile } from '../loader.js';
 import { printJson, formatTable, hasFlag, fatal } from '../output.js';
 
@@ -12,15 +12,18 @@ export async function structuralCommand(args: string[]): Promise<void> {
   if (!filePath) fatal('Usage: ifc-lite structural <file.ifc> [--json]');
   const jsonOutput = hasFlag(args, '--json');
   const store = await loadIfcFile(filePath);
-  const { activities, ...data } = extractStructuralOnDemand(store);
+  const data = extractStructuralOnDemand(store);
+  const { activities, ...collections } = data;
   const result = {
-    ...data,
+    ...collections,
     loads: activities.filter(a => a.kind === 'Action'),
     reactions: activities.filter(a => a.kind === 'Reaction'),
-    links: [...data.members, ...data.connections].flatMap(item =>
-      (item.physicalElementIds ?? []).map(physicalElementId => ({
+    links: [...data.members, ...data.connections].flatMap(item => {
+      const counterparts = structuralCounterparts(data, item.expressId);
+      return counterparts?.side === 'physical' ? counterparts.expressIds.map(physicalElementId => ({
         structuralItemId: item.expressId, physicalElementId,
-      }))),
+      })) : [];
+    }),
   };
   if (jsonOutput) {
     printJson(result);

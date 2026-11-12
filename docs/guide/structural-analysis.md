@@ -41,6 +41,7 @@ Records retain the parser read model's field names. Absent values stay absent;
 the command adds no parsing or engineering inference. `hasStructural` reports
 whether records were found and `loadsTruncated` reports bounded load walks.
 This command reads only; redirect stdout to save JSON.
+Run `ifc-lite validate model.ifc` for structural consistency warnings.
 
 ## Create, edit and remove
 
@@ -57,7 +58,18 @@ is not an editor for them.
 
 For terminal automation, use `ifc-lite run script.js model.ifc` and the SDK's
 `bim.store.addStructural*`, `editStructuralEntity` and `removeStructuralEntity`
-methods. Save the changed store with `bim.export.ifc(...)` in the script.
+methods. In `ifc-lite run`, write the returned export content with Node's file
+API. Save this as `save.js` to rename the first member and write `edited.ifc`:
+
+```javascript
+const member = bim.structural.members()[0];
+if (!member) throw new Error('This example needs a structural member');
+bim.store.editStructuralEntity('default', member.expressId, { Name: 'Reviewed member' });
+const { writeFile } = await import('node:fs/promises');
+await writeFile('edited.ifc', bim.export.ifc());
+```
+
+Run `ifc-lite run save.js model.ifc` on a file with a structural member.
 See [CLI scripting](cli.md) and the [TypeScript API](../api/typescript.md).
 
 ## Derive from physical elements
@@ -79,13 +91,18 @@ Run `ifc-lite derive-structural --help` for tolerance and support options.
 
 ## Convert and known limits
 
-Use the CLI to convert a copy, then inspect its loss report and structural JSON:
+Start with an IFC2X3 file, here named `model-2x3.ifc`. Read its structural
+records, convert a copy to IFC4, and inspect the loss report and output:
 
 ```bash
-ifc-lite convert model.ifc --schema IFC2X3 --out model-2x3.ifc
+ifc-lite structural model-2x3.ifc --json
 ifc-lite convert model-2x3.ifc --schema IFC4 --out model-4.ifc
 ifc-lite structural model-4.ifc --json
 ```
+
+Downgrading to IFC2X3 refuses resource types that it cannot represent, such as
+`IfcStructuralLoadConfiguration` and `IfcMaterialProfileSet`. Inspect the loss
+report before relying on a conversion.
 
 The viewer's read and review surfaces do not provide a structural schema
 conversion editor. Conversion is not lossless for all records. The ledger

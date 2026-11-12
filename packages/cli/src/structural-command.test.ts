@@ -5,7 +5,9 @@
 /** CLI read-only structural contract, Part of #9668. */
 import { describe, it, expect } from 'vitest';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadIfcFile } from './loader.js';
 import { extractStructuralOnDemand, type StructuralExtraction } from '@ifc-lite/parser';
@@ -41,6 +43,40 @@ describe('structural command (#9668)', () => {
     expect(result.stdout).toContain('ifc-lite structural');
     expect(result.stdout).toContain('--json');
   });
+  it('includes connection counterparts as well as member counterparts (#9922)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ifc-lite-structural-links-'));
+    try {
+      const file = join(dir, 'links.ifc');
+      // Declared relationships: wall #1 idealised by member #3 AND connection #4;
+      // slab #2 also idealised by member #3. The expected pairs are independent.
+      writeFileSync(file, `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('links.ifc','',(''),(''),'','','');
+FILE_SCHEMA(('IFC4X3_ADD2'));
+ENDSEC;
+DATA;
+#9=IFCPROJECT('0Project0000000000000a',$,'Project',$,$,$,$,$,$);
+#1=IFCWALL('2Wall000000000000000001',$,'Wall',$,$,$,$,$,$);
+#2=IFCSLAB('2Slab000000000000000001',$,'Slab',$,$,$,$,$,$);
+#3=IFCSTRUCTURALSURFACEMEMBER('2Memb000000000000000001',$,'Shell',$,$,$,$,.SHELL.,0.2);
+#4=IFCSTRUCTURALCURVECONNECTION('2Conn000000000000000001',$,'Edge',$,$,$,$,$,$);
+#5=IFCRELASSIGNSTOPRODUCT('2Rel0000000000000000001',$,$,$,(#3,#4),$,#1);
+#6=IFCRELASSIGNSTOPRODUCT('2Rel0000000000000000002',$,$,$,(#3),$,#2);
+ENDSEC;
+END-ISO-10303-21;`);
+      const result = run(file, '--json');
+      expect(result.status, result.stderr).toBe(0);
+      const got = JSON.parse(result.stdout);
+      expect(got.links).toEqual([
+        { structuralItemId: 3, physicalElementId: 1 },
+        { structuralItemId: 3, physicalElementId: 2 },
+        { structuralItemId: 4, physicalElementId: 1 },
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 120_000);
   it.skipIf(!existsSync(fixture))('reports parser records and values (pnpm fixtures if absent)', async () => {
     const store = await loadIfcFile(fixture);
     const data = JSON.parse(JSON.stringify(extractStructuralOnDemand(store))) as StructuralExtraction;

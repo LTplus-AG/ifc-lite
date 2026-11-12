@@ -85,11 +85,25 @@ describe('structural CREATE gaps (#9668)', () => {
     // These references are borrowed; the exporter must retain their exact targets.
     if (schema === 'IFC2X3') {
       expect(text).toContain(`#${done.get('stations')},(`);
-      expect(text).toContain(`(0.3,0.4),#${done.get('surface-stations')}`);
       const extractor = new EntityExtractor(parsed.source);
-      const aspect = extractor.extractEntity(parsed.entityIndex.byId.get(done.get('surface-stations'))!)!;
+      const originalAspect = extractor.extractEntity(parsed.entityIndex.byId.get(done.get('surface-stations'))!)!;
+      const originalMember = extractor.extractEntity(parsed.entityIndex.byId.get(done.get('surface-member'))!)!;
       const varyingMember = extractor.extractEntity(parsed.entityIndex.byId.get(done.get('varying-surface-member'))!)!;
+      const aspectId = Number(varyingMember.attributes[10]);
+      expect(aspectId).not.toBe(done.get('surface-stations'));
+      const aspect = extractor.extractEntity(parsed.entityIndex.byId.get(aspectId)!)!;
       expect(aspect.attributes[4]).toBe(varyingMember.attributes[6]);
+      expect(originalAspect.attributes[4]).toBe(originalMember.attributes[6]);
+      const sourceReps = originalAspect.attributes[0] as number[];
+      const copiedReps = aspect.attributes[0] as number[];
+      expect(copiedReps).toHaveLength(3);
+      for (let i = 0; i < copiedReps.length; i++) {
+        expect(copiedReps[i]).not.toBe(sourceReps[i]);
+        const source = extractor.extractEntity(parsed.entityIndex.byId.get(sourceReps[i])!)!;
+        const copied = extractor.extractEntity(parsed.entityIndex.byId.get(copiedReps[i])!)!;
+        expect(copied.attributes[3]).toEqual(source.attributes[3]);
+      }
+      expect(text).toContain(`(0.3,0.4),#${aspectId}`);
       const planar = editor.getNewEntity(done.get('varying-Planar'))!;
       const loadRefs = planar.attributes[13] as string[];
       expect(new Set(loadRefs).size).toBe(2);
@@ -190,7 +204,8 @@ describe('structural CREATE gaps (#9668)', () => {
     const surface = create.addStructuralSurfaceMemberToStore(editor, anchor, { Boundary: [[0,0,0],[3,0,0],[0,3,0]], Thickness: 0.2 });
     const aspect = (count: number) => {
       const reps = Array.from({ length: count }, (_, i) => {
-        const point = editor.addEntity('IfcCartesianPoint', [[i, 0, 0]]).expressId;
+        const position = count === 3 ? [[0,0,0],[3,0,0],[0,3,0]][i] : [i,0,0];
+        const point = editor.addEntity('IfcCartesianPoint', [position]).expressId;
         return `#${editor.addEntity('IfcShapeRepresentation', [`#${anchor.axisContextId}`, 'Reference', 'Point', [`#${point}`]]).expressId}`;
       });
       return editor.addEntity('IfcShapeAspect', [reps, null, null, true, `#${surface.productShapeId}`]).expressId;
@@ -207,6 +222,7 @@ describe('structural CREATE gaps (#9668)', () => {
     expect(() => create.addStructuralLinearActionToStore(editor, anchor, { LinearForceZ: -2, VaryingAppliedLoadLocation: one, SubsequentAppliedLoads: [line] })).toThrow(/one location per applied load/);
     expect(() => create.addStructuralPlanarActionToStore(editor, anchor, { AppliedLoad: { Type: 'IfcStructuralLoadPlanarForce', PlanarForceZ: -2 }, VaryingAppliedLoadLocation: two, SubsequentAppliedLoads: [planar, planar] })).toThrow(/one location per applied load/);
     expect(() => create.addStructuralSurfaceMemberToStore(editor, anchor, { Type: 'IfcStructuralSurfaceMemberVarying', Boundary: [[0,0,0],[3,0,0],[0,3,0]], SubsequentThickness: [0.3, 0.4], VaryingThicknessLocation: three })).toThrow(/requires Thickness/);
+    expect(() => create.addStructuralSurfaceMemberToStore(editor, anchor, { Type: 'IfcStructuralSurfaceMemberVarying', Boundary: [[0,0,0],[3,0,0],[0,3,0]], Thickness: 0.2, SubsequentThickness: [0.3, 0.4], VaryingThicknessLocation: two })).toThrow(/one representation per thickness/);
     expect(editor.getMutationView().getNewEntities()).toHaveLength(before);
     const content = new StepExporter(store, editor.getMutationView()).export({ schema: 'IFC2X3', applyMutations: true }).content;
     const parsed = await new IfcParser().parseColumnar(content.buffer.slice(content.byteOffset, content.byteOffset + content.byteLength) as ArrayBuffer, { disableWorkerScan: true });
@@ -216,6 +232,16 @@ describe('structural CREATE gaps (#9668)', () => {
     create.addStructuralLinearActionToStore(sourceEditor, anchor, { LinearForceZ: -2, VaryingAppliedLoadLocation: one, SubsequentAppliedLoads: [line] }, parsed);
     create.addStructuralLinearActionToStore(sourceEditor, anchor, { LinearForceZ: -2, VaryingAppliedLoadLocation: two, SubsequentAppliedLoads: [line] }, parsed);
     expect(new TextDecoder().decode(new StepExporter(parsed, sourceEditor.getMutationView()).export({ schema: 'IFC2X3', applyMutations: true }).content)).toContain(`#${two},(#${line})`);
+    const varying = create.addStructuralSurfaceMemberToStore(sourceEditor, anchor, { Type: 'IfcStructuralSurfaceMemberVarying', Boundary: [[0,0,0],[3,0,0],[0,3,0]], Thickness: 0.2, SubsequentThickness: [0.3, 0.4], VaryingThicknessLocation: three }, parsed);
+    const updated = new StepExporter(parsed, sourceEditor.getMutationView()).export({ schema: 'IFC2X3', applyMutations: true }).content;
+    const reopened = await new IfcParser().parseColumnar(updated.buffer.slice(updated.byteOffset, updated.byteOffset + updated.byteLength) as ArrayBuffer, { disableWorkerScan: true });
+    const extractor = new EntityExtractor(reopened.source);
+    const original = extractor.extractEntity(reopened.entityIndex.byId.get(three)!)!;
+    const member = extractor.extractEntity(reopened.entityIndex.byId.get(varying.memberId)!)!;
+    const copyId = Number(member.attributes[10]);
+    expect(copyId).not.toBe(three);
+    expect(extractor.extractEntity(reopened.entityIndex.byId.get(copyId)!)!.attributes[4]).toBe(member.attributes[6]);
+    expect(original.attributes[4]).toBe(surface.productShapeId);
   });
 
   it.each(['IFC4', 'IFC4X3'] as const)('%s storeless configuration validation observes pending edits (#9860 discussion_r4550397254)', async schema => {

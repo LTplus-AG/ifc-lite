@@ -158,7 +158,7 @@ export function createStructuralStoreBackend(
     },
     addStructuralSurfaceMember(modelId: string, storeyExpressId: number, params: StructuralSurfaceMemberInStoreParams): EntityRef {
       const model = resolved(modelId);
-      const result = addStructuralSurfaceMemberToStore(model.editor, resolveSpatialAnchor(model.store, storeyExpressId), params);
+      const result = addStructuralSurfaceMemberToStore(model.editor, resolveSpatialAnchor(model.store, storeyExpressId), params, model.store);
       return ref(model.modelId, result.memberId);
     },
     addStructuralCurveConnection(modelId: string, storeyExpressId: number, params: StructuralCurveConnectionInStoreParams): EntityRef {

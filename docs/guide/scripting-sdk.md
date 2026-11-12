@@ -503,6 +503,9 @@ Structural members accept `Type: 'IfcStructuralCurveMemberVarying'` or
 `Type: 'IfcStructuralSurfaceMemberVarying'` on their existing builders.
 IFC2X3 varying surfaces also require `SubsequentThickness` (at least two positive
 thicknesses in metres) and `VaryingThicknessLocation` (an existing `IfcShapeAspect` id).
+The builder copies the aspect and its point representations into the new member
+without re-parenting the original. The aspect must supply one representation per
+thickness value, including the initial thickness. Referenced point resources stay shared.
 These two attributes are refused in IFC4 and IFC4X3, where they do not exist.
 Point connections accept `BoundaryCondition.WarpingStiffness` to emit
 `IfcBoundaryNodeConditionWarping`, with the same fixed/free/measure convention.
@@ -548,5 +551,6 @@ Point-load samples require `DISCRETE`. `CONST`, `SINUS`, and `PARABOLA` accept
 individual loads rather than configurations.
 
 For direct action builders borrowing imported configurations or station aspects,
+or the varying surface builder copying an imported thickness aspect,
 pass the parsed source store as the optional fourth argument so validation reads
 source attributes and pending edits together. SDK methods provide it automatically.

@@ -3,6 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { assertActivitySchema, assertEnum } from './_structural-activity.js';
+import type { IfcDataStore } from '@ifc-lite/parser';
+import { prepareThicknessAspect } from './_structural-thickness-aspect.js';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { Point3D } from '../types.js';
 import { toNativeLength, type SpatialAnchor } from './anchor.js';
@@ -26,7 +28,7 @@ export interface StructuralSurfaceMemberInStoreParams {
 export interface StructuralSurfaceMemberBuildResult extends StructuralFaceIds { memberId: number }
 
 /** Planar analytical surface, owned by this member, anchored to a storey. */
-export function addStructuralSurfaceMemberToStore(editor: StoreEditor, anchor: SpatialAnchor, params: StructuralSurfaceMemberInStoreParams): StructuralSurfaceMemberBuildResult {
+export function addStructuralSurfaceMemberToStore(editor: StoreEditor, anchor: SpatialAnchor, params: StructuralSurfaceMemberInStoreParams, store?: IfcDataStore): StructuralSurfaceMemberBuildResult {
   assertActivitySchema(anchor, 'addStructuralSurfaceMemberToStore');
   assertEnum('addStructuralSurfaceMemberToStore', 'Type', params.Type, ['IfcStructuralSurfaceMember', 'IfcStructuralSurfaceMemberVarying']);
   assertStructuralBuilderSchema(anchor);
@@ -38,14 +40,16 @@ export function addStructuralSurfaceMemberToStore(editor: StoreEditor, anchor: S
   if (!varying && (params.SubsequentThickness !== undefined || params.VaryingThicknessLocation !== undefined)) throw new Error('addStructuralSurfaceMemberToStore: thickness stations require IfcStructuralSurfaceMemberVarying');
   if (varying && anchor.schema === 'IFC2X3' && (params.Thickness == null || !params.SubsequentThickness || params.SubsequentThickness.length < 2 || !params.SubsequentThickness.every(v => Number.isFinite(v) && v > 0) || !params.VaryingThicknessLocation || editor.getEntityType(params.VaryingThicknessLocation) !== 'IfcShapeAspect')) throw new Error('addStructuralSurfaceMemberToStore: IFC2X3 varying requires Thickness, SubsequentThickness (at least two positive values) and VaryingThicknessLocation (IfcShapeAspect)');
   if (anchor.schema !== 'IFC2X3' && (params.SubsequentThickness !== undefined || params.VaryingThicknessLocation !== undefined)) throw new Error('addStructuralSurfaceMemberToStore: thickness stations exist only in IFC2X3');
+  const copyAspect = varying && anchor.schema === 'IFC2X3' ? prepareThicknessAspect(editor, params.VaryingThicknessLocation!, 1 + params.SubsequentThickness!.length, store) : undefined;
   const face = prepareStructuralFace(params.Boundary);
   const globalId = productGuid(params, anchor.guidRandom); // validated before anything is written
   const thickness = params.Thickness == null ? null : toNativeLength(anchor, params.Thickness);
   const result = emitStructuralFace(editor, anchor, face);
+  const aspectId = copyAspect?.(result.productShapeId);
   const attrs: Parameters<StoreEditor['addEntity']>[1] = [
     globalId, ownerHistoryRef(anchor.ownerHistoryId), params.Name ?? 'Structural Surface Member',
     params.Description ?? null, params.ObjectType ?? null, `#${result.placementId}`, `#${result.productShapeId}`, `.${type}.`, thickness,
-    ...(varying && anchor.schema === 'IFC2X3' ? [params.SubsequentThickness!.map(v => ({ real: toNativeLength(anchor, v) })), `#${params.VaryingThicknessLocation}`] : []),
+    ...(varying && anchor.schema === 'IFC2X3' ? [params.SubsequentThickness!.map(v => ({ real: toNativeLength(anchor, v) })), `#${aspectId}`] : []),
   ];
   const memberId = params.Type === 'IfcStructuralSurfaceMemberVarying'
     ? editor.addEntity('IfcStructuralSurfaceMemberVarying', attrs).expressId

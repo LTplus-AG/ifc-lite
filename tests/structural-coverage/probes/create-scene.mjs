@@ -252,7 +252,6 @@ export const SCENE = [
     emits: schema => ({ IfcStructuralSurfaceMemberVarying: { Name: 'Varying surface', Thickness: 0.2, ...(schema === 'IFC2X3' ? { SubsequentThickness: [0.3,0.4] } : {}) } }),
     build: ({ create, editor, anchor, done }) => {
       const result = create.addStructuralSurfaceMemberToStore(editor, anchor, { Type: 'IfcStructuralSurfaceMemberVarying', Name: 'Varying surface', Boundary: [[0,0,0],[4,0,0],[4,3,0],[0,3,0]], Thickness: 0.2, ...(anchor.schema === 'IFC2X3' ? { SubsequentThickness: [0.3,0.4], VaryingThicknessLocation: done.get('surface-stations') } : {}) });
-      if (anchor.schema === 'IFC2X3') editor.setPositionalAttribute(done.get('surface-stations'), 4, `#${result.productShapeId}`);
       return result.memberId;
     },
   },

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, it, expect } from 'vitest';
-import { IfcParser, extractStructuralOnDemand } from '@ifc-lite/parser';
+import { IfcParser, EntityExtractor, extractStructuralOnDemand } from '@ifc-lite/parser';
 import { StoreEditor, MutablePropertyView } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
 import { createStructuralStoreBackend } from './store-structural-backend.js';
@@ -99,4 +99,35 @@ describe('R2 CREATE SDK variants (#9668)', () => {
       expect(editor.getNewEntity(action.expressId)!.attributes[7]).toBe(`#${config.expressId}`);
     }
   });
+});
+
+
+it('IFC2X3 SDK copies an imported thickness aspect without re-parenting its source (#9860)', async () => {
+  const parse = (text: string) => new IfcParser().parseColumnar(new TextEncoder().encode(text).buffer, { disableWorkerScan: true });
+  const store = await parse(MODEL);
+  const view = new MutablePropertyView(null, 'm');
+  const editor = new StoreEditor(store, view);
+  const api = (s: typeof store, e: StoreEditor, v: MutablePropertyView) => new StoreNamespace({ store: createStructuralStoreBackend(() => ({ store: s, editor: e, mutationView: v, modelId: 'm', ownerHistoryId: 4 })) } as unknown as BimBackend);
+  const ns = api(store, editor, view);
+  const Boundary: [number, number, number][] = [[0,0,0],[3,0,0],[0,3,0]];
+  const base = ns.addStructuralSurfaceMember('m', 30, { Boundary, Thickness: 0.2 });
+  const sourceShape = editor.getNewEntity(base.expressId)!.attributes[6];
+  const representations = Boundary.map(position => {
+    const point = editor.addEntity('IfcCartesianPoint', [position]).expressId;
+    return `#${editor.addEntity('IfcShapeRepresentation', ['#7', 'Reference', 'Point', [`#${point}`]]).expressId}`;
+  });
+  const aspect = editor.addEntity('IfcShapeAspect', [representations, 'Thickness', null, true, sourceShape]).expressId;
+  const text = new TextDecoder().decode(new StepExporter(store, view).export({ schema: 'IFC2X3', applyMutations: true }).content);
+  const source = await parse(text);
+  const nextView = new MutablePropertyView(null, 'm');
+  const nextEditor = new StoreEditor(source, nextView);
+  const varying = api(source, nextEditor, nextView).addStructuralSurfaceMember('m', 30, { Type: 'IfcStructuralSurfaceMemberVarying', Boundary, Thickness: 0.2, SubsequentThickness: [0.3, 0.4], VaryingThicknessLocation: aspect });
+  const output = new TextDecoder().decode(new StepExporter(source, nextView).export({ schema: 'IFC2X3', applyMutations: true }).content);
+  const parsed = await parse(output);
+  const extractor = new EntityExtractor(parsed.source);
+  const attrs = (id: number) => extractor.extractEntity(parsed.entityIndex.byId.get(id)!)!.attributes;
+  const copyId = Number(attrs(varying.expressId)[10]);
+  expect(copyId).not.toBe(aspect);
+  expect(attrs(copyId)[4]).toBe(attrs(varying.expressId)[6]);
+  expect(attrs(aspect)[4]).toBe(attrs(base.expressId)[6]);
 });

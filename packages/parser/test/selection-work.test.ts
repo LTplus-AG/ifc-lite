@@ -84,3 +84,11 @@ it('#9947 retains document association source order when graph target order diff
   ]);
   expect(extractDocumentsOnDemand(store, 1, view).map(row => row.name)).toEqual(['Second', 'Document']);
 });
+
+it('#9947 preparation retains unavailable coverage instead of throwing through model publication', async () => {
+  const { store, view } = await fixture(["#14=IFCRELDEFINESBYTYPE('unindexed',$,$,$,('#1'),#2);"]);
+  store.getEntity = () => { throw new Error('source read failed'); };
+  expect(() => prepareTypeQuantityRelationships(store)).not.toThrow();
+  expect(readCurrentTypeQuantities(store, 1, view)).toEqual({ status: 'unavailable',
+    reason: 'Native current type quantities are unreadable', value: null });
+});

@@ -56,7 +56,7 @@ const noEdits: MetadataReadView = {
  * Keeps global refusal semantics, including malformed unrelated rows and budgets. */
 export function prepareTypeQuantityRelationships(store: IfcDataStore): void {
     if (baseRelationships.get(store)?.source === store.source) return;
-    if (store.relationships) prepareSelectionRelationships(store);
+    if (store.relationships?.forward?.edgeRelIds) prepareSelectionRelationships(store);
     baseRelationships.set(store, { source: store.source, value: relationshipsOrRefusal(store, noEdits) });
 }
 
@@ -69,8 +69,10 @@ function relationshipsOrRefusal(store: IfcDataStore, view: MetadataReadView): Cu
         if ((view as QuantityJournalView).hasPendingChanges?.() === false && prepared?.source === store.source) return prepared.value;
         return resolveCurrentTypeRelationships(store, view);
     } catch (error) {
-        if (!(error instanceof CurrentQuantityRefusal)) throw error;
-        const refuse = () => { throw error; };
+        if (!(error instanceof CurrentQuantityRefusal)) console.warn('[type quantities] Native current quantity read failed', error);
+        const refusal = error instanceof CurrentQuantityRefusal ? error
+            : new CurrentQuantityRefusal('Native current type quantities are unreadable');
+        const refuse = () => { throw refusal; };
         return { typesOf: refuse, definitionsOf: refuse };
     }
 }

@@ -15,7 +15,8 @@ const MEMBERSHIP_MAX_SPARSITY = 64;
  * related id through `CompactEntityIndex.has` (millions of calls while a
  * hierarchy renders), and a binary search per call was ~0.1 s of a large
  * model's reopen. `has` answers undefined (the caller binary searches) until
- * then, for an id range too sparse for a bitset, and once the column has been
+ * then, for an id range too sparse for a bitset, when the bitset cannot be
+ * allocated, and once the column has been
  * detached (transport), where the binary search answers false as before.
  */
 export class LazyMembership {
@@ -25,7 +26,8 @@ export class LazyMembership {
   private maxId = 0;
   private readonly size: number;
 
-  constructor(private readonly ids: Uint32Array) {
+  /** `allocate` is injectable for tests; a failed allocation (a constrained device) keeps the binary search. */
+  constructor(private readonly ids: Uint32Array, private readonly allocate: (words: number) => Uint32Array = (words) => new Uint32Array(words)) {
     this.size = ids.length;
   }
 
@@ -42,7 +44,12 @@ export class LazyMembership {
     if (++this.lookups < MEMBERSHIP_AFTER_LOOKUPS) return null;
     const max = this.size > 0 ? this.ids[this.size - 1] : 0;
     if (this.size === 0 || max > MEMBERSHIP_MAX_ID || max > this.size * MEMBERSHIP_MAX_SPARSITY) return (this.present = null);
-    const present = new Uint32Array((max >>> 5) + 1);
+    let present: Uint32Array;
+    try {
+      present = this.allocate((max >>> 5) + 1);
+    } catch {
+      return (this.present = null); // RangeError on a constrained device: has() must not start throwing
+    }
     for (let i = 0; i < this.size; i++) {
       const id = this.ids[i];
       present[id >>> 5] |= 1 << (id & 31);

@@ -16,7 +16,7 @@ import { FlavorDialogHost } from '@/components/extensions/FlavorDialogHost';
 import { ViewportContainer } from './ViewportContainer';
 import { ModelToolRail } from './model/ModelToolRail';
 import { ModelWorkspaceSplit } from './model/ModelWorkspaceSplit';
-import { KeyboardShortcutsDialog, useKeyboardShortcutsDialog, type InfoDialogTab } from './KeyboardShortcutsDialog';
+import { KeyboardShortcutsDialog, useKeyboardShortcutsDialog } from './KeyboardShortcutsDialog';
 import { SettingsDialogHost } from './settings/SettingsDialog';
 import { ConfirmDialogHost } from '@/components/ui/confirm-dialog';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
@@ -144,21 +144,11 @@ export function ViewerLayout() {
 
   useEffect(() => {
     const openCommandPalette = () => setCommandPaletteOpen(true);
-    // With a `detail.tab` the event is a deep link (e.g. the Learn hub) and
-    // always opens; without it, it keeps its legacy toggle semantics.
-    const showShortcuts = (e: Event) => {
-      const tab = (e as CustomEvent<{ tab?: InfoDialogTab } | undefined>).detail?.tab;
-      if (tab) shortcutsDialog.openTab(tab);
-      else shortcutsDialog.toggle();
-    };
-
     window.addEventListener(EVENT_OPEN_COMMAND_PALETTE, openCommandPalette);
-    window.addEventListener('ifc-lite:show-shortcuts', showShortcuts);
     return () => {
       window.removeEventListener(EVENT_OPEN_COMMAND_PALETTE, openCommandPalette);
-      window.removeEventListener('ifc-lite:show-shortcuts', showShortcuts);
     };
-  }, [shortcutsDialog]);
+  }, []);
 
   const isMobile = useViewerStore((s) => s.isMobile);
   const commandPlacement = useViewerStore((s) => mobileCommandPlacement(s.formFactor));

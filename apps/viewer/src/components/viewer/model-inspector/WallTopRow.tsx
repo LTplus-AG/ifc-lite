@@ -20,6 +20,7 @@ import { NEXT_STOREY_ABOVE, STOREY_ATTACHMENT_PSET, readStoreyInventory, readTop
 import { useViewerStore, resolveEntityRef } from '@/store';
 import { useTranslation } from '@/i18n';
 import { SegmentedControl } from '@/components/ui/segmented-control';
+import { Button } from '@/components/ui/button';
 import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
 import type { WallTop } from '@/store/slices/authoringDefaultsSlice';
 import { storeyAttachmentDisplay } from '@/lib/actions/storey-attachment-display';
@@ -147,7 +148,7 @@ export function WallTopRow({ modelId, wallId }: { modelId: string; wallId: numbe
             { value: 'fixed', label: t('modelingCommand.wall.topFixed') },
           ]}
         />
-        {top === 'element' && !picking && <button type="button" onClick={pick} className="text-2xs text-muted-foreground">{t('modelingCommand.wall.repickTop')}</button>}
+        {top === 'element' && !picking && <Button type="button" variant="ghost" size="sm" onClick={pick} className="h-6 justify-start px-1.5 text-2xs text-muted-foreground">{t('modelingCommand.wall.repickTop')}</Button>}
         {target && <span title={target.raw} className="whitespace-normal break-words text-2xs leading-snug text-muted-foreground">{target.text}</span>}
       </div>
     </InspectorRow>

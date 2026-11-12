@@ -72,9 +72,12 @@ export interface StructuralConsistencyOptions {
    * Metres a curve member's end may lie off its physical element's line
    * before the axis-drift rule reports it. Default
    * `DEFAULT_AXIS_DRIFT_TOLERANCE` (0.05), the structural derivation's default
-   * node tolerance. A model derived with a larger node `tolerance` can move
-   * member ends up to that far off their element's axis at joints: check it
-   * with at least that tolerance.
+   * node tolerance. The derivation moves member ends onto shared nodes, and
+   * nodes merge transitively, so a derived end can sit somewhat more than its
+   * node `tolerance` off its axis; check a model derived with a larger
+   * tolerance with a larger value. Eccentricities
+   * (`IfcRelConnectsWithEccentricity`) are not subtracted: a member placed off
+   * its element's centre line by design is reported.
    */
   axisDriftTolerance?: number;
 }
@@ -145,7 +148,8 @@ function axisDrift(
       const fact = factById.get(elementId);
       const axis = physicalAxes.get(elementId);
       const distance = fact && axis ? offLine(line, axis) : null;
-      if (!fact || distance === null || distance <= tolerance) continue;
+      // Not greater also skips NaN, from a non-finite coordinate.
+      if (!fact || distance === null || !(distance > tolerance)) continue;
       issues.push({
         severity: 'warning', rule: 'structural-axis-drift', entityId: member.expressId, globalId: member.globalId,
         target: fact.expressId, targetGlobalId: fact.globalId, distance,

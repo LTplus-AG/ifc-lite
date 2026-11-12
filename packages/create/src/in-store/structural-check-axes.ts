@@ -22,6 +22,7 @@ import { readElementShape } from './structural-derive-shape.js';
 
 /** Each curve element's analytical line in IFC world metres, by express id. Elements with no readable line are left out. */
 export function structuralPhysicalAxes(store: IfcDataStore): Map<number, StructuralLine> {
+  if (store.schemaVersion === 'IFC5') throw new Error('structuralPhysicalAxes: IFC5 is not supported; use IFC2X3, IFC4 or IFC4X3');
   const view = new MutablePropertyView(null, '__structural-checks__');
   const { reader, metres } = shapeReader(store, new StoreEditor(store, view), 'structuralPhysicalAxes');
   const axes = new Map<number, StructuralLine>();

@@ -187,6 +187,7 @@ describe('structural-axis-drift', () => {
     expect(drift(checkStructuralConsistency(model([member(10, 'IfcStructuralCurveMember')]), elements, {}, lines(off)))).toEqual([]);
     expect(drift(checkStructuralConsistency(linked, [], {}, lines(off)))).toEqual([]);
     expect(drift(checkStructuralConsistency(linked, elements, {}, lines(off, [[1, 1, 1], [1, 1, 1]])))).toEqual([]);
+    expect(drift(checkStructuralConsistency(linked, elements, {}, lines([[0, Number.NaN, 3], [6, 1, 3]])))).toEqual([]);
   });
 });
 

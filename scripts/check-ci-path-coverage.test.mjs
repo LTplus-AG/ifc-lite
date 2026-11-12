@@ -198,6 +198,8 @@ test('only the strict printf/sort form can establish literal test reachability',
     UNIQUE_TEST_STEP.replace('sort -u', 'sort -r'),
     UNIQUE_TEST_STEP.replace("'%s\\n'", "'%s '"),
     UNIQUE_TEST_STEP.replace('scripts/lib/*.test.mjs', '$(other-command)'),
+    // The shard runner's own flags are not node --test flags.
+    UNIQUE_TEST_STEP.replace('node --test ', 'node --test --of=2 '),
   ]) {
     withTree({ steps: DEFAULT_STEPS + '\n' + UNIQUE_TEST_STEP }, root => {
       mkdirSync(join(root, 'unfiltered'));

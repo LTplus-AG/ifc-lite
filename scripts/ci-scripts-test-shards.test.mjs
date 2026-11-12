@@ -44,7 +44,7 @@ test('refuses an out-of-range shard, duplicates, and a shard with nothing to run
   assert.throws(() => filesForShard([...PINS], 2, SHARD_COUNT), /no test file/);
 });
 
-test('parses shard flags, passes --test-* flags through, and refuses anything else', () => {
+test('parses shard flags, passes reporter flags through, and refuses anything else', () => {
   assert.deepEqual(parseArgs(['--shard=2', '--of=2', '--test-reporter=tap', 'scripts/a.test.mjs']), {
     shard: 2,
     total: 2,
@@ -53,6 +53,11 @@ test('parses shard flags, passes --test-* flags through, and refuses anything el
   });
   assert.throws(() => parseArgs(['--of=2', 'scripts/a.test.mjs']), /required/);
   assert.throws(() => parseArgs(['--shard=1', '--of=2', '--watch']), /unknown option/);
+  // Anything that would let node run less than the shard's files is refused.
+  for (const narrowing of ['--test-shard=1/2', '--test-name-pattern=x', '--test-skip-pattern=x', '--test-only']) {
+    assert.throws(() => parseArgs(['--shard=1', '--of=2', narrowing, 'scripts/a.test.mjs']), /unknown option/, narrowing);
+  }
+  assert.deepEqual(parseArgs(['--shard=1', '--of=2', '--test-reporter-destination=stdout']).flags, ['--test-reporter-destination=stdout']);
 });
 
 test('the CLI runs exactly its shard, and fails closed on a bad plan', () => {

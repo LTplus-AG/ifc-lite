@@ -8,7 +8,7 @@
  * the whole deduplicated catch-all list, it keeps this shard's part and runs
  * `node --test` on it with the reporter flags it was given.
  *
- *   node scripts/ci-scripts-test-shards.mjs --shard=<1|2> --of=<2> [--test-reporter...=...] <files...>
+ *   node scripts/ci-scripts-test-shards.mjs --shard=<1|2> --of=<2> [--test-reporter[-destination]=...] <files...>
  *
  * Shard 1 is a PINNED list of the heaviest files by measured time (run
  * 43115735242); shard 2 is EVERYTHING ELSE, so a test file added tomorrow runs
@@ -63,7 +63,7 @@ export function filesForShard(files, shard, total) {
   return mine;
 }
 
-/** `--shard=N --of=M`, then pass-through `--test-*` flags, then files. */
+/** `--shard=N --of=M`, pass-through `--test-reporter*` flags, then files. */
 export function parseArgs(argv) {
   let shard;
   let total;
@@ -72,7 +72,9 @@ export function parseArgs(argv) {
   for (const arg of argv) {
     if (arg.startsWith('--shard=')) shard = Number(arg.slice('--shard='.length));
     else if (arg.startsWith('--of=')) total = Number(arg.slice('--of='.length));
-    else if (arg.startsWith('--test-')) flags.push(arg);
+    // Reporter flags only: --test-shard, --test-name-pattern, --test-only and
+    // the like would let node run less than this shard's files.
+    else if (/^--test-reporter(?:-destination)?=/.test(arg)) flags.push(arg);
     else if (arg.startsWith('-')) throw new ShardError(`unknown option ${arg}`);
     else files.push(arg);
   }
@@ -86,12 +88,13 @@ function main() {
     const { shard, total, flags, files } = parseArgs(process.argv.slice(2));
     plan = { flags, files: filesForShard(files, shard, total), shard, total, of: files.length };
   } catch (err) {
-    console.error(`❌ ci-scripts-test-shards: ${err.message}`);
+    console.error(`::error title=scripts-tests shard::ci-scripts-test-shards: ${err.message}`);
     process.exit(2);
   }
   console.error(`ci-scripts-test-shards: shard ${plan.shard}/${plan.total} runs ${plan.files.length} of ${plan.of} test files`);
   const run = spawnSync(process.execPath, ['--test', ...plan.flags, ...plan.files], { stdio: 'inherit' });
   if (run.error) throw run.error;
+  if (run.signal) console.error(`::error title=scripts-tests shard::node --test was killed by ${run.signal}`);
   process.exit(run.status ?? 1);
 }
 

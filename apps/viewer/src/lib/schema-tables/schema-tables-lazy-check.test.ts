@@ -32,8 +32,8 @@ function dist(files: Record<string, string>): string {
 
 // What a kept `export const ENTITIES_IFC4X3 = eagerSchemaTable(..., getEntitiesIfc4x3)` minifies to.
 const KEPT = 'var t=e(`ifc-lite-eager-table:ENTITIES_IFC4X3`,n);';
-// A getter alone (the startup path's form): the encoded string and the decoder, no marker.
-const GETTER_ONLY = 'let r;function n(){return r===void 0&&(r=d(`{"s":["IfcWall"]}`)),r}';
+// A getter alone (the startup path's form): the encoded string (it names its schema) and the decoder, no marker.
+const GETTER_ONLY = 'let r;function n(){return r===void 0&&(r=d(`{"n":"IFC4_ADD2_TC1","s":["IfcWall"]}`)),r}';
 
 describe('checkSchemaTablesLazy', () => {
   it('passes when startup chunks only carry getters and a lazy chunk keeps a constant', async () => {
@@ -53,8 +53,14 @@ describe('checkSchemaTablesLazy', () => {
     await assert.rejects(checkSchemaTablesLazy(dir), /Startup chunk assets\/shared\.js contains/);
   });
 
-  it('refuses a build where no chunk carries a marker at all (the check would prove nothing)', async () => {
-    const dir = dist({ 'main.js': GETTER_ONLY, 'ui.js': 'export const x=1;', 'other.js': GETTER_ONLY });
+  it('passes when no chunk keeps any constant (every reader uses a getter)', async () => {
+    const dir = dist({ 'main.js': `import "./ui.js";${GETTER_ONLY}`, 'ui.js': 'export const x=1;', 'other.js': GETTER_ONLY });
+    const { lazy } = await checkSchemaTablesLazy(dir);
+    assert.deepEqual(lazy, []);
+  });
+
+  it('refuses a build that carries no schema tables at all (the check would prove nothing)', async () => {
+    const dir = dist({ 'main.js': 'export const a=1;', 'ui.js': 'export const x=1;', 'other.js': 'export const b=2;' });
     await assert.rejects(checkSchemaTablesLazy(dir), /proves nothing/);
   });
 });

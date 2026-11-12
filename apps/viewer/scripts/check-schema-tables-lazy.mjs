@@ -16,30 +16,56 @@
  * its marker string, so a startup chunk that carries one decodes that table at
  * boot. Code on the startup path reads the getters instead.
  *
- * Some lazy chunk must carry a marker too, or the check would pass vacuously
- * (for example, if a minifier learned to drop the marker). Runs at the tail of
- * the viewer's `build` script, like check-structural-writes-lazy.
+ * Vacuity: some chunk must carry the schema tables themselves (the encoded
+ * IFC4 registry names its schema, `IFC4_ADD2_TC1`), or the check looked at a
+ * build without them. A lazy chunk keeping a constant is allowed and reported,
+ * but not required: once every reader uses a getter, no chunk keeps one. That
+ * the minifier keeps a marker beside a kept constant was shown by this gate's
+ * first real run, which caught five (#9865). Runs at the tail of the viewer's
+ * `build` script, like check-structural-writes-lazy.
  */
 
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isMainEntry } from '../../../scripts/lib/is-main-entry.mjs';
-import { checkLazyOnly } from './startup-chunks.mjs';
+import { relative, resolve as resolvePath } from 'node:path';
+import { lazyChunks, startupChunks } from './startup-chunks.mjs';
 
 /** The prefix every eager schema-table constant's marker starts with. */
 export const SCHEMA_TABLE_MARKER = 'ifc-lite-eager-table:';
+
+/** Text the encoded IFC4 registry always carries: its schema name. */
+export const SCHEMA_TABLE_PAYLOAD = 'IFC4_ADD2_TC1';
 
 const REMEDY = 'A module on the startup path references an eager schema-table constant (ENTITIES_*, IFC_DATA_TYPES, '
   + 'SCHEMA_REGISTRY, a derived *_TYPES set, ...), so it is decoded when the viewer boots. Read its getter instead '
   + '(getEntitiesIfc4x3(), getSchemaRegistryForVersion(...), getProductTypes(), ...); the marker after the colon names the constant.';
 
-export function checkSchemaTablesLazy(directory) {
-  return checkLazyOnly(directory, [{ name: 'eager schema table', signatures: [SCHEMA_TABLE_MARKER] }], REMEDY,
-    'Did the eagerSchemaTable marker change, or did the bundler start dropping it?');
+export async function checkSchemaTablesLazy(dist) {
+  const directory = resolvePath(dist);
+  const eager = await startupChunks(directory);
+  let tablesSeen = false;
+  for (const [file, code] of eager) {
+    const at = code.indexOf(SCHEMA_TABLE_MARKER);
+    if (at >= 0) {
+      const name = code.slice(at, at + 96).match(/^[\w:-]+/)?.[0] ?? SCHEMA_TABLE_MARKER;
+      throw new Error(`Startup chunk ${relative(directory, file)} contains ${name}. ${REMEDY}`);
+    }
+    if (code.includes(SCHEMA_TABLE_PAYLOAD)) tablesSeen = true;
+  }
+  const lazy = [];
+  for await (const [file, code] of lazyChunks(directory, eager)) {
+    if (code.includes(SCHEMA_TABLE_MARKER)) lazy.push(relative(directory, file));
+    if (code.includes(SCHEMA_TABLE_PAYLOAD)) tablesSeen = true;
+  }
+  if (!tablesSeen) {
+    throw new Error(`No chunk in ${directory} carries the schema tables (${SCHEMA_TABLE_PAYLOAD}), so this check proves nothing. Did the generated registry change its schema name, or did the build drop the tables?`);
+  }
+  return { eager: [...eager.keys()].map((file) => relative(directory, file)).sort(), lazy: lazy.sort() };
 }
 
 if (isMainEntry(import.meta.url)) {
   const directory = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', 'dist'));
   const { eager, lazy } = await checkSchemaTablesLazy(directory);
-  console.log(`schema tables lazy: ${eager.length} startup chunks free of eager schema tables; lazy chunks carrying one: ${lazy.join(', ')}`);
+  console.log(`schema tables lazy: ${eager.length} startup chunks free of eager schema tables; lazy chunks keeping one: ${lazy.length ? lazy.join(', ') : 'none'}`);
 }

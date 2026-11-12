@@ -393,12 +393,11 @@ describe('face stations', () => {
     const stations = shapeStations({ kind: 'face', polygon });
     expect(stations).toHaveLength(1);
     for (const station of stations) expect(inside(station, polygon)).toBe(true);
+    // The widest span: halfway along the bottom or the top band (they tie).
     const [x, y, z] = stations[0];
     expect(z).toBeCloseTo(0);
-    expect(x).toBeGreaterThan(0);
-    expect(x).toBeLessThan(0.16);
-    expect(y).toBeGreaterThan(0);
-    expect(y).toBeLessThan(1);
+    expect(x).toBeCloseTo(0.5);
+    expect([0.08, 0.92].some((band) => Math.abs(y - band) < 1e-9)).toBe(true);
   });
 
   it('anchors the single marker of a notched face on the face', () => {
@@ -417,35 +416,30 @@ describe('face stations', () => {
     const flat: [number, number][] = [[0, 0], [1, 0], [1, 0.16], [0.16, 0.16], [0.16, 0.84], [1, 0.84], [1, 1], [0, 1]];
     const toWorld = ([u, v]: readonly number[]): [number, number, number] => [5 + u, -3 + v * c, 2 + v * sn];
     const polygon = flat.map(toWorld);
-    // Scanline halfway between heights 0.16 and 0.84 crosses only the spine, 0 to 0.16.
+    // The widest span is a band, 0 to 1 at v = 0.08 or 0.92; the marker and the
+    // only station agree on it.
     const stations = shapeStations({ kind: 'face', polygon });
     expect(stations).toHaveLength(1);
-    close(stations[0], toWorld([0.08, 0.5]));
-    close(shapeCentre({ kind: 'face', polygon }), toWorld([0.08, 0.5]));
+    const band = [toWorld([0.5, 0.08]), toWorld([0.5, 0.92])].find((p) => Math.hypot(...p.map((x, i) => x - stations[0][i])) < 1e-9);
+    close(band, stations[0]);
+    close(shapeCentre({ kind: 'face', polygon }), stations[0]);
   });
 
-  it('anchors a face with a horizontal edge at mid-height inside it in any plane orientation', () => {
+  it('anchors a face with a horizontal edge at mid-height on its widest part, in any orientation or winding', () => {
     // U shape: the notch's bottom edge sits at v = 0.5, the middle of the face,
-    // and its vertex average (0.5, 0.625) lies in the notch.
+    // and its vertex average (0.5, 0.625) lies in the notch. The widest span is
+    // the bottom bar, so the anchor is (0.5, 0.25), well clear of every edge.
     const flat: [number, number][] = [[0, 0], [1, 0], [1, 1], [0.7, 1], [0.7, 0.5], [0.3, 0.5], [0.3, 1], [0, 1]];
-    const edges = flat.map((p, i) => [p, flat[(i + 1) % flat.length]] as const);
-    const distanceToEdge = ([u, v]: readonly number[], [[ax, ay], [bx, by]]: (typeof edges)[number]) => {
-      const t = Math.max(0, Math.min(1, ((u - ax) * (bx - ax) + (v - ay) * (by - ay)) / ((bx - ax) ** 2 + (by - ay) ** 2)));
-      return Math.hypot(u - ax - t * (bx - ax), v - ay - t * (by - ay));
-    };
-    for (let k = 0; k < 40; k++) {
-      // A general orthonormal in-plane basis (e1, e2) and an offset origin.
-      const [a, b] = [0.37 * k, 0.11 + 0.23 * k];
-      const e1: [number, number, number] = [Math.cos(a), Math.sin(a), 0];
-      const e2: [number, number, number] = [-Math.sin(a) * Math.cos(b), Math.cos(a) * Math.cos(b), Math.sin(b)];
-      const o: [number, number, number] = [12.3, -45.6, 7.89];
-      const polygon = flat.map(([u, v]) => [0, 1, 2].map((i) => o[i] + u * e1[i] + v * e2[i]) as [number, number, number]);
-      const centre = shapeCentre({ kind: 'face', polygon });
-      const d = [0, 1, 2].map((i) => centre[i] - o[i]);
-      const uv = [d[0] * e1[0] + d[1] * e1[1] + d[2] * e1[2], d[0] * e2[0] + d[1] * e2[1] + d[2] * e2[2]];
-      // The lowest of the two equal gaps: the bottom bar, mid-way along it.
-      close(uv, [0.5, 0.25]);
-      expect(Math.min(...edges.map((e) => distanceToEdge(uv, e)))).toBeGreaterThan(0.1);
+    for (const winding of [flat, [...flat].reverse()]) {
+      for (let k = 0; k < 40; k++) {
+        // A general orthonormal in-plane basis (e1, e2) and an offset origin.
+        const [a, b] = [0.37 * k, 0.11 + 0.23 * k];
+        const e1 = [Math.cos(a), Math.sin(a), 0];
+        const e2 = [-Math.sin(a) * Math.cos(b), Math.cos(a) * Math.cos(b), Math.sin(b)];
+        const o = [12.3, -45.6, 7.89];
+        const at = (u: number, v: number) => [0, 1, 2].map((i) => o[i] + u * e1[i] + v * e2[i]) as [number, number, number];
+        close(shapeCentre({ kind: 'face', polygon: winding.map(([u, v]) => at(u, v)) }), at(0.5, 0.25));
+      }
     }
   });
 

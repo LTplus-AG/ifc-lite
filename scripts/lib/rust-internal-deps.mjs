@@ -86,6 +86,18 @@ export function scanInternalDeps(label, text) {
   return scanInternalDepsDetailed(label, text).deps;
 }
 
+/**
+ * How to respell an internal dependency the scan cannot read. The workspace
+ * root (any `[workspace]` or `[workspace.…]` table, or a `workspace.` key)
+ * defines [workspace.dependencies], which
+ * members inherit, so only a member may be told to inherit instead.
+ */
+function respellFor(text) {
+  return /^\s*(?:\[\s*workspace\s*[\].]|workspace\.)/m.test(text)
+    ? 'an inline table (`ifc-lite-x = { version = "…", path = "…" }`) in [workspace.dependencies], which members inherit from'
+    : 'an inline table (`ifc-lite-x = { version = "…", path = "…" }` or `{ workspace = true }`) or `ifc-lite-x.workspace = true`';
+}
+
 /** {@link scanInternalDeps} plus the declarations that inherit from the root
  * table: `inherited` lists the names declared as `name.workspace = true` or as
  * an inline table with `workspace = true` (and no `version`). */
@@ -101,7 +113,7 @@ export function scanInternalDepsDetailed(label, text) {
   if (unsupported) {
     throw offsetError(
       'UNPARSED_DEP',
-      `${label} declares an internal dependency as \`${unsupported[0].trim()}\`, a spelling this scan does not read. Use an inline table (\`ifc-lite-x = { version = "…", path = "…" }\`) or \`ifc-lite-x.workspace = true\`.`
+      `${label} declares an internal dependency as \`${unsupported[0].trim()}\`, a spelling this scan does not read. Use ${respellFor(text)}.`
     );
   }
   const openers = text.match(internalDepOpenerPattern())?.length ?? 0;
@@ -115,7 +127,7 @@ export function scanInternalDepsDetailed(label, text) {
   if (deps.length !== openers) {
     throw offsetError(
       'UNPARSED_DEP',
-      `${label} declares ${openers} internal dependenc(ies) but only ${deps.length} could be parsed. An inline table with a nested \`{…}\` is the usual cause; both the writer and this scan would otherwise skip it silently. Rewrite it as a flat inline table (\`ifc-lite-x = { version = "…", path = "…" }\`) or \`ifc-lite-x.workspace = true\`, or extend scripts/lib/rust-internal-deps.mjs, which sync-versions.js and this gate share.`
+      `${label} declares ${openers} internal dependenc(ies) but only ${deps.length} could be parsed. An inline table with a nested \`{…}\` is the usual cause; both the writer and this scan would otherwise skip it silently. If so, remove the nested table and use ${respellFor(text)}, or extend scripts/lib/rust-internal-deps.mjs, which sync-versions.js and this gate share.`
     );
   }
   const inherited = [];

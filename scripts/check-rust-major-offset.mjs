@@ -151,8 +151,8 @@ function checkLiterals(label, text, onCount) {
   try {
     ({ deps, inherited } = scanInternalDepsDetailed(label, text));
   } catch (error) {
-    // The scanner's message names the declaration it cannot read; rewriting
-    // versions does not make it readable.
+    // The scanner's message names the cause and how to respell it (the root
+    // is never told to inherit); rewriting versions would not help.
     fail(error.code ?? 'UNPARSED_DEP', error.message, null);
     scanIncomplete = true;
     onCount?.(0);

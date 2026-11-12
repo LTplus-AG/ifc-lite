@@ -301,7 +301,7 @@ test('vacuous: a declaration the scan cannot parse is named, not skipped', (t) =
   assert.equal(code, 1, out);
   assert.match(out, /UNPARSED_DEP/);
   // Its own line names the repair, since the footer adds none for it (#9783 review).
-  assert.match(out, /Rewrite it as a flat inline table .* or extend scripts\/lib\/rust-internal-deps\.mjs/);
+  assert.match(out, /If so, remove the nested table and use .*, or extend scripts\/lib\/rust-internal-deps\.mjs/);
   assert.doesNotMatch(out, /sync-versions\.js` and commit/);
 });
 
@@ -354,6 +354,55 @@ test('remedies: a missing manifest does not hide the remedy of an unrelated root
   assert.doesNotMatch(out, /sync-versions\.js` and commit/);
 });
 
+test('remedies: an unparsable member declaration names how to respell it (#9783 review)', (t) => {
+  const root = makeTree(t, { offsetFile: OFFSET_0 });
+  const member = join(root, 'rust', 'ffi', 'Cargo.toml');
+  const toml = readFileSync(member, 'utf8');
+  const broken = toml.replace(/^(ifc-lite-core = \{ )/m, '$1meta = { nested = true }, ');
+  assert.notEqual(broken, toml, 'fixture edit applied');
+  writeFileSync(member, broken);
+  const { code, out } = run(root);
+  assert.equal(code, 1);
+  assert.match(out, /UNPARSED_DEP: rust\/ffi\/Cargo\.toml/);
+  assert.match(out, /rust\/ffi\/Cargo\.toml .*If so, remove the nested table and use .*`\{ workspace = true \}`/);
+});
+
+/** The gate's UNPARSED_DEP line for the root manifest; it must exist. */
+function unparsedRootLine(out) {
+  const line = out.split('\n').find((l) => /UNPARSED_DEP: Cargo\.toml/.test(l));
+  assert.ok(line, `no root UNPARSED_DEP line in:\n${out}`);
+  return line;
+}
+
+test('remedies: an unsupported spelling in the root is never told to inherit; a member may (#9783 review)', (t) => {
+  const root = makeTree(t, { offsetFile: OFFSET_0 });
+  const toml = readFileSync(join(root, 'Cargo.toml'), 'utf8');
+  writeFileSync(join(root, 'Cargo.toml'), `${toml}\n[workspace.dependencies.ifc-lite-landxml]\nversion = "6.0.1"\n`);
+  const rootOut = run(root).out;
+  const rootLine = unparsedRootLine(rootOut);
+  assert.match(rootLine, /in \[workspace\.dependencies\], which members inherit from/, rootOut);
+  assert.doesNotMatch(rootLine, /workspace = true/);
+  // A root with sub-tables and no flat [workspace.dependencies] header is still the root.
+  const subTables = makeTree(t, { offsetFile: OFFSET_0 });
+  const flat = readFileSync(join(subTables, 'Cargo.toml'), 'utf8');
+  const sub = flat.replace(/\[workspace\.dependencies\]\n[\s\S]*$/, '[workspace.dependencies.ifc-lite-core]\nversion = "6.0.1"\n');
+  assert.notEqual(sub, flat, 'fixture edit applied');
+  writeFileSync(join(subTables, 'Cargo.toml'), sub);
+  assert.doesNotMatch(unparsedRootLine(run(subTables).out), /workspace = true/);
+  // Nor does it need a bare [workspace] header: [workspace.package] alone makes it the root.
+  const implicit = makeTree(t, { offsetFile: OFFSET_0 });
+  const before = readFileSync(join(implicit, 'Cargo.toml'), 'utf8');
+  const toml2 = before.replace('[workspace]\nmembers = ["rust/core"]\n\n', '');
+  assert.notEqual(toml2, before, 'fixture edit applied');
+  assert.doesNotMatch(toml2, /^\[workspace\]$/m);
+  writeFileSync(join(implicit, 'Cargo.toml'), `${toml2}\n[workspace.dependencies.ifc-lite-landxml]\nversion = "6.0.1"\n`);
+  assert.doesNotMatch(unparsedRootLine(run(implicit).out), /workspace = true/);
+  const member = makeTree(t, { offsetFile: OFFSET_0 });
+  const ffi = join(member, 'rust', 'ffi', 'Cargo.toml');
+  writeFileSync(ffi, `${readFileSync(ffi, 'utf8')}\nifc-lite-clash.version = "6.0.1"\n`);
+  assert.match(run(member).out, /rust\/ffi\/Cargo\.toml declares .* or `ifc-lite-x\.workspace = true`/);
+});
+
 test('remedies: an unparsable root declaration names itself, not the floor (#9783 review)', (t) => {
   const root = makeTree(t, { offsetFile: OFFSET_0 });
   const toml = readFileSync(join(root, 'Cargo.toml'), 'utf8');
@@ -363,6 +412,11 @@ test('remedies: an unparsable root declaration names itself, not the floor (#978
   const { code, out } = run(root);
   assert.equal(code, 1);
   assert.match(out, /UNPARSED_DEP/);
+  // Its line says how to respell it (CodeRabbit, #9783); the root defines what
+  // members inherit, so it is never told to inherit.
+  const rootLine = unparsedRootLine(out);
+  assert.match(rootLine, /If so, remove the nested table and use an inline table .* in \[workspace\.dependencies\]/, out);
+  assert.doesNotMatch(rootLine, /workspace = true/);
   // No root-table floor line blaming a shrunk table or the pattern, and no floor remedy.
   assert.doesNotMatch(out, /in Cargo\.toml's \[workspace\.dependencies\], below the floor/, out);
   assert.doesNotMatch(out, /DEP_FLOOR fix:/, out);

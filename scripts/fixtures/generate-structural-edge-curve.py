@@ -314,6 +314,46 @@ def coverage(schema: str, output: Path, reinforcement: bool = False) -> None:
     if has("IfcRelDeclares"):
         rel("IfcRelDeclares", project, (analysis,))
 
+    # Topology last, so every record above keeps its id: each item and activity
+    # states where it is (an IfcVertexPoint, IfcEdge or IfcFaceSurface in an
+    # IfcTopologyRepresentation), as an analysis export does. The curve members
+    # run 4 m along X (the configuration's locations are 0 and 4 m), the
+    # surfaces are 4 m squares above them. Each product gets its own items.
+    def vertex(x, y, z):
+        return e("IfcVertexPoint", e("IfcCartesianPoint", (x, y, z)))
+
+    def at_point(x=0.0, y=0.0, z=0.0):
+        return "Vertex", vertex(x, y, z)
+
+    def along(y=0.0, z=0.0):
+        return "Edge", e("IfcEdge", vertex(0.0, y, z), vertex(4.0, y, z))
+
+    def square(z):
+        corners = [e("IfcCartesianPoint", c) for c in ((0.0, 0.0, z), (4.0, 0.0, z), (4.0, 4.0, z), (0.0, 4.0, z))]
+        plane = e("IfcPlane", e("IfcAxis2Placement3D", e("IfcCartesianPoint", (0.0, 0.0, z)), None, None))
+        return "Face", e("IfcFaceSurface", (e("IfcFaceOuterBound", e("IfcPolyLoop", corners), True),), plane, True)
+
+    def locate(product, topology):
+        kind, item = topology
+        representation = e("IfcTopologyRepresentation", context, "Reference", kind, (item,))
+        if product.Representation:  # an IFC2X3 varying record: its shape also holds the varying aspect
+            product.Representation.Representations = product.Representation.Representations + (representation,)
+        else:
+            product.Representation = e("IfcProductDefinitionShape", None, None, (representation,))
+
+    curve_varying = model.by_type("IfcStructuralCurveMemberVarying")[0]
+    surface_varying = model.by_type("IfcStructuralSurfaceMemberVarying")[0]
+    locate(curve, along())
+    locate(curve_varying, along(y=6.0))
+    locate(surface, square(3.0))
+    locate(surface_varying, square(6.0))
+    locate(point_conn, at_point())
+    locate(curve_conn, along(z=3.0))
+    locate(surface_conn, square(3.0))
+    for activity in activities + reactions:
+        hosted = host(activity)
+        locate(activity, at_point() if hosted == point_conn else square(3.0) if hosted == surface else along())
+
     save()
 
 

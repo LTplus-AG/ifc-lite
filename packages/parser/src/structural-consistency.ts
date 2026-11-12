@@ -124,26 +124,33 @@ export const hasAnalyticalModel = (structural: StructuralExtraction): boolean =>
 export const isA = (type: string, bases: readonly string[]): boolean => getInheritanceChain(type).some((name) => bases.includes(name));
 
 /**
- * What subtracting these coordinates can lose to rounding, a few units in the
- * last place of the largest: so an end exactly at the tolerance is not drift
- * at map-scale coordinates either, and next to nothing near the origin.
+ * How far the farther end of `line` lies from the infinite line through
+ * `axis`, and how much of that rounding alone can explain; null for a
+ * degenerate axis. Each coordinate is stored to half a unit in the last place
+ * (ulp) of its size, and the axis direction carries that error out to each
+ * end in proportion to how far along the axis it lies. So the allowance is
+ * 8 ulps of the largest coordinate times (1 + along / span): over 2000 seeded
+ * oblique ends at map-scale coordinates (test below) none is misread. It is
+ * capped at 1 micrometre, so a wild coordinate cannot hide drift.
  */
-const roundingOf = (...lines: StructuralLine[]): number =>
-  8 * Number.EPSILON * Math.max(...lines.flat(2).map(Math.abs));
-
-/** How far the farther end of `line` lies from the infinite line through `axis`; null for a degenerate axis. */
-function offLine(line: StructuralLine, [a, b]: StructuralLine): number | null {
+function offLine(line: StructuralLine, [a, b]: StructuralLine): { distance: number; rounding: number } | null {
   const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
   const span = Math.hypot(d[0], d[1], d[2]);
   if (!(span > 1e-9)) return null;
   const u = [d[0] / span, d[1] / span, d[2] / span];
-  // The component of each end square to the axis: a difference of squares
-  // would lose more precision than the subtraction of the coordinates.
-  return Math.max(...line.map((p) => {
+  let distance = 0;
+  let reach = 1;
+  let largest = 0;
+  for (const p of [...line, a, b]) for (const c of p) largest = Math.max(largest, Math.abs(c));
+  for (const p of line) {
     const r = [p[0] - a[0], p[1] - a[1], p[2] - a[2]];
     const along = r[0] * u[0] + r[1] * u[1] + r[2] * u[2];
-    return Math.hypot(r[0] - along * u[0], r[1] - along * u[1], r[2] - along * u[2]);
-  }));
+    // The component square to the axis: a difference of squares would lose
+    // more precision than the subtraction of the coordinates.
+    distance = Math.max(distance, Math.hypot(r[0] - along * u[0], r[1] - along * u[1], r[2] - along * u[2]));
+    reach = Math.max(reach, 1 + Math.abs(along) / span);
+  }
+  return { distance, rounding: Math.min(8 * Number.EPSILON * largest * reach, 1e-6) };
 }
 
 /** The axis-drift rule: each curve member with a line, against each linked element with an axis. */
@@ -161,9 +168,10 @@ function axisDrift(
       const fact = factById.get(elementId);
       const axis = physicalAxes.get(elementId);
       if (!fact || !axis) continue;
-      const distance = offLine(line, axis);
+      const off = offLine(line, axis);
       // Not greater also skips NaN, from a non-finite coordinate.
-      if (distance === null || !(distance > tolerance + roundingOf(line, axis))) continue;
+      if (!off || !(off.distance > tolerance + off.rounding)) continue;
+      const { distance } = off;
       issues.push({
         severity: 'warning', rule: 'structural-axis-drift', entityId: member.expressId, globalId: member.globalId,
         target: fact.expressId, targetGlobalId: fact.globalId, distance,

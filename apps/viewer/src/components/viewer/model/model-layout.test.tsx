@@ -17,10 +17,12 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { useViewerStore } from '@/store';
-import { cleanup, render } from '@/test/render.js';
+import { cleanup, click, render } from '@/test/render.js';
 import { seedModelingSession } from '@/test/modeling-session-fixture';
 import '@/lib/commands/modeling/builtin';
 import { HANDLE_PX, MODEL_3D_MIN_PX, PLAN_MIN_PX, effectiveModelLayout, planPaneWidth, splitFits } from './model-layout';
+// Read through the namespace so a missing helper fails these tests instead of the whole file.
+import * as modelLayout from './model-layout';
 import { ModelWorkspaceSplit } from './ModelWorkspaceSplit';
 import { ModelToolRail } from './ModelToolRail';
 
@@ -65,6 +67,21 @@ function splitWidth(width: number): () => void {
   return () => { proto.getBoundingClientRect = real; };
 }
 
+describe('planPaneResize (#9296 review)', () => {
+  const planPaneResize = (...args: Parameters<typeof modelLayout.planPaneResize>) => modelLayout.planPaneResize(...args);
+  it('keeps a dragged Split width when only the window width changes', () => {
+    assert.equal(planPaneResize('split', 'split', 1600), null, 'a resize alone leaves the dragged Split be');
+    assert.equal(planPaneResize('plan', 'plan', 1600), planPaneWidth('plan', 1600), 'Plan follows the width');
+  });
+  it('sizes the pane when it is shown or the layout switches, and collapses it when hidden', () => {
+    assert.equal(planPaneResize(null, 'split', 1600), planPaneWidth('split', 1600));
+    assert.equal(planPaneResize('plan', 'split', 1600), planPaneWidth('split', 1600));
+    assert.equal(planPaneResize('split', 'plan', 1600), planPaneWidth('plan', 1600));
+    assert.equal(planPaneResize('split', null, 1600), 'collapse');
+    assert.equal(planPaneResize(null, null, 1600), null, 'a hidden pane stays as it is');
+  });
+});
+
 describe('ModelWorkspaceSplit applies the rule (#6232 M2.4)', () => {
   let restore: (() => void) | null = null;
   beforeEach(async () => {
@@ -92,19 +109,22 @@ describe('ModelWorkspaceSplit applies the rule (#6232 M2.4)', () => {
     // #9296: with the sidebar already folded nothing can make room.
     act(() => useViewerStore.getState().setSidebarMode('collapsed'));
     const ui = render(<><ModelToolRail /><ModelWorkspaceSplit><div data-probe-3d /></ModelWorkspaceSplit></>);
-    assert.equal(ui.querySelector('[data-plan-view]'), null);
-    const strip = ui.querySelector<HTMLButtonElement>('[data-rail-tool="plan"]')!;
-    assert.ok(strip.disabled, 'no room: the rail toggle is off and its tooltip says why');
+    assert.equal(ui.querySelector('[data-model-plan-pane]')?.getAttribute('aria-hidden'), 'true');
+    const split = [...ui.querySelectorAll<HTMLButtonElement>('[role="radio"]')].find(button => button.textContent?.startsWith('Split'));
+    assert.ok(split && !split.disabled, 'Split stays available');
+    assert.equal(ui.querySelector('[data-model-layout-notice]') === null, true, 'entry falls back quietly (#9296)');
     assert.equal(useViewerStore.getState().modelLayout, 'auto', 'nothing was persisted');
+    click(split);
+    assert.ok(ui.querySelector('[data-model-layout-notice]'), 'an explicit Split pick explains the fallback');
   });
 
-  it('too narrow beside an expanded sidebar: the rail toggle folds it to make room (#9296)', () => {
+  it('too narrow beside an expanded sidebar: picking Split folds it to make room (#9296)', () => {
     restore = splitWidth(NEED - 1);
     act(() => useViewerStore.getState().setSidebarMode('expanded'));
     const ui = render(<><ModelToolRail /><ModelWorkspaceSplit><div data-probe-3d /></ModelWorkspaceSplit></>);
-    const strip = ui.querySelector<HTMLButtonElement>('[data-rail-tool="plan"]')!;
-    assert.equal(strip.disabled, false, 'folding the sidebar can make room');
-    act(() => strip.click());
+    const split = [...ui.querySelectorAll<HTMLButtonElement>('[role="radio"]')].find(button => button.textContent?.startsWith('Split'));
+    assert.ok(split && !split.disabled, 'folding the sidebar can make room');
+    click(split);
     assert.equal(useViewerStore.getState().sidebarMode, 'collapsed');
     assert.equal(useViewerStore.getState().modelLayout, 'split');
   });
@@ -113,7 +133,7 @@ describe('ModelWorkspaceSplit applies the rule (#6232 M2.4)', () => {
     act(() => useViewerStore.getState().setModelLayout('3d'));
     restore = splitWidth(1600);
     const ui = render(<><ModelToolRail /><ModelWorkspaceSplit><div data-probe-3d /></ModelWorkspaceSplit></>);
-    assert.equal(ui.querySelector('[data-plan-view]'), null);
-    assert.equal(ui.querySelector<HTMLButtonElement>('[data-rail-tool="plan"]')?.disabled, false);
+    assert.equal(ui.querySelector('[data-model-plan-pane]')?.getAttribute('aria-hidden'), 'true');
+    assert.equal(ui.querySelector('[data-rail-tool="plan"]') === null, true, 'the workspace bar owns layout');
   });
 });

@@ -224,8 +224,8 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
    * the normal of the surface item it lies on. Over a face, its frame.
    */
   const localFrame = (activity: StructuralActivityInfo, item: ItemRef | undefined, own: boolean, shape: ItemShape): Frame | null => {
-    /** A face's z hint: its owner's placement z (the item, else the activity). */
-    const placementZ = () => reader.productFrame(item?.expressId ?? activity.expressId)?.z ?? null;
+    /** A face's z hint: its owner's placement z (the activity for its own face, else the item). */
+    const placementZ = () => reader.productFrame(own || !item ? activity.expressId : item.expressId)?.z ?? null;
     if (shape.kind === 'face') return shapeFrame(shape, placementZ());
     const hostShape = item ? itemShape(item.expressId, item.type) : null;
     const hint = hostShape?.kind === 'face' ? placementZ() : item ? edgeAxis(item.expressId, item.Axis) : null;

@@ -57,7 +57,7 @@ export function layerThicknesses(step) {
   return step.of('IFCMATERIALLAYERSET').map((set) => (set.args[0] ?? []).map((r) => step.get(r)?.args[1]));
 }
 // RFC4180 cell walk: commas inside quoted names must not shift the Length column.
-export function scheduleLengths(text) {
+export function scheduleRows(text) {
   const rows = [[]]; let cell = ''; let quoted = false;
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
@@ -70,8 +70,19 @@ export function scheduleLengths(text) {
     } else cell += ch;
   }
   rows.at(-1).push(cell.replace(/\r$/, ''));
-  const index = rows[0].findIndex((v) => /^Length(?:\s|$)/.test(v));
-  return index < 0 ? [] : rows.slice(1).filter((r) => r.length > 1).map((r) => Number(r[index]));
+  return { header: rows[0], rows: rows.slice(1).filter(r => r.length > 1) };
+}
+export function scheduleLengths(text) {
+  const { header, rows } = scheduleRows(text);
+  const index = header.findIndex(v => /^Length(?:\s|$)/.test(v));
+  return index < 0 ? [] : rows.map(r => Number(r[index]));
+}
+export function scheduleMatchesWalls(text, walls) {
+  const { header, rows } = scheduleRows(text);
+  const name = header.indexOf('Name');
+  const length = header.findIndex(v => /^Length(?:\s|$)/.test(v));
+  if (name < 0 || length < 0 || rows.length !== walls.length || new Set(walls.map(w => w.Name)).size !== walls.length) return false;
+  return walls.every(w => rows.filter(r => r[name] === w.Name && near(Number(r[length]),w.Length)).length === 1);
 }
 const near = (a, b) => typeof a === 'number' && Math.abs(a - b) < 0.001;
 const finish = async (s, tasks, checks, notes = []) => ({ tasks, checks, notes, evidence: [await s.shot('result')] });

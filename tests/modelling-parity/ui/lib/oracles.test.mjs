@@ -39,6 +39,9 @@ test('#9296 layer usage must reference the requested ordered set', () => {
   assert.equal(layerUsage(s,s.get(1),[.15,.05]),true);
   assert.equal(layerUsage(s,s.get(1),[.05,.15]),false);
   assert.equal(layerUsage(s,s.get(2),[.15,.05]),false);
+  const unassigned = readStep(fixture.replace("#13=IFCRELASSOCIATESMATERIAL('m',$,$,$,(#1),#12);",''));
+  assert.equal(unassigned.of('IFCMATERIALLAYERSET').length,1);
+  assert.equal(layerUsage(unassigned,unassigned.get(1),[.15,.05]),false);
 });
 test('#9296 schedule cell reader rejects missing totals and reads displayed units', () => {
   assert.equal(scheduleTotal('10.00 m'),10);
@@ -82,4 +85,12 @@ test('#9874 an unused Brick definition cannot satisfy a wall material assignment
   assert.deepEqual(assignedLayerMaterials(decoy,1),['Concrete','Insulation']);
   assert.equal(assignedLayerMaterials(decoy,1).includes('Brick'),false);
   assert.deepEqual(assignedLayerMaterials(good,2),[]);
+});
+
+test('#9874 a duplicated CSV wall cannot substitute for the other equal-length wall', async () => {
+  const { scheduleMatchesWalls } = await import('./authoring-helpers.mjs');
+  const walls = [{Name:'Wall, A',Length:5},{Name:'Wall B',Length:5}];
+  assert.equal(scheduleMatchesWalls('Name,Length (m)\r\n"Wall, A",5\r\nWall B,5',walls),true);
+  assert.equal(scheduleMatchesWalls('Name,Length (m)\r\n"Wall, A",5\r\n"Wall, A",5',walls),false);
+  assert.equal(scheduleMatchesWalls('Name,Length (m)\r\n"Wall, A",5\r\nWall B,6',walls),false);
 });

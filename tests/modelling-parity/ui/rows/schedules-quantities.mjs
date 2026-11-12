@@ -5,12 +5,19 @@
 import { readScheduleTotals } from '../lib/schedule-ui.mjs';
 import { task, downloadCount, nextDownload } from '../lib/driver.mjs';
 import { oracleModel } from '../lib/model-ui.mjs';
-import { check, field, wall, selectWall, scheduleLengths, near, finish } from '../lib/authoring-helpers.mjs';
+import { check, field, wall, selectWall, scheduleMatchesWalls, near, finish } from '../lib/authoring-helpers.mjs';
 
 export default {
     id:'ui.schedules', capability:'schedules-quantities', title:'Two walls carry quantities; grouped schedule export',
     async run(s) {
-      const tasks = [await task(s,'draw two 5 m walls',async () => { await wall(s); await wall(s,3); })];
+      const names = ['R5 schedule wall A', 'R5 schedule wall B'];
+      const tasks = [await task(s,'draw and name two distinct 5 m walls',async () => {
+        await wall(s); await wall(s,3);
+        for (const [index,y] of [0,3].entries()) {
+          await selectWall(s,y);
+          await field(s,s.page.locator('[data-model-inspector]').getByLabel('Name',{exact:true}),names[index]);
+        }
+      })];
       const original = (await oracleModel(s)).step;
       const notes = [];
       const evidence = [];
@@ -60,9 +67,9 @@ export default {
       await oracleModel(s);
       const q = original.of('IFCWALL').map((w) => original.quantities(w.id));
       const result = await finish(s,tasks,[
-        check('two walls have 5 m Length and positive NetVolume',q.length === 2 && q.every((v) => near(v.Length,5) && v.NetVolume > 0),JSON.stringify(q)),
-        check('schedule contains the two authored walls',rows.length === 2,`${rows.length} schedule rows`),
-        check('CSV contains wall lengths',!!csv && scheduleLengths(csv.text).length === 2 && scheduleLengths(csv.text).every((v) => near(v,5)),csv?.text.slice(0,600) ?? 'no schedule CSV download'),
+        check('two walls have 5 m Length and positive NetVolume',q.length === 2 && q.every((v) => near(v.Length,5) && v.NetVolume > 0) && names.every(name => original.of('IFCWALL').some(w => w.args[2] === name)),JSON.stringify(q)),
+        check('schedule contains the two authored walls',rows.length === 2 && new Set(rows.map(r => r.entityId)).size === 2,`${rows.length} schedule rows; ${new Set(rows.map(r => r.entityId)).size} distinct entity ids`),
+        check('CSV contains each named wall once with its 5 m length',!!csv && scheduleMatchesWalls(csv.text,names.map(Name => ({Name,Length:5}))),csv?.text.slice(0,600) ?? 'no schedule CSV download'),
         check('group and footer Length totals are 10 m', totals?.groups.length > 0 && near(totals.total,10) && near(totals.groups.reduce((a,b)=>a+b,0),10), JSON.stringify(totals)),
         check('group and footer totals refresh to 11 m after editing', editedTotals?.groups.length > 0 && near(editedTotals.total,11) && near(editedTotals.groups.reduce((a,b)=>a+b,0),11), JSON.stringify(editedTotals)),
       ],notes);

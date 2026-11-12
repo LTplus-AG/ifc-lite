@@ -6,7 +6,7 @@ import { openFrontSection } from '../lib/probe-helpers.mjs';
 import { layerUsage, typeOf } from '../lib/measured-oracles.mjs';
 import { task } from '../lib/driver.mjs';
 import { oracleModel, escape, tool, typeFields } from '../lib/model-ui.mjs';
-import { check, inspector, typeScope, newType, layer, applyLayers, body, wallSize, layerThicknesses, near, finish } from '../lib/authoring-helpers.mjs';
+import { check, inspector, typeScope, newType, layer, applyLayers, wallSize, near, finish } from '../lib/authoring-helpers.mjs';
 
 export default {
     id: 'ui.layered-walls', capability: 'layered-walls',
@@ -28,7 +28,8 @@ export default {
         await escape(s);
       })];
       const { step } = await oracleModel(s);
-      const layers = layerThicknesses(step);
+      const originalWall = step.of('IFCWALL')[0];
+      const originalLayersAssigned = step.of('IFCWALL').length === 1 && layerUsage(step, originalWall, [.115,.1,.015]);
       const sizes = step.of('IFCWALL').map((e) => wallSize(step,e));
       let polygons = [];
       tasks.push(await task(s, 'section cuts each material layer', async () => {
@@ -52,7 +53,7 @@ export default {
       const retyped = (await oracleModel(s)).step;
       const newWall = retyped.of('IFCWALL')[0];
       return finish(s,tasks,[
-        check('ordered 115/100/15 mm layer set exported', layers.some((ls) => ls.length === 3 && ls.every((v,i) => near(v,[.115,.1,.015][i]))), JSON.stringify(layers)),
+        check('ordered 115/100/15 mm layer set exported', originalLayersAssigned, 'The authored wall must reference the ordered layer set through IfcRelAssociatesMaterial'),
         check('typed wall thickness follows the 230 mm type', sizes.length === 1 && near(sizes[0].thickness,.23), JSON.stringify(sizes)),
         check('section has three distinct layer fills', polygons.length >= 3 && new Set(polygons.map(p => JSON.stringify(p.color))).size >= 3, JSON.stringify(polygons)),
         check('retyping changes body and material usage to 150/50 mm', retyped.get(typeOf(retyped,newWall?.id))?.args[2] === 'WT-200-L' && near(wallSize(retyped,newWall).thickness,.2) && layerUsage(retyped,newWall,[.15,.05]), JSON.stringify(wallSize(retyped,newWall))),

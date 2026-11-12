@@ -23,6 +23,7 @@ import { installPairingFragmentStrip } from '@/lib/agent-bridge/pairing-fragment
 import { getAgentBridgeState, resetAgentBridgeStateForTests, updateAgentBridgeState } from '@/lib/agent-bridge/state';
 import { AgentBridgeHost, AgentBridgeStatusSlot } from './AgentBridgeHost';
 import { AgentBridgeDialog, type AgentBridgeSessionModule } from './AgentBridgeDialog';
+import type { SurfaceCommandDefinition, SurfaceCommandState } from '@/components/viewer/surface-command-types';
 
 const CODE = 'ABCDE-FGHJK-MNPQR-STVWX';
 
@@ -391,8 +392,9 @@ describe('a framed viewer never connects (#9523 review)', () => {
     assert.equal(button(/^Connect local agent$/).disabled, true);
 
     const { PANEL_SURFACE_COMMANDS } = await import('@/components/viewer/surface-commands-panels');
-    const command = PANEL_SURFACE_COMMANDS.find((c) => c.id === 'panel:agentBridge');
-    assert.equal(command?.enabled({} as Parameters<NonNullable<typeof command>['enabled']>[0]), false);
+    const command: SurfaceCommandDefinition | undefined = PANEL_SURFACE_COMMANDS.find((c) => c.id === 'panel:agentBridge');
+    assert.ok(command, 'the palette entry exists');
+    assert.equal(command.enabled({ canEditInSession: true, collabEnabled: false } as SurfaceCommandState), false);
 
     cleanup();
     render(withBim(<AgentBridgeDialog request={{ source: 'manual' }} onClose={() => {}} />));

@@ -135,19 +135,22 @@ async function cardRow(ctx, model, row, carriers) {
   const out = [...new Set(problems)];
   const lost = records.filter((r) => !r.section);
   if (lost.length) out.push(`${lost.length} of ${records.length} record(s) on no card, e.g. ${lost[0].where}`);
-  const value = (r, attr) => normalize(r.rec.args[row.attributes.indexOf(attr)], r.file.step, types);
   for (const attr of row.own) {
-    // A record whose file leaves the attribute unset (`$`) must show no value for it either.
-    const invented = records.filter((r) => r.section && value(r, attr) === null && r.section.rows.some((x) => x.attribute === attr));
-    if (invented.length) out.push(`${attr} shown for ${invented.length} record(s) the file leaves unset, e.g. ${invented[0].where}`);
-    const setters = records.filter((r) => value(r, attr) !== null);
-    if (!setters.length) { out.push(`${attr}: no fixture sets it, so showing it is unproven`); continue; }
-    const carded = setters.filter((r) => r.section);
+    const slot = row.attributes.indexOf(attr);
+    // A derived `*` slot is neither set nor unset by the file; it is not checked.
+    const entries = records.filter((r) => r.rec.args[slot] !== '*').map((r) => ({ r, want: normalize(r.rec.args[slot], r.file.step, types) }));
+    // `$` and an empty list `()` are both unset, as the card treats them.
+    const unset = (e) => e.want === null || (Array.isArray(e.want) && e.want.length === 0);
+    const invented = entries.filter((e) => e.r.section && unset(e) && e.r.section.rows.some((x) => x.attribute === attr));
+    if (invented.length) out.push(`${attr} shown for ${invented.length} record(s) the file leaves unset, e.g. ${invented[0].r.where}`);
+    const setters = entries.filter((e) => !unset(e));
+    if (!setters.length) { if (!invented.length) out.push(`${attr}: no fixture sets it, so showing it is unproven`); continue; }
+    const carded = setters.filter((e) => e.r.section);
     if (!carded.length) continue; // its records are already reported as on no card
-    const cells = carded.map((r) => ({ r, row: r.section.rows.find((x) => x.attribute === attr) }));
+    const cells = carded.map((e) => ({ ...e, row: e.r.section.rows.find((x) => x.attribute === attr) }));
     const missing = cells.filter((c) => !c.row);
     if (missing.length) { out.push(`${attr} not shown in ${missing.length} of ${carded.length} record(s), e.g. ${missing[0].r.where}`); continue; }
-    const wrong = cells.map((c) => ({ ...c, got: shown(c.row.value, c.r.file.step, types), want: value(c.r, attr) })).filter((c) => !equal(c.want, c.got));
+    const wrong = cells.map((c) => ({ ...c, got: shown(c.row.value, c.r.file.step, types) })).filter((c) => !equal(c.want, c.got));
     if (wrong.length) out.push(`${attr} wrong in ${wrong.length} of ${carded.length} record(s), e.g. ${wrong[0].r.where}: card ${show(wrong[0].got)}, file ${show(wrong[0].want)}`);
   }
   return verdict(records.length, out, { anyHeld: lost.length < records.length });

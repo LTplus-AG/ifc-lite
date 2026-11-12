@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 
+import { editCommand } from '../lib/command-ui.mjs';
 import { task } from '../lib/driver.mjs';
 import { escape, oracleModel, tool, typeFields } from '../lib/model-ui.mjs';
 
@@ -48,15 +49,29 @@ export default {
         await s.ui.clickWorld([6, 12, 0]);
         await escape(s);
       }));
-      let editItems = [];
-      tasks.push(await task(s, 'look for Mirror in the Edit menu', async () => {
-        await s.ui.click(s.page.locator('[data-model-tool-rail]').getByRole('button', { name: 'Edit', exact: true }));
-        editItems = await s.state(() => [...document.querySelectorAll('[role=menu] [role=menuitem]')].map((m) => m.innerText.split('\n')[0].trim()));
-        await s.ui.key('Escape');
+      const beforeMirror = (await oracleModel(s)).step;
+      const original = beforeMirror.wallAxes().find(w => near(w.start[1],10,.01) && near(w.end[1],10,.01));
+      const guid = original && beforeMirror.get(original.id).args[0];
+      let mirrored = null, restored = null;
+      tasks.push(await task(s, 'mirror y=10 wall about y=12', async () => {
+        await selectAt(s, [[2,10,1.5]]);
+        await editCommand(s,'element.mirror');
+        await s.ui.clickWorld([0,12,0]);
+        await s.ui.clickWorld([4,12,0]);
+        await escape(s);
+        mirrored = (await oracleModel(s)).step;
       }));
+      if (mirrored) tasks.push(await task(s,'undo mirror restores the original wall',async () => {
+        await s.ui.key('Control+z',{settle:800});
+        restored = (await oracleModel(s)).step;
+      }));
+      const wallWithGuid = step => {
+        const entity = step?.of('IFCWALL').find(w => w.args[0] === guid);
+        return entity && step.wallAxes().find(w => w.id === entity.id);
+      };
+      const reflected = wallWithGuid(mirrored), undone = wallWithGuid(restored);
       const shot = await s.shot('transforms');
-      const { step } = await oracleModel(s);
-      const axes = step.wallAxes();
+      const axes = beforeMirror.wallAxes();
       // Clicked wall origins carry the click's few-mm error, so the move is judged to 30 mm.
       const moved = axes.some((a) => nearPt(a.start, [0, 2], 0.03) && nearPt(a.end, [4, 2], 0.03));
       const rotated = axes.some((a) => near(a.end[0] - a.start[0], 0, 1e-3) && near(a.length, 4, 1e-3));
@@ -67,7 +82,8 @@ export default {
           { name: 'move by a typed 2 m', ok: moved, detail: axes.map((a) => `${fmt(a.start)}->${fmt(a.end)}`).join(' ') },
           { name: 'rotate by a typed 90 degrees', ok: rotated, detail: rotated ? 'a vertical 4 m wall exists' : 'no vertical wall' },
           { name: 'array makes 3 walls from one', ok: arrayed >= 3, detail: `${arrayed} walls in the array region` },
-          { name: 'a Mirror command in the Edit menu', ok: editItems.some((x) => /mirror/i.test(x)), detail: `Edit menu: ${editItems.join(', ') || 'empty'}` },
+          { name: 'Mirror reflects the selected wall about y=12', ok: !!reflected && near(reflected.start[1],14,.01) && near(reflected.end[1],14,.01) && near(reflected.length,4,.001), detail: JSON.stringify(reflected) ?? 'Mirror gesture did not produce an exported wall' },
+          { name: 'Undo restores the mirrored wall to y=10', ok: !!undone && near(undone.start[1],10,.01) && near(undone.end[1],10,.01) && restored.count('IFCWALL') === beforeMirror.count('IFCWALL'), detail: JSON.stringify(undone) ?? 'No completed Mirror to undo' },
         ],
       };
     },

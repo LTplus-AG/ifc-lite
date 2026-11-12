@@ -47,6 +47,7 @@
 
 import { assertActivitySchema, assertBoolean, assertEnum } from './_structural-activity.js';
 import { varyingActionTail, type StructuralVaryingActionParams } from './_structural-varying.js';
+import type { IfcDataStore } from '@ifc-lite/parser';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { SpatialAnchor } from './anchor.js';
 import { ownerHistoryRef, productGuid } from './_emit-helpers.js';
@@ -163,8 +164,9 @@ export function addStructuralLinearActionToStore(
   editor: StoreEditor,
   anchor: Pick<SpatialAnchor, 'ownerHistoryId' | 'guidRandom' | 'schema'>,
   params: StructuralLinearActionInStoreParams,
+  store?: IfcDataStore,
 ): StructuralLinearActionBuildResult {
-  const varyingTail = varyingActionTail(editor, anchor, params, 'IfcStructuralLoadLinearForce');
+  const varyingTail = varyingActionTail(editor, anchor, params, 'IfcStructuralLoadLinearForce', 1, store);
   assertActivitySchema(anchor, 'addStructuralLinearActionToStore');
   assertEnum('addStructuralLinearActionToStore', 'GlobalOrLocal', params.GlobalOrLocal, ['GLOBAL_COORDS', 'LOCAL_COORDS']);
   assertBoolean('addStructuralLinearActionToStore', 'DestabilizingLoad', params.DestabilizingLoad);

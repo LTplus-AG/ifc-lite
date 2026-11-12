@@ -94,8 +94,8 @@ describe('R2 CREATE SDK variants (#9668)', () => {
     if (schema !== 'IFC2X3') {
       const force = ns.addStructuralPointReaction('m', { AppliedLoad: { Type: 'IfcStructuralLoadSingleForceWarping', ForceZ: 2, WarpingMoment: 3 } });
       const forceLoad = editor.getNewEntity(force.expressId)!.attributes[7];
-      const config = ns.addStructuralLoad('m', { Type: 'IfcStructuralLoadConfiguration', Values: [Number(String(forceLoad).slice(1))], Locations: [[0]] });
-      const action = ns.addStructuralCurveAction('m', { AppliedLoad: config.expressId, PredefinedType: 'LINEAR' });
+      const config = ns.addStructuralLoad('m', { Type: 'IfcStructuralLoadConfiguration', Values: [Number(String(forceLoad).slice(1)), Number(String(forceLoad).slice(1))], Locations: [[0], [1]] });
+      const action = ns.addStructuralCurveAction('m', { AppliedLoad: config.expressId, PredefinedType: 'DISCRETE' });
       expect(editor.getNewEntity(action.expressId)!.attributes[7]).toBe(`#${config.expressId}`);
     }
   });

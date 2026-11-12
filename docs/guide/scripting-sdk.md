@@ -535,3 +535,17 @@ value). `Type: 'IfcSurfaceReinforcementArea'` takes `SurfaceReinforcement1/2`
 including a configuration, and an optional `PredefinedType` such as `LINEAR`.
 The direct equivalents are `addStructuralLoadToStore` and
 `addStructuralCurveActionToStore`. References supplied to these builders are borrowed.
+
+
+Varying action station aspects must contain one shape representation per load,
+including the initial `AppliedLoad`. IFC2X3 varying surfaces require the initial
+`Thickness` as well as their subsequent thicknesses. Configuration `Locations`
+must be unique. Curve actions enforce the distribution's sample shape: `LINEAR`
+uses two samples, `POLYGONAL` at least three, and `DISCRETE` at least two;
+all use matching, ascending one-dimensional locations and a single load type.
+Point-load samples require `DISCRETE`. `CONST`, `SINUS`, and `PARABOLA` accept
+individual loads rather than configurations.
+
+For direct action builders borrowing imported configurations or station aspects,
+pass the parsed source store as the optional fourth argument so validation reads
+source attributes and pending edits together. SDK methods provide it automatically.

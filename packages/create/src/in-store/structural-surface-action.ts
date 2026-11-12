@@ -7,6 +7,7 @@
  * IFC4+ PlanarAction constrains SurfaceAction to CONST. Both forms are offered explicitly.
  */
 import { varyingActionTail, type StructuralVaryingActionParams } from './_structural-varying.js';
+import type { IfcDataStore } from '@ifc-lite/parser';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { assertActivitySchema, assertAppliedLoad, assertEnum, assertBoolean, emitActivity, validateLoad, type ActivityAnchor, type ActivityParams, type ActivityResult } from './_structural-activity.js';
 
@@ -26,15 +27,15 @@ export interface StructuralSurfaceActionInStoreParams extends ActivityParams, St
 }
 export type StructuralSurfaceActionBuildResult = ActivityResult;
 
-export function addStructuralSurfaceActionToStore(editor: StoreEditor, anchor: ActivityAnchor, params: StructuralSurfaceActionInStoreParams): StructuralSurfaceActionBuildResult {
+export function addStructuralSurfaceActionToStore(editor: StoreEditor, anchor: ActivityAnchor, params: StructuralSurfaceActionInStoreParams, store?: IfcDataStore): StructuralSurfaceActionBuildResult {
   assertActivitySchema(anchor, 'addStructuralSurfaceActionToStore', true);
-  return surfaceAction(editor, anchor, params, 'IfcStructuralSurfaceAction');
+  return surfaceAction(editor, anchor, params, 'IfcStructuralSurfaceAction', store);
 }
-export function addStructuralPlanarActionToStore(editor: StoreEditor, anchor: ActivityAnchor, params: StructuralSurfaceActionInStoreParams): StructuralSurfaceActionBuildResult {
+export function addStructuralPlanarActionToStore(editor: StoreEditor, anchor: ActivityAnchor, params: StructuralSurfaceActionInStoreParams, store?: IfcDataStore): StructuralSurfaceActionBuildResult {
   assertActivitySchema(anchor, 'addStructuralPlanarActionToStore');
-  return surfaceAction(editor, anchor, params, 'IfcStructuralPlanarAction');
+  return surfaceAction(editor, anchor, params, 'IfcStructuralPlanarAction', store);
 }
-function surfaceAction(editor: StoreEditor, anchor: ActivityAnchor, params: StructuralSurfaceActionInStoreParams, type: string): ActivityResult {
+function surfaceAction(editor: StoreEditor, anchor: ActivityAnchor, params: StructuralSurfaceActionInStoreParams, type: string, store?: IfcDataStore): ActivityResult {
   const builder = `add${type.slice(3)}ToStore`;
   assertAppliedLoad(builder, params.AppliedLoad);
   assertBoolean(builder, 'DestabilizingLoad', params.DestabilizingLoad);
@@ -47,7 +48,7 @@ function surfaceAction(editor: StoreEditor, anchor: ActivityAnchor, params: Stru
   if (params.ProjectedOrTrue === 'PROJECTED_LENGTH' && params.GlobalOrLocal === 'LOCAL_COORDS') {
     throw new Error(`${builder}: PROJECTED_LENGTH requires GLOBAL_COORDS`);
   }
-  const varyingTail = varyingActionTail(editor, anchor, params, params.AppliedLoad.Type, 2);
+  const varyingTail = varyingActionTail(editor, anchor, params, params.AppliedLoad.Type, 2, store);
   if (varyingTail.length) type = 'IfcStructuralPlanarActionVarying';
   const projected = `.${params.ProjectedOrTrue ?? 'TRUE_LENGTH'}.`;
   return emitActivity(anchor, params, type, params.AppliedLoad, fields,

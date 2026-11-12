@@ -88,7 +88,8 @@ describe('structural CREATE gaps (#9668)', () => {
       expect(text).toContain(`(0.3,0.4),#${done.get('stations')}`);
     } else {
       expect(text).toContain(`#${done.get('load-configuration')},.GLOBAL_COORDS.`);
-      expect(text).toContain(`(#${done.get('IfcStructuralLoadSingleForceWarping')},#${done.get('IfcStructuralLoadSingleForceWarping')}),((0.),(1.))`);
+      const linearLoad = Number(String(editor.getNewEntity(done.get('linear-action'))!.attributes[7]).slice(1));
+      expect(text).toContain(`(#${linearLoad},#${linearLoad}),((0.),(1.))`);
     }
     if (process.env.STRUCTURAL_EXPORT_DIR) writeFileSync(join(process.env.STRUCTURAL_EXPORT_DIR, `${schema}-create-gaps.ifc`), text);
     if (canValidate) {
@@ -123,4 +124,70 @@ describe('structural CREATE gaps (#9668)', () => {
     expect(() => create.addStructuralLinearActionToStore(editor, anchor, { LinearForceZ: NaN })).toThrow(/finite/);
     expect(editor.getMutationView().getNewEntities()).toHaveLength(0);
   });
+  it.each(['IFC4', 'IFC4X3'] as const)('%s validates configuration uniqueness and distribution samples (#9860)', async schema => {
+    const { editor, anchor, store } = await fresh(schema);
+    const load = create.addStructuralLinearActionToStore(editor, anchor, { LinearForceZ: -2 }).loadId;
+    const point = create.addStructuralPointReactionToStore(editor, anchor, { AppliedLoad: { Type: 'IfcStructuralLoadSingleForce', ForceZ: 1 } }).loadId;
+    const config = (Values: number[], Locations: number[][]) => create.addStructuralLoadToStore(editor, anchor, { Type: 'IfcStructuralLoadConfiguration', Values, Locations });
+    let before = editor.getMutationView().getNewEntities().length;
+    expect(() => config([load, load], [[0], [0]])).toThrow(/unique/);
+    expect(editor.getMutationView().getNewEntities()).toHaveLength(before);
+    const one = config([load], [[0]]), two = config([load, load], [[0], [1]]);
+    const three = config([load, load, load], [[0], [1], [2]]);
+    const backwards = config([load, load], [[1], [0]]);
+    const twoDimensions = config([load, load], [[0, 0], [1, 1]]);
+    const mixed = config([load, point], [[0], [1]]);
+    const points = config([point, point], [[0], [1]]);
+    before = editor.getMutationView().getNewEntities().length;
+    for (const PredefinedType of ['LINEAR', 'POLYGONAL', 'DISCRETE'] as const) {
+      expect(() => create.addStructuralCurveActionToStore(editor, anchor, { AppliedLoad: load, PredefinedType })).toThrow(/requires IfcStructuralLoadConfiguration/);
+      expect(() => create.addStructuralCurveActionToStore(editor, anchor, { AppliedLoad: one, PredefinedType })).toThrow(/sample count/);
+    }
+    for (const PredefinedType of ['CONST', 'SINUS', 'PARABOLA'] as const) expect(() => create.addStructuralCurveActionToStore(editor, anchor, { AppliedLoad: two, PredefinedType })).toThrow(/must not use/);
+    expect(() => create.addStructuralCurveActionToStore(editor, anchor, { AppliedLoad: three, PredefinedType: 'LINEAR' })).toThrow(/sample count/);
+    expect(() => create.addStructuralCurveActionToStore(editor, anchor, { AppliedLoad: two, PredefinedType: 'POLYGONAL' })).toThrow(/sample count/);
+    for (const AppliedLoad of [backwards, twoDimensions]) expect(() => create.addStructuralCurveActionToStore(editor, anchor, { AppliedLoad, PredefinedType: 'LINEAR' })).toThrow(/one-dimensional/);
+    expect(() => create.addStructuralCurveActionToStore(editor, anchor, { AppliedLoad: mixed, PredefinedType: 'LINEAR' })).toThrow(/same entity type/);
+    expect(() => create.addStructuralCurveActionToStore(editor, anchor, { AppliedLoad: points, PredefinedType: 'LINEAR' })).toThrow(/point loads require DISCRETE/);
+    expect(editor.getMutationView().getNewEntities()).toHaveLength(before);
+    // Borrowed source configurations need the same validation after a reload.
+    const content = new StepExporter(store, editor.getMutationView()).export({ schema, applyMutations: true }).content;
+    const parsed = await new IfcParser().parseColumnar(content.buffer.slice(content.byteOffset, content.byteOffset + content.byteLength) as ArrayBuffer, { disableWorkerScan: true });
+    const sourceEditor = new StoreEditor(parsed, new MutablePropertyView(null, 'source'));
+    expect(() => create.addStructuralCurveActionToStore(sourceEditor, anchor, { AppliedLoad: one, PredefinedType: 'LINEAR' }, parsed)).toThrow(/sample count/);
+    sourceEditor.setPositionalAttribute(one, 1, [`#${load}`, `#${load}`]);
+    expect(() => create.addStructuralCurveActionToStore(sourceEditor, anchor, { AppliedLoad: one, PredefinedType: 'LINEAR' }, parsed)).toThrow(/Locations/);
+    create.addStructuralCurveActionToStore(sourceEditor, anchor, { AppliedLoad: two, PredefinedType: 'LINEAR' }, parsed);
+    const output = new TextDecoder().decode(new StepExporter(parsed, sourceEditor.getMutationView()).export({ schema, applyMutations: true }).content);
+    expect(output).toContain(`#${two},.GLOBAL_COORDS.,$,$,.LINEAR.`);
+  });
+
+  it('IFC2X3 validates station counts and initial thickness before emitting entities (#9860)', async () => {
+    const { editor, anchor, store } = await fresh('IFC2X3');
+    const surface = create.addStructuralSurfaceMemberToStore(editor, anchor, { Boundary: [[0,0,0],[3,0,0],[0,3,0]], Thickness: 0.2 });
+    const aspect = (count: number) => {
+      const reps = Array.from({ length: count }, (_, i) => {
+        const point = editor.addEntity('IfcCartesianPoint', [[i, 0, 0]]).expressId;
+        return `#${editor.addEntity('IfcShapeRepresentation', [`#${anchor.axisContextId}`, 'Reference', 'Point', [`#${point}`]]).expressId}`;
+      });
+      return editor.addEntity('IfcShapeAspect', [reps, null, null, true, `#${surface.productShapeId}`]).expressId;
+    };
+    const one = aspect(1), two = aspect(2), three = aspect(3);
+    const line = create.addStructuralLinearActionToStore(editor, anchor, { LinearForceZ: -1 }).loadId;
+    const planar = create.addStructuralPlanarActionToStore(editor, anchor, { AppliedLoad: { Type: 'IfcStructuralLoadPlanarForce', PlanarForceZ: -1 } }).loadId;
+    const before = editor.getMutationView().getNewEntities().length;
+    expect(() => create.addStructuralLinearActionToStore(editor, anchor, { LinearForceZ: -2, VaryingAppliedLoadLocation: one, SubsequentAppliedLoads: [line] })).toThrow(/one location per applied load/);
+    expect(() => create.addStructuralPlanarActionToStore(editor, anchor, { AppliedLoad: { Type: 'IfcStructuralLoadPlanarForce', PlanarForceZ: -2 }, VaryingAppliedLoadLocation: two, SubsequentAppliedLoads: [planar, planar] })).toThrow(/one location per applied load/);
+    expect(() => create.addStructuralSurfaceMemberToStore(editor, anchor, { Type: 'IfcStructuralSurfaceMemberVarying', Boundary: [[0,0,0],[3,0,0],[0,3,0]], SubsequentThickness: [0.3, 0.4], VaryingThicknessLocation: three })).toThrow(/requires Thickness/);
+    expect(editor.getMutationView().getNewEntities()).toHaveLength(before);
+    const content = new StepExporter(store, editor.getMutationView()).export({ schema: 'IFC2X3', applyMutations: true }).content;
+    const parsed = await new IfcParser().parseColumnar(content.buffer.slice(content.byteOffset, content.byteOffset + content.byteLength) as ArrayBuffer, { disableWorkerScan: true });
+    const sourceEditor = new StoreEditor(parsed, new MutablePropertyView(null, 'source'));
+    expect(() => create.addStructuralLinearActionToStore(sourceEditor, anchor, { LinearForceZ: -2, VaryingAppliedLoadLocation: one, SubsequentAppliedLoads: [line] }, parsed)).toThrow(/one location per applied load/);
+    sourceEditor.setPositionalAttribute(one, 0, editor.getNewEntity(two)!.attributes[0]);
+    create.addStructuralLinearActionToStore(sourceEditor, anchor, { LinearForceZ: -2, VaryingAppliedLoadLocation: one, SubsequentAppliedLoads: [line] }, parsed);
+    create.addStructuralLinearActionToStore(sourceEditor, anchor, { LinearForceZ: -2, VaryingAppliedLoadLocation: two, SubsequentAppliedLoads: [line] }, parsed);
+    expect(new TextDecoder().decode(new StepExporter(parsed, sourceEditor.getMutationView()).export({ schema: 'IFC2X3', applyMutations: true }).content)).toContain(`#${two},(#${line})`);
+  });
+
 });

@@ -116,7 +116,7 @@ export function createStructuralStoreBackend(
     },
     addStructuralPlanarAction(modelId: string, params: StructuralSurfaceActionInStoreParams): EntityRef {
       const model = resolved(modelId);
-      const result = addStructuralPlanarActionToStore(model.editor, groupAnchor(model), params);
+      const result = addStructuralPlanarActionToStore(model.editor, groupAnchor(model), params, model.store);
       return ref(model.modelId, result.activityId);
     },
     addStructuralLoad(modelId: string, params: StructuralLoadInStoreParams): EntityRef {
@@ -125,7 +125,7 @@ export function createStructuralStoreBackend(
     },
     addStructuralCurveAction(modelId: string, params: StructuralCurveActionInStoreParams): EntityRef {
       const model = resolved(modelId);
-      return ref(model.modelId, addStructuralCurveActionToStore(model.editor, groupAnchor(model), params));
+      return ref(model.modelId, addStructuralCurveActionToStore(model.editor, groupAnchor(model), params, model.store));
     },
     connectStructuralElement(modelId: string, RelatingElement: number, RelatedStructuralMember: number): EntityRef {
       const model = resolved(modelId);
@@ -133,7 +133,7 @@ export function createStructuralStoreBackend(
     },
     addStructuralSurfaceAction(modelId: string, params: StructuralSurfaceActionInStoreParams): EntityRef {
       const model = resolved(modelId);
-      const result = addStructuralSurfaceActionToStore(model.editor, groupAnchor(model), params);
+      const result = addStructuralSurfaceActionToStore(model.editor, groupAnchor(model), params, model.store);
       return ref(model.modelId, result.activityId);
     },
     addStructuralPointReaction(modelId: string, params: StructuralPointReactionInStoreParams): EntityRef {
@@ -200,7 +200,7 @@ export function createStructuralStoreBackend(
     },
     addStructuralLinearAction(modelId: string, params: StructuralLinearActionInStoreParams): EntityRef {
       const model = resolved(modelId);
-      const result = addStructuralLinearActionToStore(model.editor, groupAnchor(model), params);
+      const result = addStructuralLinearActionToStore(model.editor, groupAnchor(model), params, model.store);
       return ref(model.modelId, result.activityId);
     },
     connectStructuralMemberToConnection(modelId: string, memberExpressId: number, connectionExpressId: number, options?: StructuralMemberConnectionOptions): EntityRef {

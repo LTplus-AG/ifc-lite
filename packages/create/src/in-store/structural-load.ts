@@ -19,6 +19,7 @@ export function addStructuralLoadToStore(editor: StoreEditor, anchor: ActivityAn
   if (params.Type === 'IfcStructuralLoadConfiguration') {
     if (!Array.isArray(params.Values) || !params.Values.length || params.Values.some(id => !conformsTo(registry, editor.getEntityType(id) ?? '', 'IfcStructuralLoadOrResult'))) throw new Error(`${label}: Values must reference load/result resources`);
     if (params.Locations !== undefined && (!Array.isArray(params.Locations) || params.Locations.length !== params.Values.length || params.Locations.some(v => !Array.isArray(v) || v.length < 1 || v.length > 2 || !v.every(Number.isFinite)))) throw new Error(`${label}: Locations must match Values and contain one or two finite coordinates`);
+    if (params.Locations && new Set(params.Locations.map(v => JSON.stringify(v))).size !== params.Locations.length) throw new Error(`${label}: Locations must be unique`);
     return editor.addEntity('IfcStructuralLoadConfiguration', [params.Name ?? null, params.Values.map(id => `#${id}`), params.Locations?.map(realList) ?? null]).expressId;
   }
   if (params.Type !== 'IfcSurfaceReinforcementArea') throw new Error(`${label}: unsupported Type`);

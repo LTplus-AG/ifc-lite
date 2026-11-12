@@ -4,16 +4,16 @@
 
 The scorecard of the structural domain hill climb ([#9668](https://github.com/LTplus-AG/ifc-lite/issues/9668)): one row per concrete entity of the IFC structural analysis domain per schema, derived from the generated schema tables, plus capability rows. Every status below comes from a probe that ran (`tests/structural-coverage/`), never from a typed opinion.
 
-**Most of this ledger is red, by design.** It measures the whole domain, including the levels the product does not do yet: 452 of 774 cell points are still owed. A red cell is a measured gap, a `·` is a probe not written yet; both score 0.
+**Most of this ledger is red, by design.** It measures the whole domain, including the levels the product does not do yet: 452.5 of 774 cell points are still owed. A red cell is a measured gap, a `·` is a probe not written yet; both score 0.
 
-**Total: 56 / 119 rows** (met 1, partial 110, missing 8). **Cells: 322 / 774.** A met row counts 1, a partial row 0.5; a passing cell 1, a partial cell 0.5. The score may only go up: `node tests/structural-coverage/score.mjs --check tests/structural-coverage/baseline/r4.json` fails when the total, the cell score, any row or any cell drops.
+**Total: 56 / 119 rows** (met 1, partial 110, missing 8). **Cells: 321.5 / 774.** A met row counts 1, a partial row 0.5; a passing cell 1, a partial cell 0.5. The score may only go up: `node tests/structural-coverage/score.mjs --check tests/structural-coverage/baseline/r4.json` fails when the total, the cell score, any row or any cell drops.
 
 | Level | Score | Pass | Partial | Fail | Skip | Not written |
 |---|---|---|---|---|---|---|
 | fixture | 110 / 110 | 110 | 0 | 0 | 0 | 0 |
 | read | 84.5 / 110 | 71 | 27 | 12 | 0 | 0 |
 | card | 0 / 100 | 0 | 0 | 0 | 0 | 100 |
-| render | 9.5 / 43 | 5 | 9 | 10 | 0 | 19 |
+| render | 9 / 43 | 4 | 10 | 10 | 0 | 19 |
 | create | 73.5 / 110 | 73 | 1 | 36 | 0 | 0 |
 | edit | 0 / 110 | 0 | 0 | 0 | 0 | 110 |
 | remove | 0 / 110 | 0 | 0 | 0 | 0 | 110 |
@@ -55,7 +55,7 @@ Summary: `tests/structural-coverage/baseline/r4.json`, scored over 27 corpus fil
 | `IfcStructuralLoadTemperature` | resource | ✅ | ◐ | · | – | ✅ | · | · | ✅ | ◐ partial | **read** partial: 1 problem(s) over 103 record(s): 1 of 103 record(s) not in the read model, e.g. ifcopenshell/generated_structural_coverage_ifc2x3.ifc#22 |
 | `IfcStructuralPlanarAction` | activity | ✅ | ◐ | · | ◐ | ✅ | · | · | ◐ | ◐ partial | **read** partial: 1 problem(s) over 2 record(s): CausedBy: no fixture sets it, so reading it is unproven<br>**render** partial: 1 problem(s) over 2 record(s): 1 of 2 record(s) with a non-zero load draw no glyph, e.g. ifcopenshell/generated_structural_coverage_ifc2x3.ifc#52<br>**convert** partial: 2 problem(s) over 2 record(s): ifcopenshell/generated_structural_coverage_ifc2x3.ifc#52: ProjectedOrTrue "USERDEFINED", was "TRUE_LENGTH"; structural/ifc_structuralanalysisview/simple_bottom_slab--Ax… |
 | `IfcStructuralPlanarActionVarying` | activity | ✅ | ◐ | · | ❌ | ❌ | · | · | ❌ | ◐ partial | **read** partial: 3 problem(s) over 1 record(s): CausedBy: no fixture sets it, so reading it is unproven; VaryingAppliedLoadLocation unexposed (set in 1 record(s)); SubsequentAppliedLoads unexposed (set in 1 record(s))<br>**render** fail: 1 problem(s) over 1 record(s): 1 of 1 record(s) with a non-zero load draw no glyph, e.g. ifcopenshell/generated_structural_coverage_ifc2x3.ifc#64<br>**create** fail: no in-store builder emits IfcStructuralPlanarActionVarying<br>**convert** fail: 1 problem(s) over 1 record(s): ifcopenshell/generated_structural_coverage_ifc2x3.ifc: 1 of 1 IfcStructuralPlanarActionVarying record(s) in the IFC4 file do not conform to IFC4 (e.g. no such entity) |
-| `IfcStructuralPointAction` | activity | ✅ | ◐ | · | ✅ | ✅ | · | · | ✅ | ◐ partial | **read** partial: 1 problem(s) over 31 record(s): CausedBy: no fixture sets it, so reading it is unproven |
+| `IfcStructuralPointAction` | activity | ✅ | ◐ | · | ◐ | ✅ | · | · | ✅ | ◐ partial | **read** partial: 1 problem(s) over 31 record(s): CausedBy: no fixture sets it, so reading it is unproven<br>**render** partial: 1 problem(s) over 31 record(s): 20 of 31 record(s) with a non-zero load draw no glyph, e.g. structural/ifc_structuralanalysisview/E1--3-Axis-Struc-Export.ifc#1599 |
 | `IfcStructuralPointConnection` | item | ✅ | ✅ | · | ✅ | ✅ | · | · | ✅ | ◐ partial |  |
 | `IfcStructuralPointReaction` | activity | ✅ | ✅ | · | · | ✅ | · | · | ✅ | ◐ partial |  |
 | `IfcStructuralResultGroup` | group | ✅ | ✅ | · | – | ✅ | · | · | ✅ | ◐ partial |  |

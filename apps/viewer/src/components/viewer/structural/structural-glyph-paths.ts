@@ -76,6 +76,7 @@ function screenAxis(project: Project, position: Vec3, screen: Point, direction: 
   return { d: px > 1e-6 ? { x: dx / px, y: dy / px } : { x: 0, y: 1 }, px };
 }
 
+const WORLD_AXES: Vec3[] = [{ x: 1, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }, { x: 0, y: 0, z: 1 }];
 const sized = (wanted: number, worldPx: number) => Math.max(MIN_PX, Math.min(wanted, worldPx));
 
 function arrowHead(tip: Point, d: Point, size: number, both = false): string {
@@ -116,7 +117,10 @@ export function glyphPath(glyphs: readonly ViewGlyph[], project: Project, worldC
     if (!p) continue;
     if (glyph.kind === 'support') {
       const axis = direction && screenAxis(project, position, p, { x: -direction.x, y: -direction.y, z: -direction.z }, worldCap);
-      const s = sized(SUPPORT_PX, axis?.px ?? SUPPORT_PX);
+      // The world cap measured along the longest-looking render axis, so a
+      // support seen end-on keeps its size instead of shrinking to the floor.
+      const capPx = Math.max(...WORLD_AXES.map((a) => screenAxis(project, position, p, a, worldCap)?.px ?? 0));
+      const s = sized(SUPPORT_PX, capPx);
       // Looking straight along the support axis: hang it down the screen.
       out += support(glyph.support, p, axis && axis.px > MIN_PX ? axis.d : { x: 0, y: 1 }, s);
       continue;

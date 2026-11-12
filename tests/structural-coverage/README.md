@@ -115,4 +115,4 @@ A new in-store builder needs no new probe: add a step to `SCENE` in
 
 [R3 combined measurement](baseline/r3-notes.md): main after #9737 and #9763 is 288.5/774 cells; the combined branch is 312.5/774, with the same 24 new create passes. R1 and R2 remain retained.
 
-[R4 support and load glyphs](baseline/r4-notes.md): 24 render cells measured (5 pass, 9 partial, 10 fail), 322/774 cells; rows remain 56/119.
+[R4 support and load glyphs](baseline/r4-notes.md): 24 render cells measured (4 pass, 10 partial, 10 fail), 321.5/774 cells; rows remain 56/119.

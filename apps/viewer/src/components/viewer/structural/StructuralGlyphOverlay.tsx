@@ -40,8 +40,14 @@ const STROKE: Record<GlyphStyle, string> = {
   displacement: '#3b82f6',
 };
 
+/**
+ * Hit stroke, CSS px. Narrow on purpose: every load group draws at once, and
+ * whatever a glyph covers no longer reaches the canvas (orbit, pick).
+ */
+const HIT_WIDTH = 5;
+
 export default function StructuralGlyphOverlay() {
-  const { t } = useTranslation();
+  const { t, revision } = useTranslation();
   const models = useViewerStore((s) => s.models);
   const legacyStore = useViewerStore((s) => s.ifcDataStore);
   const legacyGeometry = useViewerStore((s) => s.geometryResult);
@@ -62,9 +68,11 @@ export default function StructuralGlyphOverlay() {
     let cancelled = false;
     structuralGlyphGroups(useViewerStore.getState(), t).then((next) => { if (!cancelled) setGroups(next); }, (error) => {
       console.warn('[structural-glyphs] could not place the glyphs', error);
+      if (!cancelled) setGroups([]);
     });
     return () => { cancelled = true; };
-  }, [models, legacyStore, legacyGeometry, mutationViews, mutationVersion, modelPlacement, georefMutations, t]);
+    // `revision` changes with the locale; `t` keeps one identity.
+  }, [models, legacyStore, legacyGeometry, mutationViews, mutationVersion, modelPlacement, georefMutations, t, revision]);
 
   useEffect(() => {
     if (!projector) return;
@@ -107,7 +115,7 @@ export default function StructuralGlyphOverlay() {
           onClick={(event) => { event.stopPropagation(); select(group); }}
         >
           <path stroke={STROKE[group.style]} strokeWidth={1.75} style={{ pointerEvents: 'none' }} />
-          <path stroke="transparent" strokeWidth={10} style={{ pointerEvents: 'stroke' }}>
+          <path stroke="transparent" strokeWidth={HIT_WIDTH} style={{ pointerEvents: 'stroke' }}>
             <title>{group.title}</title>
           </path>
         </g>

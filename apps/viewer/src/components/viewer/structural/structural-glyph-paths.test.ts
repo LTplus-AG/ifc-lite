@@ -62,6 +62,15 @@ describe('glyphPath sizing', () => {
     assert.ok(floor >= MIN_PX, `far support spans ${floor}px`);
   });
 
+  it('keeps a support its full size when seen along its axis (a plan view)', () => {
+    // Looking down render Y, the support's own axis projects to a point.
+    const plan: Project = (p) => ({ x: 500 + p.x * 10_000, y: 500 + p.z * 10_000 });
+    const d = glyphPath(support, plan, 1);
+    const ps = points(d);
+    const width = Math.max(...ps.map((q) => q.x)) - Math.min(...ps.map((q) => q.x));
+    assert.ok(width > 15, `end-on support spans ${width}px`);
+  });
+
   it('draws a force pointing into its node, longer for the larger load of its group', () => {
     const force = (relative: number) => toViewGlyphs([{ kind: 'force', distribution: 'point', position: [0, 0, 0], direction: [0, 0, -1], magnitude: relative, relative, source }], yUp);
     const big = points(glyphPath(force(1), ortho(10_000), 1));

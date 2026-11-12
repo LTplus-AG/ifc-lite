@@ -101,7 +101,7 @@ const SYNTHETIC = `ISO-10303-21;HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('g
 #82=IFCSTRUCTURALLOADSINGLEFORCE('P2',0.,0.,-10.,$,$,$);
 #83=IFCSTRUCTURALPOINTACTION(${id(83)},$,'A2',$,$,$,$,#82,.GLOBAL_COORDS.,.F.);
 #84=IFCSTRUCTURALLOADSINGLEFORCE('P3',0.,0.,-2.,$,$,$);
-#85=IFCSTRUCTURALPOINTACTION(${id(85)},$,'A3',$,$,$,$,#84,.GLOBAL_COORDS.,.F.);
+#85=IFCSTRUCTURALPOINTACTION(${id(85)},$,'A3',$,$,#23,$,#84,.GLOBAL_COORDS.,.F.);
 #86=IFCSTRUCTURALLOADSINGLEFORCE('P4',0.,0.,-1.,$,$,$);
 #87=IFCSTRUCTURALPOINTACTION(${id(87)},$,'A4',$,$,$,$,#86,.LOCAL_COORDS.,.F.);
 #90=IFCSTRUCTURALLOADLINEARFORCE('q',$,$,-5.,$,$,$);
@@ -127,6 +127,15 @@ const SYNTHETIC = `ISO-10303-21;HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('g
 #128=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(128)},$,$,$,#61,#99);
 #129=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(129)},$,$,$,#53,#100);
 #130=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(130)},$,$,$,#68,#101);
+#102=IFCSTRUCTURALLOADSINGLEFORCE('P6',1.,0.,0.,$,$,$);
+#103=IFCSTRUCTURALPOINTACTION(${id(103)},$,'A6',$,$,$,$,#102,.GLOBAL_COORDS.,.F.);
+#131=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(131)},$,$,$,#53,#103);
+#140=IFCSTRUCTURALANALYSISMODEL(${id(140)},$,'Turned',$,$,.LOADING_3D.,$,$,$,#23);
+#141=IFCSTRUCTURALANALYSISMODEL(${id(141)},$,'Moved',$,$,.LOADING_3D.,$,$,$,#20);
+#142=IFCRELASSIGNSTOGROUP(${id(142)},$,$,$,(#103),$,#140);
+#150=IFCBOUNDARYEDGECONDITION('line',${T},${T},${T},${T},${T},${T});
+#151=IFCDIRECTION((0.,1.,0.));
+#152=IFCSTRUCTURALCURVECONNECTION(${id(152)},$,'C1',$,$,#23,#66,#150,#151);
 #110=IFCSTRUCTURALLOADGROUP(${id(110)},$,'G1',$,$,.LOAD_GROUP.,.PERMANENT_G.,.DEAD.,1.,$);
 #111=IFCSTRUCTURALLOADGROUP(${id(111)},$,'G2',$,$,.LOAD_GROUP.,.PERMANENT_G.,.DEAD.,1.,$);
 #112=IFCRELASSIGNSTOGROUP(${id(112)},$,$,$,(#81,#83),$,#110);
@@ -195,6 +204,28 @@ describe('structuralGlyphs on synthetic data, one kind each', () => {
       expect(g.position[1]).toBeLessThan(2);
       close(g.kind === 'force' ? g.direction : undefined, [-1, 0, 0]);
     }
+  });
+
+  it('draws an action with only its own placement at the connection it acts on', async () => {
+    const { glyphs } = await glyphsOf(new TextEncoder().encode(SYNTHETIC));
+    // A3 sits on #23 (whose origin is (1, 0, 0.5)) but has no vertex: it acts on N2 at (1, 2, 0.5).
+    close(bySource(glyphs, 85)[0].position, [1, 2, 0.5]);
+  });
+
+  it('turns GLOBAL_COORDS loads with their analysis model SharedPlacement', async () => {
+    const { glyphs } = await glyphsOf(new TextEncoder().encode(SYNTHETIC));
+    // A6 is in 'Turned', whose SharedPlacement #23 maps local +X to world +Y.
+    const [force] = bySource(glyphs, 103);
+    close(force.kind === 'force' ? force.direction : undefined, [0, 1, 0]);
+  });
+
+  it('repeats a curve support along its edge, facing the connection Axis', async () => {
+    const { glyphs } = await glyphsOf(new TextEncoder().encode(SYNTHETIC));
+    // C1 lies on M1's edge (+Y); its Axis is local +Y, which #23 turns to world -X.
+    const supports = bySource(glyphs, 152);
+    expect(supports.map((g) => g.kind === 'support' && g.support)).toEqual(Array(5).fill('fixed'));
+    supports.forEach((g, i) => close(g.position, [1, i * 0.5, 0.5]));
+    supports.forEach((g) => close(g.kind === 'support' ? g.direction : undefined, [-1, 0, 0]));
   });
 
   it('marks temperature and displacement loads, skips reactions, and refuses a point load on a member', async () => {
@@ -272,14 +303,20 @@ describe('structuralGlyphs on real files', () => {
       }
     }
     const drawn = (group: string) => drawnPerGroup.get(group)?.size ?? 0;
-    // IfcOpenShell action counts. Six point-load groups and the three temperature groups draw every action.
+    // IfcOpenShell action counts. The node-load group, the two full line-load
+    // groups and the three temperature groups draw every action.
     const everyAction: Record<string, number> = {
-      '3$S09L3RP1fu9lr967gWgW': 6, '2AT7Jgwef76PjTmlnENjOM': 3, '0fo2OFoJvEMugp$nr9oxqX': 3, '3RhOX$y7D03gBw6bO111w2': 3,
-      '2ixnNXJ3nBBQ$gF316Npuo': 3, '0R$8A62z9FtQIVnfqEuRcB': 3, '0bitbU6p52XfCkbmDraasy': 3,
-      '1MRugb_xvBFAgkLUT2rfvw': 48, '07AGoiGJDCggIminrAdX2n': 34,
+      '3$S09L3RP1fu9lr967gWgW': 6, '1MRugb_xvBFAgkLUT2rfvw': 48, '07AGoiGJDCggIminrAdX2n': 34,
       '2EoMJ8Jk56Pf18$lSogZb7': 34, '3IBMmze65FyfhrBbW7l8Cb': 34, '085sCkdl15s9RrLar2W57S': 34,
     };
     for (const [group, count] of Object.entries(everyAction)) expect(drawn(group), group).toBe(count);
+    // 'Einzellast 1' to '6', 3 point loads each on curve members: Axis writes the
+    // load's station along the member as an absolute placement ((0.75, 0, 0) on a
+    // member from (1.5, 0, 5) to (3, 0, 5)), which is not on the member, so
+    // nothing is drawn rather than a load at the wrong place.
+    for (const group of ['2AT7Jgwef76PjTmlnENjOM', '0fo2OFoJvEMugp$nr9oxqX', '3RhOX$y7D03gBw6bO111w2', '2ixnNXJ3nBBQ$gF316Npuo', '0R$8A62z9FtQIVnfqEuRcB', '0bitbU6p52XfCkbmDraasy']) {
+      expect(drawn(group), group).toBe(0);
+    }
     // 'Linienlast Trapez', 48 varying actions: the 6 whose first value is zero draw nothing (stations are not read yet).
     expect(drawn('0l4zY_xY1AvOhV5E5oNNEy')).toBe(42);
     // 'Eigengewicht' (126) and 'EG' (176) are abstract IfcStructuralActions over a valueless IfcStructuralLoad.

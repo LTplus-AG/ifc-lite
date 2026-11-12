@@ -18,6 +18,9 @@ import type { IfcDataStore, StructuralExtraction } from '@ifc-lite/parser';
 import { structuralGlyphs, type StructuralGlyph } from '@ifc-lite/parser/structural-glyphs';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { ViewerState } from '@/store';
+import type { FederatedModel } from '@/store/types';
+import type { GeometryResult } from '@ifc-lite/geometry';
+import { LEGACY_MODEL_ID, LEGACY_MUTATION_MODEL_ID } from '@/sdk/adapters/model-compat';
 import type { TranslationKey } from '@/i18n';
 import { directrixDisplayPoint, type FederationPointMap } from '@/lib/analytic/directrix-frame';
 import { modelFrameMap } from '@/lib/analytic/selected-centreline-lines';
@@ -108,7 +111,7 @@ function groupsOf(modelId: string, data: StructuralExtraction, glyphs: ViewGlyph
   });
 }
 
-/** Every visible model's glyph groups. A model whose frame cannot be resolved is skipped with a warning. */
+/** Every visible model's glyph groups. A model whose data or frame fails is skipped with a warning. */
 export async function structuralGlyphGroups(state: ViewerState, t: Translate): Promise<SourceGroup[]> {
   const out: SourceGroup[] = [];
   const legacy = state.models.size === 0 && state.ifcDataStore
@@ -117,27 +120,33 @@ export async function structuralGlyphGroups(state: ViewerState, t: Translate): P
   const models = [...state.models].flatMap(([id, model]) =>
     model.visible && model.ifcDataStore ? [[id, { store: model.ifcDataStore, geometry: model.geometryResult, model }] as const] : []);
   for (const [modelId, { store, geometry, model }] of [...models, ...legacy]) {
-    const data = effectiveStructuralData(store, state.mutationViews.get(modelId === 'legacy' ? '__legacy__' : modelId));
-    if (!data.hasStructural || !geometry) continue;
-    let map: FederationPointMap | undefined;
+    // One model's bad data or frame skips that model, not the others.
     try {
-      map = model ? await modelFrameMap(model, state) : undefined;
+      out.push(...await modelGroups(state, modelId, store, geometry, model, t));
     } catch (error) {
-      console.warn(`[structural-glyphs] ${modelId}: no render frame for the glyphs`, error);
-      continue;
+      console.warn(`[structural-glyphs] ${modelId}: glyphs not drawn`, error);
     }
-    const sourceFrame = model?.preAlignment?.coordinateInfo ?? geometry.coordinateInfo;
-    const placement = { ...placementFor(state.modelPlacement, modelId), translation: displayedTranslation(state.modelPlacement, modelId) };
-    const toDisplay = (p: readonly [number, number, number]): Vec3 | null => {
-      try {
-        const [x, y, z] = directrixDisplayPoint(p, sourceFrame, placement, map);
-        return { x, y, z };
-      } catch (error) {
-        if (error instanceof RangeError) return null;
-        throw error;
-      }
-    };
-    out.push(...groupsOf(modelId, data, toViewGlyphs(glyphsOf(store, data), toDisplay), worldCapOf(geometry.coordinateInfo), t));
   }
   return out;
+}
+
+async function modelGroups(
+  state: ViewerState, modelId: string, store: IfcDataStore, geometry: GeometryResult | null, model: FederatedModel | undefined, t: Translate,
+): Promise<SourceGroup[]> {
+  const view = model ? state.mutationViews.get(modelId) : state.mutationViews.get(LEGACY_MUTATION_MODEL_ID) ?? state.mutationViews.get(LEGACY_MODEL_ID);
+  const data = effectiveStructuralData(store, view);
+  if (!data.hasStructural || !geometry) return [];
+  const map: FederationPointMap | undefined = model ? await modelFrameMap(model, state) : undefined;
+  const sourceFrame = model?.preAlignment?.coordinateInfo ?? geometry.coordinateInfo;
+  const placement = { ...placementFor(state.modelPlacement, modelId), translation: displayedTranslation(state.modelPlacement, modelId) };
+  const toDisplay = (p: readonly [number, number, number]): Vec3 | null => {
+    try {
+      const [x, y, z] = directrixDisplayPoint(p, sourceFrame, placement, map);
+      return { x, y, z };
+    } catch (error) {
+      if (error instanceof RangeError) return null;
+      throw error;
+    }
+  };
+  return groupsOf(modelId, data, toViewGlyphs(glyphsOf(store, data), toDisplay), worldCapOf(geometry.coordinateInfo), t);
 }

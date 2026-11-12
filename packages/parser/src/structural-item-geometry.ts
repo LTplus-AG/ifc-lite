@@ -25,7 +25,7 @@ import { firstProjAxis, walkPlacementChain } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
 import { getEntityRefFromStore } from './columnar-parser-root-attributes.js';
 import { EntityExtractor } from './entity-extractor.js';
-import { asBoolean, asRef, asRefList, unwrapTyped } from './structural-step-values.js';
+import { asBoolean, asRef, asRefList, readAttr, unwrapTyped } from './structural-step-values.js';
 
 export type Vec3 = readonly [number, number, number];
 
@@ -179,6 +179,16 @@ export class ItemGeometryReader {
     if (!product) return null;
     const placementId = asRef(product.attributes[OBJECT_PLACEMENT]);
     return placementId === undefined ? IDENTITY : this.placement(placementId);
+  }
+
+  /**
+   * An `IfcStructuralAnalysisModel`'s `SharedPlacement` in world axes, or null
+   * when it has none (IFC2X3 has no such attribute) or it cannot be read.
+   */
+  sharedPlacementFrame(modelId: number): Frame | null {
+    const model = this.entity(modelId);
+    const ref = model ? asRef(readAttr('IfcStructuralAnalysisModel', model.attributes, 'SharedPlacement', this.store.schemaVersion)) : undefined;
+    return ref === undefined ? null : this.placement(ref);
   }
 
   /** A file length (e.g. a load configuration's `Locations`) in metres. */

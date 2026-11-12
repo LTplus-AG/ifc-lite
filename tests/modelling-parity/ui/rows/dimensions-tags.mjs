@@ -68,8 +68,13 @@ export default {
     title: 'A Distance dimension and live door/space tags on a 2D plan',
     async run(s) {
       const tasks = [await setupRoom(s)];
-      tasks.push(await task(s, 'place a door and an enclosed space', async () => {
+      tasks.push(await task(s, 'place and name a door, then create an enclosed space', async () => {
         await tool(s, 'door.place'); await s.ui.clickWorld([2.5, 0, 1]); await escape(s);
+        await s.ui.clickWorld([2.5, 0, 1]);
+        await s.ui.key('Control+k'); await s.ui.type('Model inspector');
+        await s.ui.click(s.page.getByRole('option', { name: 'Model inspector', exact: true }));
+        await field(s, s.page.locator('[data-model-inspector]').getByLabel('Name', { exact: true }), 'Parity entry 01');
+        await escape(s);
         await tool(s, 'room.place'); await s.ui.clickWorld([2.5, 2, 0]); await escape(s);
       }));
       const initialModel = (await oracleModel(s)).step;
@@ -151,6 +156,7 @@ export default {
           { name: 'a dimension was placed in the drawing', ok: annotations > 0, detail: `${annotations} drawing markups in the store` },
           { name: 'dimension measures the 5 m room span', ok: dimensions.length === 1 && near(dimensions[0], 5, 0.25), detail: JSON.stringify(dimensions) },
           { name: 'the exported SVG carries the dimension', ok: added > 0 && numbers > 0, detail: `${added} more SVG characters than before, ${numbers} numeric text labels` },
+          { name: 'fixture door has a unique editable name', ok: door?.args[2] === 'Parity entry 01', detail: String(door?.args[2]) },
           { name: 'two tags bind the door and space', ok: tagged, detail: JSON.stringify(tags) },
           { name: 'SVG carries the live door label and exact room quantity', ok: !!taggedSvg && !!expectedDoor && !!expectedSpace && areaLabel !== null && taggedSvg.text.includes('id="element-tags"') && taggedSvg.text.includes(xmlText(expectedDoor)) && taggedSvg.text.includes(xmlText(expectedSpace)) && taggedSvg.text.includes(areaLabel), detail: `${expectedDoor}; ${expectedSpace}; ${areaLabel}` },
           { name: 'Properties rename updates the exported tag', ok: !!renamedSvg && renamedSvg.text.includes('Parity renamed door'), detail: renamedSvg?.name ?? 'no re-export' },

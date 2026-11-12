@@ -70,7 +70,13 @@ export default {
       const tasks = [await setupRoom(s)];
       tasks.push(await task(s, 'place and name a door, then create an enclosed space', async () => {
         await tool(s, 'door.place'); await s.ui.clickWorld([2.5, 0, 1]); await escape(s);
-        await s.ui.clickWorld([2.5, 0, 1]);
+        await s.ui.click(s.page.getByRole('treeitem').filter({ has: s.page.getByText('Door', { exact: true }) }).last());
+        const selectedType = await s.state(() => {
+          const st = globalThis.__ifc_lite_viewer_store__.getState(), ref = st.selectedEntity;
+          return ref ? (st.mutationViews.get(ref.modelId)?.getNewEntity(ref.expressId)?.type
+            ?? st.models.get(ref.modelId)?.ifcDataStore?.entities.getTypeName(ref.expressId)) : null;
+        });
+        if (selectedType?.toUpperCase() !== 'IFCDOOR') throw new Error(`the fixture selected ${selectedType}, not IfcDoor`);
         await s.ui.key('Control+k'); await s.ui.type('Model inspector');
         await s.ui.click(s.page.getByRole('option', { name: 'Model inspector', exact: true }));
         await field(s, s.page.locator('[data-model-inspector]').getByLabel('Name', { exact: true }), 'Parity entry 01');

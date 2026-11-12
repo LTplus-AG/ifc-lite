@@ -97,3 +97,16 @@ describe('remesh core (#6232)', () => {
     expect(api.calls).toEqual(['mergeLayers=true', 'quality=high', 'skipSmallCuts=true', 'rectParam=false']);
   });
 });
+
+it('uses current mini-STEP material colours instead of load-time colours (#9296)', () => {
+  const api = scriptedApi([7, 0, 10], emptyCollection);
+  const pre = api.buildPrePassOnce(new Uint8Array());
+  const current = { materialElementIds: Uint32Array.of(7), materialColorCounts: Uint32Array.of(1), materialColors: Uint8Array.of(181, 82, 59, 255) };
+  api.buildPrePassOnce = () => ({ ...pre, ...current });
+  const originalBatch = api.processGeometryBatch;
+  api.processGeometryBatch = (...args) => {
+    expect(args.slice(13, 16)).toEqual([current.materialElementIds, current.materialColorCounts, current.materialColors]);
+    return originalBatch(...args);
+  };
+  remeshOnApi(api, { ...REQUEST, materialElementIds: Uint32Array.of(7), materialColorCounts: Uint32Array.of(1), materialColors: Uint8Array.of(128, 128, 128, 255) });
+});

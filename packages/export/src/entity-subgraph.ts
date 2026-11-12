@@ -108,6 +108,13 @@ export function serializeEntitySubgraph(
 
   // Iterative (explicit queue + visited set), so cycles and long chains end.
   const walked = collectReferencedEntityIds(walkRoots, store.source, index);
+  // Material appearances are inverse references, not reachable from IfcMaterial.
+  // Include only definitions of materials reached by this remesh (#9296).
+  for (const id of index.byType.get('IFCMATERIALDEFINITIONREPRESENTATION') ?? []) {
+    const material = index.effectiveAttributeRef(id, 'RepresentedMaterial');
+    if (material === undefined || !walked.has(material)) continue;
+    for (const child of collectReferencedEntityIds(new Set([id]), store.source, index)) walked.add(child);
+  }
   const owningGrid = gridReferenceContext(index, (id) => writer.line(id, false), schema);
   const expandedGrids = new Set<number>();
   // Set iteration visits newly added ids too. Each owning grid expands once,

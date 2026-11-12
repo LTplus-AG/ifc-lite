@@ -21,9 +21,8 @@
  */
 
 import { MutablePropertyView, StoreEditor, iterateEffectiveEntityIds, type IfcAttributeValue } from '@ifc-lite/mutations';
-import { effectiveMetadataRecord, resolveAllMaterialDefIds, type IfcDataStore } from '@ifc-lite/parser';
+import { effectiveMetadataRecord, type IfcDataStore } from '@ifc-lite/parser';
 import { liveEntityConforms } from '@ifc-lite/create';
-import { RelationshipType } from '@ifc-lite/data';
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import { resolveLiveOwnerHistoryId } from '@ifc-lite/sdk';
 import type { TranslationKey } from '@/i18n';
@@ -33,10 +32,12 @@ import { configureMutationView } from '@/utils/configureMutationView';
 import { roomSlotFor } from '@/lib/collab/room-model-target';
 import { mirrorStoreOverlayDelta, snapshotOverlay } from '@/sdk/adapters/store-adapter-cost';
 
+import { setElementMaterial } from '@/components/viewer/model-inspector/inspector-edits';
+
 export type AssociationResult = { ok: true } | { ok: false; reasonKey: TranslationKey };
 
 export interface ClassificationInput { system: string; identification: string; name?: string }
-export interface MaterialInput { name: string; category?: string; description?: string }
+export interface MaterialInput { name: string; category?: string; description?: string; color?: string }
 
 /** Text the STEP writer would read as `$`, `*`, a `#N` reference or a `.ENUM.` instead of a string. */
 const STEP_TOKEN = /^\s*(\$|\*|#\d+|\.[A-Za-z0-9_]+\.)\s*$/;
@@ -68,12 +69,6 @@ function resolveTarget(modelId: string): Target | AssociationResult {
   return { storeModelId, store, view, editor, ifc2x3: store.schemaVersion === 'IFC2X3' };
 }
 
-const referenceId = (value: IfcAttributeValue | undefined): number | null => {
-  if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) return value;
-  const match = typeof value === 'string' ? /^#(\d+)$/.exec(value) : null;
-  return match ? Number(match[1]) : null;
-};
-
 /** Source and overlay records, including positional edits from this session. */
 function effectiveAttributes(target: Pick<Target, 'store' | 'view'>, id: number): IfcAttributeValue[] | null {
   if (target.view.isDeleted(id)) return null;
@@ -101,56 +96,6 @@ function entityNamed(target: Pick<Target, 'store' | 'view'>, type: string, name:
   }
   for (const entity of target.view.getNewEntitiesOfType(type)) {
     if (matches(entity.expressId)) return entity.expressId;
-  }
-  return null;
-}
-
-function relatedObjects(attrs: IfcAttributeValue[] | null): IfcAttributeValue[] | null {
-  return Array.isArray(attrs?.[4]) ? attrs[4] : null;
-}
-
-function relatesTo(attrs: IfcAttributeValue[] | null, ids: readonly number[]): boolean {
-  return relatedObjects(attrs)?.some((value) => ids.includes(referenceId(value) ?? -1)) ?? false;
-}
-
-/** Include edited source rels: the parser's relationship graph is source-only. */
-function effectiveMaterialIds(target: Target, entityIds: readonly number[]): Set<number> {
-  const ids = new Set(resolveAllMaterialDefIds(target.store, entityIds.at(-1)!));
-  const sourceRelIds = new Set(target.view.getMutations()
-    .filter((mutation) => mutation.type === 'UPDATE_POSITIONAL_ATTRIBUTE' && mutation.attributeName === '@4')
-    .map((mutation) => mutation.entityId));
-  const relIds = [...Array.from(target.view.getNewEntitiesOfType('IFCRELASSOCIATESMATERIAL'), (entity) => entity.expressId), ...sourceRelIds];
-  for (const relId of relIds) {
-    const entity = target.view.getNewEntity(relId) ?? target.store.getEntity(relId);
-    if (entity?.type.toUpperCase() !== 'IFCRELASSOCIATESMATERIAL') continue;
-    const attrs = effectiveAttributes(target, relId);
-    if (!relatesTo(attrs, entityIds)) continue;
-    const materialId = referenceId(attrs?.[5]);
-    if (materialId !== null) ids.add(materialId);
-  }
-  return ids;
-}
-
-/** Reuse one existing relationship for this material instead of duplicating it. */
-function materialRelationship(target: Target, materialId: number): { id: number; related: string[] } | 'invalid' | null {
-  const overlay = target.view.getNewEntitiesOfType('IFCRELASSOCIATESMATERIAL');
-  const source = target.store.relationships.forward.getEdges(materialId, RelationshipType.AssociatesMaterial)
-    .map((edge) => edge.relationshipId);
-  for (const id of [...Array.from(overlay, (entity) => entity.expressId), ...source]) {
-    const attrs = effectiveAttributes(target, id);
-    const related = relatedObjects(attrs);
-    if (referenceId(attrs?.[5]) !== materialId || !related) continue;
-    // EntityNode decodes source #references as numbers, but the STEP writer
-    // serializes numeric array members as numeric literals. Normalize every
-    // preexisting RelatedObjects member before overriding the whole list;
-    // otherwise extending a real source rel drops its original recipients.
-    const refs: number[] = [];
-    for (const value of related) {
-      const ref = referenceId(value);
-      if (ref === null) return 'invalid';
-      refs.push(ref);
-    }
-    return { id, related: refs.map((ref) => `#${ref}`) };
   }
   return null;
 }
@@ -223,33 +168,12 @@ export function addClassificationAssociation(modelId: string, entityId: number, 
 }
 
 export function addMaterialAssociation(modelId: string, entityId: number, input: MaterialInput): AssociationResult {
-  const name = input.name.trim();
-  const category = input.category?.trim() || null;
-  const description = input.description?.trim() || null;
-  if ([name, category, description].some((v) => v !== null && STEP_TOKEN.test(v))) return { ok: false, reasonKey: 'propertyEditor.association.stepToken' };
+  if ([input.name, input.category, input.description].some(v => v !== undefined && STEP_TOKEN.test(v))) return { ok: false, reasonKey: 'propertyEditor.association.stepToken' };
   const target = resolveTarget(modelId);
   if (!('editor' in target)) return target;
-  const baseId = target.view.resolveBaseEntityId(entityId) ?? entityId;
-  const material = entityNamed(target, 'IFCMATERIAL', name, 0);
-  const current = effectiveMaterialIds(target, [entityId, baseId]);
-  // A different material association is a conflict; the target material is
-  // already present when this Add is repeated, so the action is idempotent.
-  if ([...current].some((id) => id !== material)) {
-    return { ok: false, reasonKey: 'propertyEditor.association.hasMaterial' };
-  }
-  if (material !== null && current.has(material)) return { ok: true };
-  const existingRel = material === null ? null : materialRelationship(target, material);
-  if (existingRel === 'invalid') return { ok: false, reasonKey: 'propertyEditor.association.invalidRelatedObjects' };
-  if (existingRel) {
-    return editAsOneStep(target, (draft) => {
-      draft.setPositionalAttribute(existingRel.id, 4, [...existingRel.related, `#${entityId}`]);
-    });
-  }
-  return createAsOneStep(target, (add, ownerHistory) => {
-    // Existing materials keep their original Category/Description; Name is the
-    // IFC identity the user selected for reuse.
-    const attrs: IfcAttributeValue[] = target.ifc2x3 ? [name] : [name, description, category];
-    const materialId = material ?? add('IfcMaterial', attrs);
-    add('IfcRelAssociatesMaterial', [generateIfcGuid(), ownerHistory, null, null, [`#${entityId}`], `#${materialId}`]);
-  });
+  const owner = resolveLiveOwnerHistoryId(target.store, target.editor, target.view);
+  if (target.ifc2x3 && owner === null) return { ok: false, reasonKey: 'propertyEditor.association.noOwnerHistory' };
+  const existing = input.color === undefined ? entityNamed(target, 'IFCMATERIAL', input.name.trim(), 0) : null;
+  return setElementMaterial(modelId, entityId, existing ?? { Name: input.name.trim(), Color: input.color, Category: target.ifc2x3 ? undefined : input.category || undefined, Description: target.ifc2x3 ? undefined : input.description || undefined })
+    ? { ok: true } : { ok: false, reasonKey: 'propertyEditor.association.invalidRelatedObjects' };
 }

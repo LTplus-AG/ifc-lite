@@ -157,6 +157,8 @@ export function AddClassificationDialog({ modelId, entityId, entityType }: AddCl
 // Material Dialog
 // ============================================================================
 
+import { MaterialColourField } from './MaterialColourField';
+
 interface AddMaterialDialogProps {
   modelId: string;
   entityId: number;
@@ -169,13 +171,14 @@ export function AddMaterialDialog({ modelId, entityId, entityType }: AddMaterial
 
   const [open, setOpen] = useState(false);
   const [materialName, setMaterialName] = useState('');
+  const [colour, setColour] = useState('#808080');
   const [category, setCategory] = useState('');
   const [description, setDescription] = useState('');
 
   const handleSubmit = useCallback(() => {
     if (!materialName) return;
 
-    const result = addMaterialAssociation(modelId, entityId, { name: materialName, category, description });
+    const result = addMaterialAssociation(modelId, entityId, { name: materialName, category, description, color: colour });
     if (!result.ok) return toast.error(t(result.reasonKey));
 
     // Reset form
@@ -183,7 +186,7 @@ export function AddMaterialDialog({ modelId, entityId, entityType }: AddMaterial
     setCategory('');
     setDescription('');
     setOpen(false);
-  }, [modelId, entityId, materialName, category, description, t]);
+  }, [modelId, entityId, materialName, category, description, colour, t]);
 
   // Common material categories (module-level constant used below)
   const materialCategories = MATERIAL_CATEGORIES;
@@ -191,7 +194,7 @@ export function AddMaterialDialog({ modelId, entityId, entityType }: AddMaterial
   return (
     <Dialog open={open} onOpenChange={(o) => {
       setOpen(o);
-      if (!o) { setMaterialName(''); setCategory(''); setDescription(''); }
+      if (!o) { setMaterialName(''); setCategory(''); setDescription(''); setColour('#808080'); }
     }}>
       <DialogTrigger asChild>
         <IconButton label={t('propertyEditor.material.trigger')} className={EDIT_TOOL_CLS}>
@@ -219,6 +222,7 @@ export function AddMaterialDialog({ modelId, entityId, entityType }: AddMaterial
             />
           </Field>
 
+          <MaterialColourField value={colour} onChange={setColour} />
           {/* Category */}
           <Field label={t('propertyEditor.material.category')}>
             <Select value={category} onValueChange={setCategory}>
@@ -246,7 +250,7 @@ export function AddMaterialDialog({ modelId, entityId, entityType }: AddMaterial
           <Button variant="outline" onClick={() => setOpen(false)}>
             {t('propertyEditor.shared.cancel')}
           </Button>
-          <Button onClick={handleSubmit} disabled={!materialName}>
+          <Button onClick={handleSubmit} disabled={!materialName || !/^#[0-9a-f]{6}$/i.test(colour)}>
             {t('propertyEditor.material.title')}
           </Button>
         </DialogFooter>

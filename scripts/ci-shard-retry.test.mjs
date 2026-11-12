@@ -20,8 +20,19 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 
-import { run } from './ci-shard-retry.mjs';
-import {
+import { MANIFEST_PATH, assignShards, parseManifest } from './viewer-test-shards.mjs';
+
+// When the revert oracle reverses this PR's production files, every test must
+// still run and fail on its own assertion, not the whole file at load with
+// nothing asserted (as in scripts/perf/load-scoreboard-stats.test.mjs). So a
+// failed import becomes members that fail when used. Only the error NAME is
+// reported: the oracle reads a "Cannot find module" message as a load failure.
+// `then` stays undefined, or awaiting the stub would call it.
+const guarded = (path) => import(path).catch((err) => new Proxy({}, {
+  get: (_, key) => (key === 'then' ? undefined : () => assert.fail(`${path} did not load (${err.name})`)),
+}));
+const { run } = await guarded('./ci-shard-retry.mjs');
+const {
   MAX_RETRY_FILES,
   attributeViewerFailures,
   decideMode,
@@ -35,8 +46,7 @@ import {
   readLastRun,
   unintendedSkips,
   viewerPattern,
-} from './lib/shard-retry.mjs';
-import { MANIFEST_PATH, assignShards, parseManifest } from './viewer-test-shards.mjs';
+} = await guarded('./lib/shard-retry.mjs');
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..');
@@ -336,6 +346,8 @@ for (const [job, testStep, retryStep] of [['viewer-tests', 'viewer_tests', 'view
   test(`${job}: only \`on\` lets the test step fail, and a guard re-fails it unless the retry step succeeded`, () => {
     const steps = WORKFLOW.jobs[job].steps;
     const first = steps.find((s) => s.id === testStep);
+    // A GitHub Actions expression, compared as written.
+    // eslint-disable-next-line no-template-curly-in-string
     assert.equal(first['continue-on-error'], "${{ vars.CI_SHARD_RETRY == 'on' }}");
     const retry = steps.find((s) => s.id === retryStep);
     assert.ok(retry, 'retry step exists');

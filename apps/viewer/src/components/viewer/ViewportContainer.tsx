@@ -812,7 +812,7 @@ export function ViewportContainer() {
         <CollabPresenceLayer />
         {bcfOverlayVisible && <BCFOverlay />}
         <BasepointOverlay />
-        <StructuralGlyphLayer />
+        <StructuralGlyphLayer isolatedIds={computedIsolatedIds} />
         <ZoneOverlay />
         <MeasurementSceneLayer />
         <ToolOverlays />

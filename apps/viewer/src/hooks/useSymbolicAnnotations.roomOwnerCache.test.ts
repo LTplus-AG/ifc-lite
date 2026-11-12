@@ -16,6 +16,7 @@ import {
   ensureParseFor,
   getDisplayParseFor,
   getParseFor,
+  storeHasParse,
 } from './symbolic-parse-cache.js';
 
 const SOURCE_OWNER = 79;
@@ -155,6 +156,7 @@ describe('room symbolic cache owner identity (#4608)', () => {
         dataStore: portableStore, source: sharedSource, seededIds: new Set([SOURCE_OWNER]), ownerIds: new Map([[SOURCE_OWNER, 41]]),
         placements: new Map(), baselines: new Map(), structuredPsets: new Map(), structuredQuantities: new Map(), structuredAttributes: new Map(),
       });
+      assert.equal(storeHasParse(room), true, 'a rebound room source still counts as parsed: its edit re-parses at once');
       const pending = ensureParseFor([room]);
       assert.equal(getParseFor(room), undefined, 'the new key has no parse yet');
       assert.equal(getDisplayParseFor(room), before, 'the overlay keeps the last parse meanwhile');

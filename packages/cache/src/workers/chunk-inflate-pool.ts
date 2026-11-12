@@ -153,12 +153,15 @@ export class ChunkInflatePool {
         this.useFallback(error);
       }
     }
+    let raw: Uint8Array;
     try {
-      return await inflateRaw(stored);
+      raw = await inflateRaw(stored);
     } catch (error) {
       // Here, without a worker to blame: the data does not inflate, the entry is corrupt.
       throw this.markCorrupt(error instanceof Error ? error : new Error(String(error)));
     }
+    if (this.corrupt) throw this.corrupt; // another chunk found the entry corrupt meanwhile
+    return raw;
   };
 
   /**
@@ -182,11 +185,14 @@ export class ChunkInflatePool {
         this.useFallback(error);
       }
     }
+    let meshes: Awaited<ReturnType<ChunkDecode>>;
     try {
-      return await decodeGeometryChunk(stored, info, version);
+      meshes = await decodeGeometryChunk(stored, info, version);
     } catch (error) {
       throw this.markCorrupt(error instanceof Error ? error : new Error(String(error)));
     }
+    if (this.corrupt) throw this.corrupt; // another chunk found the entry corrupt meanwhile
+    return meshes;
   };
 
   /**

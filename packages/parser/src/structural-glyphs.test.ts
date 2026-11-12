@@ -16,6 +16,7 @@ import { IfcParser } from './index.js';
 import { extractStructuralOnDemand } from './structural-extractor.js';
 import { structuralGlyphs, type StructuralGlyph } from './structural-glyphs.js';
 import { structuralSupportKind } from './structural-support-kind.js';
+import { shapeStations } from './structural-glyph-stations.js';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
@@ -368,6 +369,48 @@ describe('structuralGlyphs on real files', () => {
     for (const g of loads) {
       expect(g.kind === 'force' && [g.distribution, g.magnitude, g.relative]).toEqual(['linear', 100, 1]);
       close(g.kind === 'force' ? g.direction : undefined, [0, 0, -1]);
+    }
+  });
+});
+
+describe('face stations', () => {
+  function inside([x, y]: readonly number[], polygon: readonly (readonly number[])[]): boolean {
+    let hit = false;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      const [xi, yi] = polygon[i];
+      const [xj, yj] = polygon[j];
+      if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) hit = !hit;
+    }
+    return hit;
+  }
+
+  it('places a notched face with no lattice point inside on the face, not at its centroid', () => {
+    // C shape: the vertex average (0.54, 0.5) lies in the open notch, and no
+    // point of the 3 x 3 lattice (1/6, 1/2, 5/6) is inside the 0.16-wide band.
+    const polygon: [number, number, number][] = [
+      [0, 0, 0], [1, 0, 0], [1, 0.16, 0], [0.16, 0.16, 0], [0.16, 0.84, 0], [1, 0.84, 0], [1, 1, 0], [0, 1, 0],
+    ];
+    const stations = shapeStations({ kind: 'face', polygon });
+    expect(stations).toHaveLength(1);
+    for (const station of stations) expect(inside(station, polygon)).toBe(true);
+    const [x, y, z] = stations[0];
+    expect(z).toBeCloseTo(0);
+    expect(x).toBeGreaterThan(0);
+    expect(x).toBeLessThan(0.16);
+    expect(y).toBeGreaterThan(0);
+    expect(y).toBeLessThan(1);
+  });
+
+  it('retains interior stations for a convex sliver', () => {
+    const polygon: [number, number, number][] = [[0, 0, 0], [1, 1, 0], [0.99, 1, 0]];
+    const stations = shapeStations({ kind: 'face', polygon });
+    expect(stations.length).toBeGreaterThan(0);
+    for (const [x, y, z] of stations) {
+      expect(z).toBeCloseTo(0);
+      expect(y).toBeGreaterThan(0);
+      expect(y).toBeLessThan(1);
+      expect(x).toBeGreaterThan(0.99 * y);
+      expect(x).toBeLessThan(y);
     }
   });
 });

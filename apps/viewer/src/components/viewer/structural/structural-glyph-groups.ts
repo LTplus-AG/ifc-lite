@@ -42,7 +42,7 @@ export interface SourceGroup {
 
 type Translate = (key: TranslationKey, params?: Record<string, string>) => string;
 
-/** World cap of a symbol: this share of the model's diagonal, at least 0.25 m. */
+/** World cap of a symbol: 3% of the model diagonal, but never below 0.25 m. */
 const WORLD_CAP_SHARE = 0.03;
 const WORLD_CAP_MIN = 0.25;
 

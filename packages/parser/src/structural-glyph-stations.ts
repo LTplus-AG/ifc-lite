@@ -61,10 +61,48 @@ function inside(p: readonly [number, number], poly: readonly (readonly [number, 
   return hit;
 }
 
+/** Widest interior span of a horizontal scanline, avoiding boundary-only midpoints. */
+function interiorPoint(poly: readonly (readonly [number, number])[], v0: number, v1: number): readonly [number, number] {
+  // Try the middle, then between lattice rows. Vertex-height gaps cover thin
+  // lobes too if those lines only touch edges.
+  const heights = [...new Set(poly.map((p) => p[1]))].sort((a, b) => a - b);
+  const rows = [0.5, 1 / 3, 2 / 3].map((f) => v0 + (v1 - v0) * f);
+  rows.push(...heights.slice(1).map((v, i) => (heights[i] + v) / 2));
+  for (const v of rows) {
+    const xs: number[] = [];
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const [xi, yi] = poly[i];
+      const [xj, yj] = poly[j];
+      if ((yi > v) !== (yj > v)) xs.push(((xj - xi) * (v - yi)) / (yj - yi) + xi);
+    }
+    xs.sort((a, b) => a - b);
+    let widest = 0;
+    let point: readonly [number, number] | undefined;
+    for (let i = 0; i + 1 < xs.length; i += 2) {
+      const candidate = [(xs[i] + xs[i + 1]) / 2, v] as const;
+      const width = xs[i + 1] - xs[i];
+      if (width > widest && inside(candidate, poly)) {
+        widest = width;
+        point = candidate;
+      }
+    }
+    if (point) return point;
+  }
+  const centre = [poly.reduce((s, p) => s + p[0], 0) / poly.length,
+    poly.reduce((s, p) => s + p[1], 0) / poly.length] as const;
+  if (inside(centre, poly)) return centre;
+  // Degenerate/numerically collapsed spans: pull the first vertex toward
+  // the local interior between its two neighbours.
+  const first = poly[0], next = poly[1], last = poly[poly.length - 1];
+  return [first[0] + (next[0] + last[0] - 2 * first[0]) * 1e-6,
+    first[1] + (next[1] + last[1] - 2 * first[1]) * 1e-6];
+}
+
 /**
  * A sparse lattice of points inside a face: up to 3 x 3 over its bounding box
- * in its own plane, keeping those inside the polygon. The centroid when none
- * falls inside (a thin sliver).
+ * in its own plane, keeping those inside the polygon. One interior point when
+ * none falls inside (a thin sliver or a notched face, whose centroid may lie
+ * outside it).
  */
 function faceStations(polygon: readonly Vec3[]): Vec3[] {
   const frame = shapeFrame({ kind: 'face', polygon: [...polygon] }, null);
@@ -81,7 +119,9 @@ function faceStations(polygon: readonly Vec3[]): Vec3[] {
       if (inside([u, v], flat)) out.push(add(frame.origin, add(scale(frame.x, u), scale(frame.y, v))));
     }
   }
-  return out.length ? out : [centroid(polygon)];
+  if (out.length) return out;
+  const [u, v] = interiorPoint(flat, v0, v1);
+  return [add(frame.origin, add(scale(frame.x, u), scale(frame.y, v)))];
 }
 
 /** Where a shape anchors a single marker: the vertex, the edge midpoint, or the face centroid. */

@@ -29,7 +29,7 @@ import type { SaveResult } from '@/lib/clash/persistence';
 import type { ClashExclusionKind } from '@/lib/clash/exclusions';
 import { formatClashSolidVolumeM3 } from '@/lib/clash/clash-solid-volume-format';
 import { useBCF } from '@/hooks/useBCF';
-import { useSingleFlight } from '@/hooks/useSingleFlight';
+import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { captureViewpointForCreate } from '@/hooks/bcf/capture-viewpoint-for-create';
 import { rerunClashRequest, rerunTooltip, runRequestOf } from '@/lib/clash/run-request';
 import { releaseOwnedClashVisibility } from '@/lib/clash/visibility-ownership';
@@ -353,9 +353,9 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
   // One BCF topic capture at a time across the clash and group actions (C-2):
   // a same-tick double press is refused, and a capture that settles after the
   // panel closed creates nothing.
-  const topicFlight = useSingleFlight();
+  const topicFlight = useAsyncRun();
   const creatingTopic = topicFlight.busy;
-  const runTopic = topicFlight.run;
+  const runTopic = topicFlight.start;
   // The whole detection-controls block is collapsible so the result list gets
   // vertical room: auto-open before the first run (discoverability), auto-collapse
   // once a result is on screen, with a manual override once the user toggles it.
@@ -594,7 +594,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
   const createBcfTopic = useCallback(async (): Promise<void> => {
     if (!result) return;
     const clash = selectedId ? result.clashes.find((c) => c.id === selectedId) ?? null : null;
-    await runTopic(async (isCurrent) => {
+    await runTopic(async ({ isCurrent }) => {
       try {
         if (clash) {
           focusClash(clash, focusMode);

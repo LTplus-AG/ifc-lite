@@ -87,6 +87,7 @@ import { ionUploadIt } from './it/ion-upload';
 import { keyboardShortcutsIt } from './it/keyboard-shortcuts';
 import { landXmlGeorefAssumptionsIt } from './it/landxml-georef-assumptions';
 import { landXmlTerrainExportIt } from './it/landxml-terrain-export';
+import { rhinoExportIt } from './it/rhino-export';
 import { landXmlIt } from './it/landxml';
 import { layersPanelIt } from './it/layers-panel';
 import { lensPanelIt } from './it/lens-panel';
@@ -148,8 +149,10 @@ import { spaceEnvelopeIt } from './it/space-envelope';
 import { splitToolIt } from './it/split-tool';
 import { stairRailingIt } from './it/stair-railing';
 import { storeyContextIt } from './it/storey-context';
+import { structuralGlyphsIt } from './it/structural-glyphs';
 import { structuralPropertiesIt } from './it/structural-properties';
 import { structuralReviewIt } from './it/structural-review';
+import { structuralDeriveIt } from './it/structural-derive';
 import { sweptDiskInspectionIt } from './it/swept-disk-inspection';
 import { tableCorrectionsIt } from './it/table-corrections';
 import { terrainImageryIt } from './it/terrain-imagery';
@@ -248,6 +251,7 @@ export default {
   ...keyboardShortcutsIt,
   ...landXmlGeorefAssumptionsIt,
   ...landXmlTerrainExportIt,
+  ...rhinoExportIt,
   ...landXmlIt,
   ...layersPanelIt,
   ...lensPanelIt,
@@ -309,8 +313,10 @@ export default {
   ...splitToolIt,
   ...stairRailingIt,
   ...storeyContextIt,
+  ...structuralGlyphsIt,
   ...structuralPropertiesIt,
   ...structuralReviewIt,
+  ...structuralDeriveIt,
   ...sweptDiskInspectionIt,
   ...tableCorrectionsIt,
   ...terrainImageryIt,

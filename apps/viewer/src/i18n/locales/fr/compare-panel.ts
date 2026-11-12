@@ -18,6 +18,8 @@ export const comparePanelFr = {
   "comparePanel.saved.dependencies.storagePending": "La suppression est en attente car le stockage du navigateur est indisponible ou plein. Conserver restaure le rapport actuellement enregistré.",
   "comparePanel.saved.dependencies.sourceChanged": "Ce rapport a changé ou a été remplacé. Annulez puis relancez la suppression.",
   "comparePanel.saved.dependencies.changed": "Les références de graphiques ont changé. Vérifiez la liste actualisée avant de confirmer la suppression.",
+  "comparePanel.saved.dependencies.finishFailed": "Le rapport a été supprimé, mais cette vue n’a pas pu être mise à jour. Fermez-la puis rouvrez-la.",
+  "comparePanel.saved.dependencies.removeFailed": "Le rapport n’a pas pu être supprimé. Fermez puis rouvrez cette vue, puis réessayez.",
   "comparePanel.saved.dependencies.review": "Vérifier les références actualisées",
   "comparePanel.saved.title": "Comparaisons enregistrées",
   "comparePanel.saved.name": "Nom de la comparaison",

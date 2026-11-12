@@ -156,6 +156,8 @@ export const bcfDe = {
   "bcf.panel.untitledTopic": "Ohne Titel",
   "bcf.panel.importError": "BCF-Datei konnte nicht importiert werden",
   "bcf.panel.exportError": "BCF-Datei konnte nicht exportiert werden",
+  "bcf.panel.createTopicFailed": "Das Thema konnte nicht erstellt werden. {message}",
+  "bcf.panel.addViewpointFailed": "Der Ansichtspunkt konnte dem Thema nicht hinzugefügt werden. {message}",
   "bcf.panel.busy": "BCF-Datei wird verarbeitet…",
   "bcf.panel.captureViewpointFailed": "Kein Ansichtspunkt konnte erfasst werden. Warten Sie, bis das Modell vollständig geladen ist, und versuchen Sie es erneut."
 } satisfies Catalogue;

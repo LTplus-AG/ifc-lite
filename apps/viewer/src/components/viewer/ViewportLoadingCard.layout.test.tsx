@@ -9,11 +9,12 @@ import { act } from 'react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useViewerStore } from '@/store';
 import { cleanup, render } from '@/test/render.js';
-import { closeContrastBrowser, warmContrastBrowser, withThemedPage } from '@/test/contrast/render-harness.js';
+import { CONTRAST_BROWSER_SKIP, closeContrastBrowser, warmContrastBrowser, withThemedPage } from '@/test/contrast/render-harness.js';
 import { ViewportOverlays } from './ViewportOverlays';
 import { MobilePanelLauncher } from './MobilePanelLauncher';
 import { MobileToolbar } from './MobileToolbar';
 import { VIEW_CUBE_REACH_PX } from './viewcube-box';
+import { formFactorState } from '@/test/form-factor-state';
 
 before(warmContrastBrowser);
 after(closeContrastBrowser);
@@ -23,11 +24,11 @@ afterEach(cleanup);
 for (const [width, height] of [[320, 640], [360, 740], [375, 553], [390, 844], [568, 320], [592, 360], [639, 360], [1280, 800], [1600, 1000]]) {
   for (const theme of ['light', 'dark'] as const) {
     for (const cancel of [true, false]) {
-      it(`loading card clears viewport controls at ${width}x${height}, ${theme}, cancel=${cancel} (#8802)`, async () => {
+      it(`loading card clears viewport controls at ${width}x${height}, ${theme}, cancel=${cancel} (#8802)`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
         const phone = width < 640;
         const docked = phone && height >= width;
         act(() => useViewerStore.setState({
-          isMobile: phone, loading: true, error: null, cesiumEnabled: false,
+          ...formFactorState(phone), loading: true, error: null, cesiumEnabled: false,
           loadingFileName: 'building-architecture-rev-b.ifc',
           geometryProgress: { phase: 'Processing geometry and preparing a longer phase description', percent: 42 },
           activeLoadCanceller: cancel ? () => {} : null,
@@ -37,7 +38,7 @@ for (const [width, height] of [[320, 640], [360, 740], [375, 553], [390, 844], [
             <div data-test-toolbar><MobileToolbar /></div>
             <div data-test-viewport style={{ position: 'relative', flex: 1 }}>
               <ViewportOverlays />
-              {phone && <MobilePanelLauncher bottomInset={0} />}
+              {phone && <MobilePanelLauncher />}
             </div>
           </div>
         </TooltipProvider>);

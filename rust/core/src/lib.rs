@@ -120,7 +120,7 @@ pub use model_bounds::{scan_model_bounds, scan_placement_bounds, ModelBounds};
 pub use parser::{
     declared_schema_bounded, entity_count, find_keyword, keyword_ends_with, keyword_eq, keyword_starts_with,
     nth_attribute_is_present, oversized_id_report, parse_entity, parse_step_real, read_step_number, report_malformed_records,
-    report_oversized_ids, report_scan_diagnostics, set_report_sink, skip_step_comment,
+    report_oversized_ids, report_scan_diagnostics, scan_report_events, set_report_sink, skip_step_comment,
     EntityScanner, StepListItems, StepNumber, Token,
 };
 pub use project_locator::{find_project_id, find_project_ids};

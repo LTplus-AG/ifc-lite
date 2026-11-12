@@ -118,16 +118,24 @@ export function recordResolvedModellingCommit<T>(
   appendOnly = false,
   /** Publish creation metadata with the room graph while the local overlay is still a draft. */
   publishCreated?: (result: T, view: MutablePropertyView) => void,
+  registerBeforeRewrite?: (capture: () => void) => void,
 ): T {
   const state = store.getState();
   const { modelId } = target;
   const { dataStore, view, editor } = target;
   const room = roomSlotFor(state, modelId) ? snapshotOverlay(view) : null;
-  // Ordinary builders only append. Rewrites/deletions retain their id-based
+  // Ordinary builders start append-only. Rewrites/deletions retain id-based
   // bookkeeping because forgetting a record can remove earlier journal rows.
   const cursor = appendOnly ? view.getMutationCount() : 0;
-  const seen = appendOnly ? null : new Set(view.getMutations().map(m => m.id));
-  const overlayBefore = appendOnly ? null : new Map(view.getNewEntities().map(e => [e.expressId, e]));
+  let seen = appendOnly ? null : new Set(view.getMutations().map(m => m.id));
+  let overlayBefore = appendOnly ? null : new Map(view.getNewEntities().map(e => [e.expressId, e]));
+  // Implicit joins promote an append to a rewrite only while its draft is
+  // still unpublished. Non-joining additions never snapshot the session.
+  registerBeforeRewrite?.(() => {
+    if (seen !== null) return;
+    seen = new Set(view.getMutations().map(m => m.id));
+    overlayBefore = new Map(view.getNewEntities().map(e => [e.expressId, e]));
+  });
   const prepared = room ? view.prepareAtomic(draft => {
     const draftEditor = new StoreEditor(dataStore, draft);
     const result = commit(draftEditor, dataStore);
@@ -150,7 +158,7 @@ export function recordResolvedModellingCommit<T>(
     prepared?.rollback();
     throw error;
   }
-  const written = appendOnly ? view.getMutations(cursor) : view.getMutations().filter(m => !seen!.has(m.id));
+  const written = seen === null ? view.getMutations(cursor) : view.getMutations().filter(m => !seen!.has(m.id));
   if (overlayBefore) stashForgottenRecords(store, modelId, written, overlayBefore);
   store.getState().recordMutationBatch(modelId, written, batchId);
   return result;

@@ -8,8 +8,59 @@
  */
 
 import type { MapConversion } from '@ifc-lite/parser';
-import { NORMAL_COORD_THRESHOLD_M, type CoordinateInfo } from '@ifc-lite/geometry';
-import { ifcToViewerAxes, viewerToIfcAxes } from './coordinate-frame';
+import { NORMAL_COORD_THRESHOLD_M, type CoordinateInfo, type Vec3 } from '@ifc-lite/geometry';
+import { ifcToViewerAxes, totalYupOffset, viewerToIfcAxes } from './coordinate-frame';
+
+/**
+ * Real projected-CRS coordinates (UTM, national grids) sit at least this far
+ * from the local origin. The declared anchor must, before the map-absolute
+ * detection may fire, and so must the RTC origin before the stray-element
+ * pivot in {@link viewerFrameCenter} may. Compliant zero-ish offsets (site
+ * grids a few km out) stay below this, so a small legitimate offset +
+ * rotation is never silently dropped.
+ */
+const MAP_ABSOLUTE_MIN_ANCHOR_METERS = 100_000;
+
+/**
+ * The renderer-frame point the georeference pivots on, after originShift.
+ * Camera, model matrix and map anchor all use it
+ * (`computeModelCenterInIfcMeters` is this point in IFC world metres).
+ *
+ * Normally the centre of the bounds. The exception is a box stretched by
+ * elements the site placement never re-based: Vectorworks writes some
+ * provision-for-void proxies with absolute placements in site-local numbers,
+ * so they sit at the file's own origin, 6000 km from a building placed at its
+ * UTM site. The box then reaches both the WASM RTC origin (the median element
+ * placement, for a model loaded on its own) and the IFC world origin, and its
+ * centre falls between them. The pivot is the RTC origin, in the bulk of the
+ * model. The RTC origin must sit at projected-CRS magnitude, like the #2526
+ * anchor; a local-coordinate model starting near its origin keeps its centre,
+ * as does a long model or one federated onto another model's anchor, which
+ * never reach the world origin. When most elements are the unplaced ones,
+ * the median follows them.
+ */
+export function viewerFrameCenter(coordinateInfo: CoordinateInfo | undefined) {
+  const bounds = coordinateInfo?.shiftedBounds;
+  if (!bounds) return { x: 0, y: 0, z: 0 };
+  const center = {
+    x: (bounds.min.x + bounds.max.x) / 2,
+    y: (bounds.min.y + bounds.max.y) / 2,
+    z: (bounds.min.z + bounds.max.z) / 2,
+  };
+  // No RTC offset (server or native load): no median to fall back to.
+  if (!coordinateInfo?.wasmRtcOffset) return center;
+  const shift = coordinateInfo.originShift;
+  const rtcOrigin = { x: -shift.x, y: -shift.y, z: -shift.z };
+  // Where the file's own (0,0,0) sits in the renderer frame (as ifc-origin.ts `ownOrigin`).
+  const offset = totalYupOffset(coordinateInfo);
+  const worldOrigin = { x: -offset.x, y: -offset.y, z: -offset.z };
+  if (Math.hypot(rtcOrigin.x - worldOrigin.x, rtcOrigin.z - worldOrigin.z) < MAP_ABSOLUTE_MIN_ANCHOR_METERS) return center;
+  const t = NORMAL_COORD_THRESHOLD_M;
+  const reaches = (p: Vec3) => (['x', 'y', 'z'] as const)
+    .every((k) => p[k] >= bounds.min[k] - t && p[k] <= bounds.max[k] + t);
+  const offCentre = Math.hypot(center.x - rtcOrigin.x, center.y - rtcOrigin.y, center.z - rtcOrigin.z);
+  return offCentre > t && reaches(rtcOrigin) && reaches(worldOrigin) ? rtcOrigin : center;
+}
 
 /**
  * Compute the model's center in IFC Z-up metres from coordinate info.
@@ -20,39 +71,24 @@ export function computeModelCenterInIfcMeters(
 ): { ifcX: number; ifcY: number; ifcZ: number } {
   if (!coordinateInfo) return { ifcX: 0, ifcY: 0, ifcZ: 0 };
 
-  // `shiftedBounds`, NOT `originalBounds`. The producer defines
-  // `shiftedBounds = originalBounds - originShift`
-  // (utils/localParsingUtils.ts), so `originalBounds` is ALREADY in the world
-  // frame — adding `shift` to it below would count the shift twice and put the
-  // model centre `originShift` away from where the footprint polygon
-  // (computeFootprintGeoJSON, which reads `shiftedBounds`) places the very same
-  // box. This matches the rule stated in reproject.ts's pipeline doc:
-  // `world_yup = bounds_center + originShift`, from the VIEWER bounds.
-  const bounds = coordinateInfo.shiftedBounds;
+  // The renderer-frame pivot (from `shiftedBounds`, NOT `originalBounds`:
+  // `originalBounds` is ALREADY in the world frame, so adding the shift to it
+  // would count it twice) plus the render-frame offset. This is reproject.ts's
+  // `world_yup = bounds_center + originShift`, and the same pivot the camera
+  // and model matrix use, including its stray-element fallback.
+  // Summed centre + shift first, then RTC: the shift can cancel the centre
+  // exactly, and adding it to the RTC first would lose small RTC digits.
+  const center = viewerFrameCenter(coordinateInfo);
   const shift = coordinateInfo.originShift;
   const rtcYup = ifcToViewerAxes(coordinateInfo.wasmRtcOffset ?? { x: 0, y: 0, z: 0 });
-
-  const cx = (bounds.min.x + bounds.max.x) / 2;
-  const cy = (bounds.min.y + bounds.max.y) / 2;
-  const cz = (bounds.min.z + bounds.max.z) / 2;
-
-  const worldYup = {
-    x: cx + shift.x + rtcYup.x,
-    y: cy + shift.y + rtcYup.y,
-    z: cz + shift.z + rtcYup.z,
-  };
-  const worldIfc = viewerToIfcAxes(worldYup);
+  const worldIfc = viewerToIfcAxes({
+    x: center.x + shift.x + rtcYup.x,
+    y: center.y + shift.y + rtcYup.y,
+    z: center.z + shift.z + rtcYup.z,
+  });
   return { ifcX: worldIfc.x, ifcY: worldIfc.y, ifcZ: worldIfc.z };
 }
 
-/**
- * The declared anchor must sit at real projected-CRS magnitude before the
- * map-absolute detection may fire. Compliant zero-ish offsets (site grids a
- * few km out) stay below this, so a small legitimate offset + rotation is
- * never silently dropped. Real projected CRS coordinates (UTM, national
- * grids) start in the hundreds of km.
- */
-const MAP_ABSOLUTE_MIN_ANCHOR_METERS = 100_000;
 /**
  * How close (metres) the geometry centre must be to the declared anchor to
  * count as "already sitting at it". This IS the wasm RTC re-base threshold

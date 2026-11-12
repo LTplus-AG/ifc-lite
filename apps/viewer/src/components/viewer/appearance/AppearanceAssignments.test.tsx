@@ -8,6 +8,7 @@ import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { act, StrictMode, useState } from 'react';
 import { federationRegistry } from '@ifc-lite/renderer';
+import { StepExporter } from '@ifc-lite/export';
 import { render, cleanup, click, advance } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { getGlobalRenderer, setGlobalRendererRef } from '@/hooks/useBCF';
@@ -37,14 +38,14 @@ function Harness({ initialEnabled = true, queryScope = false }: { initialEnabled
   const c = useAppearanceAssignments(base, enabled);
   return <><button onClick={() => setEnabled(true)}>Use image appearance</button><button onClick={() => { setModelId('b'); useViewerStore.getState().setActiveModel('b'); }}>Choose model b</button>
     <AppearanceAssignments controller={c} base={base} />
-    <p role="status" data-operation-status={c.status}>{resolveLocalizedMessage(c.notice, t)}</p>
+    <output data-operation-status={c.status}>{resolveLocalizedMessage(c.notice, t)}</output>
     <button disabled={c.status !== 'ready' || c.original} onClick={() => { void c.apply(); }}>Apply assignments</button>
     <button onClick={c.cancel}>Cancel assignments</button>
   </>;
 }
 function button(ui: HTMLElement, name: string) {
   const found = [...ui.querySelectorAll('button')].find(button => button.textContent === name);
-  assert.ok(found, `Missing button ${name}`); return found;
+  assert.ok(!!found, `Missing button ${name}`); return found!;
 }
 async function until(predicate: () => boolean) {
   for (let i = 0; i < 100 && !predicate(); i++) await advance(10);
@@ -66,7 +67,7 @@ test('assignment controller messages follow live locale changes (#4918)', () => 
   }
 });
 
-for (const scenario of ['apply', 'cancel', 'stale', 'room', 'query'] as const) test(`mounted native multi-model assignments ${scenario} preserve complete transaction scope #4420`, {
+for (const scenario of ['apply', 'cancel', 'stale', 'room', 'query', 'room-pending', 'apply-cancel', 'apply-error', 'apply-abort', 'apply-published-cancel', 'add-cancel'] as const) test(`mounted native multi-model assignments ${scenario} preserve complete transaction scope #4420`, {
   skip: !existsSync(wasm) && 'Run pnpm build:wasm for native assignment tests',
 }, async t => {
   const initial = useViewerStore.getState(), previousRenderer = getGlobalRenderer();
@@ -78,6 +79,25 @@ for (const scenario of ['apply', 'cancel', 'stale', 'room', 'query'] as const) t
   useViewerStore.setState({ appearanceAssignments:null, appearanceSources:[{id:f.asset.id,name:'Texture',width:1,height:1}] });
   try {
     let ui = render(<StrictMode><Harness queryScope={scenario === 'query'} /></StrictMode>);
+    if (scenario === 'add-cancel') {
+      // PR #9585: cancel while serialization is held, before any planner job exists.
+      const exportAsync = StepExporter.prototype.exportAsync;
+      let release!: () => void, entered = false;
+      const held = new Promise<void>(resolve => { release = resolve; });
+      t.mock.method(StepExporter.prototype, 'exportAsync', async function(this: StepExporter, ...args: Parameters<StepExporter['exportAsync']>) {
+        entered = true;
+        await held;
+        return exportAsync.apply(this, args);
+      });
+      try {
+        click(button(ui, 'Add this scope'));
+        await until(() => entered);
+        click(button(ui, 'Cancel assignments'));
+      } finally { release(); await advance(150); }
+      assert.equal(useViewerStore.getState().appearanceAssignments?.assignments.length ?? 0, 0, 'an abandoned capture cannot save a recipe');
+      assert.match(ui.textContent ?? '', /cancelled/);
+      return;
+    }
     click(button(ui, 'Add this scope'));
     await until(() => useViewerStore.getState().appearanceAssignments?.assignments.length === 1);
     click(button(ui, 'Choose model b')); click(button(ui, 'Add this scope'));
@@ -90,8 +110,17 @@ for (const scenario of ['apply', 'cancel', 'stale', 'room', 'query'] as const) t
       await until(() => !button(ui, 'Preview all assignments').disabled);
       assert.ok(!ui.textContent?.includes('Review current scope'), 'unchanged in-session scopes resume without confirmation');
     }
-    if (scenario === 'cancel' || scenario === 'stale') worker.hold();
+    if (scenario === 'cancel' || scenario === 'stale' || scenario === 'room-pending') worker.hold();
     click(button(ui, 'Preview all assignments'));
+    if (scenario === 'room-pending') {
+      await until(() => worker.waiting() === 1);
+      act(() => useViewerStore.setState({ collabRoomId: 'joined-while-preparing' }));
+      assert.equal(worker.active(), 0, 'room entry aborts the actual pending planner transport');
+      worker.release(); await advance(50);
+      assert.equal(ui.querySelector('[data-operation-status]')?.getAttribute('data-operation-status'), 'stale');
+      assert.equal(button(ui, 'Apply assignments').disabled, true);
+      return;
+    }
     if (scenario === 'cancel' || scenario === 'stale') {
       await until(() => worker.waiting() === 1);
       if (scenario === 'cancel') click(button(ui, 'Cancel assignments'));
@@ -112,6 +141,58 @@ for (const scenario of ['apply', 'cancel', 'stale', 'room', 'query'] as const) t
         assert.equal(f.scene.get(entry.globalId)?.parts[0].texture,undefined);
         assert.equal(useViewerStore.getState().undoStacks.get(entry.modelId)?.length ?? 0,0);
       }
+      return;
+    }
+    if (scenario === 'apply-published-cancel') {
+      // PR #9585: a completed global commit must not publish stale local success after Cancel.
+      const version = useViewerStore.getState().mutationVersion;
+      let cancelled = false;
+      const stop = useViewerStore.subscribe(state => {
+        if (!cancelled && state.mutationVersion > version) {
+          cancelled = true;
+          queueMicrotask(() => click(button(ui, 'Cancel assignments')));
+        }
+      });
+      try {
+        click(button(ui, 'Apply assignments'));
+        await until(() => cancelled);
+        await advance(50);
+        assert.match(ui.textContent ?? '', /cancelled|appearance model changed/i);
+        assert.doesNotMatch(ui.textContent ?? '', /All assignments applied/);
+        assert.equal(useViewerStore.getState().undoStacks.get('a')?.length, 1);
+        assert.equal(useViewerStore.getState().undoStacks.get('b')?.length, 1);
+        act(() => useViewerStore.getState().undo('a'));
+      } finally { stop(); }
+      return;
+    }
+    if (scenario === 'apply-error' || scenario === 'apply-abort') {
+      // PR #9585: shared-run failure and cancellation must settle the domain UI too.
+      const editor = useViewerStore.getState().storeEditors.get('a')!;
+      t.mock.method(editor, 'prepareEntityOperations', async () => {
+        throw scenario === 'apply-abort' ? new DOMException('native preparation stopped', 'AbortError') : new Error('detached preparation failed');
+      });
+      click(button(ui, 'Apply assignments'));
+      await advance(50);
+      assert.equal(ui.querySelector('[data-operation-status]')?.getAttribute('data-operation-status'), scenario === 'apply-abort' ? 'idle' : 'error');
+      assert.match(ui.textContent ?? '', scenario === 'apply-abort' ? /cancelled/ : /detached preparation failed/);
+      assert.equal(useViewerStore.getState().undoStacks.size, 0);
+      for (const entry of f.entries) assert.equal(f.scene.get(entry.globalId)?.parts[0].texture, undefined);
+      return;
+    }
+    if (scenario === 'apply-cancel') {
+      const editor = useViewerStore.getState().storeEditors.get('a')!;
+      const prepare = editor.prepareEntityOperations.bind(editor);
+      let release!: () => void;
+      const held = new Promise<void>(resolve => { release = resolve; });
+      let preparations = 0;
+      editor.prepareEntityOperations = async (operations, options) => { preparations++; await held; return prepare(operations, options); };
+      act(() => { button(ui, 'Apply assignments').click(); button(ui, 'Apply assignments').click(); });
+      assert.equal(preparations, 1, 'same-tick Apply presses share one preparation');
+      click(button(ui, 'Cancel assignments'));
+      release(); await advance(50);
+      assert.equal(ui.querySelector('[data-operation-status]')?.getAttribute('data-operation-status'), 'idle');
+      assert.match(ui.textContent ?? '', /cancelled/i);
+      assert.equal(useViewerStore.getState().undoStacks.size, 0);
       return;
     }
     const atlasUvs = f.entries.map(entry => Array.from(f.scene.get(entry.globalId)!.parts[0].uvs!));

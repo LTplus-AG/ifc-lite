@@ -21,7 +21,8 @@ export { RenderPipeline } from './pipeline.js';
 export { Camera } from './camera.js';
 // The MEASURED surface `getScene()` publishes — see its docs.
 export type { SceneContents } from './scene-contents.js';
-export { decodeSceneSnapshot, encodeSceneSnapshot, type SceneSnapshot } from './scene-snapshot.js';
+export { decodeSceneSnapshot, encodeSceneSnapshot, encodeSceneSnapshotInSlices, type SceneCaptureCallback, type SceneCaptureDrop, type SceneSnapshot } from './scene-snapshot.js';
+export { reorderSnapshotPieces } from './scene-snapshot-batches.js';
 export { appearanceSourceTriangle, expandAppearanceCorners, equivalentAppearanceGeometry } from './appearance-uvs.js';
 export { sameCompanionParts } from './appearance-companions.js';
 export { invertAppearancePartition, validateAppearancePartition, type AppearancePreview, type AppearanceOwner, type AppearanceToken, type AppearanceChange, type AppearancePartition, type AppearancePartitionPart } from './appearance-preview.js';
@@ -3231,12 +3232,10 @@ export class Renderer {
         this.raycastEngine.setSourceSnapCurves(curves); this.pickSources.noteCurves(curves);
     }
 
-    /**
-     * Invalidate BVH cache (call when geometry changes)
-     */
-    invalidateBVHCache(): void {
-        this.raycastEngine.invalidateBVHCache();
-    }
+    /** Invalidate BVH cache (call when geometry changes). */
+    invalidateBVHCache(): void { this.raycastEngine.invalidateBVHCache(); }
+    /** True when the flat index is warm; ray-hit instance geometry may still materialize per ray. */
+    isRaycastCacheWarm(): boolean { return this.raycastEngine.isCacheWarm(); }
 
     /**
      * Clear all caches (call when geometry changes)

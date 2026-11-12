@@ -29,6 +29,7 @@ import type { TranslationValue } from '../types';
  * translated here.
  */
 export const viewportLightingEn = {
+  "viewportLighting.container.loadErrorCard.sourceTooLarge": "This IFC file exceeds the size the in-browser engine can load. Each source must be smaller than {limit}. Export smaller files or use the native CLI/server.",
   // ── ViewportContainer.tsx — empty/welcome state ──────────────────────
   'viewportLighting.container.emptyState.dropOverlay.title': 'Drop File to Load',
   'viewportLighting.container.emptyState.webgpuBanner.heading': 'WebGPU Not Available',

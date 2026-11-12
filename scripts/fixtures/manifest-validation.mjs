@@ -276,6 +276,24 @@ export function validateManifest(manifest) {
         requireText(archive.member, `${where}.upstream_archive.member`, errors);
       }
     }
+    // An unlicensed upstream IFC is fetched from its pinned blob and never
+    // uploaded; the entry's own sha256 and size are the source bytes.
+    if (entry.upstream_file !== undefined) {
+      const file = entry.upstream_file;
+      if (!isObject(file)) {
+        invalid(errors, `${where}.upstream_file`, 'must be an object');
+      } else {
+        if (!/\.ifc$/i.test(entry.path)) invalid(errors, `${where}.path`, 'upstream files support IFC files only');
+        if (entry.upstream_archive !== undefined) invalid(errors, `${where}.upstream_file`, 'cannot be combined with upstream_archive');
+        if (!isText(file.commit) || !COMMIT_RE.test(file.commit)) {
+          invalid(errors, `${where}.upstream_file.commit`, 'must be a 40-character lowercase Git commit');
+        }
+        requirePinnedGitHubBlobUrl(file.blob_url, file.commit, `${where}.upstream_file.blob_url`, errors);
+        if (!isText(file.blob_url) || !/\.ifc$/i.test(file.blob_url)) {
+          invalid(errors, `${where}.upstream_file.blob_url`, 'must name an IFC file');
+        }
+      }
+    }
     // The root manifest remains v1 while the historical IFC catalogue awaits
     // its own rights review. LandXML files are reviewed per entry, so adding
     // one cannot bypass provenance simply by retaining a v1 root header.

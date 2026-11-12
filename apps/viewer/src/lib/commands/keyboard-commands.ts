@@ -93,14 +93,14 @@ export const KEY_COMMANDS = [
   // ── Editing ───────────────────────────────────────────────────────────
   { id: 'edit.undo', labelKey: 'commands.edit.undo', category: 'editing', when: 'global', keys: [k('z', { mod: true })] },
   { id: 'edit.redo', labelKey: 'commands.edit.redo', category: 'editing', when: 'global', keys: [k('z', { mod: true, shift: true }), k('y', { mod: true, only: 'other' })] },
-  { id: 'edit.toggleEditMode', labelKey: 'commands.edit.toggleEditMode', category: 'editing', when: 'global', keys: [k('e')] },
+  { id: 'edit.toggleEditMode', labelKey: 'commands.edit.toggleEditMode', category: 'editing', when: 'global', keys: [k('m')] },
   { id: 'edit.rotate', labelKey: 'commands.edit.rotate', category: 'editing', when: 'global', keys: [k('r'), k('r', { shift: true })] },
   { id: 'edit.duplicate', labelKey: 'commands.edit.duplicate', category: 'editing', when: 'global', keys: [k('d', { mod: true }), k('d', { mod: true, shift: true }), k('d', { mod: true, alt: true })] },
 
   // ── Tools ─────────────────────────────────────────────────────────────
   { id: 'tool.select', labelKey: 'commands.tool.select', category: 'tools', when: 'global', keys: [k('v')] },
   { id: 'tool.walk', labelKey: 'commands.tool.walk', category: 'tools', when: 'global', keys: [k('c')] },
-  { id: 'tool.measure', labelKey: 'commands.tool.measure', category: 'tools', when: 'global', keys: [k('m')] },
+  { id: 'tool.measure', labelKey: 'commands.tool.measure', category: 'tools', when: 'global', keys: [k('l')] },
   { id: 'tool.annotate', labelKey: 'commands.tool.annotate', category: 'tools', when: 'global', keys: [k('p')] },
   { id: 'tool.section', labelKey: 'commands.tool.section', category: 'tools', when: 'global', keys: [k('x')] },
   { id: 'tool.split', labelKey: 'commands.tool.split', category: 'tools', when: 'global', keys: [k('k')] },
@@ -121,6 +121,9 @@ export const KEY_COMMANDS = [
   { id: 'command.typeValue', labelKey: 'commands.command.typeValue', category: 'tools', when: 'command', keys: DIGITS, display: 'range' },
   { id: 'command.toggleSnap', labelKey: 'commands.command.toggleSnap', category: 'tools', when: 'command', keys: [k('s')] },
   { id: 'command.column.rotate', labelKey: 'commands.command.columnRotate', category: 'tools', when: 'command.column.place', keys: [k('r')] },
+  { id: 'model.layoutPlan', labelKey: 'modelWorkspace.layout.plan', category: 'tools', when: 'workspace.model', keys: [k('1')] },
+  { id: 'model.layoutSplit', labelKey: 'modelWorkspace.layout.split', category: 'tools', when: 'workspace.model', keys: [k('2')] },
+  { id: 'model.layout3d', labelKey: 'modelWorkspace.layout.3d', category: 'tools', when: 'workspace.model', keys: [k('3')] },
   { id: 'model.wall', labelKey: 'commands.model.wall', category: 'tools', when: 'workspace.model', keys: [k('w')] },
   { id: 'model.slab', labelKey: 'commands.model.slab', category: 'tools', when: 'workspace.model', keys: [k('s', { shift: true })] },
   { id: 'model.roof', labelKey: 'commands.model.roof', category: 'tools', when: 'workspace.model', keys: [k('y', { shift: true })] },

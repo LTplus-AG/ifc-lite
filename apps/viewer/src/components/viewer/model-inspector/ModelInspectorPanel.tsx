@@ -28,7 +28,6 @@ import { DefaultDimensions, SelectionDimensions, isStairSelection } from './Dime
 import { HostingSection } from './HostingSection';
 import { DefaultProfile, SelectionProfile, isProfileOwner } from './ProfileInspectorSection';
 import { KIND_LABEL } from './inspector-fields';
-import { LayersSection } from './LayersSection';
 import { TypeSection } from './TypeSection';
 import { renameElement } from './inspector-edits';
 import { useInspectorTarget, type InspectorSelection, type InspectorTarget } from './useInspectorTarget';
@@ -37,6 +36,8 @@ import { Spinner } from '@/components/ui/spinner';
 
 // The storey manager (#9013) and its write path load when it is first opened, not at boot.
 const StoreyManager = lazy(() => import('../model/storeys/StoreyManager').then((m) => ({ default: m.StoreyManager })));
+// The layer editor loads with its first use, off the eager bundle (#9296).
+const LayersSection = lazy(() => import('./LayersSection').then((m) => ({ default: m.LayersSection })));
 
 const HOSTED: ReadonlySet<AuthoredElementKind> = new Set(['door', 'window']);
 
@@ -175,15 +176,19 @@ function DefaultsBody({ kind, modelId, live }: { kind: AuthoredElementKind; mode
       <DefaultDimensions kind={kind} />
       {isProfileOwner(kind) && <DefaultProfile owner={kind} />}
       {AUTHORED_KINDS[kind].layers && (
-        <LayersSection
-          key={`${kind}:${layers ? layerPick?.expressId : 'none'}`}
-          modelId={modelId}
-          live={live}
-          kind={kind}
-          initial={layers ?? []}
-          typeId={typePick?.modelId === modelId ? typePick.expressId : null}
-          defaultThickness={authoringDim(defaults, kind, 'Thickness')}
-        />
+        <ChunkErrorBoundary label="Material layers">
+          <Suspense fallback={null}>
+            <LayersSection
+              key={`${kind}:${layers ? layerPick?.expressId : 'none'}`}
+              modelId={modelId}
+              live={live}
+              kind={kind}
+              initial={layers ?? []}
+              typeId={typePick?.modelId === modelId ? typePick.expressId : null}
+              defaultThickness={authoringDim(defaults, kind, 'Thickness')}
+            />
+          </Suspense>
+        </ChunkErrorBoundary>
       )}
     </>
   );
@@ -221,18 +226,22 @@ function SelectionBody({ selection }: { selection: InspectorSelection }) {
       {(kind !== null || isStairSelection(selection)) && <SelectionDimensions selection={selection} />}
       {isProfileOwner(kind) && <SelectionProfile selection={selection} owner={kind} />}
       {kind !== null && AUTHORED_KINDS[kind].layers && (
-        <LayersSection
-          // Re-seed the draft when the applied layers change, or (with none) the wall's thickness does.
-          key={`${expressId}:${layerSet?.layerSetId ?? `none:${thickness}`}`}
-          modelId={modelId}
-          live={live}
-          kind={kind}
-          elementId={expressId}
-          initial={layerSet?.layers ?? []}
-          inheritedFromType={layerSet?.via === 'type'}
-          typeId={typeId}
-          defaultThickness={thickness}
-        />
+        <ChunkErrorBoundary label="Material layers">
+          <Suspense fallback={null}>
+            <LayersSection
+              // Re-seed the draft when the applied layers change, or (with none) the wall's thickness does.
+              key={`${expressId}:${layerSet?.layerSetId ?? `none:${thickness}`}`}
+              modelId={modelId}
+              live={live}
+              kind={kind}
+              elementId={expressId}
+              initial={layerSet?.layers ?? []}
+              inheritedFromType={layerSet?.via === 'type'}
+              typeId={typeId}
+              defaultThickness={thickness}
+            />
+          </Suspense>
+        </ChunkErrorBoundary>
       )}
       {kind !== null && HOSTED.has(kind) && <HostingSection selection={selection} />}
     </>

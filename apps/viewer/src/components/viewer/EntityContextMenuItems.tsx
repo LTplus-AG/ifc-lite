@@ -5,7 +5,7 @@
 import { useId, type ElementType } from 'react';
 import { ChevronRight, CopyPlus } from 'lucide-react';
 import type { DuplicateDirection } from '@/store/slices/mutationSlice';
-import { surfaceCommand, type SurfaceCommandId, type SurfaceCommandState } from './surface-commands';
+import { surfaceCommand, type SurfaceCommandId, type SurfaceCommandState } from './surface-command-registry';
 import { runSurfaceCommand } from './surface-command-run';
 import { DUPLICATE_CONTEXT_DIRECTIONS } from './surface-commands-context';
 import { useViewerStore } from '@/store';

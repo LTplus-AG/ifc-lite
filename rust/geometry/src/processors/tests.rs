@@ -11,6 +11,18 @@ use super::*;
 use crate::router::GeometryProcessor;
 use crate::TessellationQuality;
 use ifc_lite_core::{EntityDecoder, IfcSchema, IfcType};
+use std::cell::Cell;
+
+thread_local! {
+    /// Test-only probe: CartesianPoint reads the surface-model loop reader
+    /// actually performed on this thread (bumped from `helpers` under
+    /// `cfg(test)` only).
+    static POINT_READS: Cell<u64> = const { Cell::new(0) };
+}
+
+pub(super) fn note_point_read() {
+    POINT_READS.with(|reads| reads.set(reads.get() + 1));
+}
 
 /// Read a fixture under `tests/models/`: `None` (skip) when absent or a Git
 /// LFS pointer, a panic under `IFC_LITE_REQUIRE_FIXTURES=1` (`ifc_lite_testkit`).
@@ -1423,4 +1435,27 @@ fn advanced_brep_survives_one_untriangulable_holed_face() {
         "only the good quad face's 2 triangles should be present, got {} indices",
         mesh.indices.len()
     );
+}
+
+/// The work, not the mesh: a face-based surface model whose faces share their
+/// corners reads each CartesianPoint once per lowering, not once per face that
+/// uses it. Two quads sharing an edge reference 8 corners over 6 distinct
+/// points; the lowering performs exactly 6 point reads, and both quads mesh.
+#[test]
+fn shared_surface_model_corners_are_read_once_per_lowering() {
+    let content = "#1=IFCCARTESIANPOINT((0.,0.,0.));#2=IFCCARTESIANPOINT((1.,0.,0.));\
+        #3=IFCCARTESIANPOINT((1.,1.,0.));#4=IFCCARTESIANPOINT((0.,1.,0.));\
+        #5=IFCCARTESIANPOINT((2.,0.,0.));#6=IFCCARTESIANPOINT((2.,1.,0.));\
+        #7=IFCPOLYLOOP((#1,#2,#3,#4));#8=IFCFACEOUTERBOUND(#7,.T.);#9=IFCFACE((#8));\
+        #10=IFCPOLYLOOP((#2,#5,#6,#3));#11=IFCFACEOUTERBOUND(#10,.T.);#12=IFCFACE((#11));\
+        #13=IFCCONNECTEDFACESET((#9,#12));#14=IFCFACEBASEDSURFACEMODEL((#13));";
+    let mut decoder = EntityDecoder::new(content);
+    let schema = IfcSchema::new();
+    let entity = decoder.decode_by_id(14).unwrap();
+    let before = POINT_READS.with(Cell::get);
+    let mesh = FaceBasedSurfaceModelProcessor::new()
+        .process(&entity, &mut decoder, &schema, TessellationQuality::Medium)
+        .expect("two quads tessellate");
+    assert_eq!(POINT_READS.with(Cell::get) - before, 6, "each distinct corner is read once");
+    assert_eq!(mesh.indices.len(), 12, "both quads mesh");
 }

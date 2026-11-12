@@ -10,7 +10,7 @@
  */
 
 import { useState } from 'react';
-import { useSingleFlight } from '@/hooks/useSingleFlight';
+import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { Button } from '@/components/ui/button';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { checkEntry, requeueAfterCheck, resolveWithCandidate, settleRemoteConflict } from '@/lib/bcf-publication/outbox-check';
@@ -42,10 +42,10 @@ export function BCFOutboxEntry({ record, entry, label, connection }: BCFOutboxEn
   const { t } = useTranslation();
   // One entry action at a time (C-2): a same-tick double press is refused
   // before it settles, checks or requeues the entry twice.
-  const flight = useSingleFlight();
+  const flight = useAsyncRun();
   const busy = flight.busy;
   const [error, setError] = useState<string | null>(null);
-  const run = (work: () => Promise<unknown>) => flight.run(async () => {
+  const run = (work: () => Promise<unknown>) => flight.start(async () => {
     setError(null);
     try { await work(); }
     catch (cause) {

@@ -8,6 +8,7 @@
     "paths": {
       "@/*": ["../viewer/src/*"],
       "@ifc-lite/parser": ["../../packages/parser/src"],
+      "@ifc-lite/parser/structural-glyphs": ["../../packages/parser/src/structural-glyphs"],
       "@ifc-lite/geometry": ["../../packages/geometry/src"],
       "@ifc-lite/geometry/geometry-class": ["../../packages/geometry/src/geometry-class"],
       "@ifc-lite/renderer": ["../../packages/renderer/src"],

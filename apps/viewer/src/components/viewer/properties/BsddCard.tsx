@@ -17,6 +17,7 @@ import { IconButton } from '@/components/ui/icon-button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { addToPropertySet, type InheritedSets } from '@/lib/properties/add-to-property-set';
 import { useViewerStore } from '@/store';
+import { canMutateData, dataMutationPermission, mutationDenialKey } from '@/store/mutation-permission';
 import { toast } from '@/components/ui/toast';
 import { QuantityType } from '@ifc-lite/data';
 import {
@@ -108,7 +109,8 @@ export function BsddCard({
   const createQuantitySet = useViewerStore((s) => s.createQuantitySet);
   const storeSetAttribute = useViewerStore((s) => s.setAttribute);
   const bumpMutationVersion = useViewerStore((s) => s.bumpMutationVersion);
-  const setEditEnabled = useViewerStore((s) => s.setEditEnabled);
+  // The same data permission the writes use: role, model and workflow locks (#9296).
+  const canEdit = useViewerStore((s) => canMutateData(s, modelId === 'legacy' ? '__legacy__' : modelId));
   const setPropertiesActiveTab = useViewerStore((s) => s.setPropertiesActiveTab);
   const setPendingPropertyFocus = useViewerStore((s) => s.setPendingPropertyFocus);
 
@@ -183,6 +185,9 @@ export function BsddCard({
     (psetName: string, prop: BsddClassProperty, quantityValue?: number) => {
       let normalizedModelId = modelId;
       if (modelId === 'legacy') normalizedModelId = '__legacy__';
+      // A refused write must not be reported as added (a lock can start after render).
+      const permission = dataMutationPermission(useViewerStore.getState(), normalizedModelId);
+      if (!permission.allowed) return void toast.error(t(mutationDenialKey(permission.reason)));
 
       if (psetName === BSDD_ATTRIBUTES_GROUP) {
         // Route entity-level attributes (Name, Description, ObjectType, Tag,
@@ -244,6 +249,9 @@ export function BsddCard({
     (psetName: string, props: BsddClassProperty[]) => {
       let normalizedModelId = modelId;
       if (modelId === 'legacy') normalizedModelId = '__legacy__';
+      // A refused write must not be reported as added (a lock can start after render).
+      const permission = dataMutationPermission(useViewerStore.getState(), normalizedModelId);
+      if (!permission.allowed) return void toast.error(t(mutationDenialKey(permission.reason)));
 
       const isAttrGroup = psetName === BSDD_ATTRIBUTES_GROUP;
 
@@ -295,8 +303,7 @@ export function BsddCard({
   // pendingPropertyFocus to scroll to and highlight the exact row.
   const goToProperties = useCallback(() => {
     setPropertiesActiveTab('properties');
-    setEditEnabled(true);
-  }, [setPropertiesActiveTab, setEditEnabled]);
+  }, [setPropertiesActiveTab]);
 
   // The "Edit in Properties" bar only makes sense for things that ARE editable
   // on the Properties tab: Pset_* properties and entity attributes. Qto_*
@@ -405,7 +412,7 @@ export function BsddCard({
                 {formatLocaleNumber(locale, props.length)}
               </span>
               {/* A quantity needs its own value, so a Qto_* set has no bulk add (#8407). */}
-              {addableCount > 0 && !isQto && (
+              {canEdit && addableCount > 0 && !isQto && (
                 <IconButton
                   label={t('properties.bsdd.addAllTooltip', localeCount(locale, addableCount))}
                   className="h-5 w-5 p-0 shrink-0 hover:bg-sky-200 dark:hover:bg-sky-800"
@@ -459,7 +466,7 @@ export function BsddCard({
                           edited afterwards in the Properties tab (issue #1107). */}
                       {alreadyExists ? (
                         <Check className="h-3.5 w-3.5 text-ok shrink-0" />
-                      ) : isQto ? (
+                      ) : !canEdit ? null : isQto ? (
                         <BsddQuantityAdd name={prop.name} onAdd={(value) => handleAddProperty(psetName, prop, value)} />
                       ) : (
                         <IconButton

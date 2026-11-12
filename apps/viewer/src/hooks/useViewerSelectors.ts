@@ -229,8 +229,6 @@ export function useColorUpdateState() {
   const clearPendingMeshRemovals = useViewerStore((state) => state.clearPendingMeshRemovals);
   const pruneGeometryMeshes = useViewerStore((state) => state.pruneGeometryMeshes);
   const clearPendingMeshTranslations = useViewerStore((state) => state.clearPendingMeshTranslations);
-  const pendingInstancedShards = useViewerStore((state) => state.pendingInstancedShards);
-  const clearInstancedShards = useViewerStore((state) => state.clearInstancedShards);
   const pendingMeshRotations = useViewerStore((state) => state.pendingMeshRotations);
   const clearPendingMeshRotations = useViewerStore((state) => state.clearPendingMeshRotations);
 
@@ -240,14 +238,12 @@ export function useColorUpdateState() {
     pendingMeshRemovals,
     pendingMeshTranslations,
     pendingMeshRotations,
-    pendingInstancedShards,
     clearPendingColorUpdates,
     clearPendingMeshColorUpdates,
     clearPendingMeshRemovals,
     pruneGeometryMeshes,
     clearPendingMeshTranslations,
     clearPendingMeshRotations,
-    clearInstancedShards,
   };
 }
 

@@ -23,6 +23,8 @@ export const comparePanelRu = {
   "comparePanel.saved.dependencies.storagePending": "Удаление ожидается, поскольку хранилище браузера недоступно или заполнено. Сохранить восстанавливает текущий сохранённый отчёт.",
   "comparePanel.saved.dependencies.sourceChanged": "Этот отчёт был изменён или заменён. Отмените и снова откройте запрос на удаление.",
   "comparePanel.saved.dependencies.changed": "Изменены ссылки на диаграммы. Перед подтверждением удаления ознакомьтесь с обновлённым списком.",
+  "comparePanel.saved.dependencies.finishFailed": "Отчёт удалён, но это представление не удалось обновить. Закройте и откройте его снова.",
+  "comparePanel.saved.dependencies.removeFailed": "Не удалось удалить отчёт. Закройте и снова откройте это представление, затем повторите попытку.",
   "comparePanel.saved.dependencies.review": "Проверить обновлённые ссылки",
   "comparePanel.saved.title": "Сохранённые сравнения",
   "comparePanel.saved.name": "Название сравнения",

@@ -253,30 +253,11 @@ export class DaluxBuildProvider implements FileSourceProvider {
   }
 
   /**
-   * Dalux has no delta/change-feed endpoint, so watching means polling the
-   * given refs. Grouped strictly by file area so a sweep covering many refs
-   * from the same area issues one listing sweep total — never a project- or
-   * account-wide crawl, and never more than one sweep per distinct area.
-   *
-   * Two failure-isolation rules, both load-bearing:
-   *
-   * 1. One area's sweep failing (a deleted file area 404ing, or a pagination
-   *    error) must not abort the whole call — that would discard the
-   *    already-detected events from every *other*, healthy area too. So each
-   *    area's sweep is caught individually and warned about rather than the
-   *    call rejecting outright. Only a definitive not-found (HTTP 404) turns
-   *    into `deleted: true` events; any other failure leaves that area's refs
-   *    without an event this poll, because "the request failed" is not
-   *    evidence that "the file is gone upstream".
-   * 2. `ctx.storage.set`/`delete` for every area are buffered and only
-   *    committed once the whole sweep is done, never per-area as each area
-   *    finishes. Advancing a cache immediately and *then* discovering a
-   *    later area failed used to mean: if the host reacted to that failure
-   *    by discarding this call's events, the already-advanced caches would
-   *    make the next poll compare against the new value and never emit the
-   *    now-lost event again — permanently. Buffering means a cache is only
-   *    ever advanced past a change once that change's event has actually
-   *    been returned.
+   * Poll only the referenced file areas, once per area: Dalux has no delta feed.
+   * Isolate area failures so healthy areas still emit events. Only HTTP 404
+   * proves deletion; other failures leave that area's refs and caches untouched.
+   * Buffer cache writes until every area finishes, so advancing a baseline
+   * cannot swallow a change whose event has not yet been returned.
    */
   async watchRevisions(
     ctx: PluginContext,

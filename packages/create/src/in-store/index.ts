@@ -6,6 +6,7 @@
 // via a `StoreEditor` overlay (closes the merge-roundtrip gap from #592).
 export { linearProfileFrame } from './linear-profile-frame.js';
 export { addOrdinaryElementInStore, type OrdinaryInStoreElement } from './ordinary-element.js';
+export { withWallAutojoinIndex, withWallAutojoinAppend, type WallAutojoinIndex } from './wall-autojoin-index.js';
 export {
   addColumnToStore,
   type ColumnInStoreParams,
@@ -88,7 +89,9 @@ export {
   type MaterialLayerSetUsageInStoreParams,
 } from './material.js';
 export type { OneToManyResult } from './relate.js';
-export { applyLayerThicknessInStore, effectiveLayerSetThickness, typeOccurrencesInStore } from './type-layer-thickness.js';
+export { applyLayerThicknessInStore, effectiveLayerSetThickness, takeLayerThicknessOutcome, typeOccurrencesInStore, type LayerThicknessOutcome } from './type-layer-thickness.js';
+export { previewTypeLayerImpact, type TypeLayerImpact } from './type-layer-impact.js';
+export { retargetInheritingLayerUsagesInStore, typeLayerScopeInStore, typeLayerSetInStore, type TypeLayerScope } from './type-layer-inheritance.js';
 export { hostedFillTypeName, typeHostedFillInStore, type HostedFillTypeParams } from './hosted-fill-type.js';
 export { resolveAuthoringAnchor, readRelatedLists, liveEntityType, liveEntityConforms } from './resolve-relations.js';
 export { addSpaceToStore, type SpaceInStoreParams, type SpaceRectangleParams, type SpacePolygonParams, type SpaceBuildResult } from './space.js';
@@ -256,3 +259,22 @@ export {
 export { readGroupEvidenceInStore, readGroupCreateEvidenceInStore, type GroupNativeEvidence, type GroupCreateEvidence } from './group-evidence.js';
 
 export { refreshTopAttachmentsInStore } from './top-attachment-refresh.js';
+export { addClassificationInStore, assignClassificationInStore, type ClassificationInStoreParams } from './classification.js';
+export { mirrorElementsInStore, type MirrorElementsParams } from './element-mirror.js';
+
+export { addStructuralPlanarActionToStore, addStructuralSurfaceActionToStore, type StructuralSurfaceActionInStoreParams, type StructuralSurfaceActionBuildResult } from './structural-surface-action.js';
+export { addStructuralPointReactionToStore, addStructuralCurveReactionToStore, addStructuralSurfaceReactionToStore, type StructuralPointReactionInStoreParams, type StructuralCurveReactionInStoreParams, type StructuralSurfaceReactionInStoreParams, type StructuralReactionBuildResult } from './structural-reaction.js';
+export { addStructuralResultGroupToStore, type StructuralResultGroupInStoreParams, type StructuralResultGroupBuildResult } from './structural-result-group.js';
+export { addStructuralSurfaceMemberToStore, type StructuralSurfaceMemberInStoreParams, type StructuralSurfaceMemberBuildResult, type StructuralSurfaceMemberType } from './structural-surface-member.js';
+
+export { addStructuralCurveConnectionToStore, type StructuralCurveConnectionInStoreParams, type StructuralCurveConnectionBuildResult, type StructuralBoundaryEdgeConditionParams } from './structural-curve-connection.js';
+
+export { addStructuralSurfaceConnectionToStore, type StructuralSurfaceConnectionInStoreParams, type StructuralSurfaceConnectionBuildResult, type StructuralBoundaryFaceConditionParams } from './structural-surface-connection.js';
+
+// Derive an analytical model from the physical one (#9668): facts, plan, apply.
+export { readStructuralDerivationFacts } from './structural-derive-facts.js';
+export { planStructuralDerivation } from './structural-derive-plan.js';
+export { applyStructuralDerivation } from './structural-derive-apply.js';
+export type { StructuralDerivationOptions, StructuralDerivationPlan, StructuralDerivationReport } from './structural-derive-types.js';
+export { editStructuralEntityInStore, type StructuralEntityEdit } from './structural-edit.js';
+export { removeStructuralEntityInStore } from './structural-remove.js';

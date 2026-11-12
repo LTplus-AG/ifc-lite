@@ -70,6 +70,10 @@ export const modelInspectorFr = {
   "modelInspector.layers.defaultsHint": "Les nouveaux éléments recevront ces couches.",
   "modelInspector.layers.needName": "Nommez chaque nouveau matériau",
   "modelInspector.layers.needLayer": "Donnez à chaque couche une épaisseur supérieure à zéro",
+  "modelInspector.layers.typeScope": {"one": "Modifie {countDisplay} élément de ce type, avec ses jonctions et ses pièces générées.", "other": "Modifie {countDisplay} éléments de ce type, avec leurs jonctions et leurs pièces générées."},
+  "modelInspector.layers.typeOwnLayers": {"one": "{countDisplay} utilise un autre ensemble de couches ou matériau et le garde.", "other": "{countDisplay} utilisent un autre ensemble de couches ou matériau et le gardent."},
+  "modelInspector.layers.notFollowed": {"one": "{countDisplay} élément a gardé sa forme précédente :", "other": "{countDisplay} éléments ont gardé leur forme précédente :"},
+  "modelInspector.layers.keptBody": "{name} : {reason}",
   "modelInspector.hosting.title": "Élément hôte",
   "modelInspector.empty.command": "Cet outil n’a pas de paramètres par défaut à modifier ici. Ses options se trouvent dans la barre au-dessus de la vue 3D.",
 } satisfies Catalogue;

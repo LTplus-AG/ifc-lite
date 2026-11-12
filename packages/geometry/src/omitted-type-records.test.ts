@@ -43,7 +43,7 @@ const wasm = vi.hoisted(() => {
   return { state, MockIfcAPI, init: vi.fn(async () => undefined) };
 });
 
-vi.mock('@ifc-lite/wasm', () => ({ default: wasm.init, IfcAPI: wasm.MockIfcAPI }));
+vi.mock('@ifc-lite/wasm', () => ({ ENGINE_BINARY_URL: null, default: wasm.init, IfcAPI: wasm.MockIfcAPI }));
 
 import { GeometryProcessor, type StreamingGeometryEvent } from './index.js';
 import {

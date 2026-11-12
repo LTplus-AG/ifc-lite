@@ -12,7 +12,7 @@ import { useMemo, useState } from 'react';
 import type { IDSFacet, IFCVersion, PartOfRelation } from '@ifc-lite/ids';
 import { type FacetFieldName, type GateContext, type StudioOp, type Uuid, type ValueInput } from '@ifc-lite/ids-authoring';
 import { useTranslation } from '@/i18n';
-import { addEnumValueOp, removeEnumValueOp, setFieldOp, setRelationOp } from '@/lib/ids-studio/ops';
+import { addEnumValueOp, dataTypeOps, removeEnumValueOp, setFieldOp, setRelationOp } from '@/lib/ids-studio/ops';
 import {
   attributeOptions, dataTypeBase, dataTypeOptions, entityOptions, findEntity, propertyOptions, psetOptions,
 } from '@/lib/ids-studio/schema-pickers';
@@ -86,10 +86,11 @@ function PropertyFields({ facet, facetId, gate, versions, entities, dispatch }: 
   // A non-standard set is refused by the gate (GATE-CUST-001); the rejection
   // banner offers to declare it as custom, deliberately, in the same undo step.
   const pickPset = (name: string) => set('property.propertySet', equals(name));
+  const typeOps = (input: ValueInput | null) => dataTypeOps(facetId, facet, input, gate, versions);
   const pickProperty = (name: string) => {
     const schemaType = properties.find((p) => p.name === name)?.dataType;
     // Fill the data type from the schema when none is set, in the same batch.
-    const extra = schemaType && !facet.dataType ? [setFieldOp(facetId, 'property.dataType', equals(schemaType))] : [];
+    const extra = schemaType && !facet.dataType ? typeOps(equals(schemaType)) : [];
     dispatch([setFieldOp(facetId, 'property.baseName', equals(name)), ...extra]);
   };
   const showAllToggle = entities.length > 0 && <label className="flex items-center gap-1 text-2xs text-muted-foreground">
@@ -101,7 +102,7 @@ function PropertyFields({ facet, facetId, gate, versions, entities, dispatch }: 
     <NameField label={t('idsStudio.field.property')} required constraint={facet.baseName} options={propertyPicks}
       onPick={pickProperty} onCommit={(input) => set('property.baseName', input)} />
     <NameField label={t('idsStudio.field.dataType')} constraint={facet.dataType} options={dataTypeOptions(gate, versions).map((value) => ({ value }))}
-      onPick={(v) => set('property.dataType', equals(v))} onCommit={(input) => set('property.dataType', input)} />
+      onPick={(v) => dispatch(typeOps(equals(v)))} onCommit={(input) => dispatch(typeOps(input))} />
     <ValueEditor label={t('idsStudio.field.value')} constraint={facet.value}
       base={dataType ? dataTypeBase(gate, versions, dataType) : undefined} siUnit={siUnitOf(dataType)}
       onCommit={(input) => set('property.value', input)}

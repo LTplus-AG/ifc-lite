@@ -15,7 +15,7 @@ import { FlavorDialogHost } from '@/components/extensions/FlavorDialogHost';
 import { useViewerStore } from '@/store';
 import { setLocale } from '@/i18n';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
-import { advance, cleanup, click, press, render, type as typeInto } from '@/test/render';
+import { advance, cleanup, click, press, render, type as typeInto, waitFor } from '@/test/render';
 import { CommandPalette } from './CommandPalette';
 import { MobileToolbar } from './MobileToolbar';
 import { getMountedFileHost } from './toolbar/mounted-file-host';
@@ -88,10 +88,11 @@ test('#8947 Manage flavors reaches its real stored-flavor flow without mounting 
     createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z',
     extensions: [], lenses: [], savedQueries: [], keybindings: [], layout: { state: {} }, settings: {} });
   render(<Harness />); await advance(30);
-  click(option('extensions:flavors')); await advance(100);
+  click(option('extensions:flavors')); await advance(10);
   assert.equal(useViewerStore.getState().flavorDialogRequested, false, 'the persistent host consumed the request');
+  // The dialog is a lazy chunk: the first open waits for it and its stored flavors to load.
+  await waitFor(() => /Mobile review setup/.test(document.querySelector('[role="dialog"]')?.textContent ?? ''), 'flavor dialog lists the stored flavor');
   const dialog = document.querySelector('[role="dialog"]'); assert.ok(dialog);
-  assert.match(dialog.textContent ?? '', /Mobile review setup/);
   assert.ok(button('Activate'), 'the real flavor action is reachable');
   press(dialog, 'Escape'); await advance(10);
   assert.equal(document.querySelector('[role="dialog"]'), null);

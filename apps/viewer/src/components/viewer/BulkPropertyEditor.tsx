@@ -41,7 +41,7 @@ import {
 } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { useViewerStore } from '@/store';
-import { canMutate, mutationDenialKey, mutationPermissionForModels } from '@/store/mutation-permission';
+import { canMutateData, mutationDenialKey, dataMutationPermissionForModels } from '@/store/mutation-permission';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { PropertyValueType } from '@ifc-lite/data';
 import {
@@ -87,7 +87,6 @@ export function BulkPropertyEditor(props: ToolDialogProps) {
   const mutationViews = useViewerStore((s) => s.mutationViews);
   // The engine writes directly to a mutation view, so its live callback and
   // the Execute affordance both consult the same viewer permission policy.
-  const editEnabled = useViewerStore((s) => s.editEnabled);
   const collabEditRole = useViewerStore((s) => s.collabRole);
   // Also get legacy single-model state for backward compatibility
   const legacyIfcDataStore = useViewerStore((s) => s.ifcDataStore);
@@ -100,9 +99,9 @@ export function BulkPropertyEditor(props: ToolDialogProps) {
   const targetGroups = useBulkTargets(open, targetSource, models);
   const editDenialReason = useMemo(() => {
     const ids = targetSource === 'query' ? [selectedModelId] : targetGroups.keys();
-    const result = mutationPermissionForModels(useViewerStore.getState(), ids);
+    const result = dataMutationPermissionForModels(useViewerStore.getState(), ids);
     return result.allowed ? undefined : result.reason;
-  }, [editEnabled, collabEditRole, models, legacyIfcDataStore, selectedModelId, targetSource, targetGroups]);
+  }, [collabEditRole, models, legacyIfcDataStore, selectedModelId, targetSource, targetGroups]);
   const canEditInSession = editDenialReason === undefined;
   const denialId = useId();
 
@@ -211,7 +210,7 @@ export function BulkPropertyEditor(props: ToolDialogProps) {
     const dataStore = selectedModel.ifcDataStore;
     return new BulkQueryEngine(
       dataStore.entities, mutationView, dataStore.spatialHierarchy || null, dataStore.strings || null,
-      () => canMutate(useViewerStore.getState(), selectedModelId),
+      () => canMutateData(useViewerStore.getState(), selectedModelId),
       dataStore.schemaVersion,
       (containerId) => effectiveSpatialMembers(dataStore, mutationView, containerId),
     );
@@ -238,7 +237,7 @@ export function BulkPropertyEditor(props: ToolDialogProps) {
       if (!dataStore || !view) continue;
       engines.set(modelId, new BulkQueryEngine(dataStore.entities, view,
         dataStore.spatialHierarchy || null,
-        dataStore.strings || null, () => canMutate(useViewerStore.getState(), modelId), dataStore.schemaVersion,
+        dataStore.strings || null, () => canMutateData(useViewerStore.getState(), modelId), dataStore.schemaVersion,
         (containerId) => effectiveSpatialMembers(dataStore, view, containerId)));
     }
     return engines;

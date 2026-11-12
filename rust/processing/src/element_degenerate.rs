@@ -35,7 +35,7 @@ thread_local! {
 /// On by default. Set `IFC_LITE_DISABLE_DEGENERATE_BACKSTOP=1` to keep the raw
 /// (possibly fan-corrupted) triangles — an escape hatch for debugging the
 /// heuristic or measuring exactly what it removes. Read once and cached.
-fn disabled() -> bool {
+pub(crate) fn disabled() -> bool {
     static DISABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *DISABLED.get_or_init(|| std::env::var("IFC_LITE_DISABLE_DEGENERATE_BACKSTOP").is_ok())
 }

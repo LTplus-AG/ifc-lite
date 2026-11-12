@@ -148,6 +148,22 @@ if [ -f "$DTS_PATH" ]; then
   echo "🧹 stripped internal __wasm_bindgen_func_elem_* indices from $DTS_PATH"
 fi
 
+# Engine-binary marker. `@ifc-lite/geometry` compiles the engine binary once
+# and hands the compiled module to every glue instance (wasm-shared-module.ts).
+# It must compile the binary THIS glue was generated for: a consumer that
+# aliases `@ifc-lite/wasm` to the geometry-core bundle (`@ifc-lite/wasm/core`,
+# below) gets that bundle's glue, whose import object does not link against the
+# full binary. The full bundle names no binary (null: geometry keeps its
+# default `pkg/ifc-lite_bg.wasm` resolution); the core bundle names its own.
+# Appended to both the runtime and the committed .d.ts, so the sync gate and
+# `fetch-prebuilt-wasm.mjs`'s export-parity check see the same surface.
+append_engine_binary_marker() {
+  local dir="$1" value="$2"
+  printf '\n// ifc-lite engine-binary marker (scripts/build-wasm.sh)\nexport const ENGINE_BINARY_URL = %s;\n' "$value" >> "$dir/ifc-lite.js"
+  printf '\n/** The binary this glue was generated for when it is not the default `pkg/ifc-lite_bg.wasm` (the geometry-core bundle); `null` for the full engine. */\nexport const ENGINE_BINARY_URL: URL | null;\n' >> "$dir/ifc-lite.d.ts"
+}
+append_engine_binary_marker "$(echo "$OUT_DIR" | sed 's|^../../||')" "null"
+
 # Show bundle size
 echo ""
 echo "📊 Bundle size:"
@@ -166,6 +182,41 @@ if [ $WASM_SIZE -lt $TARGET_SIZE ]; then
   echo "   ✅ Under $TARGET_LABEL target!"
 else
   echo "   ⚠️  Over $TARGET_LABEL target ($(($WASM_SIZE / 1024))KB)"
+fi
+
+# --- Geometry-core bundle (`@ifc-lite/wasm/core`) ---------------------------
+# Off for ordinary builds (a second LTO link of the engine); the release
+# workflow sets BUILD_CORE=1 so the published package carries it. The same
+# crate built with `--no-default-features`: IFC parsing, mesh streaming,
+# styles and the 2D helpers stay; the exporters, LandXML, clash, point-cloud
+# scan operations and PDF underlays (the `full` feature in
+# rust/wasm-bindings/Cargo.toml) are left out. Bundler consumers that only
+# mesh IFC alias `@ifc-lite/wasm` to `@ifc-lite/wasm/core`
+# (docs/guide/geometry-core.md).
+if [ "${BUILD_CORE:-}" = "1" ]; then
+  CORE_OUT="../../packages/wasm/pkg-core"
+  CORE_FEATURES="console_error_panic_hook"
+  if [ "${DEBUG_GEOMETRY:-}" = "1" ]; then CORE_FEATURES="$CORE_FEATURES,debug_geometry"; fi
+  echo ""
+  echo "🪶 Building geometry-core bundle → $CORE_OUT (--no-default-features)"
+  rustup run nightly-2025-11-15 "$WASM_PACK" build rust/wasm-bindings \
+    --target web \
+    --out-dir "$CORE_OUT" \
+    --out-name ifc-lite \
+    --release \
+    --no-default-features \
+    --features "$CORE_FEATURES"
+  CORE_REL="$(echo "$CORE_OUT" | sed 's|^../../||')"
+  printf '\n' > "$CORE_REL/.npmignore"
+  CORE_DTS="$CORE_REL/ifc-lite.d.ts"
+  grep -v '__wasm_bindgen_func_elem_' "$CORE_DTS" > "$CORE_DTS.tmp" && mv "$CORE_DTS.tmp" "$CORE_DTS"
+  # The glue's own default binary, the URL the same glue resolves in its init.
+  append_engine_binary_marker "$CORE_REL" "new URL('ifc-lite_bg.wasm', import.meta.url)"
+  if grep -qE '\b(exportGlb|parseLandXmlTinBytes|segmentScanPoints|preparePdfVectorPage)\(' "$CORE_DTS"; then
+    echo "🪶 ❌ geometry-core bundle still exposes export/LandXML/clash APIs — features not applied; refusing to ship"
+    exit 1
+  fi
+  ls -lh "$CORE_REL/ifc-lite_bg.wasm" | awk '{print "   Core WASM: " $5}'
 fi
 
 # --- Optional second bundle: threaded (atomics + shared memory) -------------

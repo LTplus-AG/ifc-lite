@@ -901,6 +901,33 @@ ifc-lite mutate model.ifc --type IfcWall --where "Pset_WallCommon.IsExternal=tru
 
 ---
 
+### `derive-structural` - Derive a structural analysis model
+
+Derive an `IfcStructuralAnalysisModel` from the physical model in the same file: beams, columns and members become curve members on their axis, slabs and walls become surface members on their mid-plane, member ends within the tolerance share a node, and footings or piles carry supports. Axes run through section centres, so a beam stops at a column face and a column top stops below the beam axis: a free member end moves along its own axis (never sideways) to meet another member's axis when that is within the joint reach, and a member met in its interior is split there. The report lists every moved end with the distance, and every end left free. When no footing carries a node, the nodes at the lowest level of the whole load-bearing structure become supports and the report flags them as guessed. A file that already has an analysis model is refused unless `--analysis-model-exists add`. Every member and node is linked to its physical element with `IfcRelAssignsToProduct`. Elements that already have a structural counterpart are skipped, so running it again writes nothing. Elements it cannot idealise (tessellated bodies, curved sweeps, non-rectangular walls) are skipped and listed with the reason. Works on IFC2X3, IFC4 and IFC4X3.
+
+```bash
+ifc-lite derive-structural model.ifc --out analytical.ifc
+ifc-lite derive-structural model.ifc --dry-run --json
+ifc-lite derive-structural model.ifc --tolerance 0.1 --support fixed --out analytical.ifc
+```
+
+**Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--out <file>` | Output IFC with the analysis model (omit with `--dry-run`) |
+| `--tolerance <m>` | Member ends closer than this share a node, in metres (default 0.05) |
+| `--load-bearing-unknown <p>` | Elements without `LoadBearing`: `include` (default, reported as assumed) or `skip` |
+| `--support <type>` | Support condition: `pinned` (default) or `fixed` |
+| `--joint-reach <m>` | How far a free member end may move along its axis to meet another member, in metres (default: half that member's larger section dimension plus the tolerance; never below the tolerance) |
+| `--analysis-model-exists <p>` | When the file already has an analysis model: `refuse` (default) or `add` the missing members to a new one |
+| `--dry-run` | Plan and report only; write nothing |
+| `--json` | Report as JSON: counts, existing analysis models, skipped elements with reasons, guessed supports, moved ends, free ends, unconnected member ends |
+
+Scripts reach the same steps through `bim.store.planStructuralDerivation(modelId, options)` and `bim.store.deriveStructuralAnalysisModel(modelId, options)`.
+
+---
+
 ### `generate-spaces` - Derive IfcSpace
 
 Derive IfcSpace volumes from the building's walls (room footprints), using storey datums for floor-to-floor height, and write the augmented IFC.
@@ -1140,6 +1167,10 @@ Checks:
 - GlobalId uniqueness — across every `IfcRoot` subtype the file holds, read from the inheritance chain of every schema ifc-lite bundles (IFC2X3, IFC4 and IFC4X3). Classes only one schema declares (`IfcScheduleTimeControl`, `IfcSpaceProgram`, `IfcServiceLife` in IFC2X3; `IfcCourse`, `IfcBorehole` in IFC4X3) are checked like any other. Entities that are not `IfcRoot` subtypes — materials, surface styles, classifications — are deliberately left out, because they carry a name where an `IfcRoot` carries a GlobalId and two same-named materials are not a duplicate
 - Named elements
 - Reference integrity (every `#N` attribute reference must point at an entity that exists in the file; each dangling reference is reported with the referencing entity, attribute slot, and missing target — detailed up to the first 50, after which a single rollup issue reports the count of remaining dangling references)
+- Physical vs structural analysis model, as warnings that name each entity by express id and `GlobalId`:
+  - `structural-unlinked-element`: a beam, column, member, slab, wall, footing or pile that is load bearing and has no structural member or connection assigned. Runs only when the file has an analytical model. Detailed up to the first 50, after which a single rollup issue reports the remaining count and the total. `Pset_*Common.LoadBearing` is read from the occurrence, else its type. An element where that value is missing or not a boolean (IfcLogical UNKNOWN) counts as load bearing; `LoadBearing = false` is never reported.
+  - `structural-unlinked-item`: a structural member or connection with no physical element assigned. Members and connections are each checked only when the file links at least one of that kind.
+  - `structural-class-mismatch`: a curve member assigned to a slab or wall, or a surface member assigned to a beam, column or member (`target` names the physical element).
 
 Returns exit code 0 (valid) or 1 (errors found).
 
@@ -1870,6 +1901,7 @@ The `semantic` command reads JSON/SPARQL providers, generates shared profile art
 | `stats` | Auto-calculated model KPIs and health check |
 | `mutate` | Modify properties/attributes and save |
 | `generate-spaces` | Derive IfcSpace from walls (slab/roof-aware height) |
+| `derive-structural` | Derive a linked structural analysis model from beams, columns, slabs, walls |
 | `storey` | Author storeys; geometry follows ("storey --help" for actions) |
 | `ask` | Natural language BIM queries |
 | `view` | Interactive 3D viewer in browser |

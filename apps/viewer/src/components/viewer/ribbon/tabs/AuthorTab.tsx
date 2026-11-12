@@ -10,7 +10,7 @@ import { hasWorkspaceHistory } from '@/lib/model-placement/history';
  * toolbar (viewer/commenter roles cannot unlock authoring).
  */
 
-import { Extension, EditElement, EditProperty, ImportData, Undo, Redo, Appearance, Layer } from '@/icons';
+import { Extension, EditProperty, ImportData, Undo, Redo, Appearance, Layer } from '@/icons';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { usePersistentToolHosts } from '../../PersistentToolHosts';
@@ -22,9 +22,6 @@ import {
 } from '../primitives';
 import { RibbonCommandLargeButton, RibbonCommandSmallButton } from '../command-button';
 
-/** Latched state shared by the authoring toggles: the interaction accent
- *  (overlay token, #5483), not a mode-specific hue, so edit mode reads the
- *  same in the ribbon and over the model (#5489). */
 const EDIT_ACTIVE_CLASS = 'bg-overlay-accent-soft text-foreground ring-1 ring-inset ring-overlay-accent/50';
 
 export function AuthorTab() {
@@ -32,7 +29,6 @@ export function AuthorTab() {
   const toolHosts = usePersistentToolHosts();
   const hasData = useViewerStore(s => s.ifcDataStore !== null || [...s.models.values()].some(m => m.ifcDataStore != null));
   // Edit mode is the Model workspace (#6232): this button enters and leaves it.
-  const inModelWorkspace = useViewerStore((state) => state.editEnabled);
   // Collab role: editing is reserved for editor/admin. Derive from the
   // reactive role so the Edit switch enables/disables live when the role
   // changes. null role = single-user, always editable.
@@ -53,16 +49,6 @@ export function AuthorTab() {
   return (
     <>
       <RibbonGroup label={t('ribbon.author.editGroup')}>
-        <RibbonCommandLargeButton
-          commandId="tool:edit-mode"
-          icon={EditElement}
-          tooltip={canEditInSession
-            ? (inModelWorkspace ? t('ribbon.author.exitEditTooltip') : t('ribbon.author.enterEditTooltip'))
-            : t('ribbon.author.editLockedTooltip')}
-          active={inModelWorkspace}
-          activeClassName={EDIT_ACTIVE_CLASS}
-          disabled={!canEditInSession}
-        />
         <RibbonSmallStack>
           <RibbonCommandSmallButton
             commandId="author:undo"

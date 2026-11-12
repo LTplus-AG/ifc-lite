@@ -72,6 +72,7 @@ export const bcfDraftsEn = {
   'bcfDrafts.reconcile.apply': 'Apply',
   'bcfDrafts.reconcile.applyTo': 'Apply the proposal to {title}',
   'bcfDrafts.reconcile.stale': 'The batch changed since the comparison; compare again.',
+  'bcfDrafts.reconcile.failed': 'The change could not be applied; the batch is unchanged. {message}',
   'bcfDrafts.reconcile.unplaced': { one: '{count} new group match could belong to several split topics.', other: '{count} new group matches could belong to several split topics.' },
   'bcfDrafts.reconcile.draftUnplaced': 'Draft a new topic from them',
   'bcfDrafts.reconcile.unplacedTitle': 'New matches',

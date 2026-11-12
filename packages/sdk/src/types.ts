@@ -572,7 +572,7 @@ export interface StoreBackendMethods extends StoreAuthoringBackendMethods {
    * model on export.
    */
   addColumn(modelId: string, storeyExpressId: number, params: AddColumnInStoreParams | ProfiledColumnInStoreParams): EntityRef;
-  addWall(modelId: string, storeyExpressId: number, params: AddWallInStoreParams): EntityRef;
+  addWall(modelId: string, storeyExpressId: number, params: AddWallInStoreParams): EntityRef & { notices?: string[] };
   addSlab(modelId: string, storeyExpressId: number, params: AddSlabInStoreParams): EntityRef;
   addBeam(modelId: string, storeyExpressId: number, params: AddBeamInStoreParams | ProfiledBeamInStoreParams): EntityRef;
   addDoor(modelId: string, storeyExpressId: number, params: AddDoorInStoreParams): EntityRef;

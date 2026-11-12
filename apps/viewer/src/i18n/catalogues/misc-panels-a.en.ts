@@ -185,4 +185,10 @@ export const miscPanelsAEn = {
   'spaceMousePanel.copyDeviceReportLabel': 'Copy device report',
   'spaceMousePanel.reportHintMessage':
     'If motion is wrong or dead for your device, copy this report and paste it into a GitHub issue so the axis layout can be fixed for your model.',
+  // The opt-in driver path (#9131).
+  'spaceMousePanel.useDriverLabel': 'Use the 3Dconnexion driver',
+  'spaceMousePanel.useDriverHint': 'Connect through the running 3DxWare driver instead of WebHID. Speed, axes and navigation mode then come from your 3Dconnexion settings. The 3Dconnexion SDK is loaded only while this is on.',
+  'spaceMousePanel.driverConnecting': 'Connecting to the 3Dconnexion driver…',
+  'spaceMousePanel.driverConnected': 'Connected through the 3Dconnexion driver',
+  'spaceMousePanel.driverUnavailable': 'The 3Dconnexion driver is not reachable, so WebHID stays in use. Check that 3DxWare 10 is running.',
 } as const;

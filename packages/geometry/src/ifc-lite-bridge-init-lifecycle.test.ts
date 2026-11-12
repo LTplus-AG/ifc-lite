@@ -63,7 +63,7 @@ const wasm = vi.hoisted(() => {
   };
 });
 
-vi.mock('@ifc-lite/wasm', () => ({ default: wasm.init, IfcAPI: wasm.IfcAPI }));
+vi.mock('@ifc-lite/wasm', () => ({ default: wasm.init, IfcAPI: wasm.IfcAPI, ENGINE_BINARY_URL: null }));
 
 // Fresh modules per test: the main-thread engine init and the shared wasm
 // module cache are realm singletons (#7036), as in ifc-lite-bridge-shared-init.

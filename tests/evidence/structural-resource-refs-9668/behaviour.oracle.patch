@@ -1,0 +1,29 @@
+--- a/packages/create/src/in-store/_structural-graph.ts
++++ b/packages/create/src/in-store/_structural-graph.ts
+@@ -46,8 +46,24 @@
+     seen.add(base);
+     return (registry.selects[base] ?? []).some(t => isReference(t, seen));
+   };
+-  const refs = (value: unknown): number[] => (Array.isArray(value) ? value.flat(Infinity) : [value])
+-    .flatMap(v => { const id = asRef(v); return id === null ? [] : [id]; });
++  const refs = (value: unknown): number[] => {
++    const result: number[] = [], pending: unknown[] = [value];
++    const arrays = new Set<unknown[]>();
++    while (pending.length) {
++      const item = pending.pop();
++      if (Array.isArray(item)) {
++        // Typed primitive tuples are values. Visit array nodes once to bound
++        // overlay aliases/cycles while preserving ordinary flat-list order.
++        if (arrays.has(item) || typeof item[0] === 'string' && /^IFC/i.test(item[0])) continue;
++        arrays.add(item);
++        for (let i = item.length - 1; i >= 0; i--) pending.push(item[i]);
++      } else {
++        const id = asRef(item);
++        if (id !== null) result.push(id);
++      }
++    }
++    return result;
++  };
+   const edges = (id: number, owned = false) => {
+     const record = read(id);
+     if (!record) return [];

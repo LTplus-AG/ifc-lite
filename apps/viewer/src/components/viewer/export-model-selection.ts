@@ -56,6 +56,18 @@ export function listExportModels(
   return list;
 }
 
+/** Ion consumes STEP IFC, unlike the general export formats (#8947).
+ * An existing federation must never fall back to its legacy active-store slot:
+ * that could resurrect a capture which exportableModels deliberately omitted. */
+export function listIonExportModels(
+  models: ReadonlyMap<string, FederatedModel>,
+  legacyStore: IfcDataStore | null,
+): ExportModelListItem[] {
+  return listExportModels(models, new Set(), models.size === 0 ? legacyStore : null)
+    .filter(model => model.schemaVersion !== 'IFC5' && !model.sourceSchema
+      && (model.id === '__legacy__' || models.get(model.id)?.ifcDataStore));
+}
+
 export function resolveExportModel(
   models: ReadonlyMap<string, FederatedModel>,
   selectedModelId: string,

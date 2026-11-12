@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useMemo, useRef } from 'react';
+import { useMemo } from 'react';
 import { useStreamingThrottled } from '@/hooks/useStreamingThrottled';
 import { sameModelsExceptGeometry } from '@/lib/streaming-refresh';
 import { Boxes, CheckCircle2, AlertCircle, Layers } from 'lucide-react';
@@ -20,13 +20,12 @@ import { StatusBarPresentationButton } from './StatusBarPresentationButton';
 import { StatusBarWorkspaceChip } from './StatusBarWorkspaceChip';
 import { ActivityTrayButton } from './activity/ActivityTray';
 import { FpsMemoryStats, TriangleCount } from './PerformanceStats';
-import { collectEffectivePhysicalEntityIds } from '@/lib/physical-objects';
+import { sharedEffectivePhysicalEntityIds } from '@/lib/physical-objects';
 import { collectMeshedIds, countShapedObjects, createShapePredicate } from '@/lib/object-count';
 import { ownedAggregationRelationships } from '@/utils/entity-ownership';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import type { EntityRef } from '@/store/types';
-import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { LEGACY_MODEL_ID, LEGACY_MUTATION_MODEL_ID } from '@/sdk/adapters/model-compat';
 import { isStoreyLikeSpatialTypeName } from '@ifc-lite/data';
 import { effectiveContextType } from './EntityContextMenu.effective-selection';
@@ -100,28 +99,16 @@ export function StatusBar() {
   // (`appendGeometryBatch` in dataSlice.ts rebuilds it to swap one model's
   // geometryResult), so nothing memoised on it survives a stream. A model's
   // `ifcDataStore` identity IS stable across those commits, so the expensive
-  // half — the schema walk over the whole effective entity set — is cached
-  // per store, view and mutation version. Streaming only reruns the cheap
-  // mesh-set lookup; an edit invalidates the physical-id set.
-  const physicalIdsRef = useRef(new WeakMap<IfcDataStore, Map<string, {
-    view: MutablePropertyView | null; version: number; ids: Set<number>;
-  }>>());
+  // half — the schema walk over the whole effective entity set — is shared per
+  // store, view and mutation version with the viewport summary and the model
+  // metadata panel (NEW-4). Streaming only reruns the cheap mesh-set lookup;
+  // an edit invalidates the physical-id set.
   const physicalIdsByModel = useMemo(() => {
-    const result = new Map<string, Set<number>>();
+    const result = new Map<string, ReadonlySet<number>>();
     for (const { modelId, store } of countedModels) {
       const view = models.size > 0 ? mutationViews.get(modelId) ?? null
         : mutationViews.get(LEGACY_MUTATION_MODEL_ID) ?? mutationViews.get(LEGACY_MODEL_ID) ?? null;
-      let byModel = physicalIdsRef.current.get(store);
-      if (!byModel) {
-        byModel = new Map();
-        physicalIdsRef.current.set(store, byModel);
-      }
-      let cached = byModel.get(modelId);
-      if (!cached || cached.view !== view || cached.version !== mutationVersion) {
-        cached = { view, version: mutationVersion, ids: collectEffectivePhysicalEntityIds(store, view) };
-        byModel.set(modelId, cached);
-      }
-      result.set(modelId, cached.ids);
+      result.set(modelId, sharedEffectivePhysicalEntityIds(store, view, mutationVersion));
     }
     return result;
   }, [countedModels, models.size, mutationViews, mutationVersion]);

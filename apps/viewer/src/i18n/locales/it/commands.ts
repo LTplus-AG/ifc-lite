@@ -15,7 +15,7 @@ export const commandsIt = {
   "commands.category.help": "Aiuto",
   "commands.edit.undo": "Annulla l'ultimo spostamento del modello o la modifica di creazione sul modello attivo",
   "commands.edit.redo": "Ripristina l'ultima modifica annullata",
-  "commands.edit.toggleEditMode": "Entra o esci dallo spazio Modello (sblocca le modifiche a proprietà e geometria)",
+  "commands.edit.toggleEditMode": "Entra o esci dallo spazio Modello (disegna e modifica la geometria)",
   "commands.edit.rotate": "Ruota l'entità selezionata di +15° / −15° attorno a Z (richiede la modalità modifica)",
   "commands.edit.duplicate": "Duplica l'entità selezionata (+X; aggiungi Shift per +Z, Alt per +Y)",
   "commands.edit.copyGlobalId": "Copia GlobalId",

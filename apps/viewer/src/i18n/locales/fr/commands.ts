@@ -15,7 +15,7 @@ export const commandsFr = {
   "commands.category.help": "Aide",
   "commands.edit.undo": "Annuler le dernier déplacement de modèle ou la dernière modification de création du modèle actif",
   "commands.edit.redo": "Rétablir la dernière modification annulée",
-  "commands.edit.toggleEditMode": "Entrer dans l’espace Modèle ou le quitter (autorise la modification des propriétés et de la géométrie)",
+  "commands.edit.toggleEditMode": "Entrer dans l’espace Modèle ou le quitter (dessiner et modifier la géométrie)",
   "commands.edit.rotate": "Tourner l’entité sélectionnée de +15° / −15° autour de Z (nécessite le mode édition)",
   "commands.edit.duplicate": "Dupliquer l’entité sélectionnée (+X ; ajouter Maj pour +Z, Alt pour +Y)",
   "commands.edit.copyGlobalId": "Copier GlobalId",

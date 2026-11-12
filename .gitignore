@@ -68,6 +68,8 @@ packages/wasm/pkg/ifc-lite.js
 packages/wasm/pkg-threaded/
 # Separate feature-gated fingerprint ownership test bundle; never published.
 packages/wasm/pkg-diff-decode-test/
+# CI WASM build cache manifest (scripts/ci-wasm-cache.mjs); CI-only.
+.ci-wasm-cache/
 
 # csg-thread-bench: rung-2 measurement artifacts (wasm-pack output, copied IFC
 # fixtures, generated corpus blobs). Source (Cargo.toml, src/, web/index.html,
@@ -162,6 +164,7 @@ tests/benchmark/benchmark-results/viewer-*.console.log
 /test-results/
 # node:test JUnit reports the CI uploads to Mergify Test Engine.
 mergify-junit.xml
+mergify-junit-retry-*.xml
 /playwright-report/
 /blob-report/
 /playwright/.cache/

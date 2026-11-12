@@ -157,6 +157,9 @@ async function main(): Promise<void> {
     case 'generate-spaces':
       await (await import('./commands/generate-spaces.js')).generateSpacesCommand(commandArgs);
       break;
+    case 'derive-structural':
+      await (await import('./commands/derive-structural.js')).deriveStructuralCommand(commandArgs);
+      break;
     case 'storey':
       await (await import('./commands/storey.js')).storeyCommand(commandArgs);
       break;

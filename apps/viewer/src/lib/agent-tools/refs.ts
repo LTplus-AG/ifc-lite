@@ -66,6 +66,7 @@ export function entityExists(model: ReadyModel, expressId: number): boolean {
   const view = model.mutationView();
   if (view?.hasNewEntity(expressId)) return true;
   if (view?.isDeleted(expressId)) return false;
+  // @raw-entity-enumeration-ok source existence only; the overlay's created and deleted entities are decided above
   return model.store.entityIndex.byId.get(expressId) !== undefined;
 }
 

@@ -19,7 +19,9 @@ import { hasPendingInstancedShards } from '@/store/instancedShardQueue';
 export function isSceneSettled(state: ViewerState = useViewerStore.getState()): boolean {
   if (state.loading || state.geometryStreamingActive || hasPendingInstancedShards()) return false; // shards travel outside the store (#9628)
   const scene = getGlobalRenderer()?.getScene();
-  return !(scene?.hasQueuedMeshes() || scene?.hasStreamingFragments() || scene?.isFinalizeInProgress());
+  // Optional calls: a renderer whose scene predates these queries (test doubles,
+  // partial hosts) has nothing streaming that it could report, so it is settled.
+  return !(scene?.hasQueuedMeshes?.() || scene?.hasStreamingFragments?.() || scene?.isFinalizeInProgress?.());
 }
 
 /**

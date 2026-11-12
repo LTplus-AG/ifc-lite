@@ -10,7 +10,7 @@ export type LayerGrouping = 'none' | 'class' | 'classification';
 export function appendLayerGroups(
   nodes: TreeNode[], layerId: string, members: TreeNode[],
   groupsFor: (row: TreeNode) => { key: string; name: string; ifcType?: string }[],
-  expansion: ExpansionLookup, geometryKnown: boolean, geometricIds: Set<number>,
+  expansion: ExpansionLookup, geometryKnown: boolean, geometricIds: ReadonlySet<number>,
 ): void {
   const groups = new Map<string, { name: string; ifcType?: string; members: TreeNode[] }>();
   for (const member of members) {

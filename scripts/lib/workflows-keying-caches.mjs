@@ -211,8 +211,11 @@ export function scanFile(path, text) {
   for (const m of scanned.matchAll(HASHFILES)) {
     const args = hashFilesArgs(scanned, m.index + m[0].length);
     if (args === null) return { unknown: `${path} calls hashFiles with an argument that is not a quoted literal` };
-    // @actions/glob reads each line of a pattern as its own pattern, trimmed.
-    hashFilesPatterns.push(...args.flatMap((a) => a.split('\n').map((line) => line.trim()).filter(Boolean)));
+    // A line break inside an argument folds to a space in a plain, quoted or `>` scalar,
+    // so the pattern GitHub sees is not the one the lines show.
+    if (args.some((a) => a.includes('\n'))) return { unknown: `${path} calls hashFiles with an argument split over lines` };
+    // @actions/glob trims each pattern.
+    hashFilesPatterns.push(...args.map((a) => a.trim()).filter(Boolean));
   }
   return { uses, cacheDependencyPaths, hashFilesPatterns };
 }
@@ -254,7 +257,7 @@ export function workflowsKeyingCaches({ root, actionFiles, symlinks, readText })
       if (local) {
         files.add(local[1]);
         if (!executed.includes(local[1])) executed.push(local[1]);
-      } else if (!LOCAL_ACTION.test(v) && !(REMOTE_ACTION.test(v) && !v.includes('/.github/workflows/')) && !DOCKER.test(v)) {
+      } else if (!LOCAL_ACTION.test(v) && !(REMOTE_ACTION.test(v) && !/\/\.github\/workflows(?:\/|@)/.test(v)) && !DOCKER.test(v)) {
         return { unknown: `${path} has uses: ${v}, which is not a plain local or remote action` };
       }
     }

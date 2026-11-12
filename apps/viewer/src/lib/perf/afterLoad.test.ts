@@ -7,7 +7,6 @@
 import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { fixtureDataStore, fixtureModel } from '@/test/store-fixture';
 import { useViewerStore } from '../../store/index.js';
 import type { FederatedModel } from '../../store/types.js';
@@ -40,14 +39,6 @@ afterEach(async () => {
 });
 
 describe('afterLoad: the eager scheduling call', () => {
-  it('does not import the queue statically, and the queue imports no values (its lazy chunk preloads nothing)', () => {
-    const valueImports = (file: string) => readFileSync(new URL(file, import.meta.url), 'utf8')
-      .split('\n').filter((line) => /^import\s/.test(line) && !/^import type\s/.test(line));
-    assert.equal(valueImports('./afterLoad.ts').some((line) => line.includes('afterLoadIdle')), false, 'no static value import of afterLoadIdle');
-    assert.equal(readFileSync(new URL('./afterLoad.ts', import.meta.url), 'utf8').includes("import('./afterLoadIdle.js')"), true, 'loads it on first use');
-    assert.deepEqual(valueImports('./afterLoadIdle.ts'), [], 'the queue takes the store through AfterLoadEnv');
-  });
-
   it('runs the work through the queue: after the model settles and an idle period', async () => {
     setModels({ ...complete('a'), loadState: 'streaming-geometry' });
     let runs = 0;

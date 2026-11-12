@@ -62,17 +62,69 @@ function shellState() {
  * Wait until no long task ran for `quietMs`. Page clock = ms since navigation start.
  * The viewport's renderer (and its debug hooks) mounts with the first load, so
  * renderer readiness is recorded, not required.
+ *
+ * Longtask entries arrive asynchronously, so a poll of them can run after a task
+ * ended but before it is reported, and arm right after it (14-35 ms after the
+ * welcome mark's 1.5 s block in 9/15 picks on main d45ace6b65). The quiet is
+ * therefore watched in the page ({@link watchQuietInPage}): a timer ticks every
+ * `tickMs`, and a gap of `maxGapMs` (45) or more between ticks means the main
+ * thread was blocked: a long task is 50 ms or more, so any long task makes a gap
+ * of at least 50 ms wherever it falls between two ticks. That restarts the
+ * window at once, reported or not (shorter busy spells may restart it too,
+ * which only lengthens the wait before the timer). Reported entries count too. Timer ticks leave idle periods
+ * free, so idle-started boot work is not held off by the wait.
  */
-export async function waitShellQuiet(page, { quietMs = 1000, timeoutMs = 15000 } = {}) {
-  const started = Date.now();
-  let s = await page.evaluate(shellState);
-  const firstReady = s.now;
-  while (!(s.now - s.lastLongTaskEnd >= quietMs) && Date.now() - started < timeoutMs) {
-    await page.waitForTimeout(100);
-    s = await page.evaluate(shellState);
+export async function waitShellQuiet(page, { quietMs = 1000, timeoutMs = 15000, tickMs = 16, maxGapMs = 45 } = {}) {
+  const first = await page.evaluate(shellState);
+  const w = await page.evaluate(watchQuietInPage, { quietMs, timeoutMs, tickMs, maxGapMs });
+  const s = await page.evaluate(shellState);
+  return { shellQuietMs: w.armAbs, armAbs: w.armAbs, quietWaitMs: w.armAbs - first.now, rendererReady: s.rendererReady, timedOut: w.timedOut,
+    lateTicks: w.lateTicks, bootLongTaskMs: s.longTaskMs, bootLongTasks: s.longTasks, countersOff: s.countersOff };
+}
+
+/**
+ * In page (self-contained: it runs through page.evaluate): resolve at the first moment
+ * the main thread was quiet for `quietMs`, observed directly by timer-tick gaps and by
+ * reported longtask entries. Resolves `{ armAbs, timedOut, lateTicks }` (page clock).
+ */
+export function watchQuietInPage({ quietMs = 1000, timeoutMs = 15000, tickMs = 16, maxGapMs = 45 } = {}) {
+  return new Promise((resolve) => {
+    const t0 = performance.now();
+    let windowStart = t0, prev = t0, lateTicks = 0;
+    const tick = () => {
+      const now = performance.now();
+      if (now - prev >= maxGapMs) { windowStart = now; lateTicks++; }
+      prev = now;
+      const tasks = globalThis.__benchLongTasks ?? [];
+      const lastEnd = tasks.reduce((m, [st, d]) => Math.max(m, st + d), 0);
+      const quietFrom = Math.max(windowStart, lastEnd);
+      if (now - quietFrom >= quietMs) return resolve({ armAbs: now, timedOut: false, lateTicks });
+      if (now - t0 >= timeoutMs) return resolve({ armAbs: now, timedOut: true, lateTicks });
+      setTimeout(tick, tickMs);
+    };
+    setTimeout(tick, tickMs);
+  });
+}
+
+/**
+ * The quiet the arm really had, read after the open from every long-task entry
+ * (entries arrive asynchronously, so a poll can arm before a block that just
+ * ended is reported). `quietAtArmMs` = page-clock ms from the end of the last long
+ * task that ended at or before the arm to the arm (null: no long task before it);
+ * `armInsideLongTask` = the arm fell inside a long task; `armedEarly` = less than
+ * `quietMs` of real quiet. Measurement only: it never changes the arm.
+ */
+export function quietAtArm(tasks, armAbs, quietMs = 1000) {
+  if (!Number.isFinite(armAbs)) return { quietAtArmMs: null, armInsideLongTask: null, armedEarly: null };
+  let lastEnd = null, inside = false;
+  for (const [start, dur] of tasks ?? []) {
+    const end = start + dur;
+    if (end <= armAbs) lastEnd = lastEnd === null ? end : Math.max(lastEnd, end);
+    else if (start < armAbs) inside = true;
   }
-  return { shellQuietMs: s.now, quietWaitMs: s.now - firstReady, rendererReady: s.rendererReady, timedOut: !(s.now - s.lastLongTaskEnd >= quietMs),
-    bootLongTaskMs: s.longTaskMs, bootLongTasks: s.longTasks, countersOff: s.countersOff };
+  // An arm inside a long task had no quiet at all.
+  const quiet = inside ? 0 : lastEnd === null ? null : armAbs - lastEnd;
+  return { quietAtArmMs: quiet, armInsideLongTask: inside, armedEarly: inside || (quiet !== null && quiet < quietMs) };
 }
 
 /**

@@ -69,7 +69,7 @@ export function visibilityFingerprint(state: ViewerStateSnapshot): string {
     state.classFilter ? digestNumberSet(state.classFilter.ids) : 'none',
     digestNumberSet(state.lensHiddenIds),
     digestNumberSet(state.selectedStoreys),
-    JSON.stringify(state.typeVisibility),
+    JSON.stringify(state.typeVisibility), state.structuralViewMode,
     state.mutationVersion,
     state.models.size,
     modelParts.join(';'),
@@ -94,11 +94,11 @@ function dedupeRefs(refs: EntityRef[]): EntityRef[] {
   return out;
 }
 
-function matchesTypeVisibility(ifcType: string | undefined, typeVisibility: ViewerStateSnapshot['typeVisibility']): boolean {
+function matchesTypeVisibility(ifcType: string | undefined, typeVisibility: ViewerStateSnapshot['typeVisibility'], mode: ViewerStateSnapshot['structuralViewMode']): boolean {
   // Shared mapping (`typeVisibilityFilter.ts`) so the basket's visible set,
   // the viewport mesh filter and the GLB export never drift. `site` also hides
   // `IfcGeographicElement` terrain (issue #1480).
-  return isTypeVisible(ifcType, typeVisibility);
+  return isTypeVisible(ifcType, typeVisibility, mode);
 }
 
 function getDataStoreForModel(state: ViewerStateSnapshot, modelId: string): IfcDataStore | null {
@@ -354,7 +354,7 @@ function collectVisibleCandidates(state: ViewerStateSnapshot): VisibleCandidate[
       if (!model.geometryResult) continue;
       const offset = model.idOffset ?? 0;
       for (const mesh of model.geometryResult.meshes) {
-        if (!matchesTypeVisibility(mesh.ifcType, state.typeVisibility)) continue;
+        if (!matchesTypeVisibility(mesh.ifcType, state.typeVisibility, state.structuralViewMode)) continue;
         const globalId = mesh.expressId;
         candidates.push({
           globalId,
@@ -366,7 +366,7 @@ function collectVisibleCandidates(state: ViewerStateSnapshot): VisibleCandidate[
     }
   } else if (state.geometryResult) {
     for (const mesh of state.geometryResult.meshes) {
-      if (!matchesTypeVisibility(mesh.ifcType, state.typeVisibility)) continue;
+      if (!matchesTypeVisibility(mesh.ifcType, state.typeVisibility, state.structuralViewMode)) continue;
       candidates.push({
         globalId: mesh.expressId,
         modelId: 'legacy',

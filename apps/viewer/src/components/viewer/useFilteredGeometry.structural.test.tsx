@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { afterEach, it } from 'node:test';
 import { act, useState } from 'react';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
-import type { TypeVisibility } from '@/store/types';
+import type { StructuralViewMode } from '@/store/types';
 import { TYPE_VISIBILITY_SEMANTIC_DEFAULTS } from '@/store/constants';
 import { cleanup, render } from '@/test/render';
 import { useFilteredGeometry } from './useFilteredGeometry';
@@ -23,18 +23,18 @@ for (const spaces of [true,false]) {
         originalBounds:bounds,shiftedBounds:bounds,hasLargeCoordinates:false}};
     const defaults = {...TYPE_VISIBILITY_SEMANTIC_DEFAULTS,spaces,spatialZones:true,
       openings:true,virtualElements:true,site:true,ifcAnnotations:true};
-    let update!:(next:TypeVisibility)=>void;
+    let update!:(next:StructuralViewMode)=>void;
     let seen:number[] = [];
     function Probe() {
-      const [visibility,setVisibility] = useState<TypeVisibility>(defaults);
-      update = setVisibility;
-      seen = (useFilteredGeometry(geometry,0,visibility,'model').filteredGeometry ?? []).map(m=>m.expressId);
+      const [mode,setMode] = useState<StructuralViewMode>('both');
+      update = setMode;
+      seen = (useFilteredGeometry(geometry,0,defaults,'model',mode).filteredGeometry ?? []).map(m=>m.expressId);
       return null;
     }
     render(<Probe />);
     assert.deepEqual(seen,[1,2]);
     for (const [mode,ids] of [['physical',[1]],['analytical',[2]],['both',[1,2]],['physical',[1]],['both',[1,2]]] as const) {
-      act(()=>update({...defaults,structuralViewMode:mode}));
+      act(()=>update(mode));
       assert.deepEqual(seen,[...ids],mode);
     }
   });

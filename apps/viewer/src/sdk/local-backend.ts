@@ -145,7 +145,8 @@ export class LocalBackend implements BimBackend {
           if (
             state.hiddenEntities !== prev.hiddenEntities ||
             state.isolatedEntities !== prev.isolatedEntities ||
-            state.typeVisibility !== prev.typeVisibility
+            state.typeVisibility !== prev.typeVisibility ||
+            state.structuralViewMode !== prev.structuralViewMode
           ) {
             handler({});
           }

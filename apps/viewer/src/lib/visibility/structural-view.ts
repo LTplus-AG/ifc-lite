@@ -3,12 +3,12 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import type { TypeVisibility } from '@/store/types';
+import type { TypeVisibility, StructuralViewMode } from '@/store/types';
 import type { FederatedModel, ViewerState } from '@/store';
 import { isProductClass } from '../compare/compareScope';
 
-export function structuralGlyphsVisible(visibility: Pick<TypeVisibility, 'structuralGlyphs' | 'structuralViewMode'>): boolean {
-  return visibility.structuralGlyphs && visibility.structuralViewMode !== 'physical';
+export function structuralGlyphsVisible(visibility: Pick<TypeVisibility, 'structuralGlyphs'>, mode: StructuralViewMode = 'both'): boolean {
+  return visibility.structuralGlyphs && mode !== 'physical';
 }
 
 export function isAnalyticalProduct(type: string): boolean {
@@ -17,11 +17,11 @@ export function isAnalyticalProduct(type: string): boolean {
 }
 
 export type StructuralVisibilityState = Pick<ViewerState,
-  'models' | 'ifcDataStore' | 'mutationViews' | 'hiddenEntities' | 'toGlobalId' | 'typeVisibility'>;
+  'models' | 'ifcDataStore' | 'mutationViews' | 'hiddenEntities' | 'toGlobalId' | 'structuralViewMode'>;
 
 /** Add only the structural mask; both preserves each caller's existing hidden set. */
 export function resolveViewHiddenEntities(state: StructuralVisibilityState): Set<number> {
-  return structuralViewHidden(state.typeVisibility.structuralViewMode ?? 'both', state.models,
+  return structuralViewHidden(state.structuralViewMode ?? 'both', state.models,
     state.ifcDataStore, state.mutationViews,
     state.hiddenEntities, state.toGlobalId);
 }

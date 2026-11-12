@@ -35,11 +35,13 @@ export const visibilityTeardown = defineSliceTeardown(
     'ghostExceptEntities',
     'visibilityRevision',
     'classFilter',
+    'structuralViewMode',
     'typeVisibility',
     'typeViewMode',
   ],
   {
     'session-reset': () => ({
+      structuralViewMode: 'both',
       hiddenEntities: new Set<number>(),
       isolatedEntities: null,
       ghostExceptEntities: null,
@@ -56,8 +58,8 @@ export const visibilityTeardown = defineSliceTeardown(
     // below spells out — an empty-but-set isolate would hide the very next
     // model loaded, until it does. Keep persisted class/overlay preferences;
     // only the transient product mode returns to both.
-    'all-models-cleared': (_scope, state) => ({
-      typeVisibility: { ...(state.typeVisibility ?? getPersistedTypeVisibility()), structuralViewMode: 'both' },
+    'all-models-cleared': () => ({
+      structuralViewMode: 'both',
       hiddenEntities: new Set<number>(),
       isolatedEntities: null,
       ghostExceptEntities: null,

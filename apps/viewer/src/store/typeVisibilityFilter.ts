@@ -13,7 +13,7 @@
  */
 
 import { isAnalyticalProduct } from '../lib/visibility/structural-view';
-import type { TypeVisibility } from './types.js';
+import type { TypeVisibility, StructuralViewMode } from './types.js';
 
 /** Which `typeVisibility` boolean gates each IFC class. */
 type TypeVisibilityKey = keyof Pick<
@@ -27,7 +27,7 @@ type TypeVisibilityKey = keyof Pick<
  * take this rather than the full `TypeVisibility`, which also carries controls
  * with no class mapping (`ifcGrid`).
  */
-export type TypeVisibilityGate = Pick<TypeVisibility, TypeVisibilityKey | 'structuralViewMode'>;
+export type TypeVisibilityGate = Pick<TypeVisibility, TypeVisibilityKey>;
 
 /**
  * IFC class → toggle key. When the mapped toggle is `false` the class is
@@ -68,10 +68,10 @@ const IFC_TYPE_TO_VISIBILITY_KEY: Readonly<Record<string, TypeVisibilityKey>> = 
 export function isTypeVisible(
   ifcType: string | undefined,
   typeVisibility: TypeVisibilityGate,
+  mode: StructuralViewMode = 'both',
 ): boolean {
   // Instanced meshes may carry no class; their owners are gated by the shared ID mask.
   if (!ifcType) return true;
-  const mode = typeVisibility.structuralViewMode ?? 'both';
   if (mode === 'analytical' && !isAnalyticalProduct(ifcType)) return false;
   if (mode === 'physical' && isAnalyticalProduct(ifcType)) return false;
   const key = IFC_TYPE_TO_VISIBILITY_KEY[ifcType];

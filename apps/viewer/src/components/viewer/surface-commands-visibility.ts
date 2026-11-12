@@ -138,7 +138,7 @@ export const VISIBILITY_SURFACE_COMMANDS = [
     category: 'Visibility', icon: Eye, surfaces: paletteOnly, enabled: alwaysEnabled,
     run: () => {
       const s = useViewerStore.getState();
-      const mode = s.typeVisibility.structuralViewMode ?? 'both';
+      const mode = s.structuralViewMode;
       s.setStructuralViewMode(mode === 'both' ? 'analytical' : mode === 'analytical' ? 'physical' : 'both');
     },
   },

@@ -303,3 +303,19 @@ it('#9923 disables the structural mode command until analytical data exists', as
     assert.equal(row()?.checkAvailability?.().status,'available','an authored analytical product enables the same command');
   } finally { useViewerStore.setState(previous); }
 });
+
+it('#9923 palette glyph state agrees with the drawn layer across structural modes', async () => {
+  const { paletteToggleState } = await import('./palette-availability');
+  const { structuralGlyphsVisible } = await import('@/lib/visibility/structural-view');
+  const current = useViewerStore.getState();
+  for (const preference of [true,false]) {
+    for (const mode of ['both','physical','analytical'] as const) {
+      const state = {...current,structuralViewMode:mode,
+        typeVisibility:{...current.typeVisibility,structuralGlyphs:preference}};
+      const expected = preference && mode !== 'physical';
+      assert.equal(paletteToggleState('vis:structuralGlyphs',state),
+        expected ? 'commandPalette.state.on' : 'commandPalette.state.off',`${mode}, preference=${preference}`);
+      assert.equal(structuralGlyphsVisible(state.typeVisibility,mode),expected);
+    }
+  }
+});

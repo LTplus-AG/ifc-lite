@@ -40,7 +40,8 @@ const VISIBILITY_FIELDS = {
   ghostExceptEntities: ['ghost'],
   visibilityRevision: [], // Invalidation counter, not a hiding mechanism.
   classFilter: ['classFilter'],
-  typeVisibility: ['typeVisibility', 'structuralViewMode'],
+  typeVisibility: ['typeVisibility'],
+  structuralViewMode: ['structuralViewMode'],
   hostHiddenIfcTypes: ['hostTypes'],
   typeViewMode: ['typeViewMode'],
   hasTypeGeometry: [], // Capability flag for the type view mode.
@@ -103,7 +104,7 @@ const ACTIVATE: Record<VisibilityReasonId, (lastModelOffset: number) => Partial<
   }),
   typeVisibility: () => ({ typeVisibility: { ...useViewerStore.getState().typeVisibility, site: false } }),
   typeViewMode: () => ({ typeViewMode: 'types', hasTypeGeometry: true }),
-  structuralViewMode: () => ({ typeVisibility: { ...useViewerStore.getState().typeVisibility, structuralViewMode: 'analytical' } }),
+  structuralViewMode: () => ({ structuralViewMode: 'analytical' }),
   hostTypes: () => ({ hostHiddenIfcTypes: new Set(['IFCSPACE']) }),
   // Lasting scene state (#5893): the cut/measurements and the visibility
   // toggle are independent, so activating the reason means both are on.

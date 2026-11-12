@@ -101,6 +101,7 @@ export function ViewportContainer() {
   const sourceHost = useOptionalSourceHost();
   const releaseGeometryMemory = useViewerStore((s) => s.releaseGeometryMemory);
   const typeVisibility = useViewerStore((s) => s.typeVisibility);
+  const structuralViewMode = useViewerStore((s) => s.structuralViewMode);
   const typeViewMode = useViewerStore((s) => s.typeViewMode);
   const setHasTypeGeometry = useViewerStore((s) => s.setHasTypeGeometry);
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
@@ -165,18 +166,18 @@ export function ViewportContainer() {
           // Scan-based terrain is stamped `IfcGeographicElement`; honour the
           // same type-visibility gate as the mesh path so the Site toggle hides
           // it too (issue #1480).
-          if (!isTypeVisible(asset.ifcType, typeVisibility)) continue;
+          if (!isTypeVisible(asset.ifcType, typeVisibility, structuralViewMode)) continue;
           collected.push(asset.modelIndex === modelIndex ? asset : { ...asset, modelIndex });
         }
       }
     } else if (geometryResult?.pointClouds) {
       for (const asset of geometryResult.pointClouds) {
-        if (!isTypeVisible(asset.ifcType, typeVisibility)) continue;
+        if (!isTypeVisible(asset.ifcType, typeVisibility, structuralViewMode)) continue;
         collected.push(asset);
       }
     }
     return collected;
-  }, [storeModels, geometryResult, modelIdToIndex, typeVisibility]);
+  }, [storeModels, geometryResult, modelIdToIndex, typeVisibility, structuralViewMode]);
 
   // Keep the placement panel context available regardless of map/solar toggles.
   // The Cesium overlay and solar study also consume this effective georeference.
@@ -587,7 +588,7 @@ export function ViewportContainer() {
   const hasLoadedModels = storeModels.size > 0 || (geometryResult?.meshes && geometryResult.meshes.length > 0);
 
   const { hasTypeGeometry, filteredGeometry, geometryVersion, geometryReplacementVersion } = useFilteredGeometry(
-    mergedGeometryResult, geometryContentVersion, typeVisibility, typeViewMode);
+    mergedGeometryResult, geometryContentVersion, typeVisibility, typeViewMode, structuralViewMode);
 
   // Publish to the store so the toolbar can hide the Model/Types switch when
   // there is no type geometry to reveal.
@@ -609,7 +610,6 @@ export function ViewportContainer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mergedGeometryResult, filteredGeometry, geometryVersion]);
 
-  // Shared pure intersection for the renderer and the empty-result notice.
   const computedIsolatedIds = useVisibilityIsolation();
 
   const visibleResultEmpty = useMemo(() => isVisibleResultEmpty({
@@ -621,7 +621,7 @@ export function ViewportContainer() {
     hasUnenumeratedInstances: [...storeModels].some(([id, model]) => model.visible
       && hasInstancedShards(id) && !model.geometryResult?.instancedGeometryHashes?.size),
   }), [storeModels, geometryResult, filteredGeometry, geometryVersion, mergedPointClouds,
-    computedIsolatedIds, hiddenEntities, typeVisibility, mutationVersion]);
+    computedIsolatedIds, hiddenEntities, typeVisibility, structuralViewMode, mutationVersion]);
 
   // Empty state when no file is loaded at all (show starting UI)
   // But NOT when models are loaded but just hidden - in that case show empty 3D canvas

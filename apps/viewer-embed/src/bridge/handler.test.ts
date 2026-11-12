@@ -32,7 +32,7 @@ vi.mock('@/store/index.js', () => ({
 
 import { EMBED_SOURCE, PROTOCOL_VERSION, TYPE_VISIBILITY_FLAG_KEYS } from '@ifc-lite/embed-protocol';
 import { TYPE_VISIBILITY_SEMANTIC_DEFAULTS } from '@/store/constants.js';
-import type { TypeVisibilityToggle } from '@/store/types.js';
+import type { TypeVisibility } from '@/store/types.js';
 import { initBridge, destroyBridge, emitEvent, emitToParent } from './handler.js';
 
 // ---------------------------------------------------------------------------
@@ -1029,7 +1029,7 @@ describe('selection and visibility commands', () => {
     expect(called(state, 'toggleTypeVisibility')).toBe(false);
   });
 
-  it('the protocol flag list and the store boolean visibility toggles are the same set', () => {
+  it('the protocol flag list and the store TypeVisibility are the same set', () => {
     // This is the check that stops defect 2 recurring. The protocol was written
     // when the store had three toggles; four were added to the store later and
     // nothing failed, so the embed silently exposed three of seven for months.
@@ -1046,8 +1046,7 @@ describe('selection and visibility commands', () => {
     // above already catches both at runtime. handler.ts is a third guard for the
     // extra-protocol-key direction only, since it indexes TypeVisibility by the
     // key; dropping a key the store has compiles there fine.
-    // #9923: the structural product mode is a three-way value, not a protocol boolean.
-    expectTypeOf<(typeof TYPE_VISIBILITY_FLAG_KEYS)[number]>().toEqualTypeOf<TypeVisibilityToggle>();
+    expectTypeOf<(typeof TYPE_VISIBILITY_FLAG_KEYS)[number]>().toEqualTypeOf<keyof TypeVisibility>();
   });
 
   it('SET_THEME forwards the theme', async () => {

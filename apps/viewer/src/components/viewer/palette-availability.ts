@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Palette-only prerequisites. Shared ribbon/context enabled predicates stay intact (#8947). */
-import { hasStructuralData } from '@/lib/visibility/structural-view';
+import { hasStructuralData, structuralGlyphsVisible } from '@/lib/visibility/structural-view';
 import { blankModelUnavailable } from '@/hooks/startBlankModel';
 import { getPlacementGeorefContext } from '@/lib/geo/placement-georef-runtime';
 import { hasRetainedReportHost } from './retained-report-destination';
@@ -206,6 +206,8 @@ export function paletteAvailability(command: SurfaceCommandDefinition, context: 
 
 /** Canonical toggles with known state; do not infer state from command wording. */
 export function paletteToggleState(id: string, s: ViewerState): TranslationKey | undefined {
+  if (id === 'vis:structuralGlyphs') return structuralGlyphsVisible(s.typeVisibility,s.structuralViewMode)
+    ? 'commandPalette.state.on' : 'commandPalette.state.off';
   if (id === 'view:projection') return s.projectionMode === 'orthographic'
     ? 'shellChrome.mobileToolbar.orthographic' : 'shellChrome.mobileToolbar.perspective';
   if (id === 'pref:theme' && s.theme !== 'colorful') return s.theme === 'dark'
@@ -247,5 +249,5 @@ export function palettePrerequisites(s: ViewerState) {
     session: s.session, mutationViews: s.mutationViews, schedule: s.scheduleData,
     projection: s.projectionMode, theme: s.theme, levels: s.levelDisplayMode,
     edit: s.editEnabled, tips: s.hoverTooltipsEnabled, animation: s.animationEnabled,
-    cesium: s.cesiumEnabled, visibility: s.typeVisibility };
+    cesium: s.cesiumEnabled, visibility: s.typeVisibility, structuralViewMode: s.structuralViewMode };
 }

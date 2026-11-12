@@ -77,7 +77,7 @@ export function readViewPdfSource(state: ViewerState): ViewPdfSource {
       hiddenEntities: resolveViewHiddenEntities(state),
       isolatedEntities: state.isolatedEntities,
       computedIsolatedIds: computeIsolationFilterSet(state),
-      typeVisibility: state.typeVisibility,
+      typeVisibility: state.typeVisibility, structuralViewMode: state.structuralViewMode,
       // Invisible models contribute no meshes at all (they are dropped in
       // `gatherDrawnMeshes`, mirroring `mergedGeometryResult`), so there is no
       // per-index gate left to apply.

@@ -105,10 +105,10 @@ if (!('setStructuralViewMode' in state) || typeof state.setStructuralViewMode !=
     }
     act(()=>setMode('physical'));
     assert.equal(useViewerStore.getState().typeVisibility.structuralGlyphs,preference);
-    assert.equal(structuralGlyphsVisible(useViewerStore.getState().typeVisibility),false);
+    assert.equal(structuralGlyphsVisible(useViewerStore.getState().typeVisibility,useViewerStore.getState().structuralViewMode),false);
     act(()=>useViewerStore.getState().clearAllModels());
-    assert.equal(useViewerStore.getState().typeVisibility.structuralViewMode ?? 'both','both');
-    assert.equal(structuralGlyphsVisible(useViewerStore.getState().typeVisibility),preference);
+    assert.equal(useViewerStore.getState().structuralViewMode,'both');
+    assert.equal(structuralGlyphsVisible(useViewerStore.getState().typeVisibility,useViewerStore.getState().structuralViewMode),preference);
   }
   console.log('CAP_TOGGLE=' + JSON.stringify({status:'pass',counts,evidence:[path]}));
 }

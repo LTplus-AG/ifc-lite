@@ -49,7 +49,7 @@ function hasGlyphTypes(store: IfcDataStore | null | undefined): boolean {
 }
 
 export function StructuralGlyphLayer({ isolatedIds }: { isolatedIds?: ReadonlySet<number> | null }) {
-  const enabled = useViewerStore((s) => structuralGlyphsVisible(s.typeVisibility));
+  const enabled = useViewerStore((s) => structuralGlyphsVisible(s.typeVisibility,s.structuralViewMode));
   const models = useViewerStore((s) => s.models);
   const legacyStore = useViewerStore((s) => s.ifcDataStore);
   const present = useMemo(

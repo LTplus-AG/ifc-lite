@@ -26,7 +26,7 @@ for (const count of [1,2]) {
     }));
     const views = new Map<string,MutablePropertyView>();
     const state = {models,ifcDataStore:store,mutationViews:views,hiddenEntities:new Set<number>(),
-      typeVisibility:{...TYPE_VISIBILITY_SEMANTIC_DEFAULTS},
+      typeVisibility:{...TYPE_VISIBILITY_SEMANTIC_DEFAULTS},structuralViewMode:'both' as const,
       toGlobalId:(modelId:string,id:number)=>toGlobalIdFromModels(models,modelId,id)};
     assert.equal(hasStructuralData(state),false);
     const modelId = `m${count-1}`;
@@ -36,11 +36,11 @@ for (const count of [1,2]) {
     const physical = editor.addEntity('IfcBeam',[generateIfcGuid(),null,'New beam',null,null,null,null,null,null]);
     const analytical = editor.addEntity('IfcStructuralPointConnection',[generateIfcGuid(),null,'New joint',null,null,null,null,null,null]);
     assert.equal(hasStructuralData(state),true,'authored analytical data enables the command');
-    const physicalMode = {...state,typeVisibility:{...state.typeVisibility,structuralViewMode:'physical' as const}};
+    const physicalMode = {...state,structuralViewMode:'physical' as const};
     const hiddenPhysical = resolveViewHiddenEntities(physicalMode);
     assert.equal(hiddenPhysical.has(state.toGlobalId(modelId,analytical.expressId)),true);
     assert.equal(hiddenPhysical.has(state.toGlobalId(modelId,physical.expressId)),false);
-    const analyticalMode = {...state,typeVisibility:{...state.typeVisibility,structuralViewMode:'analytical' as const}};
+    const analyticalMode = {...state,structuralViewMode:'analytical' as const};
     const hiddenAnalytical = resolveViewHiddenEntities(analyticalMode);
     assert.equal(hiddenAnalytical.has(state.toGlobalId(modelId,physical.expressId)),true);
     assert.equal(hiddenAnalytical.has(state.toGlobalId(modelId,analytical.expressId)),false);
@@ -48,9 +48,9 @@ for (const count of [1,2]) {
     assert.ok([...models.keys()].every((id)=>!hiddenAnalytical.has(state.toGlobalId(id,8))),
       'analytical mode leaves property resources available for the visible products');
     // Saved scene/cache ownership must distinguish the product mode and survive JSON storage.
-    const restored = JSON.parse(JSON.stringify(physicalMode.typeVisibility));
-    assert.notEqual(sceneSnapshotKey('p','model',restored),sceneSnapshotKey('p','model',state.typeVisibility));
-    assert.equal(structuralGlyphsVisible(restored),false);
+    const restored = JSON.parse(JSON.stringify({typeVisibility:physicalMode.typeVisibility,structuralViewMode:physicalMode.structuralViewMode}));
+    assert.notEqual(sceneSnapshotKey('p','model',restored.typeVisibility,restored.structuralViewMode),sceneSnapshotKey('p','model',state.typeVisibility));
+    assert.equal(structuralGlyphsVisible(restored.typeVisibility,restored.structuralViewMode),false);
   });
 }
 
@@ -66,12 +66,12 @@ it('#9923: both preserves main export visibility for a hidden model', () => {
   }]));
   const state = {...useViewerStore.getState(),models,mutationViews:new Map<string,MutablePropertyView>(),
     hiddenEntities:new Set<number>(),isolatedEntities:null,classFilter:null,selectedStoreys:new Set<number>(),
-    lensHiddenIds:new Set<number>(),typeVisibility:{...TYPE_VISIBILITY_SEMANTIC_DEFAULTS,structuralViewMode:'both' as const},
+    lensHiddenIds:new Set<number>(),typeVisibility:{...TYPE_VISIBILITY_SEMANTIC_DEFAULTS},structuralViewMode:'both' as const,
     toGlobalId:(modelId:string,id:number)=>toGlobalIdFromModels(models,modelId,id)};
   assert.equal(resolveViewHiddenEntities(state),state.hiddenEntities,'both is the exact existing hide channel');
   assert.deepEqual([...resolveExportVisibility(state,'b').hiddenLocalIds],[],
     'main does not convert a hidden model flag into explicit hidden export products');
-  const physical = {...state,typeVisibility:{...state.typeVisibility,structuralViewMode:'physical' as const}};
+  const physical = {...state,structuralViewMode:'physical' as const};
   assert.deepEqual([...resolveExportVisibility(physical,'b').hiddenLocalIds],[11],
     'only the analytical product mask is added in physical mode');
 });

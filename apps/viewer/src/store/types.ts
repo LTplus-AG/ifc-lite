@@ -313,12 +313,9 @@ export interface TypeVisibility {
    * `ifcGrid`, a scene overlay rather than an IFC class, so it gates no mesh.
    */
   structuralGlyphs: boolean;
-  /** Missing in older scenes means both physical and analytical products. */
-  structuralViewMode?: 'both' | 'physical' | 'analytical';
 }
 
-/** Boolean class/overlay preferences, excluding the three-way product mode. */
-export type TypeVisibilityToggle = Exclude<keyof TypeVisibility, 'structuralViewMode'>;
+export type StructuralViewMode = 'both' | 'physical' | 'analytical';
 
 // ============================================================================
 // Camera Types

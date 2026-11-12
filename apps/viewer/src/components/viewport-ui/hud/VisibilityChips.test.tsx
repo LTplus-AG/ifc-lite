@@ -58,7 +58,7 @@ const ACTIVATE: Record<VisibilityReasonId, (offset: number) => Partial<ViewerSta
   }),
   typeVisibility: () => ({ typeVisibility: { ...state().typeVisibility, site: false } }),
   typeViewMode: () => ({ typeViewMode: 'types', hasTypeGeometry: true }),
-  structuralViewMode: () => ({ typeVisibility: { ...useViewerStore.getState().typeVisibility, structuralViewMode: 'analytical' } }),
+  structuralViewMode: () => ({ structuralViewMode: 'analytical' }),
   hostTypes: () => ({ hostHiddenIfcTypes: new Set(['IFCSPACE']) }),
   // #5893: deliberately NOT rendered here, see SKIP_ROWS below.
   section: () => ({ sectionPlane: { ...state().sectionPlane, enabled: true } }),

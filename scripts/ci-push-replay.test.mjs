@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -80,7 +80,7 @@ test('the commit must come from exactly one PR merged into main', () => {
 });
 
 test('changes that key main-only caches always get a full run', () => {
-  for (const f of ['Cargo.lock', 'Cargo.toml', 'rust/core/Cargo.toml', 'rust-toolchain.toml', '.github/workflows/test.yml', '.github/actions/setup-wasm-build/action.yml']) {
+  for (const f of ['Cargo.lock', 'Cargo.toml', 'rust/core/Cargo.toml', 'rust-toolchain.toml', '.github/workflows/test.yml', '.github/actions/setup-wasm-build/action.yml', 'scripts/ci-cache-keying-files.txt']) {
     const d = decidePushReplay(base({ changedFiles: ['README.md', f] }));
     assert.equal(d.replay, false, f);
     assert.ok(d.reason.includes(f), d.reason);
@@ -111,6 +111,52 @@ const batchRun = (over = {}) => ({
 });
 // A fast PR run: green, but it recorded no tree, so only the queue can prove the push.
 const queued = (queueEvidence, over = {}) => base({ artifactNamesByRun: { 1: ['build-output'] }, repo: REPO, queueEvidence, ...over });
+
+// A scripts/ci-cache-keying-files.txt: test.yml plus one action directory.
+const LIST = ['.github/workflows/test.yml', '.github/actions/setup-wasm-build/'];
+
+test('with the keying list read, listed files, the list and Cargo still get a full run', () => {
+  for (const f of ['Cargo.lock', 'rust/python/Cargo.lock', 'rust-toolchain', 'rust/foo/rust-toolchain.toml', '.cargo/config.toml', 'rust/python/.cargo/config', 'scripts/ci-cache-keying-files.txt', '.github/workflows/test.yml', '.github/actions/setup-wasm-build/action.yml', '.github/actions/setup-wasm-build/helper.mjs']) {
+    const d = decidePushReplay(base({ changedFiles: ['README.md', f], keyingList: LIST }));
+    assert.equal(d.replay, false, f);
+    assert.ok(d.reason.includes(f), d.reason);
+  }
+});
+
+test('a workflow or action file not on the list does not block a replay', () => {
+  for (const f of ['.github/workflows/cla.yml', '.github/workflows/python-wheels.yaml', '.github/actions/setup-oci-registries/action.yml', '.github/actions/setup-wasm-buildx/action.yml']) {
+    assert.deepEqual(decidePushReplay(base({ changedFiles: [f], keyingList: LIST })), { replay: true, runId: 1, pr: 7 }, f);
+  }
+  const evidence = [{ tree: TREE, runs: [] }, { tree: h('e'), runs: [batchRun()] }];
+  assert.deepEqual(
+    decidePushReplay(queued(evidence, { changedFiles: ['.github/workflows/python-wheels.yml'], keyingList: LIST })),
+    { replay: true, runId: 9, pr: 7, queue: true },
+    'an earlier batch commit',
+  );
+});
+
+test('a missing, empty or unreadable list blocks every workflow and action file', () => {
+  assert.equal(decidePushReplay(base({ changedFiles: ['.github/workflows/test.yml'], keyingList: ['x'] })).replay, false, 'test.yml blocks whatever the list says');
+  for (const keyingList of [undefined, null, [], ['.github/actions/setup-wasm-build/']]) {
+    for (const f of ['.github/workflows/cla.yml', '.github/actions/setup-oci-registries/action.yml']) {
+      assert.equal(decidePushReplay(base({ changedFiles: [f], keyingList })).replay, false, `${f} with ${JSON.stringify(keyingList)}`);
+    }
+  }
+});
+
+test('a non-YAML file under workflows/ blocks even with the list read', () => {
+  for (const f of ['.github/workflows/scripts/key.mjs', '.github/workflows/README.md', '.github/workflows/sub/x.yml', '.github/workflows/test.yml.bak']) {
+    const d = decidePushReplay(base({ changedFiles: [f], keyingList: LIST }));
+    assert.equal(d.replay, false, f);
+    assert.ok(d.reason.includes(f), d.reason);
+  }
+});
+
+test('evidence is still required when no file blocks', () => {
+  const d = decidePushReplay(base({ changedFiles: ['.github/workflows/cla.yml'], keyingList: LIST, artifactNamesByRun: {} }));
+  assert.equal(d.replay, false);
+  assert.match(d.reason, /tested tree/);
+});
 
 test('the last commit of a batch replays on the batch run that tested its tree', () => {
   assert.deepEqual(decidePushReplay(queued([{ tree: TREE, runs: [batchRun()] }])), { replay: true, runId: 9, pr: 7, queue: true });
@@ -279,4 +325,98 @@ test('unreadable replay evidence selects full validation only in probe mode', {
   });
   assert.equal(invalidSource.status, 1, 'invalid Git input must still fail');
   assert.equal(readFileSync(output, 'utf8'), '');
+});
+
+test('the probe reads the Test workflow files at the push commit', {
+  skip: process.platform === 'win32' ? 'POSIX gh executable fixture requires a Unix shell environment' : false,
+}, (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'push-replay-wf-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const bin = join(root, 'bin');
+  mkdirSync(bin);
+  const git = (...args) => execFileSync('git', [
+    '-c', 'user.name=Replay fixture', '-c', 'user.email=replay@example.invalid',
+    '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', ...args,
+  ], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  const write = (path, text) => {
+    mkdirSync(join(root, path, '..'), { recursive: true });
+    writeFileSync(join(root, path), text);
+  };
+  git('init', '-q');
+  write('.github/workflows/test.yml', 'jobs:\n  a:\n    steps:\n      - uses: ./.github/actions/setup\n');
+  write('.github/actions/setup/action.yml', 'runs: {}\n');
+  write('.github/actions/setup/helper.sh', 'true\n');
+  write('.github/workflows/named.yml', 'on: push\n');
+  write('.github/workflows/cla.yml', 'on: push\n');
+  write('scripts/ci-cache-keying-files.txt', '# test\n.github/workflows/test.yml\n.github/workflows/named.yml\n.github/actions/setup/\n');
+  git('add', '.');
+  git('commit', '-qm', 'base');
+  const script = fileURLToPath(new URL('./ci-push-replay.mjs', import.meta.url));
+  const output = join(root, 'output');
+  const gh = join(bin, 'gh');
+
+  const replayFor = (changed, cwd = root) => {
+    const before = git('rev-parse', 'HEAD');
+    if (typeof changed === 'function') changed();
+    else write(changed, `changed ${Math.random()}\n`);
+    git('add', '-A');
+    git('commit', '-qm', 'change');
+    const head = git('rev-parse', 'HEAD');
+    const tree = git('rev-parse', 'HEAD^{tree}');
+    const merged = { ...base().pulls[0], merge_commit_sha: head };
+    writeFileSync(gh, `#!/usr/bin/env node
+      const path = process.argv[3];
+      const response = path.includes('/commits/') ? ${JSON.stringify([merged])}
+        : path.includes('/compare/') ? { status: 'identical', commits: [], files: [] }
+        : path.includes('/runs/1/artifacts') ? { artifacts: [{ name: '${TREE_ARTIFACT_PREFIX}${tree}', expired: false }] }
+        : path.includes('/artifacts?') ? { artifacts: [] }
+        : { workflow_runs: ${JSON.stringify(base().runs)} };
+      process.stdout.write(JSON.stringify(response));
+    `);
+    chmodSync(gh, 0o755);
+    writeFileSync(output, '');
+    const env = {
+      ...process.env, PATH: `${bin}${delimiter}${process.env.PATH}`,
+      GITHUB_REPOSITORY: 'fixture/replay', GITHUB_SHA: head, PUSH_BEFORE: before, GITHUB_OUTPUT: output,
+    };
+    const run = spawnSync(process.execPath, [script, '--probe'], { cwd, env, encoding: 'utf8' });
+    assert.equal(run.status, 0, run.stderr);
+    return readFileSync(output, 'utf8');
+  };
+  const full = 'replay=false\nreplay_run=\nreplay_queue=false\n';
+  const replayed = 'replay=true\nreplay_run=1\nreplay_queue=false\n';
+  assert.equal(replayFor('.github/workflows/cla.yml'), replayed, 'a workflow not on the list');
+  assert.equal(replayFor('.github/actions/other/action.yml'), replayed, 'an action not on the list');
+  // From a subdirectory: the list is read from the push commit, not the cwd.
+  mkdirSync(join(root, 'sub'), { recursive: true });
+  assert.equal(replayFor('.github/workflows/named.yml', join(root, 'sub')), full, 'a listed workflow, probed from a subdirectory');
+  // Rename detection would list only the new, unlisted path. The move leaves
+  // the list valid (setup/ still holds action.yml), so only --no-renames blocks it.
+  assert.equal(replayFor(() => { mkdirSync(join(root, '.github/actions/moved')); git('mv', '.github/actions/setup/helper.sh', '.github/actions/moved/helper.sh'); }), full, 'a file renamed out of a listed action');
+  assert.equal(replayFor('.github/actions/setup/action.yml'), full, 'a file in a listed action');
+  // git quotes a non-ASCII path in plain --name-only output, and no listed entry matches a quote.
+  assert.equal(replayFor('.github/actions/setup/\u00e9.sh'), full, 'a non-ASCII path in a listed action');
+  // The list is still valid here, so the blocks above came from the changed paths (#9786 review).
+  assert.equal(replayFor('.github/workflows/cla.yml'), replayed, 'an unlisted workflow, list still valid');
+  assert.equal(replayFor('scripts/ci-cache-keying-files.txt'), full, 'the list itself');
+  // The list edit above wrote junk over it: malformed, so every workflow and action file blocks.
+  assert.equal(replayFor('.github/workflows/test.yml'), full, 'test.yml with a junk list');
+  assert.equal(replayFor('.github/workflows/cla.yml'), full, 'an unlisted workflow with a junk list');
+  // A list naming test.yml but also a file the tree lacks is malformed too.
+  assert.equal(replayFor(() => write('scripts/ci-cache-keying-files.txt', '.github/workflows/test.yml\n.github/actions/setup/\n.github/actions/gone/\n')), full, 'a list with a stale entry');
+  assert.equal(replayFor('.github/workflows/cla.yml'), full, 'an unlisted workflow with a stale entry');
+  // Well formed again: an unlisted workflow replays.
+  assert.equal(replayFor(() => write('scripts/ci-cache-keying-files.txt', '.github/workflows/test.yml\n.github/actions/setup/\n')), full, 'fixing the list');
+  assert.equal(replayFor('.github/workflows/cla.yml'), replayed, 'an unlisted workflow with a well-formed list');
+  // A symlinked list: `cat-file` would read the link's target path as a one-entry list.
+  assert.equal(replayFor(() => {
+    write('scripts/real-list.txt', '.github/workflows/test.yml\n.github/actions/setup/\n');
+    rmSync(join(root, 'scripts/ci-cache-keying-files.txt'));
+    symlinkSync('real-list.txt', join(root, 'scripts/ci-cache-keying-files.txt'));
+  }), full, 'replacing the list with a symlink');
+  assert.equal(replayFor('.github/actions/setup/action.yml'), full, 'a listed action with the list symlinked');
+  assert.equal(replayFor('.github/actions/other/action.yml'), full, 'any action with the list symlinked');
+  assert.equal(replayFor(() => rmSync(join(root, 'scripts/ci-cache-keying-files.txt'))), full, 'deleting the list');
+  assert.equal(replayFor('.github/workflows/cla.yml'), full, 'with the list missing');
+  assert.equal(replayFor('.github/workflows/test.yml'), full, 'test.yml itself');
 });

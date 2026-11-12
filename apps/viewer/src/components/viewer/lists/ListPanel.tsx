@@ -122,7 +122,7 @@ export function ListPanel() {
         outcome = 'failed';
         setListError(detail);
       } finally {
-        if (job) finishActivity(job, controller.signal.aborted ? 'cancelled' : outcome, detail ? { detail } : {});
+        if (job !== null) finishActivity(job, controller.signal.aborted ? 'cancelled' : outcome, detail ? { detail } : {});
         if (listRunRef.current === controller) {
           listRunRef.current = null;
           setListExecuting(false);
@@ -142,7 +142,8 @@ export function ListPanel() {
     const definition = listResult ? listRunDefinition(listResult) : null;
     const state = `${mutationVersion}:${geometryContentVersion}`;
     if (view !== 'results' || !stale || !listResult || !definition || listExecuting || refreshedFor.current === state) return;
-    if (listResult.executionTime > AUTO_REFRESH_MAX_RUN_MS) return;
+    // Only a run known to have been quick: a missing or non-finite time is not one.
+    if (!(listResult.executionTime <= AUTO_REFRESH_MAX_RUN_MS)) return;
     const timer = setTimeout(() => { refreshedFor.current = state; handleExecuteList(definition, true); }, AUTO_REFRESH_DELAY_MS);
     return () => clearTimeout(timer);
   }, [view, stale, listResult, listExecuting, mutationVersion, geometryContentVersion, handleExecuteList]);

@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { retainedCatalogueShape } from './retained-catalogue-shape';
 import { registryCatalogueShape } from './registry-catalogue-shape';
+import { structuralDeriveShape, type StructuralDeriveKey } from './structural-derive-catalogue-shape';
 import type { flowReviewEn } from './catalogues/flow-review.en';
 type ReviewKey = keyof typeof flowReviewEn extends `flowReview.${infer Key}` ? Key : never;
 /** Exact lazy keys and parameters validate contributed locales before feature code loads. */
@@ -31,39 +32,6 @@ const flowReviewShape = {
   "notSaved": ["reason"],
   "needsModel": [],
 } satisfies Record<ReviewKey, readonly string[]>;
-import type { structuralDeriveEn } from './catalogues/structural-derive.en';
-type StructuralDeriveKey = keyof typeof structuralDeriveEn extends `structuralDerive.${infer Key}` ? Key : never;
-/** The structural derivation review's keys and parameters (#9668), validated before its chunk loads. */
-const structuralDeriveShape = {
-  "hint": [],
-  "prepare": [],
-  "acknowledgement": [],
-  "counts": ["created", "curveMembers", "guessedSupports", "nodes", "supports", "surfaceMembers"],
-  "assumed": ["count"],
-  "skipped": ["count"],
-  "guessed": ["count"],
-  "unconnected": ["count"],
-  "existing": ["ids"],
-  "nothing": [],
-  "noModel": [],
-  "nodeAt": ["node", "position"],
-  "endAt": ["element", "landsOn", "node", "position"],
-  "more": ["count"],
-  "model": ["name"],
-  "moved": ["count"],
-  "movedRow": ["distance", "element", "end", "to"],
-  "free": ["count"],
-  "end.start": [],
-  "end.end": [],
-  "reason.already-idealised": [],
-  "reason.not-load-bearing": [],
-  "reason.load-bearing-unknown": [],
-  "reason.no-idealisable-shape": [],
-  "reason.shorter-than-tolerance": [],
-  "reason.footing-without-member-end": [],
-  "landsOn.member-interior": [],
-  "landsOn.surface-member": [],
-} satisfies Record<StructuralDeriveKey, readonly string[]>;
 import type { semanticAssistEn } from './catalogues/semantic-assist.en';
 
 type SemanticKey = keyof typeof semanticAssistEn extends `semanticAssist.${infer Key}` ? Key : never;

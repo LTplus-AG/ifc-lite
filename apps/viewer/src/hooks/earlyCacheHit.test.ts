@@ -134,7 +134,7 @@ describe('W1 early cache hit: the key from file slices', () => {
     const early = begin(file);
     assert.equal(await early.cacheKey(), key);
     assert.ok(await early.take(), 'the stored scene was not adopted');
-    assert.ok(scene.batchedMeshes.length > 0);
+    assert.ok(scene.getBatchedMeshes().length > 0);
   });
 
   it('a same-size file differing inside a sampled window keys another entry: nothing is found or drawn', async () => {
@@ -144,7 +144,7 @@ describe('W1 early cache hit: the key from file slices', () => {
     assert.notEqual(await early.cacheKey(), await fullReadKey(stepFile(SIZE)));
     assert.equal(await early.lookup(), null);
     assert.equal(await early.take(), null);
-    assert.equal(scene.batchedMeshes.length, 0, 'another file\'s scene was drawn');
+    assert.equal(scene.getBatchedMeshes().length, 0, 'another file\'s scene was drawn');
   });
 
   it('an edit between sample windows keys the same entry, and a changed mtime refuses it before anything is drawn', async () => {
@@ -155,7 +155,7 @@ describe('W1 early cache hit: the key from file slices', () => {
     assert.equal(await early.cacheKey(), key, 'the sampled key sees the gap edit (then this test no longer probes the gap)');
     assert.ok(await early.lookup(), 'the lookup finds the entry; the hit gate must refuse it');
     assert.equal(await early.take(), null, 'an entry for a changed file was adopted');
-    assert.equal(scene.batchedMeshes.length, 0);
+    assert.equal(scene.getBatchedMeshes().length, 0);
   });
 
   it('an mtime-preserving gap edit is drawn like any hit today; the stored full-source identity is what the load revalidates', async () => {
@@ -176,7 +176,7 @@ describe('W1 early cache hit: the key from file slices', () => {
     entries.set(key, { ...entry, fullSourceHash: undefined });
     const early = begin(stepFile(SIZE, [], 0));
     assert.equal(await early.take(), null);
-    assert.equal(scene.batchedMeshes.length, 0);
+    assert.equal(scene.getBatchedMeshes().length, 0);
   });
 });
 
@@ -187,10 +187,10 @@ describe('W1 early cache hit: ownership', () => {
     const early = begin(file);
     await early.cacheKey();
     await new Promise((resolve) => setTimeout(resolve, 20));
-    assert.ok(scene.batchedMeshes.length > 0, 'precondition: the scene was adopted');
+    assert.ok(scene.getBatchedMeshes().length > 0, 'precondition: the scene was adopted');
     early.abandon();
     await new Promise((resolve) => setTimeout(resolve, 0));
-    assert.equal(scene.batchedMeshes.length, 0, 'an abandoned early hit left its scene drawn');
+    assert.equal(scene.getBatchedMeshes().length, 0, 'an abandoned early hit left its scene drawn');
     assert.equal(await early.take(), null);
   });
 
@@ -207,7 +207,7 @@ describe('W1 early cache hit: ownership', () => {
     rendererRef.current = rendererFor(scene);
     await new Promise((resolve) => setTimeout(resolve, 60));
     assert.equal(adoptions, 0, 'an abandoned adoption still uploaded its scene once the renderer came up');
-    assert.equal(scene.batchedMeshes.length, 0);
+    assert.equal(scene.getBatchedMeshes().length, 0);
   });
 
   it('a superseded load adopts nothing', async () => {
@@ -215,7 +215,7 @@ describe('W1 early cache hit: ownership', () => {
     await storeEntry(await fullReadKey(file));
     const early = begin(file, () => true);
     assert.equal(await early.take(), null);
-    assert.equal(scene.batchedMeshes.length, 0);
+    assert.equal(scene.getBatchedMeshes().length, 0);
   });
 
   it('a file whose slices cannot be read leaves the lookup to the loader', async () => {

@@ -14,6 +14,7 @@ import assert from 'node:assert/strict';
 import { afterEach, it, mock } from 'node:test';
 import { act, useState } from 'react';
 import { expireStoreBusyCap, settleLoadWindow } from '@/test/load-window';
+import { markModelLoadEnded } from '@/hooks/modelLoadEnd';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { render, cleanup } from '@/test/render.js';
@@ -227,6 +228,8 @@ it('multi-file open: A\'s statistics appear at A\'s settle while B, started at o
   act(() => useViewerStore.setState({ loading: true, mutationViews: new Map(), mutationVersion: 0, models: new Map([['seq-A', model('seq-A', offsetA, 'pending')]]) }));
   const aDone = model('seq-A', offsetA, 'complete');
   const panelA = render(<ModelMetadataPanel model={aDone} />);
+  act(() => useViewerStore.setState({ models: new Map([['seq-A', aDone]]) }));
+  act(() => markModelLoadEnded('seq-A'));
   act(() => useViewerStore.setState({ models: new Map([['seq-A', aDone], ['seq-B', model('seq-B', offsetB, 'pending')]]) }));
   const panelB = render(<ModelMetadataPanel model={model('seq-B', offsetB, 'pending')} />);
   await settleLoadWindow();
@@ -234,3 +237,25 @@ it('multi-file open: A\'s statistics appear at A\'s settle while B, started at o
   assert.equal(elementsWithGeometry(panelA), '2', 'A settled: its statistics, although B is loading');
   assert.equal(elementsWithGeometry(panelB), '—', 'B is held');
 });
+
+for (const path of ['cache hit', 'cold load'] as const) {
+  it(`single-model ${path}: no statistics between the record turning complete and the UI settle`, async () => {
+    const dataStore = await parse();
+    const offset = useViewerStore.getState().registerModelOffset(`one-${path}`, 100);
+    const id = `one-${path}`;
+    const model = (loadState: FederatedModel['loadState']) => ({
+      id, name: id, ifcDataStore: dataStore, geometryResult: geometry([10, 11].map((x) => x + offset)), loadState,
+      idOffset: offset, maxExpressId: 100, fileSize: 1, loadedAt: 0,
+    }) as FederatedModel;
+    act(() => useViewerStore.setState({ loading: true, mutationViews: new Map(), mutationVersion: 0, models: new Map([[id, model('pending')]]) }));
+    if (path === 'cold load') act(() => useViewerStore.setState({ models: new Map([[id, model('streaming-geometry')]]) }));
+    const done = model('complete');
+    act(() => useViewerStore.setState({ models: new Map([[id, done]]) }));
+    const panel = render(<ModelMetadataPanel model={done} />);
+    await settleLoadWindow(); await settleLoadWindow();
+    assert.equal(elementsWithGeometry(panel), '—', 'record complete, UI not settled: held');
+    act(() => { useViewerStore.setState({ loading: false }); markModelLoadEnded(id); });
+    await settleLoadWindow();
+    assert.equal(elementsWithGeometry(panel), '2');
+  });
+}

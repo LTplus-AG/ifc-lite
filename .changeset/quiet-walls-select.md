@@ -2,4 +2,4 @@
 "@ifc-lite/parser": patch
 ---
 
-Resolve selected material and classification relationships without reading unrelated source records. Allow hosts to prepare type-quantity coverage at model publication, preserving coverage refusals and edit invalidation.
+Resolve single-element type quantities, materials, classifications and documents through incident relationships without model-wide selection or publication work. Cache narrow relationship edits and decoded rows per revision so pending property edits and bulk reads remain fast.

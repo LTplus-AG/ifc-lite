@@ -10,7 +10,7 @@ import { resolveOwnMaterialDefIds } from './material-associations.js';
 import type { IfcDataStore } from './columnar-parser.js';
 import { resolveEffectiveEntityRecord, type EffectiveEntityRecord } from './effective-entity-record.js';
 import { selectionRelationshipIds } from './selection-relationship-ids.js';
-import { resolveEffectiveRelationshipOverlay } from './effective-relationship-overlay.js';
+import { selectionRelationshipOverlay, selectedRelationshipMembers } from './selection-relationship-overlay.js';
 
 export interface MaterialReadView extends EffectiveEntityOverlay {
   getNewEntities(): ReadonlyArray<{ readonly expressId: number; readonly type: string; readonly attributes?: readonly unknown[] }>;
@@ -18,6 +18,7 @@ export interface MaterialReadView extends EffectiveEntityOverlay {
   getPositionalMutationsForEntity?(id: number): ReadonlyMap<number, unknown> | null;
   getAttributeMutationsForEntity?(id: number): ReadonlyArray<{ name: string; value: string }>;
   getMutationRevision?(): number;
+  getAttributeOverrideEntityIds?(): number[];
   getEffectiveChanges?(): ReadonlyArray<{ entityId: number; kind: string }>;
   resolveBaseEntityId?(id: number): number;
 }
@@ -66,7 +67,7 @@ interface Edges { own: Map<number, number[]>; types: Map<number, number[]>; unav
 const edgesCache = new WeakMap<IfcDataStore, WeakMap<MaterialReadView, { revision: number; data: Map<number, Edges> }>>();
 const relTypes = ['IFCRELASSOCIATESMATERIAL', 'IFCRELDEFINESBYTYPE'];
 function materialEdges(store: IfcDataStore, view: MaterialReadView, entityId: number): Edges {
-  const cacheKey = store.source?.length && !store.relationshipsPending && store.relationships?.inverse && view.getEffectiveChanges ? entityId : -1;
+  const cacheKey = store.source?.length && !store.relationshipsPending && store.relationships?.inverse && (view.getAttributeOverrideEntityIds || view.getEffectiveChanges) ? entityId : -1;
   const revision = view.getMutationRevision?.();
   const cached = edgesCache.get(store)?.get(view);
   if (revision !== undefined && cached?.revision === revision && cached.data.has(cacheKey)) return cached.data.get(cacheKey)!;
@@ -79,7 +80,7 @@ function materialEdges(store: IfcDataStore, view: MaterialReadView, entityId: nu
     if (relTypes.includes(mutation.newType.toUpperCase()) || (sourceType && relTypes.includes(sourceType.toUpperCase()))) ids.push(id);
   }
   const sourceAvailable = Boolean(store.source?.length);
-  const overlay = resolveEffectiveRelationshipOverlay(sourceAvailable ? store : { ...store, getEntity: () => null }, {
+  const overlay = selectionRelationshipOverlay(sourceAvailable ? store : { ...store, getEntity: () => null }, view, {
     createdEntities: () => view.getNewEntities().filter(row => row.attributes !== undefined)
       .map(row => ({ ...row, attributes: [...row.attributes!] } as IfcEntity)),
     mutatedEntityIds: () => ids,
@@ -93,8 +94,7 @@ function materialEdges(store: IfcDataStore, view: MaterialReadView, entityId: nu
     const target = relation.relationshipType.toUpperCase() === relTypes[0] ? own
       : relation.relationshipType.toUpperCase() === relTypes[1] ? types : null;
     if (!target) continue;
-    for (const recipient of relation.related) {
-      if (cacheKey !== -1 && recipient !== entityId) continue;
+    for (const recipient of selectedRelationshipMembers(relation, entityId, cacheKey === -1)) {
       if (view.isDeleted(recipient)) continue;
       const values = target.get(recipient) ?? [];
       for (const id of relation.relating) if (!view.isDeleted(id) && !values.includes(id)) values.push(id);

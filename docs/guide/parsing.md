@@ -11,14 +11,6 @@ of wrapping them. These checks do not raise the browser engine's capacity.
 
 Complete guide to parsing IFC files with IFClite, covering both IFC4 (STEP) and IFC5 (IFCX) formats.
 
-Before enabling interactive selection, a host can call
-`prepareTypeQuantityRelationships(store)` from `@ifc-lite/parser` once when
-publishing a parsed store. This prepares the model-wide coverage checks used
-by `readCurrentTypeQuantities`; unchanged mutation views reuse those checks.
-Edited views still validate their current revision. The viewer prepares this
-inventory when a model store is published, so the first selected element does
-not pay for it.
-
 ## Overview
 
 IFClite supports the columnar STEP parser for IFC4-style files and the IFCX

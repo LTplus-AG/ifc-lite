@@ -6,7 +6,7 @@
 import { iterateEffectiveEntities, RelationshipType } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
 import { selectionRelationshipIds } from './selection-relationship-ids.js';
-import { resolveEffectiveRelationshipOverlay } from './effective-relationship-overlay.js';
+import { selectionRelationshipOverlay, selectedRelationshipMembers } from './selection-relationship-overlay.js';
 
 export type { MetadataReadView as ClassificationReadView } from './effective-metadata-record.js';
 import { effectiveMetadataRecord as classificationRecord, type MetadataReadView as ClassificationReadView } from './effective-metadata-record.js';
@@ -21,7 +21,7 @@ const cache = new WeakMap<IfcDataStore, WeakMap<ClassificationReadView, { revisi
 
 /** Build all association/type edges once per model overlay revision; no per-element relationship scan. */
 export function classificationEdges(store: IfcDataStore, view: ClassificationReadView, entityId?: number): ClassificationEdges {
-  const cacheKey = store.source?.length && !store.relationshipsPending && store.relationships?.inverse && view.getEffectiveChanges ? entityId : -1;
+  const cacheKey = entityId !== undefined && store.source?.length && !store.relationshipsPending && store.relationships?.inverse && (view.getAttributeOverrideEntityIds || view.getEffectiveChanges) ? entityId : -1;
   const revision = view.getMutationRevision();
   const cached = cache.get(store)?.get(view);
   if (cached?.revision === revision && cached.edges.has(cacheKey)) return cached.edges.get(cacheKey)!;
@@ -30,7 +30,7 @@ export function classificationEdges(store: IfcDataStore, view: ClassificationRea
   const sourceIds = selectionRelationshipIds(store, view, entityId, [RelationshipType.AssociatesClassification, RelationshipType.DefinesByType], relationTypes)
     ?? relationTypes.flatMap(type => store.entityIndex.byType.get(type) ?? []);
   for (const id of view.getTypeMutations?.().keys() ?? []) sourceIds.push(id);
-  const overlay = resolveEffectiveRelationshipOverlay(store.source?.length ? store : { ...store, getEntity: () => null }, {
+  const overlay = selectionRelationshipOverlay(store.source?.length ? store : { ...store, getEntity: () => null }, view, {
     createdEntities: () => view.getNewEntities(),
     mutatedEntityIds: () => sourceIds,
     namedAttributes: id => view.getAttributeMutationsForEntity(id).map(row => [row.name, row.value] as const),
@@ -52,8 +52,7 @@ export function classificationEdges(store: IfcDataStore, view: ClassificationRea
     const upper = relation.relationshipType.toUpperCase();
     const index = upper === relationTypes[0] ? edges.references : upper === relationTypes[1] ? edges.types : null;
     if (!index) continue;
-    for (const related of relation.related) {
-      if (cacheKey !== -1 && related !== entityId) continue;
+    for (const related of selectedRelationshipMembers(relation, entityId, cacheKey === -1)) {
       if (view.isDeleted(related)) continue;
       const values = index.get(related) ?? [];
       for (const target of relation.relating) if (!view.isDeleted(target) && !values.includes(target)) values.push(target);

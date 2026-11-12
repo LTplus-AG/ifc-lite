@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { it, expect } from 'vitest';
-import { IfcParser, extractAllMaterialsOnDemand, extractClassificationsOnDemand, extractDocumentsOnDemand, readCurrentTypeQuantities, prepareTypeQuantityRelationships } from '../src/index.js';
+import { IfcParser, extractAllMaterialsOnDemand, extractClassificationsOnDemand, extractDocumentsOnDemand, readCurrentTypeQuantities } from '../src/index.js';
 import type { MetadataReadView } from '../src/effective-metadata-record.js';
 
 async function fixture(extra: string[] = []) {
@@ -25,6 +25,7 @@ async function fixture(extra: string[] = []) {
     getPositionalMutationsForEntity: id => edits.get(id) ?? null,
     getAttributeMutationsForEntity: () => [], getMutationRevision: () => revision,
     hasPendingChanges: () => edits.size > 0,
+    getAttributeOverrideEntityIds: () => [...edits.keys()],
     getEffectiveChanges: () => [...edits.keys()].map(entityId => ({ entityId, kind: 'attribute' })),
   };
   return { store, view, edit(id: number, slot: number, value: string | number) { const row = edits.get(id) ?? new Map<number, string | number>(); row.set(slot, value); edits.set(id, row); revision++; } };
@@ -50,9 +51,8 @@ it('#9947 classification selection reads its own type associations, not unrelate
   expect(reads.filter(id => id >= 2000 && id < 2500)).toEqual([]);
 });
 
-it('#9947 published type coverage avoids a relationship inventory on selection and invalidates after edits', async () => {
+it('#9947 direct type coverage avoids a relationship inventory on selection and invalidates after edits', async () => {
   const { store, view, edit } = await fixture();
-  prepareTypeQuantityRelationships(store);
   let scans = 0;
   const original = view.getAttributeMutationsForEntity;
   view.getAttributeMutationsForEntity = id => { scans++; return original(id); };
@@ -88,7 +88,6 @@ it('#9947 retains document association source order when graph target order diff
 it('#9947 preparation retains unavailable coverage instead of throwing through model publication', async () => {
   const { store, view } = await fixture(["#14=IFCRELDEFINESBYTYPE('unindexed',$,$,$,('#1'),#2);"]);
   store.getEntity = () => { throw new Error('source read failed'); };
-  expect(() => prepareTypeQuantityRelationships(store)).not.toThrow();
   expect(readCurrentTypeQuantities(store, 1, view)).toEqual({ status: 'unavailable',
     reason: 'Native current type quantities are unreadable', value: null });
 });

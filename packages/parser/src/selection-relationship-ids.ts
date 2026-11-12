@@ -6,11 +6,11 @@ import { RelationshipType } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
 
 const inventories = new WeakMap<IfcDataStore, { source: IfcDataStore['source']; missing: Map<string, number[]> }>();
-const classes = ['IFCRELASSOCIATESMATERIAL', 'IFCRELASSOCIATESCLASSIFICATION', 'IFCRELASSOCIATESDOCUMENT', 'IFCRELDEFINESBYTYPE'];
+const classes = ['IFCRELASSOCIATESMATERIAL', 'IFCRELASSOCIATESCLASSIFICATION', 'IFCRELASSOCIATESDOCUMENT', 'IFCRELDEFINESBYTYPE', 'IFCRELDEFINESBYPROPERTIES'];
 
 /** Keep rows the byte scanner could not index on the canonical source reader.
  * Publication prepares this metadata-only inventory; no source blocks are read. */
-export function prepareSelectionRelationships(store: IfcDataStore): Map<string, number[]> {
+function legacyMissingRelationships(store: IfcDataStore): Map<string, number[]> {
   const old = inventories.get(store);
   if (old?.source === store.source) return old.missing;
   const represented = new Set(store.relationships.forward.edgeRelIds);
@@ -22,14 +22,30 @@ export function prepareSelectionRelationships(store: IfcDataStore): Map<string, 
   return missing;
 }
 
+interface EditView {
+  getMutationRevision?(): number;
+  getAttributeOverrideEntityIds?(): number[];
+  getEffectiveChanges?(): ReadonlyArray<{ entityId: number; kind: string }>;
+}
+const edits = new WeakMap<EditView, { revision: number; ids: number[] }>();
+function editIds(view: EditView): number[] {
+  const revision = view.getMutationRevision?.(), old = edits.get(view);
+  if (revision !== undefined && old?.revision === revision) return old.ids;
+  // Native views enumerate only attribute/positional/type maps. Never derive a
+  // property or quantity diff merely to discover relationship endpoint edits.
+  const ids = view.getAttributeOverrideEntityIds?.() ?? view.getEffectiveChanges?.()
+    .filter(change => ['attribute', 'type', 'entity-deleted'].includes(change.kind)).map(change => change.entityId) ?? [];
+  if (revision !== undefined) edits.set(view, { revision, ids });
+  return ids;
+}
+
 /** #9947: source rows incident to one subject, plus edits that can move endpoints
  * INTO that subject. Partial providers keep the complete inventory contract. */
-export function selectionRelationshipIds(store: IfcDataStore, view: {
-  getEffectiveChanges?(): ReadonlyArray<{ entityId: number; kind: string }>;
-}, entityId: number | undefined, kinds: readonly RelationshipType[], sourceTypes: readonly string[]): number[] | null {
+export function selectionRelationshipIds(store: IfcDataStore, view: EditView, entityId: number | undefined, kinds: readonly RelationshipType[], sourceTypes: readonly string[]): number[] | null {
   if (entityId === undefined || !store.source?.length || !store.relationships?.inverse
     || !store.relationships.forward?.edgeRelIds || typeof store.relationships.inverse.getEdges !== 'function'
-    || !view.getEffectiveChanges || store.relationshipsPending) return null;
+    || (!view.getAttributeOverrideEntityIds && !view.getEffectiveChanges)
+    || (store.relationshipsPending && !sourceTypes.every(type => type === 'IFCRELDEFINESBYTYPE' || type === 'IFCRELDEFINESBYPROPERTIES'))) return null;
   const ids = new Set<number>();
   for (const kind of kinds) {
     for (const edge of store.relationships.inverse.getEdges(entityId, kind)) {
@@ -37,10 +53,11 @@ export function selectionRelationshipIds(store: IfcDataStore, view: {
       for (const id of edge.shadowedRelationshipIds ?? []) ids.add(id);
     }
   }
-  for (const change of view.getEffectiveChanges()) {
-    if (change.kind === 'attribute' || change.kind === 'type' || change.kind === 'entity-deleted') ids.add(change.entityId);
-  }
-  for (const type of sourceTypes) for (const id of prepareSelectionRelationships(store).get(type) ?? []) ids.add(id);
+  for (const id of editIds(view)) ids.add(id);
+  const missing = store.selectionRelationshipIndex?.missing;
+  if (missing) {
+    for (const id of missing) if (sourceTypes.includes(store.entityIndex.byId.get(id)?.type ?? '')) ids.add(id);
+  } else for (const type of sourceTypes) for (const id of legacyMissingRelationships(store).get(type) ?? []) ids.add(id);
   // The old inventory visited raw type buckets in source order, then retypes.
   // Graph adjacency orders targets instead; retain the original displayed order.
   return [...ids].sort((a, b) => {

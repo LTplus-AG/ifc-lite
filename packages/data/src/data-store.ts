@@ -124,6 +124,14 @@ export interface IfcStoreBase {
   schemaVersion: 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
   entityCount: number;
   fileSize: number;
+  /** Parser-worker coverage for bounded current type reads, retained by worker/cache transport. */
+  selectionRelationshipIndex?: {
+    missing: number[];
+    typeRows: number;
+    typeReferences: number;
+    unverifiedTypeRows: number[];
+    typeDefinitions: Map<number, number[]>;
+  };
 
   /**
    * Verbatim HEADER fields from the source file, when this store was built by

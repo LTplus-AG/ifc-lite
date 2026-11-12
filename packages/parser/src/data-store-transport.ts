@@ -209,6 +209,7 @@ export interface DataStoreTransport {
   quantities: QuantityTableColumns;
   relationships: RelationshipGraphColumns;
   relationshipsPending?: true;
+  selectionRelationshipIndex?: IfcDataStore['selectionRelationshipIndex'];
 
   spatialHierarchy?: SpatialHierarchyColumns;
 
@@ -377,6 +378,7 @@ export function toTransport(
     properties: propertyTableToColumns(store.properties),
     quantities: quantityTableToColumns(store.quantities),
     relationships: relationshipGraphToColumns(store.relationships),
+    selectionRelationshipIndex: store.selectionRelationshipIndex,
     // The spatial-ready store crosses the worker boundary still marked as such (#9192).
     ...(store.relationshipsPending ? { relationshipsPending: true as const } : {}),
 
@@ -464,6 +466,7 @@ export function fromTransport(
     properties,
     quantities,
     relationships,
+    selectionRelationshipIndex: payload.selectionRelationshipIndex,
     ...(payload.relationshipsPending ? { relationshipsPending: true as const } : {}),
     spatialHierarchy,
 

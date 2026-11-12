@@ -44,7 +44,7 @@ function refIds(value: unknown): number[] {
   return Array.isArray(value) ? value.flatMap(refIds) : [];
 }
 
-function resolveRelationship(
+export function resolveRelationshipRecord(
   store: IfcDataStore,
   entity: IfcEntity,
   overlay: RelationshipOverlayReader,
@@ -90,7 +90,7 @@ export function resolveEffectiveRelationshipOverlay(
   const createdIds = new Set<number>();
   for (const entity of overlay.createdEntities()) {
     createdIds.add(entity.expressId);
-    const relation = resolveRelationship(store, entity, overlay, snapshot);
+    const relation = resolveRelationshipRecord(store, entity, overlay, snapshot);
     if (relation) relationships.push(relation);
   }
   for (const expressId of new Set(overlay.mutatedEntityIds())) {
@@ -101,7 +101,7 @@ export function resolveEffectiveRelationshipOverlay(
     const effectiveType = overlay.entityType?.(expressId) ?? entity.type;
     if (!authoredRelationship && !effectiveType.toUpperCase().startsWith('IFCREL')) continue;
     if (authoredRelationship) supersededSourceIds.add(expressId);
-    const relation = resolveRelationship(store, entity, overlay, snapshot);
+    const relation = resolveRelationshipRecord(store, entity, overlay, snapshot);
     if (relation) relationships.push(relation);
   }
   return { relationships, supersededSourceIds };

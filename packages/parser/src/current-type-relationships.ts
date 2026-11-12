@@ -33,6 +33,7 @@
  * vouch for, so every row there resolves from the view.
  */
 
+import { directCurrentTypeRelationships } from './direct-type-relationships.js';
 import { binarySearchU32, iterateEffectiveEntities, RelationshipType, type RelationshipEdges } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
 import { getReference } from './attribute-helpers.js';
@@ -46,8 +47,8 @@ import { getInheritanceChain, normalizeIfcTypeName } from './ifc-schema.js';
  * there takes about 0.1 s through the graph. A store the graph cannot vouch for reads every row
  * from source (about 45 us each on those models), so the row bound also caps that walk near 6 s.
  */
-const MAX_RELATIONSHIPS = 131_072;
-const MAX_RELATION_REFERENCES = 262_144;
+export const MAX_RELATIONSHIPS = 131_072;
+export const MAX_RELATION_REFERENCES = 262_144;
 /**
  * The row bound before #9192 raised it, kept for the store emitted before the definition edges
  * exist. The viewer makes that store active at spatial-ready time (`onSpatialReady`) while property
@@ -84,9 +85,9 @@ export function refIds(value: unknown, max = MAX_RELATION_REFERENCES, required =
 }
 
 /** One relationship as this reader needs it: null when it holds nothing usable. */
-type RelationRead = { byType: boolean; members: number[]; targets: number[] } | null;
+export type RelationRead = { byType: boolean; members: number[]; targets: number[] } | null;
 
-function readRelation(store: IfcDataStore, expressId: number, view: MetadataReadView): RelationRead {
+export function readRelation(store: IfcDataStore, expressId: number, view: MetadataReadView): RelationRead {
     const record = effectiveMetadataRecord(store, expressId, view);
     if (!record) throw new CurrentQuantityRefusal('Native type relationship is unreadable');
     const target = record.attributes[5];
@@ -199,6 +200,9 @@ function refuseWhileDefinitionsLoad(store: IfcDataStore, view: MetadataReadView)
  * unusable: too many rows, too many references, or an unreadable row of those read.
  */
 export function resolveCurrentTypeRelationships(store: IfcDataStore, view: MetadataReadView): CurrentTypeRelationships {
+    if (store.selectionRelationshipIndex && store.source?.length && view.getAttributeOverrideEntityIds && view.getTombstones) {
+        return directCurrentTypeRelationships(store, view);
+    }
     const graph = store.relationships;
     const facts = store.source?.length && graph ? readGraphFacts(store, graph.forward) : undefined;
     const counts = facts?.counts;

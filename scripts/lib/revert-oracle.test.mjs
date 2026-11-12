@@ -42,6 +42,7 @@ import {
   BASELINE_BROKEN,
 } from './revert-oracle.mjs';
 import { ciExitCode } from './revert-oracle-ci.mjs';
+import viewerPackage from '../../apps/viewer/package.json' with { type: 'json' };
 
 // ---------------------------------------------------------------------------
 // Fixtures: real runner output
@@ -754,6 +755,14 @@ test('detectRunner: apps/viewer keeps --import and --test-concurrency, which it 
     '--test',
     'src/hooks/x.test.ts',
   ]);
+});
+
+test("#9791: apps/viewer's REAL test script takes concurrency from a shell variable; the shell-less oracle runs it serially", () => {
+  const r = detectRunner(viewerPackage.scripts.test, ['src/hooks/x.test.ts']);
+  assert.deepEqual(r.args.filter((a) => a.startsWith('--test-concurrency')), ['--test-concurrency=1']);
+  // Shell parameter syntax, which the oracle receives unexpanded.
+  // eslint-disable-next-line no-template-curly-in-string
+  assert.deepEqual(extractNodeFlags('tsx --test --test-timeout=$T --test-concurrency=${C:-1}'), ['--test-concurrency=1']);
 });
 
 test('detectRunner: plain `node --test` package uses node, not tsx', () => {

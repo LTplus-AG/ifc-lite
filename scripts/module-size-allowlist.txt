@@ -95,10 +95,10 @@
    435 apps/viewer/src/components/viewer/TitleBlockEditor.tsx
    501 apps/viewer/src/components/viewer/tools/measure-modes/radius.ts
    813 apps/viewer/src/components/viewer/tools/MeasurementVisuals.tsx
-   742 apps/viewer/src/components/viewer/useGeometryStreaming.ts
+   701 apps/viewer/src/components/viewer/useGeometryStreaming.ts
    880 apps/viewer/src/components/viewer/useMouseControls.ts
    461 apps/viewer/src/components/viewer/ViewerLayout.tsx
-  1507 apps/viewer/src/components/viewer/Viewport.tsx
+  1491 apps/viewer/src/components/viewer/Viewport.tsx
    846 apps/viewer/src/components/viewer/ViewportContainer.tsx
    500 apps/viewer/src/components/viewer/ZonesPanel.tsx
    847 apps/viewer/src/hooks/ids/idsExportService.ts
@@ -136,7 +136,6 @@
    452 apps/viewer/src/store/slices/chatSlice.ts
    992 apps/viewer/src/store/slices/clashSlice.ts
   1201 apps/viewer/src/store/slices/collabSlice.ts
-   482 apps/viewer/src/store/slices/dataSlice.ts
    882 apps/viewer/src/store/slices/drawing2DSlice.ts
    474 apps/viewer/src/store/slices/idsSlice.ts
    793 apps/viewer/src/store/slices/measurementSlice.ts

@@ -55,7 +55,7 @@ export function makeShapeTest(
   view: ElementRowView,
   modelId: string,
   models: Map<string, FederatedModel>,
-  geometricIds: Set<number> | undefined,
+  geometricIds: ReadonlySet<number> | undefined,
   geometryKnown = !!geometricIds && geometricIds.size > 0,
 ): ((id: number) => boolean) | null {
   if (!geometryKnown) return null;

@@ -37,7 +37,7 @@ export function readWallTop(modelId: string, wallId: number): { top: WallTop | '
   const attachment = readTopAttachment(inventory, wallId);
   if (attachment?.kind === 'element' && attachment.targetElementId !== undefined) {
     const entity = inventory.reader.entity(attachment.targetElementId);
-    const name = String(entity?.attributes[2] ?? `#${attachment.targetElementId}`);
+    const name = String(entity?.attributes[2] || `#${attachment.targetElementId}`);
     const label = entity?.type.toUpperCase() === 'IFCROOF' ? 'Roof' : 'Slab';
     return { top: 'element', target: { text: `${label} '${name}' underside`, raw: String(entity?.attributes[0]), from: name } };
   }

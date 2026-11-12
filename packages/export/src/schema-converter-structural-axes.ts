@@ -6,6 +6,12 @@ import { parseStepNumber, skipStepTrivia } from './step-slot-grammar.js';
 import { decodeRange } from './source-ref-bounds.js';
 const ref = (s: string): number | null => /^#\s*\d+$/.test(s.trim()) ? Number(s.trim().slice(1)) : null;
 
+function listItems(token: string): string[] | null {
+  const text = token.trim(), start = skipStepTrivia(text, 0);
+  return start >= 0 && text[start] === '(' && text.endsWith(')')
+    ? splitTopLevelStepArguments(text.slice(start + 1, -1)) : null;
+}
+
 export class StructuralAxes {
   private readonly axes = new Map<number, number | null>();
   private readonly directions = new Set<number>();
@@ -14,14 +20,11 @@ export class StructuralAxes {
     const rec = readStepSlots(line), id = /^\s*#(\d+)/.exec(line)?.[1];
     if (!rec || !id) return;
     if (rec.type === 'IFCDIRECTION') {
-      const token = rec.slots[0]?.trim() ?? '', start = skipStepTrivia(token, 0);
-      if (start < 0 || token[start] !== '(' || !token.endsWith(')')) return;
-      const values = splitTopLevelStepArguments(token.slice(start + 1, -1))?.map(parseStepNumber);
+      const values = listItems(rec.slots[0] ?? '')?.map(parseStepNumber);
       if (values?.length === 3 && values.every(Number.isFinite) && values.some(x => x !== 0)) this.directions.add(Number(id));
     } else if (rec.type === 'IFCRELASSOCIATESPROFILEPROPERTIES' && rec.slots.length === 8) {
-      const axis = ref(rec.slots[7]), list = rec.slots[4].trim();
-      if (!list.startsWith('(') || !list.endsWith(')')) return;
-      for (const token of splitTopLevelStepArguments(list.slice(1, -1)) ?? []) {
+      const axis = ref(rec.slots[7]);
+      for (const token of listItems(rec.slots[4]) ?? []) {
         const member = ref(token);
         if (member === null) continue;
         this.axes.set(member, this.axes.has(member) && this.axes.get(member) !== axis ? null : axis);

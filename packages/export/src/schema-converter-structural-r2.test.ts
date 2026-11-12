@@ -97,8 +97,12 @@ describe('explicit IFC2X3 section orientation #9668', () => {
     expect(new TextDecoder().decode(sourceOnly.content)).toContain('.RIGID_JOINED_MEMBER.,#80)');
     expect(sourceOnly.stats.warnings.join('\n')).not.toContain('Axis is required');
     // #9845: STEP trivia can precede the tuple as well as follow its numbers.
-    for (const tuple of ['((0.,1./* axis */,0.))', '(/* axis */(0.,1.,0.))']) {
-      const commentedStore = await new IfcParser().parseColumnar(new TextEncoder().encode(text.replace('((0.,1.,0.))', tuple)).buffer);
+    for (const commentedText of [
+      text.replace('((0.,1.,0.))', '((0.,1./* axis */,0.))'),
+      text.replace('((0.,1.,0.))', '(/* axis */(0.,1.,0.))'),
+      text.replace('(#50),#81', '/* related */(#50),#81'),
+    ]) {
+      const commentedStore = await new IfcParser().parseColumnar(new TextEncoder().encode(commentedText).buffer);
       const commented = new StepExporter(commentedStore).export({ schema: 'IFC4' });
       expect(new TextDecoder().decode(commented.content)).toContain('.RIGID_JOINED_MEMBER.,#80)');
       expect(commented.stats.warnings.join('\n')).not.toContain('Axis is required');

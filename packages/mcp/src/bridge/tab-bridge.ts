@@ -18,7 +18,7 @@ import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, Server } from 'node:http';
 import type { Duplex } from 'node:stream';
 import type { WebSocketServer, WebSocket, RawData } from 'ws';
-import { capUnpairedBytes, listenLoopback, refuseUpgrade } from './loopback-server.js';
+import { capUnpairedBytes, closeLoopback, listenLoopback, refuseUpgrade } from './loopback-server.js';
 import {
   BRIDGE_LIMITS,
   BRIDGE_PROTOCOL_VERSION,
@@ -41,8 +41,9 @@ import {
   type PairingStats,
   type Slot,
 } from './tab-bridge-options.js';
-import { CoalescedLog, PairingGate, Throttle } from './rate-limits.js';
+import { BLOCKED_LINE, ChangeSignal, CoalescedLog, PairingGate } from './rate-limits.js';
 import { clip } from './sanitize.js';
+import { describeThrown } from '../errors.js';
 import { BridgeCallError, BridgeSession, failSocket, rawToString } from './session.js';
 import { handleSessionFrame } from './session-frames.js';
 
@@ -60,7 +61,7 @@ export class TabBridge {
   private readonly pairing = new PairingCodes();
   private readonly gate: PairingGate;
   private readonly noisy: CoalescedLog;
-  private readonly changed: Throttle;
+  private readonly changed: ChangeSignal;
   /** Sockets that failed or timed out: nothing they send is processed again. */
   private readonly dead = new WeakSet<WebSocket>();
   private http: Server | null = null;
@@ -73,8 +74,8 @@ export class TabBridge {
   private attempts = 0;
   private failedAttempts = 0;
   private refusedBusy = 0;
-  private listeners = new Set<() => void>();
   private closing = false;
+  private closed: Promise<void> | null = null;
 
   constructor(private readonly opts: TabBridgeOptions) {
     this.log = opts.log ?? (() => {});
@@ -84,7 +85,7 @@ export class TabBridge {
     this.closeGraceMs = opts.closeGraceMs ?? DEFAULT_CLOSE_GRACE_MS;
     this.gate = new PairingGate(opts.pairingBackoffBaseMs, opts.pairingBackoffMaxMs);
     this.noisy = new CoalescedLog(this.log, opts.logWindowMs);
-    this.changed = new Throttle(() => this.emitChange(), opts.changeThrottleMs ?? 200);
+    this.changed = new ChangeSignal(opts.changeThrottleMs ?? 200, (err) => this.log(`change listener failed: ${describeThrown(err)}`));
     for (const o of opts.allowedOrigins) {
       const normal = normalizeOrigin(o);
       if (normal === null) throw new Error(`not an http(s) origin: ${o}`);
@@ -115,8 +116,7 @@ export class TabBridge {
 
   /** Called on pair, unpair, replacement, and permission or tool-list changes. */
   onChange(listener: () => void): () => void {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
+    return this.changed.subscribe(listener);
   }
 
   /** The paired tab, or null. */
@@ -167,34 +167,43 @@ export class TabBridge {
     return s.call(name, args, this.callTimeoutMs, signal);
   }
 
-  async close(): Promise<void> {
-    if (this.closing) return;
+  /** Close everything. Every caller gets the same in-flight promise, and it never rejects. */
+  close(): Promise<void> {
+    this.closed ??= this.shutdown();
+    return this.closed;
+  }
+
+  private async shutdown(): Promise<void> {
     this.closing = true;
-    this.changed.cancel();
-    this.noisy.flush();
-    // A copy: kill() deletes from `slots` while this loop runs.
-    for (const slot of Array.from(this.slots)) {
-      if (slot.ws) this.kill(slot.ws, BridgeErrorCode.SHUTTING_DOWN, 'The bridge is shutting down.', BridgeCloseCode.SHUTTING_DOWN);
-      else slot.socket.destroy();
-    }
-    const s = this.active;
-    if (s) {
-      this.active = null;
-      s.failAll('shutting-down', 'The bridge is shutting down.');
-      this.kill(s.ws, BridgeErrorCode.SHUTTING_DOWN, 'The bridge is shutting down.', BridgeCloseCode.SHUTTING_DOWN);
-    }
-    const wss = this.wss;
-    if (wss && wss.clients.size > 0) {
-      // Let the close frames go out, then drop any peer that has not answered.
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      for (const c of wss.clients) c.terminate();
-    }
-    wss?.close();
-    const http = this.http;
-    this.http = null;
-    if (http) {
-      http.closeAllConnections();
-      await new Promise<void>((resolve) => http.close(() => resolve()));
+    try {
+      this.changed.cancel();
+      this.noisy.flush();
+      // A copy: kill() deletes from `slots` while this loop runs.
+      for (const slot of Array.from(this.slots)) {
+        if (slot.ws) this.kill(slot.ws, BridgeErrorCode.SHUTTING_DOWN, 'The bridge is shutting down.', BridgeCloseCode.SHUTTING_DOWN);
+        else slot.socket.destroy();
+      }
+      const s = this.active;
+      if (s) {
+        this.active = null;
+        s.failAll('shutting-down', 'The bridge is shutting down.');
+        this.kill(s.ws, BridgeErrorCode.SHUTTING_DOWN, 'The bridge is shutting down.', BridgeCloseCode.SHUTTING_DOWN);
+      }
+      const wss = this.wss;
+      if (wss && wss.clients.size > 0) {
+        // Let the close frames go out, then drop any peer that has not answered.
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        for (const c of wss.clients) c.terminate();
+      }
+      wss?.close();
+    } catch (err) {
+      // Shutdown must not reject (callers chain on it during exit); report and carry on.
+      this.log(`error while closing: ${describeThrown(err)}`);
+    } finally {
+      // Whatever failed above, the listener must close so the port is freed.
+      const http = this.http;
+      this.http = null;
+      if (http) await closeLoopback(http);
     }
   }
 
@@ -213,11 +222,9 @@ export class TabBridge {
       if (!originAllowed(req.headers.origin, this.origins)) return refuse(403, 'Forbidden', `Origin ${clip(req.headers.origin, 80)} is not allowed`);
       if (this.closing) return refuse(503, 'Service Unavailable', 'shutting down');
       if (this.slots.size >= this.maxPendingHandshakes) {
+        // Every slot busy: wrong codes being tried, or sockets held open without a hello.
         this.refusedBusy++;
-        // Busy slots while wrong codes are being tried: a local program is squatting them.
-        const blocked = this.failedAttempts > 0 && this.gate.delay() > 0;
-        if (!blocked) return refuse(429, 'Too Many Requests', 'too many unpaired connections');
-        this.noisy.note('connections refused while pairing is blocked', 'pairing is being blocked by repeated failed attempts from a local program: all unpaired slots are busy, so connections are refused with 429');
+        this.noisy.note('connections refused while pairing is blocked', BLOCKED_LINE);
         return refuseUpgrade(socket, 429, 'Too Many Requests');
       }
       const slot: Slot = { socket, ws: null, paired: false, held: false, bytes: head.length };
@@ -228,7 +235,7 @@ export class TabBridge {
       socket.once('close', () => { if (!slot.held) this.slots.delete(slot); });
       wss.handleUpgrade(req, socket, head, (ws) => this.guard(ws, 'connection', () => this.onSocket(ws, slot)));
     } catch (err) {
-      this.noisy.note('internal errors', `internal error on an upgrade: ${clip((err as Error).message)}`);
+      this.noisy.note('internal errors', `internal error on an upgrade: ${clip(describeThrown(err))}`);
       socket.destroy();
     }
   }
@@ -238,7 +245,7 @@ export class TabBridge {
     try {
       fn();
     } catch (err) {
-      this.noisy.note('internal errors', `internal error handling a ${what}: ${clip((err as Error).message)}`);
+      this.noisy.note('internal errors', `internal error handling a ${what}: ${clip(describeThrown(err))}`);
       this.kill(ws, BridgeErrorCode.INVALID_MESSAGE, 'The bridge could not handle that frame.', BridgeCloseCode.INVALID_MESSAGE);
     }
   }
@@ -385,15 +392,5 @@ export class TabBridge {
 
   private effectivePermission(s: BridgeSession): BridgePermission {
     return this.opts.readOnlyCeiling ? 'read-only' : s.tabPermission;
-  }
-
-  private emitChange(): void {
-    for (const l of this.listeners) {
-      try {
-        l();
-      } catch (err) {
-        this.log(`change listener failed: ${(err as Error).message}`);
-      }
-    }
   }
 }

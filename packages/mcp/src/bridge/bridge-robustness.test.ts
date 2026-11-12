@@ -202,7 +202,7 @@ describe('item 3: the comparison rate is really bounded', () => {
     // The real tab is refused, three times, while the slots are squatted.
     for (let i = 0; i < 3; i++) expect(await openSocket({ port: agent.bridge.port, origin: TEST_ORIGIN })).toEqual({ status: 429 });
     expect(agent.bridge.pairingStats()).toMatchObject({ failedAttempts: 1, refusedBusy: 3 });
-    expect(lines.filter((l) => l.startsWith('pairing is being blocked by repeated failed attempts from a local program'))).toHaveLength(1);
+    expect(lines.filter((l) => l.startsWith('pairing is being blocked: every unpaired slot is busy'))).toHaveLength(1);
     const status = await agent.call('bridge_status');
     expect(status.structuredContent).toMatchObject({ state: 'unpaired', pairingPressure: { failedAttempts: 1, refusedBusy: 3 } });
     expect(resultText(status)).toMatch(/Pairing may be blocked: 1 failed pairing attempts and 3 connections refused/);

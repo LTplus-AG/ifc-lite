@@ -172,17 +172,25 @@ function own(obj: Record<string, unknown>, key: string): unknown {
   return Object.prototype.hasOwnProperty.call(obj, key) ? obj[key] : undefined;
 }
 
+const TYPE_CHECKS: Readonly<Record<string, (v: unknown) => boolean>> = {
+  string: (v) => typeof v === 'string',
+  number: (v) => typeof v === 'number' && !Number.isNaN(v),
+  integer: (v) => typeof v === 'number' && Number.isInteger(v),
+  boolean: (v) => typeof v === 'boolean',
+  array: (v) => Array.isArray(v),
+  object: (v) => v !== null && typeof v === 'object' && !Array.isArray(v),
+  null: (v) => v === null,
+};
+
+/**
+ * The `type` names `matchesType` enforces, derived from the same table. Any
+ * other name matches every value, so the bridge refuses a tab schema that uses
+ * one (`checkSchemaShape`).
+ */
+export const SUPPORTED_SCHEMA_TYPES: ReadonlySet<string> = new Set(Object.keys(TYPE_CHECKS));
+
 function matchesType(t: string, v: unknown): boolean {
-  switch (t) {
-    case 'string': return typeof v === 'string';
-    case 'number': return typeof v === 'number' && !Number.isNaN(v);
-    case 'integer': return typeof v === 'number' && Number.isInteger(v);
-    case 'boolean': return typeof v === 'boolean';
-    case 'array': return Array.isArray(v);
-    case 'object': return v !== null && typeof v === 'object' && !Array.isArray(v);
-    case 'null': return v === null;
-    default: return true;
-  }
+  return Object.prototype.hasOwnProperty.call(TYPE_CHECKS, t) ? TYPE_CHECKS[t](v) : true;
 }
 
 function clone<T>(v: T): T {

@@ -41,6 +41,19 @@ export interface ToolErrorOptions {
   hint?: string;
 }
 
+/**
+ * The message of a thrown value, whatever was thrown: `throw null` (e.g. from a
+ * `toJSON`) or a non-Error object must not turn a catch block into a second throw.
+ */
+export function describeThrown(err: unknown): string {
+  const message = err instanceof Error ? err.message
+    : typeof err === 'string' ? err
+      // A cross-realm error or a plain `{ message }` rejection still has a cause worth keeping.
+      : typeof err === 'object' && err !== null && typeof (err as { message?: unknown }).message === 'string' ? (err as { message: string }).message
+        : `a thrown ${err === null ? 'null' : typeof err}`;
+  return message.length > 500 ? `${message.slice(0, 500)}…` : message;
+}
+
 export function toolError(opts: ToolErrorOptions): CallToolResult {
   return {
     content: [{ type: 'text', text: opts.message }],

@@ -95,6 +95,8 @@ export interface CliOptions {
   bridgePort?: number;
   /** `--bridge-viewer-url`: base of the pairing link; its origin may connect. */
   bridgeViewerUrl?: string;
+  /** Bridge value flags given without an operand; `bridgeConflict` reports them. */
+  bridgeMissingOperand?: string[];
   /** `--help`/`-h` was passed. The caller prints usage and exits. */
   help: boolean;
   /** `--version`/`-v` was passed. The caller prints the version and exits. */
@@ -130,8 +132,18 @@ export function parseArgs(argv: string[]): CliOptions {
     else if (arg === '--viewer-port') opts.viewerPort = Number(argv[++i] ?? 0);
     else if (arg === '--open') { opts.autoViewer = true; opts.openBrowser = true; }
     else if (arg === '--bridge') opts.bridge = true;
-    else if (arg === '--bridge-port') opts.bridgePort = Number(argv[++i]);
-    else if (arg === '--bridge-viewer-url') opts.bridgeViewerUrl = argv[++i];
+    else if (arg === '--bridge-port' || arg === '--bridge-viewer-url') {
+      // A missing operand (end of argv, or the next flag) is a usage error,
+      // not a silent fall-back to the default port or viewer URL.
+      const value = argv[i + 1];
+      if (value === undefined || value === '' || value.startsWith('-')) {
+        (opts.bridgeMissingOperand ??= []).push(arg);
+        continue;
+      }
+      i++;
+      if (arg === '--bridge-port') opts.bridgePort = Number(value);
+      else opts.bridgeViewerUrl = value;
+    }
     else if (arg === '--allow') {
       const path = argv[++i];
       if (path) (opts.allowedPaths ??= []).push(resolve(path));
@@ -155,6 +167,7 @@ export function parseArgs(argv: string[]): CliOptions {
  */
 export function bridgeConflict(opts: CliOptions): string | null {
   if (!opts.bridge) return null;
+  if (opts.bridgeMissingOperand?.length) return `${opts.bridgeMissingOperand.join(', ')} needs a value.`;
   if (opts.files.length > 0) return `--bridge serves the model open in a browser tab and loads no files; drop ${opts.files.join(', ')}.`;
   if (opts.transport !== 'stdio') return '--bridge speaks MCP over stdio only; drop --transport http.';
   if (opts.autoViewer) return '--bridge cannot be combined with --viewer or --open: the browser tab is the viewer.';

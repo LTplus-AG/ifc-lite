@@ -79,6 +79,20 @@ describe('--bridge (#9523)', () => {
     expect(bridgeConflict(opts)).toBeNull();
   });
 
+  it('treats a bridge value flag without an operand as a usage error, not the default', () => {
+    expect(bridgeConflict(parseArgs(['--bridge', '--bridge-viewer-url']))).toBe('--bridge-viewer-url needs a value.');
+    expect(bridgeConflict(parseArgs(['--bridge', '--bridge-port']))).toBe('--bridge-port needs a value.');
+    // The following flag is not swallowed as the operand.
+    const opts = parseArgs(['--bridge', '--bridge-viewer-url', '--read-only']);
+    expect(opts.readOnly).toBe(true);
+    expect(opts.bridgeViewerUrl).toBeUndefined();
+    expect(bridgeConflict(opts)).toBe('--bridge-viewer-url needs a value.');
+    // A short flag or an empty string is not an operand either.
+    expect(parseArgs(['--bridge', '--bridge-port', '-h']).help).toBe(true);
+    expect(bridgeConflict(parseArgs(['--bridge', '--bridge-port', '-h']))).toBe('--bridge-port needs a value.');
+    expect(bridgeConflict(parseArgs(['--bridge', '--bridge-port', '']))).toBe('--bridge-port needs a value.');
+  });
+
   it('refuses file arguments, --transport http, --viewer and a bad port', () => {
     expect(bridgeConflict(parseArgs(['--bridge', 'model.ifc']))).toMatch(/loads no files/);
     expect(bridgeConflict(parseArgs(['--bridge', '--transport', 'http']))).toMatch(/stdio only/);

@@ -32,6 +32,8 @@ const FAILURE_CODE: Record<BridgeCallFailure, ToolErrorCodeValue> = {
   'read-only': ToolErrorCode.READ_ONLY,
   'unknown-tool': ToolErrorCode.UNSUPPORTED_OPERATION,
   'malformed-result': ToolErrorCode.INTERNAL_ERROR,
+  'invalid-arguments': ToolErrorCode.INVALID_INPUT,
+  backpressure: ToolErrorCode.RATE_LIMITED,
 };
 
 const HINTS: Partial<Record<BridgeCallFailure, string>> = {
@@ -137,7 +139,7 @@ function statusResult(bridge: TabBridge, pairNewTab: boolean): CallToolResult {
     lines.push(
       '',
       `Pairing may be blocked: ${pressure.failedAttempts} failed pairing attempts and ${pressure.refusedBusy} connections refused because every unpaired slot was busy.`,
-      'If the user cannot pair, a local program is probably making repeated attempts. Ask them to stop it, or restart the bridge with another --bridge-port, then try the link again.',
+      'If the user cannot pair, a local program, or a page on an allowed origin, is probably making repeated attempts or holding connections open. Ask them to stop it (close that program or page), or restart the bridge with another --bridge-port, then try the link again.',
     );
   }
   if (pairing) {

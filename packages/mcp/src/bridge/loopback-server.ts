@@ -65,3 +65,9 @@ export function capUnpairedBytes(socket: Duplex, slot: { paired: boolean; bytes:
   };
   socket.on('data', onData);
 }
+
+/** Close the listener and free the port. `closeAllConnections` is Node >= 18.2; older 18.x just waits for idle sockets. */
+export async function closeLoopback(http: Server): Promise<void> {
+  if (typeof http.closeAllConnections === 'function') http.closeAllConnections();
+  await new Promise<void>((resolve) => http.close(() => resolve()));
+}

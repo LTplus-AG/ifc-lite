@@ -19,6 +19,7 @@ import { JsonRpcMessage, JsonRpcId } from '../protocol/index.js';
 import { errorResponse, parseMessage, isJsonRpcRequest, isJsonRpcNotification } from '../protocol/jsonrpc.js';
 import { JsonRpcErrorCode } from '../protocol/index.js';
 import { MCPServer, OutgoingMessageSink } from '../server.js';
+import { describeThrown } from '../errors.js';
 import { routeConsoleToStderr } from './stdio-console.js';
 
 export interface StdioTransportOptions {
@@ -88,7 +89,7 @@ export class StdioTransport {
       try {
         l(reason);
       } catch (err) {
-        this.stderr.write(`[ifc-lite-mcp] close listener failed: ${(err as Error).message}\n`);
+        this.stderr.write(`[ifc-lite-mcp] close listener failed: ${describeThrown(err)}\n`);
       }
     }
   }
@@ -101,7 +102,7 @@ export class StdioTransport {
         try {
           line = JSON.stringify(message) + '\n';
         } catch (err) {
-          const why = (err as Error).message;
+          const why = describeThrown(err);
           this.stderr.write(`[ifc-lite-mcp] failed to serialize outgoing message: ${why}\n`);
           // A response that cannot be serialized must still answer its request,
           // or the client waits forever. Notifications are dropped (logged above).
@@ -113,7 +114,7 @@ export class StdioTransport {
           this.stdout.write(line);
         } catch (err) {
           // Some streams throw synchronously once destroyed; same meaning as an 'error' event.
-          this.stderr.write(`[ifc-lite-mcp] stdout write failed: ${(err as Error).message}\n`);
+          this.stderr.write(`[ifc-lite-mcp] stdout write failed: ${describeThrown(err)}\n`);
           this.close('stdout-error');
         }
       },
@@ -131,7 +132,7 @@ export class StdioTransport {
         try {
           this.dispatch(parseMessage(line));
         } catch (err) {
-          this.stderr.write(`[ifc-lite-mcp] failed to handle an incoming message: ${(err as Error).message}\n`);
+          this.stderr.write(`[ifc-lite-mcp] failed to handle an incoming message: ${describeThrown(err)}\n`);
         }
       }
       newline = this.buffer.indexOf('\n');
@@ -184,7 +185,7 @@ export class StdioTransport {
         void sink.send(response);
       }
     } catch (err) {
-      this.stderr.write(`[ifc-lite-mcp] handler error: ${(err as Error).message}\n`);
+      this.stderr.write(`[ifc-lite-mcp] handler error: ${describeThrown(err)}\n`);
     }
   }
 }

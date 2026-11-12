@@ -8,4 +8,4 @@
 +  return Object.prototype.hasOwnProperty.call(obj, key) ? obj[key] : undefined;
  }
  
- function matchesType(t: string, v: unknown): boolean {
+ const TYPE_CHECKS: Readonly<Record<string, (v: unknown) => boolean>> = {

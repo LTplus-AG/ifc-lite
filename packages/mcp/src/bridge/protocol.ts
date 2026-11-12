@@ -87,6 +87,10 @@ export const BRIDGE_LIMITS = {
   maxIdLength: 64,
   /** Length of `type` strings. */
   maxTypeLength: 16,
+  /** Bridge -> tab: largest `call` frame, calls waiting per session, and bytes queued on the socket. Past any, a call fails before it is sent. */
+  maxCallBytes: 4 * 1024 * 1024,
+  maxPendingCalls: 64,
+  maxBufferedBytes: 32 * 1024 * 1024,
   maxTools: 256,
   maxToolNameLength: 64,
   maxDescriptionLength: 8192,

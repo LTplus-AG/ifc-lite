@@ -50,6 +50,10 @@ export class CoalescedLog {
   }
 }
 
+/** Logged (once per window) when a connection is refused because every unpaired slot is busy. */
+export const BLOCKED_LINE = 'pairing is being blocked: every unpaired slot is busy, so connections are refused with 429 '
+  + '(repeated failed attempts, or connections held open without a hello, from a local program or a page on an allowed origin)';
+
 /** Milliseconds from a monotonic clock: wall-clock jumps must not shorten or stretch an interval. */
 export const monotonicNow = (): number => performance.now();
 
@@ -68,8 +72,10 @@ export const monotonicNow = (): number => performance.now();
  * attacking: early-closing attempts hold every slot for up to `maxMs` each, so
  * the real tab gets 429 (and, if it gets a slot, its code is compared up to
  * `maxMs` late). That is local denial of service, inside the trust boundary (a
- * local process could equally take the port); a web page cannot do it, since
- * the Origin check runs before a slot is allocated. The bridge logs and
+ * local process could equally take the port). A page on a DISALLOWED origin
+ * cannot, since the Origin check runs before a slot is allocated; a page on an
+ * ALLOWED origin can (sockets opened without a hello, renewed every 3 s), so
+ * allow only origins whose content you trust. The bridge logs and
  * reports it (`bridge_status.pairingPressure`) so the user can tell why.
  */
 export class PairingGate {
@@ -131,5 +137,36 @@ export class Throttle {
     this.timer = null;
     this.last = this.now();
     this.fn();
+  }
+}
+
+/** Throttled "the listed tools may have changed" signal; a failing listener is reported, not thrown. */
+export class ChangeSignal {
+  private readonly listeners = new Set<() => void>();
+  private readonly throttle: Throttle;
+
+  constructor(intervalMs: number, onListenerError: (err: unknown) => void) {
+    this.throttle = new Throttle(() => {
+      for (const l of this.listeners) {
+        try {
+          l();
+        } catch (err) {
+          onListenerError(err);
+        }
+      }
+    }, intervalMs);
+  }
+
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  fire(): void {
+    this.throttle.fire();
+  }
+
+  cancel(): void {
+    this.throttle.cancel();
   }
 }

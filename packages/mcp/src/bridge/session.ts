@@ -12,6 +12,8 @@
  */
 
 import type { WebSocket, RawData } from 'ws';
+import { describeThrown } from '../errors.js';
+import { BRIDGE_LIMITS } from './protocol.js';
 import type {
   BridgeCallResult,
   BridgePermission,
@@ -29,7 +31,9 @@ export type BridgeCallFailure =
   | 'read-only'
   | 'unknown-tool'
   | 'shutting-down'
-  | 'malformed-result';
+  | 'malformed-result'
+  | 'invalid-arguments'
+  | 'backpressure';
 
 export class BridgeCallError extends Error {
   constructor(readonly reason: BridgeCallFailure, message: string) {
@@ -60,15 +64,37 @@ export class BridgeSession {
   ) {}
 
   send(msg: BridgeServerMessage): void {
-    if (this.ws.readyState !== this.ws.OPEN) return;
-    sendFrame(this.ws, msg, this.log);
+    this.sendText(JSON.stringify(msg));
   }
 
   /** Send a `call` and wait for its `result`, a timeout, a cancel or the session's end. */
   call(name: string, args: Record<string, unknown>, timeoutMs: number, signal?: AbortSignal): Promise<BridgeCallResult> {
-    if (signal?.aborted) return Promise.reject(new BridgeCallError('cancelled', `Call to '${name}' was cancelled.`));
+    const fail = (reason: BridgeCallFailure, message: string) => Promise.reject(new BridgeCallError(reason, message));
+    if (signal?.aborted) return fail('cancelled', `Call to '${name}' was cancelled.`);
+    // Outbound bounds: a stalled or slow tab must not let calls or queued bytes pile up.
+    if (this.pending.size >= BRIDGE_LIMITS.maxPendingCalls) {
+      return fail('backpressure', `The viewer already has ${BRIDGE_LIMITS.maxPendingCalls} calls waiting; retry when some have answered.`);
+    }
     const id = `c${++callCounter}`;
-    return new Promise<BridgeCallResult>((resolve, reject) => {
+    let frame: string;
+    try {
+      // 1e999 parses to Infinity and would silently go out as null: refuse it.
+      frame = JSON.stringify({ type: 'call', sessionId: this.id, id, name, arguments: args }, (_key, v: unknown) => {
+        if (typeof v === 'number' && !Number.isFinite(v)) throw new Error('arguments contain a non-finite number');
+        return v;
+      });
+    } catch (err) {
+      return fail('invalid-arguments', `The arguments for '${name}' cannot be sent: ${describeThrown(err)}`);
+    }
+    const bytes = Buffer.byteLength(frame, 'utf8');
+    if (bytes > BRIDGE_LIMITS.maxCallBytes) {
+      return fail('invalid-arguments', `The arguments for '${name}' are ${bytes} bytes; the limit is ${BRIDGE_LIMITS.maxCallBytes}.`);
+    }
+    // Counted with this frame, so the queue never exceeds the bound.
+    if (this.ws.bufferedAmount + bytes > BRIDGE_LIMITS.maxBufferedBytes) {
+      return fail('backpressure', 'The viewer is not reading its socket fast enough; retry later.');
+    }
+    const settled = new Promise<BridgeCallResult>((resolve, reject) => {
       const finish = (): void => {
         clearTimeout(timer);
         signal?.removeEventListener('abort', onAbort);
@@ -90,8 +116,13 @@ export class BridgeSession {
         resolve: (r) => { finish(); resolve(r); },
         reject: (e) => { finish(); reject(e); },
       });
-      this.send({ type: 'call', sessionId: this.id, id, name, arguments: args });
     });
+    this.sendText(frame);
+    return settled;
+  }
+
+  private sendText(text: string): void {
+    if (this.ws.readyState === this.ws.OPEN) sendText(this.ws, text, this.log);
   }
 
   /** Settle a pending call with the tab's result. False when `id` is not pending here. */
@@ -118,10 +149,14 @@ export class BridgeSession {
   }
 }
 
-export function sendFrame(ws: WebSocket, msg: BridgeServerMessage, log: (line: string) => void): void {
-  ws.send(JSON.stringify(msg), (err) => {
-    if (err) log(`send failed: ${err.message}`);
+function sendText(ws: WebSocket, text: string, log: (line: string) => void): void {
+  ws.send(text, (err) => {
+    if (err) log(`send failed: ${describeThrown(err)}`);
   });
+}
+
+function sendFrame(ws: WebSocket, msg: BridgeServerMessage, log: (line: string) => void): void {
+  sendText(ws, JSON.stringify(msg), log);
 }
 
 /** Send an `error` frame, then close with `closeCode`. */

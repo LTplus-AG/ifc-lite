@@ -362,7 +362,13 @@ browser connectivity in Chrome (Local Network Access prompt) and Safari
   1 MiB, each `inputSchema` at most 32 levels deep and 5,000 values, each
   result at most 4 MiB, 64 levels and 250,000 values. Schemas must be
   well-formed for the keywords the bridge validates (`properties` of schemas,
-  `required` as strings, numeric bounds as numbers, ...). An oversized or
+  `required` as strings, numeric bounds as numbers, ...), `type` must name a
+  type the bridge enforces (`string`, `number`, `integer`, `boolean`, `array`,
+  `object`, `null`), and `additionalProperties` must be `true` or `false` (a
+  schema there would not be enforced). Other JSON Schema keywords (`pattern`,
+  `format`, `oneOf`, `const`, …) are published to the agent but not checked by
+  the bridge; the tab must validate them. Non-finite numbers (`1e999`) are
+  refused anywhere in a frame. An oversized or
   malformed hello is refused; an update is rejected with a non-fatal `error`;
   a result fails its call with a message naming the limit. The size and
   depth walk is iterative and counts before it copies, and the schema-shape
@@ -385,6 +391,13 @@ browser connectivity in Chrome (Local Network Access prompt) and Safari
   stdio line handler run under a guard. An unexpected exception there fails
   that socket (or that line) and is logged once, and the process keeps
   serving. A frame cannot crash the process that way.
+- **Outbound bounds.** A `call` frame is at most 4 MiB; a session has at most
+  64 calls waiting; a new call fails at once if, with it, more than 32 MiB
+  would be queued on the socket (a stalled tab). Arguments holding a
+  non-finite number (`1e999`, which would go out as `null`) are refused. Each
+  fails the call (`INVALID_INPUT` for size or arguments, `RATE_LIMITED` for
+  waiting calls or queued bytes) instead of growing memory until the call
+  timeout.
 - **Session-scoped replies.** Each pairing gets a session id, and each call an
   id unique for the bridge's lifetime. A reply that names another session, an
   unknown id or an already answered call is ignored. Calls time out after
@@ -407,15 +420,18 @@ browser connectivity in Chrome (Local Network Access prompt) and Safari
   which holds its slot for up to 5 s, or keep silent sockets open (each held
   up to the 3 s first-frame timeout). Either way all 4 unpaired slots stay
   busy, so the real tab gets HTTP 429, and if it does get a slot, its code is
-  compared up to 5 s late. A web page cannot do this, because the Origin
-  check runs before a slot is allocated. A local process is already inside
-  the trust boundary for denial of service (it could also take the port
-  first). The bridge makes it visible. When connections are refused while
-  wrong codes are being tried, stderr says "pairing is being blocked by
-  repeated failed attempts from a local program" (once per 10 s window), and
-  `bridge_status` reports `pairingPressure` (`failedAttempts`, `refusedBusy`)
-  and tells the user to stop that program or restart the bridge on another
-  `--bridge-port`.
+  compared up to 5 s late. A page on a disallowed origin cannot, because
+  the Origin check runs before a slot is allocated. A page on an ALLOWED
+  origin can: it can open four sockets without sending a hello and renew them
+  every 3 s, without knowing the code. So allow only origins whose content you
+  trust; an allowed origin that also serves untrusted content can block
+  pairing (never pair). A local process is already inside the trust boundary
+  for denial of service (it could also take the port first). The bridge makes it visible. Whenever a connection is refused
+  because every unpaired slot is busy (wrong codes, or sockets held open
+  without a hello), stderr says "pairing is being blocked: every unpaired slot
+  is busy …" (once per 10 s window), and `bridge_status` reports
+  `pairingPressure` (`failedAttempts`, `refusedBusy`) and tells the user to
+  stop that program or page, or restart the bridge on another `--bridge-port`.
 
 ### Wire protocol
 

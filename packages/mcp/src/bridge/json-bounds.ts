@@ -13,6 +13,7 @@
  * it is deeper or larger than the limits in `BRIDGE_LIMITS`.
  */
 
+import { SUPPORTED_SCHEMA_TYPES } from '../validate.js';
 import { clip } from './sanitize.js';
 
 export interface JsonBounds {
@@ -41,6 +42,8 @@ export function checkJsonBounds(value: unknown, bounds: JsonBounds, label: strin
   while (stack.length > 0) {
     const [v, depth] = stack.pop()!;
     if (stats) stats.visited++;
+    // JSON.parse turns 1e999 into Infinity, which re-serializes as null: refuse it.
+    if (typeof v === 'number' && !Number.isFinite(v)) return `${label} contains a non-finite number`;
     if (typeof v !== 'object' || v === null) continue;
     if (depth >= bounds.maxDepth) return `${label} is nested deeper than ${bounds.maxDepth} levels`;
     const remaining = bounds.maxNodes - nodes;
@@ -84,8 +87,10 @@ const NUMERIC_KEYWORDS = ['minimum', 'exclusiveMinimum', 'maximum', 'minLength',
 export function checkSchemaShape(schema: unknown, path: string): string | null {
   if (!isRecord(schema)) return `${path} must be an object`;
   const { type, properties, required, items, anyOf, additionalProperties } = schema;
-  if (type !== undefined && typeof type !== 'string' && !(Array.isArray(type) && type.every((t) => typeof t === 'string'))) {
-    return `${path}.type must be a string or an array of strings`;
+  const names: unknown[] = type === undefined ? [] : Array.isArray(type) ? type : [type];
+  if (!names.every((t) => typeof t === 'string' && SUPPORTED_SCHEMA_TYPES.has(t))) {
+    // An unknown name (a typo like 'intrger') would be published but match every value.
+    return `${path}.type must be one of ${[...SUPPORTED_SCHEMA_TYPES].join(', ')}, or an array of them`;
   }
   if (properties !== undefined) {
     if (!isRecord(properties)) return `${path}.properties must be an object`;
@@ -108,9 +113,9 @@ export function checkSchemaShape(schema: unknown, path: string): string | null {
       if (err) return err;
     }
   }
+  // `validateInput` enforces only `additionalProperties: false`; a schema there would be published but not enforced.
   if (additionalProperties !== undefined && typeof additionalProperties !== 'boolean') {
-    const err = checkSchemaShape(additionalProperties, `${path}.additionalProperties`);
-    if (err) return err;
+    return `${path}.additionalProperties must be true or false; a schema there is not supported`;
   }
   if (schema.enum !== undefined && !Array.isArray(schema.enum)) return `${path}.enum must be an array`;
   for (const k of NUMERIC_KEYWORDS) {

@@ -40,10 +40,12 @@ afterEach(async () => {
 });
 
 describe('afterLoad: the eager scheduling call', () => {
-  it('does not import the queue statically (it stays a lazy chunk)', () => {
-    const source = readFileSync(new URL('./afterLoad.ts', import.meta.url), 'utf8');
-    assert.equal(/^import[^;]*afterLoadIdle/m.test(source), false, 'no static import of afterLoadIdle');
-    assert.equal(source.includes("import('./afterLoadIdle.js')"), true, 'loads it on first use');
+  it('does not import the queue statically, and the queue imports no values (its lazy chunk preloads nothing)', () => {
+    const valueImports = (file: string) => readFileSync(new URL(file, import.meta.url), 'utf8')
+      .split('\n').filter((line) => /^import\s/.test(line) && !/^import type\s/.test(line));
+    assert.equal(valueImports('./afterLoad.ts').some((line) => line.includes('afterLoadIdle')), false, 'no static value import of afterLoadIdle');
+    assert.equal(readFileSync(new URL('./afterLoad.ts', import.meta.url), 'utf8').includes("import('./afterLoadIdle.js')"), true, 'loads it on first use');
+    assert.deepEqual(valueImports('./afterLoadIdle.ts'), [], 'the queue takes the store through AfterLoadEnv');
   });
 
   it('runs the work through the queue: after the model settles and an idle period', async () => {

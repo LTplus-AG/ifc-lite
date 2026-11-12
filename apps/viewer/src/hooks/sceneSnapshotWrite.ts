@@ -19,7 +19,8 @@
 import { encodeSceneSnapshotInSlices, reorderSnapshotPieces, type SceneSnapshot } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { LoadTrace } from '@ifc-lite/load-trace';
-import { afterModelSettled, idlePeriod } from '../lib/perf/afterLoadIdle.js';
+import { afterModelSettled } from '../lib/perf/afterLoad.js';
+import { idlePeriod } from '../lib/perf/afterLoadIdle.js';
 import { useViewerStore } from '../store/index.js';
 import { putSceneSnapshot, type SceneSnapshotWrite } from '../services/cacheService.js';
 import type { SnapshotCameraFit } from '../components/viewer/sceneSnapshotOwnership.js';

@@ -34,19 +34,30 @@
  * Idle: `requestIdleCallback` with a timeout, or at once in a hidden tab
  * (including a tab hidden while waiting), where no frame is at stake.
  *
- * Viewer code schedules through afterLoad.ts, which loads this module lazily.
+ * Viewer code schedules through afterLoad.ts (`runAfterModelSettled`,
+ * `afterModelSettled`), which loads this module lazily and owns the settled rule.
  */
 
-import { useViewerStore } from '../../store/index.js';
-import { subscribeInstancedShards } from '../../store/instancedShardQueue.js';
-import { modelLoadSettled, type AfterLoadJob, type AfterLoadOptions } from './afterLoad.js';
+import type { useViewerStore } from '../../store/index.js';
+import type { AfterLoadJob, AfterLoadOptions } from './afterLoad.js';
 
-export { modelLoadSettled, type AfterLoadJob, type AfterLoadOptions };
 const ORDER: Record<AfterLoadJob, number> = { 'snapshot-write': 0, 'overlay-parse': 1, 'source-compaction': 2, 'search-index': 3 };
 const IDLE_TIMEOUT_MS = 1000;
 let holdLimitMs = 15_000;
 
 type ViewerState = ReturnType<typeof useViewerStore.getState>;
+
+/**
+ * What the queue reads, handed in by afterLoad.ts so this module imports nothing
+ * (its lazy chunk then has no dependency list to preload).
+ */
+export interface AfterLoadEnv {
+  getState(): ViewerState;
+  subscribe(listener: () => void): () => void;
+  subscribeShards(listener: () => void): () => void;
+  settled(state: ViewerState, modelId: string | null): boolean;
+}
+let env!: AfterLoadEnv;
 
 interface Job extends AfterLoadOptions {
   seq: number;
@@ -65,8 +76,8 @@ let unsubscribe: (() => void) | null = null;
 
 /** Re-check on every store change and every shard-queue change (shards are not store state). */
 function listen(): () => void {
-  const fromStore = useViewerStore.subscribe(() => pump());
-  const fromShards = subscribeInstancedShards(() => pump());
+  const fromStore = env.subscribe(() => pump());
+  const fromShards = env.subscribeShards(() => pump());
   return () => { fromStore(); fromShards(); };
 }
 
@@ -98,7 +109,7 @@ function sweep(state: ViewerState): void {
 function nextReady(state: ViewerState): Job | undefined {
   let best: Job | undefined;
   for (const job of jobs) {
-    if (!modelLoadSettled(state, job.modelId)) continue;
+    if (!env.settled(state, job.modelId)) continue;
     if (!best || ORDER[job.job] < ORDER[best.job] || (ORDER[job.job] === ORDER[best.job] && job.seq < best.seq)) best = job;
   }
   return best;
@@ -131,14 +142,14 @@ export function idlePeriod(timeoutMs = IDLE_TIMEOUT_MS): Promise<void> {
 }
 
 function pump(): void {
-  const state = useViewerStore.getState();
+  const state = env.getState();
   // Sweep on every store change, also while a job runs: a removed model's queued work goes now.
   sweep(state);
   if (running || waiting || !nextReady(state)) return;
   waiting = true;
   void idlePeriod().then(async () => {
     waiting = false;
-    const now = useViewerStore.getState();
+    const now = env.getState();
     sweep(now);
     const job = nextReady(now);
     if (!job) return pump();
@@ -162,16 +173,13 @@ function pump(): void {
 }
 
 /**
- * Run `work` after `options.modelId` has settled, in an idle period, in job order
- * (see the module comment). Returns a cancel; cancelling a job that has started
- * aborts its signal. The job's promise, if it returns one, holds the next job back.
+ * Queue `work` for after `options.modelId` has settled, in an idle period, in job
+ * order (see the module comment). `hadRecord`: whether the model had a record
+ * when the caller scheduled it. Returns a cancel; cancelling a job that has
+ * started aborts its signal. Viewer code calls `runAfterModelSettled` (afterLoad.ts).
  */
-export function runAfterModelSettled(options: AfterLoadOptions, work: (signal: AbortSignal) => unknown, onDrop?: () => void): () => void {
-  return scheduleAfterLoad(options, options.modelId !== null && useViewerStore.getState().models.has(options.modelId), work, onDrop);
-}
-
-/** `runAfterModelSettled` with whether the model had a record when the caller scheduled it (afterLoad.ts loads this module first). */
-export function scheduleAfterLoad(options: AfterLoadOptions, hadRecord: boolean, work: (signal: AbortSignal) => unknown, onDrop?: () => void): () => void {
+export function scheduleAfterLoad(with_: AfterLoadEnv, options: AfterLoadOptions, hadRecord: boolean, work: (signal: AbortSignal) => unknown, onDrop?: () => void): () => void {
+  env = with_;
   const job: Job = { ...options, seq: seq++, work, controller: new AbortController(), onDrop, hadRecord };
   jobs.push(job);
   unsubscribe ??= listen();
@@ -180,16 +188,6 @@ export function scheduleAfterLoad(options: AfterLoadOptions, hadRecord: boolean,
     jobs = jobs.filter((j) => j !== job);
     drop(job);
   };
-}
-
-/** The same, as a promise of `work`'s result; `undefined` when the job is dropped or cancelled before it runs. */
-export function afterModelSettled<T>(options: AfterLoadOptions, work: (signal: AbortSignal) => T | Promise<T>): { result: Promise<T | undefined>; cancel: () => void } {
-  let settle!: (value: T | undefined) => void;
-  const result = new Promise<T | undefined>((resolve) => { settle = resolve; });
-  const cancel = runAfterModelSettled(options, async (signal) => {
-    try { settle(await work(signal)); } catch (error) { settle(undefined); throw error; }
-  }, () => settle(undefined));
-  return { result, cancel };
 }
 
 /** Test-only: drop every job and listener; `holdLimit` shortens how long a job may hold the queue. */

@@ -16,7 +16,8 @@ import { useViewerStore } from '../../store/index.js';
 import type { FederatedModel } from '../../store/types.js';
 import { compactSource } from '../source-compaction/source-compaction.js';
 import { discardInstancedShards, drainInstancedShards, enqueueInstancedShards, instancedShardGeneration } from '../../store/instancedShardQueue.js';
-import { __resetAfterLoadIdleForTests, afterModelSettled, modelLoadSettled, runAfterModelSettled, type AfterLoadJob } from './afterLoadIdle.js';
+import { __resetAfterLoadIdleForTests } from './afterLoadIdle.js';
+import { afterModelSettled, modelLoadSettled, runAfterModelSettled, type AfterLoadJob } from './afterLoad.js';
 
 const idle: IdleRequestCallback[] = [];
 const originalIdle = window.requestIdleCallback;

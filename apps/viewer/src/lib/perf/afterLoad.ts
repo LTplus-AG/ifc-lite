@@ -10,7 +10,8 @@
  */
 
 import { useViewerStore } from '../../store/index.js';
-import { hasPendingInstancedShards } from '../../store/instancedShardQueue.js';
+import { hasPendingInstancedShards, subscribeInstancedShards } from '../../store/instancedShardQueue.js';
+import type { AfterLoadEnv } from './afterLoadIdle.js';
 
 export type AfterLoadJob = 'snapshot-write' | 'overlay-parse' | 'source-compaction' | 'search-index';
 
@@ -34,6 +35,13 @@ export function modelLoadSettled(state: ViewerState, modelId: string | null): bo
   return !LOADING.has(model.loadState);
 }
 
+const ENV: AfterLoadEnv = {
+  getState: () => useViewerStore.getState(),
+  subscribe: (listener) => useViewerStore.subscribe(listener),
+  subscribeShards: subscribeInstancedShards,
+  settled: modelLoadSettled,
+};
+
 /**
  * Run `work` after `options.modelId` has settled, in an idle period, in job order
  * (afterLoadIdle.ts). Returns a cancel: before the job starts it drops the job
@@ -45,7 +53,7 @@ export function runAfterModelSettled(options: AfterLoadOptions, work: (signal: A
   let cancel: (() => void) | null = null;
   let cancelled = false;
   import('./afterLoadIdle.js').then(({ scheduleAfterLoad }) => {
-    if (!cancelled) cancel = scheduleAfterLoad(options, hadRecord, work, onDrop);
+    if (!cancelled) cancel = scheduleAfterLoad(ENV, options, hadRecord, work, onDrop);
   }, (error: unknown) => {
     // Without the queue the work runs now, as it did before there was one.
     console.warn('[afterLoad] schedule did not load; running the job now', error);
@@ -57,4 +65,14 @@ export function runAfterModelSettled(options: AfterLoadOptions, work: (signal: A
     if (cancel) cancel();
     else onDrop?.();
   };
+}
+
+/** The same, as a promise of `work`'s result; `undefined` when the job is dropped or cancelled before it runs. */
+export function afterModelSettled<T>(options: AfterLoadOptions, work: (signal: AbortSignal) => T | Promise<T>): { result: Promise<T | undefined>; cancel: () => void } {
+  let settle!: (value: T | undefined) => void;
+  const result = new Promise<T | undefined>((resolve) => { settle = resolve; });
+  const cancel = runAfterModelSettled(options, async (signal) => {
+    try { settle(await work(signal)); } catch (error) { settle(undefined); throw error; }
+  }, () => settle(undefined));
+  return { result, cancel };
 }

@@ -20,7 +20,16 @@ export function resolveRef(
   lookup: (globalId: string) => number | undefined = createGlobalIdResolver(model),
 ): EntityRef {
   if (typeof args.express_id === 'number') {
-    return { modelId: model.id, expressId: args.express_id };
+    const expressId = args.express_id;
+    if (!Number.isSafeInteger(expressId) || expressId <= 0) {
+      throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: 'express_id must be a positive integer.' });
+    }
+    // `bim.entity` answers a made-up or deleted id with a placeholder, so
+    // existence is checked here, once, for every tool that takes an id.
+    if (!entityExists(model, expressId)) {
+      throw new ToolExecutionError({ code: ToolErrorCode.ENTITY_NOT_FOUND, message: `No entity #${expressId} in this model.` });
+    }
+    return { modelId: model.id, expressId };
   }
   if (typeof args.global_id === 'string') {
     const id = lookup(args.global_id);
@@ -34,6 +43,18 @@ export function resolveRef(
     code: ToolErrorCode.INVALID_INPUT,
     message: 'Provide either global_id or express_id.',
   });
+}
+
+/**
+ * A numeric argument as an integer in [min, max]: absent or not a finite
+ * number gives `fallback`, a fraction is truncated, and both ends are
+ * clamped (a negative limit would otherwise reach `slice` as "all but the
+ * last N", and a huge one would be unbounded).
+ */
+export function integerArg(value: unknown, range: { min: number; max: number; fallback: number }): number {
+  const n = typeof value === 'number' ? value : typeof value === 'string' && value.trim() !== '' ? Number(value) : NaN;
+  if (!Number.isFinite(n)) return range.fallback;
+  return Math.min(range.max, Math.max(range.min, Math.trunc(n)));
 }
 
 /**

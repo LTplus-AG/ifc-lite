@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { ToolErrorCode, ToolExecutionError } from '@ifc-lite/mcp/browser';
+import { entityExists } from './refs.js';
 import type { ModelTool } from './types.js';
 
 /** `bim.cost` reads: the model's cost records through its pending-edit overlay. */
@@ -44,6 +45,9 @@ export const costTools: Record<'cost_data' | 'cost_evaluate', ModelTool> = {
           code: ToolErrorCode.INVALID_INPUT,
           message: 'precision must be an integer from 1 through 10000.',
         });
+      }
+      if (!entityExists(model, expressId)) {
+        throw new ToolExecutionError({ code: ToolErrorCode.ENTITY_NOT_FOUND, message: `No entity #${expressId} in this model.` });
       }
       const options = precision === undefined ? undefined : { Precision: precision };
       const entityRef = { modelId: model.id, expressId };

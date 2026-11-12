@@ -6,7 +6,7 @@
 
 import { ToolErrorCode, ToolExecutionError } from '@ifc-lite/mcp/browser';
 import { assertToolActive } from './cancellation.js';
-import { entityExists, resolveRef } from './refs.js';
+import { resolveRef } from './refs.js';
 import type { AgentTool, ModelFreeTool, ModelTool } from './types.js';
 
 interface BsddHttpErrorLike {
@@ -119,7 +119,7 @@ const bsdd_match: ModelTool = {
     // retyped one its new class, and a deleted one is not there at all.
     const ref = resolveRef(m, args);
     const expressId = ref.expressId;
-    const entity = entityExists(m, expressId) ? m.bim.entity(ref) : null;
+    const entity = m.bim.entity(ref); // `resolveRef` has already refused an id that is not in the model.
     if (!entity) {
       throw new ToolExecutionError({ code: ToolErrorCode.ENTITY_NOT_FOUND, message: `No entity #${expressId} in this model.` });
     }

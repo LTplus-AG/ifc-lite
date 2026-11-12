@@ -11,7 +11,7 @@
 import { ToolErrorCode, ToolExecutionError, firstNonBlank } from '@ifc-lite/mcp/browser';
 import { lensMaterialNames } from '@ifc-lite/rules';
 import { createGlobalIdResolver, effectiveEntities, effectiveEntityCount, effectiveTypeCounts } from './effective.js';
-import { formatBytes, modelQuery, refStr, resolveRef } from './refs.js';
+import { formatBytes, integerArg, modelQuery, refStr, resolveRef } from './refs.js';
 import { containmentChain, spatialHierarchy } from './spatial.js';
 import type { AgentTool, ModelHandle, ReadyModel } from './types.js';
 
@@ -39,6 +39,11 @@ function describeListRow(row: ReturnType<typeof modelListRow>): string {
   const owner = 'composedInto' in row && row.composedInto ? `of '${row.composedInto}'` : null;
   return `${row.name} (${[count, status, owner].filter(Boolean).join(', ')})`;
 }
+
+/** Most entities `query_entities` returns in one page. */
+const QUERY_LIMIT_MAX = 200;
+/** Most GlobalIds `get_entities_bulk` looks up in one call. */
+const BULK_CAP = 200;
 
 export const readTools: Record<string, AgentTool> = {
   // ── Discovery ───────────────────────────────────────────────────────────
@@ -98,8 +103,8 @@ export const readTools: Record<string, AgentTool> = {
     needs: 'source',
     async run(_host, m, args) {
       const type = args.type as string | undefined;
-      const limit = Math.min(Number(args.limit ?? 50), 200);
-      const offset = Number(args.offset ?? 0);
+      const limit = integerArg(args.limit, { min: 0, max: QUERY_LIMIT_MAX, fallback: 50 });
+      const offset = integerArg(args.offset, { min: 0, max: Number.MAX_SAFE_INTEGER, fallback: 0 });
       let q = modelQuery(m);
       if (type) q = q.byType(type);
       const all = q.toArray();
@@ -186,10 +191,17 @@ export const readTools: Record<string, AgentTool> = {
   get_entities_bulk: {
     needs: 'source',
     async run(_host, m, args) {
-      const gids = (args.global_ids as string[] | undefined) ?? [];
+      if (args.global_ids !== undefined && !Array.isArray(args.global_ids)) {
+        throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: '`global_ids` must be an array of GlobalId strings.' });
+      }
+      const gids = (args.global_ids as unknown[] | undefined) ?? [];
+      // One entry per considered input position, so entries line up with the
+      // request; a repeated GlobalId resolves (to the same entity) each time.
+      const considered = gids.slice(0, BULK_CAP);
       const out: unknown[] = [];
       const lookup = createGlobalIdResolver(m);
-      for (const gid of gids.slice(0, 200)) {
+      for (const gid of considered) {
+        if (typeof gid !== 'string') { out.push(null); continue; }
         try {
           const ref = resolveRef(m, { global_id: gid }, lookup);
           out.push(m.bim.entity(ref));
@@ -198,7 +210,15 @@ export const readTools: Record<string, AgentTool> = {
           out.push(null);
         }
       }
-      return { text: `Resolved ${out.filter(Boolean).length}/${gids.length} entities.`, structured: { entities: out } };
+      const resolved = out.filter(Boolean).length;
+      if (gids.length <= BULK_CAP) {
+        return { text: `Resolved ${resolved}/${gids.length} entities.`, structured: { entities: out } };
+      }
+      // Ids past the cap were not looked up, so they are reported as skipped, never as unresolved.
+      return {
+        text: `Resolved ${resolved}/${considered.length} entities; only the first ${BULK_CAP} of ${gids.length} GlobalIds were looked up (${gids.length - BULK_CAP} skipped). Call again with the rest.`,
+        structured: { entities: out, requested: gids.length, considered: considered.length, resolved, truncated: true, cap: BULK_CAP },
+      };
     },
   },
 

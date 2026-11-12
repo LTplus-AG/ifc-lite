@@ -151,6 +151,26 @@ function retryViewer(env, mode, reportDir) {
   return record;
 }
 
+/**
+ * The E2E retry's command and environment. Only `on` reports the retry to
+ * Mergify: in `shadow` the job keeps the first attempt's verdict, so the
+ * retry stays out of Mergify's record. The Mergify reporter is left off the
+ * `--reporter` list (which replaces the config's, `withMergify`'s entry
+ * included) and MERGIFY_TOKEN is removed from the environment.
+ */
+export function e2eRetryCommand({ mode, shard, lastFailedFile, env }) {
+  const reporters = mode === 'on' ? 'list,@mergifyio/playwright,json' : 'list,json';
+  const { MERGIFY_TOKEN, ...rest } = env;
+  return {
+    args: [
+      '--signal=INT', '--kill-after=30s', E2E_RETRY_TIMEOUT,
+      'pnpm', 'test:e2e:ci', `--shard=${shard}`, `--reporter=${reporters}`,
+      '--last-failed', `--last-failed-file=${lastFailedFile}`, '--output=test-results/retry',
+    ],
+    env: mode === 'on' && MERGIFY_TOKEN !== undefined ? { ...rest, MERGIFY_TOKEN } : rest,
+  };
+}
+
 function retryE2e(env, mode, reportDir) {
   const lastRun = required(env, 'LAST_RUN');
   const shard = required(env, 'E2E_SHARD');
@@ -175,11 +195,8 @@ function retryE2e(env, mode, reportDir) {
   copyFileSync(lastRun, lastFailedFile);
   const retryJson = join(reportDir, 'e2e-retry-report.json');
   console.log(`[ci-shard-retry] rerunning ${ids.length} test(s): ${tests.map((t) => t.title).join('; ')}`);
-  const r = spawnSync('timeout', [
-    '--signal=INT', '--kill-after=30s', E2E_RETRY_TIMEOUT,
-    'pnpm', 'test:e2e:ci', `--shard=${shard}`, '--reporter=list,@mergifyio/playwright,json',
-    '--last-failed', `--last-failed-file=${lastFailedFile}`, '--output=test-results/retry',
-  ], { cwd: REPO_ROOT, stdio: 'inherit', env: { ...env, PLAYWRIGHT_JSON_OUTPUT_FILE: retryJson } });
+  const cmd = e2eRetryCommand({ mode, shard, lastFailedFile, env });
+  const r = spawnSync('timeout', cmd.args, { cwd: REPO_ROOT, stdio: 'inherit', env: { ...cmd.env, PLAYWRIGHT_JSON_OUTPUT_FILE: retryJson } });
   record.result = judgeE2eRetry({ exitCode: r.status, ids, report: readJsonOptional(retryJson, "the retry's JSON report") });
   return record;
 }

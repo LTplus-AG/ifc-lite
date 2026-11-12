@@ -31,7 +31,7 @@ import { MANIFEST_PATH, assignShards, parseManifest } from './viewer-test-shards
 const guarded = (path) => import(path).catch((err) => new Proxy({}, {
   get: (_, key) => (key === 'then' ? undefined : () => assert.fail(`${path} did not load (${err.name})`)),
 }));
-const { run } = await guarded('./ci-shard-retry.mjs');
+const { run, e2eRetryCommand } = await guarded('./ci-shard-retry.mjs');
 const {
   MAX_RETRY_FILES,
   attributeViewerFailures,
@@ -387,6 +387,10 @@ test('the E2E CLI refuses an interrupted first attempt', () => {
 
 const SWITCH = /vars\.CI_SHARD_RETRY/;
 
+// Steps besides the test, retry and guard steps that read the switch: only the
+// viewer retry's Mergify upload, which runs in `on` alone.
+const ALSO_READS_SWITCH = { 'viewer-tests': ['Mergify CI Upload (retry)'], 'viewer-e2e': [] };
+
 for (const [job, testStep, retryStep] of [['viewer-tests', 'viewer_tests', 'viewer_retry'], ['viewer-e2e', 'e2e', 'e2e_retry']]) {
   test(`${job}: only \`on\` lets the test step fail, and a guard re-fails it unless the retry step succeeded`, () => {
     const steps = WORKFLOW.jobs[job].steps;
@@ -403,6 +407,23 @@ for (const [job, testStep, retryStep] of [['viewer-tests', 'viewer_tests', 'view
     assert.match(guard.run, /exit 1/); // @source-text-assertion-ok the guard's command is the subject
     // Every other step's behaviour is independent of the switch.
     const touched = steps.filter((s) => SWITCH.test(JSON.stringify(s))).map((s) => s.id ?? s.name); // @source-text-assertion-ok enumerates steps that read the switch
-    assert.deepEqual(touched.sort(), [testStep, retryStep, guard.name].sort());
+    assert.deepEqual(touched.sort(), [testStep, retryStep, guard.name, ...ALSO_READS_SWITCH[job]].sort());
   });
 }
+
+test('#9788 review: in `shadow` no retry result reaches Mergify; in `on` both attempts do', () => {
+  const viewerUpload = WORKFLOW.jobs['viewer-tests'].steps.find((s) => s.name === 'Mergify CI Upload (retry)');
+  assert.ok(viewerUpload.if.split(' && ').includes("vars.CI_SHARD_RETRY == 'on'"), 'the viewer retry upload runs in `on` only'); // @source-text-assertion-ok checks the parsed step condition's conjuncts
+  const e2eRetry = WORKFLOW.jobs['viewer-e2e'].steps.find((s) => s.id === 'e2e_retry');
+  // A GitHub Actions expression, compared as written.
+  // eslint-disable-next-line no-template-curly-in-string
+  assert.equal(e2eRetry.env.MERGIFY_TOKEN, "${{ vars.CI_SHARD_RETRY == 'on' && secrets.MERGIFY_TOKEN || '' }}");
+  const env = { MERGIFY_TOKEN: 'secret', PATH: '/bin' };
+  const shadow = e2eRetryCommand({ mode: 'shadow', shard: '3/8', lastFailedFile: 'f', env });
+  assert.deepEqual(shadow.args.filter((a) => a.startsWith('--reporter=')), ['--reporter=list,json']); // @source-text-assertion-ok filters the derived argv, not a source file
+  assert.equal(shadow.env.MERGIFY_TOKEN, undefined);
+  const on = e2eRetryCommand({ mode: 'on', shard: '3/8', lastFailedFile: 'f', env });
+  assert.deepEqual(on.args.filter((a) => a.startsWith('--reporter=')), ['--reporter=list,@mergifyio/playwright,json']); // @source-text-assertion-ok filters the derived argv, not a source file
+  assert.equal(on.env.MERGIFY_TOKEN, 'secret');
+  assert.deepEqual(on.args.filter((a) => a === '--shard=3/8' || a === '--last-failed-file=f'), ['--shard=3/8', '--last-failed-file=f']);
+});

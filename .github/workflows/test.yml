@@ -1409,7 +1409,9 @@ jobs:
       # test that failed and passed on one commit as flaky, so it must see both
       # attempts. Without this a retry that passed is recorded as a failure.
       - name: Mergify CI Upload (retry)
-        if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && (steps.viewer_retry.outcome == 'success' || steps.viewer_retry.outcome == 'failure') && hashFiles('apps/viewer/mergify-junit-retry.xml') != ''
+        # `on` only: in `shadow` the job keeps the first attempt's verdict, so
+        # the retry stays out of Mergify's record.
+        if: (success() || failure()) && vars.CI_SHARD_RETRY == 'on' && env.HAS_MERGIFY_TOKEN == 'true' && (steps.viewer_retry.outcome == 'success' || steps.viewer_retry.outcome == 'failure') && hashFiles('apps/viewer/mergify-junit-retry.xml') != ''
         continue-on-error: true
         uses: ./.github/actions/mergify-upload
         with:
@@ -2287,7 +2289,8 @@ jobs:
         id: e2e_retry
         if: (success() || failure()) && steps.e2e.outcome == 'failure' && (vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on')
         env:
-          MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN }}
+          # Only `on` reports the retry to Mergify (scripts/ci-shard-retry.mjs).
+          MERGIFY_TOKEN: ${{ vars.CI_SHARD_RETRY == 'on' && secrets.MERGIFY_TOKEN || '' }}
           MERGIFY_TEST_JOB_NAME: viewer-e2e (shard ${{ matrix.shard }})
           E2E_GPU_STRICT: '0'
           CI_SHARD_RETRY: ${{ vars.CI_SHARD_RETRY }}

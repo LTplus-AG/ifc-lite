@@ -104,6 +104,9 @@ function drawable(load: StructuralLoadInfo): boolean {
   return !!(vector(load, FORCE) || vector(load, MOMENT) || vector(load, ['Displacement']) || vector(load, ['RotationalDisplacementR']) || isTemperature(load));
 }
 
+/** A curve connection's Axis: `Axis` in IFC4, `AxisDirection` in IFC4X3. */
+const connectionAxis = (c: StructuralConnectionInfo) => c.Axis ?? c.AxisDirection;
+
 const sourceOf = (e: { expressId: number; globalId: string; type: string }): StructuralGlyphSource =>
   ({ expressId: e.expressId, globalId: e.globalId, type: e.type });
 
@@ -111,7 +114,7 @@ const sourceOf = (e: { expressId: number; globalId: string; type: string }): Str
 interface ItemRef {
   expressId: number;
   type: string;
-  /** A curve member's `Axis` direction (model-local expressId). */
+  /** A curve member's or curve connection's `Axis` direction (model-local expressId). */
   Axis?: number;
   connection?: StructuralConnectionInfo;
   analysisModelGlobalIds: string[];
@@ -137,6 +140,8 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
   };
 
   /** A point connection's condition frame, in world axes. */
+  /** An item's `Axis` direction in world axes, or null when it has none. */
+  const edgeAxis = (id: number, ref: number | undefined) => (ref === undefined ? null : reader.productDirection(id, ref));
   const conditionFrame = (connection: StructuralConnectionInfo): Frame | null => {
     const product = reader.productFrame(connection.expressId);
     const ccs = connection.ConditionCoordinateSystem === undefined ? IDENTITY : reader.axisPlacement(connection.ConditionCoordinateSystem);
@@ -149,25 +154,21 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
     const shape = itemShape(connection.expressId, connection.type);
     const frame = conditionFrame(connection);
     if (!shape || !frame) continue;
-    // A curve connection's condition frame has x along the edge and z towards
-    // its Axis (IFC4 `Axis`, IFC4X3 `AxisDirection`).
-    const axisRef = connection.Axis ?? connection.AxisDirection;
-    const axis = shape.kind === 'edge' && axisRef !== undefined ? reader.productDirection(connection.expressId, axisRef) : null;
-    const direction = normalize(axis ? shapeFrame(shape, axis)?.z ?? frame.z : frame.z) ?? [0, 0, 1];
+    // A curve connection's condition frame has x along the edge and z towards its Axis.
+    const axis = shape.kind === 'edge' ? edgeAxis(connection.expressId, connectionAxis(connection)) : null;
+    const direction = normalize((axis && shapeFrame(shape, axis)?.z) || frame.z) ?? [0, 0, 1];
     for (const position of shapeStations(shape)) glyphs.push({ kind: 'support', support, position, direction, source: sourceOf(connection) });
   }
 
   const itemsByGlobalId = new Map<string, ItemRef>();
   for (const m of extraction.members) itemsByGlobalId.set(m.globalId, { expressId: m.expressId, type: m.type, Axis: m.Axis, analysisModelGlobalIds: m.analysisModelGlobalIds });
-  for (const c of extraction.connections) itemsByGlobalId.set(c.globalId, { expressId: c.expressId, type: c.type, connection: c, analysisModelGlobalIds: c.analysisModelGlobalIds });
+  for (const c of extraction.connections) itemsByGlobalId.set(c.globalId, { expressId: c.expressId, type: c.type, Axis: connectionAxis(c), connection: c, analysisModelGlobalIds: c.analysisModelGlobalIds });
   // GLOBAL_COORDS is the analysis model's coordinate system: its
   // SharedPlacement (IFC4 and later), else IFC world.
   const modelFrames = new Map(extraction.analysisModels.map((m) => [m.globalId, reader.sharedPlacementFrame(m.expressId) ?? IDENTITY]));
   const onlyModelFrame = modelFrames.size === 1 ? [...modelFrames.values()][0] : IDENTITY;
-  const globalFrame = (activity: StructuralActivityInfo, item: ItemRef | undefined): Frame => {
-    const id = activity.groupGlobalIds.find((g) => modelFrames.has(g)) ?? item?.analysisModelGlobalIds.find((g) => modelFrames.has(g));
-    return id ? modelFrames.get(id)! : onlyModelFrame;
-  };
+  const globalFrame = (activity: StructuralActivityInfo, item: ItemRef | undefined): Frame =>
+    [...activity.groupGlobalIds, ...(item?.analysisModelGlobalIds ?? [])].map((g) => modelFrames.get(g)).find((f) => f !== undefined) ?? onlyModelFrame;
   const loadGroups = new Set(extraction.loadGroups.map((g) => g.globalId));
   const pending: Pending[] = [];
 
@@ -182,8 +183,8 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
     const shape = reader.shape(id);
     if (shape?.kind === expected) return shape;
     if (shape || expected !== 'vertex' || onItem?.kind !== 'edge') return null;
-    const origin = reader.pointShape(id);
-    return origin?.kind === 'vertex' && onSegment(origin.point, onItem.start, onItem.end) ? origin : null;
+    const origin = reader.placementOrigin(id);
+    return origin && onSegment(origin, onItem.start, onItem.end) ? { kind: 'vertex', point: origin } : null;
   };
 
   /**
@@ -196,8 +197,7 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
       if (own || !item) return reader.productFrame(activity.expressId);
       return item.connection ? conditionFrame(item.connection) : reader.productFrame(item.expressId);
     }
-    const axis = item && item.Axis !== undefined ? reader.productDirection(item.expressId, item.Axis) : null;
-    return shapeFrame(shape, axis);
+    return shapeFrame(shape, item ? edgeAxis(item.expressId, item.Axis) : null);
   };
 
   for (const activity of extraction.activities) {
@@ -207,10 +207,9 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
     const item = activity.appliesToGlobalId ? itemsByGlobalId.get(activity.appliesToGlobalId) : undefined;
     const onItem = item ? itemShape(item.expressId, item.type) : null;
     const ownShape = ownActivityShape(activity.expressId, expected, onItem);
-    const own = ownShape !== null;
     const shape = ownShape ?? onItem;
     if (!shape || shape.kind !== expected) continue;
-    const frame = activity.globalOrLocal === 'LOCAL_COORDS' ? localFrame(activity, item, own, shape) : globalFrame(activity, item);
+    const frame = activity.globalOrLocal === 'LOCAL_COORDS' ? localFrame(activity, item, ownShape !== null, shape) : globalFrame(activity, item);
     if (!frame) continue;
 
     const group = activity.groupGlobalIds.find((id) => loadGroups.has(id)) ?? '';

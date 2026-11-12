@@ -32,7 +32,7 @@ function hasGlyphTypes(store: IfcDataStore | null | undefined): boolean {
   if (!store) return false;
   if (storesWithGlyphTypes.has(store)) return true;
   // @raw-entity-enumeration-ok presence test over source type keys; the overlay reads the effective records
-  for (const key of store.entityIndex.byType.keys()) {
+  for (const key of store.entityIndex?.byType?.keys() ?? []) {
     if (GLYPH_TYPE.test(key)) {
       storesWithGlyphTypes.add(store);
       return true;

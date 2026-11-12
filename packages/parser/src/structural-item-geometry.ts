@@ -234,10 +234,15 @@ export class ItemGeometryReader {
   pointShape(productId: number): ItemShape | null {
     const shape = this.shape(productId);
     if (shape) return shape;
-    const product = this.entity(productId);
-    if (asRef(product?.attributes[OBJECT_PLACEMENT]) === undefined) return null;
+    const origin = this.placementOrigin(productId);
+    return origin && { kind: 'vertex', point: origin };
+  }
+
+  /** The origin of a product's own `ObjectPlacement` in world metres; null when it has none. */
+  placementOrigin(productId: number): Vec3 | null {
+    if (asRef(this.entity(productId)?.attributes[OBJECT_PLACEMENT]) === undefined) return null;
     const frame = this.productFrame(productId);
-    return frame && { kind: 'vertex', point: scale(frame.origin, this.unitScale) };
+    return frame && scale(frame.origin, this.unitScale);
   }
 
   private vertex(id: number | undefined): Vec3 | null {

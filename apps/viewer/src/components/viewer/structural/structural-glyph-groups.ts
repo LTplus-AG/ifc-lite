@@ -16,10 +16,9 @@
 
 import type { IfcDataStore, StructuralExtraction } from '@ifc-lite/parser';
 import { structuralGlyphs, type StructuralGlyph } from '@ifc-lite/parser/structural-glyphs';
-import type { CoordinateInfo } from '@ifc-lite/geometry';
+import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import type { ViewerState } from '@/store';
 import type { FederatedModel } from '@/store/types';
-import type { GeometryResult } from '@ifc-lite/geometry';
 import { LEGACY_MODEL_ID, LEGACY_MUTATION_MODEL_ID } from '@/sdk/adapters/model-compat';
 import type { TranslationKey } from '@/i18n';
 import { directrixDisplayPoint, type FederationPointMap } from '@/lib/analytic/directrix-frame';
@@ -111,29 +110,37 @@ function groupsOf(modelId: string, data: StructuralExtraction, glyphs: ViewGlyph
   });
 }
 
+/** One model's inputs: its store, its geometry (for the frame) and its edits. */
+interface ModelEntry {
+  modelId: string;
+  store: IfcDataStore;
+  geometry: GeometryResult | null;
+  model?: FederatedModel;
+  view: Parameters<typeof effectiveStructuralData>[1];
+}
+
 /** Every visible model's glyph groups. A model whose data or frame fails is skipped with a warning. */
 export async function structuralGlyphGroups(state: ViewerState, t: Translate): Promise<SourceGroup[]> {
+  const entries: ModelEntry[] = [...state.models].flatMap(([modelId, model]) => (model.visible && model.ifcDataStore
+    ? [{ modelId, store: model.ifcDataStore, geometry: model.geometryResult, model, view: state.mutationViews.get(modelId) }]
+    : []));
+  if (state.models.size === 0 && state.ifcDataStore) {
+    const view = state.mutationViews.get(LEGACY_MUTATION_MODEL_ID) ?? state.mutationViews.get(LEGACY_MODEL_ID);
+    entries.push({ modelId: 'legacy', store: state.ifcDataStore, geometry: state.geometryResult, view });
+  }
   const out: SourceGroup[] = [];
-  const legacy = state.models.size === 0 && state.ifcDataStore
-    ? [['legacy', { store: state.ifcDataStore, geometry: state.geometryResult, model: undefined }] as const]
-    : [];
-  const models = [...state.models].flatMap(([id, model]) =>
-    model.visible && model.ifcDataStore ? [[id, { store: model.ifcDataStore, geometry: model.geometryResult, model }] as const] : []);
-  for (const [modelId, { store, geometry, model }] of [...models, ...legacy]) {
+  for (const entry of entries) {
     // One model's bad data or frame skips that model, not the others.
     try {
-      out.push(...await modelGroups(state, modelId, store, geometry, model, t));
+      out.push(...await modelGroups(state, entry, t));
     } catch (error) {
-      console.warn(`[structural-glyphs] ${modelId}: glyphs not drawn`, error);
+      console.warn(`[structural-glyphs] ${entry.modelId}: glyphs not drawn`, error);
     }
   }
   return out;
 }
 
-async function modelGroups(
-  state: ViewerState, modelId: string, store: IfcDataStore, geometry: GeometryResult | null, model: FederatedModel | undefined, t: Translate,
-): Promise<SourceGroup[]> {
-  const view = model ? state.mutationViews.get(modelId) : state.mutationViews.get(LEGACY_MUTATION_MODEL_ID) ?? state.mutationViews.get(LEGACY_MODEL_ID);
+async function modelGroups(state: ViewerState, { modelId, store, geometry, model, view }: ModelEntry, t: Translate): Promise<SourceGroup[]> {
   const data = effectiveStructuralData(store, view);
   if (!data.hasStructural || !geometry) return [];
   const map: FederationPointMap | undefined = model ? await modelFrameMap(model, state) : undefined;

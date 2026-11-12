@@ -281,7 +281,7 @@ browser connectivity in Chrome (Local Network Access prompt) and Safari
 | Flag | Meaning |
 |------|---------|
 | `--bridge-port <n>` | Port on 127.0.0.1. Default `21517`; `0` picks a free one. The pairing link carries it. |
-| `--bridge-viewer-url <url>` | Base of the pairing link. Default `https://ifclite.com`. Its origin may connect. |
+| `--bridge-viewer-url <url>` | Base of the pairing link. Default `https://ifclite.com`. Its origin REPLACES the default in the allowlist; add `--allow-origin https://ifclite.com` to keep both. |
 | `--allow-origin <origin>` | Another browser origin that may connect (repeatable), e.g. a dev server. |
 | `--read-only` | A ceiling: tools the tab labels as mutating stay hidden and refused even if the tab allows changes. |
 | `--insecure` | Accept a plain-`http` origin on a non-loopback host (refused otherwise); prints a warning. |
@@ -289,6 +289,12 @@ browser connectivity in Chrome (Local Network Access prompt) and Safari
 ### Security model
 
 - **Loopback only.** The server binds `127.0.0.1`, never another interface.
+- **Allowlist.** Exactly the `--bridge-viewer-url` origin (default
+  `https://ifclite.com`) plus each `--allow-origin`. A configured viewer URL
+  replaces the default: with `--bridge-viewer-url http://localhost:5173`,
+  `https://ifclite.com` is refused unless also passed as `--allow-origin`.
+  The effective list is printed once on stderr at startup and returned by
+  `bridge_status` (`allowedOrigins`).
 - **Upgrade guards.** Before the WebSocket opens, the request is refused (HTTP
   403) unless its `Origin` is on the allowlist and its `Host` is `127.0.0.1`,
   `localhost` or `[::1]` on the bridge's port. The Host check defeats DNS

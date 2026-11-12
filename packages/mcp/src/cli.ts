@@ -65,7 +65,9 @@ function printHelp(): void {
                             link printed below or the bridge_status tool.
     --bridge-port <n>       Bridge port (default ${DEFAULT_BRIDGE_PORT}; 0 = pick a free one).
     --bridge-viewer-url <u> Base of the pairing link (default
-                            ${DEFAULT_BRIDGE_VIEWER_URL}); its origin may connect.
+                            ${DEFAULT_BRIDGE_VIEWER_URL}). Its origin replaces the
+                            default in the allowed origins; add
+                            --allow-origin ${DEFAULT_BRIDGE_VIEWER_URL} to keep it.
     --version, -v           Print version.
     --help, -h              This message.
 
@@ -282,7 +284,7 @@ async function runBridge(opts: CliOptions): Promise<void> {
   process.once('SIGTERM', () => stop('SIGTERM', 143));
   const code = bridge.pairingCode();
   log(`ready on stdio; listening on ws://127.0.0.1:${bridge.port} (read-only=${opts.readOnly})`);
-  log(`allowed origins: ${bridge.allowedOrigins.join(', ')}`);
+  log(`allowed origins (exactly these): ${bridge.allowedOrigins.join(', ')}`);
   log(`to connect a viewer tab open ${bridge.pairingUrl(code)}`);
   log(`or enter the one-time code ${code}. The agent can also call bridge_status for it.`);
 }

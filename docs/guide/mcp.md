@@ -73,7 +73,7 @@ By default the server binds `127.0.0.1`. Binding a non-loopback host requires ei
 | `--open` | Auto-open the viewer **and** open its URL in the browser |
 | `--bridge` | Forward tools to a paired ifc-lite browser tab instead of loading files (see [Bridge to a browser tab](#bridge-to-a-browser-tab)) |
 | `--bridge-port <N>` | Bridge WebSocket port on 127.0.0.1 (default 21517; 0 = auto) |
-| `--bridge-viewer-url <url>` | Base of the pairing link (default `https://ifclite.com`); its origin may connect |
+| `--bridge-viewer-url <url>` | Base of the pairing link (default `https://ifclite.com`). Its origin replaces the default in the allowlist |
 | `--allow-origin <origin>` | HTTP: let a browser origin read responses. Bridge: an extra origin that may connect (repeatable) |
 
 ## Scopes and permissions
@@ -404,7 +404,7 @@ ifc-lite-mcp --bridge --read-only  # tools the tab labels as mutating stay off w
 
 - **Pairing.** The bridge mints a one-time code. The `bridge_status` tool, always listed, returns it with a link such as `https://ifclite.com/#mcp-bridge=1&port=21517&code=...`; the port and code sit in the URL fragment, which the browser never sends to a server. The same link is printed on stderr. The tab must send it within 10 s of connecting. A code works once. Wrong codes never retire it, but each is answered after a delay that doubles per recent failure (250 ms up to 5 s), so guessing is slow and cannot break the user's link.
 - **One tab.** A new pairing replaces the paired tab, which is disconnected. While a tab is paired no code is live; `bridge_status` with `pair_new_tab: true` issues one.
-- **Guards.** The WebSocket upgrade is refused unless the `Origin` is allowlisted (`https://ifclite.com`, the `--bridge-viewer-url` origin, `--allow-origin`) and the `Host` is loopback on the bridge port. Plain `http:` origins are accepted only on loopback hosts, unless `--insecure` is passed (with a warning). The pairing code is the authentication; the origin check only keeps other web pages out.
+- **Guards.** The WebSocket upgrade is refused unless the `Origin` is allowlisted: the `--bridge-viewer-url` origin (default `https://ifclite.com`; a configured URL replaces the default, so add `--allow-origin https://ifclite.com` to keep it) plus each `--allow-origin` and the `Host` is loopback on the bridge port. Plain `http:` origins are accepted only on loopback hosts, unless `--insecure` is passed (with a warning). The pairing code is the authentication; the origin check only keeps other web pages out.
 - **Permissions.** The tab labels each tool `readOnly` or not, and says whether the user allowed changes. Read-only is the default. While read-only, tools the tab labels mutating are neither listed nor forwarded. The bridge cannot see what a tool does, so the labels are the tab's claim: the tab is the authority and must refuse model-changing calls itself while read-only. There is no tool for writing back to a cloud source.
 - **Tab-supplied data.** Tool names, descriptions and results come from the tab and from model data; the bridge tells the agent they are data, not instructions. Results carry text and structured content only. Descriptors, schemas and results are bounded in size and depth (see `BRIDGE_LIMITS`).
 - **No tab.** Only `bridge_status` is listed, and any other call fails at once with `VIEWER_NOT_CONNECTED`. A tab that closes fails its pending calls the same way.

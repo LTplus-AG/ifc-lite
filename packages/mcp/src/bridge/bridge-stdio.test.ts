@@ -139,6 +139,8 @@ describe.skipIf(!built)('ifc-lite-mcp --bridge binary', () => {
       // Every stdout line parsed as JSON in `feed`; check each is JSON-RPC 2.0.
       for (const line of client.raw) expect(JSON.parse(line)).toMatchObject({ jsonrpc: '2.0' });
       expect(stderr).toContain('paired with fake-tab');
+      // The effective allowlist is printed once at startup.
+      expect(stderr.match(/allowed origins \(exactly these\): https:\/\/ifclite\.com\n/g)).toHaveLength(1);
     } finally {
       child.stdin.end();
     }

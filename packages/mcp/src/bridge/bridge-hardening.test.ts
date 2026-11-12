@@ -158,6 +158,35 @@ describe('item 4: plain-http origins only on loopback hosts', () => {
   });
 });
 
+describe('allowlist contract (#9905 review thread): a configured viewer URL replaces the default', () => {
+  it('holds exactly the default origin, or exactly the configured one, plus each --allow-origin', () => {
+    expect(bridgeOrigins('https://ifclite.com')).toEqual(['https://ifclite.com']);
+    expect(bridgeOrigins('http://localhost:5173/app')).toEqual(['http://localhost:5173']);
+    expect(bridgeOrigins('http://localhost:5173', ['https://ifclite.com', 'https://x.example.test'])).toEqual([
+      'http://localhost:5173', 'https://ifclite.com', 'https://x.example.test',
+    ]);
+  });
+
+  it('refuses https://ifclite.com when another viewer URL is configured, unless it is passed with --allow-origin', async () => {
+    const replaced = await startBridgeServer({ version: '0', port: 0, readOnly: false, viewerUrl: 'http://localhost:5173' });
+    running.push(replaced);
+    expect(replaced.bridge.allowedOrigins).toEqual(['http://localhost:5173']);
+    expect(await openSocket({ port: replaced.bridge.port, origin: 'https://ifclite.com' })).toEqual({ status: 403 });
+
+    const kept = await startBridgeServer({ version: '0', port: 0, readOnly: false, viewerUrl: 'http://localhost:5173', extraOrigins: ['https://ifclite.com'] });
+    running.push(kept);
+    const ok = await openSocket({ port: kept.bridge.port, origin: 'https://ifclite.com' });
+    expect('tab' in ok).toBe(true);
+    if ('tab' in ok) tabs.push(ok.tab);
+  });
+
+  it('allows only https://ifclite.com by default', async () => {
+    const agent = await start();
+    expect(agent.bridge.allowedOrigins).toEqual(['https://ifclite.com']);
+    expect(await openSocket({ port: agent.bridge.port, origin: 'http://localhost:5173' })).toEqual({ status: 403 });
+  });
+});
+
 describe('item 5: noisy peers cannot flood the log', () => {
   it('logs the first refused upgrade and then one summary per window', async () => {
     const lines: string[] = [];

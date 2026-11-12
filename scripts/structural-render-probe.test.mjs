@@ -104,9 +104,9 @@ test('#9937 review: advanced faces, degenerate triangles and lost geometry error
 #8=IFCADVANCEDFACE((#5),#7,.T.);#9=IFCTOPOLOGYREPRESENTATION($,'Reference','Face',(#8));#10=IFCPRODUCTDEFINITIONSHAPE($,$,(#9));
 #11=IFCSTRUCTURALSURFACEMEMBER('s',$,$,$,$,$,#10,.SHELL.,0.2);`);
   assert.deepEqual(topologyPoints(face, 11), [[0, 0, 0], [1, 0, 0], [0, 1, 0]]);
-  // A zero-area triangle (two equal corners) measures NaN for a point beside its
-  // long side; the real triangle through the point decides. Render frame is Y up,
-  // so IFC (0, 0, 0.5) is render (0, 0.5, 0).
+  // A zero-area triangle (two equal corners) measures 0/0 = NaN for a point on
+  // its long side; the real triangle through the point must decide. The render
+  // frame is Y up, so IFC (0, 0, 0.5) is render (0, 0.5, 0).
   const mesh = {
     positions: new Float32Array([0, 0, 0, 0, 0, 0, 0, 1, 0, -1, 0.5, -1, 1, 0.5, -1, 0, 0.5, 1]),
     indices: new Uint32Array([0, 1, 2, 3, 4, 5]),

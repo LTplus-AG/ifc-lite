@@ -51,8 +51,8 @@ export function varyingParts(shape: ItemShape, loads: readonly StructuralLoadInf
     const at = lerp(shape.start, shape.end, t);
     // At a value's own station, that value exactly (t * steps may miss the integer by an ulp).
     const k = Math.round(t * steps);
-    if (Math.abs(t * steps - k) < 1e-9) return { load: loads[k], stations: [at], at };
-    const i = Math.min(steps - 1, Math.floor(t * steps));
-    return { load: mix(loads[i], loads[i + 1], t * steps - i), stations: [at], at };
+    const exact = Math.abs(t * steps - k) < 1e-9;
+    const i = exact ? Math.min(steps - 1, k) : Math.min(steps - 1, Math.floor(t * steps));
+    return { load: mix(loads[i], loads[i + 1], exact ? k - i : t * steps - i), stations: [at], at };
   });
 }

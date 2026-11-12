@@ -78,7 +78,7 @@ export default {
       }
       if (missed.length) problems.unshift(`${missed.length} of ${checked} member(s) not drawn at the file's coordinates, e.g. ${missed[0]}`);
       const result = checked ? verdict(checked, problems, { anyHeld: missed.length < checked })
-        : { status: 'fail', reason: [`no corpus record of ${row.entity} was meshed`, ...problems].join(': ') };
+        : { status: 'fail', reason: `no corpus record of ${row.entity} was meshed${problems.length ? `: ${problems.join('; ')}` : ''}` };
       out.set(row.id, { ...result, evidence: carriers.map((f) => f.path) });
     }
     return out;

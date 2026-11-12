@@ -207,6 +207,7 @@ export function extractStructuralOnDemand(
   }
 
   const boundaryCondition = (id: number) => extractBoundaryCondition(extractor, store, id, viewResource);
+  const loadAt = (id: number | undefined) => (id === undefined ? undefined : extractStructuralLoad(extractor, store, id, viewResource));
   const relationContext: StructuralRelationContext = { schema: store.schemaVersion, readResource: readResolved, typeOf, isDeleted, boundaryCondition };
   const connectionIds = new Set(connectionRaw.map((e) => e.expressId));
   const itemIds = new Set([...memberRaw.map((e) => e.expressId), ...connectionIds]);
@@ -332,11 +333,10 @@ export function extractStructuralOnDemand(
       CausedBy: asRef(readAttr(e.type, e.attrs, 'CausedBy')),
       VaryingAppliedLoadLocation: asRef(readAttr(e.type, e.attrs, 'VaryingAppliedLoadLocation')),
       SubsequentAppliedLoads: Array.isArray(subsequentLoads) ? asRefList(subsequentLoads) : undefined,
-      subsequentLoads: Array.isArray(subsequentLoads) ? subsequentLoads.map((v) => ((id) => (id === undefined ? undefined : extractStructuralLoad(extractor, store, id, viewResource)))(asRef(v))) : undefined,
+      subsequentLoads: Array.isArray(subsequentLoads) ? subsequentLoads.map((v) => loadAt(asRef(v))) : undefined,
       globalOrLocal: asEnum(readAttr(e.type, e.attrs, 'GlobalOrLocal')),
       destabilizingLoad: asBoolean(readAttr(e.type, e.attrs, 'DestabilizingLoad')),
-      appliedLoad:
-        loadId === undefined ? undefined : extractStructuralLoad(extractor, store, loadId, viewResource),
+      appliedLoad: loadAt(loadId),
       appliesToGlobalId: itemOfActivity.get(e.expressId),
       groupGlobalIds: groupsOfObject.get(e.expressId) ?? [],
     };

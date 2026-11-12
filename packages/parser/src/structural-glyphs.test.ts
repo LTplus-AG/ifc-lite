@@ -900,4 +900,3 @@ ENDSEC;END-ISO-10303-21;`;
     expect(bySource(glyphs, 21)).toEqual([]);
   });
 });
-

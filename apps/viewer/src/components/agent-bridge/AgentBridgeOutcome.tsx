@@ -10,26 +10,9 @@
 
 import { AlertCircle } from 'lucide-react';
 import { DEFAULT_BRIDGE_PORT, DEFAULT_BRIDGE_VIEWER_URL } from '@ifc-lite/mcp/bridge-protocol';
-import { useTranslation, type TranslationKey } from '@/i18n';
-import type { AgentBridgeDisconnectReason, AgentBridgeErrorCode, AgentBridgeStatus } from '@/lib/agent-bridge/state';
-
-const ERROR_KEYS: Record<AgentBridgeErrorCode, TranslationKey> = {
-  unreachable: 'agentBridge.failure.unreachable',
-  'permission-denied': 'agentBridge.failure.permissionDenied',
-  'pairing-failed': 'agentBridge.failure.pairingFailed',
-  'protocol-mismatch': 'agentBridge.failure.protocolMismatch',
-  'handshake-timeout': 'agentBridge.failure.handshakeTimeout',
-  'invalid-message': 'agentBridge.failure.invalidMessage',
-  busy: 'agentBridge.failure.busy',
-  'invalid-link': 'agentBridge.failure.invalidLink',
-};
-
-const ENDED_KEYS: Record<AgentBridgeDisconnectReason, TranslationKey> = {
-  replaced: 'agentBridge.ended.replaced',
-  'bridge-shutdown': 'agentBridge.ended.bridgeShutdown',
-  'connection-lost': 'agentBridge.ended.connectionLost',
-  'page-hidden': 'agentBridge.ended.pageHidden',
-};
+import { useTranslation } from '@/i18n';
+import type { AgentBridgeStatus } from '@/lib/agent-bridge/state';
+import { ENDED_KEYS, ERROR_KEYS } from '@/lib/agent-bridge/outcome-keys';
 
 function pageOrigin(): string {
   return typeof location === 'undefined' ? DEFAULT_BRIDGE_VIEWER_URL : location.origin;

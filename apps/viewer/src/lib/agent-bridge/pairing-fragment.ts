@@ -33,7 +33,7 @@ interface HistoryLike { state: unknown; replaceState(data: unknown, unused: stri
  * history entry (path and query stay as they are) and keep its text in memory
  * for the connect dialog. Returns the fragment, or null for any other URL.
  */
-export function takePairingFragment(loc: LocationLike, history: HistoryLike): string | null {
+export function takePairingFragment(loc: LocationLike, history: HistoryLike, opts: { framed?: boolean } = {}): string | null {
   const hash = loc.hash;
   if (hash.length < 2 || !new URLSearchParams(hash.slice(1)).has(PAIRING_KEY)) return null;
   try {
@@ -44,6 +44,8 @@ export function takePairingFragment(loc: LocationLike, history: HistoryLike): st
     // stayed visible.
     console.warn('[agent-bridge] could not remove the pairing code from the address bar', err);
   }
+  // A framed viewer never pairs (see `isFramed`): the code is removed and dropped.
+  if (opts.framed) return null;
   pending = hash;
   for (const listener of [...listeners]) listener();
   return hash;
@@ -60,4 +62,33 @@ export function consumePendingPairingFragment(): string | null {
 export function onPairingFragment(listener: () => void): () => void {
   listeners.add(listener);
   return () => { listeners.delete(listener); };
+}
+
+/**
+ * True when this document is inside a frame. A framing page could drive or
+ * overlay the confirm dialog, so a framed viewer ignores pairing links and
+ * disables every way to connect. Comparing `top` with `self` is allowed
+ * across origins.
+ */
+export function isFramed(win: { self: unknown; top: unknown } | undefined = typeof window === 'undefined' ? undefined : window): boolean {
+  if (!win) return false;
+  try {
+    return win.self !== win.top;
+  } catch (err) {
+    console.debug('[agent-bridge] could not compare window.top; treating the page as framed', err);
+    return true;
+  }
+}
+
+/** Strip now, and on every later `popstate` / `hashchange` before other listeners run. Returns an uninstaller. */
+export function installPairingFragmentStrip(win: Window | undefined = typeof window === 'undefined' ? undefined : window): () => void {
+  if (!win) return () => {};
+  const take = () => { takePairingFragment(win.location, win.history, { framed: isFramed(win) }); };
+  take();
+  win.addEventListener('popstate', take, { capture: true });
+  win.addEventListener('hashchange', take, { capture: true });
+  return () => {
+    win.removeEventListener('popstate', take, { capture: true });
+    win.removeEventListener('hashchange', take, { capture: true });
+  };
 }

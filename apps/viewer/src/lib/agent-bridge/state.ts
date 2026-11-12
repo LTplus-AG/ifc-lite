@@ -24,7 +24,9 @@ export type AgentBridgeDisconnectReason =
   /** The socket dropped after pairing: the bridge crashed, the machine slept, the network stack reset. */
   | 'connection-lost'
   /** The tab is being unloaded (`pagehide`). */
-  | 'page-hidden';
+  | 'page-hidden'
+  /** The program on the port sent more calls than the viewer accepts and was disconnected. */
+  | 'flooded';
 
 /** Why a connection attempt failed before or during pairing. */
 export type AgentBridgeErrorCode =
@@ -43,7 +45,9 @@ export type AgentBridgeErrorCode =
   /** Too many unpaired connections are open on the bridge (close 4429). */
   | 'busy'
   /** The pairing link or code could not be read. */
-  | 'invalid-link';
+  | 'invalid-link'
+  /** The viewer is inside a frame, where it never connects. */
+  | 'framed';
 
 export type AgentBridgeStatus =
   | { kind: 'idle' }
@@ -111,6 +115,34 @@ export function closeAgentBridgeDialog(): void {
 
 export function useAgentBridgeState(): AgentBridgeState {
   return useSyncExternalStore(subscribeAgentBridge, getAgentBridgeState, getAgentBridgeState);
+}
+
+/**
+ * Disconnect and dismiss, registered by the session module when it loads (it
+ * loads before any connection exists). Every surface that shows a live
+ * connection calls these synchronously, without importing the session.
+ */
+export interface AgentBridgeControls {
+  disconnect(): void;
+  dismiss(): void;
+}
+
+let controls: AgentBridgeControls | null = null;
+
+export function registerAgentBridgeControls(next: AgentBridgeControls): void {
+  controls = next;
+}
+
+/** Close the live connection, if there is one. */
+export function disconnectLiveAgentBridge(): void {
+  if (controls) controls.disconnect();
+  else updateAgentBridgeState({ status: { kind: 'idle' } });
+}
+
+/** Forget a finished connection's outcome. */
+export function dismissAgentBridgeOutcome(): void {
+  if (controls) controls.dismiss();
+  else updateAgentBridgeState({ status: { kind: 'idle' }, activity: [] });
 }
 
 /** Test seam: back to the first-load state. */

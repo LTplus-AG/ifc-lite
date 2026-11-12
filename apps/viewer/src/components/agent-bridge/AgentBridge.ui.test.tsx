@@ -15,11 +15,11 @@ import assert from 'node:assert/strict';
 import type { ReactNode } from 'react';
 import { buildPairingUrl } from '@ifc-lite/mcp/bridge-protocol';
 import { createBimContext } from '@ifc-lite/sdk';
-import { cleanup, click, render, type, waitFor } from '@/test/render.js';
+import { advance as advanceMs, cleanup, click, render, type, waitFor } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { LocalBackend } from '@/sdk/local-backend';
 import { BimReactContext } from '@/sdk/BimProvider';
-import { takePairingFragment } from '@/lib/agent-bridge/pairing-fragment';
+import { installPairingFragmentStrip } from '@/lib/agent-bridge/pairing-fragment';
 import { getAgentBridgeState, resetAgentBridgeStateForTests, updateAgentBridgeState } from '@/lib/agent-bridge/state';
 import { AgentBridgeHost, AgentBridgeStatusSlot } from './AgentBridgeHost';
 import { AgentBridgeDialog, type AgentBridgeSessionModule } from './AgentBridgeDialog';
@@ -58,63 +58,71 @@ function storageSnapshot(): string {
   return dump(window.localStorage) + dump(window.sessionStorage);
 }
 
+let uninstallStrip: () => void = () => {};
 beforeEach(() => {
+  uninstallStrip = installPairingFragmentStrip(window);
   SpySocket.urls = [];
   globalThis.WebSocket = SpySocket as unknown as typeof WebSocket;
   resetAgentBridgeStateForTests();
 });
 
 afterEach(() => {
+  uninstallStrip();
   cleanup();
   globalThis.WebSocket = realWebSocket;
   resetAgentBridgeStateForTests();
   window.history.replaceState(null, '', '/');
 });
 
-describe('pairing link (#9523)', () => {
-  it('the code leaves the URL first; the dialog explains the access; nothing connects until Connect', async () => {
-    window.history.replaceState(null, '', `/?model=demo${new URL(buildPairingUrl('https://ifclite.com', 21518, CODE)).hash}`);
-    takePairingFragment(window.location, window.history);
-    assert.equal(window.location.hash, '', 'the fragment is gone before the viewer renders');
-    assert.equal(window.location.search, '?model=demo', 'the rest of the URL is intact');
-    assert.ok(!window.location.href.includes('STVWX'));
+/** Open a pairing link the way a user does: in this tab, through the boot-installed strip and a real event. */
+function openLink(port: number, event: 'popstate' | 'hashchange' = 'hashchange'): void {
+  window.history.replaceState(null, '', `/?model=demo${new URL(buildPairingUrl('https://ifclite.com', port, CODE)).hash}`);
+  window.dispatchEvent(event === 'popstate' ? new window.PopStateEvent('popstate') : new window.HashChangeEvent('hashchange'));
+}
 
+/** A session module that loads only when the test says so. */
+function deferredSession() {
+  const calls: { port: number; code: string }[] = [];
+  let resolveLoad: () => void = () => {};
+  const loaded = new Promise<void>((resolve) => { resolveLoad = resolve; });
+  const load = async (): Promise<AgentBridgeSessionModule> => {
+    await loaded;
+    return { connectAgentBridge: ({ port, code }) => { calls.push({ port, code }); }, disconnectAgentBridge: () => {} };
+  };
+  return { calls, load, resolveLoad };
+}
+
+describe('pairing link (#9523)', () => {
+  it('a link opened in this tab: the code leaves the URL, the dialog states what is true, nothing connects until Connect', async () => {
     render(withBim(<AgentBridgeHost />));
+    openLink(21518);
+    assert.equal(window.location.hash, '', 'the fragment is gone');
+    assert.equal(window.location.search, '?model=demo', 'the rest of the URL is intact');
     await waitFor(() => dialog() !== null, 'the pairing link opened the connect dialog');
     const text = dialog()?.textContent ?? '';
-    assert.match(text, /A program on this computer will be able to read the model\(s\) open in this tab, including unsaved edits/);
-    assert.match(text, /Read-only/);
-    assert.match(text, /only to this computer \(127\.0\.0\.1, port 21518\)/);
-    assert.match(text, /Local network access/);
+    assert.match(text, /The viewer cannot tell who made the link/);
+    assert.match(text, /Whatever program is listening on 127\.0\.0\.1, port 21518, will be able to read the model\(s\) open in this tab, including unsaved edits/);
+    assert.match(text, /cannot check what that program is\. Connect only if you started ifc-lite-mcp --bridge yourself/);
+    assert.match(text, /the agent may send what it reads to its AI provider/);
+    assert.match(text, /bSDD tools also send IFC class names to bSDD/);
+    assert.match(text, /Read-only: the agent cannot change the model/);
+    assert.doesNotMatch(text, /not sent to ifclite\.com or any other server|from the ifc-lite agent bridge/, 'no over-claim');
+    assert.equal(dialog()?.querySelector('[data-agent-bridge-target]')?.textContent?.trim(), 'Connects to 127.0.0.1:21518');
     const inputs = [...document.body.querySelectorAll('input')];
     assert.deepEqual(inputs.map((input) => input.value), [CODE, '21518'], 'code and port come from the link');
     assert.deepEqual(SpySocket.urls, [], 'no socket before the user confirms');
-    assert.equal(getAgentBridgeState().status.kind, 'idle');
 
     click(button(/^Connect$/));
     await waitFor(() => SpySocket.urls.length > 0, 'Connect opened the socket');
     assert.deepEqual(SpySocket.urls, ['ws://127.0.0.1:21518/']);
-    assert.equal(getAgentBridgeState().status.kind, 'connecting');
     const session = await import('@/lib/agent-bridge/session');
     session.disconnectAgentBridge();
   });
 
-  it('a pairing link opened in the tab that already holds the model (a hashchange) is taken the same way', async () => {
-    render(withBim(<AgentBridgeHost />));
-    assert.equal(dialog(), null);
-    window.history.replaceState(null, '', new URL(buildPairingUrl('https://ifclite.com', 21519, CODE)).hash);
-    takePairingFragment(window.location, window.history); // what the boot module's hashchange listener does
-    assert.equal(window.location.hash, '');
-    await waitFor(() => dialog() !== null, 'the dialog opened on the later link');
-    assert.equal((document.body.querySelectorAll('input')[1] as HTMLInputElement).value, '21519');
-    assert.deepEqual(SpySocket.urls, []);
-  });
-
   it('Cancel leaves no trace: no socket, no status, no storage, no code in the URL', async () => {
     const before = storageSnapshot();
-    window.history.replaceState(null, '', new URL(buildPairingUrl('https://ifclite.com', 21517, CODE)).hash);
-    takePairingFragment(window.location, window.history);
     render(withBim(<AgentBridgeHost />));
+    openLink(21517, 'popstate');
     await waitFor(() => dialog() !== null, 'the dialog opened');
     click(button(/^Cancel$/));
     await waitFor(() => dialog() === null, 'the dialog closed');
@@ -122,6 +130,53 @@ describe('pairing link (#9523)', () => {
     assert.deepEqual(getAgentBridgeState(), { status: { kind: 'idle' }, dialog: null, activity: [] });
     assert.equal(storageSnapshot(), before);
     assert.equal(window.location.hash, '');
+  });
+
+  it('Cancel while the connection module is still loading opens no socket', async () => {
+    const session = deferredSession();
+    render(withBim(<AgentBridgeDialog request={{ source: 'manual' }} onClose={() => {}} load={session.load} />));
+    type(document.body.querySelector('input') as HTMLInputElement, CODE);
+    click(button(/^Connect$/));
+    click(button(/^Cancel$/));
+    session.resolveLoad();
+    await advanceMs(20);
+    assert.deepEqual(session.calls, [], 'the cancelled attempt never connected');
+  });
+
+  it('unmounting the dialog while loading opens no socket', async () => {
+    const session = deferredSession();
+    render(withBim(<AgentBridgeDialog request={{ source: 'manual' }} onClose={() => {}} load={session.load} />));
+    type(document.body.querySelector('input') as HTMLInputElement, CODE);
+    click(button(/^Connect$/));
+    cleanup();
+    session.resolveLoad();
+    await advanceMs(20);
+    assert.deepEqual(session.calls, []);
+  });
+
+  it('a second link while the first is still loading replaces the dialog, and the first never connects', async () => {
+    const first = deferredSession();
+    const ui = render(withBim(<AgentBridgeDialog key="a" request={{ source: 'link', fragment: new URL(buildPairingUrl('https://ifclite.com', 21600, CODE)).hash }} onClose={() => {}} load={first.load} />));
+    click(button(/^Connect$/));
+    // What the host does for a new request: a fresh dialog (a new key) replaces the old one.
+    cleanup();
+    render(withBim(<AgentBridgeDialog key="b" request={{ source: 'link', fragment: new URL(buildPairingUrl('https://ifclite.com', 21601, CODE)).hash }} onClose={() => {}} />));
+    first.resolveLoad();
+    await advanceMs(20);
+    assert.deepEqual(first.calls, [], 'the superseded attempt never connected');
+    assert.equal(dialog()?.querySelector('[data-agent-bridge-target]')?.textContent?.trim(), 'Connects to 127.0.0.1:21601');
+    assert.deepEqual(SpySocket.urls, []);
+    void ui;
+  });
+
+  it('a link arriving while a connection is live says Connect replaces it, and does nothing until Connect', async () => {
+    updateAgentBridgeState({ status: { kind: 'connected', port: 21517, permission: 'read-only', since: Date.now() } });
+    render(withBim(<AgentBridgeHost />));
+    openLink(21650);
+    await waitFor(() => dialog() !== null, 'the dialog opened');
+    assert.match(dialog()?.textContent ?? '', /already connected on port 21517\. Connecting replaces it/);
+    assert.equal(getAgentBridgeState().status.kind, 'connected', 'the live connection is untouched');
+    assert.deepEqual(SpySocket.urls, []);
   });
 
   it('an unreadable link says so and leaves the code to be typed', async () => {
@@ -240,5 +295,109 @@ describe('status-bar chip (#9523)', () => {
     await waitFor(() => /replaced this one/.test(document.body.textContent ?? ''), 'the reason is shown');
     click(button(/^Pair again$/));
     assert.deepEqual(getAgentBridgeState().dialog, { source: 'manual' });
+  });
+});
+
+const CONNECTED = { kind: 'connected', port: 21517, permission: 'read-only', since: Date.now() } as const;
+
+describe('a live connection is visible with Disconnect in every layout (#9523 review)', () => {
+  afterEach(() => useViewerStore.setState({ isMobile: false }));
+
+  it('desktop: the status-bar chip; phone: a persistent pill with Disconnect; switching layouts while connected', async () => {
+    useViewerStore.setState({ isMobile: false });
+    updateAgentBridgeState({ status: CONNECTED });
+    const ui = render(withBim(<><AgentBridgeHost /><AgentBridgeStatusSlot /></>));
+    await waitFor(() => ui.querySelector('[data-agent-bridge-chip="connected"]') !== null, 'desktop chip');
+    assert.equal(document.body.querySelector('[data-agent-bridge-mobile]'), null, 'no phone pill on desktop');
+
+    // The window narrows into the phone layout: the status bar goes away (ViewerLayout renders it on desktop only).
+    useViewerStore.setState({ isMobile: true });
+    await waitFor(() => document.body.querySelector('[data-agent-bridge-mobile="connected"]') !== null, 'phone pill appears');
+    const pill = document.body.querySelector('[data-agent-bridge-mobile]') as HTMLElement;
+    assert.match(pill.textContent ?? '', /Local agent connected · read-only/);
+    click(pill);
+    await waitFor(() => document.body.querySelector('[data-agent-bridge-disconnect]') !== null, 'the pill opens Disconnect');
+    assert.match(document.body.textContent ?? '', /Arguments and results are not kept/, 'and the activity log');
+    click(document.body.querySelector('[data-agent-bridge-disconnect]') as HTMLElement);
+    assert.equal(getAgentBridgeState().status.kind, 'idle');
+    await waitFor(() => document.body.querySelector('[data-agent-bridge-mobile]') === null, 'the pill is gone');
+  });
+
+  it('the Sources row shows the live connection with Disconnect and the activity log', async () => {
+    const { LocalAgentSourceRow } = await import('@/components/sources/LocalAgentSourceRow');
+    updateAgentBridgeState({
+      status: CONNECTED,
+      activity: [{ seq: 1, tool: 'count_entities', modelId: 'm', startedAt: 0, durationMs: 4, outcome: 'ok' }],
+    });
+    const ui = render(<LocalAgentSourceRow />);
+    assert.match(ui.textContent ?? '', /Local agent connected · read-only/);
+    assert.equal(ui.querySelector('[data-agent-bridge-activity]'), null, 'activity sits behind a toggle');
+    click(button(/^Show activity$/));
+    assert.equal(ui.querySelectorAll('[data-agent-bridge-activity]').length, 1);
+    click(ui.querySelector('[data-agent-bridge-disconnect]') as HTMLElement);
+    assert.equal(getAgentBridgeState().status.kind, 'idle');
+    assert.ok(button(/^Connect local agent$/), 'back to the connect action');
+  });
+
+  it('a drop while no dialog is open is announced with a toast and stays in the Sources row', async () => {
+    const { Toaster } = await import('@/components/ui/toast');
+    const { latestToast } = await import('@/test/toasts');
+    const { LocalAgentSourceRow } = await import('@/components/sources/LocalAgentSourceRow');
+    const session = await import('@/lib/agent-bridge/session');
+    class LiveSocket {
+      static last: LiveSocket | null = null;
+      readyState = 0;
+      onopen: ((e: unknown) => void) | null = null; onmessage: ((e: { data: unknown }) => void) | null = null;
+      onclose: ((e: { code: number; reason: string }) => void) | null = null; onerror: ((e: unknown) => void) | null = null;
+      constructor() { LiveSocket.last = this; }
+      send(): void {}
+      close(): void { this.readyState = 3; }
+    }
+    render(<><Toaster /><LocalAgentSourceRow /></>);
+    session.connectAgentBridge({ port: 21517, code: CODE, bim, WebSocket: LiveSocket as unknown as NonNullable<Parameters<typeof session.connectAgentBridge>[0]['WebSocket']> });
+    const socket = LiveSocket.last as LiveSocket;
+    socket.readyState = 1;
+    socket.onopen?.({});
+    socket.onmessage?.({ data: JSON.stringify({ type: 'welcome', protocol: 1, sessionId: 's', permission: 'read-only', readOnlyCeiling: false, bridge: { name: 'b', version: '1' } }) });
+    assert.equal(getAgentBridgeState().status.kind, 'connected');
+    socket.readyState = 3;
+    socket.onclose?.({ code: 4400, reason: '' });
+    assert.deepEqual(getAgentBridgeState().status, { kind: 'disconnected', reason: 'connection-lost' });
+    await waitFor(() => /Local agent disconnected/.test(latestToast()), 'a toast says so');
+    assert.match(latestToast(), /connection to the bridge was lost/);
+    assert.match(document.body.querySelector('[data-local-agent-row]')?.textContent ?? '', /connection to the bridge was lost/);
+    session.dismissAgentBridgeStatus();
+  });
+});
+
+describe('a framed viewer never connects (#9523 review)', () => {
+  let realTop: PropertyDescriptor | undefined;
+  beforeEach(() => {
+    realTop = Object.getOwnPropertyDescriptor(window, 'top');
+    Object.defineProperty(window, 'top', { configurable: true, get: () => ({}) });
+  });
+  afterEach(() => { if (realTop) Object.defineProperty(window, 'top', realTop); });
+
+  it('ignores pairing links, disables Connect in the dialog, the Sources row and the palette, and says why', async () => {
+    render(withBim(<AgentBridgeHost />));
+    openLink(21517);
+    assert.equal(window.location.hash, '', 'the code is still stripped');
+    await advanceMs(20);
+    assert.equal(dialog(), null, 'no dialog for a link in a frame');
+
+    const { LocalAgentSourceRow } = await import('@/components/sources/LocalAgentSourceRow');
+    const row = render(<LocalAgentSourceRow />);
+    assert.match(row.textContent ?? '', /embedded in another page/);
+    assert.equal(button(/^Connect local agent$/).disabled, true);
+
+    const { PANEL_SURFACE_COMMANDS } = await import('@/components/viewer/surface-commands-panels');
+    const command = PANEL_SURFACE_COMMANDS.find((c) => c.id === 'panel:agentBridge');
+    assert.equal(command?.enabled({} as Parameters<NonNullable<typeof command>['enabled']>[0]), false);
+
+    cleanup();
+    render(withBim(<AgentBridgeDialog request={{ source: 'manual' }} onClose={() => {}} />));
+    assert.match(dialog()?.textContent ?? '', /embedded in another page/);
+    assert.equal((document.body.querySelector('[data-agent-bridge-connect]') as HTMLButtonElement).disabled, true);
+    assert.deepEqual(SpySocket.urls, []);
   });
 });

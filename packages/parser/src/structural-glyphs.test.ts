@@ -386,23 +386,25 @@ describe('face stations', () => {
 
   it('places a notched face with no lattice point inside on the face, not at its centroid', () => {
     // C shape: the vertex average (0.54, 0.5) lies in the open notch, and no
-    // point of the 3 x 3 lattice (1/6, 1/2, 5/6) is inside the 0.16-wide band.
+    // point of the 3 x 3 lattice (1/6, 1/2, 5/6) is inside the 0.15-wide spine
+    // or the 0.16-tall bands.
     const polygon: [number, number, number][] = [
-      [0, 0, 0], [1, 0, 0], [1, 0.16, 0], [0.16, 0.16, 0], [0.16, 0.84, 0], [1, 0.84, 0], [1, 1, 0], [0, 1, 0],
+      [0, 0, 0], [1, 0, 0], [1, 0.16, 0], [0.15, 0.16, 0], [0.15, 0.84, 0], [1, 0.84, 0], [1, 1, 0], [0, 1, 0],
     ];
     const stations = shapeStations({ kind: 'face', polygon });
     expect(stations).toHaveLength(1);
     for (const station of stations) expect(inside(station, polygon)).toBe(true);
-    // The widest span: halfway along the bottom or the top band (they tie).
+    // Most clearance: the centre of the bottom or the top band (0.16 tall, they
+    // tie), not the 0.15-wide spine.
     const [x, y, z] = stations[0];
     expect(z).toBeCloseTo(0);
     expect(x).toBeCloseTo(0.5);
-    expect([0.08, 0.92].some((band) => Math.abs(y - band) < 1e-9)).toBe(true);
+    expect(Math.min(Math.abs(y - 0.08), Math.abs(y - 0.92))).toBeLessThan(1e-9);
   });
 
   it('anchors the single marker of a notched face on the face', () => {
     const polygon: [number, number, number][] = [
-      [0, 0, 0], [1, 0, 0], [1, 0.16, 0], [0.16, 0.16, 0], [0.16, 0.84, 0], [1, 0.84, 0], [1, 1, 0], [0, 1, 0],
+      [0, 0, 0], [1, 0, 0], [1, 0.16, 0], [0.15, 0.16, 0], [0.15, 0.84, 0], [1, 0.84, 0], [1, 1, 0], [0, 1, 0],
     ];
     const centre = shapeCentre({ kind: 'face', polygon });
     expect(inside(centre, polygon)).toBe(true);
@@ -413,22 +415,23 @@ describe('face stations', () => {
   it('places a notched face in a tilted, offset plane on that face', () => {
     // The C shape turned 30 degrees about x and moved to (5, -3, 2).
     const [c, sn] = [Math.cos(Math.PI / 6), Math.sin(Math.PI / 6)];
-    const flat: [number, number][] = [[0, 0], [1, 0], [1, 0.16], [0.16, 0.16], [0.16, 0.84], [1, 0.84], [1, 1], [0, 1]];
+    const flat: [number, number][] = [[0, 0], [1, 0], [1, 0.16], [0.15, 0.16], [0.15, 0.84], [1, 0.84], [1, 1], [0, 1]];
     const toWorld = ([u, v]: readonly number[]): [number, number, number] => [5 + u, -3 + v * c, 2 + v * sn];
     const polygon = flat.map(toWorld);
-    // The widest span is a band, 0 to 1 at v = 0.08 or 0.92; the marker and the
+    // The centre of a band, (0.5, 0.08) or (0.5, 0.92); the marker and the
     // only station agree on it.
     const stations = shapeStations({ kind: 'face', polygon });
     expect(stations).toHaveLength(1);
-    const band = [toWorld([0.5, 0.08]), toWorld([0.5, 0.92])].find((p) => Math.hypot(...p.map((x, i) => x - stations[0][i])) < 1e-9);
-    close(band, stations[0]);
+    const offBand = Math.min(...[[0.5, 0.08], [0.5, 0.92]].map((uv) => Math.hypot(...toWorld(uv).map((x, i) => x - stations[0][i]))));
+    expect(offBand).toBeLessThan(1e-9);
     close(shapeCentre({ kind: 'face', polygon }), stations[0]);
   });
 
   it('anchors a face with a horizontal edge at mid-height on its widest part, in any orientation or winding', () => {
     // U shape: the notch's bottom edge sits at v = 0.5, the middle of the face,
-    // and its vertex average (0.5, 0.625) lies in the notch. The widest span is
-    // the bottom bar, so the anchor is (0.5, 0.25), well clear of every edge.
+    // and its vertex average (0.5, 0.625) lies in the notch. The bottom bar
+    // (1 wide, 0.5 tall) has more clearance than an arm (0.3 wide), so the
+    // anchor is its centre (0.5, 0.25).
     const flat: [number, number][] = [[0, 0], [1, 0], [1, 1], [0.7, 1], [0.7, 0.5], [0.3, 0.5], [0.3, 1], [0, 1]];
     for (const winding of [flat, [...flat].reverse()]) {
       for (let k = 0; k < 40; k++) {
@@ -441,6 +444,16 @@ describe('face stations', () => {
         close(shapeCentre({ kind: 'face', polygon: winding.map(([u, v]) => at(u, v)) }), at(0.5, 0.25));
       }
     }
+  });
+
+  it('anchors an inverted T in its stem, not on its thin wide foot', () => {
+    // Foot 2 wide and 0.001 tall under a stem 0.1 wide and 1 tall, off centre
+    // so the vertex average (1.425, 0.25) is outside. The foot is the widest
+    // span but has 0.001 of clearance; the stem has 0.1.
+    const polygon: [number, number, number][] = [
+      [0, 0, 0], [2, 0, 0], [2, 0.001, 0], [1.9, 0.001, 0], [1.9, 1.001, 0], [1.8, 1.001, 0], [1.8, 0.001, 0], [0, 0.001, 0],
+    ];
+    close(shapeCentre({ kind: 'face', polygon }), [1.85, 0.501, 0]);
   });
 
   it('retains interior stations for a convex sliver', () => {

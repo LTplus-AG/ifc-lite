@@ -71,24 +71,29 @@ function inside(p: readonly [number, number], poly: Flat): boolean {
 }
 
 /**
- * A point inside a 2D polygon of non-zero area: the midpoint of the widest
- * span over scanlines halfway between adjacent vertex heights. Such a line
- * passes no vertex, so its crossings pair into spans whose midpoints are
- * inside (even-odd). Heights within a tolerance count as one, so float noise
- * makes no sliver row on an edge.
+ * A point inside a 2D polygon of non-zero area, clear of its edges. Between
+ * two adjacent vertex heights the polygon is a row of trapezoids; each is
+ * scored by the lesser of its width (on the mid-height line) and its height,
+ * and the best one's centre is returned. The mid-height line passes no
+ * vertex, so its crossings pair into spans that are inside (even-odd).
+ * Heights within a hair of the last kept one count as one, so float noise
+ * makes no zero-height row.
  */
 function interiorPoint(poly: Flat): readonly [number, number] {
+  const us = poly.map((p) => p[0]);
   const sorted = poly.map((p) => p[1]).sort((a, b) => a - b);
-  const tolerance = (sorted[sorted.length - 1] - sorted[0]) * 1e-9;
-  const heights = sorted.filter((h, i) => i === 0 || h - sorted[i - 1] > tolerance);
+  const hair = Math.max(Math.max(...us) - Math.min(...us), sorted[sorted.length - 1] - sorted[0]) * 1e-9;
+  const heights: number[] = [];
+  for (const h of sorted) if (!heights.length || h - heights[heights.length - 1] > hair) heights.push(h);
   let best: readonly [number, number] = poly[0];
-  let widest = 0;
+  let clearance = 0;
   for (let k = 1; k < heights.length; k++) {
     const v = (heights[k - 1] + heights[k]) / 2;
     const xs = crossings(poly, v).sort((a, b) => a - b);
     for (let i = 0; i + 1 < xs.length; i += 2) {
-      if (xs[i + 1] - xs[i] > widest + tolerance) {
-        widest = xs[i + 1] - xs[i];
+      const score = Math.min(xs[i + 1] - xs[i], heights[k] - heights[k - 1]);
+      if (score > clearance) {
+        clearance = score;
         best = [(xs[i] + xs[i + 1]) / 2, v];
       }
     }
@@ -123,7 +128,7 @@ function faceCentre(polygon: readonly Vec3[], face = flatten(polygon)): Vec3 {
  */
 function faceStations(polygon: readonly Vec3[]): Vec3[] {
   const face = flatten(polygon);
-  if (!face) return [faceCentre(polygon, face)];
+  if (!face) return [centroid(polygon)];
   const { frame, flat } = face;
   const us = flat.map((p) => p[0]);
   const vs = flat.map((p) => p[1]);

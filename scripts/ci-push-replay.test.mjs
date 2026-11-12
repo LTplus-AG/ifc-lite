@@ -232,6 +232,7 @@ test('workflowsKeyingCaches is unknown when a hashFiles might reach a workflow f
     ['test', 'x: &deps .github/workflows/x.yml\ncache-dependency-path: *deps'],
     ['test', '- uses: *setup'],
     ['test', 'jobs: { a: { uses: ./ci/a }, b: { uses: x/y@v1 } }'],
+    ['test', 'steps: [uses: ./tools/act]'],
     ['test', '- {with: {cache-dependency-path: .github/workflows/*.yml}, w: {cache-dependency-path: a}}'],
     ['test', '"u\\x73es": ./ci/setup'],
     ['test', '? uses\n: ./ci/setup'],
@@ -297,6 +298,7 @@ test('workflowsKeyingCaches is unknown when a symlink may reach .github/', () =>
   for (const link of [
     { path: 'ci/wf', target: '../.github/workflows' },
     { path: 'ci/root', target: '..' },
+    { path: '.github', target: 'ci' },
     { path: 'a/b', target: '../..' },
     { path: 'ci/abs', target: '/home/runner/work/x/x/.github' },
     { path: '.github/actions/foo', target: '../../tools/foo' },

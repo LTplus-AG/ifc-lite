@@ -257,9 +257,12 @@ function symlinksAt(sha) {
 
 /** A git command's stdout, or null when it fails (absent file, bad ref); the caller then blocks. */
 function gitOrNull(...args) {
-  // The whole-tree listing symlinksAt reads is ~2 MB today.
-  const r = spawnSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 256 * 1024 * 1024 });
-  return r.status === 0 ? r.stdout : null;
+  // Room for symlinksAt's whole-tree listing.
+  const r = spawnSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 256 * 1024 * 1024 });
+  if (r.status === 0) return r.stdout;
+  // Every caller turns null into "every workflow file blocks", so say why.
+  console.warn(`[push-replay] git ${args.join(' ')}: ${(r.stderr || r.error?.message || 'failed').trim()}`);
+  return null;
 }
 
 /** This commit's tree, then those of the commits main has gained since, each with the runs that recorded it. */

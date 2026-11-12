@@ -1,0 +1,12 @@
+diff --git a/packages/create/src/in-store/structural-derive-apply.ts b/packages/create/src/in-store/structural-derive-apply.ts
+--- a/packages/create/src/in-store/structural-derive-apply.ts
++++ b/packages/create/src/in-store/structural-derive-apply.ts
+@@ -49,7 +49,7 @@ export function applyStructuralDerivation(
+   const view = editor.getMutationView();
+   const structural = liveStructuralExtraction(store, view);
+   // Read live, not from the plan: a model may have been written since it was made.
+-  const refusal = analysisModelRefusal(structural.analysisModels.filter((m) => m.description === DERIVED_ANALYSIS_MODEL_DESCRIPTION), plan.options);
++  const refusal = analysisModelRefusal(structural.analysisModels, plan.options);
+   if (refusal) throw new Error(refusal);
+   for (const footingId of plan.nodes.flatMap((node) => node.support?.footingId ?? [])) {
+     if (!editor.hasEntity(footingId)) throw new Error(`Structural derivation: footing #${footingId} no longer exists; plan again`);

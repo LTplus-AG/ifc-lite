@@ -8,15 +8,15 @@
  * a picker offers or the drop guard admits, and state the invariant that
  * keeps the welcome card honest: every extension that loads is in one group.
  */
+import '../test/setup-dom.js';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { englishCatalogue } from '@/i18n/en';
+import { splitDxfFiles } from '@/hooks/ingest/dxfIngest';
 import { GEO_RASTER_FILE_EXTENSIONS } from '@/lib/terrain-imagery/raster-bundle';
 import {
   DROP_FORMAT_GROUPS,
   FILE_ACCEPT,
   MODEL_FILE_EXTENSIONS,
-  MODEL_FORMAT_GROUPS,
   PICKER_FILE_EXTENSIONS,
   REFERENCE_FILE_EXTENSIONS,
   isSupportedModelFile,
@@ -47,25 +47,20 @@ describe('supported file formats, derived from the format groups', () => {
   });
 
   it('puts every model extension in exactly one group', () => {
-    for (const ext of MODEL_FILE_EXTENSIONS) {
-      assert.equal(MODEL_FORMAT_GROUPS.filter((group) => group.extensions.includes(ext)).length, 1, ext);
-    }
+    for (const ext of MODEL_FILE_EXTENSIONS) assert.equal(groupsHolding(ext).length, 1, ext);
   });
 
-  it('lists for a drop exactly what a drop opens: models, captures and underlays, each once', () => {
-    const opensOnDrop = [...PICKER_FILE_EXTENSIONS].filter((ext) =>
-      isSupportedModelFile(named(`site${ext}`)) || REFERENCE_FILE_EXTENSIONS.includes(ext));
+  it('lists for a drop exactly what the drop path opens: models, captures and underlays', () => {
+    // The drop handler splits underlays off with `splitDxfFiles`, then admits
+    // the rest through `isSupportedModelFile` (ViewportContainer.tsx).
+    const opensOnDrop = [...PICKER_FILE_EXTENSIONS].filter((ext) => {
+      const { dxfFiles, modelFiles } = splitDxfFiles([named(`site${ext}`)]);
+      return dxfFiles.length > 0 || modelFiles.some(isSupportedModelFile);
+    });
     assert.deepEqual(DROP_FORMAT_GROUPS.flatMap((group) => group.extensions).sort(), opensOnDrop.sort());
-    for (const ext of opensOnDrop) assert.equal(groupsHolding(ext).length, 1, ext);
+    assert.deepEqual(splitDxfFiles(REFERENCE_FILE_EXTENSIONS.map((ext) => named(`plan${ext}`))).modelFiles, [],
+      'every reference extension takes the underlay path');
     // Rasters need a loaded terrain, and .3dm import has not shipped.
     for (const ext of [...GEO_RASTER_FILE_EXTENSIONS, '.3dm']) assert.equal(groupsHolding(ext).length, 0, ext);
-  });
-
-  it('names every group from the catalogue and spells out LandXML for .xml', () => {
-    for (const group of DROP_FORMAT_GROUPS) {
-      assert.equal(typeof englishCatalogue[group.labelKey], 'string', group.labelKey);
-      assert.ok(group.extensions.length > 0, group.labelKey);
-    }
-    assert.equal(groupsHolding('.xml')[0]?.formatName, 'LandXML');
   });
 });

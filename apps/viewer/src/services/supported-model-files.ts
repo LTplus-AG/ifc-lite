@@ -33,7 +33,7 @@ export interface FileFormatGroup {
  * source: `MODEL_FILE_EXTENSIONS` is these groups flattened, so a format
  * cannot load without belonging to a named group.
  */
-export const MODEL_FORMAT_GROUPS: readonly FileFormatGroup[] = [
+const MODEL_FORMAT_GROUPS: readonly FileFormatGroup[] = [
   { labelKey: 'viewportLighting.container.emptyState.formats.ifc', extensions: ['.ifc', '.ifcx', '.ifczip'] },
   { labelKey: 'viewportLighting.container.emptyState.formats.gltf', extensions: ['.glb', '.gltf'] },
   {

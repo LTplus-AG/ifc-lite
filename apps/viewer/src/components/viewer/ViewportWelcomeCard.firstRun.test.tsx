@@ -14,8 +14,6 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { cleanup, click, render } from '@/test/render.js';
 import { viewportLightingEn } from '@/i18n/catalogues/viewport-lighting.en';
-import { englishCatalogue } from '@/i18n/en';
-import { DROP_FORMAT_GROUPS, MODEL_FILE_EXTENSIONS, REFERENCE_FILE_EXTENSIONS } from '@/services/supported-model-files';
 import { ViewportWelcomeCard } from './ViewportWelcomeCard.js';
 import { fieldTelemetry } from '@/lib/perf/fieldTelemetryLoader.js';
 
@@ -98,16 +96,16 @@ describe('welcome card actions (#5840)', () => {
     const card = renderCard(() => Promise.resolve());
     const list = card.querySelector('dl[data-welcome-formats]');
     assert.ok(list, 'the formats render as a definition list');
-    const rows = [...list.querySelectorAll('dt')].map((dt) => [dt.textContent, dt.nextElementSibling?.textContent ?? '']);
-    assert.deepEqual(rows.map(([label]) => label), DROP_FORMAT_GROUPS.map((group) => englishCatalogue[group.labelKey]),
-      'one labelled row per family, in the order the module defines');
-    const listed = rows.flatMap(([, formats]) => formats.match(/\.\w+/g) ?? []);
-    for (const ext of [...MODEL_FILE_EXTENSIONS, ...REFERENCE_FILE_EXTENSIONS, '.splat']) {
-      assert.equal(listed.filter((e) => e === ext).length, 1, `${ext} is listed once`);
-    }
-    // `.xml` alone does not say which XML: the row names the format.
-    assert.equal(rows.find(([, formats]) => formats.includes('.xml'))?.[1], 'LandXML (.xml)');
-    for (const unlisted of ['.3dm', '.tif']) assert.ok(!listed.includes(unlisted), `${unlisted} is not advertised`);
+    const rows = [...list.querySelectorAll('dt')].map((dt) => [dt.textContent, dt.nextElementSibling?.textContent]);
+    // `.xml` alone does not say which XML, so that row names the format.
+    assert.deepEqual(rows, [
+      ['IFC', '.ifc .ifcx .ifczip'],
+      ['glTF', '.glb .gltf'],
+      ['Point clouds', '.las .laz .ply .pcd .e57 .pts .xyz'],
+      ['Terrain', 'LandXML (.xml)'],
+      ['Underlays', '.dxf'],
+      ['Splats', '.splat'],
+    ]);
   });
 
   it('offers no format list without WebGPU, where a drop cannot open anything', () => {

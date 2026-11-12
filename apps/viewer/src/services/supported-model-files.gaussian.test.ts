@@ -32,5 +32,4 @@ it('the default build offers .splat in the file inputs, the File System Access p
   assert.ok((await fileSystemPickerExtensions()).includes('.splat'), 'File System Access picker');
   assert.equal(files.isSupportedModelFile(new File([], 'Scan.SPLAT')), true, 'the drop and picker guard admit a capture');
   assert.equal(files.isSupportedModelFile(new File([], 'scan.ply')), true);
-  assert.ok(files.DROP_FORMAT_GROUPS.some((group) => group.extensions.includes('.splat')), 'welcome card format list');
 });

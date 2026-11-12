@@ -26,6 +26,7 @@ import { ViewportHud } from '@/components/viewport-ui/hud';
 import { ToolOverlays } from '@/components/viewer/ToolOverlays';
 import { ModelInspectorPanel } from '@/components/viewer/model-inspector/ModelInspectorPanel';
 import { loadModelLayout } from './authoringSessionSidebar.js';
+import { formFactorState } from '@/test/form-factor-state';
 
 const at = (x: number, y: number) => ({ local: [x, y] as const, winner: null, guides: [], locked: false });
 const outlines = (root: ParentNode) => [...root.querySelectorAll('[data-scene-primitive="plane-outline"]')] as SVGPolygonElement[];
@@ -33,7 +34,7 @@ const outlines = (root: ParentNode) => [...root.querySelectorAll('[data-scene-pr
 beforeEach(async () => {
   await seedModelingSession();
   localStorage.clear();
-  useViewerStore.setState({ editEnabled: false, selectedEntityId: null, isMobile: false });
+  useViewerStore.setState({ editEnabled: false, selectedEntityId: null, ...formFactorState(false) });
   useViewerStore.getState().showWorkspacePanel('changes');
 });
 afterEach(() => {
@@ -81,7 +82,7 @@ describe('Model workspace sidebar hand-over (#6232 M2.1)', () => {
   });
 
   it('phones keep their sheet shut: nothing is taken over', () => {
-    useViewerStore.setState({ isMobile: true });
+    useViewerStore.setState({ ...formFactorState(true) });
     useViewerStore.getState().enterModelWorkspace();
     assert.equal(useViewerStore.getState().sidebarActivePanel, 'changes');
   });

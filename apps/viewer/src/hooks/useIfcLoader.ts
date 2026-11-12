@@ -12,6 +12,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { attachCapturedLoad } from '@/lib/error-reports/correlation';
 import { useShallow } from 'zustand/react/shallow';
 import { type FederatedModel, useViewerStore } from '@/store';
+import { enqueueInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
 import { resolveLoadTessellationTier, isMeshOnlyCacheEnabled } from '../store/constants.js';
 import { createModelLoadActivity, handOffToRetry, installModelLoadCanceller, LOAD_COMPLETE, settleOwnedLoadUi, watchLoadSupersession } from './modelLoadCanceller.js';
 import type { ModelLoadOptions } from './modelLoadOptions.js';
@@ -202,7 +203,6 @@ export function useIfcLoader() {
     setGeometryResult,
     setBoundedGeometryMode,
     appendGeometryBatch,
-    appendInstancedShards,
     updateMeshColors,
     updateCoordinateInfo,
     upsertModel,
@@ -219,7 +219,6 @@ export function useIfcLoader() {
     setGeometryResult: s.setGeometryResult,
     setBoundedGeometryMode: s.setBoundedGeometryMode,
     appendGeometryBatch: s.appendGeometryBatch,
-    appendInstancedShards: s.appendInstancedShards,
     updateMeshColors: s.updateMeshColors,
     updateCoordinateInfo: s.updateCoordinateInfo,
     upsertModel: s.upsertModel,
@@ -435,6 +434,7 @@ export function useIfcLoader() {
         // A non-federated load has no layer stack behind it (#1717).
         useViewerStore.getState().clearLayerStack();
       }
+      const shardGeneration = instancedShardGeneration(); // after our own reset: a later one supersedes our shards
 
       // Reset memory accounting so per-load summaries don't accumulate across files.
       memoryAccounting.reset();
@@ -631,14 +631,12 @@ export function useIfcLoader() {
             toast.error('Point-cloud realignment failed; existing scan transforms were restored.');
           }
           // GPU-instancing (#1912): forward this model's shards now — NOT during
-          // streaming — because `useGeometryStreaming`'s drain re-homes each
-          // occurrence's raw entity id by `idOffset`, which is only known now
-          // (registerModelOffset ran a few lines up). AFTER addModel, so the
-          // renderer-side modelId → modelIndex / idOffset lookups
-          // (Viewport.tsx's `modelIdToIndex` / `modelIdToOffset`) already see
-          // this model when the drain effect runs.
+          // streaming — because the renderer drain re-homes each occurrence's raw
+          // entity id by `idOffset`, only known now (registerModelOffset ran above).
+          // AFTER addModel: the drain runs in a later task, once React committed it,
+          // so Viewport.tsx's `modelIdToIndex` / `modelIdToOffset` see this model.
           if (instancedShards.length > 0) {
-            appendInstancedShards(modelId, instancedShards);
+            enqueueInstancedShards(modelId, instancedShards, shardGeneration);
           }
           return;
         }
@@ -1724,13 +1722,13 @@ export function useIfcLoader() {
               }
 
               if (target.kind === 'primary') {
-                // Live GPU-instancing: hand the batch's IFNS shards to the store
-                // so useGeometryStreaming decodes + uploads them via the
-                // instanced path AS THEY STREAM IN. Primary-only: its id-offset
+                // Live GPU-instancing: queue the batch's IFNS shards (outside the
+                // store, NEW-1) so the renderer drain decodes + uploads them
+                // AS THEY STREAM IN. Primary-only: its id-offset
                 // is always 0 (the federation registry is cleared before every
                 // primary load), so there is nothing to wait on.
                 if (event.instancedShards && event.instancedShards.length > 0) {
-                  appendInstancedShards(modelId, event.instancedShards);
+                  enqueueInstancedShards(modelId, event.instancedShards, shardGeneration);
                 }
                 // Accumulate meshes for batched rendering
                 for (let i = 0; i < event.meshes.length; i++) pendingMeshes.push(event.meshes[i]);
@@ -1766,10 +1764,11 @@ export function useIfcLoader() {
                   appendGeometryBatch(modelId, [], event.coordinateInfo);
                   markFirstVisibleGeometry();
                 }
-              } else {
+              } else if (batchCount === 1 || eventReceived - lastRenderTime >= RENDER_INTERVAL_MS) {
                 // Federated add: accumulate into allMeshes only (done above) and
-                // surface progress — it paints atomically at completion via
-                // finalizeModel's addModel, never touching the active slot.
+                // surface progress at the flat throttle's cadence — it paints atomically at
+                // completion via finalizeModel's addModel, never touching the active slot.
+                lastRenderTime = eventReceived;
                 setProgress({
                   phase: `Processing geometry (${totalMeshes} meshes)`,
                   percent: 10 + Math.min(80, (allMeshes.length / 1000) * 0.8),
@@ -2156,7 +2155,7 @@ export function useIfcLoader() {
       try { appearanceLoad?.finishForModel(useViewerStore.getState().models.get(modelId)); }
       finally { geometryHandle?.release(); }
     }
-  }, [setLoading, setGeometryStreamingActive, setError, setProgress, setIfcDataStore, setGeometryResult, appendGeometryBatch, appendInstancedShards, updateMeshColors, updateCoordinateInfo, loadFromCache, saveToCache, loadFromServer, revalidateServedCacheHit]);
+  }, [setLoading, setGeometryStreamingActive, setError, setProgress, setIfcDataStore, setGeometryResult, appendGeometryBatch, updateMeshColors, updateCoordinateInfo, loadFromCache, saveToCache, loadFromServer, revalidateServedCacheHit]);
 
   // Keep the ref pointed at the latest loadFile so a background revalidation can
   // trigger a reparse-reload without loadFile depending on itself.

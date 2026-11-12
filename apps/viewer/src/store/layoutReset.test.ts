@@ -12,6 +12,7 @@ import '@/test/setup-dom.js';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { getViewerStoreApi } from '@/store';
+import { classifyFormFactor, DESKTOP_FORM_FACTOR } from '@/lib/layout/form-factor';
 import {
   BOTTOM_STRIP_DEFAULT_HEIGHT,
   loadBottomStripHeight,
@@ -51,13 +52,13 @@ describe('resetLayout (#5854)', () => {
 describe('resetLayout follow-ups (#5957)', () => {
   it('does not pop the hierarchy sheet open on mobile', () => {
     const store = getViewerStoreApi();
-    store.getState().setIsMobile(true);
+    store.getState().setFormFactor(classifyFormFactor({ width: 390, height: 844, coarsePointer: true }));
     store.getState().setLeftPanelCollapsed(true);
     try {
       resetLayout!(store);
       assert.equal(store.getState().leftPanelCollapsed, true, 'on mobile an expanded left panel is a sheet over the model');
     } finally {
-      store.getState().setIsMobile(false);
+      store.getState().setFormFactor(DESKTOP_FORM_FACTOR);
       store.getState().setLeftPanelCollapsed(false);
     }
   });

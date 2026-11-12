@@ -15,6 +15,7 @@ import { decodeInstancedShard, type CoordinateInfo, type MeshData } from '@ifc-l
 import type { LoadTrace } from '@ifc-lite/load-trace';
 import { useViewerStore } from '../store/index.js';
 import { noteInstancedShardModel } from '../store/instancedShardModels.js';
+import { enqueueInstancedShards, instancedShardGeneration } from '../store/instancedShardQueue.js';
 import { fitCameraToSnapshot, lastFinalFitBounds, sceneSnapshotKey, type SnapshotCameraFit, setPendingColdCapture, setPendingSceneSnapshot, withdrawPendingColdCapture, withdrawPendingSceneSnapshot } from '../components/viewer/sceneSnapshotOwnership.js';
 import { readPerfFlag } from '../lib/perf/flags.js';
 import { recordFirstVisible } from '../lib/perf/loadTrace.js';
@@ -69,7 +70,7 @@ async function rendererReady(isStale: (() => boolean) | undefined, timeoutMs = 3
   }
 }
 
-/** Direct, unlike a stream's store-queued shards: the first frame is complete, and an abandoned adoption can remove them. */
+/** Direct, unlike a stream's queued shards (`instancedShardQueue`): the first frame is complete, and an abandoned adoption can remove them. */
 function uploadSnapshotShards(scene: SceneContents, device: GPUDevice, modelId: string, shards: ArrayBuffer[]): void {
   if (shards.length > 0) noteInstancedShardModel(modelId);
   for (const bytes of shards) {
@@ -128,11 +129,12 @@ export async function publishAdoptedSceneMeshes(
   trace: LoadTrace,
   append: (modelId: string, meshes: MeshData[], coordinateInfo?: CoordinateInfo) => void,
 ): Promise<MeshData[]> {
+  const shardGeneration = instancedShardGeneration(); // a later reset supersedes the requeue below
   const chunks = await Promise.all(open.chunks.map((_, i) => trace.span('cache.chunkDecode', () => open.readChunk(i), { chunk: i })));
   if (isStale?.()) return [];
   const meshes = chunks.flat();
   setPendingSceneSnapshot(adopted.adoption, () => {
-    useViewerStore.getState().appendInstancedShards(modelId, adopted.shards);
+    enqueueInstancedShards(modelId, adopted.shards, shardGeneration);
     forgetRefusedSnapshot(cacheResult, cacheKey);
   }, adopted.fit, trace);
   append(modelId, meshes, open.coordinateInfo);

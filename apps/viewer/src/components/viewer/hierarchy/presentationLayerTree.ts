@@ -21,7 +21,7 @@ export function buildPresentationLayerTree(
   models: Map<string, FederatedModel>,
   legacyStore: IfcDataStore | null | undefined,
   expansion: ExpansionLookup,
-  geometricIds: Set<number>,
+  geometricIds: ReadonlySet<number>,
   geometryReadyModelIds: ReadonlySet<string>,
   overlay?: TreeOverlay,
   grouping: LayerGrouping = 'none',

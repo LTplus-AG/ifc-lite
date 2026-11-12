@@ -9,6 +9,7 @@ import { useViewerStore } from '@/store';
 import { ActivityBar } from './ActivityBar';
 import { openAssistant, useAssistantPlacement } from '@/lib/assistant/placement';
 import { applyLayoutPreset, restoreLayoutBeforePreset, useLayoutPreset } from '@/store/layoutPreset';
+import { formFactorState } from '@/test/form-factor-state';
 
 const initial = useViewerStore.getState();
 const placement = useAssistantPlacement.getState();
@@ -17,7 +18,7 @@ afterEach(() => { cleanup(); useViewerStore.setState(initial, true); useAssistan
 it('#6926 Restore reinstalls split restoration before Assistant has opened in this session', () => {
   // A reloaded preset record can restore an Assistant that displaced BCF in the previous session.
   // Do not call openAssistant: that would install the subscription and hide the reload defect.
-  useViewerStore.setState({ sidebarActivePanel: 'properties', sidebarSecondaryPanel: 'assistant', isMobile: false, floatingPanels: [], poppedOutIds: [] });
+  useViewerStore.setState({ sidebarActivePanel: 'properties', sidebarSecondaryPanel: 'assistant', ...formFactorState(false), floatingPanels: [], poppedOutIds: [] });
   useAssistantPlacement.setState({ placement: 'split', displacedSecondary: 'bcf' });
   applyLayoutPreset('coordinator');
   useAssistantPlacement.setState({ displacedSecondary: null });
@@ -28,7 +29,7 @@ it('#6926 Restore reinstalls split restoration before Assistant has opened in th
 });
 
 it('#6926 Coordinator restore retains the panel displaced by a split Assistant', () => {
-  useViewerStore.setState({ sidebarActivePanel: 'properties', sidebarSecondaryPanel: 'bcf', isMobile: false, floatingPanels: [], poppedOutIds: [] });
+  useViewerStore.setState({ sidebarActivePanel: 'properties', sidebarSecondaryPanel: 'bcf', ...formFactorState(false), floatingPanels: [], poppedOutIds: [] });
   useAssistantPlacement.setState({ placement: 'split', displacedSecondary: null });
   openAssistant('properties');
   assert.equal(useViewerStore.getState().sidebarSecondaryPanel, 'assistant');

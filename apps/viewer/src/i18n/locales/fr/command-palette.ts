@@ -70,6 +70,7 @@ export const commandPaletteFr = {
   'commandPalette.vis.site.label': 'Site',
   'commandPalette.vis.ifcAnnotations.label': 'Annotations',
   'commandPalette.vis.ifcGrid.label': 'Grilles',
+  "commandPalette.vis.structuralGlyphs.label": "Appuis et charges",
   'commandPalette.vis.resetColors.label': 'Réinitialiser les couleurs',
   // ── Panels ──
   'commandPalette.panel.chat.label': 'Discussion IA',

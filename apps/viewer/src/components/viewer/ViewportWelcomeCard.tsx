@@ -95,6 +95,7 @@ export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentF
   };
 
   const loadLayersDemo = () => {
+    markLoadIntent(); // the demo stack chunk loads before its models do
     void import('@/lib/layers/demo-stack')
       .then((m) => m.loadDemoLayerStack())
       .catch((err: unknown) => {

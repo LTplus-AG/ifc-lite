@@ -17,6 +17,7 @@
  */
 
 import { PICKER_FILE_EXTENSIONS } from './supported-model-files.js';
+import { markLoadIntent } from '../lib/load-intent.js';
 
 /**
  * Accept filter for the picker. Derived from the same list the
@@ -52,6 +53,7 @@ export function supportsFileSystemAccess(): boolean {
  * `<input type="file">`.
  */
 export async function openIfcFilesWithHandles(): Promise<OpenedFile[] | null> {
+  markLoadIntent(); // the picker may stay open for seconds (load-intent.ts)
   if (!supportsFileSystemAccess()) return null;
 
   let handles: FileSystemFileHandle[];

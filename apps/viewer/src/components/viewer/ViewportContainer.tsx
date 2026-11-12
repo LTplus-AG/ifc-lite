@@ -356,6 +356,7 @@ export function ViewportContainer() {
     const handleSourceDownload = (event: Event) => {
       const detail = (event as SourceDownloadEvent).detail;
       if (detail.items.length === 0) return;
+      markLoadIntent();
       // Take ownership of the items and drop the event's own reference so
       // consumed buffers become collectable as the queue works through them.
       const batch: Array<SourceDownloadItem | null> = [...detail.items];
@@ -512,6 +513,7 @@ export function ViewportContainer() {
   useReloadResume(webgpu.supported && !webgpu.checking, routeLoad, () => { void handleOpenClick(); });
 
   const handleStartBlank = useCallback(async () => {
+    markLoadIntent();
     if (!guardWebGpu(() => { void handleStartBlank(); }, { replay: 'on-retry' })) return;
     const file = createBlankIfcFile();
     const modelId = crypto.randomUUID();

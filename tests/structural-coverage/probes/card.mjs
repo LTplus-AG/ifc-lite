@@ -29,7 +29,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
-import { cached, storeOf } from '../lib/packages.mjs';
+import { cached, storeOf, structuralDataOf } from '../lib/packages.mjs';
 import { equal, normalize, show, verdict } from '../lib/values.mjs';
 
 export const CARD_MODEL = 'apps/viewer/src/components/viewer/properties/structural-card-model.ts';
@@ -93,9 +93,8 @@ function selections(ctx, file, types, rec) {
 function cardFor(ctx, file, model, expressId) {
   return cached(ctx, `card:${file.path}#${expressId}`, async () => {
     try {
-      const store = await storeOf(ctx, file);
-      const data = await cached(ctx, `card:data:${file.path}`, async () => ctx.pkgs.parser.extractStructuralOnDemand(store));
-      return { sections: model.sections(data, { expressId }, store.schemaVersion) };
+      const data = await structuralDataOf(ctx, file);
+      return { sections: model.sections(data, { expressId }, (await storeOf(ctx, file)).schemaVersion) };
     } catch (e) {
       return { error: `card threw: ${e.message}` };
     }
@@ -105,7 +104,7 @@ function cardFor(ctx, file, model, expressId) {
 /** A card row's value in the form `normalize` gives the file's value. */
 function shown(value, step, types) {
   if (value && typeof value === 'object' && !Array.isArray(value)) {
-    if ('ref' in value) return normalize({ ref: value.ref }, step, types);
+    if ('ref' in value) return normalize(value, step, types);
     if ('refs' in value) return value.refs.map((ref) => normalize({ ref }, step, types));
     if ('globalId' in value) return value.globalId;
     if ('globalIds' in value) return value.globalIds;
@@ -140,14 +139,11 @@ async function cardRow(ctx, model, row, carriers) {
     if (!setters.length) { out.push(`${attr}: no fixture sets it, so showing it is unproven`); continue; }
     const carded = setters.filter((r) => r.section);
     if (!carded.length) continue; // its records are already reported as on no card
-    const cell = (r) => r.section.rows.find((x) => x.attribute === attr);
-    const missing = carded.filter((r) => !cell(r));
-    if (missing.length) { out.push(`${attr} not shown in ${missing.length} of ${carded.length} record(s), e.g. ${missing[0].where}`); continue; }
-    const wrong = carded.filter((r) => !equal(value(r, attr), shown(cell(r).value, r.file.step, types)));
-    if (wrong.length) {
-      const r = wrong[0];
-      out.push(`${attr} wrong in ${wrong.length} of ${carded.length} record(s), e.g. ${r.where}: card ${show(shown(cell(r).value, r.file.step, types))}, file ${show(value(r, attr))}`);
-    }
+    const cells = carded.map((r) => ({ r, row: r.section.rows.find((x) => x.attribute === attr) }));
+    const missing = cells.filter((c) => !c.row);
+    if (missing.length) { out.push(`${attr} not shown in ${missing.length} of ${carded.length} record(s), e.g. ${missing[0].r.where}`); continue; }
+    const wrong = cells.map((c) => ({ ...c, got: shown(c.row.value, c.r.file.step, types), want: value(c.r, attr) })).filter((c) => !equal(c.want, c.got));
+    if (wrong.length) out.push(`${attr} wrong in ${wrong.length} of ${carded.length} record(s), e.g. ${wrong[0].r.where}: card ${show(wrong[0].got)}, file ${show(wrong[0].want)}`);
   }
   return verdict(records.length, out, { anyHeld: lost.length < records.length });
 }

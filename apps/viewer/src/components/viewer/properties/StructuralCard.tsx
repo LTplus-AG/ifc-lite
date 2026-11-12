@@ -25,6 +25,7 @@ import { CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsi
 import { Boxes, Anchor, ArrowDownToLine, TriangleAlert, ChevronDown } from 'lucide-react';
 import { formatLocaleNumber, localeCount, useTranslation, type TranslationKey } from '@/i18n';
 import { formatLocaleList, formatLocaleValueList } from '@/i18n/intlFormat';
+import { formatMeasureUnit } from '@/lib/units/display';
 import type {
   ProjectUnits,
   StructuralExtraction,
@@ -79,10 +80,8 @@ export function StructuralCard({
     models: structuralRelatedRows(structuralData?.analysisModels ?? [], member?.analysisModelGlobalIds ?? []),
   }), [member, structuralData]);
   const sections = useMemo(
-    () => (structuralData && subject?.record
-      ? structuralCardSections(structuralData, { expressId: selectedExpressId, globalId: selectedGlobalId }, schemaVersion)
-      : []),
-    [structuralData, subject, selectedExpressId, selectedGlobalId, schemaVersion],
+    () => (structuralData ? structuralCardSections(structuralData, { expressId: selectedExpressId, globalId: selectedGlobalId }, schemaVersion) : []),
+    [structuralData, selectedExpressId, selectedGlobalId, schemaVersion],
   );
   if (!structuralData || !subject) return null;
   const itemType = subject.record?.type;
@@ -92,7 +91,7 @@ export function StructuralCard({
   const relatedUnavailable = related.connections.unavailable || related.activities.unavailable || related.models.unavailable;
   const format = (row: StructuralCardRow) => formatCardValue(row, {
     locale,
-    unit: (measure) => projectUnits?.unitForMeasure(measure)?.symbol ?? null,
+    unit: (measure) => (projectUnits ? formatMeasureUnit(measure, projectUnits) : null),
     entity: (id) => describeEntity?.(id) ?? null,
     group: (globalId) => groupNames.get(globalId) ?? globalId,
   });

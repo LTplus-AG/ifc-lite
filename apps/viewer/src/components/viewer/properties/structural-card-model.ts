@@ -21,7 +21,7 @@
  * and of viewer path aliases.
  */
 
-import { getSchemaRegistryForVersion, measureUnit, type SchemaRegistry, type StructuralExtraction } from '@ifc-lite/parser';
+import { getSchemaRegistryForVersion, measureUnit, type SchemaRegistry, type StructuralExtraction, type StructuralLoadConfigurationInfo } from '@ifc-lite/parser';
 import { structuralRecord } from './selectedStructuralMember';
 
 /** A row value. References are model-local express ids; links between rooted records are GlobalIds. */
@@ -61,13 +61,15 @@ const RENAMED: Record<string, string> = {
   resultGroupGlobalIds: 'HasResults',
   resultForLoadGroupGlobalId: 'ResultForLoadGroup',
 };
-/** The only `ConnectionConstraint` subtype the read model carries, and it has no `type` field. */
-const ECCENTRICITY = 'IfcConnectionPointEccentricity';
-
-interface SchemaAttribute { name: string; type: string }
-
-/** The element type of an aggregate attribute (`IfcLengthMeasure[]` -> `IfcLengthMeasure`). */
-const elementType = (type: string) => type.replace(/(\[\])+$/, '');
+/**
+ * The EXPRESS type of a held record the read model gives no `type` field, by the
+ * field that holds it: a member end is an `IfcRelConnectsWithEccentricity` when
+ * it carries a constraint, and the only constraint read is an eccentricity.
+ */
+const UNTYPED_CHILD: Record<string, (child: Record<string, unknown>) => string> = {
+  IfcRelConnectsStructuralMember: (child) => (child.ConnectionConstraint !== undefined ? 'IfcRelConnectsWithEccentricity' : 'IfcRelConnectsStructuralMember'),
+  ConnectionConstraint: () => 'IfcConnectionPointEccentricity',
+};
 
 function registryFor(schema: string | undefined): SchemaRegistry | null {
   return schema === 'IFC2X3' || schema === 'IFC4' || schema === 'IFC4X3' ? getSchemaRegistryForVersion(schema) : null;
@@ -91,66 +93,47 @@ function measureOf(registry: SchemaRegistry, type: string): string | undefined {
   return measures.length === 1 ? measures[0] : undefined;
 }
 
-const isRecord = (v: unknown): v is Record<string, unknown> & { expressId: number } =>
+type HeldRecord = Record<string, unknown> & { expressId: number };
+const isRecord = (v: unknown): v is HeldRecord =>
   !!v && typeof v === 'object' && !Array.isArray(v) && typeof (v as { expressId?: unknown }).expressId === 'number';
 
-/** A resource's attributes as the read model holds them: its name, components and configuration. */
-function resourceFields(info: Record<string, unknown>): Record<string, unknown> {
-  const { components, configuration, ...rest } = info as { components?: Record<string, unknown>; configuration?: StructuralLoadConfiguration };
+/**
+ * A record's attribute fields and the records it holds (`[attribute, record]`).
+ * A resource (load, condition) keeps its values in `components`; a load
+ * configuration pairs each `Values` entry with its `Locations` row.
+ */
+function fieldsOf(info: HeldRecord): { fields: Record<string, unknown>; held: [string, HeldRecord][] } {
+  const { components, configuration, ...rest } = info as HeldRecord & { components?: Record<string, unknown>; configuration?: StructuralLoadConfigurationInfo };
   const fields: Record<string, unknown> = { ...rest, ...components };
+  const held: [string, HeldRecord][] = [];
   if (configuration) {
-    fields.Values = { refs: configuration.entries.flatMap((entry) => (entry.value ? [entry.value.expressId] : [])) };
+    const values = configuration.entries.flatMap((entry, i) => (entry.value ? [[i, entry.value] as const] : []));
+    fields.Values = { refs: values.map(([, value]) => value.expressId) };
     if (configuration.locations) fields.Locations = configuration.entries.map((entry) => entry.location ?? []);
-    configuration.entries.forEach((entry, i) => { if (entry.value) fields[`Values[${i}]`] = entry.value; });
+    for (const [i, value] of values) held.push([`Values[${i}]`, value as unknown as HeldRecord]);
   }
-  return fields;
+  for (const [key, raw] of Object.entries(fields)) {
+    if (isRecord(raw)) held.push([attributeOf(key), raw]);
+    else if (Array.isArray(raw) && raw.length > 0 && raw.every(isRecord)) raw.forEach((child, i) => held.push([`${key}[${i}]`, child]));
+  }
+  return { fields, held };
 }
-type StructuralLoadConfiguration = { entries: { value?: { expressId: number }; location?: number[] }[]; locations?: number[][] };
 
-class SectionWriter {
-  readonly sections: StructuralCardSection[] = [];
-  constructor(private readonly registry: SchemaRegistry | null) {}
+const attributeOf = (key: string) => RENAMED[key] ?? key[0].toUpperCase() + key.slice(1);
 
-  write(type: string, info: Record<string, unknown> & { expressId: number }, via: string | null, depth: number): void {
-    const fields = 'components' in info || 'configuration' in info ? resourceFields(info) : info;
-    const attributes = this.registry?.entities[type]?.allAttributes as SchemaAttribute[] | undefined;
-    const position = (name: string) => attributes?.findIndex((a) => a.name === name) ?? -1;
-    const rows: (StructuralCardRow & { at: number })[] = [];
-    const children: [string, Record<string, unknown> & { expressId: number }][] = [];
-    for (const [key, raw] of Object.entries(fields)) {
-      if (raw === undefined || raw === null || NOT_ATTRIBUTES.has(key)) continue;
-      const attribute = RENAMED[key] ?? key[0].toUpperCase() + key.slice(1);
-      if (Array.isArray(raw) && raw.length > 0 && raw.every(isRecord)) {
-        raw.forEach((child, i) => children.push([`${attribute}[${i}]`, child]));
-        continue;
-      }
-      const at = position(attribute);
-      // A held record is a section of its own, and a reference row when the attribute is the record's.
-      if (isRecord(raw)) children.push([attribute, raw]);
-      if (attributes && at === -1) continue;
-      rows.push({ attribute, at, ...(isRecord(raw) ? { value: { ref: raw.expressId } } : this.cell(key, raw, attributes?.[at]?.type)) });
-    }
-    rows.sort((a, b) => a.at - b.at);
-    this.sections.push({ expressId: info.expressId, type, via, depth, rows: rows.map(({ at: _at, ...row }) => row) });
-    for (const [childVia, child] of children) {
-      const childType = typeof child.type === 'string' ? child.type
-        : childVia === 'ConnectionConstraint' ? ECCENTRICITY
-          : child.ConnectionConstraint !== undefined ? 'IfcRelConnectsWithEccentricity' : 'IfcRelConnectsStructuralMember';
-      this.write(childType, child, childVia, depth + 1);
-    }
+/** One row's value and measure, from the declared EXPRESS type of its attribute. */
+function cell(registry: SchemaRegistry | null, key: string, raw: unknown, declared: string | undefined): Omit<StructuralCardRow, 'attribute'> {
+  if (isRecord(raw)) return { value: { ref: raw.expressId } };
+  if (key.endsWith('GlobalIds')) return { value: { globalIds: raw as string[] } };
+  if (key.endsWith('GlobalId')) return { value: { globalId: raw as string } };
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) return { value: raw as StructuralCardValue };
+  // An aggregate attribute is declared as its element type with `[]` per level.
+  const type = declared?.replace(/(\[\])+$/, '');
+  if (type && registry && isReference(registry, type)) {
+    return { value: Array.isArray(raw) ? { refs: raw as number[] } : { ref: raw as number } };
   }
-
-  private cell(key: string, raw: unknown, declared: string | undefined): Omit<StructuralCardRow, 'attribute'> {
-    if (key.endsWith('GlobalIds')) return { value: { globalIds: raw as string[] } };
-    if (key.endsWith('GlobalId')) return { value: { globalId: raw as string } };
-    if (raw && typeof raw === 'object' && !Array.isArray(raw)) return { value: raw as StructuralCardValue };
-    const type = declared && elementType(declared);
-    if (type && this.registry && isReference(this.registry, type)) {
-      return { value: Array.isArray(raw) ? { refs: raw as number[] } : { ref: raw as number } };
-    }
-    const measure = type && this.registry ? measureOf(this.registry, type) : undefined;
-    return { value: raw as StructuralCardValue, ...(measure ? { measure } : {}) };
-  }
+  const measure = type && registry ? measureOf(registry, type) : undefined;
+  return { value: raw as StructuralCardValue, ...(measure ? { measure } : {}) };
 }
 
 /**
@@ -162,7 +145,29 @@ export function structuralCardSections(data: StructuralExtraction, selection: { 
   schema: string | undefined): StructuralCardSection[] {
   const found = structuralRecord(data, selection.expressId, selection.globalId);
   if (!found) return [];
-  const writer = new SectionWriter(registryFor(schema));
-  writer.write(found.type, found.info as unknown as Record<string, unknown> & { expressId: number }, null, 0);
-  return writer.sections;
+  const registry = registryFor(schema);
+  const sections: StructuralCardSection[] = [];
+  const write = (type: string, info: HeldRecord, via: string | null, depth: number) => {
+    const { fields, held } = fieldsOf(info);
+    const attributes = registry?.entities[type]?.allAttributes;
+    const position = (name: string) => attributes?.findIndex((a) => a.name === name) ?? -1;
+    const rows: StructuralCardRow[] = [];
+    for (const [key, raw] of Object.entries(fields)) {
+      if (raw === undefined || raw === null || NOT_ATTRIBUTES.has(key)) continue;
+      if (Array.isArray(raw) && raw.length > 0 && raw.every(isRecord)) continue;
+      const attribute = attributeOf(key);
+      const at = position(attribute);
+      if (attributes && at === -1) continue;
+      rows.push({ attribute, ...cell(registry, key, raw, attributes?.[at]?.type) });
+    }
+    rows.sort((a, b) => position(a.attribute) - position(b.attribute));
+    sections.push({ expressId: info.expressId, type, via, depth, rows });
+    for (const [childVia, child] of held) {
+      const field = childVia.replace(/\[\d+\]$/, '');
+      const childType = typeof child.type === 'string' ? child.type : UNTYPED_CHILD[field]?.(child);
+      if (childType) write(childType, child, childVia, depth + 1);
+    }
+  };
+  write(found.type, found.info as unknown as HeldRecord, null, 0);
+  return sections;
 }

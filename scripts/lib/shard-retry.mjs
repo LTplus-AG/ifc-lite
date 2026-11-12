@@ -301,12 +301,14 @@ export function retryCount(ids, index) {
  * has `expectedStatus: 'skipped'` and the annotation. Both shapes reproduced
  * on the locked Playwright 1.64.1.
  */
+/** A deliberate skip: `test.skip` or `test.fixme`, at declaration or at runtime. */
+const askedToSkip = (t) => t.expectedStatus === 'skipped' && t.annotations.some((a) => a === 'skip' || a === 'fixme');
+
 export function unintendedSkips(index) {
   const out = [];
   for (const [id, t] of index) {
     if (t.status !== 'skipped') continue;
-    const asked = t.expectedStatus === 'skipped' && t.annotations.some((a) => a === 'skip' || a === 'fixme');
-    if (!asked) out.push(id);
+    if (!askedToSkip(t)) out.push(id);
   }
   return out;
 }
@@ -340,11 +342,10 @@ export function judgeE2eRetry({ exitCode, ids, report, first = new Map() }) {
   if (missing.length > 0) return { passed: false, reason: `the retry did not run ${missing.length} of the ${ids.length} failed test(s)` };
   // A test the first attempt never ran (an earlier failure skipped it) may
   // skip on retry when it asks to; anything else must pass.
-  const askedSkip = (t) => t.status === 'skipped' && t.expectedStatus === 'skipped' && t.annotations.some((a) => a === 'skip' || a === 'fixme');
   const bad = ids.filter((id) => {
     const t = index.get(id);
     if (t.status === 'expected') return false;
-    return !(first.get(id)?.status === 'skipped' && askedSkip(t));
+    return !(first.get(id)?.status === 'skipped' && t.status === 'skipped' && askedToSkip(t));
   });
   if (bad.length > 0) return { passed: false, reason: `${bad.length} test(s) did not pass on retry: ${bad.map((id) => index.get(id).title).join('; ')}` };
   return { passed: true, reason: `all ${ids.length} retried test(s) passed` };

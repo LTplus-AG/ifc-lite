@@ -147,22 +147,29 @@ function retryViewer(env, mode, reportDir) {
   const tap = readOptional(resolve(VIEWER_ROOT, required(env, 'TAP_FILE')));
   const first = tap === null ? null : parseNodeTap(tap);
   const attributed = first ? attributeViewerFailures(first.failures, realpathSync(VIEWER_ROOT)) : { files: [], tests: [], unattributed: [] };
-  const plan = planRetry({
+  const budget = retryBudgetMs(env);
+  const plan = withinBudget(planRetry({
     mode,
     count: attributed.files.length,
     cap: MAX_RETRY_FILES,
     unattributed: attributed.unattributed,
     refusal: tap === null ? 'the first attempt left no TAP file' : incompleteViewerAttempt(first) ?? notInShard(attributed.files, env) ?? undefined,
-  });
-  const budget = retryBudgetMs(env);
-  const record = { kind: 'viewer', shard: env.TEST_SHARD ?? '?', mode, plan: withinBudget(plan, budget), files: attributed.files, tests: attributed.tests };
-  if (!record.plan.retry) return record;
+  }), budget);
+  const record = { kind: 'viewer', shard: env.TEST_SHARD ?? '?', mode, plan, files: attributed.files, tests: attributed.tests };
+  if (!plan.retry) return record;
 
   // One run per file, so each file's failures are matched only against that
   // file's results: a same-titled test elsewhere cannot stand in. The runs
   // share one budget, so five files take no longer than one retry did.
   const deadline = Date.now() + budget;
-  const results = attributed.files.map((file, i) => {
+  // In `on` the first file that fails again decides the shard, so stop there;
+  // `shadow` runs every file for the measurement.
+  const results = [];
+  for (const [i, file] of attributed.files.entries()) {
+    if (mode === 'on' && results.some((x) => !x.passed)) break;
+    results.push(retryOneFile(file, i));
+  }
+  function retryOneFile(file, i) {
     const left = Math.floor((deadline - Date.now()) / 1000);
     if (left < 1) return { file, passed: false, reason: 'the shared retry budget ran out before this file' };
     const retryTap = join(reportDir, `viewer-retry-${i}.tap`);
@@ -183,7 +190,7 @@ function retryViewer(env, mode, reportDir) {
     const again = retried === null ? null : parseNodeTap(retried);
     const verdict = judgeViewerRetry({ exitCode: r.status, summary: again?.summary ?? null, passed: again?.passed, tests: attributed.tests.filter((t) => t.file === file) });
     return { file, ...verdict };
-  });
+  }
   const failed = results.filter((x) => !x.passed);
   record.result = failed.length === 0
     ? { passed: true, reason: `all ${results.length} file(s) passed on retry` }
@@ -192,7 +199,7 @@ function retryViewer(env, mode, reportDir) {
 }
 
 /** The E2E retry's command and environment; only `on` reports the retry to Mergify. */
-export function e2eRetryCommand({ mode, shard, lastFailedFile, env, budgetMs = RETRY_CAP_MS }) {
+export function e2eRetryCommand({ mode, shard, lastFailedFile, env, budgetMs }) {
   const reporters = mode === 'on' ? 'list,@mergifyio/playwright,json' : 'list,json';
   // `--reporter` replaces the config's list, withMergify's entry included.
   const { MERGIFY_TOKEN: _token, ...rest } = env;

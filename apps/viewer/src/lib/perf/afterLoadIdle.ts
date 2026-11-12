@@ -202,8 +202,16 @@ export function scheduleAfterLoad(with_: AfterLoadEnv, options: AfterLoadOptions
   pump();
   return () => {
     jobs = jobs.filter((j) => j !== job);
+    // A started job leaves the queue too: its work may never settle after the abort.
+    started.delete(job);
+    if (jobs.length === 0 && started.size === 0 && unsubscribe && !running) { unsubscribe(); unsubscribe = null; }
     drop(job);
   };
+}
+
+/** Test-only: what the queue still holds. */
+export function __afterLoadIdleHeldForTests(): { jobs: number; started: number; listening: boolean } {
+  return { jobs: jobs.length, started: started.size, listening: unsubscribe !== null };
 }
 
 /** Test-only: drop every job and listener; `holdLimit` shortens how long a job may hold the queue. */

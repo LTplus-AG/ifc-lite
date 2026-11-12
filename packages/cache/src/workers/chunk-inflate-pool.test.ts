@@ -50,7 +50,7 @@ async function decodeAll(section: ArrayBuffer, inflate?: ChunkInflatePool['infla
 
 /** Bounded comparison: per mesh id, positions/normals/indices bytes and colour. */
 const digest = (list: MeshData[]) => list.map((m) => [m.expressId, [...new Uint8Array(m.positions.buffer, m.positions.byteOffset, m.positions.byteLength)].join(','),
-  m.normals.length, [...m.indices].join(','), m.color.join(',')].join('|'));
+  [...new Uint8Array(m.normals.buffer, m.normals.byteOffset, m.normals.byteLength)].join(','), [...m.indices].join(','), m.color.join(',')].join('|'));
 
 class CountingPort extends CodecPort {
   inflates = 0;
@@ -355,5 +355,36 @@ describe('ChunkInflatePool', () => {
       }
     });
   });
-});
 
+  it('without workers, a chunk still inflating when another is found corrupt rejects too (review: no result from a corrupt entry)', async () => {
+    const good = await buildGeometrySectionV13(meshes(), coordInfo, { compress: true });
+    const info = openGeometryChunksV13(good, 0, FORMAT_VERSION).chunks.find((c) => c.flags & GeometryChunkFlags.DeflateRaw)!;
+    const pool = new ChunkInflatePool(2, { createWorker: () => { throw new Error('no workers here'); } }).start();
+    try {
+      const inflating = pool.inflate(new Uint8Array(good, info.byteOffset, info.byteLength), info.uncompressedLength);
+      const bad = pool.inflate(new Uint8Array(64).fill(0xff), 1024);
+      await expect(bad).rejects.toBeInstanceOf(CorruptChunkError);
+      await expect(inflating).rejects.toBeInstanceOf(CorruptChunkError);
+    } finally {
+      pool.close();
+    }
+  });
+
+  it('without workers, a chunk still decoding when another is found corrupt rejects too', async () => {
+    const section = corruptOneChunk(await buildGeometrySectionV13(meshes(), coordInfo, { compress: true }));
+    const open = openGeometryChunksV13(section, 0, FORMAT_VERSION);
+    const compressed = open.chunks.filter((c) => c.flags & GeometryChunkFlags.DeflateRaw);
+    const bytes = (c: (typeof compressed)[number]) => new Uint8Array(section, c.byteOffset, c.byteLength);
+    const corrupt = compressed.find((c) => bytes(c).every((b) => b === 0xff))!;
+    const good = compressed.find((c) => c !== corrupt)!;
+    const pool = new ChunkInflatePool(2, { createWorker: () => { throw new Error('no workers here'); } }).start();
+    try {
+      const decoding = pool.decode(bytes(good), good, FORMAT_VERSION);
+      const bad = pool.decode(bytes(corrupt), corrupt, FORMAT_VERSION);
+      await expect(bad).rejects.toBeInstanceOf(CorruptChunkError);
+      await expect(decoding).rejects.toBeInstanceOf(CorruptChunkError);
+    } finally {
+      pool.close();
+    }
+  });
+});

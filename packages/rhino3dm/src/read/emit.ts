@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { Part } from './geometry.js';
-import type { Report } from './report.js';
+import { plural, type Report } from './report.js';
 import type {
   RhinoImportCurve, RhinoImportDefinition, RhinoImportInstance, RhinoImportMesh,
   RhinoImportPointCloud, RhinoImportTextDot, RhinoRgba,
@@ -21,6 +21,9 @@ function flipWinding(indices: Uint32Array): Uint32Array {
   for (let i = 0; i < indices.length; i += 3) { out[i] = indices[i]; out[i + 1] = indices[i + 2]; out[i + 2] = indices[i + 1]; }
   return out;
 }
+
+/** Most text dots one file may return. Dots are free of the triangle budget, so blocks could otherwise multiply them without bound. */
+export const MAX_TEXT_DOTS = 100_000;
 
 /**
  * Collects the output geometry and enforces the drawing budget. `entity`
@@ -45,6 +48,15 @@ export class Emitter {
     return this.meshes.length + this.instances.length + this.pointClouds.length + this.curves.length + this.textDots.length;
   }
 
+  dotsFull(): boolean { return this.textDots.length >= MAX_TEXT_DOTS; }
+
+  /** Count text dots left out at the limit. */
+  omitDots(count: number): void {
+    if (count === 0) return;
+    this.report.skip('TextDot:limit', count);
+    this.report.warn('dots', () => `Stopped at ${MAX_TEXT_DOTS.toLocaleString('en-US')} text dots: ${plural(this.report.skipped['TextDot:limit'], 'text dot')} left out.`);
+  }
+
   /** Charge the budget, or stop drawing for the rest of the file. */
   private take(triangles: number): boolean {
     if (this.exhausted || triangles > this.trianglesLeft) { this.exhausted = true; return false; }
@@ -65,6 +77,7 @@ export class Emitter {
    * and left out, which keeps the result free of non-finite numbers.
    */
   draw(object: number, part: DrawnPart, xform: Xform | null, color: RhinoRgba): boolean {
+    if (part.kind === 'dot' && this.dotsFull()) { this.omitDots(1); return true; }
     const at = part.kind === 'dot' ? part.position : part.origin;
     const origin = xform ? transformPoint(xform, at) : at;
     if (part.kind === 'dot') {

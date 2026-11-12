@@ -7,12 +7,20 @@ import type { RhinoVector3 } from '../types.js';
 /** 16 row-major numbers; the translation sits at indices 3, 7 and 11. */
 export type Xform = number[];
 
+/** How far the last row may be from 0 0 0 1: rounding noise, not a projection. */
+const AFFINE_TOLERANCE = 1e-12;
+
 /** Largest magnitude a transform entry may have: far beyond any model, far below f32 overflow. */
 const LARGEST_ENTRY = 1e15;
 
-/** Finite, small enough that transformed f32 coordinates stay finite, and not collapsing space to a plane or a point. */
+/**
+ * Finite, small enough that transformed f32 coordinates stay finite, not collapsing space to a
+ * plane or a point, and affine: the last row is never applied, so it has to be 0 0 0 1
+ * (to rounding noise).
+ */
 export function isUsable(m: Xform): boolean {
-  return m.length === 16 && m.every(v => Math.abs(v) <= LARGEST_ENTRY) && determinant3(m) !== 0;
+  return m.length === 16 && m.every(v => Math.abs(v) <= LARGEST_ENTRY) && determinant3(m) !== 0
+    && Math.max(Math.abs(m[12]), Math.abs(m[13]), Math.abs(m[14]), Math.abs(m[15] - 1)) <= AFFINE_TOLERANCE;
 }
 
 /** a · b: apply `b` first, then `a`. */

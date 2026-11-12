@@ -3,9 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, test } from 'vitest';
-import { readRhino3dm, type RhinoImport } from '../index.js';
+import { readRhino3dm, RhinoReadError } from '../index.js';
 import { craft, drawnTriangles, entityBounds, patchUuid, translation, type Craft } from '../../test-support/craft.js';
 import { MAX_BLOCK_PLACEMENTS } from './blocks.js';
+import { MAX_TEXT_DOTS } from './emit.js';
 
 const unit = (c: Craft) => c.box([0, 0, 0], [1, 1, 1]);
 const close = (a: number[], b: number[], digits = 9) => a.forEach((v, k) => expect(v).toBeCloseTo(b[k], digits));
@@ -116,6 +117,24 @@ test('a member whose colour is by a material that is by parent takes the instanc
   expect([instanced.instances[0].color, instanced.curves[0].color, baked.meshes[0].color, baked.curves[0].color]).toEqual([blue, blue, blue, blue]);
 });
 
+test('a "by parent" member with a transparent material of its own takes the instance colour and its own transparency', async () => {
+  const build = (c: Craft) => {
+    const glass = c.material('Glass', [0, 0, 255, 255], 0.75);
+    const spec = { colorSource: 'ColorFromParent', material: glass, materialSource: 'MaterialFromObject' } as const;
+    const block = c.block('Pane', [unit(c), new c.rhino.PolylineCurve([[0, 0, 0], [1, 0, 0]]), unit(c)], [spec, spec, { colorSource: 'ColorFromParent' }]);
+    c.addInstance(block, translation(3, 0, 0), { color: [200, 0, 0, 255] });
+  };
+  const bytes = await craft(build), red = [200 / 255, 0, 0, 1], faded = [200 / 255, 0, 0, 0.25];
+  const instanced = await readRhino3dm(bytes), baked = await readRhino3dm(bytes, { bakeInstances: true });
+  // One definition colour cannot say "the instance's colour at my own alpha", so that member is baked per placement.
+  expect(instanced.definitions[0].meshes.map(m => m.color)).toEqual([null]);
+  expect(instanced.instances.map(i => i.color)).toEqual([red]);
+  expect(instanced.meshes.map(m => [m.color, m.origin])).toEqual([[faded, [3, 0, 0]]]);
+  expect(baked.meshes.map(m => m.color).sort()).toEqual([faded, red].sort());
+  expect([instanced.curves[0].color, baked.curves[0].color]).toEqual([faded, faded]);
+  expect(drawnTriangles(instanced)).toBe(drawnTriangles(baked));
+});
+
 describe('guards', () => {
   /** A block whose second member references the block itself, placed once. */
   async function selfReferencing(): Promise<Uint8Array> {
@@ -166,8 +185,15 @@ describe('guards', () => {
 
   test.each([false, true])('the triangle budget bounds what is drawn (bakeInstances %s)', async bakeInstances => {
     const bytes = await craft(tenBoxes);
-    for (const maxTriangles of [0, 11, 12, 60, 71, 100, 119]) {
-      expect(drawnTriangles(await readRhino3dm(bytes, { bakeInstances, maxTriangles }).catch((): RhinoImport => empty))).toBeLessThanOrEqual(maxTriangles);
+    // Below one box nothing fits, which is the refusal and no other failure.
+    for (const maxTriangles of [0, 11]) {
+      const error = await readRhino3dm(bytes, { bakeInstances, maxTriangles }).catch(e => e);
+      expect(error).toBeInstanceOf(RhinoReadError);
+      expect(error.code).toBe('no-renderable-geometry');
+    }
+    for (const maxTriangles of [12, 60, 71, 100, 119]) {
+      const drawn = drawnTriangles(await readRhino3dm(bytes, { bakeInstances, maxTriangles }));
+      expect(drawn).toBe(Math.floor(maxTriangles / 12) * 12);
     }
     expect(drawnTriangles(await readRhino3dm(bytes, { bakeInstances, maxTriangles: 120 }))).toBe(120);
   });
@@ -204,11 +230,13 @@ describe('guards', () => {
       const box = c.block('Box', [unit(c)]), far = c.block('Far', [c.box([0, 0, 0], [1e30, 1e30, 1e30])]);
       c.addInstance(box, [0, 0, 0, 5, 0, 0, 0, 5, 0, 0, 0, 5, 0, 0, 0, 1], { name: 'collapsed' });
       c.addInstance(far, [1e15, 0, 0, 0, 0, 1e15, 0, 0, 0, 0, 1e15, 0, 0, 0, 0, 1], { name: 'overflowing' });
+      // A last row other than 0 0 0 1 is a projection, which the reader does not apply.
+      c.addInstance(box, [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 2], { name: 'projective' });
       c.addInstance(box, translation(1, 0, 0), { name: 'fine' });
     });
     const baked = await readRhino3dm(bytes, { bakeInstances: true });
     expect(baked.entities.map(e => e.name)).toEqual(['fine']);
-    expect(baked.skipped).toEqual({ 'InstanceReference:invalid': 1, 'transform:invalid': 1 });
+    expect(baked.skipped).toEqual({ 'InstanceReference:invalid': 2, 'transform:invalid': 1 });
     expect(baked.meshes.every(m => m.positions.every(Number.isFinite) && m.normals.every(Number.isFinite) && m.origin.every(Number.isFinite))).toBe(true);
   });
 
@@ -222,6 +250,59 @@ describe('guards', () => {
     expect(entityBounds(result, 0).max).toEqual([1, 1, 1]);
     expect(result.entities[0].hidden).toBe(false);
     expect(result.skipped).toEqual({ 'hidden-block-member': 1 });
+  });
+
+  test('references that draw nothing are charged to the placement budget too', async () => {
+    // 2^13 leaves of 200 references to a block that is not in the file: 1.6 million skips unless they are charged.
+    const bytes = await craft(c => {
+      let block = c.block('Leaf', [new c.rhino.PolylineCurve([[0, 0, 0], [1, 0, 0]]), ...Array.from({ length: 200 }, () => c.reference(PLACEHOLDER))]);
+      for (let level = 1; level <= 13; level++) block = c.block(`Level ${level}`, [c.reference(block), c.reference(block, translation(level, 0, 0))]);
+      c.addInstance(block, undefined, { name: 'fan' });
+    });
+    const result = await readRhino3dm(bytes);
+    const walked = result.skipped['InstanceReference:missing-definition'] + result.curves.length;
+    expect(walked).toBeLessThanOrEqual(MAX_BLOCK_PLACEMENTS);
+    expect(walked).toBeGreaterThan(MAX_BLOCK_PLACEMENTS * 0.9);
+    expect(result.skipped.budget).toBe(1);
+    expect(result.warnings).toEqual(['Stopped expanding blocks after 500,000 block references.']);
+  });
+
+  test('text dots stop at their own limit, and the dots left out are counted and reported', async () => {
+    // 30 instances of 40 placements of 100 dots: 120,000 dots, which no triangle budget sees.
+    const bytes = await craft(c => {
+      const dots = c.block('Dots', Array.from({ length: 100 }, (_, i) => c.textDot(`dot ${i}`, [i, 0, 0])));
+      const rows = c.block('Rows', Array.from({ length: 40 }, (_, i) => c.reference(dots, translation(0, i, 0))));
+      for (let i = 0; i < 30; i++) c.addInstance(rows, translation(0, 0, i), { name: `sheet ${i}` });
+    });
+    const result = await readRhino3dm(bytes);
+    expect(result.textDots).toHaveLength(MAX_TEXT_DOTS);
+    expect(result.entities).toHaveLength(MAX_TEXT_DOTS / 4000);
+    expect(result.skipped).toEqual({ 'TextDot:limit': 120_000 - MAX_TEXT_DOTS });
+    expect(result.warnings).toEqual(['Stopped at 100,000 text dots: 20,000 text dots left out.']);
+  });
+
+  test('past the text dot limit a placement costs the walk one step, however many dots it holds', async () => {
+    // 2^17 placements of 2,000 dots are 262 million dots: minutes if each were visited, and the placement budget is not reached.
+    const bytes = await craft(c => {
+      let block = c.block('Dots', Array.from({ length: 2000 }, (_, i) => c.textDot('d', [i, 0, 0])));
+      for (let level = 1; level <= 17; level++) block = c.block(`Level ${level}`, [c.reference(block), c.reference(block, translation(0, level, 0))]);
+      c.addInstance(block);
+    });
+    const started = performance.now();
+    const result = await readRhino3dm(bytes);
+    expect(performance.now() - started).toBeLessThan(20_000);
+    expect(result.textDots).toHaveLength(MAX_TEXT_DOTS);
+    expect(result.skipped).toEqual({ 'TextDot:limit': 2000 * 2 ** 17 - MAX_TEXT_DOTS });
+  });
+
+  test('a reference that could never be drawn keeps its own reason after the placement budget is spent', async () => {
+    const bytes = await craft(c => {
+      let block = c.block('Level 0', [new c.rhino.PolylineCurve([[0, 0, 0], [1, 0, 0]])]);
+      for (let level = 1; level <= 20; level++) block = c.block(`Level ${level}`, [c.reference(block), c.reference(block, translation(level, 0, 0))]);
+      c.addInstance(block, undefined, { name: 'fan' });
+      c.addInstance(PLACEHOLDER, undefined, { name: 'dangling' });
+    });
+    expect((await readRhino3dm(bytes)).skipped).toEqual({ budget: 1, 'InstanceReference:missing-definition': 1 });
   });
 
   test('a fan-out of empty blocks stops at the placement budget and reports it', async () => {
@@ -239,15 +320,9 @@ describe('guards', () => {
     expect(result.curves.length).toBeLessThan(MAX_BLOCK_PLACEMENTS);
     expect(result.curves.length).toBeGreaterThan(0);
     expect(result.skipped).toEqual({ budget: 1 });
-    expect(result.warnings).toEqual(['Stopped expanding blocks after 500,000 placements.']);
+    expect(result.warnings).toEqual(['Stopped expanding blocks after 500,000 block references.']);
   });
 });
-
-const empty: RhinoImport = {
-  format: 'ifc-lite.rhino-import', version: 1,
-  document: { archiveVersion: 80, application: '', unitSystem: 'Meters', metersPerUnit: 1, provenance: 'rhino', frame: 'file', earthAnchor: null, strings: [] },
-  layers: [], entities: [], meshes: [], definitions: [], instances: [], pointClouds: [], curves: [], textDots: [], skipped: {}, warnings: [],
-};
 
 describe('frame', () => {
   const W = '1 0 0 2600000 0 1 0 1200000 0 0 1 400 0 0 0 1';
@@ -294,6 +369,22 @@ describe('frame', () => {
     const result = await readRhino3dm(await craft(scene('local', '1 0 0 5 0 1 0 5 0 0 0 5 0 0 0 1')));
     expect(result.document.frame).toBe('file');
     expect(entityBounds(result, 0).min).toEqual([1, 2, 3]);
+  });
+
+  test.each([
+    ['a scaling last entry', '1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 2'],
+    ['a perspective row', '1 0 0 0 0 1 0 0 0 0 1 0 0 0 1e-6 1'],
+  ])('a matrix that is not affine (%s) is ignored with a warning, not applied as if it were', async (_name, world) => {
+    const result = await readRhino3dm(await craft(scene('local', world)));
+    expect(result.document.frame).toBe('file');
+    expect(entityBounds(result, 0).min).toEqual([1, 2, 3]);
+    expect(result.warnings).toEqual(['IFC::WorldFromModel is not a usable 4×4 matrix; the file is shown in its own coordinates.']);
+  });
+
+  test('rounding noise in the last row does not make a matrix a projection', async () => {
+    const result = await readRhino3dm(await craft(scene('local', '1 0 0 2600000 0 1 0 1200000 0 0 1 400 0 1e-17 0 0.9999999999999999')));
+    expect(result.document.frame).toBe('ifc-world-from-model');
+    expect(result.warnings).toEqual([]);
   });
 
   test('a rotating matrix turns positions and normals and keeps the origin in doubles', async () => {

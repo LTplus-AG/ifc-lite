@@ -147,6 +147,11 @@ export async function readRhino3dm(bytes: Uint8Array, opts: ReadRhino3dmOptions 
   const [rhino, classes] = await Promise.all([loadRhino(opts.locateFile), loadIfcClasses()]);
   const api = readApi(rhino);
   const large = bytes.byteLength >= OUT_OF_MEMORY_SUSPECT_BYTES;
+  // What the caller's callback throws is the caller's: it is passed on as it is, never read as a wasm failure.
+  let callerThrew = false;
+  const progress = onProgress && ((done: number, total: number) => {
+    try { onProgress(done, total); } catch (error) { callerThrew = true; throw error; }
+  });
   let file: RFile | null = null;
   try {
     file = api.File3dm.fromByteArray(bytes);
@@ -157,12 +162,12 @@ export async function readRhino3dm(bytes: Uint8Array, opts: ReadRhino3dmOptions 
       discardRhino();
       throw outOfMemory();
     }
-    return build(api, file, archiveVersion, classes, { subdLevel, maxTriangles, bakeInstances, onProgress });
+    return build(api, file, archiveVersion, classes, { subdLevel, maxTriangles, bakeInstances, onProgress: progress });
   } catch (error) {
     // A wasm trap or abort, or a C++ exception (which escapes embind as a bare number), leaves the
     // module unusable. A failed typed-array allocation only counts for a file large enough to cause one.
     const trapped = error instanceof WebAssembly.RuntimeError || typeof error === 'number';
-    if (!trapped && !(large && error instanceof RangeError)) throw error;
+    if (callerThrew || (!trapped && !(large && error instanceof RangeError))) throw error;
     discardRhino();
     file = null;
     // A small file cannot exhaust the heap, so a trap on one means its contents are damaged.

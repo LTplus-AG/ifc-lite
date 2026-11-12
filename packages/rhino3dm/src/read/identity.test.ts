@@ -35,7 +35,8 @@ test('objects sharing a GlobalId merge only inside the Rhino group named that Gl
   expect(pasted.map(e => e.propertySets.find(s => s.name === 'IFC')!.properties)).toEqual([[['GlobalId', WALL]], [['GlobalId', WALL]], [['GlobalId', DOOR]]]);
   expect(new Set(result.entities.map(e => e.globalId)).size).toBe(5);
   // Both wall parts are meshes of the one wall entity, and the lists stay in entity order.
-  expect(result.meshes.map(m => m.entity)).toEqual([0, 0, 1, 2, 3, 4]);
+  // Each mesh moved with its entity: the box at x is still the one its object drew.
+  expect(result.meshes.map(m => [m.entity, m.origin[0]])).toEqual([[0, 0], [0, 1], [1, 5], [2, 9], [3, 12], [4, 20]]);
   expect(result.warnings).toEqual(['3 objects repeat an IFC::GlobalId outside its group and got a new id; the stated id stays in their properties.']);
 });
 
@@ -109,4 +110,15 @@ test('user text sorts into property sets, entity columns and the Rhino set', asy
   ]);
   expect([named.name, bare.name]).toEqual(['rhino name only', 'Mesh']);
   expect(named).toMatchObject({ description: '', objectType: '', ifcClass: 'IfcBuildingElementProxy' });
+});
+
+test('user text under Rhino:: stays out of the Rhino set, which holds only what the reader derives', async () => {
+  let id = '';
+  const result = await readRhino3dm(await craft(c => {
+    id = c.addMesh(box(c), { userStrings: [['Rhino::ObjectId', 'spoofed'], ['rhino::Layer', 'elsewhere'], ['Rhino ::Material', 'gold']] });
+  }));
+  expect(result.entities[0].propertySets).toEqual([
+    { name: 'Attribute User Text', properties: [['Rhino::ObjectId', 'spoofed'], ['rhino::Layer', 'elsewhere'], ['Rhino ::Material', 'gold']] },
+    { name: 'Rhino', properties: [['Layer', 'Default'], ['ObjectType', 'Mesh'], ['ObjectId', id]] },
+  ]);
 });

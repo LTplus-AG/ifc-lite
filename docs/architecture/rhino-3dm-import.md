@@ -231,10 +231,19 @@ interface RhinoImportGeometry {
   flattened: an instance of a block that nests others yields one record per
   placement, with the transforms composed in doubles. A definition mesh with
   `color: null` takes the colour of the instance placing it.
+- A block mesh coloured "by parent" whose own material is transparent is the
+  exception: no single definition colour holds "the instance's colour at my
+  alpha", so it is a world-space copy in `meshes` per placement, in both
+  modes [test]. That gives up instancing for those meshes; a definition mesh
+  that carries its own opacity would keep it, and is a change to this
+  contract left for a later version.
 - With `bakeInstances`, `definitions` and `instances` are empty and every
   placement is a world-space copy in `meshes`. Curves, point clouds and text
-  dots inside blocks are always baked, one copy per placement, and charged to
-  the budget like everything else.
+  dots inside blocks are always baked, one copy per placement. Curves and
+  point clouds are charged to the triangle budget; text dots have their own
+  limit of 100,000 per file, and the dots past it are counted as
+  `TextDot:limit` and reported in one warning. Past the limit a placement's
+  dots are counted in one step, so the limit bounds the work too [test].
 - `curves[i].positions` is a polyline. A curve that is not a polyline is
   sampled at 32 points per span, at most 8,192 per curve.
 - `pointClouds[i].colors` is RGBA bytes per point, or null.
@@ -296,7 +305,10 @@ type RhinoImportResponse =
   `IFC::WorldFromModel` is present, every point maps through
   `world = W · (p · metersPerUnit)`, where W holds 16 row-major numbers in
   metres [src: export spec]. `document.frame` is then `ifc-world-from-model`.
-  Proven exact on `fzk-far` [ran].
+  Proven exact on `fzk-far` [ran]. W has to be affine: a last row other than
+  `0 0 0 1` (beyond 1e-12 of rounding noise) is a projection, which the reader
+  does not apply, so such a W is ignored with a warning and `frame` stays
+  `file` [test].
 - Otherwise the file coordinates (in metres) are used as they are, like GLB,
   and `frame` is `file`.
 - **Precision:** per mesh, `origin` is the f64 world point of its first vertex
@@ -370,7 +382,9 @@ type RhinoImportResponse =
 | `Point`, `Text`, `Hatch`, dimensions, lights, clipping planes and other bare surfaces | skipped and counted by class name, never an error |
 
 A mesh with no vertices or faces is counted as `<Type>:empty`, and one with a
-non-finite coordinate or an index out of range as `<Type>:invalid`.
+non-finite coordinate or an index out of range as `<Type>:invalid`. So is a
+curve or point cloud with an offset that f32 cannot hold: the check reads the
+stored f32, not the double it came from [test].
 
 **Blocks.** Decision D4 is GPU instancing, so by default the reader does not
 bake: it returns each block's own meshes once and one instance record per
@@ -394,11 +408,16 @@ its winding flipped and its normals transformed by the inverse transpose
   drawing for the rest of the file (text dots excepted) and reports how many
   objects were left out (`skipped.budget` and a warning). Bounding and
   reporting are tested separately.
-- A **placement budget** of 500,000 block placements per file bounds a fan-out
+- A **placement budget** of 500,000 block references per file bounds a fan-out
   of blocks that hold no triangles, which the triangle budget cannot see: 20
-  levels that each reference the next twice are 2^20 placements [test].
-- A placement whose transform is not finite, has an entry above 1e15 or
-  flattens space (zero determinant) is counted as `InstanceReference:invalid`.
+  levels that each reference the next twice are 2^20 placements [test]. Every
+  reference the walk reaches is charged, drawn or skipped (missing, linked,
+  cyclic, invalid), so references that draw nothing cannot stall it either
+  [test]. Once it is spent, a reference that could never be drawn still gets
+  its own reason, not `budget` [test].
+- A placement whose transform is not finite, has an entry above 1e15, flattens
+  space (zero determinant) or is not affine (last row other than `0 0 0 1`) is
+  counted as `InstanceReference:invalid`.
   Geometry a transform pushes out of the f32 range is counted as
   `transform:invalid` [test].
 - A block member that is hidden, or on a layer that is off, is not drawn in
@@ -423,7 +442,9 @@ When the colour's alpha is 255 and the object's material (its own, or its
 layer's) has `transparency > 0`, the material's transparency wins: Rhino
 displays transparency from the material [unproven: check against Rhino]. A
 material inherited from a parent instance does not apply it again, because the
-parent's colour already carries it. A block member coloured by a material
+parent's colour already carries it. A block member coloured "by parent" with
+a transparent material of its own takes the instance's colour and, when that
+colour is opaque, its own material's transparency [test]. A block member coloured by a material
 that is itself "by parent" takes the instance's colour, like a member coloured
 "by parent" [test]. Colours stay sRGB, as `MeshData.color`. Each source is
 covered by a crafted file [test].
@@ -465,7 +486,8 @@ Numbers are not guessed. The reader does the sorting: each entity carries
 | other `IFC::*` (`ExpressId`, `Tag`, `PredefinedType`, `Container`, `ContainerGlobalId`, `Type`, `TypeGlobalId`, `Material`, `PresentationLayer`) | set `IFC` |
 | `<Set>::<Prop>` | set `<Set>`, property `<Prop>`, split at the first `::` as the exporter defines [src `user_text.rs`]. ` #2` collision suffixes stay as written. |
 | key without `::`, or with an empty set or property name | set `Attribute User Text`, under the whole key |
-| Rhino facts | set `Rhino`: `Layer` (full path), `ObjectType`, `ObjectId` (UUID), `Material` (name) |
+| `Rhino::*` user text (any case) | set `Attribute User Text`, under the whole key, so it cannot pose as a derived fact [test] |
+| Rhino facts | set `Rhino`: `Layer` (full path), `ObjectType`, `ObjectId` (UUID), `Material` (name). Only the reader writes this set. |
 
 Document strings and document user text go to the model metadata panel, not
 to an entity.
@@ -483,8 +505,12 @@ and say what to do.
 | `no-renderable-geometry` | nothing was drawn | Lists the skip counts: "skipped: 3 Brep:no-render-mesh, 7 Point". When surfaces lack render meshes it adds the remedy: shaded view, save without Save Small [unproven: exact Rhino wording]. |
 | `worker-failed` | worker crash, unreadable message, timeout | as the export client. Raised by the viewer's worker client (step 2), not by the reader. |
 
-Running out of the triangle or placement budget is not an error: the read
-succeeds, stops drawing, and reports it.
+Running out of the triangle or placement budget, or reaching the text dot
+limit, is not an error: the read succeeds, stops drawing, and reports it.
+
+An error thrown by the caller's `onProgress` is rethrown as it is, whatever
+its type and whatever the file size: it is never read as a wasm failure, and
+the runtime is kept [test].
 
 An emscripten abort leaves the module unusable [ran], so after any wasm trap
 the reader drops the shared runtime and the next read or write loads a fresh

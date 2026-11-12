@@ -36,8 +36,9 @@ function relative(points: number[][], scale: number): { origin: RhinoVector3; po
   for (let i = 0; i < points.length; i++) {
     const p = points[i];
     for (let k = 0; k < 3; k++) {
-      const value = positions[i * 3 + k] = (p?.[k] - first[k]) * scale;
-      if (!Number.isFinite(value)) return null;
+      positions[i * 3 + k] = (p?.[k] - first[k]) * scale;
+      // Read back: a finite double beyond the f32 range is stored as Infinity.
+      if (!Number.isFinite(positions[i * 3 + k])) return null;
     }
   }
   const origin = scaled(first, scale);

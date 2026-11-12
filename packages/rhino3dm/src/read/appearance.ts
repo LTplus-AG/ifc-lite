@@ -53,17 +53,19 @@ export function takesParentColor(look: Look): boolean {
  *
  * A material's transparency overrides an opaque colour, because Rhino shows
  * transparency from the material. That applies to a material the object or its
- * layer names, never to an inherited one: the parent's colour already carries it.
+ * layer names, also under a colour taken from the parent, and never to an
+ * inherited material: the parent's colour already carries it.
  */
 export function resolveAppearance(look: Look, tables: AppearanceTables, parent: Appearance | null): Appearance {
   const layer = tables.layers[look.layer];
   const inherited = look.materialSource === 'parent' && parent !== null;
   const material = inherited ? parent.material
     : look.materialSource === 'object' ? look.material : layer?.material ?? -1;
-  if (parent && takesParentColor(look)) return { color: parent.color, material };
   const shader = tables.materials[material];
-  const color = look.colorSource === 'object' ? rgba(look.color)
+  let color = parent && takesParentColor(look) ? parent.color
+    : look.colorSource === 'object' ? rgba(look.color)
     : look.colorSource === 'material' && shader ? rgba(shader.diffuse) : rgba(layer?.color ?? BLACK);
-  if (!inherited && shader && shader.transparency > 0 && color[3] === 1) color[3] = 1 - shader.transparency;
+  // A new array: the parent's colour is shared with the parent.
+  if (!inherited && shader && shader.transparency > 0 && color[3] === 1) color = [color[0], color[1], color[2], 1 - shader.transparency];
   return { color, material };
 }

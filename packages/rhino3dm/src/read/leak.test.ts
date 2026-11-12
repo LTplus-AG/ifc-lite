@@ -45,6 +45,6 @@ test('three imports in one runtime leave the wasm heap where the first left it',
   for (let i = 0; i < 3; i++) await readRhino3dm(bytes, { bakeInstances: i === 1 });
   expect(memory!.buffer.byteLength).toBe(settled);
   // A failed import releases the file too.
-  for (let i = 0; i < 3; i++) await readRhino3dm(bytes, { onProgress: done => { if (done === 800) throw new Error('stop'); } }).catch(() => undefined);
+  for (let i = 0; i < 3; i++) await expect(readRhino3dm(bytes, { onProgress: done => { if (done === 800) throw new Error('stop'); } })).rejects.toThrow('stop');
   expect(memory!.buffer.byteLength).toBe(settled);
 });

@@ -29,7 +29,8 @@ export function userString(strings: RhinoUserStrings, key: string): string | und
 /**
  * Sort Attribute User Text into property sets. A key splits at its first `::`
  * into set and property, as the exporter wrote it; a key without one goes to
- * `Attribute User Text`. Values stay strings: user text has no types.
+ * `Attribute User Text`, and so does a `Rhino::` key, because the `Rhino` set
+ * holds only what the reader derives. Values stay strings: user text has no types.
  */
 function propertySets(o: ObjectFacts): RhinoImportPropertySet[] {
   const sets = new Map<string, [string, string][]>();
@@ -39,8 +40,9 @@ function propertySets(o: ObjectFacts): RhinoImportPropertySet[] {
   };
   for (const [key, value] of o.userStrings) {
     const at = key.indexOf('::'), set = key.slice(0, at), name = key.slice(at + 2);
-    if (at <= 0 || !name) put('Attribute User Text', key, value);
-    else if (set.toLowerCase() !== 'ifc') put(set, name, value);
+    const setKey = set.trim().toLowerCase();
+    if (at <= 0 || !name || setKey === 'rhino') put('Attribute User Text', key, value);
+    else if (setKey !== 'ifc') put(set, name, value);
     else if (!COLUMN_KEYS.has(name.toLowerCase())) put('IFC', name, value);
   }
   put('Rhino', 'Layer', o.layerPath);

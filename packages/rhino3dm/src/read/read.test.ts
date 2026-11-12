@@ -117,6 +117,15 @@ describe('geometry', () => {
     expect(result.entities).toHaveLength(1);
   });
 
+  test('an offset f32 cannot hold is counted, never stored as Infinity', async () => {
+    // 1e40 is a finite double and an infinite f32.
+    const result = await readRhino3dm(await craft(c => {
+      c.addPolyline([[0, 0, 0], [1e40, 0, 0]]); c.addPointCloud([[0, 0, 0], [1e40, 0, 0]]); c.addMesh(c.box([0, 0, 0], [1, 1, 1]));
+    }));
+    expect(result.skipped).toEqual({ 'PolylineCurve:invalid': 1, 'PointCloud:invalid': 1 });
+    expect([result.curves, result.pointClouds]).toEqual([[], []]);
+  });
+
   test('the same bytes and options give the same result', async () => {
     const bytes = await craft(c => { c.addMesh(c.box([0, 0, 0], [1, 1, 1])); c.addBrep(3); c.addPolyline(quad); });
     expect(await readRhino3dm(bytes)).toEqual(await readRhino3dm(bytes));
@@ -325,6 +334,16 @@ describe('errors', () => {
     const bytes = await craft(c => { c.addMesh(c.box([0, 0, 0], [1, 1, 1])); });
     await expect(readRhino3dm(bytes, { onProgress: () => { throw new Error('cancelled'); } })).rejects.toThrow('cancelled');
     expect((await readRhino3dm(bytes)).meshes).toHaveLength(1);
+  });
+
+  test('what the caller\'s onProgress throws is never taken for a wasm failure', async () => {
+    const bytes = await craft(c => { c.addMesh(c.box([0, 0, 0], [1, 1, 1])); });
+    const runtime = await loadRhino();
+    // A bare number is how a C++ exception escapes embind, and a RangeError is how an allocation fails.
+    for (const thrown of [7, new RangeError('mine')]) {
+      await expect(readRhino3dm(bytes, { onProgress: () => { throw thrown; } })).rejects.toBe(thrown);
+    }
+    expect(await loadRhino()).toBe(runtime);
   });
 
   test('invalid options are rejected', async () => {

@@ -62,7 +62,9 @@ by structured clone, and every typed array can go on the transfer list.
   a member that is hidden or on a layer that is off is not drawn.
 - **Budget:** `maxTriangles` bounds what is drawn. A block's triangles count
   once per placement, and a curve or point cloud vertex counts a third of a
-  triangle, so blocks cannot multiply geometry without bound.
+  triangle, so blocks cannot multiply geometry without bound. Text dots have
+  their own limit of 100,000 per file; `skipped` and `warnings` say what was
+  left out.
 - **Layers** come parent first with colour, visibility, user text and, when a
   layer carries `IFC::GlobalId` and `IFC::Class` stamps, its `spatial` element.
 

@@ -161,6 +161,7 @@ export interface RhinoImport {
   instances: RhinoImportInstance[];
   pointClouds: RhinoImportPointCloud[];
   curves: RhinoImportCurve[];
+  /** At most 100,000; the rest are counted in `skipped` as `TextDot:limit`. */
   textDots: RhinoImportTextDot[];
   /** Counts by reason: `"Point": 8`, `"Brep:no-render-mesh": 3`. */
   skipped: Record<string, number>;

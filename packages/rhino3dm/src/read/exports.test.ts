@@ -44,11 +44,12 @@ function farFzk(): Uint8Array {
 /** Worst distance between two imports' bounding box corners, per GlobalId. */
 function worstCornerGap(a: RhinoImport, b: RhinoImport): number {
   const index = new Map(b.entities.map((e, i) => [e.globalId, i]));
+  // The same non-empty set of ids on both sides, or an entity one import lost would never be compared.
+  expect(a.entities.length).toBeGreaterThan(0);
+  expect(a.entities.map(e => e.globalId).sort()).toEqual([...index.keys()].sort());
   let worst = 0;
   a.entities.forEach((entity, i) => {
-    const other = index.get(entity.globalId);
-    if (other === undefined) throw new Error(`${entity.globalId} is missing from the second import`);
-    const x = entityBounds(a, i), y = entityBounds(b, other);
+    const x = entityBounds(a, i), y = entityBounds(b, index.get(entity.globalId)!);
     for (let k = 0; k < 3; k++) worst = Math.max(worst, Math.abs(x.min[k] - y.min[k]), Math.abs(x.max[k] - y.max[k]));
   });
   return worst;

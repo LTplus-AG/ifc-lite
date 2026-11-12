@@ -224,23 +224,25 @@ export function decideReleaseLane({ event, mode, headRef, headRepo, repo, baseRe
     problems = [`diff unreadable (${err.message})`];
   }
   if (problems.length > 0) return full(`the diff is more than a version bump: ${problems.slice(0, 5).join('; ')}`);
-  // Shadow and the held `on` report what the lean lane would skip whatever the
-  // PR's queue state, and say that state: measuring must not wait on a label.
   // The ONE list of what still stands between this run and a lean one. Lean
   // happens only when it is empty, so a condition added here cannot be left
-  // out of the report, and the report cannot list one the decision ignores.
+  // out, and the report cannot list one the decision ignores. Shadow and the
+  // held `on` report it whatever the PR's queue state: measuring must not
+  // wait on a label.
   const pending = [
     m === 'shadow' ? 'with CI_RELEASE_LANE=on' : '',
     ownerAllowsLean ? '' : 'with OWNER_ALLOWS_LEAN released',
     route.queueable ? '' : 'once this PR is queueable',
   ].filter(Boolean);
-  if (pending.length === 0) return { lane: 'lean', mode: m, wouldBeLean: true, reason: `CI_RELEASE_LANE=on on the release PR; ${route.queueReason}; ${route.reason}` };
-  // With the switch on and the hold released, an unqueueable PR is refused
-  // outright: its own run would be the last gate. Otherwise, report.
-  if (m === 'on' && ownerAllowsLean) return full(`${route.queueReason}, so this run is the only gate`, { warning: `release lane refused: ${route.queueReason}` });
-  const report = { lane: 'full', mode: m, wouldBeLean: true, pending };
+  const base = { mode: m, wouldBeLean: true };
+  if (pending.length === 0) return { ...base, lane: 'lean', reason: `CI_RELEASE_LANE=on on the release PR; ${route.queueReason}; ${route.reason}` };
+  const report = { ...base, lane: 'full', pending };
   if (m === 'shadow') return { ...report, reason: `shadow mode: full lanes run, lean lane reported; ${route.queueReason}` };
-  return { ...report, reason: `CI_RELEASE_LANE=on, but the lean lane is held until the owner decides how release PRs reach main (OWNER_ALLOWS_LEAN); full lanes run, lean lane reported; ${route.queueReason}`, warning: 'CI_RELEASE_LANE=on is held (OWNER_ALLOWS_LEAN=false); running the full lanes' };
+  if (!ownerAllowsLean) return { ...report, reason: `CI_RELEASE_LANE=on, but the lean lane is held until the owner decides how release PRs reach main (OWNER_ALLOWS_LEAN); full lanes run, lean lane reported; ${route.queueReason}`, warning: 'CI_RELEASE_LANE=on is held (OWNER_ALLOWS_LEAN=false); running the full lanes' };
+  // `on`, hold released, something still pending (today only queueability):
+  // refused outright, naming what is pending, because this run would be the
+  // last gate.
+  return full(`${pending.join(', ')} still pending (${route.queueReason}), so this run is the only gate`, { warning: `release lane refused: ${pending.join(', ')} still pending` });
 }
 
 /**

@@ -76,13 +76,23 @@ describe('schema registry compact encoding', () => {
   it('decodes fresh objects for each attribute occurrence', () => {
     const schema = parseExpressSchema(`
       SCHEMA FRESH;
-      ENTITY IfcRoot; GlobalId : IfcGloballyUniqueId; END_ENTITY;
-      ENTITY IfcObject SUBTYPE OF (IfcRoot); ObjectType : OPTIONAL IfcLabel; END_ENTITY;
+
+      ENTITY IfcRoot;
+        GlobalId : IfcGloballyUniqueId;
+      END_ENTITY;
+
+      ENTITY IfcObject
+        SUBTYPE OF (IfcRoot);
+        ObjectType : OPTIONAL IfcLabel;
+      END_ENTITY;
+
       END_SCHEMA;
     `);
     const decoded = decodeSchemaRegistry(JSON.parse(JSON.stringify(encodeSchemaRegistry(buildSchemaRegistry(schema)))));
     const root = decoded.entities.IfcRoot;
     const object = decoded.entities.IfcObject;
+    expect(root.attributes.map((a) => a.name)).toEqual(['GlobalId']);
+    expect(object.allAttributes?.map((a) => a.name)).toEqual(['GlobalId', 'ObjectType']);
     expect(object.allAttributes?.[0]).toEqual(root.attributes[0]);
     expect(object.allAttributes?.[0]).not.toBe(root.attributes[0]);
     expect(object.allAttributes?.[0]).not.toBe(root.allAttributes?.[0]);

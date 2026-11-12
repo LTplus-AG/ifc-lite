@@ -47,7 +47,7 @@ if (!('setStructuralViewMode' in state) || typeof state.setStructuralViewMode !=
     }), ifcDataStore:store,maxExpressId}));
     useViewerStore.setState({...fixtureModels(...models), ifcDataStore:store, hiddenEntities:new Set(), isolatedEntities:null});
     let hidden = new Set<number>();
-    function Probe() { hidden = useVisibilityState().hiddenEntities; return null; }
+    const Probe = () => { hidden = useVisibilityState().hiddenEntities; return null; };
     render(createElement(Probe));
     for (const [mode, expected] of [['physical',physical],['analytical',analytical],['both',products],['physical',physical]] as const) {
       act(()=>setMode(mode));

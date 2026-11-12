@@ -48,7 +48,7 @@ function referenceGeometry(step) {
   };
   for (const r of step.of('IFCRELCONNECTSSTRUCTURALELEMENT')) add(r.args[5].ref, r.args[4].ref);
   for (const r of step.of('IFCRELASSIGNSTOPRODUCT')) {
-    for (const item of r.args[4] ?? []) if (/^IFCSTRUCTURAL/.test(get(item).type)) add(item.ref, r.args[6].ref);
+    for (const item of r.args[4] ?? []) if (get(item).type.startsWith('IFCSTRUCTURAL')) add(item.ref, r.args[6].ref);
   }
   const members = step.of('IFCSTRUCTURALCURVEMEMBER').map((e) => {
     const edge = topology(e);
@@ -107,7 +107,7 @@ export async function measureDerivation(ctx,file) {
     const expected = referenceGeometry(file.step);
     // Remove the authored analytical graph, retaining the original physical geometry,
     // ids and properties. This exercises apply's normal no-existing-model path.
-    const removed = new Set([...file.step.entities.values()].filter((e) => /^IFCSTRUCTURAL/.test(e.type)).map((e)=>e.id));
+    const removed = new Set([...file.step.entities.values()].filter((e) => e.type.startsWith('IFCSTRUCTURAL')).map((e)=>e.id));
     const referencesRemoved = (value) => Array.isArray(value) ? value.some(referencesRemoved)
       : value !== null && typeof value === 'object' && 'ref' in value && removed.has(value.ref);
     for (const e of file.step.entities.values()) {

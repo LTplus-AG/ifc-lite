@@ -177,6 +177,11 @@ export default {
           await s.ui.click(s.page.locator('[data-workspace-chip]'));
         }
         await escape(s);
+        // Model mode defaults to hiding storeys above Level 1. Keep the whole
+        // tower visible during the edit, too, through its actual UI control.
+        await s.ui.click(s.page.locator('[data-storey-context]'));
+        await s.ui.click(s.page.getByRole('radio', { name: 'Show all', exact: true }));
+        await s.ui.key('Escape');
         // Known F5 ground truth: copied corner column on L1, whose floor
         // is 6 m and height 3.8 m. It may be GPU-instanced and absent from the
         // store's flat mesh list; use a real click, not a flat-mesh census.

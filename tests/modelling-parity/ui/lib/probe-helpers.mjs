@@ -44,7 +44,7 @@ async function typedRoom(s, origin, w, d) {
 }
 
 /** Wall setup that does not count toward the capability under test. */
-const setupRoom = (s, origin = [0, 0], w = 5, d = 4) => task(s, 'setup: typed 5x4 walls', () => typedRoom(s, origin, w, d)).then((t) => ({ ...t, setup: true }));
+const setupRoom = (s, origin = [0, 0], w = 5, d = 4) => task(s, 'setup: typed 5x4 walls', () => typedRoom(s, origin, w, d)).then(t => Object.assign(t, { setup: true }));
 
 /** Select elements by clicking them in Select mode; extra ones with Ctrl held (Ctrl+click toggles). */
 async function selectAt(s, points) {

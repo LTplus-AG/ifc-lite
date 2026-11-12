@@ -43,3 +43,16 @@ export function scheduleTotal(text) {
   const clean = text.trim().replace(/\s*m(?:²|³|2|3)?$/, '').replace(/,/g, '');
   return /^[-+]?\d+(?:\.\d+)?$/.test(clean) ? Number(clean) : NaN;
 }
+
+/** Follow occurrence assignment to the actual layer materials; unrelated definitions do not count. */
+export function assignedLayerMaterials(step, wallId) {
+  return step.of('IFCRELASSOCIATESMATERIAL')
+    .filter(r => r.args[4]?.some(v => v.ref === wallId))
+    .flatMap(r => {
+      const usage = step.get(r.args[5]);
+      if (usage?.type !== 'IFCMATERIALLAYERSETUSAGE') return [];
+      const set = step.get(usage.args[0]);
+      if (set?.type !== 'IFCMATERIALLAYERSET') return [];
+      return (set.args[0] ?? []).map(ref => step.get(step.get(ref)?.args[0])?.args[0]);
+    });
+}

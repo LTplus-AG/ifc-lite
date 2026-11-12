@@ -15,7 +15,7 @@ export default {
     title: 'Put the 2D section on a sheet and export the sheet as PDF and DXF',
     async run(s) {
       const tasks = [await setupRoom(s)];
-      tasks.push(await task(s, 'setup: 2D section of the room', () => openFrontSection(s)).then((t) => ({ ...t, setup: true })));
+      tasks.push(await task(s, 'setup: 2D section of the room', () => openFrontSection(s)).then(t => Object.assign(t, { setup: true })));
       tasks.push(await task(s, 'Sheet, Enable Sheet', async () => {
         await s.ui.click(s.page.getByRole('button', { name: 'Sheet', exact: true }).first(), { settle: 800 });
         await s.ui.click(s.page.getByRole('button', { name: 'Enable Sheet' }), { settle: 1500 });

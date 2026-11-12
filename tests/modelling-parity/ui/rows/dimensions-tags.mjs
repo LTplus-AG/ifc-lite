@@ -15,7 +15,7 @@ export default {
     title: 'A Distance dimension on the 2D section, exported to SVG; element tags',
     async run(s) {
       const tasks = [await setupRoom(s)];
-      tasks.push(await task(s, 'setup: 2D section of the room', () => openFrontSection(s)).then((t) => ({ ...t, setup: true })));
+      tasks.push(await task(s, 'setup: 2D section of the room', () => openFrontSection(s)).then(t => Object.assign(t, { setup: true })));
       const plain = await exportDrawing(s, 'svg', { count: false }).catch(() => null);
       let toolbar = [];
       let canvas = null;

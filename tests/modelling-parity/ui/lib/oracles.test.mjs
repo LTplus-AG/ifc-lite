@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readStep } from './step.mjs';
-import { classificationOf, inheritedFireRating, layerUsage, scheduleTotal, typeOf } from './measured-oracles.mjs';
+import { classificationOf, inheritedFireRating, layerUsage, scheduleTotal, typeOf, assignedLayerMaterials } from './measured-oracles.mjs';
 const fixture = `DATA;
 #1=IFCWALL('a',$,'A',$,$,$,$,$,$);
 #2=IFCWALL('b',$,'B',$,$,$,$,$,$);
@@ -14,11 +14,13 @@ const fixture = `DATA;
 #6=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('REI60'),$);
 #7=IFCCLASSIFICATIONREFERENCE($,'EF_25_10','Walls',$,$,$);
 #8=IFCRELASSOCIATESCLASSIFICATION('c',$,$,$,(#1),#7);
-#9=IFCMATERIALLAYER($,0.15,$,$,$,$,$);
-#10=IFCMATERIALLAYER($,0.05,$,$,$,$,$);
+#9=IFCMATERIALLAYER(#14,0.15,$,$,$,$,$);
+#10=IFCMATERIALLAYER(#15,0.05,$,$,$,$,$);
 #11=IFCMATERIALLAYERSET((#9,#10),'WT-200',$);
 #12=IFCMATERIALLAYERSETUSAGE(#11,.AXIS2.,.POSITIVE.,0.,$);
 #13=IFCRELASSOCIATESMATERIAL('m',$,$,$,(#1),#12);
+#14=IFCMATERIAL('Brick',$,$);
+#15=IFCMATERIAL('Insulation',$,$);
 ENDSEC;`;
 test('#9296 classification must relate the selected wall', () => {
   const s = readStep(fixture);
@@ -69,4 +71,15 @@ ENDSEC;`;
   assert.equal(gridCarriedColumn(before,moved),true);
   assert.equal(gridCarriedColumn(before,before),false);
   assert.equal(gridCarriedColumn(readStep('DATA; ENDSEC;'),moved),false);
+});
+
+test('#9874 an unused Brick definition cannot satisfy a wall material assignment', () => {
+  const good = readStep(fixture);
+  assert.deepEqual(assignedLayerMaterials(good,1),['Brick','Insulation']);
+  const decoy = readStep(fixture.replace("#14=IFCMATERIAL('Brick'", "#14=IFCMATERIAL('Concrete'")
+    .replace('ENDSEC;', "#16=IFCMATERIAL('Brick',$,$);\nENDSEC;"));
+  assert.ok(decoy.of('IFCMATERIAL').some(m => m.args[0] === 'Brick'));
+  assert.deepEqual(assignedLayerMaterials(decoy,1),['Concrete','Insulation']);
+  assert.equal(assignedLayerMaterials(decoy,1).includes('Brick'),false);
+  assert.deepEqual(assignedLayerMaterials(good,2),[]);
 });

@@ -25,7 +25,7 @@ export default {
           await escape(s, 1);
         }
         await escape(s);
-      }).then((t) => ({ ...t, setup: true })));
+      }).then(t => Object.assign(t, { setup: true })));
       const notes = [];
       tasks.push(await task(s, 'move: select the y=0 wall, Shift+M, from (0,0), type 2 towards +Y', async () => {
         await selectAt(s, [[2, 0, 1.5]]);

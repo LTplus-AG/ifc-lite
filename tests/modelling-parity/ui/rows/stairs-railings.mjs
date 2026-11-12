@@ -19,7 +19,7 @@ export default {
         await openStoreyManager(s);
         await s.ui.click(s.page.locator('[data-storey-manager]').getByRole('button', { name: 'Add storey above' }).first(), { settle: 600 });
         await s.ui.click(s.page.getByRole('radio', { name: 'Draw on Level 1' }));
-      }).then((t) => ({ ...t, setup: true })));
+      }).then(t => Object.assign(t, { setup: true })));
       await s.harness.aim(PLAN_CAM.pos, PLAN_CAM.target);
       tasks.push(await task(s, 'stair: Shift+T, click start and end of the run', async () => {
         await escape(s);

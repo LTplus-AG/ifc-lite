@@ -12,7 +12,7 @@ export default {
       await s.harness.aim([3,-5,70],[3,20,0]);
       const tasks = [await task(s,'setup: draw 20 separate typed walls',async () => {
         for (let i=0;i<20;i++) await wall(s,i*2);
-      }).then((t) => ({...t,setup:true}))];
+      }).then(t => Object.assign(t, { setup: true }))];
       tasks.push(await task(s,'select first wall, edit height to 4 m, undo',async () => {
         await selectWall(s);
         await field(s,s.page.getByLabel('Height in metres',{exact:true}),4);

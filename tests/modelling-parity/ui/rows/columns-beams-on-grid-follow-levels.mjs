@@ -21,7 +21,7 @@ export default {
         await s.ui.click(s.page.locator('[data-storey-manager]').getByRole('button', { name: 'Add storey above' }).first(), { settle: 600 });
         await s.ui.click(s.page.getByRole('radio', { name: 'Draw on Level 1' }));
         await s.ui.click(s.page.getByRole('button', { name: 'Back to the inspector' }));
-      }).then((t) => ({ ...t, setup: true })));
+      }).then(t => Object.assign(t, { setup: true })));
       tasks.push(await task(s, 'grid: Shift+G, click origin, type 18 x 12', async () => {
         await escape(s);
         await tool(s, 'grid.place');

@@ -21,7 +21,7 @@ export default {
         await s.ui.click(add, { settle: 600 });
         await s.ui.click(add, { settle: 600 });
         await s.ui.click(s.page.getByRole('radio', { name: 'Draw on Level 1' }));
-      }).then((t) => ({ ...t, setup: true })));
+      }).then(t => Object.assign(t, { setup: true })));
       await s.harness.aim(PLAN_CAM.pos, PLAN_CAM.target);
       let selected = 0;
       tasks.push(await task(s, 'select the 4 walls (click, Ctrl+click) and copy', async () => {

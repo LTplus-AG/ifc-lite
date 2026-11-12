@@ -20,7 +20,7 @@ export default {
         await s.ui.clickWorld([0, 0, 0]);
         await typeFields(s, [5, 0]);
         await escape(s, 1);
-      }).then((t) => ({ ...t, setup: true })));
+      }).then(t => Object.assign(t, { setup: true })));
       let endGlyphs = [];
       let midGlyphs = [];
       tasks.push(await task(s, 'start a wall 80 mm off the endpoint, end it 80 mm off the midpoint', async () => {

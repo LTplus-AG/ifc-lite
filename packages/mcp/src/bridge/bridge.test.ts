@@ -263,11 +263,11 @@ describe('3. pairing codes', () => {
       expect(await t.closed(3000)).toBe(BridgeCloseCode.PAIRING_FAILED);
     }
     // 4 failures: 50, 100, 200, capped at 200. Counted, not timed.
-    expect(agent.bridge.pairingStats()).toEqual({ attempts: 4, delayMs: 200, deferred: 0 });
+    expect(agent.bridge.pairingStats()).toMatchObject({ attempts: 4, delayMs: 200, deferred: 0 });
     expect(agent.bridge.pairingCode()).toBe(original);
     await pair(agent, { code: original });
     // A success resets the gate.
-    expect(agent.bridge.pairingStats()).toEqual({ attempts: 5, delayMs: 0, deferred: 0 });
+    expect(agent.bridge.pairingStats()).toMatchObject({ attempts: 5, delayMs: 0, deferred: 0 });
   });
 
   it('does not feed the gate with attempts made while a tab is paired', async () => {
@@ -281,7 +281,7 @@ describe('3. pairing codes', () => {
     tab.close();
     await expect.poll(() => agent.bridge.tab()).toBeNull();
     // Only the one real comparison (the pairing) was counted, and nothing is deferred.
-    expect(agent.bridge.pairingStats()).toEqual({ attempts: 1, delayMs: 0, deferred: 0 });
+    expect(agent.bridge.pairingStats()).toMatchObject({ attempts: 1, delayMs: 0, deferred: 0 });
   });
 
   it('rejects a protocol version mismatch without using up the code', async () => {

@@ -63,8 +63,14 @@ export const monotonicNow = (): number => performance.now();
  * first, and counts a peer that closed before its comparison as a failure.
  *
  * Worst case: `slots` comparisons per delay. With 4 slots and the 5 s cap that
- * is 0.8 guesses per second against a 100-bit code. The cost to the real user
- * during an attack is that their correct code is compared up to `maxMs` late.
+ * is 0.8 guesses per second against a 100-bit code, so a local process
+ * without the code cannot pair. It CAN prevent pairing for as long as it keeps
+ * attacking: early-closing attempts hold every slot for up to `maxMs` each, so
+ * the real tab gets 429 (and, if it gets a slot, its code is compared up to
+ * `maxMs` late). That is local denial of service, inside the trust boundary (a
+ * local process could equally take the port); a web page cannot do it, since
+ * the Origin check runs before a slot is allocated. The bridge logs and
+ * reports it (`bridge_status.pairingPressure`) so the user can tell why.
  */
 export class PairingGate {
   private failures = 0;

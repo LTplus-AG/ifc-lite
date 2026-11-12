@@ -47,3 +47,21 @@ export function refuseUpgrade(socket: Duplex, status: number, text: string): voi
   socket.end(`HTTP/1.1 ${status} ${text}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
   socket.destroy();
 }
+
+/**
+ * Drop `socket` once it has sent more than `limit` raw bytes while still
+ * unpaired (`slot.paired` false), so an unpaired peer cannot make the bridge
+ * buffer or parse more than a hello needs. `slot.bytes` starts with the
+ * upgrade's already-read head.
+ */
+export function capUnpairedBytes(socket: Duplex, slot: { paired: boolean; bytes: number }, limit: number, onExceed: () => void): void {
+  const onData = (chunk: Buffer): void => {
+    if (slot.paired) return void socket.off('data', onData);
+    slot.bytes += chunk.length;
+    if (slot.bytes > limit) {
+      onExceed();
+      socket.destroy();
+    }
+  };
+  socket.on('data', onData);
+}

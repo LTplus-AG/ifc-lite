@@ -322,9 +322,7 @@ browser connectivity in Chrome (Local Network Access prompt) and Safari
   even if its socket closes, and a socket that closed before its comparison
   counts as a wrong code. With 4 slots the worst case is 4 comparisons per
   delay, so at most 0.8 guesses per second once the 5 s cap is reached,
-  against 100 bits. The cost: while someone is guessing, the real tab's
-  correct code is also compared up to 5 s late, so its `welcome` can arrive
-  that late.
+  against 100 bits: a local process without the code cannot pair.
 - **Dead sockets.** A socket that failed (bad frame, wrong code, timeout,
   replaced) is ignored from then on, frees its unpaired slot at once, and is
   terminated 250 ms after its close frame if the peer does not close.
@@ -392,12 +390,21 @@ browser connectivity in Chrome (Local Network Access prompt) and Safari
 - **Shutdown.** On stdin end, close or error and on SIGINT/SIGTERM the bridge
   closes first, so pending calls are answered with `VIEWER_NOT_CONNECTED`
   (reason `shutting-down`) before stdio closes and the port is freed.
-- **Residual: local denial of service.** A local process can keep all 4
-  unpaired slots busy (four silent sockets reconnecting every 3 s), and the
-  real tab then gets HTTP 429 and has to retry. A local process is already
-  inside the trust boundary for denial of service (it could also take the
-  port first), so the bridge only narrows this window, through the 3 s first-
-  frame timeout. It cannot pair without the code.
+- **Residual: a local process can block pairing.** It cannot pair or guess
+  faster than 0.8 codes per second, but it CAN prevent pairing for as long as
+  it keeps attacking. It can repeat wrong, early-closing attempts, each of
+  which holds its slot for up to 5 s, or keep silent sockets open (each held
+  up to the 3 s first-frame timeout). Either way all 4 unpaired slots stay
+  busy, so the real tab gets HTTP 429, and if it does get a slot, its code is
+  compared up to 5 s late. A web page cannot do this, because the Origin
+  check runs before a slot is allocated. A local process is already inside
+  the trust boundary for denial of service (it could also take the port
+  first). The bridge makes it visible. When connections are refused while
+  wrong codes are being tried, stderr says "pairing is being blocked by
+  repeated failed attempts from a local program" (once per 10 s window), and
+  `bridge_status` reports `pairingPressure` (`failedAttempts`, `refusedBusy`)
+  and tells the user to stop that program or restart the bridge on another
+  `--bridge-port`.
 
 ### Wire protocol
 
@@ -427,7 +434,8 @@ would change the model, whatever label it sent, and answer it with an
 the socket opening and keep it (with every frame before pairing) under
 1.25 MiB in total; keep `id`, `sessionId` and `pairingCode` at most 64
 characters and `type` at most 16; expect `welcome` (or `PAIRING_FAILED`) up
-to 5 s after the hello while someone is guessing codes; a dropped
+to 5 s after the hello while someone is guessing codes, and HTTP 429 on
+connect for as long as a local program keeps every unpaired slot busy; a dropped
 over-limit unpaired connection closes without an error frame (1006).
 
 ## Roadmap

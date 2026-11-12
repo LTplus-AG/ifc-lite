@@ -156,7 +156,7 @@ describe('item 3: the comparison rate is really bounded', () => {
     const first = await connectTab({ port: agent.bridge.port, code: 'WRONG' });
     tabs.push(first);
     expect(await first.closed()).toBe(BridgeCloseCode.PAIRING_FAILED);
-    expect(agent.bridge.pairingStats()).toEqual({ attempts: 1, delayMs: 30_000, deferred: 0 });
+    expect(agent.bridge.pairingStats()).toMatchObject({ attempts: 1, delayMs: 30_000, deferred: 0 });
 
     // Eight parallel attackers that send a hello and hang up at once.
     const results = await Promise.all(Array.from({ length: 8 }, () => openSocket({ port: agent.bridge.port, origin: TEST_ORIGIN })));
@@ -173,6 +173,30 @@ describe('item 3: the comparison rate is really bounded', () => {
     expect(await openSocket({ port: agent.bridge.port, origin: TEST_ORIGIN })).toEqual({ status: 429 });
     // And no comparison ran early: the count is still the first attempt.
     expect(agent.bridge.pairingStats().attempts).toBe(1);
+  });
+
+  it('tells the user when a local program blocks pairing (stderr once per window, bridge_status counts)', async () => {
+    const lines: string[] = [];
+    const agent = await start({ pairingBackoffBaseMs: 30_000, pairingBackoffMaxMs: 30_000, logWindowMs: 60_000 }, (l) => lines.push(l));
+    agent.bridge.pairingCode();
+    const first = await connectTab({ port: agent.bridge.port, code: 'WRONG' });
+    tabs.push(first);
+    await first.closed();
+    const attackers = (await Promise.all(Array.from({ length: 4 }, () => openSocket({ port: agent.bridge.port, origin: TEST_ORIGIN }))))
+      .filter((r): r is { tab: FakeTab } => 'tab' in r);
+    for (const o of attackers) {
+      tabs.push(o.tab);
+      o.tab.sendRaw({ type: 'hello', protocol: 1, pairingCode: 'GUESS', permission: 'read-only', tools: [] });
+    }
+    await expect.poll(() => agent.bridge.pairingStats().deferred).toBe(4);
+    // The real tab is refused, three times, while the slots are squatted.
+    for (let i = 0; i < 3; i++) expect(await openSocket({ port: agent.bridge.port, origin: TEST_ORIGIN })).toEqual({ status: 429 });
+    expect(agent.bridge.pairingStats()).toMatchObject({ failedAttempts: 1, refusedBusy: 3 });
+    expect(lines.filter((l) => l.startsWith('pairing is being blocked by repeated failed attempts from a local program'))).toHaveLength(1);
+    const status = await agent.call('bridge_status');
+    expect(status.structuredContent).toMatchObject({ state: 'unpaired', pairingPressure: { failedAttempts: 1, refusedBusy: 3 } });
+    expect(resultText(status)).toMatch(/Pairing may be blocked: 1 failed pairing attempts and 3 connections refused/);
+    expect(resultText(status)).toMatch(/restart the bridge with another --bridge-port/);
   });
 
   it('counts an attempt whose peer left before its comparison as a failure', async () => {

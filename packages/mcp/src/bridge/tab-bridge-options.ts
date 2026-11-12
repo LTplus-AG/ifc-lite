@@ -65,3 +65,16 @@ export interface Slot {
   held: boolean;
   bytes: number;
 }
+
+export interface PairingStats {
+  /** Code comparisons made, including attempts whose peer left before theirs. */
+  attempts: number;
+  /** Current deferral of every comparison (0 with no recent failure). */
+  delayMs: number;
+  /** Attempts waiting for their deferred comparison. */
+  deferred: number;
+  /** Wrong codes plus attempts abandoned before their comparison. */
+  failedAttempts: number;
+  /** Connections refused with 429 because every unpaired slot was busy. */
+  refusedBusy: number;
+}

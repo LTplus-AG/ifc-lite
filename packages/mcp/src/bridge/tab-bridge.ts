@@ -18,7 +18,7 @@ import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, Server } from 'node:http';
 import type { Duplex } from 'node:stream';
 import type { WebSocketServer, WebSocket, RawData } from 'ws';
-import { listenLoopback, refuseUpgrade } from './loopback-server.js';
+import { capUnpairedBytes, listenLoopback, refuseUpgrade } from './loopback-server.js';
 import {
   BRIDGE_LIMITS,
   BRIDGE_PROTOCOL_VERSION,
@@ -38,6 +38,7 @@ import {
   DEFAULT_HANDSHAKE_TIMEOUT_MS,
   type TabBridgeOptions,
   type TabSnapshot,
+  type PairingStats,
   type Slot,
 } from './tab-bridge-options.js';
 import { CoalescedLog, PairingGate, Throttle } from './rate-limits.js';
@@ -70,6 +71,8 @@ export class TabBridge {
   private readonly slots = new Set<Slot>();
   private readonly slotOf = new WeakMap<WebSocket, Slot>();
   private attempts = 0;
+  private failedAttempts = 0;
+  private refusedBusy = 0;
   private listeners = new Set<() => void>();
   private closing = false;
 
@@ -133,11 +136,11 @@ export class TabBridge {
     return this.pairing.rotate();
   }
 
-  /** Comparisons made (including attempts whose peer left first), the current deferral, and attempts waiting for it. */
-  pairingStats(): { attempts: number; delayMs: number; deferred: number } {
+  /** Comparisons, deferral, waiting attempts, failures, and 429s for busy slots (see `PairingStats`). */
+  pairingStats(): PairingStats {
     let deferred = 0;
     for (const slot of this.slots) if (slot.held) deferred++;
-    return { attempts: this.attempts, delayMs: this.gate.delay(), deferred };
+    return { attempts: this.attempts, delayMs: this.gate.delay(), deferred, failedAttempts: this.failedAttempts, refusedBusy: this.refusedBusy };
   }
 
   pairingUrl(code: string): string {
@@ -208,20 +211,19 @@ export class TabBridge {
       }
       if (!originAllowed(req.headers.origin, this.origins)) return refuse(403, 'Forbidden', `Origin ${clip(req.headers.origin, 80)} is not allowed`);
       if (this.closing) return refuse(503, 'Service Unavailable', 'shutting down');
-      if (this.slots.size >= this.maxPendingHandshakes) return refuse(429, 'Too Many Requests', 'too many unpaired connections');
+      if (this.slots.size >= this.maxPendingHandshakes) {
+        this.refusedBusy++;
+        // Busy slots while wrong codes are being tried: a local program is squatting them.
+        const blocked = this.failedAttempts > 0 && this.gate.delay() > 0;
+        if (!blocked) return refuse(429, 'Too Many Requests', 'too many unpaired connections');
+        this.noisy.note('connections refused while pairing is blocked', 'pairing is being blocked by repeated failed attempts from a local program: all unpaired slots are busy, so connections are refused with 429');
+        return refuseUpgrade(socket, 429, 'Too Many Requests');
+      }
       const slot: Slot = { socket, ws: null, paired: false, held: false, bytes: head.length };
       this.slots.add(slot);
-      // Count raw inbound bytes until paired, so an unpaired peer cannot make
-      // the bridge buffer or parse more than a hello needs.
-      const onData = (chunk: Buffer): void => {
-        if (slot.paired) return void socket.off('data', onData);
-        slot.bytes += chunk.length;
-        if (slot.bytes > BRIDGE_LIMITS.maxUnpairedBytes) {
-          this.noisy.note('oversized unpaired connections', `dropped an unpaired connection after ${BRIDGE_LIMITS.maxUnpairedBytes} bytes`);
-          socket.destroy();
-        }
-      };
-      socket.on('data', onData);
+      capUnpairedBytes(socket, slot, BRIDGE_LIMITS.maxUnpairedBytes, () => {
+        this.noisy.note('oversized unpaired connections', `dropped an unpaired connection after ${BRIDGE_LIMITS.maxUnpairedBytes} bytes`);
+      });
       socket.once('close', () => { if (!slot.held) this.slots.delete(slot); });
       wss.handleUpgrade(req, socket, head, (ws) => this.guard(ws, 'connection', () => this.onSocket(ws, slot)));
     } catch (err) {
@@ -314,11 +316,13 @@ export class TabBridge {
     if (ws.readyState !== ws.OPEN) {
       // Left before its comparison: counts as a failed guess, and frees the slot only now.
       this.gate.fail();
+      this.failedAttempts++;
       this.slots.delete(slot);
       return;
     }
     if (this.pairing.consume(hello.pairingCode) !== 'ok') {
       this.gate.fail();
+      this.failedAttempts++;
       this.noisy.note('wrong pairing codes', 'refused a wrong pairing code');
       this.kill(ws, BridgeErrorCode.PAIRING_FAILED, 'Pairing code not accepted. Use the latest link or code from bridge_status.', BridgeCloseCode.PAIRING_FAILED);
       return;
@@ -357,11 +361,7 @@ export class TabBridge {
     });
   }
 
-  /**
-   * Make `ws` dead now: later frames are ignored, its unpaired slot is freed,
-   * it gets the error frame and a close, and it is terminated `closeGraceMs`
-   * later if the peer has not closed.
-   */
+  /** Dead now: later frames ignored, slot freed, error + close sent, terminated after `closeGraceMs`. */
   private kill(ws: WebSocket, code: BridgeErrorCode, message: string, closeCode: number): void {
     if (this.dead.has(ws)) return;
     this.dead.add(ws);

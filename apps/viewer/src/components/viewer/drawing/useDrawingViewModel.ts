@@ -167,7 +167,8 @@ export function useDrawingViewModel() {
     setMeasure2DSnapPoint, cancelMeasure2D, completeMeasure2D,
   });
 
-  const elementTags = useElementTags(drawing, viewTransform, drawnPlane.axis, containerRef);
+  const elementTags = useElementTags(drawing, viewTransform, drawnPlane.axis, containerRef,
+    sheetEnabled && activeSheet ? { sheet: activeSheet, isPinned, cached: cachedSheetTransformRef.current } : undefined);
   const annotationHandlers = useAnnotation2D({
     drawing, viewTransform, sectionAxis: drawnPlane.axis, containerRef,
     activeTool: annotation2DActiveTool, setActiveTool: setAnnotation2DActiveTool,

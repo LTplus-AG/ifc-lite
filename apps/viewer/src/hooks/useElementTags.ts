@@ -4,7 +4,9 @@
 
 import { useEffect, useMemo, useRef } from 'react';
 import type React from 'react';
-import type { Drawing2D } from '@ifc-lite/drawing-2d';
+import type { Drawing2D, DrawingSheet } from '@ifc-lite/drawing-2d';
+import { resolveSheetTransform } from '@/lib/drawing/sheet-transform';
+import type { CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key';
 import { useViewerStore } from '@/store';
 import { hitTestAnnotations } from '@/hooks/annotation2DHitTest';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
@@ -22,17 +24,34 @@ function inside(point: Point2D, ring: readonly Point2D[]): boolean {
 
 /** Kept inside the lazy Drawing panel; the eager store holds only tag records. */
 export function useElementTags(drawing: Drawing2D | null, transform: { x: number; y: number; scale: number },
-  axis: 'down' | 'front' | 'side', container: React.RefObject<HTMLElement | null>) {
+  axis: 'down' | 'front' | 'side', container: React.RefObject<HTMLElement | null>,
+  sheet?: { sheet: DrawingSheet; isPinned: boolean; cached: CachedSheetTransform | null }) {
   const tags = useViewerStore(s => s.tagAnnotations2D);
   const mutationVersion = useViewerStore(s => s.mutationVersion);
   const models = useViewerStore(s => s.models);
   const views = useViewerStore(s => s.mutationViews);
   const dragging = useRef<{ id: string; start: Point2D; offset: Point2D } | null>(null);
-  // Resolve on every store publication relevant to labels/identity and every generation.
-  const texts = useMemo(() => drawing ? resolvedElementTags(drawing) : [], [drawing, tags, mutationVersion, models, views]);
+  const paper = useMemo(() => drawing && sheet ? resolveSheetTransform({
+    sheet: sheet.sheet, axis, isPinned: sheet.isPinned, cached: sheet.cached,
+    drawingBounds: { minX: drawing.bounds.min.x, minY: drawing.bounds.min.y, maxX: drawing.bounds.max.x, maxY: drawing.bounds.max.y },
+  }) : null, [drawing, axis, sheet?.sheet, sheet?.isPinned, sheet?.cached]);
+  // Canvas text uses the annotation plane; a sheet first maps world metres to paper mm.
+  const texts = useMemo(() => drawing ? resolvedElementTags(drawing).map(text => {
+    if (!paper) return text;
+    const { scaleFactor, translateX, translateY } = paper.transform;
+    return { ...text, position: {
+      x: ((paper.flipX ? -text.position.x : text.position.x)*scaleFactor+translateX)*(axis === 'side' ? -1 : 1),
+      y: ((paper.flipY ? -text.position.y : text.position.y)*scaleFactor+translateY)*(axis === 'down' ? 1 : -1),
+    } };
+  }) : [], [drawing, tags, mutationVersion, models, views, paper, axis]);
   const toDrawing = (e: React.MouseEvent): Point2D | null => {
     const rect = container.current?.getBoundingClientRect();
     if (!rect) return null;
+    if (paper) {
+      const { scaleFactor, translateX, translateY } = paper.transform;
+      return { x: ((e.clientX-rect.left-transform.x)/transform.scale-translateX)/scaleFactor*(paper.flipX ? -1 : 1),
+        y: ((e.clientY-rect.top-transform.y)/transform.scale-translateY)/scaleFactor*(paper.flipY ? -1 : 1) };
+    }
     return { x: (e.clientX-rect.left-transform.x)/(axis === 'side' ? -transform.scale : transform.scale),
       y: (e.clientY-rect.top-transform.y)/(axis === 'down' ? transform.scale : -transform.scale) };
   };

@@ -23,7 +23,7 @@ import { useIfc } from '@/hooks/useIfc';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { IfcQuery } from '@ifc-lite/query';
 import { extractClassificationsOnDemand, extractTypeEntityOwnProperties, extractGeoreferencingOnDemand, extractLengthUnitScale, ProjectUnits, taskProductExpressIds, taskProductGlobalIds, type IfcDataStore, type MaterialPsetGroup } from '@ifc-lite/parser';
-import { RelationshipType, isSpatialStructureTypeName, isStoreyLikeSpatialTypeName } from '@ifc-lite/data';
+import { isSpatialStructureTypeName, isStoreyLikeSpatialTypeName } from '@ifc-lite/data';
 import type { EntityRef, FederatedModel } from '@/store/types';
 import { ZoneVolumeBreakdown } from './ZoneVolumeBreakdown';
 import type { ZoneSet } from '@/lib/zones';

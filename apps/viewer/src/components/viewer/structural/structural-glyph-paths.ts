@@ -112,6 +112,7 @@ function support(kind: string, p: Point, d: Point, s: number): string {
 export function glyphPath(glyphs: readonly ViewGlyph[], project: Project, worldCap: number): string {
   let out = '';
   const tails: Point[] = [];
+  let supportCapPx: number | undefined;
   for (const { glyph, position, direction } of glyphs) {
     const p = project(position);
     if (!p) continue;
@@ -119,12 +120,15 @@ export function glyphPath(glyphs: readonly ViewGlyph[], project: Project, worldC
       const axis = direction && screenAxis(project, position, p, { x: -direction.x, y: -direction.y, z: -direction.z }, worldCap);
       // The world cap measured along the longest-looking render axis, so a
       // support seen end-on keeps its size instead of shrinking to the floor.
-      let capPx = 0;
-      for (const a of WORLD_AXES) {
-        capPx = Math.max(capPx, screenAxis(project, position, p, a, worldCap)?.px ?? 0);
-        if (capPx >= SUPPORT_PX) break; // `sized` caps at SUPPORT_PX anyway
+      // Once per source: its stations sit close together.
+      if (supportCapPx === undefined) {
+        supportCapPx = 0;
+        for (const a of WORLD_AXES) {
+          supportCapPx = Math.max(supportCapPx, screenAxis(project, position, p, a, worldCap)?.px ?? 0);
+          if (supportCapPx >= SUPPORT_PX) break; // `sized` caps at SUPPORT_PX anyway
+        }
       }
-      const s = sized(SUPPORT_PX, capPx);
+      const s = sized(SUPPORT_PX, supportCapPx);
       // Looking straight along the support axis: hang it down the screen.
       out += support(glyph.support, p, axis && axis.px > MIN_PX ? axis.d : { x: 0, y: 1 }, s);
       continue;

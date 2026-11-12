@@ -98,14 +98,6 @@ export function shapeStations(shape: ItemShape): Vec3[] {
   return faceStations(shape.polygon);
 }
 
-/** Whether `p` lies on the segment within 1 mm or 0.1 % of its length. */
-export function onSegment(p: Vec3, a: Vec3, b: Vec3): boolean {
-  const ab = sub(b, a);
-  const l2 = dot(ab, ab);
-  const t = l2 > 0 ? Math.min(1, Math.max(0, dot(sub(p, a), ab) / l2)) : 0;
-  return length(sub(p, lerp(a, b, t))) <= Math.max(1e-3, Math.sqrt(l2) * 1e-3);
-}
-
 /** A distance along an edge (metres) as a point on it, clamped to its ends. */
 export function pointAlong(start: Vec3, end: Vec3, distance: number): Vec3 {
   const l = length(sub(end, start));

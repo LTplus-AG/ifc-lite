@@ -115,7 +115,7 @@ const SYNTHETIC = `ISO-10303-21;HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('g
 #98=IFCSTRUCTURALLOADSINGLEDISPLACEMENT('d',0.,0.,-0.01,$,$,$);
 #99=IFCSTRUCTURALPOINTACTION(${id(99)},$,'D1',$,$,$,$,#98,.GLOBAL_COORDS.,.F.);
 #100=IFCSTRUCTURALPOINTREACTION(${id(100)},$,'R1',$,$,$,$,#80,.GLOBAL_COORDS.);
-#101=IFCSTRUCTURALPOINTACTION(${id(101)},$,'A5',$,$,$,$,#80,.GLOBAL_COORDS.,.F.);
+#101=IFCSTRUCTURALPOINTACTION(${id(101)},$,'A5',$,$,#23,$,#80,.GLOBAL_COORDS.,.F.);
 #120=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(120)},$,$,$,#53,#81);
 #121=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(121)},$,$,$,#58,#83);
 #122=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(122)},$,$,$,#56,#85);
@@ -130,7 +130,15 @@ const SYNTHETIC = `ISO-10303-21;HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('g
 #102=IFCSTRUCTURALLOADSINGLEFORCE('P6',1.,0.,0.,$,$,$);
 #103=IFCSTRUCTURALPOINTACTION(${id(103)},$,'A6',$,$,$,$,#102,.GLOBAL_COORDS.,.F.);
 #131=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(131)},$,$,$,#53,#103);
-#140=IFCSTRUCTURALANALYSISMODEL(${id(140)},$,'Turned',$,$,.LOADING_3D.,$,$,$,#23);
+#140=IFCSTRUCTURALANALYSISMODEL(${id(140)},$,'Turned',$,$,.LOADING_3D.,$,(#160),$,#23);
+#160=IFCSTRUCTURALLOADGROUP(${id(160)},$,'G3',$,$,.LOAD_GROUP.,.PERMANENT_G.,.DEAD.,1.,$);
+#105=IFCSTRUCTURALPOINTACTION(${id(105)},$,'A7',$,$,$,$,#102,.GLOBAL_COORDS.,.F.);
+#132=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(132)},$,$,$,#53,#105);
+#161=IFCRELASSIGNSTOGROUP(${id(161)},$,$,$,(#105),$,#160);
+#143=IFCSTRUCTURALANALYSISMODEL(${id(143)},$,'Broken',$,$,.LOADING_3D.,$,$,$,#24);
+#106=IFCSTRUCTURALPOINTACTION(${id(106)},$,'A8',$,$,$,$,#102,.GLOBAL_COORDS.,.F.);
+#133=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(133)},$,$,$,#53,#106);
+#144=IFCRELASSIGNSTOGROUP(${id(144)},$,$,$,(#106),$,#143);
 #141=IFCSTRUCTURALANALYSISMODEL(${id(141)},$,'Moved',$,$,.LOADING_3D.,$,$,$,#20);
 #142=IFCRELASSIGNSTOGROUP(${id(142)},$,$,$,(#103),$,#140);
 #150=IFCBOUNDARYEDGECONDITION('line',${T},${T},${T},${T},${T},${T});
@@ -217,6 +225,11 @@ describe('structuralGlyphs on synthetic data, one kind each', () => {
     // A6 is in 'Turned', whose SharedPlacement #23 maps local +X to world +Y.
     const [force] = bySource(glyphs, 103);
     close(force.kind === 'force' ? force.direction : undefined, [0, 1, 0]);
+    // A7 reaches 'Turned' only through its load group, which the model is LoadedBy.
+    const [loadedBy] = bySource(glyphs, 105);
+    close(loadedBy.kind === 'force' ? loadedBy.direction : undefined, [0, 1, 0]);
+    // A8's model points SharedPlacement at an IfcAxis2Placement3D, which is not a placement: refused, not drawn in world axes.
+    expect(bySource(glyphs, 106)).toEqual([]);
   });
 
   it('repeats a curve support along its edge, facing the connection Axis', async () => {
@@ -237,7 +250,8 @@ describe('structuralGlyphs on synthetic data, one kind each', () => {
     expect(displacement.kind).toBe('displacement');
     close(displacement.kind === 'displacement' ? displacement.direction : undefined, [0, 0, -1]);
     expect(bySource(glyphs, 100)).toEqual([]);
-    // A5 is a point action on a curve member with no vertex of its own: no position to draw it at.
+    // A5 is a point action on a curve member with no vertex of its own. It shares the
+    // member's placement, whose origin is the member's start node: still no position.
     expect(bySource(glyphs, 101)).toEqual([]);
   });
 });
@@ -310,10 +324,10 @@ describe('structuralGlyphs on real files', () => {
       '2EoMJ8Jk56Pf18$lSogZb7': 34, '3IBMmze65FyfhrBbW7l8Cb': 34, '085sCkdl15s9RrLar2W57S': 34,
     };
     for (const [group, count] of Object.entries(everyAction)) expect(drawn(group), group).toBe(count);
-    // 'Einzellast 1' to '6', 3 point loads each on curve members: Axis writes the
-    // load's station along the member as an absolute placement ((0.75, 0, 0) on a
-    // member from (1.5, 0, 5) to (3, 0, 5)), which is not on the member, so
-    // nothing is drawn rather than a load at the wrong place.
+    // 'Einzellast 1' to '6', 3 point loads each on curve members with no vertex:
+    // Axis writes the load's station along the member as an absolute placement
+    // ((0.75, 0, 0) on a member from (1.5, 0, 5) to (3, 0, 5)). A placement
+    // origin is never taken as a position, so nothing is drawn.
     for (const group of ['2AT7Jgwef76PjTmlnENjOM', '0fo2OFoJvEMugp$nr9oxqX', '3RhOX$y7D03gBw6bO111w2', '2ixnNXJ3nBBQ$gF316Npuo', '0R$8A62z9FtQIVnfqEuRcB', '0bitbU6p52XfCkbmDraasy']) {
       expect(drawn(group), group).toBe(0);
     }

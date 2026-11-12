@@ -182,13 +182,14 @@ export class ItemGeometryReader {
   }
 
   /**
-   * An `IfcStructuralAnalysisModel`'s `SharedPlacement` in world axes, or null
-   * when it has none (IFC2X3 has no such attribute) or it cannot be read.
+   * An `IfcStructuralAnalysisModel`'s `SharedPlacement` in world axes:
+   * undefined when it has none (IFC2X3 has no such attribute), null when it
+   * is set but cannot be read.
    */
-  sharedPlacementFrame(modelId: number): Frame | null {
+  sharedPlacementFrame(modelId: number): Frame | null | undefined {
     const model = this.entity(modelId);
     const ref = model ? asRef(readAttr('IfcStructuralAnalysisModel', model.attributes, 'SharedPlacement', this.store.schemaVersion)) : undefined;
-    return ref === undefined ? null : this.placement(ref);
+    return ref === undefined ? undefined : this.placement(ref);
   }
 
   /** A file length (e.g. a load configuration's `Locations`) in metres. */
@@ -239,7 +240,7 @@ export class ItemGeometryReader {
   }
 
   /** The origin of a product's own `ObjectPlacement` in world metres; null when it has none. */
-  placementOrigin(productId: number): Vec3 | null {
+  private placementOrigin(productId: number): Vec3 | null {
     if (asRef(this.entity(productId)?.attributes[OBJECT_PLACEMENT]) === undefined) return null;
     const frame = this.productFrame(productId);
     return frame && scale(frame.origin, this.unitScale);

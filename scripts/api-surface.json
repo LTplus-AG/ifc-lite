@@ -9300,7 +9300,6 @@
   ],
   "@ifc-lite/parser/structural-glyphs": [
     "StructuralGlyph: type",
-    "StructuralGlyphSet: interface",
     "StructuralGlyphSource: interface",
     "StructuralGlyphVec3: type",
     "StructuralLoadDistribution: type",

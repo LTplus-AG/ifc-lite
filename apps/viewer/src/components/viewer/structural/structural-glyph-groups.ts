@@ -128,16 +128,12 @@ export async function structuralGlyphGroups(state: ViewerState, t: Translate): P
     const view = state.mutationViews.get(LEGACY_MUTATION_MODEL_ID) ?? state.mutationViews.get(LEGACY_MODEL_ID);
     entries.push({ modelId: 'legacy', store: state.ifcDataStore, geometry: state.geometryResult, view });
   }
-  const out: SourceGroup[] = [];
-  for (const entry of entries) {
-    // One model's bad data or frame skips that model, not the others.
-    try {
-      out.push(...await modelGroups(state, entry, t));
-    } catch (error) {
-      console.warn(`[structural-glyphs] ${entry.modelId}: glyphs not drawn`, error);
-    }
-  }
-  return out;
+  // One model's bad data or frame skips that model, not the others.
+  const perModel = await Promise.all(entries.map((entry) => modelGroups(state, entry, t).catch((error: unknown) => {
+    console.warn(`[structural-glyphs] ${entry.modelId}: glyphs not drawn`, error);
+    return [];
+  })));
+  return perModel.flat();
 }
 
 async function modelGroups(state: ViewerState, { modelId, store, geometry, model, view }: ModelEntry, t: Translate): Promise<SourceGroup[]> {

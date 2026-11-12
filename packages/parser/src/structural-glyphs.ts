@@ -39,7 +39,7 @@ import type { StructuralActivityInfo, StructuralConnectionInfo, StructuralExtrac
 import type { StructuralLoadInfo } from './structural-load-extractor.js';
 import { structuralSupportKind, type StructuralSupportKind } from './structural-support-kind.js';
 import { compose, IDENTITY, ItemGeometryReader, length, normalize, rotate, type Frame, type ItemShape, type Vec3 } from './structural-item-geometry.js';
-import { onSegment, pointAlong, shapeCentre, shapeFrame, shapeStations } from './structural-glyph-stations.js';
+import { pointAlong, shapeCentre, shapeFrame, shapeStations } from './structural-glyph-stations.js';
 
 export type { StructuralSupportKind } from './structural-support-kind.js';
 export type { Vec3 as StructuralGlyphVec3 } from './structural-item-geometry.js';
@@ -139,9 +139,9 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
     return shapes.get(id)!;
   };
 
-  /** A point connection's condition frame, in world axes. */
   /** An item's `Axis` direction in world axes, or null when it has none. */
   const edgeAxis = (id: number, ref: number | undefined) => (ref === undefined ? null : reader.productDirection(id, ref));
+  /** A point connection's condition frame, in world axes. */
   const conditionFrame = (connection: StructuralConnectionInfo): Frame | null => {
     const product = reader.productFrame(connection.expressId);
     const ccs = connection.ConditionCoordinateSystem === undefined ? IDENTITY : reader.axisPlacement(connection.ConditionCoordinateSystem);
@@ -164,28 +164,25 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
   for (const m of extraction.members) itemsByGlobalId.set(m.globalId, { expressId: m.expressId, type: m.type, Axis: m.Axis, analysisModelGlobalIds: m.analysisModelGlobalIds });
   for (const c of extraction.connections) itemsByGlobalId.set(c.globalId, { expressId: c.expressId, type: c.type, Axis: connectionAxis(c), connection: c, analysisModelGlobalIds: c.analysisModelGlobalIds });
   // GLOBAL_COORDS is the analysis model's coordinate system: its
-  // SharedPlacement (IFC4 and later), else IFC world.
-  const modelFrames = new Map(extraction.analysisModels.map((m) => [m.globalId, reader.sharedPlacementFrame(m.expressId) ?? IDENTITY]));
-  const onlyModelFrame = modelFrames.size === 1 ? [...modelFrames.values()][0] : IDENTITY;
-  const globalFrame = (activity: StructuralActivityInfo, item: ItemRef | undefined): Frame =>
-    [...activity.groupGlobalIds, ...(item?.analysisModelGlobalIds ?? [])].map((g) => modelFrames.get(g)).find((f) => f !== undefined) ?? onlyModelFrame;
+  // SharedPlacement (IFC4 and later), else IFC world. A model reaches an
+  // activity directly, through a load group it is LoadedBy, or through the
+  // item. An unreadable SharedPlacement (null) refuses the model's loads.
+  const modelFrames = new Map<string, Frame | null>();
+  for (const m of extraction.analysisModels) {
+    const frame = reader.sharedPlacementFrame(m.expressId);
+    const resolved = frame === undefined ? IDENTITY : frame;
+    modelFrames.set(m.globalId, resolved);
+    for (const g of m.loadGroupGlobalIds) if (!modelFrames.has(g)) modelFrames.set(g, resolved);
+  }
+  const onlyModelFrame = extraction.analysisModels.length === 1 ? modelFrames.get(extraction.analysisModels[0].globalId)! : IDENTITY;
+  const globalFrame = (activity: StructuralActivityInfo, item: ItemRef | undefined): Frame | null => {
+    for (const g of [...activity.groupGlobalIds, ...(item?.analysisModelGlobalIds ?? [])]) {
+      if (modelFrames.has(g)) return modelFrames.get(g)!;
+    }
+    return onlyModelFrame;
+  };
   const loadGroups = new Set(extraction.loadGroups.map((g) => g.globalId));
   const pending: Pending[] = [];
-
-  /**
-   * Where an activity is by its own record. Its representation, when it has
-   * one of the expected kind. A point load on a member with no representation
-   * (Axis writes these) is at its placement origin, but only when that origin
-   * lies on the member's edge: activities often share the item's or the
-   * model's placement, whose origin says nothing about the load.
-   */
-  const ownActivityShape = (id: number, expected: ItemShape['kind'] | null, onItem: ItemShape | null): ItemShape | null => {
-    const shape = reader.shape(id);
-    if (shape?.kind === expected) return shape;
-    if (shape || expected !== 'vertex' || onItem?.kind !== 'edge') return null;
-    const origin = reader.placementOrigin(id);
-    return origin && onSegment(origin, onItem.start, onItem.end) ? { kind: 'vertex', point: origin } : null;
-  };
 
   /**
    * The frame `LOCAL_COORDS` loads are given in: for a point, the activity's
@@ -205,9 +202,13 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
     const source = sourceOf(activity);
     const expected = expectedShape(activity.type);
     const item = activity.appliesToGlobalId ? itemsByGlobalId.get(activity.appliesToGlobalId) : undefined;
-    const onItem = item ? itemShape(item.expressId, item.type) : null;
-    const ownShape = ownActivityShape(activity.expressId, expected, onItem);
-    const shape = ownShape ?? onItem;
+    // An activity's own representation, else the item it acts on; never its
+    // bare placement origin, which activities often share with the item or
+    // the model. (Axis writes a point load on a member as a placement whose
+    // origin is the station along the member, not a position.)
+    const own = reader.shape(activity.expressId);
+    const ownShape = own?.kind === expected ? own : null;
+    const shape = ownShape ?? (item ? itemShape(item.expressId, item.type) : null);
     if (!shape || shape.kind !== expected) continue;
     const frame = activity.globalOrLocal === 'LOCAL_COORDS' ? localFrame(activity, item, ownShape !== null, shape) : globalFrame(activity, item);
     if (!frame) continue;

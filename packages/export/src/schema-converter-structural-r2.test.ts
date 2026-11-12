@@ -100,7 +100,9 @@ describe('explicit IFC2X3 section orientation #9668', () => {
     for (const commentedText of [
       text.replace('((0.,1.,0.))', '((0.,1./* axis */,0.))'),
       text.replace('((0.,1.,0.))', '(/* axis */(0.,1.,0.))'),
+      text.replace('((0.,1.,0.))', '((0.,1.,0.)/* trailing ) axis */)'),
       text.replace('(#50),#81', '/* related */(#50),#81'),
+      text.replace('(#50),#81', '/* related */(#50)/* trailing ) members */,#81'),
     ]) {
       const commentedStore = await new IfcParser().parseColumnar(new TextEncoder().encode(commentedText).buffer);
       const commented = new StepExporter(commentedStore).export({ schema: 'IFC4' });

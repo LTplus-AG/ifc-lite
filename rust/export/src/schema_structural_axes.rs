@@ -15,9 +15,13 @@ pub(crate) struct StructuralAxes {
 fn reference(token: &str) -> Option<u32> { token.trim().strip_prefix('#')?.trim().parse().ok() }
 
 fn list_items(token: &str) -> Option<Vec<String>> {
-    let text = token.trim();
-    let start = ifc_lite_core::parser::skip_step_trivia(text.as_bytes(), 0)?;
-    split_top_level_args(text[start..].strip_prefix('(')?.strip_suffix(')')?)
+    let start = ifc_lite_core::parser::skip_step_trivia(token.as_bytes(), 0)?;
+    if token.as_bytes().get(start) != Some(&b'(') { return None; }
+    // Reuse the shared frame's trailing-comment handling; this parsing
+    // envelope is never exported and does not assign an IFC entity type.
+    let text = format!("#0=IFCDIRECTION{token};");
+    let frame = crate::step_record_frame::record_frame(&text)?;
+    split_top_level_args(frame.args(&text))
 }
 
 impl StructuralAxes {
@@ -89,7 +93,9 @@ mod tests {
         // #9845: trivia before the direction tuple must not hide its dimension.
         let prefixed = source.replace("((0.,1.,0.))", "(/* axis */(0.,1.,0.))");
         let related = source.replace("(#50),#81", "/* related */(#50),#81");
-        for (text, target) in [(source, "IFC4_ADD2"), (mixed.as_str(), "IFC4"), (commented.as_str(), "IFC4"), (prefixed.as_str(), "IFC4"), (related.as_str(), "IFC4")] {
+        let trailing = source.replace("((0.,1.,0.))", "((0.,1.,0.)/* trailing ) axis */)");
+        let related_trailing = source.replace("(#50),#81", "/* related */(#50)/* trailing ) members */,#81");
+        for (text, target) in [(source, "IFC4_ADD2"), (mixed.as_str(), "IFC4"), (commented.as_str(), "IFC4"), (prefixed.as_str(), "IFC4"), (related.as_str(), "IFC4"), (trailing.as_str(), "IFC4"), (related_trailing.as_str(), "IFC4")] {
             let opts = StepOptions { schema: Some(target.into()), ..StepOptions::default() };
             let (out, stats) = export_step_with_stats(text.as_bytes(), &opts).unwrap();
             assert!(out.contains(".RIGID_JOINED_MEMBER.,#80)"), "{out}");

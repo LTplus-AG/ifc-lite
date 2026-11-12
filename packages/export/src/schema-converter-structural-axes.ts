@@ -1,15 +1,17 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 /** Matches rust/export/src/schema_structural_axes.rs (#9668). */
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { readStepSlots, splitTopLevelStepArguments } from './step-argument-parser.js';
+import { readStepSlots } from './step-argument-parser.js';
 import { parseStepNumber, skipStepTrivia } from './step-slot-grammar.js';
 import { decodeRange } from './source-ref-bounds.js';
 const ref = (s: string): number | null => /^#\s*\d+$/.test(s.trim()) ? Number(s.trim().slice(1)) : null;
 
-function listItems(token: string): string[] | null {
-  const text = token.trim(), start = skipStepTrivia(text, 0);
-  return start >= 0 && text[start] === '(' && text.endsWith(')')
-    ? splitTopLevelStepArguments(text.slice(start + 1, -1)) : null;
+function listItems(token: string): readonly string[] | null {
+  const start = skipStepTrivia(token, 0);
+  if (start < 0 || token[start] !== '(') return null;
+  // Reuse the shared record frame for a standalone tuple, including trailing
+  // comments containing ')'. This parsing envelope is never exported.
+  return readStepSlots(`#0=IFCDIRECTION${token};`)?.slots ?? null;
 }
 
 export class StructuralAxes {

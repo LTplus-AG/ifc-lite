@@ -183,8 +183,8 @@ describe('structural-axis-drift', () => {
   });
 
   it('lets no wild coordinate widen the drift allowance past 1 micrometre', () => {
-    // A garbage z of 1e14 m would allow 0.36 m uncapped; 0.1 mm of drift must still be reported.
-    const wild = lines([[0, 0.0501, 1e14], [6, 0, 1e14]], [[0, 0, 1e14], [6, 0, 1e14]]);
+    // A garbage z of 1e14 m would allow 0.36 m uncapped; 2 micrometres of drift must still be reported.
+    const wild = lines([[0, 0.050002, 1e14], [6, 0, 1e14]], [[0, 0, 1e14], [6, 0, 1e14]]);
     expect(drift(checkStructuralConsistency(linked, elements, {}, wild))).toHaveLength(1);
   });
 
@@ -208,7 +208,7 @@ describe('structural-axis-drift', () => {
       });
     }
 
-    // Members up to 41 axis lengths long: some ends fall under the 1 micrometre cap.
+    // Members up to 41 axis lengths long, so the 1 micrometre cap binds for some ends.
     it('over a seeded sweep of 2000 oblique ends at map-scale origins', () => {
       let seed = 1;
       const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;

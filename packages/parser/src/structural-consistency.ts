@@ -85,6 +85,8 @@ export interface StructuralConsistencyOptions {
 }
 
 export const DEFAULT_AXIS_DRIFT_TOLERANCE = 0.05;
+/** Metres: the most rounding the axis-drift rule allows above its tolerance. */
+const DRIFT_ROUNDING_CAP = 1e-6;
 
 export type StructuralConsistencyRule =
   | 'structural-unlinked-element'
@@ -131,10 +133,11 @@ export const isA = (type: string, bases: readonly string[]): boolean => getInher
  * end in proportion to how far along the axis it lies. So the allowance is
  * 8 * EPSILON times the largest coordinate (8 to 16 ulps) times
  * (1 + along / span), with headroom: the seeded sweep in
- * `structural-consistency.test.ts` misreads none. It is capped at 1
- * micrometre, so a wild coordinate cannot hide drift. The cap binds only for
- * a member many times longer than its element's axis at map coordinates;
- * the sweep includes such cases and still misreads none.
+ * `structural-consistency.test.ts` misreads none. It is capped at
+ * `DRIFT_ROUNDING_CAP`, so a wild coordinate cannot hide drift. The cap binds
+ * for a member many times longer than its element's axis at map coordinates;
+ * far enough past the sweep's 41 axis lengths, an end exactly at the
+ * tolerance can read as drift.
  */
 function offLine(line: StructuralLine, [a, b]: StructuralLine): { distance: number; rounding: number } | null {
   const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
@@ -153,7 +156,7 @@ function offLine(line: StructuralLine, [a, b]: StructuralLine): { distance: numb
     distance = Math.max(distance, Math.hypot(r[0] - t * u[0], r[1] - t * u[1], r[2] - t * u[2]));
     along = Math.max(along, Math.abs(t));
   }
-  return { distance, rounding: Math.min(8 * Number.EPSILON * largest * (1 + along / span), 1e-6) };
+  return { distance, rounding: Math.min(8 * Number.EPSILON * largest * (1 + along / span), DRIFT_ROUNDING_CAP) };
 }
 
 /** The axis-drift rule: each curve member with a line, against each linked element with an axis. */

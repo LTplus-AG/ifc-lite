@@ -172,11 +172,13 @@ test('SHADOW measures whatever the PR\'s queue state: an unlabelled or draft rel
   assert.deepEqual(pendingOf({ mode: 'on', labels: '[]' }), ['with OWNER_ALLOWS_LEAN released', 'once this PR is queueable']);
   assert.deepEqual(pendingOf({ mode: 'on', draft: 'true' }), ['with OWNER_ALLOWS_LEAN released', 'once this PR is queueable']);
   // Released `on`, unqueueable: refused outright, and the message names what is pending.
-  const refused = decideReleaseLane({ ...held, mode: 'on', ownerAllowsLean: true, labels: '[]' });
-  assert.equal(refused.lane, 'full');
-  assert.equal(refused.wouldBeLean, false);
-  assert.equal(refused.warning, 'release lane refused: once this PR is queueable still pending');
-  assert.match(refused.reason, /lacks `mergify-trial`/); // @source-text-assertion-ok subject is the decision's returned reason
+  for (const [over, why] of [[{ labels: '[]' }, /lacks `mergify-trial`/], [{ draft: 'true' }, /is a draft/]]) {
+    const refused = decideReleaseLane({ ...held, mode: 'on', ownerAllowsLean: true, ...over });
+    assert.equal(refused.lane, 'full', JSON.stringify(over));
+    assert.equal(refused.wouldBeLean, false);
+    assert.equal(refused.warning, 'release lane refused; still pending: once this PR is queueable');
+    assert.match(refused.reason, why); // @source-text-assertion-ok subject is the decision's returned reason
+  }
   // Lean is exactly "nothing pending": the released, queueable `on` case.
   const lean = decideReleaseLane({ ...held, mode: 'on', ownerAllowsLean: true });
   assert.equal(lean.lane, 'lean');

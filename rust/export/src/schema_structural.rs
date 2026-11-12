@@ -21,8 +21,10 @@ fn stiffness_number(token: &str) -> Option<f64> {
 fn downgrade_stiffness(token: &str, measure: &str) -> Option<String> {
     let wrapper = format!("#0={token};");
     let record = StepRecord::parse(wrapper.as_bytes())?;
-    if record.attrs().count() != 1 { return None; }
-    let inner = std::str::from_utf8(record.attr(0)?).ok()?;
+    // A typed SELECT wrapper has one value argument, not a named entity slot.
+    let mut values = record.attrs();
+    let inner = std::str::from_utf8(values.next()?).ok()?;
+    if values.next().is_some() { return None; }
     if record.keyword_is(b"IFCBOOLEAN") {
         if scalar_equals(inner, ".T.") { Some("-1.".into()) }
         else if scalar_equals(inner, ".F.") { Some("0.".into()) } else { None }
@@ -201,6 +203,14 @@ mod review_regressions {
 mod trivia_regressions {
     use crate::schema_convert::convert_step_line;
     use crate::schema_ifc2x3_slots::Ifc2x3SlotFill;
+
+    #[test]
+    fn stiffness_select_wrapper_requires_one_value_9668() {
+        for token in ["IFCBOOLEAN()", "IFCBOOLEAN(.T.,.F.)", "IFCLINEARSTIFFNESSMEASURE(1.,2.)"] {
+            assert!(super::downgrade_stiffness(token, "IFCLINEARSTIFFNESSMEASURE").is_none());
+        }
+        assert_eq!(super::downgrade_stiffness("IFCBOOLEAN(.F.)", "IFCLINEARSTIFFNESSMEASURE"), Some("0.".into()));
+    }
 
     #[test]
     fn stiffness_uses_step_trivia_for_sentinels_and_typed_values_9668() {

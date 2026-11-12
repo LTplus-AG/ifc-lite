@@ -55,6 +55,7 @@ export default {
     title: 'Sketch an L slab, cut a shaft, then edit thickness',
     async run(s) {
       const shots = [];
+      let preview = { visible: false, width: 0, height: 0 };
       const tasks = [await task(s, 'polygon slab, six corners and Enter', async () => {
         await s.ui.click(s.page.getByRole('radio', { name: '3D', exact: true }));
         await tool(s, 'slab.place');
@@ -66,6 +67,15 @@ export default {
       tasks.push(await task(s, 'opening tool: type 1.5 by 2 m and cut an enclosed shaft', async () => {
         await tool(s, 'opening.place');
         await s.ui.hoverWorld([2,2,0]);
+        await s.settle(250);
+        preview = await s.state(() => {
+          const polygon = document.querySelector('[data-slab-shaft-preview] polygon:last-child');
+          const bounds = polygon?.getBoundingClientRect();
+          const style = polygon && getComputedStyle(polygon);
+          return { visible: !!bounds && bounds.width > 5 && bounds.height > 5
+            && style.display !== 'none' && style.visibility !== 'hidden',
+            width: bounds?.width ?? 0, height: bounds?.height ?? 0 };
+        });
         shots.push(await s.shot('shaft-ghost'));
         await typeFields(s, [1.5, 2], { enter: false });
         await s.ui.key('Tab'); // Apply Depth and return to Width without placing.
@@ -103,6 +113,7 @@ export default {
         && step.get(o.args[5])?.args[0]?.ref === slab?.args[5]?.ref);
       const result = await finish(s, tasks, [
         check('one L-shaped slab with six corners', step.count('IFCSLAB') === 1 && points.length >= 6, `${step.count('IFCSLAB')} slabs, ${points.length} profile points`),
+        check('hover shows the 1.5 by 2 m rectangular shaft preview', preview.visible && Math.abs(preview.width/preview.height - .75) < .03, `visible ${preview.visible}; screen bounds ${preview.width} by ${preview.height} px`),
         check('shaft remains hosted in slab after thickening', hosted && near(solid?.args[3], .3), `${voids.length} slab voids to ${openings.map(o => o?.type).join(',')}; thickness ${solid?.args[3]}; host-relative ${hosted}`),
         check('shaft geometry is empty in 3D', empty && Math.abs(volume - (16-3)*.3) < .039, `volume ${volume}, expected 3.9; void ${empty}`),
         check('plan displays a closed shaft outline', planHole, 'Plan projects the slab below the standard 1.2 m cut; a closed rectangular shaft outline at the expected (2,2) centre and 1.5 by 2 m bounds is visible'),

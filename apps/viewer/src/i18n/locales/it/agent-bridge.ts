@@ -40,7 +40,7 @@ export const agentBridgeIt = {
   "agentBridge.panel.error": "errore {code}",
   "agentBridge.panel.cancelled": "annullata",
   "agentBridge.panel.duration": "{ms} ms",
-  "agentBridge.failure.unreachable": "Nessuna risposta sulla porta {port}. Avvia il bridge su questo computer con il comando qui sotto, controlla la porta, poi abbina con il codice mostrato.",
+  "agentBridge.failure.unreachable": "Nessuna risposta sulla porta {port}. Avvia il bridge su questo computer con il comando qui sotto, controlla la porta, poi abbina con il codice mostrato. Se è già in esecuzione, potrebbe aver rifiutato la connessione perché troppe schede tentavano l’abbinamento: chiudile e riprova.",
   "agentBridge.failure.origin": "Visualizzatore non su ifclite.com? Avvia il bridge con --bridge-viewer-url {origin} perché accetti questa pagina.",
   "agentBridge.failure.permissionDenied": "Il browser ha bloccato la connessione a questo computer. In Chrome apri le impostazioni del sito (l’icona a sinistra dell’indirizzo), consenti l’accesso alla rete locale, poi riprova.",
   "agentBridge.failure.pairingFailed": "Il bridge non ha accettato questo codice. Un codice vale una sola volta e ne viene emesso uno nuovo dopo ogni abbinamento: chiedi all’agente un nuovo link (bridge_status) o copia l’ultimo codice dal bridge.",

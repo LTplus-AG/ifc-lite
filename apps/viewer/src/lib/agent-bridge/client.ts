@@ -61,7 +61,11 @@ const OPEN = 1;
 /** Close code the tab uses when it gives up waiting for `welcome` (application range). */
 const WELCOME_TIMEOUT_CLOSE = 4008;
 
-export const DEFAULT_WELCOME_TIMEOUT_MS = 10_000;
+/**
+ * The bridge answers a wrong code after a backoff of up to 5 s, so the tab
+ * waits well past that before calling the handshake lost.
+ */
+export const DEFAULT_WELCOME_TIMEOUT_MS = 15_000;
 
 /** What the browser says about loopback access for this site. */
 export type LocalNetworkPermission = 'granted' | 'denied' | 'prompt' | 'unknown';

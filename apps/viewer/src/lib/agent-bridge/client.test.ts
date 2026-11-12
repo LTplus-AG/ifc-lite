@@ -135,7 +135,11 @@ describe('local agent bridge client: handshake (#9523)', () => {
     assert.deepEqual(hello.tools.map((tool) => tool.name), [...MAIN_VIEWER_TOOL_ALLOWLIST]);
     assert.equal(hello.tools.length, 27);
     assert.ok(hello.tools.every((tool) => tool.readOnly), 'every announced tool is read-only');
-    assert.ok(validateToolDescriptors(hello.tools).ok, 'the bridge accepts the tool list as sent');
+    const checked = validateToolDescriptors(hello.tools);
+    assert.ok(checked.ok, `the bridge accepts the tool list as sent: ${checked.ok ? '' : checked.error}`);
+    // The limits validateToolDescriptors applies, stated so a limit change shows up here by name.
+    assert.ok(new TextEncoder().encode(JSON.stringify(hello.tools)).byteLength <= BRIDGE_LIMITS.maxDescriptorBytes);
+    assert.ok(hello.tools.every((tool) => tool.description.length <= BRIDGE_LIMITS.maxDescriptionLength));
     assert.deepEqual(hello.client, { name: 'ifc-lite viewer', version: 'test' });
   });
 
@@ -301,6 +305,24 @@ describe('local agent bridge client: calls (#9523)', () => {
     const logged = JSON.stringify(h.activity);
     assert.ok(!logged.includes(SECRET_ARG), 'no argument value in the log');
     assert.ok(!logged.includes(SECRET_RESULT), 'no result text in the log');
+  });
+});
+
+describe('local agent bridge client: read-only obligation (#9523)', () => {
+  it('a call naming a model-changing tool is answered isError by the real dispatch and never touches a model', async () => {
+    const { dispatchMainViewerTool } = await import('@/lib/agent-tools/main-viewer');
+    let modelReads = 0;
+    const host = { models: () => { modelReads++; return []; }, bsdd: {} } as unknown as Parameters<typeof dispatchMainViewerTool>[0];
+    const h = paired({ dispatch: (name, args, signal) => dispatchMainViewerTool(host, name, args, { signal }) });
+    for (const [id, name] of [['m1', 'entity_set_attribute'], ['m2', 'viewer_colorize'], ['m3', 'not_a_tool']]) {
+      call(h.socket(), id, name, { global_id: '2JUHrTM_j3UxZiBnyBfByx', attribute: 'Name', value: 'x' });
+    }
+    await flush();
+    const results = h.socket().results();
+    assert.deepEqual(results.map((r) => r.id), ['m1', 'm2', 'm3']);
+    assert.deepEqual(results.map((r) => [r.result.isError, (r.result.structuredContent as { code: string }).code]),
+      [[true, 'READ_ONLY'], [true, 'UNSUPPORTED_OPERATION'], [true, 'INVALID_INPUT']]);
+    assert.equal(modelReads, 0, 'no refused call reached a model, let alone a mutation path');
   });
 });
 

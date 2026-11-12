@@ -769,3 +769,24 @@ fn member_face_is_refused_with_the_length_unit_like_every_item_issue_9668() {
         assert!(router.process_element(&member, &mut decoder).is_err());
     }
 }
+
+#[test]
+fn bare_face_of_a_member_votes_the_file_rtc_issue_9668() {
+    // Detected through the live file detector, not a manual offset.
+    let wrap = |data: &str| format!("ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;\n{data}\nENDSEC;END-ISO-10303-21;");
+    let large = surface_member(true, false)
+        .replace("#15=IFCFACESURFACE((#6),#14,.T.);", "#15=IFCFACE((#6));")
+        .replace("(0.,0.,0.)", "(5000000.,5000000.,0.)")
+        .replace("(10.,0.,0.)", "(5000000.125,5000000.,0.)")
+        .replace("(10.,10.,0.)", "(5000000.125,5000000.125,0.)")
+        .replace("(0.,10.,0.)", "(5000000.,5000000.125,0.)");
+    let detect = |data: &str| {
+        let content = wrap(data);
+        let mut decoder = EntityDecoder::with_index(&content, ifc_lite_core::build_entity_index(&content));
+        let router = GeometryRouter::with_units(&content, &mut decoder);
+        router.detect_rtc_offset_for_file(content.as_bytes(), &mut decoder)
+    };
+    assert!(matches!(detect(&large), Some(ifc_lite_core::RtcVerdict::Large { .. })), "{:?}", detect(&large));
+    // The same bare face on another product is not read, as on main.
+    assert!(!matches!(detect(&proxy_with(&large)), Some(ifc_lite_core::RtcVerdict::Large { .. })));
+}

@@ -186,6 +186,9 @@ test('vacuous: a workspace dependency table with too few internal literals to be
   const { code, out } = run(makeTree(t, { offsetFile: OFFSET_0, depCount: 2 }));
   assert.equal(code, 1);
   assert.match(out, /DEP_FLOOR/);
+  // A floor failure names its own remedy, not one that cannot repair it (#9783 review).
+  assert.match(out, /DEP_FLOOR fix: compare the manifests' internal dependency declarations with main/);
+  assert.doesNotMatch(out, /sync-versions\.js` and commit/);
 });
 
 test('vacuous: a root table one literal short, as when the scan skipped ifc-lite-diff (#8097)', (t) => {

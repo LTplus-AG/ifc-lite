@@ -1,0 +1,12 @@
+diff --git a/apps/viewer/src/lib/actions/structural-derive-review.ts b/apps/viewer/src/lib/actions/structural-derive-review.ts
+--- a/apps/viewer/src/lib/actions/structural-derive-review.ts
++++ b/apps/viewer/src/lib/actions/structural-derive-review.ts
+@@ -80,7 +80,7 @@ export function prepareStructuralDerivationReview(store: StoreApi<ViewerState>,
+       // analysis model) and the whole plan before its first write, and writes in its own transaction inside this edit.
+       const { analysisModelId, created } = recordModellingEdit(store, modelId, (_methods, draft) => {
+         const before = draft.getNewEntities().length;
+-        const applied = derive.applyStructuralDerivation(draft, dataStore, derive.planStructuralDerivation(derive.readStructuralDerivationFacts(dataStore, draft)));
++        const applied = derive.applyStructuralDerivation(draft, dataStore, plan);
+         return { ...applied, created: draft.getNewEntities().slice(before).map(({ expressId, type }) => ({ expressId, type })) };
+       }, batchId);
+       used = true;

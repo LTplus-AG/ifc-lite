@@ -108,7 +108,7 @@ function printReport(report: StructuralDerivationReport, nothingWritten: string 
     `${c.supports} support(s) (${c.guessedSupports} guessed)\n`,
   );
   if (c.assumedLoadBearing) process.stderr.write(`${c.assumedLoadBearing} element(s) had no LoadBearing value and were assumed load-bearing\n`);
-  if (c.extendedEnds) process.stderr.write(`${c.extendedEnds} member end(s) moved along their axis to meet another member (largest ${Math.max(...report.extendedEnds.map((e) => Math.abs(e.distance))).toFixed(3)} m)\n`);
+  if (c.extendedEnds) process.stderr.write(`${c.extendedEnds} member end(s) moved along their axis to meet another member (largest ${report.extendedEnds.reduce((m, e) => Math.max(m, Math.abs(e.distance)), 0).toFixed(3)} m)\n`);
   if (c.freeEnds) process.stderr.write(`${c.freeEnds} free member end(s) meet no other member or support\n`);
   if (report.unconnectedEnds.length) process.stderr.write(`${report.unconnectedEnds.length} node(s) touch a member or surface they are not connected to\n`);
   for (const s of report.skipped) process.stderr.write(`skipped #${s.elementId} ${s.type}${s.name ? ` "${s.name}"` : ''}: ${s.reason} (${s.detail})\n`);

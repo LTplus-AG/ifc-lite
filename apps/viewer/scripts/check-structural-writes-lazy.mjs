@@ -43,6 +43,8 @@ export const STRUCTURAL_WRITE_SIGNATURES = [
   'addStructuralCurveConnectionToStore:',
   'addEntity(`IfcStructuralSurfaceConnection`',
   'Structural Face:',
+  // The structural derivation (#9668) applies with these builders and loads with them.
+  'Structural derivation:',
   'addStructuralLoadGroupToStore:',
   'assignToStructuralGroupInStore:',
   'addStructuralPointActionToStore',

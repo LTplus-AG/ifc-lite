@@ -343,6 +343,8 @@ describe('structuralGlyphs local frames of curve and surface items', () => {
     expect(forces).toHaveLength(2);
     close(forces[0].position, [0, 1, 0.5]);
     close(forces[1].position, [0, 1.5, 1.5]);
+    // Ungrouped, but its own values still scale against each other.
+    expect(forces.map((g) => g.relative)).toEqual([0.5, 1]);
   });
 
   it('turns a bare face normal to its placement z, so support and local load agree whatever the winding', async () => {

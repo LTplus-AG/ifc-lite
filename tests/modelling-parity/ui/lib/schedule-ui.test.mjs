@@ -12,9 +12,9 @@ test('#9296 displayed schedule totals are read by Length column, including refre
   const old = globalThis.document;
   globalThis.document = window.document;
   try {
-    document.body.innerHTML = `<div><button>Type</button><button aria-label="Column options"></button></div>
+    document.body.innerHTML = `<div><button aria-pressed="true">Unrelated toolbar</button><button aria-expanded="false">Menu</button></div><div><button>Type</button><button aria-label="Column options"></button></div>
       <div><button>Length (m)</button><button aria-label="Column options"></button></div>
-      <div><button aria-expanded="true"></button><button aria-pressed="false"><span>WT-200</span><span><span class="font-mono">10.00</span></span></button></div>
+      <div class="group absolute"><button aria-expanded="true"></button><button aria-pressed="false"><span>WT-200</span><span><span class="font-mono">10.00</span></span></button></div>
       <div class="sticky"><div>Total · 2</div><div><span class="font-mono">10.00</span></div></div>`;
     const session = { state: fn => fn() };
     assert.deepEqual(await readScheduleTotals(session), { groups: [10], total: 10 });

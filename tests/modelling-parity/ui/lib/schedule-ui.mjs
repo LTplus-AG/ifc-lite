@@ -10,7 +10,7 @@ export async function readScheduleTotals(s) {
     const index = options.findIndex(b => /^Length\b/.test(b.parentElement.innerText));
     if (index < 0) return { groups: [], total: '' };
     const groups = [...document.querySelectorAll('button[aria-pressed]')]
-      .filter(b => b.parentElement.querySelector('button[aria-expanded]'))
+      .filter(b => b.parentElement.classList.contains('absolute') && b.parentElement.querySelector(':scope > button[aria-expanded]'))
       .map(b => b.children[index]?.querySelector('.font-mono')?.textContent ?? '');
     const footer = [...document.querySelectorAll('div.sticky')].find(d => /^Total\s*·/.test(d.textContent));
     return { groups, total: footer?.children[index]?.querySelector('.font-mono')?.textContent ?? '' };

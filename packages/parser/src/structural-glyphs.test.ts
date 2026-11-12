@@ -483,11 +483,10 @@ describe('face stations', () => {
     // vertex average off the face.
     const h = 5e-6;
     const polygon: [number, number, number][] = [[0, 0, 0], [1e4, 0, 0], [1e4, h, 0], [9e3, h, 0], [9e3, h / 2, 0], [1e3, h / 2, 0], [1e3, h, 0], [0, h, 0]];
+    // The most open candidate: mid-length on the lower half, h / 4 clear.
     const [x, y] = shapeCentre({ kind: 'face', polygon });
-    expect(y).toBeGreaterThan(0);
-    expect(y).toBeLessThan(h);
-    expect(x).toBeGreaterThan(0);
-    expect(x).toBeLessThan(1e4);
+    expect(x).toBeCloseTo(5e3, 6);
+    expect(Math.abs(y - h / 4)).toBeLessThan(h * 1e-6);
   });
 
   it('retains interior stations for a convex sliver', () => {

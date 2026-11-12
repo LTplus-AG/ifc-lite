@@ -87,13 +87,13 @@ function clearance([u, v]: readonly [number, number], poly: Flat): number {
  * candidates allow: the span midpoints of scanlines halfway between adjacent
  * vertex heights. Such a line passes no vertex, so its crossings pair into
  * spans that are inside (even-odd). Heights within a hair of the last kept
- * one count as one, so float noise makes no row on an edge; the hair stays
- * under a quarter of the height range, so a face keeps at least one row.
+ * one count as one, so float noise makes no row on an edge. The hair is a
+ * few thousand ulps of the face's extent, far below any modelled height step.
  */
 function interiorPoint(poly: Flat): readonly [number, number] {
   const sorted = poly.map((p) => p[1]).sort((a, b) => a - b);
   const extent = poly.reduce((m, [u, v]) => Math.max(m, Math.abs(u), Math.abs(v)), 0);
-  const hair = Math.min(extent * 1e-9, (sorted[sorted.length - 1] - sorted[0]) / 4);
+  const hair = extent * 1e-12;
   const heights: number[] = [];
   for (const h of sorted) if (!heights.length || h - heights[heights.length - 1] > hair) heights.push(h);
   let best: readonly [number, number] = poly[0];

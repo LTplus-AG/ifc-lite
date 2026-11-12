@@ -273,3 +273,57 @@ fn only_a_centred_round_section_ignores_the_reference() {
     assert!(roll_of("IFCCIRCLEPROFILEDEF(.AREA.,$,#8,0.1)").is_some());
     assert!(roll_of("IFCRECTANGLEPROFILEDEF(.AREA.,$,#7,0.2,0.1)").is_some());
 }
+
+/// A 1000 m straight plan layout under a constant 1 % grade from 100 m, as an
+/// IFC4x3 `IfcGradientCurve`, swept with a 3 x 0.5 rectangle whose 3 m side
+/// the FixedReference (+Z) stands up. `range` is the solid's
+/// StartParam/EndParam.
+fn gradient_sweep(range: &str) -> String {
+    format!(
+        "#1=IFCCARTESIANPOINT((0.,0.));\n\
+        #2=IFCDIRECTION((1.,0.));\n\
+        #3=IFCVECTOR(#2,1.);\n\
+        #4=IFCLINE(#1,#3);\n\
+        #5=IFCAXIS2PLACEMENT2D(#1,#2);\n\
+        #6=IFCCURVESEGMENT(.CONTINUOUS.,#5,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(1000.),#4);\n\
+        #7=IFCCOMPOSITECURVE((#6),.F.);\n\
+        #8=IFCCARTESIANPOINT((0.,100.));\n\
+        #9=IFCDIRECTION((1.,0.01));\n\
+        #11=IFCAXIS2PLACEMENT2D(#8,#9);\n\
+        #12=IFCCURVESEGMENT(.CONTINUOUS.,#11,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(1000.05),#4);\n\
+        #13=IFCGRADIENTCURVE((#12),.F.,#7,$);\n\
+        #14=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,3.,0.5);\n\
+        #15=IFCDIRECTION((0.,0.,1.));\n\
+        #10=IFCFIXEDREFERENCESWEPTAREASOLID(#14,$,#13,{range},#15);"
+    )
+}
+
+fn assert_near(actual: [f32; 3], expected: [f64; 3]) {
+    for axis in 0..3 {
+        assert!((actual[axis] as f64 - expected[axis]).abs() < 1e-3, "{actual:?} != {expected:?}");
+    }
+}
+
+/// An `IfcGradientCurve` directrix carries its elevation: the section rides
+/// the 100 -> 110 m profile instead of the flat BaseCurve at z = 0. The
+/// grade tilts Axis1 (the projected FixedReference) by atan(0.01), so the
+/// 1.5 m half-height reaches 1.5 / sqrt(1.0001) up and 0.015 m back along x.
+#[test]
+fn gradient_curve_directrix_sweeps_along_the_vertical_profile() {
+    let (min, max) = bounds_of(&gradient_sweep("$,$"));
+    let half = 1.5 / 1.0001_f64.sqrt();
+    assert_near(min, [-0.01 * half, -0.25, 100.0 - half]);
+    assert_near(max, [1000.0 + 0.01 * half, 0.25, 110.0 + half]);
+}
+
+/// StartParam/EndParam on an `IfcGradientCurve` directrix are its BaseCurve
+/// parameter (horizontal distance along the plan), so 300..600 sweeps that
+/// stretch at its own elevations. It used to fall through to the plain
+/// composite-curve trim, which cannot read an IfcCurveSegment, and was refused.
+#[test]
+fn trimmed_gradient_curve_directrix_sweeps_only_the_trimmed_stretch() {
+    let (min, max) = bounds_of(&gradient_sweep("IFCLENGTHMEASURE(300.),IFCLENGTHMEASURE(600.)"));
+    let half = 1.5 / 1.0001_f64.sqrt();
+    assert_near(min, [300.0 - 0.01 * half, -0.25, 103.0 - half]);
+    assert_near(max, [600.0 + 0.01 * half, 0.25, 106.0 + half]);
+}

@@ -1799,10 +1799,10 @@ jobs:
   # The scripts/ test catch-all, split out of `node-guards` where it was about
   # 470 of that job's 750 seconds and made it the last lane to finish in most
   # green PR runs. Same trigger, same setup (full history, build artifact,
-  # verified fixtures, Python 3.12), same file list. Node's own --test-shard
-  # keeps file i of that list on shard (i mod N) + 1, with N taken from
-  # strategy.job-total, so the shards partition it: no file runs twice and
-  # none is dropped.
+  # verified fixtures, Python 3.12), same file list. ci-scripts-test-shards.mjs
+  # splits it by measured time: shard 1 runs a pinned list of the heaviest
+  # files, shard 2 everything else, so every file runs exactly once and a new
+  # file lands on shard 2.
   scripts-tests:
     name: Node scripts tests (shard ${{ matrix.shard }}/2)
     needs: [changes, build]
@@ -1816,6 +1816,17 @@ jobs:
     env:
       HAS_MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN != '' }}
     steps:
+      # matrix.shard only names the check run; the runner takes its shard from
+      # strategy.job-index. Fail in seconds, before setup, if they disagree.
+      - name: Check the shard name matches its index
+        env:
+          SHARD_INDEX: ${{ strategy.job-index }}
+          MATRIX_SHARD: ${{ matrix.shard }}
+        run: |
+          if [ "$((SHARD_INDEX + 1))" != "$MATRIX_SHARD" ]; then
+            echo "::error title=scripts-tests shard::this job is named shard ${MATRIX_SHARD} but runs shard $((SHARD_INDEX + 1)) (strategy.job-index ${SHARD_INDEX}); keep the matrix list as [1, 2] in order"
+            exit 2
+          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: false
@@ -1854,18 +1865,18 @@ jobs:
           python-version: '3.12'
       # Literal paths preserve the path auditor's existing input census; globs
       # discover every new suite. sort -u removes the overlap before Node starts
-      # any tests, and --test-shard then takes this shard's half of that list.
+      # any tests, and ci-scripts-test-shards.mjs then runs this shard's part.
       - name: Run every scripts/ test file (glob catch-all)
         id: scripts_tests
-        # The shard comes from the matrix the runner actually expanded, not from a
-        # second hand-kept count: trim the matrix and the remaining shards widen
-        # to cover every file, instead of one shard silently running half.
+        # The shard comes from the matrix the runner actually expanded, and
+        # ci-scripts-test-shards.mjs refuses a total it was not written for, so a
+        # trimmed or widened matrix fails instead of silently running a subset.
         env:
           SHARD_INDEX: ${{ strategy.job-index }}
           SHARD_TOTAL: ${{ strategy.job-total }}
         run: |
-          SHARD="$((SHARD_INDEX + 1))/${SHARD_TOTAL}"
-          node --test --test-shard="$SHARD" --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml $(printf '%s\n' \
+          SHARD="$((SHARD_INDEX + 1))"
+          node scripts/ci-scripts-test-shards.mjs --shard="$SHARD" --of="$SHARD_TOTAL" --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml $(printf '%s\n' \
             scripts/check-asset-usage.test.mjs \
             scripts/check-changeset-bump.test.mjs \
             scripts/check-ci-aggregate-coverage.test.mjs \
@@ -1951,6 +1962,7 @@ jobs:
           token: ${{ secrets.MERGIFY_TOKEN }}
           report_path: mergify-junit.xml
           test_step_outcome: ${{ steps.scripts_tests.outcome }}
+          job_name: scripts-tests (shard ${{ matrix.shard }})
 
   node-tests:
     name: Node tests (shard ${{ matrix.shard }}/4)

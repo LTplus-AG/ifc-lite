@@ -51,7 +51,6 @@ export function createLoadWindow(deps: LoadWindowDeps): LoadWindow {
   let open = false;
   let tailSince = -1;
   let checkScheduled = false;
-  let unsubscribeStore: (() => void) | null = null;
 
   const set = (next: boolean): void => {
     if (next === open) return;
@@ -75,17 +74,19 @@ export function createLoadWindow(deps: LoadWindowDeps): LoadWindow {
     set(false);
   };
 
+  // Observe the store from creation, not only while a consumer is subscribed:
+  // a consumer mounted after the store flags cleared, while the drain or
+  // finalize still runs, must still see the window open. The viewer creates the
+  // window when its first consumer module loads (the status bar, at boot), so
+  // every load is seen from its start.
+  deps.subscribeStore(evaluate);
+  evaluate();
+
   return {
-    // React reads the snapshot during the first render, before it subscribes:
-    // a consumer mounted mid-load must see the window open from that render on.
-    isOpen: () => { if (!unsubscribeStore) evaluate(); return open; },
+    isOpen: () => open,
     subscribe(listener) {
       listeners.add(listener);
-      if (!unsubscribeStore) { unsubscribeStore = deps.subscribeStore(evaluate); evaluate(); }
-      return () => {
-        listeners.delete(listener);
-        if (listeners.size === 0 && unsubscribeStore) { unsubscribeStore(); unsubscribeStore = null; }
-      };
+      return () => { listeners.delete(listener); };
     },
   };
 }
@@ -105,11 +106,12 @@ function getViewerLoadWindow(): LoadWindow {
   return viewerLoadWindow;
 }
 
+// Created with this module: the status bar imports it at boot, before any load.
+getViewerLoadWindow();
+
 /** True from load start until the scene settles; false outside any load. */
 export function useLoadWindowOpen(): boolean {
   const loadWindow = getViewerLoadWindow();
   return useSyncExternalStore(loadWindow.subscribe, loadWindow.isOpen, () => false);
 }
 
-/** @internal tests replace the process-wide window. */
-export function __resetViewerLoadWindowForTests(): void { viewerLoadWindow = null; }

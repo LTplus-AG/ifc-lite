@@ -185,18 +185,21 @@ export interface ModelIdResolvers {
 
 /**
  * The canonical renderer-id -> model-local-id mapping for a model's own geometry,
- * shared by every whole-model count so they cannot disagree: identity for the
- * legacy single store; else the model-scoped resolver (which also knows overlay-
- * created ids), then the federation registry restricted to this model;
- * undefined when the id is not this model's.
+ * shared by every whole-model count so they cannot disagree: the model-scoped
+ * resolver (which also knows overlay-created ids), then the federation registry
+ * restricted to this model. Only the legacy single-store ids fall back to the
+ * id itself when neither resolves (a store with no federation entry); a
+ * federated model that happens to be called `default` still resolves its offset.
+ * Undefined when the id is not this model's.
  */
 export function modelLocalIdResolver(modelId: string, resolvers: ModelIdResolvers): (id: number) => number | undefined {
-  if (LEGACY_IDS.has(modelId)) return (id) => id;
+  const identityFallback = LEGACY_IDS.has(modelId);
   return (id) => {
     const scoped = resolvers.resolveGlobalIdInModel(modelId, id);
     if (scoped) return scoped.expressId;
     const ref = resolvers.fromGlobalId(id);
-    return ref?.modelId === modelId ? ref.expressId : undefined;
+    if (ref) return ref.modelId === modelId ? ref.expressId : undefined;
+    return identityFallback ? id : undefined;
   };
 }
 

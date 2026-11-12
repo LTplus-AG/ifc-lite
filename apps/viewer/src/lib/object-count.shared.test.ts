@@ -126,3 +126,16 @@ it('a repeat read of the same model is a hit: the shape walk does not run again'
   assert.equal(read(), 1);
   assert.equal(walks, first, 'the second read did not walk');
 });
+
+it('a federated model named like a legacy id still resolves its offset (review: default at idOffset 1000)', async () => {
+  const { modelLocalIdResolver } = await shared();
+  const toLocalId = modelLocalIdResolver('default', {
+    resolveGlobalIdInModel: (modelId, id) => (modelId === 'default' && id >= 1000 ? { expressId: id - 1000 } : null),
+    fromGlobalId: () => null,
+  });
+  assert.equal(toLocalId(1010), 10, 'renderer id 1010 is local wall #10, not 1010');
+  const legacy = modelLocalIdResolver('legacy', { resolveGlobalIdInModel: () => null, fromGlobalId: () => null });
+  assert.equal(legacy(10), 10, 'a legacy store with no federation entry keeps its ids');
+  const federated = modelLocalIdResolver('model_b', { resolveGlobalIdInModel: () => null, fromGlobalId: () => null });
+  assert.equal(federated(10), undefined, 'an unresolved id is not a federated model\'s');
+});

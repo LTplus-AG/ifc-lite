@@ -28,16 +28,15 @@ async function harness() {
     setTimer: (fn) => { timers.push(fn); },
   });
   const changes: boolean[] = [];
-  const unsubscribe = win.subscribe(() => changes.push(win.isOpen()));
+  win.subscribe(() => changes.push(win.isOpen()));
   const store = (busy: boolean) => { storeBusy = busy; for (const l of [...storeListeners]) l(); };
   const frame = () => { const fns = frames.splice(0); for (const fn of fns) fn(); };
   const timer = () => { const fns = timers.splice(0); for (const fn of fns) fn(); };
   return {
-    win, changes, store, frame, timer, unsubscribe, MAX_TAIL_WAIT_MS,
+    win, changes, store, frame, timer, MAX_TAIL_WAIT_MS,
     setTail: (busy: boolean) => { tailBusy = busy; },
     advance: (ms: number) => { t += ms; },
     pendingChecks: () => frames.length + timers.length,
-    storeSubscribed: () => storeListeners.size > 0,
   };
 }
 
@@ -103,10 +102,24 @@ describe('load window', () => {
     assert.equal(win.isOpen(), true);
   });
 
-  it('stops listening to the store when its last consumer unsubscribes', async () => {
-    const h = await harness();
-    assert.equal(h.storeSubscribed(), true);
-    h.unsubscribe();
-    assert.equal(h.storeSubscribed(), false);
+  it('a consumer that first subscribes during the tail, after the store flags cleared, still sees the window open', async () => {
+    const { createLoadWindow } = await load();
+    let busy = false, tail = false;
+    const storeListeners = new Set<() => void>();
+    const frames: Array<() => void> = [];
+    const win = createLoadWindow({
+      storeBusy: () => busy, subscribeStore: (l) => { storeListeners.add(l); return () => storeListeners.delete(l); },
+      tailBusy: () => tail, now: () => 0, requestFrame: (fn) => { frames.push(fn); }, setTimer: () => {},
+    });
+    // The load runs with no consumer mounted yet.
+    busy = true; for (const l of storeListeners) l();
+    tail = true; busy = false; for (const l of storeListeners) l();
+    // A panel mounts now, inside the drain/finalize.
+    const seen: boolean[] = [];
+    win.subscribe(() => seen.push(win.isOpen()));
+    assert.equal(win.isOpen(), true, 'late consumer: the window is still open');
+    tail = false; frames.splice(0).forEach((fn) => fn());
+    assert.equal(win.isOpen(), false);
+    assert.deepEqual(seen, [false], 'the late consumer is told when it closes');
   });
 });

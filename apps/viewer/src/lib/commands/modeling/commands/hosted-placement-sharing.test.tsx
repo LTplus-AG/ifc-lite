@@ -138,9 +138,10 @@ for (const mode of ['single', 'multi'] as const) for (const unit of ['metre', 'm
 }
 
 // #9296 H: a shaft uses the same host-relative graph after export/reload.
-for (const unit of ['metre', 'millimetre'] as const) it(`slab shaft in ${unit} preserves its source host placement and one-step Undo (#9296)`, async () => {
+for (const unit of ['metre', 'millimetre'] as const) for (const turned of [false, true]) it(`slab shaft in ${unit}, turned=${turned} preserves its source host placement and one-step Undo (#9296)`, async () => {
   await seedModelingSession({ unit, storeyOffset: [3,3] });
   const host = built(state().addSlab(MODEL_ID, STOREY, { Position: [5,5,0], Width: 5, Depth: 4, Thickness: .2, ExtrudedDirection: [0,0,-1] }));
+  if (turned) state().rotateEntity(MODEL_ID, host, Math.PI / 2);
   const sourceText = exportModel();
   await seedModelingSession({ step: sourceText });
   const { store, view } = live(), reader = new AnchorEntityReader(store, view);
@@ -148,7 +149,7 @@ for (const unit of ['metre', 'millimetre'] as const) it(`slab shaft in ${unit} p
   const restore = setRequestRemesh(() => {});
   try {
     state().startCommand('opening.place');
-    act(() => { commandPointerMove(at(7,7)); commandPointerDown(at(7,7)); });
+    act(() => { const point = at(turned ? 3 : 7,7); commandPointerMove(point); commandPointerDown(point); });
     const cuts = readHostOpeningExtents(store, host, view);
     assert.equal(cuts.cuts.length, 1, 'a real host-relative cut was created');
     assert.deepEqual(reader.entity(host), originalHost, 'source placement and representation remain shared unchanged');

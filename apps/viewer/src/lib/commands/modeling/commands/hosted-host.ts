@@ -18,6 +18,8 @@
  */
 
 import { AnchorEntityReader } from '../../../../../../../packages/create/src/in-store/resolve-anchor.js';
+import { slabExtrusionFrame } from '@/lib/slab-edit-frame';
+import { readAttributes, resolvePlacementChain } from '@/lib/placement-core';
 import { resolveSlabEditChain } from '@/lib/slab-edit';
 import { readModelEditTarget } from '@/store/slices/mutation-modelling-records';
 import { effectiveStoreyId } from '@/lib/effective-storey';
@@ -110,7 +112,19 @@ function readHostUncached(s: ViewerState, modelId: string, expressId: number): H
     const editor = readModelEditTarget(s, modelId)?.editor;
     if (!view || !editor) return null;
     const chain = resolveSlabEditChain(store, view, editor, expressId, k);
-    if (!chain || chain.baseElevation === null) return null;
+    if (!chain) return null;
+    if (chain.baseElevation === null) {
+      // The split reader refuses plan turns because splitting writes in storey
+      // axes. A shaft stays in the host frame, so permit yaw through the same
+      // canonical vertical-extrusion check while still refusing tilted slabs.
+      const placement = resolvePlacementChain(store, view, editor, expressId);
+      const solid = readAttributes(store, view, editor, chain.extrudedSolidId);
+      if (!placement || !solid || !slabExtrusionFrame(store, view, editor, placement.axisPlacementId, solid, chain.thickness / k, true)) return null;
+    }
+    // The slab reader adds the placement translation to its solid/profile
+    // outline, but does not apply the product's yaw. Removing that translation
+    // leaves host-local XY, the same frame as toHostLocal's cursor.
+
     footprint = chain.footprint.map(p => [p[0] - chain.placementOrigin[0], p[1] - chain.placementOrigin[1]]);
   }
   return { expressId, hostKind: anchor.hostKind, footprint, origin: frame.origin, axisX: frame.axisX, x: span(0), y: span(1), z: span(2) };

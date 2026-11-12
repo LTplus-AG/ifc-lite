@@ -39,7 +39,7 @@ import { editStairDimensionsInStore, type HostedElementSize, type ProfileSection
  * `tx.store` and returns the express ids whose mesh it changed. False (with
  * a toast) when the edit was refused or threw; nothing is left behind then.
  */
-export function runInspectorEdit(modelId: string, edit: (tx: AuthoringTransaction) => readonly number[]): boolean {
+export function runInspectorEdit(modelId: string, edit: (tx: AuthoringTransaction) => readonly number[], onError?: (reason: string) => void): boolean {
   const command: ModelingCommand = {
     id: 'inspector.edit',
     labelKey: 'modelInspector.edit',
@@ -52,7 +52,7 @@ export function runInspectorEdit(modelId: string, edit: (tx: AuthoringTransactio
   };
   const get = useViewerStore.getState;
   const outcome = runTransaction(useViewerStore, command, null, { get, modelId, storeyId: get().session?.storeyId ?? null, workplane: null });
-  if (!outcome.ok) toast.error(outcome.reason);
+  if (!outcome.ok) { toast.error(outcome.reason); onError?.(outcome.reason); }
   return outcome.ok;
 }
 

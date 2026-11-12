@@ -8,9 +8,10 @@
  * Every entry point that names extensions derives them from here: the
  * `<input type="file">` accept strings, the drag/drop and picker guards
  * (`isSupportedModelFile`), the File System Access picker's accept
- * filter in `./file-system-access.ts`, and the welcome card's format list. Keeping them derived rather than
- * hand-copied is what stops one path from advertising a format another
- * path silently refuses — `.ifczip` was missing from the picker filter
+ * filter in `./file-system-access.ts`, and the welcome card's format
+ * list. Keeping them derived rather than hand-copied is what stops one
+ * path from advertising a format another path silently refuses:
+ * `.ifczip` was missing from the picker filter
  * while every other path accepted it, so a zipped IFC appeared greyed out
  * in the Chromium Open dialog.
  */

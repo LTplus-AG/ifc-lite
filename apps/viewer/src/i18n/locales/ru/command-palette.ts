@@ -200,5 +200,4 @@ export const commandPaletteRu = {
   "commandPalette.category.extensions": "Расширения",
   "commandPalette.category.learn": "Обучение",
   "commandPalette.tool.deriveStructural.label": "Построить расчётную модель",
-  "commandPalette.availability.editMode": "Сначала включите режим редактирования",
 } satisfies Catalogue;

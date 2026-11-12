@@ -14,11 +14,11 @@ import { hasWorkspaceHistory } from '@/lib/model-placement/history';
 import { isCollabEnabled } from '@/lib/collab/config';
 import type { TranslationKey } from '@/i18n';
 import { useViewerStore, type ViewerState } from '@/store';
-import { canMutate } from '@/store/mutation-permission';
+import { canMutate, mutationDenialKey, mutationPermission } from '@/store/mutation-permission';
 import { hasRetainedShapeOnlyModel, RETAINED_SHAPE_ONLY_REASON } from '@/store/retainedGeometry';
 import { getWebGPUStatus } from '@/hooks/useWebGPU';
 import { selectCanRefreshModels, selectHasModelsLoaded } from '@/hooks/model-presence';
-import { modelWorkspaceTarget } from '@/lib/commands/modeling/workspace-target';
+import { modelWorkspaceTarget, resolveModelId } from '@/lib/commands/modeling/workspace-target';
 import { sessionWorkplaneBlock } from '@/lib/commands/modeling/workspace-storeys';
 import { resolveWorkplane } from '@/lib/commands/modeling/registry';
 import type { SurfaceCommandContext, SurfaceCommandDefinition, SurfaceCommandState } from './surface-command-types';
@@ -112,8 +112,11 @@ export function paletteAvailability(command: SurfaceCommandDefinition, context: 
   if (opener) {
     if (s.loading) return blocked('commandPalette.availability.loading');
     if (!hasData) return blocked('commandPalette.availability.ifc');
-    // The derivation writes into the model, which only Edit mode allows.
-    if (id === 'model:derive-structural' && !s.editEnabled) return blocked('commandPalette.availability.editMode');
+    // The derivation writes into the model: the same write policy its review applies.
+    if (id === 'model:derive-structural') {
+      const permission = mutationPermission(s, resolveModelId(s, undefined) ?? undefined);
+      if (!permission.allowed) return blocked(mutationDenialKey(permission.reason));
+    }
     const callback = context[opener];
     if (!callback || context.toolHostIsCurrent?.() === false) return blocked('commandPalette.availability.host');
   }

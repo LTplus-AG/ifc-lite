@@ -52,11 +52,13 @@ export function prepareStructuralDerivationReview(store: StoreApi<ViewerState>, 
   const plan = derive.planStructuralDerivation(derive.readStructuralDerivationFacts(dataStore, lease.target.editor));
   // Nothing to write, or an analysis model already there (apply would refuse): no dry run; the review shows why.
   const blocked = plan.curveMembers.length + plan.surfaceMembers.length === 0 || plan.refusal !== null;
-  const created = blocked ? 0 : lease.target.view.prepareAtomic((view) => {
-    const draft = new StoreEditor(dataStore, view);
+  // The dry run writes into the lease's draft, a detached copy that is never published.
+  let created = 0;
+  if (!blocked) {
+    const draft = new StoreEditor(dataStore, lease.target.view);
     derive.applyStructuralDerivation(draft, dataStore, plan);
-    return draft.getNewEntities().length;
-  }).result;
+    created = draft.getNewEntities().length;
+  }
   const model = state.models.get(modelId), view = state.mutationViews.get(modelId), revision = view?.getMutationRevision();
   const validate = () => {
     const current = store.getState();

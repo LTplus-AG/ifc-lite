@@ -196,5 +196,4 @@ export const commandPaletteIt = {
   "commandPalette.availability.noLoadError": "Questo errore di caricamento è terminato o è stato sostituito",
   "commandPalette.availability.noLoadRetry": "Non è disponibile un nuovo tentativo per questo errore di caricamento",
   "commandPalette.tool.deriveStructural.label": "Derivare il modello di analisi strutturale",
-  "commandPalette.availability.editMode": "Attiva prima la modalità di modifica",
 } satisfies Catalogue;

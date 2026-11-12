@@ -126,8 +126,6 @@ const NOT_RENDERED_IN_THIS_STATE: PaletteKey[] = [
   // #8947: modified-IFC's disabled reason is now visible in the unloaded palette.
   // These prerequisites need roles, loaded models, or a missing host beyond this seed.
   'commandPalette.availability.editor',
-  // #9668: shown only for a model outside Edit mode; StructuralDerivationReview.test.tsx exercises it.
-  'commandPalette.availability.editMode',
   'commandPalette.availability.camera',
   'commandPalette.availability.selection',
   'commandPalette.availability.workplane',

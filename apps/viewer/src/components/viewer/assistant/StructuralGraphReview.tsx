@@ -15,7 +15,7 @@ export function StructuralGraphReview({ proposal, origin }: { proposal: Structur
   const [approved, setApproved] = useState(() => new Set(proposal.operations.map((_, index) => index)));
   const flow = useStructuralReview<StructuralReview>('Assistant Structural', proposal);
   const { review, receipt } = flow;
-  const prepare = (selection: ReadonlySet<number>) => flow.prepare(() => prepareStructuralReview(useViewerStore, proposal, selection));
+  const builder = (selection: ReadonlySet<number>) => () => prepareStructuralReview(useViewerStore, proposal, selection);
   const delta = review?.delta ?? [];
   return <section aria-label={t('structuralReview.title')} className="mx-3 my-2 rounded border border-border p-3 text-xs space-y-2">
     <h3 className="font-medium">{proposal.title}</h3>
@@ -27,14 +27,14 @@ export function StructuralGraphReview({ proposal, origin }: { proposal: Structur
           onChange={event => {
             const next = new Set(approved);
             if (event.target.checked) next.add(index); else next.delete(index);
-            setApproved(next); if (review) prepare(next);
+            setApproved(next); if (review) flow.prepare(builder(next));
           }} />{t(`structuralReview.op.${operation.op}`)}</label>
         {operation.params && <pre className="whitespace-pre-wrap break-words text-muted-foreground">{JSON.stringify(operation.params, null, 2)}</pre>}
         {operation.target !== undefined && <p className="text-muted-foreground">{t('structuralReview.references', { target: JSON.stringify(operation.target), related: JSON.stringify(operation.related ?? []) })}</p>}
       </li>)}
     </ul>
     <StructuralReviewControls flow={flow} acknowledgement={t('structuralReview.acknowledgement')} prepareLabel={t('structuralReview.prepare')}
-      build={approved.size > 0 ? () => prepareStructuralReview(useViewerStore, proposal, approved) : undefined}
+      build={approved.size > 0 ? builder(approved) : undefined}
       applyCount={approved.size} canApply={approved.size > 0}
       commit={current => commitReviewedStructural(useViewerStore, current, origin)}
       details={review && <>

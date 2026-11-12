@@ -35,7 +35,7 @@ test('#9668 the palette command opens the derivation review when a model is load
   assert.deepEqual(paletteAvailability(command, host), { status: 'available' });
   assert.deepEqual(paletteAvailability(command, { surface: 'palette' }), { status: 'disabled', reasonKey: 'commandPalette.availability.host' }, 'refused without the dialog host');
   useViewerStore.setState({ editEnabled: false });
-  assert.deepEqual(paletteAvailability(command, host), { status: 'disabled', reasonKey: 'commandPalette.availability.editMode' }, 'refused outside Edit mode');
+  assert.deepEqual(paletteAvailability(command, host), { status: 'disabled', reasonKey: 'mutationPermission.editModeRequired' }, 'refused outside Edit mode');
 });
 
 test('#9668 derive, review the plan, acknowledge and apply, through the structural review step', async () => {

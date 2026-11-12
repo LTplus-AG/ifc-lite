@@ -199,5 +199,4 @@ export const commandPaletteDe = {
   'commandPalette.category.extensions': 'Erweiterungen',
   'commandPalette.category.learn': 'Lernen',
   "commandPalette.tool.deriveStructural.label": "Statisches Analysemodell ableiten",
-  "commandPalette.availability.editMode": "Zuerst den Bearbeitungsmodus einschalten",
 } satisfies Catalogue;

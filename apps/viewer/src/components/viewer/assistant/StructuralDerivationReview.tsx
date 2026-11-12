@@ -30,6 +30,7 @@ function Listing<T>({ summary, rows, row }: { summary: string; rows: readonly T[
 function DerivationSummary({ review }: { review: Review }) {
   const { t } = useTranslation();
   const { plan } = review;
+  const nodeRow = (index: number) => t('structuralDerive.nodeAt', { node: index + 1, position: metres(plan.nodes[index].position) });
   const { counts, skipped, unconnectedEnds, extendedEnds, freeEnds } = plan.report;
   const existing = plan.existingAnalysisModels.map((m) => `#${m.expressId}`).join(', ');
   return <>
@@ -41,12 +42,12 @@ function DerivationSummary({ review }: { review: Review }) {
       {item.type} #{item.elementId}{item.name ? ` ${item.name}` : ''}: {t(`structuralDerive.reason.${item.reason}`)} <span className="text-muted-foreground">({item.detail})</span>
     </>} />
     <Listing summary={t('structuralDerive.guessed', { count: plan.report.guessedSupports.length })} rows={plan.report.guessedSupports}
-      row={(index) => t('structuralDerive.nodeAt', { node: index + 1, position: metres(plan.nodes[index].position) })} />
+      row={nodeRow} />
     <Listing summary={t('structuralDerive.moved', { count: extendedEnds.length })} rows={extendedEnds}
       row={(move) => t('structuralDerive.movedRow', { element: move.elementId, end: t(`structuralDerive.end.${move.end}`),
         distance: move.distance.toFixed(3), to: move.toElementId })} />
     <Listing summary={t('structuralDerive.free', { count: freeEnds.length })} rows={freeEnds}
-      row={(index) => t('structuralDerive.nodeAt', { node: index + 1, position: metres(plan.nodes[index].position) })} />
+      row={nodeRow} />
     <Listing summary={t('structuralDerive.unconnected', { count: unconnectedEnds.length })} rows={unconnectedEnds}
       row={(end) => t('structuralDerive.endAt', { node: end.node + 1, position: metres(plan.nodes[end.node].position),
         landsOn: t(`structuralDerive.landsOn.${end.landsOn}`), element: end.landsOnElementId })} />

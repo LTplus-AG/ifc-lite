@@ -158,6 +158,9 @@ export function attributeViewerFailures(failures, root) {
     // A suite is re-checked through its tests (cancelled ones included),
     // never as a test of its own: a suite is never a passing result.
     if (f.failureType !== 'subtestsFailed' && f.type !== 'suite') {
+      // didNotRun only shapes the report (summary, annotations); the retry
+      // still has to pass the test. Newer Node 22 also reports a test-level
+      // timeout as cancelledByParent.
       tests.push({ file, title: f.title, path: f.path, didNotRun: f.failureType === 'cancelledByParent' });
     }
   }

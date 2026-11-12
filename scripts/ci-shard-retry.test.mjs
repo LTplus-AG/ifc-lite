@@ -122,7 +122,12 @@ test('real node:test TAP: a nested assertion, an import crash and a non-zero exi
   assert.deepEqual(a.files, ['src/a.test.ts', 'src/c.test.ts', 'src/d/e.test.tsx', 'src/f.test.ts', 'src/g.test.ts', 'src/h.test.ts']);
   assert.ok(a.tests.some((t) => t.file === 'src/a.test.ts' && t.title === 'nested fails' && t.path === 'group › nested fails'));
   assert.ok(!a.tests.some((t) => t.title === 'suite'), 'a suite whose hook failed is re-checked through its tests, not as one');
-  assert.deepEqual(a.tests.filter((t) => t.didNotRun).map((t) => t.path).sort(), ['suite › t1', 'suite › t2'], 'tests a failed hook cancelled are marked as not run');
+  // Newer Node 22 also reports a test-level timeout as cancelledByParent, so
+  // only the hook's cancelled tests are pinned. The flag affects the summary
+  // and annotations only; the retry still has to pass every listed test.
+  const notRun = a.tests.filter((t) => t.didNotRun).map((t) => t.path);
+  assert.ok(notRun.includes('suite › t1') && notRun.includes('suite › t2'), 'tests a failed hook cancelled are marked as not run'); // @source-text-assertion-ok checks parsed TAP paths
+  assert.ok(!notRun.includes('group › nested fails'), 'a test that failed on its own assertion ran'); // @source-text-assertion-ok checks parsed TAP paths
   assert.ok(!a.tests.some((t) => t.title === 'group'), 'a parent suite that failed only through its child is not a test of its own');
 });
 

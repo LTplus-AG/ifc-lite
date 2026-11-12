@@ -29,7 +29,7 @@ export default {
         await selectWall(s);
         await s.ui.click(s.page.locator('[data-model-inspector]').getByRole('button', { name: 'Properties', exact: true }));
         const rating = s.page.getByRole('button', { name: /^FireRating:/ });
-        if (!(await rating.count())) throw new Error('Properties offers no inherited FireRating on the authored wall type to edit.');
+        if (!(await rating.count())) throw new Error('Authored type has no inherited FireRating in Properties; this UI workflow cannot exercise the type-property edit.');
         await s.ui.click(rating);
         await field(s, s.page.getByRole('textbox').last(), 'REI60');
         await s.ui.click(s.page.getByRole('button', { name: 'Apply To Type', exact: true }));

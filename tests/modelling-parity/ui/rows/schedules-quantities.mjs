@@ -32,7 +32,9 @@ export default {
       tasks.push(await task(s, 'group by Type and sum Length in the schedule', async () => {
         // Column menu is adjacent to its sortable header, not a list settings mutation.
         const menu = name => s.page.getByRole('button', { name, exact: false }).first().locator('..').getByRole('button', { name: 'Column options', exact: true });
-        await s.ui.click(menu(/^Type$/));
+        const typeMenu = menu(/^Type$/);
+        if (!(await typeMenu.count())) throw new Error('Wall Schedule has no Type column to group by; Class and ObjectType do not identify the assigned wall type.');
+        await s.ui.click(typeMenu);
         await s.ui.click(s.page.getByRole('menuitem', { name: /Group by this column/ }));
         await s.ui.click(menu(/^Length/));
         await s.ui.click(s.page.getByRole('menuitemcheckbox', { name: /Sum this column/ }));

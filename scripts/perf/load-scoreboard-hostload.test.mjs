@@ -31,7 +31,11 @@ test('a builder group that used CPU, a builder under any pressure, or high press
   assert.equal(busy.builderState, 'busy');
   assert.deepEqual(busy.busyGroups, [4242]);
   assert.match(busy.reason, /used > 100 ms CPU/);
-  assert.equal(classifyHostLoad({ psi: 0.4, builders: ['cargo'], groupCpuMs: { 1: 0 } }).underLoad, true, 'builder while pressure is non-zero');
+  assert.equal(classifyHostLoad({ psi: 1.2, builders: ['cargo'], groupCpuMs: { 1: 0 } }).underLoad, true, 'builder while pressure is at or above the 1.0 floor');
+  const noise = classifyHostLoad({ psi: 0.03, builders: ['rustc'], groupCpuMs: { 2298217: 0 } });
+  assert.equal(noise.underLoad, false, 'pressure 0.03 with an idle probe is noise (slot 97499baf)');
+  assert.equal(noise.builderState, 'seen, idle');
+  assert.equal(classifyHostLoad({ psi: 0.03, builders: ['rustc'], groupCpuMs: { 2601957: 400 } }).underLoad, true, '400 ms of builder CPU flags it even at low pressure');
   assert.equal(classifyHostLoad({ psi: 7, builders: [], groupCpuMs: {} }).underLoad, true, 'pressure >= 5 alone');
   assert.equal(classifyHostLoad({ psi: Number.NaN, builders: [] }).underLoad, true, 'unreadable pressure is never quiet');
 });

@@ -48,17 +48,20 @@ const TICK_MS = 10; // USER_HZ = 100 on Linux
  * (`rustc -vV` from cargo metadata, rustup, rust-analyzer) show up with no CPU use and no pressure (metadata lane,
  * job a8faf2a6: 12 of 120 samples voided that way). Load = CPU pressure at or above `limit` after the wait, or a
  * builder's process group using more than `cpuMsLimit` of CPU during the sample, or any builder while pressure
- * was non-zero. A builder seen with neither is `seen, idle`: recorded, never voiding the cell.
+ * was at or above `pressureFloor` (1.0). A builder seen with neither is `seen, idle`: recorded, never voiding the cell.
  */
-export function classifyHostLoad({ psi, limit = 5, builders = [], groupCpuMs = {}, cpuMsLimit = 100 }) {
+// `psi` everywhere here is the `some avg10` figure of /proc/pressure/cpu (share of the last 10 s in which at least
+// one runnable task waited for a CPU, in percent), read just before the sample.
+export function classifyHostLoad({ psi, limit = 5, builders = [], groupCpuMs = {}, cpuMsLimit = 100, pressureFloor = 1.0 }) {
   const pressure = !(psi < limit);
   const busyGroups = Object.entries(groupCpuMs).filter(([, ms]) => ms > cpuMsLimit).map(([g]) => Number(g));
-  const builderUnderPressure = builders.length > 0 && !(psi === 0);
+  // Below the floor, pressure is noise (0.03 seen in slot 97499baf with an idle toolchain probe); unreadable pressure is never quiet.
+  const builderUnderPressure = builders.length > 0 && !(psi < pressureFloor);
   const underLoad = pressure || busyGroups.length > 0 || builderUnderPressure;
   const builderState = builders.length === 0 ? 'none' : underLoad ? 'busy' : 'seen, idle';
   return { underLoad, builderState, busyGroups,
     reason: pressure ? `CPU pressure avg10 ${psi} >= ${limit}` : busyGroups.length ? `builder group(s) ${busyGroups.join(',')} used > ${cpuMsLimit} ms CPU during the sample`
-      : builderUnderPressure ? `builder present while CPU pressure avg10 = ${psi}` : null };
+      : builderUnderPressure ? `builder present while CPU pressure some avg10 = ${psi} >= ${pressureFloor}` : null };
 }
 
 /** H9: before each sample, wait (at most 20 s) for CPU pressure avg10 < 5, and note builder-named processes. */

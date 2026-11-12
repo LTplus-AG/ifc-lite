@@ -60,6 +60,8 @@ const RENAMED: Record<string, string> = {
   loadGroupGlobalIds: 'LoadedBy',
   resultGroupGlobalIds: 'HasResults',
   resultForLoadGroupGlobalId: 'ResultForLoadGroup',
+  // A member's ends: the inverse IfcStructuralMember.ConnectedBy.
+  IfcRelConnectsStructuralMember: 'ConnectedBy',
 };
 /**
  * The EXPRESS type of a held record the read model gives no `type` field, by the
@@ -67,11 +69,13 @@ const RENAMED: Record<string, string> = {
  * it carries a constraint, and the only constraint read is an eccentricity.
  */
 const UNTYPED_CHILD: Record<string, (child: Record<string, unknown>) => string> = {
-  IfcRelConnectsStructuralMember: (child) => (child.ConnectionConstraint !== undefined ? 'IfcRelConnectsWithEccentricity' : 'IfcRelConnectsStructuralMember'),
+  ConnectedBy: (child) => (child.ConnectionConstraint !== undefined ? 'IfcRelConnectsWithEccentricity' : 'IfcRelConnectsStructuralMember'),
   ConnectionConstraint: () => 'IfcConnectionPointEccentricity',
 };
 
+/** The registry for a store's schema; IFC5 reads with IFC4X3's, as `effectiveMetadataRecord` does. */
 function registryFor(schema: string | undefined): SchemaRegistry | null {
+  if (schema === 'IFC5') return getSchemaRegistryForVersion('IFC4X3');
   return schema === 'IFC2X3' || schema === 'IFC4' || schema === 'IFC4X3' ? getSchemaRegistryForVersion(schema) : null;
 }
 
@@ -100,7 +104,8 @@ const isRecord = (v: unknown): v is HeldRecord =>
 /**
  * A record's attribute fields and the records it holds (`[attribute, record]`).
  * A resource (load, condition) keeps its values in `components`; a load
- * configuration pairs each `Values` entry with its `Locations` row.
+ * configuration's `Values` keep one item per slot and `Locations` is the
+ * file's own list, so the two pair by index.
  */
 function fieldsOf(info: HeldRecord): { fields: Record<string, unknown>; held: [string, HeldRecord][] } {
   const { components, configuration, ...rest } = info as HeldRecord & { components?: Record<string, unknown>; configuration?: StructuralLoadConfigurationInfo };
@@ -109,12 +114,12 @@ function fieldsOf(info: HeldRecord): { fields: Record<string, unknown>; held: [s
   if (configuration) {
     // One Values item per slot, a dropped one included, so Values[i] still pairs with Locations[i].
     fields.Values = { refs: configuration.entries.map((entry) => entry.value?.expressId ?? { dropped: entry.dropped ?? 'unreadable' }) };
-    if (configuration.locations) fields.Locations = configuration.entries.map((entry) => entry.location ?? []);
+    if (configuration.locations) fields.Locations = configuration.locations;
     configuration.entries.forEach((entry, i) => { if (entry.value) held.push([`Values[${i}]`, entry.value as unknown as HeldRecord]); });
   }
   for (const [key, raw] of Object.entries(fields)) {
     if (isRecord(raw)) held.push([attributeOf(key), raw]);
-    else if (Array.isArray(raw) && raw.every(isRecord)) raw.forEach((child, i) => held.push([`${key}[${i}]`, child]));
+    else if (Array.isArray(raw) && raw.every(isRecord)) raw.forEach((child, i) => held.push([`${attributeOf(key)}[${i}]`, child]));
   }
   return { fields, held };
 }
@@ -156,6 +161,8 @@ export function structuralCardSections(data: StructuralExtraction, selection: { 
       // An empty list is an unset optional aggregate (`$`), not a value.
       if (raw === undefined || raw === null || NOT_ATTRIBUTES.has(key) || (Array.isArray(raw) && raw.length === 0)) continue;
       if (Array.isArray(raw) && raw.every(isRecord)) continue;
+      // A plain object the card has no form for (only held records and Values refs have one) is not shown.
+      if (typeof raw === 'object' && !Array.isArray(raw) && !isRecord(raw) && !('refs' in raw)) continue;
       const attribute = attributeOf(key);
       const at = position(attribute);
       if (attributes && at === -1) continue;

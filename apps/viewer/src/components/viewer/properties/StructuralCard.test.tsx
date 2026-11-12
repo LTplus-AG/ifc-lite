@@ -345,6 +345,13 @@ describe('StructuralCard for every structural record (#9668)', () => {
     assert.ok(!errors.some((args) => String(args[0]).includes('same key')), JSON.stringify(errors));
   });
 
+  it('shows a member selected by a GlobalId it shares with another record (#9668)', () => {
+    const shared: StructuralExtraction = { ...data, members: [{ expressId: 10, globalId: 'case', type: 'IfcStructuralCurveMember',
+      predefinedType: 'CABLE', connectionGlobalIds: [], activityGlobalIds: [], analysisModelGlobalIds: [] }] };
+    const text = render(<StructuralCard structuralData={shared} selectedExpressId={null} selectedGlobalId="case" schemaVersion="IFC4" />);
+    assert.match(text, /StructuralCurveMember.*PredefinedTypeCABLE/);
+  });
+
   it('omits an unset aggregate instead of showing an empty row (#9668)', () => {
     assert.doesNotMatch(show(1), /HasResults/);
   });

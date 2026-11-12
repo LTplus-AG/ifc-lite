@@ -83,11 +83,14 @@ export function StructuralCard({
     models: structuralRelatedRows(structuralData?.analysisModels ?? [], member?.analysisModelGlobalIds ?? []),
   }), [member, structuralData]);
   const sections = useMemo(
-    () => (structuralData ? structuralCardSections(structuralData, { expressId: selectedExpressId, globalId: selectedGlobalId }, schemaVersion) : []),
-    [structuralData, selectedExpressId, selectedGlobalId, schemaVersion],
+    // A GUID-only selection whose GlobalId a member shares with another record names no record, but still the member.
+    () => (structuralData && subject ? structuralCardSections(structuralData, {
+      expressId: subject.record?.info.expressId ?? subject.member?.expressId ?? selectedExpressId, globalId: selectedGlobalId,
+    }, schemaVersion) : []),
+    [structuralData, subject, selectedExpressId, selectedGlobalId, schemaVersion],
   );
   if (!structuralData || !subject) return null;
-  const itemType = subject.record?.type;
+  const itemType = subject.record?.type ?? member?.type;
   const connections = related.connections.rows;
   const activities = related.activities.rows;
   const modelLabels = related.models.rows.flatMap(model => model.name ? [model.name] : []);

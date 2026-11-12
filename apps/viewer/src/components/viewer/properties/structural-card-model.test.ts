@@ -65,10 +65,10 @@ describe('structuralCardSections on generated_structural_coverage_ifc4.ifc', () 
     const sections = await card(31);
     assert.deepEqual(rows(sections[0]), { Name: 'Coverage IfcStructuralCurveMember', PredefinedType: 'RIGID_JOINED_MEMBER', Axis: { ref: 15 } });
     assert.deepEqual(sections.slice(1).map((s) => [s.via, s.type, s.expressId]), [
-      ['IfcRelConnectsStructuralMember[0]', 'IfcRelConnectsStructuralMember', 64],
+      ['ConnectedBy[0]', 'IfcRelConnectsStructuralMember', 64],
       ['AppliedCondition', 'IfcBoundaryNodeCondition', 24],
       ['AdditionalConditions', 'IfcFailureConnectionCondition', 28],
-      ['IfcRelConnectsStructuralMember[1]', 'IfcRelConnectsWithEccentricity', 68],
+      ['ConnectedBy[1]', 'IfcRelConnectsWithEccentricity', 68],
       ['AppliedCondition', 'IfcBoundaryNodeCondition', 24],
       ['AdditionalConditions', 'IfcSlippageConnectionCondition', 29],
       ['ConnectionConstraint', 'IfcConnectionPointEccentricity', 67],
@@ -100,3 +100,29 @@ describe('structuralCardSections on generated_structural_coverage_ifc4.ifc', () 
     assert.deepEqual(await card(14), []);
   });
 });
+
+describe('structuralCardSections on edge cases of the read model (#9668)', () => {
+  const empty: StructuralExtraction = { analysisModels: [], members: [], connections: [], activities: [], loadGroups: [], resultGroups: [], hasStructural: true, loadsTruncated: false };
+  const member = { expressId: 10, globalId: 'm', type: 'IfcStructuralCurveMember', predefinedType: 'RIGID_JOINED_MEMBER', Axis: 15,
+    connectionGlobalIds: [], activityGlobalIds: [], analysisModelGlobalIds: [] };
+
+  it('shows the file\'s Locations, rows past the Values included', () => {
+    const data: StructuralExtraction = { ...empty, activities: [{ expressId: 40, globalId: 'a', type: 'IfcStructuralCurveAction', kind: 'Action', groupGlobalIds: [],
+      appliedLoad: { expressId: 41, type: 'IfcStructuralLoadConfiguration', components: {}, configuration: {
+        entries: [{ value: { expressId: 42, type: 'IfcStructuralLoadLinearForce', components: {} }, location: [0] }],
+        locations: [[0], [4]], truncated: false } } }] };
+    const config = structuralCardSections(data, { expressId: 40 }, 'IFC4')[1];
+    assert.deepEqual(rows(config).Locations, [[0], [4]]);
+  });
+
+  it('skips a plain object field it has no form for instead of handing it to the renderer', () => {
+    const data = { ...empty, members: [{ ...member, Shape: { x: 1 } }] } as unknown as StructuralExtraction;
+    assert.deepEqual(Object.keys(rows(structuralCardSections(data, { expressId: 10 }, undefined)[0])), ['PredefinedType', 'Axis']);
+  });
+
+  it('reads an IFC5 store with the IFC4X3 schema, as the parser does', () => {
+    const [section] = structuralCardSections({ ...empty, members: [member] }, { expressId: 10 }, 'IFC5');
+    assert.deepEqual(rows(section).Axis, { ref: 15 });
+  });
+});
+

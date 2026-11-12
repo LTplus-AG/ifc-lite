@@ -37,6 +37,7 @@ export interface FileFormatGroup {
 const MODEL_FORMAT_GROUPS: readonly FileFormatGroup[] = [
   { labelKey: 'viewportLighting.container.emptyState.formats.ifc', extensions: ['.ifc', '.ifcx', '.ifczip'] },
   { labelKey: 'viewportLighting.container.emptyState.formats.gltf', extensions: ['.glb', '.gltf'] },
+  { labelKey: 'viewportLighting.container.emptyState.formats.rhino', extensions: ['.3dm'] },
   {
     labelKey: 'viewportLighting.container.emptyState.formats.pointClouds',
     extensions: ['.las', '.laz', '.ply', '.pcd', '.e57', '.pts', '.xyz'],

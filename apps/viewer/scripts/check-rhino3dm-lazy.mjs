@@ -5,9 +5,10 @@
 
 /**
  * Guard: the rhino3dm runtime (75 KB of JS plus a 2.67 MB wasm) and the Rhino
- * scene builder wasm (`@ifc-lite/wasm/rhino`) load only when someone exports a
- * .3dm, never at viewer startup (spec: docs/architecture/rhino-3dm-export.md,
- * "Performance and limits").
+ * scene builder wasm (`@ifc-lite/wasm/rhino`) load only when someone exports
+ * or opens a .3dm, never at viewer startup (spec:
+ * docs/architecture/rhino-3dm-export.md, "Performance and limits", and
+ * docs/architecture/rhino-3dm-import.md, "Where parsing runs").
  *
  * The startup graph is index.html's module entry and modulepreloads plus every
  * chunk they import statically, the same walk `check-viewer-retained-free.mjs
@@ -37,15 +38,17 @@ const GROUPS = [
   { name: 'the Rhino scene wasm', signatures: RHINO_SCENE_SIGNATURES, wasm: /ifc-lite-rhino_bg[^"'\s]*\.wasm/ },
 ];
 
-const REMEDY = 'Keep rhino3dm and the Rhino scene wasm behind the Rhino export worker (src/workers/rhinoExport.worker.ts): '
-  + 'find the static import that pulls @ifc-lite/rhino3dm, rhino3dm or @ifc-lite/wasm/rhino into the startup graph.';
+const REMEDY = 'Keep rhino3dm and the Rhino scene wasm behind the Rhino workers '
+  + '(src/workers/rhinoExport.worker.ts, src/workers/rhinoImport.worker.ts): '
+  + 'find the static import that pulls @ifc-lite/rhino3dm, rhino3dm or @ifc-lite/wasm/rhino into the startup graph. '
+  + 'Main-thread code may import types from @ifc-lite/rhino3dm, never its values.';
 
 export async function checkRhino3dmLazy(directory) {
   const html = await readIndexHtml(directory);
   for (const { name, wasm } of GROUPS) {
     if (wasm.test(html)) throw new Error(`index.html preloads ${name}. ${REMEDY}`);
   }
-  return checkLazyOnly(directory, GROUPS, REMEDY, 'Was the Rhino export removed, or did the signatures change with an upgrade?');
+  return checkLazyOnly(directory, GROUPS, REMEDY, 'Were the Rhino import and export removed, or did the signatures change with an upgrade?');
 }
 
 if (isMainEntry(import.meta.url)) {

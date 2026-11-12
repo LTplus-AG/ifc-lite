@@ -1,0 +1,134 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * Main-thread client for `workers/rhinoImport.worker.ts`.
+ *
+ * One worker per load, terminated the moment the run settles or is aborted,
+ * like `export/rhino-export-client.ts`. Two reasons rather than one here: the
+ * rhino3dm heap grows to about five times the file size and is handed back to
+ * the OS with the worker, and an emscripten `Aborted()` leaves the module
+ * unusable, so a fresh worker is the reset. Aborting terminates the worker,
+ * which is the only way to stop synchronous wasm mid-run.
+ *
+ * There is deliberately no main-thread fallback: the read would freeze the
+ * viewport for seconds on exactly the files where the worker matters.
+ */
+
+import type { RhinoImport } from '@ifc-lite/rhino3dm';
+import type { RhinoImportErrorCode, RhinoImportWorkerRequest, RhinoImportWorkerResponse } from './rhino-import-job';
+
+/** A failed read, carrying the reader's code so the caller can word the refusal. */
+export class RhinoImportError extends Error {
+  readonly code: RhinoImportErrorCode;
+  constructor(code: RhinoImportErrorCode, message: string) {
+    super(message);
+    this.name = 'RhinoImportError';
+    this.code = code;
+  }
+}
+
+/** Objects read so far, as the reader counts them. */
+export interface RhinoImportProgress { done: number; total: number }
+
+/** What the client needs from a worker; a test supplies an in-process one. */
+export interface RhinoImportWorkerLike {
+  onmessage: ((event: MessageEvent<RhinoImportWorkerResponse>) => void) | null;
+  onerror: ((event: ErrorEvent) => void) | null;
+  onmessageerror: ((event: MessageEvent) => void) | null;
+  postMessage(message: RhinoImportWorkerRequest, transfer?: Transferable[]): void;
+  terminate(): void;
+}
+
+/**
+ * Longest silence allowed between worker messages; each progress message
+ * restarts it. Generous because the reader posts nothing while it extracts
+ * buffers and bakes blocks (seconds on a 400 MB archive); reaching it means
+ * the worker is gone, not slow — an OS-killed worker fires neither `message`
+ * nor `error`.
+ */
+export const RHINO_IMPORT_TIMEOUT_MS = 10 * 60_000;
+
+const createDefaultWorker = (): RhinoImportWorkerLike =>
+  new Worker(new URL('../../workers/rhinoImport.worker.ts', import.meta.url), { type: 'module' }) as RhinoImportWorkerLike;
+
+let createWorker: () => RhinoImportWorkerLike = createDefaultWorker;
+
+/** Tests only. Pass null to restore the real worker. */
+export function __setRhinoImportWorkerFactoryForTest(factory: (() => RhinoImportWorkerLike) | null): void {
+  createWorker = factory ?? createDefaultWorker;
+}
+
+let nextId = 1;
+
+/**
+ * Read one `.3dm` in a worker. `bytes` is transferred, so it must be a fresh
+ * read of the file rather than a view the loaded model will read from.
+ */
+export function readRhino3dmInWorker(
+  bytes: Uint8Array,
+  onProgress?: (progress: RhinoImportProgress) => void,
+  signal?: AbortSignal,
+): Promise<RhinoImport> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException('Rhino import cancelled', 'AbortError'));
+      return;
+    }
+    let worker: RhinoImportWorkerLike;
+    try {
+      worker = createWorker();
+    } catch (error) {
+      reject(new RhinoImportError('worker-failed', `Failed to start the Rhino import worker: ${error instanceof Error ? error.message : String(error)}`));
+      return;
+    }
+
+    const id = nextId++;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const onAbort = () => settle(() => reject(new DOMException('Rhino import cancelled', 'AbortError')));
+    function settle(fn: () => void): void {
+      if (timer !== null) clearTimeout(timer);
+      timer = null;
+      signal?.removeEventListener('abort', onAbort);
+      worker.onmessage = null;
+      worker.onerror = null;
+      worker.onmessageerror = null;
+      worker.terminate();
+      fn();
+    }
+    function armTimer(): void {
+      if (timer !== null) clearTimeout(timer);
+      timer = setTimeout(
+        () => settle(() => reject(new RhinoImportError('worker-failed', 'The Rhino import worker stopped responding'))),
+        RHINO_IMPORT_TIMEOUT_MS,
+      );
+    }
+    signal?.addEventListener('abort', onAbort, { once: true });
+    armTimer();
+
+    worker.onmessage = (event) => {
+      const message = event.data;
+      if (!message || (message.id !== id && !(message.type === 'error' && message.id === 0))) return;
+      switch (message.type) {
+        case 'progress':
+          armTimer();
+          onProgress?.({ done: message.done, total: message.total });
+          return;
+        case 'complete':
+          settle(() => resolve(message.result));
+          return;
+        case 'error':
+          settle(() => reject(new RhinoImportError(message.code, message.message)));
+      }
+    };
+    worker.onerror = (event) => settle(() => reject(new RhinoImportError('worker-failed', event.message || 'The Rhino import worker crashed')));
+    worker.onmessageerror = () => settle(() => reject(new RhinoImportError('worker-failed', 'The Rhino import worker sent an unreadable message')));
+
+    try {
+      worker.postMessage({ type: 'import', id, bytes }, [bytes.buffer as ArrayBuffer]);
+    } catch (error) {
+      settle(() => reject(error instanceof Error ? error : new Error(String(error))));
+    }
+  });
+}

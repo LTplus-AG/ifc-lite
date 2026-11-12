@@ -166,7 +166,8 @@ of the result, and D2 made `ifcClass` always a class.
 export interface ReadRhino3dmOptions {
   locateFile?: (path: string, prefix: string) => string;
   subdLevel?: 0 | 1 | 2 | 3;        // default 2
-  maxTriangles?: number;            // default 30_000_000 drawn, instances counted per placement
+  maxTriangles?: number;            // default 30_000_000 drawn, instances counted per placement;
+                                    // a curve or point cloud vertex counts a third of a triangle
   bakeInstances?: boolean;          // default false: blocks come back as definitions + instances
   onProgress?: (done: number, total: number) => void;
 }
@@ -232,16 +233,18 @@ interface RhinoImportGeometry {
   `color: null` takes the colour of the instance placing it.
 - With `bakeInstances`, `definitions` and `instances` are empty and every
   placement is a world-space copy in `meshes`. Curves, point clouds and text
-  dots inside blocks are always baked: they are small.
+  dots inside blocks are always baked, one copy per placement, and charged to
+  the budget like everything else.
 - `curves[i].positions` is a polyline. A curve that is not a polyline is
   sampled at 32 points per span, at most 8,192 per curve.
 - `pointClouds[i].colors` is RGBA bytes per point, or null.
 
 Guarantees, so the adapter never checks them: every index is in range; layers
-come parent first; every number is finite; triangle indices are in range; each
-`globalId` is unique within the file; entities are in file object order, and
-every geometry list is ordered by entity. Each typed array appears once, so
-all of them can go on one transfer list [test]. The output is the same for
+come parent first; every number is finite, after unit scaling and after every
+transform [test]; triangle indices are in range; each `globalId` is unique
+within the file; entities are in file object order, and every geometry list is
+ordered by entity. Each typed array appears once, so all of them can go on one
+transfer list, and each record owns its `color` array [test]. The output is the same for
 the same bytes and options [test].
 
 An entity is a top-level object that drew something. An object that draws
@@ -313,7 +316,9 @@ type RhinoImportResponse =
   IFC world is the exporter's `MeshFrame` world** [unproven: the e2e in
   Testing proves or refutes it].
 - **Earth anchor:** reported in `document.earthAnchor` and shown in model
-  metadata. The reader never moves geometry by it. Rhino 8's default 0/0
+  metadata. The reader never moves geometry by it. `modelBasePoint` is a model
+  coordinate, so it is scaled to metres and mapped through W like the rest
+  [test]. Rhino 8's default 0/0
   anchor [ran] is indistinguishable from a real one at Null Island, so the
   reader reports it as `null` (decision D5). Turning a real lat/lon into the
   federation's CRS needs a projection, which is the viewer's step.
@@ -381,14 +386,25 @@ its winding flipped and its normals transformed by the inverse transpose
   inside itself is a cycle. The cycle is skipped, counted as
   `InstanceReference:cycle` and reported [test: a crafted self-referencing
   definition].
-- A **triangle budget** caps drawn triangles at `maxTriangles`, a block's
-  triangles counted once per placement in both modes. Reaching it stops
-  drawing triangles for the rest of the file and reports how many objects were
-  left out (`skipped.budget` and a warning). Bounding and reporting are tested
-  separately.
+- A **drawing budget** caps drawn triangles at `maxTriangles`, a block's
+  triangles counted once per placement in both modes. A curve or point cloud
+  vertex is charged a third of a triangle, at top level and per placement:
+  without that a 20,000-point cloud in a block placed 500 times came back as
+  120 MB with nothing reported [ran, then fixed]. Reaching the budget stops
+  drawing for the rest of the file (text dots excepted) and reports how many
+  objects were left out (`skipped.budget` and a warning). Bounding and
+  reporting are tested separately.
 - A **placement budget** of 500,000 block placements per file bounds a fan-out
   of blocks that hold no triangles, which the triangle budget cannot see: 20
   levels that each reference the next twice are 2^20 placements [test].
+- A placement whose transform is not finite, has an entry above 1e15 or
+  flattens space (zero determinant) is counted as `InstanceReference:invalid`.
+  Geometry a transform pushes out of the f32 range is counted as
+  `transform:invalid` [test].
+- A block member that is hidden, or on a layer that is off, is not drawn in
+  any instance, as in Rhino, and is counted as `hidden-block-member` [test].
+  Unlike a hidden entity it cannot be shown later, because members are not
+  entities.
 - A reference to a definition that is not in the file is counted as
   `InstanceReference:missing-definition`. Linked definitions (`updateType`
   linked, no members in the file) are counted and reported [unproven: no
@@ -407,8 +423,10 @@ When the colour's alpha is 255 and the object's material (its own, or its
 layer's) has `transparency > 0`, the material's transparency wins: Rhino
 displays transparency from the material [unproven: check against Rhino]. A
 material inherited from a parent instance does not apply it again, because the
-parent's colour already carries it. Colours stay sRGB, as `MeshData.color`.
-Each source is covered by a crafted file [test].
+parent's colour already carries it. A block member coloured by a material
+that is itself "by parent" takes the instance's colour, like a member coloured
+"by parent" [test]. Colours stay sRGB, as `MeshData.color`. Each source is
+covered by a crafted file [test].
 
 ### Layers, visibility, hierarchy
 
@@ -459,18 +477,19 @@ and say what to do.
 
 | Code | When | Message gist |
 |---|---|---|
-| `not-3dm` | header magic missing, or `fromByteArray` returned `null` [test: garbage, empty, an IFC file, a file cut in half] | "Not a Rhino .3dm file, or the file is damaged." |
+| `not-3dm` | header magic missing, `fromByteArray` returned `null`, or a wasm trap on a file under 32 MB [test: garbage, empty, an IFC file, a file cut in half, a simulated trap] | "Not a Rhino .3dm file, or the file is damaged." |
 | `newer-archive` | header version above 80, checked before wasm [test: forged header] | "Saved by a newer Rhino. Save as Rhino 8 or older." [unproven: V9 behaviour] |
-| `too-large` | `bytes.length` above the cap, checked before the file reaches wasm, **or** the wasm heap ran out | "Too large for the reader." Names the size and the cap. |
+| `too-large` | `bytes.length` above the cap, checked before the file reaches wasm, **or** the wasm heap ran out (see Size ceiling) | Over the cap: names the size and the cap. Out of memory: "could not be read: it most likely needs more memory than the reader has". |
 | `no-renderable-geometry` | nothing was drawn | Lists the skip counts: "skipped: 3 Brep:no-render-mesh, 7 Point". When surfaces lack render meshes it adds the remedy: shaded view, save without Save Small [unproven: exact Rhino wording]. |
 | `worker-failed` | worker crash, unreadable message, timeout | as the export client. Raised by the viewer's worker client (step 2), not by the reader. |
 
 Running out of the triangle or placement budget is not an error: the read
 succeeds, stops drawing, and reports it.
 
-An emscripten abort leaves the module unusable [ran], so after one the reader
-drops the shared runtime and the next read or write loads a fresh module
-[test, with a simulated abort].
+An emscripten abort leaves the module unusable [ran], so after any wasm trap
+the reader drops the shared runtime and the next read or write loads a fresh
+module [test, with a simulated abort]. A trap on a file of 32 MB or more is
+`too-large`; on a smaller file, which cannot exhaust the heap, it is `not-3dm`.
 
 ### Size ceiling
 
@@ -511,7 +530,9 @@ What that says:
   length: a file of 32 MB or more that still ends in its own length was not
   cut short, so the `null` is reported as `too-large` ("needs more memory than
   the reader has"), not `not-3dm` [ran on the 477 MB file; test on a crafted
-  one]. The mark is checked in the 8-byte layout archives have used since
+  one]. The price: a large file with a damaged body and an intact end mark is
+  also called `too-large`, which is why the message says "most likely". The
+  mark is checked in the 8-byte layout archives have used since
   Rhino 5; an older archive that runs out of memory still reads as `not-3dm`
   [unproven: no pre-Rhino-5 file was tried].
 - After that failure the heap stays at 2 GB, so the reader drops the shared

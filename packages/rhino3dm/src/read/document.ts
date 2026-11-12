@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { isValidIfcGuid } from '@ifc-lite/encoding';
-import type { RhinoColor, RhinoUserStrings } from '../types.js';
+import type { RhinoColor, RhinoUserStrings, RhinoVector3 } from '../types.js';
 import { dispose } from '../runtime.js';
 import type { AppearanceTables } from './appearance.js';
 import type { IfcClasses } from './ifc-classes.js';
@@ -11,7 +11,7 @@ import { userString } from './identity.js';
 import type { Report } from './report.js';
 import type { RFile, RLayer, ReadApi, Rgba8 } from './rhino-api.js';
 import type { RhinoImportDocument, RhinoImportLayer } from './types.js';
-import { parseXform, type Xform } from './xform.js';
+import { parseXform, transformPoint, type Xform } from './xform.js';
 
 /** Metres per unit by `UnitSystem` name. None, CustomUnits and Unset have no scale (rhino3dm.js exposes none). */
 const UNITS: Record<string, number | null> = {
@@ -120,9 +120,8 @@ export function readDocument(api: ReadApi, file: RFile, archiveVersion: number, 
       const elevation = anchor.earthBasepointElevation, base = anchor.modelBasePoint;
       // Rhino 8 marks its default 0/0 anchor as set; treat it as absent.
       const real = anchor.earthLocationIsSet() && (latitude !== 0 || longitude !== 0);
-      if (real && [latitude, longitude, elevation, ...base].every(Number.isFinite)) {
-        earthAnchor = { latitude, longitude, elevation, modelBasePoint: [base[0] * metres, base[1] * metres, base[2] * metres] };
-      }
+      const modelBasePoint: RhinoVector3 = [base[0] * metres, base[1] * metres, base[2] * metres];
+      if (real && [latitude, longitude, elevation, ...modelBasePoint].every(Number.isFinite)) earthAnchor = { latitude, longitude, elevation, modelBasePoint };
     } finally { dispose(anchor); }
   } finally { dispose(settings); }
   if (metersPerUnit === null) report.warn('units', () => `The file's unit system is ${unitSystem}, which has no scale; coordinates are read as metres.`);
@@ -132,8 +131,10 @@ export function readDocument(api: ReadApi, file: RFile, archiveVersion: number, 
   // Exports before the fix wrote the matrix under `world` too, where it must not be applied again.
   if (worldText !== undefined && userString(strings, 'IFC::Coordinates') === 'local') {
     world = parseXform(worldText);
-    if (!world) report.warn('world', () => 'IFC::WorldFromModel is not 16 numbers; the file is shown in its own coordinates.');
+    if (!world) report.warn('world', () => 'IFC::WorldFromModel is not a usable 4×4 matrix; the file is shown in its own coordinates.');
   }
+  // The anchor's base point is a model coordinate like any other, so it moves with the frame.
+  if (world && earthAnchor) earthAnchor.modelBasePoint = transformPoint(world, earthAnchor.modelBasePoint);
   const materials = rows(file.materials(), m => ({ name: m.name, diffuse: color(m.diffuseColor), transparency: m.transparency }));
   return {
     document: {

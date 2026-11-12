@@ -2,19 +2,22 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { resolveAppearance, type Appearance, type AppearanceTables, type Look } from './appearance.js';
+import { resolveAppearance, takesParentColor, type Appearance, type AppearanceTables, type Look } from './appearance.js';
 import type { BlockMeshes, DrawnPart, Emitter } from './emit.js';
 import type { Part } from './geometry.js';
 import { plural, type Report } from './report.js';
 import { isUsable, multiply, type Xform } from './xform.js';
 
-export interface BlockMember { part: Part; look: Look }
+export interface BlockMember { part: Part; look: Look; hidden: boolean }
+
+/** Stands in for the placing instance when a member's colour does not depend on it. */
+const ANY_PARENT: Appearance = { color: [0, 0, 0, 1], material: -1 };
 
 /** One instance definition, split into what the walk needs. */
 export interface Block extends BlockMeshes {
   /** A linked definition's geometry lives in another file. */
   linked: boolean;
-  /** Curves, point clouds and text dots: always baked, they are small. */
+  /** Curves, point clouds and text dots: always baked, and charged to the budget per placement. */
   others: { part: Exclude<DrawnPart, { kind: 'mesh' }>; look: Look }[];
   nested: { part: Extract<Part, { kind: 'instance' }>; look: Look }[];
 }
@@ -22,14 +25,16 @@ export interface Block extends BlockMeshes {
 /** Most block placements one file may expand to; bounds a fan-out of empty blocks that no triangle budget sees. */
 export const MAX_BLOCK_PLACEMENTS = 500_000;
 
-export function buildBlock(name: string, linked: boolean, members: BlockMember[], tables: AppearanceTables): Block {
+export function buildBlock(name: string, linked: boolean, members: BlockMember[], tables: AppearanceTables, report: Report): Block {
   const block: Block = { name, linked, meshes: [], triangles: 0, others: [], nested: [] };
-  for (const { part, look } of members) {
-    if (part.kind === 'instance') block.nested.push({ part, look });
+  for (const { part, look, hidden } of members) {
+    // Rhino does not draw a member that is hidden or on a layer that is off, in any instance.
+    if (hidden) report.skip('hidden-block-member');
+    else if (part.kind === 'instance') block.nested.push({ part, look });
     else if (part.kind !== 'mesh') block.others.push({ part, look });
     else {
       // A "by parent" mesh takes the colour of whichever instance places it.
-      const color = look.colorSource === 'parent' ? null : resolveAppearance(look, tables, null).color;
+      const color = takesParentColor(look) ? null : resolveAppearance(look, tables, ANY_PARENT).color;
       block.meshes.push({ origin: part.origin, positions: part.positions, normals: part.normals, indices: part.indices, color });
       block.triangles += part.indices.length / 3;
     }
@@ -83,7 +88,7 @@ export function expandInstance(walk: BlockWalk, object: number, id: string, xfor
     walk.placementsLeft--;
     if (!emitter.place(object, frame.id, block, frame.xform, frame.appearance.color)) return false;
     for (const { part, look } of block.others) {
-      emitter.draw(object, part, frame.xform, resolveAppearance(look, tables, frame.appearance).color);
+      if (!emitter.draw(object, part, frame.xform, resolveAppearance(look, tables, frame.appearance).color)) return false;
     }
     path.add(frame.id);
     stack.push({ id: frame.id, leave: true });

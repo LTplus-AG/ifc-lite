@@ -3,7 +3,6 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { existsSync, readFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { isValidIfcGuid } from '@ifc-lite/encoding';
 import { describe, expect, test } from 'vitest';
@@ -18,15 +17,13 @@ import { userString } from './identity.js';
  * (`scripts/build-wasm.sh`) are absent; CI has both.
  */
 const models = fileURLToPath(new URL('../../../../tests/models/ara3d/', import.meta.url));
-const wasm = (() => {
-  try { return createRequire(import.meta.url).resolve('@ifc-lite/wasm/rhino_bg.wasm'); } catch { return null; }
-})();
-const missing = !wasm || !existsSync(wasm) ? 'the Rhino wasm payload is not built (scripts/build-wasm.sh)'
+const wasm = fileURLToPath(new URL('../../../wasm/pkg-rhino/ifc-lite-rhino_bg.wasm', import.meta.url));
+const missing = !existsSync(wasm) ? 'the Rhino wasm payload is not built (scripts/build-wasm.sh)'
   : ['AC20-FZK-Haus.ifc', 'duplex.ifc'].some(name => !existsSync(models + name)) ? 'fixtures are absent (pnpm fixtures)' : null;
 
 let engine: Promise<typeof import('@ifc-lite/wasm/rhino')> | undefined;
 async function exported(ifc: Uint8Array, options: Record<string, unknown> = {}): Promise<{ manifest: RhinoSceneManifest; bytes: Uint8Array }> {
-  engine ??= import('@ifc-lite/wasm/rhino').then(module => { module.initSync({ module: readFileSync(wasm!) }); return module; });
+  engine ??= import('@ifc-lite/wasm/rhino').then(module => { module.initSync({ module: readFileSync(wasm) }); return module; });
   const scene = (await engine).exportRhinoScene(ifc, JSON.stringify(options));
   try {
     const encoded = { manifest: scene.manifest, blob: scene.blob };

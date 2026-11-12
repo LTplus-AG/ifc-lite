@@ -10,9 +10,9 @@ export type Xform = number[];
 /** Largest magnitude a transform entry may have: far beyond any model, far below f32 overflow. */
 const LARGEST_ENTRY = 1e15;
 
-/** Finite and small enough that transformed f32 coordinates stay finite. */
+/** Finite, small enough that transformed f32 coordinates stay finite, and not collapsing space to a plane or a point. */
 export function isUsable(m: Xform): boolean {
-  return m.length === 16 && m.every(v => Math.abs(v) <= LARGEST_ENTRY);
+  return m.length === 16 && m.every(v => Math.abs(v) <= LARGEST_ENTRY) && determinant3(m) !== 0;
 }
 
 /** a · b: apply `b` first, then `a`. */

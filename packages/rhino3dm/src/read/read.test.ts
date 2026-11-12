@@ -107,6 +107,16 @@ describe('geometry', () => {
     expect(result.meshes).toEqual([]);
   });
 
+  test('a coordinate that overflows once scaled to metres is counted, never returned as Infinity', async () => {
+    const result = await readRhino3dm(await craft(c => {
+      c.units('Kilometers');
+      c.addTextDot('far', [1e306, 0, 0]); c.addPolyline([[1e306, 0, 0], [1e306, 1, 0]]); c.addMesh(c.box([0, 0, 0], [1, 1, 1]));
+    }));
+    expect(result.skipped).toEqual({ 'TextDot:invalid': 1, 'PolylineCurve:invalid': 1 });
+    expect([result.textDots, result.curves]).toEqual([[], []]);
+    expect(result.entities).toHaveLength(1);
+  });
+
   test('the same bytes and options give the same result', async () => {
     const bytes = await craft(c => { c.addMesh(c.box([0, 0, 0], [1, 1, 1])); c.addBrep(3); c.addPolyline(quad); });
     expect(await readRhino3dm(bytes)).toEqual(await readRhino3dm(bytes));
@@ -209,6 +219,15 @@ describe('document', () => {
     });
   });
 
+  test('the anchor base point moves with the frame, like every other coordinate', async () => {
+    const { manifest } = sceneWithAnchor();
+    manifest.documentStrings.push(['IFC::Coordinates', 'local'], ['IFC::WorldFromModel', '1 0 0 2600000 0 1 0 1200000 0 0 1 400 0 0 0 1']);
+    const result = await readRhino3dm((await writeRhino3dm({ manifest: JSON.stringify(manifest), blob: sceneWithAnchor().scene.blob })).bytes);
+    expect(result.document.frame).toBe('ifc-world-from-model');
+    expect(result.meshes[0].origin).toEqual([2_600_000, 1_200_000, 400]);
+    expect(result.document.earthAnchor!.modelBasePoint).toEqual([2_600_001, 1_200_002, 403]);
+  });
+
   test('a crafted file has no anchor and Rhino provenance', async () => {
     const { document } = await readRhino3dm(await craft(c => { c.addMesh(c.box([0, 0, 0], [1, 1, 1])); }));
     expect(document).toMatchObject({ archiveVersion: 80, provenance: 'rhino', frame: 'file', earthAnchor: null, strings: [] });
@@ -269,27 +288,32 @@ describe('errors', () => {
     } finally { fromByteArray.mockRestore(); }
   });
 
-  test('an emscripten abort is too-large, and the next read gets a fresh runtime', async () => {
-    const bytes = await craft(c => { c.addMesh(c.box([0, 0, 0], [1, 1, 1])); });
-    const aborted = await loadRhino();
-    const fromByteArray = vi.spyOn(aborted.File3dm, 'fromByteArray').mockImplementation(() => { throw new WebAssembly.RuntimeError('Aborted(). Build with -sASSERTIONS for more info.'); });
-    try { expect(await code(readRhino3dm(bytes))).toBe('too-large'); } finally { fromByteArray.mockRestore(); }
-    expect(await loadRhino()).not.toBe(aborted);
-    expect((await readRhino3dm(bytes)).meshes).toHaveLength(1);
+  /** A valid header and end-of-file mark around zeros: rhino3dm answers null for it, as it does at the heap limit. */
+  const hollow = (megabytes: number) => {
+    const bytes = new Uint8Array(megabytes * 1024 * 1024), view = new DataView(bytes.buffer), size = bytes.length;
+    bytes.set(new TextEncoder().encode('3D Geometry File Format       80'));
+    view.setUint32(size - 20, 0x7fff, true); view.setBigUint64(size - 16, 8n, true); view.setBigUint64(size - 8, BigInt(size), true);
+    return bytes;
+  };
+  const trap = () => { throw new WebAssembly.RuntimeError('Aborted(). Build with -sASSERTIONS for more info.'); };
+
+  test('a wasm trap is too-large on a large file and damage on a small one; either way the next read gets a fresh runtime', async () => {
+    const small = await craft(c => { c.addMesh(c.box([0, 0, 0], [1, 1, 1])); });
+    for (const [bytes, expected] of [[hollow(33), 'too-large'], [small, 'not-3dm']] as const) {
+      const trapped = await loadRhino();
+      const fromByteArray = vi.spyOn(trapped.File3dm, 'fromByteArray').mockImplementation(trap);
+      try { expect(await code(readRhino3dm(bytes))).toBe(expected); } finally { fromByteArray.mockRestore(); }
+      // A trapped module cannot be used again.
+      expect(await loadRhino()).not.toBe(trapped);
+    }
+    expect((await readRhino3dm(small)).meshes).toHaveLength(1);
   });
 
   test('a null read of a large archive that ends in its own length is too-large, not damage', async () => {
-    // At the 2 GB heap limit rhino3dm returns null, exactly as it does for these bodies of zeros.
-    const hollow = (megabytes: number) => {
-      const bytes = new Uint8Array(megabytes * 1024 * 1024), view = new DataView(bytes.buffer), size = bytes.length;
-      bytes.set(new TextEncoder().encode('3D Geometry File Format       80'));
-      view.setUint32(size - 20, 0x7fff, true); view.setBigUint64(size - 16, 8n, true); view.setBigUint64(size - 8, BigInt(size), true);
-      return bytes;
-    };
     const before = await loadRhino();
     const error = await readRhino3dm(hollow(33)).catch(e => e);
     expect(error.code).toBe('too-large');
-    expect(error.message).toContain('This file (33 MB) needs more memory than the reader has');
+    expect(error.message).toContain('This file (33 MB) could not be read: it most likely needs more memory than the reader has');
     // The exhausted heap never shrinks, so the runtime is replaced.
     expect(await loadRhino()).not.toBe(before);
     // Cut short, or too small to exhaust anything: that is damage.

@@ -93,11 +93,27 @@ describe('instances', () => {
     // The nested reference "by parent" passes the instance colour on; the other brings its own.
     expect(instanced.instances.map(i => rgb(i.color))).toEqual([[200, 0, 0, 255], [200, 0, 0, 255], [50, 60, 70, 255]]);
     expect(baked.meshes.map(m => rgb(m.color))).toEqual([[200, 0, 0, 255], [9, 8, 7, 255], [0, 255, 0, 255], [200, 0, 0, 255], [50, 60, 70, 255]]);
+    // Every record owns its colour: editing one must not change another.
+    expect(baked.meshes[0].color).not.toBe(baked.meshes[3].color);
+    expect(instanced.instances[0].color).not.toBe(instanced.instances[1].color);
     for (const result of [instanced, baked]) {
       expect(result.curves).toEqual([{ entity: 0, origin: [10, 0, 0], positions: new Float32Array([0, 0, 0, 1, 0, 0]), closed: false, color: [200 / 255, 0, 0, 1] }]);
       expect(result.textDots).toEqual([{ entity: 0, position: [10, 0, 2], text: 'tag', color: [1 / 255, 1 / 255, 1 / 255, 1] }]);
     }
   });
+});
+
+test('a member whose colour is by a material that is by parent takes the instance colour, mesh and curve alike', async () => {
+  const build = (c: Craft) => {
+    const glass = c.material('Glass', [0, 0, 255, 255], 0.5), green = c.layer('Green', { color: [0, 255, 0, 255] });
+    const spec = { layer: green, colorSource: 'ColorFromMaterial', materialSource: 'MaterialFromParent' } as const;
+    const block = c.block('Pane', [unit(c), new c.rhino.PolylineCurve([[0, 0, 0], [1, 0, 0]])], [spec, spec]);
+    c.addInstance(block, undefined, { layer: green, colorSource: 'ColorFromMaterial', material: glass, materialSource: 'MaterialFromObject' });
+  };
+  const bytes = await craft(build), blue = [0, 0, 1, 0.5];
+  const instanced = await readRhino3dm(bytes), baked = await readRhino3dm(bytes, { bakeInstances: true });
+  expect(instanced.definitions[0].meshes[0].color).toBeNull();
+  expect([instanced.instances[0].color, instanced.curves[0].color, baked.meshes[0].color, baked.curves[0].color]).toEqual([blue, blue, blue, blue]);
 });
 
 describe('guards', () => {
@@ -167,6 +183,47 @@ describe('guards', () => {
     expect(cut.warnings).toEqual(['Stopped at the budget of 60 triangles: 5 objects not drawn, or drawn in part.']);
   });
 
+  test('point clouds and curves in a block are charged per placement, so blocks cannot multiply them without bound', async () => {
+    // 300 points are charged as 100 triangles.
+    const bytes = await craft(c => {
+      const cloud = new c.rhino.PointCloud();
+      for (let i = 0; i < 300; i++) cloud.add([i, 0, 0]);
+      const scan = c.block('Scan', [cloud]);
+      for (let i = 0; i < 10; i++) c.addInstance(scan, translation(0, i, 0), { name: `scan ${i}` });
+    });
+    const cut = await readRhino3dm(bytes, { maxTriangles: 450 });
+    expect(cut.pointClouds).toHaveLength(4);
+    expect(cut.entities.map(e => e.name)).toEqual(['scan 0', 'scan 1', 'scan 2', 'scan 3']);
+    expect(cut.skipped).toEqual({ budget: 6 });
+    expect(cut.warnings).toEqual(['Stopped at the budget of 450 triangles: 6 objects not drawn, or drawn in part.']);
+    expect((await readRhino3dm(bytes, { maxTriangles: 1000 })).pointClouds).toHaveLength(10);
+  });
+
+  test('a placement that flattens space, or pushes coordinates out of range, is counted and left out', async () => {
+    const bytes = await craft(c => {
+      const box = c.block('Box', [unit(c)]), far = c.block('Far', [c.box([0, 0, 0], [1e30, 1e30, 1e30])]);
+      c.addInstance(box, [0, 0, 0, 5, 0, 0, 0, 5, 0, 0, 0, 5, 0, 0, 0, 1], { name: 'collapsed' });
+      c.addInstance(far, [1e15, 0, 0, 0, 0, 1e15, 0, 0, 0, 0, 1e15, 0, 0, 0, 0, 1], { name: 'overflowing' });
+      c.addInstance(box, translation(1, 0, 0), { name: 'fine' });
+    });
+    const baked = await readRhino3dm(bytes, { bakeInstances: true });
+    expect(baked.entities.map(e => e.name)).toEqual(['fine']);
+    expect(baked.skipped).toEqual({ 'InstanceReference:invalid': 1, 'transform:invalid': 1 });
+    expect(baked.meshes.every(m => m.positions.every(Number.isFinite) && m.normals.every(Number.isFinite) && m.origin.every(Number.isFinite))).toBe(true);
+  });
+
+  test('a block member that is hidden or on a layer that is off is not drawn in any instance', async () => {
+    const result = await readRhino3dm(await craft(c => {
+      const off = c.layer('Off', { visible: false }), on = c.layer('On');
+      const block = c.block('Mixed', [unit(c), c.box([5, 0, 0], [6, 1, 1])], [{ layer: on, colorSource: 'ColorFromParent' }, { layer: off, colorSource: 'ColorFromParent' }]);
+      c.addInstance(block, undefined, { layer: on });
+    }));
+    expect(result.definitions[0].meshes).toHaveLength(1);
+    expect(entityBounds(result, 0).max).toEqual([1, 1, 1]);
+    expect(result.entities[0].hidden).toBe(false);
+    expect(result.skipped).toEqual({ 'hidden-block-member': 1 });
+  });
+
   test('a fan-out of empty blocks stops at the placement budget and reports it', async () => {
     // Twenty levels that each reference the next twice: 2^20 placements with no triangle to charge.
     const bytes = await craft(c => {
@@ -230,7 +287,13 @@ describe('frame', () => {
     const result = await readRhino3dm(await craft(scene('local', '1 0 0 nope')));
     expect(result.document.frame).toBe('file');
     expect(entityBounds(result, 0).min).toEqual([1, 2, 3]);
-    expect(result.warnings).toEqual(['IFC::WorldFromModel is not 16 numbers; the file is shown in its own coordinates.']);
+    expect(result.warnings).toEqual(['IFC::WorldFromModel is not a usable 4×4 matrix; the file is shown in its own coordinates.']);
+  });
+
+  test('a matrix that flattens space is ignored the same way', async () => {
+    const result = await readRhino3dm(await craft(scene('local', '1 0 0 5 0 1 0 5 0 0 0 5 0 0 0 1')));
+    expect(result.document.frame).toBe('file');
+    expect(entityBounds(result, 0).min).toEqual([1, 2, 3]);
   });
 
   test('a rotating matrix turns positions and normals and keeps the origin in doubles', async () => {

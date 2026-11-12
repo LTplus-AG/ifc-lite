@@ -24,7 +24,10 @@ export interface ReadRhino3dmOptions {
   locateFile?: Write3dmOptions['locateFile'];
   /** SubD refinement level, each level quadruples the control net. Default 2. */
   subdLevel?: 0 | 1 | 2 | 3;
-  /** Drawn triangle budget, block instances counted once per placement. Default 30,000,000. */
+  /**
+   * Drawing budget in triangles, a block's counted once per placement; a curve or
+   * point cloud vertex counts a third of one. Default 30,000,000.
+   */
   maxTriangles?: number;
   /** Bake block instances into `meshes` for callers that cannot instance. Default false. */
   bakeInstances?: boolean;
@@ -42,7 +45,7 @@ export interface RhinoImportDocument {
   provenance: 'ifc-lite' | 'rhino';
   /** `ifc-world-from-model` when `IFC::WorldFromModel` was applied to every coordinate. */
   frame: 'ifc-world-from-model' | 'file';
-  /** Null when unset, and for Rhino 8's default 0/0 anchor. */
+  /** Null when unset, and for Rhino 8's default 0/0 anchor. `modelBasePoint` is in the result's frame, metres. */
   earthAnchor: null | { latitude: number; longitude: number; elevation: number; modelBasePoint: RhinoVector3 };
   /** Document strings and document user text, in file order. */
   strings: RhinoUserStrings;

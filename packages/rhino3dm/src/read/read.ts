@@ -45,10 +45,12 @@ function readObjects(api: ReadApi, file: RFile, tables: DocumentTables, opts: Se
       const object = table.get(i);
       let attributes, geometry;
       try {
-        attributes = object.attributes(); geometry = object.geometry();
-        const type = geometry.constructor.name;
-        const part = extractGeometry(geometry, type, context);
-        if (part) {
+        attributes = object?.attributes(); geometry = object?.geometry();
+        const type = geometry?.constructor.name ?? 'Object';
+        // The binding answers null for an object it cannot wrap; count it rather than fail the file.
+        if (!attributes || !geometry) report.skip(`${type}:unreadable`);
+        const part = attributes && geometry ? extractGeometry(geometry, type, context) : null;
+        if (part && attributes) {
           // A file without layers, or an index outside the table, falls back to the first layer.
           const layer = Math.max(tables.layerIndex[attributes.layerIndex] ?? 0, 0);
           const look = readLook(api, attributes, layer), appearance = resolveAppearance(look, tables, null);
@@ -67,11 +69,11 @@ function readObjects(api: ReadApi, file: RFile, tables: DocumentTables, opts: Se
   return rows;
 }
 
-function readBlocks(api: ReadApi, file: RFile, rows: Map<string, ObjectRow>, tables: DocumentTables): Map<string, Block> {
+function readBlocks(api: ReadApi, file: RFile, rows: Map<string, ObjectRow>, tables: DocumentTables, report: Report): Map<string, Block> {
   const linkedTypes = [api.InstanceDefinitionUpdateType.Linked.value, api.InstanceDefinitionUpdateType.LinkedAndEmbedded.value];
   return new Map(tableRows(file.instanceDefinitions(), (definition): [string, Block] => {
     const members = definition.getObjectIds().flatMap(id => rows.get(id) ?? []);
-    return [definition.id, buildBlock(definition.name, linkedTypes.includes(definition.updateType.value), members, tables)];
+    return [definition.id, buildBlock(definition.name, linkedTypes.includes(definition.updateType.value), members, tables, report)];
   }));
 }
 
@@ -86,8 +88,8 @@ function build(api: ReadApi, file: RFile, archiveVersion: number, classes: IfcCl
   const report = new Report();
   const tables = readDocument(api, file, archiveVersion, classes, report);
   const rows = readObjects(api, file, tables, opts, report);
-  const blocks = readBlocks(api, file, rows, tables);
-  const emitter = new Emitter(opts.bakeInstances, opts.maxTriangles);
+  const blocks = readBlocks(api, file, rows, tables, report);
+  const emitter = new Emitter(opts.bakeInstances, opts.maxTriangles, report);
   const walk: BlockWalk = { blocks, tables, emitter, report, placementsLeft: MAX_BLOCK_PLACEMENTS };
   const { world } = tables;
 
@@ -128,15 +130,6 @@ function build(api: ReadApi, file: RFile, archiveVersion: number, classes: IfcCl
 }
 
 /**
- * True for the ways running out of memory surfaces as a throw: an emscripten
- * abort at any size, and for a file large enough to exhaust the heap a failed
- * typed-array allocation or a C++ exception, which escapes embind as a bare number.
- */
-function isOutOfMemory(error: unknown, large: boolean): boolean {
-  return error instanceof WebAssembly.RuntimeError || (large && (error instanceof RangeError || typeof error === 'number'));
-}
-
-/**
  * Read a Rhino .3dm into plain data: Z-up, metres, typed arrays.
  * Throws `RhinoReadError`; see its `code`.
  */
@@ -150,7 +143,7 @@ export async function readRhino3dm(bytes: Uint8Array, opts: ReadRhino3dmOptions 
     throw new RhinoReadError('too-large', `This file is ${size}; the reader handles up to ${megabytes(MAX_3DM_BYTES)}. Split the model into smaller files in Rhino.`);
   }
   // rhino3dm's heap stops at 2 GB, and a read takes about five times the file size of it.
-  const outOfMemory = () => new RhinoReadError('too-large', `This file (${size}) needs more memory than the reader has. Split the model into smaller files in Rhino.`);
+  const outOfMemory = () => new RhinoReadError('too-large', `This file (${size}) could not be read: it most likely needs more memory than the reader has. Split the model into smaller files in Rhino.`);
   const [rhino, classes] = await Promise.all([loadRhino(opts.locateFile), loadIfcClasses()]);
   const api = readApi(rhino);
   const large = bytes.byteLength >= OUT_OF_MEMORY_SUSPECT_BYTES;
@@ -166,10 +159,13 @@ export async function readRhino3dm(bytes: Uint8Array, opts: ReadRhino3dmOptions 
     }
     return build(api, file, archiveVersion, classes, { subdLevel, maxTriangles, bakeInstances, onProgress });
   } catch (error) {
-    if (!isOutOfMemory(error, large)) throw error;
-    // An aborted module cannot be used again, so the next call loads a fresh one.
+    // A wasm trap or abort, or a C++ exception (which escapes embind as a bare number), leaves the
+    // module unusable. A failed typed-array allocation only counts for a file large enough to cause one.
+    const trapped = error instanceof WebAssembly.RuntimeError || typeof error === 'number';
+    if (!trapped && !(large && error instanceof RangeError)) throw error;
     discardRhino();
     file = null;
-    throw outOfMemory();
+    // A small file cannot exhaust the heap, so a trap on one means its contents are damaged.
+    throw large ? outOfMemory() : new RhinoReadError('not-3dm', NOT_3DM_MESSAGE);
   } finally { dispose(file); }
 }

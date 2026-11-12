@@ -40,7 +40,8 @@ function relative(points: number[][], scale: number): { origin: RhinoVector3; po
       if (!Number.isFinite(value)) return null;
     }
   }
-  return { origin: scaled(first, scale), positions };
+  const origin = scaled(first, scale);
+  return finite3(origin) ? { origin, positions } : null;
 }
 
 type Buffers = ReturnType<RMesh['toThreejsBuffers']>;
@@ -89,7 +90,9 @@ function meshPart(meshes: RMesh[], type: string, { scale, report }: GeometryCont
   }
   for (let i = 0; valid && i < indices.length; i++) valid = indices[i] < vertexCount;
   if (!valid) { report.skip(`${type}:invalid`); return null; }
-  return { kind: 'mesh', origin: scaled(origin, scale), positions, normals, indices };
+  const scaledOrigin = scaled(origin, scale);
+  if (!finite3(scaledOrigin)) { report.skip(`${type}:invalid`); return null; }
+  return { kind: 'mesh', origin: scaledOrigin, positions, normals, indices };
 }
 
 /**
@@ -184,9 +187,9 @@ export function extractGeometry(geometry: object, type: string, ctx: GeometryCon
   }
   if (geometry instanceof api.PointCloud) return pointCloudPart(geometry, ctx);
   if (geometry instanceof api.TextDot) {
-    const point = geometry.point;
-    if (!finite3(point)) { report.skip('TextDot:invalid'); return null; }
-    return { kind: 'dot', position: scaled(point, scale), text: geometry.text };
+    const position = scaled(geometry.point, scale);
+    if (!finite3(position)) { report.skip('TextDot:invalid'); return null; }
+    return { kind: 'dot', position, text: geometry.text };
   }
   if (geometry instanceof api.Curve) return curvePart(geometry, type, ctx);
   report.skip(type);

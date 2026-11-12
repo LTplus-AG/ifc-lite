@@ -15,7 +15,7 @@ declare const bytes: Uint8Array;
 try {
   const model = await readRhino3dm(bytes, {
     subdLevel: 2,            // 0 to 3, default 2
-    maxTriangles: 30_000_000, // drawn triangle budget, the default
+    maxTriangles: 30_000_000, // drawing budget, the default
     bakeInstances: false,    // true bakes blocks into `meshes`
     onProgress: (done, total) => console.log(done, total),
   });
@@ -58,12 +58,16 @@ by structured clone, and every typed array can go on the transfer list.
 - **Blocks** come back as `definitions` (each block's own meshes) and
   `instances` (one per placement, nested blocks flattened into a composed
   double-precision transform). `bakeInstances` writes world-space copies into
-  `meshes` instead. A block that contains itself is skipped and reported.
+  `meshes` instead. A block that contains itself is skipped and reported, and
+  a member that is hidden or on a layer that is off is not drawn.
+- **Budget:** `maxTriangles` bounds what is drawn. A block's triangles count
+  once per placement, and a curve or point cloud vertex counts a third of a
+  triangle, so blocks cannot multiply geometry without bound.
 - **Layers** come parent first with colour, visibility, user text and, when a
   layer carries `IFC::GlobalId` and `IFC::Class` stamps, its `spatial` element.
 
 `RhinoReadError.code` is one of `not-3dm`, `newer-archive` (saved by a Rhino
-newer than 8), `too-large` (above the size cap, or the wasm heap ran out) and
+newer than 8), `too-large` (above the 400 MB cap, or the wasm heap ran out) and
 `no-renderable-geometry` (for example surfaces saved without render meshes).
 A read that hits the triangle budget still succeeds: it stops drawing and says
 so in `warnings` and `skipped.budget`.

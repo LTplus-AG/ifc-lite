@@ -42,6 +42,11 @@ export function readLook(api: ReadApi, attributes: RAttributes, layer: number): 
   };
 }
 
+/** True when a block member's colour depends on the instance placing it: "by parent", or by a material that is "by parent". */
+export function takesParentColor(look: Look): boolean {
+  return look.colorSource === 'parent' || (look.colorSource === 'material' && look.materialSource === 'parent');
+}
+
 /**
  * Resolve an object's colour. `parent` is the block instance placing it, or
  * null at top level, where "from parent" falls back to the layer.
@@ -55,12 +60,10 @@ export function resolveAppearance(look: Look, tables: AppearanceTables, parent: 
   const inherited = look.materialSource === 'parent' && parent !== null;
   const material = inherited ? parent.material
     : look.materialSource === 'object' ? look.material : layer?.material ?? -1;
+  if (parent && takesParentColor(look)) return { color: parent.color, material };
   const shader = tables.materials[material];
-  let color: RhinoRgba;
-  if (look.colorSource === 'parent' && parent) return { color: parent.color, material };
-  if (look.colorSource === 'object') color = rgba(look.color);
-  else if (look.colorSource === 'material' && shader) color = rgba(shader.diffuse);
-  else color = rgba(layer?.color ?? BLACK);
+  const color = look.colorSource === 'object' ? rgba(look.color)
+    : look.colorSource === 'material' && shader ? rgba(shader.diffuse) : rgba(layer?.color ?? BLACK);
   if (!inherited && shader && shader.transparency > 0 && color[3] === 1) color[3] = 1 - shader.transparency;
   return { color, material };
 }

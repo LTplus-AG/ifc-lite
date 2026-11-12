@@ -30,6 +30,7 @@ import { NOOP_LOAD_TRACE, type LoadTrace } from '@ifc-lite/load-trace';
 
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore } from '../store/index.js';
+import { enqueueInstancedShards, instancedShardGeneration } from '../store/instancedShardQueue.js';
 import { getCached, setCached, deleteCached, type CacheResult } from '../services/cacheService.js';
 import { recordFirstVisible } from '../lib/perf/loadTrace.js';
 
@@ -82,14 +83,12 @@ export function useIfcCache() {
     setProgress,
     setIfcDataStore,
     setGeometryResult,
-    appendInstancedShards,
     appendGeometryBatch,
     setGeometryStreamingActive,
   } = useViewerStore(useShallow((s) => ({
     setProgress: s.setProgress,
     setIfcDataStore: s.setIfcDataStore,
     setGeometryResult: s.setGeometryResult,
-    appendInstancedShards: s.appendInstancedShards,
     appendGeometryBatch: s.appendGeometryBatch,
     setGeometryStreamingActive: s.setGeometryStreamingActive,
   })));
@@ -124,6 +123,8 @@ export function useIfcCache() {
     isStale?: () => boolean,
     trace: LoadTrace = NOOP_LOAD_TRACE, // #6956: the J2 (warm open) spans land on the caller's load trace
   ): Promise<CacheLoadResult> => {
+    // Before any await: a reset during the IndexedDB reads supersedes this hit's shards.
+    const shardGeneration = instancedShardGeneration();
     let adopted: AdoptedSceneSnapshot | null = null;
     try {
       const cacheLoadStart = performance.now();
@@ -242,7 +243,7 @@ export function useIfcCache() {
         // Restore the GPU-instancing shards (opaque repeated occurrences that
         // were partitioned off the flat meshes).
         const shards = readCachedInstancedShards({ dataStore, cacheBuffer, cacheBlob, headerInfo, geometrySection });
-        if (shards.length > 0 && !adopted) appendInstancedShards(modelId, shards);
+        if (shards.length > 0 && !adopted) enqueueInstancedShards(modelId, shards, shardGeneration);
 
         setIfcDataStore(dataStore);
 

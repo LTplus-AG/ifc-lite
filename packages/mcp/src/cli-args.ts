@@ -85,8 +85,12 @@ export interface CliOptions {
   viewerPort: number;
   openBrowser: boolean;
   insecure: boolean;
-  /** `--bridge`: forward tools to a paired browser tab instead of loading files. */
-  bridge: boolean;
+  /**
+   * `--bridge`: forward tools to a paired browser tab instead of loading files.
+   * Optional so code that builds a `CliOptions` itself keeps compiling;
+   * `parseArgs` always sets it.
+   */
+  bridge?: boolean;
   /** `--bridge-port`; undefined means `DEFAULT_BRIDGE_PORT`. 0 picks a free port. */
   bridgePort?: number;
   /** `--bridge-viewer-url`: base of the pairing link; its origin may connect. */

@@ -225,6 +225,23 @@ shared with `scenoptic-bench.mjs`):
   comes from the welcome mark is mostly host-specific: label it so, or
   confirm it off this host. On Pop the default WebGL backend cannot be
   measured: `--use-angle=gl` on Xvfb falls back to software GL.
+- **The quiet arm can fire right after a long block.** Timed check on main
+  d45ace6b65, default arm, browser-cold, FZK / Holter / BWK, n = 5 each
+  (job 48cfe173). In 9 of 15 samples the file was picked only 17-35 ms after
+  the start screen's 1.5-1.7 s WebGL block ended, instead of a full quiet
+  second later. The other 6 waited 1,038-1,082 ms, as intended.
+  - Likely cause: `waitShellQuiet` arms when `now - lastLongTaskEnd >= 1000`,
+    but the PerformanceObserver delivers `longtask` entries asynchronously. A
+    poll queued during the block runs as soon as it ends, before the block's
+    entries arrive, and measures from the long task before it.
+  - Effect: the pick never landed inside the block, but it lands on the
+    boot's tail, which adds noise to the cold lanes on this host.
+  - Possible fix: treat a late poll (round trip or gap over ~150 ms) as not
+    quiet, or require two quiet polls at least 150 ms apart. It changes the
+    default arm, so it needs an A/A before and after.
+  - With #9766 (the mark starts at the first idle moment) the same check had
+    13 of 15 picks 1,034-1,084 ms after the block and 2 of 15 at 14-17 ms.
+    Compare goal-board runs across #9766 with that in mind.
 - **Same-process GPU warm-up confound.** On this host the welcome mark's
   ANGLE-Vulkan context loads and initialises the NVIDIA Vulkan driver in the
   GPU process before any WebGPU device exists. Dawn's WebGPU device lives in

@@ -287,6 +287,14 @@ fn convert_record(
         return Ok(line.to_string());
     };
 
+    if let Some(attrs) = crate::schema_structural::attributes(&entity_type, &args, cfrom, cto) {
+        if crate::schema_structural::constant_action(&entity_type) {
+            if let (Some(c), Some(src), Some(tgt)) = (checks, schema_attribute_names(cfrom, &entity_type), schema_attribute_names(cto, &entity_type)) {
+                c.attribute_values_dropped += values_without_a_name(&args, src, tgt);
+            }
+        }
+        return Ok(format!("{prefix}{entity_type}({attrs});"));
+    }
     let (plan, dropped) = match checks {
         Some(c) => (c.plans.get(&entity_type, cfrom, cto), Some(&mut c.attribute_values_dropped)),
         None => (plan_for(&entity_type, cfrom, cto), None),

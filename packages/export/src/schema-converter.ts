@@ -12,6 +12,7 @@
  * and adjusts attribute counts via regex replacement on raw STEP lines.
  */
 
+import { structuralAttributes } from './schema-converter-structural.js';
 import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import { deterministicGlobalId, getSchemaRegistryForVersion } from '@ifc-lite/parser';
 import { resolveUnrepresentedEntity } from './schema-untranslatable.js';
@@ -41,9 +42,6 @@ export type IfcSchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
 // IFC2X3 had several *StandardCase subtypes that were folded into parent
 // types in IFC4 (with PredefinedType discriminator instead).
 const IFC2X3_TO_IFC4: Map<string, string> = new Map([
-  // StandardCase types removed in IFC4 (kept for backwards compat but deprecated)
-  // In IFC4 these are valid but deprecated; we keep them as-is.
-  // Only types that were truly removed/renamed:
   ['IFCELECTRICDISTRIBUTIONPOINT', 'IFCELECTRICDISTRIBUTIONBOARD'],
   ['IFCGASTERMINALTYPE', 'IFCBURNERTYPE'],
   ['IFCEQUIPMENTELEMENT', 'IFCBUILDINGELEMENTPROXY'],
@@ -325,6 +323,8 @@ function convertRecord(
   // that would partially convert a record whose positions are untrustworthy.
   const args = requireTopLevelAttributes(attrsRaw);
 
+  const structural = structuralAttributes(entityType, args, fromSchema, toSchema);
+  if (structural !== null) return `${prefix}${entityType}(${structural});`;
   const newType = convertEntityType(entityType, fromSchema, toSchema);
 
   // A record whose attribute list references an id this export is OMITTING

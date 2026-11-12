@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 /** Export-level oracles for #9296 round 5; every relation is checked against the target. */
 export const typeOf = (step, id) => step.of('IFCRELDEFINESBYTYPE').find(r => r.args[4]?.some(v => v.ref === id))?.args[5]?.ref;
 export function classificationOf(step, id) {

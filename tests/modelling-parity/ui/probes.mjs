@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import { PLAN_CAM } from './lib/probe-helpers.mjs';
 export { PROBES } from './rows/index.mjs';
 /** Run one probe in a fresh page. Returns a contract result plus the export text when the probe has one. */
@@ -14,6 +18,8 @@ export async function runProbe(probe, openFresh, base, { saveArtifact } = {}) {
   } catch (e) {
     error = String(e.message ?? e).split('\n')[0].slice(0, 400);
     out = { tasks: s.completedTasks ?? [], checks: [], notes: [] };
+  } finally {
+    await s.close();
   }
   const wall = Date.now() - t0;
   const counted = out.tasks.filter((t) => !t.setup);
@@ -55,7 +61,6 @@ export async function runProbe(probe, openFresh, base, { saveArtifact } = {}) {
     evidence: (out.evidence ?? []).filter(Boolean).map((e) => `shots/${e.file}`),
     evidenceSha256: Object.fromEntries((out.evidence ?? []).filter(Boolean).map((e) => [`shots/${e.file}`, e.sha256])),
   };
-  await s.close();
   // Files the probe produced, for the output probes (L1): the exported IFC and any drawing files.
   const files = { ...out.artifacts };
   const ifcText = out.exportText ?? s.lastExport?.text ?? null;

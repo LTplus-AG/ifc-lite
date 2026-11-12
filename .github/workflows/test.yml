@@ -2142,6 +2142,8 @@ jobs:
       # Literal paths preserve the path auditor's existing input census; globs
       # discover every new suite. sort -u removes the overlap before Node starts
       # any tests, and ci-scripts-test-shards.mjs then runs this shard's part.
+      - name: Test modelling parity UI harness
+        run: node --test tests/modelling-parity/ui/lib/*.test.mjs tests/modelling-parity/ui/rows/*.test.mjs
       - name: Run every scripts/ test file (glob catch-all)
         id: scripts_tests
         # The shard comes from the matrix the runner actually expanded, and

@@ -100,9 +100,10 @@ async function main() {
   const frameResults = [];
   const frameFailures = [];
   let adapter = null;
+  let browser;
   try {
     await waitForHttp(preview.url, 90000).catch((error) => { throw new Error(`${error.message}\n${preview.log()}`); });
-    const browser = await chromium.connectOverCDP(args.cdp);
+    browser = await chromium.connectOverCDP(args.cdp);
     const probe = await browser.newContext();
     const page = await probe.newPage();
     await page.goto(`${preview.url}/favicon.ico`).catch(() => page.goto(preview.url));
@@ -141,8 +142,8 @@ async function main() {
       }
     }
     if (args.exercises.length) await writeFile(join(args.out, 'exercises.json'), `${JSON.stringify(exerciseResults, null, 2)}\n`);
-    await browser.close().catch(() => {});
   } finally {
+    if (browser) await browser.close();
     preview.stop();
   }
 

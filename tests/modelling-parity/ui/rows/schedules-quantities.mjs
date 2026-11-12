@@ -1,7 +1,11 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import { readScheduleTotals } from '../lib/schedule-ui.mjs';
 import { task, downloadCount, nextDownload } from '../lib/driver.mjs';
-import { escape, tool, typeFields, oracleModel, openStoreyManager } from '../lib/model-ui.mjs';
-import { check, field, wall, selectWall, inspector, typeScope, newType, layer, applyLayers, body, wallSize, layerThicknesses, scheduleLengths, near, finish } from '../lib/authoring-helpers.mjs';
+import { oracleModel } from '../lib/model-ui.mjs';
+import { check, field, wall, selectWall, scheduleLengths, near, finish } from '../lib/authoring-helpers.mjs';
 
 export default {
     id:'ui.schedules', capability:'schedules-quantities', title:'Two walls carry quantities; grouped schedule export',
@@ -26,7 +30,6 @@ export default {
       const original = (await oracleModel(s)).step;
       let totals = null, editedTotals = null;
       tasks.push(await task(s, 'group by Type and sum Length in the schedule', async () => {
-        const column = name => s.page.getByRole('button', { name, exact: false }).filter({ hasNot: s.page.locator('[aria-label]') }).first().locator('..');
         // Column menu is adjacent to its sortable header, not a list settings mutation.
         const menu = name => s.page.getByRole('button', { name, exact: false }).first().locator('..').getByRole('button', { name: 'Column options', exact: true });
         await s.ui.click(menu(/^Type$/));
@@ -37,7 +40,9 @@ export default {
       }));
       tasks.push(await task(s, 'edit one wall length to 6 m and read live totals', async () => {
         await selectWall(s);
-        await field(s,s.page.getByLabel('Length in metres', { exact: true }),6);
+        const length = s.page.getByLabel('Length in metres', { exact: true });
+        if (!(await length.isEditable())) throw new Error('Wall Length is read-only in Model inspector; cannot edit it to 6 m.');
+        await field(s,length,6);
         await s.settle(1200);
         editedTotals = await readScheduleTotals(s);
       }));

@@ -1,6 +1,10 @@
-import { task, downloadCount, nextDownload } from '../lib/driver.mjs';
-import { escape, tool, typeFields, oracleModel, openStoreyManager } from '../lib/model-ui.mjs';
-import { check, field, wall, selectWall, inspector, typeScope, newType, layer, applyLayers, body, wallSize, layerThicknesses, scheduleLengths, near, finish } from '../lib/authoring-helpers.mjs';
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import { task } from '../lib/driver.mjs';
+import { escape, tool, oracleModel } from '../lib/model-ui.mjs';
+import { check, field, wall, inspector, body, near, finish } from '../lib/authoring-helpers.mjs';
 
 export default {
     id: 'ui.slab-openings', capability: 'slab-with-openings',

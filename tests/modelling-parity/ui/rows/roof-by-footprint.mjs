@@ -1,9 +1,13 @@
-import { roofGeometry, copiedPlansMatch, uniqueWallJoins, wallEndpointsJoined, hasDwgDownload, assignedTypes, ownOpenings, wallPropertySets, wallQuantityCoverage } from '../lib/oracles.mjs';
-import { downloadCount, nextDownload, task } from '../lib/driver.mjs';
-import { escape, hudText, oracleModel, openStoreyManager, readSession, readStoreyManager, switchStorey, tool, toasts, typeFields } from '../lib/model-ui.mjs';
-import { readStep } from '../lib/step.mjs';
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import { roofGeometry } from '../lib/oracles.mjs';
+import { task } from '../lib/driver.mjs';
+import { escape, oracleModel, tool, typeFields } from '../lib/model-ui.mjs';
+
 import { meshIfc } from '../../probes/sdk/lib/parity.mjs';
-import { PLAN_CAM, near, nearPt, fmt, typedRoom, setupRoom, selectAt, wallsOn, openFrontSection, drawingState, exportDrawing, isPdf, isDxf, svgShapes } from '../lib/probe-helpers.mjs';
+import { setupRoom } from '../lib/probe-helpers.mjs';
 
 export default {
     id: 'ui.roof',
@@ -30,6 +34,7 @@ export default {
       });
       return {
         tasks, notes, evidence: [shot],
+        metrics: { roofBaseZ: roofs[0] ? step.placement(roofs[0].id).origin[2] : null, clickedZ: 3 },
         checks: [
           { name: 'a roof element exists (IfcRoof or IfcSlab ROOF)', ok: roofs.length >= 1, detail: `${roofs.length} roof elements` },
           { name: 'the roof is sloped (hip by footprint)', ok: sloped === true, detail: sloped === true ? 'four 30-degree planes, low eaves, high centre and volume pass the native-mesh oracle' : sloped },

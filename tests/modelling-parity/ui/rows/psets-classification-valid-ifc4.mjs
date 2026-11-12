@@ -1,11 +1,15 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import { selectWall } from '../lib/authoring-helpers.mjs';
 import { classificationOf } from '../lib/measured-oracles.mjs';
-import { roofGeometry, copiedPlansMatch, uniqueWallJoins, wallEndpointsJoined, hasDwgDownload, assignedTypes, ownOpenings, wallPropertySets, wallQuantityCoverage } from '../lib/oracles.mjs';
+import { wallPropertySets, wallQuantityCoverage } from '../lib/oracles.mjs';
 import { downloadCount, nextDownload, task } from '../lib/driver.mjs';
-import { escape, hudText, oracleModel, openStoreyManager, readSession, readStoreyManager, switchStorey, tool, toasts, typeFields } from '../lib/model-ui.mjs';
+
 import { readStep } from '../lib/step.mjs';
-import { meshIfc } from '../../probes/sdk/lib/parity.mjs';
-import { PLAN_CAM, near, nearPt, fmt, typedRoom, setupRoom, selectAt, wallsOn, openFrontSection, drawingState, exportDrawing, isPdf, isDxf, svgShapes } from '../lib/probe-helpers.mjs';
+
+import { setupRoom } from '../lib/probe-helpers.mjs';
 
 export default {
     id: 'ui.export-ifc4',
@@ -17,6 +21,7 @@ export default {
       tasks.push(await task(s, 'Properties: add Uniclass classification to the south wall', async () => {
         await selectWall(s);
         selectedWall = await s.state(() => globalThis.__ifc_lite_viewer_store__.getState().selectedEntityId);
+        await s.ui.click(s.page.locator('[data-model-inspector]').getByRole('button', { name: 'Properties', exact: true }));
         await s.ui.click(s.page.getByRole('button', { name: 'Add classification', exact: true }));
         const dialog = s.page.getByRole('dialog');
         await s.ui.click(dialog.getByLabel('Classification System', { exact: true }));

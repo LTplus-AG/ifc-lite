@@ -1,7 +1,11 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import { inheritedFireRating, typeOf } from '../lib/measured-oracles.mjs';
-import { task, downloadCount, nextDownload } from '../lib/driver.mjs';
-import { escape, tool, typeFields, oracleModel, openStoreyManager } from '../lib/model-ui.mjs';
-import { check, field, wall, selectWall, inspector, typeScope, newType, layer, applyLayers, body, wallSize, layerThicknesses, scheduleLengths, near, finish } from '../lib/authoring-helpers.mjs';
+import { task } from '../lib/driver.mjs';
+import { oracleModel } from '../lib/model-ui.mjs';
+import { check, field, wall, selectWall, typeScope, newType, layer, applyLayers, wallSize, near, finish } from '../lib/authoring-helpers.mjs';
 
 export default {
     id: 'ui.type-editing', capability: 'type-editing',
@@ -23,7 +27,10 @@ export default {
       const typed = new Set(step.of('IFCRELDEFINESBYTYPE').flatMap((r) => (r.args[4] ?? []).map((v) => v.ref)));
       tasks.push(await task(s, 'edit inherited FireRating with Apply To Type', async () => {
         await selectWall(s);
-        await s.ui.click(s.page.getByRole('button', { name: /^FireRating:/ }));
+        await s.ui.click(s.page.locator('[data-model-inspector]').getByRole('button', { name: 'Properties', exact: true }));
+        const rating = s.page.getByRole('button', { name: /^FireRating:/ });
+        if (!(await rating.count())) throw new Error('Properties offers no inherited FireRating on the authored wall type to edit.');
+        await s.ui.click(rating);
         await field(s, s.page.getByRole('textbox').last(), 'REI60');
         await s.ui.click(s.page.getByRole('button', { name: 'Apply To Type', exact: true }));
       }));

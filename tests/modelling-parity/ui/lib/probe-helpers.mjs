@@ -21,13 +21,13 @@
  * - `notes`: where the UI blocked or misled, in plain words.
  */
 
-import { roofGeometry, copiedPlansMatch, uniqueWallJoins, wallEndpointsJoined, hasDwgDownload, assignedTypes, ownOpenings, wallPropertySets, wallQuantityCoverage } from './oracles.mjs';
+
 import { downloadCount, nextDownload, task } from './driver.mjs';
 import {
   escape, hudText, oracleModel, openStoreyManager, readSession, readStoreyManager, switchStorey, tool, toasts, typeFields,
 } from './model-ui.mjs';
-import { readStep } from './step.mjs';
-import { meshIfc } from '../../probes/sdk/lib/parity.mjs';
+
+
 
 const PLAN_CAM = { pos: [2.5, -2, 28], target: [2.5, 2, 0] };
 const near = (a, b, tol) => Math.abs(a - b) <= tol;

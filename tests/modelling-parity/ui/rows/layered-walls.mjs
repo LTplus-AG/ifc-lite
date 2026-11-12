@@ -1,8 +1,12 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import { openFrontSection } from '../lib/probe-helpers.mjs';
 import { layerUsage } from '../lib/measured-oracles.mjs';
-import { task, downloadCount, nextDownload } from '../lib/driver.mjs';
-import { escape, tool, typeFields, oracleModel, openStoreyManager } from '../lib/model-ui.mjs';
-import { check, field, wall, selectWall, inspector, typeScope, newType, layer, applyLayers, body, wallSize, layerThicknesses, scheduleLengths, near, finish } from '../lib/authoring-helpers.mjs';
+import { task } from '../lib/driver.mjs';
+import { oracleModel } from '../lib/model-ui.mjs';
+import { check, wall, selectWall, typeScope, newType, layer, applyLayers, body, wallSize, layerThicknesses, near, finish } from '../lib/authoring-helpers.mjs';
 
 export default {
     id: 'ui.layered-walls', capability: 'layered-walls',
@@ -42,7 +46,7 @@ export default {
       return finish(s,tasks,[
         check('ordered 115/100/15 mm layer set exported', layers.some((ls) => ls.length === 3 && ls.every((v,i) => near(v,[.115,.1,.015][i]))), JSON.stringify(layers)),
         check('typed wall thickness follows the 230 mm type', sizes.length === 1 && near(sizes[0].thickness,.23), JSON.stringify(sizes)),
-        check('section has three distinct layer fills', polygons.length >= 3 && new Set(polygons.map(p => JSON.stringify(p.fillColor ?? p.fill))).size >= 3, JSON.stringify(polygons)),
+        check('section has three distinct layer fills', polygons.length >= 3 && new Set(polygons.map(p => JSON.stringify(p.color))).size >= 3, JSON.stringify(polygons)),
         check('retyping changes body and material usage to 150/50 mm', near(wallSize(retyped,newWall).thickness,.2) && layerUsage(retyped,newWall,[.15,.05]), JSON.stringify(wallSize(retyped,newWall))),
       ]);
     },

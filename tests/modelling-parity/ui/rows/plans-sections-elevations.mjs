@@ -1,10 +1,14 @@
-import { pdfPathExtents } from '../lib/pdf-geometry.mjs';
-import { roofGeometry, copiedPlansMatch, uniqueWallJoins, wallEndpointsJoined, hasDwgDownload, assignedTypes, ownOpenings, wallPropertySets, wallQuantityCoverage } from '../lib/oracles.mjs';
-import { downloadCount, nextDownload, task } from '../lib/driver.mjs';
-import { escape, hudText, oracleModel, openStoreyManager, readSession, readStoreyManager, switchStorey, tool, toasts, typeFields } from '../lib/model-ui.mjs';
-import { readStep } from '../lib/step.mjs';
-import { meshIfc } from '../../probes/sdk/lib/parity.mjs';
-import { PLAN_CAM, near, nearPt, fmt, typedRoom, setupRoom, selectAt, wallsOn, openFrontSection, drawingState, exportDrawing, isPdf, isDxf, svgShapes } from '../lib/probe-helpers.mjs';
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import { pdfPathExtents, sectionSpanMm } from '../lib/pdf-geometry.mjs';
+
+import { task } from '../lib/driver.mjs';
+import { tool } from '../lib/model-ui.mjs';
+
+
+import { setupRoom, openFrontSection, drawingState, exportDrawing, isPdf, isDxf, svgShapes } from '../lib/probe-helpers.mjs';
 
 export default {
     id: 'ui.plan-section',
@@ -31,7 +35,7 @@ export default {
       tasks.push(await task(s, 'measure PDF paths in millimetres', async () => { extents = await pdfPathExtents(files.pdf.bytes); }));
       let elevation = null;
       tasks.push(await task(s, 'generate elevation linework', async () => {
-        await s.ui.click(s.page.getByRole('button', { name: /Elevation/, exact: false }).first(), { settle: 3000 });
+        await s.ui.click(s.page.getByRole('button', { name: 'Projection', exact: true }).first(), { settle: 3000 });
         elevation = await drawingState(s);
       }));
       return {
@@ -43,7 +47,7 @@ export default {
           { name: 'section exported as DXF', ok: isDxf(files.dxf), detail: files.dxf ? `${files.dxf.name}, ${files.dxf.bytes.length} bytes` : 'no DXF' },
           { name: 'section exported as PDF', ok: isPdf(files.pdf), detail: files.pdf ? `${files.pdf.name}, ${files.pdf.bytes.length} bytes` : 'no PDF' },
           { name: 'elevation contains linework', ok: !!elevation && elevation.lines > 0, detail: JSON.stringify(elevation) },
-          { name: 'PDF geometry is at the requested drawing scale', ok: extents.some(e => Math.abs(e.widthMm - 104) <= .5), detail: JSON.stringify(extents) },
+          { name: 'PDF geometry is at the requested drawing scale', ok: Math.abs(sectionSpanMm(extents) - 104) <= .5, detail: JSON.stringify(extents) },
         ],
       };
     },

@@ -514,7 +514,8 @@ Point connections accept `BoundaryCondition.WarpingStiffness` to emit
 following its random source. The SDK's `bim.store.connectStructuralMemberToConnection`
 accepts the same options after the two endpoint ids. `AdditionalConditions` chooses
 `IfcFailureConnectionCondition` or `IfcSlippageConnectionCondition` using `Type` and
-exact EXPRESS component names. `ConnectionConstraint` supplies `PointOnRelatingElement`,
+exact EXPRESS component names; unknown condition attributes are refused before mutation.
+`ConnectionConstraint` supplies `PointOnRelatingElement`,
 optional `PointOnRelatedElement`, and `EccentricityInX/Y/Z` in native model units;
 it emits `IfcConnectionPointEccentricity` and `IfcRelConnectsWithEccentricity`.
 The relationship owns these fresh resources. In IFC2X3,

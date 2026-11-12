@@ -13,6 +13,10 @@ export function prepareMemberConnection(options: StructuralMemberConnectionOptio
   if (c !== undefined && (c === null || typeof c !== 'object' || Array.isArray(c))) throw new Error('connectStructuralMemberToConnectionInStore: AdditionalConditions must be a condition object');
   const fields = c?.Type === 'IfcFailureConnectionCondition' ? ['TensionFailureX', 'TensionFailureY', 'TensionFailureZ', 'CompressionFailureX', 'CompressionFailureY', 'CompressionFailureZ'] : ['SlippageX', 'SlippageY', 'SlippageZ'];
   if (c && !['IfcFailureConnectionCondition', 'IfcSlippageConnectionCondition'].includes(c.Type)) throw new Error('connectStructuralMemberToConnectionInStore: unsupported AdditionalConditions.Type');
+  if (c) {
+    const unknown = Object.keys(c).find(key => key !== 'Type' && key !== 'Name' && !fields.includes(key));
+    if (unknown !== undefined) throw new Error(`connectStructuralMemberToConnectionInStore: unknown AdditionalConditions attribute ${unknown} for ${c.Type}`);
+  }
   const values = c ? fields.map(k => Reflect.get(c, k)) : [];
   if (values.some(v => v !== undefined && (typeof v !== 'number' || !Number.isFinite(v)))) throw new Error('connectStructuralMemberToConnectionInStore: condition values must be finite');
   const e = options.ConnectionConstraint;

@@ -282,6 +282,28 @@ describe('structural CREATE gaps (#9668)', () => {
     expect(text).toContain(`(#${load},#${load}),((0.),(1.))`);
   });
 
+  it.each(['IFC2X3', 'IFC4', 'IFC4X3'] as const)('%s refuses unknown condition components rather than discarding them (#9860 discussion_r4551263078)', async schema => {
+    const { editor, anchor, view, store } = await fresh(schema);
+    const member = create.addStructuralCurveMemberToStore(editor, anchor, { Start: [0,0,0], End: [2,0,0] }).memberId;
+    const connection = create.addStructuralPointConnectionToStore(editor, anchor, { Position: [0,0,0] }).connectionId;
+    const before = view.getNewEntities().length;
+    for (const AdditionalConditions of [
+      { Type: 'IfcSlippageConnectionCondition', Slippagex: 0.12 },
+      { Type: 'IfcSlippageConnectionCondition', SlippageX: 0.12, Slippagey: 0.2 },
+      { Type: 'IfcFailureConnectionCondition', TensionFailurex: 10 },
+      { Type: 'IfcFailureConnectionCondition', SlippageX: 0.12 },
+    ]) {
+      const options = { AdditionalConditions } as unknown as Parameters<typeof create.connectStructuralMemberToConnectionInStore>[5];
+      expect(() => create.connectStructuralMemberToConnectionInStore(editor, anchor.ownerHistoryId, member, connection, undefined, options)).toThrow(/unknown AdditionalConditions attribute/);
+      expect(view.getNewEntities()).toHaveLength(before);
+    }
+    create.connectStructuralMemberToConnectionInStore(editor, anchor.ownerHistoryId, member, connection, undefined, {
+      AdditionalConditions: { Type: 'IfcSlippageConnectionCondition', Name: 'Slippage', SlippageX: 0.12 },
+    });
+    const text = new TextDecoder().decode(new StepExporter(store, view).export({ schema, applyMutations: true }).content);
+    expect(text).toContain("=IFCSLIPPAGECONNECTIONCONDITION('Slippage',0.12,$,$)");
+  });
+
   it('rejects supplied malformed connection points and condition objects atomically (#9860 discussion_r4550515863)', async () => {
     const { editor, anchor, view } = await fresh('IFC4');
     const member = create.addStructuralCurveMemberToStore(editor, anchor, { Start: [0,0,0], End: [2,0,0] }).memberId;

@@ -385,7 +385,7 @@ export function EmbedViewer() {
           {/* Structural supports and loads (#9668): the SET_TYPE_VISIBILITY
               `structuralGlyphs` flag gates them, so they render here too. */}
           <SceneOverlayRoot>
-            <StructuralGlyphLayer />
+            <StructuralGlyphLayer isolatedIds={computedIsolatedIds} />
           </SceneOverlayRoot>
         </div>
       )}

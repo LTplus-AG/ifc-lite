@@ -36,20 +36,28 @@ const reparse = (store: IfcDataStore, view: MutablePropertyView) =>
 const drift = (store: IfcDataStore) =>
   structuralConsistencyIssues(store, { physicalAxes: structuralPhysicalAxes(store) }).filter((issue) => issue.rule === 'structural-axis-drift');
 
+/** Rounding to 0.1 mm moves an endpoint up to 0.09 mm in 3D. */
+const PIN_TOLERANCE = 2e-4;
+/** A round section: the oracle's 0.24 mm polygon bounds plus rounding, with margin. */
+const ROUND_PIN_TOLERANCE = 5e-4;
+
 /**
  * Centre lines of one element per section type in each fixture, from
  * IfcOpenShell 0.9.0 and not from this package
  * (`tools/ifcopenshell_reference/structural_axes.py`, which states the method
  * and the command), rounded to 0.1 mm. STR is the file the derived-model test
- * below derives from, so its start lines are pinned too. Run once over all
- * 192 IfcBeam and IfcColumn of the two files (the script takes any ids), the
- * lines agreed to 1e-14 m, except the round D300 columns, 0.24 mm (the
- * oracle bounds a meshed polygon in section axes a circle does not fix, so it
- * gets its own tolerance), and the eight L 75x75x6 braces. Those braces are a real gap of their own, by
- * the file rather than the oracle: the profile is placed so its centroid is on
- * the axis, as the authored member #4984 is, and the derivation's bounds rule
- * puts the line 25 mm away (#9934). #88 is sloped with ends square to its
- * axis, so its end faces bound the line.
+ * below derives from, so its start lines are pinned too.
+ *
+ * Run once over all 192 IfcBeam and IfcColumn of the two files (the script
+ * takes any ids), the lines agreed to 1e-14 m with two exceptions:
+ * - the round D300 columns, by 0.24 mm: the oracle bounds a meshed polygon in
+ *   section axes a circle does not fix. #273 is pinned at its own tolerance.
+ * - the eight L 75x75x6 braces, by 25 mm. That gap is real and comes from the
+ *   file, not the oracle: the profile is placed so its centroid is on the
+ *   axis, as the authored member #4984 is, and the derivation's bounds rule
+ *   puts the line 25 mm away (#9934). They are not pinned.
+ *
+ * #88 is sloped with ends square to its axis, so its end faces bound the line.
  */
 const IFCOPENSHELL_AXES: ReadonlyArray<[file: string, id: number, section: string, a: Vec3, b: Vec3, tolerance?: number]> = [
   [STEEL_FRAME, 88, 'IfcBeam HE 140 A, sloped', [1.5, 0, 5], [0, 0, 6]],
@@ -63,12 +71,10 @@ const IFCOPENSHELL_AXES: ReadonlyArray<[file: string, id: number, section: strin
   [STR, 535, 'IfcBeam HEA180', [25.875, 3.7964, 8.105], [25.875, 9, 8.105]],
   [STR, 548, 'IfcBeam concrete 400 x 500', [33.3805, 14.16, -1.05], [40.935, 14.16, -1.05]],
   [STR, 261, 'IfcColumn concrete 300 x 300', [31.105, 12, 10.5], [31.105, 12, 12]],
-  [STR, 273, 'IfcColumn concrete D300', [21.3752, 8.3573, -0.85], [21.3752, 8.3573, 3.27], 5e-4],
+  [STR, 273, 'IfcColumn concrete D300', [21.3752, 8.3573, -0.85], [21.3752, 8.3573, 3.27], ROUND_PIN_TOLERANCE],
 ];
 type Vec3 = readonly [number, number, number];
 const apart = (p: Vec3, q: Vec3) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
-/** Rounding to 0.1 mm moves an endpoint up to 0.09 mm in 3D. */
-const PIN_TOLERANCE = 2e-4;
 
 const skipWithout = (ctx: { skip(note: string): void }, file: string) => {
   if (!existsSync(fixture(file))) ctx.skip(`${file} missing; run \`pnpm fixtures\``);
@@ -90,7 +96,7 @@ describe('structuralPhysicalAxes with the axis-drift check', () => {
     }, 30_000);
   }
 
-  it('reads an axis for every linked beam and column of an Axis export, with no drift past the default tolerance', async (ctx) => {
+  it('reads an axis for every linked beam and column of an Axis export, with no drift past the check\'s default tolerance', async (ctx) => {
     skipWithout(ctx, STEEL_FRAME);
     const { store } = await load(STEEL_FRAME);
     const axes = structuralPhysicalAxes(store);

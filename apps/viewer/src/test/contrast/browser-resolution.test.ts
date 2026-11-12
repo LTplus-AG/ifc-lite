@@ -128,7 +128,8 @@ describe('system Chrome locations match the chrome channel', () => {
     const { registry } = await import(internal);
     const found: string | undefined = registry.registry.findExecutable('chrome').executablePath('javascript');
     if (!found) {
-      assert.equal(isCi(process.env), false, 'CI runs the contrast harness on Google Chrome, so the channel must find it');
+      // CI without the override runs the harness on the chrome channel, so it must find Chrome there.
+      assert.ok(!isCi(process.env) || !!process.env.IFCLITE_TEST_CHROME_EXECUTABLE, 'CI with no override must have Google Chrome');
       t.skip('no Google Chrome on this host, so there is no channel answer to compare against');
       return;
     }

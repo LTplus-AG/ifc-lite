@@ -12,7 +12,8 @@
  * not in a load phase (`pending`, `streaming-geometry`, `hydrating-metadata`:
  * the phases streaming-refresh.ts and drawingPersistenceKey.ts treat as
  * loading), the primary geometry stream is not running for it, and none of its
- * instanced shards wait to upload (the rule #9628's readiness checks use). A
+ * instanced shards wait in the upload queue (`hasPendingInstancedShards`, the
+ * rule #9628's readiness checks use; the queue's drain re-checks). A
  * store with no model record (the legacy single-model path) is settled when no
  * load and no stream are in progress. Another model's load never holds a
  * settled model's work back.
@@ -35,6 +36,7 @@
  */
 
 import { useViewerStore } from '../../store/index.js';
+import { hasPendingInstancedShards, subscribeInstancedShards } from '../../store/instancedShardQueue.js';
 
 export type AfterLoadJob = 'snapshot-write' | 'overlay-parse' | 'source-compaction' | 'search-index';
 const ORDER: Record<AfterLoadJob, number> = { 'snapshot-write': 0, 'overlay-parse': 1, 'source-compaction': 2, 'search-index': 3 };
@@ -46,8 +48,7 @@ type ViewerState = ReturnType<typeof useViewerStore.getState>;
 
 /** Whether `modelId`'s load has settled (see the module comment). `null`: the legacy single-model store. */
 export function modelLoadSettled(state: ViewerState, modelId: string | null): boolean {
-  const shardsWaiting = (state.pendingInstancedShards ?? []).some((s) => modelId === null || s.modelId === modelId);
-  if (shardsWaiting) return false;
+  if (hasPendingInstancedShards(modelId ?? undefined)) return false;
   const model = modelId === null ? undefined : state.models.get(modelId);
   if (!model) return !state.loading && !state.geometryStreamingActive;
   if (state.geometryStreamingActive && state.activeModelId === modelId) return false;
@@ -76,6 +77,13 @@ let jobs: Job[] = [];
 let running = false;
 let waiting = false;
 let unsubscribe: (() => void) | null = null;
+
+/** Re-check on every store change and every shard-queue change (shards are not store state). */
+function listen(): () => void {
+  const fromStore = useViewerStore.subscribe(() => pump());
+  const fromShards = subscribeInstancedShards(() => pump());
+  return () => { fromStore(); fromShards(); };
+}
 
 function alive(job: Job, state: ViewerState): boolean {
   const model = job.modelId === null ? undefined : state.models.get(job.modelId);
@@ -178,7 +186,7 @@ export function runAfterModelSettled(options: AfterLoadOptions, work: (signal: A
   const job: Job = { ...options, seq: seq++, work, controller: new AbortController(), onDrop,
     hadRecord: options.modelId !== null && state.models.has(options.modelId) };
   jobs.push(job);
-  unsubscribe ??= useViewerStore.subscribe(() => pump());
+  unsubscribe ??= listen();
   pump();
   return () => {
     jobs = jobs.filter((j) => j !== job);

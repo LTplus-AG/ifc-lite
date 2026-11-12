@@ -15,6 +15,7 @@ import { fixtureDataStore, fixtureModel } from '@/test/store-fixture';
 import { useViewerStore } from '../../store/index.js';
 import type { FederatedModel } from '../../store/types.js';
 import { compactSource } from '../source-compaction/source-compaction.js';
+import { discardInstancedShards, drainInstancedShards, enqueueInstancedShards, instancedShardGeneration } from '../../store/instancedShardQueue.js';
 import { __resetAfterLoadIdleForTests, afterModelSettled, modelLoadSettled, runAfterModelSettled, type AfterLoadJob } from './afterLoadIdle.js';
 
 const idle: IdleRequestCallback[] = [];
@@ -42,14 +43,15 @@ beforeEach(() => {
   window.requestIdleCallback = ((cb: IdleRequestCallback) => { idle.push(cb); return idle.length; }) as typeof window.requestIdleCallback;
   visibility = 'visible';
   Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => visibility });
-  useViewerStore.setState({ models: new Map(), activeModelId: null, ifcDataStore: null, loading: false, geometryStreamingActive: false, pendingInstancedShards: null } as never);
+  useViewerStore.setState({ models: new Map(), activeModelId: null, ifcDataStore: null, loading: false, geometryStreamingActive: false } as never);
 });
 afterEach(() => {
   __resetAfterLoadIdleForTests();
   window.requestIdleCallback = originalIdle;
   if (visibilityDescriptor) Object.defineProperty(document, 'visibilityState', visibilityDescriptor);
   else delete (document as { visibilityState?: unknown }).visibilityState;
-  useViewerStore.setState({ models: new Map(), ifcDataStore: null, loading: false, geometryStreamingActive: false, pendingInstancedShards: null } as never);
+  discardInstancedShards();
+  useViewerStore.setState({ models: new Map(), ifcDataStore: null, loading: false, geometryStreamingActive: false } as never);
 });
 
 describe('modelLoadSettled: the one definition of "settled"', () => {
@@ -61,8 +63,11 @@ describe('modelLoadSettled: the one definition of "settled"', () => {
     assert.deepEqual(settled(), [true, false, true, true, false, false], 'another model\'s load and stream hold nothing back');
     useViewerStore.setState({ activeModelId: 'a' } as never);
     assert.equal(modelLoadSettled(useViewerStore.getState(), 'a'), false, 'the stream of this model');
-    useViewerStore.setState({ activeModelId: null, geometryStreamingActive: false, pendingInstancedShards: [{ modelId: 'c', bytes: new ArrayBuffer(4) }] } as never);
-    assert.deepEqual(settled(), [true, false, false, true, false, false], 'an instanced shard of this model waiting to upload');
+    useViewerStore.setState({ activeModelId: null, geometryStreamingActive: false } as never);
+    enqueueInstancedShards('c', [new ArrayBuffer(4)], instancedShardGeneration());
+    assert.deepEqual(settled(), [true, false, false, true, false, false], 'an instanced shard of this model waiting to upload (#9628\'s rule)');
+    discardInstancedShards('c');
+    assert.equal(modelLoadSettled(useViewerStore.getState(), 'c'), true);
   });
 
   it('a store with no model record (legacy): settled when no load and no stream run', () => {
@@ -84,6 +89,18 @@ describe('runAfterModelSettled', () => {
     assert.equal(runs, 0, 'not while the model loads');
     setModels(model('a', 'complete'));
     assert.equal(runs, 0, 'settled: waits for an idle period');
+    await flushIdle();
+    assert.equal(runs, 1);
+  });
+
+  it('waits for the model\'s instanced shards to upload: the queue\'s drain releases the job', async () => {
+    setModels(model('a', 'complete'));
+    enqueueInstancedShards('a', [new ArrayBuffer(8)], instancedShardGeneration());
+    let runs = 0;
+    runAfterModelSettled({ job: 'snapshot-write', modelId: 'a' }, () => { runs++; });
+    await flushIdle();
+    assert.equal(runs, 0, 'not while a shard waits');
+    drainInstancedShards((shards, settle) => { for (const shard of shards) settle(shard, 'uploaded'); }); // no store change
     await flushIdle();
     assert.equal(runs, 1);
   });

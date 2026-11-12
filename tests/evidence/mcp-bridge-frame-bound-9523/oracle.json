@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "packages/mcp/src/bridge/protocol.ts",
+  "mutation": "tests/evidence/mcp-bridge-frame-bound-9523/behaviour.oracle.patch",
+  "test": "packages/mcp/src/bridge/bridge-robustness.test.ts",
+  "why": "#9523: a whole tab frame must be depth-bounded before any field is read, so a deep type cannot crash the bridge."
+}

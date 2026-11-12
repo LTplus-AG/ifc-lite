@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "packages/mcp/src/bridge/tab-bridge.ts",
+  "mutation": "tests/evidence/mcp-bridge-dead-socket-9523/behaviour.oracle.patch",
+  "test": "packages/mcp/src/bridge/bridge-hardening.test.ts",
+  "why": "#9523: a socket that failed or timed out must not pair with a late hello."
+}

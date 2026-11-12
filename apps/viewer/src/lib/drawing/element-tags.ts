@@ -38,8 +38,9 @@ export function resolveElementTagLabel(tag: TagAnnotation2D): string | null {
 /** Area-weighted cut centroid. All fragments contribute, so tessellation order cannot move a tag. */
 export function resolveElementTagAnchor(tag: TagAnnotation2D, polygons: readonly DrawingPolygon[], globalId: number): Point2D {
   let area = 0, x = 0, y = 0;
-  for (const polygon of polygons) {
-    if (polygon.entityId !== globalId) continue;
+  const fragments = polygons.filter(polygon => polygon.entityId === globalId);
+  const cuts = fragments.filter(polygon => polygon.isCut);
+  for (const polygon of cuts.length > 0 ? cuts : fragments) {
     for (const [ringIndex, ring] of [polygon.polygon.outer, ...polygon.polygon.holes].entries()) {
       let a = 0, cx = 0, cy = 0;
       for (let i = 0; i < ring.length; i++) {

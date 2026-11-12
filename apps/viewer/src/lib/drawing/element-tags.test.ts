@@ -141,3 +141,9 @@ it('#9296 a space tag refreshes the edited net floor area', async () => {
   view.setQuantity(20, 'Qto_SpaceBaseQuantities', 'NetFloorArea', 21.5, QuantityType.Area);
   assert.equal(resolveElementTagLabel(tag(20)), 'Office · ≈ 21.5 m²');
 });
+
+it('#9296 the cut centroid wins over projection fragments of the same element', () => {
+  const polygon = (x: number, isCut: boolean) => ({ polygon: { outer: [{x,y:0},{x:x+2,y:0},{x:x+2,y:2},{x,y:2}], holes: [] },
+    entityId: 10, modelIndex: 0, ifcType: 'IfcDoor', isCut });
+  assert.deepEqual(resolveElementTagAnchor(tag(10), [polygon(0,true), polygon(10,false)], 10), { x: 1.2, y: 1.3 });
+});

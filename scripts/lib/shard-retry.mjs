@@ -324,9 +324,11 @@ export function unintendedSkips(index) {
  *
  * @returns {string|null}
  */
-export function incompleteE2eAttempt({ ids, index, errors = [] }) {
-  if (!index) return "the first attempt's JSON report is missing or unreadable";
-  if (errors.length > 0) return `the first attempt recorded ${errors.length} error(s) outside any test`;
+export function incompleteE2eAttempt({ ids, report }) {
+  if (!report) return "the first attempt's JSON report is missing or unreadable";
+  if (!Array.isArray(report.errors)) return "the first attempt's JSON report has no errors list";
+  if (report.errors.length > 0) return `the first attempt recorded ${report.errors.length} error(s) outside any test`;
+  const index = indexPlaywrightReport(report);
   const unknown = ids.filter((id) => !index.has(id));
   if (unknown.length > 0) return `${unknown.length} failed test id(s) are not in the first attempt's report`;
   const retried = new Set(ids);

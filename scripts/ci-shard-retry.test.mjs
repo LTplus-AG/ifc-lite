@@ -434,15 +434,16 @@ test('#9788 review: a failing beforeAll — the mass-skipped tests are in the fa
   // the hook failure skipped (`didNotRun`), runtime-skip test included.
   assert.deepEqual(new Set(failed), new Set(['t1', 't2', 't3', 'runtime skip'].map((t) => ids.get(t))));
   assert.deepEqual(new Set(unintendedSkips(indexPlaywrightReport(first.report))), new Set(['t2', 't3', 'runtime skip'].map((t) => ids.get(t))));
-  assert.equal(incompleteE2eAttempt({ ids: failed, index: indexPlaywrightReport(first.report) }), null);
+  const report = first.report;
+  assert.equal(incompleteE2eAttempt({ ids: failed, report }), null);
   // The reviewer's case: only the test that failed is listed. Refused.
-  assert.match(incompleteE2eAttempt({ ids: [ids.get('t1')], index: indexPlaywrightReport(first.report) }) ?? '', /skipped without asking/); // @source-text-assertion-ok subject is the returned refusal
-  assert.match(incompleteE2eAttempt({ ids: failed, index: null }) ?? '', /missing or unreadable/); // @source-text-assertion-ok subject is the returned refusal
+  assert.match(incompleteE2eAttempt({ ids: [ids.get('t1')], report }) ?? '', /skipped without asking/); // @source-text-assertion-ok subject is the returned refusal
+  assert.match(incompleteE2eAttempt({ ids: failed, report: null }) ?? '', /missing or unreadable/); // @source-text-assertion-ok subject is the returned refusal
   // CodeRabbit on #9788: a run-level error, and a failed id the report does not know, are refused.
-  const index = indexPlaywrightReport(first.report);
-  assert.deepEqual(first.report.errors, [], 'a test failure adds nothing to the top-level errors');
-  assert.match(incompleteE2eAttempt({ ids: failed, index, errors: [{ message: 'globalSetup failed' }] }) ?? '', /error\(s\) outside any test/); // @source-text-assertion-ok subject is the returned refusal
-  assert.match(incompleteE2eAttempt({ ids: [...failed, 'not-a-test-id'], index }) ?? '', /not in the first attempt's report/); // @source-text-assertion-ok subject is the returned refusal
+  assert.deepEqual(report.errors, [], 'a test failure adds nothing to the top-level errors');
+  assert.match(incompleteE2eAttempt({ ids: failed, report: { ...report, errors: [{ message: 'globalSetup failed' }] } }) ?? '', /error\(s\) outside any test/); // @source-text-assertion-ok subject is the returned refusal
+  assert.match(incompleteE2eAttempt({ ids: failed, report: { ...report, errors: undefined } }) ?? '', /no errors list/); // @source-text-assertion-ok subject is the returned refusal
+  assert.match(incompleteE2eAttempt({ ids: [...failed, 'not-a-test-id'], report }) ?? '', /not in the first attempt's report/); // @source-text-assertion-ok subject is the returned refusal
 });
 
 test('#9788 review: a retry passes only when every retried test really passed; a deliberate skip is neither unintended nor a pass', () => {

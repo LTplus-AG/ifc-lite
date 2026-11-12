@@ -21,7 +21,7 @@ import { BimReactContext } from '@/sdk/BimProvider';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { cleanup, click, render } from '@/test/render';
-import { closeContrastBrowser, warmContrastBrowser, withThemedPage, type Theme } from '@/test/contrast/render-harness.js';
+import { CONTRAST_BROWSER_SKIP, closeContrastBrowser, warmContrastBrowser, withThemedPage, type Theme } from '@/test/contrast/render-harness.js';
 import { MobileToolbar } from './MobileToolbar';
 
 const THEMES: readonly Theme[] = ['light', 'dark', 'colorful'];
@@ -75,7 +75,7 @@ describe('the active phone tool paints the shared active state (#8802)', () => {
   before(warmContrastBrowser);
   after(closeContrastBrowser);
   for (const theme of THEMES) {
-    it(`in ${theme}`, async () => {
+    it(`in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       const ui = mountToolbar('measure');
       const html = ui.innerHTML;
       cleanup();

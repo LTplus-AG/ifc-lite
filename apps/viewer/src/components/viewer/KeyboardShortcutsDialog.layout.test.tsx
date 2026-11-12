@@ -42,7 +42,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { Page } from 'playwright-core';
 import { registerLocale, setLocale } from '@/i18n';
 import { cleanup, render, waitFor } from '@/test/render.js';
-import { closeContrastBrowser, warmContrastBrowser, withThemedPage, type Theme } from '@/test/contrast/render-harness.js';
+import { CONTRAST_BROWSER_SKIP, closeContrastBrowser, warmContrastBrowser, withThemedPage, type Theme } from '@/test/contrast/render-harness.js';
 import { KeyboardShortcutsDialog, type InfoDialogTab } from './KeyboardShortcutsDialog.js';
 
 /** The reported window first, then a laptop and two phones. */
@@ -209,7 +209,7 @@ describe('Info dialog layout (#8802)', () => {
   });
 
   for (const tab of TABS) {
-    it(`keeps the ${tab} tab on the panel at desktop and phone sizes`, async () => {
+    it(`keeps the ${tab} tab on the panel at desktop and phone sizes`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       for (const locale of LOCALES) {
         const html = await dialogHtml(tab, locale);
         for (const theme of THEMES) {

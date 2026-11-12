@@ -21,7 +21,7 @@
  * which that file's own header already documents as sitting at its
  * recorded module-size budget, and rather than reusing
  * `nonrel-positional-ref-narrowing.ts`'s `readAggregateSlot`, whose lookup
- * is keyed off `NONREL_REF_LIST_REGISTRY_NAMES` — a map scoped to the types
+ * is keyed off `getNonRelRefListRegistryNames()` — a map scoped to the types
  * that qualify for THAT file's own narrowing rule. `STYLE_RESCUE_TYPES` is
  * a different, independently-defined type set (`style-closure.ts`), so this
  * reads the general `getEntityRegistryNames()` map (`registry-entity-names.ts`)

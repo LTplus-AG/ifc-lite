@@ -24,6 +24,8 @@
 import { posix } from 'node:path';
 
 const LOCAL_USES = /uses:\s*['"]?\.\/(\.github\/workflows\/[^\s'"@#]+)/g;
+// A local action outside .github/actions/ is executed too, and this scan does not read it.
+const LOCAL_ACTION_ELSEWHERE = /uses:\s*['"]?\.\/(?!\.github\/(?:actions|workflows)\/)/;
 const REMOTE_WORKFLOW_USES = /uses:\s*['"]?[\w-]+\/[\w.-]+\/\.github\/workflows\//;
 // Expression function names are case-insensitive.
 const HASHFILES = /hashFiles\(/gi;
@@ -74,8 +76,10 @@ function judgePattern(pattern) {
   if (pattern.startsWith('!')) return 'none';
   const p = posix.normalize(pattern);
   // The workspace root, or an absolute path that may be it: everything below is hashed.
-  if (p === '.' || p === './' || p.startsWith('/')) return 'unknown';
-  const segs = p.replace(/\/$/, '').split('/');
+  // The workspace root, an absolute path that may be it, a climb out that may come back
+  // in (`../<repo>/.github`), or a directory-only trailing slash: unknown.
+  if (p === '.' || p === './' || p.startsWith('/') || p.startsWith('../') || p.endsWith('/')) return 'unknown';
+  const segs = p.split('/');
   if (!reachesWorkflows(segs)) return 'none';
   return segs.length === 3 && !segs.some(isWild) ? p : 'unknown';
 }
@@ -86,6 +90,8 @@ function cacheDependencyPaths(text) {
   for (const m of text.matchAll(CACHE_DEPENDENCY_PATH)) {
     const v = PLAIN_VALUE.exec(m[1].trim());
     if (!v) return null;
+    // A double-quoted YAML scalar may hold escapes (`\n` splits it into several paths).
+    if (v[2]?.includes('\\')) return null;
     out.push(v[1] ?? v[2] ?? v[3]);
   }
   return out;
@@ -111,7 +117,9 @@ export function workflowsKeyingCaches({ root, actionFiles, readText }) {
     const text = readText(path);
     if (typeof text !== 'string') return { unknown: `${path} could not be read` };
     if (REMOTE_WORKFLOW_USES.test(text)) return { unknown: `${path} calls a reusable workflow by owner/repo` };
-    for (const [, ref] of text.matchAll(LOCAL_USES)) {
+    if (LOCAL_ACTION_ELSEWHERE.test(text)) return { unknown: `${path} uses a local action outside .github/actions/` };
+    for (const [, raw] of text.matchAll(LOCAL_USES)) {
+      const ref = posix.normalize(raw);
       files.add(ref);
       if (!executed.includes(ref)) executed.push(ref);
     }

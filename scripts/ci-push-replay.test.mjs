@@ -166,7 +166,7 @@ test('workflowsKeyingCaches lists test.yml, the workflows it calls, and workflow
     [ROOT]: [
       'jobs:',
       '  a:',
-      '    uses: ./.github/workflows/reusable.yml',
+      '    uses: ./.github/workflows/./reusable.yml',
       '  b:',
       '    steps:',
       "      - { uses: './.github/workflows/flow.yaml' }",
@@ -183,7 +183,7 @@ test('workflowsKeyingCaches lists test.yml, the workflows it calls, and workflow
       '    with: { cache-dependency-path: .github/workflows/deps.yml }',
       '  - with:',
       "      cache-dependency-path: 'requirements-docs.txt'",
-      "  - with: { key: \"${{ hashFiles('.git*/ISSUE_TEMPLATE/*.yml', 'src*/**', '../outside/**', '!.github/**') }}\" }",
+      "  - with: { key: \"${{ hashFiles('.git*/ISSUE_TEMPLATE/*.yml', 'src*/**', '!.github/**') }}\" }",
     ].join('\n'),
     '.github/workflows/flow.yaml': 'jobs: {}',
     '.github/actions/a/action.yml': "runs:\n  steps:\n    - with: { key: \"${{ hashFiles('.github/workflows/via-action.yaml') }}\" }",
@@ -223,6 +223,10 @@ test('workflowsKeyingCaches is unknown when a hashFiles might reach a workflow f
     ['test', "key: ${{ hashfiles('**') }}"],
     ['test', 'cache-dependency-path: .github/workflows/*.yml'],
     ['test', 'cache-dependency-path: |\n  a.txt\n  .github/workflows/x.yml'],
+    ['test', 'cache-dependency-path: "a\\n.github/workflows/x.yml"'],
+    ['test', "key: ${{ hashFiles('../ifc-lite/.github/workflows/x.yml') }}"],
+    ['test', "key: ${{ hashFiles('.github/workflows/x.yml/') }}"],
+    ['test', '- uses: ./ci/setup'],
     ['action', "key: ${{ hashFiles('**') }}"],
     ['reusable', "key: ${{ hashFiles('.github/workflows/*.yml') }}"],
   ]) {
@@ -454,7 +458,7 @@ test('the probe reads the Test workflow files at the push commit', {
   const output = join(root, 'output');
   const gh = join(bin, 'gh');
 
-  const replayFor = (changed) => {
+  const replayFor = (changed, cwd = root) => {
     const before = git('rev-parse', 'HEAD');
     if (typeof changed === 'function') changed();
     else write(changed, `changed ${Math.random()}\n`);
@@ -478,12 +482,15 @@ test('the probe reads the Test workflow files at the push commit', {
       ...process.env, PATH: `${bin}${delimiter}${process.env.PATH}`,
       GITHUB_REPOSITORY: 'fixture/replay', GITHUB_SHA: head, PUSH_BEFORE: before, GITHUB_OUTPUT: output,
     };
-    const run = spawnSync(process.execPath, [script, '--probe'], { cwd: root, env, encoding: 'utf8' });
+    const run = spawnSync(process.execPath, [script, '--probe'], { cwd, env, encoding: 'utf8' });
     assert.equal(run.status, 0, run.stderr);
     return readFileSync(output, 'utf8');
   };
   const full = 'replay=false\nreplay_run=\nreplay_queue=false\n';
   assert.equal(replayFor('.github/workflows/cla.yml'), 'replay=true\nreplay_run=1\nreplay_queue=false\n', 'a workflow test.yml does not read');
+  // From a subdirectory: a cwd-relative ls-tree would list no action and miss the key.
+  mkdirSync(join(root, 'sub'), { recursive: true });
+  assert.equal(replayFor('.github/workflows/named.yml', join(root, 'sub')), full, 'a workflow a key hashes, probed from a subdirectory');
   // Rename detection would list only the new path, which no key hashes.
   assert.equal(replayFor(() => git('mv', '.github/workflows/named.yml', '.github/workflows/renamed.yml')), full, 'a renamed workflow a cache key hashes');
   assert.equal(replayFor('.github/actions/setup/action.yml'), full, 'an action file');

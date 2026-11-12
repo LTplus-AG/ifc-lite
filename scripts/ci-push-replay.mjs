@@ -231,7 +231,8 @@ function readInputs(repo, pushSha, pushTree, parentSha, before) {
   if (changedFiles.some((f) => f.startsWith('.github/workflows/'))) {
     // The push commit's side suffices: dropping a `uses:` or hashFiles edits a file that blocks.
     // -z: a non-ASCII path would come back quoted, and `git show` of the quoted name fails.
-    const actionFiles = gitOrNull('ls-tree', '-z', '-r', '--name-only', pushSha, '--', '.github/actions/')?.split('\0').filter(Boolean) ?? null;
+    // --full-tree: the pathspec is from the repo root whatever the cwd, like `git show`.
+    const actionFiles = gitOrNull('ls-tree', '-z', '-r', '--full-tree', '--name-only', pushSha, '--', '.github/actions/')?.split('\0').filter(Boolean) ?? null;
     const keyed = workflowsKeyingCaches({ root: TEST_WORKFLOW_PATH, actionFiles, readText: (path) => gitOrNull('show', `${pushSha}:${path}`) });
     if (keyed.files) workflowFiles = keyed.files;
     else console.warn(`[push-replay] cannot tell which workflow files key Test's caches at ${pushSha.slice(0, 9)} (${keyed.unknown}); every workflow file blocks`);

@@ -11,9 +11,10 @@
  *   pieces and materialized instanced occurrences), hashed over exact bytes
  *   (positions, normals, indices, colour) and summed per expressId, so piece
  *   order never matters. Equal for a cold open and a faithful cache hit.
- * - snapshots: the batches a finalize captured or a reopen adopted (sorted by
+ * - snapshots: the batches a load wrote to the cache (after the writer moved
+ *   their ordinals to the entry's mesh order) or a reopen adopted (sorted by
  *   key; vertex, index, id and ordinal bytes plus the table fields). An adopted
- *   snapshot must equal one an earlier open of the same file captured.
+ *   snapshot must equal one an earlier open of the same file wrote.
  */
 
 import type { MeshData } from '@ifc-lite/geometry';

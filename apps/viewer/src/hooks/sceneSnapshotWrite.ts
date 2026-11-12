@@ -17,6 +17,7 @@
  */
 
 import { encodeSceneSnapshotInSlices, reorderSnapshotPieces, type SceneSnapshot } from '@ifc-lite/renderer';
+import { tapSceneSnapshot } from '../lib/perf/sceneIdentityTap.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { LoadTrace } from '@ifc-lite/load-trace';
 import { useViewerStore } from '../store/index.js';
@@ -171,6 +172,8 @@ export async function writeCapturedScene(
     if (changed) return finish('scene-changed', { reason: changed });
     // `refused`: the entry was replaced or purged, or quota is short (putSceneSnapshot's own guards).
     const stored = await putSceneSnapshot(target.cacheKey, target.write, blob, captured.key);
+    // Identity pass only: the batches as stored (ordinals already moved to the entry's mesh order).
+    if (stored) tapSceneSnapshot('written', snapshot);
     return finish(stored ? 'written' : 'refused', { bytes: blob.size, encodeMs: Math.round(encodeMs) });
   } catch (err) {
     console.warn('[useIfcCache] Scene snapshot was not stored:', err);

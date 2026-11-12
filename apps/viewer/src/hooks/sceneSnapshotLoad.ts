@@ -188,7 +188,6 @@ function armSceneCapture(renderer: Renderer, isStale: () => boolean, trace: Load
     const skipped = isStale() ? 'superseded' : loadFailed() ? 'load-failed' : mergedBytes(snapshot) > SNAPSHOT_CAPTURE_MAX_BYTES ? 'over-cap'
       : !sceneBounds ? 'no-scene-bounds' : !fitBounds ? 'no-fit-bounds' : !sceneMatchesCachedGeometry() ? 'level-offsets' : null;
     if (skipped || !sceneBounds || !fitBounds) return noteSnapshotSkip(trace, 'not-captured', skipped ?? 'no-bounds');
-    tapSceneSnapshot('captured', snapshot);
     onCaptured({ snapshot, sources, key: snapshotKey(renderer.getScene()), fit: { fitBounds, sceneBounds, orbitAnchorBounds: camera.getOrbitAnchorBounds() },
       policyNow: () => renderer.getScene().sceneSnapshotPolicy(), loadFailed,
       // The entry is serialized from the live meshes after the swap: an edit since then would make it disagree.

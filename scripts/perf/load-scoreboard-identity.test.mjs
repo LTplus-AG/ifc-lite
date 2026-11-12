@@ -4,7 +4,7 @@
 
 // Reopen output identity: a reopen matches only when it restored its own cold
 // open's geometry and every snapshot it adopted equals one an earlier open
-// captured. Missing input is never a match.
+// wrote. Missing input is never a match.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -18,10 +18,10 @@ async function load(path) {
 
 const id = (sig, snapshots = [], perElement = { 1: 'a', 2: 'b' }) => ({ tap: true, pending: 0, hydrating: false, finalizing: false,
   pieces: { pieces: 2, elements: Object.keys(perElement).length, sig, perElement }, snapshots });
-const cap = (sig) => ({ kind: 'captured', sig, batches: 3 });
+const cap = (sig) => ({ kind: 'written', sig, batches: 3 });
 const adopt = (sig) => ({ kind: 'adopted', sig, batches: 3 });
 
-test('a streamed reopen with the cold pieces matches; an adopted snapshot must equal an earlier capture', async () => {
+test('a streamed reopen with the cold pieces matches; an adopted snapshot must equal an earlier written one', async () => {
   const { reopenIdentityVerdict } = await load('./load-scoreboard-identity.mjs');
   const cold = { label: 'cold', identity: id('P', [cap('S1')]) };
   const streamed = reopenIdentityVerdict([cold, { label: 'warm1', identity: id('P') }], 1);
@@ -32,11 +32,11 @@ test('a streamed reopen with the cold pieces matches; an adopted snapshot must e
   assert.equal(adopted.adopted, 1);
 });
 
-test('the altered-snapshot control: an adopted snapshot no open captured is a RESTORE MISMATCH', async () => {
+test('the altered-snapshot control: an adopted snapshot no open wrote is a RESTORE MISMATCH', async () => {
   const { reopenIdentityVerdict } = await load('./load-scoreboard-identity.mjs');
   const v = reopenIdentityVerdict([{ label: 'cold', identity: id('P', [cap('S1')]) }, { label: 'warm1', identity: id('P', [adopt('S1-altered')]) }], 1);
   assert.equal(v.match, false);
-  assert.match(v.verdict, /^RESTORE MISMATCH vs cold: adopted S1-altered equals no snapshot/);
+  assert.match(v.verdict, /^RESTORE MISMATCH vs cold: adopted S1-altered equals no snapshot an earlier open wrote/);
   const unhashed = reopenIdentityVerdict([{ label: 'cold', identity: id('P', [cap('S1')]) }, { label: 'warm1', identity: id('P', [{ kind: 'adopted', sig: null, error: 'x' }]) }], 1);
   assert.match(unhashed.verdict, /^RESTORE MISMATCH/, 'an adopted snapshot that was not hashed is not a match');
 });

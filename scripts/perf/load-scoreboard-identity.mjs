@@ -12,10 +12,10 @@
  *
  * - pieces: every CPU geometry piece (flat and materialized instanced), over
  *   exact bytes, per expressId, independent of order;
- * - snapshots: the batches a finalize captured or a reopen adopted.
+ * - snapshots: the batches a load wrote to the cache or a reopen adopted.
  *
  * A reopen matches when its pieces equal its own cold open's, and every
- * snapshot it adopted equals one an earlier open of the sample captured.
+ * snapshot it adopted equals one an earlier open of the sample wrote.
  * Chained with browser-cold's element-hash verdict (base cold == branch cold),
  * that verifies the reopen lanes. Timed and memory samples never set the flag.
  *
@@ -101,14 +101,14 @@ export function reopenIdentityVerdict(opens, index) {
     const missing = Object.keys(a).filter((id) => !(id in b)), extra = Object.keys(b).filter((id) => !(id in a));
     problems.push(`pieces ${warm.pieces.elements} vs cold ${cold.pieces.elements} elements: ${changed.length} changed, ${missing.length} missing, ${extra.length} extra (e.g. ${[...changed, ...missing, ...extra].slice(0, 5).join(', ')})`);
   }
-  const captured = new Set(opens.slice(0, index).flatMap((o) => (o.identity?.snapshots ?? []).filter((s) => s.kind === 'captured' && s.sig).map((s) => s.sig)));
+  const written = new Set(opens.slice(0, index).flatMap((o) => (o.identity?.snapshots ?? []).filter((s) => s.kind === 'written' && s.sig).map((s) => s.sig)));
   const adopted = (warm.snapshots ?? []).filter((s) => s.kind === 'adopted');
   for (const s of adopted) {
     if (!s.sig) problems.push(`adopted snapshot not hashed (${s.error ?? 'no signature'})`);
-    else if (!captured.has(s.sig)) problems.push(`adopted ${s.sig} equals no snapshot an earlier open captured (${captured.size} captured)`);
+    else if (!written.has(s.sig)) problems.push(`adopted ${s.sig} equals no snapshot an earlier open wrote (${written.size} written)`);
   }
   if (problems.length) return { verdict: `RESTORE MISMATCH vs cold: ${problems.join('; ')}`, match: false, adopted: adopted.length };
-  return { verdict: `match (pieces = cold${adopted.length ? `, ${adopted.length} adopted snapshot(s) = captured` : ', streamed (no snapshot adopted)'})`, match: true, adopted: adopted.length };
+  return { verdict: `match (pieces = cold${adopted.length ? `, ${adopted.length} adopted snapshot(s) = written` : ', streamed (no snapshot adopted)'})`, match: true, adopted: adopted.length };
 }
 
 /**

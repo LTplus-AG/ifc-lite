@@ -53,7 +53,7 @@ describe('scene identity (scoreboard identity pass)', () => {
 
   it('with the flag off a tap records nothing', () => {
     assert.equal(sceneIdentityEnabled(), false, 'off by default');
-    tapSceneSnapshot('captured', snapshot([batch('a', 1)]));
+    tapSceneSnapshot('written', snapshot([batch('a', 1)]));
     assert.equal(tappedSceneSnapshots().snapshots.length, 0, 'nothing kept, nothing loaded');
   });
 

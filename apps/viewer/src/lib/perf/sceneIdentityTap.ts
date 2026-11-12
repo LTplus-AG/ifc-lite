@@ -6,7 +6,7 @@
  * Scene identity tap for the load scoreboard's untimed identity pass
  * (`?perf.sceneIdentity=1`). A cache hit carries no element geometry hashes, so
  * a reopen is verified against its own cold open on what the scene really
- * holds: the batches finalize captured (cold) or a reopen adopted, hashed by
+ * holds: the batches a load wrote to the cache or a reopen adopted, hashed by
  * `sceneIdentity.ts`, loaded only when the flag is on. With the flag off (every
  * normal and every timed load) a tap is one flag read and returns.
  */
@@ -14,7 +14,7 @@
 import type { SceneSnapshot } from '@ifc-lite/renderer';
 import { readPerfFlag } from './flags.js';
 
-export type TappedKind = 'captured' | 'adopted';
+export type TappedKind = 'written' | 'adopted';
 export interface TappedSnapshot { kind: TappedKind; sig: string | null; batches: number; error?: string }
 
 const tapped: TappedSnapshot[] = [];
@@ -25,7 +25,7 @@ export function sceneIdentityEnabled(): boolean {
   return v === true || v === 1 || v === '1' || v === 'true';
 }
 
-/** Hash `snapshot` off the load path (its views stay valid: the writer copies, adoption keeps them). */
+/** Hash `snapshot` off the load path (its views stay valid: the writer has copied it, adoption keeps them). */
 export function tapSceneSnapshot(kind: TappedKind, snapshot: SceneSnapshot): void {
   if (!sceneIdentityEnabled()) return;
   const entry: TappedSnapshot = { kind, sig: null, batches: snapshot.batches.length };

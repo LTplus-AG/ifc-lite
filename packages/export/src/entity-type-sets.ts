@@ -14,9 +14,10 @@
  */
 
 import {
-  ENTITIES_IFC2X3,
-  ENTITIES_IFC4_EXPRESS,
-  ENTITIES_IFC4X3,
+  eagerSchemaTable,
+  getEntitiesIfc2x3,
+  getEntitiesIfc4Express,
+  getEntitiesIfc4x3,
   type IfcEntityInfo,
 } from '@ifc-lite/data';
 
@@ -62,12 +63,22 @@ export const INFRASTRUCTURE_TYPES = new Set([
  * its overlap with `SPATIAL_STRUCTURE_TYPES` is harmless. The `hiddenIds`
  * fallback below still catches types no bundled schema declares.
  */
-/** Exported for the drift test that diffs it against the schema tables. */
-export const PRODUCT_TYPES: ReadonlySet<string> = buildProductTypes();
+/** Exported for the drift test that diffs it against the schema tables.
+ *  Production code reads {@link getProductTypes}: this constant is built when
+ *  its chunk loads wherever it is referenced. */
+export const PRODUCT_TYPES: ReadonlySet<string> = /* @__PURE__ */ eagerSchemaTable('ifc-lite-eager-table:PRODUCT_TYPES', getProductTypes);
+
+let productTypes: ReadonlySet<string> | undefined;
+
+/** The set {@link PRODUCT_TYPES} is, built on first call. */
+export function getProductTypes(): ReadonlySet<string> {
+  if (productTypes === undefined) productTypes = buildProductTypes();
+  return productTypes;
+}
 
 function buildProductTypes(): Set<string> {
   const products = new Set<string>();
-  for (const table of [ENTITIES_IFC2X3, ENTITIES_IFC4_EXPRESS, ENTITIES_IFC4X3]) {
+  for (const table of [getEntitiesIfc2x3(), getEntitiesIfc4Express(), getEntitiesIfc4x3()]) {
     collectDescendantNames(table, 'IfcProduct', products);
   }
   return products;

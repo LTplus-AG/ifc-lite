@@ -5369,6 +5369,8 @@
     "comparePropertyValues: function",
     "countEffectiveEntityTypes: function",
     "createLogger: function",
+    "eagerSchemaTable: function",
+    "eagerSchemaTablesEvaluated: function",
     "edgeSurvives: function",
     "entityTableFromColumns: function",
     "entityTableToColumns: function",

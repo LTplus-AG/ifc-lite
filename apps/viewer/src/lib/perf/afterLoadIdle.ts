@@ -27,8 +27,13 @@
  * each in its own idle period. A job that returns a promise holds the next one
  * back until it settles (the snapshot write's sliced encode, the overlay parse);
  * one that returns nothing does not (compaction runs in a worker; the tier-1
- * build yields per chunk and can take seconds on a large model). The snapshot
- * write goes first because it decides whether the next reopen is fast. A job
+ * build yields per chunk and can take seconds on a large model). The order is
+ * among jobs the queue has: the snapshot write enters once its cache entry is
+ * stored (its bytes are written beside it), so on a cold load whose entry is
+ * still being written, ready overlay, compaction and search jobs run first and
+ * the write runs next once it enters. Holding them behind the entry write (about
+ * 2 s on a 170 MB model) would delay them without making the next reopen faster;
+ * on a cache hit the entry exists and the write enters at once. A job
  * holds the queue for 15 s at most; past that, later jobs start
  * while it finishes, so one slow or stuck job cannot hold every model back.
  *

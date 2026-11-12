@@ -14,6 +14,15 @@ import { buildTier1Index } from '@/lib/search/tier1-index';
 import { modelLoadTrace, tracePhaseOnce } from '@/lib/perf/activeLoadTrace';
 import { runAfterModelSettled } from '@/lib/perf/afterLoad';
 
+/**
+ * What a tier-1 index is built from: the store's entity table (with its strings). A wrapper of the same
+ * data (partial/final hydration, `{ ...store }`) shares it and keeps its index; a replaced store under
+ * the same model id brings its own and is indexed again.
+ */
+function indexSourceOf(store: object): object {
+  return (store as { entities?: object }).entities ?? store;
+}
+
 export function useSearchIndex(): void {
   const {
     models,
@@ -36,7 +45,7 @@ export function useSearchIndex(): void {
   // One AbortController per in-flight build. Lets us cancel cleanly when a
   // model is removed mid-build or when the component unmounts.
   const controllersRef = useRef<Map<string, AbortController>>(new Map());
-  // The data store each claim builds from: a store replaced under the same id replaces its claim.
+  // What each claim indexes (indexSourceOf): a store replaced under the same id replaces its claim.
   const claimStoresRef = useRef<WeakMap<AbortController, object>>(new WeakMap());
 
   useEffect(() => {
@@ -63,22 +72,23 @@ export function useSearchIndex(): void {
     for (const [modelId, model] of models) {
       if (!model.ifcDataStore) continue;
       const claimed = controllers.get(modelId);
-      if (claimed) {
-        if (claimStoresRef.current.get(claimed) === model.ifcDataStore) continue;
-        // The store was replaced under this id while its build waited or ran: stop it (it can no longer
-        // publish) and build the current store.
-        controllers.delete(modelId);
-        claimed.abort();
+      const record = useViewerStore.getState().searchIndexes.get(modelId);
+      const builtFrom = claimed ? claimStoresRef.current.get(claimed) : record?.source;
+      const current = indexSourceOf(model.ifcDataStore);
+      if (builtFrom !== undefined && builtFrom !== current) {
+        // The store was replaced under this id: while its build waited or ran (stop it: it can no longer
+        // publish), or after its index was built (that index answers for the old store). Build the current one.
+        if (claimed) { controllers.delete(modelId); claimed.abort(); }
         setSearchIndexRecord(modelId, { status: 'pending', progress: 0 });
-      }
+      } else if (claimed) continue;
       const existing = useViewerStore.getState().searchIndexes.get(modelId);
       if (existing && existing.status !== 'pending') continue;
 
       const controller = new AbortController();
       controllers.set(modelId, controller);
-      claimStoresRef.current.set(controller, model.ifcDataStore);
+      claimStoresRef.current.set(controller, current);
 
-      setSearchIndexRecord(modelId, { status: 'building', progress: 0 });
+      setSearchIndexRecord(modelId, { status: 'building', progress: 0, source: current });
 
       // Fire-and-forget — the build is cancellable via the controller, and
       // the completion handlers update the store without needing a ref.
@@ -93,13 +103,13 @@ export function useSearchIndex(): void {
         onProgress: (done, total) => {
           if (controller.signal.aborted) return;
           const progress = total > 0 ? done / total : 1;
-          setSearchIndexRecord(modelId, { status: 'building', progress });
+          setSearchIndexRecord(modelId, { status: 'building', progress, source: current });
         },
       }))
         .then((index) => {
           if (controller.signal.aborted || controllers.get(modelId) !== controller) return;
           controllers.delete(modelId);
-          setSearchIndexRecord(modelId, { status: 'ready', index, progress: 1 });
+          setSearchIndexRecord(modelId, { status: 'ready', index, progress: 1, source: current });
         })
         .catch((err: unknown) => {
           if (controllers.get(modelId) !== controller) return;
@@ -108,7 +118,7 @@ export function useSearchIndex(): void {
           const message = err instanceof Error ? err.message : String(err);
           // Don't set a 'ready' record — Tier-0 fallback stays live.
           console.warn(`[useSearchIndex] build failed for ${modelId}:`, message);
-          setSearchIndexRecord(modelId, { status: 'error', error: message });
+          setSearchIndexRecord(modelId, { status: 'error', error: message, source: current });
         });
       // Dropped before it starts (the store was replaced): release the claim so the model is indexed again.
       const release = () => {

@@ -217,7 +217,10 @@ function noteSnapshotSkip(trace: LoadTrace, outcome: 'not-armed' | 'not-captured
  */
 function writeWhenSettled(captured: CapturedScene, entry: Promise<SnapshotEntry | null>, isStale: () => boolean, trace: LoadTrace, modelId: string | null): void {
   const span = trace.begin('cache.writeSceneSnapshot', { batches: captured.snapshot.batches.length });
-  import('./sceneSnapshotWrite.js').then(({ writeCapturedScene }) => writeCapturedScene(captured, entry, isStale, trace, span, modelId), (err: unknown) => {
+  // Taken now, at the swap: a model removed while the writer module loads must not read as a record-less one.
+  const model = modelId === null ? undefined : useViewerStore.getState().models.get(modelId);
+  const swap = { hadRecord: model !== undefined, store: model?.ifcDataStore ?? null };
+  import('./sceneSnapshotWrite.js').then(({ writeCapturedScene }) => writeCapturedScene(captured, entry, isStale, trace, span, modelId, swap), (err: unknown) => {
     console.warn('[useIfcCache] Scene snapshot writer did not load:', err);
     trace.end(span, { outcome: 'failed', reason: 'writer-load' });
   });

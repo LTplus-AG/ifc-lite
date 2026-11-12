@@ -360,6 +360,12 @@ export function getDisplayParseFor(value: IfcDataStore | SymbolicParseStoreBindi
   return last && last.frame === frameOf(rtc.key, elevationRebaseFor(store)) ? last.result : undefined;
 }
 
+/** Whether `store` has had an overlay parse land (any key or frame): a re-parse of it is an update, not its first parse after a load. */
+export function storeHasParse(store: IfcDataStore): boolean {
+  const room = roomSymbolicSource(store);
+  return room ? (ROOM_PARSE_CACHE.get(room)?.size ?? 0) > 0 : LAST_PARSE.has(store);
+}
+
 /**
  * Subscribe to parse-cache completions. Returns the unsubscribe function, so
  * a caller cannot leak a listener by forgetting which set to delete from.

@@ -21,7 +21,7 @@ import {
   type AnnotationText2D,
   type AnnotationsForStorey,
 } from '../lib/overlay-parse/symbolic-parse.js';
-import { ensureParseFor, getDisplayParseFor, subscribeToParseCache } from './symbolic-parse-cache.js';
+import { ensureParseFor, getDisplayParseFor, storeHasParse, subscribeToParseCache } from './symbolic-parse-cache.js';
 import { modelLoadSettled, runAfterModelSettled } from '../lib/perf/afterLoad.js';
 import { useOverlayChannelGate } from './useOverlayChannelGate.js';
 import {
@@ -78,15 +78,18 @@ function useAnnotationParseTrigger(enabled: boolean, stores: SymbolicActiveStore
 
   useEffect(() => {
     if (!enabled) return undefined;
-    // A store whose OWN model is still loading is parsed once that load settles
-    // (it is published before the load is interactive); any other store at once,
-    // whatever else is loading. The render keeps a store's last parse meanwhile.
+    // A store's FIRST parse is its model's 'overlay-parse' after-load job: once its own load has
+    // settled (another model's load holds nothing back), in an idle period. That includes a store
+    // first seen after its load settled: a cache hit can publish its store and settle in one commit,
+    // and parsing here then would put the source handoff into the settle-to-interactive window.
+    // A store already parsed (an edit or re-key of a settled model) re-parses at once. The render
+    // keeps a store's last parse meanwhile.
     const state = useViewerStore.getState();
     const now: Array<Pick<SymbolicActiveStore, 'store' | 'mutationView'>> = [];
     const cancels: Array<() => void> = [];
     for (const { store, mutationView, modelId: id } of stores) {
       const modelId = id === 'legacy' ? null : id;
-      if (modelLoadSettled(state, modelId)) now.push({ store, mutationView });
+      if (storeHasParse(store) && modelLoadSettled(state, modelId)) now.push({ store, mutationView });
       else cancels.push(runAfterModelSettled({ job: 'overlay-parse', modelId, store }, () => Promise.allSettled(ensureParseFor([{ store, mutationView }]))));
     }
     if (now.length > 0) ensureParseFor(now);

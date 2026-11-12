@@ -135,6 +135,29 @@ describe('one search-index owner across viewer lifecycle (#3993)', () => {
     assert.deepEqual(ids, [7], 'the index answers from the current store only');
   });
 
+  it('a store replaced under the same id after its index became ready: the index is rebuilt from the current store', async () => {
+    const first = createSyntheticDataStore({ schemaVersion: 'IFC4', fileSize: 0, entities: [
+      { expressId: 41, type: 'IfcWall', name: 'Wall first', globalId: 'first-wall' }] });
+    const second = createSyntheticDataStore({ schemaVersion: 'IFC4', fileSize: 0, entities: [
+      { expressId: 7, type: 'IfcWall', name: 'Wall second', globalId: 'second-wall' }] });
+    useViewerStore.setState({ ...fixtureModels({ ...fixtureModel('one'), ifcDataStore: first }), searchIndexes: new Map() });
+    render(<Owner />);
+    for (let i = 0; i < 20 && useViewerStore.getState().searchIndexes.get('one')?.status !== 'ready'; i++) await settle();
+    const ids = () => { const st = useViewerStore.getState(); return collectSearchResults(st.models, st.searchIndexes, 'Wall').map((row) => row.expressId); };
+    assert.equal(useViewerStore.getState().searchIndexes.get('one')?.status, 'ready', 'the first store is indexed');
+    assert.deepEqual(ids(), [41]);
+    await act(async () => {
+      const models = new Map(useViewerStore.getState().models);
+      models.set('one', { ...models.get('one')!, ifcDataStore: second });
+      useViewerStore.setState({ models });
+    });
+    for (let i = 0; i < 20; i++) await settle();
+    const record = useViewerStore.getState().searchIndexes.get('one');
+    assert.equal(record?.status, 'ready', 'the replacement is indexed');
+    assert.deepEqual(ids(), [7], 'tier-1 answers from the current store, not the replaced one');
+    assert.equal(record?.source === second.entities, true, 'the record names what it answers for: the current store\'s entity table');
+  });
+
   it('builds a model published during a load only after the load settles and the page is idle', async () => {
     const idle: IdleRequestCallback[] = [];
     const originalIdle = window.requestIdleCallback;

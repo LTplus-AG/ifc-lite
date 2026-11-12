@@ -16,6 +16,7 @@ import { clearCache, getCached } from '../services/ifc-cache.js';
 import { entryOf, immediateIdle, putSnapshots, restoreIdle, snapshotTrace, storedSnapshot } from '../test/scene-snapshot-fixture.js';
 import { writeCapturedScene, type CapturedScene } from './sceneSnapshotWrite.js';
 import { __resetAfterLoadIdleForTests } from '../lib/perf/afterLoadIdle.js';
+import { runAfterModelSettled } from '../lib/perf/afterLoad.js';
 import { fixtureModel } from '../test/store-fixture.js';
 
 const BOUNDS = { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 2, z: 3 } };
@@ -162,6 +163,32 @@ describe('writeCapturedScene', () => {
       assert.deepEqual(await pending, { outcome: 'abandoned', span: 'abandoned:model-removed' }, id);
       assert.equal((await getCached(id))!.sceneSnapshot, undefined, `${id}: nothing stored`);
     }
+  });
+
+  it('a model removed after the swap but before the writer module ran: the write is abandoned (the swap\'s record decides)', async () => {
+    const entry = await entryOf('sw');
+    const store = fixtureModel('sw').ifcDataStore;
+    useViewerStore.setState({ loading: false, models: new Map([['sw', { ...fixtureModel('sw'), ifcDataStore: store, loadState: 'complete' }]]) } as never);
+    const swap = { hadRecord: true, store }; // what the eager caller takes at the swap
+    useViewerStore.setState({ models: new Map() } as never); // removed while the lazy writer module loads; isStale() stays false
+    const { trace, outcomes } = snapshotTrace();
+    const outcome = await writeCapturedScene(captured(), Promise.resolve(entry), () => false, trace, trace.begin('cache.writeSceneSnapshot'), 'sw', swap);
+    assert.deepEqual([outcome, outcomes()[0]], ['abandoned', 'abandoned:model-removed']);
+    assert.equal((await getCached('sw'))!.sceneSnapshot, undefined, 'nothing stored for the removed model');
+  });
+
+  it('order: a cold write whose entry is still being stored does not hold ready jobs back; it runs once the entry is stored', async () => {
+    const entry = await entryOf('ord');
+    useViewerStore.setState({ loading: false, models: new Map([['ord', { ...fixtureModel('ord'), loadState: 'complete' }]]) } as never);
+    let resolveEntry!: (value: typeof entry) => void;
+    const order: string[] = [];
+    const pending = write(captured(), new Promise((resolve) => { resolveEntry = resolve; }), () => false, 'ord').then((r) => { order.push('snapshot-write'); return r; });
+    runAfterModelSettled({ job: 'overlay-parse', modelId: 'ord' }, () => { order.push('overlay-parse'); });
+    await new Promise((r) => setTimeout(r, 30));
+    assert.deepEqual(order, ['overlay-parse'], 'the ready overlay job ran while the entry was being stored');
+    resolveEntry(entry);
+    assert.equal((await pending).outcome, 'written', 'the write runs once its entry is stored');
+    assert.deepEqual(order, ['overlay-parse', 'snapshot-write']);
   });
 
   it('a load superseded while its write runs ends the span once, as abandoned, and stores nothing', async () => {

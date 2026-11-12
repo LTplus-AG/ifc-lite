@@ -52,19 +52,54 @@ export function runAfterModelSettled(options: AfterLoadOptions, work: (signal: A
   const hadRecord = options.modelId !== null && useViewerStore.getState().models.has(options.modelId);
   let cancel: (() => void) | null = null;
   let cancelled = false;
-  import('./afterLoadIdle.js').then(({ scheduleAfterLoad }) => {
+  const drop = () => { if (!cancelled) { cancelled = true; onDrop?.(); } };
+  loadQueue().then(({ scheduleAfterLoad }) => {
     if (!cancelled) cancel = scheduleAfterLoad(ENV, options, hadRecord, work, onDrop);
   }, (error: unknown) => {
-    // Without the queue the work runs now, as it did before there was one.
-    console.warn('[afterLoad] schedule did not load; running the job now', error);
-    if (!cancelled) void Promise.resolve().then(() => work(new AbortController().signal)).catch(() => {});
+    console.warn('[afterLoad] schedule did not load; running the job here once its model settles', error);
+    if (!cancelled) cancel = runWhenSettledHere(options, hadRecord, work, drop);
   });
   return () => {
     if (cancelled) return;
-    cancelled = true;
-    if (cancel) cancel();
-    else onDrop?.();
+    // The queue's cancel and the fallback's both report a drop to `onDrop` themselves.
+    if (cancel) { const end = cancel; cancel = null; end(); cancelled = true; } else drop();
   };
+}
+
+/** Whether the job's model (and store, when bound to one) is still the one it was scheduled for. */
+function jobAlive(state: ViewerState, options: AfterLoadOptions, hadRecord: boolean): boolean {
+  const model = options.modelId === null ? undefined : state.models.get(options.modelId);
+  if (model) return options.store == null || model.ifcDataStore === options.store;
+  return !hadRecord && (options.store == null || state.ifcDataStore === options.store);
+}
+
+/**
+ * Without the queue: the same rules for this one job (after its model settles; dropped when the model
+ * or its store goes; a started job's signal aborts then), without the idle period or the job order.
+ * Returns its cancel.
+ */
+function runWhenSettledHere(options: AfterLoadOptions, hadRecord: boolean, work: (signal: AbortSignal) => unknown, drop: () => void): () => void {
+  const controller = new AbortController();
+  let started = false;
+  let stop = () => {};
+  const check = () => {
+    const state = useViewerStore.getState();
+    if (!jobAlive(state, options, hadRecord)) { stop(); if (started) controller.abort(); else drop(); return; }
+    if (started || !modelLoadSettled(state, options.modelId)) return;
+    started = true;
+    void Promise.resolve().then(() => work(controller.signal)).catch(() => {}).finally(() => stop());
+  };
+  const fromStore = useViewerStore.subscribe(check);
+  const fromShards = subscribeInstancedShards(check);
+  stop = () => { fromStore(); fromShards(); };
+  check();
+  return () => { stop(); if (started) controller.abort(); else drop(); };
+}
+
+let loadQueue: () => Promise<typeof import('./afterLoadIdle.js')> = () => import('./afterLoadIdle.js');
+/** Test-only: replace how the queue module loads (e.g. a chunk that fails to load); `null` restores it. */
+export function __setAfterLoadQueueLoaderForTests(loader: typeof loadQueue | null): void {
+  loadQueue = loader ?? (() => import('./afterLoadIdle.js'));
 }
 
 /** The same, as a promise of `work`'s result; `undefined` when the job is dropped or cancelled before it runs. */

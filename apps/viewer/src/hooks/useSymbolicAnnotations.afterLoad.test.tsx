@@ -96,7 +96,7 @@ it('parses the overlay of a store published mid-load only after the load settles
   }
 });
 
-it('a settled model\'s overlay re-parses at once while another model loads, and shows its last parse until the new one lands', async () => {
+it('a settled model\'s overlay parses while another model loads, re-parses at once on an edit, and shows its last parse until the new one lands', async () => {
   const storeA = fixtureDataStore([{ expressId: 7, type: 'IfcAnnotation' }, { expressId: 8, type: 'IfcGrid' }]);
   storeA.source = contiguousSourceBytes(new TextEncoder().encode('model A grids'));
   storeA.schemaVersion = 'IFC4';
@@ -130,7 +130,10 @@ it('a settled model\'s overlay re-parses at once while another model loads, and 
     root = createRoot(container);
     await act(async () => { root!.render(<Probe />); });
     await tick();
-    assert.equal(posts, 1, 'A parses at once: B\'s load does not hold a settled model back');
+    assert.equal(posts, 0, 'A\'s first parse is an after-load job: it waits for an idle period');
+    await act(async () => { for (const cb of idle.splice(0)) cb({ didTimeout: false, timeRemaining: () => 50 }); });
+    await tick();
+    assert.equal(posts, 1, 'A parses in that idle period, while B still loads: B\'s load does not hold a settled model back');
     await release();
     const before = getParseFor({ store: storeA });
     assert.ok(before, 'A\'s parse landed');
@@ -154,6 +157,40 @@ it('a settled model\'s overlay re-parses at once while another model loads, and 
     assert.equal(after !== undefined && after !== before, true, 'the re-parse ran at once, without waiting for B');
     assert.equal(getDisplayParseFor({ store: storeA, mutationView: view }) === after, true, 'and replaces the last parse');
     assert.equal(posts, 1, 'B (still loading) is not parsed');
+  } finally {
+    __setOverlayWorkerFactoryForTest(previous);
+  }
+});
+
+it('a store first seen after its load settled (a cache hit publishes and settles in one commit) parses in an idle period, not at once', async () => {
+  const store = fixtureDataStore([{ expressId: 7, type: 'IfcAnnotation' }]);
+  store.source = contiguousSourceBytes(new TextEncoder().encode('settled before the effect saw it'));
+  let posts = 0;
+  const previous = __setOverlayWorkerFactoryForTest(() => {
+    const worker = {
+      onmessage: null as ((event: { data: unknown }) => void) | null,
+      postMessage(request: { id: number }) { posts++; queueMicrotask(() => worker.onmessage?.({ data: { id: request.id, ok: true, flat: createEmptyFlatSymbolic() } })); },
+      terminate() {},
+    };
+    return worker as unknown as Worker;
+  });
+  function Probe(): null {
+    useSymbolicAnnotations({ enabled: true });
+    return null;
+  }
+  try {
+    // Store and settle land together: the first render of the effect already sees a settled model.
+    useViewerStore.setState({ models: new Map([['m', { ...fixtureModel('m'), ifcDataStore: store, loadState: 'complete' }]]), activeModelId: 'm',
+      loading: false, geometryStreamingActive: false, mutationViews: new Map(), mutationVersion: 0 } as never);
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () => { root!.render(<Probe />); });
+    await tick();
+    assert.equal(posts, 0, 'no parse in the commit that settled the load');
+    await act(async () => { for (const cb of idle.splice(0)) cb({ didTimeout: false, timeRemaining: () => 50 }); });
+    await tick();
+    assert.equal(posts, 1, 'parsed in the next idle period');
   } finally {
     __setOverlayWorkerFactoryForTest(previous);
   }

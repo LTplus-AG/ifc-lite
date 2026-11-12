@@ -105,11 +105,20 @@ function abandonReason(isStale: () => boolean, captured: CapturedScene): string 
   return isStale() ? 'superseded' : captured.loadFailed() ? 'load-failed' : 'entry-timeout';
 }
 
+/** Whether `modelId` had a record at the swap, and its data store then (null: none yet, or the legacy store). */
+export interface SwapRecord { hadRecord: boolean; store: object | null }
+export function swapRecordOf(modelId: string | null): SwapRecord {
+  const model = modelId === null ? undefined : useViewerStore.getState().models.get(modelId);
+  return { hadRecord: model !== undefined, store: model?.ifcDataStore ?? null };
+}
+
 /**
  * Encode and store `captured` beside `entry` once its model's load has settled
  * and the page is idle: the `snapshot-write` job of the shared post-load
- * schedule (lib/perf/afterLoadIdle.ts), which runs before every other post-load
- * job. Ends the trace span `span` (begun by the caller at the swap).
+ * schedule (lib/perf/afterLoadIdle.ts). It enters the queue once `entry` is
+ * stored, and runs first among the jobs ready then; jobs that were ready while
+ * the entry was still being written may have run before it. Ends the trace span
+ * `span` (begun by the caller at the swap).
  */
 export async function writeCapturedScene(
   captured: CapturedScene,
@@ -118,6 +127,8 @@ export async function writeCapturedScene(
   trace: LoadTrace,
   span: number,
   modelId: string | null = null,
+  /** The model's record and store at the swap. The caller takes it there, before this module loads. */
+  swap: SwapRecord = swapRecordOf(modelId),
 ): Promise<SnapshotWriteOutcome> {
   let ended: SnapshotWriteOutcome | null = null;
   const finish = (outcome: SnapshotWriteOutcome, attrs: Record<string, number | string> = {}) => {
@@ -128,15 +139,13 @@ export async function writeCapturedScene(
   };
   const gone = () => isStale() || captured.loadFailed();
   const abandoned = () => finish('abandoned', { reason: abandonReason(isStale, captured) });
-  // The model as it was at the swap: a removal or reload while the entry is written ends the write.
-  const atSwap = modelId === null ? undefined : useViewerStore.getState().models.get(modelId);
-  const storeAtSwap = atSwap?.ifcDataStore ?? null;
   try {
     if (await supersession(gone, entry)) return abandoned();
     const target = await entry;
     if (!target) return finish('no-entry');
     const current = modelId === null ? undefined : useViewerStore.getState().models.get(modelId);
-    if (atSwap && (!current || (storeAtSwap !== null && current.ifcDataStore !== storeAtSwap))) {
+    // The model as it was at the swap: a removal or reload since then (while this module loaded, or the entry was written) ends the write.
+    if (swap.hadRecord && (!current || (swap.store !== null && current.ifcDataStore !== swap.store))) {
       return finish('abandoned', { reason: 'model-removed' });
     }
     // Bound to the model's current store too: a reload under the same id drops it.

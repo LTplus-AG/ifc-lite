@@ -144,6 +144,28 @@ test('REFUSE: the PR must meet the release queue\'s entry conditions now (label,
   for (const draft of ['true', '', undefined]) assert.equal(decide({ draft }).lane, 'full', String(draft));
 });
 
+test('SHADOW measures whatever the PR\'s queue state: an unlabelled or draft release PR is still reported (#9783 review)', () => {
+  // The open release PR carries no labels, so a shadow that needed
+  // `mergify-trial` reported nothing at all. It reports, and says why the PR
+  // is not queueable; the lean decision itself still refuses.
+  const { ownerAllowsLean: _ignored, ...held } = BASE;
+  for (const over of [{ labels: '[]' }, { draft: 'true' }, { labels: '[]', draft: 'true' }]) {
+    for (const mode of ['shadow', 'on']) {
+      const d = decideReleaseLane({ ...held, ...over, mode });
+      assert.equal(d.lane, 'full', `${mode} ${JSON.stringify(over)}`);
+      assert.equal(d.wouldBeLean, true, `${mode} ${JSON.stringify(over)}`);
+      assert.match(d.reason, /will not take this PR yet/); // @source-text-assertion-ok subject is the decision's returned reason
+    }
+  }
+  const v = verifyReleaseLane({ ...held, mode: 'shadow', labels: '[]', lane: 'full', needs: needsJson('success', { 'viewer-tests': 'failure' }) });
+  assert.equal(v.ok, true);
+  assert.match(v.lines.join('\n'), /would have deferred a failure to the merge queue: viewer-tests/); // @source-text-assertion-ok subject is the returned summary
+  assert.match(v.lines.join('\n'), /lacks `mergify-trial`/); // @source-text-assertion-ok subject is the returned summary
+  // A config that cannot route the PR, or a diff that is more than versions, is still not reported as lean.
+  assert.equal(decideReleaseLane({ ...held, mode: 'shadow', labels: '[]', mergify: () => '' }).wouldBeLean, false);
+  assert.equal(decideReleaseLane({ ...held, mode: 'shadow', labels: '[]', diff: () => ['x: not a release file'] }).wouldBeLean, false);
+});
+
 test('REFUSE: a queue Mergify could check in place, or an entry condition this script cannot judge', () => {
   // Mergify judges the PR's own run (in place, or merges without a draft)
   // only for single-step CI: merge_conditions empty or equal to the queue's.
@@ -175,6 +197,9 @@ test('the narrow queue-rule reader agrees with a YAML parse of the real .mergify
   assert.deepEqual(parseQueueRules(MERGIFY), real);
   const route = releaseQueueRoute(MERGIFY, { labels: ['mergify-trial'], draft: false });
   assert.equal(route.ok, true, route.reason);
+  assert.equal(route.queueable, true, route.queueReason);
+  assert.equal(releaseQueueRoute(MERGIFY, { labels: [], draft: false }).ok, true, 'a missing label is PR state, not a config refusal');
+  assert.equal(releaseQueueRoute(MERGIFY, { labels: [], draft: false }).queueable, false);
 });
 
 test('the release queue really tests a batch: its required `Rust tests (feature builds)` runs on a PR only for a batch', () => {

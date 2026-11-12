@@ -122,9 +122,11 @@ export function parseQueueRules(text) {
 /**
  * Does .mergify.yml route THIS release PR through a queue that runs the full
  * gate? Three parts:
- *  - the rule takes the release head and the PR meets its other entry
- *    conditions now (`label=`, `-draft`); any condition it cannot read
- *    refuses. `status-success=`/`check-success=` conditions are NOT judged:
+ *  - the rule takes the release head, and every other entry condition is
+ *    one it can read; any other refuses (`ok: false`). Whether THIS PR meets
+ *    them now (`label=`, `-draft`) is returned apart, as `queueable`, since a
+ *    label can change: shadow reports either way, only a lean run needs it.
+ *    `status-success=`/`check-success=` conditions are NOT judged:
  *    their result is not known when this runs, and one that never passes
  *    keeps the PR out of the queue, leaving its own run as the last gate
  *    before a direct merge. That is the risk OWNER_ALLOWS_LEAN holds back.
@@ -141,15 +143,18 @@ export function parseQueueRules(text) {
 export function releaseQueueRoute(text, { labels = [], draft = true } = {}) {
   const rule = parseQueueRules(text).find((r) => r.queue.includes(`head=${RELEASE_HEAD_REF}`));
   if (!rule) return { ok: false, reason: `no Mergify queue rule takes head=${RELEASE_HEAD_REF}` };
+  // `ok` is about the CONFIG; `unmet` is about this PR right now (a label or
+  // draft state can change), reported separately so shadow can still measure.
+  const unmet = [];
   for (const c of rule.queue) {
     if (c === `head=${RELEASE_HEAD_REF}` || /^(status|check)-success=/.test(c)) continue;
     if (c === '-draft') {
-      if (draft !== false) return { ok: false, reason: `the PR is a draft (or its draft state is unknown), so Mergify queue \`${rule.name}\` will not take it` };
+      if (draft !== false) unmet.push('it is a draft (or its draft state is unknown)');
       continue;
     }
     const label = /^label=(.+)$/.exec(c);
     if (label) {
-      if (!labels.includes(label[1])) return { ok: false, reason: `the PR lacks \`${label[1]}\`, so Mergify queue \`${rule.name}\` will not take it` };
+      if (!labels.includes(label[1])) unmet.push(`it lacks \`${label[1]}\``);
       continue;
     }
     return { ok: false, reason: `Mergify queue \`${rule.name}\` has an entry condition this script cannot judge: ${c}` };
@@ -158,7 +163,9 @@ export function releaseQueueRoute(text, { labels = [], draft = true } = {}) {
   if (missing.length > 0) return { ok: false, reason: `Mergify queue \`${rule.name}\` does not require ${missing.join(', ')}` };
   const sameAsQueue = rule.merge.length === rule.queue.length && rule.merge.every((c) => rule.queue.includes(c));
   if (sameAsQueue) return { ok: false, reason: `Mergify queue \`${rule.name}\` is single-step CI, so Mergify may judge the PR's own run in place` };
-  return { ok: true, reason: `Mergify queue \`${rule.name}\` takes this PR and gates the merge on the full lanes of a draft` };
+  const queueable = unmet.length === 0;
+  const queueReason = queueable ? `Mergify queue \`${rule.name}\` takes this PR` : `Mergify queue \`${rule.name}\` will not take this PR yet: ${unmet.join(', ')}`;
+  return { ok: true, reason: `Mergify queue \`${rule.name}\` gates the merge on the full lanes of a draft`, queueable, queueReason };
 }
 
 /**
@@ -211,9 +218,12 @@ export function decideReleaseLane({ event, mode, headRef, headRepo, repo, baseRe
     problems = [`diff unreadable (${err.message})`];
   }
   if (problems.length > 0) return full(`the diff is more than a version bump: ${problems.slice(0, 5).join('; ')}`);
-  if (m === 'shadow') return { lane: 'full', mode: m, wouldBeLean: true, reason: 'shadow mode: full lanes run, lean lane reported' };
-  if (!ownerAllowsLean) return { lane: 'full', mode: m, wouldBeLean: true, reason: 'CI_RELEASE_LANE=on, but the lean lane is held until the owner decides how release PRs reach main (OWNER_ALLOWS_LEAN); full lanes run, lean lane reported', warning: 'CI_RELEASE_LANE=on is held (OWNER_ALLOWS_LEAN=false); running the full lanes' };
-  return { lane: 'lean', mode: m, wouldBeLean: true, reason: `CI_RELEASE_LANE=on on the release PR; ${route.reason}` };
+  // Shadow and the held `on` report what the lean lane would skip whatever the
+  // PR's queue state, and say that state: measuring must not wait on a label.
+  if (m === 'shadow') return { lane: 'full', mode: m, wouldBeLean: true, reason: `shadow mode: full lanes run, lean lane reported; ${route.queueReason}` };
+  if (!ownerAllowsLean) return { lane: 'full', mode: m, wouldBeLean: true, reason: `CI_RELEASE_LANE=on, but the lean lane is held until the owner decides how release PRs reach main (OWNER_ALLOWS_LEAN); full lanes run, lean lane reported; ${route.queueReason}`, warning: 'CI_RELEASE_LANE=on is held (OWNER_ALLOWS_LEAN=false); running the full lanes' };
+  if (!route.queueable) return full(`${route.queueReason}, so this run is the only gate`, { warning: `release lane refused: ${route.queueReason}` });
+  return { lane: 'lean', mode: m, wouldBeLean: true, reason: `CI_RELEASE_LANE=on on the release PR; ${route.queueReason}; ${route.reason}` };
 }
 
 /**

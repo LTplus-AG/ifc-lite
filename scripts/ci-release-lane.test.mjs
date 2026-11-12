@@ -35,6 +35,7 @@ const REPO_ROOT = join(HERE, '..');
 const CLI = join(HERE, 'ci-release-lane.mjs');
 const MERGIFY = readFileSync(join(REPO_ROOT, '.mergify.yml'), 'utf8');
 const WORKFLOW = parse(readFileSync(join(REPO_ROOT, '.github/workflows/test.yml'), 'utf8'));
+const RELEASE_WORKFLOW = parse(readFileSync(join(REPO_ROOT, '.github/workflows/release.yml'), 'utf8'));
 const jobs = WORKFLOW.jobs;
 
 const TMP = mkdtempSync(join(tmpdir(), 'ci-release-lane-'));
@@ -543,4 +544,20 @@ test('WIRING: release-pr runs the release checks and is judged by the aggregate'
   const checkout = jobs.test.steps[jobs.test.steps.indexOf(verifyStep) - 1];
   assert.equal(checkout.with['fetch-depth'], 2, 'verify re-reads HEAD~1');
   assert.equal(checkout.if, verifyStep.if);
+});
+
+test('WIRING: release.yml queues the release PR only while CI_RELEASE_LANE is exactly `on` (#9783)', () => {
+  // Labelling makes the `release` queue take AND merge the release PR, which
+  // publishes; `shadow` must stay a pure measurement.
+  const steps = RELEASE_WORKFLOW.jobs.release.steps;
+  const at = steps.findIndex((s) => s.uses?.startsWith('changesets/action@')); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML
+  const step = steps.find((s) => s.name === 'Queue the release PR (CI_RELEASE_LANE=on)');
+  assert.ok(step, 'the labelling step exists');
+  assert.ok(steps.indexOf(step) > at, 'it runs after changesets/action has opened or updated the PR'); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML
+  assert.equal(step.if, "steps.changesets.outputs.pullRequestNumber != '' && vars.CI_RELEASE_LANE == 'on'");
+  assert.equal(step['continue-on-error'], true, 'a labelling failure never fails a release run');
+  // The label the queue's entry rule requires, read from .mergify.yml, not restated.
+  const entry = parse(readFileSync(join(REPO_ROOT, '.mergify.yml'), 'utf8')).pull_request_rules.find((r) => r.actions?.queue?.name === 'release');
+  const label = entry.conditions.find((c) => c.startsWith('label=')).slice('label='.length); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML
+  assert.equal(step.run, `gh pr edit "$PR" --repo "$REPO" --add-label ${label}`);
 });

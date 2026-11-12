@@ -459,6 +459,24 @@ jobs:
           # See the comment on the "Stamp crates.io token mint time" step.
           CRATES_TOKEN_MINTED_AT_MS: ${{ steps.crates-auth-time.outputs.minted_at_ms }}
 
+      # THE RELEASE PR LEAN LANE needs the PR queueable (scripts/ci-release-lane.mjs):
+      # the `release` queue's entry rule requires `mergify-trial`. Applied only
+      # while CI_RELEASE_LANE is exactly `on`, because the queue then also
+      # MERGES the release PR once its full-lane draft is green, and merging it
+      # publishes: `on` is the switch for both. `shadow` and `off` never label.
+      # Turning `on` off does not remove the label; remove it by hand to stop
+      # the release PR being queued. Not a protected label (label-authority.yml
+      # guards only the ready and `unqueued` labels), so the bot may apply it.
+      # A failure here must not fail the release run: it only delays queueing.
+      - name: Queue the release PR (CI_RELEASE_LANE=on)
+        if: steps.changesets.outputs.pullRequestNumber != '' && vars.CI_RELEASE_LANE == 'on'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ steps.changesets.outputs.pullRequestNumber }}
+          REPO: ${{ github.repository }}
+        run: gh pr edit "$PR" --repo "$REPO" --add-label mergify-trial
+
       # Whether to create this version's release artifacts.
       #
       # This used to be `steps.changesets.outputs.published == 'true'`, which

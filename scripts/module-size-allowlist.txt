@@ -126,7 +126,6 @@
    991 apps/viewer/src/lib/llm/script-edit-ops.ts
   1141 apps/viewer/src/lib/llm/script-preflight.ts
    747 apps/viewer/src/lib/llm/system-prompt.ts
-   450 apps/viewer/src/lib/search/tier1-index.ts
    412 apps/viewer/src/lib/sources/persistence.ts
    426 apps/viewer/src/lib/tours/controller.ts
    812 apps/viewer/src/sdk/adapters/export-adapter.ts
@@ -272,7 +271,6 @@
    788 packages/server-client/src/data-model-decoder.ts
    444 packages/server-client/src/parquet-tables.ts
    595 packages/server-client/src/types.ts
-   411 packages/source-dalux/src/http-client.ts
    406 packages/source-dalux/src/provider.ts
    415 packages/viewer/src/server.ts
   1486 packages/viewer/src/viewer-html.ts

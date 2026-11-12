@@ -149,8 +149,10 @@ import { splitToolDe } from './de/split-tool';
 import { stairRailingDe } from './de/stair-railing';
 import { storeyContextDe } from './de/storey-context';
 import { storeyManagerDe } from './de/storey-manager';
+import { structuralGlyphsDe } from './de/structural-glyphs';
 import { structuralPropertiesDe } from './de/structural-properties';
 import { structuralReviewDe } from './de/structural-review';
+import { structuralDeriveDe } from './de/structural-derive';
 import { sweptDiskInspectionDe } from './de/swept-disk-inspection';
 import { tableCorrectionsDe } from './de/table-corrections';
 import { terrainImageryDe } from './de/terrain-imagery';
@@ -313,8 +315,10 @@ export default {
   ...stairRailingDe,
   ...storeyContextDe,
   ...storeyManagerDe,
+  ...structuralGlyphsDe,
   ...structuralPropertiesDe,
   ...structuralReviewDe,
+  ...structuralDeriveDe,
   ...sweptDiskInspectionDe,
   ...tableCorrectionsDe,
   ...terrainImageryDe,

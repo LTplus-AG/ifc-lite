@@ -5,6 +5,7 @@
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  CONTRAST_BROWSER_SKIP,
   closeContrastBrowser,
   measureTextContrastOnSurface,
   warmContrastBrowser,
@@ -30,7 +31,7 @@ after(closeContrastBrowser);
 describe('status role utilities resolve to their own colours (#8802)', () => {
   for (const theme of THEMES) {
     for (const [role, text, surface] of ROLES) {
-      it(`${role} text and surface are painted in ${theme}`, async () => {
+      it(`${role} text and surface are painted in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
         const { roleColor, plainColor, surfaceColor } = await withThemedPage(
           theme,
           `<span id="plain">Plain</span><span id="role" class="${text}">Role</span><div id="surface" class="${surface}">Surface</div>`,
@@ -53,7 +54,7 @@ describe('status roles meet WCAG AA on card and their own surface (#8802)', () =
   for (const theme of THEMES) {
     for (const [role, text, surface] of ROLES) {
       for (const background of ['bg-card', surface]) {
-        it(`${role} on ${background} clears AA in ${theme}`, async () => {
+        it(`${role} on ${background} clears AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
           const ratio = await measureTextContrastOnSurface(theme, background, text, 'bg-card');
           assert.ok(
             ratio >= WCAG_AA_NORMAL_TEXT,

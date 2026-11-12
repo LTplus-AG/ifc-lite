@@ -17,6 +17,8 @@
  */
 
 import type {
+  StructuralLoadInStoreParams, StructuralCurveActionInStoreParams, StructuralMemberConnectionOptions,
+  StructuralEntityEdit,
   StructuralCurveReactionInStoreParams,
   StructuralPointReactionInStoreParams,
   StructuralResultGroupInStoreParams,
@@ -35,6 +37,11 @@ import type {
 import type { EntityRef } from './types.js';
 
 export interface StructuralStoreBackendMethods {
+  addStructuralLoad?(modelId: string, params: StructuralLoadInStoreParams): EntityRef;
+  addStructuralCurveAction?(modelId: string, params: StructuralCurveActionInStoreParams): EntityRef;
+  connectStructuralElement?(modelId: string, RelatingElement: number, RelatedStructuralMember: number): EntityRef;
+  editStructuralEntity?(modelId: string, expressId: number, patch: StructuralEntityEdit): EntityRef;
+  removeStructuralEntity?(modelId: string, expressId: number): EntityRef;
   addStructuralPlanarAction?(modelId: string, params: StructuralSurfaceActionInStoreParams): EntityRef;
   addStructuralSurfaceAction?(modelId: string, params: StructuralSurfaceActionInStoreParams): EntityRef;
   addStructuralPointReaction?(modelId: string, params: StructuralPointReactionInStoreParams): EntityRef;
@@ -61,7 +68,7 @@ export interface StructuralStoreBackendMethods {
   /** `IfcStructuralLinearAction` + its `IfcStructuralLoadLinearForce` — no storey anchor. */
   addStructuralLinearAction(modelId: string, params: StructuralLinearActionInStoreParams): EntityRef;
   /** `IfcRelConnectsStructuralMember` linking a curve member to a point connection. */
-  connectStructuralMemberToConnection(modelId: string, memberExpressId: number, connectionExpressId: number): EntityRef;
+  connectStructuralMemberToConnection(modelId: string, memberExpressId: number, connectionExpressId: number, options?: StructuralMemberConnectionOptions): EntityRef;
   /** `IfcRelConnectsStructuralActivity` applying an action/reaction to the member or connection it acts on. */
   connectStructuralActivityToItem(modelId: string, itemExpressId: number, activityExpressId: number): EntityRef;
   /** `IfcRelAssignsToGroup` — members/connections into an analysis model, or activities into a load group. */

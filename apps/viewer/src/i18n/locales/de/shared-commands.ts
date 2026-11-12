@@ -102,6 +102,8 @@ export const sharedCommandsDe = {
   "classVisibility.annotations.description": "Text, Bemaßungen, Führungslinien",
   "classVisibility.grids.label": "Raster",
   "classVisibility.grids.description": "Tragwerksachsen",
+  "classVisibility.structuralGlyphs.label": "Lager & Lasten",
+  "classVisibility.structuralGlyphs.description": "Symbole der Tragwerksanalyse",
   "classVisibility.mergeLayers.label": "Mehrschichtige Wände zusammenführen",
   "classVisibility.mergeLayers.description": "Rendern Sie Wände beim Neuladen als einen einzigen Volumenkörper",
   "classVisibility.fastGeometry.label": "Schnelle Geometrie",

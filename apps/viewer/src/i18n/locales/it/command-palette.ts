@@ -66,6 +66,7 @@ export const commandPaletteIt = {
   'commandPalette.vis.site.label': 'Sito',
   'commandPalette.vis.ifcAnnotations.label': 'Annotazioni',
   'commandPalette.vis.ifcGrid.label': 'Griglie',
+  "commandPalette.vis.structuralGlyphs.label": "Vincoli e carichi",
   'commandPalette.vis.resetColors.label': 'Ripristina i colori',
   'commandPalette.panel.chat.label': 'Chat IA',
   'commandPalette.panel.flavors.label': 'Gestisci i profili…',
@@ -194,4 +195,5 @@ export const commandPaletteIt = {
   "commandPalette.availability.noLoad": "Nessun caricamento corrispondente è ancora in corso",
   "commandPalette.availability.noLoadError": "Questo errore di caricamento è terminato o è stato sostituito",
   "commandPalette.availability.noLoadRetry": "Non è disponibile un nuovo tentativo per questo errore di caricamento",
+  "commandPalette.tool.deriveStructural.label": "Derivare il modello di analisi strutturale",
 } satisfies Catalogue;

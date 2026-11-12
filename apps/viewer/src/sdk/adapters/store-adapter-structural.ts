@@ -28,6 +28,10 @@
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { StructuralStoreBackendMethods, StructuralStoreModelResolver } from '@ifc-lite/sdk';
+import { normalizeMutationModelId } from './mutation-view.js';
+import { recordResolvedModellingCommit } from '@/store/slices/mutation-modelling-records';
+import { completeEntityRemoval } from '@/store/slices/mutation-mesh-stash';
+import { mutationDenial } from '@/store/mutation-permission';
 import { createStoreMutationTracker } from './store-adapter-cost.js';
 import type { StoreApi } from './types.js';
 
@@ -81,6 +85,11 @@ export function structuralMutationTracking(
   const { create } = createStoreMutationTracker(store, resolve, 'structural');
   // One forwarding loop keeps the synchronous facade small as lazy builders grow.
   const types = {
+    addStructuralLoad: 'IFCSTRUCTURALLOAD',
+    addStructuralCurveAction: 'IFCSTRUCTURALCURVEACTION',
+    connectStructuralElement: 'IFCRELCONNECTSSTRUCTURALELEMENT',
+    editStructuralEntity: 'IFCSTRUCTURALITEM',
+    removeStructuralEntity: 'IFCSTRUCTURALITEM',
     addStructuralSurfaceMember: 'IFCSTRUCTURALSURFACEMEMBER',
     addStructuralCurveConnection: 'IFCSTRUCTURALCURVECONNECTION',
     addStructuralSurfaceConnection: 'IFCSTRUCTURALSURFACECONNECTION',
@@ -101,9 +110,34 @@ export function structuralMutationTracking(
     connectStructuralActivityToItem: 'IFCRELCONNECTSSTRUCTURALACTIVITY',
     assignToStructuralGroup: 'IFCRELASSIGNSTOGROUP',
   } satisfies Record<keyof StructuralMethods, string>;
-  const methods = Object.entries(types).map(([key, type]) => {
+  const methods = Object.entries(types).map(([key]) => {
     const name = key as keyof StructuralMethods;
-    return [name, create(type, (...args: [string, ...unknown[]]) => {
+    if (name === 'editStructuralEntity' || name === 'removeStructuralEntity') {
+      return [name, (modelId: string, ...args: unknown[]) => {
+        const denial = mutationDenial(store.getState(), modelId);
+        if (denial) throw new Error(denial);
+        const setState = store.setState;
+        const normalized = normalizeMutationModelId(store.getState(), modelId);
+        const factory = loadedStructuralWrites(`bim.store.${name}`).createStructuralStoreBackend;
+        const target = resolve(normalized);
+        if (!setState || !target) throw new Error(`Structural edit needs a writable model: ${normalized}`);
+        const result = recordResolvedModellingCommit({ ...store, setState }, {
+          ...target, modelId: normalized, view: target.editor.getMutationView(),
+        }, (editor, dataStore) => {
+          const base = resolveModel(normalized);
+          const methods = factory(() => ({ ...base, store: dataStore, editor, mutationView: editor.getMutationView() }));
+          return Reflect.apply(methods[name], methods, [normalized, ...args]);
+        });
+        if (name === 'removeStructuralEntity') completeEntityRemoval(store.getState, setState, normalized, result.expressId,
+          store.getState().removedNewEntities.get(`${normalized}:${result.expressId}`));
+        return result;
+      }];
+    }
+    return [name, create(ref => {
+      const actual = resolve(ref.modelId)?.editor.getEntityType(ref.expressId);
+      if (!actual) throw new Error(`bim.store.${name}: created entity type is unavailable`);
+      return actual.toUpperCase();
+    }, (...args: [string, ...unknown[]]) => {
       const backend = live(name);
       return Reflect.apply(backend[name], backend, args);
     })];

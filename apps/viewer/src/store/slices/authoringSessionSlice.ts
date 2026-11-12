@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { isLazyEditCommand, loadEditCommand } from '@/lib/commands/modeling/lazy-edit-commands';
 import { getSplitWidth, splitFits } from '@/components/viewer/model/model-layout';
 
 /**
@@ -35,6 +36,8 @@ import {
   loadModelLayout, persistModelLayout, restoreSidebar, showModelInspector,
   type ModelLayout, type ModelLayoutPick, type SidebarRestore,
 } from './authoringSessionSidebar.js';
+
+let editCommandGeneration = 0;
 
 export type WorkspaceMode = 'view' | 'model';
 export type EndCommandReason = 'commit' | 'cancel' | 'switch';
@@ -85,7 +88,7 @@ export interface AuthoringSessionSlice {
    */
   setWorkplane: (spec: WorkplaneSpec, options?: { pinned?: boolean }) => void;
   /** Start a modeling command, entering the Model workspace first if needed. */
-  startCommand: (id: CommandId) => void;
+  startCommand: (id: CommandId) => void | Promise<void>;
   endCommand: (reason: EndCommandReason) => void;
 }
 
@@ -252,6 +255,24 @@ export const createAuthoringSessionSlice: StateCreator<ViewerState, [], [], Auth
     setWorkplane: (workplane, options = {}) => moveWorkplane(set, get, { workplane, planeRaisedForRoof: false, planeHeightPinned: options.pinned ?? true }),
 
     startCommand: (id) => {
+      ++editCommandGeneration;
+      if (!getModelingCommand(id) && isLazyEditCommand(id)) {
+        if (!get().session && !get().enterModelWorkspace()) return;
+        get().endCommand('switch');
+        const generation = ++editCommandGeneration;
+        get().setActiveTool('command');
+        if (get().activeTool !== 'command') return;
+        const session = get().session;
+        const ownsPending = () => generation === editCommandGeneration && get().activeTool === 'command';
+        return loadEditCommand(id).then(() => {
+          if (!ownsPending()) return;
+          if (get().session !== session) { get().endCommand('cancel'); return; }
+          get().startCommand(id);
+        }).catch((error: unknown) => {
+          if (ownsPending()) get().endCommand('cancel');
+          console.error(`[modeling] Could not load ${id}`, error);
+        });
+      }
       if (!getModelingCommand(id)) {
         console.warn(`[modeling] Unknown command: ${id}`);
         return;
@@ -264,6 +285,7 @@ export const createAuthoringSessionSlice: StateCreator<ViewerState, [], [], Auth
     },
 
     endCommand: () => {
+      ++editCommandGeneration;
       endCommandRuntime();
       patchSession(set, { activeCommandId: null, phase: 'idle' });
       if (get().activeTool === 'command') get().setActiveTool('select');

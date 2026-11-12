@@ -103,8 +103,8 @@ function readRules(text, topKey) {
   const rules = [];
   let inList = false;
   let rule = null;
+  // A 4-space section key, or `actions.queue` inside `actions`.
   let section = null;
-  let inQueueAction = false;
   for (const line of String(text ?? '').split('\n')) {
     // A comment ends nothing: one between two conditions must not drop the rest.
     if (/^\s*(#|$)/.test(line)) continue;
@@ -126,7 +126,6 @@ function readRules(text, topKey) {
     m = /^ {4}(\w+):\s*$/.exec(line);
     if (m) {
       section = m[1];
-      inQueueAction = false;
       continue;
     }
     if (/^ {4}\S/.test(line)) {
@@ -137,11 +136,11 @@ function readRules(text, topKey) {
       (rule.lists[section] ??= []).push(m[1]);
       continue;
     }
-    if (section === 'actions' && /^ {6}\S/.test(line)) {
-      inQueueAction = /^ {6}queue:\s*$/.test(line);
+    if (section?.startsWith('actions') && /^ {6}\S/.test(line)) {
+      section = /^ {6}queue:\s*$/.test(line) ? 'actions.queue' : 'actions';
       continue;
     }
-    if (inQueueAction && (m = /^ {8}name:\s*(\S.*?)\s*$/.exec(line))) rule.queue = m[1];
+    if (section === 'actions.queue' && (m = /^ {8}name:\s*(\S.*?)\s*$/.exec(line))) rule.queue = m[1];
   }
   return rules;
 }
@@ -229,9 +228,9 @@ export function releaseQueueRoute(text, { labels = [], draft = true } = {}) {
   const entryJudged = entry.map((r) => ({ r, ...judgeConditions(r.conditions, pr) }));
   const unknownEntry = entryJudged.find((e) => e.unknown);
   if (unknownEntry) return { ok: false, reason: `Mergify rule \`${unknownEntry.r.name}\` has a condition this script cannot judge: ${unknownEntry.unknown}` };
-  // Any one matching entry rule queues the PR; report the first one's gaps when none is met.
-  const entryUnmet = entryJudged.some((e) => e.unmet.length === 0) ? [] : entryJudged[0].unmet;
-  const unmet = [...new Set([...queueJudged.unmet, ...entryUnmet])];
+  // Any one matching entry rule queues the PR; when none is met, each rule's gaps are alternatives.
+  const entryGap = entryJudged.some((e) => e.unmet.length === 0) ? null : entryJudged.map((e) => e.unmet.join(' and ')).join(', or ');
+  const unmet = [...queueJudged.unmet, ...(entryGap ? [entryGap] : [])];
   const queueable = unmet.length === 0;
   const queueReason = queueable ? `Mergify queue \`${rule.name}\` takes this PR` : `Mergify queue \`${rule.name}\` will not take this PR yet: ${unmet.join(', ')}`;
   return { ok: true, reason: `Mergify queue \`${rule.name}\` gates the merge on the full lanes of a draft`, queueable, queueReason };
@@ -346,12 +345,12 @@ export function verifyReleaseLane(input) {
     const checksFailed = checks.filter((c) => !c.ok).map((c) => c.script);
     // The decision names what still stands between this run and a lean one,
     // so the report never reads as a claim about today.
-    const lean = `The lean lane (${d.pending.join(', ')})`;
-    const lines = [`## Release PR lean lane, reported only (\`CI_RELEASE_LANE=${d.mode}\`)`, '', d.reason, '', `Every lane ran. ${lean} would skip:`, '', ...ran];
+    const lean = `lean lane (${d.pending.join(', ')})`;
+    const lines = [`## Release PR lean lane, reported only (\`CI_RELEASE_LANE=${d.mode}\`)`, '', d.reason, '', `Lanes that ran here and the ${lean} would skip:`, '', ...ran];
     lines.push('', `Its own checks (\`release-pr\`), run here:`, '', ...checks.map((c) => `- \`${c.script}\`: ${c.ok ? 'pass' : `FAIL: ${c.tail}`}`));
-    if (failed.length > 0) lines.push('', `⚠️ ${lean} would defer a failure to the merge queue: ${failed.join(', ')}.`);
-    if (checksFailed.length > 0) lines.push('', `⚠️ ${lean} would fail its own checks: ${checksFailed.join(', ')}.`);
-    if (failed.length === 0 && checksFailed.length === 0) lines.push('', `None of them failed. ${lean} would reach the same verdict.`);
+    if (failed.length > 0) lines.push('', `⚠️ The ${lean} would defer a failure to the merge queue: ${failed.join(', ')}.`);
+    if (checksFailed.length > 0) lines.push('', `⚠️ The ${lean} would fail its own checks: ${checksFailed.join(', ')}.`);
+    if (failed.length === 0 && checksFailed.length === 0) lines.push('', `None of them failed. The ${lean} would reach the same verdict.`);
     return { ok: true, lines };
   }
   const lines = [`Release lane full: ${d.reason}.`];
@@ -359,12 +358,15 @@ export function verifyReleaseLane(input) {
   return { ok: true, lines };
 }
 
-/** Runs LEAN_CHECKS in `cwd`, as `release-pr` would; each result's last output line. */
-export function runLeanChecks(cwd) {
-  return LEAN_CHECKS.map((script) => {
-    // Bounded, so a hung check cannot hold the aggregate to the job timeout.
-    const r = boundedSpawnSync(process.execPath, [script], { cwd, encoding: 'utf8', timeout: 120_000 });
-    const tail = `${r.stdout ?? ''}${r.stderr ?? ''}`.trim().split('\n').slice(-1)[0] ?? '';
+/** Runs LEAN_CHECKS in `cwd`, as `release-pr` would, each with one line of its output. */
+export function runLeanChecks(cwd, scripts = LEAN_CHECKS) {
+  return scripts.map((script) => {
+    // Bounded well inside the aggregate's 5-minute budget; each takes well under a second.
+    const r = boundedSpawnSync(process.execPath, [script], { cwd, encoding: 'utf8', timeout: 30_000 });
+    const out = `${r.stdout ?? ''}${r.stderr ?? ''}`.trim().split('\n');
+    // A crash ends with Node's version banner; the error line on stderr says more.
+    const crash = /^Node\.js v\d/.test(out.at(-1) ?? '') && String(r.stderr ?? '').split('\n').find((l) => /^\w*Error\b.*:/.test(l));
+    const tail = crash || out.at(-1) || '';
     return { script, ok: r.status === 0, tail: r.error ? r.error.message : tail };
   });
 }

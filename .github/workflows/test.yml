@@ -3989,7 +3989,9 @@ jobs:
   # are those known to. check-changesets and check-changeset-bump pass
   # vacuously on a release PR (see LEAN_CHECKS), so they are not here, and
   # neither script below needs history or node_modules. The other steps of the
-  # skipped jobs are not audited for version reads; shadow measures them.
+  # skipped jobs are not audited for version reads (scripts-tests runs some:
+  # check-changeset-bump.test, sync-versions, release-version-changed); the
+  # `release` queue's draft still runs them before merge, and shadow measures them.
   release-pr:
     name: Release PR checks
     needs: changes

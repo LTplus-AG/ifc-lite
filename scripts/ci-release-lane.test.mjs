@@ -170,7 +170,7 @@ test('SHADOW measures whatever the PR\'s queue state: an unlabelled or draft rel
   assert.match(v.lines.join('\n'), /The lean lane \(with CI_RELEASE_LANE=on, with OWNER_ALLOWS_LEAN released, once this PR is queueable\) would defer a failure to the merge queue: viewer-tests/); // @source-text-assertion-ok subject is the returned summary
   assert.match(v.lines.join('\n'), /lacks `mergify-trial`/); // @source-text-assertion-ok subject is the returned summary
   const queueable = verifyReleaseLane({ ...held, mode: 'shadow', lane: 'full', needs: needsJson() });
-  assert.match(queueable.lines.join('\n'), /Every lane ran\. The lean lane \(with CI_RELEASE_LANE=on, with OWNER_ALLOWS_LEAN released\) would skip:/); // @source-text-assertion-ok subject is the returned summary
+  assert.match(queueable.lines.join('\n'), /Lanes that ran here and the lean lane \(with CI_RELEASE_LANE=on, with OWNER_ALLOWS_LEAN released\) would skip:/); // @source-text-assertion-ok subject is the returned summary
   // Every pending condition is named by the decision, for each way a PR can be unqueueable.
   const pendingOf = (over) => decideReleaseLane({ ...held, ...over }).pending;
   assert.deepEqual(pendingOf({ mode: 'shadow', ownerAllowsLean: true }), ['with CI_RELEASE_LANE=on']);
@@ -262,6 +262,15 @@ test('REFUSE (#9783 review): no pull_request_rules entry queues the release PR i
   assert.equal(r.ok, true);
   assert.equal(r.queueable, false);
   assert.match(r.queueReason, /lacks `release-ok`/); // @source-text-assertion-ok subject is the returned reason
+  // Two entry rules: either one's gaps would do, so both are named as alternatives.
+  const second = labelled.replace('pull_request_rules:\n', 'pull_request_rules:\n  - name: alt\n    conditions:\n      - head=changeset-release/main\n      - label=alt-ok\n    actions:\n      queue:\n        name: release\n\n');
+  assert.match(releaseQueueRoute(second, { labels: [], draft: false }).queueReason, /lacks `alt-ok`, or it lacks `mergify-trial` and it lacks `release-ok`/); // @source-text-assertion-ok subject is the returned reason
+  assert.equal(releaseQueueRoute(second, { labels: ['alt-ok', 'mergify-trial'], draft: false }).queueable, true, 'the queue rule itself also needs mergify-trial');
+});
+
+test('QUEUE: a queue action does not leak into the next rule (#9783 review)', () => {
+  const text = 'pull_request_rules:\n  - name: a\n    conditions:\n      - head=x\n    actions:\n      queue:\n  - name: b\n        name: release\n';
+  assert.deepEqual(parsePullRequestRules(text).map((r) => r.queue), [null, null]);
 });
 
 test('SHADOW (#9783 review): the report runs the lean lane\'s own checks and lists only lanes that ran', () => {
@@ -276,9 +285,14 @@ test('SHADOW (#9783 review): the report runs the lean lane\'s own checks and lis
   assert.equal(fail.ok, true, 'shadow reports, never fails');
   assert.match(fail.lines.join('\n'), /FAIL: offset mismatch[\s\S]*would fail its own checks: scripts\/check-rust-major-offset\.mjs/); // @source-text-assertion-ok subject is the returned summary
   assert.doesNotMatch(fail.lines.join('\n'), /None of them failed/); // @source-text-assertion-ok subject is the returned summary
-  // The real runner, on this checkout: both scripts run and pass; elsewhere they fail, never throw.
-  assert.deepEqual(runLeanChecks(REPO_ROOT).map((c) => [c.script, c.ok]), LEAN_CHECKS.map((c) => [c, true]));
-  assert.ok(runLeanChecks(TMP).every((c) => !c.ok && c.tail));
+  // A cancelled lane is not a pass either.
+  const cancelled = verifyReleaseLane({ ...shadow, needs: needsJson('success', { 'viewer-e2e': 'cancelled' }), runChecks: () => [] }).lines.join('\n');
+  assert.match(cancelled, /would defer a failure to the merge queue: viewer-e2e/); // @source-text-assertion-ok subject is the returned summary
+  // The real runner on scripts of its own: exit status and last output line; a missing script fails, never throws.
+  const dir = mkdtempSync(join(TMP, 'checks-'));
+  writeFileSync(join(dir, 'ok.mjs'), "console.log('first'); console.log('all good');\n");
+  writeFileSync(join(dir, 'bad.mjs'), "console.error('offset mismatch'); process.exit(1);\n");
+  assert.deepEqual(runLeanChecks(dir, ['ok.mjs', 'bad.mjs', 'gone.mjs']).map((c) => [c.script, c.ok, /Cannot find module/.test(c.tail) || c.tail]), [['ok.mjs', true, 'all good'], ['bad.mjs', false, 'offset mismatch'], ['gone.mjs', false, true]]);
 });
 
 test('the release queue really tests a batch: its required `Rust tests (feature builds)` runs on a PR only for a batch', () => {

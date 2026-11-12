@@ -20,6 +20,7 @@ import create from './create.mjs';
 import fixture from './fixture.mjs';
 import read from './read.mjs';
 import render from './render.mjs';
+import renderMembers from './render-members.mjs';
 import edit from './edit.mjs';
 import remove from './remove.mjs';
 
@@ -42,11 +43,11 @@ export const PROBES = [
   create,
   convert,
   render,
+  renderMembers,
   edit,
   remove,
   ...capabilities,
   unwritten('card', 'card:structural-properties-card', 'select the entity (or the item that references it) in the viewer and assert the properties card shows its attribute values'),
-  unwritten('render', 'render:member-mesh-or-reaction', 'load a fixture carrying the member or reaction and assert its mesh or result glyph is drawn', (row) => !render.covers(row)),
   unwritten('capability', 'capability:analytical-physical-toggle', 'switch the viewer between the analytical and physical model and assert which products are visible', cap('cap/analytical-physical-toggle')),
   unwritten('capability', 'capability:derive-analytical-model', 'derive members and connections from a physical frame and compare axes, ends and links to the reference analytical model', cap('cap/derive-analytical-model')),
   unwritten('capability', 'capability:check-unlinked-load-bearing', 'run the check on a fixture with a load-bearing element lacking a structural item and assert exactly that element is reported', cap('cap/check-unlinked-load-bearing')),

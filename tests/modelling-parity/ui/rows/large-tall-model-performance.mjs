@@ -120,7 +120,8 @@ export default {
         return { counts, meshes: m.geometryResult?.meshes.length, triangles: m.geometryResult?.totalTriangles };
       });
       // The F5 producer includes a separate Roof level above 40 occupied storeys.
-      if (metrics.model.counts.IfcBuildingStorey !== 41 || metrics.model.counts.IfcColumn < 1600) {
+      if (metrics.model.counts.IfcBuildingStorey !== 41 || metrics.model.counts.IfcColumn < 1600
+        || !(metrics.model.meshes > 0) || !(metrics.model.triangles > 0)) {
         throw new Error(`Not the full F5 tower: ${JSON.stringify(metrics.model)}`);
       }
       await s.page.waitForFunction(() => typeof globalThis.__ifc_lite_viewer_store__.getState().cameraCallbacks?.getViewpoint === 'function');
@@ -169,7 +170,9 @@ export default {
         && metrics.orbit.medianMs <= 33.3 && metrics.orbit.p95Ms <= 50, JSON.stringify(metrics.orbit) ?? 'Orbit incomplete'));
 
       tasks.push(await task(s, 'select a loaded column, Move 0.5 m five times, Undo each', async () => {
-        await s.ui.click(s.page.locator('[data-workspace-chip]'));
+        if (await s.state(() => globalThis.__ifc_lite_viewer_store__.getState().workspaceMode !== 'model')) {
+          await s.ui.click(s.page.locator('[data-workspace-chip]'));
+        }
         await escape(s);
         const column = await s.state(() => {
           const st = globalThis.__ifc_lite_viewer_store__.getState(), m = [...st.models.values()][0];
@@ -190,6 +193,7 @@ export default {
         const selected = await s.state(() => globalThis.__ifc_lite_viewer_store__.getState().selectedEntityId);
         if (selected !== column.id) throw new Error(`Clicked ${selected}, expected column ${column.id}`);
         for (let i = 0; i < 5; i++) {
+          await s.ui.clickWorld(p);
           const startedAt = new Date().toISOString();
           const edit = { ...await move(s, column.id), startedAt, endedAt: new Date().toISOString() };
           metrics.editSamples.push(edit);
@@ -221,6 +225,7 @@ export default {
           await s.ui.key('Control+z', { settle: 1000 });
         } finally { await cdp.detach(); }
       }));
+      if (!tasks.at(-1).ok) metrics.incompleteEdit = await s.page.evaluate(() => globalThis.__p2_edit__ ?? null);
       checks.push(check('five loaded-column edits and undos complete', metrics.editSamples.length === 5 && metrics.undoSamples.length === 5,
         `${metrics.editSamples.length} edits, ${metrics.undoSamples.length} undos`));
       checks.push(check('single-edit median below 100 ms including remesh', metrics.edit?.medianMs < 100,

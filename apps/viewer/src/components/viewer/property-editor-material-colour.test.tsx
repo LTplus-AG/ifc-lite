@@ -128,3 +128,27 @@ it('imported material swatches find a surface style after a curve style (#9296 M
   const imported = await new IfcParser().parseColumnar(new TextEncoder().encode(exported()).buffer as ArrayBuffer);
   assert.equal(reader.materialColour({ dataStore: imported, view: null }, material.expressId), '#b5523b');
 });
+
+
+it('the Add Material dialog reuses a named material and its appearance on a second wall (#9296, #9897)', async () => {
+  assert.equal(setElementMaterial(MODEL_ID, wall, { Name: 'Steel', Color: '#404080' }), true);
+  const second = s().addWall(MODEL_ID, STOREY, { Start: [0, 2, 0], End: [4, 2, 0], Thickness: .2, Height: 3 });
+  assert.ok('expressId' in second);
+  const ui = render(<AddMaterialDialog modelId={MODEL_ID} entityId={second.expressId} entityType="IfcWall" />);
+  click(ui.querySelector('button')!);
+  type(document.querySelector<HTMLInputElement>('input[placeholder="e.g., Concrete C30/37"]')!, 'Steel');
+  assert.equal(input('Material colour hex').value, '#808080', 'the real dialog supplies its default colour');
+  click([...document.querySelectorAll('button')].find(b => b.textContent === 'Add Material')!);
+
+  const imported = await new IfcParser().parseColumnar(new TextEncoder().encode(exported()).buffer as ArrayBuffer);
+  const steel = imported.getEntitiesByType('IFCMATERIAL').filter(e => e.attributes[0] === 'Steel');
+  assert.equal(steel.length, 1, 'both walls share the original material, rather than duplicate same-named resources');
+  for (const id of [wall, second.expressId]) {
+    const rels = readRelatedLists(imported, 'IfcRelAssociatesMaterial').filter(r => r.relatedIds.includes(id));
+    assert.equal(rels.length, 1);
+    assert.equal(rels[0].relatingId, steel[0].expressId);
+  }
+  const reader = await import('@/lib/authoring/material-colour').catch(() => null);
+  assert.ok(reader?.materialColour);
+  assert.equal(reader.materialColour({ dataStore: imported, view: null }, steel[0].expressId), '#404080', 'assigning an existing name must not recolour other walls');
+});

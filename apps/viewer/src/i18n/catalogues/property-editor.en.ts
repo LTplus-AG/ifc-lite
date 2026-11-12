@@ -96,6 +96,7 @@ export const propertyEditorEn = {
   'propertyEditor.material.picker': 'Material',
   'propertyEditor.material.colourHex': 'Material colour hex',
   'propertyEditor.material.colour': 'Material colour',
+  'propertyEditor.material.colourHint': 'Colour applies to new materials. Existing names keep their saved appearance.',
   'propertyEditor.material.name': 'Material Name',
   'propertyEditor.material.namePlaceholder': 'e.g., Concrete C30/37',
   'propertyEditor.material.category': 'Category',

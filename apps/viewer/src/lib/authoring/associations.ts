@@ -173,7 +173,8 @@ export function addMaterialAssociation(modelId: string, entityId: number, input:
   if (!('editor' in target)) return target;
   const owner = resolveLiveOwnerHistoryId(target.store, target.editor, target.view);
   if (target.ifc2x3 && owner === null) return { ok: false, reasonKey: 'propertyEditor.association.noOwnerHistory' };
-  const existing = input.color === undefined ? entityNamed(target, 'IFCMATERIAL', input.name.trim(), 0) : null;
+  // Colour is a creation option; assigning an existing name preserves its appearance.
+  const existing = entityNamed(target, 'IFCMATERIAL', input.name.trim(), 0);
   return setElementMaterial(modelId, entityId, existing ?? { Name: input.name.trim(), Color: input.color, Category: target.ifc2x3 ? undefined : input.category || undefined, Description: target.ifc2x3 ? undefined : input.description || undefined })
     ? { ok: true } : { ok: false, reasonKey: 'propertyEditor.association.invalidRelatedObjects' };
 }

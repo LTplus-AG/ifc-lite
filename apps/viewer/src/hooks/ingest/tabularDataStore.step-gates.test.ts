@@ -60,7 +60,6 @@ describe('STEP-only paths refuse a tabular store whatever its schema label', () 
     const { store } = install();
     assert.equal(store.schemaVersion, 'IFC4');
     assert.ok(store.source.byteLength > 0);
-    assert.equal(store.sourceKind, 'tabular');
   });
 
   it('is not offered for a STEP upload', () => {

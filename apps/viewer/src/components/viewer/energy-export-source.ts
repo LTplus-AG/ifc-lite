@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { IfcSourceBytes } from '@ifc-lite/parser';
+import type { IfcDataStore, IfcSourceBytes } from '@ifc-lite/parser';
 
 /**
  * Pure decision logic for the energy-model export dialog and CLI (issues #1908, #1344), split out so it
@@ -23,7 +23,7 @@ import type { SchemaVersion } from '@/store/types';
 export interface EnergyExportSourceStore {
   source?: IfcSourceBytes;
   schemaVersion: SchemaVersion;
-  sourceKind?: 'step' | 'tabular';
+  sourceKind?: IfcDataStore['sourceKind'];
 }
 
 /** Non-null pair resolved by {@link resolveEnergyExportMutationSource}. */

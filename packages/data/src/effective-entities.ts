@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { IfcStoreBase } from './data-store.js';
+
 /**
  * The effective entity set of a live model session: the one enumeration
  * algorithm (#5249, charter #5236).
@@ -161,7 +163,7 @@ export interface EffectiveEntitySource {
     readonly typeRevision?: number;
   };
   /** A 'tabular' store (IFCX is one) has no STEP type index, so its entity table is the source. */
-  readonly sourceKind?: 'step' | 'tabular';
+  readonly sourceKind?: IfcStoreBase['sourceKind'];
 }
 
 export interface EffectiveEntity {

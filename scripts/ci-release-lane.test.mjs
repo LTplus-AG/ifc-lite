@@ -390,6 +390,13 @@ test('VERIFY: shadow reports, and flags a failure the lean lane would defer', ()
   const missed = verify({ mode: 'shadow', lane: 'full', needs: needsJson('success', { 'viewer-tests': 'failure', 'rust-semver': 'failure' }) });
   assert.equal(missed.ok, true, 'shadow reports; the map judges the failure');
   assert.match(missed.lines.join('\n'), /The lean lane \(with CI_RELEASE_LANE=on\) would defer a failure to the merge queue: viewer-tests\.$/); // @source-text-assertion-ok kept lanes are not listed as deferred
+  // The aggregate rejects every result but success and skipped (#9783 review).
+  for (const r of ['cancelled', '']) {
+    const v = verify({ mode: 'shadow', lane: 'full', needs: needsJson('success', { 'viewer-tests': r }) });
+    assert.match(v.lines.join('\n'), /would defer a failure to the merge queue: viewer-tests\.$/, r); // @source-text-assertion-ok subject is the returned summary
+  }
+  const skipped = verify({ mode: 'shadow', lane: 'full', needs: needsJson('success', { 'viewer-tests': 'skipped' }) });
+  assert.match(skipped.lines.join('\n'), /None of them failed\./); // @source-text-assertion-ok subject is the returned summary
 });
 
 test('VERIFY: a full run passes; a missing decision is reported; bad NEEDS and stale job lists fail', () => {

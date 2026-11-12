@@ -270,7 +270,9 @@ export function verifyReleaseLane(input) {
     return { ok: true, lines: ['## Release PR lean lane (`CI_RELEASE_LANE=on`)', '', d.reason, '', 'Skipped on purpose; the `release` merge queue runs them:', '', ...listed] };
   }
   if (d.pending) {
-    const failed = skippedByLean.filter((j) => resultOf(j) === 'failure');
+    // The aggregate's own rule (`case "$r" in success|skipped) ;;`): anything
+    // else, `cancelled` included, is a rejection the lean lane would defer.
+    const failed = skippedByLean.filter((j) => !['success', 'skipped'].includes(resultOf(j)));
     // The decision names what still stands between this run and a lean one,
     // so the report never reads as a claim about today.
     const lean = `The lean lane (${d.pending.join(', ')})`;

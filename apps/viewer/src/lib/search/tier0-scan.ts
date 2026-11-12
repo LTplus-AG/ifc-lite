@@ -18,7 +18,7 @@
  */
 
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { tokenizeSearchText, tokensCover } from './search-tokens.js';
+import { SCORE, prepareSearchQuery, resolveModelMatches, rowTokenHits, substringMatch, type RowMatch, type SearchQuery, type SearchRowText } from './search-match.js';
 
 /** A federated model carries its IFC store + an offset into the global ID space. */
 export interface ScanModel {
@@ -52,17 +52,7 @@ export interface ScanOptions {
 const DEFAULT_LIMIT = 50;
 
 /** Scoring weights — higher = better. Stable enough that downstream UI can compare. */
-const SCORE = {
-  GUID_EXACT: 1000,
-  NAME_EXACT: 500,
-  NAME_PREFIX: 100,
-  TYPE_EXACT: 80,
-  TYPE_PREFIX: 60,
-  NAME_SUBSTR: 40,
-  OBJECTTYPE_SUBSTR: 20,
-  DESCRIPTION_SUBSTR: 10,
-  TOKEN_MATCH: 70,
-} as const;
+// Scores and the match rule are tier-1's (search-match.ts), so results do not change when the index takes over.
 
 /**
  * Run a Tier-0 search across one or more models.
@@ -80,12 +70,7 @@ export function runTier0Scan(
   if (trimmed.length < 1) return [];
 
   const limit = options.limit ?? DEFAULT_LIMIT;
-  const needle = trimmed.toLowerCase();
-  // Tier-1's TOKEN_MATCH fallback (every query token a prefix of an entry token), so a
-  // multi-word query matches the same rows before and after the tier-1 index exists.
-  // A single token equal to the needle adds nothing a substring match does not find.
-  const queryTokens = tokenizeSearchText(trimmed);
-  const fallbackTokens = queryTokens.length > 0 && !(queryTokens.length === 1 && queryTokens[0] === needle) ? queryTokens : null;
+  const prepared = prepareSearchQuery(trimmed);
 
   // GUID exact-match fast path — IFC GlobalIds are 22-char base64-like strings.
   // We test the trimmed (case-sensitive) form because GUIDs are case-sensitive.
@@ -119,7 +104,7 @@ export function runTier0Scan(
       }
     }
 
-    scanModel(model.id, store, needle, options.maxScanPerModel, collected, fallbackTokens);
+    scanModel(model.id, store, prepared, options.maxScanPerModel, collected);
   }
 
   // Stable sort: score desc, then modelId asc, then expressId asc.
@@ -146,109 +131,79 @@ export function runTier0Scan(
 function scanModel(
   modelId: string,
   store: IfcDataStore,
-  needle: string,
+  query: SearchQuery,
   maxScan: number | undefined,
   out: SearchResult[],
-  fallbackTokens: readonly string[] | null = null,
 ): void {
   const table = store.entities;
   const strings = store.strings;
   const count = table.count;
   const cap = maxScan != null ? Math.min(count, maxScan) : count;
-
-  // Direct typed-array references — avoids per-row method-call overhead.
   const expressId = table.expressId;
   const nameIdx = table.name;
   const globalIdIdx = table.globalId;
   const descriptionIdx = table.description;
   const objectTypeIdx = table.objectType;
+  const lower = lowerStrings(strings);
+  // One reused view: the shared rule reads a row's text only while scoring it.
+  const view: SearchRowText = { nameLower: '', typeNameLower: '', descriptionLower: '', objectTypeLower: '' };
+  const text = (row: number): SearchRowText => {
+    view.nameLower = lower(nameIdx[row]);
+    view.typeNameLower = lowerType(table.getTypeName(expressId[row]) ?? '');
+    view.descriptionLower = lower(descriptionIdx[row]);
+    view.objectTypeLower = lower(objectTypeIdx[row]);
+    return view;
+  };
 
+  // One pass: candidates (rule 1) and, when the query allows a sweep, every
+  // row's substring match (used only if the model has no candidate, rule 3).
+  const candidates = new Map<number, number>();
+  const swept: [number, RowMatch][] = [];
   for (let i = 0; i < cap; i++) {
-    // Fast skip: rows where every searchable string slot is the empty
-    // string (StringTable index 0) — common for non-geometry entities
-    // that the parser never batch-extracted. This keeps 4M-entity scans
-    // O(populated rows) in practice.
-    const nIdx = nameIdx[i];
-    const gIdx = globalIdIdx[i];
-    const dIdx = descriptionIdx[i];
-    const oIdx = objectTypeIdx[i];
-    if (nIdx === 0 && gIdx === 0 && dIdx === 0 && oIdx === 0) continue;
-
-    const name = nIdx !== 0 ? strings.get(nIdx) : '';
-    const globalId = gIdx !== 0 ? strings.get(gIdx) : '';
-
-    // Score every applicable field and keep the max — Tier-1's
-    // `scoreEntry` does the same, and the result-merge code in the UI
-    // depends on Tier-0 / Tier-1 producing comparable orderings. The
-    // previous short-circuit (skip type once name produced any score)
-    // ranked an entity that hits NAME_SUBSTR (40) below an entity that
-    // would have hit TYPE_EXACT (80) on its name field, so the same
-    // logical match scored differently across paths.
-    let score = 0;
-    let matchField: MatchField = 'name';
-    const bump = (s: number, mf: MatchField): void => {
-      if (s > score) {
-        score = s;
-        matchField = mf;
-      }
-    };
-
-    if (name) {
-      const nameLower = name.toLowerCase();
-      if (nameLower === needle) bump(SCORE.NAME_EXACT, 'name');
-      else if (nameLower.startsWith(needle)) bump(SCORE.NAME_PREFIX, 'name');
-      else if (nameLower.includes(needle)) bump(SCORE.NAME_SUBSTR, 'name');
+    // The rows tier-1 indexes: those with any searchable string slot.
+    if (nameIdx[i] === 0 && globalIdIdx[i] === 0 && descriptionIdx[i] === 0 && objectTypeIdx[i] === 0) continue;
+    const row = text(i);
+    const hits = query.tokens.length > 0 ? rowTokenHits(row, query.tokens) : 0;
+    if (hits > 0) candidates.set(i, hits);
+    else if (query.sweep && candidates.size === 0) {
+      const match = substringMatch(row, query.needle);
+      if (match) swept.push([i, match]);
     }
-
-    {
-      // Type lookup uses the resolved type-name accessor (handles enum
-      // → PascalCase conversion). Cheap but a method call, so it stays
-      // inside the per-row loop only because it can outrank NAME_SUBSTR.
-      // getTypeName returns undefined for entities the parser never typed
-      // (e.g. CAT_SKIP/non-product rows); guard it — calling .toLowerCase()
-      // on that undefined crashed the whole search on every keystroke (#1195).
-      const typeName = table.getTypeName(expressId[i]);
-      if (typeName) {
-        const typeLower = typeName.toLowerCase();
-        if (typeLower === needle) bump(SCORE.TYPE_EXACT, 'type');
-        else if (typeLower.startsWith(needle)) bump(SCORE.TYPE_PREFIX, 'type');
-      }
-    }
-
-    let objectType = '';
-    if (oIdx !== 0) {
-      objectType = strings.get(oIdx);
-      if (objectType.toLowerCase().includes(needle)) {
-        bump(SCORE.OBJECTTYPE_SUBSTR, 'objectType');
-      }
-    }
-
-    let description = '';
-    if (dIdx !== 0) {
-      description = strings.get(dIdx);
-      if (description.toLowerCase().includes(needle)) {
-        bump(SCORE.DESCRIPTION_SUBSTR, 'description');
-      }
-    }
-
-    if (score === 0 && fallbackTokens && tokensCover(fallbackTokens, name.toLowerCase(), (table.getTypeName(expressId[i]) ?? '').toLowerCase(),
-      (description || (dIdx !== 0 ? strings.get(dIdx) : '')).toLowerCase(), (objectType || (oIdx !== 0 ? strings.get(oIdx) : '')).toLowerCase())) {
-      bump(SCORE.TOKEN_MATCH, 'name');
-    }
-    if (score === 0) continue;
-
-    // Resolve remaining display fields lazily so non-matches stay cheap.
+  }
+  for (const [i, m] of resolveModelMatches(candidates, () => swept, text, query)) {
     const id = expressId[i];
+    const nIdx = nameIdx[i], gIdx = globalIdIdx[i], dIdx = descriptionIdx[i], oIdx = objectTypeIdx[i];
     out.push({
       modelId,
       expressId: id,
       typeName: table.getTypeName(id) ?? '',
-      name,
-      globalId,
-      description: description || (dIdx !== 0 ? strings.get(dIdx) : ''),
-      objectType: objectType || (oIdx !== 0 ? strings.get(oIdx) : ''),
-      matchField,
-      score,
+      name: nIdx !== 0 ? strings.get(nIdx) : '',
+      globalId: gIdx !== 0 ? strings.get(gIdx) : '',
+      description: dIdx !== 0 ? strings.get(dIdx) : '',
+      objectType: oIdx !== 0 ? strings.get(oIdx) : '',
+      matchField: m.matchField,
+      score: m.score,
     });
   }
+}
+
+/** Lower-cased string-table entries, cached per table: the scan runs on every keystroke. */
+const LOWER_STRINGS = new WeakMap<object, Map<number, string>>();
+function lowerStrings(strings: IfcDataStore['strings']): (index: number) => string {
+  let cache = LOWER_STRINGS.get(strings);
+  if (!cache) LOWER_STRINGS.set(strings, (cache = new Map()));
+  const c = cache;
+  return (index) => {
+    if (index === 0) return '';
+    let v = c.get(index);
+    if (v === undefined) c.set(index, (v = strings.get(index).toLowerCase()));
+    return v;
+  };
+}
+
+const LOWER_TYPES = new Map<string, string>();
+function lowerType(typeName: string): string {
+  let v = LOWER_TYPES.get(typeName);
+  if (v === undefined) LOWER_TYPES.set(typeName, (v = typeName.toLowerCase()));
+  return v;
 }

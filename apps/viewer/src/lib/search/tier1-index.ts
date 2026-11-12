@@ -26,6 +26,7 @@
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { SearchResult, MatchField } from './tier0-scan.js';
 import { tokenizeSearchText } from './search-tokens.js';
+import { SCORE, prepareSearchQuery, resolveModelMatches, substringMatches, type SearchQuery } from './search-match.js';
 
 export interface Tier1IndexEntry {
   /** Row index in the original EntityTable. */
@@ -73,17 +74,7 @@ const DEFAULT_CHUNK_SIZE = 20_000;
 
 // Same scoring ladder as Tier-0 so result ordering between the two tiers
 // stays comparable while a multi-model search straddles both paths.
-const SCORE = {
-  GUID_EXACT: 1000,
-  NAME_EXACT: 500,
-  NAME_PREFIX: 100,
-  TYPE_EXACT: 80,
-  TYPE_PREFIX: 60,
-  NAME_SUBSTR: 40,
-  OBJECTTYPE_SUBSTR: 20,
-  DESCRIPTION_SUBSTR: 10,
-  TOKEN_MATCH: 70,
-} as const;
+// Scores and the match rule are shared with Tier-0 (search-match.ts).
 
 const tokenize = tokenizeSearchText;
 
@@ -286,14 +277,13 @@ export function queryTier1Indexes(
   const trimmed = query.trim();
   if (trimmed.length < 1) return [];
   const limit = options.limit ?? 50;
-  const needle = trimmed.toLowerCase();
-  const queryTokens = tokenize(trimmed);
+  const prepared = prepareSearchQuery(trimmed);
   const looksLikeGuid = trimmed.length === 22 && /^[A-Za-z0-9_$]{22}$/.test(trimmed);
 
   const results: SearchResult[] = [];
 
   for (const index of indexes) {
-    const scored = scoreOneIndex(index, trimmed, needle, queryTokens, looksLikeGuid);
+    const scored = scoreOneIndex(index, trimmed, prepared, looksLikeGuid);
     for (const c of scored) {
       const e = index.entries[c.entryIndex];
       results.push({
@@ -331,17 +321,13 @@ export function queryTier1Indexes(
 function scoreOneIndex(
   index: Tier1Index,
   rawQuery: string,
-  needle: string,
-  queryTokens: string[],
+  query: SearchQuery,
   looksLikeGuid: boolean,
 ): ScoredCandidate[] {
   const scored = new Map<number, ScoredCandidate>();
-
   const bump = (entryIndex: number, score: number, matchField: MatchField) => {
     const prev = scored.get(entryIndex);
-    if (!prev || prev.score < score) {
-      scored.set(entryIndex, { entryIndex, score, matchField });
-    }
+    if (!prev || prev.score < score) scored.set(entryIndex, { entryIndex, score, matchField });
   };
 
   // GUID exact — O(1) and highest-ranked.
@@ -350,86 +336,24 @@ function scoreOneIndex(
     if (hit !== undefined) bump(hit, SCORE.GUID_EXACT, 'globalId');
   }
 
-  // Candidate pool from the token index. For each query token:
-  //   1. Exact token postings → TOKEN_MATCH per hit
-  //   2. Prefix-matching tokens via sortedTokens range → TOKEN_MATCH
-  // When the user typed a single token we still do a prefix expansion so
-  // "wal" surfaces results with a "wall" token before they finish typing.
-  const candidateSet = new Set<number>();
-  const queryTokenHits = new Map<number, number>(); // entryIndex → count of query tokens matched
-
-  for (const qt of queryTokens) {
+  // Candidates from the token postings: an entry whose tokens have a query
+  // token as prefix (exact postings plus the sortedTokens prefix range), with
+  // how many query tokens it matched. The rest of the rule is shared with Tier-0.
+  const hits = new Map<number, number>();
+  for (const qt of query.tokens) {
     const matchedEntries = new Set<number>();
-    const exact = index.tokenIndex.get(qt);
-    if (exact) {
-      for (let i = 0; i < exact.length; i++) matchedEntries.add(exact[i]);
-    }
-    // Prefix expansion for all query tokens (cheap when token count is small).
     const [plo, phi] = prefixRange(index.sortedTokens, qt);
     for (let ti = plo; ti < phi; ti++) {
-      const tok = index.sortedTokens[ti];
-      if (tok === qt) continue;
-      const list = index.tokenIndex.get(tok);
+      const list = index.tokenIndex.get(index.sortedTokens[ti]);
       if (!list) continue;
       for (let i = 0; i < list.length; i++) matchedEntries.add(list[i]);
     }
-    for (const entryIndex of matchedEntries) {
-      candidateSet.add(entryIndex);
-      queryTokenHits.set(entryIndex, (queryTokenHits.get(entryIndex) ?? 0) + 1);
-    }
+    for (const entryIndex of matchedEntries) hits.set(entryIndex, (hits.get(entryIndex) ?? 0) + 1);
   }
-
-  // Verify candidates against the full lowered strings first — this
-  // resolves the matchField accurately (name / type / objectType /
-  // description) when any substring-level match lands. If nothing
-  // substring-level matches, the entry still qualifies via full token
-  // coverage and falls back to a generic TOKEN_MATCH.
-  for (const entryIndex of candidateSet) {
-    const e = index.entries[entryIndex];
-    const preSize = scored.size;
-    scoreEntry(e, needle, entryIndex, bump);
-    if (scored.size === preSize) {
-      const hits = queryTokenHits.get(entryIndex) ?? 0;
-      if (queryTokens.length > 0 && hits === queryTokens.length) {
-        bump(entryIndex, SCORE.TOKEN_MATCH, 'name');
-      }
-    }
-  }
-
-  // Substring-fallback pass: for very short needles (<3 chars) OR needles
-  // that contain punctuation the tokenizer would strip, the token index
-  // has no coverage. Do a last-ditch linear sweep over the entries array.
-  // This is still bounded by `entries.length` (populated rows only) not
-  // the raw entity count, so it stays ~10× cheaper than Tier-0.
-  if (candidateSet.size === 0 && (needle.length < 3 || /[\s\-_./:]/.test(needle))) {
-    const entries = index.entries;
-    for (let i = 0; i < entries.length; i++) {
-      scoreEntry(entries[i], needle, i, bump);
-    }
-  }
-
+  const text = (i: number) => index.entries[i];
+  const matches = resolveModelMatches(hits, () => substringMatches(index.entries.keys(), text, query.needle), text, query);
+  for (const [entryIndex, m] of matches) bump(entryIndex, m.score, m.matchField);
   return Array.from(scored.values());
-}
-
-function scoreEntry(
-  e: Tier1IndexEntry,
-  needle: string,
-  entryIndex: number,
-  bump: (entryIndex: number, score: number, matchField: MatchField) => void,
-): void {
-  if (e.nameLower) {
-    if (e.nameLower === needle) bump(entryIndex, SCORE.NAME_EXACT, 'name');
-    else if (e.nameLower.startsWith(needle)) bump(entryIndex, SCORE.NAME_PREFIX, 'name');
-    else if (e.nameLower.includes(needle)) bump(entryIndex, SCORE.NAME_SUBSTR, 'name');
-  }
-  if (e.typeNameLower === needle) bump(entryIndex, SCORE.TYPE_EXACT, 'type');
-  else if (e.typeNameLower.startsWith(needle)) bump(entryIndex, SCORE.TYPE_PREFIX, 'type');
-  if (e.objectTypeLower && e.objectTypeLower.includes(needle)) {
-    bump(entryIndex, SCORE.OBJECTTYPE_SUBSTR, 'objectType');
-  }
-  if (e.descriptionLower && e.descriptionLower.includes(needle)) {
-    bump(entryIndex, SCORE.DESCRIPTION_SUBSTR, 'description');
-  }
 }
 
 /** Exposed for tests only. */

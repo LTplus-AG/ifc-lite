@@ -32,7 +32,7 @@
  * is listed in the summary as unmapped. An error reading the diff or the graph
  * exits 1 (a red advisory job), never a green job that looked at nothing.
  *
- *   node scripts/ci-viewer-select.mjs --select --out <dir>
+ *   node scripts/ci-viewer-select.mjs --select <dir>
  *       writes <dir>/selection.json and <dir>/files.txt, outputs run/count
  *   node scripts/ci-viewer-select.mjs --run <dir>
  *       runs <dir>/files.txt with the viewer `test` script's own tsx command
@@ -45,13 +45,16 @@ import { fileURLToPath } from 'node:url';
 
 import { isBatchBranch } from './ci-pr-lane.mjs';
 import { isMainEntry } from './lib/is-main-entry.mjs';
-import { pathHash } from './viewer-test-shards.mjs';
+import { parseManifest, pathHash } from './viewer-test-shards.mjs';
+import { median } from './lib/viewer-test-durations.mjs';
 import {
   affectedTests, buildGraph, createResolver, extensionless, isCodeFile, isViewerTest, packageNode,
 } from './lib/viewer-import-graph.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const VIEWER = 'apps/viewer';
+/** A repo-relative viewer path as apps/viewer's scripts and manifest spell it. */
+const local = (p) => posix.relative(VIEWER, p);
 
 export const MODES = ['off', 'shadow', 'on'];
 
@@ -95,8 +98,11 @@ export function unmappableReason(path) {
   return 'outside the viewer import graph';
 }
 
-/** The source directories whose code files are graph candidates. */
-const isSourcePath = (path) => /^apps\/viewer\/src\/|^packages\/(?!wasm\/)[^/]+\/src\//.test(path);
+/**
+ * The package directory whose `src/` holds `path`. packages/wasm is built from
+ * Rust, so its files are never package sources here.
+ */
+const sourcePackageDir = (path) => /^packages\/(?!wasm\/)[^/]+(?=\/src\/)/.exec(path)?.[0];
 
 /**
  * Classify each changed file and collect the graph seeds.
@@ -110,8 +116,7 @@ export function classifyChanges(changes, graph, packages) {
   const seeds = new Set();
   const rows = [];
   for (const { status, path } of changes) {
-    // packages/wasm is built from Rust: its files never map through its opaque node.
-    const pkgDir = /^packages\/(?!wasm\/)[^/]+(?=\/src\/)/.exec(path)?.[0];
+    const pkgDir = sourcePackageDir(path);
     const pkgName = pkgDir && pkgByDir.get(pkgDir);
     if (status === 'D') {
       // `import './dir'` resolved to dir/index.ts records the directory itself.
@@ -132,7 +137,7 @@ export function classifyChanges(changes, graph, packages) {
       rows.push({ path, status, class: 'graph', reason: `source of ${pkgName}, which a viewer test imports opaquely` });
       continue;
     }
-    if (isSourcePath(path) && isCodeFile(path)) {
+    if ((path.startsWith(`${VIEWER}/src/`) || pkgDir) && isCodeFile(path)) {
       rows.push({ path, status, class: 'unreached', reason: 'source file no viewer test imports statically' });
       continue;
     }
@@ -140,11 +145,6 @@ export function classifyChanges(changes, graph, packages) {
   }
   return { rows, seeds };
 }
-
-const median = (values) => {
-  const v = [...values].sort((a, b) => a - b);
-  return v.length === 0 ? 0 : v[v.length >> 1];
-};
 
 /**
  * Order the affected tests nearest first (a changed test, then direct
@@ -156,7 +156,6 @@ const median = (values) => {
  */
 export function sampleWithinBudget(affected, seconds, budget = BUDGET_SECONDS) {
   const fallback = median(Object.values(seconds)) || 5;
-  const local = (p) => posix.relative(VIEWER, p);
   const cost = (p) => seconds[local(p)] ?? fallback;
   const order = [...affected].sort(([pa, da], [pb, db]) => da - db || pathHash(local(pa)) - pathHash(local(pb)) || (pa < pb ? -1 : pa > pb ? 1 : 0));
   const ran = [];
@@ -213,7 +212,7 @@ function loadRepo(root) {
     }
     if (pj.name) packages.set(pj.name, { dir: `packages/${dir}`, exports: pj.exports, main: pj.main });
   }
-  const durations = JSON.parse(readFileSync(join(root, VIEWER, 'test-durations.json'), 'utf8')).seconds ?? {};
+  const durations = parseManifest(readFileSync(join(root, VIEWER, 'test-durations.json'), 'utf8')).seconds;
   return { files, aliases, packages, script: viewerPkg.scripts?.test ?? '', durations };
 }
 
@@ -279,10 +278,9 @@ function setOutputs(env, outputs) {
 }
 
 export function run(argv, env = process.env, root = ROOT) {
-  const cmd = argv[0];
-  const dir = argv[argv.indexOf(cmd === '--select' ? '--out' : '--run') + 1];
-  if ((cmd !== '--select' && cmd !== '--run') || !dir || dir.startsWith('--')) {
-    throw new Error('usage: --select --out <dir> | --run <dir>');
+  const [cmd, dir] = argv;
+  if ((cmd !== '--select' && cmd !== '--run') || !dir) {
+    throw new Error('usage: --select <dir> | --run <dir>');
   }
   if (cmd === '--run') {
     const files = readFileSync(join(dir, 'files.txt'), 'utf8').split('\n').filter(Boolean);
@@ -306,7 +304,6 @@ export function run(argv, env = process.env, root = ROOT) {
   // HEAD is the PR's merge commit; its first parent is the base tip.
   const diff = execFileSync('git', ['diff', '--name-status', '--no-renames', '-z', 'HEAD^1', 'HEAD'], { cwd: root, encoding: 'utf8', maxBuffer: 1 << 28 });
   const sel = computeSelection({ root, changes: parseNameStatus(diff) });
-  const local = (p) => posix.relative(VIEWER, p);
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'selection.json'), `${JSON.stringify({
     pr: env.PR_NUMBER ?? null, headSha: env.HEAD_SHA ?? null, mergeSha: env.GITHUB_SHA ?? null, mode: decision.mode, ...sel,

@@ -240,7 +240,7 @@ function cli(root, mode, extra = {}) {
   writeFileSync(ghOut, '');
   writeFileSync(summary, '');
   const script = `import { run } from ${JSON.stringify(CLI)}; process.exitCode = run(process.argv.slice(1), process.env, ${JSON.stringify(root)});`;
-  const r = spawnSync(process.execPath, ['--input-type=module', '-e', script, '--', '--select', '--out', out], {
+  const r = spawnSync(process.execPath, ['--input-type=module', '-e', script, '--', '--select', out], {
     encoding: 'utf8',
     env: {
       PATH: process.env.PATH, GITHUB_OUTPUT: ghOut, GITHUB_STEP_SUMMARY: summary, GITHUB_EVENT_NAME: 'pull_request',

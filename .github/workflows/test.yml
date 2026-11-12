@@ -1566,7 +1566,7 @@ jobs:
           HEAD_REF: ${{ github.head_ref }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: node scripts/ci-viewer-select.mjs --select --out "$RUNNER_TEMP/viewer-selection"
+        run: node scripts/ci-viewer-select.mjs --select "$RUNNER_TEMP/viewer-selection"
       # Kept per PR run so a queue failure in a viewer test can be checked
       # against what this PR's selection covered (recall).
       - name: Upload the selection

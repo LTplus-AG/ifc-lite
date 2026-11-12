@@ -33,28 +33,33 @@ export function automaticBatchOrigin(meshes: readonly MeshData[]): [number, numb
 }
 
 /**
- * Per-call memo of topology verdicts, keyed by mesh then by origin. The scan is
+ * Memo of topology verdicts, keyed by mesh then by origin. The scan is
  * O(triangles) and one append asks the same (mesh, origin) question from the
- * input validation and again from bucket routing, so the caller creates one
- * memo per append and threads it through; nothing outlives that call.
+ * input validation and again from bucket routing, so a non-streaming append
+ * creates one memo and threads it through. A stream keeps one from its first
+ * append to its finalize swap (`StreamAssembly.topology`): its fragments, the
+ * finalize re-group and the final batches ask again. Positions must not change
+ * in place while a memo is live; the scene drops the stream's on such edits.
  * `scans` counts real scans (cache misses), `hits` the verdicts served from it.
  */
 export class TopologyMemo {
   scans = 0;
   hits = 0;
-  private readonly verdicts = new Map<MeshData, Map<string, boolean>>();
+  /** Per mesh, flat (x, y, z, verdict) quads: a mesh meets one or two frames, so a scan beats a string-keyed map. */
+  private readonly verdicts = new Map<MeshData, number[]>();
 
   preserves(mesh: MeshData, origin: readonly [number, number, number]): boolean {
-    const key = `${origin[0]},${origin[1]},${origin[2]}`;
     let perMesh = this.verdicts.get(mesh);
-    if (!perMesh) { perMesh = new Map(); this.verdicts.set(mesh, perMesh); }
-    let verdict = perMesh.get(key);
-    if (verdict !== undefined) this.hits++;
-    else {
-      this.scans++;
-      verdict = originPreservesTriangleTopology([mesh], origin);
-      perMesh.set(key, verdict);
+    if (!perMesh) { perMesh = []; this.verdicts.set(mesh, perMesh); }
+    for (let i = 0; i < perMesh.length; i += 4) {
+      if (perMesh[i] === origin[0] && perMesh[i + 1] === origin[1] && perMesh[i + 2] === origin[2]) {
+        this.hits++;
+        return perMesh[i + 3] === 1;
+      }
     }
+    this.scans++;
+    const verdict = originPreservesTriangleTopology([mesh], origin);
+    perMesh.push(origin[0], origin[1], origin[2], verdict ? 1 : 0);
     return verdict;
   }
 

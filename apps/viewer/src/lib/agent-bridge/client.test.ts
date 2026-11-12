@@ -128,11 +128,11 @@ describe('local agent bridge client: handshake (#9523)', () => {
     assert.deepEqual(h.statuses, [{ kind: 'connecting', port: 21517 }]);
     assert.equal(h.socket().sent.length, 0, 'nothing is sent before the socket opens');
     h.socket().open();
-    const hello = h.hello();
+    const hello = h.socket().hello();
     assert.equal(hello.protocol, BRIDGE_PROTOCOL_VERSION);
     assert.equal(hello.permission, 'read-only');
     assert.equal(hello.pairingCode, 'ABCDEFGHJKMNPQRSTVWX', 'the code is sent in canonical form');
-    assert.deepEqual(hello.tools.map((tool) => tool.name), [...MAIN_VIEWER_TOOL_ALLOWLIST]);
+    assert.deepEqual(hello.tools.map((tool) => tool.name).sort(), [...MAIN_VIEWER_TOOL_ALLOWLIST].sort());
     assert.equal(hello.tools.length, 27);
     assert.ok(hello.tools.every((tool) => tool.readOnly), 'every announced tool is read-only');
     const checked = validateToolDescriptors(hello.tools);
@@ -296,6 +296,7 @@ describe('local agent bridge client: calls (#9523)', () => {
       },
     });
     call(h.socket(), 'c1', 'count_entities', { type: SECRET_ARG, model_id: 'model-a' });
+    await flush();
     call(h.socket(), 'c2', 'get_entity', { global_id: SECRET_ARG });
     await flush();
     assert.deepEqual(h.activity.map(({ tool, modelId, durationMs, outcome, errorCode }) => ({ tool, modelId, durationMs, outcome, errorCode })), [

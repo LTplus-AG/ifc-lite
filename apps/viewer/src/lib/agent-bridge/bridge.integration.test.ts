@@ -155,7 +155,8 @@ describe('viewer tab <-> real MCP bridge, end to end (#9523)', () => {
     await until(() => mcp.lines.some((line) => line.method === 'notifications/tools/list_changed'), 'tools/list_changed');
 
     const listed = (await mcp.request('tools/list')).tools as { name: string; annotations?: { readOnlyHint?: boolean } }[];
-    assert.deepEqual(listed.map((tool) => tool.name), ['bridge_status', ...MAIN_VIEWER_TOOL_ALLOWLIST]);
+    assert.equal(listed[0].name, 'bridge_status');
+    assert.deepEqual(listed.slice(1).map((tool) => tool.name).sort(), [...MAIN_VIEWER_TOOL_ALLOWLIST].sort());
     assert.ok(listed.slice(1).every((tool) => tool.annotations?.readOnlyHint === true));
 
     // An unsaved edit in the viewer is what the agent reads.

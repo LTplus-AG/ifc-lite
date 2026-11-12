@@ -23,5 +23,5 @@ export const structuralReviewIt = {
   "structuralReview.op.structural.linearAction.create": "Crea azione lineare fornita",
   "structuralReview.op.structural.member.connect": "Collega membratura e connessione",
   "structuralReview.op.structural.activity.connect": "Collega attività fornita all'oggetto",
-  "structuralReview.op.structural.group.assign": "Assegna oggetti forniti al gruppo"
+  "structuralReview.op.structural.group.assign": "Assegna oggetti forniti al gruppo",
 } satisfies Catalogue;

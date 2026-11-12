@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { retainedCatalogueShape } from './retained-catalogue-shape';
 import { registryCatalogueShape } from './registry-catalogue-shape';
+import { structuralDeriveShape, type StructuralDeriveKey } from './structural-derive-catalogue-shape';
 import type { flowReviewEn } from './catalogues/flow-review.en';
 type ReviewKey = keyof typeof flowReviewEn extends `flowReview.${infer Key}` ? Key : never;
 /** Exact lazy keys and parameters validate contributed locales before feature code loads. */
@@ -360,6 +361,10 @@ export function lazyMessageParameters(key: string): readonly string[] | null {
   if (key.startsWith('settings.ifcFederation.')) {
     const tail = key.slice('settings.ifcFederation.'.length);
     return Object.hasOwn(ifcFederationShape, tail) ? ifcFederationShape[tail as IfcFederationKey] : null;
+  }
+  if (key.startsWith('structuralDerive.')) {
+    const tail = key.slice('structuralDerive.'.length);
+    return Object.hasOwn(structuralDeriveShape, tail) ? structuralDeriveShape[tail as StructuralDeriveKey] : null;
   }
   if (key.startsWith('reviewWorkspace.')) {
     const tail = key.slice('reviewWorkspace.'.length);

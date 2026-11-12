@@ -79,6 +79,7 @@ const CHUNK_LABEL_KEYS = {
   'Material layers': 'modelInspector.layers.title',
   'Storey manager': 'storeyManager.title',
   'Structural Analysis card': 'properties.structural.heading',
+  'Structural derivation': 'commandPalette.tool.deriveStructural.label',
   "What's New tab": 'keyboardShortcuts.tabs.whatsNew',
 } as const satisfies Record<string, TranslationKey>;
 

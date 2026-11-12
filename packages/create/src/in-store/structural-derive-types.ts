@@ -45,7 +45,8 @@
  * extrusion when the profile is a near-rectangle thinner than the depth
  * (walls). Thickness is that thinnest side. Oblique extrusions and profiles
  * read only as bounds (I-shapes, circles) are skipped. Openings and profile
- * voids are not carried: the surface member covers the outer outline.
+ * voids are not carried: the surface member covers the outer outline. A
+ * rounded rectangle is read as its rectangle (square corners).
  *
  * Joints. Axes run through section centres, so a column top stops below the
  * beam axis and a beam end stops at the column face. Before nodes are formed,
@@ -58,7 +59,9 @@
  * point lies past the other member's free end, that end moves along its own
  * axis to it as well, by the same reach rule. When it lies inside the other
  * member, that member is split there into two curve members, both linked to
- * its element, so the joint is a real node. An end already shared with other
+ * its element, so the joint is a real node; so is every other member whose
+ * axis passes through the joint inside its span (crossing beams), unless it
+ * runs parallel to the joining member. An end already shared with other
  * members only connects to an interior it already touches (within
  * `tolerance`); it is not moved. Every moved end is in the report
  * (`extendedEnds`) with the distance moved (negative when trimmed).

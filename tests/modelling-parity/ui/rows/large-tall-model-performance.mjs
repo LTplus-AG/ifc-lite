@@ -26,8 +26,15 @@ async function armEdit(s, id) {
   await s.page.evaluate(id => {
     const api = globalThis.__ifc_lite_viewer_store__;
     const before = api.getState();
+    const centre = meshes => {
+      const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+      for (const mesh of meshes) for (let i = 0; i < mesh.positions.length; i++) {
+        const k = i % 3; min[k] = Math.min(min[k], mesh.positions[i]); max[k] = Math.max(max[k], mesh.positions[i]);
+      }
+      return min.map((v, k) => (v + max[k]) / 2);
+    };
     const baseline = before.models.values().next().value.geometryResult.meshes.filter(m => m.expressId === id);
-    globalThis.__p2_edit__ = { started: null, mutationMs: null, replacedMs: null, drainedMs: null, totalMs: null };
+    globalThis.__p2_edit__ = { timeOrigin: performance.timeOrigin, started: null, mutationMs: null, replacedMs: null, drainedMs: null, totalMs: null, beforeCentre: centre(baseline), afterCentre: null };
     const result = globalThis.__p2_edit__;
     let replaced = false, done = false;
     const unsub = api.subscribe(st => {
@@ -38,6 +45,7 @@ async function armEdit(s, id) {
       if (meshes.length && meshes.some(m => !baseline.includes(m))) {
         replaced = true;
         result.replacedMs ??= elapsed;
+        result.afterCentre = centre(meshes);
       }
       if (result.mutationMs !== null && replaced && !st.pendingMeshEdits && !st.pendingMeshRemovals) {
         done = true;
@@ -126,6 +134,7 @@ export default {
         const canvas = s.page.locator('canvas').filter({ visible: true }).first();
         const box = await canvas.boundingBox();
         if (!box) throw new Error('No visible viewer canvas');
+        metrics.orbitStartedAt = new Date().toISOString();
         const before = await s.state(() => globalThis.__ifc_lite_view_projection__());
         await s.page.mouse.move(box.x + box.width * .5, box.y + box.height * .5);
         await s.page.mouse.down();
@@ -141,14 +150,17 @@ export default {
             requestAnimationFrame(sample);
           });
           let i = 0;
+          const deadline = performance.now() + 30000;
           while (await s.state(() => globalThis.__p2_frames__.length < 120)) {
             // Sample continuously: retain long gaps too, including between CDP
             // pointer events. Never cherry-pick one fast delta per gesture.
             await s.page.mouse.move(box.x + box.width * .5 + 100 * Math.sin(i / 15), box.y + box.height * .5 + 30 * Math.cos(i / 15));
             i++;
+            if (performance.now() > deadline) throw new Error('Orbit sampling exceeded 30 s budget');
           }
           metrics.frameDeltasMs = await s.state(() => globalThis.__p2_frames__);
           metrics.orbit = frameStats(metrics.frameDeltasMs);
+          metrics.orbitEndedAt = new Date().toISOString();
           const after = await s.state(() => globalThis.__ifc_lite_view_projection__());
           metrics.orbit.cameraMoved = before.some((v, i) => Math.abs(v - after[i]) > 1e-4);
         } finally { await s.page.mouse.up(); s.counters.clicks++; }
@@ -173,19 +185,28 @@ export default {
         if (!column) throw new Error('No individually rendered loaded column');
         metrics.column = column;
         const p = [column.centre[0], -column.centre[2], column.centre[1]];
-        await s.harness.aim([p[0] - 4, p[1] - 6, p[2] + 3], p);
+        await s.harness.aim([p[0] + 4, p[1] + 6, p[2] + 1], p);
         await s.ui.clickWorld(p);
         const selected = await s.state(() => globalThis.__ifc_lite_viewer_store__.getState().selectedEntityId);
         if (selected !== column.id) throw new Error(`Clicked ${selected}, expected column ${column.id}`);
         for (let i = 0; i < 5; i++) {
-          metrics.editSamples.push(await move(s, column.id));
+          const startedAt = new Date().toISOString();
+          const edit = { ...await move(s, column.id), startedAt, endedAt: new Date().toISOString() };
+          metrics.editSamples.push(edit);
+          if (Math.abs(Math.hypot(...edit.afterCentre.map((v, k) => v - edit.beforeCentre[k])) - .5) > .005) {
+            throw new Error('Column mesh did not move 0.5 m');
+          }
           // Undo timing uses the same observation but starts at Ctrl+Z, not Enter.
           await armEdit(s, column.id);
           await s.page.evaluate(() => { globalThis.__p2_edit__.started = performance.now(); });
           try {
             await s.ui.key('Control+z', { settle: 0 });
             await s.page.waitForFunction(() => globalThis.__p2_edit__?.totalMs !== null, null, { timeout: 30000 });
-            metrics.undoSamples.push(await s.page.evaluate(() => globalThis.__p2_edit__));
+            const undo = await s.page.evaluate(() => globalThis.__p2_edit__);
+            metrics.undoSamples.push(undo);
+            if (Math.hypot(...undo.afterCentre.map((v, k) => v - edit.beforeCentre[k])) > .005) {
+              throw new Error('Undo did not restore the column mesh');
+            }
           } finally { await s.page.evaluate(() => globalThis.__p2_disarm__?.()); }
         }
         metrics.edit = frameStats(metrics.editSamples.map(v => v.totalMs));

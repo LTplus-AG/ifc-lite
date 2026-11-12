@@ -63,13 +63,14 @@ export function StructuralDerivationReview({ origin }: { origin: string }) {
   // A prepared review stays on the model it derived, even if the active model changes.
   const target = review?.modelId ?? modelId;
   const modelName = useViewerStore((s) => (target === null ? null : s.models.get(target)?.name ?? target));
-  const members = review ? review.plan.report.counts.curveMembers + review.plan.report.counts.surfaceMembers : 0;
+  // The receipt's rows: the analysis model, each member and each node.
+  const derived = review ? 1 + review.plan.curveMembers.length + review.plan.surfaceMembers.length + review.plan.nodes.length : 0;
   return <section aria-label={t('commandPalette.tool.deriveStructural.label')} className="text-xs space-y-2">
     <p>{t('structuralDerive.hint')}</p>
     {modelName === null ? <p role="alert">{t('structuralDerive.noModel')}</p> : <p>{t('structuralDerive.model', { name: modelName })}</p>}
     <StructuralReviewControls flow={flow} acknowledgement={t('structuralDerive.acknowledgement')} prepareLabel={t('structuralDerive.prepare')}
-      build={modelId === null ? undefined : () => prepareStructuralDerivationReview(useViewerStore, modelId)}
-      applyCount={members} canApply={(review?.created ?? 0) > 0}
+      build={target === null ? undefined : () => prepareStructuralDerivationReview(useViewerStore, target)}
+      applyCount={derived} canApply={(review?.created ?? 0) > 0}
       commit={(current) => commitStructuralDerivation(useViewerStore, current, origin)}
       details={review && <DerivationSummary review={review} />} />
   </section>;

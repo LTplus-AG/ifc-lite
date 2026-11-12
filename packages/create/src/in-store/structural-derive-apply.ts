@@ -85,14 +85,14 @@ export function applyStructuralDerivation(
   return editor.runAtomic((draft) => writePlan(draft, plan, first, placementOf, random));
 }
 
+/** Same point; NaN matches NaN, since a non-finite point is the builder's refusal, not the plan check's. */
+const samePoint = (p: Vec3, q: Vec3) => p.every((v, k) => v === q[k] || (Number.isNaN(v) && Number.isNaN(q[k])));
+
 /**
  * The plan is plain data a caller may hold or change, so its shape is checked
  * here, before the first write; the builders' other refusals (finite points,
  * thickness) throw inside the transaction and also leave nothing.
  */
-/** Same point; NaN matches NaN, since a non-finite point is the builder's refusal, not the plan check's. */
-const samePoint = (p: Vec3, q: Vec3) => p.every((v, k) => v === q[k] || (Number.isNaN(v) && Number.isNaN(q[k])));
-
 function checkPlan(plan: StructuralDerivationPlan, toLocal: (storeyId: number | null, p: Vec3) => Vec3): void {
   const refuse = (what: string, why: string) => { throw new Error(`Structural derivation: ${what} ${why}; plan again`); };
   for (const member of plan.curveMembers) {

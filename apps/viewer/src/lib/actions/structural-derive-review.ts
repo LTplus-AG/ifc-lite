@@ -59,10 +59,13 @@ export function prepareStructuralDerivationReview(store: StoreApi<ViewerState>, 
     derive.applyStructuralDerivation(draft, dataStore, plan);
     created = draft.getNewEntities().length;
   }
-  const model = state.models.get(modelId), view = state.mutationViews.get(modelId), revision = view?.getMutationRevision();
+  const view = state.mutationViews.get(modelId), revision = view?.getMutationRevision();
   const validate = () => {
-    const current = store.getState();
-    if (current.models.get(modelId) !== model || current.mutationViews.get(modelId) !== view || view?.getMutationRevision() !== revision) {
+    const current = store.getState(), live = current.mutationViews.get(modelId);
+    // The parsed store and its edits count, not the model's name or visibility. A view registered after Prepare
+    // with no edits (an export or an editor opening the model) holds the same content.
+    const sameEdits = view ? live === view && view.getMutationRevision() === revision : !live?.getEffectiveChanges().length;
+    if (current.models.get(modelId)?.ifcDataStore !== dataStore || !sameEdits) {
       throw new Error('The model changed after this derivation was reviewed; review it again');
     }
     const refusal = mutationDenial(current, modelId);

@@ -114,7 +114,9 @@ export function paletteAvailability(command: SurfaceCommandDefinition, context: 
     if (!hasData) return blocked('commandPalette.availability.ifc');
     // The derivation writes into the model: the same write policy its review applies.
     if (id === 'model:derive-structural') {
-      const permission = mutationPermission(s, resolveModelId(s, undefined) ?? undefined);
+      const target = resolveModelId(s, undefined);
+      if (target === null) return blocked('commandPalette.availability.ifc');
+      const permission = mutationPermission(s, target);
       if (!permission.allowed) return blocked(mutationDenialKey(permission.reason));
     }
     const callback = context[opener];

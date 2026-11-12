@@ -45,9 +45,11 @@ test('#9668 derive, review the plan, acknowledge and apply, through the structur
   assert.match(root.textContent ?? '', new RegExp(`Model: ${useViewerStore.getState().models.get(SAMPLE_MODEL)!.name}`));
   assert.equal(root.querySelector('input[type="checkbox"]'), null, 'nothing to acknowledge before a review');
   click(button(root, /Derive and review/)!);
-  await waitFor(() => /3 curve members/.test(root.textContent ?? ''), 'the plan is shown');
-  assert.match(root.textContent ?? '', /4 nodes · 1 supports, 0 guessed/);
-  assert.match(root.textContent ?? '', /3 elements have no LoadBearing value/);
+  await waitFor(() => /Curve members: 3/.test(root.textContent ?? ''), 'the plan is shown');
+  assert.match(root.textContent ?? '', /nodes: 4 · supports: 1, guessed: 0/);
+  assert.match(root.textContent ?? '', /no LoadBearing value, assumed load-bearing: 3\./);
+  // The Apply count is the receipt's: the analysis model, 3 members and 4 nodes.
+  assert.match(button(root, /^Apply/)?.textContent ?? '', /Apply 8 changes/);
   const apply = () => button(root, /^Apply/);
   assert.equal(apply()?.disabled, true, 'Apply waits for the acknowledgement');
   click(root.querySelector('input[type="checkbox"]')!);

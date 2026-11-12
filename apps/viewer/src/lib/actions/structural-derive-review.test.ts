@@ -119,6 +119,19 @@ test('#9668 a review goes stale when the model changes before Apply', async () =
   assert.throws(() => review.commit(), /changed after this derivation was reviewed/);
 });
 
+test('#9668 a renamed or hidden model, or an edit view opened with no edits, does not make a review stale', async () => {
+  const { view } = await seedAuthoringSample({ bytes: FRAME });
+  const state = useViewerStore.getState();
+  // No edit view at Prepare, as for a model opened without edits.
+  useViewerStore.setState({ mutationViews: new Map() });
+  const review = prepareStructuralDerivationReview(useViewerStore, SAMPLE_MODEL);
+  state.setModelVisibility(SAMPLE_MODEL, false);
+  useViewerStore.getState().registerMutationView(SAMPLE_MODEL, view);
+  assert.doesNotThrow(() => review.validate());
+  view.setProperty(1, 'Pset_Test', 'Note', 'edited');
+  assert.throws(() => review.validate(), /changed after this derivation was reviewed/);
+});
+
 test('#9668 a read-only session is refused before anything is derived', async () => {
   await seedAuthoringSample({ bytes: FRAME, editEnabled: false });
   assert.throws(() => prepareStructuralDerivationReview(useViewerStore, SAMPLE_MODEL));

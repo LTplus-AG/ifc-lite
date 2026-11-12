@@ -228,10 +228,13 @@ export function extractStructuralOnDemand(
   const activitiesOfItem = new Map<number, string[]>();
   /** activity expressId → the item globalId it applies to. */
   const itemOfActivity = new Map<number, string>();
+  const activityIds = new Set(activityRaw.map((e) => e.expressId));
   for (const rel of readRows(relActivityIds)) {
-    const itemId = asRef(readAttr(rel.type, rel.attrs, 'RelatingElement'));
-    const activityId = asRef(readAttr(rel.type, rel.attrs, 'RelatedStructuralActivity'));
-    if (itemId === undefined || activityId === undefined) continue;
+    const relating = asRef(readAttr(rel.type, rel.attrs, 'RelatingElement'));
+    const related = asRef(readAttr(rel.type, rel.attrs, 'RelatedStructuralActivity'));
+    if (relating === undefined || related === undefined) continue;
+    // Some writers swap the two ends (portal-demo.ifc, #9668); the link is the same.
+    const [itemId, activityId] = activityIds.has(relating) && itemIds.has(related) ? [related, relating] : [relating, related];
     const activityGid = globalIdById.get(activityId);
     const itemGid = globalIdById.get(itemId);
     if (activityGid) addUnique(activitiesOfItem, itemId, activityGid);

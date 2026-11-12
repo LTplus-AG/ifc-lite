@@ -114,7 +114,10 @@ fn product_shape_with_type_check(
         return Ok(None);
     }
     let shape = decoder.resolve_ref(attr)?.ok_or(ShapeError::Unresolved)?;
-    if check_type && shape.ifc_type != IfcType::IfcProductDefinitionShape {
+    // IFC2X3 types `Representation` as the then non-abstract
+    // `IfcProductRepresentation`, and AxisVM writes one for every structural
+    // curve member (#9668); same attribute layout as its subtype.
+    if check_type && !matches!(shape.ifc_type, IfcType::IfcProductDefinitionShape | IfcType::IfcProductRepresentation) {
         return Err(ShapeError::NotAProductDefinitionShape(shape.ifc_type));
     }
     let list = shape.get(2).ok_or(ShapeError::MissingRepresentations)?;

@@ -20,9 +20,11 @@
  *   z towards its Axis; over a face, the reference surface normal, else the
  *   face normal on the side of the placement z): the symbol hangs below the
  *   node, against it.
- * - for each action (reactions are results, not drawn): the force resultant of
- *   X/Y/Z as an arrow per station, the moment resultant as one moment glyph,
- *   and a marker for a displacement or a temperature load. `GLOBAL_COORDS`
+ * - for each action and each reaction (a reaction's glyphs carry
+ *   `reaction: true`): the force resultant of X/Y/Z as an arrow per station,
+ *   the moment resultant as one moment glyph, and a marker for a displacement
+ *   or a temperature load. An IFC2X3 varying action draws its
+ *   `SubsequentAppliedLoads` too (`varyingParts`). `GLOBAL_COORDS`
  *   loads are in the analysis model's `SharedPlacement` axes; `LOCAL_COORDS`
  *   loads in the activity's frame: its own face's reference surface, else
  *   the surface item's face frame, else the curve member's (x along the edge,
@@ -32,21 +34,23 @@
  *   surface; on a face without a plane reference surface, or an entry
  *   without its location, at the centre.
  *
- * `relative` scales arrows within their load case (else first load group): the largest force (or
- * moment) of the same distribution in the same group is 1; an action in no
- * load group scales on its own. Units differ by distribution (N, N/m, N/m2),
- * so each scales on its own.
+ * `relative` scales arrows within their load case (else first load group,
+ * else first result group): the largest force (or moment) of the same
+ * distribution in the same group is 1; an activity in no group scales on its
+ * own. Units differ by distribution (N, N/m, N/m2), so each scales on its own.
  *
- * Activities on a varying linear or planar action draw their first value
- * along the whole shape (the varying stations are not read yet).
+ * A point activity with no vertex of its own, on a curve or surface item,
+ * stands where its own `ObjectPlacement` puts it on that item (see `placedOn`).
  */
 
 import type { IfcDataStore } from './columnar-parser.js';
 import type { StructuralActivityInfo, StructuralConnectionInfo, StructuralExtraction } from './structural-types.js';
-import type { StructuralLoadInfo } from './structural-load-extractor.js';
+import { extractStructuralLoad, type StructuralLoadInfo } from './structural-load-extractor.js';
+import { EntityExtractor } from './entity-extractor.js';
 import { structuralSupportKind, type StructuralSupportKind } from './structural-support-kind.js';
-import { compose, IDENTITY, ItemGeometryReader, length, normalize, rotate, type Frame, type ItemShape, type Vec3 } from './structural-item-geometry.js';
-import { pointAlong, pointIn, shapeCentre, shapeFrame, shapeStations } from './structural-glyph-stations.js';
+import { add, compose, IDENTITY, ItemGeometryReader, length, normalize, rotate, scale, sub, type Frame, type ItemShape, type Vec3 } from './structural-item-geometry.js';
+import { onShape, pointAlong, pointIn, shapeCentre, shapeFrame, shapeStations } from './structural-glyph-stations.js';
+import { varyingParts, type LoadPart } from './structural-glyph-varying.js';
 
 export type { StructuralSupportKind } from './structural-support-kind.js';
 export type { Vec3 as StructuralGlyphVec3 } from './structural-item-geometry.js';
@@ -65,6 +69,8 @@ interface GlyphBase {
   /** IFC world, metres, Z up. */
   position: Vec3;
   source: StructuralGlyphSource;
+  /** Drawn for a reaction (an analysis result), not an applied load or a support. */
+  reaction?: true;
 }
 
 export type StructuralGlyph =
@@ -219,7 +225,31 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
     return viaGroup === undefined ? onlyModelFrame : viaGroup;
   };
   const loadGroups = new Map(extraction.loadGroups.map((g) => [g.globalId, g.type]));
+  const resultGroups = new Set(extraction.resultGroups.map((g) => g.globalId));
   const pending: Pending[] = [];
+  const extractor = new EntityExtractor(store.source);
+  /** An activity's loads in station order: `AppliedLoad`, then an IFC2X3 varying action's `SubsequentAppliedLoads`. */
+  const loadsOf = (activity: StructuralActivityInfo): StructuralLoadInfo[] => [
+    activity.appliedLoad!,
+    ...(activity.SubsequentAppliedLoads ?? []).map((id) => extractStructuralLoad(extractor, store, id)).filter((l): l is StructuralLoadInfo => !!l),
+  ];
+
+  /**
+   * A point activity's position on the curve or surface item it acts on,
+   * when it has no vertex of its own: the origin of its own placement (not
+   * the item's), where that lies on the item; else that origin read in the
+   * item's edge frame (x along the edge from its start), where that lies on
+   * it. AxisVM writes the second: a station along the member as the origin's
+   * x. Anything else is not drawn.
+   */
+  const placedOn = (activityId: number, item: ItemRef, host: ItemShape): ItemShape | null => {
+    const origin = reader.placementOrigin(activityId);
+    if (!origin || length(sub(origin, reader.placementOrigin(item.expressId) ?? [0, 0, 0])) < 1e-9) return null;
+    if (onShape(host, origin)) return { kind: 'vertex', point: origin };
+    const frame = host.kind === 'edge' ? shapeFrame(host, edgeAxis(item.expressId, item.Axis)) : null;
+    const along = frame && add(pointIn(frame, origin[0], origin[1]), scale(frame.z, origin[2]));
+    return along && onShape(host, along) ? { kind: 'vertex', point: along } : null;
+  };
 
   /**
    * The frame `LOCAL_COORDS` loads are given in. An activity's own face with
@@ -250,17 +280,22 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
   };
 
   for (const activity of extraction.activities) {
-    if (activity.kind !== 'Action' || !activity.appliedLoad || !drawable(activity.appliedLoad)) continue;
+    if (activity.kind === 'Unknown' || !activity.appliedLoad) continue;
+    const loads = loadsOf(activity);
+    if (!loads.some(drawable)) continue;
     const source = sourceOf(activity);
+    const reaction = activity.kind === 'Reaction' ? { reaction: true as const } : {};
     const expected = expectedShape(activity.type);
     const item = activity.appliesToGlobalId ? itemsByGlobalId.get(activity.appliesToGlobalId) : undefined;
-    // An activity's own representation, else the item it acts on; never its
-    // bare placement origin, which activities often share with the item or
-    // the model. (Axis writes a point load on a member as a placement whose
-    // origin is the station along the member, not a position.)
+    // An activity's own representation, else (a point on a curve or surface
+    // item) its own placement checked against the item (`placedOn`), else the
+    // item it acts on. A bare placement origin alone is never a position:
+    // activities often share it with the item or the model.
     const own = reader.shape(activity.expressId);
     const ownShape = own?.kind === expected ? own : null;
-    const shape = ownShape ?? (item ? itemShape(item.expressId, item.type) : null);
+    const host = item ? itemShape(item.expressId, item.type) : null;
+    const placed = !ownShape && item && host && expected === 'vertex' && host.kind !== 'vertex' ? placedOn(activity.expressId, item, host) : null;
+    const shape = ownShape ?? placed ?? host;
     if (!shape || shape.kind !== expected) continue;
     const frame = activity.globalOrLocal === 'LOCAL_COORDS' ? localFrame(activity, item, ownShape !== null, shape) : globalFrame(activity, item);
     if (!frame) continue;
@@ -268,10 +303,10 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
     // Prefer the first assigned IfcStructuralLoadCase, otherwise the first load
     // group in assignment order. Ungrouped actions scale on their own (#9828).
     const group = activity.groupGlobalIds.find((id) => loadGroups.get(id) === 'IfcStructuralLoadCase')
-      ?? activity.groupGlobalIds.find((id) => loadGroups.has(id)) ?? `#${activity.expressId}`;
+      ?? activity.groupGlobalIds.find((id) => loadGroups.has(id) || resultGroups.has(id)) ?? `#${activity.expressId}`;
     const centre = shapeCentre(shape);
     const world = (v: Vec3): Vec3 => normalize(rotate(frame, v)) ?? [0, 0, 1];
-    const parts = activity.appliedLoad.configuration
+    const parts: LoadPart[] = loads.length > 1 ? varyingParts(shape, loads, drawable) : activity.appliedLoad.configuration
       ? activity.appliedLoad.configuration.entries.flatMap((entry) => {
         if (!entry.value) return [];
         // A curve configuration's location is a length along the edge; a
@@ -289,17 +324,17 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
       const force = vector(load, FORCE);
       if (force) {
         for (const position of stations) {
-          pending.push({ kind: 'force', distribution, position, direction: world(force), magnitude: length(force), source, group });
+          pending.push({ kind: 'force', distribution, position, direction: world(force), magnitude: length(force), source, group, ...reaction });
         }
       }
       const moment = vector(load, MOMENT);
-      if (moment) pending.push({ kind: 'moment', distribution, position: at, direction: world(moment), magnitude: length(moment), source, group });
+      if (moment) pending.push({ kind: 'moment', distribution, position: at, direction: world(moment), magnitude: length(moment), source, group, ...reaction });
       const displacement = vector(load, ['Displacement']);
       if (displacement || vector(load, ['RotationalDisplacementR'])) {
-        glyphs.push({ kind: 'displacement', position: at, source, ...(displacement ? { direction: world(displacement) } : {}) });
+        glyphs.push({ kind: 'displacement', position: at, source, ...reaction, ...(displacement ? { direction: world(displacement) } : {}) });
       }
       if (isTemperature(load)) {
-        glyphs.push({ kind: 'temperature', position: at, source });
+        glyphs.push({ kind: 'temperature', position: at, source, ...reaction });
       }
     }
   }

@@ -67,7 +67,7 @@ processor_families! { schema;
     CsgSolid => [IfcCsgSolid] => CsgSolidProcessor::new();
     Alignment => [IfcAlignment] => IfcAlignmentProcessor::new();
     Edge => [IfcEdge, IfcEdgeCurve, IfcOrientedEdge] => IfcEdgeProcessor::new();
-    FaceSurface => [IfcFaceSurface, IfcAdvancedFace] => IfcFaceSurfaceProcessor::new();
+    FaceSurface => [IfcFaceSurface, IfcAdvancedFace, IfcFace] => IfcFaceSurfaceProcessor::new();
     // Documented and exported, but never registered before #7688 (PROC-S6).
     LinearExtrusionSurface => [IfcSurfaceOfLinearExtrusion] => SurfaceOfLinearExtrusionProcessor::new();
 }

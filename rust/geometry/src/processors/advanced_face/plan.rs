@@ -152,3 +152,25 @@ pub(crate) fn lower_face(
         surface_type,
     })
 }
+
+/// A planar structural face (on an `IfcPlane`, or a bare `IfcFace`), one plan
+/// per region (`surfaces::lower_planar_regions`). GeometryGym writes bare
+/// faces, AxisVM faces of many disjoint outer bounds (#9668).
+pub(crate) fn lower_planar_regions(
+    face: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+    quality: TessellationQuality,
+    rtc_file_units: Option<(f64, f64, f64)>,
+) -> Result<Vec<FacePlan>> {
+    Ok(super::surfaces::lower_planar_regions(face, decoder, quality, rtc_file_units)?
+        .into_iter()
+        .map(|geometry| FacePlan {
+            geometry,
+            reverse: false,
+            #[cfg(any(feature = "debug_geometry", feature = "observability"))]
+            face_id: face.id,
+            #[cfg(any(feature = "debug_geometry", feature = "observability"))]
+            surface_type: "IFCPLANE".to_string(),
+        })
+        .collect())
+}

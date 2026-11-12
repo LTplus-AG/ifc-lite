@@ -676,3 +676,40 @@ fn oriented_edge_cycle_fails_loudly_instead_of_recursing() {
     let error = router.process_element(&entity, &mut decoder).unwrap_err();
     assert!(error.to_string().contains("cycle"), "{error}");
 }
+
+fn meshed(source: &str, id: u32) -> crate::Mesh {
+    let mut decoder = EntityDecoder::new(source);
+    let entity = decoder.decode_by_id(id).unwrap();
+    GeometryRouter::new().process_element(&entity, &mut decoder).unwrap()
+}
+
+#[test]
+fn axisvm_undefined_topology_type_in_a_bare_product_representation_meshes_issue_9668() {
+    // AxisVM (IFC2X3) types every member topology 'Undefined' and puts a curve
+    // member's in the (then non-abstract) IfcProductRepresentation.
+    let source = member("(0.,0.,0.)", "(10.,0.,0.)", "Undefined").replace("IFCPRODUCTDEFINITIONSHAPE", "IFCPRODUCTREPRESENTATION");
+    let (start, end) = midpoints(&meshed(&source, 8));
+    assert!(start[0].abs() < 1e-6 && (end[0] - 10.0).abs() < 1e-6, "{start:?} {end:?}");
+    let surface = surface_member(true, false).replace("'Face'", "'Undefined'");
+    assert!((signed_xy_area(&meshed(&surface, 18)) - 100.0).abs() < 1e-5);
+}
+
+#[test]
+fn bare_face_and_curve_bounded_plane_surface_members_mesh_issue_9668() {
+    // GeometryGym writes a bare IfcFace; AxisVM an IfcCurveBoundedPlane over an IfcPlane.
+    let bare = surface_member(true, false).replace("#15=IFCFACESURFACE((#6),#14,.T.);", "#15=IFCFACE((#6));");
+    assert!((signed_xy_area(&meshed(&bare, 18)) - 100.0).abs() < 1e-5);
+    let bounded = surface_member(true, false).replace("#14=IFCPLANE(#13);", "#14=IFCCURVEBOUNDEDPLANE(#19,$,());#19=IFCPLANE(#13);");
+    assert!((signed_xy_area(&meshed(&bounded, 18)) - 100.0).abs() < 1e-5);
+}
+
+#[test]
+fn disjoint_outer_bounds_are_regions_not_holes_issue_9668() {
+    // AxisVM writes a slab as one face of many outer-bound triangles: two
+    // 10x10 halves of the square must mesh as 100, not as one minus the other.
+    let source = surface_member(true, false).replace(
+        "#5=IFCPOLYLOOP((#1,#2,#3,#4));#6=IFCFACEOUTERBOUND(#5,.T.);",
+        "#5=IFCPOLYLOOP((#1,#2,#3));#6=IFCFACEOUTERBOUND(#5,.T.);#20=IFCPOLYLOOP((#1,#3,#4));#21=IFCFACEOUTERBOUND(#20,.T.);",
+    ).replace("IFCFACESURFACE((#6),", "IFCFACESURFACE((#6,#21),");
+    assert!((signed_xy_area(&meshed(&source, 18)) - 100.0).abs() < 1e-5);
+}

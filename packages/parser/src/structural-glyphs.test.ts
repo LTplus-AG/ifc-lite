@@ -137,6 +137,23 @@ const SYNTHETIC = `ISO-10303-21;HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('g
 #105=IFCSTRUCTURALPOINTACTION(${id(105)},$,'A7',$,$,$,$,#102,.GLOBAL_COORDS.,.F.);
 #132=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(132)},$,$,$,#53,#105);
 #161=IFCRELASSIGNSTOGROUP(${id(161)},$,$,$,(#105),$,#160);
+#200=IFCCARTESIANPOINT((1000.,1000.,500.));
+#201=IFCAXIS2PLACEMENT3D(#200,$,$);
+#202=IFCLOCALPLACEMENT($,#201);
+#203=IFCSTRUCTURALPOINTACTION(${id(203)},$,'A8',$,$,#202,$,#102,.GLOBAL_COORDS.,.F.);
+#204=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(204)},$,$,$,#68,#203);
+#205=IFCCARTESIANPOINT((1500.,0.,0.));
+#206=IFCAXIS2PLACEMENT3D(#205,$,$);
+#207=IFCLOCALPLACEMENT($,#206);
+#208=IFCSTRUCTURALPOINTACTION(${id(208)},$,'A9',$,$,#207,$,#102,.GLOBAL_COORDS.,.F.);
+#209=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(209)},$,$,$,#68,#208);
+#210=IFCCARTESIANPOINT((5000.,0.,0.));
+#211=IFCAXIS2PLACEMENT3D(#210,$,$);
+#212=IFCLOCALPLACEMENT($,#211);
+#213=IFCSTRUCTURALPOINTACTION(${id(213)},$,'A10',$,$,#212,$,#102,.GLOBAL_COORDS.,.F.);
+#214=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(214)},$,$,$,#68,#213);
+#215=IFCSTRUCTURALPOINTACTION(${id(215)},$,'A11',$,$,$,$,#102,.GLOBAL_COORDS.,.F.);
+#216=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(216)},$,$,$,#215,#58);
 #143=IFCSTRUCTURALANALYSISMODEL(${id(143)},$,'Broken',$,$,.LOADING_3D.,$,$,$,#24);
 #106=IFCSTRUCTURALPOINTACTION(${id(106)},$,'A8',$,$,$,$,#102,.GLOBAL_COORDS.,.F.);
 #133=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(133)},$,$,$,#53,#106);
@@ -502,7 +519,7 @@ describe('structuralGlyphs on synthetic data, one kind each', () => {
     supports.forEach((g) => close(g.kind === 'support' ? g.direction : undefined, [-1, 0, 0]));
   });
 
-  it('marks temperature and displacement loads, skips reactions, and refuses a point load on a member', async () => {
+  it('marks temperature and displacement loads, draws reactions, and refuses a point load on a member at its shared placement', async () => {
     const { glyphs } = await glyphsOf(new TextEncoder().encode(SYNTHETIC));
     const [temperature] = bySource(glyphs, 97);
     expect(temperature.kind).toBe('temperature');
@@ -510,10 +527,32 @@ describe('structuralGlyphs on synthetic data, one kind each', () => {
     const [displacement] = bySource(glyphs, 99);
     expect(displacement.kind).toBe('displacement');
     close(displacement.kind === 'displacement' ? displacement.direction : undefined, [0, 0, -1]);
-    expect(bySource(glyphs, 100)).toEqual([]);
+    // R1, a point reaction at N1 (1, 0, 0.5): force (3, 4, 0), moment about z.
+    const reaction = bySource(glyphs, 100);
+    expect(reaction.map((g) => [g.kind, g.reaction])).toEqual([['force', true], ['moment', true]]);
+    for (const g of reaction) close(g.position, [1, 0, 0.5]);
+    close(reaction[0].kind === 'force' ? reaction[0].direction : undefined, [0.6, 0.8, 0]);
+    expect(bySource(glyphs, 81).every((g) => g.reaction === undefined)).toBe(true);
     // A5 is a point action on a curve member with no vertex of its own. It shares the
     // member's placement, whose origin is the member's start node: still no position.
     expect(bySource(glyphs, 101)).toEqual([]);
+  });
+
+  // Member M1 runs from (1, 0, 0.5) to (1, 2, 0.5).
+  it('places a point action with only its own placement on the curve member it acts on (#9668)', async () => {
+    const { glyphs } = await glyphsOf(new TextEncoder().encode(SYNTHETIC));
+    // A8: origin (1, 1, 0.5) m lies on M1.
+    close(bySource(glyphs, 203)[0]?.position, [1, 1, 0.5]);
+    // A9: origin (1.5, 0, 0) m is off M1; read in M1's edge frame it is 1.5 m from its start.
+    close(bySource(glyphs, 208)[0]?.position, [1, 1.5, 0.5]);
+    // A10: origin (5, 0, 0) m is off M1 either way: nothing is drawn.
+    expect(bySource(glyphs, 213)).toEqual([]);
+  });
+
+  it('reads an activity relation written with its two ends swapped (#9668)', async () => {
+    // A11's relation names it as RelatingElement and connection N3 (1, 2, 3.5) as the activity.
+    const { glyphs } = await glyphsOf(new TextEncoder().encode(SYNTHETIC));
+    close(bySource(glyphs, 215)[0]?.position, [1, 2, 3.5]);
   });
 });
 
@@ -592,13 +631,18 @@ describe('structuralGlyphs on real files', () => {
     for (const [group, count] of Object.entries(everyAction)) expect(drawn(group), group).toBe(count);
     // 'Einzellast 1' to '6', 3 point loads each on curve members with no vertex:
     // Axis writes the load's station along the member as an absolute placement
-    // ((0.75, 0, 0) on a member from (1.5, 0, 5) to (3, 0, 5)). A placement
-    // origin is never taken as a position, so nothing is drawn.
+    // ((0.75, 0, 0) on a member from (1.5, 0, 5) to (3, 0, 5)), drawn 0.75 m along it (#9668).
     for (const group of ['2AT7Jgwef76PjTmlnENjOM', '0fo2OFoJvEMugp$nr9oxqX', '3RhOX$y7D03gBw6bO111w2', '2ixnNXJ3nBBQ$gF316Npuo', '0R$8A62z9FtQIVnfqEuRcB', '0bitbU6p52XfCkbmDraasy']) {
-      expect(drawn(group), group).toBe(0);
+      expect(drawn(group), group).toBe(3);
     }
-    // 'Linienlast Trapez', 48 varying actions: the 6 whose first value is zero draw nothing (stations are not read yet).
-    expect(drawn('0l4zY_xY1AvOhV5E5oNNEy')).toBe(42);
+    close(glyphs.find((g) => g.source.expressId === 6293)?.position, [2.25, 0, 5]);
+    // 'Linienlast Trapez', 48 varying actions, all drawn. #6212 runs from (0, 0, 6)
+    // to (0.75, 0, 6), LinearForceZ 0 at its start and -3 at its end: arrows grow
+    // along it, none at the zero end.
+    expect(drawn('0l4zY_xY1AvOhV5E5oNNEy')).toBe(48);
+    const trapezoid = glyphs.filter((g) => g.source.expressId === 6212);
+    expect(trapezoid.map((g) => g.kind === 'force' && g.magnitude)).toEqual([0.75, 1.5, 2.25, 3]);
+    trapezoid.forEach((g, i) => close(g.position, [0.1875 * (i + 1), 0, 6]));
     // 'Eigengewicht' (126) and 'EG' (176) are abstract IfcStructuralActions over a valueless IfcStructuralLoad.
     expect(drawn('1RhtNht1f9M83MFZVjDQIA')).toBe(0);
     expect(drawn('17_ftd5Hr9h9GMXuZAlLck')).toBe(0);
@@ -617,8 +661,15 @@ describe('structuralGlyphs on real files', () => {
     expect(supports.map((g) => [g.source.expressId, g.kind === 'support' && g.support])).toEqual([[236, 'fixed'], [271, 'fixed']]);
     close(supports[0].position, [0, 0, 0]);
     close(supports[1].position, [192 * 0.0254, 0, 0]);
-    const loads = glyphs.filter((g) => g.kind !== 'support');
+    const loads = glyphs.filter((g) => g.kind !== 'support' && !g.reaction);
     expect(loads.map((g) => g.source.expressId)).toEqual([317, 317]);
+    // Seven reactions draw; #2733 and #2753 are all-zero displacements.
+    const reactions = glyphs.filter((g) => g.reaction);
+    expect([...new Set(reactions.map((g) => g.source.expressId))].sort()).toEqual([2741, 2747, 2759, 2765, 2773, 2781, 2789]);
+    // #2773 on the left column (0, 0, 0)-(0, 0, 120 in): Head at 0, Tail at 120.
+    const ends = reactions.filter((g) => g.source.expressId === 2773 && g.kind === 'force');
+    close(ends[0]?.position, [0, 0, 0]);
+    close(ends[1]?.position, [0, 0, 120 * 0.0254]);
     close(loads[0].position, [96 * 0.0254, 0, 120 * 0.0254]);
     close(loads[1].position, [192 * 0.0254, 0, 120 * 0.0254]);
     for (const g of loads) {

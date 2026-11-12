@@ -2,7 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Standalone planar `IfcFaceSurface` processing for structural surface topology.
+//! Standalone planar `IfcFaceSurface` (and bare `IfcFace`) processing for
+//! structural surface topology.
 
 use crate::router::GeometryProcessor;
 use crate::{Mesh, Result, TessellationQuality};
@@ -64,6 +65,6 @@ impl GeometryProcessor for IfcFaceSurfaceProcessor {
     }
 
     fn supported_types(&self) -> Vec<IfcType> {
-        vec![IfcType::IfcFaceSurface, IfcType::IfcAdvancedFace]
+        vec![IfcType::IfcFaceSurface, IfcType::IfcAdvancedFace, IfcType::IfcFace]
     }
 }

@@ -30,7 +30,7 @@ mod surfaces;
 
 pub(super) use bspline_parse::parse_rational_weights;
 pub(super) use bspline_plan::{lower_bspline, BSplinePlan};
-pub(super) use plan::{lower_face, FacePlan};
+pub(super) use plan::{lower_face, lower_planar_regions, FacePlan};
 
 // Re-exported crate-wide: the router (a sibling top-level module, not a
 // descendant of `processors`) drains this once per representation item to

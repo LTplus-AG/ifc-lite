@@ -24,6 +24,7 @@ import type { TranslationKey } from '@/i18n';
 import { directrixDisplayPoint, type FederationPointMap } from '@/lib/analytic/directrix-frame';
 import { modelFrameMap } from '@/lib/analytic/selected-centreline-lines';
 import { displayedTranslation, placementFor } from '@/lib/model-placement/state';
+import { isIfcTypeHiddenByHost } from '@/lib/host-hidden-ifc-types';
 import { effectiveStructuralData } from '../properties/effectiveStructuralData';
 import { toViewGlyphs, type ViewGlyph, type Vec3 } from './structural-glyph-paths';
 
@@ -151,5 +152,7 @@ async function modelGroups(state: ViewerState, { modelId, store, geometry, model
       throw error;
     }
   };
-  return groupsOf(modelId, data, toViewGlyphs(glyphsOf(store, data), toDisplay), worldCapOf(geometry.coordinateInfo), t);
+  // A class the embed host hides (`hideTypes`) hides its glyphs too.
+  const shown = glyphsOf(store, data).filter((g) => !isIfcTypeHiddenByHost(g.source.type, state.hostHiddenIfcTypes));
+  return groupsOf(modelId, data, toViewGlyphs(shown, toDisplay), worldCapOf(geometry.coordinateInfo), t);
 }

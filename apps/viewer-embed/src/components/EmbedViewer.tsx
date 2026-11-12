@@ -371,7 +371,9 @@ export function EmbedViewer() {
       {/* 3D Viewport — wrapper ensures canvas fills the container even
            when Tailwind utility classes (w-full h-full) are not generated */}
       {webgpu.supported && (
-        <div style={{ position: 'absolute', inset: 0 }}>
+        // `data-viewport` lets the scene projector find this canvas from the
+        // overlay root beside it (`renderer-source.ts`), as in the viewer.
+        <div data-viewport style={{ position: 'absolute', inset: 0 }}>
           <Viewport
             geometry={filteredGeometry}
             geometryContentVersion={contentVersion}

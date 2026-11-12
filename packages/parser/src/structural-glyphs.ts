@@ -38,7 +38,7 @@ import type { IfcDataStore } from './columnar-parser.js';
 import type { StructuralActivityInfo, StructuralConnectionInfo, StructuralExtraction } from './structural-types.js';
 import type { StructuralLoadInfo } from './structural-load-extractor.js';
 import { structuralSupportKind, type StructuralSupportKind } from './structural-support-kind.js';
-import { compose, IDENTITY, ItemGeometryReader, length, normalize, rotate, type Frame, type ItemShape, type Vec3 } from './structural-item-geometry.js';
+import { add, compose, IDENTITY, ItemGeometryReader, length, normalize, rotate, scale, type Frame, type ItemShape, type Vec3 } from './structural-item-geometry.js';
 import { pointAlong, shapeCentre, shapeFrame, shapeStations } from './structural-glyph-stations.js';
 
 export type { StructuralSupportKind } from './structural-support-kind.js';
@@ -70,6 +70,17 @@ export type StructuralGlyph =
   | (GlyphBase & { kind: 'temperature' });
 
 const DISTRIBUTION: Record<ItemShape['kind'], StructuralLoadDistribution> = { vertex: 'point', edge: 'linear', face: 'planar' };
+
+/**
+ * A load's own distribution by its type (a `DISCRETE` curve action may hold
+ * single forces), else the shape's.
+ */
+function distributionOf(load: StructuralLoadInfo, shape: ItemShape['kind']): StructuralLoadDistribution {
+  if (/Single/.test(load.type)) return 'point';
+  if (/Linear/.test(load.type)) return 'linear';
+  if (/Planar/.test(load.type)) return 'planar';
+  return DISTRIBUTION[shape];
+}
 
 /** The shape an entity type acts on: point, curve (linear) or surface (planar). */
 function expectedShape(type: string): ItemShape['kind'] | null {
@@ -149,14 +160,16 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
   };
 
   for (const connection of extraction.connections) {
-    const support = structuralSupportKind(connection.appliedCondition);
+    const support = structuralSupportKind(connection.appliedCondition, store.schemaVersion);
     if (!support) continue;
     const shape = itemShape(connection.expressId, connection.type);
     const frame = conditionFrame(connection);
     if (!shape || !frame) continue;
-    // A curve connection's condition frame has x along the edge and z towards its Axis.
+    // A curve connection's frame has x along the edge and z towards its Axis;
+    // a surface connection's is its reference surface (z its normal).
     const axis = shape.kind === 'edge' ? edgeAxis(connection.expressId, connectionAxis(connection)) : null;
-    const direction = normalize((axis && shapeFrame(shape, axis)?.z) || frame.z) ?? [0, 0, 1];
+    const local = shape.kind === 'face' ? shapeFrame(shape, null) : axis && shapeFrame(shape, axis);
+    const direction = normalize(local?.z ?? frame.z) ?? [0, 0, 1];
     for (const position of shapeStations(shape)) glyphs.push({ kind: 'support', support, position, direction, source: sourceOf(connection) });
   }
 
@@ -202,16 +215,32 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
   const pending: Pending[] = [];
 
   /**
-   * The frame `LOCAL_COORDS` loads are given in: for a point, the activity's
+   * The frame of a curve or surface item: x along the edge and z towards its
+   * Axis, or its reference surface. Null for a point item or no shape.
+   */
+  const itemFrame = (item: ItemRef): Frame | null => {
+    const shape = itemShape(item.expressId, item.type);
+    return shape && shape.kind !== 'vertex' ? shapeFrame(shape, edgeAxis(item.expressId, item.Axis)) : null;
+  };
+  /**
+   * The frame `LOCAL_COORDS` loads are given in. A point on a curve or
+   * surface item takes that item's frame; else a point takes the activity's
    * own placement when it draws at its own vertex, else the connection's
-   * condition frame; along an edge or over a face, the shape's frame.
+   * condition frame. Along an edge: x along it, z towards the item's Axis, or
+   * the normal of the surface item it lies on. Over a face, its frame.
    */
   const localFrame = (activity: StructuralActivityInfo, item: ItemRef | undefined, own: boolean, shape: ItemShape): Frame | null => {
+    const host = item ? itemFrame(item) : null;
     if (shape.kind === 'vertex') {
+      if (host) return host;
       if (own || !item) return reader.productFrame(activity.expressId);
       return item.connection ? conditionFrame(item.connection) : reader.productFrame(item.expressId);
     }
-    return shapeFrame(shape, item ? edgeAxis(item.expressId, item.Axis) : null);
+    if (shape.kind === 'edge') {
+      const onSurface = item && itemShape(item.expressId, item.type)?.kind === 'face';
+      return shapeFrame(shape, onSurface ? host!.z : item ? edgeAxis(item.expressId, item.Axis) : null);
+    }
+    return shapeFrame(shape, null);
   };
 
   for (const activity of extraction.activities) {
@@ -231,20 +260,24 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
     if (!frame) continue;
 
     const group = activity.groupGlobalIds.find((id) => loadGroups.has(id)) ?? '';
-    const distribution = DISTRIBUTION[shape.kind];
     const centre = shapeCentre(shape);
     const world = (v: Vec3): Vec3 => normalize(rotate(frame, v)) ?? [0, 0, 1];
     const parts = activity.appliedLoad.configuration
       ? activity.appliedLoad.configuration.entries.flatMap((entry) => {
         if (!entry.value) return [];
+        // A curve configuration's location is a length along the edge; a
+        // surface one's is x and y in the reference surface.
         const at = shape.kind === 'edge' && entry.location?.length
           ? pointAlong(shape.start, shape.end, reader.metres(entry.location[0]))
-          : centre;
+          : shape.kind === 'face' && shape.surface && entry.location && entry.location.length >= 2
+            ? add(shape.surface.origin, add(scale(shape.surface.x, reader.metres(entry.location[0])), scale(shape.surface.y, reader.metres(entry.location[1]))))
+            : centre;
         return [{ load: entry.value, stations: [at], at }];
       })
       : [{ load: activity.appliedLoad, stations: shapeStations(shape), at: centre }];
 
     for (const { load, stations, at } of parts) {
+      const distribution = distributionOf(load, shape.kind);
       const force = vector(load, FORCE);
       if (force) {
         for (const position of stations) {

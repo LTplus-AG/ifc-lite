@@ -16,42 +16,48 @@ export type StructuralSupportKind = 'fixed' | 'pinned' | 'roller' | 'spring';
 type Dof = 'fixed' | 'free' | 'spring';
 
 /**
- * A stiffness at or above this is a rigid restraint. IFC2X3 has no boolean
- * branch, so exporters spell "fixed" as a large number: Axis writes 1e10
- * (`tests/models/structural/ifc_structuralanalysisview/`). Others write -1.
+ * In IFC2X3 a stiffness at or above this is a rigid restraint. IFC2X3 has no
+ * boolean branch, so exporters spell "fixed" as a large number: Axis writes
+ * 1e10 (`tests/models/structural/ifc_structuralanalysisview/`, all IFC2X3).
+ * Others write -1. IFC4 and later spell rigidity as `IfcBoolean`, so a large
+ * number there is a stiff spring.
  */
 const RIGID_STIFFNESS = 1e10;
 
 /**
  * One degree of freedom. IFC4 and later write a fixed or free one as
  * `IfcBoolean` (`.T.` fixed). A negative stiffness means nothing physical, so
- * it reads as the -1 "fixed" convention; at least {@link RIGID_STIFFNESS} is
- * fixed; any other positive number is a spring. Zero or an omitted (`$`)
- * value is free.
+ * it reads as the -1 "fixed" convention; in IFC2X3 at least
+ * {@link RIGID_STIFFNESS} is fixed; any other positive number is a spring.
+ * Zero or an omitted (`$`) value is free.
  */
-function dof(value: number | boolean | undefined): Dof {
+function dof(value: number | boolean | undefined, ifc2x3: boolean): Dof {
   if (value === true) return 'fixed';
   if (value === undefined || value === false || value === 0) return 'free';
-  return value < 0 || value >= RIGID_STIFFNESS ? 'fixed' : 'spring';
+  return value < 0 || (ifc2x3 && value >= RIGID_STIFFNESS) ? 'fixed' : 'spring';
 }
 
 /** Component names by schema: `TranslationalStiffnessX` (IFC4), `LinearStiffnessX` (IFC2X3), and their ByLength/ByArea forms. */
 const TRANSLATIONAL = /^(Translational|Linear)Stiffness(ByLength|ByArea)?[XYZ]$/;
 const ROTATIONAL = /^RotationalStiffness(ByLength|ByArea)?[XYZ]$/;
 
-function axisStates(condition: BoundaryConditionInfo, pattern: RegExp): Dof[] {
+function axisStates(condition: BoundaryConditionInfo, pattern: RegExp, ifc2x3: boolean): Dof[] {
   const byAxis = new Map<string, Dof>();
   for (const [name, value] of Object.entries(condition.components)) {
-    if (pattern.test(name)) byAxis.set(name.slice(-1), dof(value));
+    if (pattern.test(name)) byAxis.set(name.slice(-1), dof(value, ifc2x3));
   }
   return ['X', 'Y', 'Z'].map((axis) => byAxis.get(axis) ?? 'free');
 }
 
-/** The support symbol for a condition, or null when it restrains nothing (an internal joint). */
-export function structuralSupportKind(condition: BoundaryConditionInfo | undefined): StructuralSupportKind | null {
+/**
+ * The support symbol for a condition, or null when it restrains nothing (an
+ * internal joint). `schema` is the file's (`IfcDataStore.schemaVersion`).
+ */
+export function structuralSupportKind(condition: BoundaryConditionInfo | undefined, schema: string | undefined): StructuralSupportKind | null {
   if (!condition) return null;
-  const translations = axisStates(condition, TRANSLATIONAL);
-  const rotations = axisStates(condition, ROTATIONAL);
+  const ifc2x3 = schema === 'IFC2X3';
+  const translations = axisStates(condition, TRANSLATIONAL, ifc2x3);
+  const rotations = axisStates(condition, ROTATIONAL, ifc2x3);
   const all = [...translations, ...rotations];
   if (all.includes('spring')) return 'spring';
   if (!all.includes('fixed')) return null;

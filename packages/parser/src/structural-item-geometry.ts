@@ -41,7 +41,12 @@ export interface Frame {
 export type ItemShape =
   | { kind: 'vertex'; point: Vec3 }
   | { kind: 'edge'; start: Vec3; end: Vec3 }
-  | { kind: 'face'; polygon: Vec3[] };
+  /**
+   * `surface`: the face's reference surface frame (an `IfcFaceSurface` on an
+   * `IfcPlane`, z along its normal and flipped when `SameSense` is false),
+   * which sets the local axes of a surface item; absent for a bare `IfcFace`.
+   */
+  | { kind: 'face'; polygon: Vec3[]; surface?: Frame };
 
 export const IDENTITY: Frame = { origin: [0, 0, 0], x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] };
 
@@ -221,7 +226,8 @@ export class ItemGeometryReader {
         if (!local) continue;
         if (local.kind === 'vertex') return { kind: 'vertex', point: toWorld(local.point) };
         if (local.kind === 'edge') return { kind: 'edge', start: toWorld(local.start), end: toWorld(local.end) };
-        return { kind: 'face', polygon: local.polygon.map(toWorld) };
+        const surface = local.surface && compose(frame, local.surface);
+        return { kind: 'face', polygon: local.polygon.map(toWorld), ...(surface ? { surface: { ...surface, origin: scale(surface.origin, this.unitScale) } } : {}) };
       }
     }
     return null;
@@ -266,6 +272,14 @@ export class ItemGeometryReader {
     return start && end ? [start, end] : null;
   }
 
+  /** An `IfcPlane`'s position in file units, z flipped when the face runs against it; null for another surface. */
+  private planeFrame(id: number | undefined, sameSense: boolean): Frame | null {
+    const plane = this.entity(id);
+    const frame = plane?.type === 'IFCPLANE' ? this.axisPlacement(asRef(plane.attributes[0])) : null;
+    if (!frame || sameSense) return frame;
+    return { origin: frame.origin, x: frame.x, y: scale(frame.y, -1), z: scale(frame.z, -1) };
+  }
+
   /** The outer (else first) bound of a face as a polygon. */
   private face(e: Entity): Vec3[] | null {
     const bounds = asRefList(e.attributes[0]).map((id) => this.entity(id));
@@ -293,7 +307,8 @@ export class ItemGeometryReader {
     }
     if (e.type === 'IFCFACESURFACE' || e.type === 'IFCFACE') {
       const polygon = this.face(e);
-      return polygon && { kind: 'face', polygon };
+      const surface = e.type === 'IFCFACESURFACE' ? this.planeFrame(asRef(e.attributes[1]), asBoolean(e.attributes[2]) !== false) : null;
+      return polygon && { kind: 'face', polygon, ...(surface ? { surface } : {}) };
     }
     const edge = this.edge(id);
     return edge && { kind: 'edge', start: edge[0], end: edge[1] };

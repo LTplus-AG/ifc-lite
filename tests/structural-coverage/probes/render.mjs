@@ -35,6 +35,8 @@ function holdsValue(step, rec, seen = new Set()) {
     if ('ref' in v) return holdsValue(step, step.get(v.ref), seen);
     return false;
   };
+  // A configuration's `Locations` are positions, not loads: only its `Values` count.
+  if (rec.type === 'IFCSTRUCTURALLOADCONFIGURATION') return visit(rec.args[1]);
   // Skip `Name` (first attribute of every load and condition).
   return rec.args.slice(1).some(visit);
 }

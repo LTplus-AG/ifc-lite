@@ -67,6 +67,7 @@ export default function StructuralGlyphOverlay({ onSelect }: StructuralGlyphOver
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const modelPlacement = useViewerStore((s) => s.modelPlacement);
   const georefMutations = useViewerStore((s) => s.georefMutations);
+  const hostHiddenIfcTypes = useViewerStore((s) => s.hostHiddenIfcTypes);
   const svgLayer = useSceneLayer('svg');
   const projector = useSceneProjector();
   const anchorId = useId();
@@ -84,7 +85,7 @@ export default function StructuralGlyphOverlay({ onSelect }: StructuralGlyphOver
     });
     return () => { cancelled = true; };
     // `revision` changes with the locale; `t` keeps one identity.
-  }, [models, legacyStore, legacyGeometry, mutationViews, mutationVersion, modelPlacement, georefMutations, t, revision]);
+  }, [models, legacyStore, legacyGeometry, mutationViews, mutationVersion, modelPlacement, georefMutations, hostHiddenIfcTypes, t, revision]);
 
   useEffect(() => {
     if (!projector) return;
@@ -120,8 +121,19 @@ export default function StructuralGlyphOverlay({ onSelect }: StructuralGlyphOver
           ref={(el) => { if (el) paths.current.set(group.key, el); else paths.current.delete(group.key); }}
           data-structural-glyph={group.style}
           data-express-id={group.expressId}
-          className="cursor-pointer"
+          // Keyboard-operable like the scene `Pin`: a focusable, named button.
+          tabIndex={0}
+          // An SVG <g> in the scene layer cannot be an HTML <button>.
+          // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
+          role="button"
+          aria-label={group.title}
+          className="cursor-pointer outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-overlay-accent"
           onClick={(event) => { event.stopPropagation(); onSelect(group.modelId, group.expressId); }}
+          onKeyDown={(event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            onSelect(group.modelId, group.expressId);
+          }}
         >
           <path className={STROKE[group.style]} strokeWidth={1.75} style={{ pointerEvents: 'none' }} />
           <path stroke="transparent" strokeWidth={HIT_WIDTH} style={{ pointerEvents: 'stroke' }}>

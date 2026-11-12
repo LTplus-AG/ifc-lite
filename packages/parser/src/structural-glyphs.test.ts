@@ -158,6 +158,130 @@ const SYNTHETIC = `ISO-10303-21;HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('g
 #113=IFCRELASSIGNSTOGROUP(${id(113)},$,$,$,(#85,#87),$,#111);
 ENDSEC;END-ISO-10303-21;`;
 
+/**
+ * Metres, identity placements. A vertical surface member in the world YZ
+ * plane whose polygon starts at (0, 2, 0), on an IfcPlane with Axis +X and
+ * RefDirection +Y (surface x = +Y, y = +Z, z = +X). A curve member along +Y
+ * at x = 5 with Axis +Z.
+ */
+const FRAMES = `ISO-10303-21;HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('f.ifc','',(''),(''),'','','');FILE_SCHEMA(('IFC4'));ENDSEC;DATA;
+#1=IFCPROJECT(${id(1)},$,'P',$,$,$,$,(#3),#2);
+#2=IFCUNITASSIGNMENT((#4));
+#3=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#21,$);
+#4=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#20=IFCLOCALPLACEMENT($,#21);
+#21=IFCAXIS2PLACEMENT3D(#22,$,$);
+#22=IFCCARTESIANPOINT((0.,0.,0.));
+#30=IFCCARTESIANPOINT((0.,2.,0.));
+#31=IFCCARTESIANPOINT((0.,2.,2.));
+#32=IFCCARTESIANPOINT((0.,0.,2.));
+#33=IFCCARTESIANPOINT((0.,0.,0.));
+#34=IFCPOLYLOOP((#30,#31,#32,#33));
+#35=IFCFACEOUTERBOUND(#34,.T.);
+#36=IFCDIRECTION((1.,0.,0.));
+#37=IFCDIRECTION((0.,1.,0.));
+#38=IFCAXIS2PLACEMENT3D(#22,#36,#37);
+#39=IFCPLANE(#38);
+#40=IFCFACESURFACE((#35),#39,.T.);
+#41=IFCTOPOLOGYREPRESENTATION(#3,'Reference','Face',(#40));
+#42=IFCPRODUCTDEFINITIONSHAPE($,$,(#41));
+#43=IFCSTRUCTURALSURFACEMEMBER(${id(43)},$,'Wall',$,$,#20,#42,.SHELL.,0.2);
+#44=IFCBOUNDARYFACECONDITION('fixed',${T},${T},${T});
+#45=IFCSTRUCTURALSURFACECONNECTION(${id(45)},$,'Bed',$,$,#20,#42,#44);
+#50=IFCSTRUCTURALLOADPLANARFORCE('px',1.,$,$);
+#51=IFCSTRUCTURALPLANARACTION(${id(51)},$,'PX',$,$,$,$,#50,.LOCAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);
+#52=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(52)},$,$,$,#43,#51);
+#53=IFCSTRUCTURALLOADPLANARFORCE('w1',$,$,-2.);
+#54=IFCSTRUCTURALLOADPLANARFORCE('w2',$,$,-4.);
+#55=IFCSTRUCTURALLOADCONFIGURATION('cfg',(#53,#54),((1.,0.5),(1.5,1.5)));
+#56=IFCSTRUCTURALPLANARACTION(${id(56)},$,'PC',$,$,$,$,#55,.GLOBAL_COORDS.,.F.,.TRUE_LENGTH.,.LINEAR.);
+#57=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(57)},$,$,$,#43,#56);
+#60=IFCCARTESIANPOINT((0.,0.,1.));
+#61=IFCCARTESIANPOINT((0.,2.,1.));
+#62=IFCVERTEXPOINT(#60);
+#63=IFCVERTEXPOINT(#61);
+#64=IFCEDGE(#62,#63);
+#65=IFCTOPOLOGYREPRESENTATION(#3,'Reference','Edge',(#64));
+#66=IFCPRODUCTDEFINITIONSHAPE($,$,(#65));
+#67=IFCSTRUCTURALLOADLINEARFORCE('qz',$,$,1.,$,$,$);
+#68=IFCSTRUCTURALLINEARACTION(${id(68)},$,'QZ',$,$,#20,#66,#67,.LOCAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);
+#69=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(69)},$,$,$,#43,#68);
+#70=IFCCARTESIANPOINT((5.,0.,0.));
+#71=IFCCARTESIANPOINT((5.,2.,0.));
+#72=IFCVERTEXPOINT(#70);
+#73=IFCVERTEXPOINT(#71);
+#74=IFCEDGE(#72,#73);
+#75=IFCTOPOLOGYREPRESENTATION(#3,'Reference','Edge',(#74));
+#76=IFCPRODUCTDEFINITIONSHAPE($,$,(#75));
+#77=IFCDIRECTION((0.,0.,1.));
+#78=IFCSTRUCTURALCURVEMEMBER(${id(78)},$,'Beam',$,$,#20,#76,.RIGID_JOINED_MEMBER.,#77);
+#80=IFCCARTESIANPOINT((5.,1.,0.));
+#81=IFCVERTEXPOINT(#80);
+#82=IFCTOPOLOGYREPRESENTATION(#3,'Reference','Vertex',(#81));
+#83=IFCPRODUCTDEFINITIONSHAPE($,$,(#82));
+#84=IFCSTRUCTURALLOADSINGLEFORCE('fx',1.,0.,0.,$,$,$);
+#85=IFCSTRUCTURALPOINTACTION(${id(85)},$,'FX',$,$,#20,#83,#84,.LOCAL_COORDS.,.F.);
+#86=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(86)},$,$,$,#78,#85);
+#90=IFCSTRUCTURALLOADSINGLEFORCE('F100',$,$,-100.,$,$,$);
+#91=IFCSTRUCTURALLOADCONFIGURATION('discrete',(#90),((1.)));
+#92=IFCSTRUCTURALCURVEACTION(${id(92)},$,'DP',$,$,$,$,#91,.GLOBAL_COORDS.,.F.,.TRUE_LENGTH.,.DISCRETE.);
+#93=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(93)},$,$,$,#78,#92);
+#94=IFCSTRUCTURALLOADLINEARFORCE('q10',$,$,-10.,$,$,$);
+#95=IFCSTRUCTURALCURVEACTION(${id(95)},$,'Q10',$,$,$,$,#94,.GLOBAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);
+#96=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(96)},$,$,$,#78,#95);
+#97=IFCSTRUCTURALLOADGROUP(${id(97)},$,'G',$,$,.LOAD_GROUP.,.PERMANENT_G.,.DEAD.,1.,$);
+#98=IFCRELASSIGNSTOGROUP(${id(98)},$,$,$,(#92,#95),$,#97);
+ENDSEC;END-ISO-10303-21;`;
+
+describe('structuralGlyphs local frames of curve and surface items', () => {
+  const load = async () => (await glyphsOf(new TextEncoder().encode(FRAMES))).glyphs;
+  const arrows = (glyphs: StructuralGlyph[], source: number) =>
+    bySource(glyphs, source).filter((g): g is Extract<StructuralGlyph, { kind: 'force' | 'moment' }> => g.kind === 'force');
+
+  it('orients a surface support along the reference surface normal', async () => {
+    const supports = bySource(await load(), 45).filter((g) => g.kind === 'support');
+    expect(supports.length).toBeGreaterThan(0);
+    for (const g of supports) close(g.kind === 'support' ? g.direction : undefined, [1, 0, 0]);
+  });
+
+  it('takes a LOCAL_COORDS face load in the reference surface axes, not the first polygon side', async () => {
+    const forces = arrows(await load(), 51);
+    expect(forces.length).toBeGreaterThan(0);
+    // Surface x is world +Y; the first side runs (0, 2, 0) to (0, 2, 2), +Z.
+    for (const g of forces) close(g.direction, [0, 1, 0]);
+  });
+
+  it('places a surface configuration value at its x and y in the reference surface', async () => {
+    const forces = arrows(await load(), 56);
+    expect(forces.map((g) => g.position)).toHaveLength(2);
+    close(forces[0].position, [0, 1, 0.5]);
+    close(forces[1].position, [0, 1.5, 1.5]);
+  });
+
+  it('takes the local z of a curve action on a surface member from the surface normal', async () => {
+    const forces = arrows(await load(), 68);
+    expect(forces.length).toBeGreaterThan(0);
+    for (const g of forces) close(g.direction, [1, 0, 0]);
+  });
+
+  it('takes the local axes of a point action on a curve member from the member', async () => {
+    const [force, ...rest] = arrows(await load(), 85);
+    expect(rest).toEqual([]);
+    close(force.position, [5, 1, 0]);
+    // The member runs along world +Y, so its local x is +Y.
+    close(force.direction, [0, 1, 0]);
+  });
+
+  it('classifies a single force in a discrete curve configuration as a point load, scaled apart from line loads', async () => {
+    const glyphs = await load();
+    const [point, ...rest] = arrows(glyphs, 92);
+    expect(rest).toEqual([]);
+    expect([point.distribution, point.magnitude, point.relative]).toEqual(['point', 100, 1]);
+    close(point.position, [5, 1, 0]);
+    for (const g of arrows(glyphs, 95)) expect([g.distribution, g.relative]).toEqual(['linear', 1]);
+  });
+});
+
 describe('structuralGlyphs on synthetic data, one kind each', () => {
   it('draws a support per restraining condition at its node, none for a free one', async () => {
     const { glyphs } = await glyphsOf(new TextEncoder().encode(SYNTHETIC));
@@ -275,17 +399,22 @@ describe('structuralSupportKind', () => {
       .flatMap((name, i) => (values[i] === undefined ? [] : [[name, values[i]!]]))),
   });
   it('reads the IFC2X3 measure conventions: -1 or >= 1e10 fixed, 0 or $ free, otherwise a spring', () => {
-    expect(structuralSupportKind(node([-1, -1, -1, -1, -1, -1]))).toBe('fixed');
-    expect(structuralSupportKind(node([1e10, 1e10, 1e10, 0, 0, 0]))).toBe('pinned');
-    expect(structuralSupportKind(node([0, 0, -1]))).toBe('roller');
-    expect(structuralSupportKind(node([1e10, 1e10, 5000]))).toBe('spring');
-    expect(structuralSupportKind(node([0, 0, 0, 0, 0, 0]))).toBeNull();
-    expect(structuralSupportKind(node([]))).toBeNull();
-    expect(structuralSupportKind(undefined)).toBeNull();
+    expect(structuralSupportKind(node([-1, -1, -1, -1, -1, -1]), 'IFC2X3')).toBe('fixed');
+    expect(structuralSupportKind(node([1e10, 1e10, 1e10, 0, 0, 0]), 'IFC2X3')).toBe('pinned');
+    expect(structuralSupportKind(node([0, 0, -1]), 'IFC2X3')).toBe('roller');
+    expect(structuralSupportKind(node([1e10, 1e10, 5000]), 'IFC2X3')).toBe('spring');
+    expect(structuralSupportKind(node([0, 0, 0, 0, 0, 0]), 'IFC2X3')).toBeNull();
+    expect(structuralSupportKind(node([]), 'IFC2X3')).toBeNull();
+    expect(structuralSupportKind(undefined, 'IFC2X3')).toBeNull();
   });
   it('reads IFC4 face conditions, which have no rotations', () => {
     const face = { expressId: 2, type: 'IfcBoundaryFaceCondition', components: { TranslationalStiffnessByAreaX: true, TranslationalStiffnessByAreaY: true, TranslationalStiffnessByAreaZ: true } };
-    expect(structuralSupportKind(face)).toBe('pinned');
+    expect(structuralSupportKind(face, 'IFC4')).toBe('pinned');
+  });
+  it('reads a large IFC4 stiffness as a spring, not as rigid', () => {
+    const condition = { expressId: 3, type: 'IfcBoundaryNodeCondition', components: { TranslationalStiffnessX: true, TranslationalStiffnessY: true, TranslationalStiffnessZ: 1e10 } };
+    expect(structuralSupportKind(condition, 'IFC4')).toBe('spring');
+    expect(structuralSupportKind(condition, 'IFC4X3')).toBe('spring');
   });
 });
 

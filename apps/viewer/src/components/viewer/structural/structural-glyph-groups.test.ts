@@ -76,4 +76,15 @@ describe('structuralGlyphGroups', () => {
     close(groups.find((g) => g.expressId === 16)!.glyphs[0].position, [3, 0, -1]);
     close(groups.find((g) => g.expressId === 18)!.glyphs[0].direction, [0, 0, -1]);
   });
+
+  it("drops the glyphs of a class the embed host hides, keeping the others", async () => {
+    await seed(false);
+    useViewerStore.setState({ hostHiddenIfcTypes: new Set(['ifcstructuralpointaction']) });
+    try {
+      const groups = await structuralGlyphGroups(useViewerStore.getState(), (key) => key);
+      assert.deepEqual(groups.map((g) => g.expressId), [16]);
+    } finally {
+      useViewerStore.setState({ hostHiddenIfcTypes: null });
+    }
+  });
 });

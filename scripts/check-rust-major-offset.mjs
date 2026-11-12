@@ -56,7 +56,8 @@
  * harness (`scripts/check-rust-major-offset.test.mjs`) drives this unmodified
  * file against synthetic trees, never real repo state.
  *
- * Run via `pnpm check:rust-major-offset`, wired into the CI node-test job.
+ * Run via `pnpm check:rust-major-offset`, wired into CI's node-guards job and
+ * the release PR's lean-lane `release-pr` job (scripts/ci-release-lane.mjs).
  */
 
 import { readFileSync } from 'node:fs';
@@ -194,11 +195,23 @@ if (totalDeclarations < MIN_TOTAL_DEP_DECLARATIONS) {
 if (failures.length > 0) {
   console.error('❌ Rust major-offset gate failed (#3216):\n');
   for (const line of failures) console.error(`  - ${line}`);
-  console.error(
-    `\n  Expected crate version: ${crateVersion}  (npm ${npmVersion} + majorOffset ${majorOffset})\n` +
-      `  Fix: run \`node scripts/sync-versions.js\` and commit the manifests, or correct "majorOffset" in ${OFFSET_FILE_NAME}.\n` +
-      `  Whether that offset is LARGE ENOUGH is a different question, answered by scripts/check-rust-semver.mjs against crates.io.\n`
-  );
+  // Each footer names a remedy only for the failures it repairs: a floor
+  // failure is a shrunk table or a scanner that stopped matching, and neither
+  // sync-versions.js nor majorOffset fixes that.
+  const floorOnly = failures.every((line) => line.startsWith('DEP_FLOOR:'));
+  const footer = [`\n  Expected crate version: ${crateVersion}  (npm ${npmVersion} + majorOffset ${majorOffset})`];
+  if (!floorOnly) {
+    footer.push(
+      `  Fix: run \`node scripts/sync-versions.js\` and commit the manifests, or correct "majorOffset" in ${OFFSET_FILE_NAME}.`,
+      `  Whether that offset is LARGE ENOUGH is a different question, answered by scripts/check-rust-semver.mjs against crates.io.`,
+    );
+  }
+  if (failures.some((line) => line.startsWith('DEP_FLOOR:'))) {
+    footer.push(
+      `  DEP_FLOOR fix: compare the manifests' internal dependency declarations with main. If they really shrank, lower the floor in scripts/lib/rust-major-offset.mjs in a reviewed change; if they did not, the pattern there stopped matching them, so fix the pattern.`,
+    );
+  }
+  console.error(`${footer.join('\n')}\n`);
   process.exit(1);
 }
 

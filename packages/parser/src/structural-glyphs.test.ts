@@ -291,6 +291,9 @@ const FRAMES = `ISO-10303-21;HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('f.if
 #271=IFCPRODUCTDEFINITIONSHAPE($,$,(#270));
 #272=IFCSTRUCTURALPOINTACTION(${id(272)},$,'ONFLAT',$,$,#20,#271,#84,.LOCAL_COORDS.,.F.);
 #273=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(273)},$,$,$,#268,#272);
+#274=IFCSTRUCTURALLOADSINGLEFORCE('gz',$,$,-1.,$,$,$);
+#275=IFCSTRUCTURALPOINTACTION(${id(275)},$,'ONFLATGLOBAL',$,$,#20,#271,#274,.GLOBAL_COORDS.,.F.);
+#276=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(276)},$,$,$,#268,#275);
 ENDSEC;END-ISO-10303-21;`;
 
 describe('structuralGlyphs local frames of curve and surface items', () => {
@@ -320,7 +323,13 @@ describe('structuralGlyphs local frames of curve and surface items', () => {
 
   it('draws no local load on a surface item whose face has no frame, rather than guess one', async () => {
     // The member's face is three collinear points; the action has its own vertex.
-    expect(bySource(await load(), 272)).toEqual([]);
+    const glyphs = await load();
+    expect(bySource(glyphs, 272)).toEqual([]);
+    // Control: the same vertex and member with a GLOBAL_COORDS load does draw.
+    const [control, ...rest] = arrows(glyphs, 275);
+    expect(rest).toEqual([]);
+    close(control.position, [21, 0, 0]);
+    close(control.direction, [0, 0, -1]);
   });
 
   it('places a surface configuration value at its x and y in the reference surface', async () => {

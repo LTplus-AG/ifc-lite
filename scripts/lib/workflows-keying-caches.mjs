@@ -13,17 +13,26 @@
  * (which ci-push-replay blocks on its own). A step that merely READS another
  * workflow is test behaviour, already covered by the exact-tree evidence.
  *
- * Every hashFiles call must therefore be judged. An argument that is not a
- * quoted literal, or a wildcard pattern that could reach
- * `.github/workflows/<x>.yml`, makes the answer unknown. A key built in a `run:`
- * step from a workflow file's bytes is not detected; no such step exists.
+ * Every hashFiles argument and `cache-dependency-path` value must therefore be
+ * judged. One that is not a plain literal, or a pattern that could reach
+ * `.github/workflows/<x>.yml` without naming it (a wildcard, or a directory,
+ * whose files hashFiles all hashes), makes the answer unknown. A key built in a
+ * `run:` step from a workflow file's bytes, or by another remote action's
+ * input, is not detected.
  */
+
+import { posix } from 'node:path';
 
 const LOCAL_USES = /uses:\s*['"]?\.\/(\.github\/workflows\/[^\s'"@#]+)/g;
 const REMOTE_WORKFLOW_USES = /uses:\s*['"]?[\w-]+\/[\w.-]+\/\.github\/workflows\//;
-const HASHFILES = /hashFiles\(/g;
+// Expression function names are case-insensitive.
+const HASHFILES = /hashFiles\(/gi;
 const QUOTED_ARG = /^\s*(?:'([^']*)'|"([^"]*)")\s*([,)])/;
-const WORKFLOWS_DIR = '.github/workflows/';
+// An action input whose files key a cache (actions/setup-node, setup-python, ...).
+const CACHE_DEPENDENCY_PATH = /cache-dependency-path:[ \t]*(.*)$/gim;
+// One scalar, ending the line or a flow-mapping entry (`, ...` / ` }`). A block scalar (`|`, `>`) is not plain.
+const PLAIN_VALUE = /^(?:'([^']*)'|"([^"]*)"|([^\s'"#|>,}][^\s#,}]*))\s*(?:[,}].*)?(?:#.*)?$/;
+const WORKFLOW_SEGMENTS = ['.github', 'workflows'];
 
 /** A hashFiles call's literal arguments, or null when one is not a quoted literal. */
 function hashFilesArgs(text, from) {
@@ -38,20 +47,48 @@ function hashFilesArgs(text, from) {
   }
 }
 
-/** For one pattern: the workflow file it names, 'none', or 'unknown' (a wildcard that may reach one). */
+const isWild = (seg) => /[*?[\]{}!]/.test(seg);
+
+/** Whether one glob segment can match target segment `ti` (0 `.github`, 1 `workflows`, 2 any YAML name). */
+function segmentMatches(seg, ti) {
+  if (ti === 2) return isWild(seg) || /\.ya?ml$/.test(seg);
+  if (!isWild(seg)) return seg === WORKFLOW_SEGMENTS[ti];
+  if (/[[\]{}!]/.test(seg)) return true;
+  const re = new RegExp(`^${seg.replace(/[.+^$()|\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.')}$`);
+  return re.test(WORKFLOW_SEGMENTS[ti]);
+}
+
+/**
+ * Whether `segs` can match `.github`, `.github/workflows` or a YAML file in it.
+ * hashFiles hashes every file below a matched directory, so an ancestor counts.
+ */
+function reachesWorkflows(segs, pi = 0, ti = 0) {
+  if (pi === segs.length) return ti >= 1;
+  if (segs[pi] === '**') return reachesWorkflows(segs, pi + 1, ti) || (ti < 3 && reachesWorkflows(segs, pi, ti + 1));
+  if (ti >= 3) return false;
+  return segmentMatches(segs[pi], ti) && reachesWorkflows(segs, pi + 1, ti + 1);
+}
+
+/** For one pattern: the workflow file it names, 'none', or 'unknown' (it may reach one it does not name). */
 function judgePattern(pattern) {
-  const p = pattern.replace(/^\.\//, '');
-  const wild = p.search(/[*?[{!]/);
-  if (wild < 0) {
-    return p.startsWith(WORKFLOWS_DIR) && !p.slice(WORKFLOWS_DIR.length).includes('/') ? p : 'none';
+  if (pattern.startsWith('!')) return 'none';
+  const p = posix.normalize(pattern);
+  // The workspace root, or an absolute path that may be it: everything below is hashed.
+  if (p === '.' || p === './' || p.startsWith('/')) return 'unknown';
+  const segs = p.replace(/\/$/, '').split('/');
+  if (!reachesWorkflows(segs)) return 'none';
+  return segs.length === 3 && !segs.some(isWild) ? p : 'unknown';
+}
+
+/** The patterns a `cache-dependency-path:` input lists, or null when its value is not a plain scalar. */
+function cacheDependencyPaths(text) {
+  const out = [];
+  for (const m of text.matchAll(CACHE_DEPENDENCY_PATH)) {
+    const v = PLAIN_VALUE.exec(m[1].trim());
+    if (!v) return null;
+    out.push(v[1] ?? v[2] ?? v[3]);
   }
-  const prefix = p.slice(0, wild);
-  // The literal part before the first wildcard rules the directory in or out.
-  if (prefix.length > 0 && !WORKFLOWS_DIR.startsWith(prefix) && !prefix.startsWith(WORKFLOWS_DIR)) return 'none';
-  // In or above .github/workflows/: unknown unless its last segment cannot be a YAML file
-  // (one that only reaches deeper files is fine: those always block on their own).
-  const last = p.slice(p.lastIndexOf('/') + 1);
-  return /[*?[{]/.test(last) || /\.ya?ml$/.test(last) ? 'unknown' : 'none';
+  return out;
 }
 
 /**
@@ -78,14 +115,17 @@ export function workflowsKeyingCaches({ root, actionFiles, readText }) {
       files.add(ref);
       if (!executed.includes(ref)) executed.push(ref);
     }
+    const patterns = cacheDependencyPaths(text);
+    if (patterns === null) return { unknown: `${path} sets cache-dependency-path to a value that is not a plain path` };
     for (const m of text.matchAll(HASHFILES)) {
       const args = hashFilesArgs(text, m.index + m[0].length);
       if (args === null) return { unknown: `${path} calls hashFiles with an argument that is not a quoted literal` };
-      for (const pattern of args) {
-        const verdict = judgePattern(pattern);
-        if (verdict === 'unknown') return { unknown: `${path} hashes '${pattern}', which may match a workflow file` };
-        if (verdict !== 'none') files.add(verdict);
-      }
+      patterns.push(...args);
+    }
+    for (const pattern of patterns) {
+      const verdict = judgePattern(pattern);
+      if (verdict === 'unknown') return { unknown: `${path} hashes '${pattern}', which may reach a workflow file` };
+      if (verdict !== 'none') files.add(verdict);
     }
   }
   return { files: [...files].sort() };

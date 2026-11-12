@@ -117,7 +117,7 @@ const queued = (queueEvidence, over = {}) => base({ artifactNamesByRun: { 1: ['b
 const NAMED = ['.github/workflows/docs.yml', '.github/workflows/test.yml'];
 
 test('with the cache-keying workflow files known, those, actions and Cargo still get a full run', () => {
-  for (const f of ['Cargo.lock', 'rust/core/Cargo.toml', 'rust-toolchain.toml', '.github/workflows/test.yml', '.github/workflows/docs.yml', '.github/actions/setup-wasm-build/action.yml', '.github/actions/any/helper.mjs']) {
+  for (const f of ['Cargo.lock', 'rust/core/Cargo.toml', 'rust-toolchain.toml', '.cargo/config.toml', '.github/workflows/test.yml', '.github/workflows/docs.yml', '.github/actions/setup-wasm-build/action.yml', '.github/actions/any/helper.mjs']) {
     const d = decidePushReplay(base({ changedFiles: ['README.md', f], workflowFiles: NAMED }));
     assert.equal(d.replay, false, f);
     assert.ok(d.reason.includes(f), d.reason);
@@ -175,16 +175,28 @@ test('workflowsKeyingCaches lists test.yml, the workflows it calls, and workflow
       '      - run: cat .github/workflows/only-read.yml && cd .github/workflows && cat **/*.yml',
       "        if: hashFiles('test-results/**/x.png', '*/*/junit.xml', '.github/actions/**') != ''",
     ].join('\n'),
-    '.github/workflows/reusable.yml': "steps:\n  - with: { key: \"${{ hashFiles('./.github/workflows/via-reusable.yml') }}\" }",
+    '.github/workflows/reusable.yml': [
+      'steps:',
+      "  - with: { key: \"${{ hashFiles('./.github/workflows/via-reusable.yml') }}\" }",
+      "  - with: { key: \"${{ HASHFILES('.github/actions/../workflows/upper.yml', '.github//workflows/slashes.yml') }}\" }",
+      '  - uses: actions/setup-python@v5',
+      '    with: { cache-dependency-path: .github/workflows/deps.yml }',
+      '  - with:',
+      "      cache-dependency-path: 'requirements-docs.txt'",
+      "  - with: { key: \"${{ hashFiles('.git*/ISSUE_TEMPLATE/*.yml', 'src*/**', '../outside/**', '!.github/**') }}\" }",
+    ].join('\n'),
     '.github/workflows/flow.yaml': 'jobs: {}',
     '.github/actions/a/action.yml': "runs:\n  steps:\n    - with: { key: \"${{ hashFiles('.github/workflows/via-action.yaml') }}\" }",
     '.github/actions/a/helper.mjs': "readFileSync('.github/workflows/only-read-too.yml')",
   };
   assert.deepEqual(keyed(files), { files: [
+    '.github/workflows/deps.yml',
     '.github/workflows/flow.yaml',
     '.github/workflows/hashed.yml',
     '.github/workflows/reusable.yml',
+    '.github/workflows/slashes.yml',
     ROOT,
+    '.github/workflows/upper.yml',
     '.github/workflows/via-action.yaml',
     '.github/workflows/via-reusable.yml',
   ] });
@@ -202,6 +214,15 @@ test('workflowsKeyingCaches is unknown when a hashFiles might reach a workflow f
     ['test', "key: ${{ hashFiles(env.PATTERN) }}"],
     ['test', "key: ${{ hashFiles('a',\n  '**/*.yaml') }}"],
     ['test', 'uses: some-org/some-repo/.github/workflows/r.yml@main'],
+    // A matched directory hashes every file below it.
+    ['test', "key: ${{ hashFiles('.github') }}"],
+    ['test', "key: ${{ hashFiles('.github/workflows/') }}"],
+    ['test', "key: ${{ hashFiles('.') }}"],
+    ['test', "key: ${{ hashFiles('/home/runner/work/x/x') }}"],
+    ['test', "key: ${{ hashFiles('.g*/workflows') }}"],
+    ['test', "key: ${{ hashfiles('**') }}"],
+    ['test', 'cache-dependency-path: .github/workflows/*.yml'],
+    ['test', 'cache-dependency-path: |\n  a.txt\n  .github/workflows/x.yml'],
     ['action', "key: ${{ hashFiles('**') }}"],
     ['reusable', "key: ${{ hashFiles('.github/workflows/*.yml') }}"],
   ]) {

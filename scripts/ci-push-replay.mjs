@@ -83,6 +83,8 @@ const NO_REPLAY = [
   /^Cargo\.(lock|toml)$/,
   /(^|\/)Cargo\.toml$/,
   /^rust-toolchain\.toml$/,
+  // Part of Swatinem/rust-cache's key.
+  /^\.cargo\/config(\.toml)?$/,
   /^\.github\/actions\//,
 ];
 // GitHub runs only top-level workflow YAML. Anything else under workflows/ is a file a

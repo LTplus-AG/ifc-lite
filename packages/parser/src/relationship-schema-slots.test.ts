@@ -10,6 +10,7 @@ import {
 } from './columnar-parser-indexes.js';
 import { prepareColumnarEntities } from './columnar-entity-preparation.js';
 import { getRelationshipSlotPlan, getAllConcreteRelationshipTypes, getConcreteRelationshipTypes } from './relationship-schema-slots.js';
+import { getSchemaRegistryForVersion, type SchemaRegistry } from './generated/schema-registry-by-version.js';
 
 describe('relationship-schema-slots (#4205)', () => {
   it('resolves a plain default-shaped subtype (relating then related list)', () => {
@@ -177,5 +178,39 @@ describe('relationship slot vector shared with the Rust server (C6-4)', () => {
   it('the vector is the whole gate: every concrete relationship with a plan is a row', () => {
     const withPlan = [...getAllConcreteRelationshipTypes()].filter((t) => getRelationshipSlotPlan(t) !== undefined);
     expect(withPlan.sort()).toEqual(Object.keys(vector.slots).sort());
+  });
+});
+
+// The relationship gate reads generated lists (one per schema, emitted by
+// `@ifc-lite/codegen` with the registry) instead of walking the decoded
+// registries when the parser loads. This is that walk, kept as the oracle: the
+// lists must be exactly what it finds, in the same order.
+describe('generated concrete relationship types', () => {
+  function walkConcreteRelationshipTypes(registry: SchemaRegistry): string[] {
+    const isRelationship = (name: string): boolean => {
+      let cursor: SchemaRegistry['entities'][string] | undefined = registry.entities[name];
+      const seen = new Set<string>();
+      while (cursor && !seen.has(cursor.name)) {
+        if (cursor.name === 'IfcRelationship') return true;
+        seen.add(cursor.name);
+        cursor = cursor.parent ? registry.entities[cursor.parent] : undefined;
+      }
+      return false;
+    };
+    return Object.entries(registry.entities)
+      .filter(([name, meta]) => !meta.isAbstract && isRelationship(name))
+      .map(([name]) => name.toUpperCase());
+  }
+
+  for (const version of ['IFC2X3', 'IFC4', 'IFC4X3'] as const) {
+    it(`${version}: the generated list is the walk over the decoded registry, in order`, () => {
+      const walked = walkConcreteRelationshipTypes(getSchemaRegistryForVersion(version));
+      expect(walked.length).toBeGreaterThan(40);
+      expect([...getConcreteRelationshipTypes(version)]).toEqual(walked);
+    });
+  }
+
+  it('an unknown version still fails the way the registry lookup does', () => {
+    expect(() => getConcreteRelationshipTypes('IFC9' as never)).toThrow(/no codegen-generated registry exists/);
   });
 });

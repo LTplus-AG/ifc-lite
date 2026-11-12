@@ -126,7 +126,6 @@
    991 apps/viewer/src/lib/llm/script-edit-ops.ts
   1141 apps/viewer/src/lib/llm/script-preflight.ts
    747 apps/viewer/src/lib/llm/system-prompt.ts
-   450 apps/viewer/src/lib/search/tier1-index.ts
    412 apps/viewer/src/lib/sources/persistence.ts
    426 apps/viewer/src/lib/tours/controller.ts
    812 apps/viewer/src/sdk/adapters/export-adapter.ts

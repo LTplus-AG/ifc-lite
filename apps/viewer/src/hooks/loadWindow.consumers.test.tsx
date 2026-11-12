@@ -78,3 +78,19 @@ it('viewport status summary skips the whole-model walk in the window and counts 
   await settleLoadWindow();
   assert.equal(hidden.at(-1), 1, 'settled: the hidden wall is counted');
 });
+
+it('exports the same window for non-React consumers (the after-load queue)', async () => {
+  const mod = (await import('./loadWindow.js')) as Record<string, unknown>;
+  assert.equal(typeof mod.viewerLoadWindow, 'function', 'loadWindow.ts must export viewerLoadWindow');
+  const win = (mod.viewerLoadWindow as () => { isOpen(): boolean; subscribe(l: () => void): () => void })();
+  assert.equal(win, (mod.viewerLoadWindow as () => unknown)(), 'one singleton');
+  const seen: boolean[] = [];
+  const unsubscribe = win.subscribe(() => seen.push(win.isOpen()));
+  act(() => useViewerStore.setState({ loading: true }));
+  assert.equal(win.isOpen(), true, 'opens with a load');
+  act(() => useViewerStore.setState({ loading: false }));
+  await settleLoadWindow();
+  assert.equal(win.isOpen(), false, 'closes after the settled frame');
+  assert.deepEqual(seen, [true, false]);
+  unsubscribe();
+});

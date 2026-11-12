@@ -128,6 +128,15 @@ function getViewerLoadWindow(): LoadWindow {
 // Created with this module: the status bar imports it at boot, before any load.
 getViewerLoadWindow();
 
+/**
+ * The same process-wide window for non-React consumers (the after-load queue):
+ * gate work on `isOpen()` and re-check on `subscribe(listener)`. One definition
+ * of "settled" for the whole viewer.
+ */
+export function viewerLoadWindow(): LoadWindow {
+  return getViewerLoadWindow();
+}
+
 /** True from load start until the scene settles; false outside any load. */
 export function useLoadWindowOpen(): boolean {
   const loadWindow = getViewerLoadWindow();

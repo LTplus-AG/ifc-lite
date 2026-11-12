@@ -134,9 +134,9 @@ function visibleSelection(frame: SelectionHighlightInputs): ReadonlySet<number> 
  * Owns the selection highlight between frames: which scene meshes draw it, and
  * when the copies behind them have to be freed or built.
  *
- * Two steps, because a frame reads `Scene.getMeshes()` in between and must not
- * draw a buffer freed after that: {@link retire} first, {@link meshes} once the
- * frame is ready to draw the highlight.
+ * {@link resolve} runs before a frame reads `Scene.getMeshes()`: it frees and
+ * replaces copies, and a buffer freed after the frame wrote or bound it is
+ * rejected at submit.
  */
 export class SelectionHighlight {
   private selectionVersion = -1;
@@ -153,21 +153,53 @@ export class SelectionHighlight {
   private pending = false;
 
   /**
-   * Free the highlight copies this frame's selection no longer wants, and
-   * mirror the selection onto the instanced occurrences. Does nothing while
-   * every input is what the last call saw.
+   * The scene meshes that draw this frame's highlight. While every input is
+   * what the last call saw, that is last frame's list. Otherwise the copies the
+   * selection no longer wants are freed, the selection is mirrored onto the
+   * instanced occurrences, and the copies the visible selection is missing are
+   * built. `createPiece` and `createMerged` say whether their upload happened;
+   * one that did not is retried next frame.
    */
-  retire(scene: HighlightScene, frame: SelectionHighlightInputs): void {
+  resolve(
+    scene: HighlightScene,
+    frame: SelectionHighlightInputs,
+    createPiece: (piece: MeshData) => boolean,
+    createMerged: (pieces: readonly MeshData[], merged: MergedSelectionCoverage) => boolean,
+  ): readonly Mesh[] {
+    if (this.changed(scene, frame)) this.retire(scene, frame);
+    if (!this.pending) return this.drawn;
+    const { visible, modelIndex, itemFilterExpressId, itemFilterItemId } = this;
+    const complete = hydrateSelectedEntities(scene, visible, modelIndex, itemFilterExpressId, itemFilterItemId, createPiece, createMerged);
+    this.drawn = visible.size > 0
+      ? scene.getMeshes().filter((mesh) => visible.has(mesh.expressId)
+        && (modelIndex === undefined || mesh.modelIndex === modelIndex)
+        && (mesh.expressId !== itemFilterExpressId || mesh.geometryItemId === itemFilterItemId)) // #4382
+      : [];
+    this.pending = !complete;
+    this.sceneMeshes = scene.getMeshes();
+    this.sceneMeshCount = this.sceneMeshes.length;
+    return this.drawn;
+  }
+
+  private changed(scene: HighlightScene, frame: SelectionHighlightInputs): boolean {
+    // `Scene.meshes` only ever grows by a push or is replaced, so the array and its length name its content.
+    const meshes = scene.getMeshes();
+    return frame.selectionVersion !== this.selectionVersion || frame.modelIndex !== this.modelIndex
+      || frame.itemFilterExpressId !== this.itemFilterExpressId || frame.itemFilterItemId !== this.itemFilterItemId
+      || frame.visibilityVersion !== this.visibilityVersion || scene.getPickGeometryRevision() !== this.revision
+      || meshes !== this.sceneMeshes || meshes.length !== this.sceneMeshCount;
+  }
+
+  /** Free the highlight copies this frame's selection no longer wants, and mirror the selection onto the instanced occurrences. */
+  private retire(scene: HighlightScene, frame: SelectionHighlightInputs): void {
     const scopeChanged = frame.selectionVersion !== this.selectionVersion || frame.modelIndex !== this.modelIndex
       || frame.itemFilterExpressId !== this.itemFilterExpressId || frame.itemFilterItemId !== this.itemFilterItemId;
-    const revision = scene.getPickGeometryRevision();
-    if (!scopeChanged && frame.visibilityVersion === this.visibilityVersion && revision === this.revision && this.sceneMeshesUnchanged(scene)) return;
     this.selectionVersion = frame.selectionVersion;
     this.modelIndex = frame.modelIndex;
     this.itemFilterExpressId = frame.itemFilterExpressId;
     this.itemFilterItemId = frame.itemFilterItemId;
     this.visibilityVersion = frame.visibilityVersion;
-    this.revision = revision;
+    this.revision = scene.getPickGeometryRevision();
     this.visible = visibleSelection(frame);
     // The per-instance selected flag; the scene diffs it, and an instanced upload bumps the revision.
     scene.setInstancedSelection(frame.selected, frame.itemFilterExpressId, frame.itemFilterItemId);
@@ -178,40 +210,5 @@ export class SelectionHighlight {
     if (scopeChanged) scene.disposeHydratedMeshesExcept(frame.selected, frame.modelIndex, frame.itemFilterExpressId, frame.itemFilterItemId);
     retireStaleSelectionHydration(scene, frame.selected, frame.modelIndex, frame.itemFilterExpressId, frame.itemFilterItemId, this.visible);
     this.pending = true;
-    this.noteSceneMeshes(scene);
-  }
-
-  /**
-   * The scene meshes that draw this frame's highlight, building the copies the
-   * visible selection is missing first. `createPiece` and `createMerged` say
-   * whether their upload happened; one that did not is retried next frame.
-   */
-  meshes(
-    scene: HighlightScene,
-    createPiece: (piece: MeshData) => boolean,
-    createMerged: (pieces: readonly MeshData[], merged: MergedSelectionCoverage) => boolean,
-  ): readonly Mesh[] {
-    if (!this.pending) return this.drawn;
-    const { visible, modelIndex, itemFilterExpressId, itemFilterItemId } = this;
-    const complete = hydrateSelectedEntities(scene, visible, modelIndex, itemFilterExpressId, itemFilterItemId, createPiece, createMerged);
-    this.drawn = visible.size > 0
-      ? scene.getMeshes().filter((mesh) => visible.has(mesh.expressId)
-        && (modelIndex === undefined || mesh.modelIndex === modelIndex)
-        && (mesh.expressId !== itemFilterExpressId || mesh.geometryItemId === itemFilterItemId)) // #4382
-      : [];
-    this.pending = !complete;
-    this.noteSceneMeshes(scene);
-    return this.drawn;
-  }
-
-  /** `Scene.meshes` only ever grows by a push or is replaced, so the array and its length name its content. */
-  private sceneMeshesUnchanged(scene: HighlightScene): boolean {
-    const meshes = scene.getMeshes();
-    return meshes === this.sceneMeshes && meshes.length === this.sceneMeshCount;
-  }
-
-  private noteSceneMeshes(scene: HighlightScene): void {
-    this.sceneMeshes = scene.getMeshes();
-    this.sceneMeshCount = this.sceneMeshes.length;
   }
 }

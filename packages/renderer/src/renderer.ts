@@ -1729,15 +1729,16 @@ export class Renderer {
         }
         this._lastHadPartialSources = hasPartialSources;
 
-        // Free the highlight copies this selection no longer wants BEFORE we
-        // snapshot the mesh list (stale glass would double-draw over its batch
-        // copy), and keep the instanced occurrences' selected flag in sync. Both
-        // only when an input changed: see selection-highlight.ts (#9835).
-        this._selectionHighlight.retire(this.scene, {
+        // The visible selection's highlight meshes. An unchanged frame gets last
+        // frame's list back; a changed one frees the copies the selection no longer
+        // wants, builds the ones it is missing and syncs the instanced occurrences'
+        // selected flag (selection-highlight.ts, #9835). BEFORE we snapshot the
+        // mesh list: a copy freed after the frame wrote or drew it fails the submit.
+        const selectedMeshes = this._selectionHighlight.resolve(this.scene, {
             selected: selectedExpressIds, selectionVersion: this._selection.getVersion(),
             hiddenIds: options.hiddenIds, isolatedIds: options.isolatedIds, visibilityVersion: newVisibilityVersion,
             modelIndex: selectedModelIndex, itemFilterExpressId, itemFilterItemId,
-        });
+        }, (piece) => this.createMeshFromData(piece).ok, (pieces, merged) => this.createMergedMeshes(pieces, merged));
 
         let meshes = this.scene.getMeshes();
 
@@ -2748,11 +2749,6 @@ export class Renderer {
 
                 // Prepare selected meshes once, then render them LAST so transparent batches
                 // don't overwrite highlight color (glass otherwise appears unhighlighted).
-                // The visible selection's scene meshes, with the copies it was missing
-                // built first; unchanged frames get last frame's list back (#9835).
-                const selectedMeshes = this._selectionHighlight.meshes(this.scene,
-                    (piece) => this.createMeshFromData(piece).ok,
-                    (pieces, merged) => this.createMergedMeshes(pieces, merged));
                 selectedMeshesForMask = selectedMeshes;
 
                 // Transparent instanced sub-pass — drawn here (after ALL opaque incl. the

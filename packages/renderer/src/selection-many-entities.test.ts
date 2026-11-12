@@ -41,7 +41,9 @@ interface Draw { vertexBuffer: FakeBuffer; indexBuffer: FakeBuffer; indexCount: 
 const VERTEX_OR_INDEX = 48;
 
 function makeHarness() {
-  const stats = { buffers: [] as FakeBuffer[], bindGroups: 0, writes: 0, destroyedBufferDraws: 0, draws: [] as Draw[] };
+  const stats = { buffers: [] as FakeBuffer[], bindGroups: 0, writes: 0, destroyedBufferDraws: 0, destroyedAtSubmit: 0, draws: [] as Draw[] };
+  /** Every buffer the open frame wrote or drew: a real submit rejects the frame if one was destroyed by then. */
+  const frameBuffers = new Set<FakeBuffer>();
   let vertexBuffer: FakeBuffer | null = null;
   let indexBuffer: FakeBuffer | null = null;
   let pipeline: unknown = null;
@@ -54,6 +56,7 @@ function makeHarness() {
         // A real submit rejects a destroyed buffer. Recorded, not asserted here:
         // render() contains anything thrown mid-frame, and would hide the failure.
         if (vertexBuffer!.destroyed > 0 || indexBuffer!.destroyed > 0) stats.destroyedBufferDraws++;
+        frameBuffers.add(vertexBuffer!).add(indexBuffer!);
         stats.draws.push({ vertexBuffer: vertexBuffer!, indexBuffer: indexBuffer!, indexCount, pipeline });
       };
       return () => undefined;
@@ -69,12 +72,17 @@ function makeHarness() {
   const queue = {
     writeBuffer(buffer: FakeBuffer, offset: number, data: ArrayBufferView) {
       stats.writes++;
+      frameBuffers.add(buffer);
       if (buffer.usage & VERTEX_OR_INDEX) { // keep the geometry to assert on
         buffer.bytes ??= new Uint8Array(buffer.size);
         buffer.bytes.set(new Uint8Array(data.buffer, data.byteOffset, data.byteLength), offset);
       }
     },
-    writeTexture() { /* no-op */ }, copyExternalImageToTexture() { /* no-op */ }, submit() { /* no-op */ },
+    writeTexture() { /* no-op */ }, copyExternalImageToTexture() { /* no-op */ },
+    submit() {
+      for (const buffer of frameBuffers) if (buffer.destroyed > 0) stats.destroyedAtSubmit++;
+      frameBuffers.clear();
+    },
     onSubmittedWorkDone: () => Promise.resolve(),
   };
   const lost = new Promise<void>(() => { /* never lost */ });
@@ -140,6 +148,7 @@ function makeHarness() {
     render(options: RenderOptions = {}) {
       renderer.render({ visualEnhancement: { enabled: false }, ...options });
       assert.equal(stats.destroyedBufferDraws, 0, 'a frame drew a buffer it had already destroyed');
+      assert.equal(stats.destroyedAtSubmit, 0, 'a frame submitted a write or a draw of a buffer it destroyed meanwhile');
     },
   };
 }

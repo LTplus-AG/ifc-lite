@@ -226,7 +226,9 @@ interface OrdinaryEntity {
 
 /**
  * Create the highlight copies the visible selection is missing. Run after
- * {@link retireStaleSelectionHydration}, so a merged mesh found here is current.
+ * {@link retireStaleSelectionHydration}, so a merged mesh found here is current,
+ * and like it before the render loop reads `Scene.getMeshes()`: pooling frees
+ * the individual copies it replaces.
  *
  * `createPiece` and `createMerged` return whether the upload happened.
  * @returns false when an upload did not happen, so the caller runs this again.

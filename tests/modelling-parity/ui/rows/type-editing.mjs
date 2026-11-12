@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { addTypeFireRating } from '../lib/property-ui.mjs';
 import { inheritedFireRating, typeOf } from '../lib/measured-oracles.mjs';
 import { task } from '../lib/driver.mjs';
 import { oracleModel } from '../lib/model-ui.mjs';
@@ -28,10 +29,18 @@ export default {
       tasks.push(await task(s, 'edit inherited FireRating with Apply To Type', async () => {
         await selectWall(s);
         await s.ui.click(s.page.locator('[data-model-inspector]').getByRole('button', { name: 'Properties', exact: true }));
+        await addTypeFireRating(s,'WT-200');
+        await selectWall(s);
+        await s.ui.click(s.page.locator('[data-model-inspector]').getByRole('button', { name: 'Properties', exact: true }));
         const rating = s.page.getByRole('button', { name: /^FireRating:/ });
+        if (!(await rating.count())) {
+          const set = s.page.getByRole('button',{name:/Pset_WallCommon/}).last();
+          if (!(await set.count())) throw new Error('The type exports FireRating through HasPropertySets, but Properties does not show that inherited set on its wall occurrence.');
+          await s.ui.click(set);
+        }
         if (!(await rating.count())) throw new Error('Authored type has no inherited FireRating in Properties; this UI workflow cannot exercise the type-property edit.');
         await s.ui.click(rating);
-        await field(s, s.page.getByRole('textbox').last(), 'REI60');
+        await field(s, s.page.getByRole('textbox',{name:'FireRating',exact:true}), 'REI60');
         await s.ui.click(s.page.getByRole('button', { name: 'Apply To Type', exact: true }));
       }));
       const shared = (await oracleModel(s)).step;

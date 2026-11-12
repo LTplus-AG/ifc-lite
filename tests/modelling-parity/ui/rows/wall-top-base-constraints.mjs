@@ -65,14 +65,14 @@ export default {
       await s.ui.clickWorld([2,4,3.4]);
       await field(s,s.page.getByLabel('Thickness in metres',{exact:true}),.3);
       await switchStorey(s,'Level 1');
-      await s.harness.aim([12,-12,8],[2.5,2,1.5]);
+      await s.harness.aim([12,12,8],[2.5,2,1.5]);
     }));
     let picked = null, invalidPick = null;
     tasks.push(await task(s,'pick the slab in the viewport as wall B top',async () => {
       await selectWall(s,3);
-      const choice = s.page.locator('input[value="element"]');
+      const choice = s.page.getByRole('radiogroup',{name:'Wall top',exact:true}).locator('input[value="element"]');
       if (!(await choice.count())) throw new Error('Wall top offers no slab/roof attachment choice in this viewer.');
-      await s.ui.click(choice);
+      await s.ui.click(choice.locator('..'));
       await s.ui.clickWorld([2,4,3.4]);
       picked = wallBounds((await oracleModel(s)).step,1);
     }));
@@ -80,7 +80,7 @@ export default {
       await selectWall(s,3);
       const selected = await s.state(() => globalThis.__ifc_lite_viewer_store__.getState().selectedEntityId);
       await s.ui.click(s.page.getByRole('button',{name:'Pick another slab or roof…',exact:true}));
-      await s.ui.clickWorld([2.5,0,1.5]);
+      await s.ui.clickWorld([2.5,0,2.5]);
       const sameSelection = await s.state(id => globalThis.__ifc_lite_viewer_store__.getState().selectedEntityId === id,selected);
       const reason = await s.page.locator('[data-model-inspector]').innerText();
       await s.ui.key('Escape');

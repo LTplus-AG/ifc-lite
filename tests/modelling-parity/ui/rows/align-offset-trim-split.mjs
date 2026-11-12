@@ -16,7 +16,7 @@ export default {
       tasks.push(await task(s,'Offset the original 5 m wall by 1.5 m',async () => {
         await selectWall(s);
         await editCommand(s,'element.offset');
-        await s.ui.click(s.page.getByRole('textbox',{name:/Distance/}));
+        await s.ui.click(s.page.getByRole('spinbutton',{name:'Distance',exact:true}));
         await s.ui.key('Control+A');
         await s.ui.type('1.5');
         await s.ui.clickWorld([2,2,0]);

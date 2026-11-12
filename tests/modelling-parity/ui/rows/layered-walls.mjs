@@ -5,8 +5,8 @@
 import { openFrontSection } from '../lib/probe-helpers.mjs';
 import { layerUsage, typeOf } from '../lib/measured-oracles.mjs';
 import { task } from '../lib/driver.mjs';
-import { oracleModel } from '../lib/model-ui.mjs';
-import { check, wall, selectWall, typeScope, newType, layer, applyLayers, body, wallSize, layerThicknesses, near, finish } from '../lib/authoring-helpers.mjs';
+import { oracleModel, escape, tool, typeFields } from '../lib/model-ui.mjs';
+import { check, inspector, typeScope, newType, layer, applyLayers, body, wallSize, layerThicknesses, near, finish } from '../lib/authoring-helpers.mjs';
 
 export default {
     id: 'ui.layered-walls', capability: 'layered-walls',
@@ -21,7 +21,11 @@ export default {
         await layer(s,3,.015,'Plaster');
         await typeScope(s);
         await applyLayers(s);
-        await wall(s);
+        // Front (Y) must cut across the wall, not along its material planes.
+        await tool(s,'wall.place');
+        await s.ui.clickWorld([0,0,0]);
+        await typeFields(s,[5,90]);
+        await escape(s);
       })];
       const { step } = await oracleModel(s);
       const layers = layerThicknesses(step);
@@ -33,7 +37,9 @@ export default {
         polygons = await s.state(id => (globalThis.__ifc_lite_viewer_store__.getState().drawing2D?.cutPolygons ?? []).filter(p => p.entityId === id), id);
       }));
       tasks.push(await task(s, 'retype the wall as WT-200-L (150/50 mm)', async () => {
-        await selectWall(s);
+        await escape(s);
+        await s.ui.clickWorld([0,2.5,1.5]);
+        await inspector(s);
         await newType(s, 'WT-200-L');
         const third = s.page.getByRole('button', { name: 'Remove layer 3', exact: true });
         if (await third.isVisible()) await s.ui.click(third);

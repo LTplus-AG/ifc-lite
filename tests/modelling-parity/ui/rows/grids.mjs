@@ -18,8 +18,9 @@ export default { ...gridColumns, id: 'ui.grids', capability: 'grids', async run(
     });
     if (!before.of('IFCGRID').some(g => g.id === selectedGrid)) {
       out.notes.push('Grid lines were not pickable; selecting the grid through Hierarchy.');
-      await s.ui.click(s.page.getByRole('button', { name: /Hierarchy/, exact: false }).first());
-      await s.ui.click(s.page.getByText('Grid', { exact: true }).last());
+      const row = s.page.getByRole('treeitem').filter({hasText:'IfcGrid'}).first();
+      if (!(await row.isVisible())) await s.ui.click(s.page.getByRole('button', { name: /Hierarchy/, exact: false }).first());
+      await s.ui.click(row);
     }
     await s.ui.key('Shift+M');
     await typeFields(s, [1, 0]);

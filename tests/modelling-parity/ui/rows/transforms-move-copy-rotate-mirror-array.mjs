@@ -40,15 +40,6 @@ export default {
         await typeFields(s, [90]);
         await escape(s);
       }));
-      tasks.push(await task(s, 'array: select the y=10 wall, Shift+A, count 3, spacing 1.5, two clicks for +Y', async () => {
-        await selectAt(s, [[2, 10, 1.5]]);
-        await s.ui.key('Shift+A', { settle: 300 });
-        await typeFields(s, [3, 1.5], { enter: false });
-        await s.ui.key('Tab');
-        await s.ui.clickWorld([6, 10, 0]);
-        await s.ui.clickWorld([6, 12, 0]);
-        await escape(s);
-      }));
       const beforeMirror = (await oracleModel(s)).step;
       const original = beforeMirror.wallAxes().find(w => near(w.start[1],10,.01) && near(w.end[1],10,.01));
       const guid = original && beforeMirror.get(original.id).args[0];
@@ -69,9 +60,19 @@ export default {
         const entity = step?.of('IFCWALL').find(w => w.args[0] === guid);
         return entity && step.wallAxes().find(w => w.id === entity.id);
       };
-      const reflected = wallWithGuid(mirrored), undone = wallWithGuid(restored);
+      const reflected = mirrored?.wallAxes().find(w => near(w.start[1],14,.01) && near(w.end[1],14,.01) && near(w.length,4,.001));
+      const undone = wallWithGuid(restored);
+      tasks.push(await task(s, 'array: select the y=10 wall, Shift+A, count 3, spacing 1.5, two clicks for +Y', async () => {
+        await selectAt(s, [[2, 10, 1.5]]);
+        await s.ui.key('Shift+A', { settle: 300 });
+        await typeFields(s, [3, 1.5], { enter: false });
+        await s.ui.key('Tab');
+        await s.ui.clickWorld([6, 10, 0]);
+        await s.ui.clickWorld([6, 12, 0]);
+        await escape(s);
+      }));
       const shot = await s.shot('transforms');
-      const axes = beforeMirror.wallAxes();
+      const axes = (await oracleModel(s)).step.wallAxes();
       // Clicked wall origins carry the click's few-mm error, so the move is judged to 30 mm.
       const moved = axes.some((a) => nearPt(a.start, [0, 2], 0.03) && nearPt(a.end, [4, 2], 0.03));
       const rotated = axes.some((a) => near(a.end[0] - a.start[0], 0, 1e-3) && near(a.length, 4, 1e-3));
@@ -82,7 +83,7 @@ export default {
           { name: 'move by a typed 2 m', ok: moved, detail: axes.map((a) => `${fmt(a.start)}->${fmt(a.end)}`).join(' ') },
           { name: 'rotate by a typed 90 degrees', ok: rotated, detail: rotated ? 'a vertical 4 m wall exists' : 'no vertical wall' },
           { name: 'array makes 3 walls from one', ok: arrayed >= 3, detail: `${arrayed} walls in the array region` },
-          { name: 'Mirror reflects the selected wall about y=12', ok: !!reflected && near(reflected.start[1],14,.01) && near(reflected.end[1],14,.01) && near(reflected.length,4,.001), detail: JSON.stringify(reflected) ?? 'Mirror gesture did not produce an exported wall' },
+          { name: 'Mirror reflects the selected wall about y=12', ok: !!reflected && near(reflected.start[1],14,.01) && near(reflected.end[1],14,.01) && near(reflected.length,4,.001) && mirrored.count('IFCWALL') === beforeMirror.count('IFCWALL'), detail: JSON.stringify(mirrored?.wallAxes()) ?? 'Mirror gesture did not produce an exported wall' },
           { name: 'Undo restores the mirrored wall to y=10', ok: !!undone && near(undone.start[1],10,.01) && near(undone.end[1],10,.01) && restored.count('IFCWALL') === beforeMirror.count('IFCWALL'), detail: JSON.stringify(undone) ?? 'No completed Mirror to undo' },
         ],
       };

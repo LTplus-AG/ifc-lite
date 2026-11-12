@@ -5,6 +5,7 @@
 import type { Catalogue } from '../../registry';
 
 export const modelWorkspaceFr = {
+  'modelWorkspace.leave': 'Quitter',
   "modelWorkspace.rail.aria": "Outils de modélisation",
   "modelWorkspace.rail.hosted": "Ouvertures, portes et fenêtres",
   "modelWorkspace.rail.circulation": "Escaliers et garde-corps",

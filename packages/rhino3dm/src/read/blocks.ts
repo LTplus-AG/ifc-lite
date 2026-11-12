@@ -5,8 +5,7 @@
 import { resolveAppearance, type Appearance, type AppearanceTables, type Look } from './appearance.js';
 import type { BlockMeshes, DrawnPart, Emitter } from './emit.js';
 import type { Part } from './geometry.js';
-import type { Report } from './report.js';
-import { plural } from './report.js';
+import { plural, type Report } from './report.js';
 import { isUsable, multiply, type Xform } from './xform.js';
 
 export interface BlockMember { part: Part; look: Look }
@@ -24,7 +23,7 @@ export interface Block extends BlockMeshes {
 export const MAX_BLOCK_PLACEMENTS = 500_000;
 
 export function buildBlock(name: string, linked: boolean, members: BlockMember[], tables: AppearanceTables): Block {
-  const block: Block = { name, linked, meshes: [], triangles: 0, meshParts: [], others: [], nested: [] };
+  const block: Block = { name, linked, meshes: [], triangles: 0, others: [], nested: [] };
   for (const { part, look } of members) {
     if (part.kind === 'instance') block.nested.push({ part, look });
     else if (part.kind !== 'mesh') block.others.push({ part, look });
@@ -32,7 +31,6 @@ export function buildBlock(name: string, linked: boolean, members: BlockMember[]
       // A "by parent" mesh takes the colour of whichever instance places it.
       const color = look.colorSource === 'parent' ? null : resolveAppearance(look, tables, null).color;
       block.meshes.push({ origin: part.origin, positions: part.positions, normals: part.normals, indices: part.indices, color });
-      block.meshParts.push(part);
       block.triangles += part.indices.length / 3;
     }
   }
@@ -85,7 +83,7 @@ export function expandInstance(walk: BlockWalk, object: number, id: string, xfor
     walk.placementsLeft--;
     if (!emitter.place(object, frame.id, block, frame.xform, frame.appearance.color)) return false;
     for (const { part, look } of block.others) {
-      emitter.draw(object, part, frame.xform, resolveAppearance(look, tables, frame.appearance).color, true);
+      emitter.draw(object, part, frame.xform, resolveAppearance(look, tables, frame.appearance).color);
     }
     path.add(frame.id);
     stack.push({ id: frame.id, leave: true });

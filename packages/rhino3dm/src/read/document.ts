@@ -30,16 +30,16 @@ export interface DocumentTables extends AppearanceTables {
   document: RhinoImportDocument;
   /** `IFC::WorldFromModel` in metres when it applies, else null. */
   world: Xform | null;
-  /** Output layers, parent first. */
-  layers: (RhinoImportLayer & { color: RhinoColor; material: number; hidden: boolean })[];
+  /** Output layers, parent first, and never empty: a file without layers gets a `Default` one. */
+  layers: (RhinoImportLayer & { material: number; hidden: boolean })[];
+  materials: { name: string; diffuse: RhinoColor; transparency: number }[];
   /** File layer index to output layer index. */
   layerIndex: number[];
-  materialNames: string[];
   groupNames: string[];
 }
 
-/** Read each row of a table and release its wrapper. */
-function rows<T, R>(table: { count: number; get(index: number): T }, read: (row: T) => R): R[] {
+/** Read each row of a table, releasing the row wrappers and then the table. */
+export function rows<T, R>(table: { count: number; get(index: number): T }, read: (row: T) => R): R[] {
   try {
     return Array.from({ length: table.count }, (_, i) => {
       const row = table.get(i);
@@ -88,6 +88,9 @@ function orderLayers(source: RLayerFacts[], classes: IfcClasses, report: Report)
     report.warn('layer-cycle', () => 'Some layers are their own ancestors; they are shown at the top level.');
     place(i);
   });
+  if (layers.length === 0) {
+    layers.push({ name: 'Default', fullPath: 'Default', parent: null, color: [0, 0, 0, 255], visible: true, userStrings: [], spatial: null, material: -1, hidden: false });
+  }
   return { layers, layerIndex };
 }
 
@@ -140,7 +143,7 @@ export function readDocument(api: ReadApi, file: RFile, archiveVersion: number, 
     },
     world,
     ...orderLayers(rows(file.layers(), layerFacts), classes, report),
-    materials, materialNames: materials.map(m => m.name),
+    materials,
     groupNames: rows(file.groups(), g => g.name),
   };
 }

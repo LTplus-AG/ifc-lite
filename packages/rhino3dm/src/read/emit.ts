@@ -4,16 +4,15 @@
 
 import type { Part } from './geometry.js';
 import type {
-  RhinoImportCurve, RhinoImportDefinition, RhinoImportGeometry, RhinoImportInstance, RhinoImportMesh,
+  RhinoImportCurve, RhinoImportDefinition, RhinoImportInstance, RhinoImportMesh,
   RhinoImportPointCloud, RhinoImportTextDot, RhinoRgba,
 } from './types.js';
 import { determinant3, hasLinearPart, transformNormals, transformPoint, transformVectors, type Xform } from './xform.js';
 
-type MeshPart = Extract<Part, { kind: 'mesh' }>;
 export type DrawnPart = Exclude<Part, { kind: 'instance' }>;
 
 /** A block's own meshes, as the output definition and its triangle count. */
-export interface BlockMeshes { name: string; meshes: RhinoImportDefinition['meshes']; meshParts: MeshPart[]; triangles: number }
+export interface BlockMeshes { name: string; meshes: RhinoImportDefinition['meshes']; triangles: number }
 
 /** Reverse each triangle, for geometry placed by a mirroring transform. */
 function flipWinding(indices: Uint32Array): Uint32Array {
@@ -36,6 +35,7 @@ export class Emitter {
   /** True once a part did not fit: nothing with triangles is drawn after that. */
   exhausted = false;
   private readonly definitionIndex = new Map<string, number>();
+  private readonly emitted = new Set<ArrayBufferLike>();
 
   constructor(private readonly bake: boolean, private trianglesLeft: number) {}
 
@@ -51,43 +51,32 @@ export class Emitter {
     return true;
   }
 
-  /**
-   * Move a part by `xform`: the origin in f64, the f32 offsets by the 3×3
-   * part only. `shared` copies buffers that would otherwise appear twice in
-   * the output, which a transfer list forbids.
-   */
-  private placed<T extends { origin: [number, number, number]; positions: Float32Array }>(part: T, xform: Xform | null, shared: boolean) {
-    const linear = xform !== null && hasLinearPart(xform);
-    return {
-      linear,
-      origin: xform ? transformPoint(xform, part.origin) : part.origin,
-      positions: linear ? transformVectors(xform, part.positions) : shared ? part.positions.slice() : part.positions,
-    };
+  /** A typed array for the output: the array itself the first time, a copy when it is already there, so a transfer list never names a buffer twice. */
+  private own<T extends Float32Array | Uint32Array | Uint8Array>(array: T): T {
+    if (!this.emitted.has(array.buffer)) { this.emitted.add(array.buffer); return array; }
+    return array.slice() as T;
   }
 
-  private mesh(part: MeshPart, xform: Xform | null, shared: boolean): RhinoImportGeometry {
-    const { linear, origin, positions } = this.placed(part, xform, shared);
-    if (!linear || !xform) {
-      return { origin, positions, normals: shared ? part.normals.slice() : part.normals, indices: shared ? part.indices.slice() : part.indices };
-    }
-    const mirrored = determinant3(xform) < 0;
-    return {
-      origin, positions, normals: transformNormals(xform, part.normals),
-      indices: mirrored ? flipWinding(part.indices) : shared ? part.indices.slice() : part.indices,
-    };
-  }
-
-  /** Draw one part of `object` under `xform` (null for none). False when the budget refused it. */
-  draw(object: number, part: DrawnPart, xform: Xform | null, color: RhinoRgba, shared = false): boolean {
-    if (part.kind === 'mesh') {
-      if (!this.take(part.indices.length / 3)) return false;
-      this.meshes.push({ entity: object, ...this.mesh(part, xform, shared), color });
-    } else if (part.kind === 'dot') {
+  /** Draw one part of `object` under `xform` (null for none): the origin moves in f64, the f32 offsets by the 3×3 part only. False when the budget refused it. */
+  draw(object: number, part: DrawnPart, xform: Xform | null, color: RhinoRgba): boolean {
+    if (part.kind === 'dot') {
       this.textDots.push({ entity: object, position: xform ? transformPoint(xform, part.position) : part.position, text: part.text, color });
-    } else {
-      const { origin, positions } = this.placed(part, xform, shared);
-      if (part.kind === 'curve') this.curves.push({ entity: object, origin, positions, closed: part.closed, color });
-      else this.pointClouds.push({ entity: object, origin, positions, colors: shared && part.colors ? part.colors.slice() : part.colors, color });
+      return true;
+    }
+    if (part.kind === 'mesh' && !this.take(part.indices.length / 3)) return false;
+    const linear = xform !== null && hasLinearPart(xform) ? xform : null;
+    const origin = xform ? transformPoint(xform, part.origin) : part.origin;
+    const positions = linear ? transformVectors(linear, part.positions) : this.own(part.positions);
+    if (part.kind === 'curve') this.curves.push({ entity: object, origin, positions, closed: part.closed, color });
+    else if (part.kind === 'points') this.pointClouds.push({ entity: object, origin, positions, colors: part.colors && this.own(part.colors), color });
+    else {
+      // A mirroring placement turns each triangle inside out, so its winding is reversed.
+      const mirrored = linear !== null && determinant3(linear) < 0;
+      this.meshes.push({
+        entity: object, origin, positions, color,
+        normals: linear ? transformNormals(linear, part.normals) : this.own(part.normals),
+        indices: mirrored ? flipWinding(part.indices) : this.own(part.indices),
+      });
     }
     return true;
   }
@@ -100,14 +89,14 @@ export class Emitter {
   place(object: number, id: string, block: BlockMeshes, xform: Xform, color: RhinoRgba): boolean {
     if (block.meshes.length === 0) return true;
     if (this.bake) {
-      return block.meshParts.every((part, i) => this.draw(object, part, xform, block.meshes[i].color ?? color, true));
+      return block.meshes.every(mesh => this.draw(object, { kind: 'mesh', ...mesh }, xform, mesh.color ?? color));
     }
     if (!this.take(block.triangles)) return false;
     let definition = this.definitionIndex.get(id);
     if (definition === undefined) {
       definition = this.definitions.length;
       this.definitionIndex.set(id, definition);
-      this.definitions.push({ name: block.name, meshes: block.meshes });
+      this.definitions.push({ name: block.name, meshes: block.meshes.map(m => ({ ...m, positions: this.own(m.positions), normals: this.own(m.normals), indices: this.own(m.indices) })) });
     }
     this.instances.push({ entity: object, definition, transform: xform, color });
     return true;

@@ -52,6 +52,8 @@ describe('geometry', () => {
     expect(result.entities.map(e => e.geometryType)).toEqual(['Brep', 'Brep']);
     // One quad per meshed face, merged into one mesh per Brep.
     expect(result.meshes.map(m => m.indices.length / 3)).toEqual([4, 12]);
+    // The second face's indices start after the first face's four vertices.
+    expect(Array.from(result.meshes[0].indices)).toEqual([0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4]);
     expect(entityBounds(result, 0)).toEqual({ min: [0, 0, 0], max: [1, 2, 1] });
     expect(result.warnings).toEqual(['1 Brep show only the faces that have a render mesh.']);
     expect(result.skipped).toEqual({});

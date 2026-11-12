@@ -20,7 +20,6 @@ interface WithUserStrings { getUserStrings(): RhinoUserStrings }
 export interface RMesh {
   vertices(): { count: number; point3dAt(index: number): number[] };
   translate(vector: number[]): boolean;
-  append(other: RMesh): void;
   toThreejsBuffers(rotateToYUp: boolean): { position: Float32Array; normal: Float32Array; index: Uint32Array };
 }
 export interface RBrep { faces(): Table<{ getMesh(type: EnumValue): RMesh | null }> }

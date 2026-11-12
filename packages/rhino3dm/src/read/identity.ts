@@ -5,8 +5,7 @@
 import { isValidIfcGuid, isValidUuid, uuidToIfcGuid, uuidV5 } from '@ifc-lite/encoding';
 import type { RhinoUserStrings } from '../types.js';
 import type { IfcClasses } from './ifc-classes.js';
-import type { Report } from './report.js';
-import { plural } from './report.js';
+import { plural, type Report } from './report.js';
 import type { RhinoImportEntity, RhinoImportPropertySet } from './types.js';
 
 export const FALLBACK_CLASS = 'IfcBuildingElementProxy';

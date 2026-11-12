@@ -3,9 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { discardRhino, dispose, loadRhino } from '../runtime.js';
-import { readLook, resolveAppearance, type Look } from './appearance.js';
+import { readLook, resolveAppearance, type Appearance, type Look } from './appearance.js';
 import { buildBlock, expandInstance, MAX_BLOCK_PLACEMENTS, type Block, type BlockWalk } from './blocks.js';
-import { readDocument, type DocumentTables } from './document.js';
+import { readDocument, rows as tableRows, type DocumentTables } from './document.js';
 import { Emitter } from './emit.js';
 import { extractGeometry, type Part } from './geometry.js';
 import { endsWithFileLength, NOT_3DM_MESSAGE, readArchiveVersion } from './header.js';
@@ -30,7 +30,7 @@ const OUT_OF_MEMORY_SUSPECT_BYTES = 32 * 1024 * 1024;
 const DEFAULT_MAX_TRIANGLES = 30_000_000;
 const megabytes = (bytes: number) => `${Math.round(bytes / (1024 * 1024))} MB`;
 
-interface ObjectRow extends ObjectFacts { member: boolean; look: Look; part: Part }
+interface ObjectRow extends ObjectFacts { member: boolean; look: Look; appearance: Appearance; part: Part }
 /** The options with their defaults applied. */
 type Settings = Required<Omit<ReadRhino3dmOptions, 'locateFile' | 'onProgress'>> & Pick<ReadRhino3dmOptions, 'onProgress'>;
 
@@ -51,13 +51,13 @@ function readObjects(api: ReadApi, file: RFile, tables: DocumentTables, opts: Se
         if (part) {
           // A file without layers, or an index outside the table, falls back to the first layer.
           const layer = Math.max(tables.layerIndex[attributes.layerIndex] ?? 0, 0);
-          const look = readLook(api, attributes, layer);
+          const look = readLook(api, attributes, layer), appearance = resolveAppearance(look, tables, null);
           rows.set(attributes.id, {
             id: attributes.id, name: attributes.name, type, layer, layerPath: tables.layers[layer].fullPath,
             hidden: !attributes.visible || attributes.mode.value === api.ObjectMode.Hidden.value || tables.layers[layer].hidden,
             groups: attributes.getGroupList(), userStrings: attributes.getUserStrings(),
-            material: tables.materialNames[resolveAppearance(look, tables, null).material] ?? '',
-            member: attributes.isInstanceDefinitionObject, look, part,
+            material: tables.materials[appearance.material]?.name ?? '',
+            member: attributes.isInstanceDefinitionObject, look, appearance, part,
           });
         }
       } finally { dispose(geometry); dispose(attributes); dispose(object); }
@@ -68,18 +68,11 @@ function readObjects(api: ReadApi, file: RFile, tables: DocumentTables, opts: Se
 }
 
 function readBlocks(api: ReadApi, file: RFile, rows: Map<string, ObjectRow>, tables: DocumentTables): Map<string, Block> {
-  const blocks = new Map<string, Block>(), table = file.instanceDefinitions();
   const linkedTypes = [api.InstanceDefinitionUpdateType.Linked.value, api.InstanceDefinitionUpdateType.LinkedAndEmbedded.value];
-  try {
-    for (let i = 0; i < table.count; i++) {
-      const definition = table.get(i);
-      try {
-        const members = definition.getObjectIds().flatMap(id => rows.get(id) ?? []);
-        blocks.set(definition.id, buildBlock(definition.name, linkedTypes.includes(definition.updateType.value), members, tables));
-      } finally { dispose(definition); }
-    }
-  } finally { dispose(table); }
-  return blocks;
+  return new Map(tableRows(file.instanceDefinitions(), (definition): [string, Block] => {
+    const members = definition.getObjectIds().flatMap(id => rows.get(id) ?? []);
+    return [definition.id, buildBlock(definition.name, linkedTypes.includes(definition.updateType.value), members, tables)];
+  }));
 }
 
 function refusal(report: Report): RhinoReadError {
@@ -92,9 +85,6 @@ function refusal(report: Report): RhinoReadError {
 function build(api: ReadApi, file: RFile, archiveVersion: number, classes: IfcClasses, opts: Settings): RhinoImport {
   const report = new Report();
   const tables = readDocument(api, file, archiveVersion, classes, report);
-  if (tables.layers.length === 0) {
-    tables.layers.push({ name: 'Default', fullPath: 'Default', parent: null, color: [0, 0, 0, 255], visible: true, userStrings: [], spatial: null, material: -1, hidden: false });
-  }
   const rows = readObjects(api, file, tables, opts, report);
   const blocks = readBlocks(api, file, rows, tables);
   const emitter = new Emitter(opts.bakeInstances, opts.maxTriangles);
@@ -106,7 +96,7 @@ function build(api: ReadApi, file: RFile, archiveVersion: number, classes: IfcCl
   let undrawn = 0;
   for (const row of rows.values()) {
     if (row.member) continue;
-    const appearance = resolveAppearance(row.look, tables, null), { part } = row, index = drawn.length;
+    const { part, appearance } = row, index = drawn.length;
     const before = emitter.size();
     const complete = part.kind === 'instance'
       ? expandInstance(walk, index, part.definition, world ? multiply(world, part.xform) : part.xform, appearance)
@@ -137,10 +127,13 @@ function build(api: ReadApi, file: RFile, archiveVersion: number, classes: IfcCl
   };
 }
 
-/** True for the ways running out of memory surfaces as a throw: an emscripten abort, a failed typed-array allocation. */
-function isOutOfMemory(error: unknown): boolean {
-  // A C++ exception escapes embind as its pointer, a bare number.
-  return error instanceof WebAssembly.RuntimeError || error instanceof RangeError || typeof error === 'number';
+/**
+ * True for the ways running out of memory surfaces as a throw: an emscripten
+ * abort at any size, and for a file large enough to exhaust the heap a failed
+ * typed-array allocation or a C++ exception, which escapes embind as a bare number.
+ */
+function isOutOfMemory(error: unknown, large: boolean): boolean {
+  return error instanceof WebAssembly.RuntimeError || (large && (error instanceof RangeError || typeof error === 'number'));
 }
 
 /**
@@ -160,19 +153,20 @@ export async function readRhino3dm(bytes: Uint8Array, opts: ReadRhino3dmOptions 
   const outOfMemory = () => new RhinoReadError('too-large', `This file (${size}) needs more memory than the reader has. Split the model into smaller files in Rhino.`);
   const [rhino, classes] = await Promise.all([loadRhino(opts.locateFile), loadIfcClasses()]);
   const api = readApi(rhino);
+  const large = bytes.byteLength >= OUT_OF_MEMORY_SUSPECT_BYTES;
   let file: RFile | null = null;
   try {
     file = api.File3dm.fromByteArray(bytes);
     if (!file) {
       // At the heap limit rhino3dm returns null, as it does for a damaged file. A large
       // file that still ends in its own length was not cut short, so memory is the cause.
-      if (bytes.byteLength < OUT_OF_MEMORY_SUSPECT_BYTES || !endsWithFileLength(bytes)) throw new RhinoReadError('not-3dm', NOT_3DM_MESSAGE);
+      if (!large || !endsWithFileLength(bytes)) throw new RhinoReadError('not-3dm', NOT_3DM_MESSAGE);
       discardRhino();
       throw outOfMemory();
     }
     return build(api, file, archiveVersion, classes, { subdLevel, maxTriangles, bakeInstances, onProgress });
   } catch (error) {
-    if (!isOutOfMemory(error)) throw error;
+    if (!isOutOfMemory(error, large)) throw error;
     // An aborted module cannot be used again, so the next call loads a fresh one.
     discardRhino();
     file = null;

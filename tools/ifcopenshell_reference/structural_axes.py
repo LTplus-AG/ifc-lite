@@ -25,14 +25,15 @@ import ifcopenshell.geom
 import numpy as np
 
 
-def centre_line(model, settings, element_id):
-    shape = ifcopenshell.geom.create_shape(settings, model.by_id(element_id))
+def centre_line(settings, element):
+    shape = ifcopenshell.geom.create_shape(settings, element)
     v = np.array(shape.geometry.verts).reshape(-1, 3)
     mean = v.mean(0)
-    axis = np.linalg.svd(v - mean)[2][0]
-    along = (v - mean) @ axis
-    across = (v - mean) - np.outer(along, axis)
-    plane = np.linalg.svd(across)[2][:2]
+    d = v - mean
+    axis = np.linalg.svd(d, full_matrices=False)[2][0]
+    along = d @ axis
+    across = d - np.outer(along, axis)
+    plane = np.linalg.svd(across, full_matrices=False)[2][:2]
     flat = across @ plane.T
     centre = mean + plane.T @ ((flat.min(0) + flat.max(0)) / 2)
     return centre + axis * along.min(), centre + axis * along.max()
@@ -41,10 +42,10 @@ def centre_line(model, settings, element_id):
 def main():
     model = ifcopenshell.open(sys.argv[1])
     settings = ifcopenshell.geom.settings()
-    settings.set("use-world-coords", True)
+    settings.set(settings.USE_WORLD_COORDS, True)
     for element_id in (int(i) for i in sys.argv[2].split(",")):
         element = model.by_id(element_id)
-        start, end = centre_line(model, settings, element_id)
+        start, end = centre_line(settings, element)
         print(element_id, element.is_a(), element.Name, [float(c) for c in start], [float(c) for c in end])
 
 

@@ -14,7 +14,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { IfcParser } from './index.js';
 import { extractStructuralOnDemand } from './structural-extractor.js';
-import { checkStructuralConsistency, type PhysicalElementFact, type StructuralConsistencyIssue } from './structural-consistency.js';
+import { checkStructuralConsistency, DEFAULT_AXIS_DRIFT_TOLERANCE, type PhysicalElementFact, type StructuralConsistencyIssue, type StructuralLine } from './structural-consistency.js';
 import { structuralConsistencyFacts, structuralConsistencyIssues } from './structural-consistency-facts.js';
 import type { StructuralConnectionInfo, StructuralExtraction, StructuralMemberInfo } from './structural-types.js';
 
@@ -130,6 +130,55 @@ describe('structural-class-mismatch', () => {
       member(11, 'IfcStructuralSurfaceMember', [1, 4]),
     ]), elements);
     expect(ids(issues, 'structural-class-mismatch')).toEqual([]);
+  });
+});
+
+describe('structural-unconnected-member', () => {
+  const connected = (expressId: number, type = 'IfcStructuralCurveMember') => ({ ...member(expressId, type), connectionGlobalIds: ['C1'] });
+
+  it('reports every member with no connection once any member is connected', () => {
+    const issues = checkStructuralConsistency(model([connected(10), member(11, 'IfcStructuralCurveMember'), member(12, 'IfcStructuralSurfaceMember')]), []);
+    expect(ids(issues, 'structural-unconnected-member')).toEqual([11, 12]);
+    expect(issues.find((issue) => issue.entityId === 11)).toMatchObject({ severity: 'warning', globalId: 'M11' });
+  });
+
+  it('does not run in a file that connects no member', () => {
+    expect(ids(checkStructuralConsistency(model([member(10, 'IfcStructuralCurveMember'), member(11, 'IfcStructuralSurfaceMember')]), []), 'structural-unconnected-member')).toEqual([]);
+  });
+});
+
+describe('structural-axis-drift', () => {
+  const beam = (axis?: StructuralLine): PhysicalElementFact => ({ ...fact(1, 'IfcBeam', true), ...(axis ? { axis } : {}) });
+  const along: StructuralLine = [[0, 0, 3], [6, 0, 3]];
+  const lines = (line: StructuralLine) => new Map([[10, line]]);
+  const linked = model([member(10, 'IfcStructuralCurveMember', [1])]);
+  const drift = (issues: StructuralConsistencyIssue[]) => issues.filter((issue) => issue.rule === 'structural-axis-drift');
+
+  it('reports a member off its element\'s axis with the distance of its farther end', () => {
+    const issues = drift(checkStructuralConsistency(linked, [beam(along)], {}, lines([[0, 0.1, 3], [6, 0.3, 3.4]])));
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({ entityId: 10, globalId: 'M10', target: 1, targetGlobalId: 'P1' });
+    expect(issues[0].distance).toBeCloseTo(0.5, 9);
+    expect(issues[0].message).toContain('0.500 m');
+  });
+
+  it('ignores ends moved along the axis, as the derivation does at joints', () => {
+    expect(drift(checkStructuralConsistency(linked, [beam(along)], {}, lines([[-0.2, 0, 3], [5.5, 0, 3]])))).toEqual([]);
+  });
+
+  it(`reports only past the tolerance, default ${DEFAULT_AXIS_DRIFT_TOLERANCE} m`, () => {
+    const within = lines([[0, DEFAULT_AXIS_DRIFT_TOLERANCE, 3], [6, 0, 3]]);
+    expect(drift(checkStructuralConsistency(linked, [beam(along)], {}, within))).toEqual([]);
+    expect(drift(checkStructuralConsistency(linked, [beam(along)], { axisDriftTolerance: 0.01 }, within))).toHaveLength(1);
+    expect(() => checkStructuralConsistency(linked, [beam(along)], { axisDriftTolerance: Number.NaN }, within)).toThrow(/axisDriftTolerance/);
+  });
+
+  it('needs both lines and a link', () => {
+    const off = lines([[0, 1, 3], [6, 1, 3]]);
+    expect(drift(checkStructuralConsistency(linked, [beam()], {}, off))).toEqual([]);
+    expect(drift(checkStructuralConsistency(linked, [beam(along)]))).toEqual([]);
+    expect(drift(checkStructuralConsistency(model([member(10, 'IfcStructuralCurveMember')]), [beam(along)], {}, off))).toEqual([]);
+    expect(drift(checkStructuralConsistency(linked, [beam([[1, 1, 1], [1, 1, 1]])], {}, off))).toEqual([]);
   });
 });
 

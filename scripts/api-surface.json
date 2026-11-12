@@ -9306,6 +9306,14 @@
     "WorkerParser: class",
     "WorkerParserOptions: interface"
   ],
+  "@ifc-lite/parser/structural-glyphs": [
+    "StructuralGlyph: type",
+    "StructuralGlyphSource: interface",
+    "StructuralGlyphVec3: type",
+    "StructuralLoadDistribution: type",
+    "StructuralSupportKind: type",
+    "structuralGlyphs: function"
+  ],
   "@ifc-lite/plugin-api": [
     "ConnectionTestResult: interface",
     "DownloadOptions: interface",

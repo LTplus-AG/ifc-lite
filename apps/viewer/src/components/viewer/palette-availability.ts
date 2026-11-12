@@ -17,11 +17,11 @@ import { hasWorkspaceHistory } from '@/lib/model-placement/history';
 import { isCollabEnabled } from '@/lib/collab/config';
 import type { TranslationKey } from '@/i18n';
 import { useViewerStore, type ViewerState } from '@/store';
-import { canMutate } from '@/store/mutation-permission';
+import { canMutate, mutationDenialKey, mutationPermission } from '@/store/mutation-permission';
 import { hasRetainedShapeOnlyModel, RETAINED_SHAPE_ONLY_REASON } from '@/store/retainedGeometry';
 import { getWebGPUStatus } from '@/hooks/useWebGPU';
 import { selectCanRefreshModels, selectHasModelsLoaded } from '@/hooks/model-presence';
-import { modelWorkspaceTarget } from '@/lib/commands/modeling/workspace-target';
+import { modelWorkspaceTarget, resolveModelId } from '@/lib/commands/modeling/workspace-target';
 import { sessionWorkplaneBlock } from '@/lib/commands/modeling/workspace-storeys';
 import { resolveWorkplane } from '@/lib/commands/modeling/registry';
 import type { SurfaceCommandContext, SurfaceCommandDefinition, SurfaceCommandState } from './surface-command-types';
@@ -31,6 +31,10 @@ export type PaletteAvailability = { status: 'available' } | {
   status: 'disabled'; reasonKey: TranslationKey;
 };
 const available: PaletteAvailability = { status: 'available' };
+/** Commands that open a persistent tool host dialog over a loaded model, and the host method each needs. */
+const HOST_OPENERS = new Map<string, 'openBulkProperties' | 'openImportData' | 'openStructuralDerivation'>([
+  ['author:bulk-properties', 'openBulkProperties'], ['author:import-data', 'openImportData'], ['model:derive-structural', 'openStructuralDerivation'],
+]);
 const blocked = (reasonKey: TranslationKey): PaletteAvailability => ({ status: 'disabled', reasonKey });
 const cameraActions = {
   'view:zoom-in': 'zoomIn', 'view:zoom-out': 'zoomOut',
@@ -112,10 +116,19 @@ export function paletteAvailability(command: SurfaceCommandDefinition, context: 
   }
 
   const hasData = s.ifcDataStore !== null || [...s.models.values()].some(m => m.ifcDataStore != null);
-  if (id === 'author:bulk-properties' || id === 'author:import-data') {
+  const opener = HOST_OPENERS.get(id);
+  if (opener) {
     if (s.loading) return blocked('commandPalette.availability.loading');
     if (!hasData) return blocked('commandPalette.availability.ifc');
-    const callback = id === 'author:bulk-properties' ? context.openBulkProperties : context.openImportData;
+    // The derivation writes into the model: the same write policy its review applies.
+    if (id === 'model:derive-structural') {
+      // derivationModelId's rule, inlined: importing it would pull the lazy derivation module into startup.
+      const target = resolveModelId(s, undefined);
+      if (target === null) return blocked('commandPalette.availability.ifc');
+      const permission = mutationPermission(s, target);
+      if (!permission.allowed) return blocked(mutationDenialKey(permission.reason));
+    }
+    const callback = context[opener];
     if (!callback || context.toolHostIsCurrent?.() === false) return blocked('commandPalette.availability.host');
   }
   if (id === 'elements:class-filter' && (!context.openClassFilter || context.toolHostIsCurrent?.() === false)) {

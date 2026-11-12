@@ -199,6 +199,7 @@ export const commandPaletteEn = {
   'commandPalette.vis.site.label': 'Site',
   'commandPalette.vis.ifcAnnotations.label': 'Annotations',
   'commandPalette.vis.ifcGrid.label': 'Grids',
+  'commandPalette.vis.structuralGlyphs.label': 'Supports & loads',
   'commandPalette.vis.resetColors.label': 'Reset Colors',
 
   // ── Panels ──
@@ -262,4 +263,5 @@ export const commandPaletteEn = {
   'commandPalette.category.preferences': 'Preferences',
   'commandPalette.category.extensions': 'Extensions',
   'commandPalette.category.learn': 'Learn',
+  'commandPalette.tool.deriveStructural.label': 'Derive structural analysis model',
 } as const satisfies Record<string, TranslationValue>;

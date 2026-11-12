@@ -34,7 +34,7 @@ import { HoverTooltip } from '@/components/viewer/HoverTooltip.js';
 import { ViewportHud } from '@/components/viewport-ui/hud/ViewportHud.js';
 import { cleanup, render, waitFor } from '@/test/render.js';
 import { fixtureModel } from '@/test/store-fixture.js';
-import { closeContrastBrowser, warmContrastBrowser } from './render-harness.js';
+import { CONTRAST_BROWSER_SKIP, closeContrastBrowser, warmContrastBrowser } from './render-harness.js';
 import {
   assertRenderedTextClears,
   assertForcedClassReddens,
@@ -145,7 +145,7 @@ const rebasedNote = () => resolve('measure.point.rebasedNote', { name: resolve('
 
 describe('Measure / Section / hover secondary text: rendered contrast (#4792, #6205)', () => {
   for (const theme of THEMES) {
-    it(`MeasurePointReadout base state (Model row label, "m" unit hint) clears AA in ${theme}`, async () => {
+    it(`MeasurePointReadout base state (Model row label, "m" unit hint) clears AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       useViewerStore.setState({
         activeMeasurement: null,
         measurements: [{ id: 'p', start: point(0, 0, 0), end: point(1, 2, 3), distance: 3.74 }],
@@ -156,7 +156,7 @@ describe('Measure / Section / hover secondary text: rendered contrast (#4792, #6
         [resolve('measure.point.rowModel'), 'm'], WCAG_AA_NORMAL_TEXT);
     });
 
-    it(`MeasurePointReadout rebased + georeferenced rows, notice and CRS clear AA in ${theme}`, async () => {
+    it(`MeasurePointReadout rebased + georeferenced rows, notice and CRS clear AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       seedGeoreferencedRebased();
       const panel = mountMeasurementsPanel('measure.section.point.label');
       await waitForProjectedPointReadout(panel);
@@ -169,7 +169,7 @@ describe('Measure / Section / hover secondary text: rendered contrast (#4792, #6
       ], WCAG_AA_NORMAL_TEXT);
     });
 
-    it(`MeasurementList geo-readout EnhLine labels clear AA in ${theme}`, async () => {
+    it(`MeasurementList geo-readout EnhLine labels clear AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       seedGeoreferencedRebased();
       const panel = mountMeasurementsPanel();
       await waitFor(() => ['A', 'B'].every(label => [...panel.querySelectorAll('span')]
@@ -178,7 +178,7 @@ describe('Measure / Section / hover secondary text: rendered contrast (#4792, #6
       await assertRenderedTextClears(theme, snapshotRenderedDom(VIEWER_SHELL_SURFACE), ['A', 'B'], WCAG_AA_NORMAL_TEXT);
     });
 
-    it(`MeasureQuantities row label and net/gross/mesh footnote clear AA in ${theme}`, async () => {
+    it(`MeasureQuantities row label and net/gross/mesh footnote clear AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       seedQuantities();
       mountMeasurementsPanel('measure.section.quantities.label');
       await assertRenderedTextClears(theme, snapshotRenderedDom(VIEWER_SHELL_SURFACE), [
@@ -187,7 +187,7 @@ describe('Measure / Section / hover secondary text: rendered contrast (#4792, #6
       ], WCAG_AA_NORMAL_TEXT);
     });
 
-    it(`MeasureGeoReadout projected-CRS name on its HudSurface clears AA in ${theme}`, async () => {
+    it(`MeasureGeoReadout projected-CRS name on its HudSurface clears AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       seedGeoreferencedRebased();
       const hud = render(<><ViewportHud /><MeasureGeoReadout /></>);
       await waitFor(() => (hud.textContent?.includes(CRS_NAME) ?? false)
@@ -196,18 +196,18 @@ describe('Measure / Section / hover secondary text: rendered contrast (#4792, #6
       await assertRenderedTextClears(theme, snapshotRenderedDom(VIEWPORT_SURFACE), [CRS_NAME], WCAG_AA_NORMAL_TEXT);
     });
 
-    it(`HoverTooltip world-coordinate readout clears AA in ${theme}`, async () => {
+    it(`HoverTooltip world-coordinate readout clears AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       const xyz = mountHoverTooltip();
       await assertRenderedTextClears(theme, snapshotRenderedDom(VIEWPORT_SURFACE), [xyz], WCAG_AA_NORMAL_TEXT);
     });
 
-    it(`SectionToolbar heading caption on its HudSurface clears AA in ${theme}`, async () => {
+    it(`SectionToolbar heading caption on its HudSurface clears AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       mountSectionToolbar();
       await assertRenderedTextClears(theme, snapshotRenderedDom(VIEWPORT_SURFACE),
         [resolve('sectionTool.heading')], WCAG_AA_NORMAL_TEXT);
     });
 
-    it(`non-vacuousness: ${OLD_PANEL_CLASS} on MeasurePointReadout rebased notice reddens in ${theme}`, async (t) => {
+    it(`non-vacuousness: ${OLD_PANEL_CLASS} on MeasurePointReadout rebased notice reddens in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async (t) => {
       seedGeoreferencedRebased();
       const panel = mountMeasurementsPanel('measure.section.point.label');
       await waitForProjectedPointReadout(panel);
@@ -215,7 +215,7 @@ describe('Measure / Section / hover secondary text: rendered contrast (#4792, #6
       t.diagnostic(ratios.map((r) => `${r.toFixed(2)}:1`).join(', '));
     });
 
-    it(`non-vacuousness: ${OLD_TOOLTIP_CLASS} on HoverTooltip world-coordinate readout reddens in ${theme}`, async (t) => {
+    it(`non-vacuousness: ${OLD_TOOLTIP_CLASS} on HoverTooltip world-coordinate readout reddens in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async (t) => {
       const xyz = mountHoverTooltip();
       const ratios = await assertForcedClassReddens(theme, xyz, OLD_TOOLTIP_CLASS, WCAG_AA_NORMAL_TEXT, VIEWPORT_SURFACE);
       t.diagnostic(ratios.map((r) => `${r.toFixed(2)}:1`).join(', '));

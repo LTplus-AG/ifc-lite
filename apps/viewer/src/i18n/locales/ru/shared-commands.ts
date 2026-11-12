@@ -105,6 +105,8 @@ export const sharedCommandsRu = {
   "classVisibility.annotations.description": "Текст, размеры, выноски",
   "classVisibility.grids.label": "Координационные оси",
   "classVisibility.grids.description": "Конструктивные оси",
+  "classVisibility.structuralGlyphs.label": "Опоры и нагрузки",
+  "classVisibility.structuralGlyphs.description": "Символы расчётной модели",
   "classVisibility.mergeLayers.label": "Объединение многослойных стен",
   "classVisibility.mergeLayers.description": "Отображать стены одним телом · при перезагрузке",
   "classVisibility.fastGeometry.label": "Быстрая геометрия",

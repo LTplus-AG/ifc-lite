@@ -22,7 +22,7 @@
 import '@/test/setup-dom.js';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { isValidElement, Suspense, type ReactNode } from 'react';
+import { createElement, isValidElement, Suspense, type ComponentType, type ReactNode } from 'react';
 import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
 import { PanelModelGate } from '@/components/viewer/PanelModelGate';
 import { AssistantSourceContext } from '@/components/viewer/assistant/AssistantAction';
@@ -43,7 +43,7 @@ describe('workspace panel registry coverage', () => {
     );
   });
 
-  it('renders a DISTINCT body per panel, so none silently falls through to another', () => {
+  it('renders a DISTINCT body per panel, so none silently falls through to another', async () => {
     // The defect was a fall-through, so identity is the property under test:
     // two ids resolving to the same component is how Compare came out as
     // Properties. Compares the element TYPE, which is the component function.
@@ -60,11 +60,14 @@ describe('workspace panel registry coverage', () => {
       // Stopping at a host element would let `properties` report
       // 'div', unique by construction, so another id falling through to a
       // bare <PropertiesPanel /> would pass unnoticed.
-      // #9634: DeferredPanel is a shared host too; identity belongs to its
-      // actual lazy child, so falling through to another panel still fails.
-      while (isValidElement<{ children?: ReactNode }>(body) &&
+      // #9742: a deferred host now takes a cached loader rather than a lazy
+      // child. Resolve its real component: two different loaders for the same
+      // feature must still fail this fall-through check.
+      while (isValidElement<{ children?: ReactNode; load?: () => Promise<{ default: ComponentType<{ onClose: () => void }> }> }>(body) &&
         (typeof body.type === 'string' || body.type === ChunkErrorBoundary || body.type === Suspense || body.type === PanelModelGate || body.type === AssistantSourceContext || body.type === DeferredPanel)) {
-        body = body.props.children;
+        body = body.type === DeferredPanel && body.props.load
+          ? createElement((await body.props.load()).default, { onClose: () => {} })
+          : body.props.children;
       }
       assert.ok(isValidElement(body), `${panel.id} must have panel content beneath its loading/error hosts`);
       assert.notEqual(typeof body.type, 'string', `${panel.id} must resolve to a panel component, not a host element`);
@@ -89,8 +92,9 @@ describe('workspace panel registry coverage', () => {
     const typeChain = (node: ReactNode): unknown[] => {
       const chain: unknown[] = [];
       let current = node;
-      while (isValidElement<{ children?: ReactNode }>(current)) {
+      while (isValidElement<{ children?: ReactNode; load?: unknown }>(current)) {
         chain.push(current.type);
+        if (current.type === DeferredPanel && current.props.load) chain.push(current.props.load);
         current = current.props.children;
       }
       return chain;

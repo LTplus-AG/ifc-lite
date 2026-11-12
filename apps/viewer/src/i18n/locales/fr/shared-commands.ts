@@ -102,6 +102,8 @@ export const sharedCommandsFr = {
   "classVisibility.annotations.description": "Textes, cotes, lignes de repère",
   "classVisibility.grids.label": "Grilles",
   "classVisibility.grids.description": "Axes structurels",
+  "classVisibility.structuralGlyphs.label": "Appuis et charges",
+  "classVisibility.structuralGlyphs.description": "Symboles de l'analyse structurelle",
   "classVisibility.mergeLayers.label": "Fusionner les murs multicouches",
   "classVisibility.mergeLayers.description": "Afficher les murs comme un seul solide · au rechargement",
   "classVisibility.fastGeometry.label": "Géométrie rapide",

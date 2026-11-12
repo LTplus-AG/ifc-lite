@@ -139,7 +139,10 @@ const SYNTHETIC = `ISO-10303-21;HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('g
 #106=IFCSTRUCTURALPOINTACTION(${id(106)},$,'A8',$,$,$,$,#102,.GLOBAL_COORDS.,.F.);
 #133=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(133)},$,$,$,#53,#106);
 #144=IFCRELASSIGNSTOGROUP(${id(144)},$,$,$,(#106),$,#143);
-#141=IFCSTRUCTURALANALYSISMODEL(${id(141)},$,'Moved',$,$,.LOADING_3D.,$,(#162),$,#20);
+#141=IFCSTRUCTURALANALYSISMODEL(${id(141)},$,'Reversed',$,$,.LOADING_3D.,$,(#162),$,#170);
+#170=IFCLOCALPLACEMENT($,#171);
+#171=IFCAXIS2PLACEMENT3D(#22,#26,#172);
+#172=IFCDIRECTION((-1.,0.,0.));
 #162=IFCSTRUCTURALLOADGROUP(${id(162)},$,'G4',$,$,.LOAD_GROUP.,.PERMANENT_G.,.DEAD.,1.,$);
 #107=IFCSTRUCTURALPOINTACTION(${id(107)},$,'A9',$,$,$,$,#102,.GLOBAL_COORDS.,.F.);
 #134=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(134)},$,$,$,#53,#107);
@@ -232,7 +235,7 @@ describe('structuralGlyphs on synthetic data, one kind each', () => {
     // A7 reaches 'Turned' only through its load group, which the model is LoadedBy.
     const [loadedBy] = bySource(glyphs, 105);
     close(loadedBy.kind === 'force' ? loadedBy.direction : undefined, [0, 1, 0]);
-    // A9's group is loaded by both 'Turned' and 'Moved', which decides nothing: world axes.
+    // A9's group is loaded by both 'Turned' (+X to +Y) and 'Reversed' (+X to -X), which decides nothing: world axes.
     const [shared] = bySource(glyphs, 107);
     close(shared.kind === 'force' ? shared.direction : undefined, [1, 0, 0]);
     // A8's model points SharedPlacement at an IfcAxis2Placement3D, which is not a placement: refused, not drawn in world axes.

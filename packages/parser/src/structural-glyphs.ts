@@ -170,12 +170,15 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
   // that is LoadedBy its load group (a group several models load decides
   // nothing), else the file's only model.
   const modelFrames = new Map<string, Frame | null>();
-  const groupModels = new Map<string, (Frame | null)[]>();
+  /** The one model LoadedBy a load group; null once a second model loads it. */
+  const groupModel = new Map<string, string | null>();
   for (const m of extraction.analysisModels) {
     const frame = reader.sharedPlacementFrame(m.expressId);
-    const resolved = frame === undefined ? IDENTITY : frame;
-    modelFrames.set(m.globalId, resolved);
-    for (const g of m.loadGroupGlobalIds) groupModels.set(g, [...(groupModels.get(g) ?? []), resolved]);
+    modelFrames.set(m.globalId, frame === undefined ? IDENTITY : frame);
+    for (const g of m.loadGroupGlobalIds) {
+      const seen = groupModel.get(g);
+      groupModel.set(g, seen === undefined || seen === m.globalId ? m.globalId : null);
+    }
   }
   const onlyModelFrame = extraction.analysisModels.length === 1 ? modelFrames.get(extraction.analysisModels[0].globalId)! : IDENTITY;
   const firstFrame = (ids: readonly string[], lookup: (id: string) => Frame | null | undefined): Frame | null | undefined => {
@@ -186,14 +189,14 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
     return undefined;
   };
   const globalFrame = (activity: StructuralActivityInfo, item: ItemRef | undefined): Frame | null => {
-    const byModel = (id: string) => modelFrames.get(id);
-    const byGroup = (id: string) => { const frames = groupModels.get(id); return frames?.length === 1 ? frames[0] : undefined; };
-    // `null` (a refused model) is an answer, so no `??` between the steps.
-    for (const [ids, lookup] of [[activity.groupGlobalIds, byModel], [item?.analysisModelGlobalIds ?? [], byModel], [activity.groupGlobalIds, byGroup]] as const) {
-      const frame = firstFrame(ids, lookup);
-      if (frame !== undefined) return frame;
-    }
-    return onlyModelFrame;
+    const direct = firstFrame([...activity.groupGlobalIds, ...(item?.analysisModelGlobalIds ?? [])], (id) => modelFrames.get(id));
+    if (direct !== undefined) return direct;
+    const viaGroup = firstFrame(activity.groupGlobalIds, (id) => {
+      const model = groupModel.get(id);
+      return model ? modelFrames.get(model) : undefined;
+    });
+    // `null` (a refused model) is an answer, so no `??` here.
+    return viaGroup === undefined ? onlyModelFrame : viaGroup;
   };
   const loadGroups = new Set(extraction.loadGroups.map((g) => g.globalId));
   const pending: Pending[] = [];

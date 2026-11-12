@@ -32,8 +32,11 @@ import { useViewerStore } from '@/store';
 type RegistryFamily = 'IFC2X3' | 'IFC4' | 'IFC4X3';
 
 function registryFamily(schemaVersion: string | undefined): RegistryFamily {
-  if (schemaVersion === 'IFC2X3') return 'IFC2X3';
-  if (schemaVersion === 'IFC4X3' || schemaVersion === 'IFC5') return 'IFC4X3';
+  const upper = schemaVersion?.toUpperCase() ?? '';
+  if (upper.startsWith('IFC2X3')) return 'IFC2X3';
+  // IFC4X3_ADD2 and the other IFC4X3 releases read the IFC4X3 tables, as
+  // packages/data's per-version maps do; IFC5 models are laid out as IFC4X3.
+  if (upper.startsWith('IFC4X3') || upper.startsWith('IFC5')) return 'IFC4X3';
   return 'IFC4';
 }
 
@@ -130,6 +133,9 @@ export function startSchemaTableWarm(env: WarmEnv = viewerEnv()): () => void {
     } finally {
       running = false;
     }
+    // A state change that arrived while this warm was running (another model,
+    // another schema) returned early above; look again now that it is done.
+    void pump();
   };
 
   const unsubscribe = env.subscribe(() => { void pump(); });

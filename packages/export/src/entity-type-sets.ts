@@ -66,9 +66,10 @@ export const INFRASTRUCTURE_TYPES = new Set([
 /** Exported for the drift test that diffs it against the schema tables.
  *  Production code reads {@link getProductTypes}: this constant is built when
  *  its chunk loads wherever it is referenced. */
-export const PRODUCT_TYPES: ReadonlySet<string> = /* @__PURE__ */ eagerSchemaTable('ifc-lite-eager-table:PRODUCT_TYPES', getProductTypes);
-
+// Declared before PRODUCT_TYPES: its initializer calls getProductTypes(), which reads this.
 let productTypes: ReadonlySet<string> | undefined;
+
+export const PRODUCT_TYPES: ReadonlySet<string> = /* @__PURE__ */ eagerSchemaTable('ifc-lite-eager-table:PRODUCT_TYPES', getProductTypes);
 
 /** The set {@link PRODUCT_TYPES} is, built on first call. */
 export function getProductTypes(): ReadonlySet<string> {

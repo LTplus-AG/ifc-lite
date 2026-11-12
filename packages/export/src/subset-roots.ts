@@ -41,9 +41,10 @@ import { INFRASTRUCTURE_TYPES, collectDescendantNames } from './reference-collec
  * would either leak it (never excluded) or drop it (never includable) with
  * no error.
  */
-export const IFC_ROOT_TYPES: ReadonlySet<string> = /* @__PURE__ */ eagerSchemaTable('ifc-lite-eager-table:IFC_ROOT_TYPES', getIfcRootTypes);
-
+// Declared before IFC_ROOT_TYPES: its initializer calls getIfcRootTypes(), which reads this.
 let ifcRootTypes: ReadonlySet<string> | undefined;
+
+export const IFC_ROOT_TYPES: ReadonlySet<string> = /* @__PURE__ */ eagerSchemaTable('ifc-lite-eager-table:IFC_ROOT_TYPES', getIfcRootTypes);
 
 /** The set {@link IFC_ROOT_TYPES} is, built on first call. Production code
  *  reads this: the constant is built when its chunk loads wherever it is

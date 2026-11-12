@@ -115,7 +115,23 @@ describe('schema table warm step', () => {
     assert.deepEqual(getSchemaRegistryForVersion('IFC2X3').entities.IfcWall?.inheritanceChain, before.wall2x3);
   });
 
+  it('a schema change while a warm is running is warmed afterwards, without another state change', async () => {
+    const page = fakeEnv('IFC4');
+    const stop = startSchemaTableWarm(page.env);
+    page.setSettled(true);
+    await page.tick();
+    await page.idle(); // IFC4:a
+    page.setVersion('IFC4X3'); // notification arrives while the IFC4 warm runs
+    await page.idle(); // IFC4:b
+    await page.idle(); // IFC4:c, then the warm looks again
+    await page.tick();
+    for (let i = 0; i < 3; i++) await page.idle();
+    assert.deepEqual(page.ran, ['IFC4:a', 'IFC4:b', 'IFC4:c', 'IFC4X3:a', 'IFC4X3:b', 'IFC4X3:c']);
+    stop();
+  });
+
   it('names the steps a model of each schema warms', () => {
+    assert.deepEqual(schemaTableWarmSteps('IFC4X3_ADD2').map((s) => s.name), ['entity-union', 'type-names', 'registry-IFC4', 'registry-IFC4X3', 'attribute-xsd-IFC4X3']);
     assert.deepEqual(schemaTableWarmSteps('IFC4').map((s) => s.name), ['entity-union', 'type-names', 'registry-IFC4', 'attribute-xsd-IFC4']);
     assert.deepEqual(schemaTableWarmSteps('IFC2X3').map((s) => s.name), ['entity-union', 'type-names', 'registry-IFC4', 'registry-IFC2X3', 'attribute-xsd-IFC2X3']);
     assert.deepEqual(schemaTableWarmSteps('IFC5').map((s) => s.name), ['entity-union', 'type-names', 'registry-IFC4', 'registry-IFC4X3', 'attribute-xsd-IFC4X3']);

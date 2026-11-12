@@ -224,9 +224,11 @@ def coverage(schema: str, output: Path, reinforcement: bool = False) -> None:
     displacement = e("IfcStructuralLoadSingleDisplacement", "Coverage displacement", 0.0, 0.0, -0.002, 0.0, 0.0, 0.0)
     distortion = e("IfcStructuralLoadSingleDisplacementDistortion", "Coverage distortion", 0.0, 0.0, -0.001, 0.0, 0.0, 0.0, 0.0005)
     temperature = e("IfcStructuralLoadTemperature", "Coverage temperature", 30.0, 5.0, -5.0)
+    # Members run SPAN metres along X (see the topology below); the configuration's locations are their two ends.
+    SPAN = 4.0
     configuration = None
     if has("IfcStructuralLoadConfiguration"):
-        configuration = e("IfcStructuralLoadConfiguration", "Coverage configuration", (linear_force, linear_force), ((0.0,), (4.0,)))
+        configuration = e("IfcStructuralLoadConfiguration", "Coverage configuration", (linear_force, linear_force), ((0.0,), (SPAN,)))
     node = e("IfcBoundaryNodeCondition", "Coverage node support",
              *(stiffness("IfcLinearStiffnessMeasure", 1.0e9) for _ in range(3)), *(stiffness("IfcRotationalStiffnessMeasure", 0.0) for _ in range(3)))
     node_warping = e("IfcBoundaryNodeConditionWarping", "Coverage warping support",
@@ -242,13 +244,13 @@ def coverage(schema: str, output: Path, reinforcement: bool = False) -> None:
 
     # Members and connections.
     curve = root("IfcStructuralCurveMember", place(), None, "RIGID_JOINED_MEMBER", *(() if v2 else (direction,)))
-    root("IfcStructuralCurveMemberVarying", place(), None, "RIGID_JOINED_MEMBER", *(() if v2 else (direction,)))
+    curve_varying = root("IfcStructuralCurveMemberVarying", place(), None, "RIGID_JOINED_MEMBER", *(() if v2 else (direction,)))
     surface = root("IfcStructuralSurfaceMember", place(), None, "SHELL", 0.2)
     if v2:
         shape, varying = aspect()
-        root("IfcStructuralSurfaceMemberVarying", place(), shape, "SHELL", 0.2, (0.25, 0.3), varying)
+        surface_varying = root("IfcStructuralSurfaceMemberVarying", place(), shape, "SHELL", 0.2, (0.25, 0.3), varying)
     else:
-        root("IfcStructuralSurfaceMemberVarying", place(), None, "SHELL", 0.2)
+        surface_varying = root("IfcStructuralSurfaceMemberVarying", place(), None, "SHELL", 0.2)
     point_conn = root("IfcStructuralPointConnection", place(), None, node_warping, *(() if v2 else (world if schema == "IFC4X3" else None,)))
     curve_conn = root("IfcStructuralCurveConnection", place(), None, edge, *(() if v2 else (direction,)))
     surface_conn = root("IfcStructuralSurfaceConnection", place(), None, face)
@@ -317,19 +319,19 @@ def coverage(schema: str, output: Path, reinforcement: bool = False) -> None:
     # Topology last, so every record above keeps its id: each item and activity
     # states where it is (an IfcVertexPoint, IfcEdge or IfcFaceSurface in an
     # IfcTopologyRepresentation), as an analysis export does. The curve members
-    # run 4 m along X (the configuration's locations are 0 and 4 m), the
-    # surfaces are 4 m squares above them. Each product gets its own items.
+    # run SPAN along X, the surfaces are SPAN squares above them. Each product
+    # gets its own items.
     def vertex(x, y, z):
         return e("IfcVertexPoint", e("IfcCartesianPoint", (x, y, z)))
 
-    def at_point(x=0.0, y=0.0, z=0.0):
-        return "Vertex", vertex(x, y, z)
+    def at_point():
+        return "Vertex", vertex(0.0, 0.0, 0.0)
 
     def along(y=0.0, z=0.0):
-        return "Edge", e("IfcEdge", vertex(0.0, y, z), vertex(4.0, y, z))
+        return "Edge", e("IfcEdge", vertex(0.0, y, z), vertex(SPAN, y, z))
 
-    def square(z):
-        corners = [e("IfcCartesianPoint", c) for c in ((0.0, 0.0, z), (4.0, 0.0, z), (4.0, 4.0, z), (0.0, 4.0, z))]
+    def square(z=3.0):
+        corners = [e("IfcCartesianPoint", c) for c in ((0.0, 0.0, z), (SPAN, 0.0, z), (SPAN, SPAN, z), (0.0, SPAN, z))]
         plane = e("IfcPlane", e("IfcAxis2Placement3D", e("IfcCartesianPoint", (0.0, 0.0, z)), None, None))
         return "Face", e("IfcFaceSurface", (e("IfcFaceOuterBound", e("IfcPolyLoop", corners), True),), plane, True)
 
@@ -341,18 +343,17 @@ def coverage(schema: str, output: Path, reinforcement: bool = False) -> None:
         else:
             product.Representation = e("IfcProductDefinitionShape", None, None, (representation,))
 
-    curve_varying = model.by_type("IfcStructuralCurveMemberVarying")[0]
-    surface_varying = model.by_type("IfcStructuralSurfaceMemberVarying")[0]
+    # An activity stands where the item it acts on does.
+    shape_of = {curve: along, surface: square, point_conn: at_point}
     locate(curve, along())
     locate(curve_varying, along(y=6.0))
-    locate(surface, square(3.0))
+    locate(surface, square())
     locate(surface_varying, square(6.0))
     locate(point_conn, at_point())
     locate(curve_conn, along(z=3.0))
-    locate(surface_conn, square(3.0))
+    locate(surface_conn, square())
     for activity in activities + reactions:
-        hosted = host(activity)
-        locate(activity, at_point() if hosted == point_conn else square(3.0) if hosted == surface else along())
+        locate(activity, shape_of[host(activity)]())
 
     save()
 

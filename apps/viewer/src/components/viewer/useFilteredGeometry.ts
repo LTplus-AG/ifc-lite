@@ -124,6 +124,7 @@ export function useFilteredGeometry(
     // (new file), or empty cache
     const prevVis = filteredTypeVisRef.current;
     const typeVisChanged =
+      prevVis.structuralViewMode !== typeVisibility.structuralViewMode ||
       prevVis.spaces !== typeVisibility.spaces ||
       prevVis.spatialZones !== typeVisibility.spatialZones ||
       prevVis.openings !== typeVisibility.openings ||
@@ -144,7 +145,7 @@ export function useFilteredGeometry(
       filteredHasOccRef.current = hasOccurrenceGeometry;
     }
 
-    const needsFilter = !typeVisibility.spaces || !typeVisibility.spatialZones || !typeVisibility.openings || !typeVisibility.virtualElements || !typeVisibility.site || !typeVisibility.ifcAnnotations;
+    const needsFilter = (typeVisibility.structuralViewMode ?? 'both') !== 'both' || !typeVisibility.spaces || !typeVisibility.spatialZones || !typeVisibility.openings || !typeVisibility.virtualElements || !typeVisibility.site || !typeVisibility.ifcAnnotations;
     let writeIndex = rebuilding ? 0 : cache.length;
     let replaced = false;
 

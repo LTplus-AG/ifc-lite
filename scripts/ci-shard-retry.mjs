@@ -48,7 +48,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { isMainEntry } from './lib/is-main-entry.mjs';
-import { MANIFEST_PATH, assignShards, parseManifest } from './viewer-test-shards.mjs';
+import { MANIFEST_PATH, assignShards, parseManifest, shardFromEnv } from './viewer-test-shards.mjs';
 import {
   MAX_RETRY_FILES,
   MAX_RETRY_TESTS,
@@ -73,13 +73,31 @@ const VIEWER_ROOT = join(REPO_ROOT, 'apps/viewer');
 /** Inside the workspace, where test.yml's `hashFiles` can see them. */
 const retryJunit = (i) => join(VIEWER_ROOT, `mergify-junit-retry-${i}.xml`);
 
+/** The most a retry may take, before the job's own limit cuts it shorter. */
+const RETRY_CAP_MS = 8 * 60_000;
+/** Job time kept back for the uploads after the retry (failure context, records). */
+const RESERVE_MS = 3 * 60_000;
+/** Less than this left is not worth starting a retry for. */
+const MIN_RETRY_MS = 60_000;
+
 /**
- * Per retry run. The jobs keep today's limits (25 min viewer, 20 E2E) in every
- * mode, so a retry that does not fit is cancelled with the job, which is red
- * already: the first attempt failed.
+ * The retry's time budget. The jobs keep today's limits in every mode, so the
+ * retry gets what is left of the job (JOB_STARTED_AT, JOB_TIMEOUT_MINUTES from
+ * test.yml) minus a reserve for the uploads after it, capped at RETRY_CAP_MS.
+ * Unknown start or limit: no budget, so no retry.
  */
-const VIEWER_RETRY_BUDGET_MS = 8 * 60_000;
-const E2E_RETRY_TIMEOUT = '8m';
+export function retryBudgetMs(env, now = Date.now()) {
+  const started = Number(env.JOB_STARTED_AT) * 1000;
+  const limit = Number(env.JOB_TIMEOUT_MINUTES) * 60_000;
+  if (!(started > 0) || !(limit > 0)) return 0;
+  return Math.min(RETRY_CAP_MS, started + limit - RESERVE_MS - now);
+}
+
+/** Turn a planned retry into a refusal when the job has no time left for it. */
+function withinBudget(plan, budget) {
+  if (!plan.retry || budget >= MIN_RETRY_MS) return plan;
+  return { retry: false, reason: `only ${Math.max(0, Math.round(budget / 1000))} s of the job's time is left for a retry` };
+}
 
 function readOptional(path) {
   try {
@@ -113,9 +131,13 @@ function required(env, name) {
  * or narrows. Refuse it rather than let the other files' pass stand for it.
  */
 function notInShard(files, env) {
-  const count = Number(env.TEST_SHARDS);
-  const shard = Number(env.TEST_SHARD);
-  if (!Number.isInteger(count) || !Number.isInteger(shard)) return 'TEST_SHARDS/TEST_SHARD are not set';
+  let shard;
+  let count;
+  try {
+    ({ shard, count } = shardFromEnv(env));
+  } catch (err) {
+    return `cannot read this shard: ${err.message}`;
+  }
   const assigned = assignShards(files, parseManifest(readFileSync(MANIFEST_PATH, 'utf8')), count);
   const outside = files.filter((f) => assigned.get(f) !== shard);
   return outside.length > 0 ? `failure(s) located in file(s) this shard does not run: ${outside.join(', ')}` : null;
@@ -132,13 +154,14 @@ function retryViewer(env, mode, reportDir) {
     unattributed: attributed.unattributed,
     refusal: tap === null ? 'the first attempt left no TAP file' : incompleteViewerAttempt(first) ?? notInShard(attributed.files, env) ?? undefined,
   });
-  const record = { kind: 'viewer', shard: env.TEST_SHARD ?? '?', mode, plan, files: attributed.files, tests: attributed.tests };
-  if (!plan.retry) return record;
+  const budget = retryBudgetMs(env);
+  const record = { kind: 'viewer', shard: env.TEST_SHARD ?? '?', mode, plan: withinBudget(plan, budget), files: attributed.files, tests: attributed.tests };
+  if (!record.plan.retry) return record;
 
   // One run per file, so each file's failures are matched only against that
   // file's results: a same-titled test elsewhere cannot stand in. The runs
   // share one budget, so five files take no longer than one retry did.
-  const deadline = Date.now() + VIEWER_RETRY_BUDGET_MS;
+  const deadline = Date.now() + budget;
   const results = attributed.files.map((file, i) => {
     const left = Math.floor((deadline - Date.now()) / 1000);
     if (left < 1) return { file, passed: false, reason: 'the shared retry budget ran out before this file' };
@@ -169,13 +192,13 @@ function retryViewer(env, mode, reportDir) {
 }
 
 /** The E2E retry's command and environment; only `on` reports the retry to Mergify. */
-export function e2eRetryCommand({ mode, shard, lastFailedFile, env }) {
+export function e2eRetryCommand({ mode, shard, lastFailedFile, env, budgetMs = RETRY_CAP_MS }) {
   const reporters = mode === 'on' ? 'list,@mergifyio/playwright,json' : 'list,json';
   // `--reporter` replaces the config's list, withMergify's entry included.
   const { MERGIFY_TOKEN: _token, ...rest } = env;
   return {
     args: [
-      '--signal=INT', '--kill-after=30s', E2E_RETRY_TIMEOUT,
+      '--signal=INT', '--kill-after=30s', `${Math.floor(budgetMs / 1000)}s`,
       'pnpm', 'test:e2e:ci', `--shard=${shard}`, `--reporter=${reporters}`,
       '--last-failed', `--last-failed-file=${lastFailedFile}`, '--output=test-results/retry',
     ],
@@ -192,9 +215,10 @@ function retryE2e(env, mode, reportDir) {
   const index = firstReport ? indexPlaywrightReport(firstReport) : null;
   const tests = ids.map((id) => {
     const t = index?.get(id);
-    return t ? { file: `${t.file}:${t.line}`, title: t.title } : { file: '?', title: `test id ${id}` };
+    return t ? { file: `${t.file}:${t.line}`, title: t.title, didNotRun: t.status === 'skipped' } : { file: '?', title: `test id ${id}` };
   });
-  const plan = planRetry({ mode, count: retryCount(ids, index), cap: MAX_RETRY_TESTS, refusal: refusal ?? incompleteE2eAttempt({ ids, index }) ?? undefined });
+  const budget = retryBudgetMs(env);
+  const plan = withinBudget(planRetry({ mode, count: retryCount(ids, index), cap: MAX_RETRY_TESTS, refusal: refusal ?? incompleteE2eAttempt({ ids, index }) ?? undefined }), budget);
   const record = { kind: 'e2e', shard, mode, plan, ids, tests };
   if (!plan.retry) return record;
 
@@ -207,9 +231,9 @@ function retryE2e(env, mode, reportDir) {
   copyFileSync(lastRun, lastFailedFile);
   const retryJson = join(reportDir, 'e2e-retry-report.json');
   console.log(`[ci-shard-retry] rerunning ${ids.length} test(s): ${tests.map((t) => t.title).join('; ')}`);
-  const cmd = e2eRetryCommand({ mode, shard, lastFailedFile, env });
+  const cmd = e2eRetryCommand({ mode, shard, lastFailedFile, env, budgetMs: budget });
   const r = spawnSync('timeout', cmd.args, { cwd: REPO_ROOT, stdio: 'inherit', env: { ...cmd.env, PLAYWRIGHT_JSON_OUTPUT_FILE: retryJson } });
-  record.result = judgeE2eRetry({ exitCode: r.status, ids, report: readJsonOptional(retryJson, "the retry's JSON report") });
+  record.result = judgeE2eRetry({ exitCode: r.status, ids, report: readJsonOptional(retryJson, "the retry's JSON report"), first: index });
   return record;
 }
 
@@ -232,7 +256,8 @@ export function run(argv, env = process.env) {
     const verb = mode === 'on' ? 'needed a retry' : 'would have passed on retry';
     // Workflow-command escaping: %, CR and LF in the message.
     const esc = (v) => oneLine(v).replace(/%/g, '%25');
-    for (const t of record.tests) console.log(`::warning title=Flaky test (${kind} shard ${record.shard})::${esc(t.file)} › ${esc(t.title)} ${verb}`);
+    // Only tests that failed: one an earlier failure merely skipped is not flaky.
+    for (const t of record.tests.filter((x) => !x.didNotRun)) console.log(`::warning title=Flaky test (${kind} shard ${record.shard})::${esc(t.file)} › ${esc(t.title)} ${verb}`);
   }
   return passed ? 0 : 1;
 }

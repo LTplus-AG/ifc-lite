@@ -31,7 +31,7 @@ import { MANIFEST_PATH, assignShards, parseManifest } from './viewer-test-shards
 const guarded = (path) => import(path).catch((err) => new Proxy({}, {
   get: (_, key) => (key === 'then' ? undefined : () => assert.fail(`${path} did not load (${err.name})`)),
 }));
-const { run, e2eRetryCommand } = await guarded('./ci-shard-retry.mjs');
+const { run, e2eRetryCommand, retryBudgetMs } = await guarded('./ci-shard-retry.mjs');
 const {
   MAX_RETRY_FILES,
   attributeViewerFailures,
@@ -87,7 +87,8 @@ function realTap(name, files) {
   // Without NODE_TEST_CONTEXT, which this runner sets and which would make the
   // nested run report to it instead of printing TAP.
   const { NODE_TEST_CONTEXT: _ignored, ...env } = process.env;
-  const r = spawnSync(TSX, ['--test', '--test-concurrency=1', ...Object.keys(files).filter((f) => f.includes('.test.')).sort()], {
+  const entries = Object.keys(files).filter((f) => /\.test\.tsx?$/.test(f)).sort(); // @source-text-assertion-ok picks test entrypoints from the fixture's own file names
+  const r = spawnSync(TSX, ['--test', '--test-concurrency=1', ...entries], {
     cwd: root,
     encoding: 'utf8',
     env: { ...env, NODE_OPTIONS: '--test-reporter=tap' },
@@ -120,6 +121,8 @@ test('real node:test TAP: a nested assertion, an import crash and a non-zero exi
   assert.deepEqual(a.unattributed, []);
   assert.deepEqual(a.files, ['src/a.test.ts', 'src/c.test.ts', 'src/d/e.test.tsx', 'src/f.test.ts', 'src/g.test.ts', 'src/h.test.ts']);
   assert.ok(a.tests.some((t) => t.file === 'src/a.test.ts' && t.title === 'nested fails' && t.path === 'group › nested fails'));
+  assert.ok(!a.tests.some((t) => t.title === 'suite'), 'a suite whose hook failed is re-checked through its tests, not as one');
+  assert.deepEqual(a.tests.filter((t) => t.didNotRun).map((t) => t.path).sort(), ['suite › t1', 'suite › t2'], 'tests a failed hook cancelled are marked as not run');
   assert.ok(!a.tests.some((t) => t.title === 'group'), 'a parent suite that failed only through its child is not a test of its own');
 });
 
@@ -266,6 +269,49 @@ test('/code-review on #9788: a retried test is matched by its path, so a same-ti
   assert.equal(judge('a › works', 'works'), false);
   assert.equal(judge('parses › parses', 'parses'), false);
   assert.equal(judge('b › works', 'works'), true);
+});
+
+test('/code-review on #9788: a test the first attempt never ran may skip on retry when it asks to; one that failed must pass', () => {
+  const first = beforeAllFails();
+  const { ids } = readLastRun(first.lastRun);
+  const retry = realPlaywright('before-all-retry-asked-skip', { BEFORE_ALL_PASSES: '1' });
+  const firstIndex = indexPlaywrightReport(first.report);
+  assert.equal(judgeE2eRetry({ exitCode: 0, ids, report: retry.report, first: firstIndex }).passed, true, '`runtime skip` did not run first and now skips on purpose');
+  assert.equal(judgeE2eRetry({ exitCode: 0, ids, report: retry.report }).passed, false, 'without the first report, every skip is a failure');
+  // t1 ran and failed first, so only a pass clears it, never a skip.
+  assert.equal(firstIndex.get(byTitle(first.report).get('t1')).status, 'unexpected');
+});
+
+test('/code-review on #9788: the retry gets what is left of the job, minus a reserve, capped', () => {
+  const now = 1_000_000_000;
+  const at = (minutesAgo) => String(Math.floor((now - minutesAgo * 60_000) / 1000));
+  assert.equal(retryBudgetMs({}, now), 0, 'no recorded start: no budget');
+  assert.equal(retryBudgetMs({ JOB_STARTED_AT: at(0), JOB_TIMEOUT_MINUTES: '20' }, now), 8 * 60_000, 'capped at 8 minutes');
+  assert.equal(retryBudgetMs({ JOB_STARTED_AT: at(15), JOB_TIMEOUT_MINUTES: '20' }, now), 2 * 60_000, '20 - 15 - 3 reserve');
+  assert.ok(retryBudgetMs({ JOB_STARTED_AT: at(18), JOB_TIMEOUT_MINUTES: '20' }, now) < 0);
+});
+
+test('/code-review on #9788: TAP text inside a failure\'s YAML error block is not read as results', () => {
+  const tap = [
+    'TAP version 13',
+    '# Subtest: real',
+    'not ok 1 - real',
+    '  ---',
+    "  location: '/r/apps/viewer/src/a.test.ts:1:1'",
+    '  error: |-',
+    '    ok 7 - phantom',
+    '    not ok 8 - phantom failure',
+    '  ...',
+    '# Subtest: fine',
+    'ok 2 - fine',
+    '1..2',
+    '# tests 2', '# pass 1', '# fail 1', '# cancelled 0', '# duration_ms 1', '',
+  ].join('\n');
+  const parsed = parseNodeTap(tap);
+  assert.deepEqual(parsed.failures.map((f) => f.title), ['real']);
+  assert.equal(parsed.failures[0].location, '/r/apps/viewer/src/a.test.ts:1:1');
+  assert.deepEqual([...parsed.passed], ['fine']);
+  assert.equal(incompleteViewerAttempt(parsed), null);
 });
 
 test('/code-review on #9788: tests a hook failure skipped are retried but do not count towards the cap', () => {
@@ -418,7 +464,10 @@ const SWITCH = /vars\.CI_SHARD_RETRY/;
 
 // Steps besides the test, retry and guard steps that read the switch: only the
 // viewer retry's Mergify upload, which runs in `on` alone.
-const ALSO_READS_SWITCH = { 'viewer-tests': ['Mergify CI Upload (retry)'], 'viewer-e2e': [] };
+const ALSO_READS_SWITCH = {
+  'viewer-tests': ['Mergify CI Upload (retry)', 'Record the job start for the shard retry'],
+  'viewer-e2e': ['Record the job start for the shard retry'],
+};
 
 for (const [job, testStep, retryStep] of [['viewer-tests', 'viewer_tests', 'viewer_retry'], ['viewer-e2e', 'e2e', 'e2e_retry']]) {
   test(`${job}: only \`on\` lets the test step fail, and a guard re-fails it unless the retry step succeeded`, () => {
@@ -437,6 +486,8 @@ for (const [job, testStep, retryStep] of [['viewer-tests', 'viewer_tests', 'view
     // Every other step's behaviour is independent of the switch.
     const touched = steps.filter((s) => SWITCH.test(JSON.stringify(s))).map((s) => s.id ?? s.name); // @source-text-assertion-ok enumerates steps that read the switch
     assert.deepEqual(touched.sort(), [testStep, retryStep, guard.name, ...ALSO_READS_SWITCH[job]].sort());
+    // The retry's budget reads the job's limit, so the two must agree.
+    assert.equal(Number(retry.env.JOB_TIMEOUT_MINUTES), WORKFLOW.jobs[job]['timeout-minutes']);
   });
 }
 

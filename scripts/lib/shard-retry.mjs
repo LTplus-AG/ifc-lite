@@ -67,11 +67,28 @@ export function parseNodeTap(text) {
   const counts = {};
   const stack = [];
   let open = null;
+  // Inside a result's `---` ... `...` YAML block: an error message there may
+  // itself contain TAP text, which must not count as results.
+  let inYaml = false;
   for (const raw of String(text).split('\n')) {
     const line = raw.replace(/\r$/, '');
     const s = SUMMARY.exec(line);
     // Anything after a run of count lines means they were not the closing block.
     if (!s && line.trim() !== '') for (const k of Object.keys(counts)) delete counts[k];
+    if (inYaml) {
+      if (/^ *\.\.\.$/.test(line)) {
+        inYaml = false;
+        open = null;
+        continue;
+      }
+      const f = open && YAML_FIELD.exec(line);
+      if (f) open[f[1]] = f[2].replace(/''/g, "'");
+      continue;
+    }
+    if (open && /^ *---$/.test(line)) {
+      inYaml = true;
+      continue;
+    }
     const sub = SUBTEST.exec(line);
     if (sub) {
       const depth = sub[1].length / 4;
@@ -143,7 +160,11 @@ export function attributeViewerFailures(failures, root) {
       continue;
     }
     files.add(file);
-    if (f.failureType !== 'subtestsFailed') tests.push({ file, title: f.title, path: f.path });
+    // A suite is re-checked through its tests (cancelled ones included),
+    // never as a test of its own: a suite is never a passing result.
+    if (f.failureType !== 'subtestsFailed' && f.type !== 'suite') {
+      tests.push({ file, title: f.title, path: f.path, didNotRun: f.failureType === 'cancelledByParent' });
+    }
   }
   return { files: [...files].sort(), tests, unattributed };
 }
@@ -311,13 +332,20 @@ export function incompleteE2eAttempt({ ids, index }) {
  * `expected`, which for anything but a `test.fail()` test means it passed. A
  * skip, deliberate or not, is `skipped` and does not count.
  */
-export function judgeE2eRetry({ exitCode, ids, report }) {
+export function judgeE2eRetry({ exitCode, ids, report, first = new Map() }) {
   if (exitCode !== 0) return { passed: false, reason: `the retry exited ${exitCode ?? 'by signal or timeout'}` };
   if (!report) return { passed: false, reason: 'the retry left no readable JSON report' };
   const index = indexPlaywrightReport(report);
   const missing = ids.filter((id) => !index.has(id));
   if (missing.length > 0) return { passed: false, reason: `the retry did not run ${missing.length} of the ${ids.length} failed test(s)` };
-  const bad = ids.filter((id) => index.get(id).status !== 'expected');
+  // A test the first attempt never ran (an earlier failure skipped it) may
+  // skip on retry when it asks to; anything else must pass.
+  const askedSkip = (t) => t.status === 'skipped' && t.expectedStatus === 'skipped' && t.annotations.some((a) => a === 'skip' || a === 'fixme');
+  const bad = ids.filter((id) => {
+    const t = index.get(id);
+    if (t.status === 'expected') return false;
+    return !(first.get(id)?.status === 'skipped' && askedSkip(t));
+  });
   if (bad.length > 0) return { passed: false, reason: `${bad.length} test(s) did not pass on retry: ${bad.map((id) => index.get(id).title).join('; ')}` };
   return { passed: true, reason: `all ${ids.length} retried test(s) passed` };
 }
@@ -343,7 +371,7 @@ export function summaryLines(r) {
   }
   if (r.tests.length > 0) {
     lines.push('', '| Failed on the first attempt | File |', '| --- | --- |');
-    for (const t of r.tests) lines.push(`| ${oneLine(t.title).replace(/\|/g, '\\|')} | \`${t.file}\` |`);
+    for (const t of r.tests) lines.push(`| ${oneLine(t.title).replace(/\|/g, '\\|')}${t.didNotRun ? ' (did not run: an earlier failure skipped it)' : ''} | \`${t.file}\` |`);
   }
   lines.push('');
   if (r.mode === 'on') {

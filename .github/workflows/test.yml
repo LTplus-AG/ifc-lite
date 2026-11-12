@@ -1304,6 +1304,10 @@ jobs:
     env:
       HAS_MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN != '' }}
     steps:
+      # CI_SHARD_RETRY: the retry's time budget is what is left of this job.
+      - name: Record the job start for the shard retry
+        if: vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on'
+        run: echo "JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: false
@@ -1385,6 +1389,7 @@ jobs:
         run: node scripts/ci-shard-retry.mjs viewer
         env:
           CI_SHARD_RETRY: ${{ vars.CI_SHARD_RETRY }}
+          JOB_TIMEOUT_MINUTES: '25'  # this job's timeout-minutes
           TAP_FILE: ${{ runner.temp }}/viewer-attempt1.tap
           REPORT_DIR: ${{ runner.temp }}/shard-retry
           TEST_SHARDS: '16'
@@ -2209,6 +2214,10 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
+      # CI_SHARD_RETRY: the retry's time budget is what is left of this job.
+      - name: Record the job start for the shard retry
+        if: vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on'
+        run: echo "JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: false
@@ -2291,6 +2300,7 @@ jobs:
           MERGIFY_TEST_JOB_NAME: viewer-e2e (shard ${{ matrix.shard }})
           E2E_GPU_STRICT: '0'
           CI_SHARD_RETRY: ${{ vars.CI_SHARD_RETRY }}
+          JOB_TIMEOUT_MINUTES: '20'  # this job's timeout-minutes
           E2E_SHARD: ${{ matrix.shard }}/8
           LAST_RUN: test-results/.last-run.json
           REPORT_JSON: ${{ runner.temp }}/e2e-attempt1.json

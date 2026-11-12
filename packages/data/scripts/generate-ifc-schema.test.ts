@@ -54,6 +54,9 @@ beforeAll(() => {
   fs.mkdirSync(upstreamDir, { recursive: true });
   scriptPath = join(scriptsDir, 'generate-ifc-schema.ts');
   fs.copyFileSync(resolve(__dirname, 'generate-ifc-schema.ts'), scriptPath);
+  // The generator encodes the tables with the package's codec.
+  fs.mkdirSync(join(workDir, 'src', 'ifc-schema'), { recursive: true });
+  fs.copyFileSync(resolve(__dirname, '../src/ifc-schema/table-codec.ts'), join(workDir, 'src', 'ifc-schema', 'table-codec.ts'));
   for (const name of UPSTREAM_FILES) {
     const text = fs.readFileSync(
       resolve(__dirname, 'upstream', name),

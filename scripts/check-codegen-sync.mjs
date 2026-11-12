@@ -236,6 +236,9 @@ export function runDataGenerator(root, workDir) {
   for (const name of ['generate-ifc-schema.ts', 'emit-entity-names.ts']) {
     writeFileSync(join(scriptsDir, name), readFileSync(join(srcScripts, name)));
   }
+  // The generator encodes with, and the generated tables decode with, the
+  // package's table codec (`emit-entity-names.ts` imports the fresh tables).
+  writeFileSync(join(workDir, 'src/ifc-schema/table-codec.ts'), readFileSync(join(root, 'packages/data/src/ifc-schema/table-codec.ts')));
   for (const name of readdirSync(join(srcScripts, 'upstream')).filter((n) => n.endsWith('.g.cs'))) {
     writeFileSync(join(upstreamDir, name), readFileSync(join(srcScripts, 'upstream', name)));
   }

@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "scripts/lib/shard-retry.mjs",
+  "mutation": "tests/evidence/shard-retry-killed-runner/behaviour.oracle.patch",
+  "test": "scripts/ci-shard-retry.test.mjs",
+  "why": "Reverse application keeps the module and its exports but drops the refusal of a first attempt with no closing TAP summary, so a runner killed mid-shard would have its already-failed files retried and the shard passed while its other files never ran."
+}

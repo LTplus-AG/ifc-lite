@@ -16,6 +16,8 @@ import { useSearchIndex } from './useSearchIndex.js';
 import { createLoadTracer } from '@ifc-lite/load-trace';
 import { publishLoadTrace } from '@/lib/perf/activeLoadTrace.js';
 import { collectSearchResults } from '@/lib/search/collect-results.js';
+import { __resetAfterLoadIdleForTests } from '@/lib/perf/afterLoadIdle.js';
+import type { FederatedModel } from '@/store/types.js';
 
 const initial = useViewerStore.getState();
 let unsubscribe = () => {};
@@ -42,11 +44,21 @@ function SwitchingToolbar() {
   return <><button onClick={() => setRibbon(value => !value)}>Switch toolbar</button><SearchInline key={String(ribbon)} /><SearchModal /></>;
 }
 
+/** Set a model record's load phase (the scheduler's per-model "settled"). */
+function setLoadState(id: string, loadState: FederatedModel['loadState']): void {
+  const models = new Map(useViewerStore.getState().models);
+  models.set(id, { ...models.get(id)!, loadState });
+  useViewerStore.setState({ models });
+}
+
+/** Microtasks, then two macrotask turns: a tier-1 build starts in an idle period (afterLoadIdle.ts). */
 async function settle() {
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+  for (let i = 0; i < 2; i++) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 }
 
 beforeEach(() => {
+  __resetAfterLoadIdleForTests();
   starts = []; completions = [];
   useViewerStore.setState({ ...initial, ...fixtureModels(model('one')), searchIndexes: new Map(), searchFilterSchema: new Map(), searchQuery: 'Wall', searchOpen: true });
   unsubscribe = useViewerStore.subscribe((state, previous) => {
@@ -59,7 +71,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  cleanup(); unsubscribe(); useViewerStore.setState(initial, true);
+  cleanup(); unsubscribe(); __resetAfterLoadIdleForTests(); useViewerStore.setState(initial, true);
 });
 
 describe('one search-index owner across viewer lifecycle (#3993)', () => {
@@ -68,6 +80,7 @@ describe('one search-index owner across viewer lifecycle (#3993)', () => {
       name: `${['Wall', 'Slab', 'Door', 'Room'][i % 4]} ${String.fromCharCode(65 + (i % 26))}${i}`, globalId: `g-${i.toString(36)}-${i % 7}` }));
     useViewerStore.setState({ ...fixtureModels({ ...fixtureModel('one'), ifcDataStore: createSyntheticDataStore({ schemaVersion: 'IFC4', fileSize: 0, entities }) }),
       searchIndexes: new Map(), loading: true });
+    setLoadState('one', 'streaming-geometry');
     const idle: IdleRequestCallback[] = [];
     const originalIdle = window.requestIdleCallback;
     window.requestIdleCallback = ((cb: IdleRequestCallback) => { idle.push(cb); return idle.length; }) as typeof window.requestIdleCallback;
@@ -78,7 +91,7 @@ describe('one search-index owner across viewer lifecycle (#3993)', () => {
     try {
       render(<Owner />);
       await settle();
-      await act(async () => { useViewerStore.setState({ loading: false }); }); // interactive
+      await act(async () => { setLoadState('one', 'complete'); useViewerStore.setState({ loading: false }); }); // interactive
       await settle();
       assert.notEqual(useViewerStore.getState().searchIndexes.get('one')?.status, 'ready', 'tier-1 is not built yet at interactive');
       const atInteractive = results();
@@ -99,16 +112,43 @@ describe('one search-index owner across viewer lifecycle (#3993)', () => {
     window.requestIdleCallback = ((cb: IdleRequestCallback) => { idle.push(cb); return idle.length; }) as typeof window.requestIdleCallback;
     try {
       useViewerStore.setState({ loading: true });
+      setLoadState('one', 'streaming-geometry');
       const container = render(<Owner><SearchInline /></Owner>);
       await settle();
       assert.ok(container.textContent?.includes('Wall A'), 'Tier-0 answers while the build waits');
       assert.deepEqual(completions, [], 'no tier-1 build while the load runs');
-      await act(async () => { useViewerStore.setState({ loading: false }); });
+      await act(async () => { setLoadState('one', 'complete'); useViewerStore.setState({ loading: false }); });
       await settle();
       assert.deepEqual(completions, [], 'settled: the build waits for an idle period');
       await act(async () => { for (const cb of idle.splice(0)) cb({ didTimeout: false, timeRemaining: () => 50 }); });
       await settle();
       assert.deepEqual(completions, ['one']);
+    } finally {
+      window.requestIdleCallback = originalIdle;
+    }
+  });
+
+  it('a session reset during a load aborts the waiting build: nothing builds or records for the removed model', async () => {
+    const idle: IdleRequestCallback[] = [];
+    const originalIdle = window.requestIdleCallback;
+    window.requestIdleCallback = ((cb: IdleRequestCallback) => { idle.push(cb); return idle.length; }) as typeof window.requestIdleCallback;
+    const tracer = createLoadTracer({ enabled: true, sink: null });
+    publishLoadTrace('one', tracer.startLoad('one'));
+    try {
+      useViewerStore.setState({ loading: true });
+      setLoadState('one', 'streaming-geometry');
+      render(<Owner />);
+      await settle();
+      assert.equal(useViewerStore.getState().searchIndexes.get('one')?.status, 'building', 'the build is claimed and waits for the load');
+      // The user opens another file: the reset clears the records and the models together (resetViewerState/clearAllModels).
+      await act(async () => { useViewerStore.setState({ models: new Map(), searchIndexes: new Map(), loading: false }); });
+      await settle();
+      await act(async () => { for (const cb of idle.splice(0)) cb({ didTimeout: false, timeRemaining: () => 50 }); });
+      await settle();
+      await settle();
+      assert.equal(tracer.latest()!.spans.filter((span) => span.name === 'search.tier1').length, 0, 'no tier-1 build started for the removed model');
+      assert.deepEqual(completions, [], 'and none finished');
+      assert.equal(useViewerStore.getState().searchIndexes.size, 0, 'no record written back for it');
     } finally {
       window.requestIdleCallback = originalIdle;
     }

@@ -213,9 +213,9 @@ function noteSnapshotSkip(trace: LoadTrace, outcome: 'not-armed' | 'not-captured
  * writer. The writer runs only after the load is interactive, so it is loaded
  * then, outside the eager bundle.
  */
-function writeWhenSettled(captured: CapturedScene, entry: Promise<SnapshotEntry | null>, isStale: () => boolean, trace: LoadTrace): void {
+function writeWhenSettled(captured: CapturedScene, entry: Promise<SnapshotEntry | null>, isStale: () => boolean, trace: LoadTrace, modelId: string | null): void {
   const span = trace.begin('cache.writeSceneSnapshot', { batches: captured.snapshot.batches.length });
-  import('./sceneSnapshotWrite.js').then(({ writeCapturedScene }) => writeCapturedScene(captured, entry, isStale, trace, span), (err: unknown) => {
+  import('./sceneSnapshotWrite.js').then(({ writeCapturedScene }) => writeCapturedScene(captured, entry, isStale, trace, span, modelId), (err: unknown) => {
     console.warn('[useIfcCache] Scene snapshot writer did not load:', err);
     trace.end(span, { outcome: 'failed', reason: 'writer-load' });
   });
@@ -228,6 +228,7 @@ export async function captureSceneSnapshotOfHit(
   decoded: Pick<DecodedCacheMetadata, 'headerInfo'>,
   isStale: (() => boolean) | undefined,
   trace: LoadTrace,
+  modelId: string | null = null,
 ): Promise<boolean> {
   const { createdAt, fullSourceHash, buffer: entry } = cacheResult;
   if (!snapshotsEnabled() || !cacheKey || createdAt === undefined || !(entry instanceof Blob) || !sceneMatchesCachedGeometry()) return false;
@@ -239,7 +240,7 @@ export async function captureSceneSnapshotOfHit(
   const section = decoded.headerInfo.sections.find((s) => s.type === SectionType.InstancedShards);
   const target: SnapshotEntry = { cacheKey, write: { createdAt, fullSourceHash }, shards: section ? { offset: section.offset, size: section.size } : null };
   const stale = isStale ?? (() => false);
-  armSceneCapture(renderer, stale, trace, (captured) => writeWhenSettled(captured, Promise.resolve(target), stale, trace));
+  armSceneCapture(renderer, stale, trace, (captured) => writeWhenSettled(captured, Promise.resolve(target), stale, trace, modelId));
   return false;
 }
 
@@ -276,7 +277,7 @@ export function armColdSceneCapture(isStale: () => boolean, trace: LoadTrace, mo
     arm: (renderer: Renderer) => {
       stopWatching();
       if (isStale()) return noteSnapshotSkip(trace, 'not-armed', 'superseded');
-      armSceneCapture(renderer, isStale, trace, (captured) => writeWhenSettled(captured, entry, isStale, trace), loadFailed);
+      armSceneCapture(renderer, isStale, trace, (captured) => writeWhenSettled(captured, entry, isStale, trace, modelId), loadFailed);
     },
     replaced: () => end('not-armed', 'superseded'),
     notStreamed: () => end('not-armed', 'not-streamed'),

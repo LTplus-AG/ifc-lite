@@ -19,6 +19,7 @@
 import { encodeSceneSnapshotInSlices, reorderSnapshotPieces, type SceneSnapshot } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { LoadTrace } from '@ifc-lite/load-trace';
+import { afterModelSettled, idlePeriod } from '../lib/perf/afterLoadIdle.js';
 import { useViewerStore } from '../store/index.js';
 import { putSceneSnapshot, type SceneSnapshotWrite } from '../services/cacheService.js';
 import type { SnapshotCameraFit } from '../components/viewer/sceneSnapshotOwnership.js';
@@ -63,7 +64,7 @@ export interface SnapshotEntry {
 export type SnapshotWriteOutcome = 'written' | 'refused' | 'abandoned' | 'no-entry' | 'policy-changed' | 'order-mismatch' | 'scene-changed' | 'failed';
 
 const STALE_POLL_MS = 250;
-const IDLE_TIMEOUT_MS = 2000;
+const SLICE_IDLE_TIMEOUT_MS = 500;
 /** A load whose entry write never reported back keeps its capture this long at most. */
 const ENTRY_WAIT_LIMIT_MS = 10 * 60 * 1000;
 
@@ -93,44 +94,10 @@ function supersession(isStale: () => boolean, until: Promise<unknown>): Promise<
   });
 }
 
-/** Resolves when the store no longer reports a load or a geometry stream in progress. */
-export function whenLoadInteractive(): Promise<void> {
-  const settled = () => {
-    const { loading, geometryStreamingActive } = useViewerStore.getState();
-    return !loading && !geometryStreamingActive;
-  };
-  if (settled()) return Promise.resolve();
-  return new Promise((resolve) => {
-    const unsubscribe = useViewerStore.subscribe(() => {
-      if (!settled()) return;
-      unsubscribe();
-      resolve();
-    });
-  });
-}
-
-/** The next idle period, or at once in a hidden tab (also when the tab is hidden while waiting). */
-export function idlePeriod(timeoutMs = IDLE_TIMEOUT_MS): Promise<void> {
-  if (pageHidden() || typeof window === 'undefined') return yieldToHost();
-  return new Promise((resolve) => {
-    let done = false;
-    const finish = () => {
-      if (done) return;
-      done = true;
-      document.removeEventListener('visibilitychange', onHidden);
-      resolve();
-    };
-    const onHidden = () => { if (pageHidden()) finish(); };
-    document.addEventListener('visibilitychange', onHidden);
-    if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(finish, { timeout: timeoutMs });
-    else setTimeout(finish, timeoutMs);
-  });
-}
-
 /** One idle slice before each piece of work, unless the tab is hidden. */
 async function sliceGap(): Promise<void> {
   if (pageHidden()) return yieldToHost();
-  return idlePeriod(500);
+  return idlePeriod(SLICE_IDLE_TIMEOUT_MS);
 }
 
 function abandonReason(isStale: () => boolean, captured: CapturedScene): string {
@@ -138,8 +105,10 @@ function abandonReason(isStale: () => boolean, captured: CapturedScene): string 
 }
 
 /**
- * Encode and store `captured` beside `entry` once the load is interactive and
- * the page idle. Ends the trace span `span` (begun by the caller at the swap).
+ * Encode and store `captured` beside `entry` once its model's load has settled
+ * and the page is idle: the `snapshot-write` job of the shared post-load
+ * schedule (lib/perf/afterLoadIdle.ts), which runs before every other post-load
+ * job. Ends the trace span `span` (begun by the caller at the swap).
  */
 export async function writeCapturedScene(
   captured: CapturedScene,
@@ -147,18 +116,36 @@ export async function writeCapturedScene(
   isStale: () => boolean,
   trace: LoadTrace,
   span: number,
+  modelId: string | null = null,
 ): Promise<SnapshotWriteOutcome> {
+  let ended: SnapshotWriteOutcome | null = null;
   const finish = (outcome: SnapshotWriteOutcome, attrs: Record<string, number | string> = {}) => {
+    if (ended) return ended; // one outcome per span, also when an abandoned job's encode returns later
+    ended = outcome;
     trace.end(span, { outcome, ...attrs });
     return outcome;
   };
+  const gone = () => isStale() || captured.loadFailed();
+  const abandoned = () => finish('abandoned', { reason: abandonReason(isStale, captured) });
   try {
-    const ready = Promise.all([entry, whenLoadInteractive()]);
-    if (await supersession(() => isStale() || captured.loadFailed(), ready)) return finish('abandoned', { reason: abandonReason(isStale, captured) });
-    const [target] = await ready;
+    if (await supersession(gone, entry)) return abandoned();
+    const target = await entry;
     if (!target) return finish('no-entry');
-    await idlePeriod();
-    if (isStale()) return finish('abandoned');
+    // Bound to the model's current store too: a reload under the same id drops it.
+    const modelStore = modelId === null ? null : useViewerStore.getState().models.get(modelId)?.ifcDataStore ?? null;
+    const job = afterModelSettled({ job: 'snapshot-write', modelId, store: modelStore }, (signal) => store(target, signal).catch((err: unknown) => {
+      console.warn('[useIfcCache] Scene snapshot was not stored:', err);
+      return finish('failed');
+    }));
+    if (await supersession(gone, job.result.then(() => {}))) { job.cancel(); return abandoned(); }
+    return (await job.result) ?? finish('abandoned', { reason: 'model-removed' });
+  } catch (err) {
+    console.warn('[useIfcCache] Scene snapshot was not stored:', err);
+    return finish('failed');
+  }
+
+  async function store(target: SnapshotEntry, signal: AbortSignal): Promise<SnapshotWriteOutcome> {
+    if (signal.aborted || gone()) return abandoned();
     if (captured.policyNow() !== captured.snapshot.policy) return finish('policy-changed');
     const encodeStart = performance.now();
     // Hydration matches pieces by ordinal; one it would refuse is not worth storing.
@@ -166,14 +153,11 @@ export async function writeCapturedScene(
     if (!snapshot) return finish('order-mismatch');
     const blob = await encodeSceneSnapshotInSlices({ ...snapshot, hostData: { ...captured.fit, shards: target.shards } }, sliceGap);
     const encodeMs = performance.now() - encodeStart;
-    if (isStale()) return finish('abandoned');
+    if (signal.aborted || gone()) return abandoned();
     const changed = captured.changedSince();
     if (changed) return finish('scene-changed', { reason: changed });
     // `refused`: the entry was replaced or purged, or quota is short (putSceneSnapshot's own guards).
     const stored = await putSceneSnapshot(target.cacheKey, target.write, blob, captured.key);
     return finish(stored ? 'written' : 'refused', { bytes: blob.size, encodeMs: Math.round(encodeMs) });
-  } catch (err) {
-    console.warn('[useIfcCache] Scene snapshot was not stored:', err);
-    return finish('failed');
   }
 }

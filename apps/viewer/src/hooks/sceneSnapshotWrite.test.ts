@@ -15,6 +15,8 @@ import { useViewerStore } from '../store/index.js';
 import { clearCache, getCached } from '../services/ifc-cache.js';
 import { entryOf, immediateIdle, putSnapshots, restoreIdle, snapshotTrace, storedSnapshot } from '../test/scene-snapshot-fixture.js';
 import { writeCapturedScene, type CapturedScene } from './sceneSnapshotWrite.js';
+import { __resetAfterLoadIdleForTests } from '../lib/perf/afterLoadIdle.js';
+import { fixtureModel } from '../test/store-fixture.js';
 
 const BOUNDS = { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 2, z: 3 } };
 
@@ -33,21 +35,23 @@ const captured = (over: Partial<CapturedScene> = {}): CapturedScene => ({
 });
 
 /** Run the writer for `c` with a span begun the way the capture begins it; resolves its outcome and the span's. */
-async function write(c: CapturedScene, entry: Parameters<typeof writeCapturedScene>[1], isStale = () => false) {
+async function write(c: CapturedScene, entry: Parameters<typeof writeCapturedScene>[1], isStale = () => false, modelId: string | null = null) {
   const { trace, outcomes } = snapshotTrace();
-  const outcome = await writeCapturedScene(c, entry, isStale, trace, trace.begin('cache.writeSceneSnapshot'));
+  const outcome = await writeCapturedScene(c, entry, isStale, trace, trace.begin('cache.writeSceneSnapshot'), modelId);
   return { outcome, span: outcomes()[0] };
 }
 
 beforeEach(async () => {
   putSnapshots.clear();
   await clearCache();
-  useViewerStore.setState({ loading: true, geometryStreamingActive: false });
+  __resetAfterLoadIdleForTests();
+  useViewerStore.setState({ models: new Map(), loading: true, geometryStreamingActive: false });
   immediateIdle();
 });
 afterEach(() => {
   restoreIdle();
-  useViewerStore.setState({ loading: false, geometryStreamingActive: false });
+  __resetAfterLoadIdleForTests();
+  useViewerStore.setState({ models: new Map(), loading: false, geometryStreamingActive: false });
 });
 
 describe('writeCapturedScene', () => {
@@ -127,6 +131,46 @@ describe('writeCapturedScene', () => {
     const broken = snapshot();
     broken.batches[0].vertexData = Object.defineProperty({}, 'buffer', { get() { throw new TypeError('detached'); } }) as Uint8Array; // the encode throws
     assert.deepEqual(await write(captured({ snapshot: broken }), Promise.resolve(await entryOf('f'))), { outcome: 'failed', span: 'failed' });
+  });
+
+  it('waits for its own model only: another model\'s load does not hold the write back', async () => {
+    const entry = await entryOf('m');
+    useViewerStore.setState({ loading: true, geometryStreamingActive: true, activeModelId: 'other',
+      models: new Map([['m', { ...fixtureModel('m'), loadState: 'complete' }], ['other', { ...fixtureModel('other'), loadState: 'streaming-geometry' }]]) } as never);
+    assert.equal((await write(captured(), Promise.resolve(entry), () => false, 'm')).outcome, 'written');
+  });
+
+  it('a model removed before the write is abandoned and stores nothing', async () => {
+    const entry = await entryOf('r');
+    useViewerStore.setState({ models: new Map([['r', { ...fixtureModel('r'), loadState: 'streaming-geometry' }]]) } as never);
+    const pending = write(captured(), Promise.resolve(entry), () => false, 'r');
+    await new Promise((r) => setTimeout(r, 20));
+    useViewerStore.setState({ models: new Map(), loading: false } as never);
+    assert.deepEqual(await pending, { outcome: 'abandoned', span: 'abandoned:model-removed' });
+    assert.equal((await getCached('r'))!.sceneSnapshot, undefined);
+  });
+
+  it('a load superseded while its write runs ends the span once, as abandoned, and stores nothing', async () => {
+    const entry = await entryOf('s');
+    useViewerStore.setState({ loading: false });
+    let stale = false;
+    const { trace, outcomes } = snapshotTrace();
+    const outcome = await writeCapturedScene(captured({ policyNow: () => { stale = true; return 'p'; } }), Promise.resolve(entry), () => stale,
+      trace, trace.begin('cache.writeSceneSnapshot'));
+    await new Promise((r) => setTimeout(r, 300)); // past the supersession poll
+    assert.equal(outcome, 'abandoned');
+    assert.deepEqual(outcomes(), ['abandoned:superseded']);
+    assert.equal((await getCached('s'))!.sceneSnapshot, undefined);
+  });
+
+  it('a model reloaded under the same id before the write drops the old capture\'s write', async () => {
+    const entry = await entryOf('u');
+    const first = { ...fixtureModel('u'), loadState: 'streaming-geometry' };
+    useViewerStore.setState({ loading: false, models: new Map([['u', first]]) } as never);
+    const pending = write(captured(), Promise.resolve(entry), () => false, 'u');
+    await new Promise((r) => setTimeout(r, 20));
+    useViewerStore.setState({ models: new Map([['u', { ...fixtureModel('u'), loadState: 'complete' }]]) } as never); // a new store
+    assert.deepEqual(await pending, { outcome: 'abandoned', span: 'abandoned:model-removed' });
   });
 
   it('does not wait for an idle period in a hidden tab', async () => {

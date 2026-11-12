@@ -203,6 +203,17 @@ function ensureRoomParse(
   return promise;
 }
 
+/**
+ * Each store's latest landed parse and the frame it was made in. A display reader
+ * keeps showing it while a re-parse for a new key (an edit, a mutation version)
+ * is pending, instead of dropping the store; never across a frame change (RTC
+ * frame or elevation rebase), where it would be drawn in the wrong place.
+ */
+let LAST_PARSE = new WeakMap<IfcDataStore, { frame: string; result: ParseResult; parseOrder: number }>();
+/** Parse start order: a parse that lands after a newer one does not replace it as the last parse. */
+let parseStarts = 0;
+const frameOf = (rtcKey: string, rebase: ReturnType<typeof elevationRebaseFor>): string => `${rtcKey}|${rebase.primitive}|${rebase.storeyTable}`;
+
 /** Subscribers that want to re-render when a new parse result lands. */
 type CacheListener = () => void;
 const CACHE_LISTENERS = new Set<CacheListener>();
@@ -243,10 +254,12 @@ export function ensureParseFor(stores: Array<IfcDataStore | SymbolicParseStoreBi
       continue;
     }
 
+    const parseOrder = ++parseStarts;
     const promise = (async () => {
       try {
         const result = await parseAnnotations(store, elevationRebase, rtc.frame, await sourceFlatFor(store, rtc), spatial);
         cacheParseResult(key, result);
+        if ((LAST_PARSE.get(store)?.parseOrder ?? 0) < parseOrder) LAST_PARSE.set(store, { frame: frameOf(rtc.key, elevationRebase), result, parseOrder });
         notifyCacheChange();
       } catch (error) {
         // Cache empty on failure so we don't retry a doomed parse every tick
@@ -277,6 +290,7 @@ export function __resetSymbolicAnnotationsCacheForTests(): void {
   ROOM_FLAT_INFLIGHT = new WeakMap();
   ROOM_PARSE_CACHE = new WeakMap();
   ROOM_PARSE_INFLIGHT = new WeakMap();
+  LAST_PARSE = new WeakMap();
 }
 
 /** @internal test-only probe for one weakly retained portable STEP parse. */
@@ -328,6 +342,22 @@ export function getParseFor(value: IfcDataStore | SymbolicParseStoreBinding | nu
   if (key === null) return undefined;
   const roomSource = roomSymbolicSource(store);
   return roomSource ? ROOM_PARSE_CACHE.get(roomSource)?.get(key) : PARSE_CACHE.get(key);
+}
+
+/**
+ * What an overlay should draw for a store: its exact parse, else its latest
+ * parse in the same frame while the new one is pending (see LAST_PARSE).
+ * Readers that must match the exact source (markup restore) use getParseFor.
+ */
+export function getDisplayParseFor(value: IfcDataStore | SymbolicParseStoreBinding | null | undefined): ParseResult | undefined {
+  const exact = getParseFor(value);
+  if (exact || !value) return exact;
+  const { store } = bindingOf(value);
+  if (roomSymbolicSource(store)) return undefined;
+  const rtc = overlayRtcContextFor(store);
+  if (rtc.mode === 'pending') return undefined;
+  const last = LAST_PARSE.get(store);
+  return last && last.frame === frameOf(rtc.key, elevationRebaseFor(store)) ? last.result : undefined;
 }
 
 /**

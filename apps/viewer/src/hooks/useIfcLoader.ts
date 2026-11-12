@@ -32,6 +32,7 @@ import { loadTracer, nextPaintOrTimeout } from '../lib/perf/loadTrace.js';
 import { countCopy } from '@ifc-lite/load-trace'; // #6957 full source-copy counters
 import { headIsZip, NO_ARCHIVE_IMAGES, sourceArrayBuffer } from './ingest/sourceBuffers.js';
 import { compactSource } from '../lib/source-compaction/source-compaction.js';
+import { runAfterModelSettled } from '../lib/perf/afterLoadIdle.js';
 import {
   GeometryProcessor,
   geometryAabbAt,
@@ -1187,7 +1188,7 @@ export function useIfcLoader() {
               settleLoadUi(LOAD_COMPLETE); // #1570, as the fresh path
               // #2183: compact the restored source, then drop this scope's binding to the raw file.
               const restoredStore = target.kind === 'federated' ? federatedHitStore : state.ifcDataStore;
-              if (restoredStore) void compactSource(restoredStore.source).then((o) => { if (o === 'compacted') buffer = new ArrayBuffer(0); });
+              if (restoredStore) runAfterModelSettled({ job: 'source-compaction', modelId, store: restoredStore }, () => void compactSource(restoredStore.source).then((o) => { if (o === 'compacted') buffer = new ArrayBuffer(0); }));
               // Belt-and-suspenders for BOTH tiers (#4269): revalidate the
               // full-content hash (this load's identity pass) and, if the source
               // changed with its mtime preserved, purge + auto-reload.
@@ -1344,11 +1345,10 @@ export function useIfcLoader() {
         memoryAccounting.setSourceBytes(buffer.byteLength);
       }
 
-      // #2183: after a completed load, compact the store's source and drop this scope's raw-buffer
+      // #2183: after a completed load (an after-load job, dropped with the model), compact the store's source and drop this scope's raw-buffer
       // bindings (closures here share one context, so any survivor would pin the whole file).
-      const compactSourceAfterLoad = (store: IfcDataStore) => void compactSource(store.source).then((o) => {
-        if (o === 'compacted') { buffer = new ArrayBuffer(0); sharedSource = null; }
-      });
+      const compactSourceAfterLoad = (store: IfcDataStore) => void runAfterModelSettled({ job: 'source-compaction', modelId, store }, () => void compactSource(store.source)
+        .then((o) => { if (o === 'compacted') { buffer = new ArrayBuffer(0); sharedSource = null; } }));
 
       // Data model parsing runs IN PARALLEL with geometry streaming.
       // Default path: parser runs in a Web Worker via WorkerParser, both

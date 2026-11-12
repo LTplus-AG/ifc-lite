@@ -3,46 +3,206 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Run work that no load waits for after the load in progress is interactive.
- * With no load in progress it runs at once, as before. During a load (store
- * `loading` or a geometry stream) it waits for the load to settle and then for
- * an idle period (at most `IDLE_TIMEOUT_MS`; at once in a hidden tab), so it
- * leaves the window between "the model is on screen" and "interactive".
- * Returns a cancel function.
+ * Work that no load waits for, run after THE MODEL IT IS FOR has settled, in an
+ * idle period, one job at a time in a fixed order. The one place that decides
+ * when post-load work runs: the scene snapshot write, the symbolic overlay
+ * parse, source compaction and the tier-1 search index.
+ *
+ * Settled (`modelLoadSettled`, the single definition): the model's record is
+ * not in a load phase (`pending`, `streaming-geometry`, `hydrating-metadata`:
+ * the phases streaming-refresh.ts and drawingPersistenceKey.ts treat as
+ * loading), the primary geometry stream is not running for it, and none of its
+ * instanced shards wait to upload (the rule #9628's readiness checks use). A
+ * store with no model record (the legacy single-model path) is settled when no
+ * load and no stream are in progress. Another model's load never holds a
+ * settled model's work back.
+ *
+ * Lifetime: a job is bound to its model's record. It is dropped, with every
+ * reference it holds, when that record leaves `models` or its data store is
+ * replaced (removal, a reload, a session reset). Its `signal` aborts then.
+ *
+ * Order: when several jobs are ready, the earliest `AfterLoadJob` starts first,
+ * each in its own idle period. A job that returns a promise holds the next one
+ * back until it settles (the snapshot write's sliced encode, the overlay parse);
+ * one that returns nothing does not (compaction runs in a worker; the tier-1
+ * build yields per chunk and can take seconds on a large model). The snapshot
+ * write goes first because it decides whether the next reopen is fast. A job
+ * holds the queue for 15 s at most; past that, later jobs start
+ * while it finishes, so one slow or stuck job cannot hold every model back.
+ *
+ * Idle: `requestIdleCallback` with a timeout, or at once in a hidden tab
+ * (including a tab hidden while waiting), where no frame is at stake.
  */
 
 import { useViewerStore } from '../../store/index.js';
 
+export type AfterLoadJob = 'snapshot-write' | 'overlay-parse' | 'source-compaction' | 'search-index';
+const ORDER: Record<AfterLoadJob, number> = { 'snapshot-write': 0, 'overlay-parse': 1, 'source-compaction': 2, 'search-index': 3 };
 const IDLE_TIMEOUT_MS = 1000;
+let holdLimitMs = 15_000;
+const LOADING: ReadonlySet<string | undefined> = new Set(['pending', 'streaming-geometry', 'hydrating-metadata']);
 
-function loadInProgress(): boolean {
-  const { loading, geometryStreamingActive } = useViewerStore.getState();
-  return loading || geometryStreamingActive;
+type ViewerState = ReturnType<typeof useViewerStore.getState>;
+
+/** Whether `modelId`'s load has settled (see the module comment). `null`: the legacy single-model store. */
+export function modelLoadSettled(state: ViewerState, modelId: string | null): boolean {
+  const shardsWaiting = (state.pendingInstancedShards ?? []).some((s) => modelId === null || s.modelId === modelId);
+  if (shardsWaiting) return false;
+  const model = modelId === null ? undefined : state.models.get(modelId);
+  if (!model) return !state.loading && !state.geometryStreamingActive;
+  if (state.geometryStreamingActive && state.activeModelId === modelId) return false;
+  return !LOADING.has(model.loadState);
 }
 
-export function runAfterLoadIdle(work: () => void): () => void {
-  if (!loadInProgress()) {
-    work();
-    return () => {};
+export interface AfterLoadOptions {
+  job: AfterLoadJob;
+  /** The model the work is for; `null` for the legacy single-model store. */
+  modelId: string | null;
+  /** When given, the job also ends if the model's data store is replaced. */
+  store?: object | null;
+}
+
+interface Job extends AfterLoadOptions {
+  seq: number;
+  work: ((signal: AbortSignal) => unknown) | null;
+  controller: AbortController;
+  /** Whether the model record was present when the job was scheduled. */
+  hadRecord: boolean;
+  onDrop?: () => void;
+}
+
+let seq = 0;
+let jobs: Job[] = [];
+let running = false;
+let waiting = false;
+let unsubscribe: (() => void) | null = null;
+
+function alive(job: Job, state: ViewerState): boolean {
+  const model = job.modelId === null ? undefined : state.models.get(job.modelId);
+  if (model) return job.store == null || model.ifcDataStore === job.store;
+  // A record that left (removal, reload, session reset) ends the job.
+  if (job.hadRecord) return false;
+  // No record: the legacy single-model store, bound to the viewer's current store.
+  return job.store == null || state.ifcDataStore === job.store;
+}
+
+function drop(job: Job): void {
+  const onDrop = job.onDrop;
+  job.onDrop = undefined;
+  job.work = null;
+  job.controller.abort();
+  onDrop?.();
+}
+
+function sweep(state: ViewerState): void {
+  const gone = jobs.filter((job) => !alive(job, state));
+  if (gone.length > 0) jobs = jobs.filter((job) => !gone.includes(job));
+  if (jobs.length === 0 && unsubscribe && !running) { unsubscribe(); unsubscribe = null; }
+  // After the queue is updated: an `onDrop` may write the store, which re-enters `pump`.
+  for (const job of gone) drop(job);
+}
+
+function nextReady(state: ViewerState): Job | undefined {
+  let best: Job | undefined;
+  for (const job of jobs) {
+    if (!modelLoadSettled(state, job.modelId)) continue;
+    if (!best || ORDER[job.job] < ORDER[best.job] || (ORDER[job.job] === ORDER[best.job] && job.seq < best.seq)) best = job;
   }
-  let cancelled = false;
-  let idleHandle: number | null = null;
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  const run = () => { if (!cancelled) work(); };
-  const whenIdle = () => {
-    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return run();
-    if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') idleHandle = window.requestIdleCallback(run, { timeout: IDLE_TIMEOUT_MS });
-    else timer = setTimeout(run, 0);
-  };
-  const unsubscribe = useViewerStore.subscribe(() => {
-    if (loadInProgress()) return;
-    unsubscribe();
-    whenIdle();
+  return best;
+}
+
+function hidden(): boolean {
+  return typeof document !== 'undefined' && document.visibilityState === 'hidden';
+}
+
+/** Resolve in the next idle period, or at once when the tab is (or becomes) hidden. */
+export function idlePeriod(timeoutMs = IDLE_TIMEOUT_MS): Promise<void> {
+  if (hidden()) return Promise.resolve();
+  return new Promise((resolve) => {
+    let done = false;
+    let handle: number | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      if (handle !== null) window.cancelIdleCallback?.(handle);
+      if (timer !== null) clearTimeout(timer);
+      if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisibility);
+      resolve();
+    };
+    const onVisibility = () => { if (hidden()) finish(); };
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisibility);
+    if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') handle = window.requestIdleCallback(finish, { timeout: timeoutMs });
+    else timer = setTimeout(finish, 0);
   });
+}
+
+function pump(): void {
+  const state = useViewerStore.getState();
+  // Sweep on every store change, also while a job runs: a removed model's queued work goes now.
+  sweep(state);
+  if (running || waiting || !nextReady(state)) return;
+  waiting = true;
+  void idlePeriod().then(async () => {
+    waiting = false;
+    const now = useViewerStore.getState();
+    sweep(now);
+    const job = nextReady(now);
+    if (!job) return pump();
+    jobs = jobs.filter((j) => j !== job);
+    const work = job.work;
+    job.work = null;
+    job.onDrop = undefined;
+    running = true;
+    let limit: ReturnType<typeof setTimeout> | undefined;
+    const done = Promise.resolve().then(() => work?.(job.controller.signal))
+      .then(() => {}, (error: unknown) => console.warn(`[afterLoadIdle] ${job.job} failed:`, error));
+    try {
+      await Promise.race([done, new Promise<void>((resolve) => { limit = setTimeout(resolve, holdLimitMs); })]);
+    } finally {
+      clearTimeout(limit);
+      running = false;
+      if (jobs.length === 0 && unsubscribe) { unsubscribe(); unsubscribe = null; }
+      pump();
+    }
+  });
+}
+
+/**
+ * Run `work` after `options.modelId` has settled, in an idle period, in job order
+ * (see the module comment). Returns a cancel; cancelling a job that has started
+ * aborts its signal. The job's promise, if it returns one, holds the next job back.
+ */
+export function runAfterModelSettled(options: AfterLoadOptions, work: (signal: AbortSignal) => unknown, onDrop?: () => void): () => void {
+  const state = useViewerStore.getState();
+  const job: Job = { ...options, seq: seq++, work, controller: new AbortController(), onDrop,
+    hadRecord: options.modelId !== null && state.models.has(options.modelId) };
+  jobs.push(job);
+  unsubscribe ??= useViewerStore.subscribe(() => pump());
+  pump();
   return () => {
-    cancelled = true;
-    unsubscribe();
-    if (idleHandle !== null && typeof window !== 'undefined') window.cancelIdleCallback?.(idleHandle);
-    if (timer !== null) clearTimeout(timer);
+    jobs = jobs.filter((j) => j !== job);
+    drop(job);
   };
+}
+
+/** The same, as a promise of `work`'s result; `undefined` when the job is dropped or cancelled before it runs. */
+export function afterModelSettled<T>(options: AfterLoadOptions, work: (signal: AbortSignal) => T | Promise<T>): { result: Promise<T | undefined>; cancel: () => void } {
+  let settle!: (value: T | undefined) => void;
+  const result = new Promise<T | undefined>((resolve) => { settle = resolve; });
+  const cancel = runAfterModelSettled(options, async (signal) => {
+    try { settle(await work(signal)); } catch (error) { settle(undefined); throw error; }
+  }, () => settle(undefined));
+  return { result, cancel };
+}
+
+/** Test-only: drop every job and listener; `holdLimit` shortens how long a job may hold the queue. */
+export function __resetAfterLoadIdleForTests(holdLimit = 15_000): void {
+  holdLimitMs = holdLimit;
+  for (const job of jobs) drop(job);
+  jobs = [];
+  running = false;
+  waiting = false;
+  unsubscribe?.();
+  unsubscribe = null;
 }

@@ -81,6 +81,12 @@ export function distToSrc(path) {
 /** Strip the extension, so `a/b.ts` and a missing `a/b.js` import compare equal. */
 export const extensionless = (path) => path.replace(/\.(?:d\.)?[cm]?[jt]sx?$|\.json$/, '');
 
+/** `posix.normalize` without a trailing slash, so `./dir/` and `./dir` name one key. */
+function normalize(path) {
+  const p = posix.normalize(path);
+  return p.length > 1 && p.endsWith('/') ? p.slice(0, -1) : p;
+}
+
 /**
  * @param {{
  *   files: Set<string>,
@@ -94,15 +100,20 @@ export function createResolver({ files, aliases: rawAliases = [], packages = new
   const prefixLength = ({ pattern }) => (pattern.includes('*') ? pattern.indexOf('*') : Infinity);
   const aliases = [...rawAliases].sort((a, b) => prefixLength(b) - prefixLength(a));
   function resolveFile(base) {
-    const p = posix.normalize(base);
+    // A trailing slash means a directory: only its index can load, never a
+    // same-named sibling file.
+    const dirOnly = base.endsWith('/');
+    const p = normalize(base);
     if (p.startsWith('..') || p.startsWith('/')) return null;
-    if (files.has(p)) return p;
-    const ext = posix.extname(p);
-    for (const ts of TS_FOR_JS[ext] ?? []) {
-      const candidate = p.slice(0, -ext.length) + ts;
-      if (files.has(candidate)) return candidate;
+    if (!dirOnly) {
+      if (files.has(p)) return p;
+      const ext = posix.extname(p);
+      for (const ts of TS_FOR_JS[ext] ?? []) {
+        const candidate = p.slice(0, -ext.length) + ts;
+        if (files.has(candidate)) return candidate;
+      }
+      for (const e of RESOLVE_EXTENSIONS) if (files.has(p + e)) return p + e;
     }
-    for (const e of RESOLVE_EXTENSIONS) if (files.has(p + e)) return p + e;
     for (const e of RESOLVE_EXTENSIONS) if (files.has(`${p}/index${e}`)) return `${p}/index${e}`;
     return null;
   }
@@ -124,7 +135,7 @@ export function createResolver({ files, aliases: rawAliases = [], packages = new
       }
       // tsx still resolves a workspace package through node_modules, so try
       // its exports before recording the import as missing.
-      return fromPackage(spec) ?? { kind: 'missing', base: posix.normalize(bases[0]) };
+      return fromPackage(spec) ?? { kind: 'missing', base: normalize(bases[0]) };
     }
     return null;
   }
@@ -153,16 +164,20 @@ export function createResolver({ files, aliases: rawAliases = [], packages = new
   }
 
   /**
-   * @returns {{ kind: 'file', path: string } | { kind: 'package', name: string }
-   *   | { kind: 'missing', base: string } | { kind: 'external' }}
+   * `dir` is the normalized path every RELATIVE specifier names, kept as
+   * written (no extension stripping): a module may READ it as a directory
+   * (`new URL('./data', import.meta.url)`) whatever it resolves to.
+   * @returns {({ kind: 'file', path: string } | { kind: 'package', name: string }
+   *   | { kind: 'missing', base: string } | { kind: 'external' }) & { dir?: string }}
    */
   return function resolve(importer, spec) {
     if (spec.startsWith('.')) {
       const base = posix.join(posix.dirname(importer), spec);
+      const p = normalize(base);
       // A relative path into a package's BUILT output stands for its source.
-      const src = distToSrc(posix.normalize(base));
+      const src = distToSrc(p);
       const hit = resolveFile(base) ?? (src && resolveFile(src));
-      return hit ? { kind: 'file', path: hit } : { kind: 'missing', base: posix.normalize(base) };
+      return hit ? { kind: 'file', path: hit, dir: p } : { kind: 'missing', base: p, dir: p };
     }
     return fromAliases(spec) ?? fromPackage(spec) ?? { kind: 'external' };
   };
@@ -170,18 +185,27 @@ export function createResolver({ files, aliases: rawAliases = [], packages = new
 
 export const packageNode = (name) => `pkg:${name}`;
 
+function addTo(map, key, value) {
+  if (!map.has(key)) map.set(key, new Set());
+  map.get(key).add(value);
+}
+
 /**
  * Walk forward from `tests` (and `preloads`, which every test depends on).
  *
  * @param {{ tests: string[], preloads?: string[], read: (path: string) => string,
  *   resolve: ReturnType<typeof createResolver> }} input
  * @returns {{ nodes: Set<string>, edges: Map<string, Set<string>>,
- *   missing: Map<string, Set<string>>, tests: string[] }}
+ *   missing: Map<string, Set<string>>, dirs: Map<string, Set<string>>, tests: string[] }}
  *   `missing`: extensionless import target that resolved to no file -> importers.
+ *   `dirs`: every relative path a module names, as written and without a
+ *   trailing slash -> importers. A key matches only files UNDER a directory of
+ *   exactly that name, so a file import never claims anything.
  */
 export function buildGraph({ tests, preloads = [], read, resolve }) {
   const edges = new Map();
   const missing = new Map();
+  const dirs = new Map();
   const nodes = new Set();
   const queue = [...preloads, ...tests];
   for (const t of tests) edges.set(t, new Set(preloads));
@@ -194,6 +218,7 @@ export function buildGraph({ tests, preloads = [], read, resolve }) {
     edges.set(file, out);
     for (const spec of extractSpecifiers(read(file))) {
       const r = resolve(file, spec);
+      if (r.dir) addTo(dirs, r.dir, file);
       if (r.kind === 'file') {
         out.add(r.path);
         if (!nodes.has(r.path)) queue.push(r.path);
@@ -201,13 +226,11 @@ export function buildGraph({ tests, preloads = [], read, resolve }) {
         out.add(packageNode(r.name));
         nodes.add(packageNode(r.name));
       } else if (r.kind === 'missing') {
-        const key = extensionless(r.base);
-        if (!missing.has(key)) missing.set(key, new Set());
-        missing.get(key).add(file);
+        addTo(missing, extensionless(r.base), file);
       }
     }
   }
-  return { nodes, edges, missing, tests: [...tests] };
+  return { nodes, edges, missing, dirs, tests: [...tests] };
 }
 
 /**

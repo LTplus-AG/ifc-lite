@@ -106,10 +106,10 @@ const resolve = createResolver({
 const IMPORTER = 'apps/viewer/src/a.test.ts';
 
 test('resolve: relative, the .js -> .ts convention, directory index and JSON', () => {
-  assert.deepEqual(resolve(IMPORTER, './lib/util.js'), { kind: 'file', path: 'apps/viewer/src/lib/util.ts' });
-  assert.deepEqual(resolve(IMPORTER, './lib/util'), { kind: 'file', path: 'apps/viewer/src/lib/util.ts' });
-  assert.deepEqual(resolve(IMPORTER, './lib'), { kind: 'file', path: 'apps/viewer/src/lib/index.tsx' });
-  assert.deepEqual(resolve(IMPORTER, './data.json'), { kind: 'file', path: 'apps/viewer/src/data.json' });
+  assert.deepEqual(resolve(IMPORTER, './lib/util.js'), { kind: 'file', path: 'apps/viewer/src/lib/util.ts', dir: 'apps/viewer/src/lib/util.js' });
+  assert.deepEqual(resolve(IMPORTER, './lib/util'), { kind: 'file', path: 'apps/viewer/src/lib/util.ts', dir: 'apps/viewer/src/lib/util' });
+  assert.deepEqual(resolve(IMPORTER, './lib'), { kind: 'file', path: 'apps/viewer/src/lib/index.tsx', dir: 'apps/viewer/src/lib' });
+  assert.deepEqual(resolve(IMPORTER, './data.json'), { kind: 'file', path: 'apps/viewer/src/data.json', dir: 'apps/viewer/src/data.json' });
 });
 
 test('resolve: tsconfig paths, wildcard and exact', () => {
@@ -130,13 +130,31 @@ test('distToSrc maps only packages/<x>/dist, at the package level', () => {
 });
 
 test('resolve: a relative path into a package dist maps back to its source', () => {
-  assert.deepEqual(resolve(IMPORTER, '../../../packages/parser/dist/deep.js'), { kind: 'file', path: 'packages/parser/src/deep.ts' });
+  assert.deepEqual(resolve(IMPORTER, '../../../packages/parser/dist/deep.js'), { kind: 'file', path: 'packages/parser/src/deep.ts', dir: 'packages/parser/dist/deep.js' });
+});
+
+test('resolve: a trailing slash is directory-only and carries the directory', () => {
+  assert.deepEqual(resolve(IMPORTER, './lib/'), { kind: 'file', path: 'apps/viewer/src/lib/index.tsx', dir: 'apps/viewer/src/lib' });
+  assert.deepEqual(resolve(IMPORTER, './gone/'), { kind: 'missing', base: 'apps/viewer/src/gone', dir: 'apps/viewer/src/gone' });
+  const r = createResolver({ files: new Set(['s/data.ts']) });
+  assert.equal(r('s/a.ts', './data/').kind, 'missing', 'a sibling data.ts is not the directory data/');
+});
+
+test('buildGraph records a named directory even when it has an index, and never strips a dotted directory name', () => {
+  const src = {
+    'apps/viewer/src/t.test.ts': "new URL('./fixtures/', import.meta.url);\nnew URL('./samples.json/', import.meta.url);",
+    'apps/viewer/src/fixtures/index.ts': '',
+  };
+  const g = buildGraph({ tests: ['apps/viewer/src/t.test.ts'], read: (p) => src[p], resolve: createResolver({ files: new Set(Object.keys(src)) }) });
+  assert.deepEqual([...g.dirs.get('apps/viewer/src/fixtures')], ['apps/viewer/src/t.test.ts']);
+  assert.deepEqual([...g.dirs.get('apps/viewer/src/samples.json')], ['apps/viewer/src/t.test.ts']);
+  assert.equal(g.missing.has('apps/viewer/src/fixtures'), false, 'a named directory is not an unresolved import');
 });
 
 test('resolve: npm packages are external and a missing relative file is recorded', () => {
   assert.deepEqual(resolve(IMPORTER, 'react'), { kind: 'external' });
-  assert.deepEqual(resolve(IMPORTER, './gone.js'), { kind: 'missing', base: 'apps/viewer/src/gone.js' });
-  assert.deepEqual(resolve(IMPORTER, '../../../../escape.js'), { kind: 'missing', base: '../escape.js' });
+  assert.deepEqual(resolve(IMPORTER, './gone.js'), { kind: 'missing', base: 'apps/viewer/src/gone.js', dir: 'apps/viewer/src/gone.js' });
+  assert.deepEqual(resolve(IMPORTER, '../../../../escape.js'), { kind: 'missing', base: '../escape.js', dir: '../escape.js' });
 });
 
 test('isViewerTest matches the set the viewer test script finds', () => {

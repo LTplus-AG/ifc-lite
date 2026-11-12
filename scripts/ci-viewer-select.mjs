@@ -127,11 +127,9 @@ export function classifyChanges(changes, graph, packages) {
   // Only data directories strictly inside an app's or package's `src/` or
   // `public/`: a module that takes a ROOT as its working directory would
   // otherwise claim every config file under it and hide the unmapped warning.
-  // Keyed with a trailing slash whether or not the URL literal had one.
-  const dirKeys = [...graph.missing.keys()]
-    .map((k) => (k.endsWith('/') ? k : `${k}/`))
-    .filter((k) => /^(apps|packages)\/[^/]+\/(src|public)\/.+\/$/.test(k));
-  const dirImportersOf = (k) => graph.missing.get(k) ?? graph.missing.get(k.slice(0, -1));
+  // graph.dirs holds every relative path a module names, however spelled.
+  const dirImportersOf = (k) => [...(graph.dirs.get(k) ?? [])];
+  const dirKeys = [...graph.dirs.keys()].filter((k) => /^(apps|packages)\/[^/]+\/(src|public)\/.+$/.test(k));
   const seeds = new Set();
   const rows = [];
   for (const { status, path } of changes) {
@@ -143,8 +141,12 @@ export function classifyChanges(changes, graph, packages) {
     if (opaque) seeds.add(opaque);
     if (status === 'D') {
       // `import './dir'` resolved to dir/index.ts records the directory itself.
-      const keys = [extensionless(path), ...(isCodeFile(path) && /\/index\.[^/]+$/.test(path) ? [posix.dirname(path)] : [])];
-      const importers = keys.flatMap((k) => [...(graph.missing.get(k) ?? [])]);
+      // A deleted dir/index also breaks `./dir` and `./dir/` imports (graph.dirs).
+      const index = isCodeFile(path) && /\/index\.[^/]+$/.test(path) ? posix.dirname(path) : null;
+      const importers = [
+        ...(graph.missing.get(extensionless(path)) ?? []),
+        ...(index ? dirImportersOf(index) : []),
+      ];
       if (importers.length > 0) {
         for (const i of importers) seeds.add(i);
         rows.push({ path, status, class: 'graph', reason: 'deleted; still imported by the graph' });
@@ -158,7 +160,7 @@ export function classifyChanges(changes, graph, packages) {
     // A data directory a module reads (`new URL('dir/', import.meta.url)`)
     // covers the DATA files under it. Code files there are judged by imports,
     // so a module reading `./` cannot mask unreached source.
-    const dirImporters = isCodeFile(path) ? [] : dirKeys.filter((k) => path.startsWith(k)).flatMap((k) => [...dirImportersOf(k)]);
+    const dirImporters = isCodeFile(path) ? [] : dirKeys.filter((k) => path.startsWith(`${k}/`)).flatMap(dirImportersOf);
     if (dirImporters.length > 0) {
       for (const i of dirImporters) seeds.add(i);
       rows.push({ path, status, class: 'graph', reason: 'in a directory a graph module reads' });

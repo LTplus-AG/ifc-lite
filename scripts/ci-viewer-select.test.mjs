@@ -206,6 +206,33 @@ test('a directory URL without a trailing slash still covers its data files; code
   assert.deepEqual([...seeds], ['apps/viewer/src/lib/j.test.ts']);
 });
 
+test('two modules spelling one directory with and without a slash are BOTH seeded (review on #9807)', () => {
+  const src = {
+    'apps/viewer/src/k1.test.ts': "const d = new URL('./data', import.meta.url);",
+    'apps/viewer/src/k2.test.ts': "const d = new URL('./data/', import.meta.url);",
+  };
+  const { seeds } = classifyChanges([{ status: 'M', path: 'apps/viewer/src/data/x.json' }], graphOf(src), new Map());
+  assert.deepEqual([...seeds].sort(), ['apps/viewer/src/k1.test.ts', 'apps/viewer/src/k2.test.ts']);
+});
+
+test('a directory read is covered whatever its spelling: indexed, dotted, with or without a slash', () => {
+  const src = {
+    'apps/viewer/src/m1.test.ts': "new URL('./fx', import.meta.url);",
+    'apps/viewer/src/fx/index.ts': '',
+    'apps/viewer/src/m2.test.ts': "new URL('./samples.json', import.meta.url);",
+  };
+  const g = graphOf(src);
+  assert.deepEqual([...classifyChanges([{ status: 'M', path: 'apps/viewer/src/fx/a.json' }], g, new Map()).seeds], ['apps/viewer/src/m1.test.ts']);
+  assert.deepEqual([...classifyChanges([{ status: 'M', path: 'apps/viewer/src/samples.json/a.ifc' }], g, new Map()).seeds], ['apps/viewer/src/m2.test.ts']);
+});
+
+test('deleting dir/index seeds a module that imports it as `./dir/`', () => {
+  const src = { 'apps/viewer/src/s.test.ts': "import './x/';" };
+  const { rows, seeds } = classifyChanges([{ status: 'D', path: 'apps/viewer/src/x/index.ts' }], graphOf(src), new Map());
+  assert.equal(rows[0].class, 'graph');
+  assert.deepEqual([...seeds], ['apps/viewer/src/s.test.ts']);
+});
+
 test('a module using an app ROOT as a directory does not claim the app\'s config files', () => {
   const src = { 'apps/viewer/src/x/r.test.ts': "const cwd = new URL('../../', import.meta.url);\nconst srcRoot = new URL('../', import.meta.url);" };
   const g = graphOf(src);

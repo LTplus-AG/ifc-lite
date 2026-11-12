@@ -29,6 +29,11 @@ pub(crate) enum SectionRoll {
 pub(crate) struct SurfaceCurveSweepPlan {
     pub(super) regions: Vec<Profile2D>,
     pub(super) points: Vec<Point3<f64>>,
+    /// The directrix's own unit tangent at each point, when it was evaluated
+    /// (an `IfcGradientCurve`); `None` derives tangents from the chords.
+    /// Sweeps that meet at a point then share its tangent, so their section
+    /// frames, and their end caps, agree there.
+    pub(super) tangents: Option<Vec<Vector3<f64>>>,
     pub(super) entity_id: u32,
     /// `None`: no reference we can evaluate (absent, a surface type not
     /// handled yet, or one that fails to read); the rotation-minimising frame
@@ -117,11 +122,15 @@ pub(super) fn reference_frames(
 impl SurfaceCurveSweepPlan {
     pub(crate) fn evaluate(&self) -> Result<Mesh> {
         // --- Sweep the profile along the placed directrix --------------------------
-        let (tangents, rmf1, rmf2) = build_tube_rmf(&self.points);
+        let (chord_tangents, rmf1, rmf2) = build_tube_rmf(&self.points);
+        let tangents = match &self.tangents {
+            Some(tangents) if tangents.len() == self.points.len() => tangents,
+            _ => &chord_tangents,
+        };
         let (perp1s, perp2s) = self
             .roll
             .as_ref()
-            .and_then(|roll| reference_frames(roll, &tangents))
+            .and_then(|roll| reference_frames(roll, tangents))
             .unwrap_or((rmf1, rmf2));
         let placed = self
             .regions

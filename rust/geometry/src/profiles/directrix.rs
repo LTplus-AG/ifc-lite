@@ -8,17 +8,16 @@
 
 use super::outline::trim_polyline;
 use super::ProfileProcessor;
-use crate::alignment::AlignmentCurve;
-use crate::tessellation::{scale_segments, TessellationQuality};
+#[path = "directrix_gradient.rs"]
+mod gradient;
+pub(crate) use gradient::CurveMeasure;
+use crate::tessellation::TessellationQuality;
 use crate::{Error, Point3, Result, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use std::f64::consts::TAU;
 
 // Relative parameter tolerance when mapping a trim window onto one segment.
-use crate::math::tol::{CHORD_TOL_M, PARAM_EPS};
-
-/// Cap on the subdivisions of one vertical-curve span of a gradient directrix.
-const MAX_GRADIENT_SPAN_STEPS: usize = 256;
+use crate::math::tol::PARAM_EPS;
 
 impl ProfileProcessor {
     /// Sample a swept solid's directrix in 3D over the solid's
@@ -29,9 +28,8 @@ impl ProfileProcessor {
     ///   - `IfcLine`: `P(u) = Pnt + u·V`.
     ///   - `IfcCircle` / `IfcEllipse`: angle in the project's plane-angle unit.
     ///
-    ///   - `IfcGradientCurve`: horizontal distance along its `BaseCurve`, with
-    ///     the elevation of its vertical profile (see
-    ///     [`Self::get_gradient_directrix_points`]).
+    ///   - `IfcGradientCurve`: the `BaseCurve` parameter, with the elevation
+    ///     of its vertical profile (see [`Self::get_directrix_samples`]).
     ///
     /// Any other directrix (an `IfcTrimmedCurve` carries its own Trim1/Trim2,
     /// so a redundant solid-level range is a no-op; a spline's knot-based
@@ -46,10 +44,9 @@ impl ProfileProcessor {
     ) -> Result<Vec<Point3<f64>>> {
         self.set_tessellation_quality(quality);
         if directrix.ifc_type == IfcType::IfcGradientCurve {
-            if let Some(points) =
-                self.get_gradient_directrix_points(directrix, decoder, start_param, end_param)?
-            {
-                return Ok(points);
+            let (start, end) = (start_param.map(CurveMeasure::Parameter), end_param.map(CurveMeasure::Parameter));
+            if let Some(samples) = self.get_gradient_directrix(directrix, decoder, start, end)? {
+                return Ok(samples.points);
             }
         }
         if start_param.is_none() && end_param.is_none() {
@@ -76,59 +73,6 @@ impl ProfileProcessor {
             }
             _ => self.get_curve_points(directrix, decoder, quality),
         }
-    }
-
-    /// Sample an IFC4x3 `IfcGradientCurve` directrix in 3D over the solid's
-    /// `[StartParam, EndParam]`. The curve's parameter is that of its
-    /// `BaseCurve` (horizontal distance along the plan layout, from 0), and
-    /// each point takes the elevation of the vertical profile at that
-    /// distance: the same [`AlignmentCurve`] evaluation that
-    /// `IfcSectionedSolidHorizontal` and `IfcLinearPlacement` use (#5327).
-    /// Before this, the sweep followed the flat `BaseCurve` (z = 0) and a
-    /// trimmed gradient directrix was read as a plain composite curve and
-    /// refused.
-    ///
-    /// Samples fall on every plan vertex and vertical segment boundary, and a
-    /// curved vertical span is subdivided until its chord stays within
-    /// [`CHORD_TOL_M`]. An out-of-range bound clamps to the plan length.
-    /// `Ok(None)` when the vertical profile cannot be read; the caller then
-    /// keeps the plain-curve path.
-    fn get_gradient_directrix_points(
-        &self,
-        curve: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-        start_param: Option<f64>,
-        end_param: Option<f64>,
-    ) -> Result<Option<Vec<Point3<f64>>>> {
-        let Some(alignment) = AlignmentCurve::parse(curve, decoder)? else {
-            return Ok(None);
-        };
-        let length = alignment.horizontal_length();
-        let start = start_param.unwrap_or(0.0).max(0.0);
-        let end = end_param.unwrap_or(length).min(length);
-        if !(start.is_finite() && end.is_finite()) || end <= start {
-            return Ok(Some(Vec::new()));
-        }
-        let mut stations = vec![start];
-        stations.extend(alignment.station_breaks().into_iter().filter(|s| *s > start && *s < end));
-        stations.push(end);
-
-        let tolerance = CHORD_TOL_M / decoder.length_unit_scale();
-        let z = |s: f64| alignment.evaluate(s).origin.z;
-        let mut points = vec![alignment.evaluate(start).origin];
-        for span in stations.windows(2) {
-            let (a, b) = (span[0], span[1]);
-            // Within a span the plan is one straight chord and the profile
-            // one smooth segment, so the mid-span sag of the elevation
-            // bounds the chord error; it falls with the square of the step.
-            let sag = (z(0.5 * (a + b)) - 0.5 * (z(a) + z(b))).abs();
-            let steps = if sag > tolerance { (sag / tolerance).sqrt().ceil() as usize } else { 1 };
-            let steps = scale_segments(steps, 1, MAX_GRADIENT_SPAN_STEPS, self.quality());
-            for i in 1..=steps {
-                points.push(alignment.evaluate(a + (b - a) * (i as f64 / steps as f64)).origin);
-            }
-        }
-        Ok(Some(points))
     }
 
     /// Sample a bare `IfcCircle` / `IfcEllipse` directrix over the angular
@@ -355,7 +299,3 @@ impl ProfileProcessor {
         points
     }
 }
-
-#[cfg(test)]
-#[path = "directrix_tests.rs"]
-mod tests;

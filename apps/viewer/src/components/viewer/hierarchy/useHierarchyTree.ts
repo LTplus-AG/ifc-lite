@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { createSpatialMutationSelector } from './spatial-mutation-selector';
 import { useTranslation } from '@/i18n';
 import type { LayerGrouping } from './presentationLayerGroups';
 
@@ -91,7 +92,8 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
   const georefMutations = useViewerStore((state) => state.georefMutations); // storey badges only (#4843)
   // The session's edits; the trees read authored rows' name and class through them (#5249, #6233).
   const mutationViews = useViewerStore((s) => s.mutationViews);
-  const mutationVersion = useViewerStore((s) => s.mutationVersion);
+  const [selectMutations] = useState(createSpatialMutationSelector);
+  const mutationVersion = useViewerStore(selectMutations);
 
   // Build unified storey data for multi-model mode (moved before useEffect that depends on it)
   const unifiedStoreys = useMemo(

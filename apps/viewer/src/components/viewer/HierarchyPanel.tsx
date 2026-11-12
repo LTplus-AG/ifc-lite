@@ -5,6 +5,7 @@
 import { LayerGroupingControl } from './hierarchy/LayerGroupingControl';
 
 import { useState, useCallback, useRef, useMemo } from 'react';
+import { createSpatialMutationSelector } from './hierarchy/spatial-mutation-selector';
 import { useTranslation } from '@/i18n';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Search, Building2, Layers, LayoutTemplate, FileBox, GripHorizontal, Palette, Network, Layers3, Shapes } from 'lucide-react';
@@ -114,7 +115,8 @@ export function HierarchyPanel() {
   // Classes come through the session's mutation views (#6233); they mutate in
   // place, so mutationVersion re-runs the label.
   const mutationViews = useViewerStore((s) => s.mutationViews);
-  const mutationVersion = useViewerStore((s) => s.mutationVersion);
+  const [selectMutations] = useState(createSpatialMutationSelector);
+  const mutationVersion = useViewerStore(selectMutations);
   const typeIsolationLabel = useMemo(
     () => computeTypeIsolationLabel(isolatedEntities, models, ifcDataStore, (modelId) => mutationViews.get(modelId)),
     // eslint-disable-next-line react-hooks/exhaustive-deps

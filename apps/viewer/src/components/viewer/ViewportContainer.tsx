@@ -113,8 +113,6 @@ export function ViewportContainer() {
   const georefMutations = useViewerStore((s) => s.georefMutations);
   const setCesiumSourceModelId = useViewerStore((s) => s.setCesiumSourceModelId);
   const setCesiumAvailable = useViewerStore((s) => s.setCesiumAvailable);
-  // Subscribe to mutationVersion so Cesium reacts to georef edits
-  const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showTroubleshooting, setShowTroubleshooting] = useState(false);
   const [recentFiles, setRecentFiles] = useState<RecentFileEntry[]>(getRecentFiles); // seeded: a fresh visit lists past opens
@@ -247,7 +245,6 @@ export function ViewportContainer() {
     storeModels,
     ifcDataStore,
     georefMutations,
-    mutationVersion,
     // Only the (stable) coordinateInfo is read here, not the whole result —
     // depending on `mergedGeometryResult` re-runs this on every streamed
     // geometry batch, re-triggering the property-set georef scan each time.
@@ -301,7 +298,7 @@ export function ViewportContainer() {
     // Depend on the stable coordinateInfo, not the whole mergedGeometryResult:
     // the latter gets a new reference each streamed batch, which would re-run
     // this georef property-set scan ~once per batch on large models.
-  }, [storeModels, ifcDataStore, georefMutations, mutationVersion, setCesiumAvailable, mergedGeometryResult?.coordinateInfo]);
+  }, [storeModels, ifcDataStore, georefMutations, setCesiumAvailable, mergedGeometryResult?.coordinateInfo]);
 
   // Sync the active Cesium source model ID so terrain actions are scoped correctly
   useEffect(() => {

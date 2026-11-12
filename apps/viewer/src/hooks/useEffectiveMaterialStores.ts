@@ -70,7 +70,7 @@ export function useEffectiveMaterialStores(
   enabled: boolean,
 ): { stores: ReadonlyMap<string, IfcDataStore>; ready: boolean; pendingEditsMissing: boolean } {
   const views = useViewerStore((s) => s.mutationViews);
-  const revision = useViewerStore((s) => s.mutationVersion);
+  const revision = useViewerStore((s) => enabled ? s.mutationVersion : 0);
   const sources = useMemo((): MaterialStoreSource[] => {
     if (models.size > 0) {
       return [...models].flatMap(([modelId, model]) => model.ifcDataStore

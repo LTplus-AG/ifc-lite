@@ -19,7 +19,7 @@
  * and raises a notice: nothing can be drawn until it has one.
  */
 
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { ChevronDown, Eye, EyeOff, Layers, TriangleAlert } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { mutationDenial } from '@/store/mutation-permission';
@@ -44,15 +44,20 @@ export function pickWorkspaceStorey(storey: WorkspaceStorey): void {
 
 /** The storey list per editable model, while a session is open (the chip and the plan header). */
 export function useWorkspaceStoreyGroups(): StoreyPickerGroup[] {
-  const open = useViewerStore((s) => s.session !== null);
-  const models = useViewerStore((s) => s.models);
-  const mutationVersion = useViewerStore((s) => s.mutationVersion);
-  return useMemo<StoreyPickerGroup[]>(() => {
-    void mutationVersion; // an authored storey or elevation edit
-    if (!open) return [];
-    const s = useViewerStore.getState();
-    return editableModels(s).map((model) => ({ modelId: model.id, modelName: model.name, storeys: modelStoreys(s, model.id) }));
-  }, [open, models, mutationVersion]);
+  const [selectGroups] = useState(() => {
+    let previous: StoreyPickerGroup[] = [];
+    return (s: ReturnType<typeof useViewerStore.getState>) => {
+      const next = s.session ? editableModels(s).map(model => ({
+        modelId: model.id, modelName: model.name, storeys: modelStoreys(s, model.id),
+      })) : [];
+      if (next.length !== previous.length || next.some((group, index) => {
+        const old = previous[index];
+        return group.modelId !== old.modelId || group.modelName !== old.modelName || group.storeys !== old.storeys;
+      })) previous = next;
+      return previous;
+    };
+  });
+  return useViewerStore(selectGroups);
 }
 
 export function WorkspaceStoreyControl() {

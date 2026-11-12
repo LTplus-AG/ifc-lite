@@ -1,9 +1,11 @@
 # Rhino .3dm import, level 1: read-only
 
 Status: **partly implemented**. The reader, `readRhino3dm` in
-`@ifc-lite/rhino3dm` (delivery step 1), is implemented with its package tests.
-The viewer side (steps 2 to 4: format detection, worker, adapter, tree, e2e)
-is not, and the exporter's spatial layer stamps (step 0) are a separate change.
+`@ifc-lite/rhino3dm` (delivery step 1), and the viewer load (step 2: format
+detection, the import worker and its client, the adapter and the `loadFile`
+branch) are implemented with their tests. The tree and hidden state (step 3)
+and the e2e overlay test (step 4) are not, and the exporter's spatial layer
+stamps (step 0) are a separate change.
 Decisions D1 to D8 are made. This page is the contract for opening a Rhino
 `.3dm` in the viewer, or adding one to a federation, as a read-only model:
 meshes, layers, colours, Attribute User Text and, for files ifc-lite exported,
@@ -953,15 +955,20 @@ Level 1 has no dialog. The defaults live in the reader.
   deadline so its hang fails that test alone.
 - Each guard above was checked by removing it and watching a test fail.
 
-**Viewer (vitest):**
+**Viewer (node:test).** Implemented, except the selection test:
 
 - The adapter builds a store whose `getEntity`, properties and quantities
-  answer.
+  answer, driven with real `RhinoImport` data: a crafted `.3dm` whose
+  coordinate and user text are known exactly, and the Rhino 8 authored
+  fixtures (`apps/viewer/src/hooks/ingest/rhinoViewerModel.test.ts`).
 - Selecting a mesh resolves through `resolveEntityRef` at `models.size` 1 and N
-  (AGENTS.md).
+  (AGENTS.md). **Not written:** it belongs with the tree and hidden state
+  (step 3), which is what a user selects through.
 - The worker client uses an in-process fake worker, as
-  `rhino-export-client.test.ts` does.
-- `detectFormat` returns `'3dm'`.
+  `rhino-export-client.test.ts` does
+  (`apps/viewer/src/lib/import/rhino-import-client.test.ts`): abort, a reader
+  error with its code, a crash, an unreadable message, and the axis swap.
+- `detectFormat` returns `'3dm'` (`packages/ifcx/src/detect-format.test.ts`).
 - Bundle check: rhino3dm stays out of the startup graph.
   `apps/viewer/scripts/check-rhino3dm-lazy.mjs` already scans every startup
   chunk for rhino3dm, so it covers a second worker unchanged. Only its remedy
@@ -997,7 +1004,12 @@ One issue, stacked PRs, each under about 1,500 lines:
    measured size ceiling, a changeset and the API surface update. **Done.**
 2. **Viewer load:** `detectFormat` `'3dm'`, accept lists, worker and client,
    `rhinoViewerModel.ts`, the `buildTabularDataStore` lift, and the `loadFile`
-   branch.
+   branch. **Done.** Deviations: the worker request carries no options (level 1
+   has no dialog, so the defaults stay in the reader), it reads with
+   `bakeInstances` until the GPU instance path exists (D4), and curves and text
+   dots come across the wire but are not drawn (D6), so a file whose only
+   drawable objects are curves is refused with the reader's
+   `no-renderable-geometry` code.
 3. **Tree and visibility:** the layer or spatial tree, hidden state, and model
    metadata.
 4. **E2E and acceptance:** the overlay spec, screenshots, and a guide section.

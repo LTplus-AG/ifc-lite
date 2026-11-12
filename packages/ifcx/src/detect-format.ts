@@ -6,16 +6,37 @@
 // imported-geometry kernel they reach) apart from this tiny format sniffer.
 import { safeUtf8Decode } from '@ifc-lite/data';
 
+/** The first 24 bytes of every Rhino archive, ahead of its version digits. */
+const RHINO_3DM_MAGIC = '3D Geometry File Format ';
+
+/** True when the buffer starts with the Rhino archive magic. */
+function isRhino3dm(buffer: ArrayBuffer): boolean {
+  if (buffer.byteLength < RHINO_3DM_MAGIC.length) return false;
+  const head = new Uint8Array(buffer, 0, RHINO_3DM_MAGIC.length);
+  for (let i = 0; i < RHINO_3DM_MAGIC.length; i++) {
+    if (head[i] !== RHINO_3DM_MAGIC.charCodeAt(i)) return false;
+  }
+  return true;
+}
+
 /**
- * Detect if a buffer contains IFCX (JSON), IFC (STEP), or GLB (binary glTF) format.
+ * Detect if a buffer contains IFCX (JSON), IFC (STEP), GLB (binary glTF) or
+ * Rhino (.3dm) format.
  */
-export function detectFormat(buffer: ArrayBuffer): 'ifcx' | 'ifc' | 'glb' | 'unknown' {
+export function detectFormat(buffer: ArrayBuffer): 'ifcx' | 'ifc' | 'glb' | '3dm' | 'unknown' {
   // Check GLB magic bytes first (binary format, 4-byte magic: 0x46546C67 = 'glTF')
   if (buffer.byteLength >= 4) {
     const magic = new DataView(buffer).getUint32(0, true);
     if (magic === 0x46546c67) {
       return 'glb';
     }
+  }
+
+  // A Rhino archive is binary and its magic is ASCII, so it is read byte by
+  // byte rather than through the decoder below: a .3dm otherwise fell through
+  // to `unknown` and on into the IFC wasm path.
+  if (isRhino3dm(buffer)) {
+    return '3dm';
   }
 
   const bytes = new Uint8Array(buffer, 0, Math.min(100, buffer.byteLength));

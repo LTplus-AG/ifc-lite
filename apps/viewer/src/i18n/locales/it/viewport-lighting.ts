@@ -30,6 +30,7 @@ export const viewportLightingIt = {
   "viewportLighting.container.emptyState.dragDropHint": "Oppure trascina i file in un punto qualsiasi della vista:",
   "viewportLighting.container.emptyState.formats.ifc": "IFC",
   "viewportLighting.container.emptyState.formats.gltf": "glTF",
+  "viewportLighting.container.emptyState.formats.rhino": "Rhino",
   "viewportLighting.container.emptyState.formats.pointClouds": "Nuvole di punti",
   "viewportLighting.container.emptyState.formats.terrain": "Terreno",
   "viewportLighting.container.emptyState.formats.underlays": "Sfondi",

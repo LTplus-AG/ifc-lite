@@ -38,7 +38,9 @@ export function decideMode(raw) {
 const OK = /^( *)ok \d+ - (.*?)(?: # (SKIP|TODO)\b.*)?$/;
 const SUBTEST = /^( *)# Subtest: (.*)$/;
 const NOT_OK = /^( *)not ok \d+ - (.*?)(?: # (SKIP|TODO)\b.*)?$/;
-const YAML_FIELD = /^ *(location|failureType|type): '((?:[^']|'')*)'$/;
+const YAML_FIELD = /^ *(location|failureType|type|error): '((?:[^']|'')*)'$/;
+/** node's message for a test cancelled because its parent ended first (e.g. a failed hook). */
+const PARENT_CANCELLED = 'test did not finish before its parent and was cancelled';
 const SUMMARY = /^# (tests|suites|pass|fail|cancelled|skipped|todo|duration_ms) ([\d.]+)$/;
 
 function unescapeTitle(s) {
@@ -159,9 +161,11 @@ export function attributeViewerFailures(failures, root) {
     // never as a test of its own: a suite is never a passing result.
     if (f.failureType !== 'subtestsFailed' && f.type !== 'suite') {
       // didNotRun only shapes the report (summary, annotations); the retry
-      // still has to pass the test. Newer Node 22 also reports a test-level
-      // timeout as cancelledByParent.
-      tests.push({ file, title: f.title, path: f.path, didNotRun: f.failureType === 'cancelledByParent' });
+      // still has to pass the test. `cancelledByParent` alone is not enough:
+      // node also uses it for a test left pending when its file's event loop
+      // drained, which did run. The message tells the two apart (Node 22.14
+      // and 22.23 alike).
+      tests.push({ file, title: f.title, path: f.path, didNotRun: f.failureType === 'cancelledByParent' && f.error === PARENT_CANCELLED });
     }
   }
   return { files: [...files].sort(), tests, unattributed };

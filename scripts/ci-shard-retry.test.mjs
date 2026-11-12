@@ -103,7 +103,10 @@ test('real node:test TAP: a nested assertion, an import crash and a non-zero exi
     'src/b.test.ts': "import test from 'node:test';\ntest('b ok', () => {});\n",
     'src/c.test.ts': "import './missing-module.js';\n",
     'src/d/e.test.tsx': "import test from 'node:test';\ntest('passes, then the file exits 1', () => { process.exitCode = 1; });\n",
-    'src/f.test.ts': "import test from 'node:test';\ntest('times out', { timeout: 50 }, () => new Promise(() => {}));\n",
+    // A pending timer keeps the file's event loop alive, so the 50 ms timeout
+    // fires on every platform: a bare never-resolving promise let CI's runner
+    // drain the loop first and cancel the test instead.
+    'src/f.test.ts': "import test from 'node:test';\ntest('times out', { timeout: 50 }, () => new Promise((r) => setTimeout(r, 5000)));\n",
     // /code-review on #9788: node counts a test() whose subtest failed, but not
     // a describe suite whose before() threw (its tests count as cancelled), and
     // a test's stdout reaches TAP as `# ...` lines that look like counts.
@@ -122,12 +125,7 @@ test('real node:test TAP: a nested assertion, an import crash and a non-zero exi
   assert.deepEqual(a.files, ['src/a.test.ts', 'src/c.test.ts', 'src/d/e.test.tsx', 'src/f.test.ts', 'src/g.test.ts', 'src/h.test.ts']);
   assert.ok(a.tests.some((t) => t.file === 'src/a.test.ts' && t.title === 'nested fails' && t.path === 'group › nested fails'));
   assert.ok(!a.tests.some((t) => t.title === 'suite'), 'a suite whose hook failed is re-checked through its tests, not as one');
-  // Newer Node 22 also reports a test-level timeout as cancelledByParent, so
-  // only the hook's cancelled tests are pinned. The flag affects the summary
-  // and annotations only; the retry still has to pass every listed test.
-  const notRun = a.tests.filter((t) => t.didNotRun).map((t) => t.path);
-  assert.ok(notRun.includes('suite › t1') && notRun.includes('suite › t2'), 'tests a failed hook cancelled are marked as not run'); // @source-text-assertion-ok checks parsed TAP paths
-  assert.ok(!notRun.includes('group › nested fails'), 'a test that failed on its own assertion ran'); // @source-text-assertion-ok checks parsed TAP paths
+  assert.deepEqual(a.tests.filter((t) => t.didNotRun).map((t) => t.path).sort(), ['suite › t1', 'suite › t2'], 'tests a failed hook cancelled are marked as not run');
   assert.ok(!a.tests.some((t) => t.title === 'group'), 'a parent suite that failed only through its child is not a test of its own');
 });
 
@@ -156,6 +154,36 @@ test('#9788 review: a first attempt cut off before its summary (runner killed) i
 test('#9788 review: a summary that counts more failures than were listed is not retried', () => {
   const tap = 'not ok 1 - src/a.test.ts\n# tests 3\n# pass 1\n# fail 2\n# cancelled 0\n# duration_ms 1\n';
   assert.match(incompleteViewerAttempt(parseNodeTap(tap)) ?? '', /lists 1 failure\(s\) but its summary counts 2/); // @source-text-assertion-ok subject is the returned refusal
+});
+
+test('only a test its parent cancelled counts as not run; one left pending when the loop drained did run', () => {
+  // Both messages as Node 22.14 and 22.23 print them, both failureType cancelledByParent.
+  const tap = [
+    '# Subtest: pending',
+    'not ok 1 - pending',
+    '  ---',
+    "  location: '/r/apps/viewer/src/a.test.ts:2:1'",
+    "  failureType: 'cancelledByParent'",
+    "  error: 'Promise resolution is still pending but the event loop has already resolved'",
+    '  ...',
+    '# Subtest: suite',
+    '    # Subtest: t1',
+    '    not ok 1 - t1',
+    '      ---',
+    "      location: '/r/apps/viewer/src/a.test.ts:5:3'",
+    "      failureType: 'cancelledByParent'",
+    "      error: 'test did not finish before its parent and was cancelled'",
+    '      ...',
+    'not ok 2 - suite',
+    '  ---',
+    "  type: 'suite'",
+    "  location: '/r/apps/viewer/src/a.test.ts:4:1'",
+    "  failureType: 'hookFailed'",
+    '  ...',
+    '# tests 2', '# pass 0', '# fail 0', '# cancelled 2', '# duration_ms 1', '',
+  ].join('\n');
+  const a = attributeViewerFailures(parseNodeTap(tap).failures, '/r/apps/viewer');
+  assert.deepEqual(a.tests.map((t) => [t.path, t.didNotRun]), [['pending', false], ['suite › t1', true]]);
 });
 
 test('a failure outside a viewer test file, or with no location, is unattributed', () => {

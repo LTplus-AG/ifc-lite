@@ -229,7 +229,10 @@ function readInputs(repo, pushSha, pushTree, parentSha, before) {
   const { queueEvidence, laterChangedFiles } = readQueueEvidence(repo, pushSha, pushTree);
   // Only a changed workflow or action file needs the list; most pushes touch none.
   // The list as the push commit has it; null when it is absent or unreadable.
-  const listText = gitOrNull('cat-file', 'blob', `${pushSha}:${KEYING_LIST_PATH}`);
+  // A regular file only: `cat-file` of a symlink returns its target path, which would
+  // read as a one-entry list naming nothing real.
+  const listMode = gitOrNull('ls-tree', pushSha, '--', KEYING_LIST_PATH)?.split(' ')[0];
+  const listText = listMode === '100644' || listMode === '100755' ? gitOrNull('cat-file', 'blob', `${pushSha}:${KEYING_LIST_PATH}`) : null;
   const keyingList = listText === null ? null : parseKeyingList(listText);
   return { pushSha, pushTree, parentSha, before, changedFiles, pulls, runs, artifactNamesByRun, repo, queueEvidence, laterChangedFiles, keyingList };
 }

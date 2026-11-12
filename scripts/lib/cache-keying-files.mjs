@@ -32,7 +32,16 @@ import { parse as parseYaml } from 'yaml';
 
 export { isListed, parseKeyingList } from './cache-keying-list.mjs';
 
-const KEY_INPUTS = /^(?:key|shared-key|prefix-key|restore-keys)$/i;
+// An input that names or builds a cache key: key, shared-key, prefix-key, restore-keys,
+// cache-prefix, cache-key, cache, ...
+const KEYISH = /key|cache/;
+// What setup-node/setup-python hash for `cache:` when no cache-dependency-path is given.
+const CACHE_DEFAULTS = {
+  pnpm: ['**/pnpm-lock.yaml'], npm: ['**/package-lock.json', '**/npm-shrinkwrap.json'], yarn: ['**/yarn.lock'],
+  pip: ['**/requirements.txt'], pipenv: ['**/Pipfile.lock'], poetry: ['**/poetry.lock'],
+};
+// A key-producing run that may hash .github without naming a file.
+const BROAD_RUN = /\.github(?!\/)|\bgit\s+ls-(?:files|tree)\b|\bfind\s/;
 const HASHFILES = /hashFiles\s*\(/gi;
 const QUOTED_ARG = /^\s*'((?:[^']|'')*)'\s*([,)])/;
 const STEP_OUTPUT = /steps\.([\w-]+)\.outputs\./g;
@@ -89,18 +98,25 @@ function hashFilesPatterns(text) {
   return { patterns: out };
 }
 
-/** Every value in a parsed document, with the key it sits under and the steps array around it. */
-function* walk(node, key = null, steps = null) {
+/** A parsed document with every mapping key lowercased, so lookups do not depend on case. */
+function lowerKeys(node) {
+  if (Array.isArray(node)) return node.map(lowerKeys);
+  if (node && typeof node === 'object') return Object.fromEntries(Object.entries(node).map(([k, v]) => [String(k).toLowerCase(), lowerKeys(v)]));
+  return node;
+}
+
+/** Every value in a parsed document, with its key, the mapping holding it, and the steps array around it. */
+function* walk(node, key = null, steps = null, parent = null) {
   if (Array.isArray(node)) {
     const isSteps = key === 'steps';
-    for (const item of node) yield* walk(item, null, isSteps ? node : steps);
+    for (const item of node) yield* walk(item, null, isSteps ? node : steps, null);
   } else if (node && typeof node === 'object') {
     for (const [k, v] of Object.entries(node)) {
-      yield { key: k, value: v, steps };
-      yield* walk(v, k, steps);
+      yield { key: k, value: v, steps, parent: node };
+      yield* walk(v, k, steps, node);
     }
   } else if (typeof node === 'string' && key === null) {
-    yield { key: null, value: node, steps };
+    yield { key: null, value: node, steps, parent };
   }
 }
 
@@ -138,22 +154,21 @@ export function cacheKeyingFiles({ root, readText, githubFiles, symlinks }) {
     }
     let doc;
     try {
-      doc = parseYaml(text);
+      doc = lowerKeys(parseYaml(text));
     } catch (err) {
       errors.push(`${file} does not parse: ${err.message.split('\n')[0]}`);
       continue;
     }
-    for (const { key, value, steps } of walk(doc)) {
+    for (const { key, value, steps, parent } of walk(doc)) {
       if (typeof value !== 'string') continue;
       const hashed = hashFilesPatterns(value);
       if (hashed.error) errors.push(`${file}: ${hashed.error}`);
       else for (const p of hashed.patterns) need(p, file);
       if (key === null) continue;
-      if (/^uses$/i.test(key)) {
+      if (key === 'uses') {
         const v = value.trim();
-        if (/^actions\/checkout@/i.test(v) && steps) {
-          const step = steps.find((s) => s && s.uses === value);
-          if (step?.with && Object.keys(step.with).some((k) => /^path$/i.test(k))) errors.push(`${file}: actions/checkout with path: moves the repository under a subdirectory`);
+        if (/^actions\/checkout@/i.test(v) && parent?.with && typeof parent.with === 'object' && 'path' in parent.with) {
+          errors.push(`${file}: actions/checkout with path: moves the repository under a subdirectory`);
         }
         if (v.startsWith('./')) {
           const ref = posix.normalize(v);
@@ -161,24 +176,45 @@ export function cacheKeyingFiles({ root, readText, githubFiles, symlinks }) {
           else if (/^\.github\/workflows\/[^/]+\.ya?ml$/.test(ref)) {
             required.add(ref);
             if (!executed.includes(ref)) executed.push(ref);
+          } else if (!ref.startsWith('.github/actions/')) {
+            errors.push(`${file}: local action ${v} is outside .github/actions/, where the list can cover it`);
           } else {
             const dir = `${ref.replace(/\/$/, '')}/`;
             required.add(dir);
             const meta = [`${dir}action.yml`, `${dir}action.yaml`].find((p) => typeof readText(p) === 'string');
             if (!meta) errors.push(`${file}: local action ${v} has no action.yml`);
             else if (!executed.includes(meta)) executed.push(meta);
-            if (meta && !/using:\s*['"]?composite/.test(readText(meta))) errors.push(`${meta}: only composite local actions can be checked`);
+            let using;
+            try {
+              using = meta && lowerKeys(parseYaml(readText(meta)))?.runs?.using;
+            } catch (err) {
+              errors.push(`${meta} does not parse: ${err.message.split('\n')[0]}`);
+            }
+            if (meta && using !== 'composite') errors.push(`${meta}: only composite local actions can be checked`);
           }
         } else if (/\/\.github\/workflows(?:\/|@)/.test(v)) {
           errors.push(`${file}: reusable workflow ${v} by owner/repo cannot be checked`);
         }
-      } else if (/^cache-dependency-path$/i.test(key)) {
+      } else if (key === 'cache-dependency-path') {
         for (const p of value.split('\n')) need(p, file);
-      } else if (KEY_INPUTS.test(key)) {
+      } else if (KEYISH.test(key)) {
+        if (/\b(?:env|needs)\./.test(value)) errors.push(`${file}: ${key} is built from env or needs, which the check cannot follow`);
+        if (key === 'cache' && steps) {
+          // `cache:` under a step's `with:`; its step is the one whose `with` this is.
+          const step = steps.find((s) => s && s.with === parent);
+          if (step && /^actions\/setup-/i.test(String(step.uses))) {
+            const defaults = CACHE_DEFAULTS[value.trim().toLowerCase()];
+            if (defaults) for (const p of defaults) need(p, file);
+            else if (!/^(?:false|)$/i.test(value.trim())) errors.push(`${file}: ${step.uses} cache: ${value} has no known default lockfile`);
+          }
+        }
         for (const [, id] of value.matchAll(STEP_OUTPUT)) {
           const step = (steps ?? []).find((s) => s && s.id === id);
           if (!step) errors.push(`${file}: ${key} uses steps.${id}, which is not in the same steps list`);
-          else if (typeof step.run === 'string') for (const [p] of step.run.matchAll(GITHUB_PATH)) need(p, `${file} step ${id}`);
+          else if (typeof step.run === 'string') {
+            if (BROAD_RUN.test(step.run)) errors.push(`${file} step ${id}: its run may hash .github without naming a file`);
+            for (const [p] of step.run.matchAll(GITHUB_PATH)) need(p, `${file} step ${id}`);
+          }
         }
       }
     }

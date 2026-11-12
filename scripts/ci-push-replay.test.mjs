@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -398,6 +398,14 @@ test('the probe reads the Test workflow files at the push commit', {
   // The list edit above wrote junk over it. test.yml still blocks; an unlisted file does not.
   assert.equal(replayFor('.github/workflows/test.yml'), full, 'test.yml with a junk list');
   assert.equal(replayFor('.github/workflows/cla.yml'), replayed, 'an unlisted workflow with a junk list');
+  // A symlinked list: `cat-file` would read the link's target path as a one-entry list.
+  assert.equal(replayFor(() => {
+    write('scripts/real-list.txt', '.github/workflows/test.yml\n.github/actions/setup/\n');
+    rmSync(join(root, 'scripts/ci-cache-keying-files.txt'));
+    symlinkSync('real-list.txt', join(root, 'scripts/ci-cache-keying-files.txt'));
+  }), full, 'replacing the list with a symlink');
+  assert.equal(replayFor('.github/actions/setup/action.yml'), full, 'a listed action with the list symlinked');
+  assert.equal(replayFor('.github/actions/other/action.yml'), full, 'any action with the list symlinked');
   assert.equal(replayFor(() => rmSync(join(root, 'scripts/ci-cache-keying-files.txt'))), full, 'deleting the list');
   assert.equal(replayFor('.github/workflows/cla.yml'), full, 'with the list missing');
   assert.equal(replayFor('.github/workflows/test.yml'), full, 'test.yml itself');

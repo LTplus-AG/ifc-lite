@@ -109,6 +109,10 @@ test('a pattern is matched against the real files, a directory counting for all 
   assert.deepEqual(hashing('*/*/mergify-junit.xml'), ['.github/workflows/mergify-junit.xml']);
   assert.deepEqual(hashing('tests/models/manifest.json', '*/*/junit.xml', '!.github/**'), []);
   assert.deepEqual(hashing('.GitHub/Workflows/A.yml'), ['.github/workflows/a.yml'], 'case-insensitive, like macOS and Windows runners');
+  // setup-node/setup-python `cache:` hashes a default lockfile glob.
+  const withCache = (c) => check({ [ROOT]: `jobs: { a: { steps: [ { uses: actions/setup-python@v5, with: { cache: ${c} } } ] } }` }, { extra: [...files, '.github/actions/x/requirements.txt'] }).required.filter((p) => p !== ROOT);
+  assert.deepEqual(withCache('pip'), ['.github/actions/x/requirements.txt']);
+  assert.deepEqual(withCache('pnpm'), []);
 });
 
 test('what cannot be judged is an error, not a pass', () => {
@@ -128,6 +132,14 @@ test('what cannot be judged is an error, not a pass', () => {
     ['missing test.yml', {}],
     ['symlink into .github', { [ROOT]: 'jobs: {}' }, [{ path: 'ci/wf', target: '../.github/workflows' }]],
     ['symlink to the root', { [ROOT]: 'jobs: {}' }, [{ path: 'ci/root', target: '../' }]],
+    ['second checkout with path', { [ROOT]: 'jobs: { a: { steps: [ { uses: actions/checkout@v4 }, { uses: actions/checkout@v4, with: { path: sub } } ] } }' }],
+    ['key from env', { [ROOT]: 'jobs: { a: { steps: [ { run: "echo h=$(sha256sum .github/workflows/x.yml) >> $GITHUB_ENV" }, { uses: actions/cache@v4, with: { key: "${{ env.h }}" } } ] } }' }],
+    ['cache-key from needs', { [ROOT]: 'jobs: { a: { steps: [ { uses: ./.github/actions/c, with: { cache-key: "${{ needs.b.outputs.h }}" } } ] } }', '.github/actions/c/action.yml': action() }],
+    ['commented composite', { [ROOT]: 'jobs: { a: { steps: [ { uses: ./.github/actions/js } ] } }', '.github/actions/js/action.yml': "# using: composite\nruns: { using: node20, main: i.js }" }],
+    ['local action outside .github', { [ROOT]: 'jobs: { a: { steps: [ { uses: ./tools/act } ] } }', 'tools/act/action.yml': action() }],
+    ['setup cache with no known default', { [ROOT]: 'jobs: { a: { steps: [ { uses: actions/setup-java@v4, with: { cache: gradle } } ] } }' }],
+    ['upper-case keys', { [ROOT]: 'jobs: { a: { Steps: [ { Uses: actions/checkout@v4, With: { Path: sub } } ] } }' }],
+    ['key run hashing .github broadly', { [ROOT]: 'jobs: { a: { steps: [ { id: k, run: "echo key=$(find .github -type f | sha256sum) >> $GITHUB_OUTPUT" }, { uses: actions/cache@v4, with: { key: "${{ steps.k.outputs.key }}" } } ] } }' }],
   ]) {
     assert.notDeepEqual(check(fixture, { symlinks }).errors, [], label);
   }

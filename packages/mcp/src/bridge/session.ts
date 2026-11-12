@@ -112,7 +112,8 @@ export class BridgeSession {
 
   /** Fail every pending call at once. */
   failAll(reason: BridgeCallFailure, message: string): void {
-    for (const p of [...this.pending.values()]) p.reject(new BridgeCallError(reason, `${message} (call: '${p.name}')`));
+    // A copy: reject() deletes from `pending` while this loop runs.
+    for (const p of Array.from(this.pending.values())) p.reject(new BridgeCallError(reason, `${message} (call: '${p.name}')`));
     this.pending.clear();
   }
 }

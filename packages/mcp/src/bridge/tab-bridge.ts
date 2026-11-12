@@ -172,7 +172,8 @@ export class TabBridge {
     this.closing = true;
     this.changed.cancel();
     this.noisy.flush();
-    for (const slot of [...this.slots]) {
+    // A copy: kill() deletes from `slots` while this loop runs.
+    for (const slot of Array.from(this.slots)) {
       if (slot.ws) this.kill(slot.ws, BridgeErrorCode.SHUTTING_DOWN, 'The bridge is shutting down.', BridgeCloseCode.SHUTTING_DOWN);
       else slot.socket.destroy();
     }

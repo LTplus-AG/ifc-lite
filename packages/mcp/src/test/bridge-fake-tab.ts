@@ -62,7 +62,8 @@ export class FakeTab {
       const parsed = parseServerMessage(data.toString());
       if (!parsed.ok) throw new Error(`fake tab got a malformed frame: ${parsed.error}`);
       this.received.push(parsed.value);
-      for (const w of [...this.waiters]) {
+      // A copy: a matched waiter is spliced out while this loop runs.
+      for (const w of Array.from(this.waiters)) {
         if (w.match(parsed.value)) {
           this.waiters.splice(this.waiters.indexOf(w), 1);
           w.resolve(parsed.value);

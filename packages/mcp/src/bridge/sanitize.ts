@@ -17,6 +17,8 @@
 export const CLIP_LENGTH = 200;
 
 // C0/C1 controls, DEL, and the line/paragraph separators some log viewers honour.
+// Matching control characters is this helper's purpose, not an accident.
+// eslint-disable-next-line no-control-regex
 const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g;
 
 /**

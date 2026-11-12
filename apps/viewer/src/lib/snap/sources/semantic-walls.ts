@@ -22,11 +22,7 @@ export function storeyWallAxes(
   view: MutablePropertyView,
   storeyId: number,
 ): WallAxis[] {
-  return derivedState(store, view, `walls:${storeyId}`, [
-    'IFCWALL', 'IFCWALLSTANDARDCASE', 'IFCWALLELEMENTEDCASE', 'IFCCURTAINWALL',
-    'IFCVIRTUALELEMENT', 'IFCPLATE', 'IFCMEMBER', 'IFCRAILING',
-    'IFCRELAGGREGATES', 'IFCRELCONTAINEDINSPATIALSTRUCTURE',
-  ], tracked => {
+  return derivedState(store, view, `walls:${storeyId}`, tracked => {
     const res = extractWallSegmentsForStorey(store, storeyId, tracked);
     return res.segments.map((seg, i) => ({
       expressId: res.contributingWallIds[i], a: seg.a, b: seg.b,

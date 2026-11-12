@@ -6,6 +6,12 @@ import type { MutablePropertyView } from '@ifc-lite/mutations';
 
 type Read = { read: () => unknown; value: string | undefined };
 type Entry = { revision: number; reads: Map<string, Read>; value: unknown };
+const ROOT_TYPES = new Set([
+  'IFCBUILDINGSTOREY', 'IFCGRID', 'IFCWALL', 'IFCWALLSTANDARDCASE', 'IFCWALLELEMENTEDCASE',
+  'IFCCURTAINWALL', 'IFCVIRTUALELEMENT', 'IFCPLATE', 'IFCMEMBER', 'IFCRAILING',
+  'IFCRELAGGREGATES', 'IFCRELNESTS', 'IFCRELVOIDSELEMENT', 'IFCRELFILLSELEMENT',
+  'IFCRELCONTAINEDINSPATIALSTRUCTURE',
+]);
 const models = new WeakMap<IfcDataStore, WeakMap<MutablePropertyView, Map<string, Entry>>>();
 
 function signature(value: unknown): string | undefined {
@@ -25,14 +31,14 @@ function signature(value: unknown): string | undefined {
  * Source and view identities scope the cache; closing a model releases it.
  *
  * Unfiltered creation walks inspect class membership before reading payloads.
- * `types` declares those classes; point reads still track ANY entity class.
+ * ROOT_TYPES covers the discovery classes of these UI readers. Point reads
+ * still track ANY entity class. Retypes and inventory tombstones are conservative.
  * Callers must not mutate returned derived values or the supplied read view.
  */
 export function derivedState<T>(
   store: IfcDataStore,
   view: MutablePropertyView,
   key: string,
-  types: readonly string[],
   derive: (tracked: MutablePropertyView) => T,
 ): T {
   let views = models.get(store);
@@ -46,7 +52,6 @@ export function derivedState<T>(
     return previous.value as T;
   }
   const reads = new Map<string, Read>();
-  const relevant = new Set(types.map(type => type.toUpperCase()));
   const tracked = new Proxy(view, {
     get(target, name, receiver) {
       const member: unknown = Reflect.get(target, name, receiver);
@@ -68,7 +73,7 @@ export function derivedState<T>(
           return enumeration ? Array.from(result as Iterable<unknown>) : result;
         };
         const select = (result: unknown) => allCreations
-          ? (result as Array<{ type: string }>).filter(row => relevant.has(row.type.toUpperCase()))
+          ? (result as Array<{ type: string }>).filter(row => ROOT_TYPES.has(row.type.toUpperCase()))
           : result;
         const result = call();
         const id = `${name}:${JSON.stringify(args)}`;

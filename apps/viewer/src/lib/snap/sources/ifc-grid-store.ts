@@ -15,6 +15,6 @@ import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { extractGridAxesForStorey, type GridAxisSegment } from '@ifc-lite/create';
 
 export function storeyGridAxes(store: IfcDataStore, view: MutablePropertyView, storeyId: number): GridAxisSegment[] {
-  return derivedState(store, view, `grids:${storeyId}`, ['IFCGRID', 'IFCRELAGGREGATES', 'IFCRELCONTAINEDINSPATIALSTRUCTURE'],
+  return derivedState(store, view, `grids:${storeyId}`,
     tracked => extractGridAxesForStorey(store, storeyId, tracked).axes);
 }

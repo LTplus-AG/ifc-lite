@@ -37,7 +37,7 @@ export function modelStoreys(s: Pick<ViewerState, 'models' | 'mutationViews'>, m
       elevation: effectiveStoreyElevation(store, view, expressId),
     }))
     .sort((a, b) => a.elevation - b.elevation || a.expressId - b.expressId);
-  return view ? derivedState(store, view, `storeys:${modelId}`, ['IFCBUILDINGSTOREY'], derive) : derive(view);
+  return view ? derivedState(store, view, `storeys:${modelId}`, derive) : derive(view);
 }
 
 /** Models the workspace can open on: the ones carrying parsed IFC data. */

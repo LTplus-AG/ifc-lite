@@ -34,7 +34,7 @@ import { useTranslation } from '@/i18n';
 import { useFileCommands } from './toolbar/useFileCommands';
 import { useExportRunner } from './useExportRunner';
 import { buildExportCommands } from './commandPaletteExports';
-import { surfaceCommand, type SurfaceCommandDefinition, type SurfaceCommandId } from './surface-commands';
+import { surfaceCommand, type SurfaceCommandDefinition, type SurfaceCommandId } from './surface-command-registry';
 import { runSurfaceCommand, trackCommandExecution } from './surface-command-run';
 import { ActivityTrayDialog } from './activity/ActivityTray';
 import type { MobileCommandPlacement } from '@/lib/layout/form-factor';

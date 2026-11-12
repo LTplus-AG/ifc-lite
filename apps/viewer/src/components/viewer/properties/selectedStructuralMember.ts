@@ -13,18 +13,41 @@ export function selectedStructuralMember(data: StructuralExtraction | null, expr
   return candidates.length === 1 ? candidates[0] : null;
 }
 
+type StructuralRecordInfo = StructuralExtraction[Exclude<keyof StructuralExtraction, 'hasStructural' | 'loadsTruncated'>][number];
+
 /**
- * What StructuralCard shows for a selection: the member it describes and the
- * physical-to-analytical counterparts (#9668), or null when the card renders
- * nothing. The panel's separator gate asks the same function. Counterparts are
- * model-local express ids, so a GUID-only selection gets none.
+ * The read-model record a selection names, from any structural collection, with
+ * its EXPRESS type (result groups and analysis models carry none of their own).
+ * Same identity rule as {@link selectedStructuralMember}.
+ */
+export function structuralRecord(data: StructuralExtraction, expressId: number | null, globalId: string | null | undefined):
+  { type: string; info: StructuralRecordInfo } | null {
+  const collections: [readonly StructuralRecordInfo[], string | null][] = [
+    [data.members, null], [data.connections, null], [data.activities, null], [data.loadGroups, null],
+    [data.resultGroups, 'IfcStructuralResultGroup'], [data.analysisModels, 'IfcStructuralAnalysisModel'],
+  ];
+  const all = collections.flatMap(([rows, type]) => rows.map((info) => ({ type: type ?? (info as { type: string }).type, info })));
+  if (expressId !== null && expressId > 0) return all.find(({ info }) => info.expressId === expressId) ?? null;
+  if (!globalId) return null;
+  const candidates = all.filter(({ info }) => info.globalId === globalId);
+  return candidates.length === 1 ? candidates[0] : null;
+}
+
+/**
+ * What StructuralCard shows for a selection: the structural record it names
+ * (member, connection, activity, load group or case, result group, analysis
+ * model), the member when it is one, and the physical-to-analytical
+ * counterparts (#9668), or null when the card renders nothing. The panel's
+ * separator gate asks the same function. Counterparts are model-local express
+ * ids, so a GUID-only selection gets none.
  */
 export function structuralCardSubject(data: StructuralExtraction | null, expressId: number | null,
   globalId: string | null | undefined) {
   if (!data) return null;
+  const record = structuralRecord(data, expressId, globalId);
   const member = selectedStructuralMember(data, expressId, globalId);
   const counterparts = expressId !== null && expressId > 0 ? structuralCounterparts(data, expressId) : null;
-  return member || counterparts ? { member, counterparts } : null;
+  return record || counterparts ? { record, member, counterparts } : null;
 }
 
 /** Native cross-links contain GUIDs only: duplicate or missing targets cannot be resolved honestly. */

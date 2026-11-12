@@ -45,6 +45,11 @@ export function formatLocaleList(locale: string, values: readonly string[]): str
   return new Intl.ListFormat(supportedLocale(locale), { style: 'long', type: 'conjunction' }).format(values);
 }
 
+/** A list of values that are one quantity's components (`0, 0, -1`), with no conjunction. */
+export function formatLocaleValueList(locale: string, values: readonly string[]): string {
+  return new Intl.ListFormat(supportedLocale(locale), { style: 'short', type: 'unit' }).format(values);
+}
+
 export function formatLocaleDate(
   locale: string,
   value: number | Date,

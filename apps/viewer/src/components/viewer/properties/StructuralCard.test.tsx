@@ -23,6 +23,7 @@ import {
   StepTokenizer,
   ColumnarParser,
   extractStructuralOnDemand,
+  ProjectUnits,
   type StructuralExtraction,
 } from '@ifc-lite/parser';
 import { StructuralCard } from './StructuralCard.js';
@@ -258,3 +259,54 @@ describe('StructuralCard synthetic boundary-condition invariants', () => {
     assert.ok(!text.includes('[dropped:'));
   });
 });
+
+describe('StructuralCard for every structural record (#9668)', () => {
+  const data: StructuralExtraction = {
+    analysisModels: [{ expressId: 1, globalId: 'model', name: 'Frame', predefinedType: 'LOADING_3D',
+      loadGroupGlobalIds: ['case'], resultGroupGlobalIds: [], itemGlobalIds: [] }],
+    members: [],
+    connections: [{ expressId: 20, globalId: 'support', type: 'IfcStructuralPointConnection', name: 'Pin',
+      appliedCondition: { expressId: 21, type: 'IfcBoundaryNodeCondition', name: 'Hinge',
+        components: { TranslationalStiffnessX: true, RotationalStiffnessY: 2500 } },
+      memberGlobalIds: [], activityGlobalIds: [], analysisModelGlobalIds: [] }],
+    activities: [{ expressId: 40, globalId: 'load', type: 'IfcStructuralPointAction', kind: 'Action', name: 'Snow',
+      globalOrLocal: 'GLOBAL_COORDS', destabilizingLoad: false,
+      appliedLoad: { expressId: 41, type: 'IfcStructuralLoadSingleForce', name: 'Point force', components: { ForceZ: -1000 } },
+      groupGlobalIds: ['case'] }],
+    loadGroups: [{ expressId: 50, globalId: 'case', type: 'IfcStructuralLoadCase', name: 'Snow case', predefinedType: 'LOAD_CASE',
+      actionType: 'VARIABLE_Q', coefficient: 1.5, selfWeightCoefficients: [0, 0, -1], activityGlobalIds: ['load'] }],
+    resultGroups: [], hasStructural: true, loadsTruncated: false,
+  };
+  const show = (expressId: number) => render(
+    <StructuralCard structuralData={data} selectedExpressId={expressId} schemaVersion="IFC4" projectUnits={ProjectUnits.empty()} />,
+  );
+
+  it('shows an action\'s attributes and its applied load with the force unit', () => {
+    const text = show(40);
+    assert.ok(text.includes('PointAction'), `type badge in: ${text}`);
+    assert.match(text, /GlobalOrLocalGLOBAL_COORDS/);
+    assert.match(text, /DestabilizingLoadFALSE/);
+    assert.match(text, /AppliedLoad#41/);
+    assert.ok(text.includes('AppliedLoad · IfcStructuralLoadSingleForce #41'), `load section in: ${text}`);
+    assert.match(text, /ForceZ-1,000 N/);
+  });
+
+  it('shows a connection\'s boundary condition, booleans and stiffness with its unit', () => {
+    const text = show(20);
+    assert.ok(text.includes('AppliedCondition · IfcBoundaryNodeCondition #21'), `condition section in: ${text}`);
+    assert.match(text, /TranslationalStiffnessXTRUE/);
+    assert.match(text, /RotationalStiffnessY2,500 N·m\/rad/);
+  });
+
+  it('shows a load case and an analysis model, naming the linked groups', () => {
+    // A vector reads as its components, not as a sentence ("0, 0, and -1").
+    assert.match(show(50), /ActionTypeVARIABLE_Q.*Coefficient1\.5SelfWeightCoefficients0, 0, -1$/);
+    assert.match(show(1), /PredefinedTypeLOADING_3D.*LoadedBySnow case/);
+  });
+
+  it('prints no unit when the model\'s units cannot be read', () => {
+    const text = render(<StructuralCard structuralData={data} selectedExpressId={40} schemaVersion="IFC4" projectUnits={null} />);
+    assert.match(text, /ForceZ-1,000(?! N)/);
+  });
+});
+

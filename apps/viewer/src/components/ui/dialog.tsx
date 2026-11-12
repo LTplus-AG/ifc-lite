@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils';
 import { usePortalContainer } from './portal-container';
 import { Dialog, useToastDialog } from './dialog-root';
 import { ToastMessages, useToastItems } from './toast';
+import { refreshToastDialogs, registerToastDialog } from './toast-store';
 
 const DialogTrigger = DialogPrimitive.Trigger;
 const DialogPortal = DialogPrimitive.Portal;
@@ -52,6 +53,16 @@ const DialogContent = React.forwardRef<
 >(({ className, children, hideCloseButton, overlayClassName, scrollBody, viewportBounds, ...props }, ref) => {
   const { t } = useTranslation();
   const owner = useToastDialog();
+  // Only mounted panels own notices. Register before descendant layout effects;
+  // registration is silent, with React subscribers notified in the layout phase.
+  React.useInsertionEffect(() => {
+    if (owner.open && owner.modal) return registerToastDialog(owner.id, owner.ancestors);
+  }, [owner.id, owner.ancestors, owner.open, owner.modal]);
+  React.useLayoutEffect(() => {
+    if (!owner.open || !owner.modal) return;
+    refreshToastDialogs();
+    return refreshToastDialogs;
+  }, [owner.id, owner.ancestors, owner.open, owner.modal]);
   const notices = useToastItems().filter(item => owner.modal && owner.open && item.dialogId === owner.id);
   return (
   <DialogPortal container={usePortalContainer()}>
@@ -72,7 +83,7 @@ const DialogContent = React.forwardRef<
         <div data-dialog-notices={notices.length > 0 ? '' : undefined} className={cn(
           notices.length > 0 ? 'col-span-full min-w-0 shrink-0 max-h-[30dvh] overflow-y-auto pr-8' : 'sr-only pointer-events-none',
         )}>
-          <ToastMessages items={notices} />
+          <ToastMessages items={notices} insideDialog />
         </div>
       )}
       {children}

@@ -53,10 +53,12 @@ it('#9875 modal success notices remain visible for their existing lifetime', t =
   t.mock.timers.enable({ apis: ['setTimeout'] });
   render(<Toaster />);
   render(<Dialog open><DialogContent><DialogTitle>Settings</DialogTitle><DialogDescription>Review</DialogDescription></DialogContent></Dialog>);
-  const liveRegion = document.querySelector('[role="dialog"] [role="status"]');
+  const liveRegion = document.querySelector('[role="dialog"] [aria-live="polite"]');
   assert.ok(liveRegion, 'the polite live region exists before the first notice');
+  assert.equal(document.querySelector('[role="dialog"] [role="alert"]'), null, 'an empty notice shelf is not a dialog validation alert');
+  assert.equal(document.querySelector('[role="dialog"] [role="status"]'), null, 'the shelf does not impersonate the dialog progress status');
   act(() => toast.success('Settings saved'));
-  assert.equal(document.querySelector('[role="dialog"] [role="status"]'), liveRegion, 'first notice updates the existing live region');
+  assert.equal(document.querySelector('[role="dialog"] [aria-live="polite"]'), liveRegion, 'first notice updates the existing live region');
   assert.ok(document.querySelector('[data-dialog-notices]')?.textContent?.includes('Settings saved'));
   act(() => t.mock.timers.tick(3000));
   assert.equal(document.querySelector('[data-dialog-notices]'), null);
@@ -92,4 +94,12 @@ it('#9875 reopening a dialog does not re-adopt notices from its previous opening
   assert.equal(document.querySelector('[role="dialog"] [data-dialog-notices]'), null);
   act(() => toast.error('Current save failed'));
   assert.ok(document.querySelector('[data-dialog-notices]')?.textContent?.includes('Current save failed'));
+});
+
+it('#9875 an opening dialog without a mounted panel cannot hide app notifications', () => {
+  const anchor = render(<Toaster />);
+  render(<Dialog open><p>Loading dialog content</p></Dialog>);
+  act(() => toast.error('Loading failed before the panel opened'));
+  assert.ok(anchor.textContent?.includes('Loading failed before the panel opened'));
+  assert.equal(document.querySelector('[role="dialog"]'), null);
 });

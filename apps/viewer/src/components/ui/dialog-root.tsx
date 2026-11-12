@@ -4,7 +4,6 @@
 
 import * as React from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
-import { refreshToastDialogs, registerToastDialog } from './toast-store';
 
 const ToastDialogContext = React.createContext<{ id: string; ancestors: readonly string[]; modal: boolean; open: boolean }>({
   id: '', ancestors: [], modal: false, open: false,
@@ -19,15 +18,6 @@ export function Dialog({ open: controlledOpen, defaultOpen = false, modal = true
   const id = React.useId();
   const parent = useToastDialog();
   const ancestors = React.useMemo(() => parent.id ? [...parent.ancestors, parent.id] : [], [parent.id, parent.ancestors]);
-  // Establish ownership before descendants' layout effects can raise notices.
-  // Registration does not notify React; the ordinary layout effect does that.
-  React.useInsertionEffect(() => {
-    if (open && modal) return registerToastDialog(id, ancestors);
-  }, [id, ancestors, open, modal]);
-  React.useLayoutEffect(() => {
-    refreshToastDialogs();
-    return refreshToastDialogs;
-  }, [id, ancestors, open, modal]);
   return (
     <ToastDialogContext.Provider value={{ id, ancestors, modal, open }}>
       <DialogPrimitive.Root {...props} open={open} modal={modal} onOpenChange={(next) => {

@@ -50,7 +50,7 @@ export interface ToasterProps {
 }
 
 /** Shared rows for the app anchor and modal-owned notice shelf (#9875). */
-export function ToastMessages({ items }: { items: Toast[] }) {
+export function ToastMessages({ items, insideDialog = false }: { items: Toast[]; insideDialog?: boolean }) {
   const { t } = useTranslation();
   const renderItem = (item: Toast) => {
     const Icon = iconMap[item.type];
@@ -95,12 +95,12 @@ export function ToastMessages({ items }: { items: Toast[] }) {
   };
 
   return <>
-      <div role="alert" aria-atomic="false" className="flex flex-col-reverse gap-2 pb-2 empty:pb-0">
+      <div role={insideDialog ? undefined : 'alert'} aria-live={insideDialog ? 'assertive' : undefined} aria-atomic="false" className="flex flex-col-reverse gap-2 pb-2 empty:pb-0">
         {items.filter((item) => item.type === 'error').map(renderItem)}
       </div>
       {/* A toast row contains block elements, which cannot be children of output. */}
       {/* eslint-disable-next-line jsx-a11y/prefer-tag-over-role */}
-      <div role="status" aria-live="polite" className="flex flex-col-reverse gap-2">
+      <div role={insideDialog ? undefined : 'status'} aria-live="polite" className="flex flex-col-reverse gap-2">
         {items.filter((item) => item.type !== 'error').map(renderItem)}
       </div>
   </>;

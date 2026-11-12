@@ -12,8 +12,9 @@
  * diff is package.json versions, CHANGELOGs and deleted changesets, plus
  * Cargo versions when Rust crates are bumped. Any Cargo change runs in full
  * (release-version-diff.mjs). Three of the four release MERGES before
- * 2026-11-12 touched Cargo.lock; what share of the PR's many intermediate heads would still go
- * lean is not measured, and shadow mode is how to measure it.
+ * 2026-11-12 (#8665, #8359, #8311, #8192) touched Cargo.lock; what share of
+ * the PR's many intermediate heads would still go lean is not measured, and
+ * shadow mode is how to measure it.
  *
  * WHY IT IS HELD. A lean run is sound only if the PR cannot reach `main`
  * except through Mergify's `release` queue, whose merge conditions require the
@@ -170,7 +171,8 @@ export function releaseQueueRoute(text, { labels = [], draft = true } = {}) {
  * (`branch_protection_injection_mode: queue`). Whether a direct merge is
  * possible is set outside the repository: today the `main` ruleset lets only
  * Mergify update `main`. Until the owner decides to rely on that (#9783),
- * `on` behaves as `shadow`.
+ * and has audited the version-reading checks the lean lane skips (see the
+ * `release-pr` job in test.yml), `on` behaves as `shadow`.
  */
 export const OWNER_ALLOWS_LEAN = false;
 

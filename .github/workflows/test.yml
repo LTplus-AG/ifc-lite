@@ -3985,10 +3985,10 @@ jobs:
   # (lint, node-guards, docs-checks) are skipped with the path filter. The
   # lean decision refuses any diff that moves more than package versions, so
   # checks that compare source or built output (API surface, builds) have
-  # nothing new to see; checks that read the VERSIONS still do. The ones here
-  # are those known to; `pnpm test:packed` (node-guards) also reads them and
-  # is NOT here. Auditing every version-reading check is a precondition for
-  # releasing OWNER_ALLOWS_LEAN (#9783).
+  # nothing new to see; checks that read the VERSIONS may still. The ones here
+  # are those known to. The other steps of the skipped jobs have NOT been
+  # audited for this; doing so is a precondition for releasing
+  # OWNER_ALLOWS_LEAN in scripts/ci-release-lane.mjs.
   release-pr:
     name: Release PR checks
     needs: changes

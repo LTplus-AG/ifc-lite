@@ -263,10 +263,13 @@ export const createAuthoringSessionSlice: StateCreator<ViewerState, [], [], Auth
         get().setActiveTool('command');
         if (get().activeTool !== 'command') return;
         const session = get().session;
+        const ownsPending = () => generation === editCommandGeneration && get().activeTool === 'command';
         return loadEditCommand(id).then(() => {
-          if (generation === editCommandGeneration && get().session === session && get().activeTool === 'command') get().startCommand(id);
+          if (!ownsPending()) return;
+          if (get().session !== session) { get().endCommand('cancel'); return; }
+          get().startCommand(id);
         }).catch((error: unknown) => {
-          if (generation === editCommandGeneration && get().session === session) get().endCommand('cancel');
+          if (ownsPending()) get().endCommand('cancel');
           console.error(`[modeling] Could not load ${id}`, error);
         });
       }

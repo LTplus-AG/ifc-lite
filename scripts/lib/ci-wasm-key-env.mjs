@@ -9,20 +9,36 @@
 
 /**
  * Env the build reads. build-wasm.sh switches bundles and features on the
- * first five; cargo and rustc read the rest. HOME, CARGO_HOME, RUSTUP_HOME,
- * GITHUB_WORKSPACE and the target-dir vars are here because rustc embeds
- * source and OUT_DIR paths under them in panic locations, so they change the
- * bytes even when nothing else does.
+ * first five names; cargo, rustc, wasm-pack and the `cc` crate (in
+ * Cargo.lock) read the rest. HOME, CARGO_HOME, RUSTUP_HOME, GITHUB_WORKSPACE
+ * and the target-dir vars are here because rustc embeds source and OUT_DIR
+ * paths under them in panic locations, so they change the bytes even when
+ * nothing else does.
+ *
+ * Prefixes cover whole families so a new member cannot slip past: every
+ * CARGO_BUILD_* (rustc, rustc-wrapper, rustflags, target, ...), every
+ * CARGO_TARGET_* (any target's runner, linker, rustflags), CARGO_PROFILE_*,
+ * CARGO_UNSTABLE_*, CARGO_ENCODED_*, CARGO_SOURCE_* (source replacement),
+ * RUSTC_* (wrappers, bootstrap, linker), and the cc crate's per-target
+ * spellings. Registry env (CARGO_REGISTRY_*, CARGO_REGISTRIES_*) is left out:
+ * it can carry tokens, and Cargo.lock's checksums already pin what it serves.
  */
 export const KEY_ENV_NAMES = [
   'DEBUG_GEOMETRY', 'BUILD_CORE', 'BUILD_THREADED', 'BUILD_WIDE', 'BUILD_RETAINED',
-  'RUSTFLAGS', 'CARGO_ENCODED_RUSTFLAGS', 'CARGO_BUILD_RUSTFLAGS', 'CARGO_BUILD_TARGET',
-  'RUSTC', 'RUSTC_BOOTSTRAP', 'RUSTUP_TOOLCHAIN', 'RUSTC_WRAPPER', 'RUSTC_WORKSPACE_WRAPPER',
-  'CARGO_INCREMENTAL', 'CARGO_TARGET_DIR', 'CARGO_BUILD_TARGET_DIR',
+  'RUSTFLAGS', 'RUSTDOCFLAGS', 'RUSTC', 'RUSTUP_TOOLCHAIN', 'CARGO_INCREMENTAL',
+  'CC', 'CXX', 'AR', 'CFLAGS', 'CXXFLAGS', 'CRATE_CC_NO_DEFAULTS',
+  'TARGET_CC', 'TARGET_CXX', 'TARGET_AR', 'TARGET_CFLAGS', 'TARGET_CXXFLAGS',
+  'HOST_CC', 'HOST_CXX', 'HOST_AR', 'HOST_CFLAGS', 'HOST_CXXFLAGS',
   'HOME', 'CARGO_HOME', 'RUSTUP_HOME', 'GITHUB_WORKSPACE',
   'RUNNER_OS', 'RUNNER_ARCH', 'ImageOS',
 ];
-export const KEY_ENV_PREFIXES = ['CARGO_PROFILE_', 'CARGO_UNSTABLE_', 'CARGO_TARGET_WASM32_', 'WASM_BINDGEN_', 'WASM_PACK_'];
+export const KEY_ENV_PREFIXES = [
+  'CARGO_BUILD_', 'CARGO_TARGET_', 'CARGO_PROFILE_', 'CARGO_UNSTABLE_', 'CARGO_ENCODED_', 'CARGO_SOURCE_',
+  'RUSTC_', 'WASM_BINDGEN_', 'WASM_PACK_',
+  'CC_', 'CXX_', 'AR_', 'CFLAGS_', 'CXXFLAGS_',
+];
+/** Never keyed (the plan logs its env lines): credentials cannot change the bytes. */
+const SECRET_NAME = /TOKEN|SECRET|PASSWORD|CREDENTIAL/i;
 
 /**
  * `env NAME="value"` / `env NAME unset` for every keyed var, sorted. Values
@@ -31,7 +47,7 @@ export const KEY_ENV_PREFIXES = ['CARGO_PROFILE_', 'CARGO_UNSTABLE_', 'CARGO_TAR
 export function envLines(env) {
   const names = new Set(KEY_ENV_NAMES);
   for (const name of Object.keys(env)) {
-    if (KEY_ENV_PREFIXES.some((prefix) => name.startsWith(prefix))) names.add(name);
+    if (!SECRET_NAME.test(name) && KEY_ENV_PREFIXES.some((prefix) => name.startsWith(prefix))) names.add(name);
   }
   return [...names].sort().map((name) => (name in env ? `env ${name}=${JSON.stringify(env[name])}` : `env ${name} unset`));
 }

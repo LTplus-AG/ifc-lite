@@ -828,6 +828,7 @@ jobs:
       # The strict comparison is wasm-build-cache.yml on main.
       - name: Compare the WASM build cache with the fresh build
         if: steps.wasm.outputs.compare == 'true' && steps.wasmrecord.outcome == 'success'
+        continue-on-error: true
         env:
           WASM_CACHE_MODE: ${{ steps.wasmplan.outputs.mode }}
         run: node scripts/ci-wasm-cache.mjs compare

@@ -141,13 +141,34 @@ test('the key moves with every listed input and with build env, and not with oth
       { ...BASE_ENV, DEBUG_GEOMETRY: '1' },
       { ...BASE_ENV, RUSTFLAGS: '-C opt-level=1' },
       { ...BASE_ENV, CARGO_PROFILE_RELEASE_LTO: 'false' },
+      // #9793 second-round review: every family that can swap the compiler,
+      // its flags or the C toolchain moves the key.
+      { ...BASE_ENV, CARGO_BUILD_RUSTC: '/opt/other/rustc' },
+      { ...BASE_ENV, CARGO_BUILD_RUSTC_WRAPPER: 'sccache' },
+      { ...BASE_ENV, CARGO_BUILD_RUSTFLAGS: '-C opt-level=1' },
+      { ...BASE_ENV, CARGO_ENCODED_RUSTFLAGS: '-Copt-level=1' },
+      { ...BASE_ENV, CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: '-C opt-level=1' },
+      { ...BASE_ENV, CARGO_SOURCE_CRATES_IO_REPLACE_WITH: 'mirror' },
+      { ...BASE_ENV, RUSTC_LINKER: 'lld' },
+      { ...BASE_ENV, RUSTC_WORKSPACE_WRAPPER: 'w' },
+      { ...BASE_ENV, RUSTDOCFLAGS: '-x' },
+      { ...BASE_ENV, WASM_BINDGEN_EXTERNREF: '1' },
+      { ...BASE_ENV, WASM_PACK_CACHE: '/tmp/x' },
+      { ...BASE_ENV, CC: 'clang' },
+      { ...BASE_ENV, CC_wasm32_unknown_unknown: 'clang' },
+      { ...BASE_ENV, CFLAGS_wasm32_unknown_unknown: '-O1' },
+      { ...BASE_ENV, TARGET_CFLAGS: '-O1' },
       { ...BASE_ENV, HOME: '/home/other' },
       { ...BASE_ENV, RUNNER_ARCH: 'ARM64' },
       { ...BASE_ENV, DEBUG_GEOMETRY: '' },
     ]) {
       assert.notEqual(keyOf(root, env), now, JSON.stringify(env));
     }
-    assert.equal(keyOf(root, { ...BASE_ENV, PATH: '/elsewhere', GITHUB_SHA: 'abc' }), now, 'unrelated env must not change the key');
+    assert.equal(
+      keyOf(root, { ...BASE_ENV, PATH: '/elsewhere', GITHUB_SHA: 'abc', CARGO_REGISTRY_TOKEN: 't', CARGO_BUILD_SECRET: 's' }),
+      now,
+      'unrelated env and credential-named vars must not change (or enter) the key',
+    );
     // A file newly committed under an output dir is part of every fresh build
     // (clean restores it), so it must start a new entry rather than make the
     // old one fail verification on every restore.
@@ -346,6 +367,10 @@ test('record refuses a build whose env moved after Plan keyed it, except rust-ca
     const tolerated = cli(root, ['record'], { ...env, CARGO_INCREMENTAL: '0', WASM_CACHE_KEY: key });
     assert.equal(tolerated.status, 0, tolerated.stdout + tolerated.stderr);
     // A $GITHUB_ENV write between Plan and the build: refused.
+    // A job-level compiler swap that appears only after Plan: refused too.
+    const swapped = cli(root, ['record'], { ...env, CARGO_BUILD_RUSTC: '/opt/other/rustc', WASM_CACHE_KEY: key });
+    assert.equal(swapped.status, 1);
+    assert.match(swapped.stdout, /env CARGO_BUILD_RUSTC unset -> env CARGO_BUILD_RUSTC="\/opt\/other\/rustc"/);
     const drifted = cli(root, ['record'], { ...env, RUSTFLAGS: '-C opt-level=1', WASM_CACHE_KEY: key });
     assert.equal(drifted.status, 1);
     assert.match(drifted.stdout, /::warning title=WASM build cache entry not recorded::build env differs from what Plan keyed: env RUSTFLAGS unset -> env RUSTFLAGS="-C opt-level=1"/);

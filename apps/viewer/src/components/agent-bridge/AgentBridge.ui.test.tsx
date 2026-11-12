@@ -99,6 +99,17 @@ describe('pairing link (#9523)', () => {
     session.disconnectAgentBridge();
   });
 
+  it('a pairing link opened in the tab that already holds the model (a hashchange) is taken the same way', async () => {
+    render(withBim(<AgentBridgeHost />));
+    assert.equal(dialog(), null);
+    window.history.replaceState(null, '', new URL(buildPairingUrl('https://ifclite.com', 21519, CODE)).hash);
+    takePairingFragment(window.location, window.history); // what the boot module's hashchange listener does
+    assert.equal(window.location.hash, '');
+    await waitFor(() => dialog() !== null, 'the dialog opened on the later link');
+    assert.equal((document.body.querySelectorAll('input')[1] as HTMLInputElement).value, '21519');
+    assert.deepEqual(SpySocket.urls, []);
+  });
+
   it('Cancel leaves no trace: no socket, no status, no storage, no code in the URL', async () => {
     const before = storageSnapshot();
     window.history.replaceState(null, '', new URL(buildPairingUrl('https://ifclite.com', 21517, CODE)).hash);

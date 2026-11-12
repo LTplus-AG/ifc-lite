@@ -42,7 +42,7 @@ describe('structuralCardSections on generated_structural_coverage_ifc4.ifc', () 
     const [section, ...rest] = await card(80);
     assert.equal(rest.length, 0);
     assert.deepEqual({ ...section, rows: undefined }, { expressId: 80, type: 'IfcStructuralLoadCase', via: null, depth: 0, rows: undefined });
-    assert.deepEqual(section.rows.map((r) => r.attribute), ['Name', 'PredefinedType', 'ActionType', 'ActionSource', 'Coefficient', 'SelfWeightCoefficients']);
+    assert.deepEqual(section.rows.map((r) => r.attribute), ['Name', 'PredefinedType', 'ActionType', 'ActionSource', 'Coefficient', 'Purpose', 'SelfWeightCoefficients']);
     assert.deepEqual(rows(section).SelfWeightCoefficients, [0, 0, -1]);
   });
 
@@ -69,12 +69,15 @@ describe('structuralCardSections on generated_structural_coverage_ifc4.ifc', () 
       ['AppliedCondition', 'IfcBoundaryNodeCondition', 24],
       ['AdditionalConditions', 'IfcFailureConnectionCondition', 28],
       ['IfcRelConnectsStructuralMember[1]', 'IfcRelConnectsWithEccentricity', 68],
+      ['AppliedCondition', 'IfcBoundaryNodeCondition', 24],
+      ['AdditionalConditions', 'IfcSlippageConnectionCondition', 29],
       ['ConnectionConstraint', 'IfcConnectionPointEccentricity', 67],
     ]);
     const end = sections[1].rows.find((r) => r.attribute === 'SupportedLength');
     assert.deepEqual(end, { attribute: 'SupportedLength', value: 5, measure: 'IfcLengthMeasure' });
     assert.deepEqual(rows(sections[1]).RelatedStructuralConnection, { ref: 39 });
-    assert.deepEqual(rows(sections[5]), { PointOnRelatingElement: { ref: 6 }, EccentricityInX: 0.1, EccentricityInY: 0, EccentricityInZ: -0.05 });
+    assert.deepEqual(rows(sections[1]).ConditionCoordinateSystem, { ref: 7 });
+    assert.deepEqual(rows(sections.at(-1)), { PointOnRelatingElement: { ref: 6 }, PointOnRelatedElement: { ref: 6 }, EccentricityInX: 0.1, EccentricityInY: 0, EccentricityInZ: -0.05 });
   });
 
   maybe('names a connection\'s axis by the schema\'s attribute only', async () => {
@@ -86,7 +89,7 @@ describe('structuralCardSections on generated_structural_coverage_ifc4.ifc', () 
   maybe('shows group links as GlobalIds', async () => {
     const { data } = await fixture();
     const gid = (id: number) => [...data.loadGroups, ...data.resultGroups].find((g) => g.expressId === id)!.globalId;
-    const [model] = await card(84);
+    const [model] = await card(data.analysisModels[0].expressId);
     assert.deepEqual(rows(model).LoadedBy, { globalIds: [gid(79), gid(80)] });
     assert.deepEqual(rows(model).HasResults, { globalIds: [gid(81)] });
     const [result] = await card(81);

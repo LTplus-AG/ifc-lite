@@ -11,6 +11,7 @@
  * main thread. Meshes meshed before the frame reached their worker, or by a
  * replacement worker, carry no records and take the main-thread merge.
  */
+import { perfCount } from '@ifc-lite/load-trace';
 import { encodeMeshRecords } from './gpu-records.js';
 import type { MeshData } from './types.js';
 
@@ -25,16 +26,25 @@ interface RecordFrameMessage extends GpuRecordFrame {
 }
 
 /** Pool side: once `source` has a frame, post it to every worker, once. Polled as batches arrive. */
-export function relayRecordFrame(source: (() => GpuRecordFrame | null) | undefined): { offer(workers: readonly Worker[]): void } {
+export function relayRecordFrame(source: (() => GpuRecordFrame | null) | undefined): { offer(workers: readonly Worker[]): void; count(meshes: readonly { gpuRecords?: unknown }[]): void } {
   let sent = !source;
   return {
     offer(workers) {
       if (sent) return;
       const known = source!();
-      if (!known) return;
+      if (!known) { perfCount('geometry.recordFrame.notReady'); return; }
       sent = true;
+      perfCount('geometry.recordFrame.sent', workers.length);
       const message: RecordFrameMessage = { type: 'record-frame', frame: [known.frame[0], known.frame[1], known.frame[2]], cellSize: known.cellSize };
       for (const worker of workers) worker.postMessage(message);
+    },
+    /** Per streamed batch: how many meshes arrived with GPU records and how many without (only when records are wired). */
+    count(meshes) {
+      if (!source) return;
+      let withRecords = 0;
+      for (const mesh of meshes) if (mesh.gpuRecords) withRecords++;
+      perfCount('geometry.records.meshes', withRecords);
+      perfCount('geometry.records.missing', meshes.length - withRecords);
     },
   };
 }

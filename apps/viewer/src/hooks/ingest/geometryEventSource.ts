@@ -19,6 +19,7 @@ import { DEFAULT_HUNG_JOB_TIMEOUT_MS, type GeometryProcessor, type StallPhaseHan
 import { retainedKernel } from '@ifc-lite/viewer-retained';
 import { getGeomWorkerOverride } from '../../store/constants.js';
 import { getGlobalRenderer } from '../useBCF.js';
+import { perfCount } from '@ifc-lite/load-trace';
 import { getDynamicBatchConfig } from '../../utils/ifcConfig.js';
 import type { CachePlan } from '../cacheTier.js';
 
@@ -112,6 +113,12 @@ export function openGeometryEvents(kernel: GeometryKernelLoad, request: Geometry
     // M2: once the renderer drew the primary model's first fragment, the
     // workers encode every later mesh's GPU records in its frame, and the
     // main thread uploads them instead of merging and quantizing.
-    ...(request.sharedRtcOffset ? {} : { gpuRecordFrame: () => getGlobalRenderer()?.getScene().gpuRecordFrame() ?? null }),
+    ...(request.sharedRtcOffset ? (perfCount('geometry.recordFrame.disabled.federated'), {}) : { gpuRecordFrame: () => {
+      const scene = getGlobalRenderer()?.getScene();
+      const frame = scene?.gpuRecordFrame() ?? null;
+      // Which condition holds the frame back (relay evidence, M2).
+      if (!frame) perfCount(`geometry.recordFrame.blocked.${scene ? scene.gpuRecordFrameBlocker() ?? 'unknown' : 'no-renderer'}`);
+      return frame;
+    } }),
   });
 }

@@ -380,7 +380,7 @@ export async function* processParallel(
         // typed-array types, so re-mapping every mesh here only re-allocated
         // ~one wrapper object per mesh (~110k per large load) on the main
         // thread. Pass the transferred objects straight through.
-        const meshes: MeshData[] = msg.meshes as MeshData[];
+        const meshes: MeshData[] = msg.meshes as MeshData[]; recordFrame.count(meshes); // M2 relay evidence: meshes with / without records
         // Opaque repeated occurrences render only through per-batch IFNS shards;
         // include them in the running total even though they are not flat meshes.
         const instancedShards = (msg as { instancedShards?: ArrayBuffer[] }).instancedShards;

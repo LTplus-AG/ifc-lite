@@ -26,7 +26,7 @@ import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromePids, memoryOf, vramOf } from './scenoptic-bench-sampling.mjs';
-import { COUNT_FRAMES, openAndWaitInteractive, openViewerPage, readOutputFingerprint, replacePage, waitCacheWrites, waitSceneSnapshots } from './viewer-load-probe.mjs';
+import { COUNT_FRAMES, openAndWaitInteractive, openViewerPage, readOutputFingerprint, replacePage, waitCacheWrites, waitSceneSnapshots, webglAroundPick } from './viewer-load-probe.mjs';
 import { browserShares, browserStages, expectedCacheTier, failedOpenIndex, gpuUnhealthy, openIdentity, stageShares, uiQuietValue } from './load-scoreboard-stats.mjs';
 import { BOOT_OBSERVERS, waitShellQuiet, waitUiQuiet } from './viewer-load-boot.mjs';
 import { rebaseToArm, waitCacheEntryStable, waitFirstPaint } from './load-scoreboard-lanes.mjs';
@@ -88,6 +88,7 @@ function summarizeOpen(open, memory) {
     // A capped quiet wait is not a measurement: it is kept as null with the flag (uiQuietValue).
     uiQuietMs: uiQuietValue(open), uiQuietTimedOut: Boolean(open.uiQuietTimedOut), uiQuietRawMs: open.uiQuietMs ?? null,
     longTasksAfterReady: open.longTasksAfterReady ?? null, shell: open.shell ?? null,
+    framesToInteractive: open.framesToInteractive ?? null, ...(open.webgl ?? {}),
     peakMemoryMiB: memory ? memory.peakPssMiB : null,
     peakMemoryMetric: memory ? 'peak sampled PSS sum over Chrome processes (250 ms), incl. browser baseline' : 'not sampled (timing pass)', memory,
     loadPaths: open.loadPaths, cacheTiers: open.cacheTiers, cacheHit: open.cacheHit, snapshotAdopted: open.snapshotAdopted,
@@ -136,7 +137,11 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
     phase = label;
     const sampler = pass === 'memory' ? startMemorySampler(profileDir) : null;
     let open;
+    const framesBefore = await page.evaluate(() => globalThis.__benchFrames ?? 0);
     try { open = await openAndWaitInteractive(page, [fixture.path], { timeoutMs }); } finally { if (sampler) meta[`${label}Memory`] = sampler.stop(); }
+    // Canvas frames the viewer rendered from the pick to interactive, and whether WebGL (the start screen's mark) drew around the pick.
+    open.framesToInteractive = (await page.evaluate(() => globalThis.__benchFrames ?? 0)) - framesBefore;
+    open.webgl = webglAroundPick(await page.evaluate(() => globalThis.__benchGl ?? { draws: 0, times: [] }), open.originAbs, open.originAbs + open.interactiveMs);
     Object.assign(open, { shell }, await waitUiQuiet(page, open.originAbs + open.interactiveMs, open.originAbs));
     if (early) open = rebaseToArm(open);
     const memory = meta[`${label}Memory`] ?? null;

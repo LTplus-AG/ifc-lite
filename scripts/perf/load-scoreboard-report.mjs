@@ -279,6 +279,29 @@ export function laneStageRanking(summary, lane, set = 'tuning') {
   return rankShares(perFixture);
 }
 
+/**
+ * Per fixture x lane x side: how many samples had WebGL (the start screen's mark) drawing around the pick, and the
+ * median canvas frames to interactive. A cell mixing both states is MIXED: on Xvfb the two states present at very
+ * different cost, so its spread is part harness, not product.
+ */
+export function webglPickRows(samples) {
+  const groups = new Map();
+  for (const r of samples) {
+    if (!r.ok || !BROWSER_LANES.includes(r.lane) || !('webglActiveAtPick' in r)) continue;
+    const key = `${r.fixture}|${r.lane}|${r.side}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(r);
+  }
+  return [...groups].map(([key, rows]) => {
+    const [fixture, lane, side] = key.split('|');
+    const known = rows.filter((r) => typeof r.webglActiveAtPick === 'boolean');
+    const active = known.filter((r) => r.webglActiveAtPick).length;
+    const frames = rows.map((r) => r.framesToInteractive).filter(Number.isFinite);
+    const state = known.length < rows.length ? 'UNKNOWN on some samples' : active === 0 ? 'none' : active === known.length ? 'ALL' : 'MIXED';
+    return `| ${fixture} | ${lane} | ${side} | ${rows.length} | ${active} | ${state} | ${frames.length ? Math.round(median(frames)) : '—'} |`;
+  });
+}
+
 export function renderMarkdown(summary, plan, host, samples = []) {
   const out = [`# Load scoreboard: ${summary.name}`, ''];
   out.push(`Kind: ${summary.kind}. Timed evidence: ${host?.timedEvidence ? 'yes (exclusive benchmark admission)' : 'NO (not exclusive; dry run)'}.`);
@@ -318,6 +341,11 @@ export function renderMarkdown(summary, plan, host, samples = []) {
   if (readinessRows.length) {
     out.push('', '## Readiness components (base side medians, n>=3; ms from the change event, or from the first paint for browser-cold-early; interactive = the last of geometry finalized, metadata ready, settled + frame)', '',
       `| fixture | set | lane | ${READINESS.map(([, l]) => l).join(' | ')} | binding (count) |`, `|---|---|---|${READINESS.map(() => '---:|').join('')}---|`, ...readinessRows);
+  }
+  const glRows = webglPickRows(samples);
+  if (glRows.length) {
+    out.push('', '## WebGL at the pick (start-screen mark drawing in the 1 s before the pick or during the open) and canvas frames to interactive', '',
+      '| fixture | lane | side | samples | WebGL active | state | median frames to interactive |', '|---|---|---|---:|---:|---|---:|', ...glRows);
   }
   out.push('', '## Stage shares, ranked (tuning set, base side; concurrent stages overlap, so shares need not sum to 100%)', '');
   for (const lane of plan.lanes) {

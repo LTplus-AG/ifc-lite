@@ -43,7 +43,13 @@ export async function startViewerServer(rootOf, log = () => {}) {
   return { server, baseUrl: `http://127.0.0.1:${server.address().port}` };
 }
 
-/** Init script: count presented frames (a rendered frame acquires the swap-chain texture). */
+/**
+ * Init script: count presented frames (a rendered frame acquires the swap-chain texture), and stamp every
+ * WebGL draw call (`__benchGl.times`, page clock, capped). The viewer draws with WebGPU; a WebGL draw is the
+ * start screen's 3D mark. A mark drawing at the pick puts Chrome on Xvfb into a present mode where every later
+ * frame costs ~80-110 ms in the GPU process instead of ~0.1 ms (xvfb-present study, 2026-11-12), so each open
+ * records whether WebGL drew around its pick.
+ */
 export const COUNT_FRAMES = () => {
   const proto = globalThis.GPUCanvasContext?.prototype;
   if (proto && !proto.__benchWrapped) {
@@ -51,7 +57,39 @@ export const COUNT_FRAMES = () => {
     proto.getCurrentTexture = function () { globalThis.__benchFrames = (globalThis.__benchFrames ?? 0) + 1; return orig.call(this); };
     proto.__benchWrapped = true;
   }
+  for (const glProto of [globalThis.WebGLRenderingContext?.prototype, globalThis.WebGL2RenderingContext?.prototype]) {
+    if (!glProto || glProto.__benchGlWrapped) continue;
+    for (const name of ['drawArrays', 'drawElements', 'drawArraysInstanced', 'drawElementsInstanced', 'drawRangeElements']) {
+      const orig = glProto[name];
+      if (typeof orig !== 'function') continue;
+      glProto[name] = function (...args) {
+        const gl = (globalThis.__benchGl ??= { draws: 0, times: [] });
+        gl.draws++;
+        if (gl.times.length < 50000) gl.times.push(performance.now());
+        return orig.apply(this, args);
+      };
+    }
+    glProto.__benchGlWrapped = true;
+  }
 };
+
+/**
+ * WebGL activity around one open, from `__benchGl.times` (page clock). `originAbs` = the pick (change event),
+ * `endAbs` = interactive. Active at the pick = a WebGL draw in the `windowMs` before it or during the open.
+ * Null fields when the page recorded nothing (counter missing), never a silent "inactive".
+ */
+export function webglAroundPick(gl, originAbs, endAbs, windowMs = 1000) {
+  if (!gl || !Array.isArray(gl.times) || !Number.isFinite(originAbs)) {
+    return { webglDrawsBeforePick: null, webglDrawsDuringOpen: null, webglLastDrawBeforePickMs: null, webglActiveAtPick: null };
+  }
+  let before = 0, during = 0, last = null;
+  for (const t of gl.times) {
+    if (t < originAbs) { if (t >= originAbs - windowMs) before++; last = last === null ? t : Math.max(last, t); }
+    else if (!Number.isFinite(endAbs) || t <= endAbs) during++;
+  }
+  return { webglDrawsBeforePick: before, webglDrawsDuringOpen: during, webglLastDrawBeforePickMs: last === null ? null : originAbs - last,
+    webglActiveAtPick: before > 0 || during > 0 };
+}
 
 /** Chrome can exit with its last page, so open the next one first. */
 export async function replacePage(context, page) {

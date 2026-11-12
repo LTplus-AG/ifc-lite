@@ -44,6 +44,9 @@ function dist(files: Record<string, string>): string {
  * That is why the gate uses builder names, or text only one builder writes.
  */
 const BUILDER_CODE: Record<string, string> = {
+  editStructuralEntityInStore: 'throw Error(`editStructuralEntity: invalid field`)',
+  removeStructuralEntityInStore: 'throw Error(`removeStructuralEntity: #42 has dependents`)',
+
   addStructuralPlanarActionToStore: 'return S(t,`addStructuralPlanarActionToStore`),D(e,t,n,`IfcStructuralPlanarAction`)',
   addStructuralSurfaceActionToStore: 'return S(t,`addStructuralSurfaceActionToStore`,!0),D(e,t,n,`IfcStructuralSurfaceAction`)',
   addStructuralPointReactionToStore: 'let r=`addStructuralPointReactionToStore`;S(t,r)',

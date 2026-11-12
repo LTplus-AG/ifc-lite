@@ -1,0 +1,11 @@
+--- a/packages/create/src/in-store/structural-remove.ts
++++ b/packages/create/src/in-store/structural-remove.ts
+@@ -13,7 +13,7 @@
+   const graph = structuralGraph(store, editor);
+   graph.requireStructural(expressId);
+   // Schema inheritance covers derived links and uppercase source type names.
+-  const isA = (type: string, base: string) => type === base;
++  const isA = (type: string, base: string) => graph.meta(type)?.inheritanceChain?.includes(base) ?? false;
+   const removed = new Set([expressId]);
+   const writes: { id: number; index: number; value: string[] | null }[] = [];
+   const blockers: string[] = [];

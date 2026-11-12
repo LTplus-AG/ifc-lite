@@ -17,6 +17,7 @@
  */
 
 import type {
+  StructuralEntityEdit,
   StructuralCurveReactionInStoreParams,
   StructuralPointReactionInStoreParams,
   StructuralResultGroupInStoreParams,
@@ -35,6 +36,8 @@ import type {
 import type { EntityRef } from './types.js';
 
 export interface StructuralStoreBackendMethods {
+  editStructuralEntity?(modelId: string, expressId: number, patch: StructuralEntityEdit): EntityRef;
+  removeStructuralEntity?(modelId: string, expressId: number): EntityRef;
   addStructuralPlanarAction?(modelId: string, params: StructuralSurfaceActionInStoreParams): EntityRef;
   addStructuralSurfaceAction?(modelId: string, params: StructuralSurfaceActionInStoreParams): EntityRef;
   addStructuralPointReaction?(modelId: string, params: StructuralPointReactionInStoreParams): EntityRef;

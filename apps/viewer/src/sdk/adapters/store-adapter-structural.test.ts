@@ -14,7 +14,7 @@
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
-import { extractStructuralOnDemand } from '@ifc-lite/parser';
+import { extractStructuralOnDemand, effectiveStructuralView } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { GROUND_STOREY, SAMPLE_MODEL, seedAuthoringSample } from '@/test/authoring-sample-fixture';
 import { createStoreAdapter } from './store-adapter.js';
@@ -52,4 +52,78 @@ test('a structural call before the write path loads is refused by name, then the
   const members = extractStructuralOnDemand(dataStore, live).members;
   assert.deepEqual(members.map((row) => [row.expressId, row.name]), [[ref.expressId, 'Script member']]);
   assert.equal(useViewerStore.getState().undoStacks.get(SAMPLE_MODEL)?.length, undoBefore + 1, 'one undo step, as before the split');
+});
+
+test('structural edit and owned removal each undo as one operation (#9668)', async () => {
+  const { dataStore, view } = await seedAuthoringSample();
+  const storey = dataStore.entities.getExpressIdByGlobalId(GROUND_STOREY)!;
+  const api = createStoreAdapter(useViewerStore);
+  await loadStructuralWrites();
+  const beforeIds = useViewerStore.getState().mutationViews.get(SAMPLE_MODEL)!.getNewEntities().map(e => e.expressId);
+  const ref = api.addStructuralCurveMember(SAMPLE_MODEL, storey, member);
+  const state = () => useViewerStore.getState();
+  const rows = () => extractStructuralOnDemand(dataStore, effectiveStructuralView(dataStore, state().mutationViews.get(SAMPLE_MODEL) ?? view)).members;
+  api.editStructuralEntity!(SAMPLE_MODEL, ref.expressId, { Name: 'Edited member', Description: 'Edited description' });
+  assert.equal(rows()[0].name, 'Edited member');
+  assert.equal(rows()[0].description, 'Edited description');
+  state().undo(SAMPLE_MODEL);
+  assert.equal(rows()[0].name, 'Script member');
+  assert.notEqual(rows()[0].description, 'Edited description');
+  state().redo(SAMPLE_MODEL);
+  assert.equal(rows()[0].name, 'Edited member');
+  assert.equal(rows()[0].description, 'Edited description');
+  const ownedIds = state().mutationViews.get(SAMPLE_MODEL)!.getNewEntities().map(e => e.expressId);
+  api.removeStructuralEntity!(SAMPLE_MODEL, ref.expressId);
+  assert.equal(rows().length, 0);
+  assert.deepEqual(state().mutationViews.get(SAMPLE_MODEL)!.getNewEntities().map(e => e.expressId), beforeIds);
+  state().undo(SAMPLE_MODEL);
+  assert.equal(rows()[0].name, 'Edited member');
+  assert.equal(rows()[0].description, 'Edited description');
+  assert.deepEqual(new Set(state().mutationViews.get(SAMPLE_MODEL)!.getNewEntities().map(e => e.expressId)), new Set(ownedIds));
+  state().redo(SAMPLE_MODEL);
+  assert.equal(rows().length, 0);
+});
+
+test('legacy single-file structural edits and removal use one undo operation (#9668)', async () => {
+  const { dataStore } = await seedAuthoringSample();
+  const storey = dataStore.entities.getExpressIdByGlobalId(GROUND_STOREY)!;
+  useViewerStore.setState({ models: new Map(), activeModelId: null, ifcDataStore: dataStore,
+    mutationViews: new Map(), storeEditors: new Map() });
+  const api = createStoreAdapter(useViewerStore);
+  await loadStructuralWrites();
+  const ref = api.addStructuralCurveMember('__legacy__', storey, member);
+  const state = () => useViewerStore.getState();
+  const rows = () => extractStructuralOnDemand(dataStore, effectiveStructuralView(dataStore, state().getMutationView(ref.modelId)!)).members;
+  api.editStructuralEntity!(ref.modelId, ref.expressId, { Name: 'Legacy edit' });
+  assert.equal(rows()[0].name, 'Legacy edit');
+  state().undo(ref.modelId);
+  assert.equal(rows()[0].name, 'Script member');
+  api.removeStructuralEntity!(ref.modelId, ref.expressId);
+  assert.equal(rows().length, 0);
+  state().undo(ref.modelId);
+  assert.equal(rows()[0].name, 'Script member');
+});
+
+test('structural removal prunes a rendered member and one Undo restores its mesh (#9668)', async () => {
+  const { dataStore } = await seedAuthoringSample();
+  const storey = dataStore.entities.getExpressIdByGlobalId(GROUND_STOREY)!;
+  const api = createStoreAdapter(useViewerStore);
+  await loadStructuralWrites();
+  const ref = api.addStructuralCurveMember(SAMPLE_MODEL, storey, member);
+  const { toGlobalIdFromModels } = await import('@/store/globalId');
+  const state = () => useViewerStore.getState();
+  const globalId = toGlobalIdFromModels(state().models, ref.modelId, ref.expressId);
+  const model = state().models.get(SAMPLE_MODEL)!;
+  const geometry = { ...model.geometryResult!, meshes: [{ expressId: globalId,
+    positions: new Float32Array([0,0,0, 1,0,0, 0,1,0]), normals: new Float32Array([0,0,1, 0,0,1, 0,0,1]),
+    indices: new Uint32Array([0,1,2]), color: [0.5,0.5,0.5,1] as [number,number,number,number] }], totalVertices: 3, totalTriangles: 1 };
+  useViewerStore.setState({ models: new Map(state().models).set(SAMPLE_MODEL, { ...model, geometryResult: geometry }), geometryResult: geometry });
+  const meshIds = () => state().models.get(SAMPLE_MODEL)!.geometryResult!.meshes.map(m => m.expressId);
+  api.removeStructuralEntity!(SAMPLE_MODEL, ref.expressId);
+  assert.ok(!meshIds().includes(globalId));
+  assert.ok(state().pendingMeshRemovals?.has(globalId));
+  state().undo(SAMPLE_MODEL);
+  assert.ok(meshIds().includes(globalId));
+  state().redo(SAMPLE_MODEL);
+  assert.ok(!meshIds().includes(globalId));
 });

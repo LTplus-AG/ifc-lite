@@ -611,3 +611,15 @@ test('META: absent, empty or unreadable input never passes any verdict, identity
   assert.ok(cases.length >= 60, `${cases.length} cases`);
   void passing;
 });
+
+test('a cell with a sample taken under host load gets no verdict, gain or regression (slot rules 2026-11-12)', async () => {
+  const { verdictFor } = await stats();
+  const slower = verdictFor(pairs(A, A2.map((x) => x * 1.3)), { underLoad: { base: 0, branch: 1 } });
+  assert.equal(slower.regression, false, 'a busy regression is not reported as one');
+  assert.equal(slower.pass, false, 'nor as a pass');
+  assert.ok(slower.verdict.startsWith('inconclusive: 1 sample(s) taken under host load'), slower.verdict);
+  const faster = verdictFor(pairs(A, A2.map((x) => x * 0.7)), { underLoad: { base: 2, branch: 0 } });
+  assert.equal(faster.pass, false, 'a busy gain does not pass');
+  assert.equal(verdictFor(pairs(A, A2.map((x) => x * 1.3)), { underLoad: { base: 0, branch: 0 } }).verdict, 'regression', 'a quiet cell keeps its verdict');
+  assert.equal(verdictFor(pairs(A, A2), { failures: { base: 0, branch: 1 }, underLoad: { base: 0, branch: 1 } }).verdict, 'regression: more failed loads', 'more failed loads still wins');
+});

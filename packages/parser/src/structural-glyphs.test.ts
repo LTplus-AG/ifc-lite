@@ -133,7 +133,11 @@ const SYNTHETIC = `ISO-10303-21;HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('g
 #102=IFCSTRUCTURALLOADSINGLEFORCE('P6',1.,0.,0.,$,$,$);
 #103=IFCSTRUCTURALPOINTACTION(${id(103)},$,'A6',$,$,$,$,#102,.GLOBAL_COORDS.,.F.);
 #131=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(131)},$,$,$,#53,#103);
-#140=IFCSTRUCTURALANALYSISMODEL(${id(140)},$,'Turned',$,$,.LOADING_3D.,$,(#160,#162),$,#23);
+#140=IFCSTRUCTURALANALYSISMODEL(${id(140)},$,'Turned',$,$,.LOADING_3D.,$,(#160,#162),(#232),#23);
+#230=IFCSTRUCTURALPOINTREACTION(${id(230)},$,'R2',$,$,$,$,#102,.GLOBAL_COORDS.);
+#231=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(231)},$,$,$,#53,#230);
+#232=IFCSTRUCTURALRESULTGROUP(${id(232)},$,'Results',$,$,.FIRST_ORDER_THEORY.,$,.T.);
+#233=IFCRELASSIGNSTOGROUP(${id(233)},$,$,$,(#230),$,#232);
 #160=IFCSTRUCTURALLOADGROUP(${id(160)},$,'G3',$,$,.LOAD_GROUP.,.PERMANENT_G.,.DEAD.,1.,$);
 #105=IFCSTRUCTURALPOINTACTION(${id(105)},$,'A7',$,$,$,$,#102,.GLOBAL_COORDS.,.F.);
 #132=IFCRELCONNECTSSTRUCTURALACTIVITY(${id(132)},$,$,$,#53,#105);
@@ -513,6 +517,9 @@ describe('structuralGlyphs on synthetic data, one kind each', () => {
     close(shared.kind === 'force' ? shared.direction : undefined, [1, 0, 0]);
     // A8's model points SharedPlacement at an IfcAxis2Placement3D, which is not a placement: refused, not drawn in world axes.
     expect(bySource(glyphs, 106)).toEqual([]);
+    // R2 reaches 'Turned' only through its result group, which the model HasResults (#9937 review).
+    const [reaction] = bySource(glyphs, 230);
+    close(reaction?.kind === 'force' ? reaction.direction : undefined, [0, 1, 0]);
   });
 
   it('repeats a curve support along its edge, facing the connection Axis', async () => {

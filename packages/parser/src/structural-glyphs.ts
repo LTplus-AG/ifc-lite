@@ -192,15 +192,15 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
   // SharedPlacement, or IFC world when it has none (IFC2X3 has none). An
   // unreadable SharedPlacement (null) refuses the model's loads. The model is
   // the one the activity is assigned to, else its item's, else the one model
-  // that is LoadedBy its load group (a group several models load decides
-  // nothing), else the file's only model.
+  // that is LoadedBy its load group or HasResults its result group (a group
+  // several models claim decides nothing), else the file's only model.
   const modelFrames = new Map<string, Frame | null>();
-  /** The one model LoadedBy a load group; null once a second model loads it. */
+  /** The one model a load group is LoadedBy or a result group is HasResults of; null once a second model claims it. */
   const groupModel = new Map<string, string | null>();
   for (const m of extraction.analysisModels) {
     const frame = reader.sharedPlacementFrame(m.expressId);
     modelFrames.set(m.globalId, frame === undefined ? IDENTITY : frame);
-    for (const g of m.loadGroupGlobalIds) {
+    for (const g of [...m.loadGroupGlobalIds, ...m.resultGroupGlobalIds]) {
       const seen = groupModel.get(g);
       groupModel.set(g, seen === undefined || seen === m.globalId ? m.globalId : null);
     }

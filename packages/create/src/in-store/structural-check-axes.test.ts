@@ -41,10 +41,11 @@ const drift = (store: IfcDataStore) =>
  * IfcOpenShell 0.9.0 and not from this package
  * (`tools/ifcopenshell_reference/structural_axes.py`, which states the method
  * and the command), rounded to 0.1 mm. STR is the file the derived-model test
- * below derives from, so its start lines are pinned too. Of the 192 curve
- * elements in the two files, all agree within 1 mm except the eight
- * L 75x75x6 braces of the steel frame: the derivation idealises an angle
- * through its profile bounds, 25 mm off its centroid line (#9934).
+ * below derives from, so its start lines are pinned too. Run once over all
+ * 192 IfcBeam and IfcColumn of the two files (the script takes any ids), every
+ * line agreed within 1 mm except the eight L 75x75x6 braces of the steel
+ * frame: the derivation idealises an angle through its profile bounds, 25 mm
+ * off its centroid line (#9934).
  */
 const IFCOPENSHELL_AXES: ReadonlyArray<[file: string, id: number, section: string, a: Vec3, b: Vec3]> = [
   [STEEL_FRAME, 88, 'IfcBeam HE 140 A, sloped', [1.5, 0, 5], [0, 0, 6]],
@@ -62,8 +63,11 @@ const IFCOPENSHELL_AXES: ReadonlyArray<[file: string, id: number, section: strin
 ];
 type Vec3 = readonly [number, number, number];
 const apart = (p: Vec3, q: Vec3) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
-/** Rounding to 0.1 mm moves an endpoint at most 0.09 mm; a misplaced line is off by far more. */
-const PIN_TOLERANCE = 1e-3;
+/**
+ * Rounding to 0.1 mm moves an endpoint up to 0.09 mm, and the mesh of the
+ * D300 column is a polygon whose bounds sit 0.24 mm off the true circle's.
+ */
+const PIN_TOLERANCE = 5e-4;
 
 const skipWithout = (ctx: { skip(note: string): void }, file: string) => {
   if (!existsSync(fixture(file))) ctx.skip(`${file} missing; run \`pnpm fixtures\``);
@@ -74,7 +78,9 @@ describe('structuralPhysicalAxes with the axis-drift check', () => {
     it(`puts each axis where IfcOpenShell puts the element's centre line: ${file.split('/').pop()} (#9930 review)`, async (ctx) => {
       skipWithout(ctx, file);
       const axes = structuralPhysicalAxes(await parse(readFileSync(fixture(file))));
-      for (const [, id, section, a, b] of IFCOPENSHELL_AXES.filter(([f]) => f === file)) {
+      const pins = IFCOPENSHELL_AXES.filter(([f]) => f === file);
+      expect(pins.length).toBeGreaterThan(0);
+      for (const [, id, section, a, b] of pins) {
         const axis = axes.get(id);
         expect(axis, `#${id} ${section}`).toBeDefined();
         const [p, q] = axis!;

@@ -10,7 +10,10 @@ line runs along the principal axis of the mesh vertices, through the centre
 of the section's bounds (the vertices projected onto the plane normal to that
 axis, bounded along that plane's principal axes), from end face to end face.
 For a doubly symmetric section that is the centroid line. It is not for
-angles or other asymmetric sections, whose principal axes are diagonal.
+angles or other asymmetric sections, whose principal axes are diagonal; for
+members no longer than their section is wide, where the principal axis can
+run across the member; or for skewed, mitred or notched ends, where the
+farthest vertex lies past the centre line's end.
 
     uv run --no-project --with ifcopenshell==0.9.0.post1 --with numpy \\
       python -I tools/ifcopenshell_reference/structural_axes.py <file.ifc> <id,id,...>

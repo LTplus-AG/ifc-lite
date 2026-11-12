@@ -140,6 +140,7 @@ pub(crate) mod instancing;
 /// Pure-Rust exact mesh-arrangement CSG kernel — the only CSG kernel, on
 /// every target (see docs/architecture/geometry-pipeline.md).
 pub mod kernel;
+pub mod output_policy;
 pub mod material_layer_index;
 /// Vector, matrix, frame and AABB math over arrays: the one cross-crate home
 /// (`nalgebra` stays geometry's interior type). See the module docs for the
@@ -286,7 +287,7 @@ pub use router::{
     aggregate_diagnostics, count_attributed_products, format_unsupported_breakdown,
     local_frame_set_enabled_override, meshed_representations, ClassificationStats, UNATTRIBUTED_PRODUCT_ID,
     GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION, FACETED_BREP_DEDUP_FACE_LIMIT,
-    ClassificationSummary, GeometryDiagnostics, GeometryProcessor, GeometryRouter,
+    ClassificationSummary, GeometryDiagnostics, GeometryProcessor, GeometryRouter, HostBbox,
     HostOpeningDiagnostic, ItemDedupCache, MappedInstancePlan, OpeningDiagnostic, OpeningKindDiag,
     ReasonCount, RectFastSummary, RectParam, RouterConfig, SharedMappedItemCache, AccountedMappedItemCache, SharedBrepSignatureCache, WorstHost,
 };

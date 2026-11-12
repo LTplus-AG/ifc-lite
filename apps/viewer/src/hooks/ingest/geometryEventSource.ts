@@ -19,6 +19,7 @@ import {
   assertGeometryMemoryFits, DEFAULT_HUNG_JOB_TIMEOUT_MS, GeometryMemoryBudgetError,
   type GeometryProcessor, type StallPhaseHandle, type StreamingGeometryEvent,
 } from '@ifc-lite/geometry';
+import { WASM_SOURCE_BYTE_LIMIT } from '@ifc-lite/parser';
 import { retainedKernel } from '@ifc-lite/viewer-retained';
 import { useViewerStore } from '@/store';
 import { showLoadError } from '@/lib/analytics';
@@ -82,6 +83,9 @@ const memoryRefusalWaived = new WeakSet<File>();
 
 function memoryRefusal(file: File, byteLength: number): string | null {
   if (USE_SERVER || memoryRefusalWaived.has(file)) return null;
+  // At or above 2 GiB no device can load it (`assertWasmSourceSize`): leave that
+  // refusal to say so, instead of offering a "try anyway" that cannot work.
+  if (byteLength >= WASM_SOURCE_BYTE_LIMIT) return null;
   try {
     assertGeometryMemoryFits(byteLength);
     return null;

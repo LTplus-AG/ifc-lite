@@ -451,6 +451,31 @@ test('an upstream-only IFC fixture requires a pinned archive and exact member', 
   }
 });
 
+test('an upstream IFC file requires a commit-pinned blob that names an IFC file', () => {
+  const path = 'structural/frame.ifc';
+  const bytes = Buffer.from('ISO-10303-21;\nEND-ISO-10303-21;\n');
+  const commit = '0123456789abcdef0123456789abcdef01234567';
+  const file = { blob_url: `https://github.com/example/models/blob/${commit}/frame.ifc`, commit };
+  const manifest = {
+    version: 1,
+    base_url: 'https://example.invalid/fixtures',
+    files: [{ path, sha256: sha256(bytes), size: bytes.length, upstream_file: file }],
+  };
+  const root = makeRoot({ fixtures: [], onDisk: { [path]: bytes }, manifest });
+  const rewrite = () => writeFileSync(join(root, 'tests/models/manifest.json'), JSON.stringify(manifest));
+  try {
+    assert.equal(check(root).status, 0);
+    file.blob_url = file.blob_url.replace(commit, 'main');
+    rewrite();
+    assertRed(check(root), 'upstream_file.blob_url', 'pinned https://github.com');
+    file.blob_url = `https://github.com/example/models/blob/${commit}/frame.zip`;
+    rewrite();
+    assertRed(check(root), 'upstream_file.blob_url', 'must name an IFC file');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('direct downloads stop at the declared byte budget and preserve existing fixtures (#8567)', async () => {
   const path = 'control.ifc';
   const old = Buffer.from('preserve local original');

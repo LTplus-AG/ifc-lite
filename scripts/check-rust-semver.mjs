@@ -368,7 +368,10 @@ async function main() {
     runSemverChecks: realRunSemverChecks,
     runTagBaseline: runAgainstTagBaseline,
   });
+  report(result);
+}
 
+export function report(result) { // the verdict printer, shared with check-rust-semver-registry.mjs
   for (const line of result.checked) console.log(`   ${line}`);
   if (!result.ok) {
     console.error('\n❌ Rust crate semver gate failed (#3216):\n');

@@ -246,6 +246,7 @@ nav:
     - Retained Viewer Memory: architecture/retained-viewer-memory.md
     - Coverage Ledger: architecture/coverage-ledger.md
     - Modelling Parity Ledger: architecture/modelling-parity-ledger.md
+    - Structural Coverage Ledger: architecture/structural-coverage-ledger.md
     - Schema Enum Reconciliation: architecture/schema-enum-reconciliation.md
     - LandXML Interoperability: architecture/landxml-coverage-ledger.md
     - LandXML → IFC Mapping: architecture/landxml-to-ifc-mapping.md
@@ -261,6 +262,7 @@ nav:
     - Element Splitting: architecture/element-splitting.md
     - Spatial Zone Emission: architecture/spatial-zone-emission.md
     - Mesh Determinism: architecture/mesh-determinism.md
+    - Native Result Cache: architecture/native-result-cache.md
     - CSG Threading: architecture/csg-threading-design.md
     - N-ary Union Repair: architecture/nary-union-repair.md
     - WASM Wide Arithmetic: architecture/wasm-wide-arithmetic.md

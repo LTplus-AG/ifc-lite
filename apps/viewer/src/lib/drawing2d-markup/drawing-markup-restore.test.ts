@@ -23,13 +23,14 @@
  * case checks that source annotation tags do not override later edits.
  */
 
-import { describe, it } from 'node:test';
+import { describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { readDrawingMarkupFromParseResult } from '@/lib/overlay-parse/drawing-markup-read';
 import { useViewerStore } from '@/store/index.js';
+import { spatialBucketSnapshotFor } from '@/hooks/symbolic-parse-cache-keys.js';
 import { getDrawingMarkupModelContext } from './drawing-markup-context.js';
-import { buildDrawingMarkupMetaLookup, restoreDrawingMarkupFromModel } from './drawing-markup-restore.js';
+import { buildDrawingMarkupMetaLookup, restoreDrawingMarkupFromModel, hasEmbeddedDrawingMarkup } from './drawing-markup-restore.js';
 
 const TAGGED_ANNOTATION_ID = 50;
 const UNTAGGED_ANNOTATION_ID = 60;
@@ -198,4 +199,40 @@ describe('restoreDrawingMarkupFromModel: not parsed yet', () => {
     const result = restoreDrawingMarkupFromModel('never-loaded');
     assert.equal(result, null);
   });
+});
+
+
+it('NEW-3: preflight admits non-annotation owners, encoded tags and overlay edits', async () => {
+  const grid = await parse(fixture().replace("IFCANNOTATION('0Annot000000000000050a',#4,'Measurement',$,'IfcLite:Markup:Measure',$,$)", "IFCGRID('0Annot000000000000050a',#4,'Measurement',$,'IfcLite:Markup:Measure',$,$,(),(),$)"));
+  assert.equal(hasEmbeddedDrawingMarkup(grid), true, 'reader accepts tagged grid owners too');
+  const blank = await parse(fixture().replaceAll('IfcLite:Markup:Measure', 'OrdinaryAnnotation'));
+  assert.equal(hasEmbeddedDrawingMarkup(blank), false);
+  const { MutablePropertyView } = await import('@ifc-lite/mutations');
+  const view = new MutablePropertyView(blank.properties, 'overlay-preflight');
+  view.setAttribute(UNTAGGED_ANNOTATION_ID, 'ObjectType', 'IfcLite:Markup:Measure');
+  assert.equal(hasEmbeddedDrawingMarkup(blank, view), true, 'cached source negative cannot hide a live tag edit');
+  const encoded = await parse(fixture().replaceAll('IfcLite:Markup:Measure', String.raw`IfcLite:Markup:\X2\004D\X0\easure`));
+  assert.equal(hasEmbeddedDrawingMarkup(encoded), true, 'STEP-encoded tags reach the real decoder');
+});
+
+
+it('NEW-3: restore and overlay reads reuse one spatial snapshot binding', async (t) => {
+  const store = await seedStore('shared-spatial-binding');
+  const context = getDrawingMarkupModelContext('shared-spatial-binding');
+  assert.ok(context && store.spatialHierarchy);
+  const owners = store.spatialHierarchy.elementToStorey;
+  const iterate = owners[Symbol.iterator].bind(owners);
+  let iterations = 0;
+  const observe = mock.method(owners, Symbol.iterator, () => { iterations++; return iterate(); });
+  const version = useViewerStore.getState().mutationVersion;
+  try {
+    spatialBucketSnapshotFor(store, version, context.view);
+    iterations = 0;
+    for (let i = 0; i < 10; i++) {
+      restoreDrawingMarkupFromModel('shared-spatial-binding');
+      spatialBucketSnapshotFor(store, version, context.view);
+    }
+    assert.equal(iterations, 0, 'restore must not alternate the cache between view and no-view');
+    t.diagnostic(`Spatial owner-map iterations across ten restore/overlay alternations: ${iterations}; old no-view restore recomputes twice per alternation.`);
+  } finally { observe.mock.restore(); }
 });

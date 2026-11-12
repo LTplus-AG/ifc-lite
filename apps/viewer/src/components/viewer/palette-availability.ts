@@ -3,21 +3,22 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Palette-only prerequisites. Shared ribbon/context enabled predicates stay intact (#8947). */
+import { blankModelUnavailable } from '@/hooks/startBlankModel';
+import { getPlacementGeorefContext } from '@/lib/geo/placement-georef-runtime';
 import { hasRetainedReportHost } from './retained-report-destination';
-import { getSplitWidth, splitFits } from './model/model-layout';
+import { canOpenModelPlan } from './model/open-model-plan';
 import type { AddKind } from './tools/SectionAddMenu';
 import { selectedEntityActionTarget } from './selected-entity-actions';
 import { paletteModelBlock } from './palette-model-availability';
 import { hasWorkspaceHistory } from '@/lib/model-placement/history';
 import { isCollabEnabled } from '@/lib/collab/config';
 import type { TranslationKey } from '@/i18n';
-import { getPlacementGeorefContext } from '@/lib/geo/placement-georef-runtime';
 import { useViewerStore, type ViewerState } from '@/store';
-import { canMutate } from '@/store/mutation-permission';
+import { canMutate, mutationDenialKey, mutationPermission } from '@/store/mutation-permission';
 import { hasRetainedShapeOnlyModel, RETAINED_SHAPE_ONLY_REASON } from '@/store/retainedGeometry';
 import { getWebGPUStatus } from '@/hooks/useWebGPU';
 import { selectCanRefreshModels, selectHasModelsLoaded } from '@/hooks/model-presence';
-import { modelWorkspaceTarget } from '@/lib/commands/modeling/workspace-target';
+import { modelWorkspaceTarget, resolveModelId } from '@/lib/commands/modeling/workspace-target';
 import { sessionWorkplaneBlock } from '@/lib/commands/modeling/workspace-storeys';
 import { resolveWorkplane } from '@/lib/commands/modeling/registry';
 import type { SurfaceCommandContext, SurfaceCommandDefinition, SurfaceCommandState } from './surface-command-types';
@@ -27,6 +28,10 @@ export type PaletteAvailability = { status: 'available' } | {
   status: 'disabled'; reasonKey: TranslationKey;
 };
 const available: PaletteAvailability = { status: 'available' };
+/** Commands that open a persistent tool host dialog over a loaded model, and the host method each needs. */
+const HOST_OPENERS = new Map<string, 'openBulkProperties' | 'openImportData' | 'openStructuralDerivation'>([
+  ['author:bulk-properties', 'openBulkProperties'], ['author:import-data', 'openImportData'], ['model:derive-structural', 'openStructuralDerivation'],
+]);
 const blocked = (reasonKey: TranslationKey): PaletteAvailability => ({ status: 'disabled', reasonKey });
 const cameraActions = {
   'view:zoom-in': 'zoomIn', 'view:zoom-out': 'zoomOut',
@@ -57,6 +62,19 @@ export function paletteAvailability(command: SurfaceCommandDefinition, context: 
     if (!canMutate(s, s.session.modelId)) return blocked('commandPalette.availability.editor');
     if (s.selectedEntityId === null && s.selectedEntityIds.size === 0) return blocked('commandPalette.availability.selection');
   }
+  if (id === 'file:new-blank') {
+    if (!context.startBlank || context.fileHostIsCurrent?.() === false) return blocked('commandPalette.availability.host');
+    const reason = blankModelUnavailable(s);
+    if (reason) return blocked(reason);
+  }
+  const recoveryAction = id === 'file:cancel-load' ? 'cancel' : id === 'file:retry-load' ? 'retry'
+    : id === 'file:dismiss-load-error' ? 'dismiss' : null;
+  if (recoveryAction) {
+    if (!context.loadRecovery) return blocked('commandPalette.availability.host');
+    if (recoveryAction === 'retry' && s.loading) return blocked('commandPalette.availability.loading');
+    const reason = context.loadRecovery.unavailable(recoveryAction);
+    if (reason) return blocked(reason);
+  }
   const modelBlock = paletteModelBlock(id, s);
   if (modelBlock) return blocked(modelBlock);
   if (id === 'elements:entity-actions' && selectedEntityActionTarget(s) === null) {
@@ -73,7 +91,7 @@ export function paletteAvailability(command: SurfaceCommandDefinition, context: 
   if (id === 'panel:retained-report' && !hasRetainedReportHost()) return blocked('commandPalette.availability.retainedReport');
   if (id === 'model:plan') {
     if (s.isMobile) return blocked('commandPalette.availability.feature');
-    if (!splitFits(getSplitWidth())) return blocked('modelWorkspace.plan.noRoom');
+    if (!canOpenModelPlan(s)) return blocked('modelWorkspace.plan.noRoom');
     if (s.workspaceMode !== 'model' && !modelWorkspaceTarget(s)) return blocked('commandPalette.availability.ifc');
     if (!canEditInSession || !s.canCollabEdit()) return blocked('commandPalette.availability.editor');
     if (s.loading) return blocked('commandPalette.availability.loading');
@@ -90,10 +108,19 @@ export function paletteAvailability(command: SurfaceCommandDefinition, context: 
   }
 
   const hasData = s.ifcDataStore !== null || [...s.models.values()].some(m => m.ifcDataStore != null);
-  if (id === 'author:bulk-properties' || id === 'author:import-data') {
+  const opener = HOST_OPENERS.get(id);
+  if (opener) {
     if (s.loading) return blocked('commandPalette.availability.loading');
     if (!hasData) return blocked('commandPalette.availability.ifc');
-    const callback = id === 'author:bulk-properties' ? context.openBulkProperties : context.openImportData;
+    // The derivation writes into the model: the same write policy its review applies.
+    if (id === 'model:derive-structural') {
+      // derivationModelId's rule, inlined: importing it would pull the lazy derivation module into startup.
+      const target = resolveModelId(s, undefined);
+      if (target === null) return blocked('commandPalette.availability.ifc');
+      const permission = mutationPermission(s, target);
+      if (!permission.allowed) return blocked(mutationDenialKey(permission.reason));
+    }
+    const callback = context[opener];
     if (!callback || context.toolHostIsCurrent?.() === false) return blocked('commandPalette.availability.host');
   }
   if (id === 'elements:class-filter' && (!context.openClassFilter || context.toolHostIsCurrent?.() === false)) {
@@ -151,6 +178,10 @@ export function paletteAvailability(command: SurfaceCommandDefinition, context: 
     || ['view:stacked', 'view:exploded', 'view:solo'].includes(id)) {
     if (!loaded) return blocked('commandPalette.availability.model');
   }
+  if (id.startsWith('view:orientation:')) {
+    if (!loaded) return blocked('commandPalette.availability.model');
+    if (!s.cameraCallbacks.setPresetDirection) return blocked('commandPalette.availability.camera');
+  }
   if (id in cameraActions) {
     if (!loaded) return blocked('commandPalette.availability.model');
     const callback = cameraActions[id as keyof typeof cameraActions];
@@ -201,7 +232,9 @@ export function canRunPaletteCommand(command: Command, onRefused?: (reason: Tran
 
 /** Narrow snapshot: unrelated viewport/store updates do not rebuild the table. */
 export function palettePrerequisites(s: ViewerState) {
-  return { workspaceMode: s.workspaceMode, canCollabEdit: s.canCollabEdit,
+  return { loadError: s.error, loadRetry: s.lastLoadRetry, loadErrorSeq: s.loadErrorSeq,
+    loadCanceller: s.activeLoadCanceller, streamCanceller: s.activeStreamCanceller,
+    workspaceMode: s.workspaceMode, canCollabEdit: s.canCollabEdit,
     centreline: s.centrelineOverlayEnabled, followWork: s.ribbonContextualTabs,
     placementEdit: s.cesiumPlacementEditMode, hierarchy: s.hierarchyMode, workspaceUndo: hasWorkspaceHistory(s, 'undo'), workspaceRedo: hasWorkspaceHistory(s, 'redo'), models: s.models, data: s.ifcDataStore, geometry: s.geometryResult, loading: s.loading,
     sectionPlane: s.sectionPlane, sectionPlanes: s.inactiveSectionPlanes, placement: s.modelPlacement,

@@ -65,6 +65,17 @@ describe('exact kernel memory refusal', () => {
     }
   });
 
+  it('a source of 2 GiB or more is left to the definitive size refusal, never offered "try anyway"', () => {
+    reportMemory(1);
+    for (const bytes of [2 ** 31, 3 * 1024 ** 3]) {
+      const kernel = beginGeometryKernel(stepFile('huge.ifc', bytes), { kind: 'primary' }, () => {});
+      assert.equal(kernel.refused, undefined, String(bytes));
+    }
+    assert.equal(useViewerStore.getState().error, null);
+    // Just under the limit the memory refusal still applies on this device.
+    assert.notEqual(beginGeometryKernel(stepFile('huge.ifc', 2 ** 31 - 1), { kind: 'primary' }, () => {}).refused, undefined);
+  });
+
   it('the memory simulation flag cannot refuse a load', () => {
     // A 1 GiB source: its 2–3 GiB copy floor would exceed any ceiling derived
     // from a 0.001 GiB simulation (≤ 1.5 MiB), so this fails if the simulation

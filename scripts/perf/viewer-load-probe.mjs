@@ -1,0 +1,304 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * Page-side load probing shared by `scenoptic-bench.mjs` and
+ * `load-scoreboard.mjs`, so both stop the load timer at the same point.
+ *
+ * Readiness follows the README's cold-load validation notes: geometry-complete
+ * is not interactive. A load counts as fully interactive only when the stream
+ * is complete, the GPU queue has drained and the scene finalized, metadata is
+ * ready (`parser.complete`, or `cache.storeReady` on a cache hit), and the
+ * store has left its loading state with every model `complete`. The store
+ * transition is captured by a subscription installed before the input event,
+ * so short loads are not quantized by the 100 ms readiness poll.
+ */
+
+import { createServer } from 'node:http';
+import { createReadStream, existsSync, statSync } from 'node:fs';
+import { extname, join, normalize, sep } from 'node:path';
+
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8', '.wasm': 'application/wasm', '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml',
+  '.png': 'image/png', '.woff2': 'font/woff2' };
+
+/** Cross-origin-isolated static server whose root can change between samples. Resolves to `{ server, baseUrl }`. */
+export async function startViewerServer(rootOf, log = () => {}) {
+  const server = createServer((req, res) => {
+    const root = rootOf();
+    let pathname = decodeURIComponent((req.url ?? '/').split('?')[0]);
+    if (pathname.endsWith('/')) pathname += 'index.html';
+    let file = normalize(join(root, pathname));
+    if (!file.startsWith(root + sep)) { res.writeHead(403).end(); return; }
+    if (!existsSync(file) || statSync(file).isDirectory()) {
+      if (extname(pathname)) { log('404', pathname); res.writeHead(404).end(); return; }
+      file = join(root, 'index.html'); // SPA route
+    }
+    res.writeHead(200, { 'Content-Type': MIME[extname(file)] ?? 'application/octet-stream', 'Cache-Control': 'no-store',
+      'Cross-Origin-Opener-Policy': 'same-origin', 'Cross-Origin-Embedder-Policy': 'credentialless' });
+    createReadStream(file).pipe(res);
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  return { server, baseUrl: `http://127.0.0.1:${server.address().port}` };
+}
+
+/** Init script: count presented frames (a rendered frame acquires the swap-chain texture). */
+export const COUNT_FRAMES = () => {
+  const proto = globalThis.GPUCanvasContext?.prototype;
+  if (proto && !proto.__benchWrapped) {
+    const orig = proto.getCurrentTexture;
+    proto.getCurrentTexture = function () { globalThis.__benchFrames = (globalThis.__benchFrames ?? 0) + 1; return orig.call(this); };
+    proto.__benchWrapped = true;
+  }
+};
+
+/** Chrome can exit with its last page, so open the next one first. */
+export async function replacePage(context, page) {
+  await context.newPage();
+  await page.close();
+}
+
+/** Navigate the context's page to `url` and wait for the store and the file input. */
+export async function openViewerPage(context, url, { onFailure } = {}) {
+  const page = context.pages()[0] ?? await context.newPage();
+  await page.goto(url);
+  const step = async (what, fn) => { try { await fn(); } catch (err) {
+    await onFailure?.(page, what);
+    throw new Error(`${what}: ${err.message}`);
+  } };
+  await step('store', () => page.waitForFunction(() => Boolean(globalThis.__ifc_lite_viewer_store__), null, { timeout: 60000 }));
+  await step('file-input', () => page.locator('#file-input-open').waitFor({ state: 'attached', timeout: 60000 }));
+  return page;
+}
+
+/**
+ * In page: arm the clock and its explicit readiness witnesses. Returns t0 (the arm).
+ * - `change`: the file input's change event, in a capture listener. The load
+ *   clock starts there, so a busy boot tail delaying the event's dispatch is
+ *   reported as input delay instead of being counted as load time (H2).
+ * - `publishPaint`: the next frame after the store first holds every model's
+ *   populated data store; `settle`/`settlePaint`: the store leaving its
+ *   loading state with every model complete, and the next frame after it (H7).
+ */
+function armLoadClock(count) {
+  const store = globalThis.__ifc_lite_viewer_store__;
+  globalThis.__benchSettle?.unsub?.();
+  const modelsOf = (s) => [...(s.models?.values?.() ?? [])];
+  const isSettled = (s) => {
+    const models = modelsOf(s);
+    return !s.loading && models.length >= count && models.every((m) => m.loadState === 'complete' || m.loadState === undefined);
+  };
+  const isPublished = (s) => { const models = modelsOf(s); return models.length >= count && models.every((m) => m.ifcDataStore); };
+  const frame = (key) => requestAnimationFrame(() => { st[key] = performance.now(); });
+  const st = { at: null, prev: isSettled(store.getState()), unsub: null, change: null, publish: null, publishPaint: null, settlePaint: null };
+  st.unsub = store.subscribe((s) => {
+    const ok = isSettled(s);
+    if (ok && !st.prev) { st.at = performance.now(); st.settlePaint = null; frame('settlePaint'); }
+    if (!ok) { st.at = null; st.settlePaint = null; }
+    st.prev = ok;
+    if (st.publish === null && isPublished(s)) { st.publish = performance.now(); frame('publishPaint'); }
+  });
+  const input = document.getElementById('file-input-open');
+  input?.addEventListener('change', () => { st.change ??= performance.now(); }, { capture: true, once: true });
+  globalThis.__benchSettle = st;
+  return (globalThis.__benchT0 = performance.now());
+}
+
+/** In page: null until every model is fully interactive, then timings relative to the input event. */
+function interactiveProbe(count) {
+  const trace = globalThis.__IFC_LITE_LOAD_TRACE__;
+  const s = globalThis.__ifc_lite_viewer_store__?.getState();
+  if (!trace || !s) return null;
+  const st = globalThis.__benchSettle ?? {};
+  const t0 = globalThis.__benchT0;
+  const loads = trace.loads().filter((l) => l.start >= t0 - 50);
+  // Times are relative to the input's change event when it was observed (H2), else to the arm.
+  const t = st.change ?? t0;
+  if (loads.length < count) return null;
+  const end = (l, name) => l.spans.find((sp) => sp.name === name && sp.end !== null)?.end ?? null;
+  // Full geometry = stream complete AND the GPU queue drained and finalized: the
+  // `geometry.streamComplete` milestone fires before the upload drain and regroup.
+  const DRAIN = /^(stream\.queueDrain|scene\.finalize.*|camera\.refit)$/;
+  const geomDone = loads.map((l) => {
+    const stream = end(l, 'geometry.streamComplete');
+    if (stream === null || l.spans.some((sp) => DRAIN.test(sp.name) && sp.end === null)) return null;
+    // A streamed load finalizes its fragments; a federated add uploads final batches directly.
+    const streamed = l.spans.some((sp) => sp.name === 'stream.queue');
+    if (streamed ? !l.spans.some((sp) => sp.name === 'scene.finalize' && sp.end !== null) : l.end === null) return null;
+    return Math.max(stream, ...l.spans.filter((sp) => DRAIN.test(sp.name)).map((sp) => sp.end));
+  });
+  const meta = loads.map((l) => end(l, 'parser.complete') ?? end(l, 'cache.storeReady'));
+  const models = [...(s.models?.values?.() ?? [])];
+  const settled = !s.loading && models.length >= count && models.every((m) => m.loadState === 'complete' || m.loadState === undefined);
+  if (geomDone.some((v) => v === null) || meta.some((v) => v === null) || !settled) return null;
+  // Wait for the frames after the publish and the settle, so both milestones are real paints.
+  // A stalled rAF (hidden page) must not hang the probe: after 2 s the milestone stays null.
+  const now = performance.now();
+  if (st.at !== null && st.settlePaint === null && now - st.at < 2000) return null;
+  if (st.publish !== null && st.publishPaint === null && now - st.publish < 2000) return null;
+  const settledAt = st.at ?? null;
+  const firstVisible = loads.map((l) => end(l, 'geometry.firstVisible')).filter((v) => v !== null);
+  const geometryMs = Math.max(...geomDone) - t;
+  const propsMs = Math.max(...meta) - t;
+  // The store event when captured; the poll time otherwise (flagged, quantized).
+  const storeSettledMs = (settledAt ?? now) - t;
+  return {
+    firstFrameMs: firstVisible.length ? Math.min(...firstVisible) - t : null,
+    // Everything on screen: a snapshot's first paint, else the finalize swap (geometryMs).
+    completeFrameMs: Math.max(...loads.map((l, i) => (end(l, 'scene.snapshotAdopted') !== null ? end(l, 'geometry.firstVisible') : null) ?? geomDone[i])) - t,
+    snapshotAdopted: loads.map((l) => end(l, 'scene.snapshotAdopted') !== null),
+    geometryMs,
+    propsMs,
+    storeSettledMs,
+    settleQuantized: settledAt === null,
+    originAbs: t,
+    inputDelayMs: st.change === null || st.change === undefined ? null : st.change - t0,
+    clockFrom: st.change === null || st.change === undefined ? 'arm (change event not observed)' : 'change event',
+    publishPaintMs: st.publishPaint === null || st.publishPaint === undefined ? null : st.publishPaint - t,
+    settlePaintMs: st.settlePaint === null || st.settlePaint === undefined ? null : st.settlePaint - t,
+    // Interactive: geometry finalized, metadata ready, and the first frame after the store settled.
+    interactiveMs: Math.max(geometryMs, propsMs, st.settlePaint ? st.settlePaint - t : storeSettledMs),
+    settledMs: now - t,
+    loadPaths: loads.map((l) => l.attrs?.loadPath ?? l.attrs?.path ?? null),
+    cacheTiers: loads.map((l) => l.attrs?.cacheTier ?? null),
+    cacheHit: loads.map((l) => l.spans.some((sp) => sp.name === 'cache.lookup' && sp.attrs?.hit === true) || l.attrs?.loadPath === 'cache'),
+    spans: loads.map((l) => l.spans.filter((sp) => sp.end !== null && sp.end - sp.start > 50)
+      .map((sp) => ({ name: sp.name, startMs: Math.round(sp.start - t), ms: Math.round(sp.end - sp.start) }))),
+    // Every finished span, compact: [name, thread, startMs, durationMs, milestone, id, parentId], relative to the input event.
+    trace: loads.map((l) => ({ attrs: l.attrs ?? {}, startMs: l.start - t, endMs: l.end === null ? null : l.end - t,
+      spans: l.spans.filter((sp) => sp.end !== null)
+        .map((sp) => [sp.name, sp.thread, +(sp.start - t).toFixed(2), +(sp.end - sp.start).toFixed(2), sp.milestone ? 1 : 0, sp.id, sp.parentId]) })),
+  };
+}
+
+/**
+ * Open `files` through the viewer's file input and wait until every model is
+ * fully interactive. Timings are relative to the input event on the page clock.
+ */
+export async function openAndWaitInteractive(page, files, { timeoutMs = 45 * 60 * 1000 } = {}) {
+  const t0 = await page.evaluate(armLoadClock, files.length);
+  await page.locator('#file-input-open').setInputFiles(files);
+  const handle = await page.waitForFunction(interactiveProbe, files.length, { timeout: timeoutMs, polling: 100 });
+  const value = await handle.jsonValue();
+  await page.evaluate(() => globalThis.__benchSettle?.unsub?.());
+  return { ...value, t0 };
+}
+
+/**
+ * After the timer: each model's output identity, independent of how batches
+ * split geometry between flat meshes and instanced (IFNS) shards. Batch-local
+ * instancing legitimately moves elements between the two forms with the batch
+ * partition, so flat mesh/triangle counts are not an output identity.
+ *
+ * Identity = per element, the Rust element geometry hash (#924: quantized,
+ * RTC-invariant, computed on the whole element before flat/instanced routing),
+ * read from flat `MeshData.geometryHash` plus `geometryResult.instancedGeometryHashes`.
+ * Flat meshes the Rust pass left unhashed are covered by an exact-bytes hash
+ * (`d<hex>`), so a complete identity covers every element; `conflicts` counts
+ * elements seen with two different hashes. `sig` is an order-independent
+ * aggregate over (expressId, hash); `elements` maps each id to its hash for a
+ * per-element diff. Flat counts are kept as information only.
+ *
+ * Cache hits (warm opens) carry no element hashes: the cache persists geometry,
+ * not the hash pass, and their instanced output is not readable here. Their
+ * identity is unverifiable; only their flat output is checked against the cold
+ * load (see openIdentity in load-scoreboard-stats.mjs).
+ */
+export async function readOutputFingerprint(page) {
+  return page.evaluate(() => {
+    const s = globalThis.__ifc_lite_viewer_store__?.getState();
+    const models = [...(s?.models?.values?.() ?? [])];
+    const fnv = (text, seed) => {
+      let h = seed >>> 0;
+      for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+      return h >>> 0;
+    };
+    return models.map((m) => {
+      const g = m.geometryResult;
+      const meshes = g?.meshes ?? [];
+      const elements = {};
+      const unhashed = new Set();
+      let conflicts = 0, flatTriangles = 0, flatSig = 0;
+      const put = (id, hash) => {
+        const hex = hash.toString(16);
+        if (elements[id] !== undefined && elements[id] !== hex) conflicts++;
+        elements[id] = hex;
+      };
+      for (const mesh of meshes) {
+        const tris = (mesh.indices?.length ?? 0) / 3;
+        flatTriangles += tris;
+        flatSig = (flatSig + fnv(`${mesh.expressId}:${(mesh.positions?.length ?? 0) / 3}:${tris}`, 0x811c9dc5)) >>> 0;
+        if (mesh.geometryHash !== undefined && mesh.geometryHash !== null) put(mesh.expressId, mesh.geometryHash);
+        else unhashed.add(mesh.expressId);
+      }
+      for (const [id, hash] of g?.instancedGeometryHashes ?? []) put(id, hash);
+      for (const id of Object.keys(elements)) unhashed.delete(Number(id));
+      // Flat meshes the Rust pass left without a hash are covered by their exact bytes (positions +
+      // indices; order-independent per element), so the identity covers every element, not only the
+      // hashed ones. Only when the hash pass ran (a cold open): a cache hit has no instanced hashes,
+      // so its identity cannot be complete whatever its flat bytes say.
+      let dataHashed = 0;
+      if (Object.keys(elements).length > 0 && unhashed.size > 0) {
+        const bytesHash = (arr, seed) => {
+          if (!arr) return seed;
+          if (!ArrayBuffer.isView(arr)) return fnv(Array.prototype.join.call(arr, ','), seed);
+          const b = new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength);
+          let h = seed >>> 0;
+          for (let i = 0; i < b.length; i++) { h ^= b[i]; h = Math.imul(h, 0x01000193); }
+          return h >>> 0;
+        };
+        const data = new Map();
+        for (const mesh of meshes) {
+          if (!unhashed.has(mesh.expressId)) continue;
+          const h = bytesHash(mesh.indices, bytesHash(mesh.positions, 0x811c9dc5));
+          data.set(mesh.expressId, ((data.get(mesh.expressId) ?? 0) + h) >>> 0);
+        }
+        for (const [id, h] of data) { elements[id] = `d${h.toString(16)}`; dataHashed++; }
+        unhashed.clear();
+      }
+      let sumA = 0, sumB = 0;
+      for (const [id, hex] of Object.entries(elements)) {
+        const key = `${id}:${hex}`;
+        sumA = (sumA + fnv(key, 0x811c9dc5)) >>> 0;
+        sumB = (sumB + fnv(key, 0x01000193)) >>> 0;
+      }
+      const hashed = Object.keys(elements).length;
+      return {
+        name: m.name,
+        identity: `elements=${hashed + unhashed.size} hashed=${hashed - dataHashed} bytes-hashed=${dataHashed} unhashed=${unhashed.size} conflicts=${conflicts} sig=${sumA.toString(16).padStart(8, '0')}${sumB.toString(16).padStart(8, '0')}`,
+        elements, unhashedIds: [...unhashed].slice(0, 200),
+        hashed: hashed - dataHashed, dataHashed, unhashed: unhashed.size, conflicts,
+        // Flat split only: partition-dependent across loads, but a cache hit must restore it exactly.
+        flat: { meshes: meshes.length, triangles: flatTriangles, instancedElements: g?.instancedGeometryHashes?.size ?? 0, signature: flatSig.toString(16) },
+        entities: m.ifcDataStore?.entityCount ?? null,
+      };
+    });
+  });
+}
+
+/** The cold load writes the IndexedDB cache beside the critical path; the warm open needs it complete. */
+export async function waitCacheWrites(page, timeoutMs = 10 * 60 * 1000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const pending = await page.evaluate(() => globalThis.__IFC_LITE_LOAD_TRACE__.loads()
+      .filter((l) => l.start >= globalThis.__benchT0 - 50)
+      .some((l) => l.spans.some((sp) => sp.name.startsWith('cache.write') && sp.end === null)));
+    if (!pending) return true;
+    await page.waitForTimeout(500);
+  }
+  return false;
+}
+
+/** Closing the page could interrupt the snapshot write, and the next open would then measure the ordinary path. */
+export async function waitSceneSnapshots(page, timeoutMs = 60 * 1000) {
+  await page.waitForFunction(() => new Promise((done) => {
+    const open = indexedDB.open('ifc-lite-cache');
+    open.onerror = () => done(false);
+    open.onsuccess = () => {
+      const all = open.result.transaction('models').objectStore('models').getAll();
+      all.onerror = () => done(false);
+      all.onsuccess = () => { open.result.close(); done(all.result.length > 0 && all.result.every((entry) => entry.sceneSnapshot)); };
+    };
+  }), null, { timeout: timeoutMs, polling: 500 });
+}

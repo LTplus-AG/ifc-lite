@@ -1563,6 +1563,10 @@
     "value": "{storey} ({elevation} m)",
     "reason": "Runtime storey names and formatted elevations use the same metre symbol and punctuation in Italian."
   },
+  "structuralGlyphs.tooltip": {
+    "value": "{kind} · {entity}",
+    "reason": "Composition of interpolated model values, symbols, units or shared Italian words; no English sentence is embedded."
+  },
   "tableChanges.matchTypeTag": {
     "value": "Tag",
     "reason": "tableChanges.matchTypeTag: Exact IFC EXPRESS attribute name used by this field, not an English prose description."
@@ -1602,6 +1606,14 @@
   "viewportLighting.container.emptyState.footer.discoverLink": {
     "value": "ifclite.dev →",
     "reason": "viewportLighting.container.emptyState.footer.discoverLink: Exact project/service link label; domain and GitHub/npm service names are not localized."
+  },
+  "viewportLighting.container.emptyState.formats.gltf": {
+    "value": "glTF",
+    "reason": "Format family name on the welcome card: glTF is the exact product spelling of the format and is not localized."
+  },
+  "viewportLighting.container.emptyState.formats.ifc": {
+    "value": "IFC",
+    "reason": "Format family name on the welcome card: IFC is the schema acronym and is not localized in any language."
   },
   "viewportLighting.container.emptyState.scene.metres": {
     "value": "{value} m",

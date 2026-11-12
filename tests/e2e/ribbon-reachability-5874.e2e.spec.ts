@@ -13,10 +13,10 @@ const TAB_BUTTON_COUNTS = [
   ['View', 19], // Settings moved to the persistent header (#5857)
   ['Elements', 18], // includes selected mesh hover outline (#5748) and Presentation layers (#7619)
   ['Analyze', 18], // 17 commands including Linked records (#6643) plus the panel-browser content trigger (#5873)
-  ['Author', 8], // includes Change sets (#6232 D4); every create kind is a Model workspace command, not a button (#6232 B1)
+  ['Author', 7], // includes Change sets (#6232 D4); every create kind is a Model workspace command, not a button (#6232 B1); Model itself sits in the tab row (#9296)
 ] as const;
 
-test('authored IFC keeps all 91 ribbon commands and panel browser reachable at 1280px (#5874, #5778)', async ({ page }, testInfo) => {
+test('authored IFC keeps all 90 ribbon commands and panel browser reachable at 1280px (#5874, #5778)', async ({ page }, testInfo) => {
   await page.addInitScript(() => {
     localStorage.setItem('ifclite.extensions.privacy-disclosure.v2', 'e2e acknowledged');
   });
@@ -43,6 +43,11 @@ test('authored IFC keeps all 91 ribbon commands and panel browser reachable at 1
     await expect(settings).toHaveAccessibleName('Settings');
     await expect(settings).toBeVisible();
     await settings.click({ trial: true });
+    // #9296: Model left the Author band for the tab row; it stays reachable beside every tab.
+    const model = page.locator('[data-command-id="tool:edit-mode"]');
+    await expect(model).toHaveCount(1);
+    await expect(model).toBeVisible();
+    await model.click({ trial: true });
     const band = page.getByRole('tabpanel', { name: tabName, exact: true });
     await expect(band).toBeVisible();
     const buttons = band.locator('button');
@@ -87,7 +92,7 @@ test('authored IFC keeps all 91 ribbon commands and panel browser reachable at 1
   const browserCount = visited.Analyze.filter((name) => name === 'Browse panels').length;
   expect(visited.View, 'View includes the selected-source centreline command (#5778)').toContain('Centreline');
   expect(browserCount, 'Analyze has one panel-browser content trigger').toBe(1);
-  expect(Object.values(visited).reduce((total, names) => total + names.length, 0) - browserCount).toBe(91);
+  expect(Object.values(visited).reduce((total, names) => total + names.length, 0) - browserCount).toBe(90);
   // #7619: the added hierarchy command is unique and opens its actual sidebar
   // grouping, after the inventory above checks its accessible pointer target.
   const presentationLayerCommandName = 'Presentation layers';

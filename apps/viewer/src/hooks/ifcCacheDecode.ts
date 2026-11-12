@@ -16,14 +16,12 @@ import {
   openGeometryChunksV13,
   readInstancedShards,
   BufferReader,
-  type CachedEntityIndexColumns,
   type CacheDataStore,
 } from '@ifc-lite/cache';
 import {
   contiguousSourceBytes,
   SpatialHierarchyBuilder,
   StepTokenizer,
-  CompactEntityIndex,
   CompactEntityIndexBuilder,
   extractLengthUnitScale,
   attachDataStoreAccessors,
@@ -34,29 +32,9 @@ import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import type { LoadTrace } from '@ifc-lite/load-trace';
 import { deleteCached, type CacheResult } from '../services/cacheService.js';
 import { recordFirstVisible } from '../lib/perf/loadTrace.js';
-import { rebuildSpatialHierarchy, rebuildOnDemandMaps } from '../utils/spatialHierarchy.js';
+import { rebuildSpatialHierarchy, type OnDemandMaps } from '../utils/spatialHierarchy.js';
 import { calculateStoreyHeights } from '../utils/localParsingUtils.js';
-
-function buildEntityIndexFromCachedColumns(columns: CachedEntityIndexColumns): IfcDataStore['entityIndex'] {
-  const byId = new CompactEntityIndex(
-    columns.ids,
-    columns.byteOffsets,
-    columns.byteLengths,
-    columns.typeIndices,
-    columns.typeNames,
-  );
-  const byType = new Map<string, number[]>();
-  for (let i = 0; i < columns.ids.length; i++) {
-    const type = columns.typeNames[columns.typeIndices[i]];
-    let ids = byType.get(type);
-    if (!ids) {
-      ids = [];
-      byType.set(type, ids);
-    }
-    ids.push(columns.ids[i]);
-  }
-  return { byId, byType };
-}
+import { buildEntityIndexFromCachedColumns, defineLazyOnDemandMaps, lazyOnDemandMapsBuilder, ON_DEMAND_KEYS } from './ifcCacheDecodeStore.js';
 
 /**
  * Map the cache's numeric {@link SchemaVersion} enum to the runtime store's
@@ -91,9 +69,8 @@ function hydrateCacheStore(
     contentKey?: string;
     fileSize: number;
     entityIndex: IfcDataStore['entityIndex'];
-    onDemandPropertyMap?: Map<number, number[]>;
-    onDemandQuantityMap?: Map<number, number[]>;
-    onDemandMaterialMap?: Map<number, number[]>;
+    /** Builds the on-demand property/quantity/material maps; absent without a source. */
+    onDemandMaps?: () => OnDemandMaps | null;
   },
 ): IfcDataStore {
   const storeData: IfcStoreData = {
@@ -112,10 +89,10 @@ function hydrateCacheStore(
     relationships: cacheStore.relationships,
     entityIndex: extras.entityIndex,
     spatialHierarchy: cacheStore.spatialHierarchy,
-    onDemandPropertyMap: extras.onDemandPropertyMap,
-    onDemandQuantityMap: extras.onDemandQuantityMap,
-    onDemandMaterialMap: extras.onDemandMaterialMap,
   };
+  if (extras.onDemandMaps) defineLazyOnDemandMaps(storeData, extras.onDemandMaps);
+  // Without a source there are no maps; keep the keys as own undefined fields, as before.
+  else for (const key of ON_DEMAND_KEYS) storeData[key] = undefined;
   return attachDataStoreAccessors(storeData);
 }
 
@@ -175,9 +152,7 @@ export async function decodeCachedMetadata(
   const sourceBuffer = cacheResult.sourceBuffer ?? fallbackSourceBuffer;
   let source: Uint8Array = new Uint8Array(0);
   let entityIndex: IfcDataStore['entityIndex'] = { byId: new Map(), byType: new Map() };
-  let onDemandPropertyMap: Map<number, number[]> | undefined;
-  let onDemandQuantityMap: Map<number, number[]> | undefined;
-  let onDemandMaterialMap: Map<number, number[]> | undefined;
+  let onDemandMaps: (() => OnDemandMaps | null) | undefined;
 
   if (sourceBuffer) {
     source = new Uint8Array(sourceBuffer);
@@ -210,14 +185,10 @@ export async function decodeCachedMetadata(
       }
     });
 
-    // Rebuild on-demand maps from relationships.
+    // Rebuild on-demand maps from relationships, on first read (see defineLazyOnDemandMaps).
     // Pass entityIndex which contains ALL entity types including IfcPropertySet/IfcElementQuantity
     // (the entity table may not include these since they're filtered during fresh parse).
-    ({ onDemandPropertyMap, onDemandQuantityMap, onDemandMaterialMap } = trace.span('cache.onDemandMaps', () => rebuildOnDemandMaps(
-      cacheStore.entities,
-      cacheStore.relationships,
-      entityIndex
-    )));
+    onDemandMaps = lazyOnDemandMapsBuilder(cacheStore.entities, cacheStore.relationships, entityIndex, trace);
   } else {
     console.warn('[useIfcCache] No source buffer in cache - on-demand property extraction disabled');
   }
@@ -230,9 +201,7 @@ export async function decodeCachedMetadata(
     contentKey: cacheResult.sourceContentKey,
     fileSize: sourceBuffer?.byteLength ?? 0,
     entityIndex,
-    onDemandPropertyMap,
-    onDemandQuantityMap,
-    onDemandMaterialMap,
+    onDemandMaps,
   }));
 
   // Rebuild spatial hierarchy from cache data (cache doesn't serialize it)

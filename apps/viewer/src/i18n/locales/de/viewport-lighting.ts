@@ -5,6 +5,7 @@
 import type { Catalogue } from '../../registry';
 
 export const viewportLightingDe = {
+  "viewportLighting.container.loadErrorCard.sourceTooLarge": "Diese IFC-Datei überschreitet die Ladegrenze der Browser-Engine. Jede Quelldatei muss kleiner als {limit} sein. Exportieren Sie kleinere Dateien oder verwenden Sie die native CLI bzw. den Server.",
   "viewportLighting.container.emptyState.dropOverlay.title": "Datei zum Laden ablegen",
   "viewportLighting.container.emptyState.webgpuBanner.heading": "WebGPU Nicht verfügbar",
   "viewportLighting.container.emptyState.webgpuBanner.checkBrowserSupport": "Überprüfen Sie die Browserunterstützung",
@@ -27,6 +28,12 @@ export const viewportLightingDe = {
   "viewportLighting.container.emptyState.openButton.open": "Modelldatei öffnen",
   "viewportLighting.container.emptyState.openButton.required": "WebGPU Erforderlich",
   "viewportLighting.container.emptyState.dragDropHint": "Oder legen Sie Dateien an einer beliebigen Stelle im Ansichtsfenster ab:",
+  "viewportLighting.container.emptyState.formats.ifc": "IFC",
+  "viewportLighting.container.emptyState.formats.gltf": "glTF",
+  "viewportLighting.container.emptyState.formats.pointClouds": "Punktwolken",
+  "viewportLighting.container.emptyState.formats.terrain": "Gelände",
+  "viewportLighting.container.emptyState.formats.underlays": "Unterlagen",
+  "viewportLighting.container.emptyState.formats.splats": "Splats",
   "viewportLighting.container.emptyState.startBlank": "Beginnen Sie leer",
   "viewportLighting.container.emptyState.openFromCloud": "Aus der Cloud öffnen",
   "viewportLighting.container.emptyState.driveWithLlm": "Mit beliebigem LLM steuern",

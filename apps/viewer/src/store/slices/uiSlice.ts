@@ -8,12 +8,7 @@
 
 import type { StateCreator } from 'zustand';
 import type { StandaloneArtifactLibraries } from '@/lib/storage/artifact-backup.js';
-import {
-  RIBBON_COLLAPSED_STORAGE_KEY,
-  RIBBON_CONTEXTUAL_TABS_STORAGE_KEY,
-  UI_DEFAULTS,
-  type RibbonTabId,
-} from '../constants.js';
+import { RIBBON_COLLAPSED_STORAGE_KEY, RIBBON_CONTEXTUAL_TABS_STORAGE_KEY, UI_DEFAULTS, type RibbonTabId } from '../constants.js';
 import {
   createGeometryLoadSettings,
   geometryLoadSettingsInitialState,
@@ -28,6 +23,7 @@ import type { CesiumPlacementDraft } from './cesiumSlice.js';
 import { applyThemeClasses, hasLoadedModel, initialPointerInput, initialShowPerformanceStats, persistShowPerformanceStats } from './uiSlice.helpers.js';
 import type { NavigationPreset } from '@/lib/navigation/presets.js';
 import type { WheelZoomSensitivity } from '@/lib/navigation/wheel-input.js';
+import { DESKTOP_FORM_FACTOR, type FormFactor } from '@/lib/layout/form-factor.js';
 import type { SelectedDirectrixSegment } from '@/lib/analytic/segment-selection.js';
 import { getInitialHierarchyMode, getInitialNavigationPreset, getInitialWheelZoomSensitivity, persistHierarchyMode, persistNavigationPreset, persistWheelZoomSensitivity } from './uiPreferences.js';
 
@@ -128,7 +124,10 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   pendingStandaloneArtifactImport: StandaloneArtifactLibraries | null;
   contentStorageActionBusy: boolean;
   theme: ThemeMode;
+  /** Derived: `formFactor.mode !== 'desktop'`, written only by `setFormFactor`. */
   isMobile: boolean;
+  /** The classified window (#9718), from `useMobileLayoutMode`. */
+  formFactor: FormFactor;
   hoverTooltipsEnabled: boolean;
   showPerformanceStats: boolean;
   navigationPreset: NavigationPreset;
@@ -175,7 +174,7 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   toggleTheme: () => void;
   /** Shift+click secret: toggle colorful mode on/off */
   toggleColorful: () => void;
-  setIsMobile: (isMobile: boolean) => void;
+  setFormFactor: (formFactor: FormFactor) => void;
   toggleHoverTooltips: () => void;
   setShowPerformanceStats: (enabled: boolean) => void;
   setNavigationPreset: (preset: NavigationPreset) => void;
@@ -228,6 +227,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   contentStorageActionBusy: false,
   theme: UI_DEFAULTS.THEME,
   isMobile: false,
+  formFactor: DESKTOP_FORM_FACTOR,
   hoverTooltipsEnabled: UI_DEFAULTS.HOVER_TOOLTIPS_ENABLED,
   showPerformanceStats: initialShowPerformanceStats(),
   navigationPreset: getInitialNavigationPreset(),
@@ -351,7 +351,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
     set({ theme: newTheme });
   },
 
-  setIsMobile: (isMobile) => set({ isMobile }),
+  setFormFactor: (formFactor) => set({ formFactor, isMobile: formFactor.mode !== 'desktop' }),
   toggleHoverTooltips: () => set((state) => ({ hoverTooltipsEnabled: !state.hoverTooltipsEnabled })),
   setShowPerformanceStats: (showPerformanceStats) => {
     persistShowPerformanceStats(showPerformanceStats);

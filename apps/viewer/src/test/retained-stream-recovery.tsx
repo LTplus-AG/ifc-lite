@@ -74,10 +74,10 @@ export async function retainedStreamFixture(t: TestContext, models: 1 | 2, retry
         geometryVersion: 0, geometryReplacementVersion: 0, coordinateInfo: native.coordinateInfo,
         isStreaming: streaming, modelCount: models, geometryBoundsRef: bounds, clearColorRef: clearColor,
         pendingMeshColorUpdates: null, pendingColorUpdates: null, pendingMeshRemovals: null,
-        pendingMeshTranslations: null, pendingMeshRotations: null, pendingInstancedShards: null,
+        pendingMeshTranslations: null, pendingMeshRotations: null,
         modelIdToIndex: indices, modelIdToOffset: offsets, presentInstancedModelIndices: new Set(indices.values()),
         clearPendingMeshColorUpdates: noop, clearPendingColorUpdates: noop, clearPendingMeshRemovals: noop,
-        pruneGeometryMeshes: noop, clearPendingMeshTranslations: noop, clearPendingMeshRotations: noop, clearInstancedShards: noop });
+        pruneGeometryMeshes: noop, clearPendingMeshTranslations: noop, clearPendingMeshRotations: noop });
       return <canvas />;
     };
     render(<Probe />);

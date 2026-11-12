@@ -166,7 +166,12 @@ const UNIQUE_TEST_STEP = String.raw`      - run: |
             | sort -u)`;
 
 test('once-only printf/sort invocation still audits literal test inputs without expanding globs', () => {
-  for (const step of [UNIQUE_TEST_STEP, UNIQUE_TEST_STEP.replace('sort -u', 'LC_ALL=C sort -u')]) {
+  for (const step of [
+    UNIQUE_TEST_STEP,
+    UNIQUE_TEST_STEP.replace('sort -u', 'LC_ALL=C sort -u'),
+    // The scripts-tests runner, which runs `node --test` on its shard's part.
+    UNIQUE_TEST_STEP.replace('node --test ', 'node scripts/ci-scripts-test-shards.mjs --shard="$SHARD" --of="$SHARD_TOTAL" --test-reporter=tap '),
+  ]) {
     withTree({ steps: DEFAULT_STEPS + '\n' + step }, root => {
       mkdirSync(join(root, 'unfiltered'));
       writeFileSync(join(root, 'unfiltered/literal.json'), '{}');
@@ -193,6 +198,8 @@ test('only the strict printf/sort form can establish literal test reachability',
     UNIQUE_TEST_STEP.replace('sort -u', 'sort -r'),
     UNIQUE_TEST_STEP.replace("'%s\\n'", "'%s '"),
     UNIQUE_TEST_STEP.replace('scripts/lib/*.test.mjs', '$(other-command)'),
+    // The shard runner's own flags are not node --test flags.
+    UNIQUE_TEST_STEP.replace('node --test ', 'node --test --of=2 '),
   ]) {
     withTree({ steps: DEFAULT_STEPS + '\n' + UNIQUE_TEST_STEP }, root => {
       mkdirSync(join(root, 'unfiltered'));

@@ -38,7 +38,7 @@ async function enterModelWorkspace(page: Page): Promise<void> {
     return [...store.getState().models.values()].some((entry) => entry.ifcDataStore != null);
   }, STORE, { timeout: 180000 });
   await page.getByRole('tab', { name: 'Author', exact: true }).click();
-  const model = page.getByRole('tabpanel', { name: 'Author' }).getByRole('button', { name: 'Model', exact: true });
+  const model = page.locator('[data-command-id="tool:edit-mode"]');
   await model.click();
   await expect(model).toHaveAttribute('aria-pressed', 'true');
   await expect.poll(() => page.evaluate((key) => {
@@ -216,7 +216,7 @@ for (const width of [1280, 1600, 1920]) {
             'section+cap': () => {},
             'section+box': () => {},
             'floorplan+drawing': (s) => { s.setSectionPlaneAxis('down'); s.setSectionPlanePosition(55); s.openPanelInHome('drawing'); },
-            'parked+solo': (s) => { s.setActiveTool('select'); s.setLevelDisplayMode('solo'); },
+            'parked+solo': (s) => { s.setActiveTool('select'); },
             banners: (s) => {
               s.setLevelDisplayMode('stacked');
               api.setState({ mergeLayersPendingReload: true, geometryModePendingReload: true, landXmlUnitsRefusal: { fileName: 'road.xml', retry: () => {} } });
@@ -237,6 +237,16 @@ for (const width of [1280, 1600, 1920]) {
           await page.locator('[data-tool-bar="section"] [data-testid="section-add-plane"]').click();
           await page.getByRole('menuitem', { name: 'Box' }).click();
           await expect(page.locator('[data-testid="section-box-size"]')).toBeVisible({ timeout: 10000 });
+        }
+        if (state.name === 'parked+solo') {
+          // #9296: a bare Solo flag is reset when no storey is selected. The
+          // old count passed by counting the now-removed workspace HUD chips.
+          // Use the real isolation action and prove both intended chips exist.
+          const showAll = page.locator('[data-workspace-bar] button[aria-label="Show all storeys"]');
+          if (await showAll.count()) await showAll.click();
+          await page.locator('[data-workspace-bar] button[aria-label="Show only this storey"]').click();
+          await expect(page.locator('[data-visibility-reason="storey"]')).toBeVisible();
+          await expect(page.getByRole('button', { name: 'Resume the section cut', exact: true })).toBeVisible();
         }
         if (!state.mayBeEmpty) {
           await expect(page.locator('[data-hud-region] [data-hud-item]').first()).toBeVisible({ timeout: 60000 });

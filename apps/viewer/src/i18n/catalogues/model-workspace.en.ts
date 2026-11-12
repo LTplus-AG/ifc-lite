@@ -10,6 +10,7 @@ import type { TranslationValue } from '../types';
  * and unit symbols stay untranslated.
  */
 export const modelWorkspaceEn = {
+  'modelWorkspace.leave': 'Leave',
   'modelWorkspace.rail.aria': 'Model tools',
   'modelWorkspace.rail.hosted': 'Openings, doors and windows',
   'modelWorkspace.rail.circulation': 'Stairs and railings',
@@ -56,5 +57,5 @@ export const modelWorkspaceEn = {
   'modelWorkspace.layout.plan': 'Plan',
   'modelWorkspace.layout.split': 'Split',
   'modelWorkspace.layout.3d': '3D',
-  'modelWorkspace.hint.onboarding': 'W wall · Shift+S slab · click an element to edit it · E leaves',
+  'modelWorkspace.hint.onboarding': 'W wall · Shift+S slab · click an element to edit it · M leaves',
 } as const satisfies Record<string, TranslationValue>;

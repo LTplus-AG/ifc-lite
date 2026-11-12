@@ -191,6 +191,8 @@ declare namespace BimGroup {
 //   packages/create/src/in-store/column.ts
 //   packages/create/src/in-store/beam.ts
 //   packages/create/src/in-store/align-boxes.ts
+//   packages/create/src/in-store/element-mirror.ts
+//   packages/create/src/in-store/classification.ts
 //   packages/create/src/in-store/member.ts
 //   packages/create/src/in-store/profile.ts
 //   packages/create/src/in-store/storey/storey-model.ts
@@ -228,6 +230,23 @@ declare namespace BimCreate {
      * where the path wall always runs through.
      */
     priority?: 'a' | 'b';
+  }
+
+  export interface MirrorElementsParams {
+    /** Two distinct storey-local IFC XY points in metres. */
+    axis: readonly [readonly [number, number], readonly [number, number]];
+    copy?: boolean;
+  }
+
+  export interface ClassificationInStoreParams {
+    /** Classification system's IfcClassification.Name. */
+    System: string;
+    Identification: string;
+    Name?: string;
+    Source?: string;
+    Edition?: string;
+    Location?: string;
+    objects?: readonly number[];
   }
 
   export interface ColumnInStoreParams {
@@ -1291,6 +1310,12 @@ declare const bim: {
     addPlate(modelId: string, storeyExpressId: number, params: { Position: [number, number, number]; Width: number; Depth: number; Thickness: number; Profile?: "rectangle"; PredefinedType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string } | { Profile: "polygon"; OuterCurve: Array<[number, number]>; Position?: [number, number, number]; Thickness: number; PredefinedType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
     /** Add an IfcMember (generic structural — brace, post, strut) from Start to End with a rectangular or canonical parameterised cross-section. */
     addMember(modelId: string, storeyExpressId: number, params: BimCreate.MemberInStoreParams | BimCreate.ProfiledMemberInStoreParams): { modelId: string; expressId: number };
+    /** Mirror upright products about a storey-local XY axis, in place or as copies. Hosted cuts remain hosted; door handedness flips. Grids are refused atomically. */
+    mirrorElements(modelId: string, ids: readonly number[], params: BimCreate.MirrorElementsParams): { modelId: string; expressId: number }[];
+    /** Create or reuse an IfcClassification of the same name and edition, plus its reference; optionally associate objects. */
+    addClassification(modelId: string, params: BimCreate.ClassificationInStoreParams): { modelId: string; expressId: number };
+    /** Associate objects with an existing IfcClassification or IfcClassificationReference, preserving other classifications. */
+    assignClassification(modelId: string, classificationId: number, objects: readonly number[]): { modelId: string; expressId: number };
     /** Align real native mesh edges or centres in one storey workplane. Fresh geometry and an atomic transaction preserve hosted cuts, joined neighbours and one Undo. */
     alignElements(modelId: string, reference: number, targets: readonly number[], mode: BimCreate.AlignMode): Promise<{ modelId: string; expressId: number }[]>;
     /** Join two straight walls in the same placement frame through IfcRelConnectsPathElements. Uses the Model workspace core, preserving readable hosted openings and refusing a cut stranded by a joined end face. */

@@ -11,6 +11,7 @@ import { useViewerStore } from '@/store';
 import { getGlobalRenderer, setGlobalRendererRef } from '@/hooks/useBCF.js';
 import { resetMapWebglSupportForTests } from '@/lib/geo/map-webgl-support.js';
 import { LocationMap } from './LocationMap.js';
+import { discardInstancedShards, drainInstancedShards, enqueueInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
 
 const conversion = { id: 1, sourceCRS: 2, targetCRS: 3,
   eastings: 500_000, northings: 4_000_000, orthogonalHeight: 0 };
@@ -38,7 +39,7 @@ it('NEW-7 #9623: the real Renderer scene supplies every gate method and blocks o
   const context = mock.method(HTMLCanvasElement.prototype, 'getContext', () => null);
   setGlobalRendererRef({ current: renderer });
   resetMapWebglSupportForTests();
-  useViewerStore.setState({ loading: false, error: null, geometryStreamingActive: false, pendingInstancedShards: [] });
+  useViewerStore.setState({ loading: false, error: null, geometryStreamingActive: false });
   try {
     const ui = render(<LocationMap mapConversion={conversion} projectedCRS={crs} />);
     await waitFor(() => queued.mock.callCount() > 0, 'real queue queried');
@@ -52,7 +53,7 @@ it('NEW-7 #9623: the real Renderer scene supplies every gate method and blocks o
     cleanup(); queued.mock.restore(); fragments.mock.restore(); finalising.mock.restore(); context.mock.restore();
     scene.clear(); setGlobalRendererRef({ current: originalRenderer }); resetMapWebglSupportForTests();
     useViewerStore.setState({ loading: originalState.loading, error: originalState.error,
-      geometryStreamingActive: originalState.geometryStreamingActive, pendingInstancedShards: originalState.pendingInstancedShards });
+      geometryStreamingActive: originalState.geometryStreamingActive });
   }
 });
 
@@ -66,7 +67,7 @@ for (const ending of ['unmount', 'loading', 'error', 'model-change'] as const) {
     setGlobalRendererRef({ current: renderer });
     resetMapWebglSupportForTests();
     useViewerStore.setState({ loading: true, error: null, activeModelId: 'waiting-map',
-      geometryStreamingActive: false, pendingInstancedShards: [] });
+      geometryStreamingActive: false });
     try {
       const ui = render(<LocationMap mapConversion={conversion} projectedCRS={crs} />);
       await waitFor(() => !!ui.querySelector('a[href*="google.com/maps"]'), 'georeference resolves before clock control');
@@ -100,7 +101,7 @@ for (const ending of ['unmount', 'loading', 'error', 'model-change'] as const) {
       cleanup(); t.mock.timers.reset(); queued.mock.restore(); context.mock.restore(); renderer.getScene().clear();
       setGlobalRendererRef({ current: originalRenderer }); resetMapWebglSupportForTests();
       useViewerStore.setState({ loading: originalState.loading, error: originalState.error, activeModelId: originalState.activeModelId,
-        geometryStreamingActive: originalState.geometryStreamingActive, pendingInstancedShards: originalState.pendingInstancedShards });
+        geometryStreamingActive: originalState.geometryStreamingActive });
     }
   });
 }
@@ -120,7 +121,7 @@ for (const phase of ['queue', 'fragments', 'finalising'] as const) {
     let probes = 0;
     const context = mock.method(HTMLCanvasElement.prototype, 'getContext', () => { probes++; return null; });
     resetMapWebglSupportForTests();
-    useViewerStore.setState({ loading: true, geometryStreamingActive: false, pendingInstancedShards: [] });
+    useViewerStore.setState({ loading: true, geometryStreamingActive: false });
     try {
       const ui = render(<LocationMap mapConversion={conversion} projectedCRS={crs} />);
       await waitFor(() => !!ui.querySelector('a[href*="google.com/maps"]'), 'georeference resolves');
@@ -147,8 +148,7 @@ for (const phase of ['queue', 'fragments', 'finalising'] as const) {
       setGlobalRendererRef({ current: originalRenderer });
       resetMapWebglSupportForTests();
       useViewerStore.setState({ loading: originalState.loading,
-        geometryStreamingActive: originalState.geometryStreamingActive,
-        pendingInstancedShards: originalState.pendingInstancedShards });
+        geometryStreamingActive: originalState.geometryStreamingActive });
     }
   });
 }
@@ -160,7 +160,7 @@ it('NEW-7: a settled model without a WebGPU renderer still gets its map', async 
   let probes = 0;
   const context = mock.method(HTMLCanvasElement.prototype, 'getContext', () => { probes++; return null; });
   resetMapWebglSupportForTests();
-  useViewerStore.setState({ loading: false, geometryStreamingActive: false, pendingInstancedShards: [] });
+  useViewerStore.setState({ loading: false, geometryStreamingActive: false });
   try {
     render(<LocationMap mapConversion={conversion} projectedCRS={crs} />);
     await waitFor(() => probes > 0, 'metadata-only/no-renderer fallback');
@@ -170,7 +170,31 @@ it('NEW-7: a settled model without a WebGPU renderer still gets its map', async 
     setGlobalRendererRef({ current: originalRenderer });
     resetMapWebglSupportForTests();
     useViewerStore.setState({ loading: originalState.loading,
-      geometryStreamingActive: originalState.geometryStreamingActive,
-      pendingInstancedShards: originalState.pendingInstancedShards });
+      geometryStreamingActive: originalState.geometryStreamingActive });
+  }
+});
+
+it('#9628: queued instanced shards keep the map deferred until the renderer has drained them', async () => {
+  const originalRenderer = getGlobalRenderer();
+  const originalState = useViewerStore.getState();
+  setGlobalRendererRef({ current: null });
+  let probes = 0;
+  const context = mock.method(HTMLCanvasElement.prototype, 'getContext', () => { probes++; return null; });
+  resetMapWebglSupportForTests();
+  useViewerStore.setState({ loading: false, geometryStreamingActive: false });
+  enqueueInstancedShards('m', [new ArrayBuffer(8)], instancedShardGeneration());
+  try {
+    render(<LocationMap mapConversion={conversion} projectedCRS={crs} />);
+    await advance(600);
+    assert.equal(probes, 0, 'no WebGL setup while shards wait for the renderer');
+    drainInstancedShards((shards, settle) => { for (const shard of shards) settle(shard, 'uploaded'); });
+    await waitFor(() => probes > 0, 'the map starts once the queue is empty');
+  } finally {
+    cleanup();
+    discardInstancedShards();
+    context.mock.restore();
+    setGlobalRendererRef({ current: originalRenderer });
+    resetMapWebglSupportForTests();
+    useViewerStore.setState({ loading: originalState.loading, geometryStreamingActive: originalState.geometryStreamingActive });
   }
 });

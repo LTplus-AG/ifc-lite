@@ -26,7 +26,7 @@ test('#5841 shared dispatcher preserves 3D commands while a modal owns its keys'
   await expect(page.locator('canvas').first()).toBeVisible();
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
 
-  for (const [key, tool] of [['v', 'select'], ['c', 'walk'], ['m', 'measure'], ['x', 'section']] as const) {
+  for (const [key, tool] of [['v', 'select'], ['c', 'walk'], ['l', 'measure'], ['x', 'section']] as const) {
     await page.keyboard.press(key);
     await expect.poll(() => page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().activeTool)).toBe(tool);
   }
@@ -98,7 +98,7 @@ test('#5841 shared dispatcher preserves 3D commands while a modal owns its keys'
   expect(await page.evaluate(() => (globalThis as typeof globalThis & { __keyboardFitCalls: number }).__keyboardFitCalls),
     'F frames an empty selection and Z fits the loaded IFC').toBe(2);
 
-  await page.keyboard.press('e');
+  await page.keyboard.press('m');
   await expect.poll(() => page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().editEnabled)).toBe(true);
   const edit = await page.evaluate(() => {
     const state = globalThis.__ifc_lite_viewer_store__.getState();

@@ -70,8 +70,8 @@ export function Leader({ worldPoint, offset, active = false, className }: Leader
   return createPortal(
     <>
       {/* Invisible anchor purely to keep the world point registered; the visible line is `lineRef`. */}
-      <g ref={anchorRef} style={{ display: 'none' }} data-scene-primitive="leader-anchor" />
-      <line
+      <g aria-hidden="true" ref={anchorRef} style={{ display: 'none' }} data-scene-primitive="leader-anchor" />
+      <line aria-hidden="true"
         ref={lineRef}
         style={{ display: 'none' }}
         data-scene-primitive="leader"

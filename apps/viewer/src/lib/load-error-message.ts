@@ -14,6 +14,7 @@
  */
 
 import { GeometryMemoryBudgetError } from '@ifc-lite/geometry';
+import { WASM_SOURCE_BYTE_LIMIT, WasmSourceSizeError } from '@ifc-lite/parser';
 import { formatLocaleNumber } from '../i18n/intlFormat.js';
 import { getLocale, resolve as translate } from '../i18n/registry.js';
 
@@ -36,6 +37,9 @@ import {
  *   one, because that is precisely the case the gate exists to exclude.
  */
 export function formatLoadError(err: unknown, fileName?: string, context?: unknown): string {
+  if (err instanceof WasmSourceSizeError) {
+    return translate('viewportLighting.container.loadErrorCard.sourceTooLarge', { limit: `${WASM_SOURCE_BYTE_LIMIT / (1024 ** 3)} GiB` });
+  }
   if (err instanceof GeometryMemoryBudgetError) {
     // Required rounds up and available down, so a load just over the line never reads as "6 GiB, more than 6 GiB".
     const gib = (mib: number, round: (x: number) => number) => `${formatLocaleNumber(getLocale(), round(mib / 102.4) / 10, { maximumFractionDigits: 1 })} GiB`;

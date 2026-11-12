@@ -24,9 +24,8 @@
  * straight through here.
  *
  * Schema targeted: IFC4 (IFC4_ADD2_TC1.exp) — `IfcStructuralAnalysisModel`
- * is unchanged from IFC4 to IFC4X3, so this builder is schema-neutral within
- * ifc-lite's supported IFC4+ range. Not offered for IFC2X3, which has no
- * structural-analysis schema module at all.
+ * is unchanged from IFC4 to IFC4X3. IFC2X3 has the same attributes minus the
+ * trailing `SharedPlacement`, which is left out there.
  *
  * Pure: no I/O, no parser access — operates entirely through the editor.
  */
@@ -62,9 +61,6 @@ export function addStructuralAnalysisModelToStore(
   anchor: Pick<SpatialAnchor, 'ownerHistoryId' | 'guidRandom' | 'schema'>,
   params: StructuralAnalysisModelInStoreParams,
 ): StructuralAnalysisModelBuildResult {
-  if (anchor.schema === 'IFC2X3') {
-    throw new Error('addStructuralAnalysisModelToStore: IFC2X3 has no IfcStructuralAnalysisModel — target IFC4 or later');
-  }
   const predefinedType = params.PredefinedType ?? 'NOTDEFINED';
   if (predefinedType === 'USERDEFINED' && !params.ObjectType) {
     throw new Error('addStructuralAnalysisModelToStore: ObjectType is required when PredefinedType is USERDEFINED');
@@ -83,7 +79,7 @@ export function addStructuralAnalysisModelToStore(
     null, // OrientationOf2DPlane
     loadGroupIds.length > 0 ? loadGroupIds.map((id) => `#${id}`) : null, // LoadedBy
     resultGroupIds.length > 0 ? resultGroupIds.map((id) => `#${id}`) : null, // HasResults
-    null, // SharedPlacement
+    ...(anchor.schema === 'IFC2X3' ? [] : [null]), // SharedPlacement (IFC4+)
   ]).expressId;
 
   return { analysisModelId };

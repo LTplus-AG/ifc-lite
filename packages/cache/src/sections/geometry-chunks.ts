@@ -150,12 +150,13 @@ function chunkAabb(meshes: MeshData[]): { min: [number, number, number]; max: [n
 export async function buildGeometrySectionV13(
   meshes: MeshData[],
   coordinateInfo: CoordinateInfo,
-  options: { compress?: boolean; compressInWorker?: boolean } = {}
+  options: { compress?: boolean; compressInWorker?: boolean; onOrder?: (meshes: readonly MeshData[]) => void } = {}
 ): Promise<ArrayBuffer> {
   const compress = options.compress ?? true;
   const { validMeshes, actualTotalVertices, actualTotalTriangles } = validateMeshes(meshes);
   const pool = collectSourcePool(validMeshes);
   const groups = groupMeshesIntoChunks(validMeshes, undefined, pool);
+  options.onOrder?.(groups.flat());
 
   // Serialize (and optionally compress) every chunk record. Concurrency is
   // BOUNDED: a large model produces hundreds of chunks, and an unbounded

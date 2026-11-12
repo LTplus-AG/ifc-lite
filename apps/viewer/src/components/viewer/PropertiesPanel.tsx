@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { effectiveTypeProperties } from './properties/effectiveTypeProperties';
-import { useMemo, useState, useCallback, useEffect } from 'react';
+import { lazy, Suspense, useMemo, useState, useCallback, useEffect } from 'react';
 import { useTranslation } from '@/i18n';
 import { Building2, Layers, FileText, Calculator, Tag, MousePointer2, PenLine, ChevronDown } from 'lucide-react';
 import { EditToolbar } from './PropertyEditor';
@@ -46,7 +46,7 @@ import { ClassificationCard } from './properties/ClassificationCard';
 import { MaterialCard } from './properties/MaterialCard';
 import { MaterialTotalsPanel } from './properties/MaterialTotalsPanel';
 import { ScheduleCard } from './properties/ScheduleCard';
-import { StructuralCard } from './properties/StructuralCard';
+import { structuralCardSubject } from './properties/selectedStructuralMember';
 import { TaskEditCard } from './properties/TaskEditCard';
 import { DocumentCard } from './properties/DocumentCard';
 import { effectiveDocuments } from './properties/effectiveDocuments';
@@ -80,6 +80,10 @@ import { AttributeEditorField } from './properties/AttributeEditorField';
 import { CopyValueButton } from './properties/CopyValueButton';
 import { SelectionSummaryPanel } from './properties/SelectionSummaryPanel';
 import { AssistantAction } from './assistant/AssistantAction';
+import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
+
+// Loaded on the first structural selection: it is not entry-chunk weight (#9668).
+const StructuralCard = lazy(() => import('./properties/StructuralCard').then((m) => ({ default: m.StructuralCard })));
 
 export function PropertiesPanel() {
   const { t, locale } = useTranslation();
@@ -762,18 +766,13 @@ export function PropertiesPanel() {
     const out = effectiveStructuralData(dataStore as IfcDataStore, mutationView);
     return out.hasStructural ? out : null;
   }, [model, ifcDataStore, selectedEntity?.modelId, mutationViews, mutationVersion]);
-  /** True when the selection is itself a structural member the extraction
-   *  knows about — used, like `hasScheduleForSelection`, to keep the
-   *  separator above StructuralCard from rendering on its own. */
-  const hasStructuralForSelection = useMemo(() => {
-    if (!selectedEntity || !structuralData) return false;
-    const gid = selectedEntityGlobalId;
-    const expressId = selectedEntity.expressId;
-    return structuralData.members.some((m) => {
-      if (gid && m.globalId === gid) return true;
-      return expressId > 0 && m.expressId === expressId;
-    });
-  }, [selectedEntity, structuralData, selectedEntityGlobalId]);
+  /** True when StructuralCard renders for the selection: asks the card's own
+   *  question, like `hasScheduleForSelection`, so the separator above it never
+   *  renders on its own. */
+  const hasStructuralForSelection = useMemo(
+    () => !!selectedEntity && !!structuralCardSubject(structuralData, selectedEntity.expressId, selectedEntityGlobalId),
+    [selectedEntity, structuralData, selectedEntityGlobalId],
+  );
 
   // Extract georeferencing info for the model (used in coordinates section)
   const georef = useMemo(() => {
@@ -1491,19 +1490,24 @@ export function PropertiesPanel() {
                   </>
                 )}
 
-                {/* Structural analysis — analysis model, connections and
-                    applied loads for a selected IfcStructuralMember. Gated
-                    on `hasStructuralForSelection` for the same reason as the
+                {/* Structural analysis: a selected IfcStructuralMember's
+                    model, connections and loads, and the physical-to-analytical
+                    counterparts of either end of the link (#9668). Gated on
+                    `hasStructuralForSelection` for the same reason as the
                     schedule separator above. */}
                 {!findQuery && selectedEntity && structuralData && hasStructuralForSelection && (
-                  <>
-                    <StructuralCard
-                      structuralData={structuralData}
-                      sourceUnavailable={!activeDataStore?.source?.length}
-                      selectedExpressId={selectedEntity.expressId}
-                      selectedGlobalId={selectedEntityGlobalId}
-                    />
-                  </>
+                  <ChunkErrorBoundary key={`${selectedEntity.modelId}:${selectedEntity.expressId}`} label="Structural Analysis card">
+                    <Suspense fallback={null}>
+                      <StructuralCard
+                        structuralData={structuralData}
+                        sourceUnavailable={!activeDataStore?.source?.length}
+                        selectedExpressId={selectedEntity.expressId}
+                        selectedGlobalId={selectedEntityGlobalId}
+                        describeEntity={(expressId) => overlayAwareQuery.entityData({ modelId: selectedEntity.modelId, expressId })}
+                        onSelectEntity={handleSelectRelatedEntity}
+                      />
+                    </Suspense>
+                  </ChunkErrorBoundary>
                 )}
               </div>
             )}

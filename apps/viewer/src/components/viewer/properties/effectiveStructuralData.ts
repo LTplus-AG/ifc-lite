@@ -3,8 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import { extractStructuralOnDemand, type IfcDataStore, type StructuralExtraction } from '@ifc-lite/parser';
-import { effectiveStructuralView } from './effectiveStructuralView';
+import { effectiveStructuralView, extractStructuralOnDemand, type IfcDataStore, type StructuralExtraction } from '@ifc-lite/parser';
 
 const cache = new WeakMap<IfcDataStore, { view: MutablePropertyView | null | undefined; revision: number | undefined;
   source: IfcDataStore['source']; data: StructuralExtraction }>();
@@ -13,7 +12,7 @@ export function effectiveStructuralData(store: IfcDataStore, view: MutableProper
   const revision = view?.getMutationRevision();
   const current = cache.get(store);
   if (current && current.view === view && current.revision === revision && current.source === store.source) return current.data;
-  const data = extractStructuralOnDemand(store, effectiveStructuralView(view, store));
+  const data = extractStructuralOnDemand(store, view ? effectiveStructuralView(store, view) : undefined);
   cache.set(store, { view, revision, source: store.source, data });
   return data;
 }

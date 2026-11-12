@@ -6,7 +6,7 @@ use crate::{Mesh, Point3, Result, TessellationQuality};
 use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 
 use super::super::advanced_face::note_face_refused;
-use super::super::helpers::read_loop_points_by_id;
+use super::super::helpers::{read_loop_points_memo, PointMemo};
 use crate::router::GeometryProcessor;
 pub(crate) use super::surface_model_plan::SurfaceModelPlan;
 
@@ -29,10 +29,21 @@ pub(super) fn trace_capped_face(face_id: u32, error: &dyn std::fmt::Display) {
 /// The bounds of a simple (`IfcPolyLoop`) face, or `None` when a bound does
 /// not read: that refuses the face (D14, under D3), as in
 /// `FacetedBrepProcessor`, and the refusal is counted here.
+#[cfg(test)]
 pub(super) fn read_simple_face_bounds(
     face_type: &IfcType,
     bound_ids: Vec<u32>,
     decoder: &mut EntityDecoder,
+) -> Option<(Option<Vec<Point3<f64>>>, Vec<Vec<Point3<f64>>>)> {
+    read_simple_face_bounds_memo(face_type, bound_ids, decoder, &mut PointMemo::default())
+}
+
+/// [`read_simple_face_bounds`] reusing the caller's walk-scoped [`PointMemo`].
+pub(super) fn read_simple_face_bounds_memo(
+    face_type: &IfcType,
+    bound_ids: Vec<u32>,
+    decoder: &mut EntityDecoder,
+    memo: &mut PointMemo,
 ) -> Option<(Option<Vec<Point3<f64>>>, Vec<Vec<Point3<f64>>>)> {
     let bound_count = bound_ids.len();
     let mut degenerate = 0usize;
@@ -46,7 +57,7 @@ pub(super) fn read_simple_face_bounds(
             None => continue,
         };
 
-        let mut points = match read_loop_points_by_id(loop_id, decoder) {
+        let mut points = match read_loop_points_memo(loop_id, decoder, memo) {
             Some(p) => p,
             None => continue,
         };
@@ -234,6 +245,102 @@ impl GeometryProcessor for ShellBasedSurfaceModelProcessor {
 impl Default for ShellBasedSurfaceModelProcessor {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// The memo's own equivalence test names `read_simple_face_bounds_memo`, so
+/// it lives here and reverts with it. The work it removes (repeated point reads)
+/// is observed from `processors/tests.rs` through a test-only read probe.
+#[cfg(test)]
+mod point_memo_tests {
+    use super::*;
+    use crate::processors::take_face_refused;
+
+    /// A walk-scoped point memo is invisible: reading faces that share points
+    /// through one memo gives the same bounds, the same face refusals and the same
+    /// refused-record count as reading each face with fresh state, including when
+    /// a shared point is one the byte fast path cannot read (never memoized, so
+    /// `point3` refuses it again on every use, as before).
+    #[test]
+    fn shared_point_memo_matches_fresh_reads_and_refusals() {
+        for bad in ["IFCCARTESIANPOINT((1.,1.,1.E400))", "IFCDIRECTION((1.,1.,0.))", "IFCCARTESIANPOINT ( ( 2. , 2. ) )"] {
+            let source = format!("#1=IFCCARTESIANPOINT((0.,0.));#2=IFCCARTESIANPOINT((4.,0.));#3=IFCCARTESIANPOINT((4.,4.));#4={bad};#5=IFCPOLYLOOP((#1,#2,#3));#6=IFCFACEOUTERBOUND(#5,.T.);#7=IFCPOLYLOOP((#1,#3,#4));#8=IFCFACEOUTERBOUND(#7,.T.);#9=IFCPOLYLOOP((#2,#3,#1));#10=IFCFACEOUTERBOUND(#9,.F.);");
+            let faces: [Vec<u32>; 5] = [vec![6], vec![8], vec![10], vec![8], vec![6, 10]];
+            let mut shared = EntityDecoder::new(&source);
+            let mut memo = PointMemo::default();
+            for bounds in &faces {
+                let mut fresh = EntityDecoder::new(&source);
+                let _ = take_face_refused();
+                let want = read_simple_face_bounds(&IfcType::IfcFace, bounds.clone(), &mut fresh);
+                let want_refused = take_face_refused();
+                let got = read_simple_face_bounds_memo(&IfcType::IfcFace, bounds.clone(), &mut shared, &mut memo);
+                assert_eq!(got, want, "{bad} {bounds:?}");
+                assert_eq!(take_face_refused(), want_refused, "{bad} {bounds:?}");
+            }
+            let mut sequential = EntityDecoder::new(&source);
+            for bounds in &faces {
+                let _ = read_simple_face_bounds(&IfcType::IfcFace, bounds.clone(), &mut sequential);
+            }
+            let _ = take_face_refused();
+            assert_eq!(shared.refused_records(), sequential.refused_records(), "{bad}");
+            // Only a fast-path read is ever memoized: the spaced record is one.
+            assert_eq!(memo.contains_key(&4), bad.starts_with("IFCCARTESIANPOINT ("), "{bad}");
+        }
+    }
+
+    /// Independent review (#9643): points read for a loop that is then
+    /// REJECTED (a later point does not read) must not stay in the memo. 100
+    /// disjoint loops of 100 valid corners plus one shared invalid point used
+    /// to leave 10,000 entries behind for a collection that meshes nothing.
+    #[test]
+    fn rejected_loops_leave_nothing_in_the_point_memo() {
+        let mut source = String::from("#999999=IFCDIRECTION((1.,2.,3.));");
+        let mut loops = Vec::new();
+        for l in 0..100u32 {
+            let mut refs = Vec::new();
+            for p in 0..100u32 {
+                let id = 1 + l * 100 + p;
+                source.push_str(&format!("#{id}=IFCCARTESIANPOINT(({p}.,{l}.,0.));"));
+                refs.push(format!("#{id}"));
+            }
+            refs.push("#999999".into());
+            let loop_id = 500_000 + l;
+            source.push_str(&format!("#{loop_id}=IFCPOLYLOOP(({}));", refs.join(",")));
+            loops.push(loop_id);
+        }
+        let mut shared = EntityDecoder::new(&source);
+        let mut fresh = EntityDecoder::new(&source);
+        let mut memo = PointMemo::default();
+        for id in loops {
+            assert!(read_loop_points_memo(id, &mut shared, &mut memo).is_none());
+            assert!(crate::processors::helpers::read_loop_points_by_id(id, &mut fresh).is_none());
+        }
+        assert_eq!(shared.refused_records(), fresh.refused_records());
+        assert_eq!(memo.len(), 0, "a rejected loop's points stay resident");
+    }
+
+    /// The memo is bounded per lowering whatever the face set's size: past
+    /// 65,536 distinct points new points are read uncached (never refused), and
+    /// the coordinates are those of fresh reads.
+    #[test]
+    fn the_point_memo_is_bounded_and_overflow_reads_stay_exact() {
+        let count = 65_536 + 300;
+        let mut source = String::new();
+        let mut refs = Vec::with_capacity(count);
+        for id in 1..=count as u32 {
+            source.push_str(&format!("#{id}=IFCCARTESIANPOINT(({id}.5,-{id}.25,0.));"));
+            refs.push(format!("#{id}"));
+        }
+        source.push_str(&format!("#900000=IFCPOLYLOOP(({}));", refs.join(",")));
+        let mut shared = EntityDecoder::new(&source);
+        let mut fresh = EntityDecoder::new(&source);
+        let mut memo = PointMemo::default();
+        for _ in 0..2 {
+            let got = read_loop_points_memo(900_000, &mut shared, &mut memo).unwrap();
+            let want = crate::processors::helpers::read_loop_points_by_id(900_000, &mut fresh).unwrap();
+            assert_eq!(got, want);
+            assert!(memo.len() <= 65_536, "memo grew to {}", memo.len());
+        }
     }
 }
 

@@ -13,8 +13,15 @@ description = "Shared IFC processing pipeline and types used by server and FFI"
 keywords = ["ifc", "bim", "geometry", "pipeline", "aec"]
 categories = ["parsing", "algorithms"]
 readme = "../../README.md"
+build = "build.rs"
 
 [features]
+default = ["native-result-cache"]
+# Opt-in on-disk warm-load cache of complete processing results
+# (`result_cache`). Compiled only for non-wasm targets; the runtime mode is
+# off unless a caller builds a `ResultCache` with a read mode. The build
+# script derives the engine identity from it (see build.rs).
+native-result-cache = ["dep:libc"]
 # Test-only native planner observation for the cross-crate parity gate.
 parity-test-support = []
 # Off-by-default retained product controller (#7955).
@@ -39,6 +46,10 @@ observability = ["ifc-lite-geometry/observability"]
 phase-markers = []
 
 [[example]]
+name = "perf_probe"
+required-features = ["native-result-cache"]
+
+[[example]]
 name = "csg_scaling_bench"
 required-features = ["csg-capture"]
 
@@ -58,6 +69,13 @@ rustc-hash.workspace = true
 tracing = { workspace = true, features = ["std", "attributes"] }
 sha2.workspace = true
 nalgebra.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+# O_NOFOLLOW / geteuid for the result cache's private-directory checks.
+libc = { version = "0.2", optional = true }
+
+[build-dependencies]
+sha2.workspace = true
 
 [dev-dependencies]
 # Test-only (publish = false). Path-only: cargo strips it when packaging.

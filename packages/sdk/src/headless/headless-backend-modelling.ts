@@ -44,6 +44,9 @@ export function createRecordedModellingBackend(resolve: ModellingStoreModelResol
     renameStorey: storey('renameStorey', (ref) => ref.modelId),
     editStorey: storey('editStorey', (modelId) => modelId),
     deleteStorey: storey('deleteStorey', (ref) => ref.modelId),
+    mirrorElements: (...args: Parameters<NonNullable<Methods['mirrorElements']>>) => record(args[0], methods => methods.mirrorElements!(...args)),
+    addClassification: (...args: Parameters<NonNullable<Methods['addClassification']>>) => record(args[0], methods => methods.addClassification!(...args), true),
+    assignClassification: (...args: Parameters<NonNullable<Methods['assignClassification']>>) => record(args[0], methods => methods.assignClassification!(...args), true),
     transformElements: (...args: Parameters<NonNullable<Methods['transformElements']>>) => record(args[0], methods => {
       if (!methods.transformElements) throw new Error('Missing transformElements capability');
       return methods.transformElements(...args);

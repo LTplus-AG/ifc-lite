@@ -29,6 +29,7 @@ import type { TranslationValue } from '../types';
  * translated here.
  */
 export const viewportLightingEn = {
+  "viewportLighting.container.loadErrorCard.sourceTooLarge": "This IFC file exceeds the size the in-browser engine can load. Each source must be smaller than {limit}. Export smaller files or use the native CLI/server.",
   // ── ViewportContainer.tsx — empty/welcome state ──────────────────────
   'viewportLighting.container.emptyState.dropOverlay.title': 'Drop File to Load',
   'viewportLighting.container.emptyState.webgpuBanner.heading': 'WebGPU Not Available',
@@ -53,6 +54,14 @@ export const viewportLightingEn = {
   'viewportLighting.container.emptyState.openButton.open': 'Open model file',
   'viewportLighting.container.emptyState.openButton.required': 'WebGPU Required',
   'viewportLighting.container.emptyState.dragDropHint': 'Or drop files anywhere in the viewport:',
+  // Family names for the format list under the hint; the extensions come
+  // from `DROP_FORMAT_GROUPS` in services/supported-model-files.ts.
+  'viewportLighting.container.emptyState.formats.ifc': 'IFC',
+  'viewportLighting.container.emptyState.formats.gltf': 'glTF',
+  'viewportLighting.container.emptyState.formats.pointClouds': 'Point clouds',
+  'viewportLighting.container.emptyState.formats.terrain': 'Terrain',
+  'viewportLighting.container.emptyState.formats.underlays': 'Underlays',
+  'viewportLighting.container.emptyState.formats.splats': 'Splats',
   'viewportLighting.container.emptyState.startBlank': 'Start blank',
   'viewportLighting.container.emptyState.openFromCloud': 'Open from cloud',
   'viewportLighting.container.emptyState.driveWithLlm': 'Drive with any LLM',

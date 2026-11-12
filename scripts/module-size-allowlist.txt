@@ -95,10 +95,10 @@
    435 apps/viewer/src/components/viewer/TitleBlockEditor.tsx
    501 apps/viewer/src/components/viewer/tools/measure-modes/radius.ts
    813 apps/viewer/src/components/viewer/tools/MeasurementVisuals.tsx
-   742 apps/viewer/src/components/viewer/useGeometryStreaming.ts
+   701 apps/viewer/src/components/viewer/useGeometryStreaming.ts
    880 apps/viewer/src/components/viewer/useMouseControls.ts
    461 apps/viewer/src/components/viewer/ViewerLayout.tsx
-  1507 apps/viewer/src/components/viewer/Viewport.tsx
+  1491 apps/viewer/src/components/viewer/Viewport.tsx
    846 apps/viewer/src/components/viewer/ViewportContainer.tsx
    500 apps/viewer/src/components/viewer/ZonesPanel.tsx
    847 apps/viewer/src/hooks/ids/idsExportService.ts
@@ -126,7 +126,6 @@
    991 apps/viewer/src/lib/llm/script-edit-ops.ts
   1141 apps/viewer/src/lib/llm/script-preflight.ts
    747 apps/viewer/src/lib/llm/system-prompt.ts
-   450 apps/viewer/src/lib/search/tier1-index.ts
    412 apps/viewer/src/lib/sources/persistence.ts
    426 apps/viewer/src/lib/tours/controller.ts
    812 apps/viewer/src/sdk/adapters/export-adapter.ts
@@ -137,7 +136,6 @@
    452 apps/viewer/src/store/slices/chatSlice.ts
    992 apps/viewer/src/store/slices/clashSlice.ts
   1201 apps/viewer/src/store/slices/collabSlice.ts
-   482 apps/viewer/src/store/slices/dataSlice.ts
    882 apps/viewer/src/store/slices/drawing2DSlice.ts
    474 apps/viewer/src/store/slices/idsSlice.ts
    793 apps/viewer/src/store/slices/measurementSlice.ts
@@ -256,7 +254,7 @@
    758 packages/renderer/src/pointcloud/point-cloud-spatial-index.ts
   3677 packages/renderer/src/renderer.ts
    462 packages/renderer/src/scene-raycaster.ts
-  4104 packages/renderer/src/scene.ts
+  4065 packages/renderer/src/scene.ts
    589 packages/renderer/src/section-2d-overlay.ts
    564 packages/renderer/src/shaders/main.wgsl.ts
    417 packages/renderer/src/shadow-pass.ts
@@ -273,7 +271,6 @@
    788 packages/server-client/src/data-model-decoder.ts
    444 packages/server-client/src/parquet-tables.ts
    595 packages/server-client/src/types.ts
-   411 packages/source-dalux/src/http-client.ts
    406 packages/source-dalux/src/provider.ts
    415 packages/viewer/src/server.ts
   1486 packages/viewer/src/viewer-html.ts

@@ -34,7 +34,7 @@ const VISIBILITY_IDS = [
   'vis:hide', 'vis:show', 'vis:reset-filters', 'vis:set-iso', 'vis:add-iso', 'vis:remove-iso',
   'vis:toggle-iso', 'vis:save-view', 'vis:toggle-presentation', 'vis:clear-iso',
   'vis:spaces', 'vis:spatialZones', 'vis:openings', 'vis:site',
-  'vis:ifcAnnotations', 'vis:ifcGrid', 'vis:structuralGlyphs', 'vis:reset-colors',
+  'vis:ifcAnnotations', 'vis:ifcGrid', 'vis:structural-view', 'vis:structuralGlyphs', 'vis:reset-colors',
 ] as const;
 
 const FILE_COMMANDS: FileCommands = {
@@ -315,4 +315,45 @@ describe('shared palette and ribbon commands (#5870)', () => {
       useViewerStore.setState(previous, true);
     }
   });
+});
+
+it('#9923 disables the structural mode command until analytical data exists, unless a mode is latched', async () => {
+  const { createSyntheticDataStore } = await import('@ifc-lite/parser');
+  const { MutablePropertyView, StoreEditor } = await import('@ifc-lite/mutations');
+  const { fixtureModel } = await import('@/test/store-fixture');
+  const registry = await loadRegistry();
+  assert.ok(registry);
+  const previous = useViewerStore.getState();
+  const store = createSyntheticDataStore({schemaVersion:'IFC4',fileSize:0,
+    entities:[{expressId:7,type:'IfcBeam',hasGeometry:true}]});
+  const view = new MutablePropertyView(null,'default');
+  try {
+    useViewerStore.setState({models:new Map([['default',{...fixtureModel('default'),ifcDataStore:store}]]),
+      ifcDataStore:store,mutationViews:new Map([['default',view]]),loading:false});
+    const row = () => registry.paletteSurfaceCommands({canEditInSession:true},()=>{}).find((r)=>r.id==='vis:structural-view');
+    assert.equal(row()?.availability?.status,'disabled','a physical-only model has nothing analytical to reveal');
+    for (const mode of ['analytical','physical'] as const) {
+      useViewerStore.setState({structuralViewMode:mode});
+      assert.equal(row()?.checkAvailability?.().status,'available',`a latched ${mode} mode stays reachable so the user can cycle back`);
+    }
+    useViewerStore.setState({structuralViewMode:'both'});
+    new StoreEditor(store,view).addEntity('IfcStructuralPointConnection',['0abcdefghijklmnopqrstu',null,'Joint',null,null,null,null,null,null]);
+    assert.equal(row()?.checkAvailability?.().status,'available','an authored analytical product enables the same command');
+  } finally { useViewerStore.setState(previous); }
+});
+
+it('#9923 palette glyph state agrees with the drawn layer across structural modes', async () => {
+  const { paletteToggleState } = await import('./palette-availability');
+  const { structuralGlyphsVisible } = await import('@/lib/visibility/structural-view');
+  const current = useViewerStore.getState();
+  for (const preference of [true,false]) {
+    for (const mode of ['both','physical','analytical'] as const) {
+      const state = {...current,structuralViewMode:mode,
+        typeVisibility:{...current.typeVisibility,structuralGlyphs:preference}};
+      const expected = preference && mode !== 'physical';
+      assert.equal(paletteToggleState('vis:structuralGlyphs',state),
+        expected ? 'commandPalette.state.on' : 'commandPalette.state.off',`${mode}, preference=${preference}`);
+      assert.equal(structuralGlyphsVisible(state.typeVisibility,mode),expected);
+    }
+  }
 });

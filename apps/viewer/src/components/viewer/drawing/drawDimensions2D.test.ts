@@ -61,7 +61,7 @@ describe('drawDimensions2D', () => {
   it('draws a dimension from another cut dimmed and dashed, and one from this cut solid', () => {
     const { ctx, calls } = recordingContext();
     drawDimensions2D(ctx, {
-      dimensions: [dim('here', { plane: plane(1) }), dim('there', { plane: plane(4), a: { x: 0, y: 5 }, b: { x: 4, y: 5 } })],
+      dimensions: [dim('here', { plane: plane(1) }), dim('there', { plane: plane(4), a: { x: 0, y: 5 }, b: { x: 6, y: 5 } })],
       currentPlane: plane(1), selectedId: null, layout: layout(100),
     });
     const strokes = calls.filter((c) => c.op === 'stroke');
@@ -71,7 +71,8 @@ describe('drawDimensions2D', () => {
     assert.ok(solid.length > 0, 'the on-plane dimension is solid');
     assert.ok(dimmed.length > 0, 'the other-cut dimension is dimmed and dashed');
     const texts = calls.filter((c) => c.op === 'fillText').map((c) => c.args[0]);
-    assert.deepEqual(texts, ['4000', '4000']);
+    // #10076 review: distinct lengths, so a label taken from the wrong dimension fails.
+    assert.deepEqual(texts, ['4000', '6000']);
   });
 
   it('draws one distinct glyph per snap mode', () => {

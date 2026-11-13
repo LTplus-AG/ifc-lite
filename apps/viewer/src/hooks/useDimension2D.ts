@@ -37,7 +37,7 @@ import { formatDimensionValue } from '@/lib/drawing2d-markup/dimension-graphics'
 import { drawingViewMapping, type DrawingViewMapping } from '@/lib/drawing2d-markup/drawing-view-mapping';
 import { placementOffset, placementOrientation, previewDimension } from '@/lib/drawing2d-markup/dimension-placement';
 import { hitTestDimensions, type DimensionLayoutContext, type DimensionScene } from '@/components/viewer/drawing/drawDimensions2D';
-import { isDimensionOnPlane, type Dimension2DElementRef } from '@/store/slices/drawing2DDimensions';
+import { dimensionPlaneStamp, isDimensionOnPlane, type Dimension2DElementRef } from '@/store/slices/drawing2DDimensions';
 import type { DrawnSectionPlane, Point2D } from '@/store/slices/drawing2DSlice';
 
 /** Radius around the cursor in which key points are marked while the tool is active. */
@@ -113,6 +113,25 @@ export function useDimension2D(p: UseDimension2DParams) {
     setCursor(null); setSnap(null); setMarkers([]);
   }, [toolActive]);
   useEffect(() => { if (points.length === 0) refs.current = []; }, [points.length]);
+  // A new or regenerated drawing: the snap glyph and key-point markers belong to the old geometry.
+  useEffect(() => { setSnap(null); setMarkers([]); }, [drawing]);
+  // Points placed on one cut cannot be completed on another: a cut change drops them.
+  const planeKey = JSON.stringify(dimensionPlaneStamp(drawnPlane) ?? null);
+  const lastPlaneKey = useRef(planeKey);
+  useEffect(() => {
+    if (lastPlaneKey.current === planeKey) return;
+    lastPlaneKey.current = planeKey;
+    useViewerStore.getState().cancelDimension2D();
+  }, [planeKey]);
+  // Shift pressed or released without moving the pointer: the preview follows,
+  // so it shows the orientation the next click commits.
+  useEffect(() => {
+    if (!toolActive) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Shift') setLockAxis(e.type === 'keydown'); };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('keyup', onKey);
+    return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKey); };
+  }, [toolActive]);
   useEffect(() => {
     const release = () => { dragging.current = null; };
     window.addEventListener('mouseup', release);

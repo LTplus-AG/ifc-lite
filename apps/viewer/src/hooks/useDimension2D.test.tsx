@@ -15,9 +15,10 @@ import type { DrawnSectionPlane } from '@/store/slices/drawing2DSlice';
 import { useDimension2D, type DimensionTool } from './useDimension2D.js';
 
 const initial = useViewerStore.getState();
-afterEach(() => { cleanup(); useViewerStore.setState(initial, true); });
-
 const PLANE: DrawnSectionPlane = { axis: 'down', position: 1, flipped: false };
+/** The plane the harness passes as drawn; a test changes it, then re-renders through the store. */
+let drawnPlane: DrawnSectionPlane = PLANE;
+afterEach(() => { cleanup(); useViewerStore.setState(initial, true); drawnPlane = PLANE; });
 const EMPTY: Record<string, string> = {};
 
 /** A 4 m × 2 m wall footprint at the origin (entity 10). */
@@ -38,7 +39,7 @@ function Harness() {
   const current = useViewerStore((s) => s.drawing2D);
   // 100 px per metre, origin at the top-left: screen = drawing × 100 on a plan.
   tool = useDimension2D({ drawing: current, viewTransform: { x: 0, y: 0, scale: 100 }, axis: 'down', containerRef: ref,
-    drawnPlane: PLANE, displayScale: 100, showHiddenLines: false, unitDisplayOverrides: EMPTY });
+    drawnPlane, displayScale: 100, showHiddenLines: false, unitDisplayOverrides: EMPTY });
   return <button type="button" aria-label="Drawing canvas" ref={ref} onMouseDown={tool.handleMouseDown} onMouseMove={tool.handleMouseMove} onMouseLeave={tool.handleMouseLeave} />;
 }
 
@@ -163,4 +164,38 @@ it('leaving the canvas clears the hover note, snap glyph and preview but keeps t
   assert.equal(tool.snapMode, null, 'no snap glyph left behind');
   assert.equal(tool.scene?.preview ?? null, null, 'no rubber band left behind');
   assert.equal(useViewerStore.getState().dimension2DPoints.length, 1, 'the placed point stays');
+});
+
+it('pressing or releasing Shift without moving updates the preview to what the click commits (#10076 review)', () => {
+  useViewerStore.setState({ drawing2D: drawing(), annotation2DActiveTool: 'dimension' });
+  const canvas = render(<Harness />).firstElementChild!;
+  mouseDown(canvas, { clientX: 100, clientY: 600 }); // (1, 6)
+  mouseDown(canvas, { clientX: 500, clientY: 500 }); // (5, 5)
+  mouseMove(canvas, { clientX: 300, clientY: 900 });
+  assert.equal(tool.lockAxis, false);
+  assert.equal(tool.scene?.preview?.orientation, 'aligned');
+  act(() => { window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Shift', shiftKey: true })); });
+  assert.equal(tool.lockAxis, true, 'Shift down locks the preview without a pointer move');
+  assert.notEqual(tool.scene?.preview?.orientation, 'aligned');
+  act(() => { window.dispatchEvent(new window.KeyboardEvent('keyup', { key: 'Shift' })); });
+  assert.equal(tool.scene?.preview?.orientation, 'aligned', 'Shift up returns it to aligned');
+});
+
+it('a new drawing drops the old snap glyph and markers; a new cut drops the placed points (#10076 review)', () => {
+  useViewerStore.setState({ drawing2D: drawing(), annotation2DActiveTool: 'dimension' });
+  const canvas = render(<Harness />).firstElementChild!;
+  mouseMove(canvas, { clientX: 4, clientY: 3 });
+  assert.equal(tool.snapMode, 'endpoint');
+  assert.ok(tool.scene?.markers?.length);
+  act(() => useViewerStore.setState({ drawing2D: drawing() }));
+  assert.equal(tool.snapMode, null, 'no snap glyph from the previous drawing');
+  assert.equal(tool.scene?.markers?.length ?? 0, 0, 'no key-point markers from the previous drawing');
+
+  mouseDown(canvas, { clientX: 4, clientY: 3 });
+  assert.equal(useViewerStore.getState().dimension2DPoints.length, 1);
+  act(() => useViewerStore.setState({ drawing2D: drawing() }));
+  assert.equal(useViewerStore.getState().dimension2DPoints.length, 1, 'regenerating the same cut keeps the placed point');
+  drawnPlane = { ...PLANE, position: 2 };
+  act(() => useViewerStore.setState({ drawing2D: drawing() }));
+  assert.equal(useViewerStore.getState().dimension2DPoints.length, 0, 'a point placed on the previous cut is dropped');
 });

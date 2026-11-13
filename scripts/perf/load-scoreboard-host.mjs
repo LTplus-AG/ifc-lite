@@ -68,7 +68,10 @@ export function watchdogState(unit = process.env.LOAD_SCOREBOARD_WATCH_UNIT ?? '
 /** Whether a sample overlapped a watchdog pass: one ran at its start or end, or one started in between. Null when unknown. */
 export function overlapsWatchdog(before, after) {
   if (!before || !after) return null;
-  return before.running || after.running || (before.lastTriggerUs !== null && after.lastTriggerUs !== null && after.lastTriggerUs !== before.lastTriggerUs);
+  if (before.running || after.running) return true;
+  // Unreadable trigger times cannot show whether a pass started in between: unknown, never quiet (review #9952).
+  if (before.lastTriggerUs === null || after.lastTriggerUs === null) return null;
+  return after.lastTriggerUs !== before.lastTriggerUs;
 }
 
 /** Busy CPU ms of the whole host so far (/proc/stat "cpu" line: all but idle and iowait), or null. */
@@ -123,7 +126,8 @@ export function classifyHostLoad({ psi, limit = 5, builders = [], groupCpuMs = {
  * sample must be visible. Every value is null when unreadable; nothing is voided by it.
  */
 export function thermalState(root = '/sys') {
-  const num = (path, scale = 1) => { try { const v = Number(readFileSync(path, 'utf8').trim()); return Number.isFinite(v) ? v / scale : null; } catch { return null; } };
+  // An empty or blank sensor file is unreadable, not 0 (Number('') is 0) (review #9952).
+  const num = (path, scale = 1) => { try { const t = readFileSync(path, 'utf8').trim(); const v = t === '' ? NaN : Number(t); return Number.isFinite(v) ? v / scale : null; } catch { return null; } };
   let packageC = null;
   try {
     for (const hw of readdirSync(`${root}/class/hwmon`)) {
@@ -167,6 +171,8 @@ export async function hostQuiet({ limit = 5, maxWaitMs = 20000 } = {}) {
 /** After the sample: CPU each builder group used during it decides the flag (once per sample; rows share the object). */
 export function settleHostLoad(host) {
   if (!host || host.settled || !Array.isArray(host.builderProcs)) return host;
+  // First, before the slower reads below (systemctl, date): the sample's end, so later throttling is not charged to it.
+  const thermalAfter = thermalState();
   const after = groupTicks(Object.keys(host.groupTicksBefore ?? {}).map(Number));
   const groupCpuMs = {};
   for (const [g, before] of Object.entries(host.groupTicksBefore ?? {})) groupCpuMs[g] = Math.max(0, ((after[g] ?? before) - before) * TICK_MS);
@@ -185,7 +191,7 @@ export function settleHostLoad(host) {
     const after = cgroupUsageMs(c);
     builderCpuMs[c] = before === null || after === null ? null : Math.max(0, Math.round(after - before));
   }
-  const thermal = thermalDelta(host.thermalBefore, thermalState());
+  const thermal = thermalDelta(host.thermalBefore, thermalAfter);
   Object.assign(host, { groupCpuMs, builderCpuMs, foreignCpuMs, sampleMs, overlapsWatchdogPass, thermal, settled: true, ...classifyHostLoad({ psi: host.cpuPressureAvg10, limit: host.limit, builders: host.builders, groupCpuMs: builderCpuMs }) });
   delete host.groupTicksBefore; delete host.cgroupUsageBefore; delete host.hostBusyBefore; delete host.ownCgroupBefore; delete host.watchdogBefore; delete host.thermalBefore;
   return host;

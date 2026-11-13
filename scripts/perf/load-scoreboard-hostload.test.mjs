@@ -40,14 +40,15 @@ test('a builder group that used CPU, a builder under any pressure, or high press
   assert.equal(classifyHostLoad({ psi: Number.NaN, builders: [] }).underLoad, true, 'unreadable pressure is never quiet');
 });
 
-test('settleHostLoad charges a builder cgroup the CPU it used during the sample, from cpu.stat (survives exits)', async () => {
+test('settleHostLoad charges a builder cgroup the CPU it used during the sample, from cpu.stat (survives exits)', async (t) => {
   const { settleHostLoad } = await load('./load-scoreboard.mjs');
   // @source-text-assertion-ok reads this process's live cgroup (runtime state), not source text
   const rel = readFileSync('/proc/self/cgroup', 'utf8').split('\n').find((l) => l.startsWith('0::'))?.slice(3);
   let usage = null;
   // @source-text-assertion-ok reads the live cgroup cpu.stat counter (runtime state), not source text
   try { usage = Number(/usage_usec (\d+)/.exec(readFileSync(`/sys/fs/cgroup${rel}/cpu.stat`, 'utf8'))[1]) / 1000; } catch { /* no cgroup v2 here */ }
-  if (usage === null) return; // nothing to measure on this host
+  // A host without cgroup v2 reports this test as skipped, never as a pass that asserted nothing (review #9952).
+  if (usage === null) { t.skip('no readable cgroup v2 cpu.stat on this host'); return; }
   // Stand in for a foreign builder's cgroup with ours: its total before the burn, then 400 ms of CPU.
   const host = { cpuPressureAvg10: 0, limit: 5, builders: ['rustc'], builderProcs: [{}], groupTicksBefore: {}, cgroupUsageBefore: { [rel]: usage }, settled: false, startedAt: Date.now() };
   const end = Date.now() + 400; while (Date.now() < end) { /* burn ~400 ms CPU */ }
@@ -78,6 +79,8 @@ test('a sample overlaps a watchdog pass when one ran at either end or one starte
   assert.equal(overlapsWatchdog(idle(100), { running: true, lastTriggerUs: 700 }), true, 'running at the end');
   assert.equal(overlapsWatchdog(idle(100), idle(700)), true, 'a whole pass started and ended inside the sample');
   assert.equal(overlapsWatchdog(null, idle(100)), null, 'unreadable state is unknown, never "no overlap"');
+  assert.equal(overlapsWatchdog(idle(100), idle(null)), null, 'an unreadable trigger time is unknown, never "no overlap" (review #9952)');
+  assert.equal(overlapsWatchdog(idle(null), { running: true, lastTriggerUs: null }), true, 'a pass seen running still counts');
 });
 
 test('the report names cells with samples that overlapped a watchdog pass', async () => {
@@ -104,6 +107,9 @@ test('a sample records package temperature at both ends and the package throttli
   writeFileSync(join(hw, 'temp1_input'), '94000\n'); writeFileSync(join(tt, 'package_throttle_count'), '103\n'); writeFileSync(join(tt, 'package_throttle_total_time_ms'), '5250\n');
   assert.deepEqual(thermalDelta(before, thermalState(root)), { startC: 91, endC: 94, throttleEvents: 3, throttleMs: 250 });
   // No sensors at all: every value null, never 0 C or "no throttling".
+  // A blank sensor file is unreadable, not 0 C or zero throttle events (review #9952).
+  writeFileSync(join(hw, 'temp1_input'), '  \n'); writeFileSync(join(tt, 'package_throttle_count'), '');
+  assert.deepEqual(thermalState(root), { packageC: null, packageThrottleCount: null, packageThrottleMs: 5250 });
   const none = thermalState(join(root, 'missing'));
   assert.deepEqual(none, { packageC: null, packageThrottleCount: null, packageThrottleMs: null });
   assert.deepEqual(thermalDelta(none, before), { startC: null, endC: 91, throttleEvents: null, throttleMs: null });
@@ -120,4 +126,7 @@ test('the report names cells with throttled or unreadable-thermal samples and th
   ]);
   assert.deepEqual(rows, ['| Holter | browser-cold | base | 2 | 1 | 0 | 250 | 94 |', '| Holter | browser-cold | branch | 1 | 0 | 1 | — | — |']);
   assert.deepEqual(thermalRows([{ ok: true, fixture: 'x', lane: 'browser-cold', side: 'base', host: {} }]), [], 'rows from a harness without the read are not reported');
+  // Throttling already active at the start adds time without a new event; one unreadable counter is unknown (review #9952).
+  assert.deepEqual(thermalRows([row('BWK', 'base', { startC: 92, endC: 93, throttleEvents: 0, throttleMs: 250 })]), ['| BWK | browser-cold | base | 1 | 1 | 0 | 250 | 93 |']);
+  assert.deepEqual(thermalRows([row('BWK', 'base', { startC: 80, endC: 80, throttleEvents: 0, throttleMs: null })]), ['| BWK | browser-cold | base | 1 | 0 | 1 | — | 80 |']);
 });

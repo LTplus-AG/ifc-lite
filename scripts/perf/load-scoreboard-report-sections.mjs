@@ -68,8 +68,10 @@ export function thermalRows(samples) {
   }
   return [...groups].map(([key, rows]) => {
     const [fixture, lane, side] = key.split('|');
-    const throttled = rows.filter((r) => r.host.thermal?.throttleEvents > 0).length;
-    const unknown = rows.filter((r) => !Number.isFinite(r.host.thermal?.throttleEvents)).length;
+    // Throttling already active at the start adds time without a new event, so either counter moving counts;
+    // either counter unreadable makes the sample unknown (review #9952).
+    const throttled = rows.filter((r) => r.host.thermal?.throttleEvents > 0 || r.host.thermal?.throttleMs > 0).length;
+    const unknown = rows.filter((r) => !Number.isFinite(r.host.thermal?.throttleEvents) || !Number.isFinite(r.host.thermal?.throttleMs)).length;
     const temps = rows.flatMap((r) => [r.host.thermal?.startC, r.host.thermal?.endC]).filter(Number.isFinite);
     const ms = rows.map((r) => r.host.thermal?.throttleMs).filter(Number.isFinite);
     return { throttled, unknown, line: `| ${fixture} | ${lane} | ${side} | ${rows.length} | ${throttled} | ${unknown} | ${ms.length ? Math.max(...ms) : '—'} | ${temps.length ? Math.max(...temps) : '—'} |` };

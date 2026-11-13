@@ -109,6 +109,8 @@ export function createFastPathRuntime(deps: FastPathDeps): FastPathRuntime | nul
   let cancelIdle: (() => void) | null = null;
   let preparing = false;
   let released = false;
+  /** Bumped by every release: a preparation that a release interrupted must not mark the spares as prepared. */
+  let releases = 0;
   let hiddenTimer: unknown = null;
   let inactiveTimer: unknown = null;
   let stopped = false;
@@ -121,6 +123,7 @@ export function createFastPathRuntime(deps: FastPathDeps): FastPathRuntime | nul
   };
 
   const releaseAll = (why: string) => {
+    releases++;
     cancelIdle?.(); cancelIdle = null;
     releaseGeometry();
     deps.parser.release();
@@ -156,6 +159,7 @@ export function createFastPathRuntime(deps: FastPathDeps): FastPathRuntime | nul
     if (stopped || preparing || deps.isLoading() || deps.isHidden()) return;
     if ((!parts.geometry || geometry) && (!parts.parser || deps.parser.has())) return;
     preparing = true;
+    const generation = releases;
     try {
       const module = await deps.compileModule();
       if (!module || stopped) return;
@@ -172,6 +176,7 @@ export function createFastPathRuntime(deps: FastPathDeps): FastPathRuntime | nul
       }
       if (stopped || deps.isLoading()) return;
       if (parts.geometry && !geometry) await prepareGeometry(module, samples);
+      if (generation !== releases) return; // released meanwhile: stay released, so the next visible input re-arms
       released = false;
       resetInactivity();
       if (!parts.geometry || geometry?.ready) deps.log?.('[fast-path] spares ready');

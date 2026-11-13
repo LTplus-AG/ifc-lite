@@ -109,6 +109,7 @@ Tools are grouped by capability. Everything below is registered in the default t
 | IDS authoring | `ids_audit`, `ids_lint`, `ids_read`, `ids_apply_ops`, `ids_write`, `ids_schema_search`, `ids_schema_entity`, `ids_schema_pset`, `ids_diff`, `ids_preview` *(planned)*, `ids_infer` *(planned)*, `ids_coverage` *(planned)*, `ids_test` *(planned)* |
 | Mutation | `entity_set_property`, `entity_delete_property`, `entity_set_attribute`, `entity_create`, `entity_delete`, `mutation_batch`, `mutation_undo`, `mutation_diff`, `model_save` |
 | Hosted modelling | `place_opening`, `place_door`, `place_window` |
+
 | Physical edits | `edit_hosted_element`, `edit_element_geometry`, `copy_elements`, `duplicate_element`, `array_elements` |
 | Native Room | `query_rooms`, `room_command` |
 | Design modelling | `place_curtain_wall`, `place_grid`, `place_grid_column` |
@@ -170,7 +171,7 @@ final inputs but answer `UNSUPPORTED_OPERATION` until their engines ship.
 
 `join_walls` takes `a_express_id`, `b_express_id`, optional `model_id` and optional `options` (`Name`, `priority: 'a' | 'b'`, `tolerance` in metres and `priorities: { a?: number[]; b?: number[] }`). It uses `bim.store.joinWalls` and the canonical Model workspace core. Both walls must be straight and in the same placement frame. Unreadable hosted cuts, or an opening stranded by either joined end face, refuse atomically. One `mutation_undo` restores the complete earlier wall graph and any replaced relationship. The IFC export contains the join; headless geometry queries continue to read parsed geometry.
 
-`place_opening`, `place_door` and `place_window` run the same hosted creation core as the Model workspace and `bim.store.addOpening` / `addHostedDoor` / `addHostedWindow`. Supply `host_express_id` within the chosen `model_id` and PascalCase `params`. Offsets, sills and dimensions are metres in the wall's local frame; windows require `Sill`. Cuts outside the wall, overlapping source or overlay openings, and unreadable opening geometry are refused without a partial graph. One `mutation_undo` removes the complete placement. IFC2X3, IFC4 and IFC4X3 are supported. The exported STEP carries the void/fill graph; MCP geometry tools still read parsed geometry.
+`place_opening`, `place_door` and `place_window` run the same hosted creation core as the Model workspace and `bim.store.addOpening` / `addHostedDoor` / `addHostedWindow`. Supply `host_express_id` within the chosen `model_id` and PascalCase `params`. Wall parameters are `Offset`, `Width`, `Height` and optional `Sill`; windows require `Sill`. Offsets, sills and dimensions are metres in the wall's local frame. Wall cuts outside the wall, overlapping source or overlay openings, and unreadable opening geometry are refused without a partial graph. One `mutation_undo` removes the complete placement. IFC2X3, IFC4 and IFC4X3 are supported. The exported STEP carries the void/fill graph; MCP geometry tools still read parsed geometry.
 
 ```json
 {
@@ -180,6 +181,15 @@ final inputs but answer `UNSUPPORTED_OPERATION` until their engines ship.
     "host_express_id": 1222,
     "params": { "Offset": 8, "Width": 0.9, "Height": 2.1, "Name": "D1" }
   }
+}
+```
+
+For an `IfcSlab` host, `place_opening` accepts `Position: [x, y]` (opening centre in the slab’s local XY frame), `Width` along local X and `Depth` along local Y, all in metres. Optional `CutDepth` defaults to slab thickness plus 0.1 m; optional `Name`, `Description`, `ObjectType`, `Tag` and `GlobalId` are also supported. The canonical SDK slab writer does not check footprint fit or overlap. Doors and windows remain wall-hosted. For example:
+
+```json
+{
+  "host_express_id": 200,
+  "params": { "Position": [2, 3], "Width": 1.2, "Depth": 0.8, "Name": "Shaft" }
 }
 ```
 

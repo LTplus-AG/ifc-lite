@@ -120,27 +120,26 @@ export async function loadViewerRuntimeConfig(request: ViewerConfigRequest): Pro
   const signal = timeout.signal;
   const timer = setTimeout(() => timeout.abort(new DOMException('The viewer configuration timed out', 'TimeoutError')), request.timeoutMs ?? CONFIG_TIMEOUT_MS);
   try {
-    return await fetchConfig(target, page, request.fetch, signal);
+    return await fetchConfig(target, request.fetch, signal);
   } finally {
     clearTimeout(timer);
   }
 }
 
-async function fetchConfig(target: URL, page: URL, fetchImpl: typeof fetch, signal: AbortSignal): Promise<ViewerRuntimeConfig> {
+async function fetchConfig(target: URL, fetchImpl: typeof fetch, signal: AbortSignal): Promise<ViewerRuntimeConfig> {
   let response: Response;
   try {
     response = await fetchImpl(target.href, {
+      // A redirect to another origin is refused before it is requested, and
+      // surfaces as a rejected fetch: the same error as a network failure.
+      mode: 'same-origin',
       credentials: 'same-origin',
       cache: 'no-store',
       signal,
       headers: { Accept: 'application/json' },
     });
   } catch (error) {
-    throw new ViewerConfigError('unreachable', 'The viewer configuration could not be fetched', { cause: error });
-  }
-  // A redirect may have left the origin the check above pinned.
-  if (response.url && new URL(response.url, page).origin !== page.origin) {
-    throw new ViewerConfigError('cross-origin', `The viewer configuration was redirected away from ${page.origin}`);
+    throw new ViewerConfigError('unreachable', 'The viewer configuration could not be fetched (network failure, or a redirect to another origin)', { cause: error });
   }
   if (!response.ok) {
     throw new ViewerConfigError('status', `The viewer configuration request answered ${response.status}`);

@@ -218,12 +218,13 @@ export class PointCloudRenderer {
   }
 
   addAsset(asset: PointCloudAsset): PointCloudAssetHandle {
+    const origin = asset.origin && originMatrix(asset.origin); // f64 baseline (#10029), validated before upload
     const node = uploadAssetToGpu(this.device, this.pipeline, asset);
     const id = this.handleIds.allocate();
     this.nodes.set(id, node);
     this.nodeOwners.set(id, 'ifcx');
     this.visibility.add(id);
-    if (asset.origin) this.placements.align(node, originMatrix(asset.origin)); // f64 baseline (#10029)
+    if (origin) this.placements.align(node, origin);
     this.placements.translate(node, this.modelTranslations.get(asset.modelIndex ?? 0) ?? [0, 0, 0]);
     return { id };
   }

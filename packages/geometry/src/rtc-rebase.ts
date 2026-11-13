@@ -180,12 +180,14 @@ export function convergeGeometryOntoRtcAnchor<T extends RtcRebaseGeometry>(
       continue;
     }
     const delta = rtcRebaseDeltaFor(geometry.coordinateInfo, anchor);
-    // Inline clouds share their meshes' frame and move the same way (#10029).
-    for (const part of [...geometry.meshes, ...(geometry.pointClouds ?? [])]) {
-      if (seen.has(part)) continue;
+    const move = (part: { origin?: Origin }) => {
+      if (seen.has(part)) return;
       seen.add(part);
       part.origin = rebaseOriginByRtcDelta(part.origin, delta);
-    }
+    };
+    geometry.meshes.forEach(move);
+    // Inline clouds share their meshes' frame and move the same way (#10029).
+    geometry.pointClouds?.forEach(move);
     geometry.coordinateInfo = rebaseCoordinateInfoOntoRtcAnchor(geometry.coordinateInfo, anchor);
     moved.push(geometry);
   }

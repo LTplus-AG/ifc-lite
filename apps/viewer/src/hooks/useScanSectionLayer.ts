@@ -214,9 +214,11 @@ export function useScanSectionLayer(params: UseScanSectionLayerParams): UseScanS
     : '';
   // Includes the inline point-cloud count so a federated IFCx model whose
   // `geometryResult.pointClouds` populates AFTER registration (same
-  // id/visible/handleId) still retriggers the recompute below.
+  // id/visible/handleId) still retriggers the recompute below, and each
+  // inline origin, which the RTC re-base moves in place (#10029).
   const modelsKey = Array.from(models.entries())
-    .map(([id, m]) => `${id}:${m.visible ? 1 : 0}:${m.pointCloudHandleId ?? ''}:${m.geometryResult?.pointClouds?.length ?? 0}`)
+    .map(([id, m]) => `${id}:${m.visible ? 1 : 0}:${m.pointCloudHandleId ?? ''}:${m.geometryResult?.pointClouds?.length ?? 0}`
+      + `:${m.geometryResult?.pointClouds?.map((cloud) => cloud.origin?.join(',') ?? '').join(';') ?? ''}`)
     .join('|');
 
   // Cheap presence check (map lookups, no O(n) point scan) — independent of

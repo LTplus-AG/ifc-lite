@@ -78,7 +78,12 @@ export class PointCloudPlacements {
 /** An inline asset's f64 origin (#10029) as a placement baseline. It enters
  * where a streamed scan's decode origin does, so rendering (RTE), picking,
  * snapping and bounds read it exactly; a model translation composes on top. */
-export function originMatrix([x, y, z]: readonly [number, number, number]): Float64Array {
+export function originMatrix(origin: readonly [number, number, number]): Float64Array {
+  // Checked before the caller uploads anything, so a bad origin leaves no node behind.
+  if (origin.length !== 3 || !origin.every((v) => Number.isFinite(v) && Number.isFinite(Math.fround(v)))) {
+    throw new Error('Pointcloud origin needs three finite coordinates in the renderable range.');
+  }
+  const [x, y, z] = origin;
   return new Float64Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, z, 1]);
 }
 

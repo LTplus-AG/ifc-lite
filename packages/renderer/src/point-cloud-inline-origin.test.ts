@@ -87,3 +87,12 @@ it('composes a model translation on top of the origin, without losing it (#10029
   assert.equal(renderer.getAssetPlacement(handle)![12], WORLD_X[0], 'clearing the move keeps the origin');
   renderer.clear();
 });
+
+it('refuses a non-finite or out-of-range origin before uploading anything (#10029)', () => {
+  const renderer = new PointCloudRenderer(pointDevice(), 'rgba8unorm', 'depth32float', 1);
+  for (const bad of [NaN, Infinity, 1e39]) {
+    assert.throws(() => renderer.addAsset(cloud([bad, 0, 0])), /origin/);
+  }
+  assert.equal(renderer.getNodeCount(), 0, 'no half-installed node is left behind');
+  renderer.clear();
+});

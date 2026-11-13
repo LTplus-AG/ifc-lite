@@ -220,6 +220,22 @@ it('switching to the hovered dimension\'s cut without moving drops the stale Oth
   assert.equal(hovered(), null, 'the hover from the previous drawing is dropped');
 });
 
+it('deleting the hovered dimension from another cut drops its Other cut note without a pointer move (#10076 review)', () => {
+  useViewerStore.setState({ drawing2D: drawing(), annotation2DActiveTool: 'none', dimensions2D: [
+    { id: 'there', a: { x: 0, y: 5 }, b: { x: 4, y: 5 }, offset: 0, orientation: 'aligned', plane: { ...PLANE, position: 4 } },
+  ] });
+  const canvas = render(<Harness />).firstElementChild!;
+  const hovered = () => tool.hover?.id ?? null;
+  mouseMove(canvas, { clientX: 200, clientY: 500 });
+  assert.equal(hovered(), 'there');
+  act(() => {
+    useViewerStore.getState().setSelectedAnnotation2D({ type: 'dimension', id: 'there' });
+    useViewerStore.getState().deleteSelectedAnnotation2D();
+  });
+  assert.equal(useViewerStore.getState().dimensions2D.length, 0);
+  assert.equal(hovered(), null, 'no note for a dimension that no longer exists');
+});
+
 /** A 1:100 sheet whose viewport is 100 × 50 mm at (10, 10); the frame and title block lie outside it. */
 function sheet(): DrawingSheet {
   return {

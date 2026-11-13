@@ -251,6 +251,10 @@ export function useDimension2D(p: UseDimension2DParams) {
     setCursor(null); setSnap(null); setMarkers([]); setHover(null);
   }, []);
 
+  // The hover note names a dimension that still exists: deleting the hovered one (a
+  // `dimensions2D` change, not a drawing change) drops its note without a pointer move.
+  const liveHover = hover && dimensions.some((d) => d.id === hover.id) ? hover : null;
+
   const scene: DimensionScene | null = useMemo(() => {
     if (dimensions.length === 0 && !toolActive) return null;
     return {
@@ -272,7 +276,7 @@ export function useDimension2D(p: UseDimension2DParams) {
     handleMouseMove,
     handleMouseLeave,
     scene,
-    hover,
+    hover: liveHover,
     snapMode: toolActive ? snap?.mode ?? null : null,
     step: points.length,
     lockAxis,

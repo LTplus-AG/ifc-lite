@@ -58,7 +58,7 @@
 import { readFileSync, readdirSync, writeFileSync, existsSync, mkdirSync, statSync } from 'node:fs';
 import { brotliCompressSync, constants as zlibConstants } from 'node:zlib';
 import { execFileSync } from 'node:child_process';
-import { dirname, join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 
@@ -180,6 +180,7 @@ export function measureBundle({ wasm, dist, commit, measuredAt = new Date().toIS
   if (!existsSync(indexHtml)) throw new Error(`viewer build not found: no ${indexHtml} (build it: pnpm build:e2e)`);
 
   const wasmBytes = readFileSync(wasm);
+  const wasmName = basename(wasm);
   const { entry, files: jsEager } = eagerJsFiles(dist, readFileSync(indexHtml, 'utf8'));
   const eagerBytes = jsEager.map(({ file }) => readFileSync(file));
   const eagerRaw = eagerBytes.reduce((n, b) => n + b.length, 0);
@@ -197,13 +198,13 @@ export function measureBundle({ wasm, dist, commit, measuredAt = new Date().toIS
     commit,
     measuredAt,
     metrics: [
-      { id: 'engine-wasm-bytes', value: wasmBytes.length, detail: 'ifc-lite_bg.wasm' },
+      { id: 'engine-wasm-bytes', value: wasmBytes.length, detail: wasmName },
       { id: 'viewer-entry-js-bytes', value: entryBytes.length, detail: entryName },
       { id: 'viewer-eager-js-bytes', value: eagerRaw, detail: `${jsEager.length} files; ${eagerNames}` },
       { id: 'viewer-parser-worker-js-bytes', value: parserWorkerBytes, detail: parserWorker.name },
     ],
     informational: [
-      { id: 'engine-wasm-brotli', value: brotliSize(wasmBytes), unit: 'bytes', detail: 'ifc-lite_bg.wasm, quality 11' },
+      { id: 'engine-wasm-brotli', value: brotliSize(wasmBytes), unit: 'bytes', detail: `${wasmName}, quality 11` },
       { id: 'viewer-entry-js-brotli', value: entryBrotli, unit: 'bytes', detail: entryName },
       { id: 'viewer-eager-js-brotli', value: eagerBrotli, unit: 'bytes', detail: `${jsEager.length} files, each compressed on its own` },
     ],

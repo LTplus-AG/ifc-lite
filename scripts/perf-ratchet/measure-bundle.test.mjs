@@ -89,6 +89,7 @@ rt('measureBundle gates raw JS and wasm bytes, reports their brotli as informati
     assert.ok(info['viewer-entry-js-brotli'].value < entryJs.length, 'repetitive JS compresses');
     // The engine wasm is gated on raw bytes; its brotli is reported, never gated.
     assert.equal(v['engine-wasm-bytes'].value, 4096);
+    assert.equal(v['engine-wasm-bytes'].detail, 'engine.wasm');
     assert.equal(v['engine-wasm-brotli'], undefined);
     // The number is a real brotli stream's length, not an estimate.
     const stream = brotliCompressSync(wasmBytes, { params: { [constants.BROTLI_PARAM_QUALITY]: 11, [constants.BROTLI_PARAM_SIZE_HINT]: wasmBytes.length } });
@@ -274,112 +275,96 @@ rt('measureBundle throws on a preload that is not in dist and on an entry that i
   });
 });
 
-// #7007: the gate end to end, both CLIs spawned as child processes. Brotli of
-// the viewer JS moves while raw bytes stay put (a same-length timestamp swap
-// did exactly that in CI); only raw growth past 0.1% may fail the check.
+// #7007: the gate end to end, both CLIs spawned as child processes, on a
+// fixture of a dist, an engine wasm and a ceilings dir seeded from a first
+// measurement (every metric raw, 0.1%).
 const MEASURER = fileURLToPath(new URL('./measure-bundle.mjs', import.meta.url));
 const CHECK_CLI = fileURLToPath(new URL('./perf-ratchet.mjs', import.meta.url));
-rt('check ignores a brotli-only change of the viewer JS and fails on raw growth past 0.1%', () => {
+function withGateFixture(name, html, body) {
   assert.ok(existsSync(MEASURER) && existsSync(CHECK_CLI), 'the perf-ratchet CLIs are absent');
-  const root = mkdtempSync(join(tmpdir(), 'perf-ratchet-7007-'));
+  const root = mkdtempSync(join(tmpdir(), name));
   try {
     const dist = join(root, 'dist');
+    const wasm = join(root, 'w.wasm');
     mkdirSync(join(dist, 'assets'), { recursive: true });
     mkdirSync(join(root, 'ceilings'));
-    writeFileSync(join(dist, 'index.html'), '<script type="module" src="/assets/main.js"></script><link rel="modulepreload" href="/assets/dep.js">');
-    writeFileSync(join(root, 'w.wasm'), Buffer.alloc(2048, 7));
-    writeFileSync(join(dist, 'assets/dep.js'), jsOf(9, 5000));
+    writeFileSync(join(dist, 'index.html'), html);
     writeFileSync(join(dist, 'assets/parser.worker-Wk1.js'), 'self.onmessage = () => {};');
-    const stamp = (date) => writeFileSync(join(dist, 'assets/main.js'), `const BUILD_DATE = "${date}";\n${'export const x = 1;\n'.repeat(2000)}`);
-    const measureTo = (name) => {
-      const out = join(root, name);
-      const r = spawnSync(process.execPath, [MEASURER, '--wasm', join(root, 'w.wasm'), '--dist', dist, '--out', out, '--commit', 'abc1234'], { encoding: 'utf8', timeout: 20_000 });
+    const measureTo = (file) => {
+      const out = join(root, file);
+      const r = spawnSync(process.execPath, [MEASURER, '--wasm', wasm, '--dist', dist, '--out', out, '--commit', 'abc1234'], { encoding: 'utf8', timeout: 20_000 });
       assert.equal(r.status, 0, r.stderr);
       return { out, data: JSON.parse(r.stdout) };
     };
     const check = (measured) => spawnSync(process.execPath, [CHECK_CLI, 'check', '--measured', measured, '--ceilings-dir', join(root, 'ceilings')], { encoding: 'utf8', timeout: 20_000 });
+    const seed = (measured) => writeFileSync(join(root, 'ceilings/bundle.json'), JSON.stringify({
+      family: 'bundle',
+      entries: measured.metrics.map((m) => ({ id: m.id, metric: 'raw-bytes', ceiling: m.value, tolerance: { kind: 'relative', value: 0.001 }, provenance: { commit: 'abc1234', measuredAt: '2026-10-06T00:00:00.000Z' } })),
+    }));
+    body({ dist, wasm, measureTo, check, seed });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+// Brotli of the viewer JS moves while raw bytes stay put (a same-length
+// timestamp swap did exactly that in CI); only raw growth past 0.1% may fail.
+rt('check ignores a brotli-only change of the viewer JS and fails on raw growth past 0.1%', () => {
+  const html = '<script type="module" src="/assets/main.js"></script><link rel="modulepreload" href="/assets/dep.js">';
+  withGateFixture('perf-ratchet-7007-', html, ({ dist, wasm, measureTo, check, seed }) => {
+    writeFileSync(wasm, Buffer.alloc(2048, 7));
+    writeFileSync(join(dist, 'assets/dep.js'), jsOf(9, 5000));
+    const stamp = (date) => writeFileSync(join(dist, 'assets/main.js'), `const BUILD_DATE = "${date}";\n${'export const x = 1;\n'.repeat(2000)}`);
 
     stamp('2026-10-06T14:23:54.677Z');
-    const first = measureTo('a.json').data;
-    const prov = { commit: 'abc1234', measuredAt: '2026-10-06T00:00:00.000Z' };
-    writeFileSync(join(root, 'ceilings/bundle.json'), JSON.stringify({
-      family: 'bundle',
-      entries: first.metrics.map((m) => ({
-        id: m.id, metric: m.id.endsWith('-brotli') ? 'brotli-bytes' : 'raw-bytes', ceiling: m.value,
-        tolerance: { kind: 'relative', value: m.id.endsWith('-brotli') ? 0.005 : 0.001 }, provenance: prov,
-      })),
-    }));
-    let r = check(join(root, 'a.json'));
+    const first = measureTo('a.json');
+    seed(first.data);
+    let r = check(first.out);
     assert.equal(r.status, 0, r.stdout + r.stderr);
     assert.match(r.stdout, /Informational, not gated:/);
     assert.match(r.stdout, /`bundle\/viewer-entry-js-brotli`: [\d,]+ bytes \(main\.js\)/);
 
     // Same length, different bytes: brotli may move, raw does not, check passes.
     stamp('1999-01-01T00:00:00.000Z');
-    const second = measureTo('b.json').data;
-    assert.deepEqual(second.metrics.map((m) => m.value), first.metrics.map((m) => m.value));
-    r = check(join(root, 'b.json'));
+    const second = measureTo('b.json');
+    assert.deepEqual(second.data.metrics.map((m) => m.value), first.data.metrics.map((m) => m.value));
+    r = check(second.out);
     assert.equal(r.status, 0, r.stdout + r.stderr);
 
     // Raw growth just past 0.1% of the eager total fails, and names the metric.
-    const eager = first.metrics.find((m) => m.id === 'viewer-eager-js-bytes').value;
+    const eager = first.data.metrics.find((m) => m.id === 'viewer-eager-js-bytes').value;
     writeFileSync(join(dist, 'assets/dep.js'), jsOf(9, 5000 + Math.floor(eager * 0.001) + 1));
     r = check(measureTo('c.json').out);
     assert.equal(r.status, 1, r.stdout + r.stderr);
     assert.match(r.stdout, /`bundle\/viewer-eager-js-bytes`.*FAIL: above ceiling \+ tolerance/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+  });
 });
 
 // The engine wasm, gated the same way: an edit that keeps its size (CI saw
 // two move its brotli-11 size by -1,074 and +1,547 bytes) passes; raw growth
 // past 0.1% fails, naming the raw metric. Its brotli is reported only.
 rt('check ignores a same-size change of the engine wasm and fails on raw growth past 0.1%', () => {
-  const root = mkdtempSync(join(tmpdir(), 'perf-ratchet-wasm-raw-'));
-  try {
-    const dist = join(root, 'dist');
-    mkdirSync(join(dist, 'assets'), { recursive: true });
-    mkdirSync(join(root, 'ceilings'));
-    writeFileSync(join(dist, 'index.html'), '<script type="module" src="/assets/main.js"></script>');
+  withGateFixture('perf-ratchet-wasm-raw-', '<script type="module" src="/assets/main.js"></script>', ({ dist, wasm, measureTo, check, seed }) => {
     writeFileSync(join(dist, 'assets/main.js'), 'export const x = 1;\n');
-    writeFileSync(join(dist, 'assets/parser.worker-Wk1.js'), 'self.onmessage = () => {};');
-    const wasm = join(root, 'w.wasm');
-    const measureTo = (name) => {
-      const out = join(root, name);
-      const r = spawnSync(process.execPath, [MEASURER, '--wasm', wasm, '--dist', dist, '--out', out, '--commit', 'abc1234'], { encoding: 'utf8', timeout: 20_000 });
-      assert.equal(r.status, 0, r.stderr);
-      return { out, data: JSON.parse(r.stdout) };
-    };
-    const check = (measured) => spawnSync(process.execPath, [CHECK_CLI, 'check', '--measured', measured, '--ceilings-dir', join(root, 'ceilings')], { encoding: 'utf8', timeout: 20_000 });
-    const brotliOf = (data) => data.informational.find((m) => m.id === 'engine-wasm-brotli').value;
-
     writeFileSync(wasm, Buffer.from(jsOf(3, 20000)));
-    const first = measureTo('a.json').data;
-    const prov = { commit: 'abc1234', measuredAt: '2026-11-13T00:00:00.000Z' };
-    writeFileSync(join(root, 'ceilings/bundle.json'), JSON.stringify({
-      family: 'bundle',
-      entries: first.metrics.map((m) => ({ id: m.id, metric: 'raw-bytes', ceiling: m.value, tolerance: { kind: 'relative', value: 0.001 }, provenance: prov })),
-    }));
-    let r = check(join(root, 'a.json'));
+    const first = measureTo('a.json');
+    seed(first.data);
+    let r = check(first.out);
     assert.equal(r.status, 0, r.stdout + r.stderr);
     assert.match(r.stdout, /`bundle\/engine-wasm-brotli`: [\d,]+ bytes/);
 
-    // Same length, different bytes: brotli moves, raw does not, check passes.
+    // Same length, different bytes: raw does not move, check passes.
     writeFileSync(wasm, Buffer.from(jsOf(4, 20000)));
     const second = measureTo('b.json');
-    assert.notEqual(brotliOf(second.data), brotliOf(first));
-    assert.deepEqual(second.data.metrics.map((m) => m.value), first.metrics.map((m) => m.value));
+    assert.deepEqual(second.data.metrics.map((m) => m.value), first.data.metrics.map((m) => m.value));
     r = check(second.out);
     assert.equal(r.status, 0, r.stdout + r.stderr);
 
     // Raw growth just past 0.1% fails, and names the raw metric.
-    const size = first.metrics.find((m) => m.id === 'engine-wasm-bytes').value;
+    const size = first.data.metrics.find((m) => m.id === 'engine-wasm-bytes').value;
     writeFileSync(wasm, Buffer.concat([Buffer.from(jsOf(3, 20000)), Buffer.alloc(Math.floor(size * 0.001) + 1, 1)]));
     r = check(measureTo('c.json').out);
     assert.equal(r.status, 1, r.stdout + r.stderr);
     assert.match(r.stdout, /`bundle\/engine-wasm-bytes`.*FAIL: above ceiling \+ tolerance/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+  });
 });

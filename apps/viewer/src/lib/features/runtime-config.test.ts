@@ -77,6 +77,16 @@ describe('the version 1 configuration shape', () => {
     ['a relative server path', { version: 1, server: { url: 'v1/viewing/processor' } }],
     ['a protocol-relative server url', { version: 1, server: { url: '//elsewhere.example/processor' } }],
     ['an http server url from an https page', { version: 1, server: { url: 'http://processor.example' } }],
+    // Dot segments that normalize to `//host` would send every request off-origin.
+    ['a server path that normalizes to another host', { version: 1, server: { url: '/x/..//evil.example' } }],
+    ['a server path with an encoded dot segment to another host', { version: 1, server: { url: '/a/%2e%2e//evil.example' } }],
+    ['a server path whose backslash makes it another host', { version: 1, server: { url: '/\\evil.example' } }],
+    // The client appends `/api/v1/...` to the URL, so a query or fragment would swallow the endpoint.
+    ['a server path with a query', { version: 1, server: { url: '/processor?token=x' } }],
+    ['a server path with a fragment', { version: 1, server: { url: '/processor#a' } }],
+    ['a server url with a query', { version: 1, server: { url: 'https://processor.example/x?token=x' } }],
+    ['a server url with a fragment', { version: 1, server: { url: 'https://processor.example/x#a' } }],
+    ['a server url with credentials', { version: 1, server: { url: 'https://user:pass@processor.example' } }],
     ['an empty processed model name', { version: 1, open: { processedModel: { sha256: SHA, bytes: 1, name: '  ' } } }],
     ['an open without a processed model', { version: 1, open: {} }],
     ['a processed model whose hash is not a SHA-256', { version: 1, open: { processedModel: { sha256: '../../etc', bytes: 1, name: 'x.ifc' } } }],

@@ -55,22 +55,28 @@ function stringList(value: unknown, where: string): string[] | undefined {
   return value as string[];
 }
 
+const SAME_ORIGIN = 'https://viewer.invalid';
+
 /**
  * A same-origin path (`/…`, not `//…`) or an absolute `https:` URL; `http:` only
- * from an `http:` page, where it is no downgrade. Kept in normalized form.
+ * from an `http:` page, where it is no downgrade. Kept in normalized form. No
+ * query, fragment or credentials: the client appends `/api/v1/…` to it.
  */
 function parseServer(value: unknown, pageUrl: string | undefined): { url: string } {
   if (!isRecord(value) || typeof value.url !== 'string' || value.url.trim() === '') invalid('server.url must be a non-empty string');
   const raw = value.url.trim();
-  if (raw.startsWith('/') && !raw.startsWith('//')) {
-    const path = new URL(raw, 'https://viewer.invalid/');
-    return { url: `${path.pathname}${path.search}` };
-  }
+  const isPath = raw.startsWith('/') && !raw.startsWith('//');
   let url: URL;
   try {
-    url = new URL(raw);
+    url = new URL(raw, isPath ? SAME_ORIGIN : undefined);
   } catch {
     invalid('server.url must be a path starting with / or an absolute https URL');
+  }
+  if (url.search || url.hash || url.username || url.password) invalid('server.url must not carry a query, a fragment or credentials');
+  if (isPath) {
+    // `/\host` parses as another host, and dot segments can normalize to `//host`.
+    if (url.origin !== SAME_ORIGIN || url.pathname.startsWith('//')) invalid('server.url must be a path on this origin');
+    return { url: url.pathname };
   }
   const httpPage = pageUrl !== undefined && new URL(pageUrl).protocol === 'http:';
   if (url.protocol !== 'https:' && !(url.protocol === 'http:' && httpPage)) {

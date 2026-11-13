@@ -115,7 +115,7 @@ export const miscPanelsBIt = {
   'shareDialog.shareSkipped.noRecords':
     'Esclusi dalla sessione condivisa, nessun record IFC da condividere: {models}.',
   'shareDialog.shareSkipped.allRefused':
-    'Non è stata creata alcuna sessione. Non ci sono record IFC da condividere: {models}.',
+    'Qui non c’è nulla da condividere, nessun record IFC da condividere: {models}.',
   'shareDialog.linkCreationFailed': 'Creazione del link non riuscita. Controlla la connessione e riprova.',
   'shareDialog.joinedViaInvite':
     'Sei entrato tramite un invito: condividerlo inoltra lo stesso accesso. Solo l’amministratore della sessione può generare nuovi link.',

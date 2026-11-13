@@ -22,12 +22,13 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore, type FederatedModel } from '@/store';
-import { render, cleanup, click, waitFor, press, advance } from '@/test/render';
+import { render, cleanup, click, waitFor, advance } from '@/test/render';
 import { downloadedNames, clearDownloads } from '@/test/download-capture';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { tabularFixtureStore, PROXY_A, PROXY_B, WALL } from '@/test/tabular-store-fixture';
 import { registerRoomSymbolicSource, type RoomSymbolicSource } from '@/lib/collab/room-symbolic-source';
 import { parseFixtureModel } from './anonymized-export/anonymized-export-fixture.test-support';
+import { chooseMerged, exportButton, openExportDialog, shellText } from './export-dialog-scope.test-support';
 import { ExportDialog } from './ExportDialog';
 
 /**
@@ -50,9 +51,8 @@ ENDSEC;
 END-ISO-10303-21;
 `;
 
-/** Source express ids of the three roots above, in room-id order. */
-const SOURCE_ROOTS = [11, 12, 13] as const;
-const ROOM_ROOTS = [PROXY_A, PROXY_B, WALL] as const;
+/** Portable source express id -> reconstructed room express id, for its three roots. */
+const ROOT_OWNERS = [[11, PROXY_A], [12, PROXY_B], [13, WALL]] as const;
 
 async function parseRoomStepSource(): Promise<IfcDataStore> {
   const bytes = new TextEncoder().encode(ROOM_STEP_SOURCE);
@@ -73,8 +73,8 @@ async function sharedRoomModel(id: string): Promise<FederatedModel> {
   const source: RoomSymbolicSource = {
     dataStore: portable,
     source: portable.source,
-    seededIds: new Set(SOURCE_ROOTS),
-    ownerIds: new Map(SOURCE_ROOTS.map((sourceId, at) => [sourceId, ROOM_ROOTS[at]])),
+    seededIds: new Set(ROOT_OWNERS.map(([sourceId]) => sourceId)),
+    ownerIds: new Map(ROOT_OWNERS),
     placements: new Map(),
     baselines: new Map(),
     structuredPsets: new Map(),
@@ -85,31 +85,21 @@ async function sharedRoomModel(id: string): Promise<FederatedModel> {
   return { ...fixtureModel(id), schemaVersion: 'IFC4' as const, ifcDataStore: roomStore };
 }
 
-const shellText = () => document.querySelector('[data-export-dialog-shell]')?.textContent ?? '';
-const openDialog = (ui: HTMLElement, label: string) =>
-  click([...ui.querySelectorAll('button')].find(node => node.textContent?.includes(label))!);
-const exportButton = () =>
-  [...document.querySelectorAll('button')].find(node => node.textContent?.trim() === 'Export') as HTMLButtonElement;
-
-/** Switch the scope select to the merged option. */
-async function chooseMerged(): Promise<void> {
-  const scope = [...document.querySelectorAll('[role="combobox"]')].find(node => node.textContent?.includes('Single Model'));
-  assert.ok(scope, 'the scope selector is offered for a federation');
-  press(scope, 'ArrowDown'); await advance(10);
-  const merged = [...document.querySelectorAll('[role="option"]')].find(node => node.textContent?.includes('Merged (All Models)'));
-  assert.ok(merged);
-  click(merged); await advance(10);
+/** A federation of the shared room (active, so it is the default selection) and an ordinary IFC model. */
+async function openRoomFederation(): Promise<HTMLElement> {
+  const room = await sharedRoomModel('shared-room');
+  const house = { ...fixtureModel('house.ifc', { idOffset: 1_000_000 }), ifcDataStore: await parseFixtureModel(), schemaVersion: 'IFC4' as const };
+  useViewerStore.setState({ ...fixtureModels(room, house), dirtyModels: new Set() });
+  const ui = render(<ExportDialog surface="ribbon" />);
+  openExportDialog(ui, 'Export IFC');
+  return ui;
 }
 
 afterEach(() => { cleanup(); clearDownloads(); });
 
 describe('a STEP export writes a shared room from its portable source', () => {
   it('exports the selected room as IFC instead of refusing it for having no records', async () => {
-    const room = await sharedRoomModel('shared-room');
-    const house = { ...fixtureModel('house.ifc', { idOffset: 1_000_000 }), ifcDataStore: await parseFixtureModel(), schemaVersion: 'IFC4' as const };
-    useViewerStore.setState({ ...fixtureModels(room, house), dirtyModels: new Set() });
-    const ui = render(<ExportDialog surface="ribbon" />);
-    openDialog(ui, 'Export IFC');
+    await openRoomFederation();
     await advance(10);
 
     assert.equal(exportButton().disabled, false, 'the room carries STEP records, so the export is offered');
@@ -121,11 +111,7 @@ describe('a STEP export writes a shared room from its portable source', () => {
   });
 
   it('keeps the room in a merged export, and does not name it as left out', async () => {
-    const room = await sharedRoomModel('shared-room');
-    const house = { ...fixtureModel('house.ifc', { idOffset: 1_000_000 }), ifcDataStore: await parseFixtureModel(), schemaVersion: 'IFC4' as const };
-    useViewerStore.setState({ ...fixtureModels(room, house), dirtyModels: new Set() });
-    const ui = render(<ExportDialog surface="ribbon" />);
-    openDialog(ui, 'Export IFC');
+    await openRoomFederation();
     await chooseMerged();
 
     assert.doesNotMatch(shellText(), /Left out of the merged file/, 'the room is merged, so the dialog claims no skip');

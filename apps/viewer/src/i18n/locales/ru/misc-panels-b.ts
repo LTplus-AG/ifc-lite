@@ -112,7 +112,7 @@ export const miscPanelsBRu = {
   "shareDialog.guestName": "Гость",
   "shareDialog.roomCreationFailed": "Сессия не создана. Закройте и снова откройте это диалоговое окно, чтобы повторить попытку.",
   "shareDialog.shareSkipped.noRecords": "Не включены в общую сессию, нет записей IFC для передачи: {models}.",
-  "shareDialog.shareSkipped.allRefused": "Сессия не создана. Нет записей IFC для передачи: {models}.",
+  "shareDialog.shareSkipped.allRefused": "Здесь нечего передавать, нет записей IFC для передачи: {models}.",
   "shareDialog.linkCreationFailed": "Создание ссылки не удалось. Проверьте соединение и повторите попытку.",
   "shareDialog.joinedViaInvite": "Вы присоединились по приглашению - передавая его дальше, вы предоставляете те же права доступа. Только администратор сессии может создавать новые ссылки.",
   "shareDialog.onlyAdminCanCreate": "Создавать ссылки-приглашения для этой сессии может только администратор сессии.",

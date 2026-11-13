@@ -31,6 +31,7 @@
  * fields do.
  */
 
+import { restoreElementTags } from '@/lib/drawing/tag-persistence';
 import type { DrawingSheet } from '@ifc-lite/drawing-2d';
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { useViewerStore } from '@/store';
@@ -193,6 +194,7 @@ export function useDrawing2DPersistence(): void {
         measure2DResults: drawnMeanwhile(entry.measure2DResults, live.measure2DResults),
         polygonArea2DResults: drawnMeanwhile(entry.polygonArea2DResults, live.polygonArea2DResults),
         textAnnotations2D: drawnMeanwhile(entry.textAnnotations2D, live.textAnnotations2D),
+        tagAnnotations2D: drawnMeanwhile(restoreElementTags(entry.tagAnnotations2D, entry.ownerModelId, activeModelId), live.tagAnnotations2D),
         cloudAnnotations2D: drawnMeanwhile(entry.cloudAnnotations2D, live.cloudAnnotations2D),
         drawing2DDisplayOptions: entry.drawing2DDisplayOptions,
       });

@@ -30,7 +30,13 @@ const MANIFEST = join(ROOT, 'apps/viewer/src/lib/drafting-core/provenance.json')
 
 function parseArgs(argv) {
   const i = argv.indexOf('--ref');
-  return { ref: i >= 0 ? argv[i + 1] : null };
+  if (i < 0) return { ref: null };
+  const ref = argv[i + 1];
+  if (!ref || ref.startsWith('--')) {
+    console.error('check-drafting-drift: --ref needs a value (a branch, tag or commit)');
+    process.exit(2);
+  }
+  return { ref };
 }
 
 async function fetchText(url, accept) {

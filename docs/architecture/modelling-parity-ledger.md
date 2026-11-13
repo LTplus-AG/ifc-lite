@@ -26,7 +26,7 @@ Levels:
 | Storeys and levels (`storeys`) | Levels and grids | ✅ | ✅ | ✅ | ✅ | ✅ met |  |
 | Structural grids (`grids`) | Levels and grids | ✅ | ✅ | ✅ | ✅ | ✅ met |  |
 | Wall chains that auto-join (`wall-chains-autojoin`) | Walls | ✅ | ✅ | ✅ | ✅ | ✅ met |  |
-| Layered (compound) walls (`layered-walls`) | Walls | ✅ | ✅ | ✅ | ◐ | ✅ met | **exercise** partial: space areas match the reference (rel 0.05, matched by area): areas 14.30, 13.81, 24.28, 16.15, 11.12, 34.85, 115.64; unmatched reference 107.16, 25.99, 22.07, 12.99, 12.5; gable roof at 30 degrees: no roof: the UI has no sloped or gable roof (the Slab tool's Roof class makes a flat slab on the active storey floor; see… |
+| Layered (compound) walls (`layered-walls`) | Walls | ✅ | ✅ | ✅ | ◐ | ✅ met |  |
 | Wall top and base constraints (`wall-top-base-constraints`) | Walls | ✅ | ✅ | ✅ | ✅ | ✅ met |  |
 | Slabs from outlines, with openings (`slab-with-openings`) | Slabs and roofs | ✅ | ✅ | ✅ | ✅ | ✅ met |  |
 | Roof by footprint (hip, gable, mono-pitch) (`roof-by-footprint`) | Slabs and roofs | ✅ | ✅ | ✅ | ✅ | ✅ met |  |
@@ -35,7 +35,7 @@ Levels:
 | Hosted doors and windows from types (`hosted-doors-windows-from-types`) | Openings and circulation | ✅ | ✅ | ✅ | ✅ | ✅ met |  |
 | Stairs and railings between levels (`stairs-railings`) | Openings and circulation | ✅ | ✅ | ✅ | ✅ | ✅ met |  |
 | Type editing that updates every instance (`type-editing`) | Types and materials | ✅ | ✅ | ✅ | – | ✅ met |  |
-| Materials with appearance (`materials`) | Types and materials | ✅ | ✅ | ✅ | ◐ | ✅ met | **exercise** partial: space areas match the reference (rel 0.05, matched by area): areas 14.30, 13.81, 24.28, 16.15, 11.12, 34.85, 115.64; unmatched reference 107.16, 25.99, 22.07, 12.99, 12.5; gable roof at 30 degrees: no roof: the UI has no sloped or gable roof (the Slab tool's Roof class makes a flat slab on the active storey floor; see… |
+| Materials with appearance (`materials`) | Types and materials | ✅ | ✅ | ✅ | ◐ | ✅ met |  |
 | Move, copy, rotate, mirror, array (`transforms-move-copy-rotate-mirror-array`) | Editing | ✅ | ✅ | ✅ | ✅ | ✅ met |  |
 | Align, offset, trim/extend, split (`align-offset-trim-split`) | Editing | ✅ | ✅ | ✅ | – | ✅ met |  |
 | Copy to levels (`copy-to-levels`) | Editing | ✅ | ✅ | ✅ | ✅ | ✅ met |  |

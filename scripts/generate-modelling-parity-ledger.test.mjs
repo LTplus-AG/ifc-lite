@@ -441,13 +441,14 @@ test('#9296 exercises with null capability report against catalogue refs without
 test('#10030 sheet provenance follows selected row evidence, including met rows', () => {
   for(const fresh of [false,true]) {
     const source={commit:'sheet-build',dirty:false,...(fresh?{sheetDxfOracle:1}:{})};
-    const s=summaryOf([result('sheets-pdf-dwg','ui','pass',{source}),result('sheets-pdf-dwg','output','pass',{source})],'2027-01-01T00:00:00.000Z');
+    const s=summaryOf([result('sheets-pdf-dwg','ui','pass',{source}),result('sheets-pdf-dwg','output','pass',{source}),...['sdk','ui','output'].map(probe=>result('layered-walls',probe,'pass')),result('layered-walls','exercise','partial')],'2027-01-01T00:00:00.000Z');
     const dir=tree({'r.json':s});
     try {
       assert.equal(generate(dir).status,0);
       const ledger=readFileSync(join(dir,'docs/architecture/modelling-parity-ledger.md'),'utf8');
       const row=ledger.split('\n').find(line=>line.includes('(`sheets-pdf-dwg`)')); // @source-text-assertion-ok asserts on executed generator/runner output, not source text
       assert.equal(row.includes('Historical sheet evidence'),!fresh); // @source-text-assertion-ok asserts on executed generator/runner output, not source text
+      assert.ok(ledger.split('\n').find(line=>line.includes('(`layered-walls`)')).endsWith('|  |'),'unrelated met rows keep an empty Why not met cell'); // @source-text-assertion-ok executed generator output, not source text
       assert.equal(JSON.parse(readFileSync(join(dir,'tests/modelling-parity/baseline/r.json'),'utf8')).score,s.score);
     } finally {rmSync(dir,{recursive:true,force:true});}
   }

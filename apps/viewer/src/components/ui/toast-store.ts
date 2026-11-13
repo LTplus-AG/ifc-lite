@@ -49,8 +49,10 @@ export function registerToastDialog(id: string, ancestors: readonly string[]): (
       const previous = item.key === undefined ? kept.find(t => t.key === undefined
         && t.dialogId === item.dialogId && t.type === item.type && t.message === item.message) : undefined;
       if (!previous) return [...kept, item];
-      clearTimer(previous.id);
-      return [...kept.filter(t => t.id !== previous.id), { ...item, count: previous.count + item.count }];
+      // A transient duplicate must not give a persistent error an expiry.
+      const survivorId = timers.has(previous.id) ? item.id : previous.id;
+      clearTimer(survivorId === item.id ? previous.id : item.id);
+      return [...kept.filter(t => t.id !== previous.id), { ...item, id: survivorId, count: previous.count + item.count }];
     }, []);
   };
 }

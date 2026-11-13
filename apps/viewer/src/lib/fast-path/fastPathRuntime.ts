@@ -125,6 +125,8 @@ export function createFastPathRuntime(deps: FastPathDeps): FastPathRuntime | nul
   const releaseAll = (why: string) => {
     releases++;
     cancelIdle?.(); cancelIdle = null;
+    pending?.cancel(); // a run started at a pick and not claimed yet holds a worker too
+    pending = null;
     releaseGeometry();
     deps.parser.release();
     released = true;
@@ -160,12 +162,13 @@ export function createFastPathRuntime(deps: FastPathDeps): FastPathRuntime | nul
     if ((!parts.geometry || geometry) && (!parts.parser || deps.parser.has())) return;
     preparing = true;
     const generation = releases;
+    // Checked again after every await: never start a spare while a load runs, in a hidden tab, or after a release.
+    const interrupted = () => stopped || deps.isLoading() || deps.isHidden() || generation !== releases;
     try {
       const module = await deps.compileModule();
-      if (!module || stopped) return;
+      if (!module || interrupted()) return;
       const samples = await deps.warmSamples();
-      // Checked again after every await: never start a spare while a load runs.
-      if (stopped || deps.isLoading()) return;
+      if (interrupted()) return;
       if (parts.parser && !deps.parser.has()) {
         let warmSource: SharedArrayBuffer | null = null;
         if (samples[0] && typeof SharedArrayBuffer !== 'undefined') {
@@ -174,7 +177,7 @@ export function createFastPathRuntime(deps: FastPathDeps): FastPathRuntime | nul
         }
         await deps.parser.prepare({ warmSource });
       }
-      if (stopped || deps.isLoading()) return;
+      if (interrupted()) return;
       if (parts.geometry && !geometry) await prepareGeometry(module, samples);
       if (generation !== releases) return; // released meanwhile: stay released, so the next visible input re-arms
       released = false;
@@ -293,7 +296,7 @@ export function createFastPathRuntime(deps: FastPathDeps): FastPathRuntime | nul
         return;
       }
       if (hiddenTimer !== null) { deps.clearTimer(hiddenTimer); hiddenTimer = null; }
-      if (released) arm();
+      arm(); // after a release, or a preparation the hide interrupted; a no-op when both spares exist
     }),
     deps.onInput(() => {
       if (released) { arm(); return; }

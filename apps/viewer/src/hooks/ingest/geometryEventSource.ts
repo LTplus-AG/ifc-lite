@@ -19,6 +19,7 @@ import { fastGeometryEvents, type FastGeometryRun } from './fastPath.js';
 // The loader's other pre-geometry seams, re-exported so it imports one module for all of them.
 export { claimFastGeometry } from './fastPath.js';
 export { runPickStart } from './pickStart.js';
+export { ADAPTIVE_SYNC_THRESHOLD_BYTES } from './adaptiveGeometryOptions.js';
 import { type GeometryProcessor, type StallPhaseHandle, type StreamingGeometryEvent } from '@ifc-lite/geometry';
 import { retainedKernel } from '@ifc-lite/viewer-retained';
 import { getGeomWorkerOverride } from '../../store/constants.js';

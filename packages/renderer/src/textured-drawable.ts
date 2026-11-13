@@ -48,22 +48,47 @@ export interface TexturedMesh {
   sharedTextureKey?: number;
 }
 
+/** Weak references preserve identity without retaining released CPU geometry or bitmaps. */
+export interface TexturedSource {
+  positions: MeshData['positions'];
+  fields: (WeakRef<object> | undefined)[];
+  geometryItemId: number | undefined;
+  modelIndex: number | undefined;
+}
+function sourceFields(piece: MeshData): (object | undefined)[] {
+  return [piece.indices, piece.normals, piece.uvs, piece.entityIds, piece.texture, piece.textureRef, piece.textureBitmap];
+}
+export function captureTexturedSource(piece: MeshData): TexturedSource {
+  return { positions: piece.positions, fields: sourceFields(piece).map((field) => field ? new WeakRef(field) : undefined),
+    geometryItemId: piece.geometryItemId, modelIndex: piece.modelIndex };
+}
+
 type DrawableScene = { getPickGeometryRevision(): number; getTexturedMeshes(): readonly TexturedMesh[] };
 const lookups = new WeakMap<DrawableScene, { revision: number; byPositions: WeakMap<MeshData['positions'], TexturedMesh[]> }>();
 
 /** A retired or replaced drawable cannot survive a scene revision in this lookup. */
-export function findTexturedDrawable(scene: DrawableScene, id: number, positions: MeshData['positions'], sources: WeakMap<TexturedMesh, MeshData['positions']>): TexturedMesh | undefined {
+export function findTexturedDrawable(scene: DrawableScene, piece: MeshData, sources: WeakMap<TexturedMesh, TexturedSource>, expressId = piece.expressId): TexturedMesh | undefined {
   let lookup = lookups.get(scene);
   const revision = scene.getPickGeometryRevision();
   if (!lookup || lookup.revision !== revision) {
     lookup = { revision, byPositions: new WeakMap() };
     for (const drawable of scene.getTexturedMeshes()) {
-      const key = sources.get(drawable);
+      const key = sources.get(drawable)?.positions;
       if (!key) continue;
       const list = lookup.byPositions.get(key);
       if (list) list.push(drawable); else lookup.byPositions.set(key, [drawable]);
     }
     lookups.set(scene, lookup);
   }
-  return lookup.byPositions.get(positions)?.find((drawable) => drawable.expressId === id);
+  const fields = sourceFields(piece);
+  return lookup.byPositions.get(piece.positions)?.find((drawable) => {
+    const source = sources.get(drawable)!;
+    return drawable.expressId === expressId && source.modelIndex === piece.modelIndex
+      && source.geometryItemId === piece.geometryItemId
+      && drawable.origin.every((value, axis) => value === (piece.origin?.[axis] ?? 0))
+      && drawable.color.every((value, lane) => value === piece.color[lane])
+      && source.fields.every((field, index) => field
+        ? fields[index] !== undefined && field.deref() === fields[index]
+        : fields[index] === undefined);
+  });
 }

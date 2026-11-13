@@ -1213,3 +1213,26 @@ it('selection retires a textured pick copy and borrows its source buffers (#9946
   assert.equal(frame.highlightDraws.length, 1);
   assert.equal(frame.highlightDraws[0].vertexBuffer, h.scene.getTexturedMeshes()[0].vertexBuffer);
 });
+
+it('distinct textured pieces sharing positions retain both draws and item scopes (#10079)', () => {
+  for (const [difference, sharedItem] of [['indices', false], ['indices', true], ['uvs', false], ['uvs', true]] as const) {
+    const h = makeHarness();
+    const first = texturedPieces(1)[0];
+    const second: MeshData = { ...first, geometryItemId: sharedItem ? first.geometryItemId : 2_000,
+      ...(difference === 'indices'
+        ? { indices: new Uint32Array([2, 1, 0]) }
+        : { uvs: new Float32Array([1, 1, 0, 1, 1, 0]) }) };
+    load(h, [first, second]);
+    const source = h.scene.getTexturedMeshes();
+    assert.equal(source.length, 2);
+    let frame = frameCost(h, { selectedIds: new Set([1]) });
+    assert.equal(frame.highlightDraws.length, 2, `${difference}: neither source piece may be deduplicated`);
+    assert.deepEqual(frame.highlightDraws.map((draw) => draw.vertexBuffer), source.map((mesh) => mesh.vertexBuffer));
+    assert.deepEqual(frame.highlightDraws.map((draw) => draw.indexBuffer), source.map((mesh) => mesh.indexBuffer));
+    assert.equal(h.scene.getMeshes().length, 0);
+    frame = frameCost(h, { selectedId: 1, selectedItemId: second.geometryItemId });
+    const scoped = sharedItem ? source : source.slice(1);
+    assert.deepEqual(frame.highlightDraws.map((draw) => draw.vertexBuffer), scoped.map((mesh) => mesh.vertexBuffer));
+    assert.deepEqual(frame.highlightDraws.map((draw) => draw.indexBuffer), scoped.map((mesh) => mesh.indexBuffer));
+  }
+});

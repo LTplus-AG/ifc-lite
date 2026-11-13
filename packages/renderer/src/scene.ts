@@ -18,7 +18,7 @@ import { createStaticGpuBuffer } from './gpu-static-upload.js';
 import { createSceneAppearancePreview, rebindSceneAppearanceAccess, type SceneAppearanceAccess } from './scene-appearance-preview.js';
 import { AppearanceBuckets } from './scene-appearance-buckets.js';
 import { AuthoredPreparationRegistry, prepareSceneAuthoredOwner } from './scene-authored-owner.js';
-import { findTexturedDrawable, type TexturedMesh } from './textured-drawable.js';
+import { captureTexturedSource, findTexturedDrawable, type TexturedMesh, type TexturedSource } from './textured-drawable.js';
 export type { TexturedMesh } from './textured-drawable.js';
 import { interleaveTexturedVertices } from './textured-vertices.js';
 import { RgbaTexturePool } from './rgba-texture-pool.js';
@@ -138,10 +138,8 @@ export class Scene {
   private meshDataMap: Map<number, MeshData[]> = new Map();         // Map expressId -> MeshData[] (for lazy buffer creation, accumulates multiple pieces)
   private boundingBoxes: Map<number, BoundingBox> = new Map();      // Map expressId -> bounding box (computed lazily)
   private texturedMeshes: TexturedMesh[] = [];                      // #961: IFC surface-textured meshes (own buffers/texture/bindGroup)
-  /** The `positions` each textured drawable was uploaded from. Matched by the
-   *  array, not the MeshData: the appearance preview installs `{...part}`
-   *  copies, which share the array but not the object identity. */
-  private texturedSourcePositions = new WeakMap<TexturedMesh, MeshData['positions']>();
+  /** Uploaded field identities: preview wrappers share them, distinct pieces need not. */
+  private texturedSources = new WeakMap<TexturedMesh, TexturedSource>();
   /** #1781: GPU textures shared across meshes, keyed by `MeshTextureRef.textureId`
    *  (one `IfcImageTexture` → one upload, sampled by every face set mapping it).
    *  Refcounted: entries die when the last referencing mesh is removed / on clear(). */
@@ -563,8 +561,8 @@ export class Scene {
 
   /** Live owner of the existing textured buffers; cached by pick-geometry revision. */
   getTexturedDrawable(meshData: MeshData): TexturedMesh | undefined {
-    const positions = this.derivedMeshProvenance.placedSourceFor(meshData, this.modelTranslations).positions;
-    return findTexturedDrawable(this, meshData.expressId, positions, this.texturedSourcePositions);
+    const source = this.derivedMeshProvenance.placedSourceFor(meshData, this.modelTranslations);
+    return findTexturedDrawable(this, source, this.texturedSources, meshData.expressId);
   }
 
   /** The frame a highlight/hover copy of `meshData` is built in, so it renders
@@ -3516,7 +3514,7 @@ export class Scene {
         ...(sharedTextureKey !== undefined ? { sharedTextureKey } : {}),
       }, meshData.modelIndex ?? 0);
       this.texturedMeshes.push(drawable); this.pickGeometryRevision++;
-      this.texturedSourcePositions.set(drawable, meshData.positions);
+      this.texturedSources.set(drawable, captureTexturedSource(meshData));
     } catch (error) {
       vertexBuffer?.destroy();
       indexBuffer?.destroy();

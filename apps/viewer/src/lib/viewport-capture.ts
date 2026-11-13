@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { Renderer, RenderOptions } from '@ifc-lite/renderer';
+import { noteLiveFrame } from './live-frame-count';
 
 interface CaptureSession {
   options: () => RenderOptions;
@@ -69,6 +70,7 @@ export function refuseCaptureHeldPick(renderer: Renderer): boolean {
 /** The live loop submitted a frame: the pickers mirror the live view again. */
 export function noteLiveFrameSubmitted(renderer: Renderer): void {
   awaitingLiveFrame.delete(renderer);
+  noteLiveFrame(); // post-load work waits for such a frame (settled-frame.ts)
 }
 
 interface CaptureRequest<T> {

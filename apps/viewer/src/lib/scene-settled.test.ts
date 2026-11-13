@@ -9,18 +9,22 @@ import type { Renderer } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
 import { setGlobalRendererRef } from '@/hooks/useBCF';
 import { discardInstancedShards, enqueueInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
-import { isSceneSettled, whenSceneSettled } from './scene-settled';
+import { afterSceneSettled, isSceneSettled, whenSceneSettled } from './scene-settled';
+import { noteLiveFrame } from './live-frame-count';
 
 const scene = { queued: false, fragments: false, finalizing: false };
+/** A draw the viewport has been asked for and not submitted yet (`peekRenderRequest`). */
+const draw = { pending: false };
 function installRenderer(): void {
   const fake = { getScene: () => ({ hasQueuedMeshes: () => scene.queued, hasStreamingFragments: () => scene.fragments,
-    isFinalizeInProgress: () => scene.finalizing }) } as unknown as Renderer;
+    isFinalizeInProgress: () => scene.finalizing }), getGPUDevice: () => ({}), peekRenderRequest: () => draw.pending } as unknown as Renderer;
   setGlobalRendererRef({ current: fake } as RefObject<Renderer | null>);
 }
 
 afterEach(() => {
   setGlobalRendererRef({ current: null } as RefObject<Renderer | null>);
   Object.assign(scene, { queued: false, fragments: false, finalizing: false });
+  draw.pending = false;
   useViewerStore.setState({ loading: false, geometryStreamingActive: false });
 });
 
@@ -65,4 +69,56 @@ it('gives up as soon as the caller is superseded, and after its timeout', async 
   current = false;
   assert.equal(await superseded, false);
   assert.equal(await whenSceneSettled(() => true, 150), false, 'a scene that never settles times out');
+});
+
+it('resolves only after the viewport has drawn the settled scene, not when the scene first reads settled', async () => {
+  installRenderer();
+  draw.pending = true; // finalize asked for its frame; the animation loop has not submitted it (or holds it back)
+  let settled: boolean | undefined;
+  const waiting = whenSceneSettled().then((value) => { settled = value; });
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  assert.equal(settled, undefined, 'settled but not drawn: work behind this promise would run in front of that frame');
+  noteLiveFrame(); draw.pending = false; // the animation loop submits the frame
+  await waiting;
+  assert.equal(settled, true);
+});
+
+it('a load superseded while waiting for the settled frame runs nothing', async () => {
+  installRenderer();
+  draw.pending = true;
+  let current = true;
+  let ran = false;
+  const waiting = whenSceneSettled(() => current).then((value) => { if (value) ran = true; return value; });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  current = false; // a new load (or a cancel) supersedes this one before its frame is drawn
+  noteLiveFrame(); draw.pending = false;
+  assert.equal(await waiting, false);
+  assert.equal(ran, false);
+});
+
+it('a scene that stops being settled while its frame is awaited waits for the next settle', async () => {
+  installRenderer();
+  draw.pending = true;
+  let settled: boolean | undefined;
+  const waiting = whenSceneSettled().then((value) => { settled = value; });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  scene.fragments = true; // a late fragment arrives before the frame
+  noteLiveFrame(); draw.pending = false;
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  assert.equal(settled, undefined, 'the frame showed an unsettled scene');
+  scene.fragments = false;
+  await waiting;
+  assert.equal(settled, true);
+});
+
+it('a wait cancelled while the settled frame is awaited calls nothing (an unmount, a disposed sync)', async () => {
+  installRenderer();
+  draw.pending = true;
+  const calls: boolean[] = [];
+  const cancel = afterSceneSettled((settled) => calls.push(settled));
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  cancel();
+  noteLiveFrame(); draw.pending = false;
+  await new Promise((resolve) => setTimeout(resolve, 1_200)); // past the frame wait's backstop
+  assert.deepEqual(calls, []);
 });

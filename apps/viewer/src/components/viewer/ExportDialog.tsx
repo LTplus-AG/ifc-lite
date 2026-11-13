@@ -93,6 +93,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
   const classFilter = useViewerStore((s) => s.classFilter);
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
   const typeVisibility = useViewerStore((s) => s.typeVisibility);
+  const structuralViewMode = useViewerStore((s) => s.structuralViewMode);
   const lensHiddenIds = useViewerStore((s) => s.lensHiddenIds);
   // Also get legacy single-model state for backward compatibility
   const legacyIfcDataStore = useViewerStore((s) => s.ifcDataStore);
@@ -261,15 +262,13 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
    * EVERY active visibility channel — hidden/isolated entities, the Class
    * tab filter, storey selection, and type-visibility toggles — through the
    * single shared resolver (`resolveExportVisibility`) every export path
-   * routes through, not a per-dialog restatement of a subset of them
-   * (#4328: the class filter and storey isolation used to be invisible to
-   * every exporter). Reads `useViewerStore.getState()` directly so the
-   * export always sees the state at click time, not a stale render.
+   * routes through (#4328). Reading the live store at click time also
+   * includes the structural mode and avoids stale dialog state.
    */
   const getExportVisibility = useCallback(
     (modelId: string) => resolveExportVisibility(useViewerStore.getState(), modelId),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [models, hiddenEntities, isolatedEntities, classFilter, selectedStoreys, typeVisibility, lensHiddenIds],
+    [models, hiddenEntities, isolatedEntities, classFilter, selectedStoreys, typeVisibility, structuralViewMode, lensHiddenIds],
   );
 
   const getLocalHiddenIds = useCallback(

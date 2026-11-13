@@ -315,6 +315,8 @@ export interface TypeVisibility {
   structuralGlyphs: boolean;
 }
 
+export type StructuralViewMode = 'both' | 'physical' | 'analytical';
+
 // ============================================================================
 // Camera Types
 // ============================================================================

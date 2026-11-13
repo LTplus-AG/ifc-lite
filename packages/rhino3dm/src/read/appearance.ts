@@ -54,9 +54,12 @@ const NO_PARENT: Appearance = { color: [0, 0, 0, 1], material: -1 };
  * - `'bake'`, when it is neither, and the mesh has to be drawn once per placement. That is a
  *   colour the instance's material decides, and the instance's colour at the member's own alpha.
  *
- * `fades` says whether any material in the file is transparent. An inherited material can only
- * change a member's colour through its diffuse colour or its transparency, so where nothing is
- * transparent, only a colour read off that material varies by instance.
+ * An inherited material can only change a member's colour through its diffuse colour or its
+ * transparency, so where nothing can fade it, only a colour read off that material varies by
+ * instance. `fades` says whether anything can: whether a material some block instance hands down
+ * is transparent, as `inheritableFade` in `blocks.ts` measures it. Measuring it over the whole
+ * material table instead is a mistake a Rhino file punishes, since it keeps materials nothing
+ * references and one leftover transparent material then bakes every inheriting member.
  */
 export function memberColor(look: Look, tables: AppearanceTables, fades: boolean): RhinoRgba | 'instance' | 'bake' {
   if (look.colorSource === 'parent') {

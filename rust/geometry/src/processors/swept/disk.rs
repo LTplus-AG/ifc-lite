@@ -46,13 +46,18 @@ pub(crate) fn directrix_is_sweepable(points: &[Point3<f64>]) -> Result<bool> {
 pub(crate) fn build_tube_rmf(
     curve_points: &[Point3<f64>],
 ) -> (Vec<Vector3<f64>>, Vec<Vector3<f64>>, Vec<Vector3<f64>>) {
+    if curve_points.len() < 2 {
+        return (Vec::new(), Vec::new(), Vec::new());
+    }
+    let tangents = chord_tangents(curve_points);
+    let (perp1s, perp2s) = rmf_frames(&tangents);
+    (tangents, perp1s, perp2s)
+}
+
+/// Unit chord tangents, one per sample (precondition: at least two samples).
+fn chord_tangents(curve_points: &[Point3<f64>]) -> Vec<Vector3<f64>> {
     let n = curve_points.len();
     let mut tangents = Vec::with_capacity(n);
-    let mut perp1s = Vec::with_capacity(n);
-    let mut perp2s = Vec::with_capacity(n);
-    if n < 2 {
-        return (tangents, perp1s, perp2s);
-    }
 
     // #5191: a duplicate consecutive directrix point (e.g. two composite-curve
     // segments sharing an endpoint) makes the finite difference a zero vector,
@@ -96,7 +101,19 @@ pub(crate) fn build_tube_rmf(
     for &o in &owner {
         tangents.push(kept_tangents[o]);
     }
+    tangents
+}
 
+/// Rotation-minimising `(perp1s, perp2s)` along the given unit `tangents`:
+/// the chord tangents of [`build_tube_rmf`], or a curve's own evaluated
+/// tangents, so two sweeps that meet at a sample share its section plane.
+pub(crate) fn rmf_frames(tangents: &[Vector3<f64>]) -> (Vec<Vector3<f64>>, Vec<Vector3<f64>>) {
+    let n = tangents.len();
+    let mut perp1s = Vec::with_capacity(n);
+    let mut perp2s = Vec::with_capacity(n);
+    if n == 0 {
+        return (perp1s, perp2s);
+    }
     let up0 = if tangents[0].x.abs() < 0.9 {
         Vector3::new(1.0, 0.0, 0.0)
     } else {
@@ -135,8 +152,7 @@ pub(crate) fn build_tube_rmf(
         perp1s.push(perp1);
         perp2s.push(perp2);
     }
-
-    (tangents, perp1s, perp2s)
+    (perp1s, perp2s)
 }
 
 /// Mesh a circular (optionally annular) cross-section swept along
@@ -158,6 +174,17 @@ fn build_tube(
     inner_radius: Option<f64>,
     segments: usize,
 ) -> (Vec<f32>, Vec<u32>) {
+    build_tube_along(curve_points, None, radius, inner_radius, segments)
+}
+
+/// [`build_tube`] with the directrix's own unit tangents when it has them.
+fn build_tube_along(
+    curve_points: &[Point3<f64>],
+    tangents: Option<&[Vector3<f64>]>,
+    radius: f64,
+    inner_radius: Option<f64>,
+    segments: usize,
+) -> (Vec<f32>, Vec<u32>) {
     let n = curve_points.len();
     let seg = segments as u32;
     let walls = if inner_radius.is_some() { 2 } else { 1 };
@@ -166,7 +193,14 @@ fn build_tube(
 
     // Build a rotation-minimising frame across all sample points up-front.
     // (Per-iteration `up` selection caused frame flips at sharp bends.)
-    let (_, perp1s, perp2s) = build_tube_rmf(curve_points);
+    // The curve's own tangents when it has them (see `rmf_frames`).
+    let (perp1s, perp2s) = match tangents {
+        Some(tangents) if tangents.len() == n => rmf_frames(tangents),
+        _ => {
+            let (_, perp1s, perp2s) = build_tube_rmf(curve_points);
+            (perp1s, perp2s)
+        }
+    };
     let unit_circle: Vec<(f64, f64)> = (0..segments)
         .map(|j| {
             let angle = 2.0 * std::f64::consts::PI * j as f64 / segments as f64;
@@ -291,20 +325,22 @@ impl SweptDiskSolidProcessor {
         let (start_param, end_param) = crate::swept_disk_range::effective_range(
             directrix.ifc_type.clone(), start_param, end_param, decoder,
         );
-        let curve_points = self.profile_processor.get_directrix_points(
+        // Swept-disk bounds are an IfcParameterValue, never a length.
+        let samples = self.profile_processor.get_directrix_samples(
             &directrix,
             decoder,
-            start_param,
-            end_param,
+            start_param.map(crate::profiles::directrix::CurveMeasure::Parameter),
+            end_param.map(crate::profiles::directrix::CurveMeasure::Parameter),
             quality,
         )?;
+        let (curve_points, tangents) = (samples.points, samples.tangents);
 
         if !directrix_is_sweepable(&curve_points)? {
             return Ok(None);
         }
 
         let segments = quality.swept_disk_segments(radius * decoder.length_unit_scale());
-        Ok(Some(SweptDiskPlan { curve_points, radius, inner_radius, segments }))
+        Ok(Some(SweptDiskPlan { curve_points, radius, inner_radius, segments, tangents }))
     }
 }
 

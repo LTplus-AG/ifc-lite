@@ -19,7 +19,7 @@ use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, IfcType};
 
 /// Splits one span between plan vertices and vertical segment boundaries may
 /// use to bring its chords within tolerance. A span that needs more keeps
-/// its last, coarser chords.
+/// its last, coarser chords and is reported (see [`refine_span`]).
 const MAX_SPAN_SPLITS: usize = 1024;
 
 /// A swept area solid's `StartParam` / `EndParam`. IFC4x3 types them as
@@ -135,8 +135,23 @@ impl ProfileProcessor {
         let density = self.quality().density_factor();
         let tolerance = CHORD_TOL_M / decoder.length_unit_scale() / (density * density);
         let mut stations = vec![start];
+        let mut coarse = 0usize;
         for span in breaks.windows(2) {
-            refine_span(&alignment, span[0], span[1], tolerance, &mut stations);
+            if !refine_span(&alignment, span[0], span[1], tolerance, MAX_SPAN_SPLITS, &mut stations) {
+                coarse += 1;
+            }
+        }
+        if coarse > 0 {
+            crate::diag::diag_warn!(
+                { curve = curve.id, spans = coarse, tolerance,
+                  "gradient directrix: chord tolerance not met within the split budget" }
+                else {
+                    eprintln!(
+                        "[ifc-lite][gradient-directrix] #{}: {} span(s) kept chords coarser than {}                          after {} splits",
+                        curve.id, coarse, tolerance, MAX_SPAN_SPLITS,
+                    );
+                }
+            );
         }
         let frames: Vec<_> = stations.into_iter().map(|s| alignment.evaluate(s)).collect();
         Ok(Some(DirectrixSamples {
@@ -180,20 +195,33 @@ fn base_is_distance_parameterised(curve: &DecodedEntity, decoder: &mut EntityDec
 /// worst point of a chord is where the profile's grade equals the chord's
 /// slope; that point's vertical offset is the chord's exact error (and an
 /// upper bound on its perpendicular one). Spans are halved until each chord
-/// passes or the split budget is spent.
-fn refine_span(alignment: &AlignmentCurve, a: f64, b: f64, tolerance: f64, stations: &mut Vec<f64>) {
-    let mut budget = MAX_SPAN_SPLITS;
+/// passes or `budget` splits are spent, so a span adds at most `budget + 1`
+/// stations. Returns whether every chord met the tolerance; when the budget
+/// runs out first, the remaining chords are kept as they are.
+fn refine_span(
+    alignment: &AlignmentCurve,
+    a: f64,
+    b: f64,
+    tolerance: f64,
+    mut budget: usize,
+    stations: &mut Vec<f64>,
+) -> bool {
+    let mut met = true;
     let mut pending = vec![(a, b)];
     while let Some((lo, hi)) = pending.pop() {
-        if budget > 0 && chord_error(alignment, lo, hi) > tolerance {
-            budget -= 1;
-            let mid = 0.5 * (lo + hi);
-            pending.push((mid, hi));
-            pending.push((lo, mid));
-        } else {
-            stations.push(hi);
+        if chord_error(alignment, lo, hi) > tolerance {
+            if budget > 0 {
+                budget -= 1;
+                let mid = 0.5 * (lo + hi);
+                pending.push((mid, hi));
+                pending.push((lo, mid));
+                continue;
+            }
+            met = false;
         }
+        stations.push(hi);
     }
+    met
 }
 
 /// Largest vertical distance between the profile and its chord over

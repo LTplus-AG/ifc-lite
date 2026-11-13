@@ -531,3 +531,10 @@ test('#9328 required classes must exist in the original IFC before reopen', () =
   assert.equal(ART.checkRequiredIfcClasses(cap,'#1=IFCBUILDINGSTOREY();').status,'fail');
   assert.equal(ART.checkRequiredIfcClasses(cap,'#1=IFCANNOTATION();').status,'pass');
 });
+
+test('#9328 malformed STEP records are rejected instead of silently omitted', async () => {
+  const { readStep } = await import('../tests/modelling-parity/ui/lib/step.mjs');
+  assert.throws(()=>readStep("DATA; #1=IFCWALL('w') ENDSEC;"),/malformed/i);
+  assert.throws(()=>readStep("DATA; #1=IFCWALL('w') #2=IFCWALL('x'); ENDSEC;"),/malformed|trailing/i);
+  assert.equal(readStep("DATA; #1=IFCWALL('w'); ENDSEC;").count('IFCWALL'),1);
+});

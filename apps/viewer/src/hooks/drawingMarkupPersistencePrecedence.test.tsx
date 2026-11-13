@@ -208,7 +208,10 @@ describe('localStorage (#4159) vs IFC-embedded (#4170) markup restore precedence
     } as FederatedModel;
 
     // The user previously deleted all local markup for this exact file and
-    // that state was saved — a REAL, deliberate entry, just an empty one.
+    // that state was saved — a REAL, deliberate entry, just an empty one. It
+    // records the embedded annotation as absorbed: that is what makes an
+    // empty entry a deletion rather than a display-option write made before
+    // any markup existed (`drawingMarkupAbsorbed.test.tsx` covers that one).
     saveDrawing2DEntry(hash, {
       measure2DResults: [],
       polygonArea2DResults: [],
@@ -216,6 +219,7 @@ describe('localStorage (#4159) vs IFC-embedded (#4170) markup restore precedence
       cloudAnnotations2D: [],
       drawing2DDisplayOptions: DEFAULTS,
       sectionConfig: null,
+      absorbedEmbeddedMarkup: ['0Annot000000000000050d'],
     });
     assert.ok(loadDrawing2DEntry(hash, DEFAULTS), 'setup sanity: the empty entry must actually be saved');
 

@@ -10,14 +10,15 @@ import { buildFzk, target } from './fzk.mjs';
 // accept that representation and still reject a flat replacement.
 test('#9314 roof slab planes pass the reference roof checks; flat planes fail', () => {
   const text="#1=IFCSLAB('a',$,$,$,$,$,$,$,.ROOF.);\n#2=IFCSLAB('b',$,$,$,$,$,$,$,.ROOF.);";
-  const plane=(slope)=>{
+  const plane=(slope,id)=>{
     const width=10, depth=target.roof.totalUpwardArea/(2*width*Math.sqrt(1+slope*slope));
     const a=[0,0,0],b=[width,0,0],c=[0,depth*slope,depth],d=[width,depth*slope,depth];
-    return {min:[0,0,0],max:[width,depth*slope,depth],triangles:[[a,c,b],[b,c,d]]};
+    const triangles=[[a,c,b],[b,c,d]].map(t=>t.map(p=>id===2?[p[0],p[1]+depth*Math.abs(slope),p[2]+depth]:p));
+    return {min:[0,0,0],max:[width,depth*Math.abs(slope),depth*2],triangles};
   };
   const inspect=(slope)=>{
     const rows=[];
-    compareFzk({text,find:id=>plane(id===1?slope:-slope),levels:[],emit:(name,cap,status)=>rows.push({name,status})});
+    compareFzk({text,find:id=>plane(id===1?slope:-slope,id),levels:[],emit:(name,cap,status)=>rows.push({name,status})});
     return rows.filter(r=>['reference-gable-roof','reference-roof-area'].includes(r.name));
   };
   assert.deepEqual(inspect(Math.tan(Math.PI/6)).map(r=>r.status),['pass','pass']);
@@ -100,4 +101,12 @@ test('#9357 the F2 gable oracle aggregates roof planes exactly once', () => {
   assert.deepEqual(rows.filter(r=>['reference-gable-roof','reference-roof-area'].includes(r.name)).map(r=>r.status),['pass','pass']);
   const area=rows.find(r=>r.name==='reference-roof-area').metrics.area;
   assert.ok(Math.abs(area-165.122177)<1e-5,`aggregate upward area ${area}`);
+});
+
+test('#9328 overlapping opposing roof panels cannot certify a gable', () => {
+  const slope=Math.tan(Math.PI/6), width=10, depth=target.roof.totalUpwardArea/(2*width*Math.sqrt(1+slope*slope));
+  const panel=sign=>{const a=[0,0,0],b=[width,0,0],c=[0,sign*depth*slope,depth],d=[width,sign*depth*slope,depth];return {triangles:[[a,c,b],[b,c,d]]};};
+  const rows=[];
+  compareFzk({text:"#1=IFCSLAB('a',$,$,$,$,$,$,$,.ROOF.);\n#2=IFCSLAB('b',$,$,$,$,$,$,$,.ROOF.);",find:id=>panel(id===1?1:-1),levels:[],emit:(name,cap,status)=>rows.push({name,status})});
+  assert.equal(rows.find(r=>r.name==='reference-gable-roof').status,'fail');
 });

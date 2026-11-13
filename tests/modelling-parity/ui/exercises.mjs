@@ -365,9 +365,9 @@ export const EXERCISES = {
 
 /**
  * Run one exercise in a fresh page. `measured` marks the run whose actions
- * and timings are reported; the other theme's run only writes frames.
+ * and timings are reported. Every theme retains its IFC artifact.
  */
-export async function runExercise(ex, { openFresh, theme, shots, frames, saveArtifact, base, measured }) {
+export async function runExercise(ex, { openFresh, theme, shots, frames, saveArtifact, base }) {
   const s = await openFresh(`${ex.id}-${theme}`, theme, shots);
   const tasks = [];
   const notes = [];

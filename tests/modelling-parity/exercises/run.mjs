@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { resetExerciseOutputs } from './output.mjs';
 import { copyCoverage, spaceAreas } from './export-oracles.mjs';
 import { copiedWallAttachments } from './copy-rebinding.mjs';
 import { createHash } from 'node:crypto';
@@ -23,6 +24,7 @@ export async function run(id,args=process.argv.slice(2)) {
   writeFileSync(resolve(out,'.gitignore'),'*\n');
   const reuse=args.includes('--reuse');
   const prior=reuse&&existsSync(resolve(out,'results.json'))?JSON.parse(readFileSync(resolve(out,'results.json'),'utf8')):[];
+  if(!reuse) resetExerciseOutputs(out);
   for(const f of reuse?['results.jsonl']:['author.jsonl','results.jsonl']) writeFileSync(resolve(out,f),'');
   if(!reuse) for(const f of ['expected.state','progress.state']) { const p=resolve(out,f); if(existsSync(p)) writeFileSync(p,'null'); }
   const start=performance.now(), deadline=start+budget*1000, results=[];

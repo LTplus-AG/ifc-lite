@@ -538,3 +538,19 @@ test('#9328 malformed STEP records are rejected instead of silently omitted', as
   assert.throws(()=>readStep("DATA; #1=IFCWALL('w') #2=IFCWALL('x'); ENDSEC;"),/malformed|trailing/i);
   assert.equal(readStep("DATA; #1=IFCWALL('w'); ENDSEC;").count('IFCWALL'),1);
 });
+
+test('#9328 failed exports cannot leave a successful expected state or stale exercise outputs', async () => {
+  const { resetExerciseOutputs, publishExpectedState } = await import('../tests/modelling-parity/exercises/output.mjs');
+  const dir=mkdtempSync(join(tmpdir(),'parity-exercise-output-'));
+  try {
+    writeFileSync(join(dir,'notes.txt'),'keep');
+    for(const name of ['expected.state','IFC4.ifc','model.glb','results.json']) writeFileSync(join(dir,name),'old');
+    resetExerciseOutputs(dir);
+    assert.equal(readFileSync(join(dir,'notes.txt'),'utf8'),'keep');
+    for(const name of ['expected.state','IFC4.ifc','model.glb','results.json']) assert.equal(existsSync(join(dir,name)),false);
+    publishExpectedState(dir,{elements:2},[true,true]);
+    assert.equal(JSON.parse(readFileSync(join(dir,'expected.state'),'utf8')).elements,2);
+    publishExpectedState(dir,{elements:3},[true,false]);
+    assert.equal(existsSync(join(dir,'expected.state')),false);
+  } finally { rmSync(dir,{recursive:true,force:true}); }
+});

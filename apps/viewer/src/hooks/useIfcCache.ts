@@ -161,7 +161,8 @@ export function useIfcCache() {
         const open = openGeometryChunksV13(
           cacheBuffer,
           geometrySection.offset,
-          headerInfo.version
+          headerInfo.version,
+          { sharedArena: true },
         );
         loadedTotalVertices = open.totalVertices;
         loadedTotalTriangles = open.totalTriangles;

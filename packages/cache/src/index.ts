@@ -67,7 +67,7 @@ export {
   buildGeometrySectionV13,
 } from './sections/geometry-chunks.js';
 export { readInstancedShards } from './sections/instanced-shards.js';
-export type { GeometryHead } from './sections/geometry-chunks.js';
+export type { ChunkDecodeOptions, GeometryHead } from './sections/geometry-chunks.js';
 export type { GeometryChunkInfo } from './types.js';
 
 export type {

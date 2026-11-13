@@ -21,8 +21,10 @@ import { useViewerStore } from '@/store';
 import { runTransaction } from '@/lib/commands/modeling/transaction';
 import { AUTHORED_KINDS, typeOf } from '@/lib/commands/modeling/authored-kinds';
 import type { AuthoringTransaction, ModelingCommand } from '@/lib/commands/modeling/types';
+import type { RemeshCause } from '@/lib/remesh/affected-set';
 import type { AuthoredElementKind } from '@/store/slices/authoringDefaultsSlice';
-import { detachFromType, recordModellingEdit } from '@/store/slices/mutation-modelling-records';
+import { detachFromType, modelEditTarget, recordModellingEdit } from '@/store/slices/mutation-modelling-records';
+import { resizeWallMetres } from '@/store/slices/mutation-wall-resize';
 import { commitElementSize } from '@/lib/element-size-commit';
 import { fixWallTop } from '@/lib/commands/modeling/wall-top-fix';
 import type { ElementSizePatch } from '@/store/slices/mutation-element-size';
@@ -34,12 +36,15 @@ import { editHostedFillIn, moveHostedFillIn, type HostedFillPosition } from '@/s
 import { setElementProfile } from '@/store/slices/mutation-element-profile';
 import { editStairDimensionsInStore, typeLayerScopeInStore, type HostedElementSize, type ProfileSection, type StairDimensionEdit } from '@ifc-lite/create';
 
+/** The shortest wall an endpoint drag accepts (`wall.moveEndpoint`), in metres. */
+const MIN_WALL_LENGTH = 0.01;
+
 /**
  * Run one inspector edit as one undo step. `edit` writes through
  * `tx.store` and returns the express ids whose mesh it changed. False (with
  * a toast) when the edit was refused or threw; nothing is left behind then.
  */
-export function runInspectorEdit(modelId: string, edit: (tx: AuthoringTransaction) => readonly number[], onError?: (reason: string) => void): boolean {
+export function runInspectorEdit(modelId: string, edit: (tx: AuthoringTransaction) => readonly number[], onError?: (reason: string) => void, remeshCause?: RemeshCause): boolean {
   const command: ModelingCommand = {
     id: 'inspector.edit',
     labelKey: 'modelInspector.edit',
@@ -48,7 +53,7 @@ export function runInspectorEdit(modelId: string, edit: (tx: AuthoringTransactio
     init: () => null,
     pointerMove: (g) => g,
     pointerDown: (g) => g,
-    commit: (_g, tx) => ({ created: [], deleted: [], remesh: [...edit(tx)] }),
+    commit: (_g, tx) => ({ created: [], deleted: [], remesh: [...edit(tx)], ...(remeshCause ? { remeshCause } : {}) }),
   };
   const get = useViewerStore.getState;
   const outcome = runTransaction(useViewerStore, command, null, { get, modelId, storeyId: get().session?.storeyId ?? null, workplane: null });
@@ -125,6 +130,27 @@ export function setElementDimensions(modelId: string, expressId: number, patch: 
     if (!outcome.ok) throw new Error(outcome.reason);
     return outcome.remesh;
   });
+}
+
+/**
+ * A wall's length, in metres (#9296): its end point moves along its axis and
+ * its start stays, the write an endpoint drag makes (`resizeWallMetres`). The
+ * walls joined at the moved end come along, every join that touches a moved
+ * wall is cut again, and the openings and fillings of each follow.
+ */
+export function setWallLength(modelId: string, expressId: number, length: number): boolean {
+  return runInspectorEdit(modelId, (tx) => {
+    const wall = tx.store.readWallEndpoints(tx.modelId, expressId);
+    const model = modelEditTarget(tx.store, tx.modelId);
+    if (!wall || !model) throw new Error(`Couldn't read wall #${expressId}`);
+    const run = Math.hypot(wall.end[0] - wall.start[0], wall.end[1] - wall.start[1]);
+    if (!(run > 0) || !(length >= MIN_WALL_LENGTH)) throw new Error(`A wall is at least ${MIN_WALL_LENGTH} m long`);
+    const k = length / run;
+    const end: [number, number, number] = [wall.start[0] + (wall.end[0] - wall.start[0]) * k, wall.start[1] + (wall.end[1] - wall.start[1]) * k, wall.end[2]];
+    const result = resizeWallMetres(tx.api, model, tx.modelId, expressId, [wall.start[0], wall.start[1], wall.start[2]], end, tx.batchId, { moveJoinedEnds: true });
+    if (!result.ok) throw new Error(`Couldn't resize the wall: ${result.reason}`);
+    return result.walls;
+  }, undefined, 'hostsChanged');
 }
 
 /** A wall's thickness and/or height, in metres. */

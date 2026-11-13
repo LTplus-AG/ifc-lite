@@ -14,29 +14,18 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { describe, it, mock, afterEach, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { readRhino3dm } from '@ifc-lite/rhino3dm';
-import type { RhinoImport } from '@ifc-lite/rhino3dm';
 import { isValidIfcGuid } from '@ifc-lite/encoding';
 import { PropertyValueType } from '@ifc-lite/data';
 
-import { swapRhinoImportAxes } from '@/lib/import/rhino-import-job';
 import { RhinoImportError } from '@/lib/import/rhino-import-client';
 import {
   CRAFTED_GLOBAL_ID,
   CRAFTED_VERTEX_VIEWER,
   craftRhino3dm,
+  rhinoImportOf as importOf,
+  rhinoPayloadOf as payloadOf,
 } from '@/test/rhino-3dm-fixture.js';
 import { rhinoViewerModel } from './rhinoViewerModel.js';
-
-/** What the worker hands the adapter: a baked, axis-swapped read. */
-async function importOf(bytes: Uint8Array): Promise<RhinoImport> {
-  const result = await readRhino3dm(bytes, { bakeInstances: true });
-  swapRhinoImportAxes(result);
-  return result;
-}
-
-const payloadOf = async (bytes: Uint8Array) =>
-  rhinoViewerModel(await importOf(bytes), bytes.buffer.slice(0) as ArrayBuffer, 7);
 
 const samples = new URL('../../../../../tests/models/rhino/mcneel-rhino3dm/', import.meta.url);
 const sample = (name: string) => new Uint8Array(readFileSync(new URL(name, samples)));
@@ -61,8 +50,9 @@ describe('rhinoViewerModel, crafted .3dm', () => {
     // is derived from the Rhino UUID, so it is a valid GUID all the same.
     assert.equal(dataStore.getEntity(2)?.type, 'IfcBuildingElementProxy');
     assert.equal(isValidIfcGuid(dataStore.entities.getGlobalId(2)), true);
-    // No STEP bytes: the label consumers read for a tabular store.
-    assert.equal(schemaVersion, 'IFC5');
+    // The schema the classes belong to. What backs the store is `sourceKind`,
+    // asserted in rhinoViewerModel.store-kind.test.ts.
+    assert.equal(schemaVersion, 'IFC4');
   });
 
   it('serves the reader property sets as the store properties', async () => {

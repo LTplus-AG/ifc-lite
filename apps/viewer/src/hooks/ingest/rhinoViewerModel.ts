@@ -96,10 +96,11 @@ function buildRhinoTables(result: RhinoImport): TabularStoreTables {
 /** The populated store for one `.3dm`. */
 function buildRhinoDataStore(result: RhinoImport, buffer: ArrayBuffer, parseTime: number): IfcDataStore {
   return buildTabularDataStore(buildRhinoTables(result), {
-    // The entity table's classes are IFC product classes, but the store holds
-    // no STEP bytes, and `IFC5` is how consumers recognise that today
-    // (see `TabularStoreMeta.schemaVersion`).
-    schemaVersion: 'IFC5',
+    // The schema the entity table's type names belong to, which is all this
+    // says: what backs the store is `sourceKind: 'tabular'`, set by
+    // `buildTabularDataStore`. See the spec's "What the store says about
+    // itself" for why IFC4 and not IFC5.
+    schemaVersion: 'IFC4',
     source: buffer,
     fileSize: buffer.byteLength,
     parseTime,
@@ -224,7 +225,7 @@ export function rhinoViewerModel(result: RhinoImport, buffer: ArrayBuffer, parse
       totalTriangles: stats.totalTriangles,
       coordinateInfo: createCoordinateInfo(bounds),
     },
-    schemaVersion: 'IFC5',
+    schemaVersion: 'IFC4',
   };
 }
 

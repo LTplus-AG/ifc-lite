@@ -54,7 +54,7 @@ import { preferredExportModelId } from './export-model-default';
 import { canExportRoomAsStep, type roomStepExportSource } from '@/lib/collab/room-step-export';
 import { roomMergeInput, roomMergeVisibility } from '@/lib/collab/room-merged-export';
 import { roomSymbolicSource } from '@/lib/collab/room-symbolic-source';
-import { listExportModels, resolveExportModel } from './export-model-selection';
+import { canWriteIfcFromStores, listExportModels, resolveExportModel } from './export-model-selection';
 import { exportOutputInfo } from './export-output-format.js';
 import { activeChangesJsonMutations, exportChangesJson } from './export-changes-json.js';
 import { hasFilterableIfc5Properties } from '@/lib/export/ifc5-filterable-properties.js';
@@ -170,7 +170,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
     [models, selectedModel, exportScope]);
   const canExportIfc = landXmlPlan === null || (landXmlPlan.covered && schema === 'IFC4X3');
   // Mutation deltas are source-independent JSON; only full IFC synthesis is refused.
-  const exportAllowed = canExportIfc || (changesOnly && !isIfc5);
+  const exportAllowed = (canExportIfc && canWriteIfcFromStores(models, selectedModel, exportScope, isIfc5)) || (changesOnly && !isIfc5);
   const portableRoomStore = selectedModel?.ifcDataStore
     && canExportRoomAsStep(selectedModel.ifcDataStore, selectedRoomView)
     ? roomSymbolicSource(selectedModel.ifcDataStore)?.dataStore
@@ -299,7 +299,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
       return { success: false, message: t('exportDialog.notReadyError') };
     }
     if (!exportAllowed) {
-      const message = t('exportDialog.landXml.error');
+      const message = t(canExportIfc ? 'exportDialog.noStepRecords.error' : 'exportDialog.landXml.error');
       toast.error(message);
       return { success: false, message };
     }
@@ -335,7 +335,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
         const mergeInputs: MergeModelInput[] = [];
         const portableByModel = new Map<string, NonNullable<ReturnType<typeof roomStepExportSource>>>();
         for (const entry of hydratedModels) {
-          if (!entry.dataStore) {
+          if (!entry.dataStore || entry.dataStore.sourceKind === 'tabular') { // tabular: no STEP records, see canWriteIfcFromStores
             continue;
           }
           const roomView = applyMutations ? (getMutationView(entry.model.id) ?? undefined) : undefined;
@@ -550,7 +550,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
         });
       }
     }
-  }, [selectedModel, selectedModelId, schema, isIfc5, exportScope, includeGeometry, applyMutations, changesOnly, visibleOnly, unitReconciliation, onlyKnownProperties, getMutationView, getLocalHiddenIds, getLocalIsolatedIds, modifiedCount, models, extensionHost, outputInfo, exportAllowed, landXmlSource, t, surface, sectionExport]);
+  }, [selectedModel, selectedModelId, schema, isIfc5, exportScope, includeGeometry, applyMutations, changesOnly, visibleOnly, unitReconciliation, onlyKnownProperties, getMutationView, getLocalHiddenIds, getLocalIsolatedIds, modifiedCount, models, extensionHost, outputInfo, exportAllowed, canExportIfc, landXmlSource, t, surface, sectionExport]);
 
   return (
     <ExportDialogShell
@@ -564,7 +564,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
       }
       icon={<Download className="h-5 w-5" />}
       title={t('exportDialog.title')}
-      description={isIfc5 && !changesOnly ? t('exportDialog.description.ifc5') : t('exportDialog.description.default')}
+      description={!exportAllowed && canExportIfc && !changesOnly ? t('exportDialog.noStepRecords.error') : isIfc5 && !changesOnly ? t('exportDialog.description.ifc5') : t('exportDialog.description.default')}
       cancelLabel={t('exportDialog.cancelButton')}
       exportLabel={t('exportDialog.exportButton')}
       exportingLabel={t('exportDialog.exportingLabel')}

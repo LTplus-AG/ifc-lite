@@ -51,6 +51,7 @@ export const exportDialogIt = {
   'exportDialog.cancelButton': 'Annulla',
   'exportDialog.exportingLabel': 'Esportazione in corso...',
   'exportDialog.exportButton': 'Esporta',
+  'exportDialog.noStepRecords.error': 'Questo modello non contiene record IFC da cui scrivere. Scegli IFC5 per esportarlo come IFCX.',
   'exportDialog.landXml.title': 'LandXML non può essere esportato come IFC',
   'exportDialog.landXml.description': 'I suoi record del terreno restano nel formato di origine; per l’esportazione non viene sintetizzata alcuna entità IFC.',
   'exportDialog.landXml.error': 'LandXML è geometria di origine, non IFC. Esporta invece il file LandXML originale.',

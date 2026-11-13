@@ -17,6 +17,11 @@
  */
 
 import rhino3dm from 'rhino3dm';
+import { readRhino3dm, type RhinoImport } from '@ifc-lite/rhino3dm';
+
+import { swapRhinoImportAxes } from '@/lib/import/rhino-import-job';
+import { rhinoViewerModel } from '@/hooks/ingest/rhinoViewerModel.js';
+import type { ViewerModelPayload } from '@/hooks/ingest/viewerModelIngest.js';
 
 /** The GlobalId the crafted wall states, a real IFC GUID from the FZK model. */
 export const CRAFTED_GLOBAL_ID = '2XPyKWY018sA1ygZKgQPtU';
@@ -71,4 +76,19 @@ export async function craftRhino3dm(): Promise<Uint8Array> {
   file.objects().addMesh(triangle([0, 0, 0]), byLayer);
 
   return file.toByteArray();
+}
+
+/**
+ * What the worker hands the adapter: a real read, baked and axis-swapped by
+ * the real worker job. One copy, because every Rhino adapter test needs it.
+ */
+export async function rhinoImportOf(bytes: Uint8Array): Promise<RhinoImport> {
+  const result = await readRhino3dm(bytes, { bakeInstances: true });
+  swapRhinoImportAxes(result);
+  return result;
+}
+
+/** The viewer payload for `bytes`, as `prepareRhinoViewerModel` builds it. */
+export async function rhinoPayloadOf(bytes: Uint8Array): Promise<ViewerModelPayload> {
+  return rhinoViewerModel(await rhinoImportOf(bytes), bytes.buffer.slice(0) as ArrayBuffer, 7);
 }

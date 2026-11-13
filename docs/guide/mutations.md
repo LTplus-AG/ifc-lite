@@ -1316,3 +1316,11 @@ reference, reusing a system of the same name and edition. An omitted edition
 only matches a system without an edition. Assign more objects
 with `bim.store.assignClassification(modelId, reference.expressId, ids)`.
 An object can retain several classifications.
+
+
+Property extractor callbacks receive `(sourceEntityId, currentView, occurrenceId)`.
+Existing callbacks taking only the source id remain supported. Forward the view
+to the parser's property extractor to read raw property-set records in the same
+atomic draft; use the occurrence id when resolving a copied entity's live
+relationships. This keeps raw STEP authoring and high-level property edits
+readable before export.

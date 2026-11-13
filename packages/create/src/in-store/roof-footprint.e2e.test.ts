@@ -316,12 +316,13 @@ describe.skipIf(!existsSync(WASM_PATH))('roof by footprint against the mesh kern
     expect(m.maxZ).toBeCloseTo(3 * Math.tan(35 * D) + 0.2 / Math.cos(35 * D), 4);
   });
 
-  it.each([
+  const reflexOutlines: Array<Array<[number, number]>> = [
     [[0, 0], [10, 0], [10, 8], [5, 3], [0, 8]],
     [[0, 0], [10, 0], [10, 4], [6, 4], [4, 10], [0, 10]],
     [[0, 0], [10, 0], [10, 10], [7, 10], [6, 4], [3, 5], [2, 10], [0, 10]],
-  ])('reflex footprint %# retains area through export and reopen (#9357)', async (...coordinates) => {
-    const outline = coordinates as Array<[number, number]>;
+  ];
+  it.each(reflexOutlines.map(outline => ({ outline })))(
+    'reflex footprint %# retains area through export and reopen (#9357)', async ({ outline }) => {
     // Independent miter-offset area: A + perimeter*d + sum(tan(turn/2))*d².
     // This uses the input boundary alone, without the skeleton's roof faces.
     let area = 0, perimeter = 0, turns = 0;

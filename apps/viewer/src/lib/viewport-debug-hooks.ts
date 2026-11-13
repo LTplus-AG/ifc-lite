@@ -8,6 +8,7 @@ import type { MeshData } from '@ifc-lite/geometry';
 import { getPointCloudScanSample } from '@/hooks/ingest/pointCloudScanCache';
 import { activeVisibilityReasons } from '@/lib/visibility/visibility-reasons';
 import { useViewerStore } from '@/store';
+import { isSceneSettled } from '@/lib/scene-settled';
 
 /** One resident part of an owner as plain data: no buffers, no live objects. */
 export interface ScenePartSnapshot {
@@ -128,6 +129,9 @@ export function installViewportDebugHooks(
   }
   // Constant-time read of the renderer-owned snapshot; no scene collection walks.
   host.__ifc_lite_render_frame__ = () => renderer.getFrameStats();
+  // Constant-time: the viewer's own settled rule (store not streaming, no pending shards, no queued meshes,
+  // no streaming fragments, no finalize running). The load scoreboard gates its interactive mark on it.
+  host.__ifc_lite_scene_settled__ = () => isSceneSettled();
   host.__ifc_lite_render_stats__ = () => ({
     gpuTiming: renderer.getGpuFrameTiming(),
     adapter: renderer.getAdapterInfo(),
@@ -232,6 +236,7 @@ export function clearViewportDebugHooks(): void {
   const host = globalThis as Record<string, unknown>;
   setSourceSegmentScreenProbe(null);
   delete host.__ifc_lite_render_frame__;
+  delete host.__ifc_lite_scene_settled__;
   delete host.__ifc_lite_render_stats__;
   delete host.__ifc_lite_scene_identity__;
   delete host.__ifc_lite_capture_color_frame__;

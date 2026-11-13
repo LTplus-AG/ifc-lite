@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+const MIB = 1024 * 1024;
+
 /**
  * Largest input the reader accepts. Measured, not guessed: in Node 22 with
  * rhino3dm 8.35.0 a 403 MB file of dense double-precision meshes read with the
@@ -13,7 +15,6 @@
  * This module imports nothing, so a caller on a page's main thread can ask the
  * cap before it hands the bytes to a worker without loading rhino3dm.
  */
-const MIB = 1024 * 1024;
 export const MAX_3DM_BYTES = 400 * MIB;
 
 /** A size in whole MB, rounded up, so a file just over the cap never reads as the cap itself. */

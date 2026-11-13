@@ -45,7 +45,7 @@ interface ShareScopeFieldProps {
    * True when the current scope holds nothing the seed can carry, so no room
    * will be created at all (`shareRefusesEveryModel`).
    *
-   * The caption must then say nothing. "Only “x” is shared" is a promise, and
+   * The caption must then say nothing, and Create link is disabled. "Only “x” is shared" is a promise, and
    * the Share dialog is already printing "Nothing here can be shared" right
    * below it for the same scope — a `.3dm` picked as the active model showed
    * both at once.
@@ -116,7 +116,9 @@ export function ShareScopeField({
       {editable && (
         <>
           <p className="text-xs text-muted-foreground">{t('shareScopeField.uploadNotice')}</p>
-          <Button type="button" size="sm" className="self-start" onClick={onConfirm}>
+          {/* Disabled, not hidden, for a scope the mint refuses: confirming it
+              locks the scope picker and then creates no room. */}
+          <Button type="button" size="sm" className="self-start" disabled={noRoomToCreate} onClick={onConfirm}>
             {t('shareScopeField.createLink')}
           </Button>
         </>

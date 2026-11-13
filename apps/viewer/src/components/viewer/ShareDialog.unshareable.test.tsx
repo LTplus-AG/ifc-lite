@@ -169,10 +169,18 @@ describe('ShareDialog: models the share seed cannot carry', () => {
     assert.doesNotMatch(bodyText(), /Only .terrain\.3dm. is shared/,
       'the scope caption does not promise a share the mint will refuse');
 
+    // Create link is not offered for a scope the mint refuses. Pressing it
+    // used to confirm the scope, which locks the scope picker, and then mint
+    // nothing: the owner could not go back to 'all' to share tower.ifc.
+    assert.equal(createLinkButton()?.disabled, true, 'Create link is disabled while nothing in scope can be shared');
+    assert.equal(relay.mints().length, 0, 'and the mint agrees with the line above it');
+
+    click(scopeRadios()[1]!);
+    await act(() => settle('going back to all models did not settle'));
     click(createLinkButton()!);
     await act(() => settle('room creation did not settle'));
-    assert.equal(relay.mints().length, 0, 'and the mint agrees with the line above it');
-    assert.equal(starts.length, 0);
+    assert.equal(relay.mints().length, 1, 'with all models in scope the share goes ahead');
+    assert.deepEqual(starts[0]?.seed?.models.map((m) => m.modelId), ['b'], 'carrying the IFC model only');
   });
 
   it('still mints for a GLB beside a .3dm: that workspace got an empty room on main', async (t) => {

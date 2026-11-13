@@ -70,7 +70,7 @@ describe('scene identity (scoreboard identity pass)', () => {
     assert.notEqual(snapshotSignature(shared(0)), snapshotSignature(shared(100)), 'shared frame origins are part of it');
     const fit = (x: number): SceneSnapshot => ({ ...snapshot([batch('a', 1)]), hostData: { fitBounds: { min: [x, 0, 0], max: [1, 1, 1] }, shards: null } });
     assert.notEqual(snapshotSignature(fit(0)), snapshotSignature(fit(-3)), 'the stored camera fit (hostData) is part of it (review #9863)');
-    assert.equal(snapshotSignature(fit(0)), snapshotSignature(JSON.parse(JSON.stringify(fit(0)))), 'a JSON round trip of hostData keeps the signature');
+    assert.equal(snapshotSignature(fit(0)), snapshotSignature({ ...fit(0), hostData: JSON.parse(JSON.stringify(fit(0).hostData)) }), 'a JSON round trip of hostData keeps the signature');
   });
 
   it('with the flag off a tap records nothing', () => {

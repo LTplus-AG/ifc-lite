@@ -3,9 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * What the two Rhino `.3dm` specs share: the export dialog's command-palette
- * driver (`rhino-export.e2e.spec.ts`) and the browser-side store readers the
- * import spec asserts on (`rhino-import.e2e.spec.ts`, and
+ * The export dialog's drivers and the fixture paths, shared by both Rhino
+ * `.3dm` specs, plus the browser-side store readers only the import spec
+ * asserts on (`rhino-import.e2e.spec.ts`, and
  * docs/architecture/rhino-3dm-import.md, "Testing").
  *
  * Every reader here reads the production store the viewer itself renders from
@@ -29,6 +29,12 @@ declare global {
 }
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..');
+/**
+ * How long a load or a `.3dm` download may take. Well inside the 240 s test
+ * timeout, so a slow step reports itself instead of the generic timeout; four
+ * tests share one 13-minute CI shard. Both Rhino specs read it from here.
+ */
+export const STEP_TIMEOUT_MS = 120_000;
 /** Git-tracked Archicad house: project, site, two storeys, walls, slabs, windows, spaces. */
 export const IFC_MODEL = join(ROOT, 'apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc');
 /** 79 KB git-tracked sample, for a step that needs an IFC but not a big one. */
@@ -122,12 +128,14 @@ function readModels(): ModelSnapshot[] {
       const perVertex = mesh.entityIds;
       const perEntity = perVertex ? new Map<number, WorldBox | null>() : null;
       const own = perVertex ? null : boxFor(mesh.expressId);
+      // An ordinary mesh whose entity carries no GlobalId has nothing to widen.
+      if (!perVertex && !own) continue;
       for (let i = 0, vertex = 0; i < positions.length; i += 3, vertex++) {
         let box = own;
         if (perVertex) {
           const id = perVertex[vertex];
-          box = perEntity!.get(id) ?? null;
-          if (box === null && !perEntity!.has(id)) perEntity!.set(id, box = boxFor(id));
+          if (!perEntity!.has(id)) perEntity!.set(id, boxFor(id));
+          box = perEntity!.get(id)!;
         }
         if (!box) continue;
         const x = positions[i] + ox, y = positions[i + 1] + oy, z = positions[i + 2] + oz;
@@ -209,6 +217,12 @@ export async function modelSnapshots(page: Page): Promise<ModelSnapshot[]> {
 /** How many models the viewer holds, without walking any geometry. */
 export async function modelCount(page: Page): Promise<number> {
   return page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().models.size);
+}
+
+/** Each loaded model's `loadPath`, without walking any geometry. */
+export async function loadPaths(page: Page): Promise<(string | null)[]> {
+  return page.evaluate(() => [...globalThis.__ifc_lite_viewer_store__.getState().models.values()]
+    .map((model) => model.loadPath ?? null));
 }
 
 export interface Overlay {
@@ -305,7 +319,7 @@ export async function waitForModels(page: Page, count: number): Promise<void> {
     return state.models.size === n && !state.loading && !state.geometryStreamingActive &&
       [...state.models.values()].every((model) => model.ifcDataStore &&
         ((model.geometryResult?.meshes.length ?? 0) > 0 || (model.geometryResult?.pointClouds?.length ?? 0) > 0));
-  }, count, { timeout: 120_000 });
+  }, count, { timeout: STEP_TIMEOUT_MS });
 }
 
 /** Run `export:3dm` from the command palette and return the Rhino dialog. */
@@ -338,7 +352,7 @@ export async function exportTo3dm(page: Page, coordinates: 'local' | 'world', na
   const dialog = await openRhinoExportDialog(page);
   if (coordinates === 'world') await chooseExportOption(page, dialog, 'Coordinates', 'World (as in the IFC file)');
   const [download] = await Promise.all([
-    page.waitForEvent('download', { timeout: 120_000 }),
+    page.waitForEvent('download', { timeout: STEP_TIMEOUT_MS }),
     dialog.getByRole('button', { name: 'Export', exact: true }).click(),
   ]);
   const path = test.info().outputPath(name);

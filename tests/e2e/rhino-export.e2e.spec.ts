@@ -28,12 +28,9 @@ import { fileURLToPath } from 'node:url';
 import { DEVICE_LOST_SIGNAL, GPU_STRICT, watchGpuDeviceLoss } from './gpu-device-loss';
 // The command-palette and Radix-select drivers for this dialog are shared with
 // the import spec, which exports the same file through them.
-import { chooseExportOption, openRhinoExportDialog } from './rhino-3dm.helpers';
+import { chooseExportOption, IFC_MODEL, openRhinoExportDialog, STEP_TIMEOUT_MS } from './rhino-3dm.helpers';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..');
-// Git-tracked copy of the Archicad house: project, site, building and two
-// storeys with walls, slabs, windows and spaces, so every layer level is real.
-const MODEL = join(ROOT, 'apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc');
 const PROJECT = 'Projekt-FZK-Haus';
 const IFC_GUID = /^[0-9A-Za-z_$]{22}$/;
 /** The lazily loaded rhino3dm runtime: its wasm and its emscripten JS chunk. */
@@ -180,12 +177,12 @@ async function openModel(page: Page): Promise<Journey & { markExportClick(): voi
   await page.setViewportSize({ width: 1440, height: 1000 });
   await gpu.raceLoss('open the AC20 house for Rhino export', async () => {
     await page.goto('/');
-    await page.locator('#file-input-open').setInputFiles(MODEL);
+    await page.locator('#file-input-open').setInputFiles(IFC_MODEL);
     await page.waitForFunction(() => {
       const state = (globalThis as Record<string, any>).__ifc_lite_viewer_store__?.getState();
       return state?.models.size === 1 && !state.loading && !state.geometryStreamingActive &&
         [...state.models.values()].every((m: any) => m.ifcDataStore && m.sourceFile);
-    }, undefined, { timeout: 180_000 });
+    }, undefined, { timeout: STEP_TIMEOUT_MS });
   });
   return { ...journey, markExportClick: () => { exportClicked = true; } };
 }
@@ -196,7 +193,7 @@ async function exportAndDownload(journey: Journey & { markExportClick(): void },
   const started = Date.now();
   journey.markExportClick();
   const [download] = await Promise.all([
-    page.waitForEvent('download', { timeout: 180_000 }),
+    page.waitForEvent('download', { timeout: STEP_TIMEOUT_MS }),
     dialog.getByRole('button', { name: 'Export', exact: true }).click(),
   ]);
   const path = test.info().outputPath(name);
@@ -213,7 +210,7 @@ async function exportAndDownload(journey: Journey & { markExportClick(): void },
 }
 
 test.describe('Rhino .3dm export in the built viewer', () => {
-  test.skip(!existsSync(MODEL), 'apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc is missing');
+  test.skip(!existsSync(IFC_MODEL), 'apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc is missing');
 
   test('default export writes the spatial tree as layers with IFC user text', async ({ page }) => {
     const journey = await openModel(page);

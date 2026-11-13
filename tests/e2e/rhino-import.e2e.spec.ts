@@ -32,7 +32,7 @@ import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import {
   FOREIGN_3DM, FZK_WALL, IFC_MODEL, SMALL_IFC,
-  addModel, entityByGlobalId, exportTo3dm, hidden, modelCount, modelSnapshots,
+  addModel, entityByGlobalId, exportTo3dm, hidden, loadPaths, modelCount, modelSnapshots,
   openViewerWith, overlayOf, propertySets, waitForModels,
   type Journey, type ModelSnapshot,
 } from './rhino-3dm.helpers';
@@ -123,6 +123,11 @@ test.describe('Rhino .3dm import in the built viewer', () => {
       // Containers and drawn objects: the tree's rows are rows of this store
       // too, so the entity count is the drawn entities plus its containers.
       expect(rhino.entityCount).toBeGreaterThan(Object.keys(rhino.boxes).length);
+      // FZK's balustrade members go whole to the GPU-instanced shard, so they
+      // are absent from `meshes`. Asserting the count keeps the branch that
+      // reads `instancedGeometryAabbs` covered: without it the comparison
+      // would silently be over the mesh-backed entities alone.
+      expect(ifc.instancedBoxes, 'the IFC\'s instanced-only entities are boxed too').toBeGreaterThan(0);
       note('counts', `ifc: ${ifc.entityCount} entities / ${ifc.meshCount} meshes / ${ifc.triangles} tris / ` +
         `${Object.keys(ifc.boxes).length} boxed (${ifc.instancedBoxes} instanced-only); ` +
         `3dm: ${rhino.entityCount} entities / ${rhino.meshCount} meshes / ${rhino.triangles} tris / ` +
@@ -133,13 +138,14 @@ test.describe('Rhino .3dm import in the built viewer', () => {
       note('overlay', `${coordinates}: ${overlay.matched.length} matched GlobalIds, worst corner gap ` +
         `${overlay.worstGap.toExponential(3)} m at ${JSON.stringify(overlay.worstAt)}, per axis ` +
         `${JSON.stringify(overlay.perAxis)}`);
+      const extra = tally(overlay.onlySecond, rhino.classes);
       note('unmatched', `only in the IFC: ${JSON.stringify(tally(overlay.onlyFirst, ifc.classes))}; ` +
-        `only in the .3dm: ${JSON.stringify(tally(overlay.onlySecond, rhino.classes))}`);
+        `only in the .3dm: ${JSON.stringify(extra)}`);
       expect(overlay.matched.length).toBeGreaterThanOrEqual(MIN_MATCHED_ENTITIES);
       // Nothing the `.3dm` drew is geometry the IFC has not got: an element
       // placed somewhere the IFC never placed it would land here, not in the
       // gap figure below.
-      expect(overlay.onlySecond, `the .3dm drew entities the IFC did not: ${JSON.stringify(tally(overlay.onlySecond, rhino.classes))}`).toEqual([]);
+      expect(overlay.onlySecond, `the .3dm drew entities the IFC did not: ${JSON.stringify(extra)}`).toEqual([]);
       // And the IFC-only ids are only what the export leaves out by design.
       const missing = overlay.onlyFirst.filter((globalId) => !NOT_EXPORTED.test(ifc.classes[globalId] ?? ''));
       expect(missing, `the .3dm is missing: ${JSON.stringify(tally(missing, ifc.classes))}`).toEqual([]);
@@ -221,7 +227,7 @@ test.describe('Rhino .3dm import in the built viewer', () => {
     // Still usable: the whole file loads straight after the two refusals.
     await journey.gpu.raceLoss('add the intact .3dm after two refusals', () =>
       addModel(page, whole, 'AC20-FZK-Haus.3dm', 2));
-    expect(byLoadPath(await modelSnapshots(page), '3dm').meshCount).toBeGreaterThan(0);
+    expect(await loadPaths(page), 'the .3dm loaded, with the geometry `waitForModels` gated on').toEqual(['wasm', '3dm']);
 
     // And the extension decides nothing: an IFC named `.3dm` is read as the IFC
     // it is, not refused as a broken Rhino file. Pinned so a future change to
@@ -230,7 +236,7 @@ test.describe('Rhino .3dm import in the built viewer', () => {
       await page.locator('#file-input-add').setInputFiles({ name: 'actually-ifc.3dm', mimeType: 'application/octet-stream', buffer: await readFile(SMALL_IFC) });
       await waitForModels(page, 3);
     });
-    expect((await modelSnapshots(page)).filter((snapshot) => snapshot.loadPath === 'wasm')).toHaveLength(2);
+    expect((await loadPaths(page)).filter((loadPath) => loadPath === 'wasm')).toHaveLength(2);
     expect(await errorCard.count()).toBe(0);
 
     // The two refusals log, by design (`rhinoLoad.ts` rethrows nothing and
@@ -315,7 +321,7 @@ async function assertAppState(page: Page, journey: Journey, ifc: ModelSnapshot, 
   const show = page.getByRole('button', { name: `Show ${space.name}`, exact: true });
   await expect(show).toBeVisible();
   await show.click();
-  let stillHidden = hiddenAtLoad.map((entity) => entity.name);
+  let stillHidden: string[] = [];
   await expect.poll(async () => (stillHidden = (await hidden(page, rhino.modelId)).map((entity) => entity.name)), { timeout: 10_000 })
     .not.toContain(space.name);
   note('shown-from-tree', `${space.name} shown; still hidden: ${JSON.stringify(stillHidden)}`);

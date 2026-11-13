@@ -987,6 +987,10 @@ ifc-lite storey model.ifc add --name "Basement" --elevation -3 --out basement.if
 ifc-lite storey model.ifc edit --storey "Level 1" --floor-height 3.5 --out raised.ifc
 ifc-lite storey model.ifc edit --storey "Level 2" --elevation 3.8 --dry-run
 ifc-lite storey model.ifc delete --storey "Level 2" --move-to "Level 1" --out merged.ifc
+ifc-lite storey model.ifc add --name "Mezzanine" --elevation 1.5 --dry-run --json
+ifc-lite storey model.ifc constrain --element 100 --top storeyAbove --out attached.ifc
+ifc-lite storey model.ifc constrain --element 100 --top slab --target 200 --out attached.ifc
+ifc-lite storey model.ifc copy --ids 100,101 --to "Level 2" --to "Level 3" --out copies.ifc
 ```
 
 `--elevation` moves only that storey. `--floor-height` sets the gap to the storey above, and every storey above in the same building shifts by the same amount. A storey is named by its exact name (letter case is a fallback), or `#<express id>`; a bare number is read as the express ID unless a storey also has that name, which is refused as ambiguous. Lengths are metres.
@@ -1003,8 +1007,13 @@ ifc-lite storey model.ifc delete --storey "Level 2" --move-to "Level 1" --out me
 | `--floor-height <m>` | New floor-to-floor height of `--storey` |
 | `--move-to <storey>` | Delete, moving the contents to this storey (same identity and position) |
 | `--delete-contents` | Delete the storey and everything it holds |
-| `--dry-run` | Make the change in memory and report it, refused exactly as the real one; write nothing |
+| `--element <id>` / `--top <kind>` | Constrain an element top: `fixed`, `storeyAbove`, `storey`, `slab` or `roof` (walls) |
+| `--target <id-or-storey>` | Target storey name/ID for `--top storey`, or slab/roof express ID |
+| `--ids <id,...>` / `--to <storey>` | Copy selected products to each target floor; repeat `--to` for more floors |
+| `--dry-run` | Return the canonical add/edit/delete plan or preview constrain/copy in memory; write no file |
 | `--json` | Machine-readable output |
+
+An add dry-run with `--json` includes `refusal`, `bindings` and `unresized` from `bim.store.planAddStorey`. Copy output includes the selected refs per storey and any unattached-top notices. A top constraint is saved in the IFC and follows later storey edits after reopening.
 
 ---
 

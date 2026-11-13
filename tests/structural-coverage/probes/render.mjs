@@ -3,19 +3,19 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Level `render` for connections and actions: `structuralGlyphs`
+ * Level `render` for connections, actions and reactions: `structuralGlyphs`
  * (`@ifc-lite/parser/structural-glyphs`), the plain-data list the viewer's glyph overlay draws,
  * holds a glyph for the record at a finite position.
  *
  * Which records must draw is read from the file, not from the product: a
  * connection whose `AppliedCondition` record holds a true or non-zero value
- * (a restraint), and an action whose `AppliedLoad`, a nested configuration
- * value or, for the IFC2X3 varying actions, any `SubsequentAppliedLoads`
- * record holds a non-zero number. A free joint or a valueless load draws
- * nothing and is not checked. Pass needs every such record drawn; a row whose
- * corpus has no such record is unproven (fail).
+ * (a restraint), and an action or reaction whose `AppliedLoad`, a nested
+ * configuration value or, for the IFC2X3 varying actions, any
+ * `SubsequentAppliedLoads` record holds a non-zero number. A free joint or a
+ * valueless load draws nothing and is not checked. Pass needs every such
+ * record drawn; a row whose corpus has no such record is unproven (fail).
  *
- * Members (meshes) and reactions (results) are not covered here.
+ * Members are meshes, measured by `render-members.mjs`.
  */
 
 import { cached, storeOf } from '../lib/packages.mjs';
@@ -42,7 +42,7 @@ function holdsValue(step, rec, seen = new Set()) {
 }
 
 const isConnection = (row) => row.family === 'item' && row.entity.endsWith('Connection');
-const isAction = (row) => row.family === 'activity' && /Action/.test(row.entity);
+const isActivity = (row) => row.family === 'activity' && /Action|Reaction/.test(row.entity);
 
 /** Records of the row that must draw: the file's own statement of a support or a load. */
 function mustDraw(row, step, rec) {
@@ -70,7 +70,7 @@ function glyphSources(ctx, file) {
 export default {
   name: 'render:structural-glyphs',
   level: 'render',
-  covers: (row) => isConnection(row) || isAction(row),
+  covers: (row) => isConnection(row) || isActivity(row),
   async run(rows, ctx) {
     const out = new Map();
     for (const row of rows) {
@@ -89,7 +89,7 @@ export default {
           if (!drawn.has(rec.id)) missed.push(`${file.path}#${rec.id}`);
         }
       }
-      const what = isConnection(row) ? 'restraining support condition' : 'non-zero load';
+      const what = isConnection(row) ? 'restraining support condition' : /Reaction/.test(row.entity) ? 'non-zero reaction' : 'non-zero load';
       if (missed.length) problems.unshift(`${missed.length} of ${checked} record(s) with a ${what} draw no glyph, e.g. ${missed[0]}`);
       const result = checked
         ? verdict(checked, problems, { anyHeld: missed.length < checked })

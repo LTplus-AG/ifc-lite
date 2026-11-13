@@ -26,6 +26,8 @@ export const section2dDe = {
   "section2d.tools.distance": "Abstand",
   "section2d.tools.area": "Fläche",
   "section2d.tools.text": "Text",
+  'section2d.tools.tag': 'Beschriften',
+  'section2d.tip.tag': 'Tür, Fenster oder Raum zum Beschriften anklicken',
   "section2d.tools.cloud": "Revisionswolke",
   "section2d.annotations.clear": "Markierungen löschen",
   "section2d.display.group": "Darstellung",

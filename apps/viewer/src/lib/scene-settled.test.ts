@@ -146,3 +146,20 @@ it('an Infinity timeout means no limit, not an immediate timeout (the placed spa
   assert.deepEqual(calls, [true]);
   cancel();
 });
+
+it('a load that starts and ends while the frame is awaited is waited for again: the old backstop is no proof the new scene was drawn', async () => {
+  installRenderer();
+  draw.pending = true; // scene A settled, its draw held back
+  const calls: boolean[] = [];
+  const cancel = afterSceneSettled((settled) => calls.push(settled), () => true, Infinity);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  useViewerStore.setState({ loading: true }); // load B starts...
+  await new Promise((resolve) => setTimeout(resolve, 350));
+  useViewerStore.setState({ loading: false }); // ...and ends with its own draw pending
+  await new Promise((resolve) => setTimeout(resolve, 750)); // past A's 1 s frame backstop
+  assert.deepEqual(calls, [], 'B\'s scene is not drawn yet');
+  noteLiveFrame(); draw.pending = false;
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.deepEqual(calls, [true]);
+  cancel();
+});

@@ -383,6 +383,18 @@ describe('load window', () => {
     assert.equal(h.win.isHeld('A'), false);
   });
 
+  it('a load that starts and ends while the close waits gets a wait of its own: an earlier frame does not close its window', async () => {
+    const h = await harness();
+    h.store(true); h.store(false); // load A ends: the close waits for A's frame
+    h.store(true); h.store(false); // load B starts and ends before that wait ends
+    h.setRenderPending(true); // B's draw is pending
+    h.draw(); // a frame submitted after A's wait began
+    h.frame(); h.timer(0);
+    assert.equal(h.win.isOpen(), true, 'B\'s scene is not drawn yet');
+    h.draw(); h.setRenderPending(false); h.frame(); h.timer(0);
+    assert.equal(h.win.isOpen(), false);
+  });
+
   it('frames that never come (hidden tab) still close the window from the backstop', async () => {
     const h = await harness();
     h.store(true); h.store(false);

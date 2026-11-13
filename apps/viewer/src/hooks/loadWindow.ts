@@ -225,10 +225,14 @@ export function createLoadWindow(deps: LoadWindowDeps): LoadWindow {
   const closeAfterSettledFrame = (): void => {
     if (closeScheduled) return;
     closeScheduled = true;
+    const period = busyPeriod;
     const finish = (): void => {
       closeScheduled = false;
       if (!open) return;
       if (deps.storeBusy() && !busyCapped()) return; // a new load began meanwhile: still open
+      // A load that started and ended while this wait was armed has a scene of
+      // its own to draw: this wait's frame proves nothing about it, so wait again.
+      if (period !== busyPeriod) { closeAfterSettledFrame(); return; }
       // The tail can start again between the check and this task (a late
       // fragment or shard): re-check it, within the same tail limit.
       if (!deps.storeBusy() && tailWaiting()) { scheduleCheck(); return; }

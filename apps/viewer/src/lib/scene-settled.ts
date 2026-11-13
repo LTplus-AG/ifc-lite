@@ -53,16 +53,24 @@ export function afterSceneSettled(done: (settled: boolean) => void, isCurrent: (
   const deadline = Number.isFinite(timeoutMs) && timeoutMs <= 0x7fffffff
     ? setTimeout(() => { if (!cancelled) { cancelWait(); finish(false); } }, timeoutMs)
     : undefined;
-  const finish = (settled: boolean): void => { if (!cancelled) { cancelled = true; clearTimeout(deadline); done(settled); } };
+  const finish = (settled: boolean): void => { if (!cancelled) { cancelled = true; clearTimeout(deadline); cancelWait(); done(settled); } };
   const check = (): void => {
     if (cancelled) return;
     if (!isCurrent()) { finish(false); return; }
-    if (isSceneSettled()) { cancelWait = afterSettledFrame(drawn); return; }
+    if (isSceneSettled()) {
+      // A load that starts while the frame is awaited makes that frame (or its
+      // backstop) no proof that the next scene was drawn: wait for it again.
+      const cancelFrame = afterSettledFrame(drawn);
+      const unsubscribe = useViewerStore.subscribe((state) => { if (!isSceneSettled(state)) { cancelWait(); check(); } });
+      cancelWait = () => { cancelFrame(); unsubscribe(); };
+      return;
+    }
     if (Date.now() - start >= timeoutMs) { finish(false); return; }
     const timer = setTimeout(check, ++polls < 50 ? 100 : 1000);
     cancelWait = () => clearTimeout(timer);
   };
   const drawn = (): void => {
+    cancelWait();
     if (isCurrent() && isSceneSettled()) finish(true);
     else check(); // superseded (false), or the scene changed again: wait for it again
   };

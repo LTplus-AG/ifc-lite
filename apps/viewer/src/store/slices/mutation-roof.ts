@@ -12,6 +12,7 @@
 import { refreshTopAttachmentsInStore, editFootprintRoofInStore, footprintDefinitionProperties, ROOF_FOOTPRINT_PSET, type RoofFootprintEdit, type FootprintRoofDefinition } from '@ifc-lite/create';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { PropertyValue } from '@ifc-lite/collab';
+import { mirrorRoofMeasurements } from './mutation-roof-measurements.js';
 import { roomPropertyApi } from '@/lib/collab/room-property-api.js';
 import { pathForEntity } from '@/lib/collab/entity-paths.js';
 import { roomSlotFor } from '@/lib/collab/room-model-target.js';
@@ -32,7 +33,7 @@ export function editRoofIn(store: ModellingStore, modelId: string, expressId: nu
     const remesh = withRoofDefinitionRollback(store, target, expressId, publish => recordModellingEdit(store, modelId, (_methods, draft) => {
       const definition = editFootprintRoofInStore(target.dataStore, draft, expressId, patch);
       const attached = refreshTopAttachmentsInStore({ ...target, editor: draft, view: draft.getMutationView() }, [expressId]);
-      publish(definition);
+      publish(definition, draft.getMutationView());
       return [expressId, ...attached];
     }));
     const state = store.getState(), stack = state.undoStacks.get(modelId) ?? [];
@@ -71,6 +72,8 @@ function mirrorRoofHistoryDefinition(store: ModellingStore, modelId: string, id:
       api.setPropertyValue(session.doc, path, ROOF_FOOTPRINT_PSET, property.name,
         { ...previous, type: previous?.type ?? (typeof value === 'string' ? 'IfcText' : 'IfcReal'), value });
     }
+    const target = modelEditTarget(state, modelId);
+    if (target) mirrorRoofMeasurements(store, target, id, view);
   } catch (error) {
     // History has already restored the local view. Restore every shared field
     // touched so a partial Yjs publication cannot leave stale roof metadata.
@@ -88,7 +91,7 @@ function mirrorRoofHistoryDefinition(store: ModellingStore, modelId: string, id:
 
 /** Yjs does not roll back on throw: restore definition values before peers observe the transaction. */
 function withRoofDefinitionRollback<T>(store: ModellingStore, target: ModelEditTarget, id: number,
-  edit: (publish: (definition: RoofDefinition) => void) => T): T {
+  edit: (publish: (definition: RoofDefinition, view?: MutablePropertyView) => void) => T): T {
   const state = store.getState();
   const session = roomSlotFor(state, target.modelId) ? state.collabSession : null;
   const path = session ? pathForEntity(target.dataStore, id) : null;
@@ -96,7 +99,7 @@ function withRoofDefinitionRollback<T>(store: ModellingStore, target: ModelEditT
   const room = session && path ? { session, path } : null;
   const api = room ? roomPropertyApi() : null;
   const before = new Map<string, PropertyValue | undefined>();
-  const publish = (definition: RoofDefinition) => {
+  const publish = (definition: RoofDefinition, view = target.view) => {
     // Edits return the definition; creation already recorded it in its draft.
     const properties = 'Footprint' in definition ? footprintDefinitionProperties(definition)
       : definition.map(property => [property.name, property.value, property.type] as const);
@@ -104,6 +107,7 @@ function withRoofDefinitionRollback<T>(store: ModellingStore, target: ModelEditT
       if (room && api && !before.has(name)) before.set(name, structuredClone(api.getPropertyValue(room.session.doc, room.path, ROOF_FOOTPRINT_PSET, name)));
       store.getState().mirrorPropertyEdit(target.modelId, id, ROOF_FOOTPRINT_PSET, name, value, type);
     }
+    mirrorRoofMeasurements(store, target, id, view);
   };
   if (!room || !api) return edit(publish);
   return room.session.transact(() => {
@@ -132,5 +136,5 @@ export function mirrorNewRoofDefinition(store: ModellingStore, modelId: string, 
   if (!definition) return;
   const target = modelEditTarget(store.getState(), modelId);
   if (!target) throw new Error(`No model loaded for id "${modelId}"`);
-  withRoofDefinitionRollback(store, target, id, publish => publish(definition.properties));
+  withRoofDefinitionRollback(store, target, id, publish => publish(definition.properties, view));
 }

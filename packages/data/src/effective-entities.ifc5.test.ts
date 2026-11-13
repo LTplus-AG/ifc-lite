@@ -27,12 +27,31 @@ describe('the effective entity set of an IFCX store', () => {
     expect([...iterateEffectiveEntities({ entityIndex: emptyIndex, entities }, null, ['IFCSPACE'])]).toEqual([]);
   });
 
-  it('reads the marker, not the schema label: a tabular store labelled IFC4 has its rows, an unmarked IFC5 one does not', () => {
+  // #9976: the marker decides, and the deprecated label still decides when no marker is set,
+  // so a caller written against the old shape keeps the entity table it used to get.
+  it('prefers the marker: a tabular store labelled IFC4 has its rows', () => {
     const tabularIfc4 = { entityIndex: emptyIndex, entities, schemaVersion: 'IFC4', sourceKind: 'tabular' as const };
     expect([...iterateEffectiveEntities(tabularIfc4, null, ['IFCSPACE'])].map((e) => e.expressId)).toEqual([1, 3]);
     expect(countEffectiveEntityTypes(tabularIfc4, null).get('IFCWALL')).toBe(1);
-    const unmarkedIfc5 = { entityIndex: emptyIndex, entities, schemaVersion: 'IFC5' };
-    expect([...iterateEffectiveEntities(unmarkedIfc5, null)]).toEqual([]);
+  });
+
+  it('falls back to the label when no marker is set: an unmarked IFC5 source walks the table', () => {
+    const unmarkedIfc5: EffectiveEntitySource = { entityIndex: emptyIndex, entities, schemaVersion: 'IFC5' };
+    expect([...iterateEffectiveEntities(unmarkedIfc5, null, ['IFCSPACE'])].map((e) => e.expressId)).toEqual([1, 3]);
+    const counts = countEffectiveEntityTypes(unmarkedIfc5, null);
+    expect(counts.get('IFCSPACE')).toBe(2);
+    expect(counts.get('IFCWALL')).toBe(1);
+  });
+
+  it('lets an explicit marker overrule the label: a step source labelled IFC5 does not walk the table', () => {
+    const stepIfc5: EffectiveEntitySource = {
+      entityIndex: emptyIndex,
+      entities,
+      schemaVersion: 'IFC5',
+      sourceKind: 'step',
+    };
+    expect([...iterateEffectiveEntities(stepIfc5, null)]).toEqual([]);
+    expect(countEffectiveEntityTypes(stepIfc5, null).size).toBe(0);
   });
 
   it('counts the entity table too: an IFCX model with no pending edits has its spaces and walls', () => {

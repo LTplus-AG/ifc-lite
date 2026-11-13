@@ -89,7 +89,7 @@ export function countEffectiveEntityTypes(
   const counts = new Map<string, number>();
   const tombstones = overlay?.getTombstones?.();
   // A tabular store's STEP index is empty; the canonical iterator walks its entity table instead (see below).
-  const tabular = !sourceIds && byType.size === 0 && source.sourceKind === 'tabular' && !!source.entities?.expressId;
+  const tabular = !sourceIds && byType.size === 0 && isTabularSource(source) && !!source.entities?.expressId;
   const walk = !!sourceIds || tabular || !!(overlay && !tombstones);
   for (const [type, ids] of byType) counts.set(type, walk ? 0 : ids.length);
   // The same zero rows for a tabular store's source classes, so a class whose every row is deleted still reads 0.
@@ -154,7 +154,7 @@ export interface EffectiveEntitySource {
   readonly deferredEntityIndex?: { get(id: number): { type: string } | undefined };
   /**
    * Optional type fallback for a caller-supplied columnar source domain. `expressId` lists the table's
-   * rows: with `sourceKind` 'tabular' it is also the source domain when the caller supplies none.
+   * rows: for a tabular source it is also the source domain when the caller supplies none.
    */
   readonly entities?: {
     getTypeName(id: number): string;
@@ -165,12 +165,25 @@ export interface EffectiveEntitySource {
   /** A 'tabular' store (IFCX is one) has no STEP type index, so its entity table is the source. */
   readonly sourceKind?: IfcStoreBase['sourceKind'];
   /**
-   * @deprecated Never read since #9890. The schema label used to double as the "no STEP
-   * records" marker; `sourceKind` says that now, so an `'IFC5'` label alone no longer makes
-   * the entity table the source domain. Still declared so a caller that passes it compiles.
+   * @deprecated Read only as a fallback when `sourceKind` is absent (#9976). The schema label
+   * used to double as the "no STEP records" marker; `sourceKind` says that now, and an explicit
+   * `sourceKind` always wins over the label. A caller that still passes `'IFC5'` alone keeps
+   * selecting the entity table, so the move to the marker is not a breaking change.
    * TODO(remove-by: next major of @ifc-lite/data, #9890)
    */
   readonly schemaVersion?: string;
+}
+
+/**
+ * Is this source's domain its entity table rather than STEP records? `sourceKind` is the
+ * marker; a source built before it existed carries none, so the deprecated `schemaVersion`
+ * label is read as the fallback, with the same exact `'IFC5'` test it used to be matched on.
+ * The one place either member is read, so both enumeration entry points agree.
+ */
+function isTabularSource(source: EffectiveEntitySource): boolean {
+  return source.sourceKind === undefined
+    ? source.schemaVersion === 'IFC5'
+    : source.sourceKind === 'tabular';
 }
 
 export interface EffectiveEntity {
@@ -226,7 +239,7 @@ export function* iterateEffectiveEntities(
   // The table is walked once per model, into buckets by class; a filtered call takes its buckets, not the table
   // (a per-element loop asking for one class would otherwise rescan the whole table per element). A queued
   // retype can move a row INTO a wanted class, so with retypes the whole table is the domain.
-  if (!sourceIds && byType.size === 0 && source.sourceKind === 'tabular' && source.entities?.expressId) {
+  if (!sourceIds && byType.size === 0 && isTabularSource(source) && source.entities?.expressId) {
     sourceIds = wanted && !retypes?.size ? idsOfClasses(source.entities, wanted) : source.entities.expressId;
   }
 

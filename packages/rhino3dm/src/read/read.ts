@@ -13,18 +13,10 @@ import { loadIfcClasses, type IfcClasses } from './ifc-classes.js';
 import { buildEntities, type ObjectFacts } from './identity.js';
 import { plural, Report } from './report.js';
 import { readApi, type ReadApi, type RFile } from './rhino-api.js';
+import { MAX_3DM_BYTES, tooLarge3dmMessage } from './size.js';
 import { RhinoReadError, type ReadRhino3dmOptions, type RhinoImport } from './types.js';
 import { multiply } from './xform.js';
 
-/**
- * Largest input the reader accepts. Measured, not guessed: in Node 22 with
- * rhino3dm 8.35.0 a 403 MB file of dense double-precision meshes read with the
- * wasm heap at 1,885 MB of its 2,048 MB limit, 429 MB reached 1,964 MB, and
- * 477 MB failed at the limit. The table is under "Size ceiling" in
- * docs/architecture/rhino-3dm-import.md. A file under the cap can still run
- * out of memory when its content expands more; that is reported the same way.
- */
-export const MAX_3DM_BYTES = 400 * 1024 * 1024;
 /** Below this no file can exhaust the heap, so a null read means damage. */
 const OUT_OF_MEMORY_SUSPECT_BYTES = 32 * 1024 * 1024;
 const DEFAULT_MAX_TRIANGLES = 30_000_000;
@@ -156,7 +148,7 @@ export async function readRhino3dm(bytes: Uint8Array, opts: ReadRhino3dmOptions 
   const archiveVersion = readArchiveVersion(bytes);
   const size = megabytes(bytes.byteLength);
   if (bytes.byteLength > MAX_3DM_BYTES) {
-    throw new RhinoReadError('too-large', `This file is ${size}; the reader handles up to ${megabytes(MAX_3DM_BYTES)}. Split the model into smaller files in Rhino.`);
+    throw new RhinoReadError('too-large', tooLarge3dmMessage(bytes.byteLength));
   }
   // rhino3dm's heap stops at 2 GB, and a read takes about five times the file size of it.
   const outOfMemory = () => new RhinoReadError('too-large', `This file (${size}) could not be read: it most likely needs more memory than the reader has. Split the model into smaller files in Rhino.`);

@@ -18,11 +18,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import {
-  MAX_3DM_IMPORT_BYTES,
-  RhinoImportError,
-  rhino3dmSizeRefusal,
-} from '@/lib/import/rhino-import-client';
+import { MAX_3DM_BYTES } from '@ifc-lite/rhino3dm';
+import { RhinoImportError, rhino3dmSizeRefusal } from '@/lib/import/rhino-import-client';
 import { installFakeRhinoImportWorker } from '@/test/rhino-import-worker-fake.js';
 import { prepareRhinoViewerModel } from './rhinoViewerModel.js';
 
@@ -33,14 +30,14 @@ describe('the .3dm size ceiling', () => {
       read: async () => { throw new Error('the reader was asked for a file already over the cap'); },
     });
     try {
-      const error = await prepareRhinoViewerModel(new ArrayBuffer(MAX_3DM_IMPORT_BYTES + 1))
+      const error = await prepareRhinoViewerModel(new ArrayBuffer(MAX_3DM_BYTES + 1))
         .then(() => null, (reason: unknown) => reason);
 
       assert.ok(error instanceof RhinoImportError, 'an oversized archive is refused as a Rhino import error');
       // `too-large`, not `worker-failed`: the loader renders the message
       // verbatim and names the code in telemetry.
       assert.equal(error.code, 'too-large');
-      assert.match(error.message, /the reader handles up to 400 MB\. Split the model into smaller files in Rhino\./);
+      assert.equal(error.message, 'This file is 401 MB; the reader handles up to 400 MB. Split the model into smaller files in Rhino.');
       assert.equal(fake.spawned(), 0, 'no import worker is started for a file that is already over the cap');
     } finally {
       fake.restore();
@@ -50,8 +47,8 @@ describe('the .3dm size ceiling', () => {
   it('admits an archive exactly at the ceiling', () => {
     // The boundary itself, without allocating it: the cap is inclusive, as
     // the reader's own `bytes.byteLength > MAX_3DM_BYTES` is.
-    assert.equal(rhino3dmSizeRefusal(MAX_3DM_IMPORT_BYTES), null);
+    assert.equal(rhino3dmSizeRefusal(MAX_3DM_BYTES), null);
     assert.equal(rhino3dmSizeRefusal(0), null);
-    assert.ok(rhino3dmSizeRefusal(MAX_3DM_IMPORT_BYTES + 1));
+    assert.ok(rhino3dmSizeRefusal(MAX_3DM_BYTES + 1));
   });
 });

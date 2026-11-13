@@ -41,7 +41,7 @@ const GROUPS = [
 const REMEDY = 'Keep rhino3dm and the Rhino scene wasm behind the Rhino workers '
   + '(src/workers/rhinoExport.worker.ts, src/workers/rhinoImport.worker.ts): '
   + 'find the static import that pulls @ifc-lite/rhino3dm, rhino3dm or @ifc-lite/wasm/rhino into the startup graph. '
-  + 'Main-thread code may import types from @ifc-lite/rhino3dm, never its values.';
+  + 'Main-thread code may import types and the import-free constants (RHINO_3DM_VERSIONS, MAX_3DM_BYTES, tooLarge3dmMessage) from @ifc-lite/rhino3dm, never the reader or writer.';
 
 export async function checkRhino3dmLazy(directory) {
   const html = await readIndexHtml(directory);

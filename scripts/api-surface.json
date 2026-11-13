@@ -10020,6 +10020,7 @@
   ],
   "@ifc-lite/rhino3dm": [
     "EncodedRhinoScene: interface",
+    "MAX_3DM_BYTES: const",
     "RHINO_3DM_VERSIONS: const",
     "ReadRhino3dmOptions: interface",
     "Rhino3dmVersion: type",
@@ -10057,6 +10058,7 @@
     "Write3dmResult: interface",
     "parseRhinoScene: function",
     "readRhino3dm: function",
+    "tooLarge3dmMessage: function",
     "writeRhino3dm: function"
   ],
   "@ifc-lite/rules": [

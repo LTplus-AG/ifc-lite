@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { effectiveTypeProperties } from './properties/effectiveTypeProperties';
+import { effectiveTypeProperties, liveTypeOccurrences } from './properties/effectiveTypeProperties';
 import { lazy, Suspense, useMemo, useState, useCallback, useEffect } from 'react';
 import { useTranslation } from '@/i18n';
 import { Building2, Layers, FileText, Calculator, Tag, MousePointer2, PenLine, ChevronDown } from 'lucide-react';
@@ -23,7 +23,7 @@ import { useIfc } from '@/hooks/useIfc';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { IfcQuery } from '@ifc-lite/query';
 import { extractClassificationsOnDemand, extractTypeEntityOwnProperties, extractGeoreferencingOnDemand, extractLengthUnitScale, ProjectUnits, taskProductExpressIds, taskProductGlobalIds, type IfcDataStore, type MaterialPsetGroup } from '@ifc-lite/parser';
-import { RelationshipType, isSpatialStructureTypeName, isStoreyLikeSpatialTypeName } from '@ifc-lite/data';
+import { isSpatialStructureTypeName, isStoreyLikeSpatialTypeName } from '@ifc-lite/data';
 import type { EntityRef, FederatedModel } from '@/store/types';
 import { ZoneVolumeBreakdown } from './ZoneVolumeBreakdown';
 import type { ZoneSet } from '@/lib/zones';
@@ -947,39 +947,32 @@ export function PropertiesPanel() {
     const dataStore = model?.ifcDataStore ?? ifcDataStore;
     if (!dataStore?.relationships) return null;
 
+    const view = mutationViews.get(selectedEntity.modelId === 'legacy' ? '__legacy__' : selectedEntity.modelId);
     if (isTypeEntity) {
       const typeId = selectedEntity.expressId;
-      const affectedOccurrenceIds = dataStore.relationships.getRelated(
-        typeId,
-        RelationshipType.DefinesByType,
-        'forward'
-      );
-
       return {
         mode: 'type' as const,
         typeId,
-        typeEntityName: dataStore.entities.getTypeName(typeId),
-        affectedCount: affectedOccurrenceIds.length,
+        typeName: dataStore.entities.getName(typeId),
+        typeEntityName: view?.getNewEntity(typeId)?.type ?? dataStore.entities.getTypeName(typeId),
+        affectedCount: liveTypeOccurrences(dataStore as IfcDataStore, view, typeId).length,
       };
     }
 
     if (typeProperties && inheritedTypeProperties.length > 0) {
-      const affectedOccurrenceIds = dataStore.relationships.getRelated(
-        typeProperties.typeId,
-        RelationshipType.DefinesByType,
-        'forward'
-      );
-
       return {
         mode: 'inherited' as const,
         typeId: typeProperties.typeId,
-        typeEntityName: dataStore.entities.getTypeName(typeProperties.typeId),
-        affectedCount: affectedOccurrenceIds.length,
+        typeEntityName: typeProperties.typeEntityName,
+        typeName: typeProperties.typeName,
+        affectedCount: liveTypeOccurrences(dataStore as IfcDataStore, view, typeProperties.typeId).length,
+        // The inherited value can also be overridden on the selected occurrence alone (#9296).
+        occurrenceId: selectedEntity.expressId,
       };
     }
 
     return null;
-  }, [editMode, selectedEntity, model, ifcDataStore, isTypeEntity, typeProperties, inheritedTypeProperties]);
+  }, [editMode, selectedEntity, model, ifcDataStore, isTypeEntity, typeProperties, inheritedTypeProperties, mutationViews]);
 
   // Combined list of all properties for bSDD deduplication and edit toolbar
   const mergedProperties: PropertySet[] = useMemo(

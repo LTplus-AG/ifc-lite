@@ -213,6 +213,11 @@ export function useDimension2D(p: UseDimension2DParams) {
     return false;
   }
 
+  /** The pointer left the canvas: drop the preview, snap glyph and hover note; placed points stay. */
+  const handleMouseLeave = useCallback(() => {
+    setCursor(null); setSnap(null); setMarkers([]); setHover(null);
+  }, []);
+
   const scene: DimensionScene | null = useMemo(() => {
     if (dimensions.length === 0 && !toolActive) return null;
     return {
@@ -232,6 +237,7 @@ export function useDimension2D(p: UseDimension2DParams) {
   return {
     handleMouseDown,
     handleMouseMove,
+    handleMouseLeave,
     scene,
     hover,
     snapMode: toolActive ? snap?.mode ?? null : null,

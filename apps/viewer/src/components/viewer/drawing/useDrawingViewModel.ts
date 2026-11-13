@@ -220,14 +220,15 @@ export function useDrawingViewModel() {
     measureHandlers.handleMouseUp();
   }, [measureHandlers, annotationHandlers]);
 
+  const dimensionLeave = dimensionTool.handleMouseLeave;
   const canvasMouseHandlers = useMemo(() => ({
     onMouseDown: handleMouseDown,
     onMouseMove: handleMouseMove,
     onMouseUp: handleMouseUp,
     onMouseEnter: measureHandlers.handleMouseEnter,
-    onMouseLeave: measureHandlers.handleMouseLeave,
+    onMouseLeave: () => { measureHandlers.handleMouseLeave(); dimensionLeave(); },
     onDoubleClick: annotationHandlers.handleDoubleClick,
-  }), [handleMouseDown, handleMouseMove, handleMouseUp, measureHandlers, annotationHandlers]);
+  }), [handleMouseDown, handleMouseMove, handleMouseUp, measureHandlers, annotationHandlers, dimensionLeave]);
 
   // Display toggles. Symbolic and construction projection change which geometry
   // the generator emits, so they clear the drawing to force a regenerate.

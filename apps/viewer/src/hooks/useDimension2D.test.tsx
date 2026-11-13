@@ -39,7 +39,7 @@ function Harness() {
   // 100 px per metre, origin at the top-left: screen = drawing × 100 on a plan.
   tool = useDimension2D({ drawing: current, viewTransform: { x: 0, y: 0, scale: 100 }, axis: 'down', containerRef: ref,
     drawnPlane: PLANE, displayScale: 100, showHiddenLines: false, unitDisplayOverrides: EMPTY });
-  return <button type="button" aria-label="Drawing canvas" ref={ref} onMouseDown={tool.handleMouseDown} onMouseMove={tool.handleMouseMove} />;
+  return <button type="button" aria-label="Drawing canvas" ref={ref} onMouseDown={tool.handleMouseDown} onMouseMove={tool.handleMouseMove} onMouseLeave={tool.handleMouseLeave} />;
 }
 
 function mouseMove(el: Element, init: MouseEventInit) {
@@ -142,4 +142,25 @@ it('hovering a dimension from another cut reports it; one from this cut does not
   assert.equal(hovered(), 'there');
   mouseMove(canvas, { clientX: 900, clientY: 900 });
   assert.equal(hovered(), null);
+});
+
+it('leaving the canvas clears the hover note, snap glyph and preview but keeps the placed points', () => {
+  useViewerStore.setState({ drawing2D: drawing(), annotation2DActiveTool: 'none', dimensions2D: [
+    { id: 'there', a: { x: 0, y: 5 }, b: { x: 4, y: 5 }, offset: 0, orientation: 'aligned', plane: { ...PLANE, position: 4 } },
+  ] });
+  const canvas = render(<Harness />).firstElementChild!;
+  const hovered = () => tool.hover?.id ?? null;
+  mouseMove(canvas, { clientX: 200, clientY: 500 });
+  assert.equal(hovered(), 'there');
+  act(() => { canvas.dispatchEvent(new window.MouseEvent('mouseout', { bubbles: true, relatedTarget: document.body })); });
+  assert.equal(hovered(), null, 'the Other cut note does not linger outside the canvas');
+
+  act(() => useViewerStore.getState().setAnnotation2DActiveTool('dimension'));
+  mouseDown(canvas, { clientX: 4, clientY: 3 });
+  mouseMove(canvas, { clientX: 397, clientY: 2 });
+  assert.ok(tool.snapMode && tool.scene?.preview, 'snap and rubber band shown');
+  act(() => { canvas.dispatchEvent(new window.MouseEvent('mouseout', { bubbles: true, relatedTarget: document.body })); });
+  assert.equal(tool.snapMode, null, 'no snap glyph left behind');
+  assert.equal(tool.scene?.preview ?? null, null, 'no rubber band left behind');
+  assert.equal(useViewerStore.getState().dimension2DPoints.length, 1, 'the placed point stays');
 });

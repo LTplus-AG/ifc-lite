@@ -17,7 +17,10 @@ const MIB = 1024 * 1024;
  */
 export const MAX_3DM_BYTES = 400 * MIB;
 
-/** A size in whole MB, rounded up, so a file just over the cap never reads as the cap itself. */
+/**
+ * A size in whole MB for the reader's refusals, rounded up: a file never
+ * reads smaller than it is, so one just over the cap never reads as the cap.
+ */
 export const megabytes = (bytes: number) => `${Math.ceil(bytes / MIB)} MB`;
 
 /** The `too-large` refusal for an archive above `MAX_3DM_BYTES`. */

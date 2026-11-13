@@ -126,11 +126,38 @@ afterEach(() => {
 });
 
 describe('ShareDialog: models the share seed cannot carry', () => {
-  it('creates no session when every loaded model is one the seed must drop', async (t) => {
-    const { relay, beforeConsent } = await createLinkOver(t, makeModel('a', 'terrain.3dm', 0, 'tabular'));
+  it('offers no Create link when every loaded model is one the seed must drop', async (t) => {
+    const relay = relayStub(t);
+    useViewerStore.setState(fixtureModels(makeModel('a', 'terrain.3dm', 0, 'tabular')));
+    render(<ShareDialog open onOpenChange={() => {}} />);
+    await act(() => settle('the share dialog did not settle'));
 
-    assert.match(beforeConsent, /Nothing here can be shared, no IFC records to share from: terrain\.3dm\./,
-      'the owner is told before pressing Create link, not after');
+    assert.match(bodyText(), /Nothing here can be shared, no IFC records to share from: terrain\.3dm\./,
+      'the owner is told before pressing anything');
+    const create = createLinkButton();
+    assert.equal(create?.disabled, true, 'Create link is disabled');
+    const reason = document.getElementById(create?.getAttribute('aria-describedby') ?? '');
+    assert.match(reason?.textContent ?? '', /Nothing here can be shared/, 'and described by the sentence that says why');
+    assert.doesNotMatch(bodyText(), /Creating the link uploads/, 'no upload notice for a link that will not be made');
+    assert.equal(relay.mints().length, 0);
+  });
+
+  it('claims no room when the models change between consent and mint', async (t) => {
+    // The mint guard, not the button: Create link was pressed over a
+    // shareable IFC, and by the time the mint reads the store only the .3dm
+    // is left. The mint reads the store fresh, so it must refuse there too.
+    const relay = relayStub(t);
+    useViewerStore.setState(fixtureModels(makeModel('a', 'tower.ifc', 0, 'ifc')));
+    render(<ShareDialog open onOpenChange={() => {}} />);
+    await act(() => settle('the share dialog did not settle'));
+    const create = createLinkButton();
+    assert.equal(create?.disabled, false, 'an IFC can be shared, so Create link is offered');
+
+    act(() => {
+      create!.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+      useViewerStore.setState(fixtureModels(makeModel('b', 'terrain.3dm', 0, 'tabular')));
+    });
+    await act(() => settle('room creation did not settle'));
     assert.equal(relay.mints().length, 0, 'a share with nothing to put in it never claims a room');
     assert.equal(starts.length, 0, 'no session is started');
     assert.equal(useViewerStore.getState().collabRoomId, null);
@@ -173,7 +200,6 @@ describe('ShareDialog: models the share seed cannot carry', () => {
     // used to confirm the scope, which locks the scope picker, and then mint
     // nothing: the owner could not go back to 'all' to share tower.ifc.
     assert.equal(createLinkButton()?.disabled, true, 'Create link is disabled while nothing in scope can be shared');
-    assert.equal(relay.mints().length, 0, 'and the mint agrees with the line above it');
 
     click(scopeRadios()[1]!);
     await act(() => settle('going back to all models did not settle'));

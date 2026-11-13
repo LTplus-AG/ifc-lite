@@ -26,7 +26,7 @@
  * dialog on a live room shows what was shared.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { AlertTriangle, Check, Copy, Link2, Users } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -134,6 +134,7 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
   // same `shareRefusesEveryModel` the mint guard does. A GLB beside a `.3dm`
   // still gets its empty room, as on main, and reads the "left out" line.
   const noRoomToCreate = shareRefusesEveryModel(models, activeModelId, scope);
+  const refusalId = useId();
   const unshareable = useMemo(() => {
     if (collabRoomId) return null;
     const refused = unshareableModelsInScope(models, activeModelId, scope);
@@ -237,8 +238,9 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
 
   const waiting = awaitingConsent || (creating && !collabRoomId) || seedInFlight || minting;
   const seedLabel = describeSeedPhase(seedPhase, seedProgress);
+  // A refused scope has no link to create, so the field gives no instruction.
   const linkFieldText = awaitingConsent
-    ? t(scopeIsChoice ? 'shareDialog.linkField.awaitingScope' : 'shareDialog.linkField.awaitingConsent')
+    ? noRoomToCreate ? '' : t(scopeIsChoice ? 'shareDialog.linkField.awaitingScope' : 'shareDialog.linkField.awaitingConsent')
     : seedInFlight
       ? t('shareDialog.linkField.seedInFlight')
       : creating && !collabRoomId
@@ -272,7 +274,7 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
                 editable={awaitingConsent}
                 onConfirm={() => setScopeConfirmed(true)}
                 loadedCount={models.size}
-                noRoomToCreate={noRoomToCreate}
+                refusalId={unshareable && noRoomToCreate ? refusalId : null}
                 seedableCount={seedableCount}
                 activeModelName={modelName}
                 roomModelCount={collabRoomId ? sharedModelCount : null}
@@ -325,7 +327,7 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
               </output>
             )}
             {notice && <p className="text-xs text-muted-foreground">{notice}</p>}
-            {unshareable && <p className="text-xs text-muted-foreground">{unshareable}</p>}
+            {unshareable && <p id={refusalId} className="text-xs text-muted-foreground">{unshareable}</p>}
             {seedFailure && (
               <div
                 role="alert"

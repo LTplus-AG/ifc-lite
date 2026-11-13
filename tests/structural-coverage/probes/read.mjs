@@ -15,7 +15,7 @@
  * Relationships pass when both ends carry the link. See `readRow`.
  */
 
-import { cached, storeOf } from '../lib/packages.mjs';
+import { cached, structuralDataOf } from '../lib/packages.mjs';
 import { equal, normalize, show, verdict } from '../lib/values.mjs';
 
 const NO_FIELD = Symbol('no field');
@@ -95,7 +95,7 @@ function indexExtraction(x) {
 
 /** The indexed read model of one corpus file, shared by every probe that reads it. */
 export function extraction(ctx, file) {
-  return cached(ctx, `read:${file.path}`, async () => indexExtraction(ctx.pkgs.parser.extractStructuralOnDemand(await storeOf(ctx, file))));
+  return cached(ctx, `read:${file.path}`, async () => indexExtraction(await structuralDataOf(ctx, file)));
 }
 
 /** `{ file, ix }`, or `{ file, ix: null, error }` when the product cannot parse or extract the file. */

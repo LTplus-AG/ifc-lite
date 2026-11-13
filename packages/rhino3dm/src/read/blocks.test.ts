@@ -271,7 +271,7 @@ describe('guards', () => {
   });
 
   test('vertex charges add up exactly, so curves that fill the budget are all drawn', async () => {
-    // Three 5-point curves cost 5/3 triangles each; in fractions of a triangle the third missed by 2e-16.
+    // Three 5-point curves cost 5/3 triangles each; summed in fractions of a triangle, the third did not fit.
     const bytes = await craft(c => { for (let i = 0; i < 3; i++) c.addPolyline(Array.from({ length: 5 }, (_, k) => [k, i, 0])); });
     const result = await readRhino3dm(bytes, { maxTriangles: 5 });
     expect([result.curves.length, result.skipped]).toEqual([3, {}]);

@@ -6,6 +6,18 @@ import { getGlobalRenderer } from '@/hooks/useBCF';
 import { hasPendingInstancedShards } from '@/store/instancedShardQueue';
 
 /**
+ * Viewports that saw a stream and have not finalized it yet (`useGeometryStreaming`).
+ * The store stops streaming before the viewport's passive effect schedules the
+ * finalize, and a burst appended without the queue (the small-file fast path)
+ * leaves no queued mesh or fragment in between: only the viewport knows.
+ */
+const finalizePending = new Set<() => boolean>();
+export function registerFinalizePending(pending: () => boolean): () => void {
+  finalizePending.add(pending);
+  return () => { finalizePending.delete(pending); };
+}
+
+/**
  * The load is interactive. The store has left its loading state, nothing
  * streams or waits to upload, and the renderer has finished its async finalize.
  * Finalisation empties its fragment list before its time-sliced rebuild ends,
@@ -18,6 +30,7 @@ import { hasPendingInstancedShards } from '@/store/instancedShardQueue';
  */
 export function isSceneSettled(state: ViewerState = useViewerStore.getState()): boolean {
   if (state.loading || state.geometryStreamingActive || hasPendingInstancedShards()) return false; // shards travel outside the store (#9628)
+  for (const pending of finalizePending) if (pending()) return false;
   const scene = getGlobalRenderer()?.getScene();
   // Optional calls: a renderer whose scene predates these queries (test doubles,
   // partial hosts) has nothing streaming that it could report, so it is settled.

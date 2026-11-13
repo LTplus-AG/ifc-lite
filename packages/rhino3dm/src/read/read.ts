@@ -4,7 +4,7 @@
 
 import { discardRhino, dispose, isCurrentRhino, loadRhino } from '../runtime.js';
 import { readLook, resolveAppearance, type Appearance, type Look } from './appearance.js';
-import { buildBlock, expandInstance, markContents, MAX_BLOCK_PLACEMENTS, type Block, type BlockWalk } from './blocks.js';
+import { buildBlock, expandInstance, inheritableFade, markContents, MAX_BLOCK_PLACEMENTS, type Block, type BlockContext, type BlockWalk } from './blocks.js';
 import { readDocument, rows as tableRows, type DocumentTables } from './document.js';
 import { Emitter } from './emit.js';
 import { extractGeometry, type Part } from './geometry.js';
@@ -75,11 +75,13 @@ function readObjects(api: ReadApi, file: RFile, tables: DocumentTables, opts: Se
 function readBlocks(api: ReadApi, file: RFile, rows: Map<string, ObjectRow>, tables: DocumentTables, report: Report): { blocks: Map<string, Block>; claimed: Set<string> } {
   const linkedTypes = [api.InstanceDefinitionUpdateType.Linked.value, api.InstanceDefinitionUpdateType.LinkedAndEmbedded.value];
   const claimed = new Set<string>();
+  // `fades` once for the file, not once per definition: it depends on the instances, not the members.
+  const context: BlockContext = { tables, fades: inheritableFade(rows.values(), tables), report };
   const blocks = new Map(tableRows(file.instanceDefinitions(), (definition): [string, Block] => {
     const ids = definition.getObjectIds();
     for (const id of ids) claimed.add(id);
     const members = ids.flatMap(id => rows.get(id) ?? []);
-    return [definition.id, buildBlock(definition.name, linkedTypes.includes(definition.updateType.value), members, tables, report)];
+    return [definition.id, buildBlock(definition.name, linkedTypes.includes(definition.updateType.value), members, context)];
   }));
   markContents(blocks);
   return { blocks, claimed };

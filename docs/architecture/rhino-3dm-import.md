@@ -485,20 +485,141 @@ its winding flipped and its normals transformed by the inverse transpose
 | `colorSource` | Colour |
 |---|---|
 | `ColorFromObject` | `objectColor` (RGBA). Our export writes alpha here: FZK glass is alpha 31 [ran]. |
-| `ColorFromLayer` | the object's layer colour. Inside a block, the member's own layer [unproven: check against Rhino]. |
+| `ColorFromLayer` | the object's layer colour. Inside a block, the member's own layer [openNURBS, ran]. |
 | `ColorFromMaterial` | `diffuseColor`, alpha = 1 − `transparency` |
 | `ColorFromParent` | the instance's resolved colour; layer colour at top level |
 
-When the colour's alpha is 255 and the object's material (its own, or its
-layer's) has `transparency > 0`, the material's transparency wins: Rhino
-displays transparency from the material [unproven: check against Rhino]. A
-material inherited from a parent instance does not apply it again, because the
-parent's colour already carries it. A block member coloured "by parent" with
-a transparent material of its own takes the instance's colour and, when that
-colour is opaque, its own material's transparency [test]. A block member coloured by a material
-that is itself "by parent" takes the instance's colour, like a member coloured
-"by parent" [test]. Colours stay sRGB, as `MeshData.color`. Each source is
-covered by a crafted file [test].
+When the colour's alpha is 255 and the object's material has `transparency > 0`,
+the material's transparency wins: Rhino displays transparency from the material
+[documented, not rendered]. The material is whichever one the object ends up
+with, its own, its layer's, or one inherited from a block instance. Colours stay
+sRGB, as `MeshData.color`. Each source is covered by a crafted file [test].
+
+#### Block members and "from parent" (#9987)
+
+A member of a block definition can take its colour, its material, or both from
+the instance placing it. The resolver is
+`ON_3dmObjectAttributes::ApplyParentalControl` in openNURBS, which is the
+function Rhino itself uses, so it settles what Rhino draws without needing
+Rhino. It was built from
+[mcneel/opennurbs](https://github.com/mcneel/opennurbs) `8.x` at
+`eb92af3ba1806b0a34a99aba0d3bda83e3d46083` and run over all 144 combinations of
+a member's and an instance's two sources. What it does to the member's
+attributes:
+
+- a **"by parent" material** is overwritten with the instance's resolved
+  material index, and the member's material source becomes
+  `MaterialFromObject`. Nothing afterwards can tell the member from one that
+  owned that material.
+- a **"by parent" colour** is replaced by the instance's colour source and
+  value; an instance colour that is itself "by layer" resolves to that
+  instance's layer colour.
+- **every other source is left alone**, the member's layer index included. The
+  layer index is never rewritten, and openNURBS says why in a 2010 comment next
+  to the code it disabled: "Color by parent means COLOR and not LAYER".
+
+The reader follows that. `parent` is the placing instance's already-resolved
+appearance, so nesting composes outermost first.
+
+| Member `colorSource` | Member `materialSource` | Colour and alpha | Evidence |
+|---|---|---|---|
+| `ColorFromObject` | `FromLayer`, `FromObject` | its `objectColor`, faded by the material it names | openNURBS, ran [test] |
+| `ColorFromObject` | `FromParent` | its `objectColor`, faded by the **instance's** material | openNURBS, ran [test] |
+| `ColorFromLayer` | `FromLayer`, `FromObject` | its **own** layer's colour, never the instance's layer | openNURBS, ran [test] |
+| `ColorFromLayer` | `FromParent` | its own layer's colour, faded by the instance's material | openNURBS, ran [test] |
+| `ColorFromMaterial` | `FromLayer`, `FromObject` | the diffuse colour of the material it names | openNURBS, ran [test] |
+| `ColorFromMaterial` | `FromParent` | the diffuse colour of the **instance's material**, not the instance's object colour | openNURBS, ran [test] |
+| `ColorFromParent` | `FromLayer`, `FromObject` | the instance's resolved colour, at its own material's transparency when that colour is opaque | the reader's rule, and the fourth divergence below [test] |
+| `ColorFromParent` | `FromParent` | the instance's resolved colour; both inherited, so the two agree exactly | openNURBS, ran [test] |
+| any | any, no instance (top level) | every "from parent" source falls back to the object's own layer | openNURBS enum comments, ran [test] |
+
+The two rows that carry `FromParent` with a colour of their own are the ones
+#9987 asked about, and they were both wrong before: the member took the
+instance's colour where Rhino takes the inherited material's, and an inherited
+material's transparency was skipped on the theory that the parent's colour
+already carried it. It does not, because the member's resolved material is the
+instance's material and Rhino reads transparency from whatever material an
+object ends up with.
+
+**What that costs the instanced output.** One instance record carries one
+colour, so a definition mesh can say "my own colour" or "the instance's
+colour" and nothing else. `memberColor` decides which, and names the third
+case: a member whose colour or alpha the instance's material decides is baked
+per placement, like a curve or a "by parent" mesh with a transparent material
+of its own. Both modes draw the same colours and the same triangle count
+[test].
+
+An inherited material can only change a member's colour through its diffuse
+colour or its transparency. So a member that reads that diffuse
+(`ColorFromMaterial`) always bakes, and the rest bake only when a material some
+instance in the file hands down is transparent, which `inheritableFade`
+measures. That gate matters: with 5,000 placements of one 3,200-triangle
+member, baking every `MaterialFromParent` member returned 5,000 mesh records
+and 375 MB of geometry, every record the same colour, where one shared
+definition holds 0.08 MB [ran]. It is measured over what the instances resolve
+to rather than over the material table, because a Rhino file keeps materials
+nothing references and one leftover transparent material would otherwise bake
+every inheriting member in the file [test]. It still over-approximates: one
+instance naming a transparent material bakes the members of every definition,
+including those placed only by instances with opaque materials.
+
+**Nested blocks.** Each level resolves against its parent's already-resolved
+attributes, so "by parent" reaches past the direct parent only when the
+intermediate instance is itself "by parent". The Rhino 8 help page states the
+rule as "By Parent only works with the direct parent", with a worked example:
+a box set to By Parent inside Block A inside Block B shows Block A's layer
+colour, and shows Block B's colour once Block A is By Parent too
+([object properties](https://docs.mcneel.com/rhino/8/help/en-us/properties/object.htm)).
+Both halves of that example were run through openNURBS and are covered [test].
+The material help page is vaguer on nesting, saying only that objects set to
+the Parent material "are not affected by further nesting"
+([material properties](https://docs.mcneel.com/rhino/8/help/en-us/properties/material.htm));
+openNURBS composes, and that is what the reader does [test].
+
+**Known divergences.** All four come from one modelling choice: `Appearance`
+hands a member the instance's already-resolved colour, where openNURBS hands it
+the instance's colour *source*. The first three are reached only when the
+placing instance's own colour or material is itself by-material or by-parent,
+which no public .3dm does. The fourth needs no more than an instance that names
+a transparent material, which is an ordinary file, and the table's
+`ColorFromParent` row is pinned at the reader's value by a test that builds
+one. Carrying the source instead would settle the first three,
+whose right answer is a fixed colour a definition can hold; the cost is that
+which definition a placement shares would then depend on the instance, so
+`Emitter` would have to key one by more than the block id. The fourth needs a
+second colour on every instance record, or a bake. Both are out of scope for
+#9987, which asked about the two `FromParent` rows in the table.
+
+- an instance whose `colorSource` is `ColorFromMaterial`: openNURBS gives its
+  "by parent" members `ColorFromMaterial`, so a member with a material of its
+  own is coloured by *that* material. The reader gives it the instance's
+  resolved colour. The two agree whenever the member's material is inherited
+  [openNURBS, ran].
+- a top-level instance whose own `colorSource` is `ColorFromParent`: with no
+  parent of its own, openNURBS leaves its members `ColorFromParent` too, so
+  they fall back to their own layers. The reader gives them the instance's
+  resolved colour, which is the instance's layer colour [openNURBS, ran].
+- the same shape for `MaterialFromParent` on a top-level instance: openNURBS
+  leaves the member's material unresolved, so it falls back to the member's own
+  layer material, where the reader hands down the instance's [openNURBS, ran].
+- a member whose colour is "by parent" and whose material is not inherited
+  takes the instance's *drawn* alpha. Rhino copies the instance's colour value,
+  which never carries material transparency, and then fades the member by its
+  own material. The two differ only when the instance itself has a transparent
+  render material [openNURBS, ran].
+
+**Plot colour is not read.** `PlotColorFromParent` exists and resolves the same
+way, but plot colour is for printing and the reader never reads it: `RAttributes`
+in `read/rhino-api.ts` does not name `plotColorSource`.
+
+**No public .3dm has a "from parent" block member.** Every member in
+mcneel/rhino3dm's `tests/models` (`blocks.3dm`, `file3dm_stuff.3dm`),
+mcneel/rhino-developer-samples and openNURBS's own `example_files` is
+`ColorFromLayer` plus `MaterialFromLayer` [ran, all three sets]. So the table's
+rows are covered by crafted files, with the one public file that does carry a
+semi-transparent render material,
+openNURBS's `my_mesh_with_material.3dm`, pinned as a fixture for the
+transparency rule [test].
 
 ### Layers, visibility, hierarchy
 
@@ -677,9 +798,20 @@ Level 1 has no dialog. The defaults live in the reader.
   never re-hosted. Asserted: per-type entities and skip counts on
   `file3dm_stuff.3dm`, `blocks.3dm` and `mesh.3dm`, the SubD triangle count at
   each level on `subd_creases.3dm` (12, 48, 192, 768), and the no-render-mesh
-  refusal on `object_UserStrings.3dm`. The `mcneel/opennurbs` example files
-  (the Rhino logo models) were not added: that repository's licence text does
-  not grant redistribution, and the files are not needed.
+  refusal on `object_UserStrings.3dm`. One `mcneel/opennurbs` example file is
+  pinned the same way, `my_mesh_with_material.3dm`: the only public .3dm found
+  with a semi-transparent render material, so it is what proves the
+  transparency rule on a file nobody here wrote. Its licence does not grant
+  redistribution either, which is why it is an `upstream_file` entry and not an
+  upload. The rest of that repository's example files (the Rhino logo models)
+  are not needed.
+- Block member appearance (`appearance.test.ts`): the "from parent" resolution
+  table above, row by row, against a crafted instance whose object colour and
+  material colour disagree, so the rows that #9987 asked about discriminate.
+  Plus the top-level fallback, the Rhino 8 help page's nested-block example in
+  both its forms, where each row's mesh lands when the modes differ, and that
+  both modes draw the same colours and triangle count. Six of its sixteen cases
+  fail against the reader as it was [ran].
 - Crafted through rhino3dm in the test (`test-support/craft.ts`), for
   everything no sample covers: colour sources, hidden state, layer stamps,
   units, Breps and extrusions with render meshes, curves, point clouds, text

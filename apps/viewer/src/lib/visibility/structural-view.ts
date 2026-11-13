@@ -36,7 +36,7 @@ export function hasStructuralData(state: Pick<ViewerState, 'models' | 'ifcDataSt
   // @raw-entity-enumeration-ok structural product presence; no attribute decoding
   return sources.some(([store, view]) => [...(store?.entityIndex?.byType ?? [])]
     .some(([type, ids]) => isAnalyticalProduct(type) && ids.some((id) => stillAnalytical(view, id))))
-    || [...state.mutationViews.values()].some((view) => view.getNewEntities().some((e) => isAnalyticalProduct(view.getEntityTypeMutation(e.expressId)?.newType ?? e.type))
+    || [...state.mutationViews.values()].some((view) => view.getNewEntities().some((e) => isAnalyticalProduct(e.type) && stillAnalytical(view, e.expressId))
       || [...view.getTypeMutations().values()].some((m) => isAnalyticalProduct(m.newType)));
 }
 

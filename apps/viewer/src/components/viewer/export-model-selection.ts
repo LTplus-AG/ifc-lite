@@ -6,7 +6,7 @@ import type { GeometryResult } from '@ifc-lite/geometry';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { FederatedModel } from '@/store';
 import { exportableModels } from '@/lib/export/capture-export';
-import { hasRoomStepSource } from '@/lib/collab/room-symbolic-source';
+import { roomSymbolicSource } from '@/lib/collab/room-symbolic-source';
 
 export interface ExportModelListItem {
   id: string;
@@ -132,7 +132,7 @@ export type StepSkipReason = 'noRecords' | 'noData';
  * through `roomStepExportSource`. Asking for the source kind alone refused
  * every shared room, single and merged, which is what main exported.
  *
- * `hasRoomStepSource` asks whether a portable source is REGISTERED, not
+ * `roomSymbolicSource` asks whether a portable source is REGISTERED, not
  * whether `canExportRoomAsStep` currently accepts it. That is a choice, not a
  * limitation — `canExportRoomAsStep` answers without a `MutablePropertyView`
  * too. A room whose root set has moved past its source is deliberately let
@@ -150,7 +150,7 @@ export type StepSkipReason = 'noRecords' | 'noData';
 export function stepSkipReason(store: IfcDataStore | null | undefined): StepSkipReason | null {
   if (!store) return 'noData';
   if (store.sourceKind !== 'tabular') return null;
-  return hasRoomStepSource(store) ? null : 'noRecords';
+  return roomSymbolicSource(store) ? null : 'noRecords';
 }
 
 export function resolveExportModel(

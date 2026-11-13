@@ -39,7 +39,7 @@ import { useTranslation, type TranslationKey } from '@/i18n';
 import type { CollabRole } from '@/store/slices/collabSlice';
 import { buildShareUrl, mintRoomToken, parseRoleFromToken } from '@/lib/collab/share-link';
 import { describeSeedPhase, isCollabSeedInFlight } from '@/lib/collab/seed-phase';
-import { isSeedableModel, modelsInShareScope, shareRefusesEveryModel, shareScopeIsChoice, unshareableModelsInScope, type ShareScope } from '@/lib/collab/share-scope';
+import { seedableModelsInScope, shareRefusesEveryModel, shareScopeIsChoice, unshareableModelsInScope, type ShareScope } from '@/lib/collab/share-scope';
 import { useShareRoomCreation } from './useShareRoomCreation';
 import { ShareScopeField } from './ShareScopeField';
 
@@ -117,8 +117,7 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
   // What "all loaded models" can put in a room. The seed asks the same
   // predicate, so the "{seedable} of {loaded}" notice cannot promise a model
   // the seed then drops.
-  const seedableCount = useMemo(() => modelsInShareScope(models, activeModelId, 'all')
-    .filter(isSeedableModel).length, [models, activeModelId]);
+  const seedableCount = useMemo(() => seedableModelsInScope(models, activeModelId, 'all').length, [models, activeModelId]);
   // Which loaded models this share will NOT carry, and why. Derived, not
   // state, so the warning is on screen while the owner is still deciding
   // rather than only after the room is committed — the Export dialog names a

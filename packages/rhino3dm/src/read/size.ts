@@ -13,14 +13,13 @@
  * This module imports nothing, so a caller on a page's main thread can ask the
  * cap before it hands the bytes to a worker without loading rhino3dm.
  */
-export const MAX_3DM_BYTES = 400 * 1024 * 1024;
-
 const MIB = 1024 * 1024;
+export const MAX_3DM_BYTES = 400 * MIB;
 
-/**
- * The `too-large` refusal for an archive above `MAX_3DM_BYTES`. The size
- * rounds up, so a file just over the cap never reads as the cap itself.
- */
+/** A size in whole MB, rounded up, so a file just over the cap never reads as the cap itself. */
+export const megabytes = (bytes: number) => `${Math.ceil(bytes / MIB)} MB`;
+
+/** The `too-large` refusal for an archive above `MAX_3DM_BYTES`. */
 export function tooLarge3dmMessage(byteLength: number): string {
-  return `This file is ${Math.ceil(byteLength / MIB)} MB; the reader handles up to ${MAX_3DM_BYTES / MIB} MB. Split the model into smaller files in Rhino.`;
+  return `This file is ${megabytes(byteLength)}; the reader handles up to ${megabytes(MAX_3DM_BYTES)}. Split the model into smaller files in Rhino.`;
 }

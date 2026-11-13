@@ -144,8 +144,8 @@ function snapshotView(
 
 /**
  * True only while the portable source covers every root in the live room.
- * The strong half of the pair; `hasRoomStepSource` in `room-symbolic-source.ts`
- * is the weak one, and says there why it lives over there.
+ * The strong question; `stepSkipReason` asks only whether a source is
+ * registered, and says there why.
  */
 export function canExportRoomAsStep(
   roomStore: IfcDataStore,

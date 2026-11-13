@@ -544,9 +544,11 @@ test('#9328 failed exports cannot leave a successful expected state or stale exe
   const dir=mkdtempSync(join(tmpdir(),'parity-exercise-output-'));
   try {
     writeFileSync(join(dir,'notes.txt'),'keep');
+    writeFileSync(join(dir,'notes.json'),'{"userNote":true}');
     for(const name of ['expected.state','IFC4.ifc','model.glb','results.json']) writeFileSync(join(dir,name),'old');
     resetExerciseOutputs(dir);
     assert.equal(readFileSync(join(dir,'notes.txt'),'utf8'),'keep');
+    assert.deepEqual(JSON.parse(readFileSync(join(dir,'notes.json'),'utf8')),{userNote:true});
     for(const name of ['expected.state','IFC4.ifc','model.glb','results.json']) assert.equal(existsSync(join(dir,name)),false);
     publishExpectedState(dir,{elements:2},[true,true]);
     assert.equal(JSON.parse(readFileSync(join(dir,'expected.state'),'utf8')).elements,2);

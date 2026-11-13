@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
 import { buildGeometrySectionV13, openGeometryChunksV13 } from './geometry-chunks.js';
 import { FORMAT_VERSION } from '../types.js';
-import { BufferReader } from '../utils/buffer-utils.js';
+import { ArrayArena, BufferReader } from '../utils/buffer-utils.js';
 
 const coordInfo: CoordinateInfo = {
   originShift: { x: 0, y: 0, z: 0 },
@@ -73,6 +73,30 @@ describe('chunk decode arena', () => {
     structuredClone(first, { transfer: [first.positions.buffer, first.normals.buffer, first.indices.buffer] as ArrayBuffer[] });
     expect(first.positions.length).toBe(0); // detached: it moved to the "worker"
     expect(decoded.slice(1).map((m) => [[...m.positions].join(), [...m.normals].join(), [...m.indices].join()].join('|'))).toEqual(before);
+  });
+
+  it('a small chunk keeps a block no larger than its own arrays, not a full ~1 MiB block (review)', async () => {
+    const small: MeshData[] = [{ expressId: 1, positions: new Float32Array(9).fill(1), normals: new Float32Array(9).fill(0.5),
+      indices: Uint32Array.from([0, 1, 2]), color: [0.1, 0.2, 0.3, 1], ifcType: 'IfcWall' } as MeshData];
+    const section = await buildGeometrySectionV13(small, coordInfo, { compress: false });
+    const open = openGeometryChunksV13(section, 0, FORMAT_VERSION, { sharedArena: true });
+    const [mesh] = await open.readChunk(0);
+    expect(mesh.positions.buffer).toBe(mesh.indices.buffer); // still one shared block
+    expect(mesh.positions.buffer.byteLength).toBeLessThanOrEqual(open.chunks[0].uncompressedLength + 3); // the hint, rounded up to 4 bytes
+    expect([...mesh.positions]).toEqual([...small[0].positions]);
+  });
+
+  it('an arena sizes each new block to what the caller still expects, at least the request and at most ~1 MiB', () => {
+    const arena = new ArrayArena(100);
+    arena.take(40);
+    expect(arena.buffer!.byteLength).toBe(100);
+    arena.take(60);
+    expect(arena.buffer!.byteLength).toBe(100); // the same block
+    arena.take(8); // past the hint: a block just large enough
+    expect(arena.buffer!.byteLength).toBe(8);
+    const unbounded = new ArrayArena();
+    unbounded.take(4);
+    expect(unbounded.buffer!.byteLength).toBe(1 << 20);
   });
 
   it('gives a large array its own buffer, and a plain reader still copies each array', () => {

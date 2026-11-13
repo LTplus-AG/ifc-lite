@@ -16,9 +16,11 @@ const OPTIONS = { schema: 'IFC4', applyMutations: true } as const;
 
 /** Matches the STEP-records refusal by its public shape, through the entry points that throw it. */
 function refusal(reason: 'roomMoved' | 'noRecords', modelName?: string) {
-  return (error: unknown) => error instanceof Error && error.name === 'StepRecordsUnavailableError'
-    && (error as Error & { reason?: string }).reason === reason
-    && (modelName === undefined || (error as Error & { modelName?: string }).modelName === modelName);
+  return (error: unknown) => {
+    const refused = error as Error & { reason?: string; modelName?: string };
+    return refused instanceof Error && refused.name === 'StepRecordsUnavailableError' && refused.reason === reason
+      && (modelName === undefined || refused.modelName === modelName);
+  };
 }
 
 async function parse(content: string | Uint8Array) {

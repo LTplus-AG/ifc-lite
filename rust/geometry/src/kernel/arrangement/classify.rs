@@ -191,6 +191,9 @@ pub(super) struct BComponents<'a> {
     exts: Vec<f64>,
     closed: std::cell::OnceCell<bool>,
     adjacency: Vec<std::cell::OnceCell<AdjacentFaces>>,
+    /// Per-component ray BVH for [`Self::inside`], built on first use, with the
+    /// largest coordinate magnitude its pad covers (see [`Self::inside`]).
+    ray_bvhs: Vec<std::cell::OnceCell<(super::super::broadphase::Bvh, f64)>>,
 }
 
 impl<'a> BComponents<'a> {
@@ -228,7 +231,8 @@ impl<'a> BComponents<'a> {
                 (lo, hi)
             })
             .collect();
-        Self { comps, aabbs, exts, closed: std::cell::OnceCell::new(), adjacency: (0..comps.len()).map(|_| std::cell::OnceCell::new()).collect() }
+        Self { comps, aabbs, exts, closed: std::cell::OnceCell::new(), adjacency: (0..comps.len()).map(|_| std::cell::OnceCell::new()).collect(),
+            ray_bvhs: (0..comps.len()).map(|_| std::cell::OnceCell::new()).collect() }
     }
 
     /// Conservative "could the parity segment from `p` hit component `k`?" —
@@ -284,8 +288,55 @@ impl<'a> BComponents<'a> {
     /// faster: escalation counts and the boolean manifest are unaffected.
     fn inside(&self, p: [f64; 3]) -> bool {
         self.comps.iter().enumerate().any(|(k, comp)| {
-            self.ray_may_hit(k, p) && point_inside(p, comp, self.exts[k], self.aabbs[k])
+            self.ray_may_hit(k, p) && self.component_inside(k, comp, p)
         })
+    }
+
+    /// [`point_inside`] for component `k`, with the same far endpoint (the same
+    /// [`sound_far`] over the same inflated box) and the same exact crossing
+    /// test, but the triangles tested come from a BVH instead of a full scan.
+    ///
+    /// Verdict-identical by construction:
+    /// - an exact crossing means the segment meets the triangle at a point inside
+    ///   the triangle's (exact) AABB, so the triangle passes the BVH's slab tests
+    ///   unless rounding in those tests exceeds the pad;
+    /// - the pad is at least `PAD_REL * reach`, where `reach` bounds every
+    ///   coordinate of the tree and of the query segment. `operand_extent` is at
+    ///   least twice the component's largest coordinate and `ray_dir`'s smallest
+    ///   component is about 0.30, so every slab denominator `|far_i - p_i|` is at
+    ///   least `reach / 40`, and the slab test's rounding stays below about
+    ///   `500 * f64::EPSILON * reach` (about `1.1e-13 * reach`), some 8000 times
+    ///   under the pad `2^-30 * reach`;
+    /// - a query whose segment reaches beyond `reach` falls back to the full scan;
+    /// - each triangle is one BVH leaf and a tree visits a leaf at most once, so
+    ///   the candidates hold every exactly-crossed triangle exactly once and the
+    ///   crossing count, hence its parity, equals the full scan's;
+    /// - the exact test uses explicit `orient3d` only, so no escalation is counted
+    ///   on either path and the #1109 budget trips at the same points.
+    fn component_inside(&self, k: usize, comp: &[Tri], p: [f64; 3]) -> bool {
+        const PAD_REL: f64 = 1.0 / 1_073_741_824.0; // 2^-30
+        if comp.is_empty() {
+            return false; // no crossings to count, as in `point_inside`
+        }
+        #[cfg(test)]
+        if classify_bvh_tests::FORCE_LINEAR.with(|f| f.get()) {
+            return point_inside(p, comp, self.exts[k], self.aabbs[k]);
+        }
+        let far = sound_far(p, ray_dir(), self.exts[k], self.aabbs[k]);
+        let (bvh, reach) = self.ray_bvhs[k].get_or_init(|| {
+            let (lo, hi) = self.aabbs[k];
+            let box_mag = (0..3).fold(0.0f64, |m, i| m.max(lo[i].abs()).max(hi[i].abs()));
+            // Covers the tree and any segment that starts within a few extents of it.
+            let reach = 4.0 * (box_mag + self.exts[k]);
+            (super::super::broadphase::Bvh::build_with_min_pad(comp, PAD_REL * reach), reach)
+        });
+        let query_mag = (0..3).fold(0.0f64, |m, i| m.max(p[i].abs()).max(far[i].abs()));
+        if !(query_mag <= *reach) {
+            return point_inside(p, comp, self.exts[k], self.aabbs[k]);
+        }
+        let mut candidates = Vec::new();
+        bvh.ray_candidates(p, far, &mut candidates);
+        candidates.iter().filter(|&&i| exact_seg_hits_tri(p, far, &comp[i as usize])).count() % 2 == 1
     }
 
     /// Regime-1 coincident-face probe across the components: the EXACT
@@ -602,6 +653,9 @@ pub(super) fn rotate_min_first(t: [Vid; 3]) -> [Vid; 3] {
 #[cfg(test)]
 #[path = "classify_tests.rs"]
 mod classify_tests;
+#[cfg(test)]
+#[path = "classify_bvh_tests.rs"]
+mod classify_bvh_tests;
 
 #[cfg(test)]
 #[path = "issue_3353_vid_census_tests.rs"]

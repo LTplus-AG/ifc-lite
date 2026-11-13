@@ -16,7 +16,7 @@ import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
-import { installScriptedMesher, settleRemesh } from '@/test/scripted-mesher';
+import { installScriptedMesher, settleRemesh, triangleFor } from '@/test/scripted-mesher';
 import { requestRemesh } from '@/lib/remesh/remesh-service';
 
 const MODEL = 'ifc';
@@ -94,6 +94,21 @@ function assertFallbackWall(id: number): void {
 describe('an added element has a mesh when the wasm re-mesh declines (#6232)', () => {
   beforeEach(() => { mesher = installScriptedMesher(); });
   afterEach(() => mesher.restore());
+
+  it('an aggregated roof rendered through its planes gets no duplicate fallback roof (#9357)', async () => {
+    await seed();
+    mesher.restore();
+    // The worker contract emits geometry only for the slab parts. The parent
+    // IfcRoof has no representation; fallback must not invent a second roof.
+    mesher = installScriptedMesher(request => [...request.targets].slice(1).map(triangleFor));
+    const added = useViewerStore.getState().addRoof(MODEL, STOREY, { Position: [0, 0, 3], Width: 10, Depth: 8,
+      Thickness: .25, EdgeSlopes: Array(4).fill(Math.PI / 6) });
+    assert.ok('expressId' in added, 'error' in added ? added.error : '');
+    await requestRemesh(useViewerStore.getState, MODEL, [added.expressId], 'created');
+    await settleRemesh();
+    assert.equal(meshesOf(added.expressId).length, 0, 'no synthetic parent geometry over the rendered plane slabs');
+    assert.equal(useViewerStore.getState().models.get(MODEL)?.geometryResult?.meshes.length, 4);
+  });
 
   it('noSource: an IFCX-sourced model is drawn from the parameters', async () => {
     await seed();

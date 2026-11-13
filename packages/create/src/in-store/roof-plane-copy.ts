@@ -2,26 +2,23 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
-import { EntityExtractor, extractPropertiesOnDemand, extractQuantitiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
+import { extractPropertiesOnDemand, extractQuantitiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import type { IfcAttributeValue, StoreEditor } from '@ifc-lite/mutations';
-import { getFootprintRoofPlaneParts, PART_TYPE, RELATION_NAME } from './roof-plane-parts.js';
+import { getFootprintRoofPlaneParts } from './roof-plane-parts.js';
 import { AnchorEntityReader } from './resolve-anchor.js';
 import { refId } from './host-geometry-frame.js';
-import { collectSourceAssociations } from './resolve-source.js';
 import { ROOF_FOOTPRINT_PSET } from './roof-footprint.js';
 import { readFileRecord, type FileRecord } from './step-record-attrs.js';
 
 const writesByEditor = new WeakMap<StoreEditor, number>();
 const MAX_MEASUREMENT_COPY_WRITES = 10_000;
 
-/** Quantitative parts follow a copied roof without becoming placed/meshed
- * assembly children. Saved definitions retain their normal association policy;
- * standard measurements also remain readable in the current overlay. */
+/** The ordinary assembly copy carries geometry and placements. Merge saved and
+ * live measurements onto those copied products, retaining explicit deletions. */
 export function copyRoofPlaneParts(store: IfcDataStore, editor: StoreEditor, source: number, target: number,
-  random?: RandomSource): Map<number, number> {
+  copiedFrom: ReadonlyMap<number, number>, random?: RandomSource): void {
   const view = editor.getMutationView(), parts = getFootprintRoofPlaneParts(store, view, source);
-  const copied = new Map<number, number>();
-  if (!parts.length) return copied;
+  if (!parts.length) return;
   if (parts.length > 10_000) throw new Error('Roof plane copy exceeds 10000 parts');
   if (!store.source) throw new Error('Roof plane copy requires source bytes');
   const spend = (writes: number) => {
@@ -30,8 +27,9 @@ export function copyRoofPlaneParts(store: IfcDataStore, editor: StoreEditor, sou
     writesByEditor.set(editor, total);
   };
   spend(parts.length + 1);
-  const reader = new AnchorEntityReader(store, view), extractor = new EntityExtractor(store.source);
-  const guid = () => generateIfcGuid(random);
+  const reader = new AnchorEntityReader(store, view);
+  const copied = new Map([...copiedFrom].filter(([, original]) => parts.includes(original)));
+  if (copied.size !== parts.length) throw new Error('Roof assembly copy omitted a plane');
   const baseProperties = (base: number) => extractPropertiesOnDemand(store, base)
     .map(set => ({ ...set, globalId: set.globalId ?? '' }));
   const measurementRecord = (id: number): FileRecord | null => {
@@ -74,7 +72,7 @@ export function copyRoofPlaneParts(store: IfcDataStore, editor: StoreEditor, sou
       if (kind === 'IFCCOMPLEXPROPERTY' || kind === 'IFCPHYSICALCOMPLEXQUANTITY') return member;
       return `#${editor.addEntity(child.type, [...child.attributes]).expressId}`;
     });
-    const attributes = [...record.attributes]; attributes[0] = guid(); attributes[slot] = independent;
+    const attributes = [...record.attributes]; attributes[0] = generateIfcGuid(random); attributes[slot] = independent;
     return editor.addEntity(record.type, attributes).expressId;
   };
   const copyMeasurements = (original: number, id: number, quantitySet: string, propertySet: string) => {
@@ -92,37 +90,19 @@ export function copyRoofPlaneParts(store: IfcDataStore, editor: StoreEditor, sou
       view.setProperty(id, set.name, p.name, p.value, p.type, p.unit, false, p.dataType);
     }
   };
-  for (const original of parts) {
-    const a = reader.entity(original)!.attributes;
-    if (a[5] != null || a[6] != null) throw new Error('Quantitative roof parts with independent placement or geometry cannot be copied');
-    const text = (index: number) => typeof a[index] === 'string' ? a[index] : null;
-    const ownerId = refId(a[1]), owner = ownerId === null ? null : `#${ownerId}`;
-    const id = editor.addEntity('IfcSlab', [guid(), owner, text(2), text(3), PART_TYPE, null, null, text(7), '.ROOF.']).expressId;
-    copied.set(id, original);
-    for (const association of collectSourceAssociations(store, extractor, original, editor)) {
-      for (const definition of association.relatingExpressIds ?? [association.relatingExpressId]) {
-        const copiedDefinition = association.relType.toUpperCase() === 'IFCRELDEFINESBYPROPERTIES'
-          ? definitionForCopy(definition, original) : definition;
-        if (copiedDefinition === null) continue;
-        editor.addEntity(association.relType, [guid(), association.ownerHistoryId === null ? null : `#${association.ownerHistoryId}`,
-          association.name, association.description, [`#${id}`], `#${copiedDefinition}`]);
-      }
-    }
-    copyMeasurements(original, id, 'Qto_SlabBaseQuantities', 'Pset_SlabCommon');
-  }
-  const roof = reader.entity(target)!, ownerId = refId(roof.attributes[1]);
-  editor.addEntity('IfcRelAssignsToProduct', [guid(), ownerId === null ? null : `#${ownerId}`,
-    RELATION_NAME, null, [...copied.keys()].map(id => `#${id}`), null, `#${target}`]);
+  for (const [id, original] of copied) copyMeasurements(original, id, 'Qto_SlabBaseQuantities', 'Pset_SlabCommon');
   copyMeasurements(source, target, 'Qto_RoofBaseQuantities', ROOF_FOOTPRINT_PSET);
-  // The ordinary product copy already wrote the roof's saved associations.
-  // Trim only owned missing members, retaining unrelated native definitions.
+  // The assembly copy already wrote saved associations for the roof and planes.
+  // Trim only missing members, retaining unrelated native definitions.
+  copied.set(target, source);
   for (const relation of reader.ids('IFCRELDEFINESBYPROPERTIES')) {
     if (!view.getNewEntity(relation)) continue;
     const a = reader.entity(relation)!.attributes, related = a[4], definition = refId(a[5]);
-    if (!Array.isArray(related) || related.length !== 1 || refId(related[0]) !== target || definition === null) continue;
-    const copiedDefinition = definitionForCopy(definition, source);
+    const product = Array.isArray(related) && related.length === 1 ? refId(related[0]) : null;
+    const original = product === null ? undefined : copied.get(product);
+    if (original === undefined || definition === null) continue;
+    const copiedDefinition = definitionForCopy(definition, original);
     if (copiedDefinition === null) editor.removeEntity(relation);
     else if (copiedDefinition !== definition) editor.setPositionalAttribute(relation, 5, `#${copiedDefinition}`);
   }
-  return copied;
 }

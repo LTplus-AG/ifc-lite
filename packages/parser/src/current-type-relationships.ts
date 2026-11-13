@@ -89,8 +89,8 @@ export function refIds(value: unknown, max = MAX_RELATION_REFERENCES, required =
 /** One relationship as this reader needs it: null when it holds nothing usable. */
 export type RelationRead = { byType: boolean; members: number[]; targets: number[] } | null;
 
-export function readRelation(store: IfcDataStore, expressId: number, view: MetadataReadView): RelationRead {
-    const record = effectiveMetadataRecord(store, expressId, view);
+export function readRelation(store: IfcDataStore, expressId: number, view: MetadataReadView, sourceRecord?: Parameters<typeof effectiveMetadataRecord>[3]): RelationRead {
+    const record = effectiveMetadataRecord(store, expressId, view, sourceRecord);
     if (!record) throw new CurrentQuantityRefusal('Native type relationship is unreadable');
     const target = record.attributes[5];
     const members = refIds(record.attributes[4], MAX_RELATION_REFERENCES, true);

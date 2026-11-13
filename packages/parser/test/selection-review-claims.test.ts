@@ -40,11 +40,17 @@ it('#9947 deferred property atoms never move exceptional relationships out of th
 it('#9947 duplicate definition members follow native edit budgets without accumulating across revisions', async () => {
   // 262142 distinct typing edges + one distinct definition edge. Native reads
   // of an edited row count its raw member list: two admits, three refuses.
-  const members = [100, ...Array.from({ length: 262141 }, (_, i) => 1000 + i)];
+  const members = Array.from({ length: 262141 }, (_, i) => 1000 + i);
   const store = await new IfcParser().parseColumnar(bytes([...records,
     `#10=IFCRELDEFINESBYTYPE('t',$,$,$,(${members.map(id => '#' + id).join(',')}),#2);`,
+    // The selected occurrence has a small row. The unrelated large row still
+    // contributes its full budget without re-decoding 262141 members per edit.
+    "#11=IFCRELDEFINESBYTYPE('selected',$,$,$,(#100),#2);",
     "#20=IFCRELDEFINESBYPROPERTIES('q',$,$,$,(#2,#2),(#3,#3));",
   ]), { disableWorkerScan: true });
+  let fillerReads = 0;
+  const getEntity = store.getEntity.bind(store);
+  store.getEntity = id => { if (id === 10) fillerReads++; return getEntity(id); };
   const native = { ...store, selectionRelationshipIndex: undefined };
   const view = new MutablePropertyView(null, 'duplicates');
   const compare = (status: 'available' | 'unavailable') => {
@@ -59,4 +65,5 @@ it('#9947 duplicate definition members follow native edit budgets without accumu
     view.setPositionalAttribute(20, 4, [2, 2, 2]); compare('unavailable');
     view.setPositionalAttribute(20, 4, [2, 2]); compare('available');
   }
+  expect(fillerReads).toBe(0);
 });

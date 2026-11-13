@@ -27,8 +27,10 @@ function legacyMissingRelationships(store: IfcDataStore): Map<string, number[]> 
 }
 
 /** #9947: source rows incident to one subject, plus edits that can move endpoints
- * INTO that subject. Partial providers keep the complete inventory contract. */
-export function selectionRelationshipIds(store: IfcDataStore, view: SelectionEditView, entityId: number | undefined, kinds: readonly RelationshipType[], sourceTypes: readonly string[]): number[] | null {
+ * INTO that subject. Native type readers may supply their validated endpoint
+ * IDs to avoid decoding edits again with the generic association grammar.
+ * Partial providers keep the complete inventory contract. */
+export function selectionRelationshipIds(store: IfcDataStore, view: SelectionEditView, entityId: number | undefined, kinds: readonly RelationshipType[], sourceTypes: readonly string[], editedIds?: Iterable<number>): number[] | null {
   if (entityId === undefined || !store.source?.length || !store.relationships?.inverse
     || !store.relationships.forward?.edgeRelIds || typeof store.relationships.inverse.getEdges !== 'function'
     || (!view.getAttributeOverrideEntityIds && !view.getEffectiveChanges)
@@ -40,7 +42,7 @@ export function selectionRelationshipIds(store: IfcDataStore, view: SelectionEdi
       for (const id of edge.shadowedRelationshipIds ?? []) ids.add(id);
     }
   }
-  for (const id of selectionEditedRelationshipsForSubject(store, view, entityId, sourceTypes)) ids.add(id);
+  for (const id of editedIds ?? selectionEditedRelationshipsForSubject(store, view, entityId, sourceTypes)) ids.add(id);
   const missing = store.selectionRelationshipIndex?.missing;
   if (missing) {
     for (const id of [...(store.selectionRelationshipIndex?.exceptionalSubjects.get(entityId) ?? []), ...(store.selectionRelationshipIndex?.retryTypeRows ?? [])]) {

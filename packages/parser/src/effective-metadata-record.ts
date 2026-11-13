@@ -40,7 +40,9 @@ function sourceFreeMetadataType(store: IfcDataStore, expressId: number): string 
     : getEntityRefFromStore(store, expressId)?.type ?? tableType;
 }
 
-export function effectiveMetadataRecord(store: IfcDataStore, expressId: number, view?: MetadataReadView): EffectiveEntityRecord | null {
+/** sourceRecord is the immutable source snapshot already decoded during
+ * coverage accounting; applying the view must not fetch those bytes twice. */
+export function effectiveMetadataRecord(store: IfcDataStore, expressId: number, view?: MetadataReadView, sourceRecord?: EffectiveEntityRecord): EffectiveEntityRecord | null {
   if (view?.isDeleted(expressId)) return null;
   let modelRecords = records.get(store);
   if (!modelRecords) { modelRecords = new WeakMap(); records.set(store, modelRecords); }
@@ -51,9 +53,9 @@ export function effectiveMetadataRecord(store: IfcDataStore, expressId: number, 
   const created = view?.readNewEntity ? view.readNewEntity(expressId) : view?.getNewEntity(expressId);
   // Source-empty stores cannot reveal source attributes through a stale accessor closure.
   // Named/positional edits may still supply a known field on an otherwise unreadable row.
-  const base = created ? { ...created, attributes: created.attributes.map(positionalMetadataValue) } : (store.source?.length ? store.getEntity(expressId) : {
+  const base = created ? { ...created, attributes: created.attributes.map(positionalMetadataValue) } : (sourceRecord ?? (store.source?.length ? store.getEntity(expressId) : {
     type: sourceFreeMetadataType(store, expressId), attributes: [],
-  });
+  }));
   if (!base) return null;
   const retype = view?.getTypeMutations?.().get(expressId)?.newType;
   const result = resolveEffectiveEntityRecord(base, {

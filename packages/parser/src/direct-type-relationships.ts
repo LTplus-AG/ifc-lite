@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { RelationshipType } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
-import { type MetadataReadView } from './effective-metadata-record.js';
+import { effectiveMetadataRecord, type MetadataReadView } from './effective-metadata-record.js';
 import { CurrentQuantityRefusal, MAX_RELATIONSHIPS, MAX_RELATION_REFERENCES, readRelation, type RelationRead, type CurrentTypeRelationships } from './current-type-relationships.js';
 import { selectionRelationshipIds } from './selection-relationship-ids.js';
 import { selectionRelationshipEditIds } from './selection-relationship-edits.js';
@@ -34,6 +34,7 @@ export function directCurrentTypeRelationships(store: IfcDataStore, view: Metada
     return (store.entityIndex.byId.get(id) ?? store.deferredEntityIndex?.get(id))?.type.toUpperCase();
   };
   const definitionClasses = new Map<string, boolean>();
+  const dependencies = new Set<number>();
   for (const id of changed) {
     const type = sourceType(id);
     if (!type) continue;
@@ -45,23 +46,40 @@ export function directCurrentTypeRelationships(store: IfcDataStore, view: Metada
     const changedType = view.getNewEntity(id)?.type ?? typeMutations?.get(id)?.newType;
     const currentDefinition = changedType && getInheritanceChain(normalizeIfcTypeName(changedType)).includes('IfcPropertySetDefinition');
     if ((definition || currentDefinition) && (view.isDeleted(id) || changedType)) {
-      for (const row of index.exceptionalDefinitionTargets.get(id) ?? []) changed.add(row);
+      const affectedRows = !definition && currentDefinition ? changed : dependencies;
+      for (const row of index.exceptionalDefinitionTargets.get(id) ?? []) affectedRows.add(row);
       for (const edge of store.relationships.forward.getEdges(id, RelationshipType.DefinesByProperties)) {
-        changed.add(edge.relationshipId);
-        for (const other of edge.shadowedRelationshipIds ?? []) changed.add(other);
+        affectedRows.add(edge.relationshipId);
+        for (const other of edge.shadowedRelationshipIds ?? []) affectedRows.add(other);
       }
     }
   }
-  const reads = new Map<number, RelationRead>();
+  const reads = new Map<number, RelationRead | CurrentQuantityRefusal>();
+  const sourceRecords = new Map<number, NonNullable<ReturnType<typeof effectiveMetadataRecord>>>();
   const memberships = new Map<number, Set<number>>();
+  const editedBySubject = new Map<number, Set<number>>();
   const read = (id: number): RelationRead => {
-    if (reads.has(id)) return reads.get(id)!;
+    const cached = reads.get(id);
+    if (cached instanceof CurrentQuantityRefusal) throw cached;
+    if (reads.has(id)) return cached!;
     const type = typeMutations?.get(id)?.newType.toUpperCase() ?? view.getNewEntity(id)?.type.toUpperCase() ?? sourceType(id);
-    const value = !view.isDeleted(id) && type && types.includes(type) ? readRelation(store, id, view) : null;
-    // Unexpected errors deliberately leave no cached refusal: the next read retries.
-    reads.set(id, value);
-    if (value) memberships.set(id, new Set(value.members));
-    return value;
+    try {
+      const value = !view.isDeleted(id) && type && types.includes(type) ? readRelation(store, id, view, sourceRecords.get(id)) : null;
+      reads.set(id, value);
+      if (value) {
+        const members = new Set(value.members);
+        memberships.set(id, members);
+        if (changed.has(id) || unverified.has(id)) for (const member of members) {
+          const ids = editedBySubject.get(member) ?? new Set<number>();
+          ids.add(id); editedBySubject.set(member, ids);
+        }
+      }
+      return value;
+    } catch (error) {
+      // Domain refusals hold for the revision. Unexpected source errors retry.
+      if (error instanceof CurrentQuantityRefusal) reads.set(id, error);
+      throw error;
+    }
   };
   for (const row of created) if (types.includes(row.type.toUpperCase()) || typeMutations?.has(row.expressId)) changed.add(row.expressId);
   const retyped = new Map([...typeMutations?.keys() ?? []].map((id, i) => [id, i]));
@@ -81,19 +99,29 @@ export function directCurrentTypeRelationships(store: IfcDataStore, view: Metada
     return { id, base, current };
   });
   if (rows > MAX_RELATIONSHIPS) throw new CurrentQuantityRefusal(`Native type relationship inventory exceeds the read limit of ${MAX_RELATIONSHIPS} relationships`);
-  for (const { id, base, current } of contributions) {
-    if (!base && !current) continue;
+  const apply = ({ id, base, current }: { id: number; base: boolean; current: boolean }) => {
+    if (!base && !current) return;
     const refusal = index.typeRefusals.get(id);
     if (refusal && !changed.has(id) && !view.isDeleted(id)) throw new CurrentQuantityRefusal(refusal);
     if (base && !unverified.has(id)) {
       if (index.typeExceptionalReferences.has(id)) references -= index.typeExceptionalReferences.get(id)!;
       else if (!index.typeRefusals.has(id)) {
+        const sourceRecord = effectiveMetadataRecord(store, id, noEdits);
+        if (sourceRecord) sourceRecords.set(id, sourceRecord);
         const old = readRelation(store, id, noEdits);
         if (old) references -= new Set(old.members).size * old.targets.length;
       }
     }
     const relation = read(id);
     if (relation) references += relation.members.length * relation.targets.length;
+  };
+  for (const contribution of contributions) apply(contribution);
+  // Deleted/retyped definitions can only reduce untouched source coverage.
+  // Its upper bound is sufficient until it crosses the budget, as in the native reader.
+  if (references > MAX_RELATION_REFERENCES) for (const id of dependencies) {
+    if (references <= MAX_RELATION_REFERENCES) break;
+    if (affected.has(id)) continue;
+    apply({ id, base: true, current: !view.isDeleted(id) });
   }
   if (rows > MAX_RELATIONSHIPS) throw new CurrentQuantityRefusal(`Native type relationship inventory exceeds the read limit of ${MAX_RELATIONSHIPS} relationships`);
   if (references > MAX_RELATION_REFERENCES) throw new CurrentQuantityRefusal(`Native type relationship references exceed the read limit of ${MAX_RELATION_REFERENCES} references`);
@@ -102,7 +130,7 @@ export function directCurrentTypeRelationships(store: IfcDataStore, view: Metada
     const memo = new Map<number, readonly number[]>();
     return (subject: number): readonly number[] => {
       const old = memo.get(subject); if (old) return old;
-      const candidates = new Set(selectionRelationshipIds(store, view, subject, [kind], [type]) ?? []);
+      const candidates = new Set(selectionRelationshipIds(store, view, subject, [kind], [type], editedBySubject.get(subject) ?? []) ?? []);
       if (kind === RelationshipType.DefinesByProperties && store.relationshipsPending) {
         for (const id of index.typeDefinitions.get(subject) ?? []) candidates.add(id);
       }

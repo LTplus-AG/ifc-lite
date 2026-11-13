@@ -26,7 +26,7 @@ import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromePids, memoryOf, vramOf } from './scenoptic-bench-sampling.mjs';
-import { COUNT_FRAMES, openAndWaitInteractive, openViewerPage, readOutputFingerprint, replacePage, waitCacheWrites, waitSceneSnapshots, webglAroundPick, framesBetween } from './viewer-load-probe.mjs';
+import { COUNT_FRAMES, openAndWaitInteractive, openViewerPage, readOutputFingerprint, replacePage, waitCacheWrites, waitSceneSnapshots, webglAroundPick, framesBetween, presentTimes } from './viewer-load-probe.mjs';
 import { browserShares, browserStages, expectedCacheTier, failedOpenIndex, gpuUnhealthy, openIdentity, stageShares, uiQuietValue } from './load-scoreboard-stats.mjs';
 import { BOOT_OBSERVERS, armAfterBootSettled, waitShellQuiet, waitUiQuiet } from './viewer-load-boot.mjs';
 import { rebaseToArm, waitCacheEntryStable, waitFirstPaint } from './load-scoreboard-lanes.mjs';
@@ -92,6 +92,10 @@ function summarizeOpen(open, memory) {
     uiQuietMs: uiQuietValue(open), uiQuietTimedOut: Boolean(open.uiQuietTimedOut), uiQuietRawMs: open.uiQuietMs ?? null,
     longTasksAfterReady: open.longTasksAfterReady ?? null, shell: open.shell ?? null,
     framesToInteractive: open.framesToInteractive ?? null, ...(open.webgl ?? {}),
+    // The mark's settled gate (viewer-load-probe interactiveProbe): the old span rule's value, whether the viewer's
+    // settled check held the mark and for how long, and the presented frames from the change event to 3 s past it.
+    interactiveMsOldGate: open.interactiveMsOldGate ?? null, sceneSettledCheck: open.sceneSettledCheck ?? null, sceneSettleHeldMs: open.sceneSettleHeldMs ?? null,
+    presentTimesFromChangeMs: open.presentTimesFromChangeMs ?? null,
     peakMemoryMiB: memory ? memory.peakPssMiB : null,
     peakMemoryMetric: memory ? 'peak sampled PSS sum over Chrome processes (250 ms), incl. browser baseline' : 'not sampled (timing pass)', memory,
     loadPaths: open.loadPaths, cacheTiers: open.cacheTiers, cacheHit: open.cacheHit, snapshotAdopted: open.snapshotAdopted,
@@ -152,6 +156,7 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
     // rendered, and whether WebGL (the start screen's mark) drew around the pick. A counter that was never installed is null.
     const counters = await page.evaluate(() => ({ frames: globalThis.__benchFrameTimes ?? null, gl: globalThis.__benchGl ?? null }));
     open.framesToInteractive = framesBetween(counters.frames, open.originAbs, open.originAbs + open.interactiveMs);
+    open.presentTimesFromChangeMs = presentTimes(counters.frames, open.originAbs, open.originAbs + open.interactiveMs + 3000);
     open.webgl = webglAroundPick(counters.gl, open.originAbs, open.originAbs + open.interactiveMs);
     Object.assign(open, { shell }, await waitUiQuiet(page, open.originAbs + open.interactiveMs, open.originAbs));
     if (early) open = rebaseToArm(open);

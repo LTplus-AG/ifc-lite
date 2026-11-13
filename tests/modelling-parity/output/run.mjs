@@ -24,7 +24,8 @@
  *   3. IfcOpenShell: `tools/ifcopenshell_reference/validate_export.py <file>`
  *      (express rules) reports no issues.
  * An SVG, PDF or DXF file gets a sanity check (output/artifacts.mjs: it
- * parses, is not empty and carries linework or pages). Sheet DXF additionally
+ * checks tag balance for SVG and PDF/DXF structure, non-empty content and
+ * linework or pages). Sheet DXF additionally
  * gets independent ezdxf wall, layer, dimension, unit and scale checks.
  * A row's `requires` lists the kinds it needs (default: an IFC); a missing kind
  * is a failed check. All checks pass -> pass; some -> partial; none -> fail.

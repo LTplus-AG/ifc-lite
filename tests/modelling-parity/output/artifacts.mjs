@@ -9,8 +9,9 @@
  * SDK results hand over `artifacts.ifc`. UI results (L4) hand over files under
  * `$PARITY_OUT/artifacts/<capability-id>/`, listed in `evidence` and in
  * `artifacts.{ifc,svg,pdf,dxf}` (contract "Handoffs"). IFC files get the full
- * validation in run.mjs. SVG, PDF and DXF get only a sanity check: the SVG is tag-balanced (PDF/DXF structure is sanity-checked), is not empty and carries drawing content. That is not a validation
- * of the drawing's correctness, and the ledger says so.
+ * validation in run.mjs. SVG is tag-balanced; PDF/DXF structure is sanity-checked.
+ * Drawings must be non-empty and carry content. Sheet DXF additionally receives
+ * the independent geometric checks described in run.mjs.
  */
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -134,7 +135,7 @@ export function missingIfcClasses(census, required) {
 /** Conservative drawable-geometry check; this is tag-balanced sanity, not an XML parser. */
 function drawable(tag, attrs) {
   const attr = key => new RegExp(`(?:^|\\s)${key}\\s*=\\s*(["'])(.*?)\\1`, 's').exec(attrs)?.[2];
-  if (tag === 'path') return /^\s*[Mm]/.test(attr('d') ?? '') && /[LlHhVvCcSsQqTtAa]/.test(attr('d') ?? '');
+  if (tag === 'path') return /^\s*[Mm]/.test(attr('d') ?? '') && /[LlHhVvCcSsQqTtAa]\s*[-+]?(?:\d|\.\d)/.test(attr('d') ?? '');
   if (tag === 'line') {
     const values = ['x1','y1','x2','y2'].map(k => Number(attr(k) ?? 0));
     return values.every(Number.isFinite) && (values[0] !== values[2] || values[1] !== values[3]);

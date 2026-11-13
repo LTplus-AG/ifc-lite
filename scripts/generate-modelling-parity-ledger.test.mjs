@@ -455,7 +455,7 @@ test('#10030 sheet provenance follows selected row evidence, including met rows'
   }
 });
 test('#9328 SVG empty geometry cannot certify a drawing', () => {
-  for (const shape of ['<path/>', '<path d=""/>', '<path d="M0 0"/>', '<path d="M0 0 Z"/>', '<line/>', '<line x1="2" y1="3" x2="2" y2="3"/>', '<polyline/>', '<polyline points="0,0"/>', '<polygon points=""/>', '<polygon points="0,0"/>']) {
+  for (const shape of ['<path/>', '<path d=""/>', '<path d="M0 0"/>', '<path d="M0 0 Z"/>', '<path d="M0 0 L"/>', '<line/>', '<line x1="2" y1="3" x2="2" y2="3"/>', '<polyline/>', '<polyline points="0,0"/>', '<polygon points=""/>', '<polygon points="0,0"/>']) {
     assert.equal(ART.checkSvg(Buffer.from(`<svg>${shape}</svg>`)).status, 'fail', shape);
   }
   for (const shape of ['<path d="M0 0 L1 1"/>', '<line x2="1"/>', '<polyline points="0,0 1,1"/>', '<polygon points="0,0 1,1"/>']) {

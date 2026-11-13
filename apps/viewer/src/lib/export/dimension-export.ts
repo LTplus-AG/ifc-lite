@@ -70,6 +70,27 @@ export function placeDimensionText(text: DimensionGraphics['text'], map: Dimensi
   return { x: at.x, y: at.y, angleDeg: (Math.atan2(dy, dx) * 180) / Math.PI + 0, size: Math.hypot(dx, dy) };
 }
 
+/**
+ * `bounds` grown to hold every dimension, so a page or viewBox sized from the
+ * drawing extent does not cut off a dimension placed beyond the geometry. The
+ * text is covered by a square around its centre, as wide as a generous
+ * estimate of the value (0.7 of the height per character), whatever its angle.
+ */
+export function boundsWithDimensions<B extends { min: DimensionPt; max: DimensionPt }>(bounds: B, graphics: readonly DimensionGraphics[]): B {
+  if (graphics.length === 0) return bounds;
+  let { x: minX, y: minY } = bounds.min;
+  let { x: maxX, y: maxY } = bounds.max;
+  const grow = (p: DimensionPt, r = 0) => {
+    minX = Math.min(minX, p.x - r); minY = Math.min(minY, p.y - r);
+    maxX = Math.max(maxX, p.x + r); maxY = Math.max(maxY, p.y + r);
+  };
+  for (const g of graphics) {
+    for (const [p, q] of [...g.lines, ...g.ticks]) { grow(p); grow(q); }
+    grow(g.text.at, (g.text.heightM * Math.max(1, 0.7 * g.text.value.length)) / 2);
+  }
+  return { ...bounds, min: { x: minX, y: minY }, max: { x: maxX, y: maxY } };
+}
+
 const xml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const n = (v: number) => (v + 0).toFixed(4);
 

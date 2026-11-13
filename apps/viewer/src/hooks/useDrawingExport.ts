@@ -48,7 +48,7 @@ import { styleCutPolygons, type CutPolygonStyleContext } from '@/components/view
 import { drawCutPolygonsPdf, isPagePoint, prepareCutPolygonsPdf, type PdfCutPolygon } from '@/lib/export/section-pdf-cut-polygons';
 import { titleBlockWithEffectiveScale } from '@/hooks/titleBlockScaleField';
 import { scanOutlineDxfLayers, type ScanOutlineLayer } from '@/lib/scan-outline/scan-outline';
-import { dimensionsToSvg, dimensionsToDxfLayers, drawDimensionsPdf } from '@/lib/export/dimension-export';
+import { boundsWithDimensions, dimensionsToSvg, dimensionsToDxfLayers, drawDimensionsPdf } from '@/lib/export/dimension-export';
 import { useExportDimensionGraphics } from '@/hooks/useExportDimensions';
 
 function tryDrawingSvg(generate: () => string | null): string | null {
@@ -329,7 +329,8 @@ function useDrawingExport({
     // extracted to svgExportViewport.ts (see that file's docstring for why
     // this transform doesn't map points at all — the SVG's own
     // width/height-vs-viewBox ratio does the scaling).
-    const viewport = computeSvgExportViewport(bounds, displayOptions.scale, sectionPlane.axis);
+    const dims = dimensionGraphicsAt(displayOptions.scale || 100, sectionPlane.axis); // the viewBox must hold them too
+    const viewport = computeSvgExportViewport(boundsWithDimensions(bounds, dims), displayOptions.scale, sectionPlane.axis);
     const { widthMm: svgWidthMm, heightMm: svgHeightMm, viewBoxMinX, viewBoxMinY, viewBoxWidth: viewWidth, viewBoxHeight: viewHeight, flipX, flipY, effectiveScale } = viewport;
 
     // Convert mm on paper to model units (meters)
@@ -610,7 +611,7 @@ function useDrawingExport({
     }
 
     svg += elementTagsSvg(resolvedElementTags(drawing), (x, y) => ({ x: flipX ? -x : x, y: flipY ? -y : y }), mmToModel(3.5));
-    svg += dimensionsToSvg(dimensionGraphicsAt(effectiveScale, { flipX, flipY }), (x, y) => ({ x: flipX ? -x : x, y: flipY ? -y : y }), mmToModel);
+    svg += dimensionsToSvg(dims, (x, y) => ({ x: flipX ? -x : x, y: flipY ? -y : y }), mmToModel);
     svg += '</svg>';
     return svg;
   }, [drawing, displayOptions, cutPolygonStyleContext, measure2DResults, polygonArea2DResults, textAnnotations2D, cloudAnnotations2D, sectionPlane.axis, dxfUnderlays, scanSection, dimensionGraphicsAt]);
@@ -1043,9 +1044,10 @@ function useDrawingExport({
     // about zero, which is not the case for a model at ordinary world
     // coordinates (showstopper found on PR #2119).
     const currentAxis = sectionPlane.axis;
+    const dimensionSnapshot = dimensionGraphicsAt(effectiveScale, currentAxis);
     let layout: PdfScaleLayout;
     try {
-      layout = computePdfSectionLayout(drawing.bounds, currentAxis, effectiveScale, 10);
+      layout = computePdfSectionLayout(boundsWithDimensions(drawing.bounds, dimensionSnapshot), currentAxis, effectiveScale, 10);
     } catch (err) {
       toast.error(err instanceof Error ? t('section2d.export.invalidScaleDetail', { error: err.message }) : t('section2d.export.invalidScale'));
       return;
@@ -1065,7 +1067,6 @@ function useDrawingExport({
     // cannot replace the geometry whose bounds/scale were used above.
     const vectorSnapshot = structuredClone(dxfUnderlays);
     const tagSnapshot = resolvedElementTags(drawing);
-    const dimensionSnapshot = dimensionGraphicsAt(effectiveScale, currentAxis);
     void recordActivity({ kind: 'export', title: 'activityTray.job.export', panel: 'drawing',
       subject: `section-${sectionPlane.axis}-${sectionPlane.position} · PDF` }, async () => {
       try {

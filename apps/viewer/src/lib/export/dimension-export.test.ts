@@ -18,6 +18,7 @@ import { axisFlipForSection, type SectionAxis } from '@/hooks/pdfSectionLayout';
 import { formatDimensionValue } from '@/lib/drawing2d-markup/dimension-graphics';
 import {
   DIMENSION_DXF_LAYER,
+  boundsWithDimensions,
   dimensionGraphicsList,
   dimensionsToDxfLayers,
   dimensionsToSvg,
@@ -216,5 +217,18 @@ describe('placeDimensionText', () => {
     const placed = placeDimensionText(g.text, (x, y) => ({ x: -x * 10, y: -y * 10 }));
     close(placed.angleDeg, 0, 'upright');
     close(placed.size, 2.5, 'size in page mm');
+  });
+});
+
+describe('boundsWithDimensions', () => {
+  it('grows the drawing extent to hold a dimension placed beyond the geometry, and keeps it otherwise', () => {
+    const bounds = { min: { x: 0, y: 0 }, max: { x: 6, y: 3 } };
+    const far = { ...horizontal, offset: 100 };
+    const grown = boundsWithDimensions(bounds, graphics([far], 100));
+    // Dimension line at y = 102, extension overshoot 2 mm (0.2 m) past it, text above.
+    assert.ok(grown.max.y >= 102.2, `max y ${grown.max.y}`);
+    assert.deepEqual([grown.min.x, grown.min.y, grown.max.x], [0, 0, 6]);
+    assert.equal(boundsWithDimensions(bounds, []), bounds);
+    assert.deepEqual(boundsWithDimensions(bounds, graphics([horizontal], 100)), bounds, 'a dimension inside the extent changes nothing');
   });
 });

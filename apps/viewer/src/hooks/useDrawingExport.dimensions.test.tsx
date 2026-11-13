@@ -151,6 +151,18 @@ describe('drawing exports carry current-cut dimensions only', () => {
     assert.equal(entities.filter((e) => e.kind === 'polyline').length, 5);
   });
 
+  it('direct SVG and vector PDF size their page to hold a dimension placed far beyond the geometry', async () => {
+    // The drawing spans y -1..2; this dimension line sits at y = 30.
+    useViewerStore.setState({ dimensions2D: [{ ...onCut, offset: 30 }] });
+    const svg = await exportFile('image/svg+xml', (h) => h.handleExportSVG());
+    const [minX, minY, w, h] = svg.match(/viewBox="([^"]+)"/)![1].split(' ').map(Number);
+    assert.ok(minY <= 30 && minY + h >= 30.1 && minX <= 0 && minX + w >= 4, `viewBox ${minX} ${minY} ${w} ${h} holds the dimension line`);
+    const pdf = await exportFile('application/pdf', (h) => h.handleExportPDF(100));
+    const box = pdf.match(/\/MediaBox \[([^\]]+)\]/)![1].trim().split(/\s+/).map(Number);
+    // Page height in mm: at least the 31 m of drawing plus dimension at 1:100, plus margins.
+    assert.ok(box[3] * 25.4 / 72 >= 310, `page height ${box[3] * 25.4 / 72} mm`);
+  });
+
   it('vector PDF: the value is real text, the other-cut one absent', async () => {
     const pdf = await exportFile('application/pdf', (h) => h.handleExportPDF(100));
     assert.match(pdf, /\(4000\) Tj/);

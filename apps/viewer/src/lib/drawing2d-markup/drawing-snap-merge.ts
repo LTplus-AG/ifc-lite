@@ -28,9 +28,40 @@ export const COLLINEAR_DISTANCE = 1e-6;
 /** Points within this distance (metres) count as one vertex. */
 export const VERTEX_TOLERANCE = 1e-6;
 
-/** Quantised vertex key; two points within VERTEX_TOLERANCE share it except across a cell edge. */
-export function vertexKey(p: Pt): string {
-  return `${Math.round(p.x / VERTEX_TOLERANCE)},${Math.round(p.y / VERTEX_TOLERANCE)}`;
+/**
+ * Vertex keys by distance: a point within VERTEX_TOLERANCE of one already
+ * keyed gets that point's key, also when the two fall in neighbouring grid
+ * cells (a rounded cell alone splits pairs 2e-8 m apart across a cell edge,
+ * #10076 review). Distinct vertices sharing a cell get distinct keys.
+ */
+export class VertexKeys {
+  private readonly cells = new Map<string, { p: Pt; key: string }[]>();
+
+  /** The key of the vertex `p` matches, or `undefined` when none has been keyed. */
+  find(p: Pt): string | undefined {
+    const cx = Math.round(p.x / VERTEX_TOLERANCE);
+    const cy = Math.round(p.y / VERTEX_TOLERANCE);
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        for (const v of this.cells.get(`${cx + dx},${cy + dy}`) ?? []) {
+          if (Math.hypot(v.p.x - p.x, v.p.y - p.y) <= VERTEX_TOLERANCE) return v.key;
+        }
+      }
+    }
+    return undefined;
+  }
+
+  /** The key of `p`, keying it as a new vertex when it matches none. */
+  key(p: Pt): string {
+    const found = this.find(p);
+    if (found !== undefined) return found;
+    const cell = `${Math.round(p.x / VERTEX_TOLERANCE)},${Math.round(p.y / VERTEX_TOLERANCE)}`;
+    const list = this.cells.get(cell) ?? [];
+    const key = list.length === 0 ? cell : `${cell}#${list.length}`;
+    list.push({ p, key });
+    this.cells.set(cell, list);
+    return key;
+  }
 }
 
 /**
@@ -38,17 +69,19 @@ export function vertexKey(p: Pt): string {
  * `null` once two different owners share it.
  */
 export class VertexOwners {
+  private readonly keys = new VertexKeys();
   private readonly owners = new Map<string, string | null>();
 
   add(p: Pt, owner: string): void {
-    const key = vertexKey(p);
+    const key = this.keys.key(p);
     if (!this.owners.has(key)) this.owners.set(key, owner);
     else if (this.owners.get(key) !== owner) this.owners.set(key, null);
   }
 
   /** True when an entity other than `owner` has a vertex at `p`. */
   sharedWithOther(p: Pt, owner: string): boolean {
-    const v = this.owners.get(vertexKey(p));
+    const key = this.keys.find(p);
+    const v = key === undefined ? undefined : this.owners.get(key);
     return v === null || (v !== undefined && v !== owner);
   }
 }
@@ -109,6 +142,8 @@ export function mergeCollinearSegments(
   owners: VertexOwners,
 ): [Pt, Pt][] {
   const segs: ([Pt, Pt] | null)[] = segments.map(([a, b]) => [a, b]);
+  const keys = new VertexKeys();
+  const vertexKey = (p: Pt): string => keys.key(p);
   const at = new Map<string, number[]>();
   const link = (i: number, p: Pt): void => {
     const key = vertexKey(p);

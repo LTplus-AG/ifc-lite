@@ -337,3 +337,25 @@ it('#9389 a cross-model selection is inspectable but cannot make a shared edit a
   assert.equal(undoDepth(), depth);
   assert.equal(entityName({ dataStore: first.ifcDataStore!, view: s().mutationViews.get(MODEL_ID) }, wall), 'W1');
 });
+
+it('#9389 an unreadable selected model cannot turn a cross-model Name edit into partial success', () => {
+  const first = s().models.get(MODEL_ID)!;
+  const second = { ...first, id: 'second-model', idOffset: 1_000_000 };
+  act(() => useViewerStore.setState({ models: new Map([[MODEL_ID, first], [second.id, second]]) }));
+  act(() => s().setSelectedEntityIds([
+    toGlobalIdFromModels(s().models, MODEL_ID, wall),
+    toGlobalIdFromModels(s().models, second.id, 80),
+  ]));
+  const ui = render(<ModelInspectorPanel />);
+  assert.equal(input(ui, 'Name').readOnly, true);
+  act(() => useViewerStore.setState({ models: new Map([[MODEL_ID, first], [second.id, { ...second, ifcDataStore: null }]]) }));
+  assert.match(ui.textContent ?? '', /2 selected elements/);
+  assert.match(ui.textContent ?? '', /Select elements from one model/);
+  const name = input(ui, 'Name');
+  assert.equal(name.readOnly, true);
+  const depth = undoDepth();
+  type(name, 'Partial rename');
+  blur(name);
+  assert.equal(undoDepth(), depth);
+  assert.equal(entityName({ dataStore: first.ifcDataStore!, view: s().mutationViews.get(MODEL_ID) }, wall), 'W1');
+});

@@ -16,8 +16,9 @@ import { runInspectorEdit } from './inspector-edits';
 export function MultiSelectionInspector({ onClose }: { onClose?: () => void }) {
   const { t } = useTranslation();
   const state = useViewerStore();
-  const items = [...state.selectedEntityIds].flatMap(globalId => {
-    const ref = resolveEntityRef(globalId);
+  const selection = [...state.selectedEntityIds].map(globalId => ({ globalId, ...resolveEntityRef(globalId) }));
+  const items = selection.flatMap(ref => {
+    const { globalId } = ref;
     const store = state.models.get(ref.modelId)?.ifcDataStore;
     const view = state.mutationViews.get(ref.modelId);
     if (!store || view?.isDeleted(ref.expressId)) return [];
@@ -29,11 +30,13 @@ export function MultiSelectionInspector({ onClose }: { onClose?: () => void }) {
     }];
   });
   const common = items.every(item => item.name === items[0]?.name) ? items[0]?.name ?? '' : '';
-  const multipleModels = new Set(items.map(item => item.modelId)).size > 1;
-  const denied = multipleModels || items.length === 0 || items.some(item => mutationDenial(state, item.modelId) !== null);
+  const multipleModels = new Set(selection.map(ref => ref.modelId)).size > 1;
+  // Missing data is a refusal, never permission to edit a readable subset.
+  const refusedSelection = multipleModels || items.length !== selection.length;
+  const denied = refusedSelection || items.length === 0 || items.some(item => mutationDenial(state, item.modelId) !== null);
   return <div data-multi-selection-inspector className="flex h-full min-h-0 flex-col">
     <div className="flex items-center gap-2 border-b border-border p-3">
-      <h2 className="flex-1 text-xs font-medium">{t('modelInspector.multiple', { count: items.length })}</h2>
+      <h2 className="flex-1 text-xs font-medium">{t('modelInspector.multiple', { count: selection.length })}</h2>
       {onClose && <Button size="sm" variant="ghost" onClick={onClose}>{t('modelInspector.close')}</Button>}
     </div>
     <div className="space-y-2 border-b border-border p-3">
@@ -44,8 +47,8 @@ export function MultiSelectionInspector({ onClose }: { onClose?: () => void }) {
           }
           return [];
         })} />
-      {multipleModels && <p role="status" className="text-xs text-foreground">{t('modelInspector.multipleModels')}</p>}
-      <Button size="sm" variant="outline"  onClick={() => state.showWorkspacePanel('properties')}>{t('modelInspector.properties')}</Button>
+      {refusedSelection && <p role="status" className="text-xs text-foreground">{t('modelInspector.multipleModels')}</p>}
+      <Button size="sm" variant="outline" onClick={() => state.showWorkspacePanel('properties')}>{t('modelInspector.properties')}</Button>
     </div>
     <ul className="min-h-0 flex-1 overflow-y-auto p-2">
       {items.map(item => <li key={item.globalId}>

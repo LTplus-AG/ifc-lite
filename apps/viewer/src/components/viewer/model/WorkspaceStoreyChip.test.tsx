@@ -326,7 +326,8 @@ it('#9389 Escape dismissal restores the trigger without stealing focus for drawi
   const options = openList();
   act(() => options[0].dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
   await waitFor(() => !document.querySelector('[data-storey-picker]'), 'dismissed');
-  assert.equal(document.activeElement, chipButton());
+  await waitFor(() => document.activeElement === chipButton(), 'Escape restores trigger focus');
+  assert.equal(document.activeElement === chipButton(), true);
 });
 it('#9389 outside dismissal preserves inspector input focus', async () => {
   act(() => useViewerStore.getState().enterModelWorkspace({ modelId: MODEL_ID, storeyId: STOREY }));
@@ -340,7 +341,7 @@ it('#9389 outside dismissal preserves inspector input focus', async () => {
     click(input);
   });
   await waitFor(() => !document.querySelector('[data-storey-picker]'), 'outside dismissal');
-  assert.equal(document.activeElement, input);
+  assert.equal(document.activeElement === input, true);
 });
 it('#9389 Back cancels preparation and returns to the storey list', async () => {
   act(() => useViewerStore.getState().enterModelWorkspace({ modelId: MODEL_ID, storeyId: STOREY }));
@@ -375,4 +376,14 @@ it('#9389 the chip and status bar share a live storey name through rename and un
   act(() => useViewerStore.getState().undo(MODEL_ID));
   assert.match(chipButton()?.textContent ?? '', /L0/);
   assert.match(ui.textContent ?? '', /L0/);
+});
+
+it('#9389 the picker Add storey toast formats elevation with sign and two decimals', async () => {
+  act(() => useViewerStore.getState().enterModelWorkspace({ modelId: MODEL_ID, storeyId: STOREY }));
+  const notices = render(<Toaster />);
+  for (const dismiss of notices.querySelectorAll('[aria-label="Dismiss notification"]')) click(dismiss);
+  openList();
+  click([...document.querySelectorAll('[data-storey-picker-actions] button')].find(button => button.textContent?.includes('Add storey above'))!);
+  await waitFor(() => /added at \+6\.00 m/.test(notices.textContent ?? ''), 'the Add toast uses formatted elevation');
+  assert.equal(useViewerStore.getState().session?.storeyId, STOREY);
 });

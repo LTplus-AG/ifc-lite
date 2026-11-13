@@ -21,6 +21,7 @@ import {
   RibbonSmallStack,
 } from '../primitives';
 import { RibbonCommandLargeButton, RibbonCommandSmallButton } from '../command-button';
+import { anyRibbonCommandAvailable } from '../../surface-command-features';
 
 const EDIT_ACTIVE_CLASS = 'bg-overlay-accent-soft text-foreground ring-1 ring-inset ring-overlay-accent/50';
 
@@ -46,9 +47,20 @@ export function AuthorTab() {
 
   const { activeWorkspacePanels, handleToggleRightPanel } = useWorkspacePanelControls('ribbon');
 
+  // Decided at render time from the same tables as the buttons: a group whose
+  // commands a host switched off (`lib/features`) is left out with its divider.
+  const shown = {
+    edit: anyRibbonCommandAvailable(['author:undo', 'author:redo', 'panel:changeSets']),
+    create: anyRibbonCommandAvailable(['panel:appearance']),
+    properties: anyRibbonCommandAvailable(['author:bulk-properties', 'author:import-data']),
+    customize: anyRibbonCommandAvailable(['panel:extensions']),
+  };
+  const firstShown = (['edit', 'create', 'properties', 'customize'] as const).find((group) => shown[group]);
+  const divider = (group: keyof typeof shown) => (group === firstShown ? null : <RibbonGroupDivider />);
+
   return (
     <>
-      <RibbonGroup label={t('ribbon.author.editGroup')}>
+      {shown.edit && <RibbonGroup label={t('ribbon.author.editGroup')}>
         <RibbonSmallStack>
           <RibbonCommandSmallButton
             commandId="author:undo"
@@ -68,11 +80,11 @@ export function AuthorTab() {
             commandContext={{ activateRightPanel: () => useViewerStore.getState().toggleWorkspacePanel('changeSets', 'ribbon') }}
           />
         </RibbonSmallStack>
-      </RibbonGroup>
+      </RibbonGroup>}
 
-      <RibbonGroupDivider />
+      {shown.create && divider('create')}
 
-      <RibbonGroup label={t('ribbon.author.createGroup')}>
+      {shown.create && <RibbonGroup label={t('ribbon.author.createGroup')}>
         <RibbonCommandLargeButton
           commandId="panel:appearance"
           icon={Appearance}
@@ -81,11 +93,11 @@ export function AuthorTab() {
           activeClassName={EDIT_ACTIVE_CLASS}
           commandContext={{ activateRightPanel: () => handleToggleRightPanel('appearance') }}
         />
-      </RibbonGroup>
+      </RibbonGroup>}
 
-      <RibbonGroupDivider />
+      {shown.properties && divider('properties')}
 
-      <RibbonGroup label={t('ribbon.author.propertiesGroup')}>
+      {shown.properties && <RibbonGroup label={t('ribbon.author.propertiesGroup')}>
         <RibbonSmallStack>
           <RibbonCommandSmallButton commandId="author:bulk-properties" icon={EditProperty}
             disabled={loading || !hasData || !canEditInSession || !toolHosts.openBulkProperties} commandContext={event => {
@@ -98,13 +110,13 @@ export function AuthorTab() {
               return { ...toolHosts, openImportData: () => toolHosts.openImportData?.(launcher) };
             }} />
         </RibbonSmallStack>
-      </RibbonGroup>
+      </RibbonGroup>}
 
-      <RibbonGroupDivider />
+      {shown.customize && divider('customize')}
 
       {/* Extensions & flavors manage the workspace itself — installed
           extensions, personal flavors, permissions. */}
-      <RibbonGroup label={t('ribbon.author.customizeGroup')}>
+      {shown.customize && <RibbonGroup label={t('ribbon.author.customizeGroup')}>
         <RibbonCommandLargeButton
           commandId="panel:extensions"
           icon={Extension}
@@ -112,7 +124,7 @@ export function AuthorTab() {
           active={activeWorkspacePanels.has('extensions')}
           commandContext={{ activateRightPanel: () => handleToggleRightPanel('extensions') }}
         />
-      </RibbonGroup>
+      </RibbonGroup>}
     </>
   );
 }

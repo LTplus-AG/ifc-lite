@@ -6,5 +6,6 @@ export const mutationPermissionEn = {
   'mutationPermission.workflowRunning': 'Wait for the workflow check or PDF capture to finish, or cancel the workflow',
   'mutationPermission.editModeRequired': 'Turn on Edit mode to change this model',
   'mutationPermission.roleRequired': 'Editing requires editor access in this shared session',
+  'mutationPermission.switchedOff': 'Editing is not available in this viewer',
   'mutationPermission.modelUnavailable': 'This model has no editable IFC data',
 } as const;

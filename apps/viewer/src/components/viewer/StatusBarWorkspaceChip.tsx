@@ -9,6 +9,7 @@
  * Hidden when no model is loaded, and for roles that cannot edit.
  */
 
+import { isFeatureEnabled } from '@/lib/features';
 import { PenLine } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
@@ -27,7 +28,7 @@ export function StatusBarWorkspaceChip() {
     return store?.entities.getName(session.storeyId) || null;
   });
   const toggleEditEnabled = useViewerStore((s) => s.toggleEditEnabled);
-  if (!hasModel || !canEdit) return null;
+  if (!hasModel || !canEdit || !isFeatureEnabled('edit.model')) return null;
 
   const label = active && storeyName
     ? t('shellChrome.statusBar.modelWorkspaceStorey', { storey: storeyName })

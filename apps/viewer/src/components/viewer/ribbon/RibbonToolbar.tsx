@@ -23,7 +23,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useViewerStore, type RibbonTabId } from '@/store';
 import { cn } from '@/lib/utils';
-import { useTranslation, type TranslationKey } from '@/i18n';
+import { useTranslation } from '@/i18n';
+import { availableRibbonTabs } from './ribbon-tabs';
+import { isFeatureEnabled } from '@/lib/features';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
 import { ThemeSwitch } from '../ThemeSwitch';
 import { SearchInline } from '../SearchInline';
@@ -42,14 +44,6 @@ import { RibbonCommandSmallButton } from './command-button';
 import { Settings } from '@/icons';
 import { emitOpenCommandPalette } from '@/lib/tours/events';
 
-const RIBBON_TABS: { id: RibbonTabId; labelKey: TranslationKey }[] = [
-  { id: 'file', labelKey: 'ribbon.tab.file' },
-  { id: 'home', labelKey: 'ribbon.tab.home' },
-  { id: 'view', labelKey: 'ribbon.tab.view' },
-  { id: 'elements', labelKey: 'ribbon.tab.elements' },
-  { id: 'analyze', labelKey: 'ribbon.tab.analyze' },
-  { id: 'author', labelKey: 'ribbon.tab.author' },
-];
 
 interface RibbonToolbarProps {
   onShowShortcuts?: () => void;
@@ -61,7 +55,9 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
   const { t } = useTranslation();
   const inModel = useViewerStore((s) => s.workspaceMode === 'model');
   const canEdit = useViewerStore((s) => s.canCollabEdit());
-  const activeTab = useViewerStore((s) => s.ribbonTab);
+  const tabs = availableRibbonTabs();
+  const storedTab = useViewerStore((s) => s.ribbonTab);
+  const activeTab = tabs.some((tab) => tab.id === storedTab) ? storedTab : 'home';
   const setActiveTab = useViewerStore((s) => s.setRibbonTab);
   const ribbonCollapsed = useViewerStore((s) => s.ribbonCollapsed);
   const setRibbonCollapsed = useViewerStore((s) => s.setRibbonCollapsed);
@@ -96,7 +92,7 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
           className="flex h-full items-end justify-start gap-0.5 rounded-none bg-transparent p-0"
           {...tourAnchor(TOUR_ANCHORS.ribbonTabs)}
         >
-          {RIBBON_TABS.map((tab) => {
+          {tabs.map((tab) => {
             const isActive = tab.id === activeTab;
             return (
               <TabsTrigger
@@ -171,7 +167,7 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
 
         {/* Export modified IFC… — pending-mutation affordance must stay visible
             regardless of the active tab or collapse state. */}
-        <ExportChangesButton surface="ribbon" />
+        {isFeatureEnabled('export.files') && <ExportChangesButton surface="ribbon" />}
 
         <div className="ml-1 flex shrink-0 items-center gap-0.5 border-l border-divider pl-2">
           <RibbonCommandSmallButton commandId="tool:edit-mode"

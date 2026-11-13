@@ -9,6 +9,7 @@
  * `import()`. Neither imports the bridge client or the tool host.
  */
 
+import { isFeatureEnabled } from '@/lib/features';
 import { lazy, Suspense, useEffect } from 'react';
 import { consumePendingPairingFragment, onPairingFragment } from '@/lib/agent-bridge/pairing-fragment';
 import { closeAgentBridgeDialog, requestAgentBridgeDialog, useAgentBridgeState, type AgentBridgeStatus } from '@/lib/agent-bridge/state';
@@ -40,14 +41,18 @@ function visible(status: AgentBridgeStatus): boolean {
 export function AgentBridgeHost() {
   const { dialog, status } = useAgentBridgeState();
   const isMobile = useViewerStore((s) => s.isMobile);
+  // The bridge pairs a local AI agent, so it goes with the AI feature (`lib/features`).
+  const enabled = isFeatureEnabled('ai.assistant');
   useEffect(() => {
+    if (!enabled) return undefined;
     const take = () => {
       const fragment = consumePendingPairingFragment();
       if (fragment) requestAgentBridgeDialog({ source: 'link', fragment });
     };
     take();
     return onPairingFragment(take);
-  }, []);
+  }, [enabled]);
+  if (!enabled) return null;
   return (
     <>
       {isMobile && visible(status) && <Suspense fallback={null}><AgentBridgeMobileIndicator /></Suspense>}
@@ -59,6 +64,6 @@ export function AgentBridgeHost() {
 /** The desktop status-bar chip (the status bar exists only in the desktop layout). */
 export function AgentBridgeStatusSlot() {
   const { status } = useAgentBridgeState();
-  if (!visible(status)) return null;
+  if (!visible(status) || !isFeatureEnabled('ai.assistant')) return null;
   return <Suspense fallback={null}><AgentBridgeChip /></Suspense>;
 }

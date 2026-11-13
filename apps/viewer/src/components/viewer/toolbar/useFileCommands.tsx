@@ -8,6 +8,7 @@
  * mounts it once, so the window listeners never double-fire.
  */
 
+import { isFeatureEnabled } from '@/lib/features';
 import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import { useViewerStore, isIfcxDataStore, type FederatedModel } from '@/store';
 import { useIfcLoader } from '@/hooks/useIfcLoader';
@@ -330,7 +331,7 @@ export function useFileCommands(): FileCommands {
 
   const fileInputs = (
     <>
-      <input
+      {isFeatureEnabled('files.local') && <><input
         id="file-input-open"
         ref={fileInputRef}
         type="file"
@@ -347,7 +348,7 @@ export function useFileCommands(): FileCommands {
         multiple
         onChange={handleAddModelSelect}
         className="hidden"
-      />
+      /></>}
       {collabEnabled && <ShareDialog open={shareDialogOpen} onOpenChange={setShareDialogOpen} />}
       <FederationSetupControls />
     </>

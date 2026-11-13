@@ -18,6 +18,10 @@ import type { KeyCommandDefinition, KeyCommandId, KeyContext } from './keyboard-
 export const KEY_COMMAND_FEATURE: Readonly<Partial<Record<KeyCommandId, FeatureId>>> = {
   // `tool.<name>` rows come from TOOL_FEATURE, the one tool table.
   ...Object.fromEntries(Object.entries(TOOL_FEATURE).map(([tool, feature]) => [`tool.${tool}`, feature])),
+  'edit.toggleEditMode': 'edit.model',
+  'edit.rotate': 'edit.model',
+  'edit.duplicate': 'edit.model',
+  'tool.split': 'edit.model',
   'basket.toggleDock': 'view.presentation',
   'basket.saveView': 'view.presentation',
 };
@@ -26,9 +30,13 @@ export const KEY_COMMAND_FEATURE: Readonly<Partial<Record<KeyCommandId, FeatureI
 export const KEY_CONTEXT_FEATURE: Readonly<Partial<Record<KeyContext, FeatureId>>> = {
   // A tool's own key context belongs to the tool (TOOL_FEATURE).
   ...Object.fromEntries(Object.entries(TOOL_FEATURE).map(([tool, feature]) => [`tool.${tool}`, feature])),
+  command: 'edit.model',
+  'workspace.model': 'edit.model',
+  'panel.reposition': 'edit.placement',
   'panel.schedule': 'data.schedule',
   'schedule.drag': 'data.schedule',
   'panel.script': 'automate.scripting',
+  'panel.chat': 'ai.assistant',
   drawing2d: 'view.drawings',
 };
 

@@ -10,6 +10,7 @@
  * in a log console. AI chat is integrated as a collapsible side panel.
  */
 
+import { isFeatureEnabled } from '@/lib/features';
 import { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react';
 import { useTranslation } from '@/i18n';
 import { ScriptFileControls } from './ScriptFileControls';
@@ -259,7 +260,7 @@ export function ScriptPanel() {
           )}
 
           {/* AI Chat toggle */}
-          <IconButton
+          {isFeatureEnabled('ai.assistant') && <IconButton
             label={chatPanelVisible ? t('scriptPanel.header.hideAiChat') : t('scriptPanel.header.showAiChat')}
             variant="toggle"
             size="icon-xs"
@@ -268,7 +269,7 @@ export function ScriptPanel() {
             {...tourAnchor(TOUR_ANCHORS.scriptChatToggle)}
           >
             <Bot className="h-3.5 w-3.5" />
-          </IconButton>
+          </IconButton>}
         </div>
 
         <ScriptFileControls />

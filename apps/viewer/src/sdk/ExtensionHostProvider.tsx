@@ -18,6 +18,7 @@
  * `useSlotContributions(slot)` and `useInstalledExtensions()`.
  */
 
+import { isFeatureEnabled } from '@/lib/features';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useBim } from './BimProvider.js';
 import { ExtensionHostService } from '@/services/extensions/host.js';
@@ -49,6 +50,11 @@ export function ExtensionHostProvider({ children }: ExtensionHostProviderProps) 
       // the user can run uninstall / disable / repair from the UI; we
       // just don't fire onStartup or load extension code.
       console.info('[ExtensionHostProvider] safe mode — skipping init().');
+      return service.onChange(() => forceRender((n) => n + 1));
+    }
+    if (!isFeatureEnabled('automate.extensions')) {
+      // Switched off by the host: like safe mode, the service exists (its
+      // consumers expect the context) but no installed extension is started.
       return service.onChange(() => forceRender((n) => n + 1));
     }
     service.init()

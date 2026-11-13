@@ -32,6 +32,7 @@ import {
 } from '../../toolbar/export-commands';
 import { useExportCommands, type ResolvedExportCommand } from '../../toolbar/useExportCommands';
 import { RibbonGroup, RibbonContentLargeButton, RibbonContentSmallButton, RibbonSmallStack } from '../primitives';
+import { isFeatureEnabled } from '@/lib/features';
 
 interface RibbonExportButtonProps extends ResolvedExportCommand {
   icons: ExportIconSet;
@@ -109,6 +110,7 @@ export function RibbonExportGroup({ icons }: { icons: ExportIconSet }) {
   // or focus events, so its "open a model" tooltip could never be read.
   const empty = useViewerStore(isViewerEmpty);
   const folded = empty && commands.every((resolved) => resolved.disabled);
+  if (!isFeatureEnabled('export.files')) return null;
 
   return (
     <RibbonGroup label={t('ribbon.file.exportGroup')}>

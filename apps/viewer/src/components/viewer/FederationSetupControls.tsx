@@ -17,6 +17,7 @@
  * the tag editor for a one-model session - the tags travel in this file.
  */
 
+import { isFeatureEnabled } from '@/lib/features';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Anchor, Check, FileWarning } from 'lucide-react';
 import {
@@ -140,7 +141,7 @@ export function FederationSetupControls() {
   return (
     <>
       <ModelTagsCommand />
-      <input
+      {isFeatureEnabled('files.federation-setup') && <><input
         ref={setupFileInputRef}
         type="file"
         accept=".json,application/json"
@@ -153,7 +154,7 @@ export function FederationSetupControls() {
         multiple
         className="hidden"
         onChange={handleModelFilesSelected}
-      />
+      /></>}
       <Dialog open={matches !== null} onOpenChange={(open) => { if (!open) closeReview(); }}>
         <DialogContent>
           <DialogHeader>

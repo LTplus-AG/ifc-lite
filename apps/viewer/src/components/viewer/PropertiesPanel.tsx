@@ -56,6 +56,7 @@ import { PresentationLayersSection } from './properties/PresentationLayersSectio
 import { AssemblyBadge } from './properties/AssemblyBadge';
 import type { PropertySet, QuantitySet } from './properties/encodingUtils';
 import { BsddCard } from './properties/BsddCard';
+import { isFeatureEnabled } from '@/lib/features';
 import { RawStepCard } from './properties/RawStepCard';
 import { EntityHeader } from './properties/EntityHeader';
 import { UnitDisplayControl } from './properties/UnitDisplayControl';
@@ -1271,13 +1272,13 @@ export function PropertiesPanel() {
       )}
 
       {/* Tabs */}
-      {!editPermission.allowed && selectedEntity && (
+      {!editPermission.allowed && editPermission.reason !== 'switched-off' && selectedEntity && (
         <output className="block border-b px-3 py-2 text-xs text-muted-foreground">
           {t(mutationDenialKey(editPermission.reason))}
         </output>
       )}
       <Tabs
-        value={propertiesActiveTab}
+        value={propertiesActiveTab === 'bsdd' && !isFeatureEnabled('privacy.third-party') ? 'properties' : propertiesActiveTab}
         onValueChange={(v) => setPropertiesActiveTab(v as 'properties' | 'quantities' | 'bsdd' | 'raw-step')}
         className="flex-1 flex flex-col overflow-hidden"
       >
@@ -1298,14 +1299,14 @@ export function PropertiesPanel() {
             <Calculator className="h-3 w-3 shrink-0 panel-compact-icon" />
             <span className="panel-compact-text">{t('properties.panel.tab.quantities')}</span>
           </TabsTrigger>
-          <TabsTrigger
+          {isFeatureEnabled('privacy.third-party') && <TabsTrigger
             value="bsdd"
             title={t('properties.panel.tab.bsdd')}
             className="properties-tab-trigger flex-1 min-w-0 text-xs"
           >
             <Tag className="h-3 w-3 shrink-0 panel-compact-icon" />
             <span className="panel-compact-text">{t('properties.panel.tab.bsdd')}</span>
-          </TabsTrigger>
+          </TabsTrigger>}
           <TabsTrigger
             value="raw-step"
             title={t('properties.panel.tab.rawStepTitle')}
@@ -1534,7 +1535,7 @@ export function PropertiesPanel() {
             )}
           </TabsContent>
           <TabsContent value="bsdd" className="m-0 p-3 overflow-hidden">
-            {selectedEntity && (
+            {selectedEntity && isFeatureEnabled('privacy.third-party') && (
               <BsddCard
                 entityType={entityType}
                 modelId={selectedEntity.modelId}

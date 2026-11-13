@@ -14,6 +14,7 @@
  */
 
 import type { StoreApi } from 'zustand';
+import { isFeatureEnabled } from '../lib/features/index.js';
 import { isPanelAvailable } from '../lib/panels/availability.js';
 import { BOTTOM_PANEL_FLAG, BOTTOM_PANEL_IDS } from '../lib/panels/bottom-panels.js';
 import { WORKSPACE_PANELS, type WorkspacePanelId } from '../lib/panels/registry.js';
@@ -21,7 +22,7 @@ import type { ViewerState } from './index.js';
 import { SIDEBAR_PANEL_FLAGS } from './store-sync.js';
 import { closePanelWindow } from '../services/panel-windows.js';
 
-function patchFor(state: ViewerState, off: ReadonlySet<WorkspacePanelId>): Partial<ViewerState> | null {
+function patchFor(state: ViewerState, off: ReadonlySet<WorkspacePanelId>, chatOff: boolean): Partial<ViewerState> | null {
   const patch: Record<string, unknown> = {};
   for (const [flag, id] of SIDEBAR_PANEL_FLAGS) {
     if (state[flag] && off.has(id)) patch[flag] = false;
@@ -35,9 +36,10 @@ function patchFor(state: ViewerState, off: ReadonlySet<WorkspacePanelId>): Parti
     patch.floatingPanels = state.floatingPanels.filter((panel) => !off.has(panel.id));
   }
   if (state.poppedOutIds.some((id) => off.has(id))) {
-    // The OS window is closed by `closePopouts`; this keeps the store in step either way.
+    // The OS window is closed in `enforce` below; this keeps the store in step either way.
     patch.poppedOutIds = state.poppedOutIds.filter((id) => !off.has(id));
   }
+  if (chatOff && state.chatPanelVisible) patch.chatPanelVisible = false;
   return Object.keys(patch).length > 0 ? patch as Partial<ViewerState> : null;
 }
 
@@ -49,12 +51,14 @@ function patchFor(state: ViewerState, off: ReadonlySet<WorkspacePanelId>): Parti
  */
 export function enforcePanelAvailability(store: StoreApi<ViewerState>): () => void {
   const off: ReadonlySet<WorkspacePanelId> = new Set(WORKSPACE_PANELS.map((panel) => panel.id).filter((id) => !isPanelAvailable(id)));
-  if (off.size === 0) return () => {};
+  // The AI chat is a pane inside the Script panel, not a panel of its own.
+  const chatOff = !isFeatureEnabled('ai.assistant');
+  if (off.size === 0 && !chatOff) return () => {};
   const enforce = (state: ViewerState) => {
     // A popped-out panel lives in its own OS window: close it the way the
     // window's own close button does, which also re-docks it in the store.
     for (const id of state.poppedOutIds) if (off.has(id)) closePanelWindow(id);
-    const patch = patchFor(store.getState(), off);
+    const patch = patchFor(store.getState(), off, chatOff);
     if (patch) store.setState(patch);
   };
   enforce(store.getState());

@@ -65,10 +65,9 @@ export function GLBExportDialog({ surface, trigger }: GLBExportDialogProps) {
   // openings the user never rendered (issue surfaced on the Revit door
   // fixture where IfcOpeningElement #2438 leaked through).
   const typeVisibility = useViewerStore((s) => s.typeVisibility);
-  // Not read directly below — `resolveExportVisibility` reads the live store
-  // snapshot at export time — but subscribed so the dialog re-renders when
-  // the Class tab filter, storey isolation, or a lens hides something while
-  // the dialog is open (#4328).
+  const structuralViewMode = useViewerStore((s) => s.structuralViewMode);
+  // Subscribe to every visibility channel so the open dialog refreshes (#4328).
+  // The export resolver reads the live store again at click time.
   const classFilter = useViewerStore((s) => s.classFilter);
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
   const lensHiddenIds = useViewerStore((s) => s.lensHiddenIds);
@@ -147,7 +146,7 @@ export function GLBExportDialog({ surface, trigger }: GLBExportDialogProps) {
   const getExportVisibility = useCallback(
     (modelId: string) => resolveExportVisibility(useViewerStore.getState(), modelId),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [models, hiddenEntities, isolatedEntities, classFilter, selectedStoreys, typeVisibility, lensHiddenIds],
+    [models, hiddenEntities, isolatedEntities, classFilter, selectedStoreys, typeVisibility, structuralViewMode, lensHiddenIds],
   );
 
   const getGlobalHiddenIds = useCallback(
@@ -323,7 +322,7 @@ export function GLBExportDialog({ surface, trigger }: GLBExportDialogProps) {
     lit,
     colorSource,
     visibleOnly,
-    typeVisibility,
+    typeVisibility, structuralViewMode,
     getGlobalHiddenIds,
     getGlobalIsolatedIds,
     surface,

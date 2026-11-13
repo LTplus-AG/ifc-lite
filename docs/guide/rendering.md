@@ -670,7 +670,14 @@ that changes the last highlighted surface through glazing. Model boundaries
 retain their own mesh ownership. A selection alternating
 between origins or models can require one draw per piece, the same cost as
 highlighting every piece with its own mesh; there is no hard 500-run draw cap.
-Pieces with their own origin (textured pieces) still draw separately.
+Textured pieces reuse their existing vertex and index buffers for selection.
+They still need one highlight draw per selected piece, plus the outline-mask
+draws, but selection creates no copied textured geometry. Their uniform blocks
+share pooled buffers. The untextured highlight remains after transparent
+geometry, so glass and transparent texture texels keep the same selection
+appearance. Hide, removal, replacement and GPU-resource retirement invalidate
+borrowed draws before the next frame uses them. Mixed flat and textured
+selections retain hydration order; a flat pool never crosses a textured draw.
 
 The Set is compared by content on every frame, with one lookup per id and no
 allocation, so a new Set, a Set that grew or shrank and any edit made in place

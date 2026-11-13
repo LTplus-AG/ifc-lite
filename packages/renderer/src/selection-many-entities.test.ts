@@ -81,14 +81,15 @@ function makeHarness() {
     },
   });
   const queue = {
-    writeBuffer(buffer: FakeBuffer, offset: number, data: ArrayBufferView) {
+    writeBuffer(buffer: FakeBuffer, offset: number, data: ArrayBuffer | ArrayBufferView) {
+      const bytes = ArrayBuffer.isView(data) ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength) : new Uint8Array(data);
       stats.writes++;
       if (buffer.destroyed > 0) stats.destroyedBufferWrites++;
       frameBuffers.add(buffer);
-      if (buffer.size === MESH_UNIFORM_BYTES) stats.uniforms.set(buffer, new Uint8Array(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)));
+      if (buffer.size === MESH_UNIFORM_BYTES) stats.uniforms.set(buffer, bytes.slice());
       if (buffer.usage & VERTEX_OR_INDEX) { // keep the geometry to assert on
         buffer.bytes ??= new Uint8Array(buffer.size);
-        buffer.bytes.set(new Uint8Array(data.buffer, data.byteOffset, data.byteLength), offset);
+        buffer.bytes.set(bytes, offset);
       }
     },
     writeTexture() { /* no-op */ }, copyExternalImageToTexture() { /* no-op */ },
@@ -145,7 +146,8 @@ function makeHarness() {
         case 'getMultisampleTextureView': return () => null;
         case 'getUniformBufferSize': return () => MESH_UNIFORM_BYTES;
         case 'getQuantizedPipelineVariant': return () => null;
-        case 'getSelectionPipeline': return () => SELECTION;
+        case 'getSelectionPipeline':
+        case 'getTexturedSelectionPipeline': return () => SELECTION;
         case 'getPipeline': return () => ({ label: 'opaque', getBindGroupLayout: () => ({}) });
         case 'opaquePipeline': return () => ({ label: 'opaque' });
         case 'getTransparentPipeline': return () => ({ label: 'transparent' });
@@ -938,17 +940,23 @@ describe('uploadMergedMeshes across entities (#9835)', () => {
     assert.deepEqual(firstX, [Math.fround(0.3), Math.round(Math.fround(0.3) * 1024) / 1024, Math.fround(0.3)]);
   });
 
-  // Second review of #9916: a run keeps its origin, so there is no global
-  // draw cap. Pieces that each draw against their own origin (a textured drawable
-  // does, `Scene.getIndividualMeshFrame`) cannot share a mesh: their vertices
-  // are relative to that origin, and re-basing them would stop the highlight
-  // from landing bit for bit on the surface it covers. This case is NOT fixed
-  // by pooling and costs what one copy per piece did.
-  it('still makes one mesh per piece when every piece has its own origin', () => {
-    const own = Array.from({ length: 1_200 }, (_, i) => piece(i + 1, 0));
-    const merged = uploadMergedMeshes(capture().device, own, (meshData) => ({ sharedOrigin: [meshData.expressId * 10, 0, 0], quantized: false }), true);
-    assert.equal(merged.length, 1_200, 'no better than one copy per piece, and no worse');
-    assert.ok(merged.every((mesh) => mesh.pieces === 1));
+  it('reuses textured own-origin buffers with zero highlight meshes (#9946)', () => {
+    const h = makeHarness();
+    load(h, texturedPieces(1_200));
+    const source = h.scene.getTexturedMeshes();
+    const before = frameCost(h, {});
+    const selected = frameCost(h, { selectedIds: new Set(idsOf(1_200)) });
+    assert.equal(h.scene.getMeshes().length, 0, 'no copied highlight meshes');
+    assert.equal(selected.created.filter((b) => b.usage & VERTEX_OR_INDEX).length, 0, 'no geometry upload');
+    assert.equal(selected.highlightDraws.length, 1_200);
+    assert.equal(selected.draws - before.draws, 3_600, 'one highlight and two outline-mask draws per piece');
+    assert.equal(h.renderer.getFrameStats()!.drawCalls, 2_400, 'one base and one highlight draw per piece');
+    assert.deepEqual(selected.highlightDraws.map((d) => d.vertexBuffer), source.map((m) => m.vertexBuffer));
+    assert.deepEqual(selected.highlightDraws.map((d) => d.indexBuffer), source.map((m) => m.indexBuffer));
+    assert.ok(selected.created.filter((b) => b.usage & 64).length < 10, 'uniform blocks share arena pages');
+    const again = frameCost(h, { selectedIds: new Set(idsOf(600, 601)) });
+    assert.equal(again.created.filter((b) => b.usage & VERTEX_OR_INDEX).length, 0);
+    assert.equal(again.highlightDraws.length, 600);
   });
 
   it('keeps order beyond 500 alternating model runs, at no more than the per-piece draw count (#9916)', () => {
@@ -1098,4 +1106,110 @@ describe('XRayEpochTracker with a selection version (#9835)', () => {
     assert.equal(tracker.update({}, ids, 3), base + 2, 'X-Ray off is a change of its own');
     assert.equal(tracker.update({}, ids, 4), base + 2, 'and the selection alone is none while it is off');
   });
+});
+
+function texturedPieces(count: number): MeshData[] {
+  return Array.from({ length: count }, (_, i) => piece(i + 1, 0, {
+    origin: [i * 0.1, 0, 0],
+    uvs: new Float32Array([0, 0, 1, 0, 0, 1]),
+    texture: { width: 1, height: 1, rgba: new Uint8Array([255, 255, 255, 255]), repeatS: false, repeatT: false },
+  }));
+}
+
+it('hide, isolate, x-ray and hover keep borrowed selection buffers scoped (#9946)', () => {
+  const h = makeHarness(); load(h, texturedPieces(3));
+  const ids = new Set([1, 2, 3]);
+  for (const [options, expected] of [
+    [{ selectedIds: ids }, 3],
+    [{ selectedIds: ids, hiddenIds: new Set([2]) }, 2],
+    [{ selectedIds: ids, isolatedIds: new Set([3]) }, 1],
+    [{ selectedIds: ids, ghostExceptIds: new Set([1]), hoverOutline: { id: 2 } }, 3],
+    [{ selectedIds: new Set<number>() }, 0],
+  ] as const) {
+    const frame = frameCost(h, options);
+    assert.equal(frame.highlightDraws.length, expected);
+    assert.equal(h.scene.getMeshes().length, 0);
+  }
+});
+
+it('removed and re-uploaded textured selections never draw retired buffers (#9946)', () => {
+  const h = makeHarness(); load(h, texturedPieces(2));
+  const ids = new Set([1, 2]); frameCost(h, { selectedIds: ids });
+  const old = h.scene.getTexturedMeshes()[0].vertexBuffer as unknown as FakeBuffer;
+  h.scene.removeMeshesForEntity(1);
+  let frame = frameCost(h, { selectedIds: ids });
+  assert.equal(frame.highlightDraws.length, 1);
+  assert.ok(frame.highlightDraws.every((d) => d.vertexBuffer !== old));
+  h.scene.appendToBatches(texturedPieces(1), h.device, h.renderer['pipeline'] as never);
+  frame = frameCost(h, { selectedIds: ids });
+  assert.equal(frame.highlightDraws.length, 2);
+  assert.ok(frame.highlightDraws.every((d) => d.vertexBuffer !== old));
+  h.scene.clear();
+  assert.equal(frameCost(h, { selectedIds: ids }).highlightDraws.length, 0);
+});
+
+it('GPU eviction and recovery retire borrowed textured draws before submit (#9946)', () => {
+  const h = makeHarness(); load(h, [...texturedPieces(1), piece(9, 0)]);
+  const ids = new Set([1]);
+  frameCost(h, { selectedIds: ids });
+  const source = h.scene.getTexturedMeshes()[0].vertexBuffer as unknown as FakeBuffer;
+  h.scene.setGpuResidencyBudget(1);
+  frameCost(h, { selectedIds: ids });
+  assert.equal((source as unknown as FakeBuffer).destroyed, 0, 'textured drawables are exempt from bucket eviction');
+  h.scene.discardGpuResourcesForRecovery();
+  const frame = frameCost(h, { selectedIds: ids });
+  assert.ok(frame.highlightDraws.every((d) => d.vertexBuffer !== source));
+  assert.equal(h.scene.getMeshes().length, 0, 'no copied replacement while source buffers are absent');
+});
+
+/** Entity order actually submitted, read from the bound GPU vertex/index bytes. */
+function mixedDrawIds(h: Harness, draws: readonly Draw[]): number[] {
+  const textured = new Set(h.scene.getTexturedMeshes().map((m) => m.vertexBuffer as unknown as FakeBuffer));
+  const ids: number[] = [];
+  for (const draw of draws) {
+    const words = new Uint32Array(draw.vertexBuffer.bytes!.buffer);
+    const indices = new Uint32Array(draw.indexBuffer.bytes!.buffer);
+    const stride = textured.has(draw.vertexBuffer) ? 9 : 7;
+    for (let i = 0; i < draw.indexCount; i += 3) ids.push(words[indices[i] * stride + 6] & 0xFFFFFF);
+  }
+  return ids;
+}
+
+it('mixed textured and flat selections retain hydration-history triangle order (#9946)', () => {
+  const h = makeHarness();
+  load(h, [piece(1, 0), { ...texturedPieces(1)[0], expressId: 2 }, piece(3, 0), piece(4, 0)]);
+  const check = (selected: number[], expected: number[], extra: RenderOptions = {}) => {
+    const frame = frameCost(h, { selectedIds: new Set(selected), ...extra });
+    assert.deepEqual(mixedDrawIds(h, frame.highlightDraws), expected);
+  };
+  check([1, 2, 3], [1, 2, 3]);
+  check([3, 2, 1, 4], [1, 2, 3, 4]);
+  check([1, 2, 3, 4], [1, 3, 4], { hiddenIds: new Set([2]) });
+  check([1, 2, 3, 4], [1, 2, 3, 4]);
+  check([1, 3, 4], [1, 3, 4]);
+  check([1, 2, 3, 4], [1, 3, 4, 2]);
+});
+
+it('a newly visible textured draw splits an existing flat pool at its retained rank (#9946)', () => {
+  const h = makeHarness();
+  const flat = Array.from({ length: 600 }, (_, i) => piece(i * 2 + 1, 0));
+  const texture = { ...texturedPieces(1)[0], expressId: 2 };
+  load(h, [...flat, texture]);
+  const ids = new Set([1, 2, ...flat.slice(1).map((m) => m.expressId)]);
+  let frame = frameCost(h, { selectedIds: ids });
+  assert.deepEqual(mixedDrawIds(h, frame.highlightDraws), [...ids]);
+  frame = frameCost(h, { selectedIds: ids, hiddenIds: new Set([2]) });
+  assert.deepEqual(mixedDrawIds(h, frame.highlightDraws), flat.map((m) => m.expressId));
+  frame = frameCost(h, { selectedIds: ids });
+  assert.deepEqual(mixedDrawIds(h, frame.highlightDraws), [...ids]);
+});
+
+it('selection retires a textured pick copy and borrows its source buffers (#9946)', () => {
+  const h = makeHarness(); load(h, texturedPieces(1));
+  assert.equal(h.renderer.createMeshFromData(h.scene.getMeshDataPieces(1)![0]).ok, true);
+  assert.equal(h.scene.getMeshes().length, 1);
+  const frame = frameCost(h, { selectedIds: new Set([1]) });
+  assert.equal(h.scene.getMeshes().length, 0);
+  assert.equal(frame.highlightDraws.length, 1);
+  assert.equal(frame.highlightDraws[0].vertexBuffer, h.scene.getTexturedMeshes()[0].vertexBuffer);
 });

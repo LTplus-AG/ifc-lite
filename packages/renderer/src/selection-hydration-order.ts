@@ -3,10 +3,17 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { MeshData } from '@ifc-lite/geometry';
+import type { Mesh } from './types.js';
 import type { Scene } from './scene.js';
 import { pickPieceKey } from './pick-mesh-budget.js';
 
 type OrderScene = Pick<Scene, 'getMeshes' | 'getMeshDataPieces'>;
+const drawRanks = new WeakMap<Mesh, { first: number; last: number }>();
+export function recordSelectionSource(scene: OrderScene, mesh: Mesh, piece: MeshData, last = piece): void {
+  const order = selectionHydrationOrder(scene);
+  drawRanks.set(mesh, { first: order.rank(piece), last: order.rank(last) });
+}
+export function selectionDrawSpan(mesh: Mesh): { first: number; last: number } | undefined { return drawRanks.get(mesh); }
 
 /**
  * The insertion order the per-piece highlight would retain (#9916).
@@ -36,7 +43,7 @@ class SelectionHydrationOrder {
       ordinals.set(key, ordinal + 1);
       if (!mesh.hydrated) continue;
       const piece = scene.getMeshDataPieces(mesh.expressId, mesh.modelIndex, mesh.geometryItemId)?.[ordinal];
-      if (piece) this.remember([piece]);
+      if (piece) { this.remember([piece]); recordSelectionSource(scene, mesh, piece); }
     }
   }
 
@@ -50,6 +57,13 @@ class SelectionHydrationOrder {
       }
       if (this.ranks.get(piece)?.token !== entry.token) this.ranks.set(piece, { rank: this.next++, token: entry.token });
     }
+  }
+
+  rank(piece: MeshData): number { this.remember([piece]); return this.ranks.get(piece)!.rank; }
+
+  sortDraws(meshes: readonly Mesh[]): Mesh[] {
+    const rank = (mesh: Mesh) => drawRanks.get(mesh)?.first ?? -1;
+    return [...meshes].sort((a, b) => rank(a) - rank(b));
   }
 
   sort(pieces: readonly MeshData[]): MeshData[] {

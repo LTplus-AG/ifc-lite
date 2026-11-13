@@ -204,6 +204,7 @@ import { PostPassChain } from './post-pass-chain.js';
 import { buildSelectionOutlineFrame, matchesHoveredMesh } from './selection-outline-frame.js';
 import { HoverMeshCache } from './hover-mesh-cache.js';
 import { addMergedSelectionMeshes } from './selection-hydration.js';
+import { isBorrowedSelection, stageBorrowedSelection } from './textured-selection.js';
 import { SelectionHighlight, SelectionSnapshot } from './selection-highlight.js';
 import { InteractionEffectsGovernor } from './interaction-effects-governor.js';
 import { resolveOpaqueDrawMode } from './opaque-draw-variants.js'; import { sortOpaqueFrontToBack } from './opaque-draw-order.js'; import { renderTargetBytes, type RenderTargetBytes } from './render-target-bytes.js';
@@ -1729,16 +1730,12 @@ export class Renderer {
         }
         this._lastHadPartialSources = hasPartialSources;
 
-        // The visible selection's highlight meshes. An unchanged frame gets last
-        // frame's list back; a changed one frees the copies the selection no longer
-        // wants, builds the ones it is missing and syncs the instanced occurrences'
-        // selected flag (selection-highlight.ts, #9835). BEFORE we snapshot the
-        // mesh list: a copy freed after the frame wrote or drew it fails the submit.
+        // Resolve before snapshotting meshes: retire old copies and borrow only live textured buffers.
         const selectedMeshes = this._selectionHighlight.resolve(this.scene, {
             selected: selectedExpressIds, selectionVersion: this._selection.getVersion(),
             hiddenIds: options.hiddenIds, isolatedIds: options.isolatedIds, visibilityVersion: newVisibilityVersion,
             modelIndex: selectedModelIndex, itemFilterExpressId, itemFilterItemId, pool: this.scene.getBatchedMeshes().length > 0 || this.scene.getTexturedMeshes().length > 0,
-        }, (piece) => this.createMeshFromData(piece).ok, (pieces, merged) => this.createMergedMeshes(pieces, merged));
+        }, (piece) => this.createMeshFromData(piece).ok, (pieces, merged) => this.createMergedMeshes(pieces, merged), { device, pipeline: this.pipeline });
 
         let meshes = this.scene.getMeshes();
 
@@ -2848,9 +2845,9 @@ export class Renderer {
                     tplFlags[0] |= MESH_FLAG_RTE_DRAWABLE;
 
                     this.uniformOverrideU32[0] = mesh.expressId;
-                    device.queue.writeBuffer(mesh.uniformBuffer, 0, tpl);
+                    if (!stageBorrowedSelection(mesh, tpl)) device.queue.writeBuffer(mesh.uniformBuffer, 0, tpl);
 
-                    usePipeline(this.pipeline.getSelectionPipeline());
+                    usePipeline(isBorrowedSelection(mesh) ? this.pipeline.getTexturedSelectionPipeline() : this.pipeline.getSelectionPipeline());
                     pass.setBindGroup(0, mesh.bindGroup);
                     pass.setVertexBuffer(0, mesh.vertexBuffer);
                     pass.setIndexBuffer(mesh.indexBuffer, 'uint32');
@@ -3554,7 +3551,7 @@ export class Renderer {
         }
 
         releaseRendererGpuTiming(this);
-        // Render pipelines (textures + uniform buffers)
+        this._selectionHighlight.clear(); // borrowed uniform slots, never source geometry
         this.pipeline?.destroy();
         this.pipeline = null;
         this.scene.setQuantizedBatches(false);

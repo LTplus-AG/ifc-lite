@@ -34,7 +34,7 @@ import type { MeshData } from '@ifc-lite/geometry';
 import { MERGE_PIECES_ABOVE, uploadMergedMeshes, type IndividualMeshFrame } from './individual-mesh-upload.js';
 import { pickPieceKey } from './pick-mesh-budget.js';
 import type { Scene } from './scene.js';
-import { selectionHydrationOrder } from './selection-hydration-order.js';
+import { recordSelectionSource, selectionHydrationOrder } from './selection-hydration-order.js';
 import type { Mesh } from './types.js';
 
 /**
@@ -260,6 +260,7 @@ export function hydrateSelectedEntities(
   createPiece: (piece: MeshData) => boolean,
   createMerged: (pieces: readonly MeshData[], merged: MergedSelectionCoverage) => boolean,
   allowPool = true,
+  skipPiece: (piece: MeshData) => boolean = () => false,
 ): boolean {
   // Only built with a selection: this avoids iterating 200K+ meshes every frame otherwise.
   if (visibleSelected.size === 0) return true;
@@ -275,7 +276,7 @@ export function hydrateSelectedEntities(
     const pieces = scene.getMeshDataPieces(id, modelIndex, itemId);
     if (!pieces || pieces.length === 0) continue;
     selectionHydrationOrder(scene).remember(pieces);
-    const missing = unrepresentedPieces(pieces, existingPieceCounts);
+    const missing = unrepresentedPieces(pieces, existingPieceCounts).filter((piece) => !skipPiece(piece));
     if (missing.length > MERGE_PIECES_ABOVE) {
       const listed = scene.getMeshDataPieceList(id) ?? pieces;
       const authored = authoredMeshCounts(scene, modelIndex).get(id) ?? 0;
@@ -319,7 +320,7 @@ export function hydrateSelectedEntities(
     ids.add(entity.id);
     for (const piece of scene.getMeshDataPieceList(entity.id) ?? entity.pieces) listed.add(piece);
     if (authoredByEntity.size > 0) authored += authoredByEntity.get(entity.id) ?? 0;
-    for (const piece of authoredPieces ? unrepresentedPieces(entity.pieces, authoredPieces) : entity.missing) pieces.push(piece);
+    for (const piece of authoredPieces ? unrepresentedPieces(entity.pieces, authoredPieces).filter((piece) => !skipPiece(piece)) : entity.missing) pieces.push(piece);
   }
   return createMerged(selectionHydrationOrder(scene).sort(pieces), { itemId: undefined, modelIndex, pieces: listed, revision: scene.getPickGeometryRevision(), authored, ids }) && complete;
 }
@@ -334,15 +335,15 @@ export function hydrateSelectedEntities(
  * translucent geometry in one piece's colour. It is only ever drawn selected.
  */
 export function addMergedSelectionMeshes(
-  scene: Pick<Scene, 'addMesh'>,
+  scene: Pick<Scene, 'addMesh' | 'getMeshes' | 'getMeshDataPieces'>,
   device: GPUDevice,
   pieces: readonly MeshData[],
   merged: MergedSelectionCoverage,
   frameOf: (meshData: MeshData) => IndividualMeshFrame,
 ): void {
   const pooled = merged.ids !== undefined;
-  for (const { representative, vertexBuffer, indexBuffer, indexCount, transform, rteOrigin } of uploadMergedMeshes(device, pieces, frameOf, pooled)) {
-    scene.addMesh({
+  for (const { representative, firstPiece, lastPiece, vertexBuffer, indexBuffer, indexCount, transform, rteOrigin } of uploadMergedMeshes(device, pieces, frameOf, pooled)) {
+    const mesh: Mesh = {
       expressId: representative.expressId,
       modelIndex: representative.modelIndex,
       // The item only when an item filter built this: whole-product merges have none.
@@ -356,6 +357,8 @@ export function addMergedSelectionMeshes(
       ...(representative.material && !pooled ? { finish: representative.material } : {}),
       hydrated: true,
       mergedSelection: merged,
-    });
+    };
+    recordSelectionSource(scene, mesh, firstPiece, lastPiece);
+    scene.addMesh(mesh);
   }
 }

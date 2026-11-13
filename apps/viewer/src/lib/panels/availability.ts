@@ -53,14 +53,9 @@ export const PANEL_FEATURE: Readonly<Partial<Record<WorkspacePanelId, FeatureId>
   flow: 'automate.flows',
 };
 
-/** The catalogue feature a panel belongs to; `undefined` for the baseline panels. */
-export function panelFeature(id: WorkspacePanelId): FeatureId | undefined {
-  return PANEL_FEATURE[id];
-}
-
 /** Whether the host left this panel's feature on. A panel that is not available never opens or renders. */
 export function isPanelAvailable(id: WorkspacePanelId): boolean {
-  const feature = panelFeature(id);
+  const feature = PANEL_FEATURE[id];
   return feature === undefined || isFeatureEnabled(feature);
 }
 

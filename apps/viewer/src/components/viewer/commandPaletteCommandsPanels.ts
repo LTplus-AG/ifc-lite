@@ -8,6 +8,7 @@ import { Play, GraduationCap } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { SCRIPT_TEMPLATES } from '@/lib/scripts/templates';
 import { TOUR_REGISTRY } from '@/lib/tours/registry';
+import { isTourAvailable } from '@/lib/tours/tour-availability';
 import { startTour } from '@/lib/tours/controller';
 import { buildExportCommands } from './commandPaletteExports';
 import { isFeatureEnabled } from '@/lib/features';
@@ -34,7 +35,7 @@ export function buildPanelCommands(p: CommandPaletteBuildParams): Command[] {
   }
 
   // ── Learn (tours) ──
-  for (const tour of TOUR_REGISTRY) {
+  for (const tour of TOUR_REGISTRY.filter(isTourAvailable)) {
     c.push({
       id: `tour:${tour.id}`,
       runtimeSource: 'tour',

@@ -220,7 +220,7 @@ export function RibbonGroup({ label, children, className }: {
     <div
       // Ribbon commands need a named ARIA group; a fieldset would add form semantics here.
       // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
-      role="group" aria-label={label} data-ribbon-group="" className={cn('flex h-full shrink-0 items-center gap-0.5 px-1', className)}>
+      role="group" aria-label={label} className={cn('flex h-full shrink-0 items-center gap-0.5 px-1', className)}>
       {children}
     </div>
   );
@@ -228,5 +228,5 @@ export function RibbonGroup({ label, children, className }: {
 
 /** Hairline divider between ribbon groups. */
 export function RibbonGroupDivider() {
-  return <div aria-hidden="true" data-ribbon-divider="" className="mx-1 my-2 w-px shrink-0 self-stretch bg-divider" />;
+  return <div aria-hidden="true" className="mx-1 my-2 w-px shrink-0 self-stretch bg-divider" />;
 }

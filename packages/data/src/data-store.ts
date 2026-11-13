@@ -140,6 +140,25 @@ export interface IfcStoreBase {
   };
 
   /**
+   * What backs this store's rows, which `schemaVersion` does not say.
+   *
+   * - `'step'`: STEP records. `source` holds them and `entityIndex` addresses them.
+   * - `'tabular'`: a reader handed over finished tables (IFCX is one). `source`
+   *   holds the file's bytes, but they are not STEP, and `entityIndex` is empty:
+   *   the entity table is the only list of rows.
+   *
+   * Absent on a store that states neither (synthetic, cache-restored, server-built).
+   * Ask `sourceKind === 'tabular'`; do not infer it from the schema label.
+   *
+   * Absent therefore reads as "not tabular", so the STEP-only gates keep their
+   * `schemaVersion === 'IFC5'` and empty-`source` clauses alongside this one:
+   * those still carry every store built before the marker existed (the
+   * synthetic builder sets no marker and no bytes). Dropping either clause
+   * would admit such a store, which is the defect #9890 set out to remove.
+   */
+  sourceKind?: 'step' | 'tabular';
+
+  /**
    * Verbatim HEADER fields from the source file, when this store was built by
    * parsing a STEP/IFC file. Absent for created-from-scratch models. Lets a
    * round-trip export preserve the original `FILE_DESCRIPTION` items and the

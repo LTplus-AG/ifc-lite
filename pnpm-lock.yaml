@@ -2010,6 +2010,9 @@ importers:
       '@ifc-lite/wasm':
         specifier: workspace:^
         version: link:../wasm
+      ws:
+        specifier: ^8.22.0
+        version: 8.22.0
       yjs:
         specifier: ^13.6.33
         version: 13.6.33
@@ -2020,6 +2023,9 @@ importers:
       '@types/node':
         specifier: ^26.6.4
         version: 26.6.5
+      '@types/ws':
+        specifier: ^8.18.2
+        version: 8.18.2
       typescript:
         specifier: ^6.0.3
         version: 6.0.3

@@ -191,6 +191,7 @@ export interface DataStoreTransport {
   georeferencing?: GeoreferenceInfo | null;
   fileSize: number;
   schemaVersion: IfcDataStore['schemaVersion'];
+  sourceKind?: IfcDataStore['sourceKind'];
   sourceHeader?: IfcDataStore['sourceHeader'];
   entityCount: number;
   parseTime: number;
@@ -358,6 +359,7 @@ export function toTransport(
   const payload: DataStoreTransport = {
     fileSize: store.fileSize,
     schemaVersion: store.schemaVersion,
+    sourceKind: store.sourceKind,
     sourceHeader: store.sourceHeader,
     entityCount: store.entityCount,
     parseTime: store.parseTime,
@@ -450,6 +452,7 @@ export function fromTransport(
   const store = attachDataStoreAccessors({
     fileSize: payload.fileSize,
     schemaVersion: payload.schemaVersion,
+    sourceKind: payload.sourceKind,
     sourceHeader: payload.sourceHeader,
     entityCount: payload.entityCount,
     parseTime: payload.parseTime,

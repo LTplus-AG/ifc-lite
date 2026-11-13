@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { IfcStoreBase } from './data-store.js';
+
 /**
  * The effective entity set of a live model session: the one enumeration
  * algorithm (#5249, charter #5236).
@@ -74,7 +76,7 @@ export interface EffectiveEntityOverlay {
 /**
  * Count effective classes without walking a large source bucket for a small
  * edit set. A caller-supplied source domain is counted through the canonical
- * iterator instead (for example IFCX, whose STEP type index is empty).
+ * iterator instead (for example a tabular store, whose STEP type index is empty).
  * Source classes with no surviving records retain a zero row.
  */
 export function countEffectiveEntityTypes(
@@ -86,13 +88,13 @@ export function countEffectiveEntityTypes(
   const byType = source.entityIndex.byType;
   const counts = new Map<string, number>();
   const tombstones = overlay?.getTombstones?.();
-  // An IFCX store's STEP index is empty; the canonical iterator walks its entity table instead (see below).
-  const ifc5Table = !sourceIds && byType.size === 0 && source.schemaVersion === 'IFC5' && !!source.entities?.expressId;
-  const walk = !!sourceIds || ifc5Table || !!(overlay && !tombstones);
+  // A tabular store's STEP index is empty; the canonical iterator walks its entity table instead (see below).
+  const tabular = !sourceIds && !!tabularDomain(source);
+  const walk = !!sourceIds || tabular || !!(overlay && !tombstones);
   for (const [type, ids] of byType) counts.set(type, walk ? 0 : ids.length);
-  // The same zero rows for an IFCX store's source classes, so a class whose every row is deleted still reads 0.
-  if (ifc5Table && source.entities) {
-    for (const type of bucketsOf(source.entities).keys()) if (type !== 'UNKNOWN') counts.set(type, 0);
+  // The same zero rows for a tabular store's source classes, so a class whose every row is deleted still reads 0.
+  if (tabular) {
+    for (const type of sourceEntityClasses(source)) counts.set(type, 0);
   }
   if (walk) {
     for (const entity of iterateEffectiveEntities(source, overlay, undefined, sourceIds)) {
@@ -152,7 +154,7 @@ export interface EffectiveEntitySource {
   readonly deferredEntityIndex?: { get(id: number): { type: string } | undefined };
   /**
    * Optional type fallback for a caller-supplied columnar source domain. `expressId` lists the table's
-   * rows: with `schemaVersion` 'IFC5' it is also the source domain when the caller supplies none.
+   * rows: for a tabular source it is also the source domain when the caller supplies none.
    */
   readonly entities?: {
     getTypeName(id: number): string;
@@ -160,8 +162,73 @@ export interface EffectiveEntitySource {
     /** See `EntityTable.typeRevision`: a retype invalidates the class buckets built over this table. */
     readonly typeRevision?: number;
   };
-  /** The model's schema. An 'IFC5' (IFCX) store has no STEP type index, so its entity table is the source. */
+  /** A 'tabular' store (IFCX is one) has no STEP type index, so its entity table is the source. */
+  readonly sourceKind?: IfcStoreBase['sourceKind'];
+  /**
+   * @deprecated Read only as a fallback when `sourceKind` is absent (#9976). The schema label
+   * used to double as the "no STEP records" marker; `sourceKind` says that now, and an explicit
+   * `sourceKind` always wins over the label. A caller that still passes `'IFC5'` alone keeps
+   * selecting the entity table, so the move to the marker is not a breaking change.
+   * TODO(remove-by: next major of @ifc-lite/data, #9890)
+   */
   readonly schemaVersion?: string;
+}
+
+/**
+ * Is this source's domain its entity table rather than STEP records? `sourceKind` is the
+ * marker; a source built before it existed carries none, so the deprecated `schemaVersion`
+ * label is read as the fallback, with the same exact `'IFC5'` test it used to be matched on.
+ * Read only by {@link tabularDomain}, so every entry point agrees on the marker.
+ */
+function isTabularSource(source: EffectiveEntitySource): boolean {
+  return source.sourceKind === undefined
+    ? source.schemaVersion === 'IFC5'
+    : source.sourceKind === 'tabular';
+}
+
+/** An entity table known to list its rows, so it can serve as a source domain. */
+type TabularTable = NonNullable<EffectiveEntitySource['entities']>
+  & { readonly expressId: NonNullable<NonNullable<EffectiveEntitySource['entities']>['expressId']> };
+
+/**
+ * The entity table that IS this source's row domain, or `undefined` when the STEP type index
+ * is. A tabular source whose table lists no rows has no domain either way.
+ *
+ * The one place the question is asked. Every entry point below branches on this single answer,
+ * so a change to what counts as a tabular domain lands once rather than in each of them.
+ */
+function tabularDomain(source: EffectiveEntitySource): TabularTable | undefined {
+  // @raw-entity-enumeration-ok a populated STEP index means the records, not the table, are the domain; membership stays with the iterator below
+  if (source.entityIndex.byType.size > 0 || !isTabularSource(source)) return undefined;
+  const entities = source.entities;
+  return entities?.expressId ? entities as TabularTable : undefined;
+}
+
+/**
+ * The classes a source's own rows carry, for a caller that must choose which classes to ASK
+ * {@link iterateEffectiveEntities} for before it can enumerate them.
+ *
+ * A caller reading `entityIndex.byType.keys()` for that gets nothing from a tabular store,
+ * whose STEP index is empty, and so narrows the enumeration to no class at all: the viewer's
+ * physical-object count read 0 for every IFCX model that way (#10018). Here the tabular case
+ * takes the entity table's classes instead, from the buckets {@link bucketsOf} memoises per
+ * table, which a filtered `iterateEffectiveEntities` call then reads as well: narrowing a walk
+ * this way costs one table pass, not two. (An unfiltered walk, which is what a queued retype
+ * forces, reads the rows directly and does not share that pass.) A STEP source yields exactly
+ * the type-index keys, as before.
+ *
+ * Source classes only: overlay creations and retypes can name a class no source row carries,
+ * and a caller that wants those adds them from the overlay itself.
+ */
+export function* sourceEntityClasses(source: EffectiveEntitySource): IterableIterator<string> {
+  const table = tabularDomain(source);
+  if (!table) {
+    // @raw-entity-enumeration-ok the canonical class accessor reads parsed bucket keys; membership stays with the iterator below
+    yield* source.entityIndex.byType.keys();
+    return;
+  }
+  // `UNKNOWN` is what a class-less row reports, and the iterator drops those rows too.
+  for (const type of bucketsOf(table).keys()) if (type !== 'UNKNOWN') yield type;
 }
 
 export interface EffectiveEntity {
@@ -211,14 +278,15 @@ export function* iterateEffectiveEntities(
   const created = byClass ? Array.from(byClass)
     : overlay ? Array.from(overlay.readNewEntityKinds?.() ?? overlay.getNewEntities()) : [];
 
-  // An IFCX store has no STEP records, so its `entityIndex` is empty and every walk of the buckets above finds
+  // A tabular store (IFCX is one) has no STEP records, so its `entityIndex` is empty and every walk of the buckets above finds
   // nothing: no space, no material, no wall, whoever asks. The entity table is its source then, and is walked
   // here, once, for every caller, instead of each caller knowing to pass it.
   // The table is walked once per model, into buckets by class; a filtered call takes its buckets, not the table
   // (a per-element loop asking for one class would otherwise rescan the whole table per element). A queued
   // retype can move a row INTO a wanted class, so with retypes the whole table is the domain.
-  if (!sourceIds && byType.size === 0 && source.schemaVersion === 'IFC5' && source.entities?.expressId) {
-    sourceIds = wanted && !retypes?.size ? idsOfClasses(source.entities, wanted) : source.entities.expressId;
+  const table = sourceIds ? undefined : tabularDomain(source);
+  if (table) {
+    sourceIds = wanted && !retypes?.size ? idsOfClasses(table, wanted) : table.expressId;
   }
 
   if (sourceIds) {

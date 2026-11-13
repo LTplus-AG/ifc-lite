@@ -169,10 +169,12 @@ describe('Drawing2DCanvas clips dimensions like the drawing they belong to', () 
     assert.ok(textClips.has(DIMENSION_TEXT), 'the dimension text was drawn');
     const clip = textClips.get(DIMENSION_TEXT);
     assert.ok(clip, 'the dimension was drawn with no clip in force, over the sheet frame and title block');
-    // The same rect the drawing content is clipped to.
+    // The same rect the drawing content is clipped to: the viewport's paper mm
+    // at the rendered transform (10 px per mm, origin at 0, 0), position included,
+    // so a clip at the wrong origin cannot pass (#10076 review).
     const v = sheet().viewportBounds;
-    const [, , w, h] = clip;
-    assert.ok(Math.abs(w / h - v.width / v.height) < 1e-9, `clip ${JSON.stringify(clip)} is not the viewport ${JSON.stringify(v)}`);
+    const expected = [v.x * 10, v.y * 10, v.width * 10, v.height * 10];
+    assert.ok(clip.every((n, i) => Math.abs(n - expected[i]) < 1e-9), `clip ${JSON.stringify(clip)} is not the viewport ${JSON.stringify(expected)}`);
   });
 
   it('leaves dimensions unclipped in direct mode', () => {

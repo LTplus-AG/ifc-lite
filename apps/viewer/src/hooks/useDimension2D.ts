@@ -160,8 +160,10 @@ export function useDimension2D(p: UseDimension2DParams) {
       from: placed[0] ?? null,
       includeHiddenLines: showHiddenLines,
     });
-    return { point: hit?.point ?? raw, hit };
-  }, [drawing, mapping, showHiddenLines]);
+    // A target clipped out of the sheet viewport is not taken: the point would be invisible.
+    if (!hit || !insideScreenClip(clip, mapping.toScreen(hit.point))) return { point: raw, hit: null };
+    return { point: hit.point, hit };
+  }, [drawing, mapping, showHiddenLines, clip]);
 
   const nearbyKeyPoints = useCallback((at: Point2D): Point2D[] => {
     if (!drawing) return [];
@@ -171,12 +173,12 @@ export function useDimension2D(p: UseDimension2DParams) {
     for (const i of snapIndex.index.query({ x: at.x - r, y: at.y - r }, { x: at.x + r, y: at.y + r })) {
       const kp = shapeKeyPoints(snapIndex.shapes[i]);
       for (const q of [...kp.endpoints, ...kp.midpoints]) {
-        if (Math.hypot(q.x - at.x, q.y - at.y) <= r) out.push(q);
+        if (Math.hypot(q.x - at.x, q.y - at.y) <= r && insideScreenClip(clip, mapping.toScreen(q))) out.push(q);
         if (out.length >= MAX_MARKERS) return out;
       }
     }
     return out;
-  }, [drawing, mapping, showHiddenLines]);
+  }, [drawing, mapping, showHiddenLines, clip]);
 
   function handleMouseDown(e: React.MouseEvent): boolean {
     if (e.button !== 0) return false;

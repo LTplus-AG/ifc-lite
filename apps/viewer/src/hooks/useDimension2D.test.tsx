@@ -283,3 +283,29 @@ it('in sheet mode the dimension tool places no point outside the viewport (#1007
   mouseDown(canvas, { clientX: 100, clientY: 70 });
   assert.equal(useViewerStore.getState().dimension2DPoints.length, 1, 'a click inside the viewport places a point');
 });
+
+it('in sheet mode a snap target clipped out of the viewport is not taken (#10076 review)', () => {
+  const s = sheet();
+  const view = { x: 0, y: 0, scale: 2 };
+  sheetMode = { sheet: { sheet: s, isPinned: false, cached: null }, view };
+  // A second footprint whose far corner lies just past the viewport's right edge.
+  const d = drawing();
+  d.cutPolygons.push({ entityId: 11, ifcType: 'IfcWall', modelIndex: 0, isCut: true,
+    polygon: { outer: [{ x: 4, y: 0.5 }, { x: 7.05, y: 0.5 }, { x: 7.05, y: 1.5 }, { x: 4, y: 1.5 }], holes: [] } });
+  const placement = resolveSheetTransform({ sheet: s, axis: 'down', isPinned: false, cached: null,
+    drawingBounds: { minX: 0, minY: 0, maxX: 4, maxY: 2 } }).transform;
+  const mapping = drawingViewMapping(view, 'down', placement);
+  const corner = mapping.toScreen({ x: 7.05, y: 1.5 });
+  const right = (s.viewportBounds.x + s.viewportBounds.width) * view.scale;
+  assert.ok(corner.x > right && corner.x - right < 3, `the corner is just outside the viewport (${corner.x} vs ${right})`);
+
+  useViewerStore.setState({ drawing2D: d, annotation2DActiveTool: 'dimension' });
+  const canvas = render(<Harness />).firstElementChild!;
+  const at = { clientX: right - 1, clientY: corner.y };
+  mouseMove(canvas, at);
+  assert.notEqual(tool.snapMode, 'endpoint', 'the clipped corner is not offered');
+  assert.ok((tool.scene?.markers ?? []).every((m) => mapping.toScreen(m).x <= right), 'no marker outside the viewport');
+  mouseDown(canvas, at);
+  const [placed] = useViewerStore.getState().dimension2DPoints;
+  assert.ok(placed && mapping.toScreen(placed).x <= right, `the placed point is on the visible drawing (${placed && mapping.toScreen(placed).x})`);
+});

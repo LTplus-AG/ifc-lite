@@ -8,6 +8,22 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
+## Retained selection highlights (#9835, #9916)
+
+**Diagnostic win on the real large-model WebGPU path.** Retaining merged highlight
+buffers removes repeated per-piece submission while orbiting an unchanged large
+selection. Same-camera checks include hide, isolate, glazing and x-ray context;
+shared desktop timings are diagnostic rather than a benchmark qualification.
+
+Lesson: preserve the per-piece path's hydration insertion history, not the latest
+selection Set order. The highlight does not write depth, so later overlapping
+selected surfaces decide the visible shading. Retire and rebuild pooled ranges
+together, and merge only contiguous compatible model/origin runs. Regrouping
+non-adjacent equal-origin pieces trades away visual correctness. Alternating
+origins can still cost one draw per piece, matching the original path; a per-vertex
+frame index and GPU origin table are the bounded-draw follow-up (#10008). Distinct
+textured origins remain tracked separately in #9946.
+
 ## Single-edit IFC derivations (#9296, R7 P3)
 
 **Diagnostic improvement; performance qualification remains open.** Storey display,

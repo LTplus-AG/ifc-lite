@@ -92,7 +92,7 @@ export default {
         checks: [
           { name: 'move by a typed 2 m', ok: moved, detail: axes.map((a) => `${fmt(a.start)}->${fmt(a.end)}`).join(' ') },
           { name: 'rotate by a typed 90 degrees', ok: rotated, detail: rotated ? 'selected wall turned +90 degrees about its original centre' : 'selected wall has wrong signed rotation' },
-          { name: 'array makes 3 walls from one', ok: arrayWalls(axes), detail: `${arrayed} walls in the array region` },
+          { name: 'array makes 3 walls from one', ok: arrayWalls(axes,2), detail: `${arrayed} walls in the array region` },
           { name: 'Mirror reflects the selected wall about y=12', ok: !!reflectedBounds && near(reflectedBounds.centre[1],14,.01) && near(reflectedBounds.min[0],0,.01) && near(reflectedBounds.max[0],4,.01) && near(reflectedBounds.size[1],.2,.005) && mirrored.count('IFCWALL') === beforeMirror.count('IFCWALL'), detail: JSON.stringify(reflectedBounds) ?? 'Mirror gesture did not produce an exported wall' },
           { name: 'Undo restores the mirrored wall to y=10', ok: !!undone && near(undone.start[1],10,.01) && near(undone.end[1],10,.01) && restored.count('IFCWALL') === beforeMirror.count('IFCWALL'), detail: JSON.stringify(undone) ?? 'No completed Mirror to undo' },
         ],

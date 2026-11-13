@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { wallsAtElevation } from '../lib/measured-oracles.mjs';
+import { copyLevelElevations } from '../lib/measured-oracles.mjs';
 import { copiedPlansMatch } from '../lib/oracles.mjs';
 import { task } from '../lib/driver.mjs';
 import { oracleModel, openStoreyManager, switchStorey, toasts } from '../lib/model-ui.mjs';
@@ -49,7 +49,7 @@ export default {
           { name: '4 walls selected by click and Ctrl+click', ok: selected === 4, detail: `${selected} selected; ${copied.join(' / ')}` },
           { name: '4 walls on Level 2', ok: l2.length === 4, detail: `${l2.length}` },
           { name: '4 walls on Level 3', ok: l3.length === 4, detail: `${l3.length}` },
-          { name: 'copies keep the plan position of the Level 1 walls', ok: l1.length === 4 && copiedPlansMatch(l1, [l2,l3]) && [l2,l3].every((walls,i) => wallsAtElevation(walls,storeys.find(st => st.name === `Level ${i+2}`)?.elevation)), detail: [l2,l3].map((walls) => walls.map((w) => fmt(w.start)).join(' ') || 'none').join(' / ') },
+          { name: 'copies keep the plan position of the Level 1 walls', ok: l1.length === 4 && copiedPlansMatch(l1, [l2,l3]) && copyLevelElevations([z2,storeys.find(st=>st.name==='Level 3')?.elevation],[l2,l3]), detail: [l2,l3].map((walls) => walls.map((w) => fmt(w.start)).join(' ') || 'none').join(' / ') },
           { name: 'Level 2 at +3.0 m', ok: near(z2 ?? -1, 3, 1e-6), detail: `${z2}` },
         ],
       };

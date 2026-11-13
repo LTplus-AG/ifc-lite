@@ -67,10 +67,15 @@ export function uniqueWallJoins(step) {
 export function wallEndpointsJoined(step) {
   const walls = new Set(step.of('IFCWALL').map(w => w.id));
   if (!walls.size) return false;
+  const axes=new Map(step.wallAxes().map(w=>[w.id,w]));
+  if (walls.size===4 && step.of('IFCRELCONNECTSPATHELEMENTS').length!==4) return false;
   const joined = new Set();
   for (const rel of step.of('IFCRELCONNECTSPATHELEMENTS')) {
     const a = rel.args?.[5]?.ref, b = rel.args?.[6]?.ref;
-    if (a === b || !walls.has(a) || !walls.has(b)) continue;
+    if (a === b || !walls.has(a) || !walls.has(b)) return false;
+    const endpoint=(id,kind)=>kind==='ATSTART'?axes.get(id)?.start:kind==='ATEND'?axes.get(id)?.end:undefined;
+    const p=endpoint(a,rel.args?.[10]?.enum), q=endpoint(b,rel.args?.[9]?.enum);
+    if (!p || !q || Math.hypot(p[0]-q[0],p[1]-q[1])>.001 || Math.abs(axes.get(a).z-axes.get(b).z)>.001) return false;
     for (const [id, endpoint] of [[a, rel.args?.[10]?.enum], [b, rel.args?.[9]?.enum]]) {
       if (endpoint === 'ATSTART' || endpoint === 'ATEND') joined.add(`${id}:${endpoint}`);
     }

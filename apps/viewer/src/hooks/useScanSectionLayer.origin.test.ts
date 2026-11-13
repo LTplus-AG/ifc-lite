@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
 import type { FederatedModel } from '@/store/types';
 import { useViewerStore } from '@/store';
-import { ZERO_ROTATION } from '@/lib/model-placement/rotation';
+import { testPlacement } from '@/lib/model-placement/test-fixtures';
 import { collectScanSources } from './useScanSectionLayer.js';
 import { selectScanBand } from './scanSectionMath.js';
 import { fixtureModel } from '@/test/store-fixture.js';
@@ -23,7 +23,7 @@ it('an inline cloud with an origin keeps two points 0.1 m apart at 2,600,000 m i
   // The federated model is moved 0.5 m east; that move composes on top of the origin.
   const before = useViewerStore.getState().modelPlacement;
   useViewerStore.setState({ modelPlacement: { ...before,
-    placements: new Map([['m', { translation: [0.5, 0, 0], rotation: ZERO_ROTATION, locked: false }]]) } });
+    placements: new Map([['m', testPlacement([0.5, 0, 0])]]) } });
   try {
     const paths = {
       legacy: { sources: collectScanSources(new Map(), [asset]), x0: 2_600_000.02 },

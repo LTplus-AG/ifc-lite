@@ -186,6 +186,7 @@ export const commandPaletteEn = {
 
   // ── Panels ──
   'commandPalette.panel.chat.label': 'AI Chat',
+  'commandPalette.panel.agentBridge.label': 'Connect local agent…',
   'commandPalette.panel.flavors.label': 'Manage profiles…',
   'commandPalette.sidebar.toggle.label': 'Toggle Sidebar',
   'commandPalette.sidebar.collapse.label': 'Collapse Sidebar to Icons',

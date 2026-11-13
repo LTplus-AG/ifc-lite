@@ -116,7 +116,8 @@ export function rustRelationshipTypes(src) {
  * IfcRel* type the parser is willing to route to a relationship extractor. */
 // HIERARCHY_REL_TYPES stopped being a literal array at #4205: it is now
 // `new Set([...getAllConcreteRelationshipTypes()].filter(t =>
-// !NON_HIERARCHY_REL_TYPES.has(t)))`, a schema-derived set with no string
+// !NON_HIERARCHY_REL_TYPES.has(t)))` (returned by `buildHierarchyRelTypes()`
+// since it is built on first use), a schema-derived set with no string
 // literals in columnar-parser-indexes.ts at all — the literal-array regex
 // below simply never matches it and (before this fix) the loop silently
 // `continue`d past it, dropping every type ONLY reachable through
@@ -160,6 +161,15 @@ function schemaDerivedHierarchyRelTypes(repoRoot, { sourcePath } = {}) {
   return mod.getAllConcreteRelationshipTypes();
 }
 
+/** `HIERARCHY_REL_TYPES` -> `buildHierarchyRelTypes`: the builder a lazily
+ * built gate set is written as (the parser's hierarchy gate since the schema
+ * registries are decoded on first use: it is built on first call, not when
+ * the module loads). Its `return new Set([...])` is read exactly like the
+ * literal `export const NAME = new Set([...])` form. */
+export function relTypesBuilderName(name) {
+  return 'build' + name.toLowerCase().split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join('');
+}
+
 export function tsRelationshipTypes(src, { repoRoot = REPO_ROOT, hierarchySourcePath } = {}) {
   const code = stripComments(src);
   const RECOGNIZED = ['HIERARCHY_REL_TYPES', 'PROPERTY_REL_TYPES', 'ASSOCIATION_REL_TYPES'];
@@ -179,14 +189,24 @@ export function tsRelationshipTypes(src, { repoRoot = REPO_ROOT, hierarchySource
     recognizedNames: RECOGNIZED,
     label: 'tsRelationshipTypes',
   });
+  // The same guard over the lazily built form: a 4th `function
+  // buildSomethingRelTypes() { return new Set([...]) }` is as invisible to the
+  // union as a 4th constant would be.
+  assertNoUnrecognizedSiblingBindings(code, {
+    bindingPattern: /function (\w+)\s*\(\s*\)[^{]*\{\s*return new Set\(\s*\[([\s\S]*?)\]/g,
+    valuePattern: /'[A-Z][A-Z0-9]{3,}'|getAllConcreteRelationshipTypes\(\)/,
+    nameFilter: /RelTypes/,
+    recognizedNames: RECOGNIZED.map(relTypesBuilderName),
+    label: 'tsRelationshipTypes',
+  });
   const found = new Set();
   for (const name of RECOGNIZED) {
-    const m = new RegExp(`export const ${name}(?:\\s*:\\s*[^=\\n]+)?\\s*=\\s*new Set\\(\\s*\\[([\\s\\S]*?)\\]`).exec(
-      code,
-    );
+    const m =
+      new RegExp(`export const ${name}(?:\\s*:\\s*[^=\\n]+)?\\s*=\\s*new Set\\(\\s*\\[([\\s\\S]*?)\\]`).exec(code) ??
+      new RegExp(`function ${relTypesBuilderName(name)}\\s*\\(\\s*\\)[^{]*\\{\\s*return new Set\\(\\s*\\[([\\s\\S]*?)\\]`).exec(code);
     if (!m) {
       throw new ExtractorUnderReadError(
-        `tsRelationshipTypes: could not find a \`export const ${name} = new Set([...])\` (literal or schema-derived) definition — the extractor is under-reading.`,
+        `tsRelationshipTypes: could not find a \`export const ${name} = new Set([...])\` or \`function ${relTypesBuilderName(name)}() { return new Set([...]) }\` (literal or schema-derived) definition — the extractor is under-reading.`,
       );
     }
     if (HIERARCHY_DERIVED_MARKER.test(m[1])) {

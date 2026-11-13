@@ -25,7 +25,7 @@ import type { ListDefinition, ListGrouping } from '@/lib/lists';
 import { runListFederated } from '@/lib/lists/run-list';
 import { captureListRunModels, carryListRun, listResultGrouping, listRunDefinition, recordListRun } from '@/lib/lists/run-provenance';
 import { beginActivity, finishActivity } from '@/lib/activity/activity-journal';
-import { captureAnalysisStamp } from '@/hooks/useAnalysisStaleness';
+import { analysisStampOf, captureAnalysisStamp, useAnalysisStaleness } from '@/hooks/useAnalysisStaleness';
 import { useAssistantAction } from '@/components/viewer/assistant/AssistantAction';
 import { evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models';
 import { useListProviders } from './useListProviders';
@@ -37,6 +37,11 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { formatLocaleCount } from './formatLocaleCount';
 
 type PanelView = 'library' | 'builder' | 'results';
+
+/** An edit settles for this long before the open result runs again. */
+const AUTO_REFRESH_DELAY_MS = 200;
+/** A result that took longer than this to run is not re-run on every edit; it shows as out of date instead. */
+const AUTO_REFRESH_MAX_RUN_MS = 1000;
 
 export function ListPanel() {
   const { t, locale } = useTranslation();
@@ -76,12 +81,13 @@ export function ListPanel() {
   React.useEffect(() => () => listRunRef.current?.abort(), [modelProviderPairs]);
   const listModelIds = React.useMemo(() => modelProviderPairs.map((pair) => pair.modelId), [modelProviderPairs]);
 
-  const handleExecuteList = useCallback((definition: ListDefinition) => {
+  const handleExecuteList = useCallback((definition: ListDefinition, refresh = false) => {
     if (!hasData) return;
     listRunRef.current?.abort();
     const controller = new AbortController();
     listRunRef.current = controller;
-    const job = beginActivity({ kind: 'check', title: 'activityTray.job.list', panel: 'lists', subject: definition.name,
+    // A refresh of the open result is not a run the person started: it gets no Activity row.
+    const job = refresh ? null : beginActivity({ kind: 'check', title: 'activityTray.job.list', panel: 'lists', subject: definition.name,
       cancel: () => controller.abort() });
     let outcome: 'completed' | 'failed' | 'cancelled' = 'cancelled';
     let detail: string | undefined;
@@ -116,7 +122,7 @@ export function ListPanel() {
         outcome = 'failed';
         setListError(detail);
       } finally {
-        finishActivity(job, controller.signal.aborted ? 'cancelled' : outcome, detail ? { detail } : {});
+        if (job !== null) finishActivity(job, controller.signal.aborted ? 'cancelled' : outcome, detail ? { detail } : {});
         if (listRunRef.current === controller) {
           listRunRef.current = null;
           setListExecuting(false);
@@ -124,6 +130,23 @@ export function ListPanel() {
       }
     })(); });
   }, [hasData, modelProviderPairs, setActiveListId, setListResult, setListExecuting, setListError, t]);
+
+  // An open schedule follows the model (#9296): when an edit makes the shown result stale, it
+  // runs again shortly after, with the grouping on screen. Once per model state, so a run that
+  // fails is not retried in a loop; a list that took long to run waits for the person instead.
+  const stale = useAnalysisStaleness(analysisStampOf(listResult));
+  const mutationVersion = useViewerStore((s) => s.mutationVersion);
+  const geometryContentVersion = useViewerStore((s) => s.geometryContentVersion);
+  const refreshedFor = React.useRef('');
+  React.useEffect(() => {
+    const definition = listResult ? listRunDefinition(listResult) : null;
+    const state = `${mutationVersion}:${geometryContentVersion}`;
+    if (view !== 'results' || !stale || !listResult || !definition || listExecuting || refreshedFor.current === state) return;
+    // Only a run known to have been quick: a missing or non-finite time is not one.
+    if (!(listResult.executionTime <= AUTO_REFRESH_MAX_RUN_MS)) return;
+    const timer = setTimeout(() => { refreshedFor.current = state; handleExecuteList(definition, true); }, AUTO_REFRESH_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [view, stale, listResult, listExecuting, mutationVersion, geometryContentVersion, handleExecuteList]);
 
   const handleCreateNew = useCallback(() => {
     setEditingList(null);

@@ -449,6 +449,63 @@ describe('guards', () => {
     expect(result.skipped).toEqual({ budget: 1 });
     expect(result.warnings).toEqual(['Stopped expanding blocks after 500,000 block references.']);
   });
+
+  // Issue #10021: a reference the walk skips took a `continue` above the limit check, so the budget
+  // was spent in the middle of a block's references and the rest of them were walked anyway.
+  test('the walk stops on the reference that spends the placement budget, skipped or drawn', async () => {
+    // 501 placements of 1,000 references to a definition that is not in the file: 501,501
+    // references, every one of them skipped, against a budget of 500,000.
+    const bytes = await craft(c => {
+      const block = c.block('Dangling', Array.from({ length: 1000 }, () => c.reference(PLACEHOLDER)));
+      for (let i = 0; i < 501; i++) c.addInstance(block, translation(i, 0, 0), { name: `holder ${i}` });
+      c.addMesh(unit(c), { name: 'bystander' });
+    });
+    const result = await readRhino3dm(bytes);
+    const walked = result.skipped['InstanceReference:missing-definition'];
+    // Under the limit, not level with it: the walk used to run to the end of the block it was in,
+    // 500 references past the budget, and only the next placement's own reference stopped it.
+    expect(walked).toBeLessThan(MAX_BLOCK_PLACEMENTS);
+    expect(walked).toBeGreaterThan(MAX_BLOCK_PLACEMENTS * 0.9);
+    expect(result.warnings).toEqual(['Stopped expanding blocks after 500,000 block references.']);
+    expect(result.entities.map(e => e.name)).toEqual(['bystander']);
+  });
+
+  // Issue #10021: the budget was charged for a whole block in the instance path but per mesh when
+  // baking, so the option decided whether a file could be read at all.
+  test.each([false, true])('a placement is drawn whole or left out whole, the same in both modes (bakeInstances %s)', async bakeInstances => {
+    const twoBoxes = (c: Craft) => c.block('Two', [unit(c), c.box([5, 0, 0], [6, 1, 1])]);
+    const alone = await craft(c => { c.addInstance(twoBoxes(c), undefined, { name: 'placed' }); });
+    // Twelve triangles a box: below 24 the placement does not fit, and nothing else is drawable.
+    for (const maxTriangles of [12, 23]) {
+      const error = await readRhino3dm(alone, { bakeInstances, maxTriangles }).catch(e => e);
+      expect(error).toBeInstanceOf(RhinoReadError);
+      expect(error.code).toBe('no-renderable-geometry');
+    }
+    const drawn = await readRhino3dm(alone, { bakeInstances, maxTriangles: 24 });
+    expect(drawnTriangles(drawn)).toBe(24);
+    expect([drawn.skipped, drawn.warnings]).toEqual([{}, []]);
+    // With something else to draw, the placement is left out whole and reported as the budget's.
+    const withBystander = await craft(c => {
+      c.addMesh(unit(c), { name: 'bystander' });
+      c.addInstance(twoBoxes(c), undefined, { name: 'placed' });
+    });
+    const partial = await readRhino3dm(withBystander, { bakeInstances, maxTriangles: 23 });
+    expect(partial.entities.map(e => e.name)).toEqual(['bystander']);
+    expect(drawnTriangles(partial)).toBe(12);
+    expect(partial.skipped).toEqual({ budget: 1 });
+    expect(partial.warnings).toEqual(['Stopped at the budget of 23 triangles: 1 object not drawn, or drawn in part.']);
+    // A placement the transform pushes out of range draws nothing and charges nothing, so it does
+    // not spend a budget its block would not have fitted in either.
+    const farAway = await craft(c => {
+      const far = c.block('Two far', [c.box([0, 0, 0], [1e24, 1e24, 1e24]), c.box([0, 0, 0], [1e24, 1e24, 1e24])]);
+      c.addInstance(far, SCALE, { name: 'far' });
+      c.addMesh(unit(c), { name: 'bystander' });
+    });
+    const spared = await readRhino3dm(farAway, { bakeInstances, maxTriangles: 12 });
+    expect(spared.entities.map(e => e.name)).toEqual(['bystander']);
+    expect(spared.skipped).toEqual({ 'transform:invalid': 2 });
+    expect(spared.warnings).toEqual([]);
+  });
 });
 
 describe('frame', () => {
@@ -512,6 +569,24 @@ describe('frame', () => {
     const result = await readRhino3dm(await craft(scene('local', '1 0 0 2600000 0 1 0 1200000 0 0 1 400 0 1e-17 0 0.9999999999999999')));
     expect(result.document.frame).toBe('ifc-world-from-model');
     expect(result.warnings).toEqual([]);
+  });
+
+  // Issue #10021: the noise a tolerated last row holds grows through composition.
+  test.each([false, true])('a frame with last-row noise still places blocks a survey distance out (bakeInstances %s)', async bakeInstances => {
+    const bytes = await craft(c => {
+      c.string('IFC::Coordinates', 'local');
+      c.string('IFC::WorldFromModel', '1 0 0 0 0 1 0 0 0 0 1 0 0 1e-17 0 1');
+      c.addInstance(c.block('Box', [unit(c)]), translation(0, 1_000_000, 0), { name: 'placed' });
+      c.addMesh(unit(c), { name: 'bystander' });
+    });
+    const result = await readRhino3dm(bytes, { bakeInstances });
+    // 1e-17 against a translation of 1e6 puts the composed last entry 1e-11 from 1, past the
+    // tolerance: the frame was accepted and then every placement under it refused as a projection.
+    expect(result.document.frame).toBe('ifc-world-from-model');
+    expect(result.entities.map(e => e.name)).toEqual(['placed', 'bystander']);
+    expect(result.skipped).toEqual({});
+    close(entityBounds(result, 0).min, [0, 1_000_000, 0], 6);
+    close(entityBounds(result, 0).max, [1, 1_000_001, 1], 6);
   });
 
   test('a rotating matrix turns positions and normals and keeps the origin in doubles', async () => {

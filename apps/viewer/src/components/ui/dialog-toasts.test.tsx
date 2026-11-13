@@ -250,3 +250,28 @@ it('#9879 converging notices keep the latest emission expiry without an older ti
   act(() => t.mock.timers.tick(1000));
   assert.ok(!anchor.textContent?.includes('Saved twice'), 'the survivor keeps its original latest-emission deadline');
 });
+
+
+for (const persistentFirst of [true, false]) {
+  it(`#9879 convergence preserves persistent errors with a ${persistentFirst ? 'later' : 'prior'} transient duplicate`, t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    render(<Toaster />);
+    act(() => {
+      if (persistentFirst) toast.error('Export still failed');
+      else toast.transientError('Export still failed', 1000);
+    });
+    render(<Dialog open><DialogContent><DialogTitle>Export</DialogTitle><DialogDescription>Review</DialogDescription></DialogContent></Dialog>);
+    act(() => {
+      if (persistentFirst) toast.transientError('Export still failed', 1000);
+      else toast.error('Export still failed');
+    });
+    cleanup();
+    const anchor = render(<Toaster />);
+    assert.equal(anchor.querySelectorAll('button[aria-label="Dismiss notification"]').length, 1);
+    assert.match(anchor.textContent ?? '', /×2/);
+    act(() => t.mock.timers.tick(1000));
+    assert.ok(anchor.textContent?.includes('Export still failed'), 'a transient expiry cannot dismiss the persistent error');
+    act(() => anchor.querySelector<HTMLButtonElement>('button[aria-label="Dismiss notification"]')?.click());
+    assert.ok(!anchor.textContent?.includes('Export still failed'), 'explicit dismissal still clears the coalesced error');
+  });
+}

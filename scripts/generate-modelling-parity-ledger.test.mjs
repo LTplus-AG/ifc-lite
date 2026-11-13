@@ -569,8 +569,8 @@ test('#9328 summary cannot report completion after the exercise deadline', async
   process.env.PARITY_OUT=dir;
   try {
     const results=await run('F3',['--budget-s','0.000000001']);
-    assert.equal(results.find(r=>r.id.endsWith('.summary')).status,'fail');
-    assert.match(results.find(r=>r.id.endsWith('.execution')).reason,/budget/i);
+    assert.equal(results.find(r=>r.id.endsWith('.summary')).status,'fail'); // @source-text-assertion-ok asserts on the executed exercise result, not source text
+    assert.match(results.find(r=>r.id.endsWith('.execution')).reason,/budget/i); // @source-text-assertion-ok asserts on the executed exercise result, not source text
   } finally { if(previous===undefined) delete process.env.PARITY_OUT; else process.env.PARITY_OUT=previous; rmSync(dir,{recursive:true,force:true}); }
 });
 
@@ -609,7 +609,7 @@ return next(specifier,context);}});`);
     const r=spawnSync(process.execPath,['--import',hook,join(ROOT,'scripts/perf/modelling-session-worker.mjs'),checkpoint,'1000','10000','1'],{encoding:'utf8',timeout:10000});
     assert.equal(r.status,0,r.stderr);
     const state=JSON.parse(readFileSync(checkpoint,'utf8'));
-    assert.match(state.reason,/fixture fill exception/);
+    assert.match(state.reason,/fixture fill exception/); // @source-text-assertion-ok asserts on the worker subprocess checkpoint JSON, not source text
     assert.ok(state.after>0);
     assert.equal(state.reached,state.after);
     assert.equal(state.complete,false);

@@ -38,6 +38,8 @@ test('#9919 signed rotation tracks the selected exported wall', () => {
   assert.equal(oracle.rotatedWall(before,axis([0,5],[0,9]),[0,5]),true);
   assert.equal(oracle.rotatedWall(before,axis([0,5],[0,1]),[0,5]),false);
   assert.equal(oracle.rotatedWall(before,undefined,[0,5]),false);
+  assert.equal(oracle.rotatedWall(before,axis([2,3],[2,7]),[2,5]),true);
+  assert.equal(oracle.rotatedWall(before,axis([0,5],[0,9]),[2,5]),false);
 });
 
 test('#9919 Array requires three exact positions with typed spacing', () => {

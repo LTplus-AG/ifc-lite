@@ -15,7 +15,6 @@ export function inheritedFireRating(step, walls) {
   return walls.length === 2 && types.size === 1 && !types.has(undefined) && sets.length === 1 &&
     step.get([...types][0])?.args[5]?.some(r => r.ref === sets[0].id) &&
     !step.of('IFCRELDEFINESBYPROPERTIES').some(r => r.args[4]?.some(v => walls.some(w => w.id === v.ref)) &&
-      step.get(r.args[5])?.args[2] === 'Pset_WallCommon' &&
       step.get(r.args[5])?.args[4]?.some(ref => step.get(ref)?.args[0] === 'FireRating'));
 }
 export function layerUsage(step, wall, thicknesses) {

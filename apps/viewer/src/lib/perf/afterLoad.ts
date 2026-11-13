@@ -39,7 +39,8 @@ export function modelLoadSettled(state: ViewerState, modelId: string | null): bo
 /** How long a settled model's own hold may last (e.g. the window stays open across a multi-file open). */
 let ownHoldCapMs = MAX_TAIL_WAIT_MS;
 /** When each held model was first seen settled, by its data store (a reload is a new store, so a new hold); weak, so a removed model's store is not kept. */
-let heldSince = new WeakMap<object, number>();
+let heldSince = new WeakMap<object, { since: number; armed: boolean }>();
+let now = (): number => Date.now();
 const NO_STORE = new Map<string, object>(); // a stand-in key for a record without a store
 const capListeners = new Set<() => void>();
 
@@ -62,16 +63,24 @@ export function afterLoadReady(state: ViewerState, modelId: string | null): bool
   if (modelId === null) return !loadWindow.isOpen();
   const key: object = state.models.get(modelId)?.ifcDataStore ?? NO_STORE.get(modelId) ?? NO_STORE.set(modelId, {}).get(modelId)!;
   if (!loadWindow.isHeld(modelId)) { heldSince.delete(key); NO_STORE.delete(modelId); return true; }
-  const since = heldSince.get(key);
-  if (since !== undefined) return Date.now() - since >= ownHoldCapMs;
-  heldSince.set(key, Date.now());
-  setTimeout(() => { for (const listener of [...capListeners]) listener(); }, ownHoldCapMs);
+  let held = heldSince.get(key);
+  if (!held) heldSince.set(key, held = { since: now(), armed: false });
+  const left = held.since + ownHoldCapMs - now();
+  if (left <= 0) return true;
+  // A re-check when the cap is reached. Re-armed on every early check: a timer can fire before the
+  // clock shows the full cap, and without a new one the job would wait for an unrelated store change.
+  if (!held.armed) {
+    const entry = held;
+    entry.armed = true;
+    setTimeout(() => { entry.armed = false; for (const listener of [...capListeners]) listener(); }, left + 1);
+  }
   return false;
 }
 
-/** Test-only: the own-hold cap; `null` restores it. */
-export function __setOwnHoldCapForTests(ms: number | null): void {
+/** Test-only: the own-hold cap and the clock it reads; `null` restores them. */
+export function __setOwnHoldCapForTests(ms: number | null, clock: (() => number) | null = null): void {
   ownHoldCapMs = ms ?? MAX_TAIL_WAIT_MS;
+  now = clock ?? (() => Date.now());
   heldSince = new WeakMap();
   NO_STORE.clear();
 }

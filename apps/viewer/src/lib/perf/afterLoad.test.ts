@@ -146,6 +146,23 @@ describe('afterLoad: the eager scheduling call', () => {
     assert.equal(viewerLoadWindow().isHeld('b'), true, 'while b still loads');
   });
 
+  it('the cap re-checks until the clock shows it reached: a timer that fires early does not leave the job waiting (G1)', async () => {
+    let clock = 0;
+    __setOwnHoldCapForTests(CAP, () => clock);
+    await multiFileOpen();
+    let runs = 0;
+    runAfterModelSettled({ job: 'source-compaction', modelId: 'a' }, () => { runs++; });
+    await flushIdle(); // held at clock 0
+    clock = CAP - 1; // the cap timer fires, but the clock reads 1 ms short
+    await wait(CAP + 20);
+    await flushIdle();
+    assert.equal(runs, 0, 'not yet');
+    clock = CAP; // reached; only a re-armed timer re-checks now
+    await wait(20);
+    await flushIdle();
+    assert.equal(runs, 1, 'runs once the clock shows the cap, with no other store change');
+  });
+
   it('a window that never closes: the job of the model it holds runs at the cap once that model settled (G2)', async () => {
     __setOwnHoldCapForTests(CAP);
     await settleLoadWindow();

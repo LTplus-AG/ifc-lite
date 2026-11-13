@@ -12,7 +12,8 @@
  * consumer (viewport, Cesium, basket, export) stays in lockstep.
  */
 
-import type { TypeVisibility } from './types.js';
+import { isAnalyticalProduct } from '../lib/visibility/structural-view';
+import type { TypeVisibility, StructuralViewMode } from './types.js';
 
 /** Which `typeVisibility` boolean gates each IFC class. */
 type TypeVisibilityKey = keyof Pick<
@@ -67,8 +68,12 @@ const IFC_TYPE_TO_VISIBILITY_KEY: Readonly<Record<string, TypeVisibilityKey>> = 
 export function isTypeVisible(
   ifcType: string | undefined,
   typeVisibility: TypeVisibilityGate,
+  mode: StructuralViewMode = 'both',
 ): boolean {
+  // Instanced meshes may carry no class; their owners are gated by the shared ID mask.
   if (!ifcType) return true;
+  if (mode === 'analytical' && !isAnalyticalProduct(ifcType)) return false;
+  if (mode === 'physical' && isAnalyticalProduct(ifcType)) return false;
   const key = IFC_TYPE_TO_VISIBILITY_KEY[ifcType];
   if (key === undefined) return true;
   return typeVisibility[key];

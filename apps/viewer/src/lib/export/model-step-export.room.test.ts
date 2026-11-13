@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { parseFixtureModel, FIXTURE_PROJECT, FIXTURE_SITE, FIXTURE_BUILDING, FIXTURE_WALL_A } from '@/components/viewer/anonymized-export/anonymized-export-fixture.test-support';
 import { tabularFixtureStore, PROXY_A, PROXY_B, WALL } from '@/test/tabular-store-fixture';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import { registerRoomSymbolicSource } from '@/lib/collab/room-symbolic-source';
 import { exportFailureMessage, StepRecordsUnavailableError } from './step-records';
 import { exportModelStep } from './model-step-export';
@@ -59,6 +60,20 @@ test('a room still covered by its portable source writes from that source (#1004
   const exported = await parse(result.content);
   assert.equal(exported.entities.getName(FIXTURE_WALL_A), 'Wall A', 'records come from the portable STEP source');
   assert.equal(exported.entityIndex.byId.has(FIXTURE_PROJECT), true);
+});
+
+test('an edit outside the portable source refuses only when edits are applied (#10045)', async () => {
+  const dataStore = await roomStore([[FIXTURE_PROJECT, PROXY_A], [FIXTURE_SITE, PROXY_B], [FIXTURE_BUILDING, WALL]]);
+  const mutationView = new MutablePropertyView(dataStore.properties ?? null, 'room');
+  mutationView.setAttribute(999, 'Name', 'Local only');
+  await assert.rejects(
+    exportModelStep({ modelId: 'room', dataStore, mutationView, options: OPTIONS, scheduleState: null }),
+    (error: unknown) => error instanceof StepRecordsUnavailableError && error.reason === 'roomMoved',
+  );
+  const result = await exportModelStep({
+    modelId: 'room', dataStore, mutationView, options: { ...OPTIONS, applyMutations: false }, scheduleState: null,
+  });
+  assert.equal((await parse(result.content)).entities.getName(FIXTURE_WALL_A), 'Wall A');
 });
 
 test('a plain STEP model still exports from its own records (#10045)', async () => {

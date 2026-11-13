@@ -6,9 +6,11 @@ import { StepExporter, countStepEntities, type SectionExportOptions, type StepEx
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { prepareAppearanceSerialization } from '../appearance/serialization.js';
-import { stepExportSource } from '../collab/room-step-export.js';
 import { spliceScheduleIntoExport, type ExportScheduleState } from '@/sdk/adapters/export-schedule-splice';
 
+import { stepExportSource } from './step-records.js';
+
+// Re-exported so ExportDialog reaches it through an import it already has.
 export { exportFailureMessage } from './step-records.js';
 
 /** One edited STEP source for downloads and cloud uploads (#6587).
@@ -25,10 +27,12 @@ export async function exportModelStep(input: {
   scheduleState: ExportScheduleState | null;
 }) {
   const { modelId, options } = input;
-  const portable = stepExportSource(input.dataStore, input.mutationView, modelId);
+  const applyMutations = options.applyMutations !== false;
+  // Edits that will not be written must not decide whether the room is exportable.
+  const portable = stepExportSource(input.dataStore, applyMutations ? input.mutationView : undefined, modelId);
   const dataStore = portable?.dataStore ?? input.dataStore;
   const view = portable ? portable.mutationView : input.mutationView;
-  const serialized = prepareAppearanceSerialization(modelId, dataStore, options.applyMutations !== false ? view : undefined);
+  const serialized = prepareAppearanceSerialization(modelId, dataStore, applyMutations ? view : undefined);
   const result = await new StepExporter(dataStore, serialized.view).exportAsync({
     ...options,
     hiddenEntityIds: portable ? portable.toSourceIds(options.hiddenEntityIds) ?? undefined : options.hiddenEntityIds,

@@ -9,7 +9,6 @@ import type { Property, PropertyValue, Quantity } from '@ifc-lite/data';
 import { MutablePropertyView, StoreEditor, type Mutation } from '@ifc-lite/mutations';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { roomSymbolicSource } from './room-symbolic-source';
-import { StepRecordsUnavailableError } from '@/lib/export/step-records';
 import { propertyValueTypeFor } from './mutation-bridge';
 import { asExpressIdRef, readAttributes, resolvePlacementChain } from '@/lib/placement-core';
 import { resolveRotationState } from '@/lib/placement-rotate';
@@ -196,26 +195,4 @@ export function roomStepExportSource(
     toSourceIds,
     resources: portable.resources,
   };
-}
-
-/**
- * Where a STEP writer reads this store's records. Returns the room's portable
- * source when it covers the live room, or `null` when the store's own `source`
- * holds STEP records. Throws {@link StepRecordsUnavailableError} otherwise: a
- * tabular store's `source` is its reader's own format, so writing it as STEP
- * yields an empty or garbage file (#10045). `'roomMoved'` is a shared room whose
- * live root set no longer matches its portable source; `'noRecords'` any other
- * tabular store.
- */
-export function stepExportSource(
-  store: IfcDataStore,
-  view: MutablePropertyView | undefined,
-  modelId: string,
-  modelName?: string,
-): RoomStepExportSource | null {
-  const portable = roomStepExportSource(store, view, modelId);
-  if (portable) return portable;
-  if (roomSymbolicSource(store)) throw new StepRecordsUnavailableError('roomMoved', modelName);
-  if (store.sourceKind === 'tabular') throw new StepRecordsUnavailableError('noRecords', modelName);
-  return null;
 }

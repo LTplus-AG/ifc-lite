@@ -5,7 +5,8 @@
 import type { MergeModelInput } from '@ifc-lite/export';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { stepExportSource, type RoomStepExportSource } from './room-step-export';
+import type { RoomStepExportSource } from './room-step-export';
+import { stepExportSource } from '@/lib/export/step-records';
 
 export function roomMergeInput(options: {
   id: string;

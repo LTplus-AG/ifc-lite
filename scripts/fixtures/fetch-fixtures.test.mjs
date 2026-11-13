@@ -471,6 +471,15 @@ test('an upstream IFC file requires a commit-pinned blob that names an IFC file'
     file.blob_url = `https://github.com/example/models/blob/${commit}/frame.zip`;
     rewrite();
     assertRed(check(root), 'upstream_file.blob_url', 'must name an IFC file');
+    // A Rhino .3dm may be pinned too, and its blob must be a .3dm.
+    manifest.files[0].path = 'rhino/frame.3dm';
+    rewrite();
+    assertRed(check(root), 'upstream_file.blob_url', 'must name a .3dm file');
+    file.blob_url = `https://github.com/example/models/blob/${commit}/frame.3dm`;
+    rewrite();
+    mkdirSync(join(root, 'tests/models/rhino'), { recursive: true });
+    writeFileSync(join(root, 'tests/models/rhino/frame.3dm'), bytes);
+    assert.equal(check(root).status, 0);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

@@ -70,6 +70,7 @@ export const commandPaletteFr = {
   'commandPalette.vis.site.label': 'Site',
   'commandPalette.vis.ifcAnnotations.label': 'Annotations',
   'commandPalette.vis.ifcGrid.label': 'Grilles',
+  "commandPalette.vis.structuralGlyphs.label": "Appuis et charges",
   'commandPalette.vis.resetColors.label': 'Réinitialiser les couleurs',
   // ── Panels ──
   'commandPalette.panel.chat.label': 'Discussion IA',
@@ -205,4 +206,5 @@ export const commandPaletteFr = {
   "commandPalette.availability.noLoad": "Aucun chargement correspondant n’est encore en cours",
   "commandPalette.availability.noLoadError": "Cette erreur de chargement a disparu ou a été remplacée",
   "commandPalette.availability.noLoadRetry": "Aucune nouvelle tentative n’est disponible pour cette erreur de chargement",
+  "commandPalette.tool.deriveStructural.label": "Dériver le modèle d’analyse structurelle",
 } satisfies Catalogue;

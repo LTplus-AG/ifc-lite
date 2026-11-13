@@ -28,7 +28,7 @@ import { validationPanelDe } from '@/i18n/locales/de/validation-panel';
 import { manualValidationDe } from '@/i18n/locales/de/manual-validation';
 import { useViewerStore } from '@/store';
 import { cleanup, render } from '@/test/render.js';
-import { closeContrastBrowser, warmContrastBrowser, withThemedPage } from '@/test/contrast/render-harness.js';
+import { CONTRAST_BROWSER_SKIP, closeContrastBrowser, warmContrastBrowser, withThemedPage } from '@/test/contrast/render-harness.js';
 import { DefinitionLibraryToolbar } from './DefinitionLibraryToolbar.js';
 import { ManualChecklistLibrary } from './ManualChecklistLibrary.js';
 
@@ -113,7 +113,7 @@ async function layoutAt(html: string, width: number): Promise<PickerLayout> {
 describe('validation library picker layout at side-panel widths (#8802)', () => {
   for (const locale of ['en', 'de'] as const) {
     for (const kind of ['ids', 'rules', 'manual'] as const) {
-      it(`${kind} picker keeps its whole label and a full-width select (${locale})`, async () => {
+      it(`${kind} picker keeps its whole label and a full-width select (${locale})`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
         if (locale === 'de') {
           registerLocale('de', { ...validationPanelDe, ...manualValidationDe });
           setLocale('de');

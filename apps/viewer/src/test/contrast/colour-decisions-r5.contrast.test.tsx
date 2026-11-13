@@ -34,7 +34,7 @@ import { PassRateBar } from '@/components/viewer/IDSPanelStatus';
 import { PresentationViewCard } from '@/components/viewer/presentation/PresentationViewCard';
 import { mapInkClass, mapInkStyle, pickedPinElement } from '@/components/viewer/properties/location-map-ink';
 import { cleanup, render } from '@/test/render.js';
-import { closeContrastBrowser, warmContrastBrowser, withThemedPage, type Theme } from './render-harness.js';
+import { CONTRAST_BROWSER_SKIP, closeContrastBrowser, warmContrastBrowser, withThemedPage, type Theme } from './render-harness.js';
 import { contrastRatio, parseRgba } from './wcag.js';
 
 const THEMES: readonly Theme[] = ['light', 'dark', 'colorful'];
@@ -131,7 +131,7 @@ const REFS = {
 
 describe('R5 colour decisions (Refs 8802)', () => {
   for (const theme of THEMES) {
-    it(`a selected option in a validation/filter switch wears the active state in ${theme}`, async () => {
+    it(`a selected option in a validation/filter switch wears the active state in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       const ui = render(
         <div className="bg-card p-2">
           <CombinatorToggle value="AND" onChange={() => {}} />
@@ -147,7 +147,7 @@ describe('R5 colour decisions (Refs 8802)', () => {
       assertClears('resting option label', ratio(p.or.ink, p.or.surface), AA_TEXT, theme);
     });
 
-    it(`a selected tab keeps the active state over the theme's tab reset in ${theme}`, async () => {
+    it(`a selected tab keeps the active state over the theme's tab reset in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       const ui = render(
         <div className="bg-card p-2">
           <Tabs value="ids">
@@ -163,14 +163,14 @@ describe('R5 colour decisions (Refs 8802)', () => {
     });
 
     for (const [passRate, role] of [[100, 'ok'], [60, 'warn'], [10, 'danger']] as const) {
-      it(`a ${role} pass-rate bar paints the ${role} solid fill in ${theme}`, async () => {
+      it(`a ${role} pass-rate bar paints the ${role} solid fill in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
         const ui = render(<div className="bg-card p-2"><PassRateBar passRate={passRate} /></div>);
         const p = await paint(theme, ui.innerHTML, { ...REFS, bar: '[style*="width"]' });
         assert.equal(p.bar.background, p[`ref-${role}`].background, `pass-rate bar in ${theme} paints bg-${role}-solid`);
       });
     }
 
-    it(`every solid status fill clears 3:1 on panel, raised and input surfaces and carries AA ink in ${theme}`, async () => {
+    it(`every solid status fill clears 3:1 on panel, raised and input surfaces and carries AA ink in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       const wells = ['bg-card', 'bg-muted', 'bg-input'] as const;
       const html = wells.map((well) => `<div class="${well} p-2">${ROLES.map((role) =>
         `<span data-well="${well}" data-role="${role}" class="bg-${role}-solid text-solid-foreground px-1">9</span>`).join('')}</div>`).join('');
@@ -188,7 +188,7 @@ describe('R5 colour decisions (Refs 8802)', () => {
       }
     });
 
-    it(`a text link is neutral underlined ink that clears AA in ${theme}`, async () => {
+    it(`a text link is neutral underlined ink that clears AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       const p = await paint(theme, `<div class="bg-card p-2"><a id="link" href="#x" class="${TEXT_LINK_CLASS}">OpenStreetMap</a></div>`, { ...REFS, link: '#link' });
       assert.match(p.link.underline, /underline/, `link in ${theme} stays underlined`);
       assert.equal(p.link.color, p.refPlain.color, `link in ${theme} paints the plain foreground ink, no hue`);
@@ -197,7 +197,7 @@ describe('R5 colour decisions (Refs 8802)', () => {
 
     // #8802 R5 review: a caption over a bright thumbnail (a white wall close-up)
     // must keep AA, so the scrim is measured over pure white.
-    it(`presentation caption text clears AA on its scrim over a white thumbnail in ${theme}`, async () => {
+    it(`presentation caption text clears AA on its scrim over a white thumbnail in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       const noop = () => {};
       const ui = render(
         <div style={{ background: 'rgb(255, 255, 255)' }}>
@@ -214,7 +214,7 @@ describe('R5 colour decisions (Refs 8802)', () => {
     // #8802 R5 review: the picked pin follows the tiles actually showing, not the
     // theme ("Toggle style" puts light tiles under dark and dark under light).
     for (const [tiles, tile, dark] of [['light', 'rgb(250, 250, 248)', false], ['dark', 'rgb(14, 14, 14)', true]] as const) {
-      it(`map pins clear 3:1 on ${tiles} tiles, and the picked pin carries an opposite-ink outline, in ${theme}`, async () => {
+      it(`map pins clear 3:1 on ${tiles} tiles, and the picked pin carries an opposite-ink outline, in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
         const halo = Object.values(mapInkStyle(dark))[0] as string;
         const html = `<div style="background: ${tile}"><div id="map" class="${mapInkClass(dark)}" style="--map-pin-halo: ${halo}">${pickedPinElement().outerHTML}</div></div>`;
         const read = await withThemedPage(theme, html, (page) => page.evaluate(() => {

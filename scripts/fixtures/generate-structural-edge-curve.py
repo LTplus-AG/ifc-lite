@@ -249,7 +249,7 @@ def coverage(schema: str, output: Path, reinforcement: bool = False) -> None:
         root("IfcStructuralSurfaceMemberVarying", place(), shape, "SHELL", 0.2, (0.25, 0.3), varying)
     else:
         root("IfcStructuralSurfaceMemberVarying", place(), None, "SHELL", 0.2)
-    point_conn = root("IfcStructuralPointConnection", place(), None, node_warping, *(() if v2 else (None,)))
+    point_conn = root("IfcStructuralPointConnection", place(), None, node_warping, *(() if v2 else (world if schema == "IFC4X3" else None,)))
     curve_conn = root("IfcStructuralCurveConnection", place(), None, edge, *(() if v2 else (direction,)))
     surface_conn = root("IfcStructuralSurfaceConnection", place(), None, face)
 
@@ -274,15 +274,21 @@ def coverage(schema: str, output: Path, reinforcement: bool = False) -> None:
     activities.append(root("IfcStructuralPointAction", place(), None, warping_force, "GLOBAL_COORDS", *action_tail(), tag=" warping"))
     activities.append(root("IfcStructuralPointAction", place(), None, distortion, "GLOBAL_COORDS", *action_tail(), tag=" distortion"))
 
+    if v2:
+        activities.append(root("IfcStructuralLinearAction", place(), None, temperature, "GLOBAL_COORDS", *action_tail("CONST"), tag=" temperature"))
+        for activity in activities:
+            if not activity.is_a("IfcStructuralPointAction"):
+                activity.CausedBy = reactions[0]
+
     # Relationships.
     def rel(name: str, *rest):
         return e(name, guid(f"{name}:{len(model.by_type(name))}"), owner, None, None, *rest)
 
-    rel("IfcRelConnectsStructuralMember", curve, point_conn, node, failure, 5.0, None)
+    rel("IfcRelConnectsStructuralMember", curve, point_conn, node, failure, 5.0, world)
     rel("IfcRelConnectsStructuralMember", surface, curve_conn, edge, slippage, None, None)
     rel("IfcRelConnectsStructuralMember", surface, surface_conn, face, None, None, None)
-    rel("IfcRelConnectsWithEccentricity", curve, point_conn, None, None, None, None,
-        e("IfcConnectionPointEccentricity", origin, None, 0.1, 0.0, -0.05))
+    rel("IfcRelConnectsWithEccentricity", curve, point_conn, node, slippage, 2.5, world,
+        e("IfcConnectionPointEccentricity", origin, origin, 0.1, 0.0, -0.05))
     def host(activity):
         kind = activity.is_a()
         return point_conn if "Point" in kind else surface if "Surface" in kind or "Planar" in kind else curve
@@ -295,14 +301,14 @@ def coverage(schema: str, output: Path, reinforcement: bool = False) -> None:
         rel("IfcRelConnectsStructuralElement", beam, curve)
 
     # Groups and the analysis model.
-    group = root("IfcStructuralLoadGroup", "LOAD_GROUP", "PERMANENT_G", "DEAD_LOAD_G", 1.35, None)
+    group = root("IfcStructuralLoadGroup", "LOAD_GROUP", "PERMANENT_G", "DEAD_LOAD_G", 1.35, "Design")
     groups = [group]
     if has("IfcStructuralLoadCase"):
-        groups.append(root("IfcStructuralLoadCase", "LOAD_CASE", "VARIABLE_Q", "LIVE_LOAD_Q", 1.5, None, (0.0, 0.0, -1.0)))
+        groups.append(root("IfcStructuralLoadCase", "LOAD_CASE", "VARIABLE_Q", "LIVE_LOAD_Q", 1.5, "Serviceability", (0.0, 0.0, -1.0)))
     result = root("IfcStructuralResultGroup", "FIRST_ORDER_THEORY", group, True)
     rel("IfcRelAssignsToGroup", activities, None, group)
     rel("IfcRelAssignsToGroup", reactions, None, result)
-    model_rest = ("LOADING_3D", None, groups, (result,)) + (() if v2 else (None,))
+    model_rest = ("LOADING_3D", world, groups, (result,)) + (() if v2 else (place(),))
     analysis = root("IfcStructuralAnalysisModel", *model_rest)
     rel("IfcRelAssignsToGroup", [curve, surface, point_conn, curve_conn, surface_conn], None, analysis)
     if has("IfcRelDeclares"):

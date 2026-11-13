@@ -9,7 +9,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { IfcParser, extractPropertiesOnDemand, extractStructuralOnDemand, structuralCounterparts, type IfcDataStore } from '@ifc-lite/parser';
+import { IfcParser, extractPropertiesOnDemand, extractStructuralOnDemand, getInheritanceChainAcrossSchemas, structuralCounterparts, type IfcDataStore } from '@ifc-lite/parser';
 import { StepExporter } from '@ifc-lite/export';
 import { MutablePropertyView, StoreEditor, iterateEffectiveEntityIds } from '@ifc-lite/mutations';
 import { applyStructuralDerivation, planStructuralDerivation, readStructuralDerivationFacts } from '../index.js';
@@ -17,7 +17,7 @@ import { liveStructuralExtraction } from './structural-derive-facts.js';
 import { createStyleEntityReader } from './style-entity-reader.js';
 import { applyFrame, axis3d, composeFrame, placementInAncestor, pointOf, refId, type Frame3 } from './host-geometry-frame.js';
 import { safeLengthUnitScale } from './length-unit-scale.js';
-import type { StructuralDerivationPlan, Vec3 } from './structural-derive-types.js';
+import type { StructuralDerivationFacts, StructuralDerivationPlan, Vec3 } from './structural-derive-types.js';
 
 const fixture = (path: string) => new URL(`../../../../tests/models/${path}`, import.meta.url);
 const STR = 'various/02_BIMcollab_Example_STR_random_C_ebkp.ifc';
@@ -44,6 +44,11 @@ const distance = (a: Vec3, b: Vec3) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2]
 /** Joints (nodes shared by two or more elements) of a plan. */
 const joints = (plan: StructuralDerivationPlan) => plan.nodes.filter((node) => new Set(node.elementIds).size >= 2).length;
 const maxExtension = (plan: StructuralDerivationPlan) => Math.max(0, ...plan.report.extendedEnds.map((e) => Math.abs(e.distance)));
+/** Joints that include a column (or a subtype). */
+function columnJoints(plan: StructuralDerivationPlan, facts: StructuralDerivationFacts): number {
+  const columns = new Set(facts.elements.filter((e) => getInheritanceChainAcrossSchemas(e.type).includes('IfcColumn')).map((e) => e.expressId));
+  return plan.nodes.filter((node) => new Set(node.elementIds).size >= 2 && node.elementIds.some((id) => columns.has(id))).length;
+}
 const WORLD: Frame3 = { o: [0, 0, 0], x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] };
 
 /** Read an authored item's placement frame and first topology item, in world metres. */
@@ -84,19 +89,21 @@ async function deriveBesideAuthored(path: string) {
   const facts = readStructuralDerivationFacts(store, editor);
   expect(facts.elements.every((e) => e.bounds !== undefined || e.idealised)).toBe(true);
   const plan = planStructuralDerivation({ ...facts, elements: facts.elements.map((e) => ({ ...e, idealised: false })) });
-  return { store, editor, plan, authored: liveStructuralExtraction(store, editor.getMutationView()) };
+  return { store, editor, facts, plan, authored: liveStructuralExtraction(store, editor.getMutationView()) };
 }
 
 describe('structural derivation on real physical models (#9668)', () => {
   it.skipIf(!has(STR))('derives a millimetre IFC2X3 frame with footings, and every written item links back', async () => {
     const { store, editor } = await load(STR);
-    const plan = planStructuralDerivation(readStructuralDerivationFacts(store, editor));
+    const facts = readStructuralDerivationFacts(store, editor);
+    const plan = planStructuralDerivation(facts);
     // 106 elements; members met in their interior are split (#9668 review: joints).
     expect(plan.report.counts).toMatchObject({
       curveMembers: 142, surfaceMembers: 118, supports: 26, guessedSupports: 0, assumedLoadBearing: 0, freeEnds: 97, extendedEnds: 51,
     });
     expect(new Set(plan.curveMembers.map((m) => m.elementId)).size).toBe(106);
     expect(joints(plan)).toBe(56);
+    expect(columnJoints(plan, facts)).toBe(14);
     expect(maxExtension(plan)).toBeLessThan(0.21);
     const reasons = plan.report.skipped.map((s) => `${s.type}:${s.reason}`);
     expect(reasons.filter((r) => r === 'IfcFooting:footing-without-member-end')).toHaveLength(9);
@@ -129,10 +136,13 @@ describe('structural derivation on real physical models (#9668)', () => {
 
   it.skipIf(!has(AC20))('AC-20: columns and beams share joints, and every end left free is reported', async () => {
     const { store, editor } = await load(AC20);
-    const plan = planStructuralDerivation(readStructuralDerivationFacts(store, editor));
+    const facts = readStructuralDerivationFacts(store, editor);
+    const plan = planStructuralDerivation(facts);
     expect(plan.nodes).toHaveLength(60);
-    // Before joints: 60 nodes, none shared, and no free end reported.
+    // Before joints: 30 members, 60 nodes, none shared, and no free end reported.
+    expect(plan.curveMembers).toHaveLength(50);
     expect(joints(plan)).toBe(20);
+    expect(columnJoints(plan, facts)).toBe(20);
     expect(plan.report.counts).toMatchObject({ freeEnds: 20, extendedEnds: 20 });
     expect(maxExtension(plan)).toBeLessThan(0.1);
   });
@@ -141,7 +151,7 @@ describe('structural derivation on real physical models (#9668)', () => {
 describe('derived against authored analytical models (#9668)', () => {
   /** Per element, the largest distance from a derived member end to the nearest end of its authored members. */
   async function curveErrors(path: string) {
-    const { store, editor, plan, authored } = await deriveBesideAuthored(path);
+    const { store, editor, facts, plan, authored } = await deriveBesideAuthored(path);
     const geometry = authoredReader(store, editor);
     const errors = new Map<number, number>();
     for (const member of plan.curveMembers) {
@@ -153,39 +163,45 @@ describe('derived against authored analytical models (#9668)', () => {
       errors.set(member.elementId, Math.max(errors.get(member.elementId) ?? 0, error));
     }
     const sorted = [...errors.values()].sort((a, b) => a - b);
-    return { plan, errors: sorted };
+    return { plan, facts, errors: sorted };
   }
 
   it.skipIf(!has(STEEL_FRAME))('steel frame: every beam and column matches its authored members within 0.05 m', async () => {
-    const { plan, errors } = await curveErrors(STEEL_FRAME);
+    const { plan, facts, errors } = await curveErrors(STEEL_FRAME);
     expect(errors).toHaveLength(86);
-    expect(plan.curveMembers).toHaveLength(130);
+    expect(plan.curveMembers).toHaveLength(132);
+    expect(plan.report.unconnectedEnds).toEqual([]);
     expect(errors[errors.length - 1]).toBeLessThan(0.05);
     expect(errors[Math.floor(errors.length / 2)]).toBeLessThan(0.005);
     expect(errors[Math.floor(errors.length * 0.9)]).toBeLessThan(0.015);
     expect(plan.report.counts).toMatchObject({ nodes: 94, guessedSupports: 6 });
     expect(joints(plan)).toBe(58);
+    expect(columnJoints(plan, facts)).toBe(58);
     expect(plan.report.counts).toMatchObject({ freeEnds: 34, extendedEnds: 0 });
   });
 
   it.skipIf(!has(ROOF_TRUSS))('roof truss: every member matches its authored members within 1 mm once its joints are made', async () => {
-    const { plan, errors } = await curveErrors(ROOF_TRUSS);
+    const { plan, facts, errors } = await curveErrors(ROOF_TRUSS);
     expect(errors).toHaveLength(10);
     // 0.150 m before the joint rule: two diagonals stopped at a chord's face.
     expect(errors[errors.length - 1]).toBeLessThan(0.001);
     expect(plan.report.counts).toMatchObject({ curveMembers: 13, nodes: 10 });
     expect(joints(plan)).toBe(7);
-    expect(plan.report.counts).toMatchObject({ freeEnds: 1, extendedEnds: 2 });
+    expect(columnJoints(plan, facts)).toBe(3);
+    expect(plan.report.counts).toMatchObject({ freeEnds: 1, extendedEnds: 2, supports: 5, guessedSupports: 5 });
+    expect(maxExtension(plan)).toBeGreaterThan(0.14);
+    expect(maxExtension(plan)).toBeLessThan(0.16);
   });
 
   it.skipIf(!has(E1_3))('E1--3: the four columns match their authored members, and the slab its plane', async () => {
-    const { plan, errors } = await curveErrors(E1_3);
+    const { plan, facts, errors } = await curveErrors(E1_3);
     expect(errors).toHaveLength(4);
     expect(errors[errors.length - 1]).toBeLessThan(0.001);
     expect(plan.surfaceMembers).toHaveLength(1);
     expect(plan.report.counts).toMatchObject({ nodes: 8, supports: 4, guessedSupports: 4 });
     // The columns stop under the slab, and a surface member gets no connections: four free tops.
     expect(joints(plan)).toBe(0);
+    expect(columnJoints(plan, facts)).toBe(0);
     expect(plan.report.counts.freeEnds).toBe(4);
   });
 
@@ -219,6 +235,8 @@ describe('derived against authored analytical models (#9668)', () => {
     const { store, editor, plan, authored } = await deriveBesideAuthored(BASEMENT);
     const geometry = authoredReader(store, editor);
     expect(plan.surfaceMembers).toHaveLength(10);
+    // Surface members only: no curve member, so no node and no support.
+    expect(plan.report.counts).toMatchObject({ nodes: 0, supports: 0 });
     for (const member of plan.surfaceMembers) {
       const [id] = structuralCounterparts(authored, member.elementId)!.expressIds;
       const info = authored.members.find((m) => m.expressId === id) as { thickness?: number };

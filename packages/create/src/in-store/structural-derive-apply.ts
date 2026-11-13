@@ -85,6 +85,9 @@ export function applyStructuralDerivation(
   return editor.runAtomic((draft) => writePlan(draft, plan, first, placementOf, random));
 }
 
+/** Same point; NaN matches NaN, since a non-finite point is the builder's refusal, not the plan check's. */
+const samePoint = (p: Vec3, q: Vec3) => p.every((v, k) => v === q[k] || (Number.isNaN(v) && Number.isNaN(q[k])));
+
 /**
  * The plan is plain data a caller may hold or change, so its shape is checked
  * here, before the first write; the builders' other refusals (finite points,
@@ -95,7 +98,12 @@ function checkPlan(plan: StructuralDerivationPlan, toLocal: (storeyId: number | 
   for (const member of plan.curveMembers) {
     const what = `the curve member of element #${member.elementId}`;
     if (!plan.nodes[member.startNode] || !plan.nodes[member.endNode]) refuse(what, 'names a node the plan does not have');
+    if (member.startNode === member.endNode) refuse(what, 'starts and ends on one node');
     if (member.start.every((v, k) => v === member.end[k])) refuse(what, 'has no length');
+    // The planner copies node positions onto member ends; a plan changed since must keep them together.
+    if (!samePoint(member.start, plan.nodes[member.startNode].position) || !samePoint(member.end, plan.nodes[member.endNode].position)) {
+      refuse(what, 'has ends that differ from its nodes');
+    }
   }
   for (const member of plan.surfaceMembers) {
     const what = `the surface member of element #${member.elementId}`;

@@ -476,7 +476,7 @@ The in-store create API provides `addStructuralSurfaceMemberToStore`,
 The SDK exposes them as `bim.store.addStructuralSurfaceMember`,
 `bim.store.addStructuralCurveConnection`, and `bim.store.addStructuralSurfaceConnection`,
 each taking `(modelId, storeyExpressId, params)`, like the existing curve member builder.
-The SDK backend supports IFC4 and IFC4X3; the direct builders also support IFC2X3.
+The SDK backend and direct builders support IFC2X3, IFC4 and IFC4X3.
 Each `bim.store` method throws on a backend that does not implement it.
 
 Surface builders take `Boundary`, an ordered list of at least three distinct,
@@ -497,3 +497,63 @@ in the model's stiffness units or booleans (`true` fixed, `false` free).
 IFC2X3 emits plain measures under its `LinearStiffness*` attribute names,
 using -1 and 0 for fixed and free. IFC4 and IFC4X3 emit typed SELECT members.
 Use the existing structural relationship builders to connect and group the items.
+
+
+Structural members accept `Type: 'IfcStructuralCurveMemberVarying'` or
+`Type: 'IfcStructuralSurfaceMemberVarying'` on their existing builders.
+IFC2X3 varying surfaces also require `SubsequentThickness` (at least two positive
+thicknesses in metres) and `VaryingThicknessLocation` (an existing `IfcShapeAspect` id).
+The builder copies the aspect and its point representations into the new member
+without re-parenting the original. The aspect must supply one representation per
+thickness value, including the initial thickness. Referenced point resources stay shared.
+These two attributes are refused in IFC4 and IFC4X3, where they do not exist.
+Point connections accept `BoundaryCondition.WarpingStiffness` to emit
+`IfcBoundaryNodeConditionWarping`, with the same fixed/free/measure convention.
+
+`connectStructuralMemberToConnectionInStore` accepts an optional options argument
+following its random source. The SDK's `bim.store.connectStructuralMemberToConnection`
+accepts the same options after the two endpoint ids. `AdditionalConditions` chooses
+`IfcFailureConnectionCondition` or `IfcSlippageConnectionCondition` using `Type` and
+exact EXPRESS component names; unknown condition attributes are refused before mutation.
+`ConnectionConstraint` supplies `PointOnRelatingElement`,
+optional `PointOnRelatedElement`, and `EccentricityInX/Y/Z` in native model units;
+it emits `IfcConnectionPointEccentricity` and `IfcRelConnectsWithEccentricity`.
+The relationship owns these fresh resources. In IFC2X3,
+`bim.store.connectStructuralElement(modelId, RelatingElement, RelatedStructuralMember)`
+creates the physical-to-analytical link; other schemas refuse it.
+
+Point reactions accept `AppliedLoad.Type` of `IfcStructuralLoadSingleForceWarping`
+(with `WarpingMoment`) or `IfcStructuralLoadSingleDisplacementDistortion`
+(with `Distortion`), alongside their inherited components in native model units.
+IFC2X3 linear and planar action builders accept `VaryingAppliedLoadLocation`
+(an existing `IfcShapeAspect` id) and `SubsequentAppliedLoads` (existing load ids).
+Linear actions require at least one subsequent load; planar actions require two.
+Their SDK methods forward these options unchanged. IFC4+ refuses these attributes.
+
+In IFC4 and IFC4X3, `bim.store.addStructuralLoad(modelId, params)` authors reusable
+resources. `Type: 'IfcStructuralLoadConfiguration'` takes nonempty `Values` (existing
+load/result ids), and optional `Locations` (one or two native length coordinates per
+value). `Type: 'IfcSurfaceReinforcementArea'` takes `SurfaceReinforcement1/2`
+(two or three nonnegative native length values) and/or nonnegative `ShearReinforcement`.
+`bim.store.addStructuralCurveAction(modelId, params)` accepts an `AppliedLoad` id,
+including a configuration, and an optional `PredefinedType` such as `LINEAR`.
+The direct equivalents are `addStructuralLoadToStore` and
+`addStructuralCurveActionToStore`. References supplied to these builders are borrowed.
+
+
+Varying action station aspects must contain one shape representation per load,
+including the initial `AppliedLoad`. IFC2X3 varying surfaces require the initial
+`Thickness` as well as their subsequent thicknesses. Configuration `Locations`
+must be unique. Curve actions enforce the distribution's sample shape: `LINEAR`
+uses two samples, `POLYGONAL` at least three, and `DISCRETE` at least two;
+every curve-action configuration uses matching, ascending one-dimensional locations
+and a single load type, including omitted, `NOTDEFINED`, or `USERDEFINED` distributions.
+Curve actions accept linear-force and temperature loads; point-force and
+point-displacement samples require `DISCRETE` configurations. Planar-force and
+reinforcement resources cannot be used as curve loads. `CONST`, `SINUS`, and `PARABOLA` accept
+individual loads rather than configurations.
+
+For direct action builders borrowing imported configurations or station aspects,
+or the varying surface builder copying an imported thickness aspect,
+pass the parsed source store as the optional fourth argument so validation reads
+source attributes and pending edits together. SDK methods provide it automatically.

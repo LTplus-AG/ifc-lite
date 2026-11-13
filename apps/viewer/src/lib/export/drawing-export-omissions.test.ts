@@ -15,7 +15,7 @@ async function omissions(content: DrawingExportContent, format: DrawingExportFor
 }
 
 const empty: DrawingExportContent = {
-  markupCounts: { measurements: 0, areas: 0, texts: 0, clouds: 0 },
+  markupCounts: { measurements: 0, areas: 0, texts: 0, clouds: 0, dimensions: 0 },
   visibleUnderlayCount: 0,
   sheetScale: null,
 };
@@ -27,7 +27,7 @@ describe('drawing export omissions (#5850)', () => {
   });
 
   it('reports every markup kind for the PDF and DXF writers', async () => {
-    for (const kind of ['measurements', 'areas', 'texts', 'clouds'] as const) {
+    for (const kind of ['measurements', 'areas', 'texts', 'clouds', 'dimensions'] as const) {
       const content = { ...empty, markupCounts: { ...empty.markupCounts, [kind]: 1 } };
       assert.deepEqual(await omissions(content, 'pdf'), ['markups'], kind);
       assert.deepEqual(await omissions(content, 'dxf'), ['markups'], kind);
@@ -54,5 +54,9 @@ describe('drawing export omissions (#5850)', () => {
     assert.deepEqual(await omissions({ ...empty, sheetScale: 50, requestedScale: 50 }, 'pdf'), []);
     assert.deepEqual(await omissions({ ...empty, sheetScale: 50, requestedScale: 100 }, 'pdf'), ['requestedScale']);
     assert.deepEqual(await omissions({ ...empty, sheetScale: 50, requestedScale: 100 }, 'dxf'), []);
+  });
+  it('still names markups for a caller that passes counts without dimensions', async () => {
+    const legacy = { ...empty, markupCounts: { measurements: 1, areas: 0, texts: 0, clouds: 0 } };
+    assert.deepEqual(await omissions(legacy, 'pdf'), ['markups']);
   });
 });

@@ -9,6 +9,9 @@
  * Instead of multiple passes through entities, we extract everything in ONE loop.
  */
 
+import { newSelectionRelationshipIndex, indexTypeRelationship } from './selection-relationship-index.js';
+import { indexExceptionalTypeCoverage, indexExceptionalSubjects } from './index-exceptional-relationships.js';
+import { indexPropertyRelationships } from './index-property-relationships.js';
 import type { GeoreferenceInfo } from './georef-extractor.js';
 import type { EntityRef } from './types.js';
 import { SpatialHierarchyBuilder } from './spatial-hierarchy-builder.js';
@@ -206,6 +209,7 @@ export async function parseColumnarInput(
         const propertyTableBuilder = new PropertyTableBuilder(strings);
         const quantityTableBuilder = new QuantityTableBuilder(strings);
         const relationshipGraphBuilder = new RelationshipGraphBuilder();
+        const selectionRelationshipIndex = newSelectionRelationshipIndex();
 
         logPhase('init builders');
 
@@ -323,6 +327,7 @@ export async function parseColumnarInput(
             const ref = relationshipRefs[i];
             const typeUpper = getTypeUpper(ref.type);
             const rel = extractRelFast(uint8Buffer, ref.byteOffset, ref.byteLength, typeUpper, relationshipSchemaVersion);
+            if (typeUpper === 'IFCRELDEFINESBYTYPE') indexTypeRelationship(selectionRelationshipIndex, ref.expressId, rel?.relatedObjects, rel ? [rel.relatingObject] : undefined);
             if (rel) {
                 const relType = REL_TYPE_MAP[typeUpper];
                 if (relType) {
@@ -494,8 +499,8 @@ export async function parseColumnarInput(
         const propertyTable = propertyTableBuilder.build();
         const quantityTable = quantityTableBuilder.build();
 
-        // Build intermediate relationship graph (spatial/hierarchy edges only).
-        // Property/association edges are added later; final graph is rebuilt at the end.
+        // Keep the early spatial graph small. Type-owned definition row IDs are
+        // indexed below in the same byte pass needed for the final graph.
         const hierarchyRelGraph = relationshipGraphBuilder.build();
         logPhase('hierarchy rel graph build()');
 
@@ -539,6 +544,9 @@ export async function parseColumnarInput(
         // the store would serve entities from one representation and properties
         // from the other. Measured: with two accessors the buffer survives GC
         // after the swap; with one it is collected.
+        const { onDemandPropertyMap, onDemandQuantityMap } = await indexPropertyRelationships(
+            uint8Buffer, propertyRelRefs, propertyContainerRefs, relationshipGraphBuilder, new Set(typeObjectRefs.map(ref => ref.expressId)), selectionRelationshipIndex, yieldIfNeeded);
+
         const source = contiguousSourceBytes(uint8Buffer);
         const entitySource = new BufferEntitySource(source, entityIndex);
         const earlyStore: IfcDataStore = {
@@ -551,6 +559,7 @@ export async function parseColumnarInput(
             source,
             entityIndex,
             dropCensus: prepared.dropCensus,
+            selectionRelationshipIndex: { ...selectionRelationshipIndex, missing: [...selectionRelationshipIndex.missing] },
             strings,
             entities: entityTable,
             properties: propertyTable,
@@ -564,60 +573,17 @@ export async function parseColumnarInput(
             getProperties(expressId) { return this.properties.getForEntity(expressId); },
             getQuantities(expressId) { return this.quantities.getForEntity(expressId); },
         };
+        await indexExceptionalTypeCoverage(earlyStore, selectionRelationshipIndex, yieldIfNeeded);
+        await indexExceptionalSubjects(earlyStore, selectionRelationshipIndex, selectionRelationshipIndex.missing, yieldIfNeeded);
+        const indexedMissingCount = selectionRelationshipIndex.missing.length;
+        earlyStore.selectionRelationshipIndex = { ...selectionRelationshipIndex, missing: [...selectionRelationshipIndex.missing] };
         options.onSpatialReady?.({ ...earlyStore, relationshipsPending: true }); // finalStore spreads earlyStore: unmarked
 
         await yieldIfNeeded(); // Let geometry process after hierarchy emission
 
-        // === DEFERRED: Parse property and association relationships ===
-        // These are NOT needed for the spatial hierarchy panel.
+        // === DEFERRED: Parse association relationships ===
+        // Definition rows were indexed above, once, for direct early type reads.
         options.onProgress?.({ phase: 'parsing property refs', percent: 92 });
-
-        const onDemandPropertyMap = new Map<number, number[]>();
-        const onDemandQuantityMap = new Map<number, number[]>();
-
-        // Pre-build Sets of property set / quantity set IDs from already-categorized refs.
-        // This replaces 252K binary searches on the 14M compact entity index with O(1) Set lookups.
-        const propertySetIds = new Set<number>();
-        const quantitySetIds = new Set<number>();
-        for (const ref of propertyContainerRefs) {
-            const tu = getTypeUpper(ref.type);
-            if (tu === 'IFCPROPERTYSET') propertySetIds.add(ref.expressId);
-            else if (tu === 'IFCELEMENTQUANTITY') quantitySetIds.add(ref.expressId);
-        }
-
-        // Property rels: byte-level scanning + addEdge (now fast with SoA builder).
-        let totalPropRelObjects = 0;
-        for (let pi = 0; pi < propertyRelRefs.length; pi++) {
-            if ((pi & 0x3FF) === 0) await yieldIfNeeded();
-            const ref = propertyRelRefs[pi];
-            const result = extractPropertyRelFast(uint8Buffer, ref.byteOffset, ref.byteLength);
-            if (result) {
-                const { relatedObjects, relatingDefs } = result;
-                totalPropRelObjects += relatedObjects.length;
-
-                // RelatingPropertyDefinition is IfcPropertySetDefinitionSelect, whose
-                // second alternative (IfcPropertySetDefinitionSet) is a SET of pset/
-                // qset definitions — `relatingDefs` has more than one entry for that
-                // case. Every entry in the group applies to every related object.
-                for (const relatingDef of relatingDefs) {
-                    for (const objId of relatedObjects) {
-                        relationshipGraphBuilder.addEdge(relatingDef, objId, RelationshipType.DefinesByProperties, ref.expressId);
-                    }
-
-                    // Build on-demand property/quantity maps using pre-built Sets (O(1) vs binary search)
-                    const isPropSet = propertySetIds.has(relatingDef);
-                    const isQtySet = !isPropSet && quantitySetIds.has(relatingDef);
-
-                    if (isPropSet || isQtySet) {
-                        const targetMap = isPropSet ? onDemandPropertyMap : onDemandQuantityMap;
-                        for (const objId of relatedObjects) {
-                            addOnDemandRef(targetMap, objId, relatingDef);
-                        }
-                    }
-                }
-            }
-        }
-        await yieldIfNeeded();
 
         // Association rels: byte-level scanning, no addEdge (same reasoning as property rels)
         options.onProgress?.({ phase: 'parsing associations', percent: 95 });
@@ -637,6 +603,7 @@ export async function parseColumnarInput(
             if ((i & 0x3FF) === 0) await yieldIfNeeded();
             const ref = associationRelRefs[i];
             const result = extractPropertyRelFast(uint8Buffer, ref.byteOffset, ref.byteLength, true);
+            if (!result) selectionRelationshipIndex.missing.push(ref.expressId);
             if (result) {
                 // IfcRelAssociates{Material,Classification,Document}'s Relating*
                 // selects are always single refs (unlike RelatingPropertyDefinition
@@ -694,6 +661,7 @@ export async function parseColumnarInput(
 
         const finalStore: IfcDataStore = {
             ...earlyStore,
+            selectionRelationshipIndex,
             parseTime,
             relationships: fullRelationshipGraph,
             deferredEntityIndex,
@@ -714,6 +682,7 @@ export async function parseColumnarInput(
                 return this.quantities.getForEntity(expressId);
             },
         };
+        await indexExceptionalSubjects(finalStore, selectionRelationshipIndex, selectionRelationshipIndex.missing.slice(indexedMissingCount), yieldIfNeeded);
         return finalStore;
     }
 

@@ -29,6 +29,7 @@ import { writeQuantities } from './sections/quantities.js';
 import { writeRelationships } from './sections/relationships.js';
 import { buildGeometrySectionV13 } from './sections/geometry-chunks.js';
 import { writeInstancedShards } from './sections/instanced-shards.js';
+import { writeSelectionRelationships } from './sections/selection-relationships.js';
 import { writeEntityIndex } from './sections/entity-index.js';
 
 export interface GeometryData {
@@ -120,6 +121,7 @@ export class BinaryCacheWriter {
       const entityIndexBuffer = this.writeSection(() => {
         const writer = new BufferWriter();
         writeEntityIndex(writer, dataStore.entityIndex!);
+        writeSelectionRelationships(writer, dataStore.selectionRelationshipIndex);
         return writer.build();
       });
       sectionBuffers.push({ type: SectionType.EntityIndex, buffer: entityIndexBuffer });

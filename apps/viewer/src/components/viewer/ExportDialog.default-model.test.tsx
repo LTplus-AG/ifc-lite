@@ -6,9 +6,11 @@ import { afterEach, test, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { useViewerStore } from '@/store';
 import { posthog } from '@/lib/analytics';
+import { toast } from '@/components/ui/toast';
 import { render, cleanup, click, waitFor } from '@/test/render';
 import { downloadedNames, clearDownloads } from '@/test/download-capture';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
+import { tabularFixtureStore } from '@/test/tabular-store-fixture';
 import { parseFixtureModel } from './anonymized-export/anonymized-export-fixture.test-support';
 import { ExportDialog } from './ExportDialog';
 
@@ -46,4 +48,22 @@ test('the authored IFC registry export downloads once and attributes each initia
     assert.equal(completions[index].surface, surface);
     cleanup();
   }
+});
+
+test('IFC export of a store with no STEP records reports the refusal by name and downloads nothing (#10045)', async () => {
+  const model = { ...fixtureModel('tabular.3dm'), ifcDataStore: tabularFixtureStore(), schemaVersion: 'IFC4' as const };
+  useViewerStore.setState({ ...fixtureModels(model), activeModelId: model.id, dirtyModels: new Set() });
+  const errors: string[] = [];
+  mock.method(toast, 'error', (message: string) => { errors.push(message); });
+  const success = mock.method(toast, 'success', () => undefined);
+  mock.method(console, 'error', () => undefined); // the dialog logs the expected refusal
+  const ui = render(<ExportDialog surface="ribbon" />);
+  click([...ui.querySelectorAll('button')].find(button => button.textContent?.includes('Export IFC'))!);
+  const action = [...document.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Export');
+  assert.ok(action && !action.disabled, 'the dialog offers the export');
+  click(action);
+  await waitFor(() => errors.length > 0 || success.mock.callCount() > 0, 'the export never reported');
+  assert.deepEqual(errors, ['"tabular.3dm" has no IFC STEP records to export from. Export it on its own as IFC5 (IFCX).']);
+  assert.equal(success.mock.callCount(), 0);
+  assert.deepEqual(downloadedNames(), []);
 });

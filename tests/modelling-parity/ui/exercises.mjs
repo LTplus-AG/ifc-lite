@@ -371,6 +371,7 @@ export const EXERCISES = {
         const overhang=s.page.getByRole('spinbutton',{name:'Overhang',exact:true});
         await s.ui.click(overhang); await s.ui.key('Control+A'); await s.ui.type('0'); await s.ui.key('Tab');
         await s.ui.clickWorld([0,0,5.4],{modifiers:['Alt']});
+        await s.ui.hoverWorld([12,10,5.4]);
         await typeFields(s,[12,10]);
         await escape(s);
       } },

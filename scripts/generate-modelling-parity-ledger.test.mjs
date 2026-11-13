@@ -621,3 +621,19 @@ test('#9328 UI command starts and reports invalid arguments before browser work'
   assert.equal(r.status,1);
   assert.match(r.stderr,/unknown argument --unknown/); // @source-text-assertion-ok asserts on the CLI's executed diagnostic, not unexecuted source
 });
+
+test('#9328 historical and themed exercise IDs keep the same logical catalogue mapping', () => {
+  const catalogue={capabilities:[{...CATALOGUE.capabilities[0],exercises:{refs:['F1']}}]};
+  const old=result(null,'exercise','pass',{id:'F1.ui',exercise:'F1'});
+  const themed={...old,id:'F1.ui.dark',theme:'dark'};
+  for(const record of [old,themed]) assert.equal(score(catalogue,[record]).rows[0].levels.exercise.status,'pass');
+});
+
+test('#9328 fillers require distinct opening entities', async () => {
+  const { ownOpenings } = await import('../tests/modelling-parity/ui/lib/oracles.mjs');
+  const { readStep } = await import('../tests/modelling-parity/ui/lib/step.mjs');
+  const model=second=>readStep(`DATA; #1=IFCDOOR('d'); #2=IFCWINDOW('w'); #3=IFCOPENINGELEMENT('o'); #4=IFCOPENINGELEMENT('p'); #5=IFCRELFILLSELEMENT('r',$,$,$,#3,#1); #6=IFCRELFILLSELEMENT('s',$,$,$,#${second},#2); ENDSEC;`);
+  const valid=model(4),shared=model(3);
+  assert.equal(ownOpenings(valid,[...valid.of('IFCDOOR'),...valid.of('IFCWINDOW')]),true);
+  assert.equal(ownOpenings(shared,[...shared.of('IFCDOOR'),...shared.of('IFCWINDOW')]),false);
+});

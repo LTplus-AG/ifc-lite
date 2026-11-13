@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadCorpus } from '../tests/structural-coverage/lib/corpus.mjs';
@@ -51,4 +52,17 @@ test('#9668: perturbing real derived axes, endpoints, links or connections canno
     assert.notEqual(result.status,'pass');
     assert.ok(result.mismatches.length);
   }
+});
+
+test('#9923: plain Node loads the class-toggle table without the viewer loader', () => {
+  const target = new URL('../apps/viewer/src/store/typeVisibilityFilter.ts',import.meta.url).href;
+  const result = spawnSync(process.execPath,['--input-type=module','-e',`
+    import assert from 'node:assert/strict';
+    const {isTypeVisible,buildHiddenIfcTypes} = await import(${JSON.stringify(target)});
+    const flags = {spaces:false,spatialZones:true,openings:true,virtualElements:true,site:true,ifcAnnotations:true};
+    assert.ok(buildHiddenIfcTypes(flags).has('IfcSpace'));
+    assert.equal(isTypeVisible('IfcStructuralCurveMember',flags,'physical'),false);
+    assert.equal(isTypeVisible('IfcBeam',flags,'physical'),true);
+  `],{encoding:'utf8',timeout:10000,env:{...process.env,NODE_OPTIONS:''}});
+  assert.equal(result.status,0,result.stderr || result.error?.message);
 });

@@ -12,7 +12,7 @@
  * consumer (viewport, Cesium, basket, export) stays in lockstep.
  */
 
-import { isAnalyticalProduct } from '../lib/visibility/structural-view';
+import { isAnalyticalProduct } from '../lib/visibility/analytical-classes.mjs';
 import type { TypeVisibility, StructuralViewMode } from './types.js';
 
 /** Which `typeVisibility` boolean gates each IFC class. */

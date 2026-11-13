@@ -5,15 +5,13 @@ import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { TypeVisibility, StructuralViewMode } from '@/store/types';
 import type { FederatedModel, ViewerState } from '@/store';
+import { isAnalyticalProduct } from './analytical-classes.mjs';
 import { isProductClass } from '../compare/compareScope';
+
+export { isAnalyticalProduct };
 
 export function structuralGlyphsVisible(visibility: Pick<TypeVisibility, 'structuralGlyphs'>, mode: StructuralViewMode = 'both'): boolean {
   return visibility.structuralGlyphs && mode !== 'physical';
-}
-
-export function isAnalyticalProduct(type: string): boolean {
-  return /^IfcStructural(?:Curve|Surface|Point)(?:Member|Connection)/i.test(type)
-    || /^IfcStructural.*(?:Action|Reaction)$/i.test(type);
 }
 
 export type StructuralVisibilityState = Pick<ViewerState,

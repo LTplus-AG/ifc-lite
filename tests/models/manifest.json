@@ -1639,18 +1639,18 @@
     },
     {
       "path": "ifcopenshell/generated_structural_coverage_ifc2x3.ifc",
-      "sha256": "ea5b6c4adeb32ec6378a4782d8d2e7f01d5bf32aab025f68ecc206f09df4ed1e",
-      "size": 7678
+      "sha256": "1b6251e19639906b99e7e12b0b9954e5eb2b73e5515a3ecab7ee21f26d2e25ab",
+      "size": 10374
     },
     {
       "path": "ifcopenshell/generated_structural_coverage_ifc4.ifc",
-      "sha256": "a5ae07c2059448305d12b3cae2a2a9cbe9be7650921db440a1b750c9f98f999b",
-      "size": 8135
+      "sha256": "6cacd4bc894507a1615bbb9771f266248665bc06a77a60249e61281ebb212c70",
+      "size": 11046
     },
     {
       "path": "ifcopenshell/generated_structural_coverage_ifc4x3.ifc",
-      "sha256": "8ec6d0e5e8548036a141fae304026672a03c16246ae7a5f6e88fb1abb7f73596",
-      "size": 8241
+      "sha256": "cfecbddd58aee33576d083a3dd786cdd0e0979c422e954337df3da552b9843b9",
+      "size": 11154
     },
     {
       "path": "ifcopenshell/generated_structural_coverage_ifc4_reinforcement.ifc",
@@ -1661,6 +1661,51 @@
       "path": "modelling/saved-building.ifc",
       "sha256": "ebc976fabf0edbb3d6511cfbc03cab660ec665e34f5e9ba0724746710ddd359d",
       "size": 21455
+    },
+    {
+      "path": "rhino/mcneel-rhino3dm/blocks.3dm",
+      "sha256": "1e428317489c7c22ee68fb93e119079c718a0ba44efa7c89efb10cf0d8491cb8",
+      "size": 3116711,
+      "upstream_file": {
+        "blob_url": "https://github.com/mcneel/rhino3dm/blob/f44a7887955d471ad3e52327a5a410a96aad7957/tests/models/blocks.3dm",
+        "commit": "f44a7887955d471ad3e52327a5a410a96aad7957"
+      }
+    },
+    {
+      "path": "rhino/mcneel-rhino3dm/file3dm_stuff.3dm",
+      "sha256": "e78ca005c86130953a5b4c0c44d068ae1d00665f4c0f6028edd3911a01d4ff88",
+      "size": 4013407,
+      "upstream_file": {
+        "blob_url": "https://github.com/mcneel/rhino3dm/blob/f44a7887955d471ad3e52327a5a410a96aad7957/tests/models/file3dm_stuff.3dm",
+        "commit": "f44a7887955d471ad3e52327a5a410a96aad7957"
+      }
+    },
+    {
+      "path": "rhino/mcneel-rhino3dm/mesh.3dm",
+      "sha256": "59e78629c5c19a5e04a195d746cd6b3981c504fcdcd76423ba507ec9e58e69b7",
+      "size": 111350,
+      "upstream_file": {
+        "blob_url": "https://github.com/mcneel/rhino3dm/blob/f44a7887955d471ad3e52327a5a410a96aad7957/tests/models/mesh.3dm",
+        "commit": "f44a7887955d471ad3e52327a5a410a96aad7957"
+      }
+    },
+    {
+      "path": "rhino/mcneel-rhino3dm/object_UserStrings.3dm",
+      "sha256": "717484749d0e7fb79b54d3861559a9748414328509ccecd90569bb42781421d9",
+      "size": 3112000,
+      "upstream_file": {
+        "blob_url": "https://github.com/mcneel/rhino3dm/blob/f44a7887955d471ad3e52327a5a410a96aad7957/tests/models/object_UserStrings.3dm",
+        "commit": "f44a7887955d471ad3e52327a5a410a96aad7957"
+      }
+    },
+    {
+      "path": "rhino/mcneel-rhino3dm/subd_creases.3dm",
+      "sha256": "98400d4d67b5c16fe92bf65898298ff8dd08166fe20499fe02a41c2970657eee",
+      "size": 11662,
+      "upstream_file": {
+        "blob_url": "https://github.com/mcneel/rhino3dm/blob/f44a7887955d471ad3e52327a5a410a96aad7957/tests/models/subd_creases.3dm",
+        "commit": "f44a7887955d471ad3e52327a5a410a96aad7957"
+      }
     }
   ]
 }

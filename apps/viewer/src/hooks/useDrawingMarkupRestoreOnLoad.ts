@@ -57,6 +57,7 @@
  * suddenly injects the model's embedded markup over what the user just drew.
  */
 
+import { useLoadWindowHold } from './loadWindow.js';
 import { useEffect } from 'react';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
@@ -240,8 +241,12 @@ export function useDrawingMarkupRestoreOnLoad(): void {
     return null;
   });
 
+  // Restoring needs the symbolic parse, whose spatial key walks the model: wait
+  // while this model loads (loadWindow.ts) instead of running inside its load.
+  const restoreHeld = useLoadWindowHold().isHeld(activeModelId ?? 'legacy');
+
   useEffect(() => {
-    if (!activeModelId || !dataStore) return;
+    if (!activeModelId || !dataStore || restoreHeld) return;
     tryRestoreDrawingMarkup(activeModelId, true);
     const unsubscribeParseCache = subscribeToParseCache(() => tryRestoreDrawingMarkup(activeModelId, true));
     return () => {
@@ -254,5 +259,5 @@ export function useDrawingMarkupRestoreOnLoad(): void {
       // again immediately and re-registers a fresh wait if still pending.
       cancelPendingRestoreWaitFor(activeModelId);
     };
-  }, [activeModelId, dataStore, rtcPublication]);
+  }, [activeModelId, dataStore, restoreHeld, rtcPublication]);
 }

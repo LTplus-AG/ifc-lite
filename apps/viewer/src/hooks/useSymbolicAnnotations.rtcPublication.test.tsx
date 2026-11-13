@@ -6,6 +6,7 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
+import { settleLoadWindow } from '@/test/load-window';
 import { createRoot, type Root } from 'react-dom/client';
 import { contiguousSourceBytes } from '@ifc-lite/parser';
 import { fixtureDataStore } from '@/test/store-fixture';
@@ -75,6 +76,8 @@ it('retries a mounted legacy-primary symbolic parse when loading resolves withou
       useViewerStore.setState({ loading: false } as never);
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
+    await settleLoadWindow(); // whole-model overlay work waits for the settled frame (loadWindow.ts)
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 
     assert.equal(posts.length, 1, 'loading completion must retry without remounting the hook');
     assert.equal('frame' in posts[0], false, 'completed provenance absence uses standalone detection');

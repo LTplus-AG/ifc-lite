@@ -120,6 +120,8 @@ export async function decodeCachedMetadata(
   cacheResult: CacheResult,
   fallbackSourceBuffer: ArrayBufferLike | undefined,
   trace: LoadTrace,
+  /** Called with the header, before the metadata decodes (the cache hit starts its chunk inflater here). */
+  onHeader?: (cacheBuffer: ArrayBuffer, geometrySectionOffset: number | undefined, version: number) => void,
 ): Promise<DecodedCacheMetadata> {
   const reader = new BinaryCacheReader();
   // Blob entries (cold-tier writes) are disk-backed: materialize once for the
@@ -141,6 +143,7 @@ export async function decodeCachedMetadata(
     throw new Error(`unexpected pre-v13 cache entry (v${headerInfo.version})`);
   }
   const geometrySection = headerInfo.sections.find((s) => s.type === SectionType.Geometry);
+  onHeader?.(cacheBuffer, headerInfo.hasGeometry ? geometrySection?.offset : undefined, headerInfo.version);
   const result = await trace.span('cache.decode', () => reader.read(cacheBuffer, { skipGeometry: true }));
 
   // Restore the source buffer — required for on-demand property extraction
@@ -271,7 +274,7 @@ export async function decodeCachedModel(
   const decoded = await decodeCachedMetadata(cacheResult, fallbackSourceBuffer, trace);
   const { geometrySection, headerInfo, cacheBuffer } = decoded;
   if (!geometrySection || !headerInfo.hasGeometry || isStale()) return null;
-  const open = openGeometryChunksV13(cacheBuffer, geometrySection.offset, headerInfo.version);
+  const open = openGeometryChunksV13(cacheBuffer, geometrySection.offset, headerInfo.version, { sharedArena: true });
   const meshes: MeshData[] = [];
   await trace.span('cache.geometry', async () => {
     // Chunks decompress independently; overlap them instead of one at a time.

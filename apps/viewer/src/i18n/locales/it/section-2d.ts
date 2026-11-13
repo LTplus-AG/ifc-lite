@@ -26,6 +26,8 @@ export const section2dIt = {
   "section2d.tools.distance": "Distanza",
   "section2d.tools.area": "Area",
   "section2d.tools.text": "Testo",
+  'section2d.tools.tag': 'Etichetta',
+  'section2d.tip.tag': 'Fai clic su una porta, finestra o spazio da etichettare',
   "section2d.tools.cloud": "Nuvola",
   "section2d.annotations.clear": "Cancella annotazioni",
   "section2d.display.group": "Visualizzazione",

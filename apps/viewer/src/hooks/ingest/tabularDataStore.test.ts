@@ -10,7 +10,7 @@
 
 import { describe, it, afterEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { PropertyValueType, QuantityType } from '@ifc-lite/data';
+import { PropertyValueType, QuantityType, iterateEffectiveEntities } from '@ifc-lite/data';
 import { extractLengthUnitScale, isSourceBytes } from '@ifc-lite/parser';
 
 import { PROXY_A, PROXY_B, WALL, tabularFixtureStore } from '@/test/tabular-store-fixture.js';
@@ -71,6 +71,14 @@ describe('buildTabularDataStore', () => {
 
     assert.equal(extractLengthUnitScale(store.source, store.entityIndex), 0.001);
     assert.equal(warn.mock.callCount(), 0);
+  });
+
+  it('marks the store tabular, so its rows are enumerated under any schema label', () => {
+    const store = tabularFixtureStore();
+
+    assert.equal(store.sourceKind, 'tabular');
+    assert.deepEqual([...iterateEffectiveEntities(store, null)].map((e) => e.expressId), [PROXY_A, PROXY_B, WALL]);
+    assert.deepEqual([...iterateEffectiveEntities(store, null, ['IFCWALL'])].map((e) => e.expressId), [WALL]);
   });
 
   it('keeps the file bytes behind the source accessor', () => {

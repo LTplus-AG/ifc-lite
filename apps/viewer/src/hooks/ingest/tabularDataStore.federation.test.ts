@@ -8,8 +8,8 @@
  * the models are registered the way a load does it: the watermark from
  * `getMaxExpressId`, the offset from the federation registry.
  *
- * Every row here has a mesh. `getMaxExpressId` only reads the entity table of
- * an `'IFC5'` store, so an unmeshed row above the last mesh is not covered.
+ * `getMaxExpressId` reads the entity table of a tabular store as well as the
+ * meshes, so a row with no mesh (a layer, a spatial row) is inside the range.
  */
 
 import '@/test/setup-dom.js';
@@ -38,16 +38,22 @@ function meshFor(expressId: number): MeshData {
 /** Same express id as the first model's wall, a different GlobalId. */
 const SECOND_WALL_GLOBAL_ID = '3xYzAbCdEfGhIjKlMnOp03';
 
+type ModelSpec = string | [id: string, wallGlobalId: string];
+type Installed = Map<string, { idOffset: number; store: IfcDataStore }>;
+
 /** Register one model per id (or `[id, wallGlobalId]`) and install them, returning each model's offset. */
-function installModels(
-  ...specs: Array<string | [id: string, wallGlobalId: string]>
-): Map<string, { idOffset: number; store: IfcDataStore }> {
-  const installed = new Map<string, { idOffset: number; store: IfcDataStore }>();
+function installModels(...specs: ModelSpec[]): Installed {
+  return installModelsMeshing([PROXY_A, PROXY_B, WALL], ...specs);
+}
+
+/** As `installModels`, with meshes for `meshed` only: the other rows have no geometry. */
+function installModelsMeshing(meshed: number[], ...specs: ModelSpec[]): Installed {
+  const installed: Installed = new Map();
   const models: FederatedModel[] = [];
   for (const spec of specs) {
     const [id, wallGlobalId] = typeof spec === 'string' ? [spec] : spec;
     const store = tabularFixtureStore({ wallGlobalId });
-    const maxExpressId = getMaxExpressId(store, [PROXY_A, PROXY_B, WALL].map(meshFor));
+    const maxExpressId = getMaxExpressId(store, meshed.map(meshFor));
     const idOffset = federationRegistry.registerModel(id, maxExpressId);
     installed.set(id, { idOffset, store });
     models.push({ ...fixtureModel(id, { idOffset }), maxExpressId, ifcDataStore: store });
@@ -92,5 +98,17 @@ describe('resolveEntityRef over tabular stores', () => {
     // Both walls are express id 3, so only the owning model's row gives the right GlobalId.
     assert.equal(resolveGlobalId(first.idOffset + WALL), WALL_GLOBAL_ID);
     assert.equal(resolveGlobalId(second.idOffset + WALL), SECOND_WALL_GLOBAL_ID);
+  });
+
+  it('models.size N: a row with no mesh, above the last mesh, still resolves to its own model (#6564)', () => {
+    // WALL is the highest id and has no mesh: only the entity table knows it.
+    const installed = installModelsMeshing([PROXY_A, PROXY_B], 'first', 'second');
+    const first = installed.get('first')!;
+    const second = installed.get('second')!;
+    assert.equal(getMaxExpressId(first.store, [PROXY_A, PROXY_B].map(meshFor)), WALL);
+
+    assert.deepEqual(resolveEntityRef(first.idOffset + WALL), { modelId: 'first', expressId: WALL });
+    assert.deepEqual(resolveEntityRef(second.idOffset + PROXY_A), { modelId: 'second', expressId: PROXY_A });
+    assert.deepEqual(resolveEntityRef(second.idOffset + WALL), { modelId: 'second', expressId: WALL });
   });
 });

@@ -2010,6 +2010,9 @@ importers:
       '@ifc-lite/wasm':
         specifier: workspace:^
         version: link:../wasm
+      ws:
+        specifier: ^8.22.0
+        version: 8.22.0
       yjs:
         specifier: ^13.6.33
         version: 13.6.33
@@ -2020,6 +2023,9 @@ importers:
       '@types/node':
         specifier: ^26.6.4
         version: 26.6.5
+      '@types/ws':
+        specifier: ^8.18.2
+        version: 8.18.2
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -2278,10 +2284,19 @@ importers:
 
   packages/rhino3dm:
     dependencies:
+      '@ifc-lite/data':
+        specifier: workspace:^
+        version: link:../data
+      '@ifc-lite/encoding':
+        specifier: workspace:^
+        version: link:../encoding
       rhino3dm:
         specifier: 8.35.0
         version: 8.35.0
     devDependencies:
+      '@ifc-lite/wasm':
+        specifier: workspace:^
+        version: link:../wasm
       '@mergifyio/vitest':
         specifier: ^2026.10.11
         version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))

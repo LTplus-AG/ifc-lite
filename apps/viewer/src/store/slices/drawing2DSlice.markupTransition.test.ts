@@ -36,6 +36,7 @@ function stateFor(activeModelId: string | null, measure2DResults: Measure2DResul
     measure2DResults,
     polygonArea2DResults: defaults.polygonArea2DResults,
     textAnnotations2D: defaults.textAnnotations2D,
+    tagAnnotations2D: defaults.tagAnnotations2D,
     cloudAnnotations2D: defaults.cloudAnnotations2D,
     dimensions2D: defaults.dimensions2D,
     drawing2DDisplayOptions: defaults.drawing2DDisplayOptions,
@@ -186,5 +187,18 @@ describe('markupTransitionPatch', () => {
           'a divergence here means the compile-time satisfies check and the runtime default state have drifted apart',
       );
     });
+  });
+});
+
+describe('entity-bound drawing tags (#9296)', () => {
+  beforeEach(() => __resetLiveMarkupCacheForTests());
+  it('clears the outgoing drawing and restores its bindings when that model returns', () => {
+    const tag = { id: 'door-tag', modelId: 'model-a', entityId: 10,
+      anchor: { x: 1, y: 2 }, offset: { x: 0.2, y: 0.3 }, template: 'auto' as const };
+    const outgoing = { ...stateFor('model-a'), tagAnnotations2D: [tag] };
+    const next = markupTransitionPatch(outgoing, 'model-b');
+    assert.deepEqual(next.tagAnnotations2D, [], 'a different model cannot inherit these bindings');
+    const restored = markupTransitionPatch({ ...stateFor('model-b'), ...next }, 'model-a');
+    assert.deepEqual(restored.tagAnnotations2D, [tag], 'the original model retains its entity identity and offset');
   });
 });

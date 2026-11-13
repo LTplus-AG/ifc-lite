@@ -23,11 +23,11 @@ const selectGlyphSource = (modelId: string, expressId: number) =>
   selectPickedGlobalId(toGlobalIdFromModels(useViewerStore.getState().models, modelId, expressId));
 
 /**
- * The structural point, curve and surface connections and actions: what can
- * draw a support or a load. Not reactions (results) and not the connection
- * condition resources, whose names share the words.
+ * The structural point, curve and surface connections, actions and
+ * reactions: what can draw a support, a load or a reaction. Not the
+ * connection condition resources, whose names share the words.
  */
-const GLYPH_TYPE = /^IFCSTRUCTURAL(?:(?:POINT|CURVE|SURFACE)CONNECTION|(?:POINT|LINEAR|PLANAR|CURVE|SURFACE)ACTION(?:VARYING)?)$/;
+const GLYPH_TYPE = /^IFCSTRUCTURAL(?:(?:POINT|CURVE|SURFACE)(?:CONNECTION|REACTION)|(?:POINT|LINEAR|PLANAR|CURVE|SURFACE)ACTION(?:VARYING)?)$/;
 
 /**
  * Stores known to hold one. The model map is replaced on every streamed batch;

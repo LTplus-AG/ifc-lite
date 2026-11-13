@@ -56,12 +56,13 @@ import type {
   Drawing2DState,
   Measure2DResult,
   PolygonArea2DResult,
-  TextAnnotation2D,
+  TextAnnotation2D, TagAnnotation2D,
 } from './drawing2DSlice.js';
 import {
   isFiniteNumber, isMeasure2DResult, isPolygonArea2DResult, isTextAnnotation2D, isCloudAnnotation2D,
 } from './drawing2DSlice.markupValidation.js';
 import { loadPersistedDimensions } from './drawing2DDimensions.js';
+import { validElementTags } from '@/lib/drawing/tag-persistence';
 import { getDefaultDrawing2DState } from './drawing2DSlice.js';
 import type { SectionConfig } from '@ifc-lite/drawing-2d';
 import { isManualProjectionDepth, isConstructionProjectionPreference } from '@/lib/drawing/projection-depth';
@@ -69,7 +70,7 @@ import { isManualProjectionDepth, isConstructionProjectionPreference } from '@/l
 /** The store fields this module persists/restores/clears, as a plain patch. */
 export type Drawing2DMarkupPatch = Pick<
   Drawing2DState,
-  'measure2DResults' | 'polygonArea2DResults' | 'textAnnotations2D' | 'cloudAnnotations2D' | 'dimensions2D' | 'drawing2DDisplayOptions'
+  'measure2DResults' | 'polygonArea2DResults' | 'textAnnotations2D' | 'tagAnnotations2D' | 'cloudAnnotations2D' | 'dimensions2D' | 'drawing2DDisplayOptions'
 >;
 
 /**
@@ -86,7 +87,7 @@ export function defaultMarkupPatch(): Drawing2DMarkupPatch {
   return {
     measure2DResults: defaults.measure2DResults,
     polygonArea2DResults: defaults.polygonArea2DResults,
-    textAnnotations2D: defaults.textAnnotations2D,
+    textAnnotations2D: defaults.textAnnotations2D, tagAnnotations2D: [],
     cloudAnnotations2D: defaults.cloudAnnotations2D,
     dimensions2D: defaults.dimensions2D,
     drawing2DDisplayOptions: defaults.drawing2DDisplayOptions,
@@ -128,6 +129,7 @@ function hashFromKey(key: string): string {
 export interface PersistedDrawing2DEntry {
   measure2DResults: Measure2DResult[];
   polygonArea2DResults: PolygonArea2DResult[];
+  tagAnnotations2D?: TagAnnotation2D[]; ownerModelId?: string;
   textAnnotations2D: TextAnnotation2D[];
   cloudAnnotations2D: CloudAnnotation2D[];
   /** Optional in the stored v1 shape: entries saved before dimensions existed lack it, and still load. */
@@ -300,12 +302,12 @@ export function loadDrawing2DEntry(
   return {
     measure2DResults: entry.measure2DResults.filter(isMeasure2DResult),
     polygonArea2DResults: entry.polygonArea2DResults.filter(isPolygonArea2DResult),
-    textAnnotations2D: entry.textAnnotations2D.filter(isTextAnnotation2D),
+    textAnnotations2D: entry.textAnnotations2D.filter(isTextAnnotation2D), tagAnnotations2D: validElementTags(entry.tagAnnotations2D),
     cloudAnnotations2D: entry.cloudAnnotations2D.filter(isCloudAnnotation2D),
     dimensions2D: loadPersistedDimensions(entry.dimensions2D),
     drawing2DDisplayOptions: coalesceDisplayOptions(entry.drawing2DDisplayOptions, defaultDisplayOptions),
     sectionConfig: isSectionConfigLike(entry.sectionConfig) ? entry.sectionConfig : null,
-    savedAt: entry.savedAt,
+    savedAt: entry.savedAt, ownerModelId: typeof entry.ownerModelId === 'string' ? entry.ownerModelId : undefined,
   };
 }
 

@@ -82,7 +82,7 @@ export function selectedSourceProducts(
       ? { id: 'legacy', visible: true, schemaVersion: state.ifcDataStore?.schemaVersion,
         ifcDataStore: state.ifcDataStore, loadFormat: 'ifc', sourceFile: undefined }
       : state.models.get(ref.modelId);
-    if (!model?.visible || !model.ifcDataStore || model.schemaVersion === 'IFC5') continue;
+    if (!model?.visible || !model.ifcDataStore || model.schemaVersion === 'IFC5' || model.ifcDataStore.sourceKind === 'tabular') continue;
     // Federated GLB has a compatibility IFC4 store with no STEP source.
     // Legacy/cached models may lack loadFormat, so also require real IFC bytes
     // or a retained IFC source file before attempting the analytic decoder.

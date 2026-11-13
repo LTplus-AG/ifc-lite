@@ -1,0 +1,11 @@
+--- a/packages/mcp/src/validate.ts
++++ b/packages/mcp/src/validate.ts
+@@ -169,7 +169,7 @@ function walk(schema: JsonSchema, input: unknown, path: string, errors: Validati
+ }
+ 
+ function own(obj: Record<string, unknown>, key: string): unknown {
+-  return obj[key];
++  return Object.prototype.hasOwnProperty.call(obj, key) ? obj[key] : undefined;
+ }
+ 
+ const TYPE_CHECKS: Readonly<Record<string, (v: unknown) => boolean>> = {

@@ -25,6 +25,18 @@ Each drawing includes:
 | **Architectural symbols** | Door swings, window frames, stair arrows |
 | **Annotations** | Dimensions and labels |
 
+## Element tags in the viewer
+
+In a plan or section drawing, choose **Tag** and click a door, window or space.
+Door and window tags show the IFC `Tag` (or a `Mark` property), falling back to
+`Name`. Space tags show `Name` and, when available,
+`Qto_SpaceBaseQuantities.NetFloorArea` in m². Labels read the current model data,
+so property edits update them. Regenerated drawings anchor tags to the element's
+cut centroid. Use **Select** to drag a tag's offset, or select it and press Delete.
+Tags are saved with the drawing markup and included in SVG, DXF, scaled PDF and
+sheet PDF exports. Scaled PDF uses `~` for the approximate-area symbol because
+its built-in font does not contain `≈`.
+
 ## Construction profiles
 
 Construction projection extracts constant `IfcExtrudedAreaSolid` profiles from

@@ -16,6 +16,7 @@ import { useViewerStore } from '@/store';
 import type { Annotation2DTool } from '@/store/slices/drawing2DSlice';
 import type { DrawingInspectorTab } from '@/store/slices/drawingInspectorSlice';
 import { useMeasure2D } from '@/hooks/useMeasure2D';
+import { useElementTags } from '@/hooks/useElementTags';
 import { useAnnotation2D } from '@/hooks/useAnnotation2D';
 import { useDrawingWithReferences } from '@/hooks/useReferenceImagesForDrawing';
 import { useDxfUnderlaysForDrawing } from '@/hooks/useDxfUnderlay';
@@ -167,6 +168,8 @@ export function useDrawingViewModel() {
     setMeasure2DSnapPoint, cancelMeasure2D, completeMeasure2D,
   });
 
+  const elementTags = useElementTags(drawing, viewTransform, drawnPlane.axis, containerRef,
+    sheetEnabled && activeSheet ? { sheet: activeSheet, isPinned, cached: cachedSheetTransformRef.current } : undefined);
   const annotationHandlers = useAnnotation2D({
     drawing, viewTransform, sectionAxis: drawnPlane.axis, containerRef,
     activeTool: annotation2DActiveTool, setActiveTool: setAnnotation2DActiveTool,
@@ -180,6 +183,7 @@ export function useDrawingViewModel() {
 
   // Unified mouse handlers that dispatch to the right tool
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (elementTags.handleMouseDown(e)) return;
     if (annotation2DActiveTool === 'measure') {
       measureHandlers.handleMouseDown(e);
     } else if (annotation2DActiveTool === 'none') {
@@ -189,9 +193,10 @@ export function useDrawingViewModel() {
     } else {
       annotationHandlers.handleMouseDown(e);
     }
-  }, [annotation2DActiveTool, measureHandlers, annotationHandlers]);
+  }, [annotation2DActiveTool, measureHandlers, annotationHandlers, elementTags]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (elementTags.handleMouseMove(e)) return;
     // If dragging an annotation, let the annotation handler handle it
     if (annotationHandlers.isDraggingRef.current) {
       annotationHandlers.handleMouseMove(e);
@@ -202,7 +207,7 @@ export function useDrawingViewModel() {
     } else {
       annotationHandlers.handleMouseMove(e);
     }
-  }, [annotation2DActiveTool, measureHandlers, annotationHandlers]);
+  }, [annotation2DActiveTool, measureHandlers, annotationHandlers, elementTags]);
 
   const handleMouseUp = useCallback((e: React.MouseEvent) => {
     annotationHandlers.handleMouseUp(e);
@@ -275,10 +280,10 @@ export function useDrawingViewModel() {
   const markupCounts = useMemo(() => ({
     measurements: measure2DResults.length,
     areas: polygonArea2DResults.length,
-    texts: textAnnotations2D.length,
+    texts: textAnnotations2D.length + elementTags.texts.length,
     clouds: cloudAnnotations2D.length,
     dimensions: dimensions2D.length,
-  }), [measure2DResults.length, polygonArea2DResults.length, textAnnotations2D.length, cloudAnnotations2D.length, dimensions2D.length]);
+  }), [measure2DResults.length, polygonArea2DResults.length, textAnnotations2D.length, cloudAnnotations2D.length, elementTags.texts.length, dimensions2D.length]);
   const hasMarkup = markupCounts.measurements + markupCounts.areas + markupCounts.texts + markupCounts.clouds + markupCounts.dimensions > 0;
 
   // Cursor style based on active tool
@@ -288,6 +293,7 @@ export function useDrawingViewModel() {
       case 'measure':
       case 'polygon-area':
       case 'cloud':
+      case 'tag':
         return 'cursor-crosshair';
       case 'text':
         return 'cursor-text';
@@ -314,7 +320,7 @@ export function useDrawingViewModel() {
     measure2DMode, measure2DStart, measure2DCurrent, measure2DResults, measure2DSnapPoint, measure2DShiftLocked,
     annotation2DActiveTool, selectTool, annotation2DCursorPos,
     polygonArea2DPoints, polygonArea2DResults,
-    textAnnotations2D, textAnnotation2DEditing, handleTextConfirm, handleTextCancel,
+    textAnnotations2D, tagTexts: elementTags.texts, textAnnotation2DEditing, handleTextConfirm, handleTextCancel,
     cloudAnnotation2DPoints, cloudAnnotations2D,
     selectedAnnotation2D, clearAllAnnotations2D, markupCounts, hasMarkup,
     toggleIfcAnnotations, toggleConstructionProjection, toggle3DOverlay, toggleSymbolicRepresentations,

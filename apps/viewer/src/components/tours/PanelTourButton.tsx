@@ -10,6 +10,7 @@
  * vocabulary (h-5, data-chrome-btn / data-no-drag).
  */
 
+import { isFeatureEnabled } from '@/lib/features';
 import { GraduationCap } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useTranslation } from '@/i18n';
@@ -21,7 +22,7 @@ import type { WorkspacePanelId } from '@/lib/panels/registry';
 export function PanelTourButton({ panelId }: { panelId: WorkspacePanelId }) {
   const { t } = useTranslation();
   const tour = getToursForPanel(panelId)[0];
-  if (!tour || isTourCompleted(tour.id, tour.version)) return null;
+  if (!tour || !isFeatureEnabled('help.tours') || isTourCompleted(tour.id, tour.version)) return null;
 
   return (
     <Tooltip>

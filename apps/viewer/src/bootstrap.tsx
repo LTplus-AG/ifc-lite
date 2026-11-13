@@ -56,6 +56,7 @@ import type { FileSourceProviderFactory } from './services/sources/source-host';
 // After the pairing-fragment strip, like every module that may report (pairing-fragment.boot.test.ts).
 import './lib/analytics';
 import { applyRuntimeConfig } from './lib/features/runtime-start';
+import { linkIconFont } from './lib/features/icon-font';
 import type { ViewerRuntimeConfig } from './lib/features/runtime-config';
 
 export type { FileSourceProviderFactory } from './services/sources/source-host';
@@ -124,6 +125,8 @@ export function mountViewer(container: HTMLElement, options: ViewerBootstrapOpti
   // The feature set and analytics, then the locale, before anything renders.
   const config = applyRuntimeConfig(options.config);
   void startLocales(config?.locale);
+  // The model tree's icon font, a third-party request; viewer only (the embed has no tree).
+  linkIconFont();
 
   const render = () => ReactDOM.createRoot(container).render(
     <React.StrictMode>

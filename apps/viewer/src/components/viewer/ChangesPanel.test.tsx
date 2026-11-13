@@ -17,6 +17,7 @@ import { ChangesPanel } from './ChangesPanel';
 import { revertChangeOperation } from '@/lib/changes/revert-change-operation';
 import { changeOperations } from '@/lib/changes/change-operations';
 import { inverseMutationTargets } from '@/store/slices/mutation-inverse-registry';
+import { resetFeaturesForTest } from '@/lib/features';
 
 const initial = useViewerStore.getState();
 afterEach(() => { cleanup(); useViewerStore.setState(initial); });
@@ -169,4 +170,18 @@ test('#5902 georeference row has no fake Jump and downloads its model-level muta
     assert.deepEqual(payload.mutations.map(mutation => mutation.attributeName), ['georef.mapConversion.Eastings']);
     assert.deepEqual(payload.mutations.map(mutation => mutation.newValue), [42]);
   });
+});
+
+test('a host that switches off export keeps the change list but drops the export footer', () => {
+  const model = { ...fixtureModel('A'), schemaVersion: 'IFC4' as const, maxExpressId: 102 };
+  useViewerStore.setState({ models: new Map([['A', model]]), activeModelId: 'A',
+    mutationViews: new Map([['A', new MutablePropertyView(null, 'A')]]), undoStacks: new Map(), redoStacks: new Map(),
+    mutationBatchTags: new Map(), dirtyModels: new Set(), mutationVersion: 0, editEnabled: true });
+  useViewerStore.getState().setProperty('A', 101, 'Pset_Test', 'Status', 'draft', PropertyValueType.Label);
+  resetFeaturesForTest({ default: 'all', disable: ['export.files'] });
+  try {
+    const ui = render(<ChangesPanel />);
+    assert.match(ui.textContent ?? '', /1 edit/);
+    assert.doesNotMatch(ui.textContent ?? '', /Changes only/);
+  } finally { resetFeaturesForTest(); }
 });

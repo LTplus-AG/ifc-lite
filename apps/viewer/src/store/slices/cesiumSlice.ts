@@ -18,6 +18,7 @@ import type { StateCreator } from 'zustand';
 import type { MapConversion } from '@ifc-lite/parser';
 
 import { clearTerrainElevationCache } from '@/lib/geo/terrain-elevation';
+import { isFeatureEnabled } from '@/lib/features';
 import {
   decodeCustomBasemap,
   encodeCustomBasemap,
@@ -252,8 +253,9 @@ export const createCesiumSlice: StateCreator<CesiumSlice & CesiumCrossSliceState
   cesiumPlacementDraftModelId: null,
   cesiumPlacementDraft: null,
 
-  setCesiumAvailable: (available) => set((s) => s.cesiumAvailable === available ? s : { cesiumAvailable: available }),
-  setCesiumEnabled: (enabled) => set({ cesiumEnabled: enabled }),
+  // The world context streams imagery and terrain from an outside service; a host can switch that off (`lib/features`).
+  setCesiumAvailable: (wanted) => set((s) => { const available = wanted && isFeatureEnabled('privacy.third-party'); return s.cesiumAvailable === available ? s : { cesiumAvailable: available }; }),
+  setCesiumEnabled: (enabled) => set({ cesiumEnabled: enabled && isFeatureEnabled('privacy.third-party') }),
   toggleCesium: () => set((s) => ({
     cesiumEnabled: !s.cesiumEnabled,
     ...(s.cesiumEnabled

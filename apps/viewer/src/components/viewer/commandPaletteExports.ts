@@ -16,6 +16,7 @@
 
 import { paletteExportAvailability } from './palette-export-availability';
 import { useViewerStore } from '@/store';
+import { isFeatureEnabled } from '@/lib/features';
 import type { TranslationKey } from '@/i18n';
 import { EXPORT_COMMANDS, type CsvExportType, type ExportCommandId } from './toolbar/export-commands';
 import { Camera, Download, EyeOff, FileJson, FilePen, FileSpreadsheet, FileText, Globe2, Mountain, Puzzle } from 'lucide-react';
@@ -119,6 +120,7 @@ export function buildExportCommands(
   extensionExporters: readonly ExtensionExporter[] = [],
   surface: Extract<CommandSurface, 'palette' | 'mobile'> = 'palette',
 ): Command[] {
+  if (!isFeatureEnabled('export.files')) return [];
   const { activeModelId, ifcDataStore, models } = useViewerStore.getState();
   const activationContext = { activeModelId, ifcDataStore, models };
   const extensionRows = extensionExporters.map((exporter): Command => ({

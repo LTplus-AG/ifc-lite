@@ -59,7 +59,13 @@ const CUT: DrawnSectionPlane = { axis: 'front', position: 40, flipped: false };
 const OTHER_CUT: DrawnSectionPlane = { axis: 'front', position: 60, flipped: false };
 const CUSTOM_CUT: DrawnSectionPlane = {
   axis: 'side', position: 12, flipped: true,
-  custom: { normal: [0.6, 0.8, 0], distance: 3.25, pickedAt: [1, 2, 0], tangent: [0.8, -0.6, 0], bitangent: [0, 0, 1] },
+  // Full-precision frame values: the plane-identity check compares the
+  // in-plane axes and frame origin at 1e-6, so the JSON in `Plane` must
+  // carry them through the STEP string exactly.
+  custom: {
+    normal: [0.6, 0.8, 0], distance: 3.25, datum: 2.2,
+    pickedAt: [1.0000000001, 2.123456789012345, -1 / 3], tangent: [0.8, -0.6, 0], bitangent: [0, 0, 1],
+  },
 } as DrawnSectionPlane;
 
 const DIMENSIONS: Dimension2D[] = [
@@ -155,6 +161,17 @@ describe('dimension markup: real round trip on building-architecture.ifc', () =>
     const onCustom = restored.find((d) => d.plane?.custom);
     assert.ok(onCustom);
     assert.equal(isDimensionOnPlane(onCustom, CUSTOM_CUT), true);
-    assert.equal(isDimensionOnPlane(onCustom, { ...CUSTOM_CUT, custom: { ...CUSTOM_CUT.custom!, distance: 4 } }), false);
+    const custom = CUSTOM_CUT.custom!;
+    const withCustom = (patch: Partial<typeof custom>): DrawnSectionPlane => ({ ...CUSTOM_CUT, custom: { ...custom, ...patch } });
+    assert.equal(isDimensionOnPlane(onCustom, withCustom({ distance: 4 })), false);
+    // The frame fields survive the trip, so the reloaded stamp still tells a
+    // second pick on the same face (same normal and distance) apart ...
+    assert.equal(isDimensionOnPlane(onCustom, withCustom({ pickedAt: [1.0000000001 + 0.8, 2.123456789012345 - 0.6, -1 / 3] })), false,
+      'a pick moved along the face is another cut');
+    assert.equal(isDimensionOnPlane(onCustom, withCustom({ tangent: [0, 0, 1], bitangent: [0.8, -0.6, 0] })), false,
+      'a turned in-plane frame is another cut');
+    // ... while a pick that differs only along the normal is the same frame.
+    assert.equal(isDimensionOnPlane(onCustom, withCustom({ pickedAt: [1.0000000001 + 0.6, 2.123456789012345 + 0.8, -1 / 3] })), true,
+      'a pick off the plane along its normal projects to the same frame origin');
   });
 });

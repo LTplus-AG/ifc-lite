@@ -118,9 +118,9 @@ export function useDimension2D(p: UseDimension2DParams) {
     setCursor(null); setSnap(null); setMarkers([]);
   }, [toolActive]);
   useEffect(() => { if (points.length === 0) refs.current = []; }, [points.length]);
-  // A new or regenerated drawing: the snap glyph, key-point markers and hover note (its
+  // A new or regenerated drawing: the snapped cursor, snap glyph, key-point markers and hover note (its
   // "Other cut" verdict) belong to the old geometry and cut; hover otherwise updates only on pointer moves.
-  useEffect(() => { setSnap(null); setMarkers([]); setHover(null); }, [drawing]);
+  useEffect(() => { setCursor(null); setSnap(null); setMarkers([]); setHover(null); }, [drawing]);
   // Points placed on one cut cannot be completed on another: a cut change drops them.
   const planeKey = JSON.stringify(dimensionPlaneStamp(drawnPlane) ?? null);
   const lastPlaneKey = useRef(planeKey);

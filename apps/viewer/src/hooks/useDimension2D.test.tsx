@@ -201,6 +201,7 @@ it('a new drawing drops the old snap glyph and markers; a new cut drops the plac
   assert.equal(useViewerStore.getState().dimension2DPoints.length, 1);
   act(() => useViewerStore.setState({ drawing2D: drawing() }));
   assert.equal(useViewerStore.getState().dimension2DPoints.length, 1, 'regenerating the same cut keeps the placed point');
+  assert.equal(tool.scene?.preview ?? null, null, 'no rubber band to the old snapped position until the pointer moves');
   drawnPlane = { ...PLANE, position: 2 };
   act(() => useViewerStore.setState({ drawing2D: drawing() }));
   assert.equal(useViewerStore.getState().dimension2DPoints.length, 0, 'a point placed on the previous cut is dropped');

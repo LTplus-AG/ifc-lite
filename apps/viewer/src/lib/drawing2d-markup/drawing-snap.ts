@@ -164,11 +164,15 @@ export function getDrawingSnapIndex(drawing: Drawing2D, opts: DrawingSnapBuildOp
   return built;
 }
 
-/** How far `point` is from being a `mode` snap on `shape` (0 when it is one). */
-function fitOf(shape: DraftShape, mode: SnapMode, point: Pt): number {
-  if (mode === 'endpoint' || mode === 'midpoint') {
+/**
+ * How far `point` is from being a `mode` snap on `shape` (0 when it is one).
+ * Endpoint, midpoint and center hits are key points; a center lies `r` off
+ * the curve, so it must not fall through to the curve distance.
+ */
+export function snapHitFit(shape: DraftShape, mode: SnapMode, point: Pt): number {
+  if (mode === 'endpoint' || mode === 'midpoint' || mode === 'center') {
     const kp = shapeKeyPoints(shape);
-    const list = mode === 'endpoint' ? kp.endpoints : kp.midpoints;
+    const list = mode === 'endpoint' ? kp.endpoints : mode === 'midpoint' ? kp.midpoints : kp.centers;
     let best = Infinity;
     for (const p of list) best = Math.min(best, Math.hypot(p.x - point.x, p.y - point.y));
     return best;
@@ -191,7 +195,7 @@ function sourceShape(snap: DrawingSnapIndex, cursor: Pt, tolerance: number, mode
   let bestCursor = Infinity;
   for (const i of ids) {
     const shape = snap.shapes[i];
-    if (fitOf(shape, mode, point) > VERTEX_TOLERANCE) continue;
+    if (snapHitFit(shape, mode, point) > VERTEX_TOLERANCE) continue;
     const d = nearestOnShape(shape, cursor).dist;
     if (d < bestCursor) {
       bestCursor = d;

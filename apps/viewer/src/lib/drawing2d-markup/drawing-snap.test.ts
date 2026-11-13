@@ -12,7 +12,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Drawing2D, DrawingLine, DrawingPolygon, Point2D } from '@ifc-lite/drawing-2d';
-import { buildDrawingSnapShapes, findDrawingSnap, getDrawingSnapIndex } from './drawing-snap';
+import { buildDrawingSnapShapes, findDrawingSnap, getDrawingSnapIndex, snapHitFit } from './drawing-snap';
 
 const SPLIT = 4.2624;
 const TOL = 0.05;
@@ -226,5 +226,13 @@ describe('drawing snap: sources, holes and input filtering', () => {
     const first = getDrawingSnapIndex(d);
     assert.equal(getDrawingSnapIndex(d) === first, true, 'memoised');
     assert.equal(getDrawingSnapIndex(d) === getDrawingSnapIndex(drawing([splitWall()])), false, 'new drawing, new index');
+  });
+});
+
+describe('snapHitFit', () => {
+  it('fits a center hit to the circle it came from, not to the curve', () => {
+    const circle = { type: 'circle' as const, c: P(2, 3), r: 1.5 };
+    assert.equal(snapHitFit(circle, 'center', P(2, 3)), 0);
+    assert.ok(snapHitFit(circle, 'center', P(3.5, 3)) > 1);
   });
 });

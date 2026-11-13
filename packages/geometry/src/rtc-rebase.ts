@@ -120,8 +120,7 @@ export interface RtcRebaseGeometry {
   meshes: ReadonlyArray<{ origin?: Origin; geometryClass?: number }>;
   /** Present on a `GeometryResult`; read only by {@link carriesGpuInstancedGeometry}. */
   instancedGeometryAabbs?: ReadonlyMap<number, unknown> | null;
-  /** Inline clouds move with their meshes through `origin` (#10029). A
-   *  point-cloud-only geometry (a streamed scan's descriptor) is not moved. */
+  /** Inline clouds move with their meshes, through `origin` (#10029). */
   pointClouds?: ReadonlyArray<{ origin?: Origin }> | null;
 }
 
@@ -157,9 +156,9 @@ export interface RtcConvergeResult<T> {
 
 /**
  * Move every geometry that is not yet drawn against `anchor` onto it, in
- * place: each mesh's and inline cloud's `origin` and the `CoordinateInfo` frame fields change,
- * `positions` never do. Geometries already on the anchor and point clouds are
- * left alone; GPU-instanced geometries are reported in `refused` and left
+ * place: each mesh's and inline cloud's `origin` and the `CoordinateInfo`
+ * frame fields change, `positions` never do. Geometries already on the anchor
+ * and point-cloud-only geometries are left alone; GPU-instanced geometries are reported in `refused` and left
  * untouched, so the caller can tell the user which models stay split.
  *
  * Idempotent: a second call with the same anchor moves nothing.
@@ -181,17 +180,11 @@ export function convergeGeometryOntoRtcAnchor<T extends RtcRebaseGeometry>(
       continue;
     }
     const delta = rtcRebaseDeltaFor(geometry.coordinateInfo, anchor);
-    for (const mesh of geometry.meshes) {
-      if (seen.has(mesh)) continue;
-      seen.add(mesh);
-      mesh.origin = rebaseOriginByRtcDelta(mesh.origin, delta);
-    }
-    // An inline cloud sits in the same frame as its meshes, so it moves with
-    // them, in its f64 origin (never its f32 positions), like a mesh (#10029).
-    for (const cloud of geometry.pointClouds ?? []) {
-      if (seen.has(cloud)) continue;
-      seen.add(cloud);
-      cloud.origin = rebaseOriginByRtcDelta(cloud.origin, delta);
+    // Inline clouds share their meshes' frame and move the same way (#10029).
+    for (const part of [...geometry.meshes, ...(geometry.pointClouds ?? [])]) {
+      if (seen.has(part)) continue;
+      seen.add(part);
+      part.origin = rebaseOriginByRtcDelta(part.origin, delta);
     }
     geometry.coordinateInfo = rebaseCoordinateInfoOntoRtcAnchor(geometry.coordinateInfo, anchor);
     moved.push(geometry);

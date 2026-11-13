@@ -577,7 +577,8 @@ const runWriter = (dir) => execFileSync(process.execPath, [SYNC, '--root', dir],
 test('CLI --decide on a real Rust release: the writer\'s own Cargo output goes lean; any other Cargo byte runs full', () => {
   const release = cargoRepo(runWriter);
   // The fixture really moves the crates, so this exercises the replay, not an empty Cargo diff.
-  assert.match(execFileSync('git', ['diff', '--name-only', 'HEAD~1', 'HEAD'], { cwd: release, encoding: 'utf8' }), /^Cargo\.lock$/m);
+  const moved = execFileSync('git', ['diff', '--name-only', 'HEAD~1', 'HEAD'], { cwd: release, encoding: 'utf8' }).split('\n');
+  for (const f of ['Cargo.toml', 'Cargo.lock', 'rust/python/Cargo.lock']) assert.equal(moved.includes(f), true, `the fixture release rewrites ${f}`);
   const lean = cli(['--decide'], {}, release);
   assert.equal(lean.code, 0, lean.stderr);
   assert.deepEqual(lean.outputs, { lane: 'lean' }, lean.stdout);

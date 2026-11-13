@@ -167,7 +167,8 @@ export interface ReadRhino3dmOptions {
   locateFile?: (path: string, prefix: string) => string;
   subdLevel?: 0 | 1 | 2 | 3;        // default 2
   maxTriangles?: number;            // default 30_000_000 drawn, instances counted per placement;
-                                    // a curve or point cloud vertex counts a third of a triangle;
+                                    // a part costs its triangles or a third of one per vertex,
+                                    // whichever is more (see Size ceiling);
                                     // a whole count, 0 or more: RangeError otherwise
   bakeInstances?: boolean;          // default false: blocks come back as definitions + instances
   onProgress?: (done: number, total: number) => void;
@@ -200,18 +201,18 @@ export interface RhinoImport {
     ifcClass: string;                       // IFC::Class when valid, else IfcBuildingElementProxy
     name: string; description: string; objectType: string;
     layer: number;
-    hidden: boolean;                        // object hidden or any layer on its path off
+    hidden: boolean;                        // object hidden or any layer on its path off; merged: all parts hidden
     objectIds: string[];                    // Rhino UUIDs merged into this entity
     geometryType: string;                   // Rhino class: "Mesh", "Brep", "InstanceReference", "NurbsCurve", ...
     userStrings: RhinoUserStrings;          // the first object's, verbatim and in file order, then what merged objects add
     propertySets: { name: string; properties: [string, string][] }[];
   }[];
-  meshes: (RhinoImportGeometry & { entity: number; color: RhinoRgba })[];
+  meshes: (RhinoImportGeometry & { entity: number; color: RhinoRgba; hidden: boolean })[];
   definitions: { name: string; meshes: (RhinoImportGeometry & { color: RhinoRgba | null })[] }[];
-  instances: { entity: number; definition: number; transform: number[]; color: RhinoRgba }[];
-  pointClouds: { entity: number; origin: RhinoVector3; positions: Float32Array; colors: Uint8Array | null; color: RhinoRgba }[];
-  curves: { entity: number; origin: RhinoVector3; positions: Float32Array; closed: boolean; color: RhinoRgba }[];
-  textDots: { entity: number; position: RhinoVector3; text: string; color: RhinoRgba }[];
+  instances: { entity: number; definition: number; transform: number[]; color: RhinoRgba; hidden: boolean }[];
+  pointClouds: { entity: number; origin: RhinoVector3; positions: Float32Array; colors: Uint8Array | null; color: RhinoRgba; hidden: boolean }[];
+  curves: { entity: number; origin: RhinoVector3; positions: Float32Array; closed: boolean; color: RhinoRgba; hidden: boolean }[];
+  textDots: { entity: number; position: RhinoVector3; text: string; color: RhinoRgba; hidden: boolean }[];
   skipped: Record<string, number>;          // by reason/type: "Point": 8, "Brep:no-render-mesh": 3
   warnings: string[];                       // one line per distinct condition
 }
@@ -255,6 +256,11 @@ interface RhinoImportGeometry {
 - `curves[i].positions` is a polyline. A curve that is not a polyline is
   sampled at 32 points per span, at most 8,192 per curve.
 - `pointClouds[i].colors` is RGBA bytes per point, or null.
+- `hidden` on a mesh, instance, point cloud, curve or text dot is the flag of
+  the object that drew it, computed as `entities[i].hidden` is. It equals the
+  entity's flag except in an entity that merges parts that differ (see Layers,
+  visibility, hierarchy). Added after v1 shipped, in v1: a reader that ignores
+  it sees the same result as before.
 
 Guarantees, so the adapter never checks them: every index is in range; layers
 come parent first; every number is finite, after unit scaling and after every
@@ -434,9 +440,10 @@ its winding flipped and its normals transformed by the inverse transpose
   `InstanceReference:cycle` and reported [test: a crafted self-referencing
   definition].
 - A **drawing budget** caps drawn triangles at `maxTriangles`, a block's
-  triangles counted once per placement in both modes, and a placement's block
-  meshes admitted whole or left out whole (see Size ceiling). A curve or point cloud
-  vertex is charged a third of a triangle, at top level and per placement:
+  cost counted once per placement in both modes, and a placement's block
+  meshes admitted whole or left out whole (see Size ceiling). A vertex is
+  charged a third of a triangle when that is more than a part's triangles, at
+  top level and per placement:
   without that a 20,000-point cloud in a block placed 500 times came back as
   120 MB with nothing reported [ran, then fixed]. Reaching the budget stops
   drawing for the rest of the file (text dots excepted) and reports how many
@@ -634,6 +641,15 @@ transparency rule [test].
 - `layers[i].visible` holds the layer's own flag. `entities[i].hidden` is
   `object.visible === false || mode === Hidden || any ancestor layer off`
   [test]. A merged entity is hidden when all its objects are.
+- Visibility stays per part. Parts that share a GlobalId and its group merge
+  into one entity (D8) whatever their visibility, so a group can hold a hidden
+  part, or one on a layer that is off, next to a visible one. One entity flag
+  cannot say which, so every geometry record carries `hidden`, its own
+  object's flag. A consumer hides exactly what Rhino hides by leaving out a
+  record whose `hidden` is set while its entity's is not, and keeps the entity
+  flag for the user's show and hide [test: a crafted group of a visible box, a
+  hidden box and a curve on an off layer, and one hidden object of its own].
+  Not splitting the entity keeps D8: the parts are one IFC element.
 - Layers are reordered parent first, keeping file order among siblings. A
   layer whose parent is missing becomes a root; so does a layer in a parent
   cycle, with a warning. An object whose layer index is outside the table
@@ -799,8 +815,25 @@ What that says:
   in the worker. Whether a tab survives that is [unproven]; the one-shot
   worker contains a crash either way.
 
+**What the budget charges.** Every drawn part costs its triangles, or a third
+of a triangle per vertex, rounded up, whichever is more. That one rule covers
+meshes, curves (polyline points or samples) and point clouds, at top level and
+per placement, in both instance modes; text dots stay on their own limit. A
+block's cost is the sum of its meshes', so the admission below works on whole
+numbers. Memory follows the vertex buffers as much as the triangles: before
+the vertex charge, a mesh of 1 triangle over 100,000 vertices came back with
+2.4 MB of buffers at `maxTriangles: 10`, and 50 baked placements of it with
+120 MB at `maxTriangles: 100` [measured, then fixed; test]. It is refused at
+10 now, since it costs 33,334. A mesh whose every vertex is in some triangle
+has at most three per triangle, so it costs its triangles alone and normal
+files are charged as before [test: the box block at 120; ran: none of the 73
+meshes of our FZK export, the 271 of duplex, or the 4 in the five readable
+Rhino samples has more than three vertices per triangle]. Curves and clouds were charged by vertex already; 100,000 points
+need `maxTriangles: 33,334` and are refused at 33,333 [measured]. One budget,
+no second option: the triangle is the unit, and a vertex is priced in it.
+
 **The triangle budget admits a placement's block meshes whole, in both modes.**
-`maxTriangles` is charged a block's triangles once per placement, and a
+`maxTriangles` is charged a block's cost once per placement, and a
 placement that would draw them all and does not fit is left out entirely, so
 neither mode draws part of that set. Before that rule the option decided
 whether a file read at all, because baking charged mesh by mesh: a block of two

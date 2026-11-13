@@ -127,3 +127,25 @@ test('structural removal prunes a rendered member and one Undo restores its mesh
   state().redo(SAMPLE_MODEL);
   assert.ok(!meshIds().includes(globalId));
 });
+
+test('structural variants record their concrete IFC type for undo (#9860)', async () => {
+  const { dataStore } = await seedAuthoringSample();
+  const storey = dataStore.entities.getExpressIdByGlobalId(GROUND_STOREY)!;
+  const api = createStoreAdapter(useViewerStore);
+  await loadStructuralWrites();
+  const check = (ref: { modelId: string; expressId: number }, expected: string) => {
+    const history = useViewerStore.getState().undoStacks.get(ref.modelId)!;
+    assert.equal(history.at(-1)?.entityId, ref.expressId);
+    assert.equal(history.at(-1)?.attributeName, expected);
+    useViewerStore.getState().undo(ref.modelId);
+    const view = useViewerStore.getState().mutationViews.get(ref.modelId)!;
+    assert.equal(view.getNewEntity(ref.expressId), null, 'the concrete entity is undone');
+    useViewerStore.getState().redo(ref.modelId);
+    assert.equal(useViewerStore.getState().mutationViews.get(ref.modelId)!.getNewEntity(ref.expressId)?.type.toUpperCase(), expected, 'redo restores the concrete type');
+  };
+  check(api.addStructuralLoad!(SAMPLE_MODEL, { Type: 'IfcSurfaceReinforcementArea', ShearReinforcement: 0.01 }), 'IFCSURFACEREINFORCEMENTAREA');
+  const m = api.addStructuralCurveMember(SAMPLE_MODEL, storey, { ...member, Type: 'IfcStructuralCurveMemberVarying' });
+  check(m, 'IFCSTRUCTURALCURVEMEMBERVARYING');
+  const c = api.addStructuralPointConnection(SAMPLE_MODEL, storey, { Position: [0, 0, 0] });
+  check(api.connectStructuralMemberToConnection(SAMPLE_MODEL, m.expressId, c.expressId, { ConnectionConstraint: { PointOnRelatingElement: [0,0,0], EccentricityInX: 0.1, EccentricityInY: 0, EccentricityInZ: 0 } }), 'IFCRELCONNECTSWITHECCENTRICITY');
+});

@@ -28,6 +28,9 @@ import { unsupportedOperation } from './capabilities.js';
 export function structuralStoreStubs() {
   return {
     addStructuralPlanarAction: unsupportedOperation('store.addStructuralPlanarAction', 'addStructuralPlanarAction not supported in MCP v0.1; use entity_create'),
+    addStructuralLoad: unsupportedOperation('store.addStructuralLoad', 'addStructuralLoad not supported in MCP v0.1; use entity_create'),
+    addStructuralCurveAction: unsupportedOperation('store.addStructuralCurveAction', 'addStructuralCurveAction not supported in MCP v0.1; use entity_create'),
+    connectStructuralElement: unsupportedOperation('store.connectStructuralElement', 'connectStructuralElement not supported in MCP v0.1; use entity_create'),
     addStructuralSurfaceAction: unsupportedOperation('store.addStructuralSurfaceAction', 'addStructuralSurfaceAction not supported in MCP v0.1; use entity_create'),
     addStructuralPointReaction: unsupportedOperation('store.addStructuralPointReaction', 'addStructuralPointReaction not supported in MCP v0.1; use entity_create'),
     addStructuralCurveReaction: unsupportedOperation('store.addStructuralCurveReaction', 'addStructuralCurveReaction not supported in MCP v0.1; use entity_create'),

@@ -384,10 +384,23 @@ describe('getCommitIndex', () => {
     expect(second.partial).toBe(false);
   });
 
-  // Review on #8647: `index.catch(() => cache.delete(key))` deleted
-  // whatever entry was under the key, so a build that outlives the TTL could
-  // delete a SECOND, already-started build's entry out from under it when
-  // the first one finally rejected.
+  it('refreshes a partial index after the wall clock moves backward (#8648)', async () => {
+    const world = worldWithSets([{ versionSetId: 'vs-1', name: 'Set', fileAreaId: 'fa-models', files: {} }]);
+    const inner = createDaluxApiMock(world);
+    let broken = true;
+    const fetcher: typeof fetch = (input, init) => {
+      if (broken && String(input).includes('/version_sets/vs-1/files')) return Promise.resolve(new Response('unavailable', { status: 500 }));
+      return inner(input, init);
+    };
+    const client = new BrowserDaluxApiClient({ baseUrl: DALUX_MOCK_BASE_URL, apiKey: 'test-key' }, createDaluxMockContext(fetcher));
+    expect((await getCommitIndex(client, 'p-alpha', undefined, 3_600_000)).partial).toBe(true);
+    broken = false;
+    expect((await getCommitIndex(client, 'p-alpha', undefined, 0)).partial).toBe(false);
+  });
+
+  // Review on #8647: a rejected old build must not evict a replacement.
+  // In-flight builds now ignore TTL (#8648); explicit invalidation can still
+  // replace an entry while its original callers await the old build.
   it('a rejected sweep evicts only its own cache entry, not a newer one', async () => {
     let resolveFirst!: () => void;
     const firstGate = new Promise<void>((resolve) => {
@@ -408,8 +421,9 @@ describe('getCommitIndex', () => {
 
     // Starts the first sweep (now = 0); it hangs on `firstGate`.
     const first = getCommitIndex(client, 'p-alpha', undefined, 0);
-    // A second call, past the first's TTL, starts a SECOND sweep under the
-    // same key and succeeds immediately.
+    // Explicit invalidation allows a fresh sweep without cancelling callers
+    // already awaiting the first one. TTL alone must not start another build.
+    invalidateCommitIndex();
     const second = await getCommitIndex(client, 'p-alpha', undefined, 10 * 60_000);
     expect(second.models.size).toBe(0);
     // Now let the first sweep's rejection land.
@@ -509,5 +523,59 @@ describe('history sweep review regressions (#8647)', () => {
     const index = await getCommitIndex(client, 'p-alpha');
     expect(index.partial).toBe(true);
     expect(index.models.size).toBe(0);
+  });
+
+  it('expires an index when the clock reads earlier than its build time (#8648)', async () => {
+    let calls = 0;
+    const inner = createDaluxApiMock(worldWithSets([]), { pageSize: 1 });
+    const client = new BrowserDaluxApiClient(
+      { baseUrl: DALUX_MOCK_BASE_URL, apiKey: 'test-key' },
+      createDaluxMockContext((input, init) => {
+        calls += 1;
+        return inner(input, init);
+      }),
+    );
+    await getCommitIndex(client, 'p-alpha', undefined, 10 * 60_000);
+    const afterFirst = calls;
+    // Same instant: served from cache.
+    await getCommitIndex(client, 'p-alpha', undefined, 10 * 60_000);
+    expect(calls).toBe(afterFirst);
+    // A clock that went backwards gives no usable age; rebuild, don't keep it.
+    await getCommitIndex(client, 'p-alpha', undefined, 0);
+    expect(calls).toBeGreaterThan(afterFirst);
+  });
+});
+
+
+describe('concurrent index retention (#8648)', () => {
+  beforeEach(() => invalidateCommitIndex());
+
+  it('shares an in-flight sweep even after its original TTL has elapsed', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    let calls = 0;
+    const inner = createDaluxApiMock(worldWithSets([]));
+    const client = new BrowserDaluxApiClient({ baseUrl: DALUX_MOCK_BASE_URL, apiKey: 'test-key' }, createDaluxMockContext(async (input, init) => {
+      calls++; await gate; return inner(input, init);
+    }));
+    const first = getCommitIndex(client, 'p-alpha', undefined, 0);
+    const second = getCommitIndex(client, 'p-alpha', undefined, 60 * 60_000);
+    release();
+    const [one, two] = await Promise.all([first, second]);
+    expect(two).toBe(one);
+    expect(calls).toBe(1);
+  });
+
+  it('evicts settled excess indexes after nine simultaneous builds complete', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const inner = createDaluxApiMock(worldWithSets([]));
+    const clients = Array.from({ length: 9 }, () => new BrowserDaluxApiClient({ baseUrl: DALUX_MOCK_BASE_URL, apiKey: 'test-key' }, createDaluxMockContext(async (input, init) => {
+      await gate; return inner(input, init);
+    })));
+    const pending = clients.map(client => getCommitIndex(client, 'p-alpha', undefined, 0));
+    release();
+    const indexes = await Promise.all(pending);
+    expect(await getCommitIndex(clients[0], 'p-alpha', undefined, 0)).not.toBe(indexes[0]);
   });
 });

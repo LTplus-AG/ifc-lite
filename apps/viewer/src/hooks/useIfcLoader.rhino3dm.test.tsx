@@ -75,7 +75,8 @@ describe('useIfcLoader .3dm route', () => {
     assert.ok(model, 'the model was registered');
     assert.equal(model.loadState, 'complete', 'the load settled rather than hanging mid-read');
     assert.equal(model.loadPath, '3dm');
-    assert.equal(model.schemaVersion, 'IFC5');
+    assert.equal(model.schemaVersion, 'IFC4');
+    assert.equal(model.ifcDataStore?.sourceKind, 'tabular');
     assert.equal(model.loadError, null);
     assert.equal(useViewerStore.getState().loading, false);
     assert.equal(model.ifcDataStore?.entityCount, 2);

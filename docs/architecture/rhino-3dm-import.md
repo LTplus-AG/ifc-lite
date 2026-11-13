@@ -148,6 +148,45 @@ format-agnostic body into `buildTabularDataStore(tables, meta)`. IFCX keeps its
 current behaviour, pinned by its existing tests, and Rhino calls the same
 function. This is a lift, not a fork.
 
+### What the store says about itself
+
+Two separate answers, since #9976 split them.
+
+- **The schema label is `IFC4`.** It names the schema the entity table's type
+  names belong to. `IFC::Class` must name an instantiable `IfcProduct` subtype
+  of IFC2X3, IFC4 or IFC4X3, the fallback is `IfcBuildingElementProxy`, and
+  IFC4 is the schema covering every class the reader can emit as well as the
+  house default when a source states none.
+- **What backs it is `sourceKind: 'tabular'`**, which `buildTabularDataStore`
+  sets for every caller. Every gate meaning "no STEP records behind this
+  store" reads that marker, so it keeps refusing a `.3dm` whatever the label
+  says: the STEP export, the STEP re-serialization for the energy export, the
+  ion upload, the IDS worker, remeshing, registry publishing, the schedule
+  splice target and the native authoring commands. Each of those gates is
+  pinned by #9976's own tests over a tabular store [src]; a real `.3dm` store
+  is driven through the STEP export gate here [test].
+
+The label was `IFC5` while that was how a store with no STEP bytes was
+recognised. `IFC5` is not a true statement about a `.3dm`, and it handed one
+IFCX behaviour it has no business with: `isIfcxDataStore` answered yes, the
+changes export routed to the IFCX exporter, federation re-composed the model
+as IFCX overlays, and a room seeded it by re-parsing its bytes as IFCX.
+
+Three sites decided by the label alone and are now gated on the marker in
+this PR, because the honest label makes each reachable:
+
+| Site | What it would have done |
+|---|---|
+| `ExportDialog.tsx`, the merged and STEP branches | written an empty or garbage IFC through `exportModelStep` or the merged exporter. `canWriteIfcFromStores` refuses, and the dialog says why (`exportDialog.noStepRecords.error`); choosing IFC5 in the picker still exports the model as IFCX [ran]. The merged branch asks for ONE writable store rather than all of them, and skips a tabular model the way it skips one with no store, so a `.3dm` or `.ifcx` in the federation does not refuse the merge of the IFC models beside it. |
+| `share-scope.ts` `buildShareSeed` | seeded a room slot from STEP records it has none of. `isSeedableModel` leaves the model out, and the Share dialog's seedable count reads the same predicate, so its "{seedable} of {loaded}" notice says what the seed will do. A workspace whose ONLY model is a `.3dm` then behaves exactly as one holding only a GLB or a point cloud: the owner path with an empty seed, which `buildShareSeed`'s docblock states is deliberate. That case carries no notice, because `ShareScopeField` renders one only at `models.size > 1` — pre-existing, and not widened here. |
+| `useAppearancePanel.ts` | offered appearance authoring, which serializes `IfcSurfaceStyle` records into a STEP source the store has not got. Its own sentence, `appearance.controller.requiresStepRecords`, after the schema branch so IFCX keeps its existing message: the schema refusal would name the schema this store is now labelled. |
+| `scan-to-bim/run-detection.ts` `isIfcModel` | made a `.3dm` a proposal target, taking it from a real STEP model in the same workspace. Creation would then refuse on "no storey to place the elements on", but only after the target was already lost. |
+
+One site widens without reaching an export and is left as it is: the
+schema-registry readers (`charts/element-field-reader.ts`,
+`query/entity-node.ts`, `collab/schema-attribute-names.ts`) now get an IFC4
+registry instead of none, which is what the entity table's classes are.
+
 ### Where parsing runs
 
 Parsing runs in a one-shot module worker, `apps/viewer/src/workers/rhinoImport.worker.ts`,

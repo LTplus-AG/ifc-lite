@@ -61,6 +61,21 @@ export function modelsInShareScope(
 }
 
 /**
+ * Can this model go into a room slot? A slot is seeded one of two ways, and a
+ * model needs a store one of them can read: `seedFromStep` reads STEP records,
+ * `seedFromIfcx` re-parses an IFCX `source`. A point cloud or a load still in
+ * flight has no store at all. A tabular store has one, but unless it is IFCX
+ * its `source` holds its reader's own format (a `.3dm`), so neither path can
+ * carry it. Both the seed and the dialog's seedable count ask here, so what
+ * the dialog promises is what the seed delivers.
+ */
+export function isSeedableModel(model: Pick<FederatedModel, 'ifcDataStore' | 'schemaVersion'>): boolean {
+  const store = model.ifcDataStore;
+  if (!store) return false;
+  return store.sourceKind !== 'tabular' || (model.schemaVersion ?? store.schemaVersion) === 'IFC5';
+}
+
+/**
  * Build the seed `startCollab` consumes. ALWAYS a seed, even an empty one:
  * `startCollab` tells an owner from a recipient by the presence of `seed`,
  * so an owner with nothing seedable (the only model still loading, a GLB or
@@ -78,7 +93,7 @@ export function buildShareSeed(
   const seedModels: CollabSeedModel[] = [];
   for (const m of modelsInShareScope(models, activeModelId, scope)) {
     const store = m.ifcDataStore;
-    if (!store) continue;
+    if (!store || !isSeedableModel(m)) continue;
     const isIfcx = (m.schemaVersion ?? store.schemaVersion) === 'IFC5';
     seedModels.push({
       modelId: m.id,

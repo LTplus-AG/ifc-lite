@@ -72,6 +72,35 @@ export function listIonExportModels(
       && (model.id === '__legacy__' || models.get(model.id)?.ifcDataStore));
 }
 
+/**
+ * Can this export write a full IFC file from the stores it would read?
+ *
+ * The merged and STEP branches read a store's `source` as STEP records, which
+ * a tabular store has not got: a reader handed over finished tables, and
+ * `source` holds that reader's own format (a `.3dm`). The IFCX branch reads
+ * the tables instead, so an IFCX target is always allowed; anything else over
+ * a tabular store would download an empty or garbage file.
+ *
+ * A merged export asks for ONE writable store, not all of them: it skips a
+ * tabular model the way it skips one with no store, so a `.3dm` or `.ifcx`
+ * sitting in the federation does not refuse the merge of the IFC models
+ * beside it. A single-model export has only the selection to write.
+ */
+export function canWriteIfcFromStores(
+  models: ReadonlyMap<string, FederatedModel>,
+  selected: { readonly ifcDataStore?: IfcDataStore | null } | undefined,
+  scope: 'single' | 'merged',
+  targetIsIfcx: boolean,
+): boolean {
+  if (targetIsIfcx) return true;
+  // An absent store is not a refusal: `ensureModelExportReady` hydrates one at
+  // export time. Only a STATED tabular marker disqualifies a model.
+  if (scope === 'merged') {
+    return exportableModels(models).some((model) => model.ifcDataStore?.sourceKind !== 'tabular');
+  }
+  return selected?.ifcDataStore?.sourceKind !== 'tabular';
+}
+
 export function resolveExportModel(
   models: ReadonlyMap<string, FederatedModel>,
   selectedModelId: string,

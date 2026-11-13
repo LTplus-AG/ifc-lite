@@ -39,7 +39,7 @@ import { useTranslation, type TranslationKey } from '@/i18n';
 import type { CollabRole } from '@/store/slices/collabSlice';
 import { buildShareUrl, mintRoomToken, parseRoleFromToken } from '@/lib/collab/share-link';
 import { describeSeedPhase, isCollabSeedInFlight } from '@/lib/collab/seed-phase';
-import { modelsInShareScope, shareScopeIsChoice, type ShareScope } from '@/lib/collab/share-scope';
+import { isSeedableModel, modelsInShareScope, shareScopeIsChoice, type ShareScope } from '@/lib/collab/share-scope';
 import { useShareRoomCreation } from './useShareRoomCreation';
 import { ShareScopeField } from './ShareScopeField';
 
@@ -114,10 +114,11 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
   }, [models, activeModelId]);
 
   const hasModel = models.size > 0;
-  // What "all loaded models" can put in a room: a GLB, a point cloud or a
-  // model still loading has no parsed store and is left out of the seed.
+  // What "all loaded models" can put in a room. The seed asks the same
+  // predicate, so the "{seedable} of {loaded}" notice cannot promise a model
+  // the seed then drops.
   const seedableCount = useMemo(() => modelsInShareScope(models, activeModelId, 'all')
-    .filter((model) => model.ifcDataStore).length, [models, activeModelId]);
+    .filter(isSeedableModel).length, [models, activeModelId]);
   const isJoiner = Boolean(collabRoomId && collabRole && collabRole !== 'admin');
   // The room exists but the model is still going in: no invite until it has.
   const seedInFlight = Boolean(collabRoomId) && isCollabSeedInFlight(seedPhase);

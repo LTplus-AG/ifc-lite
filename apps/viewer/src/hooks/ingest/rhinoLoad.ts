@@ -42,7 +42,7 @@ export interface RhinoLoadOptions {
   finalize(
     dataStore: IfcDataStore,
     geometry: GeometryResult,
-    schemaVersion: 'IFC5',
+    schemaVersion: 'IFC4',
     patch: { loadPath: '3dm' },
   ): Promise<void>;
   /**
@@ -63,7 +63,7 @@ export async function loadRhino3dmModel(options: RhinoLoadOptions): Promise<void
     // Nothing was acquired before this point, so there is nothing to unwind.
     if (isStale()) return;
     if (options.targetKind === 'primary') options.onPrimary(result);
-    await options.finalize(result.dataStore, result.geometryResult, 'IFC5', { loadPath: '3dm' });
+    await options.finalize(result.dataStore, result.geometryResult, 'IFC4', { loadPath: '3dm' });
     if (isStale()) return;
     captureModelLoaded({
       format: '3dm', file_size_mb: Math.round(options.fileSizeMB * 100) / 100, load_target: options.targetKind,

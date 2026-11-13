@@ -30,6 +30,7 @@ import { resetRunOutputs } from './lib/run-output.mjs';
  * @unwired-by-design needs a real GPU and Windows Chrome; run by the parity loop, not CI.
  */
 
+import { combineSourceInfo } from '../probes/sdk/run.mjs';
 import { hardwareAdapter, themedResult } from './lib/oracles.mjs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
@@ -88,7 +89,8 @@ async function main() {
     await writeFile(join(args.out, rel), bytes);
     return rel;
   };
-  const source = gitSource(ROOT);
+  const probes = gitSource(ROOT);
+  const source = args.distCommit ? combineSourceInfo({ commit: args.distCommit, dirty: false }, probes) : probes;
   const distIndexSha256 = sha256(await readFile(join(args.dist, 'index.html')));
   // Machine paths stay out of results that may be committed: --dist and --out become placeholders.
   const argv = process.argv.slice(2).map((a, i, all) => (['--dist', '--out', '--cdp'].includes(all[i - 1]) ? `<${all[i - 1].slice(2)}>` : a));

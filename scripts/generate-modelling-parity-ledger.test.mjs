@@ -655,3 +655,18 @@ test('#9328 incomplete SVG drawing commands cannot certify linework', () => {
     assert.equal(ART.checkSvg(Buffer.from(`<svg><path d="${d}"/></svg>`)).status,'pass',d);
   }
 });
+
+test('#9328 coincident SVG geometry and quoted attribute text are not linework', () => {
+  for(const element of ['<path d="M0 0 L0 0"/>','<path d="M0 0 H0 V0"/>','<path d="M0 0 C0 0 0 0 0 0"/>','<polyline points="0,0 0,0"/>','<polygon points="1,1 1,1 1,1"/>',`<path aria-label=" d='M0 0 L1 1'"/>`]) {
+    assert.equal(ART.checkSvg(Buffer.from(`<svg>${element}</svg>`)).status,'fail',element);
+  }
+  assert.equal(ART.checkSvg(Buffer.from('<svg><path d="M0 0 C1 1 -1 1 0 0"/></svg>')).status,'pass');
+});
+
+test('#9328 UI runtime attribution uses the dist revision and records the probe separately', async () => {
+  const { combineSourceInfo } = await import('../tests/modelling-parity/probes/sdk/run.mjs');
+  const source=combineSourceInfo({commit:'runtime',dirty:false},{commit:'harness',dirty:false});
+  assert.equal(source.commit,'runtime');
+  assert.equal(source.probes.commit,'harness');
+  assert.equal(source.dirty,true);
+});

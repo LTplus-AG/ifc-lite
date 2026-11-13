@@ -20,12 +20,12 @@ export function drawablePath(data) {
     tokens.push(/^[A-Za-z]$/.test(match[0])?match[0]:Number(match[0]));
     offset=token.lastIndex;
   }
-  let i=0, first=true, drawable=false;
+  let i=0, first=true, drawable=false, current=[0,0], startPoint=[0,0];
   while(i<tokens.length) {
     if(typeof tokens[i]!=='string') return false;
-    const command=tokens[i++].toUpperCase(), size=PARAMETERS[command];
+    const raw=tokens[i++], command=raw.toUpperCase(), relative=raw!==command, size=PARAMETERS[command];
     if(first && command!=='M') return false;
-    if(command==='Z') continue;
+    if(command==='Z') { drawable ||= current.some((v,k)=>v!==startPoint[k]); current=[...startPoint]; continue; }
     const start=i;
     while(i<tokens.length && typeof tokens[i]==='number') i++;
     const values=tokens.slice(start,i);
@@ -35,8 +35,19 @@ export function drawablePath(data) {
         if(values[k]<0 || values[k+1]<0 || ![0,1].includes(values[k+3]) || ![0,1].includes(values[k+4])) return false;
       }
     }
-    // Additional coordinate pairs after moveto are implicit lineto commands.
-    if(command!=='M' || values.length>2) drawable=true;
+    for(let k=0;k<values.length;k+=size) {
+      const group=values.slice(k,k+size);
+      const point=(x,y)=>[x+(relative?current[0]:0),y+(relative?current[1]:0)];
+      let points;
+      if(command==='H') points=[[group[0]+(relative?current[0]:0),current[1]]];
+      else if(command==='V') points=[[current[0],group[0]+(relative?current[1]:0)]];
+      else if(command==='A') points=[point(group[5],group[6])];
+      else { points=[]; for(let n=0;n<group.length;n+=2) points.push(point(group[n],group[n+1])); }
+      if(!points.flat().every(Number.isFinite)) return false;
+      if(command==='M' && k===0) startPoint=[...points[0]];
+      else if(points.some(p=>p.some((v,n)=>v!==current[n]))) drawable=true;
+      current=points.at(-1);
+    }
     first=false;
   }
   return drawable;

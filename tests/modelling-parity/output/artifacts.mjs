@@ -135,7 +135,13 @@ export function missingIfcClasses(census, required) {
 
 /** Conservative drawable-geometry check; this is tag-balanced sanity, not an XML parser. */
 function drawable(tag, attrs) {
-  const attr = key => new RegExp(`(?:^|\\s)${key}\\s*=\\s*(["'])(.*?)\\1`, 's').exec(attrs)?.[2];
+  const attributes=new Map(); let duplicate=false;
+  const remaining=attrs.replace(/(?:^|\s)([A-Za-z_:][\w:.-]*)\s*=\s*(["'])(.*?)\2/gs, (_whole,key,_quote,value)=>{
+    if(attributes.has(key)) duplicate=true;
+    attributes.set(key,value); return '';
+  });
+  if(duplicate || remaining.trim()) return false;
+  const attr=key=>attributes.get(key);
   if (tag === 'path') return drawablePath(attr('d') ?? '');
   if (tag === 'line') {
     const values = ['x1','y1','x2','y2'].map(k => Number(attr(k) ?? 0));
@@ -143,7 +149,7 @@ function drawable(tag, attrs) {
   }
   if (tag === 'polyline' || tag === 'polygon') {
     const points = (attr('points') ?? '').trim().split(/[\s,]+/).map(Number);
-    return points.length >= 4 && points.length % 2 === 0 && points.every(Number.isFinite);
+    return points.length >= 4 && points.length % 2 === 0 && points.every(Number.isFinite) && points.some((v,i)=>v!==points[i%2]);
   }
   return false;
 }

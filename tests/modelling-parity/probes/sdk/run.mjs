@@ -67,11 +67,15 @@ export function sourceInfo(root = ROOT) {
   }
 }
 
+/** Keep runtime and probe origins distinct, including when the build is supplied as a commit. */
+export function combineSourceInfo(build, probes, includeProbes = true) {
+  return { ...build, dirty: build.dirty || probes.dirty || build.commit !== probes.commit,
+    ...(includeProbes ? { probes } : {}) };
+}
+
 /** Attribute the runtime to its build, retaining the probe revision separately. */
 export function sourceProvenance(buildRoot, probeRoot = ROOT) {
-  const build = sourceInfo(buildRoot), probes = sourceInfo(probeRoot);
-  return { ...build, dirty: build.dirty || probes.dirty || build.commit !== probes.commit,
-    ...(resolve(buildRoot) !== resolve(probeRoot) ? { probes } : {}) };
+  return combineSourceInfo(sourceInfo(buildRoot), sourceInfo(probeRoot), resolve(buildRoot) !== resolve(probeRoot));
 }
 
 /**

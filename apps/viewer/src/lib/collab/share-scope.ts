@@ -76,6 +76,23 @@ export function isSeedableModel(model: Pick<FederatedModel, 'ifcDataStore' | 'sc
 }
 
 /**
+ * The models in scope a share WILL carry: exactly what {@link buildShareSeed}
+ * puts in the room, as one expression the dialog and the mint can both ask.
+ *
+ * Asking it twice is what went wrong: the dialog's notice was chosen from a
+ * seedable count taken over scope `'all'` while the mint decided over the
+ * SELECTED scope, so an `'active'` share of a `.3dm` beside a loaded IFC
+ * promised a partial share and then created no room at all.
+ */
+export function seedableModelsInScope(
+  models: ReadonlyMap<string, FederatedModel>,
+  activeModelId: string | null,
+  scope: ShareScope,
+): FederatedModel[] {
+  return modelsInShareScope(models, activeModelId, scope).filter(isSeedableModel);
+}
+
+/**
  * The models in scope that this share will NOT carry, by name, and only the
  * ones whose exclusion is worth saying out loud: a model that HAS a store the
  * seed cannot read.
@@ -116,9 +133,9 @@ export function buildShareSeed(
   georefMutations?: ReadonlyMap<string, GeorefMutationDataLike>,
 ): CollabSeedInput {
   const seedModels: CollabSeedModel[] = [];
-  for (const m of modelsInShareScope(models, activeModelId, scope)) {
-    const store = m.ifcDataStore;
-    if (!store || !isSeedableModel(m)) continue;
+  for (const m of seedableModelsInScope(models, activeModelId, scope)) {
+    // `isSeedableModel` already refused a store-less model; this narrows it.
+    const store = m.ifcDataStore!;
     const isIfcx = (m.schemaVersion ?? store.schemaVersion) === 'IFC5';
     seedModels.push({
       modelId: m.id,

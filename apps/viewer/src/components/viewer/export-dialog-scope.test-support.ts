@@ -27,8 +27,13 @@ export const openExportDialog = (ui: HTMLElement, label: string): void =>
   click([...ui.querySelectorAll('button')].find(node => node.textContent?.includes(label))!);
 
 /** The dialog's Export button, so a test can read `disabled` before clicking. */
-export const exportButton = (): HTMLButtonElement =>
-  [...document.querySelectorAll('button')].find(node => node.textContent?.trim() === 'Export') as HTMLButtonElement;
+export function exportButton(): HTMLButtonElement {
+  const button = [...document.querySelectorAll('button')].find(node => node.textContent?.trim() === 'Export');
+  // Named, like ExportDialog.landxml.test.tsx's copy: a cast would fail the
+  // next line with "cannot read properties of undefined" instead.
+  assert.ok(button, 'the dialog renders its export action');
+  return button;
+}
 
 /** Switch the scope select from its single-model default to merged. */
 export async function chooseMerged(): Promise<void> {

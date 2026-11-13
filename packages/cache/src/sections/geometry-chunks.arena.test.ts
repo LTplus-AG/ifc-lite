@@ -82,7 +82,7 @@ describe('chunk decode arena', () => {
     const open = openGeometryChunksV13(section, 0, FORMAT_VERSION, { sharedArena: true });
     const [mesh] = await open.readChunk(0);
     expect(mesh.positions.buffer).toBe(mesh.indices.buffer); // still one shared block
-    expect(mesh.positions.buffer.byteLength).toBeLessThanOrEqual(open.chunks[0].uncompressedLength);
+    expect(mesh.positions.buffer.byteLength).toBeLessThanOrEqual(open.chunks[0].uncompressedLength + 3); // the hint, rounded up to 4 bytes
     expect([...mesh.positions]).toEqual([...small[0].positions]);
   });
 

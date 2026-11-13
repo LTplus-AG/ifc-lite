@@ -278,15 +278,10 @@ export interface ChunkDecodeOptions {
   /** Where compressed chunks inflate, e.g. a worker pool on a cache hit (`ChunkInflatePool`). Default: this thread. */
   inflate?: ChunkInflate;
   /**
-   * Copy each mesh's `positions`, `normals` and `indices` into shared, aligned
-   * ~1 MiB blocks (`ArrayArena`): one allocation per block instead of one
-   * ArrayBuffer per array. Default `false`: every array owns its own buffer.
-   *
-   * With `true`, an array is a VIEW into a block that other meshes of the
-   * chunk share. Read it through the view (`byteOffset`, `length`). Never
-   * transfer its `.buffer` to a worker, which detaches every other mesh in the
-   * block, and never reinterpret the whole `.buffer`. Copy first
-   * (`array.slice()`) to hand one mesh's arrays on.
+   * Copy mesh `positions`, `normals` and `indices` into shared, aligned blocks of up to ~1 MiB (`ArrayArena`),
+   * one allocation per block. Default `false`: every array owns its buffer. With `true`, an array is a VIEW
+   * into a block other meshes of the chunk share: read it through the view; never transfer or reinterpret its
+   * `.buffer` (that detaches or exposes the other meshes); copy (`array.slice()`) to hand one mesh's arrays on.
    */
   sharedArena?: boolean;
 }

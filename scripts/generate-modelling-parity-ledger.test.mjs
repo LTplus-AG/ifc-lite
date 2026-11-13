@@ -639,3 +639,19 @@ test('#9328 fillers require distinct opening entities', async () => {
   assert.equal(ownOpenings(valid,[...valid.of('IFCDOOR'),...valid.of('IFCWINDOW')]),true);
   assert.equal(ownOpenings(shared,[...shared.of('IFCDOOR'),...shared.of('IFCWINDOW')]),false);
 });
+
+test('#9328 one runtime build retains every distinct probe revision in summary provenance', () => {
+  const source=probe=>({commit:'build',dirty:false,probes:{commit:probe,dirty:false}});
+  const summary=score(CATALOGUE,[result('a','sdk','pass',{source:source('probe-a')}),result('b','ui','pass',{source:source('probe-b')}),result('d','sdk','pass',{source:source('probe-a')})]);
+  assert.deepEqual(summary.sources.map(s=>s.probes.commit).sort(),['probe-a','probe-b']);
+  assert.ok(summary.sources.every(s=>s.dirty));
+});
+
+test('#9328 incomplete SVG drawing commands cannot certify linework', () => {
+  for(const d of ['M0 0 L1','M0 0 C1 2 3 4 5','M0 0 Q1 2 3','M0 0 A1 1 0 0 0 1','M0 0 T1']) {
+    assert.equal(ART.checkSvg(Buffer.from(`<svg><path d="${d}"/></svg>`)).status,'fail',d);
+  }
+  for(const d of ['M0 0 L1 1','M0 0 H1','M0 0 V1','M0 0 C1 2 3 4 5 6','M0 0 Q1 2 3 4','M0 0 A1 1 0 0 0 1 2','M0 0 1 1']) {
+    assert.equal(ART.checkSvg(Buffer.from(`<svg><path d="${d}"/></svg>`)).status,'pass',d);
+  }
+});

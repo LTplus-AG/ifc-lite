@@ -14,6 +14,7 @@
  * the independent geometric checks described in run.mjs.
  */
 
+import { drawablePath } from './svg-path.mjs';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { parseEntityTable } from '../../../scripts/lib/entity-table.mjs';
@@ -135,7 +136,7 @@ export function missingIfcClasses(census, required) {
 /** Conservative drawable-geometry check; this is tag-balanced sanity, not an XML parser. */
 function drawable(tag, attrs) {
   const attr = key => new RegExp(`(?:^|\\s)${key}\\s*=\\s*(["'])(.*?)\\1`, 's').exec(attrs)?.[2];
-  if (tag === 'path') return /^\s*[Mm]/.test(attr('d') ?? '') && /[LlHhVvCcSsQqTtAa]\s*[-+]?(?:\d|\.\d)/.test(attr('d') ?? '');
+  if (tag === 'path') return drawablePath(attr('d') ?? '');
   if (tag === 'line') {
     const values = ['x1','y1','x2','y2'].map(k => Number(attr(k) ?? 0));
     return values.every(Number.isFinite) && (values[0] !== values[2] || values[1] !== values[3]);

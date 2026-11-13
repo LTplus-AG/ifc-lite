@@ -94,6 +94,7 @@ def test_rhino_round_trip(tmp_path, version, fixture, instancing):
     doc = r.File3dm.Read(str(path))
     assert doc is not None
     assert [layer.FullPath for layer in doc.Layers] == _layer_paths(manifest)
+    assert [list(map(list, layer.GetUserStrings())) for layer in doc.Layers] == [item["userStrings"] for item in manifest["layers"]]
     for obj in manifest["objects"]:
         actual = doc.Objects.FindId(uuid.UUID(obj["objectId"]))
         assert actual is not None
@@ -123,6 +124,45 @@ def test_rhino_round_trip(tmp_path, version, fixture, instancing):
     assert doc.Settings.ModelAbsoluteTolerance == manifest["settings"]["absoluteTolerance"]
     for key, value in manifest["documentStrings"]:
         assert doc.Strings[key] == value
+
+
+def test_spatial_layers_keep_their_ifc_identity(tmp_path):
+    """Import decision D3: project, site, building and storey layers carry the
+    GlobalId and class a reader needs to rebuild the spatial tree; storeys also
+    their elevation in metres. Class sublayers carry nothing."""
+    r = pytest.importorskip("rhino3dm")
+    model = REPO / "apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc"
+    path = tmp_path / "fzk.3dm"
+    ifclite_geom.write_3dm(ifclite_geom.rhino_scene(model.read_bytes()), path)
+    doc = r.File3dm.Read(str(path))
+    stamped = {layer.FullPath: dict(layer.GetUserStrings()) for layer in doc.Layers if layer.UserStringCount}
+    building = "Projekt-FZK-Haus::Gelaende::FZK-Haus"
+    assert stamped == {
+        "Projekt-FZK-Haus": {"IFC::GlobalId": "0lY6P5Ur90TAQnnnI6wtnb", "IFC::Class": "IfcProject"},
+        "Projekt-FZK-Haus::Gelaende": {"IFC::GlobalId": "0KMpiAlnb52RgQuM1CwVfd", "IFC::Class": "IfcSite"},
+        building: {"IFC::GlobalId": "2hQBAVPOr5VxhS3Jl0O47h", "IFC::Class": "IfcBuilding"},
+        building + "::Erdgeschoss": {
+            "IFC::GlobalId": "2eyxpyOx95m90jmsXLOuR0", "IFC::Class": "IfcBuildingStorey", "IFC::Elevation": "0"},
+        building + "::Dachgeschoss": {
+            "IFC::GlobalId": "273g3wqLzDtfYIl7qqkgcO", "IFC::Class": "IfcBuildingStorey", "IFC::Elevation": "2.7"},
+    }
+
+
+@pytest.mark.parametrize("damage", [
+    lambda layer: layer.pop("userStrings"),
+    lambda layer: layer.update(userStrings=[["IFC::Elevation", 2.7]]),
+    lambda layer: layer.update(userStrings=[["IFC::Class"]]),
+    lambda layer: layer.update(userStrings="IFC::Class"),
+], ids=["missing", "non-string value", "short pair", "not a list"])
+def test_writer_rejects_invalid_layer_user_strings(tmp_path, monkeypatch, writable_scene, damage):
+    import sys
+    monkeypatch.setitem(sys.modules, "rhino3dm", None)  # refused before the optional import
+    manifest = json.loads(writable_scene["manifest"])
+    damage(manifest["layers"][0])
+    scene = {"manifest": json.dumps(manifest), "blob": writable_scene["blob"]}
+    with pytest.raises(ValueError, match=r"layers\[0\]\.userStrings"):
+        ifclite_geom.write_3dm(scene, tmp_path / "bad.3dm")
+    assert not (tmp_path / "bad.3dm").exists()
 
 
 def test_rhino_double_precision_round_trip(tmp_path):

@@ -78,11 +78,11 @@ export function DrawingCanvasView({ vm, layers }: { vm: DrawingViewModel; layers
           annotation2DCursorPos={vm.annotation2DCursorPos}
           polygonAreaPoints={vm.polygonArea2DPoints}
           polygonAreaResults={vm.polygonArea2DResults}
-          textAnnotations={vm.textAnnotations2D}
+          textAnnotations={[...vm.textAnnotations2D, ...vm.tagTexts]}
           textAnnotationEditing={vm.textAnnotation2DEditing}
           cloudAnnotationPoints={vm.cloudAnnotation2DPoints}
           cloudAnnotations={vm.cloudAnnotations2D}
-          selectedAnnotation={vm.selectedAnnotation2D}
+          selectedAnnotation={vm.selectedAnnotation2D?.type === 'tag' ? { type: 'text', id: vm.selectedAnnotation2D.id } : vm.selectedAnnotation2D}
           ifcAnnotationLines={layers.ifcAnnotationData.lines}
           ifcAnnotationTexts={layers.ifcAnnotationData.texts}
           ifcAnnotationFills={layers.ifcAnnotationData.fills}

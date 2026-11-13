@@ -25,6 +25,10 @@ export const ToolErrorCode = {
   PARSE_FAILED: 'PARSE_FAILED',
   EXTERNAL_SERVICE_FAILED: 'EXTERNAL_SERVICE_FAILED',
   RATE_LIMITED: 'RATE_LIMITED',
+  /** `--bridge`: no browser tab is paired, or the paired tab went away mid-call. */
+  VIEWER_NOT_CONNECTED: 'VIEWER_NOT_CONNECTED',
+  /** `--bridge`: the paired tab did not answer in time. */
+  TIMEOUT: 'TIMEOUT',
   INTERNAL_ERROR: 'INTERNAL_ERROR',
 } as const;
 
@@ -35,6 +39,19 @@ export interface ToolErrorOptions {
   message: string;
   details?: Record<string, unknown>;
   hint?: string;
+}
+
+/**
+ * The message of a thrown value, whatever was thrown: `throw null` (e.g. from a
+ * `toJSON`) or a non-Error object must not turn a catch block into a second throw.
+ */
+export function describeThrown(err: unknown): string {
+  const message = err instanceof Error ? err.message
+    : typeof err === 'string' ? err
+      // A cross-realm error or a plain `{ message }` rejection still has a cause worth keeping.
+      : typeof err === 'object' && err !== null && typeof (err as { message?: unknown }).message === 'string' ? (err as { message: string }).message
+        : `a thrown ${err === null ? 'null' : typeof err}`;
+  return message.length > 500 ? `${message.slice(0, 500)}…` : message;
 }
 
 export function toolError(opts: ToolErrorOptions): CallToolResult {

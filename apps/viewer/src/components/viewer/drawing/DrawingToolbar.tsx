@@ -28,6 +28,7 @@ const TOOLS: ReadonlyArray<{ tool: Annotation2DTool; icon: typeof Ruler; labelKe
   { tool: 'none', icon: MousePointer2, labelKey: 'section2d.tools.select' },
   { tool: 'measure', icon: Ruler, labelKey: 'section2d.tools.distance' },
   { tool: 'polygon-area', icon: Hexagon, labelKey: 'section2d.tools.area' },
+  { tool: 'tag', icon: Tag, labelKey: 'section2d.tools.tag' },
   { tool: 'text', icon: Type, labelKey: 'section2d.tools.text' },
   { tool: 'cloud', icon: Cloud, labelKey: 'section2d.tools.cloud' },
 ];

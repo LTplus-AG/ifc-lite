@@ -75,4 +75,3 @@ export function thermalRows(samples) {
     return { throttled, unknown, line: `| ${fixture} | ${lane} | ${side} | ${rows.length} | ${throttled} | ${unknown} | ${ms.length ? Math.max(...ms) : '—'} | ${temps.length ? Math.max(...temps) : '—'} |` };
   }).filter((x) => x.throttled > 0 || x.unknown > 0).map((x) => x.line);
 }
-

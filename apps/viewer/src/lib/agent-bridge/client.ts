@@ -86,7 +86,7 @@ export interface BridgeClientOptions {
   WebSocket?: WebSocketConstructor;
   /** Where `pagehide` is observed; defaults to `window` when there is one. */
   lifecycle?: Pick<EventTarget, 'addEventListener' | 'removeEventListener'> | null;
-  /** Asked after a connection that never opened, to tell "denied" from "not running". */
+  /** Asked after a connection that never opened: the browser's `loopback-network` permission, to tell "denied" or "prompt pending" from "not running". */
   probePermission?: () => Promise<LocalNetworkPermission>;
   welcomeTimeoutMs?: number;
   /** Defaults to `BRIDGE_LIMITS.maxResultBytes`. */
@@ -163,6 +163,7 @@ export class BridgeClient {
   private handleOpen(ws: WebSocketLike): void {
     if (ws !== this.ws) return;
     this.opened = true;
+    this.setStatus({ kind: 'connecting', port: this.opts.port, opened: true });
     const hello: BridgeHelloMessage = {
       type: 'hello',
       protocol: BRIDGE_PROTOCOL_VERSION,
@@ -247,10 +248,11 @@ export class BridgeClient {
     const probe = this.opts.probePermission;
     if (!this.opened && probe && status.kind === 'error' && status.code === 'unreachable') {
       void probe().then((permission) => {
-        if (permission === 'denied' && this.current.kind === 'error' && this.current.code === 'unreachable') {
-          this.setStatus({ kind: 'error', code: 'permission-denied', port });
-        }
-      }, (err: unknown) => warn('could not read the local network permission', err));
+        if (this.current.kind !== 'error' || this.current.code !== 'unreachable') return;
+        if (permission === 'denied') this.setStatus({ kind: 'error', code: 'permission-denied', port });
+        // A prompt still pending (Firefox times it out after ~5 min, closing 1006) or dismissed looks like "nothing listening".
+        else if (permission === 'prompt') this.setStatus({ kind: 'error', code: 'unreachable', port, permission });
+      }, (err: unknown) => warn('could not read the loopback-network permission', err));
     }
   }
 

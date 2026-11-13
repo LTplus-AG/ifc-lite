@@ -55,3 +55,23 @@ it('twenty calls in a burst publish the activity log in a few batched updates', 
   assert.ok(activityUpdates <= 4, `published in ${activityUpdates} updates`);
   assert.equal(socket.sent.filter((frame) => frame.includes('"result"')).length, 20, 'and every call was answered');
 });
+
+it('the permission probe asks loopback-network, falls back to the older names for a denial only, and ignores prompt on a loopback page', async () => {
+  const { queryLocalNetworkPermission } = await import('./session');
+  const real = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  const withPermissions = async (states: Record<string, PermissionState>, host: string) => {
+    Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { permissions: {
+      query: async ({ name }: { name: string }) => {
+        if (!(name in states)) throw new TypeError(`unknown permission ${name}`);
+        return { state: states[name] };
+      },
+    } } });
+    try { return await queryLocalNetworkPermission(host); } finally { if (real) Object.defineProperty(globalThis, 'navigator', real); }
+  };
+  assert.equal(await withPermissions({ 'loopback-network': 'prompt' }, 'ifclite.com'), 'prompt');
+  assert.equal(await withPermissions({ 'loopback-network': 'prompt' }, 'localhost'), 'unknown', 'a loopback page never needs the permission');
+  assert.equal(await withPermissions({ 'loopback-network': 'denied' }, 'localhost'), 'denied');
+  assert.equal(await withPermissions({ 'local-network-access': 'denied' }, 'ifclite.com'), 'denied', 'older Chrome: a denial still shows');
+  assert.equal(await withPermissions({ 'local-network-access': 'prompt' }, 'ifclite.com'), 'unknown', 'older names never claim a pending prompt');
+  assert.equal(await withPermissions({}, 'ifclite.com'), 'unknown');
+});

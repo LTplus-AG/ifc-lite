@@ -32,7 +32,7 @@ export type AgentBridgeDisconnectReason =
 export type AgentBridgeErrorCode =
   /** Nothing answered on the port: the bridge is not running or uses another port. */
   | 'unreachable'
-  /** The browser's local network permission was denied for this site. */
+  /** The browser denied this site access to apps on this device (`loopback-network`). */
   | 'permission-denied'
   /** Wrong code, or a code that was already used (close 4401). */
   | 'pairing-failed'
@@ -51,10 +51,15 @@ export type AgentBridgeErrorCode =
 
 export type AgentBridgeStatus =
   | { kind: 'idle' }
-  | { kind: 'connecting'; port: number }
+  /** `opened`: the socket is open and the hello sent; until then the browser may be asking for permission. */
+  | { kind: 'connecting'; port: number; opened?: boolean }
   | { kind: 'connected'; port: number; permission: 'read-only'; since: number }
   | { kind: 'disconnected'; reason: AgentBridgeDisconnectReason }
-  | { kind: 'error'; code: AgentBridgeErrorCode; port?: number };
+  /**
+   * `permission: 'prompt'`: a socket that never opened while the browser's
+   * `loopback-network` permission is still at its prompt (pending or dismissed).
+   */
+  | { kind: 'error'; code: AgentBridgeErrorCode; port?: number; permission?: 'prompt' };
 
 /**
  * One served call. Deliberately carries no arguments and no results: the log

@@ -500,7 +500,7 @@ describe('local agent bridge client: endings (#9523)', () => {
   });
 
   it('a socket that never opens is unreachable, or permission-denied when the browser says so', async () => {
-    const unreachable = harness({ probePermission: async () => 'prompt' });
+    const unreachable = harness({ probePermission: async () => 'unknown' });
     unreachable.client.connect();
     unreachable.socket().drop(1006);
     await flush();
@@ -511,6 +511,28 @@ describe('local agent bridge client: endings (#9523)', () => {
     denied.socket().drop(1006);
     await flush();
     assert.deepEqual(denied.client.status, { kind: 'error', code: 'permission-denied', port: 21517 });
+  });
+
+  it('a socket that never opens carries the loopback-network permission when the browser has one: a pending prompt reads as prompt, not as a dead bridge', async () => {
+    for (const [permission, expected] of [
+      ['prompt', { kind: 'error', code: 'unreachable', port: 21517, permission: 'prompt' }],
+      ['granted', { kind: 'error', code: 'unreachable', port: 21517 }],
+      ['unknown', { kind: 'error', code: 'unreachable', port: 21517 }],
+    ] as const) {
+      const h = harness({ probePermission: async () => permission });
+      h.client.connect();
+      h.socket().drop(1006);
+      await flush();
+      assert.deepEqual(h.client.status, expected, permission);
+    }
+  });
+
+  it('a socket opened after pairing started is marked opened: the browser is no longer holding it for a prompt', () => {
+    const h = harness();
+    h.client.connect();
+    assert.deepEqual(h.client.status, { kind: 'connecting', port: 21517 });
+    h.socket().open();
+    assert.deepEqual(h.client.status, { kind: 'connecting', port: 21517, opened: true });
   });
 
   it('a constructor that throws (the browser blocked the address) is permission-denied, not a crash', () => {

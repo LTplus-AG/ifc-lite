@@ -20,9 +20,9 @@ import { useViewerStore } from '@/store';
 import { LocalBackend } from '@/sdk/local-backend';
 import { BimReactContext } from '@/sdk/BimProvider';
 import { installPairingFragmentStrip } from '@/lib/agent-bridge/pairing-fragment';
-import { getAgentBridgeState, resetAgentBridgeStateForTests, updateAgentBridgeState } from '@/lib/agent-bridge/state';
+import { getAgentBridgeState, resetAgentBridgeStateForTests, updateAgentBridgeState, type AgentBridgeStatus } from '@/lib/agent-bridge/state';
 import { AgentBridgeHost, AgentBridgeStatusSlot } from './AgentBridgeHost';
-import { AgentBridgeDialog, type AgentBridgeSessionModule } from './AgentBridgeDialog';
+import { AgentBridgeDialog, PERMISSION_HINT_DELAY_MS, type AgentBridgeSessionModule } from './AgentBridgeDialog';
 import type { SurfaceCommandDefinition, SurfaceCommandState } from '@/components/viewer/surface-command-types';
 
 const CODE = 'ABCDE-FGHJK-MNPQR-STVWX';
@@ -228,7 +228,7 @@ describe('connect dialog outcomes (#9523)', () => {
   for (const [code, pattern] of [
     ['pairing-failed', /did not accept this code/],
     ['protocol-mismatch', /Update the bridge \(npx @ifc-lite\/mcp@latest --bridge\)/],
-    ['permission-denied', /allow "Local network access"/],
+    ['permission-denied', /"Apps on device" in Chrome, "Device apps and services" in Firefox/],
   ] as const) {
     it(`explains ${code}`, async () => {
       const load = async (): Promise<AgentBridgeSessionModule> => ({
@@ -240,6 +240,38 @@ describe('connect dialog outcomes (#9523)', () => {
       type(document.body.querySelector('input') as HTMLInputElement, CODE);
       click(button(/^Connect$/));
       await waitFor(() => pattern.test(dialog()?.textContent ?? ''), `${code} is explained`);
+    });
+  }
+
+  /** Render a manual dialog whose session reports `status` on Connect, type a code and press Connect. */
+  async function connectReporting(status: AgentBridgeStatus): Promise<void> {
+    const load = async (): Promise<AgentBridgeSessionModule> => ({
+      connectAgentBridge: () => updateAgentBridgeState({ status }), disconnectAgentBridge: () => {},
+    });
+    render(withBim(<AgentBridgeDialog request={{ source: 'manual' }} onClose={() => {}} load={load} />));
+    type(document.body.querySelector('input') as HTMLInputElement, CODE);
+    click(button(/^Connect$/));
+    await waitFor(() => getAgentBridgeState().status.kind === status.kind, `status ${status.kind}`);
+  }
+
+  for (const permission of ['prompt', undefined] as const) {
+    it(`an unreachable bridge with permission ${permission ?? 'unknown'} ${permission ? 'says the browser prompt may be waiting or dismissed' : 'adds no prompt hint'}`, async () => {
+      await connectReporting({ kind: 'error', code: 'unreachable', port: 21517, permission });
+      await waitFor(() => /Could not connect to the bridge/.test(dialog()?.textContent ?? ''), 'the failure is shown');
+      const hint = document.body.querySelector('[data-agent-bridge-permission-hint]');
+      if (permission) assert.match(hint?.textContent ?? '', /may still be waiting for an answer to its permission prompt, or the prompt was dismissed/);
+      else assert.equal(hint, null);
+    });
+  }
+
+  for (const opened of [false, true]) {
+    it(`Connecting ${opened ? 'with an open socket shows no permission hint' : 'with no open socket for 1.5 s points at the browser prompt'}`, async () => {
+      await connectReporting({ kind: 'connecting', port: 21517, opened });
+      assert.equal(document.body.querySelector('[data-agent-bridge-permission-wait]'), null, 'not at once');
+      await advanceMs(PERMISSION_HINT_DELAY_MS + 100);
+      const hint = document.body.querySelector('[data-agent-bridge-permission-wait]');
+      if (opened) assert.equal(hint, null, 'an open socket is past the prompt');
+      else assert.match(hint?.textContent ?? '', /may be asking whether this site may access other apps and services on this device/);
     });
   }
 

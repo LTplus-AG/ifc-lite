@@ -50,18 +50,36 @@ export function mainViewerBridgeTools(): BridgeToolDescriptor[] {
   }));
 }
 
-/** Chrome's Local Network Access permission, under the names Chrome has shipped it as. */
-export async function queryLocalNetworkPermission(): Promise<LocalNetworkPermission> {
+const LOOPBACK_PAGE_HOST = /^(localhost|127(?:\.\d{1,3}){3}|\[::1\])$/i;
+
+/**
+ * The browser's permission for a public page to reach apps on this device:
+ * `loopback-network` in Chrome 156 and Firefox 157. Older Chrome builds named
+ * it `local-network-access` (or `local-network`); those names are asked only
+ * when `loopback-network` is unknown, and only their `denied` is used, since
+ * granting them does not open a socket to 127.0.0.1 in current browsers.
+ *
+ * A page that is itself on a loopback host never needs the permission, so its
+ * `prompt` (the never-asked default) would wrongly suggest a pending prompt:
+ * such pages report `unknown`.
+ */
+export async function queryLocalNetworkPermission(pageHost: string | undefined = typeof location === 'undefined' ? undefined : location.hostname): Promise<LocalNetworkPermission> {
   const permissions = typeof navigator === 'undefined' ? undefined : navigator.permissions;
   if (!permissions?.query) return 'unknown';
-  for (const name of ['loopback-network', 'local-network-access', 'local-network']) {
+  const query = async (name: string): Promise<PermissionState | null> => {
     try {
-      // Not in TypeScript's PermissionName union yet; unknown names reject, which is handled.
-      const status = await permissions.query({ name } as unknown as PermissionDescriptor);
-      return status.state;
+      // Not in TypeScript's PermissionName union yet; an unknown name rejects, which is handled.
+      return (await permissions.query({ name } as unknown as PermissionDescriptor)).state;
     } catch (err) {
       console.debug(`[agent-bridge] permission '${name}' is not known to this browser`, err);
+      return null;
     }
+  };
+  const loopbackPage = pageHost !== undefined && LOOPBACK_PAGE_HOST.test(pageHost);
+  const current = await query('loopback-network');
+  if (current !== null) return loopbackPage && current === 'prompt' ? 'unknown' : current;
+  for (const legacy of ['local-network-access', 'local-network']) {
+    if ((await query(legacy)) === 'denied') return 'denied';
   }
   return 'unknown';
 }

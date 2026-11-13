@@ -17,7 +17,7 @@ export const agentBridgeEn = {
   'agentBridge.dialog.reads': 'Whatever program is listening on 127.0.0.1, port {port}, will be able to read the model(s) open in this tab, including unsaved edits.',
   'agentBridge.dialog.readOnly': 'Read-only: the agent cannot change the model.',
   'agentBridge.dialog.localOnly': 'The viewer connects only to this computer, but the agent may send what it reads to its AI provider, and the program can pass it on anywhere. The bSDD tools also send IFC class names to bSDD.',
-  'agentBridge.dialog.browserPrompt': 'Your browser may ask whether this site may connect to devices on your local network (in Chrome: a "Local network access" prompt). Allow it so the viewer can reach the bridge on this computer.',
+  'agentBridge.dialog.browserPrompt': 'Your browser may ask whether this site may access other apps and services on this device (Chrome: "Access other apps and services on this device"; Firefox: "… wants to access other apps and services on this device"). Allow it so the viewer can reach the bridge.',
   'agentBridge.dialog.start': 'Start the bridge on this computer, or let your agent start it:',
   'agentBridge.dialog.code': 'Pairing code',
   'agentBridge.dialog.codeHint': 'Printed by the bridge when it starts, and returned by its bridge_status tool. A code works once.',
@@ -48,7 +48,7 @@ export const agentBridgeEn = {
 
   'agentBridge.failure.unreachable': 'Could not connect to the bridge on port {port}, or it dropped the connection. Start the bridge on this computer with the command below, check the port, then pair with the code it prints. If it is running, it may have refused the connection because too many tabs were trying to pair: close them and try again.',
   'agentBridge.failure.origin': 'Viewer not on ifclite.com? Start the bridge with --bridge-viewer-url {origin} so it accepts this page.',
-  'agentBridge.failure.permissionDenied': 'The browser blocked the connection to this computer. In Chrome, open this site\'s settings (the icon left of the address), allow "Local network access", then try again.',
+  'agentBridge.failure.permissionDenied': 'The browser blocked this site from reaching apps on this computer. Allow it in this site\'s settings (the icon left of the address): "Apps on device" in Chrome, "Device apps and services" in Firefox. Then try again.',
   'agentBridge.failure.pairingFailed': 'The bridge did not accept this code. A code works once and a new one is issued after each pairing: ask the agent for a fresh link (bridge_status) or copy the latest code from the bridge.',
   'agentBridge.failure.protocolMismatch': 'This viewer and the bridge speak different protocol versions. Update the bridge (npx @ifc-lite/mcp@latest --bridge), reload this page, then pair again.',
   'agentBridge.failure.handshakeTimeout': 'The bridge did not finish pairing in time. Try again with a fresh code.',
@@ -66,4 +66,6 @@ export const agentBridgeEn = {
   'agentBridge.ended.flooded': 'The program on the bridge port sent more calls than the viewer accepts, so the viewer disconnected it. Pair again only if you trust it.',
   'agentBridge.row.showActivity': 'Show activity',
   'agentBridge.row.hideActivity': 'Hide activity',
+  'agentBridge.failure.permissionPrompt': 'Your browser may still be waiting for an answer to its permission prompt, or the prompt was dismissed. Allow this site to access apps and services on this device, then try again.',
+  'agentBridge.dialog.permissionWait': 'Still connecting. Your browser may be asking whether this site may access other apps and services on this device: look for a prompt near the address bar.',
 } as const;

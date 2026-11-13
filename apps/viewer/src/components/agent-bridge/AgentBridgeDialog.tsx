@@ -43,6 +43,9 @@ export interface AgentBridgeSessionModule {
   disconnectAgentBridge(): void;
 }
 
+/** How long Connecting may sit with no open socket before the dialog points at the browser's permission prompt. */
+export const PERMISSION_HINT_DELAY_MS = 1500;
+
 const loadSession = (): Promise<AgentBridgeSessionModule> => import('@/lib/agent-bridge/session');
 
 interface Prefill {
@@ -97,6 +100,17 @@ export function AgentBridgeDialog({ request, onClose, load = loadSession }: Agen
   const framed = useMemo(() => isFramed(), []);
   // Opened while another connection is live: say that Connect replaces it.
   const [liveBefore] = useState(() => (status.kind === 'connected' || status.kind === 'connecting') ? status.port : null);
+
+  // Connecting for a while with no open socket: the browser may be showing its permission prompt.
+  // A timer per wait, not a debounced value: a retry right after a failure waits the full delay again.
+  // `!loading`: only once this attempt has called connect, not on a previous attempt's status.
+  const waitingOnBrowser = attempted && !loading && status.kind === 'connecting' && !status.opened;
+  const [promptLikely, setPromptLikely] = useState(false);
+  useEffect(() => {
+    if (!waitingOnBrowser) return;
+    const timer = setTimeout(() => setPromptLikely(true), PERMISSION_HINT_DELAY_MS);
+    return () => { clearTimeout(timer); setPromptLikely(false); };
+  }, [waitingOnBrowser]);
 
   // Only a connection made by THIS attempt closes the dialog, not one it is replacing.
   const connectedHere = status.kind === 'connected' && attemptedAt !== null && status.since >= attemptedAt;
@@ -183,6 +197,9 @@ export function AgentBridgeDialog({ request, onClose, load = loadSession }: Agen
             <output className="flex items-center gap-2 text-xs text-muted-foreground">
               <Spinner size="sm" />{t('agentBridge.dialog.connecting')}
             </output>
+          )}
+          {waitingOnBrowser && promptLikely && (
+            <output className="block text-xs" data-agent-bridge-permission-wait>{t('agentBridge.dialog.permissionWait')}</output>
           )}
           {shownProblem && !busy && <AgentBridgeOutcome status={shownProblem} />}
         </div>

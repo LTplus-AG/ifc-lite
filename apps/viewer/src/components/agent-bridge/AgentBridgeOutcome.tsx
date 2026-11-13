@@ -42,20 +42,26 @@ export function AgentBridgeOutcome({ status }: { status: AgentBridgeStatus }) {
   const origin = pageOrigin();
   const message = status.kind === 'error' ? t(ERROR_KEYS[status.code], { port }) : t(ENDED_KEYS[status.reason]);
   return (
-    <div role="alert" data-agent-bridge-outcome={status.kind === 'error' ? status.code : status.reason}
-      className="flex flex-col gap-2 rounded border border-destructive/40 p-2 text-xs">
-      <p className="flex items-start gap-2">
-        <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" aria-hidden />
-        <span>{message}</span>
-      </p>
-      {status.kind === 'error' && status.code === 'unreachable' && (
-        <>
-          <BridgeStartCommand port={port} />
-          {origin !== DEFAULT_BRIDGE_VIEWER_URL && (
-            <p className="text-muted-foreground">{t('agentBridge.failure.origin', { origin })}</p>
-          )}
-        </>
+    <>
+      <div role="alert" data-agent-bridge-outcome={status.kind === 'error' ? status.code : status.reason}
+        className="flex flex-col gap-2 rounded border border-destructive/40 p-2 text-xs">
+        <p className="flex items-start gap-2">
+          <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" aria-hidden />
+          <span>{message}</span>
+        </p>
+        {status.kind === 'error' && status.code === 'unreachable' && (
+          <>
+            <BridgeStartCommand port={port} />
+            {origin !== DEFAULT_BRIDGE_VIEWER_URL && (
+              <p className="text-muted-foreground">{t('agentBridge.failure.origin', { origin })}</p>
+            )}
+          </>
+        )}
+      </div>
+      {/* Its own live region, outside the alert: it arrives a moment later (the permission probe) and must not re-announce the alert. */}
+      {status.kind === 'error' && status.code === 'unreachable' && status.permission === 'prompt' && (
+        <output className="block text-xs" data-agent-bridge-permission-hint>{t('agentBridge.failure.permissionPrompt')}</output>
       )}
-    </div>
+    </>
   );
 }

@@ -112,7 +112,7 @@ function removePart(store: IfcDataStore, editor: StoreEditor, partId: number): v
  * Each part owns its plane Body. Its Tag is the defining footprint edge
  * (-1 for a flat roof); unchanged edges retain identity and user properties. */
 export function writeRoofPlaneParts(editor: StoreEditor, anchor: MeasureAnchor, roofId: number,
-  body: FootprintRoofBody & { plan: FootprintRoofPlan }, thickness: number, store?: IfcDataStore, nativeVolumes?: readonly number[]): void {
+  body: FootprintRoofBody & { plan: FootprintRoofPlan }, thickness: number, store?: IfcDataStore, nativeMeasures?: ReadonlyArray<{ area: number; volume: number }>): void {
   const view = editor.getMutationView(), reader = new AnchorEntityReader(store ?? null, view);
   const roof = reader.entity(roofId);
   if (!roof || roof.type.toUpperCase() !== 'IFCROOF') throw new Error('Plane measurements need an IfcRoof');
@@ -154,8 +154,8 @@ export function writeRoofPlaneParts(editor: StoreEditor, anchor: MeasureAnchor, 
         `#${emitLocalPlacement(editor, placement, [0, 0, 0])}`, `#${productShapeId}`, String(plane.edge), '.ROOF.']).expressId;
     } else editor.setPositionalAttribute(id, 6, `#${productShapeId}`);
     ids.push(id);
-    const area = Math.abs(signedArea(plane.outline)) * length ** 2 / Math.cos(plane.slope);
-    const volume = nativeVolumes ? nativeVolumes[index] * length ** 3 : area * thickness;
+    const area = nativeMeasures ? nativeMeasures[index].area * length ** 2 : Math.abs(signedArea(plane.outline)) * length ** 2 / Math.cos(plane.slope);
+    const volume = nativeMeasures ? nativeMeasures[index].volume * length ** 3 : area * thickness;
     totalArea += area;
     view.setQuantity(id, 'Qto_SlabBaseQuantities', 'GrossArea', clean(area / areaScale), QuantityType.Area);
     view.setQuantity(id, 'Qto_SlabBaseQuantities', 'GrossVolume', clean(volume / volumeScale), QuantityType.Volume);

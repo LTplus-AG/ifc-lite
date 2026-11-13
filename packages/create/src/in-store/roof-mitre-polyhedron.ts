@@ -58,6 +58,17 @@ export function cellVolume(cell: Polyhedron): number {
   }
   return Math.abs(volume);
 }
+/** Area of a cell's skin on n·p=k, measured in its actual plane. */
+export function cellPlaneArea(cell: Polyhedron, n: Point, k: number, tolerance: number): number {
+  let area = 0;
+  for (const face of cell) {
+    if (face.some(p => Math.abs(dot3(n, p) - k) > tolerance)) continue;
+    for (let i = 1; i + 1 < face.length; i++) {
+      area += Math.abs(dot3(n, cross3(subtract3(face[i], face[0]), subtract3(face[i + 1], face[0])))) / 2;
+    }
+  }
+  return area;
+}
 export function slabCell(outline: readonly [number, number][], height: (p: [number, number]) => number, depth: number): Polyhedron {
   const bottom = outline.map(([x, y]): Point => [x, y, height([x, y])]);
   const top = bottom.map(([x, y, z]): Point => [x, y, z + depth]);

@@ -30,15 +30,23 @@ it.skipIf(!hasOracle).each(['IFC4', 'IFC2X3', 'IFC4X3'] as const)('%s: 30° and 
 const D = Math.PI / 180;
 const RECT: Array<[number, number]> = [[0, 0], [10, 0], [10, 8], [0, 8]];
 const REFLEX: Array<[number, number]> = [[0, 0], [10, 0], [10, 3], [4, 3], [4, 8], [0, 8]];
+const U: Array<[number, number]> = [[0,0],[3,0],[3,5],[7,5],[7,0],[10,0],[10,8],[0,8]];
 // Each case invokes an independent CAD kernel plus a complete EXPRESS validation.
 it.skipIf(!hasOracle).each([
   { name: 'four-way hip', outline: RECT, slopes: [20, 35, 45, 60], overhang: 0 },
   { name: 'overhanging hip', outline: RECT, slopes: [30, 45, 30, 45], overhang: .4 },
   { name: 'valley', outline: REFLEX, slopes: [30, 45, 30, 45, 30, 45], overhang: 0 },
+  { name: 'coplanar U wings', outline: U, slopes: [30,45,30,45,30,30,30,30], overhang: 0 },
 ])('$name: independent faces coincide and quantities measure the mitred solids (#9357)', async ({ outline, slopes, overhang }) => {
   const s = await newStorey();
   const roof = addRoofToStore(s.editor, s.anchor, { Profile: 'polygon', OuterCurve: outline, Thickness: .25,
     EdgeSlopes: slopes.map(v => v * D), Overhang: overhang });
+  for (const [edge, item] of roof.solidIds!.entries()) {
+    const colour = s.editor.addEntity('IfcColourRgb', [null, edge / slopes.length, .2, .8]).expressId;
+    const shading = s.editor.addEntity('IfcSurfaceStyleShading', [`#${colour}`, 0]).expressId;
+    const style = s.editor.addEntity('IfcSurfaceStyle', [`Edge ${edge}`, '.BOTH.', [`#${shading}`]]).expressId;
+    s.editor.addEntity('IfcStyledItem', [`#${item}`, [`#${style}`], null]);
+  }
   const check = (text: string) => {
     const run = spawnSync(python, [fileURLToPath(new URL('./__test__/roof-mitre-surface-oracle.py', import.meta.url))],
       { input: text, encoding: 'utf8', timeout: 30_000 });
@@ -54,7 +62,7 @@ it.skipIf(!hasOracle).each([
   undoRecordedMutationOperations(s.view, 1, () => { throw new Error('one compound roof edit expected'); });
   check(exportText(s));
   expect((await parse(exportText(s))).entityIndex.byType.get('IFCROOF')).toHaveLength(1);
-}, 30_000);
+}, 60_000);
 
 const wasmPath = fileURLToPath(new URL('../../../wasm/pkg/ifc-lite_bg.wasm', import.meta.url));
 it.skipIf(!existsSync(wasmPath))('the real WASM kernel meshes the mitred 30°/45° ridge after all schema exports (#9357)', async () => {

@@ -6,12 +6,13 @@ import { StepExporter, countStepEntities, type SectionExportOptions, type StepEx
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { prepareAppearanceSerialization } from '../appearance/serialization.js';
-import { roomStepExportSource } from '../collab/room-step-export.js';
+import { stepExportSource } from '../collab/room-step-export.js';
 import { spliceScheduleIntoExport, type ExportScheduleState } from '@/sdk/adapters/export-schedule-splice';
 
 /** One edited STEP source for downloads and cloud uploads (#6587).
  * Visibility ids belong to the viewer model; portable room sources remap them.
  * Return image resources alongside STEP so no transport silently loses them.
+ * Rejects with `StepRecordsUnavailableError` when the store has no STEP records.
  */
 export async function exportModelStep(input: {
   modelId: string;
@@ -22,7 +23,7 @@ export async function exportModelStep(input: {
   scheduleState: ExportScheduleState | null;
 }) {
   const { modelId, options } = input;
-  const portable = roomStepExportSource(input.dataStore, input.mutationView, modelId);
+  const portable = stepExportSource(input.dataStore, input.mutationView, modelId);
   const dataStore = portable?.dataStore ?? input.dataStore;
   const view = portable ? portable.mutationView : input.mutationView;
   const serialized = prepareAppearanceSerialization(modelId, dataStore, options.applyMutations !== false ? view : undefined);

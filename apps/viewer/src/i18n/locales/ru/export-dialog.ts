@@ -81,6 +81,8 @@ export const exportDialogRu = {
   "exportDialog.landXml.schemaUnsupported": "Преобразование LandXML создаёт только IFC4X3 STEP. Выберите IFC4X3 для преобразования этой модели или экспортируйте исходный файл LandXML.",
   "exportDialog.landXml.exported": "Преобразовано в IFC4X3: {records}.",
   "exportDialog.notReadyError": "Перед экспортом выберите модель и схему.",
+  "exportDialog.stepRecords.roomMoved": "«{model}» нельзя экспортировать в IFC STEP: его корневые элементы изменились в общей комнате после публикации. Экспортируйте его в IFC5 (IFCX).",
+  "exportDialog.stepRecords.noRecords": "«{model}» не содержит записей IFC STEP для экспорта. Экспортируйте его в IFC5 (IFCX).",
   "exportDialog.landXml.imageryExported": "Изображение, наложенное на рельеф, используется как его текстура и поставляется вместе с IFC как {entry} в .ifcZIP.",
   "exportDialog.landXml.imageryRefused": "Изображение, наложенное на рельеф, не экспортировано: {reason}",
   "exportDialog.landXml.imageryWillExport": "Изображение {name} ({crs}), наложенное на рельеф, будет использовано как текстура и поставлено вместе с IFC в .ifcZIP. {percent} % вершин рельефа попадают на изображение; за его пределами приложения IFC растягивают крайние пиксели изображения вместо показа однотонного цвета рельефа.",

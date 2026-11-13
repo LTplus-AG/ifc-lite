@@ -196,3 +196,39 @@ export function roomStepExportSource(
     resources: portable.resources,
   };
 }
+
+/**
+ * Why a STEP writer has no records to read for a store: `'roomMoved'` for a
+ * shared room whose live root set no longer matches its portable source,
+ * `'noRecords'` for any other tabular store.
+ */
+export type StepRecordsRefusal = 'roomMoved' | 'noRecords';
+
+export class StepRecordsUnavailableError extends Error {
+  constructor(readonly reason: StepRecordsRefusal, readonly modelName?: string) {
+    super(reason === 'roomMoved'
+      ? `Shared model${modelName ? ` "${modelName}"` : ''} cannot be exported as IFC STEP after its root set changed in the room.`
+      : `Model${modelName ? ` "${modelName}"` : ''} has no IFC STEP records to export from.`);
+    this.name = 'StepRecordsUnavailableError';
+  }
+}
+
+/**
+ * Where a STEP writer reads this store's records. Returns the room's portable
+ * source when it covers the live room, or `null` when the store's own `source`
+ * holds STEP records. Throws {@link StepRecordsUnavailableError} otherwise: a
+ * tabular store's `source` is its reader's own format, so writing it as STEP
+ * yields an empty or garbage file (#10045).
+ */
+export function stepExportSource(
+  store: IfcDataStore,
+  view: MutablePropertyView | undefined,
+  modelId: string,
+  modelName?: string,
+): RoomStepExportSource | null {
+  const portable = roomStepExportSource(store, view, modelId);
+  if (portable) return portable;
+  if (roomSymbolicSource(store)) throw new StepRecordsUnavailableError('roomMoved', modelName);
+  if (store.sourceKind === 'tabular') throw new StepRecordsUnavailableError('noRecords', modelName);
+  return null;
+}

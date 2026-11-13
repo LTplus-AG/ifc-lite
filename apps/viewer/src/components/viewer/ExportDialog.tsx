@@ -51,7 +51,7 @@ import { landXmlExportPlan } from '@/lib/export/landXmlIfcPlan.js';
 import { landXmlExportExtension } from '@/lib/export/landXmlIfcImagery.js';
 import { roomExportPathPrefix } from '@/lib/collab/room-export-paths';
 import { preferredExportModelId } from './export-model-default';
-import { canExportRoomAsStep, type roomStepExportSource } from '@/lib/collab/room-step-export';
+import { canExportRoomAsStep, StepRecordsUnavailableError, type roomStepExportSource } from '@/lib/collab/room-step-export';
 import { roomMergeInput, roomMergeVisibility } from '@/lib/collab/room-merged-export';
 import { roomSymbolicSource } from '@/lib/collab/room-symbolic-source';
 import { listExportModels, resolveExportModel } from './export-model-selection';
@@ -535,7 +535,10 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
       }
     } catch (error) {
       console.error('Export failed:', error);
-      const errMsg = `Export failed: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      // A refusal, not a crash: the store has no STEP records to write (#10045).
+      const errMsg = error instanceof StepRecordsUnavailableError
+        ? t(`exportDialog.stepRecords.${error.reason}`, { model: error.modelName ?? selectedModel?.name ?? '' })
+        : `Export failed: ${error instanceof Error ? error.message : 'Unknown error'}`;
       toast.error(errMsg);
       return { success: false, message: errMsg };
     } finally {

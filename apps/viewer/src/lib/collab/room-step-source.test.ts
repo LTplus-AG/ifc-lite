@@ -13,7 +13,8 @@ import { createEmptyFlatSymbolic } from '@/lib/overlay-parse/symbolic-flat.js';
 import { buildParseResult } from '@/lib/overlay-parse/symbolic-parse.js';
 import { placeRoomSymbolic, remapRoomSymbolicOwners, roomSymbolicSource } from './room-symbolic-source.js';
 import { joiner, localIdOf, ownerShare } from '@/test/collab-room-harness.js';
-import { roomStepExportSource } from './room-step-export.js';
+import { roomStepExportSource, StepRecordsUnavailableError } from './room-step-export.js';
+import { exportModelStep } from '@/lib/export/model-step-export.js';
 import { appearanceAssets, modelAppearanceAssets } from '@/lib/appearance/model-assets.js';
 import { StepExporter } from '@ifc-lite/export';
 
@@ -497,6 +498,11 @@ describe('portable room STEP source (#4604)', () => {
     assert.ok(model?.ifcDataStore);
     assert.equal(roomStepExportSource(model.ifcDataStore, undefined, model.id), null,
       'portable export must not resurrect the deleted annotation');
+    // #10045: the single STEP export refuses instead of writing the tabular room store.
+    await assert.rejects(
+      exportModelStep({ modelId: model.id, dataStore: model.ifcDataStore, options: { schema: 'IFC4' }, scheduleState: null }),
+      (error: unknown) => error instanceof StepRecordsUnavailableError && error.reason === 'roomMoved',
+    );
     guest.reconstructor.teardown();
   });
 });

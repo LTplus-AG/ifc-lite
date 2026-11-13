@@ -5,8 +5,7 @@
 import type { MergeModelInput } from '@ifc-lite/export';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { roomStepExportSource, type RoomStepExportSource } from './room-step-export';
-import { roomSymbolicSource } from './room-symbolic-source';
+import { stepExportSource, type RoomStepExportSource } from './room-step-export';
 
 export function roomMergeInput(options: {
   id: string;
@@ -15,10 +14,7 @@ export function roomMergeInput(options: {
   roomView?: MutablePropertyView;
   applyMutations: boolean;
 }): { input: MergeModelInput; portable?: RoomStepExportSource } {
-  const portable = roomStepExportSource(options.store, options.roomView, options.id);
-  if (roomSymbolicSource(options.store) && !portable) {
-    throw new Error(`Shared model "${options.name}" cannot be merged as STEP after its root set changed. Export it separately.`);
-  }
+  const portable = stepExportSource(options.store, options.roomView, options.id, options.name);
   if (portable?.resources?.resources.size) {
     throw new Error(`Shared model "${options.name}" carries texture resources. Export it separately as IFCZIP.`);
   }

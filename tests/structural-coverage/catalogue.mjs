@@ -90,8 +90,7 @@ export function notApplicable(row, level) {
 /** Parsed entity table for one schema, with an inheritance-chain helper. */
 export function schemaTable(root, schema) {
   const file = join(root, `packages/data/src/ifc-schema/generated/entities-${schema.toLowerCase()}.ts`);
-  const table = parseEntityTable(readFileSync(file, 'utf8'));
-  if (table.size === 0) throw new Error(`catalogue: no entities parsed from ${file}`);
+  const table = parseEntityTable(readFileSync(file, 'utf8'), `catalogue: ${file}`);
   const chain = (name) => {
     const out = [];
     for (let e = table.get(name); e; e = table.get(e.parent)) out.push(e.name);

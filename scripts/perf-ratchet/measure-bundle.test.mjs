@@ -59,7 +59,7 @@ rt('resolveAsset refuses paths outside dist and external URLs', () => {
   }
 });
 
-rt('measureBundle gates raw JS bytes, reports JS brotli as informational, and brotli of the wasm round-trips', () => {
+rt('measureBundle gates raw JS and wasm bytes, reports their brotli as informational, and brotli of the wasm round-trips', () => {
   const root = mkdtempSync(join(tmpdir(), 'perf-ratchet-bundle-'));
   try {
     const dist = join(root, 'dist');
@@ -87,10 +87,12 @@ rt('measureBundle gates raw JS bytes, reports JS brotli as informational, and br
     assert.equal(v['viewer-eager-js-brotli'], undefined);
     assert.equal(info['viewer-entry-js-brotli'].value, measure.brotliSize(Buffer.from(entryJs)));
     assert.ok(info['viewer-entry-js-brotli'].value < entryJs.length, 'repetitive JS compresses');
-    assert.match(v['engine-wasm-brotli'].detail, /raw 4096 bytes/);
+    // The engine wasm is gated on raw bytes; its brotli is reported, never gated.
+    assert.equal(v['engine-wasm-bytes'].value, 4096);
+    assert.equal(v['engine-wasm-brotli'], undefined);
     // The number is a real brotli stream's length, not an estimate.
     const stream = brotliCompressSync(wasmBytes, { params: { [constants.BROTLI_PARAM_QUALITY]: 11, [constants.BROTLI_PARAM_SIZE_HINT]: wasmBytes.length } });
-    assert.equal(v['engine-wasm-brotli'].value, stream.length);
+    assert.equal(info['engine-wasm-brotli'].value, stream.length);
     assert.deepEqual(brotliDecompressSync(stream), wasmBytes);
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -212,16 +214,14 @@ rt('every committed ceiling file is valid, and bundle.json ratchets exactly what
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
-  // #7007: viewer JS is gated on raw bytes, which repeat exactly, at 0.1%;
-  // the engine wasm stays on brotli at 0.5%.
-  for (const id of ['viewer-entry-js-bytes', 'viewer-eager-js-bytes', 'viewer-parser-worker-js-bytes']) {
+  // #7007: viewer JS, and since then the engine wasm, are gated on raw bytes,
+  // which repeat exactly, at 0.1%. Nothing in the family is gated on brotli.
+  for (const id of ['engine-wasm-bytes', 'viewer-entry-js-bytes', 'viewer-eager-js-bytes', 'viewer-parser-worker-js-bytes']) {
     const e = bundle.entries.find((x) => x.id === id);
     assert.deepEqual(e.tolerance, { kind: 'relative', value: 0.001 }, id);
     assert.equal(e.metric, 'raw-bytes', id);
   }
-  const wasm = bundle.entries.find((e) => e.id === 'engine-wasm-brotli');
-  assert.deepEqual(wasm.tolerance, { kind: 'relative', value: 0.005 });
-  assert.equal(wasm.metric, 'brotli-bytes');
+  assert.deepEqual(bundle.entries.filter((e) => e.metric !== 'raw-bytes').map((e) => e.id), []);
 });
 
 // #7002 review: shapes of index.html that must not change what counts as eager.
@@ -327,6 +327,58 @@ rt('check ignores a brotli-only change of the viewer JS and fails on raw growth 
     r = check(measureTo('c.json').out);
     assert.equal(r.status, 1, r.stdout + r.stderr);
     assert.match(r.stdout, /`bundle\/viewer-eager-js-bytes`.*FAIL: above ceiling \+ tolerance/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// The engine wasm, gated the same way: an edit that keeps its size (CI saw
+// two move its brotli-11 size by -1,074 and +1,547 bytes) passes; raw growth
+// past 0.1% fails, naming the raw metric. Its brotli is reported only.
+rt('check ignores a same-size change of the engine wasm and fails on raw growth past 0.1%', () => {
+  const root = mkdtempSync(join(tmpdir(), 'perf-ratchet-wasm-raw-'));
+  try {
+    const dist = join(root, 'dist');
+    mkdirSync(join(dist, 'assets'), { recursive: true });
+    mkdirSync(join(root, 'ceilings'));
+    writeFileSync(join(dist, 'index.html'), '<script type="module" src="/assets/main.js"></script>');
+    writeFileSync(join(dist, 'assets/main.js'), 'export const x = 1;\n');
+    writeFileSync(join(dist, 'assets/parser.worker-Wk1.js'), 'self.onmessage = () => {};');
+    const wasm = join(root, 'w.wasm');
+    const measureTo = (name) => {
+      const out = join(root, name);
+      const r = spawnSync(process.execPath, [MEASURER, '--wasm', wasm, '--dist', dist, '--out', out, '--commit', 'abc1234'], { encoding: 'utf8', timeout: 20_000 });
+      assert.equal(r.status, 0, r.stderr);
+      return { out, data: JSON.parse(r.stdout) };
+    };
+    const check = (measured) => spawnSync(process.execPath, [CHECK_CLI, 'check', '--measured', measured, '--ceilings-dir', join(root, 'ceilings')], { encoding: 'utf8', timeout: 20_000 });
+    const brotliOf = (data) => data.informational.find((m) => m.id === 'engine-wasm-brotli').value;
+
+    writeFileSync(wasm, Buffer.from(jsOf(3, 20000)));
+    const first = measureTo('a.json').data;
+    const prov = { commit: 'abc1234', measuredAt: '2026-11-13T00:00:00.000Z' };
+    writeFileSync(join(root, 'ceilings/bundle.json'), JSON.stringify({
+      family: 'bundle',
+      entries: first.metrics.map((m) => ({ id: m.id, metric: 'raw-bytes', ceiling: m.value, tolerance: { kind: 'relative', value: 0.001 }, provenance: prov })),
+    }));
+    let r = check(join(root, 'a.json'));
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /`bundle\/engine-wasm-brotli`: [\d,]+ bytes/);
+
+    // Same length, different bytes: brotli moves, raw does not, check passes.
+    writeFileSync(wasm, Buffer.from(jsOf(4, 20000)));
+    const second = measureTo('b.json');
+    assert.notEqual(brotliOf(second.data), brotliOf(first));
+    assert.deepEqual(second.data.metrics.map((m) => m.value), first.metrics.map((m) => m.value));
+    r = check(second.out);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+
+    // Raw growth just past 0.1% fails, and names the raw metric.
+    const size = first.metrics.find((m) => m.id === 'engine-wasm-bytes').value;
+    writeFileSync(wasm, Buffer.concat([Buffer.from(jsOf(3, 20000)), Buffer.alloc(Math.floor(size * 0.001) + 1, 1)]));
+    r = check(measureTo('c.json').out);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stdout, /`bundle\/engine-wasm-bytes`.*FAIL: above ceiling \+ tolerance/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

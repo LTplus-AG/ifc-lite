@@ -121,7 +121,7 @@ export const miscPanelsBFr = {
   'shareDialog.shareSkipped.noRecords':
     'Absents de la session partagée, aucun enregistrement IFC à partager : {models}.',
   'shareDialog.shareSkipped.allRefused':
-    'Aucune session n’a été créée. Il n’y a aucun enregistrement IFC à partager : {models}.',
+    'Rien ne peut être partagé ici, aucun enregistrement IFC à partager : {models}.',
   'shareDialog.linkCreationFailed': 'Échec de la création du lien. Vérifiez la connexion et réessayez.',
   'shareDialog.joinedViaInvite':
     'Vous avez rejoint la session via une invitation ; la partager transmet le même accès. Seul l’administrateur de la session peut créer de nouveaux liens.',

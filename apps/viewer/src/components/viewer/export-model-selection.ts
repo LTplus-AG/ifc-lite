@@ -6,7 +6,7 @@ import type { GeometryResult } from '@ifc-lite/geometry';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { FederatedModel } from '@/store';
 import { exportableModels } from '@/lib/export/capture-export';
-import { roomSymbolicSource } from '@/lib/collab/room-symbolic-source';
+import { hasPortableStepRecords } from '@/lib/collab/room-step-export';
 
 export interface ExportModelListItem {
   id: string;
@@ -122,8 +122,8 @@ export type StepSkipReason = 'noRecords' | 'noData';
  * through `roomStepExportSource`. Asking for the source kind alone refused
  * every shared room, single and merged, which is what main exported.
  *
- * It asks whether a portable source is REGISTERED, not whether
- * `canExportRoomAsStep` currently accepts it. A room whose root set has moved
+ * `hasPortableStepRecords` asks whether a portable source is REGISTERED, not
+ * whether `canExportRoomAsStep` currently accepts it. A room whose root set has moved
  * past its source is a different answer with its own wording: the single path
  * falls back to the room store and the merged path throws
  * `roomMergeInput`'s "export it separately". Both are main's behaviour, and
@@ -132,7 +132,7 @@ export type StepSkipReason = 'noRecords' | 'noData';
 export function stepSkipReason(store: IfcDataStore | null | undefined): StepSkipReason | null {
   if (!store) return 'noData';
   if (store.sourceKind !== 'tabular') return null;
-  return roomSymbolicSource(store) ? null : 'noRecords';
+  return hasPortableStepRecords(store) ? null : 'noRecords';
 }
 
 export function resolveExportModel(

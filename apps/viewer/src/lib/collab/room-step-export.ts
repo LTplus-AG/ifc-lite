@@ -142,6 +142,20 @@ function snapshotView(
   return view;
 }
 
+/**
+ * Does this store have STEP records behind it at all? A room's reconstructed
+ * store is tabular, so the records live in the portable source registered
+ * against it rather than in the store's own `source`.
+ *
+ * Separate from {@link canExportRoomAsStep}, which asks the stronger question
+ * of whether the source still covers the live room. A caller deciding whether
+ * to OFFER a STEP export wants this one; a root set that has moved on is a
+ * different answer with its own wording.
+ */
+export function hasPortableStepRecords(store: IfcDataStore): boolean {
+  return roomSymbolicSource(store) !== undefined;
+}
+
 /** True only while the portable source covers every root in the live room. */
 export function canExportRoomAsStep(
   roomStore: IfcDataStore,

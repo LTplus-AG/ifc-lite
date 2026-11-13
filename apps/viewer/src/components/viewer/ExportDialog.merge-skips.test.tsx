@@ -13,32 +13,19 @@ import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { useViewerStore, type FederatedModel } from '@/store';
-import { render, cleanup, click, waitFor, press, advance } from '@/test/render';
+import { render, cleanup, click, waitFor } from '@/test/render';
 import { downloadedNames, clearDownloads } from '@/test/download-capture';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { tabularFixtureStore } from '@/test/tabular-store-fixture';
 import { parseFixtureModel } from './anonymized-export/anonymized-export-fixture.test-support';
+import { chooseMerged, exportButton, openExportDialog, shellText } from './export-dialog-scope.test-support';
 import { ExportDialog } from './ExportDialog';
 
-const shellText = () => document.querySelector('[data-export-dialog-shell]')?.textContent ?? '';
-const openDialog = (ui: HTMLElement, label: string) =>
-  click([...ui.querySelectorAll('button')].find(node => node.textContent?.includes(label))!);
-const clickExport = () =>
-  click([...document.querySelectorAll('button')].find(node => node.textContent?.trim() === 'Export')!);
+const clickExport = () => click(exportButton());
 
 /** A `.3dm`-shaped participant: a real `buildTabularDataStore` store, not a hand-set marker. */
 function tabularModel(id: string): FederatedModel {
   return { ...fixtureModel(id), schemaVersion: 'IFC4' as const, ifcDataStore: tabularFixtureStore() };
-}
-
-/** Switch the scope select to the merged option. */
-async function chooseMerged(): Promise<void> {
-  const scope = [...document.querySelectorAll('[role="combobox"]')].find(node => node.textContent?.includes('Single Model'));
-  assert.ok(scope, 'the scope selector is offered for a federation');
-  press(scope, 'ArrowDown'); await advance(10);
-  const merged = [...document.querySelectorAll('[role="option"]')].find(node => node.textContent?.includes('Merged (All Models)'));
-  assert.ok(merged);
-  click(merged); await advance(10);
 }
 
 afterEach(() => { cleanup(); clearDownloads(); });
@@ -49,7 +36,7 @@ describe('merged STEP export reports the models it leaves out', () => {
     const step = { ...fixtureModel('house.ifc'), ifcDataStore, schemaVersion: 'IFC4' as const };
     useViewerStore.setState({ ...fixtureModels(step, tabularModel('terrain.3dm')), dirtyModels: new Set() });
     const ui = render(<ExportDialog surface="ribbon" />);
-    openDialog(ui, 'Export IFC');
+    openExportDialog(ui, 'Export IFC');
     await chooseMerged();
 
     // Before the export: the dialog says which model the merge will drop.
@@ -68,7 +55,7 @@ describe('merged STEP export reports the models it leaves out', () => {
     const second = { ...fixtureModel('annex.ifc', { idOffset: 1_000_000 }), ifcDataStore, schemaVersion: 'IFC4' as const };
     useViewerStore.setState({ ...fixtureModels(first, second), dirtyModels: new Set() });
     const ui = render(<ExportDialog surface="ribbon" />);
-    openDialog(ui, 'Export IFC');
+    openExportDialog(ui, 'Export IFC');
     await chooseMerged();
     assert.doesNotMatch(shellText(), /Left out of the merged file/, 'nothing is skipped, so nothing is claimed');
 

@@ -675,8 +675,10 @@ They still need one highlight draw per selected piece, plus the outline-mask
 draws, but selection creates no copied textured geometry. Their uniform blocks
 share pooled buffers. The untextured highlight remains after transparent
 geometry, so glass and transparent texture texels keep the same selection
-appearance. Hide, removal, replacement and GPU-resource retirement invalidate
-borrowed draws before the next frame uses them. Mixed flat and textured
+appearance. Visibility changes filter borrowed draws while retaining selected
+GPU resources. Removal, replacement and GPU-resource retirement invalidate
+borrowed draws before the next frame uses them. Releasing CPU geometry preserves
+existing highlights while their GPU sources remain live. Mixed flat and textured
 selections retain hydration order; a flat pool never crosses a textured draw.
 
 The Set is compared by content on every frame, with one lookup per id and no

@@ -204,6 +204,7 @@ import { PostPassChain } from './post-pass-chain.js';
 import { buildSelectionOutlineFrame, matchesHoveredMesh } from './selection-outline-frame.js';
 import { HoverMeshCache } from './hover-mesh-cache.js';
 import { addMergedSelectionMeshes } from './selection-hydration.js';
+import { recordSelectionSource } from './selection-hydration-order.js';
 import { isBorrowedSelection, stageBorrowedSelection } from './textured-selection.js';
 import { SelectionHighlight, SelectionSnapshot } from './selection-highlight.js';
 import { InteractionEffectsGovernor } from './interaction-effects-governor.js';
@@ -1394,13 +1395,9 @@ export class Renderer {
         const { vertexBuffer, indexBuffer, indexCount, transform, rteOrigin } = uploadIndividualMesh(
             this.device.getDevice(), meshData, this.individualMeshFrame(meshData));
 
-        // Keep the hydrated mesh in its decoded local frame.  Folding this
-        // origin back into f32 vertices used to make selection/highlight the
-        // only mesh path that lost centimetres at national-grid coordinates.
-        // Flagged `hydrated` so it can be freed when its entity leaves the
-        // selection — these duplicate geometry already drawn by a batch and would
-        // otherwise accumulate + double-draw (see Scene.disposeHydratedMeshesExcept).
-        this.scene.addMesh({
+        // Keep the source frame and identity: borrowed pieces do not occupy
+        // the owned list's ordinals when hydration history is reconstructed.
+        const mesh: Mesh = {
             expressId: meshData.expressId,
             modelIndex: meshData.modelIndex,  // Preserve modelIndex for multi-model selection
             // Source item, so a pick can report it (#2985) — via the shared rule,
@@ -1416,7 +1413,9 @@ export class Renderer {
             color: meshData.color,
             ...(meshData.material ? { finish: meshData.material } : {}), // #5582
             hydrated: true,
-        });
+        };
+        recordSelectionSource(this.scene, mesh, meshData);
+        this.scene.addMesh(mesh);
     }
 
     /** Guarded like createMeshFromData: one merged highlight per colour and frame (#9192). */

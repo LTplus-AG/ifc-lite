@@ -9,9 +9,11 @@ import { pickPieceKey } from './pick-mesh-budget.js';
 
 type OrderScene = Pick<Scene, 'getMeshes' | 'getMeshDataPieces'>;
 const drawRanks = new WeakMap<Mesh, { first: number; last: number }>();
+const drawSources = new WeakMap<Mesh, WeakRef<MeshData>>();
 export function recordSelectionSource(scene: OrderScene, mesh: Mesh, piece: MeshData, last = piece): void {
   const order = selectionHydrationOrder(scene);
   drawRanks.set(mesh, { first: order.rank(piece), last: order.rank(last) });
+  drawSources.set(mesh, new WeakRef(piece));
 }
 export function selectionDrawSpan(mesh: Mesh): { first: number; last: number } | undefined { return drawRanks.get(mesh); }
 
@@ -42,7 +44,11 @@ class SelectionHydrationOrder {
       const ordinal = ordinals.get(key) ?? 0;
       ordinals.set(key, ordinal + 1);
       if (!mesh.hydrated) continue;
-      const piece = scene.getMeshDataPieces(mesh.expressId, mesh.modelIndex, mesh.geometryItemId)?.[ordinal];
+      // Borrowed textured pieces do not occupy an owned-mesh ordinal. Prefer
+      // the recorded source; ordinals only seed older, unrecorded pick copies.
+      const recorded = drawSources.get(mesh);
+      const piece = recorded ? recorded.deref()
+        : scene.getMeshDataPieces(mesh.expressId, mesh.modelIndex, mesh.geometryItemId)?.[ordinal];
       if (piece) { this.remember([piece]); recordSelectionSource(scene, mesh, piece); }
     }
   }

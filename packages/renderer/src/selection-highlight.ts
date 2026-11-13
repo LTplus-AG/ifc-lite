@@ -204,7 +204,7 @@ export class SelectionHighlight {
     if (!this.pending) return this.drawn;
     const { visible, modelIndex, itemFilterExpressId, itemFilterItemId } = this;
     const owner = scene as Scene;
-    const borrowed = resources ? this.textured.sync(owner, visible, resources, modelIndex, itemFilterExpressId, itemFilterItemId) : [];
+    const borrowed = resources ? this.textured.sync(owner, visible, resources, modelIndex, itemFilterExpressId, itemFilterItemId, frame.selected) : [];
     const merge: typeof createMerged = resources ? (pieces, coverage) => {
       let complete = true;
       for (const run of this.textured.runs(owner, pieces)) complete = createMerged(run, coverage) && complete;

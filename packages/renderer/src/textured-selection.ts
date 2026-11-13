@@ -32,7 +32,7 @@ export class TexturedSelection {
   private device?: GPUDevice;
   private ranks: number[] = [];
 
-  sync(scene: Scene, visible: ReadonlySet<number>, resources: TexturedSelectionResources, model?: number, itemExpressId?: number, itemId?: number): Mesh[] {
+  sync(scene: Scene, visible: ReadonlySet<number>, resources: TexturedSelectionResources, model?: number, itemExpressId?: number, itemId?: number, selected: ReadonlySet<number> = visible): Mesh[] {
     if (this.device !== resources.device) { this.clear(); this.device = resources.device; }
     const order = selectionHydrationOrder(scene);
     const active = new Set<TexturedMesh>();
@@ -67,7 +67,27 @@ export class TexturedSelection {
         draws.push(mesh); this.ranks.push(order.rank(piece));
       }
     }
-    for (const [source, entry] of this.entries) if (!active.has(source)) { entry.slot.release(); this.entries.delete(source); }
+    const live = new Set(scene.getTexturedMeshes());
+    for (const [source, entry] of this.entries) {
+      const mesh = entry.mesh;
+      const retained = live.has(source) && selected.has(mesh.expressId)
+        && (model === undefined || mesh.modelIndex === model)
+        && (mesh.expressId !== itemExpressId || mesh.geometryItemId === itemId);
+      if (!retained) { entry.slot.release(); this.entries.delete(source); continue; }
+      // CPU release does not retire live GPU geometry. Keep the existing draw
+      // and its numeric rank without retaining or reconstructing CPU meshes.
+      if (!active.has(source)) {
+        // Hidden selections keep their pool barriers: after CPU release a
+        // flat pool cannot be rebuilt merely to insert a returning texture.
+        const span = selectionDrawSpan(mesh);
+        if (span) this.ranks.push(span.first);
+        if (scene.isGeometryDataReleased() && visible.has(mesh.expressId)) {
+          mesh.rteOrigin = [...source.origin];
+          mesh.transform.m[12] = source.origin[0]; mesh.transform.m[13] = source.origin[1]; mesh.transform.m[14] = source.origin[2];
+          draws.push(mesh);
+        }
+      }
+    }
     this.ranks.sort((a, b) => a - b);
     // A GPU pick may have hydrated a texture before it became selected. Its
     // copy is no longer needed; mixed entities rehydrate only their flat parts.

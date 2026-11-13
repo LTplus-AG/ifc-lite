@@ -220,9 +220,11 @@ function frameCost(h: Harness, options: RenderOptions) {
   const frameDraws = h.stats.draws.slice(draws);
   const highlightDraws = frameDraws.filter((draw) => draw.pipeline === h.SELECTION);
   const origins = new Map(h.scene.getMeshes().map((mesh) => [mesh.vertexBuffer as unknown as FakeBuffer, mesh.rteOrigin]));
-  const created = h.stats.buffers.slice(before).filter((buffer) => (buffer.usage & VERTEX_OR_INDEX) !== 0 || buffer.size === MESH_UNIFORM_BYTES);
+  const allocated = h.stats.buffers.slice(before);
+  const created = allocated.filter((buffer) => (buffer.usage & VERTEX_OR_INDEX) !== 0 || buffer.size === MESH_UNIFORM_BYTES);
   return {
     buffers: created.length,
+    uniformBuffers: allocated.filter((buffer) => (buffer.usage & GPUBufferUsage.UNIFORM) !== 0),
     bindGroups: h.stats.bindGroups - bindGroups,
     draws: frameDraws.length,
     writes: h.stats.writes - writes,
@@ -953,7 +955,8 @@ describe('uploadMergedMeshes across entities (#9835)', () => {
     assert.equal(h.renderer.getFrameStats()!.drawCalls, 2_400, 'one base and one highlight draw per piece');
     assert.deepEqual(selected.highlightDraws.map((d) => d.vertexBuffer), source.map((m) => m.vertexBuffer));
     assert.deepEqual(selected.highlightDraws.map((d) => d.indexBuffer), source.map((m) => m.indexBuffer));
-    assert.ok(selected.created.filter((b) => b.usage & 64).length < 10, 'uniform blocks share arena pages');
+    assert.ok(selected.uniformBuffers.length < 10, 'all newly allocated uniform buffers, including arena pages, stay pooled');
+    assert.ok(selected.uniformBuffers.some((buffer) => buffer.size > MESH_UNIFORM_BYTES), 'the count includes shared arena pages');
     const again = frameCost(h, { selectedIds: new Set(idsOf(600, 601)) });
     assert.equal(again.created.filter((b) => b.usage & VERTEX_OR_INDEX).length, 0);
     assert.equal(again.highlightDraws.length, 600);
@@ -1235,4 +1238,51 @@ it('distinct textured pieces sharing positions retain both draws and item scopes
     assert.deepEqual(frame.highlightDraws.map((draw) => draw.vertexBuffer), scoped.map((mesh) => mesh.vertexBuffer));
     assert.deepEqual(frame.highlightDraws.map((draw) => draw.indexBuffer), scoped.map((mesh) => mesh.indexBuffer));
   }
+});
+
+it('review regression: selected texture survives CPU release (#10079)', () => {
+  const h = makeHarness(); load(h, texturedPieces(1));
+  const options = { selectedIds: new Set([1]) };
+  assert.equal(frameCost(h, options).highlightDraws.length, 1);
+  h.scene.releaseGeometryData();
+  assert.equal(h.scene.getTexturedMeshes().length, 1);
+  assert.equal(frameCost(h, options).highlightDraws.length, 1);
+});
+
+it('review regression: mixed pieces in the same item keep triangle order (#10079)', () => {
+  const h = makeHarness();
+  const texture = texturedPieces(1)[0];
+  const flat = piece(1, 1, { geometryItemId: texture.geometryItemId });
+  load(h, [texture, flat]);
+  const frame = frameCost(h, { selectedIds: new Set([1]) });
+  const firstX = frame.highlightDraws.map((draw) => new Float32Array(draw.vertexBuffer.bytes!.buffer)[0]);
+  assert.deepEqual(firstX, [0, -0.5]);
+});
+
+it('CPU release preserves hidden borrowed selections but never resurrects deselected or retired draws (#10079)', () => {
+  const h = makeHarness(); load(h, texturedPieces(2));
+  const selectedIds = new Set([1, 2]);
+  assert.equal(frameCost(h, { selectedIds }).highlightDraws.length, 2);
+  assert.equal(frameCost(h, { selectedIds, hiddenIds: new Set([2]) }).highlightDraws.length, 1);
+  h.scene.releaseGeometryData();
+  assert.equal(frameCost(h, { selectedIds }).highlightDraws.length, 2);
+  assert.equal(frameCost(h, { selectedIds, isolatedIds: new Set([2]) }).highlightDraws.length, 1);
+  assert.equal(frameCost(h, { selectedIds }).highlightDraws.length, 2);
+  assert.equal(frameCost(h, { selectedIds: new Set([2]) }).highlightDraws.length, 1);
+  h.scene.clear();
+  assert.equal(frameCost(h, { selectedIds: new Set([2]) }).highlightDraws.length, 0);
+});
+
+it('hidden textured ordering barriers survive CPU release beside flat pools (#10079)', () => {
+  const h = makeHarness();
+  const flat = Array.from({ length: 600 }, (_, i) => piece(i * 2 + 1, 0));
+  const texture = { ...texturedPieces(1)[0], expressId: 2 };
+  load(h, [...flat, texture]);
+  const selectedIds = new Set([1, 2, ...flat.slice(1).map((mesh) => mesh.expressId)]);
+  frameCost(h, { selectedIds });
+  frameCost(h, { selectedIds, hiddenIds: new Set([2]) });
+  h.scene.releaseGeometryData();
+  const restored = frameCost(h, { selectedIds });
+  assert.deepEqual(mixedDrawIds(h, restored.highlightDraws), [...selectedIds]);
+  assert.equal(restored.created.filter((buffer) => buffer.usage & VERTEX_OR_INDEX).length, 0);
 });

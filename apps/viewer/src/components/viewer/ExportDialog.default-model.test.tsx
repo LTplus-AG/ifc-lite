@@ -56,6 +56,7 @@ test('IFC export of a store with no STEP records reports the refusal by name and
   const errors: string[] = [];
   mock.method(toast, 'error', (message: string) => { errors.push(message); });
   const success = mock.method(toast, 'success', () => undefined);
+  mock.method(console, 'error', () => undefined); // the dialog logs the expected refusal
   const ui = render(<ExportDialog surface="ribbon" />);
   click([...ui.querySelectorAll('button')].find(button => button.textContent?.includes('Export IFC'))!);
   const action = [...document.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Export');

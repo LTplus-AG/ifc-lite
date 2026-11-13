@@ -180,3 +180,24 @@ fn steep_circular_profile_stays_within_chord_tolerance() {
     let worst = worst_chord_error(&samples.points, profile);
     assert!(worst <= CHORD_TOL_M, "{worst}");
 }
+
+/// A span whose chords cannot reach the tolerance within its split budget
+/// stops after `budget + 1` chords and reports it, instead of returning
+/// coarse chords as if they met the bound. With the production budget the
+/// same span passes. Its parabola sags 1 m over 200 m.
+#[test]
+fn an_exhausted_split_budget_is_bounded_and_reported() {
+    let mut decoder = EntityDecoder::new(CREST);
+    let curve = decoder.decode_by_id(17).unwrap();
+    let alignment = AlignmentCurve::parse(&curve, &mut decoder).unwrap().unwrap();
+
+    let mut stations = vec![0.0];
+    assert!(!refine_span(&alignment, 0.0, 200.0, CHORD_TOL_M, 3, &mut stations));
+    assert_eq!(stations.len(), 1 + 4, "{stations:?}");
+    let points: Vec<_> = stations.iter().map(|&s| alignment.evaluate(s).origin).collect();
+    assert!(worst_chord_error(&points, crest_elevation) > CHORD_TOL_M);
+
+    let mut stations = vec![0.0];
+    assert!(refine_span(&alignment, 0.0, 200.0, CHORD_TOL_M, MAX_SPAN_SPLITS, &mut stations));
+    assert_eq!(stations.len(), 1 + 64);
+}

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 use super::*;
-use crate::processors::SurfaceCurveSweptAreaSolidProcessor;
+use crate::processors::{SurfaceCurveSweptAreaSolidProcessor, SweptDiskSolidProcessor};
 use crate::TessellationQuality;
 use ifc_lite_core::{EntityDecoder, IfcSchema};
 
@@ -86,9 +86,10 @@ fn composite_sweep_over_the_vertex_budget_is_refused_with_the_exact_count() {
         points: (0..16385)
             .map(|i| Point3::new(0.0, 0.0, i as f64 * 0.001))
             .collect(),
-        tangents: None,
         entity_id: 77,
         roll: None,
+        // Any further fields as a plain (non-gradient) plan has them.
+        ..lower("IFCSURFACECURVESWEPTAREASOLID")
     };
     let error = plan.evaluate().unwrap_err();
     assert_eq!(
@@ -221,9 +222,9 @@ fn a_reference_parallel_to_the_tangent_anywhere_keeps_the_rmf_for_the_whole_swee
     let plan = |roll| SurfaceCurveSweepPlan {
         regions: vec![rectangle.clone()],
         points: points.clone(),
-        tangents: None,
         entity_id: 1,
         roll,
+        ..lower("IFCSURFACECURVESWEPTAREASOLID")
     };
     let rmf = plan(None).evaluate().unwrap();
     let rolled = plan(Some(SectionRoll::Projected(Vector3::new(0.0, 0.0, 1.0))))
@@ -353,49 +354,75 @@ fn length_trimmed_gradient_curve_directrix_measures_along_the_slope() {
     assert_near(max, hi);
 }
 
+/// A 400 m straight plan under a crest `IfcGradientCurve` (#20): a parabola
+/// from +2 % to -2 % over 200 m (z = 100 + 0.02 s - 1e-4 s^2, flat at
+/// s = 100, z = 101), then -2 %, followed by `solid` (#10, along #20).
+fn crest(solid: &str) -> String {
+    format!(
+        "#1=IFCCARTESIANPOINT((0.,0.));
+        #2=IFCDIRECTION((1.,0.));
+        #3=IFCVECTOR(#2,1.);
+        #4=IFCLINE(#1,#3);
+        #5=IFCAXIS2PLACEMENT2D(#1,#2);
+        #6=IFCCURVESEGMENT(.CONTINUOUS.,#5,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(400.),#4);
+        #7=IFCCOMPOSITECURVE((#6),.F.);
+        #8=IFCCARTESIANPOINT((0.,100.));
+        #9=IFCDIRECTION((1.,0.02));
+        #11=IFCAXIS2PLACEMENT2D(#8,#9);
+        #12=IFCPOLYNOMIALCURVE(#5,(0.,1.),(0.,0.02,-1.E-4),$);
+        #13=IFCCURVESEGMENT(.CONTINUOUS.,#11,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(200.),#12);
+        #16=IFCCARTESIANPOINT((200.,100.));
+        #17=IFCDIRECTION((1.,-0.02));
+        #18=IFCAXIS2PLACEMENT2D(#16,#17);
+        #19=IFCCURVESEGMENT(.CONTSAMEGRADIENT.,#18,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(200.04),#4);
+        #20=IFCGRADIENTCURVE((#13,#19),.F.,#7,$);
+        {solid}"
+    )
+}
+
+/// The vertices of a round section of `radius` that lie within 0.1 m of the
+/// crest station (x = 100), checked to sit on the circle around the crest
+/// point (100, 0, 101) and returned as their x offsets from 100. Disc-cap
+/// centres are skipped.
+fn round_section_at_crest(positions: &[f32], radius: f64) -> Vec<f64> {
+    let mut offsets = Vec::new();
+    for p in positions.chunks_exact(3) {
+        let (x, y, z) = (p[0] as f64, p[1] as f64, p[2] as f64);
+        let distance = ((x - 100.0).powi(2) + y * y + (z - 101.0).powi(2)).sqrt();
+        if (x - 100.0).abs() < 0.1 && distance > 0.5 * radius {
+            assert!((distance - radius).abs() < 1e-4, "({x}, {y}, {z}) is off the crest circle");
+            offsets.push(x - 100.0);
+        }
+    }
+    assert!(offsets.len() >= 8, "no section at the crest: {offsets:?}");
+    offsets
+}
+
+fn crest_sweep(profile: &str, range: &str) -> Mesh {
+    let source = crest(&format!(
+        "#14={profile};
+        #15=IFCDIRECTION((0.,0.,1.));
+        #10=IFCFIXEDREFERENCESWEPTAREASOLID(#14,$,#20,{range},#15);"
+    ));
+    let mut decoder = EntityDecoder::new(&source);
+    let entity = decoder.decode_by_id(10).unwrap();
+    SurfaceCurveSweptAreaSolidProcessor::new(IfcSchema::new())
+        .lower(&entity, &mut decoder, TessellationQuality::Medium)
+        .unwrap()
+        .unwrap()
+        .evaluate()
+        .unwrap()
+}
+
 /// Two sweeps that meet on a crest share its tangent (grade 0 there), so the
 /// end cap of the first and the start cap of the second coincide. With
 /// tangents taken from the chords the two caps leaned apart by about a
 /// millimetre at the top of a 3 m section: a visible seam.
 #[test]
 fn gradient_sweeps_meeting_at_a_point_share_its_section() {
-    let crest = |range: &str| {
-        format!(
-            "#1=IFCCARTESIANPOINT((0.,0.));\n\
-            #2=IFCDIRECTION((1.,0.));\n\
-            #3=IFCVECTOR(#2,1.);\n\
-            #4=IFCLINE(#1,#3);\n\
-            #5=IFCAXIS2PLACEMENT2D(#1,#2);\n\
-            #6=IFCCURVESEGMENT(.CONTINUOUS.,#5,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(400.),#4);\n\
-            #7=IFCCOMPOSITECURVE((#6),.F.);\n\
-            #8=IFCCARTESIANPOINT((0.,100.));\n\
-            #9=IFCDIRECTION((1.,0.02));\n\
-            #11=IFCAXIS2PLACEMENT2D(#8,#9);\n\
-            #12=IFCPOLYNOMIALCURVE(#5,(0.,1.),(0.,0.02,-1.E-4),$);\n\
-            #13=IFCCURVESEGMENT(.CONTINUOUS.,#11,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(200.),#12);\n\
-            #16=IFCCARTESIANPOINT((200.,100.));\n\
-            #17=IFCDIRECTION((1.,-0.02));\n\
-            #18=IFCAXIS2PLACEMENT2D(#16,#17);\n\
-            #19=IFCCURVESEGMENT(.CONTSAMEGRADIENT.,#18,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(200.04),#4);\n\
-            #20=IFCGRADIENTCURVE((#13,#19),.F.,#7,$);\n\
-            #14=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,3.,0.5);\n\
-            #15=IFCDIRECTION((0.,0.,1.));\n\
-            #10=IFCFIXEDREFERENCESWEPTAREASOLID(#14,$,#20,{range},#15);"
-        )
-    };
-    let mesh = |range: &str| {
-        let source = crest(range);
-        let mut decoder = EntityDecoder::new(&source);
-        let entity = decoder.decode_by_id(10).unwrap();
-        SurfaceCurveSweptAreaSolidProcessor::new(IfcSchema::new())
-            .lower(&entity, &mut decoder, TessellationQuality::Medium)
-            .unwrap()
-            .unwrap()
-            .evaluate()
-            .unwrap()
-    };
-    let first = mesh("IFCPARAMETERVALUE(0.),IFCPARAMETERVALUE(100.)");
-    let second = mesh("IFCPARAMETERVALUE(100.),IFCPARAMETERVALUE(200.)");
+    let rectangle = "IFCRECTANGLEPROFILEDEF(.AREA.,$,$,3.,0.5)";
+    let first = crest_sweep(rectangle, "IFCPARAMETERVALUE(0.),IFCPARAMETERVALUE(100.)");
+    let second = crest_sweep(rectangle, "IFCPARAMETERVALUE(100.),IFCPARAMETERVALUE(200.)");
     // One ring of the 4-point rectangle per sample: the last ring of the
     // first sweep against the first ring of the second.
     let ring = 4 * 3;
@@ -407,4 +434,39 @@ fn gradient_sweeps_meeting_at_a_point_share_its_section() {
     // The shared section stands upright: grade 0 at the crest.
     let xs: Vec<f32> = end_cap.chunks_exact(3).map(|p| p[0]).collect();
     assert!(xs.iter().all(|x| (x - 100.0).abs() < 1e-4), "{xs:?}");
+}
+
+/// A centred round section has no roll and keeps the rotation-minimising
+/// frame, which also takes the curve's own tangents: both sweeps end on the
+/// same upright circle at the crest. With chord tangents each cap leaned by
+/// the slope of its last chord (about 0.16 mm at the top of a 0.5 m radius).
+#[test]
+fn round_gradient_sweeps_meeting_at_a_point_share_its_section() {
+    let circle = "IFCCIRCLEPROFILEDEF(.AREA.,$,$,0.5)";
+    for range in [
+        "IFCPARAMETERVALUE(0.),IFCPARAMETERVALUE(100.)",
+        "IFCPARAMETERVALUE(100.),IFCPARAMETERVALUE(200.)",
+    ] {
+        let offsets = round_section_at_crest(&crest_sweep(circle, range).positions, 0.5);
+        assert!(offsets.iter().all(|x| x.abs() < 3e-5), "{range}: section leans {offsets:?}");
+    }
+}
+
+/// An `IfcSweptDiskSolid` along the same crest builds its rings in the
+/// rotation-minimising frame of the curve's own tangents too, so two disks
+/// trimmed at the crest meet on one upright circle.
+#[test]
+fn gradient_swept_disks_meeting_at_a_point_share_its_section() {
+    for range in ["0.,100.", "100.,200."] {
+        let source = crest(&format!("#10=IFCSWEPTDISKSOLID(#20,0.5,$,{range});"));
+        let mut decoder = EntityDecoder::new(&source);
+        let entity = decoder.decode_by_id(10).unwrap();
+        let mesh = SweptDiskSolidProcessor::new(IfcSchema::new())
+            .lower(&entity, &mut decoder, TessellationQuality::Medium)
+            .unwrap()
+            .unwrap()
+            .evaluate();
+        let offsets = round_section_at_crest(&mesh.positions, 0.5);
+        assert!(offsets.iter().all(|x| x.abs() < 3e-5), "{range}: section leans {offsets:?}");
+    }
 }

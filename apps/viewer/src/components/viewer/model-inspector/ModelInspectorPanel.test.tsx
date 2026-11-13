@@ -150,7 +150,8 @@ describe('ModelInspectorPanel (#6232 M2.5)', () => {
     assert.equal(input(root, 'Name').value, 'W1');
     assert.equal(input(root, 'Thickness in metres').value, '0.20');
     assert.equal(input(root, 'Height in metres').value, '3.00');
-    assert.equal(input(root, 'Length in metres').readOnly, true);
+    assert.equal(input(root, 'Length in metres').value, '4.00');
+    assert.equal(input(root, 'Length in metres').readOnly, false, 'a wall\'s length is typed here too (#9296)');
     const headings = [...root.querySelectorAll('h3')].map((h) => h.textContent);
     assert.deepEqual(headings, ['Type', 'Dimensions', 'Material layers']);
   });

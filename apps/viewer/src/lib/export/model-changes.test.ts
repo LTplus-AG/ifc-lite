@@ -493,6 +493,19 @@ describe('buildChangedArtifacts', () => {
     assert.deepStrictEqual(result.skipped, [{ name: 'model.3dm', reason: 'Model has no IFC STEP source to export changes into' }]);
   });
 
+  it('skips a model whose STEP store cannot be resolved', async () => {
+    // Unresolvable store (evicted, or never loaded) is a distinct skip from a
+    // tabular store: there are no bytes at all, not the wrong kind of bytes.
+    const models = new Map<string, FederatedModel>([['m', mkModel('m', 'model.ifc')]]);
+    const mutationViews = new Map<string, MutablePropertyView>([['m', mkView(1)]]);
+    const { deps, stepCalls, ifcxCalls } = fakeDeps({ resolveStepDataStore: async () => null });
+    const result = await buildChangedArtifacts(mkState({ models, mutationViews }), deps);
+    assert.strictEqual(stepCalls.length, 0);
+    assert.deepStrictEqual(ifcxCalls, []);
+    assert.deepStrictEqual(result.files, []);
+    assert.deepStrictEqual(result.skipped, [{ name: 'model.ifc', reason: 'Model data is unavailable for export' }]);
+  });
+
   it('dedupes colliding filenames across models', async () => {
     const models = new Map<string, FederatedModel>([
       ['a', mkModel('a', 'model.ifc')],

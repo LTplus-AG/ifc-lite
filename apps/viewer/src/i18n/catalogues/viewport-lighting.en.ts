@@ -99,6 +99,18 @@ export const viewportLightingEn = {
   'viewportLighting.container.loadErrorCard.webgpuUnsupported':
     "This browser can't run the WebGPU renderer this viewer needs. Try a recent Chrome, Edge, Firefox or Safari — see the browser-support link at the top of the viewer.",
   'viewportLighting.container.modelUrlAutoload.malformedUrl': 'The linked model address is not a valid URL.',
+  'viewportLighting.container.processedModelAutoload.malformedLink': 'The model link is incomplete or damaged.',
+  'viewportLighting.container.processedModel.notPrimary': 'A processed model can only be opened as the first model.',
+  'viewportLighting.container.processedModel.noServer': 'No processing server is configured for this viewer, so processed models cannot be opened.',
+  'viewportLighting.container.processedModel.unreachable': 'The configured processing server cannot be reached from this page.',
+  'viewportLighting.container.processedModel.unsupported': 'This browser cannot open processed models: it lacks the Parquet support they need.',
+  'viewportLighting.container.processedModel.notStored': 'This model is not available on the server (yet).',
+  'viewportLighting.container.processedModel.forbidden': 'You have no access to this model.',
+  'viewportLighting.container.processedModel.busy': 'The processing server is busy. Try again in a moment.',
+  'viewportLighting.container.processedModel.serverError': 'The processing server failed to send this model. Try again.',
+  'viewportLighting.container.processedModel.refused': 'The processing server refused this model ({status}).',
+  'viewportLighting.container.processedModel.network': 'The processed model could not be loaded from the server. Check the connection and try again.',
+  'viewportLighting.container.processedModel.unknown': 'The processed model could not be opened, and no cause was reported. Try again.',
   'viewportLighting.container.modelUrlAutoload.crossOrigin':
     "The linked model is hosted on a different site, so it was not loaded for your safety.",
   'viewportLighting.container.modelUrlAutoload.fetchFailed': 'The linked model could not be downloaded: {reason}',

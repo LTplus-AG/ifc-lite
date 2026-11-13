@@ -10,4 +10,5 @@ export const mergeLayersBannerRu = {
   "mergeLayersBanner.subtitle": "Перезагрузите модель для применения новой настройки.",
   "mergeLayersBanner.reloadButton": "Перезагрузить",
   "mergeLayersBanner.dismissAriaLabel": "Отклонить напоминание о перезагрузке",
+  "mergeLayersBanner.serverProcessed": "Эта модель обработана на сервере, поэтому параметры геометрии при загрузке её не меняют.",
 } satisfies Catalogue;

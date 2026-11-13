@@ -65,6 +65,7 @@ import { recordDownloadedSourceFile } from '@/lib/sources/persistence';
 import { sanitizeFilename } from '@/lib/export/download';
 import { enqueueSourceLoad } from '@/lib/sources/loadQueue';
 import { toast, Toaster } from '@/components/ui/toast';
+import { reloadActiveModelInPlace } from './reloadActiveModel';
 import { reportFileOpenRejected } from '@/hooks/ingest/fileOpenRejected';
 import { Upload, AlertTriangle, ChevronDown, ExternalLink, Plus } from 'lucide-react';
 import { startBlankModel } from '@/hooks/startBlankModel';
@@ -522,67 +523,22 @@ export function ViewportContainer() {
     }
   }, [guardWebGpu, loadFile]);
 
-  // Issue #540 "Merge Multilayer Walls" reload. The setting changes the produced
-  // geometry, so it only takes on a re-load. Re-load the active model IN PLACE
-  // from the File the store ALREADY retains on the model record
-  // (`getActiveModel().sourceFile`, set by upsertModel at load time) — loadFile
-  // re-snapshots `mergeLayers` from the store, so the toggle re-tessellates.
-  // The earlier recent-files-blob-cache source was unreliable (its 150 MB cap
-  // skips real models + a fire-and-forget write races the reload), so it fell to
-  // window.location.reload() which DROPPED the model — the "nothing loads" blank.
+  // Issue #540 "Merge Multilayer Walls" and the Fast/Exact mode take effect on a re-load of the
+  // active model in place; one reload applies every load-time geometry setting. The earlier
+  // recent-files-blob-cache source was unreliable (its 150 MB cap skips real models + a
+  // fire-and-forget write races the reload), so it fell to window.location.reload() which
+  // DROPPED the model — the "nothing loads" blank.
+  const serverProcessedNotice = useCallback(() => toast.info(t('mergeLayersBanner.serverProcessed')), [t]);
   const handleMergeLayersReload = useCallback(async () => {
-    const st = useViewerStore.getState();
-    const file = st.getActiveModel()?.sourceFile;
-    console.log(
-      '[merge-reload] start: mergeLayers=',
-      st.mergeLayers,
-      'activeModel.sourceFile=',
-      file ? `${file.name} (${file.size}B)` : 'NONE',
-    );
-    st.clearMergeLayersPendingReload();
-    if (file) {
-      try {
-        console.log('[merge-reload] re-loading active model in place…');
-        await loadFile(file);
-        const after = useViewerStore.getState();
-        console.log(
-          '[merge-reload] loadFile resolved: meshes=',
-          after.geometryResult?.meshes?.length ?? 0,
-          'models=',
-          after.models?.size ?? 0,
-        );
-      } catch (err) {
-        console.error('[merge-reload] loadFile threw:', err);
-      }
-    } else if (typeof window !== 'undefined') {
-      // No retained File (e.g. blank/new model) — fall back to a full reload
-      // (the toggle is persisted, so the user re-opens the file).
-      console.warn('[merge-reload] no active sourceFile — falling back to window.location.reload()');
-      window.location.reload();
-    }
-  }, [loadFile]);
-
-  // Reload-to-apply for the Fast/Exact geometry mode, mirroring the merge-layers
-  // reload: re-load the active model in place so loadFile re-snapshots the mode
-  // and re-tessellates. Clears BOTH pending flags since one reload applies every
-  // load-time geometry setting.
+    useViewerStore.getState().clearMergeLayersPendingReload();
+    await reloadActiveModelInPlace(loadFile, 'merge-reload', serverProcessedNotice);
+  }, [loadFile, serverProcessedNotice]);
   const handleGeometryModeReload = useCallback(async () => {
     const st = useViewerStore.getState();
-    const file = st.getActiveModel()?.sourceFile;
     st.clearGeometryModePendingReload();
     st.clearMergeLayersPendingReload();
-    if (file) {
-      try {
-        await loadFile(file);
-      } catch (err) {
-        console.error('[geom-mode-reload] loadFile threw:', err);
-      }
-    } else if (typeof window !== 'undefined') {
-      // No retained File — fall back to a full reload (the mode is persisted).
-      console.warn('[geom-mode-reload] no active sourceFile — falling back to window.location.reload()');
-      window.location.reload();
-    }
-  }, [loadFile]);
+    await reloadActiveModelInPlace(loadFile, 'geom-mode-reload', serverProcessedNotice);
+  }, [loadFile, serverProcessedNotice]);
   // Check if any models are loaded (even if hidden) - used to show empty 3D vs starting UI
   const hasLoadedModels = storeModels.size > 0 || (geometryResult?.meshes && geometryResult.meshes.length > 0);
 

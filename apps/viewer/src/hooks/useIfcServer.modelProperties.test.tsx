@@ -149,6 +149,17 @@ it('a range that already carries authored ids is a hard error, never an alias', 
   assert.equal(useViewerStore.getState().models.get('server')?.ifcDataStore, null, 'hydrated entity 2 would share a global id with authored id 2');
   assert.equal(warnings.some(args => /Optional hydration failed/.test(String(args[0]))), true);
 });
+it('a processed model whose reference changes aborts its properties: there is no sourceFile to compare', async () => {
+  const opened = { sha256: 'a'.repeat(64), bytes: 1 };
+  useViewerStore.getState().updateModel('server', { sourceFile: undefined, processedModel: opened });
+  await start();
+  const oldSignal = signal;
+  await act(async () => { useViewerStore.getState().updateModel('server', { processedModel: { sha256: 'b'.repeat(64), bytes: 1 } }); });
+  assert.equal(oldSignal.aborted, true, 'a replacement processed model is detected');
+  await act(async () => { release(wire); await new Promise(resolve => setTimeout(resolve, 200)); });
+  assert.equal(useViewerStore.getState().models.get('server')?.ifcDataStore, null, 'the older model\'s properties are not published');
+});
+
 
 for (const remount of [false, true]) {
   it(`#9538 ${remount ? 'a remount' : 'unmount'} of the starting component keeps model properties alive and publishes`, async () => {

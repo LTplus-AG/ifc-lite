@@ -1060,6 +1060,40 @@ the upload.
     client uploads. That is correct, just not a saving. `GET /cache/check`
     behaves the same way, for the same reason.
 
+### Opening a stored result without the file
+
+A host that keeps the IFC on its own server, has had it processed once, and
+only wants a browser to show the result has no file to hash or upload. It
+passes a `ProcessedModelRef` in place of the file:
+
+```typescript
+// The SHA-256 of the source file names the stored result; `bytes` is its size.
+const stored = { sha256: 'c0ffee…', bytes: 46_000_000 };
+const result = await client.parseParquetStream(stored, (batch) => {
+  console.log(`${batch.meshes.length} meshes`);
+});
+const dataModel = await client.fetchDataModel(result.cache_key);
+```
+
+`parseParquet` takes the same reference. Neither hashes or uploads anything,
+and a miss rejects with an `IfcServerError` (`404`, `NOT_FOUND`) instead of
+falling back to an upload: there are no bytes to send. Store the result with
+the layout the client asks for (`parquet_layout=shared-shapes`, and
+`stream_shapes=cross-batch` on the stream route), because the layout is part of
+the cache identity.
+
+The viewer has the same entry. Built with `VITE_IFC_SERVER_URL` (an absolute
+URL, or a same-origin path such as `/ifc` behind a reverse proxy), it opens
+
+```
+/?processed=<sha256>&bytes=<source size>&name=<file name>
+```
+
+from the server alone: no IFC is requested, and there is no local fallback.
+Embedders call `loadFile(new File([], name), { kind: 'primary' }, { processedModel })`.
+The hash selects a result; it is not a credential. Decide who may read a result
+where the server is served, with its token or the proxy in front of it.
+
 ### Client-Side Streaming
 
 ```typescript

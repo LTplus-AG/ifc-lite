@@ -578,6 +578,8 @@ export interface FederatedModel extends ModelLoadReportFields {
    * layers. Held in memory only; never serialized to cache.
    */
   sourceHandle?: FileSystemFileHandle;
+  /** A model the processing server already processed: opened by reference, so there are no source bytes and no `sourceFile`. */
+  processedModel?: import('@ifc-lite/server-client').ProcessedModelRef;
   /**
    * ID offset for this model (from FederationRegistry)
    * All mesh expressIds are globalIds = originalExpressId + idOffset

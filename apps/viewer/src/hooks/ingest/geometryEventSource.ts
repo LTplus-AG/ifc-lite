@@ -79,7 +79,14 @@ export function beginGeometryKernel(
   file: File,
   target: { kind: 'primary' | 'federated' },
   retry: () => void,
+  /**
+   * Required, so no caller hands the retained engine an empty file by default. `hasSourceBytes`
+   * is false for a processed model: the server's exact geometry is all there is. Such a load is
+   * exact whatever the setting, and never waits for, fetches or arms the retained engine.
+   */
+  source: { hasSourceBytes: boolean },
 ): GeometryKernelLoad {
+  if (!source.hasSourceBytes) return EXACT_GEOMETRY_KERNEL;
   // `retainedKernel` is `null` in the default viewer (the alias maps to off.ts).
   return retainedKernel?.begin(file, target, retry) ?? EXACT_GEOMETRY_KERNEL;
 }

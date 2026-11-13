@@ -25,8 +25,8 @@ export interface ReadRhino3dmOptions {
   /** SubD refinement level, each level quadruples the control net. Default 2. */
   subdLevel?: 0 | 1 | 2 | 3;
   /**
-   * Drawing budget in triangles, a block's counted once per placement; a curve or
-   * point cloud vertex counts a third of one. Default 30,000,000.
+   * Drawing budget in triangles, a block's counted once per placement. A vertex counts a
+   * third of one, and a mesh at least its triangles. Default 30,000,000.
    */
   maxTriangles?: number;
   /** Bake block instances into `meshes` for callers that cannot instance. Default false. */

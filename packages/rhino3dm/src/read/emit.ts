@@ -17,12 +17,13 @@ export type DrawnPart = Exclude<Part, { kind: 'instance' }>;
 export interface BlockMeshes { name: string; meshes: RhinoImportDefinition['meshes']; cost: number; reach: RhinoVector3 }
 
 /**
- * What a part costs the triangle budget: its triangles, or a third of a triangle per vertex,
- * rounded up, whichever is more, since memory follows the vertex buffers too. A whole number, so a
- * block's cost is exactly the sum of its meshes' and a placement admitted whole is never cut by rounding.
+ * What a part costs the triangle budget: a third of a triangle per vertex, since memory follows the
+ * vertex buffers, and for a mesh at least its triangles. A mesh's vertex charge is rounded up, so a
+ * block's cost is a whole sum of its meshes' and a placement admitted whole is never cut by rounding.
  */
-export function cost(part: { positions: Float32Array; indices?: Uint32Array }): number {
-  return Math.max((part.indices?.length ?? 0) / 3, Math.ceil(part.positions.length / 9));
+export function cost(part: DrawnPart): number {
+  if (part.kind === 'dot') return 0;
+  return part.kind === 'mesh' ? Math.max(part.indices.length / 3, Math.ceil(part.positions.length / 9)) : part.positions.length / 9;
 }
 
 /** Reverse each triangle, for geometry placed by a mirroring transform. */
@@ -75,16 +76,16 @@ export class Emitter {
     this.report.warn('dots', () => `Stopped after ${MAX_TEXT_DOTS.toLocaleString('en-US')} text dots: ${plural(this.report.skipped['TextDot:limit'], 'text dot')} left out.`);
   }
 
-  /** Whether `cost` still fits; when it does not, drawing stops for the rest of the file. */
-  private fits(cost: number): boolean {
-    if (this.exhausted || cost > this.budgetLeft) { this.exhausted = true; return false; }
+  /** Whether `amount` still fits; when it does not, drawing stops for the rest of the file. */
+  private fits(amount: number): boolean {
+    if (this.exhausted || amount > this.budgetLeft) { this.exhausted = true; return false; }
     return true;
   }
 
   /** Charge the budget, or stop drawing for the rest of the file. */
-  private take(cost: number): boolean {
-    if (!this.fits(cost)) return false;
-    this.budgetLeft -= cost;
+  private take(amount: number): boolean {
+    if (!this.fits(amount)) return false;
+    this.budgetLeft -= amount;
     return true;
   }
 

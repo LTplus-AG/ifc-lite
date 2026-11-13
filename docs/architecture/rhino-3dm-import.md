@@ -167,8 +167,8 @@ export interface ReadRhino3dmOptions {
   locateFile?: (path: string, prefix: string) => string;
   subdLevel?: 0 | 1 | 2 | 3;        // default 2
   maxTriangles?: number;            // default 30_000_000 drawn, instances counted per placement;
-                                    // a part costs its triangles or a third of one per vertex,
-                                    // whichever is more (see Size ceiling);
+                                    // a vertex costs a third of a triangle, a mesh at least
+                                    // its triangles (see Size ceiling);
                                     // a whole count, 0 or more: RangeError otherwise
   bakeInstances?: boolean;          // default false: blocks come back as definitions + instances
   onProgress?: (done: number, total: number) => void;
@@ -815,22 +815,24 @@ What that says:
   in the worker. Whether a tab survives that is [unproven]; the one-shot
   worker contains a crash either way.
 
-**What the budget charges.** Every drawn part costs its triangles, or a third
-of a triangle per vertex, rounded up, whichever is more. That one rule covers
-meshes, curves (polyline points or samples) and point clouds, at top level and
-per placement, in both instance modes; text dots stay on their own limit. A
-block's cost is the sum of its meshes', so the admission below works on whole
-numbers. Memory follows the vertex buffers as much as the triangles: before
-the vertex charge, a mesh of 1 triangle over 100,000 vertices came back with
-2.4 MB of buffers at `maxTriangles: 10`, and 50 baked placements of it with
-120 MB at `maxTriangles: 100` [measured, then fixed; test]. It is refused at
-10 now, since it costs 33,334. A mesh whose every vertex is in some triangle
-has at most three per triangle, so it costs its triangles alone and normal
-files are charged as before [test: the box block at 120; ran: none of the 73
-meshes of our FZK export, the 271 of duplex, or the 4 in the five readable
-Rhino samples has more than three vertices per triangle]. Curves and clouds were charged by vertex already; 100,000 points
-need `maxTriangles: 33,334` and are refused at 33,333 [measured]. One budget,
-no second option: the triangle is the unit, and a vertex is priced in it.
+**What the budget charges.** Every drawn part costs a third of a triangle per
+vertex, and a mesh at least its triangles: a mesh costs whichever is more,
+with the vertex charge rounded up. That one rule covers meshes, curves
+(polyline points or samples) and point clouds, at top level and per
+placement, in both instance modes; text dots stay on their own limit. A
+block's cost is the sum of its meshes', a whole number, so the admission
+below is exact. Memory follows the vertex buffers as much as the triangles:
+before the vertex charge, a mesh of 1 triangle over 100,000 vertices came
+back with 2.4 MB of buffers at `maxTriangles: 10`, and 50 baked placements of
+it with 120 MB at `maxTriangles: 100` [measured, then fixed; test]. It costs
+33,334 now and is refused at 10. A mesh whose every vertex is in some
+triangle has at most three per triangle, so it costs its triangles alone and
+normal files are charged as before [test: the box block at 120; ran: none of
+the 73 meshes of our FZK export, the 271 of duplex, or the 4 in the five
+readable Rhino samples has more than three vertices per triangle]. Curves
+and clouds keep the charge they had: 100,000 points need `maxTriangles:
+33,334` and are refused at 33,333 [measured]. One budget, no second option:
+the triangle is the unit, and a vertex is priced in it.
 
 **The triangle budget admits a placement's block meshes whole, in both modes.**
 `maxTriangles` is charged a block's cost once per placement, and a

@@ -254,15 +254,18 @@ describe('guards', () => {
   test.each([false, true])('a mesh is charged a third of a triangle per vertex when that is more than its triangles (bakeInstances %s)', async bakeInstances => {
     // One triangle over 3,000 vertices is charged as 1,000 triangles, at top level and per placement.
     const sparse = (c: Craft) => c.mesh(Array.from({ length: 3000 }, (_, i) => [i, i % 2, 0]), [[0, 1, 2]]);
+    // With a box beside it a placement costs 1,012, admitted whole in both modes: 3,035 leaves 1,011 for
+    // the third, which then draws neither mesh, though the sparse one alone would fit.
     const bytes = await craft(c => {
-      const block = c.block('Sparse', [sparse(c)]);
+      const block = c.block('Sparse', [sparse(c), unit(c)]);
       for (let i = 0; i < 3; i++) c.addInstance(block, translation(0, 0, i), { name: `placement ${i}` });
       c.addMesh(sparse(c), { name: 'mesh' });
     });
-    const cut = await readRhino3dm(bytes, { bakeInstances, maxTriangles: 2999 });
+    const cut = await readRhino3dm(bytes, { bakeInstances, maxTriangles: 3035 });
     expect(cut.entities.map(e => e.name)).toEqual(['placement 0', 'placement 1']);
+    expect(drawnTriangles(cut)).toBe(26);
     expect(cut.skipped).toEqual({ budget: 2 });
-    expect((await readRhino3dm(bytes, { bakeInstances, maxTriangles: 4000 })).entities).toHaveLength(4);
+    expect((await readRhino3dm(bytes, { bakeInstances, maxTriangles: 4036 })).entities).toHaveLength(4);
     // A mesh whose triangles use every vertex is charged its triangles alone, as before.
     expect(drawnTriangles(await readRhino3dm(await craft(tenBoxes), { bakeInstances, maxTriangles: 120 }))).toBe(120);
   });

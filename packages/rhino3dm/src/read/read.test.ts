@@ -218,11 +218,18 @@ describe('layers', () => {
       c.addMesh(c.box([0, 0, 0], [1, 1, 1]), { name: 'shown', groups: [group], userStrings });
       c.addMesh(c.box([2, 0, 0], [3, 1, 1]), { name: 'hidden', groups: [group], userStrings, hidden: true });
       c.addPolyline([[0, 0, 0], [1, 0, 0]], { name: 'off', groups: [group], userStrings, layer: off });
+      c.addPointCloud([[0, 0, 0]], undefined, { name: 'hidden cloud', groups: [group], userStrings, hidden: true });
+      c.addTextDot('tag', [0, 0, 1], { name: 'shown dot', groups: [group], userStrings });
+      c.addInstance(c.block('Box', [c.box([0, 0, 0], [1, 1, 1])]), undefined, { name: 'hidden instance', groups: [group], userStrings, hidden: true });
       c.addMesh(c.box([4, 0, 0], [5, 1, 1]), { name: 'alone', hidden: true });
     }));
-    expect(result.entities.map(e => [e.objectIds.length, e.hidden])).toEqual([[3, false], [1, true]]);
-    expect(result.meshes.map(m => [m.entity, m.hidden])).toEqual([[0, false], [0, true], [1, true]]);
-    expect(result.curves.map(m => [m.entity, m.hidden])).toEqual([[0, true]]);
+    expect(result.entities.map(e => [e.objectIds.length, e.hidden])).toEqual([[6, false], [1, true]]);
+    const flags = (records: { entity: number; hidden: boolean }[]) => records.map(r => [r.entity, r.hidden]);
+    expect(flags(result.meshes)).toEqual([[0, false], [0, true], [1, true]]);
+    expect(flags(result.curves)).toEqual([[0, true]]);
+    expect(flags(result.pointClouds)).toEqual([[0, true]]);
+    expect(flags(result.textDots)).toEqual([[0, false]]);
+    expect(flags(result.instances)).toEqual([[0, true]]);
   });
 
   test('an object whose layer index is outside the table lands on the first layer', async () => {

@@ -19,8 +19,10 @@ import type { DrawingLayers } from './useDrawingLayers';
 export function DrawingCanvasView({ vm, layers }: { vm: DrawingViewModel; layers: DrawingLayers }) {
   const { t } = useTranslation();
   const { drawing, status, drawnPlane, viewTransform, displayOptions } = vm;
-  // Saved dimensions count as content: on an empty cut, those from another cut still show dimmed.
-  const hasDimensions = (vm.dimensionTool.scene?.dimensions.length ?? 0) > 0;
+  // Dimensions count as content: on an empty cut, saved ones from another cut
+  // still show dimmed, and one being placed shows its points and preview.
+  const dimensionScene = vm.dimensionTool.scene;
+  const hasDimensions = !!dimensionScene && (dimensionScene.dimensions.length > 0 || (dimensionScene.placedPoints?.length ?? 0) > 0);
   const hasContent = !!drawing && (drawing.cutPolygons.length > 0 || drawing.lines?.length > 0 || layers.dxfUnderlayData.length > 0 || vm.hasReferences || hasDimensions);
   const editingAnnotation = vm.textAnnotation2DEditing
     ? vm.textAnnotations2D.find((a) => a.id === vm.textAnnotation2DEditing) ?? null

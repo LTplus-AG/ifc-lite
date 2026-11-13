@@ -5160,6 +5160,7 @@
     "fromStoreyLocal: function",
     "generateSpaces: function",
     "generateSpacesFromWalls: function",
+    "getFootprintRoofPlaneParts: function",
     "gridAxisIntersections: function",
     "gridIntersectionPlacement: function",
     "hasRefreshableBaseQuantities: function",

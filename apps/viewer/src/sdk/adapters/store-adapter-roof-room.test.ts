@@ -58,7 +58,11 @@ for (const failure of [{ kind: 'property', at: 1 }, { kind: 'property', at: 3 },
     },
   });
   const space = adapter.addSpace(MODEL, 42, { Position: [0,0,0], Width: 4, Depth: 3, Height: 3, Name: 'Room under roof' });
-  const roof = adapter.addRoof(MODEL, 42, { Position: [0,0,3], Width: 10, Depth: 8, Thickness: .25, EdgeSlopes: Array(4).fill(Math.PI / 6) });
+  // The quantity case also proves that a gable-to-hip edit publishes newly
+  // created slab parts before attempting to write their room quantities (#9357).
+  const startsGable = failure.kind === 'quantity';
+  const roof = adapter.addRoof(MODEL, 42, { Position: [0,0,3], Width: 10, Depth: 8, Thickness: .25,
+    EdgeSlopes: startsGable ? [Math.PI/6,0,Math.PI/6,0] : Array(4).fill(Math.PI / 6) });
   await settle();
   // Export-only sets receive fresh GlobalIds per serialization. Preserve every
   // persisted native entity, and compare virtual property/quantity values below.
@@ -91,7 +95,7 @@ for (const failure of [{ kind: 'property', at: 1 }, { kind: 'property', at: 3 },
   assert.deepEqual(sharedDefinitionValues(initialDefinition), Object.fromEntries(initialDefinition.properties.map(p => [p.name, p.value])),
     'creation publishes the footprint before any edit (#9357 item 7)');
   const initialParts = getFootprintRoofPlaneParts(store, view, roof.expressId);
-  assert.equal(initialParts.length, 4);
+  assert.equal(initialParts.length, startsGable ? 2 : 4);
   for (const id of initialParts) {
     const path = pathForEntity(store, id); assert.ok(path);
     assert.equal(getPropertyValue(session.doc, path, 'Pset_SlabCommon', 'PitchAngle')?.type, 'IfcPlaneAngleMeasure');
@@ -103,7 +107,7 @@ for (const failure of [{ kind: 'property', at: 1 }, { kind: 'property', at: 3 },
   assert.ok(spaceMesh.length > 0 && roofMesh.length > 0, 'the real native mesher produced both roof and room');
   assert.ok(spaceQuantities.length > 0, 'the exported room has real quantities');
   const edit = adapter.editRoof; assert.ok(edit);
-  edit(roof, { EdgeSlopes: [Math.PI/6,0,Math.PI/6,0] });
+  edit(roof, { EdgeSlopes: startsGable ? Array(4).fill(Math.PI / 6) : [Math.PI/6,0,Math.PI/6,0] });
   await settle();
   const editedProperties = properties(), editedRoofMesh = mesh(roof.expressId);
   const edited = bytes(), peerBefore = session.snapshot().data;

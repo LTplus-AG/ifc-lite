@@ -29,6 +29,7 @@ export function MultiSelectionInspector({ onClose }: { onClose?: () => void }) {
       type: effectiveListTypeName(store, view, ref.expressId),
     }];
   });
+  const itemsById = new Map(items.map(item => [item.globalId, item]));
   const common = items.every(item => item.name === items[0]?.name) ? items[0]?.name ?? '' : '';
   const multipleModels = new Set(selection.map(ref => ref.modelId)).size > 1;
   // Missing data is a refusal, never permission to edit a readable subset.
@@ -51,12 +52,17 @@ export function MultiSelectionInspector({ onClose }: { onClose?: () => void }) {
       <Button size="sm" variant="outline" onClick={() => state.showWorkspacePanel('properties')}>{t('modelInspector.properties')}</Button>
     </div>
     <ul className="min-h-0 flex-1 overflow-y-auto p-2">
-      {items.map(item => <li key={item.globalId}>
-        <Button size="sm" variant="ghost" className="h-auto w-full justify-start whitespace-normal text-left"
-          onClick={() => state.setSelectedEntityId(item.globalId)}>
-          {item.label} · {item.type} #{item.expressId}
-        </Button>
-      </li>)}
+      {selection.map(ref => {
+        const item = itemsById.get(ref.globalId);
+        return <li key={ref.globalId}>
+          {item ? <Button size="sm" variant="ghost" className="h-auto w-full justify-start whitespace-normal text-left"
+            onClick={() => state.setSelectedEntityId(item.globalId)}>
+            {item.label} · {item.type} #{item.expressId}
+          </Button> : <span className="block px-3 py-2 text-xs text-foreground">
+            {t('modelInspector.unavailable')} #{ref.expressId}
+          </span>}
+        </li>;
+      })}
     </ul>
   </div>;
 }

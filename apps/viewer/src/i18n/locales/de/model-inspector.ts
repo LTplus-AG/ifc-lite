@@ -6,6 +6,7 @@ import type { Catalogue } from '../../registry';
 
 export const modelInspectorDe = {
   "modelInspector.multipleModels": "Wähle Elemente aus einem Modell, um sie gemeinsam zu bearbeiten.",
+  'modelInspector.unavailable': 'Nicht verfügbares Element',
   'modelInspector.multiple': '{count} ausgewählte Elemente',
   "modelInspector.panel.title": "Modellinspektor",
   "modelInspector.close": "Schließen Sie den Modellinspektor",

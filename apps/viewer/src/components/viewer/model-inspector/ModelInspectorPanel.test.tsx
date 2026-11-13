@@ -350,6 +350,10 @@ it('#9389 an unreadable selected model cannot turn a cross-model Name edit into 
   assert.equal(input(ui, 'Name').readOnly, true);
   act(() => useViewerStore.setState({ models: new Map([[MODEL_ID, first], [second.id, { ...second, ifcDataStore: null }]]) }));
   assert.match(ui.textContent ?? '', /2 selected elements/);
+  const rows = ui.querySelectorAll('[data-multi-selection-inspector] li');
+  assert.equal(rows.length, 2, '#9389 every selected element keeps a row when a model becomes unreadable');
+  assert.match(rows[0].textContent ?? '', /W1/);
+  assert.match(rows[1].textContent ?? '', /Unavailable element.*#80/);
   assert.match(ui.textContent ?? '', /Select elements from one model/);
   const name = input(ui, 'Name');
   assert.equal(name.readOnly, true);

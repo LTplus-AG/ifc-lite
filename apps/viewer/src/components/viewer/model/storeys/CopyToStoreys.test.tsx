@@ -126,6 +126,8 @@ it('#9334 copy completion offers Show and Undo, revealing hidden storeys and und
   assert.ok(button(ui, 'Undo'));
   assert.equal(useViewerStore.getState().storeyContextMode, 'all', '#9389 copies are visible immediately');
   assert.equal(useViewerStore.getState().levelDisplayMode, 'stacked');
+  act(() => useViewerStore.getState().setStoreyContextMode('hide'));
+  assert.equal(useViewerStore.getState().storeyContextMode, 'hide', '#9334 Show starts from a different visibility mode');
   click(button(ui, 'Show'));
   await waitFor(() => useViewerStore.getState().storeyContextMode === 'all', 'the first-click Show action loads');
   assert.equal(useViewerStore.getState().storeyContextMode, 'all');

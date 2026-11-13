@@ -227,6 +227,14 @@ describe('drawing snap: sources, holes and input filtering', () => {
     assert.equal(findDrawingSnap(d, P(0.01, 0.01), { tolerance: TOL })?.mode, 'endpoint', 'open-surface cut indexed');
   });
 
+  it('skips a line the canvas culls outside the bounds plus half their span (#10076 review)', () => {
+    // Bounds (0,0)-(1,1): the canvas draws lines within 0.5 m of them and drops the rest.
+    const d = { ...drawing([], [line(91, P(100, 100), P(101, 100)), line(92, P(1.4, 0), P(1.4, 1))]), bounds: { min: P(0, 0), max: P(1, 1) } };
+    assert.equal(findDrawingSnap(d, P(100, 100), { tolerance: TOL }), null, 'no snap to the undrawn line');
+    assert.equal(findDrawingSnap(d, P(1.4, 0), { tolerance: TOL })?.mode, 'endpoint', 'a line inside the margin is drawn and indexed');
+    assert.deepEqual(buildDrawingSnapShapes(d).sources.map((s) => s.entityId), [92]);
+  });
+
   it('is safe on an empty drawing and on a bad tolerance', () => {
     const empty = drawing([]);
     assert.equal(getDrawingSnapIndex(empty).shapes.length, 0, 'no shapes');

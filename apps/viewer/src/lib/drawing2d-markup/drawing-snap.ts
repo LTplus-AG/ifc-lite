@@ -16,7 +16,8 @@
  * Lines are taken as the 2D canvas draws them: `cut` lines that
  * `isPolygonCutLine` marks are triangulation edges of polygons already
  * indexed through their outlines and are skipped, and hidden lines are left
- * out unless asked for. Non-finite coordinates are skipped.
+ * out unless asked for. Lines the canvas culls outside the drawing bounds
+ * (`drawing-line-cull.ts`) and non-finite coordinates are skipped.
  *
  * The index is built on the first query and memoised per `Drawing2D` object
  * (a new drawing is a new object), so moving the cursor costs a grid lookup.
@@ -26,6 +27,7 @@ import { isPolygonCutLine, type Drawing2D } from '@ifc-lite/drawing-2d';
 import { nearestOnShape, shapeKeyPoints } from '../drafting-core/curves';
 import { findSnap, SnapIndex } from '../drafting-core/snaps';
 import type { DraftShape, Pt, SnapMode } from '../drafting-core/types';
+import { lineCullBox, lineInCullBox } from './drawing-line-cull';
 import { mergeCollinearSegments, simplifyRing, VertexOwners, VERTEX_TOLERANCE } from './drawing-snap-merge';
 
 /** The drawing element a snap shape came from. */
@@ -108,11 +110,12 @@ export function buildDrawingSnapShapes(drawing: Drawing2D, opts: DrawingSnapBuil
   }
 
   const lineGroups = new Map<string, { source: DrawingSnapSource; segs: [Pt, Pt][] }>();
+  const lineBox = lineCullBox(drawing.bounds);
   for (const line of drawing.lines) {
     if (isPolygonCutLine(line)) continue;
     if (!opts.includeHiddenLines && line.visibility === 'hidden') continue;
     const { start, end } = line.line;
-    if (!finite(start) || !finite(end)) continue;
+    if (!finite(start) || !finite(end) || !lineInCullBox(lineBox, start, end)) continue;
     if (Math.hypot(end.x - start.x, end.y - start.y) <= VERTEX_TOLERANCE) continue;
     const owner = ownerKey(line.modelIndex, line.entityId);
     let group = lineGroups.get(owner);

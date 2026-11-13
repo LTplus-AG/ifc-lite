@@ -177,7 +177,28 @@ export interface DimensionScene {
   markers?: readonly Point2D[];
 }
 
-export function drawDimensions2D(ctx: CanvasRenderingContext2D, scene: DimensionScene): void {
+/** A screen-space clip rect: x, y, width, height in pixels. */
+export type ScreenClipRect = readonly [number, number, number, number];
+
+/**
+ * Draw the scene. `clip` is the sheet viewport in sheet mode: dimensions are
+ * drawing content and are clipped with it, never painted over the frame or
+ * title block.
+ */
+export function drawDimensions2D(ctx: CanvasRenderingContext2D, scene: DimensionScene, clip: ScreenClipRect | null = null): void {
+  if (!clip) {
+    drawScene(ctx, scene);
+    return;
+  }
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(clip[0], clip[1], clip[2], clip[3]);
+  ctx.clip();
+  drawScene(ctx, scene);
+  ctx.restore();
+}
+
+function drawScene(ctx: CanvasRenderingContext2D, scene: DimensionScene): void {
   const { mapping } = scene.layout;
   for (const dim of scene.dimensions) {
     const onPlane = isDimensionOnPlane(dim, scene.currentPlane);

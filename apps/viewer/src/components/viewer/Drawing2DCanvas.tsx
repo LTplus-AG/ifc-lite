@@ -22,7 +22,8 @@ import type { AnnotationFill2D, AnnotationText2D } from '@/hooks/useSymbolicAnno
 import type { ScanBandPoint } from '@/hooks/scanSectionMath';
 import { drawScanSectionScreenSpace } from './drawing/scanSectionCanvas';
 import { drawMeasurements2D } from './drawing/drawMeasure2D';
-import { drawDimensions2D, type DimensionScene } from './drawing/drawDimensions2D';
+import { drawDimensions2D, type DimensionScene, type ScreenClipRect } from './drawing/drawDimensions2D';
+import { lineCullBox, lineInCullBox } from '@/lib/drawing2d-markup/drawing-line-cull';
 import { type CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key';
 import { resolveSheetTransform } from '@/lib/drawing/sheet-transform';
 import { useDrawingElementPropertiesLookup } from '@/hooks/useDrawingElementPropertiesLookup';
@@ -327,6 +328,7 @@ export function Drawing2DCanvas({
     // ═══════════════════════════════════════════════════════════════════════
     // SHEET MODE: Render paper, frame, title block, then drawing in viewport
     // ═══════════════════════════════════════════════════════════════════════
+    let sheetViewportClip: ScreenClipRect | null = null; // dimensions are clipped with the drawing (sheet mode)
     if (sheetEnabled && activeSheet) {
       const paper = activeSheet.paper;
       const frame = activeSheet.frame;
@@ -574,12 +576,8 @@ export function Drawing2DCanvas({
 
       // Create clip region for viewport
       ctx.beginPath();
-      ctx.rect(
-        mmToScreenX(viewport.x),
-        mmToScreenY(viewport.y),
-        mmToScreen(viewport.width),
-        mmToScreen(viewport.height)
-      );
+      sheetViewportClip = [mmToScreenX(viewport.x), mmToScreenY(viewport.y), mmToScreen(viewport.width), mmToScreen(viewport.height)];
+      ctx.rect(...sheetViewportClip);
       ctx.clip();
 
       // Calculate drawing transform to fit in viewport
@@ -758,12 +756,7 @@ export function Drawing2DCanvas({
         }
 
         // Draw lines (projection, silhouette, etc.)
-        const lineBounds = drawing.bounds;
-        const lineMargin = Math.max(lineBounds.max.x - lineBounds.min.x, lineBounds.max.y - lineBounds.min.y) * 0.5;
-        const lineMinX = lineBounds.min.x - lineMargin;
-        const lineMaxX = lineBounds.max.x + lineMargin;
-        const lineMinY = lineBounds.min.y - lineMargin;
-        const lineMaxY = lineBounds.max.y + lineMargin;
+        const lineBox = lineCullBox(drawing.bounds);
 
         for (const line of drawing.lines) {
           if (isPolygonCutLine(line)) continue;
@@ -771,8 +764,7 @@ export function Drawing2DCanvas({
 
           const { start, end } = line.line;
           if (!isFinite(start.x) || !isFinite(start.y) || !isFinite(end.x) || !isFinite(end.y)) continue;
-          if (start.x < lineMinX || start.x > lineMaxX || start.y < lineMinY || start.y > lineMaxY ||
-            end.x < lineMinX || end.x > lineMaxX || end.y < lineMinY || end.y > lineMaxY) continue;
+          if (!lineInCullBox(lineBox, start, end)) continue;
 
           let strokeColor = '#000000';
           let lineWidth = 0.25;
@@ -1124,12 +1116,7 @@ export function Drawing2DCanvas({
       // 3. DRAW PROJECTION/SILHOUETTE LINES (skip 'cut' - already in polygons)
       // ═══════════════════════════════════════════════════════════════════════
       // Pre-compute bounds for line validation
-      const lineBounds = drawing.bounds;
-      const lineMargin = Math.max(lineBounds.max.x - lineBounds.min.x, lineBounds.max.y - lineBounds.min.y) * 0.5;
-      const lineMinX = lineBounds.min.x - lineMargin;
-      const lineMaxX = lineBounds.max.x + lineMargin;
-      const lineMinY = lineBounds.min.y - lineMargin;
-      const lineMaxY = lineBounds.max.y + lineMargin;
+      const lineBox = lineCullBox(drawing.bounds);
 
       for (const line of drawing.lines) {
         // Skip 'cut' lines - they're triangulation edges, already handled by polygons
@@ -1143,10 +1130,7 @@ export function Drawing2DCanvas({
         if (!isFinite(start.x) || !isFinite(start.y) || !isFinite(end.x) || !isFinite(end.y)) {
           continue;
         }
-        if (start.x < lineMinX || start.x > lineMaxX || start.y < lineMinY || start.y > lineMaxY ||
-          end.x < lineMinX || end.x > lineMaxX || end.y < lineMinY || end.y > lineMaxY) {
-          continue;
-        }
+        if (!lineInCullBox(lineBox, start, end)) continue;
 
         // Set line style based on category. Ink follows the paper (#5496):
         // direct mode only, sheet mode above stays black-on-white.
@@ -1485,7 +1469,7 @@ export function Drawing2DCanvas({
       ctx.setLineDash([]);
     }
 
-    if (dimensionScene) drawDimensions2D(ctx, dimensionScene);
+    if (dimensionScene) drawDimensions2D(ctx, dimensionScene, sheetViewportClip);
     // 8. RENDER SELECTION HIGHLIGHT
     // ═══════════════════════════════════════════════════════════════════════
     if (selectedAnnotation) {

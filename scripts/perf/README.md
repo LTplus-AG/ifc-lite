@@ -7092,3 +7092,34 @@ tail and save at most ~15-20 ms.
   trade cannot be removed by reshaping the gate.
 - The hydration of the arriving full store (~76 ms inside Holter's tail) is
   the remaining candidate; it belongs to the cold-finalize lane.
+
+## Fast-path pool hold after the pick (follow-up to #9900, not opened)
+
+**Not pursued: posting the small-file fast path's geometry run in the task after
+the pick, so its worker pool does not overlap the pick task's interface reset.
+The expected gain (~45 ms on FZK cold, about 9%) is about a quarter of what an
+n=20 sample can resolve on Pop, so no PR was opened.** Branch
+`perf/fast-path-hold-pool` (5d9c4f2ad4 on #9900 0b9c02685d) keeps the change and
+its test (which fails with the change reverted).
+
+Timed unit on Pop, 13 Nov 2026 16:07-16:31Z, harness f7fb7486bd: an A/A of
+main-with-#9900 (bf5a8079c6, with #10012's settled hook) against itself, n=20 a
+side, interleaved. The A/B against the hold was planned for the same unit but
+skipped, because the unit's 29-minute cap left 466 s (< 600 s needed).
+
+| fixture | lane | A/A median (ms) | A/A delta | own floor | 2x floor |
+|---|---|---:|---:|---:|---:|
+| FZK | cold | 498 | -3.5% | 17.9% | 35.8% (~178 ms) |
+| FZK | warm1 | 459 | -5.6% | 21.4% | 42.8% |
+| FZK | warm | 498 | +4.6% | 22.3% | 44.6% |
+| duplex | cold | 608 | +1.6% | 21.7% | 43.4% |
+| Office_A | cold | 636 | -4.1% | 22.4% | 44.8% |
+
+Per-element output matched in every cell (40 samples each). One FZK base sample
+and one Office_A sample per side overlapped a host watchdog pass. All 200
+samples ran thermally throttled (package 100 C).
+
+**Lesson:** at FZK's scale, Pop's n=20 floor is about 18%, so a change worth
+less than ~180 ms on a 0.5 s load cannot be accepted by a timed A/B. Size the
+expected gain against the A/A floor before spending a slot, and give a unit's
+cap room for every arm it plans to run.

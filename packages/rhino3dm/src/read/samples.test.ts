@@ -13,12 +13,17 @@ import { drawnTriangles } from '../../test-support/craft.js';
  * models at tag 8.35.0. The fixture manifest pins them to that commit, so they
  * are fetched from McNeel's repository and never re-hosted.
  */
+const loader = (group: string) => {
+  const dir = fileURLToPath(new URL(`../../../../tests/models/rhino/${group}/`, import.meta.url));
+  return (name: string) => new Uint8Array(readFileSync(dir + name));
+};
 const samples = fileURLToPath(new URL('../../../../tests/models/rhino/mcneel-rhino3dm/', import.meta.url));
-const sample = (name: string) => new Uint8Array(readFileSync(samples + name));
+const sample = loader('mcneel-rhino3dm');
 const absent = !['blocks', 'file3dm_stuff', 'mesh', 'object_UserStrings', 'subd_creases'].every(name => existsSync(`${samples}${name}.3dm`));
 
 /** The openNURBS toolkit's own example files, pinned the same way. */
 const toolkit = fileURLToPath(new URL('../../../../tests/models/rhino/mcneel-opennurbs/', import.meta.url));
+const toolkitSample = loader('mcneel-opennurbs');
 const toolkitAbsent = !existsSync(`${toolkit}my_mesh_with_material.3dm`);
 
 describe.skipIf(absent)(`Rhino-authored samples${absent ? ' (skipped: run pnpm fixtures)' : ''}`, () => {
@@ -84,7 +89,7 @@ describe.skipIf(absent)(`Rhino-authored samples${absent ? ' (skipped: run pnpm f
  * `appearance.test.ts` and the table in the import spec.
  */
 test.skipIf(toolkitAbsent)(`my_mesh_with_material.3dm: a material's transparency fades an opaque colour${toolkitAbsent ? ' (skipped: run pnpm fixtures)' : ''}`, async () => {
-  const result = await readRhino3dm(new Uint8Array(readFileSync(`${toolkit}my_mesh_with_material.3dm`)));
+  const result = await readRhino3dm(toolkitSample('my_mesh_with_material.3dm'));
   expect(result.document).toMatchObject({ archiveVersion: 60, unitSystem: 'Millimeters' });
   // Colour by layer, and the layer's colour is opaque black; the object names a material of its
   // own whose transparency is 0.2, stored as an f32, so the mesh is drawn at alpha 0.8.

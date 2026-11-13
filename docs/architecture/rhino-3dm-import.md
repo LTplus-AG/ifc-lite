@@ -529,7 +529,7 @@ appearance, so nesting composes outermost first.
 | `ColorFromLayer` | `FromParent` | its own layer's colour, faded by the instance's material | openNURBS, ran [test] |
 | `ColorFromMaterial` | `FromLayer`, `FromObject` | the diffuse colour of the material it names | openNURBS, ran [test] |
 | `ColorFromMaterial` | `FromParent` | the diffuse colour of the **instance's material**, not the instance's object colour | openNURBS, ran [test] |
-| `ColorFromParent` | `FromLayer`, `FromObject` | the instance's resolved colour, at its own material's transparency when that colour is opaque | openNURBS, ran [test] |
+| `ColorFromParent` | `FromLayer`, `FromObject` | the instance's resolved colour, at its own material's transparency when that colour is opaque | the reader's rule, and the fourth divergence below [test] |
 | `ColorFromParent` | `FromParent` | the instance's resolved colour; both inherited, so the two agree exactly | openNURBS, ran [test] |
 | any | any, no instance (top level) | every "from parent" source falls back to the object's own layer | openNURBS enum comments, ran [test] |
 
@@ -543,10 +543,21 @@ object ends up with.
 
 **What that costs the instanced output.** One instance record carries one
 colour, so a definition mesh can say "my own colour" or "the instance's
-colour" and nothing else. A member whose colour or alpha comes from the
-instance's *material* is therefore baked per placement, like a curve or a "by
-parent" mesh with a transparent material of its own. Both modes draw the same
-colours and the same triangle count [test].
+colour" and nothing else. `memberColor` decides which, and names the third
+case: a member whose colour or alpha the instance's material decides is baked
+per placement, like a curve or a "by parent" mesh with a transparent material
+of its own. Both modes draw the same colours and the same triangle count
+[test].
+
+An inherited material can only change a member's colour through its diffuse
+colour or its transparency. So a member that reads that diffuse
+(`ColorFromMaterial`) always bakes, and the rest bake only when some material
+in the file is transparent. That gate matters: with 5,000 placements of
+one 3,200-triangle member, baking every `MaterialFromParent` member returned
+5,000 mesh records and 375 MB of geometry, every record the same colour, where
+one shared definition holds 0.08 MB [ran]. It over-approximates, since one
+transparent material anywhere makes every such member bake even when the
+instance placing it names an opaque one.
 
 **Nested blocks.** Each level resolves against its parent's already-resolved
 attributes, so "by parent" reaches past the direct parent only when the
@@ -561,9 +572,16 @@ the Parent material "are not affected by further nesting"
 ([material properties](https://docs.mcneel.com/rhino/8/help/en-us/properties/material.htm));
 openNURBS composes, and that is what the reader does [test].
 
-**Known divergences**, all needing a per-placement colour that a shared
-definition cannot carry, and all reached only when the placing instance's own
-colour or material is itself by-material or by-parent:
+**Known divergences.** All four come from one modelling choice: `Appearance`
+hands a member the instance's already-resolved colour, where openNURBS hands it
+the instance's colour *source*. All four are reached only when the placing
+instance's own colour or material is itself by-material or by-parent, which no
+public .3dm does. Carrying the source instead would settle the first three,
+whose right answer is a fixed colour a definition can hold; the cost is that
+which definition a placement shares would then depend on the instance, so
+`Emitter` would have to key one by more than the block id. The fourth needs a
+second colour on every instance record, or a bake. Both are out of scope for
+#9987, which asked about the two `FromParent` rows in the table.
 
 - an instance whose `colorSource` is `ColorFromMaterial`: openNURBS gives its
   "by parent" members `ColorFromMaterial`, so a member with a material of its

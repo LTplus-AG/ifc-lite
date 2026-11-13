@@ -114,15 +114,13 @@ test('a member whose colour is by a material that is by parent takes the instanc
     const block = c.block('Pane', [unit(c), new c.rhino.PolylineCurve([[0, 0, 0], [1, 0, 0]])], [spec, spec]);
     c.addInstance(block, undefined, { layer: green, color: [255, 0, 0, 255], colorSource: 'ColorFromObject', material: glass, materialSource: 'MaterialFromObject' });
   };
-  const bytes = await craft(build), blue = [0, 0, 1, 0.5], red = [1, 0, 0, 0.5];
+  const bytes = await craft(build), blue = [0, 0, 1, 0.5];
   const instanced = await readRhino3dm(bytes), baked = await readRhino3dm(bytes, { bakeInstances: true });
-  // No instance colour can carry a colour that comes from the instance's material, so the member
-  // is baked per placement and the definition keeps no mesh of its own.
-  expect(instanced.definitions).toEqual([]);
-  expect(instanced.instances.map(i => i.color)).toEqual([]);
+  // No instance colour can carry a colour the instance's material decides, so the member is baked
+  // per placement: the definition keeps no mesh, and with no definition there is no instance record.
+  expect([instanced.definitions, instanced.instances]).toEqual([[], []]);
+  // Blue from the material, not [1, 0, 0, 0.5], which is the instance's own resolved colour.
   expect([instanced.meshes[0].color, instanced.curves[0].color, baked.meshes[0].color, baked.curves[0].color]).toEqual([blue, blue, blue, blue]);
-  // The instance itself still draws nothing but its members; red is only its own resolved colour.
-  expect(instanced.meshes.every(m => m.color !== red)).toBe(true);
 });
 
 test('a "by parent" member with a transparent material of its own takes the instance colour and its own transparency', async () => {

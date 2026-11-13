@@ -42,18 +42,31 @@ export function readLook(api: ReadApi, attributes: RAttributes, layer: number): 
   };
 }
 
-/** True when a block member's colour is the resolved colour of the instance placing it. */
-export function takesParentColor(look: Look): boolean {
-  return look.colorSource === 'parent';
-}
+/** An opaque colour and no material, so resolving against it reflects only the object's own attributes. */
+const NO_PARENT: Appearance = { color: [0, 0, 0, 1], material: -1 };
 
 /**
- * True when a block member's colour or alpha comes from the instance's material rather than from
- * the instance's colour. No single instance colour carries that, so such a member is baked per
- * placement. A member whose colour is "by parent" too is not one: its colour is the instance's.
+ * What colour a block member's mesh can carry inside the shared definition every instance places:
+ *
+ * - a colour, when it is the same under every instance;
+ * - `'instance'`, when it is exactly the placing instance's resolved colour, which the instance
+ *   record carries, so the definition leaves it open;
+ * - `'bake'`, when it is neither, and the mesh has to be drawn once per placement. That is a
+ *   colour the instance's material decides, and the instance's colour at the member's own alpha.
+ *
+ * `fades` says whether any material in the file is transparent. An inherited material can only
+ * change a member's colour through its diffuse colour or its transparency, so where nothing is
+ * transparent, only a colour read off that material varies by instance.
  */
-export function takesParentMaterial(look: Look): boolean {
-  return look.materialSource === 'parent' && look.colorSource !== 'parent';
+export function memberColor(look: Look, tables: AppearanceTables, fades: boolean): RhinoRgba | 'instance' | 'bake' {
+  if (look.colorSource === 'parent') {
+    // With the material inherited too, the member's colour is the instance's, transparency and all.
+    if (look.materialSource === 'parent') return 'instance';
+    // Resolved against an opaque colour, so the alpha that comes back is its own material's.
+    return resolveAppearance(look, tables, NO_PARENT).color[3] < 1 ? 'bake' : 'instance';
+  }
+  if (look.materialSource === 'parent' && (look.colorSource === 'material' || fades)) return 'bake';
+  return resolveAppearance(look, tables, NO_PARENT).color;
 }
 
 /**
@@ -76,8 +89,8 @@ export function resolveAppearance(look: Look, tables: AppearanceTables, parent: 
     : look.materialSource === 'object' ? look.material : layer?.material ?? -1;
   const shader = tables.materials[material];
   let color = look.colorSource === 'parent' && parent !== null ? parent.color
-    : look.colorSource === 'material' && shader ? rgba(shader.diffuse)
-    : look.colorSource === 'object' ? rgba(look.color) : rgba(layer?.color ?? BLACK);
+    : look.colorSource === 'object' ? rgba(look.color)
+    : look.colorSource === 'material' && shader ? rgba(shader.diffuse) : rgba(layer?.color ?? BLACK);
   // A new array: the parent's colour is shared with the parent.
   if (shader && shader.transparency > 0 && color[3] === 1) color = [color[0], color[1], color[2], 1 - shader.transparency];
   return { color, material };

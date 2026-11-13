@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { resolveAppearance, takesParentColor, takesParentMaterial, type Appearance, type AppearanceTables, type Look } from './appearance.js';
+import { memberColor, resolveAppearance, type Appearance, type AppearanceTables, type Look } from './appearance.js';
 import type { BlockMeshes, DrawnPart, Emitter } from './emit.js';
 import type { Part } from './geometry.js';
 import { plural, type Report } from './report.js';
@@ -10,17 +10,13 @@ import { isUsable, multiply, reach, type Xform } from './xform.js';
 
 export interface BlockMember { part: Part; look: Look; hidden: boolean }
 
-/** Stands in for the placing instance when a member's colour does not depend on it. */
-const ANY_PARENT: Appearance = { color: [0, 0, 0, 1], material: -1 };
-
 /** One instance definition, split into what the walk needs. */
 export interface Block extends BlockMeshes {
   /** A linked definition's geometry lives in another file. */
   linked: boolean;
   /**
-   * Curves and point clouds, and the meshes one instance colour cannot carry: a "by parent" mesh
-   * with a transparent material of its own, and a mesh coloured or made transparent by the
-   * instance's material. Always baked, and charged to the budget per placement.
+   * Curves and point clouds, and the meshes no definition colour can carry, which `memberColor`
+   * names: always baked, and charged to the budget per placement.
    */
   others: { part: Exclude<DrawnPart, { kind: 'dot' }>; look: Look }[];
   /** Text dots: always baked, and counted against their own limit. */
@@ -37,6 +33,7 @@ export const MAX_BLOCK_PLACEMENTS = 500_000;
 
 export function buildBlock(name: string, linked: boolean, members: BlockMember[], tables: AppearanceTables, report: Report): Block {
   const block: Block = { name, linked, meshes: [], triangles: 0, reach: [0, 0, 0], others: [], dots: [], nested: [], drawsDots: false, drawsGeometry: false };
+  const fades = tables.materials.some(material => material.transparency > 0);
   for (const { part, look, hidden } of members) {
     // Rhino does not draw a member that is hidden or on a layer that is off, in any instance.
     if (hidden) report.skip('hidden-block-member');
@@ -44,13 +41,11 @@ export function buildBlock(name: string, linked: boolean, members: BlockMember[]
     else if (part.kind === 'dot') block.dots.push({ part, look });
     else if (part.kind !== 'mesh') block.others.push({ part, look });
     else {
-      const byParent = takesParentColor(look), own = resolveAppearance(look, tables, ANY_PARENT).color;
-      // A definition mesh holds one colour or none, so it can say neither "the instance's colour at
-      // my own alpha" nor "whatever the instance's material makes me".
-      if (takesParentMaterial(look) || (byParent && own[3] < 1)) block.others.push({ part, look });
+      const color = memberColor(look, tables, fades);
+      if (color === 'bake') block.others.push({ part, look });
       else {
-        // A "by parent" mesh takes the colour of whichever instance places it.
-        block.meshes.push({ origin: part.origin, positions: part.positions, normals: part.normals, indices: part.indices, color: byParent ? null : own });
+        // A "by parent" mesh, left open here, takes the colour of whichever instance places it.
+        block.meshes.push({ origin: part.origin, positions: part.positions, normals: part.normals, indices: part.indices, color: color === 'instance' ? null : color });
         block.triangles += part.indices.length / 3;
         reach(part.positions).forEach((extent, axis) => { block.reach[axis] = Math.max(block.reach[axis], Math.abs(part.origin[axis]) + extent); });
       }

@@ -7,25 +7,12 @@ import { readRhino3dm } from '../index.js';
 import { craft, drawnTriangles, translation, type AttributeSpec, type Craft } from '../../test-support/craft.js';
 
 /**
- * How a block member's "from parent" colour and material resolve (#9987).
+ * How a block member's "from parent" colour and material resolve (#9987). The expected values come
+ * from `ON_3dmObjectAttributes::ApplyParentalControl` in openNURBS 8.x, the function Rhino itself
+ * uses, run over all 144 combinations of a member's and an instance's two sources.
  *
- * The expected values come from `ON_3dmObjectAttributes::ApplyParentalControl`
- * in openNURBS 8.x, the function Rhino itself uses, run over all 144
- * combinations of a member's and an instance's colour and material sources.
- * What it does with a member's attributes:
- *
- * - a "by parent" MATERIAL is overwritten with the instance's resolved
- *   material index, and the member's material source becomes
- *   `MaterialFromObject`. Nothing afterwards can tell the member from one that
- *   owned that material, so the inherited material decides both the colour
- *   under `ColorFromMaterial` and the transparency under every source;
- * - a "by parent" COLOUR is replaced by the instance's, a "by layer" instance
- *   colour resolving to that instance's layer colour;
- * - every other source is left alone, the member's layer index included: the
- *   layer index is never rewritten, so `ColorFromLayer` on a member always
- *   means the member's own layer and never the instance's.
- *
- * `docs/architecture/rhino-3dm-import.md` carries the table and the citations.
+ * The resolution table, the citation for each row and the four known divergences are in
+ * `docs/architecture/rhino-3dm-import.md`, under "Block members and from parent".
  */
 
 const unit = (c: Craft) => c.box([0, 0, 0], [1, 1, 1]);
@@ -36,69 +23,111 @@ const PLACED_AT = 100;
 
 describe('a block member resolved against the instance placing it', () => {
   /**
-   * One instance with a red object colour and a blue, half-transparent material,
-   * placing eight members that differ only in their two sources.
+   * One row of the table. `material: 'own'` gives the member the opaque `Solid` material; the rest
+   * take their material from their layer, which names none, or from the instance.
    */
+  interface Row {
+    colorSource: NonNullable<AttributeSpec['colorSource']>;
+    materialSource: NonNullable<AttributeSpec['materialSource']>;
+    material?: 'own';
+    /** What the member is drawn with, as the file's 0-255 channels. */
+    drawn: number[];
+    why: string;
+    /** Where the member's mesh ends up: in the shared definition, open for the instance, or baked. */
+    where: 'definition' | 'instance' | 'baked';
+  }
+
+  // The instance is red and opaque, and names a blue material at half transparency, so its own
+  // resolved colour is red at alpha 128 while its material's diffuse colour is blue. Every row
+  // whose answer differs between those two settles something.
+  const INSTANCE_COLOR = [255, 0, 0, 128];
+
+  const ROWS: Row[] = [
+    { colorSource: 'ColorFromObject', materialSource: 'MaterialFromLayer', drawn: [255, 255, 255, 255], where: 'definition',
+      why: 'its own object colour, its layer naming no material' },
+    { colorSource: 'ColorFromObject', materialSource: 'MaterialFromParent', drawn: [255, 255, 255, 128], where: 'baked',
+      why: "its own object colour at the instance material's transparency" },
+    { colorSource: 'ColorFromLayer', materialSource: 'MaterialFromLayer', drawn: [0, 128, 0, 255], where: 'definition',
+      why: "its OWN layer's colour, never the instance's layer" },
+    { colorSource: 'ColorFromLayer', materialSource: 'MaterialFromParent', drawn: [0, 128, 0, 128], where: 'baked',
+      why: "its own layer's colour at the instance material's transparency" },
+    { colorSource: 'ColorFromMaterial', materialSource: 'MaterialFromObject', material: 'own', drawn: [255, 255, 0, 255], where: 'definition',
+      why: 'the diffuse colour of the material it names' },
+    { colorSource: 'ColorFromMaterial', materialSource: 'MaterialFromParent', drawn: [0, 0, 255, 128], where: 'baked',
+      why: "the INSTANCE MATERIAL's diffuse colour, not the instance's object colour" },
+    // The reader's answer, not openNURBS's: this is the fourth known divergence in the spec.
+    // openNURBS copies the instance's stored colour, which carries no material transparency, and
+    // then fades the member by its own material, which here is none, so Rhino draws it opaque.
+    { colorSource: 'ColorFromParent', materialSource: 'MaterialFromLayer', drawn: INSTANCE_COLOR, where: 'instance',
+      why: "the instance's resolved colour, alpha included" },
+    { colorSource: 'ColorFromParent', materialSource: 'MaterialFromParent', drawn: INSTANCE_COLOR, where: 'instance',
+      why: "the instance's resolved colour; both inherited, so the two agree exactly" },
+  ];
+
+  /** The rows as members of one block, each a box at x = its row index. */
   function sources(c: Craft) {
     const memberLayer = c.layer('Member', { color: [0, 128, 0, 255] });
     const instanceLayer = c.layer('Instance', { color: [255, 255, 0, 255] });
     const glass = c.material('Glass', [0, 0, 255, 255], 0.5);
     const solid = c.material('Solid', [255, 255, 0, 255]);
-    const member: AttributeSpec = { layer: memberLayer, color: [255, 255, 255, 255] };
-    // Member i is a box at x = i, so its mesh origin says which row it is whichever path drew it.
-    const block = c.block('Sources', Array.from({ length: 8 }, (_, i) => c.box([i, 0, 0], [i + 1, 1, 1])), [
-      { ...member, colorSource: 'ColorFromObject', materialSource: 'MaterialFromLayer' },
-      { ...member, colorSource: 'ColorFromObject', materialSource: 'MaterialFromParent' },
-      { ...member, colorSource: 'ColorFromLayer', materialSource: 'MaterialFromLayer' },
-      { ...member, colorSource: 'ColorFromLayer', materialSource: 'MaterialFromParent' },
-      { ...member, colorSource: 'ColorFromMaterial', material: solid, materialSource: 'MaterialFromObject' },
-      { ...member, colorSource: 'ColorFromMaterial', materialSource: 'MaterialFromParent' },
-      { ...member, colorSource: 'ColorFromParent', materialSource: 'MaterialFromLayer' },
-      { ...member, colorSource: 'ColorFromParent', materialSource: 'MaterialFromParent' },
-    ]);
+    const block = c.block('Sources', ROWS.map((_, i) => c.box([i, 0, 0], [i + 1, 1, 1])), ROWS.map((row): AttributeSpec => ({
+      layer: memberLayer, color: [255, 255, 255, 255], colorSource: row.colorSource,
+      materialSource: row.materialSource, ...(row.material === 'own' ? { material: solid } : {}),
+    })));
     c.addInstance(block, translation(PLACED_AT, 0, 0), {
       layer: instanceLayer, color: [255, 0, 0, 255], colorSource: 'ColorFromObject',
       material: glass, materialSource: 'MaterialFromObject',
     });
   }
 
-  // The instance draws itself red at the alpha of its own material: 1 - 0.5.
-  const instanceColor = [255, 0, 0, 128];
+  // One build and one read for the whole table: every row asks the same file a different question.
+  const file = craft(sources);
+  const bakedRead = file.then(bytes => readRhino3dm(bytes, { bakeInstances: true }));
 
-  test.each([
-    ['ColorFromObject + MaterialFromLayer', 0, [255, 255, 255, 255], 'its own object colour, its layer naming no material'],
-    ['ColorFromObject + MaterialFromParent', 1, [255, 255, 255, 128], "its own object colour at the instance material's transparency"],
-    ['ColorFromLayer + MaterialFromLayer', 2, [0, 128, 0, 255], "its OWN layer's colour, not the instance's layer"],
-    ['ColorFromLayer + MaterialFromParent', 3, [0, 128, 0, 128], "its own layer's colour at the instance material's transparency"],
-    ['ColorFromMaterial + MaterialFromObject', 4, [255, 255, 0, 255], 'the diffuse colour of the material it names'],
-    ['ColorFromMaterial + MaterialFromParent', 5, [0, 0, 255, 128], "the INSTANCE MATERIAL's diffuse colour, not the instance's object colour"],
-    ['ColorFromParent + MaterialFromLayer', 6, instanceColor, "the instance's resolved colour"],
-    ['ColorFromParent + MaterialFromParent', 7, instanceColor, "the instance's resolved colour"],
-  ])('%s draws %j: %s', async (_sources, member, expected) => {
-    // Baked, so every member is a mesh of its own, found by the x its box was built at.
-    const result = await readRhino3dm(await craft(sources), { bakeInstances: true });
-    expect(result.meshes).toHaveLength(8);
-    const drawn = result.meshes.find(m => Math.round(m.origin[0]) === PLACED_AT + member);
-    expect(drawn && bytes255(drawn.color)).toEqual(expected);
-  });
+  test.each(ROWS.map((row, index): [string, number, Row] => [`${row.colorSource} + ${row.materialSource} draws ${row.why}`, index, row]))(
+    '%s', async (_name, index, row) => {
+      // Baked, so every row is a mesh of its own, found by the x its box was built at.
+      const result = await bakedRead;
+      expect(result.meshes).toHaveLength(ROWS.length);
+      const drawn = result.meshes.find(m => Math.round(m.origin[0]) === PLACED_AT + index);
+      expect(drawn && bytes255(drawn.color)).toEqual(row.drawn);
+    });
 
-  test('a member the instance material colours or fades is baked; both modes draw the same', async () => {
-    const file = await craft(sources);
-    const instanced = await readRhino3dm(file), baked = await readRhino3dm(file, { bakeInstances: true });
-    // A definition mesh holds one colour or none, and neither can carry a colour that comes from
-    // the instance's material, so the three members that inherit a material are baked per placement.
+  test('each row lands where its colour can be drawn from, and both modes draw the same', async () => {
+    const instanced = await readRhino3dm(await file);
+    const where = (kind: Row['where']) => ROWS.filter(row => row.where === kind);
+    // A definition mesh holds one colour or none, so a row whose colour the instance's material
+    // decides cannot live there and is baked per placement instead.
     expect(instanced.definitions[0].meshes.map(m => m.color && bytes255(m.color))).toEqual([
-      [255, 255, 255, 255], [0, 128, 0, 255], [255, 255, 0, 255], null, null,
+      ...where('definition').map(row => row.drawn), ...where('instance').map(() => null),
     ]);
-    expect(instanced.meshes.map(m => bytes255(m.color))).toEqual([
-      [255, 255, 255, 128], [0, 128, 0, 128], [0, 0, 255, 128],
-    ]);
-    expect(instanced.instances.map(i => bytes255(i.color))).toEqual([instanceColor]);
-    // 8 boxes of 12 triangles, counted once however they are split between the two paths.
-    expect([drawnTriangles(instanced), drawnTriangles(baked)]).toEqual([96, 96]);
-    // Members 1, 3 and 5, drawn where the instance placed them.
-    expect(instanced.meshes.map(m => Math.round(m.origin[0]))).toEqual([PLACED_AT + 1, PLACED_AT + 3, PLACED_AT + 5]);
+    expect(instanced.meshes.map(m => bytes255(m.color))).toEqual(where('baked').map(row => row.drawn));
+    expect(instanced.instances.map(i => bytes255(i.color))).toEqual([INSTANCE_COLOR]);
+    // Every box is twelve triangles, counted once however the two paths split them.
+    const triangles = ROWS.length * 12;
+    expect([drawnTriangles(instanced), drawnTriangles(await bakedRead)]).toEqual([triangles, triangles]);
+    expect(instanced.meshes.map(m => Math.round(m.origin[0]) - PLACED_AT)).toEqual(
+      ROWS.flatMap((row, index) => row.where === 'baked' ? [index] : []));
   });
+});
+
+test('a member that inherits an opaque material stays in the definition: the file holds nothing that could fade it', async () => {
+  // Only a transparent material can make an inherited material change a member's colour, unless
+  // the member reads its diffuse. Baking the others per placement returned 5,000 mesh records and
+  // 375 MB where one shared definition holds 0.08 MB, every record the same colour [ran].
+  const build = (c: Craft) => {
+    const paint = c.material('Paint', [0, 0, 255, 255]), other = c.material('Other', [0, 255, 0, 255]);
+    const spec: AttributeSpec = { color: [255, 255, 255, 255], colorSource: 'ColorFromObject', materialSource: 'MaterialFromParent' };
+    const block = c.block('Pane', [unit(c)], [spec]);
+    for (const [i, material] of [paint, other].entries()) {
+      c.addInstance(block, translation(i * 3, 0, 0), { color: [255, 0, 0, 255], material, materialSource: 'MaterialFromObject' });
+    }
+  };
+  const result = await readRhino3dm(await craft(build));
+  // One shared definition carrying the member's own colour, placed twice, nothing baked.
+  expect(result.definitions.map(d => d.meshes.map(m => m.color && bytes255(m.color)))).toEqual([[[255, 255, 255, 255]]]);
+  expect(result.instances.map(i => i.definition)).toEqual([0, 0]);
+  expect(result.meshes).toEqual([]);
 });
 
 test('at top level, with no instance to inherit from, both "from parent" sources fall back to the layer', async () => {
@@ -122,13 +151,12 @@ test('at top level, with no instance to inherit from, both "from parent" sources
 
 describe('nested blocks', () => {
   /**
-   * The nested-block example from the Rhino 8 object-properties help page: a box
-   * whose display colour is By Parent sits in Block A, which sits in Block B.
-   * Run through openNURBS, the box ends up `ColorFromObject` with Block A's
-   * layer colour when A is By Layer, and with Block B's object colour when A is
-   * By Parent, which is what the help page says.
+   * The nested-block example from the Rhino 8 object-properties help page: a box whose display
+   * colour is By Parent sits in Block A, which sits in Block B. Run through openNURBS, the box
+   * ends up `ColorFromObject` with Block A's layer colour when A is By Layer, and with Block B's
+   * object colour when A is By Parent, which is what the help page says.
    */
-  const build = (aByParent: boolean) => (c: Craft) => {
+  const inherit = (aByParent: boolean) => (c: Craft) => {
     const boxLayer = c.layer('Box', { color: [0, 128, 0, 255] });
     const layerA = c.layer('A', { color: [255, 255, 0, 255] });
     const layerB = c.layer('B', { color: [0, 255, 255, 255] });
@@ -140,12 +168,12 @@ describe('nested blocks', () => {
   };
 
   test('"by parent" follows the direct parent: Block A by layer gives the box Block A\'s layer colour', async () => {
-    const result = await readRhino3dm(await craft(build(false)), { bakeInstances: true });
+    const result = await readRhino3dm(await craft(inherit(false)), { bakeInstances: true });
     expect(bytes255(result.meshes[0].color)).toEqual([255, 255, 0, 255]);
   });
 
   test("Block A by parent too passes the grandparent's colour down to the box", async () => {
-    const result = await readRhino3dm(await craft(build(true)), { bakeInstances: true });
+    const result = await readRhino3dm(await craft(inherit(true)), { bakeInstances: true });
     expect(bytes255(result.meshes[0].color)).toEqual([255, 0, 255, 255]);
   });
 

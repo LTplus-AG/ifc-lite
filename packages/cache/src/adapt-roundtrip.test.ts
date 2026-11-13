@@ -47,6 +47,14 @@ DATA;
 #13=IFCRELAGGREGATES('${gid('RelS2B')}',$,$,$,#7,(#8));
 #14=IFCRELAGGREGATES('${gid('RelB2St')}',$,$,$,#8,(#9));
 #15=IFCRELCONTAINEDINSPATIALSTRUCTURE('${gid('RelSt2E')}',$,$,$,(#10,#11),#9);
+#20=IFCWALLTYPE('${gid('Type')}',$,'Type',$,$,$,$,$,$,.STANDARD.);
+#21=IFCELEMENTQUANTITY('${gid('Qset')}',$,'Qto_Test',$,$,(#22));
+#22=IFCQUANTITYLENGTH('Length',$,$,2.5,$);
+#23=IFCRELDEFINESBYTYPE('${gid('Typing')}',$,$,$,(#10),#20);
+#24=IFCRELDEFINESBYPROPERTIES('${gid('TypeQ')}',$,$,$,(#20),#21);
+#25=IFCRELASSOCIATESMATERIAL('${gid('LegacyMat')}',$,$,$,('#10'),#30);
+#26=IFCRELDEFINESBYTYPE('${gid('LegacyType')}',$,$,$,('#11'),#20);
+#30=IFCMATERIAL('Concrete');
 ENDSEC;
 END-ISO-10303-21;
 `;
@@ -77,6 +85,14 @@ async function roundTrip(schema: 'IFC2X3' | 'IFC4' | 'IFC4X3') {
   const result = await new BinaryCacheReader().read(cacheBuffer);
   return { store, sourceBuffer, result };
 }
+
+it('#9947 cache hits retain selection coverage without rebuilding it on the main thread', async () => {
+  const { store, result } = await roundTrip('IFC4');
+  expect(store.selectionRelationshipIndex?.missing.length).toBeGreaterThan(0);
+  expect(store.selectionRelationshipIndex?.unverifiedTypeRows.length).toBeGreaterThan(0);
+  expect(store.selectionRelationshipIndex?.typeDefinitions.get(20)).toEqual([24]);
+  expect(result.dataStore).toHaveProperty('selectionRelationshipIndex', store.selectionRelationshipIndex);
+});
 
 describe('toCacheDataStore -> BinaryCacheWriter -> BinaryCacheReader round trip', () => {
   it('carries the entity index through the write, so a read-back cache can resolve entities from the retained source', async () => {

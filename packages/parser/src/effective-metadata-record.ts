@@ -19,6 +19,8 @@ export interface MetadataReadView extends EffectiveEntityOverlay {
   getPositionalMutationsForEntity(expressId: number): ReadonlyMap<number, IfcAttributeValue> | null;
   getAttributeMutationsForEntity(expressId: number): ReadonlyArray<{ name: string; value: string }>;
   getMutationRevision(): number;
+  getAttributeOverrideEntityIds?(): number[];
+  getEffectiveChanges?(): ReadonlyArray<{ entityId: number; kind: string }>;
   resolveBaseEntityId?(expressId: number): number;
 }
 

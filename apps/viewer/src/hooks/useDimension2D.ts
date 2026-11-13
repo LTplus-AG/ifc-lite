@@ -32,7 +32,7 @@ import type { CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key';
 import type { SectionAxis } from '@/hooks/pdfSectionLayout';
 import { shapeKeyPoints } from '@/lib/drafting-core/curves';
 import type { SnapMode } from '@/lib/drafting-core/types';
-import { DIMENSION_SNAP_MODES, findDrawingSnap, getDrawingSnapIndex, snapToleranceForScale, type DrawingSnapSource } from '@/lib/drawing2d-markup/drawing-snap';
+import { findDrawingSnap, getDrawingSnapIndex, snapToleranceForScale, type DrawingSnapSource } from '@/lib/drawing2d-markup/drawing-snap';
 import { formatDimensionValue } from '@/lib/drawing2d-markup/dimension-graphics';
 import { drawingViewMapping, type DrawingViewMapping } from '@/lib/drawing2d-markup/drawing-view-mapping';
 import { placementOffset, placementOrientation, previewDimension } from '@/lib/drawing2d-markup/dimension-placement';
@@ -155,22 +155,15 @@ export function useDimension2D(p: UseDimension2DParams) {
     const state = useViewerStore.getState();
     const placed = state.dimension2DPoints;
     if (!drawing || placed.length >= 2) return { point: raw, hit: null };
-    // A target clipped out of the sheet viewport is not taken (the point would be
-    // invisible); the next mode down is tried instead, so a visible line under the
-    // cursor still snaps when its endpoint is clipped.
-    const modes = new Set<SnapMode>(DIMENSION_SNAP_MODES);
-    while (modes.size > 0) {
-      const hit = findDrawingSnap(drawing, raw, {
-        tolerance: snapToleranceForScale(mapping.pxPerMetre),
-        modes,
-        from: placed[0] ?? null,
-        includeHiddenLines: showHiddenLines,
-      });
-      if (!hit) break;
-      if (insideScreenClip(clip, mapping.toScreen(hit.point))) return { point: hit.point, hit };
-      modes.delete(hit.mode);
-    }
-    return { point: raw, hit: null };
+    // A target clipped out of the sheet viewport is never a candidate (the point would
+    // be invisible), so the best visible one wins: another endpoint, or the visible line.
+    const hit = findDrawingSnap(drawing, raw, {
+      tolerance: snapToleranceForScale(mapping.pxPerMetre),
+      from: placed[0] ?? null,
+      includeHiddenLines: showHiddenLines,
+      ...(clip ? { accept: (q: Point2D) => insideScreenClip(clip, mapping.toScreen(q)) } : {}),
+    });
+    return { point: hit?.point ?? raw, hit };
   }, [drawing, mapping, showHiddenLines, clip]);
 
   const nearbyKeyPoints = useCallback((at: Point2D): Point2D[] => {

@@ -313,3 +313,36 @@ it('in sheet mode a snap target clipped out of the viewport is not taken (#10076
   assert.ok(placed && mapping.toScreen(placed).x <= right, `the placed point is on the visible drawing (${placed && mapping.toScreen(placed).x})`);
   assert.ok(Math.abs(placed.y - 1.5) < 1e-9, `the placed point lies on the visible edge (y ${placed.y})`);
 });
+
+it('in sheet mode a visible endpoint wins over a closer one clipped out of the viewport (#10076 review)', () => {
+  const s = sheet();
+  const view = { x: 0, y: 0, scale: 2 };
+  sheetMode = { sheet: { sheet: s, isPinned: false, cached: null }, view };
+  const d = drawing();
+  // Corner (7.05, 1.5) lies just past the viewport's right edge; corner (6.8, 1.6) of a
+  // second footprint is visible and also inside the snap radius, a little further away.
+  d.cutPolygons.push(
+    { entityId: 11, ifcType: 'IfcWall', modelIndex: 0, isCut: true,
+      polygon: { outer: [{ x: 4, y: 0.5 }, { x: 7.05, y: 0.5 }, { x: 7.05, y: 1.5 }, { x: 4, y: 1.5 }], holes: [] } },
+    { entityId: 12, ifcType: 'IfcWall', modelIndex: 0, isCut: true,
+      polygon: { outer: [{ x: 6.5, y: 1.6 }, { x: 6.8, y: 1.6 }, { x: 6.8, y: 1.9 }, { x: 6.5, y: 1.9 }], holes: [] } },
+  );
+  const placement = resolveSheetTransform({ sheet: s, axis: 'down', isPinned: false, cached: null,
+    drawingBounds: { minX: 0, minY: 0, maxX: 4, maxY: 2 } }).transform;
+  const mapping = drawingViewMapping(view, 'down', placement);
+  const right = (s.viewportBounds.x + s.viewportBounds.width) * view.scale;
+  const clipped = mapping.toScreen({ x: 7.05, y: 1.5 });
+  const visible = mapping.toScreen({ x: 6.8, y: 1.6 });
+  const at = { clientX: right - 1, clientY: clipped.y };
+  const dist = (q: { x: number; y: number }) => Math.hypot(q.x - at.clientX, q.y - at.clientY);
+  assert.ok(clipped.x > right && visible.x < right && dist(clipped) < dist(visible) && dist(visible) < 10,
+    `setup: clipped ${JSON.stringify(clipped)}, visible ${JSON.stringify(visible)}, edge ${right}`);
+
+  useViewerStore.setState({ drawing2D: d, annotation2DActiveTool: 'dimension' });
+  const canvas = render(<Harness />).firstElementChild!;
+  mouseMove(canvas, at);
+  assert.equal(tool.snapMode, 'endpoint', 'the visible endpoint is offered');
+  mouseDown(canvas, at);
+  const [placed] = useViewerStore.getState().dimension2DPoints;
+  assert.ok(placed && Math.abs(placed.x - 6.8) < 1e-9 && Math.abs(placed.y - 1.6) < 1e-9, `placed on the visible corner: ${JSON.stringify(placed)}`);
+});

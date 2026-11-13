@@ -26,6 +26,7 @@
 import { isPolygonCutLine, type Drawing2D } from '@ifc-lite/drawing-2d';
 import { nearestOnShape, shapeKeyPoints } from '../drafting-core/curves';
 import { findSnap, SnapIndex } from '../drafting-core/snaps';
+import { findAcceptedSnap } from './drawing-snap-accept';
 import type { DraftShape, Pt, SnapMode } from '../drafting-core/types';
 import { lineCullBox, lineInCullBox } from './drawing-line-cull';
 import { mergeCollinearSegments, simplifyRing, VertexOwners, VERTEX_TOLERANCE } from './drawing-snap-merge';
@@ -58,6 +59,8 @@ export interface DrawingSnapQuery extends DrawingSnapBuildOptions {
   modes?: ReadonlySet<SnapMode>;
   /** Reference point for `perpendicular`: the foot from here onto the element under the cursor. */
   from?: Pt | null;
+  /** Only snap points this accepts are offered; the best accepted one wins (`findAcceptedSnap`). */
+  accept?: (p: Pt) => boolean;
 }
 
 export interface DrawingSnapResult {
@@ -259,11 +262,11 @@ export function findDrawingSnap(drawing: Drawing2D, cursor: Pt, query: DrawingSn
   if (!(query.tolerance > 0) || !finite(cursor)) return null;
   const snap = getDrawingSnapIndex(drawing, query);
   if (snap.shapes.length === 0) return null;
-  const hit = findSnap(cursor, windowedSnapShapes(snap, cursor, query.tolerance), null, {
-    tolerance: query.tolerance,
-    modes: query.modes ?? DIMENSION_SNAP_MODES,
-    from: query.from ?? null,
-  });
+  const opts = { tolerance: query.tolerance, modes: query.modes ?? DIMENSION_SNAP_MODES, from: query.from ?? null };
+  const shapes = windowedSnapShapes(snap, cursor, query.tolerance);
+  const hit = query.accept
+    ? findAcceptedSnap(cursor, shapes, { ...opts, accept: query.accept })
+    : findSnap(cursor, shapes, null, opts);
   if (!hit) return null;
   const i = sourceShape(snap, cursor, query.tolerance, hit.mode, hit.point);
   if (i < 0) return null;

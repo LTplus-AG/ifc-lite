@@ -5,7 +5,7 @@
 import { describe, expect, test, vi } from 'vitest';
 import { readRhino3dm, RhinoReadError, writeRhino3dm } from '../index.js';
 import { loadRhino } from '../runtime.js';
-import { craft, entityBounds } from '../../test-support/craft.js';
+import { craft, entityBounds, hollowArchive } from '../../test-support/craft.js';
 import { MAX_3DM_BYTES } from './read.js';
 
 const quad = [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]];
@@ -297,18 +297,11 @@ describe('errors', () => {
     } finally { fromByteArray.mockRestore(); }
   });
 
-  /** A valid header and end-of-file mark around zeros: rhino3dm answers null for it, as it does at the heap limit. */
-  const hollow = (megabytes: number) => {
-    const bytes = new Uint8Array(megabytes * 1024 * 1024), view = new DataView(bytes.buffer), size = bytes.length;
-    bytes.set(new TextEncoder().encode('3D Geometry File Format       80'));
-    view.setUint32(size - 20, 0x7fff, true); view.setBigUint64(size - 16, 8n, true); view.setBigUint64(size - 8, BigInt(size), true);
-    return bytes;
-  };
   const trap = () => { throw new WebAssembly.RuntimeError('Aborted(). Build with -sASSERTIONS for more info.'); };
 
   test('a wasm trap is too-large on a large file and damage on a small one; either way the next read gets a fresh runtime', async () => {
     const small = await craft(c => { c.addMesh(c.box([0, 0, 0], [1, 1, 1])); });
-    for (const [bytes, expected] of [[hollow(33), 'too-large'], [small, 'not-3dm']] as const) {
+    for (const [bytes, expected] of [[hollowArchive(33), 'too-large'], [small, 'not-3dm']] as const) {
       const trapped = await loadRhino();
       const fromByteArray = vi.spyOn(trapped.File3dm, 'fromByteArray').mockImplementation(trap);
       try { expect(await code(readRhino3dm(bytes))).toBe(expected); } finally { fromByteArray.mockRestore(); }
@@ -320,14 +313,14 @@ describe('errors', () => {
 
   test('a null read of a large archive that ends in its own length is too-large, not damage', async () => {
     const before = await loadRhino();
-    const error = await readRhino3dm(hollow(33)).catch(e => e);
+    const error = await readRhino3dm(hollowArchive(33)).catch(e => e);
     expect(error.code).toBe('too-large');
     expect(error.message).toContain('This file (33 MB) could not be read: it most likely needs more memory than the reader has');
     // The exhausted heap never shrinks, so the runtime is replaced.
     expect(await loadRhino()).not.toBe(before);
     // Cut short, or too small to exhaust anything: that is damage.
-    expect(await code(readRhino3dm(hollow(33).subarray(0, -1)))).toBe('not-3dm');
-    expect(await code(readRhino3dm(hollow(1)))).toBe('not-3dm');
+    expect(await code(readRhino3dm(hollowArchive(33).subarray(0, -1)))).toBe('not-3dm');
+    expect(await code(readRhino3dm(hollowArchive(1)))).toBe('not-3dm');
   });
 
   // Review finding on PR #9880.
@@ -340,7 +333,7 @@ describe('errors', () => {
     const fromByteArray = vi.spyOn(shared.File3dm, 'fromByteArray').mockImplementation(trap);
     let aborting, waiting;
     try {
-      aborting = readRhino3dm(hollow(33));
+      aborting = readRhino3dm(hollowArchive(33));
       waiting = readRhino3dm(small);
       expect(await code(aborting)).toBe('too-large');
       expect((await waiting).meshes).toHaveLength(1);

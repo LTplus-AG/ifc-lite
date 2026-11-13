@@ -17,8 +17,24 @@ export function loadRhino(locateFile?: Write3dmOptions['locateFile']): Promise<R
 /**
  * Whether this module is the one still in use. A caller that awaited the runtime
  * holds its own reference, so after a discard it can be holding a dead module.
+ * Not exported: checking and then awaiting again is the shape that stranded a
+ * caller on a dead module, so `withCurrentRhino` is the only way to the module.
  */
-export function isCurrentRhino(rhino: Rhino): boolean { return rhino === current; }
+function isCurrentRhino(rhino: Rhino): boolean { return rhino === current; }
+/**
+ * Run `work` on the module that is current, reacquiring the runtime until it is. One recheck after
+ * the load is not enough, because the reacquire is itself an await: another caller's abort during
+ * it hands this caller a module that is already discarded. `work` is called in the same
+ * synchronous step as the check, so nothing can discard the module in between; it holds the
+ * parse or the write, which need no await of their own. Each extra pass costs another caller an
+ * abort, so the loop only goes round while modules really are being discarded.
+ */
+export async function withCurrentRhino<T>(locateFile: Write3dmOptions['locateFile'] | undefined, work: (rhino: Rhino) => T): Promise<T> {
+  for (;;) {
+    const rhino = await loadRhino(locateFile);
+    if (isCurrentRhino(rhino)) return work(rhino);
+  }
+}
 /** Drop the shared runtime after an emscripten abort, which leaves the module unusable. */
 export function discardRhino(): void { runtime = undefined; current = undefined; }
 // Upstream's .d.ts omits Embind ClassHandle.delete(). Use on owned wrappers,

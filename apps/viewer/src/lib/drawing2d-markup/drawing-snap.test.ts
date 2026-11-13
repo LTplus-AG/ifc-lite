@@ -12,7 +12,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Drawing2D, DrawingLine, DrawingPolygon, Point2D } from '@ifc-lite/drawing-2d';
-import { buildDrawingSnapShapes, findDrawingSnap, getDrawingSnapIndex, snapHitFit } from './drawing-snap';
+import { findSnap } from '../drafting-core/snaps';
+import { buildDrawingSnapShapes, DIMENSION_SNAP_MODES, findDrawingSnap, getDrawingSnapIndex, snapHitFit, windowedSnapShapes } from './drawing-snap';
 
 const SPLIT = 4.2624;
 const TOL = 0.05;
@@ -127,6 +128,19 @@ describe('drawing snap: collinear split vertices', () => {
     assert.equal(kink.type === 'polyline' && kink.pts.length === 5, true, 'real 0.1 mm kink kept');
   });
 
+  it('joins pieces whose shared end straddles a vertex-key cell edge (#10076 review)', () => {
+    // 2e-8 m apart, on either side of the 1.2000005 cell edge of a 1e-6 grid.
+    const pieces = [line(23, P(0, 12), P(1.20000049, 12)), line(23, P(1.20000051, 12), P(2, 12))];
+    const merged = buildDrawingSnapShapes(drawing([], pieces)).shapes;
+    assert.equal(merged.length, 1, 'two pieces become one line');
+    const mid = findDrawingSnap(drawing([], pieces), P(1.01, 12.001), { tolerance: TOL });
+    assert.equal(mid?.mode, 'midpoint', 'mode');
+    near(mid?.point.x ?? NaN, 1, 'merged midpoint x');
+    // The same straddle on a face shared with another entity still counts as shared.
+    const stub = line(24, P(1.20000051, 12), P(1.20000051, 14));
+    assert.equal(buildDrawingSnapShapes(drawing([], [...pieces, stub])).shapes.length, 3, 'joint kept where entity 24 ends on it');
+  });
+
   it('keeps a corner between two pieces of the same entity', () => {
     const corner = [line(22, P(0, 8), P(2, 8)), line(22, P(2, 8), P(2, 10))];
     assert.equal(buildDrawingSnapShapes(drawing([], corner)).shapes.length, 2, 'L stays two lines');
@@ -213,6 +227,14 @@ describe('drawing snap: sources, holes and input filtering', () => {
     assert.equal(findDrawingSnap(d, P(0.01, 0.01), { tolerance: TOL })?.mode, 'endpoint', 'open-surface cut indexed');
   });
 
+  it('skips a line the canvas culls outside the bounds plus half their span (#10076 review)', () => {
+    // Bounds (0,0)-(1,1): the canvas draws lines within 0.5 m of them and drops the rest.
+    const d = { ...drawing([], [line(91, P(100, 100), P(101, 100)), line(92, P(1.4, 0), P(1.4, 1))]), bounds: { min: P(0, 0), max: P(1, 1) } };
+    assert.equal(findDrawingSnap(d, P(100, 100), { tolerance: TOL }), null, 'no snap to the undrawn line');
+    assert.equal(findDrawingSnap(d, P(1.4, 0), { tolerance: TOL })?.mode, 'endpoint', 'a line inside the margin is drawn and indexed');
+    assert.deepEqual(buildDrawingSnapShapes(d).sources.map((s) => s.entityId), [92]);
+  });
+
   it('is safe on an empty drawing and on a bad tolerance', () => {
     const empty = drawing([]);
     assert.equal(getDrawingSnapIndex(empty).shapes.length, 0, 'no shapes');
@@ -234,5 +256,33 @@ describe('snapHitFit', () => {
     const circle = { type: 'circle' as const, c: P(2, 3), r: 1.5 };
     assert.equal(snapHitFit(circle, 'center', P(2, 3)), 0);
     assert.ok(snapHitFit(circle, 'center', P(3.5, 3)) > 1);
+  });
+});
+
+describe('drawing snap: windowed shapes (#10076 review)', () => {
+  /** A closed 240-edge ring of entity `id` (a tessellated round column). */
+  const disc = (id: number, cx: number, r: number): DrawingPolygon => polygon(id,
+    Array.from({ length: 240 }, (_, i) => P(cx + r * Math.cos((i / 240) * 2 * Math.PI), r * Math.sin((i / 240) * 2 * Math.PI))));
+
+  it('gives the core only edges near the cursor, and the same hit as the whole shapes', () => {
+    const d = drawing([disc(30, 0, 1), disc(31, 1, 1)]);
+    const snap = getDrawingSnapIndex(d);
+    const near = windowedSnapShapes(snap, P(0.5, Math.sqrt(0.75)), TOL);
+    const edges = near.reduce((sum, s) => sum + (s.type === 'polyline' ? s.pts.length - 1 : 1), 0);
+    assert.ok(edges > 0 && edges < 20, `${edges} edges handed to the core, not 480`);
+    let checked = 0;
+    for (let i = 0; i < 400; i++) {
+      // Cursors along both rings, over the two crossings and the seam at angle 0.
+      const t = (i / 400) * 2 * Math.PI;
+      const cursor = P((i % 2) + Math.cos(t) * (1 + 0.02 * Math.sin(7 * t)), Math.sin(t) * (1 + 0.02 * Math.sin(7 * t)));
+      const opts = { tolerance: TOL, modes: DIMENSION_SNAP_MODES, from: i % 3 === 0 ? P(0.5, 3) : null };
+      const whole = findSnap(cursor, snap.shapes, snap.index, opts);
+      const windowed = findSnap(cursor, windowedSnapShapes(snap, cursor, TOL), null, opts);
+      assert.deepEqual(windowed, whole, `cursor ${JSON.stringify(cursor)}`);
+      if (whole) checked++;
+    }
+    assert.ok(checked > 300, `${checked} cursors snapped`);
+    const crossing = findDrawingSnap(d, P(0.5, Math.sqrt(0.75) + 0.01), { tolerance: TOL });
+    assert.equal(crossing?.mode === 'intersection' || crossing?.mode === 'endpoint', true, `crossing found, got ${crossing?.mode}`);
   });
 });

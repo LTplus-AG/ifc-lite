@@ -74,6 +74,10 @@ describe('the version 1 configuration shape', () => {
     ['a server without a url', { version: 1, server: {} }],
     ['an empty server url', { version: 1, server: { url: '' } }],
     ['a server url on another scheme', { version: 1, server: { url: 'javascript:alert(1)' } }],
+    ['a relative server path', { version: 1, server: { url: 'v1/viewing/processor' } }],
+    ['a protocol-relative server url', { version: 1, server: { url: '//elsewhere.example/processor' } }],
+    ['an http server url from an https page', { version: 1, server: { url: 'http://processor.example' } }],
+    ['an empty processed model name', { version: 1, open: { processedModel: { sha256: SHA, bytes: 1, name: '  ' } } }],
     ['an open without a processed model', { version: 1, open: {} }],
     ['a processed model whose hash is not a SHA-256', { version: 1, open: { processedModel: { sha256: '../../etc', bytes: 1, name: 'x.ifc' } } }],
     ['a processed model without a size', { version: 1, open: { processedModel: { sha256: SHA, name: 'x.ifc' } } }],
@@ -83,15 +87,24 @@ describe('the version 1 configuration shape', () => {
   ];
   for (const [what, value] of refused) {
     it(`refuses ${what}`, () => {
-      assert.throws(() => parseViewerRuntimeConfig(value), (error) => error instanceof ViewerConfigError && error.code === 'invalid');
+      assert.throws(() => parseViewerRuntimeConfig(value, PAGE), (error) => error instanceof ViewerConfigError && error.code === 'invalid');
     });
   }
+
+  it('keeps the server url in normalized form', () => {
+    assert.deepEqual(parseViewerRuntimeConfig({ version: 1, server: { url: '  /v1/viewing/./processor ' } }, PAGE).server, { url: '/v1/viewing/processor' });
+    assert.deepEqual(parseViewerRuntimeConfig({ version: 1, server: { url: 'https://processor.example' } }, PAGE).server, { url: 'https://processor.example/' });
+  });
+
+  it('accepts an http server url only from an http page', () => {
+    assert.deepEqual(parseViewerRuntimeConfig({ version: 1, server: { url: 'http://localhost:8080/ifc' } }, 'http://localhost:5173/viewer/').server, { url: 'http://localhost:8080/ifc' });
+  });
 
   it('accepts exactly the hashes the server client accepts', () => {
     // The check is copied, not imported (it runs before the configuration request); this pins the two together.
     for (const sha256 of [SHA, SHA.toUpperCase(), '', 'a'.repeat(63), 'a'.repeat(65), 'g'.repeat(64), `${'a'.repeat(62)}/x`]) {
       const viaConfig = (() => {
-        try { return parseViewerRuntimeConfig({ version: 1, open: { processedModel: { sha256, bytes: 0, name: '' } } }).open?.processedModel.sha256; }
+        try { return parseViewerRuntimeConfig({ version: 1, open: { processedModel: { sha256, bytes: 0, name: 'x.ifc' } } }).open?.processedModel.sha256; }
         catch { return null; }
       })();
       assert.equal(viaConfig, normalizeProcessedModelHash(sha256), sha256);

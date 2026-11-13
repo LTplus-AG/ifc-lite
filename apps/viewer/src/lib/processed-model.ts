@@ -18,6 +18,7 @@
 
 import { assertProcessedModelHash, type ProcessedModelRef } from '@ifc-lite/server-client';
 import { SERVER_URL, USE_SERVER } from '@/utils/ifcConfig';
+import type { ViewerRuntimeConfig } from './features/runtime-config';
 
 /** A stored result to open: the reference (`bytes` 0 when unknown) and the name to show. */
 export interface ProcessedModelRequest extends ProcessedModelRef {
@@ -63,21 +64,43 @@ export function openProcessedModel(model: ProcessedModelRequest, options?: OpenP
   const sha256 = assertProcessedModelHash(model.sha256);
   if (options?.serverUrl !== undefined) setProcessingServerUrl(options.serverUrl);
   const bytes = Number.isSafeInteger(model.bytes) && model.bytes > 0 ? model.bytes : 0;
-  pending = { sha256, bytes, name: model.name || 'model.ifc' };
+  fileRequest({ sha256, bytes, name: model.name || 'model.ifc' });
+}
+
+function fileRequest(request: ProcessedModelRequest): void {
+  pending = request;
   for (const listener of [...listeners]) listener();
 }
+
+let hostStartModel = false;
+let urlModelIgnored = false;
 
 /**
  * Apply a host configuration's processing members (`server`, `open`). Called
  * once by `mountViewer`, after the feature set is fixed: the server first, so
- * the model opens from it.
+ * the model opens from it. The configuration is already checked
+ * (`parseViewerRuntimeConfig`), so its values are used as they are.
  */
-export function applyProcessingConfig(config: {
-  server?: { url: string };
-  open?: { processedModel: ProcessedModelRequest };
-} | undefined): void {
+export function applyProcessingConfig(config: Pick<ViewerRuntimeConfig, 'server' | 'open'> | undefined): void {
   if (config?.server) setProcessingServerUrl(config.server.url);
-  if (config?.open) openProcessedModel(config.open.processedModel);
+  if (config?.open) {
+    hostStartModel = true;
+    fileRequest(config.open.processedModel);
+  }
+}
+
+/**
+ * Whether a model named in the page URL (`?processed=`, `?model=`) may load.
+ * Not when the host configuration opens its own: only the host's model loads.
+ * The first ignored parameter is logged, once for the page.
+ */
+export function pageUrlModelAllowed(parameter: string): boolean {
+  if (!hostStartModel) return true;
+  if (!urlModelIgnored) {
+    urlModelIgnored = true;
+    console.info(`[viewer] ?${parameter}= in the page URL is ignored: the host configuration opens its own model`);
+  }
+  return false;
 }
 
 /** The mounted viewer's side: take the waiting request, once. */

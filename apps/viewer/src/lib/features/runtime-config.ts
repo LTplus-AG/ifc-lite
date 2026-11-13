@@ -55,33 +55,46 @@ function stringList(value: unknown, where: string): string[] | undefined {
   return value as string[];
 }
 
-function parseServer(value: unknown): { url: string } {
+/**
+ * A same-origin path (`/…`, not `//…`) or an absolute `https:` URL; `http:` only
+ * from an `http:` page, where it is no downgrade. Kept in normalized form.
+ */
+function parseServer(value: unknown, pageUrl: string | undefined): { url: string } {
   if (!isRecord(value) || typeof value.url !== 'string' || value.url.trim() === '') invalid('server.url must be a non-empty string');
+  const raw = value.url.trim();
+  if (raw.startsWith('/') && !raw.startsWith('//')) {
+    const path = new URL(raw, 'https://viewer.invalid/');
+    return { url: `${path.pathname}${path.search}` };
+  }
   let url: URL;
   try {
-    url = new URL(value.url, 'https://viewer.invalid/');
+    url = new URL(raw);
   } catch {
-    invalid('server.url must be a path or a URL');
+    invalid('server.url must be a path starting with / or an absolute https URL');
   }
-  if (url.protocol !== 'https:' && url.protocol !== 'http:') invalid('server.url must be a path or an http(s) URL');
-  return { url: value.url };
+  const httpPage = pageUrl !== undefined && new URL(pageUrl).protocol === 'http:';
+  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && httpPage)) {
+    invalid('server.url must be a path starting with / or an absolute https URL (http only from an http page)');
+  }
+  return { url: url.href };
 }
 
-/**
- * The hash in the lowercase form the server keys by. The same rule as
- * `normalizeProcessedModelHash` in `@ifc-lite/server-client` (a test pins the
- * agreement); not imported, because this module runs before the configuration
- * request and anything it imports statically delays that request.
- */
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 
+/**
+ * The start model. The hash is kept in the lowercase form the server keys by,
+ * by the same rule as `normalizeProcessedModelHash` in `@ifc-lite/server-client`
+ * (a test pins the agreement); not imported, because this module runs before
+ * the configuration request and anything it imports statically delays that
+ * request. `bytes` is a positive whole number, or 0 when the size is unknown.
+ */
 function parseOpen(value: unknown): NonNullable<ViewerRuntimeConfig['open']> {
   if (!isRecord(value) || !isRecord(value.processedModel)) invalid('open.processedModel must be an object');
   const { sha256, bytes, name } = value.processedModel;
   const hash = typeof sha256 === 'string' ? sha256.toLowerCase() : '';
   if (!SHA256_HEX.test(hash)) invalid('open.processedModel.sha256 must be the 64 hex characters of a SHA-256');
-  if (typeof bytes !== 'number' || !Number.isSafeInteger(bytes) || bytes < 0) invalid('open.processedModel.bytes must be a whole number of bytes (0 when unknown)');
-  if (typeof name !== 'string') invalid('open.processedModel.name must be a string');
+  if (typeof bytes !== 'number' || !Number.isSafeInteger(bytes) || bytes < 0) invalid('open.processedModel.bytes must be a positive whole number of bytes, or 0 when unknown');
+  if (typeof name !== 'string' || name.trim() === '') invalid('open.processedModel.name must be a non-empty string');
   return { processedModel: { sha256: hash, bytes, name } };
 }
 
@@ -99,7 +112,11 @@ function parseFeatures(value: unknown): FeatureSelection {
  * Check an untrusted value against the version 1 shape. Members this viewer
  * does not know are dropped, not refused: a newer host may send more.
  */
-export function parseViewerRuntimeConfig(value: unknown): ViewerRuntimeConfig {
+export function parseViewerRuntimeConfig(
+  value: unknown,
+  /** The page the viewer runs on; decides whether an `http:` server URL is allowed. */
+  pageUrl: string | undefined = typeof location === 'undefined' ? undefined : location.href,
+): ViewerRuntimeConfig {
   if (!isRecord(value)) invalid('expected a JSON object');
   if (value.version !== 1) invalid(`unsupported version ${JSON.stringify(value.version)}; this viewer reads version 1`);
   const config: ViewerRuntimeConfig = { version: 1 };
@@ -108,7 +125,7 @@ export function parseViewerRuntimeConfig(value: unknown): ViewerRuntimeConfig {
     if (typeof value.locale !== 'string' || value.locale.trim() === '') invalid('locale must be a non-empty string');
     config.locale = value.locale;
   }
-  if (value.server !== undefined) config.server = parseServer(value.server);
+  if (value.server !== undefined) config.server = parseServer(value.server, pageUrl);
   if (value.open !== undefined) config.open = parseOpen(value.open);
   return config;
 }
@@ -189,5 +206,5 @@ async function fetchConfig(target: URL, page: URL, fetchImpl: typeof fetch, sign
     if (signal.aborted) throw new ViewerConfigError('unreachable', 'The viewer configuration did not arrive in time', { cause: error });
     throw new ViewerConfigError('not-json', 'The viewer configuration is not JSON', { cause: error });
   }
-  return parseViewerRuntimeConfig(body);
+  return parseViewerRuntimeConfig(body, page.href);
 }

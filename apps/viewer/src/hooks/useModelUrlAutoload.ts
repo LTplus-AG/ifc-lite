@@ -27,6 +27,7 @@ import { showLoadError } from '@/lib/analytics';
 import { useViewerStore } from '@/store';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { markLoadIntent } from '@/lib/load-intent';
+import { pageUrlModelAllowed } from '@/lib/processed-model';
 
 export function useModelUrlAutoload(): void {
   // The loader and federation hooks subscribe to actions only; `useIfc()` also
@@ -56,6 +57,7 @@ export function useModelUrlAutoload(): void {
     const { modelUrl, baseUrl: sourceBaseUrl } = source;
     if (!modelUrl) return;
     autoloadDoneRef.current = true;
+    if (!pageUrlModelAllowed('model')) return; // the host configuration opens its own model
 
     // `retry` is required at every call (#5851 review): a malformed or
     // cross-origin URL is the SAME url string on every attempt, so retrying

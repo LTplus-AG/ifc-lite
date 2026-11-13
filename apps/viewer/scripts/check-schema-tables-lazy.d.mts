@@ -5,4 +5,4 @@
 /** Types for check-schema-tables-lazy.mjs, the viewer build's gate against decoding schema tables at boot. */
 export declare const SCHEMA_TABLE_MARKER: string;
 export declare const SCHEMA_TABLE_PAYLOAD: string;
-export declare function checkSchemaTablesLazy(directory: string): Promise<{ eager: string[]; lazy: string[] }>;
+export declare function checkSchemaTablesLazy(directory: string): Promise<{ eager: string[]; lazyCount: number }>;

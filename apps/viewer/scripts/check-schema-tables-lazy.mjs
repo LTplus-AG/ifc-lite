@@ -16,12 +16,16 @@
  * its marker string, so a startup chunk that carries one decodes that table at
  * boot. Code on the startup path reads the getters instead.
  *
+ * No chunk at all may keep one, not only the static startup graph: a chunk
+ * that is imported dynamically can still be evaluated at boot (the entry may
+ * call `import()` at once, as bootstrap.tsx does for the idle warm), and a
+ * walk of the static graph cannot tell those imports from deferred ones. Every
+ * reader uses a getter, so a kept constant anywhere is a defect.
+ *
  * Vacuity: some chunk must carry the schema tables themselves (the encoded
  * IFC4 registry names its schema, `IFC4_ADD2_TC1`), or the check looked at a
- * build without them. A lazy chunk keeping a constant is allowed and reported,
- * but not required: once every reader uses a getter, no chunk keeps one. That
- * the minifier keeps a marker beside a kept constant was shown by this gate's
- * first real run, which caught five (#9865). Runs at the tail of the viewer's
+ * build without them. That the minifier keeps a marker beside a kept constant
+ * was shown by this gate's first real run, which caught five (#9865). Runs at the tail of the viewer's
  * `build` script, like check-structural-writes-lazy.
  */
 
@@ -53,19 +57,24 @@ export async function checkSchemaTablesLazy(dist) {
     }
     if (code.includes(SCHEMA_TABLE_PAYLOAD)) tablesSeen = true;
   }
-  const lazy = [];
+  let lazyCount = 0;
   for await (const [file, code] of lazyChunks(directory, eager)) {
-    if (code.includes(SCHEMA_TABLE_MARKER)) lazy.push(relative(directory, file));
+    lazyCount++;
+    const at = code.indexOf(SCHEMA_TABLE_MARKER);
+    if (at >= 0) {
+      const name = code.slice(at, at + 96).match(/^[\w:-]+/)?.[0] ?? SCHEMA_TABLE_MARKER;
+      throw new Error(`Chunk ${relative(directory, file)} (loaded on demand) contains ${name}. A dynamically imported chunk can still be evaluated at boot, so no chunk may keep an eager schema-table constant. ${REMEDY}`);
+    }
     if (code.includes(SCHEMA_TABLE_PAYLOAD)) tablesSeen = true;
   }
   if (!tablesSeen) {
     throw new Error(`No chunk in ${directory} carries the schema tables (${SCHEMA_TABLE_PAYLOAD}), so this check proves nothing. Did the generated registry change its schema name, or did the build drop the tables?`);
   }
-  return { eager: [...eager.keys()].map((file) => relative(directory, file)).sort(), lazy: lazy.sort() };
+  return { eager: [...eager.keys()].map((file) => relative(directory, file)).sort(), lazyCount };
 }
 
 if (isMainEntry(import.meta.url)) {
   const directory = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', 'dist'));
-  const { eager, lazy } = await checkSchemaTablesLazy(directory);
-  console.log(`schema tables lazy: ${eager.length} startup chunks free of eager schema tables; lazy chunks keeping one: ${lazy.length ? lazy.join(', ') : 'none'}`);
+  const { eager, lazyCount } = await checkSchemaTablesLazy(directory);
+  console.log(`schema tables lazy: no eager schema-table constant in ${eager.length} startup chunks or ${lazyCount} on-demand chunks`);
 }

@@ -36,11 +36,18 @@ const KEPT = 'var t=e(`ifc-lite-eager-table:ENTITIES_IFC4X3`,n);';
 const GETTER_ONLY = 'let r;function n(){return r===void 0&&(r=d(`{"n":"IFC4_ADD2_TC1","s":["IfcWall"]}`)),r}';
 
 describe('checkSchemaTablesLazy', () => {
-  it('passes when startup chunks only carry getters and a lazy chunk keeps a constant', async () => {
-    const dir = dist({ 'main.js': `import "./ui.js";${GETTER_ONLY} import("./ids.js");`, 'ui.js': 'export const x=1;', 'ids.js': KEPT });
-    const { eager, lazy } = await checkSchemaTablesLazy(dir);
+  it('passes when every chunk only carries getters, and walks the static startup graph', async () => {
+    const dir = dist({ 'main.js': `import "./ui.js";${GETTER_ONLY} import("./ids.js");`, 'ui.js': 'export const x=1;', 'ids.js': GETTER_ONLY });
+    const { eager, lazyCount } = await checkSchemaTablesLazy(dir);
     assert.deepEqual(eager, ['assets/main.js', 'assets/ui.js']);
-    assert.deepEqual(lazy, ['assets/ids.js']);
+    assert.equal(lazyCount, 1);
+  });
+
+  // The entry calls import() at once, so ids.js is evaluated at boot although
+  // no static import reaches it: a kept constant there must fail too.
+  it('refuses an eager constant in a chunk the entry imports dynamically', async () => {
+    const dir = dist({ 'main.js': `import "./ui.js";${GETTER_ONLY} import("./ids.js");`, 'ui.js': 'export const x=1;', 'ids.js': KEPT });
+    await assert.rejects(checkSchemaTablesLazy(dir), /Chunk assets\/ids\.js \(loaded on demand\) contains ifc-lite-eager-table:ENTITIES_IFC4X3/);
   });
 
   it('refuses an eager constant in the entry chunk, naming it', async () => {
@@ -55,8 +62,8 @@ describe('checkSchemaTablesLazy', () => {
 
   it('passes when no chunk keeps any constant (every reader uses a getter)', async () => {
     const dir = dist({ 'main.js': `import "./ui.js";${GETTER_ONLY}`, 'ui.js': 'export const x=1;', 'other.js': GETTER_ONLY });
-    const { lazy } = await checkSchemaTablesLazy(dir);
-    assert.deepEqual(lazy, []);
+    const { lazyCount } = await checkSchemaTablesLazy(dir);
+    assert.equal(lazyCount, 1);
   });
 
   it('refuses a build that carries no schema tables at all (the check would prove nothing)', async () => {

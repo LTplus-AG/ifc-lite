@@ -213,6 +213,18 @@ export class StepRecordsUnavailableError extends Error {
   }
 }
 
+/** The message an export reports for `error`: the translated refusal, or the raw failure. */
+export function exportFailureMessage(
+  error: unknown,
+  t: (key: `exportDialog.stepRecords.${StepRecordsRefusal}`, params: { model: string }) => string,
+  fallbackModelName = '',
+): string {
+  if (error instanceof StepRecordsUnavailableError) {
+    return t(`exportDialog.stepRecords.${error.reason}`, { model: error.modelName ?? fallbackModelName });
+  }
+  return `Export failed: ${error instanceof Error ? error.message : 'Unknown error'}`;
+}
+
 /**
  * Where a STEP writer reads this store's records. Returns the room's portable
  * source when it covers the live room, or `null` when the store's own `source`

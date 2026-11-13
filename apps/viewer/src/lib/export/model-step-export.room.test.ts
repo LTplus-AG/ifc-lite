@@ -8,7 +8,7 @@ import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { parseFixtureModel, FIXTURE_PROJECT, FIXTURE_SITE, FIXTURE_BUILDING, FIXTURE_WALL_A } from '@/components/viewer/anonymized-export/anonymized-export-fixture.test-support';
 import { tabularFixtureStore, PROXY_A, PROXY_B, WALL } from '@/test/tabular-store-fixture';
 import { registerRoomSymbolicSource } from '@/lib/collab/room-symbolic-source';
-import { StepRecordsUnavailableError } from '@/lib/collab/room-step-export';
+import { exportFailureMessage, StepRecordsUnavailableError } from '@/lib/collab/room-step-export';
 import { exportModelStep } from './model-step-export';
 
 const OPTIONS = { schema: 'IFC4', applyMutations: true } as const;
@@ -66,4 +66,11 @@ test('a plain STEP model still exports from its own records (#10045)', async () 
   const result = await exportModelStep({ modelId: 'step', dataStore: await parseFixtureModel(), options: OPTIONS, scheduleState: null });
   const exported = await parse(result.content);
   assert.equal(exported.entities.getName(FIXTURE_WALL_A), 'Wall A');
+});
+
+test('the dialog reports a refusal through its catalogue key, other failures verbatim (#10045)', () => {
+  const t = (key: string, params: { model: string }) => `${key}|${params.model}`;
+  assert.equal(exportFailureMessage(new StepRecordsUnavailableError('roomMoved'), t, 'Selected'), 'exportDialog.stepRecords.roomMoved|Selected');
+  assert.equal(exportFailureMessage(new StepRecordsUnavailableError('noRecords', 'Merged A'), t, 'Selected'), 'exportDialog.stepRecords.noRecords|Merged A');
+  assert.equal(exportFailureMessage(new Error('boom'), t), 'Export failed: boom');
 });

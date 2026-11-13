@@ -4,7 +4,7 @@
 
 /** Static panel palette entries. Dynamic extension and export rows stay with their providers. */
 import {
-  BarChart3, Box, CalendarClock, ClipboardCheck, ClipboardPen, Cloud, Coins, Crosshair,
+  BarChart3, Bot, Box, CalendarClock, ClipboardCheck, ClipboardPen, Cloud, Coins, Crosshair,
   FileCode2, FileSpreadsheet, FileText, FileWarning, GitBranch, GitCompareArrows,
   History, Layout, Layers, Link2, ListChecks, MessageSquare, Palette, PencilLine, PencilRuler, Puzzle,
   Ruler, Scan, Sparkles, TreeDeciduous, Users, Workflow,
@@ -15,6 +15,8 @@ import { closeActiveAnalysisExtension } from '@/services/analysis-extensions';
 import type { BottomPanelId } from '@/lib/panels/bottom-panels';
 import { panelGroupFor, panelTitleKey } from '@/lib/panels/registry';
 import { useViewerStore } from '@/store';
+import { requestAgentBridgeDialog } from '@/lib/agent-bridge/state';
+import { isFramed } from '@/lib/agent-bridge/pairing-fragment';
 import { liftStartFold } from './welcome/useEmptyStartFold';
 import type { RightPanel } from './commandPaletteCommandsTypes';
 import type { Command } from './commandPaletteSearch';
@@ -124,6 +126,17 @@ export const PANEL_SURFACE_COMMANDS = [
   rightCommand('panel:lens', 'lens', 'lens rules color filter highlight', Palette, true),
   rightCommand('panel:layers', 'layers', 'ifcx layers federation draft publish merge review provenance registry version overlay', Layers, true),
   rightCommand('panel:sources', 'sources', 'cde common data environment connect provider bim360 acc trimble dalux integration remote', Cloud, true),
+  {
+    // #9523: opens the connect dialog. The bridge client and tool host load only after the user confirms there.
+    // A Sources-panel feature (its row lives there): it opens the connect dialog rather than the panel. Listed
+    // after panel:sources, so lookups by panelId (assistant actions) still resolve to the panel itself.
+    id: 'panel:agentBridge', panelId: 'sources', panelGroup: panelGroupFor('sources'),
+    labelKey: 'commandPalette.panel.agentBridge.label',
+    keywords: 'local agent mcp bridge claude desktop code ai assistant pair connect localhost',
+    // A framed viewer never connects (#9523): the entry is disabled there.
+    category: 'Panels', icon: Bot, surfaces: paletteOnly, enabled: (_state: SurfaceCommandState) => !isFramed(),
+    run: () => requestAgentBridgeDialog({ source: 'manual' }),
+  },
   rightCommand('panel:zones', 'zones', 'zone section takt area construction location apportionment storey', Box, true),
   rightCommand('panel:loadReport', 'loadReport', 'geometry diagnostics warnings dropped items csg openings unsupported load report', FileWarning, true),
   rightCommand('panel:pointclouds', 'pointclouds', 'point clouds scan las laz e57 splat classification deviation registration alignment', Scan),

@@ -39,7 +39,7 @@ function raw(meshes: TestMesh[], over: Partial<CoordinateInfo> = {}) {
     coordinateInfo: CoordinateInfo;
     meshes: TestMesh[];
     instancedGeometryAabbs?: Map<number, unknown>;
-    pointClouds?: Array<{ expressId?: number; origin?: Origin }>;
+    pointClouds?: Array<{ expressId?: number; origin?: Origin; chunk?: { pointCount: number } }>;
   };
 }
 
@@ -205,9 +205,18 @@ describe('convergeGeometryOntoRtcAnchor', () => {
     expect(g.pointClouds[0].origin).toEqual([5, 6, 7]);
   });
 
-  it('never moves or refuses a point-cloud-only geometry: it is raw in every load order', () => {
+  it('moves a geometry holding only inline clouds: it carries points, unlike a streamed descriptor (#10029)', () => {
+    const g = raw([]);
+    g.pointClouds = [{ expressId: 1, chunk: { pointCount: 3 } }];
+    expect(convergeGeometryOntoRtcAnchor([g], LV95).moved).toEqual([g]);
+    const d = ifcToViewerAxes(LV95);
+    expect(g.pointClouds[0].origin).toEqual([-d.x, -d.y, -d.z]);
+    expect(g.coordinateInfo.wasmRtcOffset).toEqual(LV95);
+  });
+
+  it('never moves or refuses a streamed scan (zero-point descriptor): it is raw in every load order', () => {
     const cloud = raw([]);
-    cloud.pointClouds = [{ expressId: 1 }];
+    cloud.pointClouds = [{ expressId: 1, chunk: { pointCount: 0 } }];
     const info = cloud.coordinateInfo;
     expect(convergeGeometryOntoRtcAnchor([cloud], ANCHOR)).toEqual({ moved: [], refused: [] });
     expect(cloud.coordinateInfo).toBe(info);

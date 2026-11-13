@@ -120,8 +120,9 @@ export interface RtcRebaseGeometry {
   meshes: ReadonlyArray<{ origin?: Origin; geometryClass?: number }>;
   /** Present on a `GeometryResult`; read only by {@link carriesGpuInstancedGeometry}. */
   instancedGeometryAabbs?: ReadonlyMap<number, unknown> | null;
-  /** Inline clouds move with their meshes, through `origin` (#10029). */
-  pointClouds?: ReadonlyArray<{ origin?: Origin }> | null;
+  /** Inline clouds move with their meshes, through `origin` (#10029). A
+   *  streamed scan is a zero-point descriptor here and is never moved. */
+  pointClouds?: ReadonlyArray<{ origin?: Origin; chunk?: { pointCount: number } }> | null;
 }
 
 /**
@@ -139,12 +140,15 @@ export function carriesGpuInstancedGeometry(geometry: RtcRebaseGeometry): boolea
 }
 
 /**
- * A point-cloud-only geometry never takes part in the RTC frame: the ingest
- * registers streamed scans raw in every load order (the georeference
- * alignment is their only frame move), so they are neither moved nor refused.
+ * A streamed scan never takes part in the RTC frame: the ingest registers it
+ * raw in every load order (the georeference alignment is its only frame move),
+ * so it is neither moved nor refused. Its geometry has no meshes and only
+ * zero-point identity descriptors; an inline cloud carries its points and
+ * follows the anchor like a mesh (#10029).
  */
-function isPointCloudOnly(geometry: RtcRebaseGeometry): boolean {
-  return (geometry.pointClouds?.length ?? 0) > 0 && geometry.meshes.length === 0;
+function isStreamedScanOnly(geometry: RtcRebaseGeometry): boolean {
+  const clouds = geometry.pointClouds ?? [];
+  return geometry.meshes.length === 0 && clouds.length > 0 && clouds.every((cloud) => !(cloud.chunk?.pointCount ?? 0));
 }
 
 export interface RtcConvergeResult<T> {
@@ -158,7 +162,7 @@ export interface RtcConvergeResult<T> {
  * Move every geometry that is not yet drawn against `anchor` onto it, in
  * place: each mesh's and inline cloud's `origin` and the `CoordinateInfo`
  * frame fields change, `positions` never do. Geometries already on the anchor
- * and point-cloud-only geometries are left alone; GPU-instanced geometries are reported in `refused` and left
+ * and streamed scans are left alone; GPU-instanced geometries are reported in `refused` and left
  * untouched, so the caller can tell the user which models stay split.
  *
  * Idempotent: a second call with the same anchor moves nothing.
@@ -174,7 +178,7 @@ export function convergeGeometryOntoRtcAnchor<T extends RtcRebaseGeometry>(
   const refused: T[] = [];
   const seen = new Set<object>(); // a mesh or cloud shared between two results moves once
   for (const geometry of new Set(geometries)) {
-    if (isPointCloudOnly(geometry) || isOnRtcAnchor(geometry.coordinateInfo, anchor)) continue;
+    if (isStreamedScanOnly(geometry) || isOnRtcAnchor(geometry.coordinateInfo, anchor)) continue;
     if (carriesGpuInstancedGeometry(geometry) || hasOtherInstancedGeometry?.(geometry) === true) {
       refused.push(geometry);
       continue;

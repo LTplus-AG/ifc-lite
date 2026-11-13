@@ -14,6 +14,11 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { EmbedViewer } from './components/EmbedViewer';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import '@/index.css';
+import { applyRuntimeConfig } from '@/lib/features/runtime-start';
+
+// The same runtime start as the viewer, with no configuration: every feature on,
+// then analytics.
+applyRuntimeConfig();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

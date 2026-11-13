@@ -2,16 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { isDxfDimensionExportable, type DXFExportOptions } from '@ifc-lite/drawing-2d';
 import type { TranslationKey } from '@/i18n';
 
-export type DrawingExportFormat = 'pdf' | 'dxf';
+export type DrawingExportFormat = 'pdf' | 'dxf' | 'svg' | 'print';
 export type DrawingExportOmission = 'markups' | 'otherCutDimensions' | 'rasterReferences' | 'requestedScale';
 
 export interface DrawingExportContent {
-  /**
-   * Markup kinds the PDF and DXF writers do not draw. `dimensions` is accepted from callers that count every
-   * markup kind but never makes an omission: dimensions on the current cut export everywhere.
-   */
+  /** Raw current-cut graphics supplied to the writers, including rejected dimensions. */
+  dimensionGraphics?: DXFExportOptions['dimensions'];
   markupCounts: Readonly<{ measurements: number; areas: number; texts: number; clouds: number; dimensions?: number }>;
   /** Dimensions drawn on another cut (`isDimensionOnPlane`), which every export leaves out. */
   otherCutDimensionCount?: number;
@@ -38,7 +37,13 @@ export function drawingExportOmissions(
 ): DrawingExportOmission[] {
   const omissions: DrawingExportOmission[] = [];
   const { markupCounts, otherCutDimensionCount = 0, visibleRasterReferenceCount = 0, sheetScale, requestedScale } = content;
-  if (markupCounts.measurements + markupCounts.areas + markupCounts.texts + markupCounts.clouds > 0) {
+  const graphics = content.dimensionGraphics ?? [];
+  const currentLinearCount = Math.max(0, (markupCounts.dimensions ?? 0) - otherCutDimensionCount);
+  const unknown = Math.max(0, markupCounts.measurements + currentLinearCount - graphics.length);
+  const rejected = graphics.filter(g => !isDxfDimensionExportable(g)).length;
+  const includesOrdinaryMarkups = (format === 'svg' || format === 'print') && sheetScale === null;
+  const unsupportedMarkup = includesOrdinaryMarkups ? 0 : markupCounts.areas + markupCounts.texts + markupCounts.clouds;
+  if (unknown + rejected + unsupportedMarkup > 0) {
     omissions.push('markups');
   }
   if (otherCutDimensionCount > 0) omissions.push('otherCutDimensions');

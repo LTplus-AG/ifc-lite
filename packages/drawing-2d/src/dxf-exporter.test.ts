@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { exportToDXF } from './dxf-exporter.js';
+import { exportToDXF, isDxfDimensionExportable } from './dxf-exporter.js';
 import { parseDxf } from './dxf/parser.js';
 import {
   DEFAULT_SECTION_CONFIG,
@@ -343,4 +343,20 @@ describe('DXFExporter textLayers', () => {
     expect(angle({ x: 0, y: 1 }, true)).toBeCloseTo(90, 9);
     expect(angle({ x: 1, y: -1 }, true)).toBeCloseTo(-45, 9);
   });
+});
+
+it('rejects invalid shared dimension graphics with the preflight predicate (#10020)', () => {
+  const point = { x: 0, y: 0 };
+  const valid = { lines: [[{ x: 0, y: 0 }, { x: 5, y: 0 }]] as [typeof point, typeof point][],
+    ticks: [], text: { at: { x: 2.5, y: 0.2 }, angle: 0, heightM: 0.3, value: 'valid' } };
+  const rejected = [
+    { ...valid, lines: [[point, point]] as [typeof point, typeof point][] },
+    ...[0, -1, NaN, Infinity].map(heightM => ({ ...valid, text: { ...valid.text, heightM } })),
+    { ...valid, text: { ...valid.text, at: { x: NaN, y: 0 } } },
+  ];
+  expect(isDxfDimensionExportable(valid)).toBe(true);
+  for (const dim of rejected) expect(isDxfDimensionExportable(dim)).toBe(false);
+  const entities = parseDxf(exportToDXF(emptyDrawing(), { dimensions: [...rejected, valid] })).entities;
+  expect(entities.filter(e => e.kind === 'text')).toHaveLength(1);
+  expect(entities.filter(e => e.kind === 'line')).toHaveLength(1);
 });

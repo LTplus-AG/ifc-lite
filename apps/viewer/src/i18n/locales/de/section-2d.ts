@@ -79,8 +79,8 @@ export const section2dDe = {
   "section2d.export.omission.rasterReferences": "sichtbare PDF-/Bildreferenzunterlagen",
   "section2d.export.omission.requestedScale": "den angeforderten Maßstab (das aktive Blatt legt den PDF-Maßstab fest)",
   "section2d.export.omission.pdfTitle": "Dieses PDF lässt Folgendes aus:",
-  "section2d.export.omission.dxfTitle": "Zeichnung als DXF exportieren?",
-  "section2d.export.omission.dxfDescription": "Diese DXF lässt {items} aus. Trotzdem exportieren?",
+  "section2d.export.omission.drawingTitle": "Zeichnung mit Auslassungen ausgeben?",
+  "section2d.export.omission.drawingDescription": "In dieser Ausgabe fehlen {items}. Trotzdem fortfahren?",
   "section2d.export.omission.continue": "Trotzdem exportieren",
   "section2d.export.otherCutDimensionsLeftOut": {
     "one": "{count} Maß, das auf einem anderen Schnitt gezeichnet wurde, wurde weggelassen.",

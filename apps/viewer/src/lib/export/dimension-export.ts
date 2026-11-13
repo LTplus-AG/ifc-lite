@@ -19,7 +19,7 @@
  */
 
 import type { jsPDF } from 'jspdf';
-import type { DXFPolylineLayer, DXFTextLayer } from '@ifc-lite/drawing-2d';
+import { isDxfDimensionExportable } from '@ifc-lite/drawing-2d';
 import type { Dimension2D } from '@/store/slices/drawing2DDimensions';
 import {
   dimensionGraphics,
@@ -84,7 +84,7 @@ export function boundsWithDimensions<B extends { min: DimensionPt; max: Dimensio
     minX = Math.min(minX, p.x - r); minY = Math.min(minY, p.y - r);
     maxX = Math.max(maxX, p.x + r); maxY = Math.max(maxY, p.y + r);
   };
-  for (const g of graphics) {
+  for (const g of graphics.filter(isDxfDimensionExportable)) {
     for (const [p, q] of [...g.lines, ...g.ticks]) { grow(p); grow(q); }
     grow(g.text.at, (g.text.heightM * Math.max(1, 0.7 * g.text.value.length)) / 2);
   }
@@ -108,7 +108,7 @@ export function dimensionsToSvg(graphics: readonly DimensionGraphics[], map: Dim
   const lineW = mmToUnits(DIMENSION_STROKE_MM.line);
   const tickW = mmToUnits(DIMENSION_STROKE_MM.tick);
   let svg = `  <g id="dimensions" stroke="${DIMENSION_COLOR}" stroke-linecap="butt" fill="none">\n`;
-  for (const g of graphics) {
+  for (const g of graphics.filter(isDxfDimensionExportable)) {
     const t = placeDimensionText(g.text, map);
     svg += '    <g class="dimension">';
     svg += g.lines.map((s) => segment(s, lineW)).join('') + g.ticks.map((s) => segment(s, tickW)).join('');
@@ -116,36 +116,6 @@ export function dimensionsToSvg(graphics: readonly DimensionGraphics[], map: Dim
     svg += '</g>\n';
   }
   return svg + '  </g>\n';
-}
-
-/**
- * The dimensions as DXF layers for `exportToDXF`'s `polylineLayers` and
- * `textLayers`, in drawing space: the exporter applies its own
- * `coordinateTransform`, and keeps the values upright in the output frame.
- */
-export function dimensionsToDxfLayers(graphics: readonly DimensionGraphics[]): { polylineLayers: DXFPolylineLayer[]; textLayers: DXFTextLayer[] } {
-  if (graphics.length === 0) return { polylineLayers: [], textLayers: [] };
-  return {
-    polylineLayers: [{
-      name: DIMENSION_DXF_LAYER,
-      color: DIMENSION_COLOR,
-      closed: false,
-      polylines: graphics.flatMap((g) => [...g.lines, ...g.ticks]),
-    }],
-    textLayers: [{
-      name: DIMENSION_DXF_LAYER,
-      color: DIMENSION_COLOR,
-      texts: graphics.map((g) => ({
-        position: g.text.at,
-        text: g.text.value,
-        height: g.text.heightM,
-        direction: { x: Math.cos(g.text.angle), y: Math.sin(g.text.angle) },
-        keepUpright: true,
-        hAlign: 'center' as const,
-        vAlign: 'middle' as const,
-      })),
-    }],
-  };
 }
 
 const PT_PER_MM = 72 / 25.4;
@@ -168,7 +138,7 @@ export function drawDimensionsPdf(doc: jsPDF, graphics: readonly DimensionGraphi
       doc.line(a.x, a.y, b.x, b.y);
     }
   };
-  for (const g of graphics) {
+  for (const g of graphics.filter(isDxfDimensionExportable)) {
     stroke(g.lines, DIMENSION_STROKE_MM.line);
     stroke(g.ticks, DIMENSION_STROKE_MM.tick);
     const t = placeDimensionText(g.text, map);

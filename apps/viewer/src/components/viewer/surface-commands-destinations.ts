@@ -8,7 +8,7 @@ import { openModelPlan } from './model/open-model-plan';
 import { openRetainedReport } from './retained-report-destination';
 import { registerEnglish } from '@/i18n';
 import { retainedGeometryEn } from '@/i18n/catalogues/retained-geometry.en';
-import { Ruler, Scissors, Settings, Search, Crosshair } from 'lucide-react';
+import { Bug, Ruler, Scissors, Settings, Search, Crosshair } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { openSettings, SETTINGS_SECTIONS } from '@/lib/settings/open-settings';
 import { openMeasurementDestination } from '@/lib/panels/measurement-destination';
@@ -71,7 +71,7 @@ export const DESTINATION_SURFACE_COMMANDS = [
     ...base, id: 'panel:error-report', labelKey: 'commandPalette.errorReport.label',
     keywords: 'report error bug failed load report help improve resume recent report pending report',
     keywordsKey: 'commandPalette.errorReport.aliases', detailKey: 'commandPalette.paths.errorReport',
-    category: 'Panels', icon: Search, run: () => openErrorReportDestination(),
+    category: 'Panels', icon: Bug, run: () => openErrorReportDestination(),
   },
   {
     ...base, id: 'panel:retained-report', labelKey: 'retainedGeometry.chip.aria',

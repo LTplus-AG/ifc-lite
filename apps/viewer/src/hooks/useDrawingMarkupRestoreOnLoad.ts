@@ -120,7 +120,8 @@ function markupFieldsEmpty(): boolean {
     s.measure2DResults.length === 0 &&
     s.polygonArea2DResults.length === 0 &&
     s.textAnnotations2D.length === 0 &&
-    s.cloudAnnotations2D.length === 0
+    s.cloudAnnotations2D.length === 0 &&
+    s.dimensions2D.length === 0
   );
 }
 

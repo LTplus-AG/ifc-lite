@@ -52,19 +52,25 @@
 
 import type {
   CloudAnnotation2D,
+  Dimension2D,
   Drawing2DState,
   Measure2DResult,
   PolygonArea2DResult,
-  Point2D,
   TextAnnotation2D, TagAnnotation2D,
 } from './drawing2DSlice.js';
+import {
+  isFiniteNumber, isMeasure2DResult, isPolygonArea2DResult, isTextAnnotation2D, isCloudAnnotation2D,
+} from './drawing2DSlice.markupValidation.js';
+import { loadPersistedDimensions } from './drawing2DDimensions.js';
 import { validElementTags } from '@/lib/drawing/tag-persistence';
 import { getDefaultDrawing2DState } from './drawing2DSlice.js';
 import type { SectionConfig } from '@ifc-lite/drawing-2d';
 import { isManualProjectionDepth, isConstructionProjectionPreference } from '@/lib/drawing/projection-depth';
+
+/** The store fields this module persists/restores/clears, as a plain patch. */
 export type Drawing2DMarkupPatch = Pick<
   Drawing2DState,
-  'measure2DResults' | 'polygonArea2DResults' | 'textAnnotations2D' | 'tagAnnotations2D' | 'cloudAnnotations2D' | 'drawing2DDisplayOptions'
+  'measure2DResults' | 'polygonArea2DResults' | 'textAnnotations2D' | 'tagAnnotations2D' | 'cloudAnnotations2D' | 'dimensions2D' | 'drawing2DDisplayOptions'
 >;
 
 /**
@@ -83,6 +89,7 @@ export function defaultMarkupPatch(): Drawing2DMarkupPatch {
     polygonArea2DResults: defaults.polygonArea2DResults,
     textAnnotations2D: defaults.textAnnotations2D, tagAnnotations2D: [],
     cloudAnnotations2D: defaults.cloudAnnotations2D,
+    dimensions2D: defaults.dimensions2D,
     drawing2DDisplayOptions: defaults.drawing2DDisplayOptions,
   };
 }
@@ -125,6 +132,8 @@ export interface PersistedDrawing2DEntry {
   tagAnnotations2D?: TagAnnotation2D[]; ownerModelId?: string;
   textAnnotations2D: TextAnnotation2D[];
   cloudAnnotations2D: CloudAnnotation2D[];
+  /** Optional in the stored v1 shape: entries saved before dimensions existed lack it, and still load. */
+  dimensions2D?: Dimension2D[];
   drawing2DDisplayOptions: Drawing2DState['drawing2DDisplayOptions'];
   /** The `SectionConfig` that produced the view these results were drawn on, if any. */
   sectionConfig: SectionConfig | null;
@@ -132,63 +141,7 @@ export interface PersistedDrawing2DEntry {
 }
 
 // ── Validation ───────────────────────────────────────────────────────
-function isFiniteNumber(v: unknown): v is number {
-  return typeof v === 'number' && Number.isFinite(v);
-}
-function isPoint2D(v: unknown): v is Point2D {
-  if (!v || typeof v !== 'object') return false;
-  const p = v as Record<string, unknown>;
-  return isFiniteNumber(p.x) && isFiniteNumber(p.y);
-}
-
-function isPoint2DArray(v: unknown): v is Point2D[] {
-  return Array.isArray(v) && v.every(isPoint2D);
-}
-
-function isMeasure2DResult(v: unknown): v is Measure2DResult {
-  if (!v || typeof v !== 'object') return false;
-  const r = v as Record<string, unknown>;
-  return (
-    typeof r.id === 'string' && r.id.length > 0 &&
-    isPoint2D(r.start) && isPoint2D(r.end) &&
-    isFiniteNumber(r.distance)
-  );
-}
-
-function isPolygonArea2DResult(v: unknown): v is PolygonArea2DResult {
-  if (!v || typeof v !== 'object') return false;
-  const r = v as Record<string, unknown>;
-  return (
-    typeof r.id === 'string' && r.id.length > 0 &&
-    isPoint2DArray(r.points) && r.points.length >= 3 &&
-    isFiniteNumber(r.area) && isFiniteNumber(r.perimeter)
-  );
-}
-
-function isTextAnnotation2D(v: unknown): v is TextAnnotation2D {
-  if (!v || typeof v !== 'object') return false;
-  const a = v as Record<string, unknown>;
-  return (
-    typeof a.id === 'string' && a.id.length > 0 &&
-    isPoint2D(a.position) &&
-    typeof a.text === 'string' &&
-    isFiniteNumber(a.fontSize) &&
-    typeof a.color === 'string' &&
-    typeof a.backgroundColor === 'string' &&
-    typeof a.borderColor === 'string'
-  );
-}
-
-function isCloudAnnotation2D(v: unknown): v is CloudAnnotation2D {
-  if (!v || typeof v !== 'object') return false;
-  const a = v as Record<string, unknown>;
-  return (
-    typeof a.id === 'string' && a.id.length > 0 &&
-    isPoint2DArray(a.points) && a.points.length >= 2 &&
-    typeof a.color === 'string' &&
-    typeof a.label === 'string'
-  );
-}
+// Per-kind markup validators live in `drawing2DSlice.markupValidation.ts`.
 
 /**
  * Validate + coalesce display options field-by-field over `fallback` rather
@@ -243,9 +196,10 @@ function isSectionConfigLike(v: unknown): v is SectionConfig {
   );
 }
 
-function isValidEntry(v: unknown): v is Omit<PersistedDrawing2DEntry, 'drawing2DDisplayOptions' | 'sectionConfig'> & {
+function isValidEntry(v: unknown): v is Omit<PersistedDrawing2DEntry, 'drawing2DDisplayOptions' | 'sectionConfig' | 'dimensions2D'> & {
   drawing2DDisplayOptions: unknown;
   sectionConfig: unknown;
+  dimensions2D?: unknown;
 } {
   if (!v || typeof v !== 'object') return false;
   const e = v as Record<string, unknown>;
@@ -350,6 +304,7 @@ export function loadDrawing2DEntry(
     polygonArea2DResults: entry.polygonArea2DResults.filter(isPolygonArea2DResult),
     textAnnotations2D: entry.textAnnotations2D.filter(isTextAnnotation2D), tagAnnotations2D: validElementTags(entry.tagAnnotations2D),
     cloudAnnotations2D: entry.cloudAnnotations2D.filter(isCloudAnnotation2D),
+    dimensions2D: loadPersistedDimensions(entry.dimensions2D),
     drawing2DDisplayOptions: coalesceDisplayOptions(entry.drawing2DDisplayOptions, defaultDisplayOptions),
     sectionConfig: isSectionConfigLike(entry.sectionConfig) ? entry.sectionConfig : null,
     savedAt: entry.savedAt, ownerModelId: typeof entry.ownerModelId === 'string' ? entry.ownerModelId : undefined,

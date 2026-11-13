@@ -186,6 +186,21 @@ describe('drawing persistence is keyed by the placement identity (#7035)', () =>
     assert.deepEqual(storedMeasures(identityOf(bytes)), ['drawn']);
     assert.equal(fullSourcePasses() - before, 0);
   });
+
+  it('markup drawn while the identity resolves is saved when nothing was stored before (#10076 review)', async () => {
+    const bytes = bytesOf(5);
+    const file = sourceFile(bytes);
+    await open(loadedModel('m1', file, bytes, { sourceContentHash: undefined, loadState: 'streaming-geometry' }), false);
+    await settle();
+    assert.equal(hasPersistedMarkupEntryFor('m1'), 'pending', 'setup: the restore is still in flight');
+    // Drawn while the restore holds saves off.
+    await act(async () => { useViewerStore.setState({ measure2DResults: [measure('drawn-meanwhile')] }); });
+    await act(async () => { useViewerStore.getState().updateModel('m1', { sourceContentHash: identityOf(bytes) }); });
+    await waitFor(() => hasPersistedMarkupEntryFor('m1') !== 'pending', 'the restore to settle on the identity');
+    await settle();
+    assert.deepEqual(liveMeasures(), ['drawn-meanwhile']);
+    assert.deepEqual(storedMeasures(identityOf(bytes)), ['drawn-meanwhile'], 'saved without a further change');
+  });
 });
 
 describe('markup saved under the legacy key is moved to the identity key (#7035)', () => {

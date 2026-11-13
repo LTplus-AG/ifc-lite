@@ -8,6 +8,7 @@
  * (docs/architecture/rhino-3dm-import.md, "Format detection and entry").
  */
 
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { detectFormat } from './detect-format.js';
@@ -19,12 +20,22 @@ const bufferOf = (text: string): ArrayBuffer => {
 
 /** The 32-byte header Rhino writes: the magic, then right-aligned version digits. */
 const rhinoHeader = (version: number): ArrayBuffer =>
-  bufferOf(`3D Geometry File Format ${String(version).padStart(8, ' ')}`.slice(0, 32) + '\u0000\u0000\u0000\u0000');
+  bufferOf(`3D Geometry File Format ${String(version).padStart(8, ' ')}`);
+
+/** A file Rhino 8 wrote, so the binary tail behind the ASCII magic is real. */
+const sample = new URL('../../../tests/models/rhino/mcneel-rhino3dm/mesh.3dm', import.meta.url);
 
 describe('detectFormat', () => {
   it('reads a Rhino archive header as 3dm', () => {
     assert.equal(detectFormat(rhinoHeader(70)), '3dm');
     assert.equal(detectFormat(rhinoHeader(80)), '3dm');
+  });
+
+  it('reads a real Rhino 8 file as 3dm, binary tail and all', { skip: !existsSync(sample) && 'run pnpm fixtures' }, () => {
+    // The sniffer decodes the head as UTF-8. That is non-fatal, so the ASCII
+    // magic survives the binary that follows it; this is what proves it.
+    const bytes = new Uint8Array(readFileSync(sample));
+    assert.equal(detectFormat(bytes.buffer.slice(0, 200) as ArrayBuffer), '3dm');
   });
 
   it('keeps the other formats on their own branches', () => {

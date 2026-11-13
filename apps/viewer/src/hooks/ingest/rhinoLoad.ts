@@ -24,7 +24,6 @@ import { prepareRhinoViewerModel } from './rhinoViewerModel.js';
 import type { ViewerModelPayload } from './viewerModelIngest.js';
 
 export interface RhinoLoadOptions {
-  file: File;
   /** The load's own source buffer; it stays the store's `source`. */
   buffer: ArrayBuffer;
   fileSizeMB: number;
@@ -51,10 +50,10 @@ export interface RhinoLoadOptions {
 }
 
 export async function loadRhino3dmModel(options: RhinoLoadOptions): Promise<void> {
-  const { file, isStale, setProgress, settleLoadUi } = options;
+  const { isStale, setProgress, settleLoadUi } = options;
   setProgress({ phase: 'Reading Rhino .3dm', percent: 10 });
   try {
-    const result = await prepareRhinoViewerModel(file, options.buffer, setProgress, options.signal);
+    const result = await prepareRhinoViewerModel(options.buffer, setProgress, options.signal);
     // Stale-guard-after-await (as on the IFCX branch): the read is the only
     // await here and a newer load may have superseded this one while it ran.
     // Nothing was acquired before this point, so there is nothing to unwind.

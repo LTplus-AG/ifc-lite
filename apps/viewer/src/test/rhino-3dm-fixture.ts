@@ -8,6 +8,12 @@
  * reader sorts into property sets, and two colour sources. Written rather
  * than downloaded so the coordinate and the user text are known exactly;
  * the Rhino-authored fixtures cover what a real file looks like.
+ *
+ * `packages/rhino3dm/test-support/craft.ts` is the declarative builder for the
+ * same job and would be about ten lines here. It is not reused because it sits
+ * outside that package's `exports` and imports its `src/` directly, so reaching
+ * it means a new published subpath or a second copy of the package's runtime.
+ * Worth doing when a third caller wants it.
  */
 
 import rhino3dm from 'rhino3dm';

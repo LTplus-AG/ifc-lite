@@ -25,6 +25,7 @@
  * "Worker wire format".
  */
 
+import { ifcToViewerAxes } from '@ifc-lite/geometry/world-frame';
 import type {
   ReadRhino3dmOptions,
   RhinoImport,
@@ -54,20 +55,31 @@ export interface RhinoImportJobDeps {
 }
 
 /**
- * `x, y, z -> x, z, -y` (`ifcToViewerAxes`), in place over an interleaved
- * triple array. `0 - y` rather than `-y` so a zero stays `0`, not `-0`.
+ * The two signed entries `ifcToViewerAxes` puts off the diagonal, read once
+ * from the one axis convention (`packages/geometry/src/world-frame.ts`) rather
+ * than spelled out again, so the per-vertex loop below stays a swap and a
+ * multiply. `pointCloudFrame.swapZupChunkToYup` derives its loop the same way.
+ */
+const Y_FROM_Z = ifcToViewerAxes({ x: 0, y: 0, z: 1 }).y;
+const Z_FROM_Y = ifcToViewerAxes({ x: 0, y: 1, z: 0 }).z;
+
+/**
+ * That convention in place over an interleaved triple array. The `+ 0` is the
+ * same no-negative-zero rule `renderFrameWorldOffset` applies: multiplying a
+ * zero by the negated axis would store `-0`.
  */
 function swapTripleArray(values: Float32Array): void {
   for (let i = 0; i < values.length; i += 3) {
     const y = values[i + 1];
-    values[i + 1] = values[i + 2];
-    values[i + 2] = 0 - y;
+    values[i + 1] = Y_FROM_Z * values[i + 2] + 0;
+    values[i + 2] = Z_FROM_Y * y + 0;
   }
 }
 
-/** The same rule on one double-precision point. */
+/** The same convention on one double-precision point; once per record, so it calls it. */
 function swapPoint(point: RhinoVector3): RhinoVector3 {
-  return [point[0], point[2], 0 - point[1]];
+  const swapped = ifcToViewerAxes({ x: point[0], y: point[1], z: point[2] });
+  return [swapped.x, swapped.y, swapped.z];
 }
 
 function swapGeometry(geometry: RhinoImportGeometry): void {

@@ -3,17 +3,15 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Main-thread client for `workers/rhinoImport.worker.ts`.
+ * Main-thread client for `workers/rhinoImport.worker.ts`: one worker per load,
+ * terminated the moment the run settles or is aborted. `rhino-import-job.ts`
+ * holds why it works that way; aborting terminates the worker because that is
+ * the only way to stop synchronous wasm mid-run.
  *
- * One worker per load, terminated the moment the run settles or is aborted,
- * like `export/rhino-export-client.ts`. Two reasons rather than one here: the
- * rhino3dm heap grows to about five times the file size and is handed back to
- * the OS with the worker, and an emscripten `Aborted()` leaves the module
- * unusable, so a fresh worker is the reset. Aborting terminates the worker,
- * which is the only way to stop synchronous wasm mid-run.
- *
- * There is deliberately no main-thread fallback: the read would freeze the
- * viewport for seconds on exactly the files where the worker matters.
+ * The promise machinery below is the same shape as
+ * `export/rhino-export-client.ts`. Folding the two into one
+ * `oneShotWorkerRun` helper is worth doing and is deliberately not done here:
+ * it would rewrite the shipped export client inside a PR about import.
  */
 
 import type { RhinoImport } from '@ifc-lite/rhino3dm';
@@ -48,7 +46,7 @@ export interface RhinoImportWorkerLike {
  * the worker is gone, not slow — an OS-killed worker fires neither `message`
  * nor `error`.
  */
-export const RHINO_IMPORT_TIMEOUT_MS = 10 * 60_000;
+const RHINO_IMPORT_TIMEOUT_MS = 10 * 60_000;
 
 const createDefaultWorker = (): RhinoImportWorkerLike =>
   new Worker(new URL('../../workers/rhinoImport.worker.ts', import.meta.url), { type: 'module' }) as RhinoImportWorkerLike;

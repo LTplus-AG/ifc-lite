@@ -8,8 +8,12 @@ import sys
 import ifcopenshell
 import ifcopenshell.geom
 import ifcopenshell.util.shape
+import ifcopenshell.validate
 
 model = ifcopenshell.file.from_string(sys.stdin.read())
+logger = ifcopenshell.validate.json_logger()
+ifcopenshell.validate.validate(model, logger, express_rules=True)
+assert not logger.statements, json.dumps(logger.statements, default=str)
 roof, = model.by_type('IfcRoof')
 items = [item for rep in roof.Representation.Representations
          if rep.RepresentationIdentifier == 'Body' for item in rep.Items]

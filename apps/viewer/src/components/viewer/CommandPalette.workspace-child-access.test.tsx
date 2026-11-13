@@ -149,6 +149,7 @@ test('#8947 palette Flavors reviews real iflv contents and cancels before import
 test('#8947 palette Plan Grid and Fit affect parsed wall geometry; pointer navigation and layout controls remain live', async () => {
   const svg = await openPlan();
   const probe = required('[data-workspace-3d-probe]');
+  const plan = required('[data-plan-view]');
   const axis = () => required(`[data-plan-axis="${MESH_WALL}"]`);
   const coords = () => ['x1', 'y1', 'x2', 'y2'].map(key => axis().getAttribute(key));
   const original = coords();
@@ -173,11 +174,13 @@ test('#8947 palette Plan Grid and Fit affect parsed wall geometry; pointer navig
   };
   layout('Plan'); assert.equal(useViewerStore.getState().modelLayout, 'plan');
   layout('Split'); assert.equal(useViewerStore.getState().modelLayout, 'split');
-  layout('3D'); assert.equal(document.querySelector('[data-plan-view]'), null);
-  assert.equal(required('[data-workspace-3d-probe]'), probe);
+  layout('3D'); assert.equal(useViewerStore.getState().modelLayout, '3d');
+  assert.equal(required('[data-model-plan-pane]').getAttribute('aria-hidden'), 'true', 'the persistent plan is hidden in 3D (#9296)');
+  assert.ok(required('[data-workspace-3d-probe]') === probe, 'the 3D viewport is not remounted');
   await launchDestination('model:plan', 'plan layout');
-  assert.ok(document.querySelector('[data-plan-view]'));
-  assert.equal(required('[data-workspace-3d-probe]'), probe);
+  assert.ok(required('[data-plan-view]') === plan, 'the same Plan pane reopens');
+  assert.equal(required('[data-model-plan-pane]').getAttribute('aria-hidden'), 'false');
+  assert.ok(required('[data-workspace-3d-probe]') === probe, 'the 3D viewport remains mounted after reopening Plan');
 });
 
 test('#8947 palette Plan Retry recovers an actual authored-wall cut after one reported cutter failure', async () => {

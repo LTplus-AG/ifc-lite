@@ -5,7 +5,7 @@
 import { readScheduleTotals } from '../lib/schedule-ui.mjs';
 import { task, downloadCount, nextDownload } from '../lib/driver.mjs';
 import { oracleModel } from '../lib/model-ui.mjs';
-import { check, field, wall, selectWall, scheduleMatchesWalls, near, finish } from '../lib/authoring-helpers.mjs';
+import { check, field, wall, selectWall, inspector, scheduleMatchesWalls, near, finish } from '../lib/authoring-helpers.mjs';
 
 export default {
     id:'ui.schedules', capability:'schedules-quantities', title:'Two walls carry quantities; grouped schedule export',
@@ -57,7 +57,10 @@ export default {
         evidence.push(await s.shot('grouped-totals'));
       }));
       tasks.push(await task(s, 'edit one wall length to 6 m and read live totals', async () => {
-        await selectWall(s);
+        // A plain click, not selectWall: its double Escape is "Close all panels" (ui.closeAllPanels),
+        // which closes the schedule this task reads.
+        await s.ui.clickWorld([2.5, 0, 1.5]);
+        await inspector(s);
         const length = s.page.getByLabel('Length in metres', { exact: true });
         if (!(await length.isEditable())) throw new Error('Wall Length is read-only in Model inspector; cannot edit it to 6 m.');
         await field(s,length,6);

@@ -25,8 +25,8 @@ export interface ReadRhino3dmOptions {
   /** SubD refinement level, each level quadruples the control net. Default 2. */
   subdLevel?: 0 | 1 | 2 | 3;
   /**
-   * Drawing budget in triangles, a block's counted once per placement; a curve or
-   * point cloud vertex counts a third of one. Default 30,000,000.
+   * Drawing budget in triangles, a block's counted once per placement. A vertex counts a
+   * third of one, and a mesh at least its triangles. Default 30,000,000.
    */
   maxTriangles?: number;
   /** Bake block instances into `meshes` for callers that cannot instance. Default false. */
@@ -76,7 +76,7 @@ export interface RhinoImportEntity {
   description: string;
   objectType: string;
   layer: number;
-  /** Object hidden, or any layer on its path off. */
+  /** Object hidden, or any layer on its path off; for merged objects, true only when every one is. Each geometry record carries its own. */
   hidden: boolean;
   /** Rhino object UUIDs merged into this entity. */
   objectIds: string[];
@@ -100,6 +100,8 @@ export interface RhinoImportGeometry {
 export interface RhinoImportMesh extends RhinoImportGeometry {
   entity: number;
   color: RhinoRgba;
+  /** Its own object's flag, as `RhinoImportEntity.hidden`; differs from the entity's only in a merged entity. */
+  hidden: boolean;
 }
 
 /** One block's own meshes, in block space. Nested blocks are flattened into `instances`. */
@@ -115,6 +117,8 @@ export interface RhinoImportInstance {
   /** 16 row-major numbers, metres: world = transform · (origin + position). */
   transform: number[];
   color: RhinoRgba;
+  /** Its own object's flag, as `RhinoImportEntity.hidden`; differs from the entity's only in a merged entity. */
+  hidden: boolean;
 }
 
 export interface RhinoImportPointCloud {
@@ -124,6 +128,8 @@ export interface RhinoImportPointCloud {
   /** RGBA bytes per point, or null when the cloud has no colours. */
   colors: Uint8Array | null;
   color: RhinoRgba;
+  /** Its own object's flag, as `RhinoImportEntity.hidden`; differs from the entity's only in a merged entity. */
+  hidden: boolean;
 }
 
 /** A polyline. Curves that are not polylines are sampled. A closed curve ends on its first point. */
@@ -133,6 +139,8 @@ export interface RhinoImportCurve {
   positions: Float32Array;
   closed: boolean;
   color: RhinoRgba;
+  /** Its own object's flag, as `RhinoImportEntity.hidden`; differs from the entity's only in a merged entity. */
+  hidden: boolean;
 }
 
 export interface RhinoImportTextDot {
@@ -140,6 +148,8 @@ export interface RhinoImportTextDot {
   position: RhinoVector3;
   text: string;
   color: RhinoRgba;
+  /** Its own object's flag, as `RhinoImportEntity.hidden`; differs from the entity's only in a merged entity. */
+  hidden: boolean;
 }
 
 /**

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { resolveAppearance, type Appearance, type AppearanceTables, type Look } from './appearance.js';
-import type { BlockMeshes, DrawnPart, Emitter } from './emit.js';
+import { cost, type BlockMeshes, type DrawnPart, type Emitter } from './emit.js';
 import type { Part } from './geometry.js';
 import { plural, type Report } from './report.js';
 import type { RhinoRgba } from './types.js';
@@ -81,7 +81,7 @@ function memberColor(look: Look, { tables, fades }: BlockContext): RhinoRgba | '
 }
 
 export function buildBlock(name: string, linked: boolean, members: BlockMember[], context: BlockContext): Block {
-  const block: Block = { name, linked, meshes: [], triangles: 0, reach: [0, 0, 0], others: [], dots: [], nested: [], drawsDots: false, drawsGeometry: false };
+  const block: Block = { name, linked, meshes: [], cost: 0, reach: [0, 0, 0], others: [], dots: [], nested: [], drawsDots: false, drawsGeometry: false };
   for (const { part, look, hidden } of members) {
     // Rhino does not draw a member that is hidden or on a layer that is off, in any instance.
     if (hidden) context.report.skip('hidden-block-member');
@@ -93,7 +93,7 @@ export function buildBlock(name: string, linked: boolean, members: BlockMember[]
       if (color === 'bake') block.others.push({ part, look });
       else {
         block.meshes.push({ origin: part.origin, positions: part.positions, normals: part.normals, indices: part.indices, color: color === 'instance' ? null : color });
-        block.triangles += part.indices.length / 3;
+        block.cost += cost(part);
         reach(part.positions).forEach((extent, axis) => { block.reach[axis] = Math.max(block.reach[axis], Math.abs(part.origin[axis]) + extent); });
       }
     }

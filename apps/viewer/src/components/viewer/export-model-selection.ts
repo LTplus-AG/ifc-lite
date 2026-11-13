@@ -88,6 +88,19 @@ export function listIonExportModels(
  * tabular model the way it skips one with no store, so a `.3dm` or `.ifcx`
  * sitting in the federation does not refuse the merge of the IFC models
  * beside it. A single-model export has only the selection to write.
+ *
+ * The two scopes draw the absent-store line differently, and both follow what
+ * happens if the export runs. `ensureModelExportReady` returns
+ * `model.ifcDataStore` as it is: it hydrates NOTHING, so a store that is
+ * absent at this question is absent at export time too. The merge then has
+ * nothing of that model to write and `buildMergeInputs` skips it, so a merge
+ * needs one store it can actually write — counting an absent one as writable
+ * offered the export for a `.3dm` beside a still-loading model and then ran
+ * the merge over zero inputs, which `MergedExporter`'s own precondition
+ * refused as `requires at least one model`: an internal invariant where the
+ * dialog should have said it had no records. The single path keeps main's
+ * answer, because there the absent store is refused on the way with a
+ * sentence of its own ("Model data is unavailable for export").
  */
 export function canWriteIfcFromStores(
   models: ReadonlyMap<string, FederatedModel>,
@@ -96,11 +109,8 @@ export function canWriteIfcFromStores(
   targetIsIfcx: boolean,
 ): boolean {
   if (targetIsIfcx) return true;
-  // An absent store is not a refusal: `ensureModelExportReady` hydrates one at
-  // export time. Only a STATED tabular marker disqualifies a model, which is
-  // why this asks for `noRecords` rather than for any skip reason at all.
   if (scope === 'merged') {
-    return exportableModels(models).some((model) => stepSkipReason(model.ifcDataStore) !== 'noRecords');
+    return exportableModels(models).some((model) => stepSkipReason(model.ifcDataStore) === null);
   }
   return stepSkipReason(selected?.ifcDataStore) !== 'noRecords';
 }

@@ -92,7 +92,7 @@ export function applyFrame(f: Frame3, p: Vec3): Vec3 {
 
 const finiteFrame = (frame: Frame3): boolean => [frame.o, frame.x, frame.y, frame.z].every(v => v.every(Number.isFinite));
 
-const IDENTITY_FRAME3: Frame3 = { o: [0, 0, 0], x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] };
+export const IDENTITY_FRAME3: Frame3 = { o: [0, 0, 0], x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] };
 
 export function transformBounds(bounds: HostBounds, frame: Frame3): HostBounds {
   const min: Vec3 = [Infinity, Infinity, Infinity], max: Vec3 = [-Infinity, -Infinity, -Infinity];

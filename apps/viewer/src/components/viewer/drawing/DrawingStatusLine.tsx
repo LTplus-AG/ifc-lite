@@ -49,6 +49,9 @@ export function DrawingStatusLine(p: DrawingStatusLineProps) {
     case 'cloud':
       hint = p.cloudPointCount === 0 ? t('section2d.tip.cloudFirst') : t('section2d.tip.cloudSecond');
       break;
+    case 'tag':
+      hint = t('section2d.tip.tag');
+      break;
     case 'text':
       hint = p.textEditing ? t('section2d.tip.textEditing') : t('section2d.tip.text');
       break;

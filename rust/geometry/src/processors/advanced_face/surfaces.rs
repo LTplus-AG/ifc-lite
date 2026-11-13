@@ -41,6 +41,19 @@ pub(super) fn lower_planar(face: &DecodedEntity, decoder: &mut EntityDecoder,
         rtc: rtc_file_units.unwrap_or((0.0, 0.0, 0.0)) }))
 }
 
+/// A planar face as one plan per region ([`super::bounds::face_regions`]).
+pub(super) fn lower_planar_regions(face: &DecodedEntity, decoder: &mut EntityDecoder,
+    quality: TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>) -> Result<Vec<FaceGeometry>> {
+    let rtc = rtc_file_units.unwrap_or((0.0, 0.0, 0.0));
+    Ok(super::bounds::face_regions(face, decoder, quality)?
+        .into_iter()
+        .map(|bounds| match bounds.outer {
+            Some(outer) => FaceGeometry::Planar(PlanarPlan { outer, hole_points: bounds.holes, rtc }),
+            None => FaceGeometry::Empty,
+        })
+        .collect())
+}
+
 #[cfg(test)]
 pub(super) fn process_planar_face_rebased(face: &DecodedEntity, decoder: &mut EntityDecoder,
     quality: TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>) -> Result<(Vec<f32>, Vec<u32>)> {

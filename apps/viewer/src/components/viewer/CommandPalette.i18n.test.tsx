@@ -86,6 +86,18 @@ const RESET = {
  *    render (a query nothing matches) covers it instead.
  */
 const NOT_RENDERED_IN_THIS_STATE: PaletteKey[] = [
+  // #8969: Search-only blank-model keywords; the label renders separately.
+  'commandPalette.file.newBlank.keywords',
+  // #8969: Search-only cancellation keywords; the label renders separately.
+  'commandPalette.file.cancelLoad.keywords',
+  // #8969: Search-only retry keywords; the label renders separately.
+  'commandPalette.file.retryLoad.keywords',
+  // #8969: Search-only dismissal keywords; the label renders separately.
+  'commandPalette.file.dismissLoadError.keywords',
+  // #8969: No startBlank host in this seed; missing-host refusal precedes session eligibility.
+  'commandPalette.availability.blankSession',
+  // #8969: No current load error in this seed; the no-error reason precedes retry eligibility.
+  'commandPalette.availability.noLoadRetry',
   // No extension dock contributions are installed in this scenario.
   'commandPalette.extension.conditions',
   'commandPalette.category.recent',

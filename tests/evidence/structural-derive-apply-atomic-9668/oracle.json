@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "#9668: Apply writes in one discardable transaction, so a failed write leaves nothing; write straight to the editor.",
+  "key": "packages/create/src/in-store/structural-derive-apply.ts",
+  "mutation": "tests/evidence/structural-derive-apply-atomic-9668/behaviour.oracle.patch",
+  "test": "packages/create/src/in-store/structural-derive.test.ts"
+}

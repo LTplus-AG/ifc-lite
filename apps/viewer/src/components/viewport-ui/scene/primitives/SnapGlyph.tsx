@@ -104,7 +104,7 @@ export function SnapGlyph({ worldPoint, kind, className }: SnapGlyphProps) {
   if (!svgLayer) return null;
 
   return createPortal(
-    <g ref={ref} style={{ display: 'none' }} data-scene-primitive="snap-glyph" data-snap-kind={kind}>
+    <g aria-hidden="true" ref={ref} style={{ display: 'none' }} data-scene-primitive="snap-glyph" data-snap-kind={kind}>
       <SnapGlyphShape kind={kind} className={className} />
     </g>,
     svgLayer,

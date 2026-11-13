@@ -19,6 +19,7 @@ export function buildHelp(version: string): string {
     info      <file.ifc>                          Model summary (schema, entities, storeys)
     query     <file.ifc> [--type T] [--json]      Query entities by type/properties/quantities
               [--select "IfcWall, Pset_WallCommon.FireRating=2HR"]  IfcOpenShell-style selector (classes union with --type; properties AND with --where)
+    structural <file.ifc> [--json]                Read analysis models, members, connections, loads, reactions and physical links
     props     <file.ifc> --id <N>                 All properties for a single entity
     export    <file.ifc> --format csv|json|ifc|obj|gltf|glb|jsonld|step|ifcx|usd|3dm|hbjson|dfjson  Export data / geometry / energy model
               3dm: --units source|meters|millimeters|centimeters|feet|inches
@@ -69,6 +70,7 @@ export function buildHelp(version: string): string {
     stats     <file.ifc>                          Auto-calculated model KPIs and health check
     mutate    <file.ifc> --id N --set P=V --out F  Modify properties/attributes and save
     generate-spaces <file.ifc> --out F           Derive IfcSpace from walls (slab/roof-aware height)
+    derive-structural <file.ifc> --out F         Derive a linked structural analysis model from beams, columns, slabs, walls
     storey    <file.ifc> list|add|rename|edit|delete  Author storeys; geometry follows ("storey --help" for actions)
               list [--json]                       Storeys with elevation, floor-to-floor height and element count
               add --from S [--below] | --name N --elevation M  Add a storey (from a neighbour: its naming and spacing)

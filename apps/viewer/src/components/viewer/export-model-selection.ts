@@ -12,6 +12,8 @@ export interface ExportModelListItem {
   name: string;
   isDirty: boolean;
   schemaVersion: FederatedModel['schemaVersion'];
+  /** What backs the model's store; `'tabular'` has no STEP records to write from. */
+  sourceKind: IfcDataStore['sourceKind'];
   sourceSchema: FederatedModel['sourceSchema'];
 }
 
@@ -42,6 +44,7 @@ export function listExportModels(
     name: model.name,
     isDirty: dirtyModels.has(model.id),
     schemaVersion: model.schemaVersion,
+    sourceKind: model.ifcDataStore?.sourceKind,
     sourceSchema: model.sourceSchema,
   }));
   if (list.length === 0 && legacyStore) {
@@ -50,10 +53,23 @@ export function listExportModels(
       name: 'Current Model',
       isDirty: false,
       schemaVersion: legacyStore.schemaVersion,
+      sourceKind: legacyStore.sourceKind,
       sourceSchema: undefined,
     });
   }
   return list;
+}
+
+/** Ion consumes STEP IFC, unlike the general export formats (#8947).
+ * An existing federation must never fall back to its legacy active-store slot:
+ * that could resurrect a capture which exportableModels deliberately omitted. */
+export function listIonExportModels(
+  models: ReadonlyMap<string, FederatedModel>,
+  legacyStore: IfcDataStore | null,
+): ExportModelListItem[] {
+  return listExportModels(models, new Set(), models.size === 0 ? legacyStore : null)
+    .filter(model => model.schemaVersion !== 'IFC5' && model.sourceKind !== 'tabular' && !model.sourceSchema
+      && (model.id === '__legacy__' || models.get(model.id)?.ifcDataStore));
 }
 
 export function resolveExportModel(

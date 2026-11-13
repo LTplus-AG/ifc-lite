@@ -9,6 +9,7 @@ import path from 'node:path';
 export const viewerAliases = {
       '@': path.resolve(__dirname, './src'),
       '@ifc-lite/parser/browser': path.resolve(__dirname, '../../packages/parser/src/browser.ts'),
+      '@ifc-lite/parser/structural-glyphs': path.resolve(__dirname, '../../packages/parser/src/structural-glyphs.ts'),
       '@ifc-lite/parser': path.resolve(__dirname, '../../packages/parser/src'),
       '@ifc-lite/geometry': path.resolve(__dirname, '../../packages/geometry/src'),
       '@ifc-lite/renderer': path.resolve(__dirname, '../../packages/renderer/src'),

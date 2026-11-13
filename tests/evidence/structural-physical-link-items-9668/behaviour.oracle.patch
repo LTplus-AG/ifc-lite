@@ -1,0 +1,12 @@
+diff --git a/packages/create/src/in-store/structural-physical-link.ts b/packages/create/src/in-store/structural-physical-link.ts
+--- a/packages/create/src/in-store/structural-physical-link.ts
++++ b/packages/create/src/in-store/structural-physical-link.ts
+@@ -33,7 +33,7 @@ export function linkStructuralItemsToPhysicalInStore(
+     ownerHistoryRef(ownerHistoryId),
+     null,
+     null,
+-    itemIds.slice(0, 1).map((id) => `#${id}`),
++    itemIds.map((id) => `#${id}`),
+     null, // RelatedObjectsType
+     `#${physicalElementId}`,
+   ]).expressId;

@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "apps/viewer/src/lib/agent-tools/refs.ts",
+  "mutation": "tests/evidence/agent-tools-model-scope-9523/behaviour.oracle.patch",
+  "test": "apps/viewer/src/lib/agent-tools/main-viewer-federation.test.ts",
+  "why": "#9523: without the per-model query scope a federated session mixes models, so a query for one model returns the other's entities and materials."
+}

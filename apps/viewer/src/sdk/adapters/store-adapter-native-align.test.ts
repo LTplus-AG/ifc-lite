@@ -71,8 +71,10 @@ it('registered viewer Align carries a joined neighbour through its viewer hook a
   if (!ensureRoomWasm(t)) return;
   const { adapter, view } = await seedNativeSdkModel();
   const reference = adapter.addColumn(MODEL, 42, { Position: [10,20,0], Width: .4, Depth: .6, Height: 3 });
-  const target = adapter.addWall(MODEL, 42, { Start: [20,20,0], End: [24,20,0], Thickness: .2, Height: 3 });
-  const neighbour = adapter.addWall(MODEL, 42, { Start: [24,20,0], End: [24,24,0], Thickness: .2, Height: 3 });
+  // #9406: Align moves this wall perpendicular to its own axis, so the
+  // neighbour extends along its horizontal axis and genuinely changes mesh.
+  const target = adapter.addWall(MODEL, 42, { Start: [20,20,0], End: [20,24,0], Thickness: .2, Height: 3 });
+  const neighbour = adapter.addWall(MODEL, 42, { Start: [20,24,0], End: [24,24,0], Thickness: .2, Height: 3 });
   const other = adapter.addColumn(MODEL, 42, { Position: [30,30,0], Width: .8, Depth: .4, Height: 3 });
   adapter.joinWalls(MODEL, target.expressId, neighbour.expressId);
   await settle();
@@ -96,8 +98,8 @@ it('registered viewer Align carries a joined neighbour through its viewer hook a
   assert.ok(result.result.remesh.includes(neighbour.expressId), 'the viewer hook includes the neighbour in the same remesh');
   const endpoints = useViewerStore.getState().readWallEndpoints(MODEL, neighbour.expressId);
   assert.ok(endpoints);
-  assert.ok(Math.abs(endpoints.start[0] - (24 + shift)) < 1e-4, 'the joined endpoint follows this target-specific shift');
-  assert.ok(Math.abs(endpoints.start[1] - 20) < 1e-4);
+  assert.ok(Math.abs(endpoints.start[0] - (20 + shift)) < 1e-4, 'the joined endpoint follows this target-specific shift');
+  assert.ok(Math.abs(endpoints.start[1] - 24) < 1e-4);
   assert.deepEqual(endpoints.end.slice(0, 2), [24,24], 'the unjoined far endpoint remains fixed');
   await settle();
   const after = boxes();

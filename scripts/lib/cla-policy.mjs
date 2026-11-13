@@ -119,7 +119,10 @@ export function decideEvent(eventName, payload) {
     throw new ClaGateError('BAD_EVENT', 'The webhook payload is not an object.');
   }
   if (eventName === 'pull_request_target') {
-    if (!['opened', 'reopened', 'synchronize'].includes(payload.action)) return { action: 'ignore', reason: 'PR_ACTION' };
+    // A retarget changes which commits the pull request carries without
+    // changing its head, so the status on that head has to be recomputed.
+    const retargeted = payload.action === 'edited' && Boolean(payload.changes?.base);
+    if (!retargeted && !['opened', 'reopened', 'synchronize'].includes(payload.action)) return { action: 'ignore', reason: 'PR_ACTION' };
     const number = payload.pull_request?.number;
     if (!Number.isSafeInteger(number)) throw new ClaGateError('BAD_EVENT', 'Pull request event has no number.');
     return { action: 'evaluate', number };
@@ -140,7 +143,13 @@ export function decideEvent(eventName, payload) {
       action: 'sign',
       number,
       signer: { id: user.id, login: user.login },
-      comment: { id: payload.comment.id, url: payload.comment.html_url, createdAt: payload.comment.created_at },
+      comment: {
+        id: payload.comment.id,
+        url: payload.comment.html_url,
+        createdAt: payload.comment.created_at,
+        // The comment can be edited later; this pins the words that were signed.
+        bodySha256: createHash('sha256').update(body).digest('hex'),
+      },
     };
   }
   // A manual run rechecks every open pull request: it gives PRs opened
@@ -272,6 +281,7 @@ export function addSignature(record, { signer, comment, number, claSha256, claCo
     pull_request: number,
     comment_id: comment.id,
     comment_url: comment.url,
+    ...(comment.bodySha256 ? { comment_sha256: comment.bodySha256 } : {}),
   };
   return { record: { ...base, signatures: [...base.signatures, entry] }, added: true };
 }

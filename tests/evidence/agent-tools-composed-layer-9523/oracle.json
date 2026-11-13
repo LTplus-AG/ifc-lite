@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "apps/viewer/src/lib/agent-tools/main-viewer-host.ts",
+  "mutation": "tests/evidence/agent-tools-composed-layer-9523/behaviour.oracle.patch",
+  "test": "apps/viewer/src/lib/agent-tools/main-viewer-federation.test.ts",
+  "why": "#9523: without the shared-store check every federated IFCX layer answers as if it were the whole composition."
+}

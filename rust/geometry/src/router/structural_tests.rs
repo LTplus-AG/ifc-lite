@@ -287,7 +287,9 @@ fn structural_surface_rebases_raw_coordinates_before_f32_conversion() {
         "#15=IFCFACESURFACE((#6),#14,.T.);",
         "#15=IFCADVANCEDFACE((#6),#14,.T.,.F.);",
     );
-    for source in [face_surface, advanced_face] {
+    // A bare IfcFace (GeometryGym) on a structural member rebases too (#9668).
+    let bare_face = face_surface.replace("#15=IFCFACESURFACE((#6),#14,.T.);", "#15=IFCFACE((#6));");
+    for source in [face_surface, advanced_face, bare_face] {
         let mut decoder = EntityDecoder::new(&source);
         let entity = decoder.decode_by_id(18).unwrap();
         let mut router = GeometryRouter::new();
@@ -675,4 +677,116 @@ fn oriented_edge_cycle_fails_loudly_instead_of_recursing() {
 
     let error = router.process_element(&entity, &mut decoder).unwrap_err();
     assert!(error.to_string().contains("cycle"), "{error}");
+}
+
+fn meshed(source: &str, id: u32) -> crate::Mesh {
+    let mut decoder = EntityDecoder::new(source);
+    let entity = decoder.decode_by_id(id).unwrap();
+    GeometryRouter::new().process_element(&entity, &mut decoder).unwrap()
+}
+
+#[test]
+fn axisvm_undefined_topology_type_in_a_bare_product_representation_meshes_issue_9668() {
+    // AxisVM (IFC2X3) types every member topology 'Undefined' and puts a curve
+    // member's in the (then non-abstract) IfcProductRepresentation.
+    let source = member("(0.,0.,0.)", "(10.,0.,0.)", "Undefined").replace("IFCPRODUCTDEFINITIONSHAPE", "IFCPRODUCTREPRESENTATION");
+    let (start, end) = midpoints(&meshed(&source, 8));
+    assert!(start[0].abs() < 1e-6 && (end[0] - 10.0).abs() < 1e-6, "{start:?} {end:?}");
+    let surface = surface_member(true, false).replace("'Face'", "'Undefined'");
+    assert!((signed_xy_area(&meshed(&surface, 18)) - 100.0).abs() < 1e-5);
+}
+
+#[test]
+fn bare_face_and_curve_bounded_plane_surface_members_mesh_issue_9668() {
+    // GeometryGym writes a bare IfcFace; AxisVM an IfcCurveBoundedPlane over an IfcPlane.
+    let bare = surface_member(true, false).replace("#15=IFCFACESURFACE((#6),#14,.T.);", "#15=IFCFACE((#6));");
+    assert!((signed_xy_area(&meshed(&bare, 18)) - 100.0).abs() < 1e-5);
+    let bounded = surface_member(true, false).replace("#14=IFCPLANE(#13);", "#14=IFCCURVEBOUNDEDPLANE(#19,$,());#19=IFCPLANE(#13);");
+    assert!((signed_xy_area(&meshed(&bounded, 18)) - 100.0).abs() < 1e-5);
+}
+
+#[test]
+fn disjoint_outer_bounds_are_regions_not_holes_issue_9668() {
+    // AxisVM writes a slab as one face of many outer-bound triangles: two
+    // 10x10 halves of the square must mesh as 100, not as one minus the other.
+    let source = surface_member(true, false).replace(
+        "#5=IFCPOLYLOOP((#1,#2,#3,#4));#6=IFCFACEOUTERBOUND(#5,.T.);",
+        "#5=IFCPOLYLOOP((#1,#2,#3));#6=IFCFACEOUTERBOUND(#5,.T.);#20=IFCPOLYLOOP((#1,#3,#4));#21=IFCFACEOUTERBOUND(#20,.T.);",
+    ).replace("IFCFACESURFACE((#6),", "IFCFACESURFACE((#6,#21),");
+    assert!((signed_xy_area(&meshed(&source, 18)) - 100.0).abs() < 1e-5);
+}
+
+/// `surface_member` items on an ordinary product: an IfcBuildingElementProxy
+/// whose Body representation holds the face.
+fn proxy_with(face_source: &str) -> String {
+    face_source
+        .replace("IFCTOPOLOGYREPRESENTATION($,'Reference','Face',", "IFCSHAPEREPRESENTATION($,'Body',$,")
+        .replace(
+            "#18=IFCSTRUCTURALSURFACEMEMBER('0000000000000000000000',$,'Surface',$,$,$,#17,.SHELL.,0.2);",
+            "#18=IFCBUILDINGELEMENTPROXY('0000000000000000000000',$,'Proxy',$,$,$,#17,$,$);",
+        )
+}
+
+#[test]
+fn bare_face_on_another_product_stays_unsupported_issue_9668() {
+    // A bare IfcFace has no processor outside a structural member (main: an error).
+    let bare = proxy_with(&surface_member(true, false).replace("#15=IFCFACESURFACE((#6),#14,.T.);", "#15=IFCFACE((#6));"));
+    let mut decoder = EntityDecoder::new(&bare);
+    let proxy = decoder.decode_by_id(18).unwrap();
+    assert_eq!(proxy.ifc_type, IfcType::IfcBuildingElementProxy);
+    let error = GeometryRouter::new().process_element(&proxy, &mut decoder).unwrap_err();
+    assert!(error.to_string().contains("Unsupported representation type"), "{error}");
+}
+
+#[test]
+fn curve_bounded_plane_face_on_another_product_stays_empty_issue_9668() {
+    // Main meshes nothing for a face surface on an IfcCurveBoundedPlane.
+    let bounded = proxy_with(&surface_member(true, false).replace("#14=IFCPLANE(#13);", "#14=IFCCURVEBOUNDEDPLANE(#19,$,());#19=IFCPLANE(#13);"));
+    assert!(meshed(&bounded, 18).is_empty());
+}
+
+#[test]
+fn two_outer_bounds_on_another_product_keep_main_rule_issue_9668() {
+    // Main keeps the last outer bound as the ring and makes the earlier one a
+    // hole, so only the 2 x 2 square meshes (area 4, measured on main).
+    let face = surface_member(true, true).replace("#12=IFCFACEBOUND(#11,.T.);", "#12=IFCFACEOUTERBOUND(#11,.T.);");
+    assert!((signed_xy_area(&meshed(&proxy_with(&face), 18)) - 4.0).abs() < 1e-5);
+    // The same face on a structural member is two regions, 100 + 4 (AxisVM writes slabs so).
+    assert!((signed_xy_area(&meshed(&face, 18)) - 104.0).abs() < 1e-5);
+}
+
+#[test]
+fn member_face_is_refused_with_the_length_unit_like_every_item_issue_9668() {
+    // A refused length unit refuses every item (#7678); a structural member's
+    // face, even one the member-face rule would mesh, is no exception.
+    let face_surface = surface_member(true, false);
+    let bare = face_surface.replace("#15=IFCFACESURFACE((#6),#14,.T.);", "#15=IFCFACE((#6));");
+    for source in [face_surface, bare] {
+        let mut decoder = EntityDecoder::new(&source);
+        let member = decoder.decode_by_id(18).unwrap();
+        let mut router = GeometryRouter::new();
+        router.refuse_length_unit();
+        assert!(router.process_element(&member, &mut decoder).is_err());
+    }
+}
+
+#[test]
+fn bare_face_of_a_member_votes_the_file_rtc_issue_9668() {
+    // Detected through the live file detector, not a manual offset.
+    let wrap = |data: &str| format!("ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;\n{data}\nENDSEC;END-ISO-10303-21;");
+    let large = surface_member(true, false)
+        .replace("#15=IFCFACESURFACE((#6),#14,.T.);", "#15=IFCFACE((#6));")
+        .replace("(0.,0.,0.)", "(5000000.,5000000.,0.)")
+        .replace("(10.,0.,0.)", "(5000000.125,5000000.,0.)")
+        .replace("(10.,10.,0.)", "(5000000.125,5000000.125,0.)")
+        .replace("(0.,10.,0.)", "(5000000.,5000000.125,0.)");
+    let detect = |data: &str| {
+        let content = wrap(data);
+        let mut decoder = EntityDecoder::with_index(&content, ifc_lite_core::build_entity_index(&content));
+        let router = GeometryRouter::with_units(&content, &mut decoder);
+        router.detect_rtc_offset_for_file(content.as_bytes(), &mut decoder)
+    };
+    assert!(matches!(detect(&large), Some(ifc_lite_core::RtcVerdict::Large { .. })), "{:?}", detect(&large));
+    // The same bare face on another product is not read, as on main.
+    assert!(!matches!(detect(&proxy_with(&large)), Some(ifc_lite_core::RtcVerdict::Large { .. })));
 }

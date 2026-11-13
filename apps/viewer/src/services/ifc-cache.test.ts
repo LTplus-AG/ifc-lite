@@ -444,6 +444,18 @@ describe('putSceneSnapshot', () => {
     assert.equal((await getCached('k'))!.sceneSnapshot, undefined);
   });
 
+  it('resolves the identity of the write it stored, which a snapshot then attaches to (W2)', async () => {
+    const write = await setCached('k', patterned(1 * KB, 6), 'k.ifc', 1 * KB, undefined, { fullSourceHash: 'h' });
+    assert.deepEqual(write, { createdAt: (await getCached('k'))!.createdAt, fullSourceHash: 'h' });
+    assert.equal(await putSceneSnapshot('k', write!, snapshot(), 'policy'), true);
+    stubEstimate(1 * MB, 1 * MB - 4 * KB);
+    try {
+      assert.equal(await setCached('full', patterned(2 * MB, 7), 'full.ifc', 2 * MB), null, 'a skipped write has no identity');
+    } finally {
+      restoreNavigator();
+    }
+  });
+
   it('attaches to the write it was built from and comes back on a hit', async () => {
     await setCached('k', patterned(1 * KB, 1), 'k.ifc', 1 * KB);
     const entry = (await getCached('k'))!;

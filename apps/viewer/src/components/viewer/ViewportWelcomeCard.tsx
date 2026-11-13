@@ -10,9 +10,9 @@
  * line (`WelcomeFooterChips`) under both.
  *
  * One filled action, then everything else in the theme's plain ink and muted
- * ink (#8802 R6): the format list is ordinary text at the muted token, not a
- * dimmed monospace run, and the agent link left the sample list, where it
- * read as a third sample model.
+ * ink (#8802 R6): the format list (`WelcomeFormats`) is ordinary text at those
+ * two tokens, not a dimmed monospace run, and the agent link left the sample
+ * list, where it read as a third sample model.
  *
  * Opening your own model is the primary action. The demo project, which was
  * the first button from #5840 to the redesign, now sits with the other
@@ -29,20 +29,17 @@ import { Spinner } from '@/components/ui/spinner';
 import { useTranslation } from '@/i18n';
 import { toast } from '@/components/ui/toast';
 import { loadDemoProjectVia } from '@/lib/tours/demo-kit';
-import { MODEL_FILE_EXTENSIONS } from '@/services/supported-model-files';
 import { useViewerStore } from '@/store';
 import type { WebGPUStatus } from '@/hooks/useWebGPU';
 import { getCachedFile, type RecentFileEntry } from '@/lib/recent-files';
+import { WelcomeFormats } from './welcome/WelcomeFormats';
 import { WelcomeRecentFiles } from './welcome/WelcomeRecentFiles';
 import { WebGpuDisabledCaption } from './WebGpuTroubleshooting';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
 import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
 import { trackUiEvent } from '@/lib/analytics';
 import { onFieldTelemetry } from '@/lib/perf/fieldTelemetryLoader';
-
-/** Formats named under the actions, derived from the one extension list so
- *  the copy can never advertise less (or more) than the picker accepts. */
-const MODEL_FORMATS_LABEL = MODEL_FILE_EXTENSIONS.join(' ');
+import { markLoadIntent } from '@/lib/load-intent';
 
 const FOCUS = 'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
 const ACTION = `inline-flex h-10 items-center gap-2 rounded-md px-4 text-sm font-semibold whitespace-nowrap transition-colors ${FOCUS} disabled:cursor-not-allowed disabled:opacity-45`;
@@ -79,6 +76,7 @@ export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentF
   // The sample the tours use ships with the viewer (#5840) and goes through
   // the same `loadFile` as every other open.
   const loadDemo = async () => {
+    markLoadIntent(); // the sample is fetched before the load starts
     // Which way in a first visit takes; the panel empty state reports the same pair.
     trackUiEvent('onboarding_surface', { surface: 'welcome_card', action: 'load_sample' });
     setDemoLoading(true);
@@ -93,6 +91,7 @@ export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentF
   };
 
   const loadLayersDemo = () => {
+    markLoadIntent(); // the demo stack chunk loads before its models do
     void import('@/lib/layers/demo-stack')
       .then((m) => m.loadDemoLayerStack())
       .catch((err: unknown) => {
@@ -102,6 +101,7 @@ export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentF
   };
 
   const openRecent = async (file: RecentFileEntry) => {
+    markLoadIntent(); // read from the recent-file cache before the load starts
     const cached = await getCachedFile(file);
     if (cached) {
       await loadFile(cached);
@@ -160,14 +160,9 @@ export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentF
       </div>
 
       <p className={`mt-3 text-xs leading-relaxed ${MUTED}`}>
-        {webgpu.supported ? (
-          <>
-            <span>{t('viewportLighting.container.emptyState.dragDropHint')}</span>{' '}
-            {/* Its own line: a list that breaks mid-run reads as ragged noise. */}
-            <span data-welcome-formats="" className="block">{MODEL_FORMATS_LABEL}</span>
-          </>
-        ) : <WebGpuDisabledCaption />}
+        {webgpu.supported ? t('viewportLighting.container.emptyState.dragDropHint') : <WebGpuDisabledCaption />}
       </p>
+      {webgpu.supported && <WelcomeFormats />}
 
       <WelcomeRecentFiles files={recentFiles} disabled={actionsDisabled} onOpen={(file) => { void openRecent(file); }} />
 

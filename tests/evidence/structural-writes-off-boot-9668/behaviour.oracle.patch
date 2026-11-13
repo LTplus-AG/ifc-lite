@@ -1,0 +1,21 @@
+diff --git a/apps/viewer/src/sdk/adapters/store-adapter.ts b/apps/viewer/src/sdk/adapters/store-adapter.ts
+index 67e771d947..a750b0850e 100644
+--- a/apps/viewer/src/sdk/adapters/store-adapter.ts
++++ b/apps/viewer/src/sdk/adapters/store-adapter.ts
+@@ -32,7 +32,7 @@ import type {
+   EntityRef,
+   StoreBackendMethods,
+ } from '@ifc-lite/sdk';
+-import { createCostStoreBackend, createModellingStoreBackendWithoutStoreys, createOrdinaryStoreBackend, createStructuralStoreBackend, resolveLiveOwnerHistoryId } from '@ifc-lite/sdk';
++import { createCostStoreBackend, createModellingStoreBackendWithoutStoreys, createOrdinaryStoreBackend, resolveLiveOwnerHistoryId } from '@ifc-lite/sdk';
+ import type { StoreApi } from './types.js';
+ import { getModelForRef, LEGACY_MODEL_ID } from './model-compat.js';
+ import { createCostAdapter } from './cost-adapter.js';
+@@ -371,7 +371,6 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
+     // authored entities unpublished in a shared room. The builders load in
+     // their own chunk, started here (#9668).
+     ...structuralMutationTracking(store, resolveStoreModel, resolveEditorAndStore),
+-    ...createStructuralStoreBackend(resolveStoreModel),
+     // Openings and hosted doors/windows (#6232): same resolver, gate and room
+     // mirroring; see `store-adapter-modelling.ts` for the undo policy.
+     // Storey methods come from `storeyMutationTracking`, loaded on first use (#9200).

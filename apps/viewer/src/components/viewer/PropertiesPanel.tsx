@@ -2,8 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { effectiveTypeProperties } from './properties/effectiveTypeProperties';
-import { useMemo, useState, useCallback, useEffect } from 'react';
+import { effectiveTypeProperties, liveTypeOccurrences } from './properties/effectiveTypeProperties';
+import { lazy, Suspense, useMemo, useState, useCallback, useEffect } from 'react';
 import { useTranslation } from '@/i18n';
 import { Building2, Layers, FileText, Calculator, Tag, MousePointer2, PenLine, ChevronDown } from 'lucide-react';
 import { EditToolbar } from './PropertyEditor';
@@ -23,7 +23,7 @@ import { useIfc } from '@/hooks/useIfc';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { IfcQuery } from '@ifc-lite/query';
 import { extractClassificationsOnDemand, extractTypeEntityOwnProperties, extractGeoreferencingOnDemand, extractLengthUnitScale, ProjectUnits, taskProductExpressIds, taskProductGlobalIds, type IfcDataStore, type MaterialPsetGroup } from '@ifc-lite/parser';
-import { RelationshipType, isSpatialStructureTypeName, isStoreyLikeSpatialTypeName } from '@ifc-lite/data';
+import { isSpatialStructureTypeName, isStoreyLikeSpatialTypeName } from '@ifc-lite/data';
 import type { EntityRef, FederatedModel } from '@/store/types';
 import { ZoneVolumeBreakdown } from './ZoneVolumeBreakdown';
 import type { ZoneSet } from '@/lib/zones';
@@ -46,7 +46,7 @@ import { ClassificationCard } from './properties/ClassificationCard';
 import { MaterialCard } from './properties/MaterialCard';
 import { MaterialTotalsPanel } from './properties/MaterialTotalsPanel';
 import { ScheduleCard } from './properties/ScheduleCard';
-import { StructuralCard } from './properties/StructuralCard';
+import { structuralCardSubject } from './properties/selectedStructuralMember';
 import { TaskEditCard } from './properties/TaskEditCard';
 import { DocumentCard } from './properties/DocumentCard';
 import { effectiveDocuments } from './properties/effectiveDocuments';
@@ -80,6 +80,10 @@ import { AttributeEditorField } from './properties/AttributeEditorField';
 import { CopyValueButton } from './properties/CopyValueButton';
 import { SelectionSummaryPanel } from './properties/SelectionSummaryPanel';
 import { AssistantAction } from './assistant/AssistantAction';
+import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
+
+// Loaded on the first structural selection: it is not entry-chunk weight (#9668).
+const StructuralCard = lazy(() => import('./properties/StructuralCard').then((m) => ({ default: m.StructuralCard })));
 
 export function PropertiesPanel() {
   const { t, locale } = useTranslation();
@@ -762,18 +766,13 @@ export function PropertiesPanel() {
     const out = effectiveStructuralData(dataStore as IfcDataStore, mutationView);
     return out.hasStructural ? out : null;
   }, [model, ifcDataStore, selectedEntity?.modelId, mutationViews, mutationVersion]);
-  /** True when the selection is itself a structural member the extraction
-   *  knows about — used, like `hasScheduleForSelection`, to keep the
-   *  separator above StructuralCard from rendering on its own. */
-  const hasStructuralForSelection = useMemo(() => {
-    if (!selectedEntity || !structuralData) return false;
-    const gid = selectedEntityGlobalId;
-    const expressId = selectedEntity.expressId;
-    return structuralData.members.some((m) => {
-      if (gid && m.globalId === gid) return true;
-      return expressId > 0 && m.expressId === expressId;
-    });
-  }, [selectedEntity, structuralData, selectedEntityGlobalId]);
+  /** True when StructuralCard renders for the selection: asks the card's own
+   *  question, like `hasScheduleForSelection`, so the separator above it never
+   *  renders on its own. */
+  const hasStructuralForSelection = useMemo(
+    () => !!selectedEntity && !!structuralCardSubject(structuralData, selectedEntity.expressId, selectedEntityGlobalId),
+    [selectedEntity, structuralData, selectedEntityGlobalId],
+  );
 
   // Extract georeferencing info for the model (used in coordinates section)
   const georef = useMemo(() => {
@@ -948,39 +947,32 @@ export function PropertiesPanel() {
     const dataStore = model?.ifcDataStore ?? ifcDataStore;
     if (!dataStore?.relationships) return null;
 
+    const view = mutationViews.get(selectedEntity.modelId === 'legacy' ? '__legacy__' : selectedEntity.modelId);
     if (isTypeEntity) {
       const typeId = selectedEntity.expressId;
-      const affectedOccurrenceIds = dataStore.relationships.getRelated(
-        typeId,
-        RelationshipType.DefinesByType,
-        'forward'
-      );
-
       return {
         mode: 'type' as const,
         typeId,
-        typeEntityName: dataStore.entities.getTypeName(typeId),
-        affectedCount: affectedOccurrenceIds.length,
+        typeName: dataStore.entities.getName(typeId),
+        typeEntityName: view?.getNewEntity(typeId)?.type ?? dataStore.entities.getTypeName(typeId),
+        affectedCount: liveTypeOccurrences(dataStore as IfcDataStore, view, typeId).length,
       };
     }
 
     if (typeProperties && inheritedTypeProperties.length > 0) {
-      const affectedOccurrenceIds = dataStore.relationships.getRelated(
-        typeProperties.typeId,
-        RelationshipType.DefinesByType,
-        'forward'
-      );
-
       return {
         mode: 'inherited' as const,
         typeId: typeProperties.typeId,
-        typeEntityName: dataStore.entities.getTypeName(typeProperties.typeId),
-        affectedCount: affectedOccurrenceIds.length,
+        typeEntityName: typeProperties.typeEntityName,
+        typeName: typeProperties.typeName,
+        affectedCount: liveTypeOccurrences(dataStore as IfcDataStore, view, typeProperties.typeId).length,
+        // The inherited value can also be overridden on the selected occurrence alone (#9296).
+        occurrenceId: selectedEntity.expressId,
       };
     }
 
     return null;
-  }, [editMode, selectedEntity, model, ifcDataStore, isTypeEntity, typeProperties, inheritedTypeProperties]);
+  }, [editMode, selectedEntity, model, ifcDataStore, isTypeEntity, typeProperties, inheritedTypeProperties, mutationViews]);
 
   // Combined list of all properties for bSDD deduplication and edit toolbar
   const mergedProperties: PropertySet[] = useMemo(
@@ -1491,19 +1483,25 @@ export function PropertiesPanel() {
                   </>
                 )}
 
-                {/* Structural analysis — analysis model, connections and
-                    applied loads for a selected IfcStructuralMember. Gated
-                    on `hasStructuralForSelection` for the same reason as the
+                {/* Structural analysis: a structural record's attributes, loads
+                    and conditions, a member's model, connections and loads, and the physical-to-analytical
+                    counterparts of either end of the link (#9668). Gated on
+                    `hasStructuralForSelection` for the same reason as the
                     schedule separator above. */}
                 {!findQuery && selectedEntity && structuralData && hasStructuralForSelection && (
-                  <>
-                    <StructuralCard
-                      structuralData={structuralData}
-                      sourceUnavailable={!activeDataStore?.source?.length}
-                      selectedExpressId={selectedEntity.expressId}
-                      selectedGlobalId={selectedEntityGlobalId}
-                    />
-                  </>
+                  <ChunkErrorBoundary key={`${selectedEntity.modelId}:${selectedEntity.expressId}`} label="Structural Analysis card">
+                    <Suspense fallback={null}>
+                      <StructuralCard
+                        structuralData={structuralData}
+                        sourceUnavailable={!activeDataStore?.source?.length}
+                        selectedExpressId={selectedEntity.expressId}
+                        selectedGlobalId={selectedEntityGlobalId}
+                        describeEntity={(expressId) => overlayAwareQuery.entityData({ modelId: selectedEntity.modelId, expressId })}
+                        onSelectEntity={handleSelectRelatedEntity}
+                        schemaVersion={activeDataStore?.schemaVersion} projectUnits={quantityUnitContext.value} unitDisplayOverrides={unitDisplayOverrides}
+                      />
+                    </Suspense>
+                  </ChunkErrorBoundary>
                 )}
               </div>
             )}

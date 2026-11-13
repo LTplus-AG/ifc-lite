@@ -91,6 +91,9 @@ async function main(): Promise<void> {
     case 'query':
       await (await import('./commands/query.js')).queryCommand(commandArgs);
       break;
+    case 'structural':
+      await (await import('./commands/structural.js')).structuralCommand(commandArgs);
+      break;
     case 'props':
       await (await import('./commands/props.js')).propsCommand(commandArgs);
       break;
@@ -156,6 +159,9 @@ async function main(): Promise<void> {
       break;
     case 'generate-spaces':
       await (await import('./commands/generate-spaces.js')).generateSpacesCommand(commandArgs);
+      break;
+    case 'derive-structural':
+      await (await import('./commands/derive-structural.js')).deriveStructuralCommand(commandArgs);
       break;
     case 'storey':
       await (await import('./commands/storey.js')).storeyCommand(commandArgs);

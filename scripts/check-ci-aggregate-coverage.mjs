@@ -120,11 +120,15 @@ export function unreachable({ needs, judged }) {
  * failure cannot stop a merge.
  */
 export const UNJUDGED_BY_DESIGN = {
-  // Empty since the CI redesign (step 5): `csg-accept-gates`, the one entry,
-  // moved off the PR lane into the merge queue and INTO the aggregate's
-  // `needs:` there, where a moved pin dequeues the batch. Keep this list empty
-  // unless a lane genuinely must not block; the default has to be "blocking"
-  // for the aggregate to mean anything.
+  // Keep this list short: the default has to be "blocking" for the aggregate
+  // to mean anything.
+  //
+  // An early warning, not a gate: it runs a budget-capped SAMPLE of the viewer
+  // tests a fast-lane PR can reach, so its pass certifies nothing, and the
+  // merge queue still runs every viewer shard. Ships behind
+  // CI_PR_VIEWER_SELECT; promoting it into `needs` is an owner decision once
+  // shadow data shows its recall and flake rate (scripts/ci-viewer-select.mjs).
+  'viewer-tests-selected': 'advisory sample of the viewer suite; the merge queue runs the full suite',
 };
 
 /**

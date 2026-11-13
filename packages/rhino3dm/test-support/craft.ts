@@ -170,6 +170,17 @@ export class Craft {
   bytes(): Uint8Array { return this.file.toByteArray(); }
 }
 
+/**
+ * A valid header and end-of-file mark around zeros, at the given size in megabytes. rhino3dm
+ * answers null for it, as it does at the heap limit, and the mark says the file was not cut short.
+ */
+export function hollowArchive(megabytes: number): Uint8Array {
+  const bytes = new Uint8Array(megabytes * 1024 * 1024), view = new DataView(bytes.buffer), size = bytes.length;
+  bytes.set(new TextEncoder().encode('3D Geometry File Format       80'));
+  view.setUint32(size - 20, 0x7fff, true); view.setBigUint64(size - 16, 8n, true); view.setBigUint64(size - 8, BigInt(size), true);
+  return bytes;
+}
+
 /** Build a .3dm in metres and return its bytes. */
 export async function craft(build: (c: Craft) => void): Promise<Uint8Array> {
   const c = new Craft(await loadRhino());

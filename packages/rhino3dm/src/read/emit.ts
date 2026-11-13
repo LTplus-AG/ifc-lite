@@ -65,9 +65,15 @@ export class Emitter {
     this.report.warn('dots', () => `Stopped after ${MAX_TEXT_DOTS.toLocaleString('en-US')} text dots: ${plural(this.report.skipped['TextDot:limit'], 'text dot')} left out.`);
   }
 
+  /** Whether `triangles` still fit; when they do not, drawing stops for the rest of the file. */
+  private fits(triangles: number): boolean {
+    if (this.exhausted || triangles > this.trianglesLeft) { this.exhausted = true; return false; }
+    return true;
+  }
+
   /** Charge the budget, or stop drawing for the rest of the file. */
   private take(triangles: number): boolean {
-    if (this.exhausted || triangles > this.trianglesLeft) { this.exhausted = true; return false; }
+    if (!this.fits(triangles)) return false;
     this.trianglesLeft -= triangles;
     return true;
   }
@@ -132,6 +138,21 @@ export class Emitter {
    * copies under `bakeInstances`. Either way the budget is charged the block's
    * triangles once per placement. False when the budget refused it.
    *
+   * What the budget does no longer depends on `bakeInstances`: both modes
+   * admit and charge a placement alike. A placement whose block reach keeps
+   * the f32 range is all or nothing, so the block's mesh triangles have to fit
+   * before any of them is drawn. That is where the modes used to differ:
+   * baking charged mesh by mesh and drew the part that still fitted, so the
+   * option decided whether a file read at all.
+   *
+   * The budget can still cut a placement elsewhere, identically either way.
+   * The parts the walk draws beside these meshes (curves, point clouds,
+   * by-parent meshes with transparency of their own) are charged one at a
+   * time. So are the meshes of a placement the reach refuses, which is one
+   * bound for the whole block and can refuse a placement whose every mesh
+   * would fit; each is then looked at on its own, and one the range check
+   * leaves out costs no triangles.
+   *
    * One instance record places every mesh of its block, so a placement that
    * may push any of them out of range is baked too: both modes draw the same.
    * The block's reach decides that in one step, whatever the mesh count.
@@ -139,7 +160,11 @@ export class Emitter {
   place(object: number, id: string, block: BlockMeshes, xform: Xform, color: RhinoRgba): boolean {
     if (block.meshes.length === 0) return true;
     if (this.exhausted) return false;
-    if (this.bake || !keepsF32(xform, block.reach)) {
+    const whole = keepsF32(xform, block.reach);
+    if (this.bake || !whole) {
+      // A whole block is admitted before any of its meshes is drawn; the per-mesh charges below
+      // come to the same total, so none of them can refuse what this admitted.
+      if (whole && !this.fits(block.triangles)) return false;
       return block.meshes.every(mesh => this.draw(object, { kind: 'mesh', ...mesh }, xform, mesh.color ?? color));
     }
     if (!this.take(block.triangles)) return false;

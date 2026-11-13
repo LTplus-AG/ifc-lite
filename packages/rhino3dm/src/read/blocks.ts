@@ -2,24 +2,22 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { resolveAppearance, takesParentColor, type Appearance, type AppearanceTables, type Look } from './appearance.js';
+import { resolveAppearance, type Appearance, type AppearanceTables, type Look } from './appearance.js';
 import type { BlockMeshes, DrawnPart, Emitter } from './emit.js';
 import type { Part } from './geometry.js';
 import { plural, type Report } from './report.js';
+import type { RhinoRgba } from './types.js';
 import { isUsable, multiply, reach, type Xform } from './xform.js';
 
 export interface BlockMember { part: Part; look: Look; hidden: boolean }
-
-/** Stands in for the placing instance when a member's colour does not depend on it. */
-const ANY_PARENT: Appearance = { color: [0, 0, 0, 1], material: -1 };
 
 /** One instance definition, split into what the walk needs. */
 export interface Block extends BlockMeshes {
   /** A linked definition's geometry lives in another file. */
   linked: boolean;
   /**
-   * Curves and point clouds, and a "by parent" mesh with a transparent material of its own:
-   * always baked, and charged to the budget per placement.
+   * Curves and point clouds, and the meshes no definition colour can carry, which `memberColor`
+   * names: always baked, and charged to the budget per placement.
    */
   others: { part: Exclude<DrawnPart, { kind: 'dot' }>; look: Look }[];
   /** Text dots: always baked, and counted against their own limit. */
@@ -34,21 +32,67 @@ export interface Block extends BlockMeshes {
 /** Most block references one file's walk may reach, drawn or skipped; bounds a fan-out that no triangle budget sees. */
 export const MAX_BLOCK_PLACEMENTS = 500_000;
 
-export function buildBlock(name: string, linked: boolean, members: BlockMember[], tables: AppearanceTables, report: Report): Block {
+/**
+ * Whether any material a block instance can hand down to a member that inherits one is
+ * transparent, which is what decides whether such a member can be drawn from the shared
+ * definition. Measured over the materials the file's instances resolve to, not over the material
+ * table: a Rhino file keeps materials nothing references, and one leftover transparent material
+ * would otherwise bake every inheriting member in the file. An instance that takes its material
+ * from its own parent takes another instance's, so these cover the nested cases too.
+ */
+export function inheritableFade(objects: Iterable<{ part: Part; appearance: Appearance }>, tables: AppearanceTables): boolean {
+  for (const { part, appearance } of objects) {
+    if (part.kind === 'instance' && (tables.materials[appearance.material]?.transparency ?? 0) > 0) return true;
+  }
+  return false;
+}
+
+/** What every definition in one file is built against, so `buildBlock` takes the per-definition part alone. */
+export interface BlockContext {
+  tables: AppearanceTables;
+  /** From `inheritableFade`, measured once for the file. */
+  fades: boolean;
+  report: Report;
+}
+
+/** An opaque colour and no material: resolving against it reflects only the member's own attributes. */
+const NEUTRAL_PARENT: Appearance = { color: [0, 0, 0, 1], material: -1 };
+
+/**
+ * What colour a member's mesh can carry inside the shared definition every instance places:
+ *
+ * - a colour, when it is the same under every instance;
+ * - `'instance'`, when it is exactly the placing instance's resolved colour, which the instance
+ *   record carries, so the definition mesh leaves it open as `null`;
+ * - `'bake'`, when it is neither, and the mesh is drawn once per placement. That is a colour the
+ *   instance's material decides, and the instance's colour at the member's own alpha.
+ *
+ * An inherited material can only change a member's colour through its diffuse colour or its
+ * transparency, so a member that does not read that diffuse needs baking only where something can
+ * fade it, which is what `fades` says.
+ */
+function memberColor(look: Look, { tables, fades }: BlockContext): RhinoRgba | 'instance' | 'bake' {
+  // Against a parent that contributes nothing, so an alpha below 1 is the member's own material's,
+  // and a colour inherited along with the material comes back opaque: exactly the instance's.
+  const own = resolveAppearance(look, tables, NEUTRAL_PARENT).color;
+  if (look.colorSource === 'parent') return own[3] < 1 ? 'bake' : 'instance';
+  if (look.materialSource === 'parent' && (look.colorSource === 'material' || fades)) return 'bake';
+  return own;
+}
+
+export function buildBlock(name: string, linked: boolean, members: BlockMember[], context: BlockContext): Block {
   const block: Block = { name, linked, meshes: [], triangles: 0, reach: [0, 0, 0], others: [], dots: [], nested: [], drawsDots: false, drawsGeometry: false };
   for (const { part, look, hidden } of members) {
     // Rhino does not draw a member that is hidden or on a layer that is off, in any instance.
-    if (hidden) report.skip('hidden-block-member');
+    if (hidden) context.report.skip('hidden-block-member');
     else if (part.kind === 'instance') block.nested.push({ part, look });
     else if (part.kind === 'dot') block.dots.push({ part, look });
     else if (part.kind !== 'mesh') block.others.push({ part, look });
     else {
-      const byParent = takesParentColor(look), own = resolveAppearance(look, tables, ANY_PARENT).color;
-      // A definition mesh holds one colour or none, so it cannot say "the instance's colour at my own alpha".
-      if (byParent && own[3] < 1) block.others.push({ part, look });
+      const color = memberColor(look, context);
+      if (color === 'bake') block.others.push({ part, look });
       else {
-        // A "by parent" mesh takes the colour of whichever instance places it.
-        block.meshes.push({ origin: part.origin, positions: part.positions, normals: part.normals, indices: part.indices, color: byParent ? null : own });
+        block.meshes.push({ origin: part.origin, positions: part.positions, normals: part.normals, indices: part.indices, color: color === 'instance' ? null : color });
         block.triangles += part.indices.length / 3;
         reach(part.positions).forEach((extent, axis) => { block.reach[axis] = Math.max(block.reach[axis], Math.abs(part.origin[axis]) + extent); });
       }
@@ -112,25 +156,29 @@ export function expandInstance(walk: BlockWalk, object: number, id: string, xfor
   let complete = true;
   for (let frame = stack.pop(); frame; frame = stack.pop()) {
     if (frame.leave) { path.delete(frame.id); continue; }
-    // Charged before the skips below, which still name their own reason once the budget is spent.
-    walk.placementsLeft--;
+    // Charged before the skip below, which still names its own reason once the budget is spent.
+    --walk.placementsLeft;
     const block = blocks.get(frame.id);
-    if (!block) { report.skip('InstanceReference:missing-definition'); continue; }
-    if (block.linked && block.meshes.length + block.others.length + block.dots.length + block.nested.length === 0) {
-      report.skip('InstanceReference:linked-definition');
-      report.warn('linked', n => `${plural(n, 'instance')} of linked blocks are not drawn: their geometry is in another file.`);
-      continue;
+    const skip = !block ? 'InstanceReference:missing-definition'
+      : block.linked && block.meshes.length + block.others.length + block.dots.length + block.nested.length === 0 ? 'InstanceReference:linked-definition'
+      : path.has(frame.id) ? 'InstanceReference:cycle'
+      : !isUsable(frame.xform) ? 'InstanceReference:invalid' : null;
+    if (skip) {
+      report.skip(skip);
+      if (skip === 'InstanceReference:linked-definition') report.warn('linked', n => `${plural(n, 'instance')} of linked blocks are not drawn: their geometry is in another file.`);
+      if (skip === 'InstanceReference:cycle') report.warn('cycle', n => `${plural(n, 'block reference')} point back into their own definition and are skipped.`);
     }
-    if (path.has(frame.id)) {
-      report.skip('InstanceReference:cycle');
-      report.warn('cycle', n => `${plural(n, 'block reference')} point back into their own definition and are skipped.`);
-      continue;
-    }
-    if (!isUsable(frame.xform)) { report.skip('InstanceReference:invalid'); continue; }
+    // Checked on every reference, drawn or skipped: a block holding nothing but references the walk
+    // skips would otherwise never reach it, and the whole batch was expanded with no warning.
     if (walk.placementsLeft < 0) {
       report.warn('placements', () => `Stopped expanding blocks after ${MAX_BLOCK_PLACEMENTS.toLocaleString('en-US')} block references.`);
-      return false;
+      // A reference the budget stops at had its own reason, and at the top of a walk nothing was
+      // left to expand, so it keeps that reason rather than also counting as undrawn. Anywhere
+      // inside a block the placement was cut short, whichever reference spent the last of it.
+      if (!skip || stack.length > 0) complete = false;
+      return complete;
     }
+    if (!block || skip) continue;
     // Past the triangle budget only text dots are drawn, so a block that leads to none ends its branch.
     if (emitter.exhausted && !block.drawsDots) { complete &&= !block.drawsGeometry; continue; }
     const { xform, appearance } = frame, outOfRange = emitter.outOfRange;

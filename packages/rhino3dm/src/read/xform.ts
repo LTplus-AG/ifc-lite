@@ -23,6 +23,23 @@ export function isUsable(m: Xform): boolean {
     && Math.max(Math.abs(m[12]), Math.abs(m[13]), Math.abs(m[14]), Math.abs(m[15] - 1)) <= AFFINE_TOLERANCE;
 }
 
+/**
+ * A transform the reader will work with, its last row exactly affine, or null when it is not
+ * usable. `isUsable` tolerates rounding noise in that row, and composing two tolerated rows can
+ * drift past the tolerance: an otherwise identity frame with 1e-17 in its last row, composed with
+ * a placement a survey distance out, lands 1e-11 from affine and is refused as a projection, which
+ * drops every block instance of a frame that was accepted. The last row is never applied, so
+ * replacing it changes nothing that is drawn. Every transform that enters the reader comes through
+ * here, so nothing composed later carries that noise; the composed result is still checked with
+ * `isUsable` alone, because a projection row composition produces is a real one.
+ */
+export function acceptXform(m: Xform): Xform | null {
+  if (!isUsable(m)) return null;
+  const out = m.slice();
+  out[12] = 0; out[13] = 0; out[14] = 0; out[15] = 1;
+  return out;
+}
+
 /** a · b: apply `b` first, then `a`. */
 export function multiply(a: Xform, b: Xform): Xform {
   const out = new Array<number>(16);
@@ -110,6 +127,5 @@ export function transformNormals(m: Xform, normals: Float32Array): Float32Array 
 
 /** Parse the exporter's `IFC::WorldFromModel`: 16 row-major numbers separated by spaces. */
 export function parseXform(text: string): Xform | null {
-  const values = text.trim().split(/\s+/).map(Number);
-  return isUsable(values) ? values : null;
+  return acceptXform(text.trim().split(/\s+/).map(Number));
 }

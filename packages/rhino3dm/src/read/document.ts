@@ -7,10 +7,11 @@ import type { RhinoColor, RhinoUserStrings, RhinoVector3 } from '../types.js';
 import { dispose } from '../runtime.js';
 import type { AppearanceTables } from './appearance.js';
 import type { IfcClasses } from './ifc-classes.js';
+import { NOT_3DM_MESSAGE } from './header.js';
 import { ifcString } from './identity.js';
 import type { Report } from './report.js';
 import type { RFile, RLayer, ReadApi, Rgba8 } from './rhino-api.js';
-import type { RhinoImportDocument, RhinoImportLayer } from './types.js';
+import { RhinoReadError, type RhinoImportDocument, type RhinoImportLayer } from './types.js';
 import { parseXform, transformPoint, type Xform } from './xform.js';
 
 /** Metres per unit by `UnitSystem` name. None, CustomUnits and Unset have no scale (rhino3dm.js exposes none). */
@@ -24,6 +25,11 @@ const UNITS: Record<string, number | null> = {
 };
 
 const NIL_ID = '00000000-0000-0000-0000-000000000000';
+/**
+ * Rhino's layer path separator. A layer name cannot hold it: Rhino reads `A::B` as child `B` of
+ * `A`, and our exporter replaces it in any name it writes (`rust/export/src/rhino/names.rs`).
+ */
+const LAYER_PATH_SEPARATOR = '::';
 const color = (c: Rgba8): RhinoColor => [c.r, c.g, c.b, c.a];
 
 export interface DocumentTables extends AppearanceTables {
@@ -38,11 +44,24 @@ export interface DocumentTables extends AppearanceTables {
   groupNames: string[];
 }
 
+/**
+ * A row as the binding handed it out. The layer, material, group and definition tables answer null
+ * for a row they cannot hand out, as they do for an index past `count` [measured]; the string
+ * table answers an empty pair instead [measured]. A table that disagrees with its own count is a
+ * damaged file, reported as one rather than left to escape as a bare TypeError from whatever reads
+ * the row. Every table this file reads goes through here. The objects table is read in `read.ts`,
+ * which counts a row the binding will not wrap and reads on: one object is not the document.
+ */
+function handed<T>(row: T | null | undefined): T {
+  if (row == null) throw new RhinoReadError('not-3dm', NOT_3DM_MESSAGE);
+  return row;
+}
+
 /** Read each row of a table, releasing the row wrappers and then the table. */
 export function rows<T, R>(table: { count: number; get(index: number): T }, read: (row: T) => R): R[] {
   try {
     return Array.from({ length: table.count }, (_, i) => {
-      const row = table.get(i);
+      const row = handed(table.get(i));
       try { return read(row); } finally { dispose(row); }
     });
   } finally { dispose(table); }
@@ -59,8 +78,15 @@ function spatialStamp(strings: RhinoUserStrings, classes: IfcClasses): RhinoImpo
  * Order layers parent first, keeping file order among siblings. A layer whose
  * parent is missing or part of a parent cycle becomes a root. The walk is
  * iterative with a visited set, so no layer chain can overflow the stack.
+ *
+ * Each path is built from the parent this walk settled on, not from the
+ * native `fullPath`: rhino3dm 8.35.0 follows `ParentId` with no visited set,
+ * so reading that property for a cyclic chain does not return [measured: the
+ * read was still running after 90 s on a model built in memory]. Building it
+ * here also keeps the path and the repaired tree in step, so a layer this walk
+ * shows at the top level is named as one.
  */
-function orderLayers(source: RLayerFacts[], classes: IfcClasses, report: Report): Pick<DocumentTables, 'layers' | 'layerIndex'> {
+export function orderLayers(source: RLayerFacts[], classes: IfcClasses, report: Report): Pick<DocumentTables, 'layers' | 'layerIndex'> {
   const byId = new Map(source.map((l, i) => [l.id, i]));
   const children = source.map((): number[] => []), roots: number[] = [];
   source.forEach((l, i) => {
@@ -75,7 +101,8 @@ function orderLayers(source: RLayerFacts[], classes: IfcClasses, report: Report)
       if (layerIndex[i] >= 0) continue;
       layerIndex[i] = layers.length;
       layers.push({
-        name: l.name, fullPath: l.fullPath, parent, color: l.color, visible: l.visible, userStrings: l.userStrings,
+        name: l.name, fullPath: parent === null ? l.name : `${layers[parent].fullPath}${LAYER_PATH_SEPARATOR}${l.name}`,
+        parent, color: l.color, visible: l.visible, userStrings: l.userStrings,
         spatial: spatialStamp(l.userStrings, classes), material: l.material,
         hidden: !l.visible || (parent !== null && layers[parent].hidden),
       });
@@ -94,20 +121,25 @@ function orderLayers(source: RLayerFacts[], classes: IfcClasses, report: Report)
   return { layers, layerIndex };
 }
 
-interface RLayerFacts {
-  id: string; parentId: string; name: string; fullPath: string; color: RhinoColor;
+export interface RLayerFacts {
+  id: string; parentId: string; name: string; color: RhinoColor;
   visible: boolean; material: number; userStrings: RhinoUserStrings;
 }
 const layerFacts = (l: RLayer): RLayerFacts => ({
-  id: l.id, parentId: l.parentLayerId, name: l.name, fullPath: l.fullPath, color: color(l.color),
+  id: l.id, parentId: l.parentLayerId, name: l.name, color: color(l.color),
   visible: l.visible, material: l.renderMaterialIndex, userStrings: l.getUserStrings(),
 });
 
 /** Read everything that is not an object: units, frame, anchor, strings, layers, materials and groups. */
 export function readDocument(api: ReadApi, file: RFile, archiveVersion: number, classes: IfcClasses, report: Report): DocumentTables {
-  // String table rows are plain pairs, not wrappers, so there is nothing to release per row.
+  // String table rows are plain pairs, not wrappers, so there is nothing to release per row. This
+  // is the one table the reader walks itself, so the pair goes through `handed` like the others,
+  // but it catches less here: the table answers an empty pair rather than null for a row it will
+  // not hand out [measured], so only a change in the binding reaches the guard.
   const table = file.strings(), strings: RhinoUserStrings = [];
-  try { for (let i = 0; i < table.count; i++) { const [key, value] = table.get(i); strings.push([key, value]); } } finally { dispose(table); }
+  try {
+    for (let i = 0; i < table.count; i++) { const [key, value] = handed(table.get(i)); strings.push([key, value]); }
+  } finally { dispose(table); }
   const settings = file.settings();
   let unitSystem = 'Unset', metersPerUnit: number | null = null, earthAnchor: RhinoImportDocument['earthAnchor'] = null;
   try {

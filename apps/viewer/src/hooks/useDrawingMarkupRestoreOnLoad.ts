@@ -43,11 +43,18 @@
  * restoring the IFC's embedded markup: if that reports `'pending'` (the
  * hash hasn't resolved yet), this module WAITS, via
  * `onLocalStorageDecidedFor`, rather than racing it; if it reports `true`
- * (a saved entry exists, empty or not), this restore backs off for good;
- * only `false` (no entry — never saved for this file, or `localStorage`
- * unavailable) lets the IFC-embedded markup through. The outcome is now a
- * pure function of "does a localStorage entry exist", never of which
+ * (a saved entry with markup, or one that records absorbed embedded markup —
+ * see `drawingMarkupRestorePrecedence.ts`'s `outranksEmbeddedMarkup`), this
+ * restore backs off for good; only `false` (no such entry — never saved for
+ * this file, an empty entry persisted by a display-option change before any
+ * markup existed, or `localStorage` unavailable) lets the IFC-embedded markup
+ * through. The outcome is a pure function of the saved entry, never of which
  * promise happened to settle first.
+ *
+ * A restore that applies records what it read as absorbed
+ * (`drawing-markup-absorbed.ts`) before writing; "save markup to model"
+ * replaces only absorbed embedded annotations, so markup this restore never
+ * loaded (it backed off, or the user drew first) is never deleted by a save.
  *
  * `restoredForModel` additionally makes each model's restore attempt
  * run-once-until-emptied: a model this session already attempted (whether
@@ -57,10 +64,16 @@
  * suddenly injects the model's embedded markup over what the user just drew.
  */
 
+import { useLoadWindowHold } from './loadWindow.js';
 import { useEffect } from 'react';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
-import { restoreDrawingMarkupFromModel } from '@/lib/drawing2d-markup/drawing-markup-restore';
+import {
+  hasEmbeddedDrawingMarkup,
+  restoreDrawingMarkupFromModel,
+  restoredEmbeddedMarkupIdentities,
+} from '@/lib/drawing2d-markup/drawing-markup-restore';
+import { absorbEmbeddedMarkup } from '@/lib/drawing2d-markup/drawing-markup-absorbed';
 import { ensureParseFor, subscribeToParseCache } from './symbolic-parse-cache.js';
 import { hasPersistedMarkupEntryFor, onLocalStorageDecidedFor } from './useDrawing2DPersistence.js';
 
@@ -119,7 +132,8 @@ function markupFieldsEmpty(): boolean {
     s.measure2DResults.length === 0 &&
     s.polygonArea2DResults.length === 0 &&
     s.textAnnotations2D.length === 0 &&
-    s.cloudAnnotations2D.length === 0
+    s.cloudAnnotations2D.length === 0 &&
+    s.dimensions2D.length === 0
   );
 }
 
@@ -132,7 +146,7 @@ function markupFieldsEmpty(): boolean {
  * overwrite this guards against is exactly the kind of synchronous-store
  * race `act()` batching would mask.
  */
-export function tryRestoreDrawingMarkup(modelId: string): void {
+export function tryRestoreDrawingMarkup(modelId: string, requestParse = false): void {
   if (restoredForModel.has(modelId)
     && restoredForModel.get(modelId)?.deref() === useViewerStore.getState().models.get(modelId)?.sourceFile) return;
   if (useViewerStore.getState().activeModelId !== modelId) return;
@@ -148,24 +162,42 @@ export function tryRestoreDrawingMarkup(modelId: string): void {
   // entry exists for this exact file.
   const persisted = hasPersistedMarkupEntryFor(modelId);
   if (persisted === 'pending') {
+    // #9621: precedence gates the WRITE, not a candidate's worker request.
+    // With overlays hidden this hook is the only parse producer. Keep it
+    // parallel with the hash, while still skipping provably blank sources.
+    const state = useViewerStore.getState();
+    const store = state.models.get(modelId)?.ifcDataStore ?? (modelId === 'legacy' ? state.ifcDataStore : null);
+    if (requestParse && store && hasEmbeddedDrawingMarkup(store, state.getMutationView(modelId) ?? undefined)) {
+      ensureParseFor([{ store, mutationView: state.getMutationView(modelId) ?? undefined }]);
+    }
     if (!awaitingLocalStorageDecision.has(modelId)) {
       const unsubscribe = onLocalStorageDecidedFor(modelId, () => {
         awaitingLocalStorageDecision.delete(modelId);
-        tryRestoreDrawingMarkup(modelId);
+        tryRestoreDrawingMarkup(modelId, requestParse);
       });
       awaitingLocalStorageDecision.set(modelId, unsubscribe);
     }
     return;
   }
   if (persisted) {
-    // A localStorage entry exists (empty or not) for this exact file —
+    // A localStorage entry for this exact file holds a markup decision —
     // it always wins over the IFC's embedded markup. Back off for good.
     markRestored(modelId);
     return;
   }
 
+  const state = useViewerStore.getState();
+  const store = state.models.get(modelId)?.ifcDataStore ?? (modelId === 'legacy' ? state.ifcDataStore : null);
+  if (!store) return;
+  if (!hasEmbeddedDrawingMarkup(store, state.getMutationView(modelId) ?? undefined)) {
+    markRestored(modelId);
+    return;
+  }
   const result = restoreDrawingMarkupFromModel(modelId);
-  if (!result) return; // not parsed yet — retry on the next parse-cache notification
+  if (!result) {
+    if (requestParse) ensureParseFor([{ store, mutationView: state.getMutationView(modelId) ?? undefined }]);
+    return; // retry on parse publication or RTC readiness
+  }
 
   markRestored(modelId);
   const total =
@@ -180,6 +212,8 @@ export function tryRestoreDrawingMarkup(modelId: string): void {
   // triggered this call may have already run its own write.
   if (!markupFieldsEmpty() || useViewerStore.getState().activeModelId !== modelId) return;
 
+  // Before the write: the save subscription persists the set with it.
+  absorbEmbeddedMarkup(modelId, restoredEmbeddedMarkupIdentities(modelId, result));
   useViewerStore.setState({
     measure2DResults: result.measure2DResults,
     polygonArea2DResults: result.polygonArea2DResults,
@@ -221,11 +255,14 @@ export function useDrawingMarkupRestoreOnLoad(): void {
     return null;
   });
 
+  // Restoring needs the symbolic parse, whose spatial key walks the model: wait
+  // while this model loads (loadWindow.ts) instead of running inside its load.
+  const restoreHeld = useLoadWindowHold().isHeld(activeModelId ?? 'legacy');
+
   useEffect(() => {
-    if (!activeModelId || !dataStore) return;
-    tryRestoreDrawingMarkup(activeModelId);
-    ensureParseFor([dataStore]);
-    const unsubscribeParseCache = subscribeToParseCache(() => tryRestoreDrawingMarkup(activeModelId));
+    if (!activeModelId || !dataStore || restoreHeld) return;
+    tryRestoreDrawingMarkup(activeModelId, true);
+    const unsubscribeParseCache = subscribeToParseCache(() => tryRestoreDrawingMarkup(activeModelId, true));
     return () => {
       unsubscribeParseCache();
       // This model is no longer the one this effect is watching (switched
@@ -236,5 +273,5 @@ export function useDrawingMarkupRestoreOnLoad(): void {
       // again immediately and re-registers a fresh wait if still pending.
       cancelPendingRestoreWaitFor(activeModelId);
     };
-  }, [activeModelId, dataStore, rtcPublication]);
+  }, [activeModelId, dataStore, restoreHeld, rtcPublication]);
 }

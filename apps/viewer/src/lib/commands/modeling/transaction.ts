@@ -30,6 +30,8 @@ import { mutationsSince, newMutationBatchId, undoStackLengths } from '@/store/sl
 import { remeshAfterCommit } from '@/lib/remesh/remesh-registry';
 import type { RemeshCause } from '@/lib/remesh/affected-set';
 import { applyAuthoredDefaults } from './authored-defaults.js';
+import { reportLayerFollow } from '@/lib/authoring/layer-follow-report';
+import type { LayerFollow } from '@/lib/authoring/material-layers';
 import type { AuthoringTransaction, CommandContext, CommitResult, ModelingCommand } from './types.js';
 
 export interface RemeshRequest {
@@ -77,9 +79,15 @@ export function runTransaction(
   const batchId = newMutationBatchId();
   const tx: AuthoringTransaction = { modelId, storeyId, workplane, batchId, get store() { return get(); }, api: store };
   let result: CommitResult;
+  let follow: LayerFollow | null = null;
   try {
     result = cmd.commit(g, tx);
-    applyAuthoredDefaults(store, result.modelId ?? modelId, result.authored ?? []);
+    const defaults = applyAuthoredDefaults(store, result.modelId ?? modelId, result.authored ?? []);
+    if (defaults) {
+      // What a layered default re-sized (joined walls, generated rooms) re-meshes with what the command built.
+      result = { ...result, remesh: [...new Set([...result.remesh, ...defaults.remesh])] };
+      follow = defaults.follow;
+    }
   } catch (error) {
     rollBack(store, before, redoBefore);
     dropOverlayEntitiesSince(get(), overlayBefore);
@@ -95,6 +103,7 @@ export function runTransaction(
     requestRemesh(get, { modelId: target, batchId, expressIds: result.remesh, cause: result.remeshCause ?? (result.created.length > 0 ? 'created' : 'shape') });
   }
   applySelection(get, target, result.select);
+  if (follow) reportLayerFollow(get(), target, follow);
   return { ok: true, batchId: ids.length > 0 ? batchId : null, result };
 }
 

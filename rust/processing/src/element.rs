@@ -60,6 +60,12 @@ use std::collections::BTreeMap;
 /// serve this file's produce/emit cycle.
 #[path = "element_degenerate.rs"]
 mod degenerate;
+/// `IFC_LITE_DISABLE_DEGENERATE_BACKSTOP` as the backstop reads it; the result
+/// cache keys on the same value. Gated like that cache: on wasm32 or without
+/// the feature nothing else reads it, and the retained wasm clippy lane
+/// rejects the unused import.
+#[cfg(all(feature = "native-result-cache", not(target_arch = "wasm32")))]
+pub(crate) use degenerate::disabled as degenerate_backstop_disabled;
 mod element_color;
 use element_color::{find_indexed_colour_for_element, infer_opening_subpart_material_name};
 // Re-exported because they have callers outside this module: the colour

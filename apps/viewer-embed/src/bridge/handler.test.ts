@@ -152,7 +152,7 @@ function makeState() {
     // handler that reads only three has to be visibly wrong here.
     typeVisibility: {
       spaces: true, spatialZones: false, openings: false, virtualElements: true,
-      site: true, ifcAnnotations: false, ifcGrid: true,
+      site: true, ifcAnnotations: false, ifcGrid: true, structuralGlyphs: true,
     },
     cameraCallbacks: {
       frameSelection: rec('frameSelection'),
@@ -998,8 +998,8 @@ describe('selection and visibility commands', () => {
 
   it('SET_TYPE_VISIBILITY reaches every flag the protocol declares, not just spaces/openings/site', async () => {
     // Fixture: spaces=true, spatialZones=false, openings=false,
-    // virtualElements=true, site=true, ifcAnnotations=false, ifcGrid=true.
-    // Every flag is sent INVERTED, so a correct handler toggles all seven.
+    // virtualElements=true, site=true, ifcAnnotations=false, ifcGrid=true, structuralGlyphs=true.
+    // Every flag is sent INVERTED, so a correct handler toggles all eight.
     // Kills: the three hardcoded `if (payload.spaces …)` branches this
     // replaced — under them `toggled` was ['spaces', 'openings', 'site'] and
     // the other four commands were accepted, answered OK, and dropped. Also
@@ -1007,7 +1007,7 @@ describe('selection and visibility commands', () => {
     initBridge(makeCtx(state));
     await send(fw, cmd('SET_TYPE_VISIBILITY', {
       spaces: false, spatialZones: true, openings: true, virtualElements: false,
-      site: false, ifcAnnotations: true, ifcGrid: false,
+      site: false, ifcAnnotations: true, ifcGrid: false, structuralGlyphs: false,
     }, 'r1'));
     const toggled = state.calls
       .filter(([n]: [string]) => n === 'toggleTypeVisibility')
@@ -1024,7 +1024,7 @@ describe('selection and visibility commands', () => {
     initBridge(makeCtx(state));
     await send(fw, cmd('SET_TYPE_VISIBILITY', {
       spaces: true, spatialZones: false, openings: false, virtualElements: true,
-      site: true, ifcAnnotations: false, ifcGrid: true,
+      site: true, ifcAnnotations: false, ifcGrid: true, structuralGlyphs: true,
     }, 'r1'));
     expect(called(state, 'toggleTypeVisibility')).toBe(false);
   });

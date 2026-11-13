@@ -12,7 +12,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useSingleFlight } from '@/hooks/useSingleFlight';
+import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n';
 import type { BcfProjectDto } from '@ifc-lite/bcf-api';
@@ -53,7 +53,7 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
   const [projectId, setProjectId] = useState('');
   // One server action (preflight or publish) at a time (C-2): a same-tick
   // double press is refused before it publishes twice.
-  const flight = useSingleFlight();
+  const flight = useAsyncRun();
   const busy = flight.busy;
   const [error, setError] = useState<string | null>(null);
   const [preflight, setPreflight] = useState<PreflightReport | null>(null);
@@ -90,7 +90,7 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
   const live = record && connection && sameTarget(record, connection) ? connection : null;
   const counts = record ? publicationCounts(record) : null;
 
-  const act = (work: () => Promise<void>) => flight.run(async () => {
+  const act = (work: () => Promise<void>) => flight.start(async () => {
     setError(null);
     try { await work(); }
     catch (cause) {

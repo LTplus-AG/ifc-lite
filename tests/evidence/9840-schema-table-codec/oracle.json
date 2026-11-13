@@ -1,0 +1,6 @@
+{
+  "issue": 7955,
+  "key": "packages/data/src/ifc-schema/table-codec.ts",
+  "mutation": "tests/evidence/9840-schema-table-codec/behaviour.oracle.patch",
+  "why": "Reverse application keeps every export the tests import but decodes the undefined tag as null in both the runtime codec and the scripts' plain-JS copy, so a root entity's parent: undefined no longer survives: the generator's self-check refuses its own encoding and the decoder round-trip test fails."
+}

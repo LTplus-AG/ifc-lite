@@ -21,6 +21,7 @@
  */
 
 import { editOwnershipRefusal, expandAffectedSet } from '@ifc-lite/export';
+import { dropReplacedSourceAxes } from './wall-join-axis-cleanup.js';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { toNativeLength } from './anchor.js';
@@ -30,6 +31,7 @@ import { applyWallJoinToStore, rewriteWall, type JoinAnchor, type WallJoinApplyO
 import { readWallJoinRels, readWallJoinTarget, type WallJoinRead, type WallJoinRel } from './wall-join-read.js';
 import { computeWallJoin, reshapeWallAxis, type PlanPoint, type WallJoinWall } from './wall-join.js';
 import { assertWallOpeningsFit } from './wall-opening-fit.js';
+import { wallAxisIntersection, wallAtIntersection } from './wall-join-intersection.js';
 
 /** What a join write needs from the model: the authoring anchor plus the context an `Axis` representation lives in. */
 export function resolveWallJoinAnchor(store: IfcDataStore, view?: Parameters<typeof resolveAuthoringAnchor>[1]): JoinAnchor {
@@ -92,7 +94,9 @@ function joinWalls(
   assertWallOpeningsFit(store, editor.getMutationView(), a, join.a.wall, anchor.lengthUnitScale ?? 1);
   assertWallOpeningsFit(store, editor.getMutationView(), b, join.b.wall, anchor.lengthUnitScale ?? 1);
   for (const rel of existing) editor.removeEntity(rel.relId);
-  return { ...applyWallJoinToStore(editor, anchor, a, b, joinOptions), replacedRelIds: existing.map((rel) => rel.relId) };
+  const applied = applyWallJoinToStore(editor, anchor, a, b, joinOptions);
+  dropReplacedSourceAxes(store, editor, [a.axisRepId, b.axisRepId]);
+  return { ...applied, replacedRelIds: existing.map((rel) => rel.relId) };
 }
 
 /** A wall's new axis ends and thickness, storey-local metres. What is left out stays. */
@@ -104,6 +108,8 @@ export interface WallReshape {
 }
 
 export interface WallReshapeOptions {
+  /** Transform carry extends/trims known connected ends on their own axes. */
+  extendJoinedAxes?: ReadonlySet<number>;
   /** A moved end takes the walls joined end to end with it (an L corner or a butt join) along. */
   moveJoinedEnds?: boolean;
   /** Tolerance of the recomputed joins, see `computeWallJoin`. */
@@ -200,6 +206,7 @@ export function reshapeWallsInStore(
   const placementIds = [...axes].flatMap(([id, ends]) => holdsPlacement(load(id).wall, ends.start, ends.end) ? [] : [load(id).axisPlacementId]);
   const placementOwnership = editOwnershipRefusal(store, view(), placementIds, expandAffectedSet(store, view(), targets.keys(), 'hostsChanged'));
   if (placementOwnership) throw new Error(`${op}: ${placementOwnership}`);
+  const originalAxes = [...targets.values()].map(read => read.axisRepId);
   for (const [id, { start, end, thickness }] of axes) targets.set(id, writeAxis(editor, anchor, load(id), start, end, thickness));
 
   // Recompute every join that touches a moved wall: the joined end snaps to the
@@ -207,9 +214,14 @@ export function reshapeWallsInStore(
   const relIds: number[] = [];
   const droppedRelIds: number[] = [];
   for (const rel of rels) {
-    const a = readOrNull(store, editor, targets, rel.relatingId, scale);
-    const b = readOrNull(store, editor, targets, rel.relatedId, scale);
+    let a = readOrNull(store, editor, targets, rel.relatingId, scale);
+    let b = readOrNull(store, editor, targets, rel.relatedId, scale);
     if (!a || !b) continue;
+    if (options.extendJoinedAxes?.has(a.wallId) || options.extendJoinedAxes?.has(b.wallId)) {
+      const point = wallAxisIntersection(a.wall, b.wall);
+      a = { ...a, wall: wallAtIntersection(a.wall, rel.relatingConnection, point) };
+      b = { ...b, wall: wallAtIntersection(b.wall, rel.relatedConnection, point) };
+    }
     const joinOptions = joinOptionsOf(rel, options.tolerance);
     try {
       computeWallJoin(a.wall, b.wall, joinOptions);
@@ -232,6 +244,7 @@ export function reshapeWallsInStore(
       touched.add(id);
     }
   }
+  dropReplacedSourceAxes(store, editor, originalAxes);
   return { walls: [...touched], relIds, droppedRelIds };
 }
 

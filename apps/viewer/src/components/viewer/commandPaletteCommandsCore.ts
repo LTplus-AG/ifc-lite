@@ -5,7 +5,7 @@
 /** Runtime recent-file provider. Static definitions are projected once by the composer. */
 
 import { paletteAvailability } from './palette-availability';
-import { surfaceCommand } from './surface-commands';
+import { surfaceCommand } from './surface-command-registry';
 import { resolve as t } from '@/i18n/registry';
 import { toast } from '@/components/ui/toast';
 import { Clock } from 'lucide-react';

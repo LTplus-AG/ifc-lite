@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "packages/create/src/in-store/structural-remove.ts",
+  "mutation": "tests/evidence/structural-remove-owned-9668/behaviour.oracle.patch",
+  "test": "packages/create/src/in-store/structural-lifecycle.test.ts",
+  "why": "#9668: Exclusive placement and topology resources must leave with their owner."
+}

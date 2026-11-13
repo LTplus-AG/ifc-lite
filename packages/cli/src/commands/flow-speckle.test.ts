@@ -18,6 +18,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { readWallJoinTarget } from '@ifc-lite/create';
 import { findPropertyInSets } from '@ifc-lite/query';
 import { flowCommand } from './flow.js';
 import { createHeadlessContext } from '../loader.js';
@@ -84,7 +85,7 @@ describe('flow run: speckle.receive into a real model (#5634)', () => {
     expect(server.urls.every((u) => u.startsWith(`https://${HOST}/`))).toBe(true);
     vi.restoreAllMocks();
 
-    const { bim } = await createHeadlessContext(outPath);
+    const { bim, store, backend } = await createHeadlessContext(outPath);
     const byType = (t: string) => bim.query().byType(t).toArray().filter((e) => e.name.includes(':'));
     expect(byType('IfcWall').map((e) => e.name)).toEqual(['Basic Wall: Generic - 200mm', 'Basic Wall: Generic - 200mm']);
     expect(byType('IfcSlab').map((e) => e.name)).toEqual(['Floor: Concrete 250mm']);
@@ -98,9 +99,13 @@ describe('flow run: speckle.receive into a real model (#5634)', () => {
     expect(findPropertyInSets(psets, 'Speckle_Source', 'ElementId')?.value).toBe('300101');
     expect(findPropertyInSets(psets, 'Speckle_InstanceParameters', 'Area')?.value).toBe(18);
 
-    // The 6 m wall is extruded 3 m high from a 200 mm thick profile: millimetres became metres.
-    const step = await readFile(outPath, 'utf-8');
-    expect(step).toMatch(/IFCRECTANGLEPROFILEDEF\(\.AREA\.,\$,#\d+,6\.,0\.2\)/);
+    // #9296: an automatic mitre may replace the rectangle with a polygon.
+    // Check the reopened wall's physical dimensions: mm still become metres.
+    const physical = readWallJoinTarget(store, backend.getMutationView(), wall.ref.expressId, 1);
+    expect(physical).not.toBeNull();
+    expect(Math.hypot(physical!.wall.end[0] - physical!.wall.start[0], physical!.wall.end[1] - physical!.wall.start[1])).toBeCloseTo(6, 6);
+    expect(physical!.wall.thickness).toBeCloseTo(.2, 6);
+    expect(physical!.height).toBeCloseTo(3, 6);
   });
 
   it('refuses the receive when the graph never granted the Speckle host, before any request', async () => {

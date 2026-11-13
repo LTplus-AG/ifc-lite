@@ -15,11 +15,16 @@ export function spatialBucketKey(
 ): string {
   // Keep cache keys bounded even for large models. This mirrors the source's
   // contentKey contract: a stable 64-bit digest of every lookup pair.
-  let hash = 0xcbf29ce484222325n;
+  let high = 0xcbf29ce4;
+  let low = 0x84222325;
   const feed = (value: string): void => {
     for (let i = 0; i < value.length; i++) {
-      hash ^= BigInt(value.charCodeAt(i));
-      hash = BigInt.asUintN(64, hash * 0x100000001b3n);
+      low = (low ^ value.charCodeAt(i)) >>> 0;
+      // FNV prime = 2^40 + 435. The low-word product is exact in a
+      // JS number (at most 41 bits); carry into the upper word explicitly.
+      const product = low * 435;
+      high = (Math.imul(high, 435) + Math.imul(low, 256) + Math.floor(product / 0x100000000)) >>> 0;
+      low = product >>> 0;
     }
   };
   const pairs = (map: ReadonlyMap<number, number> | undefined): void => {
@@ -31,7 +36,7 @@ export function spatialBucketKey(
   };
   pairs(elementToStorey);
   pairs(storeyElevations);
-  return hash.toString(16).padStart(16, '0');
+  return high.toString(16).padStart(8, '0') + low.toString(16).padStart(8, '0');
 }
 
 export function sourceFlatKey(

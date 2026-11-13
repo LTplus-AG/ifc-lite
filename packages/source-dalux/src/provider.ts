@@ -8,7 +8,7 @@ import type { DaluxFile, DaluxFileArea, DaluxFolder, DaluxProject } from './dalu
 import { matchesGlob } from '@ifc-lite/plugin-api';
 import type {
   ConnectionTestResult, DownloadOptions, FileFilter, FileSourceProvider, ListOptions, ListProjectsOptions, Page, PluginContext,
-  RevisionEvent, RevisionWatchResult, SourceContainer, SourceFile, SourceFileRef, SourceProject, UploadOptions, UploadResult, UploadTarget,
+  RevisionEvent, RevisionWatchResult, SourceContainer, SourceFile, SourceFileRef, SourceProject, SourceRevision, UploadOptions, UploadResult, UploadTarget,
 } from '@ifc-lite/plugin-api';
 
 import { DALUX_MANIFEST } from './manifest.js';
@@ -32,12 +32,13 @@ import {
   nonEmptyString,
   toSourceFile,
 } from './mapping.js';
+import { listVersionSetRevisions } from './revision-methods.js';
 
 const DEFAULT_BASE_URL = 'https://node1.field.dalux.com/service/api';
 
-
 export class DaluxBuildProvider implements FileSourceProvider {
   readonly manifest = DALUX_MANIFEST;
+  private readonly clients = new WeakMap<PluginContext, BrowserDaluxApiClient>();
 
   async listProjects(ctx: PluginContext, options?: ListProjectsOptions): Promise<Page<SourceProject>> {
     const client = await this.createClient(ctx);
@@ -233,30 +234,26 @@ export class DaluxBuildProvider implements FileSourceProvider {
   }
 
   /**
-   * Dalux has no delta/change-feed endpoint, so watching means polling the
-   * given refs. Grouped strictly by file area so a sweep covering many refs
-   * from the same area issues one listing sweep total — never a project- or
-   * account-wide crawl, and never more than one sweep per distinct area.
-   *
-   * Two failure-isolation rules, both load-bearing:
-   *
-   * 1. One area's sweep failing (a deleted file area 404ing, or a pagination
-   *    error) must not abort the whole call — that would discard the
-   *    already-detected events from every *other*, healthy area too. So each
-   *    area's sweep is caught individually and warned about rather than the
-   *    call rejecting outright. Only a definitive not-found (HTTP 404) turns
-   *    into `deleted: true` events; any other failure leaves that area's refs
-   *    without an event this poll, because "the request failed" is not
-   *    evidence that "the file is gone upstream".
-   * 2. `ctx.storage.set`/`delete` for every area are buffered and only
-   *    committed once the whole sweep is done, never per-area as each area
-   *    finishes. Advancing a cache immediately and *then* discovering a
-   *    later area failed used to mean: if the host reacted to that failure
-   *    by discarding this call's events, the already-advanced caches would
-   *    make the next poll compare against the new value and never emit the
-   *    now-lost event again — permanently. Buffering means a cache is only
-   *    ever advanced past a change once that change's event has actually
-   *    been returned.
+   * The file's revisions, newest first — reconstructed from the project's
+   * version sets, the only per-file history Dalux exposes at all. See
+   * `revision-methods.ts` for why, and for the sweep this shares with
+   * every other `listRevisions` call against the same project.
+   */
+  async listRevisions(
+    ctx: PluginContext,
+    ref: SourceFileRef,
+    options?: ListOptions,
+  ): Promise<Page<SourceRevision>> {
+    const client = await this.createClient(ctx);
+    return listVersionSetRevisions(client, ref, options);
+  }
+
+  /**
+   * Poll only the referenced file areas, once per area: Dalux has no delta feed.
+   * Isolate area failures so healthy areas still emit events. Only HTTP 404
+   * proves deletion; other failures leave that area's refs and caches untouched.
+   * Buffer cache writes until every area finishes, so advancing a baseline
+   * cannot swallow a change whose event has not yet been returned.
    */
   async watchRevisions(
     ctx: PluginContext,
@@ -401,6 +398,11 @@ export class DaluxBuildProvider implements FileSourceProvider {
   }
 
   private async createClient(ctx: PluginContext): Promise<BrowserDaluxApiClient> {
-    return new BrowserDaluxApiClient(await this.credentials(ctx), ctx);
+    const credentials = await this.credentials(ctx);
+    const cached = this.clients.get(ctx);
+    if (cached?.matchesCredentials(credentials)) return cached;
+    const client = new BrowserDaluxApiClient(credentials, ctx);
+    this.clients.set(ctx, client);
+    return client;
   }
 }

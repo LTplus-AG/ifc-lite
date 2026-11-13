@@ -8,6 +8,73 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
+## Retained selection highlights (#9835, #9916)
+
+**Diagnostic win on the real large-model WebGPU path.** Retaining merged highlight
+buffers removes repeated per-piece submission while orbiting an unchanged large
+selection. Same-camera checks include hide, isolate, glazing and x-ray context;
+shared desktop timings are diagnostic rather than a benchmark qualification.
+
+Lesson: preserve the per-piece path's hydration insertion history, not the latest
+selection Set order. The highlight does not write depth, so later overlapping
+selected surfaces decide the visible shading. Retire and rebuild pooled ranges
+together, and merge only contiguous compatible model/origin runs. Regrouping
+non-adjacent equal-origin pieces trades away visual correctness. Alternating
+origins can still cost one draw per piece, matching the original path; a per-vertex
+frame index and GPU origin table are the bounded-draw follow-up (#10008). Distinct
+textured origins remain tracked separately in #9946.
+
+## Single-edit IFC derivations (#9296, R7 P3)
+
+**Diagnostic improvement; performance qualification remains open.** Storey display,
+plan grids, wall axes and the spatial tree now share a cache of the overlay reads
+made by their real derivations. A live overlay revision checks those dependencies
+without reparsing source entities; unrelated column placement changes retain them.
+Creation discovery, relationship/placement leaves, Undo/Redo, skip-history writes
+and atomic publications remain live. Cache ownership follows the source store and
+mutation view, including separate federated models.
+
+The mutation profile also exposed an all-product top-attachment scan. Without a
+moved slab or roof target, only explicitly refit products can need refitting; target
+moves keep the full dependent scan. The real loaded F5 UI probe shows why a kernel
+microbenchmark would miss both costs. Shared-host GPU timings are diagnostic and
+cannot qualify the session-scale row; remaining React reconciliation and renderer
+scheduling still need attention.
+
+Lesson: avoid global history-count keys for derived IFC state. Read dependencies
+include absent records and effective class discovery, and must be checked against
+live overlay revisions rather than journal length. Read-only creation snapshots
+also avoid exposing mutable rows to the next atomic transaction's guard.
+
+## Raycast keeps one index across visibility changes (#9504)
+
+**Shipped.** `collectVisibleMeshData` rebuilt its list on every ray, and the BVH was
+keyed on the visible list, so each hide or isolate change rebuilt the tree. The flat
+pieces are now collected once per pick-geometry revision, one BVH covers all of them,
+and visibility filters each ray's candidates. Instanced occurrences stay per-ray.
+
+Lesson: the freshness key is `getPickGeometryRevision()` plus draw-list identity.
+`meshDataMap.size` is not enough, because fragments can be replaced under the same ids
+(#4556). The renderer's `BVH` is separate from `@ifc-lite/spatial`'s (#5252), so a win
+in one does not carry to the other. The tree's typed-array layout is a heap win; the
+per-ray and post-hide wins come from the cache.
+
+## Structural builders leave the boot path (#9668)
+
+**Shipped: a small eager-bytes cut, no boot-time change.** The viewer's store adapter called
+`createStructuralStoreBackend` at boot, which linked every `@ifc-lite/create` structural
+builder into an eager chunk. That factory now loads in its own chunk behind
+`store-adapter-structural.ts`, the same shape as the storey methods (#9200); a build-tail
+gate (`check-structural-writes-lazy.mjs`) fails if a builder reaches the startup graph.
+
+Lessons. The builders minify to about 7.6 KB; the ~38 KB first estimated was their
+TypeScript source. The first cut put the collab gate and undo tracking in the lazy module
+too. Its import of an eager module made the bundler carve the shared code out of two eager
+chunks into two new ones, still eager: +2 files and only 3.3 KB saved. Keeping the
+tracking in the eager facade and leaving the lazy module nothing but the factory saved
+about 6.2 KB with the file count unchanged. A lazy module should import only what eager code
+does not already share with it, and the eager file count is the tell.
+
 ## Storey planners and the QuickJS runtime leave the boot path (#9200)
 
 **Shipped: an eager-bytes cut, no boot-time change.** Three changes, each one
@@ -3040,6 +3107,21 @@ as well as JavaScript errors, and stop memory sampling on every exit path.
   byte-size verdict, not a measured load-time improvement. **Lesson:** inspect
   the complete HTML preload closure, and isolate shared state before assuming a
   dynamic panel import makes its dependencies lazy.
+- **STEP reals valued in the grammar walk (native instruction hillclimb,
+  2026-11-10):** `read_step_number` walked every literal once to admit it
+  (#7779) and then gave it to `fast_float2`, which walked it again. The walk
+  now folds digits and exponent as it goes; when the mantissa is at most 2^53
+  and the power of ten at most 22 in magnitude, one IEEE multiply or divide
+  is correctly rounded and therefore gives `fast_float2`'s bits (Clinger's
+  fast path; it also subsumes #7880's `N.` case). Everything else still
+  goes to `fast_float2`; integers of up to 18 digits take the walk's
+  mantissa. About 99.5% of the REAL literals in the tuning fixtures take the
+  exact path. Cold single-thread Callgrind, pipeline instructions:
+  advanced_model -5.4%, Holter -1.4%, schependomlaan -0.8%, FZK -0.2%,
+  ISSUE_129 -0.2%; ordered `perf_probe` mesh fingerprints identical on all
+  five, and a 200k-literal bit-for-bit test against `fast_float2`.
+  `parse_step_numeric` (generic, also `f32`) is unchanged: valuing in `f64`
+  then narrowing would round twice. Not a wall-time or browser claim.
 - **Firefox spatial-publication stall (#3983):** Chrome-only cold-load timing
   missed an engine-dependent entity-cache eviction cost. Georeference discovery
   runs through the property-set index during React rendering. Restarting a Map
@@ -3052,6 +3134,21 @@ as well as JavaScript errors, and stop memory sampling on every exit path.
   event-loop gaps and visible hierarchy readiness, and keep profiling runs apart
   from uninstrumented timing. A worker-complete event alone cannot establish that
   publishing its result leaves the UI responsive.
+- **Pooled orient/weld maps reset in O(mesh) (native instruction hillclimb,
+  2026-11-10):** the mesh orienter's vertex and edge maps and the weld's key
+  map are per-worker scratch (#3988), `clear()`ed before every mesh. A
+  non-empty `HashMap::clear` rewrites every bucket's control byte, so after one
+  large mesh every later mesh paid to wipe the large table: on Holter (109k
+  meshes) that memset was about 5% of pipeline instructions.
+  `scratch_map::reset_for` keeps a pooled table only while it is within 4x of
+  the pass's need and otherwise replaces it with one sized for the pass; the
+  maps are only probed and inserted into, never iterated, so capacity cannot
+  reach the output. Cold single-thread Callgrind, pipeline instructions:
+  Holter -4.7%, schependomlaan -2.4%, FZK -1.5%, advanced_model -1.0%,
+  ISSUE_129 -0.7%; ordered `perf_probe` mesh fingerprints identical on all
+  five. **Lesson:** pooling scratch turns `clear()` into a cost proportional to
+  the worst mesh a worker ever saw; check a pooled map's clear cost, not just
+  its allocation count. Not a wall-time or browser claim.
 - **Native cold-load working set (#3967):** immutable schema classification replaces
   contended global caches; completed BREP signatures are shared within one
   immutable source; the geometry scan supplies ordered georeferencing candidates
@@ -3209,6 +3306,21 @@ as well as JavaScript errors, and stop memory sampling on every exit path.
 Orientation reuses deterministic edge adjacency, triangle filters compact their existing index buffer, and welding/content hashing avoid duplicate map probes. Geometry policy, tolerances and traversal/output order remain unchanged. Own-layer native subset comparisons did not establish a meaningful full-load improvement; sampled leaf CPU and the cumulative result cannot establish a layer-specific gain. Preserve exact output and diagnostic oracles, including invalid/degenerate triangles and reused-buffer capacity. No isolated browser gain is established here; invalid Firefox cohorts and unrun follow-ups remain excluded. Owned-weld, sliver-incidence and alternate meshing experiments are not included.
 
 ### Dead ends (do NOT re-spike without a new mechanism)
+- **Forced inlining of entity-index dispatch (native instruction hillclimb,
+  2026-11-10):** forcing `EntityIndexStore::lookup` inline did not reduce pipeline
+  instructions on any of four tuning fixtures and exceeded the campaign's
+  regression ceiling on the structural fixture. Reverted. A large attributed
+  self-instruction share does not imply removable call overhead; let the compiler
+  choose unless a different mechanism is demonstrated. This was a cold,
+  single-thread Callgrind screen, not a wall-time or browser result.
+- **Early-exit columnar binary search (native instruction hillclimb,
+  2026-11-10):** replacing the standard library's fixed-iteration search with an
+  exact-match early return increased pipeline instructions on the structural and
+  architectural tuning fixtures. Reverted independently of the inlining trial.
+  Keep the standard search; fewer iterations are not necessarily fewer executed
+  instructions. Both trials failed the tuning gate, so the holdout and subsequent
+  identity/test/clippy/WASM acceptance gates were deliberately not run. No runtime
+  change survived and no browser speedup is claimed.
 - **Frame-invariant routing for plan-rotated voided walls** (#5739, PR #6035):
   the two routing fixes were NOT SHIPPED; both were measured on ISSUE_098 against the merge-base. With
   per-element local frames (the viewer default), the analytic prism cut's route
@@ -6107,3 +6219,58 @@ strictly less than 2× from 1K to 50K, and a passing F5 exercise result whose
 lane, not a substitute tower here. Missing sizes or F5 evidence fail the check.
 The baseline is a description of current main, not an accepted round-1 result
 or a speedup claim.
+
+## Implicit wall joins use maintained endpoint membership (#9406)
+
+Candidate discovery uses rounded endpoints partitioned by parent placement and
+elevation. Ordinary additions stage index entries until their owning publication
+and history transaction succeeds. Other edits invalidate the cache.
+
+Public raw creation also maintains the index when each complete wall record
+arrives. Otherwise the first ordinary addition after a raw-authored session
+would rebuild all wall endpoints. Incomplete forward-reference graphs discard
+the cache, so later creation reads the completed graph. Raw appends never mask
+an intervening placement edit. The regression checks unrelated payload reads
+at two session sizes and then joins against a moved raw-created wall.
+
+Earlier measurements, before session-scale publication (#9411), grew with the
+whole overlay on both main and branch. Those results do not qualify the rebased
+code. Finite schema-name snapshots separately bound registry-key work to one
+signature per operation while keeping definitions live. The paired public SDK
+cohort reports cold and warm calls independently, verifies that the walls do
+not join, and compares reopened geometry. The timing verdict is reported on
+#9406; an operation counter alone is not timing qualification.
+
+The final exclusive paired cohort on the session-scale base passed both the
+non-joining cold/warm overhead gate and the session-growth gate, with identical
+reopened geometry. Incremental raw creation removed the cold rebuild; skipping
+candidate-key work for an empty staged index brought the warm path within the
+same acceptance gate. Keep both checks: fixing cold scaling alone had left a
+warm-call regression.
+
+## Symbolic spatial keys share the mutation-view binding (#9621)
+
+**Untimed attribution; final scheduling qualification pending.** Historical
+cold and cached diagnostics identified repeated spatial-key work caused by
+different mutation-view bindings in markup restore and viewport overlays. This
+change makes those readers share the binding.
+The default annotation/grid parse still runs. Candidate parsing must start
+while the localStorage hash is pending, as on main; only the restore writes wait
+for its precedence decision. Serialising those operations broke the parse-first
+consumer and is not an acceptable optimisation. This model also still publishes a
+mutation view: the conservative source preflight admits uncertain encoded input,
+so no registration reduction is claimed for it. Provably blank sources avoid the
+restore registration in a separate functional invariant.
+
+The spatial snapshot cache held one binding per store. Restore registered a view
+then read without it, alternating that slot with the viewport's view-bound reads
+and repeatedly copying, sorting and digesting the same maps. Passing the same
+binding removes those alternations; numeric FNV preserves the old digest while
+removing per-character BigInt arithmetic. The source preflight runs outside
+render and never rejects pending overlay edits or uncertain STEP escapes.
+
+Lesson: verify which consumer invalidates a cache, and measure repeated work on
+the actual default path. A conditional restore does not imply that another
+visible overlay stops parsing. Operation-count attribution and digest-equivalence
+tests establish this mechanism; the exclusive load scoreboard remains the
+acceptance source for end-to-end timing.

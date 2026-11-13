@@ -5,6 +5,7 @@
 import type { Catalogue } from '../../registry';
 
 export const viewportLightingDe = {
+  "viewportLighting.container.loadErrorCard.sourceTooLarge": "Diese IFC-Datei überschreitet die Ladegrenze der Browser-Engine. Jede Quelldatei muss kleiner als {limit} sein. Exportieren Sie kleinere Dateien oder verwenden Sie die native CLI bzw. den Server.",
   "viewportLighting.container.emptyState.dropOverlay.title": "Datei zum Laden ablegen",
   "viewportLighting.container.emptyState.webgpuBanner.heading": "WebGPU Nicht verfügbar",
   "viewportLighting.container.emptyState.webgpuBanner.checkBrowserSupport": "Überprüfen Sie die Browserunterstützung",
@@ -27,6 +28,12 @@ export const viewportLightingDe = {
   "viewportLighting.container.emptyState.openButton.open": "Modelldatei öffnen",
   "viewportLighting.container.emptyState.openButton.required": "WebGPU Erforderlich",
   "viewportLighting.container.emptyState.dragDropHint": "Oder legen Sie Dateien an einer beliebigen Stelle im Ansichtsfenster ab:",
+  "viewportLighting.container.emptyState.formats.ifc": "IFC",
+  "viewportLighting.container.emptyState.formats.gltf": "glTF",
+  "viewportLighting.container.emptyState.formats.pointClouds": "Punktwolken",
+  "viewportLighting.container.emptyState.formats.terrain": "Gelände",
+  "viewportLighting.container.emptyState.formats.underlays": "Unterlagen",
+  "viewportLighting.container.emptyState.formats.splats": "Splats",
   "viewportLighting.container.emptyState.startBlank": "Beginnen Sie leer",
   "viewportLighting.container.emptyState.openFromCloud": "Aus der Cloud öffnen",
   "viewportLighting.container.emptyState.driveWithLlm": "Mit beliebigem LLM steuern",
@@ -41,6 +48,11 @@ export const viewportLightingDe = {
   "viewportLighting.container.loadingCard.title": "Laden {name}",
   "viewportLighting.container.loadingCard.titleFallback": "Modell wird geladen…",
   "viewportLighting.container.loadingCard.cancel": "Abbrechen",
+  "viewportLighting.container.loadingCard.phase.reading": "Lesen",
+  "viewportLighting.container.loadingCard.phase.parsing": "Parsen",
+  "viewportLighting.container.loadingCard.phase.geometry": "Geometrie",
+  "viewportLighting.container.loadingCard.phase.metadata": "Metadaten",
+  "viewportLighting.container.loadingCard.phase.rendering": "Darstellung",
   "viewportLighting.container.loadErrorCard.invalidInput": "Diese Datei ist ungültig oder hat nicht das erwartete Format. Überprüfen Sie den Dateityp oder exportieren Sie eine neue Kopie und öffnen Sie sie erneut.",
   "viewportLighting.container.loadErrorCard.title": "Das Modell konnte nicht geladen werden",
   "viewportLighting.container.loadErrorCard.retry": "Versuchen Sie es noch einmal",

@@ -167,6 +167,8 @@ export const bcfRu = {
   "bcf.panel.untitledTopic": "Без названия",
   "bcf.panel.importError": "Не удалось импортировать файл BCF",
   "bcf.panel.exportError": "Не удалось экспортировать файл BCF",
+  "bcf.panel.createTopicFailed": "Не удалось создать тему. {message}",
+  "bcf.panel.addViewpointFailed": "Не удалось добавить точку обзора к теме. {message}",
   "bcf.panel.busy": "Обработка BCF-файла…",
   "bcf.panel.captureViewpointFailed": "Не удалось захватить точку обзора. Дождитесь завершения загрузки модели, затем попробуйте снова.",
 } satisfies Catalogue;

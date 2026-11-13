@@ -25,12 +25,14 @@ import {
   DRAWING_MARKUP_QSET_NAME,
 } from '@ifc-lite/create';
 import {
+  drawingMarkupItemExpressId,
   readDrawingMarkupFromParseResult,
   type DrawingMarkupMetaLookup,
   type DrawingMarkupReadResult,
 } from '@/lib/overlay-parse/drawing-markup-read';
 import { getParseFor } from '@/hooks/symbolic-parse-cache';
 import { getDrawingMarkupReadContext } from './drawing-markup-context.js';
+import { embeddedMarkupIdentity } from './drawing-markup-absorbed.js';
 
 /**
  * Read one entity's `ObjectType`, straight off the source bytes via
@@ -49,6 +51,16 @@ import { getDrawingMarkupReadContext } from './drawing-markup-context.js';
  * hard-coded index, so it stays correct if IfcRoot's layout ever shifts.
  */
 function readBaseObjectType(dataStore: IfcDataStore, expressId: number): string | null {
+  return readBaseAttribute(dataStore, expressId, 'ObjectType', 4);
+}
+
+/** One root attribute of a source entity, read the way {@link readBaseObjectType} documents. */
+/** The GlobalId an annotation was opened with, before any session edit: what the absorbed set records. */
+export function sourceMarkupGlobalId(dataStore: IfcDataStore, expressId: number): string | null {
+  return readBaseAttribute(dataStore, expressId, 'GlobalId', 0);
+}
+
+function readBaseAttribute(dataStore: IfcDataStore, expressId: number, name: string, fallbackIndex: number): string | null {
   if (dataStore.source.byteLength <= 0) return null;
   // @raw-entity-enumeration-ok source byte offset is required by EntityExtractor; overlay attribute edits are applied by buildDrawingMarkupMetaLookup
   const ref = dataStore.entityIndex.byId.get(expressId);
@@ -57,9 +69,42 @@ function readBaseObjectType(dataStore: IfcDataStore, expressId: number): string 
   const entity = extractor.extractEntity(ref);
   if (!entity) return null;
   const names = getAttributeNames(entity.type);
-  const idx = names.indexOf('ObjectType');
-  const value = entity.attributes?.[idx >= 0 ? idx : 4];
+  const idx = names.indexOf(name);
+  const value = entity.attributes?.[idx >= 0 ? idx : fallbackIndex];
   return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+const embeddedMarkup = new WeakMap<IfcDataStore['source'], boolean>();
+const markupPrefix = new TextEncoder().encode('IfcLite:Markup:');
+
+/**
+ * Conservative source preflight, independent of owner class. Any STEP escape
+ * or live overlay change must reach the reader, which resolves decoded tags
+ * and effective ObjectType edits. Only immutable source negatives are cached.
+ * Call outside render: compacted sources can inflate blocks on slice().
+ */
+export function hasEmbeddedDrawingMarkup(dataStore: IfcDataStore, view?: MutablePropertyView): boolean {
+  if (view?.hasPendingChanges()) return true;
+  const source = dataStore.source;
+  if (!source?.byteLength) return false;
+  const cached = embeddedMarkup.get(source);
+  if (cached !== undefined) return cached;
+  const chunkSize = 256 * 1024;
+  for (let offset = 0; offset < source.byteLength; offset += chunkSize) {
+    const bytes = source.slice(offset, Math.min(source.byteLength, offset + chunkSize + markupPrefix.length - 1));
+    // Encoded tags need the real STEP decoder; never reject them lexically.
+    if (bytes.indexOf(92) >= 0) { embeddedMarkup.set(source, true); return true; }
+    for (let i = bytes.indexOf(markupPrefix[0]); i >= 0; i = bytes.indexOf(markupPrefix[0], i + 1)) {
+      if (i + markupPrefix.length > bytes.length) break;
+      let match = true;
+      for (let j = 1; j < markupPrefix.length; j++) {
+        if (bytes[i + j] !== markupPrefix[j]) { match = false; break; }
+      }
+      if (match) { embeddedMarkup.set(source, true); return true; }
+    }
+  }
+  embeddedMarkup.set(source, false);
+  return false;
 }
 
 /**
@@ -138,7 +183,7 @@ export function restoreDrawingMarkupFromModel(modelId: string): DrawingMarkupRea
     if (!context) return null;
     const { view, dataStore } = context;
 
-    const parseResult = getParseFor(dataStore);
+    const parseResult = getParseFor({ store: dataStore, mutationView: view });
     if (!parseResult) return null;
 
     const meta = buildDrawingMarkupMetaLookup(view, dataStore);
@@ -148,4 +193,18 @@ export function restoreDrawingMarkupFromModel(modelId: string): DrawingMarkupRea
     console.warn('[drawing-markup-restore] failed to resolve markup for', modelId, error);
     return null;
   }
+}
+
+/**
+ * The identities (`drawing-markup-absorbed.ts`) of the embedded annotations
+ * `result` was read from — what a restore that applies `result` absorbs into
+ * the session. An annotation the reader skipped is not in `result`, so it is
+ * never absorbed and a save keeps it.
+ */
+export function restoredEmbeddedMarkupIdentities(modelId: string, result: DrawingMarkupReadResult): string[] {
+  const context = getDrawingMarkupReadContext(modelId);
+  if (!context) return [];
+  const items = [...result.measure2DResults, ...result.polygonArea2DResults, ...result.textAnnotations2D, ...result.cloudAnnotations2D];
+  const ids = items.map((item) => drawingMarkupItemExpressId(item.id)).filter((id): id is number => id !== null);
+  return ids.map((id) => embeddedMarkupIdentity(id, sourceMarkupGlobalId(context.dataStore, id)));
 }

@@ -27,7 +27,7 @@ import { cleanup, click, render } from '@/test/render.js';
 import { ChatPanel } from '@/components/viewer/ChatPanel.js';
 import { ByokKeyModal } from '@/components/viewer/chat/ByokKeyModal.js';
 import { ModelSelector } from '@/components/viewer/chat/ModelSelector.js';
-import { closeContrastBrowser, warmContrastBrowser } from './render-harness.js';
+import { CONTRAST_BROWSER_SKIP, closeContrastBrowser, warmContrastBrowser } from './render-harness.js';
 import {
   assertRenderedTextClears,
   assertForcedClassReddens,
@@ -103,7 +103,7 @@ const PRICING_HINTS = {
 
 describe('chat secondary text contrast (#6205)', () => {
   for (const theme of THEMES) {
-    it(`ChatPanel idle footer hints and empty-state hint clear AA in ${theme}`, async () => {
+    it(`ChatPanel idle footer hints and empty-state hint clear AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       const html = mountChat();
       await assertRenderedTextClears(theme, html, [
         resolve('chat.panel.shiftEnterHint'),
@@ -112,17 +112,17 @@ describe('chat secondary text contrast (#6205)', () => {
       ], WCAG_AA_NORMAL_TEXT);
     });
 
-    it(`ChatPanel "Streaming..." status clears AA in ${theme}`, async () => {
+    it(`ChatPanel "Streaming..." status clears AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       const html = mountChat({ chatStatus: 'streaming' });
       await assertRenderedTextClears(theme, html, [resolve('chat.panel.streamingIndicator')], WCAG_AA_NORMAL_TEXT);
     });
 
-    it(`ChatPanel usage percentage readout clears AA in ${theme}`, async () => {
+    it(`ChatPanel usage percentage readout clears AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       const html = mountChat({ chatUsage: { type: 'requests', used: 42, limit: 100, pct: 42, resetAt: 0 } });
       await assertRenderedTextClears(theme, html, ['42%'], WCAG_AA_NORMAL_TEXT);
     });
 
-    it(`ByokKeyModal pricing hint clears AA in ${theme}`, async () => {
+    it(`ByokKeyModal pricing hint clears AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       for (const provider of ['anthropic', 'openai'] as const) {
         const html = mountByokWalkthrough(provider);
         await assertRenderedTextClears(theme, html, [PRICING_HINTS[provider]], WCAG_AA_NORMAL_TEXT);
@@ -130,7 +130,7 @@ describe('chat secondary text contrast (#6205)', () => {
       }
     });
 
-    it(`ModelSelector contextWindow readouts clear AA in ${theme}`, async () => {
+    it(`ModelSelector contextWindow readouts clear AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       await assertRenderedTextClears(theme, openModelSelector(), [CONTEXT_WINDOW], WCAG_AA_NORMAL_TEXT);
     });
   }
@@ -161,7 +161,7 @@ describe('chat secondary text contrast negative controls (#6205)', () => {
   ];
   for (const { className, site, mount, host, text } of controls) {
     for (const theme of THEMES) {
-      it(`non-vacuousness: ${className} on ${site} reddens in ${theme}`, async (t) => {
+      it(`non-vacuousness: ${className} on ${site} reddens in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async (t) => {
         mount();
         const ratios = await assertForcedClassReddens(theme, text(), className, WCAG_AA_NORMAL_TEXT, host);
         t.diagnostic(ratios.map((r) => `${r.toFixed(2)}:1`).join(', '));

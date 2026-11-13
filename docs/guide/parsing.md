@@ -1,5 +1,14 @@
 # Parsing IFC Files
 
+The browser geometry engine requires each IFC source to be smaller than 2 GiB
+(2,147,483,648 bytes). Smaller sources may still exhaust available memory.
+`assertWasmSourceSize(byteLength)` throws `WasmSourceSizeError` at or above
+`WASM_SOURCE_BYTE_LIMIT`; all three are exported by `@ifc-lite/parser`.
+The parser skips whole-source WASM scans at that same boundary. Compact entity
+indexes reject byte offsets or lengths outside the unsigned 32-bit range instead
+of wrapping them. These checks do not raise the browser engine's capacity.
+
+
 Complete guide to parsing IFC files with IFClite, covering both IFC4 (STEP) and IFC5 (IFCX) formats.
 
 ## Overview
@@ -998,3 +1007,12 @@ If an explicit native unit is present but cannot be resolved, the collected
 quantity retains `explicitUnitUnresolved: true`; its scale is unavailable
 (`NaN`), rather than silently inheriting a project scale. Consumers must not
 publish that raw value as a physical SI measurement.
+
+Structural reads via `extractStructuralOnDemand` preserve IFC2X3 action
+references (`CausedBy`, `VaryingAppliedLoadLocation`, ordered
+`SubsequentAppliedLoads`) and varying surface-member values
+(`SubsequentThickness`, `VaryingThicknessLocation`). The analysis model exposes
+`OrientationOf2DPlane` and IFC4+ `SharedPlacement`. These reference fields use
+model-local express ids; attributes the schema does not declare are
+`undefined`. Repeated subsequent-load references remain repeated, in station
+order.

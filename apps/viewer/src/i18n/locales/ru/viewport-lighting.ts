@@ -5,6 +5,7 @@
 import type { Catalogue } from '../../registry';
 
 export const viewportLightingRu = {
+  "viewportLighting.container.loadErrorCard.sourceTooLarge": "Размер этого IFC-файла превышает предел загрузки движка в браузере. Каждый исходный файл должен быть меньше {limit}. Экспортируйте файлы меньшего размера или используйте нативную CLI либо сервер.",
   "viewportLighting.container.emptyState.dropOverlay.title": "Перетащите файл для загрузки",
   "viewportLighting.container.emptyState.webgpuBanner.heading": "WebGPU недоступен",
   "viewportLighting.container.emptyState.webgpuBanner.checkBrowserSupport": "Проверить поддержку браузера",
@@ -27,6 +28,12 @@ export const viewportLightingRu = {
   "viewportLighting.container.emptyState.openButton.open": "Открыть файл модели",
   "viewportLighting.container.emptyState.openButton.required": "Требуется WebGPU",
   "viewportLighting.container.emptyState.dragDropHint": "Или перетащите файлы в любое место окна просмотра:",
+  "viewportLighting.container.emptyState.formats.ifc": "IFC",
+  "viewportLighting.container.emptyState.formats.gltf": "glTF",
+  "viewportLighting.container.emptyState.formats.pointClouds": "Облака точек",
+  "viewportLighting.container.emptyState.formats.terrain": "Рельеф",
+  "viewportLighting.container.emptyState.formats.underlays": "Подложки",
+  "viewportLighting.container.emptyState.formats.splats": "Сплаты",
   "viewportLighting.container.emptyState.startBlank": "Начать с пустого",
   "viewportLighting.container.emptyState.openFromCloud": "Открыть из облака",
   "viewportLighting.container.emptyState.driveWithLlm": "Управлять с помощью любой языковой модели",
@@ -41,6 +48,11 @@ export const viewportLightingRu = {
   "viewportLighting.container.loadingCard.title": "Загрузка {name}",
   "viewportLighting.container.loadingCard.titleFallback": "Загрузка модели…",
   "viewportLighting.container.loadingCard.cancel": "Отменить",
+  "viewportLighting.container.loadingCard.phase.reading": "Чтение",
+  "viewportLighting.container.loadingCard.phase.parsing": "Разбор",
+  "viewportLighting.container.loadingCard.phase.geometry": "Геометрия",
+  "viewportLighting.container.loadingCard.phase.metadata": "Метаданные",
+  "viewportLighting.container.loadingCard.phase.rendering": "Отрисовка",
   "viewportLighting.container.loadErrorCard.title": "Не удалось загрузить модель",
   "viewportLighting.container.loadErrorCard.retry": "Повторить",
   "viewportLighting.container.loadErrorCard.dismiss": "Закрыть",

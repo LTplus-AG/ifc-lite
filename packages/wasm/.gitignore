@@ -10,5 +10,8 @@ test-parser.js
 # Generated diff runtime; its declaration is force-added for wasm-free checking.
 pkg-diff/
 
+# Generated geometry-core runtime (BUILD_CORE=1 scripts/build-wasm.sh); published, never committed.
+pkg-core/
+
 # Generated Rhino scene runtime; same as pkg-diff.
 pkg-rhino/

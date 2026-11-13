@@ -4,6 +4,7 @@
 
 import type { Catalogue } from '../registry';
 import { registryFr } from './fr/registry';
+import { agentBridgeFr } from './fr/agent-bridge';
 import { storeyManagerFr } from './fr/storey-manager';
 import { activityTrayFr } from './fr/activity-tray';
 import { aiReportsFr } from './fr/ai-reports';
@@ -87,6 +88,7 @@ import { ionUploadFr } from './fr/ion-upload';
 import { keyboardShortcutsFr } from './fr/keyboard-shortcuts';
 import { landXmlGeorefAssumptionsFr } from './fr/landxml-georef-assumptions';
 import { landXmlTerrainExportFr } from './fr/landxml-terrain-export';
+import { rhinoExportFr } from './fr/rhino-export';
 import { landXmlFr } from './fr/landxml';
 import { layersPanelFr } from './fr/layers-panel';
 import { lensPanelFr } from './fr/lens-panel';
@@ -148,8 +150,10 @@ import { spaceEnvelopeFr } from './fr/space-envelope';
 import { splitToolFr } from './fr/split-tool';
 import { stairRailingFr } from './fr/stair-railing';
 import { storeyContextFr } from './fr/storey-context';
+import { structuralGlyphsFr } from './fr/structural-glyphs';
 import { structuralPropertiesFr } from './fr/structural-properties';
 import { structuralReviewFr } from './fr/structural-review';
+import { structuralDeriveFr } from './fr/structural-derive';
 import { sweptDiskInspectionFr } from './fr/swept-disk-inspection';
 import { tableCorrectionsFr } from './fr/table-corrections';
 import { terrainImageryFr } from './fr/terrain-imagery';
@@ -248,6 +252,7 @@ export default {
   ...keyboardShortcutsFr,
   ...landXmlGeorefAssumptionsFr,
   ...landXmlTerrainExportFr,
+  ...rhinoExportFr,
   ...landXmlFr,
   ...layersPanelFr,
   ...lensPanelFr,
@@ -309,8 +314,10 @@ export default {
   ...splitToolFr,
   ...stairRailingFr,
   ...storeyContextFr,
+  ...structuralGlyphsFr,
   ...structuralPropertiesFr,
   ...structuralReviewFr,
+  ...structuralDeriveFr,
   ...sweptDiskInspectionFr,
   ...tableCorrectionsFr,
   ...terrainImageryFr,
@@ -326,5 +333,6 @@ export default {
   ...zoneEmissionFr,
   ...zonesPanelFr,
   ...registryFr,
+  ...agentBridgeFr,
   ...storeyManagerFr,
 } satisfies Catalogue;

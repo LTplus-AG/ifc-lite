@@ -14,7 +14,7 @@ export type CreateViewpointCapture =
  * person asked for one, so a capture that throws OR resolves `null` (no
  * viewport, no camera, or a capture invalidated mid-flight — see
  * `createViewpointFromState`) is a failure: always logged, and reported only
- * while the create is still theirs (`isCurrent`, from its single-flight run),
+ * while the create is still theirs (`isCurrent`, from its `useAsyncRun` run),
  * since a cancelled or closed create has nothing left to report to.
  * `ok: false` means: create nothing.
  */

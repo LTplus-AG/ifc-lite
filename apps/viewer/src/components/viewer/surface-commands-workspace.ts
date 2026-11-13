@@ -26,6 +26,24 @@ export const WORKSPACE_SURFACE_COMMANDS = [
     run: () => { void import('@/lib/actions/copy-to-storeys-open').then(m => m.openCopyToStoreys()); },
   },
   {
+    id: 'learn:about', labelKey: 'keyboardShortcuts.tabs.about',
+    keywords: 'about version build privacy licenses dependencies information mcp playground', detailKey: 'commandPalette.paths.about', keywordsKey: 'commandPalette.paths.about', category: 'Learn', icon: Info,
+    surfaces: paletteOnly, enabled: alwaysEnabled,
+    run: () => { window.dispatchEvent(new CustomEvent(EVENT_SHOW_SHORTCUTS, { detail: { tab: 'about' } })); },
+  },
+  {
+    id: 'learn:whatsnew', labelKey: 'keyboardShortcuts.tabs.whatsNew',
+    keywords: 'what new changelog changes release notes', category: 'Learn', icon: Info,
+    surfaces: paletteOnly, enabled: alwaysEnabled,
+    run: () => { window.dispatchEvent(new CustomEvent(EVENT_SHOW_SHORTCUTS, { detail: { tab: 'whatsnew' } })); },
+  },
+  {
+    id: 'learn:shortcuts', labelKey: 'keyboardShortcuts.tabs.shortcuts',
+    keywords: 'keyboard shortcuts hotkeys keybindings commands help', category: 'Learn', icon: Info,
+    surfaces: paletteOnly, enabled: alwaysEnabled,
+    run: () => { window.dispatchEvent(new CustomEvent(EVENT_SHOW_SHORTCUTS, { detail: { tab: 'shortcuts' } })); },
+  },
+  {
     id: 'extensions:author', labelKey: 'commandPalette.tool.extensionsAuthor.label',
     keywords: 'create new build plan chat ai extension generate',
     category: 'Tools', icon: Sparkles, surfaces: paletteOnly, enabled: alwaysEnabled,
@@ -123,6 +141,13 @@ export const WORKSPACE_SURFACE_COMMANDS = [
     run: () => { useViewerStore.getState().toggleTheme(); },
   },
   {
+    id: 'pref:colorful', labelKey: 'commandPalette.pref.colorful.label',
+    keywordsKey: 'commandPalette.pref.colorful.aliases',
+    keywords: 'colorful colour color theme rainbow appearance toggle',
+    category: 'Preferences', icon: Palette, surfaces: paletteOnly, enabled: alwaysEnabled,
+    run: () => { useViewerStore.getState().toggleColorful(); },
+  },
+  {
     id: 'pref:tooltips', labelKey: 'commandPalette.pref.tooltips.label', ribbonLabelKey: 'ribbon.elements.hoverTips', ribbonTooltipKey: 'ribbon.elements.hoverTipsTooltip',
     keywords: 'entity info mouse hover show hide',
     category: 'Preferences', icon: Info, surfaces: paletteAndRibbon, enabled: alwaysEnabled,
@@ -142,7 +167,7 @@ export const WORKSPACE_SURFACE_COMMANDS = [
   },
   {
     id: 'learn:hub', labelKey: 'commandPalette.learn.hub.label',
-    keywords: 'tour walkthrough learn tutorials help getting started onboarding',
+    keywords: 'tour walkthrough learn tutorials help getting started onboarding sample demo project layer stack', detailKey: 'commandPalette.paths.learn', keywordsKey: 'commandPalette.paths.learn',
     category: 'Learn', icon: GraduationCap, surfaces: paletteOnly, enabled: alwaysEnabled,
     run: () => { window.dispatchEvent(new CustomEvent(EVENT_SHOW_SHORTCUTS, { detail: { tab: 'learn' } })); },
   },

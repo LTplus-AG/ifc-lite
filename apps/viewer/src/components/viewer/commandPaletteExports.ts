@@ -24,7 +24,7 @@ import type { ExportRequest } from './useExportRunner';
 import type { Command } from './commandPaletteSearch';
 import {
   commandRowFromDefinition, type CommandSurface, type SurfaceCommandContext, type SurfaceCommandDefinition,
-} from './surface-commands';
+} from './surface-command-registry';
 import type { ExtensionExporter } from '@/components/extensions/useExtensionExporters';
 
 /** Node-loadable palette icons. The ribbon uses its own SVG set through Vite. */
@@ -36,6 +36,7 @@ const PALETTE_EXPORT_ICONS: ExportIconSet = {
   kmz: Globe2,
   ion: Globe2,
   usd: Download,
+  '3dm': Download,
   energy: Download,
   'landxml-terrain': Mountain,
   csv: FileSpreadsheet,
@@ -54,6 +55,7 @@ const EXPORT_KEYWORDS: Record<ExportCommandId, string> = {
   kmz: 'google earth kml georeferenced download',
   ion: 'cesium ion upload cloud bim ifc tiles',
   usd: '3d model usd usda openusd omniverse blender usdview download',
+  '3dm': '3d model rhino 3dm rhinoceros grasshopper mcneel layers blocks download',
   energy: 'energy honeybee hbjson dragonfly dfjson simulation download',
   'landxml-terrain': 'landxml terrain surface tin dtm ground civil xml download',
   csv: 'spreadsheet table download',

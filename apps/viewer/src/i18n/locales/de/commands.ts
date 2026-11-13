@@ -15,7 +15,7 @@ export const commandsDe = {
   "commands.category.help": "Hilfe",
   "commands.edit.undo": "Letzte Modellverschiebung oder Bearbeitung des aktiven Modells rückgängig machen",
   "commands.edit.redo": "Letzte rückgängig gemachte Änderung wiederholen",
-  "commands.edit.toggleEditMode": "Modellarbeitsbereich betreten oder verlassen (schaltet Eigenschafts- und Geometriebearbeitung frei)",
+  "commands.edit.toggleEditMode": "Modellarbeitsbereich betreten oder verlassen (Geometrie zeichnen und bearbeiten)",
   "commands.edit.rotate": "Ausgewählte Entität um +15° / −15° um Z drehen (erfordert Bearbeitungsmodus)",
   "commands.edit.duplicate": "Ausgewählte Entität duplizieren (+X; mit Shift +Z, mit Alt +Y)",
   "commands.edit.copyGlobalId": "GlobalId kopieren",

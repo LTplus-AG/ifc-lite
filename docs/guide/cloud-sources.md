@@ -38,3 +38,16 @@ No source can be written to from the viewer yet, and the access IFClite requests
 - `new-location` creates a file in a different folder.
 
 `uploadFile` never overwrites. When the file has changed since it was loaded (`stale-base`), or the name is taken (`name-exists`), it returns a conflict instead of writing, so the host can offer a new name or a reload. Providers that omit `writeBack` stay read-only. `@ifc-lite/source-fixture` implements it for tests, and the Dalux provider implements it on Dalux's upload API (see the `@ifc-lite/source-dalux` README for its limits, including that in the browser it needs the relay upload routes from [#9524](https://github.com/LTplus-AG/ifc-lite/pull/9524)). The viewer's save action is tracked in [#9522](https://github.com/LTplus-AG/ifc-lite/issues/9522).
+
+### Dalux revision history
+
+The Dalux Versions panel combines revisions pinned by coordination version sets
+with the file’s current revision, including uploads not yet added to a set.
+Multiple sets pinning the same revision produce one row naming those sets.
+Historical rows sort by date, then numeric revision number for same-day ties.
+Unknown dates stay blank, and raw user IDs are not shown as names.
+
+The project sweep is cached for five minutes and reads fresh pins when rebuilt.
+A failed or undecodable set produces an explicit incomplete-history error with a
+short retry window. Projects with more than 250 version sets show an unavailable
+history error rather than a potentially misleading subset.

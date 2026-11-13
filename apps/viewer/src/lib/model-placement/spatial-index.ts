@@ -3,12 +3,14 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useViewerStore, type ViewerState } from '@/store';
 import { instancedShardRevision } from '@/store/instancedShardModels';
+import { hasPendingInstancedShards, type InstancedShardQueueEvent } from '@/store/instancedShardQueue';
 import { invalidateSpatialIndex, buildSpatialIndexForModel } from '@/utils/loadingUtils';
 import { withInstancedMeshes } from '@/utils/instancedExport';
 import { modelIndices } from './model-indices';
 import { displayedTranslation } from './state';
 import { equalTranslation } from './translation';
 import { modelLoadTrace, tracePhaseOnce } from '@/lib/perf/activeLoadTrace';
+import { isSceneSettled } from '@/lib/scene-settled';
 
 /** Build (or rebuild) `modelId`'s spatial index from its PLACED geometry — flat
  * meshes plus GPU-instanced occurrences materialized at their current heading
@@ -46,7 +48,7 @@ export function createPlacementIndexSync() {
     const model = state.models.get(id);
     return !!model?.ifcDataStore && !!model.geometryResult
       && (model.loadState === undefined || model.loadState === 'complete')
-      && !state.pendingInstancedShards?.some(shard => shard.modelId === id);
+      && !hasPendingInstancedShards(id);
   };
   const signature = (state: ViewerState, id: string) => {
     const model = state.models.get(id)!;
@@ -71,7 +73,12 @@ export function createPlacementIndexSync() {
     }
     timer = setTimeout(() => {
       const latest = useViewerStore.getState();
-      pending.clear(); timer = undefined;
+      timer = undefined;
+      // A query index is not a load step: building it (instanced
+      // materialisation plus the BVH) during the drain and finalize delays
+      // the load. Keep the models pending and look again until it settles.
+      if (!isSceneSettled(latest)) { schedule(); return; }
+      pending.clear();
       for (const [id] of latest.models) {
         if (!ready(latest, id)) continue;
         const next = signature(latest, id);
@@ -103,13 +110,6 @@ export function createPlacementIndexSync() {
     refreshMissing(state: ViewerState) { refresh(state); },
     update(state: ViewerState, previous: ViewerState) {
       let moved = false;
-      if (state.pendingInstancedShards !== previous.pendingInstancedShards && state.pendingInstancedShards) {
-        const oldLength = previous.pendingInstancedShards?.length ?? 0;
-        for (const { modelId } of state.pendingInstancedShards.slice(oldLength)) {
-          const store = state.models.get(modelId)?.ifcDataStore;
-          if (store) invalidateSpatialIndex(store);
-        }
-      }
       for (const [id, model] of state.models) {
         if (!model.ifcDataStore) continue;
         if (state.modelPlacement.realignedFrameKey !== previous.modelPlacement.realignedFrameKey || !equalTranslation(
@@ -123,6 +123,18 @@ export function createPlacementIndexSync() {
       }
       for (const id of indexed.keys()) if (!state.models.has(id)) indexed.delete(id);
       refresh(state, moved);
+    },
+    /** Shards travel outside the store (`instancedShardQueue`), so their
+     * arrival and their upload reach the index here instead of via `update`. */
+    instancedShards(event: InstancedShardQueueEvent, state: ViewerState) {
+      if (event.kind === 'enqueued') {
+        for (const modelId of event.modelIds) {
+          const store = state.models.get(modelId)?.ifcDataStore;
+          if (store) invalidateSpatialIndex(store);
+        }
+        return;
+      }
+      refresh(state);
     },
     dispose() { if (timer) clearTimeout(timer); timer = undefined; pending.clear(); },
   };

@@ -81,6 +81,7 @@ export function Pin({
     <g
       ref={ref}
       data-scene-primitive="pin"
+      aria-hidden={interactive ? undefined : true}
       tabIndex={interactive ? 0 : undefined}
       role={interactive ? 'button' : undefined}
       aria-label={interactive ? title : undefined}
@@ -98,11 +99,11 @@ export function Pin({
         groupProps?.className,
       )}
     >
-      <path d={PIN_PATH} style={fill ? { fill } : undefined} className={cn('stroke-overlay-halo stroke-2', fillClass, className)}>
+      <path aria-hidden="true" d={PIN_PATH} style={fill ? { fill } : undefined} className={cn('stroke-overlay-halo stroke-2', fillClass, className)}>
         {title ? <title>{title}</title> : null}
       </path>
       {children ? (
-        <g transform="translate(0, -11)" className="fill-overlay-halo pointer-events-none text-2xs">
+        <g aria-hidden="true" transform="translate(0, -11)" className="fill-overlay-halo pointer-events-none text-2xs">
           {children}
         </g>
       ) : null}

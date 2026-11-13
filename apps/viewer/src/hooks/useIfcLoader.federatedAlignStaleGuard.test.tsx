@@ -8,12 +8,12 @@
  *
  *   const status = await alignGeometryToReference(geometryResult, parsedGeoref, referenceGeoref);
  *   federationAlignmentStatus = status;
- *   ... (idOffset, addModel, buildSpatialIndexForModel, appendInstancedShards)
+ *   ... (idOffset, addModel, buildSpatialIndexForModel, enqueueInstancedShards)
  *
  * `alignGeometryToReference` is real reprojection work — genuine wall-clock
  * duration — and it is the ONLY `await` anywhere in the federated branch
  * (verified: every write below it — `registerModelOffset`, `addModel`,
- * `buildSpatialIndexForModel`, `appendInstancedShards` — is synchronous; a
+ * `buildSpatialIndexForModel`, `enqueueInstancedShards` — is synchronous; a
  * scan's `relabelPointCloudAsset` runs after finalize since #6887). Before this fix,
  * nothing re-checked `loadSessionRef` after that await, so a federated add
  * superseded by a newer primary load while its alignment was in flight would

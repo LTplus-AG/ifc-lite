@@ -41,12 +41,20 @@ impl CacheReply {
 /// is lent by its owner on every step, so an owning walk can drive it.
 pub(super) struct CacheControl {
     offset: (f64, f64, f64),
+    /// Passed on to the item: see `ItemControl::member_face`.
+    member_face: bool,
     state: State,
 }
 
 impl CacheControl {
     pub(super) fn new(offset: (f64, f64, f64)) -> Self {
-        Self { offset, state: State::Begin }
+        Self { offset, member_face: false, state: State::Begin }
+    }
+
+    /// See `ItemControl::member_face` (#9668).
+    pub(super) fn member_face(mut self, member_face: bool) -> Self {
+        self.member_face = member_face;
+        self
     }
 
     pub(super) fn stage(&self) -> std::result::Result<Option<ProgramStage>, ProgramError> {
@@ -88,7 +96,7 @@ impl CacheControl {
             (State::Begin, CacheReply::Begin(Ok(CacheAdmission::Hit(mesh)))) => State::Complete(Ok(mesh)),
             (State::Begin, CacheReply::Begin(Err(error))) => State::Complete(Err(error)),
             (State::Begin, CacheReply::Begin(Ok(CacheAdmission::Miss(context)))) => {
-                State::Child(context, ItemControl::new(self.offset))
+                State::Child(context, ItemControl::new(self.offset).member_face(self.member_face))
             }
             (State::Child(context, mut item), CacheReply::Item(step)) => {
                 item.accept(step, router);

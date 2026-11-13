@@ -70,9 +70,11 @@ export interface SelectionOutlineSource {
  * Whether `mesh` is the one `hoveredId` names, honouring the same
  * per-model disambiguation `selectedMeshes` filters by. Pure and exported
  * for unit testing; the two GPU-facing lookups above call it with `.find`.
+ * A pooled selection merge (#9835) holds many entities under one id, so it
+ * never stands for the hovered one: that entity gets its own hover copies.
  */
 export function matchesHoveredMesh(mesh: Mesh, hoveredId: number, selectedModelIndex: number | undefined): boolean {
-  return mesh.expressId === hoveredId && (selectedModelIndex === undefined || mesh.modelIndex === selectedModelIndex);
+  return mesh.expressId === hoveredId && !mesh.mergedSelection?.ids && (selectedModelIndex === undefined || mesh.modelIndex === selectedModelIndex);
 }
 
 function toSelectable(mesh: Mesh): SelectableMesh | null {

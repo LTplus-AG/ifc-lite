@@ -7,6 +7,7 @@ import { checkCatalogue } from './catalogue-problems';
 import { englishCatalogue } from './en';
 import { reviewWorkspaceEn } from './catalogues/review-workspace.en';
 import { semanticAssistEn } from './catalogues/semantic-assist.en';
+import { structuralDeriveEn } from './catalogues/structural-derive.en';
 import { lazyMessageParameters } from './lazy-catalogue-shape';
 
 test('#7000 Semantic translations validate at startup before their English panel copy loads', () => {
@@ -39,6 +40,15 @@ test('#7015 lazy validation metadata matches every real Review message and its p
   for (const [key, value] of Object.entries(reviewWorkspaceEn)) {
     const forms = typeof value === 'string' ? [value] : Object.values(value);
     const parameters = [...new Set(forms.flatMap(form => [...form.matchAll(/\{([A-Za-z][A-Za-z0-9_]*)\}/g)].map(match => match[1])))].sort();
+    assert.deepEqual(lazyMessageParameters(key), parameters, key);
+  }
+});
+
+test('#9668 lazy validation metadata matches every structural derivation message and its parameters', () => {
+  assert.equal(Object.hasOwn(englishCatalogue, 'structuralDerive.counts'), false);
+  // Every derivation message is a plain string (no plural forms).
+  for (const [key, form] of Object.entries(structuralDeriveEn)) {
+    const parameters = [...new Set([...form.matchAll(/\{([A-Za-z][A-Za-z0-9_]*)\}/g)].map(match => match[1]))].sort();
     assert.deepEqual(lazyMessageParameters(key), parameters, key);
   }
 });

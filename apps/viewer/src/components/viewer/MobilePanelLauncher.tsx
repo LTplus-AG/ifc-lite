@@ -13,7 +13,7 @@
  * It used to be three 48px tiles (Hierarchy, Properties, Panels) stacked over
  * the model's top-left quarter with tracked-caps captions. The one button sits
  * at the bottom edge instead, level with the Home/zoom pill
- * (`MOBILE_NAV_BOTTOM`), where a thumb reaches it and the model is not.
+ * (`MOBILE_NAV_ROW`), where a thumb reaches it and the model is not.
  */
 
 import { useState } from 'react';
@@ -26,10 +26,12 @@ import { useBottomPanelFlags } from '@/hooks/useBottomPanelFlags';
 import { activeBottomPanel } from '@/lib/panels/bottom-panels';
 import { getPanelDef, type WorkspacePanelId } from '@/lib/panels/registry';
 import { MobileBottomSheet } from './MobileBottomSheet';
-import { MOBILE_NAV_BOTTOM } from './mobile-overlay-layout';
+import { mobileNavRowStyle } from './mobile-overlay-layout';
+import { mobileCommandPlacement } from '@/lib/layout/form-factor';
 
-export function MobilePanelLauncher({ bottomInset }: { bottomInset: number }) {
+export function MobilePanelLauncher() {
   const { t } = useTranslation();
+  const placement = useViewerStore((s) => mobileCommandPlacement(s.formFactor));
   const setLeftPanelCollapsed = useViewerStore((s) => s.setLeftPanelCollapsed);
   const setRightPanelCollapsed = useViewerStore((s) => s.setRightPanelCollapsed);
   const { openInHome, closePanel } = usePanelControls();
@@ -60,8 +62,9 @@ export function MobilePanelLauncher({ bottomInset }: { bottomInset: number }) {
       <button
         type="button"
         aria-expanded={listOpen}
-        className="absolute right-4 z-20 inline-flex h-11 items-center gap-2 rounded-md border border-border bg-background/90 pl-3 pr-4 text-sm font-medium text-foreground shadow-sm backdrop-blur-sm touch-manipulation active:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        style={{ bottom: MOBILE_NAV_BOTTOM }}
+        data-mobile-panels-launcher
+        className="absolute z-20 inline-flex h-11 items-center gap-2 rounded-md border border-border bg-background/90 pl-3 pr-4 text-sm font-medium text-foreground shadow-sm backdrop-blur-sm touch-manipulation active:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        style={mobileNavRowStyle(placement, 'right')}
         onClick={() => setListOpen(true)}
       >
         <LayoutGrid className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
@@ -76,7 +79,7 @@ export function MobilePanelLauncher({ bottomInset }: { bottomInset: number }) {
             className="absolute inset-0 bg-scrim/40 z-30 animate-in fade-in duration-200"
             onClick={() => setListOpen(false)}
           />
-          <MobileBottomSheet title={t('shellChrome.layout.panelsLabel')} bottomInset={bottomInset} onClose={() => setListOpen(false)}>
+          <MobileBottomSheet title={t('shellChrome.layout.panelsLabel')} onClose={() => setListOpen(false)}>
             <ul className="py-1">
               {railIds.map((id) => {
                 const def = getPanelDef(id);

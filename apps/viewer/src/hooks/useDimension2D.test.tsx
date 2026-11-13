@@ -199,3 +199,16 @@ it('a new drawing drops the old snap glyph and markers; a new cut drops the plac
   act(() => useViewerStore.setState({ drawing2D: drawing() }));
   assert.equal(useViewerStore.getState().dimension2DPoints.length, 0, 'a point placed on the previous cut is dropped');
 });
+
+it('switching to the hovered dimension\'s cut without moving drops the stale Other cut note (#10076 review)', () => {
+  useViewerStore.setState({ drawing2D: drawing(), annotation2DActiveTool: 'none', dimensions2D: [
+    { id: 'there', a: { x: 0, y: 5 }, b: { x: 4, y: 5 }, offset: 0, orientation: 'aligned', plane: { ...PLANE, position: 4 } },
+  ] });
+  const canvas = render(<Harness />).firstElementChild!;
+  const hovered = () => tool.hover?.id ?? null;
+  mouseMove(canvas, { clientX: 200, clientY: 500 });
+  assert.equal(hovered(), 'there');
+  drawnPlane = { ...PLANE, position: 4 };
+  act(() => useViewerStore.setState({ drawing2D: drawing() }));
+  assert.equal(hovered(), null, 'the hover from the previous drawing is dropped');
+});

@@ -19,7 +19,11 @@ import type { DrawingLayers } from './useDrawingLayers';
 export function DrawingCanvasView({ vm, layers }: { vm: DrawingViewModel; layers: DrawingLayers }) {
   const { t } = useTranslation();
   const { drawing, status, drawnPlane, viewTransform, displayOptions } = vm;
-  const hasContent = !!drawing && (drawing.cutPolygons.length > 0 || drawing.lines?.length > 0 || layers.dxfUnderlayData.length > 0 || vm.hasReferences);
+  // Dimensions count as content: on an empty cut, saved ones from another cut
+  // still show dimmed, and one being placed shows its points and preview.
+  const dimensionScene = vm.dimensionTool.scene;
+  const hasDimensions = !!dimensionScene && (dimensionScene.dimensions.length > 0 || (dimensionScene.placedPoints?.length ?? 0) > 0);
+  const hasContent = !!drawing && (drawing.cutPolygons.length > 0 || drawing.lines?.length > 0 || layers.dxfUnderlayData.length > 0 || vm.hasReferences || hasDimensions);
   const editingAnnotation = vm.textAnnotation2DEditing
     ? vm.textAnnotations2D.find((a) => a.id === vm.textAnnotation2DEditing) ?? null
     : null;
@@ -83,6 +87,7 @@ export function DrawingCanvasView({ vm, layers }: { vm: DrawingViewModel; layers
           cloudAnnotationPoints={vm.cloudAnnotation2DPoints}
           cloudAnnotations={vm.cloudAnnotations2D}
           selectedAnnotation={vm.selectedAnnotation2D?.type === 'tag' ? { type: 'text', id: vm.selectedAnnotation2D.id } : vm.selectedAnnotation2D}
+          dimensionScene={vm.dimensionTool.scene}
           ifcAnnotationLines={layers.ifcAnnotationData.lines}
           ifcAnnotationTexts={layers.ifcAnnotationData.texts}
           ifcAnnotationFills={layers.ifcAnnotationData.fills}
@@ -93,6 +98,14 @@ export function DrawingCanvasView({ vm, layers }: { vm: DrawingViewModel; layers
           unitDisplayOverrides={vm.unitDisplayOverrides}
           paperTheme={vm.paperTheme}
         />
+      )}
+
+      {status === 'ready' && vm.dimensionTool.hover && (
+        <div role="tooltip" data-dimension-other-cut
+          className="pointer-events-none absolute z-10 rounded border bg-popover px-1.5 py-0.5 text-2xs text-popover-foreground shadow-sm"
+          style={{ left: vm.dimensionTool.hover.x + 12, top: vm.dimensionTool.hover.y + 12 }}>
+          {t('section2d.dimension.otherCut')}
+        </div>
       )}
 
       {editingAnnotation && (() => {

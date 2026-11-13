@@ -2,13 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * Scoreboard report: samples (one JSON row per lane sample) -> per fixture and lane medians,
- * spread, verdicts, noise floors, stage ranking and the markdown tables. Failed samples stay in the counts.
- */
+/** Scoreboard report: samples (one JSON row per lane sample) -> per fixture and lane medians,
+ * spread, verdicts, noise floors, stage ranking and the markdown tables. Failed samples stay in the counts. */
 
 import { identityLaneFor, laneIdentityVerdict, reopenOutputVerdict } from './load-scoreboard-identity.mjs';
-import { watchdogRows, webglPickRows } from './load-scoreboard-report-sections.mjs';
+import { thermalSection, watchdogRows, webglPickRows } from './load-scoreboard-report-sections.mjs';
 export { watchdogRows, webglPickRows } from './load-scoreboard-report-sections.mjs';
 import { aaNoiseFloor, expectedCacheTier, median, rankShares, relativeSpread, verdictFor } from './load-scoreboard-stats.mjs';
 
@@ -386,6 +384,7 @@ export function renderMarkdown(summary, plan, host, samples = []) {
     out.push('', '## Host watchdog overlap (samples during a periodic host job pass; measurement only, cells not voided)', '',
       '| fixture | lane | side | samples | overlapping a pass | unknown | median foreign CPU ms of overlapping samples |', '|---|---|---|---:|---:|---:|---:|', ...wdRows);
   }
+  out.push(...thermalSection(samples));
   const glRows = webglPickRows(samples);
   if (glRows.length) {
     out.push('', '## WebGL at the pick (start-screen mark drawing in the 1 s before the pick or during the open) and canvas frames to interactive', '',

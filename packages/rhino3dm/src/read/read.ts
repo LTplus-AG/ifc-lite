@@ -2,9 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { discardRhino, dispose, isCurrentRhino, loadRhino } from '../runtime.js';
+import { discardRhino, dispose, loadRhino, withCurrentRhino } from '../runtime.js';
 import { readLook, resolveAppearance, type Appearance, type Look } from './appearance.js';
-import { buildBlock, expandInstance, markContents, MAX_BLOCK_PLACEMENTS, type Block, type BlockWalk } from './blocks.js';
+import { buildBlock, expandInstance, inheritableFade, markContents, MAX_BLOCK_PLACEMENTS, type Block, type BlockContext, type BlockWalk } from './blocks.js';
 import { readDocument, rows as tableRows, type DocumentTables } from './document.js';
 import { Emitter } from './emit.js';
 import { extractGeometry, type Part } from './geometry.js';
@@ -75,11 +75,13 @@ function readObjects(api: ReadApi, file: RFile, tables: DocumentTables, opts: Se
 function readBlocks(api: ReadApi, file: RFile, rows: Map<string, ObjectRow>, tables: DocumentTables, report: Report): { blocks: Map<string, Block>; claimed: Set<string> } {
   const linkedTypes = [api.InstanceDefinitionUpdateType.Linked.value, api.InstanceDefinitionUpdateType.LinkedAndEmbedded.value];
   const claimed = new Set<string>();
+  // `fades` once for the file, not once per definition: it depends on the instances, not the members.
+  const context: BlockContext = { tables, fades: inheritableFade(rows.values(), tables), report };
   const blocks = new Map(tableRows(file.instanceDefinitions(), (definition): [string, Block] => {
     const ids = definition.getObjectIds();
     for (const id of ids) claimed.add(id);
     const members = ids.flatMap(id => rows.get(id) ?? []);
-    return [definition.id, buildBlock(definition.name, linkedTypes.includes(definition.updateType.value), members, tables, report)];
+    return [definition.id, buildBlock(definition.name, linkedTypes.includes(definition.updateType.value), members, context)];
   }));
   markContents(blocks);
   return { blocks, claimed };
@@ -125,9 +127,10 @@ function build(api: ReadApi, file: RFile, archiveVersion: number, classes: IfcCl
   if (drawn.length === 0) throw refusal(report);
 
   const { entities, entityOf } = buildEntities(drawn, tables.groupNames, classes, report);
-  // Merging can put a later object into an earlier entity, so restore entity order.
-  const byEntity = <T extends { entity: number }>(items: T[]): T[] => {
-    for (const item of items) item.entity = entityOf[item.entity];
+  // Merging can put a later object into an earlier entity, so restore entity order. Each record keeps
+  // its own object's visibility, which a merged entity's flag cannot carry for every part.
+  const byEntity = <T extends { entity: number; hidden: boolean }>(items: T[]): T[] => {
+    for (const item of items) { item.hidden = drawn[item.entity].hidden; item.entity = entityOf[item.entity]; }
     return items.sort((a, b) => a.entity - b.entity);
   };
   return {
@@ -157,38 +160,40 @@ export async function readRhino3dm(bytes: Uint8Array, opts: ReadRhino3dmOptions 
   }
   // rhino3dm's heap stops at 2 GB, and a read takes about five times the file size of it.
   const outOfMemory = () => new RhinoReadError('too-large', `This file (${size}) could not be read: it most likely needs more memory than the reader has. Split the model into smaller files in Rhino.`);
-  // Another read can abort and discard the module this one was handed while it waited, and parsing
-  // with a discarded module fails an import that is fine. So this is rechecked after the last await
-  // before parsing. A module discarded during the reacquire itself still reaches the parse, where
-  // it fails the way an abort already does.
-  const [loaded, classes] = await Promise.all([loadRhino(opts.locateFile), loadIfcClasses()]);
-  const rhino = isCurrentRhino(loaded) ? loaded : await loadRhino(opts.locateFile);
-  const api = readApi(rhino);
+  // The runtime load starts here, so it runs alongside the classes. Its module is not kept: the
+  // one that is parsed with is taken below, after the last await.
+  const [, classes] = await Promise.all([loadRhino(opts.locateFile), loadIfcClasses()]);
   const large = bytes.byteLength >= OUT_OF_MEMORY_SUSPECT_BYTES;
   // What the caller's callback throws is the caller's: it is passed on as it is, never read as a wasm failure.
   let callerThrew = false;
   const progress = onProgress && ((done: number, total: number) => {
     try { onProgress(done, total); } catch (error) { callerThrew = true; throw error; }
   });
-  let file: RFile | null = null;
-  try {
-    file = api.File3dm.fromByteArray(bytes);
-    if (!file) {
-      // At the heap limit rhino3dm returns null, as it does for a damaged file. A large
-      // file that still ends in its own length was not cut short, so memory is the cause.
-      if (!large || !endsWithFileLength(bytes)) throw new RhinoReadError('not-3dm', NOT_3DM_MESSAGE);
+  // Another read can abort and discard the module this one was handed while it waited, and parsing
+  // with a discarded module fails an import that is fine. `withCurrentRhino` runs the parse on a
+  // module that is current, in the same step as the check, so no abort can slip in before it.
+  return withCurrentRhino(opts.locateFile, rhino => {
+    const api = readApi(rhino);
+    let file: RFile | null = null;
+    try {
+      file = api.File3dm.fromByteArray(bytes);
+      if (!file) {
+        // At the heap limit rhino3dm returns null, as it does for a damaged file. A large
+        // file that still ends in its own length was not cut short, so memory is the cause.
+        if (!large || !endsWithFileLength(bytes)) throw new RhinoReadError('not-3dm', NOT_3DM_MESSAGE);
+        discardRhino();
+        throw outOfMemory();
+      }
+      return build(api, file, archiveVersion, classes, { subdLevel, maxTriangles, bakeInstances, onProgress: progress });
+    } catch (error) {
+      // A wasm trap or abort, or a C++ exception (which escapes embind as a bare number), leaves the
+      // module unusable. A failed typed-array allocation only counts for a file large enough to cause one.
+      const trapped = error instanceof WebAssembly.RuntimeError || typeof error === 'number';
+      if (callerThrew || (!trapped && !(large && error instanceof RangeError))) throw error;
       discardRhino();
-      throw outOfMemory();
-    }
-    return build(api, file, archiveVersion, classes, { subdLevel, maxTriangles, bakeInstances, onProgress: progress });
-  } catch (error) {
-    // A wasm trap or abort, or a C++ exception (which escapes embind as a bare number), leaves the
-    // module unusable. A failed typed-array allocation only counts for a file large enough to cause one.
-    const trapped = error instanceof WebAssembly.RuntimeError || typeof error === 'number';
-    if (callerThrew || (!trapped && !(large && error instanceof RangeError))) throw error;
-    discardRhino();
-    file = null;
-    // A small file cannot exhaust the heap, so a trap on one means its contents are damaged.
-    throw large ? outOfMemory() : new RhinoReadError('not-3dm', NOT_3DM_MESSAGE);
-  } finally { dispose(file); }
+      file = null;
+      // A small file cannot exhaust the heap, so a trap on one means its contents are damaged.
+      throw large ? outOfMemory() : new RhinoReadError('not-3dm', NOT_3DM_MESSAGE);
+    } finally { dispose(file); }
+  });
 }

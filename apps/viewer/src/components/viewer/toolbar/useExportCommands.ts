@@ -31,6 +31,7 @@ import { trackExportCompleted } from '@/lib/analytics';
 import type { ExportSurface } from '@/lib/analytics-export-events';
 import { EXPORT_COMMANDS, type CsvExportType, type RegisteredExportCommand } from './export-commands';
 import type { TranslationKey } from '@/i18n';
+import { useTranslation } from '@/i18n';
 import {
   hasRetainedGeometryModel, hasRetainedShapeOnlyModel, RETAINED_EXACT_ONLY_REASON, RETAINED_SHAPE_ONLY_REASON,
 } from '@/store/retainedGeometry';
@@ -78,6 +79,7 @@ function activeModelExportNote(modelCount: number): string {
 }
 
 export function useExportCommands(surface: ExportSurface) {
+  const { t } = useTranslation();
   const ifcDataStore = useViewerStore((s) => s.ifcDataStore);
   const models = useViewerStore((s) => s.models);
   const hasIonModel = useMemo(() => listIonExportModels(models, ifcDataStore).length > 0, [models, ifcDataStore]);
@@ -153,17 +155,20 @@ export function useExportCommands(surface: ExportSurface) {
   const handleScreenshot = useCallback(async () => {
     try {
       const renderer = getGlobalRenderer();
-      if (!renderer) throw new Error('no 3D viewport on screen');
+      if (!renderer) {
+        toast.error(t('exportCommands.screenshot.notReady'));
+        return;
+      }
       const image = await captureViewportFrame(renderer, { read: canvas => canvas.toDataURL('image/png') });
       if (!image) throw new Error('viewport capture failed');
       downloadDataUrl(image, modelExportFilename(activeModelName(useViewerStore.getState()), 'png', '_screenshot'));
       trackExportCompleted({ format: 'png', surface });
-      toast.success('Screenshot saved');
+      toast.success(t('exportCommands.screenshot.saved'));
     } catch (err) {
       console.error('Screenshot failed:', err);
-      toast.error('Screenshot failed');
+      toast.error(t('exportCommands.screenshot.failed'));
     }
-  }, [surface]);
+  }, [surface, t]);
 
   /** Dispatch for the registry's one-click (`kind: 'action'`) commands. */
   const runExportAction = useCallback((action: 'json' | 'screenshot') => {

@@ -167,7 +167,8 @@ export interface ReadRhino3dmOptions {
   locateFile?: (path: string, prefix: string) => string;
   subdLevel?: 0 | 1 | 2 | 3;        // default 2
   maxTriangles?: number;            // default 30_000_000 drawn, instances counted per placement;
-                                    // a curve or point cloud vertex counts a third of a triangle;
+                                    // a vertex costs a third of a triangle, a mesh at least
+                                    // its triangles (see Size ceiling);
                                     // a whole count, 0 or more: RangeError otherwise
   bakeInstances?: boolean;          // default false: blocks come back as definitions + instances
   onProgress?: (done: number, total: number) => void;
@@ -200,18 +201,18 @@ export interface RhinoImport {
     ifcClass: string;                       // IFC::Class when valid, else IfcBuildingElementProxy
     name: string; description: string; objectType: string;
     layer: number;
-    hidden: boolean;                        // object hidden or any layer on its path off
+    hidden: boolean;                        // object hidden or any layer on its path off; merged: all parts hidden
     objectIds: string[];                    // Rhino UUIDs merged into this entity
     geometryType: string;                   // Rhino class: "Mesh", "Brep", "InstanceReference", "NurbsCurve", ...
     userStrings: RhinoUserStrings;          // the first object's, verbatim and in file order, then what merged objects add
     propertySets: { name: string; properties: [string, string][] }[];
   }[];
-  meshes: (RhinoImportGeometry & { entity: number; color: RhinoRgba })[];
+  meshes: (RhinoImportGeometry & { entity: number; color: RhinoRgba; hidden: boolean })[];
   definitions: { name: string; meshes: (RhinoImportGeometry & { color: RhinoRgba | null })[] }[];
-  instances: { entity: number; definition: number; transform: number[]; color: RhinoRgba }[];
-  pointClouds: { entity: number; origin: RhinoVector3; positions: Float32Array; colors: Uint8Array | null; color: RhinoRgba }[];
-  curves: { entity: number; origin: RhinoVector3; positions: Float32Array; closed: boolean; color: RhinoRgba }[];
-  textDots: { entity: number; position: RhinoVector3; text: string; color: RhinoRgba }[];
+  instances: { entity: number; definition: number; transform: number[]; color: RhinoRgba; hidden: boolean }[];
+  pointClouds: { entity: number; origin: RhinoVector3; positions: Float32Array; colors: Uint8Array | null; color: RhinoRgba; hidden: boolean }[];
+  curves: { entity: number; origin: RhinoVector3; positions: Float32Array; closed: boolean; color: RhinoRgba; hidden: boolean }[];
+  textDots: { entity: number; position: RhinoVector3; text: string; color: RhinoRgba; hidden: boolean }[];
   skipped: Record<string, number>;          // by reason/type: "Point": 8, "Brep:no-render-mesh": 3
   warnings: string[];                       // one line per distinct condition
 }
@@ -255,6 +256,11 @@ interface RhinoImportGeometry {
 - `curves[i].positions` is a polyline. A curve that is not a polyline is
   sampled at 32 points per span, at most 8,192 per curve.
 - `pointClouds[i].colors` is RGBA bytes per point, or null.
+- `hidden` on a mesh, instance, point cloud, curve or text dot is the flag of
+  the object that drew it, computed as `entities[i].hidden` is. It equals the
+  entity's flag except in an entity that merges parts that differ (see Layers,
+  visibility, hierarchy). Added after v1 shipped, in v1: a reader that ignores
+  it sees the same result as before.
 
 Guarantees, so the adapter never checks them: every index is in range; layers
 come parent first; every number is finite, after unit scaling and after every
@@ -434,8 +440,10 @@ its winding flipped and its normals transformed by the inverse transpose
   `InstanceReference:cycle` and reported [test: a crafted self-referencing
   definition].
 - A **drawing budget** caps drawn triangles at `maxTriangles`, a block's
-  triangles counted once per placement in both modes. A curve or point cloud
-  vertex is charged a third of a triangle, at top level and per placement:
+  cost counted once per placement in both modes, and a placement's block
+  meshes admitted whole or left out whole (see Size ceiling). A vertex is
+  charged a third of a triangle when that is more than a part's triangles, at
+  top level and per placement:
   without that a 20,000-point cloud in a block placed 500 times came back as
   120 MB with nothing reported [ran, then fixed]. Reaching the budget stops
   drawing for the rest of the file (text dots excepted) and reports how many
@@ -450,13 +458,20 @@ its winding flipped and its normals transformed by the inverse transpose
   levels that each reference the next twice are 2^20 placements [test]. Every
   reference the walk reaches is charged, drawn or skipped (missing, linked,
   cyclic, invalid), so references that draw nothing cannot stall it either
-  [test]. A part that a placement pushes out of range costs no triangles, so
+  [test]. The limit is checked on every reference, the skipped ones included,
+  so the walk stops on the one that spends it instead of running on to the end
+  of the block it is in [test]. A part that a placement pushes out of range costs no triangles, so
   it is charged here too, as one reference [test]. Once it is spent, a
   reference that could never be drawn still gets its own reason, not `budget`
   [test].
 - A placement whose transform is not finite, has an entry above 1e15, flattens
   space (zero determinant) or is not affine (last row other than `0 0 0 1`) is
-  counted as `InstanceReference:invalid`.
+  counted as `InstanceReference:invalid`. A last row that is `0 0 0 1` to
+  rounding noise is replaced by the exact values before anything is composed
+  with it: that noise grows with the translation it meets, and an otherwise
+  identity `IFC::WorldFromModel` holding 1e-17 composed with a placement a
+  million metres out lands 1e-11 from affine, so a frame that was accepted
+  refused every block instance under it [test, both modes].
   Geometry a transform pushes out of the f32 range is counted as
   `transform:invalid` [test]. That is decided before the budget is charged, so
   geometry that is left out costs no triangles [test], and from the part's
@@ -485,30 +500,172 @@ its winding flipped and its normals transformed by the inverse transpose
 | `colorSource` | Colour |
 |---|---|
 | `ColorFromObject` | `objectColor` (RGBA). Our export writes alpha here: FZK glass is alpha 31 [ran]. |
-| `ColorFromLayer` | the object's layer colour. Inside a block, the member's own layer [unproven: check against Rhino]. |
+| `ColorFromLayer` | the object's layer colour. Inside a block, the member's own layer [openNURBS, ran]. |
 | `ColorFromMaterial` | `diffuseColor`, alpha = 1 − `transparency` |
 | `ColorFromParent` | the instance's resolved colour; layer colour at top level |
 
-When the colour's alpha is 255 and the object's material (its own, or its
-layer's) has `transparency > 0`, the material's transparency wins: Rhino
-displays transparency from the material [unproven: check against Rhino]. A
-material inherited from a parent instance does not apply it again, because the
-parent's colour already carries it. A block member coloured "by parent" with
-a transparent material of its own takes the instance's colour and, when that
-colour is opaque, its own material's transparency [test]. A block member coloured by a material
-that is itself "by parent" takes the instance's colour, like a member coloured
-"by parent" [test]. Colours stay sRGB, as `MeshData.color`. Each source is
-covered by a crafted file [test].
+When the colour's alpha is 255 and the object's material has `transparency > 0`,
+the material's transparency wins: Rhino displays transparency from the material
+[documented, not rendered]. The material is whichever one the object ends up
+with, its own, its layer's, or one inherited from a block instance. Colours stay
+sRGB, as `MeshData.color`. Each source is covered by a crafted file [test].
+
+#### Block members and "from parent" (#9987)
+
+A member of a block definition can take its colour, its material, or both from
+the instance placing it. The resolver is
+`ON_3dmObjectAttributes::ApplyParentalControl` in openNURBS, which is the
+function Rhino itself uses, so it settles what Rhino draws without needing
+Rhino. It was built from
+[mcneel/opennurbs](https://github.com/mcneel/opennurbs) `8.x` at
+`eb92af3ba1806b0a34a99aba0d3bda83e3d46083` and run over all 144 combinations of
+a member's and an instance's two sources. What it does to the member's
+attributes:
+
+- a **"by parent" material** is overwritten with the instance's resolved
+  material index, and the member's material source becomes
+  `MaterialFromObject`. Nothing afterwards can tell the member from one that
+  owned that material.
+- a **"by parent" colour** is replaced by the instance's colour source and
+  value; an instance colour that is itself "by layer" resolves to that
+  instance's layer colour.
+- **every other source is left alone**, the member's layer index included. The
+  layer index is never rewritten, and openNURBS says why in a 2010 comment next
+  to the code it disabled: "Color by parent means COLOR and not LAYER".
+
+The reader follows that. `parent` is the placing instance's already-resolved
+appearance, so nesting composes outermost first.
+
+| Member `colorSource` | Member `materialSource` | Colour and alpha | Evidence |
+|---|---|---|---|
+| `ColorFromObject` | `FromLayer`, `FromObject` | its `objectColor`, faded by the material it names | openNURBS, ran [test] |
+| `ColorFromObject` | `FromParent` | its `objectColor`, faded by the **instance's** material | openNURBS, ran [test] |
+| `ColorFromLayer` | `FromLayer`, `FromObject` | its **own** layer's colour, never the instance's layer | openNURBS, ran [test] |
+| `ColorFromLayer` | `FromParent` | its own layer's colour, faded by the instance's material | openNURBS, ran [test] |
+| `ColorFromMaterial` | `FromLayer`, `FromObject` | the diffuse colour of the material it names | openNURBS, ran [test] |
+| `ColorFromMaterial` | `FromParent` | the diffuse colour of the **instance's material**, not the instance's object colour | openNURBS, ran [test] |
+| `ColorFromParent` | `FromLayer`, `FromObject` | the instance's resolved colour, at its own material's transparency when that colour is opaque | the reader's rule, and the fourth divergence below [test] |
+| `ColorFromParent` | `FromParent` | the instance's resolved colour; both inherited, so the two agree exactly | openNURBS, ran [test] |
+| any | any, no instance (top level) | every "from parent" source falls back to the object's own layer | openNURBS enum comments, ran [test] |
+
+The two rows that carry `FromParent` with a colour of their own are the ones
+#9987 asked about, and they were both wrong before: the member took the
+instance's colour where Rhino takes the inherited material's, and an inherited
+material's transparency was skipped on the theory that the parent's colour
+already carried it. It does not, because the member's resolved material is the
+instance's material and Rhino reads transparency from whatever material an
+object ends up with.
+
+**What that costs the instanced output.** One instance record carries one
+colour, so a definition mesh can say "my own colour" or "the instance's
+colour" and nothing else. `memberColor` decides which, and names the third
+case: a member whose colour or alpha the instance's material decides is baked
+per placement, like a curve or a "by parent" mesh with a transparent material
+of its own. Both modes draw the same colours and the same triangle count
+[test].
+
+An inherited material can only change a member's colour through its diffuse
+colour or its transparency. So a member that reads that diffuse
+(`ColorFromMaterial`) always bakes, and the rest bake only when a material some
+instance in the file hands down is transparent, which `inheritableFade`
+measures. That gate matters: with 5,000 placements of one 3,200-triangle
+member, baking every `MaterialFromParent` member returned 5,000 mesh records
+and 375 MB of geometry, every record the same colour, where one shared
+definition holds 0.08 MB [ran]. It is measured over what the instances resolve
+to rather than over the material table, because a Rhino file keeps materials
+nothing references and one leftover transparent material would otherwise bake
+every inheriting member in the file [test]. It still over-approximates: one
+instance naming a transparent material bakes the members of every definition,
+including those placed only by instances with opaque materials.
+
+**Nested blocks.** Each level resolves against its parent's already-resolved
+attributes, so "by parent" reaches past the direct parent only when the
+intermediate instance is itself "by parent". The Rhino 8 help page states the
+rule as "By Parent only works with the direct parent", with a worked example:
+a box set to By Parent inside Block A inside Block B shows Block A's layer
+colour, and shows Block B's colour once Block A is By Parent too
+([object properties](https://docs.mcneel.com/rhino/8/help/en-us/properties/object.htm)).
+Both halves of that example were run through openNURBS and are covered [test].
+The material help page is vaguer on nesting, saying only that objects set to
+the Parent material "are not affected by further nesting"
+([material properties](https://docs.mcneel.com/rhino/8/help/en-us/properties/material.htm));
+openNURBS composes, and that is what the reader does [test].
+
+**Known divergences.** All four come from one modelling choice: `Appearance`
+hands a member the instance's already-resolved colour, where openNURBS hands it
+the instance's colour *source*. The first three are reached only when the
+placing instance's own colour or material is itself by-material or by-parent,
+which no public .3dm does. The fourth needs no more than an instance that names
+a transparent material, which is an ordinary file, and the table's
+`ColorFromParent` row is pinned at the reader's value by a test that builds
+one. Carrying the source instead would settle the first three,
+whose right answer is a fixed colour a definition can hold; the cost is that
+which definition a placement shares would then depend on the instance, so
+`Emitter` would have to key one by more than the block id. The fourth needs a
+second colour on every instance record, or a bake. Both are out of scope for
+#9987, which asked about the two `FromParent` rows in the table.
+
+- an instance whose `colorSource` is `ColorFromMaterial`: openNURBS gives its
+  "by parent" members `ColorFromMaterial`, so a member with a material of its
+  own is coloured by *that* material. The reader gives it the instance's
+  resolved colour. The two agree whenever the member's material is inherited
+  [openNURBS, ran].
+- a top-level instance whose own `colorSource` is `ColorFromParent`: with no
+  parent of its own, openNURBS leaves its members `ColorFromParent` too, so
+  they fall back to their own layers. The reader gives them the instance's
+  resolved colour, which is the instance's layer colour [openNURBS, ran].
+- the same shape for `MaterialFromParent` on a top-level instance: openNURBS
+  leaves the member's material unresolved, so it falls back to the member's own
+  layer material, where the reader hands down the instance's [openNURBS, ran].
+- a member whose colour is "by parent" and whose material is not inherited
+  takes the instance's *drawn* alpha. Rhino copies the instance's colour value,
+  which never carries material transparency, and then fades the member by its
+  own material. The two differ only when the instance itself has a transparent
+  render material [openNURBS, ran].
+
+**Plot colour is not read.** `PlotColorFromParent` exists and resolves the same
+way, but plot colour is for printing and the reader never reads it: `RAttributes`
+in `read/rhino-api.ts` does not name `plotColorSource`.
+
+**No public .3dm has a "from parent" block member.** Every member in
+mcneel/rhino3dm's `tests/models` (`blocks.3dm`, `file3dm_stuff.3dm`),
+mcneel/rhino-developer-samples and openNURBS's own `example_files` is
+`ColorFromLayer` plus `MaterialFromLayer` [ran, all three sets]. So the table's
+rows are covered by crafted files, with the one public file that does carry a
+semi-transparent render material,
+openNURBS's `my_mesh_with_material.3dm`, pinned as a fixture for the
+transparency rule [test].
 
 ### Layers, visibility, hierarchy
 
 - `layers[i].visible` holds the layer's own flag. `entities[i].hidden` is
   `object.visible === false || mode === Hidden || any ancestor layer off`
   [test]. A merged entity is hidden when all its objects are.
+- Visibility stays per part. Parts that share a GlobalId and its group merge
+  into one entity (D8) whatever their visibility, so a group can hold a hidden
+  part, or one on a layer that is off, next to a visible one. One entity flag
+  cannot say which, so every geometry record carries `hidden`, its own
+  object's flag. A consumer hides exactly what Rhino hides by leaving out a
+  record whose `hidden` is set while its entity's is not, and keeps the entity
+  flag for the user's show and hide [test: a crafted group of a visible box, a
+  hidden box and a curve on an off layer, and one hidden object of its own].
+  Not splitting the entity keeps D8: the parts are one IFC element.
 - Layers are reordered parent first, keeping file order among siblings. A
   layer whose parent is missing becomes a root; so does a layer in a parent
   cycle, with a warning. An object whose layer index is outside the table
   (`subd_creases.3dm` has -1) lands on the first layer [test].
+- `fullPath` is built from the parent that reordering settled on, not read from
+  rhino3dm's `Layer.fullPath`: that property follows `ParentId` with no visited
+  set, so for a cyclic chain it does not come back [measured: still running
+  after 90 s on a model built in memory. The tests make that call in a child
+  process with a deadline, so a hang fails one test instead of the suite]. The
+  cycle could not be put into a .3dm: openNURBS resets a cyclic parent to nil
+  as it writes, and patching the parent field in the bytes makes
+  `fromByteArray` answer null [measured], so nothing shows the reader reaching
+  it through a file. Building the path here also keeps it in step with the
+  repaired tree: a layer this walk shows at the top level is named as one, and
+  what hangs off it reads as nested from there [test]. Paths of well-formed
+  files are unchanged [test: Rhino-authored samples and our own exports].
 - **Spatial stamps:** a layer carrying a valid `IFC::GlobalId` and an
   `IFC::Class` that names `IfcProject` or an instantiable spatial element gets
   `spatial: { globalId, ifcClass, elevation }`. `IFC::Elevation` is read as a
@@ -574,11 +731,34 @@ the reader drops the shared runtime and the next read or write loads a fresh
 module [test, with a simulated abort]. A trap on a file of 32 MB or more is
 `too-large`; on a smaller file, which cannot exhaust the heap, it is `not-3dm`.
 
-A read that was already waiting on the runtime holds its own reference to the
-module, so a concurrent abort can leave it with the discarded one. It rechecks
-after its last await and takes the replacement, which keeps one file's abort
-from failing another file that is fine [test: two reads sharing a module, the
-first trapping].
+A read or a write that was already waiting on the runtime holds its own
+reference to the module, so a concurrent abort can leave it with the discarded
+one. Both reacquire until the module is current, through one helper
+(`withCurrentRhino` in `runtime.ts`) that runs the parse or the write in the
+same step as its check, so nothing can discard the module in between. One
+recheck is not enough, because the reacquire is itself an await: a second abort
+during it hands the caller a module that is already dead [test: three reads
+sharing a module, the first two aborting and the third reading a valid file;
+and a write that waits through an abort].
+
+A table row the binding does not hand out is reported as `not-3dm` too: a
+`count` that disagrees with `get` is damage, and naming it keeps a bare
+TypeError from escaping the reader. A row fails the file where a null object is
+only counted, because the layer, material and group rows are addressed by index
+from elsewhere (`layerIndex`, materials, group names), so dropping one would
+move every reference to the rows after it; the definition table is keyed by id
+and could tolerate a gap, but a table that contradicts its own count is damage
+either way. Every document-table read goes through that one guard, the string
+table included, which the reader walks itself. The objects table is not one of
+them: `readObjects` counts a row the binding will not wrap as
+`<type>:unreadable` and reads on.
+
+Those four tables answer null for an index past `count` [measured]; the string
+table answers an empty pair instead [measured], so there the guard can only
+catch a change in the binding. No row under `count` could be made to answer
+null, so the guard holds the binding to a contract it allows rather than to a
+case reproduced here [test, with a table that answers null under its own
+count].
 
 ### Size ceiling
 
@@ -635,6 +815,59 @@ What that says:
   in the worker. Whether a tab survives that is [unproven]; the one-shot
   worker contains a crash either way.
 
+**What the budget charges.** Every drawn part costs a third of a triangle per
+vertex, and a mesh at least its triangles: a mesh costs whichever is more.
+That one rule covers meshes, curves (polyline points or samples) and point
+clouds, at top level and per placement, in both instance modes; text dots
+stay on their own limit. The reader counts the budget in thirds of a
+triangle, so every charge is a whole number: a block's cost is exactly the
+sum of its meshes', and parts that fill the budget fit. Counted in doubles,
+the remainder drifted: three 5-point curves at `maxTriangles: 5` drew two,
+because 5 - 5/3 - 5/3 is 1.6666666666666663 there [measured, then fixed;
+test]. Memory follows the vertex buffers as much as the triangles: before the
+vertex charge, a mesh of 1 triangle over 100,000 vertices came back with
+2.4 MB of buffers at `maxTriangles: 10`, and 50 baked placements of it with
+120 MB at `maxTriangles: 100` [measured, then fixed; test]. It costs
+33,333 1/3 triangles now, so it needs `maxTriangles: 33,334` and is refused
+at 10. A mesh whose every vertex is in some triangle has at most three per triangle, so it costs its triangles alone and
+normal files are charged as before [test: the box block at 120; ran: none of
+the 73 meshes of our FZK export, the 271 of duplex, or the 4 in the five
+readable Rhino samples has more than three vertices per triangle]. Curves
+and clouds keep the charge they had: 100,000 points need `maxTriangles:
+33,334` and are refused at 33,333 [measured]. One budget, no second option:
+the triangle is the unit, and a vertex is priced in it.
+
+**The triangle budget admits a placement's block meshes whole, in both modes.**
+`maxTriangles` is charged a block's cost once per placement, and a
+placement that would draw them all and does not fit is left out entirely, so
+neither mode draws part of that set. Before that rule the option decided
+whether a file read at all, because baking charged mesh by mesh: a block of two
+12-triangle boxes at `maxTriangles: 12` came back as one box under
+`bakeInstances: true` and refused the file under `false` [measured, then fixed;
+test: both modes at 12, 23 and 24]. A placement a transform pushes out of range
+draws less than the block in any case: there each mesh is looked at on its own,
+after the range check that costs no triangles, so such a placement neither
+charges the budget nor spends it [test: a block that does not fit, out of
+range, leaves a later object drawable].
+
+What the admission covers is the block's meshes under a reach that keeps f32,
+which is where the two modes differed. The budget can still cut a placement
+elsewhere, and does it identically either way, so what is drawn no longer
+depends on the option:
+
+- What the walk draws beside those meshes (curves, point clouds, and by-parent
+  meshes carrying transparency of their own) is charged one part at a time. A
+  block of a 12-triangle box and a 9-point curve at `maxTriangles: 13` draws
+  the box and leaves the curve out [measured, both modes].
+- So are the meshes of a placement the reach refuses. The reach is one bound
+  for the whole block, measured from the block origin, while each mesh is
+  checked on its own extent, so a block of two unit boxes 1e24 from its origin
+  under a 1e15 scale is refused as a whole although both meshes fit: at
+  `maxTriangles: 12` one box is drawn [measured, both modes].
+
+Both cases report the object as drawn in part, so it is the budget working
+rather than the option deciding.
+
 ## Options
 
 Level 1 has no dialog. The defaults live in the reader.
@@ -677,9 +910,20 @@ Level 1 has no dialog. The defaults live in the reader.
   never re-hosted. Asserted: per-type entities and skip counts on
   `file3dm_stuff.3dm`, `blocks.3dm` and `mesh.3dm`, the SubD triangle count at
   each level on `subd_creases.3dm` (12, 48, 192, 768), and the no-render-mesh
-  refusal on `object_UserStrings.3dm`. The `mcneel/opennurbs` example files
-  (the Rhino logo models) were not added: that repository's licence text does
-  not grant redistribution, and the files are not needed.
+  refusal on `object_UserStrings.3dm`. One `mcneel/opennurbs` example file is
+  pinned the same way, `my_mesh_with_material.3dm`: the only public .3dm found
+  with a semi-transparent render material, so it is what proves the
+  transparency rule on a file nobody here wrote. Its licence does not grant
+  redistribution either, which is why it is an `upstream_file` entry and not an
+  upload. The rest of that repository's example files (the Rhino logo models)
+  are not needed.
+- Block member appearance (`appearance.test.ts`): the "from parent" resolution
+  table above, row by row, against a crafted instance whose object colour and
+  material colour disagree, so the rows that #9987 asked about discriminate.
+  Plus the top-level fallback, the Rhino 8 help page's nested-block example in
+  both its forms, where each row's mesh lands when the modes differ, and that
+  both modes draw the same colours and triangle count. Six of its sixteen cases
+  fail against the reader as it was [ran].
 - Crafted through rhino3dm in the test (`test-support/craft.ts`), for
   everything no sample covers: colour sources, hidden state, layer stamps,
   units, Breps and extrusions with render meshes, curves, point clouds, text
@@ -688,7 +932,9 @@ Level 1 has no dialog. The defaults live in the reader.
 - Guards: a self-referencing block definition terminates and reports. rhino3dm
   hands out a definition's id only after its members are fixed, so the test
   patches the stored id and repairs the chunk CRC. The triangle budget and the
-  placement budget stop the walk and report the remainder.
+  placement budget stop the walk and report the remainder: the triangle budget
+  the same way in both modes, the placement budget on the reference that spends
+  it.
 - Errors: garbage, empty and truncated input give `not-3dm`; a forged header
   version gives `newer-archive`; an input over the cap and a simulated abort
   give `too-large`.
@@ -697,6 +943,14 @@ Level 1 has no dialog. The defaults live in the reader.
   exports no heap getter, so the test catches the `WebAssembly.Memory` as the
   module is instantiated. (The export's own heap test is still skipped for
   lack of that getter.)
+- Runtime (`runtime.test.ts`): a read that waits through two aborts in a row,
+  and a write that waits through one, run on the module that is current. The
+  factory is mocked so every module it builds is recorded and the dead ones are
+  built dead, which is how a second abort can be put in the right place.
+- Document (`document.test.ts`): a table row the binding does not hand out, the
+  layer paths reordering settles on (nested, missing parent, cycle), and the
+  native `Layer.fullPath` of a cyclic chain, read in a child process with a
+  deadline so its hang fails that test alone.
 - Each guard above was checked by removing it and watching a test fail.
 
 **Viewer (vitest):**

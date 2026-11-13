@@ -67,6 +67,8 @@ export const drawing2DTeardown = defineSliceTeardown(
     'textAnnotation2DEditing',
     'cloudAnnotation2DPoints',
     'cloudAnnotations2D',
+    'dimension2DPoints',
+    'dimensions2D',
     'selectedAnnotation2D',
   ],
   {
@@ -109,6 +111,8 @@ export const drawing2DTeardown = defineSliceTeardown(
         textAnnotation2DEditing: defaults.textAnnotation2DEditing,
         cloudAnnotation2DPoints: defaults.cloudAnnotation2DPoints,
         cloudAnnotations2D: defaults.cloudAnnotations2D,
+        dimension2DPoints: defaults.dimension2DPoints,
+        dimensions2D: defaults.dimensions2D,
         selectedAnnotation2D: defaults.selectedAnnotation2D,
       };
     },
@@ -143,6 +147,7 @@ export const drawing2DTeardown = defineSliceTeardown(
           textAnnotations2D: state.textAnnotations2D ?? defaults.textAnnotations2D,
           tagAnnotations2D: state.tagAnnotations2D ?? defaults.tagAnnotations2D,
           cloudAnnotations2D: state.cloudAnnotations2D ?? defaults.cloudAnnotations2D,
+          dimensions2D: state.dimensions2D ?? defaults.dimensions2D,
           drawing2DDisplayOptions: state.drawing2DDisplayOptions ?? defaults.drawing2DDisplayOptions,
         },
         scope.nextActiveModelId,

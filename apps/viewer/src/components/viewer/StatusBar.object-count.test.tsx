@@ -31,7 +31,7 @@ import 'fake-indexeddb/auto';
 import { describe, it, beforeEach, after, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { expireStoreBusyCap, settleLoadWindow } from '@/test/load-window';
+import { expireStoreBusyCap, settleLoadWindow, untilReleased } from '@/test/load-window';
 import { markModelLoadEnded } from '@/hooks/modelLoadEnd';
 import { createRoot, type Root } from 'react-dom/client';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
@@ -393,7 +393,7 @@ describe('StatusBar — object count waits for the load to settle (load window; 
     }
   });
 
-  it('reserves the count\'s width in both states, so the settled number does not move the bar', async () => {
+  it('keeps one box (tabular figures, a minimum width for the dash and a typical count) in both states', async () => {
     useViewerStore.setState({ geometryStreamingActive: true, geometryResult: geometry(MESHED_IDS) });
     const container = render();
     const count = () => container.querySelector('[data-testid="status-element-count"]');
@@ -401,7 +401,7 @@ describe('StatusBar — object count waits for the load to settle (load window; 
     assert.equal(count()?.getAttribute('aria-busy'), 'true');
     act(() => useViewerStore.setState({ geometryStreamingActive: false }));
     await settleLoadWindow();
-    assert.equal(count()?.className, pending, 'same reserved box before and after');
+    assert.equal(count()?.className, pending, 'the same box classes before and after (a long count may still widen it)');
     assert.match(String(pending), /(^|\s)min-w-24(\s|$)/, 'a spacing token, not an arbitrary value (UI drift ratchet)');
     assert.equal(count()?.getAttribute('aria-busy'), null);
   });
@@ -520,7 +520,7 @@ describe('StatusBar — a federated add holds only the model that is loading', (
     act(() => useViewerStore.setState({ models: new Map([['A', federated('A', store, 0, 'complete') as never]]) }));
     act(() => markModelLoadEnded('A'));
     act(() => useViewerStore.setState({ models: new Map([['A', federated('A', store, 0, 'complete') as never], ['B', federated('B', storeB, 1000, 'pending') as never]]) }));
-    await settleLoadWindow();
+    await settleLoadWindow(await untilReleased('A'));
     assert.equal(useViewerStore.getState().loading, true);
     assert.equal(elementsText(container), '4 elements', 'A settled: its count, although B started loading before its frame');
     act(() => useViewerStore.setState({ models: new Map([['A', federated('A', store, 0, 'complete') as never], ['B', federated('B', storeB, 1000, 'complete') as never]]), loading: false }));
@@ -553,5 +553,13 @@ describe('StatusBar — a federated add holds only the model that is loading', (
       }
     });
   }
+
+  it('shows the dash for a loading model that has no store yet, never "0 elements"', async () => {
+    act(() => useViewerStore.setState({ loading: true, ifcDataStore: null, models: new Map([['A', { ...federated('A', store, 0, 'pending'), ifcDataStore: null } as never]]) } as never));
+    const container = render();
+    assert.equal(elementsText(container), '— elements', 'federated/primary placeholder before its store');
+    act(() => useViewerStore.setState({ models: new Map() } as never));
+    assert.equal(elementsText(container), '— elements', 'single-store mode before its store');
+  });
 });
 

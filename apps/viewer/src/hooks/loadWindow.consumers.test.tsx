@@ -14,7 +14,7 @@ import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { markModelLoadEnded } from './modelLoadEnd.js';
-import { settleLoadWindow } from '@/test/load-window';
+import { settleLoadWindow, untilReleased } from '@/test/load-window';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { render, cleanup } from '@/test/render.js';
 import { useViewerStore } from '@/store';
@@ -187,7 +187,7 @@ it('multi-file open: A\'s overlays and hidden pill appear at A\'s settle while B
   act(() => useViewerStore.setState({ models: new Map([['A', federated('A', storeA, 'complete')]]) }));
   act(() => markModelLoadEnded('A')); // A's settleLoadUi
   act(() => useViewerStore.setState({ models: new Map([['A', federated('A', storeA, 'complete')], ['B', federated('B', storeB, 'pending')]]) }));
-  await settleLoadWindow();
+  await settleLoadWindow(await untilReleased('A'));
   assert.equal(useViewerStore.getState().loading, true, 'B is still loading');
   assert.deepEqual(overlays.at(-1), ['A'], 'A settled: its overlays appear; B is held');
   assert.equal(hidden.at(-1), 1, 'A\'s hidden pill appears');

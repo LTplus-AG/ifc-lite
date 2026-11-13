@@ -13,18 +13,13 @@ import { determinant3, hasLinearPart, keepsF32, reach, transformNormals, transfo
 
 export type DrawnPart = Exclude<Part, { kind: 'instance' }>;
 
-/** A record as drawn: the reader adds `hidden` once it maps the record to its entity. */
-type Drawn<T> = Omit<T, 'hidden'>;
-
 /** A block's own meshes, as the output definition, their `cost`, and per axis how far any vertex is from the block's origin. */
 export interface BlockMeshes { name: string; meshes: RhinoImportDefinition['meshes']; cost: number; reach: RhinoVector3 }
 
 /**
  * What a part costs the triangle budget: its triangles, or a third of a triangle per vertex,
- * rounded up, when that is more. Memory follows the vertex buffers as well as the triangles, and
- * nothing makes a mesh's triangles use its vertices. A mesh whose every vertex is in some triangle
- * has at most three per triangle and costs its triangles alone. Whole numbers, so a block's cost
- * is exactly the sum of its meshes' and a placement admitted whole is never cut by rounding.
+ * rounded up, whichever is more, since memory follows the vertex buffers too. A whole number, so a
+ * block's cost is exactly the sum of its meshes' and a placement admitted whole is never cut by rounding.
  */
 export function cost(part: { positions: Float32Array; indices?: Uint32Array }): number {
   return Math.max((part.indices?.length ?? 0) / 3, Math.ceil(part.positions.length / 9));
@@ -45,15 +40,16 @@ export const MAX_TEXT_DOTS = 100_000;
 
 /**
  * Collects the output geometry and enforces the drawing budget. `entity`
- * holds the index of the source object until the reader maps it to an entity.
+ * holds the index of the source object until the reader maps it to an entity,
+ * and `hidden` is false until the reader sets that object's flag.
  */
 export class Emitter {
-  readonly meshes: Drawn<RhinoImportMesh>[] = [];
+  readonly meshes: RhinoImportMesh[] = [];
   readonly definitions: RhinoImportDefinition[] = [];
-  readonly instances: Drawn<RhinoImportInstance>[] = [];
-  readonly pointClouds: Drawn<RhinoImportPointCloud>[] = [];
-  readonly curves: Drawn<RhinoImportCurve>[] = [];
-  readonly textDots: Drawn<RhinoImportTextDot>[] = [];
+  readonly instances: RhinoImportInstance[] = [];
+  readonly pointClouds: RhinoImportPointCloud[] = [];
+  readonly curves: RhinoImportCurve[] = [];
+  readonly textDots: RhinoImportTextDot[] = [];
   /** True once a part did not fit: nothing but text dots is drawn after that. */
   exhausted = false;
   private readonly definitionIndex = new Map<string, number>();
@@ -63,7 +59,7 @@ export class Emitter {
   /** Parts left out as `transform:invalid` so far. They cost no triangles, so the block walk charges them itself. */
   outOfRange = 0;
 
-  constructor(private readonly bake: boolean, private trianglesLeft: number, private readonly report: Report) {}
+  constructor(private readonly bake: boolean, private budgetLeft: number, private readonly report: Report) {}
 
   /** How many records have been drawn so far. */
   size(): number {
@@ -79,16 +75,16 @@ export class Emitter {
     this.report.warn('dots', () => `Stopped after ${MAX_TEXT_DOTS.toLocaleString('en-US')} text dots: ${plural(this.report.skipped['TextDot:limit'], 'text dot')} left out.`);
   }
 
-  /** Whether `triangles` still fit; when they do not, drawing stops for the rest of the file. */
-  private fits(triangles: number): boolean {
-    if (this.exhausted || triangles > this.trianglesLeft) { this.exhausted = true; return false; }
+  /** Whether `cost` still fits; when it does not, drawing stops for the rest of the file. */
+  private fits(cost: number): boolean {
+    if (this.exhausted || cost > this.budgetLeft) { this.exhausted = true; return false; }
     return true;
   }
 
   /** Charge the budget, or stop drawing for the rest of the file. */
-  private take(triangles: number): boolean {
-    if (!this.fits(triangles)) return false;
-    this.trianglesLeft -= triangles;
+  private take(cost: number): boolean {
+    if (!this.fits(cost)) return false;
+    this.budgetLeft -= cost;
     return true;
   }
 
@@ -124,7 +120,7 @@ export class Emitter {
     if (part.kind === 'dot') {
       this.dotVisits++;
       if (!origin.every(Number.isFinite)) this.report.skip('TextDot:invalid');
-      else this.textDots.push({ entity: object, position: origin, text: part.text, color: [...color] });
+      else this.textDots.push({ entity: object, position: origin, text: part.text, color: [...color], hidden: false });
       return true;
     }
     if (this.exhausted) return false;
@@ -132,13 +128,13 @@ export class Emitter {
     if (!this.take(cost(part))) return false;
     const linear = xform !== null && hasLinearPart(xform) ? xform : null;
     const positions = linear ? transformVectors(linear, part.positions) : this.own(part.positions);
-    if (part.kind === 'curve') this.curves.push({ entity: object, origin, positions, closed: part.closed, color: [...color] });
-    else if (part.kind === 'points') this.pointClouds.push({ entity: object, origin, positions, colors: part.colors && this.own(part.colors), color: [...color] });
+    if (part.kind === 'curve') this.curves.push({ entity: object, origin, positions, closed: part.closed, color: [...color], hidden: false });
+    else if (part.kind === 'points') this.pointClouds.push({ entity: object, origin, positions, colors: part.colors && this.own(part.colors), color: [...color], hidden: false });
     else {
       // A mirroring placement turns each triangle inside out, so its winding is reversed.
       const mirrored = linear !== null && determinant3(linear) < 0;
       this.meshes.push({
-        entity: object, origin, positions, color: [...color],
+        entity: object, origin, positions, color: [...color], hidden: false,
         normals: linear ? transformNormals(linear, part.normals) : this.own(part.normals),
         indices: mirrored ? flipWinding(part.indices) : this.own(part.indices),
       });
@@ -187,7 +183,7 @@ export class Emitter {
       this.definitionIndex.set(id, definition);
       this.definitions.push({ name: block.name, meshes: block.meshes.map(m => ({ ...m, positions: this.own(m.positions), normals: this.own(m.normals), indices: this.own(m.indices) })) });
     }
-    this.instances.push({ entity: object, definition, transform: xform, color: [...color] });
+    this.instances.push({ entity: object, definition, transform: xform, color: [...color], hidden: false });
     return true;
   }
 }

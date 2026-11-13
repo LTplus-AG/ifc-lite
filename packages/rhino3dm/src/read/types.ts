@@ -100,7 +100,7 @@ export interface RhinoImportGeometry {
 export interface RhinoImportMesh extends RhinoImportGeometry {
   entity: number;
   color: RhinoRgba;
-  /** This record's own object hidden, or any layer on its path off. Equals the entity's flag unless the entity merges parts that differ. */
+  /** Its own object's flag, as `RhinoImportEntity.hidden`; differs from the entity's only in a merged entity. */
   hidden: boolean;
 }
 
@@ -117,7 +117,7 @@ export interface RhinoImportInstance {
   /** 16 row-major numbers, metres: world = transform · (origin + position). */
   transform: number[];
   color: RhinoRgba;
-  /** This record's own object hidden, or any layer on its path off. Equals the entity's flag unless the entity merges parts that differ. */
+  /** Its own object's flag, as `RhinoImportEntity.hidden`; differs from the entity's only in a merged entity. */
   hidden: boolean;
 }
 
@@ -128,7 +128,7 @@ export interface RhinoImportPointCloud {
   /** RGBA bytes per point, or null when the cloud has no colours. */
   colors: Uint8Array | null;
   color: RhinoRgba;
-  /** This record's own object hidden, or any layer on its path off. Equals the entity's flag unless the entity merges parts that differ. */
+  /** Its own object's flag, as `RhinoImportEntity.hidden`; differs from the entity's only in a merged entity. */
   hidden: boolean;
 }
 
@@ -139,7 +139,7 @@ export interface RhinoImportCurve {
   positions: Float32Array;
   closed: boolean;
   color: RhinoRgba;
-  /** This record's own object hidden, or any layer on its path off. Equals the entity's flag unless the entity merges parts that differ. */
+  /** Its own object's flag, as `RhinoImportEntity.hidden`; differs from the entity's only in a merged entity. */
   hidden: boolean;
 }
 
@@ -148,7 +148,7 @@ export interface RhinoImportTextDot {
   position: RhinoVector3;
   text: string;
   color: RhinoRgba;
-  /** This record's own object hidden, or any layer on its path off. Equals the entity's flag unless the entity merges parts that differ. */
+  /** Its own object's flag, as `RhinoImportEntity.hidden`; differs from the entity's only in a merged entity. */
   hidden: boolean;
 }
 

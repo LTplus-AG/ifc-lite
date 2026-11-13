@@ -12,7 +12,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Drawing2D, DrawingLine, DrawingPolygon, Point2D } from '@ifc-lite/drawing-2d';
-import { buildDrawingSnapShapes, findDrawingSnap, getDrawingSnapIndex, snapHitFit } from './drawing-snap';
+import { findSnap } from '../drafting-core/snaps';
+import { buildDrawingSnapShapes, DIMENSION_SNAP_MODES, findDrawingSnap, getDrawingSnapIndex, snapHitFit, windowedSnapShapes } from './drawing-snap';
 
 const SPLIT = 4.2624;
 const TOL = 0.05;
@@ -247,5 +248,33 @@ describe('snapHitFit', () => {
     const circle = { type: 'circle' as const, c: P(2, 3), r: 1.5 };
     assert.equal(snapHitFit(circle, 'center', P(2, 3)), 0);
     assert.ok(snapHitFit(circle, 'center', P(3.5, 3)) > 1);
+  });
+});
+
+describe('drawing snap: windowed shapes (#10076 review)', () => {
+  /** A closed 240-edge ring of entity `id` (a tessellated round column). */
+  const disc = (id: number, cx: number, r: number): DrawingPolygon => polygon(id,
+    Array.from({ length: 240 }, (_, i) => P(cx + r * Math.cos((i / 240) * 2 * Math.PI), r * Math.sin((i / 240) * 2 * Math.PI))));
+
+  it('gives the core only edges near the cursor, and the same hit as the whole shapes', () => {
+    const d = drawing([disc(30, 0, 1), disc(31, 1, 1)]);
+    const snap = getDrawingSnapIndex(d);
+    const near = windowedSnapShapes(snap, P(0.5, Math.sqrt(0.75)), TOL);
+    const edges = near.reduce((sum, s) => sum + (s.type === 'polyline' ? s.pts.length - 1 : 1), 0);
+    assert.ok(edges > 0 && edges < 20, `${edges} edges handed to the core, not 480`);
+    let checked = 0;
+    for (let i = 0; i < 400; i++) {
+      // Cursors along both rings, over the two crossings and the seam at angle 0.
+      const t = (i / 400) * 2 * Math.PI;
+      const cursor = P((i % 2) + Math.cos(t) * (1 + 0.02 * Math.sin(7 * t)), Math.sin(t) * (1 + 0.02 * Math.sin(7 * t)));
+      const opts = { tolerance: TOL, modes: DIMENSION_SNAP_MODES, from: i % 3 === 0 ? P(0.5, 3) : null };
+      const whole = findSnap(cursor, snap.shapes, snap.index, opts);
+      const windowed = findSnap(cursor, windowedSnapShapes(snap, cursor, TOL), null, opts);
+      assert.deepEqual(windowed, whole, `cursor ${JSON.stringify(cursor)}`);
+      if (whole) checked++;
+    }
+    assert.ok(checked > 300, `${checked} cursors snapped`);
+    const crossing = findDrawingSnap(d, P(0.5, Math.sqrt(0.75) + 0.01), { tolerance: TOL });
+    assert.equal(crossing?.mode === 'intersection' || crossing?.mode === 'endpoint', true, `crossing found, got ${crossing?.mode}`);
   });
 });

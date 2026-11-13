@@ -51,12 +51,47 @@ variants on shared shaders and invalidate borrowed records with scene revisions.
 **Shipped: the rows are never materialised, not dropped after the fact.**
 `extract_data_model` built an `EntityMetadata` row -- six owned `String`s -- for
 every STEP instance, and `DataModelEntities::Rooted` then threw about five in six
-away. The narrowing now runs before the metadata pass. Base-vs-branch over six
-catalogued models: rooted peak RSS -48% to -64%, wall time -58% to -63%, with a
-digest over every table of the data model identical to base in both variants. The
-default `All` path borrows its job list rather than copying it and keeps its
-metadata pass in the same `rayon::join`, and measures within a point of base on
-all six.
+away. The narrowing now runs before the metadata pass.
+
+Two harnesses, because the lever and what a caller sees are different questions
+and a win on the first is not a win on the second.
+
+`rust/processing/examples/dm_peak.rs` isolates **the extraction**: one
+`extract_data_model_with` per process, so `/usr/bin/time` attributes the peak to
+it alone. `--entities rooted-postfilter` runs the pre-#9582 path -- full table,
+then narrowed -- in the SAME binary, so the comparison holds codegen, allocator
+and host fixed; the two agree digest-for-digest, which is the correctness half of
+the same run. Five interleaved repetitions each, median: `schependomlaan` 959 ->
+273 MiB peak (-72%) and 379 -> 141 ms (-63%); `AC20-FZK-Haus` 59 -> 15 MiB (-74%)
+and 22 -> 9 ms (-59%). **Extraction only** -- no end-to-end or geometry claim
+follows from it.
+
+`scripts/perf/dm-e2e-ab.mjs` answers the second question: it builds the server
+from both sides and runs a real `POST /api/v1/parse/parquet`, one fresh server
+process and one fresh cache per measurement, and hashes both the geometry Parquet
+body and the data-model Parquet the route cached. Seven interleaved rounds on
+`schependomlaan`, median: `rooted` peak 1203 -> 556 MiB (-54%), total 185 -> 141
+ms (-24%); `all` peak -0.2% and total -1.1%, both inside the base side's own
+spread. Every digest byte-identical across sides in both variants.
+
+The gap between the two is the point. The extraction's -72% becomes -54% of the
+server process, because a parse also holds the upload, the geometry pass and two
+Parquet buffers, and that fixed floor is most of what is left. A harness that only
+reported the first number would have claimed a win a caller never sees.
+
+The `rooted` run's **geometry** phase also drops, 112 -> 67 ms, which is not a
+geometry change: the geometry pass runs in a `rayon::join` beside the extraction,
+so a cheaper sibling returns cores to it. The byte-identical geometry Parquet is
+what makes that reading safe rather than a guess.
+
+Peak RSS and wall time are not equally trustworthy on a desktop. Across four
+sweeps of this fixture the `rooted` peak reproduced within a point (-53.8% to
+-55.1%) while its total ranged -24% to -34%, because the geometry phase it shares
+cores with swings with whatever else the host is doing -- here macOS re-indexing
+the build trees between sweeps. The quiet sweep is the one reported, the -24% end,
+and the harness refuses a timing verdict outright when the base side's own total
+spread passes 15%. Report the spread beside the median, or the reader cannot tell
+which of the two numbers to believe.
 
 The catch was ordering, not the filter. Deciding before the entities table exists
 means deciding from the type name plus the ids the OTHER tables name, so every

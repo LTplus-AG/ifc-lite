@@ -194,7 +194,7 @@ it('#9389 a palette invocation cannot open copy in a replacement session', async
   const opened = () => { opens++; };
   window.addEventListener(COPY_TO_STOREYS_EVENT, opened);
   try {
-    WORKSPACE_SURFACE_COMMANDS.find(c => c.id === 'model:copy-to-storeys')!.run({ surface: 'palette' });
+    WORKSPACE_SURFACE_COMMANDS.find(c => c.id === 'model:copy-to-storeys')!.run();
     act(() => { useViewerStore.getState().exitModelWorkspace(); useViewerStore.getState().enterModelWorkspace({ modelId: MODEL_ID, storeyId: STOREY }); });
     await new Promise(resolve => setTimeout(resolve, 30));
     assert.equal(opens, 0);

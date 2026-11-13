@@ -27,7 +27,7 @@ import { registerKeyboardCommand } from '@/lib/commands/dispatcher';
 import { KEY_COMMAND_FEATURE, KEY_CONTEXT_FEATURE } from '@/lib/commands/keyboard-command-features';
 import { PANEL_FEATURE, isPanelAvailable } from '@/lib/panels/availability';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
-import { WORKSPACE_PANELS, workspacePanelForShortcutCode } from '@/lib/panels/registry';
+import { WORKSPACE_PANELS } from '@/lib/panels/registry';
 import { HomeTab } from '@/components/viewer/ribbon/tabs/HomeTab';
 import { COMMAND_FEATURE, COMMAND_PREFIX_FEATURE } from '@/components/viewer/surface-command-features';
 import { paletteSurfaceCommands } from '@/components/viewer/surface-commands';
@@ -170,6 +170,28 @@ describe('panels, commands, shortcuts and tools switched off', () => {
     }
     const off = WORKSPACE_PANELS.filter((panel) => !isPanelAvailable(panel.id)).map((panel) => panel.id);
     assert.equal(off.includes('hierarchy') || off.includes('properties'), false, 'the baseline panels cannot be switched off');
+  });
+
+  it('enforcing availability keeps a change an earlier listener makes in the same update', () => {
+    const store = useViewerStore;
+    store.setState({ floatingPanels: [] });
+    resetFeaturesForTest({ default: 'none', enable: ['check.clash'] });
+    const at = { snap: 'free' as const, x: 0, y: 0, w: 300, h: 200 };
+    // Subscribed before the rule, so it runs first and nests its own update.
+    const stopEarlier = store.subscribe((state, previous) => {
+      if (state.floatingPanels.some((panel) => panel.id === 'bcf') && !previous.floatingPanels.some((panel) => panel.id === 'bcf')) {
+        store.setState({ floatingPanels: [...state.floatingPanels, { id: 'clash', ...at }] });
+      }
+    });
+    const stop = enforcePanelAvailability(store);
+    try {
+      store.setState({ floatingPanels: [{ id: 'bcf', ...at }] });
+      assert.deepEqual(store.getState().floatingPanels.map((panel) => panel.id), ['clash']);
+    } finally {
+      stop();
+      stopEarlier();
+      store.setState({ floatingPanels: [] });
+    }
   });
 
   it('a tool that is off cannot be activated', () => {

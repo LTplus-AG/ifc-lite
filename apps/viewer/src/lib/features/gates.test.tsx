@@ -223,8 +223,13 @@ describe('one tool table, and what follows from it', () => {
     assert.match(text, /Data validation/, 'the other panels of the Alt+digit row stay');
   });
 
+  // Pop-outs of switched-off panels: services/panel-windows.test.ts.
+
   it('puts a separator in the panel browser only between groups that render', () => {
-    resetFeaturesForTest({ default: 'none' }); // every analysis group empty; Properties and Hierarchy remain
+    // Quantify and Site render nothing here. The first group (Coordinate) holds
+    // Properties, which no host can switch off, so it always renders: this pins
+    // the separator count rather than reproducing a reachable bug.
+    resetFeaturesForTest({ default: 'none' });
     const ribbon = render(<PanelGroupBrowser />);
     const trigger = ribbon.querySelector<HTMLButtonElement>('button[aria-label="Browse panels"]');
     assert.ok(trigger);
@@ -237,16 +242,5 @@ describe('one tool table, and what follows from it', () => {
     const first = menu.firstElementChild;
     assert.equal(first?.querySelector('[role="separator"]'), null, 'no separator before the first group');
     assert.equal(menu.querySelectorAll('[role="separator"]').length, menu.querySelectorAll('[data-panel-group]').length - 1);
-  });
-
-  it('closes a popped-out panel that is off and keeps the store in step', () => {
-    useViewerStore.getState().setPanelPoppedOut('bcf', true);
-    resetFeaturesForTest({ default: 'all', disable: ['check.bcf'] });
-    const stop = enforcePanelAvailability(useViewerStore);
-    try {
-      assert.ok(!useViewerStore.getState().poppedOutIds.includes('bcf'));
-    } finally {
-      stop();
-    }
   });
 });

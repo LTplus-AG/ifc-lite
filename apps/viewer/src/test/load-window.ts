@@ -8,10 +8,24 @@ import { act } from 'react';
  * Let the load window close after the store settled: it closes one painted
  * frame later, in a task behind that frame (hooks/loadWindow.ts), so the
  * whole-model consumers do not delay the settled frame. Await this after the
- * store change that ends a load, before asserting settled values.
+ * store change that ends a load, before asserting settled values. Waits for
+ * the transition (`until`, by default the window's close once the store is
+ * idle) up to `timeoutMs`, not a fixed delay.
  */
-export async function settleLoadWindow(): Promise<void> {
-  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 60)); });
+export async function settleLoadWindow(until?: () => boolean, timeoutMs = 2_000): Promise<void> {
+  const { viewerLoadWindow } = await import('@/hooks/loadWindow');
+  const { useViewerStore } = await import('@/store');
+  // Default: once the store is idle, wait for the window to close; mid-load
+  // (the store still busy), wait for the frame-paced releases already due.
+  const done = until ?? (() => {
+    const s = useViewerStore.getState();
+    return s.loading || s.geometryStreamingActive || !viewerLoadWindow().isOpen();
+  });
+  const deadline = Date.now() + timeoutMs;
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    while (!done() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 10));
+  });
 }
 
 /**
@@ -32,4 +46,10 @@ export async function expireStoreBusyCap(startBusy: () => void, setClock: (ms: n
   } finally {
     mock.timers.reset();
   }
+}
+
+/** For `settleLoadWindow(until)`: this model's hold has ended (its own load ended and that frame painted). */
+export async function untilReleased(modelId: string): Promise<() => boolean> {
+  const { viewerLoadWindow } = await import('@/hooks/loadWindow');
+  return () => !viewerLoadWindow().isHeld(modelId);
 }

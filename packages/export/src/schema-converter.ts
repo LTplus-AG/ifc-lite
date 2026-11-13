@@ -1,7 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-
 /**
  * IFC Schema Version Converter
  *
@@ -12,6 +11,7 @@
  * and adjusts attribute counts via regex replacement on raw STEP lines.
  */
 
+import { structuralAttributes } from './schema-converter-structural.js';
 import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import { deterministicGlobalId, getSchemaRegistryForVersion } from '@ifc-lite/parser';
 import { resolveUnrepresentedEntity } from './schema-untranslatable.js';
@@ -28,7 +28,6 @@ import { isStrictAttrPrefix } from './schema-converter-renames.js';
 export { computeWithheldRefIds } from './schema-untranslatable.js';
 
 export type IfcSchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
-
 /**
  * Entity type name mappings between schema versions.
  *
@@ -38,15 +37,11 @@ export type IfcSchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
  */
 
 // ─── IFC2X3 → IFC4 type renames ────────────────────────────────────────────
-// IFC2X3 had several *StandardCase subtypes that were folded into parent
-// types in IFC4 (with PredefinedType discriminator instead).
 const IFC2X3_TO_IFC4: Map<string, string> = new Map([
-  // StandardCase types removed in IFC4 (kept for backwards compat but deprecated)
-  // In IFC4 these are valid but deprecated; we keep them as-is.
-  // Only types that were truly removed/renamed:
   ['IFCELECTRICDISTRIBUTIONPOINT', 'IFCELECTRICDISTRIBUTIONBOARD'],
   ['IFCGASTERMINALTYPE', 'IFCBURNERTYPE'],
   ['IFCEQUIPMENTELEMENT', 'IFCBUILDINGELEMENTPROXY'],
+  ['IFCRELCONNECTSSTRUCTURALELEMENT', 'IFCRELASSIGNSTOPRODUCT'],
 ]);
 
 // ─── IFC4 → IFC2X3 type renames (reverse) ──────────────────────────────────
@@ -148,7 +143,6 @@ const IFC4X3_TO_IFC4: Map<string, string> = new Map([
   ['IFCDISTRIBUTIONBOARD', 'IFCELECTRICDISTRIBUTIONBOARD'],
   ['IFCELECTRICFLOWTREATMENTDEVICE', 'IFCFLOWTREATMENTDEVICE'],
 ]);
-
 /**
  * Convert an entity type name from one IFC schema version to another.
  *
@@ -293,11 +287,11 @@ export function convertStepLine(
   enums?: EnumReconciliation,
 ): string | null {
   if (fromSchema === toSchema) return line;
-  let converted = convertRecord(line, fromSchema, toSchema, random, withheldRefIds);
+  let converted = convertRecord(line, fromSchema, toSchema, random, withheldRefIds, fromSchema === 'IFC2X3' && toSchema === 'IFC4' ? enums?.structural.axes.axis(line) : undefined, enums?.structural);
   if (converted === null) return null;
   if (enums && toSchema !== 'IFC5') converted = enums.apply(converted, toSchema);
   if (toSchema === 'IFC2X3') return (slots ?? new Ifc2x3SlotFill()).apply(converted);
-  if (toSchema === 'IFC4' && (fromSchema === 'IFC4X3' || fromSchema === 'IFC5')) ifc4Slots?.apply(converted);
+  if (toSchema === 'IFC4' && (fromSchema !== 'IFC2X3' || /=\s*IFCSTRUCTURAL/i.test(converted))) ifc4Slots?.apply(converted);
   return converted;
 }
 
@@ -309,6 +303,8 @@ function convertRecord(
   toSchema: IfcSchemaVersion,
   random?: RandomSource,
   withheldRefIds?: ReadonlySet<number>,
+  structuralAxis?: string,
+  structuralDiagnostics?: EnumReconciliation['structural'],
 ): string | null {
   // Parse: #ID=TYPE(attrs);  — tolerate whitespace around `=` and `(` (Tekla's
   // `#34498= IFCOPENINGELEMENT(`, Viadotto_Acerno's `#159655 = IFC...(`, #7742).
@@ -336,7 +332,11 @@ function convertRecord(
   if (withheldRefIds && withheldRefIds.size > 0 && referencesAnyExpressId(attrsRaw, withheldRefIds)) {
     return resolveUnrepresentedEntity(prefix, entityType, attrsRaw, toSchema, random, withheldRefIds !== undefined);
   }
+  structuralDiagnostics?.inspect(line, fromSchema, toSchema);
 
+  if (structuralAxis) return `${prefix}${newType}(${args.join(',')},${structuralAxis});`;
+  const structural = structuralAttributes(entityType, args, fromSchema, toSchema);
+  if (structural !== null) return `${prefix}${newType}(${structural});`;
   // No representation in the target schema: an IFCPROXY keeping their
   // IfcProduct attributes (`productProxy`) preserves ids and references.
   if (shouldSkipEntity(newType, toSchema)) {

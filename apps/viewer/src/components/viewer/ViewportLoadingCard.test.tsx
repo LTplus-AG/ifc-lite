@@ -59,7 +59,7 @@ describe('in-viewport loading card (#5849)', () => {
     let cancelled = 0;
     act(() => useViewerStore.setState({ activeLoadCanceller: () => { cancelled += 1; } }));
     const container = renderCard();
-    const button = [...container.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Cancel');
+    const button = [...container.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === 'Cancel');
     assert.ok(button, 'a Cancel button is rendered when the load can be cancelled');
     click(button);
     assert.equal(cancelled, 1);
@@ -72,6 +72,27 @@ describe('in-viewport loading card (#5849)', () => {
     assert.ok(card?.textContent?.includes('added.ifc'), `the card names the file: ${card?.textContent}`);
     const status = container.querySelector('output');
     assert.ok(status?.textContent?.includes('added.ifc'), `the live region announces which file: ${status?.textContent}`);
+  });
+
+  it('uses compact visible phases while preserving detailed accessible progress', () => {
+    const container = renderCard();
+    const visiblePhase = () => container.querySelector('output [aria-hidden="true"]')?.textContent;
+    assert.equal(visiblePhase(), 'Geometry');
+    for (const [phase, expected] of [
+      ['Parsing IFCX (client-side)', 'Parsing'], ['Hydrating properties', 'Metadata'],
+      ['Rendering geometry (24 meshes)', 'Rendering'], ['Loading file', 'Reading'],
+    ]) {
+      act(() => useViewerStore.setState({ geometryProgress: { phase, percent: 64 } }));
+      assert.equal(visiblePhase(), expected);
+      assert.ok(container.querySelector('output .sr-only')?.textContent?.includes(phase));
+    }
+  });
+
+  it('handles unknown progress without announcing a fabricated percentage', () => {
+    act(() => useViewerStore.setState({ progress: null, geometryProgress: null }));
+    const container = renderCard();
+    assert.ok(!container.querySelector('output')?.textContent?.includes('%'));
+    assert.equal(container.querySelector('button'), null);
   });
 
   it('is not rendered when nothing is loading', () => {

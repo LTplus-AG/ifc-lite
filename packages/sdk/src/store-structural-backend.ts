@@ -17,6 +17,8 @@
  */
 
 import {
+  addStructuralLoadToStore, addStructuralCurveActionToStore, connectStructuralElementInStore,
+  type StructuralLoadInStoreParams, type StructuralCurveActionInStoreParams, type StructuralMemberConnectionOptions,
   editStructuralEntityInStore, removeStructuralEntityInStore, type StructuralEntityEdit,
   addStructuralPlanarActionToStore,
   addStructuralSurfaceActionToStore,
@@ -67,19 +69,14 @@ function ref(modelId: string, expressId: number): EntityRef {
   return { modelId, expressId };
 }
 
-/**
- * The `bim.store` structural methods are offered for IFC4 and IFC4X3 only.
- * The `@ifc-lite/create` builders also write IFC2X3, but this backend has not
- * been wired or tested for it. IFC5 is refused here because only some builders
- * check it, and `extractStructuralOnDemand` cannot read it back.
- */
-const SUPPORTED_STRUCTURAL_SCHEMAS: ReadonlySet<string> = new Set(['IFC4', 'IFC4X3']);
+/** Structural authoring follows the loaded model's IFC2X3, IFC4 or IFC4X3 schema. */
+const SUPPORTED_STRUCTURAL_SCHEMAS: ReadonlySet<string> = new Set(['IFC2X3', 'IFC4', 'IFC4X3']);
 
 function assertStructuralSchema(resolved: CostStoreModelResolution): void {
   const raw = resolved.store.schemaVersion;
   if (raw !== undefined && !SUPPORTED_STRUCTURAL_SCHEMAS.has(raw)) {
     throw new Error(
-      `bim.store structural authoring: schema '${raw}' is not supported; use IFC4 or IFC4X3.`,
+      `bim.store structural authoring: schema '${raw}' is not supported; use IFC2X3, IFC4 or IFC4X3.`,
     );
   }
 }
@@ -93,7 +90,7 @@ function groupAnchor(resolved: CostStoreModelResolution) {
   return {
     ownerHistoryId: resolved.ownerHistoryId,
     guidRandom: undefined,
-    schema: resolved.store.schemaVersion as 'IFC4' | 'IFC4X3' | undefined,
+    schema: resolved.store.schemaVersion as 'IFC2X3' | 'IFC4' | 'IFC4X3' | undefined,
   };
 }
 
@@ -119,12 +116,24 @@ export function createStructuralStoreBackend(
     },
     addStructuralPlanarAction(modelId: string, params: StructuralSurfaceActionInStoreParams): EntityRef {
       const model = resolved(modelId);
-      const result = addStructuralPlanarActionToStore(model.editor, groupAnchor(model), params);
+      const result = addStructuralPlanarActionToStore(model.editor, groupAnchor(model), params, model.store);
       return ref(model.modelId, result.activityId);
+    },
+    addStructuralLoad(modelId: string, params: StructuralLoadInStoreParams): EntityRef {
+      const model = resolved(modelId);
+      return ref(model.modelId, addStructuralLoadToStore(model.editor, groupAnchor(model), params));
+    },
+    addStructuralCurveAction(modelId: string, params: StructuralCurveActionInStoreParams): EntityRef {
+      const model = resolved(modelId);
+      return ref(model.modelId, addStructuralCurveActionToStore(model.editor, groupAnchor(model), params, model.store));
+    },
+    connectStructuralElement(modelId: string, RelatingElement: number, RelatedStructuralMember: number): EntityRef {
+      const model = resolved(modelId);
+      return ref(model.modelId, connectStructuralElementInStore(model.editor, model.ownerHistoryId, RelatingElement, RelatedStructuralMember));
     },
     addStructuralSurfaceAction(modelId: string, params: StructuralSurfaceActionInStoreParams): EntityRef {
       const model = resolved(modelId);
-      const result = addStructuralSurfaceActionToStore(model.editor, groupAnchor(model), params);
+      const result = addStructuralSurfaceActionToStore(model.editor, groupAnchor(model), params, model.store);
       return ref(model.modelId, result.activityId);
     },
     addStructuralPointReaction(modelId: string, params: StructuralPointReactionInStoreParams): EntityRef {
@@ -149,7 +158,7 @@ export function createStructuralStoreBackend(
     },
     addStructuralSurfaceMember(modelId: string, storeyExpressId: number, params: StructuralSurfaceMemberInStoreParams): EntityRef {
       const model = resolved(modelId);
-      const result = addStructuralSurfaceMemberToStore(model.editor, resolveSpatialAnchor(model.store, storeyExpressId), params);
+      const result = addStructuralSurfaceMemberToStore(model.editor, resolveSpatialAnchor(model.store, storeyExpressId), params, model.store);
       return ref(model.modelId, result.memberId);
     },
     addStructuralCurveConnection(modelId: string, storeyExpressId: number, params: StructuralCurveConnectionInStoreParams): EntityRef {
@@ -191,13 +200,13 @@ export function createStructuralStoreBackend(
     },
     addStructuralLinearAction(modelId: string, params: StructuralLinearActionInStoreParams): EntityRef {
       const model = resolved(modelId);
-      const result = addStructuralLinearActionToStore(model.editor, groupAnchor(model), params);
+      const result = addStructuralLinearActionToStore(model.editor, groupAnchor(model), params, model.store);
       return ref(model.modelId, result.activityId);
     },
-    connectStructuralMemberToConnection(modelId: string, memberExpressId: number, connectionExpressId: number): EntityRef {
+    connectStructuralMemberToConnection(modelId: string, memberExpressId: number, connectionExpressId: number, options?: StructuralMemberConnectionOptions): EntityRef {
       const model = resolved(modelId);
       const relId = connectStructuralMemberToConnectionInStore(
-        model.editor, model.ownerHistoryId, memberExpressId, connectionExpressId,
+        model.editor, model.ownerHistoryId, memberExpressId, connectionExpressId, undefined, options,
       );
       return ref(model.modelId, relId);
     },

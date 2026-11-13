@@ -22,6 +22,7 @@ export const propertyEditorFr = {
   "propertyEditor.inline.scopeInherited": "Réécrire cette valeur héritée dans {typeEntityName} ?",
   "propertyEditor.inline.scopeImpact": {"one":"{count} occurrence peut refléter la mise à jour, sauf remplacement local.","other":"{count} occurrences peuvent refléter la mise à jour, sauf remplacement local.","many":"{count} occurrences peuvent refléter la mise à jour, sauf remplacement local."},
   "propertyEditor.inline.applyToType": "Appliquer au type",
+  "propertyEditor.inline.overrideOnElement": "Remplacer sur cet élément",
   "propertyEditor.inline.keepEditing": "Continuer la modification",
   "propertyEditor.valueType.string": "Chaîne de caractères",
   "propertyEditor.valueType.label": "Libellé",

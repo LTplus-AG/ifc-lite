@@ -57,7 +57,7 @@
    665 apps/viewer/src/components/mcp/data.ts
   1317 apps/viewer/src/components/mcp/McpLanding.tsx
    525 apps/viewer/src/components/mcp/McpPlayground.tsx
-  2051 apps/viewer/src/components/mcp/playground-dispatcher.ts
+  1543 apps/viewer/src/components/mcp/playground-dispatcher.ts
    715 apps/viewer/src/components/mcp/PlaygroundChat.tsx
    453 apps/viewer/src/components/viewer/BCFPanel.tsx
    604 apps/viewer/src/components/viewer/BulkPropertyEditor.tsx
@@ -254,7 +254,7 @@
    758 packages/renderer/src/pointcloud/point-cloud-spatial-index.ts
   3677 packages/renderer/src/renderer.ts
    462 packages/renderer/src/scene-raycaster.ts
-  4104 packages/renderer/src/scene.ts
+  4065 packages/renderer/src/scene.ts
    589 packages/renderer/src/section-2d-overlay.ts
    564 packages/renderer/src/shaders/main.wgsl.ts
    417 packages/renderer/src/shadow-pass.ts
@@ -271,7 +271,6 @@
    788 packages/server-client/src/data-model-decoder.ts
    444 packages/server-client/src/parquet-tables.ts
    595 packages/server-client/src/types.ts
-   411 packages/source-dalux/src/http-client.ts
    406 packages/source-dalux/src/provider.ts
    415 packages/viewer/src/server.ts
   1486 packages/viewer/src/viewer-html.ts

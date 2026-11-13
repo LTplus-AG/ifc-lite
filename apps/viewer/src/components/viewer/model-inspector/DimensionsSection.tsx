@@ -125,7 +125,7 @@ export function SelectionDimensions({ selection }: { selection: InspectorSelecti
   const measured = useMemo(() => { void mutationVersion; return measure(selection); }, [selection, mutationVersion]);
   const { modelId, expressId } = selection;
   const wallTop = measured.kind === 'wall' ? readWallTop(modelId, expressId) : null;
-  const heightFrom = wallTop?.top === 'storeyAbove' ? wallTop.target?.from : undefined;
+  const heightFrom = wallTop && wallTop.top !== 'fixed' ? wallTop.target?.from : undefined;
 
   return (
     <InspectorSection title={t('modelInspector.dims.title')}>

@@ -26,6 +26,7 @@ export const propertyEditorIt = {
     "many": "{count} occorrenze potrebbero riflettere l'aggiornamento salvo sovrascrittura locale."
   },
   "propertyEditor.inline.applyToType": "Applica al tipo",
+  "propertyEditor.inline.overrideOnElement": "Sovrascrivi su questo elemento",
   "propertyEditor.inline.keepEditing": "Continua a modificare",
   "propertyEditor.valueType.string": "Stringa",
   "propertyEditor.valueType.label": "Etichetta",

@@ -79,8 +79,9 @@ export function StatusBar() {
       let held = 0;
       const resolveInModel = useViewerStore.getState().resolveGlobalIdInModel;
       for (const model of models.values()) {
-        if (!model.ifcDataStore) continue;
+        // Held first: a model that is loading has no store yet, and must still show the dash, not a 0.
         if (loadHold.isHeld(model.id)) { held++; continue; }
+        if (!model.ifcDataStore) continue;
         const toLocalId = (id: number): number => {
           const ref = resolveInModel(model.id, id);
           return ref?.expressId ?? id;
@@ -94,8 +95,8 @@ export function StatusBar() {
       }
       return { countedModels: out, heldModels: held };
     }
-    if (!ifcDataStore) return { countedModels: [], heldModels: 0 };
     if (loadHold.isHeld('legacy')) return { countedModels: [], heldModels: 1 };
+    if (!ifcDataStore) return { countedModels: [], heldModels: 0 };
     return { countedModels: [{
       modelId: 'legacy',
       store: ifcDataStore,
@@ -278,8 +279,10 @@ export function StatusBar() {
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-1.5">
           <Boxes className="h-3.5 w-3.5" />
-          {/* Reserved width and tabular figures, so the settled count does not move
-              the bar; a dash until the load settles. */}
+          {/* A dash until the load settles, never a provisional 0. Tabular figures and a
+              minimum width wide enough for the dash and a typical count, so the
+              dash-to-number swap does not shift the bar; a long count (for example
+              "1 / 1,000,000") still widens it. */}
           <span className="inline-block min-w-24 tabular-nums" data-testid="status-element-count" aria-busy={countPending || undefined}>
             {countPending ? '—' : formatNumber(visibleElements)}
             {selectedStoreys.size > 0 && totalObjects !== visibleElements && (

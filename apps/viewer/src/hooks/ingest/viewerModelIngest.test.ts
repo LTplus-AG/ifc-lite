@@ -28,7 +28,6 @@ function makeIfcxResult() {
   entityBuilder.add(2, 'IfcSlab', '', 'Slab B', '', '');
   return {
     fileSize: 0,
-    entityCount: 2,
     parseTime: 0,
     strings,
     entities: entityBuilder.build(),

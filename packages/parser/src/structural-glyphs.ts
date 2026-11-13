@@ -32,7 +32,7 @@
  *   surface; on a face without a plane reference surface, or an entry
  *   without its location, at the centre.
  *
- * `relative` scales arrows within their load group: the largest force (or
+ * `relative` scales arrows within their load case (else first load group): the largest force (or
  * moment) of the same distribution in the same group is 1; an action in no
  * load group scales on its own. Units differ by distribution (N, N/m, N/m2),
  * so each scales on its own.
@@ -218,7 +218,7 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
     // `null` (a refused model) is an answer, so no `??` here.
     return viaGroup === undefined ? onlyModelFrame : viaGroup;
   };
-  const loadGroups = new Set(extraction.loadGroups.map((g) => g.globalId));
+  const loadGroups = new Map(extraction.loadGroups.map((g) => [g.globalId, g.type]));
   const pending: Pending[] = [];
 
   /**
@@ -265,8 +265,10 @@ export function structuralGlyphs(store: IfcDataStore, extraction: StructuralExtr
     const frame = activity.globalOrLocal === 'LOCAL_COORDS' ? localFrame(activity, item, ownShape !== null, shape) : globalFrame(activity, item);
     if (!frame) continue;
 
-    // An ungrouped action scales on its own, never against other ungrouped ones.
-    const group = activity.groupGlobalIds.find((id) => loadGroups.has(id)) ?? `#${activity.expressId}`;
+    // Prefer the first assigned IfcStructuralLoadCase, otherwise the first load
+    // group in assignment order. Ungrouped actions scale on their own (#9828).
+    const group = activity.groupGlobalIds.find((id) => loadGroups.get(id) === 'IfcStructuralLoadCase')
+      ?? activity.groupGlobalIds.find((id) => loadGroups.has(id)) ?? `#${activity.expressId}`;
     const centre = shapeCentre(shape);
     const world = (v: Vec3): Vec3 => normalize(rotate(frame, v)) ?? [0, 0, 1];
     const parts = activity.appliedLoad.configuration

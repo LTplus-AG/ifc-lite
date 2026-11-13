@@ -445,6 +445,10 @@ test('the early lane is per-element checked: its rows name the elements file its
   assert.equal(elementsFileFor({ lane: 'browser-cold', fixture: 'FZK', side: 'base', round: 3 }), 'FZK-base-r3-cold.elements.json');
   assert.equal(elementsFileFor({ lane: 'browser-warm1', fixture: 'FZK', side: 'branch', round: 0 }), 'FZK-branch-r0-warm1.elements.json');
   assert.equal(elementsFileFor({ lane: 'browser-warm', fixture: 'FZK', side: 'branch', round: 0, warmOpens: [{}, {}] }), 'FZK-branch-r0-warm2.elements.json');
+  // Opt-in arms write under their sample tag's suffix; the default lanes' names above are unchanged.
+  assert.equal(elementsFileFor({ lane: 'browser-cold-settled', fixture: 'FZK', side: 'base', round: 3 }), 'FZK-base-r3-settled-cold.elements.json');
+  assert.equal(elementsFileFor({ lane: 'browser-warm1-early', fixture: 'FZK', side: 'base', round: 3 }), 'FZK-base-r3-early-warm1.elements.json');
+  assert.equal(elementsFileFor({ lane: 'browser-warm-settled', fixture: 'FZK', side: 'branch', round: 0, warmOpens: [{}, {}] }), 'FZK-branch-r0-settled-warm2.elements.json');
 });
 
 test('an output identity is comparable only when complete; a cache hit never borrows the cold identity (review #9740)', async () => {
@@ -500,6 +504,39 @@ test('a resumed rerun never overwrites the element files of lanes already record
   assert.deepEqual(elementFileMoves([{ ...cell, lane: 'browser-cold' }], 'FZK-base-r2', 'FZK-base-r2'), []);
 });
 
+test('an opt-in arm resumes like the default lanes: its rerun claims only the files of the lanes it records (review #9744)', async () => {
+  const { sampleTagFor, elementFileMoves } = await runner();
+  const armPlan = ['browser-cold-early', 'browser-warm1-early', 'browser-warm-early'];
+  const cell = { fixture: 'FZK', side: 'base', round: 2 };
+  // A fresh cell writes canonical files (`<tag>-early-<open>`), exactly as browser-cold-early always has.
+  assert.equal(sampleTagFor('FZK-base-r2', armPlan, armPlan, 'k1'), 'FZK-base-r2');
+  // Cold recorded, reopens missing: the rerun writes under its own tag; the recorded early-cold file is not a target.
+  const tag = sampleTagFor('FZK-base-r2', ['browser-warm1-early', 'browser-warm-early'], armPlan, 'k1');
+  assert.deepEqual(elementFileMoves([{ ...cell, lane: 'browser-warm1-early' }, { ...cell, lane: 'browser-warm-early', warmOpens: [{}, {}] }], tag, 'FZK-base-r2'),
+    [['FZK-base-r2-resumek1-early-warm1.elements.json', 'FZK-base-r2-early-warm1.elements.json'],
+      ['FZK-base-r2-resumek1-early-warm2.elements.json', 'FZK-base-r2-early-warm2.elements.json']]);
+});
+
+test('a plan listing an opt-in first-reopen lane needs two reopens (review #9744)', async () => {
+  const { loadPlan } = await runner();
+  const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = mkdtempSync(join(tmpdir(), 'arm-plan-'));
+  try {
+    writeFileSync(join(dir, 'index.html'), '');
+    const plan = (lanes, warmOpens) => {
+      const p = join(dir, `plan-${lanes.join('_')}-${warmOpens}.json`);
+      writeFileSync(p, JSON.stringify({ lanes, rounds: 1, warmOpens, fixtures: [{ name: 'f', path: process.execPath }],
+        sides: { base: { label: 'a', dist: dir }, branch: { label: 'b', dist: dir } } }));
+      return p;
+    };
+    assert.throws(() => loadPlan(plan(['browser-warm1-settled', 'browser-warm-settled'], 1)), /browser-warm1-settled needs warmOpens >= 2/);
+    assert.equal(loadPlan(plan(['browser-warm1-settled', 'browser-warm-settled'], 2)).warmOpens, 2);
+    assert.equal(loadPlan(plan(['browser-warm-settled'], 1)).warmOpens, 1);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('the report: output and per-element verdicts never read missing identity as a match (review #9740)', async () => {
   const { outputVerdict, elementDiffVerdict, withAaFloor } = await report();
   assert.equal(outputVerdict(['m=1'], ['m=1']), 'match');
@@ -516,7 +553,8 @@ test('the report: output and per-element verdicts never read missing identity as
 test('META: absent, empty or unreadable input never passes any verdict, identity or stability check', async () => {
   const S = await stats(), R = await report(), L = await lanesModule(), Snap = await snapshotRule(), Run = await runner();
   const lanes = R.LANES;
-  assert.deepEqual([...lanes].sort(), ['boot', 'browser-cold', 'browser-cold-early', 'browser-warm', 'browser-warm1', 'native-cold']);
+  assert.deepEqual([...lanes].sort(), ['boot', 'browser-cold', 'browser-cold-early', 'browser-cold-settled', 'browser-warm', 'browser-warm-early',
+    'browser-warm-settled', 'browser-warm1', 'browser-warm1-early', 'browser-warm1-settled', 'native-cold']);
   const passing = /^(identical|stable|ok|match|no significant difference|gain|regression|null)$/;
   const cases = [];
   const add = (name, outcome, ok) => cases.push({ name, outcome, ok });
@@ -549,6 +587,18 @@ test('META: absent, empty or unreadable input never passes any verdict, identity
       const emptyOther = R.elementDiffVerdict({ 1: 'a' }, [S.diffElements({ 1: 'a' }, {})], 'base r0', 2);
       add(`${lane}: per-element verdict against an empty sample`, emptyOther.identical, emptyOther.identical === false && emptyOther.unverifiable === true);
     }
+  }
+  // Per browser lane, through browserSample's real wiring (fake browser): an absent boot signal must fail every
+  // -settled lane at its arm, and must never be what arms (or fails) a default or -early lane.
+  const { browserSample } = await import('./load-scoreboard-browser.mjs');
+  const { fakeBrowserSample } = await import('./load-scoreboard-fake-browser.mjs');
+  const absent = {};
+  for (const arm of ['quiet', 'first-paint', 'boot-settled']) absent[arm] = (await fakeBrowserSample(browserSample, { arm, warmOpens: 2 })).result.lanes;
+  for (const lane of lanes.filter((l) => l.startsWith('browser'))) {
+    const arm = lane.endsWith('-settled') ? 'boot-settled' : lane.endsWith('-early') ? 'first-paint' : 'quiet';
+    const r = absent[arm][lane];
+    const viaSignal = /boot-settled arm/.test(r?.error ?? '');
+    add(`${lane}: sample on a page without __ifc_lite_boot_settled__`, r?.ok ? 'ok' : r?.error, arm === 'boot-settled' ? r?.ok === false && viaSignal : !viaSignal);
   }
   add('verdictFor([])', S.verdictFor([]).verdict, /^inconclusive/.test(S.verdictFor([]).verdict));
   add('verdictFor(all null)', S.verdictFor([[null, null], [null, null], [null, null], [null, null], [null, null]]).verdict,

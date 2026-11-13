@@ -13,7 +13,7 @@ import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, it, mock } from 'node:test';
 import { act, useState } from 'react';
-import { expireStoreBusyCap, settleLoadWindow } from '@/test/load-window';
+import { expireStoreBusyCap, settleLoadWindow, untilReleased } from '@/test/load-window';
 import { markModelLoadEnded } from '@/hooks/modelLoadEnd';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
@@ -66,17 +66,16 @@ async function parse(): Promise<IfcDataStore> {
   return new IfcParser().parseColumnar(bytes.buffer, { disableWorkerScan: true });
 }
 
-/** The number rendered after the "Elements with Geometry" label. */
-function elementsWithGeometry(panel: HTMLElement): string {
-  const match = /Elements with Geometry[^\d—]*([\d,]+|—)/.exec(panel.textContent ?? '');
-  return match ? match[1] : `<not found in ${JSON.stringify(panel.textContent)}>`;
+/** The value cell of the row labelled `label` (InspectorRow: label span, then value span), or a not-found marker. */
+function rowValue(panel: HTMLElement, label: string): string {
+  const labelCell = [...panel.querySelectorAll('span[title]')].find((el) => el.getAttribute('title') === label);
+  const value = labelCell?.nextElementSibling;
+  return value ? (value.textContent ?? '').trim() : `<no "${label}" row in ${JSON.stringify(panel.textContent)}>`;
 }
-
-/** The value rendered after the "Building Storeys" label. */
-function buildingStoreys(panel: HTMLElement): string {
-  const match = /Building Storeys[^\d—]*([\d,]+|—)/.exec(panel.textContent ?? '');
-  return match ? match[1] : `<not found in ${JSON.stringify(panel.textContent)}>`;
-}
+/** The value of the "Elements with Geometry" row, read from that row only. */
+const elementsWithGeometry = (panel: HTMLElement): string => rowValue(panel, 'Elements with Geometry');
+/** The value of the "Building Storeys" row, read from that row only. */
+const buildingStoreys = (panel: HTMLElement): string => rowValue(panel, 'Building Storeys');
 
 it('shows a dash while the load window is open and the exact counts once it settles (load window; supersedes #6411)', async () => {
   const dataStore = await parse();
@@ -232,7 +231,7 @@ it('multi-file open: A\'s statistics appear at A\'s settle while B, started at o
   act(() => markModelLoadEnded('seq-A'));
   act(() => useViewerStore.setState({ models: new Map([['seq-A', aDone], ['seq-B', model('seq-B', offsetB, 'pending')]]) }));
   const panelB = render(<ModelMetadataPanel model={model('seq-B', offsetB, 'pending')} />);
-  await settleLoadWindow();
+  await settleLoadWindow(await untilReleased('seq-A'));
   assert.equal(useViewerStore.getState().loading, true);
   assert.equal(elementsWithGeometry(panelA), '2', 'A settled: its statistics, although B is loading');
   assert.equal(elementsWithGeometry(panelB), '—', 'B is held');

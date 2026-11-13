@@ -57,6 +57,8 @@ function readObjects(api: ReadApi, file: RFile, tables: DocumentTables, opts: Se
           rows.set(attributes.id, {
             id: attributes.id, name: attributes.name, type, layer, layerPath: tables.layers[layer].fullPath,
             hidden: !attributes.visible || attributes.mode.value === api.ObjectMode.Hidden.value || tables.layers[layer].hidden,
+            // No value here is ever empty: openNURBS removes a key whose value is set to the empty
+            // string, so every reader of this user text sees a key as stated or absent, never blank.
             groups: attributes.getGroupList(), userStrings: attributes.getUserStrings(),
             material: tables.materials[appearance.material]?.name ?? '',
             member: attributes.isInstanceDefinitionObject, look, appearance, part,

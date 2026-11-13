@@ -37,6 +37,16 @@ export function ifcString(strings: RhinoUserStrings, name: string): string | und
 }
 
 /**
+ * The value an entity column takes: the first part that states `IFC::<name>`. Read from the parts
+ * themselves, so the rule stays "the first part that states the key" however `mergeUserText` numbers
+ * a later part's differing value. Values are never empty, so stating a key is the whole question.
+ */
+function columnString(parts: ObjectFacts[], name: string): string | undefined {
+  for (const part of parts) { const value = ifcString(part.userStrings, name); if (value !== undefined) return value; }
+  return undefined;
+}
+
+/**
  * Sort Attribute User Text into property sets. A key splits at its first `::`
  * into set and property, as the exporter wrote it; a key without one goes to
  * `Attribute User Text`, and so does a `Rhino::` key, because the `Rhino` set
@@ -143,19 +153,18 @@ export function buildEntities(objects: ObjectFacts[], groupNames: string[], clas
     entityOf.push(drafts.length);
     drafts.push({ globalId, parts: [o] });
   });
-  // Columns and property sets are read once every part's user text is in. A part either states an
-  // `IFC::*` key or does not, because openNURBS drops a key set to an empty value, so the first part
-  // that states a column key is the one that fills it, under the plain key (identity.test.ts).
+  // Columns and property sets are read once every part's user text is in.
   const entities = drafts.map(({ globalId, parts }): RhinoImportEntity => {
     const [first] = parts, userStrings = parts.length === 1 ? first.userStrings : mergeUserText(parts);
-    const className = ifcString(userStrings, 'Class')?.trim();
+    const className = columnString(parts, 'Class')?.trim();
     const ifcClass = className ? classes.product(className) : null;
     if (className && !ifcClass) report.warn('class', n => `${plural(n, 'object')} name an IFC::Class that is not an IFC product class and are imported as ${FALLBACK_CLASS}.`);
     return {
       globalId, ifcClass: ifcClass ?? FALLBACK_CLASS,
-      name: ifcString(userStrings, 'Name') || first.name || first.type,
-      description: ifcString(userStrings, 'Description') ?? '',
-      objectType: ifcString(userStrings, 'ObjectType') ?? '',
+      // A part states `IFC::Name` or does not; a Rhino object name, which can be empty, falls through.
+      name: columnString(parts, 'Name') ?? (first.name || first.type),
+      description: columnString(parts, 'Description') ?? '',
+      objectType: columnString(parts, 'ObjectType') ?? '',
       layer: first.layer, hidden: parts.every(part => part.hidden), objectIds: parts.map(part => part.id), geometryType: first.type,
       userStrings, propertySets: propertySets(first, userStrings),
     };

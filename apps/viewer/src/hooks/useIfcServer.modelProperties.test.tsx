@@ -10,6 +10,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { useViewerStore } from '@/store';
 import { federationRegistry } from '@ifc-lite/renderer';
 import { dataMutationPermission } from '@/store/mutation-permission';
+import { fromGlobalIdFromModels } from '@/store/globalId';
 import { useServerModelProperties } from './ingest/useServerModelProperties.js';
 import { useActivityJournal, cancelActivity } from '@/lib/activity/activity-journal';
 import { installModelLoadCanceller } from './modelLoadCanceller.js';
@@ -94,9 +95,10 @@ it('properties whose ids run past a later model are published as far as the head
   const { registerModelOffset, updateModel } = useViewerStore.getState();
   updateModel('server', { idOffset: registerModelOffset('server', 1), maxExpressId: 1 });
   const laterOffset = registerModelOffset('later', 10);
+  useViewerStore.getState().addModel({ ...fixtureModel('later', { idOffset: laterOffset }), maxExpressId: 10 });
   const warnings: unknown[][] = [];
   mock.method(console, 'warn', (...args: unknown[]) => { warnings.push(args); });
-  // A converted server store, whose compact id index is what the watermark reads.
+  // A converted server store, whose compact id index sets the store's highest id.
   const tooFar = convertServerDataModel({
     entities: ServerEntityIndex.fromRows([{ entity_id: 2_000_000, type_name: 'IFCPROJECT', global_id: 'far', name: 'Past the headroom', has_geometry: false }]),
     propertySets: new Map(), quantitySets: new Map(), relationships: [], classifications: [], materials: [], documents: [],
@@ -110,8 +112,15 @@ it('properties whose ids run past a later model are published as far as the head
     await new Promise(resolve => setTimeout(resolve, 50));
   });
   assert.equal(useViewerStore.getState().models.get('server')?.ifcDataStore, tooFar, 'the properties are not dropped');
-  assert.equal(useViewerStore.getState().models.get('server')?.maxExpressId, 2_000_000, 'the watermark is the store max: authored ids start above every hydrated id');
-  // Above the store max the ids belong to the later model, so this model has none to author with.
+  // maxExpressId is the ownership bound the reverse resolvers read: the published end, not the store
+  // max, or this model would claim the later model's global ids.
+  assert.equal(useViewerStore.getState().models.get('server')?.maxExpressId, 1_000_001, 'the published end');
+  for (const local of [0, 5, 10]) {
+    const ref = { modelId: 'later', expressId: local };
+    assert.deepEqual(useViewerStore.getState().resolveGlobalIdFromModels(laterOffset + local), ref, `the later model's local ${local} resolves to it`);
+    assert.deepEqual(fromGlobalIdFromModels(useViewerStore.getState().models, laterOffset + local), ref);
+  }
+  // The later model owns the ids past the published end, so this model has none to author with.
   assert.deepEqual(dataMutationPermission(useViewerStore.getState(), 'server'), { allowed: false, reason: 'id-space-exhausted' });
   assert.equal(useViewerStore.getState().toGlobalId('server', 1_000_001), 1_000_001, 'published to the end of the headroom');
   assert.throws(() => useViewerStore.getState().toGlobalId('server', 2_000_000), /not published/);

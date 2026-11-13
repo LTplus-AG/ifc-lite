@@ -37,6 +37,7 @@ function stateFor(activeModelId: string | null, measure2DResults: Measure2DResul
     polygonArea2DResults: defaults.polygonArea2DResults,
     textAnnotations2D: defaults.textAnnotations2D,
     cloudAnnotations2D: defaults.cloudAnnotations2D,
+    dimensions2D: defaults.dimensions2D,
     drawing2DDisplayOptions: defaults.drawing2DDisplayOptions,
   };
 }

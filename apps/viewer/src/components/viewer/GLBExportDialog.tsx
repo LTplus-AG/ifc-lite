@@ -240,8 +240,6 @@ export function GLBExportDialog({ surface, trigger }: GLBExportDialogProps) {
         );
         const globalHidden = visibleOnly ? getGlobalHiddenIds(selectedModelId) : undefined;
         const globalIsolated = visibleOnly ? getGlobalIsolatedIds(selectedModelId) : undefined;
-        // Class toggles by the class after a retype, as the viewport gates them (#10119).
-        // Structural mode arrives through `globalHidden`.
         const retyped = visibleOnly && classFilterActive(typeVisibility) ? retypedClasses(useViewerStore.getState()) : undefined;
         // `globalIsolated` is `null` for "no filter" vs an empty-but-non-null `Set`
         // for "isolation active, matches nothing" (`resolveExportVisibility`) — a

@@ -38,7 +38,7 @@ function sources(models: ReadonlyMap<string, FederatedModel>, fallback: IfcDataS
 }
 
 /** A stored row's class after the view's edits; null when deleted or not in the table. */
-export function storedClass(store: IfcDataStore, view: MutablePropertyView | undefined, id: number): string | null {
+function storedClass(store: IfcDataStore, view: MutablePropertyView | undefined, id: number): string | null {
   const parsed = store.entities.getExactTypeName?.(id) || store.entities.getTypeName(id);
   return parsed === 'Unknown' ? null : effectiveTreeType(view, id, parsed);
 }
@@ -61,6 +61,13 @@ export function hasStructuralData(state: { models: ReadonlyMap<string, Federated
   });
 }
 
+/** An entity's class after the view's edits, stored or created this session; null when deleted or unknown. */
+export function entityClass(store: IfcDataStore | null | undefined, view: MutablePropertyView | undefined, id: number): string | null {
+  const created = view?.getNewEntity(id);
+  if (created) return effectiveTreeType(view, id, created.type);
+  return store ? storedClass(store, view, id) : null;
+}
+
 /** Global id to class after edits, for each id an edit retyped. A mesh keeps the
  *  class it was built with, so mesh filters read this to classify a mesh the
  *  way the mask classifies its entity (#10119). Visits only edited ids. */
@@ -71,8 +78,7 @@ export function retypedClasses(state: Pick<ViewerState, 'models' | 'ifcDataStore
     const global = (id: number) => modelId === null ? id : state.toGlobalId(modelId, id);
     // Deleted ids stay out, so their meshes keep the class they were built with.
     for (const id of view.getTypeMutations().keys()) {
-      const created = view.getNewEntity(id);
-      const type = created ? effectiveTreeType(view, id, created.type) : store ? storedClass(store, view, id) : null;
+      const type = entityClass(store, view, id);
       if (type !== null) out.set(global(id), type);
     }
   }

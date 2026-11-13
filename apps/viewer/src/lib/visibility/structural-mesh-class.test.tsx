@@ -160,3 +160,13 @@ it('#10119 retypedClasses covers a retyped authored entity and leaves deleted ro
   const retyped = retypedClasses({ models: new Map(), ifcDataStore: store, mutationViews: new Map([['__legacy__', view]]), toGlobalId: (_m, id) => id });
   assert.deepEqual([...retyped], [[authored.expressId, 'IfcStructuralCurveMember']]);
 });
+
+it('#10119 companion check reads a retyped entity authored this session', () => {
+  const { view } = seed(true);
+  const store = useViewerStore.getState().models.get('b')!.ifcDataStore!;
+  const authored = new StoreEditor(store, view).addEntity('IfcBeam', [generateIfcGuid(), null, 'New beam', null, null, null, null, null, null]);
+  new StoreEditor(store, view).setEntityType(authored.expressId, 'IfcStructuralCurveMember');
+  useViewerStore.setState({ structuralViewMode: 'physical' });
+  const state = useViewerStore.getState();
+  assert.equal(companionHiddenNow(state.toGlobalId('b', authored.expressId), state), true);
+});

@@ -510,16 +510,11 @@ export function useDrawingGeneration({
       // Filter meshes by visibility (respect 3D hiding/isolation)
       let meshesToProcess = modelMeshes;
 
-      // Class-level Visibility toggles (issue #2060). These are a GLOBAL
-      // filter, not a 3D-only one: `ViewportContainer` applies `isTypeVisible`
-      // to the mesh list it hands the renderer, but the drawing derives its own
-      // list from `geometryResult.meshes` and only ever filtered
-      // hiding/isolation. So a hidden IfcSpace / IfcOpeningElement was still
-      // cut — its fill and outline showed in the 2D Section view, and via the
-      // 3D section overlay (which uploads `drawing.cutPolygons` /
-      // `drawing.lines` verbatim, see `useRenderUpdates.ts`) in the 3D view
-      // too. Same shared mapping as the viewport, Cesium, basket and GLB
-      // export, so all six toggles stay in lockstep.
+      // Class-level Visibility toggles (issue #2060) are a GLOBAL filter, not a
+      // 3D-only one. The drawing derives its own list from `geometryResult.meshes`,
+      // so without this a hidden IfcSpace / IfcOpeningElement was still cut, in the
+      // 2D Section view and in the 3D section overlay (`useRenderUpdates.ts`). Same
+      // shared mapping as the viewport, basket and GLB export, retypes included (#10119).
       meshesToProcess = meshesToProcess.filter((mesh) => isMeshTypeVisible(mesh, typeVisibility, structuralViewMode, retypedClasses));
 
       // Filter out hidden entities (using combined multi-model set)

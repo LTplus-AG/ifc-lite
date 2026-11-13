@@ -1,7 +1,93 @@
 # @ifc-lite/rhino3dm
 
-Convert an encoded IFC-lite RhinoScene v1 (JSON manifest + little-endian binary
-blob) into Rhino `.3dm` bytes. This adapter performs no IFC interpretation.
+Read and write Rhino `.3dm` through the pinned `rhino3dm` runtime, loaded lazily.
+
+- `readRhino3dm` turns `.3dm` bytes into plain `RhinoImport` data.
+- `writeRhino3dm` turns an encoded IFC-lite RhinoScene v1 (JSON manifest plus a
+  little-endian binary blob) into `.3dm` bytes. It performs no IFC interpretation.
+
+## Reading
+
+```ts
+import { readRhino3dm, RhinoReadError } from '@ifc-lite/rhino3dm';
+
+declare const bytes: Uint8Array;
+try {
+  const model = await readRhino3dm(bytes, {
+    subdLevel: 2,            // 0 to 3, default 2
+    maxTriangles: 30_000_000, // drawing budget, the default
+    bakeInstances: false,    // true bakes blocks into `meshes`
+    onProgress: (done, total) => console.log(done, total),
+  });
+  for (const mesh of model.meshes) {
+    const entity = model.entities[mesh.entity];
+    // World position of vertex i, metres, Z-up: mesh.origin[k] + mesh.positions[i * 3 + k]
+    console.log(entity.globalId, entity.ifcClass, mesh.indices.length / 3);
+  }
+} catch (error) {
+  if (error instanceof RhinoReadError) console.error(error.code, error.message);
+  else throw error;
+}
+```
+
+The result is plain objects and typed arrays, so it crosses a worker boundary
+by structured clone. A typed array is not itself transferable, so transfer
+`array.buffer`; no two arrays share one, so all of them can go on one list.
+
+- **Coordinates** are metres, Z-up. Every geometry record carries a double
+  `origin` and f32 offsets from it, so survey-scale coordinates keep their
+  precision. A file ifc-lite exported with `local` coordinates is moved back to
+  the IFC world frame through its `IFC::WorldFromModel` document string.
+- **Entities** are the drawn top-level objects, in file order. Each has a valid,
+  unique `globalId`: its `IFC::GlobalId` user text, or one derived from the
+  Rhino object UUID. Objects sharing a GlobalId merge into one entity only when
+  they sit in a Rhino group named that GlobalId, which is how the exporter
+  writes a multi-part element. The merged entity holds the user text of every
+  part; a key whose value differs between parts is kept as `<key> #2`.
+- **IFC class:** set the `IFC::Class` user text (Attribute User Text) on an
+  object in Rhino to choose its class, for example `IfcWall`. Without it, or
+  with a name that is not an instantiable IFC product class, the entity is an
+  `IfcBuildingElementProxy`; an invalid name adds one warning.
+- **Properties:** user text is sorted into `propertySets`. A key splits at its
+  first `::` into set and property; a key without one goes to
+  `Attribute User Text`; Rhino facts (layer, object type, object id, material)
+  go to `Rhino`. All values are strings.
+- **Geometry:** meshes as stored; Breps and extrusions through the render
+  meshes Rhino cached in the file (rhino3dm.js has no mesher); SubDs as the
+  control net at `subdLevel`. Curves are polylines, sampled when they are not
+  polylines already. Point clouds and text dots come back as data. Points,
+  text, hatches, dimensions, lights and bare surfaces are counted in `skipped`.
+- **Blocks** come back as `definitions` (each block's own meshes) and
+  `instances` (one per placement, nested blocks flattened into a composed
+  double-precision transform). `bakeInstances` writes world-space copies into
+  `meshes` instead. A block that contains itself is skipped and reported, and
+  a member that is hidden or on a layer that is off is not drawn.
+- **Budget:** `maxTriangles` bounds what is drawn, and has to be a whole
+  number of triangles, 0 or more: a budget that cannot be exhausted is not a
+  budget. A block counts once per placement. A vertex counts a third of a
+  triangle and a mesh at least its triangles, so neither blocks nor large
+  vertex arrays can grow memory without bound. Text dots have their own limit
+  of 100,000 per file. `skipped` and `warnings` say what was left out.
+- **Visibility:** `entities[i].hidden` is true when the object is hidden or a
+  layer on its path is off; for a merged entity, when every part is. Each
+  mesh, instance, point cloud, curve and text dot carries `hidden` for its own
+  object, so a consumer can hide exactly what Rhino hides.
+- **Layers** come parent first with colour, visibility, user text and, when a
+  layer carries `IFC::GlobalId` and `IFC::Class` stamps, its `spatial` element.
+
+`RhinoReadError.code` is one of `not-3dm`, `newer-archive` (saved by a Rhino
+newer than 8), `too-large` (above the 400 MB cap, or the wasm heap ran out) and
+`no-renderable-geometry` (for example surfaces saved without render meshes).
+Hitting the triangle budget is not itself an error: the read stops drawing and
+says so in `warnings` and `skipped.budget`. If it leaves nothing drawn at all,
+as a budget below the first object's triangles does, the read throws
+`no-renderable-geometry` like any other file that draws nothing.
+
+After initialization a read is synchronous, so in a browser run it in a
+worker. The contract and its evidence are in
+[`docs/architecture/rhino-3dm-import.md`](../../docs/architecture/rhino-3dm-import.md).
+
+## Writing
 
 ```ts
 import { writeRhino3dm } from '@ifc-lite/rhino3dm';

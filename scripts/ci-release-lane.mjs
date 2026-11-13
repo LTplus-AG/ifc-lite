@@ -10,11 +10,13 @@
  * had 183 `Test` runs on 170 heads in the week of 2026-11-04, about 100
  * runner-hours, almost all of it the full suite testing version bumps. Its
  * diff is package.json versions, CHANGELOGs and deleted changesets, plus
- * Cargo versions when Rust crates are bumped. Any Cargo change runs in full
- * (release-version-diff.mjs). Three of the four release MERGES before
- * 2026-11-12 (#8665, #8359, #8311, #8192) touched Cargo.lock; what share of
- * the PR's many intermediate heads would still go lean is not measured, and
- * shadow mode is how to measure it.
+ * Cargo versions when Rust crates are bumped. A Cargo change goes lean only
+ * when it is byte for byte what the release writer (scripts/sync-versions.js)
+ * produces from the base tree, checked by replaying it, never by reading TOML
+ * (release-version-diff.mjs, `replayCargoRelease` below). Three of the four
+ * release MERGES before 2026-11-12 (#8665, #8359, #8311, #8192) touched
+ * Cargo.lock, and shadow mode from 2026-11-12 found every head of release PR
+ * #8761 refused only for its Cargo files, which is why the replay exists.
  *
  * WHY THE OWNER'S SWITCH. A lean run is sound only if the PR cannot reach `main`
  * except through Mergify's `release` queue, whose merge conditions require the
@@ -61,13 +63,17 @@
  * merge-ref checkout, so they need fetch-depth 2.
  */
 
-import { appendFileSync, readFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { boundedSpawnSync } from './lib/bounded-process.mjs';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 import { parseNodeTap } from './lib/shard-retry.mjs';
-import { diffProblems } from './lib/release-version-diff.mjs';
+import { CARGO_RELEASE_WRITER, diffProblems, isCargoFile } from './lib/release-version-diff.mjs';
+import { OFFSET_FILE_NAME } from './lib/rust-major-offset.mjs';
 import { RELEASE_HEAD_REF, releaseQueueRoute } from './lib/release-queue-route.mjs';
 
 export const MODES = ['off', 'shadow', 'on'];
@@ -262,9 +268,62 @@ export function runLeanChecks(cwd, commands = LEAN_CHECKS) {
   });
 }
 
+/** The package.json files the release writer scans (rust-major-offset.mjs:
+ * the private root plus one level under packages/ and apps/). */
+export const REPLAY_PACKAGE_JSON = /^(?:package\.json|(?:packages|apps)\/[^/]+\/package\.json)$/;
+
+/**
+ * Replays the release writer for `cargoReplayProblems`
+ * (lib/release-version-diff.mjs): a temporary tree with the BASE's (HEAD~1)
+ * Cargo files and the HEAD's package.json files and offset file, which is
+ * what `pnpm run version` sees after `changeset version`, then this
+ * checkout's CARGO_RELEASE_WRITER with `--root` on it. The writer is run from
+ * the directory of this file, not from `cwd`: in CI the two are the same
+ * checkout, and a diff that edits the writer is not a release file anyway.
+ * Returns every Cargo file of the base tree with the bytes the writer left
+ * and HEAD's bytes (null where HEAD has none). Throws on any failure; the
+ * caller then refuses the lean lane.
+ */
+export function replayCargoRelease(cwd, { timeoutMs = 60_000, writer = join(dirname(fileURLToPath(import.meta.url)), '..', CARGO_RELEASE_WRITER) } = {}) {
+  const raw = (args) => execFileSync('git', args, { cwd, maxBuffer: 256 * 1024 * 1024 });
+  const ls = (rev) => raw(['ls-tree', '-r', '-z', '--name-only', rev]).toString('utf8').split('\0').filter(Boolean);
+  const tryShow = (rev, path) => {
+    try {
+      return raw(['show', `${rev}:${path}`]);
+    } catch {
+      return null;
+    }
+  };
+  const root = mkdtempSync(join(tmpdir(), 'release-cargo-replay-'));
+  try {
+    const put = (rev, path) => {
+      const dest = join(root, path);
+      mkdirSync(dirname(dest), { recursive: true });
+      writeFileSync(dest, raw(['show', `${rev}:${path}`]));
+    };
+    const cargo = ls('HEAD~1').filter(isCargoFile);
+    // No Cargo file in the base: nothing for the writer to sync (it would
+    // refuse a tree with no Cargo.toml), and a Cargo file the diff adds is
+    // refused by its status.
+    if (cargo.length === 0) return [];
+    for (const path of cargo) put('HEAD~1', path);
+    for (const path of ls('HEAD')) if (REPLAY_PACKAGE_JSON.test(path) || path === OFFSET_FILE_NAME) put('HEAD', path);
+    try {
+      execFileSync(process.execPath, [writer, '--root', root], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: timeoutMs });
+    } catch (err) {
+      const said = `${err.stderr ?? ''}${err.stdout ?? ''}`.trim().split('\n').filter(Boolean).pop();
+      throw new Error(`${CARGO_RELEASE_WRITER} exited ${err.status ?? err.signal ?? err.code}${said ? `: ${said}` : ''}`);
+    }
+    return cargo.map((path) => ({ path, replayed: readFileSync(join(root, path)), head: tryShow('HEAD', path) }));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
 function gitReader(cwd) {
   const git = (args) => execFileSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   return {
+    cargoReplay: () => replayCargoRelease(cwd),
     entries: () => git(['diff', '--no-renames', '--name-status', 'HEAD~1', 'HEAD']).split('\n').filter(Boolean).map((l) => {
       const [status, path] = l.split('\t');
       return { status: status[0], path };

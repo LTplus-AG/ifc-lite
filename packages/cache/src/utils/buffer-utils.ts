@@ -139,17 +139,25 @@ export class ArrayArena {
   buffer: ArrayBuffer | null = null;
   private block: ArrayBuffer | null = null;
   private used = 0;
+  /** Bytes the caller still expects to take: a new block is no larger than that (a small chunk keeps a small block). */
+  private expected: number;
+
+  /** `capacityHint`: an upper bound of the bytes that will be taken, e.g. a chunk record's decompressed length. */
+  constructor(capacityHint = Number.POSITIVE_INFINITY) {
+    this.expected = capacityHint;
+  }
 
   /** Reserve `byteLength` bytes at a 4-byte aligned offset; read the buffer from `buffer`. */
   take(byteLength: number): number {
     const size = (byteLength + 3) & ~3;
+    this.expected = Math.max(0, this.expected - size);
     // A large array gets its own buffer: it would waste most of a block's tail.
     if (size > ARENA_BLOCK_BYTES / 4) {
       this.buffer = new ArrayBuffer(size);
       return 0;
     }
     if (this.block === null || this.used + size > this.block.byteLength) {
-      this.block = new ArrayBuffer(ARENA_BLOCK_BYTES);
+      this.block = new ArrayBuffer(Math.min(ARENA_BLOCK_BYTES, size + Math.ceil(this.expected / 4) * 4));
       this.used = 0;
     }
     const byteOffset = this.used;

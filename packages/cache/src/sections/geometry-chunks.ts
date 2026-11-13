@@ -302,7 +302,7 @@ export async function decodeGeometryChunk(
     : raw.slice().buffer;
   const reader = new BufferReader(buffer as ArrayBuffer);
   // Opt-in: mesh arrays share arena blocks (one allocation per ~1 MiB, not three per mesh).
-  if (options.sharedArena) reader.arena = new ArrayArena();
+  if (options.sharedArena) reader.arena = new ArrayArena(raw.byteLength); // blocks no larger than the chunk's arrays
   const meshes: MeshData[] = [];
   for (let i = 0; i < info.meshCount; i++) {
     meshes.push(readMeshRecord(reader, version, i, info.appearanceSources));

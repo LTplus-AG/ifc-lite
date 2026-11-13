@@ -160,7 +160,8 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
   }, [open]);
 
   const resetLink = useCallback(() => { setLink(''); setCopied(false); }, []);
-  const creating = useShareRoomCreation({ open, hasModel, collabRoomId, awaitingConsent, scope, setNotice, resetLink });
+  const withdrawConsent = useCallback(() => setScopeConfirmed(false), []);
+  const creating = useShareRoomCreation({ open, hasModel, collabRoomId, awaitingConsent, scope, setNotice, resetLink, withdrawConsent });
 
   // 2. Mint the invite — re-minted when the dialog opens or the role changes,
   // and only once the seed has settled (`seedInFlight` false). Until then the

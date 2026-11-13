@@ -28,6 +28,8 @@ export const section2dEn = {
   'section2d.tools.distance': 'Distance',
   'section2d.tools.area': 'Area',
   'section2d.tools.text': 'Text',
+  'section2d.tools.tag': 'Tag',
+  'section2d.tip.tag': 'Click a door, window or space to tag it',
   'section2d.tools.cloud': 'Cloud',
   'section2d.annotations.clear': 'Clear markup',
   'section2d.display.group': 'Display',

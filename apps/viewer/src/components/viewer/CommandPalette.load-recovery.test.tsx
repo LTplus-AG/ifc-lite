@@ -164,7 +164,11 @@ for (const [locale, catalogue] of [['en', commandPaletteEn], ['de', commandPalet
         assert.ok(newerError);
         assert.equal(useViewerStore.getState().error, newerError);
         assert.equal(localStorage.getItem(RECENT_KEY), recentBefore, 'refused stale action does not record usage');
-        const notification = document.querySelector('[role="status"] [data-toast-seq] span');
+        // The notice is a polite (non-error) toast. Match it by its live
+        // region rather than role="status": the app shelf carries that role,
+        // but a toast shelf owned by an open modal (#9879) is a polite live
+        // region without it, and the palette is a modal.
+        const notification = document.querySelector('[aria-live="polite"] [data-toast-seq] span');
         assert.equal(notification?.textContent, catalogue['commandPalette.availability.loadErrorReplaced']);
         assert.notEqual(notification?.textContent, catalogue['commandPalette.availability.noLoadError']);
       } finally { globalThis.requestAnimationFrame = originalFrame; }

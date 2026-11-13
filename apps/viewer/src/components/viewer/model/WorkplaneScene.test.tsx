@@ -6,6 +6,8 @@ import { installLayout } from '@/test/dom-layout';
 installLayout();
 import '@/lib/commands/modeling/builtin';
 import assert from 'node:assert/strict';
+import { act, Profiler } from 'react';
+import { setRequestRemesh } from '@/lib/commands/modeling/transaction';
 import { it, afterEach } from 'node:test';
 import { cleanup, click, waitFor } from '@/test/render';
 import { useViewerStore } from '@/store';
@@ -45,4 +47,36 @@ it('#9334 Draw on the same row reprojects an idle workplane after a programmatic
   flush();
   assert.notEqual(polygon.getAttribute('points'), before);
   assert.equal(container.querySelector<SVGGElement>('[data-snap-kind="workplane"]')?.style.transform, 'translate(300px, 200px)');
+});
+
+
+it('#9296 the workplane ignores column placement but updates for its wall extent and undo/redo', async () => {
+  await seedModelingSession();
+  const restore = setRequestRemesh(() => {});
+  useViewerStore.getState().enterModelWorkspace({ modelId: MODEL_ID, storeyId: UPPER_STOREY });
+  const wall = useViewerStore.getState().addWall(MODEL_ID, UPPER_STOREY, { Start: [0, 0, 0], End: [20, 0, 0], Height: 3, Thickness: .2 });
+  const column = useViewerStore.getState().addColumn(MODEL_ID, UPPER_STOREY, { Position: [1, 1, 0], Width: .3, Depth: .3, Height: 3 });
+  assert.ok('expressId' in wall && 'expressId' in column);
+  let commits = 0;
+  try {
+    const { container, source, flush } = renderScene(<Profiler id="workplane" onRender={() => commits++}><WorkplaneScene /></Profiler>);
+    source.camera.projectToScreen = p => ({ x: 400 + p.x * 10, y: 300 + p.z * 10 });
+    flush(); flush();
+    const polygon = container.querySelector<SVGPolygonElement>('[data-scene-primitive="plane-outline"]')!;
+    const points = polygon.getAttribute('points');
+    const before = commits;
+    act(() => { assert.ok(useViewerStore.getState().translateEntity(MODEL_ID, column.expressId, [.5, 0, 0]).ok); });
+    assert.equal(commits, before, 'a column does not change the wall-derived outline');
+    act(() => useViewerStore.getState().undo(MODEL_ID));
+    assert.equal(commits, before);
+    act(() => { assert.ok(useViewerStore.getState().translateEntity(MODEL_ID, wall.expressId, [2, 0, 0]).ok); });
+    flush(); flush();
+    assert.notEqual(polygon.getAttribute('points'), points);
+    act(() => useViewerStore.getState().undo(MODEL_ID));
+    flush(); flush();
+    assert.equal(polygon.getAttribute('points'), points);
+    act(() => useViewerStore.getState().redo(MODEL_ID));
+    flush(); flush();
+    assert.notEqual(polygon.getAttribute('points'), points);
+  } finally { restore(); }
 });

@@ -10,6 +10,7 @@ import { useViewerStore } from '@/store';
 import { fixtureStep, seedModelingSession, MODEL_ID, STOREY } from '@/test/modeling-session-fixture';
 import { setRequestRemesh } from '@/lib/commands/modeling/transaction';
 import { usePlacementGeorefContext } from '@/lib/geo/placement-georef-runtime';
+import { useAnchorGeoreference } from '@/lib/geo/useAnchorGeoreference';
 import { ViewportContainer } from './ViewportContainer';
 import { fieldTelemetry } from '@/lib/perf/fieldTelemetryLoader';
 after(() => fieldTelemetry?.resetFieldEventsForTests());
@@ -28,6 +29,12 @@ ENDSEC;\nEND-ISO-10303-21;`);
   const gpu = Object.getOwnPropertyDescriptor(navigator, 'gpu');
   Object.defineProperty(navigator, 'gpu', { configurable: true, value: { requestAdapter: async () => ({ features: new Set(), limits: {} }) } });
   let renders = 0;
+  let anchorRenders = 0;
+  function AnchorReadout() {
+    anchorRenders++;
+    const anchor = useAnchorGeoreference();
+    return <output data-anchor>{anchor?.eff.mapConversion?.eastings ?? 'absent'}</output>;
+  }
   function Readout() {
     renders++;
     const context = usePlacementGeorefContext();
@@ -36,19 +43,26 @@ ENDSEC;\nEND-ISO-10303-21;`);
   try {
     render(<ViewportContainer />);
     const ui = render(<Readout />);
+    const anchorUi = render(<AnchorReadout />);
     await advance(100);
     assert.equal(ui.textContent, '2619073');
+    assert.equal(anchorUi.textContent, '2619073');
+    const beforeAnchor = anchorRenders;
     const before = renders;
     act(() => { assert.ok(useViewerStore.getState().translateEntity(MODEL_ID, made.expressId, [.5, 0, 0]).ok); });
     assert.equal(renders, before, 'a placement edit must not republish an identical georeference');
+    assert.equal(anchorRenders, beforeAnchor, 'a column placement does not schedule anchor consumers');
     act(() => useViewerStore.getState().undo(MODEL_ID));
     assert.equal(renders, before);
     act(() => useViewerStore.getState().setGeorefField(MODEL_ID, 'mapConversion', 'eastings', 2619100, 2619073));
     assert.equal(ui.textContent, '2619100');
+    assert.equal(anchorUi.textContent, '2619100');
     act(() => useViewerStore.getState().undo(MODEL_ID));
     assert.equal(ui.textContent, '2619073');
+    assert.equal(anchorUi.textContent, '2619073');
     act(() => useViewerStore.getState().redo(MODEL_ID));
     assert.equal(ui.textContent, '2619100');
+    assert.equal(anchorUi.textContent, '2619100');
   } finally {
     cleanup(); restoreRemesh();
     if (gpu) Object.defineProperty(navigator, 'gpu', gpu);

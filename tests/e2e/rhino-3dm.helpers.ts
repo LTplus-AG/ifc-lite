@@ -25,7 +25,7 @@ declare global {
   // The viewer's own singleton (store/index.ts), the convention every viewer
   // spec reads page state through. Absent until the app's first render.
   // eslint-disable-next-line no-var -- a `declare global` binding has to be `var`.
-  var __ifc_lite_viewer_store__: { getState(): ViewerState } | undefined;
+  var __ifc_lite_viewer_store__: { getState(): ViewerState };
 }
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -87,7 +87,7 @@ export interface ModelSnapshot {
  * close over anything in the test process.
  */
 function readModels(): ModelSnapshot[] {
-  const state = globalThis.__ifc_lite_viewer_store__!.getState();
+  const state = globalThis.__ifc_lite_viewer_store__.getState();
   const snapshots: ModelSnapshot[] = [];
   for (const [modelId, model] of state.models) {
     const store = model.ifcDataStore;
@@ -147,10 +147,22 @@ function readModels(): ModelSnapshot[] {
     for (const [globalExpressId, aabb] of model.geometryResult?.instancedGeometryAabbs ?? []) {
       if (![...aabb.min, ...aabb.max].every((value) => Number.isFinite(value))) continue;
       const box = boxFor(globalExpressId);
-      if (!box || Number.isFinite(box[0])) continue;
-      box[0] = aabb.min[0]; box[1] = aabb.min[1]; box[2] = aabb.min[2];
-      box[3] = aabb.max[0]; box[4] = aabb.max[1]; box[5] = aabb.max[2];
-      instancedBoxes++;
+      if (!box) continue;
+      if (!Number.isFinite(box[0])) instancedBoxes++;
+      // Unioned, not assigned: the map is documented as holding entities whose
+      // WHOLE mesh set went to the instanced shard, but a partly instanced
+      // entity would otherwise come back with only the half that drew meshes.
+      for (let axis = 0; axis < 3; axis++) {
+        box[axis] = Math.min(box[axis], aabb.min[axis]);
+        box[axis + 3] = Math.max(box[axis + 3], aabb.max[axis]);
+      }
+    }
+    // A box nothing ever widened is not a comparison, it is an absence: both
+    // sides being all-Infinity makes every gap NaN, which no tolerance catches.
+    for (const [globalId, box] of Object.entries(boxes)) {
+      if (Number.isFinite(box[0])) continue;
+      delete boxes[globalId];
+      delete classes[globalId];
     }
     for (const cloud of model.geometryResult?.pointClouds ?? []) {
       const rgb = [...(cloud.chunk.colors ?? []).slice(0, 3)];
@@ -196,7 +208,7 @@ export async function modelSnapshots(page: Page): Promise<ModelSnapshot[]> {
 
 /** How many models the viewer holds, without walking any geometry. */
 export async function modelCount(page: Page): Promise<number> {
-  return page.evaluate(() => globalThis.__ifc_lite_viewer_store__!.getState().models.size);
+  return page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().models.size);
 }
 
 export interface Overlay {
@@ -293,7 +305,7 @@ export async function waitForModels(page: Page, count: number): Promise<void> {
     return state.models.size === n && !state.loading && !state.geometryStreamingActive &&
       [...state.models.values()].every((model) => model.ifcDataStore &&
         ((model.geometryResult?.meshes.length ?? 0) > 0 || (model.geometryResult?.pointClouds?.length ?? 0) > 0));
-  }, count, { timeout: 180_000 });
+  }, count, { timeout: 120_000 });
 }
 
 /** Run `export:3dm` from the command palette and return the Rhino dialog. */
@@ -326,7 +338,7 @@ export async function exportTo3dm(page: Page, coordinates: 'local' | 'world', na
   const dialog = await openRhinoExportDialog(page);
   if (coordinates === 'world') await chooseExportOption(page, dialog, 'Coordinates', 'World (as in the IFC file)');
   const [download] = await Promise.all([
-    page.waitForEvent('download', { timeout: 180_000 }),
+    page.waitForEvent('download', { timeout: 120_000 }),
     dialog.getByRole('button', { name: 'Export', exact: true }).click(),
   ]);
   const path = test.info().outputPath(name);
@@ -347,7 +359,7 @@ export async function addModel(page: Page, bytes: Buffer, name: string, total: n
 export async function entityByGlobalId(page: Page, modelId: string, globalId: string):
 Promise<{ expressId: number; globalExpressId: number; ifcClass: string; name: string } | null> {
   return page.evaluate(({ id, wanted }) => {
-    const model = globalThis.__ifc_lite_viewer_store__!.getState().models.get(id)!;
+    const model = globalThis.__ifc_lite_viewer_store__.getState().models.get(id)!;
     const store = model.ifcDataStore!;
     for (const expressId of store.entities.expressId) {
       if (!expressId || store.entities.getGlobalId(expressId) !== wanted) continue;
@@ -365,7 +377,7 @@ Promise<{ expressId: number; globalExpressId: number; ifcClass: string; name: st
 /** The property sets the store answers for one entity, as the panel reads them. */
 export async function propertySets(page: Page, modelId: string, expressId: number): Promise<Record<string, Record<string, string>>> {
   return page.evaluate(({ id, entity }) => {
-    const store = globalThis.__ifc_lite_viewer_store__!.getState().models.get(id)!.ifcDataStore!;
+    const store = globalThis.__ifc_lite_viewer_store__.getState().models.get(id)!.ifcDataStore!;
     const out: Record<string, Record<string, string>> = {};
     for (const set of store.getProperties(entity)) {
       out[set.name] = Object.fromEntries(set.properties.map((property) => [property.name, String(property.value)]));
@@ -377,10 +389,13 @@ export async function propertySets(page: Page, modelId: string, expressId: numbe
 /** What the viewer currently hides in `modelId`: every entity, by federated id. */
 export async function hidden(page: Page, modelId: string): Promise<{ globalExpressId: number; ifcClass: string; name: string }[]> {
   return page.evaluate((id) => {
-    const state = globalThis.__ifc_lite_viewer_store__!.getState();
+    const state = globalThis.__ifc_lite_viewer_store__.getState();
     const model = state.models.get(id)!;
     const store = model.ifcDataStore!;
+    // `hiddenEntities` spans the federation, so an id outside this model's
+    // own range would resolve against the wrong entity table.
     return [...state.hiddenEntities]
+      .filter((globalExpressId) => globalExpressId > model.idOffset && globalExpressId <= model.idOffset + model.maxExpressId)
       .map((globalExpressId) => {
         const expressId = globalExpressId - model.idOffset;
         return { globalExpressId, ifcClass: store.entities.getTypeName(expressId), name: store.entities.getName(expressId) };

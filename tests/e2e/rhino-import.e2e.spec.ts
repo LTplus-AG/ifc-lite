@@ -60,6 +60,8 @@ const MIN_MATCHED_ENTITIES = 80;
 const NOT_EXPORTED = /^IfcOpeningElement$|Type$/;
 /** The reader's own sentence (`packages/rhino3dm/src/read/header.ts`, `NOT_3DM_MESSAGE`). */
 const NOT_A_3DM = 'Not a Rhino .3dm file, or the file is damaged.';
+/** The FZK export's spaces, on the two `IfcSpace` layers it switches off. */
+const FZK_HIDDEN_SPACES = 7;
 /** Rhino's layer colour for the green Points layer of `file3dm_stuff.3dm`. */
 const RHINO_GREEN = [0, 127 / 255, 0];
 
@@ -282,7 +284,10 @@ async function assertAppState(page: Page, journey: Journey, ifc: ModelSnapshot, 
   // import starts them hidden and the tree can show them again.
   const hiddenAtLoad = await hidden(page, rhino.modelId);
   note('hidden-at-load', JSON.stringify(hiddenAtLoad));
-  expect(hiddenAtLoad.length, 'Rhino\'s switched-off space layers start hidden').toBeGreaterThan(0);
+  // The FZK export puts its seven spaces on two switched-off layers, which is
+  // the number the import contract states; a regression to six would otherwise
+  // pass a `> 0` floor.
+  expect(hiddenAtLoad).toHaveLength(FZK_HIDDEN_SPACES);
   expect(hiddenAtLoad.every((entity) => entity.ifcClass === 'IfcSpace'),
     `what the export switched off is exactly its space layers: ${JSON.stringify(hiddenAtLoad)}`).toBe(true);
 
@@ -295,7 +300,7 @@ async function assertAppState(page: Page, journey: Journey, ifc: ModelSnapshot, 
   // this test can assert around.
   await journey.gpu.raceLoss('drop the IFC and keep the .3dm', async () => {
     await page.evaluate((keep) => {
-      const state = globalThis.__ifc_lite_viewer_store__!.getState();
+      const state = globalThis.__ifc_lite_viewer_store__.getState();
       for (const id of [...state.models.keys()]) if (id !== keep) state.removeModel(id);
     }, rhino.modelId);
     await waitForModels(page, 1);
@@ -319,6 +324,6 @@ async function assertAppState(page: Page, journey: Journey, ifc: ModelSnapshot, 
 /** Select by the federated id the viewport and the hierarchy both select by. */
 async function selectEntity(page: Page, globalExpressId: number): Promise<void> {
   await page.evaluate((id) => {
-    globalThis.__ifc_lite_viewer_store__!.getState().setSelectedEntityId(id);
+    globalThis.__ifc_lite_viewer_store__.getState().setSelectedEntityId(id);
   }, globalExpressId);
 }

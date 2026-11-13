@@ -476,6 +476,36 @@ describe('buildChangedArtifacts', () => {
     assert.strictEqual(result.scheduleSpliced, false);
   });
 
+  it('does not splice a schedule into, or STEP-export, a tabular model labelled IFC4', async () => {
+    // Its `source` is not STEP whatever the schema label says, so it is neither
+    // a schedule target nor handed to the STEP exporter.
+    const tabular = { sourceKind: 'tabular' } as IfcDataStore;
+    const models = new Map<string, FederatedModel>([['t', mkModel('t', 'model.3dm', 'IFC4', { ifcDataStore: tabular })]]);
+    const mutationViews = new Map<string, MutablePropertyView>([['t', mkView(1)]]);
+    const state = mkState({ models, mutationViews, scheduleData: mkSchedule([0, 0]), scheduleSourceModelId: 't' });
+    assert.strictEqual(collectChangedModels(state).scheduleTargetModelId, null);
+
+    const { deps, stepCalls, ifcxCalls } = fakeDeps({ resolveStepDataStore: async () => tabular });
+    const result = await buildChangedArtifacts(state, deps);
+    assert.strictEqual(stepCalls.length, 0);
+    assert.deepStrictEqual(ifcxCalls, []);
+    assert.deepStrictEqual(result.files, []);
+    assert.deepStrictEqual(result.skipped, [{ name: 'model.3dm', reason: 'Model has no IFC STEP source to export changes into' }]);
+  });
+
+  it('skips a model whose STEP store cannot be resolved', async () => {
+    // Unresolvable store (evicted, or never loaded) is a distinct skip from a
+    // tabular store: there are no bytes at all, not the wrong kind of bytes.
+    const models = new Map<string, FederatedModel>([['m', mkModel('m', 'model.ifc')]]);
+    const mutationViews = new Map<string, MutablePropertyView>([['m', mkView(1)]]);
+    const { deps, stepCalls, ifcxCalls } = fakeDeps({ resolveStepDataStore: async () => null });
+    const result = await buildChangedArtifacts(mkState({ models, mutationViews }), deps);
+    assert.strictEqual(stepCalls.length, 0);
+    assert.deepStrictEqual(ifcxCalls, []);
+    assert.deepStrictEqual(result.files, []);
+    assert.deepStrictEqual(result.skipped, [{ name: 'model.ifc', reason: 'Model data is unavailable for export' }]);
+  });
+
   it('dedupes colliding filenames across models', async () => {
     const models = new Map<string, FederatedModel>([
       ['a', mkModel('a', 'model.ifc')],

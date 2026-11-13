@@ -101,11 +101,11 @@ export function getMaxExpressId(
       }
     }
   }
-  // IFCX has no STEP byte-offset index. Its parsed entity table owns spatial
-  // and other unmeshed rows too; reserving only rendered IDs strands those
-  // rows outside the strict federation range (#6564).
-  if (dataStore?.schemaVersion === 'IFC5') {
-    // @raw-entity-enumeration-ok load-time IFCX ownership watermark precedes installation of live overlays
+  // A tabular store (IFCX is one) has no STEP byte-offset index. Its entity
+  // table owns spatial and other unmeshed rows too; reserving only rendered IDs
+  // strands those rows outside the strict federation range (#6564).
+  if (dataStore?.sourceKind === 'tabular') {
+    // @raw-entity-enumeration-ok load-time tabular ownership watermark precedes installation of live overlays
     for (const id of dataStore.entities.expressId) {
       maxExpressIdFromEntities = Math.max(maxExpressIdFromEntities, id);
     }

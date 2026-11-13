@@ -53,7 +53,7 @@ export function stairRailingRefusal(state: ViewerState, modelId: string): string
   const dataStore = state.models.get(modelId)?.ifcDataStore;
   if (!dataStore) return `No model loaded for id "${modelId}"`;
   const schema = String(dataStore.schemaVersion ?? 'IFC4').toUpperCase();
-  if (schema === 'IFC5' || !dataStore.source || dataStore.source.byteLength === 0) {
+  if (schema === 'IFC5' || dataStore.sourceKind === 'tabular' || !dataStore.source || dataStore.source.byteLength === 0) {
     return 'Stairs and railings are authored in IFC2X3, IFC4 and IFC4X3 models only';
   }
   return null;

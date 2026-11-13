@@ -353,6 +353,9 @@ export function createExportAdapter(store: StoreApi): ExportBackendMethods {
       if (dataStore.schemaVersion === 'IFC5') {
         throw new Error('export.ifc: IFC5 export is not supported by STEP exporter, use IFC2X3/IFC4/IFC4X3 models');
       }
+      if (dataStore.sourceKind === 'tabular') {
+        throw new Error(`export.ifc: model '${modelId}' has no IFC STEP source for the STEP exporter`);
+      }
 
       const options = candidateOptions;
       const selectedExpressIds = refs ? new Set(refs.map(ref => ref.expressId)) : null;

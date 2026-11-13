@@ -23,9 +23,8 @@ export type TabularStoreTables =
 /** What the tables cannot say about the file they came from. */
 export interface TabularStoreMeta {
   /**
-   * The schema the entity table's type names belong to. Carried as given, but
-   * `'IFC5'` is also how consumers recognise a store with no STEP bytes today
-   * (`iterateEffectiveEntities`, `getMaxExpressId`, the export gates).
+   * The schema the entity table's type names belong to. It says nothing about
+   * what backs the store: that is `sourceKind: 'tabular'`, set here for every caller.
    */
   schemaVersion: IfcDataStore['schemaVersion'];
   /** The file's bytes, kept as the store's `source`. */
@@ -58,6 +57,7 @@ export function buildTabularDataStore(tables: TabularStoreTables, meta: TabularS
   const storeData: IfcStoreData = {
     fileSize: meta.fileSize,
     schemaVersion: meta.schemaVersion,
+    sourceKind: 'tabular',
     lengthUnitScale: meta.lengthUnitScale,
     lengthUnitSource: meta.lengthUnitSource,
     entityCount: tables.entities.count,
@@ -77,7 +77,7 @@ export function buildTabularDataStore(tables: TabularStoreTables, meta: TabularS
 
   // Consumers that derive the unit from `source` + `entityIndex` (extractLengthUnitScale) find no IFCPROJECT in a
   // store without STEP bytes and would warn on every call; hand them the scale the reader stated.
-  declareLengthUnitScale(dataStore.entityIndex, meta.lengthUnitScale);
+  declareLengthUnitScale(dataStore.entityIndex, meta.lengthUnitScale, meta.lengthUnitSource);
 
   const entityTable = tables.entities;
   const idsByType = new Map<string, number[]>();

@@ -55,7 +55,7 @@ import { canExportRoomAsStep } from '@/lib/collab/room-step-export';
 import { roomMergeVisibility } from '@/lib/collab/room-merged-export';
 import { roomSymbolicSource } from '@/lib/collab/room-symbolic-source';
 import { canWriteIfcFromStores, listExportModels, resolveExportModel } from './export-model-selection';
-import { buildMergeInputs, mergeSkipNotice, statedMergeSkips } from './export-merge-inputs';
+import { buildMergeInputs, emptyMergeRefusal, mergeSkipNotice, statedMergeSkips } from './export-merge-inputs';
 import { exportOutputInfo } from './export-output-format.js';
 import { activeChangesJsonMutations, exportChangesJson } from './export-changes-json.js';
 import { hasFilterableIfc5Properties } from '@/lib/export/ifc5-filterable-properties.js';
@@ -341,17 +341,8 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
         // A tabular or store-less model has no STEP records to merge; it is
         // skipped (see canWriteIfcFromStores) and named in the result message.
         const { inputs: mergeInputs, portableByModel, skipped } = buildMergeInputs(hydratedModels, { applyMutations, getMutationView });
-        // Nothing writable: the dialog's own sentence, not `MergedExporter`'s
-        // "requires at least one model" read out to the owner.
-        // `canWriteIfcFromStores` already disables the button for such a
-        // federation, so reaching here means the last writable store went
-        // away between the render and the hydration; the single branch
-        // refuses its own late-absent store the same way, below.
-        if (mergeInputs.length === 0) {
-          const message = `${t('exportDialog.noStepRecords.error')} ${mergeSkipNotice(skipped, t)}`.trim();
-          toast.error(message);
-          return { success: false, message };
-        }
+        const refusal = emptyMergeRefusal(mergeInputs, skipped, t);
+        if (refusal) { toast.error(refusal); return { success: false, message: refusal }; }
 
         const visibility = visibleOnly
           ? roomMergeVisibility(mergeModelIds, portableByModel, getLocalHiddenIds, getLocalIsolatedIds)

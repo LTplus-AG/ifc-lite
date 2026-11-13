@@ -105,3 +105,22 @@ export function mergeSkipNotice(skipped: readonly MergeSkip[], t: UseTranslation
     .filter(Boolean)
     .join(' ');
 }
+
+/**
+ * The merge has nothing to write: the sentence to refuse with, or `null` to
+ * go on.
+ *
+ * `canWriteIfcFromStores` already disables the button for a federation with
+ * no writable store, so this fires only when the last one went away between
+ * the render and the hydration. It exists so that window says the dialog's
+ * own "no IFC records to write from", naming the models, rather than reading
+ * `MergedExporter`'s internal `requires at least one model` out to the owner.
+ */
+export function emptyMergeRefusal(
+  inputs: readonly MergeModelInput[],
+  skipped: readonly MergeSkip[],
+  t: UseTranslationResult['t'],
+): string | null {
+  if (inputs.length > 0) return null;
+  return `${t('exportDialog.noStepRecords.error')} ${mergeSkipNotice(skipped, t)}`.trim();
+}

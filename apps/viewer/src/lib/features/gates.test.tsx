@@ -27,7 +27,7 @@ import { registerKeyboardCommand } from '@/lib/commands/dispatcher';
 import { KEY_COMMAND_FEATURE, KEY_CONTEXT_FEATURE } from '@/lib/commands/keyboard-command-features';
 import { PANEL_FEATURE, isPanelAvailable } from '@/lib/panels/availability';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
-import { WORKSPACE_PANELS } from '@/lib/panels/registry';
+import { WORKSPACE_PANELS, workspacePanelForShortcutCode } from '@/lib/panels/registry';
 import { HomeTab } from '@/components/viewer/ribbon/tabs/HomeTab';
 import { COMMAND_FEATURE, COMMAND_PREFIX_FEATURE } from '@/components/viewer/surface-command-features';
 import { paletteSurfaceCommands } from '@/components/viewer/surface-commands';
@@ -221,6 +221,15 @@ describe('one tool table, and what follows from it', () => {
     const text = render(<ShortcutsTab />).textContent ?? '';
     assert.doesNotMatch(text, /BCF Topics|Compare models/);
     assert.match(text, /Data validation/, 'the other panels of the Alt+digit row stay');
+  });
+
+  it('keeps each panel on its Alt+digit when one before it is off, and the dialog says which', () => {
+    resetFeaturesForTest({ default: 'all', disable: ['check.bcf'] });
+    assert.equal(workspacePanelForShortcutCode('Digit3'), 'bcf', 'Alt+3 still means BCF, so it opens nothing');
+    assert.equal(workspacePanelForShortcutCode('Digit4'), 'validation');
+    // The list no longer reads positionally once BCF is gone, so it names each key.
+    const text = render(<ShortcutsTab />).textContent ?? '';
+    assert.match(text, /4 Data validation/);
   });
 
   // Pop-outs of switched-off panels: services/panel-windows.test.ts.

@@ -36,6 +36,7 @@ import { useExportRunner } from './useExportRunner';
 import { buildExportCommands } from './commandPaletteExports';
 import { surfaceCommand, type SurfaceCommandDefinition, type SurfaceCommandId } from './surface-command-registry';
 import { runSurfaceCommand, trackCommandExecution } from './surface-command-run';
+import { isSurfaceCommandAvailable } from './surface-command-features';
 import { ActivityTrayDialog } from './activity/ActivityTray';
 import type { MobileCommandPlacement } from '@/lib/layout/form-factor';
 
@@ -100,7 +101,9 @@ export function MobileToolbar({ placement = 'bottom-bar', style }: {
   const addModel = mobileCommand('file:add-model');
   const OpenFileIcon = mobileIcon(openFile);
   const AddModelIcon = mobileIcon(addModel);
-  const toolButtons = ['tool:select', 'tool:measure', 'tool:section'] as const;
+  // Commands a host switched off (`lib/features`) are left out, not disabled.
+  const offered = (id: SurfaceCommandId) => isSurfaceCommandAvailable(mobileCommand(id));
+  const toolButtons = (['tool:select', 'tool:measure', 'tool:section'] as const).filter(offered);
   // Seven 44px targets fit a 320px phone in one row (7 x 44 = 308px); nine did
   // not, so Add model and Show all live in More (#8802, maintainer's call).
   const quickActions = ['view:home', 'view:fit'] as const;
@@ -110,6 +113,7 @@ export function MobileToolbar({ placement = 'bottom-bar', style }: {
   const WalkIcon = mobileIcon(walk);
   const menuItem = (id: SurfaceCommandId, disabled = false) => {
     const command = mobileCommand(id);
+    if (!offered(id)) return null;
     const Icon = mobileIcon(command);
     return (
       <DropdownMenuItem key={id} data-command-id={id} disabled={disabled} onClick={() => runMobile(command)}>
@@ -250,14 +254,14 @@ export function MobileToolbar({ placement = 'bottom-bar', style }: {
           {menuItem('pref:settings')}
           <DropdownMenuSeparator />
           {/* Walk Mode */}
-          <DropdownMenuCheckboxItem
+          {offered(walk.id) && <DropdownMenuCheckboxItem
             data-command-id={walk.id}
             checked={activeTool === 'walk'}
             onCheckedChange={() => runMobile(walk)}
           >
             <WalkIcon className="h-4 w-4 mr-2" />
             {mobileLabel(walk)}
-          </DropdownMenuCheckboxItem>
+          </DropdownMenuCheckboxItem>}
 
           <DropdownMenuSeparator />
 

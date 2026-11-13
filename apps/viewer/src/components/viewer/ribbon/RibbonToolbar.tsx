@@ -24,6 +24,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useViewerStore, type RibbonTabId } from '@/store';
 import { cn } from '@/lib/utils';
 import { useTranslation, type TranslationKey } from '@/i18n';
+import { useRibbonBandCollapse } from './useRibbonBandCollapse';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
 import { ThemeSwitch } from '../ThemeSwitch';
 import { SearchInline } from '../SearchInline';
@@ -67,6 +68,7 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
   const setRibbonCollapsed = useViewerStore((s) => s.setRibbonCollapsed);
 
   useRibbonContextualTab();
+  const bandRef = useRibbonBandCollapse();
 
   // Shared command surface — registers the global load listeners and the
   // hidden file inputs exactly once for this toolbar style.
@@ -233,7 +235,7 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
           // (narrow windows) adds below the 48px row instead of squeezing it.
           className="shell-ribbon-band mt-0 overflow-x-auto overflow-y-hidden"
         >
-          <div className="flex h-12 w-max min-w-full items-stretch px-1">
+          <div ref={bandRef} className="flex h-12 w-max min-w-full items-stretch px-1">
             {activeTab === 'file' && <FileTab fileCommands={fileCommands} />}
             {activeTab === 'home' && <HomeTab />}
             {activeTab === 'view' && <ViewTab />}

@@ -19,6 +19,7 @@ import {
   type KeyCommandCategory,
 } from '@/lib/commands/keyboard-commands';
 import { formatCommandKeys } from '@/lib/commands/shortcut-label';
+import { isKeyCommandAvailable } from '@/lib/commands/keyboard-command-features';
 
 interface ShortcutRow {
   readonly id: string;
@@ -36,6 +37,7 @@ function rowsByCategory(apple: boolean, gestureKeys: (row: (typeof POINTER_GESTU
     rows.set(category, list);
   };
   for (const command of KEY_COMMANDS) {
+    if (!isKeyCommandAvailable(command)) continue;
     push(command.category, {
       id: command.id,
       keys: formatCommandKeys(command, apple),

@@ -13,7 +13,9 @@
  *
  * What is gated so far: product analytics are not started, the hosting
  * platform's analytics script is not injected, and the privacy notice is not
- * shown (see the catalogue).
+ * shown. A tool, panel or command that is off is not offered, cannot be
+ * opened by any path, and its shortcuts are not registered; a panel that is
+ * off is never rendered, so its lazy chunk is not requested.
  *
  * PRESENTATION, NOT PROTECTION. Nothing here stops a person with the
  * browser's developer tools from reaching code that shipped in the bundle.
@@ -72,6 +74,15 @@ export function applyFeatureSelection(selection: FeatureSelection | undefined): 
 export function isFeatureEnabled(id: FeatureId): boolean {
   asked.add(id);
   return !disabled.has(id);
+}
+
+/**
+ * Whether the host switched anything off. For layout code that tidies up
+ * after hidden surfaces and has nothing to do in a full viewer; it answers
+ * no question about any one feature, so it is not recorded as a gate.
+ */
+export function isAnyFeatureDisabled(): boolean {
+  return disabled.size > 0;
 }
 
 /**

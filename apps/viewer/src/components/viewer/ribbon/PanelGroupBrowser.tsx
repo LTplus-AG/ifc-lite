@@ -5,7 +5,7 @@
 /** Ribbon panel browser generated from the same task groups as the rail (#5873). */
 import { BrowsePanels } from '@/icons';
 import { useTranslation } from '@/i18n';
-import { isCollabEnabled } from '@/lib/collab/config';
+import { isPanelOffered } from '@/lib/panels/availability';
 import { PANEL_GROUPS, WORKSPACE_PANELS } from '@/lib/panels/registry';
 import { usePanelControls } from '@/hooks/usePanelControls';
 import { useViewerStore } from '@/store';
@@ -47,7 +47,7 @@ export function PanelGroupBrowser() {
         <DropdownMenuContent align="start" className="max-h-[70vh] w-72 overflow-y-auto">
           {PANEL_GROUPS.map((group, index) => {
             const panels = WORKSPACE_PANELS.filter((panel) =>
-              panel.group === group.id && (panel.id !== 'collab' || isCollabEnabled()));
+              panel.group === group.id && isPanelOffered(panel.id));
             if (panels.length === 0) return null;
             return (
               <DropdownMenuGroup key={group.id}>

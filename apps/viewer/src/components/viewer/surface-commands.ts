@@ -11,6 +11,7 @@ import { bindLoadRecovery } from '@/hooks/loadRecoveryActions';
 import type { Command } from './commandPaletteSearch';
 import { paletteAvailability, paletteToggleState } from './palette-availability';
 import { SURFACE_COMMANDS, commandRowFromDefinition } from './surface-command-registry';
+import { isSurfaceCommandAvailable } from './surface-command-features';
 import type { SurfaceCommandContext, SurfaceCommandState } from './surface-command-types';
 export * from './surface-command-registry';
 
@@ -21,7 +22,7 @@ export function paletteSurfaceCommands(
 ): Command[] {
   const loadRecovery = bindLoadRecovery();
   return SURFACE_COMMANDS
-    .filter((command) => command.surfaces.some((surface) => surface === 'palette') && (command.enabled(state) || (!state.canEditInSession && command.enabled({ ...state, canEditInSession: true }))))
+    .filter((command) => command.surfaces.some((surface) => surface === 'palette') && isSurfaceCommandAvailable(command) && (command.enabled(state) || (!state.canEditInSession && command.enabled({ ...state, canEditInSession: true }))))
     .map((command) => {
       const fullContext: SurfaceCommandContext = { ...context, surface: 'palette', execute, loadRecovery };
       const checkAvailability = () => paletteAvailability(command, fullContext, undefined, state);

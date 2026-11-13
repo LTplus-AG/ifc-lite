@@ -15,22 +15,22 @@
  */
 
 import {
-  ATTRIBUTES_IFC2X3,
-  ATTRIBUTES_IFC4,
-  ATTRIBUTES_IFC4X3,
+  getAttributesIfc2x3,
+  getAttributesIfc4,
+  getAttributesIfc4x3,
 } from './generated/attributes.js';
-import { IFC_DATA_TYPES } from './generated/data-types.js';
-import { ENTITIES_IFC2X3 } from './generated/entities-ifc2x3.js';
-import { ENTITIES_IFC4_EXPRESS } from './entities-ifc4-express.js';
-import { ENTITIES_IFC4X3 } from './generated/entities-ifc4x3.js';
+import { getIfcDataTypes } from './generated/data-types.js';
+import { getEntitiesIfc2x3 } from './generated/entities-ifc2x3.js';
+import { getEntitiesIfc4Express } from './entities-ifc4-express.js';
+import { getEntitiesIfc4x3 } from './generated/entities-ifc4x3.js';
 import {
   PART_OF_RELATIONS_IFC2X3,
   PART_OF_RELATIONS_IFC4,
   PART_OF_RELATIONS_IFC4X3,
 } from './generated/partof-relations.js';
-import { PROPERTY_SETS_IFC2X3 } from './generated/psets-ifc2x3.js';
-import { PROPERTY_SETS_IFC4 } from './generated/psets-ifc4.js';
-import { PROPERTY_SETS_IFC4X3 } from './generated/psets-ifc4x3.js';
+import { getPropertySetsIfc2x3 } from './generated/psets-ifc2x3.js';
+import { getPropertySetsIfc4 } from './generated/psets-ifc4.js';
+import { getPropertySetsIfc4x3 } from './generated/psets-ifc4x3.js';
 import type {
   IfcAttributeInfo,
   IfcDataTypeInfo,
@@ -50,14 +50,17 @@ export type {
   PartOfRelationInfo,
 } from './types.js';
 
+// The per-version maps below hold getters: each generated table is decoded
+// the first time something asks for it, so loading this module (or a bundle
+// that reaches it) decodes nothing.
 const ATTRIBUTES_BY_VERSION: Record<
   IfcSchemaVersion,
-  readonly IfcAttributeInfo[]
+  () => readonly IfcAttributeInfo[]
 > = {
-  IFC2X3: ATTRIBUTES_IFC2X3,
-  IFC4: ATTRIBUTES_IFC4,
-  IFC4X3: ATTRIBUTES_IFC4X3,
-  IFC4X3_ADD2: ATTRIBUTES_IFC4X3,
+  IFC2X3: getAttributesIfc2x3,
+  IFC4: getAttributesIfc4,
+  IFC4X3: getAttributesIfc4x3,
+  IFC4X3_ADD2: getAttributesIfc4x3,
 };
 
 /**
@@ -68,26 +71,30 @@ const ATTRIBUTES_BY_VERSION: Record<
  */
 export const RESERVED_PSET_PREFIXES: readonly string[] = ['Pset_', 'Qto_'];
 
+const ENTITIES_BY_VERSION: Record<IfcSchemaVersion, () => readonly IfcEntityInfo[]> = {
+  IFC2X3: getEntitiesIfc2x3,
+  IFC4: getEntitiesIfc4Express, // checked against IFC4 EXPRESS (#5204)
+  IFC4X3: getEntitiesIfc4x3,
+  // IFC4X3_ADD2 is the addendum-2 release of IFC4X3 — same entity list
+  // for authoring purposes.
+  IFC4X3_ADD2: getEntitiesIfc4x3,
+};
+
 // Exported within the package (not from `packages/data/src/index.ts`, whose
 // export list is explicit) so `./descendants.js` resolves versions against the
 // same map `getEntities` does.
-export const ENTITIES_BY_VERSION: Record<IfcSchemaVersion, readonly IfcEntityInfo[]> = {
-  IFC2X3: ENTITIES_IFC2X3,
-  IFC4: ENTITIES_IFC4_EXPRESS, // checked against IFC4 EXPRESS (#5204)
-  IFC4X3: ENTITIES_IFC4X3,
-  // IFC4X3_ADD2 is the addendum-2 release of IFC4X3 — same entity list
-  // for authoring purposes.
-  IFC4X3_ADD2: ENTITIES_IFC4X3,
-};
+export function entitiesForVersion(v: IfcSchemaVersion): readonly IfcEntityInfo[] {
+  return ENTITIES_BY_VERSION[v]();
+}
 
 const PROPERTY_SETS_BY_VERSION: Record<
   IfcSchemaVersion,
-  readonly IfcPropertySetInfo[]
+  () => readonly IfcPropertySetInfo[]
 > = {
-  IFC2X3: PROPERTY_SETS_IFC2X3,
-  IFC4: PROPERTY_SETS_IFC4,
-  IFC4X3: PROPERTY_SETS_IFC4X3,
-  IFC4X3_ADD2: PROPERTY_SETS_IFC4X3,
+  IFC2X3: getPropertySetsIfc2x3,
+  IFC4: getPropertySetsIfc4,
+  IFC4X3: getPropertySetsIfc4x3,
+  IFC4X3_ADD2: getPropertySetsIfc4x3,
 };
 
 const PART_OF_BY_VERSION: Record<
@@ -115,14 +122,14 @@ export async function getEntities(
   v: IfcSchemaVersion
 ): Promise<readonly IfcEntityInfo[]> {
   ensureVersion(v);
-  return ENTITIES_BY_VERSION[v];
+  return ENTITIES_BY_VERSION[v]();
 }
 
 export async function getPropertySets(
   v: IfcSchemaVersion
 ): Promise<readonly IfcPropertySetInfo[]> {
   ensureVersion(v);
-  return PROPERTY_SETS_BY_VERSION[v];
+  return PROPERTY_SETS_BY_VERSION[v]();
 }
 
 export async function getPartOfRelations(
@@ -201,7 +208,7 @@ export async function findDataType(
 ): Promise<IfcDataTypeInfo | undefined> {
   const upper = name.toUpperCase();
   const versionKey = v === 'IFC4X3_ADD2' ? 'IFC4X3' : v;
-  for (const t of IFC_DATA_TYPES) {
+  for (const t of getIfcDataTypes()) {
     if (
       t.name === upper &&
       t.versions.some(
@@ -218,7 +225,7 @@ export async function getDataTypes(
   v: IfcSchemaVersion
 ): Promise<readonly IfcDataTypeInfo[]> {
   const versionKey = v === 'IFC4X3_ADD2' ? 'IFC4X3' : v;
-  return IFC_DATA_TYPES.filter((t) =>
+  return getIfcDataTypes().filter((t) =>
     t.versions.some(
       (vv) => vv === versionKey || (vv === 'IFC4X3' && v === 'IFC4X3_ADD2')
     )
@@ -229,7 +236,7 @@ export async function getAttributes(
   v: IfcSchemaVersion
 ): Promise<readonly IfcAttributeInfo[]> {
   ensureVersion(v);
-  return ATTRIBUTES_BY_VERSION[v];
+  return ATTRIBUTES_BY_VERSION[v]();
 }
 
 /**
@@ -281,7 +288,7 @@ type AttributeXsdIndex = Map<string, Map<string, readonly string[]>>;
 const attributeXsdIndexCache = new Map<IfcSchemaVersion, AttributeXsdIndex>();
 
 function getAttributeXsdIndex(v: IfcSchemaVersion): AttributeXsdIndex | undefined {
-  const list = ATTRIBUTES_BY_VERSION[v];
+  const list = ATTRIBUTES_BY_VERSION[v]?.();
   if (!list) return undefined;
   const cached = attributeXsdIndexCache.get(v);
   if (cached) return cached;

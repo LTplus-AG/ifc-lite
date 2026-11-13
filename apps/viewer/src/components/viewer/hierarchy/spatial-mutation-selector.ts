@@ -7,6 +7,8 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { isPhysicalObjectType } from '@/lib/physical-objects';
 import { effectiveSpatialProject } from './effectiveStoreyNodes';
 
+// Compare live project values as well as overlay rows: entering/leaving an
+// empty overlay may return an equivalent rebuilt project with a new identity.
 // Spatial rows read names, classes, ownership and containment, not product
 // geometry. Storey placement leaves DO matter; effectiveSpatialProject tracks
 // those reads, including helpers shared with another product (#9296).
@@ -32,7 +34,7 @@ function signature(store: IfcDataStore, view: MutablePropertyView): string {
       [...(view.getPositionalMutationsForEntity(id) ?? [])].filter(([index]) => !physical || (index !== 5 && index !== 6)),
     ]];
   }).filter(row => (row[1] as unknown[]).length || (row[2] as unknown[]).length);
-  const next = JSON.stringify([created, overrides, [...view.getTypeMutations()], [...view.getTombstones()]]);
+  const next = JSON.stringify([effectiveSpatialProject(store, view), created, overrides, [...view.getTypeMutations()], [...view.getTombstones()]]);
   byView.set(view, { revision, signature: next });
   return next;
 }
@@ -49,7 +51,7 @@ export function createSpatialMutationSelector(): (state: ViewerState) => number 
     else for (const [id, view] of state.mutationViews) {
       const store = state.models.get(id)?.ifcDataStore ?? state.ifcDataStore;
       next.push(id, store, view);
-      if (store) next.push(effectiveSpatialProject(store, view), signature(store, view));
+      if (store) next.push(signature(store, view));
       else next.push(view.getMutationRevision());
     }
     if (next.length !== previous.length || next.some((item, index) => item !== previous[index])) {

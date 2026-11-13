@@ -16,7 +16,7 @@
  *
  * Pure geometry in the caller's length unit. The planes come from the weighted
  * straight skeleton (`roof-skeleton.ts`) of the footprint; this module decides
- * which footprints it is trusted with (convex or rectilinear), and refuses the
+ * which footprints it is trusted with (convex, rectilinear, or equal-pitch), and refuses the
  * rest with a reason instead of emitting a roof that is not one.
  */
 
@@ -190,8 +190,9 @@ export function planFootprintRoof(
   const pivots = points.map((p, i) => normals[i][0] * p[0] + normals[i][1] * p[1]);
   const reflex = points.map((_, i) => cross(dirs[(i + n - 1) % n], dirs[i]) < -1e-12);
   const rectilinear = dirs.every((d) => Math.abs(cross(d, dirs[0])) < 1e-9 || Math.abs(d[0] * dirs[0][0] + d[1] * dirs[0][1]) < 1e-9);
-  if (reflex.some(Boolean) && !rectilinear) {
-    throw new Error('Roofs by footprint support convex and rectilinear footprints; this one has an inside corner that is not a right angle');
+  const equalPitch = s.every(slope => Math.abs(slope - s[0]) < 1e-9);
+  if (reflex.some(Boolean) && !rectilinear && !equalPitch) {
+    throw new Error('Roofs by footprint support convex and rectilinear footprints, or equal pitches at arbitrary inside corners');
   }
 
   const eaves = linesOutline(normals.map((nm, i) => ({ nx: nm[0], ny: nm[1], k: pivots[i] - overhang, s: 0 })), dirs, overhang);
@@ -232,6 +233,12 @@ export function planFootprintRoof(
     const plane: RoofPlane = { edge: edges[i], slope: s[i], origin: points[i], direction: dirs[i], outline: outlinePlan };
     for (const p of outlinePlan) rise = Math.max(rise, heightAt(plane, p));
     planes.push(plane);
+  }
+  // Refuse a truncated wavefront rather than exporting an uncovered roof.
+  const tiled = planes.reduce((area, plane) => area + signedArea(plane.outline), 0);
+  const expected = signedArea(eaves);
+  if (Math.abs(tiled - expected) > 1e-7 * Math.abs(expected)) {
+    throw new Error('The roof planes do not cover the eaves; this footprint is not supported');
   }
   return { shapeType, planes, eaves, rise };
 }

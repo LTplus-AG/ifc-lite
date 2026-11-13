@@ -9,7 +9,7 @@ import { isAnalyticalProduct } from './analytical-classes.mjs';
 import { isProductClass } from '../compare/compareScope';
 // Class after the view's edits, null once deleted; mask and presence both read it.
 import { effectiveTreeType as effectiveType } from '@/components/viewer/hierarchy/treeOverlay';
-import { LEGACY_MUTATION_MODEL_ID } from '@/sdk/adapters/model-compat';
+import { LEGACY_MODEL_ID, LEGACY_MUTATION_MODEL_ID } from '@/sdk/adapters/model-compat';
 
 export { isAnalyticalProduct };
 
@@ -37,7 +37,7 @@ function sources(models: ReadonlyMap<string, FederatedModel>, fallback: IfcDataS
   if (models.size) {
     return [...models].map(([id, m]) => ({ store: m.ifcDataStore, view: views.get(id), global: (e: number) => toGlobalId(id, e) }));
   }
-  const view = views.get(LEGACY_MUTATION_MODEL_ID) ?? views.get('legacy') ?? views.get('default');
+  const view = views.get(LEGACY_MUTATION_MODEL_ID) ?? views.get('legacy') ?? views.get(LEGACY_MODEL_ID);
   return [{ store: fallback, view, global: (e) => e }];
 }
 
@@ -60,7 +60,7 @@ export function hasStructuralData(state: Pick<ViewerState, 'models' | 'ifcDataSt
       for (const [type, ids] of store.entityIndex?.byType ?? []) {
         if (isAnalyticalProduct(type) && ids.some((id) => analytical(storedClass(store, view, id)))) return true;
       }
-      if (view && [...view.getTypeMutations().keys()].some((id) => analytical(storedClass(store, view, id)))) return true;
+      for (const id of view?.getTypeMutations().keys() ?? []) if (analytical(storedClass(store, view, id))) return true;
     }
     return view?.getNewEntities().some((e) => analytical(authoredClass(view, e))) ?? false;
   });

@@ -492,12 +492,11 @@ describe('saveDrawingMarkupToModel on a reopened model with an embedded dimensio
   }
 
   /** What `useDrawingMarkupRestoreOnLoad` does when its read applies: absorb what it restored. */
-  function restoreDimensions(step: string, base: SaveMarkupInput = NO_MARKUP): void {
+  function restoreDimensions(step: string): void {
     const restored = { ...DIM, id: `ifc-dimension-${dimensionExpressId(step)}` };
     absorbEmbeddedMarkup('m1', restoredEmbeddedMarkupIdentities('m1', {
-      measure2DResults: [], polygonArea2DResults: [], textAnnotations2D: [], cloudAnnotations2D: [],
-      ...base, dimensions2D: [restored],
-    } as never));
+      measure2DResults: [], polygonArea2DResults: [], textAnnotations2D: [], cloudAnnotations2D: [], dimensions2D: [restored],
+    }));
   }
 
   it('records the restored dimension as absorbed, by the GlobalId it was opened with', async () => {

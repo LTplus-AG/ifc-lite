@@ -38,24 +38,29 @@ it('#9947 deferred property atoms never move exceptional relationships out of th
 });
 
 it('#9947 duplicate definition members follow native edit budgets without accumulating across revisions', async () => {
-  // 262142 distinct typing edges + one distinct definition edge. Native reads
-  // of an edited row count its raw member list: two admits, three refuses.
-  const members = Array.from({ length: 262141 }, (_, i) => 1000 + i);
+  // 510 source typing references + one distinct definition edge + a created
+  // 512 x 511 definition set = 262143. This hits the same exact budget without
+  // allocating a quarter-million source graph edges just to test arithmetic.
+  const members = Array.from({ length: 509 }, (_, i) => 1000 + i);
+  const definitions = Array.from({ length: 511 }, (_, i) => 5000 + i);
   const store = await new IfcParser().parseColumnar(bytes([...records,
-    `#10=IFCRELDEFINESBYTYPE('t',$,$,$,(${members.map(id => '#' + id).join(',')}),#2);`,
-    // The selected occurrence has a small row. The unrelated large row still
-    // contributes its full budget without re-decoding 262141 members per edit.
-    "#11=IFCRELDEFINESBYTYPE('selected',$,$,$,(#100),#2);",
+    "#10=IFCRELDEFINESBYTYPE('selected',$,$,$,(#100),#2);",
+    `#11=IFCRELDEFINESBYTYPE('filler',$,$,$,(${members.map(id => '#' + id).join(',')}),#2);`,
     "#20=IFCRELDEFINESBYPROPERTIES('q',$,$,$,(#2,#2),(#3,#3));",
+    ...definitions.map(id => `#${id}=IFCPROPERTYSET('p${id}',$,'Budget',$,());`),
   ]), { disableWorkerScan: true });
   let fillerReads = 0;
   const getEntity = store.getEntity.bind(store);
-  store.getEntity = id => { if (id === 10) fillerReads++; return getEntity(id); };
+  store.getEntity = id => { if (id === 11) fillerReads++; return getEntity(id); };
   const native = { ...store, selectionRelationshipIndex: undefined };
   const view = new MutablePropertyView(null, 'duplicates');
+  view.setExpressIdWatermark(6000);
+  view.createEntity('IfcRelDefinesByProperties', ['budget', null, null, null,
+    Array.from({ length: 512 }, (_, i) => 1000 + i), definitions]);
   const compare = (status: 'available' | 'unavailable') => {
     const expected = readCurrentTypeQuantities(native, 100, view);
     expect(expected.status).toBe(status);
+    if (status === 'available') expect(expected.value?.quantities[0].quantities[0].value).toBe(2.5);
     expect(readCurrentTypeQuantities(store, 100, view)).toEqual(expected);
   };
   compare('available');

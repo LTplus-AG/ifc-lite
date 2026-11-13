@@ -236,7 +236,3 @@ rust/wasm-bindings/retained-test/
 
 # Local retained release proof summaries (fleet receipt is authoritative).
 /retained-package-proof-*.json
-
-# Generated palette census and historical evidence: see inventory/archive.md.
-/tests/ui-scenes/command-palette-access/inventory/*.json
-/tests/ui-scenes/command-palette-access/inventory/*.jsonl

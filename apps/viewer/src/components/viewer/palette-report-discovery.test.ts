@@ -13,13 +13,13 @@ import { searchCommands } from './commandPaletteSearch';
 
 // Generic English 'Location zones' names the dedicated zone authoring panel.
 // Properties separately exposes selected-entity memberships and straddler volume splits.
-// DE/RU here register only command-palette metadata (not panel-title catalogues):
-// their zone aliases intentionally find that translated Properties inspection path.
+// DE/RU register only command-palette metadata here, not panel-title catalogues,
+// so their zone ranking would not match production; zone routing is asserted in English.
 for (const [locale, cases] of [
   ['en', [['report error', 'panel:error-report'], ['failed load report', 'panel:error-report'], ['resume recent report', 'panel:error-report'],
     ['location zones', 'panel:zones'], ['volume split', 'panel:properties'], ['tag grouping', 'panel:tree'], ['exploded gap', 'panel:tree'], ['source sync', 'panel:tree'], ['hide others', 'vis:isolate']]],
-  ['de', [['Fehler melden', 'panel:error-report'], ['Lagezonen', 'panel:properties'], ['Volumenaufteilung', 'panel:properties'], ['Tag-Gruppierung', 'panel:tree']]],
-  ['ru', [['сообщить об ошибке', 'panel:error-report'], ['Зоны расположения', 'panel:properties'], ['разделение объёма', 'panel:properties'], ['синхронизация источника', 'panel:tree']]],
+  ['de', [['Fehler melden', 'panel:error-report'], ['Volumenaufteilung', 'panel:properties'], ['Tag-Gruppierung', 'panel:tree']]],
+  ['ru', [['сообщить об ошибке', 'panel:error-report'], ['разделение объёма', 'panel:properties'], ['синхронизация источника', 'panel:tree']]],
 ] as const) test(`#8947 ${locale} task phrases rank the canonical report and discovery destinations`, () => {
   try {
     registerLocale('de', commandPaletteDe); registerLocale('ru', commandPaletteRu);

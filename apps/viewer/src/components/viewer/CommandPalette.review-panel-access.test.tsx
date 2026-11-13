@@ -14,8 +14,8 @@ import { launchDestination, namedButton } from '@/test/palette-destinations';
 import { resetReviewAccess, disposeReviewAccess, mountReviewAccess, required,
   dialog, cancelDialog, headerAction, tab, closeBody } from '@/test/palette-review-panel-witness';
 
-// #8947: missing parent joins only. Existing child cases remain in
-// inventory/historical-child-bindings.jsonl; this is not a replacement child suite.
+// #8947: missing parent joins only. The child controls keep their own existing
+// tests; this is not a replacement child suite.
 beforeEach(resetReviewAccess);
 afterEach(disposeReviewAccess);
 async function validation() {

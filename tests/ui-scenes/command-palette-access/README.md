@@ -4,7 +4,7 @@ Every user-facing viewer feature, tool and action is reachable from the command
 palette, either as a palette action or as a named destination that opens the
 real tool flow through the canonical registry action. This is a separate
 hillclimb from the general palette UX (#8946, merged in #8950). The work landed
-in #8950, #8969 and #8972.
+in #8950, #8956–#8969 and #8972.
 
 ## Contract
 

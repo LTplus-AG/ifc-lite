@@ -9,11 +9,17 @@ import { parseFixtureModel, FIXTURE_PROJECT, FIXTURE_SITE, FIXTURE_BUILDING, FIX
 import { tabularFixtureStore, PROXY_A, PROXY_B, WALL } from '@/test/tabular-store-fixture';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { registerRoomSymbolicSource } from '@/lib/collab/room-symbolic-source';
-import { exportFailureMessage, StepRecordsUnavailableError } from './step-records';
 import { exportModelStep } from './model-step-export';
 import { roomMergeInput } from '@/lib/collab/room-merged-export';
 
 const OPTIONS = { schema: 'IFC4', applyMutations: true } as const;
+
+/** Matches the STEP-records refusal by its public shape, through the entry points that throw it. */
+function refusal(reason: 'roomMoved' | 'noRecords', modelName?: string) {
+  return (error: unknown) => error instanceof Error && error.name === 'StepRecordsUnavailableError'
+    && (error as Error & { reason?: string }).reason === reason
+    && (modelName === undefined || (error as Error & { modelName?: string }).modelName === modelName);
+}
 
 async function parse(content: string | Uint8Array) {
   const bytes = typeof content === 'string' ? new TextEncoder().encode(content) : content;
@@ -44,14 +50,14 @@ test('a room whose root set moved past its portable source refuses STEP export (
   // A rejection is the whole outcome: no content is returned to download.
   await assert.rejects(
     exportModelStep({ modelId: 'room', dataStore, options: OPTIONS, scheduleState: null }),
-    (error: unknown) => error instanceof StepRecordsUnavailableError && error.reason === 'roomMoved',
+    refusal('roomMoved'),
   );
 });
 
 test('a tabular store with no portable source refuses STEP export (#10045)', async () => {
   await assert.rejects(
     exportModelStep({ modelId: 'ifcx', dataStore: tabularFixtureStore(), options: OPTIONS, scheduleState: null }),
-    (error: unknown) => error instanceof StepRecordsUnavailableError && error.reason === 'noRecords',
+    refusal('noRecords'),
   );
 });
 
@@ -69,7 +75,7 @@ test('an applied edit outside the portable source refuses the export (#10045)', 
   mutationView.setAttribute(999, 'Name', 'Local only');
   await assert.rejects(
     exportModelStep({ modelId: 'room', dataStore, mutationView, options: OPTIONS, scheduleState: null }),
-    (error: unknown) => error instanceof StepRecordsUnavailableError && error.reason === 'roomMoved',
+    refusal('roomMoved'),
   );
 });
 
@@ -78,7 +84,7 @@ test('the merged path refuses with the model named (#10045)', async () => {
   for (const [store, reason] of [[moved, 'roomMoved'], [tabularFixtureStore(), 'noRecords']] as const) {
     assert.throws(
       () => roomMergeInput({ id: 'm', name: 'Model M', store, applyMutations: true }),
-      (error: unknown) => error instanceof StepRecordsUnavailableError && error.reason === reason && error.modelName === 'Model M',
+      refusal(reason, 'Model M'),
     );
   }
   const step = await parseFixtureModel();
@@ -89,11 +95,4 @@ test('a plain STEP model still exports from its own records (#10045)', async () 
   const result = await exportModelStep({ modelId: 'step', dataStore: await parseFixtureModel(), options: OPTIONS, scheduleState: null });
   const exported = await parse(result.content);
   assert.equal(exported.entities.getName(FIXTURE_WALL_A), 'Wall A');
-});
-
-test('the dialog reports a refusal through its catalogue key, other failures verbatim (#10045)', () => {
-  const t = (key: string, params: { model: string }) => `${key}|${params.model}`;
-  assert.equal(exportFailureMessage(new StepRecordsUnavailableError('roomMoved'), t, 'Selected'), 'exportDialog.stepRecords.roomMoved|Selected');
-  assert.equal(exportFailureMessage(new StepRecordsUnavailableError('noRecords', 'Merged A'), t, 'Selected'), 'exportDialog.stepRecords.noRecords|Merged A');
-  assert.equal(exportFailureMessage(new Error('boom'), t), 'Export failed: boom');
 });

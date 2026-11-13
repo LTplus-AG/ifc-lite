@@ -192,3 +192,22 @@ it('#9947 double-invalid relationship edits report the first native source-row r
   expect(readCurrentTypeQuantities(store, 100, view)).toEqual({ status: 'unavailable', value: null,
     reason: 'Native type relationship target is unreadable' });
 });
+
+it('#9947 created relationships retyped out of type coverage do not cause a refusal', async () => {
+  const { store, view } = await model();
+  view.setExpressIdWatermark(300000);
+  const row = view.createEntity('IfcRelDefinesByType', ['created', null, null, null, [100], 2]);
+  view.setEntityType(row.expressId, 'IfcRelAssociatesMaterial');
+  view.setPositionalAttribute(row.expressId, 5, 5);
+  expect(readCurrentTypeQuantities(store, 100, view).value?.quantities[0].quantities[0].value).toBe(2.5);
+});
+
+it('#9947 created relationships retyped into type coverage supply inherited quantities', async () => {
+  const { store, view } = await model();
+  view.setExpressIdWatermark(300000);
+  const row = view.createEntity('IfcRelAssociatesMaterial', ['created', null, null, null, [100], 5]);
+  view.setEntityType(row.expressId, 'IfcRelDefinesByType');
+  view.setPositionalAttribute(row.expressId, 5, 2);
+  view.deleteEntity(100000);
+  expect(readCurrentTypeQuantities(store, 100, view).value?.quantities[0].quantities[0].value).toBe(2.5);
+});

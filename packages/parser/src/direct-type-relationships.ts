@@ -56,7 +56,7 @@ export function directCurrentTypeRelationships(store: IfcDataStore, view: Metada
   const memberships = new Map<number, Set<number>>();
   const read = (id: number): RelationRead => {
     if (reads.has(id)) return reads.get(id)!;
-    const type = view.getNewEntity(id)?.type.toUpperCase() ?? typeMutations?.get(id)?.newType.toUpperCase() ?? sourceType(id);
+    const type = typeMutations?.get(id)?.newType.toUpperCase() ?? view.getNewEntity(id)?.type.toUpperCase() ?? sourceType(id);
     const value = !view.isDeleted(id) && type && types.includes(type) ? readRelation(store, id, view) : null;
     // Unexpected errors deliberately leave no cached refusal: the next read retries.
     reads.set(id, value);
@@ -75,7 +75,7 @@ export function directCurrentTypeRelationships(store: IfcDataStore, view: Metada
   const affected = new Set([...unverified, ...changed, ...index.typeRefusals.keys()]);
   const contributions = [...affected].sort(compare).map(id => {
     const baseType = sourceType(id), base = baseType !== undefined && types.includes(baseType) && !createdIds.has(id);
-    const currentType = view.getNewEntity(id)?.type.toUpperCase() ?? typeMutations?.get(id)?.newType.toUpperCase() ?? baseType;
+    const currentType = typeMutations?.get(id)?.newType.toUpperCase() ?? view.getNewEntity(id)?.type.toUpperCase() ?? baseType;
     const current = !view.isDeleted(id) && currentType !== undefined && types.includes(currentType);
     rows += Number(current) - Number(base);
     return { id, base, current };

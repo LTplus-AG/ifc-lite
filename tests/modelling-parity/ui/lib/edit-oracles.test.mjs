@@ -23,6 +23,7 @@ test('#9919 Trim rejects any retained wall segment beyond the boundary', () => {
   const kept = axis([0,3],[3,3]);
   assert.equal(oracle.trimmedWalls([kept]),true);
   assert.equal(oracle.trimmedWalls([kept,axis([3,3],[5,3])]),false);
+  assert.equal(oracle.trimmedWalls([kept,kept]),false);
   assert.equal(oracle.trimmedWalls([]),false);
 });
 
@@ -44,6 +45,7 @@ test('#9919 Array requires three exact positions with typed spacing', () => {
   assert.equal(oracle.arrayWalls(valid),true);
   assert.equal(oracle.arrayWalls([10,12,14].map(y=>axis([0,y],[4,y]))),false);
   assert.equal(oracle.arrayWalls([...valid,axis([0,14.5],[4,14.5])]),false);
+  assert.equal(oracle.arrayWalls([...valid,axis([0,8.5],[4,8.5])]),false);
 });
 
 test('#9919 typed wall angles must produce the intermediate room corners', () => {
@@ -58,12 +60,30 @@ test('#9919 a matching slab area cannot replace typed Length and Depth', () => {
   for(const [Length,Depth] of [[10,2],[4,5]]) assert.equal(oracle.typedSlab({Length,Depth,GrossArea:20}),false);
 });
 
-test('#9919 four-wall loops reject an additional non-neighbour join', async () => {
-  const { fourWallJoins } = await import('./oracles.mjs');
-  const walls=[1,2,3,4].map(i=>`#${i}=IFCWALL('w${i}');`).join('\n');
+test('#9919 every loop join must connect its actual exported corner', async () => {
+  const { fourWallJoins, wallEndpointsJoined } = await import('./oracles.mjs');
+  const corners=[[0,0],[5,0],[5,4],[0,4],[0,0]];
+  const walls=[1,2,3,4].map((id,i)=> {
+    const n=100+i*10, [x,y]=corners[i], [ex,ey]=corners[i+1];
+    return `#${id}=IFCWALL('w${id}',$,$,$,$,$,#${n},$,$);
+#${n}=IFCPRODUCTDEFINITIONSHAPE($,$,(#${n+1}));
+#${n+1}=IFCSHAPEREPRESENTATION($,'Axis','Curve2D',(#${n+2}));
+#${n+2}=IFCPOLYLINE((#${n+3},#${n+4}));
+#${n+3}=IFCCARTESIANPOINT((${x},${y}));
+#${n+4}=IFCCARTESIANPOINT((${ex},${ey}));`;
+  }).join('\n');
   const rel=(id,a,b)=>`#${id}=IFCRELCONNECTSPATHELEMENTS('r${id}',$,$,$,$,#${a},#${b},$,$,.ATSTART.,.ATEND.);`;
-  const loop=[1,2,3,4].map((a,i)=>rel(i+10,a,a===4?1:a+1)).join('\n');
-  const model=extra=>readStep(`DATA; ${walls}\n${loop}\n${extra} ENDSEC;`);
-  assert.equal(fourWallJoins(model('')),true);
-  assert.equal(fourWallJoins(model(rel(20,1,3))),false);
+  const model=(pairs,extra='')=>readStep(`DATA; ${walls}\n${pairs.map(([a,b],i)=>rel(i+10,a,b)).join('\n')}\n${extra} ENDSEC;`);
+  const valid=[[1,2],[2,3],[3,4],[4,1]], wrong=[[1,3],[3,2],[2,4],[4,1]];
+  for(const check of [fourWallJoins,wallEndpointsJoined]) {
+    assert.equal(check(model(valid)),true);
+    assert.equal(check(model(valid,rel(20,1,3))),false);
+    assert.equal(check(model(wrong)),false);
+  }
+});
+
+test('#9919 copied levels must stay at the requested +3 m and +6 m', () => {
+  const walls=[3,6].map(z=>[axis([0,0],[5,0],z)]);
+  assert.equal(oracle.copyLevelElevations([3,6],walls),true);
+  assert.equal(oracle.copyLevelElevations([3,0],[walls[0],[axis([0,0],[5,0],0)]]),false);
 });

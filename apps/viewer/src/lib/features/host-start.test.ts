@@ -49,15 +49,18 @@ const silent = ((_input: RequestInfo | URL, init?: RequestInit) => new Promise<R
   init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
 })) as typeof globalThis.fetch;
 
-/** Runs `body` with `console.error` captured, so expected failures do not flood the test log. */
-async function withSilencedConsole<T>(body: () => Promise<T>): Promise<{ result: T; errors: unknown[][] }> {
+/** Runs `body` with `console.error` and `console.warn` captured, so expected failures do not flood the test log. */
+async function withSilencedConsole<T>(body: () => Promise<T>): Promise<{ result: T; errors: unknown[][]; warnings: unknown[][] }> {
   const errors: unknown[][] = [];
-  const original = console.error;
+  const warnings: unknown[][] = [];
+  const original = { error: console.error, warn: console.warn };
   console.error = (...args: unknown[]) => { errors.push(args); };
+  console.warn = (...args: unknown[]) => { warnings.push(args); };
   try {
-    return { result: await body(), errors };
+    return { result: await body(), errors, warnings };
   } finally {
-    console.error = original;
+    console.error = original.error;
+    console.warn = original.warn;
   }
 }
 
@@ -155,29 +158,16 @@ describe('starting a viewer whose build names a configuration URL', () => {
   it('shows the error screen in English when its translations hang', async () => {
     const container = root();
     const d = deps(answer({ version: 1 }, 500), { loadTranslator: () => new Promise(() => {}), translatorTimeoutMs: 20 });
-    const originalWarn = console.warn;
-    console.warn = () => {};
-    try {
-      const { result } = await withSilencedConsole(() => startHostedViewer(container, '/config', d));
-      assert.equal(result, false);
-    } finally {
-      console.warn = originalWarn;
-    }
+    const { result } = await withSilencedConsole(() => startHostedViewer(container, '/config', d));
+    assert.equal(result, false);
     assert.match(container.textContent ?? '', /The viewer could not start/);
   });
 
   it('shows the error screen in English when its translations fail to load too', async () => {
     const container = root();
     const d = deps(answer({ version: 1 }, 500), { loadTranslator: () => Promise.reject(new Error('chunk 404')) });
-    const warnings: unknown[][] = [];
-    const originalWarn = console.warn;
-    console.warn = (...args: unknown[]) => { warnings.push(args); };
-    try {
-      const { result } = await withSilencedConsole(() => startHostedViewer(container, '/config', d));
-      assert.equal(result, false);
-    } finally {
-      console.warn = originalWarn;
-    }
+    const { result, warnings } = await withSilencedConsole(() => startHostedViewer(container, '/config', d));
+    assert.equal(result, false);
     assert.match(container.textContent ?? '', /The viewer could not start/);
     assert.match(container.textContent ?? '', /Technical detail: status/);
     assert.equal(container.querySelector('button')?.textContent, 'Reload');

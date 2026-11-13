@@ -185,7 +185,8 @@ export function createLocaleChoice(activator: LocaleActivator, environment: Loca
     if (readAutoChosen(environment.storage) || !environment.hostLocale) return null;
     // No choice yet, over a host locale: name what is actually active (the host
     // locale, or what applied when it failed to load), never claim Auto.
-    return activator.available.includes(getLocale()) ? getLocale() : null;
+    const active = getLocale();
+    return activator.available.includes(active) ? active : null;
   };
   return {
     available: activator.available,

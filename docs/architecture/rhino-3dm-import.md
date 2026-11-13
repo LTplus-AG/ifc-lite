@@ -1,12 +1,13 @@
 # Rhino .3dm import, level 1: read-only
 
-Status: **partly implemented**. The reader, `readRhino3dm` in
+Status: **implemented**. The reader, `readRhino3dm` in
 `@ifc-lite/rhino3dm` (delivery step 1), the viewer load (step 2: format
 detection, the import worker and its client, the adapter and the `loadFile`
-branch) and the tree, hidden state and model metadata (step 3) are implemented
-with their tests. The e2e overlay test (step 4) is not, and the exporter's
-spatial layer stamps (step 0) shipped separately.
-Decisions D1 to D8 are made. This page is the contract for opening a Rhino
+branch), the tree, hidden state and model metadata (step 3) and the e2e
+overlay test and user guide (step 4) are implemented with their tests. The
+exporter's spatial layer stamps (step 0) shipped separately.
+Decisions D1 to D8 are made. The user-facing page is
+[Rhino .3dm](../guide/rhino-3dm.md). This page is the contract for opening a Rhino
 `.3dm` in the viewer, or adding one to a federation, as a read-only model:
 meshes, layers, colours, Attribute User Text and, for files ifc-lite exported,
 the IFC identity of every object.
@@ -393,9 +394,17 @@ type RhinoImportResponse =
   `finalizeFederatedSpatialPlacement` leaves the model at status `none`, and
   `convergeFederationRtcFrame` reads the coordinates as absolute world [src,
   from the survey of `federatedSpatialFinalize.ts` and `federationRtcRebase.ts`].
-  For our exports this lands on the source IFC model, **provided the viewer's
-  IFC world is the exporter's `MeshFrame` world** [unproven: the e2e in
-  Testing proves or refutes it].
+  For our exports this lands on the source IFC model: the viewer's IFC world
+  **is** the exporter's `MeshFrame` world. Measured in the browser by
+  `tests/e2e/rhino-import.e2e.spec.ts`, which exports FZK through the app's own
+  `export:3dm`, adds the file back as a federated model and compares the two
+  models' per-GlobalId world AABBs: all 90 drawn elements matched, worst corner
+  gap 4.17e-7 m (x 4.17e-7, y 1.19e-7, z 2.38e-7), in both `local` and `world`
+  coordinates [ran]. That is the f32 resolution of the vertex buffers, not a
+  placement difference. The same spec is the only evidence for a georeferenced
+  model: FZK sits at the origin, so no `IFC::WorldFromModel` is written and the
+  frame restore is exercised by `exports.test.ts` on `fzk-far`, not here
+  [unproven in the browser: a shifted model through the viewer's RTC rebase].
 - **Earth anchor:** reported in `document.earthAnchor` and shown in model
   metadata. The reader never moves geometry by it. `modelBasePoint` is a model
   coordinate, so it is scaled to metres and mapped through W like the rest
@@ -1071,7 +1080,8 @@ Level 1 has no dialog. The defaults live in the reader.
 - The whole `loadFile` route hides what Rhino hides, through the loaded model's
   own express id range (`useIfcLoader.rhino3dm.test.tsx`).
 - Selecting a mesh resolves through `resolveEntityRef` at `models.size` 1 and N
-  (AGENTS.md). **Not written:** the federated case is the e2e's (step 4).
+  (AGENTS.md). The federated case is the e2e's: it selects the re-imported
+  wall at `models.size` 2 and reads the properties panel the selection fills.
 - The worker client uses an in-process fake worker, as
   `rhino-export-client.test.ts` does
   (`apps/viewer/src/lib/import/rhino-import-client.test.ts`): abort, a reader
@@ -1083,23 +1093,51 @@ Level 1 has no dialog. The defaults live in the reader.
   text names the export worker and needs updating [src].
 
 **Real browser (`tests/e2e/rhino-import.e2e.spec.ts`, modelled on
-`rhino-export.e2e.spec.ts`):**
+`rhino-export.e2e.spec.ts`).** Implemented, four tests, in the `viewer-e2e`
+and `viewer-e2e-ci` Playwright projects. Each overlay test opens
+`AC20-FZK-Haus.ifc`, exports `.3dm` through `export:3dm` and adds the
+downloaded file as a federated model, once per exporter coordinate mode
+(`local` and `world`):
 
-1. Open `AC20-FZK-Haus.ifc`.
-2. Export `.3dm` through `export:3dm`.
-3. Add the downloaded file as a federated model.
-4. Assert:
-   - the model count is 2;
-   - picking a wall shows `IFC::Class` `IfcWallStandardCase` and its pset;
-   - **per GlobalId, the IFC model's and the Rhino model's world AABBs agree
-     within 1 mm.** This step turns the federation-alignment [unproven] into
-     [ran];
-   - spaces are hidden;
-   - no console errors.
+- **Per GlobalId, the IFC model's and the Rhino model's world AABBs agree
+  within 1 mm**, every corner on every axis. Measured: 4.17e-7 m, over all 90
+  drawn elements. Both sides' boxes are read off the store's own
+  `geometryResult`, `instancedGeometryAabbs` included, so FZK's 42 instanced
+  members are compared rather than silently dropped. The per-axis figure is
+  reported separately, so a swapped or flipped up axis is named rather than
+  merely large.
+- **Nothing the `.3dm` drew is geometry the IFC has not got** (the matched set
+  is the `.3dm`'s whole set), and the IFC-only ids are only
+  `IfcOpeningElement` and `*Type`, which the export leaves out by design.
+- The store says `IFC4` over `sourceKind: 'tabular'`, with its entity, mesh
+  and triangle counts.
+- The storey names and elevations equal the IFC's, read from both models in the
+  same session, and the stamped `IfcProject` carries the IFC's GlobalId.
+- The re-imported FZK wall `2XPyKWY018sA1ygZKgQPtU` is `IfcWallStandardCase`,
+  keeps `Pset_WallCommon` `ThermalTransmittance` 1.5 and its `IFC::GlobalId`,
+  and selecting it fills the properties panel with both.
+- The seven objects on the export's switched-off `IfcSpace` layers start
+  hidden, survive dropping the other model, and one of them is shown again
+  from its row's eye in the tree.
+- No console errors.
 
-Acceptance evidence (AGENTS.md): screenshots of FZK IFC with its `.3dm`
-overlaid, of a Rhino-authored model (`v7_rhino_logo_nurbs`) with its layer
-tree, and of the properties panel on a user-text object.
+Two more tests: a Rhino-authored file (`file3dm_stuff.3dm`) loads with its
+layer rows rendered as `IfcSpatialZone` under a root named for the file, no
+storeys, and its green layer colour on both the mesh and the point cloud; and
+a truncated `.3dm` and a file carrying the Rhino header over garbage are each
+refused with the reader's own sentence on the viewport's load-error card,
+leaving the loaded model alone, after which the intact file still loads. That
+last test also pins that an IFC named `.3dm` is read as the IFC it is: format
+detection reads the first 24 bytes, never the name, so the reader's `not-3dm`
+refusal is reachable in the app only for a file that claims the Rhino header.
+
+Acceptance evidence (AGENTS.md), taken by the spec run on a real GPU and
+committed under `docs/assets/`: FZK IFC with its `.3dm` overlaid and the
+selected wall's panel (`rhino-import-overlay.png`), the properties panel on
+the re-imported wall (`rhino-import-properties.png`), and a Rhino-authored
+model with its layer tree (`rhino-import-layer-tree.png`). The logo models
+(`v7_rhino_logo_nurbs`) are not available: their repository's licence does not
+grant redistribution, as the package tests already record.
 
 ## Delivery
 
@@ -1128,6 +1166,13 @@ One issue, stacked PRs, each under about 1,500 lines:
    does, so turning off a parent layer does not turn off a child layer's
    objects.
 4. **E2E and acceptance:** the overlay spec, screenshots, and a guide section.
+   **Done.** Deviations: the guide is a page of its own,
+   [Rhino .3dm](../guide/rhino-3dm.md), rather than a section inside an
+   existing one, because no existing page owns a format; the Rhino-authored
+   acceptance file is `file3dm_stuff.3dm` rather than the logo model, which is
+   not redistributable; and the "non-`.3dm` with a `.3dm` name" error case is
+   a file carrying the Rhino header over garbage, because format detection
+   reads the content, so any other file is routed to the format it really is.
 
 ## Open decisions
 

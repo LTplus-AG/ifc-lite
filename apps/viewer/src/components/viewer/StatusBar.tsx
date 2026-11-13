@@ -23,6 +23,7 @@ import { ActivityTrayButton } from './activity/ActivityTray';
 import { FpsMemoryStats, TriangleCount } from './PerformanceStats';
 import { sharedEffectivePhysicalEntityIds } from '@/lib/physical-objects';
 import { collectMeshedIds, countShapedObjects, createShapePredicate } from '@/lib/object-count';
+import { useLoadWindowHold } from '@/hooks/loadWindow';
 import { ownedAggregationRelationships } from '@/utils/entity-ownership';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { toGlobalIdFromModels } from '@/store/globalId';
@@ -68,12 +69,19 @@ export function StatusBar() {
     () => ({ models, ifcDataStore, geometryResult }),
     [models, ifcDataStore, geometryResult],
   ), (held, next) => held.ifcDataStore === next.ifcDataStore && sameModelsExceptGeometry(held.models, next.models));
-  const countedModels = useMemo<CountedModel[]>(() => {
+  // A model that is loading is left out until the load settles (loadWindow.ts):
+  // its walk ran inside the drain and finalize that end the load. A model that
+  // had settled before keeps its count while another model loads.
+  const loadHold = useLoadWindowHold();
+  const { countedModels, heldModels } = useMemo<{ countedModels: CountedModel[]; heldModels: number }>(() => {
     const { models, ifcDataStore, geometryResult } = countSource;
     if (models.size > 0) {
       const out: CountedModel[] = [];
+      let held = 0;
       const resolveInModel = useViewerStore.getState().resolveGlobalIdInModel;
       for (const model of models.values()) {
+        // Held first: a model that is loading has no store yet, and must still show the dash, not a 0.
+        if (loadHold.isHeld(model.id)) { held++; continue; }
         if (!model.ifcDataStore) continue;
         const toLocalId = (id: number): number => {
           const ref = resolveInModel(model.id, id);
@@ -86,15 +94,19 @@ export function StatusBar() {
           geometryReady: model.geometryResult != null,
         });
       }
-      return out;
+      return { countedModels: out, heldModels: held };
     }
-    return ifcDataStore ? [{
+    if (loadHold.isHeld('legacy')) return { countedModels: [], heldModels: 1 };
+    if (!ifcDataStore) return { countedModels: [], heldModels: 0 };
+    return { countedModels: [{
       modelId: 'legacy',
       store: ifcDataStore,
       meshedIds: collectMeshedIds(geometryResult),
       geometryReady: geometryResult != null,
-    }] : [];
-  }, [countSource]);
+    }], heldModels: 0 };
+  }, [countSource, loadHold]);
+  // Nothing settled to count yet: a dash, never a provisional 0.
+  const countPending = heldModels > 0 && countedModels.length === 0;
 
   // PERF: `state.models` is a NEW Map on every streaming batch commit
   // (`appendGeometryBatch` in dataSlice.ts rebuilds it to swap one model's
@@ -268,8 +280,12 @@ export function StatusBar() {
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-1.5">
           <Boxes className="h-3.5 w-3.5" />
-          <span>
-            {formatNumber(visibleElements)}
+          {/* A dash until the load settles, never a provisional 0. Tabular figures and a
+              minimum width wide enough for the dash and a typical count, so the
+              dash-to-number swap does not shift the bar; a long count (for example
+              "1 / 1,000,000") still widens it. */}
+          <span className="inline-block min-w-24 tabular-nums" data-testid="status-element-count" aria-busy={countPending || undefined}>
+            {countPending ? '—' : formatNumber(visibleElements)}
             {selectedStoreys.size > 0 && totalObjects !== visibleElements && (
               <span className="opacity-60"> / {formatNumber(totalObjects)}</span>
             )}

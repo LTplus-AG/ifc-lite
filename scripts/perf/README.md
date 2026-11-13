@@ -8,6 +8,15 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
+## Presentation layer attribute reads (#9928)
+
+Resolve schema positions once per type during each index build and read only
+ownership attributes from unedited STEP records. Effective metadata remains the
+single path for overlays and source-free stores. Shape Items can be omitted when
+there are no mapped items and no assignments below shape models; mapped exports
+still need these edges, even when every assignment targets a shape model.
+Measurement verdict pending the paired real-model run.
+
 ## Retained selection highlights (#9835, #9916)
 
 **Diagnostic win on the real large-model WebGPU path.** Retaining merged highlight

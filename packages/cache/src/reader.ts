@@ -24,6 +24,7 @@ import { readQuantities } from './sections/quantities.js';
 import { readRelationships } from './sections/relationships.js';
 import { readGeometryV13 } from './sections/geometry-chunks.js';
 import { readInstancedShards } from './sections/instanced-shards.js';
+import { readSelectionRelationships } from './sections/selection-relationships.js';
 import { readEntityIndex } from './sections/entity-index.js';
 
 export class BinaryCacheReader {
@@ -141,6 +142,7 @@ export class BinaryCacheReader {
     if (entityIndexSection) {
       reader.position = entityIndexSection.offset;
       result.entityIndex = readEntityIndex(reader);
+      if (header.version >= 28) dataStore.selectionRelationshipIndex = readSelectionRelationships(reader);
     }
 
     // Read geometry (optional)

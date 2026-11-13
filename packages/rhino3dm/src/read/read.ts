@@ -127,11 +127,10 @@ function build(api: ReadApi, file: RFile, archiveVersion: number, classes: IfcCl
   if (drawn.length === 0) throw refusal(report);
 
   const { entities, entityOf } = buildEntities(drawn, tables.groupNames, classes, report);
-  // Merging can put a later object into an earlier entity, so restore entity order.
-  const byEntity = <T extends { entity: number }>(items: T[]): T[] => {
-    for (const item of items) item.entity = entityOf[item.entity];
-    return items.sort((a, b) => a.entity - b.entity);
-  };
+  // Merging can put a later object into an earlier entity, so restore entity order. Each record keeps
+  // its own object's visibility, which a merged entity's flag cannot carry for every part.
+  const byEntity = <T extends { entity: number }>(items: T[]): (T & { hidden: boolean })[] =>
+    items.map(item => Object.assign(item, { entity: entityOf[item.entity], hidden: drawn[item.entity].hidden })).sort((a, b) => a.entity - b.entity);
   return {
     format: 'ifc-lite.rhino-import', version: 1,
     document: tables.document,

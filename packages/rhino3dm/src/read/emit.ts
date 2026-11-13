@@ -13,8 +13,22 @@ import { determinant3, hasLinearPart, keepsF32, reach, transformNormals, transfo
 
 export type DrawnPart = Exclude<Part, { kind: 'instance' }>;
 
-/** A block's own meshes, as the output definition, their triangle count, and per axis how far any vertex is from the block's origin. */
-export interface BlockMeshes { name: string; meshes: RhinoImportDefinition['meshes']; triangles: number; reach: RhinoVector3 }
+/** A record as drawn: the reader adds `hidden` once it maps the record to its entity. */
+type Drawn<T> = Omit<T, 'hidden'>;
+
+/** A block's own meshes, as the output definition, their `cost`, and per axis how far any vertex is from the block's origin. */
+export interface BlockMeshes { name: string; meshes: RhinoImportDefinition['meshes']; cost: number; reach: RhinoVector3 }
+
+/**
+ * What a part costs the triangle budget: its triangles, or a third of a triangle per vertex,
+ * rounded up, when that is more. Memory follows the vertex buffers as well as the triangles, and
+ * nothing makes a mesh's triangles use its vertices. A mesh whose every vertex is in some triangle
+ * has at most three per triangle and costs its triangles alone. Whole numbers, so a block's cost
+ * is exactly the sum of its meshes' and a placement admitted whole is never cut by rounding.
+ */
+export function cost(part: { positions: Float32Array; indices?: Uint32Array }): number {
+  return Math.max((part.indices?.length ?? 0) / 3, Math.ceil(part.positions.length / 9));
+}
 
 /** Reverse each triangle, for geometry placed by a mirroring transform. */
 function flipWinding(indices: Uint32Array): Uint32Array {
@@ -34,12 +48,12 @@ export const MAX_TEXT_DOTS = 100_000;
  * holds the index of the source object until the reader maps it to an entity.
  */
 export class Emitter {
-  readonly meshes: RhinoImportMesh[] = [];
+  readonly meshes: Drawn<RhinoImportMesh>[] = [];
   readonly definitions: RhinoImportDefinition[] = [];
-  readonly instances: RhinoImportInstance[] = [];
-  readonly pointClouds: RhinoImportPointCloud[] = [];
-  readonly curves: RhinoImportCurve[] = [];
-  readonly textDots: RhinoImportTextDot[] = [];
+  readonly instances: Drawn<RhinoImportInstance>[] = [];
+  readonly pointClouds: Drawn<RhinoImportPointCloud>[] = [];
+  readonly curves: Drawn<RhinoImportCurve>[] = [];
+  readonly textDots: Drawn<RhinoImportTextDot>[] = [];
   /** True once a part did not fit: nothing but text dots is drawn after that. */
   exhausted = false;
   private readonly definitionIndex = new Map<string, number>();
@@ -115,8 +129,7 @@ export class Emitter {
     }
     if (this.exhausted) return false;
     if (!this.inRange(xform, origin, part.positions)) { this.outOfRange++; this.report.skip('transform:invalid'); return true; }
-    // A curve or point cloud vertex is charged a third of a triangle, so blocks cannot multiply them without bound.
-    if (!this.take(part.kind === 'mesh' ? part.indices.length / 3 : part.positions.length / 9)) return false;
+    if (!this.take(cost(part))) return false;
     const linear = xform !== null && hasLinearPart(xform) ? xform : null;
     const positions = linear ? transformVectors(linear, part.positions) : this.own(part.positions);
     if (part.kind === 'curve') this.curves.push({ entity: object, origin, positions, closed: part.closed, color: [...color] });
@@ -136,7 +149,7 @@ export class Emitter {
   /**
    * Place a block's own meshes for `object`: one instance record, or baked
    * copies under `bakeInstances`. Either way the budget is charged the block's
-   * triangles once per placement. False when the budget refused it.
+   * `cost` once per placement. False when the budget refused it.
    *
    * What the budget does no longer depends on `bakeInstances`: both modes
    * admit and charge a placement alike. A placement whose block reach keeps
@@ -164,10 +177,10 @@ export class Emitter {
     if (this.bake || !whole) {
       // A whole block is admitted before any of its meshes is drawn; the per-mesh charges below
       // come to the same total, so none of them can refuse what this admitted.
-      if (whole && !this.fits(block.triangles)) return false;
+      if (whole && !this.fits(block.cost)) return false;
       return block.meshes.every(mesh => this.draw(object, { kind: 'mesh', ...mesh }, xform, mesh.color ?? color));
     }
-    if (!this.take(block.triangles)) return false;
+    if (!this.take(block.cost)) return false;
     let definition = this.definitionIndex.get(id);
     if (definition === undefined) {
       definition = this.definitions.length;

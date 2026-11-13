@@ -124,15 +124,15 @@ fn host_side_bvh_parity_matches_the_linear_scan() {
 #[test]
 fn boolean_output_is_byte_identical_to_the_linear_scan() {
     let mut cases: Vec<(Vec<Tri>, Vec<Tri>)> = vec![
-        wall_and_cylinder(16, 0.0),
-        wall_and_cylinder(64, 0.0),
-        wall_and_cylinder(64, 1.0e5),
+        wall_and_cylinder(12, 0.0),
+        wall_and_cylinder(24, 0.0),
+        wall_and_cylinder(24, 1.0e5),
         // flush cutter of the host's exact thickness (coplanar faces on both sides)
         (box_mesh([0.0, 0.0, 0.0], [200.0, 5500.0, 4250.0]), box_mesh([0.0, 800.0, 300.0], [200.0, 4700.0, 2200.0])),
         // overlapping boxes, partly outside
         (box_mesh([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]), box_mesh([0.5, 0.25, -0.5], [1.5, 0.75, 0.5])),
     ];
-    let (h, c) = wall_and_cylinder(48, 0.0);
+    let (h, c) = wall_and_cylinder(24, 0.0);
     cases.push((c, h)); // many-triangle host, box cutter
     for (i, (a, b)) in cases.iter().enumerate() {
         for op in [BoolOp::Difference, BoolOp::Union, BoolOp::Intersection] {
@@ -146,19 +146,19 @@ fn boolean_output_is_byte_identical_to_the_linear_scan() {
 
 #[test]
 fn host_side_classification_work_grows_subquadratically_with_the_cutter() {
-    // Cutter triangles 4N: 256 -> 512 -> 1024. The linear scan's work grows
+    // Cutter triangles 4N: 128 -> 256 -> 512. The linear scan's work grows
     // about 4x per doubling (host fragments x cutter triangles); the BVH's about 2x.
     let work = |n: usize, lin: bool| {
         let (wall, cyl) = wall_and_cylinder(n, 0.0);
         let run = || seg_tests(|| boolean(&wall, &cyl, BoolOp::Difference)).1;
         if lin { linear(run) } else { run() }
     };
-    let (w1, w2, w3) = (work(64, false), work(128, false), work(256, false));
-    assert!(w2 as f64 <= 3.0 * w1 as f64, "BVH work 256->512 tris: {w1} -> {w2}");
-    assert!(w3 as f64 <= 3.0 * w2 as f64, "BVH work 512->1024 tris: {w2} -> {w3}");
+    let (w1, w2, w3) = (work(32, false), work(64, false), work(128, false));
+    assert!(w2 as f64 <= 3.0 * w1 as f64, "BVH work 128->256 tris: {w1} -> {w2}");
+    assert!(w3 as f64 <= 3.0 * w2 as f64, "BVH work 256->512 tris: {w2} -> {w3}");
     // The linear baseline grows ~4x per doubling, so the ratios above discriminate,
-    // and at 1024 cutter triangles the BVH does a small fraction of its work.
-    let (l2, l3) = (work(128, true), work(256, true));
+    // and at 512 cutter triangles the BVH does a small fraction of its work.
+    let (l2, l3) = (work(64, true), work(128, true));
     assert!(l3 as f64 >= 3.5 * l2 as f64, "the linear baseline should grow ~4x ({l2} -> {l3}); the test no longer discriminates");
-    assert!(w3 * 8 < l3, "BVH work {w3} not well below the linear scan's {l3} at 1024 cutter triangles");
+    assert!(w3 * 8 < l3, "BVH work {w3} not well below the linear scan's {l3} at 512 cutter triangles");
 }

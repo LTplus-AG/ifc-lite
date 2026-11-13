@@ -119,8 +119,17 @@ test('a loaded wall\'s base quantities follow a resize only with the setting on 
   const reopenedId = await waitForModel(reopened);
   const fromFile = await reopened.evaluate(({ modelId, expressId }) => {
     const state = globalThis.__ifc_lite_viewer_store__.getState();
-    const set = state.mutationViews.get(modelId)!.getQuantitiesForEntity(expressId).filter((q) => q.name === 'BaseQuantities');
-    return set.map((s) => Object.fromEntries(s.quantities.map((q) => [q.name, q.value])));
+    // #9026/#9621: exercise a cold read even if background markup inspection
+    // happened to register an incidental view before the model settled.
+    state.clearMutationView(modelId);
+    // Read the exported quantities from its parsed store, without creating edit state.
+    const store = state.models.get(modelId)!.ifcDataStore!;
+    const set = store.getQuantities(expressId).filter((q) => q.name === 'BaseQuantities');
+    return {
+      quantities: set.map((s) => Object.fromEntries(s.quantities.map((q) => [q.name, q.value]))),
+      hasMutationView: globalThis.__ifc_lite_viewer_store__.getState().mutationViews.has(modelId),
+    };
   }, { modelId: reopenedId, expressId: WALL });
-  expect(fromFile).toEqual([refreshedHeight]);
+  expect(fromFile.hasMutationView).toBe(false);
+  expect(fromFile.quantities).toEqual([refreshedHeight]);
 });

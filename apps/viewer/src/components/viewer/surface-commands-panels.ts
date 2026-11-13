@@ -33,6 +33,8 @@ const CHILD_PATH_KEYS: Partial<Record<WorkspacePanelId, TranslationKey>> = {
   gantt: 'commandPalette.paths.panels.quantify', cost: 'commandPalette.paths.panels.quantify',
   drawing: 'commandPalette.paths.panels.drawing', appearance: 'commandPalette.paths.panels.appearance',
   pointclouds: 'commandPalette.paths.panels.clouds',
+  assistant: 'commandPalette.paths.panels.assistant', semantic: 'commandPalette.paths.panels.semantic',
+  script: 'commandPalette.paths.panels.script',
 };
 
 function bottomCommand<const Id extends BottomPanelId>(
@@ -67,7 +69,7 @@ function rightCommand<const Id extends string>(
 
 export const PANEL_SURFACE_COMMANDS = [
   bottomCommand('presentation', 'presentation slides saved views viewpoints slideshow play baskets', Layout, false),
-  bottomCommand('script', 'code automation console', FileCode2),
+  bottomCommand('script', 'code automation console import script export script promote to tool save script run script undo redo reset sandbox', FileCode2),
   bottomCommand('lists', 'entity lists table spreadsheet columns sort filter selection CSV export templates', FileSpreadsheet),
   bottomCommand('gantt', 'construction schedule (gantt) 4d timeline tasks ifctask sequence playback animation', CalendarClock),
   bottomCommand('charts', 'dashboard chart graph bar pie statistics analytics report', BarChart3),
@@ -77,7 +79,8 @@ export const PANEL_SURFACE_COMMANDS = [
   {
     id: 'panel:properties', panelId: 'properties', panelGroup: panelGroupFor('properties'),
     labelKey: panelTitleKey('properties'),
-    keywords: 'properties attributes material classification schedule task panel right inspector information',
+    keywords: 'properties attributes material classification schedule task panel right inspector information select entity edit mode location zones volume split add reassign geometry property editing',
+    keywordsKey: 'commandPalette.paths.properties', detailKey: 'commandPalette.paths.properties',
     category: 'Panels', icon: Layout, surfaces: paletteOnly, enabled: alwaysEnabled,
     run: () => {
       closeActiveAnalysisExtension();
@@ -88,7 +91,8 @@ export const PANEL_SURFACE_COMMANDS = [
   {
     id: 'panel:tree', panelId: 'hierarchy', panelGroup: panelGroupFor('hierarchy'),
     labelKey: panelTitleKey('hierarchy'),
-    keywords: 'spatial tree hierarchy left panel', category: 'Panels', icon: TreeDeciduous,
+    keywords: 'spatial tree hierarchy left panel model tags tag grouping isolate tagged models storey sort exploded gap source sync changed model removal',
+    keywordsKey: 'commandPalette.paths.tree', detailKey: 'commandPalette.paths.tree', category: 'Panels', icon: TreeDeciduous,
     surfaces: paletteOnly, enabled: alwaysEnabled,
     run: () => {
       closeActiveAnalysisExtension();
@@ -97,7 +101,7 @@ export const PANEL_SURFACE_COMMANDS = [
       state.showWorkspacePanel('hierarchy', 'palette');
     },
   },
-  rightCommand('panel:assistant', 'assistant', 'assistant analysis ai evidence discussion report', MessageSquare),
+  rightCommand('panel:assistant', 'assistant', 'assistant analysis ai evidence discussion report saved conversations recipes project preferences placement generation language API keys classify all proposal review apply reviewed groups undo proposal IDS draft rules draft workflow from conversation', MessageSquare),
   rightCommand('panel:bcf', 'bcf', 'collaboration topics comments viewpoint BCF server connect review import export issues snapshots', MessageSquare, true),
   rightCommand('panel:ids', 'validation', 'ids validation information delivery specification check', ClipboardCheck, true),
   rightCommand('panel:idsStudio', 'idsStudio', 'ids studio author edit write information delivery specification requirements facets', ClipboardPen),
@@ -107,13 +111,14 @@ export const PANEL_SURFACE_COMMANDS = [
   rightCommand('panel:changes', 'changes', 'authored edits modifications properties history review', History),
   rightCommand('panel:model', 'model', 'model inspector author defaults wall type dimensions edit workspace', PencilLine),
   rightCommand('panel:review', 'review', 'review coordination cards findings clash validation comparison bcf linked records decisions workspace', ListChecks),
-  rightCommand('panel:semantic', 'semantic', 'linked records semantic sparql json rdf dbl dpp passport profile validation', Link2, true),
+  rightCommand('panel:semantic', 'semantic', 'linked records semantic sparql json rdf dbl dpp passport profile validation identity configuration import profile export profile attach source text restore workspace save workspace projection mapping', Link2, true),
   rightCommand('panel:changeSets', 'changeSets', 'change set changeset edits group active export import share discard', GitBranch, true),
   rightCommand('panel:cost', 'cost', '5d cost schedule item quantity budget estimate rates currency subtotal assignments', Coins, true),
   {
     id: 'panel:chat', panelId: 'script', panelGroup: panelGroupFor('script'),
     labelKey: 'commandPalette.panel.chat.label', searchLabel: 'AI Chat',
-    keywords: 'ai assistant script chat ask model', category: 'Panels', icon: Sparkles,
+    keywords: 'ai assistant script chat ask model API keys attachments apply code replace code run code repair script',
+    keywordsKey: 'commandPalette.paths.panels.chat', detailKey: 'commandPalette.paths.panels.chat', category: 'Panels', icon: Sparkles,
     surfaces: paletteOnly, enabled: alwaysEnabled,
     run: (context: SurfaceCommandContext) => {
       if (!context.activateBottomPanel) throw new Error('Cannot open chat without a panel host');

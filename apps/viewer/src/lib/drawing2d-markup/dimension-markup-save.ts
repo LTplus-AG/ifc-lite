@@ -17,7 +17,7 @@
 
 import type { DimensionMarkupParams } from '@ifc-lite/create';
 import { axisFlipForSection } from '@/hooks/pdfSectionLayout';
-import type { Dimension2D } from '@/store/slices/drawing2DDimensions';
+import { DIMENSION_2D_ORIENTATIONS, type Dimension2D } from '@/store/slices/drawing2DDimensions';
 import type { DrawnSectionPlane } from '@/store/slices/drawing2DSlice';
 import { dimensionGraphics, formatDimensionValue } from './dimension-graphics.js';
 import { encodeDimensionPlane, encodeDimensionRef } from './dimension-markup-codec.js';
@@ -81,6 +81,7 @@ export function findInvalidDimension(d: DimensionMarkupParams): string | null {
   if (!finitePoint(d.a) || !finitePoint(d.b)) return 'has a non-finite point';
   if (!Number.isFinite(d.distance) || d.distance < 0) return 'has a non-finite or negative value';
   if (!Number.isFinite(d.offset)) return 'has a non-finite offset';
+  if (!(DIMENSION_2D_ORIENTATIONS as readonly string[]).includes(d.orientation)) return 'has an unknown orientation';
   if (![...d.lines, ...d.ticks].every(([p, q]) => finitePoint(p) && finitePoint(q))) return 'has a non-finite drawn line';
   const { label } = d;
   if (!finitePoint(label.position) || !Number.isFinite(label.angle) || !Number.isFinite(label.height) || label.height < 0) {

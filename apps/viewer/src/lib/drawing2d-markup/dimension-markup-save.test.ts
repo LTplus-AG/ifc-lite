@@ -155,4 +155,18 @@ describe('saveDrawingMarkupToModel with dimensions', () => {
     }
     assert.equal(annotations().length, 1, 'the earlier save survives');
   });
+
+  it('refuses an unknown orientation before sweeping the previous save', () => {
+    saveDrawingMarkupToModel('m1', input([DIM]));
+    const bad = input([DIM]);
+    bad.dimensions2D[0] = { ...bad.dimensions2D[0], orientation: 'diagonal' as Dimension2D['orientation'] };
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    try {
+      assert.equal(saveDrawingMarkupToModel('m1', bad).refusal, 'invalid-markup');
+    } finally {
+      console.warn = originalWarn;
+    }
+    assert.equal(annotations().length, 1, 'the earlier save survives');
+  });
 });

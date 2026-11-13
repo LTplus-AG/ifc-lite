@@ -125,6 +125,19 @@ for (const edit of ['retype','delete'] as const) {
   });
 }
 
+it('#9923: presence finds structural rows a server-hydrated store files under Unknown', () => {
+  const store = createSyntheticDataStore({schemaVersion:'IFC4',fileSize:0,entities:[
+    {expressId:7,type:'IfcStructuralCurveMember',hasGeometry:true},
+  ]});
+  // serverDataModel keys byType by IfcTypeEnum name, which has no structural members.
+  const byType = store.entityIndex.byType;
+  const ids = [...byType.values()].flat();
+  byType.clear();
+  byType.set('Unknown',ids);
+  const state = {models:new Map(),ifcDataStore:store,mutationViews:new Map()};
+  assert.equal(hasStructuralData(state),true);
+});
+
 it('#9923: IFC2X3 varying actions are analytical', () => {
   for (const type of ['IfcStructuralLinearActionVarying','IfcStructuralPlanarActionVarying']) {
     assert.equal(isAnalyticalProduct(type),true,type);

@@ -108,7 +108,8 @@ export function paletteAvailability(command: SurfaceCommandDefinition, context: 
     if (hasRetainedShapeOnlyModel(s.models)) return blocked(RETAINED_SHAPE_ONLY_REASON);
   }
 
-  if (id === 'vis:structural-view' && !hasStructuralData(s)) return blocked('commandPalette.availability.structural');
+  // A latched mode stays reachable so the user can cycle back after removing the last analytical product.
+  if (id === 'vis:structural-view' && (s.structuralViewMode ?? 'both') === 'both' && !hasStructuralData(s)) return blocked('commandPalette.availability.structural');
   const hasData = s.ifcDataStore !== null || [...s.models.values()].some(m => m.ifcDataStore != null);
   const opener = HOST_OPENERS.get(id);
   if (opener) {

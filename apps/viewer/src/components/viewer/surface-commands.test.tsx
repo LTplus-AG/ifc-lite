@@ -299,6 +299,9 @@ it('#9923 disables the structural mode command until analytical data exists', as
       ifcDataStore:store,mutationViews:new Map([['default',view]]),loading:false});
     const row = () => registry.paletteSurfaceCommands({canEditInSession:true},()=>{}).find((r)=>r.id==='vis:structural-view');
     assert.equal(row()?.availability?.status,'disabled','a physical-only model has nothing analytical to reveal');
+    useViewerStore.setState({structuralViewMode:'analytical'});
+    assert.equal(row()?.checkAvailability?.().status,'available','a latched mode stays reachable so the user can cycle back');
+    useViewerStore.setState({structuralViewMode:'both'});
     new StoreEditor(store,view).addEntity('IfcStructuralPointConnection',['0abcdefghijklmnopqrstu',null,'Joint',null,null,null,null,null,null]);
     assert.equal(row()?.checkAvailability?.().status,'available','an authored analytical product enables the same command');
   } finally { useViewerStore.setState(previous); }

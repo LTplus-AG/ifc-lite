@@ -316,15 +316,46 @@ test('DIFF: a CHANGELOG and its package.json move together, or the diff is not a
   assert.deepEqual(diffProblems([{ status: 'A', path: 'CHANGELOG.md' }, { status: 'M', path: 'package.json' }], fakeGit(root)), ['CHANGELOG.md: changesets writes no CHANGELOG for the private root']);
 });
 
-test('DIFF: any Cargo.toml or Cargo.lock change runs the full lanes, of any status, even a pure version bump (#9783 review)', () => {
-  // Every version-only Cargo rule tried here misread some TOML spelling,
-  // fail-open. The lean lane no longer judges Cargo edits.
-  for (const path of ['Cargo.toml', 'Cargo.lock', 'rust/core/Cargo.toml', 'rust/core/fuzz/Cargo.lock']) {
-    for (const status of ['M', 'A', 'D']) {
-      const problems = diffProblems([{ status, path }], fakeGit({}));
-      assert.deepEqual(problems, [`${path}: a Cargo file changed; the lean lane does not judge Cargo edits`], `${status} ${path}`);
-    }
+test('DIFF: a Cargo file passes only as the release writer\'s replayed output, byte for byte', () => {
+  const W = 'scripts/sync-versions.js';
+  const replay = (files) => ({ show: () => { throw new Error('unused'); }, cargoReplay: () => files });
+  const lock = { path: 'Cargo.lock', replayed: 'version = "2.0.0"\n', head: 'version = "2.0.0"\n' };
+  const toml = { path: 'Cargo.toml', replayed: 'v = "2.0.0"\n', head: 'v = "2.0.0"\n' };
+  const untouched = { path: 'rust/core/fuzz/Cargo.lock', replayed: 'x\n', head: 'x\n' };
+  const M = (path) => ({ status: 'M', path });
+  assert.deepEqual(diffProblems([M('Cargo.lock'), M('Cargo.toml')], replay([lock, toml, untouched])), []);
+  // Bytes, not text: a Buffer from the replay against a string from git compares by content.
+  assert.deepEqual(diffProblems([M('Cargo.lock')], replay([{ ...lock, replayed: Buffer.from(lock.head) }])), []);
+  // One byte the writer did not write, of any kind (a comment, CRLF, a registry crate), refuses.
+  for (const head of ['version = "2.0.0" # x\n', 'version = "2.0.0"\r\n', 'version = "2.0.1"\n']) {
+    assert.deepEqual(diffProblems([M('Cargo.lock')], replay([{ ...lock, head }])), [`Cargo.lock: differs from what ${W} writes on the base tree`], JSON.stringify(head));
   }
+  // A file the writer never touches cannot change at all.
+  assert.deepEqual(diffProblems([M('rust/core/fuzz/Cargo.lock')], replay([{ ...untouched, head: 'y\n' }])), [`rust/core/fuzz/Cargo.lock: differs from what ${W} writes on the base tree`]);
+  // A file the writer rewrites must be in the diff: a release that skipped one lock is not the writer's output.
+  assert.deepEqual(diffProblems([M('Cargo.toml')], replay([{ ...lock, head: 'version = "1.0.0"\n' }, toml])), [`Cargo.lock: ${W} rewrites it on the base tree, but this diff leaves it unchanged`]);
+  // A Cargo file the base tree does not have: the writer did not write it.
+  assert.deepEqual(diffProblems([M('rust/new/Cargo.toml')], replay([lock])), [`rust/new/Cargo.toml: not a Cargo file of the base tree, so ${W} did not write it`]);
+  // The writer only rewrites in place.
+  for (const status of ['A', 'D']) {
+    assert.deepEqual(diffProblems([{ status, path: 'Cargo.lock' }], replay([lock])), [`Cargo.lock: status ${status}; ${W} only rewrites Cargo files in place`], status);
+  }
+});
+
+test('DIFF FAIL CLOSED: no replay, a throwing replay or an empty one refuses every Cargo edit', () => {
+  const W = 'scripts/sync-versions.js';
+  const entries = [{ status: 'M', path: 'Cargo.toml' }, { status: 'M', path: 'Cargo.lock' }];
+  const cases = [
+    [{ show: () => '' }, 'no replay available'],
+    [{ show: () => '', cargoReplay: () => { throw new Error('scripts/sync-versions.js exited 1: boom\nmore'); } }, 'scripts/sync-versions.js exited 1: boom'],
+    [{ show: () => '', cargoReplay: () => [] }, 'the replay returned no Cargo files'],
+    [{ show: () => '', cargoReplay: () => null }, 'the replay returned no Cargo files'],
+  ];
+  for (const [git, why] of cases) {
+    assert.deepEqual(diffProblems(entries, git), entries.map((e) => `${e.path}: replaying ${W} failed (${why}), so the Cargo edit cannot be judged`), why);
+  }
+  // A diff with no Cargo file never runs the replay.
+  assert.deepEqual(diffProblems([{ status: 'D', path: '.changeset/brave-cats-sing.md' }], { show: () => '', cargoReplay: () => { throw new Error('must not run'); } }), []);
 });
 
 test('DIFF: a deleted .changeset file that changesets ignores is not a consumed changeset', () => {
@@ -503,6 +534,72 @@ test('CLI FAIL CLOSED: no GITHUB_OUTPUT writes nothing and exits 1; --verify exi
   // Under shadow no lean output can be justified.
   assert.equal(cli(['--verify'], { CI_RELEASE_LANE: 'shadow', LANE: 'lean', NEEDS: needs }, dir).code, 1);
   assert.equal(cli(['--verify'], { LANE: 'full', NEEDS: needsJson() }, dir).code, 0);
+});
+
+/** A release-shaped repo with Rust crates: 22 workspace packages (the
+ * writer's package floor is 20), a Cargo workspace with two members, both
+ * locks, and the offset file. `change` runs on the head after `changeset
+ * version` would have run (p0 bumped, its CHANGELOG written, the changeset
+ * consumed), so it decides how the Cargo files get written. */
+const SYNC = join(HERE, 'sync-versions.js');
+function cargoRepo(change) {
+  return repo((dir) => {
+    // The base commit of `repo` has none of this; add it as part of the base by amending.
+    const g = (...a) => execFileSync('git', a, { cwd: dir, encoding: 'utf8' });
+    writeFileSync(join(dir, 'package.json'), `${JSON.stringify({ name: 'root', private: true, version: '6.0.1' }, null, 2)}\n`);
+    writeFileSync(join(dir, 'rust-major-offset.json'), '{"majorOffset": 0}\n');
+    for (let i = 0; i < 22; i++) {
+      mkdirSync(join(dir, `packages/p${i}`), { recursive: true });
+      writeFileSync(join(dir, `packages/p${i}/package.json`), `${JSON.stringify({ name: `p${i}`, version: i === 0 ? '6.0.1' : '0.1.0' })}\n`);
+      writeFileSync(join(dir, `packages/p${i}/CHANGELOG.md`), `# p${i}\n`);
+    }
+    writeFileSync(join(dir, 'Cargo.toml'), '[workspace]\nmembers = ["rust/core", "rust/geometry"]\n\n[workspace.package]\nversion = "6.0.1"\n\n[workspace.dependencies]\nifc-lite-core = { version = "6.0.1", path = "rust/core" }\nifc-lite-geometry = { version = "6.0.1", path = "rust/geometry" }\n');
+    for (const m of ['core', 'geometry']) {
+      mkdirSync(join(dir, `rust/${m}`), { recursive: true });
+      writeFileSync(join(dir, `rust/${m}/Cargo.toml`), `[package]\nname = "ifc-lite-${m}"\nversion.workspace = true\n`);
+    }
+    const members = ['core', 'geometry'].map((m) => `[[package]]\nname = "ifc-lite-${m}"\nversion = "6.0.1"\n`).join('\n');
+    const serde = '\n[[package]]\nname = "serde"\nversion = "1.0.0"\nsource = "registry+https://github.com/rust-lang/crates.io-index"\n';
+    writeFileSync(join(dir, 'Cargo.lock'), `version = 4\n\n${members}${serde}`);
+    mkdirSync(join(dir, 'rust/python'), { recursive: true });
+    writeFileSync(join(dir, 'rust/python/Cargo.lock'), `version = 4\n\n[[package]]\nname = "ifc-lite-python"\nversion = "4.5.0"\n\n${members}`);
+    g('add', '-A');
+    g('commit', '-q', '--amend', '--no-edit');
+    // Now the head: what `changeset version` writes, then `change`.
+    versionBump(dir);
+    writeFileSync(join(dir, 'packages/p0/package.json'), `${JSON.stringify({ name: 'p0', version: '6.1.0' })}\n`);
+    writeFileSync(join(dir, 'packages/p0/CHANGELOG.md'), '# p0\n\n## 6.1.0\n');
+    change(dir);
+  });
+}
+const runWriter = (dir) => execFileSync(process.execPath, [SYNC, '--root', dir], { encoding: 'utf8' });
+
+test('CLI --decide on a real Rust release: the writer\'s own Cargo output goes lean; any other Cargo byte runs full', () => {
+  const release = cargoRepo(runWriter);
+  // The fixture really moves the crates, so this exercises the replay, not an empty Cargo diff.
+  assert.match(execFileSync('git', ['diff', '--name-only', 'HEAD~1', 'HEAD'], { cwd: release, encoding: 'utf8' }), /^Cargo\.lock$/m);
+  const lean = cli(['--decide'], {}, release);
+  assert.equal(lean.code, 0, lean.stderr);
+  assert.deepEqual(lean.outputs, { lane: 'lean' }, lean.stdout);
+  const needs = needsJson('skipped', Object.fromEntries(LEAN_KEPT_JOBS.map((j) => [j, 'success'])));
+  assert.equal(cli(['--verify'], { LANE: 'lean', NEEDS: needs }, release).code, 0, 'the aggregate re-derives the same verdict');
+
+  const comment = cli(['--decide'], {}, cargoRepo((d) => { runWriter(d); writeFileSync(join(d, 'Cargo.toml'), `${readFileSync(join(d, 'Cargo.toml'), 'utf8')}# extra\n`); }));
+  assert.deepEqual(comment.outputs, { lane: 'full' });
+  assert.match(comment.stdout, /Cargo\.toml: differs from what scripts\/sync-versions\.js writes on the base tree/); // @source-text-assertion-ok subject is the CLI's printed reason
+  const skippedLock = cli(['--decide'], {}, cargoRepo((d) => {
+    const before = readFileSync(join(d, 'rust/python/Cargo.lock'));
+    runWriter(d);
+    writeFileSync(join(d, 'rust/python/Cargo.lock'), before);
+  }));
+  assert.deepEqual(skippedLock.outputs, { lane: 'full' });
+  assert.match(skippedLock.stdout, /rust\/python\/Cargo\.lock: scripts\/sync-versions\.js rewrites it on the base tree, but this diff leaves it unchanged/); // @source-text-assertion-ok subject is the CLI's printed reason
+  const registry = cli(['--decide'], {}, cargoRepo((d) => {
+    runWriter(d);
+    writeFileSync(join(d, 'Cargo.lock'), readFileSync(join(d, 'Cargo.lock'), 'utf8').replace('version = "1.0.0"', 'version = "1.0.1"'));
+  }));
+  assert.deepEqual(registry.outputs, { lane: 'full' });
+  assert.match(registry.stdout, /Cargo\.lock: differs from what/); // @source-text-assertion-ok subject is the CLI's printed reason
 });
 
 // ---------------------------------------------------------------- the wiring

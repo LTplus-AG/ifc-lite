@@ -120,10 +120,21 @@ export interface RtcRebaseGeometry {
   meshes: ReadonlyArray<{ origin?: Origin; geometryClass?: number }>;
   /** Present on a `GeometryResult`; read only by {@link carriesGpuInstancedGeometry}. */
   instancedGeometryAabbs?: ReadonlyMap<number, unknown> | null;
-  /** Inline clouds move with their meshes, through `origin` (#10029). A
-   *  streamed scan is a zero-point descriptor here and is never moved. */
-  pointClouds?: ReadonlyArray<{ origin?: Origin; chunk?: { pointCount: number } }> | null;
+  /** Inline clouds (`PointCloudAsset`) move with their meshes, through `origin`
+   *  (#10029). A streamed scan is a zero-point descriptor here and is never moved.
+   *  Typed `unknown` so existing callers still compile; read via {@link cloudsOf}. */
+  pointClouds?: ReadonlyArray<unknown> | null;
 }
+
+type CloudPart = { origin?: Origin; chunk?: { pointCount: number } };
+
+/** The cloud entries this module can read and move: objects, in the `PointCloudAsset` shape. */
+function cloudsOf(geometry: RtcRebaseGeometry): CloudPart[] {
+  return (geometry.pointClouds ?? []).filter((cloud): cloud is CloudPart => typeof cloud === 'object' && cloud !== null);
+}
+
+/** A streamed scan's zero-point identity descriptor: never moved. */
+const isStreamedDescriptor = (cloud: CloudPart) => cloud.chunk?.pointCount === 0;
 
 /**
  * Whether a model carries GPU-instanced geometry, which this module cannot
@@ -147,8 +158,8 @@ export function carriesGpuInstancedGeometry(geometry: RtcRebaseGeometry): boolea
  * follows the anchor like a mesh (#10029).
  */
 function isStreamedScanOnly(geometry: RtcRebaseGeometry): boolean {
-  const clouds = geometry.pointClouds ?? [];
-  return geometry.meshes.length === 0 && clouds.length > 0 && clouds.every((cloud) => !(cloud.chunk?.pointCount ?? 0));
+  const clouds = cloudsOf(geometry);
+  return geometry.meshes.length === 0 && clouds.length > 0 && clouds.every(isStreamedDescriptor);
 }
 
 export interface RtcConvergeResult<T> {
@@ -191,7 +202,7 @@ export function convergeGeometryOntoRtcAnchor<T extends RtcRebaseGeometry>(
     };
     geometry.meshes.forEach(move);
     // Inline clouds share their meshes' frame and move the same way (#10029).
-    geometry.pointClouds?.forEach((cloud) => { if (cloud.chunk?.pointCount !== 0) move(cloud); });
+    cloudsOf(geometry).forEach((cloud) => { if (!isStreamedDescriptor(cloud)) move(cloud); });
     geometry.coordinateInfo = rebaseCoordinateInfoOntoRtcAnchor(geometry.coordinateInfo, anchor);
     moved.push(geometry);
   }

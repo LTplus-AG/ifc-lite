@@ -225,6 +225,17 @@ describe('convergeGeometryOntoRtcAnchor', () => {
     expect(descriptor).toEqual({ expressId: 2, chunk: { pointCount: 0 } });
   });
 
+  it('still accepts a geometry typed with pointClouds: unknown[] (public input type unchanged)', () => {
+    // Compile-time half: checked by the repo typecheck. Runtime half: entries
+    // that are not objects are ignored rather than crashing the re-base.
+    const g: { coordinateInfo: CoordinateInfo; meshes: TestMesh[]; pointClouds?: unknown[] } = raw([{ positions: new Float32Array([0, 0, 0]) }]);
+    const inline = { expressId: 1 };
+    g.pointClouds = [null, 42, inline];
+    expect(convergeGeometryOntoRtcAnchor([g], LV95).moved).toEqual([g]);
+    const d = ifcToViewerAxes(LV95);
+    expect(inline).toEqual({ expressId: 1, origin: [-d.x, -d.y, -d.z] });
+  });
+
   it('never moves or refuses a streamed scan (zero-point descriptor): it is raw in every load order', () => {
     const cloud = raw([]);
     cloud.pointClouds = [{ expressId: 1, chunk: { pointCount: 0 } }];

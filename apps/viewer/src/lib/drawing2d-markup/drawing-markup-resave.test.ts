@@ -286,7 +286,7 @@ describe('saveDrawingMarkupToModel keeps embedded markup the session never absor
 
     const saved = exportStep(store);
     assert.equal(count(saved, 'IFCANNOTATION'), 2, 'the embedded measurement and the new one');
-    assert.match(saved, new RegExp(`'${embedded}'`), 'the embedded measurement survives the save');
+    assert.ok(saved.includes(`'${embedded}'`), 'the embedded measurement survives the save');
     assert.deepEqual(danglingRefs(saved), []);
   });
 
@@ -308,10 +308,10 @@ describe('saveDrawingMarkupToModel keeps embedded markup the session never absor
     assert.equal(saveDrawingMarkupToModel('m1', ONE_MEASURE).previousRemoved, 1);
     const saved = exportStep(store);
     assert.equal(count(saved, 'IFCANNOTATION'), 4, 'three kept embedded annotations and the re-saved measurement');
-    assert.doesNotMatch(saved, new RegExp(`'${guids.get('IfcLite:Markup:Measure')}'`));
+    assert.ok(!saved.includes(`'${guids.get('IfcLite:Markup:Measure')}'`));
     for (const tag of ['IfcLite:Markup:PolygonArea', 'IfcLite:Markup:Text', 'IfcLite:Markup:Cloud']) {
       assert.ok(guids.get(tag), `expected ${tag} in the first file`);
-      assert.match(saved, new RegExp(`'${guids.get(tag)}'`), `${tag} was never absorbed and must survive`);
+      assert.ok(saved.includes(`'${guids.get(tag)}'`), `${tag} was never absorbed and must survive`);
     }
     assert.deepEqual(danglingRefs(saved), []);
   });

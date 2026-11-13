@@ -94,6 +94,9 @@ function oneMeasureFlat(): ReturnType<typeof createEmptyFlatSymbolic> {
   return f;
 }
 
+/** Answers a reply a test left held, so a pending parse request cannot keep the test process alive. */
+let releaseLeftover: (() => void) | null = null;
+
 /** A fake overlay worker whose reply is held until the returned function is called. */
 function heldWasmReply(flat = oneMeasureFlat()): () => void {
   let worker: { onmessage: ((event: { data: unknown }) => void) | null } | null = null;
@@ -103,11 +106,14 @@ function heldWasmReply(flat = oneMeasureFlat()): () => void {
     worker = created;
     return created as unknown as Worker;
   });
-  return () => {
+  const reply = () => {
     const posted = request as { id: number } | null;
-    assert.ok(posted && worker, 'the fake worker never received a request');
-    worker.onmessage?.({ data: { id: posted.id, ok: true, flat } });
+    request = null;
+    if (posted) worker?.onmessage?.({ data: { id: posted.id, ok: true, flat } });
+    return posted !== null;
   };
+  releaseLeftover = reply;
+  return () => assert.ok(reply(), 'the fake worker never received a request');
 }
 
 function Probe(): null {
@@ -166,6 +172,9 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  const leftover = releaseLeftover;
+  releaseLeftover = null;
+  if (leftover) await act(async () => { leftover(); });
   await unmount();
   clearAllDrawing2DEntries();
 });
@@ -214,7 +223,7 @@ describe('save markup to model keeps embedded markup the session never absorbed'
 
     const saved = saveAndExport('display-change', store);
     assert.equal(annotations(saved), 1, 'the absorbed measurement is replaced, not duplicated');
-    assert.match(saved, /IFCQUANTITYLENGTH\('Distance',\$,\$,5\.\)/, 'the measurement is still in the file');
+    assert.match(saved, /IFCQUANTITYLENGTH\('Distance',\$,\$,5\.,/, 'the measurement is still in the file');
   });
 
   it('an empty entry that records absorbed markup is a deliberate deletion and still wins', async () => {

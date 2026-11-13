@@ -1,0 +1,13 @@
+diff --git a/apps/viewer/src/lib/drawing2d-markup/drawing-markup-embedded-sweep.ts b/apps/viewer/src/lib/drawing2d-markup/drawing-markup-embedded-sweep.ts
+index 6cb1f3fc4a..df1b5d1d75 100644
+--- a/apps/viewer/src/lib/drawing2d-markup/drawing-markup-embedded-sweep.ts
++++ b/apps/viewer/src/lib/drawing2d-markup/drawing-markup-embedded-sweep.ts
+@@ -263,5 +263,6 @@ export function removeEmbeddedDrawingMarkup(store: IfcDataStore, editor: StoreEd
+     }
+   }
+-
+-  return 0;
++
++  for (const id of doomed) editor.removeEntity(id);
++  return annotations.size;
+ }

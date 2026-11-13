@@ -6,6 +6,7 @@
 import { Ellipsis, Filter, Layers3, Search } from 'lucide-react';
 import { useViewerStore, type HierarchyMode } from '@/store';
 import { openSelectedEntityActions } from './selected-entity-actions';
+import { focusInlineSearch } from './inline-search-focus';
 import { liftStartFold } from './welcome/useEmptyStartFold';
 import type { SurfaceCommandDefinition, SurfaceCommandState } from './surface-commands';
 
@@ -21,6 +22,13 @@ function showHierarchy(mode: HierarchyMode): void {
 }
 
 export const RIBBON_ELEMENTS_SURFACE_COMMANDS = [
+  {
+    id: 'search:inline', labelKey: 'commandPalette.search.inline.label',
+    keywordsKey: 'commandPalette.search.inline.aliases',
+    keywords: 'quick inline search recent queries history clear filters cycle n next previous',
+    category: 'Tools', icon: Search, surfaces: ['palette'], enabled: alwaysEnabled,
+    run: () => { focusInlineSearch(); },
+  },
   {
     id: 'elements:search', labelKey: 'ribbon.elements.search',
     ribbonTooltipKey: 'ribbon.elements.searchTooltip',

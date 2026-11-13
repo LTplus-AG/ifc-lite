@@ -98,8 +98,8 @@ describe('instances', () => {
     expect(baked.meshes[0].color).not.toBe(baked.meshes[3].color);
     expect(instanced.instances[0].color).not.toBe(instanced.instances[1].color);
     for (const result of [instanced, baked]) {
-      expect(result.curves).toEqual([{ entity: 0, origin: [10, 0, 0], positions: new Float32Array([0, 0, 0, 1, 0, 0]), closed: false, color: [200 / 255, 0, 0, 1] }]);
-      expect(result.textDots).toEqual([{ entity: 0, position: [10, 0, 2], text: 'tag', color: [1 / 255, 1 / 255, 1 / 255, 1] }]);
+      expect(result.curves).toEqual([{ entity: 0, origin: [10, 0, 0], positions: new Float32Array([0, 0, 0, 1, 0, 0]), closed: false, color: [200 / 255, 0, 0, 1], hidden: false }]);
+      expect(result.textDots).toEqual([{ entity: 0, position: [10, 0, 2], text: 'tag', color: [1 / 255, 1 / 255, 1 / 255, 1], hidden: false }]);
     }
   });
 });
@@ -248,6 +248,44 @@ describe('guards', () => {
     expect(cut.skipped).toEqual({ budget: 6 });
     expect(cut.warnings).toEqual(['Stopped at the budget of 450 triangles: 6 objects not drawn, or drawn in part.']);
     expect((await readRhino3dm(bytes, { maxTriangles: 1000 })).pointClouds).toHaveLength(10);
+  });
+
+  // Issue #10070: memory follows the vertex buffers too, and a mesh's triangles need not reference its vertices.
+  test.each([false, true])('a mesh is charged a third of a triangle per vertex when that is more than its triangles (bakeInstances %s)', async bakeInstances => {
+    // One triangle over 3,000 vertices is charged as 1,000 triangles, at top level and per placement.
+    const sparse = (c: Craft) => c.mesh(Array.from({ length: 3000 }, (_, i) => [i, i % 2, 0]), [[0, 1, 2]]);
+    // With a box beside it a placement costs 1,012, admitted whole in both modes: 3,035 leaves 1,011 for
+    // the third, which then draws neither mesh, though the sparse one alone would fit.
+    const bytes = await craft(c => {
+      const block = c.block('Sparse', [sparse(c), unit(c)]);
+      for (let i = 0; i < 3; i++) c.addInstance(block, translation(0, 0, i), { name: `placement ${i}` });
+      c.addMesh(sparse(c), { name: 'mesh' });
+    });
+    const cut = await readRhino3dm(bytes, { bakeInstances, maxTriangles: 3035 });
+    expect(cut.entities.map(e => e.name)).toEqual(['placement 0', 'placement 1']);
+    expect(drawnTriangles(cut)).toBe(26);
+    expect(cut.skipped).toEqual({ budget: 2 });
+    expect((await readRhino3dm(bytes, { bakeInstances, maxTriangles: 4036 })).entities).toHaveLength(4);
+    // A mesh whose triangles use every vertex is charged its triangles alone, as before.
+    expect(drawnTriangles(await readRhino3dm(await craft(tenBoxes), { bakeInstances, maxTriangles: 120 }))).toBe(120);
+  });
+
+  test('vertex charges add up exactly, so curves that fill the budget are all drawn', async () => {
+    // Issue #10070. Three 5-point curves cost 5/3 triangles each. In doubles 5 - 5/3 - 5/3 is 1.6666666666666663,
+    // below 5/3, so the third did not fit until the budget was counted in whole thirds.
+    const bytes = await craft(c => { for (let i = 0; i < 3; i++) c.addPolyline(Array.from({ length: 5 }, (_, k) => [k, i, 0])); });
+    const result = await readRhino3dm(bytes, { maxTriangles: 5 });
+    expect([result.curves.length, result.skipped]).toEqual([3, {}]);
+  });
+
+  test.each([false, true])('a block admitted whole draws every mesh when its cost fills the budget exactly (bakeInstances %s)', async bakeInstances => {
+    // Issue #10070. Three meshes of 1 triangle over 5 vertices cost 5/3 each: a block of 5, drawn mesh by mesh when baked.
+    const bytes = await craft(c => {
+      const sparse = () => c.mesh(Array.from({ length: 5 }, (_, k) => [k, k % 2, 0]), [[0, 1, 2]]);
+      c.addInstance(c.block('Sparse', [sparse(), sparse(), sparse()]));
+    });
+    const result = await readRhino3dm(bytes, { bakeInstances, maxTriangles: 5 });
+    expect([drawnTriangles(result), result.skipped]).toEqual([3, {}]);
   });
 
   const SCALE = [1e15, 0, 0, 0, 0, 1e15, 0, 0, 0, 0, 1e15, 0, 0, 0, 0, 1];
@@ -606,7 +644,7 @@ describe('frame', () => {
 test('a definition nested by more blocks than a call takes arguments is still marked through all of them', () => {
   // Node 22 throws a RangeError from a spread of 125 000 arguments.
   const PARENTS = 200_000, nest = { part: { kind: 'instance', definition: 'leaf' }, look: {} } as Block['nested'][number];
-  const block = (name: string, nested: Block['nested']): Block => ({ name, linked: false, meshes: [], triangles: 0, reach: [0, 0, 0], others: [], dots: [], nested, drawsDots: false, drawsGeometry: false });
+  const block = (name: string, nested: Block['nested']): Block => ({ name, linked: false, meshes: [], cost: 0, reach: [0, 0, 0], others: [], dots: [], nested, drawsDots: false, drawsGeometry: false });
   const blocks = new Map([['leaf', block('leaf', [])]]);
   blocks.get('leaf')!.dots.push({} as Block['dots'][number]);
   for (let i = 0; i < PARENTS; i++) blocks.set(`parent ${i}`, block(`parent ${i}`, [nest]));

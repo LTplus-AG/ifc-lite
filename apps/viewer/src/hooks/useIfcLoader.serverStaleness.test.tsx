@@ -137,3 +137,23 @@ it('#9538 geometry completes and load finally leaves the model property poll ali
     assert.equal(pollSignal?.aborted, false, 'the load finally must not abort model-owned properties');
   } finally { release(); await pending; }
 });
+
+it('a server URL set at runtime takes the upload of a locally opened IFC too', async () => {
+  const { setProcessingServerUrl } = await import('@/lib/processed-model');
+  const servers: string[] = [];
+  mock.method(IfcServerClient.prototype, 'parseParquet', async function (this: IfcServerClient) {
+    servers.push((this as unknown as { baseUrl: string }).baseUrl);
+    return PARQUET_RESULT;
+  });
+  try {
+    setProcessingServerUrl('/runtime-processor');
+    await act(async () => { await api!.loadFile(file('runtime.ifc')); });
+    assert.deepEqual(servers, ['/runtime-processor'], 'the upload gate and the request read the same URL');
+    assert.equal(engineInits, 0);
+
+    setProcessingServerUrl('');
+    await act(async () => { await api!.loadFile(file('no-server.ifc')); });
+    assert.deepEqual(servers, ['/runtime-processor'], 'with no server URL the build flag alone uploads nothing');
+    assert.equal(engineInits, 1, 'the file is processed locally');
+  } finally { setProcessingServerUrl('http://localhost:9999'); release(); }
+});

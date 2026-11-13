@@ -31,6 +31,7 @@ const { useIfcLoader } = await import('./useIfcLoader.js');
 const { useProcessedModelAutoload } = await import('./useProcessedModelAutoload.js');
 const { isStepSourceModel } = await import('@/components/viewer/step-export-source');
 const { getReportPrompt, clearLoadReport } = await import('@/lib/error-reports/context');
+const { openProcessedModel, setProcessingServerUrl, takeProcessedModelRequest } = await import('@/lib/processed-model');
 
 const sha256 = 'c'.repeat(64);
 const processedModel = { sha256, bytes: 46_000_000 };
@@ -50,7 +51,7 @@ const stored = (): ParquetParseResponse => ({
 
 let api: ReturnType<typeof useIfcLoader> | undefined;
 let root: Root, container: HTMLDivElement;
-let asked: unknown[], engineInits: number, uploads: number;
+let asked: unknown[], engineInits: number, uploads: number, servers: string[];
 let restoreGpu: (() => void) | undefined;
 function Probe({ fromUrl = false }: { fromUrl?: boolean }) {
   api = useIfcLoader();
@@ -61,12 +62,17 @@ const model = () => useViewerStore.getState().models.values().next().value;
 const nameOnly = () => new File([], 'stored.ifc');
 
 beforeEach(async () => {
-  asked = []; engineInits = 0; uploads = 0; clearLoadReport();
+  asked = []; engineInits = 0; uploads = 0; servers = []; clearLoadReport();
   useViewerStore.getState().resetViewerState(); useViewerStore.getState().clearAllModels();
   useViewerStore.setState({ error: null, lastLoadRetry: null });
   mock.method(IfcServerClient.prototype, 'health', async () => ({ status: 'ok' }) as HealthResponse);
   mock.method(IfcServerClient.prototype, 'isParquetSupported', async () => true);
-  mock.method(IfcServerClient.prototype, 'parseParquet', async (source: unknown) => { asked.push(source); return stored(); });
+  // Records which server each request went to: the runtime URL must reach the client.
+  mock.method(IfcServerClient.prototype, 'parseParquet', async function (this: IfcServerClient, source: unknown) {
+    servers.push((this as unknown as { baseUrl: string }).baseUrl);
+    asked.push(source);
+    return stored();
+  });
   for (const upload of ['parse', 'parseParquetStream'] as const) {
     mock.method(IfcServerClient.prototype, upload, async () => { uploads++; throw new Error('a processed model must not take this route'); });
   }
@@ -79,6 +85,7 @@ afterEach(async () => {
   await act(async () => root.unmount()); container.remove(); mock.restoreAll();
   restoreGpu?.(); restoreGpu = undefined;
   window.history.replaceState(null, '', '/');
+  takeProcessedModelRequest(); setProcessingServerUrl('http://localhost:9999');
   useViewerStore.getState().clearAllModels();
 });
 
@@ -224,4 +231,40 @@ it('?processed= with something that is not a SHA-256 asks the server nothing and
   assert.match(useViewerStore.getState().error ?? '', /model link is incomplete or damaged/, 'its own message, not the ?model= one');
   assert.equal(useViewerStore.getState().lastLoadRetry, null, 'the same string cannot succeed on retry');
   assert.equal(useViewerStore.getState().models.size, 0);
+});
+
+for (const when of ['before the viewer mounts', 'after the viewer mounted'] as const) {
+  it(`openProcessedModel called ${when} opens the result from the server it names`, async () => {
+    stubWebGpu();
+    const serverUrl = when === 'before the viewer mounts' ? '/processor' : '/other-processor';
+    const open = () => openProcessedModel({ sha256, bytes: 7_000_000, name: 'From the host.ifc' }, { serverUrl: `${serverUrl}/` });
+    if (when === 'before the viewer mounts') open();
+    await act(async () => { root.render(<Probe fromUrl />); });
+    if (when === 'after the viewer mounted') await act(async () => { open(); });
+    await act(async () => { await waitFor(() => model()?.loadState === 'complete', 'the host request loads the model'); });
+    assert.deepEqual(asked, [{ sha256, bytes: 7_000_000 }]);
+    assert.deepEqual(servers, [serverUrl], 'the runtime URL replaces the build-time one for this request');
+    assert.equal(model()?.name, 'From the host.ifc');
+    assert.equal(model()?.fileSize, 7_000_000);
+    assert.equal(engineInits, 0);
+    assert.equal(takeProcessedModelRequest(), null, 'a request is loaded once');
+  });
+}
+
+it('openProcessedModel refuses a hash that is not a SHA-256 before anything is asked', async () => {
+  assert.throws(() => openProcessedModel({ sha256: '../x', bytes: 1, name: 'x.ifc' }, { serverUrl: '/elsewhere' }), /SHA-256 of its source file/);
+  assert.equal(takeProcessedModelRequest(), null);
+  await act(async () => { root.render(<Probe fromUrl />); });
+  assert.deepEqual(asked, []);
+  assert.deepEqual(servers, []);
+});
+
+it('with no processing server configured, the error says so and offers no Retry', async () => {
+  mock.method(console, 'error', () => {});
+  setProcessingServerUrl('');
+  await act(async () => { root.render(<Probe />); });
+  await act(async () => { await api!.loadFile(nameOnly(), { kind: 'primary' }, { processedModel }); });
+  assert.deepEqual(asked, [], 'nothing is asked of a server that does not exist');
+  assert.match(useViewerStore.getState().error ?? '', /No processing server is configured/);
+  assert.equal(useViewerStore.getState().lastLoadRetry, null);
 });

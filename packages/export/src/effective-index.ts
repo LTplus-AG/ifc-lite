@@ -46,8 +46,8 @@ import {
   OVERLAY_BYTE_OFFSET,
   type IfcAttributeValue,
   type MutablePropertyView,
-  type NewEntity,
 } from '@ifc-lite/mutations';
+import { borrowedCreatedRows, EMPTY_CREATED, type CreatedRows } from './effective-index-created-rows.js';
 import {
   getCompleteEntityIndex,
   type CompleteEntityIndex,
@@ -184,9 +184,9 @@ export function getEffectiveEntityIndex(
   const base = getCompleteEntityIndex(dataStore);
   const view = applyMutations ? (mutationView ?? null) : null;
 
-  const created = new Map<number, NewEntity>();
+  let created: CreatedRows = EMPTY_CREATED;
   if (view && typeof view.getNewEntities === 'function') {
-    for (const entity of view.getNewEntities()) created.set(entity.expressId, entity);
+    created = borrowedCreatedRows(view) ?? new Map(Array.from(view.readNewEntities?.() ?? view.getNewEntities(), entity => [entity.expressId, entity]));
   }
   const tombstones: ReadonlySet<number> =
     view && typeof view.getTombstones === 'function' ? view.getTombstones() : EMPTY_IDS;
@@ -253,7 +253,7 @@ class OverlayIndex implements EffectiveEntityIndex {
   private readonly base: CompleteEntityIndex;
   private readonly sourceByType: Map<string, number[]>;
   private readonly view: MutablePropertyView;
-  private readonly created: Map<number, NewEntity>;
+  private readonly created: CreatedRows;
   private readonly tombstones: ReadonlySet<number>;
   private readonly retypes: ReadonlyMap<number, { newType: string }>;
   private cachedByType: Map<string, number[]> | null = null;
@@ -263,7 +263,7 @@ class OverlayIndex implements EffectiveEntityIndex {
     base: CompleteEntityIndex,
     sourceByType: Map<string, number[]>,
     view: MutablePropertyView,
-    created: Map<number, NewEntity>,
+    created: CreatedRows,
     tombstones: ReadonlySet<number>,
     retypes: ReadonlyMap<number, { newType: string }>,
   ) {

@@ -139,7 +139,7 @@ function buildIndex(dataStore: IfcDataStore): EditedIndex {
 export function editedElementCandidates(dataStore: IfcDataStore, view: MutablePropertyView): Set<number> {
   const candidates = new Set<number>();
   const touched = new Set<number>([...view.getAttributeOverrideEntityIds(), ...view.getTombstones()]);
-  for (const rel of view.getNewEntitiesOfType('IFCRELVOIDSELEMENT')) {
+  for (const rel of view.readNewEntitiesOfType?.('IFCRELVOIDSELEMENT') ?? view.getNewEntitiesOfType('IFCRELVOIDSELEMENT')) {
     // A host is the relationship's RelatingBuildingElement (4); an authored host has its own path.
     const host = asExpressIdRef(readAttributes(dataStore, view, view, rel.expressId)?.[4]);
     if (host !== null && !view.getNewEntity(host)) candidates.add(host);

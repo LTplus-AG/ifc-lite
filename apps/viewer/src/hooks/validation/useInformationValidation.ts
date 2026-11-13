@@ -32,7 +32,7 @@ import {
   addRecentRuleSet, loadRecentRuleSets, removeRecentRuleSet, type RecentRuleSet,
 } from '@/lib/validation/recent-rule-sets';
 import { useValidationEpoch } from './useValidationEpoch';
-import { guardValidationRun } from './validationRunGuard';
+import { captureRunIdentity, guardAnalysisRun } from '../analysisRunGuard';
 import { activeDefinition } from '@/lib/validation/definition-library';
 import { beginDefinitionImport } from '@/lib/validation/definition-import-owner';
 
@@ -236,7 +236,7 @@ export function useInformationValidation(): UseInformationValidationResult {
     // The same state the engine input is read from below: a teardown that
     // changes this model set ends the run (A1).
     const state = useViewerStore.getState();
-    const federation = guardValidationRun(useViewerStore, state, cancelThisRun);
+    const federation = guardAnalysisRun(useViewerStore, cancelThisRun, captureRunIdentity(state));
     const job = beginActivity({ kind: 'check', title: 'activityTray.job.validation', panel: 'validation', subject: file.name,
       cancel: cancelThisRun });
     let outcome: 'completed' | 'failed' | 'cancelled' = 'cancelled';

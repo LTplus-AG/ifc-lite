@@ -28,6 +28,7 @@ import {
 import { defaultMetrics, MetricsRegistry } from './metrics.js';
 import { parseRequestUrl } from './request-target.js';
 import { makeBlobAuthorizer, makeRegistryAuthorizer } from './http-authorizers.js';
+import { createStop } from './shutdown.js';
 
 /**
  * Cross-origin policy for the HTTP routes (`/blobs`, `/collab/*`, `/healthz`,
@@ -492,14 +493,15 @@ export async function startCollabServer(
     httpServer,
     wss,
     roomManager,
-    async stop() {
-      expirySweep.stop();
-      await new Promise<void>((resolve) => wss.close(() => resolve()));
-      if (!opts.server) {
-        await new Promise<void>((resolve) => httpServer.close(() => resolve()));
-      }
-      await roomManager.unloadAll();
-    },
+    // Unload rooms (final compaction, peer close) BEFORE waiting on wss/http:
+    // see shutdown.ts for why the old order never resolved with a live peer.
+    stop: createStop({
+      wss,
+      httpServer,
+      ownsHttpServer: !opts.server,
+      roomManager,
+      stopTimers: () => expirySweep.stop(),
+    }),
   };
 }
 

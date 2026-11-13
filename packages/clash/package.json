@@ -46,7 +46,8 @@
     "@ifc-lite/parser": "workspace:^",
     "@ifc-lite/query": "workspace:^",
     "@ifc-lite/spatial": "workspace:^",
-    "@ifc-lite/wasm": "workspace:^"
+    "@ifc-lite/wasm": "workspace:^",
+    "@ifc-lite/wasm-lifecycle": "workspace:^"
   },
   "devDependencies": {
     "@ifc-lite/export": "workspace:^",

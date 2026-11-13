@@ -37,6 +37,7 @@ export const activityTrayEn = {
   'activityTray.sourceDownload.partialFailed': { one: 'Dispatched {count} file for loading; some downloads failed. Dispatched files remain available.', other: 'Dispatched {count} files for loading; some downloads failed. Dispatched files remain available.' },
   'activityTray.sourceDownload.failed': { one: '{count} download failed; no files were dispatched for loading.', other: '{count} downloads failed; no files were dispatched for loading.' },
   'activityTray.job.clash': 'Clash detection',
+  'activityTray.job.scanDetection': 'Scan element detection',
   'activityTray.job.validation': 'Data validation',
   'activityTray.job.list': 'List execution',
   'activityTray.job.bulk': 'Bulk property update',
@@ -62,4 +63,5 @@ export const activityTrayEn = {
   'activityTray.publication.failed': { one: '{count} effect failed', other: '{count} effects failed' },
   'activityTray.ai.timeout': 'Timed out',
   'activityTray.ai.truncated': 'Stopped at the output limit',
+  'activityTray.load.noModel': 'Ended without loading a model',
 } as const satisfies Record<string, TranslationValue>;

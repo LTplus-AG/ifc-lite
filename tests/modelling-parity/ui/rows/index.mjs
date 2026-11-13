@@ -1,0 +1,31 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import p0 from './storeys.mjs';
+import p1 from './wall-chains-autojoin.mjs';
+import p2 from './typed-input-temp-dims.mjs';
+import p3 from './snapping-inference.mjs';
+import p4 from './hosted-doors-windows-from-types.mjs';
+import p5 from './stairs-railings.mjs';
+import p6 from './curtain-walls.mjs';
+import p7 from './roof-by-footprint.mjs';
+import p8 from './copy-to-levels.mjs';
+import p9 from './transforms-move-copy-rotate-mirror-array.mjs';
+import p10 from './rooms-with-area.mjs';
+import p11 from './plans-sections-elevations.mjs';
+import p12 from './dimensions-tags.mjs';
+import p13 from './sheets-pdf-dwg.mjs';
+import p14 from './psets-classification-valid-ifc4.mjs';
+import p15 from './columns-beams-on-grid-follow-levels.mjs';
+import p16 from './slab-with-openings.mjs';
+import p17 from './wall-top-base-constraints.mjs';
+import p18 from './layered-walls.mjs';
+import p19 from './type-editing.mjs';
+import p20 from './materials.mjs';
+import p21 from './align-offset-trim-split.mjs';
+import p22 from './schedules-quantities.mjs';
+import p23 from './large-tall-model-performance.mjs';
+import p24 from './grids.mjs';
+import { validateRegistry } from './registry.mjs';
+export const PROBES = validateRegistry([p0,p1,p2,p3,p4,p5,p6,p7,p8,p9,p10,p11,p12,p13,p14,p15,p16,p17,p18,p19,p20,p21,p22,p23,p24]);

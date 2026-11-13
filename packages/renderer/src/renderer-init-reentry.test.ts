@@ -960,3 +960,26 @@ describe('a device loss revokes readiness (#2464 review)', () => {
         assert.strictEqual(renderer.isReady(), true, 'and must still report itself ready');
     });
 });
+
+it('re-arms canvas size observation after destroy and init (lifecycle audit)', async () => {
+    const original = globalThis.ResizeObserver;
+    let observations = 0;
+    globalThis.ResizeObserver = class {
+        observe() { observations++; }
+        disconnect() {}
+        unobserve() {}
+    } as unknown as typeof ResizeObserver;
+    try {
+        const renderer = new Renderer(makeCanvas());
+        renderer['initOnce'] = async () => undefined;
+        renderer.destroy();
+        const before = observations;
+        await renderer.init();
+        assert.strictEqual(observations, before + 1);
+        await renderer.init();
+        assert.strictEqual(observations, before + 1, 'live re-init must not duplicate the observer');
+        renderer.destroy();
+    } finally {
+        globalThis.ResizeObserver = original;
+    }
+});

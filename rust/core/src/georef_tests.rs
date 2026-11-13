@@ -686,3 +686,21 @@ fn model_true_north_absent_or_degenerate_is_none() {
     let vertical = context_file("#11=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#2,#4);");
     assert_eq!(model_true_north(vertical.as_bytes(), &mut EntityDecoder::new(vertical.as_bytes())), None);
 }
+
+/// TrueNorth goes through the counted `IfcDirection` leaf rule (#9416
+/// review): a malformed direction, another type, or a non-reference in the
+/// slot is a counted refusal, never a north read from its first two values.
+#[test]
+fn model_true_north_refuses_a_malformed_direction() {
+    for (label, leaf, north) in [
+        ("non-numeric third ratio", "#20=IFCDIRECTION((1.,0.,'x'));", "#20"),
+        ("too many ratios", "#20=IFCDIRECTION((1.,0.,0.,0.));", "#20"),
+        ("not a direction", "#20=IFCCARTESIANPOINT((1.,0.));", "#20"),
+        ("non-reference slot", "", "'x'"),
+    ] {
+        let file = context_file(&format!("{leaf}\n#11=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#2,{north});"));
+        let mut decoder = EntityDecoder::new(file.as_bytes());
+        assert_eq!(model_true_north(file.as_bytes(), &mut decoder), None, "{label}");
+        assert_eq!(decoder.refused_records(), 1, "{label}");
+    }
+}

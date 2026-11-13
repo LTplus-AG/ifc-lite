@@ -38,8 +38,7 @@
  *    (or no record) is a fixed height.
  *
  * A record that names nothing it can follow (a deleted storey's GlobalId, a
- * Revit level renamed or shared by two storeys, a roof, which is not
- * supported until pitched roofs land) is not guessed at: `topAttachmentProblem`
+ * Revit level renamed or shared by two storeys, an unreadable target) is not guessed at: `topAttachmentProblem`
  * reports it and the plan lists it as a notice.
  */
 
@@ -60,14 +59,7 @@ const REVIT_TOP = 'Top Constraint';
 const REVIT_LEVEL = /^\s*up to level\s*:\s*(.+?)\s*$/i;
 
 /** Element classes a top may attach to, with how their underside is read (`storey-attachment-target.ts`). */
-const SLAB_TYPES = new Set(['IFCSLAB', 'IFCSLABSTANDARDCASE', 'IFCSLABELEMENTEDCASE']);
-/**
- * Classes a top may name but cannot follow yet. Attach-to-roof needs the
- * pitched roof's underside along the element (round 3 of #9296): add its
- * reader beside the slab's in `storey-attachment-target.ts` and move the
- * class into `SLAB_TYPES`' role there.
- */
-const PENDING_TARGET_TYPES = new Map([['IFCROOF', 'a roof (attaching to a roof is not supported yet)']]);
+const UNDERSIDE_TYPES = new Set(['IFCROOF', 'IFCSLAB', 'IFCSLABSTANDARDCASE', 'IFCSLABELEMENTEDCASE']);
 
 export type TopBinding = 'relative' | 'explicit';
 
@@ -93,7 +85,7 @@ function text(value: unknown): string | null {
 /** The storey that contains `elementId` (through IfcRelContainedInSpatialStructure), or null. */
 export function homeStoreyOf(inventory: StoreyInventory, elementId: number): number | null {
   const storeyIds = new Set(inventory.storeys.map((storey) => storey.expressId));
-  const rel = (inventory.incoming.get(elementId) ?? []).find((candidate) => candidate.type === 'IFCRELCONTAINEDINSPATIALSTRUCTURE');
+  const rel = (inventory.incomingOf?.(elementId) ?? inventory.incoming.get(elementId) ?? []).find((candidate) => candidate.type === 'IFCRELCONTAINEDINSPATIALSTRUCTURE');
   return rel && storeyIds.has(rel.parent) ? rel.parent : null;
 }
 
@@ -103,7 +95,7 @@ function targetByGlobalId(inventory: StoreyInventory, globalId: string): { id: n
   let index = targetIndexes.get(inventory);
   if (!index) {
     index = new Map();
-    for (const type of [...SLAB_TYPES, ...PENDING_TARGET_TYPES.keys()]) {
+    for (const type of UNDERSIDE_TYPES) {
       for (const id of inventory.reader.ids(type)) {
         const guid = inventory.reader.entity(id)?.attributes[0];
         if (typeof guid === 'string') index.set(guid, { id, type });
@@ -137,12 +129,12 @@ export function readTopAttachment(inventory: StoreyInventory, elementId: number)
       return { targetStoreyId: storey.expressId, kind: 'storey', binding, source: 'ifclite' };
     }
     const element = targetByGlobalId(inventory, own);
-    if (element && SLAB_TYPES.has(element.type)) {
+    if (element && UNDERSIDE_TYPES.has(element.type)) {
       const holder = homeStoreyOf(inventory, element.id);
       // A slab no storey holds cannot be followed through a storey edit.
       return holder === null ? null : { targetStoreyId: holder, kind: 'element', targetElementId: element.id, binding: 'explicit', source: 'ifclite' };
     }
-    // A GlobalId naming no live storey or slab (it was deleted) leaves the element fixed.
+    // A GlobalId naming no live storey, slab or roof (it was deleted) leaves the element fixed.
     return null;
   }
   const revit = text(view.getPropertyValue(elementId, REVIT_PSET, REVIT_TOP));
@@ -164,11 +156,10 @@ export function topAttachmentProblem(inventory: StoreyInventory, elementId: numb
     if (own === FIXED_HEIGHT || own === NEXT_STOREY_ABOVE) return null;
     if (inventory.storeys.some((storey) => storey.GlobalId === own)) return null;
     const element = targetByGlobalId(inventory, own);
-    if (element && SLAB_TYPES.has(element.type)) {
-      return homeStoreyOf(inventory, element.id) === null ? `its top is attached to slab #${element.id}, which no storey contains` : null;
+    if (element && UNDERSIDE_TYPES.has(element.type)) {
+      return homeStoreyOf(inventory, element.id) === null ? `its top is attached to element #${element.id}, which no storey contains` : null;
     }
-    if (element) return `its top is attached to ${PENDING_TARGET_TYPES.get(element.type) ?? `#${element.id}`}`;
-    return `its top is attached to a storey or slab that no longer exists (${own})`;
+    return `its top is attached to a storey, slab or roof that no longer exists (${own})`;
   }
   const level = REVIT_LEVEL.exec(text(view.getPropertyValue(elementId, REVIT_PSET, REVIT_TOP)) ?? '')?.[1];
   if (!level) return null;
@@ -180,7 +171,7 @@ export function topAttachmentProblem(inventory: StoreyInventory, elementId: numb
 }
 
 /**
- * Record an element as attached to `target` (a storey or slab GlobalId, or
+ * Record an element as attached to `target` (a storey, slab or roof GlobalId, or
  * `NextStoreyAbove`). `binding` says how a storey target is meant; omitted,
  * any recorded binding is left as it is (a re-bind keeps its kind).
  */

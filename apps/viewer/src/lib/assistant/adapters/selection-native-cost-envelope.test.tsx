@@ -24,10 +24,32 @@ type Pin = { status: string; recordCount: number | null; expectedJsonParts: stri
 type Row = { citation: string; data: Record<string, unknown> & { nativeCost: Pin } };
 type Payload = { serializedLength: number; evidence: { summary: Record<string, unknown>; rows: Row[] }; models: unknown[];
   totalRows: number; includedRows: number; sampled: boolean; projectionTruncated: boolean };
-function capture(): Payload { const text = captureEvidence('selection').payload; return { ...JSON.parse(text) as Payload, serializedLength: text.length }; }
+function capture(): Payload {
+  const text = captureEvidence('selection').payload;
+  const payload = { ...JSON.parse(text) as Payload, serializedLength: text.length };
+  // #9411: detached reads must transport the live model revision. A constant
+  // draft revision previously hid stale review pins in these ordinary facts.
+  for (const row of payload.evidence.rows) {
+    const expected = row.data.nativeReplacementExpected;
+    if (expected == null) continue;
+    assert.ok(typeof expected === 'object' && 'revision' in expected);
+    const view = useViewerStore.getState().mutationViews.get(String(row.data.modelId));
+    assert.ok(view);
+    assert.equal(expected.revision, view.getMutationRevision(), 'review pin carries the current live revision');
+  }
+  return payload;
+}
 function ordinary(rows: Row[]) {
   return rows.map(row => {
     const { nativeCost: _cost, ...data } = row.data;
+    // A real Cost edit advances this model-wide guard. Compare element facts
+    // separately; capture() checks the transported guard on every capture.
+    const expected = data.nativeReplacementExpected;
+    if (expected != null) {
+      assert.ok(typeof expected === 'object' && 'revision' in expected);
+      const { revision: _revision, ...facts } = expected;
+      data.nativeReplacementExpected = facts;
+    }
     return { ...row, data };
   });
 }

@@ -124,7 +124,7 @@ Reports the CLI runtime, resolved versions of its declared first-party dependenc
 - `info` - model summary: schema, entities, storeys
 - `query` - query entities by type, properties, quantities; supports `--sum`, `--group-by`, `--spatial`
 - `props` - all properties for a single entity (`--id N`)
-- `export` - export to `csv`, `json`, `ifc`, `obj`, `gltf`, `glb`, `jsonld`, `ifcx`, `usd`, `step`, `hbjson`, or `dfjson`
+- `export` - export to `csv`, `json`, `ifc`, `obj`, `gltf`, `glb`, `jsonld`, `ifcx`, `usd`, `3dm`, `step`, `hbjson`, or `dfjson`
 - `ids` - validate against buildingSMART IDS rules
 - `validate` - structural validation checks
 - `stats` - auto-calculated model KPIs and health check
@@ -217,3 +217,10 @@ checks do not permit release. Token presence is not proof of visibility: `--conf
 MPL-2.0
 
 Semantic datasets use the same shared profile and provider engine as the viewer. Run `ifc-lite semantic --help` for `validate`, `query`, `assets`, and authenticated HTTPS `serve`; see the [headless semantic guide](https://ifclite.dev/docs/guide/semantic-headless/).
+
+### Structural analysis
+
+`ifc-lite structural model.ifc` reports structural collection counts. Add
+`--json` for analysis models, members, connections, loads with applied values,
+load groups/cases, reactions, result groups and physical links. This is read-only.
+See the [structural guide](https://ifclite.dev/docs/guide/structural-analysis/).

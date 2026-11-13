@@ -75,7 +75,7 @@ the answer, and `contentDiff.pendingMutations` says how many.
 `mutation_batch`, `mutation_diff`, `mutation_undo`.
 
 **Export** — `export_csv`, `export_json`, `export_ifc`, `export_ifcx`,
-`export_glb`, `export_pdf_report`.
+`export_glb`, `export_3dm`, `export_pdf_report`.
 
 **BCF** — `bcf_topic_create`, `bcf_topic_update`, `bcf_topic_close`,
 `bcf_topic_list`, `bcf_viewpoint_create`, `bcf_export`.

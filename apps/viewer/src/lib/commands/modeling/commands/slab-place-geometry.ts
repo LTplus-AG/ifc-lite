@@ -16,6 +16,7 @@
 
 import type { Vec2 } from '@/lib/snap/types';
 import type { SlabClass, SlabDrawMode } from '@/store/slices/authoringDefaultsSlice';
+import { initialRoof, type RoofGesture } from './roof-place-params.js';
 import { rectOutline } from '../ghost-shapes.js';
 
 export const MIN_SLAB_SIDE = 0.01;
@@ -24,6 +25,7 @@ const CLOSE_TOLERANCE = 1e-6;
 
 export interface SlabPlaceGesture {
   readonly mode: SlabDrawMode;
+  readonly roof: RoofGesture;
   /** Rectangle: the first corner, once clicked. Polygon: the vertices placed. */
   readonly points: readonly Vec2[];
   readonly cursor: Vec2 | null;
@@ -35,7 +37,7 @@ export interface SlabPlaceGesture {
 }
 
 export const initSlabGesture = (mode: SlabDrawMode): SlabPlaceGesture => ({
-  mode, points: [], cursor: null, width: null, depth: null, square: false,
+  mode, roof: initialRoof(), points: [], cursor: null, width: null, depth: null, square: false,
 });
 
 const sign = (v: number) => (v < 0 ? -1 : 1);

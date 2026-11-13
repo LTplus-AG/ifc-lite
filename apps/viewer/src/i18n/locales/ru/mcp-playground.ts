@@ -42,6 +42,8 @@ export const mcpPlaygroundRu = {
   "mcp.playgroundChat.placeholderNoKey": "Сначала укажите ключ Anthropic.",
   "mcp.playgroundChat.placeholderAddNote": "Добавьте примечание (или просто отправьте для проверки прикреплённого файла)…",
   "mcp.playgroundChat.placeholderDefault": "Спросите агента — перетащите .ids в чат для проверки.",
+  "mcp.playgroundChat.stopped": "Остановлено",
+  "mcp.playgroundChat.finishingTool": "Завершение предыдущего инструмента… Нажмите «Стоп» ещё раз, чтобы разрешить отправку. Результат может остаться неизвестным.",
   "mcp.playgroundChat.send": "Отправить",
   "mcp.playgroundChat.footerHintNoAttachments": "BYOK · инструментов {tools} · enter для отправки · ⇧+enter для новой строки · перетащите файлы для прикрепления",
   "mcp.playgroundChat.footerHintWithAttachments": {

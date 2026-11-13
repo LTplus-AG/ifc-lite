@@ -583,6 +583,10 @@
     "value": "PDF",
     "reason": "Preserved technical syntax/identifier or proper name: PDF. Required for exact control, schema, format, shortcut or product recognition."
   },
+  "exportCommands.rhino.label": {
+    "value": "Rhino (.3dm)",
+    "reason": "Preserved technical syntax/identifier or proper name: Rhino, .3dm. Required for exact control, schema, format, shortcut or product recognition."
+  },
   "exportCommands.usd.label": {
     "value": "USD",
     "reason": "Preserved technical syntax/identifier or proper name: USD. Required for exact control, schema, format, shortcut or product recognition."
@@ -1131,6 +1135,10 @@
     "value": "{ifcClass} #{id} · {storey}",
     "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
   },
+  "modelInspector.layers.keptBody": {
+    "value": "{name}: {reason}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
   "modelInspector.name.label": {
     "value": "Name",
     "reason": "Same-spelling German label or established UI term (Name); placeholders retain runtime content."
@@ -1434,6 +1442,14 @@
   "reviewWorkspace.runIncomplete": {
     "value": "{run}: {reasons}",
     "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "rhinoExport.version.7": {
+    "value": "Rhino 7",
+    "reason": "Preserved product name and version number: Rhino 7. Required for exact product recognition when choosing the archive version."
+  },
+  "rhinoExport.version.8": {
+    "value": "Rhino 8",
+    "reason": "Preserved product name and version number: Rhino 8. Required for exact product recognition when choosing the archive version."
   },
   "ribbon.analyze.appsGroup": {
     "value": "Apps",
@@ -1886,5 +1902,37 @@
   "zonesPanel.roomPanel.status.offline": {
     "value": "Offline",
     "reason": "Same-spelling German label or established UI term (Offline); placeholders retain runtime content."
+  },
+  "settings.display.wheelZoomSpeed.normal": {
+    "value": "Normal",
+    "reason": "Same-spelling German label (Normal) for the default wheel-zoom speed."
+  },
+  "structuralGlyphs.load.moment": {
+    "value": "Moment",
+    "reason": "German uses the same spelling „Moment“ for a bending or torsion moment; reviewed against its feature meaning."
+  },
+  "structuralGlyphs.tooltip": {
+    "value": "{kind} · {entity}",
+    "reason": "Composition of interpolated model values, symbols, units or shared German words; no English sentence is embedded."
+  },
+  "viewportLighting.container.emptyState.formats.ifc": {
+    "value": "IFC",
+    "reason": "Format family name on the welcome card: IFC is the schema acronym and is not localized in any language."
+  },
+  "viewportLighting.container.emptyState.formats.gltf": {
+    "value": "glTF",
+    "reason": "Format family name on the welcome card: glTF is the exact product spelling of the format and is not localized."
+  },
+  "viewportLighting.container.emptyState.formats.splats": {
+    "value": "Splats",
+    "reason": "Same spelling as the reviewed gaussianCapture.splats label for Gaussian splats; established term in this language."
+  },
+  "agentBridge.dialog.port": {
+    "value": "Port",
+    "reason": "Same-spelling German technical term (network port number); established UI term."
+  },
+  "agentBridge.panel.duration": {
+    "value": "{ms} ms",
+    "reason": "Runtime placeholder with a unit symbol (milliseconds); no English prose."
   }
 }

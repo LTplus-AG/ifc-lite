@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "packages/export/src/renumber-step-ids.ts",
+  "mutation": "tests/evidence/renumber-step-ids-dangling/behaviour.oracle.patch",
+  "test": "packages/export/src/renumber-step-ids.test.ts",
+  "why": "Reverse application keeps the module and its exports but drops the guard that keeps new ids off ids used by dangling references, so an instance can receive the id a dangling reference names and that reference silently starts pointing at a real instance."
+}

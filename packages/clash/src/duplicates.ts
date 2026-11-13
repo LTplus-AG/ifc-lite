@@ -35,12 +35,12 @@
 import { center, overlapBounds } from './math/aabb.js';
 import { boxDistance, boxesTouch, minExtent, similarity } from './duplicate-metric.js';
 import { sameShape, shapeSignature, type ShapeSignature } from './shape-signature.js';
+import { clashObjectIdentity, clashPairId, matchedClashObjects, sameClashObject } from './object-identity.js';
 import { isExcluded, qualifiedKey } from './exclude.js';
 import { summarizeClashes } from './analysis.js';
 import type {
   Clash,
   ClashElement,
-  ClashElementRef,
   ClashResult,
   ClashRule,
   ClashSeverity,
@@ -110,11 +110,6 @@ export const DUPLICATES_RULE: ClashRule = {
   a: '*',
   mode: 'hard',
 };
-
-function toRef(el: ClashElement): ClashElementRef {
-  return { key: el.key, ref: el.ref, model: el.model, tag: el.tag, name: el.name };
-}
-
 
 /**
  * Find duplicate / fully-overlapping elements. Returns a {@link ClashResult}
@@ -247,27 +242,15 @@ export function findDuplicates(elements: ClashElement[], options: DuplicateOptio
   // (one per material / CSG part) — but those share the element's `ref` too, so
   // they are still skipped as self-pairs. Only keys carried by two *distinct*
   // refs are ambiguous, and only those get the ref folded into the clash id, so
-  // every id a well-formed file produced before is unchanged.
-  const ambiguousKeys = new Set<string>();
-  {
-    const refOfKey = new Map<string, number>();
-    for (const el of elements) {
-      const k = `${el.model} ${el.key}`;
-      const first = refOfKey.get(k);
-      if (first === undefined) refOfKey.set(k, el.ref);
-      else if (first !== el.ref) ambiguousKeys.add(k);
-    }
-  }
-  const pairKey = (el: ClashElement): string => {
-    const k = `${el.model} ${el.key}`;
-    return ambiguousKeys.has(k) ? `${k}#${el.ref}` : k;
-  };
+  // ordinary identifiers keep their previous IDs. Reserved/whitespace fields
+  // are escaped by the same shared identity builder.
+  const identity = clashObjectIdentity(elements);
 
   const consider = (i: number, j: number): void => {
     if (i >= j) return; // unordered pairs once
     const elA = elements[i];
     const elB = elements[j];
-    if (elA.ref === elB.ref && elA.model === elB.model) return;
+    if (sameClashObject(elA, elB)) return;
     if (
       exclusions &&
       isExcluded(exclusions, qualifiedKey(elA.model, elA.key), qualifiedKey(elB.model, elB.key))
@@ -305,10 +288,7 @@ export function findDuplicates(elements: ClashElement[], options: DuplicateOptio
     if (exact) exact = sameShape(signatureOf(i), signatureOf(j));
     const severity: ClashSeverity = exact ? 'major' : 'minor';
 
-    const ka = pairKey(elA);
-    const kb = pairKey(elB);
-    const [lo, hi] = ka < kb ? [ka, kb] : [kb, ka];
-    const id = `duplicates ${lo} ${hi}`;
+    const id = clashPairId(DUPLICATES_RULE.id, identity.pairKey(elA), identity.pairKey(elB));
     const existing = seen.get(id);
     if (existing !== undefined) {
       // Multi-part elements: every cross-part pair of one element pair carries
@@ -335,8 +315,8 @@ export function findDuplicates(elements: ClashElement[], options: DuplicateOptio
     const bounds = overlapBounds(elA.bounds, elB.bounds);
     clashes.push({
       id,
-      a: toRef(elA),
-      b: toRef(elB),
+      a: identity.toRef(elA),
+      b: identity.toRef(elB),
       rule: DUPLICATES_RULE.id,
       status: 'hard',
       // Coincident solids fully embed each other; report the embedded depth so
@@ -427,7 +407,7 @@ export function findDuplicates(elements: ClashElement[], options: DuplicateOptio
     clashes,
     summary: summarizeClashes(clashes),
     rulesRun: [DUPLICATES_RULE],
-    ruleCoverage: [{ rule: DUPLICATES_RULE.id, matchedA: elements.length, matchedB: null, matchedKeysA: [...new Set(elements.map((el) => el.key))].sort(), matchedKeysB: null }],
+    ruleCoverage: [{ rule: DUPLICATES_RULE.id, matchedA: elements.length, matchedB: null, matchedKeysA: [...new Set(elements.map((el) => el.key))].sort(), matchedKeysB: null, matchedElements: matchedClashObjects(elements) }],
     settings: { tolerance: positionTolerance, excludeVoidsAndHosts: exclusions != null },
   };
 }

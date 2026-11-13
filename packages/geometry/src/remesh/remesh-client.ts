@@ -13,8 +13,8 @@
 
 import type { RemeshConfig, RemeshRequest, RemeshResult, StyleWire } from './remesh-core.js';
 import type { RemeshWorkerInbound, RemeshWorkerOutbound } from './remesh-protocol.js';
+import { createWorkerRpc, type RpcReply, type WorkerRpc } from '@ifc-lite/wasm-lifecycle';
 import { restashWasmPanicLocation } from '../wasm-panic-forward.js';
-import { armDeadline } from './deadline.js';
 
 export interface RemeshClientOptions {
   /** A compiled engine module to instantiate instead of fetching one. */
@@ -43,73 +43,59 @@ export interface RemeshClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const DEFAULT_START_TIMEOUT_MS = 120_000;
 
-type Pending = { resolve: (value: RemeshResult | StyleWire) => void; reject: (error: Error) => void };
+function decodeOutbound(data: unknown): RpcReply<number> | undefined {
+  const message = data as RemeshWorkerOutbound;
+  if (message.type === 'result') return { id: message.requestId, value: message.result };
+  if (message.type === 'style-wire') return { id: message.requestId, value: message.wire };
+  if (message.type === 'error') {
+    restashWasmPanicLocation(globalThis, message.wasmPanicLocation, message.wasmPanicAt, message.message);
+    return { id: message.requestId, error: new Error(`Re-mesh failed: ${message.message}`) };
+  }
+  return undefined;
+}
 
 export class RemeshClient {
-  private readonly pending = new Map<number, Pending>();
-  private nextRequestId = 1;
-  /** Why the client can no longer answer: disposed, or its worker died. */
-  private dead: Error | null = null;
-
-  private constructor(private readonly worker: Worker, private readonly timeoutMs: number) {}
+  private constructor(private readonly rpc: WorkerRpc<number>) {}
 
   /** False once disposed or once its worker failed; create a new client then. */
   get alive(): boolean {
-    return this.dead === null;
-  }
-
-  /** Spawn the worker and resolve once its engine is instantiated. */
-  static async create(config: RemeshConfig, options: RemeshClientOptions = {}): Promise<RemeshClient> {
-    const worker = options.createWorker?.()
-      ?? new Worker(new URL('./remesh.worker.ts', import.meta.url), { type: 'module' });
-    const client = new RemeshClient(worker, options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS);
-    try {
-      await client.start(config, options);
-    } catch (error) {
-      client.dispose();
-      throw error;
-    }
-    return client;
+    return this.rpc.alive;
   }
 
   /**
-   * Every way init can fail (init-error, worker error, unreadable message, a
-   * throwing post, no answer within `startTimeoutMs`) settles this
-   * promise; the dead latch makes the first one win and kills the worker.
+   * Spawn the worker and resolve once its engine is instantiated. Every way
+   * init can fail (init-error, worker error, unreadable message, a throwing
+   * post, no answer within `startTimeoutMs`) rejects and kills the worker.
    */
-  private start(config: RemeshConfig, options: RemeshClientOptions): Promise<void> {
-    const startTimeoutMs = options.startTimeoutMs ?? DEFAULT_START_TIMEOUT_MS;
-    return new Promise((resolve, reject) => {
-      const fail = (error: Error) => {
-        cancelDeadline();
-        reject(error);
-        this.kill(error);
-      };
-      const cancelDeadline = armDeadline(
-        startTimeoutMs,
-        () => fail(new Error(`Re-mesh worker did not start within ${startTimeoutMs} ms`)),
-      );
-      this.worker.onmessage = (event: MessageEvent<RemeshWorkerOutbound>) => {
-        const message = event.data;
-        if (message.type === 'ready') {
-          cancelDeadline();
-          this.worker.onmessage = (next: MessageEvent<RemeshWorkerOutbound>) => this.settle(next.data);
-          resolve();
-        } else if (message.type === 'init-error') {
-          restashWasmPanicLocation(globalThis, message.wasmPanicLocation, message.wasmPanicAt, message.message);
-          fail(new Error(`Re-mesh engine failed to start: ${message.message}`));
-        }
-      };
-      this.worker.onerror = (event: ErrorEvent) => fail(new Error(`Re-mesh worker failed: ${event.message}`));
-      // After start, kill() rejects whatever is pending; during start that is
-      // nothing, so `fail` (which also rejects init) stays the handler.
-      this.worker.onmessageerror = () => fail(new Error('Re-mesh worker sent a message that could not be read'));
-      try {
-        this.post({ type: 'init', config, wasmModule: options.wasmModule, wasmUrl: options.wasmUrl });
-      } catch (error) {
-        fail(error instanceof Error ? error : new Error(String(error)));
-      }
+  static async create(config: RemeshConfig, options: RemeshClientOptions = {}): Promise<RemeshClient> {
+    const worker = options.createWorker?.()
+      ?? new Worker(new URL('./remesh.worker.ts', import.meta.url), { type: 'module' });
+    const rpc = createWorkerRpc({
+      worker,
+      label: 'Re-mesh worker',
+      decode: decodeOutbound,
+      // A wasm call cannot be interrupted: a request past its deadline kills the worker.
+      requestTimeoutMs: options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
+      onRequestTimeout: 'kill',
     });
+    await rpc.start<void>({
+      post: () => worker.postMessage(
+        { type: 'init', config, wasmModule: options.wasmModule, wasmUrl: options.wasmUrl } satisfies RemeshWorkerInbound,
+        [],
+      ),
+      accept: (data) => {
+        const message = data as RemeshWorkerOutbound;
+        if (message.type === 'ready') return { ready: undefined };
+        if (message.type === 'init-error') {
+          restashWasmPanicLocation(globalThis, message.wasmPanicLocation, message.wasmPanicAt, message.message);
+          return { error: new Error(`Re-mesh engine failed to start: ${message.message}`) };
+        }
+        return undefined;
+      },
+      timeoutMs: options.startTimeoutMs ?? DEFAULT_START_TIMEOUT_MS,
+      timeoutError: () => new Error(`Re-mesh worker did not start within ${options.startTimeoutMs ?? DEFAULT_START_TIMEOUT_MS} ms`),
+    });
+    return new RemeshClient(rpc);
   }
 
   /**
@@ -123,7 +109,10 @@ export class RemeshClient {
       && buffer.byteOffset === 0 && buffer.byteLength === buffer.buffer.byteLength
       ? [buffer.buffer]
       : [];
-    return this.request<RemeshResult>((requestId) => ({ type: 'remesh', requestId, request }), transfer);
+    return this.rpc.request<RemeshResult>(
+      (requestId): RemeshWorkerInbound => ({ type: 'remesh', requestId, request }),
+      { transfer },
+    );
   }
 
   /**
@@ -132,76 +121,16 @@ export class RemeshClient {
    * caller's model still owns it), and the pre-pass cache is released after.
    */
   styleWire(source: Uint8Array): Promise<StyleWire> {
-    return this.request<StyleWire>((requestId) => ({ type: 'style-wire', requestId, source }));
-  }
-
-  private request<T extends RemeshResult | StyleWire>(
-    message: (requestId: number) => RemeshWorkerInbound,
-    transfer: Transferable[] = [],
-  ): Promise<T> {
-    if (this.dead) return Promise.reject(this.dead);
-    const requestId = this.nextRequestId++;
-    return new Promise<T>((resolve, reject) => {
-      const cancelDeadline = armDeadline(
-        this.timeoutMs,
-        () => this.kill(new Error(`Re-mesh worker did not answer within ${this.timeoutMs} ms`)),
-      );
-      const settle = <V>(fn: (value: V) => void) => (value: V) => { cancelDeadline(); fn(value); };
-      this.pending.set(requestId, {
-        resolve: settle(resolve as (value: RemeshResult | StyleWire) => void),
-        reject: settle(reject),
-      });
-      try {
-        this.post(message(requestId), transfer);
-      } catch (error) {
-        // The message never left (e.g. DataCloneError): the worker is fine, so
-        // fail only this request, and drop its entry and deadline so they
-        // cannot later kill the client under unrelated requests.
-        this.pending.delete(requestId);
-        cancelDeadline();
-        reject(error);
-      }
-    });
+    return this.rpc.request<StyleWire>((requestId): RemeshWorkerInbound => ({ type: 'style-wire', requestId, source }));
   }
 
   /** Change the load toggles; applies to every request sent after this call. */
   setConfig(config: RemeshConfig): void {
-    if (this.dead) return;
-    this.post({ type: 'config', config });
+    this.rpc.notify({ type: 'config', config } satisfies RemeshWorkerInbound);
   }
 
   /** Terminate the worker and reject whatever is still in flight. Idempotent. */
   dispose(): void {
-    this.kill(new Error('RemeshClient is disposed'));
-  }
-
-  /** Mark the client dead (first reason wins), stop the worker, reject everything pending. */
-  private kill(reason: Error): void {
-    if (this.dead) return;
-    this.dead = reason;
-    this.worker.terminate();
-    this.failAll(reason);
-  }
-
-  private post(message: RemeshWorkerInbound, transfer: Transferable[] = []): void {
-    this.worker.postMessage(message, transfer);
-  }
-
-  private settle(message: RemeshWorkerOutbound): void {
-    if (message.type === 'ready' || message.type === 'init-error') return;
-    const pending = this.pending.get(message.requestId);
-    if (!pending) return;
-    this.pending.delete(message.requestId);
-    if (message.type === 'result') pending.resolve(message.result);
-    else if (message.type === 'style-wire') pending.resolve(message.wire);
-    else {
-      restashWasmPanicLocation(globalThis, message.wasmPanicLocation, message.wasmPanicAt, message.message);
-      pending.reject(new Error(`Re-mesh failed: ${message.message}`));
-    }
-  }
-
-  private failAll(error: Error): void {
-    for (const pending of this.pending.values()) pending.reject(error);
-    this.pending.clear();
+    this.rpc.dispose(new Error('RemeshClient is disposed'));
   }
 }

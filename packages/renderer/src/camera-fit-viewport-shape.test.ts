@@ -344,6 +344,8 @@ describe('preset views survive an out-of-range rotation cycle (#2500)', () => {
             Number.isFinite(fit.position[axis]),
             `${view} @ rotation ${bad}: position.${axis} was ${fit.position[axis]}`,
           );
+          // The cycle position reaches `up` too since #9501.
+          assert.ok(Number.isFinite(fit.up[axis]), `${view} @ rotation ${bad}: up.${axis} was ${fit.up[axis]}`);
         }
       }
     }
@@ -353,8 +355,9 @@ describe('preset views survive an out-of-range rotation cycle (#2500)', () => {
     const seen = new Set<string>();
     for (const rotation of [0, 1, 2, 3]) {
       const fit = presetViewTarget(makeState(1), 'top', { min: CUBE_MIN, max: CUBE_MAX }, rotation);
-      seen.add(`${fit.position.x.toFixed(6)},${fit.position.z.toFixed(6)}`);
+      // On the pole (#9501) the cycle position is the screen-up direction.
+      seen.add(`${fit.up.x.toFixed(6)},${fit.up.z.toFixed(6)}`);
     }
-    assert.strictEqual(seen.size, 4, 'each ViewCube cycle position must still give a distinct pose');
+    assert.strictEqual(seen.size, 4, 'each ViewCube cycle position must still give a distinct screen orientation');
   });
 });

@@ -18,7 +18,7 @@
  */
 
 import { prepareEntityOperations } from './prepare-entity-operations.js';
-import { highestExistingExpressId } from './express-id-watermark.js';
+import { highestExistingExpressId, rescanHighestExpressId } from './express-id-watermark.js';
 import { sourceEntityRef, storeHasSourceEntity } from './source-entity-index.js';
 import type { EntityOperation, EntityPreparationOptions, PreparedEntityOperations } from './cooperative-operation-types.js';
 import type { MutablePropertyView } from './mutable-property-view.js';
@@ -79,7 +79,7 @@ export class StoreEditor {
    * Prepare image/worker resources before calling this. Returned entity IDs are
    * valid after success; the draft editor is detached after this callback. */
   runAtomic<T>(edit: (draft: StoreEditor) => T): T {
-    return this.view.runAtomic(draft => edit(new StoreEditor(this.store, draft)));
+    return this.view.runAtomic(draft => edit(this.forkPreparedEditor(draft)));
   }
 
   /** Cooperatively prepare owned entity operations without exposing a draft.
@@ -107,7 +107,7 @@ export class StoreEditor {
    * no-op.
    */
   refreshWatermark(): void {
-    const fresh = highestExistingExpressId(this.store);
+    const fresh = rescanHighestExpressId(this.store);
     if (fresh > this.maxExistingId) {
       this.maxExistingId = fresh;
     }
@@ -286,6 +286,7 @@ export class StoreEditor {
   getNewEntity(expressId: number): NewEntity | null {
     return this.view.getNewEntity(expressId);
   }
+  readNewEntity(expressId: number): NewEntity | null { return this.view.readNewEntity?.(expressId) ?? this.view.getNewEntity(expressId); }
 
   /** Whether an id resolves to a live source or overlay entity. */
   hasEntity(expressId: number): boolean {

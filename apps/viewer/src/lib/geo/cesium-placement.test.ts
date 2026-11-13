@@ -207,6 +207,28 @@ describe('cesium placement helpers', () => {
     assert.strictEqual(orthogonalHeight, 84);
   });
 
+  it('takes the #9480 site height shift back out when solving OrthogonalHeight', () => {
+    // A millimetre file whose site sits at the anchor's metre numbers: the
+    // read path adds 13.986 m on top of OrthogonalHeight, so the snap must
+    // author 13.986 m less, or the model lands that far above the terrain.
+    const bounds = { min: { x: -29.07, y: -0.2, z: -13.68 }, max: { x: 5.98, y: 3.76, z: 31.68 } };
+    const base: CoordinateInfo = {
+      originShift: { x: 0, y: 0, z: 0 }, originalBounds: bounds, shiftedBounds: bounds, hasLargeCoordinates: false,
+      wasmRtcOffset: { x: 311.98818054 + 30.72, y: 5996.14856499 + 21.09, z: 0.014 }, lengthUnitScale: 0.001,
+    };
+    const mapConversion: MapConversion = {
+      id: 60, sourceCRS: 41, targetCRS: 58, eastings: 311988.181, northings: 5996148.565,
+      orthogonalHeight: 0, xAxisAbscissa: 0, xAxisOrdinate: 1,
+    };
+    const solve = (coordinateInfo: CoordinateInfo) => computeOrthogonalHeightForBaseAltitude({
+      coordinateInfo, projectedCRS: { mapUnitScale: 1 }, mapConversion, lengthUnitScale: 0.001,
+      storeyElevations: new Map([[1, 0]]), targetBaseAltitude: 14,
+    });
+    const flat = solve(base);
+    const lifted = solve({ ...base, siteOrigin: { x: 311.98818054, y: 5996.14856499, z: 0.014 } });
+    assert.ok(Math.abs(flat - lifted - 13.986) < 0.006, `flat ${flat}, lifted ${lifted}`);
+  });
+
   it('computes the IFC origin height from OrthogonalHeight and model center', () => {
     const height = computeIfcOriginHeight(
       { orthogonalHeight: 12 },

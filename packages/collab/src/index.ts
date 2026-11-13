@@ -85,6 +85,7 @@ export * from './perf/index.js';
 // Top-level session façade
 export {
   createCollabSession,
+  CollabSessionDisposedError,
   type CollabSession,
   type CollabSessionOptions,
   type ProviderKind,

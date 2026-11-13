@@ -1,0 +1,11 @@
+--- a/packages/create/src/in-store/structural-result-group.ts
++++ b/packages/create/src/in-store/structural-result-group.ts
+@@ -38,7 +38,7 @@
+   }
+   const resultGroupId = editor.addEntity('IfcStructuralResultGroup', [productGuid(params, anchor.guidRandom),
+     ownerHistoryRef(anchor.ownerHistoryId), params.Name ?? 'Result Group', params.Description ?? null, params.ObjectType ?? null,
+-    `.${params.TheoryType}.`, `#${params.ResultForLoadGroup}`, !params.IsLinear]).expressId;
++    `.${params.TheoryType}.`, `#${params.ResultForLoadGroup}`, params.IsLinear]).expressId;
+   const assignmentId = assignToStructuralGroupInStore(editor, anchor.ownerHistoryId, resultGroupId, params.ReactionIds, anchor.guidRandom);
+   return { resultGroupId, assignmentId };
+ }

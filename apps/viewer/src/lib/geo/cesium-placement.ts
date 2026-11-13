@@ -7,12 +7,11 @@ import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 
 import { findClampAnchorY } from './clamp-anchor';
 import { computeModelCenterInIfcMeters } from './reproject';
-import { effectiveMapConversionForGeometry } from './map-absolute';
+import { effectiveMapConversionForGeometry, viewerFrameCenter } from './map-absolute';
 import { getEffectiveAxisScales, resolveMapUnitToMetreScale } from './geo-scale';
 import { divideByAxisScale, viewerUpScaleForGeometry } from './viewer-up-scale';
 import { ifcToViewerAxes } from './coordinate-frame';
 import { refusedAxisDelta, resolveMapAxisDirection } from './map-axis-direction';
-import { viewerFrameCenter } from './cesium-viewer-frame';
 
 export function getMapUnitScale(
   projectedCRS: Pick<ProjectedCRS, 'mapUnitScale'> | undefined,
@@ -185,7 +184,15 @@ export function computeOrthogonalHeightForBaseAltitude({
   const scaleZ = mapConversion
     ? viewerUpScaleForGeometry(mapConversion, projectedCRS, lengthUnitScale, coordinateInfo)
     : 1;
-  const orthogonalHeightMeters = targetBaseAltitude - scaleZ * (rtcYupY + anchorY);
+  // A #9480 unit-slipped site raises the read height by its slipped Z; that
+  // shift sits on top of whatever OrthogonalHeight is authored, so take it
+  // back out or the snap lands the model that far above the target.
+  const mapScale = getMapUnitScale(projectedCRS, lengthUnitScale);
+  const heightShift = mapConversion
+    ? (effectiveMapConversionForGeometry(mapConversion, mapScale, coordinateInfo).orthogonalHeight
+      - mapConversion.orthogonalHeight) * mapScale
+    : 0;
+  const orthogonalHeightMeters = targetBaseAltitude - scaleZ * (rtcYupY + anchorY) - heightShift;
 
   return Math.round(
     metersToMapUnits(orthogonalHeightMeters, projectedCRS, lengthUnitScale) * 100,

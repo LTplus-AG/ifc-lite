@@ -17,12 +17,12 @@ import assert from 'node:assert/strict';
 import { useViewerStore } from '@/store';
 import { runModelRequest } from '@/lib/llm/request-service';
 import { createRootBudget } from '@/lib/llm/root-budget';
-import { useRequestReceipts } from '@/lib/llm/request-receipts';
+import { recordReceipt, recordRequestStart, useRequestReceipts } from '@/lib/llm/request-receipts';
 import { cancelWorkflowRun, startWorkflowRun, type WorkflowRun } from '@/lib/flow/run-session';
 import { installModelLoadCanceller } from '@/hooks/modelLoadCanceller';
 import { fixtureModel } from '@/test/store-fixture';
 import { selectLoadCanceller } from '@/store/slices/loadingSlice';
-import { activityCanceller, restoreActivityJournal, updateActivity, useActivityJournal, type ActivityJob } from './activity-journal.js';
+import { activityCanceller, beginActivity, restoreActivityJournal, updateActivity, useActivityJournal, type ActivityJob } from './activity-journal.js';
 import { isCataloguedKey, resetActivityRecordersForTest, startActivityRecorders } from './activity-recorders.js';
 
 const initial = useViewerStore.getState();
@@ -206,5 +206,12 @@ describe('assistant request recorder', () => {
       maxOutputTokens: 512, budget: createRootBudget(), timeoutMs: 10_000,
     });
     assert.deepEqual([only().outcome, only().detailKey], ['partial', 'activityTray.ai.truncated']);
+  });
+
+  it('J1: a request whose id is held by a running job settles its own job, not that one', () => {
+    const held = beginActivity({ id: 'req-1', kind: 'ai', title: 'activityTray.job.ai' }, 1);
+    recordRequestStart({ id: 'req-1', model: 'openai/gpt-free', startedAt: 2, cancel: () => {} });
+    recordReceipt({ id: 'req-1', model: 'openai/gpt-free', route: 'proxy', startedAt: 2, finishedAt: 3, outcome: 'completed', usageReported: false });
+    assert.deepEqual(jobs().map((job) => [job.id, job.outcome]), [[held, 'running'], ['req-1#2', 'completed']]);
   });
 });

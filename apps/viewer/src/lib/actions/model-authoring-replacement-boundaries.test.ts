@@ -54,10 +54,17 @@ test('#7320 first-read replacement evidence/preview preserve the held source lea
  const preview=previewModelAuthoring(useViewerStore.getState(),f.batch());assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue??'');assert.doesNotThrow(()=>held.validate());assert.equal(useViewerStore.getState().storeEditors.size,0);
 });
 test('#7320 genuine duplicate source Root identities refuse without conflating material Names',async()=>{
- const f=await fixture(),editor=new StoreEditor(f.dataStore,f.view);editor.addEntity('IfcMaterial',[f.op.target.globalId,null,null]);assert.ok(captureSelectionGrounding({...useViewerStore.getState(),selectedEntityIds:new Set([f.made.expressId]),selectedEntityId:f.made.expressId}).elements[0]?.nativeReplacementExpected,'non-root material Name is not a second GlobalId');
+ const f=await fixture(),editor=new StoreEditor(f.dataStore,f.view);editor.addEntity('IfcMaterial',[f.op.target.globalId,null,null]);
+ const current=captureSelectionGrounding({...useViewerStore.getState(),selectedEntityIds:new Set([f.made.expressId]),selectedEntityId:f.made.expressId}).elements[0]?.nativeReplacementExpected;
+ assert.ok(current,'non-root material Name is not a second GlobalId');
+ // #9411: adding the material changes the model revision. Refresh the review
+ // pin before testing identity resolution; the original pin must be stale.
+ assert.equal(current.revision,f.view.getMutationRevision());
+ assert.equal(previewModelAuthoring(useViewerStore.getState(),f.batch()).rows[0].status,'invalid');
+ f.op.expected=current;
  assert.equal(previewModelAuthoring(useViewerStore.getState(),f.batch()).rows[0].status,'ready');
  editor.addEntity('IfcWall',f.record.attributes);const saved=await parseIfc(f.bytes());assert.equal([...saved.entityIndex.byId.keys()].filter(id=>saved.getEntity(id)?.type==='IFCWALL'&&saved.getEntity(id)?.attributes[0]===f.op.target.globalId).length,2);
- const before=await graph(f.bytes()),preview=previewModelAuthoring(useViewerStore.getState(),f.batch());assert.notEqual(preview.rows[0].status,'ready');assert.equal(commitModelAuthoring(useViewerStore,preview,new Set([0]),'ambiguous native source').ok,false);assert.deepEqual(await graph(f.bytes()),before);
+ const before=await graph(f.bytes()),preview=previewModelAuthoring(useViewerStore.getState(),f.batch());assert.equal(preview.rows[0].status,'ambiguous-target');assert.equal(commitModelAuthoring(useViewerStore,preview,new Set([0]),'ambiguous native source').ok,false);assert.deepEqual(await graph(f.bytes()),before);
 });
 for(const matching of [false,true])test(`#7320 intermediate existing type assignment ${matching?'accepts exact current':'refuses old'} replacement metadata`,async()=>{
  const f=await fixture(),typeId=f.dataStore.entities.getExpressIdByGlobalId(FRONT_WALL_TYPE);assert.ok(typeId>0);

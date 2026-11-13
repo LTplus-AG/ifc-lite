@@ -10,6 +10,8 @@
  */
 
 import '@/test/setup-dom.js';
+import { updateCommandGesture } from './runtime';
+import type { SlabPlaceGesture } from './commands/slab-place-geometry';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -133,6 +135,8 @@ describe('the Roof tool draws at the top of the walls (#9202)', () => {
     wall(2.7);
     wall(3.2);
     act(() => { launchSlabTool('roof'); });
+    // Isolate the retained flat roof's elevation; roof-place covers pitched previews.
+    act(() => { updateCommandGesture(value => { const g = value as SlabPlaceGesture; return { ...g, roof: { ...g.roof, preset: 'flat' } }; }); });
     assert.equal(state().session?.activeCommandId, 'slab.place');
     assert.equal(state().authoringDefaults.slabClass, 'roof');
     assert.equal(round(offset()!), 3.2, 'the highest wall top');

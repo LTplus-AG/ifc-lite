@@ -13,16 +13,19 @@ import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, it, mock } from 'node:test';
 import { act, useState } from 'react';
+import { expireStoreBusyCap, settleLoadWindow, untilReleased } from '@/test/load-window';
+import { markModelLoadEnded } from '@/hooks/modelLoadEnd';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { render, cleanup } from '@/test/render.js';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { ModelMetadataPanel } from './ModelMetadataPanel';
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
   mock.restoreAll();
-  useViewerStore.setState({ geometryStreamingActive: false });
+  useViewerStore.setState({ geometryStreamingActive: false, loading: false, models: new Map() });
+  await settleLoadWindow(); // the next test starts with the window closed
 });
 
 const STEP = `ISO-10303-21;
@@ -63,15 +66,18 @@ async function parse(): Promise<IfcDataStore> {
   return new IfcParser().parseColumnar(bytes.buffer, { disableWorkerScan: true });
 }
 
-/** The number rendered after the "Elements with Geometry" label. */
-function elementsWithGeometry(panel: HTMLElement): string {
-  const match = /Elements with Geometry\D*([\d,]+)/.exec(panel.textContent ?? '');
-  return match ? match[1] : `<not found in ${JSON.stringify(panel.textContent)}>`;
+/** The value cell of the row labelled `label` (InspectorRow: label span, then value span), or a not-found marker. */
+function rowValue(panel: HTMLElement, label: string): string {
+  const labelCell = [...panel.querySelectorAll('span[title]')].find((el) => el.getAttribute('title') === label);
+  const value = labelCell?.nextElementSibling;
+  return value ? (value.textContent ?? '').trim() : `<no "${label}" row in ${JSON.stringify(panel.textContent)}>`;
 }
+/** The value of the "Elements with Geometry" row, read from that row only. */
+const elementsWithGeometry = (panel: HTMLElement): string => rowValue(panel, 'Elements with Geometry');
+/** The value of the "Building Storeys" row, read from that row only. */
+const buildingStoreys = (panel: HTMLElement): string => rowValue(panel, 'Building Storeys');
 
-it('holds "Elements with Geometry" while streaming and shows the exact count when streaming ends (#6411)', async () => {
-  let clock = 0;
-  mock.method(performance, 'now', () => clock);
+it('shows a dash while the load window is open and the exact counts once it settles (load window; supersedes #6411)', async () => {
   const dataStore = await parse();
   const model = (ids: number[]) => ({
     id: 'legacy', name: 'M', ifcDataStore: dataStore, geometryResult: geometry(ids),
@@ -86,9 +92,70 @@ it('holds "Elements with Geometry" while streaming and shows the exact count whe
     return <ModelMetadataPanel model={current} />;
   }
   const panel = render(<Host />);
+  assert.equal(elementsWithGeometry(panel), '—', 'early read: placeholder, never a provisional count');
+  assert.equal(buildingStoreys(panel), '—');
+
+  act(() => setModel(model([10, 11, 12])));
+  assert.equal(elementsWithGeometry(panel), '—', 'a publish inside the window computes nothing');
+
+  act(() => useViewerStore.setState({ geometryStreamingActive: false }));
+  await settleLoadWindow();
+  assert.equal(elementsWithGeometry(panel), '3', 'settled: the exact count');
+  assert.equal(buildingStoreys(panel), '1');
+});
+
+it('a federated add holds only the loading model: settled model A keeps its statistics, B\'s appear at its settle', async () => {
+  const dataStore = await parse();
+  const { registerModelOffset } = useViewerStore.getState();
+  const offsetA = registerModelOffset('panel-A', 100);
+  const offsetB = registerModelOffset('panel-B', 100);
+  const model = (id: string, offset: number, ids: number[], loadState: FederatedModel['loadState']) => ({
+    id, name: id, ifcDataStore: dataStore, geometryResult: geometry(ids.map((x) => x + offset)), loadState,
+    idOffset: offset, maxExpressId: 100, fileSize: 1, loadedAt: 0,
+  }) as FederatedModel;
+  const a = model('panel-A', offsetA, [10, 11], 'complete');
+  useViewerStore.setState({ models: new Map([['panel-A', a]]), mutationViews: new Map(), mutationVersion: 0 });
+  const panelA = render(<ModelMetadataPanel model={a} />);
+  assert.equal(elementsWithGeometry(panelA), '2', 'A settled: its count');
+  assert.equal(buildingStoreys(panelA), '1');
+
+  act(() => useViewerStore.setState({ loading: true }));
+  const bLoading = model('panel-B', offsetB, [10, 11, 12], 'pending');
+  act(() => useViewerStore.setState({ models: new Map([['panel-A', a], ['panel-B', bLoading]]), geometryStreamingActive: true }));
+  assert.equal(elementsWithGeometry(panelA), '2', 'A keeps its statistics while B loads');
+  const panelB = render(<ModelMetadataPanel model={bLoading} />);
+  assert.equal(elementsWithGeometry(panelB), '—', 'B is held while it loads');
+
+  act(() => useViewerStore.setState({ geometryStreamingActive: false, loading: false }));
+  await settleLoadWindow();
+  assert.equal(elementsWithGeometry(panelB), '3', 'B settled: its count');
+  assert.equal(elementsWithGeometry(panelA), '2');
+});
+
+// Main's streaming-hold tests (#6411), unchanged but for the start: inside a
+// load window a loading model is held outright, and the throttle still governs
+// a stream that outlives the store-busy limit, so they start after it expired.
+it('holds "Elements with Geometry" while streaming and shows the exact count when streaming ends (#6411)', async () => {
+  let clock = 0;
+  mock.method(performance, 'now', () => clock);
+  const dataStore = await parse();
+  const model = (ids: number[]) => ({
+    id: 'legacy', name: 'M', ifcDataStore: dataStore, geometryResult: geometry(ids),
+    loadState: 'streaming-geometry', fileSize: 1, loadedAt: 0,
+  }) as FederatedModel;
+  useViewerStore.setState({ mutationViews: new Map(), mutationVersion: 0 });
+
+  let setModel: (m: FederatedModel) => void = () => {};
+  function Host() {
+    const [current, set] = useState(model([10]));
+    setModel = set;
+    return <ModelMetadataPanel model={current} />;
+  }
+  const panel = render(<Host />);
+  await expireStoreBusyCap(() => useViewerStore.setState({ geometryStreamingActive: true }), (ms) => { clock = ms; });
   assert.equal(elementsWithGeometry(panel), '1');
 
-  clock = 1;
+  clock += 1;
   act(() => setModel(model([10, 11, 12])));
   assert.equal(elementsWithGeometry(panel), '1', 'a publish within the refresh window is held');
 
@@ -103,8 +170,7 @@ it('holds only this model\'s own streaming geometry: another model or this one f
   const model = (id: string, ids: number[], loadState: FederatedModel['loadState']) => ({
     id, name: id, ifcDataStore: dataStore, geometryResult: geometry(ids), loadState, fileSize: 1, loadedAt: 0,
   }) as FederatedModel;
-  // The global flag stays on throughout: another federated model is still streaming.
-  useViewerStore.setState({ geometryStreamingActive: true, mutationViews: new Map(), mutationVersion: 0 });
+  useViewerStore.setState({ mutationViews: new Map(), mutationVersion: 0 });
 
   let setModel: (m: FederatedModel) => void = () => {};
   function Host() {
@@ -113,13 +179,82 @@ it('holds only this model\'s own streaming geometry: another model or this one f
     return <ModelMetadataPanel model={current} />;
   }
   const panel = render(<Host />);
+  // The global flag stays on throughout: another federated model is still streaming.
+  await expireStoreBusyCap(() => useViewerStore.setState({ geometryStreamingActive: true }), (ms) => { clock = ms; });
   assert.equal(elementsWithGeometry(panel), '1');
 
-  clock = 1;
+  clock += 1;
   act(() => setModel(model('legacy', [10, 11], 'complete')));
   assert.equal(elementsWithGeometry(panel), '2', 'this model finished: its exact count, although another model still streams');
 
-  clock = 2;
+  clock += 1;
   act(() => setModel(model('default', [10, 11, 12], 'streaming-geometry')));
   assert.equal(elementsWithGeometry(panel), '3', 'a different model never shows the previous model\'s held geometry');
 });
+
+it('computes the statistics against the FINAL store after a store swap inside the window', async () => {
+  const full = await parse();
+  const partialBytes = new TextEncoder().encode(STEP.replace("#12=IFCWALL('0Wall12000000000000000',$,'W3',$,$,$,#7,$,$);\n", '').replace('(#10,#11,#12),#4', '(#10,#11),#4'));
+  const partial = await new IfcParser().parseColumnar(partialBytes.buffer, { disableWorkerScan: true });
+  const model = (ds: IfcDataStore, loadState: FederatedModel['loadState']) => ({
+    id: 'legacy', name: 'M', ifcDataStore: ds, geometryResult: geometry([10, 11, 12]), loadState, fileSize: 1, loadedAt: 0,
+  }) as FederatedModel;
+  useViewerStore.setState({ loading: true, mutationViews: new Map(), mutationVersion: 0 });
+  let setModel: (m: FederatedModel) => void = () => {};
+  function Host() {
+    const [current, set] = useState(model(partial, 'hydrating-metadata'));
+    setModel = set;
+    return <ModelMetadataPanel model={current} />;
+  }
+  const panel = render(<Host />);
+  assert.equal(elementsWithGeometry(panel), '—');
+  act(() => setModel(model(full, 'complete')));
+  assert.equal(elementsWithGeometry(panel), '—', 'the swap inside the window computes nothing');
+  act(() => useViewerStore.setState({ loading: false }));
+  await settleLoadWindow();
+  assert.equal(elementsWithGeometry(panel), '3', 'settled: the final store\'s three walls (the partial store has two)');
+});
+
+it('multi-file open: A\'s statistics appear at A\'s settle while B, started at once, is held', async () => {
+  const dataStore = await parse();
+  const { registerModelOffset } = useViewerStore.getState();
+  const offsetA = registerModelOffset('seq-A', 100);
+  const offsetB = registerModelOffset('seq-B', 100);
+  const model = (id: string, offset: number, loadState: FederatedModel['loadState']) => ({
+    id, name: id, ifcDataStore: dataStore, geometryResult: geometry([10, 11].map((x) => x + offset)), loadState,
+    idOffset: offset, maxExpressId: 100, fileSize: 1, loadedAt: 0,
+  }) as FederatedModel;
+  act(() => useViewerStore.setState({ loading: true, mutationViews: new Map(), mutationVersion: 0, models: new Map([['seq-A', model('seq-A', offsetA, 'pending')]]) }));
+  const aDone = model('seq-A', offsetA, 'complete');
+  const panelA = render(<ModelMetadataPanel model={aDone} />);
+  act(() => useViewerStore.setState({ models: new Map([['seq-A', aDone]]) }));
+  act(() => markModelLoadEnded('seq-A'));
+  act(() => useViewerStore.setState({ models: new Map([['seq-A', aDone], ['seq-B', model('seq-B', offsetB, 'pending')]]) }));
+  const panelB = render(<ModelMetadataPanel model={model('seq-B', offsetB, 'pending')} />);
+  await settleLoadWindow(await untilReleased('seq-A'));
+  assert.equal(useViewerStore.getState().loading, true);
+  assert.equal(elementsWithGeometry(panelA), '2', 'A settled: its statistics, although B is loading');
+  assert.equal(elementsWithGeometry(panelB), '—', 'B is held');
+});
+
+for (const path of ['cache hit', 'cold load'] as const) {
+  it(`single-model ${path}: no statistics between the record turning complete and the UI settle`, async () => {
+    const dataStore = await parse();
+    const offset = useViewerStore.getState().registerModelOffset(`one-${path}`, 100);
+    const id = `one-${path}`;
+    const model = (loadState: FederatedModel['loadState']) => ({
+      id, name: id, ifcDataStore: dataStore, geometryResult: geometry([10, 11].map((x) => x + offset)), loadState,
+      idOffset: offset, maxExpressId: 100, fileSize: 1, loadedAt: 0,
+    }) as FederatedModel;
+    act(() => useViewerStore.setState({ loading: true, mutationViews: new Map(), mutationVersion: 0, models: new Map([[id, model('pending')]]) }));
+    if (path === 'cold load') act(() => useViewerStore.setState({ models: new Map([[id, model('streaming-geometry')]]) }));
+    const done = model('complete');
+    act(() => useViewerStore.setState({ models: new Map([[id, done]]) }));
+    const panel = render(<ModelMetadataPanel model={done} />);
+    await settleLoadWindow(); await settleLoadWindow();
+    assert.equal(elementsWithGeometry(panel), '—', 'record complete, UI not settled: held');
+    act(() => { useViewerStore.setState({ loading: false }); markModelLoadEnded(id); });
+    await settleLoadWindow();
+    assert.equal(elementsWithGeometry(panel), '2');
+  });
+}

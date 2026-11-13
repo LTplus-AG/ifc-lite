@@ -94,3 +94,28 @@ test('#9324 containment in a building, not a storey, counts as uncontained',()=>
   const inStorey=readStep(head+"#4=IFCRELCONTAINEDINSPATIALSTRUCTURE('r',$,$,$,(#3),#2);ENDSEC;");
   assert.equal(uncontainedInStoreys(inStorey,inStorey.of('IFCWALL')),0);
 });
+
+// #9296 U1: the UI roof verdict must inspect the exported roof's geometry.
+test('#9296 roof geometry accepts a real pitched plate, rejects labels, slabs and unrelated meshes', async () => {
+  const { roofGeometry } = await import('../../tests/modelling-parity/ui/lib/oracles.mjs');
+  assert.equal(typeof roofGeometry, 'function');
+  const footprint = [[0,0],[10,0],[10,8],[0,8]], tilt = 10 * Math.PI / 180;
+  const expected = {footprint, slopes: [tilt,0,0,0], thickness: .25};
+  const shape = (height) => {
+    const pts = new Float64Array(24);
+    for (let i = 0; i < 8; i++) {
+      const x = i & 1, y = (i >> 1) & 1, z = (i >> 2) & 1;
+      pts.set([10*x,8*y,height(y,z)],i*3);
+    }
+    const quads = [[0,2,3,1],[4,5,7,6],[0,1,5,4],[2,6,7,3],[0,4,6,2],[1,3,7,5]];
+    return [{pts,idx:Uint32Array.from(quads.flatMap(([a,b,c,d])=>[a,b,c,a,c,d]))}];
+  };
+  const roof = readStep("DATA;#1=IFCROOF('r',$,$,$,$,$,$,$,.HIP_ROOF.);ENDSEC;");
+  const plate = shape((y,z)=>8*y*Math.tan(tilt)+z*.25/Math.cos(tilt));
+  assert.equal(roofGeometry(roof,new Map([[1,{parts:plate}]]),expected),true);
+  for (const parts of [shape((_y,z)=>z*.25),shape((_y,z)=>z*(.25+8*Math.tan(tilt)))]) {
+    assert.notEqual(roofGeometry(roof,new Map([[1,{parts}]]),expected),true,'a roof label cannot certify a slab or full-height prism');
+  }
+  assert.notEqual(roofGeometry(roof,new Map([[2,{parts:plate}]]),expected),true,'another element cannot supply the roof mesh');
+  assert.notEqual(roofGeometry(readStep("DATA;#2=IFCWALL('w');ENDSEC;"),new Map([[2,{parts:plate}]]),expected),true);
+});

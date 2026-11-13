@@ -75,3 +75,42 @@ describe('resolveAnchor opens the step panel (#5608)', () => {
     assert.equal(res.redocked, true);
   });
 });
+
+it('slow deferred panel code does not consume the anchor deadline (#9634)', async () => {
+  let ready!: () => void;
+  const pending = new Promise<void>(resolve => { ready = resolve; });
+  const { store } = panelStore();
+  // Opening the host cannot mount the feature anchor until its chunk arrives.
+  store.getState().showWorkspacePanel = () => undefined;
+  const loading = resolveAnchor(store, { ...STEP, panel: 'lens' }, () => true, async () => pending);
+  // Simulate a chunk taking longer than the complete anchor timeout without
+  // a real network delay. Only after resolution should DOM polling begin.
+  const original = performance.now.bind(performance);
+  const before = Object.getOwnPropertyDescriptor(performance, 'now');
+  Object.defineProperty(performance, 'now', { configurable: true, value: () => original() + 10_000 });
+  try {
+    const anchor = document.createElement('div');
+    anchor.setAttribute('data-tour', TOUR_ANCHORS.compareAb);
+    document.body.appendChild(anchor);
+    ready();
+    const result = await loading;
+    assert.equal(result.el === anchor, true, 'a slow chunk still reaches the real anchor');
+    assert.equal(result.reason, undefined);
+  } finally {
+    if (before) Object.defineProperty(performance, 'now', before);
+    else Reflect.deleteProperty(performance, 'now');
+  }
+});
+
+it('a cancelled step does not spotlight a panel when its deferred import finishes (#9634)', async () => {
+  let ready!: () => void;
+  let current = true;
+  const pending = new Promise<void>(resolve => { ready = resolve; });
+  const { store } = panelStore();
+  const loading = resolveAnchor(store, { ...STEP, panel: 'bcf' }, () => current, async () => pending);
+  current = false;
+  ready();
+  const result = await loading;
+  assert.equal(result.el === null, true);
+  assert.equal(result.reason, undefined, 'cancellation is not reported as a broken anchor');
+});

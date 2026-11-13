@@ -11,7 +11,8 @@
  * Renders nothing unless a model carries a retained summary.
  */
 
-import { useState } from 'react';
+import { OPEN_RETAINED_REPORT, registerRetainedReportHost } from './retained-report-destination';
+import { useEffect, useState } from 'react';
 import { Shapes } from 'lucide-react';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
@@ -46,6 +47,12 @@ function RetainedGeometryChipBody({ modelId, summary, sourceFile, reload }: {
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const openReport = () => setOpen(true);
+    window.addEventListener(OPEN_RETAINED_REPORT, openReport);
+    const release = registerRetainedReportHost();
+    return () => { window.removeEventListener(OPEN_RETAINED_REPORT, openReport); release(); };
+  }, []);
   const obligations = useObligationList(summary.obligationsUnmet);
   const state = chipState(summary);
   const refused = summary.refused.length - summary.cancelled;

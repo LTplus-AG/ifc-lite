@@ -22,12 +22,15 @@ import { analysisStampOf, useAnalysisStaleness } from '@/hooks/useAnalysisStalen
 import { useTranslation } from '@/i18n';
 import { CLASH_REPORT_LIMITS, clashReportRevision, defaultClashReportName, snapshotClashReport, type SavedClashReport } from '@/lib/clash/saved-report';
 import { clashReportLimitBadges } from '@/lib/charts/chart-source-message';
+import { QualityGateCards } from './ClashQualityGates';
+import { useQualityGatePreferences } from '@/lib/clash/quality-gate-preferences';
+import { qualityGateDocument } from '@/lib/document/clash-quality-report';
 import { useViewerStore } from '@/store';
 import { useLibraryFocus } from '@/lib/libraries/library-focus';
 
-function ReportRow({ report, confirming, onConfirm, onCancel, onDeleted }: {
+function ReportRow({ report, confirming, onConfirm, onCancel, onDeleted, onDocumentAdded }: {
   report: SavedClashReport; confirming: SavedClashReport | null;
-  onConfirm: (report: SavedClashReport) => void; onCancel: () => void; onDeleted: () => void;
+  onConfirm: (report: SavedClashReport) => void; onCancel: () => void; onDeleted: () => void; onDocumentAdded: () => void;
 }) {
   const { t } = useTranslation();
   const models = useViewerStore((s) => s.models);
@@ -39,6 +42,20 @@ function ReportRow({ report, confirming, onConfirm, onCancel, onDeleted }: {
   const persisted = (ok: boolean): void => { if (!ok) toast.error(t('clashTools.savedReports.storageFailed')); };
   const badges = clashReportLimitBadges(report, clashReportRevision(report, [...models.values()], mutationVersion), t);
   const state = useViewerStore.getState;
+  const [addingDocument, setAddingDocument] = useState(false);
+  const addDocument = async (): Promise<void> => {
+    setAddingDocument(true);
+    try {
+      const document = qualityGateDocument(report, t);
+      if (!await state().upsertDocument(document)) throw new Error('Document storage refused the report');
+      state().setActiveDocumentId(document.id);
+      state().showWorkspacePanel('document');
+      onDocumentAdded();
+    } catch (error) {
+      console.warn('[clash] Quality gate document could not be saved', error);
+      toast.error(t('clashQuality.documentFailed'));
+    } finally { setAddingDocument(false); }
+  };
   return (
     <li className={`space-y-1 rounded-md border border-border p-2 ${requested ? 'bg-primary/5' : ''}`} data-clash-report={report.id} aria-current={requested ? 'true' : undefined}>
       <div className="flex gap-1.5">
@@ -52,6 +69,11 @@ function ReportRow({ report, confirming, onConfirm, onCancel, onDeleted }: {
         {t('clashTools.savedReports.entrySummary', { clashes: t('clashTools.revisionCompare.clashCount', { count: report.clashes.length }), when: new Date(report.savedAt).toLocaleString(), models: report.models.map((model) => model.name).join(', ') })}
       </div>
       {badges.length > 0 && <div className="text-xs font-medium" data-clash-report-limits>{badges.join(' · ')}</div>}
+      {report.qualityGates && <details className="text-xs">
+        <summary>{t('clashQuality.title')}</summary>
+        <QualityGateCards snapshot={report.qualityGates} models={report.models} />
+        <Button variant="outline" size="sm" disabled={addingDocument} onClick={() => void addDocument()}>{t('clashQuality.document')}</Button>
+      </details>}
       {confirming && <ReportDeletionPreview source={{ kind: 'clash', id: confirming.id }} report={confirming}
         onCancel={onCancel} onDeleted={onDeleted} storageFailed={() => persisted(false)} />}
     </li>
@@ -86,7 +108,7 @@ export function ClashSavedReportsDialogContent({ open, onOpenChange }: { open: b
 
   const saveCurrent = async (): Promise<void> => {
     const state = useViewerStore.getState();
-    const report = snapshotClashReport(state, name);
+    const report = snapshotClashReport(state, name, new Date(), useQualityGatePreferences.getState().config);
     if (!report) return;
     if (await state.saveClashReport(report)) {
       toast.success(t('clashTools.savedReports.savedToast', { name: report.name }));
@@ -94,8 +116,13 @@ export function ClashSavedReportsDialogContent({ open, onOpenChange }: { open: b
     } else toast.error(t('clashTools.savedReports.storageFailed'));
   };
 
+  const changeOpen = (next: boolean): void => {
+    if (!next) setConfirming(null);
+    onOpenChange(next);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={(next) => { if (!next) setConfirming(null); onOpenChange(next); }}>
+    <Dialog open={open} onOpenChange={changeOpen}>
       <DialogContent className="sm:max-w-[520px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -132,7 +159,7 @@ export function ClashSavedReportsDialogContent({ open, onOpenChange }: { open: b
             : <ul className="max-h-72 space-y-1.5 overflow-y-auto pr-1" aria-label={t('clashTools.savedReports.triggerTooltip')}>
               {visibleReports.map((report) => <ReportRow key={report.id} report={report}
                 confirming={confirming?.id === report.id ? confirming : null}
-                onConfirm={setConfirming} onCancel={() => setConfirming(null)} onDeleted={() => setConfirming(null)} />)}
+                onConfirm={setConfirming} onCancel={() => setConfirming(null)} onDeleted={() => setConfirming(null)} onDocumentAdded={() => changeOpen(false)} />)}
             </ul>}
         </div>
       </DialogContent>

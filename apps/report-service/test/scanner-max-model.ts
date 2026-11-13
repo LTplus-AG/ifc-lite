@@ -97,7 +97,7 @@ export async function qualifyMaxModel(context: {
     )).rows[0]).toMatchObject({ state: "review", approval: null, attempts: 1,
       scan: { sha256, byteSize, outcome: "clean", complete: true } });
     expect(await readdir(scratch)).toEqual([]);
-    await expect(docker(["inspect", container])).rejects.toThrow(/No such object/);
+    await expect(docker(["inspect", container])).rejects.toThrow(/no such object/i);
     console.info("scanner_max_model_qualification", JSON.stringify({
       byteSize, sha256, parts: number, elapsedMs: Date.now() - started,
       peakHarnessRss, sandboxMemoryLimit: limits.Memory, sandboxNanoCpus: limits.NanoCpus,

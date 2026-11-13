@@ -11,13 +11,13 @@
  */
 
 import { useCallback } from 'react';
+import { useServerModelProperties } from './ingest/useServerModelProperties.js';
 import { useViewerStore } from '../store/index.js';
 import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
 import {
   IfcServerClient,
   decodeDataModel,
   type ParquetBatch,
-  type DataModel,
   type ParquetParseResponse,
   type ParquetStreamResult,
   type ParseResponse,
@@ -105,6 +105,7 @@ async function isServerAvailable(serverUrl: string, client: IfcServerClient): Pr
  * and ServerClient lifecycle
  */
 export function useIfcServer() {
+  const { start: hydrateProperties, cancel: cancelProperties } = useServerModelProperties();
   /**
    * Load from server - uses server-side PARALLEL parsing for maximum speed
    * Uses full parse endpoint (not streaming) for all-at-once parallel processing
@@ -122,9 +123,12 @@ export function useIfcServer() {
      * inside the streaming batch callback below — a stale batch (or a stale
      * post-stream/post-parse result) writes nothing.
      */
-    isStale?: () => boolean,
+    isStale: (() => boolean) | undefined,
+    signal: AbortSignal | undefined,
+    modelId: string,
   ): Promise<boolean> => {
-    const { setProgress, setIfcDataStore, setGeometryResult } = useViewerStore.getState();
+    cancelProperties(modelId);
+    const { setProgress, setGeometryResult } = useViewerStore.getState();
     try {
       setProgress({ phase: 'Connecting to server', percent: 5 });
 
@@ -373,58 +377,22 @@ export function useIfcServer() {
         });
       }
 
-      // Fetch and decode data model asynchronously (geometry already displayed)
-      // Data model is processed on server in background, fetch via separate endpoint
-      const cacheKey = result.cache_key;
-
-      // Start data model fetch in background - don't block rendering
-      (async () => {
-        if (isStale?.()) return;
-        setProgress({ phase: 'Fetching data model', percent: 85 });
-        try {
-          // If data model was included in response (ParquetParseResponse), use it directly
-          // Otherwise, fetch from the data model endpoint
-          let dataModelBuffer: ArrayBuffer | null = null;
-          if ('data_model' in result && result.data_model) {
-            dataModelBuffer = result.data_model;
-          }
-
-          if (!dataModelBuffer || dataModelBuffer.byteLength === 0) {
-            dataModelBuffer = await client.fetchDataModel(cacheKey);
-          }
-
-          if (!dataModelBuffer) {
-            return;
-          }
-
-          const dataModel: DataModel = await decodeDataModel(dataModelBuffer);
-
-          // Convert server data model directly to IfcDataStore format
-          const dataStore = convertServerDataModel(
-            dataModel,
-            result as ServerParseResult,
-            file,
-            allMeshes
-          );
-
-          if (isStale?.()) return;
-          setIfcDataStore(dataStore);
-
-        } catch (err) {
-          if (!isStale?.()) {
-            console.warn('[useIfc] Server data model fetch/decode failed; geometry shown without properties:', err);
-          }
-        }
-      })(); // End of async data model fetch block - runs in background, doesn't block
-
-      // Geometry is ready - mark complete immediately (data model loads in background)
+      if (isStale?.() || signal?.aborted) return false;
+      // Model-owned hydration outlives this load's finally and metadata signal.
+      hydrateProperties(modelId, isStale, async propertySignal => {
+        const included = 'data_model' in result ? result.data_model : null;
+        const dataModelBuffer = included?.byteLength ? included : await client.fetchDataModel(result.cache_key, { signal: propertySignal });
+        if (!dataModelBuffer) return null;
+        const dataModel = await decodeDataModel(dataModelBuffer);
+        return convertServerDataModel(dataModel, result as ServerParseResult, file, allMeshes);
+      });
       setProgress({ phase: 'Complete', percent: 100 });
       return true;
     } catch (err) {
       console.error('[useIfc] Server parse failed:', err);
       return false;
     }
-  }, []);
+  }, [hydrateProperties, cancelProperties]);
 
   return { loadFromServer };
 }

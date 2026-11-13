@@ -5,8 +5,8 @@ HEADER;
 * STEP Physical File produced by: The EXPRESS Data Manager Version 5.02.0100.07 : 28 Aug 2013
 * Module:                         EDMstepFileFactory/EDMstandAlone
 * Creation date:                  Tue Sep 07 18:28:35 2021
-* Host:                           DESKTOP-DP1HG9K
-* Database:                       C:\Users\Effi\AppData\Local\Temp\d28698aa-8e65-459f-8b86-8f3fe8f33e15\155ec025-8e8c-4871-bea0-a97e14991c9f\ifc
+* Host:                           redacted-host00
+* Database:                       C:\Users\user\AppData\Local\Temp\d28698aa-8e65-459f-8b86-8f3fe8f33e15\155ec025-8e8c-4871-bea0-a97e14991c9f\ifc
 * Database version:               5507
 * Database creation date:         Tue Sep 07 18:21:16 2021
 * Schema:                         IFC2X3
@@ -38,7 +38,7 @@ DATA;
 #25= IFCDIRECTION((-1.,0.));
 #31= IFCAXIS2PLACEMENT3D(#6,$,$);
 #32= IFCLOCALPLACEMENT(#305,#31);
-#35= IFCPERSON($,'','sima9T8AV',$,$,$,$,$);
+#35= IFCPERSON($,'','anonymous',$,$,$,$,$);
 #37= IFCORGANIZATION($,'','',$,$);
 #38= IFCPERSONANDORGANIZATION(#35,#37,$);
 #41= IFCOWNERHISTORY(#38,#5,$,.NOCHANGE.,$,$,$,1631022861);

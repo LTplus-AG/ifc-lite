@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "The #8453 persistence API must refuse a mismatched full-source identity before publishing any overlay state; disable that refusal while retaining the real tests and module registration.",
+  "key": "packages/mutations/src/overlay-snapshot.ts",
+  "mutation": "tests/evidence/overlay-snapshot-8453/behaviour.oracle.patch",
+  "test": "packages/mutations/src/overlay-snapshot.test.ts"
+}

@@ -6,7 +6,10 @@
  * Mutation slice - manages property/quantity mutations for IFC export
  */
 
-import { mirrorNewRoofDefinition } from './mutation-roof.js';
+import { moveWithGeneratedRooms, notifySkippedRoomRotation, rotateWithGeneratedRooms } from './mutation-placement-rooms.js';
+import { createRoofIn } from './mutation-roof-create.js';
+import { modelEditTarget, readModelEditTarget } from './mutation-modelling-records.js';
+import { moveAttachedTargetIn } from './mutation-attached-target-move.js';
 import { type StateCreator } from 'zustand';
 import type { ViewerState } from '../index.js';
 import type { MutablePropertyView, NewEntity, IfcAttributeValue } from '@ifc-lite/mutations';
@@ -82,7 +85,7 @@ import { splitSlab } from './mutation-split-slab.js';
 import type { Point2D } from '@/lib/polygon-clip.js';
 import { registerAuthoredElement } from '@/utils/spatialHierarchy.js';
 import { withMutationBatchTags } from './mutation-batch-tags.js';
-import { canMutate, mutationDenial, mutationDenialKey, mutationPermission } from '../mutation-permission.js';
+import { canMutateData, canMutate, mutationDenial, mutationDenialKey, mutationPermission } from '../mutation-permission.js';
 import { syncTypeOverride } from './mutation-history-apply.js';
 import { recordMutationBatch, replayHistory } from './mutation-history-replay.js';
 import { dropFromChangeSets, newChangeSet, parseChangeSetFile, recordHistory } from './mutation-history-record.js';
@@ -817,6 +820,18 @@ function resolveEditReadContext(
   return { view, editor, dataStore, scale: getModelLengthUnitScale(dataStore) };
 }
 
+/**
+ * The view a WRITE goes through: the registered one, else created and
+ * registered now, as `modelEditTarget` does for every modelling command.
+ * These actions used to find a view only because markup restore registered
+ * one for every active model; since #9621 skips sources without markup, a
+ * blank model's first wall found none and was reverted (#9848). Read paths
+ * keep `mutationViews.get`: inspection must not register edit state (#8947).
+ */
+function writeView(get: () => ViewerState, modelId: string): MutablePropertyView | null {
+  const state = get();
+  return state.mutationViews.get(modelId) ?? modelEditTarget(state, modelId)?.view ?? null;
+}
 
 /**
  * Shared dispatcher for the wall/slab/beam in-store builders. Mirrors the
@@ -838,7 +853,7 @@ function runInStoreElementBuilder(
   const dataStore = model?.ifcDataStore;
   if (!dataStore) return { error: `No model loaded for id "${modelId}"` };
 
-  const view = state.mutationViews.get(modelId);
+  const view = writeView(get, modelId);
   if (!view) return { error: 'Model has no editable mutation view yet' };
 
   const editor = getOrCreateStoreEditor(get, set, modelId);
@@ -892,7 +907,6 @@ function recordAuthoredElementIn(
   options: { historyRecorded?: boolean } = {},
 ): void {
   const ifcType = authoredIfcType(element);
-  if (element.kind === 'roof') mirrorNewRoofDefinition(get(), modelId, entityId, view);
 
   // Make the authored element a first-class citizen immediately: register it in
   // the spatial hierarchy so it appears in the spatial tree under its storey and
@@ -1069,7 +1083,7 @@ export const createMutationSlice: StateCreator<
   setProperty: (modelId, entityId, psetName, propName, value, valueType = PropertyValueType.String, dataType) => {
     // Apply the shared edit-mode, role, and model gate before touching the
     // overlay, undo/redo, dirty state, or collaboration mirror (#5901).
-    if (!canMutate(get(), modelId)) return null;
+    if (!canMutateData(get(), modelId)) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1094,7 +1108,7 @@ export const createMutationSlice: StateCreator<
 
   deleteProperty: (modelId, entityId, psetName, propName) => {
     // Shared mutation gate before the local commit — see setProperty.
-    if (!canMutate(get(), modelId)) return null;
+    if (!canMutateData(get(), modelId)) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1114,7 +1128,7 @@ export const createMutationSlice: StateCreator<
     // Shared mutation gate before the local commit — see setProperty. (Pset
     // creation isn't mirrored yet, which is all the more reason a read-only
     // role must not accumulate local-only psets in a shared session.)
-    if (!canMutate(get(), modelId)) return null;
+    if (!canMutateData(get(), modelId)) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1130,7 +1144,7 @@ export const createMutationSlice: StateCreator<
     // pset is no less of a write than creating one, and this arm was the one
     // `createPropertySet` and `deleteProperty` were both given the gate and
     // this one was not.
-    if (!canMutate(get(), modelId)) return null;
+    if (!canMutateData(get(), modelId)) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1155,7 +1169,7 @@ export const createMutationSlice: StateCreator<
     // is a separate, larger gap — see the tests below and the PR discussion.
     // Gating here at least stops an unauthorised writer, and stops the local
     // state diverging further than it already does.
-    if (!canMutate(get(), modelId)) return null;
+    if (!canMutateData(get(), modelId)) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1168,7 +1182,7 @@ export const createMutationSlice: StateCreator<
 
   createQuantitySet: (modelId, entityId, qsetName, quantities) => {
     // See setQuantity above — same omission, same reason.
-    if (!canMutate(get(), modelId)) return null;
+    if (!canMutateData(get(), modelId)) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1182,7 +1196,7 @@ export const createMutationSlice: StateCreator<
   // Attribute Mutations
   setAttribute: (modelId, entityId, attrName, value, oldValue) => {
     // Shared mutation gate before the local commit — see setProperty.
-    if (!canMutate(get(), modelId)) return null;
+    if (!canMutateData(get(), modelId)) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1201,7 +1215,7 @@ export const createMutationSlice: StateCreator<
   setEntityType: (modelId, entityId, newType, predefinedType) => {
     // Shared mutation gate before the local commit — see setProperty. Reclassing an
     // entity is an attribute write like any other, and `setAttribute` is gated.
-    if (!canMutate(get(), modelId)) return null;
+    if (!canMutateData(get(), modelId)) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1230,7 +1244,7 @@ export const createMutationSlice: StateCreator<
     // rawest write in the slice (a direct STEP slot overwrite); every named
     // mutation above it is gated, so leaving this one open gated nothing.
     if (!canMutate(get(), modelId)) return null;
-    const view = get().mutationViews.get(modelId);
+    const view = writeView(get, modelId);
     if (!view) return null;
 
     const editor = getOrCreateStoreEditor(get, set, modelId);
@@ -1259,7 +1273,7 @@ export const createMutationSlice: StateCreator<
 
   setPositionalAttributesBatch: (modelId, updates, continuing) => {
     // Same gate as setPositionalAttribute; one store update for the whole batch.
-    if (updates.length === 0 || !canMutate(get(), modelId) || !get().mutationViews.get(modelId)) return null;
+    if (updates.length === 0 || !canMutate(get(), modelId) || !writeView(get, modelId)) return null;
     const editor = getOrCreateStoreEditor(get, set, modelId);
     return editor ? recordMutationBatch(set, modelId, positionalMutations(editor, modelId, updates), continuing) : null;
   },
@@ -1278,7 +1292,7 @@ export const createMutationSlice: StateCreator<
     // Read the existing placement chain WITHOUT committing the edit
     // yet — we'll route the actual write through `setPositionalAttribute`
     // below so undo/redo + dirty-tracking come for free.
-    const view = get().mutationViews.get(modelId);
+    const view = writeView(get, modelId);
     if (!view) return { ok: false, reason: 'Model has no editable mutation view yet' };
     const editor = getOrCreateStoreEditor(get, set, modelId);
     if (!editor) return { ok: false, reason: 'Failed to resolve store editor' };
@@ -1303,11 +1317,21 @@ export const createMutationSlice: StateCreator<
     const [x, y, z] = chain.coordinates;
     const [nx, ny, nz] = pointToNative(dataStore, delta);
     const nativeNext: [number, number, number] = [x + nx, y + ny, z + nz];
+    const attached = moveAttachedTargetIn(api, modelId, expressId, nativeNext, batchId);
+    if (attached) {
+      if (!attached.ok) return attached;
+      // Same canonical placement as the plain move below; the remesh publishes the refit geometry.
+      get().mirrorPlacementEdit(modelId, expressId, delta);
+      return { ok: true, newCoordinates: pointToMetres(dataStore, attached.newCoordinates) };
+    }
     // Go through the slice's own `setPositionalAttribute` action so
     // the mutation lands on the undo stack with the standard envelope.
-    const mutation = get().setPositionalAttribute(modelId, chain.cartesianPointId, 0, nativeNext);
+    const updated = moveWithGeneratedRooms(api, modelId, expressId, chain.cartesianPointId, nativeNext, batchId);
+    const mutation = updated?.mutation
+      ?? get().setPositionalAttribute(modelId, chain.cartesianPointId, 0, nativeNext);
+    const moveBatch = updated?.batch ?? batchId;
 
-    if (!remeshGridPlacementAfterCommit(get, modelId, expressId, mutation, batchId)) {
+    if (!remeshGridPlacementAfterCommit(get, modelId, expressId, mutation, moveBatch)) {
 
       // Push the renderer-frame delta so the visible mesh follows
       // the IFC mutation. IFC is Z-up; renderer is Y-up. Conversion:
@@ -1326,9 +1350,9 @@ export const createMutationSlice: StateCreator<
       if (mutation) {
         const meshTags = new Map(get().mutationMeshTranslations);
         meshTags.set(mutation.id, { globalId, rendererDelta });
-        if (batchId) {
+        if (moveBatch) {
           const batchTags = new Map(get().mutationBatchTags);
-          batchTags.set(mutation.id, batchId);
+          batchTags.set(mutation.id, moveBatch);
           set({ mutationMeshTranslations: meshTags, mutationBatchTags: batchTags });
         } else {
           set({ mutationMeshTranslations: meshTags });
@@ -1346,7 +1370,7 @@ export const createMutationSlice: StateCreator<
   setEntityPosition: (modelId, expressId, position) => {
     const denial = mutationDenial(get(), modelId);
     if (denial) return { ok: false, reason: denial };
-    const view = get().mutationViews.get(modelId);
+    const view = writeView(get, modelId);
     if (!view) return { ok: false, reason: 'Model has no editable mutation view yet' };
     const editor = getOrCreateStoreEditor(get, set, modelId);
     if (!editor) return { ok: false, reason: 'Failed to resolve store editor' };
@@ -1381,9 +1405,17 @@ export const createMutationSlice: StateCreator<
     const dx = position[0] - oldX;
     const dy = position[1] - oldY;
     const dz = position[2] - oldZ;
-    const mutation = get().setPositionalAttribute(modelId, chain.cartesianPointId, 0, pointToNative(dataStore, position));
+    const attached = moveAttachedTargetIn(api, modelId, expressId, pointToNative(dataStore, position));
+    if (attached) {
+      if (!attached.ok) return attached;
+      if (dx !== 0 || dy !== 0 || dz !== 0) get().mirrorPlacementEdit(modelId, expressId, [dx, dy, dz]);
+      return { ok: true, newCoordinates: position };
+    }
+    const updated = moveWithGeneratedRooms(api, modelId, expressId, chain.cartesianPointId, pointToNative(dataStore, position));
+    const mutation = updated?.mutation
+      ?? get().setPositionalAttribute(modelId, chain.cartesianPointId, 0, pointToNative(dataStore, position));
     if (dx !== 0 || dy !== 0 || dz !== 0) {
-      if (!remeshGridPlacementAfterCommit(get, modelId, expressId, mutation)) {
+      if (!remeshGridPlacementAfterCommit(get, modelId, expressId, mutation, updated?.batch)) {
         const globalId = toGlobalIdFromModels(get().models, modelId, expressId);
         const rendererDelta: [number, number, number] = [dx, dz, -dy];
         get().setPendingMeshTranslations(new Map([[globalId, rendererDelta]]));
@@ -1404,7 +1436,12 @@ export const createMutationSlice: StateCreator<
   rotateEntity: (modelId, expressId, deltaYaw) => {
     const denial = mutationDenial(get(), modelId);
     if (denial) return { ok: false, reason: denial };
-    const view = get().mutationViews.get(modelId);
+    const updated = rotateWithGeneratedRooms(api, modelId, expressId, deltaYaw);
+    if (updated) {
+      if (updated.result.ok) presentEntityRotation(get, modelId, expressId, deltaYaw, updated.mutation, updated.batch);
+      return updated.result;
+    }
+    const view = writeView(get, modelId);
     const dataStore = get().models.get(modelId)?.ifcDataStore;
     if (view && dataStore) {
       const editor = getOrCreateStoreEditor(get, set, modelId);
@@ -1432,6 +1469,7 @@ export const createMutationSlice: StateCreator<
     // No STEP rotation chain (recipient's IFCX-reconstructed store): rotate via
     // the collab doc, which syncs + live-rotates the local mesh.
     if (get().collabRotateEntity(modelId, expressId, deltaYaw)) {
+      notifySkippedRoomRotation(api, modelId, expressId);
       return { ok: true, newYawZ: deltaYaw };
     }
     return {
@@ -1493,7 +1531,7 @@ export const createMutationSlice: StateCreator<
   resizeWall: (modelId, expressId, newStart, newEnd, batchId) => {
     const denial = mutationDenial(get(), modelId);
     if (denial) return { ok: false, reason: denial };
-    const view = get().mutationViews.get(modelId);
+    const view = writeView(get, modelId);
     if (!view) return { ok: false, reason: 'Model has no editable mutation view yet' };
     const editor = getOrCreateStoreEditor(get, set, modelId);
     if (!editor) return { ok: false, reason: 'Failed to resolve store editor' };
@@ -1570,7 +1608,7 @@ export const createMutationSlice: StateCreator<
 
   removeEntity: (modelId, expressId, opts) => {
     if (!canMutate(get(), modelId)) return false;
-    const view = get().mutationViews.get(modelId);
+    const view = writeView(get, modelId);
     if (!view) return false;
     const editor = getOrCreateStoreEditor(get, set, modelId);
     if (!editor) return false;
@@ -1626,9 +1664,7 @@ export const createMutationSlice: StateCreator<
     get, set, modelId, storeyExpressId, { kind: 'space', params },
   ),
 
-  addRoof: (modelId, storeyExpressId, params) => runInStoreElementBuilder(
-    get, set, modelId, storeyExpressId, { kind: 'roof', params },
-  ),
+  addRoof: (modelId, storeyExpressId, params) => createRoofIn(api, modelId, storeyExpressId, params),
 
   addPlate: (modelId, storeyExpressId, params) => runInStoreElementBuilder(
     get, set, modelId, storeyExpressId, { kind: 'plate', params },
@@ -1654,13 +1690,10 @@ export const createMutationSlice: StateCreator<
     const model = state.models.get(modelId);
     const dataStore = model?.ifcDataStore;
     if (!dataStore) return { error: `No model loaded for id "${modelId}"` };
-    const view = state.mutationViews.get(modelId);
-    if (!view) return { error: 'Model has no editable mutation view yet' };
-
-    // For dryRun the editor isn't strictly needed — we still create
-    // one (cheap) so the helper signature can stay uniform.
-    const editor = getOrCreateStoreEditor(get, set, modelId);
-    if (!editor) return { error: 'Failed to create store editor' };
+    // A dry run is inspection: it reads through an unregistered view (#8947).
+    const target = options?.dryRun ? readModelEditTarget(state, modelId) : modelEditTarget(state, modelId);
+    if (!target) return { error: 'Model has no editable mutation view yet' };
+    const { view, editor } = target;
 
     let result: GenerateSpacesResult;
     try {
@@ -1709,7 +1742,7 @@ export const createMutationSlice: StateCreator<
     const dataStore = model?.ifcDataStore;
     if (!dataStore) return { error: `No model loaded for id "${modelId}"` };
 
-    const view = state.mutationViews.get(modelId);
+    const view = writeView(get, modelId);
     if (!view) return { error: 'Model has no editable mutation view yet' };
 
     const sources = copySources(state, modelId, [sourceExpressId]);

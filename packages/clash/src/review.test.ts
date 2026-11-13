@@ -19,6 +19,13 @@ function clashLike(rule: string, aKey: string, bKey: string, model = 'm'): Pick<
 }
 
 describe('clashReviewKey', () => {
+  it('does not let literal encoded-looking keys impersonate ambiguous identities (#9430)', () => {
+    const clash = clashLike('r', 'K', 'T');
+    const ambiguous = { ...clash, a: { ...clash.a, ref: 101, keyAmbiguous: true as const } };
+    const literal = { ...clash, a: { ...clash.a, key: '@["K",101]' } };
+    expect(clashReviewKey(ambiguous)).not.toBe(clashReviewKey(literal));
+    expect(clashReviewKey(ambiguous)).toBe(clashReviewKey({ ...ambiguous, a: ambiguous.b, b: ambiguous.a }));
+  });
   it('is order-independent in the two element keys', () => {
     // The same physical clash reported A<->B or B<->A must key identically, so a
     // review re-attaches regardless of which side the detector labelled first.

@@ -24,6 +24,19 @@ function fixture() {
 }
 const quick = { maxSliceMs: Number.MIN_VALUE, yieldTask: async () => undefined };
 
+it('#9411 cooperative snapshots reject a caller getter replacing a registered attribute barrier', async () => {
+  const { editor, item, operations } = fixture();
+  const row = editor.getNewEntity(item)!;
+  const getter = Object.getOwnPropertyDescriptor(row, 'attributes')!.get!;
+  let calls = 0;
+  Object.defineProperty(row, 'attributes', {
+    configurable: true, enumerable: true,
+    get() { calls++; return getter.call(row); },
+  });
+  await expect(editor.prepareEntityOperations(operations, quick)).rejects.toThrow('Accessors are unsupported');
+  expect(calls).toBe(0);
+});
+
 describe('cooperative owned entity preparation #4243', () => {
   it('yields within a single large value, preserves the live model until commit, and publishes once', async () => {
     const { view, editor, item, next, operations } = fixture();

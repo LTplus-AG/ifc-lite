@@ -16,9 +16,10 @@ import type { HbjsonStats } from './hbjson-stats.js';
 import * as energyExport from './energy-export-bridge.js';
 import { callExportLandXmlTerrain, type LandXmlTerrainExport, type LandXmlTerrainExportOptions } from './landxml-terrain-export.js';
 import type { GeometryDiagnostics } from './diagnostics.js';
+import { readNodeWasmBytes } from './node-wasm-bytes.js';
 import type { ExtrusionDefinitions, SweptDiskDescriptions } from './analytic-descriptions.js';
 import { initMainThreadEngine } from './main-engine-init.js';
-import { BridgeInitGate } from './bridge-init-gate.js';
+import { createLifetime, type LifetimeAttempt } from '@ifc-lite/wasm-lifecycle';
 import {
   isWasmRuntimeTrap,
   notifyWasmRuntimeUnrecoverable,
@@ -60,8 +61,11 @@ type IfcAPIWithMerge = IfcAPI & {
 
 export class IfcLiteBridge {
   private ifcApi: IfcAPI | null = null;
-  /** Single-flight, generation-checked init (audit P6). */
-  private readonly gate = new BridgeInitGate();
+  /** Single-flight, generation-checked init (audit P6; contract on `createLifetime`). */
+  private readonly lifetime = createLifetime<void>({
+    start: (attempt) => this.startEngine(attempt),
+    supersededError: () => new Error('IfcLiteBridge.init() was superseded by dispose() before it finished'),
+  });
   /**
    * When true, the WASM mesh emitters drop `IfcBuildingElementPart`
    * meshes whose parent wall is sliceable (Revit-style multilayer
@@ -144,39 +148,19 @@ export class IfcLiteBridge {
    */
   init(): Promise<void> {
     // Concurrent callers share one attempt; one overtaken by dispose() rejects.
-    return this.gate.run((generation) => this.startEngine(generation));
+    return this.lifetime.init();
   }
 
-  private async startEngine(generation: number): Promise<void> {
+  private async startEngine(attempt: LifetimeAttempt): Promise<void> {
     try {
-      // Initialize WASM module. In the browser/worker, wasm-bindgen resolves the
-      // .wasm URL from import.meta.url and fetch()es it. Node's fetch() cannot load
-      // file:// URLs, so when running under Node we read the bytes ourselves and
-      // pass them to init(). Strictly Node-gated — the browser path is untouched.
-      // (Node-only modules are imported via variable + `@vite-ignore` so the browser
-      // bundler never tries to resolve them, matching the xmldom gating in @ifc-lite/ids.)
-      // Browser-first package: no @types/node, so reach `process` via globalThis
-      // and keep the Node-only modules untyped (`any`) behind the runtime guard.
-      const proc = (globalThis as { process?: { versions?: { node?: string } } }).process;
-      const isNode = !!proc?.versions?.node && typeof window === 'undefined';
-      let wasmInitArg: BufferSource | undefined;
-      if (isNode) {
-        const moduleSpecifier = 'node:module';
-        const fsSpecifier = 'node:fs/promises';
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const nodeModule: any = await import(/* @vite-ignore */ moduleSpecifier);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const nodeFs: any = await import(/* @vite-ignore */ fsSpecifier);
-        const requireFromHere = nodeModule.createRequire(import.meta.url);
-        const wasmPath: string = requireFromHere.resolve('@ifc-lite/wasm/ifc-lite_bg.wasm');
-        wasmInitArg = (await nodeFs.readFile(wasmPath)) as BufferSource;
-      }
+      // In the browser/worker, wasm-bindgen resolves and fetches the .wasm
+      // itself; under Node the bytes are read from the installed package.
+      const wasmInitArg = await readNodeWasmBytes('@ifc-lite/wasm/ifc-lite_bg.wasm');
       // Raw package resolution and Node's supplied bytes retain their paths; the
       // browser path joins the realm's one main-thread init (#7036), which a host
       // may already have started when the load was requested.
       if (wasmInitArg) {
-        const bytes = wasmInitArg;
-        await initWasmWithRetry(async () => { await init({ module_or_path: bytes }); }, { label: 'ifc-lite-bridge' });
+        await initWasmWithRetry(async () => { await init({ module_or_path: wasmInitArg }); }, { label: 'ifc-lite-bridge' });
       } else {
         await initMainThreadEngine();
       }
@@ -187,9 +171,9 @@ export class IfcLiteBridge {
       // the N-worker pool in `geometry-parallel.ts`.
       log.debug('Geometry processing: single-threaded WASM (N-worker pool handles parallelism)');
 
-      // dispose() landed while the engine loaded: build no handle; the gate
+      // dispose() landed while the engine loaded: build no handle; the lifetime
       // rejects this attempt as superseded instead of resurrecting the bridge.
-      if (!this.gate.isCurrent(generation)) return;
+      if (!attempt.isCurrent()) return;
       this.ifcApi = new IfcAPI();
       // Re-apply the cached merge-layers flag so callers can call
       // `setMergeLayers(true)` BEFORE `init()` and still get the
@@ -206,7 +190,7 @@ export class IfcLiteBridge {
       });
       // A stale attempt (overtaken by dispose()) never built a handle; its
       // cleanup must not free or supersede the attempt that replaced it.
-      if (!this.gate.isCurrent(generation)) throw error;
+      if (!attempt.isCurrent()) throw error;
       // An `apply*` replay after `new IfcAPI()` can throw or trap: free the
       // handle built here (a nulled one no `dispose()` can reach would leak
       // for the life of the document). Best-effort and never throws, so it
@@ -232,7 +216,7 @@ export class IfcLiteBridge {
    * This does not reload wasm-bindgen's module singleton after a fatal WASM panic.
    */
   reset(): void {
-    this.gate.release();
+    this.lifetime.reset();
     this.ifcApi = null;
   }
 
@@ -250,7 +234,7 @@ export class IfcLiteBridge {
    * a later `init()` builds a fresh handle (audit P6).
    */
   dispose(): void {
-    this.gate.invalidate();
+    this.lifetime.dispose();
     // reset() even if free() throws, so the next init() rebuilds.
     try { this.ifcApi?.free(); } finally { this.reset(); }
   }
@@ -743,7 +727,7 @@ export class IfcLiteBridge {
    * Check if initialized
    */
   isInitialized(): boolean {
-    return this.gate.isReady();
+    return this.lifetime.state.kind === 'ready';
   }
 
   /**

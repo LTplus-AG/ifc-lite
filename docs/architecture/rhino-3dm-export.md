@@ -1,7 +1,8 @@
 # IFC → Rhino .3dm export (spec)
 
-Status: phase 1 (Rust scene) implemented in `rust/export/src/rhino/`; adapters
-pending. This page is the contract for writing
+Status: implemented. The Rust scene is in `rust/export/src/rhino/`; the
+adapters are `@ifc-lite/rhino3dm` and `ifclite_geom.write_3dm`; CLI, MCP and
+the viewer call them. This page is the contract for writing
 Rhino `.3dm` files from an IFC model with McNeel's `rhino3dm` library: what is
 written, how each IFC concept maps, where the code lives, and how it is tested.
 
@@ -96,7 +97,8 @@ copying. A buffer reference is `{ "offset": <bytes>, "count": <elements> }`.
   },
   "warnings": ["length unit scale 0.5 is not a Rhino unit; wrote Meters"],
   "documentStrings": [["IFC::Schema", "IFC4"], ...],
-  "layers":    [{ "name": "Level 1", "parent": 0 | null, "color": [r, g, b, a], "visible": true, "locked": false }],
+  "layers":    [{ "name": "Level 1", "parent": 0 | null, "color": [r, g, b, a], "visible": true, "locked": false,
+                  "userStrings": [["IFC::GlobalId", "2eyxpyOx95m90jmsXLOuR0"], ...] }],  // see Layer user text
   "materials": [{ "name": "Concrete", "diffuse": [r, g, b], "transparency": 0.0 }],
   "groups":    [{ "name": "2O2Fr$t4X7Zf8NOew3FLOH" }],
   "meshes":    [{ "positions": {...f64 xyz}, "normals": {...f32 xyz} | null, "indices": {...u32, triangles} }],
@@ -115,6 +117,8 @@ Rules the scene guarantees, so adapters never check them:
 
 - Every index (`parent`, `layer`, `material`, `group`, `mesh`, `block`) is in range.
 - Layers are ordered parent before child; sibling names are unique.
+- Every layer has `userStrings` (empty for most); its keys are unique and no
+  value is empty.
 - Every coordinate and matrix entry is finite; every triangle index is in range.
 - Colours are sRGB 0 to 255 integers; `a` is 255 for opaque. They are quantised
   by `ifc_lite_processing::Rgba::to_rgba8`, the one 8-bit quantiser.
@@ -298,6 +302,48 @@ Layer names:
   nesting depth cannot overflow the stack; a 50,000-level storey chain builds
   [ran].
 
+### Layer user text
+
+A layer that stands for an IFC entity carries that entity's identity as layer
+user text, written with `Layer.setUserString` / `Layer.SetUserString`. It
+survives a write and read in rhino3dm.js and Python rhino3dm 8.35.0, archives 7
+and 8 [ran]. Where Rhino shows layer user text in its UI is [unproven].
+
+| Key | Value | On |
+|---|---|---|
+| `IFC::GlobalId` | 22-char GlobalId, omitted when the entity has none | project and spatial layers |
+| `IFC::Class` | `IfcProject`, `IfcSite`, `IfcBuilding`, `IfcBuildingStorey`, a facility class | project and spatial layers |
+| `IFC::Elevation` | storey elevation in metres, formatted by `fmt_num` | storey layers, when it resolves |
+
+- In `spatial-class` these are the project root and every spatial layer node.
+  In `class` and `presentation` only the project root is stamped: those schemes
+  have no spatial layers.
+- Class sublayers, presentation layers, `Unassigned` and `IFC block geometry`
+  carry no user text. A reader tells a spatial layer from a class sublayer by
+  `IFC::Class`, never by the layer name, which is sanitised and may carry a
+  ` #<express id>` suffix.
+- `IFC::Elevation` is the value storey layers are ordered by (`Elevation`, else
+  the z of the storey's own relative placement), so it does not say which of
+  the two it was. It is metres under every `units` option, like
+  `IFC::WorldFromModel`, so a reader needs no unit lookup, and it is rounded to
+  the nanometre: 3300 mm is 3.3000000000000003 m in f64 and is written `3.3`.
+  It is omitted when the storey has neither an `Elevation` nor a resolvable
+  placement, or when the value is too large to round, so a reader treats it
+  as optional. A file whose length unit is refused has no scene at all
+  (`NoRenderGeometry`) [ran].
+- GlobalIds are written as the file has them. Two storeys sharing a GlobalId
+  give two layers sharing it, with no warning; a reader must not assume
+  layer GlobalIds are unique.
+- The keys match the object keys of the same name, so an object's
+  `IFC::ContainerGlobalId` equals the `IFC::GlobalId` of the layer of its
+  container when that container is a layer.
+- This is what lets a `.3dm` importer rebuild the IFC spatial tree from the
+  layer table (import decision D3). The field was added to manifest version 1
+  before any producer or adapter was published (no `@ifc-lite/rhino3dm` on
+  npm, no `./rhino` export in `@ifc-lite/wasm` 12.2.0, no `3dm` extra on PyPI
+  [ran] on 2026-11-12), so the version did not move; an adapter
+  refuses a layer without it (`RhinoSceneError` in JS, `ValueError` in Python).
+
 Layer colour: class sublayers use `default_color_for_type`, the one colour table
 [src]; spatial layers use neutral grey. Objects carry their own colour, so the
 layer colour only shows for `ByLayer` overrides a user applies later.
@@ -468,9 +514,19 @@ only downloads on a 3dm export.
 
 ```ts
 export interface EncodedRhinoScene { manifest: string; blob: Uint8Array }
-export interface Write3dmOptions { version?: 7 | 8; onProgress?: (done: number, total: number) => void }
-export function writeRhino3dm(scene: EncodedRhinoScene, opts?: Write3dmOptions): Promise<Uint8Array>;
+export const RHINO_3DM_VERSIONS = [8, 7] as const;
+export type Rhino3dmVersion = (typeof RHINO_3DM_VERSIONS)[number];
+export interface Write3dmOptions {
+  version?: Rhino3dmVersion; // default 8
+  onProgress?: (done: number, total: number) => void;
+  locateFile?: (path: string, prefix: string) => string; // first initialization only
+}
+export interface Write3dmResult { bytes: Uint8Array; warnings: string[]; objectCount: number }
+export function writeRhino3dm(scene: EncodedRhinoScene, opts?: Write3dmOptions): Promise<Write3dmResult>;
 ```
+
+The encoded scene comes from the Rust producer: `build_rhino_scene(content, &opts)`
+then `RhinoScene::encode()`, which returns the `(manifest, blob)` pair.
 
 Contract:
 
@@ -487,9 +543,14 @@ Contract:
 
 ### Wasm binding
 
-`GeometryProcessor.exportRhinoScene(content: Uint8Array, optionsJson: string): { manifest: string; blob: Uint8Array }`,
-next to `exportUsd` in `rust/wasm-bindings/src/api/export_data.rs` and the
-`ifc-lite-bridge.ts` wrapper, with the same `NO_RENDER_GEOMETRY` refusal mapping.
+`exportRhinoScene(content: Uint8Array, optionsJson: string): RhinoSceneJs` lives in
+its own crate, `rust/rhino-wasm`, built to the separate `@ifc-lite/wasm/rhino`
+payload (`packages/wasm/pkg-rhino`) like `@ifc-lite/wasm/diff`. The default
+engine never carries the scene builder, so the .3dm exporter does not grow the
+download every viewer load pays for. `@ifc-lite/geometry`'s
+`exportRhinoScene(content, options): Promise<{ manifest: string; blob: Uint8Array }>`
+imports and initializes that payload on first use (reading the bytes from the
+installed package under Node) and keeps the `NO_RENDER_GEOMETRY` refusal.
 
 ### Python (phase 4)
 
@@ -504,7 +565,7 @@ and sets object ids. This is also the route for models too big for wasm.
 | Surface | Change |
 |---|---|
 | Rust | `ifc_lite_export::rhino::{build_rhino_scene, RhinoSceneOptions, RhinoScene}`; shared `scene_input` lifted from `usd/` |
-| Wasm | `exportRhinoScene` |
+| Wasm | `exportRhinoScene` in the separate `@ifc-lite/wasm/rhino` payload (`rust/rhino-wasm`) |
 | CLI | `ifc-lite export model.ifc --format 3dm --out model.3dm [flags above]` in `export-rust-formats.ts`, count check via read-back object count |
 | MCP | `export_3dm` tool, same options |
 | Viewer | Export menu and command palette `export:3dm`; dialog with units, layer scheme, instancing, properties, visible-only; source resolution reuses `step-export-source.ts` (`isStepSourceModel`, `resolveStepExportBytes`) so pending edits are exported; the write runs in a Web Worker |
@@ -571,6 +632,8 @@ Rust (`rust/export/tests/rhino_scene.rs`, existing fixtures):
   data (the occurrence transform, the baked positions), so 1e-6 m flat is not
   reachable on real models: the worst measured gap is 1.43e-6 m (duplex).
 - Layer names: `::`, empty names, duplicate siblings.
+- Layer user text: GlobalId and class on project and spatial layers, elevation
+  in metres on storeys, nothing on class sublayers, in all three schemes.
 - User text: psets, inherited type psets with occurrence override, quantity keys,
   collisions, omitted nulls.
 - `NoRenderGeometry` for a model with no products.
@@ -583,6 +646,8 @@ TS (`packages/rhino3dm`):
   layer full paths, user strings, materials, block and instance counts, bounding
   box. The read-back digest is pinned.
 - Double precision: a vertex at 2,600,000.123 m survives the round trip.
+- Layer user text survives archives 7 and 8; the CLI test and the Python test
+  export AC20-FZK-Haus and read the five stamped layers back.
 - No leak: three consecutive exports leave the wasm heap size flat.
 - CLI and MCP tests mirror the USD ones, including the empty-model refusal.
 

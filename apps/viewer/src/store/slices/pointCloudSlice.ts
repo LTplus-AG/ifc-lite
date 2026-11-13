@@ -241,11 +241,12 @@ export const createPointCloudSlice: StateCreator<PointCloudSlice, [], [], PointC
   setPointCloudClassCounts: (key, counts) => set((s) => {
     const k = String(key);
     if (counts === null) {
-      if (!(k in s.pointCloudClassCounts)) return {};
+      if (!(k in s.pointCloudClassCounts)) return s;
       const next = { ...s.pointCloudClassCounts };
       delete next[k];
       return { pointCloudClassCounts: next };
     }
+    if (s.pointCloudClassCounts[k] === counts) return s;
     return { pointCloudClassCounts: { ...s.pointCloudClassCounts, [k]: counts } };
   }),
   setPointCloudPreviewStride: (stride) => set({
@@ -270,14 +271,14 @@ export const createPointCloudSlice: StateCreator<PointCloudSlice, [], [], PointC
     pointCloudDeviationRevision: s.pointCloudDeviationRevision + 1, pointCloudDeviationStatistics: null,
   })),
   setPointCloudDeviationStatistics: (statistics) => set({ pointCloudDeviationStatistics: statistics }),
-  setPointCloudAssetCount: (count) => set({
-    pointCloudAssetCount: Number.isFinite(count) ? Math.max(0, count) : 0,
+  setPointCloudAssetCount: (count) => set((s) => {
+    const next = Number.isFinite(count) ? Math.max(0, count) : 0;
+    return s.pointCloudAssetCount === next ? s : { pointCloudAssetCount: next };
   }),
-  incrementPointCloudAssetCount: (n = 1) => set((s) => ({
-    pointCloudAssetCount: Number.isFinite(n)
-      ? Math.max(0, s.pointCloudAssetCount + n)
-      : s.pointCloudAssetCount,
-  })),
+  incrementPointCloudAssetCount: (n = 1) => set((s) => {
+    const next = Number.isFinite(n) ? Math.max(0, s.pointCloudAssetCount + n) : s.pointCloudAssetCount;
+    return s.pointCloudAssetCount === next ? s : { pointCloudAssetCount: next };
+  }),
   setPointCloudAlignmentAvailable: (available) => set({ pointCloudAlignmentAvailable: available }),
   setPointCloudAlignmentEnabled: (enabled) => set({ pointCloudAlignmentEnabled: enabled }),
 });

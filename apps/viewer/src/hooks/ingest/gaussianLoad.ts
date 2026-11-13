@@ -20,6 +20,7 @@ import { captureLoadFailure, captureRefusal, type CaptureRefusal } from './gauss
 import { reserveSceneSplats } from './gaussianSceneBudget.js';
 import { reportCaptureLoad } from './gaussianTelemetry.js';
 import { decodeGaussianInWorker } from './gaussianWorker.js';
+import { LOAD_COMPLETE } from '../modelLoadCanceller.js';
 
 export interface GaussianLoadContext {
   file: File;
@@ -32,6 +33,8 @@ export interface GaussianLoadContext {
   signal: AbortSignal;
   isCurrent(): boolean;
   showLoadError(message: string, code: string): void;
+  /** Ends this load's share of the shared load UI, with its terminal progress (L2). */
+  settleLoadUi(progress?: { phase: string; percent: number } | null): void;
   finalize(dataStore: IfcDataStore, geometryResult: GeometryResult, schemaVersion: 'IFC4',
     patch: { gaussianSplat: GaussianSplatModel; loadPath: 'gaussian' }): Promise<void>;
   /** In-process decoder seam for tests; production decodes in the dedicated worker. */
@@ -69,7 +72,7 @@ async function runGaussianCapture(ctx: GaussianLoadContext, noteFailure: (code: 
     noteFailure(code, refused);
     ctx.showLoadError(message, code);
     if (ctx.target.kind === 'primary') store.updateModel(ctx.modelId, { loadState: 'error', loadError: message });
-    store.setLoading(false);
+    ctx.settleLoadUi();
     return 'failed';
   };
   const refuse = ({ message, code }: CaptureRefusal) => fail(message, code, true);
@@ -158,8 +161,7 @@ async function decodeAndPublish(
   if (ctx.target.kind === 'primary' || useViewerStore.getState().models.size === 1) {
     try { frameModels([ctx.modelId]); } catch { /* bounds pending: the user can fit later */ }
   }
-  store.setProgress({ phase: 'Complete', percent: 100 });
-  store.setLoading(false);
+  ctx.settleLoadUi(LOAD_COMPLETE);
   return ctx.isCurrent() ? 'completed' : 'cancelled';
 }
 

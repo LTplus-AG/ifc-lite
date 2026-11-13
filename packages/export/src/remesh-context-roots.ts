@@ -13,10 +13,10 @@
  * buffer for). Nor does it reach the project, whose unit assignment and
  * representation contexts the pre-pass reads. This module names those roots.
  *
- * Cost is O(targets + their relationship edges + overlay-created entities):
- * the parsed relationship graph answers the source relationships by CSR
- * lookup, and the overlay contributes only what the session created. Nothing
- * here enumerates the model.
+ * Cost is O(targets + their relationship edges): the parsed relationship
+ * graph answers the source relationships by CSR lookup, and the overlay's
+ * reference buckets answer the created ones. Nothing here enumerates the
+ * model or the session (#8452).
  *
  * Known gap: a SOURCE relationship retargeted onto a target by a queued
  * attribute mutation is invisible to the parsed graph, which still names the
@@ -116,23 +116,40 @@ function addOverlayRelationships(
   openings: Set<number>,
   out: Set<number>,
 ): void {
-  const byType = new Map<string, number[]>();
-  for (const entity of view.getNewEntities()) {
-    const type = index.typeOf(entity.expressId);
-    if (type === undefined) continue;
-    if (type === 'IFCPROJECT') out.add(entity.expressId);
-    if (type !== VOIDS && type !== FILLS && type !== MATERIAL) continue;
-    const bucket = byType.get(type);
-    if (bucket) bucket.push(entity.expressId);
-    else byType.set(type, [entity.expressId]);
-  }
+  // Candidates come from the overlay's reference buckets: created records
+  // that name a target in their authored attributes or in a queued override,
+  // plus records retyped into one of these classes. The effective endpoint
+  // checks below decide. A view without those buckets scans every creation.
+  const indexed = typeof view.getNewEntitiesReferencing === 'function'
+    && typeof view.getAttributeOverrideReferenceCandidates === 'function'
+    && typeof view.getAttributeOverrideEntityIds === 'function'
+    && typeof view.readNewEntitiesOfType === 'function';
+  const everything = indexed ? null : Array.from(view.readNewEntities?.() ?? view.getNewEntities(), entity => entity.expressId);
+  const retyped = indexed
+    ? view.getAttributeOverrideEntityIds([VOIDS, FILLS, MATERIAL, 'IFCPROJECT']).filter(id => index.isOverlayCreated(id))
+    : [];
+  const ascending = (ids: Iterable<number>) => [...new Set(ids)].sort((a, b) => a - b);
+  const naming = (ids: Iterable<number>): number[] => {
+    if (everything) return everything;
+    const found = [...retyped];
+    for (const id of ids) {
+      for (const row of view.getNewEntitiesReferencing(id)) found.push(row.expressId);
+      found.push(...view.getAttributeOverrideReferenceCandidates(id));
+    }
+    return ascending(found);
+  };
+  const ofType = (ids: readonly number[], type: string) => ids.filter(id => index.typeOf(id) === type);
+  const projects = everything
+    ?? ascending([...Array.from(view.readNewEntitiesOfType('IFCPROJECT'), row => row.expressId), ...retyped]);
+  for (const id of ofType(projects, 'IFCPROJECT')) out.add(id);
   const targetSet = new Set(targets);
   const ref = (rel: number, name: string): number | undefined => {
     const id = index.effectiveAttributeRef(rel, name);
     return id !== undefined && index.has(id) ? id : undefined;
   };
+  const nearTargets = naming(targets);
 
-  for (const rel of byType.get(VOIDS) ?? []) {
+  for (const rel of ofType(nearTargets, VOIDS)) {
     const host = ref(rel, 'RelatingBuildingElement');
     const opening = ref(rel, 'RelatedOpeningElement');
     if (host === undefined || opening === undefined) continue;
@@ -142,7 +159,7 @@ function addOverlayRelationships(
     out.add(opening);
     if (targetSet.has(host)) openings.add(opening);
   }
-  for (const rel of byType.get(FILLS) ?? []) {
+  for (const rel of ofType(everything ?? naming([...targets, ...openings]), FILLS)) {
     const opening = ref(rel, 'RelatingOpeningElement');
     const filling = ref(rel, 'RelatedBuildingElement');
     if (opening === undefined || filling === undefined) continue;
@@ -151,7 +168,7 @@ function addOverlayRelationships(
     out.add(opening);
     out.add(filling);
   }
-  for (const rel of byType.get(MATERIAL) ?? []) {
+  for (const rel of ofType(nearTargets, MATERIAL)) {
     if ((index.refsOf(rel) ?? []).some((id) => targetSet.has(id))) out.add(rel);
   }
 }

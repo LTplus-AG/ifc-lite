@@ -17,6 +17,7 @@ import { findPropertyInSets, findQuantityInSets } from '@ifc-lite/query';
 import { createHeadlessContext } from '../loader.js';
 import { getFlag, fatal, writeOutput, validateLimit } from '../output.js';
 import { exportKernel, exportRetained } from './export-retained.js';
+import { export3dm, validateRhinoArgs } from './export-3dm.js';
 import { exportRustFormat } from './export-rust-formats.js';
 import type { ComparisonOp } from '@ifc-lite/sdk';
 
@@ -141,6 +142,7 @@ function escapeCsv(value: string, sep: string): string {
 /** Flags of `export` that take a value; their values are never the input path. */
 const EXPORT_VALUE_FLAGS = new Set([
   '--format', '--out', '--type', '--columns', '--separator', '--limit', '--where',
+  '--units', '--coordinates', '--layers', '--properties', '--3dm-version',
   '--storey', '--name', '--schema', '--kernel', '--retained-engine', '--retained-report',
 ]);
 
@@ -156,6 +158,7 @@ export function exportFilePath(args: string[]): string | undefined {
 export async function exportCommand(args: string[], internal?: { retainedChild: true }): Promise<void> {
   const filePath = exportFilePath(args);
   const format = getFlag(args, '--format') ?? 'csv';
+  const rhinoArgs = format === '3dm' ? validateRhinoArgs(args) : undefined;
   const retainedEngine = await exportKernel(args, format);
   if (retainedEngine && !internal?.retainedChild) {
     const { exportRetainedIsolated } = await import('../retained/process.js');
@@ -177,7 +180,7 @@ export async function exportCommand(args: string[], internal?: { retainedChild: 
     format === 'ifcx' || format === 'usd' || format === 'hbjson' || format === 'dfjson';
   const filterRequested = !!(type || propFilter || storeyFilter || limit);
 
-  if (!filePath) fatal('Usage: ifc-lite export <file.ifc> --format csv|json|ifc|obj|gltf|glb|jsonld|step|ifcx|usd|hbjson|dfjson [--type IfcWall] [--columns Name,Type,GlobalId] [--where PsetName.Prop=Value] [--storey Name] [--name Model] [--out file]');
+  if (!filePath) fatal('Usage: ifc-lite export <file.ifc> --format csv|json|ifc|obj|gltf|glb|jsonld|step|ifcx|usd|3dm|hbjson|dfjson [--type IfcWall] [--columns Name,Type,GlobalId] [--where PsetName.Prop=Value] [--storey Name] [--name Model] [--out file]');
 
   // B9/F6: Auto-prefix Ifc
   if (type) {
@@ -347,6 +350,14 @@ export async function exportCommand(args: string[], internal?: { retainedChild: 
       await exportRustFormat(format, args, store, refs, filterRequested, wholeModelFormat);
       break;
     }
+    case '3dm': {
+      // Runs on the separate Rhino wasm, not the default geometry engine.
+      const isolated = filterRequested ? refs.map((r) => r.expressId) : undefined;
+      if (isolated?.length === 0) fatal('Filter matched 0 entities — nothing to export. Check --type/--storey/--where/--limit.');
+      if (store.source.byteLength === 0) throw new Error('Export: the parsed model kept no source bytes');
+      await export3dm(store.source.materialize(), rhinoArgs! /* validated before the model load for 3dm */, isolated);
+      break;
+    }
     case 'hbjson': {
       // Honeybee/Ladybug energy-model export via the SDK (the headless backend meshes
       // analytically through the wasm engine; the data-only SDK delegates to it).
@@ -363,6 +374,6 @@ export async function exportCommand(args: string[], internal?: { retainedChild: 
       break;
     }
     default:
-      fatal(`Unknown format: ${format}. Supported: csv, json, ifc, obj, gltf, glb, jsonld, step, ifcx, usd, hbjson, dfjson`);
+      fatal(`Unknown format: ${format}. Supported: csv, json, ifc, obj, gltf, glb, jsonld, step, ifcx, usd, 3dm, hbjson, dfjson`);
   }
 }

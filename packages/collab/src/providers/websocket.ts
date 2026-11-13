@@ -11,6 +11,7 @@
 
 import type * as Y from 'yjs';
 import type { Awareness } from 'y-protocols/awareness';
+import { markRejectionHandled } from '../internal/promise.js';
 
 export type WebSocketStatus = 'connecting' | 'connected' | 'offline' | 'error';
 
@@ -69,7 +70,11 @@ export async function createWebSocketProvider(
     params,
   });
 
-  let status: WebSocketStatus = 'connecting';
+  // `connect: false` leaves the transport idle until `connect()`, so the
+  // honest starting status is 'offline', not 'connecting' (same contract the
+  // webrtc provider honours).
+  let status: WebSocketStatus = options.connect === false ? 'offline' : 'connecting';
+  let destroyed = false;
   const listeners = new Set<(s: WebSocketStatus) => void>();
   const setStatus = (s: WebSocketStatus) => {
     if (status === s) return;
@@ -89,22 +94,47 @@ export async function createWebSocketProvider(
   provider.on('connection-error', () => setStatus('error'));
   provider.on('connection-close', () => setStatus('offline'));
 
-  const whenSynced = new Promise<void>((resolve) => {
+  // Settles exactly once: on the first sync, or — rejected — when the
+  // provider is destroyed before it ever synced. Without the rejection a
+  // caller awaiting sync on a provider torn down mid-join hung forever.
+  let rejectUnsynced: ((err: Error) => void) | null = null;
+  const whenSynced = new Promise<void>((resolve, reject) => {
     if (provider.synced) return resolve();
-    provider.once('sync', () => resolve());
+    rejectUnsynced = reject;
+    provider.once('sync', () => {
+      rejectUnsynced = null;
+      resolve();
+    });
   });
+  markRejectionHandled(whenSynced);
 
   return {
     roomId,
     get status() { return status; },
     onStatus(listener) {
-      listeners.add(listener);
       listener(status);
+      if (destroyed) return () => false;
+      listeners.add(listener);
       return () => listeners.delete(listener);
     },
     whenSynced,
-    connect: () => provider.connect(),
-    disconnect: () => provider.disconnect(),
-    destroy: () => provider.destroy(),
+    connect: () => {
+      if (!destroyed) provider.connect();
+    },
+    disconnect: () => {
+      if (!destroyed) provider.disconnect();
+    },
+    destroy: () => {
+      if (destroyed) return;
+      // y-websocket's destroy() drops its own observers, so no provider
+      // event reaches `setStatus` after this. Announce the final 'offline'
+      // once, then release the consumers' listeners.
+      provider.destroy();
+      setStatus('offline');
+      destroyed = true;
+      listeners.clear();
+      rejectUnsynced?.(new Error(`@ifc-lite/collab: websocket provider for room "${roomId}" was destroyed before it synced`));
+      rejectUnsynced = null;
+    },
   };
 }

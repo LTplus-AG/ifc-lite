@@ -41,12 +41,14 @@ pub(super) fn stream_meta_unit_scale(meta: &ifc_lite_processing::stream_meta::St
 
 /// Serialize the shared [`StreamMeta`] onto a JS object as the wire fields the
 /// host reads: `unitScale`, `planeAngleToRadians`, `rtcOffset` (`[x,y,z]`),
-/// `needsShift`, `buildingRotation` (`null` when absent). Used by both the
+/// `needsShift`, `buildingRotation` and `siteOrigin` (`[x,y,z]` metres; both
+/// `null` when absent). Used by both the
 /// `buildPrePassOnce` result object and the streaming `meta` events so all
 /// three emission points serialize identically.
 pub(super) fn set_stream_meta_props(
     obj: &js_sys::Object,
     meta: &ifc_lite_processing::stream_meta::StreamMeta,
+    site_origin: Option<[f64; 3]>,
 ) {
     // `unitRefused` says why a NaN `unitScale` was sent.
     crate::api::set_js_prop(obj, "unitScale", &stream_meta_unit_scale(meta).into());
@@ -62,6 +64,14 @@ pub(super) fn set_stream_meta_props(
     match meta.building_rotation {
         Some(rot) => crate::api::set_js_prop(obj, "buildingRotation", &rot.into()),
         None => crate::api::set_js_prop(obj, "buildingRotation", &JsValue::NULL),
+    };
+    match site_origin {
+        Some(origin) => {
+            let arr = js_sys::Float64Array::new_with_length(3);
+            arr.copy_from(&origin);
+            crate::api::set_js_prop(obj, "siteOrigin", &arr)
+        }
+        None => crate::api::set_js_prop(obj, "siteOrigin", &JsValue::NULL),
     };
 }
 

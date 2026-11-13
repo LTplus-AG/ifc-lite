@@ -39,7 +39,7 @@ import { toast } from '@/components/ui/toast';
 import { resolveInstancedExportGate } from '@/utils/instancedExport';
 import { useTranslation } from '@/i18n';
 import { formatLocaleList, formatLocaleNumber } from '@/i18n/intlFormat';
-import { localizedApproxDistance, localizedRawValuesNote, localizedScaleOverride } from './georeference-i18n';
+import { localizedApproxDistance, localizedRawValuesNote, localizedSiteAnchorUnitNote, localizedScaleOverride } from './georeference-i18n';
 import { GeorefRow, AngleRow } from './georef-rows';
 import { TerrainHeightButton } from './georef-terrain-height-button';
 import { GeorefReadOnlyNotices, WellKnownTextRow, isReadOnlyCoordinateOperation } from './georef-notices';
@@ -426,7 +426,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
                   a rotation of its own we are choosing the orientation, not
                   restating it. Say so rather than leaving it implicit. */}
               {doubleGeoref.overridesAuthoredRotation && <> {t('properties.georef.rotationOverrideNote')}</>}
-              {' '}{localizedScaleOverride(t, locale, doubleGeoref)}
+              {' '}{localizedSiteAnchorUnitNote(t, locale, doubleGeoref)} {localizedScaleOverride(t, locale, doubleGeoref)}
               {' '}
               {/* Zeroing the offsets is NOT enough when Scale is being
                   overridden: a spec-strict consumer reading the exported file

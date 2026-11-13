@@ -1,0 +1,38 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+export const clashQualityEn = {
+  'clashQuality.detectionExclusions': 'Void/host detection exclusions: {value}',
+  'clashQuality.enabled': 'Enabled',
+  'clashQuality.disabled': 'Disabled',
+  'clashQuality.title': 'Quality gates',
+  'clashQuality.configure': 'Configure quality gates',
+  'clashQuality.clash': 'Clash checks',
+  'clashQuality.duplicates': 'Duplicate checks',
+  'clashQuality.minimum': 'Minimum clean objects %',
+  'clashQuality.label': 'Category name',
+  'clashQuality.color': 'Category color',
+  'clashQuality.newCategory': 'New category',
+  'clashQuality.add': 'Add category',
+  'clashQuality.remove': 'Remove category',
+  'clashQuality.save': 'Save thresholds',
+  'clashQuality.saved': 'Quality gate thresholds saved',
+  'clashQuality.failed': 'Could not save quality gate thresholds',
+  'clashQuality.invalid': 'Start at 0%, use increasing minimums up to 100%, and give each category a name.',
+  'clashQuality.policy': 'Clean objects = checked unique objects without detected findings. Both objects in every pair count; repeated objects count once. Result exclusions, review status and display filters do not change this score. Detection exclusions (voids and hosts) still apply. Duplicate checks include all objects involved, not just excess copies.',
+  'clashQuality.counts': '{checked} checked · {affected} affected',
+  'clashQuality.metric': 'Objects without detected findings',
+  'clashQuality.not-evaluated': 'Not evaluated',
+  'clashQuality.unavailable': 'Coverage unavailable',
+  'clashQuality.incomplete': 'Incomplete run',
+  'clashQuality.outdated': 'Outdated run',
+  'clashQuality.document': 'Add quality gates to Documentation',
+  'clashQuality.documentFailed': 'Could not save the quality gate document',
+  'clashQuality.models': 'Models: {models}',
+  'clashQuality.tolerance': 'Tolerance: {tolerance} m',
+  'clashQuality.clearance': 'Clearance: {clearance} m',
+  'clashQuality.captured': 'Captured: {when}',
+  'clashQuality.revision': 'Model edit revision: {revision}',
+  'clashQuality.unknown': 'Unknown',
+} as const;

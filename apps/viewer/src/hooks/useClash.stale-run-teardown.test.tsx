@@ -41,6 +41,7 @@ import type { CoordinateInfo, GeometryResult, MeshData } from '@ifc-lite/geometr
 import { useViewerStore, type FederatedModel } from '@/store';
 import { posthog } from '@/lib/analytics';
 import { useClash } from './useClash.js';
+import { activeClashRunSession } from './analysisRunCancellation';
 
 // ─── Fixture: two walls per model, meshed as overlapping unit boxes ──────────
 
@@ -415,5 +416,130 @@ describe('a normal clash run still publishes its result', () => {
     assert.ok(!s.models.has('B'), 'setup sanity: the unexamined model was really removed mid-flight');
     assert.ok(s.clashResult && s.clashResult.clashes.length >= 1,
       'the removed model contributed no elements, so the result stands');
+  });
+});
+
+// ─── A2: a teardown INVALIDATES the run, not only its flags ─────────────────
+
+/**
+ * `clearClash` (via `endClashScenePresentation('federation-cleared')`) used to
+ * reset `clashRunning` / `clashProgress` and leave the run itself alone: the
+ * engine kept its unaborted signal and burned CPU to the end, and its
+ * `onProgress` (gated only on the hook epoch) wrote `clashProgress` back under
+ * `clashRunning: false`. The publish was already refused (above); these pin the
+ * other half — the run is aborted and writes nothing after the teardown.
+ */
+describe('a teardown mid-run aborts the clash engine and stops its writes (A2)', () => {
+  async function runWithTeardown(teardown: () => void): Promise<{ aborted: boolean | undefined; writes: string[] }> {
+    const writes: string[] = [];
+    let signal: AbortSignal | undefined;
+    let tornDown = false;
+    const unsubWrites = useViewerStore.subscribe((s, prev) => {
+      if (!tornDown) return;
+      if (s.clashProgress !== prev.clashProgress && s.clashProgress !== null) writes.push(`clashProgress=${s.clashProgress.phase}`);
+      if (s.clashRunning !== prev.clashRunning && s.clashRunning) writes.push('clashRunning=true');
+      if (s.clashError !== prev.clashError && s.clashError !== null) writes.push(`clashError=${s.clashError}`);
+    });
+    const unsub = tearDownMidRun(() => {
+      signal = activeClashRunSession()?.controller.signal;
+      teardown();
+      tornDown = true;
+    });
+    await act(async () => { await api!.run([ALL_RULE]); });
+    unsub();
+    unsubWrites();
+    return { aborted: signal?.aborted, writes };
+  }
+
+  it('"Open file" (resetViewerState + clearAllModels) aborts the engine and writes no progress afterwards', async () => {
+    await seed(['A']);
+    const { aborted, writes } = await runWithTeardown(() => {
+      useViewerStore.getState().resetViewerState();
+      useViewerStore.getState().clearAllModels();
+    });
+    assert.equal(aborted, true, 'the engine signal must be aborted by the teardown');
+    assert.deepEqual([...writes], [], 'nothing may be written after the teardown');
+    const s = useViewerStore.getState();
+    assert.equal(s.clashRunning, false);
+    assert.equal(s.clashProgress, null);
+    assert.equal(activeClashRunSession(), null, 'the run session is released');
+  });
+
+  it('a session reset alone (models survive it) still ends the run', async () => {
+    await seed(['A']);
+    const { aborted, writes } = await runWithTeardown(() => useViewerStore.getState().resetViewerState());
+    assert.equal(aborted, true, 'resetViewerState keeps `models`, so only the run generation can see it');
+    assert.deepEqual([...writes], []);
+    assert.equal(useViewerStore.getState().clashResult, null, 'the outgoing session\'s run must not publish into the new one');
+  });
+
+  it('removing a model the run examined aborts the run and clears its running state', async () => {
+    await seed(['A', 'B']);
+    const { aborted, writes } = await runWithTeardown(() => useViewerStore.getState().removeModel('B'));
+    assert.equal(aborted, true, 'a run whose result can no longer publish must not keep computing it');
+    assert.deepEqual([...writes], []);
+    const s = useViewerStore.getState();
+    assert.equal(s.clashRunning, false);
+    assert.equal(s.clashProgress, null);
+  });
+
+  it('"Clear all" during the paint-frame wait ends the run before it gathers: no "no geometry" error', async () => {
+    await seed(['A']);
+    let pending!: Promise<void>;
+    act(() => { pending = api!.run([ALL_RULE]); });
+    // Nothing gathered yet, so no identity can see this — only the run generation.
+    act(() => { useViewerStore.getState().clearAllModels(); });
+    await act(async () => { await pending; });
+    const s = useViewerStore.getState();
+    assert.equal(s.clashError, null, 'a run whose models were cleared must not report them missing into the empty scene');
+    assert.equal(s.clashRunning, false);
+    assert.equal(s.clashProgress, null);
+  });
+
+  /**
+   * The duplicate scan is synchronous from the gather to the publish, so the
+   * guard's deferred cancel cannot have bumped the epoch by then, and a
+   * session reset keeps `models`, so the federation identity passes too. Only
+   * the guard, checked AT the publish, refuses it (review of #9545).
+   */
+  it('a session reset while runDuplicates gathers: the scan publishes nothing into the new session', async () => {
+    await seed(['A']);
+    const seqBefore = useViewerStore.getState().clashRunSeq;
+    useViewerStore.setState((s) => {
+      const models = new Map(s.models);
+      const a = models.get('A')!;
+      const aStore = a.ifcDataStore!;
+      let fired = false;
+      models.set('A', {
+        ...a,
+        get ifcDataStore() {
+          if (!fired) {
+            fired = true;
+            useViewerStore.getState().resetViewerState();
+          }
+          return aStore;
+        },
+      } as FederatedModel);
+      return { models };
+    });
+
+    await act(async () => { await api!.runDuplicates(); });
+
+    const s = useViewerStore.getState();
+    assert.ok(s.models.has('A'), 'setup sanity: the session reset keeps the models');
+    assert.equal(s.clashResult, null, 'the outgoing session\'s scan must not publish into the new one');
+    assert.equal(s.clashGroups, null);
+    assert.equal(s.clashRunSeq, seqBefore);
+    assert.ok(!captured.includes('clash_duplicate_scan'));
+  });
+
+  it('a model ADDED mid-run neither aborts nor silences the run', async () => {
+    await seed(['A']);
+    const extra = await parse(TWO_WALLS);
+    const { aborted } = await runWithTeardown(() => {
+      useViewerStore.getState().addModel(model('C', extra, [boxMesh(1, 0), boxMesh(2, 0.5)]));
+    });
+    assert.equal(aborted, false);
+    assert.ok(useViewerStore.getState().clashResult, 'the run still publishes');
   });
 });

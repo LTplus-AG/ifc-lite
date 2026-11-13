@@ -40,13 +40,9 @@
 import { useSyncExternalStore } from 'react';
 import type { ModelLayout, ModelLayoutPick } from '@/store/slices/authoringSessionSidebar';
 
-/** The narrowest 3D pane whose HUD shows every state without a collision (measured, see above). */
+/** The retained 3D width floor; the viewport-HUD matrix guards it as controls move to the workspace bar. */
 export const MODEL_3D_MIN_PX = 620;
-/**
- * The narrowest plan pane: its header in one row (measured: the grid, Fit and
- * Plan | Split | 3D controls take 152 px, the storey chip 136 px with the
- * name truncated to about 40 px, plus padding; 308 px fits with no overflow).
- */
+/** The plan keeps at least 300px of usable canvas; its controls live in the shared workspace bar. */
 export const PLAN_MIN_PX = 300;
 /** The resize handle between the panes: a 1px `.shell-splitter-v` (#8802 R1; its hit area is a pseudo-element). */
 export const HANDLE_PX = 1;
@@ -70,12 +66,18 @@ export function planPaneWidth(layout: 'plan' | 'split', groupWidth: number): num
 }
 
 /**
- * The split's measured width, published by `ModelWorkspaceSplit` so the
- * rail's plan toggle (outside the split) knows whether the plan fits. The
- * toggle lives in the rail on purpose: a strip beside the 3D pane took 24 px
- * from it, and the HUD's bar tiers, which measure the lane, then chose a bar
- * too wide for it (the room bar wrapped at 1600 px).
+ * What the plan pane needs when the shown layout or the group width changes.
+ * `prev` is the layout last applied to the pane (null while hidden). Plan
+ * follows the width; Split keeps whatever the user dragged it to, so a width
+ * change alone leaves it be (#9296 review). Hiding collapses the pane.
  */
+export function planPaneResize(prev: 'plan' | 'split' | null, next: 'plan' | 'split' | null, groupWidth: number): 'collapse' | number | null {
+  if (!next) return prev ? 'collapse' : null;
+  if (prev === next && next === 'split') return null;
+  return planPaneWidth(next, groupWidth);
+}
+
+/** The measured pane-group width, shared with explicit layout picks when they try to make room. */
 let splitWidth = 0;
 const listeners = new Set<() => void>();
 
@@ -85,6 +87,7 @@ export function publishSplitWidth(width: number): void {
   for (const listener of listeners) listener();
 }
 
+/** The command palette re-evaluates the plan destination as the width changes. */
 export function useSplitWidth(): number {
   return useSyncExternalStore(
     (listener) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
@@ -92,3 +95,6 @@ export function useSplitWidth(): number {
     () => splitWidth,
   );
 }
+
+/** Current measured split width for command eligibility; same publisher as the rail. */
+export function getSplitWidth(): number { return splitWidth; }

@@ -47,6 +47,7 @@ import { FIRST_SECTION_PLANE_NAME } from '@/lib/section/section-plane-set';
 import { restoredCutPosition } from '@/lib/section/section-distance';
 import { markActiveDrawingGenerationCompleted } from '@/lib/drawing/active-canvas-snapshot';
 import { constructionProjectionEnabled } from '@/lib/drawing/construction-projection';
+import { drawingWithMaterialLayerFills } from '@/lib/drawing/material-layer-fills';
 // The winding-robust Rust `meshOutline2d` binding (issue #979) is gitignored →
 // CI-built, so reference it defensively: against an older wasm bundle it's
 // undefined and projection falls back to the TS mesh silhouette. The wasm
@@ -127,7 +128,7 @@ interface UseDrawingGenerationParams {
   activeTool: string;
   drawing: Drawing2D | null;
   // Store actions
-  setDrawing: (d: Drawing2D | null) => void;
+  setDrawing: (d: Drawing2D | null, generatedAt?: UseDrawingGenerationParams['sectionPlane']) => void;
   setDrawingStatus: (s: 'idle' | 'generating' | 'ready' | 'error') => void;
   setDrawingProgress: (p: number, phase: string) => void;
   setDrawingError: (e: string | null) => void;
@@ -600,7 +601,7 @@ export function useDrawingGeneration({
           ? createMeshOutlineProvider(meshOutline2dFn)
           : undefined;
 
-      const result = await generator.generate(
+      const result = drawingWithMaterialLayerFills(await generator.generate(
         meshesToProcess,
         config,
         {
@@ -615,8 +616,7 @@ export function useDrawingGeneration({
           onProgress: progressCallback,
         },
         projectionOn ? projectionProfiles : undefined,
-      );
-
+      )); // layers of one element fill per material (#9296)
       if (!isCurrent()) return;
 
       let completedDrawing = result;
@@ -874,7 +874,7 @@ export function useDrawingGeneration({
 
         completedDrawing = hybridDrawing;
       }
-      setDrawing(completedDrawing); markActiveDrawingGenerationCompleted(completedDrawing);
+      setDrawing(completedDrawing, sectionPlane); markActiveDrawingGenerationCompleted(completedDrawing);
 
       // Remember the SectionConfig that produced this view so the markup
       // persistence bridge (issue #4153) can save it alongside the results —

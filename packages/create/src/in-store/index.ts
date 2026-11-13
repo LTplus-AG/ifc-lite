@@ -6,6 +6,7 @@
 // via a `StoreEditor` overlay (closes the merge-roundtrip gap from #592).
 export { linearProfileFrame } from './linear-profile-frame.js';
 export { addOrdinaryElementInStore, type OrdinaryInStoreElement } from './ordinary-element.js';
+export { withWallAutojoinIndex, withWallAutojoinAppend, type WallAutojoinIndex } from './wall-autojoin-index.js';
 export {
   addColumnToStore,
   type ColumnInStoreParams,
@@ -88,7 +89,9 @@ export {
   type MaterialLayerSetUsageInStoreParams,
 } from './material.js';
 export type { OneToManyResult } from './relate.js';
-export { applyLayerThicknessInStore, effectiveLayerSetThickness, typeOccurrencesInStore } from './type-layer-thickness.js';
+export { applyLayerThicknessInStore, effectiveLayerSetThickness, takeLayerThicknessOutcome, typeOccurrencesInStore, type LayerThicknessOutcome } from './type-layer-thickness.js';
+export { previewTypeLayerImpact, type TypeLayerImpact } from './type-layer-impact.js';
+export { followTypeLayersOnRetypeInStore, retargetInheritingLayerUsagesInStore, typeLayerScopeInStore, typeLayerSetInStore, type TypeLayerScope } from './type-layer-inheritance.js';
 export { hostedFillTypeName, typeHostedFillInStore, type HostedFillTypeParams } from './hosted-fill-type.js';
 export { resolveAuthoringAnchor, readRelatedLists, liveEntityType, liveEntityConforms } from './resolve-relations.js';
 export { addSpaceToStore, type SpaceInStoreParams, type SpaceRectangleParams, type SpacePolygonParams, type SpaceBuildResult } from './space.js';
@@ -113,7 +116,7 @@ export {
   editFootprintRoofInStore, footprintDefinitionProperties, ROOF_FOOTPRINT_PSET,
   type RoofFootprintFields, type RoofFootprintEdit, type FootprintRoofDefinition,
 } from './roof-footprint.js';
-export type { RoofShapeType } from './roof-footprint-plan.js';
+export { planFootprintRoof, heightAt as roofPlaneHeightAt, type RoofShapeType } from './roof-footprint-plan.js';
 export { addPlateToStore, type PlateInStoreParams, type PlateRectangleParams, type PlatePolygonParams, type PlateBuildResult } from './plate.js';
 export { addMemberToStore, type MemberInStoreParams, type ProfiledMemberInStoreParams, type MemberBuildResult } from './member.js';
 export {
@@ -254,3 +257,30 @@ export {
   type GroupRootIdentity, type GroupSnapshot, type GroupMembershipSnapshot,
 } from './group.js';
 export { readGroupEvidenceInStore, readGroupCreateEvidenceInStore, type GroupNativeEvidence, type GroupCreateEvidence } from './group-evidence.js';
+
+export { refreshTopAttachmentsInStore } from './top-attachment-refresh.js';
+export { addClassificationInStore, assignClassificationInStore, type ClassificationInStoreParams } from './classification.js';
+export { mirrorElementsInStore, type MirrorElementsParams } from './element-mirror.js';
+
+export { addStructuralPlanarActionToStore, addStructuralSurfaceActionToStore, type StructuralSurfaceActionInStoreParams, type StructuralSurfaceActionBuildResult } from './structural-surface-action.js';
+export { addStructuralPointReactionToStore, addStructuralCurveReactionToStore, addStructuralSurfaceReactionToStore, type StructuralPointReactionInStoreParams, type StructuralCurveReactionInStoreParams, type StructuralSurfaceReactionInStoreParams, type StructuralReactionBuildResult } from './structural-reaction.js';
+export { addStructuralResultGroupToStore, type StructuralResultGroupInStoreParams, type StructuralResultGroupBuildResult } from './structural-result-group.js';
+export { addStructuralSurfaceMemberToStore, type StructuralSurfaceMemberInStoreParams, type StructuralSurfaceMemberBuildResult, type StructuralSurfaceMemberType } from './structural-surface-member.js';
+
+export { addStructuralCurveConnectionToStore, type StructuralCurveConnectionInStoreParams, type StructuralCurveConnectionBuildResult, type StructuralBoundaryEdgeConditionParams } from './structural-curve-connection.js';
+
+export { addStructuralSurfaceConnectionToStore, type StructuralSurfaceConnectionInStoreParams, type StructuralSurfaceConnectionBuildResult, type StructuralBoundaryFaceConditionParams } from './structural-surface-connection.js';
+
+// Derive an analytical model from the physical one (#9668): facts, plan, apply.
+export { readStructuralDerivationFacts } from './structural-derive-facts.js';
+export { structuralPhysicalAxes } from './structural-check-axes.js';
+export { planStructuralDerivation } from './structural-derive-plan.js';
+export { applyStructuralDerivation } from './structural-derive-apply.js';
+export type { StructuralDerivationOptions, StructuralDerivationPlan, StructuralDerivationReport } from './structural-derive-types.js';
+export { editStructuralEntityInStore, type StructuralEntityEdit } from './structural-edit.js';
+export { removeStructuralEntityInStore } from './structural-remove.js';
+
+export { addStructuralLoadToStore, type StructuralLoadInStoreParams } from './structural-load.js';
+export { addStructuralCurveActionToStore, type StructuralCurveActionInStoreParams } from './structural-curve-action.js';
+export { connectStructuralElementInStore } from './structural-physical-link.js';
+export type { StructuralMemberConnectionOptions } from './_structural-connection-options.js';

@@ -326,7 +326,7 @@ export async function clashCommand(args: string[]): Promise<void> {
         summary: result.summary,
         truncated,
         ruleCoverageOutcome: classifyRuleCoverage(result),
-        ruleCoverage: result.ruleCoverage ?? null,
+        ruleCoverage: result.ruleCoverage?.map(({ matchedElements: _objects, ...coverage }) => coverage) ?? null,
         clashes,
       });
       return;

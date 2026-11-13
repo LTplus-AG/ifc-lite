@@ -51,7 +51,7 @@ export function gridCopyRefusal(ctx: CopyContext, rootId: number): string | null
   if (starts.length === 0) return null;
   let reference: number | null;
   try {
-    reference = storeyPlacementId(ctx.read, resolveDuplicateSource(ctx.store, rootId, ctx.editor).storeyId);
+    reference = storeyPlacementId(ctx.read, resolveDuplicateSource(ctx.store, rootId, ctx.editor, ctx.sourceScope).storeyId);
   } catch (error) {
     console.warn(`[create] #${rootId} has no readable placement to copy from`, error);
     return UNREADABLE_GRID_PLACEMENT;
@@ -145,7 +145,7 @@ export function follow(
 export function productStoreyOrigin(ctx: CopyContext, id: number): { storeyId: number | null; origin: CopyVec3 } | null {
   let source: SourceAttributes;
   try {
-    source = resolveDuplicateSource(ctx.store, id, ctx.editor);
+    source = resolveDuplicateSource(ctx.store, id, ctx.editor, ctx.sourceScope);
   } catch (error) {
     console.warn(`[create] #${id} has no readable placement to copy from`, error);
     return null;

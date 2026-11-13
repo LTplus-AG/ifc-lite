@@ -210,7 +210,7 @@ describe('extension exporters are export-registry entries (#1907, #5838)', () =>
     mount(host, <PaletteRunnerHarness />);
     assert.ok(paletteRunner);
     const rows = buildExportCommands(() => {}, paletteRunner.extensionExporters).filter((c) => c.id.startsWith('export:ext:'));
-    assert.deepEqual(rows.map((r) => [r.id, r.label, r.detail]), [[`export:ext:ext.alpha:${EXPORTER_ID}`, 'Demo CSV', '.csv']]);
+    assert.deepEqual(rows.map((r) => [r.id, r.label, r.detail]), [[`export:ext:ext.alpha:${EXPORTER_ID}`, 'Demo CSV', 'ext.alpha · .csv']]);
   });
 
   it('appears when a contribution is registered AFTER mount (subscription path)', () => {

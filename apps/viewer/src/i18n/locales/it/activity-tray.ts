@@ -41,6 +41,7 @@ export const activityTrayIt = {
     many: "{count} download non riusciti; nessun file è stato avviato per il caricamento nel visualizzatore.",
   },
   "activityTray.job.clash": "Rilevamento delle interferenze",
+  "activityTray.job.scanDetection": "Rilevamento di elementi nella scansione",
   "activityTray.job.validation": "Validazione dei dati",
   "activityTray.job.list": "Esecuzione dell'elenco",
   "activityTray.job.bulk": "Aggiornamento in blocco delle proprietà",
@@ -77,4 +78,5 @@ export const activityTrayIt = {
   "activityTray.publication.failed": { one: "{count} effetto non riuscito", other: "{count} effetti non riusciti", many: "{count} effetti non riusciti" },
   "activityTray.ai.timeout": "Tempo scaduto",
   "activityTray.ai.truncated": "Interrotto al limite di output",
+  "activityTray.load.noModel": "Terminato senza caricare un modello",
 } satisfies Catalogue;

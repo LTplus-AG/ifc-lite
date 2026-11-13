@@ -29,6 +29,10 @@
     "./cli-args": {
       "import": "./dist/cli-args.js",
       "types": "./dist/cli-args.d.ts"
+    },
+    "./bridge-protocol": {
+      "import": "./dist/bridge/bridge-protocol.js",
+      "types": "./dist/bridge/bridge-protocol.d.ts"
     }
   },
   "scripts": {
@@ -60,15 +64,18 @@
     "@ifc-lite/mutations": "workspace:^",
     "@ifc-lite/parser": "workspace:^",
     "@ifc-lite/query": "workspace:^",
+    "@ifc-lite/rhino3dm": "workspace:^",
     "@ifc-lite/rules": "workspace:^",
     "@ifc-lite/sdk": "workspace:^",
     "@ifc-lite/viewer-core": "workspace:^",
     "@ifc-lite/wasm": "workspace:^",
+    "ws": "^8.22.0",
     "yjs": "^13.6.33"
   },
   "devDependencies": {
     "@mergifyio/vitest": "^2026.10.11",
     "@types/node": "^26.6.4",
+    "@types/ws": "^8.18.2",
     "typescript": "^6.0.3",
     "vitest": "^5.0.5"
   },

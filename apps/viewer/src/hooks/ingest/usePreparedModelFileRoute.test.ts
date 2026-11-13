@@ -26,7 +26,24 @@ class SlowFile extends File {
 
 const handle = (name: string): FileSystemFileHandle => ({ kind: 'file', name } as unknown as FileSystemFileHandle);
 
+// Loaded at runtime: the changed-test oracle removes new production files, and
+// a missing module must fail an assertion rather than the whole file's import.
+const intentPath = '../../lib/load-intent.js';
+const intent: typeof import('../../lib/load-intent.js') | null = await import(intentPath).catch(() => null);
+
 describe('prepared model file routing #4476', () => {
+  it('announces the load intent synchronously, before bundle preparation can await', async () => {
+    assert.ok(intent, 'a model open announces itself (lib/load-intent.ts)');
+    intent.resetLoadIntentForTests();
+    let routed = false;
+    const done = prepareModelFiles([gltfDocument('scan.gltf', SlowFile)], undefined, () => { routed = true; });
+    // Still inside the caller's task: nothing has been read or routed yet.
+    assert.equal(routed, false);
+    assert.ok(intent.msSinceLoadIntent() < 1000, 'the start screen hears about the open before any await');
+    await done;
+    assert.equal(routed, true);
+  });
+
   it('routes picks in the order they were made even when an earlier bundle resolves later', async () => {
     const routed: string[][] = [];
     const route = (files: File[]) => { routed.push(files.map(file => file.name)); };

@@ -41,9 +41,9 @@ function seed(t: TestContext) {
       clearAuthoringOverlayMeshes: (channel) => { if (channel === 'scan') cleared++; },
     },
   });
-  useViewerStore.getState().finishScanDetection({
+  useViewerStore.getState().setScanDetectionJob({ kind: 'succeeded', runId: 1, result: {
     sourceModelId: 'scan', targetModelId: null, cropped: false, pointCount: positions.length / 3, cloudMatrix: null, scanToModel: SWAP, result,
-  });
+  } });
   const triangles = () => (scanMeshes.at(-1) ?? []).reduce((n, m) => n + m.indices.length / 3, 0);
   return { result, scanMeshes, triangles, cleared: () => cleared };
 }

@@ -204,7 +204,8 @@ function addCargoComponents(add, inputs, data) {
     for (const entry of closure) {
       const key = JSON.stringify(entry);
       if (!selected.has(key)) selected.set(key, { entry, scopes: [] });
-      selected.get(key).scopes.push(rootName === 'ifc-lite-diff-wasm' ? 'pkg-diff' : 'default pkg + pkg-retained');
+      const scope = { 'ifc-lite-diff-wasm': 'pkg-diff', 'ifc-lite-rhino-wasm': 'pkg-rhino' }[rootName] ?? 'default pkg + pkg-retained';
+      selected.get(key).scopes.push(scope);
     }
   }
   for (const { entry, scopes } of [...selected.values()].sort((a, b) => `${a.entry.name}@${a.entry.version}`.localeCompare(`${b.entry.name}@${b.entry.version}`))) {

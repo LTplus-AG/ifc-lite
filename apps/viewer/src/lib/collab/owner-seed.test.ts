@@ -311,6 +311,26 @@ describe('runOwnerSeed (#4446)', () => {
     }
   });
 
+  it('a seed that throws after its join was abandoned reports nothing and stamps nothing', async () => {
+    const h = await harness();
+    let live = true;
+    try {
+      const result = await h.run({
+        isCurrent: () => live,
+        makeBlobStore: async () => {
+          // The user leaves while the seed is underway; the throw that follows
+          // belongs to a join nobody is in any more.
+          live = false;
+          throw new Error('session disposed under the seed');
+        },
+      });
+      assert.equal(result, null);
+      assert.equal(readGeometrySeedMarker(h.session.doc)?.interrupted ?? null, null);
+    } finally {
+      h.session.dispose();
+    }
+  });
+
   it('ready waits for the relay to confirm it holds the LAST local write (#4446)', async () => {
     const h = await harness();
     try {

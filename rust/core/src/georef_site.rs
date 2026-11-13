@@ -62,15 +62,17 @@ pub fn site_ref_location(decoder: &mut EntityDecoder, site_id: u32) -> Result<Op
 ///
 /// Read from the first `IfcGeometricRepresentationContext` (not a
 /// sub-context) whose `ContextType` is `Model`, else the first context. `None`
-/// when that context has no `TrueNorth`, or it is not a finite, non-zero
-/// `IfcDirection` with two or three ratios; IFC then means +Y, which the
-/// caller supplies. A three-ratio direction keeps its XY part.
+/// when that context has no `TrueNorth`, it names a missing record, or its XY
+/// part is zero, and a counted
+/// refusal when the slot is not a reference or the direction fails the
+/// `IfcDirection` leaf rule; IFC then means +Y, which the caller supplies. A
+/// three-ratio direction keeps its XY part.
 ///
 /// `decoder` must be over `content`; pass one that already holds an entity
 /// index, or the direction lookup builds one.
 pub fn model_true_north(content: &[u8], decoder: &mut EntityDecoder) -> Option<[f64; 2]> {
     let mut scanner = EntityScanner::new(content);
-    let mut chosen: Option<u32> = None;
+    let mut chosen = None;
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
         if !keyword_eq(type_name, "IFCGEOMETRICREPRESENTATIONCONTEXT") {
             continue;
@@ -79,20 +81,15 @@ pub fn model_true_north(content: &[u8], decoder: &mut EntityDecoder) -> Option<[
         let is_model = context
             .string_at(slot::IfcGeometricRepresentationContext::CONTEXT_TYPE)
             .is_some_and(|t| t.eq_ignore_ascii_case("model"));
-        let north = context.ref_at(slot::IfcGeometricRepresentationContext::TRUE_NORTH);
         if chosen.is_none() || is_model {
-            chosen = Some(north.unwrap_or(0));
+            chosen = Some(context);
         }
         if is_model {
             break;
         }
     }
-    let direction = decoder.decode_by_id(chosen.filter(|&id| id != 0)?).ok()?;
-    let ratios = direction.list_at(slot::IfcDirection::DIRECTION_RATIOS)?;
-    if !(2..=3).contains(&ratios.len()) {
-        return None;
-    }
-    unit_xy(ratios[0].as_float()?, ratios[1].as_float()?)
+    let [x, y, _] = decoder.direction3_at(&chosen?, slot::IfcGeometricRepresentationContext::TRUE_NORTH.index()).ok()??;
+    unit_xy(x, y)
 }
 
 /// `(x, y)` scaled to unit length, or `None` when its length is zero or not

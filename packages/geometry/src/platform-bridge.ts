@@ -180,6 +180,12 @@ export interface IPlatformBridge {
   processGeometryStreamingCache?(cacheKey: string, options: StreamingOptions): Promise<GeometryStats>;
 
   /**
+   * Release what the bridge holds. Called by `GeometryProcessor.dispose()`;
+   * `init()` may be called again afterwards.
+   */
+  dispose?(): void;
+
+  /**
    * Get the underlying API object (for advanced usage)
    * Returns the WASM IfcAPI in web, or null in Tauri
    */

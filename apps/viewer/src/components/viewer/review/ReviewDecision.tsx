@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
 import { HUMAN_STATUSES, REVIEW_LIMITS, DEFAULT_REVIEW_WORKSPACE, useReviewWorkspaces, saveCardDecision, type CardDecision, type HumanStatus } from '@/lib/review/workspace';
+import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { HUMAN_STATUS_KEY } from './review-labels';
 
 /** The person's own status and comment for one card; never an analysis result. */
@@ -24,15 +25,20 @@ export function ReviewDecision({ cardKey, decision }: { cardKey: string; decisio
     if (decision) { previous.current = decision; setStatus(decision.status); setComment(decision.comment); setClearAvailable(true); }
     else if (previous.current && saved) { previous.current = null; setStatus('open'); setComment(''); setClearAvailable(false); }
   }, [decision, saved]);
-  const save = async (next: { status: HumanStatus; comment: string } | null) => {
-    const saved = await saveCardDecision(cardKey, next);
-    if (saved) {
+  // C-11: one write at a time; the draft is locked while it is in flight so a
+  // late Clear cannot wipe text typed after the press.
+  const flight = useAsyncRun();
+  const save = (next: { status: HumanStatus; comment: string } | null) => flight.start(async () => {
+    let ok = false;
+    try { ok = await saveCardDecision(cardKey, next); }
+    catch (error) { console.warn('[Review decision] Save failed', error); }
+    if (ok) {
       setClearAvailable(next !== null);
       if (next === null) { setStatus('open'); setComment(''); }
       toast.success(t(next ? 'reviewWorkspace.decision.saved' : 'reviewWorkspace.decision.cleared'));
     }
     else toast.error(t('reviewWorkspace.decision.unsaved'));
-  };
+  });
   const selectId = useId();
   return (
     <section aria-label={t('reviewWorkspace.decision.heading')} className="space-y-1.5 rounded border border-border p-2">
@@ -40,17 +46,17 @@ export function ReviewDecision({ cardKey, decision }: { cardKey: string; decisio
       <p className="text-2xs text-muted-foreground">{t('reviewWorkspace.decision.note')}</p>
       <div className="flex flex-wrap items-end gap-2">
         <label htmlFor={selectId} className="text-2xs text-muted-foreground">{t('reviewWorkspace.decision.status')}</label>
-        <select id={selectId} value={status} onChange={event => setStatus(event.target.value as HumanStatus)}
+        <select id={selectId} value={status} disabled={flight.busy} onChange={event => setStatus(event.target.value as HumanStatus)}
           className="h-7 rounded border border-border bg-background px-1.5 text-xs">
           {HUMAN_STATUSES.map(value => <option key={value} value={value}>{t(HUMAN_STATUS_KEY[value])}</option>)}
         </select>
       </div>
       <Field label={t('reviewWorkspace.decision.comment')}>
-        <Textarea rows={2} maxLength={REVIEW_LIMITS.comment} value={comment} onChange={event => setComment(event.target.value)} />
+        <Textarea rows={2} disabled={flight.busy} maxLength={REVIEW_LIMITS.comment} value={comment} onChange={event => setComment(event.target.value)} />
       </Field>
       <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" onClick={() => void save({ status, comment })}>{t('reviewWorkspace.decision.save')}</Button>
-        {(clearAvailable || decision) && <Button size="sm" variant="ghost" onClick={() => void save(null)}>{t('reviewWorkspace.decision.clear')}</Button>}
+        <Button size="sm" disabled={flight.busy} onClick={() => void save({ status, comment })}>{t('reviewWorkspace.decision.save')}</Button>
+        {(clearAvailable || decision) && <Button size="sm" variant="ghost" disabled={flight.busy} onClick={() => void save(null)}>{t('reviewWorkspace.decision.clear')}</Button>}
         {decision && <span className="text-2xs text-muted-foreground">
           {t('reviewWorkspace.decision.updated', { time: new Date(decision.updatedAt).toLocaleString(locale) })}</span>}
       </div>

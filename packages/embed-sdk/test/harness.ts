@@ -34,7 +34,7 @@ export interface Harness {
   /** Everything the SDK has posted into the iframe, oldest first. */
   posted: PostedMessage[];
   /** The fake `contentWindow` the SDK posts into. */
-  frameWindow: unknown;
+  frameWindow: { postMessage(msg: Record<string, unknown>, targetOrigin: string, transfer: unknown): void };
   /** Promise returned by `IFCLiteEmbed.create` — resolves after the handshake. */
   created: Promise<IFCLiteEmbed>;
   /** Dispatch an inbound message event at the host window. */

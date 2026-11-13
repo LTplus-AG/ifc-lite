@@ -10,6 +10,7 @@ import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { useViewerStore } from '@/store';
 import { useTourStore } from '@/lib/tours/tour-store';
 import { ViewportOverlays } from './ViewportOverlays';
+import { formFactorState } from '@/test/form-factor-state';
 
 const KEY = 'ifc-lite:github-star';
 const original = useViewerStore.getState();
@@ -36,7 +37,7 @@ describe('GitHub star invitation (#8806)', () => {
     localStorage.clear();
     localStorage.setItem(KEY, String(Date.now() - 2 * 86_400_000));
     useViewerStore.setState({ ...fixtureModels(fixtureModel('star')), loading: false,
-      geometryStreamingActive: false, error: null, isMobile: false, activeTool: 'select' });
+      geometryStreamingActive: false, error: null, ...formFactorState(false), activeTool: 'select' });
     mock.method(performance, 'now', () => now);
     mock.method(document, 'hasFocus', () => true);
     mock.getter(document, 'visibilityState', () => 'visible');
@@ -70,7 +71,7 @@ describe('GitHub star invitation (#8806)', () => {
     assert.equal(invitation(), null);
   });
   for (const state of [{ loading: true }, { geometryStreamingActive: true }, { error: 'failed' },
-    { isMobile: true }, { activeTool: 'measure' as const }, { models: new Map() }]) {
+    { ...formFactorState(true) }, { activeTool: 'measure' as const }, { models: new Map() }]) {
     it(`suppresses in viewer state ${JSON.stringify(state)}`, async () => {
       useViewerStore.setState(state); render(<ViewportOverlays hideAxis hideScale />); await qualify();
       assert.equal(invitation(), null);

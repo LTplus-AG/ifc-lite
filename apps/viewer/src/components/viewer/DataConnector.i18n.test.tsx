@@ -252,11 +252,11 @@ describe('DataConnector localization (#4918)', () => {
       { key: 'dataConnector.previewMatchesButton' },
     ]);
 
-    // A header-only re-upload hits the basic-parse error path; the Error
-    // alert sits in the same `csvColumns.length > 0` fragment already
-    // rendered above, so it shows alongside the stale preview from before.
+    // Header-only replacement now clears the old preview (C-12). Check the
+    // error independently, then upload fresh rows for the remaining controls.
     await uploadCsv('ID,Description\n');
     checkAtCurrentState([{ key: 'dataConnector.errorTitle' }]);
+    await uploadCsv('ID,Description\n1,Alpha\n2,Beta\n');
 
     // Open the CSV-column select: its per-option sample hint.
     let triggers = comboboxTriggers();

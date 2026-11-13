@@ -18,6 +18,7 @@ import { waitFor } from '@/test/render.js';
 import { settle } from '@/test/settle.js';
 import { useViewerStore } from '@/store';
 import { useModelUrlAutoload } from './useModelUrlAutoload.js';
+import { installModelLoadCanceller } from './modelLoadCanceller.js';
 
 function setModelParam(value: string | null): void {
   const url = new URL(window.location.href);
@@ -176,6 +177,37 @@ describe('?model= autoload (#5851)', () => {
     await waitFor(() => useViewerStore.getState().error !== null, 'a cross-origin ?model= is reported');
     assert.equal(fetchCalls, 0, 'a cross-origin URL must never be fetched');
     assert.match(useViewerStore.getState().error ?? '', /different site/i);
+  });
+
+  it('drops out quietly when the user starts a load while the model downloads (L9)', async () => {
+    setModelParam('model.ifc');
+    let respond!: () => void;
+    let fetched = false;
+    let downloadSignal: AbortSignal | null | undefined;
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      fetched = true;
+      downloadSignal = init?.signal;
+      await new Promise<void>((resolve) => { respond = resolve; });
+      return new Response(new Blob(['ISO-10303-21;']), { status: 200 });
+    }) as typeof fetch;
+    const loadingFiles: string[] = [];
+    const stop = useViewerStore.subscribe((state) => {
+      if (state.loadingFileName && !loadingFiles.includes(state.loadingFileName)) loadingFiles.push(state.loadingFileName);
+    });
+    try {
+      mount();
+      await waitFor(() => fetched, 'autoload starts its download');
+      // The user opens a file; it may even finish before the download lands.
+      const endUserLoad = installModelLoadCanceller('primary', () => {});
+      endUserLoad();
+      respond();
+      await act(() => settle('the download resolves'));
+    } finally {
+      stop();
+    }
+    assert.equal(downloadSignal?.aborted, true, 'the superseded download is aborted');
+    assert.deepEqual(loadingFiles, [], 'the autoload never starts its load');
+    assert.equal(useViewerStore.getState().error, null, 'and reports nothing');
   });
 
   it('does nothing when ?model= is absent', async () => {

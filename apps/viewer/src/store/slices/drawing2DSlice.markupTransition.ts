@@ -155,6 +155,7 @@ import type { Drawing2DState } from './drawing2DSlice.js';
  */
 const FIELD_CLASSIFICATION = {
   drawing2D: 'preserved',
+  drawing2DPlane: 'preserved',
   drawing2DStatus: 'preserved',
   drawing2DProgress: 'preserved',
   drawing2DPhase: 'preserved',
@@ -178,10 +179,13 @@ const FIELD_CLASSIFICATION = {
   annotation2DCursorPos: 'in-progress',
   polygonArea2DPoints: 'in-progress',
   polygonArea2DResults: 'committed',
+  tagAnnotations2D: 'committed',
   textAnnotations2D: 'committed',
   textAnnotation2DEditing: 'in-progress',
   cloudAnnotation2DPoints: 'in-progress',
   cloudAnnotations2D: 'committed',
+  dimension2DPoints: 'in-progress',
+  dimensions2D: 'committed',
   selectedAnnotation2D: 'in-progress',
   dxfUnderlays: 'preserved',
 } satisfies Record<keyof Drawing2DState, 'committed' | 'in-progress' | 'preserved'>;
@@ -243,6 +247,7 @@ export function inProgressClearPatch(): Drawing2DTransitionClearPatch {
   return {
     polygonArea2DPoints: [],
     cloudAnnotation2DPoints: [],
+    dimension2DPoints: [],
     measure2DStart: null,
     measure2DCurrent: null,
     measure2DSnapPoint: null,
@@ -254,12 +259,19 @@ export function inProgressClearPatch(): Drawing2DTransitionClearPatch {
 
 /**
  * Session-scoped only — never written to or read from `localStorage`
- * directly (that stays `drawing2DSlice.persistence.ts`'s job). Cleared
- * implicitly by a full page reload; a stale entry for a model id that no
- * longer exists is harmless (ids are `crypto.randomUUID()`, never reused) and
- * bounded by how many distinct models this session has ever activated.
+ * directly (that stays `drawing2DSlice.persistence.ts`'s job). An entry
+ * leaves with its model ({@link forgetLiveMarkup}, from `removeModel`,
+ * `clearAllModels` and `resetViewerState`):
+ * ids are reused (`room:<id>` for a collab room, an explicit id from a flow),
+ * so an entry outliving its model would be restored into the next one.
  */
 const liveMarkupCache = new Map<string, Drawing2DMarkupPatch>();
+
+/** Drop `modelId`'s snapshot, or every snapshot when `modelId` is omitted. */
+export function forgetLiveMarkup(modelId?: string): void {
+  if (modelId === undefined) liveMarkupCache.clear();
+  else liveMarkupCache.delete(modelId);
+}
 
 export interface MarkupTransitionState extends Drawing2DMarkupPatch {
   readonly activeModelId: string | null;
@@ -297,7 +309,9 @@ export function markupTransitionPatch(
       measure2DResults: state.measure2DResults,
       polygonArea2DResults: state.polygonArea2DResults,
       textAnnotations2D: state.textAnnotations2D,
+      tagAnnotations2D: state.tagAnnotations2D,
       cloudAnnotations2D: state.cloudAnnotations2D,
+      dimensions2D: state.dimensions2D,
       drawing2DDisplayOptions: state.drawing2DDisplayOptions,
     });
   }
@@ -325,5 +339,5 @@ export function markupTransitionPatch(
 
 /** Test-only: drop every cached snapshot so tests don't leak state between runs. */
 export function __resetLiveMarkupCacheForTests(): void {
-  liveMarkupCache.clear();
+  forgetLiveMarkup();
 }

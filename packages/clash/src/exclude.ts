@@ -14,10 +14,11 @@ function encode(value: string): string {
 }
 
 /**
- * Federation-safe element identity: a model-qualified key. Element identity is
- * `(model, key)` everywhere in the engine, so exclusions must be namespaced by
+ * Federation-safe key-level exclusion identity. Exclusions are namespaced by
  * model too — otherwise two models that both contain element "42" collide and
  * can hide valid cross-model clashes.
+ * A key-level exclusion deliberately covers every occurrence of a repeated
+ * key; per-finding user decisions use reference-disambiguated identities.
  */
 export function qualifiedKey(model: string, key: string): string {
   return encode(model) + encode(key);

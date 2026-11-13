@@ -173,6 +173,41 @@ describe('request correlation', () => {
     await assertion;
   });
 
+  it('a command whose post throws rejects with that error and leaves no timer or entry behind', async () => {
+    vi.useFakeTimers();
+    const harness = mount({});
+    h = harness;
+    harness.emit('READY', { version: PROTOCOL_VERSION });
+    harness.emit('INIT_ACK');
+    const embed = await harness.created;
+    const post = harness.frameWindow.postMessage;
+    harness.frameWindow.postMessage = () => { throw new DOMException('could not be cloned', 'DataCloneError'); };
+    await expect(embed.getModelInfo()).rejects.toThrow('could not be cloned');
+    expect(vi.getTimerCount()).toBe(0);
+    harness.frameWindow.postMessage = post;
+    harness.posted.length = 0;
+    const next = embed.getModelInfo();
+    reply(harness, { models: [] });
+    await expect(next).resolves.toEqual({ models: [] });
+  });
+
+  it('a command that times out fails alone: the next command still resolves', async () => {
+    vi.useFakeTimers();
+    const harness = mount({});
+    h = harness;
+    harness.emit('READY', { version: PROTOCOL_VERSION });
+    harness.emit('INIT_ACK');
+    const embed = await harness.created;
+    const slow = embed.getScreenshot();
+    const timedOut = expect(slow).rejects.toThrow('GET_SCREENSHOT timed out (30s)');
+    await vi.advanceTimersByTimeAsync(30_000);
+    await timedOut;
+    harness.posted.length = 0;
+    const next = embed.getModelInfo();
+    reply(harness, { models: [] });
+    await expect(next).resolves.toEqual({ models: [] });
+  });
+
   it('does not time out a request that was already answered', async () => {
     vi.useFakeTimers();
     const harness = mount({});

@@ -656,6 +656,29 @@ selectedIds = new Set([id1, id2, id3]);
 renderer.render({ selectedIds });
 ```
 
+The renderer keeps the highlight of an unchanged selection between frames, and
+past 500 highlight copies it merges them in retained hydration order. Draw
+cost follows compatible model/origin runs rather than a copy per piece. A large
+selection draws a few merged meshes on top of the model (one per run of
+selected pieces that share a model and frame origin, more for a selection that
+spans models, origins, 2^24 id pages or more than one GPU buffer, and for
+entities merged on their own), and those meshes hold a second copy of the selected
+geometry in GPU memory, about 28 bytes per vertex and 4 per index. The pool retains
+per-piece hydration insertion order when selections grow, shrink, hide or
+isolate elements. It never regroups non-adjacent frame runs to save draws:
+that changes the last highlighted surface through glazing. Model boundaries
+retain their own mesh ownership. A selection alternating
+between origins or models can require one draw per piece, the same cost as
+highlighting every piece with its own mesh; there is no hard 500-run draw cap.
+Pieces with their own origin (textured pieces) still draw separately.
+
+The Set is compared by content on every frame, with one lookup per id and no
+allocation, so a new Set, a Set that grew or shrank and any edit made in place
+are seen on the next frame. The exception is a frame rendered with
+`isInteracting`: it re-reads up to 32,768 ids and continues on the next one,
+so swapping ids in place at the same count in a larger Set is seen within a
+few interactive frames. Passing a new Set avoids that.
+
 ### Raycasting
 
 Scene raycasts and magnetic snapping include regular, batched, textured and
@@ -670,7 +693,10 @@ Custom `RaycastEngine` scene adapters can optionally implement
 `getTexturedMeshes()` returning owners with `expressId` and optional `modelIndex`;
 `getMeshDataPieces` supplies their retained geometry. Existing adapters without
 that capability keep their regular/batched/instanced behavior. This does not add
-texture GPU handles to the `Renderer.getScene()` interface.
+texture GPU handles to the `Renderer.getScene()` interface. An adapter that drops
+CPU pieces without bumping `getPickGeometryRevision()` can also implement
+`onHostEviction(listener)`; the raycast index then releases them at once, as it
+does for `Scene`'s host-budget eviction.
 
 ```typescript
 // Full raycast with intersection details
@@ -975,6 +1001,13 @@ The renderer uses a Bounding Volume Hierarchy for fast raycasting:
 
 // Clear BVH cache when geometry changes significantly
 renderer.invalidateBVHCache();
+
+// True when the flat index is warm; instances may still materialize per ray
+const raycastReady = renderer.isRaycastCacheWarm();
+
+// Moving or rotating meshes in place keeps every piece's identity, so the BVH
+// and snap caches cannot see it: clear them after the edit.
+renderer.getScene().translateMeshesForEntities(new Map([[expressId, [1, 0, 0]]]));
 renderer.clearCaches();
 ```
 

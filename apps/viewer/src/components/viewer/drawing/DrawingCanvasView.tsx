@@ -18,7 +18,7 @@ import type { DrawingLayers } from './useDrawingLayers';
 
 export function DrawingCanvasView({ vm, layers }: { vm: DrawingViewModel; layers: DrawingLayers }) {
   const { t } = useTranslation();
-  const { drawing, status, sectionPlane, viewTransform, displayOptions } = vm;
+  const { drawing, status, drawnPlane, viewTransform, displayOptions } = vm;
   const hasContent = !!drawing && (drawing.cutPolygons.length > 0 || drawing.lines?.length > 0 || layers.dxfUnderlayData.length > 0 || vm.hasReferences);
   const editingAnnotation = vm.textAnnotation2DEditing
     ? vm.textAnnotations2D.find((a) => a.id === vm.textAnnotation2DEditing) ?? null
@@ -71,18 +71,18 @@ export function DrawingCanvasView({ vm, layers }: { vm: DrawingViewModel; layers
           measureSnapPoint={vm.measure2DSnapPoint}
           sheetEnabled={vm.sheetEnabled}
           activeSheet={vm.activeSheet}
-          sectionAxis={sectionPlane.axis}
+          sectionAxis={drawnPlane.axis}
           isPinned={vm.isPinned}
           cachedSheetTransformRef={vm.cachedSheetTransformRef}
           annotation2DActiveTool={vm.annotation2DActiveTool}
           annotation2DCursorPos={vm.annotation2DCursorPos}
           polygonAreaPoints={vm.polygonArea2DPoints}
           polygonAreaResults={vm.polygonArea2DResults}
-          textAnnotations={vm.textAnnotations2D}
+          textAnnotations={[...vm.textAnnotations2D, ...vm.tagTexts]}
           textAnnotationEditing={vm.textAnnotation2DEditing}
           cloudAnnotationPoints={vm.cloudAnnotation2DPoints}
           cloudAnnotations={vm.cloudAnnotations2D}
-          selectedAnnotation={vm.selectedAnnotation2D}
+          selectedAnnotation={vm.selectedAnnotation2D?.type === 'tag' ? { type: 'text', id: vm.selectedAnnotation2D.id } : vm.selectedAnnotation2D}
           ifcAnnotationLines={layers.ifcAnnotationData.lines}
           ifcAnnotationTexts={layers.ifcAnnotationData.texts}
           ifcAnnotationFills={layers.ifcAnnotationData.fills}
@@ -96,8 +96,8 @@ export function DrawingCanvasView({ vm, layers }: { vm: DrawingViewModel; layers
       )}
 
       {editingAnnotation && (() => {
-        const scaleX = sectionPlane.axis === 'side' ? -viewTransform.scale : viewTransform.scale;
-        const scaleY = sectionPlane.axis === 'down' ? viewTransform.scale : -viewTransform.scale;
+        const scaleX = drawnPlane.axis === 'side' ? -viewTransform.scale : viewTransform.scale;
+        const scaleY = drawnPlane.axis === 'down' ? viewTransform.scale : -viewTransform.scale;
         return (
           <TextAnnotationEditor
             annotation={editingAnnotation}

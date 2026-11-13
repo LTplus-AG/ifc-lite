@@ -31,6 +31,7 @@ import { handleMeasureDrag, handleMeasureHover, syncMeasureScreenCoords } from '
 import { beginMeasurePress, handleMeasureDown, handleMeasureUp, pressOutlivedReset } from './distanceClick.js';
 import { pressPastClickSlop, type PointerGesture } from './pointerGesture.js';
 import { resolveNavigationPointerGesture, resolveWheelNavigation } from '@/lib/navigation/presets.js';
+import { wheelZoomSensitivityFactor } from '@/lib/navigation/wheel-input.js';
 import { noteMouseSideInput, routeMousePointers, setMeasureContext } from './touchRouting.js';
 import { endMeasurePointHover, hoverMeasurePointAt } from './measurePointMode.js';
 import type { MeasureCameraState } from './measureCameraState.js';
@@ -42,7 +43,7 @@ import { refuseCaptureHeldPick } from '@/lib/viewport-capture';
 import { createCommandPressController } from './commandPress.js';
 import { handleSelectionClick, handleContextMenu as handleContextMenuSelection } from './selectionHandlers.js';
 import { handleMeasureDoubleClick } from './measurementDoubleClick.js';
-import { applyWheelZoom, createFineZoomModifierTracker } from './wheelZoom.js';
+import { createViewportWheelZoom } from './wheelZoom.js';
 import { cameraPoseKey, createZoomSurfacePicker } from './zoomSurface.js';
 import { createFlyController } from './flyControls.js';
 import { applyDragNavigation, dragNavigationFor } from './dragNavigation.js';
@@ -769,14 +770,27 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       await handleContextMenuSelection(ctx, e);
     };
 
-    // Debounce: clear isInteracting 150ms after the last wheel event
+    // One camera-interaction signal per wheel gesture: 150 ms after the last pan or settled zoom.
     let wheelIdleTimer: ReturnType<typeof setTimeout> | null = null;
-
-    // Ctrl/Cmd held = finer zoom step (#2683). Tracked from keyboard events
-    // rather than read off the wheel event, because a trackpad pinch arrives
-    // as a wheel event with `ctrlKey: true` and no key ever pressed - see
-    // wheelZoom.ts.
-    const fineZoomModifier = createFineZoomModifierTracker();
+    const endWheelGesture = (kind: 'zoom' | 'pan') => {
+      if (wheelIdleTimer) clearTimeout(wheelIdleTimer);
+      wheelIdleTimer = setTimeout(() => { isInteractingRef.current = false; renderer.requestRender(); emitCameraInteracted(kind); }, 150);
+    };
+    const afterWheelMove = () => {
+      // Still moving: a gesture end armed by an earlier settled zoom must not land mid-zoom.
+      if (wheelIdleTimer) { clearTimeout(wheelIdleTimer); wheelIdleTimer = null; }
+      isInteractingRef.current = true;
+      renderer.requestRender();
+      // Only when the camera moved: a clamped or refused wheel step must not end a Live reading (#8828).
+      if (activeToolRef.current === 'measure' && hasPendingMeasurements()) syncMeasureScreenCoords(ctx);
+    };
+    // Eased, cursor-anchored, surface-aware wheel zoom; Ctrl/Cmd held = finer step (#2683, #5393, #9507).
+    const wheelZoom = createViewportWheelZoom({
+      camera, canvas, pickSurface, // #5393, #8769
+      sensitivity: () => wheelZoomSensitivityFactor(useViewerStore.getState().wheelZoomSensitivity),
+      onStep: afterWheelMove,
+      onSettle: () => endWheelGesture('zoom'),
+    });
     const fly = createFlyController({
       camera,
       // Fly moves the camera through setters the embed `?controls=` freeze does not gate, so gate it here (#4868).
@@ -796,35 +810,12 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       // Cancels the browser's own Ctrl+wheel page zoom as well as scrolling;
       // works only because the listener below is registered `passive: false`.
       e.preventDefault();
-      if (wheel.panX || wheel.panY) camera.pan(wheel.panX, wheel.panY, false);
-      if (wheel.zoom) {
-        applyWheelZoom(e, {
-          camera, canvas,
-          fastZoom: e.shiftKey || params.fastZoomRef.current,
-          fineModifierHeld: fineZoomModifier.isHeld(),
-          pickSurface, // #5393, #8769
-        });
+      if (wheel.panX || wheel.panY) {
+        camera.pan(wheel.panX, wheel.panY, false);
+        afterWheelMove();
+        endWheelGesture('pan');
       }
-      if (!wheel.panX && !wheel.panY && !wheel.zoom) return;
-
-      if (wheelIdleTimer) clearTimeout(wheelIdleTimer);
-      wheelIdleTimer = setTimeout(() => {
-        isInteractingRef.current = false;
-        renderer.requestRender();
-        // One camera-interaction signal per wheel gesture, on the trailing edge.
-        emitCameraInteracted(wheel.zoom ? 'zoom' : 'pan');
-      }, 150);
-
-      isInteractingRef.current = true;
-      renderer.requestRender();
-
-      // Update measurement screen coordinates immediately during zoom (only in measure mode)
-      if (activeToolRef.current === 'measure') {
-        // Only when the camera moved: a clamped or refused wheel step must not end a Live reading (#8828).
-        if (hasPendingMeasurements()) {
-          syncMeasureScreenCoords(ctx);
-        }
-      }
+      if (wheel.zoom) wheelZoom.zoom(e, e.shiftKey || params.fastZoomRef.current);
     };
 
     const handleClick = (e: MouseEvent) => { void handleSelectionClick(ctx, e); };
@@ -867,7 +858,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       canvas.removeEventListener('click', onClick);
       canvas.removeEventListener('dblclick', onDoubleClick);
       commandPress.dispose();
-      fineZoomModifier.dispose();
+      wheelZoom.dispose();
       fly.dispose();
       if (wheelIdleTimer) clearTimeout(wheelIdleTimer);
 

@@ -373,3 +373,21 @@ test('Capture 2D waits for the active text editor to commit and repaint (#4802)'
   const imagePayload = Buffer.from(viewpoint.snapshot.split(',')[1] ?? '', 'base64').toString();
   assert.match(imagePayload, /Committed fire rating/);
 });
+
+test('C-2 a double-pressed Capture 2D appends one viewpoint (shared viewpoint flight)', async () => {
+  const ui = render(
+    <>
+      <TestSectionCanvas />
+      <BCFPanel onClose={() => {}} />
+    </>,
+  );
+  const capture = ui.querySelector<HTMLButtonElement>('[aria-label="Capture current 2D section as viewpoint"]');
+  assert.ok(capture, 'the active topic exposes the dedicated 2D capture action');
+  await act(async () => {
+    capture.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+    capture.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+    await new Promise(resolve => setTimeout(resolve, 50));
+  });
+  assert.equal(useViewerStore.getState().bcfProject?.topics.get(topicGuid)?.viewpoints.length, 1,
+    'the refused second press appended nothing');
+});

@@ -345,6 +345,7 @@ version = "28.2.0"
 dependencies = [
  "ifc-lite-core",
  "ifc-lite-geometry",
+ "libc",
  "nalgebra",
  "png",
  "rayon",

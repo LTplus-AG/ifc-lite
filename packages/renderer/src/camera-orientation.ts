@@ -6,6 +6,10 @@ import type { CameraInternalState } from './camera-state.js';
 import type { CameraAnimator } from './camera-animation.js';
 import { areFiniteNumbers, isUsableDistance } from './camera-guards.js';
 import { CAMERA_CONSTANTS } from './constants.js';
+import { viewBasis } from './math.js';
+
+/** Angle from the pole within which `getRotation` reads the heading from the screen's up (#9501). */
+const POLE_BLEND = (10 * Math.PI) / 180;
 
 /** Absolute orientation and readouts share the camera's authored f64 pose. */
 export class CameraOrientation {
@@ -66,28 +70,28 @@ export class CameraOrientation {
     // Elevation: angle from horizontal plane
     const elevation = Math.asin(Math.max(-1, Math.min(1, dir.y / distance))) * 180 / Math.PI;
 
-    // Calculate azimuth smoothly using up vector
-    // The up vector defines the "screen up" direction, which determines rotation
-    const upX = this.state.camera.up.x;
-    const upY = this.state.camera.up.y;
-    const upZ = this.state.camera.up.z;
-
-    // Project up vector onto horizontal plane (XZ plane)
-    const upLen = Math.sqrt(upX * upX + upZ * upZ);
-
-    let azimuth: number;
-    if (upLen > 0.01) {
-      // Use up vector projection for azimuth (smooth and consistent)
-      azimuth = (Math.atan2(-upX, -upZ) * 180 / Math.PI + 360) % 360;
-
-      // For bottom view, flip azimuth
-      if (elevation < -80 && upY < 0) {
-        azimuth = (azimuth + 180) % 360;
-      }
-    } else {
-      // Fallback: use position-based azimuth when up vector is vertical
-      azimuth = (Math.atan2(dir.x, dir.z) * 180 / Math.PI + 360) % 360;
+    // Two readings of the heading. Away from the pole the camera's
+    // horizontal offset gives it. On the pole there is no offset, and the
+    // screen's own up (`viewBasis`, which also orthogonalises a raw BCF `up`)
+    // carries it: the top/bottom presets keep their rotation in a horizontal
+    // `up` (#9501). Looking down, screen-up points away from the offset;
+    // looking up, towards it. Within POLE_BLEND of the pole the two are mixed
+    // by how far off vertical the camera is, so the reading is continuous
+    // through a preset tween: it neither jumps to the end azimuth on the first
+    // frame (raw `up` reading) nor flips on the last (offset reading).
+    const horizontal = Math.hypot(dir.x, dir.z);
+    const screenUp = viewBasis(this.state.camera.position, this.state.camera.target, this.state.camera.up).up;
+    const screenUpHorizontal = Math.hypot(screenUp.x, screenUp.z);
+    const weight = Math.min(1, horizontal / distance / Math.sin(POLE_BLEND));
+    const side = dir.y < 0 ? -1 : 1;
+    let hx = 0;
+    let hz = 0;
+    if (horizontal > 0) { hx += (weight * dir.x) / horizontal; hz += (weight * dir.z) / horizontal; }
+    if (screenUpHorizontal > 1e-9 && weight < 1) {
+      hx += ((1 - weight) * -side * screenUp.x) / screenUpHorizontal;
+      hz += ((1 - weight) * -side * screenUp.z) / screenUpHorizontal;
     }
+    const azimuth = (Math.atan2(hx, hz) * 180 / Math.PI + 360) % 360;
 
     return { azimuth, elevation };
   }
@@ -108,12 +112,14 @@ export class CameraOrientation {
    * The orbit radius and the target are preserved — this rotates the camera on
    * its current sphere, it does not reframe. `up` is reset to world Y, matching
    * `orbit`, so the reported azimuth comes back through `getRotation`'s
-   * position-based branch.
+   * position-based branch; straight down or up (±90°) it is the horizontal
+   * screen-up instead, as on the top/bottom presets (#9501).
    *
    * @param azimuth Horizontal angle in degrees; normalised into [0, 360).
-   * @param elevation Vertical angle in degrees, 0 = horizon. Clamped to just
-   *   inside ±90° (the same `MIN_PHI` margin `orbit` uses) — the exact poles
-   *   collapse `cross(forward, up)` and flip the model.
+   * @param elevation Vertical angle in degrees, 0 = horizon. ±90° and beyond
+   *   is exactly straight down/up with the azimuth carried by a horizontal
+   *   `up` (#9501); anything short of that is clamped to the `MIN_PHI`
+   *   margin `orbit` uses.
    */
   setRotation(azimuth: number, elevation: number): void {
     // Angles are an input class of their own, and both of them reach the
@@ -150,6 +156,19 @@ export class CameraOrientation {
     this.animator.reset();
 
     const theta = ((((azimuth % 360) + 360) % 360) * Math.PI) / 180;
+
+    // Straight down or up (#9501): exactly on the pole, the way the top and
+    // bottom presets now sit, with the azimuth carried by a horizontal `up`.
+    // Clamping to `MIN_PHI` instead tilted an orthographic plan 0.6 degrees
+    // and drew the walls of every vertical member beside its section.
+    if (elevation >= 90 || elevation <= -90) {
+      const sign = elevation > 0 ? 1 : -1;
+      this.state.camera.position = { x: target.x, y: target.y + sign * distance, z: target.z };
+      this.state.camera.up = { x: -sign * Math.sin(theta), y: 0, z: -sign * Math.cos(theta) };
+      this.updateMatrices();
+      return;
+    }
+
     const poleMargin = CAMERA_CONSTANTS.MIN_PHI;
     const phi = Math.max(
       poleMargin,

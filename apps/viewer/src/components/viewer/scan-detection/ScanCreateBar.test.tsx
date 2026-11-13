@@ -35,7 +35,7 @@ function seedRun(targetModelId: string | null): ScanDetectionRun {
   models.set('scan', scan);
   useViewerStore.setState({ models });
   const run: ScanDetectionRun = { sourceModelId: 'scan', targetModelId, cropped: false, pointCount: positions.length / 3, cloudMatrix: null, scanToModel: SWAP, result };
-  useViewerStore.getState().finishScanDetection(run);
+  useViewerStore.getState().setScanDetectionJob({ kind: 'succeeded', runId: 1, result: run });
   return run;
 }
 

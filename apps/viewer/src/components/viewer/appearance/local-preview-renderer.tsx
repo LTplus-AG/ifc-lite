@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Renderer } from '@ifc-lite/renderer';
 import { capturePointer } from '@/lib/pointer-capture';
+import { wheelDeltaPx } from '@/lib/navigation/wheel-input.js';
 
 export interface PreviewMarker { id: string; point: { x: number; y: number; z: number }; check?: boolean }
 export interface ProjectedMarker { id: string; x: number; y: number; check?: boolean }
@@ -41,7 +42,7 @@ export function useLocalPreviewRenderer({ upload, release, deps, disabled, marke
     const element = canvas.current; if (!element) return;
     const controller = new AbortController(), view = new Renderer(element);
     let frame = 0, observer: ResizeObserver | undefined;
-    const wheel = (event: WheelEvent) => { event.preventDefault(); event.stopPropagation(); if (!blocked.current && renderer.current === view) { view.getCamera().zoom(event.deltaY); view.requestRender(); } };
+    const wheel = (event: WheelEvent) => { event.preventDefault(); event.stopPropagation(); if (!blocked.current && renderer.current === view) { view.getCamera().zoom(wheelDeltaPx(event.deltaY, event.deltaMode)); view.requestRender(); } };
     element.addEventListener('wheel', wheel, { passive: false });
     setFailed(false); callbacks.current.onReady(false);
     const discard = () => { observer?.disconnect(); if (renderer.current === view) renderer.current = null; view.destroy(); callbacks.current.release?.(); };

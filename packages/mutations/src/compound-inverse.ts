@@ -6,11 +6,12 @@
  * prefixes must never be retained once per operation (#6232 D5). */
 import type { OverlaySnapshot } from './cooperative-overlay-access.js';
 import { sameOverlayValue } from './overlay-value-equality.js';
+import { NewEntityMap } from './new-entity-map.js';
 import type { Mutation } from './types.js';
 
 type MapField = { [K in keyof OverlaySnapshot]: OverlaySnapshot[K] extends Map<infer _Key, infer _Value> ? K : never }[keyof OverlaySnapshot];
 type SetField = { [K in keyof OverlaySnapshot]: OverlaySnapshot[K] extends Set<infer _Value> ? K : never }[keyof OverlaySnapshot];
-interface Entry { key: unknown; present: boolean; value?: unknown; nested?: ValueInverse }
+interface Entry { key: unknown; present: boolean; value?: unknown; nested?: ValueInverse; orderBefore?: number | null }
 type CollectionInverse = { kind: 'map'; entries: Entry[] }
   | { kind: 'set'; entries: Array<{ key: unknown; present: boolean }> };
 type ValueInverse = CollectionInverse | { kind: 'object'; entries: Entry[] }
@@ -120,6 +121,8 @@ export function restoreCompoundInverse(state: OverlaySnapshot, inverse: Compound
   for (const { field, entries } of inverse.maps) {
     const map = state[field] as Map<unknown, unknown>;
     restoreCollection(map, { kind: 'map', entries });
+    if (map instanceof NewEntityMap) map.restoreBefore(new Map(entries
+      .filter(entry => entry.orderBefore !== undefined).map(entry => [entry.key as number, entry.orderBefore ?? null] as const)));
   }
   for (const { field, entries } of inverse.sets) {
     const set = state[field] as Set<unknown>;

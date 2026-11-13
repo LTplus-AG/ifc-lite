@@ -291,3 +291,17 @@ describe('defined-type base lookup ignores spelling (#8312)', () => {
     expect(serializeTypedMarker('COUNTMEASURE', 3)).toBe('IFCCOUNTMEASURE(3.)');
   });
 });
+
+// #8447: indexed-polycurve segments must keep their defined aggregate type.
+describe('typed indexed segments', () => {
+  it('writes line and arc indices without converting integers into references', () => {
+    expect(serializeTypedMarker('IfcLineIndex', [1, 2, 3])).toBe('IFCLINEINDEX((1,2,3))');
+    expect(serializeTypedMarker('IfcArcIndex', [2, 3, 4])).toBe('IFCARCINDEX((2,3,4))');
+  });
+  it('refuses invalid segment aggregates instead of emitting malformed STEP', () => {
+    expect(() => serializeTypedMarker('IfcArcIndex', [1, 2])).toThrow(/segment indices/);
+    expect(() => serializeTypedMarker('IfcLineIndex', [0, 2])).toThrow(/segment indices/);
+    expect(() => serializeTypedMarker('IfcLineIndex', [1, Infinity])).toThrow(/segment indices/);
+    expect(() => serializeTypedMarker('IfcLabel', [1, 2])).toThrow(/segment indices/);
+  });
+});

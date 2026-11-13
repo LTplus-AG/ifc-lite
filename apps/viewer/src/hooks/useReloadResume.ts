@@ -15,6 +15,7 @@ import { posthog } from '@/lib/analytics';
 import { getCachedFile } from '@/lib/recent-files';
 import { MAX_AUTO_REOPEN, noteAutomaticReopen, setOpenModelsSource, takeResumeIntent } from '@/lib/reload-resume';
 import { useViewerStore } from '@/store';
+import { watchLoadSupersession } from './modelLoadCanceller.js';
 
 export interface ReloadResumeDeps {
   readCached: (name: string) => Promise<File | null>;
@@ -55,6 +56,9 @@ export function useReloadResume(
     done.current = true;
     const intent = takeResumeIntent();
     if (!intent) return;
+    // A load the user starts while the cached files are read is what they
+    // want to see; the resume then opens nothing over it (L9).
+    const supersession = watchLoadSupersession('any');
     void (async () => {
       // The cache is keyed by name, so a cached blob is only THIS file when its
       // size matches too; another file of the same name is prompted, not loaded.
@@ -72,8 +76,11 @@ export function useReloadResume(
         });
         return file && file.size === entry.size ? file : null;
       }));
-      const files = cached.filter((file): file is File => file !== null);
-      const missing = intent.files.filter((_, i) => cached[i] === null);
+      const superseded = supersession.signal.aborted;
+      supersession.stop();
+      const files = superseded ? [] : cached.filter((file): file is File => file !== null);
+      // Superseded files are still named, never dropped: the prompt lets the user reopen them.
+      const missing = superseded ? intent.files : intent.files.filter((_, i) => cached[i] === null);
       if (files.length > 0) {
         routeRef.current(files);
         if (intent.trigger === 'automatic') noteAutomaticReopen();

@@ -62,6 +62,7 @@ export const bcfDraftsFr = {
   'bcfDrafts.reconcile.apply': 'Appliquer',
   'bcfDrafts.reconcile.applyTo': 'Appliquer la proposition à {title}',
   'bcfDrafts.reconcile.stale': 'Le lot a changé depuis la comparaison ; comparez à nouveau.',
+  'bcfDrafts.reconcile.failed': 'La modification n’a pas pu être appliquée ; le lot est inchangé. {message}',
   'bcfDrafts.reconcile.unplaced': { one: '{count} nouvelle correspondance de groupe pourrait appartenir à plusieurs sujets scindés.', many: '{count} de nouvelles correspondances de groupe pourraient appartenir à plusieurs sujets scindés.', other: '{count} nouvelles correspondances de groupe pourraient appartenir à plusieurs sujets scindés.' },
   'bcfDrafts.reconcile.draftUnplaced': 'En rédiger un nouveau sujet',
   'bcfDrafts.reconcile.unplacedTitle': 'Nouvelles correspondances',

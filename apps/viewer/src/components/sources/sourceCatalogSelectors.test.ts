@@ -42,8 +42,10 @@ describe('sourceCatalogSelectors', () => {
     // gate would otherwise fire before the first listing lands.
     assert.equal(isCatalogComplete(empty, empty), false);
 
-    assert.equal(isCatalogComplete(new Map([['fa1', page([{ id: 'a' }])]]), empty), true);
-    assert.equal(isCatalogComplete(empty, new Map([['fa1', page([{ id: 'f' }])]])), true);
+    assert.equal(isCatalogComplete(new Map([['fa1', page([{ id: 'a' }])]]), empty), false);
+    assert.equal(isCatalogComplete(empty, new Map([['fa1', page([{ id: 'f' }])]])), false);
+
+    assert.equal(isCatalogComplete(new Map([['fa1', page([])]]), new Map([['fa1', page([])]])), true);
 
     // A cursor on either side means more is outstanding.
     assert.equal(isCatalogComplete(new Map([['fa1', page([], 'next')]]), empty), false);

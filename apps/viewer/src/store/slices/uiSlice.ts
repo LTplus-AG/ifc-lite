@@ -8,12 +8,7 @@
 
 import type { StateCreator } from 'zustand';
 import type { StandaloneArtifactLibraries } from '@/lib/storage/artifact-backup.js';
-import {
-  RIBBON_COLLAPSED_STORAGE_KEY,
-  RIBBON_CONTEXTUAL_TABS_STORAGE_KEY,
-  UI_DEFAULTS,
-  type RibbonTabId,
-} from '../constants.js';
+import { RIBBON_COLLAPSED_STORAGE_KEY, RIBBON_CONTEXTUAL_TABS_STORAGE_KEY, UI_DEFAULTS, type RibbonTabId } from '../constants.js';
 import {
   createGeometryLoadSettings,
   geometryLoadSettingsInitialState,
@@ -27,8 +22,10 @@ import type { GeometryResult } from '@ifc-lite/geometry';
 import type { CesiumPlacementDraft } from './cesiumSlice.js';
 import { applyThemeClasses, hasLoadedModel, initialPointerInput, initialShowPerformanceStats, persistShowPerformanceStats } from './uiSlice.helpers.js';
 import type { NavigationPreset } from '@/lib/navigation/presets.js';
+import type { WheelZoomSensitivity } from '@/lib/navigation/wheel-input.js';
+import { DESKTOP_FORM_FACTOR, type FormFactor } from '@/lib/layout/form-factor.js';
 import type { SelectedDirectrixSegment } from '@/lib/analytic/segment-selection.js';
-import { getInitialHierarchyMode, getInitialNavigationPreset, persistHierarchyMode, persistNavigationPreset } from './uiPreferences.js';
+import { getInitialHierarchyMode, getInitialNavigationPreset, getInitialWheelZoomSensitivity, persistHierarchyMode, persistNavigationPreset, persistWheelZoomSensitivity } from './uiPreferences.js';
 
 export type ThemeMode = 'light' | 'dark' | 'colorful';
 export type { GeometryReloadReason } from './geometryLoadSettings.js';
@@ -127,10 +124,14 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   pendingStandaloneArtifactImport: StandaloneArtifactLibraries | null;
   contentStorageActionBusy: boolean;
   theme: ThemeMode;
+  /** Derived: `formFactor.mode !== 'desktop'`, written only by `setFormFactor`. */
   isMobile: boolean;
+  /** The classified window (#9718), from `useMobileLayoutMode`. */
+  formFactor: FormFactor;
   hoverTooltipsEnabled: boolean;
   showPerformanceStats: boolean;
   navigationPreset: NavigationPreset;
+  wheelZoomSensitivity: WheelZoomSensitivity; // every view's wheel zoom, saved per browser (#9507)
   visualEnhancementsEnabled: boolean;
   /** Show exact authored swept-disk directrices for selected IFC products. */
   centrelineOverlayEnabled: boolean;
@@ -173,10 +174,11 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   toggleTheme: () => void;
   /** Shift+click secret: toggle colorful mode on/off */
   toggleColorful: () => void;
-  setIsMobile: (isMobile: boolean) => void;
+  setFormFactor: (formFactor: FormFactor) => void;
   toggleHoverTooltips: () => void;
   setShowPerformanceStats: (enabled: boolean) => void;
   setNavigationPreset: (preset: NavigationPreset) => void;
+  setWheelZoomSensitivity: (sensitivity: WheelZoomSensitivity) => void;
   setVisualEnhancementsEnabled: (enabled: boolean) => void;
   setCentrelineOverlayEnabled: (enabled: boolean) => void;
   setSelectedDirectrixSegment: (segment: SelectedDirectrixSegment | null) => void;
@@ -225,9 +227,11 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   contentStorageActionBusy: false,
   theme: UI_DEFAULTS.THEME,
   isMobile: false,
+  formFactor: DESKTOP_FORM_FACTOR,
   hoverTooltipsEnabled: UI_DEFAULTS.HOVER_TOOLTIPS_ENABLED,
   showPerformanceStats: initialShowPerformanceStats(),
   navigationPreset: getInitialNavigationPreset(),
+  wheelZoomSensitivity: getInitialWheelZoomSensitivity(),
   visualEnhancementsEnabled: UI_DEFAULTS.VISUAL_ENHANCEMENTS_ENABLED,
   centrelineOverlayEnabled: false,
   selectedDirectrixSegment: null,
@@ -280,14 +284,11 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
     set({ activeTool });
   },
   setEditEnabled: (editEnabled) => {
-    // Edit mode is the Model workspace's (#6232): entering or leaving goes
-    // through the session slice, which keeps `editEnabled` in step (no
-    // editable model = no workspace = edit mode stays off). The bare flag is
-    // for a UISlice composed without the session slice.
+    // Data edits no longer need this flag (#9296). Turning edit mode on is
+    // for geometry and authoring, so it enters Model, which keeps the flag in
+    // step; the bare flag is for a UISlice composed without the session slice.
     const cross = get() as unknown as WorkspaceCrossSlice;
     if (editEnabled) {
-      // Collab role gate: only editor/admin (or single-user, role===null)
-      // may enter edit mode — the single chokepoint for every authoring surface.
       if (cross.canCollabEdit && !cross.canCollabEdit()) return;
       if (cross.enterModelWorkspace) cross.enterModelWorkspace();
       else set({ editEnabled: true });
@@ -309,7 +310,10 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
     }));
   },
   toggleEditEnabled: () => {
-    get().setEditEnabled(!get().editEnabled);
+    const cross = get() as unknown as WorkspaceCrossSlice;
+    if (cross.workspaceMode === 'model') cross.exitModelWorkspace?.();
+    else if (cross.enterModelWorkspace) cross.enterModelWorkspace();
+    else get().setEditEnabled(!get().editEnabled);
   },
 
   setPropertiesActiveTab: (propertiesActiveTab) => set({ propertiesActiveTab }),
@@ -347,7 +351,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
     set({ theme: newTheme });
   },
 
-  setIsMobile: (isMobile) => set({ isMobile }),
+  setFormFactor: (formFactor) => set({ formFactor, isMobile: formFactor.mode !== 'desktop' }),
   toggleHoverTooltips: () => set((state) => ({ hoverTooltipsEnabled: !state.hoverTooltipsEnabled })),
   setShowPerformanceStats: (showPerformanceStats) => {
     persistShowPerformanceStats(showPerformanceStats);
@@ -356,6 +360,10 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   setNavigationPreset: (navigationPreset) => {
     persistNavigationPreset(navigationPreset);
     set({ navigationPreset });
+  },
+  setWheelZoomSensitivity: (wheelZoomSensitivity) => {
+    persistWheelZoomSensitivity(wheelZoomSensitivity);
+    set({ wheelZoomSensitivity });
   },
   setVisualEnhancementsEnabled: (visualEnhancementsEnabled) => set({ visualEnhancementsEnabled }),
   setCentrelineOverlayEnabled: (centrelineOverlayEnabled) => set({ centrelineOverlayEnabled }),

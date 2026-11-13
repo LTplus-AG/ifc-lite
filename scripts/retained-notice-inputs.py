@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MPL-2.0
 """Semantic notice inputs; Python 3.11+ stdlib only, no SDK/Cargo/network.
 
-Walk the locked source closure of both shipped WASM roots. Workspace dev-only
+Walk the locked source closure of each shipped WASM root. Workspace dev-only
 edges are excluded using their manifests; optional and target-specific production
 edges are included conservatively. External lock entries already omit dev edges.
 Workspace versions, formatting and unrelated workflow fields are not evidence.
@@ -46,7 +46,7 @@ def inputs(root):
         return names
 
     closures = {}
-    for name in ['ifc-lite-wasm', 'ifc-lite-diff-wasm']:
+    for name in ['ifc-lite-wasm', 'ifc-lite-diff-wasm', 'ifc-lite-rhino-wasm']:
         seen = set()
         external = []
         pending = [resolve(name)]

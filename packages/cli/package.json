@@ -50,6 +50,7 @@
     "@ifc-lite/oci": "workspace:^",
     "@ifc-lite/parser": "workspace:^",
     "@ifc-lite/query": "workspace:^",
+    "@ifc-lite/rhino3dm": "workspace:^",
     "@ifc-lite/rules": "workspace:^",
     "@ifc-lite/sandbox": "workspace:^",
     "@ifc-lite/sdk": "workspace:^",
@@ -58,6 +59,7 @@
     "@ifc-lite/wasm": "workspace:^"
   },
   "devDependencies": {
+    "rhino3dm": "8.35.0",
     "@ifc-lite/bcf-api": "workspace:^",
     "@mergifyio/vitest": "^2026.10.11",
     "@types/node": "^26.6.4",

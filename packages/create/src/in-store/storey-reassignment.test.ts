@@ -286,7 +286,8 @@ it('#7328 destination candidates reuse one effective Root inventory and match in
     destinations.push(s.editor.addEntity('IfcBuildingStorey', attributes).expressId);
   }
   const before = s.snapshot(), text = s.text();
-  const extraction = vi.spyOn(s.view, 'getNewEntities');
+  // Enumeration reads created classes through the payload-free kinds (#8452).
+  const extraction = vi.spyOn(s.view, 'readNewEntityKinds');
   const candidates = planStoreyReassignmentCandidates(s.store, s.view, [s.id], 42, destinations);
   const batchScans = extraction.mock.calls.length; extraction.mockClear();
   const independent = destinations.map(id => planStoreyReassignment(s.store, s.view, [s.id], 42, id));

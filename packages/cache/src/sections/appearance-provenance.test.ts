@@ -41,14 +41,14 @@ describe('canonical cache provenance #4243', () => {
     const oldRecord = record(input).slice(0, -1 - TRAILER_BYTES);
     const head = new BufferWriter();
     head.writeUint32(1); head.writeUint32(3); head.writeUint32(1);
-    // The current writer emits the v20 frame flag and two v24 scalar flags.
+    // The current writer emits the v20 frame flag, two v24 scalar flags and the v27 site-origin flag.
     // This literal v18 head has none: retain the preceding coordinate prefix.
     const currentCoordinateInfo = new Uint8Array((() => {
       const writer = new BufferWriter();
       writeCoordinateInfo(writer, coordinateInfo);
       return writer.build();
     })());
-    head.writeBytes(currentCoordinateInfo.subarray(0, currentCoordinateInfo.length - 3));
+    head.writeBytes(currentCoordinateInfo.subarray(0, currentCoordinateInfo.length - 4));
     head.writeUint32(1); // v18 chunk count, no v19 source pool.
     const headLength = head.position + 44;
     const out = new BufferWriter();

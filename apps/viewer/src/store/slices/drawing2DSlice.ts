@@ -11,7 +11,10 @@ import type { StateCreator } from 'zustand';
 import type { Drawing2D, DxfPlacement, DxfUnderlay, GraphicOverrideRule, GraphicOverridePreset } from '@ifc-lite/drawing-2d';
 import { BUILT_IN_PRESETS } from '@ifc-lite/drawing-2d';
 import type { DxfReferenceFrame } from '@/hooks/dxfReferencePlane';
+import type { SectionPlane } from '../section-types';
 import { createDxfUnderlayActions } from './drawing2DSlice.dxfActions';
+import { createDimension2DActions, getDefaultDimension2DState, moveDimension2D, type Dimension2DActions, type Dimension2DState } from './drawing2DDimensions';
+export type { Dimension2D, Dimension2DOrientation } from './drawing2DDimensions';
 import { validateDrawingDisplayOptions } from '@/lib/drawing/projection-depth';
 import { DEFAULT_SCAN_SECTION_THICKNESS } from '@/hooks/scanSectionMath';
 import { DEFAULT_SCAN_OUTLINE_MAX_GAP } from '@/lib/scan-outline/scan-outline';
@@ -19,8 +22,11 @@ import { isDegenerateMeasurement, isDegenerateArea, isDegenerateCloud } from './
 
 export type Drawing2DStatus = 'idle' | 'generating' | 'ready' | 'error';
 
+/** The semantic cut a drawing was generated at (see `drawnSectionPlane`). */
+export type DrawnSectionPlane = Pick<SectionPlane, 'axis' | 'position' | 'flipped' | 'custom'>;
+
 /** Active 2D annotation tool */
-export type Annotation2DTool = 'none' | 'measure' | 'polygon-area' | 'text' | 'cloud';
+export type Annotation2DTool = 'none' | 'measure' | 'polygon-area' | 'text' | 'cloud' | 'tag' | 'dimension';
 
 /** Point in 2D drawing coordinates */
 export interface Point2D {
@@ -63,9 +69,19 @@ export interface CloudAnnotation2D {
   label: string;      // Optional label text inside cloud
 }
 
+/** Entity-bound markup; labels are always resolved from current IFC data. */
+export interface TagAnnotation2D {
+  id: string;
+  modelId: string;
+  entityId: number;
+  anchor: Point2D;
+  offset: Point2D;
+  template: 'auto';
+}
+
 /** Reference to a selected annotation */
 export interface SelectedAnnotation2D {
-  type: 'measure' | 'polygon' | 'text' | 'cloud';
+  type: 'measure' | 'polygon' | 'text' | 'cloud' | 'tag' | 'dimension';
   id: string;
 }
 
@@ -127,9 +143,15 @@ export interface DxfUnderlayState {
   referenceFrame?: DxfReferenceFrame;
 }
 
-export interface Drawing2DState {
+export interface Drawing2DState extends Dimension2DState {
   /** Current drawing data (null when not generated) */
   drawing2D: Drawing2D | null;
+  /**
+   * The cut `drawing2D` was generated at, published with it by `setDrawing2D`
+   * and cleared with it. The live `sectionPlane` moves first; until the next
+   * drawing lands, export and the canvas describe this one (`drawnSectionPlane`).
+   */
+  drawing2DPlane: DrawnSectionPlane | null;
   /** Generation status */
   drawing2DStatus: Drawing2DStatus;
   /** Generation progress (0-100) */
@@ -239,6 +261,7 @@ export interface Drawing2DState {
 
   // Text Annotations
   /** Placed text annotations */
+  tagAnnotations2D: TagAnnotation2D[];
   textAnnotations2D: TextAnnotation2D[];
   /** ID of text annotation currently being edited (null = none) */
   textAnnotation2DEditing: string | null;
@@ -258,9 +281,9 @@ export interface Drawing2DState {
   dxfUnderlays: DxfUnderlayState[];
 }
 
-export interface Drawing2DSlice extends Drawing2DState {
+export interface Drawing2DSlice extends Drawing2DState, Dimension2DActions {
   // Drawing Actions
-  setDrawing2D: (drawing: Drawing2D | null) => void;
+  setDrawing2D: (drawing: Drawing2D | null, plane?: DrawnSectionPlane) => void;
   setDrawing2DStatus: (status: Drawing2DStatus) => void;
   setDrawing2DProgress: (progress: number, phase: string) => void;
   setDrawing2DError: (error: string | null) => void;
@@ -312,6 +335,8 @@ export interface Drawing2DSlice extends Drawing2DState {
   clearPolygonArea2DResults: () => void;
 
   // Text Annotation Actions
+  addTagAnnotation2D: (tag: TagAnnotation2D) => void;
+  updateTagAnnotation2D: (id: string, offset: Point2D) => void;
   addTextAnnotation2D: (annotation: TextAnnotation2D) => void;
   updateTextAnnotation2D: (id: string, updates: Partial<TextAnnotation2D>) => void;
   removeTextAnnotation2D: (id: string) => void;
@@ -334,7 +359,7 @@ export interface Drawing2DSlice extends Drawing2DState {
   moveAnnotation2D: (sel: SelectedAnnotation2D, newOrigin: Point2D) => void;
 
   // Bulk Actions
-  /** Clear all annotations (measurements, polygons, text, clouds) */
+  /** Clear all annotations (measurements, polygons, text, clouds, dimensions) */
   clearAllAnnotations2D: () => void;
 
   // DXF Underlay Actions (issue #1782)
@@ -390,6 +415,7 @@ const getDefaultDisplayOptions = (): Drawing2DState['drawing2DDisplayOptions'] =
 
 export const getDefaultDrawing2DState = (): Drawing2DState => ({
   drawing2D: null,
+  drawing2DPlane: null,
   drawing2DStatus: 'idle',
   drawing2DProgress: 0,
   drawing2DPhase: '',
@@ -416,10 +442,12 @@ export const getDefaultDrawing2DState = (): Drawing2DState => ({
   annotation2DCursorPos: null,
   polygonArea2DPoints: [],
   polygonArea2DResults: [],
+  tagAnnotations2D: [],
   textAnnotations2D: [],
   textAnnotation2DEditing: null,
   cloudAnnotation2DPoints: [],
   cloudAnnotations2D: [],
+  ...getDefaultDimension2DState(),
   // Selection
   selectedAnnotation2D: null,
   // DXF underlays
@@ -431,8 +459,9 @@ export const createDrawing2DSlice: StateCreator<Drawing2DSlice, [], [], Drawing2
   ...getDefaultDrawing2DState(),
 
   // Drawing Actions
-  setDrawing2D: (drawing) => set({
+  setDrawing2D: (drawing, plane) => set({
     drawing2D: drawing,
+    drawing2DPlane: drawing ? plane ?? null : null,
     drawing2DStatus: drawing ? 'ready' : 'idle',
     drawing2DError: null,
   }),
@@ -466,6 +495,7 @@ export const createDrawing2DSlice: StateCreator<Drawing2DSlice, [], [], Drawing2
   // would wipe) untouched.
   clearDrawing2D: () => set({
     drawing2D: null,
+    drawing2DPlane: null,
     drawing2DStatus: 'idle',
     drawing2DProgress: 0,
     drawing2DPhase: '',
@@ -637,6 +667,7 @@ export const createDrawing2DSlice: StateCreator<Drawing2DSlice, [], [], Drawing2
       measure2DSnapPoint: null,
       polygonArea2DPoints: [],
       cloudAnnotation2DPoints: [],
+      dimension2DPoints: [],
       textAnnotation2DEditing: null,
       selectedAnnotation2D: null,
     };
@@ -679,6 +710,9 @@ export const createDrawing2DSlice: StateCreator<Drawing2DSlice, [], [], Drawing2
   })),
 
   clearPolygonArea2DResults: () => set({ polygonArea2DResults: [] }),
+
+  addTagAnnotation2D: tag => set(state => ({ tagAnnotations2D: [...state.tagAnnotations2D, tag] })),
+  updateTagAnnotation2D: (id, offset) => set(state => ({ tagAnnotations2D: state.tagAnnotations2D.map(tag => tag.id === id ? { ...tag, offset } : tag) })),
 
   // Text Annotation Actions
   addTextAnnotation2D: (annotation) => set((state) => ({
@@ -747,6 +781,9 @@ export const createDrawing2DSlice: StateCreator<Drawing2DSlice, [], [], Drawing2
     if (!sel) return;
 
     switch (sel.type) {
+      case 'tag':
+        set({ tagAnnotations2D: state.tagAnnotations2D.filter(tag => tag.id !== sel.id), selectedAnnotation2D: null });
+        break;
       case 'measure':
         set({ measure2DResults: state.measure2DResults.filter((r) => r.id !== sel.id), selectedAnnotation2D: null });
         break;
@@ -762,6 +799,9 @@ export const createDrawing2DSlice: StateCreator<Drawing2DSlice, [], [], Drawing2
         break;
       case 'cloud':
         set({ cloudAnnotations2D: state.cloudAnnotations2D.filter((a) => a.id !== sel.id), selectedAnnotation2D: null });
+        break;
+      case 'dimension':
+        set({ dimensions2D: state.dimensions2D.filter((d) => d.id !== sel.id), selectedAnnotation2D: null });
         break;
     }
   },
@@ -805,10 +845,14 @@ export const createDrawing2DSlice: StateCreator<Drawing2DSlice, [], [], Drawing2
         ) });
         break;
       }
+      case 'dimension':
+        set({ dimensions2D: moveDimension2D(state.dimensions2D, sel.id, newOrigin) });
+        break;
     }
   },
 
   ...createDxfUnderlayActions(set),
+  ...createDimension2DActions(set, get),
 
   // Bulk Actions
   clearAllAnnotations2D: () => set({
@@ -820,10 +864,12 @@ export const createDrawing2DSlice: StateCreator<Drawing2DSlice, [], [], Drawing2
     measure2DSnapPoint: null,
     polygonArea2DPoints: [],
     polygonArea2DResults: [],
-    textAnnotations2D: [],
+    tagAnnotations2D: [],
+  textAnnotations2D: [],
     textAnnotation2DEditing: null,
     cloudAnnotation2DPoints: [],
     cloudAnnotations2D: [],
+    ...getDefaultDimension2DState(),
     annotation2DCursorPos: null,
     selectedAnnotation2D: null,
   }),

@@ -8,7 +8,6 @@ import { CooperativeControl } from './cooperative-control.js';
 import { cloneCooperatively } from './cooperative-clone.js';
 import { cooperativeOverlay, type OverlaySnapshot } from './cooperative-overlay-access.js';
 import { sameOverlayValue } from './overlay-value-equality.js';
-import { executeEntityOperation } from './execute-entity-operation.js';
 import type { EntityOperation, EntityOperationEffect, EntityPreparationOptions, PreparedEntityOperations } from './cooperative-operation-types.js';
 
 /** Package-private composition; the public owner is StoreEditor. */
@@ -58,6 +57,9 @@ export async function prepareEntityOperations(
     // All draft inputs are now private. No asynchronous callback receives them.
     const draft = live!.draft(await cloneCooperatively(original, control));
     const editor = createEditor(draft);
+    // Keep synchronous input/source capture above; execution is only needed
+    // once this asynchronous action owns its checkpoints.
+    const { executeEntityOperation } = await import('./execute-entity-operation.js');
     const oldHistory = new Set<string>();
     for (const mutation of original.mutationHistory) {
       oldHistory.add(mutation.id);

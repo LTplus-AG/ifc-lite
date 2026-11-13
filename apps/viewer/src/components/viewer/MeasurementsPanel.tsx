@@ -15,7 +15,8 @@
  * the tool is closed because finished measurements outlive the gesture.
  */
 
-import { useEffect, useState } from 'react';
+import { consumeMeasurementDestination, useMeasurementDestination } from '@/lib/panels/measurement-destination';
+import { useEffect, useRef, useState } from 'react';
 import { Boxes, Crosshair, List, Ruler, Trash2, X } from 'lucide-react';
 import { IconButton } from '@/components/ui/icon-button';
 import { useDialogs } from '@/components/ui/confirm-dialog';
@@ -43,15 +44,20 @@ export function MeasurementsPanel({ onClose }: { onClose?: () => void }) {
   const { t } = useTranslation();
   const { confirmDialog } = useDialogs();
   const pointMode = useViewerStore((s) => s.activeTool === 'measure' && s.measureMode === 'point');
-  const [tab, setTab] = useState<PanelTab>(pointMode ? 'point' : 'list');
-  // Choosing Point mode (#8770) brings its readout forward; the user can
-  // still switch tabs afterwards.
-  useEffect(() => { if (pointMode) setTab('point'); }, [pointMode]);
-  // On touch, an open Polyline or Radius brings List forward: its live row
-  // holds the only Finish a finger has (#8991). A mouse user has Enter and
-  // double-click, so their chosen tab is left alone.
+  const destination = useMeasurementDestination();
+  const [tab, setTab] = useState<PanelTab>(destination.revision && destination.tab ? destination.tab : pointMode ? 'point' : 'list');
+  const previousPointMode = useRef(pointMode);
+  // Touch sequences expose Finish in List; explicit palette destinations win.
   const sequenceOpen = useViewerStore((s) => s.pointerInput === 'touch' && (s.activePolyline !== null || s.activeRadius !== null));
-  useEffect(() => { if (sequenceOpen) setTab('list'); }, [sequenceOpen]);
+  const previousSequenceOpen = useRef(false);
+  useEffect(() => {
+    const requested = consumeMeasurementDestination(destination.revision);
+    if (requested) setTab(requested);
+    else if (sequenceOpen && !previousSequenceOpen.current) setTab('list');
+    else if (pointMode && !previousPointMode.current) setTab('point');
+    previousPointMode.current = pointMode;
+    previousSequenceOpen.current = sequenceOpen;
+  }, [destination, pointMode, sequenceOpen]);
   const clearMeasurements = useViewerStore((s) => s.clearMeasurements);
   const count = useViewerStore(
     (s) =>

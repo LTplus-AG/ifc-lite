@@ -18,7 +18,7 @@ import '../../test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { Camera } from '@ifc-lite/renderer';
-import { applyWheelZoom, type WheelZoomEvent } from './wheelZoom.js';
+import { applyWheelZoomStep } from './wheelZoom.js';
 import { createCentreSurfaceZoom, createZoomSurfacePicker, type SurfacePoint } from './zoomSurface.js';
 import { PIVOT_RAYCAST_MAX_INDICES } from './orbitPivotCensus.js';
 
@@ -63,9 +63,6 @@ function site(opts: SiteOptions = {}) {
   return { canvas, camera, renderer, raycasts, probes, pickSurface, getPickOptions, visibility };
 }
 
-function wheel(x: number, y: number): WheelZoomEvent {
-  return { deltaY: -120, ctrlKey: false, metaKey: false, clientX: x, clientY: y, preventDefault() {} };
-}
 
 /** Let the scheduled probe run and its readback land (a frame, here a macrotask). */
 const frame = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -74,7 +71,7 @@ const frame = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 async function zoomIn(s: ReturnType<typeof site>, n: number): Promise<number[]> {
   const zs: number[] = [];
   for (let i = 0; i < n; i++) {
-    applyWheelZoom(wheel(CURSOR.x, CURSOR.y), { camera: s.camera, canvas: s.canvas, fastZoom: false, fineModifierHeld: false, pickSurface: s.pickSurface });
+    applyWheelZoomStep(-120, { clientX: CURSOR.x, clientY: CURSOR.y }, { camera: s.camera, canvas: s.canvas, fastZoom: false, pickSurface: s.pickSurface });
     zs.push(s.camera.getPosition().z);
     await frame();
   }

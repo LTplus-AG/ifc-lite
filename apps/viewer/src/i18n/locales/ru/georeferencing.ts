@@ -63,8 +63,12 @@ export const georeferencingRu = {
     one: "Его поле {fields} также не применяется: на координатах масштаба карты оно изменило бы масштаб модели относительно начала координат карты.",
     other: "Его поля {fields} также не применяются: на координатах масштаба карты они изменили бы масштаб модели относительно начала координат карты.",
   },
+  "properties.georef.rawValuesSiteAnchorFix": "Значения файла показаны ниже в точности так, как они заданы. Исправьте размещение IfcSite в программе-источнике, чтобы оно использовало единицы длины файла; никакое изменение IfcMapConversion здесь не может выразить эту поправку.",
   "properties.georef.correctionOffsets": "установите Eastings и Northings равными 0",
+  "properties.georef.siteAnchorUnitNote": "Размещение IfcSite записывает эти координаты в единицах карты вместо единиц длины файла (коэффициент {ratio}), поэтому ifc-lite масштабирует привязку участка.",
   "properties.georef.correctionAngle": "установите поворот модели в координатах карты равным 0",
+  "properties.georef.siteAnchorHeightCorrected": "Высота исправляется таким же образом.",
+  "properties.georef.siteAnchorHeightUncorrected": "Высота в этом размещении не исправляется; проверьте отметку.",
   "properties.georef.correctionScale": "установите Scale равным {value}",
   "properties.georef.rawValuesCorrection": "Ниже показаны исходные значения файла в точности как заданы автором. Стоит исправить экспорт в исходной программе; чтобы применить исправление здесь, {edits}, затем используйте Экспортировать IFC (с изменениями).",
   "properties.georef.rawValuesCorrectionFactor": {

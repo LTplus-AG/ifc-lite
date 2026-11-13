@@ -37,6 +37,7 @@ import { appearanceWorkflowsEn } from './catalogues/appearance-workflows.en';
 import { bcfEn } from './catalogues/bcf.en';
 import { bcfDraftsEn } from './catalogues/bcf-drafts.en';
 import { clashGroupsEn } from './catalogues/clash-groups.en';
+import { clashQualityEn } from './catalogues/clash-quality.en';
 import { clashToolsEn } from './catalogues/clash-tools.en';
 import { bulkPropertyEditorEn } from './catalogues/bulk-property-editor.en';
 import { ionUploadEn } from './catalogues/ion-upload.en';
@@ -102,6 +103,7 @@ import { settingsEn } from './catalogues/settings.en';
 import { layersPanelEn } from './catalogues/layers-panel.en';
 import { landXmlEn } from './catalogues/landxml.en';
 import { landXmlTerrainExportEn } from './catalogues/landxml-terrain-export.en';
+import { rhinoExportEn } from './catalogues/rhino-export.en';
 import { terrainImageryEn } from './catalogues/terrain-imagery.en';
 import { lensPanelEn } from './catalogues/lens-panel.en';
 import { propertyEditorEn } from './catalogues/property-editor.en';
@@ -298,6 +300,7 @@ export const en = {
   ...assistantArtifactsEn,
   ...clashPanelEn,
   ...clashToolsEn,
+  ...clashQualityEn,
   ...bcfEn,
   ...bcfDraftsEn,
   ...layersPanelEn,
@@ -312,6 +315,7 @@ export const en = {
   ...zonesPanelEn,
   ...dataConnectorEn,
   ...geometryExportDialogsEn,
+  ...rhinoExportEn,
   ...miscPanelsBEn,
   ...viewportLightingEn,
   ...miscPanelsAEn,

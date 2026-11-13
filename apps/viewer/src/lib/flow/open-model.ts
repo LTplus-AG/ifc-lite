@@ -18,19 +18,14 @@ export type AddModel = (file: File, options?: { readonly name?: string; readonly
 
 export type OpenModel = NonNullable<FlowHost['openModel']>;
 
-/**
- * `isRegistered` is the store check: `addModel` returns `null` both on a real
- * failure and when a concurrent load superseded its session after the model
- * registered, so "in the store" is the success test (as `syncSourceModel`).
- */
-export function createViewerOpenModel(addModel: AddModel, isRegistered: (modelId: string) => boolean): OpenModel {
+/** `addModel` resolves to the id exactly when the model registered, so its result is the success test. */
+export function createViewerOpenModel(addModel: AddModel): OpenModel {
   return async (bytes, name) => {
     // `name` came from a remote server: sanitize it once, before it reaches a File or the model list.
     const safeName = sanitizeFilename(name, { fallback: 'model.ifc' });
     const file = new File([bytes.slice()], safeName);
-    const modelId = crypto.randomUUID();
-    const added = await enqueueSourceLoad(() => addModel(file, { name: safeName, modelId }));
-    if (added === null && !isRegistered(modelId)) throw new Error(`model.openFromSource: ${safeName} could not be loaded`);
+    const modelId = await enqueueSourceLoad(() => addModel(file, { name: safeName }));
+    if (modelId === null) throw new Error(`model.openFromSource: ${safeName} could not be loaded`);
     return { modelId };
   };
 }

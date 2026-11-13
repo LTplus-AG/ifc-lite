@@ -19,6 +19,7 @@ import {
   buildKmzForResolvedGeoref,
   computeKmzAltitude,
   kmzSuggestsAbsoluteAltitude,
+  resolveKmzAltitude,
   resolveKmzHeading,
 } from './kmz-export.js';
 
@@ -279,5 +280,25 @@ describe('buildKmzForResolvedGeoref — the model is not the flat mesh list', ()
       [107, 142],
       'the federated model\'s own instanced occurrence (142) is adopted; the other model\'s (42) is not',
     );
+  });
+});
+
+describe('resolveKmzAltitude (#9480)', () => {
+  it('writes the site height the World view uses for a unit-slipped site', () => {
+    // Millimetre file, site at the UTM anchor's metre numbers, Z 14 read as 0.014 m.
+    const bounds = { min: { x: -1, y: 0, z: -1 }, max: { x: 1, y: 0, z: 1 } };
+    const coordinateInfo: CoordinateInfo = {
+      originShift: { x: 0, y: 0, z: 0 }, originalBounds: bounds, shiftedBounds: bounds, hasLargeCoordinates: false,
+      wasmRtcOffset: { x: 311.98818054, y: 5996.14856499, z: 0.014 }, lengthUnitScale: 0.001,
+      siteOrigin: { x: 311.98818054, y: 5996.14856499, z: 0.014 },
+    };
+    const conversion: MapConversion = {
+      id: 60, sourceCRS: 41, targetCRS: 58, eastings: 311988.181, northings: 5996148.565,
+      orthogonalHeight: 0, xAxisAbscissa: 0, xAxisOrdinate: 1,
+    };
+    const crs = { mapUnitScale: 1 };
+    assert.ok(Math.abs(resolveKmzAltitude(conversion, crs, 0.001, coordinateInfo) - 14) < 1e-9);
+    const { siteOrigin: _drop, ...withoutSite } = coordinateInfo;
+    assert.ok(Math.abs(resolveKmzAltitude(conversion, crs, 0.001, withoutSite) - 0.014) < 1e-9);
   });
 });

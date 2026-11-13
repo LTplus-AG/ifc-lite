@@ -65,7 +65,7 @@ describe('ScanDetectionSection (#6894)', () => {
     const ui = render(<ScanDetectionSection deps={deps} />);
     assert.match(ui.textContent ?? '', /Proposals for ifc \(IFC4\)/);
     click(buttonNamed(ui, 'Detect elements'));
-    await waitFor(() => useViewerStore.getState().scanDetectionStatus === 'done', 'detection finished');
+    await waitFor(() => useViewerStore.getState().scanDetectionJob.kind === 'succeeded', 'detection finished');
     await waitFor(() => rows(ui).length > 0, 'rows rendered');
     const run = useViewerStore.getState().scanDetectionRun!;
     assert.equal(run.sourceModelId, 'scan');

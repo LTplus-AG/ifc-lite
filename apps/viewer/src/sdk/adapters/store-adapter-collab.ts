@@ -98,6 +98,8 @@ export function ensureSourceRoomEntities(
     index: number;
     value: Parameters<StoreEditor['setPositionalAttribute']>[2];
   },
+  /** Creation metadata shares the graph's transaction and shell rollback. */
+  afterPublish?: () => void,
 ): boolean {
   const pending = Array.from(roots);
   const visited = new Set<number>();
@@ -161,6 +163,7 @@ export function ensureSourceRoomEntities(
           store.getState().mirrorAttributeEdit(modelId, entry.expressId, name, value);
         }
       });
+      afterPublish?.();
       return true;
     } catch (error) {
       // Yjs transactions do not roll back on throw. Remove this call's new

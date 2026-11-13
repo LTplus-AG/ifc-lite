@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { CooperativeControl } from './cooperative-control.js';
+import { entityAttributeData } from './entity-read-barrier.js';
 
 type Copy = (value: unknown) => unknown;
 type Frame = Iterator<void>;
@@ -56,7 +57,8 @@ export async function cloneCooperatively<T>(input: T, control: CooperativeContro
       for (const key in value) {
         charge(48 + key.length * 2);
         if (!Object.hasOwn(value, key)) { yield; continue; }
-        const descriptor = Object.getOwnPropertyDescriptor(value, key);
+        const own = Object.getOwnPropertyDescriptor(value, key);
+        const descriptor = own && 'value' in own ? own : entityAttributeData(value, key, own);
         if (!descriptor || !('value' in descriptor)) throw new TypeError('Accessors are unsupported during cooperative entity preparation.');
         Object.defineProperty(result, key, { value: copy(descriptor.value), enumerable: true, writable: true, configurable: true });
         yield;

@@ -118,13 +118,17 @@ test('RED: a template literal spelling the required call, with the real call del
       '    // Room model only — see `mirrorPlacementEdit`.\n' +
       '    const session = get().collabSession;\n' +
       '    const store = roomStoreFor(get(), modelId);\n' +
-      '    if (!session || !store || !docApi) return;',
+      '    const attempt = liveCollabAttempt();\n' +
+      '    const docApi = attempt?.apis?.doc;\n' +
+      '    if (!session || !store || !attempt || !docApi) return;',
     'mirrorEntityRemove: (modelId, entityId) => {\n' +
       '    // Room model only — see `mirrorPlacementEdit`.\n' +
       '    const session = get().collabSession;\n' +
       '    const debugMsg = `would call roomStoreFor(get(), modelId) here`;\n' +
       '    const store = null;\n' +
-      '    if (!session || !store || !docApi) return;',
+      '    const attempt = liveCollabAttempt();\n' +
+      '    const docApi = attempt?.apis?.doc;\n' +
+      '    if (!session || !store || !attempt || !docApi) return;',
   );
   const { status, out } = runOn({ collab });
   assert.equal(status, 1, out);
@@ -143,14 +147,18 @@ test('a `${...}` interpolation inside a template literal is scanned as real code
       '    // Room model only — see `mirrorPlacementEdit`.\n' +
       '    const session = get().collabSession;\n' +
       '    const store = roomStoreFor(get(), modelId);\n' +
-      '    if (!session || !store || !docApi) return;',
+      '    const attempt = liveCollabAttempt();\n' +
+      '    const docApi = attempt?.apis?.doc;\n' +
+      '    if (!session || !store || !attempt || !docApi) return;',
     'mirrorEntityRemove: (modelId, entityId) => {\n' +
       '    // Room model only — see `mirrorPlacementEdit`.\n' +
       '    const session = get().collabSession;\n' +
       // eslint-disable-next-line no-template-curly-in-string -- mutation payload: a real template literal in the SOURCE UNDER TEST
       '    const debugMsg = `active is ${get().activeModelId}`;\n' +
       '    const store = roomStoreFor(get(), modelId);\n' +
-      '    if (!session || !store || !docApi) return;',
+      '    const attempt = liveCollabAttempt();\n' +
+      '    const docApi = attempt?.apis?.doc;\n' +
+      '    if (!session || !store || !attempt || !docApi) return;',
   );
   const { status, out } = runOn({ collab });
   assert.equal(status, 1, out);

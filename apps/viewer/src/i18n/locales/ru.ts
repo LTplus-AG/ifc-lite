@@ -41,6 +41,7 @@ import { checkAuthoringRu } from './ru/check-authoring';
 import { clashGroupApplyRu } from './ru/clash-group-apply';
 import { clashGroupsRu } from './ru/clash-groups';
 import { clashPanelRu } from './ru/clash-panel';
+import { clashQualityRu } from './ru/clash-quality';
 import { clashToolsRu } from './ru/clash-tools';
 import { commandPaletteRu } from './ru/command-palette';
 import { commandsRu } from './ru/commands';
@@ -120,6 +121,7 @@ import { roomLayoutRu } from './ru/room-layout';
 import { roomReviewRu } from './ru/room-review';
 import { roomToolRu } from './ru/room-tool';
 import { scanToBimRu } from './ru/scan-to-bim';
+import { rhinoExportRu } from './ru/rhino-export';
 import { sceneActionsRu } from './ru/scene-actions';
 import { scheduleRu } from './ru/schedule';
 import { scriptPanelRu } from './ru/script-panel';
@@ -142,8 +144,10 @@ import { splitToolRu } from './ru/split-tool';
 import { stairRailingRu } from './ru/stair-railing';
 import { storeyContextRu } from './ru/storey-context';
 import { storeyManagerRu } from './ru/storey-manager';
+import { structuralGlyphsRu } from './ru/structural-glyphs';
 import { structuralPropertiesRu } from './ru/structural-properties';
 import { structuralReviewRu } from './ru/structural-review';
+import { structuralDeriveRu } from './ru/structural-derive';
 import { sweptDiskInspectionRu } from './ru/swept-disk-inspection';
 import { tableCorrectionsRu } from './ru/table-corrections';
 import { terrainImageryRu } from './ru/terrain-imagery';
@@ -198,6 +202,7 @@ export default {
   ...clashGroupApplyRu,
   ...clashGroupsRu,
   ...clashPanelRu,
+  ...clashQualityRu,
   ...clashToolsRu,
   ...commandPaletteRu,
   ...commandsRu,
@@ -277,6 +282,7 @@ export default {
   ...roomReviewRu,
   ...roomToolRu,
   ...scanToBimRu,
+  ...rhinoExportRu,
   ...sceneActionsRu,
   ...scheduleRu,
   ...scriptPanelRu,
@@ -299,8 +305,10 @@ export default {
   ...stairRailingRu,
   ...storeyContextRu,
   ...storeyManagerRu,
+  ...structuralGlyphsRu,
   ...structuralPropertiesRu,
   ...structuralReviewRu,
+  ...structuralDeriveRu,
   ...sweptDiskInspectionRu,
   ...tableCorrectionsRu,
   ...terrainImageryRu,

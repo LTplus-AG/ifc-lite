@@ -80,7 +80,7 @@ test('linked records pilot selects revision-scoped geometry and projects with pr
 
   // The actual Author/Model action creates the editable workspace; viewing alone cannot mutate IFC.
   await page.getByRole('tab', { name: 'Author', exact: true }).click();
-  await page.getByRole('tabpanel', { name: 'Author', exact: true }).getByRole('button', { name: 'Model', exact: true }).click();
+  await page.locator('[data-command-id="tool:edit-mode"]').click();
   await page.getByRole('tab', { name: 'Analyze', exact: true }).click();
   await page.getByRole('button', { name: 'Browse panels', exact: true }).click();
   await page.getByRole('menu').locator('[data-panel-id="semantic"]').click();

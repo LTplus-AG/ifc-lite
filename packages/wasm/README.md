@@ -179,6 +179,22 @@ pre-pass frame whenever these results accompany already-produced meshes.
 
 All classes implement `free()` and `[Symbol.dispose]()` — call `free()` (or use `using`) to release Rust-side memory.
 
+## Geometry-core engine (`@ifc-lite/wasm/core`)
+
+`@ifc-lite/wasm/core` is the same engine built without the exporters, LandXML,
+clash detection, point-cloud scan operations and PDF underlays
+(`--no-default-features` on `rust/wasm-bindings`; the `full` feature is
+everything else). Its binary is `pkg-core/ifc-lite_bg.wasm`, which the core glue exports as `ENGINE_BINARY_URL`. Meshing goes
+through the same code, so meshes are byte-identical
+(`scripts/check-wasm-core-identity.mjs`). It is meant to replace
+`@ifc-lite/wasm` wholesale through an exact bundler alias, so that
+`@ifc-lite/geometry` loads it in the page and in its workers; see
+[Geometry Processing, geometry-core](https://ifclite.dev/docs/guide/geometry/#smaller-engine-for-mesh-only-pages-geometry-core).
+Both glues export `ENGINE_BINARY_URL`: `null` for the full engine, the core
+binary's URL for the core one, so a shared compile fetches the binary the glue
+links against. Build it locally with `BUILD_CORE=1 scripts/build-wasm.sh`; the
+release build always includes it.
+
 ## When to use a higher-level package instead
 
 | You want… | Use |
@@ -310,6 +326,15 @@ distances and unresolved units, curves or placements fail explicitly. The
 `approximate` flag identifies supported approximation paths; it must be exposed
 to precision-sensitive consumers. Whole-source parsing belongs in a disposable
 worker when used by the viewer, so releasing the tool also releases WASM pages.
+
+## Rhino scene bindings
+
+The Rhino .3dm scene builder is a separate `@ifc-lite/wasm/rhino` payload, built
+from `rust/rhino-wasm` by `scripts/build-wasm.sh`, so the default engine never
+carries it. Initialize it explicitly (default asynchronous initializer or
+`initSync`), then call `exportRhinoScene(content, optionsJson)` and `free()` the
+returned `RhinoSceneJs`. `@ifc-lite/geometry`'s `exportRhinoScene` does this for
+you and loads the payload only on the first .3dm export.
 
 ## Rust diff bindings
 

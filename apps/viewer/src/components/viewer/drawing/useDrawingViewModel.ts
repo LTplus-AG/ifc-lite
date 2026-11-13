@@ -16,6 +16,7 @@ import { useViewerStore } from '@/store';
 import type { Annotation2DTool } from '@/store/slices/drawing2DSlice';
 import type { DrawingInspectorTab } from '@/store/slices/drawingInspectorSlice';
 import { useMeasure2D } from '@/hooks/useMeasure2D';
+import { useElementTags } from '@/hooks/useElementTags';
 import { useAnnotation2D } from '@/hooks/useAnnotation2D';
 import { useDrawingWithReferences } from '@/hooks/useReferenceImagesForDrawing';
 import { useDxfUnderlaysForDrawing } from '@/hooks/useDxfUnderlay';
@@ -25,6 +26,7 @@ import { useDrawingRuntime } from '@/lib/drawing/drawing-runtime';
 import type { CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key';
 import { resolveDrawingPaperTheme } from './paper-theme';
 import { toggledConstructionProjection } from '@/lib/drawing/construction-projection';
+import { drawnSectionPlane } from '@/lib/drawing/drawn-section-plane';
 
 /** The settings panels beside the canvas, as inspector tabs (#5495); they
  *  share one slot. Re-exported for the drawing/ subtree's existing imports. */
@@ -93,6 +95,7 @@ export function useDrawingViewModel() {
   const setTextAnnotation2DEditing = useViewerStore((s) => s.setTextAnnotation2DEditing);
   const cloudAnnotation2DPoints = useViewerStore((s) => s.cloudAnnotation2DPoints);
   const cloudAnnotations2D = useViewerStore((s) => s.cloudAnnotations2D);
+  const dimensions2D = useViewerStore((s) => s.dimensions2D);
   const addCloudAnnotation2DPoint = useViewerStore((s) => s.addCloudAnnotation2DPoint);
   const completeCloudAnnotation2D = useViewerStore((s) => s.completeCloudAnnotation2D);
   const cancelCloudAnnotation2D = useViewerStore((s) => s.cancelCloudAnnotation2D);
@@ -103,9 +106,11 @@ export function useDrawingViewModel() {
   const clearAllAnnotations2D = useViewerStore((s) => s.clearAllAnnotations2D);
 
   const sectionPlane = useViewerStore((s) => s.sectionPlane);
+  // Everything drawn with or exported from the drawing follows the cut it was generated at.
+  const drawnPlane = useViewerStore(drawnSectionPlane);
   const models = useViewerStore((s) => s.models);
   const dxfUnderlayData = useDxfUnderlaysForDrawing({enabled:status==='ready', plane:sourceDrawing?.config.plane,
-    sectionAxis:sectionPlane.axis,isCustomPlane:sectionPlane.custom!==undefined,flipped:sectionPlane.flipped,coordinateInfo:geometryResult?.coordinateInfo});
+    sectionAxis:drawnPlane.axis,isCustomPlane:drawnPlane.custom!==undefined,flipped:drawnPlane.flipped,coordinateInfo:geometryResult?.coordinateInfo});
   const drawing = useMemo(()=>drawingWithDxfBounds(rasterDrawing,dxfUnderlayData,hasRasterReferences),[rasterDrawing,dxfUnderlayData,hasRasterReferences]);
   const hasReferences = hasRasterReferences || dxfUnderlayData.some(r=>r.lines.length>0 || r.fills.length>0 || r.texts.length>0);
   // The references' own extent, which Fit always frames (#8802).
@@ -149,22 +154,24 @@ export function useDrawingViewModel() {
   }, [geometryResult]);
 
   const { viewTransform, setViewTransform, zoomIn, zoomOut, fitToView } = useViewControls({
-    drawing, sectionPlane, containerRef,
+    drawing, sectionPlane: drawnPlane, containerRef,
     // Mounted means on screen: the host only renders this view while it shows.
     panelVisible: true, status, sheetEnabled, activeSheet,
     isPinned, cachedSheetTransformRef, referenceBounds,
   });
 
   const measureHandlers = useMeasure2D({
-    drawing, viewTransform, setViewTransform, sectionAxis: sectionPlane.axis, containerRef,
+    drawing, viewTransform, setViewTransform, sectionAxis: drawnPlane.axis, containerRef,
     measure2DMode, measure2DStart, measure2DCurrent,
     measure2DShiftLocked, measure2DLockedAxis,
     setMeasure2DStart, setMeasure2DCurrent, setMeasure2DShiftLocked,
     setMeasure2DSnapPoint, cancelMeasure2D, completeMeasure2D,
   });
 
+  const elementTags = useElementTags(drawing, viewTransform, drawnPlane.axis, containerRef,
+    sheetEnabled && activeSheet ? { sheet: activeSheet, isPinned, cached: cachedSheetTransformRef.current } : undefined);
   const annotationHandlers = useAnnotation2D({
-    drawing, viewTransform, sectionAxis: sectionPlane.axis, containerRef,
+    drawing, viewTransform, sectionAxis: drawnPlane.axis, containerRef,
     activeTool: annotation2DActiveTool, setActiveTool: setAnnotation2DActiveTool,
     polygonArea2DPoints, addPolygonArea2DPoint, completePolygonArea2D, cancelPolygonArea2D,
     textAnnotations2D, addTextAnnotation2D, setTextAnnotation2DEditing,
@@ -176,6 +183,7 @@ export function useDrawingViewModel() {
 
   // Unified mouse handlers that dispatch to the right tool
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (elementTags.handleMouseDown(e)) return;
     if (annotation2DActiveTool === 'measure') {
       measureHandlers.handleMouseDown(e);
     } else if (annotation2DActiveTool === 'none') {
@@ -185,9 +193,10 @@ export function useDrawingViewModel() {
     } else {
       annotationHandlers.handleMouseDown(e);
     }
-  }, [annotation2DActiveTool, measureHandlers, annotationHandlers]);
+  }, [annotation2DActiveTool, measureHandlers, annotationHandlers, elementTags]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (elementTags.handleMouseMove(e)) return;
     // If dragging an annotation, let the annotation handler handle it
     if (annotationHandlers.isDraggingRef.current) {
       annotationHandlers.handleMouseMove(e);
@@ -198,7 +207,7 @@ export function useDrawingViewModel() {
     } else {
       annotationHandlers.handleMouseMove(e);
     }
-  }, [annotation2DActiveTool, measureHandlers, annotationHandlers]);
+  }, [annotation2DActiveTool, measureHandlers, annotationHandlers, elementTags]);
 
   const handleMouseUp = useCallback((e: React.MouseEvent) => {
     annotationHandlers.handleMouseUp(e);
@@ -271,10 +280,11 @@ export function useDrawingViewModel() {
   const markupCounts = useMemo(() => ({
     measurements: measure2DResults.length,
     areas: polygonArea2DResults.length,
-    texts: textAnnotations2D.length,
+    texts: textAnnotations2D.length + elementTags.texts.length,
     clouds: cloudAnnotations2D.length,
-  }), [measure2DResults.length, polygonArea2DResults.length, textAnnotations2D.length, cloudAnnotations2D.length]);
-  const hasMarkup = markupCounts.measurements + markupCounts.areas + markupCounts.texts + markupCounts.clouds > 0;
+    dimensions: dimensions2D.length,
+  }), [measure2DResults.length, polygonArea2DResults.length, textAnnotations2D.length, cloudAnnotations2D.length, elementTags.texts.length, dimensions2D.length]);
+  const hasMarkup = markupCounts.measurements + markupCounts.areas + markupCounts.texts + markupCounts.clouds + markupCounts.dimensions > 0;
 
   // Cursor style based on active tool
   const cursorClass = useMemo(() => {
@@ -283,6 +293,7 @@ export function useDrawingViewModel() {
       case 'measure':
       case 'polygon-area':
       case 'cloud':
+      case 'tag':
         return 'cursor-crosshair';
       case 'text':
         return 'cursor-text';
@@ -298,7 +309,10 @@ export function useDrawingViewModel() {
     activePresetId, overridesEnabled, overrideEngine, entityColorMap,
     dxfUnderlays, pointCloudClassMask,
     activeSheet, sheetEnabled, titleBlockEditorVisible, setTitleBlockEditorVisible,
-    sectionPlane,
+    sectionPlane, drawnPlane,
+    // Only a drawing the canvas shows can be exported: hidden behind a progress
+    // overlay or an error, the previous drawing is no longer the user's drawing.
+    exportableDrawing: status === 'ready' ? drawing : null,
     isPinned, togglePinned, containerRef, cachedSheetTransformRef,
     openDrawer, toggleDrawer, closeDrawer,
     viewTransform, zoomIn, zoomOut, fitToView,
@@ -306,7 +320,7 @@ export function useDrawingViewModel() {
     measure2DMode, measure2DStart, measure2DCurrent, measure2DResults, measure2DSnapPoint, measure2DShiftLocked,
     annotation2DActiveTool, selectTool, annotation2DCursorPos,
     polygonArea2DPoints, polygonArea2DResults,
-    textAnnotations2D, textAnnotation2DEditing, handleTextConfirm, handleTextCancel,
+    textAnnotations2D, tagTexts: elementTags.texts, textAnnotation2DEditing, handleTextConfirm, handleTextCancel,
     cloudAnnotation2DPoints, cloudAnnotations2D,
     selectedAnnotation2D, clearAllAnnotations2D, markupCounts, hasMarkup,
     toggleIfcAnnotations, toggleConstructionProjection, toggle3DOverlay, toggleSymbolicRepresentations,

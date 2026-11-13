@@ -1,6 +1,10 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { useInlineSearchHost } from './inline-search-focus';
+import { useErrorReportDestination } from '@/lib/error-reports/destination';
+import { useRetainedReportHost } from './retained-report-destination';
+import { useSplitWidth } from './model/model-layout';
 import { usePlacementGeorefContext } from '@/lib/geo/placement-georef-runtime';
 import { usePersistentToolHosts } from './PersistentToolHosts';
 
@@ -10,10 +14,10 @@ import { usePersistentToolHosts } from './PersistentToolHosts';
 
 import { useContext, useCallback, useEffect, useLayoutEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Dialog, DialogClose, DialogContent } from '@/components/ui/dialog';
-import { toast } from '@/components/ui/toast';
-import { Search, X } from 'lucide-react';
 import { PaletteLauncherContext } from './command-palette-launcher';
 import { PALETTE_DIALOG_LAYOUT, PALETTE_DIALOG_TOP } from './command-palette-layout';
+import { toast } from '@/components/ui/toast';
+import { Search, X } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { readCopyClipboard, subscribeCopyClipboard } from '@/lib/commands/modeling/copy-clipboard';
 import { canRunPaletteCommand, palettePrerequisites } from './palette-availability';
@@ -34,6 +38,7 @@ import { trackCommandExecution } from './surface-command-run';
 import type { BottomPanelId } from '@/lib/panels/bottom-panels';
 import { buildCommandPaletteCommands, type RightPanel } from './commandPaletteCommands';
 import { DynamicPaletteOption, RegisteredPaletteOption, registeredPaletteId } from './command-palette-option';
+import { useExtensionDockDestinations } from '@/components/extensions/useExtensionDockDestinations';
 import { useExportRunner } from './useExportRunner';
 import {
   type Command,
@@ -45,15 +50,11 @@ import {
   recordUsage,
 } from './commandPaletteSearch';
 
-/** Toggle a sidebar workspace panel (#1208). The store's `toggleWorkspacePanel`
- *  owns the single-tenant + re-dock + detach semantics; a second activation closes
- *  the panel back to the Information fallback. Closing any active analysis extension
- *  first preserves the prior "panels win the slot" behavior; kept as two thin helpers so every command action keeps its call site. */
+/** Destinations reveal their canonical home, including detached panels (#8947). */
 function activateRightPanel(panel: RightPanel) {
   closeActiveAnalysisExtension();
-  // A pane folded for the start screen LOOKS closed: open it, don't toggle it shut.
-  if (liftStartFold('right')) { useViewerStore.getState().openPanelInHome(panel, 'palette'); return; }
-  useViewerStore.getState().toggleWorkspacePanel(panel, 'palette');
+  liftStartFold('right');
+  useViewerStore.getState().openPanelInHome(panel, 'palette');
 }
 
 /** Category header text, browse mode (#4918 slice 3). Exhaustive by type: a
@@ -72,12 +73,11 @@ const CATEGORY_LABEL_KEY: Record<Category, TranslationKey> = {
   Learn: 'commandPalette.category.learn',
 };
 
-/** Bottom panel — mutually exclusive in the bottom strip, independent of the sidebar. The store
- *  owns the toggle, including the re-dock of a floating or popped-out panel; the hand-rolled flag
- *  flips that used to live here knew only the dock flags, so toggling a FLOATING Lists panel left it on screen with nothing latched. */
+/** Reveal the bottom destination; repeated invocation keeps its body open. */
 function activateBottomPanel(panel: BottomPanelId) {
   closeActiveAnalysisExtension();
-  useViewerStore.getState().toggleBottomPanel(panel, 'palette');
+  liftStartFold('right');
+  useViewerStore.getState().openPanelInHome(panel, 'palette');
 }
 
 // ── Component ──────────────────────────────────────────────────────────
@@ -105,8 +105,13 @@ export function CommandPalette({ open, onOpenChange, surfaceContext, initialQuer
   // Names currently in the blob cache, refreshed each open — lets recent-file clicks decide hit/miss without an async gap that would void user activation.
   const cachedNamesRef = useRef<Set<string>>(new Set());
 
+  const dockDestinations = useExtensionDockDestinations();
   const fileHost = useMountedFileHost();
   const toolHosts = usePersistentToolHosts();
+  const inlineSearchHost = useInlineSearchHost();
+  const errorReportDestination = useErrorReportDestination();
+  const retainedReportHost = useRetainedReportHost();
+  const splitWidth = useSplitWidth();
   const placementGeoref = usePlacementGeorefContext();
   const gpuStatus = useWebGPU();
   const { execute } = useSandbox();
@@ -143,7 +148,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext, initialQuer
   const { runExport, dialog: exportDialog, extensionExporters } = useExportRunner();
 
   // ── Command definitions ── (data table: `commandPaletteCommands.ts`)
-  const commands = useMemo<Command[]>(() => !open ? [] : buildCommandPaletteCommands({
+  const commands = useMemo<Command[]>(() => !open ? [] : [...buildCommandPaletteCommands({
     execute,
     surfaceContext: { ...toolHosts, ...surfaceContext,
       openBulkProperties: (surfaceContext?.openBulkProperties ?? toolHosts.openBulkProperties)
@@ -165,9 +170,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext, initialQuer
     activateBottomPanel,
     runExport,
     extensionExporters,
-  }), [open, execute, recentFiles, extensionCommands, extensionHost, currentExtensionHost, canEditInSession, cesiumAvailable, runExport, extensionExporters, prerequisites, copyClipboard, fileHost, gpuStatus, surfaceContext, toolHosts, placementGeoref, locale, revision]);
-
-
+  }), ...dockDestinations.commands], [open, dockDestinations.commands, execute, recentFiles, extensionCommands, extensionHost, currentExtensionHost, canEditInSession, cesiumAvailable, runExport, extensionExporters, prerequisites, copyClipboard, fileHost, gpuStatus, errorReportDestination, retainedReportHost, splitWidth, placementGeoref, surfaceContext, toolHosts, inlineSearchHost, locale, revision]);
   // ── Search: score, filter, sort ──
   // When searching, results are FLAT sorted by relevance — no category grouping.
   // When browsing (no query), results are grouped by category.
@@ -229,7 +232,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext, initialQuer
     };
     // The destination takes focus only after Radix releases its closing scope.
     // A frame callback alone does not order its delayed close-focus timer.
-    closeFocusAction.current = cmd.id === 'elements:entity-actions' ? activate : null;
+    closeFocusAction.current = cmd.id === 'search:inline' || cmd.id === 'elements:entity-actions' ? activate : null;
     onOpenChange(false);
     if (closeFocusAction.current) return;
     // File picker activation stays in the trusted event stack.
@@ -347,7 +350,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext, initialQuer
           <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 border-t text-xs text-muted-foreground select-none">
             {flatItems.length > 0 && <>
               <span><kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded border bg-muted px-1 font-mono text-xs">↑↓</kbd> {t('commandPalette.footer.navigate')}</span>
-              <span><kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded border bg-muted px-1 font-mono text-xs">↵</kbd> {t('commandPalette.footer.run')}</span>
+              {activeOption && activeOption.cmd.availability?.status !== 'disabled' && <span><kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded border bg-muted px-1 font-mono text-xs">↵</kbd> {t('commandPalette.footer.run')}</span>}
             </>}
             <span><kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded border bg-muted px-1 font-mono text-xs">{t('commandPalette.escKey')}</kbd> {t('commandPalette.footer.close')}</span>
           </div>
@@ -355,6 +358,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext, initialQuer
       </Dialog>
       {/* Outside the palette's Dialog: an export dialog must outlive the palette closing. */}
       {exportDialog}
+      {dockDestinations.dialog}
     </>
   );
 }

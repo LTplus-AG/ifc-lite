@@ -20,6 +20,7 @@ export { customPlaneCenter } from './slices/sectionSlice.js';
 import { createMeasurementSlice, type MeasurementSlice } from './slices/measurementSlice.js';
 import { createDataSlice, type DataSlice } from './slices/dataSlice.js';
 import { createModelSlice, type ModelSlice } from './slices/modelSlice.js';
+import { createServerPropertiesSlice, type ServerPropertiesSlice } from './slices/serverPropertiesSlice.js';
 import { createMutationSlice, type MutationSlice } from './slices/mutationSlice.js';
 import { createDrawing2DSlice, type Drawing2DSlice } from './slices/drawing2DSlice.js';
 import { createSheetSlice, type SheetSlice } from './slices/sheetSlice.js';
@@ -94,7 +95,7 @@ export { resolveEntityRef, resolveGlobalId } from './resolveEntityRef.js';
 export { fromGlobalIdFromModels, toGlobalIdFromModels, toGlobalIdForRef } from './globalId.js';
 export type { ForwardModelMapLike } from './globalId.js';
 
-export type { Drawing2DState, Drawing2DStatus, Annotation2DTool, PolygonArea2DResult, TextAnnotation2D, CloudAnnotation2D, SelectedAnnotation2D } from './slices/drawing2DSlice.js';
+export type { Drawing2DState, Drawing2DStatus, Annotation2DTool, PolygonArea2DResult, TextAnnotation2D, CloudAnnotation2D, Dimension2D, SelectedAnnotation2D } from './slices/drawing2DSlice.js';
 
 export type { SheetState } from './slices/sheetSlice.js';
 export type { CollabSlice, CollabRole, CollabStatus, StartCollabOptions } from './slices/collabSlice.js';
@@ -151,7 +152,7 @@ export type ViewerState = AppearanceSlice & LoadingSlice &
   SectionSlice &
   MeasurementSlice &
   DataSlice &
-  ModelSlice &
+  ModelSlice & ServerPropertiesSlice &
   MutationSlice &
   Drawing2DSlice &
   SheetSlice &
@@ -213,6 +214,7 @@ const createViewerStore = () => create<ViewerState>()(withStoreChurnCounters(wit
   ...createMeasurementSlice(...args),
   ...createDataSlice(...args),
   ...createModelSlice(...args),
+  ...createServerPropertiesSlice(...args),
   ...createMutationSlice(...args),
   ...createDrawing2DSlice(...args),
   ...createSheetSlice(...args),

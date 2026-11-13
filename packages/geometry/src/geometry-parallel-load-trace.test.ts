@@ -106,6 +106,8 @@ describe('processParallel load-trace spans (#6956)', () => {
     (globalThis as Record<string, unknown>).Worker = vi.fn().mockImplementation(function (this: unknown) {
       const worker = new FakeWorker((self, msg) => {
         if (msg.type === 'scan-shard') return; // force the serial pre-pass fallback
+        // Real workers answer init asynchronously, after the pool span has opened.
+        if (msg.type === 'init') { queueMicrotask(() => self.reply({ type: 'ready' })); return; }
         if (msg.type === 'prepass-streaming') {
           queueMicrotask(() => {
             const emit = (event: Record<string, unknown>) => self.reply({ type: 'prepass-stream', event });
@@ -164,6 +166,10 @@ describe('processParallel load-trace spans (#6956)', () => {
       expect(worker.received.some((m) => m.type === 'load-trace:enable')).toBe(true);
     }
     // Worker spans land under the pool span (the first `begin`, token 0).
+    // So do the main-thread readiness receipts (#9605): one per process worker.
+    const ready = calls.filter((c) => c.fn === 'span' && c.args[0] === 'geometry.workerReady');
+    expect(ready.length).toBeGreaterThanOrEqual(2);
+    for (const r of ready) expect(r.args[2]).toBe(0);
     const merge = calls.find((c) => c.fn === 'merge');
     expect(merge?.args[1]).toBe(0);
     expect((merge?.args[0] as { thread: string }).thread).toBe('geom-0');

@@ -17,6 +17,8 @@ import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-f
 import { applyMaterialLayers, createElementType } from '@/components/viewer/model-inspector/inspector-edits';
 import { layerSetOf, typeOf, type LiveModel } from './authored-kinds.js';
 import { runTransaction, setRequestRemesh } from './transaction.js';
+import { recordModellingEdit, modelEditTarget } from '@/store/slices/mutation-modelling-records';
+import { readWallMetres } from '@/store/slices/mutation-wall-resize';
 import type { CommandContext, ModelingCommand } from './types.js';
 
 const s = () => useViewerStore.getState();
@@ -89,5 +91,28 @@ describe('authored defaults (#6232 M2.5)', () => {
     assert.equal(runTransaction(useViewerStore, command, null, ctx).ok, true);
     assert.equal(typeOf(live(), wall()), null);
     assert.equal(layerSetOf(live(), wall()), null);
+  });
+
+  it('a wall the layered defaults re-size re-meshes the wall joined to it, in the command\'s own request (#9296)', () => {
+    const joined = s().addWall(MODEL_ID, STOREY, { Start: [4, 0, 0], End: [4, 3, 0], Thickness: 0.2, Height: 3 });
+    assert.ok('expressId' in joined);
+    const requested: number[] = [];
+    restoreRemesh();
+    restoreRemesh = setRequestRemesh((_get, request) => { requested.push(...request.expressIds); });
+    let wall = 0;
+    const command: ModelingCommand = {
+      id: 'test.wall', labelKey: 'modelingCommand.closeAria', hud: {}, snap: 'modeling',
+      init: () => null, pointerMove: (g) => g, pointerDown: (g) => g,
+      commit: (_g, tx) => {
+        const added = tx.store.addWall(MODEL_ID, STOREY, { Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.2, Height: 3 });
+        if (!('expressId' in added)) throw new Error('addWall refused');
+        wall = added.expressId;
+        recordModellingEdit(useViewerStore, MODEL_ID, (methods) => methods.joinWalls(MODEL_ID, wall, joined.expressId), tx.batchId);
+        return { created: [wall], authored: [wall], deleted: [], remesh: [wall] };
+      },
+    };
+    assert.equal(runTransaction(useViewerStore, command, null, ctx).ok, true);
+    assert.equal(readWallMetres(modelEditTarget(s(), MODEL_ID)!, wall)?.thickness, 0.3, 'the 300 mm layered defaults size the new wall');
+    assert.ok(requested.includes(joined.expressId), 'the joined wall it re-trimmed is re-meshed with it');
   });
 });

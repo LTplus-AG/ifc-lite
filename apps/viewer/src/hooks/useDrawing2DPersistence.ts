@@ -31,15 +31,19 @@
  * fields do.
  */
 
+import { restoreElementTags } from '@/lib/drawing/tag-persistence';
 import type { DrawingSheet } from '@ifc-lite/drawing-2d';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { useViewerStore } from '@/store';
 import { getDefaultDrawing2DState } from '@/store/slices/drawing2DSlice.js';
 import { identifyLoadedPlacementSource } from '@/lib/model-placement/loaded-source-identity';
 import { placementSourceIdentity } from '@/lib/model-placement/source-identity';
 import { loadDrawing2DEntry, defaultMarkupPatch, suppressNextSaveFor, type PersistedDrawing2DEntry } from '@/store/slices/drawing2DSlice.persistence.js';
 import { setCachedHash, notifyDecided } from './drawingMarkupRestorePrecedence.js';
-import { resetSaveState, beginRestore, endRestore, setRestoredSectionConfig, ensureSaveSubscription } from './drawingMarkupSave.js';
+import {
+  resetSaveState, beginRestore, endRestore, setRestoredSectionConfig, ensureSaveSubscription,
+  subscribeModelActivations, modelActivationEpoch,
+} from './drawingMarkupSave.js';
 import { ensureSheetPersistence, hasUnsavedSheetEdit, settleSheetHash } from './sheetPersistence.js';
 import {
   drawingPersistenceOnDemand as drawingKey,
@@ -105,6 +109,8 @@ export function useDrawing2DPersistence(): void {
   const activeModelId = useViewerStore((s) => s.activeModelId);
   const activeSourceFile = useViewerStore((s) => s.activeModelId ? s.models.get(s.activeModelId)?.sourceFile : undefined);
   const tokenRef = useRef(0);
+  // Every activation restores, including a return to the same model before React rendered.
+  const activation = useSyncExternalStore(subscribeModelActivations, modelActivationEpoch);
 
   useEffect(() => {
     ensureSaveSubscription();
@@ -180,7 +186,16 @@ export function useDrawing2DPersistence(): void {
 
       const defaults = getDefaultDrawing2DState().drawing2DDisplayOptions;
       const entry = fallback ?? loadDrawing2DEntry(hash, defaults);
-      if (!entry) return;
+      if (!entry) {
+        // Nothing stored to merge into: markup drawn while the restore held
+        // saves off is still unsaved. A new list reference makes the save
+        // subscription store the whole live markup now (#10076 review).
+        const live = useViewerStore.getState();
+        const drawn = [live.measure2DResults, live.polygonArea2DResults, live.textAnnotations2D,
+          live.tagAnnotations2D, live.cloudAnnotations2D, live.dimensions2D].some((list) => list.length > 0);
+        if (drawn) useViewerStore.setState({ measure2DResults: [...live.measure2DResults] });
+        return;
+      }
 
       setRestoredSectionConfig(activeModelId, entry.sectionConfig);
       const live = useViewerStore.getState();
@@ -188,7 +203,9 @@ export function useDrawing2DPersistence(): void {
         measure2DResults: drawnMeanwhile(entry.measure2DResults, live.measure2DResults),
         polygonArea2DResults: drawnMeanwhile(entry.polygonArea2DResults, live.polygonArea2DResults),
         textAnnotations2D: drawnMeanwhile(entry.textAnnotations2D, live.textAnnotations2D),
+        tagAnnotations2D: drawnMeanwhile(restoreElementTags(entry.tagAnnotations2D, entry.ownerModelId, activeModelId), live.tagAnnotations2D),
         cloudAnnotations2D: drawnMeanwhile(entry.cloudAnnotations2D, live.cloudAnnotations2D),
+        dimensions2D: drawnMeanwhile(entry.dimensions2D ?? [], live.dimensions2D),
         drawing2DDisplayOptions: entry.drawing2DDisplayOptions,
       });
     };
@@ -234,5 +251,5 @@ export function useDrawing2DPersistence(): void {
         applyHash(null, settleHash(null));
         notifyDecided(activeModelId);
       });
-  }, [activeModelId, activeSourceFile]);
+  }, [activeModelId, activeSourceFile, activation]);
 }

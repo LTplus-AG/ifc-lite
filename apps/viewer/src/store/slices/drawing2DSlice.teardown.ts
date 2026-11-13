@@ -40,6 +40,7 @@ export const drawing2DTeardown = defineSliceTeardown(
   'drawing2DSlice',
   [
     'drawing2D',
+    'drawing2DPlane',
     'drawing2DStatus',
     'drawing2DProgress',
     'drawing2DPhase',
@@ -62,10 +63,12 @@ export const drawing2DTeardown = defineSliceTeardown(
     'annotation2DCursorPos',
     'polygonArea2DPoints',
     'polygonArea2DResults',
-    'textAnnotations2D',
+    'textAnnotations2D', 'tagAnnotations2D',
     'textAnnotation2DEditing',
     'cloudAnnotation2DPoints',
     'cloudAnnotations2D',
+    'dimension2DPoints',
+    'dimensions2D',
     'selectedAnnotation2D',
   ],
   {
@@ -74,6 +77,7 @@ export const drawing2DTeardown = defineSliceTeardown(
       return {
         // Drawing 2D
         drawing2D: defaults.drawing2D,
+        drawing2DPlane: defaults.drawing2DPlane,
         drawing2DStatus: defaults.drawing2DStatus,
         drawing2DProgress: defaults.drawing2DProgress,
         drawing2DPhase: defaults.drawing2DPhase,
@@ -103,17 +107,22 @@ export const drawing2DTeardown = defineSliceTeardown(
         polygonArea2DPoints: defaults.polygonArea2DPoints,
         polygonArea2DResults: defaults.polygonArea2DResults,
         textAnnotations2D: defaults.textAnnotations2D,
+        tagAnnotations2D: defaults.tagAnnotations2D,
         textAnnotation2DEditing: defaults.textAnnotation2DEditing,
         cloudAnnotation2DPoints: defaults.cloudAnnotation2DPoints,
         cloudAnnotations2D: defaults.cloudAnnotations2D,
+        dimension2DPoints: defaults.dimension2DPoints,
+        dimensions2D: defaults.dimensions2D,
         selectedAnnotation2D: defaults.selectedAnnotation2D,
       };
     },
     // The generated drawing, its overrides and its annotations are all keyed
     // to the file that was loaded. Clearing every model leaves the 2D view
     // to be regenerated on demand and must not throw away the user's markup,
-    // so that scope is a no-op here — same reasoning as `'model-removed'`
-    // below when the removed model was NOT the active one.
+    // so that scope leaves the store alone — same reasoning as `'model-removed'`
+    // below when the removed model was NOT the active one. The per-model
+    // markup snapshots go with their models, evicted by the entry points
+    // (`forgetLiveMarkup`): a teardown is a pure patch.
     //
     // #4159 bug 5: when the removed model WAS the active one,
     // `modelSlice.teardown.ts`'s own arm moves `activeModelId` to
@@ -136,7 +145,9 @@ export const drawing2DTeardown = defineSliceTeardown(
           measure2DResults: state.measure2DResults ?? defaults.measure2DResults,
           polygonArea2DResults: state.polygonArea2DResults ?? defaults.polygonArea2DResults,
           textAnnotations2D: state.textAnnotations2D ?? defaults.textAnnotations2D,
+          tagAnnotations2D: state.tagAnnotations2D ?? defaults.tagAnnotations2D,
           cloudAnnotations2D: state.cloudAnnotations2D ?? defaults.cloudAnnotations2D,
+          dimensions2D: state.dimensions2D ?? defaults.dimensions2D,
           drawing2DDisplayOptions: state.drawing2DDisplayOptions ?? defaults.drawing2DDisplayOptions,
         },
         scope.nextActiveModelId,

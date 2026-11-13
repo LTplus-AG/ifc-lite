@@ -12,6 +12,7 @@ import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { Switch } from '@/components/ui/switch';
 import type { NavigationPreset } from '@/lib/navigation/presets.js';
+import type { WheelZoomSensitivity } from '@/lib/navigation/wheel-input.js';
 import { SpaceMousePanel } from '../SpaceMousePanel';
 import { SettingsChoice, SettingsGroup, SettingsRow } from './SettingsGroup';
 
@@ -27,6 +28,8 @@ export function DisplaySection() {
   const setShowPerformanceStats = useViewerStore((s) => s.setShowPerformanceStats);
   const navigationPreset = useViewerStore((s) => s.navigationPreset);
   const setNavigationPreset = useViewerStore((s) => s.setNavigationPreset);
+  const wheelZoomSensitivity = useViewerStore((s) => s.wheelZoomSensitivity);
+  const setWheelZoomSensitivity = useViewerStore((s) => s.setWheelZoomSensitivity);
   return (
     <div className="space-y-4">
       <SettingsGroup title={t('settings.display.performanceTitle')}>
@@ -54,6 +57,19 @@ export function DisplaySection() {
               { value: 'trackpad', label: t('settings.display.preset.trackpad') },
             ]}
             onChange={setNavigationPreset}
+          />
+        </SettingsRow>
+        <SettingsRow label={t('settings.display.wheelZoomSpeed')} hint={t('settings.display.wheelZoomSpeedHint')}>
+          <SettingsChoice<WheelZoomSensitivity>
+            id="settings-wheel-zoom-speed"
+            label={t('settings.display.wheelZoomSpeed')}
+            value={wheelZoomSensitivity}
+            options={[
+              { value: 'slow', label: t('settings.display.wheelZoomSpeed.slow') },
+              { value: 'normal', label: t('settings.display.wheelZoomSpeed.normal') },
+              { value: 'fast', label: t('settings.display.wheelZoomSpeed.fast') },
+            ]}
+            onChange={setWheelZoomSensitivity}
           />
         </SettingsRow>
         <h4 className="mb-2 text-xs font-semibold">{t('settings.display.spaceMouseTitle')}</h4>

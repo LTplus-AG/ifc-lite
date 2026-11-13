@@ -189,12 +189,8 @@ async function doSyncSourceModel({
       collapsed: model.collapsed,
     });
   });
-  // addModel returns null both on real failure and when its load session was
-  // superseded by a concurrent load — in the latter case the model may still
-  // have registered. Check the store before declaring failure so we never
-  // leak a successfully loaded replacement alongside the old model.
-  const registered = useViewerStore.getState().models.has(replacementId);
-  if (!addedId && !registered) {
+  // addModel resolves to the id exactly when the replacement registered.
+  if (!addedId) {
     throw new Error(`Failed to reload ${latestFile.name}`);
   }
 

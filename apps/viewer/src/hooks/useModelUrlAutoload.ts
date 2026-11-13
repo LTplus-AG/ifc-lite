@@ -22,9 +22,11 @@ import { useEffect, useRef } from 'react';
 import { useIfcLoader } from './useIfcLoader.js';
 import { useIfcFederation } from './useIfcFederation.js';
 import { useWebGpuOpenGuard } from './useWebGpuOpenGuard';
+import { watchLoadSupersession } from './modelLoadCanceller.js';
 import { showLoadError } from '@/lib/analytics';
 import { useViewerStore } from '@/store';
 import { useTranslation, type TranslationKey } from '@/i18n';
+import { markLoadIntent } from '@/lib/load-intent';
 
 export function useModelUrlAutoload(): void {
   // The loader and federation hooks subscribe to actions only; `useIfc()` also
@@ -66,7 +68,11 @@ export function useModelUrlAutoload(): void {
 
     let resolvedUrl: URL | null = null;
     const attempt = async () => {
-      if (!guardWebGpu(() => { void attempt(); })) return;
+      markLoadIntent(); // the model is fetched before the load starts
+      // Replay-safe (a fetch, no gesture): Retry on the unsupported card may
+      // re-run it after the re-check. This effect never reaches the guard
+      // while the check is still running; it waits for the check instead.
+      if (!guardWebGpu(() => { void attempt(); }, { replay: 'free' })) return;
       // Resolve (supports relative paths) and enforce same-origin before fetching.
       let source: URL;
       try {
@@ -80,17 +86,25 @@ export function useModelUrlAutoload(): void {
         fail('viewportLighting.container.modelUrlAutoload.crossOrigin', 'model_url_cross_origin', null);
         return;
       }
+      // A load the user starts while the model downloads is what they want
+      // to see; the autoload then drops out quietly (L9).
+      const supersession = watchLoadSupersession('any');
       try {
-        const res = await fetch(source.href);
+        const res = await fetch(source.href, { signal: supersession.signal });
         if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
         const blob = await res.blob();
+        if (supersession.signal.aborted) return;
+        supersession.stop(); // the add below is this autoload's own load
         const filename = source.pathname.split('/').pop() || 'model.ifc';
         const file = new File([blob], filename, { type: blob.type || 'application/x-step' });
         await addModel(file);
       } catch (err) {
+        if (supersession.signal.aborted) return;
         const reason = err instanceof Error ? err.message : String(err);
         fail('viewportLighting.container.modelUrlAutoload.fetchFailed', 'model_url_fetch_failed',
           () => { void attempt(); }, { reason });
+      } finally {
+        supersession.stop();
       }
     };
 

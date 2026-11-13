@@ -21,7 +21,8 @@ export { RenderPipeline } from './pipeline.js';
 export { Camera } from './camera.js';
 // The MEASURED surface `getScene()` publishes — see its docs.
 export type { SceneContents } from './scene-contents.js';
-export { decodeSceneSnapshot, encodeSceneSnapshot, type SceneSnapshot } from './scene-snapshot.js';
+export { decodeSceneSnapshot, encodeSceneSnapshot, encodeSceneSnapshotInSlices, type SceneCaptureCallback, type SceneCaptureDrop, type SceneSnapshot } from './scene-snapshot.js';
+export { reorderSnapshotPieces } from './scene-snapshot-batches.js';
 export { appearanceSourceTriangle, expandAppearanceCorners, equivalentAppearanceGeometry } from './appearance-uvs.js';
 export { sameCompanionParts } from './appearance-companions.js';
 export { invertAppearancePartition, validateAppearancePartition, type AppearancePreview, type AppearanceOwner, type AppearanceToken, type AppearanceChange, type AppearancePartition, type AppearancePartitionPart } from './appearance-preview.js';
@@ -202,7 +203,8 @@ import { RenderDegradationMonitor, type RenderDegradationInfo } from './render-d
 import { PostPassChain } from './post-pass-chain.js';
 import { buildSelectionOutlineFrame, matchesHoveredMesh } from './selection-outline-frame.js';
 import { HoverMeshCache } from './hover-mesh-cache.js';
-import { addMergedSelectionMeshes, hydrateSelectedEntities, retireStaleSelectionHydration } from './selection-hydration.js';
+import { addMergedSelectionMeshes } from './selection-hydration.js';
+import { SelectionHighlight, SelectionSnapshot } from './selection-highlight.js';
 import { InteractionEffectsGovernor } from './interaction-effects-governor.js';
 import { resolveOpaqueDrawMode } from './opaque-draw-variants.js'; import { sortOpaqueFrontToBack } from './opaque-draw-order.js'; import { renderTargetBytes, type RenderTargetBytes } from './render-target-bytes.js';
 import { VisibilityEpochTracker } from './visibility-epoch.js';
@@ -525,13 +527,10 @@ export class Renderer {
         BatchedMesh,
         { visible: boolean; fullyVisible: boolean; visibleIds?: Set<number> }
     >();
-    // Selection snapshot from the previous frame — a change triggers disposal of
-    // now-unselected hydrated meshes (leak + double-draw fix). The model index
-    // is part of the snapshot: federated models can share express ids, so a
-    // same-id selection in ANOTHER model is still a change that must free the
-    // old model's hydrated mesh.
-    private _prevHydratedSelection: Set<number> = new Set();
-    private _prevHydratedSelectionModelIndex: number | undefined = undefined; private _prevHydratedSelectionItemExpressId: number | undefined; private _prevHydratedSelectionItemId: number | undefined;
+    // The selection and its highlight meshes, kept across frames so a frame of an
+    // unchanged selection does no work per selected entity (#9835).
+    private readonly _selection = new SelectionSnapshot();
+    private readonly _selectionHighlight = new SelectionHighlight();
 
     // One-shot log guard — prints Y-up clip bounds on first section-enable so
     // users can confirm the slider is operating on the intended range.
@@ -601,6 +600,7 @@ export class Renderer {
         // Re-arm `whenReady()`: this instance is being brought back up, so a
         // wait requested from here on is "not ready yet" again, not "destroyed".
         this.destroyed = false;
+        this.canvasCssSize.observe();
         // A previous init that REJECTED must not block the next one, so the
         // stored link swallows the outcome. The caller still receives `run`, so
         // rejections continue to surface exactly as before.
@@ -616,11 +616,8 @@ export class Renderer {
         // `pipeline` is the marker for "a previous init() completed": it is
         // assigned unconditionally there and nulled by destroy().
         if (this.pipeline !== null) {
-            // Release the device the previous init() resolved on, and re-arm
-            // `whenReady()` so it cannot resolve against GPU objects that no
-            // longer exist. `teardown()`, not the public `destroy()`: this
-            // teardown is part of THIS init, so it must not invalidate this
-            // init's own generation.
+            // Release the previous GPU lifetime and revoke readiness without
+            // invalidating this init's generation (as public destroy would).
             this.teardown();
         }
         // Clear the lost flag so a re-init (destroy()+init() on the same instance)
@@ -1422,8 +1419,8 @@ export class Renderer {
     }
 
     /** Guarded like createMeshFromData: one merged highlight per colour and frame (#9192). */
-    private createMergedMeshes(pieces: readonly MeshData[], merged: NonNullable<Mesh['mergedSelection']>): void {
-        this.guardedHighlightUpload('merged selection highlight', () => addMergedSelectionMeshes(this.scene, this.device.getDevice(), pieces, merged, (m) => this.individualMeshFrame(m)));
+    private createMergedMeshes(pieces: readonly MeshData[], merged: NonNullable<Mesh['mergedSelection']>): boolean {
+        return this.guardedHighlightUpload('merged selection highlight', () => { addMergedSelectionMeshes(this.scene, this.device.getDevice(), pieces, merged, (m) => this.individualMeshFrame(m)); return true; }) === true;
     }
 
     /** A highlight upload that fails leaves nothing behind and is retried next frame; it warns once per kind (#9192). */
@@ -1435,35 +1432,6 @@ export class Renderer {
             console.warn(`[Renderer] ${kind} upload failed; it is skipped and retried on a later frame:`, outcome.error);
         }
         return undefined;
-    }
-
-    /**
-     * On a selection change, free the hydrated (pick/selection-highlight)
-     * individual meshes whose entity is no longer selected. These duplicate
-     * geometry already drawn by a batch; without this they accumulate in
-     * scene.meshes (VRAM grows with selection history) and — for transparent
-     * entities — re-draw every frame on top of their still-drawn batch copy
-     * (double alpha-blend darkens glass). Currently-selected entities keep their
-     * hydrated meshes so the highlight pass doesn't rebuild them each change.
-     * No-op when the selection set is unchanged to avoid per-frame buffer churn.
-     * Selection identity is the (modelIndex, expressId) PAIR: federated models
-     * can share express ids, so re-selecting the same id in a different model
-     * must still free the previous model's hydrated mesh (it would otherwise
-     * stay resident and keep drawing unhighlighted).
-     */
-    private syncHydratedSelectionMeshes(selected: ReadonlySet<number>, selectedModelIndex: number | undefined, itemFilterExpressId: number | undefined, itemFilterItemId: number | undefined): void {
-        const prev = this._prevHydratedSelection;
-        let changed = selected.size !== prev.size || selectedModelIndex !== this._prevHydratedSelectionModelIndex
-            || itemFilterExpressId !== this._prevHydratedSelectionItemExpressId || itemFilterItemId !== this._prevHydratedSelectionItemId;
-        if (!changed) {
-            for (const id of selected) {
-                if (!prev.has(id)) { changed = true; break; }
-            }
-        }
-        if (!changed) return;
-        this._prevHydratedSelection = new Set(selected);
-        this._prevHydratedSelectionModelIndex = selectedModelIndex; this._prevHydratedSelectionItemExpressId = itemFilterExpressId; this._prevHydratedSelectionItemId = itemFilterItemId;
-        this.scene.disposeHydratedMeshesExcept(selected, selectedModelIndex, itemFilterExpressId, itemFilterItemId);
     }
 
     /**
@@ -1722,15 +1690,7 @@ export class Renderer {
         const selectedId = options.selectedId;
         const selectedIds = options.selectedIds;
         const selectedModelIndex = options.selectedModelIndex;
-        const selectedExpressIds = new Set<number>();
-        if (selectedId !== undefined && selectedId !== null) {
-            selectedExpressIds.add(selectedId);
-        }
-        if (selectedIds) {
-            for (const id of selectedIds) {
-                selectedExpressIds.add(id);
-            }
-        }
+        const selectedExpressIds = this._selection.update(selectedId, selectedIds, options.isInteracting === true);
         const itemFilterExpressId = (options.selectedItemId !== undefined && selectedId !== undefined && selectedId !== null) ? selectedId : undefined; const itemFilterItemId = itemFilterExpressId !== undefined ? options.selectedItemId : undefined; // #4382
 
         // ─── Visibility / override epoch bookkeeping ────────────────────────
@@ -1749,7 +1709,7 @@ export class Renderer {
         const visibilityChanged = newVisibilityVersion !== this._visibilityVersion;
         this._visibilityVersion = newVisibilityVersion;
         const colorOverrideGen = this.scene.getColorOverrideGeneration();
-        const xrayVersion = this._xrayEpochs.update(options, selectedExpressIds);
+        const xrayVersion = this._xrayEpochs.update(options, selectedExpressIds, this._selection.getVersion());
         const partialEpochChanged =
             visibilityChanged || colorOverrideGen !== this._lastColorOverrideGen || xrayVersion !== this._xrayVersion;
         if (partialEpochChanged) {
@@ -1769,22 +1729,19 @@ export class Renderer {
         }
         this._lastHadPartialSources = hasPartialSources;
 
-        // Free hydrated (pick/selection) individual meshes whose entity is no
-        // longer selected BEFORE we snapshot the mesh list, so stale glass
-        // doesn't double-draw over its batch copy or accumulate until clear().
-        // Only acts on a selection change (avoids per-frame buffer churn) and
-        // never touches authored (non-hydrated) or batch geometry.
-        this.syncHydratedSelectionMeshes(selectedExpressIds, selectedModelIndex, itemFilterExpressId, itemFilterItemId);
-        retireStaleSelectionHydration(this.scene, selectedExpressIds, selectedModelIndex, itemFilterExpressId, itemFilterItemId);
+        // The visible selection's highlight meshes. An unchanged frame gets last
+        // frame's list back; a changed one frees the copies the selection no longer
+        // wants, builds the ones it is missing and syncs the instanced occurrences'
+        // selected flag (selection-highlight.ts, #9835). BEFORE we snapshot the
+        // mesh list: a copy freed after the frame wrote or drew it fails the submit.
+        const selectedMeshes = this._selectionHighlight.resolve(this.scene, {
+            selected: selectedExpressIds, selectionVersion: this._selection.getVersion(),
+            hiddenIds: options.hiddenIds, isolatedIds: options.isolatedIds, visibilityVersion: newVisibilityVersion,
+            modelIndex: selectedModelIndex, itemFilterExpressId, itemFilterItemId, pool: this.scene.getBatchedMeshes().length > 0 || this.scene.getTexturedMeshes().length > 0,
+        }, (piece) => this.createMeshFromData(piece).ok, (pieces, merged) => this.createMergedMeshes(pieces, merged));
 
         let meshes = this.scene.getMeshes();
 
-        // Keep the GPU-instanced occurrences' per-instance selected flag in sync.
-        // The Scene diff makes this a no-op (no writeBuffer) when the set is
-        // unchanged, so calling it every frame is cheap; it no-ops entirely when
-        // no instanced data is loaded. The flat path handles selection inline
-        // below via `selectedExpressIds`.
-        this.scene.setInstancedSelection(selectedExpressIds, itemFilterExpressId, itemFilterItemId);
         // Mirror hide/isolate onto the instanced occurrences (the flat path filters
         // its mesh list by hiddenIds/isolatedIds below; the instanced pass can't, so
         // it carries a per-instance hidden flag the shader discards on). Diffed → a
@@ -2284,7 +2241,7 @@ export class Renderer {
             // (#5390) after `pass.end()` below. Populated inside the batched
             // branch, where the highlight draw itself happens; empty in the
             // no-batches fallback, which does not draw selection either.
-            let selectedMeshesForMask: Mesh[] = [];
+            let selectedMeshesForMask: readonly Mesh[] = [];
 
             // Check if we have batched meshes (preferred for performance)
             const allBatchedMeshes = this.scene.getBatchedMeshes();
@@ -2792,27 +2749,6 @@ export class Renderer {
 
                 // Prepare selected meshes once, then render them LAST so transparent batches
                 // don't overwrite highlight color (glass otherwise appears unhighlighted).
-                const visibleSelectedIds = new Set<number>();
-                for (const selId of selectedExpressIds) {
-                    if (options.hiddenIds?.has(selId)) continue;
-                    if (hasIsolatedFilter && !options.isolatedIds!.has(selId)) continue;
-                    visibleSelectedIds.add(selId);
-                }
-
-                hydrateSelectedEntities(
-                    this.scene, visibleSelectedIds, selectedModelIndex, itemFilterExpressId, itemFilterItemId,
-                    (piece) => { this.createMeshFromData(piece); },
-                    (pieces, merged) => { this.createMergedMeshes(pieces, merged); },
-                );
-
-                const selectedMeshes = visibleSelectedIds.size > 0
-                    ? this.scene.getMeshes().filter(mesh => {
-                        if (!visibleSelectedIds.has(mesh.expressId)) return false;
-                        if (selectedModelIndex !== undefined && mesh.modelIndex !== selectedModelIndex) return false;
-                        if (mesh.expressId === itemFilterExpressId && mesh.geometryItemId !== itemFilterItemId) return false; // #4382
-                        return true;
-                    })
-                    : [];
                 selectedMeshesForMask = selectedMeshes;
 
                 // Transparent instanced sub-pass — drawn here (after ALL opaque incl. the
@@ -3011,7 +2947,7 @@ export class Renderer {
                 && (!hasIsolatedFilter || options.isolatedIds!.has(hovered.id)) ? hovered.id : null;
             const hoverModel = hovered?.modelIndex;
             const hoverPieces = hoverId != null && !selectedMeshesForMask.some((m) => matchesHoveredMesh(m, hoverId, hoverModel))
-                ? this.guardedHighlightUpload('hover highlight', () => this.hoverMeshes.resolve(device, hoverId, hoverModel, () => this.scene.getMeshDataPieces(hoverId, hoverModel), (m) => this.individualMeshFrame(m))) ?? []
+                ? this.guardedHighlightUpload('hover highlight', () => this.hoverMeshes.resolve(device, hoverId, hoverModel, () => this.scene.getMeshDataPieces(hoverId, hoverModel), (m) => this.individualMeshFrame(m), this.scene.getPickGeometryRevision())) ?? []
                 : (this.hoverMeshes.release(), []);
             const selectionOutline = buildSelectionOutlineFrame({
                 uniformBufferSize: this.pipeline.getUniformBufferSize(), viewProj, relativeToEyeFrame,
@@ -3233,12 +3169,10 @@ export class Renderer {
         this.raycastEngine.setSourceSnapCurves(curves); this.pickSources.noteCurves(curves);
     }
 
-    /**
-     * Invalidate BVH cache (call when geometry changes)
-     */
-    invalidateBVHCache(): void {
-        this.raycastEngine.invalidateBVHCache();
-    }
+    /** Invalidate BVH cache (call when geometry changes). */
+    invalidateBVHCache(): void { this.raycastEngine.invalidateBVHCache(); }
+    /** True when the flat index is warm; ray-hit instance geometry may still materialize per ray. */
+    isRaycastCacheWarm(): boolean { return this.raycastEngine.isCacheWarm(); }
 
     /**
      * Clear all caches (call when geometry changes)

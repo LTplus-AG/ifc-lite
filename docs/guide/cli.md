@@ -197,6 +197,22 @@ Supports property filters (`--where`), missing-property checks (`--missing`), he
 
 ---
 
+### `structural` - Read structural analysis
+
+Read structural analysis data without modifying the file:
+
+```bash
+ifc-lite structural model.ifc
+ifc-lite structural model.ifc --json > structural.json
+```
+
+The table counts analysis models, members, connections, loads, load groups and
+cases, reactions, result groups and physical links. JSON includes their read-model
+records, actions' resolved `appliedLoad` values, and a `links` array pairing
+model-local `structuralItemId` and `physicalElementId`. Missing parser values
+are omitted. `loadsTruncated` flags a bounded applied-load walk. See
+[Structural analysis](structural-analysis.md) for coverage and limits.
+
 ### `info` — Model Summary
 
 Print schema version, entity counts, storeys, and top entity types.
@@ -384,6 +400,9 @@ ifc-lite export model.ifc --format ifc --schema IFC4 --out filtered.ifc
 # GLB whose element nodes are named by GlobalId (for tools that look objects up by node name)
 ifc-lite export model.ifc --format glb --name-by-global-id --out model.glb
 
+# Rhino (.3dm) — IFC layers, blocks, materials and user text
+ifc-lite export model.ifc --format 3dm --out model.3dm
+
 # OpenUSD (.usda) — a real Z-up USD stage (whole model; opens in usdview/Blender/Omniverse)
 ifc-lite export model.ifc --format usd --out model.usda
 
@@ -398,7 +417,7 @@ ifc-lite export model.ifc --format csv --out walls.csv
 
 | Flag | Description |
 |------|-------------|
-| `--format <fmt>` | `csv`, `json`, `ifc`, `obj`, `gltf`, `glb`, `jsonld`, `step`, `ifcx`, `usd`, `hbjson`, or `dfjson` |
+| `--format <fmt>` | `csv`, `json`, `ifc`, `obj`, `gltf`, `glb`, `jsonld`, `step`, `ifcx`, `usd`, `3dm`, `hbjson`, or `dfjson` |
 | `--type <T>` | Filter entities by type |
 | `--where <filter>` | Property filter: `PsetName.PropName=Value` |
 | `--storey <name>` | Filter to elements in a storey |
@@ -410,6 +429,25 @@ ifc-lite export model.ifc --format csv --out walls.csv
 | `--diagnostics` | Print a geometry summary after mesh-based exports |
 | `--name-by-global-id` | `gltf`/`glb`: make each element one node named by its `GlobalId`, with its mesh parts as children |
 | `--out <file>` | Write to file instead of stdout |
+
+#### Rhino export options
+
+For `--format 3dm`, `--out` is required. Entity filters (`--type`, `--storey`,
+`--where`, `--limit`) restrict exported objects; a zero-match filter fails closed.
+
+| Flag | Values / default |
+|---|---|
+| `--units` | `source` (default), `meters`, `millimeters`, `centimeters`, `feet`, `inches` |
+| `--coordinates` | `local` (default), `world` |
+| `--layers` | `spatial-class` (default), `class`, `presentation` |
+| `--properties` | `all` (default), `attributes`, `none` |
+| `--no-instancing` | Bake repeated geometry instead of blocks |
+| `--no-spaces` | Exclude spaces (included on hidden layers by default) |
+| `--no-normals` | Omit vertex normals |
+| `--layer-slicing` | Enable material-layer slicing |
+| `--3dm-version` | `7`, `8` (default) |
+
+Scene warnings print to stderr.
 
 ---
 
@@ -879,6 +917,33 @@ ifc-lite mutate model.ifc --type IfcWall --where "Pset_WallCommon.IsExternal=tru
 
 ---
 
+### `derive-structural` - Derive a structural analysis model
+
+Derive an `IfcStructuralAnalysisModel` from the physical model in the same file: beams, columns and members become curve members on their axis, slabs and walls become surface members on their mid-plane, member ends within the tolerance share a node, and footings or piles carry supports. Axes run through section centres, so a beam stops at a column face and a column top stops below the beam axis: a free member end moves along its own axis (never sideways) to meet another member's axis when that is within the joint reach, and a member met in its interior is split there. The report lists every moved end with the distance, and every end left free. When no footing carries a node, the nodes at the lowest level of the whole load-bearing structure become supports and the report flags them as guessed. A file that already has an analysis model is refused unless `--analysis-model-exists add`. Every member and node is linked to its physical element with `IfcRelAssignsToProduct`. Elements that already have a structural counterpart are skipped, so running it again writes nothing. Elements it cannot idealise (tessellated bodies, curved sweeps, non-rectangular walls) are skipped and listed with the reason. Works on IFC2X3, IFC4 and IFC4X3.
+
+```bash
+ifc-lite derive-structural model.ifc --out analytical.ifc
+ifc-lite derive-structural model.ifc --dry-run --json
+ifc-lite derive-structural model.ifc --tolerance 0.1 --support fixed --out analytical.ifc
+```
+
+**Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--out <file>` | Output IFC with the analysis model (omit with `--dry-run`) |
+| `--tolerance <m>` | Member ends closer than this share a node, in metres (default 0.05) |
+| `--load-bearing-unknown <p>` | Elements without `LoadBearing`: `include` (default, reported as assumed) or `skip` |
+| `--support <type>` | Support condition: `pinned` (default) or `fixed` |
+| `--joint-reach <m>` | How far a free member end may move along its axis to meet another member, in metres (default: half that member's larger section dimension plus the tolerance; never below the tolerance) |
+| `--analysis-model-exists <p>` | When the file already has an analysis model: `refuse` (default) or `add` the missing members to a new one |
+| `--dry-run` | Plan and report only; write nothing |
+| `--json` | Report as JSON: counts, existing analysis models, skipped elements with reasons, guessed supports, moved ends, free ends, unconnected member ends |
+
+Scripts reach the same steps through `bim.store.planStructuralDerivation(modelId, options)` and `bim.store.deriveStructuralAnalysisModel(modelId, options)`.
+
+---
+
 ### `generate-spaces` - Derive IfcSpace
 
 Derive IfcSpace volumes from the building's walls (room footprints), using storey datums for floor-to-floor height, and write the augmented IFC.
@@ -1118,6 +1183,11 @@ Checks:
 - GlobalId uniqueness — across every `IfcRoot` subtype the file holds, read from the inheritance chain of every schema ifc-lite bundles (IFC2X3, IFC4 and IFC4X3). Classes only one schema declares (`IfcScheduleTimeControl`, `IfcSpaceProgram`, `IfcServiceLife` in IFC2X3; `IfcCourse`, `IfcBorehole` in IFC4X3) are checked like any other. Entities that are not `IfcRoot` subtypes — materials, surface styles, classifications — are deliberately left out, because they carry a name where an `IfcRoot` carries a GlobalId and two same-named materials are not a duplicate
 - Named elements
 - Reference integrity (every `#N` attribute reference must point at an entity that exists in the file; each dangling reference is reported with the referencing entity, attribute slot, and missing target — detailed up to the first 50, after which a single rollup issue reports the count of remaining dangling references)
+- Physical vs structural analysis model, as warnings that name each entity by express id and `GlobalId`:
+  - `structural-unlinked-element`: a beam, column, member, slab, wall, footing or pile that is load bearing and has no structural member or connection assigned. Runs only when the file has an analytical model. Detailed up to the first 50, after which a single rollup issue reports the remaining count and the total. `Pset_*Common.LoadBearing` is read from the occurrence, else its type. An element where that value is missing or not a boolean (IfcLogical UNKNOWN) counts as load bearing; `LoadBearing = false` is never reported.
+  - `structural-unlinked-item`: a structural member or connection with no physical element assigned. Members and connections are each checked only when the file links at least one of that kind.
+  - `structural-class-mismatch`: a curve member assigned to a slab or wall, or a surface member assigned to a beam, column or member (`target` names the physical element).
+  - `structural-unconnected-member`: a structural member with no `IfcRelConnectsStructuralMember`. Checked only when the file connects at least one member.
 
 Returns exit code 0 (valid) or 1 (errors found).
 
@@ -1692,6 +1762,17 @@ ifc-lite flow review roles.checkpoint.json --approve <digest>
 ifc-lite flow resume roles.flow.json model.ifc --checkpoint roles.checkpoint.json --out roles.ifc
 ```
 
+All CLI/MCP writers sharing a checkpoint directory must be upgraded together:
+checkpoint locks now use owner-tagged directories instead of exclusive files.
+If saving a pause reports a legacy `.lock` file, an older writer left it.
+Stop all writers, upgrade them together, and verify none remains active before
+manually removing only that lock file and retrying. The CLI preserves the lock
+and does not overwrite the checkpoint while ownership is unknown.
+
+An unrecognized lock **directory** gets separate inspection guidance. Preserve
+its entries and check the writer version; an unknown future owner format or an
+unrelated file such as `.DS_Store` is not an ownerless legacy lock file.
+
 A graph with a tracked creation node (`model.addElement`) re-run on its own output updates the
 elements it made — same GlobalIds, changed geometry — and removes the ones whose lanes vanished:
 
@@ -1815,6 +1896,7 @@ The `semantic` command reads JSON/SPARQL providers, generates shared profile art
 | `doctor` | Check CLI runtime, package versions and WASM binary |
 | `info` | Model summary (schema, entities, storeys) |
 | `query` | Query entities by type/properties/quantities |
+| `structural` | Read analysis models, members, connections, loads, reactions and physical links |
 | `props` | All properties for a single entity |
 | `export` | Export data / geometry / energy model |
 | `schedule` | Tabular schedule of one class (csv/json/md/html) |
@@ -1837,6 +1919,7 @@ The `semantic` command reads JSON/SPARQL providers, generates shared profile art
 | `stats` | Auto-calculated model KPIs and health check |
 | `mutate` | Modify properties/attributes and save |
 | `generate-spaces` | Derive IfcSpace from walls (slab/roof-aware height) |
+| `derive-structural` | Derive a linked structural analysis model from beams, columns, slabs, walls |
 | `storey` | Author storeys; geometry follows ("storey --help" for actions) |
 | `ask` | Natural language BIM queries |
 | `view` | Interactive 3D viewer in browser |

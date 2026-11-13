@@ -117,6 +117,16 @@ impl EntityDecoder<'_> {
         slow_leaf(&entity, ifc_type).ok_or_else(|| self.refuse_malformed(id))
     }
 
+    /// [`Self::point3`]'s byte fast path alone: `Some` exactly when `point3`
+    /// would return that value without decoding `id`, `None` when it would
+    /// fall back to the full decode (which may succeed, fail, or count a
+    /// refusal; call `point3` for that). A pure function of this decoder's
+    /// immutable source and index, with no side effect, so a caller reading the
+    /// same points repeatedly within one decoder may memoize its `Some`.
+    pub fn point3_fast(&mut self, id: u32) -> Option<[f64; 3]> {
+        self.get_raw_bytes(id).and_then(|bytes| fast_leaf(bytes, POINT_KEYWORD))
+    }
+
     /// `IfcCartesianPoint` `id` under the leaf rule (module doc). A dangling
     /// id is the decode error; anything malformed is a counted
     /// [`Error::MalformedRecord`].

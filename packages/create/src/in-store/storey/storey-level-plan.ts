@@ -41,6 +41,7 @@ import { readPlacementLeaf, worldLiftInParent, type PlacementLeaf } from './stor
 import { planStoreyDependents, type AttachedHeightChange, type StairRefit, type WallHeightChange } from './storey-dependents.js';
 import type { RailingRefit } from '../railing-stair-refit.js';
 import { writeStoreyLevelPlan } from './storey-level-write.js';
+import { dryRunTransaction } from './storey-dry-run.js';
 import {
   MIN_STOREY_SPACING, StoreyEditRefusedError, describeElevation, describeLength, type StoreyNotice, type StoreyRefusal,
 } from './storey-validation.js';
@@ -312,7 +313,7 @@ export function planStoreyLevelEdit(inventory: StoreyInventory, edit: StoreyLeve
 /** Write the plan into a draft that is never published; report what stopped it. */
 function dryRunRefusal(inventory: StoreyInventory, plan: StoreyLevelPlan): StoreyRefusal | null {
   try {
-    inventory.view.prepareAtomic((draft) => writeStoreyLevelPlan(inventory.store, new StoreEditor(inventory.store, draft), plan));
+    dryRunTransaction(inventory.view, (draft) => writeStoreyLevelPlan(inventory.store, new StoreEditor(inventory.store, draft), plan));
     return null;
   } catch (error) {
     if (error instanceof StoreyEditRefusedError && error.refusals[0]) return error.refusals[0];

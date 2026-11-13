@@ -11,6 +11,10 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./structural-glyphs": {
+      "types": "./dist/structural-glyphs.d.ts",
+      "import": "./dist/structural-glyphs.js"
+    },
     "./browser": {
       "types": "./dist/browser.d.ts",
       "import": "./dist/browser.js"
@@ -34,6 +38,7 @@
     "jszip": "^3.10.2"
   },
   "devDependencies": {
+    "@ifc-lite/mutations": "workspace:^",
     "@mergifyio/vitest": "^2026.10.11",
     "typescript": "^6.0.3",
     "vitest": "^5.0.5"

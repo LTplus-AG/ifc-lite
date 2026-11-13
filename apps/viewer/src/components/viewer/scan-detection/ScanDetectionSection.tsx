@@ -18,6 +18,7 @@ import {
   cancelScanDetection,
   proposalSchema,
   proposalTargetModel,
+  SCAN_DETECTION_REFUSALS,
   scanModels,
   startScanDetection,
   type DetectionDeps,
@@ -31,11 +32,6 @@ const STAGE_KEYS: Record<'starting' | 'segmenting' | 'proposing', TranslationKey
   proposing: 'scanToBim.stage.proposing',
 };
 
-/** Refusals `startScanDetection` reports by code. */
-const ERROR_KEYS: Record<string, TranslationKey> = {
-  noSample: 'scanToBim.error.noSample',
-};
-
 export interface ScanDetectionSectionProps {
   /** Test seam: the detector and cloud matrix; production uses the session worker and the renderer. */
   deps?: DetectionDeps;
@@ -45,9 +41,7 @@ export function ScanDetectionSection({ deps }: ScanDetectionSectionProps) {
   const { t, locale } = useTranslation();
   const models = useViewerStore((s) => s.models);
   const activeModelId = useViewerStore((s) => s.activeModelId);
-  const status = useViewerStore((s) => s.scanDetectionStatus);
-  const stage = useViewerStore((s) => s.scanDetectionStage);
-  const error = useViewerStore((s) => s.scanDetectionError);
+  const job = useViewerStore((s) => s.scanDetectionJob);
   const run = useViewerStore((s) => s.scanDetectionRun);
   const boxOn = useViewerStore((s) => !!activeSectionPlane(s)?.box);
   const scans = scanModels(models);
@@ -55,8 +49,10 @@ export function ScanDetectionSection({ deps }: ScanDetectionSectionProps) {
   if (scans.length === 0) return null;
   const sourceId = scans.some((m) => m.id === chosen) ? chosen! : scans[0].id;
   const target = proposalTargetModel(models, activeModelId);
-  const running = status === 'running';
-  const errorText = error && error in ERROR_KEYS ? t(ERROR_KEYS[error]) : t('scanToBim.error.failed', { message: error ?? '' });
+  const running = job.kind === 'running';
+  const error = job.kind === 'failed' ? job.error : null;
+  const errorText = error !== null && Object.hasOwn(SCAN_DETECTION_REFUSALS, error)
+    ? t(SCAN_DETECTION_REFUSALS[error]) : t('scanToBim.error.failed', { message: error ?? '' });
 
   return (
     <section aria-labelledby="scan-to-bim-title" className="flex flex-col gap-1.5 border-t pt-2">
@@ -84,13 +80,13 @@ export function ScanDetectionSection({ deps }: ScanDetectionSectionProps) {
           {run ? t('scanToBim.detectAgain') : t('scanToBim.detect')}
         </Button>
         {running && (
-          <Button size="sm" variant="outline" onClick={() => cancelScanDetection(deps)}>
+          <Button size="sm" variant="outline" onClick={() => cancelScanDetection()}>
             {t('scanToBim.cancel')}
           </Button>
         )}
       </div>
-      {running && <output className="block text-2xs text-muted-foreground">{t(STAGE_KEYS[stage ?? 'starting'])}</output>}
-      {status === 'failed' && <p role="alert" className="text-2xs text-destructive">{errorText}</p>}
+      {running && <output className="block text-2xs text-muted-foreground">{t(STAGE_KEYS[job.progress ?? 'starting'])}</output>}
+      {error !== null && <p role="alert" className="text-2xs text-destructive">{errorText}</p>}
       {run && (
         <>
           <p className="text-2xs text-muted-foreground leading-tight">

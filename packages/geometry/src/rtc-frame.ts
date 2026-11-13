@@ -27,6 +27,8 @@
  * about its own origin with nothing to catch it.
  */
 
+import type { Vec3 } from './coordinate-types.js';
+
 /** The offset a mesh path must subtract, and whether it must subtract at all. */
 export interface RtcFrame {
   x: number;
@@ -96,4 +98,11 @@ export function resolveWasmMetadataFrame(
   }
   if (rtcOffset === null) return { x: 0, y: 0, z: 0, needsShift: false };
   return rtcOffsetIsFinite ? { ...rtcOffset, needsShift: true } : undefined;
+}
+
+/** A wire `[x,y,z]` (e.g. the pre-pass `siteOrigin`) as a Vec3, or undefined unless all three are finite. */
+export function finiteVec3(value: ArrayLike<number> | null | undefined): Vec3 | undefined {
+  if (!value || value.length !== 3) return undefined;
+  const [x, y, z] = [value[0], value[1], value[2]];
+  return Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z) ? { x, y, z } : undefined;
 }

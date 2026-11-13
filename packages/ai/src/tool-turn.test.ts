@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createRootBudget } from './budget.js';
 import type { UsageReceipt } from './receipt.js';
 import { runToolTurn, type ToolTurn, type ToolTurnCall, type ToolTurnRequest, type ToolTurnTransport } from './tool-turn.js';
@@ -106,4 +106,21 @@ describe('runToolTurn', () => {
     expect(text).toEqual(['a', 'b']);
     expect(thinking).toEqual(['plan']);
   });
+});
+
+
+it.each([NaN, 0.5, Infinity, 2_147_483_648])('normalizes tool-turn deadlines before scheduling: %s (#9541)', async timeoutMs => {
+  vi.useFakeTimers();
+  const schedule = vi.spyOn(globalThis, 'setTimeout');
+  try {
+    let aborted = false;
+    const pending = runToolTurn(request(async call => new Promise((_resolve, reject) => {
+      call.signal.addEventListener('abort', () => { aborted = true; reject(call.signal.reason); }, { once: true });
+    }), { timeoutMs }));
+    expect(schedule).toHaveBeenCalledExactlyOnceWith(expect.any(Function), 1);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect((await pending).kind).toBe('timeout');
+  } finally { schedule.mockRestore(); vi.useRealTimers(); }
 });

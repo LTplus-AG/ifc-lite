@@ -22,6 +22,7 @@ function run(args: string[]) {
   } finally { rmSync(temporary, { recursive: true, force: true }); }
 }
 
+// The outer test timeout must exceed the 20 s child spawn deadline for tsx startup.
 describe('developer diagnostic command (DX6)', () => {
   it('reports actual runtime and every declared first-party dependency through the source executable', () => {
     const result = run(['doctor', '--json']);
@@ -38,17 +39,17 @@ describe('developer diagnostic command (DX6)', () => {
     expect(report.ok, JSON.stringify(report)).toBe(true);
     expect(result.status, result.stderr).toBe(0);
     expect(JSON.stringify(report)).not.toContain(fileURLToPath(new URL('../../../', import.meta.url)));
-  });
+  }, 30_000);
   it('has command-specific help', () => {
     const result = run(['doctor', '--help']);
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain('ifc-lite doctor');
     expect(result.stdout).toContain('--json');
-  });
+  }, 30_000);
   it('rejects unsupported flags without emitting a success report', () => {
     const result = run(['doctor', '--not-a-flag']);
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('Usage: ifc-lite doctor [--json]');
     expect(result.stdout).toBe('');
-  });
+  }, 30_000);
 });

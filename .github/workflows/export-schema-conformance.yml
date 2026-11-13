@@ -64,10 +64,14 @@ on:
       - "packages/mutations/**"
       - "packages/pointcloud/**"
       - "packages/regex-guard/**"
+      # The rest of export's build closure (`turbo --filter='@ifc-lite/export^...'`,
+      # measured with --dry-run), built by the step before the export test.
+      - "packages/load-trace/**"
       # The LandXML→IFC4X3 converter writes STEP of its own (#4937); the step
       # below grades it with the same validator plus the alignment checker, and
       # grades IfcCreator's own IFC4X3 output (#5351).
       - "packages/create/**"
+      - "tests/structural-coverage/probes/create-scene.mjs"
       # The rest of create's build closure (`turbo --filter='@ifc-lite/create^...'`,
       # measured with --dry-run) — the step below builds these, so a change to
       # any of them can break this job and must be able to trigger it.
@@ -122,7 +126,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -165,6 +169,15 @@ jobs:
           tests/models/buildingsmart/annex_e/basic-geometric-shape/triangulated-item.ifc
           tests/models/ifc5/Hello_Wall_hello-wall.ifc
 
+      # The src/ aliases in packages/export/vitest.config.ts cover what this
+      # suite imports directly, but an aliased package's OWN workspace imports
+      # still resolve from dist/ (pointcloud -> wasm-lifecycle failed to resolve
+      # here). Build export's declared dependency closure, as the create step
+      # below does, so a new edge anywhere in it is covered without hand-listing
+      # packages in the aliases or here.
+      - name: Build @ifc-lite/export's workspace dependencies
+        run: pnpm exec turbo run build --filter='@ifc-lite/export^...'
+
       - name: Re-export the fixtures and validate against IfcOpenShell
         env:
           MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN }}
@@ -174,11 +187,11 @@ jobs:
       # The LandXML→IFC4X3 converter's output. ifc-lite's own parser cannot
       # evaluate an IFC4X3 IfcAlignment, so IfcOpenShell is the only thing in CI
       # that can say whether a written alignment lands on its authored points.
-      # `@ifc-lite/create` resolves its workspace dependencies from `dist/`
-      # (unlike `@ifc-lite/export`, whose vitest config aliases them to
-      # `src/`). This job installs with --ignore-scripts and builds nothing,
-      # so build exactly create's declared dependency closure — ~20 s — rather
-      # than alias a subset to src and risk two instances of one package.
+      # `@ifc-lite/create` resolves its workspace dependencies from `dist/`.
+      # This job installs with --ignore-scripts, so build exactly create's
+      # declared dependency closure — ~20 s, mostly already built for export
+      # above — rather than alias a subset to src and risk two instances of
+      # one package.
       - name: Build @ifc-lite/create's workspace dependencies
         run: pnpm exec turbo run build --filter='@ifc-lite/create^...'
 
@@ -187,6 +200,9 @@ jobs:
           MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN }}
           MERGIFY_TEST_JOB_NAME: validate (landxml)
         run: pnpm --filter @ifc-lite/create exec vitest run src/landxml/ifcopenshell-conformance.test.ts
+
+      - name: Grade structural CREATE scenes against IfcOpenShell EXPRESS rules
+        run: pnpm test --filter=@ifc-lite/create -- src/in-store/structural-create-gaps.test.ts
 
       - name: Grade IfcCreator IFC4X3 output with IfcOpenShell
         env:
@@ -211,7 +227,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:

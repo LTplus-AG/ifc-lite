@@ -11,6 +11,7 @@ import {
   subscribeActiveDrawingCanvas,
 } from '@/lib/drawing/active-canvas-snapshot';
 import { useViewerStore } from '@/store';
+import { drawnSectionPlane } from '@/lib/drawing/drawn-section-plane';
 import type { Drawing2DStatus } from '@/store/slices/drawing2DSlice';
 
 interface SectionViewpointOptions {
@@ -61,7 +62,8 @@ export function useSectionViewpointCapture(createViewpoint: CreateViewpoint): {
   const status = useViewerStore((state) => state.drawing2DStatus);
   const panelVisible = useViewerStore((state) => state.drawing2DPanelVisible);
   const editingText = useViewerStore((state) => state.textAnnotation2DEditing !== null);
-  const customPlane = useViewerStore((state) => state.sectionPlane.custom !== undefined);
+  // The cut the shown drawing was generated at, not one still regenerating.
+  const customPlane = useViewerStore((state) => drawnSectionPlane(state).custom !== undefined);
   const canvasMounted = useSyncExternalStore(
     subscribeActiveDrawingCanvas,
     hasActiveDrawingCanvas,

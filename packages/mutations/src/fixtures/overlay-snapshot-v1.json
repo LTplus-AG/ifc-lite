@@ -1,0 +1,19 @@
+{
+  "format": "ifc-lite/overlay-snapshot",
+  "version": 1,
+  "source": { "contentHash": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "schema": "IFC4" },
+  "createdAt": "2026-11-09T00:00:00.000Z",
+  "nextExpressId": 43,
+  "state": {
+    "properties": [[42, "Pset:Persistence", "Fire:Rating", { "operation": "SET", "value": "REI60", "valueType": 0 }]],
+    "quantities": [], "attributes": [], "positional": [], "retypes": [],
+    "createdSets": { "property": [[42, { "name": "Pset:Persistence", "properties": [{ "name": "Fire:Rating", "type": 0, "value": "REI60" }] }]], "quantity": [] },
+    "deletedSets": { "property": [], "quantity": [] },
+    "createdEntities": [{ "expressId": 42, "type": "IFCWALL", "attributes": ["0000000000000000000042", null, "Persisted wall", null, null, null, null, null, ".NOTDEFINED."] }],
+    "tombstones": [], "aliases": [], "forgotten": []
+  },
+  "journal": [
+    { "id": "v1-create", "type": "CREATE_ENTITY", "timestamp": 1794182400000, "modelId": "m", "entityId": 42 },
+    { "id": "v1-property", "type": "CREATE_PROPERTY", "timestamp": 1794182400001, "modelId": "m", "entityId": 42, "psetName": "Pset:Persistence", "propName": "Fire:Rating", "newValue": "REI60" }
+  ]
+}

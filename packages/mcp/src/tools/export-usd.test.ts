@@ -27,7 +27,9 @@ const gp = vi.hoisted(() => {
   return { init, exportUsd, dispose, GeometryProcessor };
 });
 
-vi.mock('@ifc-lite/geometry', () => ({
+// Real module underneath (pure option constants such as RHINO_UNITS); boundary overridden.
+vi.mock('@ifc-lite/geometry', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@ifc-lite/geometry')>()),
   GeometryProcessor: gp.GeometryProcessor,
   // The real rule's shape: the boundary's typed refusal is an Error whose
   // message starts with the code.

@@ -15,10 +15,12 @@
  * a file that happens to expose it.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
-import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
+import { MutablePropertyView, StoreEditor, recordCompoundMutation, undoRecordedMutationOperations } from '@ifc-lite/mutations';
 import { getEffectiveEntityIndex, authoredEntityRefs } from './effective-index.js';
+import { StepExporter } from './step-exporter.js';
+import { remeshContextRoots } from './remesh-context-roots.js';
 
 function guid(tag: string): string {
   return (tag + '0'.repeat(22)).slice(0, 22);
@@ -48,6 +50,40 @@ function newView(store: IfcDataStore): { view: MutablePropertyView; editor: Stor
   const view = new MutablePropertyView(null, 'test-model');
   return { view, editor: new StoreEditor(store, view) };
 }
+
+// An older structural view has the original mutable getters, without the new borrow.
+function withoutBorrow(view: MutablePropertyView): MutablePropertyView {
+  return new Proxy(view, { get(target, key, receiver) {
+    return key === 'readNewEntities' || key === 'readNewEntity' ? undefined : Reflect.get(target, key, receiver);
+  } });
+}
+
+it('#9411 effective index and STEP export support structural views without readNewEntities', async () => {
+  const store = await parseBase(), { view, editor } = newView(store);
+  const id = editor.addEntity('IfcCartesianPoint', [[1, 2, 3]]).expressId;
+  const legacy = withoutBorrow(view);
+  expect(getEffectiveEntityIndex(store, legacy, true).has(id)).toBe(true);
+  const exported = new StepExporter(store, legacy).export({ schema: 'IFC4', applyMutations: true });
+  expect(new TextDecoder().decode(exported.content)).toContain(`#${id}=IFCCARTESIANPOINT((1.,2.,3.));`);
+});
+
+it('#9411 structural views still refuse created IDs that collide with source records', async () => {
+  const store = await parseBase(), view = new MutablePropertyView(null, 'collision');
+  view.createEntity('IfcCartesianPoint', [[1, 2, 3]]);
+  expect(() => new StepExporter(store, withoutBorrow(view)).export({ schema: 'IFC4', applyMutations: true }))
+    .toThrow('created entity #1 reuses source id #1');
+});
+
+it('#9411 compound undo preserves the authored STEP record order', async () => {
+  const store = await parseBase(), { view, editor } = newView(store);
+  const ids = [1, 2, 3].map(i => editor.addEntity('IfcCartesianPoint', [[i, 0, 0]]).expressId);
+  const exportedIds = () => [...new TextDecoder().decode(new StepExporter(store, view)
+    .export({ schema: 'IFC4', applyMutations: true }).content).matchAll(/#(\d+)=IFCCARTESIANPOINT/g)].map(match => Number(match[1]));
+  expect(exportedIds()).toEqual(ids);
+  recordCompoundMutation(view, draft => { draft.deleteEntity(ids[1]); draft.deleteEntity(ids[0]); });
+  undoRecordedMutationOperations(view, 1, () => { throw new Error('Expected compound inverse'); });
+  expect(exportedIds()).toEqual(ids);
+});
 
 describe('EffectiveEntityIndex agrees with itself', () => {
   it('answers has / get / iteration / size the same way about every id', async () => {
@@ -216,4 +252,35 @@ describe('authoredEntityRefs tells a reference from text', () => {
     // arbitrary entities into an export closure.
     expect(authoredEntityRefs(42)).toEqual([]);
   });
+});
+
+it('remesh context roots and the effective index read only the created rows they ask about #8452', async () => {
+  const store = await parseBase();
+  const { view, editor } = newView(store);
+  for (let i = 0; i < 2000; i++) editor.addEntity('IfcCartesianPoint', [[i, 0, 0]]);
+  const opening = editor.addEntity('IfcOpeningElement', [guid('open'), null, 'O', null, null, null, null, null, null]).expressId;
+  const window = editor.addEntity('IfcWindow', [guid('win'), null, 'W', null, null, null, null, null, null, null, null, null, null]).expressId;
+  const voids = editor.addEntity('IfcRelVoidsElement', [guid('void'), null, null, null, '#2', `#${opening}`]).expressId;
+  const fills = editor.addEntity('IfcRelFillsElement', [guid('fill'), null, null, null, `#${opening}`, `#${window}`]).expressId;
+  const material = editor.addEntity('IfcMaterial', ['M', null, null]).expressId;
+  const assoc = editor.addEntity('IfcRelAssociatesMaterial', [guid('mat'), null, null, null, ['#2'], `#${material}`]).expressId;
+  const scans = vi.spyOn(view, 'readNewEntities'), exposes = vi.spyOn(view, 'getNewEntities');
+  // Each storey or size edit asks this once per affected element; it used to
+  // copy every created row of the session for each of them.
+  const roots = remeshContextRoots(store, view, new Set([2]));
+  expect(scans).not.toHaveBeenCalled();
+  expect(exposes).not.toHaveBeenCalled();
+  expect([...roots].sort((a, b) => a - b)).toEqual([1, 2, opening, window, voids, fills, assoc].sort((a, b) => a - b));
+  const index = getEffectiveEntityIndex(store, view, true);
+  expect(index.size).toBe(3 + 2006);
+  expect(index.typeOf(voids)).toBe('IFCRELVOIDSELEMENT');
+  expect(scans).not.toHaveBeenCalled();
+  // A queued override moves the void to wall #3; the effective endpoint decides.
+  view.setPositionalAttribute(voids, 4, '#3');
+  expect(remeshContextRoots(store, view, new Set([3]))).toContain(voids);
+  expect(remeshContextRoots(store, view, new Set([2]))).not.toContain(voids);
+  // An older view without reference buckets still scans and agrees.
+  const unindexed = new Proxy(view, { get: (target, key, receiver) => key === 'getNewEntitiesReferencing' ? undefined : Reflect.get(target, key, receiver) });
+  expect([...remeshContextRoots(store, unindexed, new Set([3]))].sort((a, b) => a - b))
+    .toEqual([...remeshContextRoots(store, view, new Set([3]))].sort((a, b) => a - b));
 });

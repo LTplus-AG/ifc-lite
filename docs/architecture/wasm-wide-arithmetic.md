@@ -20,6 +20,13 @@ than natively. The WASM wide-arithmetic proposal adds `i64.mul_wide_s/u`,
 Built with `-C target-feature=+wide-arithmetic`; verified the ops are emitted
 (`wasm-tools print | grep`) and that output is byte-identical to baseline.
 
+> **Re-measure before relying on these numbers.** They were taken on LLVM 21,
+> which miscompiles signed 64-bit overflow checks under wide-arithmetic (blocker
+> 3 below). The benches did not trip it, but the fix (llvm/llvm-project#200429)
+> stops LLVM stackifying multi-result instructions, which can cost a few extra
+> `local.get`/`local.set`s. Re-run both benches on `WIDE_TOOLCHAIN` before
+> flipping `BUILD_WIDE` on.
+
 **Predicate microbench** (a 3x3 determinant = orient3d core, the exact hot path):
 
 | tier | baseline wasm | +wide-arith | speedup | vs native |
@@ -52,10 +59,67 @@ ThatOpen wins today.
 - `wide-arithmetic` is a recognized wasm target feature in our pinned toolchain.
 - LLVM 21 lowers our actual `bnum` I256/I512 `checked_mul` to the wide ops with
   only `-C target-feature=+wide-arithmetic`. No `bnum` changes required.
+- **But LLVM < 23 miscompiles it.** See "Blocker 3" below: the wide bundle
+  must build on LLVM 23 or later, which is newer than the repo's pinned nightly.
 - At the kernel level there is no blocker: the win is real today on a plain
   `cdylib` (the benches above).
 
-## Delivery status: blocker 1 CLEARED, blocker 2 still blocks (updated 2026-07-31)
+## Delivery status: blocker 1 CLEARED, blocker 2 staged in V8, blocker 3 worked around (updated 2026-11-09)
+
+**Update 2026-11-09.** The weekly tripwire went red on 2026-11-04 for two
+reasons at once. Neither is a kernel bug.
+
+- **Blocker 2 moved: V8 15.6 has it staged.** Node 27.0.0-alpha (V8
+  15.6.75.25) and the Node 28 nightly of 2026-11-09 (V8 15.6.75.33) accept all
+  four opcodes under `--wasm-staging`, and still reject them without it. There
+  is no dedicated flag. A 200k-case fuzz of `i64.add128`, `i64.sub128`,
+  `i64.mul_wide_s` and `i64.mul_wide_u` against a BigInt reference matched
+  exactly in both Liftoff (`--liftoff-only`) and TurboFan (`--no-liftoff`).
+  Staged features are not on in any browser by default, so this is still a
+  blocker for users. The workflow now records flag-only support as the expected
+  green state, and only on-by-default support trips it.
+- **Blocker 3 (new): LLVM < 23 miscompiles i64 overflow checks.** Once the
+  engine ran the module, the determinism test panicked with `attempt to
+  multiply with overflow` in `i_float` 4.1.0 (`IntVector::cross_product`, via
+  `i_overlay`'s `FloatOverlay::unsafe_add_source`). The inputs were fine. For
+  `a.checked_mul(b)` on `i64`, LLVM emits:
+
+  ```wat
+  local.get 1        ;; b, pushed before the multiply
+  local.get 0
+  local.get 1
+  i64.mul_wide_s     ;; -> lo, hi
+  local.set 1        ;; hi goes to local 1 ...
+  i64.const 63
+  i64.shr_s          ;; sign(lo)
+  i64.ne             ;; ... but this compares the stale b, not hi
+  ```
+
+  So it reports overflow whenever `b != sign(lo)`, for example `5 * 7`. Wasmtime
+  50 gives the same wrong answer as V8, which rules out the engine. The cause
+  is `WebAssemblyRegStackify` stackifying the first def of a multi-def
+  instruction, fixed upstream by
+  [llvm/llvm-project#200429](https://github.com/llvm/llvm-project/pull/200429)
+  (merged 2026-06-08, LLVM 23 only). Measured with a standalone `checked_mul`
+  repro, 300k random cases each:
+
+  | toolchain | LLVM | wrong `checked_mul` verdicts |
+  |---|---|---:|
+  | `nightly-2025-11-15` (repo pin) | 21 | ~30% |
+  | stable 1.98.1 | 22.1.8 | ~30% |
+  | `nightly-2026-10-15` | 23.1.3 | 0 |
+
+  Only optimised code is affected. That still includes the "debug" test,
+  because the workspace builds `ifc-lite-geometry` (where `i_overlay` is
+  instantiated) at `opt-level = 3` in the dev profile. Anything shipped from
+  an LLVM 21/22 wide build would have been wrong wherever a signed 64-bit
+  overflow check runs, so `pkg-wide` must not be built on the repo pin.
+  `BUILD_WIDE=1` now builds on its own `WIDE_TOOLCHAIN` (default
+  `nightly-2026-10-15`) and refuses any toolchain whose LLVM is older than 23.
+  The default and threaded bundles never emit wide ops, so they are unaffected
+  and stay on the repo pin.
+
+## Earlier status (2026-07-31)
 
 Shipping it to browser users was blocked on TWO upstream items. Blocker 1 is now
 cleared; blocker 2 still gates shipping.
@@ -368,6 +432,10 @@ with the engine-support tripwire firing:
       `wasm-bindgen` pin bumped to `=0.2.126`, past the walrus-0.26 release, in
       its own reviewed PR, with `wasm-bindgen-futures` / `wasm-bindgen-test` /
       `js-sys` / `web-sys` moved in lockstep as required.
+- [x] Blocker 3 worked around (2026-11-09): `pkg-wide` and its determinism
+      test build on `WIDE_TOOLCHAIN` (LLVM >= 23, llvm/llvm-project#200429),
+      and `scripts/lib/build-wasm-wide.sh` refuses an older LLVM. If the repo pin ever
+      moves to LLVM >= 23, `WIDE_TOOLCHAIN` can fold back into it.
 - [ ] Blocker 2 cleared: `WebAssembly.validate()` of the probe in
       `packages/geometry/src/wasm-features.ts` (see the Delivery plan above)
       returns `true` on a genuinely shipping release — **no experimental flags

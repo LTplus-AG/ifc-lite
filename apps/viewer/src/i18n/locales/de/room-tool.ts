@@ -48,5 +48,6 @@ export const roomToolDe = {
   "roomTool.noWalls": "Keine Wände dieses Geschosses umschließen einen Raum: Zeichnen Sie die Wände oder wechseln Sie zu „Zeichnen“",
   "roomTool.pick.none": "Keine Wände umschließen diesen Punkt: Klicken Sie innerhalb eines Raums oder wechseln Sie zu „Zeichnen“",
   "roomTool.pick.taken": "Diese Fläche hat bereits einen Raum",
-  "roomTool.draw.needThree": "Ein Raum benötigt mindestens drei Ecken"
+  "roomTool.draw.needThree": "Ein Raum benötigt mindestens drei Ecken",
+  "roomTool.update.unresolvedPlacement": "Wand gedreht. Räume wurden nicht aktualisiert, weil die Wandplatzierung nicht gelesen werden konnte.",
 } satisfies Catalogue;

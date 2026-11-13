@@ -52,7 +52,7 @@ import { Separator } from '@/components/ui/separator';
 import { ACTIVE_STATE_CLASS } from '@/components/ui/active-state';
 import { useViewerStore } from '@/store';
 import { useTranslation, localeCount } from '@/i18n';
-import { canMutate, mutationDenialKey, mutationPermission } from '@/store/mutation-permission';
+import { canMutateData, dataMutationPermission, mutationDenialKey } from '@/store/mutation-permission';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { defaultAuthoringModelId } from '@/lib/model-placement/history';
 import { PropertyValueType } from '@ifc-lite/data';
@@ -71,7 +71,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { ChangeConversion } from '@/lib/actions/change-conversion';
 import { tableRowsOf, tableToModelChanges } from '@/lib/actions/table-changes';
 import type { ColumnValueType, TableMapping } from '@/lib/actions/table-mapping';
-import { suggestTableMapping, tableMappingContext } from '@/lib/actions/table-mapping-request';
+import { useTableSuggestion } from './useTableSuggestion';
 import { ChangeReviewDialog } from './actions/ChangeReviewDialog';
 import { TableMappingCard } from './actions/TableMappingCard';
 import { DataConnectorMappings, type MappingRow } from './DataConnectorMappings';
@@ -96,7 +96,6 @@ export function DataConnector(props: ToolDialogProps) {
   const getMutationView = useViewerStore((s) => s.getMutationView);
   const mutationViews = useViewerStore(s => s.mutationViews);
   const registerMutationView = useViewerStore((s) => s.registerMutationView);
-  const editEnabled = useViewerStore((s) => s.editEnabled);
   const collabEditRole = useViewerStore((s) => s.collabRole);
   // Also get legacy single-model state for backward compatibility
   const legacyIfcDataStore = useViewerStore((s) => s.ifcDataStore);
@@ -109,8 +108,9 @@ export function DataConnector(props: ToolDialogProps) {
   const { trigger } = props;
   const [open, setOpen] = useToolDialog(props);
   const [selectedModelId, setSelectedModelId] = useState<string>('');
-  const editPermission = useMemo(() => mutationPermission(useViewerStore.getState(), selectedModelId),
-    [editEnabled, collabEditRole, selectedModelId, models]);
+  // Importing data edits properties in place, like the Properties panel (#9296).
+  const editPermission = useMemo(() => dataMutationPermission(useViewerStore.getState(), selectedModelId),
+    [collabEditRole, selectedModelId, models]);
   const canEditInSession = editPermission.allowed;
 
   // Raw CSV content
@@ -141,7 +141,6 @@ export function DataConnector(props: ToolDialogProps) {
   // Reviewed import (P15): the conversion under review and an AI-drafted mapping being edited.
   const [review, setReview] = useState<ChangeConversion | null>(null);
   const [aiMapping, setAiMapping] = useState<TableMapping | null>(null);
-  const [suggesting, setSuggesting] = useState(false);
 
   // Get list of models - includes both federated models and legacy single-model
   const modelList = useMemo(() => {
@@ -186,7 +185,7 @@ export function DataConnector(props: ToolDialogProps) {
   const selectedView = mutationViews.get(selectedModelId);
   const isCurrent = useAuthoringOperation(open, selectedModelId, selectedModel?.ifcDataStore, selectedView);
   const isDraftCurrent = useCallback(() => isCurrent() && draftGeneration === fileReadGeneration.current, [isCurrent, draftGeneration]);
-  useEffect(() => { setIsProcessing(false); setSuggesting(false); setImportProgress(null); }, [isDraftCurrent]);
+  useEffect(() => { setIsProcessing(false); setImportProgress(null); }, [isDraftCurrent]);
   useEffect(() => {
     setImportDirty(true); setImportStats(null); setMatchResults(null); setAiMapping(null); setReview(null); setError(null);
   }, [selectedModelId, selectedModel?.ifcDataStore, selectedView]);
@@ -222,7 +221,7 @@ export function DataConnector(props: ToolDialogProps) {
       dataStore.entities,
       mutationView,
       dataStore.strings || null,
-      () => isDraftCurrent() && canMutate(useViewerStore.getState(), selectedModelId)
+      () => isDraftCurrent() && canMutateData(useViewerStore.getState(), selectedModelId)
     );
   }, [isDraftCurrent, selectedModel, selectedModelId, getMutationView, mutationViews]);
 
@@ -237,7 +236,7 @@ export function DataConnector(props: ToolDialogProps) {
     reader.onload = (event) => {
       if (!isCurrent() || generation !== fileReadGeneration.current) return;
       const text = event.target?.result as string;
-      if (!text) return;
+      if (typeof text !== 'string') return;
 
       // Publish the accepted file and its payload together. A retired read must
       // leave the previous draft intact, including the filename shown to users.
@@ -248,6 +247,7 @@ export function DataConnector(props: ToolDialogProps) {
       setImportDirty(true);
       setAiMapping(null);
       setCsvContent(text);
+      setParsedRows([]); setCsvColumns([]); setMappings([]); setMatchColumn('');
 
       // Use CsvConnector to parse if available, otherwise do basic parsing for preview
       if (csvConnector) {
@@ -473,17 +473,8 @@ export function DataConnector(props: ToolDialogProps) {
       identity: { column: matchColumn, key: reviewKey }, columns };
     setReview(tableToModelChanges(useViewerStore.getState(), { modelId: selectedModelId, rows: tableRows, mapping }));
   }, [reviewKey, matchColumn, mappings, fileName, selectedModelId, tableRows, t]);
-  const handleSuggest = useCallback(async () => {
-    setSuggesting(true);
-    setError(null);
-    const state = useViewerStore.getState();
-    const outcome = await suggestTableMapping(tableMappingContext(state, selectedModelId, headers, tableRows),
-      state.chatActiveModel, import.meta.env.VITE_LLM_PROXY_URL || '/api/chat');
-    if (!isDraftCurrent()) return;
-    setSuggesting(false);
-    if (outcome.ok) setAiMapping(outcome.mapping);
-    else setError(t(`tableChanges.suggestError.${outcome.reason}`, { detail: outcome.detail ?? '' }));
-  }, [tableRows, selectedModelId, headers, t, isDraftCurrent]);
+  const { suggesting, handleSuggest } = useTableSuggestion({ isDraftCurrent, selectedModelId, headers, tableRows,
+    setAiMapping, setError, t });
 
   // Scroll to bottom of the body area — double rAF ensures DOM is painted
   const scrollToBottom = useCallback(() => {
@@ -497,10 +488,10 @@ export function DataConnector(props: ToolDialogProps) {
     });
   }, []);
 
-  // Auto-scroll when import completes or errors appear
+  // Auto-scroll when import completes; errors remain visible at the top.
   useEffect(() => {
-    if (importStats || error) scrollToBottom();
-  }, [importStats, error, scrollToBottom]);
+    if (importStats) scrollToBottom();
+  }, [importStats, scrollToBottom]);
 
   // Auto-scroll when progress first appears (so user sees the bar)
   const prevProgressRef = useRef<ImportProgress | null>(null);
@@ -699,6 +690,15 @@ export function DataConnector(props: ToolDialogProps) {
               )}
             </div>
 
+            {error && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>{t('dataConnector.errorTitle')}</AlertTitle>
+                <AlertDescription className="whitespace-pre-wrap">
+                  {error}
+                </AlertDescription>
+              </Alert>
+            )}
             {csvColumns.length > 0 && (
               <>
                 <Separator />
@@ -878,16 +878,6 @@ export function DataConnector(props: ToolDialogProps) {
                   </Alert>
                 )}
 
-                {/* Error Display */}
-                {error && (
-                  <Alert variant="destructive">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertTitle>{t('dataConnector.errorTitle')}</AlertTitle>
-                    <AlertDescription className="whitespace-pre-wrap">
-                      {error}
-                    </AlertDescription>
-                  </Alert>
-                )}
               </>
             )}
           </div>

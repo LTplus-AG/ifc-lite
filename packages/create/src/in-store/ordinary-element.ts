@@ -4,7 +4,7 @@
 
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import type { SpatialAnchor } from './anchor.js';
+import { toNativeLength, type SpatialAnchor } from './anchor.js';
 import { applyNewElementTop, type TopConstraint } from './storey/storey-top-constraint.js';
 import { addBeamToStore, type BeamInStoreParams, type ProfiledBeamInStoreParams } from './beam.js';
 import { addColumnToStore, type ColumnInStoreParams, type ProfiledColumnInStoreParams } from './column.js';
@@ -13,6 +13,8 @@ import { addPlateToStore, type PlateInStoreParams } from './plate.js';
 import { addRoofToStore, type RoofInStoreParams } from './roof.js';
 import { addSlabToStore, type SlabInStoreParams } from './slab.js';
 import { addSpaceToStore, type SpaceInStoreParams } from './space.js';
+import { autojoinWallInStore } from './wall-autojoin.js';
+import { withWallAutojoinIndex, type WallAutojoinIndex } from './wall-autojoin-index.js';
 import { addWallToStore, type WallInStoreParams } from './wall.js';
 
 /** The eight ordinary builders shared by loaded-model gestures and SDK/MCP.
@@ -41,14 +43,39 @@ export function addOrdinaryElementInStore(
    * The new element's top constraint (#9296), applied in the same
    * transaction to a wall, column, beam or member (`applyNewElementTop`).
    */
-  options: { readonly top?: TopConstraint | 'auto'; readonly store?: IfcDataStore } = {},
+  options: {
+    readonly top?: TopConstraint | 'auto'; readonly store?: IfcDataStore;
+    /** Receives skipped implicit-join notices after creation commits. */
+    readonly notices?: string[];
+    /** Owning host transaction's staged endpoint index. */
+    readonly wallIndex?: WallAutojoinIndex;
+  } = {},
 ): number {
-  return editor.runAtomic(draft => {
+  if (element.kind === 'wall' && options.store && !options.wallIndex) {
+    return withWallAutojoinIndex(options.store, editor.getMutationView(), wallIndex =>
+      addOrdinaryElementInStore(editor, anchor, element, { ...options, wallIndex }));
+  }
+  const notices: string[] = [];
+  const id = editor.runAtomic(draft => {
     const resolved = typeof anchor === 'function' ? anchor(draft) : anchor;
     const id = emitOrdinaryElement(draft, resolved, element);
     if (options.top !== undefined && options.store && TOP_KINDS.has(element.kind)) applyNewElementTop(options.store, draft, id, options.top, resolved.storeyId);
+    if (element.kind === 'wall' && options.store && options.wallIndex) {
+      try {
+        notices.push(...autojoinWallInStore(options.store, draft, {
+          wallId: id, parentPlacementId: resolved.storeyPlacementId,
+          elevation: toNativeLength(resolved, element.params.Start[2]),
+          start: [element.params.Start[0], element.params.Start[1]], end: [element.params.End[0], element.params.End[1]],
+        }, options.wallIndex, resolved));
+      } catch (error) {
+        notices.push(`Skipped automatic wall joins for #${id}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
     return id;
   });
+  if (options.notices) options.notices.push(...notices);
+  else for (const notice of notices) console.warn(`[ifc-lite/create] ${notice}`);
+  return id;
 }
 
 const TOP_KINDS = new Set<OrdinaryInStoreElement['kind']>(['wall', 'column', 'beam', 'member']);

@@ -326,14 +326,16 @@ describe('a wall top attached to a slab underside (#9296)', () => {
     expect(top(s, under, 'wall')).toBeCloseTo(3.1, 9);
   });
 
-  it('a roof target is reported, not followed', async () => {
+  it('a flat roof target follows its storey (#9296)', async () => {
     const s = await levels();
     const roof = addOrdinaryElementInStore(s.editor, anchor(s, s.l2), { kind: 'roof', params: { Position: [0, 0, 0], Width: 6, Depth: 4, Thickness: 0.2 } });
     const under = wall(s, s.l1, 0);
     const guid = new AnchorEntityReader(s.store, s.view).entity(roof)!.attributes[0] as string;
     writeTopAttachment(s.view, under, guid);
     const plan = planStoreyLevelEdit(readStoreyInventory(s.store, s.view), { kind: 'floorHeight', storeyId: s.l1, Height: 4 });
-    expect(plan.notices.find((notice) => notice.code === 'wallAttachmentUnresolved')?.message).toMatch(/a roof \(attaching to a roof is not supported yet\)/);
+    expect(plan.notices.find((notice) => notice.code === 'wallAttachmentUnresolved')).toBeUndefined();
+    applyStoreyLevelEdit(s.store, s.editor, { kind: 'floorHeight', storeyId: s.l1, Height: 4 });
+    expect(top(s, under, 'wall')).toBeCloseTo(4, 9);
   });
 });
 

@@ -15,7 +15,7 @@
  */
 
 import { firstProjAxis } from '@ifc-lite/data';
-import { axis2d, axis3d, applyFrame, composeFrame, contextDimension, pointOf, refId, num, transformBounds, unit, vec3, type Vec3, type Frame3 } from './host-geometry-frame.js';
+import { axis2d, axis3d, applyFrame, composeFrame, contextDimension, pointOf, refId, num, transformBounds, unit, vec3, type Vec3, type Frame3, type GeometryEntityReader } from './host-geometry-frame.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { HostAnchor, HostBounds, HostKind } from './anchor.js';
@@ -207,7 +207,8 @@ function collectItemPoints(reader: AnchorEntityReader, itemId: number, out: Vec3
   return true;
 }
 
-function mappedItemFrame(reader: AnchorEntityReader, attrs: unknown[]): { items: number[]; frame: Frame3 } | null {
+/** `MappingTarget · MappingOrigin` of one IfcMappedItem and the mapped representation's items. */
+export function mappedItemFrame(reader: GeometryEntityReader, attrs: readonly unknown[]): { items: number[]; frame: Frame3 } | null {
   const mapId = refId(attrs[0]), targetId = refId(attrs[1]);
   const map = mapId === null ? null : reader.entity(mapId);
   const target = targetId === null ? null : reader.entity(targetId);

@@ -5439,6 +5439,7 @@
     "safeUtf8Decode: function",
     "searchEpsgIndex: function",
     "serializeValue: function",
+    "sourceEntityClasses: function",
     "spatialLookups: function",
     "textDecoderAcceptsSab: function",
     "toStepLineWithRegistry: function",

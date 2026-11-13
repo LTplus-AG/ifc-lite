@@ -8,8 +8,11 @@ export type DrawingExportFormat = 'pdf' | 'dxf';
 export type DrawingExportOmission = 'markups' | 'otherCutDimensions' | 'rasterReferences' | 'requestedScale';
 
 export interface DrawingExportContent {
-  /** Markup kinds the PDF and DXF writers do not draw. Dimensions are not among them: those on the current cut export everywhere. */
-  markupCounts: Readonly<{ measurements: number; areas: number; texts: number; clouds: number }>;
+  /**
+   * Markup kinds the PDF and DXF writers do not draw. `dimensions` is accepted from callers that count every
+   * markup kind but never makes an omission: dimensions on the current cut export everywhere.
+   */
+  markupCounts: Readonly<{ measurements: number; areas: number; texts: number; clouds: number; dimensions?: number }>;
   /** Dimensions drawn on another cut (`isDimensionOnPlane`), which every export leaves out. */
   otherCutDimensionCount?: number;
   /** Count only underlays the drawing actually shows (opacity > 0). */

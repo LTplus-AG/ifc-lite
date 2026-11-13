@@ -73,4 +73,9 @@ describe('drawing export omissions (#5850)', () => {
     const legacy = { ...empty, markupCounts: { measurements: 1, areas: 0, texts: 0, clouds: 0 } };
     assert.deepEqual(await omissions(legacy, 'pdf'), ['markups']);
   });
+  it('ignores a current-cut dimension count passed with the other markup counts', async () => {
+    const counted = { ...empty, markupCounts: { ...empty.markupCounts, dimensions: 3 } };
+    assert.deepEqual(await omissions(counted, 'pdf'), []);
+    assert.deepEqual(await omissions(counted, 'dxf'), []);
+  });
 });

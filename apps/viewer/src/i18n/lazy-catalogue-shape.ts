@@ -355,8 +355,7 @@ const AGENT_BRIDGE_TAILS = new Set(('row.title row.description row.connect dialo
   + 'panel.editDeleted panel.editUnchanged').split(' '));
 const AGENT_BRIDGE_PARAMETERS: Record<string, readonly string[]> = {
   'dialog.reads': ['port'], 'dialog.target': ['port'], 'dialog.replaces': ['port'], 'panel.since': ['port', 'time'], 'panel.error': ['code'], 'panel.duration': ['ms'],
-  'failure.unreachable': ['port'], 'failure.origin': ['origin'],
-  'panel.sinceEdits': ['port', 'time'], 'panel.editChange': ['after', 'before', 'entity', 'field'],
+  'failure.unreachable': ['port'], 'failure.origin': ['origin'], 'panel.sinceEdits': ['port', 'time'], 'panel.editChange': ['after', 'before', 'entity', 'field'],
   'panel.editDeleted': ['before', 'entity', 'field'], 'panel.editUnchanged': ['after', 'entity', 'field'],
 };
 

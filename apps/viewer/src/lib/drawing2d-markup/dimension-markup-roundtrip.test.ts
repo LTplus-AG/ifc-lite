@@ -41,6 +41,10 @@ import { collectFlatSymbolic, createEmptyFlatSymbolic } from '@/lib/overlay-pars
 import { buildParseResult } from '@/lib/overlay-parse/symbolic-parse';
 import { readDrawingMarkupFromParseResult, type DrawingMarkupMetaLookup } from '@/lib/overlay-parse/drawing-markup-read';
 import { dimensionSaveParams } from './dimension-markup-save.js';
+import { restoreDrawingMarkupFromModel } from './drawing-markup-restore.js';
+import { useViewerStore } from '@/store/index.js';
+import { __setOverlayWorkerFactoryForTest } from '@/lib/overlay-parse/index.js';
+import { __resetSymbolicAnnotationsCacheForTests, ensureParseFor } from '@/hooks/symbolic-parse-cache.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SAMPLE_PATH = resolve(__dirname, '../../../public/samples/building-architecture.ifc');
@@ -91,7 +95,7 @@ async function exportAndReparse(): Promise<IfcDataStore> {
   return new IfcParser().parseColumnar(toArrayBuffer(exported.content));
 }
 
-async function symbolicParse(store: IfcDataStore) {
+async function symbolicFlat(store: IfcDataStore) {
   const processor = new GeometryProcessor();
   await processor.init();
   let flat = createEmptyFlatSymbolic();
@@ -107,7 +111,11 @@ async function symbolicParse(store: IfcDataStore) {
   } finally {
     processor.dispose();
   }
-  return buildParseResult(flat, {});
+  return flat;
+}
+
+async function symbolicParse(store: IfcDataStore) {
+  return buildParseResult(await symbolicFlat(store), {});
 }
 
 function metaFor(store: IfcDataStore): DrawingMarkupMetaLookup {
@@ -173,5 +181,49 @@ describe('dimension markup: real round trip on building-architecture.ifc', () =>
     // ... while a pick that differs only along the normal is the same frame.
     assert.equal(isDimensionOnPlane(onCustom, withCustom({ pickedAt: [1.0000000001 + 0.6, 2.123456789012345 + 0.8, -1 / 3] })), true,
       'a pick off the plane along its normal projects to the same frame origin');
+  });
+
+  // The viewer's own restore (`restoreDrawingMarkupFromModel`), not the
+  // reader called directly: the reader needs the model's store to undo the
+  // symbolic parser's plan-Y negation and the storey placement, and a
+  // restore that left it out brought every dimension back mirrored and
+  // shifted (PR #10080 review).
+  it('restores the same points through the viewer restore on a reopened model', async () => {
+    assert.ok(existsSync(SAMPLE_PATH), `missing fixture: ${SAMPLE_PATH}`);
+    const store = await exportAndReparse();
+    const flat = await symbolicFlat(store);
+    const previous = __setOverlayWorkerFactoryForTest(() => {
+      const worker = {
+        onmessage: null as ((event: { data: unknown }) => void) | null,
+        postMessage(request: { id: number }) {
+          queueMicrotask(() => worker.onmessage?.({ data: { id: request.id, ok: true, flat } }));
+        },
+        terminate() {},
+      };
+      return worker as unknown as Worker;
+    });
+    try {
+      __resetSymbolicAnnotationsCacheForTests();
+      useViewerStore.setState({
+        activeModelId: 'm1',
+        models: new Map([['m1', { id: 'm1', name: 'reopened.ifc', ifcDataStore: store, geometryResult: null, visible: true, loadedAt: 1 } as never]]),
+        mutationViews: new Map(),
+        storeEditors: new Map(),
+      } as never);
+      const view = useViewerStore.getState().getMutationView('m1') ?? undefined;
+      assert.equal(restoreDrawingMarkupFromModel('m1'), null, 'not parsed yet');
+      await Promise.all(ensureParseFor([{ store, mutationView: view }]));
+      const restored = restoreDrawingMarkupFromModel('m1')?.dimensions2D ?? [];
+      assert.equal(restored.length, DIMENSIONS.length);
+      for (const original of DIMENSIONS) {
+        const dim = restored.find((d) => near(d.a.x, original.a.x) && near(d.a.y, original.a.y));
+        assert.ok(dim, `${original.id}: not restored at its saved point; got ${JSON.stringify(restored.map((d) => d.a))}`);
+        assert.ok(near(dim.b.x, original.b.x) && near(dim.b.y, original.b.y), `${original.id}: b ${JSON.stringify(dim.b)}`);
+        assert.ok(near(dim.offset, original.offset), `${original.id}: offset ${dim.offset} vs ${original.offset}`);
+      }
+    } finally {
+      __setOverlayWorkerFactoryForTest(previous);
+      __resetSymbolicAnnotationsCacheForTests();
+    }
   });
 });

@@ -7,6 +7,8 @@ import type { TypeVisibility, StructuralViewMode } from '@/store/types';
 import type { FederatedModel, ViewerState } from '@/store';
 import { isAnalyticalProduct } from './analytical-classes.mjs';
 import { isProductClass } from '../compare/compareScope';
+// Class after the view's edits, null once deleted; mask and presence both read it.
+import { effectiveTreeType as effectiveType } from '@/components/viewer/hierarchy/treeOverlay';
 
 export { isAnalyticalProduct };
 
@@ -22,12 +24,6 @@ export function resolveViewHiddenEntities(state: StructuralVisibilityState): Set
   return structuralViewHidden(state.structuralViewMode ?? 'both', state.models,
     state.ifcDataStore, state.mutationViews,
     state.hiddenEntities, state.toGlobalId);
-}
-
-/** The class an entity has after its view's edits; null once deleted. Mask and presence both read this. */
-function effectiveType(view: MutablePropertyView | undefined, id: number, baseType: string): string | null {
-  if (view?.isDeleted(id)) return null;
-  return view?.getEntityTypeMutation(id)?.newType ?? baseType;
 }
 
 const isEffectivelyAnalytical = (view: MutablePropertyView | undefined, id: number, baseType: string) => {

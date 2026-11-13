@@ -145,10 +145,22 @@ export interface ResourceContents {
 
 // ── Tools ────────────────────────────────────────────────────────────────
 
+/** MCP tool annotations: hints for clients, not guarantees. */
+export interface ToolAnnotations {
+  title?: string;
+  readOnlyHint?: boolean;
+  destructiveHint?: boolean;
+  idempotentHint?: boolean;
+  openWorldHint?: boolean;
+}
+
 export interface ToolDefinition {
   name: string;
+  /** Human-readable name (MCP 2025-06-18). */
+  title?: string;
   description: string;
   inputSchema: JsonSchema;
+  annotations?: ToolAnnotations;
   /** Optional metadata: which scope a token needs to call this tool. */
   scope?: ToolScope;
 }

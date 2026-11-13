@@ -33,6 +33,7 @@ export { classifyHostLoad, hostQuiet, settleHostLoad } from './load-scoreboard-h
 import { nativeSample } from './load-scoreboard-native.mjs';
 import { BOOT_FIXTURE, BROWSER_LANES, DEFAULT_LANES, LANES, elementDiffVerdict, elementsFileFor, renderMarkdown, summarize } from './load-scoreboard-report.mjs';
 import { browserShares, diffElements, uiQuietValue } from './load-scoreboard-stats.mjs';
+import { identityRow, identityRowReopens, identityWanted } from './load-scoreboard-identity.mjs';
 
 const ROOT = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
@@ -237,6 +238,12 @@ async function run(opt) {
               // Opt-in arms (-early: picked at first paint; -settled: armed after the viewer's idle boot work).
               await recordArmLanes({ sample: browser.sample, plan, side, fixture, cell, missing, groupLanes, tag, common, record, traces: join(out, 'traces') });
               const missingDefault = missing.filter((l) => DEFAULT_BROWSER.includes(l));
+              // Reopen output identity (load-scoreboard-identity.mjs): one untimed pass per side and fixture, round 0.
+              if (identityWanted(plan, round) && pendingLanes(done, cell, ['identity']).length > 0) {
+                const id = await browser.sample({ side: plan.sides[side], fixture, tag: `${tag}-identity`, warmOpens: plan.warmOpens, pass: 'identity' });
+                record(identityRow({ ...common, ...cell }, id, plan.warmOpens, (name, body) => writeFileSync(join(out, 'traces', name), body)), null);
+                log(`  ${tag} identity: ${Object.entries(identityRowReopens(id, plan.warmOpens)).map(([l, v]) => `${l} ${v.verdict.slice(0, 80)}`).join('; ') || 'no reopen'}`);
+              }
               if (missingDefault.length === 0) continue;
               const sampleTag = sampleTagFor(tag, missingDefault, groupLanes.filter((l) => DEFAULT_BROWSER.includes(l)), Date.now().toString(36));
               const host = await hostQuiet();

@@ -103,3 +103,10 @@ export function bothMarksRows(fixtures) {
   return out;
 }
 
+/** The both-marks section's markdown lines, or none when no lane has presented-frame times. */
+export function bothMarksSection(fixtures) {
+  const rows = bothMarksRows(fixtures);
+  return rows.length ? ['', `## Both marks (verdicts use the current mark; "frame" = first frame presented at or after the scene finished; stall = next frame > ${STALL_MS} ms after the mark)`, '',
+    '| fixture | lane | base current | base frame | base stalls | branch current | branch frame | branch stalls | gain (current) | gain (frame) |', '|---|---|---:|---:|---:|---:|---:|---:|---:|---:|', ...rows] : [];
+}
+

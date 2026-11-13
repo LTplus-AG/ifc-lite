@@ -270,12 +270,17 @@ export function readGeometryHeadV13(reader: BufferReader, version: number = FORM
 }
 
 /** Decode one chunk record's stored bytes into meshes. */
+/** Inflates a stored deflate-raw chunk to its `rawLength`-byte record; the default runs on the calling thread. */
+export type ChunkInflate = (stored: Uint8Array, rawLength: number) => Promise<Uint8Array>;
+const inflateHere: ChunkInflate = (stored) => inflateRaw(stored);
+
 export async function decodeGeometryChunk(
   stored: Uint8Array,
   info: GeometryChunkInfo,
-  version: number
+  version: number,
+  inflate: ChunkInflate = inflateHere,
 ): Promise<MeshData[]> {
-  const raw = (info.flags & GeometryChunkFlags.DeflateRaw) ? await inflateRaw(stored) : stored;
+  const raw = (info.flags & GeometryChunkFlags.DeflateRaw) ? await inflate(stored, info.uncompressedLength) : stored;
   if (raw.byteLength !== info.uncompressedLength) {
     throw new Error(`Invalid cache: chunk decoded to ${raw.byteLength} bytes, directory says ${info.uncompressedLength}`);
   }
@@ -314,7 +319,9 @@ export async function decodeGeometryChunk(
 export function openGeometryChunksV13(
   buffer: ArrayBuffer,
   sectionOffset: number,
-  version: number
+  version: number,
+  /** Where compressed chunks inflate, e.g. a worker pool on a cache hit (`ChunkInflatePool`). */
+  options: { inflate?: ChunkInflate } = {},
 ): GeometryHead & { readChunk(index: number): Promise<MeshData[]> } {
   const reader = new BufferReader(buffer);
   reader.position = sectionOffset;
@@ -347,7 +354,7 @@ export function openGeometryChunksV13(
           `Invalid cache: geometry chunk ${index} range [${start}, ${end}) exceeds buffer length ${bytes.length}`,
         ));
       }
-      return decodeGeometryChunk(bytes.subarray(start, end), info, version);
+      return decodeGeometryChunk(bytes.subarray(start, end), info, version, options.inflate);
     },
   };
 }

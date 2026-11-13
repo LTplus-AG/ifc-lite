@@ -207,7 +207,7 @@ export function resolveDuplicateSource(
  * Returns one `SourceAssociation` per matching rel — duplicate flow
  * emits a fresh rel of the same type pointing at the duplicate.
  */
-function collectSourceAssociations(
+export function collectSourceAssociations(
   store: IfcDataStore,
   extractor: EntityExtractor,
   sourceId: number,

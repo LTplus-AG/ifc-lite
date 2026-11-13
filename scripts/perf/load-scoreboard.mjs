@@ -21,16 +21,19 @@
  * Not a CI gate.
  */
 
-import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { hostname, loadavg } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { roundOrder, seededRand } from './ab-order.mjs';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
+import { hostQuiet, settleHostLoad } from './load-scoreboard-host.mjs';
+export { classifyHostLoad, hostQuiet, settleHostLoad } from './load-scoreboard-host.mjs';
 import { nativeSample } from './load-scoreboard-native.mjs';
-import { BOOT_FIXTURE, BROWSER_LANES, LANES, elementDiffVerdict, elementsFileFor, renderMarkdown, summarize } from './load-scoreboard-report.mjs';
+import { BOOT_FIXTURE, BROWSER_LANES, DEFAULT_LANES, LANES, elementDiffVerdict, elementsFileFor, renderMarkdown, summarize } from './load-scoreboard-report.mjs';
 import { browserShares, diffElements, uiQuietValue } from './load-scoreboard-stats.mjs';
+import { identityRow, identityRowReopens, identityWanted } from './load-scoreboard-identity.mjs';
 
 const ROOT = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
@@ -49,11 +52,13 @@ function parseArgs(argv) {
 /** Validate and normalize a plan; throws on anything that would make the table ambiguous. */
 export function loadPlan(path) {
   const plan = JSON.parse(readFileSync(path, 'utf8'));
-  plan.lanes ??= LANES;
+  plan.lanes ??= DEFAULT_LANES;
   for (const lane of plan.lanes) if (!LANES.includes(lane)) throw new Error(`unknown lane ${lane}`);
   if (!Number.isInteger(plan.rounds) || plan.rounds < 1) throw new Error('plan.rounds must be a positive integer');
   plan.seed ??= Date.now() % 2 ** 31;
-  plan.warmOpens ??= plan.lanes.includes('browser-warm') ? 2 : 0;
+  plan.warmOpens ??= plan.lanes.some((l) => l === 'browser-warm' || l.startsWith('browser-warm-')) ? 2 : 0;
+  // An opt-in arm's first-reopen lane exists only when there are two reopens (the last one is its -warm lane).
+  for (const lane of plan.lanes) if (/^browser-warm1-(early|settled)$/.test(lane) && plan.warmOpens < 2) throw new Error(`${lane} needs warmOpens >= 2 (got ${plan.warmOpens})`);
   for (const side of ['base', 'branch']) {
     const s = plan.sides?.[side];
     if (!s?.label) throw new Error(`plan.sides.${side}.label is required`);
@@ -84,29 +89,6 @@ export function hostSnapshot() {
     noTurbo: readText('/sys/devices/system/cpu/intel_pstate/no_turbo'),
     gpu: tryExec('nvidia-smi', ['--query-gpu=name,driver_version,pstate,clocks.gr,temperature.gpu', '--format=csv,noheader']),
   };
-}
-
-const BUILDERS = new Set(['cargo', 'rustc', 'rust-lld', 'cc1', 'cc1plus', 'wasm-opt', 'wasm-pack', 'turbo', 'pnpm', 'tsc']);
-function cpuPressure10() { return Number(/some avg10=([\d.]+)/.exec(readText('/proc/pressure/cpu') ?? '')?.[1] ?? NaN); }
-function foreignBuilders() {
-  const out = [];
-  for (const pid of readdirSync('/proc').filter((e) => /^\d+$/.test(e))) {
-    const name = readText(`/proc/${pid}/comm`);
-    if (name && BUILDERS.has(name)) out.push(name);
-  }
-  return out;
-}
-
-/** H9: before each sample, wait (at most 20 s) for CPU pressure avg10 < 5; flag the sample if the host stays busy. */
-export async function hostQuiet({ limit = 5, maxWaitMs = 20000 } = {}) {
-  const started = Date.now();
-  let psi = cpuPressure10();
-  while (!(psi < limit) && Date.now() - started < maxWaitMs) {
-    await new Promise((r) => setTimeout(r, 1000));
-    psi = cpuPressure10();
-  }
-  const builders = foreignBuilders();
-  return { cpuPressureAvg10: psi, waitedMs: Date.now() - started, builders, underLoad: !(psi < limit) || builders.length > 0 };
 }
 
 /** Resume key of one recorded lane sample. */
@@ -142,6 +124,40 @@ export function elementFileMoves(rows, sampleTag, canonicalTag) {
     if (!to.startsWith(`${canonicalTag}-`)) throw new Error(`${to} is not under ${canonicalTag}`);
     return [`${sampleTag}${to.slice(canonicalTag.length)}`, to];
   });
+}
+
+/** Opt-in arms beside the default lanes; each is its own fresh-browser sample (load-scoreboard-browser.mjs ARM_LANE_SUFFIX). */
+const ARM_SAMPLES = [['first-paint', '-early'], ['boot-settled', '-settled']];
+
+/**
+ * Record the opt-in arm lanes of one browser cell. Each arm with a missing lane runs one sample (reopens
+ * only when the plan lists that arm's warm lanes); a resumed cell reruns under its own tag and claims only
+ * the files of the lanes it records, and only for successful rows (the files a report reads). A lane the
+ * sample did not produce is recorded as a failure.
+ */
+export async function recordArmLanes({ sample, plan, side, fixture, cell, missing, groupLanes, tag, common, record, traces }) {
+  for (const [arm, suffix] of ARM_SAMPLES) {
+    const armLanes = missing.filter((l) => l.endsWith(suffix));
+    if (armLanes.length === 0) continue;
+    const armPlan = groupLanes.filter((l) => l.endsWith(suffix));
+    const reopens = armPlan.some((l) => l.startsWith('browser-warm')) ? plan.warmOpens : 0;
+    const armTag = sampleTagFor(tag, armLanes, armPlan, Date.now().toString(36));
+    // Each browser sample gets its own host interval, settled as soon as it ends (review #9857).
+    const host = await hostQuiet();
+    const e = await sample({ side: plan.sides[side], fixture, tag: `${armTag}${suffix}`, warmOpens: reopens, pass: 'timing', arm });
+    settleHostLoad(host);
+    for (const lane of armLanes) {
+      const { trace, ...row } = e.lanes[lane] ?? { ok: false, error: `${lane}: not produced by the ${arm} sample` };
+      const warmOpens = lane === `browser-warm${suffix}` ? e.warmOpens : undefined;
+      for (const [from, to] of row.ok ? elementFileMoves([{ ...cell, lane, warmOpens }], armTag, tag) : []) {
+        if (existsSync(join(traces, from))) renameSync(join(traces, from), join(traces, to));
+      }
+      record({ ...common, host, ...row, lane, adapter: e.meta.adapter ? JSON.stringify(e.meta.adapter) : null,
+        browserVersion: e.meta.browserVersion ?? null, pageErrors: e.meta.pageErrors.length,
+        gpuHealth: lane.startsWith('browser-cold') ? e.meta.gpuHealthCold ?? null : e.meta.gpuHealth ?? null,
+        warmOpens }, trace ?? null);
+    }
+  }
 }
 
 export function buildOrder(plan) {
@@ -182,6 +198,7 @@ async function run(opt) {
   let browser = null;
   if (order.browser || order.boot) browser = await startBrowserLane(plan, out);
   const record = (row, trace) => {
+    settleHostLoad(row.host);
     done.add(laneKey(row));
     if (trace) { writeFileSync(join(out, 'traces', `${row.fixture}-${row.lane}-${row.side}-r${row.round}.json`), JSON.stringify(trace)); }
     appendFileSync(samplesPath, JSON.stringify(row) + '\n');
@@ -218,17 +235,20 @@ async function run(opt) {
               record({ ...common, ...row, probe }, null);
               log(`  ${tag} native: ${s.ok ? `${s.interactiveMs.toFixed(0)} ms, ${s.peakMemoryMiB?.toFixed(0)} MiB` : `FAILED ${s.error}`}`);
             } else {
-              // browser-cold-early: its own fresh browser, file picked at first paint, timing only (load-scoreboard-lanes.mjs).
-              if (missing.includes('browser-cold-early')) {
-                const e = await browser.sample({ side: plan.sides[side], fixture, tag: `${tag}-early`, warmOpens: 0, pass: 'timing', arm: 'first-paint' });
-                const { trace, ...row } = e.lanes['browser-cold-early'];
-                record({ ...common, ...row, lane: 'browser-cold-early', adapter: e.meta.adapter ? JSON.stringify(e.meta.adapter) : null,
-                  browserVersion: e.meta.browserVersion ?? null, pageErrors: e.meta.pageErrors.length, gpuHealth: e.meta.gpuHealthCold ?? null }, trace ?? null);
-              }
+              // Opt-in arms (-early: picked at first paint; -settled: armed after the viewer's idle boot work).
+              await recordArmLanes({ sample: browser.sample, plan, side, fixture, cell, missing, groupLanes, tag, common, record, traces: join(out, 'traces') });
               const missingDefault = missing.filter((l) => DEFAULT_BROWSER.includes(l));
+              // Reopen output identity (load-scoreboard-identity.mjs): one untimed pass per side and fixture, round 0.
+              if (identityWanted(plan, round) && pendingLanes(done, cell, ['identity']).length > 0) {
+                const id = await browser.sample({ side: plan.sides[side], fixture, tag: `${tag}-identity`, warmOpens: plan.warmOpens, pass: 'identity' });
+                record(identityRow({ ...common, ...cell }, id, plan.warmOpens, (name, body) => writeFileSync(join(out, 'traces', name), body)), null);
+                log(`  ${tag} identity: ${Object.entries(identityRowReopens(id, plan.warmOpens)).map(([l, v]) => `${l} ${v.verdict.slice(0, 80)}`).join('; ') || 'no reopen'}`);
+              }
               if (missingDefault.length === 0) continue;
               const sampleTag = sampleTagFor(tag, missingDefault, groupLanes.filter((l) => DEFAULT_BROWSER.includes(l)), Date.now().toString(36));
+              const host = await hostQuiet();
               const s = await browser.sample({ side: plan.sides[side], fixture, tag: sampleTag, warmOpens: plan.warmOpens, pass: 'timing' });
+              settleHostLoad(host); // the timed opens only, not the memory pass that follows
               // H3: peak memory comes from a separate pass with the sampler on, never from the timed opens.
               const m = plan.memoryPass === false ? null : await browser.sample({ side: plan.sides[side], fixture, tag: `${sampleTag}-mem`, warmOpens: plan.warmOpens, pass: 'memory' });
               const adapter = s.meta.adapter ? JSON.stringify(s.meta.adapter) : null;
@@ -237,11 +257,12 @@ async function run(opt) {
                 if (!missingDefault.includes(lane)) continue;
                 const { trace, ...row } = r;
                 // A rerun's file becomes this lane's only when its row is recorded.
-                for (const [from, to] of elementFileMoves([{ ...cell, lane, warmOpens: lane === 'browser-warm' ? s.warmOpens : undefined }], sampleTag, tag)) {
+                // Only a successful row's file is ever read: a failed rerun never claims (and may not overwrite) a recorded file.
+                for (const [from, to] of r.ok ? elementFileMoves([{ ...cell, lane, warmOpens: lane === 'browser-warm' ? s.warmOpens : undefined }], sampleTag, tag) : []) {
                   if (existsSync(join(out, 'traces', from))) renameSync(join(out, 'traces', from), join(out, 'traces', to));
                 }
                 const mem = m?.lanes[lane];
-                record({ ...common, ...row, lane, adapter, browserVersion: s.meta.browserVersion ?? null, pageErrors: s.meta.pageErrors.length,
+                record({ ...common, host, ...row, lane, adapter, browserVersion: s.meta.browserVersion ?? null, pageErrors: s.meta.pageErrors.length,
                   peakMemoryMiB: mem?.ok ? mem.peakMemoryMiB : null, memoryPass: mem ? { ok: mem.ok, error: mem.error, memory: mem.memory,
                     interactiveMs: mem.interactiveMs, adapter: m.meta.adapter ?? null } : null,
                   gpuHealth: lane === 'browser-cold' ? s.meta.gpuHealthCold ?? null : s.meta.gpuHealth ?? null,

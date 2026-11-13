@@ -4,6 +4,7 @@
 
 import type { Catalogue } from '../registry';
 import { registryIt } from './it/registry';
+import { agentBridgeIt } from './it/agent-bridge';
 import { storeyManagerIt } from './it/storey-manager';
 import { activityTrayIt } from './it/activity-tray';
 import { aiReportsIt } from './it/ai-reports';
@@ -149,8 +150,10 @@ import { spaceEnvelopeIt } from './it/space-envelope';
 import { splitToolIt } from './it/split-tool';
 import { stairRailingIt } from './it/stair-railing';
 import { storeyContextIt } from './it/storey-context';
+import { structuralGlyphsIt } from './it/structural-glyphs';
 import { structuralPropertiesIt } from './it/structural-properties';
 import { structuralReviewIt } from './it/structural-review';
+import { structuralDeriveIt } from './it/structural-derive';
 import { sweptDiskInspectionIt } from './it/swept-disk-inspection';
 import { tableCorrectionsIt } from './it/table-corrections';
 import { terrainImageryIt } from './it/terrain-imagery';
@@ -311,8 +314,10 @@ export default {
   ...splitToolIt,
   ...stairRailingIt,
   ...storeyContextIt,
+  ...structuralGlyphsIt,
   ...structuralPropertiesIt,
   ...structuralReviewIt,
+  ...structuralDeriveIt,
   ...sweptDiskInspectionIt,
   ...tableCorrectionsIt,
   ...terrainImageryIt,
@@ -328,5 +333,6 @@ export default {
   ...zoneEmissionIt,
   ...zonesPanelIt,
   ...registryIt,
+  ...agentBridgeIt,
   ...storeyManagerIt,
 } satisfies Catalogue;

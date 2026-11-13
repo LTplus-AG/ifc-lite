@@ -27,7 +27,7 @@ import { useViewerStore } from '@/store/index.js';
 import { ExtensionHostService } from '@/services/extensions/host.js';
 import { ExtensionHostContext } from '@/sdk/ExtensionHostProvider.js';
 import { cleanup, render } from '@/test/render.js';
-import { closeContrastBrowser, warmContrastBrowser, withThemedPage } from '@/test/contrast/render-harness.js';
+import { CONTRAST_BROWSER_SKIP, closeContrastBrowser, warmContrastBrowser, withThemedPage } from '@/test/contrast/render-harness.js';
 import { StatusBar } from './StatusBar.js';
 import { ViewportLoadingCard } from './ViewportLoadingCard.js';
 
@@ -52,7 +52,7 @@ afterEach(() => {
   act(() => useViewerStore.setState({ loading: false, progress: null, geometryProgress: null, activeLoadCanceller: null, loadingFileName: null }));
 });
 
-it('the loading Cancel targets are at least 24x24 CSS px and the status bar keeps its height (#8802)', async () => {
+it('the loading Cancel targets are at least 24x24 CSS px and the status bar keeps its height (#8802)', { skip: CONTRAST_BROWSER_SKIP }, async () => {
   act(() => useViewerStore.setState({
     loading: true,
     error: null,

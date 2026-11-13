@@ -43,7 +43,7 @@ import { chromePids, memoryOf, vramOf } from './scenoptic-bench-sampling.mjs';
  */
 export function rebaseToArm(open) {
   const paint = open.shell?.armedAtMs, origin = open.originAbs;
-  const keys = ['firstFrameMs', 'interactiveMs', 'uiQuietMs', 'geometryMs', 'propsMs', 'storeSettledMs', 'settlePaintMs', 'publishPaintMs'];
+  const keys = ['firstFrameMs', 'interactiveMs', 'uiQuietMs', 'geometryMs', 'propsMs', 'storeSettledMs', 'settlePaintMs', 'publishPaintMs', 'interactiveMsOldGate'];
   if (!Number.isFinite(paint) || !Number.isFinite(origin) || origin < paint) {
     return { ...open, clockFrom: 'unverifiable (no first-paint anchor)', interactiveFromChangeMs: open.interactiveMs, ...Object.fromEntries(keys.map((k) => [k, null])) };
   }

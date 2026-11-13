@@ -7,6 +7,10 @@
     "value": "{title} ({subject}): {status}",
     "reason": "activityTray.announceSubject: Announcement joins the supplied title, optional subject and already resolved status; punctuation adds no English wording."
   },
+  "agentBridge.panel.duration": {
+    "value": "{ms} ms",
+    "reason": "Runtime placeholder with a unit symbol (milliseconds); no English prose."
+  },
   "alignmentSection.axisFallback": {
     "value": "IfcAlignment #{id}",
     "reason": "alignmentSection.axisFallback: IfcAlignment is the exact IFC entity name; the hash introduces the supplied entity identifier."
@@ -1563,6 +1567,10 @@
     "value": "{storey} ({elevation} m)",
     "reason": "Runtime storey names and formatted elevations use the same metre symbol and punctuation in Italian."
   },
+  "structuralGlyphs.tooltip": {
+    "value": "{kind} · {entity}",
+    "reason": "Composition of interpolated model values, symbols, units or shared Italian words; no English sentence is embedded."
+  },
   "tableChanges.matchTypeTag": {
     "value": "Tag",
     "reason": "tableChanges.matchTypeTag: Exact IFC EXPRESS attribute name used by this field, not an English prose description."
@@ -1603,6 +1611,14 @@
     "value": "ifclite.dev →",
     "reason": "viewportLighting.container.emptyState.footer.discoverLink: Exact project/service link label; domain and GitHub/npm service names are not localized."
   },
+  "viewportLighting.container.emptyState.formats.gltf": {
+    "value": "glTF",
+    "reason": "Format family name on the welcome card: glTF is the exact product spelling of the format and is not localized."
+  },
+  "viewportLighting.container.emptyState.formats.ifc": {
+    "value": "IFC",
+    "reason": "Format family name on the welcome card: IFC is the schema acronym and is not localized in any language."
+  },
   "viewportLighting.container.emptyState.scene.metres": {
     "value": "{value} m",
     "reason": "viewportLighting.container.emptyState.scene.metres: A numeric measurement with the exact SI unit abbreviation shown in the pinned value; unit symbols are language independent."
@@ -1610,6 +1626,10 @@
   "viewportLighting.container.emptyState.webgpuBanner.supportedBrowsers": {
     "value": "Chrome 113+ / Edge 113+ / Firefox 141+ / Safari 26+",
     "reason": "viewportLighting.container.emptyState.webgpuBanner.supportedBrowsers: Browser product names and minimum version numbers identify supported products; no descriptive English text."
+  },
+  "viewportLighting.container.loadingCard.phase.rendering": {
+    "value": "Rendering",
+    "reason": "Rendering is the standard Italian technical term for the rendering phase."
   },
   "viewportLighting.overlays.mobileNav.homeTooltip": {
     "value": "Home (H)",

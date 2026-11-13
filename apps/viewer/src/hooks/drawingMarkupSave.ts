@@ -96,6 +96,7 @@ import {
 } from '@/store/slices/drawing2DSlice.persistence.js';
 import { getCachedHash } from './drawingMarkupRestorePrecedence.js';
 import { isPristineSectionPlane } from '@/lib/section/section-plane-set';
+import { absorbedEmbeddedMarkupFor } from '@/lib/drawing2d-markup/drawing-markup-absorbed';
 import type { SectionPlane } from '@/store/types';
 
 /**
@@ -217,9 +218,12 @@ function persistFor(modelId: string): void {
     measure2DResults: s.measure2DResults,
     polygonArea2DResults: s.polygonArea2DResults,
     textAnnotations2D: s.textAnnotations2D,
+    tagAnnotations2D: s.tagAnnotations2D, ownerModelId: modelId,
     cloudAnnotations2D: s.cloudAnnotations2D,
+    dimensions2D: s.dimensions2D,
     drawing2DDisplayOptions: s.drawing2DDisplayOptions,
     sectionConfig: lastSectionConfigModelId === modelId ? lastSectionConfig : null,
+    absorbedEmbeddedMarkup: [...absorbedEmbeddedMarkupFor(modelId)],
   });
 }
 
@@ -318,8 +322,9 @@ export function ensureSaveSubscription(): void {
     const changed =
       state.measure2DResults !== prev.measure2DResults ||
       state.polygonArea2DResults !== prev.polygonArea2DResults ||
-      state.textAnnotations2D !== prev.textAnnotations2D ||
+      state.textAnnotations2D !== prev.textAnnotations2D || state.tagAnnotations2D !== prev.tagAnnotations2D ||
       state.cloudAnnotations2D !== prev.cloudAnnotations2D ||
+      state.dimensions2D !== prev.dimensions2D ||
       state.drawing2DDisplayOptions !== prev.drawing2DDisplayOptions;
     prev = state;
     if (!changed || !modelId) return;

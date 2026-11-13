@@ -3,6 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Palette-only prerequisites. Shared ribbon/context enabled predicates stay intact (#8947). */
+import { activeVisibilityReasons } from '@/lib/visibility/visibility-reasons';
+import { errorReportDestinationBlock } from '@/lib/error-reports/destination';
+import { hasInlineSearchHost } from './inline-search-focus';
 import { blankModelUnavailable } from '@/hooks/startBlankModel';
 import { getPlacementGeorefContext } from '@/lib/geo/placement-georef-runtime';
 import { hasRetainedReportHost } from './retained-report-destination';
@@ -14,11 +17,11 @@ import { hasWorkspaceHistory } from '@/lib/model-placement/history';
 import { isCollabEnabled } from '@/lib/collab/config';
 import type { TranslationKey } from '@/i18n';
 import { useViewerStore, type ViewerState } from '@/store';
-import { canMutate } from '@/store/mutation-permission';
+import { canMutate, mutationDenialKey, mutationPermission } from '@/store/mutation-permission';
 import { hasRetainedShapeOnlyModel, RETAINED_SHAPE_ONLY_REASON } from '@/store/retainedGeometry';
 import { getWebGPUStatus } from '@/hooks/useWebGPU';
 import { selectCanRefreshModels, selectHasModelsLoaded } from '@/hooks/model-presence';
-import { modelWorkspaceTarget } from '@/lib/commands/modeling/workspace-target';
+import { modelWorkspaceTarget, resolveModelId } from '@/lib/commands/modeling/workspace-target';
 import { sessionWorkplaneBlock } from '@/lib/commands/modeling/workspace-storeys';
 import { resolveWorkplane } from '@/lib/commands/modeling/registry';
 import type { SurfaceCommandContext, SurfaceCommandDefinition, SurfaceCommandState } from './surface-command-types';
@@ -28,6 +31,10 @@ export type PaletteAvailability = { status: 'available' } | {
   status: 'disabled'; reasonKey: TranslationKey;
 };
 const available: PaletteAvailability = { status: 'available' };
+/** Commands that open a persistent tool host dialog over a loaded model, and the host method each needs. */
+const HOST_OPENERS = new Map<string, 'openBulkProperties' | 'openImportData' | 'openStructuralDerivation'>([
+  ['author:bulk-properties', 'openBulkProperties'], ['author:import-data', 'openImportData'], ['model:derive-structural', 'openStructuralDerivation'],
+]);
 const blocked = (reasonKey: TranslationKey): PaletteAvailability => ({ status: 'disabled', reasonKey });
 const cameraActions = {
   'view:zoom-in': 'zoomIn', 'view:zoom-out': 'zoomOut',
@@ -58,6 +65,11 @@ export function paletteAvailability(command: SurfaceCommandDefinition, context: 
     if (!canMutate(s, s.session.modelId)) return blocked('commandPalette.availability.editor');
     if (s.selectedEntityId === null && s.selectedEntityIds.size === 0) return blocked('commandPalette.availability.selection');
   }
+  if (id === 'panel:error-report') {
+    const reason = errorReportDestinationBlock();
+    if (reason) return blocked(reason);
+  }
+  if (id === 'search:inline' && !hasInlineSearchHost()) return blocked('commandPalette.availability.host');
   if (id === 'file:new-blank') {
     if (!context.startBlank || context.fileHostIsCurrent?.() === false) return blocked('commandPalette.availability.host');
     const reason = blankModelUnavailable(s);
@@ -104,10 +116,19 @@ export function paletteAvailability(command: SurfaceCommandDefinition, context: 
   }
 
   const hasData = s.ifcDataStore !== null || [...s.models.values()].some(m => m.ifcDataStore != null);
-  if (id === 'author:bulk-properties' || id === 'author:import-data') {
+  const opener = HOST_OPENERS.get(id);
+  if (opener) {
     if (s.loading) return blocked('commandPalette.availability.loading');
     if (!hasData) return blocked('commandPalette.availability.ifc');
-    const callback = id === 'author:bulk-properties' ? context.openBulkProperties : context.openImportData;
+    // The derivation writes into the model: the same write policy its review applies.
+    if (id === 'model:derive-structural') {
+      // derivationModelId's rule, inlined: importing it would pull the lazy derivation module into startup.
+      const target = resolveModelId(s, undefined);
+      if (target === null) return blocked('commandPalette.availability.ifc');
+      const permission = mutationPermission(s, target);
+      if (!permission.allowed) return blocked(mutationDenialKey(permission.reason));
+    }
+    const callback = context[opener];
     if (!callback || context.toolHostIsCurrent?.() === false) return blocked('commandPalette.availability.host');
   }
   if (id === 'elements:class-filter' && (!context.openClassFilter || context.toolHostIsCurrent?.() === false)) {
@@ -165,6 +186,9 @@ export function paletteAvailability(command: SurfaceCommandDefinition, context: 
     || ['view:stacked', 'view:exploded', 'view:solo'].includes(id)) {
     if (!loaded) return blocked('commandPalette.availability.model');
   }
+  if (id === 'vis:reset-filters' && !activeVisibilityReasons(s).some(reason => reason.resetPolicy === 'cleared')) {
+    return blocked('commandPalette.availability.noVisibilityFilters');
+  }
   if (id.startsWith('view:orientation:')) {
     if (!loaded) return blocked('commandPalette.availability.model');
     if (!s.cameraCallbacks.setPresetDirection) return blocked('commandPalette.availability.camera');
@@ -199,7 +223,7 @@ export function paletteToggleState(id: string, s: ViewerState): TranslationKey |
     'view:centreline': s.centrelineOverlayEnabled, 'view:follow-work': s.ribbonContextualTabs,
     'view:move-georef': s.cesiumPlacementEditMode,
     'tool:edit-mode': s.editEnabled, 'pref:tooltips': s.hoverTooltipsEnabled,
-    'pref:hover-outline': s.hoverHighlightEnabled,
+    'pref:hover-outline': s.hoverHighlightEnabled, 'pref:colorful': s.theme === 'colorful',
     'view:stacked': s.levelDisplayMode === 'stacked',
     'view:exploded': s.levelDisplayMode === 'exploded', 'view:solo': s.levelDisplayMode === 'solo',
     'schedule:toggle-animation': s.animationEnabled, 'view:world': s.cesiumEnabled,
@@ -219,7 +243,8 @@ export function canRunPaletteCommand(command: Command, onRefused?: (reason: Tran
 
 /** Narrow snapshot: unrelated viewport/store updates do not rebuild the table. */
 export function palettePrerequisites(s: ViewerState) {
-  return { loadError: s.error, loadRetry: s.lastLoadRetry, loadErrorSeq: s.loadErrorSeq,
+  return { hasResettableVisibilityFilters: activeVisibilityReasons(s).some(reason => reason.resetPolicy === 'cleared'),
+    loadError: s.error, loadRetry: s.lastLoadRetry, loadErrorSeq: s.loadErrorSeq,
     loadCanceller: s.activeLoadCanceller, streamCanceller: s.activeStreamCanceller,
     workspaceMode: s.workspaceMode, canCollabEdit: s.canCollabEdit,
     centreline: s.centrelineOverlayEnabled, followWork: s.ribbonContextualTabs,

@@ -119,12 +119,16 @@ export { expandTypeNamesToDescendants } from './ifc-schema/descendants.js';
 // categorizer, geometry routers) can walk the inheritance chain across
 // every IFC version in one map without the async wrappers above. Treat
 // as read-only.
-export { ENTITIES_IFC2X3 } from './ifc-schema/generated/entities-ifc2x3.js';
+//
+// Each also has a getter that decodes the table on first call and returns the
+// same array afterwards. The constants decode when this module loads; code
+// that may not need a table on every load (the parser) uses the getters.
+export { ENTITIES_IFC2X3, getEntitiesIfc2x3 } from './ifc-schema/generated/entities-ifc2x3.js';
 export { ENTITIES_IFC4 } from './ifc-schema/generated/entities-ifc4.js';
 // ENTITIES_IFC4 checked against the IFC4 EXPRESS schema (#5204): what every
 // schema-specific IFC4 reader should use. The raw table above is lint-gated.
-export { ENTITIES_IFC4_EXPRESS } from './ifc-schema/entities-ifc4-express.js';
-export { ENTITIES_IFC4X3 } from './ifc-schema/generated/entities-ifc4x3.js';
+export { ENTITIES_IFC4_EXPRESS, getEntitiesIfc4Express } from './ifc-schema/entities-ifc4-express.js';
+export { ENTITIES_IFC4X3, getEntitiesIfc4x3 } from './ifc-schema/generated/entities-ifc4x3.js';
 // The upstream SchemaInfo tables the `ENTITIES_*` lists come from also carry
 // EXPRESS *defined types* (`IfcLengthMeasure`, `IfcBoolean`, `IfcTextAlignment`,
 // …) as rows, because IDS needs their names. They are not instantiable
@@ -132,7 +136,7 @@ export { ENTITIES_IFC4X3 } from './ifc-schema/generated/entities-ifc4x3.js';
 // has to subtract them, and this is the authoritative list to subtract.
 // Raw and read-only for the same reason as the entity tables above; the async
 // `findDataType` cannot answer inside a synchronous guard.
-export { IFC_DATA_TYPES } from './ifc-schema/generated/data-types.js';
+export { IFC_DATA_TYPES, getIfcDataTypes } from './ifc-schema/generated/data-types.js';
 export type {
   IfcAttributeInfo,
   IfcDataTypeInfo,
@@ -160,6 +164,7 @@ export { spatialLookups } from './spatial-lookups.js';
 export {
   iterateEffectiveEntities,
   countEffectiveEntityTypes,
+  sourceEntityClasses,
   type DerivedEntities,
   type EffectiveEntity,
   type EffectiveEntityOverlay,

@@ -102,6 +102,8 @@ export const sharedCommandsFr = {
   "classVisibility.annotations.description": "Textes, cotes, lignes de repère",
   "classVisibility.grids.label": "Grilles",
   "classVisibility.grids.description": "Axes structurels",
+  "classVisibility.structuralGlyphs.label": "Appuis et charges",
+  "classVisibility.structuralGlyphs.description": "Symboles de l'analyse structurelle",
   "classVisibility.mergeLayers.label": "Fusionner les murs multicouches",
   "classVisibility.mergeLayers.description": "Afficher les murs comme un seul solide · au rechargement",
   "classVisibility.fastGeometry.label": "Géométrie rapide",
@@ -111,4 +113,7 @@ export const sharedCommandsFr = {
   "classVisibility.pinnedDetail.descriptionIgnored": "Ignoré en mode Exact · à gérer dans les paramètres de performances",
   "classVisibility.pinnedDetail.descriptionOverrides": "Remplace le niveau de détail automatique · à gérer dans les paramètres de performances",
   "classVisibility.performanceSettings": "Paramètres de performances",
+  "exportCommands.screenshot.saved": "Capture d’écran enregistrée",
+  "exportCommands.screenshot.notReady": "Ouvrez la vue 3D et attendez la fin du chargement, puis réessayez.",
+  "exportCommands.screenshot.failed": "Impossible de capturer la vue 3D. Réessayez une fois le rendu terminé.",
 } satisfies Catalogue;

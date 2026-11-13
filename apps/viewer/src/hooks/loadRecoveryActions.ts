@@ -19,7 +19,8 @@ export function bindLoadRecovery(s: ViewerState = useViewerStore.getState()) {
     unavailable(action: 'cancel' | 'retry' | 'dismiss'): TranslationKey | null {
       if (action === 'cancel') return cancel && selectLoadCanceller(useViewerStore.getState()) === cancel
         ? null : 'commandPalette.availability.noLoad';
-      if (!errorIsCurrent()) return 'commandPalette.availability.noLoadError';
+      if (useViewerStore.getState().error === null) return 'commandPalette.availability.noLoadError';
+      if (!errorIsCurrent()) return 'commandPalette.availability.loadErrorReplaced';
       if (action === 'retry' && !lastLoadRetry) return 'commandPalette.availability.noLoadRetry';
       return null;
     },

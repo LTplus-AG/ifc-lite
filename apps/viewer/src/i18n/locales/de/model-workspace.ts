@@ -5,6 +5,7 @@
 import type { Catalogue } from '../../registry';
 
 export const modelWorkspaceDe = {
+  'modelWorkspace.leave': 'Verlassen',
   "modelWorkspace.rail.aria": "Modellwerkzeuge",
   "modelWorkspace.rail.hosted": "Öffnungen, Türen und Fenster",
   "modelWorkspace.rail.circulation": "Treppen und Geländer",

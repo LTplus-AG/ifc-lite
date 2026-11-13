@@ -29,6 +29,7 @@ import { writeQuantities } from './sections/quantities.js';
 import { writeRelationships } from './sections/relationships.js';
 import { buildGeometrySectionV13 } from './sections/geometry-chunks.js';
 import { writeInstancedShards } from './sections/instanced-shards.js';
+import { writeSelectionRelationships } from './sections/selection-relationships.js';
 import { writeEntityIndex } from './sections/entity-index.js';
 
 export interface GeometryData {
@@ -69,6 +70,7 @@ export class BinaryCacheWriter {
 
     // Build sections
     const sectionBuffers: Array<{ type: SectionType; buffer: ArrayBuffer }> = [];
+    const pause = options.yieldBetweenSections ? () => new Promise<void>((resolve) => setTimeout(resolve, 0)) : null;
 
     // Strings section (always required)
     const stringsBuffer = this.writeSection(() => {
@@ -77,6 +79,7 @@ export class BinaryCacheWriter {
       return writer.build();
     });
     sectionBuffers.push({ type: SectionType.Strings, buffer: stringsBuffer });
+    if (pause) await pause();
 
     // Entities section
     const entitiesBuffer = this.writeSection(() => {
@@ -85,6 +88,7 @@ export class BinaryCacheWriter {
       return writer.build();
     });
     sectionBuffers.push({ type: SectionType.Entities, buffer: entitiesBuffer });
+    if (pause) await pause();
 
     // Properties section
     const propertiesBuffer = this.writeSection(() => {
@@ -93,6 +97,7 @@ export class BinaryCacheWriter {
       return writer.build();
     });
     sectionBuffers.push({ type: SectionType.Properties, buffer: propertiesBuffer });
+    if (pause) await pause();
 
     // Quantities section
     const quantitiesBuffer = this.writeSection(() => {
@@ -101,6 +106,7 @@ export class BinaryCacheWriter {
       return writer.build();
     });
     sectionBuffers.push({ type: SectionType.Quantities, buffer: quantitiesBuffer });
+    if (pause) await pause();
 
     // Relationships section
     const relationshipsBuffer = this.writeSection(() => {
@@ -109,14 +115,17 @@ export class BinaryCacheWriter {
       return writer.build();
     });
     sectionBuffers.push({ type: SectionType.Relationships, buffer: relationshipsBuffer });
+    if (pause) await pause();
 
     if (dataStore.entityIndex) {
       const entityIndexBuffer = this.writeSection(() => {
         const writer = new BufferWriter();
         writeEntityIndex(writer, dataStore.entityIndex!);
+        writeSelectionRelationships(writer, dataStore.selectionRelationshipIndex);
         return writer.build();
       });
       sectionBuffers.push({ type: SectionType.EntityIndex, buffer: entityIndexBuffer });
+      if (pause) await pause();
     }
 
     // Geometry section (optional)
@@ -133,6 +142,7 @@ export class BinaryCacheWriter {
         { compress: options.compressGeometryChunks ?? true, compressInWorker: options.compressGeometryChunksInWorker, onOrder: options.onGeometryOrder }
       );
       sectionBuffers.push({ type: SectionType.Geometry, buffer: geometryBuffer });
+      if (pause) await pause();
       totalVertices = geometry.totalVertices;
       totalTriangles = geometry.totalTriangles;
 
@@ -145,6 +155,7 @@ export class BinaryCacheWriter {
           return writer.build();
         });
         sectionBuffers.push({ type: SectionType.InstancedShards, buffer: shardsBuffer });
+        if (pause) await pause();
       }
     }
 

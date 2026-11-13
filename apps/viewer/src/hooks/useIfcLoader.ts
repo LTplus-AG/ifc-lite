@@ -33,6 +33,7 @@ import { loadTracer, nextPaintOrTimeout } from '../lib/perf/loadTrace.js';
 import { countCopy } from '@ifc-lite/load-trace'; // #6957 full source-copy counters
 import { headIsZip, NO_ARCHIVE_IMAGES, sourceArrayBuffer } from './ingest/sourceBuffers.js';
 import { compactSource } from '../lib/source-compaction/source-compaction.js';
+import { runAfterModelSettled } from '../lib/perf/afterLoad.js';
 import {
   GeometryProcessor,
   geometryAabbAt,
@@ -108,6 +109,7 @@ import { classifyLoadError, errorCaptureProps, type LoadErrorKind } from '../lib
 import { formatLoadError } from '../lib/load-error-message.js';
 import { beginResumableLoad, noteStaleDeploymentLoadFailure } from '@/lib/reload-resume';
 import { surfaceStaleDeployment } from '../lib/stale-deployment.js';
+import { whenSceneSettled } from '@/lib/scene-settled';
 /**
  * The skip-tiny-cuts flag is no longer a hard constant: it is derived per-load
  * from the user's geometry-fidelity mode (`fast` vs `exact`, see
@@ -276,7 +278,7 @@ export function useIfcLoader() {
       abortGeometry?.();
     }, () => cancelOwnedStream, activity); // #5849: federated cancellation preserves loaded models
     // Every end of this load, completed or failed: the last live load ends the shared UI (L2).
-    const settleLoadUi = (progress: Parameters<typeof settleOwnedLoadUi>[1] = null) => settleOwnedLoadUi(releaseCanceller, progress);
+    const settleLoadUi = (progress: Parameters<typeof settleOwnedLoadUi>[1] = null) => settleOwnedLoadUi(releaseCanceller, progress, modelId);
 
     // Cold-storage residency (issue #1682 phase 3b): any new load invalidates
     // the previous entry-backed provider — a primary load replaces the model,
@@ -515,7 +517,7 @@ export function useIfcLoader() {
         instancedShards: ArrayBuffer[] = [],
       ): Promise<void> => {
         // A complete model carries its identity (#7022); the pass ran beside the load.
-        const sourceContentHash = await placementIdentity;
+        const sourceContentHash = await trace.span('finalize.identityWait', () => placementIdentity);
         if (isStale()) return;
         // Ordering notice (issue #1804): alignment is baked into a scan at
         // ITS load time (an f64 decode-time offset — it cannot be applied
@@ -613,7 +615,7 @@ export function useIfcLoader() {
             federationAlignmentStatus, ifcSharedVerticalDatumAssumed, ...(landXmlAssumptionsApplied ? { landXmlAssumptionsApplied } : {}),
             ...buildModelLoadReportPatch(loadDiagnostics, format, patch, omittedTypeRecords),
           };
-          useViewerStore.getState().addModel(federatedModel);
+          trace.span('finalize.publish', () => useViewerStore.getState().addModel(federatedModel));
           activity.published = true;
           options?.onModelRegistered?.();
           // The registry also holds scans that arrived before any compatible
@@ -648,7 +650,7 @@ export function useIfcLoader() {
           idOffset = registerModelOffset(modelId, maxExpressId);
         }
 
-        updateModel(modelId, {
+        trace.span('finalize.publish', () => updateModel(modelId, {
           ifcDataStore: dataStore,
           landXmlDocument: patch?.landXmlDocument,
           sourceSchema: patch?.sourceSchema,
@@ -662,7 +664,7 @@ export function useIfcLoader() {
           pointCloudHandleId: patch?.pointCloudHandleId, gaussianSplat: patch?.gaussianSplat,
           ...(patch?.spatialReference ? { spatialReference: patch.spatialReference } : {}),
           ...buildModelLoadReportPatch(loadDiagnostics, format, patch, omittedTypeRecords),
-        });
+        }));
         activity.published = true;
         modelCompletion?.settleModel();
       };
@@ -1156,10 +1158,10 @@ export function useIfcLoader() {
             }
             if (cacheOutcome === 'serve') {
               const state = useViewerStore.getState();
-              if (target.kind === 'primary') await finalizeModel(state.ifcDataStore, state.geometryResult, getViewerSchemaVersion(state.ifcDataStore), {
+              if (target.kind === 'primary') await trace.span('load.finalize', () => finalizeModel(state.ifcDataStore, state.geometryResult, getViewerSchemaVersion(state.ifcDataStore), {
                 loadState: 'complete', cacheState: 'hit',
                 loadPath: 'cache', tessellationTier: loadTessellationTier, skipSmallCuts: skipSmallCutsAtLoad,
-              });
+              }));
               const servedGeometry = target.kind === 'primary' ? state.geometryResult : useViewerStore.getState().models.get(modelId)?.geometryResult ?? null;
               if (isStale()) return; // finalize awaited the identity pass (#7022)
               const cacheTotalMs = trace.finish({ journey: 'J2', loadPath: 'cache', cacheTier: cachePlan.tier });
@@ -1182,10 +1184,10 @@ export function useIfcLoader() {
                 fileSizeMB,
                 isStale: () => isStale(),
               });
-              settleLoadUi(LOAD_COMPLETE); // #1570, as the fresh path
+              trace.span('load.settleUi', () => settleLoadUi(LOAD_COMPLETE)); // #1570, as the fresh path (span: measurement)
               // #2183: compact the restored source, then drop this scope's binding to the raw file.
               const restoredStore = target.kind === 'federated' ? federatedHitStore : state.ifcDataStore;
-              if (restoredStore) void compactSource(restoredStore.source).then((o) => { if (o === 'compacted') buffer = new ArrayBuffer(0); });
+              if (restoredStore) runAfterModelSettled({ job: 'source-compaction', modelId, store: restoredStore }, () => void compactSource(restoredStore.source).then((o) => { if (o === 'compacted') buffer = new ArrayBuffer(0); }));
               // Belt-and-suspenders for BOTH tiers (#4269): revalidate the
               // full-content hash (this load's identity pass) and, if the source
               // changed with its mtime preserved, purge + auto-reload.
@@ -1342,11 +1344,10 @@ export function useIfcLoader() {
         memoryAccounting.setSourceBytes(buffer.byteLength);
       }
 
-      // #2183: after a completed load, compact the store's source and drop this scope's raw-buffer
+      // #2183: after a completed load (an after-load job, dropped with the model), compact the store's source and drop this scope's raw-buffer
       // bindings (closures here share one context, so any survivor would pin the whole file).
-      const compactSourceAfterLoad = (store: IfcDataStore) => void compactSource(store.source).then((o) => {
-        if (o === 'compacted') { buffer = new ArrayBuffer(0); sharedSource = null; }
-      });
+      const compactSourceAfterLoad = (store: IfcDataStore) => void runAfterModelSettled({ job: 'source-compaction', modelId, store }, () => void compactSource(store.source)
+        .then((o) => { if (o === 'compacted') { buffer = new ArrayBuffer(0); sharedSource = null; } }));
 
       // Data model parsing runs IN PARALLEL with geometry streaming.
       // Default path: parser runs in a Web Worker via WorkerParser, both
@@ -1928,7 +1929,7 @@ export function useIfcLoader() {
                     loadState: 'complete', loadPath: 'wasm', tessellationTier: loadTessellationTier, skipSmallCuts: skipSmallCutsAtLoad,
                   }, allInstancedShards));
                   // Background, like the primary write; compaction waits so the write keeps the raw length.
-                  if (cacheMeshes && !isStale()) void Promise.resolve(writeCache(cacheMeshes)).finally(() => compactSourceAfterLoad(dataStore));
+                  if (cacheMeshes && !isStale()) void whenSceneSettled(isCurrent).then((settled) => settled ? writeCache(cacheMeshes) : undefined).finally(() => compactSourceAfterLoad(dataStore));
                   else compactSourceAfterLoad(dataStore);
                   return;
                 }
@@ -1947,10 +1948,9 @@ export function useIfcLoader() {
                 // tables + geometry WITHOUT the source; re-open rehydrates from the fresh buffer, validated
                 // by the mtime guard + off-thread full hash (cacheTier.ts) — the key only keys the lookup.
                 // Files above 400MB (or with the mesh-only kill switch set) are not cached.
-                if (cacheable) {
-                  // Final safety pass so cache always contains post-style colors.
-                  applyColorUpdatesToMeshes(allMeshes, cumulativeColorUpdates);
-                  coldSceneCapture?.entryWritten((await writeCache(allMeshes)) || null);
+                if (cacheable && await whenSceneSettled(isCurrent)) { // not a load step: encode once the scene settles (a superseding load drops it)
+                  applyColorUpdatesToMeshes(allMeshes, cumulativeColorUpdates); // so the cache holds post-style colours
+                  coldSceneCapture?.entryWritten((await writeCache(allMeshes)) || null); // the stored scene waits for its entry
                 }
 
                 compactSourceAfterLoad(dataStore);

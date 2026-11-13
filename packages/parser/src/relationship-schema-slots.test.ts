@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import { describe, it, expect } from 'vitest';
 import { RelationshipType } from '@ifc-lite/data';
 import {
-  ASSOCIATION_REL_TYPES, HIERARCHY_REL_TYPES, PROPERTY_REL_TYPES, REL_TYPE_MAP,
+  ASSOCIATION_REL_TYPES, getHierarchyRelTypes, PROPERTY_REL_TYPES, REL_TYPE_MAP,
 } from './columnar-parser-indexes.js';
 import { prepareColumnarEntities } from './columnar-entity-preparation.js';
 import { getRelationshipSlotPlan, getAllConcreteRelationshipTypes, getConcreteRelationshipTypes } from './relationship-schema-slots.js';
@@ -102,7 +102,7 @@ describe('relationship-schema-slots (#4205)', () => {
       const hierarchy = !property && !association;
       expect(union.has(type), type).toBe(true);
       expect([
-        PROPERTY_REL_TYPES.has(type), ASSOCIATION_REL_TYPES.has(type), HIERARCHY_REL_TYPES.has(type),
+        PROPERTY_REL_TYPES.has(type), ASSOCIATION_REL_TYPES.has(type), getHierarchyRelTypes().has(type),
       ], type).toEqual([property, association, hierarchy]);
       expect([
         prepared.propertyRelRefs.some(ref => ref.type === type),

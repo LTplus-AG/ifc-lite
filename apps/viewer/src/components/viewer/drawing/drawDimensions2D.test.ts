@@ -79,7 +79,7 @@ describe('drawDimensions2D', () => {
     for (const mode of ['endpoint', 'midpoint', 'intersection', 'perpendicular', 'nearest'] as SnapMode[]) {
       const { ctx, calls } = recordingContext();
       drawSnapGlyph(ctx, { x: 10, y: 10 }, mode);
-      signatures.add(calls.map((c) => c.op).filter((op) => op !== 'save' && op !== 'restore' && op !== 'setLineDash').join(','));
+      signatures.add(calls.filter((c) => !['save', 'restore', 'setLineDash'].includes(c.op)).map((c) => `${c.op}(${c.args.join(' ')})`).join(','));
     }
     assert.equal(signatures.size, 5, [...signatures].join(' | '));
   });

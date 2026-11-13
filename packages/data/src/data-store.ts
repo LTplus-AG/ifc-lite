@@ -135,6 +135,12 @@ export interface IfcStoreBase {
    *
    * Absent on a store that states neither (synthetic, cache-restored, server-built).
    * Ask `sourceKind === 'tabular'`; do not infer it from the schema label.
+   *
+   * Absent therefore reads as "not tabular", so the STEP-only gates keep their
+   * `schemaVersion === 'IFC5'` and empty-`source` clauses alongside this one:
+   * those still carry every store built before the marker existed (the
+   * synthetic builder sets no marker and no bytes). Dropping either clause
+   * would admit such a store, which is the defect #9890 set out to remove.
    */
   sourceKind?: 'step' | 'tabular';
 

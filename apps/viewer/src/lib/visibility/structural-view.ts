@@ -80,13 +80,8 @@ export function structuralViewHidden(
   };
   for (const { store, view, modelId } of sources(models, fallback, views)) {
     const global = modelId === null ? (id: number) => id : (id: number) => toGlobalId(modelId, id);
-    if (store) {
-      for (const id of store.entities.expressId) {
-        // A deleted row's mesh can outlive the edit until the rebuild; keep it hidden in either mode.
-        if (view?.isDeleted(id)) result.add(global(id));
-        else mask(id, storedClass(store, view, id), global);
-      }
-    }
+    // Deleted rows are skipped: their meshes belong to the deletion path, as they do in 'both'.
+    if (store) for (const id of store.entities.expressId) mask(id, storedClass(store, view, id), global);
     if (view) for (const e of view.readNewEntityKinds()) mask(e.expressId, effectiveTreeType(view, e.expressId, e.type), global);
   }
   return result;

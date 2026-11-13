@@ -128,19 +128,41 @@ export function classifyHostLoad({ psi, limit = 5, builders = [], groupCpuMs = {
 export function thermalState(root = '/sys') {
   // An empty or blank sensor file is unreadable, not 0 (Number('') is 0) (review #9952).
   const num = (path, scale = 1) => { try { const t = readFileSync(path, 'utf8').trim(); const v = t === '' ? NaN : Number(t); return Number.isFinite(v) ? v / scale : null; } catch { return null; } };
-  let packageC = null;
+  // Every CPU package (a multi-socket host has one coretemp device per socket, each labelled "Package id 0" or
+  // its own id): the hottest one is recorded, never whichever device was read last (review #9952).
+  const temps = [];
   try {
     for (const hw of readdirSync(`${root}/class/hwmon`)) {
       const dir = `${root}/class/hwmon/${hw}`;
       let name = null; try { name = readFileSync(`${dir}/name`, 'utf8').trim(); } catch { continue; }
       if (name !== 'coretemp') continue;
       for (const f of readdirSync(dir).filter((x) => /^temp\d+_label$/.test(x))) {
-        if (readFileSync(`${dir}/${f}`, 'utf8').trim() === 'Package id 0') packageC = num(`${dir}/${f.replace('_label', '_input')}`, 1000);
+        let label = ''; try { label = readFileSync(`${dir}/${f}`, 'utf8').trim(); } catch { continue; }
+        if (!/^Package id \d+$/.test(label)) continue;
+        const c = num(`${dir}/${f.replace('_label', '_input')}`, 1000);
+        if (c !== null) temps.push(c);
       }
     }
   } catch { /* no hwmon */ }
-  const t = `${root}/devices/system/cpu/cpu0/thermal_throttle`;
-  return { packageC, packageThrottleCount: num(`${t}/package_throttle_count`), packageThrottleMs: num(`${t}/package_throttle_total_time_ms`) };
+  // Package throttle counters, once per physical package (the first CPU of each), summed; any unreadable is null.
+  const firstCpuOfPackage = new Map();
+  try {
+    for (const cpu of readdirSync(`${root}/devices/system/cpu`).filter((x) => /^cpu\d+$/.test(x)).sort((a, b) => Number(a.slice(3)) - Number(b.slice(3)))) {
+      const id = num(`${root}/devices/system/cpu/${cpu}/topology/physical_package_id`) ?? 0;
+      if (!firstCpuOfPackage.has(id)) firstCpuOfPackage.set(id, cpu);
+    }
+  } catch { /* no cpu tree */ }
+  if (firstCpuOfPackage.size === 0) firstCpuOfPackage.set(0, 'cpu0');
+  const sum = (file) => {
+    let total = 0;
+    for (const cpu of firstCpuOfPackage.values()) {
+      const v = num(`${root}/devices/system/cpu/${cpu}/thermal_throttle/${file}`);
+      if (v === null) return null;
+      total += v;
+    }
+    return total;
+  };
+  return { packageC: temps.length ? Math.max(...temps) : null, packageThrottleCount: sum('package_throttle_count'), packageThrottleMs: sum('package_throttle_total_time_ms') };
 }
 
 /** Start/end package temperature and the package throttling during a sample; a counter missing on either side is null. */

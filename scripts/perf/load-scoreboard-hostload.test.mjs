@@ -110,6 +110,18 @@ test('a sample records package temperature at both ends and the package throttli
   // A blank sensor file is unreadable, not 0 C or zero throttle events (review #9952).
   writeFileSync(join(hw, 'temp1_input'), '  \n'); writeFileSync(join(tt, 'package_throttle_count'), '');
   assert.deepEqual(thermalState(root), { packageC: null, packageThrottleCount: null, packageThrottleMs: 5250 });
+  // Two sockets, each with its own coretemp device and package: the hottest package, counters summed per package (review #9952).
+  const two = mkdtempSync(join(tmpdir(), 'thermal2-'));
+  for (const [hwn, c] of [['hwmon1', '70000'], ['hwmon2', '88000']]) {
+    const d = join(two, 'class/hwmon', hwn); mkdirSync(d, { recursive: true });
+    writeFileSync(join(d, 'name'), 'coretemp\n'); writeFileSync(join(d, 'temp1_label'), 'Package id 0\n'); writeFileSync(join(d, 'temp1_input'), `${c}\n`);
+  }
+  for (const [cpu, pkg, n, ms] of [['cpu0', 0, 5, 100], ['cpu1', 0, 5, 100], ['cpu2', 1, 7, 300]]) {
+    const d = join(two, 'devices/system/cpu', cpu); mkdirSync(join(d, 'thermal_throttle'), { recursive: true }); mkdirSync(join(d, 'topology'), { recursive: true });
+    writeFileSync(join(d, 'topology/physical_package_id'), `${pkg}\n`);
+    writeFileSync(join(d, 'thermal_throttle/package_throttle_count'), `${n}\n`); writeFileSync(join(d, 'thermal_throttle/package_throttle_total_time_ms'), `${ms}\n`);
+  }
+  assert.deepEqual(thermalState(two), { packageC: 88, packageThrottleCount: 12, packageThrottleMs: 400 });
   const none = thermalState(join(root, 'missing'));
   assert.deepEqual(none, { packageC: null, packageThrottleCount: null, packageThrottleMs: null });
   assert.deepEqual(thermalDelta(none, before), { startC: null, endC: 91, throttleEvents: null, throttleMs: null });

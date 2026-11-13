@@ -86,6 +86,8 @@ describe('the version 1 configuration shape', () => {
     ['a server path with a fragment', { version: 1, server: { url: '/processor#a' } }],
     ['a server url with a query', { version: 1, server: { url: 'https://processor.example/x?token=x' } }],
     ['a server url with a fragment', { version: 1, server: { url: 'https://processor.example/x#a' } }],
+    ['a server url with an empty query', { version: 1, server: { url: 'https://processor.example/x?' } }],
+    ['a server url with an empty fragment', { version: 1, server: { url: 'https://processor.example/x#' } }],
     ['a server url with credentials', { version: 1, server: { url: 'https://user:pass@processor.example' } }],
     ['an empty processed model name', { version: 1, open: { processedModel: { sha256: SHA, bytes: 1, name: '  ' } } }],
     ['an open without a processed model', { version: 1, open: {} }],

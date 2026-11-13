@@ -72,7 +72,8 @@ function parseServer(value: unknown, pageUrl: string | undefined): { url: string
   } catch {
     invalid('server.url must be a path starting with / or an absolute https URL');
   }
-  if (url.search || url.hash || url.username || url.password) invalid('server.url must not carry a query, a fragment or credentials');
+  // A literal ? or # always opens a query or fragment, even an empty one that `search`/`hash` report as ''.
+  if (/[?#]/.test(raw) || url.username || url.password) invalid('server.url must not carry a query, a fragment or credentials');
   if (isPath) {
     // `/\host` parses as another host, and dot segments can normalize to `//host`.
     if (url.origin !== SAME_ORIGIN || url.pathname.startsWith('//')) invalid('server.url must be a path on this origin');

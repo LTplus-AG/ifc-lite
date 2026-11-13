@@ -69,7 +69,7 @@ export function openProcessedModel(model: ProcessedModelRequest, options?: OpenP
 }
 
 let hostStartModel = false;
-const ignoredLogged = new Set<string>();
+const ignoredLogged = new Set<'processed' | 'model'>();
 
 /**
  * Apply a host configuration's processing members (`server`, `open`). Called

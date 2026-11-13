@@ -112,7 +112,7 @@ function removePart(store: IfcDataStore, editor: StoreEditor, partId: number): v
  * Each part owns its plane Body. Its Tag is the defining footprint edge
  * (-1 for a flat roof); unchanged edges retain identity and user properties. */
 export function writeRoofPlaneParts(editor: StoreEditor, anchor: MeasureAnchor, roofId: number,
-  body: FootprintRoofBody & { plan: FootprintRoofPlan }, thickness: number, store?: IfcDataStore): void {
+  body: FootprintRoofBody & { plan: FootprintRoofPlan }, thickness: number, store?: IfcDataStore, nativeVolumes?: readonly number[]): void {
   const view = editor.getMutationView(), reader = new AnchorEntityReader(store ?? null, view);
   const roof = reader.entity(roofId);
   if (!roof || roof.type.toUpperCase() !== 'IFCROOF') throw new Error('Plane measurements need an IfcRoof');
@@ -155,9 +155,10 @@ export function writeRoofPlaneParts(editor: StoreEditor, anchor: MeasureAnchor, 
     } else editor.setPositionalAttribute(id, 6, `#${productShapeId}`);
     ids.push(id);
     const area = Math.abs(signedArea(plane.outline)) * length ** 2 / Math.cos(plane.slope);
+    const volume = nativeVolumes ? nativeVolumes[index] * length ** 3 : area * thickness;
     totalArea += area;
     view.setQuantity(id, 'Qto_SlabBaseQuantities', 'GrossArea', clean(area / areaScale), QuantityType.Area);
-    view.setQuantity(id, 'Qto_SlabBaseQuantities', 'GrossVolume', clean(area * thickness / volumeScale), QuantityType.Volume);
+    view.setQuantity(id, 'Qto_SlabBaseQuantities', 'GrossVolume', clean(volume / volumeScale), QuantityType.Volume);
     const unknownPlaneNet = voided.has(roofId) || voided.has(id);
     unknownNet ||= unknownPlaneNet;
     if (unknownPlaneNet) {
@@ -165,7 +166,7 @@ export function writeRoofPlaneParts(editor: StoreEditor, anchor: MeasureAnchor, 
       view.deleteQuantity(id, 'Qto_SlabBaseQuantities', 'NetVolume');
     } else {
       view.setQuantity(id, 'Qto_SlabBaseQuantities', 'NetArea', clean(area / areaScale), QuantityType.Area);
-      view.setQuantity(id, 'Qto_SlabBaseQuantities', 'NetVolume', clean(area * thickness / volumeScale), QuantityType.Volume);
+      view.setQuantity(id, 'Qto_SlabBaseQuantities', 'NetVolume', clean(volume / volumeScale), QuantityType.Volume);
     }
     view.setProperty(id, 'Pset_SlabCommon', 'PitchAngle', plane.slope / angleScale,
       PropertyValueType.Real, undefined, false, 'IfcPlaneAngleMeasure');

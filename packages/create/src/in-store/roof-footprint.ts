@@ -6,12 +6,10 @@
  * Roof by footprint in a loaded model (#9296 round 3): an `IfcRoof` whose body
  * aggregates one geometric slab per roof plane, planned by `roof-footprint-plan.ts`.
  *
- * Each plane is an `IfcExtrudedAreaSolid`: its outline lies in the plane's
- * underside and is swept straight up by the thickness over the cosine of the
- * slope. The roof is then `Thickness` thick square to every plane, with plumb
- * eaves and vertical gable ends, from one swept-solid kind the kernel already
- * meshes. Hips and ridges between planes of one slope meet exactly; where the
- * slopes differ, the tops meet with a step of Thickness * (1/cos a - 1/cos b). The roof itself has no duplicate Body.
+ * Each plane starts as an `IfcExtrudedAreaSolid`. Unequal pitches are trimmed
+ * along signed-distance bisectors so both offset tops meet on a shared face.
+ * Eaves and gable ends stay plumb, and `Thickness` is perpendicular to a plane.
+ * The roof aggregates the geometric slabs without a duplicate Body.
  *
  * The footprint, slopes, overhang and thickness are recorded on the roof as
  * `IfcLite_RoofFootprint`, so `editFootprintRoofInStore` can change one edge's
@@ -21,6 +19,8 @@
 import { getFootprintRoofPlaneParts, writeRoofPlaneParts } from './roof-plane-parts.js';
 import { readRoofPlaneBodies, removeUnusedRoofBodies } from './roof-plane-geometry.js';
 import { projectMeasureScales } from './project-measure-scales.js';
+import { planRoofMitres } from './roof-mitre-plan.js';
+import { emitMitredPlanes } from './roof-mitre-emit.js';
 import { refreshTopAttachmentsInStore } from './top-attachment-refresh.js';
 import { PropertyValueType } from '@ifc-lite/data';
 import { effectiveReferencers } from '@ifc-lite/export';
@@ -74,6 +74,7 @@ export interface FootprintRoofBody {
   readonly productShapeId: number;
   readonly solidIds: number[];
   readonly profileIds: number[];
+  readonly planeVolumes?: readonly number[];
 }
 
 type Vec3 = [number, number, number];
@@ -122,14 +123,18 @@ export function planFootprintRoofNative(
 export function emitFootprintRoofBody(
   editor: StoreEditor, anchor: Pick<SpatialAnchor, 'lengthUnitScale'>, bodyContextId: number,
   definition: Omit<FootprintRoofDefinition, 'PredefinedType'>,
+  options?: { readonly undersideCutters: true },
 ): FootprintRoofBody & { plan: FootprintRoofPlan } {
   const plan = planFootprintRoofNative(anchor, definition);
-  const { solidIds, profileIds } = emitPlaneSolids(editor, plan, toNativeLength(anchor, definition.Thickness));
+  const thickness = toNativeLength(anchor, definition.Thickness);
+  // Wall cutters need only the unchanged underside and an intentionally tall cap.
+  const mitres = options?.undersideCutters ? null : planRoofMitres(plan, thickness);
+  const { solidIds, profileIds } = mitres ? emitMitredPlanes(editor, plan, thickness, mitres) : emitPlaneSolids(editor, plan, thickness);
   const shapeRepId = editor.addEntity('IfcShapeRepresentation', [
-    `#${bodyContextId}`, 'Body', 'SweptSolid', solidIds.map((id) => `#${id}`),
+    `#${bodyContextId}`, 'Body', mitres ? 'CSG' : 'SweptSolid', solidIds.map((id) => `#${id}`),
   ]).expressId;
   const productShapeId = editor.addEntity('IfcProductDefinitionShape', [null, null, [`#${shapeRepId}`]]).expressId;
-  return { shapeRepId, productShapeId, solidIds, profileIds, plan };
+  return { shapeRepId, productShapeId, solidIds, profileIds, plan, planeVolumes: mitres?.map(p => p.volume) };
 }
 
 /** The `IfcLite_RoofFootprint` properties a definition is recorded as, in metres and radians. */
@@ -185,6 +190,7 @@ function carryPlaneStyles(store: IfcDataStore, draft: StoreEditor, replacements:
 const PLANE_GEOMETRY = new Set([
   'IFCEXTRUDEDAREASOLID', 'IFCARBITRARYCLOSEDPROFILEDEF', 'IFCRECTANGLEPROFILEDEF', 'IFCPOLYLINE',
   'IFCCARTESIANPOINT', 'IFCDIRECTION', 'IFCAXIS2PLACEMENT2D', 'IFCAXIS2PLACEMENT3D',
+  'IFCBOOLEANCLIPPINGRESULT', 'IFCBOOLEANRESULT', 'IFCHALFSPACESOLID', 'IFCPLANE',
 ]);
 
 /**
@@ -314,7 +320,7 @@ export function editFootprintRoofInStore(store: IfcDataStore, editor: StoreEdito
     if (roof.attributes.length > 8) draft.setPositionalAttribute(roofId, 8, `.${body.plan.shapeType}.`);
     const definition = { ...next, PredefinedType: body.plan.shapeType };
     writeFootprintDefinition(view, roofId, definition);
-    writeRoofPlaneParts(draft, { ...scale, getMeasureUnitScales: () => projectMeasureScales(store) }, roofId, body, next.Thickness, store);
+    writeRoofPlaneParts(draft, { ...scale, getMeasureUnitScales: () => projectMeasureScales(store) }, roofId, body, next.Thickness, store, body.planeVolumes);
     removeUnusedRoofBodies(store, draft, oldBodies);
     removeReplacedPlanes(store, draft, replaced);
     refreshTopAttachmentsInStore({ dataStore: store, view, editor: draft }, [roofId]);

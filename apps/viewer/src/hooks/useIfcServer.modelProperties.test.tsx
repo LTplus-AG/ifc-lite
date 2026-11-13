@@ -8,11 +8,14 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { useViewerStore } from '@/store';
+import { federationRegistry } from '@ifc-lite/renderer';
+import { dataMutationPermission } from '@/store/mutation-permission';
 import { useServerModelProperties } from './ingest/useServerModelProperties.js';
 import { useActivityJournal, cancelActivity } from '@/lib/activity/activity-journal';
 import { installModelLoadCanceller } from './modelLoadCanceller.js';
 import { fixtureModel, fixtureDataStore } from '@/test/store-fixture.js';
-import { IfcServerClient, type HealthResponse, type ParseResponse, decodeDataModel } from '@ifc-lite/server-client';
+import { IfcServerClient, ServerEntityIndex, type HealthResponse, type ParseResponse, decodeDataModel } from '@ifc-lite/server-client';
+import { convertServerDataModel } from '../utils/serverDataModel.js';
 import { propertyModelBuffer } from '../../../../packages/server-client/test/fixtures/property-model.js';
 const { useIfcServer } = await import('./useIfcServer.js');
 const wire = propertyModelBuffer();
@@ -67,6 +70,86 @@ it('#9538 late properties publish into their still-current model', async () => {
   assert.equal(useViewerStore.getState().models.get('server')?.ifcDataStore?.entities.getName(1), 'Server properties');
   assert.equal(useActivityJournal.getState().jobs.find(row => row.id === job.id)?.outcome, 'completed');
 });
+for (const federated of [false, true]) {
+  it(`late properties publish the unmeshed entities they bring${federated ? ' behind an earlier model' : ''}`, async () => {
+    // The loader registers a server model from its meshes alone (the wire's wall, #1) and the
+    // data model lands afterwards. Its project (#2) has no mesh, and looking it up used to throw
+    // "[FederationRegistry] Local ID 2 is not published for model server".
+    const { registerModelOffset, updateModel } = useViewerStore.getState();
+    if (federated) registerModelOffset('earlier', 100);
+    const idOffset = registerModelOffset('server', 1);
+    updateModel('server', { idOffset, maxExpressId: 1 });
+    await start();
+    await act(async () => { release(wire); await new Promise(resolve => setTimeout(resolve, 200)); });
+    const model = useViewerStore.getState().models.get('server');
+    assert.equal(model?.ifcDataStore?.entities.getName(2), 'Project');
+    assert.equal(useViewerStore.getState().toGlobalId('server', 2), idOffset + 2);
+    assert.deepEqual(useViewerStore.getState().fromGlobalId(idOffset + 2), { modelId: 'server', expressId: 2 });
+    assert.equal(model?.maxExpressId, 2, 'overlay ids start after the hydrated entities, not inside them');
+  });
+}
+it('properties whose ids run past a later model are published as far as the headroom allows', async () => {
+  // The id range cannot move once a later model sits behind it; it grows to the end of its own
+  // overlay headroom. The properties are kept; only the ids beyond that end stay unresolvable.
+  const { registerModelOffset, updateModel } = useViewerStore.getState();
+  updateModel('server', { idOffset: registerModelOffset('server', 1), maxExpressId: 1 });
+  const laterOffset = registerModelOffset('later', 10);
+  const warnings: unknown[][] = [];
+  mock.method(console, 'warn', (...args: unknown[]) => { warnings.push(args); });
+  // A converted server store, whose compact id index is what the watermark reads.
+  const tooFar = convertServerDataModel({
+    entities: ServerEntityIndex.fromRows([{ entity_id: 2_000_000, type_name: 'IFCPROJECT', global_id: 'far', name: 'Past the headroom', has_geometry: false }]),
+    propertySets: new Map(), quantitySets: new Map(), relationships: [], classifications: [], materials: [], documents: [],
+    spatialHierarchy: {
+      nodes: [{ entity_id: 2_000_000, parent_id: 0, level: 0, path: 'P', type_name: 'IFCPROJECT', name: 'P', children_ids: [], element_ids: [] }],
+      project_id: 2_000_000, element_to_storey: new Map(), element_to_building: new Map(), element_to_site: new Map(), element_to_space: new Map(),
+    },
+  }, { cache_key: 'far', metadata: { schema_version: 'IFC4' }, stats: { total_time_ms: 1, parse_time_ms: 1, geometry_time_ms: 0, total_vertices: 0, total_triangles: 0 } }, { size: 1 }, []);
+  await act(async () => {
+    useServerModelProperties().start('server', undefined, async () => tooFar);
+    await new Promise(resolve => setTimeout(resolve, 50));
+  });
+  assert.equal(useViewerStore.getState().models.get('server')?.ifcDataStore, tooFar, 'the properties are not dropped');
+  assert.equal(useViewerStore.getState().models.get('server')?.maxExpressId, 2_000_000, 'the watermark is the store max: authored ids start above every hydrated id');
+  // Above the store max the ids belong to the later model, so this model has none to author with.
+  assert.deepEqual(dataMutationPermission(useViewerStore.getState(), 'server'), { allowed: false, reason: 'id-space-exhausted' });
+  assert.equal(useViewerStore.getState().toGlobalId('server', 1_000_001), 1_000_001, 'published to the end of the headroom');
+  assert.throws(() => useViewerStore.getState().toGlobalId('server', 2_000_000), /not published/);
+  assert.equal(warnings.some(args => /later model owns/.test(String(args[0]))), true, 'the unresolvable ids are reported');
+  assert.deepEqual(useViewerStore.getState().fromGlobalId(laterOffset + 10), { modelId: 'later', expressId: 10 });
+});
+
+it('a hydration that fits clears an earlier id-space flag on the model record', async () => {
+  const { registerModelOffset, updateModel } = useViewerStore.getState();
+  updateModel('server', { idOffset: registerModelOffset('server', 1), maxExpressId: 1, idSpaceExhausted: true });
+  await start();
+  await act(async () => { release(wire); await new Promise(resolve => setTimeout(resolve, 200)); });
+  assert.equal(useViewerStore.getState().models.get('server')?.idSpaceExhausted, false);
+  assert.deepEqual(dataMutationPermission(useViewerStore.getState(), 'server'), { allowed: true });
+});
+
+it('no id is authored on a server model while its properties load or after they failed', async () => {
+  // Authored ids would collide with the hydrated entities the id range grows to cover.
+  await start();
+  assert.deepEqual(dataMutationPermission(useViewerStore.getState(), 'server'), { allowed: false, reason: 'properties-loading' });
+  mock.method(console, 'warn', () => {});
+  await act(async () => { release(new ArrayBuffer(3)); await new Promise(resolve => setTimeout(resolve, 200)); }); // undecodable: the run fails
+  assert.equal(useViewerStore.getState().serverPropertiesRuns.get('server')?.kind, 'failed');
+  assert.deepEqual(dataMutationPermission(useViewerStore.getState(), 'server'), { allowed: false, reason: 'properties-failed' });
+});
+
+it('a range that already carries authored ids is a hard error, never an alias', async () => {
+  const { registerModelOffset, updateModel } = useViewerStore.getState();
+  updateModel('server', { idOffset: registerModelOffset('server', 1), maxExpressId: 1 });
+  federationRegistry.publishOverlayRange('server', 2, 3);
+  const warnings: unknown[][] = [];
+  mock.method(console, 'warn', (...args: unknown[]) => { warnings.push(args); });
+  await start();
+  await act(async () => { release(wire); await new Promise(resolve => setTimeout(resolve, 200)); });
+  assert.equal(useViewerStore.getState().models.get('server')?.ifcDataStore, null, 'hydrated entity 2 would share a global id with authored id 2');
+  assert.equal(warnings.some(args => /Optional hydration failed/.test(String(args[0]))), true);
+});
+
 for (const remount of [false, true]) {
   it(`#9538 ${remount ? 'a remount' : 'unmount'} of the starting component keeps model properties alive and publishes`, async () => {
     await start();

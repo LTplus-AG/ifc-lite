@@ -145,9 +145,11 @@ export function PropertiesPanel() {
 
   // Data editing is available in place, independent of the Model workspace (#9296).
   const collabRole = useViewerStore((s) => s.collabRole);
+  // The properties run decides the wording while a server model's properties load or after they fail.
+  const serverPropertiesRuns = useViewerStore((s) => s.serverPropertiesRuns);
   const editPermission = useMemo(
     () => dataMutationPermission(useViewerStore.getState(), selectedEntity?.modelId),
-    [collabRole, selectedEntity?.modelId, models],
+    [collabRole, selectedEntity?.modelId, models, serverPropertiesRuns],
   );
   const editMode = editPermission.allowed;
   // Geometry and georeference placement stay in the Model workspace.

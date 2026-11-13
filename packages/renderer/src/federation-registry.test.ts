@@ -238,3 +238,71 @@ describe('FederationRegistry - mutation-overlay id collision with the next model
     assert.notDeepEqual(resolved, { modelId: 'modelB', expressId: 0 });
   });
 });
+
+describe('FederationRegistry - extending a model whose remaining ids arrive late', () => {
+  it('publishes the added ids of the newest model and moves the next offset behind them', () => {
+    const reg = new FederationRegistry();
+    reg.registerModel('meshes-first', 10);
+    assert.throws(() => reg.toGlobalId('meshes-first', 50), /not published/);
+
+    assert.equal(reg.extendModel('meshes-first', 50), 50);
+    assert.equal(reg.toGlobalId('meshes-first', 50), 50);
+    assert.deepEqual(reg.fromGlobalId(50), { modelId: 'meshes-first', expressId: 50 });
+    assert.equal(reg.fromGlobalId(51), null);
+    // Same packing as a model registered with 50 from the start: 50 + 1 gap + headroom.
+    assert.equal(reg.registerModel('next', 5), 1_000_051);
+    // Overlay ids continue after the extended range, with the full headroom.
+    assert.doesNotThrow(() => reg.publishOverlayRange('meshes-first', 51, 1_000_050));
+  });
+
+  it('keeps a later model intact: the earlier one grows into its own headroom only', () => {
+    const reg = new FederationRegistry();
+    const offsetA = reg.registerModel('a', 10);
+    const offsetB = reg.registerModel('b', 20);
+
+    reg.extendModel('a', 50);
+    assert.equal(reg.toGlobalId('a', 50), offsetA + 50);
+    assert.equal(reg.getOffset('b'), offsetB);
+    assert.deepEqual(reg.fromGlobalId(offsetB + 20), { modelId: 'b', expressId: 20 });
+    // The headroom shrank by the 40 ids taken from it; it still ends where it did.
+    assert.throws(() => reg.publishOverlayRange('a', 51, 1_000_011), /Invalid overlay range/);
+    assert.doesNotThrow(() => reg.publishOverlayRange('a', 51, 1_000_010));
+
+    assert.throws(() => reg.extendModel('b', 20 + 2_000_000_000), /safe ID limit/);
+  });
+
+  it('stops an earlier model at the end of its headroom and leaves the later model intact', () => {
+    const reg = new FederationRegistry();
+    reg.registerModel('a', 10);
+    const offsetB = reg.registerModel('b', 20);
+    assert.equal(reg.extendModel('a', 2_000_000), 1_000_010, 'published up to the last id before the later model');
+    assert.equal(reg.toGlobalId('a', 1_000_010), 1_000_010);
+    assert.throws(() => reg.toGlobalId('a', 1_000_011), /not published/);
+    assert.deepEqual(reg.fromGlobalId(offsetB), { modelId: 'b', expressId: 0 });
+    assert.throws(() => reg.publishOverlayRange('a', 1_000_011, 1_000_011), /Invalid overlay range/);
+  });
+
+  it('refuses a range that already carries overlay ids: extending across them would alias', () => {
+    const reg = new FederationRegistry();
+    reg.registerModel('authored', 10);
+    reg.publishOverlayRange('authored', 11, 12);
+    assert.throws(() => reg.extendModel('authored', 50), /overlay IDs/);
+    assert.throws(() => reg.toGlobalId('authored', 13), /not published/);
+  });
+
+  it('refuses a range that is partly published, and an unknown model', () => {
+    const reg = new FederationRegistry();
+    reg.reserveModel('progressive', 100);
+    reg.publishRange('progressive', 0, 40);
+    assert.throws(() => reg.extendModel('progressive', 200), /partly published/);
+    assert.throws(() => reg.extendModel('unknown', 5), /unknown model/);
+  });
+
+  it('is a no-op for ids the model already owns', () => {
+    const reg = new FederationRegistry();
+    reg.registerModel('a', 10);
+    assert.equal(reg.extendModel('a', 4), 10);
+    assert.deepEqual(reg.getGlobalIdRange('a'), { start: 0, end: 10 });
+    assert.equal(reg.registerModel('b', 1), 1_000_011);
+  });
+});

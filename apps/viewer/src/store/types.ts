@@ -586,6 +586,8 @@ export interface FederatedModel extends ModelLoadReportFields {
   idOffset: number;
   /** Maximum original expressId in this model (for range validation) */
   maxExpressId: number;
+  /** True when a later model left no published ids for authoring above `maxExpressId`; editing is refused. Offset space is never given back, so it lasts for the model's life; a hydration that fits clears it. */
+  idSpaceExhausted?: boolean;
   /** Unified ingest lifecycle state. */
   loadState?: 'pending' | 'streaming-geometry' | 'hydrating-metadata' | 'complete' | 'error';
   /** Present only on a retained-kernel load (#7955 M2): shape-only, with every unpublished product listed. */

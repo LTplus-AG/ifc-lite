@@ -9,4 +9,7 @@ export const mutationPermissionIt = {
   "mutationPermission.editModeRequired": "Attiva la modalità Modifica per modificare questo modello",
   "mutationPermission.roleRequired": "Per modificare serve l'accesso da editor in questa sessione condivisa",
   "mutationPermission.modelUnavailable": "Questo modello non contiene dati IFC modificabili",
+  "mutationPermission.propertiesLoading": "Le proprietà del modello sono ancora in caricamento",
+  "mutationPermission.propertiesFailed": "Impossibile caricare le proprietà del modello, quindi non è modificabile",
+  "mutationPermission.idSpaceExhausted": "Questo modello ha più entità dello spazio riservato, quindi non può essere modificato in questa sessione",
 } satisfies Catalogue;

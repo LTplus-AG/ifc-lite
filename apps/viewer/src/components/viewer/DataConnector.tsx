@@ -109,8 +109,10 @@ export function DataConnector(props: ToolDialogProps) {
   const [open, setOpen] = useToolDialog(props);
   const [selectedModelId, setSelectedModelId] = useState<string>('');
   // Importing data edits properties in place, like the Properties panel (#9296).
+  // The properties run decides the wording while a server model's properties load or after they fail.
+  const serverPropertiesRuns = useViewerStore((s) => s.serverPropertiesRuns);
   const editPermission = useMemo(() => dataMutationPermission(useViewerStore.getState(), selectedModelId),
-    [collabEditRole, selectedModelId, models]);
+    [collabEditRole, selectedModelId, models, serverPropertiesRuns]);
   const canEditInSession = editPermission.allowed;
 
   // Raw CSV content

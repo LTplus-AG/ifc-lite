@@ -31,7 +31,8 @@ try {
 ```
 
 The result is plain objects and typed arrays, so it crosses a worker boundary
-by structured clone, and every typed array can go on the transfer list.
+by structured clone. A typed array is not itself transferable, so transfer
+`array.buffer`; no two arrays share one, so all of them can go on one list.
 
 - **Coordinates** are metres, Z-up. Every geometry record carries a double
   `origin` and f32 offsets from it, so survey-scale coordinates keep their

@@ -259,9 +259,10 @@ Guarantees, so the adapter never checks them: every index is in range; layers
 come parent first; every number is finite, after unit scaling and after every
 transform [test]; triangle indices are in range; each `globalId` is unique
 within the file; entities are in file object order, and every geometry list is
-ordered by entity. Each typed array appears once, so all of them can go on one
-transfer list, and each record owns its `color` array [test]. The output is the same for
-the same bytes and options [test].
+ordered by entity. Each typed array appears once and no two share a buffer, so
+every `array.buffer` can go on one transfer list (a typed array is not itself
+transferable), and each record owns its `color` array [test]. The output is the
+same for the same bytes and options [test].
 
 An entity is a top-level object that drew something. An object that draws
 nothing (a Brep without render meshes, a block whose members cannot be drawn)
@@ -280,9 +281,9 @@ type RhinoImportResponse =
 - The request transfers `bytes`. They are a fresh read of the `File`, never
   the store's source view. The export client cannot transfer, for that reason
   [src `rhino-export-client.ts`].
-- `complete` transfers every typed array: mesh, definition, curve and point
-  cloud buffers. Plain objects and typed arrays only, so structured clone needs
-  no codec.
+- `complete` transfers the buffer behind every typed array: mesh, definition,
+  curve and point cloud buffers. Plain objects and typed arrays only, so
+  structured clone needs no codec.
 - The axis swap (`x, y, z → x, z, −y`, `ifcToViewerAxes` in
   `packages/geometry/src/world-frame.ts`) runs in the worker, on `origin` and
   on the f32 positions and normals, and on instance transforms by conjugation.

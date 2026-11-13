@@ -45,12 +45,15 @@ export interface MergeInputs {
 
 /**
  * The models a merged export will leave out, as far as the dialog says before
- * it runs: only a STATED tabular marker, never an absent store. That is the
- * export gate's own line (`canWriteIfcFromStores` counts an absent store as
- * writable), kept so the note never contradicts the button beside it. A
- * store-less model IS still skipped, and {@link buildMergeInputs} names it in
- * the result message. Listing it up front too would want the gate's stance
- * revisited first, not just this note widened.
+ * it runs: only a STATED tabular marker, never an absent store.
+ *
+ * A store-less model IS still skipped, and {@link buildMergeInputs} names it
+ * in the result message. It is left out of this note because an absent store
+ * is usually a load still in flight, which would make the line appear and
+ * vanish while nothing about the model had been decided. The export gate
+ * refuses a merge with no writable store at all
+ * (`canWriteIfcFromStores`), so the dialog is never silent about having
+ * nothing to write; what it does not do is name a model mid-load.
  */
 export function statedMergeSkips(models: ReadonlyMap<string, FederatedModel>): MergeSkip[] {
   return exportableModels(models)

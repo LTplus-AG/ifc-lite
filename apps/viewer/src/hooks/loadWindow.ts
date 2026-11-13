@@ -73,7 +73,11 @@ export interface LoadWindowDeps {
 export interface LoadWindowHold {
   /** True from a load's start until its scene settles. */
   readonly open: boolean;
-  /** True while this model's whole-model values must wait: the window is open and the model is not one that was settled when it opened. */
+  /**
+   * True while this model's whole-model values must wait: the window is open and
+   * the model has not settled. `legacy` (the single store, or a caller with no
+   * model id to ask about) is held only while no real model is registered.
+   */
   isHeld(modelId: string): boolean;
 }
 
@@ -85,6 +89,8 @@ export interface LoadWindow {
 }
 
 const CLOSED: LoadWindowHold = { open: false, isHeld: () => false };
+/** The id consumers use for the single store, or when they have no model id to ask about. */
+const LEGACY_ID = 'legacy';
 
 export function createLoadWindow(deps: LoadWindowDeps): LoadWindow {
   const listeners = new Set<() => void>();
@@ -95,6 +101,17 @@ export function createLoadWindow(deps: LoadWindowDeps): LoadWindow {
   const loadEndedAt = new Map<string, number>();
   /** Models whose release waits behind a painted frame. */
   const releasing = new Set<string>();
+  /**
+   * Real models are registered and none is called `legacy`: then `legacy` names
+   * no load (a caller with no model id to ask about), so it is not held. Only
+   * in single-store mode is `legacy` the store that is loading.
+   */
+  let legacyFree = false;
+  const computeLegacyFree = (): boolean => {
+    let any = false;
+    for (const [id] of deps.modelStates()) { if (id === LEGACY_ID) return false; any = true; }
+    return any;
+  };
   let snapshot: LoadWindowHold = CLOSED;
   let tailSince = -1;
   let busySince = -1;
@@ -108,7 +125,8 @@ export function createLoadWindow(deps: LoadWindowDeps): LoadWindow {
     if (!open) snapshot = CLOSED;
     else {
       const frozen = new Set(settled);
-      snapshot = { open: true, isHeld: (modelId) => !frozen.has(modelId) };
+      const legacyNotHeld = legacyFree;
+      snapshot = { open: true, isHeld: (modelId) => !frozen.has(modelId) && !(legacyNotHeld && modelId === LEGACY_ID) };
     }
     for (const listener of [...listeners]) listener();
   };
@@ -117,6 +135,7 @@ export function createLoadWindow(deps: LoadWindowDeps): LoadWindow {
     settled = new Set();
     for (const [id, state] of deps.modelStates()) if (!LOADING_STATES.has(state)) settled.add(id);
     loadEndedAt.clear(); // a mark from before this window belongs to a finished load
+    legacyFree = computeLegacyFree();
     open = true;
     publish();
   };
@@ -140,6 +159,8 @@ export function createLoadWindow(deps: LoadWindowDeps): LoadWindow {
     if (!open) return;
     let changed = false;
     let waiting = false;
+    const nextLegacyFree = computeLegacyFree();
+    if (nextLegacyFree !== legacyFree) { legacyFree = nextLegacyFree; changed = true; }
     for (const [id, state] of deps.modelStates()) {
       if (LOADING_STATES.has(state)) {
         if (settled.delete(id)) changed = true;

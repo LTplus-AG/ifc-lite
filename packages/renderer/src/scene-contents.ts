@@ -79,6 +79,10 @@ export interface SceneContents {
   setEphemeralStreamingMode(enabled: boolean): void;
   /** Stop the current stream's fragment pass after about `maxIndices` (a cache hit); finalize first draws the rest. */
   limitStreamingFragments(maxIndices: number): void;
+  /** The primary model's frame for GPU records encoded in the geometry workers (M2), once known; see Scene. */
+  gpuRecordFrame(): { frame: [number, number, number]; cellSize: number } | null;
+  /** Why `gpuRecordFrame()` is null, for the load-trace counters; null when it is not. */
+  gpuRecordFrameBlocker(): 'no-frame' | 'not-quantized' | 'no-chunking' | 'ephemeral' | 'translated' | null;
   isEphemeralStreaming(): boolean;
   finishEphemeralStreaming(): void;
 

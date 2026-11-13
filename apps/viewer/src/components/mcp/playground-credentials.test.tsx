@@ -64,11 +64,11 @@ describe('MCP playground BYOK credential', () => {
     try {
       const container = render(<PlaygroundChat model={await oneWallModel()} />);
       await send(container, 'hello');
-      // #8610: SDK initialization may outlast send()'s fixed 50 ms delay.
-      // Observe the request before asserting its credential headers.
-      await waitFor(() => stub.sent.some(h => h.has('x-api-key')), 'Anthropic request captured');
-      const anthropic = stub.sent.filter((h) => h.has('x-api-key'));
+      // #8610: SDK 1.6 sends apiKey as Bearer auth, replacing x-api-key.
+      await waitFor(() => stub.sent.some(h => h.has('authorization')), 'Anthropic request captured');
+      const anthropic = stub.sent.filter((h) => h.has('authorization'));
       assert.ok(anthropic.length > 0, 'expected a request to Anthropic');
+      assert.equal(anthropic[0].get('authorization'), 'Bearer sk-ant-api03-playground');
       assert.equal(anthropic[0].get('anthropic-workspace-id'), WORKSPACE);
     } finally {
       stub.restore();

@@ -330,6 +330,24 @@ describe('errors', () => {
     expect(await code(readRhino3dm(hollow(1)))).toBe('not-3dm');
   });
 
+  // Review finding on PR #9880.
+  test('a read that waited through another read\'s abort gets the fresh runtime, not the discarded one', async () => {
+    const small = await craft(c => { c.addMesh(c.box([0, 0, 0], [1, 1, 1])); });
+    const shared = await loadRhino();
+    // Both reads are started before either resumes, so both are handed `shared`. The first traps on
+    // it and drops it; the second must not parse with it. The mock stands in for the abort, and
+    // stays installed, so a read that still holds `shared` traps too and comes back not-3dm.
+    const fromByteArray = vi.spyOn(shared.File3dm, 'fromByteArray').mockImplementation(trap);
+    let aborting, waiting;
+    try {
+      aborting = readRhino3dm(hollow(33));
+      waiting = readRhino3dm(small);
+      expect(await code(aborting)).toBe('too-large');
+      expect((await waiting).meshes).toHaveLength(1);
+    } finally { fromByteArray.mockRestore(); }
+    expect(await loadRhino()).not.toBe(shared);
+  });
+
   test('other failures pass through unchanged', async () => {
     const bytes = await craft(c => { c.addMesh(c.box([0, 0, 0], [1, 1, 1])); });
     await expect(readRhino3dm(bytes, { onProgress: () => { throw new Error('cancelled'); } })).rejects.toThrow('cancelled');
@@ -350,6 +368,12 @@ describe('errors', () => {
     const bytes = await craft(c => { c.addMesh(c.box([0, 0, 0], [1, 1, 1])); });
     // @ts-expect-error Deliberately outside the option type.
     await expect(readRhino3dm(bytes, { subdLevel: 4 })).rejects.toThrow(RangeError);
-    await expect(readRhino3dm(bytes, { maxTriangles: Number.NaN })).rejects.toThrow(RangeError);
+    // Review finding on PR #9977: a budget has to be exhaustible, and Infinity passes a lower bound.
+    // A whole count of triangles, so a fraction and a value past the exact integer range go too.
+    for (const maxTriangles of [Number.NaN, Infinity, -Infinity, -1, 1.5, 2 ** 53]) {
+      await expect(readRhino3dm(bytes, { maxTriangles })).rejects.toThrow(RangeError);
+    }
+    // 0 stays a budget, the smallest one: nothing fits, which is the refusal and no other failure.
+    expect(await code(readRhino3dm(bytes, { maxTriangles: 0 }))).toBe('no-renderable-geometry');
   });
 });

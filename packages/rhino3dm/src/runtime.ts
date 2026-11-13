@@ -6,13 +6,21 @@ import type factory from 'rhino3dm';
 import type { Write3dmOptions } from './types.js';
 export type Rhino = Awaited<ReturnType<typeof factory>>;
 let runtime: Promise<Rhino> | undefined;
+/** The module `loadRhino` hands out now; undefined until one has loaded, and again once it is discarded. */
+let current: Rhino | undefined;
 export function loadRhino(locateFile?: Write3dmOptions['locateFile']): Promise<Rhino> {
   return runtime ??= import('#rhino-factory')
     .then(({ default: init }) => init({ locateFile }))
+    .then(rhino => { current = rhino; return rhino; })
     .catch(error => { runtime = undefined; throw error; });
 }
+/**
+ * Whether this module is the one still in use. A caller that awaited the runtime
+ * holds its own reference, so after a discard it can be holding a dead module.
+ */
+export function isCurrentRhino(rhino: Rhino): boolean { return rhino === current; }
 /** Drop the shared runtime after an emscripten abort, which leaves the module unusable. */
-export function discardRhino(): void { runtime = undefined; }
+export function discardRhino(): void { runtime = undefined; current = undefined; }
 // Upstream's .d.ts omits Embind ClassHandle.delete(). Use on owned wrappers,
 // including by-value table/settings/mesh-list wrappers (release before their owner).
 export function dispose(value: unknown): void {

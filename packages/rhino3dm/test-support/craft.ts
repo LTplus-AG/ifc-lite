@@ -193,10 +193,20 @@ function uuidBytes(uuid: string): Buffer {
  * Replace one stored UUID with another and repair the CRC of the chunk around
  * it. This is how the tests get a block that references itself: rhino3dm only
  * hands out a definition's id after its members are fixed.
+ *
+ * `occurrence` picks which copy to replace for an id the archive stores more
+ * than once, counted from the start: a block member's id is in the instance
+ * definition table's member list and again in the object's own attributes, the
+ * definition table coming first. Left out, exactly one copy is required, so a
+ * second one is a mistake rather than a silent half-patch.
  */
-export function patchUuid(bytes: Uint8Array, from: string, to: string): Uint8Array {
-  const original = Buffer.from(bytes), patched = Buffer.from(bytes), at = original.indexOf(uuidBytes(from));
-  if (at < 0 || original.indexOf(uuidBytes(from), at + 1) >= 0) throw new Error(`expected exactly one ${from} in the archive`);
+export function patchUuid(bytes: Uint8Array, from: string, to: string, occurrence = 0): Uint8Array {
+  const original = Buffer.from(bytes), patched = Buffer.from(bytes), needle = uuidBytes(from);
+  const found: number[] = [];
+  for (let next = original.indexOf(needle); next >= 0; next = original.indexOf(needle, next + 1)) found.push(next);
+  const enough = occurrence === 0 ? found.length === 1 : occurrence < found.length;
+  if (!enough) throw new Error(`expected ${occurrence === 0 ? 'exactly one' : `more than ${occurrence}`} ${from} in the archive, found ${found.length}`);
+  const at = found[occurrence];
   uuidBytes(to).copy(patched, at);
   // Find every chunk that ends in the CRC-32 of its own bytes and covers the patch, innermost first.
   const window = 4096, chunks: [start: number, end: number][] = [];
@@ -231,6 +241,41 @@ export function entityBounds(result: RhinoImport, entity: number): Bounds {
     if (instance.entity === entity) for (const mesh of result.definitions[instance.definition].meshes) grow(mesh, instance.transform);
   }
   return { min, max };
+}
+
+/**
+ * Where an import holds a coordinate that is not finite, if anywhere. Empty is the result's
+ * guarantee. It reads block definitions and instance transforms as well as `meshes`: under
+ * `bakeInstances: false` a block's geometry is only in `definitions`, so a check that reads
+ * `meshes` alone passes whatever the definitions hold.
+ */
+export function nonFiniteCoordinates(result: RhinoImport): string[] {
+  const out: string[] = [];
+  const check = (where: string, values: ArrayLike<number>) => {
+    for (let i = 0; i < values.length; i++) if (!Number.isFinite(values[i])) out.push(`${where}[${i}]`);
+  };
+  const geometry = (where: string, g: { origin: RhinoVector3; positions: Float32Array; normals?: Float32Array }) => {
+    check(`${where}.origin`, g.origin);
+    check(`${where}.positions`, g.positions);
+    if (g.normals) check(`${where}.normals`, g.normals);
+  };
+  result.meshes.forEach((m, i) => geometry(`meshes[${i}]`, m));
+  result.definitions.forEach((d, i) => d.meshes.forEach((m, k) => geometry(`definitions[${i}].meshes[${k}]`, m)));
+  result.instances.forEach((n, i) => check(`instances[${i}].transform`, n.transform));
+  result.curves.forEach((c, i) => geometry(`curves[${i}]`, c));
+  result.pointClouds.forEach((c, i) => geometry(`pointClouds[${i}]`, c));
+  result.textDots.forEach((d, i) => check(`textDots[${i}].position`, d.position));
+  return out;
+}
+
+/** The ids of the objects openNURBS wrote as block members, in object table order. */
+export function blockMemberIds(c: Craft): string[] {
+  const table = c.file.objects(), ids: string[] = [];
+  for (let i = 0; i < table.count; i++) {
+    const attributes = table.get(i).attributes();
+    if (attributes.isInstanceDefinitionObject) ids.push(attributes.id);
+  }
+  return ids;
 }
 
 /** Triangles an import draws: meshes plus every placed block. */

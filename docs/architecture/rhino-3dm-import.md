@@ -800,7 +800,8 @@ count].
 ### Size ceiling
 
 Decision D7: measured, then fixed in code as `MAX_3DM_BYTES` = 400 MB
-(`packages/rhino3dm/src/read/read.ts`).
+(`packages/rhino3dm/src/read/size.ts`), exported with the refusal sentence
+so the viewer checks the same cap before it copies the file.
 
 Measured with `readRhino3dm` itself (cap lifted for the run), each file in a
 fresh Node 22.14 process on an Apple M5 Pro with 48 GB, rhino3dm 8.35.0. The

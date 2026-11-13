@@ -14,7 +14,7 @@
  * it would rewrite the shipped export client inside a PR about import.
  */
 
-import type { RhinoImport } from '@ifc-lite/rhino3dm';
+import { MAX_3DM_BYTES, tooLarge3dmMessage, type RhinoImport } from '@ifc-lite/rhino3dm';
 import type { RhinoImportErrorCode, RhinoImportWorkerRequest, RhinoImportWorkerResponse } from './rhino-import-job';
 
 /** A failed read, carrying the reader's code so the caller can word the refusal. */
@@ -28,36 +28,15 @@ export class RhinoImportError extends Error {
 }
 
 /**
- * The reader's own size ceiling, `MAX_3DM_BYTES`
- * (`packages/rhino3dm/src/read/read.ts`, spec "Size ceiling", decision D7).
- *
- * Mirrored rather than imported, which is not a preference: the main thread
- * may import that package's TYPES but never its values, because a static
- * value edge pulls the 2.67 MB rhino3dm wasm into the startup graph and
- * `apps/viewer/scripts/check-rhino3dm-lazy.mjs` fails the build over it. The
- * constant is not on the package's public surface either. Single-sourcing it
- * is TODO(remove-by: #10037 exports it and a test pins this against it, viewer).
- */
-export const MAX_3DM_IMPORT_BYTES = 400 * 1024 * 1024;
-
-/**
- * Not `formatBytes` from `@/lib/utils`, which is otherwise identical in the MB
- * band: it switches to GB at 1 GiB, so a 1.5 GB archive would be refused as
- * "1.5 GB" here and "1536 MB" by the reader. The point of this function is to
- * say exactly what the reader says, so which side caught the file does not
- * change the sentence.
- */
-const megabytes = (bytes: number) => `${Math.round(bytes / (1024 * 1024))} MB`;
-
-/**
  * Refuse an archive above the ceiling, or `null` to go on.
  *
  * The caller asks BEFORE it copies the source buffer. Left to the worker, a
  * file over the cap is held twice (the load's buffer plus the copy the
  * request transfers) for a read that was always going to be refused, and the
  * allocation that fails on the way there is reported as `worker-failed`
- * rather than the size-ceiling message the user can act on. Same code and
- * same wording as the reader's own refusal.
+ * rather than the size-ceiling message the user can act on. The reader's own
+ * cap and sentence, imported from the package's side-effect-free size module,
+ * so which side caught the file does not change what the user reads.
  *
  * One thing the two do NOT share is the ORDER. `readRhino3dm` reads the
  * archive version first, so it answers `newer-archive` for an oversized file
@@ -69,11 +48,7 @@ const megabytes = (bytes: number) => `${Math.round(bytes / (1024 * 1024))} MB`;
  * the time anything gets here.
  */
 export function rhino3dmSizeRefusal(byteLength: number): RhinoImportError | null {
-  if (byteLength <= MAX_3DM_IMPORT_BYTES) return null;
-  return new RhinoImportError(
-    'too-large',
-    `This file is ${megabytes(byteLength)}; the reader handles up to ${megabytes(MAX_3DM_IMPORT_BYTES)}. Split the model into smaller files in Rhino.`,
-  );
+  return byteLength > MAX_3DM_BYTES ? new RhinoImportError('too-large', tooLarge3dmMessage(byteLength)) : null;
 }
 
 /** Objects read so far, as the reader counts them. */

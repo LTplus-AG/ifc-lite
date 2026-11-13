@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Owned production swept-disk inputs, sampled in raw IFC file length units.
-use crate::{Mesh, Point3};
+use crate::{Mesh, Point3, Vector3};
 
 #[derive(Debug, Clone)]
 pub(crate) struct SweptDiskPlan {
@@ -8,14 +8,17 @@ pub(crate) struct SweptDiskPlan {
     pub(super) radius: f64,
     pub(super) inner_radius: Option<f64>,
     pub(super) segments: usize,
+    /// The directrix's own unit tangents, when it has them.
+    pub(super) tangents: Option<Vec<Vector3<f64>>>,
 }
 
 impl SweptDiskPlan {
     pub(crate) fn evaluate(&self) -> Mesh {
         // Generate tube mesh by sweeping circle along curve
         // 24 segments around the circle at Medium; scaled by quality.
-        let (positions, indices) = super::build_tube(
+        let (positions, indices) = super::build_tube_along(
             &self.curve_points,
+            self.tangents.as_deref(),
             self.radius,
             self.inner_radius,
             self.segments,

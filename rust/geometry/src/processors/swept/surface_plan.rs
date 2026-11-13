@@ -2,7 +2,7 @@
 //! Owned profile/placed-directrix inputs for the sweep. The section roll
 //! follows the solid's reference (ISO 10303-42) when it is one we can
 //! evaluate, and the rotation-minimising frame otherwise.
-use super::super::disk::build_tube_rmf;
+use super::super::disk::{build_tube_rmf, rmf_frames};
 use super::sweep_profile_along_frames;
 use crate::{profile::Profile2D, Mesh, Point3, Result, Vector3};
 
@@ -122,15 +122,20 @@ pub(super) fn reference_frames(
 impl SurfaceCurveSweepPlan {
     pub(crate) fn evaluate(&self) -> Result<Mesh> {
         // --- Sweep the profile along the placed directrix --------------------------
-        let (chord_tangents, rmf1, rmf2) = build_tube_rmf(&self.points);
-        let tangents = match &self.tangents {
-            Some(tangents) if tangents.len() == self.points.len() => tangents,
-            _ => &chord_tangents,
+        // The curve's own tangents when it has them, for the reference roll
+        // and for the rotation-minimising fallback (a round profile has no
+        // roll), so two sweeps that meet at a sample share its section.
+        let (tangents, rmf1, rmf2) = match &self.tangents {
+            Some(tangents) if tangents.len() == self.points.len() => {
+                let (rmf1, rmf2) = rmf_frames(tangents);
+                (tangents.clone(), rmf1, rmf2)
+            }
+            _ => build_tube_rmf(&self.points),
         };
         let (perp1s, perp2s) = self
             .roll
             .as_ref()
-            .and_then(|roll| reference_frames(roll, tangents))
+            .and_then(|roll| reference_frames(roll, &tangents))
             .unwrap_or((rmf1, rmf2));
         let placed = self
             .regions

@@ -101,3 +101,12 @@ test('a trace without thread time reports CPU as unavailable (null), never as a 
   assert.equal(r.cpuMs.rendererMain, null);
   assert.equal(r.stages, null);
 });
+
+test('instructions appear in the CPU section as information: medians and A/A floor, no verdict', async () => {
+  const { cpuTimeSummary, cpuTimeSection } = await import('./load-scoreboard-report-cpu.mjs');
+  const rows = [0, 1, 2, 3, 4].flatMap((n) => ['base', 'branch'].map((side) => ({ ok: true, fixture: 'FZK', lane: 'browser-cold', side, round: n,
+    interactiveMs: 500, instructions: { total: (side === 'base' ? 2000e6 : 2010e6) + n * 1e6 } })));
+  const s = cpuTimeSummary({ kind: 'aa', lanes: ['browser-cold'] }, rows);
+  assert.ok(s.cells[0].instructions.aaFloor > 0 && s.cells[0].instructions.aaFloor < 0.01);
+  assert.match(cpuTimeSection(rows, { cpuTime: s }).find((l) => l.startsWith('| FZK |')), /\| 2,002 \/ 2,012 \|/);
+});

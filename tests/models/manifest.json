@@ -1639,18 +1639,18 @@
     },
     {
       "path": "ifcopenshell/generated_structural_coverage_ifc2x3.ifc",
-      "sha256": "ea5b6c4adeb32ec6378a4782d8d2e7f01d5bf32aab025f68ecc206f09df4ed1e",
-      "size": 7678
+      "sha256": "1b6251e19639906b99e7e12b0b9954e5eb2b73e5515a3ecab7ee21f26d2e25ab",
+      "size": 10374
     },
     {
       "path": "ifcopenshell/generated_structural_coverage_ifc4.ifc",
-      "sha256": "a5ae07c2059448305d12b3cae2a2a9cbe9be7650921db440a1b750c9f98f999b",
-      "size": 8135
+      "sha256": "6cacd4bc894507a1615bbb9771f266248665bc06a77a60249e61281ebb212c70",
+      "size": 11046
     },
     {
       "path": "ifcopenshell/generated_structural_coverage_ifc4x3.ifc",
-      "sha256": "8ec6d0e5e8548036a141fae304026672a03c16246ae7a5f6e88fb1abb7f73596",
-      "size": 8241
+      "sha256": "cfecbddd58aee33576d083a3dd786cdd0e0979c422e954337df3da552b9843b9",
+      "size": 11154
     },
     {
       "path": "ifcopenshell/generated_structural_coverage_ifc4_reinforcement.ifc",

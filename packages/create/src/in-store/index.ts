@@ -91,7 +91,7 @@ export {
 export type { OneToManyResult } from './relate.js';
 export { applyLayerThicknessInStore, effectiveLayerSetThickness, takeLayerThicknessOutcome, typeOccurrencesInStore, type LayerThicknessOutcome } from './type-layer-thickness.js';
 export { previewTypeLayerImpact, type TypeLayerImpact } from './type-layer-impact.js';
-export { retargetInheritingLayerUsagesInStore, typeLayerScopeInStore, typeLayerSetInStore, type TypeLayerScope } from './type-layer-inheritance.js';
+export { followTypeLayersOnRetypeInStore, retargetInheritingLayerUsagesInStore, typeLayerScopeInStore, typeLayerSetInStore, type TypeLayerScope } from './type-layer-inheritance.js';
 export { hostedFillTypeName, typeHostedFillInStore, type HostedFillTypeParams } from './hosted-fill-type.js';
 export { resolveAuthoringAnchor, readRelatedLists, liveEntityType, liveEntityConforms } from './resolve-relations.js';
 export { addSpaceToStore, type SpaceInStoreParams, type SpaceRectangleParams, type SpacePolygonParams, type SpaceBuildResult } from './space.js';
@@ -273,8 +273,14 @@ export { addStructuralSurfaceConnectionToStore, type StructuralSurfaceConnection
 
 // Derive an analytical model from the physical one (#9668): facts, plan, apply.
 export { readStructuralDerivationFacts } from './structural-derive-facts.js';
+export { structuralPhysicalAxes } from './structural-check-axes.js';
 export { planStructuralDerivation } from './structural-derive-plan.js';
 export { applyStructuralDerivation } from './structural-derive-apply.js';
 export type { StructuralDerivationOptions, StructuralDerivationPlan, StructuralDerivationReport } from './structural-derive-types.js';
 export { editStructuralEntityInStore, type StructuralEntityEdit } from './structural-edit.js';
 export { removeStructuralEntityInStore } from './structural-remove.js';
+
+export { addStructuralLoadToStore, type StructuralLoadInStoreParams } from './structural-load.js';
+export { addStructuralCurveActionToStore, type StructuralCurveActionInStoreParams } from './structural-curve-action.js';
+export { connectStructuralElementInStore } from './structural-physical-link.js';
+export type { StructuralMemberConnectionOptions } from './_structural-connection-options.js';

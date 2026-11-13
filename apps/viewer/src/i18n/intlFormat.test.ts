@@ -4,7 +4,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { formatLocaleDate, formatLocaleList, formatLocaleNumber, parseLocaleNumber } from './intlFormat.js';
+import { formatLocaleDate, formatLocaleList, formatLocaleNumber, formatLocaleValueList, parseLocaleNumber } from './intlFormat.js';
 
 test('formats schedule numbers and lists with the active locale', () => {
   assert.equal(formatLocaleNumber('de', 3.5, { minimumFractionDigits: 1, maximumFractionDigits: 1 }), '3,5');
@@ -29,4 +29,12 @@ test('parses localized decimal separators, grouping and digits as one complete n
   assert.equal(parseLocaleNumber('de-DE', '1.234,5'), 1234.5);
   assert.equal(parseLocaleNumber('ar-EG', '١٬٢٣٤٫٥'), 1234.5);
   assert.equal(parseLocaleNumber('de-DE', '1234,5 trailing'), null);
+});
+
+test('lists a vector\'s components without a conjunction, never ambiguous with a decimal comma (#9668)', () => {
+  assert.equal(formatLocaleValueList('en', ['1.5', '0', '-1']), '1.5, 0, -1');
+  for (const locale of ['de', 'fr', 'it']) {
+    const items = [formatLocaleNumber(locale, 1.5), '0', '-1'];
+    assert.equal(formatLocaleValueList(locale, items), `${items[0]}; 0; -1`, locale);
+  }
 });

@@ -551,3 +551,28 @@ test('ledger generation needs no TypeScript loader on supported Node versions (#
   assert.equal(status, 0, log);
   assert.ok(ledger, 'the actual generator must emit the ledger with type stripping disabled');
 });
+
+test('entity-table: the plain-JS decoder decodes what the runtime codec encodes, every value kind', async () => {
+  const { encodeSchemaTable, decodeSchemaTable } = await import('../packages/data/src/ifc-schema/table-codec.ts');
+  const { decodeEncodedTable, parseEntityTable } = await import('./lib/entity-table.mjs');
+  const rows = [
+    { name: 'IfcRoot', parent: undefined, abstract: true, predefinedTypes: [], attributes: ['GlobalId', 'Name'], source: 'Ifc4.Kernel' },
+    { name: 'IfcWall', parent: 'IfcRoot', abstract: false, predefinedTypes: ['MOVABLE', 'NOTDEFINED'], attributes: [], source: 'Ifc4.SharedBldgElements' },
+    { name: 'IfcOdd', parent: null, abstract: false, predefinedTypes: [[1, -2.5, 0]], attributes: [{ nested: true, n: 3 }], source: '' },
+  ];
+  const text = encodeSchemaTable(rows);
+  assert.deepStrictEqual(decodeEncodedTable(text), decodeSchemaTable(text));
+  assert.deepStrictEqual(decodeEncodedTable(text), rows);
+  const map = parseEntityTable(`const ENCODED_ENTITIES_TEST = ${JSON.stringify(text)};`);
+  assert.deepStrictEqual([...map.keys()], ['IfcRoot', 'IfcWall', 'IfcOdd']);
+  assert.deepStrictEqual(map.get('IfcWall'), { name: 'IfcWall', parent: 'IfcRoot', isAbstract: false, attributes: [] });
+  assert.equal(map.get('IfcRoot').parent, undefined);
+});
+
+test('entity-table: a source with zero entities is an error naming the caller, encoded or literal', async () => {
+  const { encodeSchemaTable } = await import('../packages/data/src/ifc-schema/table-codec.ts');
+  const { parseEntityTable } = await import('./lib/entity-table.mjs');
+  assert.throws(() => parseEntityTable('// no rows', 'caller-x'), /caller-x: no entities parsed \(ZERO rows\)/);
+  const empty = `const ENCODED_ENTITIES_TEST = ${JSON.stringify(encodeSchemaTable([]))};`;
+  assert.throws(() => parseEntityTable(empty, 'caller-y'), /caller-y: no entities parsed/);
+});

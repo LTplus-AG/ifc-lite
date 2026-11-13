@@ -10,6 +10,15 @@ import type { TranslationValue } from '../types';
  * stand in for the move gizmo there.
  */
 export const moveRotateEn = {
+  'moveRotate.mirror.label': "Mirror",
+  'moveRotate.mirror.hintStart': "Click the first point of the mirror axis",
+  'moveRotate.mirror.hintEnd': "Click the second axis point, or type an angle and Enter · Alt keeps the original",
+  'moveRotate.mirror.keepOriginal': "Keep original",
+  'moveRotate.offset.label': "Offset",
+  'moveRotate.offset.hint': "Type a positive distance and click the side for the parallel copy",
+  'moveRotate.offset.wallOnly': "Select one straight wall to offset",
+  'commands.model.mirror': "Mirror the selection (Model workspace)",
+  'commands.model.offset': "Offset a wall (Model workspace)",
   'moveRotate.move.label': 'Move',
   'moveRotate.move.hintBase': 'Click the point to move from, or type a distance',
   'moveRotate.move.hintTarget': 'Click where it goes, or type a distance and direction, then Enter',

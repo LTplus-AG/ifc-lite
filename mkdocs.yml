@@ -138,6 +138,7 @@ nav:
     - InfluxDB Time Series (Experimental): guide/influxdb.md
     - Viewer Assistant: guide/viewer-assistant.md
     - CLI Toolkit: guide/cli.md
+    - Structural Analysis: guide/structural-analysis.md
     - MCP for AI Agents: guide/mcp.md
     - 3D Viewer & Analysis: guide/viewer-api.md
     - Server Guide: guide/server.md

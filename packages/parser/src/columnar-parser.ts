@@ -10,6 +10,7 @@
  */
 
 import { newSelectionRelationshipIndex, indexTypeRelationship } from './selection-relationship-index.js';
+import { indexExceptionalTypeCoverage, indexExceptionalSubjects } from './index-exceptional-relationships.js';
 import { indexPropertyRelationships } from './index-property-relationships.js';
 import type { GeoreferenceInfo } from './georef-extractor.js';
 import type { EntityRef } from './types.js';
@@ -571,6 +572,10 @@ export async function parseColumnarInput(
             getProperties(expressId) { return this.properties.getForEntity(expressId); },
             getQuantities(expressId) { return this.quantities.getForEntity(expressId); },
         };
+        await indexExceptionalTypeCoverage(earlyStore, selectionRelationshipIndex, yieldIfNeeded);
+        await indexExceptionalSubjects(earlyStore, selectionRelationshipIndex, selectionRelationshipIndex.missing, yieldIfNeeded);
+        const indexedMissingCount = selectionRelationshipIndex.missing.length;
+        earlyStore.selectionRelationshipIndex = { ...selectionRelationshipIndex, missing: [...selectionRelationshipIndex.missing] };
         options.onSpatialReady?.({ ...earlyStore, relationshipsPending: true }); // finalStore spreads earlyStore: unmarked
 
         await yieldIfNeeded(); // Let geometry process after hierarchy emission
@@ -676,6 +681,7 @@ export async function parseColumnarInput(
                 return this.quantities.getForEntity(expressId);
             },
         };
+        await indexExceptionalSubjects(finalStore, selectionRelationshipIndex, selectionRelationshipIndex.missing.slice(indexedMissingCount), yieldIfNeeded);
         return finalStore;
     }
 

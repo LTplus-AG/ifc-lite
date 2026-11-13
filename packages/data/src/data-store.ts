@@ -131,6 +131,12 @@ export interface IfcStoreBase {
     typeReferences: number;
     unverifiedTypeRows: number[];
     typeDefinitions: Map<number, number[]>;
+    /** Canonical fallback facts for rows the numeric byte scanner could not index. */
+    typeExceptionalReferences: Map<number, number>;
+    typeRefusals: Map<number, string>;
+    exceptionalSubjects: Map<number, number[]>;
+    exceptionalDefinitionTargets: Map<number, number[]>;
+    retryTypeRows: number[];
   };
 
   /**

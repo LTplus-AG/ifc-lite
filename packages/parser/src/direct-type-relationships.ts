@@ -20,10 +20,13 @@ const noEdits: MetadataReadView = {
 export function directCurrentTypeRelationships(store: IfcDataStore, view: MetadataReadView): CurrentTypeRelationships {
   const index = store.selectionRelationshipIndex!;
   let rows = index.typeRows, references = index.typeReferences;
-  const unverified = new Set(index.unverifiedTypeRows);
+  const unverified = new Set(index.retryTypeRows);
   const changed = new Set([...view.getAttributeOverrideEntityIds!(), ...(view.getTombstones?.() ?? [])]);
   const created = view.getNewEntities();
   const createdIds = new Set(created.map(row => row.expressId));
+  for (const row of created) {
+    for (const relationship of index.exceptionalDefinitionTargets.get(row.expressId) ?? []) changed.add(relationship);
+  }
   const sourceType = (id: number) => {
     // @raw-entity-enumeration-ok source class for one candidate edit, not a model enumeration
     return (store.entityIndex.byId.get(id) ?? store.deferredEntityIndex?.get(id))?.type.toUpperCase();
@@ -37,12 +40,18 @@ export function directCurrentTypeRelationships(store: IfcDataStore, view: Metada
       definition = getInheritanceChain(normalizeIfcTypeName(type)).includes('IfcPropertySetDefinition');
       definitionClasses.set(type, definition);
     }
-    if (definition && (view.isDeleted(id) || view.getTypeMutations?.().has(id))) {
+    const changedType = view.getNewEntity(id)?.type ?? view.getTypeMutations?.().get(id)?.newType;
+    const currentDefinition = changedType && getInheritanceChain(normalizeIfcTypeName(changedType)).includes('IfcPropertySetDefinition');
+    if ((definition || currentDefinition) && (view.isDeleted(id) || changedType)) {
+      for (const row of index.exceptionalDefinitionTargets.get(id) ?? []) changed.add(row);
       for (const edge of store.relationships.forward.getEdges(id, RelationshipType.DefinesByProperties)) {
         changed.add(edge.relationshipId);
         for (const other of edge.shadowedRelationshipIds ?? []) changed.add(other);
       }
     }
+  }
+  for (const [id, reason] of index.typeRefusals) {
+    if (!changed.has(id) && !view.isDeleted(id)) throw new CurrentQuantityRefusal(reason);
   }
   const reads = new Map<number, RelationRead>();
   const memberships = new Map<number, Set<number>>();
@@ -68,8 +77,11 @@ export function directCurrentTypeRelationships(store: IfcDataStore, view: Metada
   for (const { id, base, current } of contributions) {
     if (!base && !current) continue;
     if (base && !unverified.has(id)) {
-      const old = readRelation(store, id, noEdits);
-      if (old) references -= new Set(old.members).size * old.targets.length;
+      if (index.typeExceptionalReferences.has(id)) references -= index.typeExceptionalReferences.get(id)!;
+      else if (!index.typeRefusals.has(id)) {
+        const old = readRelation(store, id, noEdits);
+        if (old) references -= new Set(old.members).size * old.targets.length;
+      }
     }
     const relation = read(id);
     if (relation) references += relation.members.length * relation.targets.length;

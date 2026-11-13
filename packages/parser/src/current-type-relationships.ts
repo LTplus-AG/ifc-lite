@@ -5,6 +5,8 @@
 /**
  * Which type an element has, and which definitions a type has, in the current
  * model, without reading every typing relationship from the source (#9192).
+ * Parser stores with native edit views use incident edges and worker coverage
+ * directly (#9947). The inventory below preserves partial/legacy providers.
  *
  * The parsed graph already says which relationship names which element, and
  * reading all of them from block-compressed source cost seconds on the first

@@ -9,7 +9,8 @@ const inventories = new WeakMap<IfcDataStore, { source: IfcDataStore['source']; 
 const classes = ['IFCRELASSOCIATESMATERIAL', 'IFCRELASSOCIATESCLASSIFICATION', 'IFCRELASSOCIATESDOCUMENT', 'IFCRELDEFINESBYTYPE', 'IFCRELDEFINESBYPROPERTIES'];
 
 /** Keep rows the byte scanner could not index on the canonical source reader.
- * Publication prepares this metadata-only inventory; no source blocks are read. */
+ * Legacy stores without parser coverage use this metadata-only fallback; no
+ * source blocks are read while finding the missing rows. */
 function legacyMissingRelationships(store: IfcDataStore): Map<string, number[]> {
   const old = inventories.get(store);
   if (old?.source === store.source) return old.missing;
@@ -56,7 +57,7 @@ export function selectionRelationshipIds(store: IfcDataStore, view: EditView, en
   for (const id of editIds(view)) ids.add(id);
   const missing = store.selectionRelationshipIndex?.missing;
   if (missing) {
-    for (const id of missing) if (sourceTypes.includes(store.entityIndex.byId.get(id)?.type ?? '')) ids.add(id);
+    for (const id of [...(store.selectionRelationshipIndex?.exceptionalSubjects.get(entityId) ?? []), ...(store.selectionRelationshipIndex?.retryTypeRows ?? [])]) if (sourceTypes.includes(store.entityIndex.byId.get(id)?.type ?? '')) ids.add(id);
   } else for (const type of sourceTypes) for (const id of legacyMissingRelationships(store).get(type) ?? []) ids.add(id);
   // The old inventory visited raw type buckets in source order, then retypes.
   // Graph adjacency orders targets instead; retain the original displayed order.

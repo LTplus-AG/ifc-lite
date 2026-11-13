@@ -7,7 +7,8 @@
  * unverified rows alone require the canonical source reader. Clone-safe. */
 export type SelectionRelationshipIndex = NonNullable<import('@ifc-lite/data').IfcStoreBase['selectionRelationshipIndex']>;
 export function newSelectionRelationshipIndex(): SelectionRelationshipIndex {
-  return { missing: [], typeRows: 0, typeReferences: 0, unverifiedTypeRows: [], typeDefinitions: new Map() };
+  return { missing: [], typeRows: 0, typeReferences: 0, unverifiedTypeRows: [], typeDefinitions: new Map(), typeExceptionalReferences: new Map(), typeRefusals: new Map(),
+    exceptionalSubjects: new Map(), exceptionalDefinitionTargets: new Map(), retryTypeRows: [] };
 }
 export function indexTypeRelationship(index: SelectionRelationshipIndex, id: number, members: readonly number[] | undefined,
   targets: readonly number[] | undefined, verified = true): void {

@@ -7,11 +7,11 @@ import { IfcParser, extractPropertiesOnDemand, extractAllMaterialsOnDemand, extr
 import { toTransport, fromTransport } from '../src/data-store-transport.js';
 import { classificationEdges } from '../src/classification-overlay.js';
 
-async function model(count = 600, extra: string[] = []) {
+async function model(count = 600, extra: string[] = [], unindexedTyping = false) {
   const rows = ["#1=IFCPROJECT('p',$,'Project',$,$,$,$,$,$);", "#2=IFCWALLTYPE('t',$,'Type',$,$,(#3),$,$,$,.STANDARD.);",
     "#3=IFCELEMENTQUANTITY('q',$,'Qto_Test',$,$,(#4));", "#4=IFCQUANTITYLENGTH('Length',$,$,2.5,$);", "#5=IFCMATERIAL('Concrete',$,$);"];
   for (let i = 0; i < count; i++) rows.push(`#${100+i}=IFCWALL('w${i}',$,'Wall',$,$,$,$,$,$);`,
-    `#${100000+i}=IFCRELDEFINESBYTYPE('t${i}',$,$,$,(#${100+i}),#2);`,
+    `#${100000+i}=IFCRELDEFINESBYTYPE('t${i}',$,$,$,(${unindexedTyping ? `'#${100+i}'` : `#${100+i}`}),#2);`,
     `#${200000+i}=IFCRELDEFINESBYPROPERTIES('p${i}',$,$,$,(#${100+i}),#6);`);
   rows.push("#6=IFCPROPERTYSET('ps',$,'Pset_Test',$,(#7));", "#7=IFCPROPERTYSINGLEVALUE('Value',$,IFCLABEL('base'),$);",
     "#8=IFCRELASSOCIATESMATERIAL('m',$,$,$,(#2),#5);");
@@ -123,4 +123,29 @@ it('#9947 material providers without a revision token remain readable', async ()
   const { store } = await model();
   const view = { isDeleted: () => false, getNewEntities: () => [], getEffectiveChanges: () => [] };
   expect(extractAllMaterialsOnDemand(store, 100, view)[0]?.name).toBe('Concrete');
+});
+
+it('#9947 graph-unindexed typing rows never cause a source sweep on first selection', async () => {
+  const { store, view } = await model(30000, [], true);
+  let reads = 0;
+  const original = store.getEntity.bind(store);
+  store.getEntity = id => { reads++; return original(id); };
+  expect(readCurrentTypeQuantities(store, 100, view).value?.quantities[0].quantities[0].value).toBe(2.5);
+  expect(reads).toBeLessThan(20);
+});
+
+it('#9947 exceptional definition sets respond to newly created definition targets', async () => {
+  const { store, view } = await model(600, ["#300002=IFCRELDEFINESBYPROPERTIES('future',$,$,$,(#2),(#3,#900000));"]);
+  expect(readCurrentTypeQuantities(store, 100, view).value?.quantities.map(set => set.name)).toEqual(['Qto_Test']);
+  view.setExpressIdWatermark(899999);
+  const created = view.createEntity('IfcElementQuantity', ['created', null, 'Created', null, null, [4]]);
+  expect(created.expressId).toBe(900000);
+  expect(readCurrentTypeQuantities(store, 100, view).value?.quantities.map(set => set.name)).toEqual(['Qto_Test', 'Created']);
+});
+
+it('#9947 deleting a refused exceptional row restores current type coverage', async () => {
+  const { store, view } = await model(600, ["#300000=IFCRELDEFINESBYTYPE('bad',$,$,$,(),#2);"]);
+  expect(readCurrentTypeQuantities(store, 100, view).status).toBe('unavailable');
+  view.deleteEntity(300000);
+  expect(readCurrentTypeQuantities(store, 100, view).value?.quantities[0].quantities[0].value).toBe(2.5);
 });

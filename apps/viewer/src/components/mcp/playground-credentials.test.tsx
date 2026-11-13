@@ -64,6 +64,9 @@ describe('MCP playground BYOK credential', () => {
     try {
       const container = render(<PlaygroundChat model={await oneWallModel()} />);
       await send(container, 'hello');
+      // #8610: SDK initialization may outlast send()'s fixed 50 ms delay.
+      // Observe the request before asserting its credential headers.
+      await waitFor(() => stub.sent.some(h => h.has('x-api-key')), 'Anthropic request captured');
       const anthropic = stub.sent.filter((h) => h.has('x-api-key'));
       assert.ok(anthropic.length > 0, 'expected a request to Anthropic');
       assert.equal(anthropic[0].get('anthropic-workspace-id'), WORKSPACE);
@@ -83,6 +86,7 @@ describe('MCP playground BYOK credential', () => {
     try {
       const container = render(<PlaygroundChat model={await oneWallModel()} />);
       await send(container, 'hello');
+      await waitFor(() => /rejected the Workspace ID/.test(container.textContent ?? ''), 'workspace rejection rendered');
       const shown = container.textContent ?? '';
       assert.match(shown, /rejected the Workspace ID/);
       assert.doesNotMatch(shown, /Add the workspace id/);

@@ -71,12 +71,9 @@ export function retypedClasses(state: Pick<ViewerState, 'models' | 'ifcDataStore
     const global = (id: number) => modelId === null ? id : state.toGlobalId(modelId, id);
     // Deleted ids stay out, so their meshes keep the class they were built with.
     for (const id of view.getTypeMutations().keys()) {
-      const type = store ? storedClass(store, view, id) : null;
+      const created = view.getNewEntity(id);
+      const type = created ? effectiveTreeType(view, id, created.type) : store ? storedClass(store, view, id) : null;
       if (type !== null) out.set(global(id), type);
-    }
-    for (const e of view.readNewEntityKinds()) {
-      const type = effectiveTreeType(view, e.expressId, e.type);
-      if (type !== null && type !== e.type) out.set(global(e.expressId), type);
     }
   }
   return out;

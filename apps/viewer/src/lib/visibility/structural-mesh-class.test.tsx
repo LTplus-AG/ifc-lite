@@ -15,6 +15,7 @@ import { afterEach, it } from 'node:test';
 import { act, useState } from 'react';
 import { createSyntheticDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
+import { generateIfcGuid } from '@ifc-lite/encoding';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import type { StructuralViewMode } from '@/store/types';
 import type { FederatedModel } from '@/store';
@@ -144,3 +145,18 @@ for (const federated of [false, true]) {
     }
   });
 }
+
+it('#10119 retypedClasses covers a retyped authored entity and leaves deleted rows out', () => {
+  const store = createSyntheticDataStore({ schemaVersion: 'IFC4', fileSize: 0, entities: [
+    { expressId: BEAM, type: 'IfcBeam', hasGeometry: true },
+    { expressId: COLUMN, type: 'IfcColumn', hasGeometry: true },
+  ] });
+  const view = new MutablePropertyView(null, '__legacy__');
+  const editor = new StoreEditor(store, view);
+  const authored = editor.addEntity('IfcBeam', [generateIfcGuid(), null, 'New beam', null, null, null, null, null, null]);
+  editor.setEntityType(authored.expressId, 'IfcStructuralCurveMember');
+  editor.setEntityType(COLUMN, 'IfcStructuralCurveMember');
+  editor.removeEntity(COLUMN);
+  const retyped = retypedClasses({ models: new Map(), ifcDataStore: store, mutationViews: new Map([['__legacy__', view]]), toGlobalId: (_m, id) => id });
+  assert.deepEqual([...retyped], [[authored.expressId, 'IfcStructuralCurveMember']]);
+});

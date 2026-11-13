@@ -40,7 +40,7 @@ import { CesiumPlacementGizmo } from './placement/CesiumPlacementGizmo';
 import { useSolarEnvironment } from '@/hooks/useSolarEnvironment';
 import { useSolarSweep } from '@/hooks/useSolarSweep';
 import { getViewerStoreApi, useViewerStore } from '@/store';
-import { isTypeVisible, meshClass } from '@/store/typeVisibilityFilter';
+import { isMeshTypeVisible } from '@/store/typeVisibilityFilter';
 import { useRetypedClasses } from '@/hooks/useViewerSelectors';
 import { hasInstancedShards } from '@/store/instancedShardModels';
 import { isVisibleResultEmpty } from '@/lib/visibility/effective-empty';
@@ -168,13 +168,13 @@ export function ViewportContainer() {
           // Scan-based terrain is stamped `IfcGeographicElement`; honour the
           // same type-visibility gate as the mesh path so the Site toggle hides
           // it too (issue #1480).
-          if (!isTypeVisible(meshClass(asset, retypedClasses), typeVisibility, structuralViewMode)) continue;
+          if (!isMeshTypeVisible(asset, typeVisibility, structuralViewMode, retypedClasses)) continue;
           collected.push(asset.modelIndex === modelIndex ? asset : { ...asset, modelIndex });
         }
       }
     } else if (geometryResult?.pointClouds) {
       for (const asset of geometryResult.pointClouds) {
-        if (!isTypeVisible(meshClass(asset, retypedClasses), typeVisibility, structuralViewMode)) continue;
+        if (!isMeshTypeVisible(asset, typeVisibility, structuralViewMode, retypedClasses)) continue;
         collected.push(asset);
       }
     }

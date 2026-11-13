@@ -9,6 +9,7 @@
  */
 
 import { useMemo, useRef } from 'react';
+import { shallow } from 'zustand/shallow';
 import { modelHiddenEntities } from '../lib/visibility/model-hidden-entities.js';
 import { resolveViewHiddenEntities, retypedClasses } from '../lib/visibility/structural-view.js';
 import type { RetypedClasses } from '../store/typeVisibilityFilter.js';
@@ -78,9 +79,7 @@ export function useRetypedClasses(): RetypedClasses {
   const previous = useRef<RetypedClasses>(new Map());
   return useMemo(() => {
     const next = retypedClasses({ models, ifcDataStore, mutationViews, toGlobalId });
-    const same = next.size === previous.current.size
-      && [...next].every(([id, type]) => previous.current.get(id) === type);
-    if (!same) previous.current = next;
+    if (!shallow(previous.current, next)) previous.current = next;
     return previous.current;
   }, [models, ifcDataStore, mutationViews, mutationVersion, toGlobalId]);
 }

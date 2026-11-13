@@ -39,7 +39,7 @@ import * as IfcWasm from '@ifc-lite/wasm';
 import { customPlaneCenter, useViewerStore } from '@/store';
 import { saveGeneratedSectionConfig, consumeRestoredSectionConfig } from './useDrawing2DPersistence.js';
 import { buildModelViewIdFilter, selectModelMeshes } from '@/lib/type-view-visibility';
-import { isTypeVisible, meshClass, type TypeVisibilityGate } from '@/store/typeVisibilityFilter';
+import { isMeshTypeVisible, type TypeVisibilityGate } from '@/store/typeVisibilityFilter';
 import { useRetypedClasses } from './useViewerSelectors.js';
 import { roomDrawingSymbolic } from '@/lib/collab/room-drawing-symbolic';
 import { ifcToViewerAxes } from '@/lib/geo/coordinate-frame';
@@ -520,7 +520,7 @@ export function useDrawingGeneration({
       // `drawing.lines` verbatim, see `useRenderUpdates.ts`) in the 3D view
       // too. Same shared mapping as the viewport, Cesium, basket and GLB
       // export, so all six toggles stay in lockstep.
-      meshesToProcess = meshesToProcess.filter((mesh) => isTypeVisible(meshClass(mesh, retypedClasses), typeVisibility, structuralViewMode));
+      meshesToProcess = meshesToProcess.filter((mesh) => isMeshTypeVisible(mesh, typeVisibility, structuralViewMode, retypedClasses));
 
       // Filter out hidden entities (using combined multi-model set)
       if (combinedHiddenIds.size > 0) {
@@ -579,7 +579,7 @@ export function useDrawingGeneration({
         // cut by express id; without this, a profile sharing that same
         // express id would still be free to project it back in.
         projectionProfiles = projectionProfiles.filter((p) => isModelViewExpressId(p.expressId));
-        projectionProfiles = projectionProfiles.filter((p) => isTypeVisible(meshClass(p, retypedClasses), typeVisibility, structuralViewMode));
+        projectionProfiles = projectionProfiles.filter((p) => isMeshTypeVisible(p, typeVisibility, structuralViewMode, retypedClasses));
         if (combinedHiddenIds.size > 0) {
           projectionProfiles = projectionProfiles.filter((p) => !combinedHiddenIds.has(p.expressId));
         }

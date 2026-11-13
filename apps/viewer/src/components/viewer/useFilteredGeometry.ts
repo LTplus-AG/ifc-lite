@@ -6,7 +6,7 @@ import { useMemo, useRef } from 'react';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { perfTally } from '@ifc-lite/load-trace';
 import type { TypeVisibility, StructuralViewMode } from '@/store/types';
-import { isTypeVisible, meshClass, type RetypedClasses } from '@/store/typeVisibilityFilter';
+import { isMeshTypeVisible, type RetypedClasses } from '@/store/typeVisibilityFilter';
 import { isMeshVisibleInViewMode, meshClassIsPlaced, meshIsNonOccurrence, type TypeViewMode } from '@/lib/type-view-visibility';
 import { sameMeshUpload } from './mesh-upload-identity.js';
 
@@ -178,7 +178,7 @@ export function useFilteredGeometry(
       // `site` toggle also hides `IfcGeographicElement` terrain (issue #1480);
       // `ifcAnnotations` also hides annotation 3D solid geometry / "Model Text"
       // breps on top of the 2D curve overlay (issues #1354, #1480).
-      if (needsFilter && !isTypeVisible(meshClass(mesh, retypedClasses), typeVisibility, structuralViewMode)) continue;
+      if (needsFilter && !isMeshTypeVisible(mesh, typeVisibility, structuralViewMode, retypedClasses)) continue;
 
       // Mesh alpha flows through unchanged. The previous code re-multiplied
       // IfcSpace / IfcOpeningElement alpha down to <= 0.3 here, which stomped

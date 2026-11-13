@@ -43,7 +43,7 @@
 import type { MeshData } from '@ifc-lite/geometry';
 import { isEntityVisible } from '@ifc-lite/renderer';
 import { effectiveIsolatedIds } from '@/lib/effective-isolation';
-import { isTypeVisible, meshClass, type RetypedClasses, type TypeVisibilityGate } from '@/store/typeVisibilityFilter';
+import { isMeshTypeVisible, type RetypedClasses, type TypeVisibilityGate } from '@/store/typeVisibilityFilter';
 
 /** Everything the drawn mesh set is a function of. Plain data: no store reads,
  *  no renderer reads — the caller resolves those so this stays testable. */
@@ -101,7 +101,7 @@ export function collectViewMeshes(input: ViewMeshInput): MeshData[] {
   return complete.filter(
     (mesh) =>
       isModelVisible(mesh.modelIndex, input.modelVisibility) &&
-      isTypeVisible(meshClass(mesh, input.retypedClasses), input.typeVisibility, input.structuralViewMode) &&
+      isMeshTypeVisible(mesh, input.typeVisibility, input.structuralViewMode, input.retypedClasses) &&
       isEntityVisible(mesh.expressId, input.hiddenEntities, isolatedIds),
   );
 }

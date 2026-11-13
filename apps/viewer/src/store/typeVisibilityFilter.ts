@@ -82,10 +82,15 @@ export function isTypeVisible(
 /** Global id to class after edits, for retyped entities (`retypedClasses`). */
 export type RetypedClasses = ReadonlyMap<number, string>;
 
-/** The class a mesh is filtered by: its entity's class after a retype, else the
+/** `isTypeVisible` for a mesh, by its entity's class after a retype, else the
  *  class it was meshed with. `expressId` is the global id every mesh list carries (#10119). */
-export function meshClass(mesh: { expressId: number; ifcType?: string }, retyped: RetypedClasses | undefined): string | undefined {
-  return retyped?.get(mesh.expressId) ?? mesh.ifcType;
+export function isMeshTypeVisible(
+  mesh: { expressId: number; ifcType?: string },
+  typeVisibility: TypeVisibilityGate,
+  mode: StructuralViewMode | undefined,
+  retyped: RetypedClasses | undefined,
+): boolean {
+  return isTypeVisible(retyped?.get(mesh.expressId) ?? mesh.ifcType, typeVisibility, mode);
 }
 
 /**

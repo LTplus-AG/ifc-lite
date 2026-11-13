@@ -184,7 +184,7 @@ describe('irreversible structural relationship preview #9668 review regression',
       const diagnostics = new EnumReconciliation();
       expect(convertStepLine("#50=IFCRELCONNECTSSTRUCTURALELEMENT('id',#1,$,$,#22,#77);", 'IFC2X3', target, undefined, undefined, undefined, undefined, diagnostics))
         .toBe("#50=IFCRELASSIGNSTOPRODUCT('id',#1,$,$,(#77),$,#22);");
-      expect(diagnostics.warnings().join(' ' )).toContain('original relationship kind cannot round trip');
+      expect(diagnostics.warnings().join(' ' )).toContain('the relationship kind is not kept in the target file');
     }
   });
 });

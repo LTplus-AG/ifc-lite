@@ -7,6 +7,7 @@ installLayout();
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, it } from 'node:test';
 import { act, Profiler } from 'react';
+import { StepExporter } from '@ifc-lite/export';
 import { cleanup, render, advance, type } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
@@ -75,4 +76,21 @@ it('#9296 spatial hierarchy refreshes product labels and deletion through undo/r
   assert.doesNotMatch(ui.textContent ?? '', /No matches/);
   act(() => useViewerStore.getState().redo(MODEL_ID));
   assert.match(ui.textContent ?? '', /No matches/);
+});
+
+
+it('#9296 a loaded column with an initially empty overlay does not invalidate the spatial hierarchy', async () => {
+  const s = useViewerStore.getState();
+  const data = s.models.get(MODEL_ID)!.ifcDataStore!;
+  const { content } = new StepExporter(data, s.mutationViews.get(MODEL_ID)!).export({ schema: 'IFC4', applyMutations: true });
+  await seedModelingSession({ step: new TextDecoder().decode(content) });
+  useViewerStore.setState({ hierarchyMode: 'spatial' });
+  let commits = 0;
+  render(<SourceHostProvider><Profiler id="loaded-hierarchy" onRender={() => commits++}><HierarchyPanel /></Profiler></SourceHostProvider>);
+  await advance(100);
+  const before = commits;
+  act(() => { assert.ok(useViewerStore.getState().translateEntity(MODEL_ID, column, [.5, 0, 0]).ok); });
+  assert.equal(commits, before, 'the first positional override changes no spatial row');
+  act(() => useViewerStore.getState().undo(MODEL_ID));
+  assert.equal(commits, before, 'returning to an empty overlay changes no spatial row');
 });

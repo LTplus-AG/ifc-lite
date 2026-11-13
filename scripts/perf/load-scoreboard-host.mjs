@@ -68,7 +68,10 @@ export function watchdogState(unit = process.env.LOAD_SCOREBOARD_WATCH_UNIT ?? '
 /** Whether a sample overlapped a watchdog pass: one ran at its start or end, or one started in between. Null when unknown. */
 export function overlapsWatchdog(before, after) {
   if (!before || !after) return null;
-  return before.running || after.running || (before.lastTriggerUs !== null && after.lastTriggerUs !== null && after.lastTriggerUs !== before.lastTriggerUs);
+  if (before.running || after.running) return true;
+  // Unreadable trigger times cannot show whether a pass started in between: unknown, never quiet (review #9952).
+  if (before.lastTriggerUs === null || after.lastTriggerUs === null) return null;
+  return after.lastTriggerUs !== before.lastTriggerUs;
 }
 
 /** Busy CPU ms of the whole host so far (/proc/stat "cpu" line: all but idle and iowait), or null. */
@@ -117,6 +120,57 @@ export function classifyHostLoad({ psi, limit = 5, builders = [], groupCpuMs = {
       : builderUnderPressure ? `builder present while CPU pressure some avg10 = ${psi} >= ${pressureFloor}` : null };
 }
 
+/**
+ * Measurement only: CPU package temperature (coretemp "Package id 0", deg C) and the kernel's package thermal
+ * throttle counters (cpu0/thermal_throttle: events and total ms). Pop ran at 91-94 C on 2026-11-12, so a throttled
+ * sample must be visible. Every value is null when unreadable; nothing is voided by it.
+ */
+export function thermalState(root = '/sys') {
+  // An empty or blank sensor file is unreadable, not 0 (Number('') is 0) (review #9952).
+  const num = (path, scale = 1) => { try { const t = readFileSync(path, 'utf8').trim(); const v = t === '' ? NaN : Number(t); return Number.isFinite(v) ? v / scale : null; } catch { return null; } };
+  // Every CPU package (a multi-socket host has one coretemp device per socket, each labelled "Package id 0" or
+  // its own id): the hottest one is recorded, never whichever device was read last (review #9952).
+  const temps = [];
+  try {
+    for (const hw of readdirSync(`${root}/class/hwmon`)) {
+      const dir = `${root}/class/hwmon/${hw}`;
+      let name = null; try { name = readFileSync(`${dir}/name`, 'utf8').trim(); } catch { continue; }
+      if (name !== 'coretemp') continue;
+      for (const f of readdirSync(dir).filter((x) => /^temp\d+_label$/.test(x))) {
+        let label = ''; try { label = readFileSync(`${dir}/${f}`, 'utf8').trim(); } catch { continue; }
+        if (!/^Package id \d+$/.test(label)) continue;
+        const c = num(`${dir}/${f.replace('_label', '_input')}`, 1000);
+        if (c !== null) temps.push(c);
+      }
+    }
+  } catch { /* no hwmon */ }
+  // Package throttle counters, once per physical package (the first CPU of each), summed; any unreadable is null.
+  const firstCpuOfPackage = new Map();
+  try {
+    for (const cpu of readdirSync(`${root}/devices/system/cpu`).filter((x) => /^cpu\d+$/.test(x)).sort((a, b) => Number(a.slice(3)) - Number(b.slice(3)))) {
+      const id = num(`${root}/devices/system/cpu/${cpu}/topology/physical_package_id`) ?? 0;
+      if (!firstCpuOfPackage.has(id)) firstCpuOfPackage.set(id, cpu);
+    }
+  } catch { /* no cpu tree */ }
+  if (firstCpuOfPackage.size === 0) firstCpuOfPackage.set(0, 'cpu0');
+  const sum = (file) => {
+    let total = 0;
+    for (const cpu of firstCpuOfPackage.values()) {
+      const v = num(`${root}/devices/system/cpu/${cpu}/thermal_throttle/${file}`);
+      if (v === null) return null;
+      total += v;
+    }
+    return total;
+  };
+  return { packageC: temps.length ? Math.max(...temps) : null, packageThrottleCount: sum('package_throttle_count'), packageThrottleMs: sum('package_throttle_total_time_ms') };
+}
+
+/** Start/end package temperature and the package throttling during a sample; a counter missing on either side is null. */
+export function thermalDelta(before, after) {
+  const d = (k) => (Number.isFinite(before?.[k]) && Number.isFinite(after?.[k]) ? Math.max(0, after[k] - before[k]) : null);
+  return { startC: before?.packageC ?? null, endC: after?.packageC ?? null, throttleEvents: d('packageThrottleCount'), throttleMs: d('packageThrottleMs') };
+}
+
 /** H9: before each sample, wait (at most 20 s) for CPU pressure avg10 < 5, and note builder-named processes. */
 export async function hostQuiet({ limit = 5, maxWaitMs = 20000 } = {}) {
   const started = Date.now();
@@ -131,7 +185,7 @@ export async function hostQuiet({ limit = 5, maxWaitMs = 20000 } = {}) {
   const pgids = [...new Set(procs.map((p) => p.pgid))];
   const cgroups = [...new Set(procs.map((p) => (p.cgroup ?? '').slice(3)).filter(Boolean))];
   return { cpuPressureAvg10: psi, limit, waitedMs: Date.now() - started, builders: procs.map((p) => p.name), builderProcs: procs,
-    groupTicksBefore: groupTicks(pgids), cgroupUsageBefore: { ...Object.fromEntries(cgroups.map((c) => [c, cgroupUsageMs(c)])), ...(procs.some((p) => !p.cgroup) ? { '(no cgroup)': null } : {}) }, hostBusyBefore: hostBusyMs(), ownCgroupBefore: ownCgroupMs(), watchdogBefore: watchdogState(), settledAt: null, startedAt: Date.now(), settled: false,
+    groupTicksBefore: groupTicks(pgids), cgroupUsageBefore: { ...Object.fromEntries(cgroups.map((c) => [c, cgroupUsageMs(c)])), ...(procs.some((p) => !p.cgroup) ? { '(no cgroup)': null } : {}) }, hostBusyBefore: hostBusyMs(), ownCgroupBefore: ownCgroupMs(), watchdogBefore: watchdogState(), thermalBefore: thermalState(), settledAt: null, startedAt: Date.now(), settled: false,
     // Provisional until the sample ends (settleHostLoad): pressure alone decides now.
     ...classifyHostLoad({ psi, limit, builders: procs.map((p) => p.name) }) };
 }
@@ -139,6 +193,8 @@ export async function hostQuiet({ limit = 5, maxWaitMs = 20000 } = {}) {
 /** After the sample: CPU each builder group used during it decides the flag (once per sample; rows share the object). */
 export function settleHostLoad(host) {
   if (!host || host.settled || !Array.isArray(host.builderProcs)) return host;
+  // First, before the slower reads below (systemctl, date): the sample's end, so later throttling is not charged to it.
+  const thermalAfter = thermalState();
   const after = groupTicks(Object.keys(host.groupTicksBefore ?? {}).map(Number));
   const groupCpuMs = {};
   for (const [g, before] of Object.entries(host.groupTicksBefore ?? {})) groupCpuMs[g] = Math.max(0, ((after[g] ?? before) - before) * TICK_MS);
@@ -157,7 +213,8 @@ export function settleHostLoad(host) {
     const after = cgroupUsageMs(c);
     builderCpuMs[c] = before === null || after === null ? null : Math.max(0, Math.round(after - before));
   }
-  Object.assign(host, { groupCpuMs, builderCpuMs, foreignCpuMs, sampleMs, overlapsWatchdogPass, settled: true, ...classifyHostLoad({ psi: host.cpuPressureAvg10, limit: host.limit, builders: host.builders, groupCpuMs: builderCpuMs }) });
-  delete host.groupTicksBefore; delete host.cgroupUsageBefore; delete host.hostBusyBefore; delete host.ownCgroupBefore; delete host.watchdogBefore;
+  const thermal = thermalDelta(host.thermalBefore, thermalAfter);
+  Object.assign(host, { groupCpuMs, builderCpuMs, foreignCpuMs, sampleMs, overlapsWatchdogPass, thermal, settled: true, ...classifyHostLoad({ psi: host.cpuPressureAvg10, limit: host.limit, builders: host.builders, groupCpuMs: builderCpuMs }) });
+  delete host.groupTicksBefore; delete host.cgroupUsageBefore; delete host.hostBusyBefore; delete host.ownCgroupBefore; delete host.watchdogBefore; delete host.thermalBefore;
   return host;
 }

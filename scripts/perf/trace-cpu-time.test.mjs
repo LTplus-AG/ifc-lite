@@ -48,7 +48,8 @@ test('stages: main-thread CPU inside the union of a span name; worker-framing sp
 });
 
 test('an explicit window overrides the marks and still aligns through any mark', () => {
-  const events = traceEventsOf(trace).filter((e) => !String(e.name).startsWith('scoreboard:'));
+  const MARKS = new Set(['scoreboard:input', 'scoreboard:interactive']);
+  const events = traceEventsOf(trace).filter((e) => !MARKS.has(e.name));
   assert.throws(() => traceCpuTime(events), /no scoreboard:input/);
   const r = traceCpuTime(events, { window: [200, 250] });
   assert.equal(r.window.source, 'explicit window');

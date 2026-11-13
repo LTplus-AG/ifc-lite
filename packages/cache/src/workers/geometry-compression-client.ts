@@ -2,15 +2,20 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { CompressionRequest, CompressionResponse } from './geometry-compression-protocol.js';
+import type { CompressionRequest, CompressionResponse, InflateRequest } from './geometry-compression-protocol.js';
 import { accountWorkerMessages } from '@ifc-lite/load-trace';
+
+/** The worker's codec threw on a request (the data, or the worker's codec environment), as opposed to the worker itself failing. */
+export class WorkerCodecError extends Error {
+  override name = 'WorkerCodecError';
+}
 
 type StoredChunk = { bytes: Uint8Array<ArrayBuffer>; compressed: boolean };
 export interface CompressionWorkerPort {
   onmessage: ((event: MessageEvent<unknown>) => void) | null;
   onerror: ((event: ErrorEvent) => void) | null;
   onmessageerror: ((event: MessageEvent<unknown>) => void) | null;
-  postMessage(message: CompressionRequest, transfers: ArrayBuffer[]): void;
+  postMessage(message: CompressionRequest | InflateRequest, transfers: ArrayBuffer[]): void;
   terminate(): void;
 }
 
@@ -20,40 +25,69 @@ export class GeometryCompressionSession {
   private nextId = 0;
   private failure?: Error;
   private readonly pending = new Map<number, {
-    length: number; resolve: (value: StoredChunk) => void; reject: (error: Error) => void;
+    /** Compress: the raw length. Inflate: the raw length the chunk directory declares. */
+    length: number; inflate: boolean; resolve: (value: StoredChunk) => void; reject: (error: Error) => void;
   }>();
 
   constructor(private readonly createWorker: () => CompressionWorkerPort = () =>
     new Worker(new URL('./geometry-compression.worker.js', import.meta.url), { type: 'module' })) {}
 
   compress(raw: Uint8Array<ArrayBuffer>): Promise<StoredChunk> {
-    if (this.failure) return Promise.reject(this.failure);
+    if (this.failure) return Promise.reject(this.failure); // the session's own failure comes first, as before
     if (raw.byteOffset !== 0 || raw.byteLength !== raw.buffer.byteLength) {
       return Promise.reject(new Error('Geometry compression requires an owned whole buffer'));
     }
+    return this.request(raw.buffer, false, raw.byteLength);
+  }
+
+  /**
+   * Inflate one stored deflate-raw chunk off the calling thread. `stored` is
+   * copied (a view into the cache entry cannot be transferred); the result must
+   * be exactly `rawLength` bytes, the chunk directory's uncompressed length.
+   */
+  inflate(stored: Uint8Array, rawLength: number): Promise<Uint8Array<ArrayBuffer>> {
+    return this.request(stored.slice().buffer, true, rawLength).then((chunk) => chunk.bytes);
+  }
+
+  private request(buffer: ArrayBuffer, inflate: boolean, length: number): Promise<StoredChunk> {
+    if (this.failure) return Promise.reject(this.failure);
     return new Promise((resolve, reject) => {
       const id = ++this.nextId;
-      this.pending.set(id, { length: raw.byteLength, resolve, reject });
+      this.pending.set(id, { length, inflate, resolve, reject });
       try {
-        if (!this.worker) {
-          this.worker = accountWorkerMessages(this.createWorker(), 'cacheCompression'); // #6957
-          this.worker.onmessage = event => this.receive(event.data);
-          this.worker.onerror = event => {
-            event.preventDefault();
-            this.fail(new Error(`Geometry compression worker failed: ${event.message}`));
-          };
-          this.worker.onmessageerror = () => this.fail(new Error('Geometry compression response could not be decoded'));
-        }
-        this.worker.postMessage({ id, buffer: raw.buffer }, [raw.buffer]);
+        this.start().postMessage(inflate ? { id, op: 'inflate', buffer } : { id, buffer }, [buffer]);
       } catch (error) {
         this.fail(error instanceof Error ? error : new Error(String(error)));
       }
     });
   }
 
+  /** Start the worker now (it boots while other work runs); requests start it otherwise. */
+  start(): CompressionWorkerPort {
+    if (this.failure) throw this.failure;
+    if (!this.worker) {
+      this.worker = accountWorkerMessages(this.createWorker(), 'cacheCompression'); // #6957
+      this.worker.onmessage = event => this.receive(event.data);
+      this.worker.onerror = event => {
+        event.preventDefault();
+        this.fail(new Error(`Geometry compression worker failed: ${event.message}`));
+      };
+      this.worker.onmessageerror = () => this.fail(new Error('Geometry compression response could not be decoded'));
+    }
+    return this.worker;
+  }
+
   close(): void {
     this.fail(new Error('Geometry compression session closed'));
   }
+
+  /** End the session: the worker stops and every pending request rejects with `error`. */
+  abort(error: Error): void {
+    this.fail(error);
+  }
+
+  /** True once the session ended (closed, aborted or its worker failed). */
+  get failed(): boolean { return this.failure !== undefined; }
 
   private receive(value: unknown): void {
     if (!value || typeof value !== 'object') {
@@ -67,14 +101,22 @@ export class GeometryCompressionSession {
       return;
     }
     if ('error' in response) {
-      this.fail(new Error(`Geometry compression failed: ${String(response.error)}`));
+      // An inflate's codec error is about that chunk's data: reject it alone and keep the worker
+      // (its handler caught the throw). A compress error still ends the session, as before.
+      if (pending.inflate) {
+        this.pending.delete(response.id!);
+        pending.reject(new WorkerCodecError(`Chunk inflate failed in the worker: ${String(response.error)}`));
+        return;
+      }
+      this.fail(new WorkerCodecError(`Geometry compression failed: ${String(response.error)}`));
       return;
     }
     if (!('buffer' in response) || !(response.buffer instanceof ArrayBuffer)
       || typeof response.compressed !== 'boolean'
-      || (response.compressed && response.buffer.byteLength === 0)
-      || (response.compressed ? response.buffer.byteLength >= pending.length
-        : response.buffer.byteLength !== pending.length)) {
+      || (pending.inflate && (response.compressed || response.buffer.byteLength !== pending.length))
+      || (!pending.inflate && response.compressed && response.buffer.byteLength === 0)
+      || (!pending.inflate && (response.compressed ? response.buffer.byteLength >= pending.length
+        : response.buffer.byteLength !== pending.length))) {
       this.fail(new Error('Invalid geometry compression result length or flags'));
       return;
     }

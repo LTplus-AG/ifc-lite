@@ -158,7 +158,7 @@ test('#8947 palette Plan Grid and Fit affect parsed wall geometry; pointer navig
   assert.ok(document.querySelector('[data-plan-layer="grid"]'));
   click(grid);
   assert.equal(grid.getAttribute('aria-pressed'), 'false');
-  assert.equal(document.querySelector('[data-plan-layer="grid"]'), null);
+  assert.ok(document.querySelector('[data-plan-layer="grid"]') === null, 'Grid removes the real grid layer');
   click(grid); assert.ok(document.querySelector('[data-plan-layer="grid"]'));
   pointer(svg, 'pointerdown', 100, 100, { button: 1, buttons: 4 });
   pointer(svg, 'pointermove', 180, 140, { button: 1, buttons: 4 });
@@ -244,7 +244,7 @@ test('#8947 palette Plan explains measured narrow-host refusal and leaves 3D usa
     click(option);
     assert.ok(document.querySelector('[role="combobox"]'), 'refusal keeps the palette open');
     assert.equal(useViewerStore.getState().modelLayout, '3d');
-    assert.equal(document.querySelector('[data-plan-view]'), null);
+    assert.equal(required('[data-model-plan-pane]').getAttribute('aria-hidden'), 'true', 'refusal leaves the persistent Plan pane hidden (#9296)');
     assert.ok(document.querySelector('[data-workspace-3d-probe]'));
   } finally {
     window.Element.prototype.getBoundingClientRect = real;

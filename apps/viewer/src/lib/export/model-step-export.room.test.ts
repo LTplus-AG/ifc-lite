@@ -11,6 +11,7 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import { registerRoomSymbolicSource } from '@/lib/collab/room-symbolic-source';
 import { exportFailureMessage, StepRecordsUnavailableError } from './step-records';
 import { exportModelStep } from './model-step-export';
+import { roomMergeInput } from '@/lib/collab/room-merged-export';
 
 const OPTIONS = { schema: 'IFC4', applyMutations: true } as const;
 
@@ -62,7 +63,7 @@ test('a room still covered by its portable source writes from that source (#1004
   assert.equal(exported.entityIndex.byId.has(FIXTURE_PROJECT), true);
 });
 
-test('an edit outside the portable source refuses only when edits are applied (#10045)', async () => {
+test('an applied edit outside the portable source refuses the export (#10045)', async () => {
   const dataStore = await roomStore([[FIXTURE_PROJECT, PROXY_A], [FIXTURE_SITE, PROXY_B], [FIXTURE_BUILDING, WALL]]);
   const mutationView = new MutablePropertyView(dataStore.properties ?? null, 'room');
   mutationView.setAttribute(999, 'Name', 'Local only');
@@ -70,10 +71,18 @@ test('an edit outside the portable source refuses only when edits are applied (#
     exportModelStep({ modelId: 'room', dataStore, mutationView, options: OPTIONS, scheduleState: null }),
     (error: unknown) => error instanceof StepRecordsUnavailableError && error.reason === 'roomMoved',
   );
-  const result = await exportModelStep({
-    modelId: 'room', dataStore, mutationView, options: { ...OPTIONS, applyMutations: false }, scheduleState: null,
-  });
-  assert.equal((await parse(result.content)).entities.getName(FIXTURE_WALL_A), 'Wall A');
+});
+
+test('the merged path refuses with the model named (#10045)', async () => {
+  const moved = await roomStore([[FIXTURE_PROJECT, PROXY_A], [FIXTURE_SITE, PROXY_B]]);
+  for (const [store, reason] of [[moved, 'roomMoved'], [tabularFixtureStore(), 'noRecords']] as const) {
+    assert.throws(
+      () => roomMergeInput({ id: 'm', name: 'Model M', store, applyMutations: true }),
+      (error: unknown) => error instanceof StepRecordsUnavailableError && error.reason === reason && error.modelName === 'Model M',
+    );
+  }
+  const step = await parseFixtureModel();
+  assert.equal(roomMergeInput({ id: 's', name: 'S', store: step, applyMutations: true }).input.dataStore, step);
 });
 
 test('a plain STEP model still exports from its own records (#10045)', async () => {

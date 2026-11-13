@@ -27,12 +27,10 @@ export async function exportModelStep(input: {
   scheduleState: ExportScheduleState | null;
 }) {
   const { modelId, options } = input;
-  const applyMutations = options.applyMutations !== false;
-  // Edits that will not be written must not decide whether the room is exportable.
-  const portable = stepExportSource(input.dataStore, applyMutations ? input.mutationView : undefined, modelId);
+  const portable = stepExportSource(input.dataStore, input.mutationView, modelId);
   const dataStore = portable?.dataStore ?? input.dataStore;
   const view = portable ? portable.mutationView : input.mutationView;
-  const serialized = prepareAppearanceSerialization(modelId, dataStore, applyMutations ? view : undefined);
+  const serialized = prepareAppearanceSerialization(modelId, dataStore, options.applyMutations !== false ? view : undefined);
   const result = await new StepExporter(dataStore, serialized.view).exportAsync({
     ...options,
     hiddenEntityIds: portable ? portable.toSourceIds(options.hiddenEntityIds) ?? undefined : options.hiddenEntityIds,

@@ -77,7 +77,7 @@ export const exportDialogDe = {
   'exportDialog.landXml.schemaUnsupported': 'Die LandXML-Abbildung leitet nur IFC4X3-STEP ab. Wählen Sie IFC4X3, um dieses Modell zu konvertieren, oder exportieren Sie die ursprüngliche LandXML-Datei.',
   'exportDialog.landXml.exported': 'In IFC4X3 konvertiert: {records}.',
   'exportDialog.notReadyError': 'Wählen Sie vor dem Export ein Modell und ein Schema aus.',
-  'exportDialog.stepRecords.roomMoved': '„{model}“ kann nicht als IFC-STEP exportiert werden: Es stimmt nach Änderungen an Wurzelelementen im Raum oder nach nicht geteilten lokalen Änderungen nicht mehr mit der IFC-Datei überein, aus der es geteilt wurde. Exportieren Sie es einzeln als IFC5 (IFCX) oder exportieren Sie ohne Änderungen.',
+  'exportDialog.stepRecords.roomMoved': '„{model}“ kann nicht als IFC-STEP exportiert werden: Es stimmt nach Änderungen an Wurzelelementen im Raum oder nach lokalen Änderungen an Elementen, die diese Datei nicht enthält, nicht mehr mit der IFC-Datei überein, aus der es geteilt wurde. Exportieren Sie es einzeln als IFC5 (IFCX).',
   'exportDialog.stepRecords.noRecords': '„{model}“ enthält keine IFC-STEP-Datensätze für den Export. Exportieren Sie es einzeln als IFC5 (IFCX).',
   'exportDialog.landXml.imageryExported': 'Das aufgelegte Bild wird als Textur auf das Gelände gelegt und neben dem IFC als {entry} in einer .ifcZIP mitgeliefert.',
   'exportDialog.landXml.imageryRefused': 'Das aufgelegte Bild wurde nicht exportiert: {reason}',

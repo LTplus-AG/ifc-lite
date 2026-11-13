@@ -9,6 +9,7 @@ import { isAnalyticalProduct } from './analytical-classes.mjs';
 import { isProductClass } from '../compare/compareScope';
 // Class after the view's edits, null once deleted; mask and presence both read it.
 import { effectiveTreeType as effectiveType } from '@/components/viewer/hierarchy/treeOverlay';
+import { LEGACY_MUTATION_MODEL_ID } from '@/sdk/adapters/model-compat';
 
 export { isAnalyticalProduct };
 
@@ -26,22 +27,43 @@ export function resolveViewHiddenEntities(state: StructuralVisibilityState): Set
     state.hiddenEntities, state.toGlobalId);
 }
 
-const isEffectivelyAnalytical = (view: MutablePropertyView | undefined, id: number, baseType: string) => {
-  const type = effectiveType(view, id, baseType);
-  return type !== null && isAnalyticalProduct(type);
-};
+type Views = ReadonlyMap<string, MutablePropertyView>;
+interface Source { store: IfcDataStore | null | undefined; view: MutablePropertyView | undefined; global: (id: number) => number }
 
-/** Effective presence: indexed, retyped-in and authored analytical products that are still analytical and not deleted. */
+/** Each loaded store with the view its edits live under. Legacy single-store
+ *  edits are keyed `__legacy__` (see `normalizeMutationModelId`). */
+function sources(models: ReadonlyMap<string, FederatedModel>, fallback: IfcDataStore | null, views: Views,
+  toGlobalId: (modelId: string, id: number) => number): Source[] {
+  if (models.size) {
+    return [...models].map(([id, m]) => ({ store: m.ifcDataStore, view: views.get(id), global: (e: number) => toGlobalId(id, e) }));
+  }
+  const view = views.get(LEGACY_MUTATION_MODEL_ID) ?? views.get('legacy') ?? views.get('default');
+  return [{ store: fallback, view, global: (e) => e }];
+}
+
+/** The class the mask gives a stored row after the view's edits; null when deleted or not in the table. */
+function storedClass(store: IfcDataStore, view: MutablePropertyView | undefined, id: number): string | null {
+  const parsed = store.entities.getExactTypeName?.(id) || store.entities.getTypeName(id);
+  return parsed === 'Unknown' ? null : effectiveType(view, id, parsed);
+}
+
+const authoredClass = (view: MutablePropertyView, e: { expressId: number; type: string }) => effectiveType(view, e.expressId, e.type);
+const analytical = (type: string | null) => type !== null && isAnalyticalProduct(type);
+
+/** Whether any product the mask would treat as analytical exists. Scans only
+ *  candidates (analytical index entries, retyped ids, authored entities), each
+ *  classified by the mask's own rule, so the command and the mode agree. */
 export function hasStructuralData(state: Pick<ViewerState, 'models' | 'ifcDataStore' | 'mutationViews'>): boolean {
-  const sources: Array<[IfcDataStore | null | undefined, MutablePropertyView | undefined]> = state.models.size
-    ? [...state.models].map(([id, m]) => [m.ifcDataStore, state.mutationViews.get(id)])
-    : [[state.ifcDataStore, state.mutationViews.get('default')]];
-  // @raw-entity-enumeration-ok structural product presence; no attribute decoding
-  return sources.some(([store, view]) => [...(store?.entityIndex?.byType ?? [])]
-    .some(([type, ids]) => isAnalyticalProduct(type) && ids.some((id) => isEffectivelyAnalytical(view, id, type))))
-    || [...state.mutationViews.values()].some((view) =>
-      view.getNewEntities().some((e) => isEffectivelyAnalytical(view, e.expressId, e.type))
-      || [...view.getTypeMutations()].some(([id, m]) => !view.isDeleted(id) && isAnalyticalProduct(m.newType)));
+  return sources(state.models, state.ifcDataStore, state.mutationViews, (_, id) => id).some(({ store, view }) => {
+    if (store) {
+      // @raw-entity-enumeration-ok structural product presence; no attribute decoding
+      for (const [type, ids] of store.entityIndex?.byType ?? []) {
+        if (isAnalyticalProduct(type) && ids.some((id) => analytical(storedClass(store, view, id)))) return true;
+      }
+      if (view && [...view.getTypeMutations().keys()].some((id) => analytical(storedClass(store, view, id)))) return true;
+    }
+    return view?.getNewEntities().some((e) => analytical(authoredClass(view, e))) ?? false;
+  });
 }
 
 /** A separate mask, so switching modes never overwrites manual hides/isolation.
@@ -51,32 +73,20 @@ export function structuralViewHidden(
   mode: 'both' | 'physical' | 'analytical',
   models: ReadonlyMap<string, FederatedModel>,
   fallback: IfcDataStore | null,
-  views: ReadonlyMap<string, MutablePropertyView>,
+  views: Views,
   hidden: Set<number>,
   toGlobalId: (modelId: string, expressId: number) => number,
 ): Set<number> {
   if (mode === 'both') return hidden;
   const result = new Set(hidden);
-  const mask = (id: number, type: string, global: (id: number) => number) => {
-    const analytical = isAnalyticalProduct(type);
-    if ((mode === 'physical' && analytical) || (mode === 'analytical' && !analytical && isProductClass(type))) result.add(global(id));
+  const mask = (id: number, type: string | null, global: (id: number) => number) => {
+    if (type === null) return;
+    const isAnalytical = isAnalyticalProduct(type);
+    if ((mode === 'physical' && isAnalytical) || (mode === 'analytical' && !isAnalytical && isProductClass(type))) result.add(global(id));
   };
-  const visit = (store: IfcDataStore, view: MutablePropertyView | undefined, global: (id: number) => number) => {
-    for (const id of store.entities.expressId) {
-      const type = effectiveType(view, id, store.entities.getExactTypeName?.(id) ?? store.entities.getTypeName(id));
-      if (type !== null) mask(id, type, global);
-    }
-  };
-  if (models.size) {
-    for (const [id, model] of models) {
-      if (model.ifcDataStore) visit(model.ifcDataStore, views.get(id), (entity) => toGlobalId(id, entity));
-    }
-  } else if (fallback) visit(fallback, views.get('default'), (id) => id);
-  for (const [modelId, view] of views) {
-    for (const e of view.getNewEntities()) {
-      const type = effectiveType(view, e.expressId, e.type);
-      if (type !== null) mask(e.expressId, type, (id) => toGlobalId(modelId, id));
-    }
+  for (const { store, view, global } of sources(models, fallback, views, toGlobalId)) {
+    if (store) for (const id of store.entities.expressId) mask(id, storedClass(store, view, id), global);
+    if (view) for (const e of view.getNewEntities()) mask(e.expressId, authoredClass(view, e), global);
   }
   return result;
 }

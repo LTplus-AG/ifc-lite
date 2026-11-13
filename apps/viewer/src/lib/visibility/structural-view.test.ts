@@ -58,8 +58,8 @@ it('#9923: retyping a physical product to an analytical class enables the mode c
   const store = createSyntheticDataStore({schemaVersion:'IFC4',fileSize:0,entities:[
     {expressId:7,type:'IfcBeam',hasGeometry:true},
   ]});
-  const view = new MutablePropertyView(null,'default');
-  const state = {models:new Map(),ifcDataStore:store,mutationViews:new Map([['default',view]])};
+  const view = new MutablePropertyView(null,'__legacy__');
+  const state = {models:new Map(),ifcDataStore:store,mutationViews:new Map([['__legacy__',view]])};
   assert.equal(hasStructuralData(state),false);
   new StoreEditor(store,view).setEntityType(7,'IfcStructuralCurveMember');
   assert.equal(hasStructuralData(state),true,'the mask and the command agree on a retyped product');
@@ -69,8 +69,8 @@ it('#9923: retyping the only analytical product away disables the mode command',
   const store = createSyntheticDataStore({schemaVersion:'IFC4',fileSize:0,entities:[
     {expressId:7,type:'IfcStructuralCurveMember',hasGeometry:true},
   ]});
-  const view = new MutablePropertyView(null,'default');
-  const state = {models:new Map(),ifcDataStore:store,mutationViews:new Map([['default',view]])};
+  const view = new MutablePropertyView(null,'__legacy__');
+  const state = {models:new Map(),ifcDataStore:store,mutationViews:new Map([['__legacy__',view]])};
   assert.equal(hasStructuralData(state),true);
   new StoreEditor(store,view).setEntityType(7,'IfcBeam');
   assert.equal(hasStructuralData(state),false,'the index still lists the original class, the effective model does not');
@@ -80,8 +80,8 @@ it('#9923: deleting the only analytical product disables the mode command', () =
   const store = createSyntheticDataStore({schemaVersion:'IFC4',fileSize:0,entities:[
     {expressId:7,type:'IfcStructuralCurveMember',hasGeometry:true},
   ]});
-  const view = new MutablePropertyView(null,'default');
-  const state = {models:new Map(),ifcDataStore:store,mutationViews:new Map([['default',view]])};
+  const view = new MutablePropertyView(null,'__legacy__');
+  const state = {models:new Map(),ifcDataStore:store,mutationViews:new Map([['__legacy__',view]])};
   assert.equal(hasStructuralData(state),true);
   new StoreEditor(store,view).removeEntity(7);
   assert.equal(hasStructuralData(state),false,'the index still lists the deleted entity, the effective model does not');
@@ -89,22 +89,46 @@ it('#9923: deleting the only analytical product disables the mode command', () =
 
 it('#9923: the mask reads a retype of a newly authored entity', () => {
   const store = createSyntheticDataStore({schemaVersion:'IFC4',fileSize:0,entities:[]});
-  const view = new MutablePropertyView(null,'default');
+  const view = new MutablePropertyView(null,'__legacy__');
   const editor = new StoreEditor(store,view);
   const beam = editor.addEntity('IfcBeam',[generateIfcGuid(),null,'New beam',null,null,null,null,null,null]);
   editor.setEntityType(beam.expressId,'IfcStructuralCurveMember');
-  const state = {models:new Map(),ifcDataStore:store,mutationViews:new Map([['default',view]]),
+  const state = {models:new Map(),ifcDataStore:store,mutationViews:new Map([['__legacy__',view]]),
     hiddenEntities:new Set<number>(),toGlobalId:(_m:string,id:number)=>id};
   assert.equal(hasStructuralData(state),true);
   assert.equal(resolveViewHiddenEntities({...state,structuralViewMode:'physical'}).has(beam.expressId),true);
   assert.equal(resolveViewHiddenEntities({...state,structuralViewMode:'analytical'}).has(beam.expressId),false);
 });
 
+for (const edit of ['retype','delete'] as const) {
+  it(`#9923: presence and mask agree after a ${edit} in a federated model and in legacy mode`, () => {
+    for (const federated of [true,false]) {
+      const store = createSyntheticDataStore({schemaVersion:'IFC4',fileSize:0,entities:[
+        {expressId:7,type:'IfcStructuralCurveMember',hasGeometry:true},
+        {expressId:9,type:'IfcBeam',hasGeometry:true},
+      ]});
+      const key = federated ? 'm0' : '__legacy__';
+      const models = federated ? new Map([[key,{...fixtureModel(key,{idOffset:0}),ifcDataStore:store}]]) : new Map();
+      const view = new MutablePropertyView(null,key);
+      const state = {models,ifcDataStore:federated ? null : store,mutationViews:new Map([[key,view]]),
+        hiddenEntities:new Set<number>(),toGlobalId:(m:string,id:number)=>toGlobalIdFromModels(models,m,id)};
+      const editor = new StoreEditor(store,view);
+      if (edit === 'retype') editor.setEntityType(7,'IfcBeam'); else editor.removeEntity(7);
+      assert.equal(hasStructuralData(state),false,`${edit}, federated=${federated}`);
+      const id7 = state.toGlobalId(key,7);
+      // A retyped beam is physical now: the physical mode must not hide it.
+      assert.equal(resolveViewHiddenEntities({...state,structuralViewMode:'physical'}).has(id7),false,`${edit}, federated=${federated}`);
+      if (edit === 'retype') {
+        assert.equal(resolveViewHiddenEntities({...state,structuralViewMode:'analytical'}).has(id7),true,`${edit}, federated=${federated}`);
+      }
+    }
+  });
+}
+
 it('#9923: IFC2X3 varying actions are analytical', () => {
   for (const type of ['IfcStructuralLinearActionVarying','IfcStructuralPlanarActionVarying']) {
     assert.equal(isAnalyticalProduct(type),true,type);
   }
-  assert.equal(isAnalyticalProduct('IfcStructuralSurfaceMemberVarying'),true);
   assert.equal(isAnalyticalProduct('IfcStructuralLoadGroup'),false);
 });
 

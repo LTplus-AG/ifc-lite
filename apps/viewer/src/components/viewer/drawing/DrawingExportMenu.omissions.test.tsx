@@ -13,7 +13,7 @@ import { DrawingExportMenu, type DrawingExportMenuProps } from './DrawingExportM
 
 afterEach(() => cleanup());
 
-const emptyCounts = { measurements: 0, areas: 0, texts: 0, clouds: 0 };
+const emptyCounts = { measurements: 0, areas: 0, texts: 0, clouds: 0, dimensions: 0 };
 
 function props(overrides: Partial<DrawingExportMenuProps> = {}): DrawingExportMenuProps {
   return {

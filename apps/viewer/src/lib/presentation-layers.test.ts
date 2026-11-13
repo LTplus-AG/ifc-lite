@@ -71,7 +71,7 @@ async function parse(text = fixture) {
 }
 
 test('#7619 resolves representations, direct items, shared nested maps and duplicate items', async () => {
-  const layers = resolvePresentationLayers(await parse()).sort((a, b) => a.expressId - b.expressId);
+  const layers = [...resolvePresentationLayers(await parse())].sort((a, b) => a.expressId - b.expressId);
   assert.deepEqual(layers.map(layer => [layer.expressId, layer.productIds]), [
     [50, [1, 2]], [51, [1]], [52, [3]], [53, []],
   ]);

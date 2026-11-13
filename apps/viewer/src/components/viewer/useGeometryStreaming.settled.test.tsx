@@ -95,17 +95,50 @@ function setup(withDevice = true) {
 const finalized = (snapshot: LoadTraceSnapshot | null) => (snapshot?.spans ?? []).some((s) => s.name === 'scene.finalize' && s.end !== null);
 const settle = () => act(async () => { await new Promise((r) => setTimeout(r, 30)); });
 
+/**
+ * Holds the zero-delay timers the hook schedules (its finalize is a `setTimeout(…, 0)`) until
+ * `release()`. React's async `act` may yield a macrotask while flushing, and on a slow runner the
+ * finalize then ran inside it, before the test could observe the pre-finalize state.
+ */
+function holdZeroTimers() {
+  const realSet = globalThis.setTimeout;
+  const realClear = globalThis.clearTimeout;
+  const held = new Map<object, () => void>();
+  globalThis.setTimeout = ((fn: (...a: unknown[]) => void, ms?: number, ...a: unknown[]) => {
+    if (ms) return realSet(fn, ms, ...a);
+    const handle = {};
+    held.set(handle, () => fn(...a));
+    return handle as ReturnType<typeof setTimeout>;
+  }) as typeof setTimeout;
+  globalThis.clearTimeout = ((handle?: Parameters<typeof clearTimeout>[0]) => {
+    if (handle && typeof handle === 'object' && held.delete(handle as object)) return;
+    realClear(handle);
+  }) as typeof clearTimeout;
+  return () => {
+    globalThis.setTimeout = realSet;
+    globalThis.clearTimeout = realClear;
+    const runs = [...held.values()];
+    held.clear();
+    for (const run of runs) realSet(run, 0);
+  };
+}
+
 it('a burst that arrives after the store stopped streaming (fast path): not settled until its finalize ends', async () => {
   const { tracer } = setup();
   await act(async () => { setStreaming(true); });
-  await act(async () => {
-    setStreaming(false);
-    useViewerStore.setState({ models: new Map([['ifc', model('ifc', meshes(6))]]) });
-    assert.equal(isSceneSettled(), false, 'the stream ended, the viewport has not scheduled its finalize yet');
-  });
-  // The meshes went straight into batches: nothing queued, no fragment, no finalize running yet.
-  assert.equal(finalized(tracer.latest()), false);
-  assert.equal(isSceneSettled(), false, 'appended, finalize still pending');
+  const release = holdZeroTimers();
+  try {
+    await act(async () => {
+      setStreaming(false);
+      useViewerStore.setState({ models: new Map([['ifc', model('ifc', meshes(6))]]) });
+      assert.equal(isSceneSettled(), false, 'the stream ended, the viewport has not scheduled its finalize yet');
+    });
+    // The meshes went straight into batches: nothing queued, no fragment, no finalize running yet.
+    assert.equal(finalized(tracer.latest()), false);
+    assert.equal(isSceneSettled(), false, 'appended, finalize still pending');
+  } finally {
+    release();
+  }
   await settle();
   assert.equal(finalized(tracer.latest()), true, 'the finalize ran');
   assert.equal(isSceneSettled(), true, 'settled once the finalize ended');
@@ -119,8 +152,13 @@ it('an ordinary streamed load settles after its finalize, as before', async () =
     await act(async () => { useViewerStore.setState({ models: new Map([['ifc', model('ifc', all.slice(0, end))]]) }); });
     flushPlacementGeometry(native.scene, native.device, native.pipeline, false);
   }
-  await act(async () => { setStreaming(false); });
-  assert.equal(isSceneSettled(), false);
+  const release = holdZeroTimers();
+  try {
+    await act(async () => { setStreaming(false); });
+    assert.equal(isSceneSettled(), false);
+  } finally {
+    release();
+  }
   await settle();
   assert.equal(finalized(tracer.latest()), true);
   assert.equal(isSceneSettled(), true);

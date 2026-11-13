@@ -507,6 +507,8 @@ declare namespace BimCreate {
 
   /** A non-blocking note: something the edit leaves as it is, and why. */
   export interface StoreyNotice {
+    /** Kind-specific text for an attachment notice; omitted by older callers. */
+    readonly elementType?: 'IfcWall' | 'IfcColumn' | 'IfcBeam' | 'IfcMember' | 'IfcCurtainWall';
     readonly code: string;
     readonly message: string;
     readonly elementIds: readonly number[];

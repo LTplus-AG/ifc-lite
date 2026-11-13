@@ -53,6 +53,7 @@ test('#9919 Array requires three exact positions with typed spacing', () => {
 test('#9919 typed wall angles must produce the intermediate room corners', () => {
   const corners=[[0,0],[5,0],[5,4],[0,4],[0,0]];
   assert.equal(oracle.typedRoomAxes(corners.slice(0,-1).map((p,i)=>axis(p,corners[i+1]))),true);
+  assert.equal(oracle.typedRoomAxes(Array.from({length:4},()=>({start:[],end:[]}))),false);
   const flat=[[0,0],[5,0],[9,0],[4,0],[0,0]];
   assert.equal(oracle.typedRoomAxes(flat.slice(0,-1).map((p,i)=>axis(p,flat[i+1]))),false);
 });
@@ -75,12 +76,16 @@ test('#9919 every loop join must connect its actual exported corner', async () =
 #${n+4}=IFCCARTESIANPOINT((${ex},${ey}));`;
   }).join('\n');
   const rel=(id,a,b)=>`#${id}=IFCRELCONNECTSPATHELEMENTS('r${id}',$,$,$,$,#${a},#${b},$,$,.ATSTART.,.ATEND.);`;
-  const model=(pairs,extra='')=>readStep(`DATA; ${walls}\n${pairs.map(([a,b],i)=>rel(i+10,a,b)).join('\n')}\n${extra} ENDSEC;`);
+  const model=(pairs,extra='',wallData=walls)=>readStep(`DATA; ${wallData}\n${pairs.map(([a,b],i)=>rel(i+10,a,b)).join('\n')}\n${extra} ENDSEC;`);
   const valid=[[1,2],[2,3],[3,4],[4,1]], wrong=[[1,3],[3,2],[2,4],[4,1]];
   for(const check of [fourWallJoins,wallEndpointsJoined]) {
     assert.equal(check(model(valid)),true);
     assert.equal(check(model(valid,rel(20,1,3))),false);
     assert.equal(check(model(wrong)),false);
+    assert.equal(check(model(valid,'',walls.replace('((0,0))','((1e999,1e999))'))),false);
+    const placement=`#200=IFCLOCALPLACEMENT(#203,#201); #201=IFCAXIS2PLACEMENT3D(#202,$,$); #202=IFCCARTESIANPOINT((0,0,-1e999)); #203=IFCLOCALPLACEMENT($,#204); #204=IFCAXIS2PLACEMENT3D(#205,$,$); #205=IFCCARTESIANPOINT((0,0,1e999));`;
+    const placed=walls.replace("#1=IFCWALL('w1',$,$,$,$,$,#100", "#1=IFCWALL('w1',$,$,$,$,#200,#100");
+    assert.equal(check(model(valid,placement,placed)),false);
   }
 });
 

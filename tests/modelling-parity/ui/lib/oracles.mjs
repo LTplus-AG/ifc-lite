@@ -75,7 +75,7 @@ export function wallEndpointsJoined(step) {
     if (a === b || !walls.has(a) || !walls.has(b)) return false;
     const endpoint=(id,kind)=>kind==='ATSTART'?axes.get(id)?.start:kind==='ATEND'?axes.get(id)?.end:undefined;
     const p=endpoint(a,rel.args?.[10]?.enum), q=endpoint(b,rel.args?.[9]?.enum);
-    if (!p || !q || Math.hypot(p[0]-q[0],p[1]-q[1])>.001 || Math.abs(axes.get(a).z-axes.get(b).z)>.001) return false;
+    if (!p || !q || p.length!==2 || q.length!==2 || ![...p,...q,axes.get(a).z,axes.get(b).z].every(Number.isFinite) || Math.hypot(p[0]-q[0],p[1]-q[1])>.001 || Math.abs(axes.get(a).z-axes.get(b).z)>.001) return false;
     for (const [id, endpoint] of [[a, rel.args?.[10]?.enum], [b, rel.args?.[9]?.enum]]) {
       if (endpoint === 'ATSTART' || endpoint === 'ATEND') joined.add(`${id}:${endpoint}`);
     }

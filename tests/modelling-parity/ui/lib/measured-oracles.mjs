@@ -65,7 +65,7 @@ export function plainLanguageReview(text) {
 }
 
 const near = (a,b,t=.03) => Number.isFinite(a) && Number.isFinite(b) && Math.abs(a-b)<=t;
-const point = (a,b) => !!a && !!b && a.every((v,i)=>near(v,b[i]));
+const point = (a,b) => Array.isArray(a) && Array.isArray(b) && a.length===2 && b.length===2 && a.every((v,i)=>near(v,b[i]));
 export function alignedWalls(axes) {
   return axes.length===2 && [3,6].every(y => axes.filter(w => near(w.start[1],y) && near(w.end[1],y) && near(w.start[0],0)).length===1);
 }

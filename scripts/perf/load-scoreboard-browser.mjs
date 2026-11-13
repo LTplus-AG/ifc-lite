@@ -33,6 +33,7 @@ import { rebaseToArm, waitCacheEntryStable, waitFirstPaint } from './load-scoreb
 import { expectSceneSnapshot, prepareWarmOpen } from './viewer-scene-snapshot.mjs';
 import { readGpuHealth } from '../../tests/benchmark/gpu-health.ts';
 import { IDENTITY_QUERY, corruptStoredSnapshots, readSceneIdentity, settleIdentityWrites } from './load-scoreboard-identity.mjs';
+import { startCpuTrace, stopCpuTrace } from './load-scoreboard-cputrace.mjs';
 
 /** Lane-name suffix of each arm; the default arm keeps the default lane names. */
 export const ARM_LANE_SUFFIX = { quiet: '', 'first-paint': '-early', 'boot-settled': '-settled' };
@@ -101,6 +102,7 @@ function summarizeOpen(open, memory) {
     peakMemoryMetric: memory ? 'peak sampled PSS sum over Chrome processes (250 ms), incl. browser baseline' : 'not sampled (timing pass)', memory,
     loadPaths: open.loadPaths, cacheTiers: open.cacheTiers, cacheHit: open.cacheHit, snapshotAdopted: open.snapshotAdopted,
     stageShares: shares, stageGroupShares: stageShares(byGroup, open.interactiveMs), milestones,
+    cpuTime: open.cpuTime ?? null, cpuTraceFile: open.cpuTraceFile ?? null,
     trace: open.trace,
   };
 }
@@ -120,7 +122,7 @@ function summarizeOpen(open, memory) {
  * quiet shell alone and is reported as a different protocol.
  * Returns { lanes: { 'browser-cold<suffix>', 'browser-warm1<suffix>', 'browser-warm<suffix>' }, warmOpens, meta }.
  */
-export async function browserSample({ chromium, executablePath, baseUrl, setRoot, side, fixture, warmOpens, outDir, tag, log, pass = 'timing', arm = 'quiet' }) {
+export async function browserSample({ chromium, executablePath, baseUrl, setRoot, side, fixture, warmOpens, outDir, tag, log, pass = 'timing', arm = 'quiet', cpuTrace = false }) {
   const suffix = ARM_LANE_SUFFIX[arm];
   if (suffix === undefined) throw new Error(`unknown arm ${arm}`);
   const early = arm === 'first-paint';
@@ -146,6 +148,8 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
   };
   const measuredOpen = async (label) => {
     phase = `${label}-shell`;
+    // Opt-in CPU trace (plan/side `cpuTrace`): started before the quiet-shell wait, so its start-up cost is not in the open.
+    const tracing = cpuTrace && pass === 'timing' ? await startCpuTrace(context, page) : null;
     const shell = early ? await waitFirstPaint(page)
       : arm === 'boot-settled' ? await armAfterBootSettled(page, { expectSignal: side.bootSignal !== false })
         : await waitShellQuiet(page);
@@ -159,7 +163,9 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
     open.framesToInteractive = framesBetween(counters.frames, open.originAbs, open.originAbs + open.interactiveMs);
     open.presentTimesFromChangeMs = presentTimes(counters.frames, open.originAbs, open.originAbs + open.interactiveMs + 3000);
     open.webgl = webglAroundPick(counters.gl, open.originAbs, open.originAbs + open.interactiveMs);
+    if (tracing) await page.evaluate(([o, i]) => { performance.mark('scoreboard:input', { startTime: o }); performance.mark('scoreboard:interactive', { startTime: o + i }); }, [open.originAbs, open.interactiveMs]);
     Object.assign(open, { shell }, await waitUiQuiet(page, open.originAbs + open.interactiveMs, open.originAbs));
+    if (tracing) Object.assign(open, await stopCpuTrace(tracing, { spans: open.trace, file: join(outDir, `${tag}-${label}.cputrace.json.gz`) }));
     if (early) open = rebaseToArm(open);
     const memory = meta[`${label}Memory`] ?? null;
     // Identity pass (untimed, flag on): what the scene holds after this open, for the reopen verdict.

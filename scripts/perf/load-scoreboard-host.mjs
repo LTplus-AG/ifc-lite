@@ -81,6 +81,10 @@ function hostBusyMs() {
   const [user, nice, system, , , irq, softirq, steal] = f; // idle (3) and iowait (4) are not busy
   return (user + nice + system + irq + softirq + (steal ?? 0)) * TICK_MS;
 }
+function quietWaitMs() {
+  const v = Number(process.env.LOAD_SCOREBOARD_QUIET_WAIT_MS);
+  return process.env.LOAD_SCOREBOARD_QUIET_WAIT_MS !== undefined && process.env.LOAD_SCOREBOARD_QUIET_WAIT_MS !== '' && v >= 0 ? v : 20000;
+}
 /** Our own cgroup path ("/user.slice/...") and process group: a builder there is ours (Chrome, the harness), never foreign. */
 function ownCgroupPath() { return readText('/proc/self/cgroup')?.split('\n').find((l) => l.startsWith('0::'))?.slice(3) ?? null; }
 function ownPgid() { const st = readText('/proc/self/stat'); return st ? Number(st.slice(st.lastIndexOf(')') + 2).split(' ')[2]) : null; }
@@ -171,8 +175,11 @@ export function thermalDelta(before, after) {
   return { startC: before?.packageC ?? null, endC: after?.packageC ?? null, throttleEvents: d('packageThrottleCount'), throttleMs: d('packageThrottleMs') };
 }
 
-/** H9: before each sample, wait (at most 20 s) for CPU pressure avg10 < 5, and note builder-named processes. */
-export async function hostQuiet({ limit = 5, maxWaitMs = 20000 } = {}) {
+/**
+ * H9: before each sample, wait (at most 20 s) for CPU pressure avg10 < 5, and note builder-named processes.
+ * LOAD_SCOREBOARD_QUIET_WAIT_MS overrides the wait (0 = none) for runs that measure under load on purpose.
+ */
+export async function hostQuiet({ limit = 5, maxWaitMs = quietWaitMs() } = {}) {
   const started = Date.now();
   let psi = cpuPressure10();
   while (!(psi < limit) && Date.now() - started < maxWaitMs) {

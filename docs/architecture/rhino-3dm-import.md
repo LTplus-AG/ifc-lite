@@ -274,7 +274,7 @@ is counted in `skipped` and has no entity.
 ### Worker wire format
 
 ```ts
-type RhinoImportRequest  = { type: 'import'; id: number; bytes: Uint8Array; options: { subdLevel; maxTriangles } };
+type RhinoImportRequest  = { type: 'import'; id: number; bytes: Uint8Array };
 type RhinoImportResponse =
   | { type: 'progress'; id: number; done: number; total: number }
   | { type: 'complete'; id: number; result: RhinoImport }   // positions/normals already viewer Y-up
@@ -289,11 +289,21 @@ type RhinoImportResponse =
 - `complete` transfers every typed array: mesh, definition, curve and point
   cloud buffers. Plain objects and typed arrays only, so structured clone needs
   no codec.
+- The request carries no options: level 1 has no dialog, so the defaults stay
+  in the reader. The worker asks for `bakeInstances` until the viewer has a
+  GPU instance path (decision D4).
 - The axis swap (`x, y, z → x, z, −y`, `ifcToViewerAxes` in
   `packages/geometry/src/world-frame.ts`) runs in the worker, on `origin` and
-  on the f32 positions and normals, and on instance transforms by conjugation.
-  The package stays Z-up and viewer-agnostic. The main thread does no
-  per-vertex work.
+  on the f32 positions and normals. The package stays Z-up and
+  viewer-agnostic, and the main thread does no per-vertex work on meshes.
+  Under `bakeInstances` there are no instance transforms to conjugate; that
+  arrives with the instance path, and until then an unbaked result reaching
+  the swap is an error rather than a silent loss of geometry.
+- Point clouds are the exception to "no per-vertex work": `PointCloudAsset`
+  has no origin and takes 0..1 float colours, so the adapter folds the origin,
+  takes the bounds and widens the colours in one pass per point. Stating
+  absolute positions, float colours and a bounding box in `RhinoImport` would
+  move that into the reader, and is a change to this contract.
 
 ## Mapping
 

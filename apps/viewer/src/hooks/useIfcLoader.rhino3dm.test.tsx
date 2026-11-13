@@ -109,7 +109,9 @@ describe('useIfcLoader .3dm route', () => {
 
     const model = [...useViewerStore.getState().models.values()][0];
     assert.equal(model.loadState, 'error');
-    assert.equal(model.loadError, 'not-3dm');
+    // The hierarchy panel renders `loadError` verbatim, so it holds the
+    // reader's sentence, not its code.
+    assert.match(model.loadError ?? '', /Not a Rhino \.3dm file/);
     assert.match(useViewerStore.getState().error ?? '', /Rhino \.3dm file/);
     assert.equal(fake!.terminated(), 1, 'a refusal terminates the worker too');
   });

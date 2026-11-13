@@ -31,8 +31,8 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import { gunzipSync } from 'node:zlib';
+import { isMainEntry } from '../lib/is-main-entry.mjs';
 
 export const TRACE_CATEGORIES = ['toplevel', 'blink.user_timing', '__metadata'];
 export const INPUT_MARK = 'scoreboard:input';
@@ -271,7 +271,7 @@ function format(r) {
   return lines.join('\n');
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if (isMainEntry(import.meta.url)) {
   const opt = parseArgs(process.argv.slice(2));
   if (opt.help || !opt.trace) {
     console.log('usage: node scripts/perf/trace-cpu-time.mjs TRACE.json[.gz] [--spans SPANS.json] [--window START_MS,END_MS] [--json]');

@@ -25,7 +25,8 @@ function pointDevice(): GPUDevice {
   } as unknown as GPUDevice;
 }
 
-const WORLD_X = [2_600_000, 2_600_000.1];
+// Neither is an f32 value; both round to the same f32 (2,600,000.0).
+const WORLD_X = [2_600_000.02, 2_600_000.12];
 const CAMERA = { fov: 1.0472, canvasHeightPx: 800, orthoHalfHeight: null };
 
 /** World position the CPU pick returns for a ray straight down onto each point,
@@ -49,13 +50,12 @@ function cloud(origin: [number, number, number] | undefined): PointCloudAsset {
 it('absolute f32 positions at 2,600,000 m collapse two points 0.1 m apart (the #10029 defect)', () => {
   const asset = cloud(undefined);
   assert.equal(asset.chunk.positions[0], asset.chunk.positions[3], 'both points sit on the same 0.25 m f32 grid step');
-  const [a, b] = pickWorldX(asset);
-  assert.equal(a, WORLD_X[0]);
-  assert.ok(Number.isNaN(b), 'nothing to pick where the second point should be');
+  assert.equal(asset.chunk.positions[0], 2_600_000, 'and that step is 2 cm and 12 cm from the real points');
+  assert.deepEqual(pickWorldX(asset), [NaN, NaN], 'neither real point can be picked within the 1 cm snap tolerance');
 });
 
 it('an inline cloud with an f64 origin keeps two points 0.1 m apart at 2,600,000 m (#10029)', () => {
-  const origin: [number, number, number] = [2_600_000, 0, 0];
+  const origin: [number, number, number] = [WORLD_X[0], 0, 0];
   const [a, b] = pickWorldX(cloud(origin));
   assert.ok(Math.abs(a - WORLD_X[0]) < 1e-4, `first point picked at ${a}`);
   assert.ok(Math.abs(b - WORLD_X[1]) < 1e-4, `second point picked at ${b}`);
@@ -81,9 +81,9 @@ it('an inline cloud with an f64 origin keeps two points 0.1 m apart at 2,600,000
 it('composes a model translation on top of the origin, without losing it (#10029)', () => {
   const renderer = new PointCloudRenderer(pointDevice(), 'rgba8unorm', 'depth32float', 1);
   renderer.setModelTranslation(0, [0.5, 0, 0]);
-  const handle = renderer.addAsset(cloud([2_600_000, 0, 0]));
-  assert.equal(renderer.getAssetPlacement(handle)![12], 2_600_000.5);
+  const handle = renderer.addAsset(cloud([WORLD_X[0], 0, 0]));
+  assert.equal(renderer.getAssetPlacement(handle)![12], WORLD_X[0] + 0.5);
   renderer.setModelTranslation(0, [0, 0, 0]);
-  assert.equal(renderer.getAssetPlacement(handle)![12], 2_600_000, 'clearing the move keeps the origin');
+  assert.equal(renderer.getAssetPlacement(handle)![12], WORLD_X[0], 'clearing the move keeps the origin');
   renderer.clear();
 });

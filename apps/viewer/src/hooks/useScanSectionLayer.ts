@@ -95,7 +95,8 @@ const EMPTY_SELECTION: ScanBandSelection = {
  */
 type ScanSource = ScanPointSample & { model?: Float32Array | Float64Array; modelOutputsRenderFrame?: boolean; revision?: number };
 
-function collectScanSources(
+/** Exported for the #10029 test. */
+export function collectScanSources(
   models: ReadonlyMap<string, FederatedModel>,
   legacyPointClouds: readonly PointCloudAsset[] | undefined,
 ): ScanSource[] {

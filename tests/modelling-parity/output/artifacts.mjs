@@ -120,6 +120,13 @@ export function requiredIfcClasses(cap, source, content) {
     ...(source === 'sdk' ? cap.probes?.output?.keyTypes ?? [] : fileClasses(content))])].sort();
 }
 
+export function checkRequiredIfcClasses(cap, content) {
+  const present = new Set(fileClasses(content));
+  const missing = (cap.probes?.output?.requiredClasses ?? []).filter(k => !present.has(k));
+  return { name: 'required IFC classes', status: missing.length ? 'fail' : 'pass',
+    detail: missing.length ? `missing from handed-over IFC: ${missing.join(', ')}` : 'row requirements present' };
+}
+
 export function missingIfcClasses(census, required) {
   return required.filter(k => !Object.entries(census).some(([t, n]) => n > 0 && t.replace(/StandardCase$/, '') === k));
 }

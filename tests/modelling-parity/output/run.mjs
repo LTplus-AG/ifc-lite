@@ -46,7 +46,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { sourceProvenance } from '../probes/sdk/run.mjs';
 import { readResults } from '../score.mjs';
-import { artifactSets, checkDrawing, requiredIfcClasses, missingIfcClasses, requiredKinds } from './artifacts.mjs';
+import { artifactSets, checkDrawing, checkRequiredIfcClasses, requiredIfcClasses, missingIfcClasses, requiredKinds } from './artifacts.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '../../..');
@@ -154,6 +154,7 @@ function judge(cap, set, work, tag) {
       // SDK exports must keep the row's key classes. A UI export is judged on the classes it
       // actually contains (its own census): a UI storeys export with no walls is not a defect.
       const keyTypes = kind !== 'ifc' ? [] : requiredIfcClasses(cap, set.source, existsSync(file) ? readFileSync(file, 'utf8') : '');
+      if (kind === 'ifc' && cap.probes.output.requiredClasses?.length && existsSync(file)) checks.push({ ...checkRequiredIfcClasses(cap, readFileSync(file, 'utf8')), file: rel(file) });
       if (kind === 'ifc') checks.push(...ifcChecks(file, set.census, keyTypes, work, `${tag}${i ? `-${i}` : ''}`).map((c) => ({ ...c, file: rel(file) })));
       else {
         checks.push({ ...checkDrawing(kind, file), file: rel(file) });

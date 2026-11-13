@@ -525,3 +525,9 @@ test('#9328 mismatched build and probe revisions are marked dirty in score prove
   const s = score(CATALOGUE,[result('a','sdk','pass',{source:{commit:'build',dirty:false,probes:{commit:'probe',dirty:false}}})]);
   assert.equal(s.sources[0].dirty,true);
 });
+
+test('#9328 required classes must exist in the original IFC before reopen', () => {
+  const cap={probes:{output:{requiredClasses:['IfcAnnotation']}}};
+  assert.equal(ART.checkRequiredIfcClasses(cap,'#1=IFCBUILDINGSTOREY();').status,'fail');
+  assert.equal(ART.checkRequiredIfcClasses(cap,'#1=IFCANNOTATION();').status,'pass');
+});

@@ -181,6 +181,8 @@ it('#9875 unkeyed errors coalesce after their owning surfaces converge', () => {
   assert.equal(document.querySelectorAll('button[aria-label="Dismiss notification"]').length, 2);
   cleanup();
   const anchor = render(<Toaster />);
+  assert.equal(anchor.querySelectorAll('button[aria-label="Dismiss notification"]').length, 1, 'closing coalesces immediately, before another emission');
+  assert.match(anchor.textContent ?? '', /×2/);
   act(() => toast.error('Repeated failure'));
   assert.equal(anchor.querySelectorAll('button[aria-label="Dismiss notification"]').length, 1);
   assert.match(anchor.textContent ?? '', /×3/, 'all three occurrences are counted without leaving a stale duplicate');
@@ -215,4 +217,36 @@ it('#9875 an ineligible later modal cannot hide the eligible parent fallback', (
   assert.ok(!app.textContent?.includes('Child save failed'), 'the app anchor is not the fallback while an eligible parent survives');
   act(closeLater);
   assert.ok(document.querySelector('[role="dialog"] [data-dialog-notices]')?.textContent?.includes('Child save failed'), 'the error is still readable in A after C closes');
+});
+
+
+it('#9879 converging duplicate errors cannot evict an unrelated persistent error', () => {
+  render(<Toaster />);
+  act(() => { toast.error('Failure A'); toast.error('Failure B'); });
+  render(<Dialog open><DialogContent><DialogTitle>Save</DialogTitle><DialogDescription>Review</DialogDescription></DialogContent></Dialog>);
+  act(() => toast.error('Failure B'));
+  cleanup();
+  const anchor = render(<Toaster />);
+  assert.equal(anchor.querySelectorAll('button[aria-label="Dismiss notification"]').length, 2);
+  act(() => toast.error('Failure C'));
+  for (const message of ['Failure A', 'Failure B', 'Failure C']) assert.ok(anchor.textContent?.includes(message), message);
+  assert.equal(anchor.querySelectorAll('button[aria-label="Dismiss notification"]').length, 3);
+  assert.match(anchor.textContent ?? '', /×2/);
+});
+
+it('#9879 converging notices keep the latest emission expiry without an older timer dismissing it', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  render(<Toaster />);
+  act(() => toast.success('Saved twice'));
+  act(() => t.mock.timers.tick(1000));
+  render(<Dialog open><DialogContent><DialogTitle>Save</DialogTitle><DialogDescription>Review</DialogDescription></DialogContent></Dialog>);
+  act(() => toast.success('Saved twice'));
+  cleanup();
+  const anchor = render(<Toaster />);
+  assert.equal(anchor.querySelectorAll('button[aria-label="Dismiss notification"]').length, 1);
+  assert.match(anchor.textContent ?? '', /×2/);
+  act(() => t.mock.timers.tick(2000));
+  assert.ok(anchor.textContent?.includes('Saved twice'), 'the earlier emission deadline must not remove the survivor');
+  act(() => t.mock.timers.tick(1000));
+  assert.ok(!anchor.textContent?.includes('Saved twice'), 'the survivor keeps its original latest-emission deadline');
 });

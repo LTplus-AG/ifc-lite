@@ -271,6 +271,12 @@ export interface DrawingMarkupReadResult {
   cloudAnnotations2D: CloudAnnotation2D[];
 }
 
+/** The annotation a restored item was read from: the `ifc-<kind>-<expressId>` ids the readers above assign. */
+export function drawingMarkupItemExpressId(id: string): number | null {
+  const match = /^ifc-(?:measure|polygon|text|cloud)-([1-9][0-9]*)$/.exec(id);
+  return match ? Number(match[1]) : null;
+}
+
 function emptyResult(): DrawingMarkupReadResult {
   return { measure2DResults: [], polygonArea2DResults: [], textAnnotations2D: [], cloudAnnotations2D: [] };
 }

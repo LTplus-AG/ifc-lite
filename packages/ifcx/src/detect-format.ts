@@ -6,18 +6,13 @@
 // imported-geometry kernel they reach) apart from this tiny format sniffer.
 import { safeUtf8Decode } from '@ifc-lite/data';
 
-/** The first 24 bytes of every Rhino archive, ahead of its version digits. */
+/**
+ * The first 24 bytes of every Rhino archive, ahead of its version digits. The
+ * reader holds the same string, with the version check beside it
+ * (`packages/rhino3dm/src/read/header.ts`); sharing it would mean a package
+ * edge from this dependency-free sniffer.
+ */
 const RHINO_3DM_MAGIC = '3D Geometry File Format ';
-
-/** True when the buffer starts with the Rhino archive magic. */
-function isRhino3dm(buffer: ArrayBuffer): boolean {
-  if (buffer.byteLength < RHINO_3DM_MAGIC.length) return false;
-  const head = new Uint8Array(buffer, 0, RHINO_3DM_MAGIC.length);
-  for (let i = 0; i < RHINO_3DM_MAGIC.length; i++) {
-    if (head[i] !== RHINO_3DM_MAGIC.charCodeAt(i)) return false;
-  }
-  return true;
-}
 
 /**
  * Detect if a buffer contains IFCX (JSON), IFC (STEP), GLB (binary glTF) or
@@ -32,13 +27,6 @@ export function detectFormat(buffer: ArrayBuffer): 'ifcx' | 'ifc' | 'glb' | '3dm
     }
   }
 
-  // A Rhino archive is binary and its magic is ASCII, so it is read byte by
-  // byte rather than through the decoder below: a .3dm otherwise fell through
-  // to `unknown` and on into the IFC wasm path.
-  if (isRhino3dm(buffer)) {
-    return '3dm';
-  }
-
   const bytes = new Uint8Array(buffer, 0, Math.min(100, buffer.byteLength));
   // SAB-safe: the upload entry path streams the file directly into a
   // SharedArrayBuffer for files ≥ STREAM_SAB_THRESHOLD, and both Firefox
@@ -48,6 +36,13 @@ export function detectFormat(buffer: ArrayBuffer): 'ifcx' | 'ifc' | 'glb' | '3dm
   // IFCX is JSON starting with {
   if (start.startsWith('{')) {
     return 'ifcx';
+  }
+
+  // A Rhino archive is binary, but its magic is ASCII and the decoder above is
+  // non-fatal, so the first 24 characters survive whatever follows. Checked
+  // before the STEP branch, because a binary tail can hold anything.
+  if (start.startsWith(RHINO_3DM_MAGIC)) {
+    return '3dm';
   }
 
   // IFC STEP starts with ISO-10303-21

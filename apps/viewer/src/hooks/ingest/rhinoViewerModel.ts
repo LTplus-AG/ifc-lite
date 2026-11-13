@@ -23,12 +23,13 @@ import {
   RelationshipGraphBuilder,
   StringTable,
 } from '@ifc-lite/data';
+import { countCopy } from '@ifc-lite/load-trace';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MeshData, PointCloudAsset } from '@ifc-lite/geometry';
 import type { RhinoImport } from '@ifc-lite/rhino3dm';
 
 import { RhinoImportError, readRhino3dmInWorker } from '@/lib/import/rhino-import-client';
-import { calculateMeshBounds, createCoordinateInfo } from '../../utils/localParsingUtils.js';
+import { calculateMeshBounds, createCoordinateInfo, expandBoundsForPointClouds } from '../../utils/localParsingUtils.js';
 import { buildTabularDataStore, type TabularStoreTables } from './tabularDataStore.js';
 import type { ViewerModelPayload } from './viewerModelIngest.js';
 
@@ -56,7 +57,7 @@ function drawnEntities(result: RhinoImport): Set<number> {
 }
 
 /** The string, entity and property tables for one `.3dm`. */
-export function buildRhinoTables(result: RhinoImport): TabularStoreTables {
+function buildRhinoTables(result: RhinoImport): TabularStoreTables {
   const strings = new StringTable();
   const entities = new EntityTableBuilder(Math.max(result.entities.length, 1), strings);
   const properties = new PropertyTableBuilder(strings);
@@ -66,7 +67,7 @@ export function buildRhinoTables(result: RhinoImport): TabularStoreTables {
     const expressId = expressIdOf(index);
     entities.add(
       expressId, entity.ifcClass, entity.globalId, entity.name,
-      entity.description, entity.objectType, drawn.has(index), false,
+      entity.description, entity.objectType, drawn.has(index),
     );
     for (const set of entity.propertySets) {
       for (const [propName, value] of set.properties) {
@@ -92,8 +93,8 @@ export function buildRhinoTables(result: RhinoImport): TabularStoreTables {
   };
 }
 
-/** The populated store for one `.3dm`. Exported for the adapter tests. */
-export function buildRhinoDataStore(result: RhinoImport, buffer: ArrayBuffer, parseTime: number): IfcDataStore {
+/** The populated store for one `.3dm`. */
+function buildRhinoDataStore(result: RhinoImport, buffer: ArrayBuffer, parseTime: number): IfcDataStore {
   return buildTabularDataStore(buildRhinoTables(result), {
     // The entity table's classes are IFC product classes, but the store holds
     // no STEP bytes, and `IFC5` is how consumers recognise that today
@@ -115,7 +116,7 @@ export function buildRhinoDataStore(result: RhinoImport, buffer: ArrayBuffer, pa
  * same contract the wasm pipeline's per-element frame uses. Nothing is
  * rewritten per vertex on the main thread.
  */
-export function convertRhinoMeshes(result: RhinoImport): MeshData[] {
+function convertRhinoMeshes(result: RhinoImport): MeshData[] {
   return result.meshes.map((mesh) => ({
     expressId: expressIdOf(mesh.entity),
     ifcType: result.entities[mesh.entity].ifcClass,
@@ -132,28 +133,22 @@ export function convertRhinoMeshes(result: RhinoImport): MeshData[] {
  * `PointCloudAsset` has no origin field, so the reader's origin is folded in
  * here and the colours widened from bytes to the renderer's 0..1 floats.
  */
-export function convertRhinoPointClouds(result: RhinoImport): PointCloudAsset[] {
+function convertRhinoPointClouds(result: RhinoImport): PointCloudAsset[] {
   return result.pointClouds.map((cloud) => {
     const pointCount = Math.floor(cloud.positions.length / 3);
     const positions = new Float32Array(cloud.positions.length);
+    const bytes = cloud.colors;
+    const colors = bytes ? new Float32Array(pointCount * 3) : undefined;
     const min: [number, number, number] = [Infinity, Infinity, Infinity];
     const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
-    for (let i = 0; i < positions.length; i += 3) {
+    for (let point = 0; point < pointCount; point++) {
+      const at = point * 3;
       for (let axis = 0; axis < 3; axis++) {
-        const value = cloud.origin[axis] + cloud.positions[i + axis];
-        positions[i + axis] = value;
+        const value = cloud.origin[axis] + cloud.positions[at + axis];
+        positions[at + axis] = value;
         if (value < min[axis]) min[axis] = value;
         if (value > max[axis]) max[axis] = value;
-      }
-    }
-    const bytes = cloud.colors;
-    let colors: Float32Array | undefined;
-    if (bytes) {
-      colors = new Float32Array(pointCount * 3);
-      for (let point = 0; point < pointCount; point++) {
-        for (let channel = 0; channel < 3; channel++) {
-          colors[point * 3 + channel] = bytes[point * 4 + channel] / 255;
-        }
+        if (colors && bytes) colors[at + axis] = bytes[point * 4 + axis] / 255;
       }
     }
     return {
@@ -164,7 +159,14 @@ export function convertRhinoPointClouds(result: RhinoImport): PointCloudAsset[] 
   });
 }
 
-/** What the reader reported and what this payload leaves undrawn, in one line each. */
+/**
+ * What the reader reported and what this payload leaves undrawn, in one line
+ * each. The console is where `dxfIngest` puts the same kind of note, but it is
+ * the weaker of the two precedents: `loadReport.ts` already renders
+ * `{count, reason}` rows for "these elements are missing from the 3D view",
+ * which is exactly the shape of `skipped`. Routing it there is the model
+ * metadata work, not this change.
+ */
 function reportRhinoImport(result: RhinoImport): void {
   for (const warning of result.warnings) console.warn(`[rhino3dm] ${warning}`);
   const skipped = Object.entries(result.skipped);
@@ -193,17 +195,7 @@ export function rhinoViewerModel(result: RhinoImport, buffer: ArrayBuffer, parse
   }
 
   const { bounds, stats } = calculateMeshBounds(meshes);
-  // Fit-to-view, the section slider and the camera near/far all read these
-  // bounds, so the point extents belong in them too, as on the IFCX path.
-  for (const cloud of pointClouds) {
-    const { min, max } = cloud.chunk.bbox;
-    bounds.min.x = Math.min(bounds.min.x, min[0]);
-    bounds.min.y = Math.min(bounds.min.y, min[1]);
-    bounds.min.z = Math.min(bounds.min.z, min[2]);
-    bounds.max.x = Math.max(bounds.max.x, max[0]);
-    bounds.max.y = Math.max(bounds.max.y, max[1]);
-    bounds.max.z = Math.max(bounds.max.z, max[2]);
-  }
+  expandBoundsForPointClouds(bounds, pointClouds);
 
   return {
     dataStore: buildRhinoDataStore(result, buffer, parseTime),
@@ -221,18 +213,18 @@ export function rhinoViewerModel(result: RhinoImport, buffer: ArrayBuffer, parse
 /**
  * Read a `.3dm` in the import worker and adapt it for `finalizeModel`.
  *
- * `bytes` go to the worker as a fresh read of the file, because the request
- * transfers them; `buffer` is the load's own source buffer and stays the
- * store's `source`.
+ * The request transfers its bytes, so it gets a copy of the load's own source
+ * buffer rather than the buffer itself, which stays the store's `source`. A
+ * copy, not a second read of the `File`: re-reading would let a file saved
+ * again mid-load put different bytes behind the geometry and the store.
  */
 export async function prepareRhinoViewerModel(
-  file: Blob,
   buffer: ArrayBuffer,
   onProgress?: (progress: { phase: string; percent: number }) => void,
   signal?: AbortSignal,
 ): Promise<ViewerModelPayload> {
   const started = performance.now();
-  const bytes = new Uint8Array(await file.arrayBuffer());
+  const bytes = new Uint8Array(countCopy('source.rhinoImport', buffer.slice(0)));
   const result = await readRhino3dmInWorker(bytes, ({ done, total }) => {
     onProgress?.({ phase: 'Reading Rhino .3dm', percent: 10 + (total > 0 ? (done / total) * 80 : 0) });
   }, signal);

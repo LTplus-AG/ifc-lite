@@ -281,12 +281,14 @@ type RhinoImportResponse =
   | { type: 'error'; id: number; code: RhinoImportErrorCode; message: string };
 ```
 
-- The request transfers `bytes`. They are a fresh read of the `File`, never
-  the store's source view. The export client cannot transfer, for that reason
-  [src `rhino-export-client.ts`].
-- `complete` transfers the buffer behind every typed array: mesh, definition,
-  curve and point cloud buffers. Plain objects and typed arrays only, so
-  structured clone needs no codec.
+- The request transfers `bytes`, so they are a copy of the load's own source
+  buffer, never the store's source view (the export client cannot transfer,
+  for that reason [src `rhino-export-client.ts`]). A copy rather than a second
+  read of the `File`: a re-read halves nothing and lets a file saved again
+  mid-load put different bytes behind the geometry and the store.
+- `complete` transfers every typed array: mesh, definition, curve and point
+  cloud buffers. Plain objects and typed arrays only, so structured clone needs
+  no codec.
 - The axis swap (`x, y, z → x, z, −y`, `ifcToViewerAxes` in
   `packages/geometry/src/world-frame.ts`) runs in the worker, on `origin` and
   on the f32 positions and normals, and on instance transforms by conjugation.

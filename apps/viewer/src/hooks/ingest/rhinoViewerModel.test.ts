@@ -12,7 +12,7 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs';
-import { describe, it, mock, afterEach } from 'node:test';
+import { describe, it, mock, afterEach, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { readRhino3dm } from '@ifc-lite/rhino3dm';
 import type { RhinoImport } from '@ifc-lite/rhino3dm';
@@ -43,13 +43,12 @@ const sample = (name: string) => new Uint8Array(readFileSync(new URL(name, sampl
 const samplesAbsent = !existsSync(new URL('file3dm_stuff.3dm', samples));
 
 // The reader reports what it could not draw through console.warn; the tests
-// assert the payload, not the log.
+// assert the payload, not the log, so the log is silenced for all of them.
+beforeEach(() => mock.method(console, 'warn', () => undefined));
 afterEach(() => mock.restoreAll());
-const quiet = () => mock.method(console, 'warn', () => undefined);
 
 describe('rhinoViewerModel, crafted .3dm', () => {
   it('builds one entity per Rhino object, with the class and GlobalId the user text states', async () => {
-    quiet();
     const { dataStore, schemaVersion } = await payloadOf(await craftRhino3dm());
 
     assert.equal(dataStore.entityCount, 2);
@@ -67,7 +66,6 @@ describe('rhinoViewerModel, crafted .3dm', () => {
   });
 
   it('serves the reader property sets as the store properties', async () => {
-    quiet();
     const { dataStore } = await payloadOf(await craftRhino3dm());
 
     const sets = dataStore.getProperties(1);
@@ -82,7 +80,6 @@ describe('rhinoViewerModel, crafted .3dm', () => {
   });
 
   it('keeps the millimetre file in metres and the known vertex at its viewer coordinate', async () => {
-    quiet();
     const { dataStore, geometryResult } = await payloadOf(await craftRhino3dm());
 
     // The reader scaled to metres, so the store's own scale is 1.
@@ -102,7 +99,6 @@ describe('rhinoViewerModel, crafted .3dm', () => {
   });
 
   it('carries each colour source through as the mesh colour', async () => {
-    quiet();
     const { geometryResult } = await payloadOf(await craftRhino3dm());
 
     const byObject = geometryResult.meshes.find((mesh) => mesh.expressId === 1);
@@ -121,7 +117,6 @@ describe('rhinoViewerModel, crafted .3dm', () => {
 
 describe(`rhinoViewerModel, Rhino 8 authored fixture${samplesAbsent ? ' (skipped: run pnpm fixtures)' : ''}`, { skip: samplesAbsent }, () => {
   it('loads file3dm_stuff.3dm: five entities, the one drawable mesh, and its point cloud', async () => {
-    quiet();
     const { dataStore, geometryResult } = await payloadOf(sample('file3dm_stuff.3dm'));
 
     assert.equal(dataStore.entityCount, 5);
@@ -144,7 +139,6 @@ describe(`rhinoViewerModel, Rhino 8 authored fixture${samplesAbsent ? ' (skipped
   });
 
   it('refuses a file whose only drawable objects are curves', async () => {
-    quiet();
     // blocks.3dm draws two block instances whose one drawable member is a curve.
     const result = await importOf(sample('blocks.3dm'));
     assert.deepEqual([result.meshes.length, result.pointClouds.length, result.curves.length], [0, 0, 2]);
@@ -155,7 +149,6 @@ describe(`rhinoViewerModel, Rhino 8 authored fixture${samplesAbsent ? ' (skipped
   });
 
   it('reads mesh.3dm, a millimetre Rhino mesh, into one proxy with 276 triangles', async () => {
-    quiet();
     const { dataStore, geometryResult } = await payloadOf(sample('mesh.3dm'));
 
     assert.equal(dataStore.entityCount, 1);

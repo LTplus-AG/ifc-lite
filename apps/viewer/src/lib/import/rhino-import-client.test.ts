@@ -21,6 +21,18 @@ import {
   type RhinoImportWorkerLike,
 } from './rhino-import-client.js';
 
+/** A worker that answers one request by firing `fire` on itself. */
+function failingWorker(fire: (worker: RhinoImportWorkerLike) => void): { worker: RhinoImportWorkerLike; terminated: () => number } {
+  let terminated = 0;
+  const worker: RhinoImportWorkerLike = {
+    onmessage: null, onerror: null, onmessageerror: null,
+    postMessage: () => setTimeout(() => fire(worker), 0),
+    terminate: () => { terminated++; },
+  };
+  __setRhinoImportWorkerFactoryForTest(() => worker);
+  return { worker, terminated: () => terminated };
+}
+
 /** One Z-up mesh at a known point, the shape `readRhino3dm` returns. */
 function readerResult(): RhinoImport {
   return {
@@ -57,6 +69,7 @@ function readerError(code: string, message: string): Error & { code: string } {
 const bytes = () => new Uint8Array([1, 2, 3, 4]);
 
 let fake: FakeRhinoImportWorkerHandle | null = null;
+// `restore()` clears the factory; the null call covers the hand-rolled workers below.
 afterEach(() => {
   fake?.restore();
   fake = null;
@@ -140,29 +153,17 @@ describe('readRhino3dmInWorker', () => {
   });
 
   it('a crashed worker rejects and is terminated', async () => {
-    let terminated = 0;
-    const worker: RhinoImportWorkerLike = {
-      onmessage: null, onerror: null, onmessageerror: null,
-      postMessage: () => setTimeout(() => worker.onerror?.({ message: 'out of memory' } as ErrorEvent), 0),
-      terminate: () => { terminated++; },
-    };
-    __setRhinoImportWorkerFactoryForTest(() => worker);
+    const crashed = failingWorker((worker) => worker.onerror?.({ message: 'out of memory' } as ErrorEvent));
 
     await assert.rejects(readRhino3dmInWorker(bytes()), (error: unknown) =>
       error instanceof RhinoImportError && error.code === 'worker-failed' && error.message === 'out of memory');
-    assert.equal(terminated, 1);
+    assert.equal(crashed.terminated(), 1);
   });
 
   it('an unreadable message rejects rather than hanging', async () => {
-    let terminated = 0;
-    const worker: RhinoImportWorkerLike = {
-      onmessage: null, onerror: null, onmessageerror: null,
-      postMessage: () => setTimeout(() => worker.onmessageerror?.({} as MessageEvent), 0),
-      terminate: () => { terminated++; },
-    };
-    __setRhinoImportWorkerFactoryForTest(() => worker);
+    const garbled = failingWorker((worker) => worker.onmessageerror?.({} as MessageEvent));
 
     await assert.rejects(readRhino3dmInWorker(bytes()), /unreadable message/);
-    assert.equal(terminated, 1);
+    assert.equal(garbled.terminated(), 1);
   });
 });

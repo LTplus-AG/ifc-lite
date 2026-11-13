@@ -253,7 +253,7 @@ function sceneWithAnchor() {
     settings: { unitSystem: 'Millimeters', metersPerUnit: 0.001, absoluteTolerance: 0.01, angleToleranceDegrees: 1,
       earthAnchor: { latitude: 47.3769, longitude: 8.5417, elevation: 408, modelBasePoint: [1000, 2000, 3000], modelNorth: [0, 1, 0], modelEast: [1, 0, 0], name: 'Site' } },
     warnings: [], documentStrings: [['IFC::Schema', 'IFC4'], ['IFC::Exporter', 'ifc-lite 9.9.9']],
-    layers: [{ name: 'Model', parent: null, color: [128, 128, 128, 255], visible: true, locked: false }],
+    layers: [{ name: 'Model', parent: null, color: [128, 128, 128, 255], visible: true, locked: false, userStrings: [] }],
     materials: [{ name: 'Default', diffuse: [1, 2, 3], transparency: 0 }], groups: [],
     meshes: [{ positions: { offset: 0, count: 9 }, normals: null, indices: { offset: 72, count: 3 } }], blocks: [],
     objects: [{ kind: 'mesh', mesh: 0, layer: 0, name: 'Triangle', objectId: '', color: [1, 2, 3, 255], material: 0, groups: [], userStrings: [] }],

@@ -7,14 +7,14 @@
       "metric": "raw-bytes",
       "unit": "bytes",
       "description": "raw size of packages/wasm/pkg/ifc-lite_bg.wasm, the single-thread engine bundle; its brotli size is reported, not gated",
-      "ceiling": 10413731,
+      "ceiling": 10406427,
       "tolerance": {
         "kind": "relative",
         "value": 0.001
       },
       "provenance": {
-        "commit": "1cd3deb6d84d7d23ad378076f140399455e0834d",
-        "measuredAt": "2026-11-13T10:03:51.955Z"
+        "commit": "59a1f9aa38a2ea169af71104536cb207086de00e",
+        "measuredAt": "2026-11-13T13:01:35.571Z"
       }
     },
     {

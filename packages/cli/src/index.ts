@@ -91,6 +91,9 @@ async function main(): Promise<void> {
     case 'query':
       await (await import('./commands/query.js')).queryCommand(commandArgs);
       break;
+    case 'structural':
+      await (await import('./commands/structural.js')).structuralCommand(commandArgs);
+      break;
     case 'props':
       await (await import('./commands/props.js')).propsCommand(commandArgs);
       break;

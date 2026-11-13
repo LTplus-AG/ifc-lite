@@ -201,3 +201,14 @@ export function applyMaterialLayers(modelId: string, spec: ApplyLayersSpec, onFo
   if (ok && follow) { reportLayerFollow(useViewerStore.getState(), modelId, follow); onFollow?.(follow); }
   return ok ? layerSetId : null;
 }
+
+/** Replace an occurrence's material using the shared create association path. */
+export function setElementMaterial(modelId: string, elementId: number, material: number | { Name: string; Color?: string; Category?: string; Description?: string }): boolean {
+  return runInspectorEdit(modelId, tx => {
+    recordModellingEdit(useViewerStore, tx.modelId, methods => {
+      const id = typeof material === 'number' ? material : methods.addMaterial(tx.modelId, material).expressId;
+      methods.assignMaterial(tx.modelId, id, [elementId]);
+    }, tx.batchId);
+    return [elementId];
+  });
+}

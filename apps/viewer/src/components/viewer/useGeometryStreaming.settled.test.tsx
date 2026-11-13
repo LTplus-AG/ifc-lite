@@ -32,8 +32,10 @@ import { appearanceInstanceScene } from '@/test/appearance-instance-scene.js';
 import { cleanup, render } from '@/test/render.js';
 import { useFederatedGeometry } from './useFederatedGeometry.js';
 import { useGeometryStreaming } from './useGeometryStreaming.js';
+import { setPendingSceneSnapshot, withdrawPendingSceneSnapshot } from './sceneSnapshotOwnership.js';
 
 let setStreaming: (streaming: boolean) => void = () => {};
+const adoption = {};
 
 function Viewport({ renderer }: { renderer: Renderer }) {
   const s = useViewerStore();
@@ -58,6 +60,7 @@ function Viewport({ renderer }: { renderer: Renderer }) {
 }
 
 afterEach(() => {
+  withdrawPendingSceneSnapshot(adoption);
   cleanup();
   useViewerStore.getState().clearAllModels();
   modelIndices(new Map());
@@ -145,3 +148,33 @@ it('an unmounted viewport leaves nothing pending', async () => {
   cleanup();
   assert.equal(isSceneSettled(), true);
 });
+
+/** An adopted scene snapshot (reopen): the scene hydrates from stored batches with the synced meshes. */
+function adopt(native: ReturnType<typeof setup>['native']): { hydrated: () => number } {
+  let hydrated = 0;
+  const scene = native.scene as unknown as { hydrateSceneSnapshot: (a: object, m: MeshData[]) => boolean; isSceneSnapshotHydrating: () => boolean };
+  scene.hydrateSceneSnapshot = () => { hydrated++; return true; };
+  scene.isSceneSnapshotHydrating = () => false;
+  setPendingSceneSnapshot(adoption);
+  return { hydrated: () => hydrated };
+}
+
+for (const withDevice of [true, false]) {
+  it(`an adopted reopen that streams its meshes settles once its stream is over, as before (${withDevice ? 'with' : 'without'} a GPU device)`, async () => {
+    const { native } = setup(withDevice);
+    const snapshot = adopt(native);
+    await act(async () => { setStreaming(true); });
+    await act(async () => { useViewerStore.setState({ models: new Map([['ifc', model('ifc', meshes(6))]]) }); });
+    if (withDevice) assert.equal(snapshot.hydrated(), 1, 'the synced meshes hydrated the adopted scene');
+    await act(async () => { setStreaming(false); });
+    await settle();
+    assert.equal(isSceneSettled(), true, 'settled, nothing left pending');
+  });
+
+  it(`an adopted reopen without a stream is settled at once, as before (${withDevice ? 'with' : 'without'} a GPU device)`, async () => {
+    const { native } = setup(withDevice);
+    adopt(native);
+    await act(async () => { useViewerStore.setState({ models: new Map([['ifc', model('ifc', meshes(6))]]) }); });
+    assert.equal(isSceneSettled(), true);
+  });
+}

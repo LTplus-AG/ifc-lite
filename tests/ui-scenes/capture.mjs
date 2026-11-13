@@ -295,6 +295,8 @@ async function main() {
     if (!adapter) throw new Error('no WebGPU adapter in the capture browser; screenshots would have an empty model canvas');
     for (const scene of scenes) {
       for (const theme of args.themes) {
+        // An interrupt stops the run here; it must not open further contexts.
+        controller.signal.throwIfAborted();
         preview.assertAlive();
         const context = await browser.newContext({ viewport: scene.viewport, deviceScaleFactor: 1 });
         contexts.add(context);
@@ -304,6 +306,8 @@ async function main() {
           preview.assertAlive();
           console.log(`ok   ${scene.id}.${theme}`);
         } catch (error) {
+          // A scene broken by the interrupt is not a scene failure; stop the run.
+          controller.signal.throwIfAborted();
           failures.push({ scene: scene.id, theme, error: String(error).slice(0, 2000) });
           console.log(`FAIL ${scene.id}.${theme}: ${String(error).split('\n')[0]}`);
         } finally {
@@ -312,6 +316,7 @@ async function main() {
         }
       }
     }
+    controller.signal.throwIfAborted();
     preview.assertAlive();
     await browser.close();
     browser = null;

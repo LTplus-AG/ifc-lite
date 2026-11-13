@@ -1,13 +1,12 @@
 diff --git a/apps/viewer/src/lib/settled-frame.ts b/apps/viewer/src/lib/settled-frame.ts
-index a41d776641..53147b6739 100644
 --- a/apps/viewer/src/lib/settled-frame.ts
 +++ b/apps/viewer/src/lib/settled-frame.ts
-@@ -69,7 +69,7 @@ export function createAfterSettledFrame(deps: SettledFrameDeps): AfterSettledFra
+@@ -78,7 +78,7 @@
        if (done) return;
        idleFrames = deps.drawPending() ? 0 : idleFrames + 1;
        // A task of its own: not inside the animation frame that drew the scene.
--      if (true || deps.frameCount() > start || idleFrames >= IDLE_FRAMES) deps.setTimer(run, 0);
-+      if (deps.frameCount() > start || idleFrames >= IDLE_FRAMES) deps.setTimer(run, 0);
+-      if (true || deps.frameCount() > start) deps.setTimer(run, 0);
++      if (deps.frameCount() > start) deps.setTimer(run, 0);
+       else if (idleFrames >= IDLE_FRAMES) deps.setTimer(runIfDrawn, 0);
        else deps.requestFrame(check);
      };
-     cancelBackstop = deps.setTimer(run, SETTLED_FRAME_BACKSTOP_MS);

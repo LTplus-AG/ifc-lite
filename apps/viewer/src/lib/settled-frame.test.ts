@@ -70,6 +70,17 @@ describe('after the settled scene has been drawn', () => {
     assert.deepEqual(h.runs, ['work']);
   });
 
+  it('a draw requested after the second idle frame, before the queued task runs, is waited for', () => {
+    const h = harness();
+    h.start();
+    h.frame(); h.frame(); // two idle frames: the task is queued
+    h.setPending(true); // a later rAF callback requests a draw; the frame pacer holds it back
+    h.tasks();
+    assert.deepEqual(h.runs, [], 'the task must not run in front of that draw');
+    h.frame(true); h.tasks();
+    assert.deepEqual(h.runs, ['work']);
+  });
+
   it('frames that never come (hidden tab) end the wait at the backstop', () => {
     const h = harness();
     h.start();

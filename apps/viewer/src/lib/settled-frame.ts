@@ -20,8 +20,9 @@
  * The wait ends, and its work then runs in a task of its own, when:
  * - the viewport submitted a live frame after the call (live-frame-count.ts,
  *   counted by viewport-capture's `noteLiveFrameSubmitted`), or
- * - two animation frames in a row passed with no draw pending: what is on screen
- *   is already final, or there is no device to draw with; or
+ * - two animation frames in a row passed with no draw pending, and none is
+ *   pending when its task runs: what is on screen is already final, or there
+ *   is no device to draw with; or
  * - `SETTLED_FRAME_BACKSTOP_MS` passed: frames stop in a hidden tab, and a draw
  *   that stays pending without a frame ever being submitted must not hold the
  *   work for good.
@@ -65,14 +66,23 @@ export function createAfterSettledFrame(deps: SettledFrameDeps): AfterSettledFra
       finish();
       fn();
     };
+    // The idle path's task: a draw requested after the last idle frame (a later
+    // rAF callback, then held back by the frame pacer) is still to be drawn,
+    // so wait for it rather than run in front of it.
+    const runIfDrawn = (): void => {
+      if (done) return;
+      if (deps.frameCount() <= start && deps.drawPending()) { idleFrames = 0; deps.requestFrame(check); return; }
+      run();
+    };
     const check = (): void => {
       if (done) return;
       idleFrames = deps.drawPending() ? 0 : idleFrames + 1;
       // A task of its own: not inside the animation frame that drew the scene.
-      if (deps.frameCount() > start || idleFrames >= IDLE_FRAMES) deps.setTimer(run, 0);
+      if (deps.frameCount() > start) deps.setTimer(run, 0);
+      else if (idleFrames >= IDLE_FRAMES) deps.setTimer(runIfDrawn, 0);
       else deps.requestFrame(check);
     };
-    cancelBackstop = deps.setTimer(run, SETTLED_FRAME_BACKSTOP_MS);
+    cancelBackstop = deps.setTimer(run, SETTLED_FRAME_BACKSTOP_MS); // unconditional: frames stop in a hidden tab
     if (!done) deps.requestFrame(check);
     return finish;
   };

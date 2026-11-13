@@ -179,6 +179,9 @@ document.getElementById('drawing').innerHTML = svg;
 
 ### DXF Export
 
+For DWG delivery, export DXF and convert it with the free [ODA File Converter](https://www.opendesign.com/guestfiles/oda_file_converter) on your computer. The viewer exports DXF directly; the converter is a separate application.
+
+
 Drawings can also be exported as ASCII DXF R12 (`AC1009`) — the universal
 CAD interop baseline. Coordinates are written verbatim in the drawing's own
 unit (metres); an optional `coordinateTransform` maps every point (drawing

@@ -1,3 +1,4 @@
+import { matchAreas } from './lib/oracles.mjs';
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
@@ -220,15 +221,9 @@ function fzkOracle(step) {
   checks.push({ name: `footprint ${T.footprint.bboxWidthX} x ${T.footprint.bboxDepthY} m (abs ${tol.footprintBboxM.value})`, ok: near(bw, T.footprint.bboxWidthX, tol.footprintBboxM.value) && near(bd, T.footprint.bboxDepthY, tol.footprintBboxM.value), detail: `${bw.toFixed(2)} x ${bd.toFixed(2)}` });
   const spaces = step.of('IFCSPACE');
   checks.push({ name: `${T.totals.spaces} spaces`, ok: spaces.length === T.totals.spaces, detail: `${spaces.length}` });
-  // The UI names rooms "Room N", so spaces are matched to reference areas greedily by area, not by name.
+  // The UI names rooms "Room N", so spaces are matched to reference areas one-to-one, not by name.
   const got = spaces.map((sp) => { const q = step.quantities(sp.id); return q.NetFloorArea ?? q.GrossFloorArea ?? null; }).filter((v) => typeof v === 'number');
-  const pool = [...got];
-  const unmatched = [];
-  for (const ref of T.spaces.map((x) => x.area).sort((a, b) => b - a)) {
-    const i = pool.findIndex((v) => Math.abs(v - ref) <= ref * tol.spaceAreaM2.value);
-    if (i >= 0) pool.splice(i, 1); else unmatched.push(ref);
-  }
-  checks.push({ name: `space areas match the reference (rel ${tol.spaceAreaM2.value}, matched by area)`, ok: unmatched.length === 0 && got.length === T.spaces.length, detail: `areas ${got.map((v) => v.toFixed(2)).join(', ')}; unmatched reference ${unmatched.join(', ') || 'none'}` });
+  checks.push({ name: `space areas match the reference (rel ${tol.spaceAreaM2.value}, matched by area)`, ok: matchAreas(T.spaces.map(x => x.area), got, tol.spaceAreaM2.value), detail: `areas ${got.join(', ')}` });
   const roofs = [...step.of('IFCROOF'), ...step.of('IFCSLAB').filter((x) => x.args?.[8]?.enum === 'ROOF')];
   checks.push({ name: `${T.roof.inferredForm} roof at ${T.roof.slopes[0].tiltDeg} degrees`, ok: false, detail: roofs.length ? `${roofs.length} roof element(s), flat` : 'no roof: the UI has no sloped or gable roof (the Slab tool\'s Roof class makes a flat slab on the active storey floor; see ui.roof and #9214)' });
   return { checks, target: T.from };
@@ -421,7 +416,7 @@ export async function runExercise(ex, { openFresh, theme, shots, frames, saveArt
   let targetFrom = null;
   let ifcPath = null;
   if (s.download?.text) {
-    if (measured && saveArtifact) ifcPath = await saveArtifact(ex.id, `${ex.id}.ui.ifc`, s.download.bytes);
+    if (saveArtifact) ifcPath = await saveArtifact(ex.id, `${ex.id}.ui.${theme}.ifc`, s.download.bytes);
     const judged = ex.oracle(readStep(s.download.text));
     checks = Array.isArray(judged) ? judged : judged.checks;
     if (!Array.isArray(judged)) targetFrom = judged.target;

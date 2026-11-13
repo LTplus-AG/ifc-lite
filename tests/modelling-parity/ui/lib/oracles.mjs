@@ -103,3 +103,18 @@ export function roofGeometry(step, meshes, expected) {
   if (roofs.length !== 1) return `expected one roof, found ${roofs.length}`;
   return judgeRoof(meshes.get(roofs[0].id)?.parts ?? [], expected);
 }
+
+/** Complete bipartite assignment: export ordering must not change the verdict. */
+export function matchAreas(expected, actual, tolerance) {
+  if (expected.length !== actual.length || !actual.every(Number.isFinite)) return false;
+  const owner = new Map();
+  const assign = (i, visited) => {
+    for (let j = 0; j < actual.length; j++) {
+      if (visited.has(j) || Math.abs(actual[j]-expected[i]) > expected[i]*tolerance) continue;
+      visited.add(j);
+      if (!owner.has(j) || assign(owner.get(j), visited)) { owner.set(j,i); return true; }
+    }
+    return false;
+  };
+  return expected.every((_,i) => assign(i,new Set()));
+}

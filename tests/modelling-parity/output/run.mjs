@@ -44,9 +44,9 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { sourceInfo } from '../probes/sdk/run.mjs';
+import { sourceProvenance } from '../probes/sdk/run.mjs';
 import { readResults } from '../score.mjs';
-import { artifactSets, checkDrawing, fileClasses, requiredKinds } from './artifacts.mjs';
+import { artifactSets, checkDrawing, requiredIfcClasses, missingIfcClasses, requiredKinds } from './artifacts.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '../../..');
@@ -95,7 +95,7 @@ function reopen(file, expected, keyTypes, work, id) {
     const again = census(second);
     const diff = (a, b) => [...new Set([...Object.keys(a), ...Object.keys(b)])].filter((k) => (a[k] ?? 0) !== (b[k] ?? 0)).map((k) => `${k} ${a[k] ?? 0}->${b[k] ?? 0}`);
     const lost = expected ? diff(expected, first) : [], drift = diff(first, again);
-    const missingKeys = (keyTypes ?? []).filter((k) => !Object.keys(first).some((t) => t.replace(/StandardCase$/, '') === k));
+    const missingKeys = [...new Set([...missingIfcClasses(first, keyTypes ?? []), ...missingIfcClasses(again, keyTypes ?? [])])];
     const problems = [
       ...(lost.length ? [`session vs reopened census: ${lost.join(', ')}`] : []),
       ...(drift.length ? [`reopened vs re-exported census: ${drift.join(', ')}`] : []),
@@ -153,7 +153,7 @@ function judge(cap, set, work, tag) {
     for (const [i, file] of files.entries()) {
       // SDK exports must keep the row's key classes. A UI export is judged on the classes it
       // actually contains (its own census): a UI storeys export with no walls is not a defect.
-      const keyTypes = kind !== 'ifc' ? [] : set.source === 'sdk' ? cap.probes.output.keyTypes : existsSync(file) ? fileClasses(readFileSync(file, 'utf8')) : [];
+      const keyTypes = kind !== 'ifc' ? [] : requiredIfcClasses(cap, set.source, existsSync(file) ? readFileSync(file, 'utf8') : '');
       if (kind === 'ifc') checks.push(...ifcChecks(file, set.census, keyTypes, work, `${tag}${i ? `-${i}` : ''}`).map((c) => ({ ...c, file: rel(file) })));
       else {
         checks.push({ ...checkDrawing(kind, file), file: rel(file) });
@@ -182,7 +182,7 @@ async function main() {
   const outDir = join(OUT, 'output'), work = join(OUT, 'work');
   mkdirSync(outDir, { recursive: true });
   mkdirSync(work, { recursive: true });
-  const source = sourceInfo(ROOT);
+  const source = sourceProvenance(BUILD, ROOT);
   const uiResults = UI_DIRS.length ? readResults(UI_DIRS).filter((r) => r.probe === 'ui') : [];
   const counts = {};
   for (const cap of catalogue.capabilities) {

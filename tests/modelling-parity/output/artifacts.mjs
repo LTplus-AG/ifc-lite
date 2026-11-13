@@ -9,8 +9,7 @@
  * SDK results hand over `artifacts.ifc`. UI results (L4) hand over files under
  * `$PARITY_OUT/artifacts/<capability-id>/`, listed in `evidence` and in
  * `artifacts.{ifc,svg,pdf,dxf}` (contract "Handoffs"). IFC files get the full
- * validation in run.mjs. SVG, PDF and DXF get only a sanity check: the file
- * parses, is not empty and carries drawing content. That is not a validation
+ * validation in run.mjs. SVG, PDF and DXF get only a sanity check: the SVG is tag-balanced (PDF/DXF structure is sanity-checked), is not empty and carries drawing content. That is not a validation
  * of the drawing's correctness, and the ledger says so.
  */
 
@@ -115,6 +114,31 @@ export function artifactSets(results, capability, { root }) {
   return sets;
 }
 
+/** Row requirements supplement the file census, including for UI handoffs. */
+export function requiredIfcClasses(cap, source, content) {
+  return [...new Set([...(cap.probes?.output?.requiredClasses ?? []),
+    ...(source === 'sdk' ? cap.probes?.output?.keyTypes ?? [] : fileClasses(content))])].sort();
+}
+
+export function missingIfcClasses(census, required) {
+  return required.filter(k => !Object.entries(census).some(([t, n]) => n > 0 && t.replace(/StandardCase$/, '') === k));
+}
+
+/** Conservative drawable-geometry check; this is tag-balanced sanity, not an XML parser. */
+function drawable(tag, attrs) {
+  const attr = key => new RegExp(`(?:^|\\s)${key}\\s*=\\s*(["'])(.*?)\\1`, 's').exec(attrs)?.[2];
+  if (tag === 'path') return /^\s*[Mm]/.test(attr('d') ?? '') && /[LlHhVvCcSsQqTtAa]/.test(attr('d') ?? '');
+  if (tag === 'line') {
+    const values = ['x1','y1','x2','y2'].map(k => Number(attr(k) ?? 0));
+    return values.every(Number.isFinite) && (values[0] !== values[2] || values[1] !== values[3]);
+  }
+  if (tag === 'polyline' || tag === 'polygon') {
+    const points = (attr('points') ?? '').trim().split(/[\s,]+/).map(Number);
+    return points.length >= 4 && points.length % 2 === 0 && points.every(Number.isFinite);
+  }
+  return false;
+}
+
 const sanity = (kind) => `${kind.toUpperCase()} sanity check`;
 
 /**
@@ -140,7 +164,7 @@ export function checkSvg(buf) {
     if (close) {
       if (stack.pop() !== tag) return { name, status: 'fail', detail: `malformed: </${tag}> does not close the open element` };
     } else {
-      counts[tag] = (counts[tag] ?? 0) + 1;
+      if (drawable(tag, m[3])) counts[tag] = (counts[tag] ?? 0) + 1;
       if (!self) stack.push(tag);
     }
     if (!stack.length) rootEnd = m.index + whole.length;

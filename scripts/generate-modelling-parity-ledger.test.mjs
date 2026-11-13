@@ -354,7 +354,7 @@ test('round 3: annotations count, bad --jobs exits 2, SVG ends after its root, -
   for (const [label, text] of [['trailing <', '<svg><line/></svg><'], ['element after root', '<svg><line/></svg><g/>'], ['text after root', '<svg><line/></svg>junk'], ['text before root', 'x<svg><line/></svg>'], ['truncated tag', '<svg><line/><path d="M0 0"</svg>']]) {
     assert.equal(ART.checkSvg(Buffer.from(text)).status, 'fail', label);
   }
-  assert.equal(ART.checkSvg(Buffer.from('<svg><line/></svg>\n<!-- end -->\n  ')).status, 'pass', 'trailing whitespace and comments are fine');
+  assert.equal(ART.checkSvg(Buffer.from('<svg><line x2="1"/></svg>\n<!-- end -->\n  ')).status, 'pass', 'trailing whitespace and comments are fine');
 
   const good = summaryOf([result('storeys', 'sdk', 'pass')], '2026-01-01T00:00:00.000Z');
   const dir = tree({});
@@ -453,4 +453,75 @@ test('#10030 sheet provenance follows selected row evidence, including met rows'
       assert.equal(JSON.parse(readFileSync(join(dir,'tests/modelling-parity/baseline/r.json'),'utf8')).score,s.score);
     } finally {rmSync(dir,{recursive:true,force:true});}
   }
+});
+test('#9328 SVG empty geometry cannot certify a drawing', () => {
+  for (const shape of ['<path/>', '<path d=""/>', '<path d="M0 0"/>', '<path d="M0 0 Z"/>', '<line/>', '<line x1="2" y1="3" x2="2" y2="3"/>', '<polyline/>', '<polyline points="0,0"/>', '<polygon points=""/>', '<polygon points="0,0"/>']) {
+    assert.equal(ART.checkSvg(Buffer.from(`<svg>${shape}</svg>`)).status, 'fail', shape);
+  }
+  for (const shape of ['<path d="M0 0 L1 1"/>', '<line x2="1"/>', '<polyline points="0,0 1,1"/>', '<polygon points="0,0 1,1"/>']) {
+    assert.equal(ART.checkSvg(Buffer.from(`<svg>${shape}</svg>`)).status, 'pass', shape);
+  }
+});
+
+test('#9328 per-row IFC classes apply to UI files and survive reopen', () => {
+  const cap = { probes: { output: { requiredClasses: ['IfcAnnotation'] } } };
+  assert.deepEqual(ART.requiredIfcClasses(cap, 'ui', '#1=IFCBUILDINGSTOREY();'), ['IfcAnnotation', 'IfcBuildingStorey']);
+  assert.deepEqual(ART.missingIfcClasses({ IfcBuildingStorey: 1, IfcAnnotation: 0 }, ['IfcAnnotation']), ['IfcAnnotation']);
+  assert.deepEqual(ART.missingIfcClasses({ IfcAnnotation: 1 }, ['IfcAnnotation']), []);
+  assert.deepEqual(realCatalogue.capabilities.find(c => c.id === 'dimensions-tags').probes.output.requiredClasses, ['IfcAnnotation']);
+  assert.deepEqual(realCatalogue.capabilities.find(c => c.id === 'storeys').probes.output.requiredClasses, ['IfcBuildingStorey']);
+});
+
+test('#9328 camera aiming waits for registration before using callbacks', async () => {
+  const { applyView } = await import('../tests/modelling-parity/ui/lib/driver.mjs');
+  const previous = globalThis.__ifc_lite_viewer_store__;
+  let applied;
+  globalThis.__ifc_lite_viewer_store__ = { getState: () => ({ cameraCallbacks: {} }) };
+  const page = {
+    async waitForFunction(predicate, _, options) {
+      assert.equal(predicate(), false);
+      assert.ok(options.timeout > 0 && options.timeout <= 30000);
+      globalThis.__ifc_lite_viewer_store__ = { getState: () => ({ cameraCallbacks: { getViewpoint: () => ({}), applyViewpoint: v => { applied = v; } } }) };
+      assert.equal(predicate(), true);
+    },
+    evaluate(fn, args) { return fn(args); },
+  };
+  try {
+    await applyView(page, [1,2,3], [4,5,6]);
+    assert.deepEqual(applied.position, {x:1,y:3,z:-2});
+    await assert.rejects(applyView({ ...page, waitForFunction: async () => { throw new Error('timeout'); } }, [], []), /camera callbacks.*ready/i);
+  } finally { globalThis.__ifc_lite_viewer_store__ = previous; }
+});
+
+
+test('#9328 copied standard-case walls cannot retain an old storey constraint', async () => {
+  const { copiedWallAttachments } = await import('../tests/modelling-parity/exercises/copy-rebinding.mjs');
+  const meta = {expected:[{expressId:1,kind:'copied',level:0}],levels:[{}, {GlobalId:'next'}]};
+  const records = new Map([[1,"IFCWALLSTANDARDCASE('w')"], [2,"IFCRELDEFINESBYPROPERTIES('r',$,$,$,(#1),#3)"], [3,"IFCPROPERTYSET('p',$,'IfcLite_StoreyAttachment',$,(#4))"], [4,"IFCPROPERTYSINGLEVALUE('TopConstraint',$,IFCLABEL('old'),$)"]]);
+  assert.equal(copiedWallAttachments(meta,records).wrong,1);
+});
+
+test('#9328 room areas use complete one-to-one matching', async () => {
+  const { matchAreas } = await import('../tests/modelling-parity/ui/lib/oracles.mjs');
+  assert.equal(matchAreas([100,104], [101,96], .05), true);
+  assert.equal(matchAreas([100,104], [96,101], .05), true);
+  assert.equal(matchAreas([100,104], [100,1000], .05), false);
+  assert.equal(matchAreas([100,104], [100], .05), false);
+});
+
+test('#9328 rerunning without probes or frames clears only generated outputs', async () => {
+  const { resetRunOutputs } = await import('../tests/modelling-parity/ui/lib/run-output.mjs');
+  const dir = mkdtempSync(join(tmpdir(), 'parity-reset-'));
+  try {
+    for (const name of ['probes.json','exercises.json','notes.txt']) writeFileSync(join(dir,name),'old');
+    for (const name of ['frames','shots','artifacts']) { mkdirSync(join(dir,name)); writeFileSync(join(dir,name,'old'),'old'); }
+    await resetRunOutputs(dir);
+    assert.equal(readFileSync(join(dir,'notes.txt'),'utf8'),'old');
+    for (const name of ['probes.json','exercises.json','frames','shots','artifacts']) assert.equal(existsSync(join(dir,name)),false);
+  } finally { rmSync(dir,{recursive:true,force:true}); }
+});
+
+test('#9328 mismatched build and probe revisions are marked dirty in score provenance', () => {
+  const s = score(CATALOGUE,[result('a','sdk','pass',{source:{commit:'build',dirty:false,probes:{commit:'probe',dirty:false}}})]);
+  assert.equal(s.sources[0].dirty,true);
 });

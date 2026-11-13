@@ -67,6 +67,13 @@ export function sourceInfo(root = ROOT) {
   }
 }
 
+/** Attribute the runtime to its build, retaining the probe revision separately. */
+export function sourceProvenance(buildRoot, probeRoot = ROOT) {
+  const build = sourceInfo(buildRoot), probes = sourceInfo(probeRoot);
+  return { ...build, dirty: build.dirty || probes.dirty || build.commit !== probes.commit,
+    ...(resolve(buildRoot) !== resolve(probeRoot) ? { probes } : {}) };
+}
+
 /**
  * The probe's own result, unless the process says otherwise: no result (or another
  * capability's) is an error, and so is ANY nonzero exit or timeout after a result was
@@ -168,7 +175,7 @@ async function main() {
   mkdirSync(work, { recursive: true });
   const blank = join(work, 'blank.ifc');
   await makeBlank(blank);
-  const source = sourceInfo();
+  const source = sourceProvenance(BUILD);
   const t0 = Date.now();
 
   const results = [];

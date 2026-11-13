@@ -1,3 +1,4 @@
+import { resetRunOutputs } from './lib/run-output.mjs';
 #!/usr/bin/env node
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -77,6 +78,7 @@ function parseArgs(argv) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  await resetRunOutputs(args.out);
   const shots = join(args.out, 'shots');
   const frames = join(args.out, 'frames');
   await Promise.all([shots, frames].map((d) => mkdir(d, { recursive: true })));

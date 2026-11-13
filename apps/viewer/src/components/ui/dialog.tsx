@@ -9,8 +9,10 @@ import { X } from 'lucide-react';
 import { useTranslation } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { usePortalContainer } from './portal-container';
+import { Dialog, useToastDialog } from './dialog-root';
+import { ToastMessages, useToastItems } from './toast';
+import { refreshToastDialogs, registerToastDialog } from './toast-store';
 
-const Dialog = DialogPrimitive.Root;
 const DialogTrigger = DialogPrimitive.Trigger;
 const DialogPortal = DialogPrimitive.Portal;
 const DialogClose = DialogPrimitive.Close;
@@ -50,6 +52,18 @@ const DialogContent = React.forwardRef<
   }
 >(({ className, children, hideCloseButton, overlayClassName, scrollBody, viewportBounds, ...props }, ref) => {
   const { t } = useTranslation();
+  const owner = useToastDialog();
+  // Only mounted panels own notices. Register before descendant layout effects;
+  // registration is silent, with React subscribers notified in the layout phase.
+  React.useInsertionEffect(() => {
+    if (owner.open && owner.modal) return registerToastDialog(owner.id, owner.ancestors);
+  }, [owner.id, owner.ancestors, owner.open, owner.modal]);
+  React.useLayoutEffect(() => {
+    if (!owner.open || !owner.modal) return;
+    refreshToastDialogs();
+    return refreshToastDialogs;
+  }, [owner.id, owner.ancestors, owner.open, owner.modal]);
+  const notices = useToastItems().filter(item => owner.modal && owner.open && item.dialogId === owner.id);
   return (
   <DialogPortal container={usePortalContainer()}>
     <DialogOverlay className={overlayClassName} />
@@ -60,10 +74,18 @@ const DialogContent = React.forwardRef<
         scrollBody && DIALOG_SCROLL_BODY_LAYOUT,
         viewportBounds && 'max-h-[85dvh]',
         viewportBounds === 'both' && 'w-[calc(100%-2rem)]',
-        className
+        className,
+        notices.length > 0 && 'max-h-[calc(100dvh-2rem)] overflow-y-auto'
       )}
       {...props}
     >
+      {owner.modal && (
+        <div data-dialog-notices={notices.length > 0 ? '' : undefined} className={cn(
+          notices.length > 0 ? 'col-span-full min-w-0 shrink-0 max-h-[30dvh] overflow-y-auto pr-8' : 'sr-only pointer-events-none',
+        )}>
+          <ToastMessages items={notices} insideDialog />
+        </div>
+      )}
       {children}
       {!hideCloseButton && (
         <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">

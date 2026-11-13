@@ -41,11 +41,22 @@ export function useShareRoomCreation({ open, hasModel, collabRoomId, awaitingCon
     }
     if (!hasModel || collabRoomId || roomAttemptRef.current || awaitingConsent) return;
     // Nothing to put in a room and nothing that was ever going to go in one:
-    // don't claim it. WHICH models, and why, is the dialog's own derived
-    // line; both read the one predicate at the SELECTED scope so they cannot
-    // disagree.
-    const refuses = (st: ReturnType<typeof useViewerStore.getState>) =>
-      shareRefusesEveryModel(st.models, st.activeModelId, scope);
+    // don't claim it. Asked here so a refused share claims nothing, and again
+    // on the snapshot the seed is built from, since the models can change
+    // during the mint. Every refusal hands back the consent and the slot, so
+    // Create link starts a fresh attempt once the models are shareable again.
+    // WHICH models, and why, is the dialog's own derived line; both read the
+    // one predicate at the SELECTED scope so they cannot disagree.
+    const refuse = () => {
+      roomAttemptRef.current = null;
+      setCreating(false);
+      withdrawConsent();
+    };
+    const current = useViewerStore.getState();
+    if (shareRefusesEveryModel(current.models, current.activeModelId, scope)) {
+      refuse();
+      return;
+    }
     const roomId = mintRoomId();
     setCreating(true);
     setNotice(null);
@@ -55,7 +66,6 @@ export function useShareRoomCreation({ open, hasModel, collabRoomId, awaitingCon
     const isCurrent = () => roomAttemptRef.current === owner;
     void (async () => {
       let adminToken: string | undefined;
-      let refused = false;
       try {
         // Reject known-invalid metadata before claiming a room (#6565):
         // `buildShareSeed` throws on it. The seed itself is deliberately NOT
@@ -63,18 +73,17 @@ export function useShareRoomCreation({ open, hasModel, collabRoomId, awaitingCon
         // model's store and its tessellated meshes until the mint returns.
         const preflight = useViewerStore.getState();
         buildShareSeed(preflight.models, preflight.activeModelId, scope, preflight.georefMutations);
-        // Early exit so a refused share never claims a room; the final word is below.
-        if (refuses(preflight)) { refused = true; return; }
         adminToken = await mintRoomToken({ roomId, role: 'admin' });
         // Models can change during minting. Read fresh and always pass a seed,
         // even empty, so startCollab retains the owner path (#4444).
         if (!isCurrent()) return;
         const st = useViewerStore.getState();
+        if (shareRefusesEveryModel(st.models, st.activeModelId, scope)) {
+          refuse();
+          return;
+        }
         const seed = await prepareShareSeed(st.models, st.mutationViews, st.activeModelId, scope, st.georefMutations);
         if (!isCurrent()) return;
-        // The decision rests on the snapshot this seed was built from, after
-        // the last await: the models can be swapped at any of them.
-        if (refuses(st)) { refused = true; return; }
         owner.joining = true;
         await startCollab({
           roomId,
@@ -98,15 +107,7 @@ export function useShareRoomCreation({ open, hasModel, collabRoomId, awaitingCon
         owner.joining = false;
         // No live room after the mint: hand the claim back (#6581). The server keeps any room someone joined.
         if (adminToken && useViewerStore.getState().collabRoomId !== roomId) void releaseRoomClaim(roomId, adminToken);
-        if (isCurrent()) {
-          setCreating(false);
-          // A refusal hands back the consent and the slot, so Create link
-          // starts a fresh attempt once the models are shareable again.
-          if (refused) {
-            roomAttemptRef.current = null;
-            withdrawConsent();
-          }
-        }
+        if (isCurrent()) setCreating(false);
       }
     })();
   }, [open, hasModel, collabRoomId, startCollab, awaitingConsent, scope, setNotice, resetLink, withdrawConsent, t]);

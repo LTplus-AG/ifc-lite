@@ -25,6 +25,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { render, click, cleanup } from '@/test/render.js';
 import { settle } from '@/test/settle.js';
+import { deferred } from '@/test/race.js';
 import { createSyntheticDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
@@ -68,16 +69,18 @@ const scopeRadios = (): HTMLElement[] => {
  * in serverless mode the mint is local and leaves no trace. Same seam as
  * `ShareDialog.scope.test.tsx` uses for the #6565 preflight.
  */
-function relayStub(t: TestContext) {
+function relayStub(t: TestContext, adminGate?: Promise<void>) {
   window.localStorage.setItem('ifc-lite:collab:server-url', 'wss://relay.example');
   const requests: Array<Record<string, unknown>> = [];
+  let releases = 0;
   t.mock.method(globalThis, 'fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
     const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
     requests.push(body);
-    if (String(input).endsWith('/collab/release')) return Response.json({ released: true });
+    if (String(input).endsWith('/collab/release')) { releases++; return Response.json({ released: true }); }
+    if (body.role === 'admin') await adminGate;
     return Response.json({ token: body.role === 'admin' ? 'fixture-admin' : 'fixture-invite' });
   });
-  return { mints: () => requests.filter((body) => body.role === 'admin') };
+  return { mints: () => requests.filter((body) => body.role === 'admin'), releases: () => releases };
 }
 
 /**
@@ -182,32 +185,22 @@ describe('ShareDialog: models the share seed cannot carry', () => {
     // The shareability check passes at the click; the IFC is swapped for a
     // lone .3dm while the mint is pending. The seed is built after the mint,
     // so the decision must be taken on it, not on the earlier check.
-    window.localStorage.setItem('ifc-lite:collab:server-url', 'wss://relay.example');
-    let releaseMint!: () => void;
-    const mintGate = new Promise<void>((resolve) => { releaseMint = resolve; });
-    const requests: Array<Record<string, unknown>> = [];
-    let releases = 0;
-    t.mock.method(globalThis, 'fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
-      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
-      requests.push(body);
-      if (String(input).endsWith('/collab/release')) { releases++; return Response.json({ released: true }); }
-      if (body.role === 'admin') await mintGate;
-      return Response.json({ token: body.role === 'admin' ? 'fixture-admin' : 'fixture-invite' });
-    });
+    const mintGate = deferred();
+    const relay = relayStub(t, mintGate.promise);
     useViewerStore.setState(fixtureModels(makeModel('a', 'tower.ifc', 0, 'ifc')));
     render(<ShareDialog open onOpenChange={() => {}} />);
     await act(() => settle('the share dialog did not settle'));
     click(createLinkButton()!);
-    await act(() => settle('the mint did not start', { ready: () => requests.some((b) => b.role === 'admin') }));
+    await act(() => settle('the mint did not start', { ready: () => relay.mints().length === 1 }));
 
     await act(async () => {
       useViewerStore.setState(fixtureModels(makeModel('b', 'terrain.3dm', 0, 'tabular')));
-      releaseMint();
+      mintGate.resolve();
       await settle('room creation did not settle after the mint returned');
     });
     assert.equal(starts.length, 0, 'no session is started on a seed with nothing in it');
     assert.equal(useViewerStore.getState().collabRoomId, null);
-    assert.equal(releases, 1, 'the claimed room is handed back');
+    assert.equal(relay.releases(), 1, 'the claimed room is handed back');
 
     // Consent and the slot were handed back: a shareable model brings Create
     // link back, and only a new press claims a room.

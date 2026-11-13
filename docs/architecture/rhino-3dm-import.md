@@ -172,7 +172,7 @@ IFCX behaviour it has no business with: `isIfcxDataStore` answered yes, the
 changes export routed to the IFCX exporter, federation re-composed the model
 as IFCX overlays, and a room seeded it by re-parsing its bytes as IFCX.
 
-Three sites decided by the label alone and are now gated on the marker in
+Four sites decided by the label alone and are now gated on the marker in
 this PR, because the honest label makes each reachable:
 
 | Site | What it would have done |

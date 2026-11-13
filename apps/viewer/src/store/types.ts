@@ -307,6 +307,12 @@ export interface TypeVisibility {
    * grid lines only show for storeys near the cut.
    */
   ifcGrid: boolean;
+  /**
+   * Support and load glyphs of a structural analysis model (#9668). On by
+   * default; draws nothing for a model with no supports or loads. Like
+   * `ifcGrid`, a scene overlay rather than an IFC class, so it gates no mesh.
+   */
+  structuralGlyphs: boolean;
 }
 
 // ============================================================================

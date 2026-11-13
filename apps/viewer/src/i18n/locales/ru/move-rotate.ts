@@ -5,6 +5,15 @@
 import type { Catalogue } from '../../registry';
 
 export const moveRotateRu = {
+  'moveRotate.mirror.label': "Отразить",
+  'moveRotate.mirror.hintStart': "Укажите первую точку оси отражения",
+  'moveRotate.mirror.hintEnd': "Укажите вторую точку или введите угол и Enter · Alt сохраняет оригинал",
+  'moveRotate.mirror.keepOriginal': "Сохранить оригинал",
+  'moveRotate.offset.label': "Смещение",
+  'moveRotate.offset.hint': "Введите положительное расстояние и выберите сторону параллельной копии",
+  'moveRotate.offset.wallOnly': "Выберите одну прямую стену для смещения",
+  'commands.model.mirror': "Отразить выбранное (режим моделирования)",
+  'commands.model.offset': "Сместить стену (режим моделирования)",
   "moveRotate.move.label": "Переместить",
   "moveRotate.move.hintBase": "Щёлкните по точке, от которой хотите переместиться, или введите расстояние",
   "moveRotate.move.hintTarget": "Щёлкните в нужном месте или введите расстояние и направление, затем нажмите Enter",

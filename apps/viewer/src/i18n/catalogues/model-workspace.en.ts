@@ -10,6 +10,7 @@ import type { TranslationValue } from '../types';
  * and unit symbols stay untranslated.
  */
 export const modelWorkspaceEn = {
+  'modelWorkspace.leave': 'Leave',
   'modelWorkspace.rail.aria': 'Model tools',
   'modelWorkspace.rail.hosted': 'Openings, doors and windows',
   'modelWorkspace.rail.circulation': 'Stairs and railings',

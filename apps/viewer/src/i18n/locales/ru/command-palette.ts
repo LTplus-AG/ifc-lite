@@ -155,6 +155,7 @@ export const commandPaletteRu = {
   "commandPalette.vis.site.label": "Участок",
   "commandPalette.vis.ifcAnnotations.label": "Аннотации",
   "commandPalette.vis.ifcGrid.label": "Координационные оси",
+  "commandPalette.vis.structuralGlyphs.label": "Опоры и нагрузки",
   "commandPalette.vis.resetColors.label": "Сбросить цвета",
   "commandPalette.panel.chat.label": "ИИ-чат",
   "commandPalette.panel.flavors.label": "Управление профилями…",
@@ -198,4 +199,5 @@ export const commandPaletteRu = {
   "commandPalette.category.preferences": "Настройки",
   "commandPalette.category.extensions": "Расширения",
   "commandPalette.category.learn": "Обучение",
+  "commandPalette.tool.deriveStructural.label": "Построить расчётную модель",
 } satisfies Catalogue;

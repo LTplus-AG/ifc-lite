@@ -81,14 +81,29 @@ export function octDecode(bx: number, by: number): [number, number, number] {
 }
 
 /**
+ * A lattice origin shared by several encodes, so their records concatenate
+ * into one batch (the streamed fragments of one bucket, see
+ * scene-stream-assembly.ts). Any lattice-aligned origin at or below the data
+ * decodes to the same exact positions: `quantMin` and `q·step` are both integer
+ * multiples of 2^-10 (main.wgsl.ts), so only the u16 range constrains it.
+ */
+export interface LatticeFrame {
+  /** Unset: the first encode picks one with equal headroom on both sides of its data. */
+  min?: [number, number, number];
+}
+
+/**
  * Quantize a 28-byte interleaved batch vertex buffer (pos f32x3 + normal
  * f32x3 + entityId u32, `strideFloats` = 7) into the 12-byte layout.
  * Returns null when any axis extent exceeds the u16 lattice range — the
- * caller keeps the f32 buffer then.
+ * caller keeps the f32 buffer then. With `lattice`, the data is encoded
+ * against its shared origin whenever it fits that origin's range, else against
+ * its own (the result's `quantMin` says which).
  */
 export function quantizeInterleaved(
   vertexData: Float32Array,
   strideFloats: number,
+  lattice?: LatticeFrame,
 ): QuantizedVertexData | null {
   const vertexCount = (vertexData.length / strideFloats) | 0;
   if (vertexCount === 0) {
@@ -111,15 +126,26 @@ export function quantizeInterleaved(
   }
 
   // Lattice-align the origin DOWNWARD so every q stays >= 0.
-  const qminX = Math.floor(minX / QUANT_STEP) * QUANT_STEP;
-  const qminY = Math.floor(minY / QUANT_STEP) * QUANT_STEP;
-  const qminZ = Math.floor(minZ / QUANT_STEP) * QUANT_STEP;
+  let qminX = Math.floor(minX / QUANT_STEP) * QUANT_STEP;
+  let qminY = Math.floor(minY / QUANT_STEP) * QUANT_STEP;
+  let qminZ = Math.floor(minZ / QUANT_STEP) * QUANT_STEP;
   if (
     (maxX - qminX) > MAX_QUANT_EXTENT ||
     (maxY - qminY) > MAX_QUANT_EXTENT ||
     (maxZ - qminZ) > MAX_QUANT_EXTENT
   ) {
     return null;
+  }
+  if (lattice) {
+    // Centre the data in the u16 range, leaving room for later encodes on either side.
+    const centred = (qmin: number, max: number): number =>
+      qmin - Math.floor(Math.floor((MAX_QUANT_EXTENT - (max - qmin)) / QUANT_STEP) / 2) * QUANT_STEP;
+    lattice.min ??= [centred(qminX, maxX), centred(qminY, maxY), centred(qminZ, maxZ)];
+    const [px, py, pz] = lattice.min;
+    if (px <= minX && py <= minY && pz <= minZ
+      && maxX - px <= MAX_QUANT_EXTENT && maxY - py <= MAX_QUANT_EXTENT && maxZ - pz <= MAX_QUANT_EXTENT) {
+      qminX = px; qminY = py; qminZ = pz;
+    }
   }
 
   // Pass 2: encode.

@@ -293,6 +293,8 @@ export interface CacheWriteOptions {
    * Requires Worker support and a bundled worker asset; failure rejects the write.
    * Has no effect when compression is disabled or all chunks are below its floor. */
   compressGeometryChunksInWorker?: boolean;
+  /** Yield to the event loop after each section (default false): short tasks while the page is interactive. */
+  yieldBetweenSections?: boolean;
 }
 
 /**

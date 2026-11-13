@@ -50,7 +50,6 @@ before(async () => {
   entityBuilder.add(1, 'IfcWall', '0room000000000000000000', 'Room wall', '', '');
   actualIfcxStore = buildIfcxDataStore({
     fileSize: 0,
-    entityCount: 1,
     parseTime: 0,
     strings,
     entities: entityBuilder.build(),

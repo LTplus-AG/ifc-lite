@@ -164,6 +164,7 @@ tests/benchmark/benchmark-results/viewer-*.console.log
 /test-results/
 # node:test JUnit reports the CI uploads to Mergify Test Engine.
 mergify-junit.xml
+mergify-junit-retry-*.xml
 /playwright-report/
 /blob-report/
 /playwright/.cache/

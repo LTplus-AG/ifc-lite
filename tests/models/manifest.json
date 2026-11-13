@@ -1663,6 +1663,15 @@
       "size": 21455
     },
     {
+      "path": "rhino/mcneel-opennurbs/my_mesh_with_material.3dm",
+      "sha256": "d9080add559f8b54eee07ff12257bd88e1f45dfe01000668ad7516652a0900cb",
+      "size": 6505,
+      "upstream_file": {
+        "blob_url": "https://github.com/mcneel/opennurbs/blob/eb92af3ba1806b0a34a99aba0d3bda83e3d46083/example_files/V6/my_mesh_with_material.3dm",
+        "commit": "eb92af3ba1806b0a34a99aba0d3bda83e3d46083"
+      }
+    },
+    {
       "path": "rhino/mcneel-rhino3dm/blocks.3dm",
       "sha256": "1e428317489c7c22ee68fb93e119079c718a0ba44efa7c89efb10cf0d8491cb8",
       "size": 3116711,

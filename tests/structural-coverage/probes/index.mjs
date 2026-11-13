@@ -15,6 +15,7 @@
  */
 
 import capabilities from './capabilities.mjs';
+import card from './card.mjs';
 import convert from './convert.mjs';
 import create from './create.mjs';
 import fixture from './fixture.mjs';
@@ -39,13 +40,13 @@ const cap = (id) => (row) => row.id === id;
 export const PROBES = [
   fixture,
   read,
+  card,
   create,
   convert,
   render,
   edit,
   remove,
   ...capabilities,
-  unwritten('card', 'card:structural-properties-card', 'select the entity (or the item that references it) in the viewer and assert the properties card shows its attribute values'),
   unwritten('render', 'render:member-mesh-or-reaction', 'load a fixture carrying the member or reaction and assert its mesh or result glyph is drawn', (row) => !render.covers(row)),
   unwritten('capability', 'capability:analytical-physical-toggle', 'switch the viewer between the analytical and physical model and assert which products are visible', cap('cap/analytical-physical-toggle')),
   unwritten('capability', 'capability:derive-analytical-model', 'derive members and connections from a physical frame and compare axes, ends and links to the reference analytical model', cap('cap/derive-analytical-model')),
@@ -53,5 +54,4 @@ export const PROBES = [
   unwritten('capability', 'capability:check-axis-drift', 'offset one member from its physical element and assert the check reports it with the distance', cap('cap/check-axis-drift')),
   unwritten('capability', 'capability:check-unconnected-member', 'remove one IfcRelConnectsStructuralMember and assert the check reports that member', cap('cap/check-unconnected-member')),
   unwritten('capability', 'capability:check-stale-after-physical-change', 'move a physical element and assert its linked item is reported stale', cap('cap/check-stale-after-physical-change')),
-  unwritten('capability', 'capability:cli-structural-command', 'run the CLI structural command on a fixture and assert its JSON lists the members, loads and links', cap('cap/cli-structural-command')),
 ];

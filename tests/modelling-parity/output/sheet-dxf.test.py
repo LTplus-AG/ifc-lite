@@ -29,6 +29,14 @@ def fixture(dimension_text=True, empty=False):
     return '999\nunits: metres\n' + stream.getvalue()
 
 
+def edited_fixture(edit):
+    doc = ezdxf.read(io.StringIO(fixture()))
+    edit(doc.modelspace())
+    stream = io.StringIO()
+    doc.write(stream)
+    return '999\nunits: metres\n' + stream.getvalue()
+
+
 class OracleTests(unittest.TestCase):
     def test_9296_valid_section(self):
         self.assertTrue(all(c['ok'] for c in sheet.judge(fixture())['checks']))
@@ -39,6 +47,27 @@ class OracleTests(unittest.TestCase):
     def test_9296_missing_dimension_text_rejected(self):
         result = sheet.judge(fixture(dimension_text=False))
         self.assertFalse(next(c['ok'] for c in result['checks'] if c['name'].startswith('5.2 m')))
+
+    def test_9296_open_diagonal_wall_bounds_rejected(self):
+        def diagonals(model):
+            for entity in list(model.query('POLYLINE')):
+                xs = [vertex.dxf.location.x for vertex in entity.vertices]
+                model.delete_entity(entity)
+                model.add_polyline2d([(min(xs), 0), (max(xs), 3)],
+                                     dxfattribs={'layer': 'IFC-FILL'})
+        self.assertFalse(all(c['ok'] for c in sheet.judge(edited_fixture(diagonals))['checks']))
+
+    def test_9296_nonfinite_wall_z_rejected(self):
+        def nonfinite(model):
+            vertex = model.query('POLYLINE')[0].vertices[0]
+            point = vertex.dxf.location
+            vertex.dxf.location = (point.x, point.y, float('nan'))
+        self.assertFalse(all(c['ok'] for c in sheet.judge(edited_fixture(nonfinite))['checks']))
+
+    def test_9296_nonfinite_text_z_rejected(self):
+        def nonfinite(model):
+            model.query('TEXT')[0].dxf.insert = (2.5, 1.5, float('nan'))
+        self.assertFalse(all(c['ok'] for c in sheet.judge(edited_fixture(nonfinite))['checks']))
 
     def test_9296_missing_layers_rejected(self):
         self.assertFalse(all(c['ok'] for c in sheet.judge(fixture().replace('IFC-FILL', '0'))['checks']))

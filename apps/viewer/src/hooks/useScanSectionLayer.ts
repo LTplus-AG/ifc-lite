@@ -204,6 +204,8 @@ export function useScanSectionLayer(params: UseScanSectionLayerParams): UseScanS
   // is a real dependency of the recompute below, not a one-shot read.
   const alignmentEnabled = useViewerStore((st) => st.pointCloudAlignmentEnabled);
   const placementRevision = useViewerStore((st) => st.modelPlacement.revision);
+  // The RTC re-base moves inline cloud origins in place and bumps this (#10029).
+  const geometryContentVersion = useViewerStore((st) => st.geometryContentVersion);
 
   // Fold every dependency the computation reads into one key so the
   // debounce timer restarts exactly when something relevant changed —
@@ -214,11 +216,9 @@ export function useScanSectionLayer(params: UseScanSectionLayerParams): UseScanS
     : '';
   // Includes the inline point-cloud count so a federated IFCx model whose
   // `geometryResult.pointClouds` populates AFTER registration (same
-  // id/visible/handleId) still retriggers the recompute below, and each
-  // inline origin, which the RTC re-base moves in place (#10029).
+  // id/visible/handleId) still retriggers the recompute below.
   const modelsKey = Array.from(models.entries())
-    .map(([id, m]) => `${id}:${m.visible ? 1 : 0}:${m.pointCloudHandleId ?? ''}:${m.geometryResult?.pointClouds?.length ?? 0}`
-      + `:${m.geometryResult?.pointClouds?.map((cloud) => cloud.origin?.join(',') ?? '').join(';') ?? ''}`)
+    .map(([id, m]) => `${id}:${m.visible ? 1 : 0}:${m.pointCloudHandleId ?? ''}:${m.geometryResult?.pointClouds?.length ?? 0}`)
     .join('|');
 
   // Cheap presence check (map lookups, no O(n) point scan) — independent of
@@ -298,6 +298,7 @@ export function useScanSectionLayer(params: UseScanSectionLayerParams): UseScanS
     maxRendered,
     alignmentEnabled,
     placementRevision,
+    geometryContentVersion,
     outlineEnabled,
     outlineMaxGap,
   ]);

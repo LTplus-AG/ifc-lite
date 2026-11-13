@@ -218,7 +218,7 @@ export class PointCloudRenderer {
   }
 
   addAsset(asset: PointCloudAsset): PointCloudAssetHandle {
-    const origin = asset.origin && originMatrix(asset.origin); // f64 baseline (#10029), validated before upload
+    const origin = asset.origin && originMatrix(asset.origin); // f64 baseline (#10029)
     const node = uploadAssetToGpu(this.device, this.pipeline, asset);
     const id = this.handleIds.allocate();
     this.nodes.set(id, node);

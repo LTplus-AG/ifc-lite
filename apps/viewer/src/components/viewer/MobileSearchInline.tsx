@@ -5,6 +5,7 @@
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { X } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { SearchInline } from './SearchInline';
 
 /** Keep one real field owner mounted on phones, including while closed (#8947).
@@ -20,10 +21,10 @@ export function MobileSearchInline() {
   return <div hidden={!visible} className="relative z-50 border-b border-divider bg-panel p-2">
     <div className="flex items-center gap-2">
       <div className="min-w-0 flex-1"><SearchInline compact /></div>
-      <button type="button" aria-label={t('viewerShell.dialog.close')} onClick={close}
-        className="flex h-10 w-10 shrink-0 items-center justify-center rounded hover:bg-hover focus-visible:outline focus-visible:outline-2">
+      <Button type="button" variant="ghost" size="icon" aria-label={t('viewerShell.dialog.close')} onClick={close}
+        className="h-10 w-10 shrink-0">
         <X className="h-4 w-4" aria-hidden="true" />
-      </button>
+      </Button>
     </div>
   </div>;
 }

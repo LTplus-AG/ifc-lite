@@ -20,6 +20,10 @@ export interface ViewerRuntimeConfig {
   features?: FeatureSelection;
   /** BCP 47 tag the host prefers. A language the user chose in Settings still wins. */
   locale?: string;
+  /** The processing server for server-processed models: a path on this origin or an http(s) URL. Replaces `VITE_IFC_SERVER_URL`. */
+  server?: { url: string };
+  /** A model the processing server already processed, opened at start without the IFC reaching the browser. */
+  open?: { processedModel: { sha256: string; bytes: number; name: string } };
 }
 
 /** Why a configuration could not be used. `code` is stable; `message` is for the console. */
@@ -51,6 +55,36 @@ function stringList(value: unknown, where: string): string[] | undefined {
   return value as string[];
 }
 
+function parseServer(value: unknown): { url: string } {
+  if (!isRecord(value) || typeof value.url !== 'string' || value.url.trim() === '') invalid('server.url must be a non-empty string');
+  let url: URL;
+  try {
+    url = new URL(value.url, 'https://viewer.invalid/');
+  } catch {
+    invalid('server.url must be a path or a URL');
+  }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') invalid('server.url must be a path or an http(s) URL');
+  return { url: value.url };
+}
+
+/**
+ * The hash in the lowercase form the server keys by. The same rule as
+ * `normalizeProcessedModelHash` in `@ifc-lite/server-client` (a test pins the
+ * agreement); not imported, because this module runs before the configuration
+ * request and anything it imports statically delays that request.
+ */
+const SHA256_HEX = /^[0-9a-f]{64}$/;
+
+function parseOpen(value: unknown): NonNullable<ViewerRuntimeConfig['open']> {
+  if (!isRecord(value) || !isRecord(value.processedModel)) invalid('open.processedModel must be an object');
+  const { sha256, bytes, name } = value.processedModel;
+  const hash = typeof sha256 === 'string' ? sha256.toLowerCase() : '';
+  if (!SHA256_HEX.test(hash)) invalid('open.processedModel.sha256 must be the 64 hex characters of a SHA-256');
+  if (typeof bytes !== 'number' || !Number.isSafeInteger(bytes) || bytes < 0) invalid('open.processedModel.bytes must be a whole number of bytes (0 when unknown)');
+  if (typeof name !== 'string') invalid('open.processedModel.name must be a string');
+  return { processedModel: { sha256: hash, bytes, name } };
+}
+
 function parseFeatures(value: unknown): FeatureSelection {
   if (!isRecord(value)) invalid('features must be an object');
   if (value.default !== 'all' && value.default !== 'none') invalid("features.default must be 'all' or 'none'");
@@ -74,6 +108,8 @@ export function parseViewerRuntimeConfig(value: unknown): ViewerRuntimeConfig {
     if (typeof value.locale !== 'string' || value.locale.trim() === '') invalid('locale must be a non-empty string');
     config.locale = value.locale;
   }
+  if (value.server !== undefined) config.server = parseServer(value.server);
+  if (value.open !== undefined) config.open = parseOpen(value.open);
   return config;
 }
 

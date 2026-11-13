@@ -11,7 +11,15 @@ A host that embeds or deploys the viewer for its users can choose which features
 {
   "version": 1,
   "features": { "default": "all", "disable": ["privacy.analytics", "privacy.notice"] },
-  "locale": "de"
+  "locale": "de",
+  "server": { "url": "/v1/viewing/processor" },
+  "open": {
+    "processedModel": {
+      "sha256": "a91f9cf15d3f70fdd707d8567b5ade051e706af3a807367fa23fc9813f31d96a",
+      "bytes": 18587273,
+      "name": "Haus A.ifc"
+    }
+  }
 }
 ```
 
@@ -21,8 +29,12 @@ A host that embeds or deploys the viewer for its users can choose which features
 | `features.default` | `"all"`: every feature is on except those in `disable`. `"none"`: every feature is off except those in `enable`. |
 | `features.enable`, `features.disable` | Feature ids. Only the list that matches `default` is read. Ids the viewer does not know are ignored, so a config written for a newer viewer still works on an older one. |
 | `locale` | A BCP 47 tag the host prefers. It is the default: a language the user chose in Settings wins, and the browser's languages come after it. |
+| `server.url` | The processing server the viewer asks for server-processed models: a path on the viewer's own origin (recommended; put the server behind your proxy there) or an `http(s)` URL. Replaces the build's `VITE_IFC_SERVER_URL`. In a build with `VITE_USE_SERVER=true` it also receives uploads of IFC files opened from disk. |
+| `open.processedModel` | A model the processing server has already processed, opened as soon as the viewer mounts. `sha256` is the SHA-256 of the source IFC (64 hex characters, either case), `bytes` its size (`0` when unknown; it then streams and the size shows as unknown), `name` the name to show. The IFC itself never reaches the browser: the viewer asks `server.url` for the stored result by hash. |
 
-Members this version does not know are ignored, so a configuration written for a newer viewer still loads. With no configuration every feature is on and the viewer behaves as it always has.
+Members this version does not know are ignored, so a configuration written for a newer viewer still loads. Members it does know are checked strictly: a malformed `server` or `open` refuses the whole configuration, like any other invalid member.
+
+The hash selects a stored result; it does not grant access to it. Decide who may read a result where `server.url` is served, on every request (see the processing server guide, "Opening a stored result without the file"). With no configuration every feature is on and the viewer behaves as it always has.
 
 What cannot be switched off is the baseline: the 3D view and its navigation, selection, the model tree, the properties panel, search, visibility and isolation, the command palette and settings.
 

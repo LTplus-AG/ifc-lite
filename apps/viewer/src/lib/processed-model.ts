@@ -67,6 +67,19 @@ export function openProcessedModel(model: ProcessedModelRequest, options?: OpenP
   for (const listener of [...listeners]) listener();
 }
 
+/**
+ * Apply a host configuration's processing members (`server`, `open`). Called
+ * once by `mountViewer`, after the feature set is fixed: the server first, so
+ * the model opens from it.
+ */
+export function applyProcessingConfig(config: {
+  server?: { url: string };
+  open?: { processedModel: ProcessedModelRequest };
+} | undefined): void {
+  if (config?.server) setProcessingServerUrl(config.server.url);
+  if (config?.open) openProcessedModel(config.open.processedModel);
+}
+
 /** The mounted viewer's side: take the waiting request, once. */
 export function takeProcessedModelRequest(): ProcessedModelRequest | null {
   const request = pending;

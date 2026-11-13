@@ -135,9 +135,9 @@ export function collectEffectivePhysicalEntityIds(
   const includePhysical = (type: string) => {
     if (isPhysicalObjectType(type)) types.add(type.toUpperCase());
   };
-  // The source's own classes, whichever table holds them: a tabular store (IFCX, Rhino) has an
-  // empty STEP index, so reading `entityIndex.byType.keys()` here narrowed the enumeration to no
-  // class at all and every such model reported 0 physical objects (#10018).
+  // The source's own classes, whichever table holds them. Reading `entityIndex.byType.keys()`
+  // here narrowed the walk to no class at all on a tabular store, which has no STEP index, so
+  // every IFCX model reported 0 physical objects (#10018).
   for (const type of sourceEntityClasses(store)) includePhysical(type);
   for (const mutation of view?.getTypeMutations().values() ?? []) includePhysical(mutation.newType);
   for (const entity of view?.getNewEntities() ?? []) includePhysical(entity.type);

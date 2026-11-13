@@ -14,7 +14,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { IfcParser } from './index.js';
 import { extractStructuralOnDemand } from './structural-extractor.js';
-import { checkStructuralConsistency, type PhysicalElementFact, type StructuralConsistencyIssue } from './structural-consistency.js';
+import { checkStructuralConsistency, DEFAULT_AXIS_DRIFT_TOLERANCE, type PhysicalElementFact, type StructuralConsistencyIssue, type StructuralLine } from './structural-consistency.js';
 import { structuralConsistencyFacts, structuralConsistencyIssues } from './structural-consistency-facts.js';
 import type { StructuralConnectionInfo, StructuralExtraction, StructuralMemberInfo } from './structural-types.js';
 
@@ -130,6 +130,112 @@ describe('structural-class-mismatch', () => {
       member(11, 'IfcStructuralSurfaceMember', [1, 4]),
     ]), elements);
     expect(ids(issues, 'structural-class-mismatch')).toEqual([]);
+  });
+});
+
+describe('structural-unconnected-member', () => {
+  const connected = (expressId: number, type = 'IfcStructuralCurveMember') =>
+    ({ ...member(expressId, type), connectionGlobalIds: ['C1'], IfcRelConnectsStructuralMember: [{ expressId: 100 + expressId, RelatedStructuralConnection: 20 }] });
+
+  it('reports every member with no connection once any member is connected', () => {
+    const issues = checkStructuralConsistency(model([connected(10), member(11, 'IfcStructuralCurveMember'), member(12, 'IfcStructuralSurfaceMember')]), []);
+    expect(ids(issues, 'structural-unconnected-member')).toEqual([11, 12]);
+    expect(issues.find((issue) => issue.entityId === 11)).toMatchObject({ severity: 'warning', globalId: 'M11' });
+  });
+
+  it('counts a relationship whose connection has no GlobalId as a connection', () => {
+    const related = { ...member(11, 'IfcStructuralCurveMember'), IfcRelConnectsStructuralMember: [{ expressId: 50, RelatedStructuralConnection: 20 }] };
+    expect(ids(checkStructuralConsistency(model([connected(10), related]), []), 'structural-unconnected-member')).toEqual([]);
+  });
+
+  it('does not run in a file that connects no member', () => {
+    expect(ids(checkStructuralConsistency(model([member(10, 'IfcStructuralCurveMember'), member(11, 'IfcStructuralSurfaceMember')]), []), 'structural-unconnected-member')).toEqual([]);
+  });
+});
+
+describe('structural-axis-drift', () => {
+  const elements = [fact(1, 'IfcBeam', true)];
+  const along: StructuralLine = [[0, 0, 3], [6, 0, 3]];
+  const lines = (line: StructuralLine, axis: StructuralLine | null = along) =>
+    ({ memberLines: new Map([[10, line]]), physicalAxes: new Map(axis ? [[1, axis]] : []) });
+  const linked = model([member(10, 'IfcStructuralCurveMember', [1])]);
+  const drift = (issues: StructuralConsistencyIssue[]) => issues.filter((issue) => issue.rule === 'structural-axis-drift');
+
+  it('reports a member off its element\'s axis with the distance of its farther end', () => {
+    const issues = drift(checkStructuralConsistency(linked, elements, {}, lines([[0, 0.1, 3], [6, 0.3, 3.4]])));
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({ entityId: 10, globalId: 'M10', target: 1, targetGlobalId: 'P1' });
+    expect(issues[0].distance).toBeCloseTo(0.5, 9);
+    expect(issues[0].message).toContain('0.500 m');
+  });
+
+  it('ignores ends moved along the axis, as the derivation does at joints', () => {
+    expect(drift(checkStructuralConsistency(linked, elements, {}, lines([[-0.2, 0, 3], [5.5, 0, 3]])))).toEqual([]);
+  });
+
+  it('reports only past the tolerance, default 0.05 m', () => {
+    expect(DEFAULT_AXIS_DRIFT_TOLERANCE).toBe(0.05);
+    const within = lines([[0, 0.049, 3], [6, 0, 3]]);
+    expect(drift(checkStructuralConsistency(linked, elements, {}, within))).toEqual([]);
+    expect(drift(checkStructuralConsistency(linked, elements, {}, lines([[0, 0.051, 3], [6, 0, 3]])))).toHaveLength(1);
+    expect(drift(checkStructuralConsistency(linked, elements, { axisDriftTolerance: 0.01 }, within))).toHaveLength(1);
+    expect(() => checkStructuralConsistency(linked, elements, { axisDriftTolerance: Number.NaN }, within)).toThrow(/axisDriftTolerance/);
+  });
+
+  it('lets no wild coordinate widen the drift allowance past 1 micrometre', () => {
+    // A garbage z of 1e14 m would allow 0.36 m uncapped; 2 micrometres of drift must still be reported.
+    const wild = lines([[0, 0.050002, 1e14], [6, 0, 1e14]], [[0, 0, 1e14], [6, 0, 1e14]]);
+    expect(drift(checkStructuralConsistency(linked, elements, {}, wild))).toHaveLength(1);
+  });
+
+  describe('does not report an end exactly at the tolerance', () => {
+    const oblique = [0.6, 0.8, 0] as const;
+    const WEB_MERCATOR_ANGLE = 0.33590935980955805;
+    const cases = [
+      ['along X at the origin', [0, 0, 0], [1, 0, 0]],
+      ['at 45 degrees', [0, 0, 0], [Math.SQRT1_2, Math.SQRT1_2, 0]],
+      ['at LV95 coordinates', [2600000, 1200000, 400], oblique],
+      // From a 20000-end random search: a fixed 1 nm allowance misreports it (2.6e-9 m of rounding).
+      ['at Web Mercator coordinates', [19492896, 17103716, 400], [Math.cos(WEB_MERCATOR_ANGLE), Math.sin(WEB_MERCATOR_ANGLE), 0]],
+    ] as const;
+    for (const [name, origin, axis] of cases) {
+      it(name, () => {
+        // `at(k, off)`: k metres along the axis from `origin`, then `off` metres square to it in plan.
+        const at = (k: number, off: number) => [origin[0] + k * axis[0] - off * axis[1], origin[1] + k * axis[1] + off * axis[0], origin[2]] as const;
+        const endAtTolerance = lines([at(0, 0), at(5, 0.05)], [at(0, 0), at(5, 0)]);
+        expect(drift(checkStructuralConsistency(linked, elements, {}, endAtTolerance))).toEqual([]);
+        expect(drift(checkStructuralConsistency(linked, elements, { axisDriftTolerance: 0.0499 }, endAtTolerance))).toHaveLength(1);
+      });
+    }
+
+    // Members up to 41 axis lengths long, so the 1 micrometre cap binds for some ends.
+    it('over a seeded sweep of 2000 oblique ends at map-scale origins', () => {
+      let seed = 1;
+      const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+      let reportedAtTolerance = 0;
+      let missedPastTolerance = 0;
+      for (let i = 0; i < 2000; i++) {
+        const origin = [Math.round(1e6 + random() * 1.9e7), Math.round(1e6 + random() * 1.9e7), 400];
+        const angle = random() * 2 * Math.PI;
+        const at = (k: number, off: number) =>
+          [origin[0] + k * Math.cos(angle) - off * Math.sin(angle), origin[1] + k * Math.sin(angle) + off * Math.cos(angle), 400] as const;
+        const length = 5 + 200 * random();
+        if (drift(checkStructuralConsistency(linked, elements, {}, lines([at(0, 0), at(length, 0.05)], [at(0, 0), at(5, 0)]))).length) reportedAtTolerance++;
+        // 10 micrometres past the tolerance is drift: the allowance never hides it.
+        if (!drift(checkStructuralConsistency(linked, elements, {}, lines([at(0, 0), at(length, 0.05001)], [at(0, 0), at(5, 0)]))).length) missedPastTolerance++;
+      }
+      expect({ reportedAtTolerance, missedPastTolerance }).toEqual({ reportedAtTolerance: 0, missedPastTolerance: 0 });
+    });
+  });
+
+  it('needs both lines, a link and the element', () => {
+    const off: StructuralLine = [[0, 1, 3], [6, 1, 3]];
+    expect(drift(checkStructuralConsistency(linked, elements, {}, lines(off, null)))).toEqual([]);
+    expect(drift(checkStructuralConsistency(linked, elements))).toEqual([]);
+    expect(drift(checkStructuralConsistency(model([member(10, 'IfcStructuralCurveMember')]), elements, {}, lines(off)))).toEqual([]);
+    expect(drift(checkStructuralConsistency(linked, [], {}, lines(off)))).toEqual([]);
+    expect(drift(checkStructuralConsistency(linked, elements, {}, lines(off, [[1, 1, 1], [1, 1, 1]])))).toEqual([]);
+    expect(drift(checkStructuralConsistency(linked, elements, {}, lines([[0, Number.NaN, 3], [6, 1, 3]])))).toEqual([]);
   });
 });
 

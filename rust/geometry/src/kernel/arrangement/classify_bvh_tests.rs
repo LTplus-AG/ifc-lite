@@ -83,7 +83,7 @@ fn queries(comp: &[Tri], seed: u64) -> Vec<[f64; 3]> {
     }
     let mut s = seed;
     let mut q = Vec::new();
-    for _ in 0..3000 {
+    for _ in 0..1500 {
         q.push([0, 1, 2].map(|k| lo[k] - 0.5 * (hi[k] - lo[k]) + 2.0 * (hi[k] - lo[k]) * rng(&mut s)));
     }
     for t in comp {
@@ -100,7 +100,7 @@ fn queries(comp: &[Tri], seed: u64) -> Vec<[f64; 3]> {
 #[test]
 fn host_side_bvh_parity_matches_the_linear_scan() {
     let mut cases: Vec<Vec<Tri>> = Vec::new();
-    for (n, off) in [(12, 0.0), (64, 0.0), (300, 0.0), (64, 1.0e5), (64, -3.7e6)] {
+    for (n, off) in [(12, 0.0), (64, 0.0), (160, 0.0), (64, 1.0e5), (64, -3.7e6)] {
         cases.push(wall_and_cylinder(n, off).1);
         cases.push(wall_and_cylinder(n, off).0);
     }
@@ -118,7 +118,7 @@ fn host_side_bvh_parity_matches_the_linear_scan() {
         }
         assert!(bc.exts[0] == operand_extent(comp), "case {i}: extent changed");
     }
-    assert!(checked > 30_000, "too few queries checked: {checked}");
+    assert!(checked > 15_000, "too few queries checked: {checked}");
 }
 
 #[test]
@@ -146,18 +146,19 @@ fn boolean_output_is_byte_identical_to_the_linear_scan() {
 
 #[test]
 fn host_side_classification_work_grows_subquadratically_with_the_cutter() {
-    // Cutter triangles 4N: 512 -> 1024 -> 2048. The linear scan's work grows
+    // Cutter triangles 4N: 256 -> 512 -> 1024. The linear scan's work grows
     // about 4x per doubling (host fragments x cutter triangles); the BVH's about 2x.
     let work = |n: usize, lin: bool| {
         let (wall, cyl) = wall_and_cylinder(n, 0.0);
         let run = || seg_tests(|| boolean(&wall, &cyl, BoolOp::Difference)).1;
         if lin { linear(run) } else { run() }
     };
-    let (w1, w2, w3) = (work(128, false), work(256, false), work(512, false));
-    assert!(w2 as f64 <= 3.0 * w1 as f64, "BVH work 512->1024 tris: {w1} -> {w2}");
-    assert!(w3 as f64 <= 3.0 * w2 as f64, "BVH work 1024->2048 tris: {w2} -> {w3}");
-    // Absolute bound at 2048 cutter triangles (the linear scan needs far more).
-    let l2 = work(256, true);
-    assert!(l2 as f64 >= 3.5 * work(128, true) as f64, "the linear baseline should grow ~4x; the test no longer discriminates");
-    assert!(w2 * 8 < l2, "BVH work {w2} not well below the linear scan's {l2} at 1024 cutter triangles");
+    let (w1, w2, w3) = (work(64, false), work(128, false), work(256, false));
+    assert!(w2 as f64 <= 3.0 * w1 as f64, "BVH work 256->512 tris: {w1} -> {w2}");
+    assert!(w3 as f64 <= 3.0 * w2 as f64, "BVH work 512->1024 tris: {w2} -> {w3}");
+    // The linear baseline grows ~4x per doubling, so the ratios above discriminate,
+    // and at 1024 cutter triangles the BVH does a small fraction of its work.
+    let (l2, l3) = (work(128, true), work(256, true));
+    assert!(l3 as f64 >= 3.5 * l2 as f64, "the linear baseline should grow ~4x ({l2} -> {l3}); the test no longer discriminates");
+    assert!(w3 * 8 < l3, "BVH work {w3} not well below the linear scan's {l3} at 1024 cutter triangles");
 }

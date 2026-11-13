@@ -25,7 +25,10 @@
  *
  * The identities are the ones the embedded restore records
  * (`restoredEmbeddedMarkupIdentities`), so the sweep and later saves treat
- * them alike, and the save subscription persists the set with the entry.
+ * them alike, and the save subscription persists the set with the entry. A
+ * restore that runs before the store is attached defers the check
+ * (`absorbEmbeddedMarkupOnceReadable`). The pre-#7035 key move derives the
+ * old entry's share before merging it with an entry that records a set.
  */
 
 import { DRAWING_MARKUP_OBJECTTYPE } from '@ifc-lite/create';
@@ -38,12 +41,12 @@ const MARKUP_TAGS = new Set<unknown>(Object.values(DRAWING_MARKUP_OBJECTTYPE));
 
 /**
  * The identities of the tagged markup annotations in `modelId`'s loaded file
- * that `lists` (an old entry's restored markup) were read from. Empty when
- * the model has no parsed store.
+ * that `lists` (an old entry's restored markup) were read from. `null` while
+ * the model has no parsed store to check them against.
  */
-export function legacyEntryEmbeddedMarkupIdentities(modelId: string, lists: Iterable<readonly { id: string }[] | undefined>): string[] {
+export function legacyEntryEmbeddedMarkupIdentities(modelId: string, lists: Iterable<readonly { id: string }[] | undefined>): string[] | null {
   const context = getDrawingMarkupReadContext(modelId);
-  if (!context) return [];
+  if (!context) return null;
   const { view, dataStore } = context;
   const meta = buildDrawingMarkupMetaLookup(view, dataStore);
   const identities = new Set<string>();

@@ -410,22 +410,51 @@ describe('reopening a file whose localStorage entry was seeded from its own embe
     assert.deepEqual(danglingRefs(saved), []);
   });
 
-  it('an entry from before the absorbed set, still under its pre-#7035 key, is merged without one and absorbs its embedded-origin items', async () => {
-    const file = fileWithBytes(65, 'old-key.ifc');
-    const legacyKey = createHash('sha256').update(new Uint8Array(await file.arrayBuffer())).digest('hex');
-    writeOldEntry(legacyKey, [embeddedOriginMeasure(ANNOTATION_ID)]);
-    // An identity-key entry from the same old viewer, so the move merges two entries without a set.
-    writeOldEntry((await placementSourceIdentity(file))!, [USER_MEASURE]);
+  for (const [label, identitySet] of [['records no set either', undefined], ['records an empty set', []]] as const) {
+    it(`an entry from before the absorbed set, still under its pre-#7035 key, merged with an identity entry that ${label}, absorbs its embedded-origin items`, async () => {
+      const modelId = identitySet ? 'old-key-empty-set' : 'old-key';
+      const file = fileWithBytes(identitySet ? 66 : 65, 'old-key.ifc');
+      const legacyKey = createHash('sha256').update(new Uint8Array(await file.arrayBuffer())).digest('hex');
+      writeOldEntry(legacyKey, [embeddedOriginMeasure(ANNOTATION_ID)]);
+      writeOldEntry((await placementSourceIdentity(file))!, [USER_MEASURE], [], identitySet ? [...identitySet] : undefined);
+
+      heldWasmReply();
+      await mount();
+      const store = await open(modelId, file);
+      await decided(modelId);
+      await waitFor(() => useViewerStore.getState().measure2DResults.length === 2, 'the merged entry restores');
+      assert.deepEqual([...absorbedEmbeddedMarkupFor(modelId)], [EMBEDDED_GUID]);
+
+      const saved = saveAndExport(modelId, store);
+      assert.equal(annotations(saved), 2, 'the embedded copy is replaced');
+      assert.deepEqual(danglingRefs(saved), []);
+    });
+  }
+
+  // PR #10149 review: a restore can run before the parsed store is attached.
+  it('an entry from before the absorbed set restored before the store is attached stays undecided, then absorbs once it is', async () => {
+    const file = fileWithBytes(67, 'still-loading.ifc');
+    const hash = (await placementSourceIdentity(file))!;
+    writeOldEntry(hash, [embeddedOriginMeasure(ANNOTATION_ID)]);
 
     heldWasmReply();
     await mount();
-    const store = await open('old-key', file);
-    await decided('old-key');
-    await waitFor(() => useViewerStore.getState().measure2DResults.length === 2, 'the merged entry restores');
-    assert.deepEqual([...absorbedEmbeddedMarkupFor('old-key')], [EMBEDDED_GUID]);
+    const store = await parseFixture();
+    useViewerStore.setState({ editEnabled: true, models: new Map([['still-loading', { ...modelFor('still-loading', file, store), ifcDataStore: null } as FederatedModel]]) } as never);
+    await act(async () => { useViewerStore.getState().setActiveModel('still-loading'); });
+    await decided('still-loading');
+    await waitFor(() => useViewerStore.getState().measure2DResults.length === 1, 'the old entry restores');
+    await act(async () => {
+      useViewerStore.setState({ drawing2DDisplayOptions: { ...DEFAULTS, showHatching: !DEFAULTS.showHatching } });
+    });
+    await waitFor(() => loadDrawing2DEntry(hash, DEFAULTS)?.drawing2DDisplayOptions.showHatching === !DEFAULTS.showHatching, 'a save ran');
+    assert.equal(loadDrawing2DEntry(hash, DEFAULTS)?.absorbedEmbeddedMarkup, undefined, 'no empty set is recorded while undecided');
 
-    const saved = saveAndExport('old-key', store);
-    assert.equal(annotations(saved), 2, 'the embedded copy is replaced');
+    // The load attaches the store.
+    useViewerStore.setState({ models: new Map([['still-loading', modelFor('still-loading', file, store)]]) } as never);
+    assert.deepEqual([...absorbedEmbeddedMarkupFor('still-loading')], [EMBEDDED_GUID]);
+    const saved = saveAndExport('still-loading', store);
+    assert.equal(annotations(saved), 1, 'the embedded copy is replaced');
     assert.deepEqual(danglingRefs(saved), []);
   });
 

@@ -12,6 +12,7 @@ import { runInNewContext } from 'node:vm';
 import { fixtureDataStore, fixtureModel } from '@/test/store-fixture';
 import { settleLoadWindow } from '@/test/load-window';
 import { viewerLoadWindow } from '@/hooks/loadWindow';
+import { markModelLoadEnded } from '@/hooks/modelLoadEnd';
 import { useViewerStore } from '../../store/index.js';
 import type { FederatedModel } from '../../store/types.js';
 import { __setAfterLoadQueueLoaderForTests, __setOwnHoldCapForTests, runAfterModelSettled } from './afterLoad.js';
@@ -130,6 +131,19 @@ describe('afterLoad: the eager scheduling call', () => {
     await flushIdle();
     assert.equal(runs, 1, 'runs at the cap');
     assert.equal(viewerLoadWindow().isOpen(), true, 'while b still loads');
+  });
+
+  it('a multi-file open: an earlier model\'s job runs once the loader ends ITS load and a frame paints, not at the end of the open (#9855 462c14fc59)', async () => {
+    await multiFileOpen(); // the default 3 s cap: it must not be what releases a
+    let runs = 0;
+    runAfterModelSettled({ job: 'source-compaction', modelId: 'a' }, () => { runs++; });
+    await flushIdle();
+    assert.equal(runs, 0, 'held until the loader ends a\'s load');
+    markModelLoadEnded('a'); // settleOwnedLoadUi for a's file
+    await settleLoadWindow();
+    await flushIdle();
+    assert.equal(runs, 1, 'runs behind a\'s settled frame');
+    assert.equal(viewerLoadWindow().isHeld('b'), true, 'while b still loads');
   });
 
   it('a window that never closes: the job of the model it holds runs at the cap once that model settled (G2)', async () => {

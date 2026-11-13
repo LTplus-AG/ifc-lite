@@ -105,7 +105,8 @@ export function bothMarksCell(rows) {
 export function bothMarksRows(fixtures) {
   const ms = (v) => (Number.isFinite(v) ? Math.round(v).toLocaleString('en-US') : '—');
   // Fewer than MIN_SUMMARY values: list them (the report never summarizes them).
-  const val = (x, median, values) => (x.n >= MIN_SUMMARY ? ms(median) : values?.length ? `n=${values.length}: ${values.map(ms).join(', ')}` : '—');
+  // Counted per column: a side with three samples but two known frame marks lists those two.
+  const val = (median, values) => (values?.length >= MIN_SUMMARY ? ms(median) : values?.length ? `n=${values.length}: ${values.map(ms).join(', ')}` : '—');
   const pct = (v) => (Number.isFinite(v) ? `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%` : '—');
   const share = (x) => (x.known ? `${x.stalls}/${x.known}${x.unknown ? ` (+${x.unknown} unknown)` : ''}` : `unknown (${x.unknown})`);
   const out = [];
@@ -113,7 +114,7 @@ export function bothMarksRows(fixtures) {
     const c = l.bothMarks;
     if (!c || (c.base.known === 0 && c.branch.known === 0)) continue;
     const { base: b, branch: r } = c;
-    out.push(`| ${f.name} | ${lane} | ${val(b, b.current, b.currentValues)} | ${val(b, b.frame, b.frameValues)} | ${share(b)} | ${val(r, r.current, r.currentValues)} | ${val(r, r.frame, r.frameValues)} | ${share(r)} | ${pct(c.gainCurrent)} | ${pct(c.gainFrame)} |`);
+    out.push(`| ${f.name} | ${lane} | ${val(b.current, b.currentValues)} | ${val(b.frame, b.frameValues)} | ${share(b)} | ${val(r.current, r.currentValues)} | ${val(r.frame, r.frameValues)} | ${share(r)} | ${pct(c.gainCurrent)} | ${pct(c.gainFrame)} |`);
   }
   return out;
 }

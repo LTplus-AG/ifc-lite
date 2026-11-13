@@ -70,3 +70,12 @@ test('fewer than three samples on a side are listed, never summarized, and get n
   const [md] = bothMarksRows([{ name: 'FZK', lanes: { 'browser-cold': { bothMarks: c } } }]);
   assert.match(md, /\| 120 \| 120 \| 0\/3 \| n=2: 90, 95 \| n=2: 90, 95 \| 0\/2 \| — \| — \|$/);
 });
+
+test('the listing rule counts each column: three samples with two known frame marks list the frame values (review #10043)', async () => {
+  const { bothMarksCell, bothMarksRows } = await load('./load-scoreboard-report-sections.mjs');
+  const row = (side, i, frames) => ({ side, ok: true, interactiveMs: i, geometryMs: i, presentTimesFromChangeMs: frames });
+  const c = bothMarksCell([row('base', 100, [100]), row('base', 110, [110]), row('base', 120, null),
+    row('branch', 90, [90]), row('branch', 95, [95]), row('branch', 99, [99])]);
+  const [md] = bothMarksRows([{ name: 'FZK', lanes: { 'browser-cold': { bothMarks: c } } }]);
+  assert.match(md, /^\| FZK \| browser-cold \| 110 \| n=2: 100, 110 \| 0\/2 \(\+1 unknown\) \| 95 \| 95 \| 0\/3 \| \+13\.6% \| — \|$/);
+});

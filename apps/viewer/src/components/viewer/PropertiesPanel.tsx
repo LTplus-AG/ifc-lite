@@ -1483,8 +1483,8 @@ export function PropertiesPanel() {
                   </>
                 )}
 
-                {/* Structural analysis: a selected IfcStructuralMember's
-                    model, connections and loads, and the physical-to-analytical
+                {/* Structural analysis: a structural record's attributes, loads
+                    and conditions, a member's model, connections and loads, and the physical-to-analytical
                     counterparts of either end of the link (#9668). Gated on
                     `hasStructuralForSelection` for the same reason as the
                     schedule separator above. */}
@@ -1498,6 +1498,7 @@ export function PropertiesPanel() {
                         selectedGlobalId={selectedEntityGlobalId}
                         describeEntity={(expressId) => overlayAwareQuery.entityData({ modelId: selectedEntity.modelId, expressId })}
                         onSelectEntity={handleSelectRelatedEntity}
+                        schemaVersion={activeDataStore?.schemaVersion} projectUnits={quantityUnitContext.value} unitDisplayOverrides={unitDisplayOverrides}
                       />
                     </Suspense>
                   </ChunkErrorBoundary>

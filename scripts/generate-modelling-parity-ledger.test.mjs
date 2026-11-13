@@ -554,3 +554,70 @@ test('#9328 failed exports cannot leave a successful expected state or stale exe
     assert.equal(existsSync(join(dir,'expected.state')),false);
   } finally { rmSync(dir,{recursive:true,force:true}); }
 });
+
+test('#9328 modelling council scenes retain the model visibility veto', async () => {
+  const { vetoes } = await import('../tests/ui-scenes/tally.mjs');
+  const metrics={a:{modelVisibleFraction:.4,minFontPx:null,smallTextShare:0},b:{modelVisibleFraction:.8,minFontPx:null,smallTextShare:0}};
+  assert.equal(vetoes({items:{'F1-room.light':{metrics}}}).length,1);
+  assert.equal(vetoes({items:{'F2-DG-done.dark':{metrics}}}).length,1);
+  assert.equal(vetoes({items:{'settings.light':{metrics}}}).length,0);
+});
+
+test('#9328 summary cannot report completion after the exercise deadline', async () => {
+  const { run } = await import('../tests/modelling-parity/exercises/run.mjs');
+  const dir=mkdtempSync(join(tmpdir(),'parity-deadline-')), previous=process.env.PARITY_OUT;
+  process.env.PARITY_OUT=dir;
+  try {
+    const results=await run('F3',['--budget-s','0.000000001']);
+    assert.equal(results.find(r=>r.id.endsWith('.summary')).status,'fail');
+    assert.match(results.find(r=>r.id.endsWith('.execution')).reason,/budget/i);
+  } finally { if(previous===undefined) delete process.env.PARITY_OUT; else process.env.PARITY_OUT=previous; rmSync(dir,{recursive:true,force:true}); }
+});
+
+test('#9328 F2 accepts a measured gable and rejects a flat roof regardless of representation label', async () => {
+  const { EXERCISES } = await import('../tests/modelling-parity/ui/exercises.mjs');
+  const { readStep } = await import('../tests/modelling-parity/ui/lib/step.mjs');
+  const cross=height=>[[0,5.4],[10,5.4],[10,5.7],[5,5.7+height],[0,5.7]];
+  const solid=height=>{
+    const profile=cross(height), vertices=[0,12].flatMap(x=>profile.flatMap(([y,z])=>[x,y,z]));
+    const indices=[];
+    for(let j=1;j<4;j++) indices.push(0,j+1,j,5,5+j,5+j+1);
+    for(let i=0;i<5;i++) { const j=(i+1)%5; indices.push(i,j,j+5,i,j+5,i+5); }
+    return {parts:[{pts:new Float32Array(vertices),idx:new Uint32Array(indices)}]};
+  };
+  const step=readStep("DATA; #1=IFCROOF('r',$,$,$,$,$,$,$,.GABLE_ROOF.); ENDSEC;");
+  for(const [height,expected] of [[5*Math.tan(Math.PI/6),true],[0,false]]) {
+    const judged=await EXERCISES.F2.oracle(step,new Map([[1,solid(height)]]));
+    assert.equal(judged.checks.find(c=>c.name==='gable roof at 30 degrees').ok,expected);
+  }
+});
+
+test('#9328 failed fill checkpoints report the reached population without certifying completion', () => {
+  const dir=mkdtempSync(join(tmpdir(),'parity-worker-failure-'));
+  try {
+    const create=join(dir,'create.mjs'),loader=join(dir,'loader.mjs'),hook=join(dir,'hook.mjs'),checkpoint=join(dir,'checkpoint.json');
+    writeFileSync(create,"export class IfcCreator { addIfcBuildingStorey() {} toIfc(){return {content:''};} }");
+    writeFileSync(loader,`let id=0, columns=0; const ref=()=>({expressId:++id});
+export async function createHeadlessContext(){ return {bim:{model:{activeId:()=> 'm'},store:{
+listStoreyLevels:()=>[{expressId:1}],addStorey:ref,addWall:ref,addSlab:ref,
+addColumn:()=>{if(++columns===45)throw new Error('fixture fill exception');return ref();}
+}}};}`);
+    writeFileSync(hook,`import {registerHooks} from 'node:module';registerHooks({resolve(specifier,context,next){
+if(specifier==='@ifc-lite/create')return {url:${JSON.stringify(pathToFileURL(create).href)},shortCircuit:true};
+if(specifier.endsWith('/packages/cli/dist/loader.js'))return {url:${JSON.stringify(pathToFileURL(loader).href)},shortCircuit:true};
+return next(specifier,context);}});`);
+    const r=spawnSync(process.execPath,['--import',hook,join(ROOT,'scripts/perf/modelling-session-worker.mjs'),checkpoint,'1000','10000','1'],{encoding:'utf8',timeout:10000});
+    assert.equal(r.status,0,r.stderr);
+    const state=JSON.parse(readFileSync(checkpoint,'utf8'));
+    assert.match(state.reason,/fixture fill exception/);
+    assert.ok(state.after>0);
+    assert.equal(state.reached,state.after);
+    assert.equal(state.complete,false);
+  } finally {rmSync(dir,{recursive:true,force:true});}
+});
+
+test('#9328 UI command starts and reports invalid arguments before browser work', () => {
+  const r=spawnSync(process.execPath,[join(ROOT,'tests/modelling-parity/ui/run.mjs'),'--unknown'],{encoding:'utf8',timeout:10000});
+  assert.equal(r.status,1);
+  assert.match(r.stderr,/unknown argument --unknown/); // @source-text-assertion-ok asserts on the CLI's executed diagnostic, not unexecuted source
+});

@@ -1,6 +1,8 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { meshIfc } from '../probes/sdk/lib/parity.mjs';
+import { roofGeometry } from './lib/oracles.mjs';
 import { matchAreas } from './lib/oracles.mjs';
 /**
  * UI exercise runs F1 and F2 for the modelling parity climb (#9296).
@@ -176,7 +178,7 @@ function fzkTarget() {
   return loadTarget(TARGET_FILE,FZK_TARGET_FALLBACK);
 }
 
-function fzkOracle(step) {
+function fzkOracle(step, meshes) {
   const T = fzkTarget();
   const tol = T.tolerances;
   const checks = [];
@@ -223,8 +225,12 @@ function fzkOracle(step) {
   // The UI names rooms "Room N", so spaces are matched to reference areas one-to-one, not by name.
   const got = spaces.map((sp) => { const q = step.quantities(sp.id); return q.NetFloorArea ?? q.GrossFloorArea ?? null; }).filter((v) => typeof v === 'number');
   checks.push({ name: `space areas match the reference (rel ${tol.spaceAreaM2.value}, matched by area)`, ok: matchAreas(T.spaces.map(x => x.area), got, tol.spaceAreaM2.value), detail: `areas ${got.join(', ')}` });
-  const roofs = [...step.of('IFCROOF'), ...step.of('IFCSLAB').filter((x) => x.args?.[8]?.enum === 'ROOF')];
-  checks.push({ name: `${T.roof.inferredForm} roof at ${T.roof.slopes[0].tiltDeg} degrees`, ok: false, detail: roofs.length ? `${roofs.length} roof element(s), flat` : 'no roof: the UI has no sloped or gable roof (the Slab tool\'s Roof class makes a flat slab on the active storey floor; see ui.roof and #9214)' });
+  const geometry = roofGeometry(step, meshes ?? new Map(), {
+    footprint: [[0,0],[12,0],[12,10],[0,10]],
+    slopes: [Math.PI/6,0,Math.PI/6,0], thickness: .3,
+  });
+  checks.push({ name: `${T.roof.inferredForm} roof at ${T.roof.slopes[0].tiltDeg} degrees`, ok: geometry === true,
+    detail: geometry === true ? 'Exported roof passes surface samples and volume at 30 degrees' : String(geometry) });
   return { checks, target: T.from };
 }
 
@@ -356,10 +362,22 @@ export const EXERCISES = {
         run: async (s) => { await tool(s, 'room.place'); await roomMode(s, 'Pick'); await s.ui.clickWorld([6, 5, 2.7], { modifiers: ['Alt'] }); await escape(s); },
         checkpoint: 'DG-done',
       },
+      { name: 'DG gable roof: Roof tool, Gable preset, 30-degree pitch, typed 12 x 10', run: async s => {
+        await escape(s);
+        await s.ui.key('Shift+Y',{settle:300});
+        await s.ui.click(s.page.getByRole('button',{name:'Gable',exact:true}));
+        const pitch=s.page.getByRole('spinbutton',{name:'Pitch',exact:true});
+        await s.ui.click(pitch); await s.ui.key('Control+A'); await s.ui.type('30'); await s.ui.key('Tab');
+        const overhang=s.page.getByRole('spinbutton',{name:'Overhang',exact:true});
+        await s.ui.click(overhang); await s.ui.key('Control+A'); await s.ui.type('0'); await s.ui.key('Tab');
+        await s.ui.clickWorld([0,0,5.4],{modifiers:['Alt']});
+        await typeFields(s,[12,10]);
+        await escape(s);
+      } },
       { name: 'export: File > Modified IFC (review dialog)', run: (s) => openExportReview(s), checkpoint: 'export-review', keepCamera: true },
       { name: 'export: confirm', run: async (s) => { s.download = await confirmExport(s); }, checkpoint: 'done' },
     ],
-    oracle: (step) => fzkOracle(step),
+    oracle: (step, meshes) => fzkOracle(step, meshes),
   },
 };
 
@@ -416,7 +434,7 @@ export async function runExercise(ex, { openFresh, theme, shots, frames, saveArt
   let ifcPath = null;
   if (s.download?.text) {
     if (saveArtifact) ifcPath = await saveArtifact(ex.id, `${ex.id}.ui.${theme}.ifc`, s.download.bytes);
-    const judged = ex.oracle(readStep(s.download.text));
+    const judged = await ex.oracle(readStep(s.download.text), ex.id === 'F2' ? await meshIfc(s.download.text) : undefined);
     checks = Array.isArray(judged) ? judged : judged.checks;
     if (!Array.isArray(judged)) targetFrom = judged.target;
   } else {

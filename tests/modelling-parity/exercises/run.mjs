@@ -1,6 +1,8 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { rayFrameShift } from './ray-frame.mjs';
+import { readStep } from '../ui/lib/step.mjs';
 import { resetExerciseOutputs } from './output.mjs';
 import { copyCoverage, spaceAreas } from './export-oracles.mjs';
 import { copiedWallAttachments } from './copy-rebinding.mjs';
@@ -99,8 +101,11 @@ export async function run(id,args=process.argv.slice(2)) {
     if(id==='F6') await command([resolve(dir,'export-glb.mjs'),input,resolve(out,'before.glb')]);
     const t=performance.now(), glb=resolve(out,'model.glb');
     await command([resolve(dir,'export-glb.mjs'),resolve(out,'IFC4.ifc'),glb]);
-    const rows=meshes(glb); writeFileSync(resolve(out,'bounds.evidence'),JSON.stringify(rows.map(({triangles,...r})=>r)));
+    if(performance.now()>=deadline) throw new Error('Exercise budget exceeded before GLB decoding');
+    const rows=meshes(glb);
+    if(performance.now()>=deadline) throw new Error('Exercise budget exceeded after GLB decoding'); writeFileSync(resolve(out,'bounds.evidence'),JSON.stringify(rows.map(({triangles,...r})=>r)));
     const text=readFileSync(resolve(out,'IFC4.ifc'),'utf8');
+    const rayShift=(meta.shafts?.length || meta.openings?.length) ? rayFrameShift(readStep(text).wallAxes(),rows) : [0,0,0];
     const guids=Object.fromEntries([...text.matchAll(/#(\d+)\s*=\s*IFC[A-Z0-9]+\('([^']+)'/g)].map(m=>[m[1],m[2]]));
     const aggregates=new Map([...text.matchAll(/IFCRELAGGREGATES\([^;]*?,#(\d+),\(([^()]*)\)\);/g)].map(m=>[Number(m[1]),[...m[2].matchAll(/#(\d+)/g)].map(n=>Number(n[1]))]));
     const find=e=>{
@@ -160,11 +165,11 @@ export async function run(id,args=process.argv.slice(2)) {
     for(const e of meta.shafts||[]) {
       const mesh=find(e.expressId);
       const vertical=mesh&&{triangles:mesh.triangles.map(tri=>tri.map(p=>[p[0],p[2],p[1]]))};
-      const ok=vertical&&!wallHit(vertical,e.x,-e.y)&&wallHit(vertical,e.x+3,-e.y);
+      const ok=vertical&&!wallHit(vertical,e.x+rayShift[0],-e.y+rayShift[2])&&wallHit(vertical,e.x+3+rayShift[0],-e.y+rayShift[2]);
       emit(`shaft-${e.expressId}`,'slab-with-openings',ok?'pass':'fail',ok?null:'Vertical GLB ray at shaft centre must miss floor and adjacent ray must hit');
     }
     for(const e of meta.openings) {
-      const mesh=find(e.expressId), ok=mesh&&!wallHit(mesh,e.x,e.z)&&wallHit(mesh,e.x+(e.adjacentOffset||1),e.z);
+      const mesh=find(e.expressId), ok=mesh&&!wallHit(mesh,e.x+rayShift[0],e.z+rayShift[1])&&wallHit(mesh,e.x+(e.adjacentOffset||1)+rayShift[0],e.z+rayShift[1]);
       emit(`opening-${e.expressId}`,'hosted-doors-windows-from-types',ok?'pass':'fail',ok?null:'GLB ray at hosted opening centre must miss host and adjacent ray must hit');
     }
     const records=new Map([...text.matchAll(/#(\d+)\s*=\s*([^;]+);/g)].map(m=>[Number(m[1]),m[2]]));
@@ -172,6 +177,7 @@ export async function run(id,args=process.argv.slice(2)) {
     if(copiedCount) emit('copy-rebinding','copy-to-levels',copiedWalls&&!wrong&&!missing?'pass':wrong||missing?'fail':'partial',wrong||missing?`${wrong}/${checked} copied wall constraints target a different storey; ${missing}/${copiedWalls} walls lack an attachment`:copiedWalls?null:'No copied walls to check',{checked,wrong,missing,copiedWalls:copiedWalls});
   } catch(e) {if(existsSync(resolve(out,'progress.state'))) meta=JSON.parse(readFileSync(resolve(out,'progress.state'),'utf8'))||meta; emit('execution','large-tall-model-performance','fail',e.message,{ms:performance.now()-start,completedSteps:results.length});}
   finally {
+    if(performance.now()>=deadline && !results.some(r=>r.id.endsWith('.execution'))) emit('execution','large-tall-model-performance','fail','Exercise budget exceeded before summary',{ms:performance.now()-start});
     const failed=results.filter(r=>['fail','error','partial'].includes(r.status)).length;
     emit('summary','large-tall-model-performance',results.some(r=>r.id.endsWith('.execution'))?'fail':failed?'partial':id==='F3'?'skip':'pass',failed?`${failed} failed or partial steps; see individual results`:id==='F3'?'deferred to R1':null,{ms:(reuse?meta.ms+performance.now()-start:performance.now()-start),completedSteps:results.filter(r=>r.status==='pass').length,totalSteps:results.length,elements:meta.elements,peakHeap:meta.peakHeap,elementCountMeaning:meta.elementCountMeaning||'completed SDK mutation counter; lower bound when interrupted'});
     writeFileSync(resolve(out,'results.json'),JSON.stringify(results,null,2)+'\n');

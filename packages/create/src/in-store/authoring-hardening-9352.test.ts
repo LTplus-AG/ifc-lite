@@ -74,8 +74,10 @@ it('#9352 duplicate refuses an incomplete external association before writing', 
 
 it('#9352 a source nested part follows its host through a new containment', async () => {
   let { s, home, wall } = await setup();
+  const placement = new AnchorEntityReader(s.store, s.view).entity(wall)!.attributes[5];
+  if (typeof placement !== 'string' && typeof placement !== 'number') throw new Error('The fixture wall needs a placement reference');
   const part = s.editor.addEntity('IfcBuildingElementProxy', ['0000000000000000000001', null, 'Part', null, null,
-    new AnchorEntityReader(s.store, s.view).entity(wall)!.attributes[5], null, null, '.NOTDEFINED.']).expressId;
+    placement, null, null, '.NOTDEFINED.']).expressId;
   const nest = s.editor.addEntity('IfcRelNests', ['0000000000000000000002', null, null, null, `#${wall}`, [`#${part}`]]).expressId;
   s = session(await parse(s.text()));
   const other = addStoreyInStore(s.store, s.editor, { Name: 'Other', Elevation: 4 }).storeyId;

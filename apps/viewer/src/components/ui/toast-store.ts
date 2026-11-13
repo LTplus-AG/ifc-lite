@@ -105,6 +105,9 @@ function addToast(type: Toast['type'], message: string, durationMs: number | nul
   // Closing dialogs can also bring formerly independent messages to the same anchor.
   const matching = toasts.filter((t) => key !== undefined ? t.key === key
     : t.dialogId === dialogId && t.key === undefined && t.type === type && t.message === message);
+  // Identical repeats retain persistence in either order. A keyed operation
+  // changing its message/type is still a replacement with its own lifetime.
+  const persistentDuplicate = matching.some(t => t.type === type && t.message === message && !timers.has(t.id));
   const existing = matching.at(-1);
   const id = existing?.id ?? nextId++;
   const replaced = new Set(matching.map(t => t.id));
@@ -117,7 +120,7 @@ function addToast(type: Toast['type'], message: string, durationMs: number | nul
   const kept = others.filter((t) => !evicted.has(t.id));
   toasts = [...kept, { id, dialogId, dialogScopes: new Set([...dialogs.values()].map(dialog => dialog.scope)), key, type, message, count: 1 + matching.filter(t => t.type === type && t.message === message).reduce((sum, t) => sum + t.count, 0), seq: nextSeq++, action }];
   for (const item of matching) clearTimer(item.id);
-  if (durationMs !== null) timers.set(id, setTimeout(() => dismiss(id), durationMs));
+  if (durationMs !== null && !persistentDuplicate) timers.set(id, setTimeout(() => dismiss(id), durationMs));
   notify();
   return id;
 }

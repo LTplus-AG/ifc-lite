@@ -87,7 +87,7 @@ interface Harness {
          * the render pass, so a test can assert command ORDER (e.g. that the
          * lighting environment is rebound at group(1) after the sky pass).
          */
-        commands: { op: string; index?: number; pipeline?: unknown }[];
+        commands: { op: string; index?: number; pipeline?: unknown; indexCount?: number; vertexBuffer?: unknown }[];
         /** label of every `beginRenderPass` in call order (so a test can assert
          *  the sun shadow depth pass IS or is NOT encoded). */
         passes: string[];
@@ -194,11 +194,12 @@ function makeHarness(): Harness {
                 return (index: number) => { stats.commands.push({ op: 'setBindGroup', index }); };
             }
             if (prop === 'drawIndexed') {
-                return () => {
-                    stats.commands.push({ op: 'drawIndexed' });
+                return (indexCount: number) => {
+                    stats.commands.push({ op: 'drawIndexed', indexCount, vertexBuffer: boundVertexBuffer });
                     stats.draws.push(boundVertexBuffer);
                 };
             }
+            if (prop === 'end') return () => { stats.commands.push({ op: 'end' }); };
             // The sky pass issues a NON-indexed draw (pass.draw(3)); record it
             // so a test can pin the env rebind to AFTER the sky draw, not merely
             // after the sky pipeline was set (the boundary Greptile/CodeRabbit
@@ -3713,7 +3714,7 @@ describe('#8564 nearest-glass split in the render loop', () => {
         const named = (pipeline: unknown) => (pipeline as { label?: string } | undefined)?.label;
         const frame = (options: RenderOptions = {}) => { h.stats.commands.length = 0; h.render(options); return h.stats.commands.map((c) => c.op === 'setPipeline'
             ? (c.pipeline === TRANSPARENT_PIPELINE ? 'glass' : c.pipeline === OPAQUE_PIPELINE ? 'opaque' : ['overlay', 'reference-image'].includes(named(c.pipeline) ?? '') ? named(c.pipeline)! : 'variant')
-            : c.op).filter((op) => op !== 'setBindGroup'); };
+            : c.op).filter((op) => op !== 'setBindGroup' && op !== 'end'); };
         const report = () => h.renderer.gaussianSplats.getStats().compositionReport;
         const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
         return { h, frame, report, tick };
@@ -3894,8 +3895,24 @@ describe('#8564 review: draw order around transparent IFC', () => {
             const glass = ops.indexOf('glass'), hydration = ops.indexOf('hydrate'), highlight = ops.indexOf('highlight');
             assert.ok(glass >= 0 && hydration >= 0 && highlight >= 0, ops.join(' '));
             assert.equal(ops[glass + 1], 'setBindGroup');
-            assert.ok(ops.indexOf('drawIndexed', glass) < highlight, `transparent sub-batch draws before the selection highlight, as at 750b33165a: ${ops.join(' ')}`);
-            assert.equal(ops.indexOf('drawIndexed', highlight) > highlight, true, 'and the highlight is drawn');
+            // #9916: a later mask/instance draw must not stand in for an empty
+            // highlight. Bound both draw assertions to their active pipeline.
+            const commands = h.stats.commands;
+            const pipelineDraws = (start: number) => {
+                const end = commands.findIndex((c, i) => i > start && (c.op === 'setPipeline' || c.op === 'end'));
+                assert.ok(end > start, 'the pipeline segment ends at a switch or pass end');
+                return commands.slice(start + 1, end).filter((c) => c.op === 'drawIndexed');
+            };
+            const glassDraws = pipelineDraws(glass);
+            assert.equal(glassDraws.length, 1, 'the transparent pipeline draws its one visible triangle');
+            assert.equal(glassDraws[0].indexCount, 3);
+            assert.ok(commands.indexOf(glassDraws[0]) < highlight, 'transparent sub-batch draws before the selection highlight');
+            const highlightDraws = pipelineDraws(highlight);
+            assert.equal(highlightDraws.length, 1, 'the highlight pipeline itself draws the selected triangle');
+            assert.equal(highlightDraws[0].indexCount, 3);
+            const selectedMesh = scene.getMeshes().find((mesh) => mesh.hydrated && mesh.expressId === 1);
+            assert.ok(selectedMesh, 'selection hydration created the selected mesh');
+            assert.strictEqual(highlightDraws[0].vertexBuffer, selectedMesh.vertexBuffer);
             assert.ok(hydration < ops.indexOf('setPipeline'), `the highlight copy is built before the frame draws anything (#9835): ${ops.join(' ')}`);
         } finally {
             h.renderer.destroy();

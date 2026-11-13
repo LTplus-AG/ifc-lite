@@ -1,0 +1,6 @@
+---
+"@ifc-lite/server-client": minor
+"@ifc-lite/viewer": minor
+---
+
+Open a model the processing server has already processed, without the IFC in the browser. `parseParquet` and `parseParquetStream` accept a `ProcessedModelRef` (`{ sha256, bytes }`) in place of a file: nothing is hashed or uploaded, and a miss rejects with `IfcServerError` 404 instead of uploading. `normalizeProcessedModelHash` / `assertProcessedModelHash` are the one check: the hash is case-insensitive and sent lowercase. The viewer takes the same reference as the `processedModel` load option and from the URL, `?processed=<sha256>&bytes=<n>&name=<file name>`; that load reads no source bytes, writes no local cache, always uses the exact kernel and has no WASM fallback; a failure names its cause (not stored yet, no access, no server configured, browser unsupported, server busy or unreachable) and offers Retry only for a transient one; a model of unknown size streams; and the model carries `processedModel` instead of a `sourceFile`, so reload, STEP export, positioned download and error-report attachments do not act on an empty file. `VITE_IFC_SERVER_URL` may now be a same-origin path such as `/ifc`, which the reachability check used to reject.

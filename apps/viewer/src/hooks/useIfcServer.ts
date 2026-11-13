@@ -17,6 +17,8 @@ import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
 import {
   IfcServerClient,
   decodeDataModel,
+  isProcessedModelRef,
+  type ProcessedModelRef,
   type ParquetBatch,
   type ParquetParseResponse,
   type ParquetStreamResult,
@@ -25,7 +27,9 @@ import {
   type ProcessingStats,
 } from '@ifc-lite/server-client';
 
-import { SERVER_URL } from '../utils/ifcConfig.js';
+import { getProcessingServerUrl } from '../lib/processed-model.js';
+import { isServerAvailable, isServerReachable } from './ingest/serverAvailability.js';
+import { ProcessedModelUnavailable } from './ingest/processedModel.js';
 import {
   createEmptyBounds,
   updateBoundsFromPositions,
@@ -42,63 +46,6 @@ import { serverOriginShift } from '../utils/serverOriginShift.js';
 /** Server parse result type - union of streaming and non-streaming responses */
 type ServerParseResultType = ParquetParseResponse | ParquetStreamResult | ParseResponse;
 
-// Module-level server availability cache - avoids repeated failed connection attempts
-let serverAvailabilityCache: { available: boolean; checkedAt: number } | null = null;
-const SERVER_CHECK_CACHE_MS = 30000; // Re-check server availability every 30 seconds
-
-/**
- * Check if server URL is reachable from current origin
- * Returns false immediately if localhost server from non-localhost origin (would cause CORS)
- */
-function isServerReachable(serverUrl: string): boolean {
-  try {
-    const server = new URL(serverUrl);
-    const isServerLocalhost = server.hostname === 'localhost' || server.hostname === '127.0.0.1';
-
-    // In browser, check if we're on localhost
-    if (typeof window !== 'undefined') {
-      const isClientLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-
-      // Skip localhost server when running from remote origin (avoids CORS error in console)
-      if (isServerLocalhost && !isClientLocalhost) {
-        return false;
-      }
-    }
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Silently check if server is available (no console logging on failure)
- * Returns cached result if recently checked
- */
-async function isServerAvailable(serverUrl: string, client: IfcServerClient): Promise<boolean> {
-  // First check if server is even reachable (prevents CORS errors)
-  if (!isServerReachable(serverUrl)) {
-    return false;
-  }
-
-  const now = Date.now();
-
-  // Use cached result if recent
-  if (serverAvailabilityCache && (now - serverAvailabilityCache.checkedAt) < SERVER_CHECK_CACHE_MS) {
-    return serverAvailabilityCache.available;
-  }
-
-  // Perform silent health check
-  try {
-    await client.health();
-    serverAvailabilityCache = { available: true, checkedAt: now };
-    return true;
-  } catch {
-    // Silent failure - don't log network errors for unavailable server
-    serverAvailabilityCache = { available: false, checkedAt: now };
-    return false;
-  }
-}
-
 /**
  * Hook for server-side IFC file parsing
  * Handles server reachability, streaming/Parquet/JSON parsing paths,
@@ -114,7 +61,8 @@ export function useIfcServer() {
    * subscribing the hook to the entire store (which would cause unnecessary re-renders).
    */
   const loadFromServer = useCallback(async (
-    file: File,
+    /** The IFC to upload, or a model the server already processed (then `buffer` is unused: there are no bytes here). */
+    file: File | ProcessedModelRef,
     buffer: ArrayBuffer | SharedArrayBuffer,
     /**
      * Optional staleness check — returns true if this load has been
@@ -129,16 +77,27 @@ export function useIfcServer() {
   ): Promise<boolean> => {
     cancelProperties(modelId);
     const { setProgress, setGeometryResult } = useViewerStore.getState();
+    // A processed model has no fallback, so its failures reach the caller to be worded; an
+    // upload's stay silent here and fall back to local processing.
+    const processed = isProcessedModelRef(file);
     try {
       setProgress({ phase: 'Connecting to server', percent: 5 });
 
-      const client = new IfcServerClient({ baseUrl: SERVER_URL });
+      const serverUrl = getProcessingServerUrl(); // read per load: a host may set it at runtime
+      const client = new IfcServerClient({ baseUrl: serverUrl });
 
-      // Silent server availability check (cached, no error logging)
-      const serverAvailable = await isServerAvailable(SERVER_URL, client);
+      // Silent server availability check (cached, no error logging). A processed model skips the
+      // health round trip: its geometry request asks the same question, and a down server ends in
+      // the same error card either way.
+      const serverAvailable = processed ? isServerReachable(serverUrl) : await isServerAvailable(serverUrl, client);
       if (!serverAvailable) {
+        if (processed) throw new ProcessedModelUnavailable(serverUrl === '' ? 'no-server' : 'unreachable');
         return false; // Silently fall back - caller handles logging
       }
+      // The route follows the size the server parses; the model info shows the file as opened.
+      // They differ for an .ifcZIP upload, whose buffer is already unwrapped.
+      const parsedBytes = processed ? file.bytes : buffer.byteLength;
+      const openedBytes = processed ? file.bytes : file.size;
 
       if (isStale?.()) return false;
       setProgress({ phase: 'Processing on server (parallel)', percent: 15 });
@@ -160,10 +119,12 @@ export function useIfcServer() {
       // Streaming overhead: ~67 batch serializations + background re-processing (~1100ms)
       // Non-streaming: single serialization (~218ms for 60k meshes)
       // Threshold chosen to balance UX (progressive rendering) vs performance (overhead)
-      const fileSizeMB = buffer.byteLength / (1024 * 1024);
+      const fileSizeMB = parsedBytes / (1024 * 1024);
       const USE_STREAMING_THRESHOLD_MB = 150;
+      // A processed model of unknown size streams: the streamed route works at any size.
+      const streaming = parquetSupported && (fileSizeMB > USE_STREAMING_THRESHOLD_MB || (processed && parsedBytes === 0));
 
-      if (parquetSupported && fileSizeMB > USE_STREAMING_THRESHOLD_MB) {
+      if (streaming) {
         // STREAMING PATH - for large files, render progressively
         allMeshes = [];
         let totalVertices = 0;
@@ -178,7 +139,7 @@ export function useIfcServer() {
 
         // Throttle server streaming updates - large files get less frequent UI updates
         let lastServerStreamRenderTime = 0;
-        const SERVER_STREAM_INTERVAL_MS = getServerStreamIntervalMs(fileSizeMB);
+        const SERVER_STREAM_INTERVAL_MS = getServerStreamIntervalMs(parsedBytes === 0 ? Infinity : fileSizeMB); // unknown size: the large-file throttle
 
         // Use streaming endpoint with batch callback
         const streamResult = await client.parseParquetStream(file, (batch: ParquetBatch) => {
@@ -313,6 +274,7 @@ export function useIfcServer() {
         allMeshes = parquetResult.meshes.map(convertServerMesh);
       } else {
         // Fallback to JSON endpoint
+        if (processed) throw new ProcessedModelUnavailable('unsupported');
         result = await client.parse(file);
         if (isStale?.()) return false;
 
@@ -325,9 +287,7 @@ export function useIfcServer() {
 
       // For non-streaming paths, calculate bounds and set geometry
       // (Streaming path already handled this progressively)
-      const wasStreaming = parquetSupported && fileSizeMB > USE_STREAMING_THRESHOLD_MB;
-
-      if (!wasStreaming) {
+      if (!streaming) {
         // Calculate bounds from mesh positions for camera fitting
         // IMPORTANT: Server already applies RTC shift to mesh positions, so bounds calculated
         // from mesh positions are ALREADY in shifted coordinates (small values near origin).
@@ -384,11 +344,12 @@ export function useIfcServer() {
         const dataModelBuffer = included?.byteLength ? included : await client.fetchDataModel(result.cache_key, { signal: propertySignal });
         if (!dataModelBuffer) return null;
         const dataModel = await decodeDataModel(dataModelBuffer);
-        return convertServerDataModel(dataModel, result as ServerParseResult, file, allMeshes);
+        return convertServerDataModel(dataModel, result as ServerParseResult, { size: openedBytes }, allMeshes);
       });
       setProgress({ phase: 'Complete', percent: 100 });
       return true;
     } catch (err) {
+      if (processed) throw err; // a processed model's failure shows in its card
       console.error('[useIfc] Server parse failed:', err);
       return false;
     }

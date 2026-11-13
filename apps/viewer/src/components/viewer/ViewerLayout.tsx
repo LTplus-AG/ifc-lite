@@ -34,6 +34,7 @@ import { ShieldAlert } from 'lucide-react';
 import { ExtensionDockHost } from '@/components/extensions/ExtensionDockHost';
 import { ExtensionKeyboardBindings } from '@/components/extensions/ExtensionKeyboardBindings';
 import { useModelUrlAutoload } from '@/hooks/useModelUrlAutoload';
+import { useProcessedModelAutoload } from '@/hooks/useProcessedModelAutoload';
 import { useArtifactDeepLink } from '@/hooks/useArtifactDeepLink';
 import { useViewerStore } from '@/store';
 import { isCollabEnabled } from '@/lib/collab/config';
@@ -97,6 +98,7 @@ export function ViewerLayout() {
 
   // ?model=<URL> autoload (#5851, load errors shown) and ?panel=/artifact deep links (#6927).
   useModelUrlAutoload();
+  useProcessedModelAutoload(); // ?processed=<sha256>: a result the processing server already holds
   useArtifactDeepLink();
 
   // Deep-link collaboration join: a share link is `?room=…&t=…`. The recipient

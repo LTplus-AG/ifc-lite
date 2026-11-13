@@ -9,4 +9,7 @@ export const mutationPermissionRu = {
   "mutationPermission.editModeRequired": "Включите режим редактирования, чтобы изменить эту модель",
   "mutationPermission.roleRequired": "Для редактирования требуется доступ редактора в этой общей сессии",
   "mutationPermission.modelUnavailable": "Данная модель не содержит редактируемых данных IFC",
+  "mutationPermission.propertiesLoading": "Свойства модели ещё загружаются",
+  "mutationPermission.propertiesFailed": "Не удалось загрузить свойства модели, поэтому её нельзя редактировать",
+  "mutationPermission.idSpaceExhausted": "В этой модели больше сущностей, чем зарезервировано для неё места, поэтому в этом сеансе её нельзя редактировать",
 } satisfies Catalogue;

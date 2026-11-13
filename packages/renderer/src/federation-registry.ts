@@ -18,6 +18,8 @@ export interface ModelRange {
   offset: number;       // Start of this model's global ID range
   maxExpressId: number; // Highest expressId in this model
   reservedMaxExpressId: number;
+  /** Last local ID of the overlay headroom; the next model starts right after it. */
+  overlayMaxExpressId: number;
   publishedStart: number | null;
 }
 
@@ -98,7 +100,8 @@ export class FederationRegistry {
     }
 
     const offset = this.nextOffset;
-    const range: ModelRange = { modelId, offset, maxExpressId: -1, reservedMaxExpressId, publishedStart: null };
+    const overlayMaxExpressId = reservedMaxExpressId + OVERLAY_ID_HEADROOM;
+    const range: ModelRange = { modelId, offset, maxExpressId: -1, reservedMaxExpressId, overlayMaxExpressId, publishedStart: null };
 
     this.modelRanges.set(modelId, range);
     this.sortedRanges.push(range);
@@ -108,9 +111,48 @@ export class FederationRegistry {
     // Next model starts after this model's range (+1 gap for safety), plus
     // reserved headroom for mutation-overlay ids allocated into this model's
     // own space after load (see OVERLAY_ID_HEADROOM above).
-    this.nextOffset = offset + reservedMaxExpressId + 1 + OVERLAY_ID_HEADROOM;
+    this.nextOffset = offset + overlayMaxExpressId + 1;
 
     return offset;
+  }
+
+  /**
+   * Grow a fully published model toward `maxExpressId` and publish the added
+   * IDs, for a model registered from part of its IDs (its meshes) whose other
+   * entities (storeys, spaces, types) arrive later with its data model.
+   * Returns the highest published local ID afterwards; the offset never moves.
+   *
+   * A no-op below the published end. The newest reservation grows freely, up
+   * to the safe ID limit (past it this throws). A model with a later
+   * neighbour grows to the end of its overlay headroom and stops there: the
+   * return value is then below `maxExpressId` and the IDs above it stay
+   * unresolvable. Throws, before anything else, for a range that is only
+   * partly published or already carries overlay IDs: extending across
+   * authored IDs would give two entities one global ID.
+   */
+  extendModel(modelId: string, maxExpressId: number): number {
+    const range = this.modelRanges.get(modelId);
+    if (!range) throw new Error(`[FederationRegistry] Cannot extend unknown model ${modelId}`);
+    if (!Number.isInteger(maxExpressId) || maxExpressId < 0) {
+      throw new Error(`[FederationRegistry] Invalid maxExpressId: ${maxExpressId} for model ${modelId}`);
+    }
+    if (range.publishedStart === null || range.maxExpressId !== range.reservedMaxExpressId) {
+      throw new Error(`[FederationRegistry] Cannot extend ${modelId}: its range is partly published or already carries overlay IDs`);
+    }
+    if (maxExpressId <= range.maxExpressId) return range.maxExpressId;
+    let end = maxExpressId;
+    if (this.nextOffset === range.offset + range.overlayMaxExpressId + 1) { // the newest reservation
+      if (range.offset + maxExpressId > MAX_SAFE_OFFSET) {
+        throw new Error(`[FederationRegistry] Cannot extend ${modelId} to ${maxExpressId}: would exceed safe ID limit`);
+      }
+      range.overlayMaxExpressId = end + OVERLAY_ID_HEADROOM;
+      this.nextOffset = range.offset + range.overlayMaxExpressId + 1;
+    } else {
+      end = Math.min(end, range.overlayMaxExpressId);
+    }
+    range.reservedMaxExpressId = end;
+    range.maxExpressId = end;
+    return end;
   }
 
   /** Publish the next contiguous owned local range inside a reservation. */
@@ -132,7 +174,7 @@ export class FederationRegistry {
   publishOverlayRange(modelId: string, start: number, end: number): void {
     const range = this.modelRanges.get(modelId);
     if (!range) throw new Error(`[FederationRegistry] Cannot publish unknown model ${modelId}`);
-    const overlayEnd = range.reservedMaxExpressId + OVERLAY_ID_HEADROOM;
+    const overlayEnd = range.overlayMaxExpressId;
     if (!Number.isInteger(start) || !Number.isInteger(end) || start < range.reservedMaxExpressId + 1 || end < start || end > overlayEnd) {
       throw new Error(`[FederationRegistry] Invalid overlay range ${start}..${end} for ${modelId}`);
     }
@@ -151,7 +193,7 @@ export class FederationRegistry {
   previewOverlayGlobalId(modelId: string, start: number, end: number, expressId: number): number {
     const range = this.modelRanges.get(modelId);
     if (!range) throw new Error(`[FederationRegistry] Cannot preview unknown model ${modelId}`);
-    const overlayEnd = range.reservedMaxExpressId + OVERLAY_ID_HEADROOM;
+    const overlayEnd = range.overlayMaxExpressId;
     if (!Number.isInteger(start) || !Number.isInteger(end) || !Number.isInteger(expressId)
       || start < range.reservedMaxExpressId + 1 || end < start || end > overlayEnd
       || expressId < start || expressId > end) {

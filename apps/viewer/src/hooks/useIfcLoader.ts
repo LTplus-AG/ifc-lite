@@ -56,7 +56,8 @@ import { buildGeometryCacheKey } from './geometryCacheKey.js';
 import { armColdSceneCapture, coldCaptureEligible } from './sceneSnapshotLoad.js';
 import { forwardEntityIndexTo, createSourceFingerprintCell, type EntityIndexSink } from './entityIndexHandoff.js';
 import { computeSourceFingerprint, computeSourceFingerprintFromBlob } from '@ifc-lite/cache';
-import { SERVER_URL, USE_SERVER, CACHE_SIZE_THRESHOLD, CACHE_MAX_SOURCE_SIZE, CACHE_MESH_ONLY_MAX_SIZE } from '../utils/ifcConfig.js';
+import { serverUploadsEnabled } from '../lib/processed-model.js';
+import { CACHE_SIZE_THRESHOLD, CACHE_MAX_SOURCE_SIZE, CACHE_MESH_ONLY_MAX_SIZE } from '../utils/ifcConfig.js';
 import {
   calculateMeshBounds,
   createCoordinateInfo,
@@ -70,6 +71,7 @@ import { useIfcCache, getCached, deleteCached } from './useIfcCache.js';
 // Server hook
 import { useIfcServer } from './useIfcServer.js';
 import { handleServerLoadAttempt } from './ingest/serverLoadAttempt.js';
+import { describeProcessedModelFailure, normalizedProcessedModel, ProcessedModelUnavailable } from './ingest/processedModel.js';
 
 import { prepareGlbViewerModel } from './ingest/glbTextureValidation.js';
 import { getMaxExpressId, getViewerSchemaVersion, parseIfcxViewerModel } from './ingest/viewerModelIngest.js';
@@ -256,13 +258,14 @@ export function useIfcLoader() {
   ) => {
     assertWorkflowOwner(options?.workflowOwner);
     const draping = drapeIfGeoRaster(file); if (draping) return draping; // #5942: imagery, never a model
-    const geometryKernel = beginGeometryKernel(file, target, () => void loadFileRef.current?.(file, target, options)); if (geometryKernel.refused) return settleKernelRefusal(geometryKernel.refused, options?.onLoadError); // #7955 M2: out-of-scope retained requests stop before any work
+    const geometryKernel = beginGeometryKernel(file, target, () => void loadFileRef.current?.(file, target, options), { hasSourceBytes: !options?.processedModel }); if (geometryKernel.refused) return settleKernelRefusal(geometryKernel.refused, options?.onLoadError); // #7955 M2: out-of-scope retained requests stop before any work
     const { resetViewerState, clearAllModels } = useViewerStore.getState();
     // A primary supersedes every outstanding hook owner via the shared canceller. Federated additions capture this hook's session and remain independent.
     const currentSession = target.kind === 'primary'
       ? ++loadSessionRef.current
       : loadSessionRef.current;
     const modelId = target.modelId ?? crypto.randomUUID();
+    const processedModel = options?.processedModel && normalizedProcessedModel(options.processedModel); // one hash spelling for the record and the server
     let cancelled = false;
     const isCurrent = () => !cancelled && loadSessionRef.current === currentSession;
     const isStale = () => !isCurrent();
@@ -424,7 +427,7 @@ export function useIfcLoader() {
     // Every load failure the user sees goes through here (#5618); `retry`
     // is fixed to THIS call so no call site below can omit or go stale.
     const retryThisLoad = options?.retryOperation ?? (() => { void loadFile(file, target, options); });
-    const showLoadError = loadFailureReporter(file, activity, retryThisLoad, options?.onLoadError);
+    const showLoadError = loadFailureReporter(processedModel ? undefined : file, activity, retryThisLoad, options?.onLoadError); // a processed model's File is a name, not bytes
     const settleResumable = beginResumableLoad(file); // carried across a stale-deployment reload
     try {
       // Reset all viewer state before loading new file — PRIMARY ONLY. A
@@ -450,12 +453,10 @@ export function useIfcLoader() {
       setProgress({ phase: 'Loading file', percent: 0 });
 
       const fileName = file.name;
-      const fileSize = file.size;
+      const fileSize = processedModel?.bytes ?? file.size; // a processed model's File carries its name only
       const fileSizeMB = fileSize / (1024 * 1024);
-      // LandXML finalizes before the full-buffer detector below.
-      let format: ReturnType<typeof detectFormat> | NonNullable<ReturnType<typeof detectPointCloudFormat>> | 'landxml' = isLandXmlFileName(file.name)
-        ? 'landxml'
-        : 'unknown';
+      // LandXML finalizes before the full-buffer detector below; a processed model is IFC.
+      let format: ReturnType<typeof detectFormat> | NonNullable<ReturnType<typeof detectPointCloudFormat>> | 'landxml' = processedModel ? 'ifc' : isLandXmlFileName(file.name) ? 'landxml' : 'unknown';
       let loadedBufferByteLength = fileSize;
       let modelSourceIdentity = '';
       // #7022: one full-source hash, awaited only for publication/cache.
@@ -479,7 +480,7 @@ export function useIfcLoader() {
           schemaVersion: 'IFC4',
           loadedAt: Date.now(),
           fileSize,
-          sourceFile: file,
+          ...(processedModel ? { processedModel } : { sourceFile: file }),
           sourceHandle: options?.sourceHandle,
           idOffset: 0,
           maxExpressId: 0,
@@ -668,7 +669,32 @@ export function useIfcLoader() {
         activity.published = true;
         modelCompletion?.settleModel();
       };
-      if (!USE_SERVER && /\.ifc$/i.test(file.name)) assertWasmSourceSize(file.size);
+      const isResourceRetryLoad = options?.isResourceRetry === true;
+      // Ends every server load, upload or processed model: the geometry is already in the active slot.
+      const completeServerLoad = async () => {
+        const state = useViewerStore.getState();
+        await finalizeModel(state.ifcDataStore, state.geometryResult, getViewerSchemaVersion(state.ifcDataStore), { loadPath: 'server' });
+        if (isStale()) return;
+        const serverTotalMs = trace.finish({ loadPath: 'server' });
+        console.log(`[useIfc] TOTAL LOAD TIME (server): ${serverTotalMs.toFixed(0)}ms`);
+        // Geometry attribution (#2388), server row: `is_resource_retry`, never the two fidelity fields.
+        // A resource retry re-enters `loadFile` and can land here after a WASM attempt failed, so the
+        // flag tells that row apart. `tessellation_tier` / `skip_small_cuts` describe LOCAL-WASM
+        // tessellation, which the server never applies (it caches canonical full-fidelity geometry
+        // under its own key): reporting them would fabricate exactly the attribution #2388 prevents.
+        captureModelLoaded({ format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'server', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden(), is_resource_retry: isResourceRetryLoad, processed_model: processedModel !== undefined }, snapshotFromGeometry(fileSizeMB, state.geometryResult), trace);
+        settleLoadUi(LOAD_COMPLETE);
+      };
+      if (processedModel) { // no source bytes here: nothing below (sniffing, local cache, WASM fallback) applies
+        loadStage = 'server-fetch';
+        // The replay writes the active model slot, which only a primary load owns.
+        let failure: unknown = target.kind === 'primary' ? null : new ProcessedModelUnavailable('not-primary');
+        if (failure === null && await handleServerLoadAttempt(() => loadFromServer(processedModel, new ArrayBuffer(0), () => isStale(), metadataAbort.signal, modelId).catch((error: unknown) => { failure = error; return false; }), isStale, completeServerLoad)) return;
+        const { message, code, retryable } = describeProcessedModelFailure(failure);
+        updateModel(modelId, { loadState: 'error', loadError: message }); showLoadError(message, code, retryable ? undefined : null); settleLoadUi();
+        return;
+      }
+      if (!serverUploadsEnabled() && /\.ifc$/i.test(file.name)) assertWasmSourceSize(file.size);
       const headBuf = await file.slice(0, 4096).arrayBuffer();
       if (isStale()) return;
       const gaussianAdmission = await inspectGaussianAdmission(file, headBuf);
@@ -706,7 +732,7 @@ export function useIfcLoader() {
         return;
       }
 
-      if (!pointCloudFormat && !USE_SERVER && detectFormat(headBuf) === 'ifc') assertWasmSourceSize(file.size);
+      if (!pointCloudFormat && !serverUploadsEnabled() && detectFormat(headBuf) === 'ifc') assertWasmSourceSize(file.size);
       const fileReadStart = performance.now();
       const acquired: AcquiredBuffer = pointCloudFormat
         ? { buffer: headBuf, view: new Uint8Array(headBuf), isShared: false }
@@ -742,7 +768,7 @@ export function useIfcLoader() {
       // A SAB here is the un-unwrapped file, so `headBuf` is its head.
       format = pointCloudFormat ?? detectFormat(buffer instanceof ArrayBuffer ? buffer : headBuf);
 
-      if (!USE_SERVER && format === 'ifc') assertWasmSourceSize(buffer.byteLength);
+      if (!serverUploadsEnabled() && format === 'ifc') assertWasmSourceSize(buffer.byteLength);
       if (geometryKernel.refuseSource(format, buffer.byteLength, { modelId, activity })) { settleLoadUi(); return; }
 
       // LAS / LAZ point clouds: stream chunks straight to the renderer.
@@ -1063,13 +1089,12 @@ export function useIfcLoader() {
       // serving the failed attempt's cached bytes.
       const loadTessellationTier = options?.tierOverride ??
         resolveLoadTessellationTier(fileSizeMB, geometryModeAtLoad);
-      // Geometry attribution (#2388): read ONCE here, next to the tier it must
-      // be reported alongside, so every `ifc_model_loaded` capture site below
+      // Geometry attribution (#2388): `isResourceRetryLoad` (read once, above `completeServerLoad`)
+      // is reported alongside this tier, so every `ifc_model_loaded` capture site
       // states the same fact. The tier cannot stand in for it — a retry always
       // runs at `lowest` (`lib/resource-retry.ts`) and a first attempt reaches
       // `lowest` on its own at >= AUTO_LOWEST_TIER_MB or under a pinned
       // `?geomTier=lowest`, so the two are indistinguishable without the flag.
-      const isResourceRetryLoad = options?.isResourceRetry === true;
       // Desktop Tauri cache commands only accept [A-Za-z0-9_-], so the key
       // stays filename-safe and independent of the original filename. Pinned
       // to FORMAT_VERSION so a format bump invalidates stale entries (e.g. v5
@@ -1234,35 +1259,11 @@ export function useIfcLoader() {
       // EXCEPT texture-carrying containers (#1781): the server mesh wire format
       // doesn't transport UVs/texture refs yet, so the server fast-path would
       // silently render the model untextured — route those through local WASM.
-      if (target.kind === 'primary' && format === 'ifc' && !mergeLayersAtLoad && !textureBitmaps && USE_SERVER && SERVER_URL && SERVER_URL !== '' && geometryKernel.serverEnabled) {
+      if (target.kind === 'primary' && format === 'ifc' && !mergeLayersAtLoad && !textureBitmaps && serverUploadsEnabled() && geometryKernel.serverEnabled) {
         // Pass buffer directly - server uses File object for parsing, buffer is only for size checks
         loadStage = 'server-fetch';
-        if (await handleServerLoadAttempt(() => loadFromServer(file, buffer, () => isStale(), metadataAbort.signal, modelId), isStale, async () => {
-          const state = useViewerStore.getState();
-          await finalizeModel(state.ifcDataStore, state.geometryResult, getViewerSchemaVersion(state.ifcDataStore), { loadPath: 'server' });
-          if (isStale()) return;
-          const serverTotalMs = trace.finish({ loadPath: 'server' });
-          console.log(`[useIfc] TOTAL LOAD TIME (server): ${serverTotalMs.toFixed(0)}ms`);
-          // Geometry attribution (#2388), server row: `is_resource_retry` and
-          // ONLY that. The retry re-enters `loadFile`, so a first attempt that
-          // fell through to WASM because the server was momentarily down, then
-          // OOMed, then retried into a recovered server, lands HERE — and
-          // without the flag that row is indistinguishable from a normal load.
-          //
-          // The two fidelity fields are deliberately NOT reported here. They
-          // describe LOCAL-WASM tessellation; the server produces canonical
-          // full-fidelity geometry under its own cache key and applies neither
-          // (see the comment on the branch condition above). Spreading
-          // `buildModelLoadedGeometryProps` would state `tessellation_tier`
-          // and `skip_small_cuts` values this load never applied — a
-          // fabricated attribution of exactly the kind #2388 exists to
-          // prevent. Absent stays absent; `is_resource_retry` is the one fact
-          // that is true on this path.
-          captureModelLoaded({ format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'server', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden(), is_resource_retry: isResourceRetryLoad }, snapshotFromGeometry(fileSizeMB, state.geometryResult), trace);
-          settleLoadUi(LOAD_COMPLETE);
-        })) return;
+        if (await handleServerLoadAttempt(() => loadFromServer(file, buffer, () => isStale(), metadataAbort.signal, modelId), isStale, completeServerLoad)) return;
         // Server not available - continue with local WASM (no error logging needed)
-      } else if (format === 'unknown') {
       }
 
       // Using local WASM parsing

@@ -19,8 +19,10 @@ import { withNarrowedCoordinateSpace,
 } from './types.js';
 import { decodeParquetGeometry, decodeOptimizedParquetGeometry, isParquetAvailable } from './parquet-decoder.js';
 import { dataModelQuery, parquetStreamQuery, parseQuery } from './parse-query.js';
+import { computeFileHash } from './file-hash.js';
+import { assertProcessedModelHash, isProcessedModelRef, type ProcessedModelRef } from './processed-model.js';
 import type { ParseRequestOptions, ParseStreamOptions } from './parse-options.js';
-import { serverErrorFromResponse, type IfcServerError } from './server-error.js';
+import { serverErrorFromResponse, IfcServerError } from './server-error.js';
 import {
   consumeParquetStream,
   STREAM_ENDED_WITHOUT_TERMINAL_EVENT,
@@ -66,21 +68,6 @@ async function compressGzip(file: File | ArrayBuffer): Promise<Blob> {
   const compressionStream = new CompressionStream('gzip');
   const compressedStream = stream.pipeThrough(compressionStream);
   return new Response(compressedStream).blob();
-}
-
-/**
- * Compute SHA-256 hash of a file or ArrayBuffer.
- * Used for cache key generation client-side to avoid uploading files that are already cached.
- *
- * @param file - File or ArrayBuffer to hash
- * @returns Hexadecimal SHA-256 hash string
- */
-async function computeFileHash(file: File | ArrayBuffer): Promise<string> {
-  const buffer = file instanceof File ? await file.arrayBuffer() : file;
-  const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
-  return Array.from(new Uint8Array(hashBuffer))
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('');
 }
 
 /**
@@ -130,6 +117,10 @@ export class IfcServerClient {
       : { ...(extra ?? {}) };
   }
 
+  /** The streaming route; with `hash` (already normalized), the bodiless ask for a stored result. */
+  private streamUrl(options?: ParseStreamOptions, hash?: string): string {
+    return `${this.baseUrl}/api/v1/parse/parquet-stream${parquetStreamQuery(options, hash)}`;
+  }
 
   /**
    * Check server health.
@@ -199,7 +190,7 @@ export class IfcServerClient {
    * **Requirements:** This method requires `parquet-wasm` and `apache-arrow`
    * to be installed as peer dependencies.
    *
-   * @param file - File or ArrayBuffer containing IFC data
+   * @param file - File or ArrayBuffer containing IFC data, or a {@link ProcessedModelRef} to fetch a stored result
    * @returns Parse result with all meshes (decoded from Parquet)
    *
    * @example
@@ -212,7 +203,7 @@ export class IfcServerClient {
    * }
    * ```
    */
-  async parseParquet(file: File | ArrayBuffer, options?: ParseRequestOptions): Promise<ParquetParseResponse> {
+  async parseParquet(file: File | ArrayBuffer | ProcessedModelRef, options?: ParseRequestOptions): Promise<ParquetParseResponse> {
     // Check if Parquet decoding is available
     const parquetReady = await isParquetAvailable();
     if (!parquetReady) {
@@ -222,6 +213,12 @@ export class IfcServerClient {
       );
     }
 
+    if (isProcessedModelRef(file)) {
+      const sha256 = assertProcessedModelHash(file.sha256);
+      const stored = await this.fetchCachedGeometry(sha256, options);
+      if (!stored) throw new IfcServerError(`No processed model is stored for ${sha256.substring(0, 16)}...`, 404, 'NOT_FOUND');
+      return stored;
+    }
     // Step 1: Compute hash client-side (fast, ~50ms for large files)
     const hashStart = performance.now();
     const hash = await computeFileHash(file);
@@ -265,7 +262,7 @@ export class IfcServerClient {
    * rendering exactly when the data was already there. Set
    * `skipCacheProbe: true` to go straight to the upload.
    *
-   * @param file - IFC file to parse (File or ArrayBuffer)
+   * @param file - IFC file to parse (File or ArrayBuffer), or a {@link ProcessedModelRef} to replay a stored result
    * @param onBatch - Callback for each geometry batch (for immediate rendering)
    * @returns Final result with cache_key, stats, and metadata
    *
@@ -283,7 +280,7 @@ export class IfcServerClient {
    * ```
    */
   async parseParquetStream(
-    file: File | ArrayBuffer,
+    file: File | ArrayBuffer | ProcessedModelRef,
     onBatch: (batch: ParquetBatch) => void,
     options?: ParseStreamOptions
   ): Promise<ParquetStreamResult> {
@@ -293,6 +290,13 @@ export class IfcServerClient {
         'Parquet streaming requires parquet-wasm and apache-arrow. ' +
         'Install them with: npm install parquet-wasm apache-arrow'
       );
+    }
+
+    if (isProcessedModelRef(file)) { // the reference is the whole request: no hash, no upload, a miss is an error
+      const start = performance.now();
+      const response = await fetch(this.streamUrl(options, assertProcessedModelHash(file.sha256)), { method: 'POST', headers: this.authHeaders(), signal: AbortSignal.timeout(this.timeout) });
+      if (!response.ok) throw await this.handleError(response);
+      return consumeParquetStream(response, onBatch, start);
     }
 
     const fileSize = file instanceof File ? file.size : file.byteLength;
@@ -318,14 +322,7 @@ export class IfcServerClient {
 
       let probe: Response | null = null;
       try {
-        probe = await fetch(
-          `${this.baseUrl}/api/v1/parse/parquet-stream${parquetStreamQuery(options, hash)}`,
-          {
-            method: 'POST',
-            headers: this.authHeaders(),
-            signal: controller.signal,
-          }
-        );
+        probe = await fetch(this.streamUrl(options, hash), { method: 'POST', headers: this.authHeaders(), signal: controller.signal });
       } catch (error) {
         // A probe that times out or fails to connect is not an answer about
         // the cache. Upload, which is what would have happened without it.
@@ -359,7 +356,7 @@ export class IfcServerClient {
     formData.append('file', file instanceof File ? file : new Blob([file]), fileName);
 
     const uploadStart = performance.now();
-    const response = await fetch(`${this.baseUrl}/api/v1/parse/parquet-stream${parquetStreamQuery(options)}`, {
+    const response = await fetch(this.streamUrl(options), {
       method: 'POST',
       headers: this.authHeaders(),
       body: formData,

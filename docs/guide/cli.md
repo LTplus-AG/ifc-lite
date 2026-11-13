@@ -1187,6 +1187,7 @@ Checks:
   - `structural-unlinked-element`: a beam, column, member, slab, wall, footing or pile that is load bearing and has no structural member or connection assigned. Runs only when the file has an analytical model. Detailed up to the first 50, after which a single rollup issue reports the remaining count and the total. `Pset_*Common.LoadBearing` is read from the occurrence, else its type. An element where that value is missing or not a boolean (IfcLogical UNKNOWN) counts as load bearing; `LoadBearing = false` is never reported.
   - `structural-unlinked-item`: a structural member or connection with no physical element assigned. Members and connections are each checked only when the file links at least one of that kind.
   - `structural-class-mismatch`: a curve member assigned to a slab or wall, or a surface member assigned to a beam, column or member (`target` names the physical element).
+  - `structural-unconnected-member`: a structural member with no `IfcRelConnectsStructuralMember`. Checked only when the file connects at least one member.
 
 Returns exit code 0 (valid) or 1 (errors found).
 

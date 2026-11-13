@@ -253,7 +253,7 @@ test('artifact sets: UI handoffs count, failing results and SDK intermediates do
   assert.deepEqual(storeys[0].census, { IfcWall: 2 });
 });
 
-test('output runner: documentation rows are judged on UI-handed drawings and can pass', () => {
+test('#9296 output runner rejects a sheet DXF without dimensions while other documentation can pass', () => {
   const dir = mkdtempSync(join(tmpdir(), 'parity-output-ui-'));
   try {
     const art = join(dir, 'ui', 'artifacts', 'sheets-pdf-dwg');
@@ -272,12 +272,12 @@ test('output runner: documentation rows are judged on UI-handed drawings and can
     const r = spawnSync(process.execPath, [join(ROOT, 'tests/modelling-parity/output/run.mjs'), '--out', out, '--ui', join(dir, 'ui'), '--only', 'sheets-pdf-dwg,plans-sections-elevations,dimensions-tags,roof-by-footprint'], { encoding: 'utf8' });
     assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
     const read = (id) => JSON.parse(readFileSync(join(out, 'output', `${id}.json`), 'utf8'));
-    assert.equal(read('sheets-pdf-dwg').status, 'pass', JSON.stringify(read('sheets-pdf-dwg')));
+    assert.equal(read('sheets-pdf-dwg').status, 'partial', 'linework-only DXF cannot prove dimensions and scale');
     assert.equal(read('plans-sections-elevations').status, 'pass');
     assert.equal(read('dimensions-tags').status, 'fail', 'a listed file that is not there fails');
     assert.equal(read('roof-by-footprint').status, 'skip', 'no SDK result and no UI handoff');
     const s = score(realCatalogue, readResults([out, join(dir, 'ui')]));
-    assert.equal(s.rows.find((x) => x.capability === 'sheets-pdf-dwg').status, 'met', 'UI pass + output pass, SDK not applicable');
+    assert.equal(s.rows.find((x) => x.capability === 'sheets-pdf-dwg').status, 'partial', 'a UI pass cannot mask the incomplete DXF output');
     rmSync(join(art, 'a1.dxf'));
     spawnSync(process.execPath, [join(ROOT, 'tests/modelling-parity/output/run.mjs'), '--out', out, '--ui', join(dir, 'ui'), '--only', 'sheets-pdf-dwg'], { encoding: 'utf8' });
     assert.equal(read('sheets-pdf-dwg').status, 'partial', 'the DXF a sheet row requires is missing');

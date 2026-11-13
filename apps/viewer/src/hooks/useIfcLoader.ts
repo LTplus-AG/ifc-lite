@@ -27,7 +27,7 @@ import { attachTextureBitmaps, type TextureBitmapStore } from '../utils/textureR
 import { modelAppearanceAssets } from '../lib/appearance/model-assets.js';
 import { WorkerParser } from '@ifc-lite/parser/browser';
 import { createModelLoadCompletion } from './ingest/modelLoadCompletion.js';
-import { beginGeometryKernel, openGeometryEvents, runPickStart, claimFastGeometry } from './ingest/geometryEventSource.js';
+import { beginGeometryKernel, openGeometryEvents, runPickStart, claimFastGeometry, ADAPTIVE_SYNC_THRESHOLD_BYTES } from './ingest/geometryEventSource.js';
 import { memoryAccounting } from '../lib/perf/memoryAccounting.js';
 import { loadTracer, nextPaintOrTimeout } from '../lib/perf/loadTrace.js';
 import { countCopy } from '@ifc-lite/load-trace'; // #6957 full source-copy counters
@@ -1420,7 +1420,7 @@ export function useIfcLoader() {
       // streaming path inside `processAdaptive`. Files smaller than the
       // sync threshold (2 MB) and the desktop-stable path don't fire it
       // — gate `waitForEntityIndex` so the parser doesn't hang. Nor does a fast-path run (ingest/fastPath.ts).
-      const ADAPTIVE_SYNC_THRESHOLD_MB = 2;
+      const ADAPTIVE_SYNC_THRESHOLD_MB = ADAPTIVE_SYNC_THRESHOLD_BYTES / (1024 * 1024);
       const sourceFingerprint = createSourceFingerprintCell(sharedSource, useParserWorker);
       const fastRun = geometryKernel.kind === 'exact' ? claimFastGeometry(file, geometryProcessor.meshingSettings(), { target: target.kind, sourceIsFile: loadedBufferByteLength === file.size }) : null;
       const geometryWillEmitEntityIndex =

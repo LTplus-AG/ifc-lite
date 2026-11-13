@@ -212,6 +212,40 @@ describe('fast path runtime', () => {
     rt.stop();
   });
 
+  it('a tab hidden while it waits for the engine prepares nothing, and re-arms when visible again', async () => {
+    let finishCompile!: (m: WebAssembly.Module) => void;
+    let compiles = 0;
+    const h = host({ compileModule: () => { compiles++; return compiles === 1 ? new Promise((r) => { finishCompile = r; }) : Promise.resolve({} as WebAssembly.Module); } });
+    const rt = createFastPathRuntime(h.deps)!;
+    const idle = h.runIdle();
+    h.setHidden(true);
+    finishCompile({} as WebAssembly.Module);
+    await idle;
+    assert.equal(h.workers.length, 0, 'no geometry spare in the hidden tab');
+    assert.equal(h.parserPrepares, 0, 'no parser spare in the hidden tab');
+    h.setHidden(false);
+    await ready(h);
+    assert.equal(rt.state().geometrySpare, 'ready');
+    assert.equal(h.parserSpare, true);
+    rt.stop();
+  });
+
+  it('a release between the pick and the claim cancels the pending run', async () => {
+    const h = host();
+    const rt = createFastPathRuntime(h.deps)!;
+    await ready(h);
+    const file = ifc();
+    h.pick({ file });
+    const worker = h.workers[0];
+    assert.equal(rt.state().pendingRun, true);
+    h.setHidden(true);
+    h.advance(HIDDEN_RELEASE_MS);
+    assert.equal(worker.terminated, true, 'the run\'s worker is stopped by the release');
+    assert.equal(rt.state().pendingRun, false);
+    assert.equal(h.claim(file), null, 'the load meshes through the normal pipeline');
+    rt.stop();
+  });
+
   it('a load that starts while the geometry spare still warms up terminates it (no warm-up meshing during the load)', async () => {
     const h = host();
     const rt = createFastPathRuntime(h.deps)!;

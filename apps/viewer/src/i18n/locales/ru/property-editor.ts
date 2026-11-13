@@ -27,6 +27,7 @@ export const propertyEditorRu = {
     other: "Обновление может отразиться на {count} экземпляра, если нет локального переопределения.",
   },
   "propertyEditor.inline.applyToType": "Применить к типу",
+  "propertyEditor.inline.overrideOnElement": "Переопределить для этого элемента",
   "propertyEditor.inline.keepEditing": "Продолжить редактирование",
   "propertyEditor.valueType.string": "String",
   "propertyEditor.valueType.label": "Label",

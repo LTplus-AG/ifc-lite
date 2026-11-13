@@ -41,19 +41,41 @@ for part in parts:
     normal = (-inward[0]*math.sin(slopes[edge]), -inward[1]*math.sin(slopes[edge]), math.cos(slopes[edge]))
     planes.append((normal, dot(normal[:2], outline[edge])))
 settings = ifcopenshell.geom.settings()
+shapes = [ifcopenshell.geom.create_shape(settings, item) for item in items]
+meshes = [getattr(shape, 'geometry', shape) for shape in shapes]
+vertices_by_part = [list(zip(*[iter(mesh.verts)]*3)) for mesh in meshes]
+triangles_by_part = [[tuple(vertices_by_part[i][j] for j in face) for face in zip(*[iter(mesh.faces)]*3)] for i, mesh in enumerate(meshes)]
+
+def on_triangle(p, triangle):
+    a, b, c = triangle
+    u, v, w = sub(b, a), sub(c, a), sub(p, a)
+    n = cross(u, v)
+    n2 = dot(n, n)
+    if n2 < 1e-18 or abs(dot(n, w)) > 1e-6*math.sqrt(n2):
+        return False
+    uu, vv, uv, wu, wv = dot(u, u), dot(v, v), dot(u, v), dot(w, u), dot(w, v)
+    denominator = uu*vv-uv*uv
+    if denominator <= 1e-18:
+        return False
+    s, t = (wu*vv-wv*uv)/denominator, (wv*uu-wu*uv)/denominator
+    return s >= -1e-6 and t >= -1e-6 and s+t <= 1+1e-6
+
 pair_areas = {}
 total_volume = 0.
 bottom_area = 0.
 for i, (part, item) in enumerate(zip(parts, items, strict=True)):
-    shape = ifcopenshell.geom.create_shape(settings, item)
-    mesh = getattr(shape, 'geometry', shape)
-    vertices = list(zip(*[iter(mesh.verts)]*3))
+    styled, = item.StyledByItem
+    style, = styled.Styles
+    assert style.Name == f'Edge {part.Tag}', (part.Tag, style.Name)
+    mesh = meshes[i]
+    vertices = vertices_by_part[i]
     faces = list(zip(*[iter(mesh.faces)]*3))
     normal, k = planes[i]
     measured_volume = abs(ifcopenshell.util.shape.get_volume(mesh))
     qto = ifcopenshell.util.element.get_psets(part)['Qto_SlabBaseQuantities']
     assert math.isclose(measured_volume, qto['GrossVolume'], rel_tol=1e-6, abs_tol=1e-8), (i, measured_volume, qto)
     total_volume += measured_volume
+    plane_bottom_area = 0.
     for face in faces:
         points = [vertices[j] for j in face]
         area = math.sqrt(dot(cross(sub(points[1], points[0]), sub(points[2], points[0])), cross(sub(points[1], points[0]), sub(points[2], points[0])))) / 2
@@ -62,16 +84,20 @@ for i, (part, item) in enumerate(zip(parts, items, strict=True)):
         distances = [dot(normal, p)-k for p in points]
         if max(abs(d) for d in distances) < 1e-6:
             bottom_area += area
+            plane_bottom_area += area
             continue
         if max(abs(d-thickness) for d in distances) < 1e-6:
             continue
         if any(max(abs(dot(n, p)-c) for p in points) < 1e-6 for n, c in eaves):
             continue
+        middle = tuple(sum(p[axis] for p in points)/3 for axis in range(3))
         matches = [j for j, (n, c) in enumerate(planes) if j != i
-                   and max(abs(distances[t]-(dot(n, p)-c)) for t, p in enumerate(points)) < 1e-6]
+                   and max(abs(distances[t]-(dot(n, p)-c)) for t, p in enumerate(points)) < 1e-6
+                   and any(on_triangle(middle, triangle) for triangle in triangles_by_part[j])]
         assert matches, f'Plane {i} has a side face outside any mitre or eave: {points}'
         j = matches[0]
         pair_areas[i, j] = pair_areas.get((i, j), 0.) + area
+    assert math.isclose(plane_bottom_area, qto['GrossArea'], rel_tol=1e-6, abs_tol=1e-8), (i, plane_bottom_area, qto)
 for (i, j), area in pair_areas.items():
     other = pair_areas.get((j, i), 0.)
     assert math.isclose(area, other, rel_tol=1e-6, abs_tol=1e-7), (i, j, area, other)

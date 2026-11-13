@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 /** Continuous parallel roof tops, partitioned by signed-distance bisectors. */
 import { heightAt, type FootprintRoofPlan } from './roof-footprint-plan.js';
-import { cellVolume, centre, clipCell, dot3, normaliseCut, slabCell, splitPolygon, subtract3, triangles,
+import { cellPlaneArea, cellVolume, centre, clipCell, dot3, normaliseCut, slabCell, splitPolygon, subtract3, triangles,
   type Cut, type Point, type Polyhedron } from './roof-mitre-polyhedron.js';
 
 export interface MitredPlane {
@@ -11,6 +11,7 @@ export interface MitredPlane {
   readonly regions: Cut[][];
   /** Exact polyhedral volume, in the plan's native length unit cubed. */
   readonly volume: number;
+  readonly area: number;
 }
 
 /** A max-of-min affine expression for the underside terrain. Splitting each
@@ -75,7 +76,7 @@ export function planRoofMitres(plan: FootprintRoofPlan, thickness: number): Mitr
       }
     }
     type Cell = { solid: Polyhedron; signs: number[] };
-    const patterns = new Map<string, { cuts: Cut[]; volume: number }>();
+    const patterns = new Map<string, { cuts: Cut[]; volume: number; area: number }>();
     for (const triangle of eaves) {
       let base = slabCell(triangle, p => heightAt(plane, p), thickness / Math.cos(plane.slope));
       for (const cut of ownership) base = clipCell(base, cut, tolerance);
@@ -94,14 +95,15 @@ export function planRoofMitres(plan: FootprintRoofPlan, thickness: number): Mitr
         if (Math.abs(value - own) > tolerance * 20) continue;
         const key = cell.signs.join(',');
         const previous = patterns.get(key);
-        if (previous) previous.volume += cellVolume(cell.solid);
+        const area = cellPlaneArea(cell.solid, normal.n, normal.k, tolerance * 20);
+        if (previous) { previous.volume += cellVolume(cell.solid); previous.area += area; }
         else patterns.set(key, { cuts: [...ownership, ...cuts.map((cut, j) => ({
           n: cut.n.map(v => v * cell.signs[j]) as Point, k: cut.k * cell.signs[j],
-        }))], volume: cellVolume(cell.solid) });
+        }))], volume: cellVolume(cell.solid), area });
       }
     }
     const regions = [...patterns.values()];
     if (!regions.length) throw new Error(`Mitred roof plane ${plane.edge} has no material`);
-    return { regions: regions.map(p => p.cuts), volume: regions.reduce((sum, p) => sum + p.volume, 0) };
+    return { regions: regions.map(p => p.cuts), volume: regions.reduce((sum, p) => sum + p.volume, 0), area: regions.reduce((sum, p) => sum + p.area, 0) };
   });
 }

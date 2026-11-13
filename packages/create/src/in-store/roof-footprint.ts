@@ -74,7 +74,7 @@ export interface FootprintRoofBody {
   readonly productShapeId: number;
   readonly solidIds: number[];
   readonly profileIds: number[];
-  readonly planeVolumes?: readonly number[];
+  readonly planeMeasurements?: ReadonlyArray<{ area: number; volume: number }>;
 }
 
 type Vec3 = [number, number, number];
@@ -134,7 +134,7 @@ export function emitFootprintRoofBody(
     `#${bodyContextId}`, 'Body', mitres ? 'CSG' : 'SweptSolid', solidIds.map((id) => `#${id}`),
   ]).expressId;
   const productShapeId = editor.addEntity('IfcProductDefinitionShape', [null, null, [`#${shapeRepId}`]]).expressId;
-  return { shapeRepId, productShapeId, solidIds, profileIds, plan, planeVolumes: mitres?.map(p => p.volume) };
+  return { shapeRepId, productShapeId, solidIds, profileIds, plan, planeMeasurements: mitres?.map(({ area, volume }) => ({ area, volume })) };
 }
 
 /** The `IfcLite_RoofFootprint` properties a definition is recorded as, in metres and radians. */
@@ -317,7 +317,7 @@ export function editFootprintRoofInStore(store: IfcDataStore, editor: StoreEdito
     if (roof.attributes.length > 8) draft.setPositionalAttribute(roofId, 8, `.${body.plan.shapeType}.`);
     const definition = { ...next, PredefinedType: body.plan.shapeType };
     writeFootprintDefinition(view, roofId, definition);
-    writeRoofPlaneParts(draft, { ...scale, getMeasureUnitScales: () => projectMeasureScales(store) }, roofId, body, next.Thickness, store, body.planeVolumes);
+    writeRoofPlaneParts(draft, { ...scale, getMeasureUnitScales: () => projectMeasureScales(store) }, roofId, body, next.Thickness, store, body.planeMeasurements);
     removeUnusedRoofBodies(store, draft, oldBodies);
     removeReplacedPlanes(store, draft, replaced);
     refreshTopAttachmentsInStore({ dataStore: store, view, editor: draft }, [roofId]);

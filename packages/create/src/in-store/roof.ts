@@ -155,7 +155,7 @@ function addFootprintRoofToStore(editor: StoreEditor, anchor: SpatialAnchor, par
   const roofId = editor.addEntity('IfcRoof', attrs as Parameters<StoreEditor['addEntity']>[1]).expressId;
   const relContainedId = emitRelContainedInSpatialStructure(editor, anchor.ownerHistoryId, roofId, anchor.storeyId, anchor.guidRandom);
   writeFootprintDefinition(editor.getMutationView(), roofId, { ...definition, PredefinedType: body.plan.shapeType });
-  writeRoofPlaneParts(editor, anchor, roofId, body, definition.Thickness, undefined, body.planeVolumes);
+  writeRoofPlaneParts(editor, anchor, roofId, body, definition.Thickness, undefined, body.planeMeasurements);
   return {
     roofId, placementId, profileId: body.profileIds[0], solidId: body.solidIds[0], solidIds: body.solidIds,
     shapeRepId: body.shapeRepId, productShapeId: body.productShapeId, relContainedId,

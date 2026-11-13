@@ -217,6 +217,7 @@ function persistFor(modelId: string): void {
     measure2DResults: s.measure2DResults,
     polygonArea2DResults: s.polygonArea2DResults,
     textAnnotations2D: s.textAnnotations2D,
+    tagAnnotations2D: s.tagAnnotations2D, ownerModelId: modelId,
     cloudAnnotations2D: s.cloudAnnotations2D,
     drawing2DDisplayOptions: s.drawing2DDisplayOptions,
     sectionConfig: lastSectionConfigModelId === modelId ? lastSectionConfig : null,
@@ -318,7 +319,7 @@ export function ensureSaveSubscription(): void {
     const changed =
       state.measure2DResults !== prev.measure2DResults ||
       state.polygonArea2DResults !== prev.polygonArea2DResults ||
-      state.textAnnotations2D !== prev.textAnnotations2D ||
+      state.textAnnotations2D !== prev.textAnnotations2D || state.tagAnnotations2D !== prev.tagAnnotations2D ||
       state.cloudAnnotations2D !== prev.cloudAnnotations2D ||
       state.drawing2DDisplayOptions !== prev.drawing2DDisplayOptions;
     prev = state;

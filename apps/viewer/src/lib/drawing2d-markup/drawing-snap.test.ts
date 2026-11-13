@@ -114,6 +114,19 @@ describe('drawing snap: collinear split vertices', () => {
     assert.equal(kept.length, 3, 'joint kept where entity 21 ends on it');
   });
 
+  it('drops a split 5e-8 m off the chord near a corner, but keeps a 0.1 mm kink (#9927 deviation)', () => {
+    // The 0.2 m end face of the sample wall "house left", split 0.0613 m from
+    // its corner, with the split point as far off the chord as #9927 measured
+    // on the real model. A 1e-6 rad angle test kept this vertex.
+    const endFace = (dev: number): DrawingPolygon =>
+      polygon(12, [P(3, -9), P(3.1387, -9 + dev), P(3.2, -9), P(3.2, -3), P(3, -3)]);
+    const ring = (dev: number) => buildDrawingSnapShapes(drawing([endFace(dev)])).shapes[0];
+    const split = ring(5e-8);
+    assert.equal(split.type === 'polyline' && split.pts.length === 4, true, 'near-corner split dropped');
+    const kink = ring(1e-4);
+    assert.equal(kink.type === 'polyline' && kink.pts.length === 5, true, 'real 0.1 mm kink kept');
+  });
+
   it('keeps a corner between two pieces of the same entity', () => {
     const corner = [line(22, P(0, 8), P(2, 8)), line(22, P(2, 8), P(2, 10))];
     assert.equal(buildDrawingSnapShapes(drawing([], corner)).shapes.length, 2, 'L stays two lines');

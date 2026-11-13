@@ -16,8 +16,15 @@
 
 import type { Pt } from '../drafting-core/types';
 
-/** Directions within this angle (radians) count as collinear. */
-export const COLLINEAR_ANGLE = 1e-6;
+/**
+ * A vertex this close (metres) to the chord between its neighbours is a
+ * straight continuation. A distance, not an angle: split points sit up to
+ * ~5e-8 m off the chord on real models (#9927), which a 1e-6 rad angle
+ * rejects once either piece is short (a split 6 cm from a corner of a 0.2 m
+ * wall end face), while the smallest real corner sits millimetres off. The
+ * same bound `removeCollinearRingVertices` applies at the source.
+ */
+export const COLLINEAR_DISTANCE = 1e-6;
 /** Points within this distance (metres) count as one vertex. */
 export const VERTEX_TOLERANCE = 1e-6;
 
@@ -46,17 +53,17 @@ export class VertexOwners {
   }
 }
 
+/** True when a -> b -> c runs straight on: `b` lies between `a` and `c` and within COLLINEAR_DISTANCE of the chord a-c. */
 function sameDirection(a: Pt, b: Pt, c: Pt): boolean {
   const ux = b.x - a.x;
   const uy = b.y - a.y;
   const vx = c.x - b.x;
   const vy = c.y - b.y;
-  const lu = Math.hypot(ux, uy);
-  const lv = Math.hypot(vx, vy);
-  if (lu <= VERTEX_TOLERANCE || lv <= VERTEX_TOLERANCE) return false;
-  const sin = (ux * vy - uy * vx) / (lu * lv);
-  const cos = (ux * vx + uy * vy) / (lu * lv);
-  return cos > 0 && Math.abs(sin) <= Math.sin(COLLINEAR_ANGLE);
+  if (Math.hypot(ux, uy) <= VERTEX_TOLERANCE || Math.hypot(vx, vy) <= VERTEX_TOLERANCE) return false;
+  if (ux * vx + uy * vy <= 0) return false;
+  const wx = c.x - a.x;
+  const wy = c.y - a.y;
+  return Math.abs(ux * wy - uy * wx) / Math.hypot(wx, wy) <= COLLINEAR_DISTANCE;
 }
 
 /**

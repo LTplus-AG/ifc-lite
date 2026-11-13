@@ -201,7 +201,7 @@ describe('load window', () => {
     assert.equal(h.win.isHeld('B'), false, 'settled: B is computed');
   });
 
-  it('holds a settled model again when it is seen reloading, and every model in single-store mode', async () => {
+  it('holds a settled model again when it is seen reloading', async () => {
     const h = await harness();
     h.model('A', 'complete');
     h.store(true);
@@ -211,7 +211,7 @@ describe('load window', () => {
     assert.equal(h.win.isHeld('A'), true);
     assert.notEqual(h.win.hold(), before, 'a new snapshot when the held set changes (React re-renders)');
     assert.equal(before.isHeld('A'), false, 'old snapshots are immutable');
-    assert.equal(h.win.isHeld('legacy'), true, 'no model entry: the single store is the one loading');
+    assert.equal(h.win.isHeld('legacy'), false, 'real models are registered: legacy names no load (single-store mode is covered below)');
   });
 
   it('single-model cache hit: the record turning complete releases nothing; the model is released only after its load ended and that frame painted', async () => {
@@ -300,5 +300,25 @@ describe('load window', () => {
     h.model('A', 'complete');
     h.settle(); h.settle();
     assert.equal(h.win.isHeld('A'), true);
+  });
+
+  it('legacy is held only in single-store mode: with real models registered it names no load', async () => {
+    const h = await harness();
+    h.store(true);
+    assert.equal(h.win.isHeld('legacy'), true, 'no model registered: the single store is the one loading');
+    h.model('A', 'complete');
+    assert.equal(h.win.isHeld('legacy'), false, 'a real model registered: a caller with no model id to ask about is not held');
+    h.model('B', 'pending');
+    assert.equal(h.win.isHeld('legacy'), false, 'another model loading does not hold it either');
+    assert.equal(h.win.isHeld('B'), true);
+    h.model('A', undefined, true); h.model('B', undefined, true);
+    assert.equal(h.win.isHeld('legacy'), true, 'models gone: back to single-store mode, held');
+  });
+
+  it('a real model that is called legacy is held while it loads', async () => {
+    const h = await harness();
+    h.store(true);
+    h.model('legacy', 'pending');
+    assert.equal(h.win.isHeld('legacy'), true);
   });
 });

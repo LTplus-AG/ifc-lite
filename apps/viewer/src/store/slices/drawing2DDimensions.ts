@@ -169,13 +169,22 @@ export function exportableDimensions(dimensions: readonly Dimension2D[], current
 const isValidPlacement = (dim: Pick<Dimension2D, 'a' | 'b' | 'offset' | 'orientation'>): boolean =>
   isPoint2D(dim.a) && isPoint2D(dim.b) && isFiniteNumber(dim.offset) && DIMENSION_2D_ORIENTATIONS.includes(dim.orientation);
 
+/**
+ * One rule for every way a dimension enters the store: a valid placement
+ * whose measured value is not degenerate (e.g. a vertical dimension of two
+ * horizontally aligned points would measure 0 and collapse to a point).
+ */
+function isUsableDimension(dimension: Dimension2D): boolean {
+  return isValidPlacement(dimension) && !isDegenerateMeasurement(measuredDimensionValue(dimension));
+}
+
 export function createDimension2DActions(
   set: Parameters<StateCreator<Drawing2DSlice>>[0],
   get: Parameters<StateCreator<Drawing2DSlice>>[1],
 ): Dimension2DActions {
   return {
     addDimension2D: (dimension) => {
-      if (!isValidPlacement(dimension)) return;
+      if (!isUsableDimension(dimension)) return;
       set((state) => ({ dimensions2D: [...state.dimensions2D, dimension] }));
     },
 
@@ -183,7 +192,7 @@ export function createDimension2DActions(
       dimensions2D: state.dimensions2D.map((d) => {
         if (d.id !== id) return d;
         const next = { ...d, ...updates };
-        return isValidPlacement(next) ? next : d;
+        return isUsableDimension(next) ? next : d;
       }),
     })),
 
@@ -213,7 +222,7 @@ export function createDimension2DActions(
         ...(placement.refs ? { refs: placement.refs } : {}),
         ...(placement.plane ? { plane: dimensionPlaneStamp(placement.plane) } : {}),
       };
-      if (!isValidPlacement(dimension) || isDegenerateMeasurement(measuredDimensionValue(dimension))) return null;
+      if (!isUsableDimension(dimension)) return null;
       set((state) => ({ dimensions2D: [...state.dimensions2D, dimension] }));
       return dimension.id;
     },

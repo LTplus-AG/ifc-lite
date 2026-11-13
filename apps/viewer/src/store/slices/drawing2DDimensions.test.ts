@@ -59,6 +59,15 @@ describe('dimension actions', () => {
     assert.equal(s.getState().dimensions2D[0].a.x, 0, 'a non-finite point leaves the dimension as it was');
   });
 
+  it('refuses an add or update that would measure zero, like completing one does', () => {
+    const s = makeStore();
+    s.getState().addDimension2D(dim('flat', { orientation: 'vertical' }));
+    assert.equal(s.getState().dimensions2D.length, 0, 'a vertical dimension of horizontally aligned points is not stored');
+    s.getState().addDimension2D(dim('d1'));
+    s.getState().updateDimension2D('d1', { orientation: 'vertical' });
+    assert.equal(s.getState().dimensions2D[0].orientation, 'aligned', 'an update that would measure zero is refused');
+  });
+
   it('places two points, then completes them into a dimension stamped with its plane', () => {
     const s = makeStore();
     const plane = { axis: 'down', position: 40, flipped: false, id: 'live-id', name: 'A' } as unknown as DrawnSectionPlane;

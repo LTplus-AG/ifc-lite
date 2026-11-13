@@ -26,6 +26,8 @@ import {
   ensureCW,
 } from './math.js';
 
+import { removeCollinearRingVertices } from './polygon-helpers.js';
+
 export { simplifyPolygon, polygonBounds } from './polygon-helpers.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -252,7 +254,15 @@ export class PolygonBuilder {
 
     // Build closed loops. Multi-material (per-layer) groups additionally STITCH
     // disconnected open band segments at the interface chords (see `buildLoops`).
-    const loops = this.buildLoops(segments2D, color !== undefined);
+    // Tessellation splits (a triangle edge crossing the cut plane) leave
+    // collinear vertices on straight faces; drop them so ring vertices are real
+    // corners. The tolerance is far below the weld tolerance so finely
+    // tessellated arcs keep their vertices.
+    const collinearTolerance = this.tolerance * 0.01;
+    const loops = this.buildLoops(segments2D, color !== undefined).map((loop) => ({
+      ...loop,
+      points: removeCollinearRingVertices(loop.points, collinearTolerance),
+    }));
 
     if (loops.length === 0) return [];
 

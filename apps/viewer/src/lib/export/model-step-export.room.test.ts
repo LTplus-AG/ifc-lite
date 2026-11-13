@@ -107,9 +107,9 @@ test('the dialog message names the refused model through its catalogue key and p
     modelId: 'room', dataStore: await roomStore([[FIXTURE_PROJECT, PROXY_A], [FIXTURE_SITE, PROXY_B]]), options: OPTIONS, scheduleState: null,
   }).catch((error: unknown) => error);
   assert.equal(exportFailureMessage(moved, t, 'Selected'), 'exportDialog.stepRecords.roomMoved|Selected');
-  const merged = (() => {
-    try { roomMergeInput({ id: 'm', name: 'Merged A', store: tabularFixtureStore(), applyMutations: true }); } catch (error) { return error; }
-  })();
+  const merged = await Promise.resolve()
+    .then(() => roomMergeInput({ id: 'm', name: 'Merged A', store: tabularFixtureStore(), applyMutations: true }))
+    .catch((error: unknown) => error);
   assert.equal(exportFailureMessage(merged, t, 'Selected'), 'exportDialog.stepRecords.noRecords|Merged A', 'the refused merged model wins over the selection');
   assert.equal(exportFailureMessage(new Error('boom'), t), 'Export failed: boom');
 });

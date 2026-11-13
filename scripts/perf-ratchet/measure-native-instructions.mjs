@@ -28,6 +28,14 @@
  * the ceiling's relative tolerance (0.05%) is a build-environment allowance,
  * not a noise allowance.
  *
+ * OWN CODE ONLY. The gated counts are the self cost of the probe binary's own
+ * functions (ifc-lite plus the statically linked Rust std and crates), without
+ * the system libraries: glibc's memcmp retires an alignment-dependent number of
+ * instructions, so binary layout alone moved FZK's parse phases by up to ~0.14%
+ * (instructions-report.mjs says why self cost). The whole-process counts
+ * (`<phase>-all-objects`) and the calls into system libraries
+ * (`<phase>-system-calls`) are reported as information, never gated.
+ *
  * SCOPE. Instruction counts gate per-element kernel and parse work. They do
  * not see scheduling, threading or browser-only effects (`--single-thread`);
  * those still need an end-to-end A/B (scripts/perf/README.md).
@@ -77,9 +85,17 @@ export function buildMeasured({ set, report, commit, measuredAt = new Date().toI
     if (!Number.isFinite(value) || value <= 0) {
       throw new Error(`phase ${field} is ${JSON.stringify(value)} in the report; a zero or missing count means the run did not measure it`);
     }
-    return { id: `${def.key}.${name}`, value, detail: `${field} Ir` };
+    return { id: `${def.key}.${name}`, value, detail: `${field} Ir, own code` };
   });
-  return { family: def.family, commit, measuredAt, metrics };
+  const informational = [];
+  for (const [field, name] of PHASES) {
+    if (def.skip?.includes(field)) continue;
+    const all = report.allObjects?.[field];
+    const calls = report.externalCalls?.[field.replace(/Ir$/, 'Calls')];
+    if (Number.isFinite(all)) informational.push({ id: `${def.key}.${name}-all-objects`, value: all, unit: 'Ir', detail: 'with system libraries' });
+    if (Number.isFinite(calls)) informational.push({ id: `${def.key}.${name}-system-calls`, value: calls, unit: 'calls', detail: 'calls into system libraries' });
+  }
+  return { family: def.family, commit, measuredAt, metrics, ...(informational.length ? { informational } : {}) };
 }
 
 /** Run instructions.sh for a set and return its parsed JSON. */

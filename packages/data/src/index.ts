@@ -164,6 +164,7 @@ export { spatialLookups } from './spatial-lookups.js';
 export {
   iterateEffectiveEntities,
   countEffectiveEntityTypes,
+  sourceEntityClasses,
   type DerivedEntities,
   type EffectiveEntity,
   type EffectiveEntityOverlay,

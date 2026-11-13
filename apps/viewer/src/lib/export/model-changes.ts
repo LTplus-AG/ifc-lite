@@ -362,13 +362,10 @@ export async function buildChangedArtifacts(
         });
       } else {
         const dataStore = await deps.resolveStepDataStore(entry.id);
-        if (!dataStore) {
-          skipped.push({ name: entry.name, reason: 'Model data is unavailable for export' });
-          continue;
-        }
         // A tabular store's bytes are not STEP: there is nothing to write the changes into.
-        if (dataStore.sourceKind === 'tabular') {
-          skipped.push({ name: entry.name, reason: 'Model has no IFC STEP source to export changes into' });
+        if (!dataStore || dataStore.sourceKind === 'tabular') {
+          const reason = dataStore ? 'Model has no IFC STEP source to export changes into' : 'Model data is unavailable for export';
+          skipped.push({ name: entry.name, reason });
           continue;
         }
         artifact = await deps.exportStep(entry.id, dataStore, view, {

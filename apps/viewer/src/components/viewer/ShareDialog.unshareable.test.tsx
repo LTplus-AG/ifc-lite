@@ -164,6 +164,10 @@ describe('ShareDialog: models the share seed cannot carry', () => {
     await act(() => settle('picking the active-only scope did not settle'));
     assert.match(bodyText(), /Nothing here can be shared, no IFC records to share from: terrain\.3dm\./,
       'with only the .3dm in scope the owner is told nothing can be shared');
+    // And the scope field's caption is not promising the opposite directly
+    // above it: "Only x is shared" is a promise of a room that is not coming.
+    assert.doesNotMatch(bodyText(), /Only .terrain\.3dm. is shared/,
+      'the scope caption does not promise a share the mint will refuse');
 
     click(createLinkButton()!);
     await act(() => settle('room creation did not settle'));

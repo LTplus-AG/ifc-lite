@@ -133,12 +133,12 @@ export type StepSkipReason = 'noRecords' | 'noData';
  * every shared room, single and merged, which is what main exported.
  *
  * `hasRoomStepSource` asks whether a portable source is REGISTERED, not
- * whether `canExportRoomAsStep` currently accepts it — which it structurally
- * cannot ask anyway, having only the store and not the room's
- * `MutablePropertyView`. A room whose root set has moved past its source is
- * therefore let through here and refused further down, where the merged path
- * throws `roomMergeInput`'s named "export it separately" rather than dropping
- * the model from the file without a word.
+ * whether `canExportRoomAsStep` currently accepts it. That is a choice, not a
+ * limitation — `canExportRoomAsStep` answers without a `MutablePropertyView`
+ * too. A room whose root set has moved past its source is deliberately let
+ * through here and refused further down, where the merged path throws
+ * `roomMergeInput`'s named "export it separately" rather than dropping the
+ * model from the file without a word.
  *
  * The single path for that same room is unchanged from main, and unchanged is
  * all this claims: it falls through to `StepExporter` over the room store. On

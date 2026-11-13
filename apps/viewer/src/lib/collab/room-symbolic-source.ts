@@ -44,9 +44,9 @@ export function roomSymbolicSource(store: object): RoomSymbolicSource | undefine
  *
  * The weak half of a pair. `canExportRoomAsStep` (`room-step-export.ts`) asks
  * the strong question, whether that source still covers every root in the
- * LIVE room, and it needs the room's `MutablePropertyView` to do it. A caller
- * deciding whether to OFFER a STEP export has only the store, and wants this
- * one; a root set that has moved on is refused later, by name.
+ * LIVE room. A caller deciding whether to OFFER a STEP export wants this one
+ * instead, so a root set that has moved on is refused later and by name
+ * rather than dropped from the dialog without a word.
  *
  * It lives here, beside the `WeakMap` it reads, rather than next to its
  * strong twin: this module imports nothing but types, so an export gate can
@@ -54,7 +54,7 @@ export function roomSymbolicSource(store: object): RoomSymbolicSource | undefine
  * and the placement-edit boot module onto the command-palette path.
  */
 export function hasRoomStepSource(store: object): boolean {
-  return sources.get(store) !== undefined;
+  return sources.has(store);
 }
 
 /** Re-key symbolic owners into the reconstructed room model's id space. */

@@ -21,7 +21,6 @@ import { parseFixtureModel } from './anonymized-export/anonymized-export-fixture
 import { chooseMerged, exportButton, openExportDialog, shellText } from './export-dialog-scope.test-support';
 import { ExportDialog } from './ExportDialog';
 
-
 /** A `.3dm`-shaped participant: a real `buildTabularDataStore` store, not a hand-set marker. */
 function tabularModel(id: string): FederatedModel {
   return { ...fixtureModel(id), schemaVersion: 'IFC4' as const, ifcDataStore: tabularFixtureStore() };

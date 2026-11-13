@@ -17,6 +17,7 @@ import { isTypeVisible, type TypeVisibilityGate } from '@/store/typeVisibilityFi
 export interface CutMeshVisibility {
   /** Class-level Visibility toggles (Spaces, Openings, Site, …): a global filter, not 3D-only (#2060). */
   typeVisibility: TypeVisibilityGate;
+  structuralViewMode?: 'both' | 'physical' | 'analytical';
   /** Hidden entities (global ids, so every federated model is covered). */
   hiddenIds: ReadonlySet<number>;
   /** Isolation, when one is active. */
@@ -35,7 +36,7 @@ interface CutMesh { expressId: number; ifcType?: string; geometryClass?: number 
 /** The meshes of `all` (the whole scene) that a cut should slice. */
 export function visibleCutMeshes<T extends CutMesh>(all: readonly T[], visibility: CutMeshVisibility): T[] {
   // Type-library geometry (IfcTypeProduct RepresentationMap copies, #2058) is not part of the model view.
-  let meshes = selectModelMeshes(all).filter((mesh) => isTypeVisible(mesh.ifcType, visibility.typeVisibility));
+  let meshes = selectModelMeshes(all).filter((mesh) => isTypeVisible(mesh.ifcType, visibility.typeVisibility, visibility.structuralViewMode));
   if (visibility.hiddenIds.size > 0) meshes = meshes.filter((mesh) => !visibility.hiddenIds.has(mesh.expressId));
   const isolated = visibility.isolatedIds;
   if (isolated !== null) meshes = meshes.filter((mesh) => isolated.has(mesh.expressId));

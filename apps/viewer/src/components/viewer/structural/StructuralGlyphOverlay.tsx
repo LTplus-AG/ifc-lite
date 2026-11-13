@@ -42,6 +42,7 @@ const STROKE: Record<GlyphStyle, string> = {
   moment: 'stroke-overlay-ink',
   temperature: 'stroke-status-warn',
   displacement: 'stroke-status-info',
+  reaction: 'stroke-overlay-ink-muted',
 };
 
 // A lazy catalogue: it loads with this chunk, not on the page's first load.

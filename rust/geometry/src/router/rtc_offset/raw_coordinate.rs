@@ -19,7 +19,9 @@ impl GeometryRouter {
             | IfcType::IfcFacetedBrepWithVoids
             | IfcType::IfcAdvancedBrep
             | IfcType::IfcAdvancedBrepWithVoids => self.brep_first_vertex(item, decoder),
-            IfcType::IfcFaceSurface | IfcType::IfcAdvancedFace => {
+            // Probed for every IfcFace; whether one meshes (a structural
+            // member's, #9668) is decided by the callers.
+            IfcType::IfcFaceSurface | IfcType::IfcAdvancedFace | IfcType::IfcFace => {
                 self.face_first_vertex(item, decoder)
             }
             IfcType::IfcTriangulatedFaceSet
@@ -87,14 +89,15 @@ impl GeometryRouter {
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Option<(f64, f64, f64)>> {
+        // A structural member's bare IfcFace has no registered processor but
+        // still meshes (#9668), so it rebases like any other face. The cheap
+        // checks come before the vertex probe.
         if !self.has_rtc_offset()
+            || (self.processor_for(&item.ifc_type).is_none() && !self.member_face_selected(item, element))
             || !self
                 .representation_item_first_vertex_meters(item, decoder)
                 .is_some_and(coord_is_large)
         {
-            return Ok(None);
-        }
-        if self.processor_for(&item.ifc_type).is_none() {
             return Ok(None);
         }
         self.element_frame_rtc(element, decoder)

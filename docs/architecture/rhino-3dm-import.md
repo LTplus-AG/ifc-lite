@@ -816,12 +816,14 @@ What that says:
   worker contains a crash either way.
 
 **What the budget charges.** Every drawn part costs a third of a triangle per
-vertex, and a mesh at least its triangles: a mesh costs whichever is more,
-with the vertex charge rounded up. That one rule covers meshes, curves
-(polyline points or samples) and point clouds, at top level and per
-placement, in both instance modes; text dots stay on their own limit. A
-block's cost is the sum of its meshes', a whole number, so the admission
-below is exact. Memory follows the vertex buffers as much as the triangles:
+vertex, and a mesh at least its triangles: a mesh costs whichever is more.
+That one rule covers meshes, curves (polyline points or samples) and point
+clouds, at top level and per placement, in both instance modes; text dots
+stay on their own limit. The reader counts the budget in thirds of a
+triangle, so every charge is a whole number: a block's cost is exactly the
+sum of its meshes', and parts that fill the budget fit. Counted in fractions,
+three 5-point curves at `maxTriangles: 5` drew two [measured, then fixed;
+test]. Memory follows the vertex buffers as much as the triangles:
 before the vertex charge, a mesh of 1 triangle over 100,000 vertices came
 back with 2.4 MB of buffers at `maxTriangles: 10`, and 50 baked placements of
 it with 120 MB at `maxTriangles: 100` [measured, then fixed; test]. It costs

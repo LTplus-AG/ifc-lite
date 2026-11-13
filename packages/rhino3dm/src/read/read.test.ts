@@ -210,7 +210,7 @@ describe('layers', () => {
   });
 
   // Issue #10070: a merged entity's flag cannot say which of its parts Rhino hides.
-  test('each geometry record carries its own object\'s visibility, so a merged entity keeps it per part', async () => {
+  test.each([false, true])('each geometry record carries its own object\'s visibility, so a merged entity keeps it per part (bakeInstances %s)', async bakeInstances => {
     const id = '2O2Fr$t4X7Zf8NOew3FLOH';
     const result = await readRhino3dm(await craft(c => {
       c.layer('On');
@@ -222,14 +222,15 @@ describe('layers', () => {
       c.addTextDot('tag', [0, 0, 1], { name: 'shown dot', groups: [group], userStrings });
       c.addInstance(c.block('Box', [c.box([0, 0, 0], [1, 1, 1])]), undefined, { name: 'hidden instance', groups: [group], userStrings, hidden: true });
       c.addMesh(c.box([4, 0, 0], [5, 1, 1]), { name: 'alone', hidden: true });
-    }));
+    }), { bakeInstances });
     expect(result.entities.map(e => [e.objectIds.length, e.hidden])).toEqual([[6, false], [1, true]]);
     const flags = (records: { entity: number; hidden: boolean }[]) => records.map(r => [r.entity, r.hidden]);
-    expect(flags(result.meshes)).toEqual([[0, false], [0, true], [1, true]]);
+    // Baked, the hidden instance's box is a mesh of the merged entity, after the two drawn on their own.
+    expect(flags(result.meshes)).toEqual(bakeInstances ? [[0, false], [0, true], [0, true], [1, true]] : [[0, false], [0, true], [1, true]]);
     expect(flags(result.curves)).toEqual([[0, true]]);
     expect(flags(result.pointClouds)).toEqual([[0, true]]);
     expect(flags(result.textDots)).toEqual([[0, false]]);
-    expect(flags(result.instances)).toEqual([[0, true]]);
+    expect(flags(result.instances)).toEqual(bakeInstances ? [] : [[0, true]]);
   });
 
   test('an object whose layer index is outside the table lands on the first layer', async () => {

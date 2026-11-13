@@ -17,13 +17,13 @@ export type DrawnPart = Exclude<Part, { kind: 'instance' }>;
 export interface BlockMeshes { name: string; meshes: RhinoImportDefinition['meshes']; cost: number; reach: RhinoVector3 }
 
 /**
- * What a part costs the triangle budget: a third of a triangle per vertex, since memory follows the
- * vertex buffers, and for a mesh at least its triangles. A mesh's vertex charge is rounded up, so a
- * block's cost is a whole sum of its meshes' and a placement admitted whole is never cut by rounding.
+ * What a part costs the triangle budget, in thirds of a triangle: one per vertex, since memory
+ * follows the vertex buffers, and for a mesh at least its triangles. Counted in thirds so every
+ * charge is a whole number and the budget never drifts by rounding.
  */
-export function cost(part: DrawnPart): number {
-  if (part.kind === 'dot') return 0;
-  return part.kind === 'mesh' ? Math.max(part.indices.length / 3, Math.ceil(part.positions.length / 9)) : part.positions.length / 9;
+export function cost(part: Exclude<DrawnPart, { kind: 'dot' }>): number {
+  const vertices = part.positions.length / 3;
+  return part.kind === 'mesh' ? Math.max(part.indices.length, vertices) : vertices;
 }
 
 /** Reverse each triangle, for geometry placed by a mirroring transform. */
@@ -60,7 +60,13 @@ export class Emitter {
   /** Parts left out as `transform:invalid` so far. They cost no triangles, so the block walk charges them itself. */
   outOfRange = 0;
 
-  constructor(private readonly bake: boolean, private budgetLeft: number, private readonly report: Report) {}
+  /** `budgetLeft` in thirds of a triangle, as `cost` charges. */
+  private budgetLeft: number;
+
+  constructor(private readonly bake: boolean, maxTriangles: number, private readonly report: Report) {
+    // Capped so the thirds stay exact integers; no read gets near 3e15 triangles.
+    this.budgetLeft = Math.min(maxTriangles, Math.floor(Number.MAX_SAFE_INTEGER / 3)) * 3;
+  }
 
   /** How many records have been drawn so far. */
   size(): number {

@@ -252,6 +252,10 @@ describe('PlanView: a grabbed room corner (#6232 A4b review)', () => {
     pointer(svg, 'pointermove', x, y);
     pointer(svg, 'pointerdown', x, y, { buttons: 1 });
     const drag = () => (getCommandRuntime().gesture as RoomPlaceGesture).edit.drag;
+    const grabbed = drag();
+    // The rendered frame locates the click; this independent world-space
+    // oracle prevents grabbing another corner from satisfying these tests.
+    assert.ok(grabbed && near(grabbed.from, [4, 0]), `expected the [4,0] room corner, got ${JSON.stringify(grabbed?.from)}`);
     return { svg, drag, x, y };
   }
 

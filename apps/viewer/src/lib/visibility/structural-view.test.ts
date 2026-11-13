@@ -65,6 +65,17 @@ it('#9923: retyping a physical product to an analytical class enables the mode c
   assert.equal(hasStructuralData(state),true,'the mask and the command agree on a retyped product');
 });
 
+it('#9923: retyping the only analytical product away disables the mode command', () => {
+  const store = createSyntheticDataStore({schemaVersion:'IFC4',fileSize:0,entities:[
+    {expressId:7,type:'IfcStructuralCurveMember',hasGeometry:true},
+  ]});
+  const view = new MutablePropertyView(null,'default');
+  const state = {models:new Map(),ifcDataStore:store,mutationViews:new Map([['default',view]])};
+  assert.equal(hasStructuralData(state),true);
+  new StoreEditor(store,view).setEntityType(7,'IfcBeam');
+  assert.equal(hasStructuralData(state),false,'the index still lists the original class, the effective model does not');
+});
+
 it('#9923: IFC2X3 varying actions are analytical', () => {
   for (const type of ['IfcStructuralLinearActionVarying','IfcStructuralPlanarActionVarying']) {
     assert.equal(isAnalyticalProduct(type),true,type);

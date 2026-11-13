@@ -24,11 +24,19 @@ export function resolveViewHiddenEntities(state: StructuralVisibilityState): Set
     state.hiddenEntities, state.toGlobalId);
 }
 
+/** Effective presence: an indexed analytical product counts unless it was retyped away. */
 export function hasStructuralData(state: Pick<ViewerState, 'models' | 'ifcDataStore' | 'mutationViews'>): boolean {
-  const stores = state.models.size ? [...state.models.values()].map((m) => m.ifcDataStore) : [state.ifcDataStore];
+  const sources: Array<[IfcDataStore | null | undefined, MutablePropertyView | undefined]> = state.models.size
+    ? [...state.models].map(([id, m]) => [m.ifcDataStore, state.mutationViews.get(id)])
+    : [[state.ifcDataStore, state.mutationViews.get('default')]];
+  const stillAnalytical = (view: MutablePropertyView | undefined, id: number) => {
+    const retype = view?.getEntityTypeMutation(id);
+    return !retype || isAnalyticalProduct(retype.newType);
+  };
   // @raw-entity-enumeration-ok structural product presence; no attribute decoding
-  return stores.some((store) => [...(store?.entityIndex?.byType.keys() ?? [])].some(isAnalyticalProduct))
-    || [...state.mutationViews.values()].some((view) => view.getNewEntities().some((e) => isAnalyticalProduct(e.type))
+  return sources.some(([store, view]) => [...(store?.entityIndex?.byType ?? [])]
+    .some(([type, ids]) => isAnalyticalProduct(type) && ids.some((id) => stillAnalytical(view, id))))
+    || [...state.mutationViews.values()].some((view) => view.getNewEntities().some((e) => isAnalyticalProduct(view.getEntityTypeMutation(e.expressId)?.newType ?? e.type))
       || [...view.getTypeMutations().values()].some((m) => isAnalyticalProduct(m.newType)));
 }
 

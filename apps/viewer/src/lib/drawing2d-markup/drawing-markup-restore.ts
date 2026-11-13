@@ -55,6 +55,11 @@ function readBaseObjectType(dataStore: IfcDataStore, expressId: number): string 
 }
 
 /** One root attribute of a source entity, read the way {@link readBaseObjectType} documents. */
+/** The GlobalId an annotation was opened with, before any session edit: what the absorbed set records. */
+export function sourceMarkupGlobalId(dataStore: IfcDataStore, expressId: number): string | null {
+  return readBaseAttribute(dataStore, expressId, 'GlobalId', 0);
+}
+
 function readBaseAttribute(dataStore: IfcDataStore, expressId: number, name: string, fallbackIndex: number): string | null {
   if (dataStore.source.byteLength <= 0) return null;
   // @raw-entity-enumeration-ok source byte offset is required by EntityExtractor; overlay attribute edits are applied by buildDrawingMarkupMetaLookup
@@ -201,5 +206,5 @@ export function restoredEmbeddedMarkupIdentities(modelId: string, result: Drawin
   if (!context) return [];
   const items = [...result.measure2DResults, ...result.polygonArea2DResults, ...result.textAnnotations2D, ...result.cloudAnnotations2D];
   const ids = items.map((item) => drawingMarkupItemExpressId(item.id)).filter((id): id is number => id !== null);
-  return ids.map((id) => embeddedMarkupIdentity(id, readBaseAttribute(context.dataStore, id, 'GlobalId', 0)));
+  return ids.map((id) => embeddedMarkupIdentity(id, sourceMarkupGlobalId(context.dataStore, id)));
 }

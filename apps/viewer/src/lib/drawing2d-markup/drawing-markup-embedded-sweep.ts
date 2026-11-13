@@ -44,9 +44,9 @@ import { effectiveCreatedRecord, effectiveReferencers, effectiveSourceRecord } f
 import { getInheritanceChainAcrossSchemas, type IfcDataStore } from '@ifc-lite/parser';
 import { DRAWING_MARKUP_OBJECTTYPE } from '@ifc-lite/create';
 import { embeddedMarkupIdentity } from './drawing-markup-absorbed.js';
+import { sourceMarkupGlobalId } from './drawing-markup-restore.js';
 
 /** `IfcRoot.GlobalId`. */
-const GLOBAL_ID_INDEX = 0;
 /** `IfcAnnotation.ObjectType`, the same slot across IFC2X3/IFC4/IFC4X3. */
 const OBJECT_TYPE_INDEX = 4;
 /** `IfcRelDefinesByProperties.RelatedObjects`. */
@@ -204,7 +204,8 @@ export function removeEmbeddedDrawingMarkup(store: IfcDataStore, editor: StoreEd
     if (reader.isCreated(expressId)) continue;
     const attributes = reader.attributes(expressId);
     if (!MARKUP_TAGS.has(attributes?.[OBJECT_TYPE_INDEX])) continue;
-    if (absorbed.has(embeddedMarkupIdentity(expressId, attributes?.[GLOBAL_ID_INDEX]))) annotations.add(expressId);
+    // Match on the GlobalId the restore recorded (the source one), not a pending edit of it.
+    if (absorbed.has(embeddedMarkupIdentity(expressId, sourceMarkupGlobalId(store, expressId)))) annotations.add(expressId);
   }
   if (annotations.size === 0) return 0;
 

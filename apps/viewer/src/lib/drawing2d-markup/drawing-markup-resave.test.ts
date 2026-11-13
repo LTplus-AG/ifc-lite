@@ -323,6 +323,14 @@ describe('saveDrawingMarkupToModel reads relationships with session edits applie
     assert.deepEqual(danglingRefs(saved), []);
   });
 
+  it('still matches an absorbed annotation whose GlobalId has a pending session edit', async () => {
+    const { store, view, markupId } = await reopenedWithForeign();
+    view.setAttribute(markupId, 'GlobalId', '3edited0GlobalId0000000');
+
+    assert.equal(saveDrawingMarkupToModel('m1', NO_MARKUP).previousRemoved, 1);
+    assert.doesNotMatch(exportStep(store), new RegExp(`^#${markupId}=`, 'm'));
+  });
+
   it('removes a relationship a named RelatedObjects edit moved from the untagged annotation onto the markup', async () => {
     const { store, view, markupId, relId, psetId } = await reopenedWithForeign();
     view.setAttribute(9005, 'RelatedObjects', `#${markupId}`);
@@ -429,7 +437,8 @@ describe('saveDrawingMarkupToModel when the replacement write fails', () => {
     assert.equal(outcome.refusal, 'invalid-markup');
     assert.equal(outcome.previousRemoved, 0);
     assert.equal(useViewerStore.getState().mutationVersion, version, 'nothing was published');
-    assert.equal(exportStep(store), before, 'the file the user would save is unchanged');
+    const stamped = (step: string) => step.replace(/^FILE_NAME\(.*$/m, '');
+    assert.equal(stamped(exportStep(store)), stamped(before), 'the file the user would save is unchanged');
   });
 
   it('keeps the markup an earlier save this session wrote', async () => {

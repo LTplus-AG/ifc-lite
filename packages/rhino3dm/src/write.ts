@@ -102,6 +102,7 @@ export async function writeRhino3dm(scene: EncodedRhinoScene, opts: Write3dmOpti
       try {
         l.name = src.name; l.color = rgba(src.color); l.visible = src.visible; l.locked = src.locked;
         if (src.parent !== null) l.parentLayerId = layerIds[src.parent];
+        for (const [k, v] of src.userStrings) l.setUserString(k, v);
         const i = layers.add(l);
         layerIds.push(storedId(layers, i, 'layer', src.name));
         layerIndices.push(i);

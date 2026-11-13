@@ -33,7 +33,7 @@ import { surfaceCommand } from '@/components/viewer/surface-commands';
 import { LayersPanel } from '@/components/viewer/layers/LayersPanel.js';
 import { DropdownMenu, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { ClassVisibilityMenuContent } from '@/components/viewer/toolbar/ClassVisibilityMenu.js';
-import { closeContrastBrowser, warmContrastBrowser } from './render-harness.js';
+import { CONTRAST_BROWSER_SKIP, closeContrastBrowser, warmContrastBrowser } from './render-harness.js';
 import {
   assertRenderedTextClears,
   assertForcedClassReddens,
@@ -211,7 +211,7 @@ function mountClassVisibilityMenu(): string {
 
 describe('tour and misc panel secondary text clears AA as rendered (#6205, #4792)', () => {
   for (const theme of THEMES) {
-    it(`TourStepCard docked-back notice, stuck hint, step count clear AA in ${theme}`, async () => {
+    it(`TourStepCard docked-back notice, stuck hint, step count clear AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       await assertRenderedTextClears(theme, mountTourCard(), [
         resolve('tours.tourStepCard.redockedNotice'),
         resolve('tours.tourStepCard.stuckHint'),
@@ -219,35 +219,35 @@ describe('tour and misc panel secondary text clears AA as rendered (#6205, #4792
       ], WCAG_AA_NORMAL_TEXT);
     });
 
-    it(`LearnTab "X min" readout clears AA in ${theme}`, async () => {
+    it(`LearnTab "X min" readout clears AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       await assertRenderedTextClears(theme, mountLearnTab(), LEARN_MINUTES, WCAG_AA_NORMAL_TEXT);
     });
 
-    it(`ClashPanel active detection-mode label clears AA in ${theme}`, async () => {
+    it(`ClashPanel active detection-mode label clears AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       await assertRenderedTextClears(theme, mountClashPanel(), [CLASH_MODE], WCAG_AA_NORMAL_TEXT);
     });
 
-    it(`ChunkErrorBoundary panel-tone error detail clears AA in ${theme}`, async () => {
+    it(`ChunkErrorBoundary panel-tone error detail clears AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       await assertRenderedTextClears(theme, mountChunkError(), [resolve('viewerShell.chunkError.loadFailedDetail')], WCAG_AA_NORMAL_TEXT);
     });
 
-    it(`RoomPanel "Got an invite?" hint clears AA in ${theme}`, async () => {
+    it(`RoomPanel "Got an invite?" hint clears AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       await assertRenderedTextClears(theme, mountRoomPanel(), [resolve('zonesPanel.roomPanel.inviteHint')], WCAG_AA_NORMAL_TEXT);
     });
 
-    it(`CustomizeSidebar "Hidden" section header clears AA in ${theme}`, async () => {
+    it(`CustomizeSidebar "Hidden" section header clears AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       await assertRenderedTextClears(theme, mountCustomizeSidebar(), [resolve('shellChrome.customizeSidebar.hiddenSectionHeader')], WCAG_AA_NORMAL_TEXT);
     });
 
-    it(`ribbon command labels on the toolbar band clear AA in ${theme} (#8802: no group caption row)`, async () => {
+    it(`ribbon command labels on the toolbar band clear AA in ${theme} (#8802: no group caption row)`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       await assertRenderedTextClears(theme, mountRibbon(), RIBBON_COMMAND_LABELS, WCAG_AA_NORMAL_TEXT);
     });
 
-    it(`LayersPanel "drop .ifcx files anywhere" hint clears AA in ${theme}`, async () => {
+    it(`LayersPanel "drop .ifcx files anywhere" hint clears AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       await assertRenderedTextClears(theme, mountLayersPanel(), [resolve('layersPanel.panel.dropHint')], WCAG_AA_NORMAL_TEXT);
     });
 
-    it(`ClassVisibilityMenu visible/total count clears AA in ${theme}`, async () => {
+    it(`ClassVisibilityMenu visible/total count clears AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       await assertRenderedTextClears(theme, mountClassVisibilityMenu(), [CLASS_COUNT], WCAG_AA_NORMAL_TEXT);
     });
   }
@@ -285,7 +285,7 @@ describe('the measurement catches the pre-#4792 classes on the real sites', () =
   ];
   for (const { site, oldClass, mount, text, host } of controls) {
     for (const theme of THEMES) {
-      it(`non-vacuousness: ${oldClass} on ${site} reddens in ${theme}`, async (t) => {
+      it(`non-vacuousness: ${oldClass} on ${site} reddens in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async (t) => {
         mount();
         const ratios = await assertForcedClassReddens(theme, text, oldClass, WCAG_AA_NORMAL_TEXT, host);
         t.diagnostic(ratios.map((r) => `${r.toFixed(2)}:1`).join(', '));

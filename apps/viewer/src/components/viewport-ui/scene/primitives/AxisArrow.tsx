@@ -114,7 +114,7 @@ export function AxisArrow({ foot, tip, lengthPx = 60, variant = 'accent', classN
   if (!svgLayer) return null;
 
   return createPortal(
-    <line
+    <line aria-hidden="true"
       ref={lineRef}
       style={{ display: 'none' }}
       data-scene-primitive="axis-arrow"

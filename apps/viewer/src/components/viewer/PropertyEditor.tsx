@@ -30,7 +30,7 @@ import type { PropertyValue } from '@ifc-lite/mutations';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { INLINE_VALUE_TYPES } from './property-editor-options';
 import { PropertyBooleanChoices } from './PropertyBooleanChoices';
-import type { InheritedSets } from '@/lib/properties/add-to-property-set';
+import { overrideInheritedProperty, type InheritedSets } from '@/lib/properties/add-to-property-set';
 
 import { NewPropertyDialog } from './property-editor-new-property-dialog';
 import { AddQuantityDialog } from './property-editor-quantity-dialog';
@@ -61,7 +61,10 @@ interface PropertyEditorProps {
 export interface PropertyEditScope {
   mode: 'type' | 'inherited';
   typeEntityName: string;
+  typeName: string;
   affectedCount: number;
+  /** For an inherited value: the selected occurrence, which can take an override of its own. */
+  occurrenceId?: number;
 }
 
 /**
@@ -111,6 +114,16 @@ export function PropertyEditor({
     setIsEditing(false);
     onClose?.();
   }, [modelId, entityId, psetName, propName, value, valueType, setProperty, bumpMutationVersion, onClose, t]);
+
+  /** The inherited value stays on the type; the selected occurrence takes this one in its own set (#9296). */
+  const commitOverride = useCallback(() => {
+    const parsedValue = parseValue(value, valueType);
+    if (parsedValue === PARSE_INVALID || editScope?.occurrenceId === undefined) return;
+    const target = { modelId: modelId === 'legacy' ? '__legacy__' : modelId, occurrenceId: editScope.occurrenceId, typeId: entityId, typeName: editScope.typeName };
+    const done = overrideInheritedProperty(useViewerStore.getState(), target, psetName, { name: propName, value: parsedValue, type: valueType });
+    if (!done.ok) return void toast.error(t('propertyEditor.property.inheritedNotCopyable', { psetName, typeName: target.typeName, names: done.uncopyable.join(', ') }));
+    bumpMutationVersion(); setShowScopeConfirm(false); setIsEditing(false); onClose?.();
+  }, [modelId, entityId, psetName, propName, value, valueType, editScope, bumpMutationVersion, onClose, t]);
 
   const handleSave = useCallback(() => {
     // An unchanged value records nothing: no undo entry, no cleared redo (#5872).
@@ -280,6 +293,11 @@ export function PropertyEditor({
             >
               {t('propertyEditor.inline.applyToType')}
             </Button>
+            {editScope.mode === 'inherited' && editScope.occurrenceId !== undefined && (
+              <Button variant="outline" size="sm" className="h-6 rounded-none text-2xs uppercase tracking-wide" onClick={commitOverride}>
+                {t('propertyEditor.inline.overrideOnElement')}
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="sm"

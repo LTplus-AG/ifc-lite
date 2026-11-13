@@ -18,9 +18,11 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { useViewerStore } from '@/store';
-import { cleanup, render } from '@/test/render.js';
+import { activate, cleanup, render } from '@/test/render.js';
 import { seedModelingSession } from '@/test/modeling-session-fixture';
+import { RibbonToolbar } from '../ribbon/RibbonToolbar';
 import { ModelWorkspaceSplit } from './ModelWorkspaceSplit';
+import { MODEL_EDIT_SURFACE_COMMANDS } from '../surface-commands-model-edit';
 
 function mount(): HTMLElement {
   return render(<ModelWorkspaceSplit><div data-viewport-stub /></ModelWorkspaceSplit>);
@@ -45,7 +47,7 @@ describe('ModelWorkspaceSplit (#6232 M2.1)', () => {
       act(() => { useViewerStore.getState().enterModelWorkspace(); });
       const viewport = ui.querySelector('[data-viewport-stub]');
       assert.ok(viewport, 'the viewport renders in 3D');
-      assert.equal(ui.querySelector('[data-model-plan-pane]'), null, 'no plan pane in 3D');
+      assert.equal(ui.querySelector('[data-model-plan-pane]')?.getAttribute('aria-hidden'), 'true', 'the plan is hidden in 3D');
 
       act(() => { useViewerStore.getState().setModelLayout(layout); });
       await act(frame);
@@ -76,6 +78,48 @@ describe('ModelWorkspaceSplit (#6232 M2.1)', () => {
     assert.equal(ui.querySelector('[data-model-layout-notice]') === null, true, 'picking 3D clears the notice');
     act(() => { useViewerStore.getState().exitModelWorkspace(); });
     assert.equal(useViewerStore.getState().sidebarMode, 'expanded');
+  });
+
+  for (const layout of ['plan', 'split', '3d'] as const) {
+    it(`has one workspace bar and storey picker in ${layout} (#9296)`, async () => {
+      useViewerStore.getState().setModelLayout(layout);
+      const ui = mount();
+      act(() => { useViewerStore.getState().enterModelWorkspace(); });
+      await act(frame);
+      assert.equal(ui.querySelectorAll('[data-workspace-bar]').length, 1);
+      assert.equal(ui.querySelectorAll('[data-workspace-storey-chip]').length, 1);
+      assert.equal(ui.querySelectorAll('[role="radiogroup"][aria-label="Layout"]').length, 1);
+      assert.equal(ui.querySelectorAll('[data-workspace-leave]').length, 1);
+    });
+  }
+
+  // #9296 review: the palette's Leave is the same exit, so focus lands on Model too.
+  it('the palette Leave command also hands focus back to the Model button (#9296)', async () => {
+    useViewerStore.getState().setModelLayout('3d');
+    const ui = render(<><RibbonToolbar /><ModelWorkspaceSplit><div data-viewport-stub /></ModelWorkspaceSplit></>);
+    const model = ui.querySelector<HTMLButtonElement>('[data-command-id="tool:edit-mode"]')!;
+    activate(model, 'Enter');
+    await act(frame);
+    ui.querySelector<HTMLButtonElement>('[data-workspace-leave]')!.focus();
+    const exit = MODEL_EDIT_SURFACE_COMMANDS.find((c) => c.id === 'model:exit')!;
+    act(() => { exit.run(); });
+    assert.equal(useViewerStore.getState().workspaceMode, 'view');
+    assert.equal(document.activeElement === model, true, 'focus is back on the Model button');
+  });
+
+  // #9296 review: Leave unmounts with the bar, which dropped focus to <body>.
+  it('Leave names its key and hands focus back to the Model button (#9296)', async () => {
+    useViewerStore.getState().setModelLayout('3d');
+    const ui = render(<><RibbonToolbar /><ModelWorkspaceSplit><div data-viewport-stub /></ModelWorkspaceSplit></>);
+    const model = ui.querySelector<HTMLButtonElement>('[data-command-id="tool:edit-mode"]')!;
+    activate(model, 'Enter');
+    await act(frame);
+    const leave = ui.querySelector<HTMLButtonElement>('[data-workspace-leave]')!;
+    assert.match(leave.textContent ?? '', /Leave\s*· M$/);
+    activate(leave, ' ');
+    assert.equal(useViewerStore.getState().workspaceMode, 'view');
+    assert.equal(ui.querySelector('[data-workspace-leave]') === null, true, 'the bar is gone');
+    assert.equal(document.activeElement === model, true, 'focus is back on the Model button');
   });
 
   it('enters the workspace with a saved Split layout without throwing', async () => {

@@ -26,6 +26,7 @@ export const propertyEditorEn = {
     other: '{count} occurrences may reflect the update unless locally overridden.',
   },
   'propertyEditor.inline.applyToType': 'Apply To Type',
+  'propertyEditor.inline.overrideOnElement': 'Override On This Element',
   'propertyEditor.inline.keepEditing': 'Keep Editing',
   'propertyEditor.valueType.string': 'String',
   'propertyEditor.valueType.label': 'Label',

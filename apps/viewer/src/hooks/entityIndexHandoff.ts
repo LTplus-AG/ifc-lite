@@ -79,6 +79,23 @@ export function forwardEntityIndexTo(
   return Object.assign(forward, { release });
 }
 
+/**
+ * When the parser worker receives the pre-pass's entity index on a cold load.
+ *
+ * The index is handed over as soon as it exists, at every source size. A
+ * size-scaled deferral for sources of 32 MB and up (hold the index until a
+ * geometry worker finished, the stream completed, or 8 ms per MB passed) gave
+ * geometry a head start while geometry ended the load. Once the cold-finalize
+ * work (#9684, #9747) moved geometry's end forward, that hold put the
+ * parser's result inside the renderer finalize instead: on Holter the index
+ * existed at ~0.59 s but was released by the deadline at ~1.65 s, and metadata
+ * landed during finalize. Returned as data so the policy is testable without
+ * mounting the loader.
+ */
+export function coldEntityIndexHandoffPolicy(_fileSizeMB: number): { deferUntilWorkerFinishes: boolean; maximumWaitMs: number } {
+  return { deferUntilWorkerFinishes: false, maximumWaitMs: 0 };
+}
+
 /** One immutable-source fingerprint slot per load; never cache or reuse it. */
 export function createSourceFingerprintCell(source: SharedArrayBuffer | null | undefined, enabled: boolean): SharedArrayBuffer | undefined {
   if (!enabled || !source) return undefined;

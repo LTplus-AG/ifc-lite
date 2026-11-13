@@ -218,3 +218,21 @@ const _handoffTakesExactlyTheSlotsArguments: Exactly<
 > = true;
 void _sinkIsTheParser;
 void _handoffTakesExactlyTheSlotsArguments;
+
+describe('coldEntityIndexHandoffPolicy (metadata-path L5)', () => {
+  it('hands the index over the moment it exists, at every source size', async () => {
+    // Loaded at runtime so a build without the policy fails this assertion instead of failing to load (revert oracle).
+    const mod = (await import('./entityIndexHandoff.js')) as Record<string, unknown>;
+    assert.equal(typeof mod.coldEntityIndexHandoffPolicy, 'function', 'the loader policy must be exported for this test');
+    const coldEntityIndexHandoffPolicy = mod.coldEntityIndexHandoffPolicy as (mb: number) => { deferUntilWorkerFinishes: boolean; maximumWaitMs: number };
+    for (const mb of [0.5, 2, 31.9, 32, 35, 177, 343, 1050]) {
+      const policy = coldEntityIndexHandoffPolicy(mb);
+      const { sink, calls } = recordingSink();
+      const forward = forwardEntityIndexTo(() => sink, policy.deferUntilWorkerFinishes, policy.maximumWaitMs);
+      forward(IDS, STARTS, LENGTHS, 0, 0);
+      assert.equal(calls.length, 1, `${mb} MB: index must reach the parser without waiting for geometry`);
+      forward.release(); // idempotent, as on stream completion
+      assert.equal(calls.length, 1, `${mb} MB: release must not deliver the index twice`);
+    }
+  });
+});

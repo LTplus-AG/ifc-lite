@@ -37,6 +37,7 @@
  * PATH defaults to $PARITY_PYTHON, then ~/modelling-parity/venv/bin/python, then python3.
  */
 
+import { checkSheetDxf } from './sheet-dxf.mjs';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -153,7 +154,13 @@ function judge(cap, set, work, tag) {
       // actually contains (its own census): a UI storeys export with no walls is not a defect.
       const keyTypes = kind !== 'ifc' ? [] : set.source === 'sdk' ? cap.probes.output.keyTypes : existsSync(file) ? fileClasses(readFileSync(file, 'utf8')) : [];
       if (kind === 'ifc') checks.push(...ifcChecks(file, set.census, keyTypes, work, `${tag}${i ? `-${i}` : ''}`).map((c) => ({ ...c, file: rel(file) })));
-      else checks.push({ ...checkDrawing(kind, file), file: rel(file) });
+      else {
+        checks.push({ ...checkDrawing(kind, file), file: rel(file) });
+        if (cap.id === 'sheets-pdf-dwg' && kind === 'dxf' && existsSync(file)) {
+          const result = checkSheetDxf(readFileSync(file), PYTHON);
+          checks.push(...result.checks.map(c => ({ name: c.name, status: c.ok ? 'pass' : 'fail', detail: JSON.stringify(result), file: rel(file) })));
+        }
+      }
     }
   }
   return checks;

@@ -45,7 +45,7 @@ Levels:
 | Schedules and quantities (`schedules-quantities`) | Spaces and data | ✅ | ◐ | ✅ | ✅ | ◐ partial | **ui** partial: group and footer totals refresh to 11 m after editing: null; task "edit one wall length to 6 m and read live totals" failed: Wall Length is read-only in Model inspector; cannot edit it to 6 m. |
 | Plans, sections and elevations (`plans-sections-elevations`) | Documentation | – | ✅ | ✅ | – | ✅ met |  |
 | Dimensions and tags (`dimensions-tags`) | Documentation | – | ◐ | ✅ | – | ◐ partial | **ui** partial: a tag tool for elements (door, window, room tags): tag control found, but no entity-bound tag placement/export oracle has passed |
-| Sheets, PDF and DWG/DXF export (`sheets-pdf-dwg`) | Documentation | – | ◐ | ✅ | – | ◐ partial | **ui** partial: drawing exported as DWG: no DWG export exists |
+| Sheets, PDF and DXF export (`sheets-pdf-dwg`) | Documentation | – | ◐ | ✅ | – | ◐ partial | **ui** partial: drawing exported as DWG: no DWG export exists |
 | Psets, classification and valid IFC4 (`psets-classification-valid-ifc4`) | Spaces and data | ✅ | ✅ | ✅ | ✅ | ✅ met |  |
 | Large and tall model performance (`large-tall-model-performance`) | Scale | ✅ | ◐ | ✅ | ✅ | ◐ partial | **ui** partial: single-edit median below 100 ms including remesh: {"count":5,"medianMs":145,"p95Ms":360,"maxMs":360}; exclusive benchmark admission: DIAGNOSTIC: PC benchmark admission is disabled; no timing qualification under the shared GPU helper |
 
@@ -62,6 +62,7 @@ Levels:
 | Terrain (`terrain`) | Out of scope for this climb | – | – | – | ❌ missing |
 | MEP systems (`mep`) | Out of scope for this climb | – | – | – | ❌ missing |
 | Multi-user co-editing (`co-editing`) | Out of scope for this climb | – | – | – | ❌ missing |
+| DWG export (`dwg-export`) | Beyond table stakes | – | – | – | – not scored |
 
 ## Regenerating
 

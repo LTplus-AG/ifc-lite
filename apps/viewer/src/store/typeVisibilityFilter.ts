@@ -79,6 +79,15 @@ export function isTypeVisible(
   return typeVisibility[key];
 }
 
+/** Global id to class after edits, for retyped entities (`retypedClasses`). */
+export type RetypedClasses = ReadonlyMap<number, string>;
+
+/** The class a mesh is filtered by: its entity's class after a retype, else the
+ *  class it was meshed with. `expressId` is the global id every mesh list carries (#10119). */
+export function meshClass(mesh: { expressId: number; ifcType?: string }, retyped: RetypedClasses | undefined): string | undefined {
+  return retyped?.get(mesh.expressId) ?? mesh.ifcType;
+}
+
 /**
  * Build the set of IFC class names that are currently hidden by the toggles —
  * used by the GLB exporter to drop them on a visible-only export so the file

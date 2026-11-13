@@ -8,9 +8,10 @@
  * Extracted from Viewport.tsx for reusability
  */
 
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import { modelHiddenEntities } from '../lib/visibility/model-hidden-entities.js';
-import { resolveViewHiddenEntities } from '../lib/visibility/structural-view.js';
+import { resolveViewHiddenEntities, retypedClasses } from '../lib/visibility/structural-view.js';
+import type { RetypedClasses } from '../store/typeVisibilityFilter.js';
 import { useViewerStore } from '../store/index.js';
 import { useStoreyContextVisibility } from './useStoreyContext.js';
 
@@ -64,6 +65,24 @@ export function useVisibilityState() {
     isolatedEntities,
     ghostExceptEntities: ghostExcept,
   };
+}
+
+/** `retypedClasses` for the mesh filters. Keeps its identity until a retype
+ *  changes the contents, so other edits do not rebuild the filtered mesh list. */
+export function useRetypedClasses(): RetypedClasses {
+  const models = useViewerStore((s) => s.models);
+  const ifcDataStore = useViewerStore((s) => s.ifcDataStore);
+  const mutationViews = useViewerStore((s) => s.mutationViews);
+  const mutationVersion = useViewerStore((s) => s.mutationVersion);
+  const toGlobalId = useViewerStore((s) => s.toGlobalId);
+  const previous = useRef<RetypedClasses>(new Map());
+  return useMemo(() => {
+    const next = retypedClasses({ models, ifcDataStore, mutationViews, toGlobalId });
+    const same = next.size === previous.current.size
+      && [...next].every(([id, type]) => previous.current.get(id) === type);
+    if (!same) previous.current = next;
+    return previous.current;
+  }, [models, ifcDataStore, mutationViews, mutationVersion, toGlobalId]);
 }
 
 /**

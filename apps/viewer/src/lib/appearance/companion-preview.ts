@@ -7,14 +7,16 @@ import { placementFrameKey } from '@/lib/model-placement/persistence';
 import type { AppearancePlan } from './planner-types';
 import type { AppearancePreviewParts } from './preview';
 import { occurrenceSourceMesh } from './occurrence-source-mesh';
-import { isTypeVisible } from '@/store/typeVisibilityFilter';
+import { isTypeVisible, meshClass } from '@/store/typeVisibilityFilter';
+import { retypedClasses } from '@/lib/visibility/structural-view';
 
 export function companionHiddenNow(globalId: number, state = useViewerStore.getState()): boolean {
   const ref = state.resolveGlobalIdFromModels(globalId);
   if (!ref) return false;
   const model = state.models.get(ref.modelId);
   if (!model?.ifcDataStore) return false;
-  return model.visible === false || !isTypeVisible(model.ifcDataStore.entities.getTypeName(ref.expressId), state.typeVisibility, state.structuralViewMode);
+  return model.visible === false || !isTypeVisible(meshClass({ expressId: globalId, ifcType: model.ifcDataStore.entities.getTypeName(ref.expressId) }, retypedClasses(state)),
+    state.typeVisibility, state.structuralViewMode);
 }
 
 /** Original native item identity proves precisely which companion is removed.

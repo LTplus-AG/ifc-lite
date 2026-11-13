@@ -15,8 +15,8 @@ import type { EntityRef } from './types.js';
 import { entityRefToString, stringToEntityRef } from './types.js';
 import { useViewerStore } from './index.js';
 import { toGlobalIdFromModels } from './globalId.js';
-import { resolveViewHiddenEntities } from '../lib/visibility/structural-view';
-import { isTypeVisible } from './typeVisibilityFilter.js';
+import { resolveViewHiddenEntities, retypedClasses } from '../lib/visibility/structural-view';
+import { isTypeVisible, meshClass, type RetypedClasses } from './typeVisibilityFilter.js';
 import { collectAggregatedDescendants, type AggregationRelationships } from '../utils/aggregation.js';
 import { effectiveSpatialMembers } from '../lib/effective-spatial-members.js';
 
@@ -94,11 +94,11 @@ function dedupeRefs(refs: EntityRef[]): EntityRef[] {
   return out;
 }
 
-function matchesTypeVisibility(ifcType: string | undefined, typeVisibility: ViewerStateSnapshot['typeVisibility'], mode: ViewerStateSnapshot['structuralViewMode']): boolean {
+function matchesTypeVisibility(mesh: { expressId: number; ifcType?: string }, retyped: RetypedClasses, typeVisibility: ViewerStateSnapshot['typeVisibility'], mode: ViewerStateSnapshot['structuralViewMode']): boolean {
   // Shared mapping (`typeVisibilityFilter.ts`) so the basket's visible set,
   // the viewport mesh filter and the GLB export never drift. `site` also hides
   // `IfcGeographicElement` terrain (issue #1480).
-  return isTypeVisible(ifcType, typeVisibility, mode);
+  return isTypeVisible(meshClass(mesh, retyped), typeVisibility, mode);
 }
 
 function getDataStoreForModel(state: ViewerStateSnapshot, modelId: string): IfcDataStore | null {
@@ -345,6 +345,7 @@ function computeStoreyIsolation(state: ViewerStateSnapshot): Set<number> | null 
 
 function collectVisibleCandidates(state: ViewerStateSnapshot): VisibleCandidate[] {
   const candidates: VisibleCandidate[] = [];
+  const retyped = retypedClasses(state);
 
   if (state.models.size > 0) {
     for (const [modelId, model] of state.models) {
@@ -354,7 +355,7 @@ function collectVisibleCandidates(state: ViewerStateSnapshot): VisibleCandidate[
       if (!model.geometryResult) continue;
       const offset = model.idOffset ?? 0;
       for (const mesh of model.geometryResult.meshes) {
-        if (!matchesTypeVisibility(mesh.ifcType, state.typeVisibility, state.structuralViewMode)) continue;
+        if (!matchesTypeVisibility(mesh, retyped, state.typeVisibility, state.structuralViewMode)) continue;
         const globalId = mesh.expressId;
         candidates.push({
           globalId,
@@ -366,7 +367,7 @@ function collectVisibleCandidates(state: ViewerStateSnapshot): VisibleCandidate[
     }
   } else if (state.geometryResult) {
     for (const mesh of state.geometryResult.meshes) {
-      if (!matchesTypeVisibility(mesh.ifcType, state.typeVisibility, state.structuralViewMode)) continue;
+      if (!matchesTypeVisibility(mesh, retyped, state.typeVisibility, state.structuralViewMode)) continue;
       candidates.push({
         globalId: mesh.expressId,
         modelId: 'legacy',

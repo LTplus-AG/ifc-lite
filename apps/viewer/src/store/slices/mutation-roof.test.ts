@@ -11,6 +11,8 @@
 import '@/test/setup-dom.js';
 import { strict as assert } from 'node:assert';
 import { afterEach, beforeEach, describe, it } from 'node:test';
+import { getFootprintRoofPlaneParts } from '@ifc-lite/create';
+import type { RoofEditOutcome } from './mutation-roof.js';
 import { useViewerStore } from '@/store';
 import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import { setRequestRemesh } from '@/lib/commands/modeling/transaction';
@@ -36,8 +38,18 @@ const body = (roofId: number) => {
   const created = target.editor.getNewEntity(roofId)?.attributes ?? [];
   const edited = target.view.getPositionalMutationsForEntity(roofId);
   const attribute = (index: number) => (edited?.has(index) ? edited.get(index) : created[index]);
-  return { shape: attribute(6), type: attribute(8) };
+  const parts = getFootprintRoofPlaneParts(target.dataStore, target.view, roofId);
+  const shape = parts.map(id => target.view.getPositionalMutationsForEntity(id)?.get(6) ?? target.editor.getNewEntity(id)?.attributes[6]);
+  assert.equal(attribute(6), null, 'roof geometry is owned by its aggregated planes (#9357)');
+  return { shape, type: attribute(8) };
 };
+
+function assertRoofRemesh(outcome: RoofEditOutcome, id: number): void {
+  assert.equal(outcome.ok, true);
+  if (!outcome.ok) throw new Error(outcome.reason);
+  const target = modelEditTarget(useViewerStore.getState(), MODEL_ID)!;
+  assert.deepEqual(outcome.remesh, [id, ...getFootprintRoofPlaneParts(target.dataStore, target.view, id)]);
+}
 
 /** Check the real edit's journal, including absent tags rather than only distinct values. */
 function assertSingleUndoBatch(depth: number): void {
@@ -61,9 +73,9 @@ describe('roof by footprint in the viewer (#9296 round 3)', () => {
     assert.equal(hip.type, '.HIP_ROOF.');
 
     const depth = undoDepth();
-    assert.deepEqual(editRoofIn(useViewerStore, MODEL_ID, roofId, { EdgeSlopes: [30 * D, 0, 30 * D, 0], Overhang: 0.5 }), { ok: true, remesh: [roofId] });
+    assertRoofRemesh(editRoofIn(useViewerStore, MODEL_ID, roofId, { EdgeSlopes: [30 * D, 0, 30 * D, 0], Overhang: 0.5 }), roofId);
     assert.equal(body(roofId).type, '.GABLE_ROOF.');
-    assert.notEqual(body(roofId).shape, hip.shape, 'the planes were rebuilt');
+    assert.notDeepEqual(body(roofId).shape, hip.shape, 'the planes were rebuilt');
     assertSingleUndoBatch(depth);
 
     useViewerStore.getState().undo(MODEL_ID);
@@ -77,7 +89,7 @@ describe('roof by footprint in the viewer (#9296 round 3)', () => {
     });
     assert.ok('expressId' in added);
     const depth = undoDepth();
-    assert.deepEqual(editRoofIn(useViewerStore, MODEL_ID, added.expressId, { EdgeSlopes: [30 * D, 0, 30 * D, 0] }), { ok: true, remesh: [added.expressId] });
+    assertRoofRemesh(editRoofIn(useViewerStore, MODEL_ID, added.expressId, { EdgeSlopes: [30 * D, 0, 30 * D, 0] }), added.expressId);
     assert.equal(body(added.expressId).type, '.GABLE_ROOF.');
     assertSingleUndoBatch(depth);
     // Fault injection: keep the actual edit and undo rows, lose only their tags.
@@ -99,7 +111,7 @@ describe('roof by footprint in the viewer (#9296 round 3)', () => {
       if (entity === added.expressId && pset === 'IfcLite_RoofFootprint') published.push([name, value]);
     } });
     try {
-      assert.deepEqual(editRoofIn(useViewerStore, MODEL_ID, added.expressId, { Edge: { Index: 1, Slope: 0 }, Overhang: 0.5 }), { ok: true, remesh: [added.expressId] });
+      assertRoofRemesh(editRoofIn(useViewerStore, MODEL_ID, added.expressId, { Edge: { Index: 1, Slope: 0 }, Overhang: 0.5 }), added.expressId);
     } finally {
       useViewerStore.setState({ mirrorPropertyEdit: original });
     }

@@ -7,10 +7,11 @@ import { effectiveReferencers } from '@ifc-lite/export';
 import type { StoreEditor, MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { SpatialAnchor } from './anchor.js';
-import { productGuid } from './_emit-helpers.js';
+import { emitLocalPlacement, productGuid } from './_emit-helpers.js';
 import { refId } from './host-geometry-frame.js';
 import { AnchorEntityReader } from './resolve-anchor.js';
 import { signedArea, type FootprintRoofPlan } from './roof-footprint-plan.js';
+import type { FootprintRoofBody } from './roof-footprint.js';
 
 export const PART_TYPE = 'IfcLite_RoofPlane';
 export const RELATION_NAME = 'Footprint roof planes';
@@ -27,22 +28,23 @@ export function roofMeasureScales(anchor: MeasureAnchor) {
   return result;
 }
 
-/** Quantitative plane parts are assigned to the roof; its own Body remains the geometry source.
- * IFC2X3 IfcRoof.WR1 forbids a Body together with decomposition. Using the same
- * IfcRelAssignsToProduct in every schema also keeps cross-schema exports valid. */
+/** A footprint roof is decomposed into geometric IfcSlab .ROOF. parts in every schema. */
 export function getFootprintRoofPlaneParts(store: IfcDataStore, view: MutablePropertyView, roofId: number): number[] {
   const reader = new AnchorEntityReader(store, view);
   return reader.entity(roofId)?.type.toUpperCase() === 'IFCROOF' ? partAssignment(reader, roofId)?.parts ?? [] : [];
 }
 function partAssignment(reader: AnchorEntityReader, roofId: number): { id: number; parts: number[] } | null {
-  for (const id of reader.ids('IFCRELASSIGNSTOPRODUCT')) {
+  for (const id of reader.ids('IFCRELAGGREGATES')) {
     const a = reader.entity(id)?.attributes;
-    if (!a || a[2] !== RELATION_NAME || refId(a[6]) !== roofId || !Array.isArray(a[4])) continue;
-    const parts = a[4].map(refId).filter((id): id is number => id !== null);
+    if (!a || refId(a[4]) !== roofId || !Array.isArray(a[5])) continue;
+    const parts = a[5].map(refId).filter((id): id is number => id !== null);
     if (parts.some(id => {
       const part = reader.entity(id);
       return part?.type.toUpperCase() !== 'IFCSLAB' || part.attributes[4] !== PART_TYPE;
-    })) throw new Error('The roof plane assignment contains an unmanaged part');
+    })) {
+      if (a[2] === RELATION_NAME) throw new Error('The roof plane aggregate contains an unmanaged part');
+      continue;
+    }
     return { id, parts };
   }
   return null;
@@ -107,15 +109,19 @@ function removePart(store: IfcDataStore, editor: StoreEditor, partId: number): v
 }
 
 /** Update standard plane quantities and pitch atomically with the caller's roof body edit.
- * Parts have no duplicate Representation. Their Tag is the defining footprint edge
+ * Each part owns its plane Body. Its Tag is the defining footprint edge
  * (-1 for a flat roof); unchanged edges retain identity and user properties. */
 export function writeRoofPlaneParts(editor: StoreEditor, anchor: MeasureAnchor, roofId: number,
-  plan: FootprintRoofPlan, thickness: number, store?: IfcDataStore): void {
+  body: FootprintRoofBody & { plan: FootprintRoofPlan }, thickness: number, store?: IfcDataStore): void {
   const view = editor.getMutationView(), reader = new AnchorEntityReader(store ?? null, view);
   const roof = reader.entity(roofId);
   if (!roof || roof.type.toUpperCase() !== 'IFCROOF') throw new Error('Plane measurements need an IfcRoof');
   const ownerId = refId(roof.attributes[1]);
   const owner = ownerId === null ? null : `#${ownerId}`;
+  const placement = refId(roof.attributes[5]), representation = reader.entity(body.shapeRepId)?.attributes;
+  const context = refId(representation?.[0]), representationType = representation?.[2];
+  if (placement === null || context === null || typeof representationType !== 'string') throw new Error('Roof planes need a roof placement and Body');
+  const plan = body.plan;
   const previous = partAssignment(reader, roofId);
   const byEdge = new Map<number, number>();
   for (const id of previous?.parts ?? []) {
@@ -129,16 +135,22 @@ export function writeRoofPlaneParts(editor: StoreEditor, anchor: MeasureAnchor, 
     if (refId(reader.entity(id)?.attributes[4]) === roofId) { hasOpenings = true; break; }
   }
   const planes = plan.planes.length ? plan.planes : [{ edge: -1, slope: 0, outline: plan.eaves }];
+  if (body.solidIds.length !== planes.length) throw new Error('Every roof plane needs one Body item');
   const ids: number[] = [];
   let totalArea = 0;
   const clean = (value: number) => Number(value.toPrecision(12));
-  for (const plane of planes) {
+  for (const [index, plane] of planes.entries()) {
+    const shapeRepId = index === 0 ? body.shapeRepId : editor.addEntity('IfcShapeRepresentation',
+      [`#${context}`, 'Body', representationType, [`#${body.solidIds[index]}`]]).expressId;
+    if (index === 0) editor.setPositionalAttribute(shapeRepId, 3, [`#${body.solidIds[index]}`]);
+    const productShapeId = index === 0 ? body.productShapeId : editor.addEntity('IfcProductDefinitionShape',
+      [null, null, [`#${shapeRepId}`]]).expressId;
     let id = byEdge.get(plane.edge);
     if (id === undefined) {
       id = editor.addEntity('IfcSlab', [productGuid({}, anchor.guidRandom), owner,
-        `Roof plane ${plane.edge + 1}`, 'Geometry is carried by the assigned roof.', PART_TYPE,
-        null, null, String(plane.edge), '.ROOF.']).expressId;
-    }
+        `Roof plane ${plane.edge + 1}`, null, PART_TYPE,
+        `#${emitLocalPlacement(editor, placement, [0, 0, 0])}`, `#${productShapeId}`, String(plane.edge), '.ROOF.']).expressId;
+    } else editor.setPositionalAttribute(id, 6, `#${productShapeId}`);
     ids.push(id);
     const area = Math.abs(signedArea(plane.outline)) * length ** 2 / Math.cos(plane.slope);
     totalArea += area;
@@ -154,9 +166,10 @@ export function writeRoofPlaneParts(editor: StoreEditor, anchor: MeasureAnchor, 
     view.setProperty(id, 'Pset_SlabCommon', 'PitchAngle', plane.slope / angleScale,
       PropertyValueType.Real, undefined, false, 'IfcPlaneAngleMeasure');
   }
-  if (previous) editor.setPositionalAttribute(previous.id, 4, ids.map(id => `#${id}`));
-  else editor.addEntity('IfcRelAssignsToProduct', [productGuid({}, anchor.guidRandom), owner,
-    RELATION_NAME, null, ids.map(id => `#${id}`), null, `#${roofId}`]);
+  editor.setPositionalAttribute(roofId, 6, null);
+  if (previous) editor.setPositionalAttribute(previous.id, 5, ids.map(id => `#${id}`));
+  else editor.addEntity('IfcRelAggregates', [productGuid({}, anchor.guidRandom), owner,
+    RELATION_NAME, null, `#${roofId}`, ids.map(id => `#${id}`)]);
   if (store) for (const id of previous?.parts ?? []) if (!ids.includes(id)) removePart(store, editor, id);
   view.setQuantity(roofId, 'Qto_RoofBaseQuantities', 'GrossArea', clean(totalArea / areaScale), QuantityType.Area);
   if (hasOpenings) view.deleteQuantity(roofId, 'Qto_RoofBaseQuantities', 'NetArea');

@@ -22,11 +22,9 @@ type Session = Awaited<ReturnType<typeof newStorey>>;
 function parts(s: Pick<Session, 'store' | 'view'>, roof: number): number[] {
   const r = new AnchorEntityReader(s.store, s.view);
   const result: number[] = [];
-  for (const type of ['IFCRELAGGREGATES', 'IFCRELASSIGNSTOPRODUCT']) for (const id of r.ids(type)) {
+  for (const id of r.ids('IFCRELAGGREGATES')) {
     const a = r.entity(id)!.attributes;
-    const parent = type === 'IFCRELAGGREGATES' ? a[4] : a[6];
-    const related = type === 'IFCRELAGGREGATES' ? a[5] : a[4];
-    if (refId(parent) === roof && Array.isArray(related)) result.push(...related.map(refId).filter((id): id is number => id !== null));
+    if (refId(a[4]) === roof && Array.isArray(a[5])) result.push(...a[5].map(refId).filter((id): id is number => id !== null));
   }
   return result;
 }
@@ -43,20 +41,22 @@ async function session(schema: 'IFC4' | 'IFC2X3' | 'IFC4X3' = 'IFC4') {
 }
 
 describe('standard footprint roof plane measurements (#9357)', () => {
-  it.each(['IFC4', 'IFC2X3', 'IFC4X3'] as const)('%s: plane slabs carry volume and typed pitch while geometry stays on the roof', async schema => {
+  it.each(['IFC4', 'IFC2X3', 'IFC4X3'] as const)('%s: aggregated plane slabs own geometry, volume and typed pitch (#9357)', async schema => {
     const s = await session(schema);
     const roof = addRoofToStore(s.editor, s.anchor, HIP);
     const children = parts(s, roof.roofId);
     expect(children).toHaveLength(4);
     const reader = new AnchorEntityReader(s.store, s.view);
-    expect(reader.entity(roof.roofId)!.attributes[6]).toBe(`#${roof.productShapeId}`);
+    expect(reader.entity(roof.roofId)!.attributes[6]).toBeNull();
     let volume = 0;
     for (const id of children) {
       const part = reader.entity(id)!;
       expect(part.type.toUpperCase()).toBe('IFCSLAB');
       expect(part.attributes[8]).toBe('.ROOF.');
-      expect(part.attributes[5]).toBeNull();
-      expect(part.attributes[6]).toBeNull();
+      const placement = refId(part.attributes[5]);
+      expect(placement).not.toBeNull();
+      expect(refId(reader.entity(placement!)!.attributes[0])).toBe(roof.placementId);
+      expect(refId(part.attributes[6])).not.toBeNull();
       const q = quantities(s, id, 'Qto_SlabBaseQuantities');
       expect(q.NetVolume).toBeGreaterThan(0);
       expect(q.GrossVolume).toBe(q.NetVolume);
@@ -68,6 +68,8 @@ describe('standard footprint roof plane measurements (#9357)', () => {
     const reopened = await parse(exportText(s));
     const reopenedIds = reopened.entityIndex.byType.get('IFCSLAB') ?? [];
     expect(reopenedIds).toHaveLength(4);
+    const reopenedView = new MutablePropertyView(null, 'reopened');
+    expect(parts({ store: reopened, view: reopenedView }, roof.roofId)).toEqual(children);
     let exportedVolume = 0;
     for (const id of reopenedIds) {
       const q = extractQuantitiesOnDemand(reopened, id).find(set => set.name === 'Qto_SlabBaseQuantities');

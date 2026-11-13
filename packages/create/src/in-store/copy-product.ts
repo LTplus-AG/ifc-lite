@@ -228,7 +228,7 @@ export function copyProductGraph(ctx: CopyContext, sourceId: number, transform: 
   copyDependents(ctx, sourceId, copy.id, source, targetStoreyId, move, acc, options.shape);
   for (const [target, original] of [...acc.copiedFrom]) {
     if (ctx.read(original)?.type.toUpperCase() !== 'IFCROOF') continue;
-    for (const [part, sourcePart] of copyRoofPlaneParts(ctx.store, ctx.editor, original, target, ctx.guidRandom)) acc.copiedFrom.set(part, sourcePart);
+    copyRoofPlaneParts(ctx.store, ctx.editor, original, target, acc.copiedFrom, ctx.guidRandom);
   }
   for (const [copiedId, originalId] of acc.copiedFrom) cloneEffectiveMetadata(ctx.editor.getMutationView(), ctx.editor, originalId, [copiedId]);
   return {

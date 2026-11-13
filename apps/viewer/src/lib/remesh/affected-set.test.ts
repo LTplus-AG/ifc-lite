@@ -7,6 +7,8 @@ import assert from 'node:assert/strict';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { expandAffectedSet } from './affected-set';
+import { addRoofToStore, getFootprintRoofPlaneParts } from '@ifc-lite/create';
+import { newStorey, exportText, parse as parseIfc } from '../../../../../packages/create/src/in-store/wall-join-mesh.oracle.js';
 
 // A wall (#100) voided by an opening (#110) filled by a window (#120); #130 is unrelated.
 const FIXTURE = `ISO-10303-21;
@@ -33,6 +35,20 @@ async function parse() {
 const sorted = (ids: Set<number>) => [...ids].sort((a, b) => a - b);
 
 describe('expandAffectedSet (#6232)', () => {
+  for (const reopened of [false, true]) it(`roof creation, edits and moves remesh the aggregated geometric planes (reopened=${reopened}, #9357)`, async () => {
+    const s = await newStorey();
+    const roof = addRoofToStore(s.editor, s.anchor, { Position: [0, 0, 3], Width: 10, Depth: 8,
+      Thickness: .25, EdgeSlopes: Array(4).fill(Math.PI / 6) });
+    const parts = getFootprintRoofPlaneParts(s.store, s.view, roof.roofId);
+    assert.equal(parts.length, 4);
+    const store = reopened ? await parseIfc(exportText(s)) : s.store;
+    const view = reopened ? new MutablePropertyView(null, 'reopened') : s.view;
+    for (const cause of ['created', 'shape', 'hostsChanged'] as const) {
+      assert.deepEqual(sorted(expandAffectedSet(store, view, [roof.roofId], cause)),
+        [roof.roofId, ...parts].sort((a, b) => a - b));
+    }
+  });
+
   it('a moved host brings its openings and fillings; a reshaped one only itself', async () => {
     const store = await parse();
     assert.deepEqual(sorted(expandAffectedSet(store, null, [100], 'hostsChanged')), [100, 110, 120]);

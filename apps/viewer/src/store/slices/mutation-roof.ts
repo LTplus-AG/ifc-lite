@@ -9,7 +9,7 @@
  * shared room the recorded definition is published with the body.
  */
 
-import { refreshTopAttachmentsInStore, editFootprintRoofInStore, footprintDefinitionProperties, ROOF_FOOTPRINT_PSET, type RoofFootprintEdit, type FootprintRoofDefinition } from '@ifc-lite/create';
+import { getFootprintRoofPlaneParts, refreshTopAttachmentsInStore, editFootprintRoofInStore, footprintDefinitionProperties, ROOF_FOOTPRINT_PSET, type RoofFootprintEdit, type FootprintRoofDefinition } from '@ifc-lite/create';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { PropertyValue } from '@ifc-lite/collab';
 import { mirrorRoofMeasurements } from './mutation-roof-measurements.js';
@@ -33,12 +33,12 @@ export function editRoofIn(store: ModellingStore, modelId: string, expressId: nu
     const { remesh } = withRoofDefinitionRollback(store, target, expressId, publish => recordResolvedModellingCommit(store, target, draft => draft.runAtomic(draft => {
       const definition = editFootprintRoofInStore(target.dataStore, draft, expressId, patch);
       const attached = refreshTopAttachmentsInStore({ ...target, editor: draft, view: draft.getMutationView() }, [expressId]);
-      return { definition, remesh: [expressId, ...attached] };
+      return { definition, remesh: [expressId, ...getFootprintRoofPlaneParts(target.dataStore, draft.getMutationView(), expressId), ...attached] };
     }), undefined, false, (result, view) => publish(result.definition, view)));
     const state = store.getState(), stack = state.undoStacks.get(modelId) ?? [];
     const last = stack.length > depth ? stack.at(-1) : undefined;
     const batch = last ? state.mutationBatchTags.get(last.id) : undefined;
-    if (batch) rememberRemesh(store.getState, batch, modelId, [expressId], 'shape',
+    if (batch) rememberRemesh(store.getState, batch, modelId, [expressId], 'hostsChanged',
       () => mirrorRoofHistoryDefinition(store, modelId, expressId), error => {
         const roomId = store.getState().collabSession?.roomId ?? 'the active room';
         const detail = error instanceof Error ? ` (${error.message})` : '';

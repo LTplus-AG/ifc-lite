@@ -119,12 +119,16 @@ jobs:
           # assuming every ubuntu-latest machine has the hosted 16 GiB RAM.
           node --input-type=module <<'NODE'
           import { totalmem, freemem } from 'node:os';
+          const hostTotal = totalmem(), hostFree = freemem();
           const constrained = process.constrainedMemory();
-          const capacity = Math.min(totalmem(), constrained || Infinity);
-          const available = Math.min(freemem(), process.availableMemory());
-          console.log(JSON.stringify({ totalBytes: totalmem(), constrainedBytes: constrained,
+          const processAvailable = process.availableMemory();
+          const capacity = Math.min(hostTotal, constrained || Infinity);
+          const available = Math.min(hostFree, processAvailable);
+          console.log(JSON.stringify({ totalBytes: hostTotal, constrainedBytes: constrained,
             capacityBytes: capacity, availableBytes: available, heapMiB: 8192, turboConcurrency: 1 }));
-          if (capacity < 12 * 1024 ** 3 || available < 10 * 1024 ** 3) {
+          const validReadings = [hostTotal, hostFree, constrained, processAvailable]
+            .every(value => Number.isFinite(value) && value >= 0);
+          if (!validReadings || capacity < 12 * 1024 ** 3 || available < 10 * 1024 ** 3) {
             throw new Error('Root typecheck needs a runner with 12 GiB capacity and 10 GiB available for its 8 GiB heap profile');
           }
           NODE

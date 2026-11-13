@@ -821,13 +821,13 @@ That one rule covers meshes, curves (polyline points or samples) and point
 clouds, at top level and per placement, in both instance modes; text dots
 stay on their own limit. The reader counts the budget in thirds of a
 triangle, so every charge is a whole number: a block's cost is exactly the
-sum of its meshes', and parts that fill the budget fit. Counted in fractions,
-three 5-point curves at `maxTriangles: 5` drew two [measured, then fixed;
-test]. Memory follows the vertex buffers as much as the triangles:
+sum of its meshes', and parts that fill the budget fit. Counted in doubles,
+the remainder drifted: three 5-point curves at `maxTriangles: 5` drew two,
+because 5 - 5/3 - 5/3 is 1.6666666666666663 there [measured, then fixed; test]. Memory follows the vertex buffers as much as the triangles:
 before the vertex charge, a mesh of 1 triangle over 100,000 vertices came
 back with 2.4 MB of buffers at `maxTriangles: 10`, and 50 baked placements of
 it with 120 MB at `maxTriangles: 100` [measured, then fixed; test]. It costs
-33,334 now and is refused at 10. A mesh whose every vertex is in some
+33,333 1/3 triangles now, so it needs `maxTriangles: 33,334` and is refused at 10. A mesh whose every vertex is in some
 triangle has at most three per triangle, so it costs its triangles alone and
 normal files are charged as before [test: the box block at 120; ran: none of
 the 73 meshes of our FZK export, the 271 of duplex, or the 4 in the five

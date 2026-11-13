@@ -271,10 +271,21 @@ describe('guards', () => {
   });
 
   test('vertex charges add up exactly, so curves that fill the budget are all drawn', async () => {
-    // Three 5-point curves cost 5/3 triangles each; summed in fractions of a triangle, the third did not fit.
+    // Three 5-point curves cost 5/3 triangles each. In doubles 5 - 5/3 - 5/3 is 1.6666666666666663,
+    // below 5/3, so the third did not fit until the budget was counted in whole thirds.
     const bytes = await craft(c => { for (let i = 0; i < 3; i++) c.addPolyline(Array.from({ length: 5 }, (_, k) => [k, i, 0])); });
     const result = await readRhino3dm(bytes, { maxTriangles: 5 });
     expect([result.curves.length, result.skipped]).toEqual([3, {}]);
+  });
+
+  test.each([false, true])('a block admitted whole draws every mesh when its cost fills the budget exactly (bakeInstances %s)', async bakeInstances => {
+    // Three meshes of 1 triangle over 5 vertices cost 5/3 each: a block of 5, drawn mesh by mesh when baked.
+    const bytes = await craft(c => {
+      const sparse = () => c.mesh(Array.from({ length: 5 }, (_, k) => [k, k % 2, 0]), [[0, 1, 2]]);
+      c.addInstance(c.block('Sparse', [sparse(), sparse(), sparse()]));
+    });
+    const result = await readRhino3dm(bytes, { bakeInstances, maxTriangles: 5 });
+    expect([drawnTriangles(result), result.skipped]).toEqual([3, {}]);
   });
 
   const SCALE = [1e15, 0, 0, 0, 0, 1e15, 0, 0, 0, 0, 1e15, 0, 0, 0, 0, 1];

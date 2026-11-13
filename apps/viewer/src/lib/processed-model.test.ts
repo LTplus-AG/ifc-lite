@@ -31,13 +31,7 @@ describe('setProcessingServerUrl', () => {
 });
 
 describe('applyProcessingConfig', () => {
-  it("sets the host's processing server and files its start model", () => {
-    const processedModel = { sha256: 'a'.repeat(64), bytes: 18_587_273, name: 'Haus A.ifc' };
-    applyProcessingConfig({ server: { url: '/v1/viewing/processor' }, open: { processedModel } });
-    assert.equal(getProcessingServerUrl(), '/v1/viewing/processor');
-    assert.deepEqual(takeProcessedModelRequest(), processedModel);
-  });
-
+  // The host's server and start model loading for real: useIfcLoader.processedModel.test.tsx.
   it('changes nothing for a configuration without them, or none at all', () => {
     setProcessingServerUrl('/ifc');
     applyProcessingConfig({});

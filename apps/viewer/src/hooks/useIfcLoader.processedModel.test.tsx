@@ -272,7 +272,7 @@ it('with no processing server configured, the error says so and offers no Retry'
 
 // Last in this file: a host's start model is fixed for the page, so nothing after this runs without it.
 function BothUrlEntries() { useProcessedModelAutoload(); useModelUrlAutoload(); return null; }
-it("with a host start model, ?processed= and ?model= in the page URL are ignored and only the host's model loads", async () => {
+it("with a host start model, ?processed= and ?model= in the page URL are ignored and only the host's model loads, from the host's server", async () => {
   stubWebGpu();
   const fetched: string[] = [];
   const realFetch = globalThis.fetch;
@@ -281,10 +281,11 @@ it("with a host start model, ?processed= and ?model= in the page URL are ignored
   mock.method(console, 'info', (...args: unknown[]) => { infos.push(args); });
   try {
     window.history.replaceState(null, '', `/?processed=${'d'.repeat(64)}&bytes=9&model=other.ifc`);
-    applyProcessingConfig({ open: { processedModel: { sha256, bytes: 46_000_000, name: 'Host model.ifc' } } });
+    applyProcessingConfig({ server: { url: '/host-processor' }, open: { processedModel: { sha256, bytes: 46_000_000, name: 'Host model.ifc' } } });
     await act(async () => { root.render(<><Probe /><BothUrlEntries /></>); });
     await act(async () => { await waitFor(() => model()?.loadState === 'complete', 'the host model loads'); });
     assert.deepEqual(asked, [{ sha256, bytes: 46_000_000 }], 'only the host model is asked for');
+    assert.deepEqual(servers, ['/host-processor'], "from the host's server");
     assert.equal(model()?.name, 'Host model.ifc');
     assert.deepEqual(fetched.filter((url) => url.includes('other.ifc')), [], '?model= is not fetched');
     const ignored = infos.map((args) => String(args[0])).filter((line) => /ignored/.test(line));

@@ -15,6 +15,7 @@ export function presentationLayerReader(store: IfcDataStore, view?: MutablePrope
       const record = effectiveMetadataRecord(store, id, view);
       return record ? { type: record.type, value: (name: string): unknown => record.attributes[record.names.indexOf(name)] } : null;
     }
+    // @raw-entity-enumeration-ok no overlay exists here; edited rows use effectiveMetadataRecord above.
     const ref = store.entityIndex.byId.get(id);
     if (!ref) return null;
     let names = positions.get(ref.type);

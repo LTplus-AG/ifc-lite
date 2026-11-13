@@ -335,7 +335,7 @@ const ifcFederationShape = {
 } as const satisfies Record<IfcFederationKey, readonly string[]>;
 
 /** The glyph overlay's tooltips (#9668); only the tooltip takes parameters. A regex, since this ships eagerly. */
-const STRUCTURAL_GLYPH_KEY = /^structuralGlyphs\.(support\.(fixed|pinned|roller|spring)|load\.(force|moment|temperature|displacement))$/;
+const STRUCTURAL_GLYPH_KEY = /^structuralGlyphs\.(support\.(fixed|pinned|roller|spring)|load\.(force|moment|temperature|displacement)|reaction)$/;
 
 export function lazyMessageParameters(key: string): readonly string[] | null {
   if (key === 'structuralGlyphs.tooltip') return ['entity', 'kind'];

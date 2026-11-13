@@ -85,7 +85,7 @@ describe('drawing export notices (#5850)', () => {
     let exports = 0;
     render(<>
       <DrawingExportMenu {...props({
-        markupCounts: { ...emptyCounts, measurements: 1 }, visibleUnderlayCount: 1, visibleRasterReferenceCount: 1,
+        markupCounts: { ...emptyCounts, texts: 1 }, visibleUnderlayCount: 1, visibleRasterReferenceCount: 1,
         onExportDxf: () => { exports++; },
       })} />
       <ConfirmDialogHost />

@@ -28,7 +28,16 @@
 
 export const IDENTITY_QUERY = 'perf.sceneIdentity=1';
 
-/** In page: the identity hook's answer once nothing is still hashing, hydrating or finalizing (bounded). */
+/**
+ * Whether an identity hook answer describes a finished scene: no tap write pending, no snapshot hydrating, no
+ * finalize running, and the viewer's own settled check (queued meshes, streaming fragments, pending shards).
+ * A build from before `settled` was reported omits it and keeps the narrower check (review #9863).
+ */
+export function identityReady(r) {
+  return r.pending === 0 && !r.hydrating && !r.finalizing && r.settled !== false;
+}
+
+/** In page: the identity hook's answer once the scene is settled and nothing is still hashing (bounded). */
 export async function readSceneIdentity(page, { timeoutMs = 180000 } = {}) {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
@@ -38,8 +47,8 @@ export async function readSceneIdentity(page, { timeoutMs = 180000 } = {}) {
       return { tap: true, ...(await hook({ perElement: true })) };
     });
     if (!r.tap) return { tap: false, error: 'the page exposes no __ifc_lite_scene_identity__ (build without the identity tap, or flag not applied)' };
-    if (r.pending === 0 && !r.hydrating && !r.finalizing) return r;
-    if (Date.now() > deadline) return { ...r, error: `identity not settled within ${timeoutMs} ms (pending ${r.pending}, hydrating ${r.hydrating}, finalizing ${r.finalizing})` };
+    if (identityReady(r)) return r;
+    if (Date.now() > deadline) return { ...r, error: `identity not settled within ${timeoutMs} ms (pending ${r.pending}, hydrating ${r.hydrating}, finalizing ${r.finalizing}, settled ${r.settled})` };
     await page.waitForTimeout(250);
   }
 }

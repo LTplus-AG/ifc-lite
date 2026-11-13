@@ -13,22 +13,20 @@ import { CONTRAST_BROWSER_SKIP, closeContrastBrowser, warmContrastBrowser, withT
 import { ViewportOverlays } from './ViewportOverlays';
 import { MobilePanelLauncher } from './MobilePanelLauncher';
 import { MobileToolbar } from './MobileToolbar';
-import { VIEW_CUBE_REACH_PX } from './viewcube-box';
-import { formFactorState } from '@/test/form-factor-state';
+import { classifyFormFactor } from '@/lib/layout/form-factor';
 
 before(warmContrastBrowser);
 after(closeContrastBrowser);
 afterEach(cleanup);
 
-// #8802: the centered loading card grew into Home/zoom when Cancel appeared.
+// Preserve #8802 control clearance while docking compact progress at bottom right.
 for (const [width, height] of [[320, 640], [360, 740], [375, 553], [390, 844], [568, 320], [592, 360], [639, 360], [1280, 800], [1600, 1000]]) {
   for (const theme of ['light', 'dark'] as const) {
     for (const cancel of [true, false]) {
       it(`loading card clears viewport controls at ${width}x${height}, ${theme}, cancel=${cancel} (#8802)`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
         const phone = width < 640;
-        const docked = phone && height >= width;
         act(() => useViewerStore.setState({
-          ...formFactorState(phone), loading: true, error: null, cesiumEnabled: false,
+          formFactor: classifyFormFactor({ width, height, coarsePointer: phone }), isMobile: phone, loading: true, error: null, cesiumEnabled: false,
           loadingFileName: 'building-architecture-rev-b.ifc',
           geometryProgress: { phase: 'Processing geometry and preparing a longer phase description', percent: 42 },
           activeLoadCanceller: cancel ? () => {} : null,
@@ -63,8 +61,8 @@ for (const [width, height] of [[320, 640], [360, 740], [375, 553], [390, 844], [
             return {
               overlaps, targets: targets.length, width: rect.width,
               top: rect.top - viewport.top,
-              centeredX: Math.abs((rect.left + rect.right) / 2 - (viewport.left + viewport.right) / 2),
-              centered: Math.abs((rect.top + rect.bottom) / 2 - (viewport.top + viewport.bottom) / 2),
+              right: viewport.right - rect.right,
+              bottom: viewport.bottom - rect.bottom,
               font: parseFloat(getComputedStyle(card.querySelector('output')!).fontSize),
             };
           });
@@ -72,14 +70,9 @@ for (const [width, height] of [[320, 640], [360, 740], [375, 553], [390, 844], [
         assert.equal(result.targets, phone ? 4 : 2, 'all expected controls were measured');
         assert.equal(result.overlaps.some(Boolean), false, `overlap flags: ${result.overlaps.join(',')}`);
         assert.ok(result.font >= 11, `font ${result.font}`);
-        if (docked) {
-          assert.equal(result.width, width - 32);
-          assert.equal(result.top, VIEW_CUBE_REACH_PX + 32, 'portrait uses the docking offset');
-        } else {
-          assert.ok(result.centeredX < 1, `horizontal center delta ${result.centeredX}`);
-          assert.ok(result.centered < 1, `center delta ${result.centered}`);
-          assert.ok(result.width <= 384, `centered card width ${result.width}`);
-        }
+        assert.ok(result.width <= 180, `compact indicator width ${result.width}`);
+        assert.equal(result.right, 16, 'anchors at the right viewport gutter');
+        assert.equal(result.bottom, phone ? 64 : 16, 'clears the mobile navigation row');
       });
     }
   }

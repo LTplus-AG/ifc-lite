@@ -19,7 +19,7 @@
 import { toast } from '@/components/ui/toast';
 import { useViewerStore } from '@/store';
 import { runTransaction } from '@/lib/commands/modeling/transaction';
-import { AUTHORED_KINDS } from '@/lib/commands/modeling/authored-kinds';
+import { AUTHORED_KINDS, typeOf } from '@/lib/commands/modeling/authored-kinds';
 import type { AuthoringTransaction, ModelingCommand } from '@/lib/commands/modeling/types';
 import type { AuthoredElementKind } from '@/store/slices/authoringDefaultsSlice';
 import { detachFromType, recordModellingEdit } from '@/store/slices/mutation-modelling-records';
@@ -32,14 +32,14 @@ export type { LayerInput, ApplyLayersSpec, LayerFollow } from '@/lib/authoring/m
 import { reportLayerFollow } from '@/lib/authoring/layer-follow-report';
 import { editHostedFillIn, moveHostedFillIn, type HostedFillPosition } from '@/store/slices/mutation-hosted-fill';
 import { setElementProfile } from '@/store/slices/mutation-element-profile';
-import { editStairDimensionsInStore, type HostedElementSize, type ProfileSection, type StairDimensionEdit } from '@ifc-lite/create';
+import { editStairDimensionsInStore, typeLayerScopeInStore, type HostedElementSize, type ProfileSection, type StairDimensionEdit } from '@ifc-lite/create';
 
 /**
  * Run one inspector edit as one undo step. `edit` writes through
  * `tx.store` and returns the express ids whose mesh it changed. False (with
  * a toast) when the edit was refused or threw; nothing is left behind then.
  */
-export function runInspectorEdit(modelId: string, edit: (tx: AuthoringTransaction) => readonly number[]): boolean {
+export function runInspectorEdit(modelId: string, edit: (tx: AuthoringTransaction) => readonly number[], onError?: (reason: string) => void): boolean {
   const command: ModelingCommand = {
     id: 'inspector.edit',
     labelKey: 'modelInspector.edit',
@@ -52,7 +52,7 @@ export function runInspectorEdit(modelId: string, edit: (tx: AuthoringTransactio
   };
   const get = useViewerStore.getState;
   const outcome = runTransaction(useViewerStore, command, null, { get, modelId, storeyId: get().session?.storeyId ?? null, workplane: null });
-  if (!outcome.ok) toast.error(outcome.reason);
+  if (!outcome.ok) { toast.error(outcome.reason); onError?.(outcome.reason); }
   return outcome.ok;
 }
 
@@ -83,15 +83,30 @@ export function setElementType(modelId: string, elementId: number, typeId: numbe
   return ok;
 }
 
-/** A new type object of the kind's class, typing `elementId` when given. The new type's id, or null when refused. */
+/**
+ * A new type object of the kind's class, typing `elementId` when given. The new type's id, or null when refused.
+ *
+ * Made from an element, the type starts with the layers the element inherits
+ * from its current type (#9296), as duplicating a type does: the element then
+ * follows the NEW type's layers, so "Apply to Type" on it reaches the element
+ * instead of leaving it on the old type's build-up.
+ */
 export function createElementType(modelId: string, kind: AuthoredElementKind, name: string, elementId?: number): number | null {
   let typeId: number | null = null;
   const ok = runInspectorEdit(modelId, (tx) => {
-    recordModellingEdit(useViewerStore, tx.modelId, (methods) => {
-      typeId = methods.addElementType(tx.modelId, { Type: AUTHORED_KINDS[kind].type, Name: name }).expressId;
-      if (elementId !== undefined) methods.assignType(tx.modelId, typeId, [elementId]);
+    const dataStore = tx.store.models.get(tx.modelId)?.ifcDataStore;
+    if (!dataStore) throw new Error(`No model loaded for id "${tx.modelId}"`);
+    return recordModellingEdit(useViewerStore, tx.modelId, (methods, draft) => {
+      const created = methods.addElementType(tx.modelId, { Type: AUTHORED_KINDS[kind].type, Name: name }).expressId;
+      typeId = created;
+      if (elementId === undefined) return [];
+      const live = { dataStore, view: draft.getMutationView() };
+      const from = typeOf(live, elementId);
+      const scope = from === null ? null : typeLayerScopeInStore(live, from);
+      if (scope && scope.layerSetId !== null && scope.inheriting.includes(elementId)) methods.assignMaterial(tx.modelId, scope.layerSetId, [created]);
+      methods.assignType(tx.modelId, created, [elementId]);
+      return [elementId];
     });
-    return elementId === undefined ? [] : [elementId];
   });
   return ok ? typeId : null;
 }
@@ -185,4 +200,15 @@ export function applyMaterialLayers(modelId: string, spec: ApplyLayersSpec, onFo
   });
   if (ok && follow) { reportLayerFollow(useViewerStore.getState(), modelId, follow); onFollow?.(follow); }
   return ok ? layerSetId : null;
+}
+
+/** Replace an occurrence's material using the shared create association path. */
+export function setElementMaterial(modelId: string, elementId: number, material: number | { Name: string; Color?: string; Category?: string; Description?: string }): boolean {
+  return runInspectorEdit(modelId, tx => {
+    recordModellingEdit(useViewerStore, tx.modelId, methods => {
+      const id = typeof material === 'number' ? material : methods.addMaterial(tx.modelId, material).expressId;
+      methods.assignMaterial(tx.modelId, id, [elementId]);
+    }, tx.batchId);
+    return [elementId];
+  });
 }

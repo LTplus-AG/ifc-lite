@@ -65,6 +65,7 @@ rt('measureBundle gates raw JS bytes, reports JS brotli as informational, and br
     const dist = join(root, 'dist');
     mkdirSync(join(dist, 'assets'), { recursive: true });
     writeFileSync(join(dist, 'index.html'), VITE_HTML);
+    writeFileSync(join(dist, 'assets/parser.worker-Wk1.js'), 'self.onmessage = () => {};');
     const entryJs = 'export const x = 1;\n'.repeat(500);
     writeFileSync(join(dist, 'assets/index-AbC123.js'), entryJs);
     writeFileSync(join(dist, 'assets/vendor-react-1.js'), 'export {}');
@@ -124,6 +125,7 @@ rt('viewer-eager-js-bytes sums the raw size of each eager JS file, once, and not
     const dist = join(root, 'dist');
     mkdirSync(join(dist, 'assets'), { recursive: true });
     writeFileSync(join(dist, 'index.html'), EAGER_HTML);
+    writeFileSync(join(dist, 'assets/parser.worker-Wk1.js'), 'self.onmessage = () => {};');
     const eagerFiles = { 'index-entry.js': jsOf(1, 3000), 'vendor-a.js': jsOf(2, 2000), 'vendor-b.mjs': jsOf(3, 1500), 'vendor-c.js': jsOf(4, 1000) };
     for (const [name, body] of Object.entries(eagerFiles)) writeFileSync(join(dist, 'assets', name), body);
     // Present in dist but never loaded eagerly: must add nothing.
@@ -145,6 +147,31 @@ rt('viewer-eager-js-bytes sums the raw size of each eager JS file, once, and not
     const expected = Object.values(eagerFiles).reduce((n, body) => n + measure.brotliSize(Buffer.from(body)), 0);
     assert.equal(info['viewer-eager-js-brotli'].value, expected);
     assert.match(info['viewer-eager-js-brotli'].detail, /^4 files, each compressed on its own$/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+rt('viewer-parser-worker-js-bytes is the raw size of the one parser worker chunk, not its map or its lazy chunks', () => {
+  const root = mkdtempSync(join(tmpdir(), 'perf-ratchet-worker-'));
+  try {
+    const dist = join(root, 'dist');
+    mkdirSync(join(dist, 'assets'), { recursive: true });
+    writeFileSync(join(dist, 'index.html'), '<script type="module" src="/assets/entry.js"></script>');
+    writeFileSync(join(dist, 'assets/entry.js'), jsOf(1, 100));
+    writeFileSync(join(root, 'w.wasm'), 'x');
+    const run = () => Object.fromEntries(measure.measureBundle({ wasm: join(root, 'w.wasm'), dist, commit: 'a' }).metrics.map((m) => [m.id, m]));
+    // No worker: an error naming what is missing, never a zero.
+    assert.throws(run, /expected one assets\/parser\.worker-\*\.js .*found 0/);
+    writeFileSync(join(dist, 'assets/parser.worker-AbC.js'), jsOf(2, 4321));
+    writeFileSync(join(dist, 'assets/parser.worker-AbC.js.map'), jsOf(3, 9999));
+    writeFileSync(join(dist, 'assets/schema-ifc4x3-Def.js'), jsOf(4, 8888));
+    const v = run();
+    assert.equal(v['viewer-parser-worker-js-bytes'].value, 4321);
+    assert.equal(v['viewer-parser-worker-js-bytes'].detail, 'parser.worker-AbC.js');
+    // A second worker chunk is ambiguous: refuse rather than pick one.
+    writeFileSync(join(dist, 'assets/parser.worker-Xyz.js'), 'x');
+    assert.throws(run, /found 2: /);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -178,6 +205,7 @@ rt('every committed ceiling file is valid, and bundle.json ratchets exactly what
     mkdirSync(join(root, 'assets'));
     writeFileSync(join(root, 'index.html'), '<script type="module" src="/assets/i.js"></script>');
     writeFileSync(join(root, 'assets/i.js'), 'x');
+    writeFileSync(join(root, 'assets/parser.worker-Wk1.js'), 'self.onmessage = () => {};');
     writeFileSync(join(root, 'w.wasm'), 'x');
     const ids = measure.measureBundle({ wasm: join(root, 'w.wasm'), dist: root, commit: 'a' }).metrics.map((m) => m.id).sort();
     assert.deepEqual(bundle.entries.map((e) => e.id).sort(), ids);
@@ -186,7 +214,7 @@ rt('every committed ceiling file is valid, and bundle.json ratchets exactly what
   }
   // #7007: viewer JS is gated on raw bytes, which repeat exactly, at 0.1%;
   // the engine wasm stays on brotli at 0.5%.
-  for (const id of ['viewer-entry-js-bytes', 'viewer-eager-js-bytes']) {
+  for (const id of ['viewer-entry-js-bytes', 'viewer-eager-js-bytes', 'viewer-parser-worker-js-bytes']) {
     const e = bundle.entries.find((x) => x.id === id);
     assert.deepEqual(e.tolerance, { kind: 'relative', value: 0.001 }, id);
     assert.equal(e.metric, 'raw-bytes', id);
@@ -205,6 +233,7 @@ function inShape(files, html, body) {
     mkdirSync(join(dist, 'assets'), { recursive: true });
     for (const f of files) writeFileSync(join(dist, 'assets', f), 'export {}');
     writeFileSync(join(dist, 'index.html'), html);
+    writeFileSync(join(dist, 'assets/parser.worker-Wk1.js'), 'self.onmessage = () => {};');
     writeFileSync(join(root, 'w.wasm'), 'x');
     return body(() => measure.measureBundle({ wasm: join(root, 'w.wasm'), dist, commit: 'a' }));
   } finally {
@@ -260,6 +289,7 @@ rt('check ignores a brotli-only change of the viewer JS and fails on raw growth 
     writeFileSync(join(dist, 'index.html'), '<script type="module" src="/assets/main.js"></script><link rel="modulepreload" href="/assets/dep.js">');
     writeFileSync(join(root, 'w.wasm'), Buffer.alloc(2048, 7));
     writeFileSync(join(dist, 'assets/dep.js'), jsOf(9, 5000));
+    writeFileSync(join(dist, 'assets/parser.worker-Wk1.js'), 'self.onmessage = () => {};');
     const stamp = (date) => writeFileSync(join(dist, 'assets/main.js'), `const BUILD_DATE = "${date}";\n${'export const x = 1;\n'.repeat(2000)}`);
     const measureTo = (name) => {
       const out = join(root, name);

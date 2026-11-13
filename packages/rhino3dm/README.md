@@ -6,8 +6,8 @@ blob) into Rhino `.3dm` bytes. This adapter performs no IFC interpretation.
 ```ts
 import { writeRhino3dm } from '@ifc-lite/rhino3dm';
 
-// Today the encoded scene comes from Rust: `build_rhino_scene` then `RhinoScene::encode`
-// in the ifc-lite-export crate (manifest JSON + blob). The JS binding is not released yet.
+// The encoded scene comes from Rust: `build_rhino_scene` then `RhinoScene::encode` in the
+// ifc-lite-export crate. In JS, `exportRhinoScene` from `@ifc-lite/geometry` returns it.
 declare const manifestJson: string;
 declare const binaryBlob: Uint8Array;
 const scene = { manifest: manifestJson, blob: binaryBlob };
@@ -32,7 +32,9 @@ writes, and the first call's `locateFile` applies to that runtime. Failed
 initialization can be retried. A browser build must serve the WASM separately;
 Vite does not automatically copy it from this dynamic import.
 
-Layers, materials, groups, blocks and objects retain manifest order. Vertex positions
+Layers, materials, groups, blocks and objects retain manifest order. A layer's
+`userStrings` are written as layer user text (`Layer.setUserString`); the scene
+uses them for the IFC identity of project and spatial layers. Vertex positions
 use double precision. All created Embind objects are explicitly released, also
 when writing or progress callbacks throw. Table, settings and mesh-list wrappers are released before their parent; the
 underlying document/mesh data stays owned by that parent.

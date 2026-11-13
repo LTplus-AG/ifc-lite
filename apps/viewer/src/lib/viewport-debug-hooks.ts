@@ -115,9 +115,13 @@ export function installViewportDebugHooks(
     host.__ifc_lite_scene_identity__ = async (opts?: { perElement?: boolean }) => {
       const scene = renderer.getScene();
       const { scenePieceIdentity } = await import('./perf/sceneIdentity.js');
+      // The viewer's own settled check (queued meshes, streaming fragments, pending shards too), so the
+      // scoreboard never hashes a scene that is still filling in (review #9863).
+      const { isSceneSettled } = await import('./scene-settled.js');
+      const settled = isSceneSettled();
       const tap = tappedSceneSnapshots();
       const pieces = scenePieceIdentity(scene);
-      return { hydrating: scene.isSceneSnapshotHydrating(), finalizing: scene.isFinalizeInProgress(), instancedEntities: scene.getInstancedEntityCount(),
+      return { settled, hydrating: scene.isSceneSnapshotHydrating(), finalizing: scene.isFinalizeInProgress(), instancedEntities: scene.getInstancedEntityCount(),
         pieces: { pieces: pieces.pieces, elements: pieces.elements, sig: pieces.sig, ...(opts?.perElement ? { perElement: pieces.perElement } : {}) },
         snapshots: tap.snapshots, pending: tap.pending };
     };

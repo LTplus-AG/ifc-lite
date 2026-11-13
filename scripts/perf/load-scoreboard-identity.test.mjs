@@ -138,3 +138,14 @@ test('review #9863: -early and -settled reopen lanes use the default-arm identit
   assert.equal(identityLaneFor('browser-cold-settled'), null);
   assert.equal(identityWanted({ warmOpens: 2, lanes: ['browser-cold', 'browser-warm-settled'] }, 0), true, 'a plan with only a suffixed reopen lane gets the pass');
 });
+
+test('the identity pass waits for the viewer\'s own settled check, not only hydrate and finalize (review #9863)', async () => {
+  const { identityReady } = await load('./load-scoreboard-identity.mjs');
+  const quiet = { pending: 0, hydrating: false, finalizing: false };
+  assert.equal(identityReady({ ...quiet, settled: true }), true);
+  assert.equal(identityReady({ ...quiet, settled: false }), false, 'meshes still queued or fragments streaming: not yet');
+  assert.equal(identityReady({ ...quiet, settled: false, pending: 0 }), false);
+  assert.equal(identityReady({ ...quiet, settled: true, finalizing: true }), false);
+  assert.equal(identityReady({ ...quiet, settled: true, pending: 1 }), false);
+  assert.equal(identityReady(quiet), true, 'a build that does not report settled keeps the narrower check');
+});

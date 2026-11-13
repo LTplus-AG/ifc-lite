@@ -3,13 +3,13 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import { EntityExtractor, extractPropertiesOnDemand, extractQuantitiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
-import type { StoreEditor } from '@ifc-lite/mutations';
+import type { IfcAttributeValue, StoreEditor } from '@ifc-lite/mutations';
 import { getFootprintRoofPlaneParts, PART_TYPE, RELATION_NAME } from './roof-plane-parts.js';
 import { AnchorEntityReader } from './resolve-anchor.js';
 import { refId } from './host-geometry-frame.js';
 import { collectSourceAssociations } from './resolve-source.js';
 import { ROOF_FOOTPRINT_PSET } from './roof-footprint.js';
-import { readFileRecord } from './step-record-attrs.js';
+import { readFileRecord, type FileRecord } from './step-record-attrs.js';
 
 const writesByEditor = new WeakMap<StoreEditor, number>();
 const MAX_MEASUREMENT_COPY_WRITES = 10_000;
@@ -34,13 +34,23 @@ export function copyRoofPlaneParts(store: IfcDataStore, editor: StoreEditor, sou
   const guid = () => generateIfcGuid(random);
   const baseProperties = (base: number) => extractPropertiesOnDemand(store, base)
     .map(set => ({ ...set, globalId: set.globalId ?? '' }));
+  const measurementRecord = (id: number): FileRecord | null => {
+    const created = view.getNewEntity(id);
+    if (!created) return readFileRecord(store, view, id);
+    if (view.isDeleted(id)) return null;
+    const attributes = [...created.attributes];
+    for (const [index, value] of view.getPositionalMutationsForEntity(id) ?? []) attributes[index] = value as IfcAttributeValue;
+    return { type: view.getEntityTypeMutation(id)?.newType ?? created.type, attributes };
+  };
   const definitionForCopy = (definition: number, original: number): number | null => {
-    const record = readFileRecord(store, view, definition);
+    const record = measurementRecord(definition);
     if (!record) throw new Error(`Cannot read roof measurement definition #${definition}`);
     const name = record.attributes[2], type = record.type.toUpperCase();
     let slot: number, owned: string[], present: Set<string>;
     if (type === 'IFCELEMENTQUANTITY' && (name === 'Qto_SlabBaseQuantities' || name === 'Qto_RoofBaseQuantities')) {
       slot = 5; owned = name === 'Qto_RoofBaseQuantities' ? ['NetArea'] : ['NetArea', 'NetVolume'];
+      owned.push(...view.getEffectiveChanges(original).filter(change => change.kind === 'quantity'
+        && change.deleted && change.setName === name && change.name !== undefined).map(change => change.name!));
       present = new Set(view.getQuantitiesForEntity(original, base => extractQuantitiesOnDemand(store, base))
         .filter(set => set.name === name).flatMap(set => set.quantities.map(q => q.name)));
     } else if (type === 'IFCPROPERTYSET' && (name === 'Pset_SlabCommon' || name === ROOF_FOOTPRINT_PSET)) {
@@ -58,7 +68,7 @@ export function copyRoofPlaneParts(store: IfcDataStore, editor: StoreEditor, sou
     if (!kept.length) return null;
     spend(kept.length + 1);
     const independent = kept.map(member => {
-      const id = refId(member), child = id === null ? null : readFileRecord(store, view, id);
+      const id = refId(member), child = id === null ? null : measurementRecord(id);
       if (!child) throw new Error('Unreadable roof measurement member');
       const kind = child.type.toUpperCase();
       if (kind === 'IFCCOMPLEXPROPERTY' || kind === 'IFCPHYSICALCOMPLEXQUANTITY') return member;
@@ -70,11 +80,14 @@ export function copyRoofPlaneParts(store: IfcDataStore, editor: StoreEditor, sou
   const copyMeasurements = (original: number, id: number, quantitySet: string, propertySet: string) => {
     const quantities = view.getQuantitiesForEntity(original, base => extractQuantitiesOnDemand(store, base));
     const properties = view.getForEntity(original, baseProperties);
+    const deletions = view.getEffectiveChanges(original).filter(change => change.kind === 'quantity'
+      && change.deleted && change.setName === quantitySet && change.name !== undefined);
     spend(quantities.filter(set => set.name === quantitySet).reduce((sum, set) => sum + set.quantities.length, 0)
-      + properties.filter(set => set.name === propertySet).reduce((sum, set) => sum + set.properties.length, 0));
+      + properties.filter(set => set.name === propertySet).reduce((sum, set) => sum + set.properties.length, 0) + deletions.length);
     for (const set of quantities.filter(set => set.name === quantitySet)) for (const q of set.quantities) {
       view.setQuantity(id, set.name, q.name, q.value, q.type, q.unit);
     }
+    for (const change of deletions) view.deleteQuantity(id, quantitySet, change.name!);
     for (const set of properties.filter(set => set.name === propertySet)) for (const p of set.properties) {
       view.setProperty(id, set.name, p.name, p.value, p.type, p.unit, false, p.dataType);
     }

@@ -184,6 +184,41 @@ describe('standard footprint roof plane measurements (#9357)', () => {
     expect(originalQuantities.find(q => q.name === 'GrossVolume')!.value).toBeCloseTo(gross * 2, 8);
     expect(originalQuantities.find(q => q.name === 'NetVolume')).toBeUndefined();
   });
+
+  it('a copied roof can be copied again after saved measurement definitions were trimmed (#9357 review)', async () => {
+    const initial = await session();
+    const { roofId } = addRoofToStore(initial.editor, initial.anchor, HIP);
+    const store = await parse(exportText(initial)), view = new MutablePropertyView(null, 'repeat-copy');
+    view.setQuantityExtractor(id => extractQuantitiesOnDemand(store, id));
+    const editor = new StoreEditor(store, view), s = { ...initial, store, view, editor };
+    view.deleteQuantity(parts(s, roofId)[0], 'Qto_SlabBaseQuantities', 'NetVolume');
+    const [first] = copyBatchInStore(store, editor, [roofId], [{ offset: [20, 0, 0] }]);
+    const [second] = copyBatchInStore(store, editor, [first.copyId], [{ offset: [20, 0, 0] }]);
+    const copied = parts(s, second.copyId);
+    expect(copied).toHaveLength(4);
+    expect(quantities(s, copied[0], 'Qto_SlabBaseQuantities').GrossVolume).toBeGreaterThan(0);
+    const reopened = await parse(exportText(s));
+    const q = extractQuantitiesOnDemand(reopened, copied[0]).find(set => set.name === 'Qto_SlabBaseQuantities')!.quantities;
+    expect(q.find(q => q.name === 'NetVolume')).toBeUndefined();
+    expect(q.find(q => q.name === 'GrossVolume')!.value).toBeGreaterThan(0);
+  });
+
+  it('copies preserve deleted gross quantities on both the roof and its plane parts through reopen (#9357 review)', async () => {
+    const initial = await session();
+    const { roofId } = addRoofToStore(initial.editor, initial.anchor, HIP);
+    const store = await parse(exportText(initial)), view = new MutablePropertyView(null, 'gross-deletions');
+    view.setQuantityExtractor(id => extractQuantitiesOnDemand(store, id));
+    const editor = new StoreEditor(store, view), s = { ...initial, store, view, editor };
+    view.deleteQuantity(roofId, 'Qto_RoofBaseQuantities', 'ProjectedArea');
+    view.deleteQuantity(parts(s, roofId)[0], 'Qto_SlabBaseQuantities', 'GrossVolume');
+    const [copy] = copyBatchInStore(store, editor, [roofId], [{ offset: [20, 0, 0] }]);
+    const copied = parts(s, copy.copyId);
+    const reopened = await parse(exportText(s));
+    const q = (id: number, name: string) => extractQuantitiesOnDemand(reopened, id).find(set => set.name === name)!.quantities;
+    expect(q(copy.copyId, 'Qto_RoofBaseQuantities').find(q => q.name === 'ProjectedArea')).toBeUndefined();
+    expect(q(copied[0], 'Qto_SlabBaseQuantities').find(q => q.name === 'GrossVolume')).toBeUndefined();
+    expect(q(copied[0], 'Qto_SlabBaseQuantities').find(q => q.name === 'NetVolume')!.value).toBeGreaterThan(0);
+  });
 });
 
 const python = process.env.IFCOPENSHELL_PYTHON ?? 'python3';

@@ -37,14 +37,13 @@ export function ifcString(strings: RhinoUserStrings, name: string): string | und
 }
 
 /**
- * The value an entity column takes: the first part that states `IFC::<name>` with a value. Read from
- * the parts themselves, so the rule holds however `mergeUserText` numbers a later part's differing
- * value. An empty value counts as unset, so the column still comes from a part that states one: a
- * .3dm openNURBS wrote holds no empty value, and this way the column does not depend on that.
+ * The value an entity column takes: the first part that states `IFC::<name>` with a value, else `''`.
+ * Read from the parts, so the rule holds however `mergeUserText` numbers a later part's value, and an
+ * empty value counts as unset, so the column never depends on what a .3dm can hold.
  */
-function columnString(parts: ObjectFacts[], name: string): string | undefined {
+function columnString(parts: ObjectFacts[], name: string): string {
   for (const part of parts) { const value = ifcString(part.userStrings, name); if (value) return value; }
-  return undefined;
+  return '';
 }
 
 /**
@@ -59,7 +58,8 @@ function propertySets(o: ObjectFacts, userStrings: RhinoUserStrings): RhinoImpor
     const properties = sets.get(set);
     if (properties) properties.push([name, value]); else sets.set(set, [[name, value]]);
   };
-  // Only the first of each column key fills the column, so a second spelling of it stays a property.
+  // The first occurrence of each column key is consumed whether or not it has a value, so a second
+  // spelling of it stays a property, and an empty one is dropped while a later part fills the column.
   const columns = new Set<string>();
   for (const [key, value] of userStrings) {
     const split = splitKey(key), column = split?.name.toLowerCase() ?? '';
@@ -157,15 +157,14 @@ export function buildEntities(objects: ObjectFacts[], groupNames: string[], clas
   // Columns and property sets are read once every part's user text is in.
   const entities = drafts.map(({ globalId, parts }): RhinoImportEntity => {
     const [first] = parts, userStrings = parts.length === 1 ? first.userStrings : mergeUserText(parts);
-    const className = columnString(parts, 'Class')?.trim();
+    const className = columnString(parts, 'Class').trim();
     const ifcClass = className ? classes.product(className) : null;
     if (className && !ifcClass) report.warn('class', n => `${plural(n, 'object')} name an IFC::Class that is not an IFC product class and are imported as ${FALLBACK_CLASS}.`);
     return {
       globalId, ifcClass: ifcClass ?? FALLBACK_CLASS,
-      // `columnString` answers with a value or not at all; a Rhino object name, which can be empty, falls through.
-      name: columnString(parts, 'Name') ?? (first.name || first.type),
-      description: columnString(parts, 'Description') ?? '',
-      objectType: columnString(parts, 'ObjectType') ?? '',
+      name: columnString(parts, 'Name') || first.name || first.type,
+      description: columnString(parts, 'Description'),
+      objectType: columnString(parts, 'ObjectType'),
       layer: first.layer, hidden: parts.every(part => part.hidden), objectIds: parts.map(part => part.id), geometryType: first.type,
       userStrings, propertySets: propertySets(first, userStrings),
     };

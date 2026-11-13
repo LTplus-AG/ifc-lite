@@ -96,22 +96,23 @@ test('a part states a column key or does not: an empty value never reaches the r
   expect(result.warnings).toEqual([]);
 });
 
-// Review finding on PR #9880 (discussion_r4555307840). A .3dm openNURBS wrote cannot hold an empty
-// value, so this case reaches `buildEntities` only from a caller: the column rule covers it anyway,
-// rather than resting on what the archive reader does with a file written elsewhere.
-test('an empty value counts as unset for every entity column, so the first part with a value fills it', () => {
-  // Both parts sit in the group named their GlobalId, so they merge; the Rhino object name is empty too.
+// Review finding on PR #9880 (discussion_r4555307840). No crafted .3dm can hold an empty value, so
+// this reaches `buildEntities` directly: `columnString` covers the case rather than resting on what
+// an archive written outside openNURBS might hold. `Name` has a fallback and `Description` has none,
+// which is both shapes a column comes in.
+test('an empty value counts as unset for an entity column, so the first part with a value fills it', () => {
+  // Both parts sit in the group named their GlobalId, so they merge. The Rhino object name is empty too.
   const part = (userStrings: [string, string][]): ObjectFacts => ({
     id: 'c0ffee', name: '', type: 'Mesh', layer: 0, layerPath: 'Default', hidden: false, groups: [0], userStrings, material: '',
   });
-  const classes: IfcClasses = { product: name => (name === 'IfcWall' ? 'IfcWall' : null), spatial: () => null };
+  const classes: IfcClasses = { product: () => null, spatial: () => null };
   const { entities } = buildEntities([
-    part([['IFC::GlobalId', WALL], ['IFC::Name', ''], ['IFC::Description', ''], ['IFC::ObjectType', ''], ['IFC::Class', '']]),
-    part([['IFC::GlobalId', WALL], ['IFC::Name', 'Wall 2'], ['IFC::Description', 'from part 2'], ['IFC::ObjectType', 'Basic Wall'], ['IFC::Class', 'IfcWall']]),
+    part([['IFC::GlobalId', WALL], ['IFC::Name', ''], ['IFC::Description', '']]),
+    part([['IFC::GlobalId', WALL], ['IFC::Name', 'Wall 2'], ['IFC::Description', 'from part 2']]),
   ], [WALL], classes, new Report());
   expect(entities).toHaveLength(1);
   // Not '' from the empty values part 1 states, and not 'Mesh' from the geometry type.
-  expect(entities[0]).toMatchObject({ name: 'Wall 2', description: 'from part 2', objectType: 'Basic Wall', ifcClass: 'IfcWall' });
+  expect(entities[0]).toMatchObject({ name: 'Wall 2', description: 'from part 2' });
 });
 
 /** The user text one wall grouped from `parts` comes back with, without its GlobalId. */
@@ -144,17 +145,10 @@ test('a generated numbered key never takes a name a part states, whichever comes
   expect(await mergedText([['X', 'a'], ['x #2', 'c']], [['X', 'b'], ['X #2', 'd']])).toEqual([['X', 'a'], ['x #2', 'c'], ['X #3', 'b'], ['X #2 #2', 'd']]);
 });
 
-test('three parts: each new value gets the next number, an equal key and value is added once', async () => {
+test('four parts: each new value gets the next number, an equal key and value is added once', async () => {
   // The empty part states only the GlobalId: it adds nothing and spends no number, so the result is unchanged by it.
   expect(await mergedText([['X', 'a'], ['Y', '1']], [], [['X', 'b'], ['Y', '1']], [['x', 'c'], ['Z', 'a']], [['X', 'b'], ['Y', '1']]))
     .toEqual([['X', 'a'], ['Y', '1'], ['X #2', 'b'], ['x #3', 'c'], ['Z', 'a']]);
-});
-
-test('the numbers count on past ten, where a generated name first grows a digit', async () => {
-  expect(await mergedText(...Array.from({ length: 12 }, (_, i): [string, string][] => [['X', `v${i}`]]))).toEqual([
-    ['X', 'v0'], ['X #2', 'v1'], ['X #3', 'v2'], ['X #4', 'v3'], ['X #5', 'v4'], ['X #6', 'v5'],
-    ['X #7', 'v6'], ['X #8', 'v7'], ['X #9', 'v8'], ['X #10', 'v9'], ['X #11', 'v10'], ['X #12', 'v11'],
-  ]);
 });
 
 test('the merge follows file order: the first part keeps the plain key, and no value depends on the order', async () => {

@@ -260,9 +260,9 @@ come parent first; every number is finite, after unit scaling and after every
 transform [test]; triangle indices are in range; each `globalId` is unique
 within the file; entities are in file object order, and every geometry list is
 ordered by entity. Each typed array appears once and no two share a buffer, so
-every `array.buffer` can go on one transfer list (a typed array is not itself
-transferable), and each record owns its `color` array [test]. The output is the
-same for the same bytes and options [test].
+every `array.buffer` can go on one transfer list, and each record owns its
+`color` array [test]. The output is the same for the same bytes and options
+[test].
 
 An entity is a top-level object that drew something. An object that draws
 nothing (a Brep without render meshes, a block whose members cannot be drawn)
@@ -378,15 +378,13 @@ type RhinoImportResponse =
   part writes it. `n` counts up from 2 for each key and skips every name that
   any part of the entity states, in an earlier or a later part, and every name
   already generated. So a generated name never equals a stated one, and the
-  first part to state a key keeps it as written. No value is lost, the first
-  part's value is the one read for identity and the entity columns, and a
-  column is filled by the first part that states a value for it, under the
-  plain key. The columns are read from the parts rather than from the merged
-  list, and an empty value counts as unset [test]. There is no warning,
-  because differing values are the normal case: the exporter writes
-  each part's own `IFC::Material`, so all 16 merged elements in FZK and all 46
-  in duplex differ there and come back with `IFC::Material` and
-  `IFC::Material #2` [ran, test].
+  first part to state a key keeps it as written. No value is lost, and the
+  entity columns are read from the parts rather than from the merged list:
+  each column is the first part that states a value for it, an empty value
+  counting as unset [test]. There is no warning, because differing values are
+  the normal case: the exporter writes each part's own `IFC::Material`, so all
+  16 merged elements in FZK and all 46 in duplex differ there and come back
+  with `IFC::Material` and `IFC::Material #2` [ran, test].
   `layer`, `geometryType` and the `Rhino` set describe the first part;
   `objectIds` lists them all.
 - **Class:** `IFC::Class` when it names an instantiable subtype of `IfcProduct`
@@ -524,9 +522,7 @@ covered by a crafted file [test].
 Attribute User Text is string-only, so values are strings (`IfcLabel`).
 Numbers are not guessed. No value the reader sees is empty: `setUserString`
 stores nothing and answers false for an empty value, and deletes the key when
-one already holds a value, so a .3dm openNURBS wrote has every key stated or
-absent, never blank. The entity columns do not rely on that and count an empty
-value as unset anyway [test]. Whitespace is a value like any other, kept as
+one already holds a value [ran]. Whitespace is a value like any other, kept as
 written [test]. The reader does the sorting: each entity carries
 `propertySets` next to its verbatim `userStrings`, plus `description` and
 `objectType` [test].

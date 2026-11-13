@@ -64,8 +64,11 @@ describe('MCP playground BYOK credential', () => {
     try {
       const container = render(<PlaygroundChat model={await oneWallModel()} />);
       await send(container, 'hello');
-      const anthropic = stub.sent.filter((h) => h.has('x-api-key'));
+      // #8610: SDK 1.6 sends apiKey as Bearer auth, replacing x-api-key.
+      await waitFor(() => stub.sent.some(h => h.has('authorization')), 'Anthropic request captured');
+      const anthropic = stub.sent.filter((h) => h.has('authorization'));
       assert.ok(anthropic.length > 0, 'expected a request to Anthropic');
+      assert.equal(anthropic[0].get('authorization'), 'Bearer sk-ant-api03-playground');
       assert.equal(anthropic[0].get('anthropic-workspace-id'), WORKSPACE);
     } finally {
       stub.restore();
@@ -83,6 +86,7 @@ describe('MCP playground BYOK credential', () => {
     try {
       const container = render(<PlaygroundChat model={await oneWallModel()} />);
       await send(container, 'hello');
+      await waitFor(() => /rejected the Workspace ID/.test(container.textContent ?? ''), 'workspace rejection rendered');
       const shown = container.textContent ?? '';
       assert.match(shown, /rejected the Workspace ID/);
       assert.doesNotMatch(shown, /Add the workspace id/);

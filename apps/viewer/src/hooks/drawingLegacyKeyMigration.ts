@@ -147,7 +147,7 @@ async function legacyKeyToMove(store: LegacyStore, key: string, present: string[
 
 // ── Markup and sheet (localStorage) ──────────────────────────────────
 
-const MARKUP_LISTS = ['measure2DResults', 'polygonArea2DResults', 'textAnnotations2D', 'tagAnnotations2D', 'cloudAnnotations2D'] as const;
+const MARKUP_LISTS = ['measure2DResults', 'polygonArea2DResults', 'textAnnotations2D', 'tagAnnotations2D', 'cloudAnnotations2D', 'dimensions2D'] as const;
 const holdsAll = (stored: { id: string }[], moved: { id: string }[]) => {
   const ids = new Set(stored.map((item) => item.id));
   return moved.every((item) => ids.has(item.id));
@@ -170,17 +170,20 @@ function moveLegacyMarkup(key: string, legacy: string, unionById: LegacyMoveCont
     textAnnotations2D: unionById(earlier.textAnnotations2D, later.textAnnotations2D),
     tagAnnotations2D: unionById(earlier.tagAnnotations2D ?? [], later.tagAnnotations2D ?? []),
     cloudAnnotations2D: unionById(earlier.cloudAnnotations2D, later.cloudAnnotations2D),
+    dimensions2D: unionById(earlier.dimensions2D ?? [], later.dimensions2D ?? []),
     sectionConfig: later.sectionConfig ?? earlier.sectionConfig,
+    absorbedEmbeddedMarkup: [...new Set([...earlier.absorbedEmbeddedMarkup ?? [], ...later.absorbedEmbeddedMarkup ?? []])],
   } : later;
   saveDrawing2DEntry(key, merged);
   // The entry read back must BE the merged one, value for value. Comparing
   // ids is not enough: an entry whose write failed still holds every id when
-  // the legacy entry only contributed a newer version of an item, or the
-  // section plane.
+  // the legacy entry only contributed a newer version of an item, the
+  // section plane, or the absorbed embedded markup a deletion depends on.
   const written = loadDrawing2DEntry(key, defaults);
   const same = (pick: (entry: typeof merged) => unknown) => !!written && JSON.stringify(pick(written)) === JSON.stringify(pick(merged));
   if (!MARKUP_LISTS.every((list) => same((entry) => entry[list]))
-    || !same((entry) => entry.sectionConfig) || !same((entry) => entry.drawing2DDisplayOptions)) return { complete: false, fallback: merged };
+    || !same((entry) => entry.sectionConfig) || !same((entry) => entry.drawing2DDisplayOptions)
+    || !same((entry) => entry.absorbedEmbeddedMarkup ?? [])) return { complete: false, fallback: merged };
   return { complete: removeLocal(keyFor(legacy), raw) };
 }
 

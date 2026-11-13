@@ -5,7 +5,7 @@
 import type { ExportFormat, ExportSurface } from '@/lib/analytics-export-events';
 import { modelDisplayLabels } from '@/lib/model-labels.js';
 import { stepExportProgress } from '@/lib/export/step-progress.js';
-import { exportModelStep } from '@/lib/export/model-step-export';
+import { exportModelStep, exportFailureMessage } from '@/lib/export/model-step-export';
 import { useSectionExport, sectionMergeInputs } from '@/lib/export/section-export';
 import { packagePortableIfcAsync, assertPortableMergeSupported } from '@/lib/export/portable-ifc';
 import { lostPropertyCollisionsNote, unrepresentedPsetsNote } from '@/lib/export/changed-model-export';
@@ -535,7 +535,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
       }
     } catch (error) {
       console.error('Export failed:', error);
-      const errMsg = `Export failed: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      const errMsg = exportFailureMessage(error, t, selectedModel?.name);
       toast.error(errMsg);
       return { success: false, message: errMsg };
     } finally {

@@ -5,7 +5,7 @@
 import { describe, expect, test, vi } from 'vitest';
 import { readRhino3dm, RhinoReadError, writeRhino3dm } from '../index.js';
 import { loadRhino } from '../runtime.js';
-import { craft, entityBounds } from '../../test-support/craft.js';
+import { craft, entityBounds, hollowArchive } from '../../test-support/craft.js';
 import { MAX_3DM_BYTES } from './read.js';
 
 const quad = [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]];
@@ -102,7 +102,7 @@ describe('geometry', () => {
     expect(Array.from(cloud.positions)).toEqual([0, 0, 0, 1.5, 0, 0]);
     expect(Array.from(cloud.colors!)).toEqual([255, 0, 0, 255, 0, 128, 0, 64]);
     expect(plain.colors).toBeNull();
-    expect(result.textDots).toEqual([{ entity: 4, position: [4, 5, 6], text: 'Hello', color: [10 / 255, 20 / 255, 30 / 255, 1] }]);
+    expect(result.textDots).toEqual([{ entity: 4, position: [4, 5, 6], text: 'Hello', color: [10 / 255, 20 / 255, 30 / 255, 1], hidden: false }]);
     expect(result.skipped).toEqual({ Point: 1 });
     expect(result.meshes).toEqual([]);
   });
@@ -209,6 +209,30 @@ describe('layers', () => {
     expect(result.layers.map(l => l.visible)).toEqual([false, true, true]);
   });
 
+  // Issue #10070: a merged entity's flag cannot say which of its parts Rhino hides.
+  test.each([false, true])('each geometry record carries its own object\'s visibility, so a merged entity keeps it per part (bakeInstances %s)', async bakeInstances => {
+    const id = '2O2Fr$t4X7Zf8NOew3FLOH';
+    const result = await readRhino3dm(await craft(c => {
+      c.layer('On');
+      const off = c.layer('Off', { visible: false }), group = c.group(id), userStrings: [string, string][] = [['IFC::GlobalId', id]];
+      c.addMesh(c.box([0, 0, 0], [1, 1, 1]), { name: 'shown', groups: [group], userStrings });
+      c.addMesh(c.box([2, 0, 0], [3, 1, 1]), { name: 'hidden', groups: [group], userStrings, hidden: true });
+      c.addPolyline([[0, 0, 0], [1, 0, 0]], { name: 'off', groups: [group], userStrings, layer: off });
+      c.addPointCloud([[0, 0, 0]], undefined, { name: 'hidden cloud', groups: [group], userStrings, hidden: true });
+      c.addTextDot('tag', [0, 0, 1], { name: 'shown dot', groups: [group], userStrings });
+      c.addInstance(c.block('Box', [c.box([0, 0, 0], [1, 1, 1])]), undefined, { name: 'hidden instance', groups: [group], userStrings, hidden: true });
+      c.addMesh(c.box([4, 0, 0], [5, 1, 1]), { name: 'alone', hidden: true });
+    }), { bakeInstances });
+    expect(result.entities.map(e => [e.objectIds.length, e.hidden])).toEqual([[6, false], [1, true]]);
+    const flags = (records: { entity: number; hidden: boolean }[]) => records.map(r => [r.entity, r.hidden]);
+    // Baked, the hidden instance's box is a mesh of the merged entity, after the two drawn on their own.
+    expect(flags(result.meshes)).toEqual(bakeInstances ? [[0, false], [0, true], [0, true], [1, true]] : [[0, false], [0, true], [1, true]]);
+    expect(flags(result.curves)).toEqual([[0, true]]);
+    expect(flags(result.pointClouds)).toEqual([[0, true]]);
+    expect(flags(result.textDots)).toEqual([[0, false]]);
+    expect(flags(result.instances)).toEqual(bakeInstances ? [] : [[0, true]]);
+  });
+
   test('an object whose layer index is outside the table lands on the first layer', async () => {
     const result = await readRhino3dm(await craft(c => { c.layer('Only'); c.addMesh(c.box([0, 0, 0], [1, 1, 1]), { layer: 7 }); }));
     expect(result.entities[0].layer).toBe(0);
@@ -297,18 +321,11 @@ describe('errors', () => {
     } finally { fromByteArray.mockRestore(); }
   });
 
-  /** A valid header and end-of-file mark around zeros: rhino3dm answers null for it, as it does at the heap limit. */
-  const hollow = (megabytes: number) => {
-    const bytes = new Uint8Array(megabytes * 1024 * 1024), view = new DataView(bytes.buffer), size = bytes.length;
-    bytes.set(new TextEncoder().encode('3D Geometry File Format       80'));
-    view.setUint32(size - 20, 0x7fff, true); view.setBigUint64(size - 16, 8n, true); view.setBigUint64(size - 8, BigInt(size), true);
-    return bytes;
-  };
   const trap = () => { throw new WebAssembly.RuntimeError('Aborted(). Build with -sASSERTIONS for more info.'); };
 
   test('a wasm trap is too-large on a large file and damage on a small one; either way the next read gets a fresh runtime', async () => {
     const small = await craft(c => { c.addMesh(c.box([0, 0, 0], [1, 1, 1])); });
-    for (const [bytes, expected] of [[hollow(33), 'too-large'], [small, 'not-3dm']] as const) {
+    for (const [bytes, expected] of [[hollowArchive(33), 'too-large'], [small, 'not-3dm']] as const) {
       const trapped = await loadRhino();
       const fromByteArray = vi.spyOn(trapped.File3dm, 'fromByteArray').mockImplementation(trap);
       try { expect(await code(readRhino3dm(bytes))).toBe(expected); } finally { fromByteArray.mockRestore(); }
@@ -320,14 +337,14 @@ describe('errors', () => {
 
   test('a null read of a large archive that ends in its own length is too-large, not damage', async () => {
     const before = await loadRhino();
-    const error = await readRhino3dm(hollow(33)).catch(e => e);
+    const error = await readRhino3dm(hollowArchive(33)).catch(e => e);
     expect(error.code).toBe('too-large');
     expect(error.message).toContain('This file (33 MB) could not be read: it most likely needs more memory than the reader has');
     // The exhausted heap never shrinks, so the runtime is replaced.
     expect(await loadRhino()).not.toBe(before);
     // Cut short, or too small to exhaust anything: that is damage.
-    expect(await code(readRhino3dm(hollow(33).subarray(0, -1)))).toBe('not-3dm');
-    expect(await code(readRhino3dm(hollow(1)))).toBe('not-3dm');
+    expect(await code(readRhino3dm(hollowArchive(33).subarray(0, -1)))).toBe('not-3dm');
+    expect(await code(readRhino3dm(hollowArchive(1)))).toBe('not-3dm');
   });
 
   // Review finding on PR #9880.
@@ -340,7 +357,7 @@ describe('errors', () => {
     const fromByteArray = vi.spyOn(shared.File3dm, 'fromByteArray').mockImplementation(trap);
     let aborting, waiting;
     try {
-      aborting = readRhino3dm(hollow(33));
+      aborting = readRhino3dm(hollowArchive(33));
       waiting = readRhino3dm(small);
       expect(await code(aborting)).toBe('too-large');
       expect((await waiting).meshes).toHaveLength(1);

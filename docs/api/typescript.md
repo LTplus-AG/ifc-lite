@@ -187,6 +187,12 @@ Many more on-demand extractors are exported (classifications, materials, documen
 
 Other exports include the STEP scanning/tokenizing building blocks (`StepTokenizer`, `EntityExtractor`, `scanIfcEntities`, `CompactEntityIndex`), unit extraction (`extractProjectUnits`, `ProjectUnits`), the STEP serializer helpers (`generateStepFile`, `toStepLine`, `serializeValue`), the generated IFC schema registry (`SCHEMA_REGISTRY`, `getAttributeNames`), and re-exported IFCX parsing from `@ifc-lite/ifcx`.
 
+`EntityExtractor.extractAttribute(ref, index)` reads one zero-based positional
+attribute with the same STEP value rules as `extractEntity`, without decoding
+unrequested values. Missing attributes return `undefined`. It reads source data;
+use the effective metadata APIs when mutation overlays must be applied.
+
+
 ---
 
 ## @ifc-lite/geometry

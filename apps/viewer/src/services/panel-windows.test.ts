@@ -10,6 +10,8 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { getViewerStoreApi } from '@/store';
 import { registerLocale, setLocale } from '@/i18n';
+import { resetFeaturesForTest } from '@/lib/features';
+import { enforcePanelAvailability } from '@/store/panel-availability-sync';
 import {
   closeAllPanelWindows,
   closePanelWindow,
@@ -212,5 +214,46 @@ describe('panel-windows', () => {
 
     assert.equal(getPanelWindowsSnapshot().length, 0, 'store-driven re-dock must detach the window');
     assert.equal(openedWindows[0].closed, true);
+  });
+
+  it('closePanelWindow on a window the user already closed re-docks without touching it', async () => {
+    await openPanelWindow('clash');
+    openedWindows[0].close(); // gone out-of-band; no pagehide reached us
+    let closeCalls = 0;
+    openedWindows[0].close = () => { closeCalls += 1; };
+    closePanelWindow('clash');
+    closePanelWindow('clash'); // a second close is a no-op
+    assert.equal(closeCalls, 0, 'a closed window is not closed again');
+    assert.equal(getPanelWindowsSnapshot().length, 0);
+    assert.ok(!getViewerStoreApi().getState().poppedOutIds.includes('clash'));
+  });
+
+  describe('a panel the host switched off (#10147)', () => {
+    afterEach(() => resetFeaturesForTest());
+
+    it('is never popped out', async () => {
+      resetFeaturesForTest({ default: 'all', disable: ['check.bcf'] });
+      const stop = enforcePanelAvailability(getViewerStoreApi());
+      try {
+        assert.equal(await openPanelWindow('bcf'), null);
+        assert.equal(openedWindows.length, 0, 'no OS window opens');
+        assert.equal(getPanelWindowsSnapshot().length, 0);
+      } finally {
+        stop();
+      }
+    });
+
+    it('has its open window closed when availability is enforced', async () => {
+      await openPanelWindow('bcf');
+      resetFeaturesForTest({ default: 'all', disable: ['check.bcf'] });
+      const stop = enforcePanelAvailability(getViewerStoreApi());
+      try {
+        assert.equal(openedWindows[0].closed, true);
+        assert.equal(getPanelWindowsSnapshot().length, 0);
+        assert.ok(!getViewerStoreApi().getState().poppedOutIds.includes('bcf'));
+      } finally {
+        stop();
+      }
+    });
   });
 });

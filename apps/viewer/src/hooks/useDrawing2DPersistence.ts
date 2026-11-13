@@ -186,7 +186,16 @@ export function useDrawing2DPersistence(): void {
 
       const defaults = getDefaultDrawing2DState().drawing2DDisplayOptions;
       const entry = fallback ?? loadDrawing2DEntry(hash, defaults);
-      if (!entry) return;
+      if (!entry) {
+        // Nothing stored to merge into: markup drawn while the restore held
+        // saves off is still unsaved. A new list reference makes the save
+        // subscription store the whole live markup now (#10076 review).
+        const live = useViewerStore.getState();
+        const drawn = [live.measure2DResults, live.polygonArea2DResults, live.textAnnotations2D,
+          live.tagAnnotations2D, live.cloudAnnotations2D, live.dimensions2D].some((list) => list.length > 0);
+        if (drawn) useViewerStore.setState({ measure2DResults: [...live.measure2DResults] });
+        return;
+      }
 
       setRestoredSectionConfig(activeModelId, entry.sectionConfig);
       const live = useViewerStore.getState();
@@ -196,6 +205,7 @@ export function useDrawing2DPersistence(): void {
         textAnnotations2D: drawnMeanwhile(entry.textAnnotations2D, live.textAnnotations2D),
         tagAnnotations2D: drawnMeanwhile(restoreElementTags(entry.tagAnnotations2D, entry.ownerModelId, activeModelId), live.tagAnnotations2D),
         cloudAnnotations2D: drawnMeanwhile(entry.cloudAnnotations2D, live.cloudAnnotations2D),
+        dimensions2D: drawnMeanwhile(entry.dimensions2D ?? [], live.dimensions2D),
         drawing2DDisplayOptions: entry.drawing2DDisplayOptions,
       });
     };

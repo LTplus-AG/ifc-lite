@@ -11,7 +11,7 @@
 
 import { useViewerStore } from '../../store/index.js';
 import { hasPendingInstancedShards, subscribeInstancedShards } from '../../store/instancedShardQueue.js';
-import { MAX_TAIL_WAIT_MS, viewerLoadWindow } from '../../hooks/loadWindow.js';
+import { viewerLoadWindow } from '../../hooks/loadWindow.js';
 import type { AfterLoadEnv } from './afterLoadIdle.js';
 
 export type AfterLoadJob = 'snapshot-write' | 'overlay-parse' | 'source-compaction' | 'search-index';
@@ -36,60 +36,24 @@ export function modelLoadSettled(state: ViewerState, modelId: string | null): bo
   return !LOADING.has(model.loadState);
 }
 
-/** How long a settled model's own hold may last (e.g. the window stays open across a multi-file open). */
-let ownHoldCapMs = MAX_TAIL_WAIT_MS;
-/** When each held model was first seen settled, by its data store (a reload is a new store, so a new hold); weak, so a removed model's store is not kept. */
-let heldSince = new WeakMap<object, { since: number; armed: boolean }>();
-let now = (): number => Date.now();
-const NO_STORE = new Map<string, object>(); // a stand-in key for a record without a store
-const capListeners = new Set<() => void>();
-
 /**
  * When an after-load job may start: its model has settled AND the load window
  * (hooks/loadWindow.ts, the one definition of "the load is over") no longer holds
- * THAT model, i.e. the frame showing it settled has painted. Another model's load
- * does not hold it back: a model settled when the window opened is never held.
- * A settled model's own hold is capped at `ownHoldCapMs` (a multi-file open keeps
- * the window open until its last file; a load flag that never clears). `null`:
- * the legacy single-model store, held by the whole window.
+ * THAT model: the loader ended its load and the frame showing it has painted.
+ * Another model's load does not hold it back. The window's own limits release a
+ * model whose load flag never clears. `null`: the single-store mode, held by the
+ * whole window.
  */
 export function afterLoadReady(state: ViewerState, modelId: string | null): boolean {
-  if (!modelLoadSettled(state, modelId)) {
-    const loading = modelId === null ? null : state.models.get(modelId)?.ifcDataStore;
-    if (loading) heldSince.delete(loading); // loading again: its next settle starts a new hold
-    return false;
-  }
+  if (!modelLoadSettled(state, modelId)) return false;
   const loadWindow = viewerLoadWindow();
-  if (modelId === null) return !loadWindow.isOpen();
-  const key: object = state.models.get(modelId)?.ifcDataStore ?? NO_STORE.get(modelId) ?? NO_STORE.set(modelId, {}).get(modelId)!;
-  if (!loadWindow.isHeld(modelId)) { heldSince.delete(key); NO_STORE.delete(modelId); return true; }
-  let held = heldSince.get(key);
-  if (!held) heldSince.set(key, held = { since: now(), armed: false });
-  const left = held.since + ownHoldCapMs - now();
-  if (left <= 0) return true;
-  // A re-check when the cap is reached. Re-armed on every early check: a timer can fire before the
-  // clock shows the full cap, and without a new one the job would wait for an unrelated store change.
-  if (!held.armed) {
-    const entry = held;
-    entry.armed = true;
-    setTimeout(() => { entry.armed = false; for (const listener of [...capListeners]) listener(); }, left + 1);
-  }
-  return false;
-}
-
-/** Test-only: the own-hold cap and the clock it reads; `null` restores them. */
-export function __setOwnHoldCapForTests(ms: number | null, clock: (() => number) | null = null): void {
-  ownHoldCapMs = ms ?? MAX_TAIL_WAIT_MS;
-  now = clock ?? (() => Date.now());
-  heldSince = new WeakMap();
-  NO_STORE.clear();
+  return modelId === null ? !loadWindow.isOpen() : !loadWindow.isHeld(modelId);
 }
 
 const subscribeStoreAndWindow = (listener: () => void): (() => void) => {
   const fromStore = useViewerStore.subscribe(listener);
   const fromWindow = viewerLoadWindow().subscribe(listener);
-  capListeners.add(listener);
-  return () => { fromStore(); fromWindow(); capListeners.delete(listener); };
+  return () => { fromStore(); fromWindow(); };
 };
 
 const ENV: AfterLoadEnv = {

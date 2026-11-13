@@ -208,6 +208,25 @@ describe('generated concrete relationship types', () => {
       expect(walked.length).toBeGreaterThan(40);
       expect([...getConcreteRelationshipTypes(version)]).toEqual(walked);
     });
+
+    // Checks that do not share the walk: a dangling or cyclic `parent` would
+    // stop the climb early on both sides above, so every chain must resolve to
+    // a root here, and every listed type must carry the IfcRel prefix.
+    it(`${version}: every parent chain resolves to a root and every listed type is an IfcRel*`, () => {
+      const registry = getSchemaRegistryForVersion(version);
+      for (const [name, meta] of Object.entries(registry.entities)) {
+        const seen = new Set<string>([name]);
+        let parent = meta.parent;
+        while (parent) {
+          const next = registry.entities[parent];
+          expect(next, `${name}: parent ${parent} is not in the registry`).toBeDefined();
+          expect(seen.has(parent), `${name}: parent cycle at ${parent}`).toBe(false);
+          seen.add(parent);
+          parent = next!.parent;
+        }
+      }
+      for (const type of getConcreteRelationshipTypes(version)) expect(type.startsWith('IFCREL'), type).toBe(true);
+    });
   }
 
   it('an unknown version still fails the way the registry lookup does', () => {

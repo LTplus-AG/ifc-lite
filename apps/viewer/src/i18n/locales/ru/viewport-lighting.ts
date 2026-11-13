@@ -30,6 +30,7 @@ export const viewportLightingRu = {
   "viewportLighting.container.emptyState.dragDropHint": "Или перетащите файлы в любое место окна просмотра:",
   "viewportLighting.container.emptyState.formats.ifc": "IFC",
   "viewportLighting.container.emptyState.formats.gltf": "glTF",
+  "viewportLighting.container.emptyState.formats.rhino": "Rhino",
   "viewportLighting.container.emptyState.formats.pointClouds": "Облака точек",
   "viewportLighting.container.emptyState.formats.terrain": "Рельеф",
   "viewportLighting.container.emptyState.formats.underlays": "Подложки",

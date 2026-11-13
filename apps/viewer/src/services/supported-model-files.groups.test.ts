@@ -22,7 +22,7 @@ import {
   isSupportedModelFile,
 } from './supported-model-files.js';
 
-const MODEL = ['.ifc', '.ifcx', '.ifczip', '.glb', '.gltf', '.las', '.laz', '.ply', '.pcd', '.e57', '.pts', '.xyz', '.xml'];
+const MODEL = ['.ifc', '.ifcx', '.ifczip', '.glb', '.gltf', '.3dm', '.las', '.laz', '.ply', '.pcd', '.e57', '.pts', '.xyz', '.xml'];
 const PICKER = [
   ...MODEL, '.splat', '.dxf', '.bin', '.png', '.jpg', '.jpeg',
   '.tif', '.tiff', '.tfw', '.tifw', '.pgw', '.pngw', '.jgw', '.jpgw', '.wld', '.prj',
@@ -60,7 +60,7 @@ describe('supported file formats, derived from the format groups', () => {
     assert.deepEqual(DROP_FORMAT_GROUPS.flatMap((group) => group.extensions).sort(), opensOnDrop.sort());
     assert.deepEqual(splitDxfFiles(REFERENCE_FILE_EXTENSIONS.map((ext) => named(`plan${ext}`))).modelFiles, [],
       'every reference extension takes the underlay path');
-    // Rasters need a loaded terrain, and .3dm import has not shipped.
-    for (const ext of [...GEO_RASTER_FILE_EXTENSIONS, '.3dm']) assert.equal(groupsHolding(ext).length, 0, ext);
+    // Rasters only drape on a terrain that is already loaded.
+    for (const ext of GEO_RASTER_FILE_EXTENSIONS) assert.equal(groupsHolding(ext).length, 0, ext);
   });
 });

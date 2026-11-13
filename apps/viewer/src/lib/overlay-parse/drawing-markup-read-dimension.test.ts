@@ -94,6 +94,9 @@ describe('readDimension', () => {
       ['no Orientation', { ...source(), properties: new Map([['Offset', '0.5']]) }],
       ['bad Orientation', source({}, { Orientation: 'diagonal' })],
       ['non-numeric Offset', source({}, { Offset: 'wide' })],
+      // Number('') is 0: a blank Offset must not pass as a zero offset.
+      ['blank Offset', source({}, { Offset: '' })],
+      ['whitespace Offset', source({}, { Offset: '  ' })],
       ['bad RefA', source({}, { RefA: 'no-colon' })],
       ['Plane not JSON', source({}, { Plane: '{axis' })],
       ['Plane missing fields', source({}, { Plane: '{"axis":"down"}' })],

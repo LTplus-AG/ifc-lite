@@ -66,8 +66,11 @@ export function readDimension(
   const props = source.properties;
   const orientation = props?.get('Orientation');
   if (!orientation || !(DIMENSION_2D_ORIENTATIONS as readonly string[]).includes(orientation)) return null;
-  const rawOffset = Number(props?.get('Offset'));
-  if (props?.get('Offset') === undefined || !Number.isFinite(rawOffset)) return null;
+  const offsetValue = props?.get('Offset');
+  // `Number('')` is 0, so a blank value has to be refused before converting.
+  if (offsetValue === undefined || offsetValue.trim() === '') return null;
+  const rawOffset = Number(offsetValue);
+  if (!Number.isFinite(rawOffset)) return null;
 
   const author = (p: { x: number; y: number }) => toAuthoredPoint(source.expressId, anchor, { x: p.x, y: p.y });
   const a = author(source.lines[0].line.start);

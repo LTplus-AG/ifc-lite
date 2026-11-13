@@ -41,7 +41,7 @@ model, four checks, the CLI command, the docs page).
 | fixture | `probes/fixture.mjs` | a corpus file declaring the row's schema carries the entity |
 | read | `probes/read.mjs` | `extractStructuralOnDemand` returns every corpus record with each own attribute's value equal to the file's, including member relationship attributes and their nested resources, physical links and reference-id arrays; a value the read model has no field for makes the row partial |
 | card | `probes/card.mjs` | `structuralCardSections` (the data the viewer's structural properties card renders) shows every record, on its own card or, for a resource, on the card of a record referencing it, with each own attribute's value equal to the file's |
-| render | `probes/render.mjs` (connections, actions); members and reactions not written yet | the support or load glyph list holds a glyph for every record with a restraint or a non-zero load |
+| render | `probes/render.mjs` (connections, actions, reactions), `probes/render-members.mjs` (members) | the glyph list holds a glyph for every record with a restraint or a non-zero load or reaction; the geometry module's mesh of every member reaches each vertex of its topology at the file's coordinates (read by `lib/topology.mjs`) |
 | create | `probes/create.mjs` + `create-scene.mjs` | an in-store builder authors it in a blank model of the row's schema, and the STEP export declares that schema, re-parses and carries the given values |
 | edit, remove | `probes/edit.mjs`, `probes/remove.mjs` | edit/export/reparse structural values; remove exclusive subgraphs, preserve shared resources and validate references |
 | convert | `probes/convert.mjs` | it survives IFC4 -> IFC2X3 -> IFC4 (or IFC2X3 -> IFC4 -> IFC2X3) with the same values |

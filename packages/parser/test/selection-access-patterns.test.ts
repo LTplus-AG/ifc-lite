@@ -211,3 +211,25 @@ it('#9947 created relationships retyped into type coverage supply inherited quan
   view.deleteEntity(100000);
   expect(readCurrentTypeQuantities(store, 100, view).value?.quantities[0].quantities[0].value).toBe(2.5);
 });
+
+it('#9947 memoizes native relationship refusals for repeated selections in one revision', async () => {
+  const { store, view } = await model(600, ["#300000=IFCRELDEFINESBYTYPE('bad',$,$,$,(#100,$),#2);"]);
+  let attempts = 0;
+  const isDeleted = view.isDeleted.bind(view);
+  view.isDeleted = id => { if (id === 300000) attempts++; return isDeleted(id); };
+  expect(readCurrentTypeQuantities(store, 100, view).status).toBe('unavailable');
+  const first = attempts;
+  expect(first).toBeGreaterThan(0);
+  expect(readCurrentTypeQuantities(store, 100, view).status).toBe('unavailable');
+  expect(attempts).toBe(first);
+});
+
+it('#9947 unchanged definition rows stay unread after deletion when source coverage is within budget', async () => {
+  const { store, view } = await model();
+  view.deleteEntity(6);
+  let reads = 0;
+  const getEntity = store.getEntity.bind(store);
+  store.getEntity = id => { if (id >= 200000 && id < 200600) reads++; return getEntity(id); };
+  expect(readCurrentTypeQuantities(store, 100, view).value?.quantities[0].quantities[0].value).toBe(2.5);
+  expect(reads).toBe(0);
+});

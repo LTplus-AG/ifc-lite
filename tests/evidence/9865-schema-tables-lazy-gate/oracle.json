@@ -1,0 +1,6 @@
+{
+  "issue": 7955,
+  "key": "apps/viewer/scripts/check-schema-tables-lazy.mjs",
+  "mutation": "tests/evidence/9865-schema-tables-lazy-gate/behaviour.oracle.patch",
+  "why": "Reverse application keeps every export the tests import but stops the gate from refusing a startup chunk that carries an eager schema-table marker, so a boot-path reader of ENTITIES_*/SCHEMA_REGISTRY would ship unnoticed: both rejection tests fail while the vacuity and lazy-listing tests stay green."
+}

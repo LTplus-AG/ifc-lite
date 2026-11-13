@@ -22,6 +22,10 @@ import './disable-react-dev-perf-track';
 // translation extension mutating the DOM can't crash the reconciler. See
 // harden-dom-mutations.ts (PostHog issues #1229/#1230/#1232).
 import './harden-dom-mutations';
+// Before anything that reads `location` (analytics, routing, share links):
+// takes a local-agent pairing link's one-time code out of the address bar
+// (#9523). Imports nothing; see lib/agent-bridge/pairing-fragment.ts.
+import './lib/agent-bridge/pairing-fragment.boot';
 // Before react-dom too: under ?perfTrace=1, switches the #6957 counters on
 // before the store and renderer exist, and counts React commits.
 import './lib/perf/reactCommits';

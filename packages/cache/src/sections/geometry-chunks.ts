@@ -35,7 +35,7 @@
 import { FORMAT_VERSION } from '../types.js';
 import { collectSourcePool, writeSourcePool, readSourcePool, type AppearanceSourcePool } from './appearance-provenance.js';
 import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
-import { BufferWriter, BufferReader } from '../utils/buffer-utils.js';
+import { ArrayArena, BufferWriter, BufferReader } from '../utils/buffer-utils.js';
 import {
   GEOMETRY_CHUNK_CELL_SIZE,
   GEOMETRY_CHUNK_SOFT_BYTES,
@@ -269,13 +269,36 @@ export function readGeometryHeadV13(reader: BufferReader, version: number = FORM
   return { headLength, meshCount, totalVertices, totalTriangles, coordinateInfo, chunks };
 }
 
-/** Decode one chunk record's stored bytes into meshes. */
+/** Inflates a stored deflate-raw chunk to its `rawLength`-byte record; the default runs on the calling thread. */
+export type ChunkInflate = (stored: Uint8Array, rawLength: number) => Promise<Uint8Array>;
+const inflateHere: ChunkInflate = (stored) => inflateRaw(stored);
+
+/** How a chunk decode inflates and allocates the meshes' arrays. */
+export interface ChunkDecodeOptions {
+  /** Where compressed chunks inflate, e.g. a worker pool on a cache hit (`ChunkInflatePool`). Default: this thread. */
+  inflate?: ChunkInflate;
+  /**
+   * Copy mesh `positions`, `normals` and `indices` into shared, aligned blocks of up to ~1 MiB (`ArrayArena`),
+   * one allocation per block. Default `false`: every array owns its buffer. With `true`, an array is a VIEW
+   * into a block other meshes of the chunk share: read it through the view; never transfer or reinterpret its
+   * `.buffer` (that detaches or exposes the other meshes); copy (`array.slice()`) to hand one mesh's arrays on.
+   */
+  sharedArena?: boolean;
+}
+
+/**
+ * Decode one chunk record's stored bytes into meshes. Arrays own their buffers unless `sharedArena`.
+ * The fourth argument is the options, or (as before) just the inflate function.
+ */
 export async function decodeGeometryChunk(
   stored: Uint8Array,
   info: GeometryChunkInfo,
-  version: number
+  version: number,
+  how: ChunkDecodeOptions | ChunkInflate = {},
 ): Promise<MeshData[]> {
-  const raw = (info.flags & GeometryChunkFlags.DeflateRaw) ? await inflateRaw(stored) : stored;
+  const options: ChunkDecodeOptions = typeof how === 'function' ? { inflate: how } : how;
+  const inflate = options.inflate ?? inflateHere;
+  const raw = (info.flags & GeometryChunkFlags.DeflateRaw) ? await inflate(stored, info.uncompressedLength) : stored;
   if (raw.byteLength !== info.uncompressedLength) {
     throw new Error(`Invalid cache: chunk decoded to ${raw.byteLength} bytes, directory says ${info.uncompressedLength}`);
   }
@@ -284,6 +307,8 @@ export async function decodeGeometryChunk(
     ? raw.buffer
     : raw.slice().buffer;
   const reader = new BufferReader(buffer as ArrayBuffer);
+  // Opt-in: mesh arrays share arena blocks (one allocation per ~1 MiB, not three per mesh).
+  if (options.sharedArena) reader.arena = new ArrayArena(raw.byteLength); // blocks no larger than the chunk's arrays
   const meshes: MeshData[] = [];
   for (let i = 0; i < info.meshCount; i++) {
     meshes.push(readMeshRecord(reader, version, i, info.appearanceSources));
@@ -314,7 +339,9 @@ export async function decodeGeometryChunk(
 export function openGeometryChunksV13(
   buffer: ArrayBuffer,
   sectionOffset: number,
-  version: number
+  version: number,
+  /** Where compressed chunks inflate and how `readChunk` allocates mesh arrays (see `ChunkDecodeOptions`; default: this thread, owned buffers). */
+  options: ChunkDecodeOptions = {},
 ): GeometryHead & { readChunk(index: number): Promise<MeshData[]> } {
   const reader = new BufferReader(buffer);
   reader.position = sectionOffset;
@@ -347,7 +374,7 @@ export function openGeometryChunksV13(
           `Invalid cache: geometry chunk ${index} range [${start}, ${end}) exceeds buffer length ${bytes.length}`,
         ));
       }
-      return decodeGeometryChunk(bytes.subarray(start, end), info, version);
+      return decodeGeometryChunk(bytes.subarray(start, end), info, version, options);
     },
   };
 }
@@ -356,9 +383,10 @@ export function openGeometryChunksV13(
 export async function readGeometryV13(
   buffer: ArrayBuffer,
   sectionOffset: number,
-  version: number
+  version: number,
+  options: ChunkDecodeOptions = {},
 ): Promise<{ meshes: MeshData[]; totalVertices: number; totalTriangles: number; coordinateInfo: CoordinateInfo }> {
-  const open = openGeometryChunksV13(buffer, sectionOffset, version);
+  const open = openGeometryChunksV13(buffer, sectionOffset, version, options);
   const meshes: MeshData[] = [];
   for (let i = 0; i < open.chunks.length; i++) {
     meshes.push(...await open.readChunk(i));

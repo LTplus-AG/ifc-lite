@@ -13,7 +13,7 @@ import { getCanonicalEntityName, type SchemaEntityNameSnapshot } from './schema-
 import { getSchemaRegistry, getAllAttributesForEntity, isKnownEntity, getInheritanceChainForEntity, getEntityMetadata } from './generated/schema-registry.js';
 import { getSchemaRegistryForVersion } from './generated/schema-registry-by-version.js';
 import { schemaFromIdentifier } from './source-header.js';
-import { ENTITIES_IFC2X3, ENTITIES_IFC4_EXPRESS, ENTITIES_IFC4X3, IFC_DATA_TYPES, type IfcEntityInfo } from '@ifc-lite/data';
+import { getEntitiesIfc2x3, getEntitiesIfc4Express, getEntitiesIfc4x3, getIfcDataTypes, type IfcEntityInfo } from '@ifc-lite/data';
 
 // Union map across every bundled IFC schema (2X3 + 4 + 4X3). The parser
 // has to categorize entities from ANY schema the user loads — so the
@@ -25,15 +25,23 @@ import { ENTITIES_IFC2X3, ENTITIES_IFC4_EXPRESS, ENTITIES_IFC4X3, IFC_DATA_TYPES
 // raw table carries alignment-extension entities IFC4 does not declare
 // (#5204), and folding them in made `isKnownType` answer `true` for names no
 // bundled schema has.
-const ENTITY_INFO_BY_UPPER: Map<string, IfcEntityInfo> = (() => {
-    const map = new Map<string, IfcEntityInfo>();
-    for (const list of [ENTITIES_IFC2X3, ENTITIES_IFC4_EXPRESS, ENTITIES_IFC4X3]) {
-        for (const entity of list) {
-            map.set(entity.name.toUpperCase(), entity);
+//
+// Built on first use, not when this module loads: the three tables are
+// decoded on first use too, and a bundle that loads the parser need not pay
+// for them before it parses anything.
+let entityInfoByUpper: Map<string, IfcEntityInfo> | undefined;
+function getEntityInfoByUpper(): Map<string, IfcEntityInfo> {
+    if (entityInfoByUpper === undefined) {
+        const map = new Map<string, IfcEntityInfo>();
+        for (const list of [getEntitiesIfc2x3(), getEntitiesIfc4Express(), getEntitiesIfc4x3()]) {
+            for (const entity of list) {
+                map.set(entity.name.toUpperCase(), entity);
+            }
         }
+        entityInfoByUpper = map;
     }
-    return map;
-})();
+    return entityInfoByUpper;
+}
 
 // Aliases for entity names that appear in real STEP files but aren't in
 // the bundled EXPRESS schema exports — typically draft IFC4x3 additions
@@ -115,7 +123,7 @@ function getNonEntityNamesUpper(): ReadonlySet<string> {
     if (nonEntityNamesUpper === undefined) {
         const pin = getSchemaRegistry();
         nonEntityNamesUpper = new Set([
-            ...IFC_DATA_TYPES.map(t => t.name.toUpperCase()),
+            ...getIfcDataTypes().map(t => t.name.toUpperCase()),
             ...Object.keys(pin.types).map(n => n.toUpperCase()),
             ...Object.keys(pin.enums).map(n => n.toUpperCase()),
             ...Object.keys(pin.selects).map(n => n.toUpperCase()),
@@ -139,13 +147,13 @@ function getNonEntityNamesUpper(): ReadonlySet<string> {
 function getEntityInfoAcrossSchemas(type: string): IfcEntityInfo | undefined {
     const upper = type.toUpperCase();
     if (getNonEntityNamesUpper().has(upper)) return undefined;
-    return ENTITY_INFO_BY_UPPER.get(upper);
+    return getEntityInfoByUpper().get(upper);
 }
 
 function getInheritanceChainFromSchemaUnion(type: string): string[] | null {
     const upper = type.toUpperCase();
     const canonical = resolveEntityNameAlias(type);
-    const start = ENTITY_INFO_BY_UPPER.get(canonical.toUpperCase());
+    const start = getEntityInfoByUpper().get(canonical.toUpperCase());
     if (!start) return null;
     const chain: string[] = [];
     const seen = new Set<string>();
@@ -157,7 +165,7 @@ function getInheritanceChainFromSchemaUnion(type: string): string[] | null {
     while (cursor && !seen.has(cursor.name)) {
         chain.push(cursor.name);
         seen.add(cursor.name);
-        cursor = cursor.parent ? ENTITY_INFO_BY_UPPER.get(cursor.parent.toUpperCase()) : undefined;
+        cursor = cursor.parent ? getEntityInfoByUpper().get(cursor.parent.toUpperCase()) : undefined;
     }
     return chain;
 }
@@ -185,7 +193,7 @@ export function getAttributeNamesAcrossSchemas(type: string): string[] {
     const pinned = getAttributeNames(type);
     if (pinned.length > 0) return pinned;
     const canonical = resolveEntityNameAlias(type);
-    const info = ENTITY_INFO_BY_UPPER.get(canonical.toUpperCase());
+    const info = getEntityInfoByUpper().get(canonical.toUpperCase());
     return info ? [...info.attributes] : [];
 }
 

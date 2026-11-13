@@ -21,9 +21,9 @@ def fixture(dimension_text=True, empty=False):
     if not empty:
         for x in [-.1, 4.9]:
             model.add_polyline2d([(x, 0), (x+.2, 0), (x+.2, 3), (x, 3)], close=True, dxfattribs={'layer': 'IFC-FILL'})
-        model.add_line((0, 1.5), (5, 1.5), dxfattribs={'layer': 'IFC-DIMENSIONS'})
+        model.add_line((-.1, 1.5), (5.1, 1.5), dxfattribs={'layer': 'IFC-DIMENSIONS'})
         if dimension_text:
-            model.add_text('5.00 m', dxfattribs={'layer': 'IFC-DIMENSIONS', 'height': .15})
+            model.add_text('5.20 m', dxfattribs={'layer': 'IFC-DIMENSIONS', 'height': .15})
     stream = io.StringIO()
     doc.write(stream)
     return '999\nunits: metres\n' + stream.getvalue()
@@ -38,7 +38,7 @@ class OracleTests(unittest.TestCase):
 
     def test_9296_missing_dimension_text_rejected(self):
         result = sheet.judge(fixture(dimension_text=False))
-        self.assertFalse(next(c['ok'] for c in result['checks'] if c['name'].startswith('5 m')))
+        self.assertFalse(next(c['ok'] for c in result['checks'] if c['name'].startswith('5.2 m')))
 
     def test_9296_missing_layers_rejected(self):
         self.assertFalse(all(c['ok'] for c in sheet.judge(fixture().replace('IFC-FILL', '0'))['checks']))

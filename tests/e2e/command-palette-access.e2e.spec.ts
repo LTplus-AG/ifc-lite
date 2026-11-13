@@ -347,7 +347,7 @@ test('palette Plan refuses actual constrained and mobile widths while preserving
     const s = globalThis.__ifc_lite_viewer_store__.getState();
     return { layout: s.modelLayout, ids: [...s.models.keys()] };
   })).toEqual(before);
-  await expect(page.locator('[data-plan-view]')).toHaveCount(0);
+  await expect(page.locator('[data-model-plan-pane]')).toHaveAttribute('aria-hidden', 'true');
 });
 
 for (const context of contexts) {
@@ -400,10 +400,23 @@ for (const context of contexts) {
     await assertStableLabels(page, 'vis:hide', true);
     await wall(page);
     await assertStableLabels(page, 'vis:hide', false);
+    // #8947: keep the search field clear of its touch close control at 320px.
+    if (context.name === 'narrow-dark') await page.setViewportSize({ width: 320, height: 844 });
     await run(page, 'search:inline', 'recent queries');
     const input = page.getByRole('combobox', { name: 'Search entities', exact: true });
     await expect(input).toBeVisible();
     await expect(input).toBeFocused();
+    if (context.name === 'narrow-dark') {
+      const bounds = await input.evaluate(element => {
+        const host = element.closest('[hidden]') ?? element.closest('.border-divider');
+        const close = host?.querySelector('button[aria-label="Close"]');
+        if (!close) throw new Error('Mobile search close control is missing');
+        const field = element.getBoundingClientRect(), button = close.getBoundingClientRect();
+        return { fieldRight: field.right, closeLeft: button.left, closeRight: button.right, width: innerWidth };
+      });
+      expect(bounds.fieldRight, 'field leaves the close control unobstructed').toBeLessThanOrEqual(bounds.closeLeft);
+      expect(bounds.closeRight).toBeLessThanOrEqual(bounds.width);
+    }
     await page.keyboard.type('wall');
     await expect(input).toBeFocused();
     await expect(input).toHaveValue('wall');

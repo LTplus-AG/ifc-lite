@@ -398,7 +398,7 @@ export function SearchInline({ compact = false }: { compact?: boolean } = {}) {
       }}
     >
       <PopoverAnchor asChild>
-        <div ref={containerRef} className="relative w-72">
+        <div ref={containerRef} className="relative w-72 max-w-full">
           <Input
             ref={inputRef}
             type="text"

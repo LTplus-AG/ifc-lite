@@ -65,9 +65,9 @@ claiming complete access.
 
 ## Qualified execution overlay
 
-[Executed route bindings](executed-route-bindings.jsonl) associate actual passing
+[Executed route bindings](https://github.com/LTplus-AG/ifc-lite/blob/e530cfed5e52fd83229262abda9e414371f1128f/tests/ui-scenes/command-palette-access/inventory/executed-route-bindings.jsonl) associate actual passing
 assertions with specific palette destinations, fixture contexts and original IDs.
-[Provenance](executed-route-provenance.json) pins the executed source, root command,
+[Provenance](https://github.com/LTplus-AG/ifc-lite/blob/e530cfed5e52fd83229262abda9e414371f1128f/tests/ui-scenes/command-palette-access/inventory/executed-route-provenance.json) pins the executed source, root command,
 log hashes and 382-test focused receipt. This overlay preserves every original
 source record and its historical UNRUN verdict; it does not turn component-level
 links into proof for all child controls. The 48 bindings are evidence relations,

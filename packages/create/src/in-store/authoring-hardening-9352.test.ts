@@ -34,7 +34,11 @@ for (const kind of ['door', 'window'] as const) {
       kind === 'door' ? { kind, params: { Offset: offset, Width: .9, Height: 2.1, OperationType: value } }
         : { kind, params: { Offset: offset, Sill: .5, Width: .9, Height: 2.1, PartitioningType: value } }).expressId;
     const a = add(1, enumeration), b = add(3, enumeration.toLowerCase()), c = add(5, enumeration);
-    const typeOf = (id: number) => readRelatedLists(s.store, 'IfcRelDefinesByType', s.view).find(r => r.relatedIds.includes(id))!.relatingId;
+    const typeOf = (id: number) => {
+      const type = readRelatedLists(s.store, 'IfcRelDefinesByType', s.view).find(r => r.relatedIds.includes(id))?.relatingId;
+      if (typeof type !== 'number') throw new Error(`The fixture fill #${id} needs a type assignment`);
+      return type;
+    };
     const first = typeOf(a), second = typeOf(b);
     expect(second).not.toBe(first);
     expect(typeOf(c)).toBe(first);

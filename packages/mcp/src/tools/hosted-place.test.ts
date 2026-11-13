@@ -185,3 +185,26 @@ describe('#9936 slab opening schema and dispatch', () => {
     expect(view.getNewEntities()).toEqual(before);
   });
 });
+
+it('#9352 MCP and SDK hosted placement preserve distinct operations through MCP attribute readback', async () => {
+  const { registry, call } = await session();
+  const model = registry.get('alpha')!;
+  const home = model.bim.query().byType('IfcBuildingStorey').toArray()[0].ref.expressId;
+  const wall = model.bim.store.addWall('alpha', home, { Start: [0, 20, 0], End: [8, 20, 0], Thickness: .2, Height: 3 });
+  const result = await call('place_door', { host_express_id: wall.expressId,
+    params: { Offset: 2, Width: .9, Height: 2.1, OperationType: 'REVOLVING' } });
+  expect(result.isError).not.toBe(true);
+  const a = { modelId: 'alpha', expressId: result.structuredContent!.expressId as number };
+  const b = model.bim.store.addHostedDoor('alpha', wall.expressId,
+    { Offset: 5, Width: .9, Height: 2.1, OperationType: 'revolving' });
+  const types = [a, b].map(ref => model.bim.query().byType('IfcDoorType').toArray().find(type =>
+    model.bim.related(type.ref, 'IfcRelDefinesByType', 'forward').some(row => row.ref.expressId === ref.expressId))!.ref);
+  expect(types[0].expressId).not.toBe(types[1].expressId);
+  for (const [i, operation] of ['REVOLVING', 'USERDEFINED'].entries()) {
+    const data = await call('get_entity', { express_id: types[i].expressId, include: ['attributes'] });
+    expect(data.isError).not.toBe(true);
+    const attrs = data.structuredContent!.attributes as Array<{ name: string; value: unknown }>;
+    expect(String(attrs.find(row => row.name === 'OperationType')?.value).replace(/\./g, '')).toBe(operation);
+    if (i === 1) expect(attrs.find(row => row.name === 'UserDefinedOperationType')?.value).toBe('revolving');
+  }
+});

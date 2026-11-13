@@ -1347,3 +1347,15 @@ readable before export.
 Retargeting a roof-cut wall to a planar roof or storey restores a planar top and updates its existing prism quantities from their pre-cut baseline. Repeated refits preserve declared quantity units, including a net area in mm² beside a gross area in m².
 
 Direct placement translations return the final local coordinates after fitting an attached top; a level beam or member can therefore keep its original Z under a slab despite a requested vertical move. A storey with a present but unreadable placement cannot supply a floor from its Elevation metadata: fitting a top refuses atomically until that placement is repaired. An invalid storey-delete move destination returns an `invalidTarget` refusal before planning relative attachments. A deletion preview returns an `unreadablePlacement` refusal when a target floor has an explicit missing reference or an unreadable placement chain.
+
+Hosted door and window types are reused only when their resolved IFC operation
+or partitioning and user-defined text match. An enumeration and free text with
+the same display label remain distinct types. Low-level `duplicateInStore`
+callers supplying an association `relId` must also supply its `relatedIds`;
+incomplete associations are refused before any records are written.
+
+Attachment notices identify the element kind so a column, beam, member or
+curtain wall is described in its own terms. Raw authored doors or windows with
+nonpositive or nonfinite numeric `OverallWidth` or `OverallHeight` report a quantity diagnostic and keep
+an empty derived quantity result; existing third-party quantity sets are
+preserved.

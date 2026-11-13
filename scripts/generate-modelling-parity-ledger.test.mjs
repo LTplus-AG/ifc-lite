@@ -279,11 +279,11 @@ test('#10030 Output distinguishes semantic DXF rejection from reader absence', a
     assert.equal(read('sheets-pdf-dwg').status, 'partial', 'linework-only DXF cannot prove dimensions and scale');
     const semantic=read('sheets-pdf-dwg');
     assert.equal(semantic.source.sheetDxfOracle,1,'fresh Output evidence carries the sheet oracle version');
-    await t.test('reader-present semantic dimension rejection', { skip: !readerAvailable && 'ezdxf unavailable: semantic coverage not exercised' }, () => {
+    await t.test('reader-present semantic dimension rejection', { skip: !readerAvailable && 'ezdxf unavailable: semantic coverage not exercised' }, () => { // @source-text-assertion-ok asserts on executed generator/runner output, not source text
       assert.ok(!semantic.checks.some(c=>c.name === 'independent DXF reader available'), JSON.stringify(semantic));
       assert.equal(semantic.checks.find(c=>c.name === '5.2 m outer-span dimension line and matching dimension TEXT')?.status,'fail',JSON.stringify(semantic));
     });
-    await t.test('reader-unavailable partial cap without claiming semantic rejection', () => {
+    await t.test('reader-unavailable partial cap without claiming semantic rejection', () => { // @source-text-assertion-ok asserts on executed generator/runner output, not source text
       const missing=spawnSync(process.execPath,[join(ROOT,'tests/modelling-parity/output/run.mjs'),'--out',out,'--ui',join(dir,'ui'),'--only','sheets-pdf-dwg','--python',join(dir,'unavailable-python')],{encoding:'utf8'});
       assert.equal(missing.status,0,missing.stderr);
       const absent=read('sheets-pdf-dwg');
@@ -446,8 +446,8 @@ test('#10030 sheet provenance follows selected row evidence, including met rows'
     try {
       assert.equal(generate(dir).status,0);
       const ledger=readFileSync(join(dir,'docs/architecture/modelling-parity-ledger.md'),'utf8');
-      const row=ledger.split('\n').find(line=>line.includes('(`sheets-pdf-dwg`)'));
-      assert.equal(row.includes('Historical sheet evidence'),!fresh);
+      const row=ledger.split('\n').find(line=>line.includes('(`sheets-pdf-dwg`)')); // @source-text-assertion-ok asserts on executed generator/runner output, not source text
+      assert.equal(row.includes('Historical sheet evidence'),!fresh); // @source-text-assertion-ok asserts on executed generator/runner output, not source text
       assert.equal(JSON.parse(readFileSync(join(dir,'tests/modelling-parity/baseline/r.json'),'utf8')).score,s.score);
     } finally {rmSync(dir,{recursive:true,force:true});}
   }

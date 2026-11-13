@@ -16,13 +16,13 @@
  * (#9835): 100,000 selected walls were 100,000-plus copies, each written and
  * drawn three times a frame. The budget therefore holds for the selection as a
  * whole. Once its individual copies would pass `MERGE_PIECES_ABOVE`, the
- * entities that are not merged on their own pool into ONE merge, so a frame
- * costs the same however many entities the selection holds.
+ * entities that are not merged on their own pool into one ordered sequence.
+ * Draw cost follows compatible model/origin runs, not one copy per piece.
  *
- * A pool keeps its pieces in the selection's order, not grouped by colour. The
- * highlight draws without writing depth, so where translucent base geometry
+ * A pool keeps its pieces in per-piece hydration history, not grouped by
+ * colour. The highlight draws without writing depth, so where translucent base geometry
  * lets several highlighted surfaces overlap on screen, the one drawn last
- * shows. One copy per piece drew them in selection order; a pool split by
+ * shows. One copy per piece retained its insertion order; a pool split by
  * colour would reorder them and shade those pixels differently. The highlight
  * reads no colour, so nothing needs the split. A pool is therefore one mesh
  * per run of adjacent pieces that share a model and frame origin (see
@@ -34,6 +34,7 @@ import type { MeshData } from '@ifc-lite/geometry';
 import { MERGE_PIECES_ABOVE, uploadMergedMeshes, type IndividualMeshFrame } from './individual-mesh-upload.js';
 import { pickPieceKey } from './pick-mesh-budget.js';
 import type { Scene } from './scene.js';
+import { selectionHydrationOrder } from './selection-hydration-order.js';
 import type { Mesh } from './types.js';
 
 /**
@@ -200,6 +201,7 @@ export function retireStaleSelectionHydration(
   itemFilterItemId: number | undefined,
   visible: ReadonlySet<number> = selected,
 ): void {
+  selectionHydrationOrder(scene).retain(scene, selected, modelIndex, itemFilterExpressId, itemFilterItemId);
   if (selected.size === 0) return;
   const { byEntity: mergedByEntity, pools } = mergedHighlights(scene);
   // Only an entity that is or was merged needs the authored counts, so an
@@ -208,7 +210,11 @@ export function retireStaleSelectionHydration(
   const revision = scene.getPickGeometryRevision();
   for (const pool of pools) {
     if (poolCoversSelection(scene, pool, visible, modelIndex, itemFilterExpressId, revision, authoredByEntity ??= authoredMeshCounts(scene, modelIndex))) continue;
-    scene.removeMeshesWhere((mesh) => mesh.mergedSelection === pool);
+    // A surviving pool may lie between pieces of the retired one in the
+    // per-piece history. Rebuild all pools together rather than append an old
+    // range after a newer retained range (#9916).
+    scene.removeMeshesWhere((mesh) => mesh.mergedSelection?.ids !== undefined);
+    break;
   }
   let authoredPieceCounts: Map<string, number> | undefined;
   for (const id of selected) {
@@ -268,6 +274,7 @@ export function hydrateSelectedEntities(
     const itemId = id === itemFilterExpressId ? itemFilterItemId : undefined; // #4382
     const pieces = scene.getMeshDataPieces(id, modelIndex, itemId);
     if (!pieces || pieces.length === 0) continue;
+    selectionHydrationOrder(scene).remember(pieces);
     const missing = unrepresentedPieces(pieces, existingPieceCounts);
     if (missing.length > MERGE_PIECES_ABOVE) {
       const listed = scene.getMeshDataPieceList(id) ?? pieces;
@@ -314,7 +321,7 @@ export function hydrateSelectedEntities(
     if (authoredByEntity.size > 0) authored += authoredByEntity.get(entity.id) ?? 0;
     for (const piece of authoredPieces ? unrepresentedPieces(entity.pieces, authoredPieces) : entity.missing) pieces.push(piece);
   }
-  return createMerged(pieces, { itemId: undefined, modelIndex, pieces: listed, revision: scene.getPickGeometryRevision(), authored, ids }) && complete;
+  return createMerged(selectionHydrationOrder(scene).sort(pieces), { itemId: undefined, modelIndex, pieces: listed, revision: scene.getPickGeometryRevision(), authored, ids }) && complete;
 }
 
 /**

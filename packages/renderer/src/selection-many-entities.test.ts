@@ -512,6 +512,38 @@ describe('selecting many entities (#9835)', () => {
     assert.deepEqual(grown.drawn().triangles, expectedTriangles(meshes));
   });
 
+  // #9916: compare the actual submitted triangle order with the one-copy-per-piece
+  // path after growing a selection. Previously hydrated pieces precede new ones,
+  // even after hide/isolate changes make their overlap visible through windows.
+  for (const mode of ['hidden', 'isolated', 'half-selected'] as const) {
+    it(`keeps the per-piece triangle order for a ${mode} pooled selection (#9916)`, () => {
+      const pooled = makeHarness();
+      const perPiece = makeHarness();
+      const resolver = perPiece.renderer['_selectionHighlight'];
+      const resolve = resolver.resolve.bind(resolver);
+      resolver.resolve = (scene, input, createPiece, createMerged) =>
+        resolve(scene, { ...input, pool: false }, createPiece, createMerged);
+      const meshes = model(1_000);
+      const ids = idsOf(1_000);
+      const half = ids.filter((_, i) => i % 2 === 0);
+      const history = [ids.filter((_, i) => i % 40 === 0), half, ids];
+      for (const h of [pooled, perPiece]) {
+        load(h, meshes);
+        for (const selected of history) h.render({ selectedIds: new Set(selected) });
+      }
+      const options: RenderOptions = mode === 'hidden'
+        ? { selectedIds: new Set(ids), hiddenIds: new Set(ids.filter((_, i) => i % 3 === 0)) }
+        : mode === 'isolated' ? { selectedIds: new Set(ids), isolatedIds: new Set(half) }
+          : { selectedIds: new Set(half), ghostExceptIds: new Set(ids.filter((_, i) => i % 5 === 0)) };
+      const actual = frameCost(pooled, options);
+      const expected = frameCost(perPiece, options);
+      assert.deepEqual(actual.drawn().inDrawOrder, expected.drawn().inDrawOrder);
+      assert.deepEqual(frameCost(pooled, { ...options, selectedIds: new Set(options.selectedIds) }).drawn().inDrawOrder,
+        expected.drawn().inDrawOrder, 'fresh Set and later frames retain exactly the same order');
+      assert.ok(actual.highlightDraws.length <= 2, 'a fragmented selection remains pooled');
+    });
+  }
+
   it('leaves a hidden or isolated-away entity out of the highlight, and brings it back', () => {
     const h = makeHarness();
     const meshes = model(1_000);
@@ -906,8 +938,8 @@ describe('uploadMergedMeshes across entities (#9835)', () => {
     assert.deepEqual(firstX, [Math.fround(0.3), Math.round(Math.fround(0.3) * 1024) / 1024, Math.fround(0.3)]);
   });
 
-  // Second review of #9916: the fallback's key keeps the origin, so it is not a
-  // cap. Pieces that each draw against their own origin (a textured drawable
+  // Second review of #9916: a run keeps its origin, so there is no global
+  // draw cap. Pieces that each draw against their own origin (a textured drawable
   // does, `Scene.getIndividualMeshFrame`) cannot share a mesh: their vertices
   // are relative to that origin, and re-basing them would stop the highlight
   // from landing bit for bit on the surface it covers. This case is NOT fixed
@@ -919,10 +951,31 @@ describe('uploadMergedMeshes across entities (#9835)', () => {
     assert.ok(merged.every((mesh) => mesh.pieces === 1));
   });
 
-  it('stops following the order once it would cost more draws than the copy budget, and merges like with like', () => {
+  it('keeps order beyond 500 alternating model runs, at no more than the per-piece draw count (#9916)', () => {
     const alternating = Array.from({ length: 1_200 }, (_, i) => piece(i + 1, 0, { modelIndex: i % 2 }));
-    const merged = uploadMergedMeshes(capture().device, alternating, () => NO_FRAME, true);
-    assert.deepEqual(merged.map((mesh) => mesh.pieces), [600, 600], 'two models, two meshes: never one draw per piece');
+    const { device, written } = capture();
+    const merged = uploadMergedMeshes(device, alternating, () => NO_FRAME, true);
+    assert.equal(merged.length, alternating.length, 'one draw per model run, no more than main');
+    assert.ok(merged.every((mesh) => mesh.pieces === 1));
+    const drawnIds = written.filter((_, i) => i % 2 === 0).map((bytes) => new Uint32Array(bytes.buffer)[6] & 0xFFFFFF);
+    assert.deepEqual(drawnIds, alternating.map((p) => p.expressId));
+  });
+
+  // #9916: trade the old regroup bound for pixel-correct primitive order.
+  // Two reusable origins can alternate on every piece; each run draws once,
+  // which reaches but never exceeds the per-piece cost of main.
+  it('keeps per-piece triangle order with one draw per same-origin run across 1,200 alternating pieces (#9916)', () => {
+    const alternating = Array.from({ length: 1_200 }, (_, i) => piece(i + 1, 0));
+    const { device, written } = capture();
+    const merged = uploadMergedMeshes(device, alternating,
+      (p) => ({ sharedOrigin: [p.expressId % 2 ? 5 : 9, 0, 0], quantized: false }), true);
+    const drawnIds = written.filter((_, i) => i % 2 === 0).flatMap((bytes) => {
+      const lanes = new Uint32Array(bytes.buffer);
+      return Array.from({ length: lanes.length / (3 * 7) }, (_, i) => lanes[i * 3 * 7 + 6] & 0xFFFFFF);
+    });
+    assert.deepEqual(drawnIds, alternating.map((p) => p.expressId), 'same primitive order as per-piece draws');
+    assert.equal(merged.length, alternating.length, 'one draw per run, equal to main for this worst case');
+    assert.ok(merged.every((mesh) => mesh.pieces === 1));
   });
 
   it('never puts ids of two 2^24 pages in one mesh: the 24-bit vertex lane could not tell them apart', () => {

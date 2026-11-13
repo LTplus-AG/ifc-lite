@@ -237,10 +237,9 @@ function groupPieces(pieces: readonly MeshData[], frameOf: (meshData: MeshData) 
  *   reads neither (`fs_main`'s selected branch). The triangles then draw in the
  *   caller's order, as one copy per piece would: across meshes too, because a
  *   mesh is a run of adjacent pieces that share a model and origin, and a piece
- *   of another model or origin in between starts the next mesh. Past
- *   {@link MERGE_PIECES_ABOVE} runs that would be a draw per piece again (a
- *   selection alternating between two models), so the pieces are then merged
- *   like with like and only the order within each mesh is the caller's. The
+ *   of another model or origin in between starts the next mesh. There is no
+ *   regrouping threshold: preserving order can cost one draw per piece for
+ *   interleaved frames, but never more than the per-piece path. The
  *   representative does not stand for the colour of the rest.
  */
 export function uploadMergedMeshes(
@@ -253,8 +252,7 @@ export function uploadMergedMeshes(
   const maxBytes = Math.floor(limit * BATCH_CONSTANTS.BUFFER_SIZE_SAFETY_FACTOR);
   const uploaded: MergedMeshGpu[] = [];
   try {
-    let groups = groupPieces(pieces, frameOf, maxBytes, anyColour, anyColour);
-    if (anyColour && groups.length > MERGE_PIECES_ABOVE) groups = groupPieces(pieces, frameOf, maxBytes, true, false);
+    const groups = groupPieces(pieces, frameOf, maxBytes, anyColour, anyColour);
     for (const group of groups) {
       const interleavedRaw = new ArrayBuffer(group.vertices * BATCH_CONSTANTS.BYTES_PER_VERTEX);
       const interleaved = new Float32Array(interleavedRaw);

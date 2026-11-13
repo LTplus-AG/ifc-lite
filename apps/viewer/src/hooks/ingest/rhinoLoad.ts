@@ -24,7 +24,7 @@ import { prepareRhinoViewerModel } from './rhinoViewerModel.js';
 import type { ViewerModelPayload } from './viewerModelIngest.js';
 
 export interface RhinoLoadOptions {
-  /** The load's own source buffer, as loaded; it stays the store's `source`. */
+  /** The load's own source buffer, as loaded. It becomes the store's `source`, unshared first if it is a `SharedArrayBuffer`. */
   buffer: ArrayBuffer | SharedArrayBuffer;
   fileSizeMB: number;
   targetKind: 'primary' | 'federated';

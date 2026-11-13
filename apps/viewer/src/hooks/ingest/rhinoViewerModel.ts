@@ -235,7 +235,8 @@ export function rhinoViewerModel(result: RhinoImport, buffer: ArrayBuffer, parse
  * Read a `.3dm` in the import worker and adapt it for `finalizeModel`.
  *
  * The request transfers its bytes, so it gets a copy of the load's own source
- * buffer rather than the buffer itself, which stays the store's `source`. A
+ * buffer rather than the buffer itself, which stays the store's `source`
+ * (unshared first when the load streamed it into a `SharedArrayBuffer`). A
  * copy, not a second read of the `File`: re-reading would let a file saved
  * again mid-load put different bytes behind the geometry and the store.
  *
@@ -249,6 +250,10 @@ export async function prepareRhinoViewerModel(
   signal?: AbortSignal,
 ): Promise<ViewerModelPayload> {
   const started = performance.now();
+  // A load already cancelled when it gets here is a cancellation, never a
+  // refusal, and skips the copies below. The error is the worker client's own,
+  // which is what the loader recognises as a cancel.
+  if (signal?.aborted) throw new DOMException('Rhino import cancelled', 'AbortError');
   const refusal = rhino3dmSizeRefusal(loaded.byteLength);
   if (refusal) throw refusal;
   const buffer = sourceArrayBuffer(loaded, 'source.arrayBuffer');

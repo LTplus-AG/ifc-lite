@@ -18,10 +18,24 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
+import { diffCounters, perfCounters } from '@ifc-lite/load-trace';
 import { MAX_3DM_BYTES } from '@ifc-lite/rhino3dm';
 import { RhinoImportError, rhino3dmSizeRefusal } from '@/lib/import/rhino-import-client';
 import { installFakeRhinoImportWorker } from '@/test/rhino-import-worker-fake.js';
 import { prepareRhinoViewerModel } from './rhinoViewerModel.js';
+
+/** The `copy.*` counters that moved while `run` ran. */
+async function copiesDuring(run: () => Promise<unknown>): Promise<string[]> {
+  perfCounters.enable();
+  const before = perfCounters.read();
+  await run();
+  return Object.keys(diffCounters(perfCounters.read(), before)).filter(name => name.startsWith('copy.'));
+}
+
+/** A real `SharedArrayBuffer` that reports `byteLength` bytes without allocating them. */
+function sharedOfLength(byteLength: number): SharedArrayBuffer {
+  return Object.defineProperty(new SharedArrayBuffer(8), 'byteLength', { value: byteLength });
+}
 
 describe('the .3dm size ceiling', () => {
   it('refuses an oversized archive with the size message, before any copy or worker', async () => {
@@ -41,6 +55,41 @@ describe('the .3dm size ceiling', () => {
       assert.equal(fake.spawned(), 0, 'no import worker is started for a file that is already over the cap');
     } finally {
       fake.restore();
+    }
+  });
+
+  it('refuses a streamed (shared) archive before unsharing it', async () => {
+    // Where cross-origin isolation allows it, a file over 256 MB is streamed
+    // into a SharedArrayBuffer. Unsharing it is a full copy; the refusal has
+    // to come first.
+    const fake = installFakeRhinoImportWorker({
+      read: async () => { throw new Error('the reader was asked for a file already over the cap'); },
+    });
+    try {
+      let error: unknown;
+      const copied = await copiesDuring(async () => {
+        error = await prepareRhinoViewerModel(sharedOfLength(MAX_3DM_BYTES + 1)).then(() => null, (reason: unknown) => reason);
+      });
+      assert.ok(error instanceof RhinoImportError);
+      assert.equal(error.code, 'too-large');
+      assert.deepEqual(copied, [], 'no copy of the archive is made before it is refused');
+      assert.equal(fake.spawned(), 0);
+    } finally {
+      fake.restore();
+    }
+  });
+
+  it('reports a load cancelled before it starts as a cancel, copying nothing, even over the cap', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    for (const loaded of [new SharedArrayBuffer(16), sharedOfLength(MAX_3DM_BYTES + 1)]) {
+      let error: unknown;
+      const copied = await copiesDuring(async () => {
+        error = await prepareRhinoViewerModel(loaded, undefined, controller.signal).then(() => null, (reason: unknown) => reason);
+      });
+      // What `loadRhino3dmModel` treats as a cancel, as the worker client rejects.
+      assert.ok(error instanceof DOMException && error.name === 'AbortError');
+      assert.deepEqual(copied, []);
     }
   });
 

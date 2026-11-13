@@ -273,10 +273,9 @@ its model. The bridge loads no model of its own, so it takes no file arguments
 and refuses `--transport http`. It stops, freeing its port, when stdin ends,
 closes or errors, and on SIGINT or SIGTERM.
 
-**Status:** this package ships the local side only. The viewer's "Connect local
-agent" side lands separately, so nothing on ifclite.com connects yet, and
-browser connectivity in Chrome (Local Network Access prompt) and Safari
-(`ws://` from an `https` page) is not yet verified.
+**Status:** this package ships the local side. The viewer pairs from the
+pairing link, or from *Connect local agent* in its Sources panel and command
+palette, and serves its read tools only. Verified from a public `https` origin in Chromium 156 and Firefox 157: both block `ws://127.0.0.1` until the site may reach apps on this device (permission `loopback-network`). Chrome asks "Access other apps and services on this device" (site setting *Apps on device*); Firefox asks "<site> wants to access other apps and services on this device" (setting *Device apps and services*). Granting the older `local-network` / `local-network-access` permissions does not help. Safari is not verified.
 
 | Flag | Meaning |
 |------|---------|

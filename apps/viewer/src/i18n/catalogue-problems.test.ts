@@ -120,3 +120,12 @@ it('#8310 startup metadata matches every lazy registry key and placeholder', asy
     assert.deepEqual(lazyMessageParameters(key), parameters, key);
   }
 });
+
+it('#9523 startup metadata matches every lazy agent bridge key and placeholder', async () => {
+  const { agentBridgeEn } = await import('./catalogues/agent-bridge.en');
+  for (const [key, value] of Object.entries(agentBridgeEn)) {
+    const parameters = [...new Set([...value.matchAll(/\{([A-Za-z][A-Za-z0-9_]*)\}/g)].map(match => match[1]))].sort();
+    assert.deepEqual(lazyMessageParameters(key), parameters, key);
+  }
+  assert.equal(lazyMessageParameters('agentBridge.notAKey'), null);
+});

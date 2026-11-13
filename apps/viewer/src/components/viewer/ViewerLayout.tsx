@@ -14,6 +14,7 @@ import { RibbonToolbar } from './ribbon/RibbonToolbar';
 import { HierarchyPanel } from './HierarchyPanel';
 import { StatusBar } from './StatusBar';
 import { FlavorDialogHost } from '@/components/extensions/FlavorDialogHost';
+import { AgentBridgeHost } from '@/components/agent-bridge/AgentBridgeHost';
 import { ViewportContainer } from './ViewportContainer';
 import { ModelToolRail } from './model/ModelToolRail';
 import { ModelWorkspaceSplit } from './model/ModelWorkspaceSplit';
@@ -266,6 +267,7 @@ export function ViewerLayout() {
         <KeyboardShortcutsDialog open={shortcutsDialog.open} onClose={shortcutsDialog.close} initialTab={shortcutsDialog.tab} />
         <SettingsDialogHost />
         <FlavorDialogHost />
+        <AgentBridgeHost />
         <ConfirmDialogHost />
         <EntityContextMenu />
         <HoverTooltip />

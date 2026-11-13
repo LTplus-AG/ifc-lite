@@ -15,7 +15,7 @@ const PANEL_IDS = [
   'panel:error-report', 'panel:retained-report', 'panel:presentation', 'panel:script', 'panel:lists', 'panel:gantt', 'panel:charts', 'panel:flow',
   'panel:document', 'panel:drawing', 'panel:properties', 'panel:tree',
   'panel:assistant', 'panel:bcf', 'panel:ids', 'panel:idsStudio', 'panel:influx', 'panel:clash', 'panel:compare', 'panel:changes', 'panel:model', 'panel:review', 'panel:semantic', 'panel:changeSets',
-  'panel:cost', 'panel:chat', 'panel:lens', 'panel:layers', 'panel:sources',
+  'panel:cost', 'panel:chat', 'panel:lens', 'panel:layers', 'panel:sources', 'panel:agentBridge',
   'panel:zones', 'panel:loadReport', 'panel:pointclouds', 'panel:measurements',
   'panel:appearance', 'panel:collab', 'panel:extensions',
 ] as const;

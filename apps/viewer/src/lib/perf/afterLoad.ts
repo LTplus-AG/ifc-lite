@@ -1,0 +1,113 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * The eager half of the after-load schedule: the settled rule and a scheduling
+ * call that loads the queue (`afterLoadIdle.ts`) as a lazy chunk. The queue only
+ * ever runs work after a load has settled, so loading it on first use puts
+ * nothing on a load's critical path and keeps it out of the eager bundle.
+ */
+
+import { useViewerStore } from '../../store/index.js';
+import { hasPendingInstancedShards, subscribeInstancedShards } from '../../store/instancedShardQueue.js';
+import type { AfterLoadEnv } from './afterLoadIdle.js';
+
+export type AfterLoadJob = 'snapshot-write' | 'overlay-parse' | 'source-compaction' | 'search-index';
+
+export interface AfterLoadOptions {
+  job: AfterLoadJob;
+  /** The model the work is for; `null` for the legacy single-model store. */
+  modelId: string | null;
+  /** When given, the job also ends if the model's data store is replaced. */
+  store?: object | null;
+}
+
+type ViewerState = ReturnType<typeof useViewerStore.getState>;
+const LOADING: ReadonlySet<string | undefined> = new Set(['pending', 'streaming-geometry', 'hydrating-metadata']);
+
+/** Whether `modelId`'s load has settled (see afterLoadIdle.ts). `null`: the legacy single-model store. */
+export function modelLoadSettled(state: ViewerState, modelId: string | null): boolean {
+  if (hasPendingInstancedShards(modelId ?? undefined)) return false;
+  const model = modelId === null ? undefined : state.models.get(modelId);
+  if (!model) return !state.loading && !state.geometryStreamingActive;
+  if (state.geometryStreamingActive && state.activeModelId === modelId) return false;
+  return !LOADING.has(model.loadState);
+}
+
+const ENV: AfterLoadEnv = {
+  getState: () => useViewerStore.getState(),
+  subscribe: (listener) => useViewerStore.subscribe(listener),
+  subscribeShards: subscribeInstancedShards,
+  settled: modelLoadSettled,
+};
+
+/**
+ * Run `work` after `options.modelId` has settled, in an idle period, in job order
+ * (afterLoadIdle.ts). Returns a cancel: before the job starts it drops the job
+ * (`onDrop` runs); after, it aborts the job's signal. Whether the model had a
+ * record is taken now, so a removal while the queue loads still ends the job.
+ */
+export function runAfterModelSettled(options: AfterLoadOptions, work: (signal: AbortSignal) => unknown, onDrop?: () => void): () => void {
+  const hadRecord = options.modelId !== null && useViewerStore.getState().models.has(options.modelId);
+  let cancel: (() => void) | null = null;
+  let cancelled = false;
+  const drop = () => { if (!cancelled) { cancelled = true; onDrop?.(); } };
+  loadQueue().then(({ scheduleAfterLoad }) => {
+    if (!cancelled) cancel = scheduleAfterLoad(ENV, options, hadRecord, work, onDrop);
+  }, (error: unknown) => {
+    console.warn('[afterLoad] schedule did not load; running the job here once its model settles', error);
+    if (!cancelled) cancel = runWhenSettledHere(options, hadRecord, work, drop);
+  });
+  return () => {
+    if (cancelled) return;
+    // The queue's cancel and the fallback's both report a drop to `onDrop` themselves.
+    if (cancel) { const end = cancel; cancel = null; end(); cancelled = true; } else drop();
+  };
+}
+
+/** Whether the job's model (and store, when bound to one) is still the one it was scheduled for. */
+function jobAlive(state: ViewerState, options: AfterLoadOptions, hadRecord: boolean): boolean {
+  const model = options.modelId === null ? undefined : state.models.get(options.modelId);
+  if (model) return options.store == null || model.ifcDataStore === options.store;
+  return !hadRecord && (options.store == null || state.ifcDataStore === options.store);
+}
+
+/**
+ * Without the queue: the same rules for this one job (after its model settles; dropped when the model
+ * or its store goes; a started job's signal aborts then), without the idle period or the job order.
+ * Returns its cancel.
+ */
+function runWhenSettledHere(options: AfterLoadOptions, hadRecord: boolean, work: (signal: AbortSignal) => unknown, drop: () => void): () => void {
+  const controller = new AbortController();
+  let started = false;
+  let stop = () => {};
+  const check = () => {
+    const state = useViewerStore.getState();
+    if (!jobAlive(state, options, hadRecord)) { stop(); if (started) controller.abort(); else drop(); return; }
+    if (started || !modelLoadSettled(state, options.modelId)) return;
+    started = true;
+    void Promise.resolve().then(() => work(controller.signal)).catch(() => {}).finally(() => stop());
+  };
+  const fromStore = useViewerStore.subscribe(check);
+  const fromShards = subscribeInstancedShards(check);
+  stop = () => { fromStore(); fromShards(); };
+  check();
+  return () => { stop(); if (started) controller.abort(); else drop(); };
+}
+
+let loadQueue: () => Promise<typeof import('./afterLoadIdle.js')> = () => import('./afterLoadIdle.js');
+/** Test-only: replace how the queue module loads (e.g. a chunk that fails to load); `null` restores it. */
+export function __setAfterLoadQueueLoaderForTests(loader: typeof loadQueue | null): void {
+  loadQueue = loader ?? (() => import('./afterLoadIdle.js'));
+}
+
+/** The same, as a promise of `work`'s result; `undefined` when the job is dropped or cancelled before it runs. */
+export function afterModelSettled<T>(options: AfterLoadOptions, work: (signal: AbortSignal) => T | Promise<T>): { result: Promise<T | undefined>; cancel: () => void } {
+  let settle!: (value: T | undefined) => void;
+  const result = new Promise<T | undefined>((resolve) => { settle = resolve; });
+  const cancel = runAfterModelSettled(options, async (signal) => {
+    try { settle(await work(signal)); } catch (error) { settle(undefined); throw error; }
+  }, () => settle(undefined));
+  return { result, cancel };
+}

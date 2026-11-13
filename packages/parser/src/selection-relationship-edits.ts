@@ -31,11 +31,11 @@ function editsFor(store: IfcDataStore, view: SelectionEditView): Edits {
   // Never derive property/quantity changes merely to find relationship edits.
   const candidates = view.getAttributeOverrideEntityIds?.() ?? view.getEffectiveChanges?.()
     .filter(row => ['attribute', 'type', 'entity-deleted'].includes(row.kind)).map(row => row.entityId) ?? [];
-  const ids = new Set<number>();
-  for (const id of new Set([...candidates, ...(view.getTypeMutations?.().keys() ?? [])])) {
+  const ids = new Set<number>(), retypes = view.getTypeMutations?.();
+  for (const id of new Set([...candidates, ...(retypes?.keys() ?? [])])) {
     // @raw-entity-enumeration-ok classify one edited record without reading its source attributes
     const source = (store.entityIndex.byId.get(id) ?? store.deferredEntityIndex?.get(id))?.type;
-    const effective = view.getTypeMutations?.().get(id)?.newType ?? view.getNewEntity?.(id)?.type ?? source;
+    const effective = retypes?.get(id)?.newType ?? view.getNewEntity?.(id)?.type ?? source;
     if (source?.toUpperCase().startsWith('IFCREL') || effective?.toUpperCase().startsWith('IFCREL')) ids.add(id);
   }
   const result: Edits = { revision, source: store.source, ids };
@@ -53,10 +53,11 @@ export function selectionRelationshipEditIds(store: IfcDataStore, view: Selectio
 export function selectionEditedRelationshipsForSubject(store: IfcDataStore, view: SelectionEditView, subject: number, types: readonly string[]): Iterable<number> {
   const edits = editsFor(store, view);
   if (!edits.subjects) {
+    const retypes = view.getTypeMutations?.();
     const overlay = selectionRelationshipOverlay(store, view, {
       createdEntities: () => (view.getNewEntities?.() ?? []).flatMap(row => row.attributes === undefined ? [] : [{ ...row, attributes: row.attributes }]),
       mutatedEntityIds: () => edits.ids,
-      entityType: id => view.getTypeMutations?.().get(id)?.newType,
+      entityType: id => retypes?.get(id)?.newType,
       namedAttributes: id => view.getAttributeMutationsForEntity?.(id).map(row => [row.name, row.value] as const) ?? [],
       positionalAttributes: id => view.getPositionalMutationsForEntity?.(id) ?? [],
       isDeleted: id => view.isDeleted?.(id) ?? false,

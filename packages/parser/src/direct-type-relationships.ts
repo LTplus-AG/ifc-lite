@@ -22,7 +22,8 @@ export function directCurrentTypeRelationships(store: IfcDataStore, view: Metada
   const index = store.selectionRelationshipIndex!;
   let rows = index.typeRows, references = index.typeReferences;
   const unverified = new Set(index.retryTypeRows);
-  const changed = new Set([...selectionRelationshipEditIds(store, view), ...(view.getTombstones?.() ?? []), ...(view.getTypeMutations?.().keys() ?? [])]);
+  const typeMutations = view.getTypeMutations?.();
+  const changed = new Set([...selectionRelationshipEditIds(store, view), ...(view.getTombstones?.() ?? []), ...(typeMutations?.keys() ?? [])]);
   const created = view.getNewEntities();
   const createdIds = new Set(created.map(row => row.expressId));
   for (const row of created) {
@@ -41,7 +42,7 @@ export function directCurrentTypeRelationships(store: IfcDataStore, view: Metada
       definition = getInheritanceChain(normalizeIfcTypeName(type)).includes('IfcPropertySetDefinition');
       definitionClasses.set(type, definition);
     }
-    const changedType = view.getNewEntity(id)?.type ?? view.getTypeMutations?.().get(id)?.newType;
+    const changedType = view.getNewEntity(id)?.type ?? typeMutations?.get(id)?.newType;
     const currentDefinition = changedType && getInheritanceChain(normalizeIfcTypeName(changedType)).includes('IfcPropertySetDefinition');
     if ((definition || currentDefinition) && (view.isDeleted(id) || changedType)) {
       for (const row of index.exceptionalDefinitionTargets.get(id) ?? []) changed.add(row);
@@ -55,15 +56,15 @@ export function directCurrentTypeRelationships(store: IfcDataStore, view: Metada
   const memberships = new Map<number, Set<number>>();
   const read = (id: number): RelationRead => {
     if (reads.has(id)) return reads.get(id)!;
-    const type = view.getNewEntity(id)?.type.toUpperCase() ?? view.getTypeMutations?.().get(id)?.newType.toUpperCase() ?? sourceType(id);
+    const type = view.getNewEntity(id)?.type.toUpperCase() ?? typeMutations?.get(id)?.newType.toUpperCase() ?? sourceType(id);
     const value = !view.isDeleted(id) && type && types.includes(type) ? readRelation(store, id, view) : null;
     // Unexpected errors deliberately leave no cached refusal: the next read retries.
     reads.set(id, value);
     if (value) memberships.set(id, new Set(value.members));
     return value;
   };
-  for (const row of created) if (types.includes(row.type.toUpperCase()) || view.getTypeMutations?.().has(row.expressId)) changed.add(row.expressId);
-  const retyped = new Map([...view.getTypeMutations?.().keys() ?? []].map((id, i) => [id, i]));
+  for (const row of created) if (types.includes(row.type.toUpperCase()) || typeMutations?.has(row.expressId)) changed.add(row.expressId);
+  const retyped = new Map([...typeMutations?.keys() ?? []].map((id, i) => [id, i]));
   const authored = new Map(created.map((row, i) => [row.expressId, i]));
   const rank = (id: number) => createdIds.has(id) ? 3 : types.includes(sourceType(id) ?? '') ? types.indexOf(sourceType(id)!) : 2;
   // @raw-entity-enumeration-ok source byte order ranks effective rows within their historical source bucket
@@ -74,7 +75,7 @@ export function directCurrentTypeRelationships(store: IfcDataStore, view: Metada
   const affected = new Set([...unverified, ...changed, ...index.typeRefusals.keys()]);
   const contributions = [...affected].sort(compare).map(id => {
     const baseType = sourceType(id), base = baseType !== undefined && types.includes(baseType) && !createdIds.has(id);
-    const currentType = view.getNewEntity(id)?.type.toUpperCase() ?? view.getTypeMutations?.().get(id)?.newType.toUpperCase() ?? baseType;
+    const currentType = view.getNewEntity(id)?.type.toUpperCase() ?? typeMutations?.get(id)?.newType.toUpperCase() ?? baseType;
     const current = !view.isDeleted(id) && currentType !== undefined && types.includes(currentType);
     rows += Number(current) - Number(base);
     return { id, base, current };

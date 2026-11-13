@@ -157,12 +157,15 @@ it('#9947 one selection never decodes unrelated attribute-edited entities', asyn
     const view = new MutablePropertyView(null, 'names');
     for (let id = 200; id < 200 + count; id++) view.setAttribute(id, 'Name', 'renamed');
     const original = store.getEntity.bind(store); const unrelated: number[] = [];
+    let typeSnapshots = 0; const getTypes = view.getTypeMutations.bind(view);
+    view.getTypeMutations = () => { typeSnapshots++; return getTypes(); };
     store.getEntity = id => { if (id >= 200 && id < 200 + count) unrelated.push(id); return original(id); };
     expect(extractAllMaterialsOnDemand(store, 100, view)[0]?.name).toBe('Concrete');
     extractClassificationsOnDemand(store, 100, view); extractDocumentsOnDemand(store, 100, view);
     expect(readCurrentTypeQuantities(store, 100, view).value?.quantities[0].quantities[0].value).toBe(2.5);
     store.getEntity = original;
     expect(unrelated).toEqual([]);
+    expect(typeSnapshots).toBeLessThan(50);
   }
 });
 

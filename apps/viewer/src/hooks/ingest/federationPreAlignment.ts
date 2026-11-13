@@ -19,6 +19,7 @@ export function capturePreAlignment(geometry: AlignableGeometry): PreAlignmentSn
       positions: [],
       normals: [],
       origins: [],
+      cloudOrigins: geometry.pointClouds?.map((cloud) => (cloud.origin ? [...cloud.origin] : undefined)),
       geometryAabbs: [],
       coordinateInfo: structuredClone(geometry.coordinateInfo),
       // Alignment replaces boxes instead of editing them, so the box objects
@@ -49,6 +50,12 @@ export function restorePreAlignment(
     if (box) meshes[i].geometryAabb = box;
     else delete meshes[i].geometryAabb;
   }
+  geometry.pointClouds?.forEach((cloud, i) => {
+    if (!snapshot.cloudOrigins || i >= snapshot.cloudOrigins.length) return;
+    const origin = snapshot.cloudOrigins[i];
+    if (origin) cloud.origin = [...origin];
+    else delete cloud.origin;
+  });
   geometry.coordinateInfo = structuredClone(snapshot.coordinateInfo);
   geometry.instancedGeometryAabbs = snapshot.instancedGeometryAabbs
     ? new Map(snapshot.instancedGeometryAabbs)

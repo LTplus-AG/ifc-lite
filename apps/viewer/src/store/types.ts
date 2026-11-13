@@ -507,6 +507,10 @@ export interface PreAlignmentSnapshot {
    * path carries origins.
    */
   origins: ([number, number, number] | undefined)[];
+  /** Per inline point cloud, in `geometryResult.pointClouds` order: its origin.
+   *  The RTC re-base moves cloud origins with the meshes (#10029), so a restore
+   *  that put back only mesh origins and `coordinateInfo` would split the model. */
+  cloudOrigins?: ([number, number, number] | undefined)[];
   /** The RTC/shift frame the positions are relative to, recovered before the
    *  new alignment is applied. */
   coordinateInfo: CoordinateInfo;

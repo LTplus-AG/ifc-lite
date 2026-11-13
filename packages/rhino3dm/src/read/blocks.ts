@@ -2,10 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { memberColor, resolveAppearance, type Appearance, type AppearanceTables, type Look } from './appearance.js';
+import { resolveAppearance, type Appearance, type AppearanceTables, type Look } from './appearance.js';
 import type { BlockMeshes, DrawnPart, Emitter } from './emit.js';
 import type { Part } from './geometry.js';
 import { plural, type Report } from './report.js';
+import type { RhinoRgba } from './types.js';
 import { isUsable, multiply, reach, type Xform } from './xform.js';
 
 export interface BlockMember { part: Part; look: Look; hidden: boolean }
@@ -46,20 +47,51 @@ export function inheritableFade(objects: Iterable<{ part: Part; appearance: Appe
   return false;
 }
 
-/** `fades` comes from `inheritableFade`, measured once for the file. */
-export function buildBlock(name: string, linked: boolean, members: BlockMember[], tables: AppearanceTables, fades: boolean, report: Report): Block {
+/** What every definition in one file is built against, so `buildBlock` takes the per-definition part alone. */
+export interface BlockContext {
+  tables: AppearanceTables;
+  /** From `inheritableFade`, measured once for the file. */
+  fades: boolean;
+  report: Report;
+}
+
+/** An opaque colour and no material: resolving against it reflects only the member's own attributes. */
+const NEUTRAL_PARENT: Appearance = { color: [0, 0, 0, 1], material: -1 };
+
+/**
+ * What colour a member's mesh can carry inside the shared definition every instance places:
+ *
+ * - a colour, when it is the same under every instance;
+ * - `'instance'`, when it is exactly the placing instance's resolved colour, which the instance
+ *   record carries, so the definition mesh leaves it open as `null`;
+ * - `'bake'`, when it is neither, and the mesh is drawn once per placement. That is a colour the
+ *   instance's material decides, and the instance's colour at the member's own alpha.
+ *
+ * An inherited material can only change a member's colour through its diffuse colour or its
+ * transparency, so a member that does not read that diffuse needs baking only where something can
+ * fade it, which is what `fades` says.
+ */
+function memberColor(look: Look, { tables, fades }: BlockContext): RhinoRgba | 'instance' | 'bake' {
+  // Against a parent that contributes nothing, so an alpha below 1 is the member's own material's,
+  // and a colour inherited along with the material comes back opaque: exactly the instance's.
+  const own = resolveAppearance(look, tables, NEUTRAL_PARENT).color;
+  if (look.colorSource === 'parent') return own[3] < 1 ? 'bake' : 'instance';
+  if (look.materialSource === 'parent' && (look.colorSource === 'material' || fades)) return 'bake';
+  return own;
+}
+
+export function buildBlock(name: string, linked: boolean, members: BlockMember[], context: BlockContext): Block {
   const block: Block = { name, linked, meshes: [], triangles: 0, reach: [0, 0, 0], others: [], dots: [], nested: [], drawsDots: false, drawsGeometry: false };
   for (const { part, look, hidden } of members) {
     // Rhino does not draw a member that is hidden or on a layer that is off, in any instance.
-    if (hidden) report.skip('hidden-block-member');
+    if (hidden) context.report.skip('hidden-block-member');
     else if (part.kind === 'instance') block.nested.push({ part, look });
     else if (part.kind === 'dot') block.dots.push({ part, look });
     else if (part.kind !== 'mesh') block.others.push({ part, look });
     else {
-      const color = memberColor(look, tables, fades);
+      const color = memberColor(look, context);
       if (color === 'bake') block.others.push({ part, look });
       else {
-        // A "by parent" mesh, left open here, takes the colour of whichever instance places it.
         block.meshes.push({ origin: part.origin, positions: part.positions, normals: part.normals, indices: part.indices, color: color === 'instance' ? null : color });
         block.triangles += part.indices.length / 3;
         reach(part.positions).forEach((extent, axis) => { block.reach[axis] = Math.max(block.reach[axis], Math.abs(part.origin[axis]) + extent); });

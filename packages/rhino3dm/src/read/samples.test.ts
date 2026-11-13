@@ -13,17 +13,14 @@ import { drawnTriangles } from '../../test-support/craft.js';
  * models at tag 8.35.0. The fixture manifest pins them to that commit, so they
  * are fetched from McNeel's repository and never re-hosted.
  */
-const loader = (group: string) => {
-  const dir = fileURLToPath(new URL(`../../../../tests/models/rhino/${group}/`, import.meta.url));
-  return (name: string) => new Uint8Array(readFileSync(dir + name));
-};
-const samples = fileURLToPath(new URL('../../../../tests/models/rhino/mcneel-rhino3dm/', import.meta.url));
-const sample = loader('mcneel-rhino3dm');
+const groupDir = (group: string) => fileURLToPath(new URL(`../../../../tests/models/rhino/${group}/`, import.meta.url));
+const loader = (dir: string) => (name: string) => new Uint8Array(readFileSync(dir + name));
+
+const samples = groupDir('mcneel-rhino3dm'), sample = loader(samples);
 const absent = !['blocks', 'file3dm_stuff', 'mesh', 'object_UserStrings', 'subd_creases'].every(name => existsSync(`${samples}${name}.3dm`));
 
 /** The openNURBS toolkit's own example files, pinned the same way. */
-const toolkit = fileURLToPath(new URL('../../../../tests/models/rhino/mcneel-opennurbs/', import.meta.url));
-const toolkitSample = loader('mcneel-opennurbs');
+const toolkit = groupDir('mcneel-opennurbs'), toolkitSample = loader(toolkit);
 const toolkitAbsent = !existsSync(`${toolkit}my_mesh_with_material.3dm`);
 
 describe.skipIf(absent)(`Rhino-authored samples${absent ? ' (skipped: run pnpm fixtures)' : ''}`, () => {

@@ -42,36 +42,6 @@ export function readLook(api: ReadApi, attributes: RAttributes, layer: number): 
   };
 }
 
-/** An opaque colour and no material, so resolving against it reflects only the object's own attributes. */
-const NO_PARENT: Appearance = { color: [0, 0, 0, 1], material: -1 };
-
-/**
- * What colour a block member's mesh can carry inside the shared definition every instance places:
- *
- * - a colour, when it is the same under every instance;
- * - `'instance'`, when it is exactly the placing instance's resolved colour, which the instance
- *   record carries, so the definition leaves it open;
- * - `'bake'`, when it is neither, and the mesh has to be drawn once per placement. That is a
- *   colour the instance's material decides, and the instance's colour at the member's own alpha.
- *
- * An inherited material can only change a member's colour through its diffuse colour or its
- * transparency, so where nothing can fade it, only a colour read off that material varies by
- * instance. `fades` says whether anything can: whether a material some block instance hands down
- * is transparent, as `inheritableFade` in `blocks.ts` measures it. Measuring it over the whole
- * material table instead is a mistake a Rhino file punishes, since it keeps materials nothing
- * references and one leftover transparent material then bakes every inheriting member.
- */
-export function memberColor(look: Look, tables: AppearanceTables, fades: boolean): RhinoRgba | 'instance' | 'bake' {
-  if (look.colorSource === 'parent') {
-    // With the material inherited too, the member's colour is the instance's, transparency and all.
-    if (look.materialSource === 'parent') return 'instance';
-    // Resolved against an opaque colour, so the alpha that comes back is its own material's.
-    return resolveAppearance(look, tables, NO_PARENT).color[3] < 1 ? 'bake' : 'instance';
-  }
-  if (look.materialSource === 'parent' && (look.colorSource === 'material' || fades)) return 'bake';
-  return resolveAppearance(look, tables, NO_PARENT).color;
-}
-
 /**
  * Resolve an object's colour and the material it is drawn with. `parent` is the block instance
  * placing it, or null at top level, where every "from parent" source falls back to the layer.

@@ -578,9 +578,12 @@ openNURBS composes, and that is what the reader does [test].
 
 **Known divergences.** All four come from one modelling choice: `Appearance`
 hands a member the instance's already-resolved colour, where openNURBS hands it
-the instance's colour *source*. All four are reached only when the placing
-instance's own colour or material is itself by-material or by-parent, which no
-public .3dm does. Carrying the source instead would settle the first three,
+the instance's colour *source*. The first three are reached only when the
+placing instance's own colour or material is itself by-material or by-parent,
+which no public .3dm does. The fourth needs no more than an instance that names
+a transparent material, which is an ordinary file, and the table's
+`ColorFromParent` row is pinned at the reader's value by a test that builds
+one. Carrying the source instead would settle the first three,
 whose right answer is a fixed colour a definition can hold; the cost is that
 which definition a placement shares would then depend on the instance, so
 `Emitter` would have to key one by more than the block id. The fourth needs a

@@ -87,68 +87,59 @@ describe('a block member resolved against the instance placing it', () => {
   test.each(ROWS.map((row, index): [string, number, Row] => [`${row.colorSource} + ${row.materialSource} draws ${row.why}`, index, row]))(
     '%s', async (_name, index, row) => {
       // Baked, so every row is a mesh of its own, found by the x its box was built at.
-      const result = await bakedRead;
-      expect(result.meshes).toHaveLength(ROWS.length);
-      const drawn = result.meshes.find(m => Math.round(m.origin[0]) === PLACED_AT + index);
+      const drawn = (await bakedRead).meshes.find(m => Math.round(m.origin[0]) === PLACED_AT + index);
       expect(drawn && bytes255(drawn.color)).toEqual(row.drawn);
     });
 
   test('each row lands where its colour can be drawn from, and both modes draw the same', async () => {
-    const instanced = await readRhino3dm(await file);
-    const where = (kind: Row['where']) => ROWS.filter(row => row.where === kind);
+    const instanced = await readRhino3dm(await file), baked = await bakedRead;
+    // Both read in member order, so each list below follows ROWS.
+    const rows = (kind: Row['where']) => ROWS.flatMap((row, index) => row.where === kind ? [[index, row]] as const : []);
     // A definition mesh holds one colour or none, so a row whose colour the instance's material
     // decides cannot live there and is baked per placement instead.
-    expect(instanced.definitions[0].meshes.map(m => m.color && bytes255(m.color))).toEqual([
-      ...where('definition').map(row => row.drawn), ...where('instance').map(() => null),
-    ]);
-    expect(instanced.meshes.map(m => bytes255(m.color))).toEqual(where('baked').map(row => row.drawn));
+    expect(instanced.definitions[0].meshes.map(m => m.color && bytes255(m.color))).toEqual(
+      ROWS.filter(row => row.where !== 'baked').map(row => row.where === 'instance' ? null : row.drawn));
+    expect(instanced.meshes.map(m => [Math.round(m.origin[0]) - PLACED_AT, bytes255(m.color)]))
+      .toEqual(rows('baked').map(([index, row]) => [index, row.drawn]));
     expect(instanced.instances.map(i => bytes255(i.color))).toEqual([INSTANCE_COLOR]);
     // Every box is twelve triangles, counted once however the two paths split them.
     const triangles = ROWS.length * 12;
-    expect([drawnTriangles(instanced), drawnTriangles(await bakedRead)]).toEqual([triangles, triangles]);
-    expect(instanced.meshes.map(m => Math.round(m.origin[0]) - PLACED_AT)).toEqual(
-      ROWS.flatMap((row, index) => row.where === 'baked' ? [index] : []));
+    expect([baked.meshes.length, drawnTriangles(instanced), drawnTriangles(baked)]).toEqual([ROWS.length, triangles, triangles]);
   });
 });
 
 describe('a member that inherits its material only needs baking when something can fade it', () => {
-  // Only a transparent material can make an inherited material change such a member's colour,
-  // since it does not read the diffuse. Baking them all per placement returned 5,000 mesh records
-  // and 375 MB where one shared definition holds 0.08 MB, every record the same colour [ran].
-  const build = (extra: (c: Craft) => void) => (c: Craft) => {
-    const paint = c.material('Paint', [0, 0, 255, 255]), other = c.material('Other', [0, 255, 0, 255]);
+  // Such a member does not read the inherited diffuse colour, so only a transparent material can
+  // change what it is drawn with. Baking them all per placement returned 5,000 mesh records and
+  // 375 MB where one shared definition holds 0.08 MB, every record the same colour [ran].
+
+  /**
+   * One `MaterialFromParent` member, placed once per entry in `instances`, each instance naming a
+   * material of that transparency. `stored` adds a material the file keeps and nothing names.
+   */
+  const panes = (instances: number[], stored?: number) => (c: Craft) => {
     const spec: AttributeSpec = { color: [255, 255, 255, 255], colorSource: 'ColorFromObject', materialSource: 'MaterialFromParent' };
     const block = c.block('Pane', [unit(c)], [spec]);
-    for (const [i, material] of [paint, other].entries()) {
-      c.addInstance(block, translation(i * 3, 0, 0), { color: [255, 0, 0, 255], material, materialSource: 'MaterialFromObject' });
-    }
-    extra(c);
+    instances.forEach((transparency, i) => c.addInstance(block, translation(i * 3, 0, 0), {
+      color: [255, 0, 0, 255], material: c.material(`Paint ${i}`, [0, 0, 255, 255], transparency), materialSource: 'MaterialFromObject',
+    }));
+    if (stored !== undefined) c.material('Leftover glass', [0, 0, 255, 255], stored);
   };
 
-  test('two instances naming opaque materials share one definition', async () => {
-    const result = await readRhino3dm(await craft(build(() => {})));
+  test.each([
+    ['two instances naming opaque materials', panes([0, 0])],
+    // Rhino keeps materials no object or layer names. Measuring the gate over the material table
+    // instead of over what the instances resolve to let one of those bake a whole file.
+    ['an opaque pair beside a transparent material the file only stores', panes([0, 0], 0.5)],
+  ])('%s: one shared definition, nothing baked', async (_name, build) => {
+    const result = await readRhino3dm(await craft(build));
     expect(result.definitions.map(d => d.meshes.map(m => m.color && bytes255(m.color)))).toEqual([[[255, 255, 255, 255]]]);
     expect(result.instances.map(i => i.definition)).toEqual([0, 0]);
     expect(result.meshes).toEqual([]);
   });
 
-  test('a transparent material the file stores but nothing uses does not bake them', async () => {
-    // Rhino keeps materials no object or layer names. Measuring the gate over the material table
-    // instead of over what the instances resolve to let one of those bake a whole file.
-    const result = await readRhino3dm(await craft(build(c => { c.material('Leftover glass', [0, 0, 255, 255], 0.5); })));
-    expect(result.definitions).toHaveLength(1);
-    expect(result.instances.map(i => i.definition)).toEqual([0, 0]);
-    expect(result.meshes).toEqual([]);
-  });
-
-  test('a transparent material an instance does name bakes them, at that instance\'s alpha', async () => {
-    const build = (c: Craft) => {
-      const glass = c.material('Glass', [0, 0, 255, 255], 0.5);
-      const spec: AttributeSpec = { color: [255, 255, 255, 255], colorSource: 'ColorFromObject', materialSource: 'MaterialFromParent' };
-      const block = c.block('Pane', [unit(c)], [spec]);
-      c.addInstance(block, undefined, { color: [255, 0, 0, 255], material: glass, materialSource: 'MaterialFromObject' });
-    };
-    const result = await readRhino3dm(await craft(build));
+  test("a transparent material an instance does name bakes the member, at that instance's alpha", async () => {
+    const result = await readRhino3dm(await craft(panes([0.5])));
     expect([result.definitions, result.instances]).toEqual([[], []]);
     expect(result.meshes.map(m => bytes255(m.color))).toEqual([[255, 255, 255, 128]]);
   });

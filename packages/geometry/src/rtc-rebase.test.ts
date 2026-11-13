@@ -214,6 +214,17 @@ describe('convergeGeometryOntoRtcAnchor', () => {
     expect(g.coordinateInfo.wasmRtcOffset).toEqual(LV95);
   });
 
+  it('moves the inline cloud but not a streamed descriptor listed next to it (#10029)', () => {
+    const g = raw([{ positions: new Float32Array([0, 0, 0]) }]);
+    const inline = { expressId: 1, chunk: { pointCount: 2 } };
+    const descriptor = { expressId: 2, chunk: { pointCount: 0 } };
+    g.pointClouds = [inline, descriptor];
+    convergeGeometryOntoRtcAnchor([g], LV95);
+    const d = ifcToViewerAxes(LV95);
+    expect(inline).toEqual({ ...inline, origin: [-d.x, -d.y, -d.z] });
+    expect(descriptor).toEqual({ expressId: 2, chunk: { pointCount: 0 } });
+  });
+
   it('never moves or refuses a streamed scan (zero-point descriptor): it is raw in every load order', () => {
     const cloud = raw([]);
     cloud.pointClouds = [{ expressId: 1, chunk: { pointCount: 0 } }];

@@ -35,14 +35,21 @@ export function stageInlineClouds(
     const { positions, pointCount } = cloud.chunk;
     if (pointCount === 0) continue; // a streamed scan's descriptor: aligned by its own registry
     const [ox, oy, oz] = cloud.origin ?? [0, 0, 0];
+    // An organized scan marks a missing point with NaN; it stays NaN (not drawn,
+    // not in the bbox) instead of refusing the whole model's alignment.
+    const valid = (i: number) => Number.isFinite(positions[i]) && Number.isFinite(positions[i + 1]) && Number.isFinite(positions[i + 2]);
+    let first = 0;
+    while (first < pointCount * 3 && !valid(first)) first += 3;
+    if (first === pointCount * 3) continue; // nothing to align
     // Like the mesh paths: transform the origin when there is one, otherwise
     // seed the local frame at the first point (a raw 0,0,0 may not project).
-    const to = cloud.origin ? map(ox, oy, oz) : map(positions[0], positions[1], positions[2]);
+    const to = cloud.origin ? map(ox, oy, oz) : map(positions[first], positions[first + 1], positions[first + 2]);
     if (!to || !to.every(Number.isFinite)) return null;
     const [tx, ty, tz] = to;
-    const out = new Float32Array(pointCount * 3);
+    const out = new Float32Array(pointCount * 3).fill(NaN);
     let minX = Infinity, minY = Infinity, minZ = Infinity, maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-    for (let i = 0; i < pointCount * 3; i += 3) {
+    for (let i = first; i < pointCount * 3; i += 3) {
+      if (!valid(i)) continue;
       const aligned = map(positions[i] + ox, positions[i + 1] + oy, positions[i + 2] + oz);
       if (!aligned) return null;
       const rx = Math.fround(aligned[0] - tx), ry = Math.fround(aligned[1] - ty), rz = Math.fround(aligned[2] - tz);

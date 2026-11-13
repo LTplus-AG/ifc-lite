@@ -730,15 +730,14 @@ describe('alignGeometryToReference — inline point clouds ride with the meshes 
     assert.ok(Math.abs(geom.coordinateInfo.originalBounds.min.x - 2501) < 1e-3);
   });
 
-  it('refuses the whole model and restores the cloud when a cloud point is non-finite', async () => {
+  it('keeps a missing (NaN) cloud point missing and still aligns the model', async () => {
     const mesh = boxMesh(34, [0, 0, 0], [1, 1, 1]);
-    const points = cloud([[NaN, 0, 0]]);
-    const before = points.chunk;
+    const points = cloud([[NaN, 0, 0], [1, 2, 3]]);
     const geom = { ...geometry([mesh]), pointClouds: [points] };
-    const meshBefore = new Float32Array(mesh.positions);
-    assert.equal(await alignGeometryToReference(geom, georef({ eastings: 2500 }), georef({})), 'failed');
-    assert.equal(points.chunk, before);
-    assert.equal(points.origin, undefined);
-    assert.deepEqual(mesh.positions, meshBefore, 'the meshes are back in the source frame too');
+    assert.equal(await alignGeometryToReference(geom, georef({ eastings: 2500 }), georef({})), 'same-crs');
+    const p = points.chunk.positions;
+    assert.ok(Number.isNaN(p[0]) && Number.isNaN(p[1]) && Number.isNaN(p[2]), 'the missing point is not invented');
+    assert.ok(Math.abs(points.origin![0] + p[3] - 2501) < 1e-3);
+    assert.deepEqual(points.chunk.bbox, { min: [p[3], p[4], p[5]], max: [p[3], p[4], p[5]] });
   });
 });

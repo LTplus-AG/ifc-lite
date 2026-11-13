@@ -191,7 +191,7 @@ export function convergeGeometryOntoRtcAnchor<T extends RtcRebaseGeometry>(
     };
     geometry.meshes.forEach(move);
     // Inline clouds share their meshes' frame and move the same way (#10029).
-    geometry.pointClouds?.forEach(move);
+    geometry.pointClouds?.forEach((cloud) => { if (cloud.chunk?.pointCount !== 0) move(cloud); });
     geometry.coordinateInfo = rebaseCoordinateInfoOntoRtcAnchor(geometry.coordinateInfo, anchor);
     moved.push(geometry);
   }

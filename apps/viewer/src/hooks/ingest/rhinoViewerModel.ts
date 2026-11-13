@@ -167,8 +167,9 @@ function convertRhinoPointClouds(result: RhinoImport): PointCloudAsset[] {
         colors[at + axis] = bytes ? bytes[point * 4 + axis] / 255 : cloud.color[axis];
       }
     }
-    if (Math.max(...cloud.origin.map(Math.abs)) > PRECISE_POINT_RANGE_M) {
-      console.warn(`[rhino3dm] a point cloud sits ${Math.round(Math.max(...cloud.origin.map(Math.abs)) / 1000)} km from the origin; its points are held as f32, so they are coarser than the meshes beside them`);
+    const range = Math.max(...cloud.origin.map(Math.abs));
+    if (range > PRECISE_POINT_RANGE_M) {
+      console.warn(`[rhino3dm] a point cloud sits ${Math.round(range / 1000)} km from the origin; its points are held as f32, so they are coarser than the meshes beside them`);
     }
     return {
       expressId: expressIdOf(cloud.entity),

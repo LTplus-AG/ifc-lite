@@ -14,7 +14,7 @@ Levels:
 
 - **SDK**: a headless script on a blank model through `bim.store` / `@ifc-lite/create`, checked against a geometry or data oracle read back from the exported, meshed IFC (`tests/modelling-parity/probes/sdk/`).
 - **UI**: the same capability in the Model workspace on the real GPU via `ifc-gpu-check` (`tests/modelling-parity/ui/`).
-- **Output**: the SDK probe's IFC4 export, and any IFC a UI result hands over, through `ifc-lite validate`, a reopen round trip and IfcOpenShell validate with express rules (`tests/modelling-parity/output/`). Drawing files a UI result hands over (SVG, PDF, DXF, for the documentation rows) get a **sanity check only**: they parse, are not empty and carry linework or pages. That is not a check that the drawing is correct.
+- **Output**: the SDK probe's IFC4 export, and any IFC a UI result hands over, through `ifc-lite validate`, a reopen round trip and IfcOpenShell validate with express rules (`tests/modelling-parity/output/`). Drawing files a UI result hands over (SVG, PDF, DXF, for the documentation rows) get parse, non-empty and linework/page checks. Sheet DXF additionally gets independent ezdxf checks for closed rectangular wall boundaries, named layers, dimension linework and text, metre units and the known 104 mm span at 1:50. Other drawing checks remain sanity checks, not geometric reference comparisons.
 - **Exercise**: the best result of the F1–F6 exercises that exercise the row (reported, not scored).
 
 ✅ pass · ◐ partial · ❌ fail or error · – skipped, not run, or not applicable. A row is **met** when every applicable level passes, **partial** when any level passes or partly passes, **missing** otherwise; `skip` never counts as a pass.

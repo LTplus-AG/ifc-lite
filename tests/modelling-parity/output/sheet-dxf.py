@@ -10,21 +10,29 @@ import sys
 import ezdxf
 
 
+def wall_bounds(entity):
+    if entity.dxftype() != 'POLYLINE' or entity.dxf.layer != 'IFC-FILL' or not entity.is_closed:
+        return None
+    points = [vertex.dxf.location for vertex in entity.vertices]
+    if len({(point.x, point.y) for point in points}) < 4 or not all(math.isfinite(v) for p in points for v in p):
+        return None
+    xs, ys = [p.x for p in points], [p.y for p in points]
+    left, right, bottom, top = min(xs), max(xs), min(ys), max(ys)
+    width, height = right-left, top-bottom
+    area = abs(sum(a.x*b.y-b.x*a.y for a, b in zip(points, points[1:]+points[:1])))/2
+    on_boundary = all(min(abs(p.x-left), abs(p.x-right), abs(p.y-bottom), abs(p.y-top)) < 1e-5 for p in points)
+    if (abs(width-.2) < .005 and abs(height-3) < .005 and area > 0
+            and abs(area-width*height) < 1e-4 and on_boundary):
+        return (left, right)
+    return None
+
+
 def judge(text):
     doc = ezdxf.read(io.StringIO(text))
     audit = doc.audit()
     entities = list(doc.modelspace())
     layers = {layer.dxf.name for layer in doc.layers}
-    cuts = []
-    for entity in entities:
-        if entity.dxftype() != 'POLYLINE' or entity.dxf.layer != 'IFC-FILL':
-            continue
-        points = [vertex.dxf.location for vertex in entity.vertices]
-        if not points:
-            continue
-        xs, ys = [p.x for p in points], [p.y for p in points]
-        if abs(max(xs)-min(xs)-0.2) < 0.005 and abs(max(ys)-min(ys)-3) < 0.005:
-            cuts.append((min(xs), max(xs)))
+    cuts = [bounds for entity in entities if (bounds := wall_bounds(entity)) is not None]
     span = max(p[1] for p in cuts)-min(p[0] for p in cuts) if len(cuts) >= 2 else None
     dimensions = [e for e in entities if e.dxf.layer == 'IFC-DIMENSIONS']
     labels = [e.dxf.text for e in dimensions if e.dxftype() == 'TEXT']
@@ -54,7 +62,7 @@ def judge(text):
         ('ezdxf parses without audit errors or repairs', not audit.errors and not audit.fixes),
         ('R12 version and explicit metre units', doc.dxfversion == 'AC1009' and '$ACADVER' in text and 'units: metres' in text),
         ('named wall and dimension layers', {'IFC-CUT', 'IFC-FILL', 'IFC-DIMENSIONS'} <= layers),
-        ('two 200 mm by 3 m cut walls span 104 mm at 1:50', span is not None and abs(span*1000/50-104) <= .5),
+        ('two closed rectangular 200 mm by 3 m cut walls span 104 mm at 1:50', span is not None and abs(span*1000/50-104) <= .5),
         ('5.2 m outer-span dimension line and matching dimension TEXT', length_ok and any(abs(v-5.2) < .01 for v in values)),
         ('finite coordinates', bool(points) and all(math.isfinite(v) for p in points for v in p)),
     ]

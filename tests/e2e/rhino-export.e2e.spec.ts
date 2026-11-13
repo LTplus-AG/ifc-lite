@@ -26,6 +26,9 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEVICE_LOST_SIGNAL, GPU_STRICT, watchGpuDeviceLoss } from './gpu-device-loss';
+// The command-palette and Radix-select drivers for this dialog are shared with
+// the import spec, which exports the same file through them.
+import { chooseExportOption, openRhinoExportDialog } from './rhino-3dm.helpers';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..');
 // Git-tracked copy of the Archicad house: project, site, building and two
@@ -187,28 +190,6 @@ async function openModel(page: Page): Promise<Journey & { markExportClick(): voi
   return { ...journey, markExportClick: () => { exportClicked = true; } };
 }
 
-/** Run `export:3dm` from the command palette and return the Rhino dialog. */
-async function openRhinoDialog(page: Page) {
-  await expect(page.getByRole('button', { name: /Commands…|More actions/ }).first()).toBeVisible();
-  await page.keyboard.press('ControlOrMeta+k');
-  const palette = page.getByRole('dialog', { name: 'Command palette', exact: true });
-  await expect(palette).toBeVisible();
-  await palette.getByRole('combobox', { name: 'Search commands', exact: true }).fill('rhino');
-  const row = palette.getByRole('option', { name: /Rhino \(\.3dm\)/ });
-  await expect(row).toHaveCount(1);
-  await row.click();
-  const dialog = page.getByRole('dialog', { name: 'Export Rhino (.3dm)', exact: true });
-  await expect(dialog).toBeVisible();
-  return dialog;
-}
-
-/** Pick `option` in the dialog's Radix select labelled `label`. */
-async function choose(page: Page, dialog: ReturnType<Page['getByRole']>, label: string, option: string) {
-  await dialog.getByRole('combobox', { name: label, exact: true }).click();
-  await page.getByRole('option', { name: option, exact: true }).click();
-  await expect(dialog.getByRole('combobox', { name: label, exact: true })).toHaveText(option);
-}
-
 /** Click Export, wait for the download and the finished dialog, return the file. */
 async function exportAndDownload(journey: Journey & { markExportClick(): void }, dialog: ReturnType<Page['getByRole']>, name: string) {
   const { page } = journey;
@@ -236,7 +217,7 @@ test.describe('Rhino .3dm export in the built viewer', () => {
 
   test('default export writes the spatial tree as layers with IFC user text', async ({ page }) => {
     const journey = await openModel(page);
-    const dialog = await openRhinoDialog(page);
+    const dialog = await openRhinoExportDialog(page);
     expect(journey.requests.filter((r) => RHINO3DM_ASSET.test(r.url) || /rhinoExport\.worker/.test(r.url))).toEqual([]);
 
     // Defaults, as the user sees them before touching anything.
@@ -297,10 +278,10 @@ test.describe('Rhino .3dm export in the built viewer', () => {
 
   test('millimetres, class layers and Rhino 7 arrive in the file', async ({ page }) => {
     const journey = await openModel(page);
-    const dialog = await openRhinoDialog(page);
-    await choose(page, dialog, 'Units', 'Millimeters');
-    await choose(page, dialog, 'Layers', 'Class');
-    await choose(page, dialog, '3dm version', 'Rhino 7');
+    const dialog = await openRhinoExportDialog(page);
+    await chooseExportOption(page, dialog, 'Units', 'Millimeters');
+    await chooseExportOption(page, dialog, 'Layers', 'Class');
+    await chooseExportOption(page, dialog, '3dm version', 'Rhino 7');
 
     const { bytes } = await exportAndDownload(journey, dialog, 'ac20-mm-class-v7.3dm');
     const file = await readBack(bytes);

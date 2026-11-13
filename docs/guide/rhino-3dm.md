@@ -20,8 +20,8 @@ hierarchy panel and the properties panel all work the same way.
 The format is decided by the file's first 24 bytes, not by its name. An IFC saved as
 `model.3dm` is read as the IFC it is.
 
-Rhino 5, 6, 7 and 8 archives are read. A file saved by a newer Rhino is refused with a
-message saying to save it as Rhino 8 or older. Rhino 9 has not been tested.
+Archives up to and including Rhino 8 are read. A file saved by a newer Rhino is refused
+with a message saying to save it as Rhino 8 or older. Rhino 9 has not been tested.
 
 Parsing runs in a worker, so the viewport stays responsive, and the 2.7 MB Rhino runtime
 is fetched only when you open your first `.3dm`.

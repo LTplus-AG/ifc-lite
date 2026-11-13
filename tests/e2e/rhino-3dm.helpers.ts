@@ -3,13 +3,15 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The browser-side readers and journey steps `rhino-import.e2e.spec.ts` drives
- * the viewer with (spec: docs/architecture/rhino-3dm-import.md, "Testing").
+ * What the two Rhino `.3dm` specs share: the export dialog's command-palette
+ * driver (`rhino-export.e2e.spec.ts`) and the browser-side store readers the
+ * import spec asserts on (`rhino-import.e2e.spec.ts`, and
+ * docs/architecture/rhino-3dm-import.md, "Testing").
  *
- * Everything here reads the production store the viewer itself renders from —
- * `models`, each model's `ifcDataStore` and `geometryResult` — so an assertion
- * built on it is an assertion about what the app holds after a real load, not
- * about a parallel parse in the test process.
+ * Every reader here reads the production store the viewer itself renders from
+ * — `models`, each model's `ifcDataStore` and `geometryResult` — so an
+ * assertion built on it is an assertion about what the app holds after a real
+ * load, not about a parallel parse in the test process.
  */
 
 import { expect, test, type Page, type Locator } from '@playwright/test';
@@ -29,6 +31,8 @@ declare global {
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..');
 /** Git-tracked Archicad house: project, site, two storeys, walls, slabs, windows, spaces. */
 export const IFC_MODEL = join(ROOT, 'apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc');
+/** 79 KB git-tracked sample, for a step that needs an IFC but not a big one. */
+export const SMALL_IFC = join(ROOT, 'apps/viewer/public/samples/hello-wall.ifc');
 /** McNeel's own Rhino 8 sample, fetched by `pnpm fixtures` (never re-hosted). */
 export const FOREIGN_3DM = join(ROOT, 'tests/models/rhino/mcneel-rhino3dm/file3dm_stuff.3dm');
 
@@ -54,14 +58,14 @@ export interface ModelSnapshot {
   entityCount: number;
   meshCount: number;
   triangles: number;
-  /** How many GlobalIds `boxes` holds. */
-  boxedEntities: number;
-  /** How many of those came from `instancedGeometryAabbs` rather than `meshes`. */
+  /** How many boxes came from `instancedGeometryAabbs` rather than from `meshes`. */
   instancedBoxes: number;
   /** World AABB per IFC GlobalId, unioned over every mesh that entity drew. */
   boxes: Record<string, WorldBox>;
   /** The class each boxed GlobalId carries in this model's entity table. */
   classes: Record<string, string>;
+  /** Every distinct `MeshData.color`, and each point cloud's first point colour. */
+  colours: number[][];
   /** Storey name to elevation in metres, from the model's own spatial hierarchy. */
   storeys: Record<string, number | null>;
   /** The spatial hierarchy's root: its class, name and GlobalId. */
@@ -71,7 +75,13 @@ export interface ModelSnapshot {
 }
 
 /**
- * Per-model world boxes and counts, read in the page.
+ * Per-model world boxes, colours and counts, read in the page.
+ *
+ * The box walk is the test's own, not the renderer's `__ifc_lite_scene_owner__`
+ * hook, for two reasons. `Scene.addMeshData` registers a colour-merged batch
+ * under every entity in it, so the hook's per-entity box pools the whole batch
+ * and could not answer per GlobalId; and the hook needs a live device, while
+ * this comparison has to gate under hosted software WebGPU too.
  *
  * Self-contained: `page.evaluate` serialises this function, so it may not
  * close over anything in the test process.
@@ -82,34 +92,51 @@ function readModels(): ModelSnapshot[] {
   for (const [modelId, model] of state.models) {
     const store = model.ifcDataStore;
     const boxes: Record<string, WorldBox> = {};
+    const classes: Record<string, string> = {};
+    const colours = new Map<string, number[]>();
     let meshCount = 0;
     let triangles = 0;
-    const widen = (globalId: string, x: number, y: number, z: number) => {
-      if (!globalId) return;
-      const box = (boxes[globalId] ??= [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity]);
-      const point = [x, y, z];
-      for (let axis = 0; axis < 3; axis++) {
-        if (point[axis] < box[axis]) box[axis] = point[axis];
-        if (point[axis] > box[axis + 3]) box[axis + 3] = point[axis];
-      }
-    };
     // Both id spaces here are the federated one: `mesh.expressId` and the keys
-    // of `instancedGeometryAabbs` are both shifted by `idOffset` on load.
-    const globalIdOf = (globalExpressId: number) =>
-      store?.entities.getGlobalId(globalExpressId - model.idOffset) ?? '';
+    // of `instancedGeometryAabbs` are both shifted by `idOffset` on load. The
+    // class is recorded as the id resolves, so nothing has to walk the entity
+    // table afterwards to label the boxes.
+    const boxFor = (globalExpressId: number): WorldBox | null => {
+      const expressId = globalExpressId - model.idOffset;
+      const globalId = store?.entities.getGlobalId(expressId) ?? '';
+      if (!globalId) return null;
+      const existing = boxes[globalId];
+      if (existing) return existing;
+      classes[globalId] = store!.entities.getTypeName(expressId);
+      return (boxes[globalId] = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity]);
+    };
     for (const mesh of model.geometryResult?.meshes ?? []) {
       meshCount++;
       triangles += mesh.indices.length / 3;
-      const origin = mesh.origin ?? [0, 0, 0];
-      const positions: Float32Array = mesh.positions;
+      colours.set(mesh.color.join(','), [...mesh.color]);
+      const [ox, oy, oz] = mesh.origin ?? [0, 0, 0];
+      const positions = mesh.positions;
       // A colour-merged batch carries one entity per vertex; an ordinary mesh
       // is one entity whole. Reading `entityIds` where it exists keeps a
-      // merged batch from pooling several elements into one box.
-      const perVertex: Uint32Array | undefined = mesh.entityIds;
-      const own = perVertex ? '' : globalIdOf(mesh.expressId);
+      // merged batch from pooling several elements into one box, which is
+      // exactly what the renderer's own per-entity box cannot do.
+      const perVertex = mesh.entityIds;
+      const perEntity = perVertex ? new Map<number, WorldBox | null>() : null;
+      const own = perVertex ? null : boxFor(mesh.expressId);
       for (let i = 0, vertex = 0; i < positions.length; i += 3, vertex++) {
-        widen(perVertex ? globalIdOf(perVertex[vertex]) : own,
-          positions[i] + origin[0], positions[i + 1] + origin[1], positions[i + 2] + origin[2]);
+        let box = own;
+        if (perVertex) {
+          const id = perVertex[vertex];
+          box = perEntity!.get(id) ?? null;
+          if (box === null && !perEntity!.has(id)) perEntity!.set(id, box = boxFor(id));
+        }
+        if (!box) continue;
+        const x = positions[i] + ox, y = positions[i + 1] + oy, z = positions[i + 2] + oz;
+        if (x < box[0]) box[0] = x;
+        if (y < box[1]) box[1] = y;
+        if (z < box[2]) box[2] = z;
+        if (x > box[3]) box[3] = x;
+        if (y > box[4]) box[4] = y;
+        if (z > box[5]) box[5] = z;
       }
     }
     // An entity whose whole mesh set went to the GPU-instanced shard is absent
@@ -118,20 +145,16 @@ function readModels(): ModelSnapshot[] {
     // balustrade members would read as geometry the IFC does not have.
     let instancedBoxes = 0;
     for (const [globalExpressId, aabb] of model.geometryResult?.instancedGeometryAabbs ?? []) {
-      const globalId = globalIdOf(globalExpressId);
-      if (!globalId || boxes[globalId]) continue;
-      if (![...aabb.min, ...aabb.max].every((v) => Number.isFinite(v))) continue;
-      boxes[globalId] = [...aabb.min, ...aabb.max] as WorldBox;
+      if (![...aabb.min, ...aabb.max].every((value) => Number.isFinite(value))) continue;
+      const box = boxFor(globalExpressId);
+      if (!box || Number.isFinite(box[0])) continue;
+      box[0] = aabb.min[0]; box[1] = aabb.min[1]; box[2] = aabb.min[2];
+      box[3] = aabb.max[0]; box[4] = aabb.max[1]; box[5] = aabb.max[2];
       instancedBoxes++;
     }
-    const classes: Record<string, string> = {};
-    for (const globalId of Object.keys(boxes)) classes[globalId] = '';
-    if (store) {
-      for (const expressId of store.entities.expressId) {
-        if (!expressId) continue;
-        const globalId = store.entities.getGlobalId(expressId);
-        if (globalId && globalId in classes) classes[globalId] = store.entities.getTypeName(expressId);
-      }
+    for (const cloud of model.geometryResult?.pointClouds ?? []) {
+      const rgb = [...(cloud.chunk.colors ?? []).slice(0, 3)];
+      if (rgb.length === 3) colours.set(`cloud:${rgb.join(',')}`, rgb);
     }
     const hierarchy = store?.spatialHierarchy ?? null;
     const storeys: Record<string, number | null> = {};
@@ -149,10 +172,10 @@ function readModels(): ModelSnapshot[] {
       entityCount: store?.entityCount ?? 0,
       meshCount,
       triangles,
-      boxedEntities: Object.keys(boxes).length,
       instancedBoxes,
       boxes,
       classes,
+      colours: [...colours.values()],
       storeys,
       root: hierarchy ? {
         ifcClass: store!.entities.getTypeName(hierarchy.project.expressId),
@@ -171,6 +194,11 @@ export async function modelSnapshots(page: Page): Promise<ModelSnapshot[]> {
   return page.evaluate(readModels);
 }
 
+/** How many models the viewer holds, without walking any geometry. */
+export async function modelCount(page: Page): Promise<number> {
+  return page.evaluate(() => globalThis.__ifc_lite_viewer_store__!.getState().models.size);
+}
+
 export interface Overlay {
   /** GlobalIds that drew geometry in both models. */
   matched: string[];
@@ -179,27 +207,13 @@ export interface Overlay {
   onlySecond: string[];
   /** The worst single corner-coordinate gap over every matched entity, in metres. */
   worstGap: number;
-  /** The matched entity and axis that gap sits on. */
+  /** The matched entity, axis and corner that gap sits on. */
   worstAt: { globalId: string; axis: 'x' | 'y' | 'z'; corner: 'min' | 'max'; first: number; second: number } | null;
   /** The worst gap per axis, so a swapped or flipped up axis is named rather than merely large. */
   perAxis: { x: number; y: number; z: number };
-  /** Both models' whole-geometry boxes, for a quick place-and-size read. */
-  firstBounds: WorldBox;
-  secondBounds: WorldBox;
 }
 
 const AXES = ['x', 'y', 'z'] as const;
-
-function union(boxes: WorldBox[]): WorldBox {
-  const out: WorldBox = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
-  for (const box of boxes) {
-    for (let axis = 0; axis < 3; axis++) {
-      out[axis] = Math.min(out[axis], box[axis]);
-      out[axis + 3] = Math.max(out[axis + 3], box[axis + 3]);
-    }
-  }
-  return out;
-}
 
 /**
  * Compare two models' per-GlobalId world boxes: the same place, the same size
@@ -207,7 +221,7 @@ function union(boxes: WorldBox[]): WorldBox {
  * gap sits on says which.
  */
 export function overlayOf(first: ModelSnapshot, second: ModelSnapshot): Overlay {
-  const matched = Object.keys(first.boxes).filter((globalId) => second.boxes[globalId]).sort();
+  const matched = Object.keys(first.boxes).filter((globalId) => second.boxes[globalId]);
   const perAxis = { x: 0, y: 0, z: 0 };
   let worstGap = 0;
   let worstAt: Overlay['worstAt'] = null;
@@ -228,31 +242,16 @@ export function overlayOf(first: ModelSnapshot, second: ModelSnapshot): Overlay 
   }
   return {
     matched,
-    onlyFirst: Object.keys(first.boxes).filter((globalId) => !second.boxes[globalId]).sort(),
-    onlySecond: Object.keys(second.boxes).filter((globalId) => !first.boxes[globalId]).sort(),
+    onlyFirst: Object.keys(first.boxes).filter((globalId) => !second.boxes[globalId]),
+    onlySecond: Object.keys(second.boxes).filter((globalId) => !first.boxes[globalId]),
     worstGap,
     worstAt,
     perAxis,
-    firstBounds: union(Object.values(first.boxes)),
-    secondBounds: union(Object.values(second.boxes)),
   };
 }
 
-/**
- * Open the built viewer, record console and page errors from the first byte,
- * and open the tracked AC20 house from disk the way a user does.
- */
-export async function openViewerWithIfc(page: Page): Promise<Journey> {
-  const journey = await openViewer(page);
-  await journey.gpu.raceLoss('open the AC20 house', async () => {
-    await page.locator('#file-input-open').setInputFiles(IFC_MODEL);
-    await waitForModels(page, 1);
-  });
-  return journey;
-}
-
 /** The viewer, loaded and instrumented, with nothing opened yet. */
-export async function openViewer(page: Page): Promise<Journey> {
+async function openViewer(page: Page): Promise<Journey> {
   const errors: string[] = [];
   page.on('console', (message) => {
     if (message.type() !== 'error') return;
@@ -276,6 +275,16 @@ export async function openViewer(page: Page): Promise<Journey> {
   return { page, gpu, errors };
 }
 
+/** The viewer with `file` opened from disk the way a user opens it. */
+export async function openViewerWith(page: Page, file: string, stage: string): Promise<Journey> {
+  const journey = await openViewer(page);
+  await journey.gpu.raceLoss(stage, async () => {
+    await page.locator('#file-input-open').setInputFiles(file);
+    await waitForModels(page, 1);
+  });
+  return journey;
+}
+
 /** Wait until exactly `count` models are loaded, settled and carrying geometry. */
 export async function waitForModels(page: Page, count: number): Promise<void> {
   await page.waitForFunction((n) => {
@@ -288,7 +297,7 @@ export async function waitForModels(page: Page, count: number): Promise<void> {
 }
 
 /** Run `export:3dm` from the command palette and return the Rhino dialog. */
-async function openRhinoExportDialog(page: Page): Promise<Locator> {
+export async function openRhinoExportDialog(page: Page): Promise<Locator> {
   await expect(page.getByRole('button', { name: /Commands…|More actions/ }).first()).toBeVisible();
   await page.keyboard.press('ControlOrMeta+k');
   const palette = page.getByRole('dialog', { name: 'Command palette', exact: true });
@@ -303,7 +312,7 @@ async function openRhinoExportDialog(page: Page): Promise<Locator> {
 }
 
 /** Pick `option` in the dialog's Radix select labelled `label`. */
-async function choose(page: Page, dialog: Locator, label: string, option: string): Promise<void> {
+export async function chooseExportOption(page: Page, dialog: Locator, label: string, option: string): Promise<void> {
   await dialog.getByRole('combobox', { name: label, exact: true }).click();
   await page.getByRole('option', { name: option, exact: true }).click();
   await expect(dialog.getByRole('combobox', { name: label, exact: true })).toHaveText(option);
@@ -315,7 +324,7 @@ async function choose(page: Page, dialog: Locator, label: string, option: string
  */
 export async function exportTo3dm(page: Page, coordinates: 'local' | 'world', name: string): Promise<Buffer> {
   const dialog = await openRhinoExportDialog(page);
-  if (coordinates === 'world') await choose(page, dialog, 'Coordinates', 'World (as in the IFC file)');
+  if (coordinates === 'world') await chooseExportOption(page, dialog, 'Coordinates', 'World (as in the IFC file)');
   const [download] = await Promise.all([
     page.waitForEvent('download', { timeout: 180_000 }),
     dialog.getByRole('button', { name: 'Export', exact: true }).click(),
@@ -334,25 +343,23 @@ export async function addModel(page: Page, bytes: Buffer, name: string, total: n
   await waitForModels(page, total);
 }
 
-/** Every entity the store holds, by GlobalId, with the class and name it carries. */
-export async function entitiesByGlobalId(page: Page, modelId: string): Promise<Record<string, { expressId: number; globalExpressId: number; ifcClass: string; name: string }>> {
-  return page.evaluate((id) => {
+/** One entity of `modelId` by its IFC GlobalId, with the class and ids it carries. */
+export async function entityByGlobalId(page: Page, modelId: string, globalId: string):
+Promise<{ expressId: number; globalExpressId: number; ifcClass: string; name: string } | null> {
+  return page.evaluate(({ id, wanted }) => {
     const model = globalThis.__ifc_lite_viewer_store__!.getState().models.get(id)!;
     const store = model.ifcDataStore!;
-    const out: Record<string, { expressId: number; globalExpressId: number; ifcClass: string; name: string }> = {};
     for (const expressId of store.entities.expressId) {
-      if (!expressId) continue;
-      const globalId = store.entities.getGlobalId(expressId);
-      if (!globalId) continue;
-      out[globalId] = {
+      if (!expressId || store.entities.getGlobalId(expressId) !== wanted) continue;
+      return {
         expressId,
         globalExpressId: expressId + model.idOffset,
         ifcClass: store.entities.getTypeName(expressId),
         name: store.entities.getName(expressId),
       };
     }
-    return out;
-  }, modelId);
+    return null;
+  }, { id: modelId, wanted: globalId });
 }
 
 /** The property sets the store answers for one entity, as the panel reads them. */
@@ -367,8 +374,8 @@ export async function propertySets(page: Page, modelId: string, expressId: numbe
   }, { id: modelId, entity: expressId });
 }
 
-/** What the viewer currently hides in `modelId`: each entity's class and name. */
-export async function hidden(page: Page, modelId: string): Promise<{ ifcClass: string; name: string }[]> {
+/** What the viewer currently hides in `modelId`: every entity, by federated id. */
+export async function hidden(page: Page, modelId: string): Promise<{ globalExpressId: number; ifcClass: string; name: string }[]> {
   return page.evaluate((id) => {
     const state = globalThis.__ifc_lite_viewer_store__!.getState();
     const model = state.models.get(id)!;
@@ -376,18 +383,8 @@ export async function hidden(page: Page, modelId: string): Promise<{ ifcClass: s
     return [...state.hiddenEntities]
       .map((globalExpressId) => {
         const expressId = globalExpressId - model.idOffset;
-        return { ifcClass: store.entities.getTypeName(expressId), name: store.entities.getName(expressId) };
+        return { globalExpressId, ifcClass: store.entities.getTypeName(expressId), name: store.entities.getName(expressId) };
       })
-      .filter((entity) => entity.name !== '')
       .sort((a, b) => a.name.localeCompare(b.name));
   }, modelId);
-}
-
-/**
- * Bring a deep hierarchy row into the panel by searching for it: the panel
- * projects a fully expanded tree while a search is active, so this reaches a
- * row under a collapsed storey without clicking chevrons down to it.
- */
-export async function findInHierarchy(page: Page, query: string): Promise<void> {
-  await page.getByRole('textbox', { name: 'Search hierarchy', exact: true }).fill(query);
 }

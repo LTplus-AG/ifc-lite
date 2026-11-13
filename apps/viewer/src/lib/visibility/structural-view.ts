@@ -38,7 +38,7 @@ function sources(models: ReadonlyMap<string, FederatedModel>, fallback: IfcDataS
 }
 
 /** A stored row's class after the view's edits; null when deleted or not in the table. */
-function storedClass(store: IfcDataStore, view: MutablePropertyView | undefined, id: number): string | null {
+export function storedClass(store: IfcDataStore, view: MutablePropertyView | undefined, id: number): string | null {
   const parsed = store.entities.getExactTypeName?.(id) || store.entities.getTypeName(id);
   return parsed === 'Unknown' ? null : effectiveTreeType(view, id, parsed);
 }

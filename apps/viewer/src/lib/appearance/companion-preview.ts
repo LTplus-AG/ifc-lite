@@ -8,16 +8,16 @@ import type { AppearancePlan } from './planner-types';
 import type { AppearancePreviewParts } from './preview';
 import { occurrenceSourceMesh } from './occurrence-source-mesh';
 import { isTypeVisible } from '@/store/typeVisibilityFilter';
-import { effectiveTreeType } from '@/components/viewer/hierarchy/treeOverlay';
+import { storedClass } from '@/lib/visibility/structural-view';
 
 export function companionHiddenNow(globalId: number, state = useViewerStore.getState()): boolean {
   const ref = state.resolveGlobalIdFromModels(globalId);
   if (!ref) return false;
   const model = state.models.get(ref.modelId);
   if (!model?.ifcDataStore) return false;
-  // Class after a retype, as the structural mask reads it (#10119); a deleted row keeps its parsed class.
-  const parsed = model.ifcDataStore.entities.getTypeName(ref.expressId);
-  const type = effectiveTreeType(state.mutationViews.get(ref.modelId), ref.expressId, parsed) ?? parsed;
+  // Class after a retype, by the structural mask's rule (#10119); a deleted row keeps its parsed class.
+  const type = storedClass(model.ifcDataStore, state.mutationViews.get(ref.modelId), ref.expressId)
+    ?? model.ifcDataStore.entities.getTypeName(ref.expressId);
   return model.visible === false || !isTypeVisible(type, state.typeVisibility, state.structuralViewMode);
 }
 

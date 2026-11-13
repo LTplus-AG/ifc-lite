@@ -79,6 +79,11 @@ export function isTypeVisible(
   return typeVisibility[key];
 }
 
+/** Whether `isTypeVisible` can drop anything: a structural mode or any class toggle off. */
+export function classFilterActive(typeVisibility: TypeVisibilityGate, mode: StructuralViewMode = 'both'): boolean {
+  return mode !== 'both' || Object.values(IFC_TYPE_TO_VISIBILITY_KEY).some((key) => !typeVisibility[key]);
+}
+
 /** Global id to class after edits, for retyped entities (`retypedClasses`). */
 export type RetypedClasses = ReadonlyMap<number, string>;
 

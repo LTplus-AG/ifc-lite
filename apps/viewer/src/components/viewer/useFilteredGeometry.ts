@@ -6,7 +6,7 @@ import { useMemo, useRef } from 'react';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { perfTally } from '@ifc-lite/load-trace';
 import type { TypeVisibility, StructuralViewMode } from '@/store/types';
-import { isMeshTypeVisible, type RetypedClasses } from '@/store/typeVisibilityFilter';
+import { classFilterActive, isMeshTypeVisible, type RetypedClasses } from '@/store/typeVisibilityFilter';
 import { isMeshVisibleInViewMode, meshClassIsPlaced, meshIsNonOccurrence, type TypeViewMode } from '@/lib/type-view-visibility';
 import { sameMeshUpload } from './mesh-upload-identity.js';
 
@@ -127,11 +127,10 @@ export function useFilteredGeometry(
     // Full rebuild if: type visibility changed, view mode changed, source shrunk
     // (new file), or empty cache
     const prevVis = filteredTypeVisRef.current;
-    const needsFilter = structuralViewMode !== 'both' || !typeVisibility.spaces || !typeVisibility.spatialZones || !typeVisibility.openings || !typeVisibility.virtualElements || !typeVisibility.site || !typeVisibility.ifcAnnotations;
     const typeVisChanged =
       filteredStructuralModeRef.current !== structuralViewMode ||
-      // A retype moves a mesh across the class filter (#10119); unfiltered lists ignore it.
-      (needsFilter && filteredRetypedRef.current !== retypedClasses) ||
+      // A retype moves a mesh across the class filter (#10119).
+      filteredRetypedRef.current !== retypedClasses ||
       prevVis.spaces !== typeVisibility.spaces ||
       prevVis.spatialZones !== typeVisibility.spatialZones ||
       prevVis.openings !== typeVisibility.openings ||
@@ -154,6 +153,7 @@ export function useFilteredGeometry(
       filteredHasOccRef.current = hasOccurrenceGeometry;
     }
 
+    const needsFilter = classFilterActive(typeVisibility, structuralViewMode);
     let writeIndex = rebuilding ? 0 : cache.length;
     let replaced = false;
 

@@ -3,7 +3,12 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'vitest';
-import { countEffectiveEntityTypes, iterateEffectiveEntities, type EffectiveEntitySource } from './effective-entities.js';
+import {
+  countEffectiveEntityTypes,
+  iterateEffectiveEntities,
+  sourceEntityClasses,
+  type EffectiveEntitySource,
+} from './effective-entities.js';
 import { EntityTableBuilder } from './entity-table.js';
 import { StringTable } from './string-table.js';
 
@@ -93,6 +98,32 @@ describe('the effective entity set of an IFCX store', () => {
     expect([...iterateEffectiveEntities(source, null, ['IFCSPACE'])].map((e) => e.expressId)).toEqual([1]);
     table.setTypeOverride(2, 'IfcSpace');
     expect([...iterateEffectiveEntities(source, null, ['IFCSPACE'])].map((e) => e.expressId)).toEqual([1, 2]);
+  });
+
+  // #10018: a caller that narrows the walk to chosen classes has to learn them from somewhere,
+  // and the STEP type index cannot tell a tabular store's.
+  it('names a tabular source\'s classes from its table, a STEP source\'s from its type index', () => {
+    const ifcx: EffectiveEntitySource = { entityIndex: emptyIndex, entities, sourceKind: 'tabular' };
+    expect([...sourceEntityClasses(ifcx)].sort()).toEqual(['IFCSPACE', 'IFCWALL']);
+
+    const step: EffectiveEntitySource = {
+      entityIndex: { byType: new Map([['IFCSPACE', [1]]]), byId: new Map([[1, { type: 'IFCSPACE' }]]) },
+      entities,
+      sourceKind: 'step',
+    };
+    expect([...sourceEntityClasses(step)]).toEqual(['IFCSPACE']);
+    // A format with neither a type index nor the tabular marker has no source classes.
+    expect([...sourceEntityClasses({ entityIndex: emptyIndex, entities })]).toEqual([]);
+  });
+
+  it('leaves a class-less tabular row out of the class list, as the iterator leaves it out of the walk', () => {
+    const withUnknown = {
+      expressId: new Uint32Array([1, 4]),
+      getTypeName: (id: number) => TYPES[id] ?? 'Unknown',
+    };
+    const ifcx: EffectiveEntitySource = { entityIndex: emptyIndex, entities: withUnknown, sourceKind: 'tabular' };
+    expect([...sourceEntityClasses(ifcx)]).toEqual(['IFCSPACE']);
+    expect([...iterateEffectiveEntities(ifcx, null)].map((e) => e.expressId)).toEqual([1]);
   });
 
   it('buckets the table once per model: a second filtered call does not rescan it', () => {

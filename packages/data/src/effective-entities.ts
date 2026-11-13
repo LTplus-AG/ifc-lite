@@ -93,8 +93,8 @@ export function countEffectiveEntityTypes(
   const walk = !!sourceIds || tabular || !!(overlay && !tombstones);
   for (const [type, ids] of byType) counts.set(type, walk ? 0 : ids.length);
   // The same zero rows for a tabular store's source classes, so a class whose every row is deleted still reads 0.
-  if (tabular && source.entities) {
-    for (const type of bucketsOf(source.entities).keys()) if (type !== 'UNKNOWN') counts.set(type, 0);
+  if (tabular) {
+    for (const type of sourceEntityClasses(source)) counts.set(type, 0);
   }
   if (walk) {
     for (const entity of iterateEffectiveEntities(source, overlay, undefined, sourceIds)) {
@@ -184,6 +184,31 @@ function isTabularSource(source: EffectiveEntitySource): boolean {
   return source.sourceKind === undefined
     ? source.schemaVersion === 'IFC5'
     : source.sourceKind === 'tabular';
+}
+
+/**
+ * The classes a source's own rows carry, for a caller that must choose which classes to ASK
+ * {@link iterateEffectiveEntities} for before it can enumerate them.
+ *
+ * A caller reading `entityIndex.byType.keys()` for that gets nothing from a tabular store,
+ * whose STEP index is empty, and so narrows the enumeration to no class at all: the viewer's
+ * physical-object count read 0 for every IFCX model that way (#10018). Here the tabular case
+ * takes the entity table's classes instead, from the same buckets a filtered
+ * `iterateEffectiveEntities` call then reads, so nothing walks the table twice. A STEP source
+ * yields exactly the type-index keys, as before.
+ *
+ * Source classes only: overlay creations and retypes can name a class no source row carries,
+ * and a caller that wants those adds them from the overlay itself.
+ */
+export function* sourceEntityClasses(source: EffectiveEntitySource): IterableIterator<string> {
+  // @raw-entity-enumeration-ok the canonical class accessor reads parsed bucket keys; membership stays with the iterator above
+  const byType = source.entityIndex.byType;
+  if (byType.size > 0 || !isTabularSource(source) || !source.entities?.expressId) {
+    yield* byType.keys();
+    return;
+  }
+  // `UNKNOWN` is what a class-less row reports, and the iterator drops those rows too.
+  for (const type of bucketsOf(source.entities).keys()) if (type !== 'UNKNOWN') yield type;
 }
 
 export interface EffectiveEntity {

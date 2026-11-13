@@ -27,9 +27,10 @@ import { useViewerStore, type FederatedModel } from '@/store';
 import { LocalBackend } from '@/sdk/local-backend';
 import { fixtureModel } from '@/test/store-fixture';
 import { configureMutationView } from '@/utils/configureMutationView';
-import { MAIN_VIEWER_TOOL_ALLOWLIST } from '@/lib/agent-tools/main-viewer';
+import { MAIN_VIEWER_EDIT_TOOLS, MAIN_VIEWER_TOOL_ALLOWLIST } from '@/lib/agent-tools/main-viewer';
+import { useAgentChangeLabels } from '@/lib/changes/agent-change-labels';
 import type { WebSocketConstructor, WebSocketLike } from './client';
-import { connectAgentBridge, disconnectAgentBridge } from './session';
+import { connectAgentBridge, disconnectAgentBridge, setAgentBridgePermission } from './session';
 import { getAgentBridgeState, resetAgentBridgeStateForTests } from './state';
 
 const HELLO_WALL = new URL('../../../public/samples/hello-wall.ifc', import.meta.url);
@@ -145,7 +146,7 @@ describe('viewer tab <-> real MCP bridge, end to end (#9523)', () => {
     resetAgentBridgeStateForTests();
   });
 
-  it('pairs, lists the 27 read-only tools, and answers real calls from the live store including unsaved edits', async () => {
+  it('pairs read-only, lists the 27 read tools (the edit tools stay hidden), and answers real calls from the live store including unsaved edits', async () => {
     const before = (await mcp.request('tools/list')).tools as { name: string }[];
     assert.deepEqual(before.map((tool) => tool.name), ['bridge_status'], 'no tab yet: only bridge_status');
 
@@ -175,9 +176,10 @@ describe('viewer tab <-> real MCP bridge, end to end (#9523)', () => {
     assert.equal((missing.structuredContent as { code: string }).code, 'ENTITY_NOT_FOUND');
     assert.equal((missing.structuredContent as { message: string }).message, (missing.content as { text: string }[])[0].text);
 
-    // A mutation the tab never offered is refused, not forwarded.
+    // While the tab grants read-only, the bridge refuses an edit tool itself: it is never forwarded.
     const mutate = await mcp.request('tools/call', { name: 'entity_set_attribute', arguments: { global_id: WALL_GID, attribute: 'Name', value: 'x' } });
     assert.equal(mutate.isError, true);
+    assert.equal((mutate.structuredContent as { code: string }).code, 'READ_ONLY');
 
     // Rows are published in batches (every 100 ms), not per call.
     await until(() => getAgentBridgeState().activity.length >= 3, 'the activity rows were published');
@@ -185,6 +187,63 @@ describe('viewer tab <-> real MCP bridge, end to end (#9523)', () => {
     assert.deepEqual(activity.map((row) => [row.tool, row.modelId, row.outcome]).reverse(), [
       ['get_entity', 'hello', 'ok'], ['count_entities', 'hello', 'ok'], ['get_entity', 'hello', 'error'],
     ], 'one row per served call; the refused mutation never reached the tab');
+  });
+
+  const listChanged = () => mcp.lines.filter((line) => line.method === 'notifications/tools/list_changed').length;
+  const nameOfWall = () => useViewerStore.getState().mutationViews.get('hello')?.getAttributeMutationsForEntity(WALL_ID)
+    .find((m) => m.name === 'Name')?.value;
+  const listedNames = async () => ((await mcp.request('tools/list')).tools as { name: string }[]).map((tool) => tool.name);
+
+  it('allowing edits in the tab reaches the bridge: the edit tools are listed, and one call is one labelled undo step', async () => {
+    const seen = listChanged();
+    setAgentBridgePermission('read-write');
+    await until(() => listChanged() > seen, 'tools/list_changed after the grant');
+    const listed = (await mcp.request('tools/list')).tools as { name: string; annotations?: { readOnlyHint?: boolean } }[];
+    for (const name of MAIN_VIEWER_EDIT_TOOLS) {
+      assert.equal(listed.find((tool) => tool.name === name)?.annotations?.readOnlyHint, false, `${name} is listed as changing the model`);
+    }
+
+    const undoBefore = useViewerStore.getState().undoStacks.get('hello')?.length ?? 0;
+    const result = await mcp.request('tools/call', {
+      name: 'entity_set_attribute', arguments: { global_id: WALL_GID, attribute: 'Name', value: 'Named by the agent' },
+    });
+    assert.equal(result.isError, undefined, JSON.stringify(result));
+    assert.deepEqual((result.structuredContent as { edit: { before: unknown; after: unknown } }).edit, {
+      modelId: 'hello', expressId: WALL_ID, globalId: WALL_GID, entityType: 'IfcWall', field: 'Name',
+      before: 'Edited over the bridge', after: 'Named by the agent', changed: true,
+    });
+    assert.equal(nameOfWall(), 'Named by the agent');
+    const state = useViewerStore.getState();
+    const stack = state.undoStacks.get('hello') ?? [];
+    assert.equal(stack.length, undoBefore + 1, 'one undo entry');
+    const batchId = state.mutationBatchTags.get(stack[stack.length - 1].id);
+    assert.ok(batchId && useAgentChangeLabels.getState().byBatch.get(batchId) === 'Name', 'labelled as the agent\'s');
+
+    await until(() => getAgentBridgeState().activity.some((row) => row.edit), 'the edit row was published');
+    const row = getAgentBridgeState().activity.find((entry) => entry.edit);
+    assert.equal(row?.mutating, true);
+    assert.equal(row?.edit?.after, 'Named by the agent');
+
+    state.undo('hello');
+    assert.equal(nameOfWall(), 'Edited over the bridge', 'undo restores the value the agent replaced');
+  });
+
+  it('revoking edits reaches the bridge: the edit tools disappear and a call is refused without writing', async () => {
+    const seen = listChanged();
+    setAgentBridgePermission('read-only');
+    const status = getAgentBridgeState().status;
+    assert.equal(status.kind === 'connected' && status.permission, 'read-only');
+    await until(() => listChanged() > seen, 'tools/list_changed after the revoke');
+    const names = await listedNames();
+    for (const name of MAIN_VIEWER_EDIT_TOOLS) assert.ok(!names.includes(name), `${name} is hidden again`);
+
+    const undoBefore = useViewerStore.getState().undoStacks.get('hello')?.length ?? 0;
+    const refused = await mcp.request('tools/call', {
+      name: 'entity_set_property', arguments: { global_id: WALL_GID, pset: 'Pset_WallCommon', name: 'FireRating', value: 'EI90' },
+    });
+    assert.equal(refused.isError, true);
+    assert.equal((refused.structuredContent as { code: string }).code, 'READ_ONLY');
+    assert.equal(useViewerStore.getState().undoStacks.get('hello')?.length ?? 0, undoBefore, 'nothing was written');
   });
 
   it('the bridge shutting down ends the tab\'s session as bridge-shutdown', async () => {

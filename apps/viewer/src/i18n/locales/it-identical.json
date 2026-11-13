@@ -1726,5 +1726,9 @@
   "zonesPanel.zoneRow.baseYLabel": {
     "value": "Base (Y)",
     "reason": "zonesPanel.zoneRow.baseYLabel: Base is also the Italian noun for the base position or comparison baseline; any axis notation is unchanged."
+  },
+  "agentBridge.panel.editChange": {
+    "value": "{entity} · {field}: {before} → {after}",
+    "reason": "Placeholders and symbols only (middle dot, colon, arrow); no English prose."
   }
 }

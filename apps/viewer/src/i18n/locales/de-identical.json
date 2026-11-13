@@ -1934,5 +1934,9 @@
   "agentBridge.panel.duration": {
     "value": "{ms} ms",
     "reason": "Runtime placeholder with a unit symbol (milliseconds); no English prose."
+  },
+  "agentBridge.panel.editChange": {
+    "value": "{entity} · {field}: {before} → {after}",
+    "reason": "Placeholders and symbols only (middle dot, colon, arrow); no English prose."
   }
 }

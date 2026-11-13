@@ -4,8 +4,9 @@
 
 /**
  * The tab's one local-agent connection (#9523): a {@link BridgeClient}
- * serving the main viewer's read-only tool host, reporting into the eager
- * UI state in `./state`.
+ * serving the main viewer's tool host, read-only until the user allows edits
+ * ({@link setAgentBridgePermission}), reporting into the eager UI state in
+ * `./state`.
  *
  * Loaded with `import()` from the connect dialog after the user confirms, so
  * neither this module nor the tool host it imports is on the viewer's eager
@@ -15,12 +16,14 @@
 import type { BimContext } from '@ifc-lite/sdk';
 import type { BridgeToolDescriptor } from '@ifc-lite/mcp/bridge-protocol';
 import { useViewerStore } from '@/store';
-import { createMainViewerToolHost, dispatchMainViewerTool, mainViewerToolDefinitions } from '@/lib/agent-tools/main-viewer';
+import {
+  createMainViewerEditor, createMainViewerToolHost, dispatchMainViewerTool, mainViewerToolDefinitions,
+} from '@/lib/agent-tools/main-viewer';
 import type { ToolHost } from '@/lib/agent-tools/types';
 import { BridgeClient, type BridgeClientOptions, type LocalNetworkPermission } from './client';
 import {
   AGENT_BRIDGE_ACTIVITY_LIMIT, getAgentBridgeState, registerAgentBridgeControls, updateAgentBridgeState,
-  type AgentBridgeActivity, type AgentBridgeStatus,
+  type AgentBridgeActivity, type AgentBridgePermission, type AgentBridgeStatus,
 } from './state';
 import { isFramed } from './pairing-fragment';
 import { ENDED_KEYS } from './outcome-keys';
@@ -124,15 +127,16 @@ export function connectAgentBridge({ port, code, bim, WebSocket }: ConnectAgentB
     return;
   }
   active?.disconnect();
-  const host = createMainViewerToolHost(useViewerStore, bim);
+  const host = createMainViewerToolHost(useViewerStore, bim, { editor: createMainViewerEditor(useViewerStore) });
   resetActivity();
   updateAgentBridgeState({ activity: [] });
   let wasConnected = false;
-  const client = new BridgeClient({
+  const client: BridgeClient = new BridgeClient({
     port,
     pairingCode: code,
     tools: mainViewerBridgeTools(),
-    dispatch: (name, args, signal) => dispatchMainViewerTool(host, name, args, { signal }),
+    // The grant is read from the client at dispatch and again at the write: a revoke refuses what is not yet written.
+    dispatch: (name, args, signal) => dispatchMainViewerTool(host, name, args, { signal, canEdit: () => client.canEditNow() }),
     modelIdFor: (args) => modelIdForCall(host, args),
     // The Vite define is absent under the Node test runner.
     clientInfo: { name: 'ifc-lite viewer', version: typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev' },
@@ -167,6 +171,11 @@ export function disconnectAgentBridge(): void {
   resetActivity();
 }
 
+/** Allow or stop agent edits on the live connection (the "Allow the agent to edit" switch). */
+export function setAgentBridgePermission(permission: AgentBridgePermission): void {
+  active?.setPermission(permission);
+}
+
 /** Forget a finished connection's outcome (the user dismissed it). */
 export function dismissAgentBridgeStatus(): void {
   const status = getAgentBridgeState().status;
@@ -175,4 +184,6 @@ export function dismissAgentBridgeStatus(): void {
   updateAgentBridgeState({ status: { kind: 'idle' }, activity: [] });
 }
 
-registerAgentBridgeControls({ disconnect: disconnectAgentBridge, dismiss: dismissAgentBridgeStatus });
+registerAgentBridgeControls({
+  disconnect: disconnectAgentBridge, dismiss: dismissAgentBridgeStatus, setPermission: setAgentBridgePermission,
+});

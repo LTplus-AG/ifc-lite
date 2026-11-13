@@ -36,6 +36,8 @@ export interface CallRunnerOptions {
   now: () => number;
   dispatch(name: string, args: Record<string, unknown>, signal: AbortSignal): Promise<ToolOutcome>;
   modelIdFor?(args: Record<string, unknown>): string | null;
+  /** Whether `name` changes the model (listed `readOnly: false`), to mark its activity rows. */
+  mutates?(name: string): boolean;
   onActivity?(entry: AgentBridgeActivity): void;
   /** Send one frame on the session's socket. */
   send(json: string): void;
@@ -147,8 +149,12 @@ export class CallRunner {
       };
     }
     const cancelled = entry.controller.signal.aborted && !timedOut;
-    this.record(entry, cancelled ? { outcome: 'cancelled', errorCode: 'CANCELLED' }
-      : outcome.isError ? { outcome: 'error', errorCode: outcome.errorCode ?? 'INTERNAL_ERROR' } : { outcome: 'ok' });
+    // An applied edit is in the model whatever happened to the call, so its row always says what it changed.
+    this.record(entry, {
+      ...(cancelled ? { outcome: 'cancelled', errorCode: 'CANCELLED' }
+        : outcome.isError ? { outcome: 'error', errorCode: outcome.errorCode ?? 'INTERNAL_ERROR' } : { outcome: 'ok' }),
+      ...(outcome.edit ? { edit: outcome.edit } : {}),
+    });
     // A cancelled call is already settled on the bridge, and a closed socket has no one to answer.
     if (!cancelled && stillPending) this.reply(call, outcome);
     this.startNext();
@@ -186,13 +192,14 @@ export class CallRunner {
     }
   }
 
-  private record(entry: InFlight, result: Pick<AgentBridgeActivity, 'outcome' | 'errorCode'>): void {
+  private record(entry: InFlight, result: Pick<AgentBridgeActivity, 'outcome' | 'errorCode' | 'edit'>): void {
     const row: AgentBridgeActivity = {
       seq: ++this.seq,
       tool: entry.tool,
       modelId: entry.modelId,
       startedAt: entry.startedAt,
       durationMs: Math.max(0, this.now() - entry.startedAt),
+      ...(this.opts.mutates?.(entry.tool) ? { mutating: true } : {}),
       ...result,
     };
     try {

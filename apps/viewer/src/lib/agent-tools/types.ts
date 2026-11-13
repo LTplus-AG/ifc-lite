@@ -15,6 +15,7 @@
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { BimContext, BsddNamespace } from '@ifc-lite/sdk';
+import type { ChangeScalar } from '@ifc-lite/ai/artifacts';
 
 /**
  * Whether a model can answer a tool, and if not, why.
@@ -60,6 +61,53 @@ export interface ToolHost {
   /** Every model the host holds, in display order. Read live on each call. */
   models(): ModelHandle[];
   bsdd: BsddClient;
+  /** Writes for the edit tools. Absent on a host that serves no edits (the playground). */
+  editor?: ModelEditor;
+}
+
+/** A tool's argument schema: a JSON Schema object (`type: 'object'`). */
+export interface AgentInputSchema {
+  type: 'object';
+  properties: Record<string, Record<string, unknown>>;
+  required?: string[];
+}
+
+/** A value an edit reads or writes (the reviewed-change scalar). */
+export type EditScalar = ChangeScalar;
+
+/**
+ * One change an edit tool asks for, with the agent's values unchecked: the
+ * editor validates them as a reviewed change. `expected`, when given, is the
+ * value the agent read; the edit is refused if the model holds anything else
+ * now (the user edited it meanwhile). Absent, the edit replaces what is there.
+ */
+export type AgentEditRequest =
+  | { op: 'property.set'; pset: string; name: string; value: unknown; dataType?: unknown; expected?: unknown }
+  | { op: 'property.delete'; pset: string; name: string; expected?: unknown }
+  | { op: 'attribute.set'; name: string; value: unknown; expected?: unknown };
+
+/** What one edit call changed, as its result and the activity log show it. */
+export interface AgentEdit {
+  modelId: string;
+  expressId: number;
+  globalId: string;
+  /** IFC class of the entity, e.g. `IfcWall`. */
+  entityType: string;
+  /** `Pset_WallCommon.FireRating`, or an attribute name (`Name`). */
+  field: string;
+  before: EditScalar;
+  /** null for a deleted property. */
+  after: EditScalar;
+  /** False when the model already held the value: nothing was written and no undo step was added. */
+  changed: boolean;
+}
+
+export interface ModelEditor {
+  /**
+   * Apply one change to `model` as one undo step labelled as the agent's
+   * `tool` call. Throws `ToolExecutionError` when the change is refused.
+   */
+  apply(model: ReadyModel, expressId: number, request: AgentEditRequest, tool: string): AgentEdit;
 }
 
 export interface ToolCallContext {
@@ -71,12 +119,20 @@ export interface ToolCallContext {
    * was closed or replaced during the call).
    */
   checkpoint?: () => void;
+  /**
+   * Edit tools only: whether the user allows the agent to edit right now. Read
+   * at the moment of the write, so a grant revoked while the call waited
+   * refuses it. Absent means no.
+   */
+  canEdit?: () => boolean;
 }
 
 /** What a tool returns on success. Failures are thrown as `ToolExecutionError`. */
 export interface ToolOutput {
   text: string;
   structured: unknown;
+  /** Set by edit tools: what the call changed. */
+  edit?: AgentEdit;
 }
 
 /**

@@ -11,20 +11,22 @@
 
 import { CATALOG } from '@/components/mcp/data';
 import { createAnthropicToolDefinitions, type AnthropicInputSchema } from '@/components/mcp/playground-tool-definitions';
-import { MAIN_VIEWER_TOOL_ALLOWLIST, mainViewerTool } from './main-viewer-dispatch.js';
+import { MAIN_VIEWER_EDIT_TOOLS, MAIN_VIEWER_TOOL_ALLOWLIST, mainViewerTool } from './main-viewer-dispatch.js';
+import { EDIT_TOOL_SPECS } from './edit-tools.js';
+import type { AgentInputSchema } from './types.js';
 
 export interface AgentToolDefinition {
   name: string;
   description: string;
   /** JSON Schema of the arguments (`type: 'object'`). */
-  inputSchema: AnthropicInputSchema;
-  /** True for every tool here: the viewer serves no tool that changes the model. */
+  inputSchema: AgentInputSchema | AnthropicInputSchema;
+  /** False for the edit tools, which the bridge hides and refuses while the tab grants read-only. */
   readOnly: boolean;
 }
 
 const MODEL_ID_PROPERTY = {
   type: 'string',
-  description: 'Id of the model to read, from model_list. Optional when exactly one model is loaded.',
+  description: 'Id of the model, from model_list. Optional when exactly one model is loaded.',
 };
 
 const IDS_XML_PROPERTY = {
@@ -37,9 +39,9 @@ const IDS_DESCRIPTIONS: Record<string, string> = {
   ids_explain: 'Parse and summarize an IDS document, passed inline as ids_xml, in plain language: what each spec asks for, in what order.',
 };
 
-function withModelId(schema: AnthropicInputSchema): AnthropicInputSchema {
+function withModelId<S extends AgentInputSchema | AnthropicInputSchema>(schema: S): S {
   if (schema.properties.model_id) return schema;
-  return { ...schema, properties: { ...schema.properties, model_id: MODEL_ID_PROPERTY } };
+  return { ...schema, properties: { ...schema.properties, model_id: MODEL_ID_PROPERTY } } as S;
 }
 
 function withInlineIds(schema: AnthropicInputSchema): AnthropicInputSchema {
@@ -48,9 +50,24 @@ function withInlineIds(schema: AnthropicInputSchema): AnthropicInputSchema {
   return { type: 'object', properties: { ...properties, ids_xml: IDS_XML_PROPERTY }, required: [...required, 'ids_xml'] };
 }
 
-/** Name, description, argument schema and read-only flag of every tool the main viewer serves. */
+/**
+ * Name, description, argument schema and read-only flag of every tool the main
+ * viewer serves: the reads, then the edits (`readOnly: false`). The list is the
+ * same whatever the user granted; the grant travels as the hello's or
+ * update's `permission`, and the tab refuses edits itself while read-only.
+ */
 export function mainViewerToolDefinitions(): AgentToolDefinition[] {
   const scopes = new Map(CATALOG.tools.map((tool) => [tool.name, tool.scope]));
+  const edits = MAIN_VIEWER_EDIT_TOOLS.map((name): AgentToolDefinition => ({
+    name,
+    description: EDIT_TOOL_SPECS[name].description,
+    inputSchema: withModelId(EDIT_TOOL_SPECS[name].inputSchema),
+    readOnly: false,
+  }));
+  return [...readDefinitions(scopes), ...edits];
+}
+
+function readDefinitions(scopes: Map<string, string>): AgentToolDefinition[] {
   return createAnthropicToolDefinitions(MAIN_VIEWER_TOOL_ALLOWLIST).map((definition) => {
     const tool = mainViewerTool(definition.name);
     let schema = definition.input_schema;

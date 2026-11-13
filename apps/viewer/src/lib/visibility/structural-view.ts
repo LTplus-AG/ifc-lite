@@ -9,7 +9,6 @@ import { isAnalyticalProduct } from './analytical-classes.mjs';
 import { isProductClass } from '../compare/compareScope';
 // Class after the view's edits, null once deleted; mask and presence both read it.
 import { effectiveTreeType as effectiveType, overlayViewFor } from '@/components/viewer/hierarchy/treeOverlay';
-import { LEGACY_MODEL_ID, LEGACY_MUTATION_MODEL_ID } from '@/sdk/adapters/model-compat';
 
 export { isAnalyticalProduct };
 
@@ -34,8 +33,7 @@ interface Source { store: IfcDataStore | null | undefined; view: MutableProperty
 /** Each loaded store with the view its edits live under, resolved like the tree does. */
 function sources(models: ReadonlyMap<string, FederatedModel>, fallback: IfcDataStore | null, views: Views): Source[] {
   if (models.size) return [...models].map(([id, m]) => ({ store: m.ifcDataStore, view: views.get(id), modelId: id }));
-  const view = overlayViewFor((key) => views.get(key), 'legacy') ?? views.get(LEGACY_MODEL_ID);
-  return [{ store: fallback, view: view ?? undefined, modelId: null }];
+  return [{ store: fallback, view: overlayViewFor((key) => views.get(key), 'legacy') ?? undefined, modelId: null }];
 }
 
 /** The class the mask gives a stored row after the view's edits; null when deleted or not in the table. */
@@ -50,14 +48,12 @@ const analytical = (type: string | null) => type !== null && isAnalyticalProduct
 /** Whether any product the mask would treat as analytical exists. Scans only
  *  candidates (analytical index entries, retyped ids, authored entities), each
  *  classified by the mask's own rule, so the command and the mode agree. */
-export function hasStructuralData(state: Pick<ViewerState, 'models' | 'ifcDataStore' | 'mutationViews'>): boolean {
+export function hasStructuralData(state: { models: ReadonlyMap<string, FederatedModel>; ifcDataStore: IfcDataStore | null; mutationViews: Views }): boolean {
   return sources(state.models, state.ifcDataStore, state.mutationViews).some(({ store, view }) => {
     if (store) {
       // @raw-entity-enumeration-ok structural product presence; no attribute decoding
       for (const [type, ids] of store.entityIndex?.byType ?? []) {
-        // Server-hydrated stores key byType by IfcTypeEnum, which has no structural members: they land in 'Unknown'.
-        const candidate = isAnalyticalProduct(type) || type.toLowerCase() === 'unknown';
-        if (candidate && ids.some((id) => analytical(storedClass(store, view, id)))) return true;
+        if (isAnalyticalProduct(type) && ids.some((id) => analytical(storedClass(store, view, id)))) return true;
       }
       for (const id of view?.getTypeMutations().keys() ?? []) if (analytical(storedClass(store, view, id))) return true;
     }
@@ -76,7 +72,8 @@ export function structuralViewHidden(
   hidden: Set<number>,
   toGlobalId: (modelId: string, expressId: number) => number,
 ): Set<number> {
-  if (mode === 'both') return hidden;
+  // With nothing analytical, a latched mode would hide every product; it masks nothing instead.
+  if (mode === 'both' || !hasStructuralData({ models, ifcDataStore: fallback, mutationViews: views })) return hidden;
   const result = new Set(hidden);
   const mask = (id: number, type: string | null, global: (id: number) => number) => {
     if (type === null) return;

@@ -52,9 +52,17 @@ export function refusalText(t: T, refusal: StoreyRefusal): string {
 
 export function noticeText(t: T, notice: StoreyNotice): string {
   const count = notice.elementIds.length;
+  const kinds = {
+    IfcWall: ['storeyManager.notice.wallNotResized', 'storeyManager.notice.wallAttachmentUnresolved'],
+    IfcColumn: ['storeyManager.notice.columnNotResized', 'storeyManager.notice.columnAttachmentUnresolved'],
+    IfcBeam: ['storeyManager.notice.beamNotResized', 'storeyManager.notice.beamAttachmentUnresolved'],
+    IfcMember: ['storeyManager.notice.memberNotResized', 'storeyManager.notice.memberAttachmentUnresolved'],
+    IfcCurtainWall: ['storeyManager.notice.curtainWallNotResized', 'storeyManager.notice.curtainWallAttachmentUnresolved'],
+  } as const;
+  if (notice.code === 'attachedNotResized') return t(notice.elementType ? kinds[notice.elementType][0] : 'storeyManager.notice.elementNotResized', { count });
+  if (notice.code === 'wallAttachmentUnresolved') return t(kinds[notice.elementType ?? 'IfcWall'][1], { count });
   if (notice.code === 'wallNotResized') return t('storeyManager.notice.wallNotResized', { count });
   if (notice.code === 'stairNotRefit') return t('storeyManager.notice.stairNotRefit', { count });
-  if (notice.code === 'wallAttachmentUnresolved') return t('storeyManager.notice.wallAttachmentUnresolved', { count });
   if (notice.code === 'wallQuantitiesPartial') return t('storeyManager.notice.wallQuantitiesPartial', { count });
   return notice.message;
 }

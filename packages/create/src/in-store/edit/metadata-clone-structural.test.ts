@@ -8,7 +8,7 @@ import { PropertyTableBuilder, StringTable, PropertyValueType } from '@ifc-lite/
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { cloneEffectiveMetadata } from './metadata-clone-effective.js';
 
-it('#9411 a structural view ignoring the new entity argument cannot copy unrelated metadata', async () => {
+it.each([false, true])('#9352 structural metadata cloning excludes unrelated edits (scoped=%s)', async scoped => {
   const store = await new IfcParser().parseColumnar(new TextEncoder().encode(`ISO-10303-21;
 HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('m','2026',(''),(''),'','','');FILE_SCHEMA(('IFC4'));ENDSEC;
 DATA;#1=IFCWALL('0000000000000000000001',$,'Source',$,$,$,$,$,$);
@@ -20,7 +20,7 @@ DATA;#1=IFCWALL('0000000000000000000001',$,'Source',$,$,$,$,$,$);
   view.setProperty(1, 'Pset_Edited', 'Flag', true);
   view.setProperty(2, 'Pset_Base', 'Value', 'unrelated edit');
   const legacy = new Proxy(view, { get(target, key) {
-    if (key === 'getEffectiveChanges') return () => target.getEffectiveChanges();
+    if (key === 'getEffectiveChanges') return (id?: number) => scoped ? target.getEffectiveChanges(id) : target.getEffectiveChanges();
     const value: unknown = Reflect.get(target, key, target);
     return typeof value === 'function' ? value.bind(target) : value;
   } });

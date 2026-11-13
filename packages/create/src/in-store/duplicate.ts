@@ -186,6 +186,12 @@ export function duplicateInStore(
     );
   }
 
+  for (const association of source.associations ?? []) {
+    if (association.relId !== undefined && association.relatedIds === undefined) {
+      throw new Error('duplicateInStore: an association with relId must include relatedIds before it can be extended');
+    }
+  }
+
   // Offset is metres; the source location is in the file's native
   // length unit — convert before adding (a mm file would otherwise get
   // a duplicate sitting ~1000× too close, visually on top of the source).

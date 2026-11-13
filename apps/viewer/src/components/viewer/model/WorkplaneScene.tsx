@@ -12,7 +12,7 @@
  * unmounts it and nothing is left in the renderer.
  */
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { useViewerStore, type ViewerState } from '@/store';
 import { resolveWorkplane } from '@/lib/commands/modeling/registry';
 import type { Vec2 } from '@/lib/snap/types';
@@ -79,24 +79,32 @@ function workplaneOutline(s: ViewerState, plane: Workplane, storeyId: number): W
   };
 }
 
+function createOutlineSelector(): (s: ViewerState) => WorkplaneOutline | null {
+  let inputs: unknown[] = [];
+  let outline: WorkplaneOutline | null = null;
+  return s => {
+    const session = s.session;
+    const nextInputs = [session?.modelId, session?.storeyId, session?.workplane, s.models,
+      s.mutationVersion, s.modelPlacement, s.georefMutations, s.geometryContentVersion];
+    if (inputs.length && nextInputs.every((value, index) => value === inputs[index])) return outline;
+    inputs = nextInputs;
+    const plane = session?.workplane ? resolveWorkplane(s, session.modelId, session.workplane) : null;
+    const next = plane && !('refused' in plane) && session?.storeyId != null
+      ? workplaneOutline(s, plane, session.storeyId) : null;
+    if (JSON.stringify(next) !== JSON.stringify(outline)) outline = next;
+    return outline;
+  };
+}
+
 export function WorkplaneScene() {
-  const session = useViewerStore((s) => s.session);
-  const models = useViewerStore((s) => s.models);
-  const mutationVersion = useViewerStore((s) => s.mutationVersion);
-  const placement = useViewerStore((s) => s.modelPlacement);
+  const workplane = useViewerStore(s => s.session?.workplane);
+  const [selectOutline] = useState(createOutlineSelector);
+  const outline = useViewerStore(selectOutline);
   const projector = useSceneProjector();
   // Draw on also re-seats an identical plane after a programmatic camera move.
   useEffect(() => {
-    if (session?.workplane) projector?.notifyAnchorsChanged();
-  }, [projector, session?.workplane]);
-  const outline = useMemo(() => {
-    void mutationVersion; // walls drawn or moved change the extent
-    void placement;
-    if (!session?.workplane || session.storeyId === null) return null;
-    const s = useViewerStore.getState();
-    const plane = resolveWorkplane(s, session.modelId, session.workplane);
-    return 'refused' in plane ? null : workplaneOutline(s, plane, session.storeyId);
-  }, [session?.modelId, session?.storeyId, session?.workplane, models, mutationVersion, placement]);
+    if (workplane) projector?.notifyAnchorsChanged();
+  }, [projector, workplane]);
 
   if (!outline) return null;
   return (

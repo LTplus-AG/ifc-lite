@@ -41,7 +41,7 @@ export interface AnchorGeoreference extends AnchorGeorefSelection {
  * React hook wrapping {@link selectAnchorGeoref} with the store subscriptions
  * the measure readout needs. Recomputes only when the georef inputs change
  * (model load/removal, anchor override, or a georef field edit via
- * `mutationVersion`), never per camera frame or per measurement.
+ * `georefMutations`), never per camera frame or per measurement.
  */
 export function useAnchorGeoreference(): AnchorGeoreference | null {
   const models = useViewerStore((s) => s.models);
@@ -49,9 +49,6 @@ export function useAnchorGeoreference(): AnchorGeoreference | null {
   const geometryResult = useViewerStore((s) => s.geometryResult);
   const anchorModelIdOverride = useViewerStore((s) => s.anchorModelIdOverride);
   const georefMutations = useViewerStore((s) => s.georefMutations);
-  // Re-derive when any georef edit lands (mutations map is replaced, but this
-  // makes the dependency explicit and matches BasepointOverlay).
-  const mutationVersion = useViewerStore((s) => s.mutationVersion);
 
   const anchor = useMemo(() => {
     const selection = selectAnchorGeoref({
@@ -68,7 +65,7 @@ export function useAnchorGeoreference(): AnchorGeoreference | null {
       originViewer: { x: -off.x, y: -off.y, z: -off.z },
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [models, ifcDataStore, geometryResult, anchorModelIdOverride, georefMutations, mutationVersion]);
+  }, [models, ifcDataStore, geometryResult, anchorModelIdOverride, georefMutations]);
   const kind = useProjectionKind(anchor?.eff.projectedCRS);
   return useMemo(() => anchor && (kind === 'projected' || kind === 'geographic') ? { ...anchor, geographic: kind === 'geographic' } : null, [anchor, kind]);
 }

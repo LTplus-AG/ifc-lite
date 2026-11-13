@@ -14,7 +14,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { boundedSpawnSync } from '../../../scripts/lib/bounded-process.mjs';
 
-const PACKAGES = ['parser', 'mutations', 'create', 'export'];
+const PACKAGES = ['parser', 'mutations', 'create', 'export', 'geometry'];
 const BUILD = ['turbo', 'build', '--filter=@ifc-lite/parser...', '--filter=@ifc-lite/create...', '--filter=@ifc-lite/export...', '--filter=@ifc-lite/viewer^...'];
 
 export async function loadPackages(root) {
@@ -33,10 +33,10 @@ export async function loadPackages(root) {
     throw new Error(`pnpm ${BUILD.join(' ')} produced no dist/index.js for ${missing.map((p) => `@ifc-lite/${p}`).join(', ')}`);
   }
   const load = (p) => import(pathToFileURL(join(root, `packages/${p}/dist/index.js`)).href);
-  const [parser, mutations, create, exporter] = await Promise.all(PACKAGES.map(load));
+  const [parser, mutations, create, exporter, geometry] = await Promise.all(PACKAGES.map(load));
   // The glyph builder is a subpath of its own, kept off the parser index so it loads lazily in the viewer.
   const structuralGlyphs = await import(pathToFileURL(join(root, 'packages/parser/dist/structural-glyphs.js')).href);
-  return { parser, mutations, create, exporter, structuralGlyphs };
+  return { parser, mutations, create, exporter, geometry, structuralGlyphs };
 }
 
 /** Memoise `make()` in the run's cache under `key`. */
@@ -47,6 +47,9 @@ export function cached(ctx, key, make) {
 
 /** The parsed store of one corpus file, parsed once per run and shared by the probes. */
 export const storeOf = (ctx, file) => cached(ctx, `store:${file.path}`, () => parseStore(ctx.pkgs, file.bytes));
+
+/** `extractStructuralOnDemand` of one corpus file, extracted once per run and shared by the probes. */
+export const structuralDataOf = (ctx, file) => cached(ctx, `structural:${file.path}`, async () => ctx.pkgs.parser.extractStructuralOnDemand(await storeOf(ctx, file)));
 
 /** Parse STEP bytes or text into an IfcDataStore, the way the product tests do. */
 export async function parseStore(pkgs, input) {

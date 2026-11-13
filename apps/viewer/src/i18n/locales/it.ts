@@ -4,6 +4,7 @@
 
 import type { Catalogue } from '../registry';
 import { registryIt } from './it/registry';
+import { agentBridgeIt } from './it/agent-bridge';
 import { storeyManagerIt } from './it/storey-manager';
 import { activityTrayIt } from './it/activity-tray';
 import { aiReportsIt } from './it/ai-reports';
@@ -332,5 +333,6 @@ export default {
   ...zoneEmissionIt,
   ...zonesPanelIt,
   ...registryIt,
+  ...agentBridgeIt,
   ...storeyManagerIt,
 } satisfies Catalogue;

@@ -544,6 +544,7 @@ export async function parseColumnarInput(
         const earlyStore: IfcDataStore = {
             fileSize: buffer.byteLength,
             schemaVersion,
+            sourceKind: 'step',
             sourceHeader,
             entityCount: totalEntities,
             parseTime: performance.now() - startTime,

@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { ToolErrorCode, ToolExecutionError } from '@ifc-lite/mcp/browser';
+import type { ToolCallContext } from './types.js';
 
 export const cancelledDispatch = () => new ToolExecutionError({
   code: ToolErrorCode.CANCELLED, message: 'Tool cancelled.',
@@ -11,4 +12,10 @@ export const cancelledDispatch = () => new ToolExecutionError({
 /** Check between asynchronous phases without disguising a completed mutation as a failure. */
 export function assertDispatchActive(signal?: AbortSignal): void {
   if (signal?.aborted) throw cancelledDispatch();
+}
+
+/** {@link assertDispatchActive} plus the host's own checkpoint, for shared tools at phase boundaries. */
+export function assertToolActive(ctx: ToolCallContext): void {
+  assertDispatchActive(ctx.signal);
+  ctx.checkpoint?.();
 }

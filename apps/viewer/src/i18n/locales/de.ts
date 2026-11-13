@@ -116,6 +116,7 @@ import { propertiesDe } from './de/properties';
 import { propertyEditorDe } from './de/property-editor';
 import { pushPullAlignDe } from './de/push-pull-align';
 import { registryDe } from './de/registry';
+import { agentBridgeDe } from './de/agent-bridge';
 import { relationshipCardDe } from './de/relationship-card';
 import { remeshDe } from './de/remesh';
 import { repositionPanelDe } from './de/reposition-panel';
@@ -282,6 +283,7 @@ export default {
   ...propertyEditorDe,
   ...pushPullAlignDe,
   ...registryDe,
+  ...agentBridgeDe,
   ...relationshipCardDe,
   ...remeshDe,
   ...repositionPanelDe,

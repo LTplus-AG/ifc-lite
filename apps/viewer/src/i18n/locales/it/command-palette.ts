@@ -71,6 +71,7 @@ export const commandPaletteIt = {
   "commandPalette.vis.structuralGlyphs.label": "Vincoli e carichi",
   'commandPalette.vis.resetColors.label': 'Ripristina i colori',
   'commandPalette.panel.chat.label': 'Chat IA',
+  'commandPalette.panel.agentBridge.label': 'Collega agente locale…',
   'commandPalette.panel.flavors.label': 'Gestisci i profili…',
   'commandPalette.sidebar.toggle.label': 'Attiva/disattiva la barra laterale',
   'commandPalette.sidebar.collapse.label': 'Riduci la barra laterale a icone',

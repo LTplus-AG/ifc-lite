@@ -246,7 +246,7 @@ export class ItemGeometryReader {
   }
 
   /** The origin of a product's own `ObjectPlacement` in world metres; null when it has none. */
-  private placementOrigin(productId: number): Vec3 | null {
+  placementOrigin(productId: number): Vec3 | null {
     if (asRef(this.entity(productId)?.attributes[OBJECT_PLACEMENT]) === undefined) return null;
     const frame = this.productFrame(productId);
     return frame && scale(frame.origin, this.unitScale);

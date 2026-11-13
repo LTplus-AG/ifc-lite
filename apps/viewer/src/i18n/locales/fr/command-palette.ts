@@ -76,6 +76,7 @@ export const commandPaletteFr = {
   'commandPalette.vis.resetColors.label': 'Réinitialiser les couleurs',
   // ── Panels ──
   'commandPalette.panel.chat.label': 'Discussion IA',
+  'commandPalette.panel.agentBridge.label': 'Connecter un agent local…',
   'commandPalette.panel.flavors.label': 'Gérer les profils…',
   'commandPalette.sidebar.toggle.label': 'Afficher/masquer la barre latérale',
   'commandPalette.sidebar.collapse.label': 'Réduire la barre latérale aux icônes',

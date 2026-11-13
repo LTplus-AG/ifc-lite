@@ -3,8 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { EntityData, EntityRef } from '@ifc-lite/sdk';
-import { effectiveEntities } from './playground-effective.js';
-import type { LoadedPlaygroundModel } from './playground-dispatcher.js';
+import { effectiveEntities } from './effective.js';
+import type { ReadyModel } from './types.js';
 
 interface SpatialNode {
   expressId: number;
@@ -19,7 +19,7 @@ const MAX_CONTAINMENT_STEPS = 32;
 
 /** Build a chat-sized live spatial tree. Path-local cycle detection keeps
  * legitimate shared descendants visible under each parent. */
-export function playgroundSpatialHierarchy(model: LoadedPlaygroundModel): {
+export function spatialHierarchy(model: ReadyModel): {
   tree: SpatialNode[];
   truncated: boolean;
 } {
@@ -67,7 +67,7 @@ export function playgroundSpatialHierarchy(model: LoadedPlaygroundModel): {
 
 /** Walk upward through live containment/aggregation edges, reporting a bound
  * or cycle instead of returning an apparently complete path. */
-export function playgroundContainmentChain(model: LoadedPlaygroundModel, ref: EntityRef): {
+export function containmentChain(model: ReadyModel, ref: EntityRef): {
   path: Array<{ expressId: number; type: string; name: string; globalId: string }>;
   truncated: boolean;
 } {

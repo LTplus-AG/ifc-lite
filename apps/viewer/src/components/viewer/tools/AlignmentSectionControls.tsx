@@ -23,7 +23,7 @@ export function AlignmentSectionControls() {
   const tool = useAlignmentToolState();
   const [modelId, setModelId] = useState(binding?.modelId ?? activeModel ?? '');
   const candidates = useMemo(() => listExportModels(models, new Set(), legacyStore)
-    .filter(model => model.schemaVersion !== 'IFC5' && !model.sourceSchema), [models, legacyStore]);
+    .filter(model => model.schemaVersion !== 'IFC5' && model.sourceKind !== 'tabular' && !model.sourceSchema), [models, legacyStore]);
   useEffect(() => {
     if (binding) setModelId(binding.modelId);
     else if (!candidates.some(model => model.id === modelId)) {

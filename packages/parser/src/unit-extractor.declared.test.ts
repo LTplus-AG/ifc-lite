@@ -22,6 +22,14 @@ describe('a declared length unit scale (IFCX has no IfcProject to read it from)'
     expect(onDiagnostic).not.toHaveBeenCalled();
   });
 
+  it('carries the source its reader stated: a file that declares its unit is not reported as defaulted', () => {
+    const declared = index();
+    declareLengthUnitScale(declared, 0.001, 'declared');
+    const onDiagnostic = vi.fn();
+    expect(resolveLengthUnit(source, declared, undefined, onDiagnostic)).toEqual({ scale: 0.001, source: 'declared' });
+    expect(onDiagnostic).not.toHaveBeenCalled();
+  });
+
   it('is per model: another model without a project still falls back and warns', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     declareLengthUnitScale(index(), 0.001);

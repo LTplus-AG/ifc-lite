@@ -242,13 +242,13 @@ def coverage(schema: str, output: Path, reinforcement: bool = False) -> None:
 
     # Members and connections.
     curve = root("IfcStructuralCurveMember", place(), None, "RIGID_JOINED_MEMBER", *(() if v2 else (direction,)))
-    root("IfcStructuralCurveMemberVarying", place(), None, "RIGID_JOINED_MEMBER", *(() if v2 else (direction,)))
+    curve_varying = root("IfcStructuralCurveMemberVarying", place(), None, "RIGID_JOINED_MEMBER", *(() if v2 else (direction,)))
     surface = root("IfcStructuralSurfaceMember", place(), None, "SHELL", 0.2)
     if v2:
         shape, varying = aspect()
-        root("IfcStructuralSurfaceMemberVarying", place(), shape, "SHELL", 0.2, (0.25, 0.3), varying)
+        surface_varying = root("IfcStructuralSurfaceMemberVarying", place(), shape, "SHELL", 0.2, (0.25, 0.3), varying)
     else:
-        root("IfcStructuralSurfaceMemberVarying", place(), None, "SHELL", 0.2)
+        surface_varying = root("IfcStructuralSurfaceMemberVarying", place(), None, "SHELL", 0.2)
     point_conn = root("IfcStructuralPointConnection", place(), None, node_warping, *(() if v2 else (world if schema == "IFC4X3" else None,)))
     curve_conn = root("IfcStructuralCurveConnection", place(), None, edge, *(() if v2 else (direction,)))
     surface_conn = root("IfcStructuralSurfaceConnection", place(), None, face)
@@ -284,7 +284,9 @@ def coverage(schema: str, output: Path, reinforcement: bool = False) -> None:
     def rel(name: str, *rest):
         return e(name, guid(f"{name}:{len(model.by_type(name))}"), owner, None, None, *rest)
 
-    rel("IfcRelConnectsStructuralMember", curve, point_conn, node, failure, 5.0, world)
+    # The curve member's length: its SupportedLength here, its edge in the topology below.
+    SPAN = 5.0
+    rel("IfcRelConnectsStructuralMember", curve, point_conn, node, failure, SPAN, world)
     rel("IfcRelConnectsStructuralMember", surface, curve_conn, edge, slippage, None, None)
     rel("IfcRelConnectsStructuralMember", surface, surface_conn, face, None, None, None)
     rel("IfcRelConnectsWithEccentricity", curve, point_conn, node, slippage, 2.5, world,
@@ -313,6 +315,44 @@ def coverage(schema: str, output: Path, reinforcement: bool = False) -> None:
     rel("IfcRelAssignsToGroup", [curve, surface, point_conn, curve_conn, surface_conn], None, analysis)
     if has("IfcRelDeclares"):
         rel("IfcRelDeclares", project, (analysis,))
+
+    # Topology last, so every record above keeps its id: each item and activity
+    # states where it is in an IfcTopologyRepresentation, as an analysis export
+    # does. The curve member runs SPAN along X (its SupportedLength), the
+    # surface member is a SPAN square above it. Activities share the topology
+    # of the item they act on; the point connection is the curve member's start
+    # node, the surface connection the surface member's face, and the curve
+    # connection lies along that face's first side.
+
+    def point(x, y, z):
+        return e("IfcCartesianPoint", (x, y, z))
+
+    def topo_edge(y=0.0, z=0.0):
+        return e("IfcEdge", e("IfcVertexPoint", point(0.0, y, z)), e("IfcVertexPoint", point(SPAN, y, z)))
+
+    def topo_face(z):
+        corners = [point(0.0, 0.0, z), point(SPAN, 0.0, z), point(SPAN, SPAN, z), point(0.0, SPAN, z)]
+        plane = e("IfcPlane", e("IfcAxis2Placement3D", corners[0], None, None))
+        return e("IfcFaceSurface", (e("IfcFaceOuterBound", e("IfcPolyLoop", corners), True),), plane, True)
+
+    def locate(product, kind, item):
+        representation = e("IfcTopologyRepresentation", context, "Reference", kind, (item,))
+        if product.Representation is not None:  # an IFC2X3 varying record: its shape also holds the varying aspect
+            product.Representation.Representations = (representation,) + product.Representation.Representations
+        else:
+            product.Representation = e("IfcProductDefinitionShape", None, None, (representation,))
+
+    topology = {curve: ("Edge", topo_edge()), surface: ("Face", topo_face(3.0))}
+    topology[point_conn] = ("Vertex", topology[curve][1].EdgeStart)
+    locate(curve, *topology[curve])
+    locate(curve_varying, "Edge", topo_edge(y=6.0))
+    locate(surface, *topology[surface])
+    locate(surface_varying, "Face", topo_face(6.0))
+    locate(point_conn, *topology[point_conn])
+    locate(curve_conn, "Edge", topo_edge(z=3.0))
+    locate(surface_conn, *topology[surface])
+    for activity in activities + reactions:
+        locate(activity, *topology[host(activity)])
 
     save()
 

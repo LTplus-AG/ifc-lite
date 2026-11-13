@@ -88,6 +88,11 @@ function levelIcon(level) {
 
 function notes(cap, row) {
   const parts = [];
+  if (cap.id === 'sheets-pdf-dwg' && ['ui','output'].some(l =>
+    ['pass','partial','fail','error'].includes(row?.levels?.[l]?.status) && row.levels[l].source?.sheetDxfOracle !== 1)) {
+    parts.push('**Historical sheet evidence / oracle version unrecorded**: the selected UI/Output evidence does not record the current PDF/DXF oracle version. Recorded statuses are retained; this baseline does not certify the current sheet target.');
+  }
+  if (row?.status === 'met') return cell(parts.join('<br>'));
   for (const l of [...LEVELS, 'exercise']) {
     const level = row?.levels?.[l];
     if (l !== 'exercise' && cap.probes?.[l]?.applicable === false) continue;
@@ -132,7 +137,7 @@ function render() {
   lines.push('|---|---|---|---|---|---|---|---|');
   for (const cap of stakes) {
     const row = rowById.get(cap.id);
-    lines.push(`| ${cell(cap.title)} (\`${cap.id}\`) | ${cell(cap.group)} | ${LEVELS.map((l) => levelIcon(row.levels[l])).join(' | ')} | ${levelIcon(row.levels.exercise)} | ${ROW_ICON[row.status]} | ${row.status === 'met' ? '' : notes(cap, row)} |`);
+    lines.push(`| ${cell(cap.title)} (\`${cap.id}\`) | ${cell(cap.group)} | ${LEVELS.map((l) => levelIcon(row.levels[l])).join(' | ')} | ${levelIcon(row.levels.exercise)} | ${ROW_ICON[row.status]} | ${notes(cap, row)} |`);
   }
   lines.push('');
   if (extra.length) {

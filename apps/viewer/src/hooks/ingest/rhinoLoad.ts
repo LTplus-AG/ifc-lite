@@ -45,7 +45,11 @@ export interface RhinoLoadOptions {
     schemaVersion: 'IFC5',
     patch: { loadPath: '3dm' },
   ): Promise<void>;
-  /** Records the failure on the model record, with the reader's code. */
+  /**
+   * Records the failure. `message` is what the user reads (the model record's
+   * `loadError` is rendered verbatim in the hierarchy panel); `code` is for
+   * the failure's telemetry name.
+   */
   onError(code: string, message: string): void;
 }
 

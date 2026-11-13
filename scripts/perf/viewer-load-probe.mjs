@@ -176,7 +176,8 @@ function armLoadClock(count) {
  * reaches the store's settle before its drain has started (a fast path with no `stream.queue` span) otherwise
  * marks before the scene exists. The mark itself is still the latest of the span milestones, so a load the
  * check never holds back keeps exactly its old value (`interactiveMsOldGate` records the old rule's value).
- * Builds without the hook keep the span rule (`sceneSettledCheck: 'unavailable'`). The wait is capped: a scene
+ * A build that has the hook but has not installed it yet (renderer not ready) is held like an unsettled scene;
+ * builds without it keep the span rule (`sceneSettledCheck: 'unavailable'`). The wait is capped: a scene
  * that never settles returns `sceneSettleTimedOut`, which openAndWaitInteractive turns into a failed sample.
  */
 export function interactiveProbe(count) {
@@ -212,8 +213,11 @@ export function interactiveProbe(count) {
   if (st.at !== null && st.settlePaint === null && now - st.at < 2000) return null;
   if (st.publish !== null && st.publishPaint === null && now - st.publish < 2000) return null;
   const settledAt = st.at ?? null;
+  // A build with the hook installs it when the viewport's renderer is ready; before that the scene cannot be
+  // settled (a fast path can reach the store's settle first). Only a build without the marker keeps the span rule.
   const settledHook = globalThis.__ifc_lite_scene_settled__;
-  const sceneSettled = typeof settledHook === 'function' ? Boolean(settledHook()) : null;
+  const sceneSettled = typeof settledHook === 'function' ? Boolean(settledHook())
+    : globalThis.__ifc_lite_scene_settled_supported__ === true ? false : null;
   const firstVisible = loads.map((l) => end(l, 'geometry.firstVisible')).filter((v) => v !== null);
   const geometryMs = Math.max(...geomDone) - t;
   const propsMs = Math.max(...meta) - t;

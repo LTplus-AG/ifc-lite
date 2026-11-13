@@ -18,7 +18,7 @@ async function load(path) {
 
 const span = (name, start, end, extra = {}) => ({ name, start, end, ...extra });
 // One page state: t0 = the arm, every time below is ms after it (the change event is at +0).
-function page({ spans, loadEnd, settled = true, hook, settleAt = 400 }) {
+function page({ spans, loadEnd, settled = true, hook, settleAt = 400, supported = hook !== undefined }) {
   const t0 = performance.now() - 20000;
   const at = (ms) => (ms === null ? null : t0 + ms);
   globalThis.__benchT0 = t0;
@@ -26,6 +26,7 @@ function page({ spans, loadEnd, settled = true, hook, settleAt = 400 }) {
   globalThis.__IFC_LITE_LOAD_TRACE__ = { loads: () => [{ start: t0 + 1, end: at(loadEnd), attrs: {}, spans: spans.map((s) => ({ ...s, start: at(s.start), end: at(s.end) })) }] };
   globalThis.__ifc_lite_viewer_store__ = { getState: () => ({ loading: !settled, models: new Map([['m', { loadState: settled ? 'complete' : 'loading' }]]) }) };
   if (hook === undefined) delete globalThis.__ifc_lite_scene_settled__; else globalThis.__ifc_lite_scene_settled__ = hook;
+  if (supported) globalThis.__ifc_lite_scene_settled_supported__ = true; else delete globalThis.__ifc_lite_scene_settled_supported__;
 }
 const meta = [span('parser.complete', 50, 380)];
 
@@ -49,6 +50,24 @@ test('a fast-path load (store settled before any drain span exists) marks early 
   assert.ok(held.interactiveMs >= 504 - 0.001, `the new mark ${held.interactiveMs} is not before finalize end`);
   assert.ok(held.interactiveMsOldGate < 504, 'and the old rule\'s value is recorded beside it');
   assert.equal(held.sceneSettledCheck, 'settled');
+});
+
+test('a build that has the hook but has not installed it yet (renderer not ready) holds the mark, never falls back to the span rule (#9900 FZK check, 1 of 8)', async () => {
+  const { interactiveProbe } = await load('./viewer-load-probe.mjs');
+  // Measured: #9900 FZK, the store settled at ~370 ms before the viewport installed its hooks; the old rule marked
+  // at 378 ms with the first presented frame at 433 ms.
+  const early = [span('geometry.streamComplete', 0, 360), ...meta];
+  page({ spans: early, loadEnd: 365, settleAt: 368, supported: true });
+  assert.equal(interactiveProbe(1), null, 'held: the build has the hook, the renderer has not installed it yet');
+  const st = globalThis.__benchSettle;
+  page({ spans: [...early, span('stream.queueDrain', 400, 425), span('scene.finalize', 425, 432)], loadEnd: 365, settleAt: 368, hook: () => true });
+  globalThis.__benchSettle = st;
+  const v = interactiveProbe(1);
+  assert.ok(v.interactiveMs >= 432 - 0.001, `marked at ${v.interactiveMs}, not before finalize end`);
+  assert.equal(v.sceneSettledCheck, 'settled');
+  // A build without the marker (B0) keeps the span rule.
+  page({ spans: early, loadEnd: 365, settleAt: 368, supported: false });
+  assert.equal(interactiveProbe(1)?.sceneSettledCheck, 'unavailable');
 });
 
 test('a federated add and an adopted reopen keep their old marks: the gate never holds a settled scene', async () => {

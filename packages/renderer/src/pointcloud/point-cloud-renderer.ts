@@ -17,7 +17,7 @@ import { assertModelTranslation } from '../model-translation.js';
 
 import type { PointCloudAsset } from '@ifc-lite/geometry';
 import { PointCloudHandleIds } from './point-cloud-handle-ids.js';
-import { exactPlacement, PointCloudPlacements, unionPointCloudBounds } from './point-cloud-placement.js';
+import { exactPlacement, originMatrix, PointCloudPlacements, unionPointCloudBounds } from './point-cloud-placement.js';
 import { PointCloudVisibility } from './point-cloud-visibility.js';
 import { PointRenderPipeline, POINT_QUAD_VERTS, POINT_UNIFORM_SIZE } from './point-pipeline.js';
 import {
@@ -208,10 +208,7 @@ export class PointCloudRenderer {
 
   // ─── one-shot API (IFCx) ──────────────────────────────────────────────────
 
-  /**
-   * Replace every IFCx-owned asset with `assets`. Streamed assets are
-   * untouched. Use this from the viewer's IFCx sync hook.
-   */
+  /** Replace every IFCx-owned asset with `assets`; streamed assets are untouched. */
   setAssets(assets: ReadonlyArray<PointCloudAsset>): void {
     this.clearOwner('ifcx');
     for (const asset of assets) {
@@ -226,6 +223,7 @@ export class PointCloudRenderer {
     this.nodes.set(id, node);
     this.nodeOwners.set(id, 'ifcx');
     this.visibility.add(id);
+    if (asset.origin) this.placements.align(node, originMatrix(asset.origin)); // f64 baseline (#10029)
     this.placements.translate(node, this.modelTranslations.get(asset.modelIndex ?? 0) ?? [0, 0, 0]);
     return { id };
   }

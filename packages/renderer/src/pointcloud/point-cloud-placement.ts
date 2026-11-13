@@ -75,6 +75,13 @@ export class PointCloudPlacements {
   }
 }
 
+/** An inline asset's f64 origin (#10029) as a placement baseline. It enters
+ * where a streamed scan's decode origin does, so rendering (RTE), picking,
+ * snapping and bounds read it exactly; a model translation composes on top. */
+export function originMatrix([x, y, z]: readonly [number, number, number]): Float64Array {
+  return new Float64Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, z, 1]);
+}
+
 /**
  * A copy of the canonical float64 placement, for CPU callers that compose
  * coordinates with it (#6894). `node.model` is the float32 GPU copy and rounds

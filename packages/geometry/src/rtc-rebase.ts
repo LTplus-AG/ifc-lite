@@ -120,8 +120,9 @@ export interface RtcRebaseGeometry {
   meshes: ReadonlyArray<{ origin?: Origin; geometryClass?: number }>;
   /** Present on a `GeometryResult`; read only by {@link carriesGpuInstancedGeometry}. */
   instancedGeometryAabbs?: ReadonlyMap<number, unknown> | null;
-  /** Streamed point clouds: GPU-resident, never meshed against an RTC anchor. */
-  pointClouds?: ReadonlyArray<unknown> | null;
+  /** Inline clouds move with their meshes through `origin` (#10029). A
+   *  point-cloud-only geometry (a streamed scan's descriptor) is not moved. */
+  pointClouds?: ReadonlyArray<{ origin?: Origin }> | null;
 }
 
 /**
@@ -139,9 +140,9 @@ export function carriesGpuInstancedGeometry(geometry: RtcRebaseGeometry): boolea
 }
 
 /**
- * Point clouds never take part in the RTC frame: the ingest registers them
- * raw in every load order (the georeference alignment is their only frame
- * move), so they are neither moved nor refused.
+ * A point-cloud-only geometry never takes part in the RTC frame: the ingest
+ * registers streamed scans raw in every load order (the georeference
+ * alignment is their only frame move), so they are neither moved nor refused.
  */
 function isPointCloudOnly(geometry: RtcRebaseGeometry): boolean {
   return (geometry.pointClouds?.length ?? 0) > 0 && geometry.meshes.length === 0;
@@ -156,7 +157,7 @@ export interface RtcConvergeResult<T> {
 
 /**
  * Move every geometry that is not yet drawn against `anchor` onto it, in
- * place: each mesh's `origin` and the `CoordinateInfo` frame fields change,
+ * place: each mesh's and inline cloud's `origin` and the `CoordinateInfo` frame fields change,
  * `positions` never do. Geometries already on the anchor and point clouds are
  * left alone; GPU-instanced geometries are reported in `refused` and left
  * untouched, so the caller can tell the user which models stay split.
@@ -172,7 +173,7 @@ export function convergeGeometryOntoRtcAnchor<T extends RtcRebaseGeometry>(
 ): RtcConvergeResult<T> {
   const moved: T[] = [];
   const refused: T[] = [];
-  const seenMeshes = new Set<object>();
+  const seen = new Set<object>(); // a mesh or cloud shared between two results moves once
   for (const geometry of new Set(geometries)) {
     if (isPointCloudOnly(geometry) || isOnRtcAnchor(geometry.coordinateInfo, anchor)) continue;
     if (carriesGpuInstancedGeometry(geometry) || hasOtherInstancedGeometry?.(geometry) === true) {
@@ -181,10 +182,16 @@ export function convergeGeometryOntoRtcAnchor<T extends RtcRebaseGeometry>(
     }
     const delta = rtcRebaseDeltaFor(geometry.coordinateInfo, anchor);
     for (const mesh of geometry.meshes) {
-      // A MeshData object shared between two results must move once.
-      if (seenMeshes.has(mesh)) continue;
-      seenMeshes.add(mesh);
+      if (seen.has(mesh)) continue;
+      seen.add(mesh);
       mesh.origin = rebaseOriginByRtcDelta(mesh.origin, delta);
+    }
+    // An inline cloud sits in the same frame as its meshes, so it moves with
+    // them, in its f64 origin (never its f32 positions), like a mesh (#10029).
+    for (const cloud of geometry.pointClouds ?? []) {
+      if (seen.has(cloud)) continue;
+      seen.add(cloud);
+      cloud.origin = rebaseOriginByRtcDelta(cloud.origin, delta);
     }
     geometry.coordinateInfo = rebaseCoordinateInfoOntoRtcAnchor(geometry.coordinateInfo, anchor);
     moved.push(geometry);

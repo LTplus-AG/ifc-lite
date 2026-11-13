@@ -7,10 +7,11 @@ import type { SourceSnapCurve } from './source-curve-snap.js';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
 
 /** Same points, same pick identity: the viewer re-stamps `modelIndex` into a fresh object on every merge. */
-type EmbeddedKey = readonly [PointCloudAsset['chunk'], number, number];
-/** `setAssets` skips zero-point descriptors (streamed scans' identities), so they are not part of the list either. */
+type EmbeddedKey = readonly [PointCloudAsset['chunk'], number, number, PointCloudAsset['origin']];
+/** `setAssets` skips zero-point descriptors (streamed scans' identities), so they are not part of the list either.
+ * The origin is compared by reference: a moved cloud gets a new origin array (`rtc-rebase.ts`). */
 const embeddedKeys = (assets: readonly PointCloudAsset[]): EmbeddedKey[] =>
-  assets.filter((a) => a.chunk.pointCount > 0).map((a) => [a.chunk, a.expressId, a.modelIndex ?? 0]);
+  assets.filter((a) => a.chunk.pointCount > 0).map((a) => [a.chunk, a.expressId, a.modelIndex ?? 0, a.origin]);
 
 /** What identifies a curve's snap points: its authored identity and where it evaluates. */
 function curveSetKey(curves: readonly SourceSnapCurve[]): string {

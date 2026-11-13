@@ -39,7 +39,7 @@ function raw(meshes: TestMesh[], over: Partial<CoordinateInfo> = {}) {
     coordinateInfo: CoordinateInfo;
     meshes: TestMesh[];
     instancedGeometryAabbs?: Map<number, unknown>;
-    pointClouds?: unknown[];
+    pointClouds?: Array<{ expressId?: number; origin?: Origin }>;
   };
 }
 
@@ -185,7 +185,27 @@ describe('convergeGeometryOntoRtcAnchor', () => {
     expect(convergeGeometryOntoRtcAnchor([g], ANCHOR).moved).toEqual([g]);
   });
 
-  it('never moves or refuses a point cloud: it is raw in every load order', () => {
+  it('moves an inline cloud with its meshes, through its f64 origin (#10029)', () => {
+    const withOrigin = { expressId: 1, origin: [LV95.x, LV95.z, -LV95.y] as Origin };
+    const absolute = { expressId: 2 };
+    const g = raw([{ positions: new Float32Array([0, 0, 0]) }]);
+    g.pointClouds = [withOrigin, absolute, withOrigin];
+    convergeGeometryOntoRtcAnchor([g], LV95);
+    const delta = ifcToViewerAxes(LV95);
+    expect(g.meshes[0].origin).toEqual([-delta.x, -delta.y, -delta.z]);
+    // Listed twice, moved once; the anchor cancels in f64, exactly.
+    expect(withOrigin.origin).toEqual([0, 0, 0]);
+    expect(absolute).toEqual({ expressId: 2, origin: [-delta.x, -delta.y, -delta.z] });
+  });
+
+  it('leaves an inline cloud alone when its geometry is refused (#10029)', () => {
+    const g = raw([{ positions: new Float32Array([0, 1.5, 0]), origin: [1, 1, 1], geometryClass: 2 }]);
+    g.pointClouds = [{ expressId: 1, origin: [5, 6, 7] }];
+    convergeGeometryOntoRtcAnchor([g], ANCHOR);
+    expect(g.pointClouds[0].origin).toEqual([5, 6, 7]);
+  });
+
+  it('never moves or refuses a point-cloud-only geometry: it is raw in every load order', () => {
     const cloud = raw([]);
     cloud.pointClouds = [{ expressId: 1 }];
     const info = cloud.coordinateInfo;

@@ -90,9 +90,10 @@ const EMPTY_SELECTION: ScanBandSelection = {
  * Gather every currently-loaded point cloud, each paired with the GPU
  * transform it is currently drawn through (#1804) so the 2D overlay can
  * place raw cached points where the 3D view actually shows them. Inline
- * assets are already in the viewer frame and receive their model placement.
+ * assets are already in the viewer frame (relative to their `origin`) and
+ * receive their model placement.
  */
-type ScanSource = ScanPointSample & { model?: Float32Array; modelOutputsRenderFrame?: boolean; revision?: number };
+type ScanSource = ScanPointSample & { model?: Float32Array | Float64Array; modelOutputsRenderFrame?: boolean; revision?: number };
 
 function collectScanSources(
   models: ReadonlyMap<string, FederatedModel>,
@@ -108,7 +109,8 @@ function collectScanSources(
         colors: asset.chunk.colors,
         classifications: asset.chunk.classifications,
         count: asset.chunk.pointCount,
-        model: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, ...translation, 1]),
+        // f64: the asset's origin can sit at map coordinates (#10029).
+        model: new Float64Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, ...translation.map((t, axis) => t + (asset.origin?.[axis] ?? 0)), 1]),
         modelOutputsRenderFrame: true,
       });
     }

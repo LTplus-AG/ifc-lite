@@ -47,3 +47,10 @@ for (const [name, Panel] of [['storey control', WorkspaceStoreyControl], ['spati
     assert.match(ui.textContent ?? '', /Renamed level/);
   });
 }
+
+it('#9296 the storey control snapshot stays stable while a loaded model has no overlay yet', async () => {
+  useViewerStore.setState({ mutationViews: new Map() });
+  const ui = render(<WorkspaceStoreyControl />);
+  await advance(0);
+  assert.ok(ui.querySelector('[data-workspace-storey-chip]'), 'loaded storeys remain usable before overlay registration');
+});

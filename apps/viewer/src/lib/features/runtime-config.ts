@@ -120,13 +120,13 @@ export async function loadViewerRuntimeConfig(request: ViewerConfigRequest): Pro
   const signal = timeout.signal;
   const timer = setTimeout(() => timeout.abort(new DOMException('The viewer configuration timed out', 'TimeoutError')), request.timeoutMs ?? CONFIG_TIMEOUT_MS);
   try {
-    return await fetchConfig(target, request.fetch, signal);
+    return await fetchConfig(target, page, request.fetch, signal);
   } finally {
     clearTimeout(timer);
   }
 }
 
-async function fetchConfig(target: URL, fetchImpl: typeof fetch, signal: AbortSignal): Promise<ViewerRuntimeConfig> {
+async function fetchConfig(target: URL, page: URL, fetchImpl: typeof fetch, signal: AbortSignal): Promise<ViewerRuntimeConfig> {
   let response: Response;
   try {
     response = await fetchImpl(target.href, {
@@ -139,6 +139,10 @@ async function fetchConfig(target: URL, fetchImpl: typeof fetch, signal: AbortSi
     });
   } catch (error) {
     throw new ViewerConfigError('unreachable', 'The viewer configuration could not be fetched (network failure, or a redirect to another origin)', { cause: error });
+  }
+  // A caller's own fetch (a wrapper, a polyfill) may ignore `mode`; the answer must still be ours.
+  if (response.url && new URL(response.url, page).origin !== page.origin) {
+    throw new ViewerConfigError('cross-origin', `The viewer configuration was redirected away from ${page.origin}`);
   }
   if (!response.ok) {
     throw new ViewerConfigError('status', `The viewer configuration request answered ${response.status}`);

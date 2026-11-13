@@ -6,13 +6,15 @@
  * Merge-input assembly for `ExportDialog`'s merged STEP branch, plus the one
  * thing the dialog could not say before: which models the merge left out.
  *
- * A merged export writes STEP records, so it skips a model whose store is
- * tabular (a `.3dm`, an IFCX: the reader handed over finished tables, never
- * records) and one that has no store at all — see `canWriteIfcFromStores`,
- * which allows the merge as long as ONE participant is writable. The skip
- * itself is correct; reporting only the included count was not, because a
- * partial federation then downloads as "the merged file" with nothing said
- * about the missing model.
+ * A merged export writes STEP records, so it skips a model that has no store
+ * at all and one whose store is tabular with no records behind it (a `.3dm`,
+ * an IFCX: the reader handed over finished tables, never records). A shared
+ * room is tabular too and is NOT skipped, because its portable STEP source
+ * holds the records — `stepSkipReason` draws that line, and
+ * `canWriteIfcFromStores` allows the merge as long as ONE participant is
+ * writable. The skip itself is correct; reporting only the included count was
+ * not, because a partial federation then downloads as "the merged file" with
+ * nothing said about the missing model.
  */
 
 import type { MergeModelInput } from '@ifc-lite/export';

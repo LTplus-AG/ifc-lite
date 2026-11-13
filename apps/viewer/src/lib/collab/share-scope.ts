@@ -76,6 +76,31 @@ export function isSeedableModel(model: Pick<FederatedModel, 'ifcDataStore' | 'sc
 }
 
 /**
+ * The models in scope that this share will NOT carry, by name, and only the
+ * ones whose exclusion is worth saying out loud: a model that HAS a store the
+ * seed cannot read.
+ *
+ * A model with no store at all is deliberately not named. A GLB, a point
+ * cloud and a load still in flight have nothing to put in a room and never
+ * did; those workspaces have always minted a room and the dialog has always
+ * said nothing, and the `.3dm` work is no reason to change that. What is new
+ * is a model that looks shareable — it is loaded, it has entities, it is in
+ * the hierarchy — and is still dropped, which is the case that was silent.
+ *
+ * Named for the Share dialog's notice, so it reads as the counterpart of the
+ * Export dialog's "left out of the merged file" line.
+ */
+export function unshareableModelsInScope(
+  models: ReadonlyMap<string, FederatedModel>,
+  activeModelId: string | null,
+  scope: ShareScope,
+): string[] {
+  return modelsInShareScope(models, activeModelId, scope)
+    .filter((m) => m.ifcDataStore && !isSeedableModel(m))
+    .map((m) => m.name);
+}
+
+/**
  * Build the seed `startCollab` consumes. ALWAYS a seed, even an empty one:
  * `startCollab` tells an owner from a recipient by the presence of `seed`,
  * so an owner with nothing seedable (the only model still loading, a GLB or

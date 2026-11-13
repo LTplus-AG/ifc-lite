@@ -28,7 +28,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MeshData, PointCloudAsset } from '@ifc-lite/geometry';
 import type { RhinoImport } from '@ifc-lite/rhino3dm';
 
-import { RhinoImportError, readRhino3dmInWorker } from '@/lib/import/rhino-import-client';
+import { RhinoImportError, readRhino3dmInWorker, rhino3dmSizeRefusal } from '@/lib/import/rhino-import-client';
 import { calculateMeshBounds, createCoordinateInfo, expandBoundsForPointClouds } from '../../utils/localParsingUtils.js';
 import { buildTabularDataStore, type TabularStoreTables } from './tabularDataStore.js';
 import type { ViewerModelPayload } from './viewerModelIngest.js';
@@ -236,6 +236,9 @@ export function rhinoViewerModel(result: RhinoImport, buffer: ArrayBuffer, parse
  * buffer rather than the buffer itself, which stays the store's `source`. A
  * copy, not a second read of the `File`: re-reading would let a file saved
  * again mid-load put different bytes behind the geometry and the store.
+ *
+ * The size ceiling is asked before that copy, so an archive over it is
+ * refused once rather than duplicated first; `rhino3dmSizeRefusal` says why.
  */
 export async function prepareRhinoViewerModel(
   buffer: ArrayBuffer,
@@ -243,6 +246,8 @@ export async function prepareRhinoViewerModel(
   signal?: AbortSignal,
 ): Promise<ViewerModelPayload> {
   const started = performance.now();
+  const refusal = rhino3dmSizeRefusal(buffer.byteLength);
+  if (refusal) throw refusal;
   const bytes = new Uint8Array(countCopy('source.rhinoImport', buffer.slice(0)));
   const result = await readRhino3dmInWorker(bytes, ({ done, total }) => {
     onProgress?.({ phase: 'Reading Rhino .3dm', percent: 10 + (total > 0 ? (done / total) * 80 : 0) });

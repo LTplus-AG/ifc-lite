@@ -27,6 +27,40 @@ export class RhinoImportError extends Error {
   }
 }
 
+/**
+ * The reader's own size ceiling, `MAX_3DM_BYTES`
+ * (`packages/rhino3dm/src/read/read.ts`, spec "Size ceiling", decision D7).
+ *
+ * Mirrored rather than imported, which is not a preference: the main thread
+ * may import that package's TYPES but never its values, because a static
+ * value edge pulls the 2.67 MB rhino3dm wasm into the startup graph and
+ * `apps/viewer/scripts/check-rhino3dm-lazy.mjs` fails the build over it. The
+ * constant is not on the package's public surface either. Single-sourcing it
+ * is TODO(remove-by: #10037 exports it and a test pins this against it, viewer).
+ */
+export const MAX_3DM_IMPORT_BYTES = 400 * 1024 * 1024;
+
+const megabytes = (bytes: number) => `${Math.round(bytes / (1024 * 1024))} MB`;
+
+/**
+ * Refuse an archive above the ceiling, or `null` to go on.
+ *
+ * The caller asks BEFORE it copies the source buffer. Left to the worker, a
+ * file over the cap is held twice (the load's buffer plus the copy the
+ * request transfers) for a read that was always going to be refused, and the
+ * allocation that fails on the way there is reported as `worker-failed`
+ * rather than the size-ceiling message the user can act on. Same code and
+ * same wording as the reader's own refusal, so which side caught it does not
+ * change what is said.
+ */
+export function rhino3dmSizeRefusal(byteLength: number): RhinoImportError | null {
+  if (byteLength <= MAX_3DM_IMPORT_BYTES) return null;
+  return new RhinoImportError(
+    'too-large',
+    `This file is ${megabytes(byteLength)}; the reader handles up to ${megabytes(MAX_3DM_IMPORT_BYTES)}. Split the model into smaller files in Rhino.`,
+  );
+}
+
 /** Objects read so far, as the reader counts them. */
 export interface RhinoImportProgress { done: number; total: number }
 

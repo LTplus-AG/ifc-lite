@@ -13,14 +13,13 @@ import { loadIfcClasses, type IfcClasses } from './ifc-classes.js';
 import { buildEntities, type ObjectFacts } from './identity.js';
 import { plural, Report } from './report.js';
 import { readApi, type ReadApi, type RFile } from './rhino-api.js';
-import { MAX_3DM_BYTES, tooLarge3dmMessage } from './size.js';
+import { MAX_3DM_BYTES, megabytes, tooLarge3dmMessage } from './size.js';
 import { RhinoReadError, type ReadRhino3dmOptions, type RhinoImport } from './types.js';
 import { multiply } from './xform.js';
 
 /** Below this no file can exhaust the heap, so a null read means damage. */
 const OUT_OF_MEMORY_SUSPECT_BYTES = 32 * 1024 * 1024;
 const DEFAULT_MAX_TRIANGLES = 30_000_000;
-const megabytes = (bytes: number) => `${Math.round(bytes / (1024 * 1024))} MB`;
 
 interface ObjectRow extends ObjectFacts { member: boolean; look: Look; appearance: Appearance; part: Part }
 /** The options with their defaults applied. */

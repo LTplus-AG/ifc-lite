@@ -76,6 +76,13 @@ export function isSeedableModel(model: Pick<FederatedModel, 'ifcDataStore' | 'sc
 }
 
 /**
+ * A model the seed must drop although it HAS a store. Stricter than "not
+ * seedable": a store-less model (GLB, point cloud, a load in flight) fails
+ * `isSeedableModel` too, never had anything to share, and is not refused.
+ */
+const isRefusedModel = (m: FederatedModel): boolean => Boolean(m.ifcDataStore) && !isSeedableModel(m);
+
+/**
  * The models in scope a share WILL carry: exactly what {@link buildShareSeed}
  * puts in the room, as one expression the dialog and the mint can both ask.
  *
@@ -113,7 +120,7 @@ export function unshareableModelsInScope(
   scope: ShareScope,
 ): string[] {
   return modelsInShareScope(models, activeModelId, scope)
-    .filter((m) => m.ifcDataStore && !isSeedableModel(m))
+    .filter(isRefusedModel)
     .map((m) => m.name);
 }
 
@@ -138,9 +145,7 @@ export function shareRefusesEveryModel(
   scope: ShareScope,
 ): boolean {
   const inScope = modelsInShareScope(models, activeModelId, scope);
-  // `ifcDataStore &&` is what makes this stricter than "nothing seedable": a
-  // store-less model fails `isSeedableModel` too, and must NOT count here.
-  return inScope.length > 0 && inScope.every((m) => m.ifcDataStore && !isSeedableModel(m));
+  return inScope.length > 0 && inScope.every(isRefusedModel);
 }
 
 /**

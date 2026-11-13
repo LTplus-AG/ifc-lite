@@ -99,8 +99,9 @@ for (const failure of [{ kind: 'property', at: 1 }, { kind: 'property', at: 3 },
   for (const id of initialParts) {
     const path = pathForEntity(store, id); assert.ok(path);
     assert.equal(getPropertyValue(session.doc, path, 'Pset_SlabCommon', 'PitchAngle')?.type, 'IfcPlaneAngleMeasure');
-    assert.equal(getQuantityValue(session.doc, path, 'Qto_SlabBaseQuantities', 'NetVolume'),
-      view.getQuantitiesForEntity(id).find(q => q.name === 'Qto_SlabBaseQuantities')?.quantities.find(q => q.name === 'NetVolume')?.value);
+    const volume = view.getQuantitiesForEntity(id).find(q => q.name === 'Qto_SlabBaseQuantities')?.quantities.find(q => q.name === 'NetVolume')?.value;
+    assert.ok(typeof volume === 'number' && Number.isFinite(volume) && volume > 0);
+    assert.equal(getQuantityValue(session.doc, path, 'Qto_SlabBaseQuantities', 'NetVolume'), volume);
   }
 
   const before = bytes(), spaceMesh = mesh(space.expressId), roofMesh = mesh(roof.expressId), spaceQuantities = await roomQuantities();

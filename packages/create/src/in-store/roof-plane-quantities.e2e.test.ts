@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { describe, expect, it } from 'vitest';
+import { PropertyValueType } from '@ifc-lite/data';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { extractPropertiesOnDemand, extractQuantitiesOnDemand } from '@ifc-lite/parser';
@@ -149,6 +150,31 @@ describe('standard footprint roof plane measurements (#9357)', () => {
     const exported = await parse(exportText(s));
     expect(exported.entityIndex.byType.get('IFCSLAB')).toHaveLength(6);
     expect(exported.entityIndex.byType.get('IFCROOF')).toHaveLength(2);
+  });
+
+  it('copy merges saved measurements with unrelated edits and explicit deletions without extractors (#9357 review)', async () => {
+    const original = await session();
+    const { roofId } = addRoofToStore(original.editor, original.anchor, HIP);
+    const store = await parse(exportText(original)), view = new MutablePropertyView(null, 'no-extractors');
+    const editor = new StoreEditor(store, view), source = { ...original, store, view, editor };
+    const before = parts(source, roofId);
+    const base = extractQuantitiesOnDemand(store, before[0]).find(set => set.name === 'Qto_SlabBaseQuantities')!;
+    const gross = base.quantities.find(q => q.name === 'GrossVolume')!.value;
+    view.setProperty(roofId, 'Review', 'Note', 'keep saved dimensions', PropertyValueType.Text);
+    view.setProperty(before[0], 'Review', 'Note', 'keep saved measures', PropertyValueType.Text);
+    view.setQuantity(before[0], 'Qto_SlabBaseQuantities', 'GrossVolume', gross * 2, base.quantities.find(q => q.name === 'GrossVolume')!.type);
+    view.deleteQuantity(before[0], 'Qto_SlabBaseQuantities', 'NetVolume');
+    const [copy] = copyBatchInStore(store, editor, [roofId], [{ offset: [20, 0, 0] }]);
+    const copied = parts(source, copy.copyId);
+    expect(quantities(source, copied[0], 'Qto_SlabBaseQuantities').GrossArea).toBeGreaterThan(0);
+    expect(quantities(source, copied[0], 'Qto_SlabBaseQuantities').GrossVolume).toBeCloseTo(gross * 2, 8);
+    expect(quantities(source, copied[0], 'Qto_SlabBaseQuantities').NetVolume).toBeUndefined();
+    expect(view.getPropertyValue(copied[0], 'Pset_SlabCommon', 'PitchAngle')).toBeCloseTo(30 * D, 10);
+    const exported = await parse(exportText(source));
+    const copiedQuantities = extractQuantitiesOnDemand(exported, copied[0]).find(set => set.name === 'Qto_SlabBaseQuantities')!.quantities;
+    expect(copiedQuantities.find(q => q.name === 'NetVolume')).toBeUndefined();
+    expect(copiedQuantities.find(q => q.name === 'GrossArea')!.value).toBeGreaterThan(0);
+    expect(() => editFootprintRoofInStore(store, editor, copy.copyId, { Thickness: .4 })).not.toThrow();
   });
 });
 

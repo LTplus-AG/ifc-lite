@@ -34,6 +34,7 @@ import { expectSceneSnapshot, prepareWarmOpen } from './viewer-scene-snapshot.mj
 import { readGpuHealth } from '../../tests/benchmark/gpu-health.ts';
 import { IDENTITY_QUERY, corruptStoredSnapshots, readSceneIdentity, settleIdentityWrites } from './load-scoreboard-identity.mjs';
 import { startCpuTrace, stopCpuTrace } from './load-scoreboard-cputrace.mjs';
+import { outsideOwnCgroupCpuMs } from './load-scoreboard-host.mjs';
 
 /** Lane-name suffix of each arm; the default arm keeps the default lane names. */
 export const ARM_LANE_SUFFIX = { quiet: '', 'first-paint': '-early', 'boot-settled': '-settled' };
@@ -261,6 +262,8 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
     const index = { [coldLane]: 0, [warm1Lane]: 1, [warmLane]: warmOpens };
     for (const [name, lane] of Object.entries(lanes)) if (index[name] >= failedOpen) lanes[name] = { ...lane, ok: false, error };
   } finally {
+    // The browser process runs in its own systemd scope: its CPU is this sample's, not foreign (settleHostLoad).
+    meta.browserOutsideCpuMs = outsideOwnCgroupCpuMs(chromePids(profileDir));
     await context?.close().catch(() => {});
     rmSync(profileDir, { recursive: true, force: true });
     writeFileSync(join(outDir, `${tag}.console.log`), consoleLogs.join('\n'));

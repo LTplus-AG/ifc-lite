@@ -197,8 +197,27 @@ export async function hostQuiet({ limit = 5, maxWaitMs = quietWaitMs() } = {}) {
     ...classifyHostLoad({ psi, limit, builders: procs.map((p) => p.name) }) };
 }
 
-/** After the sample: CPU each builder group used during it decides the flag (once per sample; rows share the object). */
-export function settleHostLoad(host) {
+/**
+ * CPU ms (utime + stime, process lifetime) of the benchmark's own processes in `pids` that sit OUTSIDE this job's cgroup.
+ * Chromium's browser process moves itself into its own `app-org.chromium.Chromium-<pid>.scope` (systemd), while its
+ * renderers and GPU process stay in the launcher's cgroup, so host busy minus own cgroup counted it as foreign (quiet
+ * lane, 2026-11-13). Read just before the browser closes; a fresh browser per sample makes lifetime = this sample.
+ */
+export function outsideOwnCgroupCpuMs(pids) {
+  const own = ownCgroupPath();
+  let ms = 0;
+  for (const pid of pids) {
+    const info = procInfo(pid);
+    if (info && own !== null && info.cgroup?.slice(3) !== own) ms += info.cpuTicks * TICK_MS;
+  }
+  return ms;
+}
+
+/**
+ * After the sample: CPU each builder group used during it decides the flag (once per sample; rows share the object).
+ * `ownOutsideCpuMs`: the benchmark's own CPU outside its cgroup (outsideOwnCgroupCpuMs), not foreign.
+ */
+export function settleHostLoad(host, { ownOutsideCpuMs = null } = {}) {
   if (!host || host.settled || !Array.isArray(host.builderProcs)) return host;
   // First, before the slower reads below (systemctl, date): the sample's end, so later throttling is not charged to it.
   const thermalAfter = thermalState();
@@ -209,8 +228,9 @@ export function settleHostLoad(host) {
   // = host busy time minus this job's own cgroup. Recorded so a threshold can be set from real slots (B3: bursts
   // of foreign activity every ~10 min slowed samples with no builder visible at their start).
   const busy = hostBusyMs(), own = ownCgroupMs();
+  const ownOutside = Number.isFinite(ownOutsideCpuMs) ? ownOutsideCpuMs : 0;
   const foreignCpuMs = [busy, own, host.hostBusyBefore, host.ownCgroupBefore].every(Number.isFinite)
-    ? Math.max(0, Math.round((busy - host.hostBusyBefore) - (own - host.ownCgroupBefore))) : null;
+    ? Math.max(0, Math.round((busy - host.hostBusyBefore) - (own - host.ownCgroupBefore) - ownOutside)) : null;
   const sampleMs = Date.now() - host.startedAt;
   // Measurement only: affected cells are visible, nothing is voided by it.
   const overlapsWatchdogPass = overlapsWatchdog(host.watchdogBefore, watchdogState());
@@ -221,7 +241,7 @@ export function settleHostLoad(host) {
     builderCpuMs[c] = before === null || after === null ? null : Math.max(0, Math.round(after - before));
   }
   const thermal = thermalDelta(host.thermalBefore, thermalAfter);
-  Object.assign(host, { groupCpuMs, builderCpuMs, foreignCpuMs, sampleMs, overlapsWatchdogPass, thermal, settled: true, ...classifyHostLoad({ psi: host.cpuPressureAvg10, limit: host.limit, builders: host.builders, groupCpuMs: builderCpuMs }) });
+  Object.assign(host, { groupCpuMs, builderCpuMs, foreignCpuMs, ownOutsideCgroupCpuMs: Number.isFinite(ownOutsideCpuMs) ? Math.round(ownOutsideCpuMs) : null, sampleMs, overlapsWatchdogPass, thermal, settled: true, ...classifyHostLoad({ psi: host.cpuPressureAvg10, limit: host.limit, builders: host.builders, groupCpuMs: builderCpuMs }) });
   delete host.groupTicksBefore; delete host.cgroupUsageBefore; delete host.hostBusyBefore; delete host.ownCgroupBefore; delete host.watchdogBefore; delete host.thermalBefore;
   return host;
 }

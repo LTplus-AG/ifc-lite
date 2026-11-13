@@ -145,7 +145,7 @@ export async function recordArmLanes({ sample, plan, side, fixture, cell, missin
     // Each browser sample gets its own host interval, settled as soon as it ends (review #9857).
     const host = await hostQuiet();
     const e = await sample({ side: plan.sides[side], fixture, tag: `${armTag}${suffix}`, warmOpens: reopens, pass: 'timing', arm });
-    settleHostLoad(host);
+    settleHostLoad(host, { ownOutsideCpuMs: e.meta?.browserOutsideCpuMs });
     for (const lane of armLanes) {
       const { trace, ...row } = e.lanes[lane] ?? { ok: false, error: `${lane}: not produced by the ${arm} sample` };
       const warmOpens = lane === `browser-warm${suffix}` ? e.warmOpens : undefined;
@@ -248,7 +248,7 @@ async function run(opt) {
               const sampleTag = sampleTagFor(tag, missingDefault, groupLanes.filter((l) => DEFAULT_BROWSER.includes(l)), Date.now().toString(36));
               const host = await hostQuiet();
               const s = await browser.sample({ side: plan.sides[side], fixture, tag: sampleTag, warmOpens: plan.warmOpens, pass: 'timing', cpuTrace: plan.sides[side].cpuTrace ?? plan.cpuTrace ?? false });
-              settleHostLoad(host); // the timed opens only, not the memory pass that follows
+              settleHostLoad(host, { ownOutsideCpuMs: s.meta.browserOutsideCpuMs }); // the timed opens only, not the memory pass that follows
               // H3: peak memory comes from a separate pass with the sampler on, never from the timed opens.
               const m = plan.memoryPass === false ? null : await browser.sample({ side: plan.sides[side], fixture, tag: `${sampleTag}-mem`, warmOpens: plan.warmOpens, pass: 'memory' });
               const adapter = s.meta.adapter ? JSON.stringify(s.meta.adapter) : null;

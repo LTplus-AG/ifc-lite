@@ -13,11 +13,22 @@ type Saved = { path: string; kind: 'quantity'; set: string; name: string; value:
   | { path: string; kind: 'property'; set: string; name: string; value: PropertyValue | undefined };
 
 /** Publish canonical roof/plane measures in the body's existing room transaction. */
-export function mirrorRoofMeasurements(store: ModellingStore, target: ModelEditTarget, roofId: number, view: MutablePropertyView): void {
+export function mirrorRoofMeasurements(store: ModellingStore, target: ModelEditTarget, roofId: number, view: MutablePropertyView): (() => void) | undefined {
   const state = store.getState(), session = state.collabSession;
   if (!session || !roomSlotFor(state, target.modelId)) return;
   const api = roomPropertyApi(), saved: Saved[] = [];
   const parts = getFootprintRoofPlaneParts(target.dataStore, view, roofId);
+  const rollback = () => {
+    for (const previous of [...saved].reverse()) {
+      try {
+        if (previous.kind === 'quantity') {
+          if (previous.value === undefined) api.deleteQuantityValue(session.doc, previous.path, previous.set, previous.name);
+          else api.setQuantityValue(session.doc, previous.path, previous.set, previous.name, previous.value);
+        } else if (previous.value === undefined) api.deletePropertyValue(session.doc, previous.path, previous.set, previous.name);
+        else api.setPropertyValue(session.doc, previous.path, previous.set, previous.name, previous.value);
+      } catch (rollbackError) { console.warn('[roof] could not restore shared plane measurements', rollbackError); }
+    }
+  };
   try {
     for (const id of [roofId, ...parts]) {
       const path = pathForEntity(target.dataStore, id);
@@ -38,15 +49,8 @@ export function mirrorRoofMeasurements(store: ModellingStore, target: ModelEditT
         { type: 'IfcPlaneAngleMeasure', value: pitch.value, source: 'derived' });
     }
   } catch (error) {
-    for (const previous of saved.reverse()) {
-      try {
-        if (previous.kind === 'quantity') {
-          if (previous.value === undefined) api.deleteQuantityValue(session.doc, previous.path, previous.set, previous.name);
-          else api.setQuantityValue(session.doc, previous.path, previous.set, previous.name, previous.value);
-        } else if (previous.value === undefined) api.deletePropertyValue(session.doc, previous.path, previous.set, previous.name);
-        else api.setPropertyValue(session.doc, previous.path, previous.set, previous.name, previous.value);
-      } catch (rollbackError) { console.warn('[roof] could not restore shared plane measurements', rollbackError); }
-    }
+    rollback();
     throw error;
   }
+  return rollback;
 }

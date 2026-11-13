@@ -118,6 +118,32 @@ export function unshareableModelsInScope(
 }
 
 /**
+ * Is EVERY model in scope one the seed must refuse? Then the share has
+ * nothing to put in a room and nothing that was ever going to go in one, so
+ * the mint is declined and the dialog says so.
+ *
+ * The one place that rule lives. The Share dialog's sentence, the scope
+ * field's caption and `useShareRoomCreation`'s mint guard all ask here, so a
+ * line the owner reads cannot disagree with what the button does.
+ *
+ * Note what it is NOT: "nothing is seedable". A GLB or a point cloud has no
+ * store and never seeded anything, and those workspaces mint an empty owner
+ * room (#4444, and `buildShareSeed`'s always-a-seed invariant). Loading a
+ * `.3dm` beside one is no reason to take that session away — it is named in
+ * the dialog instead.
+ */
+export function shareRefusesEveryModel(
+  models: ReadonlyMap<string, FederatedModel>,
+  activeModelId: string | null,
+  scope: ShareScope,
+): boolean {
+  const inScope = modelsInShareScope(models, activeModelId, scope);
+  // `ifcDataStore &&` is what makes this stricter than "nothing seedable": a
+  // store-less model fails `isSeedableModel` too, and must NOT count here.
+  return inScope.length > 0 && inScope.every((m) => m.ifcDataStore && !isSeedableModel(m));
+}
+
+/**
  * Build the seed `startCollab` consumes. ALWAYS a seed, even an empty one:
  * `startCollab` tells an owner from a recipient by the presence of `seed`,
  * so an owner with nothing seedable (the only model still loading, a GLB or

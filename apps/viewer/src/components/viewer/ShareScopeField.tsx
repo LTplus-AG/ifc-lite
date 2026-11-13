@@ -41,6 +41,16 @@ interface ShareScopeFieldProps {
   activeModelName: string;
   /** Number of models the room carries once it exists, else `null`. */
   roomModelCount: number | null;
+  /**
+   * True when the current scope holds nothing the seed can carry, so no room
+   * will be created at all (`shareRefusesEveryModel`).
+   *
+   * The caption must then say nothing. "Only “x” is shared" is a promise, and
+   * the Share dialog is already printing "Nothing here can be shared" right
+   * below it for the same scope — a `.3dm` picked as the active model showed
+   * both at once.
+   */
+  noRoomToCreate: boolean;
 }
 
 export function ShareScopeField({
@@ -53,6 +63,7 @@ export function ShareScopeField({
   seedableCount,
   activeModelName,
   roomModelCount,
+  noRoomToCreate,
 }: ShareScopeFieldProps) {
   const { t } = useTranslation();
   const partial = seedableCount !== loadedCount;
@@ -62,11 +73,13 @@ export function ShareScopeField({
   const caption =
     roomModelCount !== null
       ? t('shareScopeField.roomCarries', { count: roomModelCount })
-      : scope === 'all'
-        ? partial
-          ? t('shareScopeField.partialCanBeShared', { seedable: seedableCount, loaded: loadedCount })
-          : t('shareScopeField.allShared')
-        : t('shareScopeField.onlyActiveShared', { model: activeModelName });
+      : noRoomToCreate
+        ? null
+        : scope === 'all'
+          ? partial
+            ? t('shareScopeField.partialCanBeShared', { seedable: seedableCount, loaded: loadedCount })
+            : t('shareScopeField.allShared')
+          : t('shareScopeField.onlyActiveShared', { model: activeModelName });
   return (
     <div className="flex flex-col gap-2">
       {showScope && (
@@ -97,7 +110,7 @@ export function ShareScopeField({
               {allLabel}
             </Button>
           </div>
-          <p className="text-xs text-muted-foreground">{caption}</p>
+          {caption && <p className="text-xs text-muted-foreground">{caption}</p>}
         </>
       )}
       {editable && (

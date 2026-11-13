@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { mintRoomId, mintRoomToken, releaseRoomClaim } from '@/lib/collab/share-link';
-import { buildShareSeed, modelsInShareScope, prepareShareSeed, seedableModelsInScope, unshareableModelsInScope, type ShareScope } from '@/lib/collab/share-scope';
+import { buildShareSeed, prepareShareSeed, shareRefusesEveryModel, type ShareScope } from '@/lib/collab/share-scope';
 
 export function useShareRoomCreation({ open, hasModel, collabRoomId, awaitingConsent, scope, setNotice, resetLink }: {
   open: boolean; hasModel: boolean; collabRoomId: string | null; awaitingConsent: boolean; scope: ShareScope;
@@ -54,26 +54,11 @@ export function useShareRoomCreation({ open, hasModel, collabRoomId, awaitingCon
         // model's store and its tessellated meshes until the mint returns.
         const preflight = useViewerStore.getState();
         buildShareSeed(preflight.models, preflight.activeModelId, scope, preflight.georefMutations);
-        // EVERY model in scope is one the seed must refuse: there is nothing
-        // to put in a room, and nothing that was ever going to go in one, so
-        // don't claim it. WHICH models, and why, is the dialog's own derived
-        // line; this is only the decision. Both ask the same two functions at
-        // the SELECTED scope, so the line the owner read cannot disagree with
-        // what happens when they press the button.
-        //
-        // The test is "every model in scope", not "nothing seedable". A
-        // workspace that mints an empty room on main must keep minting one:
-        // `buildShareSeed` always returns a seed so an owner with nothing
-        // seedable keeps the owner path (#4444), and a GLB, a point cloud or
-        // a model removed mid-mint all rely on that. A GLB sitting beside a
-        // `.3dm` is still such a workspace — the GLB never had a store to
-        // seed — so it mints as before and the dialog names the `.3dm`.
-        // Refusing it would have cost the owner a session for loading an
-        // unrelated file.
-        const inScope = modelsInShareScope(preflight.models, preflight.activeModelId, scope);
-        const refused = unshareableModelsInScope(preflight.models, preflight.activeModelId, scope).length;
-        if (inScope.length > 0 && refused === inScope.length
-          && seedableModelsInScope(preflight.models, preflight.activeModelId, scope).length === 0) return;
+        // Nothing to put in a room and nothing that was ever going to go in
+        // one: don't claim it. WHICH models, and why, is the dialog's own
+        // derived line; this is only the decision, and both read the one
+        // predicate at the SELECTED scope so they cannot disagree.
+        if (shareRefusesEveryModel(preflight.models, preflight.activeModelId, scope)) return;
         adminToken = await mintRoomToken({ roomId, role: 'admin' });
         // Models can change during minting. Read fresh and always pass a seed,
         // even empty, so startCollab retains the owner path (#4444).

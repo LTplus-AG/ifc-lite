@@ -99,4 +99,11 @@ export function mountViewer(container: HTMLElement, options: ViewerBootstrapOpti
   // Pull the geometry engine binary down while the user is still deciding which
   // file to open, instead of on the click that opens it. See wasm-prewarm.ts.
   scheduleWasmPrewarm();
+
+  // Decode the schema tables a first interaction reads once a load has
+  // settled and the page is idle (lib/schema-tables/warm-schema-tables.ts).
+  // Loaded on demand so it adds nothing to the startup graph; it does nothing
+  // until a model has loaded.
+  void import('./lib/schema-tables/warm-schema-tables').then(({ startSchemaTableWarm }) => { startSchemaTableWarm(); })
+    .catch((err: unknown) => { console.warn('[schema-table warm] not started:', err); });
 }

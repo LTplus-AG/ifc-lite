@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The `NONREL_REF_LIST_TYPES` (`nonrel-ref-list-types.ts`) sibling of
+ * The `getNonRelRefListTypes()` (`nonrel-ref-list-types.ts`) sibling of
  * `filterHiddenRefsFromRelationshipLine` (`reference-collector.ts`): narrows
  * a parenthesised list attribute exactly as that function does, but NEVER
  * withholds the line.
@@ -24,7 +24,7 @@
  * `IFCREL*` line that IS the association — `IfcRelContainedInSpatialStructure
  * .RelatingStructure` naming a hidden storey has no other spelling for "this
  * relationship no longer applies", so the relationship itself must go. The
- * classes in `NONREL_REF_LIST_TYPES` are not relationships: `IfcCostItem`'s
+ * classes in `getNonRelRefListTypes()` are not relationships: `IfcCostItem`'s
  * bare `OwnerHistory` (`IfcRoot`) or `IfcAppliedValue`'s bare `UnitBasis` are
  * ordinary attributes of the entity's OWN record, not a link between two
  * OTHER records. Withholding `#N=IFCCOSTITEM(...)` over its OwnerHistory
@@ -45,7 +45,7 @@
  * not 'no forward reference', it is a second, different kind of invalid
  * file." An earlier revision of this function answered every emptied list
  * with `()` and reproduced exactly that invalid file. The right answer is
- * NOT uniform, because the types in `NONREL_REF_LIST_TYPES` do not all
+ * NOT uniform, because the types in `getNonRelRefListTypes()` do not all
  * declare their list attribute alike — two examples:
  *
  *  - `IfcCostItem.CostValues` / `.CostQuantities`, `IfcAppliedValue`/
@@ -92,7 +92,7 @@
 import { getSchemaRegistryForVersion, type SchemaVersionWithRegistry } from '@ifc-lite/parser';
 import { readStepSlots, splitTopLevelListItems } from './step-argument-parser.js';
 import { BARE_REF_RE } from './reference-collector.js';
-import { NONREL_REF_LIST_REGISTRY_NAMES } from './nonrel-ref-list-types.js';
+import { getNonRelRefListRegistryNames } from './nonrel-ref-list-types.js';
 import type { IfcSchemaVersion } from './schema-converter.js';
 
 function isRegistryVersion(version: IfcSchemaVersion): version is SchemaVersionWithRegistry {
@@ -114,7 +114,7 @@ function isRegistryVersion(version: IfcSchemaVersion): version is SchemaVersionW
  * {@link SchemaVersionWithRegistry} take this path automatically, by
  * construction, with no version list to keep in sync here.
  *
- * Read PER SLOT because a type joins `NONREL_REF_LIST_TYPES` on the strength
+ * Read PER SLOT because a type joins `getNonRelRefListTypes()` on the strength
  * of ONE qualifying attribute, while this function rewrites every
  * parenthesised slot on the line. `IfcTextureMap` qualifies through
  * `Maps : LIST [1:?]` but also carries `Vertices : LIST [3:?]`;
@@ -128,7 +128,7 @@ function readAggregateSlot(
   slotIndex: number,
   schemaVersion: IfcSchemaVersion,
 ): { optional: boolean; lowerBound: number } | undefined {
-  const registryName = NONREL_REF_LIST_REGISTRY_NAMES.get(entityType);
+  const registryName = getNonRelRefListRegistryNames().get(entityType);
   if (registryName === undefined || !isRegistryVersion(schemaVersion)) return undefined;
   const attr = getSchemaRegistryForVersion(schemaVersion).entities[registryName]?.allAttributes?.[slotIndex];
   if (attr === undefined || !(attr.isList || attr.isSet)) return undefined;

@@ -15,9 +15,9 @@ let cached: Promise<IfcClasses> | undefined;
 
 /** Build the lookups from the schema tables once. The tables load lazily: the writer never needs them. */
 export function loadIfcClasses(): Promise<IfcClasses> {
-  return cached ??= import('@ifc-lite/data').then(({ ENTITIES_IFC2X3, ENTITIES_IFC4_EXPRESS, ENTITIES_IFC4X3 }): IfcClasses => {
+  return cached ??= import('@ifc-lite/data').then(({ getEntitiesIfc2x3, getEntitiesIfc4Express, getEntitiesIfc4x3 }): IfcClasses => {
     const product = new Map<string, string>(), spatial = new Map<string, string>([['IFCPROJECT', 'IfcProject']]);
-    for (const entities of [ENTITIES_IFC4X3, ENTITIES_IFC4_EXPRESS, ENTITIES_IFC2X3]) {
+    for (const entities of [getEntitiesIfc4x3(), getEntitiesIfc4Express(), getEntitiesIfc2x3()]) {
       const parents = new Map(entities.map(e => [e.name, e.parent]));
       for (const entity of entities) {
         if (entity.abstract) continue;

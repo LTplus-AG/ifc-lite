@@ -44,7 +44,8 @@ export function createSpatialMutationSelector(): (state: ViewerState) => number 
   let token = 0;
   return state => {
     const next: unknown[] = [state.hierarchyMode];
-    if (state.hierarchyMode !== 'spatial') next.push(state.mutationVersion);
+    if (state.hierarchyMode !== 'spatial' || state.mutationViews.size === 0
+      || [...state.models].some(([id, model]) => model.ifcDataStore && !state.mutationViews.has(id))) next.push(state.mutationVersion);
     else for (const [id, view] of state.mutationViews) {
       const store = state.models.get(id)?.ifcDataStore ?? state.ifcDataStore;
       next.push(id, store, view);

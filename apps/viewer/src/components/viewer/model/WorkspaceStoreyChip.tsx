@@ -46,7 +46,10 @@ export function pickWorkspaceStorey(storey: WorkspaceStorey): void {
 export function useWorkspaceStoreyGroups(): StoreyPickerGroup[] {
   const [selectGroups] = useState(() => {
     let previous: StoreyPickerGroup[] = [];
+    let input: ReturnType<typeof useViewerStore.getState> | undefined;
     return (s: ReturnType<typeof useViewerStore.getState>) => {
+      if (s === input) return previous;
+      input = s;
       const next = s.session ? editableModels(s).map(model => ({
         modelId: model.id, modelName: model.name, storeys: modelStoreys(s, model.id),
       })) : [];

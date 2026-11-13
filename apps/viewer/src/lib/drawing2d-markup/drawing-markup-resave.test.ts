@@ -208,4 +208,42 @@ describe('saveDrawingMarkupToModel on a reopened model with embedded markup', ()
     }
     assert.deepEqual(danglingRefs(saved), []);
   });
+
+  it('removes styled items on markup geometry with it, keeping a style a survivor shares', async () => {
+    const { step } = await reopenedWith(ONE_MEASURE);
+    const polyline = /^#(\d+)=IFCPOLYLINE\(/m.exec(step);
+    assert.ok(polyline, 'expected the measurement polyline in the saved file');
+    const polylineId = polyline[1];
+    const context = /^#(\d+)=IFCGEOMETRICREPRESENTATIONSUBCONTEXT\(/m.exec(step);
+    assert.ok(context, 'expected the markup sub-context in the saved file');
+    const contextId = context[1];
+    // One style only the markup polyline uses, one shared with a foreign
+    // annotation's styled polyline (a style edit or another tool could add
+    // either). The writer itself emits no styled items.
+    const styles = [
+      '#9101=IFCCOLOURRGB($,0.,1.,0.);',
+      '#9102=IFCCURVESTYLE($,$,$,#9101,$);',
+      `#9103=IFCSTYLEDITEM(#${polylineId},(#9102),$);`,
+      '#9111=IFCCOLOURRGB($,1.,0.,0.);',
+      '#9112=IFCCURVESTYLE($,$,$,#9111,$);',
+      `#9113=IFCSTYLEDITEM(#${polylineId},(#9112),$);`,
+      '#9120=IFCCARTESIANPOINT((9.,9.));',
+      '#9121=IFCPOLYLINE((#9120,#9120));',
+      '#9122=IFCSTYLEDITEM(#9121,(#9112),$);',
+      `#9123=IFCSHAPEREPRESENTATION(#${contextId},'Annotation','Curve2D',(#9121));`,
+      '#9124=IFCPRODUCTDEFINITIONSHAPE($,$,(#9123));',
+      "#9125=IFCANNOTATION('0styled00000000000000',#4,'Styled note',$,'Vendor:Note',$,#9124);",
+    ].join('\n');
+    const store = await open(step.replace(/^ENDSEC;\s*END-ISO-10303-21;/m, `${styles}\nENDSEC;\nEND-ISO-10303-21;`));
+
+    assert.equal(saveDrawingMarkupToModel('m1', NO_MARKUP).previousRemoved, 1);
+    const saved = exportStep(store);
+    for (const id of [polylineId, '9101', '9102', '9103', '9113']) {
+      assert.doesNotMatch(saved, new RegExp(`^#${id}=`, 'm'), `#${id} only decorated removed markup`);
+    }
+    for (const id of ['9111', '9112', '9120', '9121', '9122', '9125']) {
+      assert.match(saved, new RegExp(`^#${id}=`, 'm'), `shared #${id} must survive`);
+    }
+    assert.deepEqual(danglingRefs(saved), []);
+  });
 });

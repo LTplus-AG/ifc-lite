@@ -166,19 +166,27 @@ export function removeEmbeddedDrawingMarkup(store: IfcDataStore, editor: StoreEd
     }
   }
 
-  // A candidate falls once nothing alive references it; a styled item also
-  // needs the item it styles to fall.
+  // A candidate falls once nothing alive references it. A styled item never
+  // falls on its own: it falls together with the item it styles, so a
+  // candidate styled item referencing `id` does not keep `id` alive as long
+  // as nothing alive references that styled item either.
   const styledItem = (id: number): number | null | undefined =>
     reader.type(id) === 'IFCSTYLEDITEM' ? refId(reader.attributes(id)?.[STYLED_ITEM_INDEX]) : undefined;
   let changed = true;
   while (changed) {
     changed = false;
     for (const id of candidates) {
-      if (doomed.has(id)) continue;
-      const styled = styledItem(id);
-      if (styled !== undefined && (styled === null || !doomed.has(styled))) continue;
-      if (referencers(id).every((parent) => doomed.has(parent))) {
+      if (doomed.has(id) || styledItem(id) !== undefined) continue;
+      const styles: number[] = [];
+      const free = referencers(id).every((parent) => {
+        if (doomed.has(parent)) return true;
+        if (!candidates.has(parent) || styledItem(parent) !== id) return false;
+        styles.push(parent);
+        return referencers(parent).every((above) => doomed.has(above));
+      });
+      if (free) {
         doomed.add(id);
+        for (const style of styles) doomed.add(style);
         changed = true;
       }
     }

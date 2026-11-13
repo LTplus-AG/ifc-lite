@@ -148,3 +148,18 @@ it.each([
   expect(result.content).toEqual(expect.arrayContaining([expect.objectContaining({ text: expect.stringMatching(/scope|permission|read.only/i) })]));
   expect({ entities: view.getNewEntities(), mutations: view.getMutations() }).toEqual(before);
 });
+
+
+it('#9352 the add plan accepts the same relative request as storey_add', async () => {
+  const { registry, call } = await session();
+  const S = registry.get('alpha')!.bim.store;
+  const before = S.listStoreyLevels('alpha');
+  const request = { reference_storey_express_id: 42, side: 'below' };
+  const plan = await call('storey_plan_add', request);
+  expect(plan.isError).not.toBe(true);
+  expect(plan.structuredContent).toMatchObject({ refusal: null });
+  expect(S.listStoreyLevels('alpha')).toEqual(before);
+  const added = await call('storey_add', request);
+  expect(added.isError).not.toBe(true);
+  expect(added.structuredContent).toMatchObject({ Name: 'Level 2', Elevation: -3 });
+});

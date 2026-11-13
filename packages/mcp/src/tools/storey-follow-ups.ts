@@ -6,6 +6,7 @@ import type { JsonSchema } from '../protocol/index.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import type { Tool } from './types.js';
 import { okResult, resolveModel } from './util.js';
+import { storeyAddInput } from './storey-add-input.js';
 
 const id: JsonSchema = { type: 'integer', minimum: 1 };
 const modelId: JsonSchema = { type: 'string', description: 'Required when multiple models are loaded.' };
@@ -22,22 +23,17 @@ const invalid = (error: unknown): never => {
 export const storeyFollowUpTools: Tool[] = [
   {
     name: 'storey_plan_add', scope: 'read',
-    description: 'Dry run of adding a storey: refusal, relative top bindings and elements that cannot resize. Writes nothing. Elevation is metres.',
+    description: 'Dry run of adding a storey: refusal, relative top bindings and elements that cannot resize. Writes nothing. Accepts Name and Elevation, or a reference storey and side as storey_add does. Elevation is metres.',
     inputSchema: { type: 'object', properties: {
       model_id: modelId, Name: { type: 'string', minLength: 1 }, Elevation: { type: 'number' },
       Description: { type: 'string' }, LongName: { type: 'string' }, GlobalId: { type: 'string' },
-      reference_storey_express_id: id, building_express_id: id,
-    }, required: ['Name', 'Elevation'], additionalProperties: false },
+      reference_storey_express_id: id, side: { type: 'string', enum: ['above', 'below'] }, building_express_id: id,
+    }, anyOf: [{ required: ['Name', 'Elevation'] }, { required: ['reference_storey_express_id'] }], additionalProperties: false },
     handler(input, ctx) {
       const model = resolveModel(ctx, input.model_id as string | undefined);
       try {
-        const plan = model.bim.store.planAddStorey(model.id, {
-          Name: input.Name as string, Elevation: input.Elevation as number,
-          Description: input.Description as string | undefined, LongName: input.LongName as string | undefined,
-          GlobalId: input.GlobalId as string | undefined,
-          referenceStoreyId: input.reference_storey_express_id as number | undefined,
-          buildingId: input.building_express_id as number | undefined,
-        });
+        const params = storeyAddInput(input, (reference, side) => model.bim.store.suggestStorey(model.id, reference, side));
+        const plan = model.bim.store.planAddStorey(model.id, params);
         return okResult(plan.refusal ? `Refused: ${plan.refusal}` : `Binds ${plan.bindings.length} element(s); ${plan.unresized.length} cannot resize.`, { ...plan });
       } catch (error) { return invalid(error); }
     },

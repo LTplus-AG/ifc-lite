@@ -129,6 +129,26 @@ export function calculateMeshBounds(meshes: MeshData[]): { bounds: Bounds3D; sta
 }
 
 /**
+ * Widen `bounds` to hold every point cloud's extent, so fit-to-view, the
+ * section-plane slider and the camera near/far all see the points too. The
+ * clouds carry their own world bounding boxes, so this never walks a point.
+ */
+export function expandBoundsForPointClouds(
+  bounds: Bounds3D,
+  pointClouds: readonly { chunk: { bbox: { min: [number, number, number]; max: [number, number, number] } } }[],
+): void {
+  for (const cloud of pointClouds) {
+    const { min, max } = cloud.chunk.bbox;
+    bounds.min.x = Math.min(bounds.min.x, min[0]);
+    bounds.min.y = Math.min(bounds.min.y, min[1]);
+    bounds.min.z = Math.min(bounds.min.z, min[2]);
+    bounds.max.x = Math.max(bounds.max.x, max[0]);
+    bounds.max.y = Math.max(bounds.max.y, max[1]);
+    bounds.max.z = Math.max(bounds.max.z, max[2]);
+  }
+}
+
+/**
  * Create coordinate info from bounds
  *
  * @param bounds - Calculated geometry bounds

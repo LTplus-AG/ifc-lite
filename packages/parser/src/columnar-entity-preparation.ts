@@ -9,7 +9,7 @@ import { buildCompactEntityIndexAsync } from './compact-entity-index.js';
 import { selectEntityColumns } from './select-entity-columns.js';
 import { getInheritanceChain, isKnownType } from './ifc-schema.js';
 import {
-  GEOMETRY_TYPES, SPATIAL_TYPES, HIERARCHY_REL_TYPES, PROPERTY_REL_TYPES,
+  GEOMETRY_TYPES, SPATIAL_TYPES, getHierarchyRelTypes, PROPERTY_REL_TYPES,
   PROPERTY_ENTITY_TYPES, PROPERTY_CONTAINER_TYPES, ASSOCIATION_REL_TYPES, isIfcTypeLikeEntity,
   REL_TYPE_MAP, SECONDARY_REL_TYPE_MAP,
 } from './columnar-parser-indexes.js';
@@ -134,6 +134,8 @@ export async function prepareColumnarEntities(
       return chain.some(ancestor => set.has(ancestor.toUpperCase()));
   }
 
+  const hierarchyRelTypes = getHierarchyRelTypes();
+
   // Cache: type name → category (avoids 4.4M .toUpperCase() calls)
   const typeCategoryCache = new Map<string, number>();
   function getCategory(type: string): number {
@@ -142,7 +144,7 @@ export async function prepareColumnarEntities(
       const upper = getTypeUpper(type);
       if (SPATIAL_TYPES.has(upper) || isSubtypeOfAny(upper, SPATIAL_TYPES)) cat = CAT_SPATIAL;
       else if (GEOMETRY_TYPES.has(upper) || isSubtypeOfAny(upper, GEOMETRY_TYPES)) cat = CAT_GEOMETRY;
-      else if (HIERARCHY_REL_TYPES.has(upper)) cat = CAT_HIERARCHY_REL;
+      else if (hierarchyRelTypes.has(upper)) cat = CAT_HIERARCHY_REL;
       else if (PROPERTY_REL_TYPES.has(upper)) cat = CAT_PROPERTY_REL;
       else if (PROPERTY_ENTITY_TYPES.has(upper)) cat = CAT_PROPERTY_ENTITY;
       else if (ASSOCIATION_REL_TYPES.has(upper)) cat = CAT_ASSOCIATION_REL;

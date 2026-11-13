@@ -69,11 +69,18 @@ export function readPropertySets(store: IfcDataStore, id: number, view?: Metadat
     for (const source of store.onDemandPropertyMap?.get(id) ?? []) related.add(source);
   }
   const extractor = new EntityExtractor(store.source);
-  if (!defs.type) return extractPsetsFromIds(store, extractor, [...related], view);
   const ownIds = new Set(defs.own);
-  const result = extractPsetsFromIds(store, extractor, [...ownIds], view);
-  appendSetsFromSecondSource(result, ownIds, new Set(result.map(setIdentityKey)), [...related],
+  const result = defs.type ? extractPsetsFromIds(store, extractor, [...ownIds], view)
+    : extractPsetsFromIds(store, extractor, [...related], view);
+  if (defs.type) appendSetsFromSecondSource(result, ownIds, new Set(result.map(setIdentityKey)), [...related],
     ids => extractPsetsFromIds(store, extractor, ids, view));
+  if (!store.source.length) {
+    // A table-backed model has no source record to resolve. Preserve its
+    // saved definitions alongside raw authored sets; a current raw definition
+    // with that saved identity takes precedence.
+    const current = new Set(result.map(setIdentityKey));
+    return [...store.properties.getForEntity(id).filter(set => !current.has(setIdentityKey(set))), ...result];
+  }
   return result;
 }
 

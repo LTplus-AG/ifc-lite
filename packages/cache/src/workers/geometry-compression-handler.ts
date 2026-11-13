@@ -4,7 +4,7 @@
 
 import { chooseStoredGeometryChunk, inflateRaw } from '../sections/geometry-codec.js';
 import { isCompressionRequest, isDecodeRequest, isInflateRequest, type CompressionResponse } from './geometry-compression-protocol.js';
-import { decodeChunkRecords } from '../sections/geometry-chunks.js';
+import { decodeChunkRecords } from '../sections/geometry-chunk-decode.js';
 import { packDecodedChunk } from './decoded-chunk-transfer.js';
 
 /** Canonical codec handler shared by the real worker and transport contract tests. */

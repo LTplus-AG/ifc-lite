@@ -41,8 +41,17 @@ export function registerToastDialog(id: string, ancestors: readonly string[]): (
     // A nested dialog can close on success while its parent stays open. Keep
     // its notice readable there, but never adopt it into a later-opened modal.
     // Silent until Dialog's layout cleanup publishes the new snapshot.
-    toasts = toasts.map(item => item.dialogId === id
+    const reassigned = toasts.map(item => item.dialogId === id
       ? { ...item, dialogId: currentDialog(item.dialogScopes) } : item);
+    // Independent unkeyed notices can now share an anchor. Coalesce before
+    // the next emission enforces the cap, keeping the latest action/lifetime.
+    toasts = reassigned.reduce<Toast[]>((kept, item) => {
+      const previous = item.key === undefined ? kept.find(t => t.key === undefined
+        && t.dialogId === item.dialogId && t.type === item.type && t.message === item.message) : undefined;
+      if (!previous) return [...kept, item];
+      clearTimer(previous.id);
+      return [...kept.filter(t => t.id !== previous.id), { ...item, count: previous.count + item.count }];
+    }, []);
   };
 }
 

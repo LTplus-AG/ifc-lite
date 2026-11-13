@@ -66,7 +66,7 @@ export function CesiumIonExportDialog({ trigger, upload = uploadToCesiumIon }: C
         return { success: false, message: t(RETAINED_EXACT_ONLY_REASON) };
       }
       const model = resolveExportModel(state.models, selectedId, state.ifcDataStore, state.geometryResult);
-      if (!model?.ifcDataStore || model.schemaVersion === 'IFC5' || model.sourceSchema) {
+      if (!model?.ifcDataStore || model.schemaVersion === 'IFC5' || model.ifcDataStore.sourceKind === 'tabular' || model.sourceSchema) {
         return { success: false, message: t('ionUpload.noModel') };
       }
       // Preserve the invocation's export identity through asynchronous failures.

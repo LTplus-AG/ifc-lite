@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { resolvedElementTags, elementTagsSvg } from '@/lib/drawing/element-tags';
+import { escapeTagXml as escapeXml, elementTagsDxf, drawElementTagsPdf } from '@/lib/drawing/element-tag-export';
 import { useCallback } from 'react';
 import { buildDxfUnderlaySvg, drawDxfUnderlaysPdf, mappedDxfUnderlayOptions } from '@/lib/export/drawing-vector-underlays';
 import { drawingReferenceSvg, snapshotDrawingReferences, rasterizeReferenceLayer } from '@/lib/export/drawing-raster-references';
@@ -332,16 +334,6 @@ function useDrawingExport({
     // Formula: modelUnits = paperMm * scale / 1000
     const mmToModel = (mm: number) => svgExportMmToWorld(mm, effectiveScale);
 
-    // Helper to escape XML
-    const escapeXml = (str: string): string => {
-      return str
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&apos;');
-    };
-
     // flipX/flipY (axis-specific, matching canvas rendering) come from
     // `viewport` above — computeSvgExportViewport resolves the same
     // 'down'/'front'/'side' rule this hook used to compute inline.
@@ -614,6 +606,7 @@ function useDrawingExport({
       );
     }
 
+    svg += elementTagsSvg(resolvedElementTags(drawing), (x, y) => ({ x: flipX ? -x : x, y: flipY ? -y : y }), mmToModel(3.5));
     svg += '</svg>';
     return svg;
   }, [drawing, displayOptions, cutPolygonStyleContext, measure2DResults, polygonArea2DResults, textAnnotations2D, cloudAnnotations2D, sectionPlane.axis, dxfUnderlays, scanSection]);
@@ -685,16 +678,6 @@ function useDrawingExport({
     // Drawing content FIRST (so frame/title block render on top)
     svg += `  <g id="drawing-content" clip-path="url(#viewport-clip)">
 `;
-
-    // Helper to escape XML
-    const escapeXml = (str: string): string => {
-      return str
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&apos;');
-    };
 
     // Helper to get polygon path in paper coordinates
     const polygonToPath = (polygon: { outer: { x: number; y: number }[]; holes: { x: number; y: number }[][] }): string => {
@@ -812,8 +795,8 @@ function useDrawingExport({
       );
     }
 
+    svg += elementTagsSvg(resolvedElementTags(drawing), modelToPaper, 3.5);
     svg += '  </g>\n\n';
-
     // Render frame (on top of drawing content)
     const frameResult = renderFrame(activeSheet.paper, activeSheet.frame);
     svg += frameResult.svgElements;
@@ -902,7 +885,7 @@ function useDrawingExport({
       showHiddenLines: displayOptions.showHiddenLines,
       coordinateTransform,
       metadataComment,
-      underlays: mappedDxfUnderlayOptions(dxfUnderlays, sectionPlane.axis),
+      underlays: [...mappedDxfUnderlayOptions(dxfUnderlays, sectionPlane.axis), elementTagsDxf(drawing, 3.5 * displayOptions.scale / 1000)],
       // The traced scan outline (#6871) on its own layer, through the same
       // georeference transform as the cut.
       polylineLayers: displayOptions.showScanSection ? scanOutlineDxfLayers(scanSection.outline) : [],
@@ -916,7 +899,7 @@ function useDrawingExport({
       georeferenced: isGeoreferenced,
     });
   }, [
-    drawing, dxfUnderlays, displayOptions.showHiddenLines, displayOptions.showScanSection, scanSection.outline,
+    drawing, dxfUnderlays, displayOptions.scale, displayOptions.showHiddenLines, displayOptions.showScanSection, scanSection.outline,
     sectionPlane, ifcDataStore, coordinateInfo, storeModels, anchorModelIdOverride, georefMutations, mutationVersion,
   ]);
   // Export scaled PDF (issue #2042): a true-vector PDF sized so the
@@ -927,7 +910,7 @@ function useDrawingExport({
   //
   // Scope, deliberately smaller than the SVG export: cut-polygon fills and
   // outlines (same colours as the SVG, via resolveCutPolygonStyle) and
-  // drawing LINES. Not yet included: text/cloud annotations, and the
+  // drawing LINES and live element tags. Not yet included: text/cloud annotations, and the
   // point-cloud scan overlay. Those are straightforward follow-ups once this scale
   // plumbing is reviewed; see the PR description. Reference raster pages and
   // DXF vectors are included beneath these strokes (#6615).
@@ -1074,6 +1057,7 @@ function useDrawingExport({
     // Own mapped vectors at click time; model/reference edits during async export
     // cannot replace the geometry whose bounds/scale were used above.
     const vectorSnapshot = structuredClone(dxfUnderlays);
+    const tagSnapshot = resolvedElementTags(drawing);
     void recordActivity({ kind: 'export', title: 'activityTray.job.export', panel: 'drawing',
       subject: `section-${sectionPlane.axis}-${sectionPlane.position} · PDF` }, async () => {
       try {
@@ -1133,6 +1117,7 @@ function useDrawingExport({
           doc.line(p0.x, p0.y, p1.x, p1.y);
         }
         doc.setLineDashPattern([], 0);
+        drawElementTagsPdf(doc, tagSnapshot, mapPoint);
         // v1 has no title block, so this filename is the SOLE record of the
         // sheet's scale — round-tripping through Math.round() here would
         // file a 1:99.5 export as "…-1-100", silently misreporting it (same

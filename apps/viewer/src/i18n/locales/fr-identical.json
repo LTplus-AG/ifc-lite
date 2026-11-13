@@ -1,4 +1,8 @@
 {
+  "agentBridge.panel.duration": {
+    "value": "{ms} ms",
+    "reason": "Runtime placeholder with a unit symbol (milliseconds); no English prose."
+  },
   "align.mode.centre": {
     "value": "Centre",
     "reason": "French uses the same spelling « Centre » for this contextual label; reviewed against its feature meaning."

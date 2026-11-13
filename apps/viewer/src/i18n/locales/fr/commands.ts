@@ -91,6 +91,8 @@ export const commandsFr = {
   "commands.search.exitCycle": "Arrêter le parcours des correspondances",
   "commands.ui.commandPalette": "Palette de commandes",
   "commands.ui.openPanel": "Ouvrir un panneau depuis la barre latérale ({sidePanels} ; {bottomPanels} s’ouvrent en bas)",
+  "commands.ui.openPanelSideOnly": "Ouvrir un panneau depuis la barre latérale ({sidePanels})",
+  "commands.ui.openPanelEntry": "{digit} {panel}",
   "commands.ui.toggleSidebar": "Afficher ou réduire la barre latérale (développée ⇄ icônes)",
   "commands.ui.closeAllPanels": "Fermer tous les panneaux (conserve la visibilité)",
   "commands.ui.closeOverlay": "Fermer le menu ou la boîte de dialogue ouverte",

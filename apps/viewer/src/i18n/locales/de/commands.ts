@@ -91,6 +91,8 @@ export const commandsDe = {
   "commands.search.exitCycle": "Durchgehen der Treffer beenden",
   "commands.ui.commandPalette": "Befehlspalette",
   "commands.ui.openPanel": "Bereich aus der Leiste öffnen ({sidePanels}; {bottomPanels} öffnen unten)",
+  "commands.ui.openPanelSideOnly": "Bereich aus der Leiste öffnen ({sidePanels})",
+  "commands.ui.openPanelEntry": "{digit} {panel}",
   "commands.ui.toggleSidebar": "Seitenleiste umschalten (erweitern ⇄ auf Symbole reduzieren)",
   "commands.ui.closeAllPanels": "Alle Bereiche schließen (Sichtbarkeit bleibt erhalten)",
   "commands.ui.closeOverlay": "Offenes Menü oder Dialog schließen",

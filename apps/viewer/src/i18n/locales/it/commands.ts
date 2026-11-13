@@ -91,6 +91,8 @@ export const commandsIt = {
   "commands.search.exitCycle": "Termina la navigazione tra corrispondenze",
   "commands.ui.commandPalette": "Tavolozza dei comandi",
   "commands.ui.openPanel": "Apri un pannello dalla barra laterale ({sidePanels}; {bottomPanels} si aprono in basso)",
+  "commands.ui.openPanelSideOnly": "Apri un pannello dalla barra laterale ({sidePanels})",
+  "commands.ui.openPanelEntry": "{digit} {panel}",
   "commands.ui.toggleSidebar": "Espandi o comprimi la barra laterale a icone",
   "commands.ui.closeAllPanels": "Chiudi tutti i pannelli (mantiene la visibilità)",
   "commands.ui.closeOverlay": "Chiudi il menu o la finestra di dialogo aperta",

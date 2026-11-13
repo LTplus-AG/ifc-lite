@@ -44,7 +44,7 @@ const MIN_WALL_LENGTH = 0.01;
  * `tx.store` and returns the express ids whose mesh it changed. False (with
  * a toast) when the edit was refused or threw; nothing is left behind then.
  */
-export function runInspectorEdit(modelId: string, edit: (tx: AuthoringTransaction) => readonly number[], remeshCause?: RemeshCause): boolean {
+export function runInspectorEdit(modelId: string, edit: (tx: AuthoringTransaction) => readonly number[], onError?: (reason: string) => void, remeshCause?: RemeshCause): boolean {
   const command: ModelingCommand = {
     id: 'inspector.edit',
     labelKey: 'modelInspector.edit',
@@ -57,7 +57,7 @@ export function runInspectorEdit(modelId: string, edit: (tx: AuthoringTransactio
   };
   const get = useViewerStore.getState;
   const outcome = runTransaction(useViewerStore, command, null, { get, modelId, storeyId: get().session?.storeyId ?? null, workplane: null });
-  if (!outcome.ok) toast.error(outcome.reason);
+  if (!outcome.ok) { toast.error(outcome.reason); onError?.(outcome.reason); }
   return outcome.ok;
 }
 
@@ -135,7 +135,7 @@ export function setWallLength(modelId: string, expressId: number, length: number
     const result = resizeWallMetres(tx.api, model, tx.modelId, expressId, [wall.start[0], wall.start[1], wall.start[2]], end, tx.batchId, { moveJoinedEnds: true });
     if (!result.ok) throw new Error(`Couldn't resize the wall: ${result.reason}`);
     return result.walls;
-  }, 'hostsChanged');
+  }, undefined, 'hostsChanged');
 }
 
 /** A wall's thickness and/or height, in metres. */

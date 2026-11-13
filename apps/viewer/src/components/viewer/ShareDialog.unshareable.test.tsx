@@ -171,6 +171,23 @@ describe('ShareDialog: models the share seed cannot carry', () => {
     assert.equal(starts.length, 0);
   });
 
+  it('still mints for a GLB beside a .3dm: that workspace got an empty room on main', async (t) => {
+    // The refusal is "every model in scope is one the seed must drop", not
+    // "nothing is seedable". A GLB has no store and never seeded anything, so
+    // this workspace minted an empty owner room on main and must keep doing
+    // it — loading an unrelated `.3dm` beside it is not a reason to take the
+    // owner's session away. The `.3dm` is still named.
+    const { relay, beforeConsent } = await createLinkOver(
+      t, makeModel('a', 'scan.glb', 0, 'none'), makeModel('b', 'terrain.3dm', 1_000_000, 'tabular'),
+    );
+
+    assert.match(beforeConsent, /Left out of the shared session, no IFC records to share from: terrain\.3dm\./,
+      'the .3dm is named, but not as "nothing here can be shared"');
+    assert.doesNotMatch(beforeConsent, /Nothing here can be shared/);
+    assert.equal(relay.mints().length, 1, 'the empty owner room is still created, as on main');
+    assert.deepEqual(starts[0]?.seed?.models, [], 'with an empty seed, which is the owner path (#4444)');
+  });
+
   it('leaves a store-less workspace exactly as it was: a session, and nothing claimed about records', async (t) => {
     const { relay, beforeConsent } = await createLinkOver(t, makeModel('a', 'scan.glb', 0, 'none'));
 

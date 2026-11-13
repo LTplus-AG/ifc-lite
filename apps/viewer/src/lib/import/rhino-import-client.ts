@@ -57,8 +57,16 @@ const megabytes = (bytes: number) => `${Math.round(bytes / (1024 * 1024))} MB`;
  * request transfers) for a read that was always going to be refused, and the
  * allocation that fails on the way there is reported as `worker-failed`
  * rather than the size-ceiling message the user can act on. Same code and
- * same wording as the reader's own refusal, so which side caught it does not
- * change what is said.
+ * same wording as the reader's own refusal.
+ *
+ * One thing the two do NOT share is the ORDER. `readRhino3dm` reads the
+ * archive version first, so it answers `newer-archive` for an oversized file
+ * from a Rhino it does not know; this answers `too-large`. Both refusals are
+ * true and both are actionable, and the alternative is mirroring the header
+ * parser here as well, so the ordering difference is accepted rather than
+ * closed. It is not reachable for a non-`.3dm` at all: `detectFormat` routes
+ * this path on the 24-byte Rhino magic, so `not-3dm` cannot be the answer by
+ * the time anything gets here.
  */
 export function rhino3dmSizeRefusal(byteLength: number): RhinoImportError | null {
   if (byteLength <= MAX_3DM_IMPORT_BYTES) return null;

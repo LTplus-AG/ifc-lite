@@ -126,17 +126,23 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
   // model with a store the seed cannot read is named; a GLB or point cloud
   // has nothing to drop (see `unshareableModelsInScope`).
   //
-  // Both halves read the SELECTED scope, never `seedableCount`, which is
+  // Every clause reads the SELECTED scope, never `seedableCount`, which is
   // fixed to 'all' for the "{n} of {m} models" notice. Mixing them made the
   // line disagree with the mint: an 'active' share of a `.3dm` beside a
-  // loaded IFC said "left out" and then created no room (`useShareRoomCreation`
-  // asks `seedableModelsInScope` at the same scope).
+  // loaded IFC said "left out" and then created no room.
+  //
+  // "Nothing here can be shared" is the no-room sentence, so it has to be
+  // true exactly when `useShareRoomCreation` declines to mint — when EVERY
+  // model in scope is refused. A GLB beside a `.3dm` still gets its empty
+  // room, as on main, and reads the "left out" line instead.
   const unshareable = useMemo(() => {
     if (collabRoomId) return null;
-    const names = unshareableModelsInScope(models, activeModelId, scope).join(', ');
-    if (!names) return null;
-    const seedable = seedableModelsInScope(models, activeModelId, scope).length;
-    return t(seedable === 0 ? 'shareDialog.shareSkipped.allRefused' : 'shareDialog.shareSkipped.noRecords', { models: names });
+    const refused = unshareableModelsInScope(models, activeModelId, scope);
+    if (refused.length === 0) return null;
+    const noRoom = refused.length === modelsInShareScope(models, activeModelId, scope).length
+      && seedableModelsInScope(models, activeModelId, scope).length === 0;
+    return t(noRoom ? 'shareDialog.shareSkipped.allRefused' : 'shareDialog.shareSkipped.noRecords',
+      { models: refused.join(', ') });
   }, [models, activeModelId, scope, collabRoomId, t]);
   const isJoiner = Boolean(collabRoomId && collabRole && collabRole !== 'admin');
   // The room exists but the model is still going in: no invite until it has.

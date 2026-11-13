@@ -32,7 +32,7 @@ import {
 } from '@/components/ui/select';
 import { useViewerStore } from '@/store';
 import { hasRetainedShapeOnlyModel, RETAINED_SHAPE_ONLY_REASON } from '@/store/retainedGeometry';
-import { buildHiddenIfcTypes } from '@/store/typeVisibilityFilter';
+import { buildHiddenIfcTypes, classFilterActive, isMeshTypeVisible } from '@/store/typeVisibilityFilter';
 import { retypedClasses } from '@/lib/visibility/structural-view';
 import { resolveExportVisibility } from '@/store/exportVisibility';
 import { posthog, trackExportCompleted } from '@/lib/analytics';
@@ -240,9 +240,9 @@ export function GLBExportDialog({ surface, trigger }: GLBExportDialogProps) {
         );
         const globalHidden = visibleOnly ? getGlobalHiddenIds(selectedModelId) : undefined;
         const globalIsolated = visibleOnly ? getGlobalIsolatedIds(selectedModelId) : undefined;
-        const hiddenIfcTypes = visibleOnly ? buildHiddenIfcTypes(typeVisibility) : undefined;
-        // Gate by the class after a retype, as the viewport does (#10119).
-        const retyped = visibleOnly ? retypedClasses(useViewerStore.getState()) : undefined;
+        // Class toggles by the class after a retype, as the viewport gates them (#10119).
+        // Structural mode arrives through `globalHidden`.
+        const retyped = visibleOnly && classFilterActive(typeVisibility) ? retypedClasses(useViewerStore.getState()) : undefined;
         // `globalIsolated` is `null` for "no filter" vs an empty-but-non-null `Set`
         // for "isolation active, matches nothing" (`resolveExportVisibility`) — a
         // `.size > 0` check here would collapse the two and export the whole model
@@ -255,8 +255,7 @@ export function GLBExportDialog({ surface, trigger }: GLBExportDialogProps) {
             // origin; the from-bytes assembler excludes them (mesh_visible), as must this.
             if (m.geometryClass === GEOM_CLASS_INSTANCED_TYPE) return false;
             if (!visibleOnly) return true;
-            const ifcType = retyped?.get(m.expressId) ?? m.ifcType;
-            if (hiddenIfcTypes && ifcType && hiddenIfcTypes.has(ifcType)) return false;
+            if (!isMeshTypeVisible(m, typeVisibility, undefined, retyped)) return false;
             if (hasIsolation && !globalIsolated!.has(m.expressId)) return false;
             if (globalHidden && globalHidden.has(m.expressId)) return false;
             return true;

@@ -79,7 +79,7 @@ test('annot search shows the actual annotation commands without fuzzy noise (#89
     ['tool:annotate', 'vis:ifcAnnotations', 'elements:class-filter']);
 });
 
-test('closing the palette preserves an existing transient toast (#8946)', () => {
+test('closing the palette rehomes an existing transient toast without replacing its lifecycle (#8946, #9875)', () => {
   function Harness() {
     const [open, setOpen] = useState(true);
     return <BimReactContext.Provider value={{} as BimContext}>
@@ -92,12 +92,21 @@ test('closing the palette preserves an existing transient toast (#8946)', () => 
   try {
     const notification = document.querySelector('[data-toast-seq]');
     assert.ok(notification);
+    const sequence = notification.getAttribute('data-toast-seq');
     const close = document.querySelector('button[aria-label="Close"]');
     assert.ok(close);
     click(close);
     assert.equal(document.querySelector('[role="dialog"]'), null);
-    assert.equal(document.querySelector('[data-toast-seq]'), notification,
-      'closing the palette leaves the original toast and its lifecycle intact');
+    // #9875 moves the notice from the modal shelf to the app anchor. Compare
+    // lifecycle identity, not DOM identity; formatting unequal cyclic DOM
+    // objects can exhaust the test runner before it reports the assertion.
+    const surviving = document.querySelectorAll('[data-toast-seq]');
+    assert.equal(surviving.length, 1);
+    assert.equal(surviving[0].getAttribute('data-toast-seq'), sequence);
+    assert.equal(surviving[0].textContent, 'Palette transient regression');
+    act(dismiss);
+    assert.equal(document.querySelector('[data-toast-seq]'), null,
+      'the original dismissal still ends the rehomed notice lifecycle');
   } finally { act(dismiss); }
 });
 

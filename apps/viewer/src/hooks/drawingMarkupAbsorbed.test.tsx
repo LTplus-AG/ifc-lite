@@ -458,12 +458,14 @@ describe('reopening a file whose localStorage entry was seeded from its own embe
     assert.deepEqual(danglingRefs(saved), []);
   });
 
-  it('an entry written before the absorbed set existed absorbs nothing that is not a tagged markup annotation in the file', async () => {
+  it('an entry written before the absorbed set existed absorbs nothing that is not a markup annotation of its kind in the file', async () => {
     const file = fileWithBytes(61, 'old-entry-other.ifc');
     const hash = (await placementSourceIdentity(file))!;
-    // #30 is the storey, #60 an annotation without an IfcLite tag, #999 is not in the file.
+    // #30 is the storey, #60 an annotation without an IfcLite tag, #999 is not in the file,
+    // and #50 is tagged as a measurement, not the text the `ifc-text-50` id names.
+    const text = (id: string) => ({ id, position: { x: 2, y: 2 }, text: 'note', fontSize: 14, color: '#000000', backgroundColor: '#ffffff', borderColor: '#000000' });
     writeOldEntry(hash, [embeddedOriginMeasure(30), embeddedOriginMeasure(60), embeddedOriginMeasure(999)], [
-      { id: 'ifc-text-60', position: { x: 2, y: 2 }, text: 'note', fontSize: 14, color: '#000000', backgroundColor: '#ffffff', borderColor: '#000000' },
+      text('ifc-text-60'), text(`ifc-text-${ANNOTATION_ID}`),
     ]);
 
     heldWasmReply();
@@ -471,6 +473,7 @@ describe('reopening a file whose localStorage entry was seeded from its own embe
     const store = await open('old-entry-other', file, UNTAGGED_FIXTURE);
     await decided('old-entry-other');
     await waitFor(() => useViewerStore.getState().measure2DResults.length === 3, 'the old entry restores');
+    assert.equal(useViewerStore.getState().textAnnotations2D.length, 2, 'setup: both texts restore');
     assert.equal(absorbedEmbeddedMarkupFor('old-entry-other').size, 0);
     await waitFor(() => loadDrawing2DEntry(hash, DEFAULTS)?.absorbedEmbeddedMarkup !== undefined, 'the entry is saved again');
     assert.deepEqual(loadDrawing2DEntry(hash, DEFAULTS)?.absorbedEmbeddedMarkup, []);

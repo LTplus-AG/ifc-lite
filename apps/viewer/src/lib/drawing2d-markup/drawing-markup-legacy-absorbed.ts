@@ -17,11 +17,12 @@
  * identity, or the bare SHA-256 a pre-#7035 entry used), so its expressIds
  * name entities of the bytes now loaded. An item counts only when its
  * expressId is, in the loaded model, a live `IfcAnnotation` whose
- * `ObjectType` is one of the `DRAWING_MARKUP_OBJECTTYPE` tags: an id that
- * points at nothing, at another entity type, or at an annotation without an
- * IfcLite tag absorbs nothing, so the save keeps that entity. The kind in the
- * id is not interpreted here; `drawingMarkupItemExpressId` decides which ids
- * the reader assigns, so a kind added there is covered.
+ * `ObjectType` is the `DRAWING_MARKUP_OBJECTTYPE` tag of the id's kind (the
+ * reader names a `Measure` annotation's item `ifc-measure-N`, and so on): an
+ * id that points at nothing, at another entity type, at an annotation without
+ * an IfcLite tag, or at one tagged as another kind absorbs nothing, so the
+ * save keeps that entity. A kind `drawingMarkupItemExpressId` gains must be
+ * added to {@link TAG_OF_KIND}; until then its items absorb nothing.
  *
  * The identities are the ones the embedded restore records
  * (`restoredEmbeddedMarkupIdentities`), so the sweep and later saves treat
@@ -37,7 +38,13 @@ import { getDrawingMarkupReadContext } from './drawing-markup-context.js';
 import { embeddedMarkupIdentity } from './drawing-markup-absorbed.js';
 import { buildDrawingMarkupMetaLookup, sourceMarkupGlobalId } from './drawing-markup-restore.js';
 
-const MARKUP_TAGS = new Set<unknown>(Object.values(DRAWING_MARKUP_OBJECTTYPE));
+/** The tag of the annotation the embedded reader turns into an item of each id kind. */
+const TAG_OF_KIND: Readonly<Record<string, string>> = {
+  measure: DRAWING_MARKUP_OBJECTTYPE.MEASURE,
+  polygon: DRAWING_MARKUP_OBJECTTYPE.POLYGON_AREA,
+  text: DRAWING_MARKUP_OBJECTTYPE.TEXT,
+  cloud: DRAWING_MARKUP_OBJECTTYPE.CLOUD,
+};
 
 /**
  * The identities of the tagged markup annotations in `modelId`'s loaded file
@@ -56,7 +63,8 @@ export function legacyEntryEmbeddedMarkupIdentities(modelId: string, lists: Iter
       if (expressId === null) continue;
       // @raw-entity-enumeration-ok point lookup of one source entity's type; deletions are checked by the meta lookup
       if (dataStore.entityIndex.byId.get(expressId)?.type?.toUpperCase() !== 'IFCANNOTATION') continue;
-      if (!MARKUP_TAGS.has(meta(expressId)?.objectType)) continue;
+      const tag = TAG_OF_KIND[/^ifc-([a-z]+)-/.exec(item.id)?.[1] ?? ''];
+      if (!tag || meta(expressId)?.objectType !== tag) continue;
       identities.add(embeddedMarkupIdentity(expressId, sourceMarkupGlobalId(dataStore, expressId)));
     }
   }

@@ -74,13 +74,52 @@ export function typeLayerSetInStore(target: Reader, typeId: number, own = ownMat
 export function retargetInheritingLayerUsagesInStore(target: EditTarget, typeId: number, newLayerSetId: number): number[] {
   const scope = typeLayerScopeInStore(target, typeId);
   if (scope.layerSetId === null || scope.layerSetId === newLayerSetId) return [];
+  return repointUsages(target, scope.inheriting, scope.layerSetId, newLayerSetId, ownMaterials(target));
+}
+
+/**
+ * Before `objectIds` are typed by `newTypeId` (#9296). An occurrence drawn with
+ * its old type places that type's layer set through a usage of its own, so the
+ * usage would go on pointing at the OLD type's set after the retype, and the
+ * occurrence would keep the old build-up and thickness. Each such usage is
+ * re-pointed at the new type's layer set (split when an element that is not
+ * being retyped shares it), so the occurrence inherits from the type it now has.
+ *
+ * An occurrence whose layers differ from its old type keeps them. A new type
+ * without a layer set changes nothing: the occurrence keeps the layers it had,
+ * as its own. Returns the occurrences re-pointed; the caller sizes them.
+ */
+export function followTypeLayersOnRetypeInStore(target: EditTarget, newTypeId: number, objectIds: readonly number[]): number[] {
   const own = ownMaterials(target);
-  const inheriting = new Set(scope.inheriting);
+  const newSet = typeLayerSetInStore(target, newTypeId, own);
+  if (newSet === null) return [];
+  const typeOf = new Map<number, number>();
+  for (const rel of readRelatedLists(target.dataStore, 'IfcRelDefinesByType', target.view)) {
+    if (rel.relatingId !== undefined) for (const id of rel.relatedIds) typeOf.set(id, rel.relatingId);
+  }
+  // The retyped occurrences, by the old type's layer set their usage places.
+  const byOldSet = new Map<number, number[]>();
+  for (const id of new Set(objectIds)) {
+    const oldType = typeOf.get(id), material = own.get(id);
+    if (oldType === undefined || oldType === newTypeId || material === undefined) continue;
+    const oldSet = typeLayerSetInStore(target, oldType, own);
+    if (oldSet === null || oldSet === newSet || usageSet(target, material) !== oldSet) continue;
+    byOldSet.set(oldSet, [...(byOldSet.get(oldSet) ?? []), id]);
+  }
+  return [...byOldSet].flatMap(([oldSet, ids]) => repointUsages(target, ids, oldSet, newSet, own));
+}
+
+/**
+ * Point the usages of `followers` (elements whose usage places `oldSetId`) at
+ * `newSetId`, splitting a usage an element outside `followers` shares.
+ */
+function repointUsages(target: EditTarget, followers: readonly number[], oldSetId: number, newLayerSetId: number, own: Map<number, number>): number[] {
+  const inheriting = new Set(followers);
   const users = new Map<number, number[]>();
   for (const rel of readRelatedLists(target.dataStore, 'IfcRelAssociatesMaterial', target.view)) {
     if (rel.relatingId !== undefined) users.set(rel.relatingId, [...(users.get(rel.relatingId) ?? []), ...rel.relatedIds]);
   }
-  const oldTotal = nativeTotal(target, scope.layerSetId), newTotal = nativeTotal(target, newLayerSetId);
+  const oldTotal = nativeTotal(target, oldSetId), newTotal = nativeTotal(target, newLayerSetId);
   /**
    * The usage's offset on the new set: a wall's layers centred on its axis start half the total off it, and stay centred.
    * Null when the offset does not read as a finite number: the original attribute is then kept as it is.
@@ -93,7 +132,7 @@ export function retargetInheritingLayerUsagesInStore(target: EditTarget, typeId:
     return centred ? -newTotal! / 2 : offset;
   };
   const retargeted: number[] = [];
-  for (const usage of new Set(scope.inheriting.map(id => own.get(id)).filter((id): id is number => id !== undefined))) {
+  for (const usage of new Set(followers.map(id => own.get(id)).filter((id): id is number => id !== undefined))) {
     const placed = users.get(usage) ?? [];
     const attributes = attributesOf(target, usage);
     const offset = offsetFor(attributes);
@@ -104,7 +143,7 @@ export function retargetInheritingLayerUsagesInStore(target: EditTarget, typeId:
       continue;
     }
     // Shared with an element that keeps the old set: the inheriting ones move to a usage of their own.
-    const followers = placed.filter(id => inheriting.has(id));
+    const moving = placed.filter(id => inheriting.has(id));
     const anchor = resolveAuthoringAnchor(target.dataStore, target.view);
     const token = (value: unknown) => String(value).replace(/\./g, '');
     const direction = token(attributes?.[1]), sense = token(attributes?.[2]);
@@ -119,8 +158,8 @@ export function retargetInheritingLayerUsagesInStore(target: EditTarget, typeId:
     if (offset === null && attributes?.[3] !== undefined) target.editor.setPositionalAttribute(split, 3, attributes[3] as Raw);
     // ReferenceExtent (IFC4 and later; IFC2X3's usage has no such slot) is carried over unchanged, in native units.
     if (attributes?.[4] !== undefined && attributes[4] !== null) target.editor.setPositionalAttribute(split, 4, attributes[4] as Raw);
-    assignMaterialInStore(target.editor, anchor, split, followers, readRelatedLists(target.dataStore, 'IfcRelAssociatesMaterial', target.view));
-    retargeted.push(...followers);
+    assignMaterialInStore(target.editor, anchor, split, moving, readRelatedLists(target.dataStore, 'IfcRelAssociatesMaterial', target.view));
+    retargeted.push(...moving);
   }
   return retargeted;
 }

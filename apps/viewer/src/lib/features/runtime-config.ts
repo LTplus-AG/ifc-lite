@@ -130,15 +130,17 @@ async function fetchConfig(target: URL, page: URL, fetchImpl: typeof fetch, sign
   let response: Response;
   try {
     response = await fetchImpl(target.href, {
+      // The platform refuses a redirect to another origin before requesting it.
+      mode: 'same-origin',
       credentials: 'same-origin',
       cache: 'no-store',
       signal,
       headers: { Accept: 'application/json' },
     });
   } catch (error) {
-    throw new ViewerConfigError('unreachable', 'The viewer configuration could not be fetched', { cause: error });
+    throw new ViewerConfigError('unreachable', 'The viewer configuration could not be fetched (network failure, or a redirect to another origin)', { cause: error });
   }
-  // A redirect may have left the origin the check above pinned.
+  // A caller's own fetch (a wrapper, a polyfill) may ignore `mode`; the answer must still be ours.
   if (response.url && new URL(response.url, page).origin !== page.origin) {
     throw new ViewerConfigError('cross-origin', `The viewer configuration was redirected away from ${page.origin}`);
   }

@@ -448,6 +448,7 @@ test('#10030 sheet provenance follows selected row evidence, including met rows'
       const ledger=readFileSync(join(dir,'docs/architecture/modelling-parity-ledger.md'),'utf8');
       const row=ledger.split('\n').find(line=>line.includes('(`sheets-pdf-dwg`)')); // @source-text-assertion-ok asserts on executed generator/runner output, not source text
       assert.equal(row.includes('Historical sheet evidence'),!fresh); // @source-text-assertion-ok asserts on executed generator/runner output, not source text
+      assert.equal(row.includes('oracle version unrecorded'),!fresh); // @source-text-assertion-ok executed generator output, not source text
       assert.ok(ledger.split('\n').find(line=>line.includes('(`layered-walls`)')).endsWith('|  |'),'unrelated met rows keep an empty Why not met cell'); // @source-text-assertion-ok executed generator output, not source text
       assert.equal(JSON.parse(readFileSync(join(dir,'tests/modelling-parity/baseline/r.json'),'utf8')).score,s.score);
     } finally {rmSync(dir,{recursive:true,force:true});}

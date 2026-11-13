@@ -90,7 +90,7 @@ function notes(cap, row) {
   const parts = [];
   if (cap.id === 'sheets-pdf-dwg' && ['ui','output'].some(l =>
     ['pass','partial','fail','error'].includes(row?.levels?.[l]?.status) && row.levels[l].source?.sheetDxfOracle !== 1)) {
-    parts.push('**Historical sheet evidence**: these recorded UI/Output results include evidence from before the PDF/DXF target and independent sheet oracle. Their statuses are retained; this baseline does not certify the current sheet target.');
+    parts.push('**Historical sheet evidence / oracle version unrecorded**: the selected UI/Output evidence does not record the current PDF/DXF oracle version. Recorded statuses are retained; this baseline does not certify the current sheet target.');
   }
   if (row?.status === 'met') return cell(parts.join('<br>'));
   for (const l of [...LEVELS, 'exercise']) {

@@ -518,3 +518,15 @@ it('#9389 insertion preserves custom storey names', () => {
   assert.equal(commitStoreyInsertion(MODEL_ID, review).ok, true);
   assert.deepEqual(modelStoreys(useViewerStore.getState(), MODEL_ID).map(level => level.name), ['Lobby', 'Level 3', 'Roof']);
 });
+
+it('#9389 insertion preserves mixed number widths without merging distinct names', () => {
+  const added = commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'add', params: { Name: 'L01', Elevation: 6, referenceStoreyId: UPPER_STOREY } });
+  assert.equal(added.ok, true);
+  const review = reviewStoreyInsertion(MODEL_ID, STOREY, n => `Level ${n}`)!;
+  assert.equal(commitStoreyInsertion(MODEL_ID, review).ok, true);
+  const names = modelStoreys(useViewerStore.getState(), MODEL_ID).map(level => level.name);
+  assert.deepEqual(names, ['L0', 'L1', 'L2', 'L02']);
+  assert.equal(new Set(names).size, names.length);
+  act(() => useViewerStore.getState().undo(MODEL_ID));
+  assert.deepEqual(modelStoreys(useViewerStore.getState(), MODEL_ID).map(level => level.name), ['L0', 'L1', 'L01']);
+});

@@ -317,3 +317,23 @@ it('#9389 the multi-selection inspector names every element in one undo step', (
   assert.equal(entityName(live(), wall), 'W1');
   assert.equal(entityName(live(), second.expressId), 'W2');
 });
+
+it('#9389 a cross-model selection is inspectable but cannot make a shared edit across undo histories', () => {
+  const first = s().models.get(MODEL_ID)!;
+  const second = { ...first, id: 'second-model', idOffset: 1_000_000 };
+  act(() => useViewerStore.setState({ models: new Map([[MODEL_ID, first], [second.id, second]]) }));
+  act(() => s().setSelectedEntityIds([
+    toGlobalIdFromModels(s().models, MODEL_ID, wall),
+    toGlobalIdFromModels(s().models, second.id, 80),
+  ]));
+  const ui = render(<ModelInspectorPanel />);
+  assert.ok(ui.querySelector('[data-multi-selection-inspector]'));
+  assert.match(ui.textContent ?? '', /Select elements from one model/);
+  const name = input(ui, 'Name');
+  assert.equal(name.readOnly, true);
+  const depth = undoDepth();
+  type(name, 'Shared');
+  blur(name);
+  assert.equal(undoDepth(), depth);
+  assert.equal(entityName({ dataStore: first.ifcDataStore!, view: s().mutationViews.get(MODEL_ID) }, wall), 'W1');
+});

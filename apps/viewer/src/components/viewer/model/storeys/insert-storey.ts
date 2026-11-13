@@ -30,14 +30,15 @@ export function reviewStoreyInsertion(modelId: string, referenceId: number, fall
   if (match && Number.isSafeInteger(Number(match[2])) && Number.isSafeInteger(Number(match[2]) + 1)) {
     const [, prefix, digits, suffix] = match;
     const next = Number(digits) + 1;
-    const numbered = (n: number) => prefix + (n < 0 ? '-' : '') + String(Math.abs(n)).padStart(digits.replace('-', '').length, '0') + suffix;
+    const numbered = (n: number, width = digits.replace('-', '').length) => prefix + (n < 0 ? '-' : '') + String(Math.abs(n)).padStart(width, '0') + suffix;
     const candidates = siblings.flatMap(level => {
       const m = /^(.*?)(-?\d+)(\D*)$/.exec(level.Name.trim());
       return level.elevation > lower.elevation && m && m[1] === prefix && m[3] === suffix && Number.isSafeInteger(Number(m[2]) + 1) && Number(m[2]) >= next
-        ? [{ id: level.expressId, Name: numbered(Number(m[2]) + 1) }] : [];
+        ? [{ id: level.expressId, Name: numbered(Number(m[2]) + 1, m[2].replace('-', '').length) }] : [];
     });
     const occupied = new Set(siblings.filter(level => !candidates.some(c => c.id === level.expressId)).map(level => level.Name.toLowerCase()));
-    if (!occupied.has(numbered(next).toLowerCase()) && candidates.every(c => !occupied.has(c.Name.toLowerCase()))) {
+    const proposed = new Set([numbered(next), ...candidates.map(c => c.Name)].map(name => name.toLowerCase()));
+    if (proposed.size === candidates.length + 1 && !occupied.has(numbered(next).toLowerCase()) && candidates.every(c => !occupied.has(c.Name.toLowerCase()))) {
       Name = numbered(next);
       renames.push(...candidates);
     }

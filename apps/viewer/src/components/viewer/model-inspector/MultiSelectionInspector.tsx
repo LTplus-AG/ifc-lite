@@ -29,7 +29,8 @@ export function MultiSelectionInspector({ onClose }: { onClose?: () => void }) {
     }];
   });
   const common = items.every(item => item.name === items[0]?.name) ? items[0]?.name ?? '' : '';
-  const denied = items.length === 0 || items.some(item => mutationDenial(state, item.modelId) !== null);
+  const multipleModels = new Set(items.map(item => item.modelId)).size > 1;
+  const denied = multipleModels || items.length === 0 || items.some(item => mutationDenial(state, item.modelId) !== null);
   return <div data-multi-selection-inspector className="flex h-full min-h-0 flex-col">
     <div className="flex items-center gap-2 border-b border-border p-3">
       <h2 className="flex-1 text-xs font-medium">{t('modelInspector.multiple', { count: items.length })}</h2>
@@ -43,7 +44,8 @@ export function MultiSelectionInspector({ onClose }: { onClose?: () => void }) {
           }
           return [];
         })} />
-      <Button size="sm" variant="outline" onClick={() => state.showWorkspacePanel('properties')}>{t('modelInspector.properties')}</Button>
+      {multipleModels && <p role="status" className="text-xs text-foreground">{t('modelInspector.multipleModels')}</p>}
+      <Button size="sm" variant="outline"  onClick={() => state.showWorkspacePanel('properties')}>{t('modelInspector.properties')}</Button>
     </div>
     <ul className="min-h-0 flex-1 overflow-y-auto p-2">
       {items.map(item => <li key={item.globalId}>

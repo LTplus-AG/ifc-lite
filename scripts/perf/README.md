@@ -6258,3 +6258,24 @@ the actual default path. A conditional restore does not imply that another
 visible overlay stops parsing. Operation-count attribution and digest-equivalence
 tests establish this mechanism; the exclusive load scoreboard remains the
 acceptance source for end-to-end timing.
+
+
+### Loaded single-edit panel subscriptions (#9296, P4 experiment)
+
+Unshipped: narrowing the spatial hierarchy, storey control, workplane and
+anchor-georeference subscriptions cleared mounted-component regressions for
+unrelated edits in an already-authored session, but did not improve the loaded
+F5 edit diagnostic. Deriving selector snapshots during synchronous Zustand
+publication moved work into the mutation phase; worker-result dispatch still
+waited behind React reconciliation. The worker itself completed the warm
+single-column request promptly. Do not treat a reduced isolated panel commit
+count as an end-to-end latency win.
+
+The empty-to-edited overlay boundary remains an explicit failing regression:
+a reopened column's placement publication still commits the spatial hierarchy.
+Comparing the rebuilt project by value did not resolve it. Next work needs a
+trace of the actual loaded hierarchy subscription inputs across that boundary,
+and separation of renderer-critical delivery from panel notification. Keep the
+same loaded-model Move/Undo probe and paired host diagnostics; do not repeat
+this selector-snapshot mechanism without changing where derivations execute.
+The experimental branch is a draft and must not enter the merge queue.

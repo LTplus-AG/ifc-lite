@@ -6,7 +6,7 @@ import type { RhinoVector3 } from '../types.js';
 import { dispose } from '../runtime.js';
 import type { RBrep, RCurve, RMesh, RPointCloud, ReadApi } from './rhino-api.js';
 import { plural, type Report } from './report.js';
-import { isUsable, type Xform } from './xform.js';
+import { acceptXform, type Xform } from './xform.js';
 
 /** One object's geometry in its own space, already in metres. */
 export type Part =
@@ -162,8 +162,9 @@ export function extractGeometry(geometry: object, type: string, ctx: GeometryCon
       const xform: Xform = [];
       for (let row = 0; row < 4; row++) for (let col = 0; col < 4; col++) xform.push(source[`m${row}${col}`]);
       for (const i of [3, 7, 11]) xform[i] *= scale;
-      if (!isUsable(xform)) { report.skip('InstanceReference:invalid'); return null; }
-      return { kind: 'instance', definition: geometry.parentIdefId, xform };
+      const accepted = acceptXform(xform);
+      if (!accepted) { report.skip('InstanceReference:invalid'); return null; }
+      return { kind: 'instance', definition: geometry.parentIdefId, xform: accepted };
     } finally { dispose(source); }
   }
   if (geometry instanceof api.Mesh) return meshPart([geometry], type, ctx);

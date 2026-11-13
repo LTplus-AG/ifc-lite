@@ -52,3 +52,43 @@ export function watchdogRows(samples) {
     return `| ${fixture} | ${lane} | ${side} | ${rows.length} | ${over} | ${unknown} | ${foreign.length ? Math.round(median(foreign)) : '—'} |`;
   });
 }
+
+/**
+ * Per fixture x lane x side: samples during which the CPU package throttled (host.thermal.throttleEvents > 0), samples
+ * whose thermal counters could not be read, and the hottest package temperature at a sample start or end. Measurement
+ * only (Pop ran at 91-94 C on 2026-11-12): cells are named, not voided. Cells with nothing to show are omitted.
+ */
+// The kernel counts a package throttle event when it starts and adds its time only when it ends, so an episode
+// that began before a sample and lasts through it moves neither counter. A package at or above HOT_C (the fleet's
+// 90 C admission gate, where Pop throttles) at either end of a sample is therefore reported as hot, never as quiet;
+// and a sample's throttle ms may include time from before it (review #9952).
+export const HOT_C = 90;
+
+export function thermalRows(samples) {
+  const groups = new Map();
+  for (const r of samples) {
+    if (!r.ok || !r.host || !('thermal' in r.host)) continue;
+    const key = `${r.fixture}|${r.lane}|${r.side}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(r);
+  }
+  return [...groups].map(([key, rows]) => {
+    const [fixture, lane, side] = key.split('|');
+    // Throttling already active at the start adds time without a new event, so either counter moving counts;
+    // either counter unreadable makes the sample unknown (review #9952).
+    const throttled = rows.filter((r) => r.host.thermal?.throttleEvents > 0 || r.host.thermal?.throttleMs > 0).length;
+    const unknown = rows.filter((r) => !Number.isFinite(r.host.thermal?.throttleEvents) || !Number.isFinite(r.host.thermal?.throttleMs)).length;
+    const hot = rows.filter((r) => Math.max(r.host.thermal?.startC ?? -Infinity, r.host.thermal?.endC ?? -Infinity) >= HOT_C).length;
+    const temps = rows.flatMap((r) => [r.host.thermal?.startC, r.host.thermal?.endC]).filter(Number.isFinite);
+    const ms = rows.map((r) => r.host.thermal?.throttleMs).filter(Number.isFinite);
+    return { throttled, unknown, hot, line: `| ${fixture} | ${lane} | ${side} | ${rows.length} | ${throttled} | ${hot} | ${unknown} | ${ms.length ? Math.max(...ms) : '—'} | ${temps.length ? Math.max(...temps) : '—'} |` };
+  }).filter((x) => x.throttled > 0 || x.hot > 0 || x.unknown > 0).map((x) => x.line);
+}
+
+/** The thermal section's markdown lines, or none when no cell has a throttled or unreadable sample. */
+export function thermalSection(samples) {
+  const rows = thermalRows(samples);
+  return rows.length ? ['', '## CPU package thermal throttling during samples (measurement only, cells not voided)', '',
+    '| fixture | lane | side | samples | throttled | at or above 90 C | unreadable | max throttle ms in a sample | hottest package C |', '|---|---|---|---:|---:|---:|---:|---:|---:|', ...rows] : [];
+}
+

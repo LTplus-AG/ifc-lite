@@ -11,6 +11,8 @@ export function loadRhino(locateFile?: Write3dmOptions['locateFile']): Promise<R
     .then(({ default: init }) => init({ locateFile }))
     .catch(error => { runtime = undefined; throw error; });
 }
+/** Drop the shared runtime after an emscripten abort, which leaves the module unusable. */
+export function discardRhino(): void { runtime = undefined; }
 // Upstream's .d.ts omits Embind ClassHandle.delete(). Use on owned wrappers,
 // including by-value table/settings/mesh-list wrappers (release before their owner).
 export function dispose(value: unknown): void {

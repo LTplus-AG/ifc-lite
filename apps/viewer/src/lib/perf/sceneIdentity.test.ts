@@ -6,6 +6,7 @@ import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { SceneSnapshot } from '@ifc-lite/renderer';
+import { decodeSceneSnapshot, encodeSceneSnapshot } from '@ifc-lite/renderer';
 import { pieceSignature, scenePieceIdentity, snapshotSignature } from './sceneIdentity.js';
 import { sceneIdentityEnabled, tapSceneSnapshot, tappedSceneSnapshots } from './sceneIdentityTap.js';
 
@@ -70,7 +71,19 @@ describe('scene identity (scoreboard identity pass)', () => {
     assert.notEqual(snapshotSignature(shared(0)), snapshotSignature(shared(100)), 'shared frame origins are part of it');
     const fit = (x: number): SceneSnapshot => ({ ...snapshot([batch('a', 1)]), hostData: { fitBounds: { min: [x, 0, 0], max: [1, 1, 1] }, shards: null } });
     assert.notEqual(snapshotSignature(fit(0)), snapshotSignature(fit(-3)), 'the stored camera fit (hostData) is part of it (review #9863)');
-    assert.equal(snapshotSignature(fit(0)), snapshotSignature({ ...fit(0), hostData: JSON.parse(JSON.stringify(fit(0).hostData)) }), 'a JSON round trip of hostData keeps the signature');
+  });
+
+  it('a snapshot keeps its signature through the cache codec, the path an adopted snapshot takes (review #9863)', async () => {
+    // Written side: the object that was encoded. Adopted side: what decodeSceneSnapshot returns from the stored bytes.
+    const stored: SceneSnapshot = { ...snapshot([batch('a', 1), batch('b', 3)]), hostData: { fitBounds: { min: [-2, 0, 0], max: [1, 1, 1] }, shards: null } };
+    const decoded = decodeSceneSnapshot(await encodeSceneSnapshot(stored).arrayBuffer());
+    assert.ok(decoded, 'the codec decodes its own encoding');
+    assert.equal(snapshotSignature(decoded), snapshotSignature(stored), 'encode + decode keeps the signature');
+    const flipped = new Uint8Array(await encodeSceneSnapshot(stored).arrayBuffer());
+    const reread = decodeSceneSnapshot(flipped.buffer);
+    assert.ok(reread);
+    reread.batches[0].vertexData[0] ^= 0x01;
+    assert.notEqual(snapshotSignature(reread), snapshotSignature(stored), 'and a decoded snapshot with one changed byte does not match');
   });
 
   it('with the flag off a tap records nothing', () => {

@@ -21,7 +21,7 @@ export async function handleCompressionRequest(
     try {
       const stored = new Uint8Array(value.buffer);
       const raw = value.compressed ? await inflateRaw(stored) : stored;
-      const meshes = decodeChunkRecords(raw, { meshCount: value.meshCount, uncompressedLength: value.rawLength, appearanceSources: pool }, value.version);
+      const meshes = decodeChunkRecords(raw, { meshCount: value.meshCount, uncompressedLength: value.rawLength, appearanceSources: pool }, value.version, { sharedArena: true }); // arena blocks: transferred whole to the caller
       const { poolRefs, transfers } = packDecodedChunk(meshes, pool);
       send({ id: value.id, meshes, poolRefs }, transfers);
     } catch (error) {

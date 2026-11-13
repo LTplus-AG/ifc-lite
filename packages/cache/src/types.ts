@@ -305,6 +305,13 @@ export interface CacheReadOptions {
   skipSpatialHierarchy?: boolean;
   /** Validate source hash against provided buffer */
   sourceBuffer?: ArrayBuffer;
+  /**
+   * Decode geometry into shared arena blocks (`ChunkDecodeOptions.sharedArena`).
+   * Default `false`: every mesh array owns its buffer. With `true`, the arrays
+   * are views into shared blocks: never transfer or reinterpret their `.buffer`;
+   * copy (`array.slice()`) before handing one on.
+   */
+  sharedArena?: boolean;
 }
 
 /**

@@ -263,6 +263,24 @@ describe('BinaryCacheWriter and BinaryCacheReader', () => {
     expect(result.geometry!.totalTriangles).toBe(1);
   });
 
+  it('read(): mesh arrays own their buffers by default; `sharedArena` makes them views into shared blocks', async () => {
+    const tri = (expressId: number, x: number): MeshData => ({ expressId, positions: new Float32Array([x, 0, 0, x + 1, 0, 0, x, 1, 0]),
+      normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]), indices: new Uint32Array([0, 1, 2]), color: [0.8, 0.8, 0.8, 1.0] });
+    const coordinateInfo: CoordinateInfo = {
+      originShift: { x: 0, y: 0, z: 0 },
+      originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 4, y: 1, z: 0 } },
+      shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 4, y: 1, z: 0 } },
+      hasLargeCoordinates: false,
+    };
+    const cacheBuffer = await new BinaryCacheWriter().write(dataStore, { meshes: [tri(4, 0), tri(5, 2)], totalVertices: 6, totalTriangles: 2, coordinateInfo }, sourceBuffer);
+    const owned = (await new BinaryCacheReader().read(cacheBuffer)).geometry!.meshes;
+    for (const m of owned) for (const a of [m.positions, m.normals, m.indices]) expect(a.buffer.byteLength).toBe(a.byteLength);
+    expect(new Set(owned.flatMap((m) => [m.positions.buffer, m.normals.buffer, m.indices.buffer])).size).toBe(6);
+    const shared = (await new BinaryCacheReader().read(cacheBuffer, { sharedArena: true })).geometry!.meshes;
+    expect(shared[0].positions.buffer).toBe(shared[1].positions.buffer);
+    expect([...shared[1].positions]).toEqual([...owned[1].positions]);
+  });
+
   it('should preserve GPU-instancing shards through round-trip', async () => {
     // Opaque repeated occurrences are partitioned into IFNS shards that are NOT in
     // the flat meshes; without persisting them, a cache reload silently drops all

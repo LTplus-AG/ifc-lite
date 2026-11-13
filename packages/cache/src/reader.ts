@@ -158,7 +158,7 @@ export class BinaryCacheReader {
         }
         // v13: chunked section — decode every chunk sequentially. Streamed
         // consumers use openGeometryChunksV13 instead of this full read.
-        result.geometry = await readGeometryV13(buffer, geometrySection.offset, header.version);
+        result.geometry = await readGeometryV13(buffer, geometrySection.offset, header.version, { sharedArena: options.sharedArena === true });
       }
       // GPU-instancing shards (cache v10+): opaque repeated occurrences that were
       // partitioned off the flat geometry section. Restored via the instanced path.

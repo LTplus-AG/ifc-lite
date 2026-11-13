@@ -262,7 +262,7 @@ describe('state language: primary, pressed, active and filtered states (Refs 880
         ...SELECT_REFS,
         row: '[data-command-id="view:frame"]',
         match: '[data-command-id="view:frame"] mark',
-        rest: '[data-command-id="view:frame"] span.truncate',
+        rest: '[data-command-id="view:frame"] [data-command-label]',
         idleMatch: '[data-command-id="view:home"] mark',
       });
       assertTokensPaint(p, theme);

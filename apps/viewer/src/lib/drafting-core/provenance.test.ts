@@ -40,6 +40,7 @@ function sha256Of(path: string): string {
 describe('drafting-core provenance', () => {
   it('names the upstream repository, a full commit and the MPL-2.0 licence', () => {
     assert.equal(manifest.repository, 'https://github.com/BIMvoice/ifc-sheet', 'upstream repository');
+    // @source-text-assertion-ok checks a JSON manifest field (the pinned upstream commit), not source text
     assert.equal(/^[0-9a-f]{40}$/.test(manifest.commit), true, `commit ${manifest.commit} is a full sha`);
     assert.equal(manifest.license, 'MPL-2.0', 'licence');
   });

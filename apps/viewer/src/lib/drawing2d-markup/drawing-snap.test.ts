@@ -210,7 +210,8 @@ describe('drawing snap: sources, holes and input filtering', () => {
 
   it('builds the index once per drawing object', () => {
     const d = drawing([splitWall()]);
-    assert.equal(getDrawingSnapIndex(d) === getDrawingSnapIndex(d), true, 'memoised');
+    const first = getDrawingSnapIndex(d);
+    assert.equal(getDrawingSnapIndex(d) === first, true, 'memoised');
     assert.equal(getDrawingSnapIndex(d) === getDrawingSnapIndex(drawing([splitWall()])), false, 'new drawing, new index');
   });
 });

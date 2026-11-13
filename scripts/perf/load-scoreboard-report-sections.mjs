@@ -4,7 +4,7 @@
 
 /** Diagnostic report sections of load-scoreboard-report.mjs that read rows directly (no verdict logic). */
 
-import { aaNoiseFloor, gainOf, median, ownNoiseFloor } from './load-scoreboard-stats.mjs';
+import { median } from './load-scoreboard-stats.mjs';
 
 /**
  * Per fixture x lane x side: how many samples had WebGL (the start screen's mark) drawing around the pick, and the
@@ -166,50 +166,5 @@ export function thermalSection(samples) {
 }
 
 
-/** CPU-time figures (trace-cpu-time.mjs) a row can carry, as [label, value of row]. Stage columns are the key stages. */
-export const CPU_COLUMNS = [
-  ['total', (r) => r.cpuTime?.cpuMs?.total], ['main', (r) => r.cpuTime?.cpuMs?.rendererMain], ['workers', (r) => r.cpuTime?.cpuMs?.workers],
-  ['GPU', (r) => r.cpuTime?.cpuMs?.gpu], ['parser.worker (workers)', (r) => r.cpuTime?.stages?.['parser.worker']?.workersCpuMs],
-  ['geometry.pool (workers)', (r) => r.cpuTime?.stages?.['geometry.pool']?.workersCpuMs], ['stream.queueDrain (main)', (r) => r.cpuTime?.stages?.['stream.queueDrain']?.mainCpuMs],
-  ['scene.finalize (main)', (r) => r.cpuTime?.stages?.['scene.finalize']?.mainCpuMs],
-];
 
-const pctOrDash = (x) => (Number.isFinite(x) ? `${(x * 100).toFixed(1)}%` : '—');
-const msOrDash = (x) => (Number.isFinite(x) ? Math.round(x).toLocaleString('en-US') : '—');
-
-/**
- * CPU time (thread time from the opt-in Chrome trace, input event to interactive mark) per fixture x browser lane:
- * per side medians of wall interactive and of each CPU figure, and per figure the change between sides with its
- * noise floor: an A/A run gives its floor (aaNoiseFloor), an A/B run the gain and its own floor (ownNoiseFloor).
- * A second measure beside wall time, not a verdict: the wall-clock verdict tables are unchanged.
- */
-export function cpuTimeRows(samples, kind) {
-  const groups = new Map();
-  for (const r of samples) {
-    if (!r.ok || !String(r.lane).startsWith('browser-') || !Number.isFinite(r.cpuTime?.cpuMs?.total)) continue;
-    const key = `${r.fixture}|${r.lane}`;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(r);
-  }
-  const cols = [['wall interactive', (r) => r.interactiveMs], ...CPU_COLUMNS];
-  return [...groups].map(([key, rows]) => {
-    const [fixture, lane] = key.split('|');
-    const side = (s) => rows.filter((r) => r.side === s);
-    const rounds = [...new Set(rows.map((r) => r.round))].sort((a, b) => a - b);
-    const cells = cols.map(([, get]) => {
-      const pairs = rounds.map((n) => [side('base').find((r) => r.round === n), side('branch').find((r) => r.round === n)].map((r) => (r ? get(r) : NaN)));
-      const ok = pairs.filter(([a, b]) => Number.isFinite(a) && Number.isFinite(b));
-      const base = side('base').map(get).filter(Number.isFinite), branch = side('branch').map(get).filter(Number.isFinite);
-      const change = kind === 'aa' ? `floor ${pctOrDash(aaNoiseFloor(ok))}` : `${pctOrDash(gainOf(base, branch))} (floor ${pctOrDash(ownNoiseFloor(ok))})`;
-      return `${msOrDash(median(base))} / ${msOrDash(median(branch))}; ${change}`;
-    });
-    return `| ${fixture} | ${lane} | ${side('base').length}/${side('branch').length} | ${cells.join(' | ')} |`;
-  });
-}
-
-/** The CPU-time section's markdown lines, or none when no row carries CPU time. */
-export function cpuTimeSection(samples, kind) {
-  const rows = cpuTimeRows(samples, kind);
-  return rows.length ? ['', `## CPU time (thread time from the Chrome trace, input event to interactive; ms, median base / branch; ${kind === 'aa' ? 'A/A floor' : 'gain (own floor)'})`, '',
-    `| fixture | lane | n | wall interactive | ${CPU_COLUMNS.map(([l]) => `CPU ${l}`).join(' | ')} |`, `|---|---|---:|${'---|'.repeat(CPU_COLUMNS.length + 1)}`, ...rows] : [];
-}
+export { cpuTimeSection } from './load-scoreboard-report-cpu.mjs';

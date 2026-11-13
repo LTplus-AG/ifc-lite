@@ -146,11 +146,11 @@ test('the report names cells with throttled or unreadable-thermal samples and th
 });
 
 test('the benchmark browser outside the job cgroup is the sample\'s own CPU, not foreign (Chromium moves itself into its own scope)', async () => {
-  const { hostQuiet, settleHostLoad, outsideOwnCgroupCpuMs } = await load('./load-scoreboard-host.mjs');
+  const { hostQuiet, settleHostLoad, outsideOwnCgroup } = await load('./load-scoreboard-host.mjs');
   // A process in our own cgroup is never counted as outside it.
-  assert.equal(outsideOwnCgroupCpuMs([process.pid]), 0);
+  assert.deepEqual(outsideOwnCgroup([process.pid]), { cpuMs: 0, pressureUs: 0, scopes: 0 });
   const plain = settleHostLoad(await hostQuiet({ maxWaitMs: 0 }));
-  const own = settleHostLoad(await hostQuiet({ maxWaitMs: 0 }), { ownOutsideCpuMs: 1e9 });
+  const own = settleHostLoad(await hostQuiet({ maxWaitMs: 0 }), { ownOutside: { cpuMs: 1e9, pressureUs: 0 } });
   if (plain.foreignCpuMs !== null) {
     assert.equal(own.foreignCpuMs, 0); // subtracted (clamped at 0)
     assert.equal(own.ownOutsideCgroupCpuMs, 1e9);

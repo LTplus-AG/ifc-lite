@@ -9,6 +9,7 @@
 
 import { readdirSync, readFileSync, readlinkSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { capActive, capWindowOf, cgroupPressure, classifyCappedLoad, readCapState } from './load-scoreboard-cap.mjs';
 
 function readText(path) { try { return readFileSync(path, 'utf8').trim(); } catch { return null; } }
 
@@ -181,43 +182,55 @@ export function thermalDelta(before, after) {
  */
 export async function hostQuiet({ limit = 5, maxWaitMs = quietWaitMs() } = {}) {
   const started = Date.now();
-  let psi = cpuPressure10();
+  // In a cap window host-wide pressure counts the capped groups' waiting: wait on the benchmark's own pressure instead.
+  const capBefore = readCapState(), own = ownCgroupPath();
+  const capped = capActive(capBefore, started);
+  const pressure = () => (capped ? (cgroupPressure(own)?.avg10 ?? NaN) : cpuPressure10());
+  let psi = pressure();
   while (!(psi < limit) && Date.now() - started < maxWaitMs) {
     await new Promise((r) => setTimeout(r, 1000));
-    psi = cpuPressure10();
+    psi = pressure();
   }
-  const own = ownCgroupPath(), pgid = ownPgid();
+  const pgid = ownPgid();
   // Builders in our own cgroup or process group are our children, not foreign load (review #9857).
   const procs = foreignBuilders().filter((p) => p.pgid !== pgid && (p.cgroup ?? '').slice(3) !== own);
   const pgids = [...new Set(procs.map((p) => p.pgid))];
   const cgroups = [...new Set(procs.map((p) => (p.cgroup ?? '').slice(3)).filter(Boolean))];
-  return { cpuPressureAvg10: psi, limit, waitedMs: Date.now() - started, builders: procs.map((p) => p.name), builderProcs: procs,
+  return { cpuPressureAvg10: psi, pressureSource: capped ? 'benchmark cgroup (cap window)' : 'host', capBefore, ownPressureBefore: cgroupPressure(own)?.totalUs ?? null, limit, waitedMs: Date.now() - started, builders: procs.map((p) => p.name), builderProcs: procs,
     groupTicksBefore: groupTicks(pgids), cgroupUsageBefore: { ...Object.fromEntries(cgroups.map((c) => [c, cgroupUsageMs(c)])), ...(procs.some((p) => !p.cgroup) ? { '(no cgroup)': null } : {}) }, hostBusyBefore: hostBusyMs(), ownCgroupBefore: ownCgroupMs(), watchdogBefore: watchdogState(), thermalBefore: thermalState(), settledAt: null, startedAt: Date.now(), settled: false,
     // Provisional until the sample ends (settleHostLoad): pressure alone decides now.
     ...classifyHostLoad({ psi, limit, builders: procs.map((p) => p.name) }) };
 }
 
 /**
- * CPU ms (utime + stime, process lifetime) of the benchmark's own processes in `pids` that sit OUTSIDE this job's cgroup.
- * Chromium's browser process moves itself into its own `app-org.chromium.Chromium-<pid>.scope` (systemd), while its
- * renderers and GPU process stay in the launcher's cgroup, so host busy minus own cgroup counted it as foreign (quiet
- * lane, 2026-11-13). Read just before the browser closes; a fresh browser per sample makes lifetime = this sample.
+ * CPU ms (utime + stime, process lifetime) and CPU-pressure stall µs of the benchmark's own processes in `pids` that sit
+ * OUTSIDE this job's cgroup. Chromium's browser process moves itself into its own `app-org.chromium.Chromium-<pid>.scope`
+ * (systemd), while its renderers and GPU process stay in the launcher's cgroup, so host busy minus own cgroup counted it
+ * as foreign (quiet lane, 2026-11-13). Read just before the browser closes; a fresh browser per sample makes its
+ * lifetime (and its scope's) this sample.
  */
-export function outsideOwnCgroupCpuMs(pids) {
+export function outsideOwnCgroup(pids) {
   const own = ownCgroupPath();
-  let ms = 0;
+  let cpuMs = 0, pressureUs = 0;
+  const scopes = new Set();
   for (const pid of pids) {
     const info = procInfo(pid);
-    if (info && own !== null && info.cgroup?.slice(3) !== own) ms += info.cpuTicks * TICK_MS;
+    const cg = info?.cgroup?.slice(3);
+    if (!info || own === null || cg === own) continue;
+    cpuMs += info.cpuTicks * TICK_MS;
+    if (cg) scopes.add(cg);
   }
-  return ms;
+  for (const cg of scopes) pressureUs += cgroupPressure(cg)?.totalUs ?? 0;
+  return { cpuMs, pressureUs, scopes: scopes.size };
 }
 
 /**
  * After the sample: CPU each builder group used during it decides the flag (once per sample; rows share the object).
- * `ownOutsideCpuMs`: the benchmark's own CPU outside its cgroup (outsideOwnCgroupCpuMs), not foreign.
+ * `ownOutside`: the benchmark's own CPU and stall time outside its cgroup (outsideOwnCgroup), not foreign.
+ * In a cap window (load-scoreboard-cap.mjs) the flag means the benchmark itself was starved.
  */
-export function settleHostLoad(host, { ownOutsideCpuMs = null } = {}) {
+export function settleHostLoad(host, { ownOutside = null } = {}) {
+  const ownOutsideCpuMs = ownOutside?.cpuMs ?? null;
   if (!host || host.settled || !Array.isArray(host.builderProcs)) return host;
   // First, before the slower reads below (systemctl, date): the sample's end, so later throttling is not charged to it.
   const thermalAfter = thermalState();
@@ -228,9 +241,9 @@ export function settleHostLoad(host, { ownOutsideCpuMs = null } = {}) {
   // = host busy time minus this job's own cgroup. Recorded so a threshold can be set from real slots (B3: bursts
   // of foreign activity every ~10 min slowed samples with no builder visible at their start).
   const busy = hostBusyMs(), own = ownCgroupMs();
-  const ownOutside = Number.isFinite(ownOutsideCpuMs) ? ownOutsideCpuMs : 0;
+  const ownOutsideMs = Number.isFinite(ownOutsideCpuMs) ? ownOutsideCpuMs : 0;
   const foreignCpuMs = [busy, own, host.hostBusyBefore, host.ownCgroupBefore].every(Number.isFinite)
-    ? Math.max(0, Math.round((busy - host.hostBusyBefore) - (own - host.ownCgroupBefore) - ownOutside)) : null;
+    ? Math.max(0, Math.round((busy - host.hostBusyBefore) - (own - host.ownCgroupBefore) - ownOutsideMs)) : null;
   const sampleMs = Date.now() - host.startedAt;
   // Measurement only: affected cells are visible, nothing is voided by it.
   const overlapsWatchdogPass = overlapsWatchdog(host.watchdogBefore, watchdogState());
@@ -241,7 +254,20 @@ export function settleHostLoad(host, { ownOutsideCpuMs = null } = {}) {
     builderCpuMs[c] = before === null || after === null ? null : Math.max(0, Math.round(after - before));
   }
   const thermal = thermalDelta(host.thermalBefore, thermalAfter);
-  Object.assign(host, { groupCpuMs, builderCpuMs, foreignCpuMs, ownOutsideCgroupCpuMs: Number.isFinite(ownOutsideCpuMs) ? Math.round(ownOutsideCpuMs) : null, sampleMs, overlapsWatchdogPass, thermal, settled: true, ...classifyHostLoad({ psi: host.cpuPressureAvg10, limit: host.limit, builders: host.builders, groupCpuMs: builderCpuMs }) });
+  const capAfter = readCapState(), window = capWindowOf(host.capBefore, capAfter, host.startedAt, host.startedAt + sampleMs);
+  let flag;
+  if (window === 'none') flag = classifyHostLoad({ psi: host.cpuPressureAvg10, limit: host.limit, builders: host.builders, groupCpuMs: builderCpuMs });
+  else {
+    const ownAfter = cgroupPressure(ownCgroupPath())?.totalUs;
+    const stallUs = Number.isFinite(ownAfter) && Number.isFinite(host.ownPressureBefore) ? ownAfter - host.ownPressureBefore + (ownOutside?.pressureUs ?? 0) : null;
+    const ownStallPct = stallUs === null || !(sampleMs > 0) ? null : (stallUs / (sampleMs * 1000)) * 100;
+    const st = capAfter?.error ? host.capBefore : capAfter;
+    flag = classifyCappedLoad({ window, ownStallPct, limit: host.limit, builders: host.builders, builderCpuMs, cappedPaths: st?.cappedPaths ?? [] });
+    host.cap = { window, id: st?.id ?? null, allowanceCores: st?.allowanceCores ?? null, ownStallPct: ownStallPct === null ? null : Math.round(ownStallPct * 10) / 10, error: capAfter?.error ?? host.capBefore?.error ?? null };
+  }
+  host.cap ??= { window: 'none' };
+  Object.assign(host, { groupCpuMs, builderCpuMs, foreignCpuMs, ownOutsideCgroupCpuMs: Number.isFinite(ownOutsideCpuMs) ? Math.round(ownOutsideCpuMs) : null, sampleMs, overlapsWatchdogPass, thermal, settled: true, ...flag });
+  delete host.capBefore; delete host.ownPressureBefore;
   delete host.groupTicksBefore; delete host.cgroupUsageBefore; delete host.hostBusyBefore; delete host.ownCgroupBefore; delete host.watchdogBefore; delete host.thermalBefore;
   return host;
 }

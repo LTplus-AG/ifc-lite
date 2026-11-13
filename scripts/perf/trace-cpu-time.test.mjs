@@ -62,17 +62,26 @@ test('the CLI prints the same totals', () => {
   assert.equal(JSON.parse(out.stdout).cpuMs.total, 392);
 });
 
-test('the report section shows per-side CPU medians and the A/A floor, and nothing without CPU time', async () => {
-  const { cpuTimeSection } = await import('./load-scoreboard-report-sections.mjs');
-  const row = (side, round, wall, total) => ({ ok: true, fixture: 'FZK', lane: 'browser-cold', side, round, interactiveMs: wall,
-    cpuTime: { cpuMs: { total, rendererMain: total / 2, workers: total / 4, gpu: 10 }, stages: { 'scene.finalize': { mainCpuMs: 5 } } } });
-  const samples = [row('base', 0, 500, 1000), row('branch', 0, 520, 1000), row('base', 1, 510, 1010), row('branch', 1, 505, 1010),
-    row('base', 2, 490, 990), row('branch', 2, 600, 990), { ok: true, fixture: 'FZK', lane: 'native-cold', side: 'base', round: 0 }];
-  const lines = cpuTimeSection(samples, 'aa');
-  const fzk = lines.find((l) => l.startsWith('| FZK |'));
-  assert.ok(fzk, lines.join('\n'));
-  assert.match(fzk, /\| 3\/3 \| 500 \/ 520; floor /);
-  assert.match(fzk, /\| 1,000 \/ 1,000; floor 0\.\d%/); // identical CPU on both sides: floor from scatter only
-  assert.match(cpuTimeSection(samples, 'ab').find((l) => l.startsWith('| FZK |')), /1,000 \/ 1,000; 0\.0% \(floor/);
-  assert.deepEqual(cpuTimeSection(samples.map(({ cpuTime: _c, ...r }) => r), 'aa'), []);
+test('CPU time is a second measure: per-side medians, A/A floor (none with a busy sample), and its own verdict column', async () => {
+  const { cpuTimeSummary, cpuTimeSection, addCpuFloors } = await import('./load-scoreboard-report-cpu.mjs');
+  const row = (side, round, wall, total, extra = {}) => ({ ok: true, fixture: 'FZK', lane: 'browser-cold', side, round, interactiveMs: wall,
+    cpuTime: { cpuMs: { total, rendererMain: total / 2, workers: total / 4, gpu: 10 }, stages: { 'scene.finalize': { mainCpuMs: 5 } } }, ...extra });
+  const rounds = [0, 1, 2, 3, 4, 5];
+  const aaRows = rounds.flatMap((n) => [row('base', n, 500 + n, 1000 + n), row('branch', n, 505 + n, 1001 + n)]);
+  const plan = { kind: 'aa', lanes: ['native-cold', 'browser-cold'] };
+  const aa = cpuTimeSummary(plan, [...aaRows, { ok: true, fixture: 'FZK', lane: 'native-cold', side: 'base', round: 0 }]);
+  assert.equal(aa.cells.length, 1);
+  assert.ok(aa.cells[0].aaFloor > 0 && aa.cells[0].aaFloor < 0.01);
+  const summary = { floors: {}, cpuTime: aa };
+  addCpuFloors(summary, aa);
+  assert.equal(summary.floors.FZK['browser-cold'].cpuTotalMs, aa.cells[0].aaFloor);
+  assert.match(cpuTimeSection(aaRows, summary).find((l) => l.startsWith('| FZK |')), /\| 6\/6 \| 503 \/ 508 \| 1,003 \/ 1,004 \|/);
+  const busy = cpuTimeSummary(plan, aaRows.map((r, i) => (i === 0 ? { ...r, host: { underLoad: true } } : r)));
+  assert.equal(busy.cells[0].aaFloor, null);
+  // Compare: a 20% CPU gain with a 1% CPU A/A floor passes; without a CPU floor in the reference it is inconclusive.
+  const ab = rounds.flatMap((n) => [row('base', n, 500, 1000 + n), row('branch', n, 500, 800 + n)]);
+  const floors = { FZK: { 'browser-cold': { interactiveMs: 0.03, cpuTotalMs: 0.01 } } };
+  assert.equal(cpuTimeSummary({ kind: 'compare', lanes: ['browser-cold'] }, ab, { floors }).cells[0].verdict.verdict, 'gain');
+  assert.match(cpuTimeSummary({ kind: 'compare', lanes: ['browser-cold'] }, ab, { floors: { FZK: { 'browser-cold': { interactiveMs: 0.03 } } } }).cells[0].verdict.verdict, /^inconclusive: no CPU A\/A floor/);
+  assert.deepEqual(cpuTimeSection(ab.map(({ cpuTime: _c, ...r }) => r), { cpuTime: cpuTimeSummary({ kind: 'compare', lanes: ['browser-cold'] }, ab.map(({ cpuTime: _c, ...r }) => r)) }), []);
 });

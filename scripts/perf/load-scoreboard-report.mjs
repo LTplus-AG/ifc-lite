@@ -385,7 +385,7 @@ export function renderMarkdown(summary, plan, host, samples = []) {
     out.push('', '## Host watchdog overlap (samples during a periodic host job pass; measurement only, cells not voided)', '',
       '| fixture | lane | side | samples | overlapping a pass | unknown | median foreign CPU ms of overlapping samples |', '|---|---|---|---:|---:|---:|---:|', ...wdRows);
   }
-  out.push(...thermalSection(samples), ...cpuTimeSection(samples, summary.kind));
+  out.push(...thermalSection(samples), ...cpuTimeSection(samples, summary));
   const glRows = webglPickRows(samples);
   if (glRows.length) {
     out.push('', '## WebGL at the pick (start-screen mark drawing in the 1 s before the pick or during the open) and canvas frames to interactive', '',

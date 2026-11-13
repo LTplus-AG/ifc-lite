@@ -43,7 +43,7 @@ ENDSEC;\nEND-ISO-10303-21;`);
     assert.equal(renders, before, 'a placement edit must not republish an identical georeference');
     act(() => useViewerStore.getState().undo(MODEL_ID));
     assert.equal(renders, before);
-    act(() => useViewerStore.getState().setGeorefField(MODEL_ID, 'mapConversion', 'Eastings', 2619100, 2619073));
+    act(() => useViewerStore.getState().setGeorefField(MODEL_ID, 'mapConversion', 'eastings', 2619100, 2619073));
     assert.equal(ui.textContent, '2619100');
     act(() => useViewerStore.getState().undo(MODEL_ID));
     assert.equal(ui.textContent, '2619073');

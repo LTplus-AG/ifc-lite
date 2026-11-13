@@ -39,6 +39,7 @@ export function useExtraSectionCaps(
   const activeTool = useViewerStore((s) => s.activeTool);
   const show3DOverlay = useViewerStore((s) => s.drawing2DDisplayOptions.show3DOverlay);
   const typeVisibility = useViewerStore((s) => s.typeVisibility);
+  const structuralViewMode = useViewerStore((s) => s.structuralViewMode);
   const hiddenIds = useViewerStore((s) => s.hiddenEntities);
   const isolatedIds = useViewerStore((s) => s.isolatedEntities);
   const setCap = useViewerStore((s) => s.setSectionExtraCap);
@@ -48,7 +49,7 @@ export function useExtraSectionCaps(
   if (!queueRef.current) queueRef.current = createDrawingRequestQueue();
   // Bumped whenever what the cuts are made FROM changes, so every parked cap goes stale at once.
   const modelStateRef = useRef({ token: 0, inputs: [] as unknown[] });
-  const inputs = [geometryResult, hiddenIds, isolatedIds, computedIsolatedIds, typeVisibility];
+  const inputs = [geometryResult, hiddenIds, isolatedIds, computedIsolatedIds, typeVisibility, structuralViewMode];
   if (inputs.some((v, i) => v !== modelStateRef.current.inputs[i])) {
     modelStateRef.current = { token: modelStateRef.current.token + 1, inputs };
   }
@@ -74,7 +75,7 @@ export function useExtraSectionCaps(
       await generator.initialize();
       if (!isCurrent()) return;
       const meshes = visibleCutMeshes(geometryResult.meshes, {
-        typeVisibility, hiddenIds, isolatedIds, computedIsolatedIds,
+        typeVisibility, structuralViewMode, hiddenIds, isolatedIds, computedIsolatedIds,
       });
       const bounds = geometryResult.coordinateInfo.shiftedBounds;
       for (const plane of stale) {

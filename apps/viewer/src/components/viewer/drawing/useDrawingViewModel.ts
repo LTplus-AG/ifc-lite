@@ -95,6 +95,7 @@ export function useDrawingViewModel() {
   const setTextAnnotation2DEditing = useViewerStore((s) => s.setTextAnnotation2DEditing);
   const cloudAnnotation2DPoints = useViewerStore((s) => s.cloudAnnotation2DPoints);
   const cloudAnnotations2D = useViewerStore((s) => s.cloudAnnotations2D);
+  const dimensions2D = useViewerStore((s) => s.dimensions2D);
   const addCloudAnnotation2DPoint = useViewerStore((s) => s.addCloudAnnotation2DPoint);
   const completeCloudAnnotation2D = useViewerStore((s) => s.completeCloudAnnotation2D);
   const cancelCloudAnnotation2D = useViewerStore((s) => s.cancelCloudAnnotation2D);
@@ -281,8 +282,9 @@ export function useDrawingViewModel() {
     areas: polygonArea2DResults.length,
     texts: textAnnotations2D.length + elementTags.texts.length,
     clouds: cloudAnnotations2D.length,
-  }), [measure2DResults.length, polygonArea2DResults.length, textAnnotations2D.length, cloudAnnotations2D.length, elementTags.texts.length]);
-  const hasMarkup = markupCounts.measurements + markupCounts.areas + markupCounts.texts + markupCounts.clouds > 0;
+    dimensions: dimensions2D.length,
+  }), [measure2DResults.length, polygonArea2DResults.length, textAnnotations2D.length, cloudAnnotations2D.length, elementTags.texts.length, dimensions2D.length]);
+  const hasMarkup = markupCounts.measurements + markupCounts.areas + markupCounts.texts + markupCounts.clouds + markupCounts.dimensions > 0;
 
   // Cursor style based on active tool
   const cursorClass = useMemo(() => {

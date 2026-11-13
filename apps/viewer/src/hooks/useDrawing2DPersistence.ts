@@ -196,6 +196,7 @@ export function useDrawing2DPersistence(): void {
         textAnnotations2D: drawnMeanwhile(entry.textAnnotations2D, live.textAnnotations2D),
         tagAnnotations2D: drawnMeanwhile(restoreElementTags(entry.tagAnnotations2D, entry.ownerModelId, activeModelId), live.tagAnnotations2D),
         cloudAnnotations2D: drawnMeanwhile(entry.cloudAnnotations2D, live.cloudAnnotations2D),
+        dimensions2D: drawnMeanwhile(entry.dimensions2D ?? [], live.dimensions2D),
         drawing2DDisplayOptions: entry.drawing2DDisplayOptions,
       });
     };

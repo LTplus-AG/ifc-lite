@@ -147,7 +147,7 @@ async function legacyKeyToMove(store: LegacyStore, key: string, present: string[
 
 // ── Markup and sheet (localStorage) ──────────────────────────────────
 
-const MARKUP_LISTS = ['measure2DResults', 'polygonArea2DResults', 'textAnnotations2D', 'tagAnnotations2D', 'cloudAnnotations2D'] as const;
+const MARKUP_LISTS = ['measure2DResults', 'polygonArea2DResults', 'textAnnotations2D', 'tagAnnotations2D', 'cloudAnnotations2D', 'dimensions2D'] as const;
 const holdsAll = (stored: { id: string }[], moved: { id: string }[]) => {
   const ids = new Set(stored.map((item) => item.id));
   return moved.every((item) => ids.has(item.id));
@@ -170,6 +170,7 @@ function moveLegacyMarkup(key: string, legacy: string, unionById: LegacyMoveCont
     textAnnotations2D: unionById(earlier.textAnnotations2D, later.textAnnotations2D),
     tagAnnotations2D: unionById(earlier.tagAnnotations2D ?? [], later.tagAnnotations2D ?? []),
     cloudAnnotations2D: unionById(earlier.cloudAnnotations2D, later.cloudAnnotations2D),
+    dimensions2D: unionById(earlier.dimensions2D ?? [], later.dimensions2D ?? []),
     sectionConfig: later.sectionConfig ?? earlier.sectionConfig,
   } : later;
   saveDrawing2DEntry(key, merged);

@@ -22,6 +22,7 @@ import type { StateCreator } from 'zustand';
 import type { Drawing2DSlice, DrawnSectionPlane, Point2D } from './drawing2DSlice';
 import { isFiniteNumber, isPoint2D } from './drawing2DSlice.markupValidation.js';
 import { isDegenerateMeasurement } from './drawing2DDegenerateGuards';
+import { customPlaneCenter } from './section-plane-center';
 
 /** The IFC element a measured point was snapped to. */
 export interface Dimension2DElementRef {
@@ -117,12 +118,32 @@ export function dimensionPlaneStamp(plane: DrawnSectionPlane | null | undefined)
 
 const PLANE_EPS = 1e-6;
 const near = (p: number, q: number) => Math.abs(p - q) <= PLANE_EPS;
+type CustomPlane = NonNullable<DrawnSectionPlane['custom']>;
+const isVec3 = (v: unknown): v is [number, number, number] => Array.isArray(v) && v.length === 3 && v.every(isFiniteNumber);
+const dot3 = (u: readonly number[], v: readonly number[]) => u[0] * v[0] + u[1] * v[1] + u[2] * v[2];
+
+/**
+ * Whether two custom planes put the drawing's 2D frame in the same place: the
+ * same in-plane axes, and the frame origin (`customPlaneCenter`, the pick
+ * point on the plane) at the same in-plane coordinates. Two picks on one face
+ * share normal and distance but not the origin, so the same 2D point lands
+ * elsewhere (#10076 review). The origin's normal component is left out:
+ * `distance` already covers it. A stamp without the frame fields (an older or
+ * imported one) cannot be told apart and matches.
+ */
+function sameInPlaneFrame(a: CustomPlane, b: CustomPlane): boolean {
+  if (![a.pickedAt, a.tangent, a.bitangent, b.pickedAt, b.tangent, b.bitangent].every(isVec3)) return true;
+  if (!a.tangent.every((v, i) => near(v, b.tangent[i])) || !a.bitangent.every((v, i) => near(v, b.bitangent[i]))) return false;
+  const [ca, cb] = [customPlaneCenter(a), customPlaneCenter(b)];
+  return near(dot3(ca, a.tangent), dot3(cb, a.tangent)) && near(dot3(ca, a.bitangent), dot3(cb, a.bitangent));
+}
 
 /**
  * Whether `dim` belongs to the cut now drawn (`drawing2DPlane`). A dimension
  * without a stamp, or a panel with no drawn plane, counts as on it: there is
- * nothing to tell them apart by. A custom plane compares by its normal and
- * distance, a cardinal one by axis and position; the flip must match either way.
+ * nothing to tell them apart by. A custom plane compares by its normal,
+ * distance and 2D frame (`sameInPlaneFrame`), a cardinal one by axis and
+ * position; the flip must match either way.
  */
 export function isDimensionOnPlane(dim: Pick<Dimension2D, 'plane'>, current: DrawnSectionPlane | null | undefined): boolean {
   const stamp = dim.plane;
@@ -131,7 +152,7 @@ export function isDimensionOnPlane(dim: Pick<Dimension2D, 'plane'>, current: Dra
   const [sc, cc] = [stamp.custom, current.custom];
   if (sc || cc) {
     if (!sc || !cc) return false;
-    return near(sc.distance, cc.distance) && sc.normal.every((v, i) => near(v, cc.normal[i]));
+    return near(sc.distance, cc.distance) && sc.normal.every((v, i) => near(v, cc.normal[i])) && sameInPlaneFrame(sc, cc);
   }
   return stamp.axis === current.axis && near(stamp.position, current.position);
 }

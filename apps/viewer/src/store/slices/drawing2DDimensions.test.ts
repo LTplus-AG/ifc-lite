@@ -212,6 +212,18 @@ describe('isDimensionOnPlane', () => {
     assert.equal(isDimensionOnPlane({ plane: face }, { ...face, custom: { ...custom!, distance: 3.1 } }), false, 'moved');
     assert.equal(isDimensionOnPlane({ plane: face }, plan), false, 'custom against cardinal');
   });
+  it('a second pick on the same face is another cut (#10076 review)', () => {
+    const custom = { normal: [0, 0, 1], distance: 3, pickedAt: [0, 0, 3], tangent: [1, 0, 0], bitangent: [0, 1, 0] } as NonNullable<DrawnSectionPlane['custom']>;
+    const face: DrawnSectionPlane = { ...plan, custom };
+    const stamp = { plane: dimensionPlaneStamp(face) };
+    // Same normal, distance and axes; the frame origin sits 2 m along the tangent.
+    assert.equal(isDimensionOnPlane(stamp, { ...face, custom: { ...custom, pickedAt: [2, 0, 3] } }), false, 'second pick');
+    // A pick point off the plane along the normal projects onto the same origin.
+    assert.equal(isDimensionOnPlane(stamp, { ...face, custom: { ...custom, pickedAt: [0, 0, 5] } }), true, 'same origin on the plane');
+    assert.equal(isDimensionOnPlane(stamp, { ...face, custom: { ...custom, tangent: [0, 1, 0], bitangent: [-1, 0, 0] } }), false, 'rotated axes');
+    const bare = { plane: { ...plan, custom: { normal: [0, 0, 1], distance: 3 } as NonNullable<DrawnSectionPlane['custom']> } };
+    assert.equal(isDimensionOnPlane(bare, face), true, 'a stamp without frame fields still matches by normal and distance');
+  });
   it('exports keep only dimensions on the current cut, in order', () => {
     const other: DrawnSectionPlane = { ...plan, position: 53 };
     const list = [dim('here', { plane: plan }), dim('there', { plane: other }), dim('unstamped')];

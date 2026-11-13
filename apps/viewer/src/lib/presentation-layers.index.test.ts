@@ -36,11 +36,12 @@ async function parse(text: string): Promise<IfcDataStore> {
 /** Every record the resolver decodes from the source, by STEP class. */
 function recordDecodes(store: IfcDataStore): string[] {
   const decoded: string[] = [];
-  const getEntity = store.getEntity.bind(store);
-  store.getEntity = (expressId: number) => {
-    const entity = getEntity(expressId);
-    decoded.push(entity?.type.toUpperCase() ?? 'MISSING');
-    return entity;
+  const decode = store.source.decodeUtf8.bind(store.source);
+  const types = new Map([...store.entityIndex.byType].flatMap(([type, ids]) =>
+    ids.map(id => [store.entityIndex.byId.get(id)!.byteOffset, type] as const)));
+  store.source.decodeUtf8 = (start, end) => {
+    decoded.push(types.get(start) ?? 'MISSING');
+    return decode(start, end);
   };
   return decoded;
 }
@@ -56,12 +57,11 @@ test('#9906 layers assigned to shape representations resolve without decoding th
   assert.deepEqual(members(layers, 'Back'), wallIds(WALLS / 2, WALLS));
   const classes = new Map<string, number>();
   for (const type of decoded) classes.set(type, (classes.get(type) ?? 0) + 1);
-  // One read of each wall, product shape and shape representation, and of the
-  // two assignments. None of the 28 BREP records under each wall.
+  // #9928: one selective read per wall/product shape; four fields per layer.
+  // No mapped items exist, so shape Items and the BREP below are unnecessary.
   assert.deepEqual(Object.fromEntries([...classes].sort()), {
-    IFCPRESENTATIONLAYERASSIGNMENT: 2,
+    IFCPRESENTATIONLAYERASSIGNMENT: 8,
     IFCPRODUCTDEFINITIONSHAPE: WALLS,
-    IFCSHAPEREPRESENTATION: WALLS,
     IFCWALL: WALLS,
   });
 });

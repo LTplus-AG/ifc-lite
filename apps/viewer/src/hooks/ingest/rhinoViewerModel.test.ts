@@ -132,7 +132,9 @@ describe(`rhinoViewerModel, Rhino 8 authored fixture${samplesAbsent ? ' (skipped
     assert.equal(geometryResult.pointClouds?.length, 1);
     assert.equal(geometryResult.pointClouds?.[0].expressId, 4);
     assert.equal(geometryResult.pointClouds?.[0].chunk.pointCount, 8);
-    assert.equal(geometryResult.pointClouds?.[0].chunk.colors, undefined, 'the cloud has no colours');
+    // No per-point colours in the file, so every point takes the colour the
+    // object's layer gives it: the green Points layer.
+    assert.deepEqual([...(geometryResult.pointClouds?.[0].chunk.colors ?? []).slice(0, 3)], [...new Float32Array([0, 127 / 255, 0])]);
     // The entity flag says what the viewer drew, so the three curve entities
     // do not claim geometry the viewer has not got.
     assert.deepEqual([1, 2, 3, 4, 5].map((id) => dataStore.entities.hasGeometry(id)), [false, false, false, true, true]);

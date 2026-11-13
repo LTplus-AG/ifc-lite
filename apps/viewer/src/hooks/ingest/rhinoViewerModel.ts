@@ -129,16 +129,31 @@ function convertRhinoMeshes(result: RhinoImport): MeshData[] {
 }
 
 /**
+ * Beyond about this distance from the origin, folding a double origin into f32
+ * costs more than a millimetre (f32 keeps ~7 digits). Meshes do not pay it,
+ * because `MeshData` keeps the reader's double origin.
+ */
+const PRECISE_POINT_RANGE_M = 8_000;
+
+/**
  * Point clouds ride the payload's `pointClouds`, as IFCX's do (decision D6).
- * `PointCloudAsset` has no origin field, so the reader's origin is folded in
- * here and the colours widened from bytes to the renderer's 0..1 floats.
+ *
+ * `PointCloudAsset` has no origin field and takes 0..1 float colours, so the
+ * reader's origin is folded in here and the colours widened. The fold is the
+ * one place this path loses precision a mesh keeps: a cloud at 2,600,000 m
+ * lands on a 0.25 m f32 grid while the meshes beside it stay exact, so a far
+ * cloud is reported rather than quietly misplaced. Giving the asset an origin,
+ * or routing these through the streaming path that has `decodeOriginOffset`,
+ * is what would fix it.
  */
 function convertRhinoPointClouds(result: RhinoImport): PointCloudAsset[] {
   return result.pointClouds.map((cloud) => {
     const pointCount = Math.floor(cloud.positions.length / 3);
     const positions = new Float32Array(cloud.positions.length);
     const bytes = cloud.colors;
-    const colors = bytes ? new Float32Array(pointCount * 3) : undefined;
+    // A cloud with no per-point colours still has the colour its object or
+    // layer gives it, and the renderer's only channel for that is per point.
+    const colors = new Float32Array(pointCount * 3);
     const min: [number, number, number] = [Infinity, Infinity, Infinity];
     const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
     for (let point = 0; point < pointCount; point++) {
@@ -148,13 +163,16 @@ function convertRhinoPointClouds(result: RhinoImport): PointCloudAsset[] {
         positions[at + axis] = value;
         if (value < min[axis]) min[axis] = value;
         if (value > max[axis]) max[axis] = value;
-        if (colors && bytes) colors[at + axis] = bytes[point * 4 + axis] / 255;
+        colors[at + axis] = bytes ? bytes[point * 4 + axis] / 255 : cloud.color[axis];
       }
+    }
+    if (Math.max(...cloud.origin.map(Math.abs)) > PRECISE_POINT_RANGE_M) {
+      console.warn(`[rhino3dm] a point cloud sits ${Math.round(Math.max(...cloud.origin.map(Math.abs)) / 1000)} km from the origin; its points are held as f32, so they are coarser than the meshes beside them`);
     }
     return {
       expressId: expressIdOf(cloud.entity),
       ifcType: result.entities[cloud.entity].ifcClass,
-      chunk: { positions, ...(colors ? { colors } : {}), pointCount, bbox: { min, max } },
+      chunk: { positions, colors, pointCount, bbox: { min, max } },
     };
   });
 }

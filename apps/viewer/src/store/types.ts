@@ -438,7 +438,7 @@ export interface CameraCallbacks {
 // ============================================================================
 
 import type { IfcDataStore } from '@ifc-lite/parser';
-import type { CoordinateInfo, EntityWorldAabb, GeometryResult, MeshData, ModelSpatialReference } from '@ifc-lite/geometry';
+import type { CoordinateInfo, EntityWorldAabb, GeometryResult, MeshData, ModelSpatialReference, PointCloudAsset } from '@ifc-lite/geometry';
 import type { ModelLoadReportFields } from '../lib/loadReport'; // #3927 load report
 export type AuthoringOverlayChannel = 'command' | 'grids' | 'proposal' | 'scan'; // authoring ghost-mesh channels (#6232); 'proposal': reviewed AI authoring (P15A); 'scan': scan-to-BIM detections (#6894)
 /**
@@ -507,10 +507,11 @@ export interface PreAlignmentSnapshot {
    * path carries origins.
    */
   origins: ([number, number, number] | undefined)[];
-  /** Per inline point cloud, in `geometryResult.pointClouds` order: its origin.
-   *  The RTC re-base moves cloud origins with the meshes (#10029), so a restore
-   *  that put back only mesh origins and `coordinateInfo` would split the model. */
-  cloudOrigins?: ([number, number, number] | undefined)[];
+  /** Per inline point cloud, in `geometryResult.pointClouds` order: its origin
+   *  and chunk (by reference; alignment replaces chunks, never mutates them).
+   *  The RTC re-base and georeference alignment move clouds with the meshes
+   *  (#10029), so a restore that put back only the meshes would split the model. */
+  clouds?: { origin?: [number, number, number]; chunk: PointCloudAsset['chunk'] }[];
   /** The RTC/shift frame the positions are relative to, recovered before the
    *  new alignment is applied. */
   coordinateInfo: CoordinateInfo;

@@ -57,7 +57,7 @@ function convergeSnapshot(snapshot: PreAlignmentSnapshot, anchor: Readonly<Vec3>
   if (isOnRtcAnchor(snapshot.coordinateInfo, anchor)) return false;
   const delta = rtcRebaseDeltaFor(snapshot.coordinateInfo, anchor);
   snapshot.origins = snapshot.origins.map((origin) => rebaseOriginByRtcDelta(origin, delta));
-  snapshot.cloudOrigins = snapshot.cloudOrigins?.map((origin) => rebaseOriginByRtcDelta(origin, delta));
+  snapshot.clouds = snapshot.clouds?.map((cloud) => ({ ...cloud, origin: rebaseOriginByRtcDelta(cloud.origin, delta) }));
   snapshot.coordinateInfo = rebaseCoordinateInfoOntoRtcAnchor(snapshot.coordinateInfo, anchor);
   return true;
 }

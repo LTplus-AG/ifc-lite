@@ -80,6 +80,12 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
   const [minting, setMinting] = useState(false);
   const [copied, setCopied] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  // Which loaded models this share does NOT carry, and why. A separate
+  // channel from `notice` on purpose: the invite mint clears the notice as
+  // soon as the room exists, and this is a standing fact about the room
+  // rather than a status line — the Export dialog says the same thing about
+  // a merged export in its description, for the same reason.
+  const [unshareable, setUnshareable] = useState<string | null>(null);
   // One room-creation attempt per opening. A join whose session never comes up
   // resets `collabRoomId` to null, which would otherwise re-trigger creation
   // in a loop; the notice tells the user, and re-opening the dialog retries.
@@ -133,11 +139,12 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
 
   useEffect(() => {
     setNotice(null);
+    setUnshareable(null);
     if (!open) setScopeConfirmed(false);
   }, [open]);
 
   const resetLink = useCallback(() => { setLink(''); setCopied(false); }, []);
-  const creating = useShareRoomCreation({ open, hasModel, collabRoomId, awaitingConsent, scope, setNotice, resetLink });
+  const creating = useShareRoomCreation({ open, hasModel, collabRoomId, awaitingConsent, scope, setNotice, setUnshareable, resetLink });
 
   // 2. Mint the invite — re-minted when the dialog opens or the role changes,
   // and only once the seed has settled (`seedInFlight` false). Until then the
@@ -302,6 +309,7 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
               </output>
             )}
             {notice && <p className="text-xs text-muted-foreground">{notice}</p>}
+            {unshareable && <p className="text-xs text-muted-foreground">{unshareable}</p>}
             {seedFailure && (
               <div
                 role="alert"

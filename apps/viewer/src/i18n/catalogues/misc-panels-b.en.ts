@@ -177,6 +177,10 @@ export const miscPanelsBEn = {
   'shareDialog.guestName': 'Guest',
   'shareDialog.roomCreationFailed':
     'No session was created. Close and reopen this dialog to try again.',
+  'shareDialog.shareSkipped.noRecords':
+    'Left out of the shared session, no IFC records to share from: {models}.',
+  'shareDialog.shareSkipped.allRefused':
+    'No session was created. There are no IFC records to share from: {models}.',
   'shareDialog.linkCreationFailed': 'Link creation failed. Check the connection and try again.',
   'shareDialog.joinedViaInvite':
     'You joined via an invite - sharing it forwards the same access. Only the session admin can mint new links.',

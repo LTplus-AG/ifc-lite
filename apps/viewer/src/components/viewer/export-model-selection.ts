@@ -6,13 +6,14 @@ import type { GeometryResult } from '@ifc-lite/geometry';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { FederatedModel } from '@/store';
 import { exportableModels } from '@/lib/export/capture-export';
+import { roomSymbolicSource } from '@/lib/collab/room-symbolic-source';
 
 export interface ExportModelListItem {
   id: string;
   name: string;
   isDirty: boolean;
   schemaVersion: FederatedModel['schemaVersion'];
-  /** What backs the model's store; `'tabular'` has no STEP records to write from. */
+  /** What backs the model's store; see `stepSkipReason` for what `'tabular'` can still write. */
   sourceKind: IfcDataStore['sourceKind'];
   sourceSchema: FederatedModel['sourceSchema'];
 }
@@ -79,7 +80,9 @@ export function listIonExportModels(
  * a tabular store has not got: a reader handed over finished tables, and
  * `source` holds that reader's own format (a `.3dm`). The IFCX branch reads
  * the tables instead, so an IFCX target is always allowed; anything else over
- * a tabular store would download an empty or garbage file.
+ * a tabular store with no records behind it would download an empty or
+ * garbage file. Which stores have records behind them is `stepSkipReason`'s
+ * question, not this one's.
  *
  * A merged export asks for ONE writable store, not all of them: it skips a
  * tabular model the way it skips one with no store, so a `.3dm` or `.ifcx`
@@ -111,10 +114,25 @@ export type StepSkipReason = 'noRecords' | 'noData';
  * drop, derives from this: the gate above, the merged export's pre-export
  * note, and its result message (`export-merge-inputs.ts`). A new non-STEP
  * source kind is then one edit, not three.
+ *
+ * Tabular is the reason to LOOK for records, not the refusal itself. A shared
+ * room's store is tabular — the room is reconstructed from IFCX — and yet it
+ * can carry a registered portable STEP source holding the very records a STEP
+ * export needs; `exportModelStep` and `roomMergeInput` both reach for it
+ * through `roomStepExportSource`. Asking for the source kind alone refused
+ * every shared room, single and merged, which is what main exported.
+ *
+ * It asks whether a portable source is REGISTERED, not whether
+ * `canExportRoomAsStep` currently accepts it. A room whose root set has moved
+ * past its source is a different answer with its own wording: the single path
+ * falls back to the room store and the merged path throws
+ * `roomMergeInput`'s "export it separately". Both are main's behaviour, and
+ * folding them into a silent "no IFC records" skip would lose it.
  */
 export function stepSkipReason(store: IfcDataStore | null | undefined): StepSkipReason | null {
   if (!store) return 'noData';
-  return store.sourceKind === 'tabular' ? 'noRecords' : null;
+  if (store.sourceKind !== 'tabular') return null;
+  return roomSymbolicSource(store) ? null : 'noRecords';
 }
 
 export function resolveExportModel(

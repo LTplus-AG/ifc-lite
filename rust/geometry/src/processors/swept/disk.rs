@@ -167,7 +167,9 @@ pub(crate) fn rmf_frames(tangents: &[Vector3<f64>]) -> (Vec<Vector3<f64>>, Vec<V
 /// right-handed (`perp2 = t x perp1`), so a ring vertex at angle `theta` sits
 /// at `p + r(cos theta perp1 + sin theta perp2)` and CCW order in the
 /// `(perp1, perp2)` plane faces `+t`. `swept_disk_side_walls_face_outward` in
-/// `tests/swept_disk_winding_and_bore.rs` pins the sign.
+/// `tests/swept_disk_winding_and_bore.rs` pins the sign. Production goes
+/// through [`build_tube_along`]; this chord-frame form remains for tests.
+#[cfg(test)]
 fn build_tube(
     curve_points: &[Point3<f64>],
     radius: f64,

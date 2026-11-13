@@ -362,7 +362,7 @@ export async function buildChangedArtifacts(
         });
       } else {
         const dataStore = await deps.resolveStepDataStore(entry.id);
-        // A tabular store's bytes are not STEP: there is nothing to write the changes into.
+        // No store means no bytes at all; a tabular store's bytes are not STEP. Neither can take a splice.
         if (!dataStore || dataStore.sourceKind === 'tabular') {
           const reason = dataStore ? 'Model has no IFC STEP source to export changes into' : 'Model data is unavailable for export';
           skipped.push({ name: entry.name, reason });

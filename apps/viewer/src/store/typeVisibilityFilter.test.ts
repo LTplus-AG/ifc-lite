@@ -142,3 +142,11 @@ describe('buildHiddenIfcTypes', () => {
     ]);
   });
 });
+
+it('#9923 structural mode is a separate gate from the boolean class map', () => {
+  assert.equal(isTypeVisible('IfcBeam',ALL_ON,'physical'),true);
+  assert.equal(isTypeVisible('IfcStructuralCurveMember',ALL_ON,'physical'),false);
+  assert.equal(isTypeVisible('IfcBeam',ALL_ON,'analytical'),false);
+  assert.equal(isTypeVisible('IfcStructuralCurveMember',ALL_ON,'analytical'),true);
+  assert.equal(isTypeVisible('IfcBeam',ALL_ON,'both'),true);
+});

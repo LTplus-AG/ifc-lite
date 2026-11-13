@@ -375,6 +375,30 @@ describe('markup saved under the legacy key is moved to the identity key (#7035)
     assert.equal(localStorage.getItem(keyFor(legacyKeyOf(bytes))), null);
   });
 
+  // PR #10083 review: the read-back check must cover the absorbed set too.
+  it('keeps the legacy entry when its absorbed embedded markup is all that is left to move and the write fails', async () => {
+    const bytes = bytesOf(44);
+    const absorbed = ['0Annot000000000000050d'];
+    saveDrawing2DEntry(legacyKeyOf(bytes), { ...entryWith([]), absorbedEmbeddedMarkup: absorbed }); // a deliberate deletion
+    saveDrawing2DEntry(identityOf(bytes), entryWith([])); // same markup and options, no absorbed set
+    const identityKey = keyFor(identityOf(bytes));
+    const realSetItem = localStorage.setItem.bind(localStorage);
+    const quota = mock.method(localStorage, 'setItem', (key: string, value: string) => {
+      if (key === identityKey) throw new Error('simulated quota exceeded');
+      realSetItem(key, value);
+    });
+    try {
+      await open(loadedModel('first', sourceFile(bytes), bytes));
+    } finally {
+      quota.mock.restore();
+    }
+    assert.deepEqual(loadDrawing2DEntry(legacyKeyOf(bytes), DEFAULTS)?.absorbedEmbeddedMarkup, absorbed, 'the only record of the deletion is not removed');
+
+    await open(loadedModel('second', sourceFile(bytes), bytes));
+    assert.deepEqual(loadDrawing2DEntry(identityOf(bytes), DEFAULTS)?.absorbedEmbeddedMarkup, absorbed, 'and the next load carries it over');
+    assert.equal(localStorage.getItem(keyFor(legacyKeyOf(bytes))), null);
+  });
+
   it('a legacy entry rewritten by the previous viewer during the move is kept, and the next load moves the rest', async () => {
     const bytes = bytesOf(43);
     saveDrawing2DEntry(legacyKeyOf(bytes), entryWith([measure('legacy-1')]));

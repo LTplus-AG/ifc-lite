@@ -17,6 +17,10 @@ import {
   RibbonGroupDivider,
 } from '../primitives';
 import { RibbonCommandLargeButton } from '../command-button';
+import { anyRibbonCommandAvailable } from '../../surface-command-features';
+
+/** The Measure & Mark group's commands; the group goes when a host switched all of them off. */
+const MEASURE_GROUP = ['tool:measure', 'tool:section', 'tool:annotate'] as const;
 
 export function HomeTab() {
   const { t } = useTranslation();
@@ -41,6 +45,7 @@ export function HomeTab() {
         />
       </RibbonGroup>
 
+      {anyRibbonCommandAvailable(MEASURE_GROUP) && (<>
       <RibbonGroupDivider />
 
       <RibbonGroup label={t('ribbon.home.measureGroup')}>
@@ -66,6 +71,7 @@ export function HomeTab() {
           {...tourAnchor(toolAnchor('annotate'))}
         />
       </RibbonGroup>
+      </>)}
 
       <RibbonGroupDivider />
 

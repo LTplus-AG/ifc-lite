@@ -11,6 +11,7 @@
 
 import { useTranslation, type TranslationKey, type TranslationParameters } from '@/i18n';
 import { ALT_SHORTCUT_PANELS } from '@/lib/panels/registry';
+import { isPanelAvailable } from '@/lib/panels/availability';
 import { isApplePlatform } from '@/lib/commands/chord';
 import {
   KEY_COMMANDS,
@@ -58,7 +59,7 @@ export function ShortcutsTab() {
   const { t } = useTranslation();
   const apple = isApplePlatform();
   const altPanelTitles = (bottom: boolean) => ALT_SHORTCUT_PANELS
-    .filter((panel) => (panel.region === 'bottom') === bottom)
+    .filter((panel) => (panel.region === 'bottom') === bottom && isPanelAvailable(panel.id))
     .map((panel) => t(panel.titleKey)).join(', ');
   const groups = rowsByCategory(apple, (gesture) => t(gesture.gestureKey, { mod: apple ? '⌘' : 'Ctrl' }),
     { sidePanels: altPanelTitles(false), bottomPanels: altPanelTitles(true) });

@@ -31,7 +31,10 @@ import { LayoutPresetSection } from './LayoutPresetSection';
 
 export function CustomizeSidebar({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
-  const order = useViewerStore((s) => s.sidebarOrder).filter(isPanelAvailable);
+  // The store keeps every panel's place; Customize lists the ones the host left on
+  // (`lib/features`). Moves index into the full order, so they land past the right panel.
+  const fullOrder = useViewerStore((s) => s.sidebarOrder);
+  const order = fullOrder.filter(isPanelAvailable);
   const hiddenIds = useViewerStore((s) => s.sidebarHiddenIds);
   const reorder = useViewerStore((s) => s.reorderSidebarPanel);
   const setShown = useViewerStore((s) => s.setPanelShownInSidebar);
@@ -133,7 +136,7 @@ export function CustomizeSidebar({ onClose }: { onClose: () => void }) {
                 if (overId !== id) setOverId(id);
               }}
               onDrop={() => {
-                if (dragId && dragId !== id) reorder(dragId as WorkspacePanelId, order.indexOf(id));
+                if (dragId && dragId !== id) reorder(dragId as WorkspacePanelId, fullOrder.indexOf(id));
                 setDragId(null);
                 setOverId(null);
               }}
@@ -149,7 +152,7 @@ export function CustomizeSidebar({ onClose }: { onClose: () => void }) {
               <button
                 type="button"
                 disabled={index === 0}
-                onClick={() => prevShown && reorder(id, order.indexOf(prevShown))}
+                onClick={() => prevShown && reorder(id, fullOrder.indexOf(prevShown))}
                 aria-label={t('shellChrome.customizeSidebar.moveUp', { title })}
                 className="h-6 w-5 inline-flex items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-25 disabled:pointer-events-none transition-colors"
               >
@@ -158,7 +161,7 @@ export function CustomizeSidebar({ onClose }: { onClose: () => void }) {
               <button
                 type="button"
                 disabled={index === shownIds.length - 1}
-                onClick={() => nextShown && reorder(id, order.indexOf(nextShown))}
+                onClick={() => nextShown && reorder(id, fullOrder.indexOf(nextShown))}
                 aria-label={t('shellChrome.customizeSidebar.moveDown', { title })}
                 className="h-6 w-5 inline-flex items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-25 disabled:pointer-events-none transition-colors"
               >

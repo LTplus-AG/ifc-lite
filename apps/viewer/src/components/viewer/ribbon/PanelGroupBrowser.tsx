@@ -45,10 +45,11 @@ export function PanelGroupBrowser() {
           />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="max-h-[70vh] w-72 overflow-y-auto">
-          {PANEL_GROUPS.map((group, index) => {
-            const panels = WORKSPACE_PANELS.filter((panel) =>
-              panel.group === group.id && isPanelOffered(panel.id));
-            if (panels.length === 0) return null;
+          {PANEL_GROUPS
+            .map((group) => ({ group, panels: WORKSPACE_PANELS.filter((panel) => panel.group === group.id && isPanelOffered(panel.id)) }))
+            // A separator only between groups that render: a host may switch a whole group off.
+            .filter(({ panels }) => panels.length > 0)
+            .map(({ group, panels }, index) => {
             return (
               <DropdownMenuGroup key={group.id}>
                 {index > 0 && <DropdownMenuSeparator />}

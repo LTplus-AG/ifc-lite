@@ -12,22 +12,20 @@
  */
 
 import { isFeatureEnabled, type FeatureId } from '@/lib/features';
+import { TOOL_FEATURE } from '@/lib/features/tools';
 import type { KeyCommandDefinition, KeyCommandId, KeyContext } from './keyboard-commands';
 
 export const KEY_COMMAND_FEATURE: Readonly<Partial<Record<KeyCommandId, FeatureId>>> = {
-  'tool.walk': 'tools.walk',
-  'tool.measure': 'tools.measure',
-  'tool.section': 'tools.section',
-  'tool.annotate': 'tools.annotate',
+  // `tool.<name>` rows come from TOOL_FEATURE, the one tool table.
+  ...Object.fromEntries(Object.entries(TOOL_FEATURE).map(([tool, feature]) => [`tool.${tool}`, feature])),
   'basket.toggleDock': 'view.presentation',
   'basket.saveView': 'view.presentation',
 };
 
 /** Contexts owned by one feature. A `command.<id>` context counts as `command`. */
 export const KEY_CONTEXT_FEATURE: Readonly<Partial<Record<KeyContext, FeatureId>>> = {
-  'tool.walk': 'tools.walk',
-  'tool.measure': 'tools.measure',
-  'tool.section': 'tools.section',
+  // A tool's own key context belongs to the tool (TOOL_FEATURE).
+  ...Object.fromEntries(Object.entries(TOOL_FEATURE).map(([tool, feature]) => [`tool.${tool}`, feature])),
   'panel.schedule': 'data.schedule',
   'schedule.drag': 'data.schedule',
   'panel.script': 'automate.scripting',

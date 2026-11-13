@@ -13,15 +13,14 @@
  */
 
 import { isFeatureEnabled, type FeatureId } from '@/lib/features';
+import { TOOL_FEATURE } from '@/lib/features/tools';
 import { isPanelAvailable } from '@/lib/panels/availability';
 import type { SurfaceCommandDefinition } from './surface-command-types';
-import type { SurfaceCommandId } from './surface-command-registry';
+import { surfaceCommand, type SurfaceCommandId } from './surface-command-registry';
 
 export const COMMAND_FEATURE: Readonly<Partial<Record<SurfaceCommandId, FeatureId>>> = {
-  'tool:measure': 'tools.measure',
-  'tool:section': 'tools.section',
-  'tool:walk': 'tools.walk',
-  'tool:annotate': 'tools.annotate',
+  // `tool:<name>` rows come from TOOL_FEATURE, the one tool table.
+  ...Object.fromEntries(Object.entries(TOOL_FEATURE).map(([tool, feature]) => [`tool:${tool}`, feature])),
 
   'view:lighting': 'view.environment',
   'vis:save-view': 'view.presentation',
@@ -50,4 +49,13 @@ export function isSurfaceCommandAvailable(command: Pick<SurfaceCommandDefinition
   const feature = commandFeature(command.id);
   if (feature !== undefined && !isFeatureEnabled(feature)) return false;
   return command.panelId === undefined || isPanelAvailable(command.panelId);
+}
+
+/**
+ * Whether a ribbon group built from `commands` shows anything. Tabs leave out
+ * a group (and its divider) when none of its commands is available, decided
+ * from the same table at render time.
+ */
+export function anyRibbonCommandAvailable(commands: readonly SurfaceCommandId[]): boolean {
+  return commands.some((id) => isSurfaceCommandAvailable(surfaceCommand(id, 'ribbon')));
 }

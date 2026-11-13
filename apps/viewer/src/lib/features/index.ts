@@ -77,15 +77,6 @@ export function isFeatureEnabled(id: FeatureId): boolean {
 }
 
 /**
- * Whether the host switched anything off. For layout code that tidies up
- * after hidden surfaces and has nothing to do in a full viewer; it answers
- * no question about any one feature, so it is not recorded as a gate.
- */
-export function isAnyFeatureDisabled(): boolean {
-  return disabled.size > 0;
-}
-
-/**
  * Test seam: replace the feature set and forget what was asked. With a
  * selection the page counts as configured; with none it returns to the state
  * a fresh module starts in (everything on, not yet configured).

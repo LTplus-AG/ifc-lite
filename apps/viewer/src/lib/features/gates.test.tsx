@@ -15,7 +15,8 @@
 import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanup, render } from '@/test/render';
+import { act } from 'react';
+import { cleanup, click, render } from '@/test/render';
 import { startAnalytics } from '@/lib/analytics';
 import { usePrivacyDisclosure } from '@/hooks/usePrivacyDisclosure';
 import { HostingAnalytics } from '@/components/HostingAnalytics';
@@ -32,7 +33,17 @@ import { COMMAND_FEATURE, COMMAND_PREFIX_FEATURE } from '@/components/viewer/sur
 import { paletteSurfaceCommands } from '@/components/viewer/surface-commands';
 import { FEATURE_CATALOGUE, type FeatureId } from './catalogue';
 import { featuresAskedForTest, resetFeaturesForTest } from './index';
-import { TOOL_FEATURE } from './tools';
+import { TOOL_FEATURE, isToolAvailable } from './tools';
+import { KEY_COMMANDS } from '@/lib/commands/keyboard-commands';
+import { isKeyCommandAvailable } from '@/lib/commands/keyboard-command-features';
+import { SURFACE_COMMANDS } from '@/components/viewer/surface-command-registry';
+import { isSurfaceCommandAvailable } from '@/components/viewer/surface-command-features';
+import { isTourAvailable } from '@/lib/tours/tour-availability';
+import { BCF_TOUR } from '@/lib/tours/tours/bcf';
+import { MEASURE_SECTION_TOUR } from '@/lib/tours/tours/measure-section';
+import { WELCOME_TOUR } from '@/lib/tours/tours/welcome';
+import { PanelGroupBrowser } from '@/components/viewer/ribbon/PanelGroupBrowser';
+import { ShortcutsTab } from '@/components/viewer/ShortcutsTab';
 
 function PrivacyNoticeHost() {
   usePrivacyDisclosure();
@@ -179,5 +190,64 @@ describe('panels, commands, shortcuts and tools switched off', () => {
     press();
     on();
     assert.equal(ran, 1, 'the same registration works when the feature is on');
+  });
+});
+
+describe('one tool table, and what follows from it', () => {
+  it('derives each tool\'s command and shortcut from TOOL_FEATURE, so the three agree', () => {
+    for (const [tool, feature] of Object.entries(TOOL_FEATURE)) {
+      const command = SURFACE_COMMANDS.find((entry) => entry.id === `tool:${tool}`);
+      const key = KEY_COMMANDS.find((entry) => entry.id === `tool.${tool}`);
+      assert.ok(command, `tool:${tool} is a registered command`);
+      assert.ok(key, `tool.${tool} is a registered shortcut`);
+      resetFeaturesForTest({ default: 'all', disable: [feature] });
+      assert.equal(isToolAvailable(tool), false, tool);
+      assert.equal(isSurfaceCommandAvailable(command), false, `tool:${tool}`);
+      assert.equal(isKeyCommandAvailable(key), false, `tool.${tool}`);
+      resetFeaturesForTest();
+      assert.equal(isSurfaceCommandAvailable(command) && isKeyCommandAvailable(key), true, `${tool} back on`);
+    }
+  });
+
+  it('offers a tour only while its panels and tools are on', () => {
+    resetFeaturesForTest({ default: 'all', disable: ['check.bcf', 'tools.measure'] });
+    assert.equal(isTourAvailable(BCF_TOUR), false, 'its panel is off');
+    assert.equal(isTourAvailable(MEASURE_SECTION_TOUR), false, 'a tool it teaches is off');
+    assert.equal(isTourAvailable(WELCOME_TOUR), true, 'the baseline tour stays');
+  });
+
+  it('lists switched-off panels in no shortcut row', () => {
+    resetFeaturesForTest({ default: 'all', disable: ['check.bcf', 'check.compare'] });
+    const text = render(<ShortcutsTab />).textContent ?? '';
+    assert.doesNotMatch(text, /BCF Topics|Compare models/);
+    assert.match(text, /Data validation/, 'the other panels of the Alt+digit row stay');
+  });
+
+  it('puts a separator in the panel browser only between groups that render', () => {
+    resetFeaturesForTest({ default: 'none' }); // every analysis group empty; Properties and Hierarchy remain
+    const ribbon = render(<PanelGroupBrowser />);
+    const trigger = ribbon.querySelector<HTMLButtonElement>('button[aria-label="Browse panels"]');
+    assert.ok(trigger);
+    act(() => {
+      trigger.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 }));
+    });
+    click(trigger);
+    const menu = document.querySelector('[role="menu"]');
+    assert.ok(menu);
+    const first = menu.firstElementChild;
+    assert.equal(first?.querySelector('[role="separator"]'), null, 'no separator before the first group');
+    assert.equal(menu.querySelectorAll('[role="separator"]').length, menu.querySelectorAll('[data-panel-group]').length - 1);
+  });
+
+  it('closes a popped-out panel that is off and keeps the store in step', () => {
+    const store = useViewerStore;
+    store.getState().setPanelPoppedOut('bcf', true);
+    resetFeaturesForTest({ default: 'all', disable: ['check.bcf'] });
+    const stop = enforcePanelAvailability(store);
+    try {
+      assert.deepEqual(store.getState().poppedOutIds.filter((id) => id === 'bcf'), []);
+    } finally {
+      stop();
+    }
   });
 });

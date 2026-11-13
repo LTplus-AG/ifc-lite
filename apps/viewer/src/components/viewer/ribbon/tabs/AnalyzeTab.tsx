@@ -10,6 +10,7 @@ import { useTranslation, type TranslationKey } from '@/i18n';
 import { useWorkspacePanelControls } from '../../toolbar/useWorkspacePanelControls';
 import { PANEL_GROUPS, panelGroupFor, type WorkspacePanelId } from '@/lib/panels/registry';
 import { PanelGroupBrowser } from '../PanelGroupBrowser';
+import { isPanelAvailable } from '@/lib/panels/availability';
 import type { SurfaceCommandContext, SurfaceCommandId } from '../../surface-commands';
 import {
   RibbonGroup,
@@ -82,7 +83,8 @@ export function AnalyzeTab() {
     <>
       <PanelGroupBrowser />
       {PANEL_GROUPS.map((group) => {
-        const panels = featuredPanels.filter((panel) => panelGroupFor(panel.id) === group.id);
+        // A group whose panels the host switched off renders nothing, divider included.
+        const panels = featuredPanels.filter((panel) => panelGroupFor(panel.id) === group.id && isPanelAvailable(panel.id));
         if (panels.length === 0) return null;
         return (
           <div key={group.id} className="contents">

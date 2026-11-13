@@ -19,26 +19,24 @@ import { BOTTOM_PANEL_FLAG, BOTTOM_PANEL_IDS } from '../lib/panels/bottom-panels
 import { WORKSPACE_PANELS, type WorkspacePanelId } from '../lib/panels/registry.js';
 import type { ViewerState } from './index.js';
 import { SIDEBAR_PANEL_FLAGS } from './store-sync.js';
+import { closePanelWindow } from '../services/panel-windows.js';
 
-interface Unavailable {
-  readonly panels: ReadonlySet<WorkspacePanelId>;
-}
-
-function patchFor(state: ViewerState, off: Unavailable): Partial<ViewerState> | null {
+function patchFor(state: ViewerState, off: ReadonlySet<WorkspacePanelId>): Partial<ViewerState> | null {
   const patch: Record<string, unknown> = {};
   for (const [flag, id] of SIDEBAR_PANEL_FLAGS) {
-    if (state[flag] && off.panels.has(id)) patch[flag] = false;
+    if (state[flag] && off.has(id)) patch[flag] = false;
   }
   for (const id of BOTTOM_PANEL_IDS) {
-    if (state[BOTTOM_PANEL_FLAG[id]] && off.panels.has(id)) patch[BOTTOM_PANEL_FLAG[id]] = false;
+    if (state[BOTTOM_PANEL_FLAG[id]] && off.has(id)) patch[BOTTOM_PANEL_FLAG[id]] = false;
   }
-  if (off.panels.has(state.sidebarActivePanel)) patch.sidebarActivePanel = 'properties';
-  if (state.sidebarSecondaryPanel && off.panels.has(state.sidebarSecondaryPanel)) patch.sidebarSecondaryPanel = null;
-  if (state.floatingPanels.some((panel) => off.panels.has(panel.id))) {
-    patch.floatingPanels = state.floatingPanels.filter((panel) => !off.panels.has(panel.id));
+  if (off.has(state.sidebarActivePanel)) patch.sidebarActivePanel = 'properties';
+  if (state.sidebarSecondaryPanel && off.has(state.sidebarSecondaryPanel)) patch.sidebarSecondaryPanel = null;
+  if (state.floatingPanels.some((panel) => off.has(panel.id))) {
+    patch.floatingPanels = state.floatingPanels.filter((panel) => !off.has(panel.id));
   }
-  if (state.poppedOutIds.some((id) => off.panels.has(id))) {
-    patch.poppedOutIds = state.poppedOutIds.filter((id) => !off.panels.has(id));
+  if (state.poppedOutIds.some((id) => off.has(id))) {
+    // The OS window is closed by `closePopouts`; this keeps the store in step either way.
+    patch.poppedOutIds = state.poppedOutIds.filter((id) => !off.has(id));
   }
   return Object.keys(patch).length > 0 ? patch as Partial<ViewerState> : null;
 }
@@ -50,12 +48,13 @@ function patchFor(state: ViewerState, off: Unavailable): Partial<ViewerState> | 
  * nothing switched off this subscribes to nothing. Returns the unsubscribe.
  */
 export function enforcePanelAvailability(store: StoreApi<ViewerState>): () => void {
-  const off: Unavailable = {
-    panels: new Set(WORKSPACE_PANELS.map((panel) => panel.id).filter((id) => !isPanelAvailable(id))),
-  };
-  if (off.panels.size === 0) return () => {};
+  const off: ReadonlySet<WorkspacePanelId> = new Set(WORKSPACE_PANELS.map((panel) => panel.id).filter((id) => !isPanelAvailable(id)));
+  if (off.size === 0) return () => {};
   const enforce = (state: ViewerState) => {
-    const patch = patchFor(state, off);
+    // A popped-out panel lives in its own OS window: close it the way the
+    // window's own close button does, which also re-docks it in the store.
+    for (const id of state.poppedOutIds) if (off.has(id)) closePanelWindow(id);
+    const patch = patchFor(store.getState(), off);
     if (patch) store.setState(patch);
   };
   enforce(store.getState());

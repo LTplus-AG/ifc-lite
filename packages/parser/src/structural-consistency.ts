@@ -8,7 +8,7 @@
  * physical elements), issues out, in the shape `ifc-lite validate` reports.
  * `structuralConsistencyIssues` runs it on a parsed store; tests feed facts directly.
  *
- * Three rules, all warnings:
+ * Five rules, all warnings:
  * - `structural-unlinked-element`: a load-bearing beam, column, member, slab,
  *   wall, footing or pile with no structural item assigned. Runs only when the
  *   file has an analytical model (an IfcStructuralAnalysisModel or any
@@ -19,11 +19,33 @@
  *   analysis-only.
  * - `structural-class-mismatch`: a curve member assigned to a slab or wall, or
  *   a surface member assigned to a beam, column or member.
+ * - `structural-unconnected-member`: a structural member with no
+ *   IfcRelConnectsStructuralMember. Runs only in a file where at least one
+ *   member is connected: a file that connects none has no topology to check.
+ * - `structural-axis-drift`: a curve member whose end lies farther than
+ *   `axisDriftTolerance` from the line of a physical element it is assigned
+ *   to. The distance is measured square to that line, so an end moved along
+ *   the axis to meet another member (as the derivation does at joints) is not
+ *   drift. Where along the axis a member lies is not checked. Runs only when
+ *   `geometry` is given, for members and elements with a line there; surface
+ *   members are not checked.
  */
 
 import { getInheritanceChain } from './ifc-schema.js';
 import { structuralCounterparts } from './structural-counterparts.js';
-import type { StructuralExtraction } from './structural-types.js';
+import type { StructuralExtraction, StructuralMemberInfo } from './structural-types.js';
+
+type Point = readonly [number, number, number];
+/** A straight line from its first point to its second, in IFC world metres, Z up. */
+export type StructuralLine = readonly [Point, Point];
+
+/** The lines the axis-drift rule compares, by express id, in IFC world metres. */
+export interface StructuralGeometryFacts {
+  /** Each physical element's analytical line (the structural derivation's rule in `@ifc-lite/create`). */
+  physicalAxes: ReadonlyMap<number, StructuralLine>;
+  /** Each curve member's edge. */
+  memberLines: ReadonlyMap<number, StructuralLine>;
+}
 
 /** One physical element as the checks see it. */
 export interface PhysicalElementFact {
@@ -47,12 +69,31 @@ export interface StructuralConsistencyOptions {
    * silently passed. Explicit `LoadBearing = false` is never reported.
    */
   unsetLoadBearing?: boolean;
+  /**
+   * Metres a curve member's end may lie off its physical element's line
+   * before the axis-drift rule reports it. Default
+   * `DEFAULT_AXIS_DRIFT_TOLERANCE` (0.05), the structural derivation's default
+   * node tolerance. The derivation moves member ends onto shared nodes, and
+   * nodes merge transitively, so a derived end can sit somewhat more than its
+   * node `tolerance` off its axis; check a model derived with a larger
+   * tolerance with a larger value. Eccentricities
+   * (`IfcRelConnectsWithEccentricity`) are not subtracted: a member placed off
+   * its element's centre line by design is reported. A few units in the last
+   * place of the coordinates are allowed above it, for rounding.
+   */
+  axisDriftTolerance?: number;
 }
+
+export const DEFAULT_AXIS_DRIFT_TOLERANCE = 0.05;
+/** Metres: the most rounding the axis-drift rule allows above its tolerance. */
+const DRIFT_ROUNDING_CAP = 1e-6;
 
 export type StructuralConsistencyRule =
   | 'structural-unlinked-element'
   | 'structural-unlinked-item'
-  | 'structural-class-mismatch';
+  | 'structural-class-mismatch'
+  | 'structural-unconnected-member'
+  | 'structural-axis-drift';
 
 /** One finding, in the `ValidationIssue` shape of `ifc-lite validate`. */
 export interface StructuralConsistencyIssue {
@@ -65,6 +106,8 @@ export interface StructuralConsistencyIssue {
   /** The entity on the other side of the link, when the finding has one. */
   target?: number;
   targetGlobalId?: string;
+  /** `structural-axis-drift`: metres from the member's farther end to the physical element's line. */
+  distance?: number;
 }
 
 /** The classes rule 1 treats as load-bearing candidates; subtypes included. */
@@ -80,7 +123,69 @@ const MISMATCH: ReadonlyArray<{ member: string; noun: string; physical: readonly
 export const hasAnalyticalModel = (structural: StructuralExtraction): boolean =>
   structural.analysisModels.length > 0 || structural.members.length > 0;
 
-const isA = (type: string, bases: readonly string[]): boolean => getInheritanceChain(type).some((name) => bases.includes(name));
+export const isA = (type: string, bases: readonly string[]): boolean => getInheritanceChain(type).some((name) => bases.includes(name));
+
+/**
+ * How far the farther end of `line` lies from the infinite line through
+ * `axis`, and how much of that rounding alone can explain; null for a
+ * degenerate axis. Each coordinate is stored to half a unit in the last place
+ * (ulp) of its size, and the axis direction carries that error out to each
+ * end in proportion to how far along the axis it lies. So the allowance is
+ * 8 * EPSILON times the largest coordinate (8 to 16 ulps) times
+ * (1 + along / span), with headroom: the seeded sweep in
+ * `structural-consistency.test.ts` misreads none. It is capped at
+ * `DRIFT_ROUNDING_CAP`, so a wild coordinate cannot hide drift. The cap binds
+ * for a member many times longer than its element's axis at map coordinates;
+ * far enough past the sweep's 41 axis lengths, an end exactly at the
+ * tolerance can read as drift.
+ */
+function offLine(line: StructuralLine, [a, b]: StructuralLine): { distance: number; rounding: number } | null {
+  const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+  const span = Math.hypot(d[0], d[1], d[2]);
+  if (!(span > 1e-9)) return null;
+  const u = [d[0] / span, d[1] / span, d[2] / span];
+  let distance = 0;
+  let along = 0;
+  let largest = 0;
+  for (const p of [line[0], line[1], a, b]) for (const c of p) largest = Math.max(largest, Math.abs(c));
+  for (const p of line) {
+    const r = [p[0] - a[0], p[1] - a[1], p[2] - a[2]];
+    const t = r[0] * u[0] + r[1] * u[1] + r[2] * u[2];
+    // The component square to the axis: a difference of squares would lose
+    // more precision than the subtraction of the coordinates.
+    distance = Math.max(distance, Math.hypot(r[0] - t * u[0], r[1] - t * u[1], r[2] - t * u[2]));
+    along = Math.max(along, Math.abs(t));
+  }
+  return { distance, rounding: Math.min(8 * Number.EPSILON * largest * (1 + along / span), DRIFT_ROUNDING_CAP) };
+}
+
+/** The axis-drift rule: each curve member with a line, against each linked element with an axis. */
+function axisDrift(
+  structural: StructuralExtraction,
+  factById: ReadonlyMap<number, PhysicalElementFact>,
+  { memberLines, physicalAxes }: StructuralGeometryFacts,
+  tolerance: number,
+): StructuralConsistencyIssue[] {
+  const issues: StructuralConsistencyIssue[] = [];
+  for (const member of structural.members) {
+    const line = memberLines.get(member.expressId);
+    if (!line) continue;
+    for (const elementId of structuralCounterparts(structural, member.expressId)?.expressIds ?? []) {
+      const fact = factById.get(elementId);
+      const axis = physicalAxes.get(elementId);
+      if (!fact || !axis) continue;
+      const off = offLine(line, axis);
+      // Not greater also skips NaN, from a non-finite coordinate.
+      if (!off || !(off.distance > tolerance + off.rounding)) continue;
+      issues.push({
+        severity: 'warning', rule: 'structural-axis-drift', entityId: member.expressId, globalId: member.globalId,
+        target: fact.expressId, targetGlobalId: fact.globalId, distance: off.distance,
+        message: `${label(member.expressId, member.type, member.globalId)} lies ${off.distance.toFixed(3)} m off the axis of ${label(fact.expressId, fact.type, fact.globalId)} (tolerance ${tolerance} m)`,
+      });
+    }
+  }
+  return issues;
+}
 
 const label = (expressId: number, type: string, globalId: string) => `#${expressId} ${type}${globalId ? ` (${globalId})` : ''}`;
 
@@ -88,6 +193,7 @@ export function checkStructuralConsistency(
   structural: StructuralExtraction,
   elements: readonly PhysicalElementFact[],
   options: StructuralConsistencyOptions = {},
+  geometry?: StructuralGeometryFacts,
 ): StructuralConsistencyIssue[] {
   const unsetLoadBearing = options.unsetLoadBearing ?? true;
   const issues: StructuralConsistencyIssue[] = [];
@@ -129,6 +235,23 @@ export function checkStructuralConsistency(
         message: `${label(member.expressId, member.type, member.globalId)} idealises ${label(fact.expressId, fact.type, fact.globalId)}, but a ${row.noun} analytical member cannot stand for that class`,
       });
     }
+  }
+
+  const connected = (member: StructuralMemberInfo) => (member.IfcRelConnectsStructuralMember?.length ?? 0) > 0;
+  if (structural.members.some(connected)) {
+    for (const member of structural.members) {
+      if (connected(member)) continue;
+      issues.push({
+        severity: 'warning', rule: 'structural-unconnected-member', entityId: member.expressId, globalId: member.globalId,
+        message: `${label(member.expressId, member.type, member.globalId)} is connected to no structural connection, while other members in this file are`,
+      });
+    }
+  }
+
+  if (geometry) {
+    const tolerance = options.axisDriftTolerance ?? DEFAULT_AXIS_DRIFT_TOLERANCE;
+    if (!(tolerance >= 0)) throw new Error(`axisDriftTolerance must be a number of metres >= 0, got ${tolerance}`);
+    issues.push(...axisDrift(structural, factById, geometry, tolerance));
   }
 
   return issues;

@@ -15,7 +15,14 @@ ownership attributes from unedited STEP records. Effective metadata remains the
 single path for overlays and source-free stores. Shape Items can be omitted when
 there are no mapped items and no assignments below shape models; mapped exports
 still need these edges, even when every assignment targets a shape model.
-Measurement verdict pending the paired real-model run.
+**Measured win on the reported architectural model.** Exclusive Pop runs of the
+cold index, paired against current main, cut first-build time substantially while
+preserving every layer and member in the six-model/ten-shape comparison corpus.
+Full-record decoding is replaced by selective attribute reads; those reads still
+occur synchronously. The mapped export still needs its shape-representation
+edges: skipping them merely because assignments target shape models would lose
+layers reached through representation maps. This is an index-only measurement,
+not a geometry throughput or browser click-to-populated claim.
 
 ## Retained selection highlights (#9835, #9916)
 

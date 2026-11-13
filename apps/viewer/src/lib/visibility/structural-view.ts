@@ -24,20 +24,28 @@ export function resolveViewHiddenEntities(state: StructuralVisibilityState): Set
     state.hiddenEntities, state.toGlobalId);
 }
 
-/** Effective presence: an indexed analytical product counts unless it was retyped away. */
+/** The class an entity has after its view's edits; null once deleted. Mask and presence both read this. */
+function effectiveType(view: MutablePropertyView | undefined, id: number, baseType: string): string | null {
+  if (view?.isDeleted(id)) return null;
+  return view?.getEntityTypeMutation(id)?.newType ?? baseType;
+}
+
+const isEffectivelyAnalytical = (view: MutablePropertyView | undefined, id: number, baseType: string) => {
+  const type = effectiveType(view, id, baseType);
+  return type !== null && isAnalyticalProduct(type);
+};
+
+/** Effective presence: indexed, retyped-in and authored analytical products that are still analytical and not deleted. */
 export function hasStructuralData(state: Pick<ViewerState, 'models' | 'ifcDataStore' | 'mutationViews'>): boolean {
   const sources: Array<[IfcDataStore | null | undefined, MutablePropertyView | undefined]> = state.models.size
     ? [...state.models].map(([id, m]) => [m.ifcDataStore, state.mutationViews.get(id)])
     : [[state.ifcDataStore, state.mutationViews.get('default')]];
-  const stillAnalytical = (view: MutablePropertyView | undefined, id: number) => {
-    const retype = view?.getEntityTypeMutation(id);
-    return !retype || isAnalyticalProduct(retype.newType);
-  };
   // @raw-entity-enumeration-ok structural product presence; no attribute decoding
   return sources.some(([store, view]) => [...(store?.entityIndex?.byType ?? [])]
-    .some(([type, ids]) => isAnalyticalProduct(type) && ids.some((id) => stillAnalytical(view, id))))
-    || [...state.mutationViews.values()].some((view) => view.getNewEntities().some((e) => isAnalyticalProduct(e.type) && stillAnalytical(view, e.expressId))
-      || [...view.getTypeMutations().values()].some((m) => isAnalyticalProduct(m.newType)));
+    .some(([type, ids]) => isAnalyticalProduct(type) && ids.some((id) => isEffectivelyAnalytical(view, id, type))))
+    || [...state.mutationViews.values()].some((view) =>
+      view.getNewEntities().some((e) => isEffectivelyAnalytical(view, e.expressId, e.type))
+      || [...view.getTypeMutations()].some(([id, m]) => !view.isDeleted(id) && isAnalyticalProduct(m.newType)));
 }
 
 /** A separate mask, so switching modes never overwrites manual hides/isolation.
@@ -59,9 +67,8 @@ export function structuralViewHidden(
   };
   const visit = (store: IfcDataStore, view: MutablePropertyView | undefined, global: (id: number) => number) => {
     for (const id of store.entities.expressId) {
-      const type = view?.getEntityTypeMutation(id)?.newType
-        ?? store.entities.getExactTypeName?.(id) ?? store.entities.getTypeName(id);
-      mask(id, type, global);
+      const type = effectiveType(view, id, store.entities.getExactTypeName?.(id) ?? store.entities.getTypeName(id));
+      if (type !== null) mask(id, type, global);
     }
   };
   if (models.size) {
@@ -70,7 +77,10 @@ export function structuralViewHidden(
     }
   } else if (fallback) visit(fallback, views.get('default'), (id) => id);
   for (const [modelId, view] of views) {
-    for (const e of view.getNewEntities()) mask(e.expressId, e.type, (id) => toGlobalId(modelId, id));
+    for (const e of view.getNewEntities()) {
+      const type = effectiveType(view, e.expressId, e.type);
+      if (type !== null) mask(e.expressId, type, (id) => toGlobalId(modelId, id));
+    }
   }
   return result;
 }

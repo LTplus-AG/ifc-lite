@@ -42,15 +42,16 @@ interface ShareScopeFieldProps {
   /** Number of models the room carries once it exists, else `null`. */
   roomModelCount: number | null;
   /**
-   * True when the current scope holds nothing the seed can carry, so no room
-   * will be created at all (`shareRefusesEveryModel`).
+   * When the current scope holds nothing the seed can carry, so no room will
+   * be created at all (`shareRefusesEveryModel`): the id of the dialog's
+   * "Nothing here can be shared" sentence. Otherwise `null`.
    *
-   * The caption must then say nothing, and Create link is disabled. "Only “x” is shared" is a promise, and
-   * the Share dialog is already printing "Nothing here can be shared" right
-   * below it for the same scope — a `.3dm` picked as the active model showed
-   * both at once.
+   * The caption then says nothing, because "Only “x” is shared" would be a
+   * promise the sentence below refuses. Create link is disabled and described
+   * by that sentence: confirming a refused scope locks the scope picker and
+   * then creates no room.
    */
-  noRoomToCreate: boolean;
+  refusalId: string | null;
 }
 
 export function ShareScopeField({
@@ -63,7 +64,7 @@ export function ShareScopeField({
   seedableCount,
   activeModelName,
   roomModelCount,
-  noRoomToCreate,
+  refusalId,
 }: ShareScopeFieldProps) {
   const { t } = useTranslation();
   const partial = seedableCount !== loadedCount;
@@ -73,7 +74,7 @@ export function ShareScopeField({
   const caption =
     roomModelCount !== null
       ? t('shareScopeField.roomCarries', { count: roomModelCount })
-      : noRoomToCreate
+      : refusalId
         ? null
         : scope === 'all'
           ? partial
@@ -115,10 +116,9 @@ export function ShareScopeField({
       )}
       {editable && (
         <>
-          <p className="text-xs text-muted-foreground">{t('shareScopeField.uploadNotice')}</p>
-          {/* Disabled, not hidden, for a scope the mint refuses: confirming it
-              locks the scope picker and then creates no room. */}
-          <Button type="button" size="sm" className="self-start" disabled={noRoomToCreate} onClick={onConfirm}>
+          {!refusalId && <p className="text-xs text-muted-foreground">{t('shareScopeField.uploadNotice')}</p>}
+          <Button type="button" size="sm" className="self-start" disabled={Boolean(refusalId)}
+            aria-describedby={refusalId ?? undefined} onClick={onConfirm}>
             {t('shareScopeField.createLink')}
           </Button>
         </>

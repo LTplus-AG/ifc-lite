@@ -133,7 +133,10 @@ export type StepSkipReason = 'noRecords' | 'noData';
  * every shared room, single and merged, which is what main exported.
  *
  * `roomSymbolicSource` asks whether a portable source is REGISTERED, not
- * whether `canExportRoomAsStep` currently accepts it. That is a choice, not a
+ * whether `canExportRoomAsStep` currently accepts it. It is also the cheap
+ * import: `room-symbolic-source.ts` holds only types and a `WeakMap`, while
+ * `room-step-export.ts` pulls `@ifc-lite/export`, `@ifc-lite/mutations` and the
+ * placement-edit boot module onto the command-palette path. That is a choice, not a
  * limitation — `canExportRoomAsStep` answers without a `MutablePropertyView`
  * too. A room whose root set has moved past its source is deliberately let
  * through here and refused further down, where the merged path throws

@@ -137,7 +137,7 @@ it('ShareScopeField: renders the multi-model caption in English and translates i
       seedableCount={3}
       activeModelName="Tower.ifc"
       roomModelCount={null}
-      noRoomToCreate={false}
+      refusalId={null}
     />,
   );
   assert.ok(container.textContent?.includes('Share'));

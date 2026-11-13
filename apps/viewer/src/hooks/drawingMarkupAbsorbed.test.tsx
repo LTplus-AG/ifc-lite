@@ -16,6 +16,7 @@
 import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
@@ -63,10 +64,14 @@ ENDSEC;
 END-ISO-10303-21;
 `;
 
+const UNTAGGED_GUID = '0Annot000000000000060d';
+/** {@link FIXTURE} plus an annotation another tool wrote, without an IfcLite markup tag. */
+const UNTAGGED_FIXTURE = FIXTURE.replace('ENDSEC;\nEND-ISO', `#60=IFCANNOTATION('${UNTAGGED_GUID}',#4,'Note',$,'Other:Note',$,$);\nENDSEC;\nEND-ISO`);
+
 const USER_MEASURE = { id: 'user-1', start: { x: 1, y: 1 }, end: { x: 1, y: 3 }, distance: 2 };
 
-async function parseFixture(): Promise<IfcDataStore> {
-  const bytes = new TextEncoder().encode(FIXTURE);
+async function parseFixture(text = FIXTURE): Promise<IfcDataStore> {
+  const bytes = new TextEncoder().encode(text);
   return new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
 }
 
@@ -140,8 +145,8 @@ async function unmount(): Promise<void> {
 }
 
 /** Open `file` as `modelId` with a freshly parsed store, the way loading a file does. */
-async function open(modelId: string, file: File): Promise<IfcDataStore> {
-  const store = await parseFixture();
+async function open(modelId: string, file: File, text = FIXTURE): Promise<IfcDataStore> {
+  const store = await parseFixture(text);
   useViewerStore.setState({ editEnabled: true, models: new Map([[modelId, modelFor(modelId, file, store)]]) } as never);
   await act(async () => { useViewerStore.getState().setActiveModel(modelId); });
   return store;
@@ -157,6 +162,26 @@ function saveAndExport(modelId: string, store: IfcDataStore): string {
   assert.equal(outcome.refusal, null);
   const view = useViewerStore.getState().getMutationView(modelId);
   return new TextDecoder().decode(new StepExporter(store, view as never).export({ schema: 'IFC4', applyMutations: true }).content);
+}
+
+/** A measurement the embedded reader would have restored from annotation `expressId`. */
+const embeddedOriginMeasure = (expressId: number) => ({ id: `ifc-measure-${expressId}`, start: { x: 0, y: 0 }, end: { x: 3, y: 4 }, distance: 5 });
+
+/** Write an entry the way a viewer before #10083 did; `absorbed` adds the field a newer viewer writes. */
+function writeOldEntry(hash: string, measures: unknown[], texts: unknown[] = [], absorbed?: string[]): void {
+  localStorage.setItem(`ifc-lite:drawing2d-markup:v1:${hash}`, JSON.stringify({
+    measure2DResults: measures, polygonArea2DResults: [], textAnnotations2D: texts, cloudAnnotations2D: [],
+    drawing2DDisplayOptions: DEFAULTS, sectionConfig: null, savedAt: 1,
+    ...(absorbed ? { absorbedEmbeddedMarkup: absorbed } : {}),
+  }));
+}
+
+/** `#N` references in the exported file that no record defines. */
+function danglingRefs(step: string): number[] {
+  const data = step.slice(step.indexOf('DATA;'));
+  const defined = new Set([...data.matchAll(/^#(\d+)\s*=/gm)].map((m) => Number(m[1])));
+  const bodies = data.replace(/^#\d+\s*=/gm, '').replace(/'(?:[^']|'')*'/g, "''");
+  return [...new Set([...bodies.matchAll(/#(\d+)/g)].map((m) => Number(m[1])))].filter((id) => !defined.has(id));
 }
 
 const annotations = (step: string) => (step.match(/=IFCANNOTATION\(/g) ?? []).length;
@@ -364,25 +389,82 @@ describe('reopening a file whose localStorage entry was seeded from its own embe
     assert.doesNotMatch(saved, new RegExp(`'${EMBEDDED_GUID}'`));
   });
 
-  it('an entry written before the absorbed set existed sweeps nothing: the save writes beside the embedded markup', async () => {
+  it('an entry written before the absorbed set existed absorbs its embedded-origin items: the save replaces, not duplicates', async () => {
     const file = fileWithBytes(59, 'old-entry.ifc');
     const hash = (await placementSourceIdentity(file))!;
-    // Old format: no `absorbedEmbeddedMarkup` field at all.
-    localStorage.setItem(`ifc-lite:drawing2d-markup:v1:${hash}`, JSON.stringify({
-      measure2DResults: [{ id: `ifc-measure-${ANNOTATION_ID}`, start: { x: 0, y: 0 }, end: { x: 3, y: 4 }, distance: 5 }],
-      polygonArea2DResults: [], textAnnotations2D: [], cloudAnnotations2D: [],
-      drawing2DDisplayOptions: DEFAULTS, sectionConfig: null, savedAt: 1,
-    }));
-    assert.deepEqual(loadDrawing2DEntry(hash, DEFAULTS)?.absorbedEmbeddedMarkup, []);
+    writeOldEntry(hash, [embeddedOriginMeasure(ANNOTATION_ID), USER_MEASURE]);
+    assert.equal(loadDrawing2DEntry(hash, DEFAULTS)?.absorbedEmbeddedMarkup, undefined, 'setup: the field is absent, not empty');
 
     heldWasmReply();
     await mount();
     const store = await open('old-entry', file);
     await decided('old-entry');
-    await waitFor(() => useViewerStore.getState().measure2DResults.length === 1, 'the old entry restores');
-    assert.equal(absorbedEmbeddedMarkupFor('old-entry').size, 0);
+    await waitFor(() => useViewerStore.getState().measure2DResults.length === 2, 'the old entry restores');
+    assert.deepEqual([...absorbedEmbeddedMarkupFor('old-entry')], [EMBEDDED_GUID]);
+    await waitFor(() => loadDrawing2DEntry(hash, DEFAULTS)?.absorbedEmbeddedMarkup !== undefined, 'the entry is saved again');
+    assert.deepEqual(loadDrawing2DEntry(hash, DEFAULTS)?.absorbedEmbeddedMarkup, [EMBEDDED_GUID], 'the set is persisted as usual');
 
     const saved = saveAndExport('old-entry', store);
+    assert.equal(annotations(saved), 2, 'the re-saved measurement and the user\'s; the embedded copy is replaced');
+    assert.doesNotMatch(saved, new RegExp(`'${EMBEDDED_GUID}'`));
+    assert.deepEqual(danglingRefs(saved), []);
+  });
+
+  it('an entry from before the absorbed set, still under its pre-#7035 key, is merged without one and absorbs its embedded-origin items', async () => {
+    const file = fileWithBytes(65, 'old-key.ifc');
+    const legacyKey = createHash('sha256').update(new Uint8Array(await file.arrayBuffer())).digest('hex');
+    writeOldEntry(legacyKey, [embeddedOriginMeasure(ANNOTATION_ID)]);
+    // An identity-key entry from the same old viewer, so the move merges two entries without a set.
+    writeOldEntry((await placementSourceIdentity(file))!, [USER_MEASURE]);
+
+    heldWasmReply();
+    await mount();
+    const store = await open('old-key', file);
+    await decided('old-key');
+    await waitFor(() => useViewerStore.getState().measure2DResults.length === 2, 'the merged entry restores');
+    assert.deepEqual([...absorbedEmbeddedMarkupFor('old-key')], [EMBEDDED_GUID]);
+
+    const saved = saveAndExport('old-key', store);
+    assert.equal(annotations(saved), 2, 'the embedded copy is replaced');
+    assert.deepEqual(danglingRefs(saved), []);
+  });
+
+  it('an entry written before the absorbed set existed absorbs nothing that is not a tagged markup annotation in the file', async () => {
+    const file = fileWithBytes(61, 'old-entry-other.ifc');
+    const hash = (await placementSourceIdentity(file))!;
+    // #30 is the storey, #60 an annotation without an IfcLite tag, #999 is not in the file.
+    writeOldEntry(hash, [embeddedOriginMeasure(30), embeddedOriginMeasure(60), embeddedOriginMeasure(999)], [
+      { id: 'ifc-text-60', position: { x: 2, y: 2 }, text: 'note', fontSize: 14, color: '#000000', backgroundColor: '#ffffff', borderColor: '#000000' },
+    ]);
+
+    heldWasmReply();
+    await mount();
+    const store = await open('old-entry-other', file, UNTAGGED_FIXTURE);
+    await decided('old-entry-other');
+    await waitFor(() => useViewerStore.getState().measure2DResults.length === 3, 'the old entry restores');
+    assert.equal(absorbedEmbeddedMarkupFor('old-entry-other').size, 0);
+    await waitFor(() => loadDrawing2DEntry(hash, DEFAULTS)?.absorbedEmbeddedMarkup !== undefined, 'the entry is saved again');
+    assert.deepEqual(loadDrawing2DEntry(hash, DEFAULTS)?.absorbedEmbeddedMarkup, []);
+
+    const saved = saveAndExport('old-entry-other', store);
+    assert.match(saved, new RegExp(`'${EMBEDDED_GUID}'`), 'the embedded measurement is kept');
+    assert.match(saved, new RegExp(`'${UNTAGGED_GUID}'`), 'the untagged annotation is kept');
+    assert.deepEqual(danglingRefs(saved), []);
+  });
+
+  it('an entry that records an empty absorbed set is not treated as an old one: its embedded-origin ids absorb nothing', async () => {
+    const file = fileWithBytes(63, 'new-entry.ifc');
+    const hash = (await placementSourceIdentity(file))!;
+    writeOldEntry(hash, [embeddedOriginMeasure(ANNOTATION_ID)], [], []);
+
+    heldWasmReply();
+    await mount();
+    const store = await open('new-entry', file);
+    await decided('new-entry');
+    await waitFor(() => useViewerStore.getState().measure2DResults.length === 1, 'the entry restores');
+    assert.equal(absorbedEmbeddedMarkupFor('new-entry').size, 0);
+
+    const saved = saveAndExport('new-entry', store);
     assert.equal(annotations(saved), 2, 'the embedded measurement is kept beside the re-saved one');
     assert.match(saved, new RegExp(`'${EMBEDDED_GUID}'`));
   });

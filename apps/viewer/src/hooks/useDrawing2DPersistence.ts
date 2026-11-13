@@ -41,6 +41,7 @@ import { placementSourceIdentity } from '@/lib/model-placement/source-identity';
 import { loadDrawing2DEntry, defaultMarkupPatch, suppressNextSaveFor, type PersistedDrawing2DEntry } from '@/store/slices/drawing2DSlice.persistence.js';
 import { setCachedHash, notifyDecided } from './drawingMarkupRestorePrecedence.js';
 import { absorbEmbeddedMarkup, forgetAbsorbedEmbeddedMarkup } from '@/lib/drawing2d-markup/drawing-markup-absorbed';
+import { legacyEntryEmbeddedMarkupIdentities } from '@/lib/drawing2d-markup/drawing-markup-legacy-absorbed';
 import {
   resetSaveState, beginRestore, endRestore, setRestoredSectionConfig, ensureSaveSubscription,
   subscribeModelActivations, modelActivationEpoch,
@@ -207,8 +208,11 @@ export function useDrawing2DPersistence(): void {
       setRestoredSectionConfig(activeModelId, entry.sectionConfig);
       // Before the write below, which the save subscription persists: this
       // entry's markup includes (or deliberately dropped) these embedded
-      // annotations, so a save to the model may replace them.
-      absorbEmbeddedMarkup(activeModelId, entry.absorbedEmbeddedMarkup ?? []);
+      // annotations, so a save to the model may replace them. An entry written
+      // before it recorded them absorbs what its embedded-origin items name.
+      absorbEmbeddedMarkup(activeModelId, entry.absorbedEmbeddedMarkup ?? legacyEntryEmbeddedMarkupIdentities(activeModelId, [
+        entry.measure2DResults, entry.polygonArea2DResults, entry.textAnnotations2D, entry.cloudAnnotations2D, entry.dimensions2D,
+      ]));
       const live = useViewerStore.getState();
       useViewerStore.setState({
         measure2DResults: drawnMeanwhile(entry.measure2DResults, live.measure2DResults),

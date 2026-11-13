@@ -172,7 +172,9 @@ function moveLegacyMarkup(key: string, legacy: string, unionById: LegacyMoveCont
     cloudAnnotations2D: unionById(earlier.cloudAnnotations2D, later.cloudAnnotations2D),
     dimensions2D: unionById(earlier.dimensions2D ?? [], later.dimensions2D ?? []),
     sectionConfig: later.sectionConfig ?? earlier.sectionConfig,
-    absorbedEmbeddedMarkup: [...new Set([...earlier.absorbedEmbeddedMarkup ?? [], ...later.absorbedEmbeddedMarkup ?? []])],
+    // Neither recording a set keeps the field absent: an old entry's restore derives it.
+    absorbedEmbeddedMarkup: earlier.absorbedEmbeddedMarkup || later.absorbedEmbeddedMarkup
+      ? [...new Set([...earlier.absorbedEmbeddedMarkup ?? [], ...later.absorbedEmbeddedMarkup ?? []])] : undefined,
   } : later;
   saveDrawing2DEntry(key, merged);
   // The entry read back must BE the merged one, value for value. Comparing

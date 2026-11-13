@@ -22,7 +22,7 @@ import type { AnnotationFill2D, AnnotationText2D } from '@/hooks/useSymbolicAnno
 import type { ScanBandPoint } from '@/hooks/scanSectionMath';
 import { drawScanSectionScreenSpace } from './drawing/scanSectionCanvas';
 import { drawMeasurements2D } from './drawing/drawMeasure2D';
-import { drawDimensions2D, type DimensionScene, type ScreenClipRect } from './drawing/drawDimensions2D';
+import { drawDimensions2D, sheetViewportScreenRect, type DimensionScene, type ScreenClipRect } from './drawing/drawDimensions2D';
 import { lineCullBox, lineInCullBox } from '@/lib/drawing2d-markup/drawing-line-cull';
 import { type CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key';
 import { resolveSheetTransform } from '@/lib/drawing/sheet-transform';
@@ -576,7 +576,7 @@ export function Drawing2DCanvas({
 
       // Create clip region for viewport
       ctx.beginPath();
-      sheetViewportClip = [mmToScreenX(viewport.x), mmToScreenY(viewport.y), mmToScreen(viewport.width), mmToScreen(viewport.height)];
+      sheetViewportClip = sheetViewportScreenRect(viewport, transform);
       ctx.rect(...sheetViewportClip);
       ctx.clip();
 

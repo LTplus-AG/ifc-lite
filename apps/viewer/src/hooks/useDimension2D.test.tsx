@@ -7,18 +7,24 @@ import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act, useRef } from 'react';
 import { IfcParser } from '@ifc-lite/parser';
-import type { Drawing2D } from '@ifc-lite/drawing-2d';
+import type { Drawing2D, DrawingSheet } from '@ifc-lite/drawing-2d';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { render, cleanup, mouseDown } from '@/test/render.js';
 import type { DrawnSectionPlane } from '@/store/slices/drawing2DSlice';
-import { useDimension2D, type DimensionTool } from './useDimension2D.js';
+import { resolveSheetTransform } from '@/lib/drawing/sheet-transform';
+import { drawingViewMapping } from '@/lib/drawing2d-markup/drawing-view-mapping';
+import { dimensionScreenLayout } from '@/components/viewer/drawing/drawDimensions2D';
+import type { Dimension2D } from '@/store/slices/drawing2DDimensions';
+import { useDimension2D, type DimensionTool, type UseDimension2DParams } from './useDimension2D.js';
 
 const initial = useViewerStore.getState();
 const PLANE: DrawnSectionPlane = { axis: 'down', position: 1, flipped: false };
 /** The plane the harness passes as drawn; a test changes it, then re-renders through the store. */
 let drawnPlane: DrawnSectionPlane = PLANE;
-afterEach(() => { cleanup(); useViewerStore.setState(initial, true); drawnPlane = PLANE; });
+/** Sheet mode for one test: the sheet and the view transform (pixels per paper mm). */
+let sheetMode: { sheet: NonNullable<UseDimension2DParams['sheet']>; view: { x: number; y: number; scale: number } } | null = null;
+afterEach(() => { cleanup(); useViewerStore.setState(initial, true); drawnPlane = PLANE; sheetMode = null; });
 const EMPTY: Record<string, string> = {};
 
 /** A 4 m × 2 m wall footprint at the origin (entity 10). */
@@ -38,8 +44,8 @@ function Harness() {
   const ref = useRef<HTMLButtonElement>(null);
   const current = useViewerStore((s) => s.drawing2D);
   // 100 px per metre, origin at the top-left: screen = drawing × 100 on a plan.
-  tool = useDimension2D({ drawing: current, viewTransform: { x: 0, y: 0, scale: 100 }, axis: 'down', containerRef: ref,
-    drawnPlane, displayScale: 100, showHiddenLines: false, unitDisplayOverrides: EMPTY });
+  tool = useDimension2D({ drawing: current, viewTransform: sheetMode?.view ?? { x: 0, y: 0, scale: 100 }, axis: 'down', containerRef: ref,
+    drawnPlane, displayScale: 100, showHiddenLines: false, unitDisplayOverrides: EMPTY, sheet: sheetMode?.sheet });
   return <button type="button" aria-label="Drawing canvas" ref={ref} onMouseDown={tool.handleMouseDown} onMouseMove={tool.handleMouseMove} onMouseLeave={tool.handleMouseLeave} />;
 }
 
@@ -211,4 +217,69 @@ it('switching to the hovered dimension\'s cut without moving drops the stale Oth
   drawnPlane = { ...PLANE, position: 4 };
   act(() => useViewerStore.setState({ drawing2D: drawing() }));
   assert.equal(hovered(), null, 'the hover from the previous drawing is dropped');
+});
+
+/** A 1:100 sheet whose viewport is 100 × 50 mm at (10, 10); the frame and title block lie outside it. */
+function sheet(): DrawingSheet {
+  return {
+    id: 's', name: 's',
+    paper: { id: 'p', name: 'p', widthMm: 200, heightMm: 120, orientation: 'landscape' } as unknown as DrawingSheet['paper'],
+    frame: {} as unknown as DrawingSheet['frame'],
+    titleBlock: { fields: [], position: 'bottom-right', heightMm: 30 } as unknown as DrawingSheet['titleBlock'],
+    scaleBar: {} as unknown as DrawingSheet['scaleBar'],
+    scale: { name: '1:100', factor: 100, useCase: '' },
+    northArrow: {} as unknown as DrawingSheet['northArrow'],
+    viewportBounds: { x: 10, y: 10, width: 100, height: 50 },
+    revisions: [],
+  };
+}
+
+it('in sheet mode a dimension clipped out of the viewport cannot be selected, dragged or hovered (#10076 review)', () => {
+  const s = sheet();
+  const view = { x: 0, y: 0, scale: 2 };
+  sheetMode = { sheet: { sheet: s, isPinned: false, cached: null }, view };
+  const d = drawing();
+  const placement = resolveSheetTransform({ sheet: s, axis: 'down', isPinned: false, cached: null,
+    drawingBounds: { minX: 0, minY: 0, maxX: 4, maxY: 2 } }).transform;
+  const layout = { mapping: drawingViewMapping(view, 'down', placement), paperScale: 100, format: (m: number) => m.toFixed(2) };
+  // The midpoint of a dimension's line, on screen, as the canvas lays it out.
+  const lineMid = (dim: Dimension2D) => { const [p, q] = dimensionScreenLayout(dim, layout).lines[0]; return { clientX: (p.x + q.x) / 2, clientY: (p.y + q.y) / 2 }; };
+  // Viewport on screen: x 20..220, y 20..120 px. 5 m off the wall is 50 mm on paper: outside it.
+  const out: Dimension2D = { id: 'out', a: { x: 0, y: 0 }, b: { x: 4, y: 0 }, offset: -5, orientation: 'aligned', plane: { ...PLANE, position: 4 } };
+  const inside: Dimension2D = { ...out, id: 'in', offset: -1 };
+  const outAt = lineMid(out);
+  const inAt = lineMid(inside);
+  assert.ok(outAt.clientY < 20 || outAt.clientY > 120, `the 'out' line is outside the viewport (y ${outAt.clientY})`);
+  assert.ok(inAt.clientY > 20 && inAt.clientY < 120, `the 'in' line is inside the viewport (y ${inAt.clientY})`);
+
+  useViewerStore.setState({ drawing2D: d, annotation2DActiveTool: 'none', dimensions2D: [out] });
+  const canvas = render(<Harness />).firstElementChild!;
+  mouseMove(canvas, outAt);
+  assert.equal(tool.hover, null, 'no Other cut note over the blank title block');
+  mouseDown(canvas, outAt);
+  assert.equal(useViewerStore.getState().selectedAnnotation2D, null, 'a clipped dimension is not selected');
+  mouseMove(canvas, { clientX: outAt.clientX + 30, clientY: outAt.clientY + 30 });
+  assert.deepEqual(useViewerStore.getState().dimensions2D[0].a, { x: 0, y: 0 }, 'nor dragged');
+
+  // The same dimension inside the viewport still selects and hovers.
+  act(() => useViewerStore.setState({ dimensions2D: [inside] }));
+  mouseMove(canvas, inAt);
+  assert.equal(tool.hover?.id, 'in');
+  mouseDown(canvas, inAt);
+  act(() => { window.dispatchEvent(new window.MouseEvent('mouseup')); });
+  assert.deepEqual(useViewerStore.getState().selectedAnnotation2D, { type: 'dimension', id: 'in' });
+});
+
+it('in sheet mode the dimension tool places no point outside the viewport (#10076 review)', () => {
+  sheetMode = { sheet: { sheet: sheet(), isPinned: false, cached: null }, view: { x: 0, y: 0, scale: 2 } };
+  useViewerStore.setState({ drawing2D: drawing(), annotation2DActiveTool: 'dimension' });
+  const canvas = render(<Harness />).firstElementChild!;
+  // (300, 200) px is paper (150, 100) mm: on the sheet, past the viewport.
+  mouseMove(canvas, { clientX: 300, clientY: 200 });
+  assert.equal(tool.scene?.preview ?? null, null, 'no preview off the drawing');
+  assert.equal(tool.snapMode, null);
+  mouseDown(canvas, { clientX: 300, clientY: 200 });
+  assert.deepEqual(useViewerStore.getState().dimension2DPoints, [], 'the click outside placed nothing');
+  mouseDown(canvas, { clientX: 100, clientY: 70 });
+  assert.equal(useViewerStore.getState().dimension2DPoints.length, 1, 'a click inside the viewport places a point');
 });

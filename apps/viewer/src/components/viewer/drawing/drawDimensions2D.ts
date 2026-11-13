@@ -181,6 +181,23 @@ export interface DimensionScene {
 export type ScreenClipRect = readonly [number, number, number, number];
 
 /**
+ * The sheet viewport (paper mm) on screen under the view transform (pixels per
+ * paper mm): the rect the canvas clips the drawing and its dimensions to. The
+ * dimension hit tests use the same rect, so what is clipped out cannot be hit.
+ */
+export function sheetViewportScreenRect(
+  viewport: { x: number; y: number; width: number; height: number },
+  t: { x: number; y: number; scale: number },
+): ScreenClipRect {
+  return [viewport.x * t.scale + t.x, viewport.y * t.scale + t.y, viewport.width * t.scale, viewport.height * t.scale];
+}
+
+/** Whether a screen point is inside the clip (always, without one). */
+export function insideScreenClip(clip: ScreenClipRect | null, p: Point2D): boolean {
+  return !clip || (p.x >= clip[0] && p.x <= clip[0] + clip[2] && p.y >= clip[1] && p.y <= clip[1] + clip[3]);
+}
+
+/**
  * Draw the scene. `clip` is the sheet viewport in sheet mode: dimensions are
  * drawing content and are clipped with it, never painted over the frame or
  * title block.

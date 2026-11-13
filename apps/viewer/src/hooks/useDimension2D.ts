@@ -36,7 +36,7 @@ import { findDrawingSnap, getDrawingSnapIndex, snapToleranceForScale, type Drawi
 import { formatDimensionValue } from '@/lib/drawing2d-markup/dimension-graphics';
 import { drawingViewMapping, type DrawingViewMapping } from '@/lib/drawing2d-markup/drawing-view-mapping';
 import { placementOffset, placementOrientation, previewDimension } from '@/lib/drawing2d-markup/dimension-placement';
-import { hitTestDimensions, type DimensionLayoutContext, type DimensionScene } from '@/components/viewer/drawing/drawDimensions2D';
+import { hitTestDimensions, insideScreenClip, sheetViewportScreenRect, type DimensionLayoutContext, type DimensionScene } from '@/components/viewer/drawing/drawDimensions2D';
 import { dimensionPlaneStamp, isDimensionOnPlane, type Dimension2DElementRef } from '@/store/slices/drawing2DDimensions';
 import type { DrawnSectionPlane, Point2D } from '@/store/slices/drawing2DSlice';
 
@@ -106,6 +106,11 @@ export function useDimension2D(p: UseDimension2DParams) {
   const layout: DimensionLayoutContext = useMemo(() => ({
     mapping, paperScale, format: (m: number) => formatDimensionValue(m, unitDisplayOverrides),
   }), [mapping, paperScale, unitDisplayOverrides]);
+  // Sheet mode clips dimensions to the viewport (the canvas's own rect); outside it
+  // nothing is hit, hovered or placed, so the frame and title block stay inert.
+  const viewport = p.sheet?.sheet.viewportBounds;
+  const { x: vx, y: vy, scale: vs } = p.viewTransform;
+  const clip = useMemo(() => (viewport ? sheetViewportScreenRect(viewport, { x: vx, y: vy, scale: vs }) : null), [viewport, vx, vy, vs]);
 
   // Leaving the tool (Esc, another tool) drops the preview and pending references.
   useEffect(() => {
@@ -179,6 +184,7 @@ export function useDimension2D(p: UseDimension2DParams) {
     if (!screen) return false;
     const state = useViewerStore.getState();
     if (state.annotation2DActiveTool === 'dimension') {
+      if (!insideScreenClip(clip, screen)) return true;
       const placed = state.dimension2DPoints;
       const { point, hit } = resolvePoint(screen);
       if (placed.length < 2) {
@@ -199,7 +205,7 @@ export function useDimension2D(p: UseDimension2DParams) {
       }
       return true;
     }
-    if (state.annotation2DActiveTool !== 'none') return false;
+    if (state.annotation2DActiveTool !== 'none' || !insideScreenClip(clip, screen)) return false;
     const hitDim = hitTestDimensions(state.dimensions2D, screen, layout);
     if (!hitDim) return false;
     state.setSelectedAnnotation2D({ type: 'dimension', id: hitDim.id });
@@ -219,15 +225,19 @@ export function useDimension2D(p: UseDimension2DParams) {
       return true;
     }
     if (state.annotation2DActiveTool === 'dimension') {
+      if (hover) setHover(null);
+      if (!insideScreenClip(clip, screen)) {
+        setCursor(null); setSnap(null); setMarkers([]);
+        return true;
+      }
       const { point, hit } = resolvePoint(screen);
       setCursor(point);
       setLockAxis(e.shiftKey);
       setSnap(hit);
       setMarkers(state.dimension2DPoints.length < 2 ? nearbyKeyPoints(point) : []);
-      if (hover) setHover(null);
       return true;
     }
-    const hitDim = hitTestDimensions(state.dimensions2D, screen, layout);
+    const hitDim = insideScreenClip(clip, screen) ? hitTestDimensions(state.dimensions2D, screen, layout) : null;
     const next = hitDim && !isDimensionOnPlane(hitDim, drawnPlane) ? hitDim.id : null;
     if (next !== (hover?.id ?? null)) setHover(next ? { id: next, x: screen.x, y: screen.y } : null);
     return false;

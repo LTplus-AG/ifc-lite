@@ -136,9 +136,11 @@ test('the report names cells with throttled or unreadable-thermal samples and th
     row('Holter', 'branch', { startC: null, endC: null, throttleEvents: null, throttleMs: null }),
     row('FZK', 'base', { startC: 80, endC: 81, throttleEvents: 0, throttleMs: 0 }),
   ]);
-  assert.deepEqual(rows, ['| Holter | browser-cold | base | 2 | 1 | 0 | 250 | 94 |', '| Holter | browser-cold | branch | 1 | 0 | 1 | — | — |']);
+  assert.deepEqual(rows, ['| Holter | browser-cold | base | 2 | 1 | 2 | 0 | 250 | 94 |', '| Holter | browser-cold | branch | 1 | 0 | 0 | 1 | — | — |']);
   assert.deepEqual(thermalRows([{ ok: true, fixture: 'x', lane: 'browser-cold', side: 'base', host: {} }]), [], 'rows from a harness without the read are not reported');
+  // Sustained throttling moves neither counter (count at onset, time at the end): a hot sample is listed, never quiet (review #9952).
+  assert.deepEqual(thermalRows([row('Holter', 'base', { startC: 95, endC: 96, throttleEvents: 0, throttleMs: 0 })]), ['| Holter | browser-cold | base | 1 | 0 | 1 | 0 | 0 | 96 |']);
   // Throttling already active at the start adds time without a new event; one unreadable counter is unknown (review #9952).
-  assert.deepEqual(thermalRows([row('BWK', 'base', { startC: 92, endC: 93, throttleEvents: 0, throttleMs: 250 })]), ['| BWK | browser-cold | base | 1 | 1 | 0 | 250 | 93 |']);
-  assert.deepEqual(thermalRows([row('BWK', 'base', { startC: 80, endC: 80, throttleEvents: 0, throttleMs: null })]), ['| BWK | browser-cold | base | 1 | 0 | 1 | — | 80 |']);
+  assert.deepEqual(thermalRows([row('BWK', 'base', { startC: 92, endC: 93, throttleEvents: 0, throttleMs: 250 })]), ['| BWK | browser-cold | base | 1 | 1 | 1 | 0 | 250 | 93 |']);
+  assert.deepEqual(thermalRows([row('BWK', 'base', { startC: 80, endC: 80, throttleEvents: 0, throttleMs: null })]), ['| BWK | browser-cold | base | 1 | 0 | 0 | 1 | — | 80 |']);
 });

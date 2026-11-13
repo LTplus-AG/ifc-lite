@@ -74,6 +74,29 @@ describe('spare parser worker', () => {
     expect(hasSpareParserWorker()).toBe(false);
   });
 
+  it('drops a ready spare whose worker dies before a parser takes it (no warm source)', async () => {
+    expect(await prepareSpareParserWorker({ spawn })).toBe(true);
+    spawned[0].onerror?.({} as ErrorEvent);
+    expect(spawned[0].terminated).toBe(true);
+    expect(hasSpareParserWorker()).toBe(false);
+    expect(takeSpareParserWorker()).toBeNull();
+  });
+
+  it('drops a warmed spare whose worker dies before a parser takes it', async () => {
+    const ready = prepareSpareParserWorker({ spawn, warmSource: new SharedArrayBuffer(8) });
+    spawned[0].reply({ type: 'complete', id: WARM_PARSE_ID });
+    expect(await ready).toBe(true);
+    spawned[0].onerror?.({} as ErrorEvent);
+    expect(hasSpareParserWorker()).toBe(false);
+  });
+
+  it('a warm parse that cannot be sent resolves false and leaves no spare', async () => {
+    const throwing = () => { const w = new FakeWorker(); w.postMessage = () => { throw new DOMException('DataCloneError'); }; spawned.push(w); return w as unknown as Worker; };
+    expect(await prepareSpareParserWorker({ spawn: throwing, warmSource: new SharedArrayBuffer(8) })).toBe(false);
+    expect(spawned[0].terminated).toBe(true);
+    expect(hasSpareParserWorker()).toBe(false);
+  });
+
   it('keeps at most one spare', async () => {
     expect(await prepareSpareParserWorker({ spawn })).toBe(true);
     expect(await prepareSpareParserWorker({ spawn })).toBe(false);

@@ -1,0 +1,9 @@
+---
+"@ifc-lite/rhino3dm": patch
+---
+
+A Rhino block member that inherits its material from the instance placing it now resolves its colour and transparency from that material (#9987). Two rules were wrong. A member with `ColorFromMaterial` plus `MaterialFromParent` took the instance's object colour; it now takes the diffuse colour of the instance's material, so a red instance carrying a blue material draws such a member blue. And an inherited material's transparency was skipped, on the theory that the instance's colour already carried it; it does not, so a member with its own colour and an inherited glass material now comes back faded instead of opaque.
+
+`ON_3dmObjectAttributes::ApplyParentalControl` in openNURBS, the function Rhino itself uses, settles both: it overwrites a "by parent" material with the instance's and leaves the colour source alone, which leaves the member indistinguishable from one that owned that material. It was run over all 144 combinations of a member's and an instance's two sources, and the resolution table with its citations is in `docs/architecture/rhino-3dm-import.md`.
+
+Members whose colour or transparency comes from the instance's material are now baked per placement, because one instance record carries one colour. Both the instanced and the baked mode draw the same colours and the same triangle count. The neighbouring rules were already right and are now covered: `ColorFromLayer` on a member reads the member's own layer and never the instance's, `ColorFromParent` takes the instance's resolved colour, both sources fall back to the object's own layer at top level, and nesting resolves against the direct parent.

@@ -17,6 +17,10 @@ const samples = fileURLToPath(new URL('../../../../tests/models/rhino/mcneel-rhi
 const sample = (name: string) => new Uint8Array(readFileSync(samples + name));
 const absent = !['blocks', 'file3dm_stuff', 'mesh', 'object_UserStrings', 'subd_creases'].every(name => existsSync(`${samples}${name}.3dm`));
 
+/** The openNURBS toolkit's own example files, pinned the same way. */
+const toolkit = fileURLToPath(new URL('../../../../tests/models/rhino/mcneel-opennurbs/', import.meta.url));
+const toolkitAbsent = !existsSync(`${toolkit}my_mesh_with_material.3dm`);
+
 describe.skipIf(absent)(`Rhino-authored samples${absent ? ' (skipped: run pnpm fixtures)' : ''}`, () => {
   test('mesh.3dm: a Rhino 8 mesh in millimetres on the Default layer', async () => {
     const result = await readRhino3dm(sample('mesh.3dm'));
@@ -71,4 +75,23 @@ describe.skipIf(absent)(`Rhino-authored samples${absent ? ' (skipped: run pnpm f
     expect(error.code).toBe('no-renderable-geometry');
     expect(error.message).toBe('Nothing in this file can be drawn (skipped: 1 Extrusion:no-render-mesh). Surfaces need the render meshes Rhino stores with the file: open it in Rhino, switch to a shaded view and save without "Save Small".');
   });
+});
+
+/**
+ * The only public .3dm the search for #9987 turned up with a semi-transparent
+ * render material. No public file has a block member with a "from parent"
+ * colour or material, so those rows are crafted instead; see
+ * `appearance.test.ts` and the table in the import spec.
+ */
+test.skipIf(toolkitAbsent)(`my_mesh_with_material.3dm: a material's transparency fades an opaque colour${toolkitAbsent ? ' (skipped: run pnpm fixtures)' : ''}`, async () => {
+  const result = await readRhino3dm(new Uint8Array(readFileSync(`${toolkit}my_mesh_with_material.3dm`)));
+  expect(result.document).toMatchObject({ archiveVersion: 60, unitSystem: 'Millimeters' });
+  // Colour by layer, and the layer's colour is opaque black; the object names a material of its
+  // own whose transparency is 0.2, stored as an f32, so the mesh is drawn at alpha 0.8.
+  expect(result.meshes).toHaveLength(1);
+  expect(result.meshes[0].color.slice(0, 3)).toEqual([0, 0, 0]);
+  expect(result.meshes[0].color[3]).toBeCloseTo(0.8, 7);
+  expect(result.entities[0].propertySets.find(set => set.name === 'Rhino')?.properties)
+    .toContainEqual(['Material', 'my render material']);
+  expect([result.skipped, result.warnings]).toEqual([{}, []]);
 });

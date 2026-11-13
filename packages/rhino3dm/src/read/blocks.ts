@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { resolveAppearance, takesParentColor, type Appearance, type AppearanceTables, type Look } from './appearance.js';
+import { resolveAppearance, takesParentColor, takesParentMaterial, type Appearance, type AppearanceTables, type Look } from './appearance.js';
 import type { BlockMeshes, DrawnPart, Emitter } from './emit.js';
 import type { Part } from './geometry.js';
 import { plural, type Report } from './report.js';
@@ -18,8 +18,9 @@ export interface Block extends BlockMeshes {
   /** A linked definition's geometry lives in another file. */
   linked: boolean;
   /**
-   * Curves and point clouds, and a "by parent" mesh with a transparent material of its own:
-   * always baked, and charged to the budget per placement.
+   * Curves and point clouds, and the meshes one instance colour cannot carry: a "by parent" mesh
+   * with a transparent material of its own, and a mesh coloured or made transparent by the
+   * instance's material. Always baked, and charged to the budget per placement.
    */
   others: { part: Exclude<DrawnPart, { kind: 'dot' }>; look: Look }[];
   /** Text dots: always baked, and counted against their own limit. */
@@ -44,8 +45,9 @@ export function buildBlock(name: string, linked: boolean, members: BlockMember[]
     else if (part.kind !== 'mesh') block.others.push({ part, look });
     else {
       const byParent = takesParentColor(look), own = resolveAppearance(look, tables, ANY_PARENT).color;
-      // A definition mesh holds one colour or none, so it cannot say "the instance's colour at my own alpha".
-      if (byParent && own[3] < 1) block.others.push({ part, look });
+      // A definition mesh holds one colour or none, so it can say neither "the instance's colour at
+      // my own alpha" nor "whatever the instance's material makes me".
+      if (takesParentMaterial(look) || (byParent && own[3] < 1)) block.others.push({ part, look });
       else {
         // A "by parent" mesh takes the colour of whichever instance places it.
         block.meshes.push({ origin: part.origin, positions: part.positions, normals: part.normals, indices: part.indices, color: byParent ? null : own });

@@ -104,17 +104,25 @@ describe('instances', () => {
   });
 });
 
-test('a member whose colour is by a material that is by parent takes the instance colour, mesh and curve alike', async () => {
+test('a member whose colour is by a material that is by parent takes the instance MATERIAL, mesh and curve alike (#9987)', async () => {
+  // The instance's own colour and its material disagree, which is what settles the question:
+  // openNURBS overwrites the member's material with the instance's and leaves its colour source
+  // alone, so the member is blue from that material, not red from the instance's object colour.
   const build = (c: Craft) => {
     const glass = c.material('Glass', [0, 0, 255, 255], 0.5), green = c.layer('Green', { color: [0, 255, 0, 255] });
     const spec = { layer: green, colorSource: 'ColorFromMaterial', materialSource: 'MaterialFromParent' } as const;
     const block = c.block('Pane', [unit(c), new c.rhino.PolylineCurve([[0, 0, 0], [1, 0, 0]])], [spec, spec]);
-    c.addInstance(block, undefined, { layer: green, colorSource: 'ColorFromMaterial', material: glass, materialSource: 'MaterialFromObject' });
+    c.addInstance(block, undefined, { layer: green, color: [255, 0, 0, 255], colorSource: 'ColorFromObject', material: glass, materialSource: 'MaterialFromObject' });
   };
-  const bytes = await craft(build), blue = [0, 0, 1, 0.5];
+  const bytes = await craft(build), blue = [0, 0, 1, 0.5], red = [1, 0, 0, 0.5];
   const instanced = await readRhino3dm(bytes), baked = await readRhino3dm(bytes, { bakeInstances: true });
-  expect(instanced.definitions[0].meshes[0].color).toBeNull();
-  expect([instanced.instances[0].color, instanced.curves[0].color, baked.meshes[0].color, baked.curves[0].color]).toEqual([blue, blue, blue, blue]);
+  // No instance colour can carry a colour that comes from the instance's material, so the member
+  // is baked per placement and the definition keeps no mesh of its own.
+  expect(instanced.definitions).toEqual([]);
+  expect(instanced.instances.map(i => i.color)).toEqual([]);
+  expect([instanced.meshes[0].color, instanced.curves[0].color, baked.meshes[0].color, baked.curves[0].color]).toEqual([blue, blue, blue, blue]);
+  // The instance itself still draws nothing but its members; red is only its own resolved colour.
+  expect(instanced.meshes.every(m => m.color !== red)).toBe(true);
 });
 
 test('a "by parent" member with a transparent material of its own takes the instance colour and its own transparency', async () => {

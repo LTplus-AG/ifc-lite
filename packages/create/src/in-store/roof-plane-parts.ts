@@ -12,8 +12,8 @@ import { refId } from './host-geometry-frame.js';
 import { AnchorEntityReader } from './resolve-anchor.js';
 import { signedArea, type FootprintRoofPlan } from './roof-footprint-plan.js';
 
-const PART_TYPE = 'IfcLite_RoofPlane';
-const RELATION_NAME = 'Footprint roof planes';
+export const PART_TYPE = 'IfcLite_RoofPlane';
+export const RELATION_NAME = 'Footprint roof planes';
 type MeasureAnchor = Pick<SpatialAnchor, 'lengthUnitScale' | 'getMeasureUnitScales' | 'guidRandom'>;
 
 /** Validate before emitting a roof; other builders need not resolve unrelated measure units. */

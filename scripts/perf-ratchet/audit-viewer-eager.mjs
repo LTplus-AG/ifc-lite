@@ -65,6 +65,7 @@ if (args.includes('--expect-lazy')) {
     '/components/extensions/IdeasPanel.tsx',
     '/components/extensions/AuditLogPanel.tsx',
     '/components/viewer/properties/StructuralCard.tsx',
+    '/components/viewer/properties/structural-card-model.ts',
   ]) {
     if (![...chunks].some(chunk => chunk.modules.some(module => module.id.endsWith(suffix)))) {
       throw new Error(`Expected lazy feature missing from output: ${suffix}`);

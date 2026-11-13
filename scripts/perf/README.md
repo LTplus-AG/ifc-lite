@@ -6344,7 +6344,10 @@ or a speedup claim. Historical round-zero evidence completed the 1K
 population; the larger populations were censored at their reached counts, and
 F5 was unmeasured. Diagnostic samples at those reached counts cannot establish
 growth at the requested populations. A complete checkpoint and separate passing
-F5 evidence remain necessary; this clarification changes no acceptance limit.
+F5 evidence remain necessary; this clarification changes no acceptance limit. Export is output-proportional work, and a storey edit in this historical
+protocol affects that storey's growing contents. Their retained totals are not
+fixed-work timings and do not establish normalized growth; the ratchet remains
+unchanged.
 
 ## Implicit wall joins use maintained endpoint membership (#9406)
 

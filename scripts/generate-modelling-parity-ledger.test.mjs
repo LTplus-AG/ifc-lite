@@ -670,3 +670,23 @@ test('#9328 UI runtime attribution uses the dist revision and records the probe 
   assert.equal(source.probes.commit,'harness');
   assert.equal(source.dirty,true);
 });
+
+test('#9328 unpinned UI dist provenance is discovered from the runtime repository', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const { sourceProvenance } = await import('../tests/modelling-parity/probes/sdk/run.mjs');
+  const dir=mkdtempSync(join(tmpdir(),'parity-runtime-git-'));
+  try {
+    const repos=['probe','runtime'].map(name=>{
+      const root=join(dir,name);mkdirSync(root);
+      const git=args=>execFileSync('git',args,{cwd:root,encoding:'utf8'});
+      git(['init','--quiet']);writeFileSync(join(root,'revision.txt'),name);git(['add','revision.txt']);
+      git(['-c','user.name=Parity','-c','user.email=parity@example.invalid','-c','commit.gpgsign=false','commit','--quiet','-m','fixture']);
+      const dist=join(root,'dist');mkdirSync(dist);
+      return {root,dist,commit:git(['rev-parse','HEAD']).trim()};
+    });
+    const source=sourceProvenance(repos[1].dist,repos[0].root);
+    assert.equal(source.commit,repos[1].commit);
+    assert.equal(source.probes.commit,repos[0].commit);
+    assert.equal(source.dirty,true);
+  } finally {rmSync(dir,{recursive:true,force:true});}
+});

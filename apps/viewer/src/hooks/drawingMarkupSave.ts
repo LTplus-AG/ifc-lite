@@ -218,6 +218,7 @@ function persistFor(modelId: string): void {
     polygonArea2DResults: s.polygonArea2DResults,
     textAnnotations2D: s.textAnnotations2D,
     cloudAnnotations2D: s.cloudAnnotations2D,
+    dimensions2D: s.dimensions2D,
     drawing2DDisplayOptions: s.drawing2DDisplayOptions,
     sectionConfig: lastSectionConfigModelId === modelId ? lastSectionConfig : null,
   });
@@ -320,6 +321,7 @@ export function ensureSaveSubscription(): void {
       state.polygonArea2DResults !== prev.polygonArea2DResults ||
       state.textAnnotations2D !== prev.textAnnotations2D ||
       state.cloudAnnotations2D !== prev.cloudAnnotations2D ||
+      state.dimensions2D !== prev.dimensions2D ||
       state.drawing2DDisplayOptions !== prev.drawing2DDisplayOptions;
     prev = state;
     if (!changed || !modelId) return;

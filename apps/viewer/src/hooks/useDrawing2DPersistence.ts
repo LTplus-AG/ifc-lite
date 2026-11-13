@@ -194,6 +194,7 @@ export function useDrawing2DPersistence(): void {
         polygonArea2DResults: drawnMeanwhile(entry.polygonArea2DResults, live.polygonArea2DResults),
         textAnnotations2D: drawnMeanwhile(entry.textAnnotations2D, live.textAnnotations2D),
         cloudAnnotations2D: drawnMeanwhile(entry.cloudAnnotations2D, live.cloudAnnotations2D),
+        dimensions2D: drawnMeanwhile(entry.dimensions2D ?? [], live.dimensions2D),
         drawing2DDisplayOptions: entry.drawing2DDisplayOptions,
       });
     };

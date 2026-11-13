@@ -13,6 +13,8 @@ import { BUILT_IN_PRESETS } from '@ifc-lite/drawing-2d';
 import type { DxfReferenceFrame } from '@/hooks/dxfReferencePlane';
 import type { SectionPlane } from '../section-types';
 import { createDxfUnderlayActions } from './drawing2DSlice.dxfActions';
+import { createDimension2DActions, getDefaultDimension2DState, moveDimension2D, type Dimension2DActions, type Dimension2DState } from './drawing2DDimensions';
+export type { Dimension2D, Dimension2DOrientation } from './drawing2DDimensions';
 import { validateDrawingDisplayOptions } from '@/lib/drawing/projection-depth';
 import { DEFAULT_SCAN_SECTION_THICKNESS } from '@/hooks/scanSectionMath';
 import { DEFAULT_SCAN_OUTLINE_MAX_GAP } from '@/lib/scan-outline/scan-outline';
@@ -24,7 +26,7 @@ export type Drawing2DStatus = 'idle' | 'generating' | 'ready' | 'error';
 export type DrawnSectionPlane = Pick<SectionPlane, 'axis' | 'position' | 'flipped' | 'custom'>;
 
 /** Active 2D annotation tool */
-export type Annotation2DTool = 'none' | 'measure' | 'polygon-area' | 'text' | 'cloud';
+export type Annotation2DTool = 'none' | 'measure' | 'polygon-area' | 'text' | 'cloud' | 'dimension';
 
 /** Point in 2D drawing coordinates */
 export interface Point2D {
@@ -69,7 +71,7 @@ export interface CloudAnnotation2D {
 
 /** Reference to a selected annotation */
 export interface SelectedAnnotation2D {
-  type: 'measure' | 'polygon' | 'text' | 'cloud';
+  type: 'measure' | 'polygon' | 'text' | 'cloud' | 'dimension';
   id: string;
 }
 
@@ -131,7 +133,7 @@ export interface DxfUnderlayState {
   referenceFrame?: DxfReferenceFrame;
 }
 
-export interface Drawing2DState {
+export interface Drawing2DState extends Dimension2DState {
   /** Current drawing data (null when not generated) */
   drawing2D: Drawing2D | null;
   /**
@@ -268,7 +270,7 @@ export interface Drawing2DState {
   dxfUnderlays: DxfUnderlayState[];
 }
 
-export interface Drawing2DSlice extends Drawing2DState {
+export interface Drawing2DSlice extends Drawing2DState, Dimension2DActions {
   // Drawing Actions
   setDrawing2D: (drawing: Drawing2D | null, plane?: DrawnSectionPlane) => void;
   setDrawing2DStatus: (status: Drawing2DStatus) => void;
@@ -344,7 +346,7 @@ export interface Drawing2DSlice extends Drawing2DState {
   moveAnnotation2D: (sel: SelectedAnnotation2D, newOrigin: Point2D) => void;
 
   // Bulk Actions
-  /** Clear all annotations (measurements, polygons, text, clouds) */
+  /** Clear all annotations (measurements, polygons, text, clouds, dimensions) */
   clearAllAnnotations2D: () => void;
 
   // DXF Underlay Actions (issue #1782)
@@ -431,6 +433,7 @@ export const getDefaultDrawing2DState = (): Drawing2DState => ({
   textAnnotation2DEditing: null,
   cloudAnnotation2DPoints: [],
   cloudAnnotations2D: [],
+  ...getDefaultDimension2DState(),
   // Selection
   selectedAnnotation2D: null,
   // DXF underlays
@@ -650,6 +653,7 @@ export const createDrawing2DSlice: StateCreator<Drawing2DSlice, [], [], Drawing2
       measure2DSnapPoint: null,
       polygonArea2DPoints: [],
       cloudAnnotation2DPoints: [],
+      dimension2DPoints: [],
       textAnnotation2DEditing: null,
       selectedAnnotation2D: null,
     };
@@ -776,6 +780,9 @@ export const createDrawing2DSlice: StateCreator<Drawing2DSlice, [], [], Drawing2
       case 'cloud':
         set({ cloudAnnotations2D: state.cloudAnnotations2D.filter((a) => a.id !== sel.id), selectedAnnotation2D: null });
         break;
+      case 'dimension':
+        set({ dimensions2D: state.dimensions2D.filter((d) => d.id !== sel.id), selectedAnnotation2D: null });
+        break;
     }
   },
 
@@ -818,10 +825,14 @@ export const createDrawing2DSlice: StateCreator<Drawing2DSlice, [], [], Drawing2
         ) });
         break;
       }
+      case 'dimension':
+        set({ dimensions2D: moveDimension2D(state.dimensions2D, sel.id, newOrigin) });
+        break;
     }
   },
 
   ...createDxfUnderlayActions(set),
+  ...createDimension2DActions(set, get),
 
   // Bulk Actions
   clearAllAnnotations2D: () => set({
@@ -837,6 +848,7 @@ export const createDrawing2DSlice: StateCreator<Drawing2DSlice, [], [], Drawing2
     textAnnotation2DEditing: null,
     cloudAnnotation2DPoints: [],
     cloudAnnotations2D: [],
+    ...getDefaultDimension2DState(),
     annotation2DCursorPos: null,
     selectedAnnotation2D: null,
   }),

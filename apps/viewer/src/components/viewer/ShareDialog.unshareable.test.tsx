@@ -201,6 +201,7 @@ describe('ShareDialog: models the share seed cannot carry', () => {
     assert.equal(starts.length, 0, 'no session is started on a seed with nothing in it');
     assert.equal(useViewerStore.getState().collabRoomId, null);
     assert.equal(relay.releases(), 1, 'the claimed room is handed back');
+    assert.equal(relay.mints().length, 1, 'the refusal does not claim another room');
 
     // Consent and the slot were handed back: a shareable model brings Create
     // link back, and only a new press claims a room.
@@ -214,6 +215,7 @@ describe('ShareDialog: models the share seed cannot carry', () => {
     click(again!);
     await act(() => settle('room creation did not settle'));
     assert.equal(starts.length, 1, 'the second press creates the room');
+    assert.equal(relay.mints().length, 2);
   });
 
   it('shares the models it can and names the one it drops', async (t) => {

@@ -42,8 +42,8 @@ export function useShareRoomCreation({ open, hasModel, collabRoomId, awaitingCon
     if (!hasModel || collabRoomId || roomAttemptRef.current || awaitingConsent) return;
     // Nothing to put in a room and nothing that was ever going to go in one:
     // don't claim it. Asked here so a refused share claims nothing, and again
-    // on the snapshot the seed is built from, since the models can change
-    // during the mint. Every refusal hands back the consent and the slot, so
+    // after the last await before startCollab, since the models can change at
+    // any of them. Every refusal hands back the consent and the slot, so
     // Create link starts a fresh attempt once the models are shareable again.
     // WHICH models, and why, is the dialog's own derived line; both read the
     // one predicate at the SELECTED scope so they cannot disagree.
@@ -74,16 +74,18 @@ export function useShareRoomCreation({ open, hasModel, collabRoomId, awaitingCon
         const preflight = useViewerStore.getState();
         buildShareSeed(preflight.models, preflight.activeModelId, scope, preflight.georefMutations);
         adminToken = await mintRoomToken({ roomId, role: 'admin' });
-        // Models can change during minting. Read fresh and always pass a seed,
-        // even empty, so startCollab retains the owner path (#4444).
+        // Models can change during minting. Read fresh and pass a seed even
+        // when it is empty (a GLB workspace), so startCollab retains the owner
+        // path (#4444); only a scope that refuses every model is declined.
         if (!isCurrent()) return;
         const st = useViewerStore.getState();
-        if (shareRefusesEveryModel(st.models, st.activeModelId, scope)) {
+        const seed = await prepareShareSeed(st.models, st.mutationViews, st.activeModelId, scope, st.georefMutations);
+        if (!isCurrent()) return;
+        const now = useViewerStore.getState();
+        if (shareRefusesEveryModel(now.models, now.activeModelId, scope)) {
           refuse();
           return;
         }
-        const seed = await prepareShareSeed(st.models, st.mutationViews, st.activeModelId, scope, st.georefMutations);
-        if (!isCurrent()) return;
         owner.joining = true;
         await startCollab({
           roomId,

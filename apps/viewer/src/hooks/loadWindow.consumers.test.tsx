@@ -226,3 +226,37 @@ for (const path of ['cache hit', 'cold load'] as const) {
     assert.equal(hidden.at(-1), 1);
   });
 }
+
+it('viewport status summary keeps a settled model\'s pill while another model loads and no model id resolves (legacy fallback)', async () => {
+  const storeA = await parse(), storeB = await parse();
+  // The top-level store is A's, but no model entry carries that object and no
+  // model is active, so the summary asks the window about `legacy`.
+  const shownStore = await parse();
+  useViewerStore.setState({
+    ifcDataStore: shownStore, activeModelId: null, models: new Map([['A', federated('A', storeA, 'complete')]]),
+    mutationViews: new Map(), mutationVersion: 0, hiddenEntities: new Set([10]),
+  });
+  let hidden: number[] = [];
+  function Probe() { hidden.push(useViewportStatusSummary().objectCounts.hidden); return null; }
+  render(<Probe />);
+  assert.equal(hidden.at(-1), 1);
+  hidden = [];
+  act(() => useViewerStore.setState({ loading: true }));
+  act(() => useViewerStore.setState({ models: new Map([['A', federated('A', storeA, 'complete')], ['B', federated('B', storeB, 'pending')]]), geometryStreamingActive: true }));
+  assert.ok(hidden.length > 0 && hidden.every((n) => n === 1), `the pill stays while B loads (saw ${hidden})`);
+});
+
+it('symbolic overlays and markup restore ask about legacy only in single-store mode (no change needed there)', async () => {
+  // useSymbolicActiveStores asks isHeld('legacy') only when models.size === 0,
+  // where the single store is the one loading; the markup restore effect returns
+  // before any work when no model is active. Pinned so a later change keeps it.
+  const store = await parse();
+  useViewerStore.setState({ ifcDataStore: store, models: new Map(), geometryResult: null, loading: true });
+  let seen: number[] = [];
+  function Probe() { seen.push(useSymbolicActiveStores().length); return null; }
+  render(<Probe />);
+  assert.equal(seen.at(-1), 0, 'single-store load: held');
+  act(() => useViewerStore.setState({ loading: false }));
+  await settleLoadWindow();
+  assert.equal(seen.at(-1), 1);
+});

@@ -270,6 +270,41 @@ describe('save markup to model keeps embedded markup the session never absorbed'
     assert.match(saved, /IFCQUANTITYLENGTH\('Distance',\$,\$,5\.,/);
   });
 
+  // PR #10083 review: a model without a File persists nothing, so leaving and
+  // returning brings its markup back empty. The set absorbed on the first
+  // visit must not survive that, or the save deletes what is off screen.
+  it('a model without a File, left and returned: the save keeps the embedded markup no longer on screen', async () => {
+    const release = heldWasmReply();
+    await mount();
+    const store = await parseFixture();
+    const other = fileWithBytes(48, 'other.ifc');
+    useViewerStore.setState({
+      editEnabled: true,
+      models: new Map([
+        ['no-file', { ...modelFor('no-file', fileWithBytes(49, 'no-file.ifc'), store), sourceFile: undefined } as FederatedModel],
+        ['other', { ...modelFor('other', other, store), ifcDataStore: null } as FederatedModel],
+      ]),
+    } as never);
+    await act(async () => { useViewerStore.getState().setActiveModel('no-file'); });
+    await decided('no-file');
+    await act(async () => { release(); });
+    await waitFor(() => useViewerStore.getState().measure2DResults.length === 1, 'the embedded restore applies');
+    assert.deepEqual([...absorbedEmbeddedMarkupFor('no-file')], [EMBEDDED_GUID], 'setup: absorbed on the first visit');
+
+    await act(async () => { useViewerStore.getState().setActiveModel('other'); });
+    await decided('other');
+    await act(async () => { useViewerStore.getState().setActiveModel('no-file'); });
+    await decided('no-file');
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 60)); });
+    assert.equal(useViewerStore.getState().measure2DResults.length, 0, 'setup: nothing restored on the return');
+    assert.equal(absorbedEmbeddedMarkupFor('no-file').size, 0);
+
+    await act(async () => { useViewerStore.setState({ measure2DResults: [USER_MEASURE] }); });
+    const saved = saveAndExport('no-file', store);
+    assert.equal(annotations(saved), 2, 'the embedded measurement and the user\'s');
+    assert.match(saved, new RegExp(`'${EMBEDDED_GUID}'`), 'the embedded measurement no longer on screen survives');
+  });
+
   it('an empty entry that records absorbed markup is a deliberate deletion and still wins', async () => {
     const file = fileWithBytes(47, 'deleted.ifc');
     const hash = (await placementSourceIdentity(file))!;

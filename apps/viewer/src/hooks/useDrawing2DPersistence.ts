@@ -40,7 +40,7 @@ import { identifyLoadedPlacementSource } from '@/lib/model-placement/loaded-sour
 import { placementSourceIdentity } from '@/lib/model-placement/source-identity';
 import { loadDrawing2DEntry, defaultMarkupPatch, suppressNextSaveFor, type PersistedDrawing2DEntry } from '@/store/slices/drawing2DSlice.persistence.js';
 import { setCachedHash, notifyDecided } from './drawingMarkupRestorePrecedence.js';
-import { absorbEmbeddedMarkup } from '@/lib/drawing2d-markup/drawing-markup-absorbed';
+import { absorbEmbeddedMarkup, forgetAbsorbedEmbeddedMarkup } from '@/lib/drawing2d-markup/drawing-markup-absorbed';
 import {
   resetSaveState, beginRestore, endRestore, setRestoredSectionConfig, ensureSaveSubscription,
   subscribeModelActivations, modelActivationEpoch,
@@ -155,6 +155,9 @@ export function useDrawing2DPersistence(): void {
     beginRestore(activeModelId);
     suppressNextSaveFor(activeModelId);
     useViewerStore.setState(defaultMarkupPatch());
+    // The cleared fields no longer hold any absorbed embedded markup; the
+    // restores below add back what they put on screen.
+    forgetAbsorbedEmbeddedMarkup(activeModelId);
 
     // `drawnMeanwhile` unites a stored list with the live one. The fields were
     // cleared when this model became active, so what the live lists hold at

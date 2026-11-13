@@ -65,6 +65,18 @@ export function absorbedEmbeddedMarkupFor(modelId: string): ReadonlySet<string> 
   return entry && source && entry.source?.deref() === source ? entry.ids : new Set();
 }
 
+/**
+ * Forget what `modelId` absorbed. Called when the model becomes active and its
+ * markup fields are cleared: from then on the session holds only what a
+ * restore puts back, and each restore re-adds its own set (the localStorage
+ * entry's, or the embedded restore's). Keeping the old set would let a save
+ * replace embedded markup that is no longer on screen, e.g. a model without
+ * a `File` (nothing is persisted for it) after the user left and returned.
+ */
+export function forgetAbsorbedEmbeddedMarkup(modelId: string): void {
+  absorbed.delete(modelId);
+}
+
 /** @internal test-only reset. */
 export function __resetAbsorbedEmbeddedMarkupForTests(): void {
   absorbed.clear();

@@ -18,7 +18,7 @@ const underStorey = (parent: { origin: Vec2; axis: Vec2 }): boolean =>
 /** Carried placement frames are not writable storey-local wall roots. Refuse
  * an unsupported stationary-neighbour propagation before any placement write. */
 export function assertCarriedJoinsMoveTogether(target: EditTarget, plan: TransformPlan): void {
-  if (!plan.carried.length || String(target.dataStore.schemaVersion).toUpperCase() === 'IFC5' || !target.dataStore.source?.byteLength) return;
+  if (!plan.carried.length || String(target.dataStore.schemaVersion).toUpperCase() === 'IFC5' || target.dataStore.sourceKind === 'tabular' || !target.dataStore.source?.byteLength) return;
   const carried = new Set(plan.carried);
   const moved = new Set([...plan.roots.map(root => root.expressId), ...carried]);
   for (const rel of readWallJoinRels(target.dataStore, target.view, carried)) {
@@ -30,7 +30,7 @@ export function assertCarriedJoinsMoveTogether(target: EditTarget, plan: Transfo
 }
 
 export function carryWallJoinsInStore(target: EditTarget, plan: TransformPlan, turn = 0): readonly number[] {
-  if (String(target.dataStore.schemaVersion).toUpperCase() === 'IFC5' || !target.dataStore.source?.byteLength) return [];
+  if (String(target.dataStore.schemaVersion).toUpperCase() === 'IFC5' || target.dataStore.sourceKind === 'tabular' || !target.dataStore.source?.byteLength) return [];
   const { dataStore, view } = target;
   const scale = getModelLengthUnitScale(dataStore);
   const rigid = new Set([...plan.roots.map((r) => r.expressId), ...plan.carried]);

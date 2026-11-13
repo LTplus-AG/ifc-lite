@@ -176,12 +176,13 @@ function moveLegacyMarkup(key: string, legacy: string, unionById: LegacyMoveCont
   saveDrawing2DEntry(key, merged);
   // The entry read back must BE the merged one, value for value. Comparing
   // ids is not enough: an entry whose write failed still holds every id when
-  // the legacy entry only contributed a newer version of an item, or the
-  // section plane.
+  // the legacy entry only contributed a newer version of an item, the
+  // section plane, or the absorbed embedded markup a deletion depends on.
   const written = loadDrawing2DEntry(key, defaults);
   const same = (pick: (entry: typeof merged) => unknown) => !!written && JSON.stringify(pick(written)) === JSON.stringify(pick(merged));
   if (!MARKUP_LISTS.every((list) => same((entry) => entry[list]))
-    || !same((entry) => entry.sectionConfig) || !same((entry) => entry.drawing2DDisplayOptions)) return { complete: false, fallback: merged };
+    || !same((entry) => entry.sectionConfig) || !same((entry) => entry.drawing2DDisplayOptions)
+    || !same((entry) => entry.absorbedEmbeddedMarkup ?? [])) return { complete: false, fallback: merged };
   return { complete: removeLocal(keyFor(legacy), raw) };
 }
 

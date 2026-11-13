@@ -289,44 +289,45 @@ export function saveDrawingMarkupToModel(
   // only what the session absorbed (`drawing-markup-absorbed.ts`): embedded
   // markup the restore never loaded is kept, the new batch goes beside it,
   // and a clear leaves it in place as well.
-  const previousRemoved = removeDrawingMarkupFromStore(editor)
-    + removeEmbeddedDrawingMarkup(dataStore, editor, absorbedEmbeddedMarkupFor(modelId));
-
-  if (total === 0) {
-    if (previousRemoved > 0) useViewerStore.getState().markModelsDirty([modelId]);
-    return { ...EMPTY_COUNTS, previousRemoved, refusal: previousRemoved > 0 ? null : 'nothing-to-save' };
-  }
-
-  // `findInvalidMarkup` above covers every guard `addDrawingMarkupToStore`
-  // (and the builders it calls) can throw on today, so this should never
-  // fire — kept as a last-resort net, not the primary defense, since
-  // `StoreEditor` has no checkpoint/rollback: without this, a THIRD failure
-  // mode neither guard above catches would leave orphaned overlay entities
-  // (the sub-context, and whichever items were added before the throw) with
-  // no error surfaced and no `markModelsDirty`, i.e. a half-written overlay
-  // that silently looks clean.
-  const idsBeforeWrite = new Set(editor.getNewEntities().map((e) => e.expressId));
-  let result;
+  //
+  // Both sweeps and the write are ONE `runAtomic` edit: `findInvalidMarkup`
+  // above covers every guard `addDrawingMarkupToStore` (and the builders it
+  // calls) can throw on today, so the catch should never fire — but if a
+  // failure mode neither guard catches does, the staged edit is discarded
+  // whole, and the swept annotations are still there rather than gone with
+  // nothing written in their place.
+  const absorbed = absorbedEmbeddedMarkupFor(modelId);
+  let saved;
   try {
-    result = addDrawingMarkupToStore(
-      editor,
-      anchor,
-      rootContextId,
-      {
-        measure2DResults: input.measure2DResults,
-        polygonArea2DResults: input.polygonArea2DResults,
-        textAnnotations2D: input.textAnnotations2D,
-        cloudAnnotations2D: validClouds,
-      },
-      targetView,
-    );
+    saved = editor.runAtomic((draft) => {
+      const removed = removeDrawingMarkupFromStore(draft) + removeEmbeddedDrawingMarkup(dataStore, draft, absorbed);
+      if (total === 0) return { previousRemoved: removed, result: null };
+      return {
+        previousRemoved: removed,
+        result: addDrawingMarkupToStore(
+          draft,
+          anchor,
+          rootContextId,
+          {
+            measure2DResults: input.measure2DResults,
+            polygonArea2DResults: input.polygonArea2DResults,
+            textAnnotations2D: input.textAnnotations2D,
+            cloudAnnotations2D: validClouds,
+          },
+          targetView,
+        ),
+      };
+    });
   } catch (error) {
-    for (const entity of editor.getNewEntities()) {
-      if (!idsBeforeWrite.has(entity.expressId)) editor.removeEntity(entity.expressId);
-    }
     // eslint-disable-next-line no-console
     console.warn('[saveDrawingMarkupToModel] addDrawingMarkupToStore threw despite pre-validation:', error);
     return { ...EMPTY_COUNTS, refusal: 'invalid-markup' };
+  }
+  const { previousRemoved, result } = saved;
+
+  if (!result) {
+    if (previousRemoved > 0) useViewerStore.getState().markModelsDirty([modelId]);
+    return { ...EMPTY_COUNTS, previousRemoved, refusal: previousRemoved > 0 ? null : 'nothing-to-save' };
   }
   useViewerStore.getState().markModelsDirty([modelId]);
 

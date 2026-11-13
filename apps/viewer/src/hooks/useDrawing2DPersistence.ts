@@ -161,6 +161,9 @@ export function useDrawing2DPersistence(): void {
     // restore time was drawn while the key was resolving (#7035: that can
     // last until the load ends when a legacy entry is being moved). The resolver
     // runs on every activation so late legacy writes are included too.
+    // The same union keeps an entry with no markup decision (empty lists, no
+    // absorbed set; `drawingMarkupRestorePrecedence.ts`) from erasing what the
+    // embedded restore applied on a return with the hash already cached.
     const applyHash = (hash: string | null, skipDxfRestore = false, drawnMeanwhile: UnionById = (stored) => stored, fallback?: PersistedDrawing2DEntry) => {
       if (!stillCurrent()) return;
       endRestore(activeModelId);

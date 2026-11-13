@@ -226,6 +226,50 @@ describe('save markup to model keeps embedded markup the session never absorbed'
     assert.match(saved, /IFCQUANTITYLENGTH\('Distance',\$,\$,5\.,/, 'the measurement is still in the file');
   });
 
+  // PR #10083 review: leaving while the parse is pending, and returning once
+  // it is cached, must not let the empty entry win on the way back.
+  it('an empty entry persisted mid-restore does not erase the markup when the user leaves and returns after the parse lands', async () => {
+    const file = fileWithBytes(45, 'left-and-returned.ifc');
+    const hash = (await placementSourceIdentity(file))!;
+    const release = heldWasmReply();
+    await mount();
+    const store = await parseFixture();
+    const other = fileWithBytes(46, 'other.ifc');
+    useViewerStore.setState({
+      editEnabled: true,
+      models: new Map([
+        ['returned', modelFor('returned', file, store)],
+        ['other', { ...modelFor('other', other, store), ifcDataStore: null } as FederatedModel],
+      ]),
+    } as never);
+    await act(async () => { useViewerStore.getState().setActiveModel('returned'); });
+    await decided('returned');
+    await act(async () => {
+      useViewerStore.setState({ drawing2DDisplayOptions: { ...DEFAULTS, showHatching: !DEFAULTS.showHatching } });
+    });
+    assert.ok(loadDrawing2DEntry(hash, DEFAULTS), 'setup: the empty entry was persisted');
+
+    // Leave before the parse lands; it lands while the other model is active.
+    await act(async () => { useViewerStore.getState().setActiveModel('other'); });
+    await decided('other');
+    await act(async () => { release(); });
+    await waitFor(() => getParseFor(store) !== undefined, 'the annotation parse lands');
+    assert.equal(useViewerStore.getState().measure2DResults.length, 0, 'setup: nothing restored into the other model');
+
+    // Return: the parse is cached, so the embedded restore can apply at once.
+    await act(async () => { useViewerStore.getState().setActiveModel('returned'); });
+    await waitFor(() => loadDrawing2DEntry(hash, DEFAULTS)?.absorbedEmbeddedMarkup?.length === 1, 'the entry is reseeded from the restore');
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 60)); });
+    assert.equal(useViewerStore.getState().measure2DResults.length, 1, 'the embedded measurement is shown');
+    assert.equal(useViewerStore.getState().measure2DResults[0].distance, 5);
+    assert.deepEqual([...absorbedEmbeddedMarkupFor('returned')], [EMBEDDED_GUID]);
+    assert.equal(useViewerStore.getState().drawing2DDisplayOptions.showHatching, !DEFAULTS.showHatching, 'the display change is kept');
+
+    const saved = saveAndExport('returned', store);
+    assert.equal(annotations(saved), 1, 'the absorbed measurement is replaced, not duplicated or dropped');
+    assert.match(saved, /IFCQUANTITYLENGTH\('Distance',\$,\$,5\.,/);
+  });
+
   it('an empty entry that records absorbed markup is a deliberate deletion and still wins', async () => {
     const file = fileWithBytes(47, 'deleted.ifc');
     const hash = (await placementSourceIdentity(file))!;

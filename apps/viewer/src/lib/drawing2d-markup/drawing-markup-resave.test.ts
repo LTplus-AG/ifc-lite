@@ -23,7 +23,7 @@
  * survives a save.
  */
 
-import { describe, it } from 'node:test';
+import { describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { StepExporter } from '@ifc-lite/export';
@@ -31,6 +31,7 @@ import { useViewerStore } from '@/store/index.js';
 import { saveDrawingMarkupToModel, type SaveMarkupInput } from './drawing-markup-save.js';
 import { absorbEmbeddedMarkup } from './drawing-markup-absorbed.js';
 import { getDrawingMarkupModelContext } from './drawing-markup-context.js';
+import { StoreEditor } from '@ifc-lite/mutations';
 
 const STOREY_ID = 30;
 
@@ -399,5 +400,49 @@ describe('saveDrawingMarkupToModel keeps embedded markup the session never absor
     const store = await open(step); // same bytes, but a new load: nothing restored yet
     assert.equal(saveDrawingMarkupToModel('m1', OTHER_MEASURE).previousRemoved, 0);
     assert.equal(count(exportStep(store), 'IFCANNOTATION'), 2);
+  });
+});
+
+/**
+ * PR #10083 review: the session sweep, the embedded sweep and the replacement
+ * write are one edit. A write that throws past `findInvalidMarkup`'s
+ * pre-validation must leave the model exactly as it was, not with the swept
+ * annotations gone and nothing written in their place.
+ */
+describe('saveDrawingMarkupToModel when the replacement write fails', () => {
+  /** Run `save` with every entity creation throwing, the way an unforeseen writer failure would. */
+  function withFailingWrite<T>(save: () => T): T {
+    const failing = mock.method(StoreEditor.prototype, 'addEntity', () => { throw new Error('simulated writer failure'); });
+    try {
+      return save();
+    } finally {
+      failing.mock.restore();
+    }
+  }
+
+  it('keeps the absorbed embedded markup', async () => {
+    const { store } = await reopenedWith(EVERY_KIND);
+    const before = exportStep(store);
+    const version = useViewerStore.getState().mutationVersion;
+
+    const outcome = withFailingWrite(() => saveDrawingMarkupToModel('m1', ONE_MEASURE));
+    assert.equal(outcome.refusal, 'invalid-markup');
+    assert.equal(outcome.previousRemoved, 0);
+    assert.equal(useViewerStore.getState().mutationVersion, version, 'nothing was published');
+    assert.equal(exportStep(store), before, 'the file the user would save is unchanged');
+  });
+
+  it('keeps the markup an earlier save this session wrote', async () => {
+    const store = await open(MINI_IFC);
+    assert.equal(saveDrawingMarkupToModel('m1', EVERY_KIND).refusal, null);
+    const before = exportStep(store);
+
+    const outcome = withFailingWrite(() => saveDrawingMarkupToModel('m1', ONE_MEASURE));
+    assert.equal(outcome.refusal, 'invalid-markup');
+    // The exporter mints the GlobalIds of this session's property sets afresh
+    // on every export, and stamps the time; everything else must match.
+    const stable = (step: string) => step.replace(/^FILE_NAME\(.*$/m, '').replace(/'[0-9A-Za-z_$]{22}'/g, "'<guid>'");
+    assert.equal(stable(exportStep(store)), stable(before));
+    assert.equal(count(before, 'IFCANNOTATION'), 4);
   });
 });

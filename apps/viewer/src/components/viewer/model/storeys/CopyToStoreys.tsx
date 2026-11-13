@@ -119,7 +119,7 @@ export function CopyToStoreys({ onDone, onBack }: { onDone?: () => void; onBack?
       cancel();
     } finally { if (token === generation.current) setBusy(false); }
   };
-  if (stale) return <p role="status" className="p-2 text-xs">{t('storeyManager.copy.stale')}</p>;
+  if (stale) return <output className="block p-2 text-xs">{t('storeyManager.copy.stale')}</output>;
   return <div data-copy-to-storeys className="flex w-64 flex-col gap-2 p-2">
     <div className="flex flex-wrap items-center gap-2">
       {onBack && <Button size="sm" variant="ghost" onClick={() => { cancel(); onBack(); }}>{t('storeyManager.copy.back')}</Button>}

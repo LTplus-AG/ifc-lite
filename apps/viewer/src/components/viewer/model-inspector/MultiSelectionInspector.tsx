@@ -47,7 +47,7 @@ export function MultiSelectionInspector({ onClose }: { onClose?: () => void }) {
           }
           return [];
         })} />
-      {refusedSelection && <p role="status" className="text-xs text-foreground">{t('modelInspector.multipleModels')}</p>}
+      {refusedSelection && <output className="block text-xs text-foreground">{t('modelInspector.multipleModels')}</output>}
       <Button size="sm" variant="outline" onClick={() => state.showWorkspacePanel('properties')}>{t('modelInspector.properties')}</Button>
     </div>
     <ul className="min-h-0 flex-1 overflow-y-auto p-2">

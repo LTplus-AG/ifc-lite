@@ -23,8 +23,9 @@ export function StoreyInsertionDiagram({ rows, plan, inserted, renames }: {
     <div className="grid grid-cols-2 gap-2 text-center text-2xs text-foreground">
       <span>{t('storeyManager.insert.before')}</span><span>{t('storeyManager.insert.after')}</span>
     </div>
-    <svg role="img" aria-label={t('storeyManager.strip.label')}
+    <svg aria-label={t('storeyManager.strip.label')}
       viewBox={`0 0 280 ${height + 48}`} className="w-full text-foreground">
+      <title>{t('storeyManager.strip.label')}</title>
       {rows.map(row => {
         const move = moves.get(row.expressId);
         const from = y(row.elevation);

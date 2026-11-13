@@ -85,11 +85,14 @@ it('#9296 a loaded column with an initially empty overlay does not invalidate th
   const { content } = new StepExporter(data, s.mutationViews.get(MODEL_ID)!).export({ schema: 'IFC4', applyMutations: true });
   await seedModelingSession({ step: new TextDecoder().decode(content) });
   useViewerStore.setState({ hierarchyMode: 'spatial' });
+  const entities = useViewerStore.getState().models.get(MODEL_ID)!.ifcDataStore!.entities;
+  const loadedColumn = [...entities.expressId].find(id => entities.getTypeName(id) === 'IfcColumn');
+  assert.ok(loadedColumn);
   let commits = 0;
   render(<SourceHostProvider><Profiler id="loaded-hierarchy" onRender={() => commits++}><HierarchyPanel /></Profiler></SourceHostProvider>);
   await advance(100);
   const before = commits;
-  act(() => { assert.ok(useViewerStore.getState().translateEntity(MODEL_ID, column, [.5, 0, 0]).ok); });
+  act(() => { assert.ok(useViewerStore.getState().translateEntity(MODEL_ID, loadedColumn, [.5, 0, 0]).ok); });
   assert.equal(commits, before, 'the first positional override changes no spatial row');
   act(() => useViewerStore.getState().undo(MODEL_ID));
   assert.equal(commits, before, 'returning to an empty overlay changes no spatial row');

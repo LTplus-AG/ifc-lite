@@ -1934,5 +1934,9 @@
   "agentBridge.panel.duration": {
     "value": "{ms} ms",
     "reason": "Runtime placeholder with a unit symbol (milliseconds); no English prose."
+  },
+  "commands.ui.openPanelEntry": {
+    "value": "{digit} {panel}",
+    "reason": "Runtime placeholders only (the Alt shortcut digit and a panel title, each already localized); no English prose."
   }
 }

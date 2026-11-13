@@ -10,7 +10,7 @@
  */
 
 import { useTranslation, type TranslationKey, type TranslationParameters } from '@/i18n';
-import { ALT_SHORTCUT_PANELS } from '@/lib/panels/registry';
+import { ALT_SHORTCUT_PANELS, altShortcutDigit } from '@/lib/panels/registry';
 import { isPanelAvailable } from '@/lib/panels/availability';
 import { isApplePlatform } from '@/lib/commands/chord';
 import {
@@ -42,7 +42,8 @@ function rowsByCategory(apple: boolean, gestureKeys: (row: (typeof POINTER_GESTU
     push(command.category, {
       id: command.id,
       keys: formatCommandKeys(command, apple),
-      labelKey: command.labelKey,
+      // A host can switch off every bottom panel; the row then has no bottom clause.
+      labelKey: command.id === 'ui.openPanel' && !panelTitles.bottomPanels ? 'commands.ui.openPanelSideOnly' : command.labelKey,
       params: command.id === 'ui.openPanel' ? panelTitles : undefined,
     });
   }
@@ -59,11 +60,11 @@ export function ShortcutsTab() {
   const { t } = useTranslation();
   const apple = isApplePlatform();
   // Each panel keeps its digit when one before it is switched off, so the list
-  // names the digit instead of relying on position (Alt+0 is the tenth).
+  // names the digit instead of relying on position.
   const altPanelTitles = (bottom: boolean) => ALT_SHORTCUT_PANELS
-    .map((panel, index) => ({ panel, digit: (index + 1) % 10 }))
+    .map((panel, position) => ({ panel, digit: altShortcutDigit(position) }))
     .filter(({ panel }) => (panel.region === 'bottom') === bottom && isPanelAvailable(panel.id))
-    .map(({ panel, digit }) => `${digit} ${t(panel.titleKey)}`).join(', ');
+    .map(({ panel, digit }) => t('commands.ui.openPanelEntry', { digit, panel: t(panel.titleKey) })).join(', ');
   const groups = rowsByCategory(apple, (gesture) => t(gesture.gestureKey, { mod: apple ? '⌘' : 'Ctrl' }),
     { sidePanels: altPanelTitles(false), bottomPanels: altPanelTitles(true) });
 

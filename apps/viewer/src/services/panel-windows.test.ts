@@ -216,7 +216,7 @@ describe('panel-windows', () => {
     assert.equal(openedWindows[0].closed, true);
   });
 
-  it('closePanelWindow on a window the user already closed re-docks without touching it', async () => {
+  it('closePanelWindow on a window the user already closed re-docks without touching it (#10147)', async () => {
     await openPanelWindow('clash');
     openedWindows[0].close(); // gone out-of-band; no pagehide reached us
     let closeCalls = 0;

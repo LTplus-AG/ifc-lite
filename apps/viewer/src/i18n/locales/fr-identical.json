@@ -427,6 +427,10 @@
     "value": "Site",
     "reason": "French uses the same spelling « Site » for this contextual label; reviewed against its feature meaning."
   },
+  "commands.ui.openPanelEntry": {
+    "value": "{digit} {panel}",
+    "reason": "Runtime placeholders only (the Alt shortcut digit and a panel title, each already localized); no English prose."
+  },
   "compareAnalysis.reconcile.kind.validation": {
     "value": "Validation",
     "reason": "French uses the same spelling « Validation » for this contextual label; reviewed against its feature meaning."

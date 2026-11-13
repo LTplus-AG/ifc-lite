@@ -304,8 +304,12 @@ it('in sheet mode a snap target clipped out of the viewport is not taken (#10076
   const at = { clientX: right - 1, clientY: corner.y };
   mouseMove(canvas, at);
   assert.notEqual(tool.snapMode, 'endpoint', 'the clipped corner is not offered');
+  // The visible edge under the cursor is still snapped to (#10076 review): losing the
+  // corner must not drop the snap and its element reference.
+  assert.equal(tool.snapMode, 'nearest', 'the visible edge is offered instead');
   assert.ok((tool.scene?.markers ?? []).every((m) => mapping.toScreen(m).x <= right), 'no marker outside the viewport');
   mouseDown(canvas, at);
   const [placed] = useViewerStore.getState().dimension2DPoints;
   assert.ok(placed && mapping.toScreen(placed).x <= right, `the placed point is on the visible drawing (${placed && mapping.toScreen(placed).x})`);
+  assert.ok(Math.abs(placed.y - 1.5) < 1e-9, `the placed point lies on the visible edge (y ${placed.y})`);
 });

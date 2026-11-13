@@ -32,8 +32,9 @@ let modelArrivalPending = false;
  * that chose its pieces. A hit under another filter streams and replaces the
  * snapshot, so a changed setting costs one ordinary open.
  */
-export function sceneSnapshotKey(policy: string, typeViewMode: string, typeVisibility: object): string {
-  return `${policy}~${typeViewMode}~${JSON.stringify(typeVisibility)}`;
+export function sceneSnapshotKey(policy: string, typeViewMode: string, typeVisibility: object, structuralViewMode = 'both'): string {
+  const key = `${policy}~${typeViewMode}~${JSON.stringify(typeVisibility)}`;
+  return structuralViewMode === 'both' ? key : `${key}~${structuralViewMode}`;
 }
 
 /** The box the camera last framed for a load. Not readable back: the camera keeps only the pose it produced. */

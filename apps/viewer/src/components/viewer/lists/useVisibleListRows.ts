@@ -25,6 +25,7 @@ export function useVisibleListRows(rows: ListRow[], filterByVisibility: boolean)
   const lensHiddenIds = useViewerStore((s) => s.lensHiddenIds);
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
   const typeVisibility = useViewerStore((s) => s.typeVisibility);
+  const structuralViewMode = useViewerStore((s) => s.structuralViewMode);
   const models = useViewerStore((s) => s.models);
   const activeBasketViewId = useViewerStore((s) => s.activeBasketViewId);
   const geometryResult = useViewerStore((s) => s.geometryResult);
@@ -45,6 +46,6 @@ export function useVisibleListRows(rows: ListRow[], filterByVisibility: boolean)
     // they are listed so the filter re-runs when any of them changes.
   }, [
     rows, filterByVisibility, hiddenEntities, isolatedEntities, classFilter, lensHiddenIds,
-    selectedStoreys, typeVisibility, models, activeBasketViewId, geometryResult, listVisibilityOwned,
+    selectedStoreys, typeVisibility, structuralViewMode, models, activeBasketViewId, geometryResult, listVisibilityOwned,
   ]);
 }

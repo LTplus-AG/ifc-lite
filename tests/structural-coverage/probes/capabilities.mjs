@@ -26,6 +26,7 @@ import { join } from 'node:path';
 import { verdict } from '../lib/values.mjs';
 import { storeOf } from '../lib/packages.mjs';
 import { extractionEntry } from './read.mjs';
+import checks from './capability-checks.mjs';
 
 /** Whether a type name, in STEP UPPERCASE or PascalCase, is an IfcElement subtype in `table`. */
 const isElement = (table, type) => table.chain(table.types.get(String(type ?? '').toUpperCase())?.name ?? '').includes('IfcElement');
@@ -145,4 +146,4 @@ const docsPage = {
   },
 };
 
-export default [linkRead, docsPage, cli];
+export default [linkRead, docsPage, cli, ...checks];

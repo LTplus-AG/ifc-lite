@@ -17,6 +17,7 @@
  */
 
 import { encodeSceneSnapshotInSlices, reorderSnapshotPieces, type SceneSnapshot } from '@ifc-lite/renderer';
+import { tapSceneSnapshot } from '../lib/perf/sceneIdentityTap.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { LoadTrace } from '@ifc-lite/load-trace';
 import { afterModelSettled } from '../lib/perf/afterLoad.js';
@@ -168,13 +169,16 @@ export async function writeCapturedScene(
     // Hydration matches pieces by ordinal; one it would refuse is not worth storing.
     const snapshot = target.meshOrder ? reorderSnapshotPieces(captured.snapshot, captured.sources, target.meshOrder) : captured.snapshot;
     if (!snapshot) return finish('order-mismatch');
-    const blob = await encodeSceneSnapshotInSlices({ ...snapshot, hostData: { ...captured.fit, shards: target.shards } }, sliceGap);
+    const storedSnapshot = { ...snapshot, hostData: { ...captured.fit, shards: target.shards } };
+    const blob = await encodeSceneSnapshotInSlices(storedSnapshot, sliceGap);
     const encodeMs = performance.now() - encodeStart;
     if (signal.aborted || gone()) return abandoned();
     const changed = captured.changedSince();
     if (changed) return finish('scene-changed', { reason: changed });
     // `refused`: the entry was replaced or purged, or quota is short (putSceneSnapshot's own guards).
     const stored = await putSceneSnapshot(target.cacheKey, target.write, blob, captured.key);
+    // Identity pass only: exactly the object encoded and stored (ordinals moved to the entry's mesh order, hostData with the camera fit).
+    if (stored) tapSceneSnapshot('written', storedSnapshot);
     return finish(stored ? 'written' : 'refused', { bytes: blob.size, encodeMs: Math.round(encodeMs) });
   }
 }

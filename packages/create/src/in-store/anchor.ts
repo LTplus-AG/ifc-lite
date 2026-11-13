@@ -48,6 +48,12 @@ export interface SpatialAnchor {
    * mesh looked right in-session because that one is built in metres).
    */
   lengthUnitScale?: number;
+  /** Lazily resolved SI factors for quantitative roof parts; manual anchors default to SI. */
+  getMeasureUnitScales?: () => {
+    readonly areaUnitScale: number;
+    readonly volumeUnitScale: number;
+    readonly planeAngleUnitScale: number;
+  };
   /**
    * Optional seeded randomness for the GlobalIds the builders emit
    * (`@ifc-lite/encoding`'s `RandomSource`: a `Math.random`-style

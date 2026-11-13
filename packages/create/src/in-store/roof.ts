@@ -23,6 +23,7 @@ import {
   emitRelContainedInSpatialStructure,
   ifcElementHeader,
 } from './_emit-helpers.js';
+import { roofMeasureScales, writeRoofPlaneParts } from './roof-plane-parts.js';
 import { emitFootprintRoofBody, footprintDefinition, writeFootprintDefinition, type RoofFootprintFields } from './roof-footprint.js';
 
 export type RoofInStoreParams = RoofRectangleParams | RoofPolygonParams;
@@ -133,6 +134,7 @@ export function addRoofToStore(
  */
 function addFootprintRoofToStore(editor: StoreEditor, anchor: SpatialAnchor, params: RoofInStoreParams): RoofBuildResult {
   assertPositiveFinite([params.Thickness], 'addRoofToStore: Thickness must be positive');
+  roofMeasureScales(anchor);
   if (params.Position !== undefined) assertFinitePoint3({ Position: params.Position }, 'addRoofToStore');
   let footprint: Array<[number, number]>;
   if (isPolygonParams(params)) {
@@ -150,6 +152,7 @@ function addFootprintRoofToStore(editor: StoreEditor, anchor: SpatialAnchor, par
   const roofId = editor.addEntity('IfcRoof', attrs as Parameters<StoreEditor['addEntity']>[1]).expressId;
   const relContainedId = emitRelContainedInSpatialStructure(editor, anchor.ownerHistoryId, roofId, anchor.storeyId, anchor.guidRandom);
   writeFootprintDefinition(editor.getMutationView(), roofId, { ...definition, PredefinedType: body.plan.shapeType });
+  writeRoofPlaneParts(editor, anchor, roofId, body.plan, definition.Thickness);
   return {
     roofId, placementId, profileId: body.profileIds[0], solidId: body.solidIds[0], solidIds: body.solidIds,
     shapeRepId: body.shapeRepId, productShapeId: body.productShapeId, relContainedId,

@@ -19,6 +19,8 @@
  * slope or the overhang and rebuild the planes as one atomic edit.
  */
 
+import { writeRoofPlaneParts } from './roof-plane-parts.js';
+import { projectMeasureScales } from './project-measure-scales.js';
 import { refreshTopAttachmentsInStore } from './top-attachment-refresh.js';
 import { PropertyValueType } from '@ifc-lite/data';
 import { effectiveReferencers } from '@ifc-lite/export';
@@ -320,6 +322,7 @@ export function editFootprintRoofInStore(store: IfcDataStore, editor: StoreEdito
     if (roof.attributes.length > 8) draft.setPositionalAttribute(roofId, 8, `.${body.plan.shapeType}.`);
     const definition = { ...next, PredefinedType: body.plan.shapeType };
     writeFootprintDefinition(view, roofId, definition);
+    writeRoofPlaneParts(draft, { ...scale, getMeasureUnitScales: () => projectMeasureScales(store) }, roofId, body.plan, next.Thickness, store);
     refreshTopAttachmentsInStore({ dataStore: store, view, editor: draft }, [roofId]);
     return definition;
   });

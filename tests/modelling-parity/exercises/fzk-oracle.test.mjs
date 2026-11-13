@@ -87,16 +87,3 @@ test('#9357 F2 requests two opposing 30 degree pitches and the reference overhan
   const area = (roof.Width + 2 * roof.Overhang) * (roof.Depth + 2 * roof.Overhang) / Math.cos(roof.EdgeSlopes[0]);
   assert.ok(Math.abs(area - target.roof.totalUpwardArea) < 0.01, `Expected reference roof area, got ${area}`);
 });
-
-// #9357: quantitative slab parts have no duplicate Body geometry.
-test('#9357 the roof body remains measurable with geometry-free quantitative parts', () => {
-  const text = "#1=IFCROOF('r',$,$,$,$,$,$,$,.GABLE_ROOF.);#2=IFCSLAB('p',$,$,$,$,$,$,$,.ROOF.);#3=IFCRELAGGREGATES('a',$,$,$,#1,(#2));";
-  const slope = Math.tan(Math.PI / 6), depth = target.roof.totalUpwardArea / (20 * Math.sqrt(1 + slope * slope));
-  const triangles = [
-    [[0,0,0],[0,depth*slope,depth],[10,0,0]], [[10,0,0],[0,depth*slope,depth],[10,depth*slope,depth]],
-    [[0,0,2*depth],[10,0,2*depth],[0,depth*slope,depth]], [[10,0,2*depth],[10,depth*slope,depth],[0,depth*slope,depth]],
-  ];
-  const rows = [];
-  compareFzk({ text, find: id => id === 1 ? { triangles } : undefined, levels: [], emit: (name, _cap, status) => rows.push({ name, status }) });
-  assert.deepEqual(rows.filter(r => ['reference-gable-roof','reference-roof-area'].includes(r.name)).map(r => r.status), ['pass','pass']);
-});

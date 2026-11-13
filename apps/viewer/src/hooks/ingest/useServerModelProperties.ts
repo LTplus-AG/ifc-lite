@@ -25,8 +25,8 @@ function waitForCompletion(modelId: string, signal: AbortSignal): Promise<void> 
   });
 }
 
-/** Publishes the hydrated store's ids. The watermark is the store's highest id, so no authored id
- *  reuses a hydrated one; a range a later model clamps leaves the model without authoring ids. */
+/** Publishes the hydrated store's ids and returns the model's ownership bound for the reverse
+ *  resolvers: the store's highest id, or the published end when a later model clamps the range. */
 function extendModelIdRange(modelId: string, dataStore: IfcDataStore): { maxExpressId: number; idSpaceExhausted: boolean } {
   const registered = useViewerStore.getState().models.get(modelId)?.maxExpressId ?? 0;
   const maxExpressId = Math.max(registered, getMaxExpressId(dataStore, []));
@@ -37,7 +37,7 @@ function extendModelIdRange(modelId: string, dataStore: IfcDataStore): { maxExpr
   const published = federationRegistry.extendModel(modelId, maxExpressId);
   if (published >= maxExpressId) return { maxExpressId, idSpaceExhausted: false }; // clears an earlier flag
   console.warn(`[Server properties] Ids ${published + 1}..${maxExpressId} of model ${modelId} lie past the ids a later model owns; those entities cannot be selected or resolved, and the model cannot be edited`);
-  return { maxExpressId, idSpaceExhausted: true };
+  return { maxExpressId: published, idSpaceExhausted: true };
 }
 
 function start(modelId: string | null, isStale: (() => boolean) | undefined,

@@ -300,6 +300,35 @@ describe('cold finalize work after the last batch arrived', () => {
     assertSameBatches(recorded.scene, (await streamedLoad({ rebuildReference: true })).scene);
   });
 
+  it('records on only some meshes of a batch (the frame arrived mid-batch): the same final batches either way', async () => {
+    // Whichever side of the frame's publication a mesh is collected on, the output is the same.
+    const load = async (mixed: boolean) => {
+      const { device } = recordingDevice();
+      const scene = new Scene();
+      scene.setSpatialChunking({ cellSize: 32 }); scene.setLodBuildsEnabled(true); scene.setQuantizedBatches(true);
+      perfCounters.enable();
+      const before = perfCounters.read();
+      for (const [index, batch] of arrivals().entries()) {
+        const frame = (scene as unknown as { sharedFrameOrigins: Map<number, [number, number, number]> }).sharedFrameOrigins.get(0);
+        if (index > 0 && frame) for (const [at, mesh] of batch.entries()) {
+          if (mixed && at % 2 === 0) continue; // collected before the frame was published
+          const encoded = encodeMeshRecords(mesh, frame);
+          if (encoded) mesh.gpuRecords = encoded;
+        }
+        scene.queueMeshes(batch);
+        drain(scene, device);
+      }
+      const streamed = diffCounters(perfCounters.read(), before);
+      await scene.finalizeStreamingAsync(device, pipeline, 1e9);
+      return { scene, streamed };
+    };
+    const all = await load(false);
+    const mixed = await load(true);
+    assert.ok((mixed.streamed['render.stream.records.vertices'] ?? 0) < (all.streamed['render.stream.records.vertices'] ?? 0), 'fewer fragments come from records when the frame arrives mid-batch');
+    assertSameBatches(mixed.scene, all.scene);
+    assertSameBatches(mixed.scene, (await streamedLoad({ rebuildReference: true })).scene);
+  });
+
   it('a fragment whose records cannot share one u16 lattice range takes the merge path, counted, with the same result', async () => {
     // Two meshes of one bucket (same colour, same 32 m cell by their first vertex), each 41 m wide, 80 m wide together:
     // every mesh encodes, but no single u16 origin covers the fragment, so it must be built as the merge builds it (f32).

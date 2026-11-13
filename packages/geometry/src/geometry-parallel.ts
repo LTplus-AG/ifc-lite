@@ -623,7 +623,7 @@ export async function* processParallel(
     const frameMeta = prepassMeta;
     broadcastSetup((worker) => {
       worker.postMessage({
-        type: 'stream-start' as const, sourceSessionId,
+        type: 'stream-start' as const, sourceSessionId, recordFrameCell: recordFrame.cell,
         sharedBuffer,
         unitScale: frameMeta.unitScale,
         planeAngleToRadians: frameMeta.planeAngleToRadians,

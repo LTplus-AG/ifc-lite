@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { describe, expect, it } from 'vitest';
 import type { MeshData } from './types.js';
-import { acceptRecordFrame, attachGpuRecords, relayRecordFrame } from './gpu-record-frame.js';
+import { acceptRecordFrame, attachGpuRecords, bindRecordFrameCell, createRecordFrameCell, readRecordFrame, relayRecordFrame } from './gpu-record-frame.js';
 import { encodeMeshRecords } from './gpu-records.js';
 
 function box(id: number, x: number): MeshData {
@@ -48,5 +48,47 @@ describe('GPU records from the geometry workers (M2)', () => {
     expect(other.gpuRecords).toBeUndefined();
     expect(acceptRecordFrame(session, { type: 'record-frame', frame: [NaN, 0, 0], cellSize: 32 })).toBe(true); // ignored, not adopted
     expect(acceptRecordFrame(null, { type: 'record-frame', frame: [0, 0, 0], cellSize: 32 })).toBe(true); // before any session: ignored
+  });
+});
+
+describe('the frame through the shared cell (M2, no worker event loop needed)', () => {
+  it('the pool publishes the ready word last; nothing is readable before', () => {
+    let known: { frame: [number, number, number]; cellSize: number } | null = null;
+    const relay = relayRecordFrame(() => known);
+    expect(relay.cell).toBeInstanceOf(SharedArrayBuffer);
+    expect(readRecordFrame(relay.cell!)).toBeNull();
+    relay.offer([]);
+    expect(readRecordFrame(relay.cell!)).toBeNull(); // not ready yet: nothing published
+    known = { frame: [0.5, -2, 3.25], cellSize: 32 };
+    relay.offer([]);
+    expect(readRecordFrame(relay.cell!)).toEqual({ frame: [0.5, -2, 3.25], cellSize: 32 });
+    expect(relayRecordFrame(undefined).cell).toBeNull(); // no frame source: no cell
+  });
+
+  it('a worker inside a slice picks the frame up at its next mesh, with no message; earlier meshes keep the old path', () => {
+    const relay = relayRecordFrame(() => ({ frame: [0.25, 0, 0], cellSize: 32 }), createRecordFrameCell());
+    const session = {};
+    bindRecordFrameCell(session, relay.cell);
+    const before = box(10, 0.5);
+    attachGpuRecords(session, before, []);
+    expect(before.gpuRecords).toBeUndefined(); // collected before publication: main-thread merge
+    relay.offer([]); // publish (the record-frame message is never delivered to this worker)
+    const after = box(11, 0.5);
+    attachGpuRecords(session, after, []);
+    expect(new Uint8Array(after.gpuRecords!.records)).toEqual(new Uint8Array(encodeMeshRecords(after, [0.25, 0, 0])!.records));
+  });
+
+  it('without a shared cell the record-frame message alone gives the same records', () => {
+    const viaCell = {}, viaMessage = {};
+    const relay = relayRecordFrame(() => ({ frame: [0.25, 0, 0], cellSize: 32 }), createRecordFrameCell());
+    bindRecordFrameCell(viaCell, relay.cell);
+    const posted: unknown[] = [];
+    relay.offer([{ postMessage: (m: unknown) => posted.push(m) } as unknown as Worker]);
+    bindRecordFrameCell(viaMessage, null); // a host without SharedArrayBuffer
+    expect(acceptRecordFrame(viaMessage, posted[0])).toBe(true);
+    const a = box(12, 0.5), b = box(12, 0.5);
+    attachGpuRecords(viaCell, a, []);
+    attachGpuRecords(viaMessage, b, []);
+    expect(new Uint8Array(b.gpuRecords!.records)).toEqual(new Uint8Array(a.gpuRecords!.records));
   });
 });

@@ -5,7 +5,7 @@
 import { applySkipVoids } from './skip-voids.js';
 import { attachCanonicalMeshMetadata } from './canonical-mesh-metadata.js';
 import { ownedWasmBuffer } from './wasm-owned-buffer.js';
-import { acceptRecordFrame, attachGpuRecords } from './gpu-record-frame.js';
+import { acceptRecordFrame, attachGpuRecords, bindRecordFrameCell } from './gpu-record-frame.js';
 import { readSpecularMaterial } from './mesh-specular.js';
 import { publishPrepassFingerprint, runPrepassWithFingerprint } from './prepass-source-fingerprint.js';
 import { canReuseWorkerSource, type BytePrepassApi, type SourcePrepassApi, type FinalizeStyleArgs } from './worker-prepass-source.js';
@@ -1631,16 +1631,15 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
         materialColorCounts: e.data.materialColorCounts,
         materialColors: e.data.materialColors,
       });
-      return;
+      bindRecordFrameCell(activeSession, (e.data as { recordFrameCell?: unknown }).recordFrameCell); return; // M2: the shared frame cell
     }
 
     if (e.data.type === 'stream-chunk') {
-      if (!activeSession) {
-        throw new Error('stream-chunk received before stream-start');
-      }
+      if (!activeSession) throw new Error('stream-chunk received before stream-start');
       await processSliceStreaming(activeSession, e.data.jobsFlat, e.data.seq, e.data.maxBatchJobs);
       return;
     }
+
     if (acceptRecordFrame(activeSession, e.data)) return; // M2: the renderer's frame for GPU records
     if (e.data.type === 'set-styles') {
       // Update the active session in place. The streaming pre-pass posts

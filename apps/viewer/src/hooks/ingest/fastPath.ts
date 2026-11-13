@@ -61,7 +61,10 @@ export function sameMeshingSettings(a: GeometryMeshingSettings, b: GeometryMeshi
 
 function untilAborted<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
   if (!signal) return promise;
-  if (signal.aborted) return Promise.reject(signal.reason);
+  if (signal.aborted) {
+    promise.catch(() => {}); // abandoned: the cancel that follows rejects it, and nobody else awaits it
+    return Promise.reject(signal.reason);
+  }
   return new Promise<T>((resolve, reject) => {
     const onAbort = () => reject(signal.reason);
     signal.addEventListener('abort', onAbort, { once: true });

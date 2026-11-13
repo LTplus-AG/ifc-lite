@@ -43,8 +43,8 @@ export function spawnParserWorker(): Worker {
   return new Worker(new URL('./parser.worker.ts', import.meta.url), { type: 'module' });
 }
 
-/** The same check as `WorkerParser.isSupported()`: workers, SharedArrayBuffer and cross-origin isolation. */
-function parserWorkerSupported(): boolean {
+/** Workers, SharedArrayBuffer and cross-origin isolation. `WorkerParser.isSupported()` is this check. */
+export function parserWorkerSupported(): boolean {
   if (typeof Worker === 'undefined' || typeof SharedArrayBuffer === 'undefined') return false;
   return (globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated !== false;
 }
@@ -63,8 +63,11 @@ export function prepareSpareParserWorker(options: SpareParserWorkerOptions = {})
   }
   const entry: Spare = { worker, ready: false };
   spare = entry;
+  // Until a parser takes it (and installs its own handlers), a spare that dies is dropped, never handed out.
+  const dropOnError = () => { worker.onerror = () => { if (spare === entry) { spare = null; worker.terminate(); } }; };
   if (!options.warmSource) {
     entry.ready = true;
+    dropOnError();
     return Promise.resolve(true);
   }
   return new Promise<boolean>((resolve) => {
@@ -76,7 +79,7 @@ export function prepareSpareParserWorker(options: SpareParserWorkerOptions = {})
       worker.onmessage = null;
       worker.onerror = null;
       if (spare !== entry) { resolve(false); return; } // released meanwhile
-      if (ok) { entry.ready = true; resolve(true); return; }
+      if (ok) { entry.ready = true; dropOnError(); resolve(true); return; }
       spare = null;
       worker.terminate();
       resolve(false);
@@ -89,7 +92,11 @@ export function prepareSpareParserWorker(options: SpareParserWorkerOptions = {})
       else if (msg.type === 'error') finish(false);
     };
     worker.onerror = () => finish(false);
-    worker.postMessage({ type: 'parse', id: WARM_PARSE_ID, source: options.warmSource, indexTransport: 'packed-index-v1' });
+    try {
+      worker.postMessage({ type: 'parse', id: WARM_PARSE_ID, source: options.warmSource, indexTransport: 'packed-index-v1' });
+    } catch {
+      finish(false);
+    }
   });
 }
 

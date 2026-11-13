@@ -120,7 +120,9 @@ async function openFixture(page: Page, fixture: string): Promise<void> {
     const g = globalThis as Record<string, any>;
     const load = g.__IFC_LITE_LOAD_TRACE__?.latest();
     const state = g.__ifc_lite_viewer_store__.getState();
-    return Boolean(load && load.loadId !== previous && load.end !== null && !state.loading && !state.geometryStreamingActive && (state.geometryResult?.meshes?.length ?? 0) > 0);
+    // Flat meshes, or instanced elements only (the generated instanced file has no flat mesh).
+    const geometry = (state.geometryResult?.meshes?.length ?? 0) + (state.geometryResult?.instancedGeometryHashes?.size ?? 0);
+    return Boolean(load && load.loadId !== previous && load.end !== null && !state.loading && !state.geometryStreamingActive && geometry > 0);
   }, previous, { timeout: LOAD_TIMEOUT_MS, polling: 250 });
 }
 

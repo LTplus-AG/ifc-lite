@@ -501,4 +501,22 @@ describe('fastGeometryEvents (loader side)', () => {
     await assert.rejects(out, /cancelled by user/);
     assert.equal(x.cancelled(), 1);
   });
+
+  it('a load already cancelled leaves no unhandled rejection from the abandoned read', async () => {
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => { unhandled.push(reason); };
+    process.on('unhandledRejection', onUnhandled);
+    try {
+      const ac = new AbortController();
+      ac.abort(new Error('cancelled by user'));
+      let rejectRead!: (err: Error) => void;
+      const x = run({ [Symbol.asyncIterator]: () => ({ next: () => new Promise<IteratorResult<StreamingGeometryEvent>>((_, reject) => { rejectRead = reject; }) }) });
+      await assert.rejects(collect(fastGeometryEvents(x.r, normal, ac.signal)), /cancelled by user/);
+      rejectRead(new Error('fast-path run cancelled')); // what run.cancel() does to the pending read
+      await new Promise((r) => setTimeout(r, 10));
+      assert.equal(unhandled.length, 0, 'the abandoned read has a handler');
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+    }
+  });
 });

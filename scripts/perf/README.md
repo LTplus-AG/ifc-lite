@@ -8,6 +8,33 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
+## Renderer device requested at the file pick (#9825, closed)
+
+**Rejected: asking for the renderer's WebGPU device at the file pick, before
+the interface reset, buys 19-35 ms of first frame on a Holter reopen and costs
+cold loads 30-190 ms of interactive time.** The pre-pixel lane's itemisation
+found the reopen waiting about 0.33 s for the renderer, so the device request
+moved to the pick (the renderer's setup held until the load knew its path).
+Once setup waited for the cache decision, the reopen gain shrank to the first
+frame only. Interactive time on reopens did not move: Holter 1,833 -> 1,800
+and 1,829 -> 1,849 ms; advanced_model 868 -> 811 and 848 -> 797 ms.
+
+Cold interactive, untimed quiet-gated medians on Pop, base -> branch (n=5, it3,
+main 3ad8eae12e + the lane's base): FZK 593 -> 640 ms (branch median outside
+base max 623), advanced_model 1,818 -> 1,967, Holter 4,611 -> 4,739, BWK
+3,868 -> 4,057. A CDP-traced ABBA pair confirms it on Holter cold: geometry
+stream end 2,529-2,852 ms on base (one outlier at 4,028) vs 3,131 and 3,666
+with the change, and interactive 4,899-5,481 (6,412) vs 5,644 and 5,854
+(traced, so absolute times are inflated).
+The cost appears although renderer setup starts later than on base for Holter
+and BWK (317-461 vs 236-387 ms), so it is not setup contention alone. The
+device's own start-up overlapping the parser and geometry workers' start is the
+remaining suspect; it was not attributed further.
+**Lesson:** a pre-pixel lever must be judged on cold loads too: work moved to
+the pick runs on every load, and the cold path has no idle main thread to hide
+it. A device request that only pays on a hit has to wait for the cache answer,
+and then most of the gain is gone.
+
 ## Immediate entity-index hand-off on large cold loads (#9823, draft)
 
 **Rejected: handing the pre-pass's entity index to the parser as soon as it

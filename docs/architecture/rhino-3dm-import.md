@@ -379,8 +379,9 @@ type RhinoImportResponse =
   already generated. So a generated name never equals a stated one, and the
   first part to state a key keeps it as written. No value is lost, the first
   part's value is the one read for identity and the entity columns, and a
-  column the first part leaves empty is filled by the first part that states
-  it [test]. There is no warning, because differing values are the normal
+  column no earlier part states is filled by the first part that states it,
+  under the plain key [test]. A part either states a key or does not: there is
+  no empty value to count as unset (see Properties). There is no warning, because differing values are the normal
   case: the exporter writes each part's own `IFC::Material`, so all 16 merged elements in FZK and all 46 in duplex differ
   there and come back with `IFC::Material` and `IFC::Material #2` [ran, test].
   `layer`, `geometryType` and the `Rhino` set describe the first part;
@@ -518,7 +519,10 @@ covered by a crafted file [test].
 ### Properties
 
 Attribute User Text is string-only, so values are strings (`IfcLabel`).
-Numbers are not guessed. The reader does the sorting: each entity carries
+Numbers are not guessed. No value is ever empty: openNURBS removes a key whose
+value is set to the empty string, and `setUserString` returns false, so an
+unstated key and an empty one are the same thing in a .3dm. Whitespace is a
+value like any other, kept as written [test]. The reader does the sorting: each entity carries
 `propertySets` next to its verbatim `userStrings`, plus `description` and
 `objectType` [test].
 

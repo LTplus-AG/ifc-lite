@@ -72,6 +72,26 @@ test('a merged entity holds the user text of every part: new keys are added, a d
   expect(result.warnings).toEqual([]);
 });
 
+// Review finding on PR #9880 (discussion_r4555307840).
+test('a part either states a column key or does not: openNURBS keeps no empty value, so a later part fills the column', async () => {
+  const result = await readRhino3dm(await craft(c => {
+    const wall = c.group(WALL);
+    // Every empty value here is dropped by `setUserString`, which returns false, so part 1 states none of these keys.
+    c.addMesh(box(c, 0), { name: 'part 1', groups: [wall], userStrings: stamp(WALL, ['IFC::Name', ''], ['IFC::Description', ''], ['IFC::ObjectType', ''], ['IFC::Class', ''], ['IFC::Tag', ' ']) });
+    c.addMesh(box(c, 1), { name: 'part 2', groups: [wall], userStrings: stamp(WALL, ['IFC::Name', 'Wall 2'], ['IFC::Description', 'from part 2'], ['IFC::ObjectType', 'Basic Wall'], ['IFC::Class', 'IfcWall'], ['IFC::Tag', '  ']) });
+  }));
+  expect(result.entities).toHaveLength(1);
+  const [wall] = result.entities;
+  expect(wall).toMatchObject({ name: 'Wall 2', description: 'from part 2', objectType: 'Basic Wall', ifcClass: 'IfcWall' });
+  // Part 1 holds only the keys it gave a value, so part 2's columns arrive under the plain key, not under `#2`.
+  // Whitespace is a value: the two tags differ, so the second is numbered.
+  expect(wall.userStrings).toEqual([
+    ['IFC::GlobalId', WALL], ['IFC::Tag', ' '],
+    ['IFC::Name', 'Wall 2'], ['IFC::Description', 'from part 2'], ['IFC::ObjectType', 'Basic Wall'], ['IFC::Class', 'IfcWall'], ['IFC::Tag #2', '  '],
+  ]);
+  expect(result.warnings).toEqual([]);
+});
+
 /** The user text one wall grouped from `parts` comes back with, without its GlobalId. */
 async function mergedText(...parts: [string, string][][]): Promise<[string, string][]> {
   const result = await readRhino3dm(await craft(c => {
@@ -105,6 +125,18 @@ test('a generated numbered key never takes a name a part states, whichever comes
 test('three parts: each new value gets the next number, an equal key and value is added once', async () => {
   expect(await mergedText([['X', 'a'], ['Y', '1']], [['X', 'b'], ['Y', '1']], [['x', 'c'], ['Z', 'a']], [['X', 'b'], ['Y', '1']]))
     .toEqual([['X', 'a'], ['Y', '1'], ['X #2', 'b'], ['x #3', 'c'], ['Z', 'a']]);
+});
+
+test('numbers count on past ten, a part with nothing to add spends none, and a stated `#0` is a key of its own', async () => {
+  // Twelve parts, a new value each: the generated numbers run 2 to 12.
+  const many = Array.from({ length: 12 }, (_, i): [string, string][] => [['X', `v${i}`]]);
+  const numbered = Array.from({ length: 11 }, (_, i): [string, string] => [`X #${i + 2}`, `v${i + 1}`]);
+  expect(await mergedText(...many)).toEqual([['X', 'v0'], ...numbered]);
+  // A part whose only user text is the GlobalId adds nothing and spends no number.
+  expect(await mergedText([['X', 'a']], [], [['X', 'b']])).toEqual([['X', 'a'], ['X #2', 'b']]);
+  // `#0` and a large number are names, not counters, so a differing value numbers them like any other key.
+  expect(await mergedText([['X #0', 'a'], ['X #9999', 'a']], [['X #0', 'b'], ['X #9999', 'b']]))
+    .toEqual([['X #0', 'a'], ['X #9999', 'a'], ['X #0 #2', 'b'], ['X #9999 #2', 'b']]);
 });
 
 test('the merge follows file order: the first part keeps the plain key, and no value depends on the order', async () => {

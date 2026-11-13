@@ -143,7 +143,9 @@ export function buildEntities(objects: ObjectFacts[], groupNames: string[], clas
     entityOf.push(drafts.length);
     drafts.push({ globalId, parts: [o] });
   });
-  // Columns and property sets are read once every part's user text is in.
+  // Columns and property sets are read once every part's user text is in. A part either states an
+  // `IFC::*` key or does not, because openNURBS drops a key set to an empty value, so the first part
+  // that states a column key is the one that fills it, under the plain key (identity.test.ts).
   const entities = drafts.map(({ globalId, parts }): RhinoImportEntity => {
     const [first] = parts, userStrings = parts.length === 1 ? first.userStrings : mergeUserText(parts);
     const className = ifcString(userStrings, 'Class')?.trim();

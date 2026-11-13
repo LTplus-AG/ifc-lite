@@ -191,3 +191,17 @@ it('#6232 public hosted edit resizes imported physical geometry, isolates federa
   const readonly = await session(1, true);
   expect((await readonly.call('edit_hosted_element', { express_id: 1262, patch: { OverallWidth: 1.2 } })).isError).toBe(true);
 });
+
+it('#9352 get_entity reads the curtain-wall V-grid spec before export', async () => {
+  const { call } = await session();
+  const placed = await call('place_curtain_wall', { storey_express_id: 42, params: { ...CURTAIN, VGrid: [1, 2] } });
+  expect(placed.isError).not.toBe(true);
+  const expressId = placed.structuredContent!.expressId as number;
+  const result = await call('get_entity', { express_id: expressId, include: ['properties'] });
+  expect(result.isError).not.toBe(true);
+  expect(result.structuredContent!.properties).toEqual(expect.arrayContaining([
+    expect.objectContaining({ name: 'IfcLite_CurtainWallLayout', properties: expect.arrayContaining([
+      expect.objectContaining({ name: 'VGrid', value: '[1,2]' }),
+    ]) }),
+  ]));
+});

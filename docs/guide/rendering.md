@@ -668,10 +668,9 @@ per-piece hydration insertion order when selections grow, shrink, hide or
 isolate elements. It never regroups non-adjacent frame runs to save draws:
 that changes the last highlighted surface through glazing. Model boundaries
 retain their own mesh ownership. A selection alternating
-between origins or models can require one draw per piece, matching main's
-per-piece cost; there is no hard 500-run draw cap. Incompatible per-piece
-origins still require separate draws (the textured-piece limitation tracked in #9946; bounded
-interleaved-frame pooling is tracked in #10008).
+between origins or models can require one draw per piece, the same cost as
+highlighting every piece with its own mesh; there is no hard 500-run draw cap.
+Pieces with their own origin (textured pieces) still draw separately.
 
 The Set is compared by content on every frame, with one lookup per id and no
 allocation, so a new Set, a Set that grew or shrank and any edit made in place

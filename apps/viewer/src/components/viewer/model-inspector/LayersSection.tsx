@@ -21,6 +21,7 @@
  * theirs before Apply, and names any occurrence that could not follow after.
  */
 
+import { DEFAULT_MATERIAL_COLOUR } from '@/lib/authoring/material-colour';
 import { useMemo, useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -38,6 +39,8 @@ import { InspectorCaption, InspectorSection } from './InspectorControls';
 import { METRE_SYMBOL, formatMetres, parseMetres } from './inspector-fields';
 import { applyMaterialLayers, type LayerFollow, type LayerInput } from './inspector-edits';
 
+import { MaterialColourField } from '../MaterialColourField';
+
 const NONE = 'none';
 const NEW = 'new';
 
@@ -47,6 +50,7 @@ interface DraftRow {
   /** `none`, `new`, or an IfcMaterial express id. */
   readonly material: string;
   readonly newName: string;
+  readonly colour: string;
 }
 
 type Target = 'element' | 'type';
@@ -69,7 +73,7 @@ export interface LayersSectionProps {
 
 let nextKey = 0;
 const row = (thickness: number, material: number | null): DraftRow =>
-  ({ key: nextKey++, thickness: formatMetres(thickness), material: material === null ? NONE : String(material), newName: '' });
+  ({ key: nextKey++, thickness: formatMetres(thickness), material: material === null ? NONE : String(material), newName: '', colour: DEFAULT_MATERIAL_COLOUR });
 
 /** Before Apply to Type: the elements that follow the type's layers, and those whose layers differ. */
 export function typeScopeOf(live: LiveModel, typeId: number): { follow: number; own: number } {
@@ -93,12 +97,12 @@ export function LayersSection({ modelId, live, kind, initial, inheritedFromType,
   const update = (key: number, patch: Partial<DraftRow>) => setRows((all) => all.map((r) => (r.key === key ? { ...r, ...patch } : r)));
 
   const apply = () => {
-    const parsed = rows.map((r) => ({ thickness: parseMetres(r.thickness), material: r.material, name: r.newName.trim() }));
+    const parsed = rows.map((r) => ({ thickness: parseMetres(r.thickness), material: r.material, name: r.newName.trim(), colour: r.colour }));
     if (parsed.some((l) => l.thickness === null)) { toast.error(t('modelInspector.layers.needLayer')); return; }
-    if (parsed.some((l) => l.material === NEW && !l.name)) { toast.error(t('modelInspector.layers.needName')); return; }
+    if (parsed.some((l) => l.material === NEW && (!l.name || !/^#[0-9a-f]{6}$/i.test(l.colour)))) { toast.error(t('modelInspector.layers.needName')); return; }
     const layers: LayerInput[] = parsed.map((l) => ({
       thickness: l.thickness ?? 0,
-      material: l.material === NEW ? { name: l.name } : l.material === NONE ? null : { id: Number(l.material) },
+      material: l.material === NEW ? { name: l.name, color: l.colour } : l.material === NONE ? null : { id: Number(l.material) },
     }));
     setFollow(null);
     const layerSetId = applyMaterialLayers(modelId, { kind, layers, target, elementId, typeId }, setFollow);
@@ -210,14 +214,14 @@ function LayerRowEditor({ n, row: r, materials, onChange, onRemove }: {
           : <span aria-hidden className="w-7 shrink-0" />}
       </div>
       {r.material === NEW && (
-        <Input
+        <div><Input
           value={r.newName}
           placeholder={t('modelInspector.layers.newMaterialName')}
           aria-label={t('modelInspector.layers.newMaterialName')}
           onChange={(event) => onChange({ newName: event.target.value })}
           onKeyDown={stop}
           className="ml-[5.25rem] h-7 w-[calc(100%-7.25rem)] text-xs"
-        />
+        /><MaterialColourField value={r.colour} onChange={colour => onChange({ colour })} /></div>
       )}
     </li>
   );

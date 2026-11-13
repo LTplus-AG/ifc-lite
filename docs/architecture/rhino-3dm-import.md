@@ -434,7 +434,8 @@ its winding flipped and its normals transformed by the inverse transpose
   `InstanceReference:cycle` and reported [test: a crafted self-referencing
   definition].
 - A **drawing budget** caps drawn triangles at `maxTriangles`, a block's
-  triangles counted once per placement in both modes. A curve or point cloud
+  triangles counted once per placement in both modes, and a placement's block
+  meshes admitted whole or left out whole (see Size ceiling). A curve or point cloud
   vertex is charged a third of a triangle, at top level and per placement:
   without that a 20,000-point cloud in a block placed 500 times came back as
   120 MB with nothing reported [ran, then fixed]. Reaching the budget stops
@@ -450,13 +451,20 @@ its winding flipped and its normals transformed by the inverse transpose
   levels that each reference the next twice are 2^20 placements [test]. Every
   reference the walk reaches is charged, drawn or skipped (missing, linked,
   cyclic, invalid), so references that draw nothing cannot stall it either
-  [test]. A part that a placement pushes out of range costs no triangles, so
+  [test]. The limit is checked on every reference, the skipped ones included,
+  so the walk stops on the one that spends it instead of running on to the end
+  of the block it is in [test]. A part that a placement pushes out of range costs no triangles, so
   it is charged here too, as one reference [test]. Once it is spent, a
   reference that could never be drawn still gets its own reason, not `budget`
   [test].
 - A placement whose transform is not finite, has an entry above 1e15, flattens
   space (zero determinant) or is not affine (last row other than `0 0 0 1`) is
-  counted as `InstanceReference:invalid`.
+  counted as `InstanceReference:invalid`. A last row that is `0 0 0 1` to
+  rounding noise is replaced by the exact values before anything is composed
+  with it: that noise grows with the translation it meets, and an otherwise
+  identity `IFC::WorldFromModel` holding 1e-17 composed with a placement a
+  million metres out lands 1e-11 from affine, so a frame that was accepted
+  refused every block instance under it [test, both modes].
   Geometry a transform pushes out of the f32 range is counted as
   `transform:invalid` [test]. That is decided before the budget is charged, so
   geometry that is left out costs no triangles [test], and from the part's
@@ -509,6 +517,18 @@ covered by a crafted file [test].
   layer whose parent is missing becomes a root; so does a layer in a parent
   cycle, with a warning. An object whose layer index is outside the table
   (`subd_creases.3dm` has -1) lands on the first layer [test].
+- `fullPath` is built from the parent that reordering settled on, not read from
+  rhino3dm's `Layer.fullPath`: that property follows `ParentId` with no visited
+  set, so for a cyclic chain it does not come back [measured: still running
+  after 90 s on a model built in memory. The tests make that call in a child
+  process with a deadline, so a hang fails one test instead of the suite]. The
+  cycle could not be put into a .3dm: openNURBS resets a cyclic parent to nil
+  as it writes, and patching the parent field in the bytes makes
+  `fromByteArray` answer null [measured], so nothing shows the reader reaching
+  it through a file. Building the path here also keeps it in step with the
+  repaired tree: a layer this walk shows at the top level is named as one, and
+  what hangs off it reads as nested from there [test]. Paths of well-formed
+  files are unchanged [test: Rhino-authored samples and our own exports].
 - **Spatial stamps:** a layer carrying a valid `IFC::GlobalId` and an
   `IFC::Class` that names `IfcProject` or an instantiable spatial element gets
   `spatial: { globalId, ifcClass, elevation }`. `IFC::Elevation` is read as a
@@ -574,11 +594,34 @@ the reader drops the shared runtime and the next read or write loads a fresh
 module [test, with a simulated abort]. A trap on a file of 32 MB or more is
 `too-large`; on a smaller file, which cannot exhaust the heap, it is `not-3dm`.
 
-A read that was already waiting on the runtime holds its own reference to the
-module, so a concurrent abort can leave it with the discarded one. It rechecks
-after its last await and takes the replacement, which keeps one file's abort
-from failing another file that is fine [test: two reads sharing a module, the
-first trapping].
+A read or a write that was already waiting on the runtime holds its own
+reference to the module, so a concurrent abort can leave it with the discarded
+one. Both reacquire until the module is current, through one helper
+(`withCurrentRhino` in `runtime.ts`) that runs the parse or the write in the
+same step as its check, so nothing can discard the module in between. One
+recheck is not enough, because the reacquire is itself an await: a second abort
+during it hands the caller a module that is already dead [test: three reads
+sharing a module, the first two aborting and the third reading a valid file;
+and a write that waits through an abort].
+
+A table row the binding does not hand out is reported as `not-3dm` too: a
+`count` that disagrees with `get` is damage, and naming it keeps a bare
+TypeError from escaping the reader. A row fails the file where a null object is
+only counted, because the layer, material and group rows are addressed by index
+from elsewhere (`layerIndex`, materials, group names), so dropping one would
+move every reference to the rows after it; the definition table is keyed by id
+and could tolerate a gap, but a table that contradicts its own count is damage
+either way. Every document-table read goes through that one guard, the string
+table included, which the reader walks itself. The objects table is not one of
+them: `readObjects` counts a row the binding will not wrap as
+`<type>:unreadable` and reads on.
+
+Those four tables answer null for an index past `count` [measured]; the string
+table answers an empty pair instead [measured], so there the guard can only
+catch a change in the binding. No row under `count` could be made to answer
+null, so the guard holds the binding to a contract it allows rather than to a
+case reproduced here [test, with a table that answers null under its own
+count].
 
 ### Size ceiling
 
@@ -635,6 +678,37 @@ What that says:
   in the worker. Whether a tab survives that is [unproven]; the one-shot
   worker contains a crash either way.
 
+**The triangle budget admits a placement's block meshes whole, in both modes.**
+`maxTriangles` is charged a block's triangles once per placement, and a
+placement that would draw them all and does not fit is left out entirely, so
+neither mode draws part of that set. Before that rule the option decided
+whether a file read at all, because baking charged mesh by mesh: a block of two
+12-triangle boxes at `maxTriangles: 12` came back as one box under
+`bakeInstances: true` and refused the file under `false` [measured, then fixed;
+test: both modes at 12, 23 and 24]. A placement a transform pushes out of range
+draws less than the block in any case: there each mesh is looked at on its own,
+after the range check that costs no triangles, so such a placement neither
+charges the budget nor spends it [test: a block that does not fit, out of
+range, leaves a later object drawable].
+
+What the admission covers is the block's meshes under a reach that keeps f32,
+which is where the two modes differed. The budget can still cut a placement
+elsewhere, and does it identically either way, so what is drawn no longer
+depends on the option:
+
+- What the walk draws beside those meshes (curves, point clouds, and by-parent
+  meshes carrying transparency of their own) is charged one part at a time. A
+  block of a 12-triangle box and a 9-point curve at `maxTriangles: 13` draws
+  the box and leaves the curve out [measured, both modes].
+- So are the meshes of a placement the reach refuses. The reach is one bound
+  for the whole block, measured from the block origin, while each mesh is
+  checked on its own extent, so a block of two unit boxes 1e24 from its origin
+  under a 1e15 scale is refused as a whole although both meshes fit: at
+  `maxTriangles: 12` one box is drawn [measured, both modes].
+
+Both cases report the object as drawn in part, so it is the budget working
+rather than the option deciding.
+
 ## Options
 
 Level 1 has no dialog. The defaults live in the reader.
@@ -688,7 +762,9 @@ Level 1 has no dialog. The defaults live in the reader.
 - Guards: a self-referencing block definition terminates and reports. rhino3dm
   hands out a definition's id only after its members are fixed, so the test
   patches the stored id and repairs the chunk CRC. The triangle budget and the
-  placement budget stop the walk and report the remainder.
+  placement budget stop the walk and report the remainder: the triangle budget
+  the same way in both modes, the placement budget on the reference that spends
+  it.
 - Errors: garbage, empty and truncated input give `not-3dm`; a forged header
   version gives `newer-archive`; an input over the cap and a simulated abort
   give `too-large`.
@@ -697,6 +773,14 @@ Level 1 has no dialog. The defaults live in the reader.
   exports no heap getter, so the test catches the `WebAssembly.Memory` as the
   module is instantiated. (The export's own heap test is still skipped for
   lack of that getter.)
+- Runtime (`runtime.test.ts`): a read that waits through two aborts in a row,
+  and a write that waits through one, run on the module that is current. The
+  factory is mocked so every module it builds is recorded and the dead ones are
+  built dead, which is how a second abort can be put in the right place.
+- Document (`document.test.ts`): a table row the binding does not hand out, the
+  layer paths reordering settles on (nested, missing parent, cycle), and the
+  native `Layer.fullPath` of a cyclic chain, read in a child process with a
+  deadline so its hang fails that test alone.
 - Each guard above was checked by removing it and watching a test fail.
 
 **Viewer (vitest):**

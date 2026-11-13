@@ -41,7 +41,9 @@ export interface RAttributes extends WithUserStrings {
   getGroupList(): number[];
 }
 export interface RLayer extends WithUserStrings {
-  name: string; fullPath: string; id: string; parentLayerId: string;
+  // No `fullPath`: the reader builds each path from the parent it settled on, because the native
+  // property follows `ParentId` with no visited set. See `orderLayers`.
+  name: string; id: string; parentLayerId: string;
   color: Rgba8; visible: boolean; renderMaterialIndex: number;
 }
 export interface RAnchor {

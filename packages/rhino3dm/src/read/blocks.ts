@@ -112,25 +112,29 @@ export function expandInstance(walk: BlockWalk, object: number, id: string, xfor
   let complete = true;
   for (let frame = stack.pop(); frame; frame = stack.pop()) {
     if (frame.leave) { path.delete(frame.id); continue; }
-    // Charged before the skips below, which still name their own reason once the budget is spent.
-    walk.placementsLeft--;
+    // Charged before the skip below, which still names its own reason once the budget is spent.
+    --walk.placementsLeft;
     const block = blocks.get(frame.id);
-    if (!block) { report.skip('InstanceReference:missing-definition'); continue; }
-    if (block.linked && block.meshes.length + block.others.length + block.dots.length + block.nested.length === 0) {
-      report.skip('InstanceReference:linked-definition');
-      report.warn('linked', n => `${plural(n, 'instance')} of linked blocks are not drawn: their geometry is in another file.`);
-      continue;
+    const skip = !block ? 'InstanceReference:missing-definition'
+      : block.linked && block.meshes.length + block.others.length + block.dots.length + block.nested.length === 0 ? 'InstanceReference:linked-definition'
+      : path.has(frame.id) ? 'InstanceReference:cycle'
+      : !isUsable(frame.xform) ? 'InstanceReference:invalid' : null;
+    if (skip) {
+      report.skip(skip);
+      if (skip === 'InstanceReference:linked-definition') report.warn('linked', n => `${plural(n, 'instance')} of linked blocks are not drawn: their geometry is in another file.`);
+      if (skip === 'InstanceReference:cycle') report.warn('cycle', n => `${plural(n, 'block reference')} point back into their own definition and are skipped.`);
     }
-    if (path.has(frame.id)) {
-      report.skip('InstanceReference:cycle');
-      report.warn('cycle', n => `${plural(n, 'block reference')} point back into their own definition and are skipped.`);
-      continue;
-    }
-    if (!isUsable(frame.xform)) { report.skip('InstanceReference:invalid'); continue; }
+    // Checked on every reference, drawn or skipped: a block holding nothing but references the walk
+    // skips would otherwise never reach it, and the whole batch was expanded with no warning.
     if (walk.placementsLeft < 0) {
       report.warn('placements', () => `Stopped expanding blocks after ${MAX_BLOCK_PLACEMENTS.toLocaleString('en-US')} block references.`);
-      return false;
+      // A reference the budget stops at had its own reason, and at the top of a walk nothing was
+      // left to expand, so it keeps that reason rather than also counting as undrawn. Anywhere
+      // inside a block the placement was cut short, whichever reference spent the last of it.
+      if (!skip || stack.length > 0) complete = false;
+      return complete;
     }
+    if (!block || skip) continue;
     // Past the triangle budget only text dots are drawn, so a block that leads to none ends its branch.
     if (emitter.exhausted && !block.drawsDots) { complete &&= !block.drawsGeometry; continue; }
     const { xform, appearance } = frame, outOfRange = emitter.outOfRange;

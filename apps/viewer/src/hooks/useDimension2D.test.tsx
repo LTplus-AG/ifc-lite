@@ -264,7 +264,7 @@ it('in sheet mode a dimension clipped out of the viewport cannot be selected, dr
   // The same dimension inside the viewport still selects and hovers.
   act(() => useViewerStore.setState({ dimensions2D: [inside] }));
   mouseMove(canvas, inAt);
-  assert.equal(tool.hover?.id, 'in');
+  assert.equal((tool as DimensionTool).hover?.id, 'in'); // re-read: the null assert above narrowed tool.hover
   mouseDown(canvas, inAt);
   act(() => { window.dispatchEvent(new window.MouseEvent('mouseup')); });
   assert.deepEqual(useViewerStore.getState().selectedAnnotation2D, { type: 'dimension', id: 'in' });

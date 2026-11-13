@@ -298,3 +298,22 @@ describe('ModelInspectorPanel dimensions of slabs, columns and beams (#6232 C4)'
     assert.equal(input(root, 'Height in metres').value, '3.00');
   });
 });
+
+it('#9389 the multi-selection inspector names every element in one undo step', () => {
+  const second = s().addWall(MODEL_ID, STOREY, { Start: [0, 2, 0], End: [4, 2, 0], Thickness: 0.2, Height: 3, Name: 'W2' });
+  assert.ok('expressId' in second);
+  act(() => s().setSelectedEntityIds([wall, second.expressId].map(id => toGlobalIdFromModels(s().models, MODEL_ID, id))));
+  const ui = render(<ModelInspectorPanel />);
+  assert.match(ui.textContent ?? '', /2 selected elements/);
+  assert.match(ui.textContent ?? '', /W1/);
+  assert.match(ui.textContent ?? '', /W2/);
+  const name = input(ui, 'Name');
+  type(name, 'Shared');
+  blur(name);
+  const live = () => ({ dataStore: s().models.get(MODEL_ID)!.ifcDataStore!, view: s().mutationViews.get(MODEL_ID) });
+  assert.equal(entityName(live(), wall), 'Shared');
+  assert.equal(entityName(live(), second.expressId), 'Shared');
+  act(() => s().undo(MODEL_ID));
+  assert.equal(entityName(live(), wall), 'W1');
+  assert.equal(entityName(live(), second.expressId), 'W2');
+});

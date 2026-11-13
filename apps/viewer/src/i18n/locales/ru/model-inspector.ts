@@ -5,6 +5,7 @@
 import type { Catalogue } from '../../registry';
 
 export const modelInspectorRu = {
+  'modelInspector.multiple': 'Выбрано элементов: {count}',
   "modelInspector.panel.title": "Инспектор модели",
   "modelInspector.close": "Закрыть инспектор модели",
   "modelInspector.empty.noSession": "Войдите в рабочую область модели для редактирования",

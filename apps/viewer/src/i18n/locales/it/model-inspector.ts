@@ -5,6 +5,7 @@
 import type { Catalogue } from '../../registry';
 
 export const modelInspectorIt = {
+  'modelInspector.multiple': '{count} elementi selezionati',
   "modelInspector.panel.title": "Ispettore del modello",
   "modelInspector.close": "Chiudi l'ispettore del modello",
   "modelInspector.empty.noSession": "Entra nello spazio Modello per modificare",

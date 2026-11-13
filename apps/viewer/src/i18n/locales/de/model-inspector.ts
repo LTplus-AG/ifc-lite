@@ -5,6 +5,7 @@
 import type { Catalogue } from '../../registry';
 
 export const modelInspectorDe = {
+  'modelInspector.multiple': '{count} ausgewählte Elemente',
   "modelInspector.panel.title": "Modellinspektor",
   "modelInspector.close": "Schließen Sie den Modellinspektor",
   "modelInspector.empty.noSession": "Zum Bearbeiten den Modellarbeitsbereich öffnen",

@@ -269,7 +269,7 @@ export function PlanView({ layout, headerHost, hidden = false }: { layout: Model
   return (
     <section data-plan-view data-plan-cut-ms={cut.ms === null ? undefined : Math.round(cut.ms)} aria-label={t('modelWorkspace.plan.title')} className="flex h-full w-full flex-col bg-background">
       {headerHost ? createPortal(header, headerHost) : header}
-      <div ref={hostRef} className="relative min-h-0 flex-1 overflow-hidden">
+      <div ref={hostRef} data-plan-focus-target tabIndex={-1} className="relative min-h-0 flex-1 overflow-hidden">
         <svg
           ref={svgRef}
           data-plan-canvas

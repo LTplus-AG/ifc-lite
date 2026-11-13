@@ -16,7 +16,8 @@
  * Lines are taken as the 2D canvas draws them: `cut` lines that
  * `isPolygonCutLine` marks are triangulation edges of polygons already
  * indexed through their outlines and are skipped, and hidden lines are left
- * out unless asked for. Non-finite coordinates are skipped.
+ * out unless asked for. Lines the canvas culls outside the drawing bounds
+ * (`drawing-line-cull.ts`) and non-finite coordinates are skipped.
  *
  * The index is built on the first query and memoised per `Drawing2D` object
  * (a new drawing is a new object), so moving the cursor costs a grid lookup.
@@ -25,7 +26,9 @@
 import { isPolygonCutLine, type Drawing2D } from '@ifc-lite/drawing-2d';
 import { nearestOnShape, shapeKeyPoints } from '../drafting-core/curves';
 import { findSnap, SnapIndex } from '../drafting-core/snaps';
+import { findAcceptedSnap } from './drawing-snap-accept';
 import type { DraftShape, Pt, SnapMode } from '../drafting-core/types';
+import { lineCullBox, lineInCullBox } from './drawing-line-cull';
 import { mergeCollinearSegments, simplifyRing, VertexOwners, VERTEX_TOLERANCE } from './drawing-snap-merge';
 
 /** The drawing element a snap shape came from. */
@@ -56,6 +59,8 @@ export interface DrawingSnapQuery extends DrawingSnapBuildOptions {
   modes?: ReadonlySet<SnapMode>;
   /** Reference point for `perpendicular`: the foot from here onto the element under the cursor. */
   from?: Pt | null;
+  /** Only snap points this accepts are offered; the best accepted one wins (`findAcceptedSnap`). */
+  accept?: (p: Pt) => boolean;
 }
 
 export interface DrawingSnapResult {
@@ -108,11 +113,12 @@ export function buildDrawingSnapShapes(drawing: Drawing2D, opts: DrawingSnapBuil
   }
 
   const lineGroups = new Map<string, { source: DrawingSnapSource; segs: [Pt, Pt][] }>();
+  const lineBox = lineCullBox(drawing.bounds);
   for (const line of drawing.lines) {
     if (isPolygonCutLine(line)) continue;
     if (!opts.includeHiddenLines && line.visibility === 'hidden') continue;
     const { start, end } = line.line;
-    if (!finite(start) || !finite(end)) continue;
+    if (!finite(start) || !finite(end) || !lineInCullBox(lineBox, start, end)) continue;
     if (Math.hypot(end.x - start.x, end.y - start.y) <= VERTEX_TOLERANCE) continue;
     const owner = ownerKey(line.modelIndex, line.entityId);
     let group = lineGroups.get(owner);
@@ -206,6 +212,47 @@ function sourceShape(snap: DrawingSnapIndex, cursor: Pt, tolerance: number, mode
 }
 
 /**
+ * The shapes near `cursor` cut down to the edges that reach its tolerance
+ * window: each polyline becomes the runs of consecutive such edges. The
+ * core's intersection pass pairs whole shapes, so two rings near the cursor
+ * cost every edge of one against every edge of the other on each pointer
+ * move: 3.6 ms for two 200-edge rings, 226 ms for two 2000-edge ones, against
+ * 0.07 ms and 0.3 ms windowed (#10076 review). Every snap within `tolerance` lies on an edge that reaches
+ * the window, so the hit is the same; `snaps.ts` stays byte-pinned.
+ */
+export function windowedSnapShapes(snap: DrawingSnapIndex, cursor: Pt, tolerance: number): DraftShape[] {
+  const lo = { x: cursor.x - tolerance, y: cursor.y - tolerance };
+  const hi = { x: cursor.x + tolerance, y: cursor.y + tolerance };
+  const reaches = (a: Pt, b: Pt): boolean =>
+    Math.max(a.x, b.x) >= lo.x && Math.min(a.x, b.x) <= hi.x && Math.max(a.y, b.y) >= lo.y && Math.min(a.y, b.y) <= hi.y;
+  const out: DraftShape[] = [];
+  for (const i of snap.index.query(lo, hi)) {
+    const shape = snap.shapes[i];
+    if (shape.type !== 'polyline') { out.push(shape); continue; }
+    const { pts } = shape;
+    const n = pts.length;
+    const edges = shape.closed && n > 2 ? n : n - 1;
+    const hits = Array.from({ length: Math.max(edges, 0) }, (_, k) => reaches(pts[k], pts[(k + 1) % n]));
+    if (hits.every(Boolean)) { out.push(shape); continue; }
+    // Start after an edge outside the window, so a run across a closed ring's seam stays one run.
+    const start = shape.closed && n > 2 ? hits.indexOf(false) + 1 : 0;
+    let run: Pt[] | null = null;
+    for (let s = 0; s < edges; s++) {
+      const k = (start + s) % edges;
+      if (!hits[k]) {
+        if (run) out.push({ type: 'polyline', pts: run, closed: false });
+        run = null;
+        continue;
+      }
+      if (!run) run = [pts[k]];
+      run.push(pts[(k + 1) % n]);
+    }
+    if (run) out.push({ type: 'polyline', pts: run, closed: false });
+  }
+  return out;
+}
+
+/**
  * The best snap within `tolerance` of `cursor`: by mode priority (endpoint,
  * intersection, midpoint, center, quadrant, perpendicular, nearest), then
  * nearest the cursor within that mode. `null` when nothing is in reach or
@@ -215,11 +262,11 @@ export function findDrawingSnap(drawing: Drawing2D, cursor: Pt, query: DrawingSn
   if (!(query.tolerance > 0) || !finite(cursor)) return null;
   const snap = getDrawingSnapIndex(drawing, query);
   if (snap.shapes.length === 0) return null;
-  const hit = findSnap(cursor, snap.shapes, snap.index, {
-    tolerance: query.tolerance,
-    modes: query.modes ?? DIMENSION_SNAP_MODES,
-    from: query.from ?? null,
-  });
+  const opts = { tolerance: query.tolerance, modes: query.modes ?? DIMENSION_SNAP_MODES, from: query.from ?? null };
+  const shapes = windowedSnapShapes(snap, cursor, query.tolerance);
+  const hit = query.accept
+    ? findAcceptedSnap(cursor, shapes, { ...opts, accept: query.accept })
+    : findSnap(cursor, shapes, null, opts);
   if (!hit) return null;
   const i = sourceShape(snap, cursor, query.tolerance, hit.mode, hit.point);
   if (i < 0) return null;

@@ -152,7 +152,7 @@ describe('standard footprint roof plane measurements (#9357)', () => {
     expect(exported.entityIndex.byType.get('IFCROOF')).toHaveLength(2);
   });
 
-  it('copy merges saved measurements with unrelated edits and explicit deletions without extractors (#9357 review)', async () => {
+  it('copy merges saved measurements with unrelated edits and explicit deletions when source extractors are empty (#9357 review)', async () => {
     const original = await session();
     const { roofId } = addRoofToStore(original.editor, original.anchor, HIP);
     const store = await parse(exportText(original)), view = new MutablePropertyView(null, 'no-extractors');
@@ -163,7 +163,10 @@ describe('standard footprint roof plane measurements (#9357)', () => {
     view.setProperty(roofId, 'Review', 'Note', 'keep saved dimensions', PropertyValueType.Text);
     view.setProperty(before[0], 'Review', 'Note', 'keep saved measures', PropertyValueType.Text);
     view.setQuantity(before[0], 'Qto_SlabBaseQuantities', 'GrossVolume', gross * 2, base.quantities.find(q => q.name === 'GrossVolume')!.type);
+    view.setQuantityExtractor(id => extractQuantitiesOnDemand(store, id));
     view.deleteQuantity(before[0], 'Qto_SlabBaseQuantities', 'NetVolume');
+    // Preserve a real deletion, then copy without a usable source extractor.
+    view.setQuantityExtractor(() => []);
     const [copy] = copyBatchInStore(store, editor, [roofId], [{ offset: [20, 0, 0] }]);
     const copied = parts(source, copy.copyId);
     expect(quantities(source, copied[0], 'Qto_SlabBaseQuantities').GrossArea).toBeGreaterThan(0);
@@ -174,7 +177,12 @@ describe('standard footprint roof plane measurements (#9357)', () => {
     const copiedQuantities = extractQuantitiesOnDemand(exported, copied[0]).find(set => set.name === 'Qto_SlabBaseQuantities')!.quantities;
     expect(copiedQuantities.find(q => q.name === 'NetVolume')).toBeUndefined();
     expect(copiedQuantities.find(q => q.name === 'GrossArea')!.value).toBeGreaterThan(0);
+    expect(copiedQuantities.find(q => q.name === 'GrossVolume')!.value).toBeCloseTo(gross * 2, 8);
     expect(() => editFootprintRoofInStore(store, editor, copy.copyId, { Thickness: .4 })).not.toThrow();
+    const edited = await parse(exportText(source));
+    const originalQuantities = extractQuantitiesOnDemand(edited, before[0]).find(set => set.name === 'Qto_SlabBaseQuantities')!.quantities;
+    expect(originalQuantities.find(q => q.name === 'GrossVolume')!.value).toBeCloseTo(gross * 2, 8);
+    expect(originalQuantities.find(q => q.name === 'NetVolume')).toBeUndefined();
   });
 });
 

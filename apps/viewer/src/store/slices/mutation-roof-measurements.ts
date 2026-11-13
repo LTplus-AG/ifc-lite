@@ -40,6 +40,11 @@ export function mirrorRoofMeasurements(store: ModellingStore, target: ModelEditT
         saved.push({ path, kind: 'quantity', set, name: quantity.name, value: api.getQuantityValue(session.doc, path, set, quantity.name) });
         api.setQuantityValue(session.doc, path, set, quantity.name, quantity.value);
       }
+      const netNames = id === roofId ? ['NetArea'] : ['NetArea', 'NetVolume'];
+      for (const name of netNames) if (!quantities.some(quantity => quantity.name === name)) {
+        saved.push({ path, kind: 'quantity', set, name, value: api.getQuantityValue(session.doc, path, set, name) });
+        api.deleteQuantityValue(session.doc, path, set, name);
+      }
       if (id === roofId) continue;
       const pitch = view.getForEntity(id).find(p => p.name === 'Pset_SlabCommon')?.properties.find(p => p.name === 'PitchAngle');
       if (typeof pitch?.value !== 'number' || !Number.isFinite(pitch.value)) throw new Error(`Roof plane #${id} has no finite pitch`);

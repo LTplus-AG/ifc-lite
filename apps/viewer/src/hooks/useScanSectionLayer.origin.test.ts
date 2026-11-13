@@ -12,11 +12,12 @@ import type { PointCloudAsset } from '@ifc-lite/geometry';
 import type { FederatedModel } from '@/store/types';
 import { collectScanSources } from './useScanSectionLayer.js';
 import { selectScanBand } from './scanSectionMath.js';
+import { fixtureModel } from '@/test/store-fixture.js';
 
 it('an inline cloud with an origin keeps two points 0.1 m apart at 2,600,000 m in the section, legacy and federated (#10029)', () => {
   const asset: PointCloudAsset = { expressId: 1, origin: [2_600_000.02, 0, 0], chunk: { pointCount: 2,
     positions: new Float32Array([0, 0, 0, 0.1, 0, 0]), bbox: { min: [0, 0, 0], max: [0.1, 0, 0] } } };
-  const federated = { id: 'm', visible: true, geometryResult: { meshes: [], pointClouds: [asset] } } as unknown as FederatedModel;
+  const federated = { ...fixtureModel('m'), geometryResult: { meshes: [], pointClouds: [asset] } } as unknown as FederatedModel;
   const paths = { legacy: collectScanSources(new Map(), [asset]), federated: collectScanSources(new Map([['m', federated]]), undefined) };
   for (const [path, [source]] of Object.entries(paths)) {
     const { points } = selectScanBand({ sample: source, model: source.model, modelOutputsRenderFrame: source.modelOutputsRenderFrame,

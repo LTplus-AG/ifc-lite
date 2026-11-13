@@ -245,7 +245,8 @@ export function useIfcCache() {
         const shards = readCachedInstancedShards({ dataStore, cacheBuffer, cacheBlob, headerInfo, geometrySection });
         if (shards.length > 0 && !adopted) enqueueInstancedShards(modelId, shards, shardGeneration);
 
-        setIfcDataStore(dataStore);
+        // Measurement (post-pixel attribution): the store write, with its synchronous subscribers.
+        trace.span('cache.publishStore', () => setIfcDataStore(dataStore));
 
         // Cold-storage provider (issue #1682 phase 3b): with this wired the
         // scene may drop CPU meshData for cold chunks and restore them from
@@ -271,7 +272,7 @@ export function useIfcCache() {
         if (isStale?.()) {
           return { success: false, meshCount: 0, totalVertices: 0, totalTriangles: 0 };
         }
-        setIfcDataStore(dataStore);
+        trace.span('cache.publishStore', () => setIfcDataStore(dataStore));
       }
 
       trace.milestone('cache.storeReady'); // #6961: spatial tree and properties are queryable from here

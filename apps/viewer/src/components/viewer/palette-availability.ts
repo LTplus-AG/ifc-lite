@@ -108,8 +108,9 @@ export function paletteAvailability(command: SurfaceCommandDefinition, context: 
     if (hasRetainedShapeOnlyModel(s.models)) return blocked(RETAINED_SHAPE_ONLY_REASON);
   }
 
-  if (id === 'vis:structural-view' && !hasStructuralData(s)) return blocked('commandPalette.availability.structural');
   const hasData = s.ifcDataStore !== null || [...s.models.values()].some(m => m.ifcDataStore != null);
+  // A latched mode stays reachable while a model is loaded, so the user can cycle back after removing the last analytical product.
+  if (id === 'vis:structural-view' && !(hasData && (s.structuralViewMode ?? 'both') !== 'both') && !hasStructuralData(s)) return blocked('commandPalette.availability.structural');
   const opener = HOST_OPENERS.get(id);
   if (opener) {
     if (s.loading) return blocked('commandPalette.availability.loading');

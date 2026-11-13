@@ -72,8 +72,7 @@ export function structuralViewHidden(
   hidden: Set<number>,
   toGlobalId: (modelId: string, expressId: number) => number,
 ): Set<number> {
-  // With nothing analytical, a latched mode would hide every product; it masks nothing instead.
-  if (mode === 'both' || !hasStructuralData({ models, ifcDataStore: fallback, mutationViews: views })) return hidden;
+  if (mode === 'both') return hidden;
   const result = new Set(hidden);
   const mask = (id: number, type: string | null, global: (id: number) => number) => {
     if (type === null) return;

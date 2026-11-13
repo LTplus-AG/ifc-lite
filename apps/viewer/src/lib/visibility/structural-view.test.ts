@@ -118,24 +118,12 @@ for (const edit of ['retype','delete'] as const) {
       const id7 = state.toGlobalId(key,7);
       // A retyped beam is physical now: the physical mode must not hide it.
       assert.equal(resolveViewHiddenEntities({...state,structuralViewMode:'physical'}).has(id7),false,`${edit}, federated=${federated}`);
-      assert.equal(resolveViewHiddenEntities({...state,structuralViewMode:'analytical'}).size,0,
-        `${edit}, federated=${federated}: nothing analytical is left, so the mode masks nothing`);
+      if (edit === 'retype') {
+        assert.equal(resolveViewHiddenEntities({...state,structuralViewMode:'analytical'}).has(id7),true,`${edit}, federated=${federated}`);
+      }
     }
   });
 }
-
-it('#9923: a latched mode masks nothing once no analytical product is left', () => {
-  const store = createSyntheticDataStore({schemaVersion:'IFC4',fileSize:0,entities:[
-    {expressId:7,type:'IfcStructuralCurveMember',hasGeometry:true},
-    {expressId:9,type:'IfcBeam',hasGeometry:true},
-  ]});
-  const view = new MutablePropertyView(null,'__legacy__');
-  const state = {models:new Map(),ifcDataStore:store,mutationViews:new Map([['__legacy__',view]]),
-    hiddenEntities:new Set<number>(),toGlobalId:(_m:string,id:number)=>id,structuralViewMode:'analytical' as const};
-  assert.equal(resolveViewHiddenEntities(state).has(9),true,'analytical mode hides the beam while a member exists');
-  new StoreEditor(store,view).removeEntity(7);
-  assert.equal(resolveViewHiddenEntities(state).size,0,'the beam is not hidden behind an empty analytical view');
-});
 
 it('#9923: IFC2X3 varying actions are analytical', () => {
   for (const type of ['IfcStructuralLinearActionVarying','IfcStructuralPlanarActionVarying']) {

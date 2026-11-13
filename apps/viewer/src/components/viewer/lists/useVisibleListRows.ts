@@ -30,6 +30,8 @@ export function useVisibleListRows(rows: ListRow[], filterByVisibility: boolean)
   const activeBasketViewId = useViewerStore((s) => s.activeBasketViewId);
   const geometryResult = useViewerStore((s) => s.geometryResult);
   const listVisibilityOwned = useViewerStore((s) => s.listVisibilityOwned);
+  // Retypes and deletes change the structural mask.
+  const mutationVersion = useViewerStore((s) => s.mutationVersion);
 
   return useMemo(() => {
     if (!filterByVisibility) return rows;
@@ -47,5 +49,6 @@ export function useVisibleListRows(rows: ListRow[], filterByVisibility: boolean)
   }, [
     rows, filterByVisibility, hiddenEntities, isolatedEntities, classFilter, lensHiddenIds,
     selectedStoreys, typeVisibility, structuralViewMode, models, activeBasketViewId, geometryResult, listVisibilityOwned,
+    mutationVersion,
   ]);
 }

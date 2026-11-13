@@ -127,6 +127,19 @@ describe('drawing snap: collinear split vertices', () => {
     assert.equal(kink.type === 'polyline' && kink.pts.length === 5, true, 'real 0.1 mm kink kept');
   });
 
+  it('joins pieces whose shared end straddles a vertex-key cell edge (#10076 review)', () => {
+    // 2e-8 m apart, on either side of the 1.2000005 cell edge of a 1e-6 grid.
+    const pieces = [line(23, P(0, 12), P(1.20000049, 12)), line(23, P(1.20000051, 12), P(2, 12))];
+    const merged = buildDrawingSnapShapes(drawing([], pieces)).shapes;
+    assert.equal(merged.length, 1, 'two pieces become one line');
+    const mid = findDrawingSnap(drawing([], pieces), P(1.01, 12.001), { tolerance: TOL });
+    assert.equal(mid?.mode, 'midpoint', 'mode');
+    near(mid?.point.x ?? NaN, 1, 'merged midpoint x');
+    // The same straddle on a face shared with another entity still counts as shared.
+    const stub = line(24, P(1.20000051, 12), P(1.20000051, 14));
+    assert.equal(buildDrawingSnapShapes(drawing([], [...pieces, stub])).shapes.length, 3, 'joint kept where entity 24 ends on it');
+  });
+
   it('keeps a corner between two pieces of the same entity', () => {
     const corner = [line(22, P(0, 8), P(2, 8)), line(22, P(2, 8), P(2, 10))];
     assert.equal(buildDrawingSnapShapes(drawing([], corner)).shapes.length, 2, 'L stays two lines');

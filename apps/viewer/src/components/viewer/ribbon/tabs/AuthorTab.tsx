@@ -21,6 +21,7 @@ import {
   RibbonSmallStack,
 } from '../primitives';
 import { RibbonCommandLargeButton, RibbonCommandSmallButton } from '../command-button';
+import { anyRibbonCommandAvailable } from '../../surface-command-features';
 
 const EDIT_ACTIVE_CLASS = 'bg-overlay-accent-soft text-foreground ring-1 ring-inset ring-overlay-accent/50';
 
@@ -70,18 +71,23 @@ export function AuthorTab() {
         </RibbonSmallStack>
       </RibbonGroup>
 
-      <RibbonGroupDivider />
+      {/* Appearance is the group's only command; a host can switch it off. */}
+      {anyRibbonCommandAvailable(['panel:appearance']) && (
+        <>
+          <RibbonGroupDivider />
 
-      <RibbonGroup label={t('ribbon.author.createGroup')}>
-        <RibbonCommandLargeButton
-          commandId="panel:appearance"
-          icon={Appearance}
-          tooltip={t('ribbon.author.appearanceTooltip')}
-          active={activeWorkspacePanels.has('appearance')}
-          activeClassName={EDIT_ACTIVE_CLASS}
-          commandContext={{ activateRightPanel: () => handleToggleRightPanel('appearance') }}
-        />
-      </RibbonGroup>
+          <RibbonGroup label={t('ribbon.author.createGroup')}>
+            <RibbonCommandLargeButton
+              commandId="panel:appearance"
+              icon={Appearance}
+              tooltip={t('ribbon.author.appearanceTooltip')}
+              active={activeWorkspacePanels.has('appearance')}
+              activeClassName={EDIT_ACTIVE_CLASS}
+              commandContext={{ activateRightPanel: () => handleToggleRightPanel('appearance') }}
+            />
+          </RibbonGroup>
+        </>
+      )}
 
       <RibbonGroupDivider />
 

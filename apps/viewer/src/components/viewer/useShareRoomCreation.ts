@@ -79,10 +79,13 @@ export function useShareRoomCreation({ open, hasModel, collabRoomId, awaitingCon
         // path (#4444); only a scope that refuses every model is declined.
         if (!isCurrent()) return;
         const st = useViewerStore.getState();
+        const seedRefuses = shareRefusesEveryModel(st.models, st.activeModelId, scope);
         const seed = await prepareShareSeed(st.models, st.mutationViews, st.activeModelId, scope, st.georefMutations);
         if (!isCurrent()) return;
+        // Both the snapshot the seed was built from and the store as it is
+        // now must have something to share.
         const now = useViewerStore.getState();
-        if (shareRefusesEveryModel(now.models, now.activeModelId, scope)) {
+        if (seedRefuses || shareRefusesEveryModel(now.models, now.activeModelId, scope)) {
           refuse();
           return;
         }

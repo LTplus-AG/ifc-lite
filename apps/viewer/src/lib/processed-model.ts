@@ -64,11 +64,7 @@ export function openProcessedModel(model: ProcessedModelRequest, options?: OpenP
   const sha256 = assertProcessedModelHash(model.sha256);
   if (options?.serverUrl !== undefined) setProcessingServerUrl(options.serverUrl);
   const bytes = Number.isSafeInteger(model.bytes) && model.bytes > 0 ? model.bytes : 0;
-  fileRequest({ sha256, bytes, name: model.name || 'model.ifc' });
-}
-
-function fileRequest(request: ProcessedModelRequest): void {
-  pending = request;
+  pending = { sha256, bytes, name: model.name || 'model.ifc' };
   for (const listener of [...listeners]) listener();
 }
 
@@ -78,14 +74,13 @@ let urlModelIgnored = false;
 /**
  * Apply a host configuration's processing members (`server`, `open`). Called
  * once by `mountViewer`, after the feature set is fixed: the server first, so
- * the model opens from it. The configuration is already checked
- * (`parseViewerRuntimeConfig`), so its values are used as they are.
+ * the model opens from it.
  */
 export function applyProcessingConfig(config: Pick<ViewerRuntimeConfig, 'server' | 'open'> | undefined): void {
   if (config?.server) setProcessingServerUrl(config.server.url);
   if (config?.open) {
     hostStartModel = true;
-    fileRequest(config.open.processedModel);
+    openProcessedModel(config.open.processedModel);
   }
 }
 

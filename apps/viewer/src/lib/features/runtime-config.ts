@@ -82,11 +82,9 @@ function parseServer(value: unknown, pageUrl: string | undefined): { url: string
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 
 /**
- * The start model. The hash is kept in the lowercase form the server keys by,
- * by the same rule as `normalizeProcessedModelHash` in `@ifc-lite/server-client`
- * (a test pins the agreement); not imported, because this module runs before
- * the configuration request and anything it imports statically delays that
- * request. `bytes` is a positive whole number, or 0 when the size is unknown.
+ * The start model, its hash lowercased by the rule of `normalizeProcessedModelHash`
+ * (`@ifc-lite/server-client`). Copied, not imported: this module runs before the
+ * configuration request and a static import would delay it. A test pins the two.
  */
 function parseOpen(value: unknown): NonNullable<ViewerRuntimeConfig['open']> {
   if (!isRecord(value) || !isRecord(value.processedModel)) invalid('open.processedModel must be an object');

@@ -49,17 +49,15 @@ export function useProcessedModelAutoload(): void {
   useEffect(() => {
     // Wait for the async adapter probe, as `?model=` does, so the guard gets a definitive answer.
     if (webgpu.checking) return;
-    const query = queryRef.current;
-    queryRef.current = null; // the URL is read once per mount
     // A host start model wins over the page URL; its request is already waiting below.
-    if (query && pageUrlModelAllowed('processed')) {
-      if (query === 'malformed') {
-        // The same string on every attempt: no Retry.
-        const { setError, setLastLoadRetry } = useViewerStore.getState();
-        showLoadError(setError, setLastLoadRetry, t('viewportLighting.container.processedModelAutoload.malformedLink'), 'processed_model_malformed', null);
-      } else {
-        openProcessedModel(query);
-      }
+    const query = queryRef.current && pageUrlModelAllowed('processed') ? queryRef.current : null;
+    queryRef.current = null; // the URL is read once per mount
+    if (query === 'malformed') {
+      // The same string on every attempt: no Retry.
+      const { setError, setLastLoadRetry } = useViewerStore.getState();
+      showLoadError(setError, setLastLoadRetry, t('viewportLighting.container.processedModelAutoload.malformedLink'), 'processed_model_malformed', null);
+    } else if (query) {
+      openProcessedModel(query);
     }
     const loadWaiting = () => {
       const request = takeProcessedModelRequest();

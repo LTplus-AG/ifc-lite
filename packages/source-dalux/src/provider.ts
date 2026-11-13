@@ -389,11 +389,7 @@ export class DaluxBuildProvider implements FileSourceProvider {
     const apiKey = await ctx.getPreference('apiKey');
     if (!apiKey) throw new Error('Dalux API key not configured');
     const node = parseDaluxNode(await ctx.getPreference('baseUrl'));
-    // `baseUrl` stays the canonical default even for a non-default node: the
-    // host only rewrites to the same-origin relay while the URL matches the
-    // manifest's declared upstream, and Dalux serves no CORS headers, so a
-    // rewritten base would bypass the relay and fail in the browser. The node
-    // travels as a parameter the relay resolves server-side (#2792).
+    // Keep the relay origin canonical; the node travels as a parameter (#2792).
     return { baseUrl: DEFAULT_BASE_URL, apiKey, node };
   }
 

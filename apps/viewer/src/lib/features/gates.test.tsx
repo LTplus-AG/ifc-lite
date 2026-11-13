@@ -240,12 +240,11 @@ describe('one tool table, and what follows from it', () => {
   });
 
   it('closes a popped-out panel that is off and keeps the store in step', () => {
-    const store = useViewerStore;
-    store.getState().setPanelPoppedOut('bcf', true);
+    useViewerStore.getState().setPanelPoppedOut('bcf', true);
     resetFeaturesForTest({ default: 'all', disable: ['check.bcf'] });
-    const stop = enforcePanelAvailability(store);
+    const stop = enforcePanelAvailability(useViewerStore);
     try {
-      assert.deepEqual(store.getState().poppedOutIds.filter((id) => id === 'bcf'), []);
+      assert.ok(!useViewerStore.getState().poppedOutIds.includes('bcf'));
     } finally {
       stop();
     }

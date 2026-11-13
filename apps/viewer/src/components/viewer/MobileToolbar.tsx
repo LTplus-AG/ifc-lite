@@ -102,7 +102,8 @@ export function MobileToolbar({ placement = 'bottom-bar', style }: {
   const OpenFileIcon = mobileIcon(openFile);
   const AddModelIcon = mobileIcon(addModel);
   // Commands a host switched off (`lib/features`) are left out, not disabled.
-  const toolButtons = (['tool:select', 'tool:measure', 'tool:section'] as const).filter((id) => isSurfaceCommandAvailable(mobileCommand(id)));
+  const toolButtons = (['tool:select', 'tool:measure', 'tool:section'] as const)
+    .filter((id) => isSurfaceCommandAvailable(mobileCommand(id)));
   // Seven 44px targets fit a 320px phone in one row (7 x 44 = 308px); nine did
   // not, so Add model and Show all live in More (#8802, maintainer's call).
   const quickActions = ['view:home', 'view:fit'] as const;

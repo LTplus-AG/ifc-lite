@@ -35,7 +35,7 @@ function patchFor(state: ViewerState, off: ReadonlySet<WorkspacePanelId>): Parti
     patch.floatingPanels = state.floatingPanels.filter((panel) => !off.has(panel.id));
   }
   if (state.poppedOutIds.some((id) => off.has(id))) {
-    // The OS window is closed by `closePopouts`; this keeps the store in step either way.
+    // `enforce` below closes the OS window; this keeps the store in step either way.
     patch.poppedOutIds = state.poppedOutIds.filter((id) => !off.has(id));
   }
   return Object.keys(patch).length > 0 ? patch as Partial<ViewerState> : null;

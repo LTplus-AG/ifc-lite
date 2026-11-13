@@ -102,8 +102,8 @@ export function createLoadWindow(deps: LoadWindowDeps): LoadWindow {
   let settled = new Set<string>();
   /** When the loader marked each model's load as ended, inside this window. */
   const loadEndedAt = new Map<string, number>();
-  /** Models whose release waits for the settled scene to be drawn. */
-  const releasing = new Set<string>();
+  /** Models whose release waits for the settled scene to be drawn, with that wait's cancel. */
+  const releasing = new Map<string, { cancel: () => void }>();
   /**
    * Real models are registered and none is called `legacy`: then `legacy` names
    * no load (a caller with no model id to ask about), so it is not held. Only
@@ -147,6 +147,7 @@ export function createLoadWindow(deps: LoadWindowDeps): LoadWindow {
     open = false;
     settled = new Set();
     loadEndedAt.clear();
+    for (const wait of releasing.values()) wait.cancel();
     releasing.clear();
     tailSince = -1;
     publish();
@@ -168,6 +169,7 @@ export function createLoadWindow(deps: LoadWindowDeps): LoadWindow {
       if (LOADING_STATES.has(state)) {
         if (settled.delete(id)) changed = true;
         loadEndedAt.delete(id); // a new load of this model is in progress
+        releasing.get(id)?.cancel(); // its release wait is superseded: it must not publish the new load
         releasing.delete(id);
         continue;
       }
@@ -183,14 +185,18 @@ export function createLoadWindow(deps: LoadWindowDeps): LoadWindow {
   // As the window's own close: after the settled model has been drawn,
   // re-checking the tail, which can start again before that frame.
   const releaseAfterSettledFrame = (id: string): void => {
-    releasing.add(id);
+    const wait = { cancel: (): void => {} };
+    releasing.set(id, wait);
     const finish = (): void => {
-      if (!releasing.delete(id) || !open) return; // seen loading again, or the window closed
+      // Only this release's own wait may publish: a reload replaces the entry.
+      if (releasing.get(id) !== wait) return;
+      releasing.delete(id);
+      if (!open) return;
       if (modelTailWaiting(id)) { scheduleCheck(); return; }
       settled.add(id);
       publish();
     };
-    deps.afterSettledFrame(finish);
+    wait.cancel = deps.afterSettledFrame(finish);
   };
   const busyCapped = (): boolean => busySince >= 0 && deps.now() - busySince >= MAX_STORE_BUSY_MS;
   const tailWaiting = (): boolean => deps.tailBusy() && tailSince >= 0 && deps.now() - tailSince < MAX_TAIL_WAIT_MS;

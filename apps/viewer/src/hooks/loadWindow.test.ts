@@ -370,6 +370,19 @@ describe('load window', () => {
     assert.equal(h.win.isHeld('A'), false);
   });
 
+  it('a reload cancels the release wait it supersedes: the old wait cannot publish the new load before its frame', async () => {
+    const h = await harness();
+    h.store(true);
+    h.model('A', 'complete'); h.ended('A'); // release wait 1 starts
+    h.setRenderPending(true);
+    h.draw(); // a frame is submitted after wait 1 began (it would end wait 1)
+    h.model('A', 'pending'); h.model('A', 'complete'); h.ended('A'); // reload ends: release wait 2 starts
+    h.frame(); h.timer(0);
+    assert.equal(h.win.isHeld('A'), true, 'the reloaded scene is not drawn yet; only the superseded wait saw a frame');
+    h.draw(); h.frame(); h.timer(0);
+    assert.equal(h.win.isHeld('A'), false);
+  });
+
   it('frames that never come (hidden tab) still close the window from the backstop', async () => {
     const h = await harness();
     h.store(true); h.store(false);

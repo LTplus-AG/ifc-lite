@@ -48,7 +48,9 @@ export function afterSceneSettled(done: (settled: boolean) => void, isCurrent: (
   let polls = 0;
   let cancelled = false;
   let cancelWait: () => void = () => {};
-  const finish = (settled: boolean): void => { if (!cancelled) { cancelled = true; done(settled); } };
+  // The deadline holds through the frame wait too: a draw that stays pending must not succeed late.
+  const deadline = setTimeout(() => { if (!cancelled) { cancelWait(); finish(false); } }, timeoutMs);
+  const finish = (settled: boolean): void => { if (!cancelled) { cancelled = true; clearTimeout(deadline); done(settled); } };
   const check = (): void => {
     if (cancelled) return;
     if (!isCurrent()) { finish(false); return; }
@@ -62,7 +64,7 @@ export function afterSceneSettled(done: (settled: boolean) => void, isCurrent: (
     else check(); // superseded (false), or the scene changed again: wait for it again
   };
   check();
-  return () => { cancelled = true; cancelWait(); };
+  return () => { cancelled = true; clearTimeout(deadline); cancelWait(); };
 }
 
 /** Promise form of `afterSceneSettled`. */

@@ -122,3 +122,14 @@ it('a wait cancelled while the settled frame is awaited calls nothing (an unmoun
   await new Promise((resolve) => setTimeout(resolve, 1_200)); // past the frame wait's backstop
   assert.deepEqual(calls, []);
 });
+
+it('the caller\'s timeout holds through the frame wait: a draw that never submits reports false at the deadline, not true at the backstop', async () => {
+  installRenderer();
+  draw.pending = true; // settled, but its draw stays pending
+  const calls: boolean[] = [];
+  afterSceneSettled((settled) => calls.push(settled), () => true, 150);
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  assert.deepEqual(calls, [false], 'timed out at 150 ms, before the 1 s frame backstop');
+  await new Promise((resolve) => setTimeout(resolve, 1_000)); // past the backstop
+  assert.deepEqual(calls, [false], 'and nothing after it');
+});

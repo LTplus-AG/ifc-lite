@@ -15,7 +15,7 @@ import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { render, cleanup, click, advance } from '@/test/render.js';
+import { render, cleanup, click, advance, waitFor } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels, type FixtureEntity } from '@/test/store-fixture.js';
 import { PropertyValueType } from '@ifc-lite/data';
@@ -176,6 +176,12 @@ describe('BulkPropertyEditor — the run is one undo step Ctrl+Z can reach (#595
       const apply = [...document.body.querySelectorAll('button')].find((button) => button.textContent?.includes('Apply to'));
       assert.ok(apply);
       click(apply!);
+      // Wait on the write itself, not a fixed 150 ms: the run's first chunk may
+      // pay first-use work (schema tables decode on first use), and a fixed
+      // real-time budget fails once the runner is loaded (#5977).
+      await waitFor(() => views.get('model-a')!.getPropertyValue(1001, PSET, PROP) === 'CHUNKED', 'the chunked Query write reaches the last target');
+      // Then give any trailing discovery the same window the test used to allow:
+      // under load this can only see fewer discoveries, never fail spuriously.
       await advance(150);
       assert.equal(views.get('model-a')!.getPropertyValue(1001, PSET, PROP), 'CHUNKED');
       assert.ok(discoveries - beforeRun <= 1, 'schema discovery runs at most once after three write chunks');

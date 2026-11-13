@@ -551,13 +551,17 @@ of its own. Both modes draw the same colours and the same triangle count
 
 An inherited material can only change a member's colour through its diffuse
 colour or its transparency. So a member that reads that diffuse
-(`ColorFromMaterial`) always bakes, and the rest bake only when some material
-in the file is transparent. That gate matters: with 5,000 placements of
-one 3,200-triangle member, baking every `MaterialFromParent` member returned
-5,000 mesh records and 375 MB of geometry, every record the same colour, where
-one shared definition holds 0.08 MB [ran]. It over-approximates, since one
-transparent material anywhere makes every such member bake even when the
-instance placing it names an opaque one.
+(`ColorFromMaterial`) always bakes, and the rest bake only when a material some
+instance in the file hands down is transparent, which `inheritableFade`
+measures. That gate matters: with 5,000 placements of one 3,200-triangle
+member, baking every `MaterialFromParent` member returned 5,000 mesh records
+and 375 MB of geometry, every record the same colour, where one shared
+definition holds 0.08 MB [ran]. It is measured over what the instances resolve
+to rather than over the material table, because a Rhino file keeps materials
+nothing references and one leftover transparent material would otherwise bake
+every inheriting member in the file [test]. It still over-approximates: one
+instance naming a transparent material bakes the members of every definition,
+including those placed only by instances with opaque materials.
 
 **Nested blocks.** Each level resolves against its parent's already-resolved
 attributes, so "by parent" reaches past the direct parent only when the

@@ -31,9 +31,24 @@ export interface Block extends BlockMeshes {
 /** Most block references one file's walk may reach, drawn or skipped; bounds a fan-out that no triangle budget sees. */
 export const MAX_BLOCK_PLACEMENTS = 500_000;
 
-export function buildBlock(name: string, linked: boolean, members: BlockMember[], tables: AppearanceTables, report: Report): Block {
+/**
+ * Whether any material a block instance can hand down to a member that inherits one is
+ * transparent, which is what decides whether such a member can be drawn from the shared
+ * definition. Measured over the materials the file's instances resolve to, not over the material
+ * table: a Rhino file keeps materials nothing references, and one leftover transparent material
+ * would otherwise bake every inheriting member in the file. An instance that takes its material
+ * from its own parent takes another instance's, so these cover the nested cases too.
+ */
+export function inheritableFade(objects: Iterable<{ part: Part; appearance: Appearance }>, tables: AppearanceTables): boolean {
+  for (const { part, appearance } of objects) {
+    if (part.kind === 'instance' && (tables.materials[appearance.material]?.transparency ?? 0) > 0) return true;
+  }
+  return false;
+}
+
+/** `fades` comes from `inheritableFade`, measured once for the file. */
+export function buildBlock(name: string, linked: boolean, members: BlockMember[], tables: AppearanceTables, fades: boolean, report: Report): Block {
   const block: Block = { name, linked, meshes: [], triangles: 0, reach: [0, 0, 0], others: [], dots: [], nested: [], drawsDots: false, drawsGeometry: false };
-  const fades = tables.materials.some(material => material.transparency > 0);
   for (const { part, look, hidden } of members) {
     // Rhino does not draw a member that is hidden or on a layer that is off, in any instance.
     if (hidden) report.skip('hidden-block-member');

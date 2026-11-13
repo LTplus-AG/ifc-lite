@@ -111,23 +111,47 @@ describe('a block member resolved against the instance placing it', () => {
   });
 });
 
-test('a member that inherits an opaque material stays in the definition: the file holds nothing that could fade it', async () => {
-  // Only a transparent material can make an inherited material change a member's colour, unless
-  // the member reads its diffuse. Baking the others per placement returned 5,000 mesh records and
-  // 375 MB where one shared definition holds 0.08 MB, every record the same colour [ran].
-  const build = (c: Craft) => {
+describe('a member that inherits its material only needs baking when something can fade it', () => {
+  // Only a transparent material can make an inherited material change such a member's colour,
+  // since it does not read the diffuse. Baking them all per placement returned 5,000 mesh records
+  // and 375 MB where one shared definition holds 0.08 MB, every record the same colour [ran].
+  const build = (extra: (c: Craft) => void) => (c: Craft) => {
     const paint = c.material('Paint', [0, 0, 255, 255]), other = c.material('Other', [0, 255, 0, 255]);
     const spec: AttributeSpec = { color: [255, 255, 255, 255], colorSource: 'ColorFromObject', materialSource: 'MaterialFromParent' };
     const block = c.block('Pane', [unit(c)], [spec]);
     for (const [i, material] of [paint, other].entries()) {
       c.addInstance(block, translation(i * 3, 0, 0), { color: [255, 0, 0, 255], material, materialSource: 'MaterialFromObject' });
     }
+    extra(c);
   };
-  const result = await readRhino3dm(await craft(build));
-  // One shared definition carrying the member's own colour, placed twice, nothing baked.
-  expect(result.definitions.map(d => d.meshes.map(m => m.color && bytes255(m.color)))).toEqual([[[255, 255, 255, 255]]]);
-  expect(result.instances.map(i => i.definition)).toEqual([0, 0]);
-  expect(result.meshes).toEqual([]);
+
+  test('two instances naming opaque materials share one definition', async () => {
+    const result = await readRhino3dm(await craft(build(() => {})));
+    expect(result.definitions.map(d => d.meshes.map(m => m.color && bytes255(m.color)))).toEqual([[[255, 255, 255, 255]]]);
+    expect(result.instances.map(i => i.definition)).toEqual([0, 0]);
+    expect(result.meshes).toEqual([]);
+  });
+
+  test('a transparent material the file stores but nothing uses does not bake them', async () => {
+    // Rhino keeps materials no object or layer names. Measuring the gate over the material table
+    // instead of over what the instances resolve to let one of those bake a whole file.
+    const result = await readRhino3dm(await craft(build(c => { c.material('Leftover glass', [0, 0, 255, 255], 0.5); })));
+    expect(result.definitions).toHaveLength(1);
+    expect(result.instances.map(i => i.definition)).toEqual([0, 0]);
+    expect(result.meshes).toEqual([]);
+  });
+
+  test('a transparent material an instance does name bakes them, at that instance\'s alpha', async () => {
+    const build = (c: Craft) => {
+      const glass = c.material('Glass', [0, 0, 255, 255], 0.5);
+      const spec: AttributeSpec = { color: [255, 255, 255, 255], colorSource: 'ColorFromObject', materialSource: 'MaterialFromParent' };
+      const block = c.block('Pane', [unit(c)], [spec]);
+      c.addInstance(block, undefined, { color: [255, 0, 0, 255], material: glass, materialSource: 'MaterialFromObject' });
+    };
+    const result = await readRhino3dm(await craft(build));
+    expect([result.definitions, result.instances]).toEqual([[], []]);
+    expect(result.meshes.map(m => bytes255(m.color))).toEqual([[255, 255, 255, 128]]);
+  });
 });
 
 test('at top level, with no instance to inherit from, both "from parent" sources fall back to the layer', async () => {

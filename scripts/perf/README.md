@@ -8,6 +8,38 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
+## Cache-hit chunk decode on the workers (#9925) and lazy relationship maps (#9932, closed)
+
+**Rejected: decoding a cache hit's geometry chunks on the cache workers (#9925) makes the Holter snapshot reopen ~60 ms slower, not faster.**
+- The worker decode posted the first chunks from the entry header, so it ran beside the metadata decode, and transferred arena blocks back to main.
+- Its chunk stage takes ~197 ms wall against 159 ms for the main-thread decode it replaces, so hydrate starts 73-80 ms later.
+- #9932 (lazy relationship node maps) saves a real ~17 ms of cache decode. That cannot clear a 4.6-7.5% floor on a 1.2-1.3 s cell, and it was only timed together with #9925.
+
+Timed A/B on Pop:
+- Exclusive admission, 5 interleaved rounds, scoreboard B5 harness with both marks + reopen identity.
+- Base main c9dba2ff4c (with #9782, #9855, #9785); branch #9932 142b2049d4 containing #9925 eb0fc26093; slot 40/r41, 2026-11-13.
+- 0 Holter samples overlapped a watchdog pass or ran under load. Output identity matched on every reopen.
+
+| fixture | cell | base -> branch | 2x floor | verdict |
+|---|---|---|---:|---|
+| Holter | first reopen interactive | 1,260 -> 1,328 (-5.4%) | 7.5% | n.s. |
+| Holter | snapshot reopen interactive | 1,219 -> 1,282 (-5.2%) | 4.6% | regression |
+| Holter | UI quiet, both reopens | 1,817 -> 1,874 / 1,773 -> 1,830 | 2.7% / 1.4% | regression |
+| Holter | cold interactive | 3,300 -> 3,381 | 5.5% | n.s. |
+| BWK | reopens interactive | 1,192 -> 1,181 / 1,205 -> 1,182 | 6.2% / 3.5% | n.s. |
+| BWK | snapshot reopen first geometry | 562 -> 575 | 2.1% | regression |
+
+Spans (medians):
+- `cache.chunkDecode` 700 +159 -> 674 +194 (first reopen); 661 +158 -> 653 +200 (snapshot reopen).
+- `scene.snapshotHydrate` starts 910 -> 983 and 877 -> 957.
+- `cache.decode` 92 -> 75 and 94 -> 77 (#9932).
+- Both marks equal; 0/5 post-finalize stalls.
+- The slot's memory unit did not run: the watchdog alignment left 1,143 s of the 1,265 it needed. No peak-memory reading exists for this pair on today's main. (On the earlier main, the decode's arena part landed in #9785, whose own memory pass is in its PR.)
+
+The untraced sizing expected −95..−130 ms. It assumed the worker decode overlapped the metadata decode, so that main would find the chunks ready. On today's main the metadata decode is done before most chunks are back, and the main thread was otherwise idle in that window. So the move saved no critical-path time and added worker scheduling, a transfer and a re-link per chunk, with `min(4, cores − 2)` workers sharing the CPU with the browser.
+
+**Lesson:** moving work to another thread pays only if something on the critical path was waiting for that thread's time. Check from untraced spans that the main thread is busy, not idle, in the window before moving work out of it. Size the overlap from the same main the PR will be timed against.
+
 ## Snapshot read during renderer start-up and cache key from file slices (#9826, #9827, closed)
 
 **Rejected: reading the stored scene while the renderer starts (#9826) and

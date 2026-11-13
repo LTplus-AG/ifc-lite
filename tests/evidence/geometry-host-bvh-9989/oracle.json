@@ -1,0 +1,7 @@
+{
+  "issue": 9989,
+  "key": "rust/geometry/src/kernel/arrangement/classify_ray_bvh.rs",
+  "mutation": "tests/evidence/geometry-host-bvh-9989/behaviour.oracle.patch",
+  "test": "rust/geometry/src/kernel/arrangement/classify_bvh_tests.rs",
+  "why": "Reverse application keeps component_inside and every symbol the tests import but sends the host-side ray parity back through the full linear scan of the cutter, so the work test sees the linear scan's ~4x growth per doubling of the cutter instead of the BVH's sub-quadratic work; the verdict and identity tests still pass, as they must for an output-identical change."
+}

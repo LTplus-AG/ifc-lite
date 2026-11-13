@@ -19,7 +19,8 @@ the plan shapes and the section drawing.
 | file | role |
 |---|---|
 | `run.mjs` | entry point: serves a built `dist/`, connects to Chrome on the GPU, runs probes, exercises and council frames |
-| `probes.mjs` | one probe per capability where the UI is the point (ids in the contract's capability list) |
+| `rows/*.mjs` | one probe module per catalogue capability; `rows/index.mjs` rejects duplicate ids and capabilities |
+| `probes.mjs` | common probe lifecycle and result reporting |
 | `exercises.mjs` | F1 (a room) and F2 (the KIT FZK-Haus) modelled end to end, with council checkpoints |
 | `lib/driver.mjs` | preview server, session, action counter, camera pinning, task timing |
 | `lib/model-ui.mjs` | Model workspace moves: tool shortcuts, typed fields, storey chip and manager, export |
@@ -125,3 +126,14 @@ exclusive benchmark admission on Pop. PC benchmarks are disabled.
 Use a fresh output directory per cohort when scoring: the scorer keeps the best
 result per level, so mixing old and new runs can conceal a regression. Pass the
 SDK result directory and UI directory explicitly to the output runner and scorer.
+
+Harness regression tests (no GPU):
+
+```sh
+node --test tests/modelling-parity/ui/lib/*.test.mjs tests/modelling-parity/ui/rows/*.test.mjs
+```
+
+Round 5 measures exported grid displacement, ordered material usage and body size,
+type-owned properties, displayed schedule group/footer totals, classification relationships
+and physical PDF path dimensions at 1:50. Tasks that the UI cannot complete remain
+failed checks with their concrete reason. No product writes use the store API.

@@ -1,0 +1,10 @@
+--- a/packages/mcp/src/bridge/protocol.ts
++++ b/packages/mcp/src/bridge/protocol.ts
+@@ -335,6 +335,7 @@ export function parseTabMessage(text: string): ParseResult<BridgeTabMessage> {
+   // Bound the WHOLE frame before reading any field, so no later step (a
+   // message, a log line, a stringify) ever touches an unbounded value.
+   const frameError = checkJsonBounds(raw, { maxDepth: BRIDGE_LIMITS.maxFrameDepth, maxNodes: BRIDGE_LIMITS.maxFrameNodes }, 'frame');
++  if (frameError) return { ok: false, error: frameError };
+   if (!isRecord(raw)) return { ok: false, error: 'message must be a JSON object' };
+   if (typeof raw.type !== 'string' || raw.type.length > BRIDGE_LIMITS.maxTypeLength) {
+     return { ok: false, error: `message type must be a string of at most ${BRIDGE_LIMITS.maxTypeLength} characters; got ${quoted(raw.type, 32)}` };

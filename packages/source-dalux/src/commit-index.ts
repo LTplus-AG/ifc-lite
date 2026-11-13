@@ -229,12 +229,51 @@ interface CacheEntry {
   /** Mutated in place once `index` resolves, to {@link PARTIAL_COMMIT_INDEX_TTL_MS}
    * if the result came back `partial` (review on #8647). */
   ttl: number;
+  /** True once the build has resolved or rejected (so it may be evicted). */
+  settled: boolean;
 }
+
+/**
+ * Milliseconds on a clock that only moves forward. TTLs are elapsed time, so a
+ * wall clock adjusted backwards must not keep a (partial) index alive past its
+ * TTL (review on #8648).
+ */
+function monotonicNow(): number {
+  return typeof performance !== 'undefined' ? performance.now() : Date.now();
+}
+
+/**
+ * Whether an entry is within its TTL. Elapsed time below zero can only come
+ * from a clock that went backwards (an injected wall clock); the age is then
+ * unknown, so the entry is treated as expired rather than kept indefinitely.
+ */
+function isFresh(entry: CacheEntry, now: number): boolean {
+  const elapsed = now - entry.builtAt;
+  return elapsed >= 0 && elapsed < entry.ttl;
+}
+
+/** Upper bound on retained project indexes; in-flight builds are never evicted. */
+const MAX_CACHED_INDEXES = 8;
 
 const cache = new Map<string, CacheEntry>();
 
 function cacheKey(client: BrowserDaluxApiClient, projectId: string): string {
   return `${client.baseUrl}|${client.cacheIdentity}|${projectId}`;
+}
+
+/** Drop expired settled entries, then the oldest settled ones past the bound. */
+function evictStaleEntries(now: number): void {
+  for (const [key, entry] of cache) {
+    if (entry.settled && !isFresh(entry, now)) cache.delete(key);
+  }
+  trimSettledEntries(MAX_CACHED_INDEXES - 1);
+}
+
+function trimSettledEntries(limit: number): void {
+  for (const [key, entry] of cache) {
+    if (cache.size <= limit) break;
+    if (entry.settled) cache.delete(key);
+  }
 }
 
 /** Drop the one project-history cache, forcing fresh rows on the next sweep. */
@@ -258,27 +297,31 @@ export async function getCommitIndex(
   client: BrowserDaluxApiClient,
   projectId: string,
   signal?: AbortSignal,
-  now: number = Date.now(),
+  now: number = monotonicNow(),
 ): Promise<DaluxCommitIndex> {
   const key = cacheKey(client, projectId);
   const cached = cache.get(key);
-  if (cached && now - cached.builtAt < cached.ttl) return cached.index;
+  if (cached && (!cached.settled || isFresh(cached, now))) return cached.index;
 
   // NOT given the caller's `signal`: the result is shared, so one caller
   // aborting (a panel unmounting) must not cancel the sweep every other
   // caller is awaiting. The sweep is bounded by `MAX_VERSION_SETS` instead.
   void signal;
   const index = buildCommitIndex(client, projectId);
-  const entry: CacheEntry = { index, builtAt: now, ttl: COMMIT_INDEX_TTL_MS };
+  const entry: CacheEntry = { index, builtAt: now, ttl: COMMIT_INDEX_TTL_MS, settled: false };
+  evictStaleEntries(now);
   cache.set(key, entry);
   index.then(
     (result) => {
+      entry.settled = true;
       if (result.partial) entry.ttl = PARTIAL_COMMIT_INDEX_TTL_MS;
+      trimSettledEntries(MAX_CACHED_INDEXES);
     },
     () => {
+      entry.settled = true;
       // Only this build's own entry, and only if nothing has replaced it: a
-      // build that outlives the TTL can have a second one already running
-      // under the same key by the time this rejects, and deleting
+      // build replaced by explicit invalidation may still reject while a new
+      // build runs under the same key; deleting
       // unconditionally would evict THAT one instead (review on #8647).
       if (cache.get(key) === entry) cache.delete(key);
     },

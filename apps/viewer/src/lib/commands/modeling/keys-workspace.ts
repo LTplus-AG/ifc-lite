@@ -9,6 +9,7 @@
  * W for itself. Each tool PR adds its row here beside its rail entry.
  */
 
+import { isLazyEditCommand } from './lazy-edit-commands';
 import { registerKeyboardCommand } from '@/lib/commands/dispatcher';
 import { useViewerStore } from '@/store';
 import type { CommandId } from './types.js';
@@ -25,7 +26,8 @@ export function launchModelCommand(id: CommandId, opts: { drawsOnWorkplane?: boo
   if (s.workspaceMode !== 'model' && !s.enterModelWorkspace()) return false;
   const now = useViewerStore.getState();
   if ((opts.drawsOnWorkplane ?? true) && sessionWorkplaneBlock(now)) return false;
-  now.startCommand(id);
+  const started = now.startCommand(id);
+  if (started instanceof Promise && isLazyEditCommand(id)) return true;
   return useViewerStore.getState().session?.activeCommandId === id;
 }
 
@@ -73,6 +75,8 @@ export function bindModelWorkspaceKeys(): () => void {
     registerKeyboardCommand('model.pasteInPlace', () => pasteShortcut(launchModelCommand, true), { active }),
     registerKeyboardCommand('model.array', () => launchModelCommand('element.array'), { active }),
     registerKeyboardCommand('model.move', () => launchModelCommand('element.move'), { active }),
+    registerKeyboardCommand('model.mirror', () => launchModelCommand('element.mirror'), { active }),
+    registerKeyboardCommand('model.offset', () => launchModelCommand('element.offset'), { active }),
     registerKeyboardCommand('model.rotate', () => launchModelCommand('element.rotate'), { active }),
     registerKeyboardCommand('model.stair', () => launchModelCommand('stair.place'), { active }),
     registerKeyboardCommand('model.railing', () => launchModelCommand('railing.place'), { active }),

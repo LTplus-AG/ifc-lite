@@ -13,7 +13,6 @@ export function createRoofIn(store: ModellingStore, modelId: string, storeyExpre
   params: RoofInStoreParams): { expressId: number } | { error: string } {
   const refusal = mutationDenial(store.getState(), modelId);
   if (refusal) return { error: refusal };
-  if (!store.getState().mutationViews.has(modelId)) return { error: 'Model has no editable mutation view yet' };
   const target = modelEditTarget(store.getState(), modelId);
   if (!target) return { error: `No model loaded for id "${modelId}"` };
   const element = { kind: 'roof' as const, params };

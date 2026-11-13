@@ -578,7 +578,7 @@ test('CLI --decide on a real Rust release: the writer\'s own Cargo output goes l
   const release = cargoRepo(runWriter);
   // The fixture really moves the crates, so this exercises the replay, not an empty Cargo diff.
   const moved = execFileSync('git', ['diff', '--name-only', 'HEAD~1', 'HEAD'], { cwd: release, encoding: 'utf8' }).split('\n');
-  for (const f of ['Cargo.toml', 'Cargo.lock', 'rust/python/Cargo.lock']) assert.equal(moved.includes(f), true, `the fixture release rewrites ${f}`);
+  for (const f of ['Cargo.toml', 'Cargo.lock', 'rust/python/Cargo.lock']) assert.equal(moved.includes(f), true, `the fixture release rewrites ${f}`); // @source-text-assertion-ok mutation anchor guard, not a subject assertion: the fixture must really move the Cargo files
   const lean = cli(['--decide'], {}, release);
   assert.equal(lean.code, 0, lean.stderr);
   assert.deepEqual(lean.outputs, { lane: 'lean' }, lean.stdout);

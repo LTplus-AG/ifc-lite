@@ -79,6 +79,7 @@ export const section2dEn = {
   'section2d.export.invalidScale': 'Could not export PDF: invalid scale.',
   'section2d.export.allowPopups': 'Please allow popups to print.',
   'section2d.export.omission.markups': 'drawing markups (measurements, areas, text, and clouds)',
+  'section2d.export.omission.otherCutDimensions': 'dimensions drawn on another cut',
   'section2d.export.omission.rasterReferences': 'visible PDF/image reference underlays',
   'section2d.export.omission.requestedScale': 'the requested scale (the active sheet sets the PDF scale)',
   'section2d.export.omission.pdfTitle': 'This PDF will leave out:',

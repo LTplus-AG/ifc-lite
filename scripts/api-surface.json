@@ -5602,6 +5602,8 @@
     "DXFExportOptions: interface",
     "DXFExporter: class",
     "DXFPolylineLayer: interface",
+    "DXFText: interface",
+    "DXFTextLayer: interface",
     "DXFUnderlayOptions: interface",
     "DashPattern: interface",
     "DoorOperationType: type",

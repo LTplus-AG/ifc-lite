@@ -116,8 +116,9 @@ for (const edit of ['retype','delete'] as const) {
       if (edit === 'retype') editor.setEntityType(7,'IfcBeam'); else editor.removeEntity(7);
       assert.equal(hasStructuralData(state),false,`${edit}, federated=${federated}`);
       const id7 = state.toGlobalId(key,7);
-      // A retyped beam is physical now: the physical mode must not hide it.
-      assert.equal(resolveViewHiddenEntities({...state,structuralViewMode:'physical'}).has(id7),false,`${edit}, federated=${federated}`);
+      // A retyped beam is physical now, so physical mode shows it. A deleted member keeps its parsed
+      // class in the mask, so its mesh stays hidden there until the rebuild drops it.
+      assert.equal(resolveViewHiddenEntities({...state,structuralViewMode:'physical'}).has(id7),edit === 'delete',`${edit}, federated=${federated}`);
       if (edit === 'retype') {
         assert.equal(resolveViewHiddenEntities({...state,structuralViewMode:'analytical'}).has(id7),true,`${edit}, federated=${federated}`);
       }
@@ -129,6 +130,7 @@ it('#9923: IFC2X3 varying actions are analytical', () => {
   for (const type of ['IfcStructuralLinearActionVarying','IfcStructuralPlanarActionVarying']) {
     assert.equal(isAnalyticalProduct(type),true,type);
   }
+  assert.equal(isAnalyticalProduct('IfcStructuralSurfaceMemberVarying'),true);
   assert.equal(isAnalyticalProduct('IfcStructuralLoadGroup'),false);
 });
 

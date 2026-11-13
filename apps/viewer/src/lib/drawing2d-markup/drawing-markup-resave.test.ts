@@ -29,7 +29,10 @@ import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { StepExporter } from '@ifc-lite/export';
 import { useViewerStore } from '@/store/index.js';
 import { saveDrawingMarkupToModel, type SaveMarkupInput } from './drawing-markup-save.js';
-import { absorbEmbeddedMarkup } from './drawing-markup-absorbed.js';
+import { absorbEmbeddedMarkup, absorbedEmbeddedMarkupFor } from './drawing-markup-absorbed.js';
+import { restoredEmbeddedMarkupIdentities } from './drawing-markup-restore.js';
+import { dimensionSaveParams } from './dimension-markup-save.js';
+import type { Dimension2D } from '@/store/slices/drawing2DDimensions';
 import { getDrawingMarkupModelContext } from './drawing-markup-context.js';
 import { StoreEditor } from '@ifc-lite/mutations';
 
@@ -56,7 +59,7 @@ END-ISO-10303-21;
 `;
 
 const NO_MARKUP: SaveMarkupInput = {
-  measure2DResults: [], polygonArea2DResults: [], textAnnotations2D: [], cloudAnnotations2D: [],
+  measure2DResults: [], polygonArea2DResults: [], textAnnotations2D: [], cloudAnnotations2D: [], dimensions2D: [],
 };
 
 const ONE_MEASURE: SaveMarkupInput = {
@@ -71,6 +74,7 @@ const EVERY_KIND: SaveMarkupInput = {
   }],
   textAnnotations2D: [{ id: 'text-1', position: { x: 1, y: 1 }, text: 'note' }],
   cloudAnnotations2D: [{ id: 'cloud-1', points: [{ x: -1, y: -1 }, { x: 2, y: 2 }], label: 'check' }],
+  dimensions2D: [],
 };
 
 async function parse(text: string): Promise<IfcDataStore> {
@@ -453,5 +457,125 @@ describe('saveDrawingMarkupToModel when the replacement write fails', () => {
     const stable = (step: string) => step.replace(/^FILE_NAME\(.*$/m, '').replace(/'[0-9A-Za-z_$]{22}'/g, "'<guid>'");
     assert.equal(stable(exportStep(store)), stable(before));
     assert.equal(count(before, 'IFCANNOTATION'), 4);
+  });
+});
+
+/**
+ * Embedded DIMENSIONS go through the same absorb-then-replace path as the
+ * other kinds: a restore that applied a dimension records its identity
+ * (`restoredEmbeddedMarkupIdentities`, from the `ifc-dimension-<expressId>`
+ * id the reader assigns), so the next save replaces it. Without that, every
+ * re-save of a reopened model wrote a second dimension beside the first.
+ */
+describe('saveDrawingMarkupToModel on a reopened model with an embedded dimension', () => {
+  const DIM: Dimension2D = {
+    id: 'dim-1', a: { x: 0, y: 0 }, b: { x: 4, y: 0 }, offset: 0.6, orientation: 'aligned',
+    plane: { axis: 'down', position: 1.5, flipped: false },
+  };
+  const withDimensions = (dims: Dimension2D[], base: SaveMarkupInput = NO_MARKUP): SaveMarkupInput => ({
+    ...base, dimensions2D: dims.map((d) => dimensionSaveParams(d, { paperScale: 100 })),
+  });
+  const ONE_DIMENSION = withDimensions([DIM]);
+
+  /** Every `=IFCTYPE(` in the file, counted per type. */
+  function typeCounts(step: string): Record<string, number> {
+    const counts: Record<string, number> = {};
+    for (const m of step.matchAll(/^#\d+=(IFC[A-Z0-9]+)\(/gm)) counts[m[1]] = (counts[m[1]] ?? 0) + 1;
+    return counts;
+  }
+
+  /** The express id of the embedded dimension annotation in `step`. */
+  function dimensionExpressId(step: string): number {
+    const m = /^#(\d+)=IFCANNOTATION\([^;]*'IfcLite:Markup:Dimension'/m.exec(step);
+    assert.ok(m, 'expected the tagged dimension in the saved file');
+    return Number(m[1]);
+  }
+
+  /** What `useDrawingMarkupRestoreOnLoad` does when its read applies: absorb what it restored. */
+  function restoreDimensions(step: string, base: SaveMarkupInput = NO_MARKUP): void {
+    const restored = { ...DIM, id: `ifc-dimension-${dimensionExpressId(step)}` };
+    absorbEmbeddedMarkup('m1', restoredEmbeddedMarkupIdentities('m1', {
+      measure2DResults: [], polygonArea2DResults: [], textAnnotations2D: [], cloudAnnotations2D: [],
+      ...base, dimensions2D: [restored],
+    } as never));
+  }
+
+  it('records the restored dimension as absorbed, by the GlobalId it was opened with', async () => {
+    const { step } = await reopenedWith(ONE_DIMENSION, false);
+    restoreDimensions(step);
+    assert.deepEqual([...absorbedEmbeddedMarkupFor('m1')], [markupGuids(step).get('IfcLite:Markup:Dimension')]);
+  });
+
+  it('replaces the embedded dimension on re-save: exactly one dimension, no orphaned text or extent', async () => {
+    const { store, step: firstFile } = await reopenedWith(ONE_DIMENSION, false);
+    assert.equal(count(firstFile, 'IFCANNOTATION'), 1);
+    assert.equal(count(firstFile, 'IFCTEXTLITERALWITHEXTENT'), 1);
+    restoreDimensions(firstFile);
+
+    const outcome = saveDrawingMarkupToModel('m1', ONE_DIMENSION);
+    assert.equal(outcome.refusal, null);
+    assert.equal(outcome.dimensionsSaved, 1);
+    assert.equal(outcome.previousRemoved, 1, 'the dimension embedded in the file is the one this save replaces');
+
+    const secondFile = exportStep(store);
+    assert.equal(count(secondFile, 'IFCANNOTATION'), 1);
+    assert.equal((secondFile.match(/'IfcLite:Markup:Dimension'/g) ?? []).length, 1);
+    assert.ok(!secondFile.includes(`'${markupGuids(firstFile).get('IfcLite:Markup:Dimension')}'`), 'the embedded copy is gone');
+    assert.deepEqual(danglingRefs(secondFile), []);
+    assert.deepEqual(typeCounts(secondFile), typeCounts(firstFile), 'same shape as after the first save, not plus orphans');
+
+    // And again, after another reopen.
+    const third = await open(secondFile);
+    restoreDimensions(secondFile);
+    assert.equal(saveDrawingMarkupToModel('m1', ONE_DIMENSION).previousRemoved, 1);
+    const thirdFile = exportStep(third);
+    assert.equal(count(thirdFile, 'IFCANNOTATION'), 1);
+    assert.deepEqual(danglingRefs(thirdFile), []);
+    assert.deepEqual(typeCounts(thirdFile), typeCounts(firstFile));
+  });
+
+  it('replaces a dimension restored beside every other kind', async () => {
+    const everything = withDimensions([DIM], EVERY_KIND);
+    const { store, step: firstFile } = await reopenedWith(everything, false);
+    absorbAll(firstFile);
+    assert.equal(absorbedEmbeddedMarkupFor('m1').size, 5);
+
+    assert.equal(saveDrawingMarkupToModel('m1', everything).previousRemoved, 5);
+    const secondFile = exportStep(store);
+    assert.equal(count(secondFile, 'IFCANNOTATION'), 5);
+    assert.deepEqual(danglingRefs(secondFile), []);
+    assert.deepEqual(typeCounts(secondFile), typeCounts(firstFile));
+  });
+
+  it('clears an absorbed embedded dimension and everything only it used', async () => {
+    const { store, step } = await reopenedWith(ONE_DIMENSION, false);
+    restoreDimensions(step);
+
+    const outcome = saveDrawingMarkupToModel('m1', NO_MARKUP);
+    assert.equal(outcome.refusal, null);
+    assert.equal(outcome.previousRemoved, 1);
+    const cleared = exportStep(store);
+    assert.deepEqual(danglingRefs(cleared), []);
+    assert.deepEqual(typeCounts(cleared), typeCounts(MINI_IFC), 'back to the bare model');
+  });
+
+  it('keeps an embedded dimension the session never absorbed, writing the new markup beside it', async () => {
+    const { store, step } = await reopenedWith(ONE_DIMENSION, false);
+    const embedded = markupGuids(step).get('IfcLite:Markup:Dimension');
+    assert.ok(embedded);
+
+    const outcome = saveDrawingMarkupToModel('m1', withDimensions([{ ...DIM, id: 'user-dim', offset: -0.4 }]));
+    assert.equal(outcome.refusal, null);
+    assert.equal(outcome.previousRemoved, 0);
+    const saved = exportStep(store);
+    assert.equal((saved.match(/'IfcLite:Markup:Dimension'/g) ?? []).length, 2, 'the embedded dimension and the new one');
+    assert.ok(saved.includes(`'${embedded}'`), 'the embedded dimension survives the save');
+    assert.equal(count(saved, 'IFCTEXTLITERALWITHEXTENT'), 2);
+    assert.deepEqual(danglingRefs(saved), []);
+
+    // A clear with nothing absorbed leaves it as well.
+    const cleared = saveDrawingMarkupToModel('m1', NO_MARKUP);
+    assert.equal(cleared.previousRemoved, 1, 'only this session\'s own dimension');
+    assert.ok(exportStep(store).includes(`'${embedded}'`));
   });
 });

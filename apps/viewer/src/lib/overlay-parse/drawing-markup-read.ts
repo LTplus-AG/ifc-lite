@@ -276,7 +276,7 @@ export interface DrawingMarkupReadResult {
 
 /** The annotation a restored item was read from: the `ifc-<kind>-<expressId>` ids the readers above assign. */
 export function drawingMarkupItemExpressId(id: string): number | null {
-  const match = /^ifc-(?:measure|polygon|text|cloud)-([1-9][0-9]*)$/.exec(id);
+  const match = /^ifc-(?:measure|polygon|text|cloud|dimension)-([1-9][0-9]*)$/.exec(id);
   return match ? Number(match[1]) : null;
 }
 

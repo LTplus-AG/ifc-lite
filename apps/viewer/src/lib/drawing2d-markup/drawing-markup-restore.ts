@@ -204,7 +204,10 @@ export function restoreDrawingMarkupFromModel(modelId: string): DrawingMarkupRea
 export function restoredEmbeddedMarkupIdentities(modelId: string, result: DrawingMarkupReadResult): string[] {
   const context = getDrawingMarkupReadContext(modelId);
   if (!context) return [];
-  const items = [...result.measure2DResults, ...result.polygonArea2DResults, ...result.textAnnotations2D, ...result.cloudAnnotations2D];
+  const items = [
+    ...result.measure2DResults, ...result.polygonArea2DResults, ...result.textAnnotations2D, ...result.cloudAnnotations2D,
+    ...result.dimensions2D,
+  ];
   const ids = items.map((item) => drawingMarkupItemExpressId(item.id)).filter((id): id is number => id !== null);
   return ids.map((id) => embeddedMarkupIdentity(id, sourceMarkupGlobalId(context.dataStore, id)));
 }

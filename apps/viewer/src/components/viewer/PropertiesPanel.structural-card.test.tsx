@@ -6,7 +6,8 @@
  * #4736: a structural member with no ordinary property sets must still reach
  * the Structural Analysis card instead of the Properties tab's empty state.
  * #9668: the card lists the physical-to-analytical counterparts from either
- * end and selects one on click.
+ * end and selects one on click, and shows every structural record, not only
+ * members.
  */
 
 import '@/test/setup-dom.js';
@@ -39,6 +40,9 @@ const LINKED_SOURCE = SOURCE.replace('#10=', `#20=IFCWALL('wall-gid',$,'Wall A',
 #11=IFCSTRUCTURALCURVECONNECTION('connection-gid',$,'Edge',$,$,$,$,$,$);
 #12=IFCSTRUCTURALCURVEMEMBER('member-2-gid',$,'Rib',$,$,$,$,.RIGID_JOINED_MEMBER.,$);
 #30=IFCRELASSIGNSTOPRODUCT('rel-gid',$,$,$,(#10,#11),$,#20);
+#10=`);
+
+const LOAD_CASE_SOURCE = SOURCE.replace('#10=', `#40=IFCSTRUCTURALLOADCASE('case-gid',$,'Snow',$,$,.LOAD_CASE.,.VARIABLE_Q.,.SNOW_S.,1.5,$,$);
 #10=`);
 
 async function loadModel(source: string, expressId: number) {
@@ -137,6 +141,15 @@ describe('PropertiesPanel structural-only selection', () => {
     const ui = await renderPanel();
     assert.ok(ui.textContent?.includes('Physical elements (1)'), `connection card in: ${ui.textContent}`);
     assert.ok(counterpartRow(ui, 20).textContent?.includes('Wall A'));
+  });
+
+  it('shows a load case\'s EXPRESS attributes (#9668)', async () => {
+    await loadModel(LOAD_CASE_SOURCE, 40);
+    const text = (await renderPanel()).textContent ?? '';
+    assert.ok(text.includes('StructuralLoadCase'), `type badge in: ${text}`);
+    assert.match(text, /ActionTypeVARIABLE_Q/);
+    assert.match(text, /ActionSourceSNOW_S/);
+    assert.match(text, /Coefficient1\.5/);
   });
 
   it('shows no counterpart section without a link (#9668)', async () => {

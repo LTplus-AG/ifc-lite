@@ -94,11 +94,27 @@ export function canWriteIfcFromStores(
 ): boolean {
   if (targetIsIfcx) return true;
   // An absent store is not a refusal: `ensureModelExportReady` hydrates one at
-  // export time. Only a STATED tabular marker disqualifies a model.
+  // export time. Only a STATED tabular marker disqualifies a model, which is
+  // why this asks for `noRecords` rather than for any skip reason at all.
   if (scope === 'merged') {
-    return exportableModels(models).some((model) => model.ifcDataStore?.sourceKind !== 'tabular');
+    return exportableModels(models).some((model) => stepSkipReason(model.ifcDataStore) !== 'noRecords');
   }
-  return selected?.ifcDataStore?.sourceKind !== 'tabular';
+  return stepSkipReason(selected?.ifcDataStore) !== 'noRecords';
+}
+
+/** Why a STEP export cannot write this store, or `null` when it can. */
+export type StepSkipReason = 'noRecords' | 'noData';
+
+/**
+ * The one place the "tabular means no STEP records" rule lives. Every caller
+ * that drops a model from a STEP export, and every caller that reports the
+ * drop, derives from this: the gate above, the merged export's pre-export
+ * note, and its result message (`export-merge-inputs.ts`). A new non-STEP
+ * source kind is then one edit, not three.
+ */
+export function stepSkipReason(store: IfcDataStore | null | undefined): StepSkipReason | null {
+  if (!store) return 'noData';
+  return store.sourceKind === 'tabular' ? 'noRecords' : null;
 }
 
 export function resolveExportModel(

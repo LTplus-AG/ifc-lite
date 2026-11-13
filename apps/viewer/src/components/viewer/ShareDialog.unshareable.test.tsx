@@ -143,9 +143,10 @@ describe('ShareDialog: models the share seed cannot carry', () => {
   });
 
   it('claims no room when the models change between consent and mint', async (t) => {
-    // The mint guard, not the button: Create link was pressed over a
-    // shareable IFC, and by the time the mint reads the store only the .3dm
-    // is left. The mint reads the store fresh, so it must refuse there too.
+    // The mint guard, not the button. The guard reads the store, not the
+    // dialog's render, so it is driven here by swapping the models in the
+    // same act as the click; in the app the disabled button is what stops
+    // this, and the guard is the backstop behind it.
     const relay = relayStub(t);
     useViewerStore.setState(fixtureModels(makeModel('a', 'tower.ifc', 0, 'ifc')));
     render(<ShareDialog open onOpenChange={() => {}} />);

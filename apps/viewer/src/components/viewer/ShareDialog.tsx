@@ -274,7 +274,7 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
                 editable={awaitingConsent}
                 onConfirm={() => setScopeConfirmed(true)}
                 loadedCount={models.size}
-                refusalId={unshareable && noRoomToCreate ? refusalId : null}
+                refusalId={noRoomToCreate ? refusalId : null}
                 seedableCount={seedableCount}
                 activeModelName={modelName}
                 roomModelCount={collabRoomId ? sharedModelCount : null}

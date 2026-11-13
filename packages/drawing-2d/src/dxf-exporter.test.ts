@@ -305,3 +305,42 @@ describe('DXFExporter', () => {
     expect(dxf).toContain('2\nSCAN-OUTLINE\n');
   });
 });
+
+describe('DXFExporter textLayers', () => {
+  it('writes TEXT on its own layer, through coordinateTransform, with the angle measured after it', () => {
+    // A y-mirroring transform, as the plan export's toWorld applies.
+    const dxf = exportToDXF(emptyDrawing(), {
+      coordinateTransform: (p) => ({ x: p.x + 100, y: -p.y }),
+      textLayers: [{
+        name: 'DIMENSIONS-TEXT',
+        color: '#000000',
+        texts: [
+          { position: { x: 1, y: 2 }, text: '4262', height: 0.25, direction: { x: 1, y: 1 }, hAlign: 'center', vAlign: 'middle' },
+          { position: { x: 0, y: 0 }, text: 'flat', height: 0.125 },
+        ],
+      }],
+    });
+    const texts = parseDxf(dxf).entities.filter((e): e is DxfTextEntity => e.kind === 'text');
+    expect(texts).toHaveLength(2);
+    expect(texts.every((t) => t.layer === 'DIMENSIONS-TEXT')).toBe(true);
+    expect([texts[0].x, texts[0].y, texts[0].height, texts[0].text]).toEqual([101, -2, 0.25, '4262']);
+    expect([texts[0].hAlign, texts[0].vAlign]).toEqual(['center', 'middle']);
+    // (1, 1) in drawing space is (1, -1) after the mirror: -45°.
+    expect(texts[0].rotationDeg).toBeCloseTo(-45, 9);
+    expect([texts[1].rotationDeg, texts[1].hAlign, texts[1].vAlign]).toEqual([0, 'left', 'baseline']);
+  });
+
+  it('keepUpright turns text that would read upside down or top to bottom in the output frame', () => {
+    const angle = (direction: { x: number; y: number }, keepUpright: boolean) => {
+      const dxf = exportToDXF(emptyDrawing(), {
+        textLayers: [{ name: 'T', color: '#000000', texts: [{ position: { x: 0, y: 0 }, text: 'x', height: 1, direction, keepUpright }] }],
+      });
+      return parseDxf(dxf).entities.filter((e): e is DxfTextEntity => e.kind === 'text')[0].rotationDeg;
+    };
+    expect(angle({ x: -1, y: 0 }, false)).toBeCloseTo(180, 9);
+    expect(angle({ x: -1, y: 0 }, true)).toBeCloseTo(0, 9);
+    expect(angle({ x: 0, y: -1 }, true)).toBeCloseTo(90, 9);
+    expect(angle({ x: 0, y: 1 }, true)).toBeCloseTo(90, 9);
+    expect(angle({ x: 1, y: -1 }, true)).toBeCloseTo(-45, 9);
+  });
+});

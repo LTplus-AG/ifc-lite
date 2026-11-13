@@ -8,6 +8,28 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
+## Single-edit IFC derivations (#9296, R7 P3)
+
+**Diagnostic improvement; performance qualification remains open.** Storey display,
+plan grids, wall axes and the spatial tree now share a cache of the overlay reads
+made by their real derivations. A live overlay revision checks those dependencies
+without reparsing source entities; unrelated column placement changes retain them.
+Creation discovery, relationship/placement leaves, Undo/Redo, skip-history writes
+and atomic publications remain live. Cache ownership follows the source store and
+mutation view, including separate federated models.
+
+The mutation profile also exposed an all-product top-attachment scan. Without a
+moved slab or roof target, only explicitly refit products can need refitting; target
+moves keep the full dependent scan. The real loaded F5 UI probe shows why a kernel
+microbenchmark would miss both costs. Shared-host GPU timings are diagnostic and
+cannot qualify the session-scale row; remaining React reconciliation and renderer
+scheduling still need attention.
+
+Lesson: avoid global history-count keys for derived IFC state. Read dependencies
+include absent records and effective class discovery, and must be checked against
+live overlay revisions rather than journal length. Read-only creation snapshots
+also avoid exposing mutable rows to the next atomic transaction's guard.
+
 ## Raycast keeps one index across visibility changes (#9504)
 
 **Shipped.** `collectVisibleMeshData` rebuilt its list on every ray, and the BVH was

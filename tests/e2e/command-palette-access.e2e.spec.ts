@@ -121,6 +121,18 @@ const debug = (page: Page) => page.evaluate(() => {
   return { matrix: host.__ifc_lite_view_projection__(), visibility: host.__ifc_lite_render_visibility__() };
 });
 
+async function expectNamedOrientation(page: Page, name: 'front-top' | 'front-right-top') {
+  // A paused render frame is not a completed transition (#8947). The fourth
+  // row is the unit forward vector in this fixture's perspective matrix.
+  const direction = name === 'front-top' ? [0, 1, 1] : [1, 1, 1];
+  const length = Math.hypot(...direction);
+  const expectedForward = direction.map(value => value === 0 ? 0 : Math.fround(-value / length));
+  await expect.poll(async () => {
+    const matrix = (await debug(page)).matrix;
+    return [matrix[3], matrix[7], matrix[11]].map(value => value === 0 ? 0 : value);
+  }).toEqual(expectedForward);
+}
+
 test.beforeEach(async ({ page }) => {
   const messages: string[] = []; errors.set(page, messages);
   page.on('pageerror', error => messages.push(error.message));
@@ -251,6 +263,7 @@ test('palette Presentation captures a real thumbnail and restores the saved came
   await expect.poll(() => page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().pinboardEntities.size)).toBe(1);
   // Set an explicit camera before saving, so playback has a non-vacuous target.
   await run(page, 'view:orientation:front-top', 'front top');
+  await expectNamedOrientation(page, 'front-top');
   await expect.poll(async () => {
     const a = (await debug(page)).matrix;
     await page.waitForTimeout(100);
@@ -544,20 +557,11 @@ test('edge and corner presets move actual renderer and repeat deterministically 
   await start(page, true);
   await page.waitForFunction(() => typeof (globalThis as Record<string, unknown>).__ifc_lite_view_projection__ === 'function');
   const matrices: number[][] = [];
-  for (const name of ['front-top', 'front-right-top', 'front-top']) {
+  for (const name of ['front-top', 'front-right-top', 'front-top'] as const) {
     const before = (await debug(page)).matrix;
     await run(page, `view:orientation:${name}`, name.replaceAll('-', ' '));
     await expect.poll(async () => (await debug(page)).matrix).not.toEqual(before);
-    // A stalled render frame is not a completed transition (#8947). First require
-    // the named direction in this fixture's perspective view-projection matrix.
-    // Its fourth row is the unit forward vector; Float32 is the renderer's format.
-    const direction = name === 'front-top' ? [0, 1, 1] : [1, 1, 1];
-    const length = Math.hypot(...direction);
-    const expectedForward = direction.map(value => value === 0 ? 0 : Math.fround(-value / length));
-    await expect.poll(async () => {
-      const matrix = (await debug(page)).matrix;
-      return [matrix[3], matrix[7], matrix[11]].map(value => value === 0 ? 0 : value);
-    }).toEqual(expectedForward);
+    await expectNamedOrientation(page, name);
     // Then retain the bounded stability window and the full-matrix repeat oracle.
     await expect.poll(async () => {
       const a = (await debug(page)).matrix;

@@ -13,6 +13,7 @@
 import { it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { MeshData, PointCloudAsset } from '@ifc-lite/geometry';
+import { Renderer } from './index.js';
 import { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
 import { queryPointClouds } from './raycast-point-cloud-query.js';
 import { buildGeometryCache } from './snap-geometry-cache.js';
@@ -113,4 +114,21 @@ it('a bulk replacement skips a cloud with a bad origin and keeps the rest (#1002
   }
   assert.equal(renderer.getNodeCount(), 1);
   renderer.clear();
+});
+
+it('addPointClouds skips a bad origin and still uploads the rest and updates scene bounds (#10029)', () => {
+  const renderer = new Renderer({ width: 256, height: 256, getBoundingClientRect: () => ({ width: 256, height: 256 }) } as unknown as HTMLCanvasElement);
+  const points = new PointCloudRenderer(pointDevice(), 'rgba8unorm', 'depth32float', 1);
+  (renderer as unknown as { pointCloudRenderer: PointCloudRenderer }).pointCloudRenderer = points;
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    renderer.addPointClouds([cloud([Infinity, 0, 0]), cloud([WORLD_X[0], 0, 0])]);
+  } finally {
+    console.warn = warn;
+  }
+  assert.equal(renderer.getPointCloudAssetCount(), 1);
+  const bounds = renderer.getModelBounds()!;
+  assert.ok(Math.abs(bounds.min.x - WORLD_X[0]) < 1e-4 && Math.abs(bounds.max.x - WORLD_X[1]) < 1e-4);
+  points.clear();
 });

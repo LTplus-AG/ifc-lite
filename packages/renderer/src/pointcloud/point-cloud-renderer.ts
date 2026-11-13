@@ -211,11 +211,11 @@ export class PointCloudRenderer {
   /** Replace every IFCx-owned asset with `assets`; streamed assets are untouched. */
   setAssets(assets: ReadonlyArray<PointCloudAsset>): void {
     this.clearOwner('ifcx');
-    for (const asset of assets) {
-      if (asset.chunk.pointCount === 0 || skipUnrenderableOrigin(asset)) continue; // descriptors carry no geometry
-      this.addAsset(asset);
-    }
+    this.addAssets(assets.filter((asset) => asset.chunk.pointCount > 0)); // streamed descriptors carry no geometry
   }
+
+  /** A bad origin skips that cloud with a warning instead of throwing halfway through the batch (#10029). */
+  addAssets(assets: ReadonlyArray<PointCloudAsset>): void { for (const asset of assets) if (!skipUnrenderableOrigin(asset)) this.addAsset(asset); }
 
   addAsset(asset: PointCloudAsset): PointCloudAssetHandle {
     const origin = asset.origin && originMatrix(asset.origin); // f64 baseline (#10029)

@@ -1029,10 +1029,8 @@ export class Renderer {
             throw pointCloudSupport() ? new Error('Renderer not initialized. Call init() first.') : pointCloudsUnavailableError();
         }
         this.pickSources.noteEmbeddedChanged(); // first, so an upload that throws partway still counts
-        for (const asset of assets) {
-            this.pointCloudRenderer.setModelTranslation(asset.modelIndex ?? 0, this.scene.getModelTranslation(asset.modelIndex ?? 0));
-            this.pointCloudRenderer.addAsset(asset);
-        }
+        for (const asset of assets) this.pointCloudRenderer.setModelTranslation(asset.modelIndex ?? 0, this.scene.getModelTranslation(asset.modelIndex ?? 0));
+        this.pointCloudRenderer.addAssets(assets);
         this.modelBoundsTracker.expandForPointClouds();
         this.camera.setSceneBounds(this.modelBounds);
         this.requestRender();

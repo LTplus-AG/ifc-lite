@@ -105,6 +105,11 @@ export function hasSpareParserWorker(): boolean {
   return spare !== null;
 }
 
+/** Whether the spare is still running its warm parse (not yet takeable). */
+export function isSpareParserWorkerWarming(): boolean {
+  return spare !== null && !spare.ready;
+}
+
 /** Take the ready spare, or `null` (none, or still warming up). */
 export function takeSpareParserWorker(): Worker | null {
   if (!spare?.ready) return null;

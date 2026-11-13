@@ -81,6 +81,8 @@ export interface FastPathDeps {
   parser: {
     prepare(options: { warmSource: SharedArrayBuffer | null }): Promise<boolean>;
     has(): boolean;
+    /** Still running its warm parse: not takeable yet, and busy on a worker thread. */
+    warming(): boolean;
     release(): void;
   };
   /** The meshing settings a load of this file would use, read at the pick. */
@@ -281,8 +283,9 @@ export function createFastPathRuntime(deps: FastPathDeps): FastPathRuntime | nul
     deps.subscribeLoading((loading) => {
       if (loading) {
         cancelIdle?.(); cancelIdle = null;
-        // A geometry spare still warming up would mesh warm samples during the load: drop it.
+        // A spare still warming up would mesh or parse warm samples during the load: drop it.
         if (geometry && !geometry.ready) releaseGeometry();
+        if (deps.parser.warming()) deps.parser.release();
         return;
       }
       // The load ended: a run it never claimed (cache hit, other format, error) is dropped; refill.

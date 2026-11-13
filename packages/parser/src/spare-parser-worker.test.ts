@@ -66,6 +66,19 @@ describe('spare parser worker', () => {
     expect(takeSpareParserWorker()).toBe(w);
   });
 
+  it('reports warming only while its warm parse runs', async () => {
+    const isWarming = () => spareModule().isSpareParserWorkerWarming();
+    expect(isWarming()).toBe(false);
+    const ready = prepareSpareParserWorker({ spawn, warmSource: new SharedArrayBuffer(8) });
+    expect(isWarming()).toBe(true);
+    spawned[0].reply({ type: 'complete', id: WARM_PARSE_ID });
+    expect(await ready).toBe(true);
+    expect(isWarming()).toBe(false);
+    releaseSpareParserWorker();
+    expect(await prepareSpareParserWorker({ spawn })).toBe(true);
+    expect(isWarming(), 'no warm source: ready at once').toBe(false);
+  });
+
   it('drops a spare whose warm parse fails', async () => {
     const ready = prepareSpareParserWorker({ spawn, warmSource: new SharedArrayBuffer(8) });
     spawned[0].reply({ type: 'error', id: WARM_PARSE_ID, message: 'bad' });

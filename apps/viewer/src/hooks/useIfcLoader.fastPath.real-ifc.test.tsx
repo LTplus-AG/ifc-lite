@@ -97,7 +97,7 @@ function startRuntime(): void {
     compileModule: async () => ({}) as WebAssembly.Module,
     warmSamples: async () => [],
     spawnGeometryWorker: () => new InProcessFastWorker() as unknown as Worker,
-    parser: { prepare: async () => false, has: () => false, release: () => {} },
+    parser: { prepare: async () => false, has: () => false, warming: () => false, release: () => {} },
     settingsAtPick: (file) => {
       const { mergeLayers, geometryMode } = useViewerStore.getState();
       return { mergeLayers, enableInstancing: true, tessellationQuality: resolveLoadTessellationTier(file.size / (1024 * 1024), geometryMode) ?? null,

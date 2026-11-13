@@ -9,7 +9,7 @@
  */
 
 import { compileSharedWasmModule, DEFAULT_GEOM_HASH_TOLERANCE } from '@ifc-lite/geometry';
-import { hasSpareParserWorker, prepareSpareParser, releaseSpareParserWorker } from '@ifc-lite/parser/browser';
+import { hasSpareParserWorker, isSpareParserWorkerWarming, prepareSpareParser, releaseSpareParserWorker } from '@ifc-lite/parser/browser';
 import { useViewerStore } from '@/store';
 import { getGeomWorkerOverride, resolveLoadTessellationTier } from '@/store/constants';
 import { USE_SERVER } from '@/utils/ifcConfig';
@@ -79,7 +79,7 @@ export function startFastPath(): boolean {
     compileModule: () => compileSharedWasmModule(),
     warmSamples: fetchWarmSamples,
     spawnGeometryWorker: () => new Worker(new URL('../../workers/fast-geometry.worker.ts', import.meta.url), { type: 'module' }),
-    parser: { prepare: prepareSpareParser, has: hasSpareParserWorker, release: releaseSpareParserWorker },
+    parser: { prepare: prepareSpareParser, has: hasSpareParserWorker, warming: isSpareParserWorkerWarming, release: releaseSpareParserWorker },
     settingsAtPick: (file) => {
       const { mergeLayers, geometryMode } = useViewerStore.getState();
       return {

@@ -63,6 +63,11 @@ function host(overrides: Partial<FastPathDeps> = {}) {
   const workers: FakeWorker[] = [];
   let parserSpare = false;
   let parserPrepares = 0;
+  let parserReleases = 0;
+  /** When set, the parser's warm parse stays pending until `finishParserWarm`. */
+  let holdParserWarm = false;
+  let parserWarming = false;
+  let settleParserWarm: ((ok: boolean) => void) | null = null;
   let starter: PickStarter | null = null;
   let claimer: ((file: File, s: GeometryMeshingSettings, c: FastClaim) => FastGeometryRun | null) | null = null;
   const deps: FastPathDeps = {
@@ -79,9 +84,16 @@ function host(overrides: Partial<FastPathDeps> = {}) {
     warmSamples: async () => [new Uint8Array([1, 2, 3])],
     spawnGeometryWorker: () => { const w = new FakeWorker(); workers.push(w); return w as unknown as Worker; },
     parser: {
-      prepare: async () => { parserPrepares++; parserSpare = true; return true; },
+      prepare: async () => {
+        parserPrepares++;
+        parserSpare = true;
+        if (!holdParserWarm) return true;
+        parserWarming = true;
+        return new Promise<boolean>((resolve) => { settleParserWarm = (ok) => { parserWarming = false; settleParserWarm = null; resolve(ok); }; });
+      },
       has: () => parserSpare,
-      release: () => { parserSpare = false; },
+      warming: () => parserSpare && parserWarming,
+      release: () => { parserReleases++; parserSpare = false; settleParserWarm?.(false); },
     },
     settingsAtPick: () => SETTINGS,
     workerCountOverride: () => 3,
@@ -95,6 +107,9 @@ function host(overrides: Partial<FastPathDeps> = {}) {
     get parserSpare() { return parserSpare; },
     set parserSpare(v: boolean) { parserSpare = v; },
     get parserPrepares() { return parserPrepares; },
+    get parserReleases() { return parserReleases; },
+    holdParserWarm() { holdParserWarm = true; },
+    finishParserWarm() { settleParserWarm?.(true); },
     idleCount: () => idle.length,
     /** Run pending idle callbacks and let the preparation's awaits settle. */
     async runIdle() { for (const run of idle.splice(0)) run(); for (let i = 0; i < 5; i++) await flush(); },
@@ -254,6 +269,30 @@ describe('fast path runtime', () => {
     h.setLoading(true);
     assert.equal(h.workers[0].terminated, true);
     assert.equal(rt.state().geometrySpare, 'none');
+    rt.stop();
+  });
+
+  it('a load that starts while the parser spare still runs its warm parse terminates it (no sample parse during the load)', async () => {
+    const h = host();
+    h.holdParserWarm();
+    const rt = createFastPathRuntime(h.deps)!;
+    await h.runIdle();
+    assert.equal(h.parserSpare, true, 'the spare exists, its warm parse still pending');
+    h.setLoading(true);
+    assert.equal(h.parserReleases, 1, 'the warming parser spare is released at the load start');
+    assert.equal(h.parserSpare, false);
+    await h.runIdle();
+    assert.equal(rt.state().geometrySpare, 'none', 'the interrupted preparation starts nothing during the load');
+    rt.stop();
+  });
+
+  it('a load that starts after the parser spare is ready keeps it for the load', async () => {
+    const h = host();
+    const rt = createFastPathRuntime(h.deps)!;
+    await ready(h);
+    h.setLoading(true);
+    assert.equal(h.parserReleases, 0);
+    assert.equal(h.parserSpare, true);
     rt.stop();
   });
 

@@ -37,6 +37,8 @@ interface LoadSummary {
   meshes: number;
   elements: [number, string][];
   instanced: { drawn: number | null; gpuBytes: number | null };
+  /** Per instanced occurrence: entity id -> hashes of (transform, colour, template geometry), from the enqueued shards. */
+  instances: [number, string][];
   shardsDecoded: number;
   entities: number | null;
 }
@@ -152,10 +154,65 @@ async function summary(page: Page): Promise<LoadSummary> {
       meshes: meshes.length,
       elements: [...perElement].map(([id, hs]) => [id, hs.sort((a, b) => a - b).join('.')] as [number, string]),
       instanced: { drawn: stats?.frame?.instancedDrawn ?? null, gpuBytes: stats?.gpu?.instanced ?? null },
+      instances: [...((g.__fastPathInstances as Map<number, number[]> | undefined) ?? new Map<number, number[]>())]
+        .map(([id, hs]) => [id, hs.sort((x, y) => x - y).join('.')] as [number, string]),
       shardsDecoded: load.spans.filter((s: { name: string }) => s.name === 'instanced.decode').length,
       entities: model?.ifcDataStore?.entityCount ?? null,
     };
   });
+}
+
+/**
+ * Records every instanced occurrence the load enqueues (the shards are not store state; the
+ * queue's e2e hook hands out each enqueue's wire bytes). Reads the instance table of the IFNS
+ * wire format (packed-instanced-decoder.ts): per occurrence the entity id, and a hash of its
+ * transform and colour plus its template's origin, positions and indices.
+ */
+async function captureInstances(page: Page): Promise<void> {
+  await page.waitForFunction(() => Boolean((globalThis as Record<string, unknown>).__ifc_lite_instanced_shards__));
+  await page.evaluate(() => {
+    const g = globalThis as Record<string, any>;
+    const perEntity = new Map<number, number[]>();
+    g.__fastPathInstances = perEntity;
+    const seen = new Set<ArrayBuffer>();
+    const fnv = (h: number, bytes: Uint8Array) => { for (let i = 0; i < bytes.length; i++) { h ^= bytes[i]; h = Math.imul(h, 0x01000193); } return h >>> 0; };
+    g.__ifc_lite_instanced_shards__.subscribe((event: { shards?: ReadonlyArray<{ bytes: ArrayBuffer }> }) => {
+      for (const { bytes } of event.shards ?? []) {
+        if (seen.has(bytes)) continue;
+        seen.add(bytes);
+        const view = new DataView(bytes);
+        const u8 = new Uint8Array(bytes);
+        // Header words: magic, version, templates, instances, positions/normals/indices lengths, stride (v2+).
+        const version = view.getUint32(4, true), templates = view.getUint32(8, true), instances = view.getUint32(12, true);
+        const positionsLen = view.getUint32(16, true), normalsLen = view.getUint32(20, true);
+        const declared = version >= 2 ? view.getUint32(28, true) : 0;
+        const stride = declared === 0 ? 88 : declared;
+        const templateTable = 32;
+        const instanceTable = templateTable + templates * 48;
+        const data = instanceTable + instances * stride;
+        const positions = data, indices = data + (positionsLen + normalsLen) * 4;
+        const templateHash: number[] = [];
+        for (let t = 0; t < templates; t++) {
+          const b = templateTable + t * 48;
+          const posOff = view.getUint32(b, true), posLen = view.getUint32(b + 4, true);
+          const idxOff = view.getUint32(b + 16, true), idxLen = view.getUint32(b + 20, true);
+          let h = fnv(0x811c9dc5, u8.subarray(b + 24, b + 48)); // origin (3 x f64)
+          h = fnv(h, u8.subarray(positions + posOff * 4, positions + (posOff + posLen) * 4));
+          templateHash.push(fnv(h, u8.subarray(indices + idxOff * 4, indices + (idxOff + idxLen) * 4)));
+        }
+        for (let i = 0; i < instances; i++) {
+          const b = instanceTable + i * stride;
+          const entityId = view.getUint32(b + 4, true);
+          const h = fnv(templateHash[view.getUint32(b, true)] ?? 0, u8.subarray(b + 8, b + 88)); // colour + transform
+          (perEntity.get(entityId) ?? perEntity.set(entityId, []).get(entityId)!).push(h);
+        }
+      }
+    });
+  });
+}
+
+function differingInstances(a: LoadSummary, b: LoadSummary): { count: number; first: number[] } {
+  return differingElements({ ...a, elements: a.instances }, { ...b, elements: b.instances });
 }
 
 function differingElements(a: LoadSummary, b: LoadSummary): { count: number; first: number[] } {
@@ -174,6 +231,7 @@ async function load(context: BrowserContext, fixture: string, fast: boolean): Pr
   const ready = fast ? page.waitForEvent('console', { predicate: (msg) => msg.text().startsWith('[fast-path] spares ready'), timeout: 60_000 }) : null;
   await page.goto(fast ? '/?perfTrace=1' : '/?perfTrace=1&perf.fastPath=0');
   await ready;
+  await captureInstances(page);
   await openFixture(page, fixture);
   const result = await summary(page);
   await page.close();
@@ -193,6 +251,7 @@ for (const FIXTURE of FIXTURES) test.describe(`small-file fast path: ${FIXTURE.s
     expect(differingElements(off.summary, on.summary), 'per-element mesh bytes').toEqual({ count: 0, first: [] });
     expect(on.summary.instanced, 'instanced templates drawn and their GPU bytes').toEqual(off.summary.instanced);
     expect(on.summary.shardsDecoded, 'instanced shards decoded').toBe(off.summary.shardsDecoded);
+    expect(differingInstances(off.summary, on.summary), 'per-occurrence instance transforms, colours and templates').toEqual({ count: 0, first: [] });
     expect(on.summary.entities, 'data store entities').toBe(off.summary.entities);
   });
 });
@@ -230,7 +289,11 @@ test.describe('small-file fast path: a generated instanced file between 2 and 10
     expect(on.summary.meshes, 'flat mesh count').toBe(off.summary.meshes);
     expect(on.summary.instanced, 'instanced templates drawn and their GPU bytes').toEqual(off.summary.instanced);
     expect(on.summary.shardsDecoded, 'instanced shards decoded').toBe(off.summary.shardsDecoded);
-    expect(differingElements(off.summary, on.summary), 'per-element flat mesh bytes').toEqual({ count: 0, first: [] });
+    // The file has no flat mesh: the per-element comparison is over the instanced occurrences.
+    expect(off.summary.instances.length, 'every generated door is an instanced occurrence').toBe(7500);
+    expect(on.summary.instances.length).toBe(7500);
+    expect(differingInstances(off.summary, on.summary), 'per-occurrence instance transforms, colours and templates').toEqual({ count: 0, first: [] });
+    expect(differingElements(off.summary, on.summary), 'per-element flat mesh bytes (none here)').toEqual({ count: 0, first: [] });
     expect(on.summary.entities).toBe(off.summary.entities);
   });
 });

@@ -7008,3 +7008,55 @@ acceptance source for end-to-end timing.
 - Saving the whole ~30 ms means skipping placement entirely when the model has no translation. The copies would then be created on the model's first move and swapped into every holder: `scene.pieces`, `bucket.meshData`, `meshDataBucket` and the mesh registry. That was judged too risky for ~30 ms.
 
 **Lesson.** A traced profile inflates small, call-heavy JavaScript the most. The profiler more than doubled this path (63 vs 29.6 ms). Size every candidate from untraced spans, or from an untraced micro-benchmark of the real code, before ranking it. The same correction cut the expectation for the chunk-decode-on-workers step (#9925) from 150-200 ms traced to an untraced estimate of about 75-110 ms on Holter's reopens.
+
+## Parser store publish gate after the geometry tail (#9830, closed)
+
+**Rejected: holding the parser worker's store publications until the geometry
+tail (upload drain and renderer finalize) ends. With #9855 on main, the gate adds
+about 3% to Holter cold interactive time, under the 6.3% bar, and the hierarchy
+panel's first rows appear about 380 ms later. No variant keeps the panel's
+timing and still gains.** The same lane's #9855 (whole-model UI values computed
+after the load settles) carries the reopen gain on its own and landed.
+
+Untimed, quiet-gated medians [min-max] on Pop, Holter cold, n=5, all arms on
+main `1cd3deb6d8` (with #9855):
+
+| arm | first hierarchy rows (painted) | interactive |
+|---|---|---|
+| main | 3,070 [2,989-3,119] | 3,605 [3,493-3,737] |
+| + #9830 (holds the partial and the full store) | 3,452 [3,425-3,505] | 3,452 [3,425-3,505] |
+| + variant: the partial passes on arrival, only the full store is held | 3,045 [2,975-3,189] | 3,641 [3,500-3,743] |
+
+In timed slots on different bases, the pair #9830 + #9855 measured Holter cold
++8.5% and #9855 alone +7.0%, which also puts the gate's own increment near 3%.
+On the grid/annotation fixture all arms were within a few tens of ms.
+
+**Why no variant works:**
+- On Holter the partial (spatial-ready) store arrives inside the tail, during
+  the drain (spatial-ready ~2,870-3,100 ms; stream complete ~2,760-2,840 ms, traced).
+- Publishing it there displaces about 120 ms of drain and finalize. The renderer
+  gets ~30 ms of work done in the [partial, full] window when the partial passes,
+  against ~150 ms when it is held.
+- The gate's gain came from keeping that publication out of the tail, but the
+  hierarchy panel draws its first rows from that same store. Passing it gives
+  the gain back, and the held full store then commits after the tail. That
+  variant was 36 ms slower than main.
+
+**What the partial publication costs.** Sourcemapped CPU profiles of that window
+show ~240 ms of main-thread time per run:
+- ~76 ms hydrates the arriving full store, on arrival in every arm, held or not;
+- the partial publication's own ~60 ms is mostly the hierarchy panel itself: the
+  React commit ~25 ms, the virtualised tree ~12 ms, the product tree ~2 ms,
+  DOM attributes ~4 ms.
+
+So publishing only what the panel needs would still render the panel inside the
+tail and save at most ~15-20 ms.
+
+**Lesson:**
+- Measure the variant before building it. The trace settled the design question
+  in one untimed run.
+- A gate can only win back main-thread time it keeps out of the tail. When the
+  data the user sees first is the very publication that costs the time, the
+  trade cannot be removed by reshaping the gate.
+- The hydration of the arriving full store (~76 ms inside Holter's tail) is
+  the remaining candidate; it belongs to the cold-finalize lane.

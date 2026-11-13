@@ -103,7 +103,8 @@ export function resolveWindow(events, { window = null } = {}) {
 function topLevelTasks(events) {
   const by = new Map();
   for (const e of events) {
-    if (e.ph !== 'X' || !Number.isFinite(e.ts) || !Number.isFinite(e.dur)) continue;
+    // Only task events: a non-toplevel X event spanning a task must not hide the task's thread time (review #10138).
+    if (e.ph !== 'X' || !Number.isFinite(e.ts) || !Number.isFinite(e.dur) || !String(e.cat ?? '').split(',').includes('toplevel')) continue;
     const key = `${e.pid}:${e.tid}`;
     if (!by.has(key)) by.set(key, []);
     by.get(key).push({ ts: e.ts, dur: e.dur, tdur: Number.isFinite(e.tdur) ? e.tdur : null });
@@ -214,6 +215,11 @@ export function traceCpuTime(trace, { window = null, spans = null } = {}) {
     threads,
     stages: null,
   };
+  // No thread time on any task: CPU is unavailable, never a measured zero (review #10138).
+  if (!result.threadTime) {
+    for (const k of Object.keys(result.cpuMs)) result.cpuMs[k] = null;
+    return result;
+  }
   if (spans) {
     const toUs = (t) => w.offsetUs + (w.startMs + t) * 1000; // span times are ms from the input event
     const mainTasks = [], workerTasks = [];

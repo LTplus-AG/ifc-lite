@@ -145,7 +145,7 @@ export async function recordArmLanes({ sample, plan, side, fixture, cell, missin
     const armTag = sampleTagFor(tag, armLanes, armPlan, Date.now().toString(36));
     // Each browser sample gets its own host interval, settled as soon as it ends (review #9857).
     const host = await hostQuiet();
-    const e = await sample({ side: plan.sides[side], fixture, tag: `${armTag}${suffix}`, warmOpens: reopens, pass: 'timing', arm });
+    const e = await sample({ side: plan.sides[side], fixture, tag: `${armTag}${suffix}`, warmOpens: reopens, pass: 'timing', arm, cpuTrace: plan.sides[side].cpuTrace ?? plan.cpuTrace ?? false });
     settleHostLoad(host, { ownOutside: e.meta?.browserOutside });
     for (const lane of armLanes) {
       const { trace, ...row } = e.lanes[lane] ?? { ok: false, error: `${lane}: not produced by the ${arm} sample` };
@@ -199,7 +199,9 @@ async function run(opt) {
   let browser = null;
   if (order.browser || order.boot) browser = await startBrowserLane(plan, out);
   const record = (row, trace) => {
-    settleHostLoad(row.host);
+    // A boot row carries its browser's CPU outside the job cgroup; browser rows' hosts are already settled.
+    settleHostLoad(row.host, { ownOutside: row.browserOutside });
+    delete row.browserOutside;
     done.add(laneKey(row));
     if (trace) { writeFileSync(join(out, 'traces', `${row.fixture}-${row.lane}-${row.side}-r${row.round}.json`), JSON.stringify(trace)); }
     appendFileSync(samplesPath, JSON.stringify(row) + '\n');

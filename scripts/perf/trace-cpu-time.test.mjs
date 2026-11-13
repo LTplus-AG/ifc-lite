@@ -86,3 +86,18 @@ test('CPU time is a second measure: per-side medians, A/A floor (none with a bus
   assert.match(cpuTimeSummary({ kind: 'compare', lanes: ['browser-cold'] }, ab, { floors: { FZK: { 'browser-cold': { interactiveMs: 0.03 } } } }).cells[0].verdict.verdict, /^inconclusive: no CPU A\/A floor/);
   assert.deepEqual(cpuTimeSection(ab.map(({ cpuTime: _c, ...r }) => r), { cpuTime: cpuTimeSummary({ kind: 'compare', lanes: ['browser-cold'] }, ab.map(({ cpuTime: _c, ...r }) => r)) }), []);
 });
+
+test('only toplevel task events count: a non-toplevel event spanning a task does not hide its thread time', () => {
+  const extra = { ph: 'X', cat: 'devtools.timeline', name: 'Wrapper', pid: 10, tid: 1, ts: 1190000, dur: 70000 };
+  const r = traceCpuTime({ traceEvents: [...traceEventsOf(trace), extra] });
+  assert.equal(r.cpuMs.rendererMain, 90);
+});
+
+test('a trace without thread time reports CPU as unavailable (null), never as a measured zero', () => {
+  const events = traceEventsOf(trace).map(({ tdur: _t, ...e }) => e);
+  const r = traceCpuTime(events, { spans });
+  assert.equal(r.threadTime, false);
+  assert.equal(r.cpuMs.total, null);
+  assert.equal(r.cpuMs.rendererMain, null);
+  assert.equal(r.stages, null);
+});

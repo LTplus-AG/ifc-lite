@@ -82,9 +82,10 @@ function hostBusyMs() {
   const [user, nice, system, , , irq, softirq, steal] = f; // idle (3) and iowait (4) are not busy
   return (user + nice + system + irq + softirq + (steal ?? 0)) * TICK_MS;
 }
-function quietWaitMs() {
-  const v = Number(process.env.LOAD_SCOREBOARD_QUIET_WAIT_MS);
-  return process.env.LOAD_SCOREBOARD_QUIET_WAIT_MS !== undefined && process.env.LOAD_SCOREBOARD_QUIET_WAIT_MS !== '' && v >= 0 ? v : 20000;
+export function quietWaitMs() {
+  // Bounded both ways: 0 (no wait) to 10 min; anything else (unset, empty, negative, Infinity, text) is the default.
+  const raw = process.env.LOAD_SCOREBOARD_QUIET_WAIT_MS, v = Number(raw);
+  return raw !== undefined && raw !== '' && Number.isFinite(v) && v >= 0 && v <= 600000 ? v : 20000;
 }
 /** Our own cgroup path ("/user.slice/...") and process group: a builder there is ours (Chrome, the harness), never foreign. */
 function ownCgroupPath() { return readText('/proc/self/cgroup')?.split('\n').find((l) => l.startsWith('0::'))?.slice(3) ?? null; }

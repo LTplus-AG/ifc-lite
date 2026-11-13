@@ -74,3 +74,18 @@ test('a sample settled inside an open window records the window and allowance an
   const outside = settleHostLoad(await hostQuiet({ maxWaitMs: 0 }));
   assert.deepEqual([outside.cap.window, outside.pressureSource], ['none', 'host']);
 });
+
+test('an arm-lane sample gets the plan or side cpuTrace option and settles its host with the browser outside the job cgroup', async () => {
+  const { recordArmLanes } = await import('./load-scoreboard.mjs');
+  const calls = [], rows = [];
+  const sample = async (args) => { calls.push(args); return { lanes: {}, meta: { pageErrors: [], browserOutside: { cpuMs: 1e9, pressureUs: 0 } } }; };
+  const plan = { cpuTrace: true, warmOpens: 0, sides: { base: { label: 'b' }, branch: { label: 'r', cpuTrace: false } } };
+  for (const side of ['base', 'branch']) {
+    const cell = { group: 'browser', fixture: 'FZK', round: 0, side };
+    await recordArmLanes({ sample, plan, side, fixture: { name: 'FZK' }, cell, missing: ['browser-cold-early'], groupLanes: ['browser-cold-early'],
+      tag: `FZK-${side}-r0`, common: { ...cell }, record: (row) => rows.push(row), traces: tmpdir() });
+  }
+  assert.deepEqual(calls.map((c) => c.cpuTrace), [true, false]);
+  const host = rows[0].host;
+  if (host.foreignCpuMs !== null) assert.deepEqual([host.foreignCpuMs, host.ownOutsideCgroupCpuMs], [0, 1e9]);
+});

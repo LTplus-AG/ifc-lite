@@ -157,3 +157,11 @@ test('the benchmark browser outside the job cgroup is the sample\'s own CPU, not
     assert.equal(plain.ownOutsideCgroupCpuMs, null);
   }
 });
+
+test('the pre-sample wait override is bounded both ways: 0..600000 ms, anything else is the 20 s default', async () => {
+  const { quietWaitMs } = await load('./load-scoreboard-host.mjs');
+  const at = (v) => { if (v === undefined) delete process.env.LOAD_SCOREBOARD_QUIET_WAIT_MS; else process.env.LOAD_SCOREBOARD_QUIET_WAIT_MS = v; return quietWaitMs(); };
+  try {
+    assert.deepEqual(['0', '5000', '600000', 'Infinity', '1e309', '-1', '', 'abc', undefined].map(at), [0, 5000, 600000, 20000, 20000, 20000, 20000, 20000, 20000]);
+  } finally { delete process.env.LOAD_SCOREBOARD_QUIET_WAIT_MS; }
+});

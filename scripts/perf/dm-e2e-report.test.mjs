@@ -145,11 +145,29 @@ test('both variants are summarized separately', () => {
   assert.equal(summary.variants[1].metrics.find((m) => m.key === 'peakRssBytes').real, true);
 });
 
-test('an entity_count that moves with the served variant is flagged (#6034)', () => {
+test('an entity_count that moves between base and branch fails the verdict (#6034)', () => {
   // The header both variants share reports the MODEL's instance count. A side
   // that reports the narrowed row count instead has reintroduced #6034, and
-  // the digests alone would not catch it.
-  const rows = paired('rooted', {}, { totalEntities: 211_716 });
-  const text = formatReport(summarize(rows)).join('\n');
-  assert.match(text, /reported entity_count disagrees across runs/);
+  // the digests alone would not catch it. A warning is not enough: the driver
+  // takes its exit code from `identityBroken`.
+  const summary = summarize(paired('rooted', {}, { totalEntities: 211_716 }));
+  assert.equal(summary.entityCountBroken, true);
+  assert.equal(summary.identityBroken, true);
+  const text = formatReport(summary).join('\n');
+  assert.match(text, /reported entity_count disagrees across runs of this variant/);
+  assert.match(text, /VERDICT: ⚠️  output identity failed/);
+});
+
+test('an entity_count that differs ACROSS variants fails too, though each variant is self-consistent', () => {
+  // Both sides agree within `all` and within `rooted`, so a per-variant check
+  // sees one value each and says nothing. The count describes the model, so
+  // the two variants must still report the same number.
+  const summary = summarize([
+    ...paired('all'),
+    ...paired('rooted', { totalEntities: 211_716 }, { totalEntities: 211_716 }),
+  ]);
+  assert.deepEqual(summary.variants.map((v) => v.entityCount), [[1_000_000], [211_716]]);
+  assert.equal(summary.entityCountBroken, true);
+  assert.equal(summary.identityBroken, true);
+  assert.match(formatReport(summary).join('\n'), /differs ACROSS variants or sides/);
 });

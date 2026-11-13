@@ -47,7 +47,7 @@
 
 import { spawn, spawnSync, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
@@ -114,6 +114,11 @@ const iters = Number(opts.iters);
 if (!Number.isInteger(iters) || iters < 1) die(`--iters must be a positive integer (got ${opts.iters})`);
 const variants = String(opts.variants).split(',').map((v) => v.trim()).filter(Boolean);
 if (variants.length === 0) die('--variants needs at least one entities variant');
+// A repeated variant runs twice per round and lands in one bucket, so the
+// report would call `--variants all,all --iters 3` six interleaved rounds and
+// drop its own under-sampling warning. Refuse it before anything is built.
+const duplicated = variants.filter((v, i) => variants.indexOf(v) !== i);
+if (duplicated.length > 0) die(`--variants repeats ${[...new Set(duplicated)].join(', ')}`);
 const jsonOut = opts.json;
 const keepLogs = opts['keep-logs'];
 
@@ -152,21 +157,33 @@ const dirty = git('status', '--porcelain').length > 0;
 const branchDesc = git('rev-parse', '--short', 'HEAD') + (dirty ? '+dirty' : '');
 
 const scratch = mkdtempSync(join(tmpdir(), 'ifc-dm-e2e.'));
-const logDir = join(scratch, 'logs');
-mkdirSync(logDir, { recursive: true });
+// Logs live OUTSIDE the scratch directory, because a per-measurement cache of
+// a 49 MB model also lives in there: keeping the logs by keeping `scratch`
+// would retain every one of those caches too.
+const logDir = keepLogs ? mkdtempSync(join(tmpdir(), 'ifc-dm-e2e-logs.')) : null;
+// The server of the measurement in flight, so a signal can stop it. `measure`
+// clears it in its own `finally`, which `process.exit` skips.
+let activeChild = null;
 let cleanedUp = false;
 const cleanup = () => {
   if (cleanedUp) return;
   cleanedUp = true;
-  if (keepLogs) {
-    console.error(`dm-e2e-ab: server logs kept in ${logDir}`);
-    return;
-  }
   rmSync(scratch, { recursive: true, force: true });
+  if (logDir) console.error(`dm-e2e-ab: server logs kept in ${logDir}`);
 };
 process.on('exit', cleanup);
 for (const signal of ['SIGINT', 'SIGTERM']) {
-  process.on(signal, () => { cleanup(); process.exit(130); });
+  process.on(signal, () => {
+    // A signal sent to this process alone leaves the measurement running, and
+    // `process.exit` below skips the `finally` that would stop it. Each child
+    // is its own process group, so one kill takes time(1) and its server
+    // together; the summary line is lost, which does not matter on an abort.
+    if (activeChild) {
+      try { process.kill(-activeChild.pid, 'SIGKILL'); } catch { /* already gone */ }
+    }
+    cleanup();
+    process.exit(130);
+  });
 }
 
 // --- builds ---------------------------------------------------------------
@@ -207,7 +224,6 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function measure(side, variant, round, bin, content) {
   const port = await freePort();
   const cacheDir = mkdtempSync(join(scratch, `cache-${side}-${variant}-${round}-`));
-  const logPath = join(logDir, `${side}-${variant}-r${round}.log`);
   const child = spawn(TIME_BIN, [TIME_FLAG, bin], {
     cwd: ROOT,
     env: {
@@ -219,11 +235,19 @@ async function measure(side, variant, round, bin, content) {
       RUST_LOG: 'warn',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
+    // Its own process group, so the signal handler above can stop time(1) and
+    // the server it started with one kill.
+    detached: true,
   });
+  activeChild = child;
   let stderr = '';
   child.stderr.on('data', (d) => { stderr += d; });
   child.stdout.resume();
-  const exited = new Promise((done) => child.on('exit', () => done()));
+  // `close`, not `exit`: exit can fire while the stdio pipes still hold
+  // buffered data, and time(1) writes its peak-RSS summary to stderr just
+  // before exiting. Reading the buffer on `exit` can miss that line, which
+  // this harness treats as a failed measurement.
+  const closed = new Promise((done) => child.on('close', () => done()));
 
   const base = `http://127.0.0.1:${port}`;
   try {
@@ -233,9 +257,14 @@ async function measure(side, variant, round, bin, content) {
     for (;;) {
       if (Date.now() > deadline) throw new Error(`server did not become healthy in 30s\n${stderr}`);
       try {
-        const r = await fetch(`${base}/api/v1/health`);
+        // A server that accepts the connection and never answers would hold
+        // this await past the deadline, which is only checked between
+        // attempts. The signal also aborts the body read below.
+        const r = await fetch(`${base}/api/v1/health`, {
+          signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())),
+        });
         if (r.ok) { await r.arrayBuffer(); break; }
-      } catch { /* not listening yet */ }
+      } catch { /* not listening yet, or the probe hit the deadline */ }
       await sleep(50);
     }
 
@@ -299,9 +328,10 @@ async function measure(side, variant, round, bin, content) {
     } catch { /* already gone */ }
     if (!killed) { try { child.kill('SIGTERM'); } catch { /* already gone */ } }
     const hardStop = setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* gone */ } }, 10_000);
-    await exited;
+    await closed;
     clearTimeout(hardStop);
-    if (keepLogs) writeFileSync(logPath, stderr);
+    activeChild = null;
+    if (logDir) writeFileSync(join(logDir, `${side}-${variant}-r${round}.log`), stderr);
     measure.lastStderr = stderr;
   }
 }

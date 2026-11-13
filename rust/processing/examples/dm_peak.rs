@@ -81,6 +81,11 @@
 //! check across builds, not a performance number: equal digests mean the two
 //! binaries produced the same data model table for table.
 //!
+//! It runs while the model is still live, inside the process `/usr/bin/time`
+//! is measuring, so it holds one reused row buffer and never serializes a
+//! whole table or the spatial hierarchy into one allocation. Its own footprint
+//! is the largest single row, which no model makes large.
+//!
 //! It is NOT a wire-format check. `serialize_data_model_to_parquet` names its
 //! own columns, and `DataModel` is not `Serialize`; the digest reads more
 //! fields than the Parquet encoding carries, so it is the stricter of the two.
@@ -94,33 +99,49 @@ use serde::Serialize;
 /// Fold one named table into the running hash: the name first (so a row that
 /// moves between tables changes the digest), then the row count, then each
 /// row's `serde_json` encoding.
-fn fold_rows<T: Serialize>(hash: u64, name: &str, rows: &[T]) -> u64 {
+///
+/// `scratch` is reused across rows and across tables, so the digest's largest
+/// transient allocation is ONE row's encoding rather than one table's. That
+/// matters because `/usr/bin/time` measures the whole process: the digest runs
+/// while the `DataModel` is still live, so anything it allocates can raise the
+/// high-water mark this harness exists to report, and the rooted variant -
+/// whose extraction peak is the low one - is where that would bite hardest.
+fn fold_rows<T: Serialize>(hash: u64, name: &str, rows: &[T], scratch: &mut Vec<u8>) -> u64 {
     let mut hash = fnv1a64_extend(hash, name.as_bytes());
     hash = fnv1a64_extend(hash, &(rows.len() as u64).to_le_bytes());
     for row in rows {
-        let encoded = serde_json::to_vec(row).expect("data-model rows are Serialize");
-        hash = fnv1a64_extend(hash, &encoded);
+        scratch.clear();
+        serde_json::to_writer(&mut *scratch, row).expect("data-model rows are Serialize");
+        hash = fnv1a64_extend(hash, scratch);
     }
     hash
 }
 
 /// FNV-1a over every table of the data model. See the module header.
 fn digest(dm: &DataModel) -> u64 {
+    let mut scratch: Vec<u8> = Vec::new();
     let mut hash = FNV64_OFFSET;
     hash = fnv1a64_extend(hash, &(dm.total_entities as u64).to_le_bytes());
-    hash = fold_rows(hash, "entities", &dm.entities);
-    hash = fold_rows(hash, "property_sets", &dm.property_sets);
-    hash = fold_rows(hash, "quantity_sets", &dm.quantity_sets);
-    hash = fold_rows(hash, "relationships", &dm.relationships);
-    hash = fold_rows(hash, "classifications", &dm.classifications);
-    hash = fold_rows(hash, "materials", &dm.materials);
-    hash = fold_rows(hash, "documents", &dm.documents);
-    // The spatial hierarchy is one struct, not a table of rows, and every
-    // field of it is a Vec: no map iteration order can reach the digest.
-    let spatial = serde_json::to_vec(&dm.spatial_hierarchy)
-        .expect("SpatialHierarchyData is Serialize");
+    hash = fold_rows(hash, "entities", &dm.entities, &mut scratch);
+    hash = fold_rows(hash, "property_sets", &dm.property_sets, &mut scratch);
+    hash = fold_rows(hash, "quantity_sets", &dm.quantity_sets, &mut scratch);
+    hash = fold_rows(hash, "relationships", &dm.relationships, &mut scratch);
+    hash = fold_rows(hash, "classifications", &dm.classifications, &mut scratch);
+    hash = fold_rows(hash, "materials", &dm.materials, &mut scratch);
+    hash = fold_rows(hash, "documents", &dm.documents, &mut scratch);
+    // The spatial hierarchy is one struct, not a table, but it is folded field
+    // by field rather than serialized whole: a whole-structure buffer is the
+    // one allocation here that scales with the model, and it would land inside
+    // the measured peak. Every field is a Vec, so no map iteration order can
+    // reach the digest either way.
+    let spatial = &dm.spatial_hierarchy;
     hash = fnv1a64_extend(hash, b"spatial_hierarchy");
-    hash = fnv1a64_extend(hash, &spatial);
+    hash = fnv1a64_extend(hash, &(spatial.project_id as u64).to_le_bytes());
+    hash = fold_rows(hash, "spatial_nodes", &spatial.nodes, &mut scratch);
+    hash = fold_rows(hash, "element_to_storey", &spatial.element_to_storey, &mut scratch);
+    hash = fold_rows(hash, "element_to_building", &spatial.element_to_building, &mut scratch);
+    hash = fold_rows(hash, "element_to_site", &spatial.element_to_site, &mut scratch);
+    hash = fold_rows(hash, "element_to_space", &spatial.element_to_space, &mut scratch);
     hash = fnv1a64_extend(hash, b"refused");
     hash = fnv1a64_extend(hash, dm.refused.as_deref().unwrap_or("").as_bytes());
     hash

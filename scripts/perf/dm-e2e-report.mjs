@@ -176,7 +176,17 @@ export function summarize(rows, { minRounds = 5 } = {}) {
     });
   }
 
-  const identityBroken = variants.some((v) => v.identity.some((d) => !d.agrees));
+  // `entity_count` describes the MODEL, so it must be one number across every
+  // run of every variant on both sides (#6034). Checking it only within a
+  // variant would pass a branch that reports 1,000,000 for `all` and the
+  // narrowed 211,716 for `rooted`, which is the exact regression the field
+  // exists to prevent.
+  const entityCounts = [...new Set(variants.flatMap((v) => v.entityCount))];
+  const entityCountBroken = entityCounts.length > 1;
+  // A failed invariant has to reach the VERDICT, not just a warning line:
+  // `dm-e2e-ab.mjs` takes its exit code from here, so a count that moved while
+  // the digests matched would otherwise exit 0 under "output identical".
+  const identityBroken = variants.some((v) => v.identity.some((d) => !d.agrees)) || entityCountBroken;
   const unstable = variants.some((v) => v.identity.some((d) => d.unstable));
   const tooNoisy = variants.some((v) => {
     const total = v.metrics.find((m) => m.key === 'totalMs');
@@ -184,7 +194,7 @@ export function summarize(rows, { minRounds = 5 } = {}) {
   });
   const underSampled = variants.some((v) => v.rounds < minRounds);
 
-  return { variants, identityBroken, unstable, tooNoisy, underSampled, minRounds };
+  return { variants, identityBroken, entityCountBroken, entityCounts, unstable, tooNoisy, underSampled, minRounds };
 }
 
 const fmt = (n) => (n == null ? '—' : Math.abs(n) >= 100 ? n.toFixed(0) : n.toFixed(1));
@@ -218,7 +228,7 @@ export function formatReport(summary, { base = 'base', branch = 'branch', fixtur
       }
     }
     if (v.entityCount.length > 1) {
-      lines.push(`    ⚠️  reported entity_count disagrees across runs: ${v.entityCount.join(' / ')} — it must describe the MODEL, not the served variant (#6034).`);
+      lines.push(`    ⚠️  reported entity_count disagrees across runs of this variant: ${v.entityCount.join(' / ')} — it must describe the MODEL, not the served variant (#6034).`);
     } else if (v.entityCount[0] != null) {
       lines.push(`    reported entity_count ${v.entityCount[0].toLocaleString('en-US')} instances (the model, not the served rows)`);
     }
@@ -228,6 +238,9 @@ export function formatReport(summary, { base = 'base', branch = 'branch', fixtur
   }
 
   lines.push('');
+  if (summary.entityCountBroken) {
+    lines.push(`    ⚠️  reported entity_count differs ACROSS variants or sides: ${summary.entityCounts.join(' / ')} — it must describe the MODEL, not the served variant (#6034).`);
+  }
   if (summary.identityBroken || summary.unstable) {
     lines.push('VERDICT: ⚠️  output identity failed — the timing and memory deltas above are NOT like-for-like.');
   } else if (summary.tooNoisy) {

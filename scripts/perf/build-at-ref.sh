@@ -112,13 +112,22 @@ fi
 if [ "$PROFILE" = profiling ] && ! grep -q '^\[profile\.profiling\]' "$WT/Cargo.toml"; then
   printf '\n[profile.profiling]\ninherits = "release"\nstrip = false\ndebug = "line-tables-only"\npanic = "unwind"\n' >> "$WT/Cargo.toml"
 fi
+# Cargo's built-in profiles do NOT each get a directory of their own: dev and
+# test both write to target/debug, bench writes to target/release. A custom
+# profile is the only case where the directory is the profile's name, so
+# `--profile dev` with an unmapped path would build fine and then fail the copy.
+case "$PROFILE" in
+  dev|test) PROFILE_DIR=debug;;
+  bench) PROFILE_DIR=release;;
+  *) PROFILE_DIR="$PROFILE";;
+esac
 if [ -n "$BIN" ]; then
   TARGET_ARGS=(--bin "$BIN")
-  BUILT="$TARGET_DIR/$PROFILE/$BIN"
+  BUILT="$TARGET_DIR/$PROFILE_DIR/$BIN"
   WHAT="bin $BIN"
 else
   TARGET_ARGS=(--example "$EXAMPLE")
-  BUILT="$TARGET_DIR/$PROFILE/examples/$EXAMPLE"
+  BUILT="$TARGET_DIR/$PROFILE_DIR/examples/$EXAMPLE"
   WHAT="example $EXAMPLE"
 fi
 if ! ( cd "$WT" && CARGO_TARGET_DIR="$TARGET_DIR" \

@@ -134,10 +134,12 @@ it('hovering a dimension from another cut reports it; one from this cut does not
     { id: 'there', a: { x: 0, y: 5 }, b: { x: 4, y: 5 }, offset: 0, orientation: 'aligned', plane: { ...PLANE, position: 4 } },
   ] });
   const canvas = render(<Harness />).firstElementChild!;
+  // Read through a call: the harness reassigns `tool` on render, which narrowing cannot see.
+  const hovered = () => tool.hover?.id ?? null;
   mouseMove(canvas, { clientX: 200, clientY: -100 });
-  assert.equal(tool.hover, null);
+  assert.equal(hovered(), null);
   mouseMove(canvas, { clientX: 200, clientY: 500 });
-  assert.equal(tool.hover?.id, 'there');
+  assert.equal(hovered(), 'there');
   mouseMove(canvas, { clientX: 900, clientY: 900 });
-  assert.equal(tool.hover, null);
+  assert.equal(hovered(), null);
 });

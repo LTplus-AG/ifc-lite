@@ -9,6 +9,8 @@ import { prepareAppearanceSerialization } from '../appearance/serialization.js';
 import { stepExportSource } from '../collab/room-step-export.js';
 import { spliceScheduleIntoExport, type ExportScheduleState } from '@/sdk/adapters/export-schedule-splice';
 
+export { exportFailureMessage } from './step-records.js';
+
 /** One edited STEP source for downloads and cloud uploads (#6587).
  * Visibility ids belong to the viewer model; portable room sources remap them.
  * Return image resources alongside STEP so no transport silently loses them.

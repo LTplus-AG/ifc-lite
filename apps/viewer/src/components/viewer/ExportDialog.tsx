@@ -5,7 +5,7 @@
 import type { ExportFormat, ExportSurface } from '@/lib/analytics-export-events';
 import { modelDisplayLabels } from '@/lib/model-labels.js';
 import { stepExportProgress } from '@/lib/export/step-progress.js';
-import { exportModelStep } from '@/lib/export/model-step-export';
+import { exportModelStep, exportFailureMessage } from '@/lib/export/model-step-export';
 import { useSectionExport, sectionMergeInputs } from '@/lib/export/section-export';
 import { packagePortableIfcAsync, assertPortableMergeSupported } from '@/lib/export/portable-ifc';
 import { lostPropertyCollisionsNote, unrepresentedPsetsNote } from '@/lib/export/changed-model-export';
@@ -51,7 +51,7 @@ import { landXmlExportPlan } from '@/lib/export/landXmlIfcPlan.js';
 import { landXmlExportExtension } from '@/lib/export/landXmlIfcImagery.js';
 import { roomExportPathPrefix } from '@/lib/collab/room-export-paths';
 import { preferredExportModelId } from './export-model-default';
-import { canExportRoomAsStep, exportFailureMessage, type roomStepExportSource } from '@/lib/collab/room-step-export';
+import { canExportRoomAsStep, type roomStepExportSource } from '@/lib/collab/room-step-export';
 import { roomMergeInput, roomMergeVisibility } from '@/lib/collab/room-merged-export';
 import { roomSymbolicSource } from '@/lib/collab/room-symbolic-source';
 import { listExportModels, resolveExportModel } from './export-model-selection';
@@ -535,7 +535,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
       }
     } catch (error) {
       console.error('Export failed:', error);
-      const errMsg = exportFailureMessage(error, t, selectedModel?.name); // #10045: a refusal is translated
+      const errMsg = exportFailureMessage(error, t, selectedModel?.name);
       toast.error(errMsg);
       return { success: false, message: errMsg };
     } finally {

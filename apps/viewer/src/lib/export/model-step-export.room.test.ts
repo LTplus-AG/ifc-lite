@@ -8,7 +8,7 @@ import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { parseFixtureModel, FIXTURE_PROJECT, FIXTURE_SITE, FIXTURE_BUILDING, FIXTURE_WALL_A } from '@/components/viewer/anonymized-export/anonymized-export-fixture.test-support';
 import { tabularFixtureStore, PROXY_A, PROXY_B, WALL } from '@/test/tabular-store-fixture';
 import { registerRoomSymbolicSource } from '@/lib/collab/room-symbolic-source';
-import { exportFailureMessage, StepRecordsUnavailableError } from '@/lib/collab/room-step-export';
+import { exportFailureMessage, StepRecordsUnavailableError } from './step-records';
 import { exportModelStep } from './model-step-export';
 
 const OPTIONS = { schema: 'IFC4', applyMutations: true } as const;
@@ -39,12 +39,11 @@ async function roomStore(owned: ReadonlyArray<readonly [number, number]>): Promi
 test('a room whose root set moved past its portable source refuses STEP export (#10045)', async () => {
   // The room holds WALL, which the portable source does not own.
   const dataStore = await roomStore([[FIXTURE_PROJECT, PROXY_A], [FIXTURE_SITE, PROXY_B]]);
-  let result: Awaited<ReturnType<typeof exportModelStep>> | undefined;
+  // A rejection is the whole outcome: no content is returned to download.
   await assert.rejects(
-    (async () => { result = await exportModelStep({ modelId: 'room', dataStore, options: OPTIONS, scheduleState: null }); })(),
+    exportModelStep({ modelId: 'room', dataStore, options: OPTIONS, scheduleState: null }),
     (error: unknown) => error instanceof StepRecordsUnavailableError && error.reason === 'roomMoved',
   );
-  assert.equal(result, undefined, 'no file content is produced');
 });
 
 test('a tabular store with no portable source refuses STEP export (#10045)', async () => {

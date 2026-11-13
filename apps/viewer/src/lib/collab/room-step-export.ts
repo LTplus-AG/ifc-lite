@@ -9,6 +9,7 @@ import type { Property, PropertyValue, Quantity } from '@ifc-lite/data';
 import { MutablePropertyView, StoreEditor, type Mutation } from '@ifc-lite/mutations';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { roomSymbolicSource } from './room-symbolic-source';
+import { StepRecordsUnavailableError } from '@/lib/export/step-records';
 import { propertyValueTypeFor } from './mutation-bridge';
 import { asExpressIdRef, readAttributes, resolvePlacementChain } from '@/lib/placement-core';
 import { resolveRotationState } from '@/lib/placement-rotate';
@@ -198,39 +199,13 @@ export function roomStepExportSource(
 }
 
 /**
- * Why a STEP writer has no records to read for a store: `'roomMoved'` for a
- * shared room whose live root set no longer matches its portable source,
- * `'noRecords'` for any other tabular store.
- */
-export type StepRecordsRefusal = 'roomMoved' | 'noRecords';
-
-export class StepRecordsUnavailableError extends Error {
-  constructor(readonly reason: StepRecordsRefusal, readonly modelName?: string) {
-    super(reason === 'roomMoved'
-      ? `Shared model${modelName ? ` "${modelName}"` : ''} cannot be exported as IFC STEP after its root set changed in the room.`
-      : `Model${modelName ? ` "${modelName}"` : ''} has no IFC STEP records to export from.`);
-    this.name = 'StepRecordsUnavailableError';
-  }
-}
-
-/** The message an export reports for `error`: the translated refusal, or the raw failure. */
-export function exportFailureMessage(
-  error: unknown,
-  t: (key: `exportDialog.stepRecords.${StepRecordsRefusal}`, params: { model: string }) => string,
-  fallbackModelName = '',
-): string {
-  if (error instanceof StepRecordsUnavailableError) {
-    return t(`exportDialog.stepRecords.${error.reason}`, { model: error.modelName ?? fallbackModelName });
-  }
-  return `Export failed: ${error instanceof Error ? error.message : 'Unknown error'}`;
-}
-
-/**
  * Where a STEP writer reads this store's records. Returns the room's portable
  * source when it covers the live room, or `null` when the store's own `source`
  * holds STEP records. Throws {@link StepRecordsUnavailableError} otherwise: a
  * tabular store's `source` is its reader's own format, so writing it as STEP
- * yields an empty or garbage file (#10045).
+ * yields an empty or garbage file (#10045). `'roomMoved'` is a shared room whose
+ * live root set no longer matches its portable source; `'noRecords'` any other
+ * tabular store.
  */
 export function stepExportSource(
   store: IfcDataStore,

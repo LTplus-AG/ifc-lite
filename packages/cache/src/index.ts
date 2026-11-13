@@ -68,7 +68,7 @@ export {
   inflateRaw,
 } from './sections/geometry-chunks.js';
 export { readInstancedShards } from './sections/instanced-shards.js';
-export type { GeometryHead, ChunkInflate, ChunkDecode } from './sections/geometry-chunks.js';
+export type { ChunkDecodeOptions, GeometryHead, ChunkInflate, ChunkDecode } from './sections/geometry-chunks.js';
 // The worker inflate pool is the `@ifc-lite/cache/chunk-inflate-pool` subpath, so a viewer loads it lazily.
 export type { GeometryChunkInfo } from './types.js';
 

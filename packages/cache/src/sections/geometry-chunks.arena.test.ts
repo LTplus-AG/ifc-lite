@@ -2,9 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-// Reopen lane: a decoded chunk's mesh arrays are copied into shared ~1 MiB
-// arena blocks (one allocation per block, not three per mesh). The arrays must
-// be the same values, aligned, and independent of each other.
+// Reopen lane: with `sharedArena`, a decoded chunk's mesh arrays are copied into
+// shared ~1 MiB arena blocks (one allocation per block, not three per mesh). The
+// arrays must be the same values, aligned, and independent of each other. By
+// default (the published behaviour) every array owns its buffer.
 import { describe, expect, it } from 'vitest';
 import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
 import { buildGeometrySectionV13, openGeometryChunksV13 } from './geometry-chunks.js';
@@ -27,9 +28,9 @@ function meshes(): MeshData[] {
   });
 }
 
-async function decode(): Promise<MeshData[]> {
+async function decode(options: { sharedArena?: boolean } = { sharedArena: true }): Promise<MeshData[]> {
   const section = await buildGeometrySectionV13(meshes(), coordInfo, { compress: true });
-  const open = openGeometryChunksV13(section, 0, FORMAT_VERSION);
+  const open = openGeometryChunksV13(section, 0, FORMAT_VERSION, options);
   return (await Promise.all(open.chunks.map((_, i) => open.readChunk(i)))).flat();
 }
 
@@ -54,6 +55,24 @@ describe('chunk decode arena', () => {
     const before = decoded.map((m) => [m.positions[0], m.normals[0], m.indices[0]].join());
     decoded[0].positions.fill(-1); decoded[0].normals.fill(-1); decoded[0].indices.fill(0xffffffff);
     expect(decoded.slice(1).map((m) => [m.positions[0], m.normals[0], m.indices[0]].join())).toEqual(before.slice(1));
+  });
+
+  it('by default, every mesh array owns its buffer (as published before the arena)', async () => {
+    const decoded = await decode({});
+    for (const m of decoded) for (const a of [m.positions, m.normals, m.indices]) {
+      expect(a.byteOffset).toBe(0);
+      expect(a.buffer.byteLength).toBe(a.byteLength);
+    }
+    expect(new Set(decoded.flatMap((m) => [m.positions.buffer, m.normals.buffer, m.indices.buffer])).size).toBe(900);
+  });
+
+  it('by default, transferring one mesh\'s buffers to a worker leaves every other mesh intact', async () => {
+    const decoded = await decode({});
+    const before = decoded.slice(1).map((m) => [[...m.positions].join(), [...m.normals].join(), [...m.indices].join()].join('|'));
+    const first = decoded[0];
+    structuredClone(first, { transfer: [first.positions.buffer, first.normals.buffer, first.indices.buffer] as ArrayBuffer[] });
+    expect(first.positions.length).toBe(0); // detached: it moved to the "worker"
+    expect(decoded.slice(1).map((m) => [[...m.positions].join(), [...m.normals].join(), [...m.indices].join()].join('|'))).toEqual(before);
   });
 
   it('gives a large array its own buffer, and a plain reader still copies each array', () => {

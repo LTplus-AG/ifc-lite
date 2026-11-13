@@ -3,10 +3,10 @@
 "@ifc-lite/viewer": patch
 ---
 
-Decoding a cached geometry chunk copies mesh positions, normals and indices into shared, aligned ~1 MiB blocks (`ArrayArena`) instead of one ArrayBuffer per array.
+New opt-in `sharedArena` option for the geometry chunk decode: `decodeGeometryChunk(stored, info, version, { sharedArena: true })`, `openGeometryChunksV13(buffer, offset, version, { sharedArena: true })` (applies to its `readChunk`) and `BinaryCacheReader.read(buffer, { sharedArena: true })`. New type `ChunkDecodeOptions`; `ArrayArena` is exported.
 
-**Behaviour change for callers of `decodeGeometryChunk` (and `openGeometryChunksV13(...).readChunk`):** every mesh array they return is a view into a block it shares with other meshes of the chunk. The arena is opt-in on `BufferReader`, but the chunk decode always turns it on.
-- Read an array through the view: its `byteOffset` and `length`.
-- Never use `.buffer` as if the mesh owned it. Transferring it to a worker detaches every other mesh in that block; `new Uint8Array(array.buffer)` covers the whole block.
-- To hand one mesh's arrays to a worker, copy them first (`array.slice()`), as the viewer's zone split now does.
-- In this repository, the other places that use a mesh array's `.buffer` (`cesium-glb.ts`, `scan-detector.ts`, the LandXML and zone-split workers) build or slice their own arrays and are unaffected.
+- With the option, mesh positions, normals and indices are copied into shared, aligned ~1 MiB blocks (`ArrayArena`), one allocation per block instead of one ArrayBuffer per array.
+  - Each array is then a view into a block other meshes of the chunk share. Read it through the view.
+  - Never transfer or reinterpret its `.buffer`; copy (`array.slice()`) before handing one mesh's arrays to a worker.
+- **Without the option nothing changes:** every mesh array owns its buffer, as before.
+- The viewer opts in on its cache-hit decode paths. Its zone split copies the pieces it transfers.

@@ -169,6 +169,9 @@ export class ChunkInflatePool {
    * `openGeometryChunksV13`. The same failure rules as `inflate`: a worker failure decodes this and
    * the remaining chunks here (as without workers); a chunk the worker could not decode is decoded
    * here to tell a corrupt entry (`CorruptChunkError`) from a worker that cannot decode.
+   *
+   * The meshes' arrays are views into shared arena blocks (`ChunkDecodeOptions.sharedArena`), on a
+   * worker or here: never transfer or reinterpret their `.buffer`; copy (`array.slice()`) first.
    */
   readonly decode: ChunkDecode = async (stored, info, version) => {
     if (this.closed) throw new ChunkPoolClosedError('chunk inflate pool closed');
@@ -187,7 +190,7 @@ export class ChunkInflatePool {
     }
     let meshes: Awaited<ReturnType<ChunkDecode>>;
     try {
-      meshes = await decodeGeometryChunk(stored, info, version);
+      meshes = await decodeGeometryChunk(stored, info, version, { sharedArena: true }); // as the workers decode
     } catch (error) {
       throw this.markCorrupt(error instanceof Error ? error : new Error(String(error)));
     }
@@ -220,7 +223,7 @@ export class ChunkInflatePool {
   private async confirmDecodeHere(stored: Uint8Array, info: GeometryChunkInfo, version: number, workerError: Error): Promise<MeshData[]> {
     let meshes: MeshData[];
     try {
-      meshes = await decodeGeometryChunk(stored, info, version);
+      meshes = await decodeGeometryChunk(stored, info, version, { sharedArena: true }); // as the workers decode
     } catch {
       throw this.markCorrupt(workerError);
     }

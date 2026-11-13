@@ -111,7 +111,7 @@ export function createCacheChunkInflater(load: () => Promise<PoolModule> = loadP
       startNext();
     }
     const ready = closed ? null : await open();
-    return ready ? ready.decode(stored, info, version) : decodeGeometryChunk(stored, info, version);
+    return ready ? ready.decode(stored, info, version) : decodeGeometryChunk(stored, info, version, { sharedArena: true });
   };
 
   const head = (cacheBuffer: ArrayBuffer, offset: number, version: number): ChunkHead => {

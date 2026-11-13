@@ -305,7 +305,7 @@ export async function decodeCachedModel(
   const decoded = await decodeCachedMetadata(cacheResult, fallbackSourceBuffer, trace);
   const { geometrySection, headerInfo, cacheBuffer } = decoded;
   if (!geometrySection || !headerInfo.hasGeometry || isStale()) return null;
-  const open = openGeometryChunksV13(cacheBuffer, geometrySection.offset, headerInfo.version);
+  const open = openGeometryChunksV13(cacheBuffer, geometrySection.offset, headerInfo.version, { sharedArena: true });
   const meshes: MeshData[] = [];
   await trace.span('cache.geometry', async () => {
     // Chunks decompress independently; overlap them instead of one at a time.

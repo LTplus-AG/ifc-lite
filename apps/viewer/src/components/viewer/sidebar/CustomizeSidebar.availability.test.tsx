@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Customize lists only the panels the host left on (`lib/features`), but the
+ * #10147: Customize lists only the panels the host left on (`lib/features`), but the
  * store keeps every panel's place. A move must land next to the panel it was
  * moved past, even when a switched-off panel sits between them in the order.
  */

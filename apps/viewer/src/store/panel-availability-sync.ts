@@ -19,7 +19,6 @@ import { BOTTOM_PANEL_FLAG, BOTTOM_PANEL_IDS } from '../lib/panels/bottom-panels
 import { WORKSPACE_PANELS, type WorkspacePanelId } from '../lib/panels/registry.js';
 import type { ViewerState } from './index.js';
 import { SIDEBAR_PANEL_FLAGS } from './store-sync.js';
-import { closePanelWindow } from '../services/panel-windows.js';
 
 function patchFor(state: ViewerState, off: ReadonlySet<WorkspacePanelId>): Partial<ViewerState> | null {
   const patch: Record<string, unknown> = {};
@@ -35,7 +34,8 @@ function patchFor(state: ViewerState, off: ReadonlySet<WorkspacePanelId>): Parti
     patch.floatingPanels = state.floatingPanels.filter((panel) => !off.has(panel.id));
   }
   if (state.poppedOutIds.some((id) => off.has(id))) {
-    // `enforce` below closes the OS window; this keeps the store in step either way.
+    // Dropping the id is what closes its OS window: panel-windows reconciles
+    // its open windows against `poppedOutIds`.
     patch.poppedOutIds = state.poppedOutIds.filter((id) => !off.has(id));
   }
   return Object.keys(patch).length > 0 ? patch as Partial<ViewerState> : null;
@@ -51,10 +51,7 @@ export function enforcePanelAvailability(store: StoreApi<ViewerState>): () => vo
   const off: ReadonlySet<WorkspacePanelId> = new Set(WORKSPACE_PANELS.map((panel) => panel.id).filter((id) => !isPanelAvailable(id)));
   if (off.size === 0) return () => {};
   const enforce = (state: ViewerState) => {
-    // A popped-out panel lives in its own OS window: close it the way the
-    // window's own close button does, which also re-docks it in the store.
-    for (const id of state.poppedOutIds) if (off.has(id)) closePanelWindow(id);
-    const patch = patchFor(store.getState(), off);
+    const patch = patchFor(state, off);
     if (patch) store.setState(patch);
   };
   enforce(store.getState());

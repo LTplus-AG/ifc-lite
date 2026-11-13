@@ -15,7 +15,7 @@ import { isFeatureEnabled, type FeatureId } from '@/lib/features';
 import { toolFeatureRows } from '@/lib/features/tools';
 import type { KeyCommandDefinition, KeyCommandId, KeyContext } from './keyboard-commands';
 
-/** A tool's shortcut and its own key context share one id, `tool.<name>`. */
+/** `tool.<name>` names both a tool's shortcut and the key context it opens (Annotate has none, so its context row matches nothing). */
 const TOOL_ROWS = toolFeatureRows('tool.');
 
 export const KEY_COMMAND_FEATURE: Readonly<Partial<Record<KeyCommandId, FeatureId>>> = {

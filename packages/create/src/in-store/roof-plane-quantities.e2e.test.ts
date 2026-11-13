@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { describe, expect, it } from 'vitest';
 import { PropertyValueType } from '@ifc-lite/data';
+import { generateIfcGuid } from '@ifc-lite/encoding';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { extractPropertiesOnDemand, extractQuantitiesOnDemand } from '@ifc-lite/parser';
@@ -96,6 +97,25 @@ describe('standard footprint roof plane measurements (#9357)', () => {
     undoRecordedMutationOperations(s.view, 1, () => { throw new Error('one compound roof edit expected'); });
     expect(parts(s, roofId)).toEqual(before);
     expect(parts(s, roofId).reduce((v, id) => v + quantities(s, id, 'Qto_SlabBaseQuantities').NetVolume, 0)).toBeCloseTo(80 / Math.cos(30 * D) * .25, 7);
+  });
+
+  it('a void on a geometric plane withholds that plane and the aggregate net values after rebuild/reopen (#9357 review)', async () => {
+    const s = await session();
+    const roof = addRoofToStore(s.editor, s.anchor, HIP);
+    const children = parts(s, roof.roofId);
+    const owner = s.anchor.ownerHistoryId === null ? null : `#${s.anchor.ownerHistoryId}`;
+    const opening = s.editor.addEntity('IfcOpeningElement', [generateIfcGuid(), owner, 'Unmeasured plane opening',
+      null, null, null, null, null, '.OPENING.']).expressId;
+    s.editor.addEntity('IfcRelVoidsElement', [generateIfcGuid(), owner, null, null, `#${children[0]}`, `#${opening}`]);
+    editFootprintRoofInStore(s.store, s.editor, roof.roofId, { Thickness: .3 });
+    const reopened = await parse(exportText(s));
+    const values = (id: number, name: string) => extractQuantitiesOnDemand(reopened, id).find(q => q.name === name)!.quantities;
+    expect(values(roof.roofId, 'Qto_RoofBaseQuantities').find(q => q.name === 'NetArea')).toBeUndefined();
+    const cut = values(children[0], 'Qto_SlabBaseQuantities');
+    expect(cut.find(q => q.name === 'NetArea')).toBeUndefined();
+    expect(cut.find(q => q.name === 'NetVolume')).toBeUndefined();
+    expect(cut.find(q => q.name === 'GrossVolume')!.value).toBeGreaterThan(0);
+    expect(values(children[1], 'Qto_SlabBaseQuantities').find(q => q.name === 'NetVolume')!.value).toBeGreaterThan(0);
   });
 
   it('declared millimetres, square centimetres, cubic millimetres and degrees survive export (#9357)', async () => {

@@ -15,7 +15,7 @@ import { bindRoomPropertyApi } from '@/lib/collab/room-property-api';
 import { registerStoreSlot, pathForEntity } from '@/lib/collab/entity-paths';
 import { mirrorRoofMeasurements } from '@/store/slices/mutation-roof-measurements';
 
-for (const failAfterDeletion of [false, true]) it(`withheld net quantities leave the room, with rollback=${failAfterDeletion} (#9357 review)`, async t => {
+for (const host of ['roof', 'plane']) for (const failAfterDeletion of [false, true]) it(`withheld ${host} net quantities leave the room, with rollback=${failAfterDeletion} (#9357 review)`, async t => {
   const creator = new IfcCreator({ Name: 'Roof measurements' });
   const storey = creator.addIfcBuildingStorey({ Name: 'GF', Elevation: 0 });
   const parse = (text: Uint8Array) => new IfcParser().parseColumnar(Uint8Array.from(text).buffer, { disableWorkerScan: true });
@@ -49,7 +49,7 @@ for (const failAfterDeletion of [false, true]) it(`withheld net quantities leave
   const owner = ownerId === null ? null : `#${ownerId}`;
   // A declared void with unknown geometry makes net measurements unknown.
   const opening = editor.addEntity('IfcOpeningElement', [generateIfcGuid(), owner, 'Unmeasured opening', null, null, null, null, null, '.OPENING.']).expressId;
-  editor.addEntity('IfcRelVoidsElement', [generateIfcGuid(), owner, null, null, `#${roof.roofId}`, `#${opening}`]);
+  editor.addEntity('IfcRelVoidsElement', [generateIfcGuid(), owner, null, null, `#${host === 'roof' ? roof.roofId : parts[0]}`, `#${opening}`]);
   editFootprintRoofInStore(dataStore, editor, roof.roofId, { Thickness: .3 });
   if (failAfterDeletion) {
     let deletions = 0, failed = false;
@@ -66,9 +66,12 @@ for (const failAfterDeletion of [false, true]) it(`withheld net quantities leave
   for (const id of [roof.roofId, ...parts]) {
     const path = pathForEntity(dataStore, id); assert.ok(path);
     const set = id === roof.roofId ? 'Qto_RoofBaseQuantities' : 'Qto_SlabBaseQuantities';
-    assert.equal(collab.getQuantityValue(session.doc, path, set, 'NetArea'), undefined);
+    const unknown = host === 'roof' || id === roof.roofId || id === parts[0];
+    if (unknown) assert.equal(collab.getQuantityValue(session.doc, path, set, 'NetArea'), undefined);
+    else assert.ok((collab.getQuantityValue(session.doc, path, set, 'NetArea') ?? 0) > 0);
     if (id !== roof.roofId) {
-      assert.equal(collab.getQuantityValue(session.doc, path, set, 'NetVolume'), undefined);
+      if (unknown) assert.equal(collab.getQuantityValue(session.doc, path, set, 'NetVolume'), undefined);
+      else assert.ok((collab.getQuantityValue(session.doc, path, set, 'NetVolume') ?? 0) > 0);
       assert.ok((collab.getQuantityValue(session.doc, path, set, 'GrossVolume') ?? 0) > 0);
     }
   }

@@ -130,10 +130,12 @@ export function writeRoofPlaneParts(editor: StoreEditor, anchor: MeasureAnchor, 
     byEdge.set(edge, id);
   }
   const { length, area: areaScale, volume: volumeScale, angle: angleScale } = roofMeasureScales(anchor);
-  let hasOpenings = false;
+  const voided = new Set<number>();
   for (const id of reader.ids('IFCRELVOIDSELEMENT')) {
-    if (refId(reader.entity(id)?.attributes[4]) === roofId) { hasOpenings = true; break; }
+    const host = refId(reader.entity(id)?.attributes[4]);
+    if (host !== null) voided.add(host);
   }
+  let unknownNet = voided.has(roofId);
   const planes = plan.planes.length ? plan.planes : [{ edge: -1, slope: 0, outline: plan.eaves }];
   if (body.solidIds.length !== planes.length) throw new Error('Every roof plane needs one Body item');
   const ids: number[] = [];
@@ -156,7 +158,9 @@ export function writeRoofPlaneParts(editor: StoreEditor, anchor: MeasureAnchor, 
     totalArea += area;
     view.setQuantity(id, 'Qto_SlabBaseQuantities', 'GrossArea', clean(area / areaScale), QuantityType.Area);
     view.setQuantity(id, 'Qto_SlabBaseQuantities', 'GrossVolume', clean(area * thickness / volumeScale), QuantityType.Volume);
-    if (hasOpenings) {
+    const unknownPlaneNet = voided.has(roofId) || voided.has(id);
+    unknownNet ||= unknownPlaneNet;
+    if (unknownPlaneNet) {
       view.deleteQuantity(id, 'Qto_SlabBaseQuantities', 'NetArea');
       view.deleteQuantity(id, 'Qto_SlabBaseQuantities', 'NetVolume');
     } else {
@@ -172,7 +176,7 @@ export function writeRoofPlaneParts(editor: StoreEditor, anchor: MeasureAnchor, 
     RELATION_NAME, null, `#${roofId}`, ids.map(id => `#${id}`)]);
   if (store) for (const id of previous?.parts ?? []) if (!ids.includes(id)) removePart(store, editor, id);
   view.setQuantity(roofId, 'Qto_RoofBaseQuantities', 'GrossArea', clean(totalArea / areaScale), QuantityType.Area);
-  if (hasOpenings) view.deleteQuantity(roofId, 'Qto_RoofBaseQuantities', 'NetArea');
+  if (unknownNet) view.deleteQuantity(roofId, 'Qto_RoofBaseQuantities', 'NetArea');
   else view.setQuantity(roofId, 'Qto_RoofBaseQuantities', 'NetArea', clean(totalArea / areaScale), QuantityType.Area);
   view.setQuantity(roofId, 'Qto_RoofBaseQuantities', 'ProjectedArea', clean(Math.abs(signedArea(plan.eaves)) * length ** 2 / areaScale), QuantityType.Area);
 }

@@ -83,7 +83,10 @@ for (const failure of [{ kind: 'property', at: 1 }, { kind: 'property', at: 3 },
     return Object.fromEntries(definition.properties.map(property => [property.name,
       structuredClone(getPropertyValue(session.doc, path, definition.name, property.name)?.value)]));
   };
-  const mesh = (id: number) => structuredClone(nativeSdkMeshes().filter(part => part.expressId === id));
+  const mesh = (id: number) => {
+    const ids = new Set(id === roof.expressId ? getFootprintRoofPlaneParts(store, view, id) : [id]);
+    return structuredClone(nativeSdkMeshes().filter(part => ids.has(part.expressId)).sort((a, b) => a.expressId - b.expressId));
+  };
   const roomQuantities = async () => {
     const source = editedModelBytes(store, view);
     const parsed = await new IfcParser().parseColumnar(source.buffer.slice(source.byteOffset, source.byteOffset + source.byteLength), { disableWorkerScan: true });

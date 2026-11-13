@@ -19,6 +19,8 @@
  * of the catalogue.
  */
 
+import cli from './capability-cli.mjs';
+
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { verdict } from '../lib/values.mjs';
@@ -144,4 +146,4 @@ const docsPage = {
   },
 };
 
-export default [linkRead, docsPage, ...checks];
+export default [linkRead, docsPage, cli, ...checks];

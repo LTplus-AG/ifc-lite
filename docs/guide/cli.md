@@ -197,6 +197,22 @@ Supports property filters (`--where`), missing-property checks (`--missing`), he
 
 ---
 
+### `structural` - Read structural analysis
+
+Read structural analysis data without modifying the file:
+
+```bash
+ifc-lite structural model.ifc
+ifc-lite structural model.ifc --json > structural.json
+```
+
+The table counts analysis models, members, connections, loads, load groups and
+cases, reactions, result groups and physical links. JSON includes their read-model
+records, actions' resolved `appliedLoad` values, and a `links` array pairing
+model-local `structuralItemId` and `physicalElementId`. Missing parser values
+are omitted. `loadsTruncated` flags a bounded applied-load walk. See
+[Structural analysis](structural-analysis.md) for coverage and limits.
+
 ### `info` — Model Summary
 
 Print schema version, entity counts, storeys, and top entity types.
@@ -1880,6 +1896,7 @@ The `semantic` command reads JSON/SPARQL providers, generates shared profile art
 | `doctor` | Check CLI runtime, package versions and WASM binary |
 | `info` | Model summary (schema, entities, storeys) |
 | `query` | Query entities by type/properties/quantities |
+| `structural` | Read analysis models, members, connections, loads, reactions and physical links |
 | `props` | All properties for a single entity |
 | `export` | Export data / geometry / energy model |
 | `schedule` | Tabular schedule of one class (csv/json/md/html) |

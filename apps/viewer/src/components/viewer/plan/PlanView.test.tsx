@@ -237,10 +237,25 @@ describe('PlanView: a grabbed room corner (#6232 A4b review)', () => {
     const ui = render(<PlanView layout="split" />);
     await settle();
     const svg = ui.querySelector('[data-plan-canvas]')! as SVGSVGElement;
-    const [x, y] = [sX(FIT, 4), sY(FIT, 0)];
+    // #9896 projection edges can refit the plan after entry. Use its painted
+    // wall axis to locate the same real room corner, rather than the old fit.
+    const state = useViewerStore.getState();
+    const axes = storeyWallAxes(state.models.get(MODEL_ID)!.ifcDataStore!, state.mutationViews.get(MODEL_ID)!, STOREY);
+    const axis = axes.find(a => Math.abs(a.b[0] - a.a[0]) > 1e-6);
+    assert.ok(axis, 'the fixture has a wall axis with horizontal extent');
+    const line = svg.querySelector(`[data-plan-axis="${axis.expressId}"]`);
+    assert.ok(line, 'the actual plan paints that axis');
+    const scale = (Number(line.getAttribute('x2')) - Number(line.getAttribute('x1'))) / (axis.b[0] - axis.a[0]);
+    assert.ok(Number.isFinite(scale) && scale > 0, 'the painted plan has a usable scale');
+    const [x, y] = [Number(line.getAttribute('x1')) + (4 - axis.a[0]) * scale,
+      Number(line.getAttribute('y1')) + axis.a[1] * scale];
     pointer(svg, 'pointermove', x, y);
     pointer(svg, 'pointerdown', x, y, { buttons: 1 });
     const drag = () => (getCommandRuntime().gesture as RoomPlaceGesture).edit.drag;
+    const grabbed = drag();
+    // The rendered frame locates the click; this independent world-space
+    // oracle prevents grabbing another corner from satisfying these tests.
+    assert.ok(grabbed && near(grabbed.from, [4, 0]), `expected the [4,0] room corner, got ${JSON.stringify(grabbed?.from)}`);
     return { svg, drag, x, y };
   }
 

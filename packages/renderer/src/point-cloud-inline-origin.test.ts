@@ -15,6 +15,7 @@ import assert from 'node:assert/strict';
 import type { MeshData, PointCloudAsset } from '@ifc-lite/geometry';
 import { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
 import { queryPointClouds } from './raycast-point-cloud-query.js';
+import { buildGeometryCache } from './snap-geometry-cache.js';
 
 (globalThis as Record<string, unknown>).GPUShaderStage ??= { VERTEX: 1, FRAGMENT: 2 };
 (globalThis as Record<string, unknown>).GPUBufferUsage ??= { VERTEX: 32, COPY_DST: 8, UNIFORM: 64, STORAGE: 128 };
@@ -70,11 +71,15 @@ it('an inline cloud with an f64 origin keeps two points 0.1 m apart at 2,600,000
   const node = renderer.getPickNodes()[0];
   assert.deepEqual(node.rteOrigin, origin);
 
-  // A mesh vertex at the same world coordinate, in the MeshData origin contract
-  // (world = origin + positions), coincides with the picked cloud point.
-  const mesh: Pick<MeshData, 'origin' | 'positions'> = { origin, positions: new Float32Array([0, 0, 0, WORLD_X[1] - origin[0], 0, 0]) };
-  const meshWorldX = mesh.origin![0] + mesh.positions[3];
-  assert.ok(Math.abs(meshWorldX - b) < 1e-4, `mesh vertex ${meshWorldX} vs cloud point ${b}`);
+  // A mesh vertex at the same world coordinate, as the mesh snap path rebuilds
+  // it from MeshData's own f64 origin (a mesh at a different origin, the way
+  // the wasm mesher frames each element), coincides with the picked point.
+  const meshOrigin: [number, number, number] = [2_600_000.5, 0, 0];
+  const mesh: MeshData = { expressId: 2, origin: meshOrigin, color: [1, 1, 1, 1],
+    positions: new Float32Array([WORLD_X[1] - meshOrigin[0], 0, 0, 0, 1, 0, 0, 0, 1]),
+    normals: new Float32Array(9), indices: new Uint32Array([0, 1, 2]) };
+  const vertex = buildGeometryCache(mesh).vertices.find((v) => v.y === 0 && v.z === 0)!;
+  assert.ok(Math.abs(vertex.x - b) < 1e-4, `mesh vertex ${vertex.x} vs cloud point ${b}`);
   renderer.clear();
 });
 
@@ -94,5 +99,18 @@ it('refuses a non-finite or out-of-range origin before uploading anything (#1002
     assert.throws(() => renderer.addAsset(cloud([bad, 0, 0])), /origin/);
   }
   assert.equal(renderer.getNodeCount(), 0, 'no half-installed node is left behind');
+  renderer.clear();
+});
+
+it('a bulk replacement skips a cloud with a bad origin and keeps the rest (#10029)', () => {
+  const renderer = new PointCloudRenderer(pointDevice(), 'rgba8unorm', 'depth32float', 1);
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    renderer.setAssets([cloud([NaN, 0, 0]), cloud([WORLD_X[0], 0, 0])]);
+  } finally {
+    console.warn = warn;
+  }
+  assert.equal(renderer.getNodeCount(), 1);
   renderer.clear();
 });

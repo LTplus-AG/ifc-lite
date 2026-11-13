@@ -17,7 +17,7 @@ import { assertModelTranslation } from '../model-translation.js';
 
 import type { PointCloudAsset } from '@ifc-lite/geometry';
 import { PointCloudHandleIds } from './point-cloud-handle-ids.js';
-import { exactPlacement, originMatrix, PointCloudPlacements, unionPointCloudBounds } from './point-cloud-placement.js';
+import { exactPlacement, originMatrix, PointCloudPlacements, skipUnrenderableOrigin, unionPointCloudBounds } from './point-cloud-placement.js';
 import { PointCloudVisibility } from './point-cloud-visibility.js';
 import { PointRenderPipeline, POINT_QUAD_VERTS, POINT_UNIFORM_SIZE } from './point-pipeline.js';
 import {
@@ -212,7 +212,7 @@ export class PointCloudRenderer {
   setAssets(assets: ReadonlyArray<PointCloudAsset>): void {
     this.clearOwner('ifcx');
     for (const asset of assets) {
-      if (asset.chunk.pointCount === 0) continue; // streamed identity descriptors carry no geometry
+      if (asset.chunk.pointCount === 0 || skipUnrenderableOrigin(asset)) continue; // descriptors carry no geometry
       this.addAsset(asset);
     }
   }

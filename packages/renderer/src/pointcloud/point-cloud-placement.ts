@@ -80,11 +80,22 @@ export class PointCloudPlacements {
  * snapping and bounds read it exactly; a model translation composes on top. */
 export function originMatrix(origin: readonly [number, number, number]): Float64Array {
   // Checked before the caller uploads anything, so a bad origin leaves no node behind.
-  if (origin.length !== 3 || !origin.every((v) => Number.isFinite(v) && Number.isFinite(Math.fround(v)))) {
-    throw new Error('Pointcloud origin needs three finite coordinates in the renderable range.');
-  }
+  if (!renderableOrigin(origin)) throw new Error('Pointcloud origin needs three finite coordinates in the renderable range.');
   const [x, y, z] = origin;
   return new Float64Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, z, 1]);
+}
+
+function renderableOrigin(origin: readonly number[]): boolean {
+  return origin.length === 3 && origin.every((v) => Number.isFinite(v) && Number.isFinite(Math.fround(v)));
+}
+
+/** For bulk replacement: one cloud with a bad origin is skipped, not left to
+ * throw after the old clouds are gone (a throw from the viewer's sync effect
+ * unmounts the page). */
+export function skipUnrenderableOrigin(asset: { expressId: number; origin?: readonly number[] }): boolean {
+  if (!asset.origin || renderableOrigin(asset.origin)) return false;
+  console.warn(`[PointCloudRenderer] point cloud ${asset.expressId} skipped: origin ${asset.origin.join(', ')} is not renderable`);
+  return true;
 }
 
 /**

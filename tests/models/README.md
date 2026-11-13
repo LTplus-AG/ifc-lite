@@ -129,7 +129,9 @@ independently authored by the ifc-lite contributors under MPL-2.0 and written by
 `scripts/fixtures/generate-structural-edge-curve.py --coverage <schema>` with
 IfcOpenShell 0.8.3.post2: one record of every structural-analysis entity the
 schema defines, with known values, so the types no real file carries have a
-fixture. In IFC4, IfcSurfaceReinforcementArea sits in its own file because the
+fixture. Each structural item and activity carries an
+`IfcTopologyRepresentation` (vertex, edge or face) stating where it is, as an
+analysis export does. In IFC4, IfcSurfaceReinforcementArea sits in its own file because the
 converter refuses any IFC4 file that holds it when converting to IFC2X3. The output is byte-reproducible with that
 version, and passed `python -m ifcopenshell.validate --rules` (IfcOpenShell
 0.8.3.post2) when generated; no CI lane re-runs that check.

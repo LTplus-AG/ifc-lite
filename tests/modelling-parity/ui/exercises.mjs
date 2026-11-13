@@ -365,7 +365,7 @@ export const EXERCISES = {
       { name: 'DG gable roof: Roof tool, Gable preset, 30-degree pitch, typed 12 x 10', run: async s => {
         await escape(s);
         await s.ui.key('Shift+Y',{settle:300});
-        await s.ui.click(s.page.getByRole('button',{name:'Gable',exact:true}));
+        await s.ui.click(s.page.getByRole('radio',{name:'Gable',exact:true}));
         const pitch=s.page.getByRole('spinbutton',{name:'Pitch',exact:true});
         await s.ui.click(pitch); await s.ui.key('Control+A'); await s.ui.type('30'); await s.ui.key('Tab');
         const overhang=s.page.getByRole('spinbutton',{name:'Overhang',exact:true});

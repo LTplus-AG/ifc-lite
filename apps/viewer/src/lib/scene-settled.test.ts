@@ -133,3 +133,16 @@ it('the caller\'s timeout holds through the frame wait: a draw that never submit
   await new Promise((resolve) => setTimeout(resolve, 1_000)); // past the backstop
   assert.deepEqual(calls, [false], 'and nothing after it');
 });
+
+it('an Infinity timeout means no limit, not an immediate timeout (the placed spatial index waits this way)', async () => {
+  installRenderer();
+  draw.pending = true;
+  const calls: boolean[] = [];
+  const cancel = afterSceneSettled((settled) => calls.push(settled), () => true, Infinity);
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.deepEqual(calls, [], 'still waiting for the frame');
+  noteLiveFrame(); draw.pending = false;
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.deepEqual(calls, [true]);
+  cancel();
+});

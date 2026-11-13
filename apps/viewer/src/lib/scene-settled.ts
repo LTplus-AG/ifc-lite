@@ -49,7 +49,10 @@ export function afterSceneSettled(done: (settled: boolean) => void, isCurrent: (
   let cancelled = false;
   let cancelWait: () => void = () => {};
   // The deadline holds through the frame wait too: a draw that stays pending must not succeed late.
-  const deadline = setTimeout(() => { if (!cancelled) { cancelWait(); finish(false); } }, timeoutMs);
+  // Only a finite delay a timer can hold: setTimeout treats Infinity (no limit) or anything past 2^31-1 ms as 1 ms.
+  const deadline = Number.isFinite(timeoutMs) && timeoutMs <= 0x7fffffff
+    ? setTimeout(() => { if (!cancelled) { cancelWait(); finish(false); } }, timeoutMs)
+    : undefined;
   const finish = (settled: boolean): void => { if (!cancelled) { cancelled = true; clearTimeout(deadline); done(settled); } };
   const check = (): void => {
     if (cancelled) return;

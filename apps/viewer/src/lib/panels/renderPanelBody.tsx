@@ -35,6 +35,7 @@ import { MeasurementsPanel } from '@/components/viewer/MeasurementsPanel';
 import { PlacementPanel } from '@/components/viewer/placement/PlacementPanel';
 import { ModelInspectorPanel } from '@/components/viewer/model-inspector/ModelInspectorPanel';
 import { PanelModelGate } from '@/components/viewer/PanelModelGate';
+import { isPanelAvailable } from './availability';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
 import { loadIdsStudioRuntime } from '@/lib/ids-studio/runtime-loader';
 import { useViewerStore } from '@/store';
@@ -165,6 +166,8 @@ function PointCloudPanelBody({ onClose }: { onClose: () => void }) {
  * retired in favour of the strip header's single Close.
  */
 export function renderPanelBody(id: WorkspacePanelId, onClose: () => void): ReactNode {
+  // Switched off by the host: render nothing, so the panel's chunk is never requested.
+  if (!isPanelAvailable(id)) return null;
   const body = panelBody(id, onClose);
   const gate = panelModelGateMode(id);
   return <AssistantSourceContext panel={id}>{gate ? <PanelModelGate id={id} mode={gate} onClose={onClose}>{body}</PanelModelGate> : body}</AssistantSourceContext>;

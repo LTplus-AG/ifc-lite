@@ -13,6 +13,7 @@ import { bottomPanelFlags, isBottomPanel, isBottomPanelDocked, type BottomPanelI
 import { trackPanelOpened, type PanelOpenSource } from './uiTelemetry.js';
 import { invalidateVisibleBasketCache } from './basketVisibleSet.js';
 import { SIDEBAR_PANEL_FLAGS } from './store-sync.js';
+import { isPanelAvailable } from '../lib/panels/availability.js';
 import { viewerTeardown } from './teardown-registry.js';
 import { forgetLiveMarkup } from './slices/drawing2DSlice.markupTransition.js';
 import { DEFAULT_CONTROLS_MODE } from './slices/cameraSlice.js';
@@ -141,6 +142,7 @@ export const createViewerActions: StateCreator<ViewerState, [], [], ViewerAction
 
   openWorkspacePanel: (panel, surface) => {
     const [set, get] = args;
+    if (!isPanelAvailable(panel)) return;
     trackPanelOpened(panel, surface, isBottomPanel(panel) || get().sidebarMode !== 'expanded' ? undefined : get().sidebarActivePanel);
     // Docking into the sidebar: if the panel was floating or popped out, re-dock
     // it so the toolbar / command-palette / activity-bar entry points stay in
@@ -182,6 +184,7 @@ export const createViewerActions: StateCreator<ViewerState, [], [], ViewerAction
 
   showWorkspacePanel: (panel, surface) => {
     const [set, get] = args;
+    if (!isPanelAvailable(panel)) return;
     // Hierarchy's home is the left slot (#1267), as every rail/palette entry
     // point already routes it. Programmatic callers (tours, deep links, layout
     // presets) used to dock a second copy of the tree in the right pane next to
@@ -242,6 +245,7 @@ export const createViewerActions: StateCreator<ViewerState, [], [], ViewerAction
 
   toggleBottomPanel: (panel, surface) => {
     const [set, get] = args;
+    if (!isPanelAvailable(panel)) return;
     const docked = isBottomPanelDocked(get(), panel);
     // Re-dock any float / OS window for it first.
     get().closeFloatingPanel(panel);

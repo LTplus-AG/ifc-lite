@@ -1,0 +1,63 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * The store never holds an unavailable panel open (see
+ * `lib/panels/availability.ts`).
+ *
+ * Panels open through many doors: the panel actions, a dozen per-panel
+ * visibility setters that other panels call directly, a persisted layout, a
+ * layout preset, a deep link. Guarding each door would miss the next one, so
+ * this is one invariant on the state instead: whatever turned an unavailable
+ * panel on, it is off again before React renders.
+ */
+
+import type { StoreApi } from 'zustand';
+import { isPanelAvailable } from '../lib/panels/availability.js';
+import { BOTTOM_PANEL_FLAG, BOTTOM_PANEL_IDS } from '../lib/panels/bottom-panels.js';
+import { WORKSPACE_PANELS, type WorkspacePanelId } from '../lib/panels/registry.js';
+import type { ViewerState } from './index.js';
+import { SIDEBAR_PANEL_FLAGS } from './store-sync.js';
+
+interface Unavailable {
+  readonly panels: ReadonlySet<WorkspacePanelId>;
+}
+
+function patchFor(state: ViewerState, off: Unavailable): Partial<ViewerState> | null {
+  const patch: Record<string, unknown> = {};
+  for (const [flag, id] of SIDEBAR_PANEL_FLAGS) {
+    if (state[flag] && off.panels.has(id)) patch[flag] = false;
+  }
+  for (const id of BOTTOM_PANEL_IDS) {
+    if (state[BOTTOM_PANEL_FLAG[id]] && off.panels.has(id)) patch[BOTTOM_PANEL_FLAG[id]] = false;
+  }
+  if (off.panels.has(state.sidebarActivePanel)) patch.sidebarActivePanel = 'properties';
+  if (state.sidebarSecondaryPanel && off.panels.has(state.sidebarSecondaryPanel)) patch.sidebarSecondaryPanel = null;
+  if (state.floatingPanels.some((panel) => off.panels.has(panel.id))) {
+    patch.floatingPanels = state.floatingPanels.filter((panel) => !off.panels.has(panel.id));
+  }
+  if (state.poppedOutIds.some((id) => off.panels.has(id))) {
+    patch.poppedOutIds = state.poppedOutIds.filter((id) => !off.panels.has(id));
+  }
+  return Object.keys(patch).length > 0 ? patch as Partial<ViewerState> : null;
+}
+
+/**
+ * Close what is open and unavailable now (a persisted layout predates the
+ * host's configuration) and keep it closed. Call once, after the feature set
+ * is fixed: the set of unavailable panels is read here and never again. With
+ * nothing switched off this subscribes to nothing. Returns the unsubscribe.
+ */
+export function enforcePanelAvailability(store: StoreApi<ViewerState>): () => void {
+  const off: Unavailable = {
+    panels: new Set(WORKSPACE_PANELS.map((panel) => panel.id).filter((id) => !isPanelAvailable(id))),
+  };
+  if (off.panels.size === 0) return () => {};
+  const enforce = (state: ViewerState) => {
+    const patch = patchFor(state, off);
+    if (patch) store.setState(patch);
+  };
+  enforce(store.getState());
+  return store.subscribe(enforce);
+}

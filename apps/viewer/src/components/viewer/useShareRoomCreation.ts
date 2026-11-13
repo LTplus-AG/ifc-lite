@@ -7,9 +7,11 @@ import { useTranslation } from '@/i18n';
 import { mintRoomId, mintRoomToken, releaseRoomClaim } from '@/lib/collab/share-link';
 import { buildShareSeed, prepareShareSeed, shareRefusesEveryModel, type ShareScope } from '@/lib/collab/share-scope';
 
-export function useShareRoomCreation({ open, hasModel, collabRoomId, awaitingConsent, scope, setNotice, resetLink }: {
+export function useShareRoomCreation({ open, hasModel, collabRoomId, awaitingConsent, scope, setNotice, resetLink, withdrawConsent }: {
   open: boolean; hasModel: boolean; collabRoomId: string | null; awaitingConsent: boolean; scope: ShareScope;
   setNotice: (notice: string | null) => void; resetLink: () => void;
+  /** Hands the consent back, so a later Create link starts a fresh attempt. */
+  withdrawConsent: () => void;
 }) {
   const { t } = useTranslation();
   const startCollab = useViewerStore(s => s.startCollab);
@@ -38,6 +40,18 @@ export function useShareRoomCreation({ open, hasModel, collabRoomId, awaitingCon
       return;
     }
     if (!hasModel || collabRoomId || roomAttemptRef.current || awaitingConsent) return;
+    // Nothing to put in a room and nothing that was ever going to go in one:
+    // don't claim it. Checked before the attempt is taken, against the store
+    // as it is now (the models can change between the click and this run),
+    // and the consent is handed back so Create link starts a fresh attempt
+    // once the models are shareable again. WHICH models, and why, is the
+    // dialog's own derived line; both read the one predicate at the SELECTED
+    // scope so they cannot disagree.
+    const current = useViewerStore.getState();
+    if (shareRefusesEveryModel(current.models, current.activeModelId, scope)) {
+      withdrawConsent();
+      return;
+    }
     const roomId = mintRoomId();
     setCreating(true);
     setNotice(null);
@@ -54,11 +68,6 @@ export function useShareRoomCreation({ open, hasModel, collabRoomId, awaitingCon
         // model's store and its tessellated meshes until the mint returns.
         const preflight = useViewerStore.getState();
         buildShareSeed(preflight.models, preflight.activeModelId, scope, preflight.georefMutations);
-        // Nothing to put in a room and nothing that was ever going to go in
-        // one: don't claim it. WHICH models, and why, is the dialog's own
-        // derived line; this is only the decision, and both read the one
-        // predicate at the SELECTED scope so they cannot disagree.
-        if (shareRefusesEveryModel(preflight.models, preflight.activeModelId, scope)) return;
         adminToken = await mintRoomToken({ roomId, role: 'admin' });
         // Models can change during minting. Read fresh and always pass a seed,
         // even empty, so startCollab retains the owner path (#4444).
@@ -92,7 +101,7 @@ export function useShareRoomCreation({ open, hasModel, collabRoomId, awaitingCon
         if (isCurrent()) setCreating(false);
       }
     })();
-  }, [open, hasModel, collabRoomId, startCollab, awaitingConsent, scope, setNotice, resetLink, t]);
+  }, [open, hasModel, collabRoomId, startCollab, awaitingConsent, scope, setNotice, resetLink, withdrawConsent, t]);
 
   return creating;
 }

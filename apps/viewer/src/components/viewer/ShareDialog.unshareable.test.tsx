@@ -162,6 +162,20 @@ describe('ShareDialog: models the share seed cannot carry', () => {
     assert.equal(relay.mints().length, 0, 'a share with nothing to put in it never claims a room');
     assert.equal(starts.length, 0, 'no session is started');
     assert.equal(useViewerStore.getState().collabRoomId, null);
+
+    // The refused attempt is not left holding the dialog: once an IFC is back,
+    // Create link is offered again and a press makes the room.
+    await act(async () => {
+      useViewerStore.setState(fixtureModels(makeModel('c', 'tower.ifc', 0, 'ifc')));
+      await settle('the share dialog did not settle after the IFC came back');
+    });
+    assert.equal(relay.mints().length, 0, 'the returning IFC is not uploaded without a new press');
+    const again = createLinkButton();
+    assert.equal(again?.disabled, false, 'Create link is offered again');
+    click(again!);
+    await act(() => settle('room creation did not settle'));
+    assert.equal(relay.mints().length, 1, 'the second press claims a room');
+    assert.equal(starts.length, 1);
   });
 
   it('shares the models it can and names the one it drops', async (t) => {

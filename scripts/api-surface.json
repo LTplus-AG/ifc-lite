@@ -184,6 +184,7 @@
     "viewpointToApi: function"
   ],
   "@ifc-lite/cache": [
+    "ArrayArena: class",
     "BinaryCacheReader: class",
     "BinaryCacheWriter: class",
     "BufferReader: class",
@@ -197,6 +198,7 @@
     "CacheReadResult: interface",
     "CacheWriteOptions: interface",
     "CachedEntityIndexColumns: interface",
+    "ChunkDecodeOptions: interface",
     "ChunkInflate: type",
     "FORMAT_VERSION: const",
     "GEOMETRY_CHUNK_CELL_SIZE: const",

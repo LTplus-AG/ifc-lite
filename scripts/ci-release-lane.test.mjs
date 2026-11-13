@@ -249,8 +249,9 @@ test('the release queue really tests a batch: its required `Rust tests (feature 
 
 // ---------------------------------------------------------------- the diff rule
 
-function fakeGit(files) {
+function fakeGit(files, cargoReplay = () => []) {
   return {
+    cargoReplay,
     show: (rev, path) => {
       const f = files[path];
       const v = rev === 'HEAD' ? f.after : f.before;
@@ -348,14 +349,25 @@ test('DIFF FAIL CLOSED: no replay, a throwing replay or an empty one refuses eve
   const cases = [
     [{ show: () => '' }, 'no replay available'],
     [{ show: () => '', cargoReplay: () => { throw new Error('scripts/sync-versions.js exited 1: boom\nmore'); } }, 'scripts/sync-versions.js exited 1: boom'],
-    [{ show: () => '', cargoReplay: () => [] }, 'the replay returned no Cargo files'],
-    [{ show: () => '', cargoReplay: () => null }, 'the replay returned no Cargo files'],
+    [{ show: () => '', cargoReplay: () => null }, 'the replay did not return a list of Cargo files'],
   ];
   for (const [git, why] of cases) {
     assert.deepEqual(diffProblems(entries, git), entries.map((e) => `${e.path}: replaying ${W} failed (${why}), so the Cargo edit cannot be judged`), why);
+    // With no Cargo file in the diff the failure still refuses (#10048 review).
+    assert.deepEqual(diffProblems([{ status: 'D', path: '.changeset/brave-cats-sing.md' }], git), [`Cargo files: replaying ${W} failed (${why}), so whether this release owes a Cargo rewrite cannot be judged`], why);
   }
-  // A diff with no Cargo file never runs the replay.
-  assert.deepEqual(diffProblems([{ status: 'D', path: '.changeset/brave-cats-sing.md' }], { show: () => '', cargoReplay: () => { throw new Error('must not run'); } }), []);
+  // A base tree with no Cargo file: Cargo edits are files the writer did not write.
+  assert.deepEqual(diffProblems(entries, { show: () => '', cargoReplay: () => [] }), entries.map((e) => `${e.path}: not a Cargo file of the base tree, so ${W} did not write it`));
+});
+
+test('DIFF: a diff with no Cargo file still runs the replay; one that owes a Cargo rewrite runs full (#10048 review)', () => {
+  const W = 'scripts/sync-versions.js';
+  let ran = 0;
+  const entries = [{ status: 'D', path: '.changeset/brave-cats-sing.md' }];
+  const stale = { path: 'Cargo.toml', replayed: 'version = "2.0.0"\n', head: 'version = "1.0.0"\n' };
+  assert.deepEqual(diffProblems(entries, { show: () => '', cargoReplay: () => { ran++; return [stale]; } }), [`Cargo.toml: ${W} rewrites it on the base tree, but this diff leaves it unchanged`]);
+  assert.equal(ran, 1, 'the replay ran');
+  assert.deepEqual(diffProblems(entries, { show: () => '', cargoReplay: () => [{ ...stale, replayed: stale.head }] }), [], 'nothing owed: lean');
 });
 
 test('DIFF: a deleted .changeset file that changesets ignores is not a consumed changeset', () => {
@@ -601,6 +613,10 @@ test('CLI --decide on a real Rust release: the writer\'s own Cargo output goes l
   }));
   assert.deepEqual(registry.outputs, { lane: 'full' });
   assert.match(registry.stdout, /Cargo\.lock: differs from what/); // @source-text-assertion-ok subject is the CLI's printed reason
+  // npm bumped, Cargo files left as they were: the writer owes them a rewrite (#10048 review).
+  const stale = cli(['--decide'], {}, cargoRepo(() => {}));
+  assert.deepEqual(stale.outputs, { lane: 'full' });
+  assert.match(stale.stdout, /Cargo\.toml: scripts\/sync-versions\.js rewrites it on the base tree, but this diff leaves it unchanged/); // @source-text-assertion-ok subject is the CLI's printed reason
 });
 
 // ---------------------------------------------------------------- the wiring

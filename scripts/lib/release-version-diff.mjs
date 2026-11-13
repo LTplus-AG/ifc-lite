@@ -106,11 +106,14 @@ const sameBytes = (a, b) => Buffer.from(a).equals(Buffer.from(b));
  * returns every Cargo file of the base tree with the bytes the writer left
  * and the bytes HEAD has. The Cargo part of the diff passes only if HEAD is
  * byte for byte that output: each changed Cargo file equals the replay, and no
- * Cargo file the replay rewrites was left alone. Whatever spelling a file
- * uses, a byte that the writer did not produce refuses the lean lane, and a
- * replay that fails or returns nothing refuses it too.
+ * Cargo file the replay rewrites was left alone. It runs on every diff, one
+ * with no Cargo file included: the crate version derives from the npm
+ * versions, so an npm-only bump can still owe a Cargo rewrite (#10048
+ * review). Whatever spelling a file uses, a byte that the writer did not
+ * produce refuses the lean lane, and a replay that fails refuses it too. An
+ * empty list means the base tree has no Cargo file at all.
  *
- * @param {string[]} paths  Cargo files the diff modifies (status M)
+ * @param {string[]} paths  Cargo files the diff modifies (status M), possibly none
  * @param {{ cargoReplay?: () => { path: string, replayed: string|Uint8Array, head: string|Uint8Array|null }[] }} git
  * @returns {string[]}
  */
@@ -119,9 +122,10 @@ export function cargoReplayProblems(paths, git) {
   try {
     if (typeof git.cargoReplay !== 'function') throw new Error('no replay available');
     files = git.cargoReplay();
-    if (!Array.isArray(files) || files.length === 0) throw new Error('the replay returned no Cargo files');
+    if (!Array.isArray(files)) throw new Error('the replay did not return a list of Cargo files');
   } catch (err) {
     const why = String(err?.message ?? err).split('\n')[0];
+    if (paths.length === 0) return [`Cargo files: replaying ${CARGO_RELEASE_WRITER} failed (${why}), so whether this release owes a Cargo rewrite cannot be judged`];
     return paths.map((p) => `${p}: replaying ${CARGO_RELEASE_WRITER} failed (${why}), so the Cargo edit cannot be judged`);
   }
   const byPath = new Map(files.map((f) => [f.path, f]));
@@ -144,7 +148,7 @@ export function cargoReplayProblems(paths, git) {
  *
  * @param {{ status: string, path: string }[]} entries  `git diff --name-status`
  * @param {{ show: (rev: string, path: string) => string, cargoReplay?: Function }} git
- *   `cargoReplay` is called only when the diff modifies a Cargo file (see cargoReplayProblems).
+ *   `cargoReplay` runs on every diff (see cargoReplayProblems).
  * @returns {string[]}
  */
 export function diffProblems(entries, git) {
@@ -188,7 +192,7 @@ export function diffProblems(entries, git) {
     }
     if (problem) problems.push(`${path}: ${problem}`);
   }
-  if (cargo.length > 0) problems.push(...cargoReplayProblems(cargo, git));
+  problems.push(...cargoReplayProblems(cargo, git));
   return problems;
 }
 

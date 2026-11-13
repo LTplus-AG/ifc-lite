@@ -302,6 +302,10 @@ export function replayCargoRelease(cwd, { timeoutMs = 60_000, writer = join(dirn
       writeFileSync(dest, raw(['show', `${rev}:${path}`]));
     };
     const cargo = ls('HEAD~1').filter(isCargoFile);
+    // No Cargo file in the base: nothing for the writer to sync (it would
+    // refuse a tree with no Cargo.toml), and a Cargo file the diff adds is
+    // refused by its status.
+    if (cargo.length === 0) return [];
     for (const path of cargo) put('HEAD~1', path);
     for (const path of ls('HEAD')) if (REPLAY_PACKAGE_JSON.test(path) || path === OFFSET_FILE_NAME) put('HEAD', path);
     try {

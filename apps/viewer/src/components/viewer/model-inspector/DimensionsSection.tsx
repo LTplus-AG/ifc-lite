@@ -26,7 +26,7 @@ import { authoringDim, type AuthoredElementKind } from '@/store/slices/authoring
 import { CommitField, InspectorCaption, InspectorRow, InspectorSection } from './InspectorControls';
 import { DEFAULT_DIMS, DIM_LABEL, METRE_SYMBOL, formatMetres, parseMetres, type DimParam } from './inspector-fields';
 import { readElementSize } from '@/store/slices/mutation-element-size';
-import { setElementDimensions, setHostedElementDimensions, setStairDimensions } from './inspector-edits';
+import { setElementDimensions, setHostedElementDimensions, setStairDimensions, setWallLength } from './inspector-edits';
 import type { InspectorSelection } from './useInspectorTarget';
 
 function MetreRow({ param, value, onCommit }: { param: DimParam; value: number | null; onCommit?: (metres: number) => boolean }) {
@@ -131,7 +131,7 @@ export function SelectionDimensions({ selection }: { selection: InspectorSelecti
     <InspectorSection title={t('modelInspector.dims.title')}>
       {measured.kind === 'wall' && (
         <>
-          <MetreRow param="Length" value={measured.length} />
+          <MetreRow param="Length" value={measured.length} onCommit={(length) => setWallLength(modelId, expressId, length)} />
           <MetreRow param="Thickness" value={measured.thickness} onCommit={(thickness) => setElementDimensions(modelId, expressId, { kind: 'wall', thickness })} />
           {/* A resolved storey drives this height; fixed fallback heights remain editable. */}
           <MetreRow param="Height" value={measured.height} onCommit={heightFrom ? undefined : (height) => setWallHeightFixed(modelId, expressId, height)} />

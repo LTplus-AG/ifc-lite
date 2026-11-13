@@ -287,6 +287,8 @@ it("with a host start model, ?processed= and ?model= in the page URL are ignored
     assert.deepEqual(asked, [{ sha256, bytes: 46_000_000 }], 'only the host model is asked for');
     assert.equal(model()?.name, 'Host model.ifc');
     assert.deepEqual(fetched.filter((url) => url.includes('other.ifc')), [], '?model= is not fetched');
-    assert.equal(infos.filter((args) => /ignored/.test(String(args[0]))).length, 1, 'logged once for the page');
+    const ignored = infos.map((args) => String(args[0])).filter((line) => /ignored/.test(line));
+    assert.equal(ignored.length, 2, 'each ignored parameter logged once for the page');
+    assert.ok(ignored.some((line) => line.includes('?processed=')) && ignored.some((line) => line.includes('?model=')), ignored.join('\n'));
   } finally { globalThis.fetch = realFetch; }
 });

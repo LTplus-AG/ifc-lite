@@ -69,7 +69,7 @@ export function openProcessedModel(model: ProcessedModelRequest, options?: OpenP
 }
 
 let hostStartModel = false;
-let urlModelIgnored = false;
+const ignoredLogged = new Set<string>();
 
 /**
  * Apply a host configuration's processing members (`server`, `open`). Called
@@ -87,12 +87,12 @@ export function applyProcessingConfig(config: Pick<ViewerRuntimeConfig, 'server'
 /**
  * Whether a model named in the page URL (`?processed=`, `?model=`) may load.
  * Not when the host configuration opens its own: only the host's model loads.
- * The first ignored parameter is logged, once for the page.
+ * Each ignored parameter is logged, once for the page.
  */
-export function pageUrlModelAllowed(parameter: string): boolean {
+export function pageUrlModelAllowed(parameter: 'processed' | 'model'): boolean {
   if (!hostStartModel) return true;
-  if (!urlModelIgnored) {
-    urlModelIgnored = true;
+  if (!ignoredLogged.has(parameter)) {
+    ignoredLogged.add(parameter);
     console.info(`[viewer] ?${parameter}= in the page URL is ignored: the host configuration opens its own model`);
   }
   return false;

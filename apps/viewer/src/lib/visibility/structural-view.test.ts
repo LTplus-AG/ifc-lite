@@ -116,9 +116,9 @@ for (const edit of ['retype','delete'] as const) {
       if (edit === 'retype') editor.setEntityType(7,'IfcBeam'); else editor.removeEntity(7);
       assert.equal(hasStructuralData(state),false,`${edit}, federated=${federated}`);
       const id7 = state.toGlobalId(key,7);
-      // A retyped beam is physical now, so physical mode shows it. A deleted member keeps its parsed
-      // class in the mask, so its mesh stays hidden there until the rebuild drops it.
+      // A retyped beam is physical now, so physical mode shows it. A deleted row stays hidden in either mode.
       assert.equal(resolveViewHiddenEntities({...state,structuralViewMode:'physical'}).has(id7),edit === 'delete',`${edit}, federated=${federated}`);
+      if (edit === 'delete') assert.equal(resolveViewHiddenEntities({...state,structuralViewMode:'analytical'}).has(id7),true,`delete, federated=${federated}`);
       if (edit === 'retype') {
         assert.equal(resolveViewHiddenEntities({...state,structuralViewMode:'analytical'}).has(id7),true,`${edit}, federated=${federated}`);
       }

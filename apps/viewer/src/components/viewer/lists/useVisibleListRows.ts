@@ -32,8 +32,6 @@ export function useVisibleListRows(rows: ListRow[], filterByVisibility: boolean)
   const listVisibilityOwned = useViewerStore((s) => s.listVisibilityOwned);
   // Retypes and deletes change the structural mask.
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
-  const mutationViews = useViewerStore((s) => s.mutationViews);
-  const ifcDataStore = useViewerStore((s) => s.ifcDataStore);
 
   return useMemo(() => {
     if (!filterByVisibility) return rows;
@@ -51,6 +49,6 @@ export function useVisibleListRows(rows: ListRow[], filterByVisibility: boolean)
   }, [
     rows, filterByVisibility, hiddenEntities, isolatedEntities, classFilter, lensHiddenIds,
     selectedStoreys, typeVisibility, structuralViewMode, models, activeBasketViewId, geometryResult, listVisibilityOwned,
-    mutationVersion, mutationViews, ifcDataStore,
+    mutationVersion,
   ]);
 }

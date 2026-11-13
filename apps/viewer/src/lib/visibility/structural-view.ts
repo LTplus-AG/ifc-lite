@@ -7,7 +7,7 @@ import type { TypeVisibility, StructuralViewMode } from '@/store/types';
 import type { FederatedModel, ViewerState } from '@/store';
 import { isAnalyticalProduct } from './analytical-classes.mjs';
 import { isProductClass } from '../compare/compareScope';
-// Class after the view's edits, null once deleted; mask and presence both read it.
+// Class after the view's edits, null once deleted.
 import { effectiveTreeType, overlayViewFor } from '@/components/viewer/hierarchy/treeOverlay';
 
 export { isAnalyticalProduct };
@@ -36,11 +36,9 @@ function sources(models: ReadonlyMap<string, FederatedModel>, fallback: IfcDataS
   return [{ store: fallback, view: overlayViewFor((key) => views.get(key), 'legacy') ?? undefined, modelId: null }];
 }
 
-const parsedClass = (store: IfcDataStore, id: number) => store.entities.getExactTypeName?.(id) || store.entities.getTypeName(id);
-
 /** A stored row's class after the view's edits; null when deleted or not in the table. */
 function storedClass(store: IfcDataStore, view: MutablePropertyView | undefined, id: number): string | null {
-  const parsed = parsedClass(store, id);
+  const parsed = store.entities.getExactTypeName?.(id) || store.entities.getTypeName(id);
   return parsed === 'Unknown' ? null : effectiveTreeType(view, id, parsed);
 }
 const analytical = (type: string | null) => type !== null && isAnalyticalProduct(type);
@@ -82,8 +80,13 @@ export function structuralViewHidden(
   };
   for (const { store, view, modelId } of sources(models, fallback, views)) {
     const global = modelId === null ? (id: number) => id : (id: number) => toGlobalId(modelId, id);
-    // A deleted row keeps its parsed class here, so its mesh stays masked until the rebuild drops it.
-    if (store) for (const id of store.entities.expressId) mask(id, storedClass(store, view, id) ?? parsedClass(store, id), global);
+    if (store) {
+      for (const id of store.entities.expressId) {
+        // A deleted row's mesh can outlive the edit until the rebuild; keep it hidden in either mode.
+        if (view?.isDeleted(id)) result.add(global(id));
+        else mask(id, storedClass(store, view, id), global);
+      }
+    }
     if (view) for (const e of view.readNewEntityKinds()) mask(e.expressId, effectiveTreeType(view, e.expressId, e.type), global);
   }
   return result;

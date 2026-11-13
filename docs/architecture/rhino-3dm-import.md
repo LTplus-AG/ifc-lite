@@ -809,9 +809,9 @@ Level 1 has no dialog. The defaults live in the reader.
   table above, row by row, against a crafted instance whose object colour and
   material colour disagree, so the rows that #9987 asked about discriminate.
   Plus the top-level fallback, the Rhino 8 help page's nested-block example in
-  both its forms, and that the instanced and baked modes draw the same colours
-  and triangle count. Five of its thirteen cases fail against the reader as it
-  was [ran].
+  both its forms, where each row's mesh lands when the modes differ, and that
+  both modes draw the same colours and triangle count. Six of its sixteen cases
+  fail against the reader as it was [ran].
 - Crafted through rhino3dm in the test (`test-support/craft.ts`), for
   everything no sample covers: colour sources, hidden state, layer stamps,
   units, Breps and extrusions with render meshes, curves, point clouds, text

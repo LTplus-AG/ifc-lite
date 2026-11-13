@@ -6,8 +6,11 @@
  * Binary cache format types for .ifc-lite files
  */
 
-import type { EntityTable, PropertyTable, QuantityTable, RelationshipGraph, StringTable, SpatialHierarchy } from '@ifc-lite/data';
+import type { EntityTable, PropertyTable, QuantityTable, RelationshipGraph, StringTable, SpatialHierarchy, IfcStoreBase } from '@ifc-lite/data';
 import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
+
+import type { CacheEntityIndex, CachedEntityIndexColumns } from './types-entity-index.js';
+export type { CacheEntityRef, CacheEntityIndex, CachedEntityIndexColumns } from './types-entity-index.js';
 
 /** Magic bytes: "IFCL" */
 export const MAGIC = 0x4C434649; // "IFCL" in little-endian
@@ -159,7 +162,8 @@ export const MAGIC = 0x4C434649; // "IFCL" in little-endian
 /** v21: relationship indexing covers every schema-resolvable exact IfcRel*
  * class (#4205). The bytes are unchanged, but cache keys must miss v20 graphs
  * that were produced before those buckets existed. */
-export const FORMAT_VERSION = 27; // v27: optional CoordinateInfo IfcSite world origin, #9480; v26: bytes unchanged, but keys must miss v25 graphs, which may hold a misread relationship edge (`((#10),#14),#40` as "#14 relates #10") that nothing downstream refuses any more, #9192; v25: per-mesh shadingColor/localBounds/localToWorld trailer (sections/mesh-metadata.ts), #7350; v24: optional CoordinateInfo recovery count and length-unit scale, #7239; v23: type/mapped/instanced finishes, #5984
+export const FORMAT_VERSION = 28; // v28: parser relationship coverage in the entity-index trailer, #9947;
+// Legacy versions: // v27: optional CoordinateInfo IfcSite world origin, #9480; v26: bytes unchanged, but keys must miss v25 graphs, which may hold a misread relationship edge (`((#10),#14),#40` as "#14 relates #10") that nothing downstream refuses any more, #9192; v25: per-mesh shadingColor/localBounds/localToWorld trailer (sections/mesh-metadata.ts), #7350; v24: optional CoordinateInfo recovery count and length-unit scale, #7239; v23: type/mapped/instanced finishes, #5984
 
 /** Geometry chunking parameters (v13+). Grouping is a WRITE-side layout
  *  policy: readers only trust the directory, so these can change without a
@@ -335,6 +339,7 @@ export interface CacheHeaderInfo {
  * Complete data store for IFC model
  */
 export interface CacheDataStore {
+  selectionRelationshipIndex?: IfcStoreBase['selectionRelationshipIndex'];
   schema: SchemaVersion;
   entityCount: number;
   strings: StringTable;
@@ -344,35 +349,6 @@ export interface CacheDataStore {
   relationships: RelationshipGraph;
   spatialHierarchy?: SpatialHierarchy;
   entityIndex?: CacheEntityIndex;
-}
-
-export interface CacheEntityRef {
-  expressId: number;
-  type: string;
-  byteOffset: number;
-  byteLength: number;
-  lineNumber?: number;
-}
-
-export interface CacheEntityIndex {
-  byId: Iterable<[number, CacheEntityRef]> & {
-    /** Optional borrowed columns equivalent to iteration; never mutated/transferred. */
-    getColumns?(): {
-      expressIds: Uint32Array;
-      byteOffsets: Uint32Array;
-      byteLengths: Uint32Array;
-      typeIndices: Uint16Array;
-      typeStrings: string[];
-    };
-  };
-}
-
-export interface CachedEntityIndexColumns {
-  ids: Uint32Array;
-  byteOffsets: Uint32Array;
-  byteLengths: Uint32Array;
-  typeIndices: Uint16Array;
-  typeNames: string[];
 }
 
 /**

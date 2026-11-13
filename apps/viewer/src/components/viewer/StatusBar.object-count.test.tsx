@@ -31,6 +31,8 @@ import 'fake-indexeddb/auto';
 import { describe, it, beforeEach, after, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
+import { expireStoreBusyCap, settleLoadWindow, untilReleased } from '@/test/load-window';
+import { markModelLoadEnded } from '@/hooks/modelLoadEnd';
 import { createRoot, type Root } from 'react-dom/client';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
@@ -169,13 +171,16 @@ beforeEach(async () => {
     mutationViews: new Map(),
     mutationVersion: 0,
     geometryStreamingActive: false,
+    loading: false,
+    hiddenEntities: new Set<number>(),
   });
+  await settleLoadWindow(); // a window left open by the previous test closes before this one renders
 });
 
 /** The rendered "… elements" run, e.g. "3 / 4 elements". */
 function elementsText(container: HTMLElement): string {
   const text = container.textContent ?? '';
-  const match = /(\d[\d,.\s/]*elements?)/.exec(text);
+  const match = /((?:\d[\d,.\s/]*|—\s*)elements?)/.exec(text);
   return match ? match[1].trim() : `<no element count in ${JSON.stringify(text)}>`;
 }
 
@@ -332,19 +337,92 @@ function setMeshedIds(expressIds: readonly number[]): void {
 // count walks every one of them, twice a second on a large load. The count
 // follows the streaming refresh cadence instead and is exact once streaming
 // ends.
+describe('StatusBar — object count waits for the load to settle (load window; supersedes #6411\'s streaming hold)', () => {
+  it('shows a dash, never a provisional 0, while geometry streams, and the exact count once the load settles', async () => {
+    useViewerStore.setState({
+      geometryStreamingActive: true,
+      geometryResult: geometry(MESHED_IDS.filter((id) => id !== 56)),
+    });
+    const container = render();
+    assert.equal(elementsText(container), '— elements', 'early read: placeholder while the load window is open');
+    act(() => useViewerStore.setState({ geometryResult: geometry(MESHED_IDS) }));
+    assert.equal(elementsText(container), '— elements', 'a publish inside the window computes nothing');
+
+    act(() => useViewerStore.setState({ geometryStreamingActive: false }));
+    assert.equal(elementsText(container), '— elements', 'the settled frame paints before the count is computed');
+    await settleLoadWindow();
+    assert.equal(elementsText(container), '4 elements', 'settled: the exact count');
+  });
+
+  it('keeps the placeholder through a store publication while the load is still loading, then counts the new store', async () => {
+    useViewerStore.setState({
+      loading: true,
+      geometryStreamingActive: false,
+      geometryResult: geometry(MESHED_IDS.filter((id) => id !== 56)),
+    });
+    const container = render();
+    assert.equal(elementsText(container), '— elements');
+    const reparsed = await parseFixture();
+    act(() => useViewerStore.setState({ ifcDataStore: reparsed, geometryResult: geometry(MESHED_IDS) }));
+    assert.equal(elementsText(container), '— elements', 'metadata inside the window waits too');
+
+    act(() => useViewerStore.setState({ loading: false }));
+    await settleLoadWindow();
+    assert.equal(elementsText(container), '4 elements', 'settled on the new store and geometry');
+  });
+
+  it('does not run the whole-model walk while the window is open', async () => {
+    const real = useViewerStore.getState().resolveGlobalIdInModel;
+    let calls = 0;
+    // The model is loading when the window opens, so its walk is held.
+    const model = { id: 'm1', name: 'm1', ifcDataStore: store, geometryResult: geometry(MESHED_IDS), visible: true, idOffset: 0, maxExpressId: 100, loadState: 'streaming-geometry' };
+    useViewerStore.setState({
+      models: new Map([['m1', model as never]]),
+      geometryStreamingActive: true,
+      resolveGlobalIdInModel: (modelId: string, id: number) => { calls++; return real(modelId, id); },
+    } as never);
+    try {
+      const container = render();
+      assert.equal(calls, 0, 'early read: no mesh id was mapped, so no walk ran');
+      act(() => useViewerStore.setState({ geometryStreamingActive: false }));
+      await settleLoadWindow();
+      assert.ok(calls > 0, 'settled: the walk ran');
+      assert.notEqual(elementsText(container), '— elements', 'settled: a number, not the placeholder');
+    } finally {
+      useViewerStore.setState({ resolveGlobalIdInModel: real } as never);
+    }
+  });
+
+  it('keeps one box (tabular figures, a minimum width for the dash and a typical count) in both states', async () => {
+    useViewerStore.setState({ geometryStreamingActive: true, geometryResult: geometry(MESHED_IDS) });
+    const container = render();
+    const count = () => container.querySelector('[data-testid="status-element-count"]');
+    const pending = count()?.className;
+    assert.equal(count()?.getAttribute('aria-busy'), 'true');
+    act(() => useViewerStore.setState({ geometryStreamingActive: false }));
+    await settleLoadWindow();
+    assert.equal(count()?.className, pending, 'the same box classes before and after (a long count may still widen it)');
+    assert.match(String(pending), /(^|\s)min-w-24(\s|$)/, 'a spacing token, not an arbitrary value (UI drift ratchet)');
+    assert.equal(count()?.getAttribute('aria-busy'), null);
+  });
+});
+
+// Main's streaming-hold tests (#6411), unchanged. Inside a load window a loading
+// model is held outright; the throttle still governs a stream that outlives the
+// store-busy limit, so these run after that limit has expired.
 describe('StatusBar — object count while geometry streams (#6411)', () => {
-  it('holds the count between refreshes and lands the exact count when streaming ends', () => {
+  it('holds the count between refreshes and lands the exact count when streaming ends', async () => {
     let clock = 0;
     mock.method(performance, 'now', () => clock);
     try {
-      useViewerStore.setState({
+      const container = render();
+      await expireStoreBusyCap(() => useViewerStore.setState({
         geometryStreamingActive: true,
         geometryResult: geometry(MESHED_IDS.filter((id) => id !== 56)),
-      });
-      const container = render();
+      }), (ms) => { clock = ms; });
       assert.equal(elementsText(container), '2 elements');
 
-      clock = 1;
+      clock += 1;
       act(() => useViewerStore.setState({ geometryResult: geometry(MESHED_IDS) }));
       assert.equal(elementsText(container), '2 elements', 'a publish within the refresh window is held');
 
@@ -359,16 +437,16 @@ describe('StatusBar — object count while geometry streams (#6411)', () => {
     let clock = 0;
     mock.method(performance, 'now', () => clock);
     try {
-      useViewerStore.setState({
+      const container = render();
+      await expireStoreBusyCap(() => useViewerStore.setState({
         geometryStreamingActive: true,
         geometryResult: geometry(MESHED_IDS.filter((id) => id !== 56)),
-      });
-      const container = render();
+      }), (ms) => { clock = ms; });
       assert.equal(elementsText(container), '2 elements');
       // Metadata arriving is a new data store, not progress: it must not wait
       // for the geometry refresh even though geometry changed with it.
       const reparsed = await parseFixture();
-      clock = 1;
+      clock += 1;
       act(() => useViewerStore.setState({ ifcDataStore: reparsed, geometryResult: geometry(MESHED_IDS) }));
       assert.equal(elementsText(container), '4 elements');
     } finally {
@@ -376,16 +454,16 @@ describe('StatusBar — object count while geometry streams (#6411)', () => {
     }
   });
 
-  it('refreshes a long stream once the refresh is due', () => {
+  it('refreshes a long stream once the refresh is due', async () => {
     let clock = 0;
     mock.method(performance, 'now', () => clock);
     try {
-      useViewerStore.setState({
+      const container = render();
+      await expireStoreBusyCap(() => useViewerStore.setState({
         geometryStreamingActive: true,
         geometryResult: geometry(MESHED_IDS.filter((id) => id !== 56)),
-      });
-      const container = render();
-      clock = 60_000;
+      }), (ms) => { clock = ms; });
+      clock += 60_000;
       act(() => useViewerStore.setState({ geometryResult: geometry(MESHED_IDS) }));
       assert.equal(elementsText(container), '4 elements');
     } finally {
@@ -393,3 +471,95 @@ describe('StatusBar — object count while geometry streams (#6411)', () => {
     }
   });
 });
+
+/** The "N hidden" pill text, or null when the pill is not shown. */
+function hiddenPill(container: HTMLElement): string | null {
+  const match = /(\d+) hidden/.exec(container.textContent ?? '');
+  return match ? match[1] : null;
+}
+
+describe('StatusBar — a federated add holds only the model that is loading', () => {
+  const federated = (id: string, ds: IfcDataStore, idOffset: number, loadState: string) => ({
+    id, name: id, ifcDataStore: ds, geometryResult: geometry(MESHED_IDS.map((x) => x + idOffset)),
+    visible: true, collapsed: false, idOffset, maxExpressId: 100, loadState, fileSize: 1, loadedAt: 0,
+  });
+
+  it('keeps settled model A\'s count and hidden pill while B loads, and adds B\'s at its settle', async () => {
+    const storeB = await parseFixture();
+    const a = federated('A', store, 0, 'complete');
+    useViewerStore.setState({
+      models: new Map([['A', a as never]]), ifcDataStore: store, activeModelId: 'A',
+      hiddenEntities: new Set([50]),
+    } as never);
+    const container = render();
+    assert.equal(elementsText(container), '4 elements', 'A settled: its count');
+    assert.equal(hiddenPill(container), '1');
+
+    // B is added: the load window opens with A already complete.
+    act(() => useViewerStore.setState({ loading: true }));
+    act(() => useViewerStore.setState({ models: new Map([['A', a as never], ['B', federated('B', storeB, 1000, 'pending') as never]]) }));
+    act(() => useViewerStore.setState({ geometryStreamingActive: true }));
+    assert.equal(elementsText(container), '4 elements', 'A keeps its count while B loads; B is not counted yet');
+    assert.equal(hiddenPill(container), '1', 'A keeps its hidden pill while B loads');
+
+    act(() => useViewerStore.setState({
+      models: new Map([['A', a as never], ['B', federated('B', storeB, 1000, 'complete') as never]]),
+      geometryStreamingActive: false, loading: false,
+    }));
+    assert.equal(elementsText(container), '4 elements', 'the settled frame paints before B is counted');
+    await settleLoadWindow();
+    assert.equal(elementsText(container), '8 elements', 'settled: A and B');
+    assert.equal(hiddenPill(container), '1');
+  });
+
+  it('multi-file open: A\'s count appears at A\'s settle while B, started at once, is held', async () => {
+    const storeB = await parseFixture();
+    act(() => useViewerStore.setState({ loading: true, models: new Map([['A', federated('A', store, 0, 'pending') as never]]), ifcDataStore: store, activeModelId: 'A' } as never));
+    const container = render();
+    assert.equal(elementsText(container), '— elements', 'A is loading');
+    act(() => useViewerStore.setState({ models: new Map([['A', federated('A', store, 0, 'complete') as never]]) }));
+    act(() => markModelLoadEnded('A'));
+    act(() => useViewerStore.setState({ models: new Map([['A', federated('A', store, 0, 'complete') as never], ['B', federated('B', storeB, 1000, 'pending') as never]]) }));
+    await settleLoadWindow(await untilReleased('A'));
+    assert.equal(useViewerStore.getState().loading, true);
+    assert.equal(elementsText(container), '4 elements', 'A settled: its count, although B started loading before its frame');
+    act(() => useViewerStore.setState({ models: new Map([['A', federated('A', store, 0, 'complete') as never], ['B', federated('B', storeB, 1000, 'complete') as never]]), loading: false }));
+    await settleLoadWindow();
+    assert.equal(elementsText(container), '8 elements');
+  });
+
+  for (const path of ['cache hit', 'cold load'] as const) {
+    it(`single-model ${path}: no count walk between the record turning complete and the UI settle`, async () => {
+      const real = useViewerStore.getState().resolveGlobalIdInModel;
+      let calls = 0;
+      useViewerStore.setState({ resolveGlobalIdInModel: (m: string, id: number) => { calls++; return real(m, id); } } as never);
+      try {
+        act(() => useViewerStore.setState({ loading: true, ifcDataStore: store, activeModelId: 'A', models: new Map([['A', federated('A', store, 0, 'pending') as never]]) } as never));
+        const container = render();
+        if (path === 'cold load') {
+          act(() => useViewerStore.setState({ geometryStreamingActive: true, models: new Map([['A', federated('A', store, 0, 'streaming-geometry') as never]]) }));
+          act(() => useViewerStore.setState({ geometryStreamingActive: false }));
+        }
+        act(() => useViewerStore.setState({ models: new Map([['A', federated('A', store, 0, 'complete') as never]]) }));
+        await settleLoadWindow(); await settleLoadWindow();
+        assert.equal(calls, 0, 'record complete, UI not settled: no mesh id mapped, so no walk ran');
+        assert.equal(elementsText(container), '— elements');
+        act(() => { useViewerStore.setState({ loading: false }); markModelLoadEnded('A'); });
+        await settleLoadWindow();
+        assert.ok(calls > 0);
+        assert.equal(elementsText(container), '4 elements');
+      } finally {
+        useViewerStore.setState({ resolveGlobalIdInModel: real } as never);
+      }
+    });
+  }
+
+  it('shows the dash for a loading model that has no store yet, never "0 elements"', async () => {
+    act(() => useViewerStore.setState({ loading: true, ifcDataStore: null, models: new Map([['A', { ...federated('A', store, 0, 'pending'), ifcDataStore: null } as never]]) } as never));
+    const container = render();
+    assert.equal(elementsText(container), '— elements', 'federated/primary placeholder before its store');
+    act(() => useViewerStore.setState({ models: new Map() } as never));
+    assert.equal(elementsText(container), '— elements', 'single-store mode before its store');
+  });
+});
+

@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "packages/mcp/src/bridge/json-bounds.ts",
+  "mutation": "tests/evidence/mcp-bridge-json-depth-9523/behaviour.oracle.patch",
+  "test": "packages/mcp/src/bridge/bridge-hardening.test.ts",
+  "why": "#9523: tab-supplied schemas and results nested past the depth limit must be refused."
+}

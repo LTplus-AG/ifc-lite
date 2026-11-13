@@ -893,22 +893,17 @@ export class Scene {
    *  `itemFilterItemId`'s `geometryItemId` to survive (frees a stale item on
    *  an in-product item switch); other kept expressIds are unaffected. */
   disposeHydratedMeshesExcept(keep: ReadonlySet<number>, keepModelIndex?: number, itemFilterExpressId?: number, itemFilterItemId?: number): number {
-    if (this.meshes.length === 0) return 0;
-    const kept: Mesh[] = [];
-    let disposed = 0;
-    for (const mesh of this.meshes) {
-      const keepMesh = keep.has(mesh.expressId)
-        && (keepModelIndex === undefined || mesh.modelIndex === keepModelIndex)
-        && (itemFilterExpressId === undefined || mesh.expressId !== itemFilterExpressId || mesh.geometryItemId === itemFilterItemId);
-      if (mesh.hydrated && !keepMesh) {
-        destroyGpuResources(mesh);
-        disposed++;
-      } else {
-        kept.push(mesh);
-      }
-    }
-    if (disposed > 0) this.meshes = kept;
-    return disposed;
+    return this.removeMeshesWhere((mesh) => mesh.hydrated === true && !(keep.has(mesh.expressId)
+      && (keepModelIndex === undefined || mesh.modelIndex === keepModelIndex)
+      && (itemFilterExpressId === undefined || mesh.expressId !== itemFilterExpressId || mesh.geometryItemId === itemFilterItemId)));
+  }
+
+  /** Destroy and drop every individual mesh `remove` names, leaving the list object alone when none is. Returns how many went. */
+  removeMeshesWhere(remove: (mesh: Mesh) => boolean): number {
+    const kept = this.meshes.filter((mesh) => !remove(mesh) || (destroyGpuResources(mesh), false));
+    const removed = this.meshes.length - kept.length;
+    if (removed > 0) this.meshes = kept;
+    return removed;
   }
 
   /**
@@ -1632,15 +1627,10 @@ export class Scene {
    *  copies in `this.meshes`) + free their GPU buffers, so the highlight is
    *  rebuilt from the entity's current geometry on the next render. Used after a
    *  translate or removal, which mutate the underlying geometry but don't touch
-   *  these standalone highlight meshes. */
+   *  these standalone highlight meshes. A pooled merge holding the entity (#9835)
+   *  is a frozen copy of it too, so it goes whole and is rebuilt the same way. */
   evictHighlightMeshes(expressId: number, hydratedOnly = false): void {
-    if (this.meshes.length === 0) return;
-    const kept: Mesh[] = [];
-    for (const mesh of this.meshes) {
-      if (mesh.expressId === expressId && (!hydratedOnly || mesh.hydrated)) destroyGpuResources(mesh);
-      else kept.push(mesh);
-    }
-    this.meshes = kept;
+    this.removeMeshesWhere((mesh) => mesh.mergedSelection?.ids?.has(expressId) === true || (mesh.expressId === expressId && (!hydratedOnly || mesh.hydrated === true)));
   }
 
   /** Shared `TranslationScene` view for `setModelTranslation`/`setModelRotation`

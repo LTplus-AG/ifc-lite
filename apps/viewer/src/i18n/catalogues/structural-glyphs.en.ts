@@ -19,5 +19,6 @@ export const structuralGlyphsEn = {
   'structuralGlyphs.load.moment': 'Moment',
   'structuralGlyphs.load.temperature': 'Temperature load',
   'structuralGlyphs.load.displacement': 'Imposed displacement',
+  'structuralGlyphs.reaction': 'Reaction',
   'structuralGlyphs.tooltip': '{kind} · {entity}',
 } as const satisfies Record<string, TranslationValue>;

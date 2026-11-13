@@ -207,6 +207,15 @@ export const PERF_FLAGS = [
     bindings: { global: '__IFC_LITE_GPU_FRAME_TIMING', urlParam: 'perf.gpuFrameTiming' },
   },
   {
+    id: 'sceneIdentity',
+    kind: 'kill-switch',
+    owner: '@louistrue',
+    removalCondition: 'Keep while the load scoreboard verifies reopen output with an untimed identity pass; delete with that pass.',
+    introducedAt: '2026-11-12',
+    default: false,
+    bindings: { urlParam: 'perf.sceneIdentity' },
+  },
+  {
     id: 'perfTrace',
     kind: 'kill-switch',
     owner: '@louistrue',

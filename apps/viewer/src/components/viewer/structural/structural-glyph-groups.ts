@@ -29,7 +29,7 @@ import { isIfcTypeHiddenByHost } from '@/lib/host-hidden-ifc-types';
 import { effectiveStructuralData } from '../properties/effectiveStructuralData';
 import { toViewGlyphs, type ViewGlyph, type Vec3 } from './structural-glyph-paths';
 
-export type GlyphStyle = 'support' | 'force' | 'moment' | 'temperature' | 'displacement';
+export type GlyphStyle = 'support' | 'force' | 'moment' | 'temperature' | 'displacement' | 'reaction';
 
 export interface SourceGroup {
   key: string;
@@ -57,6 +57,7 @@ const LABEL: Record<string, TranslationKey> = {
   moment: 'structuralGlyphs.load.moment',
   temperature: 'structuralGlyphs.load.temperature',
   displacement: 'structuralGlyphs.load.displacement',
+  reaction: 'structuralGlyphs.reaction',
 };
 
 /**
@@ -78,8 +79,9 @@ function glyphsOf(store: IfcDataStore, data: StructuralExtraction, visible: (ite
   return glyphs;
 }
 
-/** An activity takes the colour of its strongest kind: a force with a moment is a force. */
+/** A reaction has a colour of its own; an action takes that of its strongest kind: a force with a moment is a force. */
 function styleOf(glyphs: readonly ViewGlyph[]): GlyphStyle {
+  if (glyphs.some(({ glyph }) => glyph.reaction)) return 'reaction';
   for (const style of ['support', 'force', 'moment', 'displacement'] as const) {
     if (glyphs.some(({ glyph }) => glyph.kind === style)) return style;
   }
@@ -103,7 +105,7 @@ function groupsOf(modelId: string, data: StructuralExtraction, glyphs: ViewGlyph
   }
   return [...bySource].map(([expressId, list]) => {
     const { type } = list[0].glyph.source;
-    const kinds = [...new Set(list.map(({ glyph }) => (glyph.kind === 'support' ? glyph.support : glyph.kind)))];
+    const kinds = [...new Set(list.flatMap(({ glyph }) => [...(glyph.reaction ? ['reaction'] : []), glyph.kind === 'support' ? glyph.support : glyph.kind]))];
     return {
       key: `${modelId}:${expressId}`,
       modelId,

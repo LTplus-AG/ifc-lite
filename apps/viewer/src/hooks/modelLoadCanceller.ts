@@ -20,6 +20,7 @@
  * model load must survive a device loss.
  */
 
+import { markModelLoadEnded } from './modelLoadEnd.js';
 import { getViewerStoreApi } from '@/store';
 import { selectActiveLoadProgress, selectLoadCanceller } from '@/store/slices/loadingSlice';
 import { beginActivity, discardActivity, finishActivity, updateActivity } from '@/lib/activity/activity-journal';
@@ -111,9 +112,11 @@ export function settleUnownedLoadUi(progress: LoadProgress = null): void {
  * progress then end only once no other load or stream still holds the Cancel,
  * so a load that finishes first never ends the UI of one still running.
  */
-export function settleOwnedLoadUi(release: () => void, progress: LoadProgress = null): void {
+/** With `modelId`, this settle also marks that model's load as ended (modelLoadEnd.ts, read by the load window). */
+export function settleOwnedLoadUi(release: () => void, progress: LoadProgress = null, modelId?: string): void {
   release();
   settleUnownedLoadUi(progress);
+  if (modelId !== undefined) markModelLoadEnded(modelId);
 }
 
 // Hook instances are independent; a replacement primary invalidates every

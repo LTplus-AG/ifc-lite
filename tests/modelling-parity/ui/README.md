@@ -137,3 +137,18 @@ Round 5 measures exported grid displacement, ordered material usage and body siz
 type-owned properties, displayed schedule group/footer totals, classification relationships
 and physical PDF path dimensions at 1:50. Tasks that the UI cannot complete remain
 failed checks with their concrete reason. No product writes use the store API.
+
+### Sheet DXF oracle (#9296, owner decision 2026-11-13)
+
+`ui.sheet` keeps capability id `sheets-pdf-dwg` for baseline compatibility,
+with the rescoped target **Sheets, PDF and DXF export**. Native DWG is a
+separate unscored catalogue row. The UI places a Distance measurement and
+exports the sheet PDF and drawing DXF. DXF remains model-space metres;
+the 5.2 m outer wall span corresponds to 104 mm on paper at 1:50.
+
+Both UI and Output use the independent Python reader `ezdxf==1.4.3`.
+Install it in `~/modelling-parity/venv` (or set `PARITY_PYTHON` to another
+Python with that package). Reader absence fails acceptance explicitly.
+The automated counterexamples run via `ui/lib/sheet-dxf.test.mjs`;
+without ezdxf they report SKIPPED, never a pass. The oracle rejects an
+empty drawing, absent wall layers, missing dimension text and wrong scale.

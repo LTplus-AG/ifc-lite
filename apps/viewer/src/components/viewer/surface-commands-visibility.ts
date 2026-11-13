@@ -142,6 +142,16 @@ export const VISIBILITY_SURFACE_COMMANDS = [
     run: () => { useViewerStore.getState().toggleTypeVisibility('ifcGrid'); },
   },
   {
+    id: 'vis:structural-view', labelKey: 'commandPalette.vis.structuralView.label',
+    keywords: 'analytical physical structural model show hide',
+    category: 'Visibility', icon: Eye, surfaces: paletteOnly, enabled: alwaysEnabled,
+    run: () => {
+      const s = useViewerStore.getState();
+      const mode = s.structuralViewMode;
+      s.setStructuralViewMode(mode === 'both' ? 'analytical' : mode === 'analytical' ? 'physical' : 'both');
+    },
+  },
+  {
     id: 'vis:structuralGlyphs', labelKey: 'commandPalette.vis.structuralGlyphs.label',
     keywords: 'structural analysis support load force moment IfcStructuralPointConnection IfcStructuralAction show hide',
     category: 'Visibility', icon: ArrowDownToLine, surfaces: paletteOnly, enabled: alwaysEnabled,

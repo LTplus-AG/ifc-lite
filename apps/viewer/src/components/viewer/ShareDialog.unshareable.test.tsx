@@ -30,6 +30,7 @@ import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
 import type { StartCollabOptions } from '@/store/slices/collabSlice.js';
 import { tabularFixtureStore } from '@/test/tabular-store-fixture.js';
+import { fixtureModels } from '@/test/store-fixture.js';
 import { ShareDialog } from './ShareDialog.js';
 
 /** `kind` picks the store: an IFC one, a `.3dm`-shaped tabular one, or none. */
@@ -57,6 +58,10 @@ const realStartCollab = useViewerStore.getState().startCollab;
 const bodyText = () => document.body.textContent ?? '';
 const createLinkButton = () =>
   Array.from(document.querySelectorAll('button')).find((b) => b.textContent?.trim() === 'Create link');
+const scopeRadios = (): HTMLElement[] => {
+  const group = document.querySelector('[role="radiogroup"][aria-label="Share scope"]');
+  return group ? Array.from(group.querySelectorAll<HTMLElement>('[role="radio"]')) : [];
+};
 
 /**
  * Server mode with a stubbed relay, so "did it claim a room?" is observable:
@@ -83,10 +88,7 @@ function relayStub(t: TestContext) {
  */
 async function createLinkOver(t: TestContext, ...models: FederatedModel[]) {
   const relay = relayStub(t);
-  useViewerStore.setState({
-    models: new Map(models.map((m) => [m.id, m])),
-    activeModelId: models[0]!.id,
-  });
+  useViewerStore.setState(fixtureModels(...models));
   render(<ShareDialog open onOpenChange={() => {}} />);
   await act(() => settle('the share dialog did not settle before the consent action'));
   const create = createLinkButton();
@@ -142,6 +144,31 @@ describe('ShareDialog: models the share seed cannot carry', () => {
     assert.match(beforeConsent, /Left out of the shared session, no IFC records to share from: terrain\.3dm\./);
     assert.equal(relay.mints().length, 1, 'the share still happens for the model that can be seeded');
     assert.deepEqual(starts[0]?.seed?.models.map((m) => m.modelId), ['a'], 'only the IFC model goes into the room');
+  });
+
+  it('says the same thing the mint does when the scope is "Active model only"', async (t) => {
+    // The line the owner reads and the decision the mint makes were asked at
+    // two different scopes: the notice took its seedable count over 'all'
+    // while the mint asked the SELECTED scope. Active is a `.3dm`, a readable
+    // IFC is loaded beside it, so 'all' sees one seedable model and 'active'
+    // sees none. The dialog promised a partial share; the hook created no
+    // room and said nothing more.
+    const relay = relayStub(t);
+    useViewerStore.setState(fixtureModels(
+      makeModel('a', 'terrain.3dm', 0, 'tabular'), makeModel('b', 'tower.ifc', 1_000_000, 'ifc'),
+    ));
+    render(<ShareDialog open onOpenChange={() => {}} />);
+    await act(() => settle('the share dialog did not settle before the scope choice'));
+
+    click(scopeRadios()[0]!);
+    await act(() => settle('picking the active-only scope did not settle'));
+    assert.match(bodyText(), /Nothing here can be shared, no IFC records to share from: terrain\.3dm\./,
+      'with only the .3dm in scope the owner is told nothing can be shared');
+
+    click(createLinkButton()!);
+    await act(() => settle('room creation did not settle'));
+    assert.equal(relay.mints().length, 0, 'and the mint agrees with the line above it');
+    assert.equal(starts.length, 0);
   });
 
   it('leaves a store-less workspace exactly as it was: a session, and nothing claimed about records', async (t) => {

@@ -45,7 +45,8 @@ export interface MergeInputs {
 
 /**
  * The models a merged export will leave out, as far as the dialog says before
- * it runs: only a STATED tabular marker, never an absent store.
+ * it runs: only a tabular store with no records behind it, never an absent
+ * store.
  *
  * A store-less model IS still skipped, and {@link buildMergeInputs} names it
  * in the result message. It is left out of this note because an absent store
@@ -113,14 +114,19 @@ export function mergeSkipNotice(skipped: readonly MergeSkip[], t: UseTranslation
  * `canWriteIfcFromStores` already disables the button for a federation with
  * no writable store, so this fires only when the last one went away between
  * the render and the hydration. It exists so that window says the dialog's
- * own "no IFC records to write from", naming the models, rather than reading
- * `MergedExporter`'s internal `requires at least one model` out to the owner.
+ * own sentence rather than reading `MergedExporter`'s internal
+ * `requires at least one model` out to the owner.
+ *
+ * It does NOT append {@link mergeSkipNotice}. With no inputs every model was
+ * skipped, so the notice would name the whole federation under "Left out of
+ * the merged file" when no merged file exists, after a sentence that already
+ * said "no IFC records to write from". This is the same string the dialog's
+ * own description shows while the button is disabled, which is where the
+ * owner has just read it.
  */
 export function emptyMergeRefusal(
   inputs: readonly MergeModelInput[],
-  skipped: readonly MergeSkip[],
   t: UseTranslationResult['t'],
 ): string | null {
-  if (inputs.length > 0) return null;
-  return `${t('exportDialog.noStepRecords.error')} ${mergeSkipNotice(skipped, t)}`.trim();
+  return inputs.length > 0 ? null : t('exportDialog.noStepRecords.error');
 }

@@ -21,7 +21,6 @@ import { parseFixtureModel } from './anonymized-export/anonymized-export-fixture
 import { chooseMerged, exportButton, openExportDialog, shellText } from './export-dialog-scope.test-support';
 import { ExportDialog } from './ExportDialog';
 
-const clickExport = () => click(exportButton());
 
 /** A `.3dm`-shaped participant: a real `buildTabularDataStore` store, not a hand-set marker. */
 function tabularModel(id: string): FederatedModel {
@@ -42,7 +41,7 @@ describe('merged STEP export reports the models it leaves out', () => {
     // Before the export: the dialog says which model the merge will drop.
     assert.match(shellText(), /Left out of the merged file, no IFC records to write from: terrain\.3dm\./);
 
-    clickExport();
+    click(exportButton());
     await waitFor(() => downloadedNames().length === 1, 'merged IFC export did not download');
     assert.match(downloadedNames()[0], /^house.*_merged\.ifc$/, 'the STEP model is still exported');
     // After it: the result names the skipped model instead of only the included count.
@@ -59,7 +58,7 @@ describe('merged STEP export reports the models it leaves out', () => {
     await chooseMerged();
     assert.doesNotMatch(shellText(), /Left out of the merged file/, 'nothing is skipped, so nothing is claimed');
 
-    clickExport();
+    click(exportButton());
     await waitFor(() => downloadedNames().length === 1, 'merged IFC export did not download');
     assert.match(shellText(), /Merged 2 models, [\d,]+ entities/, 'the all-STEP message is what it always was');
     assert.doesNotMatch(shellText(), /Left out of the merged file/);

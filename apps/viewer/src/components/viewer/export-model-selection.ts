@@ -6,7 +6,7 @@ import type { GeometryResult } from '@ifc-lite/geometry';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { FederatedModel } from '@/store';
 import { exportableModels } from '@/lib/export/capture-export';
-import { hasPortableStepRecords } from '@/lib/collab/room-step-export';
+import { hasRoomStepSource } from '@/lib/collab/room-symbolic-source';
 
 export interface ExportModelListItem {
   id: string;
@@ -132,17 +132,25 @@ export type StepSkipReason = 'noRecords' | 'noData';
  * through `roomStepExportSource`. Asking for the source kind alone refused
  * every shared room, single and merged, which is what main exported.
  *
- * `hasPortableStepRecords` asks whether a portable source is REGISTERED, not
- * whether `canExportRoomAsStep` currently accepts it. A room whose root set has moved
- * past its source is a different answer with its own wording: the single path
- * falls back to the room store and the merged path throws
- * `roomMergeInput`'s "export it separately". Both are main's behaviour, and
- * folding them into a silent "no IFC records" skip would lose it.
+ * `hasRoomStepSource` asks whether a portable source is REGISTERED, not
+ * whether `canExportRoomAsStep` currently accepts it — which it structurally
+ * cannot ask anyway, having only the store and not the room's
+ * `MutablePropertyView`. A room whose root set has moved past its source is
+ * therefore let through here and refused further down, where the merged path
+ * throws `roomMergeInput`'s named "export it separately" rather than dropping
+ * the model from the file without a word.
+ *
+ * The single path for that same room is unchanged from main, and unchanged is
+ * all this claims: it falls through to `StepExporter` over the room store. On
+ * a reconstructed room that writes the tabular reader's own bytes, which is
+ * the bad file this gate exists to prevent — #10085, filed rather than fixed
+ * by widening the gate, because refusing the room here would swap a bad file
+ * for a silent skip. The fix is a third reason value and a sentence.
  */
 export function stepSkipReason(store: IfcDataStore | null | undefined): StepSkipReason | null {
   if (!store) return 'noData';
   if (store.sourceKind !== 'tabular') return null;
-  return hasPortableStepRecords(store) ? null : 'noRecords';
+  return hasRoomStepSource(store) ? null : 'noRecords';
 }
 
 export function resolveExportModel(

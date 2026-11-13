@@ -338,10 +338,8 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
           model,
           dataStore: await ensureModelExportReady(model.id),
         })));
-        // A tabular or store-less model has no STEP records to merge; it is
-        // skipped (see canWriteIfcFromStores) and named in the result message.
         const { inputs: mergeInputs, portableByModel, skipped } = buildMergeInputs(hydratedModels, { applyMutations, getMutationView });
-        const refusal = emptyMergeRefusal(mergeInputs, skipped, t);
+        const refusal = emptyMergeRefusal(mergeInputs, t);
         if (refusal) { toast.error(refusal); return { success: false, message: refusal }; }
 
         const visibility = visibleOnly

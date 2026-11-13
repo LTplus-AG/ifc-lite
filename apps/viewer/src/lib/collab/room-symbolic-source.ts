@@ -37,6 +37,26 @@ export function roomSymbolicSource(store: object): RoomSymbolicSource | undefine
   return sources.get(store);
 }
 
+/**
+ * Does a portable STEP source stand behind this store at all? A room's own
+ * store is tabular — the room is reconstructed from IFCX — so its records
+ * live in the source registered above rather than in the store's `source`.
+ *
+ * The weak half of a pair. `canExportRoomAsStep` (`room-step-export.ts`) asks
+ * the strong question, whether that source still covers every root in the
+ * LIVE room, and it needs the room's `MutablePropertyView` to do it. A caller
+ * deciding whether to OFFER a STEP export has only the store, and wants this
+ * one; a root set that has moved on is refused later, by name.
+ *
+ * It lives here, beside the `WeakMap` it reads, rather than next to its
+ * strong twin: this module imports nothing but types, so an export gate can
+ * ask the question without pulling `@ifc-lite/export`, `@ifc-lite/mutations`
+ * and the placement-edit boot module onto the command-palette path.
+ */
+export function hasRoomStepSource(store: object): boolean {
+  return sources.get(store) !== undefined;
+}
+
 /** Re-key symbolic owners into the reconstructed room model's id space. */
 export function remapRoomSymbolicOwners(flat: FlatSymbolic, ids: ReadonlyMap<number, number>): FlatSymbolic {
   const remap = (source: Uint32Array): Uint32Array => {

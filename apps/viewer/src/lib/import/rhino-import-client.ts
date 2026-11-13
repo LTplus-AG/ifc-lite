@@ -40,6 +40,13 @@ export class RhinoImportError extends Error {
  */
 export const MAX_3DM_IMPORT_BYTES = 400 * 1024 * 1024;
 
+/**
+ * Not `formatBytes` from `@/lib/utils`, which is otherwise identical in the MB
+ * band: it switches to GB at 1 GiB, so a 1.5 GB archive would be refused as
+ * "1.5 GB" here and "1536 MB" by the reader. The point of this function is to
+ * say exactly what the reader says, so which side caught the file does not
+ * change the sentence.
+ */
 const megabytes = (bytes: number) => `${Math.round(bytes / (1024 * 1024))} MB`;
 
 /**

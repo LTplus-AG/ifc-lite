@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { mintRoomId, mintRoomToken, releaseRoomClaim } from '@/lib/collab/share-link';
-import { buildShareSeed, prepareShareSeed, unshareableModelsInScope, type ShareScope } from '@/lib/collab/share-scope';
+import { buildShareSeed, prepareShareSeed, seedableModelsInScope, unshareableModelsInScope, type ShareScope } from '@/lib/collab/share-scope';
 
 export function useShareRoomCreation({ open, hasModel, collabRoomId, awaitingConsent, scope, setNotice, resetLink }: {
   open: boolean; hasModel: boolean; collabRoomId: string | null; awaitingConsent: boolean; scope: ShareScope;
@@ -48,18 +48,23 @@ export function useShareRoomCreation({ open, hasModel, collabRoomId, awaitingCon
     void (async () => {
       let adminToken: string | undefined;
       try {
-        // Reject known-invalid metadata before claiming a room (#6565).
+        // Reject known-invalid metadata before claiming a room (#6565):
+        // `buildShareSeed` throws on it. The seed itself is deliberately NOT
+        // kept — holding it across the three awaits below would pin a removed
+        // model's store and its tessellated meshes until the mint returns.
         const preflight = useViewerStore.getState();
-        const seeded = buildShareSeed(preflight.models, preflight.activeModelId, scope, preflight.georefMutations);
+        buildShareSeed(preflight.models, preflight.activeModelId, scope, preflight.georefMutations);
         // Nothing seedable AND something refused: there is no room to create,
         // so don't claim one. WHICH models were dropped, and why, is the
-        // dialog's own derived line; this is only the decision.
+        // dialog's own derived line; this is only the decision. Both ask
+        // `seedableModelsInScope` at the SELECTED scope, so the line the owner
+        // read cannot disagree with what happens when they press the button.
         //
-        // An empty seed on its own is NOT this case and must still mint:
+        // An empty scope on its own is NOT this case and must still mint:
         // `buildShareSeed` always returns a seed so an owner with nothing
         // seedable keeps the owner path (#4444) — a GLB or point-cloud
         // workspace, and a model removed mid-mint, both rely on that.
-        if (seeded.models.length === 0
+        if (seedableModelsInScope(preflight.models, preflight.activeModelId, scope).length === 0
           && unshareableModelsInScope(preflight.models, preflight.activeModelId, scope).length > 0) return;
         adminToken = await mintRoomToken({ roomId, role: 'admin' });
         // Models can change during minting. Read fresh and always pass a seed,

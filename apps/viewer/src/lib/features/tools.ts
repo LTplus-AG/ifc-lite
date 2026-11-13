@@ -19,6 +19,11 @@ export const TOOL_FEATURE: Readonly<Record<string, FeatureId>> = {
   annotate: 'tools.annotate',
 };
 
+/** TOOL_FEATURE keyed `${prefix}${tool}`: the tool rows of the command and shortcut tables. */
+export function toolFeatureRows(prefix: string): Record<string, FeatureId> {
+  return Object.fromEntries(Object.entries(TOOL_FEATURE).map(([tool, feature]) => [`${prefix}${tool}`, feature]));
+}
+
 export function isToolAvailable(tool: string): boolean {
   const feature = Object.hasOwn(TOOL_FEATURE, tool) ? TOOL_FEATURE[tool] : undefined;
   return feature === undefined || isFeatureEnabled(feature);

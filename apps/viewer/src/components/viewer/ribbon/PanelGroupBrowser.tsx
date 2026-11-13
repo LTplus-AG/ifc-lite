@@ -49,8 +49,7 @@ export function PanelGroupBrowser() {
             .map((group) => ({ group, panels: WORKSPACE_PANELS.filter((panel) => panel.group === group.id && isPanelOffered(panel.id)) }))
             // A separator only between groups that render: a host may switch a whole group off.
             .filter(({ panels }) => panels.length > 0)
-            .map(({ group, panels }, index) => {
-            return (
+            .map(({ group, panels }, index) => (
               <DropdownMenuGroup key={group.id}>
                 {index > 0 && <DropdownMenuSeparator />}
                 <DropdownMenuLabel data-panel-group={group.id} title={t(group.descriptionKey)}>
@@ -68,8 +67,7 @@ export function PanelGroupBrowser() {
                   </DropdownMenuCheckboxItem>
                 ))}
               </DropdownMenuGroup>
-            );
-          })}
+            ))}
         </DropdownMenuContent>
       </DropdownMenu>
     </RibbonGroup>

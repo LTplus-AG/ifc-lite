@@ -11,7 +11,7 @@ import { getInheritanceChainAcrossSchemas } from '@ifc-lite/parser';
 import { vecLen as length } from '../ifc-creator-math.js';
 import { prepareStructuralFace } from './_structural-face.js';
 import { pointInPolygon } from './room-footprint-offset.js';
-import { idealiseLine, idealisePlate, prismSection, add, sub, scale, dot } from './structural-derive-idealise.js';
+import { curveElementLine, idealisePlate, prismSection, add, sub, scale, dot } from './structural-derive-idealise.js';
 import { clusterEnds, joinEnds, SegmentGrid } from './structural-derive-joints.js';
 import {
   DEFAULT_DERIVATION_OPTIONS,
@@ -33,7 +33,7 @@ const MAX_TOLERANCE = 1;
 const MAX_JOINT_REACH = 2;
 
 /** The classes each role is read from; subtypes count as their parent. Literals: this module has no load-time work. */
-const CURVE = ['IfcBeam', 'IfcColumn', 'IfcMember'] as const;
+export const CURVE = ['IfcBeam', 'IfcColumn', 'IfcMember'] as const;
 const SURFACE = ['IfcSlab', 'IfcWall'] as const;
 const SUPPORT = ['IfcFooting', 'IfcPile'] as const;
 const ROLE_CLASSES = [['curve', CURVE], ['surface', SURFACE], ['support', SUPPORT]] as const;
@@ -94,10 +94,8 @@ function checkFace(boundary: Vec3[]): { normal: Vec3 } | { issue: string } {
 
 /** A curve element's axis line, or why it has none. */
 function lineOf(element: PhysicalElementFact): Omit<Line, 'element' | 'loadBearing'> | { issue: string } {
-  const section = element.prism ? prismSection(element.prism) : null;
-  if (element.axis) return { start: element.axis[0], end: element.axis[1], section, source: 'axis' };
-  const line = element.prism ? idealiseLine(element.prism) : { issue: element.shapeIssue ?? 'no extruded shape' };
-  return 'issue' in line ? line : { start: line.start, end: line.end, section, source: line.source };
+  const line = curveElementLine(element);
+  return 'issue' in line ? line : { start: line.start, end: line.end, section: element.prism ? prismSection(element.prism) : null, source: line.source };
 }
 
 export function planStructuralDerivation(facts: StructuralDerivationFacts, options: StructuralDerivationOptions = {}): StructuralDerivationPlan {

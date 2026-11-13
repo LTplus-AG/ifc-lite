@@ -168,7 +168,7 @@ test('#8947 palette Plan Grid and Fit affect parsed wall geometry; pointer navig
   assert.notDeepEqual(coords(), original, 'wheel zoom changes projected content');
   click(namedButton('Fit the plan to the view')); assert.deepEqual(coords(), original);
   const layout = (name: string) => {
-    const radio = [...document.querySelectorAll('[role="radio"]')].find(el => el.textContent === name);
+    const radio = [...document.querySelectorAll('[role="radio"]')].find(el => el.getAttribute('aria-label') === name);
     assert.ok(radio, name); click(radio);
   };
   layout('Plan'); assert.equal(useViewerStore.getState().modelLayout, 'plan');

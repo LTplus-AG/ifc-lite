@@ -1926,5 +1926,13 @@
   "viewportLighting.container.emptyState.formats.splats": {
     "value": "Splats",
     "reason": "Same spelling as the reviewed gaussianCapture.splats label for Gaussian splats; established term in this language."
+  },
+  "agentBridge.dialog.port": {
+    "value": "Port",
+    "reason": "Same-spelling German technical term (network port number); established UI term."
+  },
+  "agentBridge.panel.duration": {
+    "value": "{ms} ms",
+    "reason": "Runtime placeholder with a unit symbol (milliseconds); no English prose."
   }
 }

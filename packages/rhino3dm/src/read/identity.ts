@@ -37,12 +37,13 @@ export function ifcString(strings: RhinoUserStrings, name: string): string | und
 }
 
 /**
- * The value an entity column takes: the first part that states `IFC::<name>`. Read from the parts
- * themselves, so the rule stays "the first part that states the key" however `mergeUserText` numbers
- * a later part's differing value. Values are never empty, so stating a key is the whole question.
+ * The value an entity column takes: the first part that states `IFC::<name>` with a value. Read from
+ * the parts themselves, so the rule holds however `mergeUserText` numbers a later part's differing
+ * value. An empty value counts as unset, so the column still comes from a part that states one: a
+ * .3dm openNURBS wrote holds no empty value, and this way the column does not depend on that.
  */
 function columnString(parts: ObjectFacts[], name: string): string | undefined {
-  for (const part of parts) { const value = ifcString(part.userStrings, name); if (value !== undefined) return value; }
+  for (const part of parts) { const value = ifcString(part.userStrings, name); if (value) return value; }
   return undefined;
 }
 
@@ -161,7 +162,7 @@ export function buildEntities(objects: ObjectFacts[], groupNames: string[], clas
     if (className && !ifcClass) report.warn('class', n => `${plural(n, 'object')} name an IFC::Class that is not an IFC product class and are imported as ${FALLBACK_CLASS}.`);
     return {
       globalId, ifcClass: ifcClass ?? FALLBACK_CLASS,
-      // A part states `IFC::Name` or does not; a Rhino object name, which can be empty, falls through.
+      // `columnString` answers with a value or not at all; a Rhino object name, which can be empty, falls through.
       name: columnString(parts, 'Name') ?? (first.name || first.type),
       description: columnString(parts, 'Description') ?? '',
       objectType: columnString(parts, 'ObjectType') ?? '',

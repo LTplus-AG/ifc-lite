@@ -379,10 +379,10 @@ type RhinoImportResponse =
   already generated. So a generated name never equals a stated one, and the
   first part to state a key keeps it as written. No value is lost, the first
   part's value is the one read for identity and the entity columns, and a
-  column no earlier part states is filled by the first part that states it,
-  under the plain key, read from the parts rather than from the merged list
-  [test]. A part either states a key or does not (see Properties). There is no
-  warning, because differing values are the normal case: the exporter writes
+  column is filled by the first part that states a value for it, under the
+  plain key. The columns are read from the parts rather than from the merged
+  list, and an empty value counts as unset [test]. There is no warning,
+  because differing values are the normal case: the exporter writes
   each part's own `IFC::Material`, so all 16 merged elements in FZK and all 46
   in duplex differ there and come back with `IFC::Material` and
   `IFC::Material #2` [ran, test].
@@ -521,12 +521,14 @@ covered by a crafted file [test].
 ### Properties
 
 Attribute User Text is string-only, so values are strings (`IfcLabel`).
-Numbers are not guessed. No value the reader sees is ever empty: openNURBS
-removes a key whose value is set to the empty string, and `setUserString`
-returns false, so every key is stated or absent, never blank. Whitespace is a
-value like any other, kept as written [test]. The reader does the sorting:
-each entity carries `propertySets` next to its verbatim `userStrings`, plus
-`description` and `objectType` [test].
+Numbers are not guessed. No value the reader sees is empty: `setUserString`
+stores nothing and answers false for an empty value, and deletes the key when
+one already holds a value, so a .3dm openNURBS wrote has every key stated or
+absent, never blank. The entity columns do not rely on that and count an empty
+value as unset anyway [test]. Whitespace is a value like any other, kept as
+written [test]. The reader does the sorting: each entity carries
+`propertySets` next to its verbatim `userStrings`, plus `description` and
+`objectType` [test].
 
 | Key | Goes to |
 |---|---|

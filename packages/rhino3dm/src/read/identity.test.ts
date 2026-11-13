@@ -6,6 +6,9 @@ import { ifcGuidToUuid, isValidIfcGuid, uuidToIfcGuid } from '@ifc-lite/encoding
 import { expect, test } from 'vitest';
 import { readRhino3dm } from '../index.js';
 import { craft, type Craft } from '../../test-support/craft.js';
+import { buildEntities, type ObjectFacts } from './identity.js';
+import type { IfcClasses } from './ifc-classes.js';
+import { Report } from './report.js';
 
 const WALL = '2O2Fr$t4X7Zf8NOew3FLOH', DOOR = '0YvctVUKr0kugbFTf53O9L', SLAB = '1hqIFTRjfV6AWq_bMtnZwI';
 const box = (c: Craft, x = 0) => c.box([x, 0, 0], [x + 1, 1, 1]);
@@ -91,6 +94,24 @@ test('a part states a column key or does not: an empty value never reaches the r
     ['IFC::Name', 'Wall 2'], ['IFC::Description', 'from part 2'], ['IFC::Tag #2', '  '],
   ]);
   expect(result.warnings).toEqual([]);
+});
+
+// Review finding on PR #9880 (discussion_r4555307840). A .3dm openNURBS wrote cannot hold an empty
+// value, so this case reaches `buildEntities` only from a caller: the column rule covers it anyway,
+// rather than resting on what the archive reader does with a file written elsewhere.
+test('an empty value counts as unset for every entity column, so the first part with a value fills it', () => {
+  // Both parts sit in the group named their GlobalId, so they merge; the Rhino object name is empty too.
+  const part = (userStrings: [string, string][]): ObjectFacts => ({
+    id: 'c0ffee', name: '', type: 'Mesh', layer: 0, layerPath: 'Default', hidden: false, groups: [0], userStrings, material: '',
+  });
+  const classes: IfcClasses = { product: name => (name === 'IfcWall' ? 'IfcWall' : null), spatial: () => null };
+  const { entities } = buildEntities([
+    part([['IFC::GlobalId', WALL], ['IFC::Name', ''], ['IFC::Description', ''], ['IFC::ObjectType', ''], ['IFC::Class', '']]),
+    part([['IFC::GlobalId', WALL], ['IFC::Name', 'Wall 2'], ['IFC::Description', 'from part 2'], ['IFC::ObjectType', 'Basic Wall'], ['IFC::Class', 'IfcWall']]),
+  ], [WALL], classes, new Report());
+  expect(entities).toHaveLength(1);
+  // Not '' from the empty values part 1 states, and not 'Mesh' from the geometry type.
+  expect(entities[0]).toMatchObject({ name: 'Wall 2', description: 'from part 2', objectType: 'Basic Wall', ifcClass: 'IfcWall' });
 });
 
 /** The user text one wall grouped from `parts` comes back with, without its GlobalId. */

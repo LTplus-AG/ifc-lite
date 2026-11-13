@@ -9,7 +9,7 @@ import { generateIfcGuid } from '@ifc-lite/encoding';
 import { fixtureModel } from '@/test/store-fixture';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { TYPE_VISIBILITY_SEMANTIC_DEFAULTS } from '@/store/constants';
-import { hasStructuralData, resolveViewHiddenEntities, structuralGlyphsVisible } from './structural-view';
+import { hasStructuralData, isAnalyticalProduct, resolveViewHiddenEntities, structuralGlyphsVisible } from './structural-view';
 import { useViewerStore } from '@/store';
 import { resolveExportVisibility } from '@/store/exportVisibility';
 import { sceneSnapshotKey } from '@/components/viewer/sceneSnapshotOwnership';
@@ -53,6 +53,25 @@ for (const count of [1,2]) {
     assert.equal(structuralGlyphsVisible(restored.typeVisibility,restored.structuralViewMode),false);
   });
 }
+
+it('#9923: retyping a physical product to an analytical class enables the mode command', () => {
+  const store = createSyntheticDataStore({schemaVersion:'IFC4',fileSize:0,entities:[
+    {expressId:7,type:'IfcBeam',hasGeometry:true},
+  ]});
+  const view = new MutablePropertyView(null,'default');
+  const state = {models:new Map(),ifcDataStore:store,mutationViews:new Map([['default',view]])};
+  assert.equal(hasStructuralData(state),false);
+  new StoreEditor(store,view).setEntityType(7,'IfcStructuralCurveMember');
+  assert.equal(hasStructuralData(state),true,'the mask and the command agree on a retyped product');
+});
+
+it('#9923: IFC2X3 varying actions are analytical', () => {
+  for (const type of ['IfcStructuralLinearActionVarying','IfcStructuralPlanarActionVarying']) {
+    assert.equal(isAnalyticalProduct(type),true,type);
+  }
+  assert.equal(isAnalyticalProduct('IfcStructuralSurfaceMemberVarying'),true);
+  assert.equal(isAnalyticalProduct('IfcStructuralLoadGroup'),false);
+});
 
 it('#9923: both preserves main export visibility for a hidden model', () => {
   const store = createSyntheticDataStore({schemaVersion:'IFC4',fileSize:0,entities:[

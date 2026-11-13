@@ -5,5 +5,5 @@
 /** @param {string} type */
 export function isAnalyticalProduct(type) {
   return /^IfcStructural(?:Curve|Surface|Point)(?:Member|Connection)/i.test(type)
-    || /^IfcStructural.*(?:Action|Reaction)$/i.test(type);
+    || /^IfcStructural.*(?:Action|Reaction)(?:Varying)?$/i.test(type); // IFC2X3 Linear/PlanarActionVarying
 }

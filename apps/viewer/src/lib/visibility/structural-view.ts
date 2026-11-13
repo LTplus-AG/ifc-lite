@@ -28,7 +28,8 @@ export function hasStructuralData(state: Pick<ViewerState, 'models' | 'ifcDataSt
   const stores = state.models.size ? [...state.models.values()].map((m) => m.ifcDataStore) : [state.ifcDataStore];
   // @raw-entity-enumeration-ok structural product presence; no attribute decoding
   return stores.some((store) => [...(store?.entityIndex?.byType.keys() ?? [])].some(isAnalyticalProduct))
-    || [...state.mutationViews.values()].some((view) => view.getNewEntities().some((e) => isAnalyticalProduct(e.type)));
+    || [...state.mutationViews.values()].some((view) => view.getNewEntities().some((e) => isAnalyticalProduct(e.type))
+      || [...view.getTypeMutations().values()].some((m) => isAnalyticalProduct(m.newType)));
 }
 
 /** A separate mask, so switching modes never overwrites manual hides/isolation.

@@ -334,6 +334,8 @@ test('palette Plan refuses actual constrained and mobile widths while preserving
   });
   await result.row.click({ force: true });
   await expect(palette(page)).toBeVisible();
+  // #9296: desktop retains the hidden pane; the mobile workspace below omits it.
+  await expect(page.locator('[data-model-plan-pane]')).toHaveAttribute('aria-hidden', 'true');
   await info.attach('plan-constrained-refusal.png', { body: await page.screenshot(), contentType: 'image/png' });
   await page.setViewportSize({ width: 390, height: 844 });
   result = await find(page, 'model:plan', 'plan layout');
@@ -347,7 +349,7 @@ test('palette Plan refuses actual constrained and mobile widths while preserving
     const s = globalThis.__ifc_lite_viewer_store__.getState();
     return { layout: s.modelLayout, ids: [...s.models.keys()] };
   })).toEqual(before);
-  await expect(page.locator('[data-model-plan-pane]')).toHaveAttribute('aria-hidden', 'true');
+  await expect(page.locator('[data-plan-view]')).toHaveCount(0);
 });
 
 for (const context of contexts) {

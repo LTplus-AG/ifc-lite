@@ -22,16 +22,15 @@ afterEach(() => {
 
 for (const variant of ['fixed', 'absolute'] as const) {
   it(`#9849 ${variant} action toasts cannot intercept review Export or the modal scrim`, async () => {
-    render(<>
-      <Toaster variant={variant} />
-      <ExportChangesReviewDialog open onOpenChange={() => {}} groups={[
-        { modelId: 'm', modelName: 'Blank.ifc', entities: [], unitemizedCount: 2 },
-      ]} totalCount={2} isExporting={false} onConfirm={() => {}} />
-    </>);
+    render(<Toaster variant={variant} />);
     act(() => {
       toast.success('Level 3 added at +7.00 m', { label: 'Draw on', onClick: () => {} });
       toast.success('Level 3 deleted', { label: 'Undo', onClick: () => {} });
     });
+    // These notices precede opening the review in the real #9849 storey flow.
+    render(<ExportChangesReviewDialog open onOpenChange={() => {}} groups={[
+      { modelId: 'm', modelName: 'Blank.ifc', entities: [], unitemizedCount: 2 },
+    ]} totalCount={2} isExporting={false} onConfirm={() => {}} />);
     // Lay out the mounted production markup with the compiled app stylesheet.
     // Happy DOM alone cannot observe stacking or pointer interception.
     await withThemedPage('light', document.body.innerHTML, async (page) => {
@@ -43,7 +42,7 @@ for (const variant of ['fixed', 'absolute'] as const) {
       assert.ok(bounds);
       // Guarantee overlap rather than rely on particular review row counts.
       // Only position changes: the toast keeps its production stacking rules.
-      await page.locator('[role="status"]').evaluate((region, point) => {
+      await page.locator('[data-toast-anchor] [role="status"]').evaluate((region, point) => {
         const stack = region.parentElement!;
         stack.style.left = `${point.x}px`;
         stack.style.top = `${point.y}px`;
@@ -57,7 +56,7 @@ for (const variant of ['fixed', 'absolute'] as const) {
       });
       assert.equal(exportReceivesPointer, true, 'Export must receive the pointer through overlapping toasts');
       // Outside the panel, the modal scrim must also intercept toast actions.
-      await page.locator('[role="status"]').evaluate((region) => {
+      await page.locator('[data-toast-anchor] [role="status"]').evaluate((region) => {
         region.parentElement!.style.left = '0';
         region.parentElement!.style.top = '0';
       });

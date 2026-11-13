@@ -149,3 +149,43 @@ it('#9947 deleting a refused exceptional row restores current type coverage', as
   view.deleteEntity(300000);
   expect(readCurrentTypeQuantities(store, 100, view).value?.quantities[0].quantities[0].value).toBe(2.5);
 });
+
+
+it('#9947 one selection never decodes unrelated attribute-edited entities', async () => {
+  const { store } = await model();
+  for (const count of [0, 50, 500]) {
+    const view = new MutablePropertyView(null, 'names');
+    for (let id = 200; id < 200 + count; id++) view.setAttribute(id, 'Name', 'renamed');
+    const original = store.getEntity.bind(store); const unrelated: number[] = [];
+    store.getEntity = id => { if (id >= 200 && id < 200 + count) unrelated.push(id); return original(id); };
+    expect(extractAllMaterialsOnDemand(store, 100, view)[0]?.name).toBe('Concrete');
+    extractClassificationsOnDemand(store, 100, view); extractDocumentsOnDemand(store, 100, view);
+    expect(readCurrentTypeQuantities(store, 100, view).value?.quantities[0].quantities[0].value).toBe(2.5);
+    store.getEntity = original;
+    expect(unrelated).toEqual([]);
+  }
+});
+
+it('#9947 bulk subjects never revisit unrelated Name edits after revision setup', async () => {
+  const { store, view } = await model();
+  for (let id = 200; id < 700; id++) view.setAttribute(id, 'Name', 'renamed');
+  readCurrentTypeQuantities(store, 100, view);
+  let probes = 0;
+  const original = store.entityIndex.byId.get.bind(store.entityIndex.byId);
+  store.entityIndex.byId.get = id => { if (id >= 200 && id < 700) probes++; return original(id); };
+  for (let id = 101; id < 200; id++) {
+    expect(readCurrentTypeQuantities(store, id, view).value?.quantities[0].quantities[0].value).toBe(2.5);
+  }
+  expect(probes).toBe(0);
+});
+
+it('#9947 double-invalid relationship edits report the first native source-row refusal', async () => {
+  const { store, view } = await model(600, [
+    "#700=IFCRELDEFINESBYTYPE('first',$,$,$,(#100),#200);",
+    "#703=IFCRELDEFINESBYTYPE('second',$,$,$,(#100),#2);",
+  ]);
+  view.setEntityType(700, 'IfcRelDefinesByProperties');
+  view.setPositionalAttribute(703, 4, []);
+  expect(readCurrentTypeQuantities(store, 100, view)).toEqual({ status: 'unavailable', value: null,
+    reason: 'Native type relationship target is unreadable' });
+});

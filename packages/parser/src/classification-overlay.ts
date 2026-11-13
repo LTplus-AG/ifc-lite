@@ -41,8 +41,8 @@ export function classificationEdges(store: IfcDataStore, view: ClassificationRea
   // A source-empty transport does not carry enough attributes to reconstruct
   // edited source associations or chains. Preserve uncertainty instead of
   // treating the original forwarded rows as effective live data.
+  // @raw-entity-enumeration-ok source definition/reference ids are inspected only for live edits when their bytes are unavailable
   const unresolvedSource = !store.source?.length && [...sourceIds,
-    // @raw-entity-enumeration-ok source definition/reference ids are inspected only for live edits when their bytes are unavailable
     ...(store.entityIndex.byType.get('IFCCLASSIFICATION') ?? []), ...(store.entityIndex.byType.get('IFCCLASSIFICATIONREFERENCE') ?? [])]
     .some(id => view.isDeleted(id)
     || view.getTypeMutations?.().has(id) || view.getAttributeMutationsForEntity(id).length > 0

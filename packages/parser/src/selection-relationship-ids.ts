@@ -4,6 +4,7 @@
 
 import { RelationshipType } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
+import { selectionEditedRelationshipsForSubject, type SelectionEditView } from './selection-relationship-edits.js';
 
 const inventories = new WeakMap<IfcDataStore, { source: IfcDataStore['source']; missing: Map<string, number[]> }>();
 const classes = ['IFCRELASSOCIATESMATERIAL', 'IFCRELASSOCIATESCLASSIFICATION', 'IFCRELASSOCIATESDOCUMENT', 'IFCRELDEFINESBYTYPE', 'IFCRELDEFINESBYPROPERTIES'];
@@ -17,32 +18,17 @@ function legacyMissingRelationships(store: IfcDataStore): Map<string, number[]> 
   const represented = new Set(store.relationships.forward.edgeRelIds);
   for (const id of store.relationships.forward.shadowedRelIds ?? []) represented.add(id);
   const missing = new Map<string, number[]>();
-  // @raw-entity-enumeration-ok source rows absent from the graph must still reach the canonical effective reader
-  for (const type of classes) missing.set(type, (store.entityIndex.byType.get(type) ?? []).filter(id => !represented.has(id)));
+  for (const type of classes) {
+    // @raw-entity-enumeration-ok source rows absent from the graph must still reach the canonical effective reader
+    missing.set(type, (store.entityIndex.byType.get(type) ?? []).filter(id => !represented.has(id)));
+  }
   inventories.set(store, { source: store.source, missing });
   return missing;
 }
 
-interface EditView {
-  getMutationRevision?(): number;
-  getAttributeOverrideEntityIds?(): number[];
-  getEffectiveChanges?(): ReadonlyArray<{ entityId: number; kind: string }>;
-}
-const edits = new WeakMap<EditView, { revision: number; ids: number[] }>();
-function editIds(view: EditView): number[] {
-  const revision = view.getMutationRevision?.(), old = edits.get(view);
-  if (revision !== undefined && old?.revision === revision) return old.ids;
-  // Native views enumerate only attribute/positional/type maps. Never derive a
-  // property or quantity diff merely to discover relationship endpoint edits.
-  const ids = view.getAttributeOverrideEntityIds?.() ?? view.getEffectiveChanges?.()
-    .filter(change => ['attribute', 'type', 'entity-deleted'].includes(change.kind)).map(change => change.entityId) ?? [];
-  if (revision !== undefined) edits.set(view, { revision, ids });
-  return ids;
-}
-
 /** #9947: source rows incident to one subject, plus edits that can move endpoints
  * INTO that subject. Partial providers keep the complete inventory contract. */
-export function selectionRelationshipIds(store: IfcDataStore, view: EditView, entityId: number | undefined, kinds: readonly RelationshipType[], sourceTypes: readonly string[]): number[] | null {
+export function selectionRelationshipIds(store: IfcDataStore, view: SelectionEditView, entityId: number | undefined, kinds: readonly RelationshipType[], sourceTypes: readonly string[]): number[] | null {
   if (entityId === undefined || !store.source?.length || !store.relationships?.inverse
     || !store.relationships.forward?.edgeRelIds || typeof store.relationships.inverse.getEdges !== 'function'
     || (!view.getAttributeOverrideEntityIds && !view.getEffectiveChanges)
@@ -54,14 +40,19 @@ export function selectionRelationshipIds(store: IfcDataStore, view: EditView, en
       for (const id of edge.shadowedRelationshipIds ?? []) ids.add(id);
     }
   }
-  for (const id of editIds(view)) ids.add(id);
+  for (const id of selectionEditedRelationshipsForSubject(store, view, entityId, sourceTypes)) ids.add(id);
   const missing = store.selectionRelationshipIndex?.missing;
   if (missing) {
-    for (const id of [...(store.selectionRelationshipIndex?.exceptionalSubjects.get(entityId) ?? []), ...(store.selectionRelationshipIndex?.retryTypeRows ?? [])]) if (sourceTypes.includes(store.entityIndex.byId.get(id)?.type ?? '')) ids.add(id);
+    for (const id of [...(store.selectionRelationshipIndex?.exceptionalSubjects.get(entityId) ?? []), ...(store.selectionRelationshipIndex?.retryTypeRows ?? [])]) {
+      // @raw-entity-enumeration-ok source class filters one exceptional relationship; its effective record is resolved by the caller
+      const type = store.entityIndex.byId.get(id)?.type ?? '';
+      if (sourceTypes.includes(type)) ids.add(id);
+    }
   } else for (const type of sourceTypes) for (const id of legacyMissingRelationships(store).get(type) ?? []) ids.add(id);
   // The old inventory visited raw type buckets in source order, then retypes.
   // Graph adjacency orders targets instead; retain the original displayed order.
   return [...ids].sort((a, b) => {
+    // @raw-entity-enumeration-ok source class and byte order preserve the historical display ordering of effective relationships
     const left = store.entityIndex.byId.get(a), right = store.entityIndex.byId.get(b);
     const rank = (type: string | undefined) => { const n = type ? sourceTypes.indexOf(type) : -1; return n < 0 ? sourceTypes.length : n; };
     return rank(left?.type) - rank(right?.type) || (left?.byteOffset ?? a) - (right?.byteOffset ?? b);
@@ -85,7 +76,7 @@ export function useFullSelectionInventory(cache: { has(id: number): boolean } | 
   return seen.size >= 32;
 }
 
-export function selectionRelationshipCacheKey(store: IfcDataStore, view: EditView, subject: number | undefined,
+export function selectionRelationshipCacheKey(store: IfcDataStore, view: SelectionEditView, subject: number | undefined,
   cache: { has(id: number): boolean } | undefined, primary = subject): number {
   if (subject === undefined || !store.source?.length || store.relationshipsPending
     || !store.relationships?.forward?.edgeRelIds || typeof store.relationships.inverse?.getEdges !== 'function'

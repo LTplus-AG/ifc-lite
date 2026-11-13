@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { IfcAttributeValue, IfcEntity } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
 import { getAttributeNamesForSchema, normalizeIfcTypeName } from './ifc-schema.js';
 import { getRelationshipSlotPlan } from './relationship-schema-slots.js';
@@ -17,11 +16,17 @@ export interface EffectiveRelationship {
   related: readonly number[];
 }
 
+interface RelationshipEntityRecord {
+  readonly expressId: number;
+  readonly type: string;
+  readonly attributes: readonly unknown[];
+}
+
 export interface RelationshipOverlayReader {
-  createdEntities(): readonly IfcEntity[];
+  createdEntities(): readonly RelationshipEntityRecord[];
   mutatedEntityIds(): Iterable<number>;
   namedAttributes(expressId: number): Iterable<readonly [string, unknown]>;
-  positionalAttributes(expressId: number): Iterable<readonly [number, IfcAttributeValue]>;
+  positionalAttributes(expressId: number): Iterable<readonly [number, unknown]>;
   /** Effective class after a queued `setEntityType`, when present. */
   entityType?(expressId: number): string | undefined;
   isDeleted(expressId: number): boolean;
@@ -46,7 +51,7 @@ function refIds(value: unknown): number[] {
 
 export function resolveRelationshipRecord(
   store: IfcDataStore,
-  entity: IfcEntity,
+  entity: RelationshipEntityRecord,
   overlay: RelationshipOverlayReader,
   snapshot: SchemaEntityNameSnapshot,
 ): EffectiveRelationship | null {

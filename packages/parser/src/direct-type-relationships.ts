@@ -6,6 +6,7 @@ import type { IfcDataStore } from './columnar-parser.js';
 import { type MetadataReadView } from './effective-metadata-record.js';
 import { CurrentQuantityRefusal, MAX_RELATIONSHIPS, MAX_RELATION_REFERENCES, readRelation, type RelationRead, type CurrentTypeRelationships } from './current-type-relationships.js';
 import { selectionRelationshipIds } from './selection-relationship-ids.js';
+import { selectionRelationshipEditIds } from './selection-relationship-edits.js';
 import { getInheritanceChain, normalizeIfcTypeName } from './ifc-schema.js';
 
 const types = ['IFCRELDEFINESBYTYPE', 'IFCRELDEFINESBYPROPERTIES'];
@@ -21,7 +22,7 @@ export function directCurrentTypeRelationships(store: IfcDataStore, view: Metada
   const index = store.selectionRelationshipIndex!;
   let rows = index.typeRows, references = index.typeReferences;
   const unverified = new Set(index.retryTypeRows);
-  const changed = new Set([...view.getAttributeOverrideEntityIds!(), ...(view.getTombstones?.() ?? [])]);
+  const changed = new Set([...selectionRelationshipEditIds(store, view), ...(view.getTombstones?.() ?? []), ...(view.getTypeMutations?.().keys() ?? [])]);
   const created = view.getNewEntities();
   const createdIds = new Set(created.map(row => row.expressId));
   for (const row of created) {
@@ -50,9 +51,6 @@ export function directCurrentTypeRelationships(store: IfcDataStore, view: Metada
       }
     }
   }
-  for (const [id, reason] of index.typeRefusals) {
-    if (!changed.has(id) && !view.isDeleted(id)) throw new CurrentQuantityRefusal(reason);
-  }
   const reads = new Map<number, RelationRead>();
   const memberships = new Map<number, Set<number>>();
   const read = (id: number): RelationRead => {
@@ -65,8 +63,16 @@ export function directCurrentTypeRelationships(store: IfcDataStore, view: Metada
     return value;
   };
   for (const row of created) if (types.includes(row.type.toUpperCase()) || view.getTypeMutations?.().has(row.expressId)) changed.add(row.expressId);
-  const affected = new Set([...unverified, ...changed]);
-  const contributions = [...affected].map(id => {
+  const retyped = new Map([...view.getTypeMutations?.().keys() ?? []].map((id, i) => [id, i]));
+  const authored = new Map(created.map((row, i) => [row.expressId, i]));
+  const rank = (id: number) => createdIds.has(id) ? 3 : types.includes(sourceType(id) ?? '') ? types.indexOf(sourceType(id)!) : 2;
+  // @raw-entity-enumeration-ok source byte order ranks effective rows within their historical source bucket
+  const order = (id: number) => authored.get(id) ?? retyped.get(id) ?? store.entityIndex.byId.get(id)?.byteOffset ?? 0;
+  // @raw-entity-enumeration-ok source bucket order determines which malformed effective row supplies the refusal reason
+  const compare = (a: number, b: number) => rank(a) - rank(b) ||
+    (rank(a) < 2 ? (store.entityIndex.byId.get(a)?.byteOffset ?? 0) - (store.entityIndex.byId.get(b)?.byteOffset ?? 0) : order(a) - order(b));
+  const affected = new Set([...unverified, ...changed, ...index.typeRefusals.keys()]);
+  const contributions = [...affected].sort(compare).map(id => {
     const baseType = sourceType(id), base = baseType !== undefined && types.includes(baseType) && !createdIds.has(id);
     const currentType = view.getNewEntity(id)?.type.toUpperCase() ?? view.getTypeMutations?.().get(id)?.newType.toUpperCase() ?? baseType;
     const current = !view.isDeleted(id) && currentType !== undefined && types.includes(currentType);
@@ -76,6 +82,8 @@ export function directCurrentTypeRelationships(store: IfcDataStore, view: Metada
   if (rows > MAX_RELATIONSHIPS) throw new CurrentQuantityRefusal(`Native type relationship inventory exceeds the read limit of ${MAX_RELATIONSHIPS} relationships`);
   for (const { id, base, current } of contributions) {
     if (!base && !current) continue;
+    const refusal = index.typeRefusals.get(id);
+    if (refusal && !changed.has(id) && !view.isDeleted(id)) throw new CurrentQuantityRefusal(refusal);
     if (base && !unverified.has(id)) {
       if (index.typeExceptionalReferences.has(id)) references -= index.typeExceptionalReferences.get(id)!;
       else if (!index.typeRefusals.has(id)) {
@@ -93,11 +101,10 @@ export function directCurrentTypeRelationships(store: IfcDataStore, view: Metada
     const memo = new Map<number, readonly number[]>();
     return (subject: number): readonly number[] => {
       const old = memo.get(subject); if (old) return old;
-      const candidates = selectionRelationshipIds(store, view, subject, [kind], [type]) ?? [];
+      const candidates = new Set(selectionRelationshipIds(store, view, subject, [kind], [type]) ?? []);
       if (kind === RelationshipType.DefinesByProperties && store.relationshipsPending) {
-        for (const id of index.typeDefinitions.get(subject) ?? []) if (!candidates.includes(id)) candidates.push(id);
+        for (const id of index.typeDefinitions.get(subject) ?? []) candidates.add(id);
       }
-      for (const id of changed) if (!candidates.includes(id)) candidates.push(id);
       const contributions: Array<{ id: number; targets: number[] }> = [];
       for (const id of candidates) {
         const relation = read(id);
@@ -105,12 +112,7 @@ export function directCurrentTypeRelationships(store: IfcDataStore, view: Metada
           contributions.push({ id, targets: relation.targets });
         }
       }
-      const retyped = new Map([...view.getTypeMutations?.().keys() ?? []].map((id, i) => [id, i]));
-      const authored = new Map(created.map((row, i) => [row.expressId, i]));
-      const rank = (id: number) => createdIds.has(id) ? 3 : types.includes(sourceType(id) ?? '') ? types.indexOf(sourceType(id)!) : 2;
-      const order = (id: number) => authored.get(id) ?? retyped.get(id) ?? store.entityIndex.byId.get(id)?.byteOffset ?? 0;
-      contributions.sort((a, b) => rank(a.id) - rank(b.id) ||
-        (rank(a.id) < 2 ? (store.entityIndex.byId.get(a.id)?.byteOffset ?? 0) - (store.entityIndex.byId.get(b.id)?.byteOffset ?? 0) : order(a.id) - order(b.id)));
+      contributions.sort((a, b) => compare(a.id, b.id));
       const result = [...new Set(contributions.flatMap(row => row.targets))];
       memo.set(subject, result); return result;
     };

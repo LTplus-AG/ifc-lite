@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-
+import { alignedWalls, trimmedWalls } from '../lib/measured-oracles.mjs';
 import { editCommand } from '../lib/command-ui.mjs';
 import { task } from '../lib/driver.mjs';
 import { escape, tool, typeFields, oracleModel } from '../lib/model-ui.mjs';
@@ -60,8 +60,8 @@ export default {
       const trimmed = step.wallAxes().find((w) => Math.abs(w.start[1]-3) < .03 && Math.abs(w.end[1]-3) < .03);
       return finish(s,tasks,[
         check('clicked split makes 2 m and 3 m pieces within 30 mm',lengths.length === 2 && Math.abs(lengths[0]-2) < .03 && Math.abs(lengths[1]-3) < .03,JSON.stringify(lengths)),
-        check('align puts both left edges at the reference x',aligned.length === 2 && Math.abs(aligned[0].start[0]-aligned[1].start[0]) < .03,JSON.stringify(aligned)),
-        check('trim removes the segment beyond x=3',!!trimmed && Math.abs(trimmed.end[0]-3) < .03,JSON.stringify(trimmed)),
+        check('align puts both left edges at the reference x',alignedWalls(aligned),JSON.stringify(aligned)),
+        check('trim removes the segment beyond x=3',trimmedWalls(step.wallAxes()),JSON.stringify(trimmed)),
         check('Offset creates a parallel 5 m copy at y=1.5', !!offset && offset.count('IFCWALL') === original.count('IFCWALL')+1 && offset.wallAxes().some(w => Math.abs(w.start[1]-1.5) <= .01 && Math.abs(w.end[1]-1.5) <= .01 && Math.abs(w.length-5) <= .001), JSON.stringify(offset?.wallAxes()) ?? 'No completed Offset gesture'),
         check('Undo removes the offset copy', !!offsetUndo && offsetUndo.count('IFCWALL') === original.count('IFCWALL') && offsetUndo.wallAxes().every(w => Math.abs(w.start[1]) <= .01 && Math.abs(w.end[1]) <= .01), JSON.stringify(offsetUndo?.wallAxes()) ?? 'No completed Offset to undo'),
       ]);

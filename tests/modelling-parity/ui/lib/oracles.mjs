@@ -103,3 +103,8 @@ export function roofGeometry(step, meshes, expected) {
   if (roofs.length !== 1) return `expected one roof, found ${roofs.length}`;
   return judgeRoof(meshes.get(roofs[0].id)?.parts ?? [], expected);
 }
+
+/** Exactly four distinct corner joins are required for the authored four-wall loop. */
+export function fourWallJoins(step) {
+  return step.of('IFCWALL').length === 4 && step.of('IFCRELCONNECTSPATHELEMENTS').length === 4 && uniqueWallJoins(step) === 4 && wallEndpointsJoined(step);
+}

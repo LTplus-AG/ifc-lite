@@ -129,6 +129,26 @@ describe('Toaster (#5603)', () => {
     container.remove();
   });
 
+  for (const persistentFirst of [true, false]) {
+    it(`#9879 same-anchor errors stay persistent with a ${persistentFirst ? 'later' : 'prior'} transient duplicate`, (t) => {
+      t.mock.timers.enable({ apis: ['setTimeout'] });
+      act(() => {
+        if (persistentFirst) {
+          toast.error('Export still failed');
+          toast.transientError('Export still failed', 1000);
+        } else {
+          toast.transientError('Export still failed', 1000);
+          toast.error('Export still failed');
+        }
+      });
+      assert.equal(toastItems().length, 1);
+      assert.match(toastItems()[0]!.textContent ?? '', /×2/);
+      act(() => t.mock.timers.tick(1000));
+      assert.equal(toastItems().length, 1, 'the transient deadline cannot dismiss a persistent failure');
+      assert.match(toastItems()[0]!.textContent ?? '', /Export still failed/);
+    });
+  }
+
   it('keeps an error until it is dismissed', async (t) => {
     t.mock.timers.enable({ apis: ['setTimeout'] });
     act(() => toast.error('Export failed'));

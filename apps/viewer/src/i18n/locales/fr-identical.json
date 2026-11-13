@@ -1,4 +1,8 @@
 {
+  "agentBridge.panel.duration": {
+    "value": "{ms} ms",
+    "reason": "Runtime placeholder with a unit symbol (milliseconds); no English prose."
+  },
   "align.mode.centre": {
     "value": "Centre",
     "reason": "French uses the same spelling « Centre » for this contextual label; reviewed against its feature meaning."
@@ -1862,6 +1866,10 @@
   "section2d.display.projection": {
     "value": "Projection",
     "reason": "French uses the same spelling « Projection » for this contextual label; reviewed against its feature meaning."
+  },
+  "section2d.snap.intersection": {
+    "value": "Intersection",
+    "reason": "French uses the same word, intersection, for the point where two drawn lines cross; it is the standard drafting term."
   },
   "section2d.tools.distance": {
     "value": "Distance",

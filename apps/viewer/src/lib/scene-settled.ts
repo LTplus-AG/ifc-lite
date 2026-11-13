@@ -5,6 +5,11 @@ import { useViewerStore, type ViewerState } from '@/store';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { hasPendingInstancedShards } from '@/store/instancedShardQueue';
 
+// Build marker for the load scoreboard: this build exposes `__ifc_lite_scene_settled__` once the viewport's
+// renderer is ready. Set at module load (useIfcLoader imports this module at startup), so a probe can tell
+// "the hook is not installed yet" (renderer not ready: hold the mark) from "this build has no hook" (old rule).
+(globalThis as Record<string, unknown>).__ifc_lite_scene_settled_supported__ = true;
+
 /**
  * The load is interactive. The store has left its loading state, nothing
  * streams or waits to upload, and the renderer has finished its async finalize.

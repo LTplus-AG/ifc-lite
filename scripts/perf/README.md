@@ -8,6 +8,60 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
+## Presentation layer attribute reads (#9928)
+
+Resolve schema positions once per type during each index build and read only
+ownership attributes from unedited STEP records. Effective metadata remains the
+single path for overlays and source-free stores. Shape Items can be omitted when
+there are no mapped items and no assignments below shape models; mapped exports
+still need these edges, even when every assignment targets a shape model.
+**Measured win on the reported architectural model.** Exclusive Pop runs of the
+cold index, paired against current main, cut first-build time substantially while
+preserving every layer and member in the six-model/ten-shape comparison corpus.
+Full-record decoding is replaced by selective attribute reads; those reads still
+occur synchronously. The mapped export still needs its shape-representation
+edges: skipping them merely because assignments target shape models would lose
+layers reached through representation maps. This is an index-only measurement,
+not a geometry throughput or browser click-to-populated claim.
+
+## Retained selection highlights (#9835, #9916)
+
+**Diagnostic win on the real large-model WebGPU path.** Retaining merged highlight
+buffers removes repeated per-piece submission while orbiting an unchanged large
+selection. Same-camera checks include hide, isolate, glazing and x-ray context;
+shared desktop timings are diagnostic rather than a benchmark qualification.
+
+Lesson: preserve the per-piece path's hydration insertion history, not the latest
+selection Set order. The highlight does not write depth, so later overlapping
+selected surfaces decide the visible shading. Retire and rebuild pooled ranges
+together, and merge only contiguous compatible model/origin runs. Regrouping
+non-adjacent equal-origin pieces trades away visual correctness. Alternating
+origins can still cost one draw per piece, matching the original path; a per-vertex
+frame index and GPU origin table are the bounded-draw follow-up (#10008). Distinct
+textured origins remain tracked separately in #9946.
+
+## Single-edit IFC derivations (#9296, R7 P3)
+
+**Diagnostic improvement; performance qualification remains open.** Storey display,
+plan grids, wall axes and the spatial tree now share a cache of the overlay reads
+made by their real derivations. A live overlay revision checks those dependencies
+without reparsing source entities; unrelated column placement changes retain them.
+Creation discovery, relationship/placement leaves, Undo/Redo, skip-history writes
+and atomic publications remain live. Cache ownership follows the source store and
+mutation view, including separate federated models.
+
+The mutation profile also exposed an all-product top-attachment scan. Without a
+moved slab or roof target, only explicitly refit products can need refitting; target
+moves keep the full dependent scan. The real loaded F5 UI probe shows why a kernel
+microbenchmark would miss both costs. Shared-host GPU timings are diagnostic and
+cannot qualify the session-scale row; remaining React reconciliation and renderer
+scheduling still need attention.
+
+Lesson: avoid global history-count keys for derived IFC state. Read dependencies
+include absent records and effective class discovery, and must be checked against
+live overlay revisions rather than journal length. Read-only creation snapshots
+also avoid exposing mutable rows to the next atomic transaction's guard.
+
 ## Raycast keeps one index across visibility changes (#9504)
 
 **Shipped.** `collectVisibleMeshData` rebuilt its list on every ray, and the BVH was

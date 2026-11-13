@@ -31,6 +31,7 @@
  * fields do.
  */
 
+import { restoreElementTags } from '@/lib/drawing/tag-persistence';
 import type { DrawingSheet } from '@ifc-lite/drawing-2d';
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { useViewerStore } from '@/store';
@@ -39,6 +40,7 @@ import { identifyLoadedPlacementSource } from '@/lib/model-placement/loaded-sour
 import { placementSourceIdentity } from '@/lib/model-placement/source-identity';
 import { loadDrawing2DEntry, defaultMarkupPatch, suppressNextSaveFor, type PersistedDrawing2DEntry } from '@/store/slices/drawing2DSlice.persistence.js';
 import { setCachedHash, notifyDecided } from './drawingMarkupRestorePrecedence.js';
+import { absorbEmbeddedMarkup, forgetAbsorbedEmbeddedMarkup } from '@/lib/drawing2d-markup/drawing-markup-absorbed';
 import {
   resetSaveState, beginRestore, endRestore, setRestoredSectionConfig, ensureSaveSubscription,
   subscribeModelActivations, modelActivationEpoch,
@@ -153,12 +155,18 @@ export function useDrawing2DPersistence(): void {
     beginRestore(activeModelId);
     suppressNextSaveFor(activeModelId);
     useViewerStore.setState(defaultMarkupPatch());
+    // The cleared fields no longer hold any absorbed embedded markup; the
+    // restores below add back what they put on screen.
+    forgetAbsorbedEmbeddedMarkup(activeModelId);
 
     // `drawnMeanwhile` unites a stored list with the live one. The fields were
     // cleared when this model became active, so what the live lists hold at
     // restore time was drawn while the key was resolving (#7035: that can
     // last until the load ends when a legacy entry is being moved). The resolver
     // runs on every activation so late legacy writes are included too.
+    // The same union keeps an entry with no markup decision (empty lists, no
+    // absorbed set; `drawingMarkupRestorePrecedence.ts`) from erasing what the
+    // embedded restore applied on a return with the hash already cached.
     const applyHash = (hash: string | null, skipDxfRestore = false, drawnMeanwhile: UnionById = (stored) => stored, fallback?: PersistedDrawing2DEntry) => {
       if (!stillCurrent()) return;
       endRestore(activeModelId);
@@ -185,15 +193,30 @@ export function useDrawing2DPersistence(): void {
 
       const defaults = getDefaultDrawing2DState().drawing2DDisplayOptions;
       const entry = fallback ?? loadDrawing2DEntry(hash, defaults);
-      if (!entry) return;
+      if (!entry) {
+        // Nothing stored to merge into: markup drawn while the restore held
+        // saves off is still unsaved. A new list reference makes the save
+        // subscription store the whole live markup now (#10076 review).
+        const live = useViewerStore.getState();
+        const drawn = [live.measure2DResults, live.polygonArea2DResults, live.textAnnotations2D,
+          live.tagAnnotations2D, live.cloudAnnotations2D, live.dimensions2D].some((list) => list.length > 0);
+        if (drawn) useViewerStore.setState({ measure2DResults: [...live.measure2DResults] });
+        return;
+      }
 
       setRestoredSectionConfig(activeModelId, entry.sectionConfig);
+      // Before the write below, which the save subscription persists: this
+      // entry's markup includes (or deliberately dropped) these embedded
+      // annotations, so a save to the model may replace them.
+      absorbEmbeddedMarkup(activeModelId, entry.absorbedEmbeddedMarkup ?? []);
       const live = useViewerStore.getState();
       useViewerStore.setState({
         measure2DResults: drawnMeanwhile(entry.measure2DResults, live.measure2DResults),
         polygonArea2DResults: drawnMeanwhile(entry.polygonArea2DResults, live.polygonArea2DResults),
         textAnnotations2D: drawnMeanwhile(entry.textAnnotations2D, live.textAnnotations2D),
+        tagAnnotations2D: drawnMeanwhile(restoreElementTags(entry.tagAnnotations2D, entry.ownerModelId, activeModelId), live.tagAnnotations2D),
         cloudAnnotations2D: drawnMeanwhile(entry.cloudAnnotations2D, live.cloudAnnotations2D),
+        dimensions2D: drawnMeanwhile(entry.dimensions2D ?? [], live.dimensions2D),
         drawing2DDisplayOptions: entry.drawing2DDisplayOptions,
       });
     };

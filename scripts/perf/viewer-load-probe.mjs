@@ -43,15 +43,79 @@ export async function startViewerServer(rootOf, log = () => {}) {
   return { server, baseUrl: `http://127.0.0.1:${server.address().port}` };
 }
 
-/** Init script: count presented frames (a rendered frame acquires the swap-chain texture). */
+/**
+ * Init script: count presented frames (a rendered frame acquires the swap-chain texture), and stamp every
+ * WebGL draw call (`__benchGl.times`, page clock, capped). The viewer draws with WebGPU; a WebGL draw is the
+ * start screen's 3D mark. A mark drawing at the pick puts Chrome on Xvfb into a present mode where every later
+ * frame costs ~80-110 ms in the GPU process instead of ~0.1 ms (xvfb-present study, 2026-11-12), so each open
+ * records whether WebGL drew around its pick.
+ */
 export const COUNT_FRAMES = () => {
   const proto = globalThis.GPUCanvasContext?.prototype;
   if (proto && !proto.__benchWrapped) {
     const orig = proto.getCurrentTexture;
-    proto.getCurrentTexture = function () { globalThis.__benchFrames = (globalThis.__benchFrames ?? 0) + 1; return orig.call(this); };
+    globalThis.__benchFrameTimes = [];
+    proto.getCurrentTexture = function () {
+      globalThis.__benchFrames = (globalThis.__benchFrames ?? 0) + 1;
+      if (globalThis.__benchFrameTimes.length < 50000) globalThis.__benchFrameTimes.push(performance.now());
+      return orig.call(this);
+    };
     proto.__benchWrapped = true;
   }
+  // Installed means present, even before the first draw: an absent counter reads as unknown, never as "no WebGL".
+  if ((globalThis.WebGLRenderingContext || globalThis.WebGL2RenderingContext) && !globalThis.__benchGl) globalThis.__benchGl = { draws: 0, times: [] };
+  for (const glProto of [globalThis.WebGLRenderingContext?.prototype, globalThis.WebGL2RenderingContext?.prototype]) {
+    if (!glProto || glProto.__benchGlWrapped) continue;
+    for (const name of ['drawArrays', 'drawElements', 'drawArraysInstanced', 'drawElementsInstanced', 'drawRangeElements']) {
+      const orig = glProto[name];
+      if (typeof orig !== 'function') continue;
+      glProto[name] = function (...args) {
+        const gl = (globalThis.__benchGl ??= { draws: 0, times: [] });
+        gl.draws++;
+        if (gl.times.length < 50000) gl.times.push(performance.now());
+        return orig.apply(this, args);
+      };
+    }
+    glProto.__benchGlWrapped = true;
+  }
 };
+
+/**
+ * WebGL activity around one open, from `__benchGl.times` (page clock). `originAbs` = the pick (change event),
+ * `endAbs` = interactive. Active at the pick = a WebGL draw in the `windowMs` before it or during the open.
+ * Null fields when the page recorded nothing (counter missing), never a silent "inactive".
+ */
+/**
+ * Present times (ms from `originAbs`, 0.1 ms) of the frames in [originAbs, endAbs], at most `limit`; null when the
+ * counter was not installed. Recorded per sample so a "first presented frame after X" rule can be sized later.
+ */
+export function presentTimes(times, originAbs, endAbs, limit = 600) {
+  if (!Array.isArray(times) || !Number.isFinite(originAbs) || !Number.isFinite(endAbs)) return null;
+  const out = [];
+  for (const t of times) if (t >= originAbs && t <= endAbs && out.length < limit) out.push(Math.round((t - originAbs) * 10) / 10);
+  return out;
+}
+
+/** Frames whose timestamp falls in [startAbs, endAbs] (page clock); null when the counter was not installed. */
+export function framesBetween(times, startAbs, endAbs) {
+  if (!Array.isArray(times) || !Number.isFinite(startAbs) || !Number.isFinite(endAbs)) return null;
+  let n = 0;
+  for (const t of times) if (t >= startAbs && t <= endAbs) n++;
+  return n;
+}
+
+export function webglAroundPick(gl, originAbs, endAbs, windowMs = 1000) {
+  if (!gl || !Array.isArray(gl.times) || !Number.isFinite(originAbs)) {
+    return { webglDrawsBeforePick: null, webglDrawsDuringOpen: null, webglLastDrawBeforePickMs: null, webglActiveAtPick: null };
+  }
+  let before = 0, during = 0, last = null;
+  for (const t of gl.times) {
+    if (t < originAbs) { if (t >= originAbs - windowMs) before++; last = last === null ? t : Math.max(last, t); }
+    else if (!Number.isFinite(endAbs) || t <= endAbs) during++;
+  }
+  return { webglDrawsBeforePick: before, webglDrawsDuringOpen: during, webglLastDrawBeforePickMs: last === null ? null : originAbs - last,
+    webglActiveAtPick: before > 0 || during > 0 };
+}
 
 /** Chrome can exit with its last page, so open the next one first. */
 export async function replacePage(context, page) {
@@ -105,12 +169,23 @@ function armLoadClock(count) {
   return (globalThis.__benchT0 = performance.now());
 }
 
-/** In page: null until every model is fully interactive, then timings relative to the input event. */
-function interactiveProbe(count) {
+/**
+ * In page: null until every model is fully interactive, then timings relative to the input event.
+ * Gate on top of the span rule: the viewer's own settled check (`__ifc_lite_scene_settled__`: store not
+ * streaming, renderer scene with no queued meshes, no streaming fragments, no finalize running). A load that
+ * reaches the store's settle before its drain has started (a fast path with no `stream.queue` span) otherwise
+ * marks before the scene exists. The mark itself is still the latest of the span milestones, so a load the
+ * check never holds back keeps exactly its old value (`interactiveMsOldGate` records the old rule's value).
+ * A build that has the hook but has not installed it yet (renderer not ready) is held like an unsettled scene;
+ * builds without it keep the span rule (`sceneSettledCheck: 'unavailable'`). The wait is capped: a scene
+ * that never settles returns `sceneSettleTimedOut`, which openAndWaitInteractive turns into a failed sample.
+ */
+export function interactiveProbe(count) {
+  const SCENE_SETTLE_CAP_MS = 15000;
   const trace = globalThis.__IFC_LITE_LOAD_TRACE__;
   const s = globalThis.__ifc_lite_viewer_store__?.getState();
   if (!trace || !s) return null;
-  const st = globalThis.__benchSettle ?? {};
+  const st = (globalThis.__benchSettle ??= {}); // persistent across polls, so the settle hold is bounded
   const t0 = globalThis.__benchT0;
   const loads = trace.loads().filter((l) => l.start >= t0 - 50);
   // Times are relative to the input's change event when it was observed (H2), else to the arm.
@@ -138,11 +213,21 @@ function interactiveProbe(count) {
   if (st.at !== null && st.settlePaint === null && now - st.at < 2000) return null;
   if (st.publish !== null && st.publishPaint === null && now - st.publish < 2000) return null;
   const settledAt = st.at ?? null;
+  // A build with the hook installs it when the viewport's renderer is ready; before that the scene cannot be
+  // settled (a fast path can reach the store's settle first). Only a build without the marker keeps the span rule.
+  const settledHook = globalThis.__ifc_lite_scene_settled__;
+  const sceneSettled = typeof settledHook === 'function' ? Boolean(settledHook())
+    : globalThis.__ifc_lite_scene_settled_supported__ === true ? false : null;
   const firstVisible = loads.map((l) => end(l, 'geometry.firstVisible')).filter((v) => v !== null);
   const geometryMs = Math.max(...geomDone) - t;
   const propsMs = Math.max(...meta) - t;
   // The store event when captured; the poll time otherwise (flagged, quantized).
   const storeSettledMs = (settledAt ?? now) - t;
+  const interactiveMs = Math.max(geometryMs, propsMs, st.settlePaint ? st.settlePaint - t : storeSettledMs);
+  // The old rule was satisfied here; hold the mark while the viewer still reports an unsettled scene (bounded).
+  if (st.oldGate === undefined || st.oldGate === null) st.oldGate = { at: now, interactiveMs };
+  const heldMs = now - st.oldGate.at;
+  if (sceneSettled === false && heldMs < SCENE_SETTLE_CAP_MS) return null;
   return {
     firstFrameMs: firstVisible.length ? Math.min(...firstVisible) - t : null,
     // Everything on screen: a snapshot's first paint, else the finalize swap (geometryMs).
@@ -158,7 +243,11 @@ function interactiveProbe(count) {
     publishPaintMs: st.publishPaint === null || st.publishPaint === undefined ? null : st.publishPaint - t,
     settlePaintMs: st.settlePaint === null || st.settlePaint === undefined ? null : st.settlePaint - t,
     // Interactive: geometry finalized, metadata ready, and the first frame after the store settled.
-    interactiveMs: Math.max(geometryMs, propsMs, st.settlePaint ? st.settlePaint - t : storeSettledMs),
+    interactiveMs,
+    interactiveMsOldGate: st.oldGate.interactiveMs,
+    sceneSettledCheck: sceneSettled === null ? 'unavailable' : sceneSettled ? 'settled' : 'never settled',
+    sceneSettleHeldMs: Math.round(heldMs),
+    sceneSettleTimedOut: sceneSettled === false,
     settledMs: now - t,
     loadPaths: loads.map((l) => l.attrs?.loadPath ?? l.attrs?.path ?? null),
     cacheTiers: loads.map((l) => l.attrs?.cacheTier ?? null),
@@ -182,6 +271,8 @@ export async function openAndWaitInteractive(page, files, { timeoutMs = 45 * 60 
   const handle = await page.waitForFunction(interactiveProbe, files.length, { timeout: timeoutMs, polling: 100 });
   const value = await handle.jsonValue();
   await page.evaluate(() => globalThis.__benchSettle?.unsub?.());
+  // A load whose scene never settles is a failed sample with its reason, never a silent mark.
+  if (value.sceneSettleTimedOut) throw new Error(`scene never settled: the viewer still reported an unsettled scene ${value.sceneSettleHeldMs} ms after the load was otherwise ready`);
   return { ...value, t0 };
 }
 

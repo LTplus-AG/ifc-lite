@@ -162,7 +162,8 @@ export function DrawingPanel(): React.ReactElement {
         onExportPdf={layers.handleExportPDF} onPrint={layers.handlePrint}
         displayedScale={displayOptions.scale || 100}
         sheetEnabled={vm.sheetEnabled} activeSheet={vm.activeSheet}
-        markupCounts={vm.markupCounts}
+        // Live tags export in every format; only ordinary text can be omitted.
+        markupCounts={{ ...vm.markupCounts, texts: vm.textAnnotations2D.length }}
         visibleRasterReferenceCount={vm.visibleRasterReferenceCount}
         visibleUnderlayCount={layers.dxfUnderlayData.filter((underlay) => underlay.opacity > 0).length}
       />
@@ -251,6 +252,8 @@ export function DrawingPanel(): React.ReactElement {
         snapped={vm.measure2DSnapPoint !== null}
         polygonPointCount={vm.polygonArea2DPoints.length}
         cloudPointCount={vm.cloudAnnotation2DPoints.length}
+        dimensionStep={vm.dimensionTool.step}
+        dimensionSnap={vm.dimensionTool.snapMode}
         textEditing={vm.textAnnotation2DEditing !== null}
         selection={vm.selectedAnnotation2D}
         counts={vm.markupCounts}

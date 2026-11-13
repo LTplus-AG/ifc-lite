@@ -95,6 +95,12 @@ export function idealiseLine(prism: PrismFact): LineIdealisation {
   return { issue: 'the prism is longest across its profile, and the profile is not a near-rectangle' };
 }
 
+/** A curve element's analytical line: its straight Axis representation, else its prism's axis. */
+export function curveElementLine(shape: { axis?: [Vec3, Vec3]; prism?: PrismFact; shapeIssue?: string }): LineIdealisation | { start: Vec3; end: Vec3; source: 'axis' } {
+  if (shape.axis) return { start: shape.axis[0], end: shape.axis[1], source: 'axis' };
+  return shape.prism ? idealiseLine(shape.prism) : { issue: shape.shapeIssue ?? 'no extruded shape' };
+}
+
 type PlateIdealisation = { boundary: Vec3[]; thickness: number } | { issue: string };
 
 /** The prism's mid-plane across its thinnest side, with that side as thickness. */

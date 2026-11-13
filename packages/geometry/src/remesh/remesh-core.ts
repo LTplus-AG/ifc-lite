@@ -171,7 +171,7 @@ export function remeshOnApi(api: RemeshApi, req: RemeshRequest, now: () => numbe
       frame.x, frame.y, frame.z, frame.needsShift,
       prePass.voidKeys, prePass.voidCounts, prePass.voidValues,
       req.styleIds, req.styleColors, prePass.planeAngleToRadians,
-      req.materialElementIds, req.materialColorCounts, req.materialColors,
+      prePass.materialElementIds ?? req.materialElementIds, prePass.materialColorCounts ?? req.materialColorCounts, prePass.materialColors ?? req.materialColors,
     );
     // Read before conversion: `convertMeshCollectionToBatch` frees the collection.
     let csgFailures: number;

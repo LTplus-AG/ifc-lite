@@ -99,6 +99,7 @@ tests/models/issues
 tests/models/various
 tests/models/georeferencer
 tests/models/edinburgh
+tests/models/rhino
 tests/models/**/*.ifc
 tests/models/**/*.IFC
 # Explicit case variants also work with the CI path auditor's basic globs.
@@ -162,6 +163,8 @@ tests/benchmark/benchmark-results/viewer-*.console.log
 # Playwright default run artifacts (test-results/ is Playwright's outputDir;
 # these are regenerated on every run and must never be committed)
 /test-results/
+# Local command-palette validation receipts; compact evidence is retained separately.
+/.palette-access-validation/
 # node:test JUnit reports the CI uploads to Mergify Test Engine.
 mergify-junit.xml
 mergify-junit-retry-*.xml

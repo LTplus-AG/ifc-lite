@@ -48,6 +48,9 @@ export function cached(ctx, key, make) {
 /** The parsed store of one corpus file, parsed once per run and shared by the probes. */
 export const storeOf = (ctx, file) => cached(ctx, `store:${file.path}`, () => parseStore(ctx.pkgs, file.bytes));
 
+/** `extractStructuralOnDemand` of one corpus file, extracted once per run and shared by the probes. */
+export const structuralDataOf = (ctx, file) => cached(ctx, `structural:${file.path}`, async () => ctx.pkgs.parser.extractStructuralOnDemand(await storeOf(ctx, file)));
+
 /** Parse STEP bytes or text into an IfcDataStore, the way the product tests do. */
 export async function parseStore(pkgs, input) {
   const bytes = typeof input === 'string' ? new TextEncoder().encode(input) : input;

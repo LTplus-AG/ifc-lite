@@ -1,0 +1,11 @@
+--- a/packages/mcp/src/bridge/tab-bridge.ts
++++ b/packages/mcp/src/bridge/tab-bridge.ts
+@@ -299,7 +299,7 @@ export class TabBridge {
+       );
+     }
+     const delay = this.gate.delay();
+-    if (delay >= 0) return this.compare(ws, slot, hello, paired);
++    if (delay === 0) return this.compare(ws, slot, hello, paired);
+     // During an attack every comparison waits; the slot stays taken even if the peer leaves.
+     slot.held = true;
+     const later = setTimeout(() => this.guard(ws, 'pairing attempt', () => {

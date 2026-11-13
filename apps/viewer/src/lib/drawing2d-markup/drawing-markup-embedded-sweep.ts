@@ -41,7 +41,7 @@
 
 import { iterateEffectiveEntityIds, type MutablePropertyView, type StoreEditor } from '@ifc-lite/mutations';
 import { effectiveCreatedRecord, effectiveReferencers, effectiveSourceRecord } from '@ifc-lite/export';
-import { EntityExtractor, getInheritanceChainAcrossSchemas, type IfcDataStore } from '@ifc-lite/parser';
+import { getInheritanceChainAcrossSchemas, type IfcDataStore } from '@ifc-lite/parser';
 import { DRAWING_MARKUP_OBJECTTYPE } from '@ifc-lite/create';
 import { embeddedMarkupIdentity } from './drawing-markup-absorbed.js';
 
@@ -76,22 +76,84 @@ function refId(value: unknown): number | null {
   return null;
 }
 
+/** Split a STEP argument list on top-level commas, keeping quoted strings and nested lists whole. */
+function splitTopLevel(body: string): string[] {
+  const parts: string[] = [];
+  let depth = 0, start = 0, quoted = false;
+  for (let i = 0; i < body.length; i++) {
+    const char = body[i];
+    if (quoted) {
+      if (char === "'") {
+        if (body[i + 1] === "'") i++;
+        else quoted = false;
+      }
+    } else if (char === "'") quoted = true;
+    else if (char === '(') depth++;
+    else if (char === ')') depth--;
+    else if (char === ',' && depth === 0) {
+      parts.push(body.slice(start, i).trim());
+      start = i + 1;
+    }
+  }
+  const last = body.slice(start).trim();
+  if (last || parts.length > 0) parts.push(last);
+  return parts;
+}
+
+/**
+ * One STEP token as a value: a string literal (quotes stripped, `''`
+ * unescaped; no other decoding, which the GlobalIds and markup tags compared
+ * here never need), `null` for `$`/`*`, an id for `#N`, an array for a list,
+ * the raw token otherwise (numbers, enums, typed values).
+ */
+function decodeToken(token: string): unknown {
+  if (token === '$' || token === '*') return null;
+  if (token.length >= 2 && token.startsWith("'") && token.endsWith("'")) return token.slice(1, -1).replace(/''/g, "'");
+  const ref = refId(token);
+  if (ref !== null) return ref;
+  if (token.startsWith('(') && token.endsWith(')')) return splitTopLevel(token.slice(1, -1)).map(decodeToken);
+  return token;
+}
+
 /** `#N` references in one exported STEP record, ignoring string literals. */
 function recordRefs(text: string): number[] {
   const body = text.replace(/^\s*#\d+\s*=/, '').replace(/'(?:[^']|'')*'/g, "''");
   return [...body.matchAll(/#(\d+)/g)].map((match) => Number(match[1]));
 }
 
+/**
+ * Reads entities exactly as the STEP exporter will write them: every decision
+ * the sweep makes (an annotation's tag, a relationship's `RelatedObjects`, a
+ * styled item's `Item`, the reference walk) comes from the one exported
+ * record, so a retype, a named attribute edit or a positional edit is seen
+ * the way the saved file states it rather than as the file was opened.
+ */
 class EffectiveReader {
-  private readonly extractor: EntityExtractor | null;
+  private readonly records = new Map<number, string | null>();
 
-  constructor(private readonly store: IfcDataStore, private readonly view: MutablePropertyView) {
-    this.extractor = store.source.byteLength > 0 ? new EntityExtractor(store.source) : null;
-  }
+  constructor(private readonly store: IfcDataStore, private readonly view: MutablePropertyView) {}
 
   private sourceRef(id: number) {
     // @raw-entity-enumeration-ok point lookup of an id from the effective iterator or a live reference; tombstones are checked by callers
     return this.store.entityIndex.byId.get(id) ?? this.store.deferredEntityIndex?.get(id);
+  }
+
+  /** The record text the exporter writes for `id`, every pending edit applied. */
+  private record(id: number): string | null {
+    const cached = this.records.get(id);
+    if (cached !== undefined) return cached;
+    let text: string | null = null;
+    const created = effectiveCreatedRecord(this.view, id, this.store.schemaVersion);
+    if (created) text = created.text;
+    else {
+      const ref = this.sourceRef(id);
+      if (ref) {
+        const source = this.store.source.decodeUtf8(ref.byteOffset, ref.byteOffset + ref.byteLength);
+        text = effectiveSourceRecord(this.view, id, source, ref.type, this.store.schemaVersion).text;
+      }
+    }
+    this.records.set(id, text);
+    return text;
   }
 
   isCreated(id: number): boolean {
@@ -103,32 +165,28 @@ class EffectiveReader {
     return type?.toUpperCase();
   }
 
-  /** The attribute list as authored or parsed, with slot edits applied. */
+  /** The attribute values of the exported record (see {@link decodeToken}). */
   attributes(id: number): unknown[] | null {
-    const created = this.view.readNewEntity?.(id) ?? this.view.getNewEntity(id);
-    let attributes: unknown[] | null = created ? [...created.attributes] : null;
-    if (!attributes) {
-      const ref = this.sourceRef(id);
-      const entity = ref && this.extractor ? this.extractor.extractEntity(ref) : null;
-      attributes = entity ? [...entity.attributes] : null;
-    }
-    if (!attributes) return null;
-    for (const { name, value } of this.view.getAttributeMutationsForEntity(id)) {
-      if (name === 'ObjectType') attributes[OBJECT_TYPE_INDEX] = value;
-    }
-    for (const [index, value] of this.view.getPositionalMutationsForEntity(id) ?? []) attributes[index] = value;
-    return attributes;
+    const text = this.record(id);
+    if (!text) return null;
+    const open = text.indexOf('(');
+    const close = text.lastIndexOf(')');
+    if (open < 0 || close < open) return null;
+    return splitTopLevel(text.slice(open + 1, close)).map(decodeToken);
   }
 
   /** References the entity writes on export, slot edits included. */
   refs(id: number): number[] {
-    const created = effectiveCreatedRecord(this.view, id, this.store.schemaVersion);
-    if (created) return recordRefs(created.text);
-    const ref = this.sourceRef(id);
-    if (!ref) return [];
-    const text = this.store.source.decodeUtf8(ref.byteOffset, ref.byteOffset + ref.byteLength);
-    return recordRefs(effectiveSourceRecord(this.view, id, text, ref.type, this.store.schemaVersion).text);
+    const text = this.record(id);
+    return text ? recordRefs(text) : [];
   }
+}
+
+/** A relationship's related side as ids: a list, or the single reference a named edit writes in its place. */
+function relatedIds(value: unknown): (number | null)[] {
+  if (Array.isArray(value)) return value.map(refId);
+  const single = refId(value);
+  return single === null ? [] : [single];
 }
 
 /**
@@ -155,8 +213,7 @@ export function removeEmbeddedDrawingMarkup(store: IfcDataStore, editor: StoreEd
   for (const annotation of annotations) {
     for (const parent of referencers(annotation)) {
       if (doomed.has(parent) || reader.type(parent) !== 'IFCRELDEFINESBYPROPERTIES') continue;
-      const related = reader.attributes(parent)?.[RELATED_OBJECTS_INDEX];
-      const ids = Array.isArray(related) ? related.map(refId) : [];
+      const ids = relatedIds(reader.attributes(parent)?.[RELATED_OBJECTS_INDEX]);
       if (ids.length > 0 && ids.every((id) => id !== null && annotations.has(id))) doomed.add(parent);
     }
   }

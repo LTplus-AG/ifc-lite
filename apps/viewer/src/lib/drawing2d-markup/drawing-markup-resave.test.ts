@@ -30,6 +30,7 @@ import { StepExporter } from '@ifc-lite/export';
 import { useViewerStore } from '@/store/index.js';
 import { saveDrawingMarkupToModel, type SaveMarkupInput } from './drawing-markup-save.js';
 import { absorbEmbeddedMarkup } from './drawing-markup-absorbed.js';
+import { getDrawingMarkupModelContext } from './drawing-markup-context.js';
 
 const STOREY_ID = 30;
 
@@ -265,6 +266,72 @@ describe('saveDrawingMarkupToModel on a reopened model with embedded markup', ()
     for (const id of ['9111', '9112', '9120', '9121', '9122', '9125']) {
       assert.match(saved, new RegExp(`^#${id}=`, 'm'), `shared #${id} must survive`);
     }
+    assert.deepEqual(danglingRefs(saved), []);
+  });
+});
+
+describe('saveDrawingMarkupToModel reads relationships with session edits applied', () => {
+  /**
+   * Reopen with one measurement plus an untagged annotation B (#9004) and a
+   * vendor property relationship #9005 that relates only B. Returns the
+   * measurement A and the property relationship the writer made for it (in
+   * the source it relates only A).
+   */
+  async function reopenedWithForeign() {
+    const { step } = await reopenedWith(ONE_MEASURE, false);
+    const markup = /^#(\d+)=IFCANNOTATION\(/m.exec(step);
+    assert.ok(markup);
+    const markupId = Number(markup[1]);
+    const rel = new RegExp(`^#(\\d+)=IFCRELDEFINESBYPROPERTIES\\([^;]*\\(#${markupId}\\),#(\\d+)\\);`, 'm').exec(step);
+    assert.ok(rel, 'expected the measurement\'s property relationship');
+    const foreign = [
+      "#9004=IFCANNOTATION('0untagged0000000000000',#4,'Plain',$,$,$,$);",
+      "#9005=IFCRELDEFINESBYPROPERTIES('0vendorRel000000000000',#4,$,$,(#9004),#9006);",
+      "#9006=IFCPROPERTYSET('0vendorPset00000000000',#4,'Vendor',$,(#9007));",
+      "#9007=IFCPROPERTYSINGLEVALUE('Note',$,IFCLABEL('kept'),$);",
+    ].join('\n');
+    const store = await open(step.replace(/^ENDSEC;\s*END-ISO-10303-21;/m, `${foreign}\nENDSEC;\nEND-ISO-10303-21;`));
+    absorbAll(step);
+    const context = getDrawingMarkupModelContext('m1');
+    assert.ok(context);
+    return { store, view: context.view, markupId, relId: Number(rel[1]), psetId: Number(rel[2]) };
+  }
+
+  function assertKept(saved: string, ...ids: number[]): void {
+    for (const id of ids) assert.match(saved, new RegExp(`^#${id}=`, 'm'), `#${id} must survive`);
+  }
+
+  it('keeps a relationship a session edit extended to an untagged annotation', async () => {
+    const { store, view, markupId, relId, psetId } = await reopenedWithForeign();
+    view.setPositionalAttribute(relId, 4, [`#${markupId}`, '#9004']);
+
+    assert.equal(saveDrawingMarkupToModel('m1', NO_MARKUP).previousRemoved, 1);
+    const saved = exportStep(store);
+    assertKept(saved, relId, psetId, 9004, 9005, 9006, 9007);
+    assert.deepEqual(danglingRefs(saved), []);
+  });
+
+  it('keeps a relationship a named RelatedObjects edit moved off the markup to the untagged annotation', async () => {
+    const { store, view, relId, psetId } = await reopenedWithForeign();
+    view.setAttribute(relId, 'RelatedObjects', '#9004');
+
+    assert.equal(saveDrawingMarkupToModel('m1', NO_MARKUP).previousRemoved, 1);
+    const saved = exportStep(store);
+    assertKept(saved, relId, psetId, 9004);
+    assert.match(saved, new RegExp(`^#${relId}=IFCRELDEFINESBYPROPERTIES\\([^;]*,#9004,#${psetId}\\);`, 'm'));
+    assert.deepEqual(danglingRefs(saved), []);
+  });
+
+  it('removes a relationship a named RelatedObjects edit moved from the untagged annotation onto the markup', async () => {
+    const { store, view, markupId, relId, psetId } = await reopenedWithForeign();
+    view.setAttribute(9005, 'RelatedObjects', `#${markupId}`);
+
+    assert.equal(saveDrawingMarkupToModel('m1', NO_MARKUP).previousRemoved, 1);
+    const saved = exportStep(store);
+    for (const id of [relId, psetId, 9005, 9006, 9007]) {
+      assert.doesNotMatch(saved, new RegExp(`^#${id}=`, 'm'), `#${id} related only the removed markup`);
+    }
+    assertKept(saved, 9004);
     assert.deepEqual(danglingRefs(saved), []);
   });
 });

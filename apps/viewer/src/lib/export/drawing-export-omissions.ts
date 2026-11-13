@@ -8,7 +8,7 @@ export type DrawingExportFormat = 'pdf' | 'dxf';
 export type DrawingExportOmission = 'markups' | 'rasterReferences' | 'requestedScale';
 
 export interface DrawingExportContent {
-  markupCounts: Readonly<{ measurements: number; areas: number; texts: number; clouds: number }>;
+  markupCounts: Readonly<{ measurements: number; areas: number; texts: number; clouds: number; dimensions: number }>;
   /** Count only underlays the drawing actually shows (opacity > 0). */
   visibleUnderlayCount: number;
   /** Visible, available, non-edge-on PDF/image references. DXF has no raster embedding. */
@@ -31,7 +31,7 @@ export function drawingExportOmissions(
 ): DrawingExportOmission[] {
   const omissions: DrawingExportOmission[] = [];
   const { markupCounts, visibleRasterReferenceCount = 0, sheetScale, requestedScale } = content;
-  if (markupCounts.measurements + markupCounts.areas + markupCounts.texts + markupCounts.clouds > 0) {
+  if (markupCounts.measurements + markupCounts.areas + markupCounts.texts + markupCounts.clouds + markupCounts.dimensions > 0) {
     omissions.push('markups');
   }
   if (visibleRasterReferenceCount > 0 && format === 'dxf') {

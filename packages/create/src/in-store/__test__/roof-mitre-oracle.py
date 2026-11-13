@@ -8,15 +8,16 @@ import sys
 import ifcopenshell
 import ifcopenshell.geom
 import ifcopenshell.util.shape
+import ifcopenshell.util.element
 import ifcopenshell.validate
+from roof_aggregate_oracle import roof_planes, union_volume
 
 model = ifcopenshell.file.from_string(sys.stdin.read())
 logger = ifcopenshell.validate.json_logger()
 ifcopenshell.validate.validate(model, logger, express_rules=True)
 assert not logger.statements, json.dumps(logger.statements, default=str)
 roof, = model.by_type('IfcRoof')
-items = [item for rep in roof.Representation.Representations
-         if rep.RepresentationIdentifier == 'Body' for item in rep.Items]
+parts, items = roof_planes(roof)
 assert len(items) == 2
 settings = ifcopenshell.geom.settings()
 meshes = [ifcopenshell.geom.create_shape(settings, item) for item in items]
@@ -48,6 +49,13 @@ top_integral = ta * top_y ** 2 / 2 + va * top_y + tb * (depth - top_y) ** 2 / 2 
 expected_volume = width * (top_integral - bottom_integral)
 volumes = [abs(ifcopenshell.util.shape.get_volume(mesh)) for mesh in meshes]
 assert math.isclose(sum(volumes), expected_volume, rel_tol=1e-7), (volumes, expected_volume)
-root = ifcopenshell.geom.create_shape(settings, roof)
-assert math.isclose(abs(ifcopenshell.util.shape.get_volume(root.geometry)), expected_volume, rel_tol=1e-7)
+for part, volume in zip(parts, volumes, strict=True):
+    sets = ifcopenshell.util.element.get_psets(part)
+    assert math.isclose(sets['Qto_SlabBaseQuantities']['GrossVolume'], volume, rel_tol=1e-7)
+    expected_pitch = a if part.Tag == '0' else b
+    assert math.isclose(sets['Pset_SlabCommon']['PitchAngle'], expected_pitch, abs_tol=1e-10)
+expected_area = width * (bottom_y / math.cos(a) + (depth - bottom_y) / math.cos(b))
+roof_sets = ifcopenshell.util.element.get_psets(roof)
+assert math.isclose(roof_sets['Qto_RoofBaseQuantities']['GrossArea'], expected_area, rel_tol=1e-7)
+assert math.isclose(union_volume(model, settings, items), expected_volume, rel_tol=1e-7)
 print(json.dumps({'planes': len(meshes), 'volume': sum(volumes), 'top': [top_y, top_z]}))

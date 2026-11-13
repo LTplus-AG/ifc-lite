@@ -10,6 +10,7 @@ import ifcopenshell.geom
 import ifcopenshell.util.element
 import ifcopenshell.util.shape
 import ifcopenshell.validate
+from roof_aggregate_oracle import roof_planes, union_volume
 
 model = ifcopenshell.file.from_string(sys.stdin.read())
 logger = ifcopenshell.validate.json_logger()
@@ -20,9 +21,7 @@ definition = ifcopenshell.util.element.get_psets(roof)['IfcLite_RoofFootprint']
 outline = json.loads(definition['Footprint'])
 slopes = json.loads(definition['EdgeSlopes'])
 thickness, overhang = definition['Thickness'], definition['Overhang']
-parts = [part for rel in model.by_type('IfcRelAssignsToProduct') if rel.RelatingProduct == roof
-         and rel.Name == 'Footprint roof planes' for part in rel.RelatedObjects]
-items = [item for rep in roof.Representation.Representations if rep.RepresentationIdentifier == 'Body' for item in rep.Items]
+parts, items = roof_planes(roof)
 assert len(items) == len(parts)
 dot = lambda a, b: sum(x * y for x, y in zip(a, b, strict=True))
 sub = lambda a, b: tuple(x - y for x, y in zip(a, b, strict=True))
@@ -101,8 +100,7 @@ for i, (part, item) in enumerate(zip(parts, items, strict=True)):
 for (i, j), area in pair_areas.items():
     other = pair_areas.get((j, i), 0.)
     assert math.isclose(area, other, rel_tol=1e-6, abs_tol=1e-7), (i, j, area, other)
-root = ifcopenshell.geom.create_shape(settings, roof)
-assert math.isclose(abs(ifcopenshell.util.shape.get_volume(root.geometry)), total_volume, rel_tol=1e-6)
+assert math.isclose(union_volume(model, settings, items), total_volume, rel_tol=1e-6)
 roof_qto = ifcopenshell.util.element.get_psets(roof)['Qto_RoofBaseQuantities']
 assert math.isclose(bottom_area, roof_qto['GrossArea'], rel_tol=1e-6), (bottom_area, roof_qto)
 print(json.dumps({'planes': len(parts), 'volume': total_volume, 'sharedFaces': len(pair_areas)//2}))

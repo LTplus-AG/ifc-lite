@@ -8,6 +8,7 @@ import { expect, it } from 'vitest';
 import { IfcAPI, initSync } from '@ifc-lite/wasm';
 import { addRoofToStore } from './roof.js';
 import { editFootprintRoofInStore } from './roof-footprint.js';
+import { getFootprintRoofPlaneParts } from './roof-plane-parts.js';
 import { recordCompoundMutation, StoreEditor, undoRecordedMutationOperations } from '@ifc-lite/mutations';
 import { exportText, insideMesh, newStorey, parse, type Mesh } from './wall-join-mesh.oracle.js';
 
@@ -68,38 +69,45 @@ const wasmPath = fileURLToPath(new URL('../../../wasm/pkg/ifc-lite_bg.wasm', imp
 it.skipIf(!existsSync(wasmPath))('the real WASM kernel meshes the mitred 30°/45° ridge after all schema exports (#9357)', async () => {
   initSync({ module: readFileSync(wasmPath) });
   const api = new IfcAPI();
-  const a = Math.PI / 6, b = Math.PI / 4, thickness = .25;
-  const topY = (8 * Math.tan(b) + thickness / Math.cos(b) - thickness / Math.cos(a)) / (Math.tan(a) + Math.tan(b));
-  const topZ = 3 + Math.tan(a) * topY + thickness / Math.cos(a);
-  for (const schema of ['IFC4', 'IFC2X3', 'IFC4X3'] as const) {
-    const s = await newStorey(schema);
-    const roof = addRoofToStore(s.editor, s.anchor, { Position: [0, 0, 3], Width: 10, Depth: 8, Thickness: thickness,
-      EdgeSlopes: [a, 0, b, 0] });
-    const bytes = new TextEncoder().encode(exportText(s)), pre = api.buildPrePassOnce(bytes);
-    const meshes: Mesh[] = [];
-    try {
-      const collection = api.processGeometryBatch(bytes, pre.jobs, pre.unitScale, 0, 0, 0, false,
-        pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors);
+  try {
+    const a = Math.PI / 6, b = Math.PI / 4, thickness = .25;
+    const topY = (8 * Math.tan(b) + thickness / Math.cos(b) - thickness / Math.cos(a)) / (Math.tan(a) + Math.tan(b));
+    const topZ = 3 + Math.tan(a) * topY + thickness / Math.cos(a);
+    for (const schema of ['IFC4', 'IFC2X3', 'IFC4X3'] as const) {
+      const s = await newStorey(schema);
+      const roof = addRoofToStore(s.editor, s.anchor, { Position: [0, 0, 3], Width: 10, Depth: 8, Thickness: thickness,
+        EdgeSlopes: [a, 0, b, 0] });
+      const bytes = new TextEncoder().encode(exportText(s)), pre = api.buildPrePassOnce(bytes);
+      const parts = new Set(getFootprintRoofPlaneParts(s.store, s.view, roof.roofId));
+      const meshed = new Set<number>();
+      const meshes: Mesh[] = [];
       try {
-        for (let i = 0; i < collection.length; i++) {
-          const mesh = collection.get(i);
-          if (!mesh) continue;
-          try {
-            if (mesh.expressId !== roof.roofId) continue;
-            const origin = mesh.origin, positions = Float64Array.from(mesh.positions);
-            for (let j = 0; j < positions.length; j++) positions[j] += origin[j % 3];
-            meshes.push({ positions, indices: mesh.indices.slice() });
-          } finally { mesh.free(); }
-        }
-      } finally { collection.free(); }
-    } finally { api.clearPrePassCache(); }
-    expect(meshes.length).toBeGreaterThan(0);
-    const heights = meshes.flatMap(mesh => Array.from(mesh.positions).filter((_, i) => i % 3 === 1));
-    expect(Math.max(...heights)).toBeCloseTo(topZ, 4);
-    for (const y of [topY - .04, topY + .04]) {
-      const top = 3 + Math.min(Math.tan(a) * y + thickness / Math.cos(a), Math.tan(b) * (8-y) + thickness / Math.cos(b));
-      expect(insideMesh(meshes, [4.83, top-.015, -y])).toBe(true);
-      expect(insideMesh(meshes, [4.83, top+.015, -y])).toBe(false);
+        const collection = api.processGeometryBatch(bytes, pre.jobs, pre.unitScale, 0, 0, 0, false,
+          pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors);
+        try {
+          for (let i = 0; i < collection.length; i++) {
+            const mesh = collection.get(i);
+            if (!mesh) continue;
+            try {
+              expect(mesh.expressId).not.toBe(roof.roofId);
+              if (!parts.has(mesh.expressId)) continue;
+              meshed.add(mesh.expressId);
+              const origin = mesh.origin, positions = Float64Array.from(mesh.positions);
+              for (let j = 0; j < positions.length; j++) positions[j] += origin[j % 3];
+              meshes.push({ positions, indices: mesh.indices.slice() });
+            } finally { mesh.free(); }
+          }
+        } finally { collection.free(); }
+      } finally { api.clearPrePassCache(); }
+      expect(meshes.length).toBeGreaterThan(0);
+      expect(meshed).toEqual(parts);
+      const heights = meshes.flatMap(mesh => Array.from(mesh.positions).filter((_, i) => i % 3 === 1));
+      expect(Math.max(...heights)).toBeCloseTo(topZ, 4);
+      for (const y of [topY - .04, topY + .04]) {
+        const top = 3 + Math.min(Math.tan(a) * y + thickness / Math.cos(a), Math.tan(b) * (8-y) + thickness / Math.cos(b));
+        expect(insideMesh(meshes, [4.83, top-.015, -y])).toBe(true);
+        expect(insideMesh(meshes, [4.83, top+.015, -y])).toBe(false);
+      }
     }
-  }
+  } finally { api.free(); }
 });

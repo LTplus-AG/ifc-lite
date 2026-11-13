@@ -8,6 +8,7 @@ import { getFootprintRoofPlaneParts, PART_TYPE, RELATION_NAME } from './roof-pla
 import { AnchorEntityReader } from './resolve-anchor.js';
 import { refId } from './host-geometry-frame.js';
 import { collectSourceAssociations } from './resolve-source.js';
+import { ROOF_FOOTPRINT_PSET } from './roof-footprint.js';
 
 /** Quantitative parts follow a copied roof without becoming placed/meshed
  * assembly children. Saved definitions retain their normal association policy;
@@ -21,6 +22,18 @@ export function copyRoofPlaneParts(store: IfcDataStore, editor: StoreEditor, sou
   if (!store.source) throw new Error('Roof plane copy requires source bytes');
   const reader = new AnchorEntityReader(store, view), extractor = new EntityExtractor(store.source);
   const guid = () => generateIfcGuid(random);
+  const copyMeasurements = (original: number, id: number, quantitySet: string, propertySet: string) => {
+    const sourceQuantities = view.getQuantitiesForEntity(original);
+    const quantities = sourceQuantities.length || view.hasChanges(original) ? sourceQuantities : extractQuantitiesOnDemand(store, original);
+    for (const set of quantities.filter(set => set.name === quantitySet)) for (const q of set.quantities) {
+      view.setQuantity(id, set.name, q.name, q.value, q.type);
+    }
+    const sourceProperties = view.getForEntity(original);
+    const properties = sourceProperties.length || view.hasChanges(original) ? sourceProperties : extractPropertiesOnDemand(store, original);
+    for (const set of properties.filter(set => set.name === propertySet)) for (const p of set.properties) {
+      view.setProperty(id, set.name, p.name, p.value, p.type, p.unit, false, p.dataType);
+    }
+  };
   for (const original of parts) {
     const a = reader.entity(original)!.attributes;
     if (a[5] != null || a[6] != null) throw new Error('Quantitative roof parts with independent placement or geometry cannot be copied');
@@ -34,19 +47,11 @@ export function copyRoofPlaneParts(store: IfcDataStore, editor: StoreEditor, sou
           association.name, association.description, [`#${id}`], `#${definition}`]);
       }
     }
-    const sourceQuantities = view.getQuantitiesForEntity(original);
-    const quantities = sourceQuantities.length || view.hasChanges(original) ? sourceQuantities : extractQuantitiesOnDemand(store, original);
-    for (const set of quantities.filter(set => set.name === 'Qto_SlabBaseQuantities')) for (const q of set.quantities) {
-      view.setQuantity(id, set.name, q.name, q.value, q.type);
-    }
-    const sourceProperties = view.getForEntity(original);
-    const properties = sourceProperties.length || view.hasChanges(original) ? sourceProperties : extractPropertiesOnDemand(store, original);
-    for (const set of properties.filter(set => set.name === 'Pset_SlabCommon')) for (const p of set.properties) {
-      view.setProperty(id, set.name, p.name, p.value, p.type, p.unit, false, p.dataType);
-    }
+    copyMeasurements(original, id, 'Qto_SlabBaseQuantities', 'Pset_SlabCommon');
   }
   const roof = reader.entity(target)!, ownerId = refId(roof.attributes[1]);
   editor.addEntity('IfcRelAssignsToProduct', [guid(), ownerId === null ? null : `#${ownerId}`,
     RELATION_NAME, null, [...copied.keys()].map(id => `#${id}`), null, `#${target}`]);
+  copyMeasurements(source, target, 'Qto_RoofBaseQuantities', ROOF_FOOTPRINT_PSET);
   return copied;
 }

@@ -40,6 +40,7 @@ import { identifyLoadedPlacementSource } from '@/lib/model-placement/loaded-sour
 import { placementSourceIdentity } from '@/lib/model-placement/source-identity';
 import { loadDrawing2DEntry, defaultMarkupPatch, suppressNextSaveFor, type PersistedDrawing2DEntry } from '@/store/slices/drawing2DSlice.persistence.js';
 import { setCachedHash, notifyDecided } from './drawingMarkupRestorePrecedence.js';
+import { absorbEmbeddedMarkup } from '@/lib/drawing2d-markup/drawing-markup-absorbed';
 import {
   resetSaveState, beginRestore, endRestore, setRestoredSectionConfig, ensureSaveSubscription,
   subscribeModelActivations, modelActivationEpoch,
@@ -189,6 +190,10 @@ export function useDrawing2DPersistence(): void {
       if (!entry) return;
 
       setRestoredSectionConfig(activeModelId, entry.sectionConfig);
+      // Before the write below, which the save subscription persists: this
+      // entry's markup includes (or deliberately dropped) these embedded
+      // annotations, so a save to the model may replace them.
+      absorbEmbeddedMarkup(activeModelId, entry.absorbedEmbeddedMarkup ?? []);
       const live = useViewerStore.getState();
       useViewerStore.setState({
         measure2DResults: drawnMeanwhile(entry.measure2DResults, live.measure2DResults),

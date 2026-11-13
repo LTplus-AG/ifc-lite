@@ -43,11 +43,18 @@
  * restoring the IFC's embedded markup: if that reports `'pending'` (the
  * hash hasn't resolved yet), this module WAITS, via
  * `onLocalStorageDecidedFor`, rather than racing it; if it reports `true`
- * (a saved entry exists, empty or not), this restore backs off for good;
- * only `false` (no entry — never saved for this file, or `localStorage`
- * unavailable) lets the IFC-embedded markup through. The outcome is now a
- * pure function of "does a localStorage entry exist", never of which
+ * (a saved entry with markup, or one that records absorbed embedded markup —
+ * see `drawingMarkupRestorePrecedence.ts`'s `outranksEmbeddedMarkup`), this
+ * restore backs off for good; only `false` (no such entry — never saved for
+ * this file, an empty entry persisted by a display-option change before any
+ * markup existed, or `localStorage` unavailable) lets the IFC-embedded markup
+ * through. The outcome is a pure function of the saved entry, never of which
  * promise happened to settle first.
+ *
+ * A restore that applies records what it read as absorbed
+ * (`drawing-markup-absorbed.ts`) before writing; "save markup to model"
+ * replaces only absorbed embedded annotations, so markup this restore never
+ * loaded (it backed off, or the user drew first) is never deleted by a save.
  *
  * `restoredForModel` additionally makes each model's restore attempt
  * run-once-until-emptied: a model this session already attempted (whether
@@ -61,7 +68,12 @@ import { useLoadWindowHold } from './loadWindow.js';
 import { useEffect } from 'react';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
-import { hasEmbeddedDrawingMarkup, restoreDrawingMarkupFromModel } from '@/lib/drawing2d-markup/drawing-markup-restore';
+import {
+  hasEmbeddedDrawingMarkup,
+  restoreDrawingMarkupFromModel,
+  restoredEmbeddedMarkupIdentities,
+} from '@/lib/drawing2d-markup/drawing-markup-restore';
+import { absorbEmbeddedMarkup } from '@/lib/drawing2d-markup/drawing-markup-absorbed';
 import { ensureParseFor, subscribeToParseCache } from './symbolic-parse-cache.js';
 import { hasPersistedMarkupEntryFor, onLocalStorageDecidedFor } from './useDrawing2DPersistence.js';
 
@@ -167,7 +179,7 @@ export function tryRestoreDrawingMarkup(modelId: string, requestParse = false): 
     return;
   }
   if (persisted) {
-    // A localStorage entry exists (empty or not) for this exact file —
+    // A localStorage entry for this exact file holds a markup decision —
     // it always wins over the IFC's embedded markup. Back off for good.
     markRestored(modelId);
     return;
@@ -199,6 +211,8 @@ export function tryRestoreDrawingMarkup(modelId: string, requestParse = false): 
   // triggered this call may have already run its own write.
   if (!markupFieldsEmpty() || useViewerStore.getState().activeModelId !== modelId) return;
 
+  // Before the write: the save subscription persists the set with it.
+  absorbEmbeddedMarkup(modelId, restoredEmbeddedMarkupIdentities(modelId, result));
   useViewerStore.setState({
     measure2DResults: result.measure2DResults,
     polygonArea2DResults: result.polygonArea2DResults,

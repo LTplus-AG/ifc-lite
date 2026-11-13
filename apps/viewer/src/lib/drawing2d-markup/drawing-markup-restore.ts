@@ -25,12 +25,14 @@ import {
   DRAWING_MARKUP_QSET_NAME,
 } from '@ifc-lite/create';
 import {
+  drawingMarkupItemExpressId,
   readDrawingMarkupFromParseResult,
   type DrawingMarkupMetaLookup,
   type DrawingMarkupReadResult,
 } from '@/lib/overlay-parse/drawing-markup-read';
 import { getParseFor } from '@/hooks/symbolic-parse-cache';
 import { getDrawingMarkupReadContext } from './drawing-markup-context.js';
+import { embeddedMarkupIdentity } from './drawing-markup-absorbed.js';
 
 /**
  * Read one entity's `ObjectType`, straight off the source bytes via
@@ -49,6 +51,11 @@ import { getDrawingMarkupReadContext } from './drawing-markup-context.js';
  * hard-coded index, so it stays correct if IfcRoot's layout ever shifts.
  */
 function readBaseObjectType(dataStore: IfcDataStore, expressId: number): string | null {
+  return readBaseAttribute(dataStore, expressId, 'ObjectType', 4);
+}
+
+/** One root attribute of a source entity, read the way {@link readBaseObjectType} documents. */
+function readBaseAttribute(dataStore: IfcDataStore, expressId: number, name: string, fallbackIndex: number): string | null {
   if (dataStore.source.byteLength <= 0) return null;
   // @raw-entity-enumeration-ok source byte offset is required by EntityExtractor; overlay attribute edits are applied by buildDrawingMarkupMetaLookup
   const ref = dataStore.entityIndex.byId.get(expressId);
@@ -57,8 +64,8 @@ function readBaseObjectType(dataStore: IfcDataStore, expressId: number): string 
   const entity = extractor.extractEntity(ref);
   if (!entity) return null;
   const names = getAttributeNames(entity.type);
-  const idx = names.indexOf('ObjectType');
-  const value = entity.attributes?.[idx >= 0 ? idx : 4];
+  const idx = names.indexOf(name);
+  const value = entity.attributes?.[idx >= 0 ? idx : fallbackIndex];
   return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
@@ -181,4 +188,18 @@ export function restoreDrawingMarkupFromModel(modelId: string): DrawingMarkupRea
     console.warn('[drawing-markup-restore] failed to resolve markup for', modelId, error);
     return null;
   }
+}
+
+/**
+ * The identities (`drawing-markup-absorbed.ts`) of the embedded annotations
+ * `result` was read from — what a restore that applies `result` absorbs into
+ * the session. An annotation the reader skipped is not in `result`, so it is
+ * never absorbed and a save keeps it.
+ */
+export function restoredEmbeddedMarkupIdentities(modelId: string, result: DrawingMarkupReadResult): string[] {
+  const context = getDrawingMarkupReadContext(modelId);
+  if (!context) return [];
+  const items = [...result.measure2DResults, ...result.polygonArea2DResults, ...result.textAnnotations2D, ...result.cloudAnnotations2D];
+  const ids = items.map((item) => drawingMarkupItemExpressId(item.id)).filter((id): id is number => id !== null);
+  return ids.map((id) => embeddedMarkupIdentity(id, readBaseAttribute(context.dataStore, id, 'GlobalId', 0)));
 }

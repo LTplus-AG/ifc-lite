@@ -13,11 +13,14 @@
  * session, never at tagged annotations that came from the file.
  *
  * The restore step is represented by passing the restored markup arrays
- * straight to `saveDrawingMarkupToModel`: restore only fills those arrays
- * (`drawing-markup-restore.ts`), and its real WASM read path is covered by
- * `overlay-parse/drawing-markup-read-real-roundtrip.test.ts`. What this file
- * pins is the write side on a re-parsed store, through the real
- * `IfcParser` + `StepExporter`.
+ * straight to `saveDrawingMarkupToModel` and recording the embedded
+ * annotations as absorbed (`drawing-markup-absorbed.ts`), the two things a
+ * restore that applies does; its real WASM read path is covered by
+ * `overlay-parse/drawing-markup-read-real-roundtrip.test.ts` and its absorbed
+ * bookkeeping by `hooks/drawingMarkupAbsorbed.test.tsx`. What this file pins is
+ * the write side on a re-parsed store, through the real `IfcParser` +
+ * `StepExporter`, including that embedded markup the session never absorbed
+ * survives a save.
  */
 
 import { describe, it } from 'node:test';
@@ -26,6 +29,7 @@ import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { StepExporter } from '@ifc-lite/export';
 import { useViewerStore } from '@/store/index.js';
 import { saveDrawingMarkupToModel, type SaveMarkupInput } from './drawing-markup-save.js';
+import { absorbEmbeddedMarkup } from './drawing-markup-absorbed.js';
 
 const STOREY_ID = 30;
 
@@ -105,12 +109,26 @@ function danglingRefs(step: string): number[] {
   return [...new Set([...body.matchAll(/#(\d+)/g)].map((m) => Number(m[1])))].filter((id) => !defined.has(id));
 }
 
+/** GlobalIds of the IfcLite markup annotations in `step`, keyed by tag. */
+function markupGuids(step: string): Map<string, string> {
+  const guids = new Map<string, string>();
+  for (const m of step.matchAll(/=IFCANNOTATION\('([^']*)',[^;]*'(IfcLite:Markup:[A-Za-z]+)'/g)) guids.set(m[2], m[1]);
+  return guids;
+}
+
+/** What a restore that applied does besides filling the arrays: record every embedded markup annotation as absorbed. */
+function absorbAll(step: string): void {
+  absorbEmbeddedMarkup('m1', markupGuids(step).values());
+}
+
 /** Save → export → reopen: the file a user gets back after a first session. */
-async function reopenedWith(markup: SaveMarkupInput): Promise<{ store: IfcDataStore; step: string }> {
+async function reopenedWith(markup: SaveMarkupInput, restored = true): Promise<{ store: IfcDataStore; step: string }> {
   const first = await open(MINI_IFC);
   assert.equal(saveDrawingMarkupToModel('m1', markup).refusal, null);
   const step = exportStep(first);
-  return { store: await open(step), step };
+  const store = await open(step);
+  if (restored) absorbAll(step);
+  return { store, step };
 }
 
 /** Every entity type the writer emits for a markup item, below the annotation itself. */
@@ -149,6 +167,7 @@ describe('saveDrawingMarkupToModel on a reopened model with embedded markup', ()
     assert.equal(saveDrawingMarkupToModel('m1', EVERY_KIND).previousRemoved, 4);
     const secondFile = exportStep(store);
     const third = await open(secondFile);
+    absorbAll(secondFile);
     assert.equal(saveDrawingMarkupToModel('m1', EVERY_KIND).previousRemoved, 4);
     const thirdFile = exportStep(third);
 
@@ -196,6 +215,7 @@ describe('saveDrawingMarkupToModel on a reopened model with embedded markup', ()
       "#9004=IFCANNOTATION('0untagged0000000000000',#4,'Plain',$,$,$,$);",
     ].join('\n');
     const store = await open(step.replace(/^ENDSEC;\s*END-ISO-10303-21;/m, `${foreign}\nENDSEC;\nEND-ISO-10303-21;`));
+    absorbAll(step);
 
     assert.equal(saveDrawingMarkupToModel('m1', NO_MARKUP).previousRemoved, 1);
     const saved = exportStep(store);
@@ -235,6 +255,7 @@ describe('saveDrawingMarkupToModel on a reopened model with embedded markup', ()
       "#9125=IFCANNOTATION('0styled00000000000000',#4,'Styled note',$,'Vendor:Note',$,#9124);",
     ].join('\n');
     const store = await open(step.replace(/^ENDSEC;\s*END-ISO-10303-21;/m, `${styles}\nENDSEC;\nEND-ISO-10303-21;`));
+    absorbAll(step);
 
     assert.equal(saveDrawingMarkupToModel('m1', NO_MARKUP).previousRemoved, 1);
     const saved = exportStep(store);
@@ -245,5 +266,71 @@ describe('saveDrawingMarkupToModel on a reopened model with embedded markup', ()
       assert.match(saved, new RegExp(`^#${id}=`, 'm'), `shared #${id} must survive`);
     }
     assert.deepEqual(danglingRefs(saved), []);
+  });
+});
+
+describe('saveDrawingMarkupToModel keeps embedded markup the session never absorbed', () => {
+  const OTHER_MEASURE: SaveMarkupInput = {
+    ...NO_MARKUP,
+    measure2DResults: [{ id: 'user-1', start: { x: 1, y: 1 }, end: { x: 1, y: 3 }, distance: 2 }],
+  };
+
+  it('writes the new markup beside embedded markup the restore never loaded (the user drew first)', async () => {
+    const { store, step } = await reopenedWith(ONE_MEASURE, false);
+    const embedded = markupGuids(step).get('IfcLite:Markup:Measure');
+    assert.ok(embedded);
+
+    const outcome = saveDrawingMarkupToModel('m1', OTHER_MEASURE);
+    assert.equal(outcome.refusal, null);
+    assert.equal(outcome.previousRemoved, 0);
+
+    const saved = exportStep(store);
+    assert.equal(count(saved, 'IFCANNOTATION'), 2, 'the embedded measurement and the new one');
+    assert.match(saved, new RegExp(`'${embedded}'`), 'the embedded measurement survives the save');
+    assert.deepEqual(danglingRefs(saved), []);
+  });
+
+  it('an empty-session save clears only absorbed markup, so with nothing absorbed it has nothing to clear', async () => {
+    const { store, step } = await reopenedWith(EVERY_KIND, false);
+
+    const outcome = saveDrawingMarkupToModel('m1', NO_MARKUP);
+    assert.equal(outcome.refusal, 'nothing-to-save');
+    assert.equal(outcome.previousRemoved, 0);
+    assert.equal(useViewerStore.getState().dirtyModels.has('m1'), false);
+    assert.equal(count(exportStep(store), 'IFCANNOTATION'), count(step, 'IFCANNOTATION'));
+  });
+
+  it('replaces only the absorbed annotations of a file carrying several', async () => {
+    const { store, step } = await reopenedWith(EVERY_KIND, false);
+    const guids = markupGuids(step);
+    absorbEmbeddedMarkup('m1', [guids.get('IfcLite:Markup:Measure')!]);
+
+    assert.equal(saveDrawingMarkupToModel('m1', ONE_MEASURE).previousRemoved, 1);
+    const saved = exportStep(store);
+    assert.equal(count(saved, 'IFCANNOTATION'), 4, 'three kept embedded annotations and the re-saved measurement');
+    assert.doesNotMatch(saved, new RegExp(`'${guids.get('IfcLite:Markup:Measure')}'`));
+    for (const tag of ['IfcLite:Markup:PolygonArea', 'IfcLite:Markup:Text', 'IfcLite:Markup:Cloud']) {
+      assert.ok(guids.get(tag), `expected ${tag} in the first file`);
+      assert.match(saved, new RegExp(`'${guids.get(tag)}'`), `${tag} was never absorbed and must survive`);
+    }
+    assert.deepEqual(danglingRefs(saved), []);
+  });
+
+  it('matches an annotation without a GlobalId by its express id', async () => {
+    const { step } = await reopenedWith(ONE_MEASURE, false);
+    const markup = /^#(\d+)=IFCANNOTATION\('([^']*)'/m.exec(step);
+    assert.ok(markup);
+    const store = await open(step.replace(`'${markup[2]}'`, '$'));
+    absorbEmbeddedMarkup('m1', [`#${markup[1]}`]);
+
+    assert.equal(saveDrawingMarkupToModel('m1', ONE_MEASURE).previousRemoved, 1);
+    assert.equal(count(exportStep(store), 'IFCANNOTATION'), 1);
+  });
+
+  it('forgets what was absorbed when the model id is loaded again', async () => {
+    const { step } = await reopenedWith(ONE_MEASURE);
+    const store = await open(step); // same bytes, but a new load: nothing restored yet
+    assert.equal(saveDrawingMarkupToModel('m1', OTHER_MEASURE).previousRemoved, 0);
+    assert.equal(count(exportStep(store), 'IFCANNOTATION'), 2);
   });
 });

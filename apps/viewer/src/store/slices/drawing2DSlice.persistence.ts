@@ -115,9 +115,7 @@ export function keyFor(modelHash: string): string {
 function isOwnKey(key: string | null): key is string {
   return key !== null && key.startsWith(STORAGE_KEY_PREFIX);
 }
-function hashFromKey(key: string): string {
-  return key.slice(STORAGE_KEY_PREFIX.length);
-}
+const hashFromKey = (key: string): string => key.slice(STORAGE_KEY_PREFIX.length);
 
 export interface PersistedDrawing2DEntry {
   measure2DResults: Measure2DResult[];
@@ -128,7 +126,8 @@ export interface PersistedDrawing2DEntry {
   drawing2DDisplayOptions: Drawing2DState['drawing2DDisplayOptions'];
   /** The `SectionConfig` that produced the view these results were drawn on, if any. */
   sectionConfig: SectionConfig | null;
-  savedAt: number;
+  /** Embedded markup the session absorbed (`drawing-markup-absorbed.ts`); absent in entries written before it existed. */
+  absorbedEmbeddedMarkup?: string[]; savedAt: number;
 }
 
 // ── Validation ───────────────────────────────────────────────────────
@@ -353,6 +352,7 @@ export function loadDrawing2DEntry(
     drawing2DDisplayOptions: coalesceDisplayOptions(entry.drawing2DDisplayOptions, defaultDisplayOptions),
     sectionConfig: isSectionConfigLike(entry.sectionConfig) ? entry.sectionConfig : null,
     savedAt: entry.savedAt, ownerModelId: typeof entry.ownerModelId === 'string' ? entry.ownerModelId : undefined,
+    absorbedEmbeddedMarkup: Array.isArray(entry.absorbedEmbeddedMarkup) ? entry.absorbedEmbeddedMarkup.filter((id): id is string => typeof id === 'string') : [],
   };
 }
 

@@ -171,6 +171,7 @@ function moveLegacyMarkup(key: string, legacy: string, unionById: LegacyMoveCont
     tagAnnotations2D: unionById(earlier.tagAnnotations2D ?? [], later.tagAnnotations2D ?? []),
     cloudAnnotations2D: unionById(earlier.cloudAnnotations2D, later.cloudAnnotations2D),
     sectionConfig: later.sectionConfig ?? earlier.sectionConfig,
+    absorbedEmbeddedMarkup: [...new Set([...earlier.absorbedEmbeddedMarkup ?? [], ...later.absorbedEmbeddedMarkup ?? []])],
   } : later;
   saveDrawing2DEntry(key, merged);
   // The entry read back must BE the merged one, value for value. Comparing

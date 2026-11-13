@@ -3,8 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Remove the IfcLite markup annotations a model was OPENED with, so a save
- * replaces them instead of adding a second copy beside them.
+ * Remove the IfcLite markup annotations a model was OPENED with and the
+ * session ABSORBED, so a save replaces them instead of adding a second copy
+ * beside them.
  *
  * `removeDrawingMarkupFromStore` (`drawing-markup-save.ts`) sweeps only
  * overlay entities: the markup saved earlier in this session. A file that was
@@ -13,10 +14,17 @@
  * Without this sweep, the next save wrote them again next to the embedded
  * ones (one measurement in, two annotations out).
  *
+ * Only annotations whose content the session absorbed may go
+ * (`drawing-markup-absorbed.ts`): the embedded restore does not always run,
+ * and removing markup the user never saw deletes it. A tagged annotation
+ * outside the absorbed set is kept, and the save writes its new markup beside
+ * it.
+ *
  * What is removed, all through `StoreEditor.removeEntity` tombstones:
  * - every live `IfcAnnotation` from the file whose current `ObjectType` is one
  *   of the `DRAWING_MARKUP_OBJECTTYPE` tags (any kind, so a kind added to
- *   that tag set is covered without touching this module);
+ *   that tag set is covered without touching this module) and whose identity
+ *   ({@link embeddedMarkupIdentity}) is in the absorbed set;
  * - each `IfcRelDefinesByProperties` that relates only such annotations (the
  *   writer's `Qto_IfcLiteMarkup` / `Pset_IfcLiteMarkup`);
  * - every entity reachable from those (placement, representation, items,
@@ -35,7 +43,10 @@ import { iterateEffectiveEntityIds, type MutablePropertyView, type StoreEditor }
 import { effectiveCreatedRecord, effectiveReferencers, effectiveSourceRecord } from '@ifc-lite/export';
 import { EntityExtractor, getInheritanceChainAcrossSchemas, type IfcDataStore } from '@ifc-lite/parser';
 import { DRAWING_MARKUP_OBJECTTYPE } from '@ifc-lite/create';
+import { embeddedMarkupIdentity } from './drawing-markup-absorbed.js';
 
+/** `IfcRoot.GlobalId`. */
+const GLOBAL_ID_INDEX = 0;
 /** `IfcAnnotation.ObjectType`, the same slot across IFC2X3/IFC4/IFC4X3. */
 const OBJECT_TYPE_INDEX = 4;
 /** `IfcRelDefinesByProperties.RelatedObjects`. */
@@ -121,18 +132,21 @@ class EffectiveReader {
 }
 
 /**
- * Tombstone every IfcLite markup annotation the model was opened with, and
- * what only it uses (see the module doc). Returns how many tagged
- * annotations were removed.
+ * Tombstone every IfcLite markup annotation the model was opened with whose
+ * identity is in `absorbed`, and what only it uses (see the module doc).
+ * Returns how many tagged annotations were removed.
  */
-export function removeEmbeddedDrawingMarkup(store: IfcDataStore, editor: StoreEditor): number {
+export function removeEmbeddedDrawingMarkup(store: IfcDataStore, editor: StoreEditor, absorbed: ReadonlySet<string>): number {
+  if (absorbed.size === 0) return 0;
   const view = editor.getMutationView();
   const reader = new EffectiveReader(store, view);
 
   const annotations = new Set<number>();
   for (const { expressId } of iterateEffectiveEntityIds(store, view, ['IFCANNOTATION'])) {
     if (reader.isCreated(expressId)) continue;
-    if (MARKUP_TAGS.has(reader.attributes(expressId)?.[OBJECT_TYPE_INDEX])) annotations.add(expressId);
+    const attributes = reader.attributes(expressId);
+    if (!MARKUP_TAGS.has(attributes?.[OBJECT_TYPE_INDEX])) continue;
+    if (absorbed.has(embeddedMarkupIdentity(expressId, attributes?.[GLOBAL_ID_INDEX]))) annotations.add(expressId);
   }
   if (annotations.size === 0) return 0;
 

@@ -96,6 +96,7 @@ import {
 } from '@/store/slices/drawing2DSlice.persistence.js';
 import { getCachedHash } from './drawingMarkupRestorePrecedence.js';
 import { isPristineSectionPlane } from '@/lib/section/section-plane-set';
+import { absorbedEmbeddedMarkupFor } from '@/lib/drawing2d-markup/drawing-markup-absorbed';
 import type { SectionPlane } from '@/store/types';
 
 /**
@@ -221,6 +222,7 @@ function persistFor(modelId: string): void {
     cloudAnnotations2D: s.cloudAnnotations2D,
     drawing2DDisplayOptions: s.drawing2DDisplayOptions,
     sectionConfig: lastSectionConfigModelId === modelId ? lastSectionConfig : null,
+    absorbedEmbeddedMarkup: [...absorbedEmbeddedMarkupFor(modelId)],
   });
 }
 

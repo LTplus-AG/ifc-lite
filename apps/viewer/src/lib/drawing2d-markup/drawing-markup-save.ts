@@ -68,6 +68,7 @@ import { mutationPermission, type MutationDenialReason } from '@/store/mutation-
 import { firstEffectiveStoreyId } from '@/lib/first-effective-storey';
 import { getDrawingMarkupModelContext } from './drawing-markup-context.js';
 import { removeEmbeddedDrawingMarkup } from './drawing-markup-embedded-sweep.js';
+import { absorbedEmbeddedMarkupFor } from './drawing-markup-absorbed.js';
 
 /**
  * `Drawing2DState`'s own four markup array shapes (`drawing2DSlice.ts`,
@@ -283,9 +284,13 @@ export function saveDrawingMarkupToModel(
 
   // Sweep BEFORE checking `total === 0`: an empty batch with a previous save
   // present is a legitimate "clear the saved markup" — not a no-op refusal.
-  // The markup the file was opened with is replaced too, else a reopened,
-  // restored model gains a second copy of every embedded annotation.
-  const previousRemoved = removeDrawingMarkupFromStore(editor) + removeEmbeddedDrawingMarkup(dataStore, editor);
+  // Markup the file was opened with is replaced too, else a reopened,
+  // restored model gains a second copy of every embedded annotation — but
+  // only what the session absorbed (`drawing-markup-absorbed.ts`): embedded
+  // markup the restore never loaded is kept, the new batch goes beside it,
+  // and a clear leaves it in place as well.
+  const previousRemoved = removeDrawingMarkupFromStore(editor)
+    + removeEmbeddedDrawingMarkup(dataStore, editor, absorbedEmbeddedMarkupFor(modelId));
 
   if (total === 0) {
     if (previousRemoved > 0) useViewerStore.getState().markModelsDirty([modelId]);

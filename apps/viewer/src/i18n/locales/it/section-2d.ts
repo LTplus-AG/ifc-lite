@@ -75,6 +75,7 @@ export const section2dIt = {
   "section2d.export.invalidScale": "Impossibile esportare PDF: scala non valida.",
   "section2d.export.allowPopups": "Consenti le finestre popup per stampare.",
   "section2d.export.omission.markups": "annotazioni del disegno (misure, aree, testo e nuvole)",
+  "section2d.export.omission.otherCutDimensions": "le quote disegnate su un altro taglio",
   "section2d.export.omission.rasterReferences": "sfondi di riferimento PDF/immagine visibili",
   "section2d.export.omission.requestedScale": "la scala richiesta (la tavola attiva imposta la scala PDF)",
   "section2d.export.omission.pdfTitle": "Questo PDF ometterà:",

@@ -75,6 +75,7 @@ export const section2dFr = {
   "section2d.export.invalidScale": "Impossible d’exporter le PDF : échelle invalide.",
   "section2d.export.allowPopups": "Autorisez les fenêtres contextuelles pour imprimer.",
   "section2d.export.omission.markups": "les annotations du dessin (mesures, surfaces, textes et nuages)",
+  "section2d.export.omission.otherCutDimensions": "les cotes dessinées sur une autre coupe",
   "section2d.export.omission.rasterReferences": "les fonds de plan PDF/image de référence visibles",
   "section2d.export.omission.requestedScale": "l’échelle demandée (la feuille active définit l’échelle du PDF)",
   "section2d.export.omission.pdfTitle": "Ce PDF n’inclura pas :",

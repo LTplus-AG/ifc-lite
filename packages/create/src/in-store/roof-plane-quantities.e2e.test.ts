@@ -11,6 +11,7 @@ import { editFootprintRoofInStore } from './roof-footprint.js';
 import { AnchorEntityReader, resolveSpatialAnchor } from './resolve-anchor.js';
 import { refId } from './host-geometry-frame.js';
 import { deriveAuthoredBaseQuantities } from './base-quantities.js';
+import { copyBatchInStore } from './copy-batch.js';
 import { exportText, newStorey, parse } from './wall-join-mesh.oracle.js';
 
 const D = Math.PI / 180;
@@ -124,6 +125,30 @@ describe('standard footprint roof plane measurements (#9357)', () => {
       const pitch = extractPropertiesOnDemand(reopened, id).find(set => set.name === 'Pset_SlabCommon')?.properties.find(p => p.name === 'PitchAngle');
       expect(pitch?.value).toBeCloseTo(30, 10);
     }
+  });
+
+  it.each([false, true])('copy carries independently editable roof-plane measurements (reopened=%s, #9357)', async reopened => {
+    let s = await session();
+    const { roofId } = addRoofToStore(s.editor, s.anchor, HIP);
+    if (reopened) {
+      const store = await parse(exportText(s)), view = new MutablePropertyView(null, 'reopened');
+      view.setOnDemandExtractor(id => extractPropertiesOnDemand(store, id));
+      view.setQuantityExtractor(id => extractQuantitiesOnDemand(store, id));
+      s = { ...s, store, view, editor: new StoreEditor(store, view) };
+    }
+    const original = parts(s, roofId);
+    const [copy] = copyBatchInStore(s.store, s.editor, [roofId], [{ offset: [20, 0, 0] }]);
+    const copied = parts(s, copy.copyId);
+    expect(copied).toHaveLength(4);
+    expect(copied.some(id => original.includes(id))).toBe(false);
+    const volume = (ids: number[]) => ids.reduce((sum, id) => sum + quantities(s, id, 'Qto_SlabBaseQuantities').GrossVolume, 0);
+    expect(volume(copied)).toBeCloseTo(80 / Math.cos(30 * D) * .25, 7);
+    editFootprintRoofInStore(s.store, s.editor, copy.copyId, { EdgeSlopes: [30 * D, 0, 30 * D, 0], Thickness: .4 });
+    expect(volume(original)).toBeCloseTo(80 / Math.cos(30 * D) * .25, 7);
+    expect(volume(parts(s, copy.copyId))).toBeCloseTo(80 / Math.cos(30 * D) * .4, 7);
+    const exported = await parse(exportText(s));
+    expect(exported.entityIndex.byType.get('IFCSLAB')).toHaveLength(6);
+    expect(exported.entityIndex.byType.get('IFCROOF')).toHaveLength(2);
   });
 });
 

@@ -8,6 +8,41 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
+## Snapshot read during renderer start-up and cache key from file slices (#9826, #9827, closed)
+
+**Rejected: reading the stored scene while the renderer starts (#9826) and
+keying the cache lookup from Blob slices, so it runs during the file read (W1,
+#9827), do not move reopen interactive time on the goal file and cost Holter
+and advanced_model cold loads about 100-350 ms.** The one real gain in the pair, BWK's
+first frame 50-80 ms sooner, came mostly from the yielding read that was split
+out and landed as #9914.
+
+Untimed, quiet-gated medians on Pop (n=5, it3; the arm also held the yielding
+read), base -> pair:
+
+| fixture | cold interactive | reopen first frame (w1 / w2) | reopen interactive (w1 / w2) |
+|---|---|---|---|
+| Holter | 4,611 -> 4,962 (4,871 without a watchdog-overlapped rep) | 522 -> 522 / 513 -> 486 | 1,833 -> 1,876 / 1,829 -> 1,794 |
+| advanced_model | 1,818 -> 1,924 | 435 -> 405 / 404 -> 374 | 868 -> 847 / 848 -> 830 |
+| BWK | 3,868 -> 3,873 | 619 -> 542 / 602 -> 551 | 1,595 -> 1,600 / 1,571 -> 1,587 |
+| FZK (below the cache tier) | 593 -> 590 | | |
+
+On a Holter cold miss the stream ends later and finalize -> interactive grows
+(1,144 -> 1,359 ms medians). Traced cold (CDP; absolute times inflated):
+Holter geometry stream end 2,529-2,852 ms on base vs 3,673 ms with the pair,
+and 2,547 / 2,559 ms with #9826 alone; interactive 4,899-5,481 vs 5,775 and
+4,928 / 4,948. So #9827 carries the cold cost, although on a miss it adds only
+a sliced fingerprint and one IndexedDB get alongside the read; the mechanism
+was not attributed further. #9826 alone looked cold-neutral on two traced
+samples, but its reopen gain was never measured alone and would have needed
+another slot. The output was identical in all tested cases: 24/24 reopen verdicts
+matched, and the altered-snapshot control caught 24/24.
+**Lesson:** the pre-pixel window on a Holter reopen is about 500 ms, and
+after the renderer and read reordering most of it is device and pipeline
+start-up, not cache work. Moving cache work earlier gives first-frame gains
+that interactive time does not show, and every change on the shared pick path
+must be checked on cold misses.
+
 ## Renderer device requested at the file pick (#9825, closed)
 
 **Rejected: asking for the renderer's WebGPU device at the file pick, before

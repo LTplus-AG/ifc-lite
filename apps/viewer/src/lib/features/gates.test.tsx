@@ -44,6 +44,12 @@ import { MEASURE_SECTION_TOUR } from '@/lib/tours/tours/measure-section';
 import { WELCOME_TOUR } from '@/lib/tours/tours/welcome';
 import { PanelGroupBrowser } from '@/components/viewer/ribbon/PanelGroupBrowser';
 import { ShortcutsTab } from '@/components/viewer/ShortcutsTab';
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+
+function ShortcutHarness() {
+  useKeyboardShortcuts();
+  return null;
+}
 
 function PrivacyNoticeHost() {
   usePrivacyDisclosure();
@@ -225,11 +231,25 @@ describe('one tool table, and what follows from it', () => {
 
   it('keeps each panel on its Alt+digit when one before it is off, and the dialog says which', () => {
     resetFeaturesForTest({ default: 'all', disable: ['check.bcf'] });
-    assert.equal(workspacePanelForShortcutCode('Digit3'), 'bcf', 'Alt+3 still means BCF, so it opens nothing');
-    assert.equal(workspacePanelForShortcutCode('Digit4'), 'validation');
+    render(<ShortcutHarness />);
+    const altDigit = (digit: number) => {
+      const event = new window.KeyboardEvent('keydown', { key: String(digit), code: `Digit${digit}`, altKey: true, bubbles: true, cancelable: true });
+      act(() => { window.dispatchEvent(event); });
+      return event.defaultPrevented;
+    };
+    assert.equal(altDigit(3), false, 'Alt+3 is still BCF\'s key, and with BCF off it goes to the browser');
+    assert.equal(altDigit(4), true, 'Alt+4 still opens Data validation');
+    assert.equal(useViewerStore.getState().sidebarActivePanel, 'validation');
     // The list no longer reads positionally once BCF is gone, so it names each key.
     const text = render(<ShortcutsTab />).textContent ?? '';
     assert.match(text, /4 Data validation/);
+  });
+
+  it('drops the bottom clause of the Alt+digit row when every bottom panel is off', () => {
+    resetFeaturesForTest({ default: 'all', disable: ['automate.scripting', 'data.schedule', 'data.lists'] });
+    const text = render(<ShortcutsTab />).textContent ?? '';
+    assert.match(text, /Open a panel from the rail \(1 Properties[^)]*7 Extensions\)/);
+    assert.doesNotMatch(text, /open at the bottom/);
   });
 
   // Pop-outs of switched-off panels: services/panel-windows.test.ts.

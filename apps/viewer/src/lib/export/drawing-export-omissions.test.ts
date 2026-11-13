@@ -55,4 +55,8 @@ describe('drawing export omissions (#5850)', () => {
     assert.deepEqual(await omissions({ ...empty, sheetScale: 50, requestedScale: 100 }, 'pdf'), ['requestedScale']);
     assert.deepEqual(await omissions({ ...empty, sheetScale: 50, requestedScale: 100 }, 'dxf'), []);
   });
+  it('still names markups for a caller that passes counts without dimensions', async () => {
+    const legacy = { ...empty, markupCounts: { measurements: 1, areas: 0, texts: 0, clouds: 0 } };
+    assert.deepEqual(await omissions(legacy, 'pdf'), ['markups']);
+  });
 });

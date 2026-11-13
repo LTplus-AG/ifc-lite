@@ -22,6 +22,7 @@ import { describe, it, beforeEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { act, createElement } from 'react';
 import { settleLoadWindow } from '@/test/load-window';
+import { markModelLoadEnded } from './modelLoadEnd.js';
 import { createRoot } from 'react-dom/client';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store/index.js';
@@ -304,14 +305,16 @@ const settledGeometry = {
 };
 
 /** Mount the restore hook with a fake overlay worker; returns the parse count and a teardown. */
-async function mountRestore(): Promise<{ posts: () => number; dispose: () => Promise<void> }> {
+async function mountRestore(): Promise<{ posts: () => number; sources: () => string[]; dispose: () => Promise<void> }> {
   let posts = 0;
+  const sources: string[] = [];
   const previous = __setOverlayWorkerFactoryForTest(() => {
     const fake = {
       onmessage: null as ((event: { data: unknown }) => void) | null,
       onerror: null, onmessageerror: null,
-      postMessage(request: { id: number }) {
+      postMessage(request: { id: number; source?: { kind: string; bytes?: Uint8Array } }) {
         posts++;
+        if (request.source?.kind === 'contiguous' && request.source.bytes) sources.push(new TextDecoder().decode(request.source.bytes));
         queueMicrotask(() => fake.onmessage?.({ data: { id: request.id, ok: true, flat: createEmptyFlatSymbolic() } }));
       },
       terminate() {},
@@ -326,6 +329,7 @@ async function mountRestore(): Promise<{ posts: () => number; dispose: () => Pro
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   return {
     posts: () => posts,
+    sources: () => sources,
     dispose: async () => {
       await act(async () => root.unmount());
       container.remove();
@@ -353,19 +357,27 @@ it('load window: restore waits while its model loads, then parses once, for the 
   const probe = await mountRestore();
   try {
     assert.equal(probe.posts(), 0, 'early read: no parse (and no spatial key) while the model loads');
-    // The full store replaces the partial one inside the window.
-    const full = await parse(fixture());
+    // The full store replaces the partial one inside the window; distinct bytes, so the parse can be told apart.
+    const full = await parse(fixture().replace("'markup-hook'", "'markup-hook-full'"));
     await act(async () => {
       useViewerStore.setState({
-        models: new Map([[modelId, { ...seeded, ifcDataStore: full, loadState: 'complete', geometryResult: settledGeometry }]]),
+        models: new Map([[modelId, { ...seeded, ifcDataStore: full, loadState: 'hydrating-metadata', geometryResult: settledGeometry }]]),
       } as never);
     });
     await tick();
     assert.equal(probe.posts(), 0, 'the swap inside the window parses nothing');
-    await act(async () => { useViewerStore.setState({ geometryStreamingActive: false }); });
+    await act(async () => {
+      useViewerStore.setState({
+        models: new Map([[modelId, { ...seeded, ifcDataStore: full, loadState: 'complete', geometryResult: settledGeometry }]]),
+        geometryStreamingActive: false,
+      } as never);
+      markModelLoadEnded(modelId); // settleLoadUi
+    });
     await settleLoadWindow();
     await tick();
-    assert.equal(probe.posts(), 1, 'settled: one restore parse, of the final store; none for the superseded one');
+    assert.equal(probe.posts(), 1, 'settled: one restore parse; none for the superseded one');
+    assert.equal(probe.sources().length, 1, 'the parse request carries its source');
+    assert.ok(probe.sources()[0].includes("'markup-hook-full'"), 'the parse is of the final store\'s bytes');
   } finally {
     await probe.dispose();
   }
@@ -386,6 +398,30 @@ it('load window: a settled model\'s restore is not held while another model load
   const probe = await mountRestore();
   try {
     assert.equal(probe.posts(), 1, 'A is active and settled: its markup restores during B\'s load');
+  } finally {
+    await probe.dispose();
+  }
+});
+
+it('load window: single-model cache hit restores nothing between the record turning complete and the UI settle', async () => {
+  __resetDrawingMarkupRestoreForTests();
+  __resetSymbolicAnnotationsCacheForTests();
+  await settleLoadWindow();
+  const modelId = 'cache-hit';
+  await seedStore(modelId);
+  const seeded = useViewerStore.getState().models.get(modelId)!;
+  useViewerStore.setState({ loading: true, models: new Map([[modelId, { ...seeded, loadState: 'pending' }]]) } as never);
+  const probe = await mountRestore();
+  try {
+    // Finalize publication: the record reads complete with its RTC frame; the decode and the UI settle follow.
+    await act(async () => {
+      useViewerStore.setState({ models: new Map([[modelId, { ...seeded, loadState: 'complete', geometryResult: settledGeometry }]]) } as never);
+    });
+    await settleLoadWindow(); await tick();
+    assert.equal(probe.posts(), 0, 'record complete, UI not settled: no restore parse');
+    await act(async () => { useViewerStore.setState({ loading: false }); markModelLoadEnded(modelId); });
+    await settleLoadWindow(); await tick();
+    assert.equal(probe.posts(), 1, 'after the settled frame: one restore parse');
   } finally {
     await probe.dispose();
   }

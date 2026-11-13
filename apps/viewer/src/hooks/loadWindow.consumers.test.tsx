@@ -13,6 +13,7 @@ import '@/test/setup-dom.js';
 import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
+import { markModelLoadEnded } from './modelLoadEnd.js';
 import { settleLoadWindow } from '@/test/load-window';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { render, cleanup } from '@/test/render.js';
@@ -167,3 +168,61 @@ it('viewport status summary counts against the FINAL store after a swap inside t
   await settleLoadWindow();
   assert.equal(hidden.at(-1), 2, 'settled: both hidden walls of the final store (the partial store has only one)');
 });
+
+it('multi-file open: A\'s overlays and hidden pill appear at A\'s settle while B, started at once, is held', async () => {
+  const storeA = await parse(), storeB = await parse();
+  useViewerStore.setState({ mutationViews: new Map(), mutationVersion: 0, hiddenEntities: new Set([10]), activeModelId: 'A' });
+  let overlays: string[][] = [];
+  let hidden: number[] = [];
+  function Probe() {
+    overlays.push(useSymbolicActiveStores().map((x) => x.modelId));
+    hidden.push(useViewportStatusSummary().objectCounts.hidden);
+    return null;
+  }
+  // loadFilesSequentially: file A starts the window.
+  act(() => useViewerStore.setState({ loading: true, ifcDataStore: storeA, models: new Map([['A', federated('A', storeA, 'pending')]]) }));
+  render(<Probe />);
+  assert.deepEqual(overlays.at(-1), [], 'A is loading: held');
+  // A finishes and file B starts at once; the store never stops loading.
+  act(() => useViewerStore.setState({ models: new Map([['A', federated('A', storeA, 'complete')]]) }));
+  act(() => markModelLoadEnded('A')); // A's settleLoadUi
+  act(() => useViewerStore.setState({ models: new Map([['A', federated('A', storeA, 'complete')], ['B', federated('B', storeB, 'pending')]]) }));
+  await settleLoadWindow();
+  assert.equal(useViewerStore.getState().loading, true, 'B is still loading');
+  assert.deepEqual(overlays.at(-1), ['A'], 'A settled: its overlays appear; B is held');
+  assert.equal(hidden.at(-1), 1, 'A\'s hidden pill appears');
+  act(() => useViewerStore.setState({ models: new Map([['A', federated('A', storeA, 'complete')], ['B', federated('B', storeB, 'complete')]]), loading: false }));
+  await settleLoadWindow();
+  assert.deepEqual(overlays.at(-1), ['A', 'B']);
+});
+
+for (const path of ['cache hit', 'cold load'] as const) {
+  it(`single-model ${path}: overlays and the hidden pill compute nothing between the record turning complete and the UI settle`, async () => {
+    const storeA = await parse();
+    useViewerStore.setState({ mutationViews: new Map(), mutationVersion: 0, hiddenEntities: new Set([10]), activeModelId: 'A' });
+    let overlays: string[][] = [];
+    let hidden: number[] = [];
+    function Probe() {
+      overlays.push(useSymbolicActiveStores().map((x) => x.modelId));
+      hidden.push(useViewportStatusSummary().objectCounts.hidden);
+      return null;
+    }
+    act(() => useViewerStore.setState({ loading: true, ifcDataStore: storeA, models: new Map([['A', federated('A', storeA, 'pending')]]) }));
+    render(<Probe />);
+    if (path === 'cold load') {
+      act(() => useViewerStore.setState({ geometryStreamingActive: true, models: new Map([['A', federated('A', storeA, 'streaming-geometry')]]) }));
+      act(() => useViewerStore.setState({ geometryStreamingActive: false }));
+    }
+    // Finalize publication: the record reads complete; the metadata decode and the UI settle follow.
+    act(() => useViewerStore.setState({ models: new Map([['A', federated('A', storeA, 'complete')]]) }));
+    overlays = []; hidden = [];
+    await settleLoadWindow(); await settleLoadWindow();
+    assert.ok(overlays.every((ids) => ids.length === 0), `no overlay store before the UI settle (saw ${JSON.stringify(overlays)})`);
+    assert.ok(hidden.every((n) => n === 0), `no hidden-pill walk before the UI settle (saw ${hidden})`);
+    // settleLoadUi: loading clears and the loader marks A's load as ended.
+    act(() => { useViewerStore.setState({ loading: false }); markModelLoadEnded('A'); });
+    await settleLoadWindow();
+    assert.deepEqual(overlays.at(-1), ['A'], 'after the settled frame');
+    assert.equal(hidden.at(-1), 1);
+  });
+}

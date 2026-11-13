@@ -19,8 +19,16 @@
  * Per model: the window holds only the models that are loading. A model whose
  * load was complete when the window opened keeps its values (overlays, counts,
  * statistics, pills) while another model loads, unless it is seen loading again
- * (a reload) while the window is open. In single-store mode the store is the
- * one being loaded, so `legacy` is held.
+ * (a reload) while the window is open. A model that loads inside the window is
+ * released when ITS OWN load has ended: the loader marks that point
+ * (`markModelLoadEnded`, at the settle of that load's UI: after finalize and
+ * publication), then the geometry tail must be idle (or `MAX_TAIL_WAIT_MS` must
+ * have passed since the mark), then a frame must paint. For a single load that
+ * is the same point as the window's own close. The record turning `complete`
+ * is not that point (on a cache hit it is ~400 ms earlier), and another
+ * model's load does not extend it: in a multi-file open the next file's load
+ * does not keep an earlier, ended model held. In single-store mode the store
+ * is the one being loaded, so `legacy` is held until the window closes.
  *
  * Signal: `loading` and `geometryStreamingActive` come from the store. The
  * renderer publishes no event when its finalize ends, so once both flags are
@@ -35,6 +43,7 @@
 import { useSyncExternalStore } from 'react';
 import { useViewerStore, type ViewerState } from '@/store';
 import { isGeometryTailBusy } from './geometryTail.js';
+import { subscribeModelLoadEnded } from './modelLoadEnd.js';
 
 export const MAX_TAIL_WAIT_MS = 3_000;
 export const MAX_STORE_BUSY_MS = 30_000;
@@ -52,6 +61,8 @@ export interface LoadWindowDeps {
   modelStates: () => Iterable<readonly [string, ModelLoadState]>;
   /** Subscribe to store changes (busy flags or the model map); returns the unsubscribe function. */
   subscribeStore: (listener: () => void) => () => void;
+  /** Subscribe to the loader's per-model "load ended" mark (modelLoadEnd.ts). */
+  subscribeLoadEnded: (listener: (modelId: string) => void) => () => void;
   tailBusy: () => boolean;
   now: () => number;
   requestFrame: (fn: () => void) => void;
@@ -78,8 +89,12 @@ const CLOSED: LoadWindowHold = { open: false, isHeld: () => false };
 export function createLoadWindow(deps: LoadWindowDeps): LoadWindow {
   const listeners = new Set<() => void>();
   let open = false;
-  /** Models whose load was complete when the window opened and that have not been seen loading since. */
+  /** Models not held: complete when the window opened, or settled inside it; not seen loading since. */
   let settled = new Set<string>();
+  /** When the loader marked each model's load as ended, inside this window. */
+  const loadEndedAt = new Map<string, number>();
+  /** Models whose release waits behind a painted frame. */
+  const releasing = new Set<string>();
   let snapshot: LoadWindowHold = CLOSED;
   let tailSince = -1;
   let busySince = -1;
@@ -101,6 +116,7 @@ export function createLoadWindow(deps: LoadWindowDeps): LoadWindow {
     if (open) return;
     settled = new Set();
     for (const [id, state] of deps.modelStates()) if (!LOADING_STATES.has(state)) settled.add(id);
+    loadEndedAt.clear(); // a mark from before this window belongs to a finished load
     open = true;
     publish();
   };
@@ -108,17 +124,53 @@ export function createLoadWindow(deps: LoadWindowDeps): LoadWindow {
     if (!open) return;
     open = false;
     settled = new Set();
+    loadEndedAt.clear();
+    releasing.clear();
     tailSince = -1;
     publish();
   };
-  /** A model settled at open that starts loading again (a reload) is held from then on. */
+  /**
+   * A model that is not held but is seen loading again (a reload) is held from
+   * then on. A held model whose load the loader has marked ended is released
+   * once the tail is idle (or its tail limit passed) and a frame has painted;
+   * the store's loading flags, which the next load of a multi-file open sets,
+   * do not delay it.
+   */
   const observeModels = (): void => {
-    if (!open || settled.size === 0) return;
+    if (!open) return;
     let changed = false;
+    let waiting = false;
     for (const [id, state] of deps.modelStates()) {
-      if (settled.has(id) && LOADING_STATES.has(state)) { settled.delete(id); changed = true; }
+      if (LOADING_STATES.has(state)) {
+        if (settled.delete(id)) changed = true;
+        loadEndedAt.delete(id); // a new load of this model is in progress
+        releasing.delete(id);
+        continue;
+      }
+      if (settled.has(id) || releasing.has(id) || !loadEndedAt.has(id)) continue;
+      if (modelTailWaiting(id)) { waiting = true; continue; }
+      releaseAfterPaint(id);
     }
     if (changed) publish();
+    if (waiting) scheduleCheck();
+  };
+  const modelTailWaiting = (id: string): boolean =>
+    deps.tailBusy() && deps.now() - (loadEndedAt.get(id) ?? deps.now()) < MAX_TAIL_WAIT_MS;
+  // As the window's own close: after the frame that shows the settled model,
+  // re-checking the tail, which can start again before that frame.
+  const releaseAfterPaint = (id: string): void => {
+    releasing.add(id);
+    let done = false;
+    const finish = (): void => {
+      if (done) return;
+      done = true;
+      if (!releasing.delete(id) || !open) return; // seen loading again, or the window closed
+      if (modelTailWaiting(id)) { scheduleCheck(); return; }
+      settled.add(id);
+      publish();
+    };
+    deps.requestFrame(() => deps.setTimer(finish, 0));
+    deps.setTimer(finish, CLOSE_BACKSTOP_MS);
   };
   const busyCapped = (): boolean => busySince >= 0 && deps.now() - busySince >= MAX_STORE_BUSY_MS;
   const tailWaiting = (): boolean => deps.tailBusy() && tailSince >= 0 && deps.now() - tailSince < MAX_TAIL_WAIT_MS;
@@ -190,6 +242,11 @@ export function createLoadWindow(deps: LoadWindowDeps): LoadWindow {
   // window when its first consumer module loads (the status bar, at boot), so
   // every load is seen from its start.
   deps.subscribeStore(evaluate);
+  deps.subscribeLoadEnded((modelId) => {
+    if (!open) return;
+    loadEndedAt.set(modelId, deps.now());
+    evaluate();
+  });
   evaluate();
 
   return {
@@ -216,6 +273,7 @@ function getViewerLoadWindow(): LoadWindow {
     subscribeStore: (listener) => useViewerStore.subscribe((s, prev) => {
       if (storeBusy(s) !== storeBusy(prev) || s.models !== prev.models) listener();
     }),
+    subscribeLoadEnded: subscribeModelLoadEnded,
     tailBusy: isGeometryTailBusy,
     now: () => performance.now(),
     requestFrame: (fn) => { if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => fn()); else setTimeout(fn, 16); },

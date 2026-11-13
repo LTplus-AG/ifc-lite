@@ -32,6 +32,7 @@ import { describe, it, beforeEach, after, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { expireStoreBusyCap, settleLoadWindow } from '@/test/load-window';
+import { markModelLoadEnded } from '@/hooks/modelLoadEnd';
 import { createRoot, type Root } from 'react-dom/client';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
@@ -510,5 +511,47 @@ describe('StatusBar — a federated add holds only the model that is loading', (
     assert.equal(elementsText(container), '8 elements', 'settled: A and B');
     assert.equal(hiddenPill(container), '1');
   });
+
+  it('multi-file open: A\'s count appears at A\'s settle while B, started at once, is held', async () => {
+    const storeB = await parseFixture();
+    act(() => useViewerStore.setState({ loading: true, models: new Map([['A', federated('A', store, 0, 'pending') as never]]), ifcDataStore: store, activeModelId: 'A' } as never));
+    const container = render();
+    assert.equal(elementsText(container), '— elements', 'A is loading');
+    act(() => useViewerStore.setState({ models: new Map([['A', federated('A', store, 0, 'complete') as never]]) }));
+    act(() => markModelLoadEnded('A'));
+    act(() => useViewerStore.setState({ models: new Map([['A', federated('A', store, 0, 'complete') as never], ['B', federated('B', storeB, 1000, 'pending') as never]]) }));
+    await settleLoadWindow();
+    assert.equal(useViewerStore.getState().loading, true);
+    assert.equal(elementsText(container), '4 elements', 'A settled: its count, although B started loading before its frame');
+    act(() => useViewerStore.setState({ models: new Map([['A', federated('A', store, 0, 'complete') as never], ['B', federated('B', storeB, 1000, 'complete') as never]]), loading: false }));
+    await settleLoadWindow();
+    assert.equal(elementsText(container), '8 elements');
+  });
+
+  for (const path of ['cache hit', 'cold load'] as const) {
+    it(`single-model ${path}: no count walk between the record turning complete and the UI settle`, async () => {
+      const real = useViewerStore.getState().resolveGlobalIdInModel;
+      let calls = 0;
+      useViewerStore.setState({ resolveGlobalIdInModel: (m: string, id: number) => { calls++; return real(m, id); } } as never);
+      try {
+        act(() => useViewerStore.setState({ loading: true, ifcDataStore: store, activeModelId: 'A', models: new Map([['A', federated('A', store, 0, 'pending') as never]]) } as never));
+        const container = render();
+        if (path === 'cold load') {
+          act(() => useViewerStore.setState({ geometryStreamingActive: true, models: new Map([['A', federated('A', store, 0, 'streaming-geometry') as never]]) }));
+          act(() => useViewerStore.setState({ geometryStreamingActive: false }));
+        }
+        act(() => useViewerStore.setState({ models: new Map([['A', federated('A', store, 0, 'complete') as never]]) }));
+        await settleLoadWindow(); await settleLoadWindow();
+        assert.equal(calls, 0, 'record complete, UI not settled: no mesh id mapped, so no walk ran');
+        assert.equal(elementsText(container), '— elements');
+        act(() => { useViewerStore.setState({ loading: false }); markModelLoadEnded('A'); });
+        await settleLoadWindow();
+        assert.ok(calls > 0);
+        assert.equal(elementsText(container), '4 elements');
+      } finally {
+        useViewerStore.setState({ resolveGlobalIdInModel: real } as never);
+      }
+    });
+  }
 });
 

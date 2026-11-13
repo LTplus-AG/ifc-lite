@@ -48,7 +48,7 @@ function readerResult(): RhinoImport {
       layer: 0, hidden: false, objectIds: [], geometryType: 'Mesh', userStrings: [], propertySets: [],
     }],
     meshes: [{
-      entity: 0, color: [1, 1, 1, 1], origin: [1, 2, 3],
+      entity: 0, color: [1, 1, 1, 1], origin: [1, 2, 3], hidden: true,
       positions: new Float32Array([0, 0, 0, 1, 2, 3]),
       normals: new Float32Array([0, 0, 1, 0, 0, 1]),
       indices: new Uint32Array([0, 0, 0]),
@@ -94,6 +94,8 @@ describe('readRhino3dmInWorker', () => {
     assert.deepEqual(result.meshes[0].origin, [1, 3, -2]);
     assert.deepEqual([...result.meshes[0].positions], [0, 0, 0, 1, 3, -2]);
     assert.deepEqual([...result.meshes[0].normals], [0, 1, 0, 0, 1, 0]);
+    // The per-record flag crosses the worker untouched; the viewer reads it in #10009.
+    assert.equal(result.meshes[0].hidden, true);
     assert.equal(fake.terminated(), 1);
   });
 

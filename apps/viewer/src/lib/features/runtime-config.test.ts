@@ -108,9 +108,7 @@ describe('fetching the host configuration', () => {
     let otherHits = 0;
     const other = await listen((_req, res) => {
       otherHits += 1;
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Content-Type', 'application/json');
-      res.end('{"version":1}');
+      res.end();
     });
     const home = await listen((_req, res) => {
       res.statusCode = 302;

@@ -130,8 +130,7 @@ async function fetchConfig(target: URL, fetchImpl: typeof fetch, signal: AbortSi
   let response: Response;
   try {
     response = await fetchImpl(target.href, {
-      // A redirect to another origin is refused before it is requested, and
-      // surfaces as a rejected fetch: the same error as a network failure.
+      // The platform refuses a redirect to another origin before requesting it.
       mode: 'same-origin',
       credentials: 'same-origin',
       cache: 'no-store',

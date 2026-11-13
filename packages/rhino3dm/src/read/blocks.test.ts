@@ -4,7 +4,7 @@
 
 import { describe, expect, test } from 'vitest';
 import { readRhino3dm, RhinoReadError } from '../index.js';
-import { craft, drawnTriangles, entityBounds, patchUuid, translation, type Craft } from '../../test-support/craft.js';
+import { blockMemberIds, craft, drawnTriangles, entityBounds, nonFiniteCoordinates, patchUuid, translation, type Craft } from '../../test-support/craft.js';
 import { markContents, MAX_BLOCK_PLACEMENTS, type Block } from './blocks.js';
 import { MAX_TEXT_DOTS } from './emit.js';
 
@@ -185,6 +185,25 @@ describe('guards', () => {
     expect(result.skipped).toEqual({ 'InstanceReference:missing-definition': 1 });
   });
 
+  // Review finding on PR #9880.
+  test('a block member no definition lists is counted, not dropped without a trace', async () => {
+    let craftRef: Craft | undefined;
+    const bytes = await craft(c => {
+      craftRef = c;
+      c.addInstance(c.block('Box', [unit(c)]), translation(3, 0, 0), { name: 'placed' });
+      c.addMesh(c.box([0, 5, 0], [1, 6, 1]), { name: 'fine' });
+    });
+    const [member] = blockMemberIds(craftRef!);
+    // Renaming the member object orphans it: the definition still lists the old id, so nothing claims
+    // the row, which is how a file whose definition was deleted or damaged reaches the reader. The id
+    // is stored twice and the object's own attributes are the second copy, after the definition table.
+    const orphaned = patchUuid(bytes, member, PLACEHOLDER, 1);
+    const result = await readRhino3dm(orphaned);
+    expect(result.entities.map(e => e.name)).toEqual(['fine']);
+    // Without the count the mesh leaves no trace at all: `skipped` came back empty.
+    expect(result.skipped).toEqual({ 'Mesh:orphaned-block-member': 1 });
+  });
+
   const tenBoxes = (c: Craft) => {
     const box = c.block('Box', [unit(c)]);
     for (let i = 0; i < 6; i++) c.addInstance(box, translation(i * 2, 0, 0), { name: `instance ${i}` });
@@ -235,20 +254,25 @@ describe('guards', () => {
 
   const SCALE = [1e15, 0, 0, 0, 0, 1e15, 0, 0, 0, 0, 1e15, 0, 0, 0, 0, 1];
 
-  // Review finding on PR #9880.
+  // Review finding on PR #9880, finiteness assertion reworked on review finding #9977.
   test.each([false, true])('a placement that flattens space, or pushes coordinates out of range, is counted and left out (bakeInstances %s)', async bakeInstances => {
     const bytes = await craft(c => {
       const box = c.block('Box', [unit(c)]), far = c.block('Far', [c.box([0, 0, 0], [1e30, 1e30, 1e30])]);
+      // A member vertex the file itself puts outside the finite f32 range: a definition must not carry it.
+      const broken = c.block('Broken', [c.mesh([[0, 0, 0], [1, 0, 0], [1e39, 1, 0]], [[0, 1, 2]])]);
       c.addInstance(box, [0, 0, 0, 5, 0, 0, 0, 5, 0, 0, 0, 5, 0, 0, 0, 1], { name: 'collapsed' });
       c.addInstance(far, SCALE, { name: 'overflowing' });
       // A last row other than 0 0 0 1 is a projection, which the reader does not apply.
       c.addInstance(box, [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 2], { name: 'projective' });
+      c.addInstance(broken, translation(0, 10, 0), { name: 'broken' });
       c.addInstance(box, translation(1, 0, 0), { name: 'fine' });
     });
     const result = await readRhino3dm(bytes, { bakeInstances });
+    // Asserted first, and over the definitions too: under bakeInstances: false the only geometry
+    // these placements could draw is a definition's, so reading `meshes` alone cannot fail.
+    expect(nonFiniteCoordinates(result)).toEqual([]);
     expect(result.entities.map(e => e.name)).toEqual(['fine']);
-    expect(result.skipped).toEqual({ 'InstanceReference:invalid': 2, 'transform:invalid': 1 });
-    expect(result.meshes.every(m => m.positions.every(Number.isFinite) && m.normals.every(Number.isFinite) && m.origin.every(Number.isFinite))).toBe(true);
+    expect(result.skipped).toEqual({ 'Mesh:invalid': 1, 'InstanceReference:invalid': 2, 'transform:invalid': 1 });
     expect(result.definitions.map(d => d.name)).toEqual(bakeInstances ? [] : ['Box']);
   });
 

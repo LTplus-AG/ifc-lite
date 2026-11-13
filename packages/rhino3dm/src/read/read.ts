@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { discardRhino, dispose, loadRhino } from '../runtime.js';
+import { discardRhino, dispose, isCurrentRhino, loadRhino } from '../runtime.js';
 import { readLook, resolveAppearance, type Appearance, type Look } from './appearance.js';
 import { buildBlock, expandInstance, markContents, MAX_BLOCK_PLACEMENTS, type Block, type BlockWalk } from './blocks.js';
 import { readDocument, rows as tableRows, type DocumentTables } from './document.js';
@@ -71,14 +71,18 @@ function readObjects(api: ReadApi, file: RFile, tables: DocumentTables, opts: Se
   return rows;
 }
 
-function readBlocks(api: ReadApi, file: RFile, rows: Map<string, ObjectRow>, tables: DocumentTables, report: Report): Map<string, Block> {
+/** The blocks, and `claimed`: every member id the definitions list, so a member no definition owns can be told apart. */
+function readBlocks(api: ReadApi, file: RFile, rows: Map<string, ObjectRow>, tables: DocumentTables, report: Report): { blocks: Map<string, Block>; claimed: Set<string> } {
   const linkedTypes = [api.InstanceDefinitionUpdateType.Linked.value, api.InstanceDefinitionUpdateType.LinkedAndEmbedded.value];
+  const claimed = new Set<string>();
   const blocks = new Map(tableRows(file.instanceDefinitions(), (definition): [string, Block] => {
-    const members = definition.getObjectIds().flatMap(id => rows.get(id) ?? []);
+    const ids = definition.getObjectIds();
+    for (const id of ids) claimed.add(id);
+    const members = ids.flatMap(id => rows.get(id) ?? []);
     return [definition.id, buildBlock(definition.name, linkedTypes.includes(definition.updateType.value), members, tables, report)];
   }));
   markContents(blocks);
-  return blocks;
+  return { blocks, claimed };
 }
 
 function refusal(report: Report): RhinoReadError {
@@ -92,7 +96,7 @@ function build(api: ReadApi, file: RFile, archiveVersion: number, classes: IfcCl
   const report = new Report();
   const tables = readDocument(api, file, archiveVersion, classes, report);
   const rows = readObjects(api, file, tables, opts, report);
-  const blocks = readBlocks(api, file, rows, tables, report);
+  const { blocks, claimed } = readBlocks(api, file, rows, tables, report);
   const emitter = new Emitter(opts.bakeInstances, opts.maxTriangles, report);
   const walk: BlockWalk = { blocks, tables, emitter, report, placementsLeft: MAX_BLOCK_PLACEMENTS };
   const { world } = tables;
@@ -101,7 +105,11 @@ function build(api: ReadApi, file: RFile, archiveVersion: number, classes: IfcCl
   const drawn: ObjectRow[] = [];
   let undrawn = 0;
   for (const row of rows.values()) {
-    if (row.member) continue;
+    if (row.member) {
+      // A member no definition lists is drawn by nothing, and would leave no trace of having been in the file.
+      if (!claimed.has(row.id)) report.skip(`${row.type}:orphaned-block-member`);
+      continue;
+    }
     const { part, appearance } = row, index = drawn.length;
     const before = emitter.size();
     const complete = part.kind === 'instance'
@@ -140,7 +148,8 @@ function build(api: ReadApi, file: RFile, archiveVersion: number, classes: IfcCl
 export async function readRhino3dm(bytes: Uint8Array, opts: ReadRhino3dmOptions = {}): Promise<RhinoImport> {
   const { subdLevel = 2, maxTriangles = DEFAULT_MAX_TRIANGLES, bakeInstances = false, onProgress } = opts;
   if (![0, 1, 2, 3].includes(subdLevel)) throw new RangeError('subdLevel must be 0, 1, 2 or 3');
-  if (!(maxTriangles >= 0)) throw new RangeError('maxTriangles must be a number of triangles');
+  // A budget has to be exhaustible, and Infinity passes a lower bound: a small archive whose blocks fan out could then ask for any number of triangles.
+  if (!Number.isSafeInteger(maxTriangles) || maxTriangles < 0) throw new RangeError('maxTriangles must be a whole number of triangles, 0 or more');
   const archiveVersion = readArchiveVersion(bytes);
   const size = megabytes(bytes.byteLength);
   if (bytes.byteLength > MAX_3DM_BYTES) {
@@ -148,7 +157,12 @@ export async function readRhino3dm(bytes: Uint8Array, opts: ReadRhino3dmOptions 
   }
   // rhino3dm's heap stops at 2 GB, and a read takes about five times the file size of it.
   const outOfMemory = () => new RhinoReadError('too-large', `This file (${size}) could not be read: it most likely needs more memory than the reader has. Split the model into smaller files in Rhino.`);
-  const [rhino, classes] = await Promise.all([loadRhino(opts.locateFile), loadIfcClasses()]);
+  // Another read can abort and discard the module this one was handed while it waited, and parsing
+  // with a discarded module fails an import that is fine. So this is rechecked after the last await
+  // before parsing. A module discarded during the reacquire itself still reaches the parse, where
+  // it fails the way an abort already does.
+  const [loaded, classes] = await Promise.all([loadRhino(opts.locateFile), loadIfcClasses()]);
+  const rhino = isCurrentRhino(loaded) ? loaded : await loadRhino(opts.locateFile);
   const api = readApi(rhino);
   const large = bytes.byteLength >= OUT_OF_MEMORY_SUSPECT_BYTES;
   // What the caller's callback throws is the caller's: it is passed on as it is, never read as a wasm failure.

@@ -167,7 +167,8 @@ export interface ReadRhino3dmOptions {
   locateFile?: (path: string, prefix: string) => string;
   subdLevel?: 0 | 1 | 2 | 3;        // default 2
   maxTriangles?: number;            // default 30_000_000 drawn, instances counted per placement;
-                                    // a curve or point cloud vertex counts a third of a triangle
+                                    // a curve or point cloud vertex counts a third of a triangle;
+                                    // a whole count, 0 or more: RangeError otherwise
   bakeInstances?: boolean;          // default false: blocks come back as definitions + instances
   onProgress?: (done: number, total: number) => void;
 }
@@ -469,6 +470,11 @@ its winding flipped and its normals transformed by the inverse transpose
   any instance, as in Rhino, and is counted as `hidden-block-member` [test].
   Unlike a hidden entity it cannot be shown later, because members are not
   entities.
+- A member object no definition lists is drawn by nothing, which a deleted or
+  damaged definition leaves behind. It is counted as
+  `<Class>:orphaned-block-member`, so it does not leave the result without a
+  trace of having been in the file [test: a crafted archive with the member
+  object's own id renamed].
 - A reference to a definition that is not in the file is counted as
   `InstanceReference:missing-definition`. Linked definitions (`updateType`
   linked, no members in the file) are counted and reported [unproven: no
@@ -651,7 +657,9 @@ and say what to do.
 | `worker-failed` | worker crash, unreadable message, timeout | as the export client. Raised by the viewer's worker client (step 2), not by the reader. |
 
 Running out of the triangle or placement budget, or reaching the text dot
-limit, is not an error: the read succeeds, stops drawing, and reports it.
+limit, is not itself an error: the read stops drawing and reports it. It is
+`no-renderable-geometry` only when nothing was drawn at all, which a budget
+below the first object's triangles gives [test: `maxTriangles` of 0 and 11].
 
 An error thrown by the caller's `onProgress` is rethrown as it is, whatever
 its type and whatever the file size: it is never read as a wasm failure, and
@@ -661,6 +669,12 @@ An emscripten abort leaves the module unusable [ran], so after any wasm trap
 the reader drops the shared runtime and the next read or write loads a fresh
 module [test, with a simulated abort]. A trap on a file of 32 MB or more is
 `too-large`; on a smaller file, which cannot exhaust the heap, it is `not-3dm`.
+
+A read that was already waiting on the runtime holds its own reference to the
+module, so a concurrent abort can leave it with the discarded one. It rechecks
+after its last await and takes the replacement, which keeps one file's abort
+from failing another file that is fine [test: two reads sharing a module, the
+first trapping].
 
 ### Size ceiling
 

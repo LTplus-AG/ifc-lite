@@ -62,19 +62,22 @@ by structured clone. A typed array is not itself transferable, so transfer
   double-precision transform). `bakeInstances` writes world-space copies into
   `meshes` instead. A block that contains itself is skipped and reported, and
   a member that is hidden or on a layer that is off is not drawn.
-- **Budget:** `maxTriangles` bounds what is drawn. A block's triangles count
-  once per placement, and a curve or point cloud vertex counts a third of a
-  triangle, so blocks cannot multiply geometry without bound. Text dots have
-  their own limit of 100,000 per file; `skipped` and `warnings` say what was
-  left out.
+- **Budget:** `maxTriangles` bounds what is drawn, and has to be a whole
+  number of triangles, 0 or more: a budget that cannot be exhausted is not a
+  budget. A block's triangles count once per placement, and a curve or point
+  cloud vertex counts a third of a triangle, so blocks cannot multiply
+  geometry without bound. Text dots have their own limit of 100,000 per file;
+  `skipped` and `warnings` say what was left out.
 - **Layers** come parent first with colour, visibility, user text and, when a
   layer carries `IFC::GlobalId` and `IFC::Class` stamps, its `spatial` element.
 
 `RhinoReadError.code` is one of `not-3dm`, `newer-archive` (saved by a Rhino
 newer than 8), `too-large` (above the 400 MB cap, or the wasm heap ran out) and
 `no-renderable-geometry` (for example surfaces saved without render meshes).
-A read that hits the triangle budget still succeeds: it stops drawing and says
-so in `warnings` and `skipped.budget`.
+Hitting the triangle budget is not itself an error: the read stops drawing and
+says so in `warnings` and `skipped.budget`. If it leaves nothing drawn at all,
+as a budget below the first object's triangles does, the read throws
+`no-renderable-geometry` like any other file that draws nothing.
 
 After initialization a read is synchronous, so in a browser run it in a
 worker. The contract and its evidence are in

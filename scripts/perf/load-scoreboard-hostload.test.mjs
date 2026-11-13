@@ -128,7 +128,7 @@ test('a sample records package temperature at both ends and the package throttli
 });
 
 test('the report names cells with throttled or unreadable-thermal samples and their hottest reading; quiet cells are omitted', async () => {
-  const { thermalRows } = await load('./load-scoreboard-report.mjs');
+  const { thermalRows } = await load('./load-scoreboard-report-sections.mjs');
   const row = (fixture, side, thermal) => ({ ok: true, fixture, lane: 'browser-cold', side, host: { thermal } });
   const rows = thermalRows([
     row('Holter', 'base', { startC: 91, endC: 94, throttleEvents: 3, throttleMs: 250 }),

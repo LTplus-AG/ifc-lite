@@ -77,3 +77,11 @@ export function thermalRows(samples) {
     return { throttled, unknown, line: `| ${fixture} | ${lane} | ${side} | ${rows.length} | ${throttled} | ${unknown} | ${ms.length ? Math.max(...ms) : '—'} | ${temps.length ? Math.max(...temps) : '—'} |` };
   }).filter((x) => x.throttled > 0 || x.unknown > 0).map((x) => x.line);
 }
+
+/** The thermal section's markdown lines, or none when no cell has a throttled or unreadable sample. */
+export function thermalSection(samples) {
+  const rows = thermalRows(samples);
+  return rows.length ? ['', '## CPU package thermal throttling during samples (measurement only, cells not voided)', '',
+    '| fixture | lane | side | samples | throttled | unreadable | max throttle ms in a sample | hottest package C |', '|---|---|---|---:|---:|---:|---:|---:|', ...rows] : [];
+}
+

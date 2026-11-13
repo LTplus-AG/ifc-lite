@@ -58,9 +58,12 @@ function rowsByCategory(apple: boolean, gestureKeys: (row: (typeof POINTER_GESTU
 export function ShortcutsTab() {
   const { t } = useTranslation();
   const apple = isApplePlatform();
+  // Each panel keeps its digit when one before it is switched off, so the list
+  // names the digit instead of relying on position (Alt+0 is the tenth).
   const altPanelTitles = (bottom: boolean) => ALT_SHORTCUT_PANELS
-    .filter((panel) => (panel.region === 'bottom') === bottom && isPanelAvailable(panel.id))
-    .map((panel) => t(panel.titleKey)).join(', ');
+    .map((panel, index) => ({ panel, digit: (index + 1) % 10 }))
+    .filter(({ panel }) => (panel.region === 'bottom') === bottom && isPanelAvailable(panel.id))
+    .map(({ panel, digit }) => `${digit} ${t(panel.titleKey)}`).join(', ');
   const groups = rowsByCategory(apple, (gesture) => t(gesture.gestureKey, { mod: apple ? '⌘' : 'Ctrl' }),
     { sidePanels: altPanelTitles(false), bottomPanels: altPanelTitles(true) });
 

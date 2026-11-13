@@ -102,6 +102,8 @@ export interface MCPServerOptions {
    * omit for stdio/in-process where the process is the session.
    */
   sessionId?: string;
+  /** `initialize` instructions. Default: the model-server instructions. */
+  instructions?: string;
 }
 
 export class MCPServer {
@@ -118,6 +120,7 @@ export class MCPServer {
   private scope: AuthScope;
   private logger: Logger;
   private capabilities: ServerCapabilities;
+  private instructions: string;
   private initialized = false;
   private sink: OutgoingMessageSink | null = null;
   /** Active tool calls keyed by JSON-RPC id, used for cancellation. */
@@ -136,6 +139,7 @@ export class MCPServer {
     this.resources = opts.resources;
     this.prompts = opts.prompts;
     this.logger = opts.logger ?? SILENT_LOGGER;
+    this.instructions = opts.instructions ?? SERVER_INSTRUCTIONS;
     this.capabilities = opts.capabilities ?? {
       tools: { listChanged: true },
       resources: { subscribe: true, listChanged: true },
@@ -325,7 +329,7 @@ export class MCPServer {
       protocolVersion: negotiated,
       capabilities: this.capabilities,
       serverInfo: { name: this.name, version: this.version },
-      instructions: SERVER_INSTRUCTIONS,
+      instructions: this.instructions,
     };
   }
 
@@ -515,12 +519,14 @@ export class MCPServer {
   }
 }
 
-function toToolDefinition(tool: { name: string; description: string; inputSchema: ToolDefinition['inputSchema']; scope?: string }): ToolDefinition {
+function toToolDefinition(tool: Omit<ToolDefinition, 'scope'> & { scope?: string }): ToolDefinition {
   return {
     name: tool.name,
+    ...(tool.title !== undefined ? { title: tool.title } : {}),
     description: tool.description,
     inputSchema: advertisedInputSchema(tool.inputSchema),
     scope: tool.scope as ToolDefinition['scope'],
+    ...(tool.annotations !== undefined ? { annotations: tool.annotations } : {}),
   };
 }
 

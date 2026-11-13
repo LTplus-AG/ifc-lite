@@ -190,7 +190,7 @@ function resolve(ctx: Context, row: AuthoringRow): void {
     case 'element.create': {
       const storey = locate(ctx, op.storey);
       join(row, storey.modelId);
-      if(op.op==='curtainWall.create'){const data=ctx.state.models.get(storey.modelId)?.ifcDataStore;if(!data?.source.byteLength||String(data.schemaVersion).toUpperCase()==='IFC5')throw new Refusal('unsupported','Curtain walls require a native IFC2X3, IFC4 or IFC4X3 source');}
+      if(op.op==='curtainWall.create'){const data=ctx.state.models.get(storey.modelId)?.ifcDataStore;if(!data?.source.byteLength||data.sourceKind==='tabular'||String(data.schemaVersion).toUpperCase()==='IFC5')throw new Refusal('unsupported','Curtain walls require a native IFC2X3, IFC4 or IFC4X3 source');}
       if(op.op==='stair.create'||op.op==='railing.create'){const nativeRefusal=stairRailingRefusal(ctx.state,storey.modelId);if(nativeRefusal)throw new Refusal('unsupported',nativeRefusal);}
       const r = reader(ctx, storey.modelId);
       if (!liveEntityConforms(r.dataStore, storey.expressId, 'IfcBuildingStorey', r.view)) throw new Refusal('conflict', `${op.storey.globalId} is not an IfcBuildingStorey`);

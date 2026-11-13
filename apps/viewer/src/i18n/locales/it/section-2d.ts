@@ -33,7 +33,7 @@ export const section2dIt = {
   "section2d.tip.dimensionFirst": "Fai clic sul primo punto da quotare · I punti si agganciano al disegno",
   "section2d.tip.dimensionSecond": "Fai clic sul secondo punto · Esc = annulla",
   "section2d.tip.dimensionPlace": "Fai clic per posizionare la linea di quota · Maiusc = orizzontale/verticale · Esc = annulla",
-  "section2d.status.dimensions": {"one": "{count} quota", "other": "{count} quote"},
+  "section2d.status.dimensions": {"one": "{count} quota", "many": "{count} quote", "other": "{count} quote"},
   "section2d.dimension.otherCut": "Altro taglio: disegnata su un altro piano di sezione, esclusa dalle esportazioni",
   "section2d.snap.endpoint": "Estremo",
   "section2d.snap.midpoint": "Punto medio",

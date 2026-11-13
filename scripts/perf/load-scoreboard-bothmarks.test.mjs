@@ -36,8 +36,37 @@ test('per side: both medians, the stall share, unknown samples counted apart, ga
   assert.equal(c.branch.stalls, 2, 'two of the three known branch samples hit the stall');
   assert.equal(c.branch.known, 3);
   assert.equal(c.branch.unknown, 1, 'a sample without frame times is unknown, not a non-stall');
-  assert.ok(c.gainFrame < c.gainCurrent, 'the stall makes the branch look worse under the frame mark');
+  assert.equal(c.gainFrame, null, 'an unknown sample: no frame gain (the cohorts would differ)');
+  const all = bothMarksCell(rows.slice(0, 6));
+  assert.ok(all.gainFrame < all.gainCurrent, 'every sample known: the stall makes the branch look worse under the frame mark');
   const md = bothMarksRows([{ name: 'Holter', lanes: { 'browser-cold': { bothMarks: c } } }]);
   assert.match(md[0], /\| Holter \| browser-cold \| .* \| 0\/3 \| .* \| 2\/3 \(\+1 unknown\) \|/);
   assert.deepEqual(bothMarksRows([{ name: 'x', lanes: { 'browser-cold': { bothMarks: bothMarksCell([row('base', 100, null)]) } } }]), [], 'no frame times on either side: no row');
+});
+
+test('an early-arm row: frame times move to the first-paint clock with the milestones (review #10043)', async () => {
+  const { frameMarkOf } = await load('./load-scoreboard-report-sections.mjs');
+  // Change-clock marks 400 / 450 with a 100 ms pick delay become 500 / 550; frames [420, 480, 560] become [520, 580, 660]:
+  // the 520 frame (change clock 420) already follows finalize, so no wait. Unshifted, 560 would read as a 10 ms wait.
+  assert.deepEqual(frameMarkOf({ geometryMs: 500, interactiveMs: 550, pickDelayMs: 100, presentTimesFromChangeMs: [420, 480, 560] }), { frameMs: 550, waitMs: 0 });
+  assert.deepEqual(frameMarkOf({ geometryMs: 500, interactiveMs: 520, pickDelayMs: 100, presentTimesFromChangeMs: [380, 470] }), { frameMs: 570, waitMs: 50 });
+});
+
+test('frame gain only over the same cohort; a missing frame mark alone never makes a gain (review #10043)', async () => {
+  const { bothMarksCell } = await load('./load-scoreboard-report-sections.mjs');
+  const row = (side, i, frames) => ({ side, ok: true, interactiveMs: i, geometryMs: i, presentTimesFromChangeMs: frames });
+  const c = bothMarksCell([row('base', 100, [100]), row('base', 200, [200]), row('base', 300, [300]),
+    row('branch', 100, [100]), row('branch', 200, [200]), row('branch', 10000, null)]);
+  assert.equal(c.gainCurrent, 0);
+  assert.equal(c.gainFrame, null);
+});
+
+test('fewer than three samples on a side are listed, never summarized, and get no gain (review #10043)', async () => {
+  const { bothMarksCell, bothMarksRows } = await load('./load-scoreboard-report-sections.mjs');
+  const row = (side, i) => ({ side, ok: true, interactiveMs: i, geometryMs: i, presentTimesFromChangeMs: [i] });
+  const c = bothMarksCell([row('base', 100), row('base', 120), row('base', 140), row('branch', 90), row('branch', 95)]);
+  assert.equal(c.gainCurrent, null);
+  assert.equal(c.gainFrame, null);
+  const [md] = bothMarksRows([{ name: 'FZK', lanes: { 'browser-cold': { bothMarks: c } } }]);
+  assert.match(md, /\| 120 \| 120 \| 0\/3 \| n=2: 90, 95 \| n=2: 90, 95 \| 0\/2 \| — \| — \|$/);
 });

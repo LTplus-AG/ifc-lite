@@ -52,3 +52,54 @@ export function watchdogRows(samples) {
     return `| ${fixture} | ${lane} | ${side} | ${rows.length} | ${over} | ${unknown} | ${foreign.length ? Math.round(median(foreign)) : '—'} |`;
   });
 }
+
+/** A sample "hits the post-finalize stall" when its first presented frame comes more than this long after the mark. */
+export const STALL_MS = 50;
+
+/**
+ * The second, informational mark of one browser row: the first frame presented at or after the scene finished
+ * (finalize end, `geometryMs`), never earlier than the current mark. `waitMs` = how far it is after the current
+ * mark. Null when the row has no presented-frame times or none falls in its window (unknown, never "no wait").
+ */
+export function frameMarkOf(row) {
+  const times = row?.presentTimesFromChangeMs, g = row?.geometryMs, i = row?.interactiveMs;
+  if (!Array.isArray(times) || !Number.isFinite(g) || !Number.isFinite(i)) return null;
+  const next = times.find((t) => t >= g - 1e-6);
+  if (next === undefined) return null;
+  const frameMs = Math.max(i, next);
+  return { frameMs, waitMs: frameMs - i };
+}
+
+/**
+ * Both marks for one lane, per side, from the same samples: the current mark (what verdicts use) and the
+ * presented-frame mark, with the share of samples that hit the post-finalize stall (wait > STALL_MS) and the
+ * gains under both marks. Verdicts stay on the current mark; this makes an uneven tail visible beside it.
+ */
+export function bothMarksCell(rows) {
+  const side = (name) => {
+    const ok = rows.filter((r) => r.side === name && r.ok && Number.isFinite(r.interactiveMs));
+    const marks = ok.map(frameMarkOf);
+    const known = marks.filter(Boolean);
+    return { n: ok.length, current: median(ok.map((r) => r.interactiveMs)), frame: known.length ? median(known.map((m) => m.frameMs)) : null,
+      stalls: known.filter((m) => m.waitMs > STALL_MS).length, known: known.length, unknown: ok.length - known.length,
+      maxWaitMs: known.length ? Math.max(...known.map((m) => m.waitMs)) : null };
+  };
+  const base = side('base'), branch = side('branch');
+  const gain = (a, b) => (Number.isFinite(a) && Number.isFinite(b) && a > 0 ? 1 - b / a : null);
+  return { base, branch, gainCurrent: gain(base.current, branch.current), gainFrame: gain(base.frame, branch.frame) };
+}
+
+/** Markdown rows of the both-marks table (lanes with no presented-frame times on either side are omitted). */
+export function bothMarksRows(fixtures) {
+  const ms = (v) => (Number.isFinite(v) ? Math.round(v).toLocaleString('en-US') : '—');
+  const pct = (v) => (Number.isFinite(v) ? `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%` : '—');
+  const share = (x) => (x.known ? `${x.stalls}/${x.known}${x.unknown ? ` (+${x.unknown} unknown)` : ''}` : `unknown (${x.unknown})`);
+  const out = [];
+  for (const f of fixtures) for (const [lane, l] of Object.entries(f.lanes)) {
+    const c = l.bothMarks;
+    if (!c || (c.base.known === 0 && c.branch.known === 0)) continue;
+    out.push(`| ${f.name} | ${lane} | ${ms(c.base.current)} | ${ms(c.base.frame)} | ${share(c.base)} | ${ms(c.branch.current)} | ${ms(c.branch.frame)} | ${share(c.branch)} | ${pct(c.gainCurrent)} | ${pct(c.gainFrame)} |`);
+  }
+  return out;
+}
+

@@ -8,7 +8,7 @@
  * markdown tables. Failed samples stay in the counts.
  */
 
-import { watchdogRows, webglPickRows } from './load-scoreboard-report-sections.mjs';
+import { bothMarksCell, bothMarksRows, STALL_MS, watchdogRows, webglPickRows } from './load-scoreboard-report-sections.mjs';
 export { watchdogRows, webglPickRows } from './load-scoreboard-report-sections.mjs';
 import { aaNoiseFloor, expectedCacheTier, median, rankShares, relativeSpread, verdictFor } from './load-scoreboard-stats.mjs';
 
@@ -212,7 +212,8 @@ export function summarize(plan, samples, { floors = null } = {}) {
           for (const key of Object.keys(verdicts)) verdicts[key] = { ...verdicts[key], verdict: why, pass: false, regression: false };
         }
       }
-      lanes[lane] = { sides, verdicts, floors: laneFloors, output, armProtocol, primary: verdicts.interactiveMs ?? null };
+      lanes[lane] = { sides, verdicts, floors: laneFloors, output, armProtocol, primary: verdicts.interactiveMs ?? null,
+        bothMarks: lane.startsWith('browser') ? bothMarksCell(rows) : null };
     }
     fixtures.push({ name: fx.name, set: fx.set ?? 'tuning', bytes: fx.bytes, expectedTier: Number.isFinite(fx.bytes) ? expectedCacheTier(fx.bytes) : null, lanes });
   }
@@ -370,6 +371,11 @@ export function renderMarkdown(summary, plan, host, samples = []) {
   if (readinessRows.length) {
     out.push('', '## Readiness components (base side medians, n>=3; ms from the clock origin of each lane, as stated above; interactive = the last of geometry finalized, metadata ready, settled + frame)', '',
       `| fixture | set | lane | ${READINESS.map(([, l]) => l).join(' | ')} | binding (count) |`, `|---|---|---|${READINESS.map(() => '---:|').join('')}---|`, ...readinessRows);
+  }
+  const bmRows = bothMarksRows(summary.fixtures);
+  if (bmRows.length) {
+    out.push('', `## Both marks (verdicts use the current mark; "frame" = first frame presented at or after the scene finished; stall = next frame > ${STALL_MS} ms after the mark)`, '',
+      '| fixture | lane | base current | base frame | base stalls | branch current | branch frame | branch stalls | gain (current) | gain (frame) |', '|---|---|---:|---:|---:|---:|---:|---:|---:|---:|', ...bmRows);
   }
   const wdRows = watchdogRows(samples);
   if (wdRows.length) {

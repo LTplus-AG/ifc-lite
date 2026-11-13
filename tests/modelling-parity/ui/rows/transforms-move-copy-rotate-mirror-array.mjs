@@ -36,12 +36,11 @@ export default {
       }));
       const beforeRotate = (await oracleModel(s)).step;
       const rotationSource = beforeRotate.wallAxes().find(w => near(w.start[1],5,.03) && near(w.end[1],5,.03));
+      const rotationPivot = rotationSource && rotationSource.start.map((v,i) => (v+rotationSource.end[i])/2);
       const rotationGuid = rotationSource && beforeRotate.get(rotationSource.id).args[0];
       tasks.push(await task(s, 'rotate: select the y=5 wall, Shift+Q, type 90', async () => {
         await selectAt(s, [[2, 5, 1.5]]);
         await s.ui.key('Shift+Q', { settle: 300 });
-        await s.ui.key('p');
-        await s.ui.clickWorld([0,5,0]);
         await typeFields(s, [90]);
         await escape(s);
       }));
@@ -86,13 +85,13 @@ export default {
       const rotatedEntity = finalStep.of('IFCWALL').find(w => w.args[0] === rotationGuid);
       // Clicked wall origins carry the click's few-mm error, so the move is judged to 30 mm.
       const moved = axes.some((a) => nearPt(a.start, [0, 2], 0.03) && nearPt(a.end, [4, 2], 0.03));
-      const rotated = rotatedWall(rotationSource, axes.find(w => w.id === rotatedEntity?.id), [0,5]);
+      const rotated = rotatedWall(rotationSource, axes.find(w => w.id === rotatedEntity?.id), rotationPivot);
       const arrayed = axes.filter((a) => near(a.length, 4, 1e-3) && a.start[1] > 9).length;
       return {
         tasks, notes, evidence: [shot], artifacts: { mirrorIfc: mirroredFile },
         checks: [
           { name: 'move by a typed 2 m', ok: moved, detail: axes.map((a) => `${fmt(a.start)}->${fmt(a.end)}`).join(' ') },
-          { name: 'rotate by a typed 90 degrees', ok: rotated, detail: rotated ? 'selected wall turned +90 degrees about (0,5)' : 'selected wall has wrong signed rotation' },
+          { name: 'rotate by a typed 90 degrees', ok: rotated, detail: rotated ? 'selected wall turned +90 degrees about its original centre' : 'selected wall has wrong signed rotation' },
           { name: 'array makes 3 walls from one', ok: arrayWalls(axes), detail: `${arrayed} walls in the array region` },
           { name: 'Mirror reflects the selected wall about y=12', ok: !!reflectedBounds && near(reflectedBounds.centre[1],14,.01) && near(reflectedBounds.min[0],0,.01) && near(reflectedBounds.max[0],4,.01) && near(reflectedBounds.size[1],.2,.005) && mirrored.count('IFCWALL') === beforeMirror.count('IFCWALL'), detail: JSON.stringify(reflectedBounds) ?? 'Mirror gesture did not produce an exported wall' },
           { name: 'Undo restores the mirrored wall to y=10', ok: !!undone && near(undone.start[1],10,.01) && near(undone.end[1],10,.01) && restored.count('IFCWALL') === beforeMirror.count('IFCWALL'), detail: JSON.stringify(undone) ?? 'No completed Mirror to undo' },

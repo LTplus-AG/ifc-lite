@@ -48,6 +48,15 @@ describe('drawing export omissions (#5850)', () => {
     }
   });
 
+  it('warns before DXF drops a placed zero-length Distance measurement (#10020)', async () => {
+    const content = {
+      ...empty,
+      markupCounts: { ...empty.markupCounts, measurements: 1 },
+      dxfDimensions: [{ start: { x: 2, y: 3 }, end: { x: 2, y: 3 }, label: '0 m', textHeight: 0.3 }],
+    };
+    assert.deepEqual(await omissions(content, 'dxf'), ['markups']);
+  });
+
   it('includes vectors in every format and omits only eligible raster references from DXF (#6615)', async () => {
     const content = { ...empty, visibleUnderlayCount: 2 };
     assert.deepEqual(await omissions(content, 'pdf'), []);

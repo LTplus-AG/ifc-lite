@@ -22,7 +22,7 @@
  */
 
 import { createRequire } from 'node:module';
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromePids, memoryOf, vramOf } from './scenoptic-bench-sampling.mjs';
@@ -33,8 +33,9 @@ import { rebaseToArm, waitCacheEntryStable, waitFirstPaint } from './load-scoreb
 import { expectSceneSnapshot, prepareWarmOpen } from './viewer-scene-snapshot.mjs';
 import { readGpuHealth } from '../../tests/benchmark/gpu-health.ts';
 import { IDENTITY_QUERY, corruptStoredSnapshots, readSceneIdentity, settleIdentityWrites } from './load-scoreboard-identity.mjs';
-import { markTraceWindow, startCpuTraceSafe, stopCpuTrace } from './load-scoreboard-cputrace.mjs';
+import { epochWindow, markTraceWindow, startCpuTraceSafe, stopCpuTrace } from './load-scoreboard-cputrace.mjs';
 import { outsideOwnCgroup } from './load-scoreboard-host.mjs';
+import { INSTR_WRAPPER, laneInstructions, parseInstrSamples } from './load-scoreboard-instr.mjs';
 
 /** Lane-name suffix of each arm; the default arm keeps the default lane names. */
 export const ARM_LANE_SUFFIX = { quiet: '', 'first-paint': '-early', 'boot-settled': '-settled' };
@@ -123,7 +124,7 @@ function summarizeOpen(open, memory) {
  * quiet shell alone and is reported as a different protocol.
  * Returns { lanes: { 'browser-cold<suffix>', 'browser-warm1<suffix>', 'browser-warm<suffix>' }, warmOpens, meta }.
  */
-export async function browserSample({ chromium, executablePath, baseUrl, setRoot, side, fixture, warmOpens, outDir, tag, log, pass = 'timing', arm = 'quiet', cpuTrace = false }) {
+export async function browserSample({ chromium, executablePath, baseUrl, setRoot, side, fixture, warmOpens, outDir, tag, log, pass = 'timing', arm = 'quiet', cpuTrace = false, instructions = false }) {
   const suffix = ARM_LANE_SUFFIX[arm];
   if (suffix === undefined) throw new Error(`unknown arm ${arm}`);
   const early = arm === 'first-paint';
@@ -131,12 +132,18 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
   setRoot(side.dist);
   const profileDir = mkdtempSync(join(tmpdir(), 'load-scoreboard-'));
   const env = { ...process.env, VK_ICD_FILENAMES: NVIDIA_ICD, VK_DRIVER_FILES: NVIDIA_ICD };
+  // Opt-in instruction counting (load-scoreboard-instr.mjs): Chrome runs under the counting wrapper; timed pass only.
+  const instrOut = instructions && pass === 'timing' && process.platform === 'linux' ? `${profileDir}.instr.ndjson` : null;
+  if (instrOut) Object.assign(env, { LOAD_SCOREBOARD_INSTR_CHROME: executablePath, LOAD_SCOREBOARD_INSTR_OUT: instrOut });
+  const instrWindows = [];
   const query = `?perfTrace=1${side.query ? `&${side.query}` : ''}${pass === 'identity' ? `&${IDENTITY_QUERY}` : ''}`;
   const sizeMB = statSync(fixture.path).size / 2 ** 20;
   const uncached = expectedCacheTier(statSync(fixture.path).size).startsWith('none');
   const timeoutMs = Math.max(15 * 60 * 1000, sizeMB * 12 * 1000);
   const consoleLogs = [];
   const meta = { pass, query, executablePath, chromeArgs: CHROME_ARGS, pageErrors: [], crashed: false, identityOpens: [] };
+  // Declared here, after meta (review #10138): a non-Linux host records why instead of throwing.
+  if (instructions && pass === 'timing' && !instrOut) meta.instructionsUnavailable = `instruction counting supports x86 Linux PMUs cpu / cpu_core+cpu_atom; this host: ${process.platform}`;
   const lanes = { [coldLane]: { lane: coldLane, ok: false } };
   if (warmOpens > 1) lanes[warm1Lane] = { lane: warm1Lane, ok: false };
   if (warmOpens > 0) lanes[warmLane] = { lane: warmLane, ok: false };
@@ -166,10 +173,12 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
     open.framesToInteractive = framesBetween(counters.frames, open.originAbs, open.originAbs + open.interactiveMs);
     open.presentTimesFromChangeMs = presentTimes(counters.frames, open.originAbs, open.originAbs + open.interactiveMs + 3000);
     open.webgl = webglAroundPick(counters.gl, open.originAbs, open.originAbs + open.interactiveMs);
+    // Epoch window of this open for the instruction counter (after the open; not timed).
     // The measured interval of this open (page clock): from the input event, or for the first-paint arm from the
     // first paint (rebaseToArm adds that pick delay to the wall time), to the interactive mark (review #10138).
     const fromAbs = early && Number.isFinite(shell?.armedAtMs) && shell.armedAtMs <= open.originAbs ? shell.armedAtMs : open.originAbs;
     const toAbs = open.originAbs + open.interactiveMs;
+    if (instrOut) { const w = await epochWindow(page, fromAbs, toAbs); if (w) instrWindows.push({ label, window: w }); }
     // A mark created now with an earlier startTime gets its trace ts from that startTime (Chrome; args.data.callTime holds the creation time).
     const markError = tracing ? await markTraceWindow(page, fromAbs, toAbs, open.originAbs) : null;
     Object.assign(open, { shell }, await waitUiQuiet(page, open.originAbs + open.interactiveMs, open.originAbs));
@@ -191,7 +200,7 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
       models: fingerprint.map(({ elements: _e, ...rest }) => rest) };
   };
   try {
-    context = await chromium.launchPersistentContext(profileDir, { env, executablePath, headless: false,
+    context = await chromium.launchPersistentContext(profileDir, { env, executablePath: instrOut ? INSTR_WRAPPER : executablePath, headless: false,
       viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1, args: CHROME_ARGS });
     meta.browserVersion = context.browser()?.version() ?? null;
     await context.addInitScript(COUNT_FRAMES);
@@ -276,6 +285,19 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
     await context?.close().catch(() => {});
     rmSync(profileDir, { recursive: true, force: true });
     writeFileSync(join(outDir, `${tag}.console.log`), consoleLogs.join('\n'));
+    if (instructions && pass === 'timing') {
+      // The wrapper writes its last totals when Chrome has exited; the open windows were taken from the page. Every lane
+      // carries a figure or the reason it has none (non-Linux, permissions, wrapper output).
+      const parsed = instrOut ? parseInstrSamples(existsSync(instrOut) ? readFileSync(instrOut, 'utf8') : '') : null;
+      const laneOf = { cold: coldLane, warm1: warmOpens > 1 ? warm1Lane : warmLane, [`warm${warmOpens}`]: warmLane };
+      try {
+        laneInstructions(lanes, { parsed, unavailable: instrOut ? null : meta.instructionsUnavailable, windows: instrWindows.map(({ label, window }) => ({ lane: laneOf[label], window })) });
+      } catch (err) {
+        laneInstructions(lanes, { unavailable: `instruction figures failed: ${String(err?.message ?? err).slice(0, 200)}` });
+      }
+      if (parsed?.unavailable) meta.instructionsUnavailable = parsed.unavailable;
+      if (instrOut) rmSync(instrOut, { force: true });
+    }
   }
   return result;
 }

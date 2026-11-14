@@ -50,12 +50,14 @@ function buttonWithText(text: string): HTMLButtonElement {
 }
 
 function open(provider: 'anthropic' | 'openai' = 'anthropic'): HTMLElement {
-  return render(
+  render(
     <>
       <ByokKeyModal open onOpenChange={() => undefined} initialProvider={provider} />
       <Toaster />
     </>,
   );
+  // #9875: modal notices render in the dialog portal, outside the React root.
+  return document.body;
 }
 
 describe('ByokKeyModal Anthropic credential', () => {

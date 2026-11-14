@@ -5,7 +5,7 @@
 import { useMemo, useRef } from 'react';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { perfTally } from '@ifc-lite/load-trace';
-import type { TypeVisibility } from '@/store/types';
+import type { TypeVisibility, StructuralViewMode } from '@/store/types';
 import { isTypeVisible } from '@/store/typeVisibilityFilter';
 import { isMeshVisibleInViewMode, meshClassIsPlaced, meshIsNonOccurrence, type TypeViewMode } from '@/lib/type-view-visibility';
 import { sameMeshUpload } from './mesh-upload-identity.js';
@@ -24,6 +24,7 @@ export function useFilteredGeometry(
   geometryContentVersion: number,
   typeVisibility: TypeVisibility,
   typeViewMode: TypeViewMode,
+  structuralViewMode: StructuralViewMode = 'both',
 ): { hasTypeGeometry: boolean; hasOccurrenceGeometry: boolean; filteredGeometry: MeshData[] | null; geometryVersion: number; geometryReplacementVersion: number } {
   // Does the rendered geometry carry any type-library geometry? geometryClass
   // 1 = orphan type, 2 = instanced type; class 0 = placed occurrence. The
@@ -103,6 +104,7 @@ export function useFilteredGeometry(
   const filteredSourceRef = useRef<MeshData[] | null>(null);
   const filteredTypeVisRef = useRef(typeVisibility);
   const filteredTypeModeRef = useRef(effectiveViewMode);
+  const filteredStructuralModeRef = useRef(structuralViewMode);
   const filteredHasOccRef = useRef(hasOccurrenceGeometry);
   const filteredVersionRef = useRef(0);
   const replacementVersionRef = useRef(0);
@@ -124,6 +126,7 @@ export function useFilteredGeometry(
     // (new file), or empty cache
     const prevVis = filteredTypeVisRef.current;
     const typeVisChanged =
+      filteredStructuralModeRef.current !== structuralViewMode ||
       prevVis.spaces !== typeVisibility.spaces ||
       prevVis.spatialZones !== typeVisibility.spatialZones ||
       prevVis.openings !== typeVisibility.openings ||
@@ -141,10 +144,11 @@ export function useFilteredGeometry(
       filteredSourceRef.current = allMeshes;
       filteredTypeVisRef.current = typeVisibility;
       filteredTypeModeRef.current = effectiveViewMode;
+      filteredStructuralModeRef.current = structuralViewMode;
       filteredHasOccRef.current = hasOccurrenceGeometry;
     }
 
-    const needsFilter = !typeVisibility.spaces || !typeVisibility.spatialZones || !typeVisibility.openings || !typeVisibility.virtualElements || !typeVisibility.site || !typeVisibility.ifcAnnotations;
+    const needsFilter = structuralViewMode !== 'both' || !typeVisibility.spaces || !typeVisibility.spatialZones || !typeVisibility.openings || !typeVisibility.virtualElements || !typeVisibility.site || !typeVisibility.ifcAnnotations;
     let writeIndex = rebuilding ? 0 : cache.length;
     let replaced = false;
 
@@ -170,7 +174,7 @@ export function useFilteredGeometry(
       // `site` toggle also hides `IfcGeographicElement` terrain (issue #1480);
       // `ifcAnnotations` also hides annotation 3D solid geometry / "Model Text"
       // breps on top of the 2D curve overlay (issues #1354, #1480).
-      if (needsFilter && !isTypeVisible(ifcType, typeVisibility)) continue;
+      if (needsFilter && !isTypeVisible(ifcType, typeVisibility, structuralViewMode)) continue;
 
       // Mesh alpha flows through unchanged. The previous code re-multiplied
       // IfcSpace / IfcOpeningElement alpha down to <= 0.3 here, which stomped
@@ -198,7 +202,7 @@ export function useFilteredGeometry(
     // Return the same array reference — downstream change detection uses
     // geometryVersion (which increments each batch) instead of array identity.
     return cache;
-  }, [mergedGeometryResult, typeVisibility, effectiveViewMode, hasOccurrenceGeometry]);
+  }, [mergedGeometryResult, typeVisibility, structuralViewMode, effectiveViewMode, hasOccurrenceGeometry]);
 
   // Version counter that changes every batch — triggers useGeometryStreaming
   // without requiring a new geometry array reference.

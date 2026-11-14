@@ -30,8 +30,15 @@ it('clearing all models keeps a model with only georeference edits and drops unc
     assert.equal(after.dirtyModels.has('georef'), true, 'its edit is still unsaved');
     assert.equal(after.georefMutations.get('georef'), edit, 'and still there to save');
     assert.equal(after.mutationViews.has('plain'), false, 'an unchanged view is dropped');
+
+    // A model whose only unsaved work is the schedule it owns stays unsaved too.
+    const scheduled = new MutablePropertyView(null, 'sched');
+    store.setState({ mutationViews: new Map([['sched', scheduled]]), dirtyModels: new Set(['sched']), scheduleSourceModelId: 'sched', scheduleIsEdited: true });
+    store.getState().clearAllModels();
+    assert.equal(store.getState().dirtyModels.has('sched'), true, 'the schedule edit is still unsaved');
   } finally {
-    store.setState({ mutationViews: before.mutationViews, georefMutations: before.georefMutations, dirtyModels: before.dirtyModels });
+    store.setState({ mutationViews: before.mutationViews, georefMutations: before.georefMutations, dirtyModels: before.dirtyModels,
+      scheduleSourceModelId: before.scheduleSourceModelId, scheduleIsEdited: before.scheduleIsEdited });
   }
 });
 

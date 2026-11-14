@@ -7,6 +7,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { federationRegistry } from '@ifc-lite/renderer';
 import { configureMutationView } from './configureMutationView.js';
 import { sourceWatermark } from './source-watermark.js';
+import { hasPendingWorkOutsideView } from '@/store/slices/pending-outside-view';
 
 /** Same ownership floor for live overlays and allocating cold planners. */
 export function modelExpressIdFloor(modelId: string, source: IfcDataStore | null, watermark = sourceWatermark(source)): () => number {
@@ -40,10 +41,10 @@ export function discardOverlappingRetainedEdits(
 }
 
 /** Source-only views carry no work to reload, and must not retain an old allocator floor. */
-export function discardUnchangedMutationViews(state: Partial<Pick<import('@/store').ViewerState, 'mutationViews' | 'clearMutationView' | 'georefMutations'>>): void {
-  // Georeference edits live in `georefMutations`, not the view; clearing the view would drop their dirty flag and history.
+export function discardUnchangedMutationViews(state: Partial<Pick<import('@/store').ViewerState, 'mutationViews' | 'clearMutationView' | 'georefMutations' | 'scheduleSourceModelId' | 'scheduleIsEdited' | 'scheduleData'>>): void {
+  // Georeference and schedule edits live outside the view; clearing it would drop their dirty flag and history.
   const modelIds = [...state.mutationViews ?? []]
-    .filter(([modelId, view]) => !view.hasPendingChanges() && view.getMutationCount() === 0 && !state.georefMutations?.has(modelId))
+    .filter(([modelId, view]) => !view.hasPendingChanges() && view.getMutationCount() === 0 && !hasPendingWorkOutsideView(state, modelId))
     .map(([modelId]) => modelId);
   if (modelIds.length) state.clearMutationView?.(modelIds);
 }

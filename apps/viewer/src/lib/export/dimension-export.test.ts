@@ -20,7 +20,6 @@ import {
   DIMENSION_DXF_LAYER,
   boundsWithDimensions,
   dimensionGraphicsList,
-  dimensionsToDxfLayers,
   dimensionsToSvg,
   drawDimensionsPdf,
   placeDimensionText,
@@ -112,20 +111,19 @@ const emptyDrawing: Drawing2D = {
 };
 
 function dxfEntities(dims: Dimension2D[], paperScale: number, axis: SectionAxis, coordinateTransform?: (p: { x: number; y: number }) => { x: number; y: number }): DxfEntity[] {
-  const layers = dimensionsToDxfLayers(graphics(dims, paperScale, axis));
-  return parseDxf(exportToDXF(emptyDrawing, { ...layers, coordinateTransform })).entities;
+  return parseDxf(exportToDXF(emptyDrawing, { dimensions: graphics(dims, paperScale, axis), coordinateTransform })).entities;
 }
 
 describe('dimension DXF export', () => {
-  it('writes open polylines and a centred TEXT on one layer, through the plan transform', () => {
+  it('writes dimension segments and a centred TEXT on one layer, through the plan transform', () => {
     // The plan export's world transform: y up, shifted.
     const entities = dxfEntities([horizontal], 100, 'down', (p) => ({ x: p.x + 100, y: 50 - p.y }));
-    const polys = entities.filter((e): e is Extract<DxfEntity, { kind: 'polyline' }> => e.kind === 'polyline');
+    const polys = entities.filter((e): e is Extract<DxfEntity, { kind: 'line' }> => e.kind === 'line');
     const texts = entities.filter((e): e is Extract<DxfEntity, { kind: 'text' }> => e.kind === 'text');
     assert.equal(polys.length, 5, 'dimension line, two extension lines, two ticks');
-    assert.ok(polys.every((p) => p.layer === DIMENSION_DXF_LAYER && !p.closed));
-    assert.deepEqual(polys[0].vertices.map((v) => [v.x, v.y]), [[101, 47.5], [105, 47.5]]);
-    assert.deepEqual(polys[1].vertices.map((v) => [v.x, v.y]), [[101, 47.9], [101, 47.3]]);
+    assert.ok(polys.every((p) => p.layer === DIMENSION_DXF_LAYER));
+    assert.deepEqual([[polys[0].x1, polys[0].y1], [polys[0].x2, polys[0].y2]], [[101, 47.5], [105, 47.5]]);
+    assert.deepEqual([[polys[1].x1, polys[1].y1], [polys[1].x2, polys[1].y2]], [[101, 47.9], [101, 47.3]]);
     assert.equal(texts.length, 1);
     const [text] = texts;
     assert.equal(text.layer, DIMENSION_DXF_LAYER);
@@ -150,7 +148,7 @@ describe('dimension DXF export', () => {
   });
 
   it('adds no layers without dimensions', () => {
-    assert.deepEqual(dimensionsToDxfLayers([]), { polylineLayers: [], textLayers: [] });
+    assert.equal(dxfEntities([], 100, 'down').length, 0);
   });
 });
 
@@ -231,4 +229,23 @@ describe('boundsWithDimensions', () => {
     assert.equal(boundsWithDimensions(bounds, []), bounds);
     assert.deepEqual(boundsWithDimensions(bounds, graphics([horizontal], 100)), bounds, 'a dimension inside the extent changes nothing');
   });
+});
+
+it('applies the DXF preflight rule to SVG, PDF and bounds too (#10020, #10077)', () => {
+  const valid = dimensionGraphicsList([{ id: 'valid', a: { x: 0, y: 0 }, b: { x: 5, y: 0 }, offset: 0, orientation: 'aligned' }],
+    { paperScale: 100, format: m => `${m} m` })[0];
+  const zero = dimensionGraphicsList([{ id: 'zero', a: { x: 50, y: 50 }, b: { x: 50, y: 50 }, offset: 0, orientation: 'aligned' }],
+    { paperScale: 100, format: m => `${m} m` })[0];
+  const map = (x: number, y: number) => ({ x, y });
+  const svg = dimensionsToSvg([zero, valid], map, mm => mm);
+  assert.equal((svg.match(/class="dimension"/g) ?? []).length, 1);
+  assert.match(svg, />5 m<\/text>/);
+  assert.doesNotMatch(svg, />0 m<\/text>/);
+  const doc = new jsPDF();
+  drawDimensionsPdf(doc, [zero, valid], map);
+  const pdf = doc.output();
+  assert.match(pdf, /\(5 m\)/);
+  assert.doesNotMatch(pdf, /\(0 m\)/);
+  const bounds = { min: { x: -1, y: -1 }, max: { x: 10, y: 10 } };
+  assert.deepEqual(boundsWithDimensions(bounds, [zero, valid]), bounds);
 });

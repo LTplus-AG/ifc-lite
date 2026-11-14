@@ -96,12 +96,12 @@ export class MutableOverlayState {
   protected sourceWatermark = 0;
   protected minNextExpressId: () => number = () => 1;
   private onNextExpressIdChange?: () => void;
-  private restoring = false;
+  private allocatorNotificationDepth = 0;
   protected get nextAllocatedId(): number { return this.allocatedId; }
   protected set nextAllocatedId(id: number) {
     if (id === this.allocatedId) return;
     this.allocatedId = id;
-    if (!this.restoring) this.onNextExpressIdChange?.();
+    if (this.allocatorNotificationDepth === 0) this.onNextExpressIdChange?.();
   }
 
   /** Supply an external ownership floor without coupling mutations to a registry.
@@ -371,9 +371,7 @@ export class MutableOverlayState {
   }
 
   protected restoreOverlayState(state: ReturnType<MutableOverlayState['copyOverlayState']>, revision?: number): void {
-    const previousId = this.nextAllocatedId;
-    this.restoring = true;
-    try {
+    this.withDeferredAllocatorNotification(() => {
       Object.assign(this, state);
       // Detached initialization preserves read fingerprints; live restoration advances revision.
       if (revision === undefined) this.markOverlayChanged();
@@ -381,8 +379,17 @@ export class MutableOverlayState {
       // Cloned snapshots carry plain Maps: restore indexes before notifying readers (#10139).
       this.newEntities = NewEntityMap.from(this.newEntities);
       this.overriddenEntities = NewEntityMap.from(this.overriddenEntities);
-    } finally { this.restoring = false; }
-    if (this.nextAllocatedId !== previousId) this.onNextExpressIdChange?.();
+    });
+  }
+
+  /** Allocator observers may read records, indexes, history and revision synchronously. */
+  protected withDeferredAllocatorNotification<T>(action: () => T): T {
+    const previousId = this.nextAllocatedId;
+    this.allocatorNotificationDepth++;
+    try { return action(); }
+    finally {
+      if (--this.allocatorNotificationDepth === 0 && this.nextAllocatedId !== previousId) this.onNextExpressIdChange?.();
+    }
   }
 
   protected matchesOverlayState(state: ReturnType<MutableOverlayState['copyOverlayState']>): boolean {

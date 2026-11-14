@@ -1158,31 +1158,30 @@ export class MutablePropertyView extends MutableOverlayState {
     if (!type || typeof type !== 'string') {
       throw new Error('createEntity: type is required');
     }
-    // Preserve the type string the caller passed (canonical PascalCase per
-    // the public contract). UPPERCASE STEP tokens still work because the
-    // STEP exporter upper-cases at write time — but `NewEntity.type` no
-    // longer mangles `IfcColumn` into `IFCCOLUMN` for downstream consumers.
-    const expressId = ++this.nextAllocatedId;
-    const creationId = generateMutationId();
-    const entity: NewEntity = {
-      expressId,
-      type: type.trim(),
-      attributes: attributes.slice(),
-      creationId,
-    };
-    this.newEntities.set(expressId, entity);
-    this.indexAttributeOverride(expressId);
-    this.markOverlayChanged();
-
-    this.mutationHistory.push({
-      id: creationId,
-      type: 'CREATE_ENTITY',
-      timestamp: Date.now(),
-      modelId: this.modelId,
-      entityId: expressId,
-      attributeName: entity.type,
+    return this.withDeferredAllocatorNotification(() => {
+      // Preserve canonical PascalCase for consumers; the STEP exporter upper-cases
+      // at write time, and callers may still supply UPPERCASE STEP tokens.
+      const expressId = ++this.nextAllocatedId;
+      const creationId = generateMutationId();
+      const entity: NewEntity = {
+        expressId,
+        type: type.trim(),
+        attributes: attributes.slice(),
+        creationId,
+      };
+      this.newEntities.set(expressId, entity);
+      this.indexAttributeOverride(expressId);
+      this.markOverlayChanged();
+      this.mutationHistory.push({
+        id: creationId,
+        type: 'CREATE_ENTITY',
+        timestamp: Date.now(),
+        modelId: this.modelId,
+        entityId: expressId,
+        attributeName: entity.type,
+      });
+      return entity;
     });
-    return entity;
   }
 
   /**

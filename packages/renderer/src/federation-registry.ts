@@ -140,7 +140,7 @@ export class FederationRegistry {
    * unresolvable. Throws, before anything else, for a range that is only
    * partly published or already carries overlay IDs: extending across
    * authored IDs would give two entities one global ID. Callers pass their
-   * allocator watermark as `allocatedMaxExpressId` to protect unpublished IDs too.
+   * highest authored ID as `allocatedMaxExpressId` to protect unpublished IDs too.
    */
   extendModel(modelId: string, maxExpressId: number, allocatedMaxExpressId = 0): number {
     const range = this.modelRanges.get(modelId);
@@ -200,10 +200,14 @@ export class FederationRegistry {
   private assertOverlayRange(modelId: string, start: number, end: number): RegisteredRange {
     const range = this.modelRanges.get(modelId);
     if (!range) throw new Error(`[FederationRegistry] Cannot publish unknown model ${modelId}`);
-    if (Number.isSafeInteger(start) && start > range.reservedMaxExpressId && start !== range.maxExpressId + 1) {
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || end < start
+      || start <= range.reservedMaxExpressId || range.publishedStart === null || range.maxExpressId < range.reservedMaxExpressId) {
+      throw new Error(`[FederationRegistry] Invalid overlay range ${start}..${end} for ${modelId}`);
+    }
+    if (start !== range.maxExpressId + 1) {
       throw new Error(`[FederationRegistry] Overlay IDs for ${modelId} must extend published ownership contiguously`);
     }
-    if (!this.canPublishOverlayFrom(modelId, start, end - start + 1)) throw new OverlayIdSpaceExhaustedError();
+    if (end > this.overlayEnd(range)) throw new OverlayIdSpaceExhaustedError();
     return range;
   }
 

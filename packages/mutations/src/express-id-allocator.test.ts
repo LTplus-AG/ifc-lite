@@ -62,3 +62,15 @@ it('notifies restored allocator observers only after history, indexes and revisi
   expect(observed).toEqual([{ history: 1, revision: before + 1, ids: [1] },
     { history: 0, revision: before + 2, ids: [] }]);
 });
+
+it('notifies createEntity observers after records, history and revision are coherent (#10139)', () => {
+  const view = new MutablePropertyView(null, 'model');
+  const before = view.getMutationRevision();
+  const observed: unknown[] = [];
+  view.configureExpressIdAllocator(() => 1, () => observed.push({
+    history: view.getMutationCount(), revision: view.getMutationRevision(),
+    ids: [...view.getNewEntitiesOfType('IfcMaterial')].map(entity => entity.expressId),
+  }));
+  view.createEntity('IfcMaterial', ['Live']);
+  expect(observed).toEqual([{ history: 1, revision: before + 1, ids: [1] }]);
+});

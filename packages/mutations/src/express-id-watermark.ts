@@ -56,7 +56,10 @@ export function rescanHighestExpressId(store: MutationStoreShape): number {
 function scanHighestExpressId(store: MutationStoreShape): number {
   let max = 0;
   // @raw-entity-enumeration-ok allocator watermark must include tombstoned source IDs so a new entity never reuses one
-  for (const id of store.entityIndex.byId.keys()) {
+  const index = store.entityIndex.byId;
+  const compactMax = 'maxExpressId' in index ? index.maxExpressId : undefined;
+  if (typeof compactMax === 'number') max = compactMax;
+  else for (const id of index.keys()) {
     if (id > max) max = id;
   }
   const deferred = store.deferredEntityIndex;

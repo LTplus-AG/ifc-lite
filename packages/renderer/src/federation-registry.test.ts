@@ -404,3 +404,19 @@ it('registry publication and preview themselves report typed exhaustion, with co
     () => registry.previewOverlayGlobalId('A', 102, 1_000_101, 102),
   ]) assert.throws(action, /contiguously/);
 });
+
+it('invalid overlay bounds and partly published bases are not capacity errors (#10139)', () => {
+  const registry = new FederationRegistry();
+  registry.registerModel('A', 100);
+  registry.reserveModel('partial', 100);
+  registry.publishRange('partial', 0, 50);
+  for (const [model, start, end] of [
+    ['A', 100, 101], ['A', 101, 100], ['A', 101.5, 102], ['A', 101, 102.5], ['partial', 51, 51],
+  ] as const) {
+    for (const action of [() => registry.publishOverlayRange(model, start, end),
+      () => registry.previewOverlayGlobalId(model, start, end, start)]) {
+      assert.throws(action, (error: unknown) => error instanceof Error && !('reason' in error)
+        && /Invalid overlay range/.test(error.message), `${model}: ${start}..${end}`);
+    }
+  }
+});

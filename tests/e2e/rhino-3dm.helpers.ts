@@ -66,6 +66,12 @@ export interface ModelSnapshot {
   triangles: number;
   /** How many boxes came from `instancedGeometryAabbs` rather than from `meshes`. */
   instancedBoxes: number;
+  /**
+   * The offset between this model's render frame and absolute Y-up world. Two
+   * models draw in one frame only when these are equal, and `boxes` can only
+   * be compared across models then.
+   */
+  drawOffset: [number, number, number];
   /** AABB per IFC GlobalId in the render frame the model draws in, unioned over every mesh that entity drew. */
   boxes: Record<string, WorldBox>;
   /** The class each boxed GlobalId carries in this model's entity table. */
@@ -161,7 +167,7 @@ function readModels(): ModelSnapshot[] {
     const info = model.geometryResult?.coordinateInfo;
     const shift = info?.originShift ?? { x: 0, y: 0, z: 0 };
     const rtc = info?.wasmRtcOffset ?? { x: 0, y: 0, z: 0 };
-    const drawOffset = [shift.x + rtc.x, shift.y + rtc.z, shift.z - rtc.y];
+    const drawOffset: [number, number, number] = [shift.x + rtc.x, shift.y + rtc.z, shift.z - rtc.y];
     let instancedBoxes = 0;
     for (const [globalExpressId, aabb] of model.geometryResult?.instancedGeometryAabbs ?? []) {
       if (![...aabb.min, ...aabb.max].every((value) => Number.isFinite(value))) continue;
@@ -204,6 +210,7 @@ function readModels(): ModelSnapshot[] {
       meshCount,
       triangles,
       instancedBoxes,
+      drawOffset,
       boxes,
       classes,
       colours: [...colours.values()],

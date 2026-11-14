@@ -195,6 +195,13 @@ test.describe('Rhino .3dm import in the built viewer', () => {
     expect(local, 'the re-imported local export').toBeDefined();
     expect(world, 'the re-imported world export').toBeDefined();
 
+    // The boxes below are each in their own model's render frame, so they
+    // only say "same place" if the three models share one frame. A `.3dm`
+    // left off the IFC's anchor would otherwise still match box for box.
+    expect(Math.abs(ifc.drawOffset[0]), 'the far IFC draws from a far anchor').toBeGreaterThan(1e6);
+    expect(local!.drawOffset, 'the local .3dm draws in the IFC\'s frame').toEqual(ifc.drawOffset);
+    expect(world!.drawOffset, 'the world .3dm draws in the IFC\'s frame').toEqual(ifc.drawOffset);
+
     for (const [coordinates, overlay] of [
       ['local', overlayOf(ifc, local!)],
       ['world', overlayOf(ifc, world!)],

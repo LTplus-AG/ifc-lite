@@ -14,6 +14,8 @@
  */
 
 import { sampleArc, sampleEllipse } from './geom.js';
+import { int, num, parseCommon } from './parser-util.js';
+import { parseMtext, parseText } from './parser-text.js';
 import type {
   DxfArcEntity,
   DxfBlockInfo,
@@ -22,7 +24,6 @@ import type {
   DxfDocument,
   DxfEllipseEntity,
   DxfEntity,
-  DxfEntityCommon,
   DxfHatchEntity,
   DxfHatchPath,
   DxfInsertEntity,
@@ -30,9 +31,10 @@ import type {
   DxfLineEntity,
   DxfPair,
   DxfPolylineEntity,
-  DxfTextEntity,
   DxfVertex,
 } from './types.js';
+
+export { decodeDxfText, stripMtextFormatting } from './parser-text.js';
 
 const BINARY_DXF_SENTINEL = 'AutoCAD Binary DXF';
 
@@ -69,47 +71,8 @@ export function readDxfPairs(text: string): DxfPair[] {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// TEXT DECODING
-// ═══════════════════════════════════════════════════════════════════════════
-
-/** Decode DXF special sequences (%%d, %%p, %%c, \U+XXXX). */
-export function decodeDxfText(raw: string): string {
-  return raw
-    .replace(/%%[dD]/g, '°')
-    .replace(/%%[pP]/g, '±')
-    .replace(/%%[cC]/g, 'Ø')
-    .replace(/%%[uUoO]/g, '') // underline/overline toggles
-    .replace(/\\U\+([0-9A-Fa-f]{4})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)));
-}
-
-/** Strip MTEXT inline formatting down to plain text. Best-effort. */
-export function stripMtextFormatting(raw: string): string {
-  let s = raw;
-  s = s.replace(/\\\\/g, '\u0001'); // placeholder protecting literal backslashes
-  s = s.replace(/\\P/g, '\n');
-  s = s.replace(/\\~/g, ' ');
-  s = s.replace(/\\S([^;]*)\^\s?([^;]*);/g, '$1/$2'); // stacked fractions
-  s = s.replace(/\\[ACFHQTWfp][^;]*;/g, ''); // parametrised format codes
-  s = s.replace(/\\[LlOoKkX]/g, ''); // toggle codes
-  s = s.replace(/[{}]/g, '');
-  // eslint-disable-next-line no-control-regex
-  s = s.replace(/\u0001/g, '\\');
-  return decodeDxfText(s);
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
 // PARSER
 // ═══════════════════════════════════════════════════════════════════════════
-
-function num(value: string): number {
-  const n = Number.parseFloat(value);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function int(value: string): number {
-  const n = Number.parseInt(value.trim(), 10);
-  return Number.isFinite(n) ? n : 0;
-}
 
 /** Index of the next pair with code 0 at or after `start` (or `end`). */
 function nextEntityStart(pairs: DxfPair[], start: number, end: number): number {
@@ -328,43 +291,6 @@ function parseEntityList(pairs: DxfPair[], start: number, end: number, doc: DxfD
   return entities;
 }
 
-function parseCommon(body: DxfPair[]): DxfEntityCommon {
-  const common: DxfEntityCommon = {
-    layer: '0',
-    colorNumber: 256,
-    invisible: false,
-    extrusionZ: 1,
-  };
-  for (const { code, value } of body) {
-    switch (code) {
-      case 8:
-        common.layer = value.trim() || '0';
-        break;
-      case 62:
-        common.colorNumber = int(value);
-        break;
-      case 420:
-        common.trueColor = int(value) & 0xffffff;
-        break;
-      case 6:
-        common.linetype = value.trim();
-        break;
-      case 370: {
-        const lw = int(value); // 1/100 mm; negative values are BYLAYER/BYBLOCK/default
-        if (lw > 0) common.lineweightMm = lw / 100;
-        break;
-      }
-      case 60:
-        common.invisible = int(value) === 1;
-        break;
-      case 230:
-        common.extrusionZ = num(value);
-        break;
-    }
-  }
-  return common;
-}
-
 function parseLine(body: DxfPair[]): DxfLineEntity {
   const e: DxfLineEntity = { ...parseCommon(body), kind: 'line', x1: 0, y1: 0, x2: 0, y2: 0 };
   for (const { code, value } of body) {
@@ -490,66 +416,6 @@ function parseEllipse(body: DxfPair[]): DxfEllipseEntity {
   return e;
 }
 
-function parseText(body: DxfPair[]): DxfTextEntity {
-  const e: DxfTextEntity = {
-    ...parseCommon(body),
-    kind: 'text',
-    x: 0,
-    y: 0,
-    height: 1,
-    rotationDeg: 0,
-    text: '',
-    hAlign: 'left',
-    vAlign: 'baseline',
-  };
-  let alignX: number | null = null;
-  let alignY: number | null = null;
-  let hJust = 0;
-  let vJust = 0;
-  for (const { code, value } of body) {
-    switch (code) {
-      case 10:
-        e.x = num(value);
-        break;
-      case 20:
-        e.y = num(value);
-        break;
-      case 11:
-        alignX = num(value);
-        break;
-      case 21:
-        alignY = num(value);
-        break;
-      case 40:
-        e.height = num(value);
-        break;
-      case 50:
-        e.rotationDeg = num(value);
-        break;
-      case 72:
-        hJust = int(value);
-        break;
-      case 73:
-        vJust = int(value);
-        break;
-      case 1:
-        e.text = decodeDxfText(value);
-        break;
-    }
-  }
-  // Aligned (3) / Fit (5) span points 10-11; unstretched, they stay left-aligned at 10.
-  const stretched = hJust === 3 || hJust === 5;
-  if (hJust === 1 || hJust === 4) e.hAlign = 'center';
-  else if (hJust === 2) e.hAlign = 'right';
-  if (stretched) e.vAlign = 'baseline';
-  else if (vJust === 1) e.vAlign = 'bottom';
-  else if (vJust === 2 || (vJust === 0 && hJust === 4)) e.vAlign = 'middle'; // Middle (72=4) centres both ways
-  else if (vJust === 3) e.vAlign = 'top';
-  // Other non-default justification anchors at the second alignment point.
-  if (!stretched && (hJust || vJust) && alignX !== null && alignY !== null) { e.x = alignX; e.y = alignY; }
-  return e;
-}
-
 function parseSpline(body: DxfPair[], doc: DxfDocument): import('./types.js').DxfSplineEntity {
   const e: import('./types.js').DxfSplineEntity = {
     ...parseCommon(body),
@@ -637,64 +503,6 @@ function parseSolid(body: DxfPair[]): import('./types.js').DxfSolidEntity {
     ? [c[0], c[1], c[2], c[3]]
     : [c[0], c[1], c[3]];
   return { ...parseCommon(body), kind: 'solid', corners };
-}
-
-function parseMtext(body: DxfPair[]): DxfTextEntity {
-  const e: DxfTextEntity = {
-    ...parseCommon(body),
-    kind: 'text',
-    x: 0,
-    y: 0,
-    height: 1,
-    rotationDeg: 0,
-    text: '',
-    hAlign: 'left',
-    vAlign: 'top', // MTEXT default attachment is top-left
-  };
-  let chunks = '';
-  let dirX: number | null = null;
-  let dirY: number | null = null;
-  for (const { code, value } of body) {
-    switch (code) {
-      case 10:
-        e.x = num(value);
-        break;
-      case 20:
-        e.y = num(value);
-        break;
-      case 40:
-        e.height = num(value);
-        break;
-      case 50:
-        e.rotationDeg = num(value);
-        break;
-      case 11:
-        dirX = num(value);
-        break;
-      case 21:
-        dirY = num(value);
-        break;
-      case 71: {
-        const attach = int(value); // 1..9 grid: rows top/middle/bottom, columns left/center/right
-        const col = (attach - 1) % 3;
-        const row = Math.floor((attach - 1) / 3);
-        e.hAlign = col === 1 ? 'center' : col === 2 ? 'right' : 'left';
-        e.vAlign = row === 1 ? 'middle' : row === 2 ? 'bottom' : 'top';
-        break;
-      }
-      case 3:
-        chunks += value;
-        break;
-      case 1:
-        chunks += value;
-        break;
-    }
-  }
-  if (dirX !== null && dirY !== null && (dirX !== 0 || dirY !== 0)) {
-    e.rotationDeg = (Math.atan2(dirY, dirX) * 180) / Math.PI;
-  }
-  e.text = stripMtextFormatting(chunks);
-  return e;
 }
 
 function parseInsert(body: DxfPair[]): DxfInsertEntity {

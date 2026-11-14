@@ -199,7 +199,8 @@ async function exportAndDownload(journey: Journey & { markExportClick(): void },
   const path = test.info().outputPath(name);
   await download.saveAs(path);
   await expect(dialog.getByText('Success', { exact: true })).toBeVisible();
-  await expect(dialog.getByText(/^Exported Rhino \.3dm \(\d+ KB\)$/)).toBeVisible();
+  // #9875: success is announced in the modal's polite notice shelf, without an alert role.
+  await expect(dialog.locator('[aria-live="polite"] [data-toast-seq]').getByText(/^Exported Rhino \.3dm \(\d+ KB\)$/)).toBeVisible();
   const elapsedMs = Date.now() - started;
   test.info().annotations.push({ type: 'export-ms', description: String(elapsedMs) });
   const { progress, workerProgress } = await page.evaluate(() => {

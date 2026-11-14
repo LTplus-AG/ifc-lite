@@ -22,7 +22,7 @@
       "probes": {
         "sdk": { "owner": "L1", "applicable": true, "script": "tests/modelling-parity/probes/sdk/storeys.js", "oracle": "On a blank model, storeys added at 3.0 and 6.0 m list at those elevations; a rename shows; a floor-to-floor edit of the ground storey to 3.3 m moves every storey above by 0.3 m; a wall whose top is attached to the storey above re-heights to 3.3 m while a fixed-height wall keeps 2.5 m; inserting a storey between two others re-binds walls attached to the next storey (Archicad Insert above); deleting a storey that holds elements moves them to the chosen storey. Heights are read from the exported, meshed IFC." },
         "ui": { "owner": "L4", "applicable": true, "oracle": "In the Model workspace on the real GPU, the storey manager adds a storey above, renames it and edits its floor-to-floor height; the list shows storey names (never GUIDs), adding a storey does not switch the active storey, and attached walls visibly re-height in the viewport." },
-        "output": { "owner": "L1", "applicable": true, "keyTypes": ["IfcBuildingStorey", "IfcWall"], "oracle": "Common output oracle; the edited storeys reopen with their elevations and the walls stay contained in them." }
+        "output": { "requiredClasses": ["IfcBuildingStorey"], "owner": "L1", "applicable": true, "keyTypes": ["IfcBuildingStorey", "IfcWall"], "oracle": "Common output oracle; the edited storeys reopen with their elevations and the walls stay contained in them." }
       },
       "exercises": { "owner": "L2", "refs": ["F2", "F4", "F5", "F6"] }
     },
@@ -295,7 +295,7 @@
       "probes": {
         "sdk": { "owner": "L1", "applicable": false, "script": "tests/modelling-parity/probes/sdk/dimensions-tags.js", "oracle": "Documentation capability: the SDK level reports skip." },
         "ui": { "owner": "L4", "applicable": true, "oracle": "On a plan, place a dimension string across walls and tags on a door and a room; moving a wall updates the dimension value and the tag shows the element's live data." },
-        "output": { "owner": "L1", "applicable": true, "requires": [["svg", "pdf", "dxf", "ifc"]], "oracle": "Handed over by the UI probe (L4) under $PARITY_OUT/artifacts/<id>/ per the contract's Handoffs. A drawing file with the dimensions and tags passes the sanity check, or, when they are saved into the model, an IFC with IfcAnnotation passes the full IFC checks (ifc-lite validate, reopen, IfcOpenShell). Drawing files get a sanity check only (they parse, are not empty and carry linework or pages), not a check of the drawing's correctness." }
+        "output": { "requiredClasses": ["IfcAnnotation"], "owner": "L1", "applicable": true, "requires": [["svg", "pdf", "dxf", "ifc"]], "oracle": "Handed over by the UI probe (L4) under $PARITY_OUT/artifacts/<id>/ per the contract's Handoffs. A drawing file with the dimensions and tags passes the sanity check, or, when they are saved into the model, an IFC with IfcAnnotation passes the full IFC checks (ifc-lite validate, reopen, IfcOpenShell). Drawing files get a sanity check only (they parse, are not empty and carry linework or pages), not a check of the drawing's correctness." }
       },
       "exercises": { "owner": "L2", "refs": ["F3"] }
     },

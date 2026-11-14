@@ -89,6 +89,13 @@ function readRules(text, topKey) {
       unread(line);
       continue;
     }
+    // `commit_message_format` shapes the squash commit message only (#10273):
+    // nothing under it can route, queue or gate a PR, so its nested map is
+    // skipped. Anything that is not nested under it is still unread.
+    if (section === 'commit_message_format') {
+      if (!/^ {6,}\S/.test(line)) unread(line);
+      continue;
+    }
     if (section.startsWith('actions')) {
       if ((m = /^ {6}(\w+):/.exec(line))) {
         rule.actions.push(m[1]);

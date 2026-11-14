@@ -143,3 +143,19 @@ test('QUEUE: a comment between conditions does not drop the conditions after it 
   const text = 'queue_rules:\n  - name: release\n    queue_conditions:\n      - head=changeset-release/main\n    # entry gate\n      - label=go\n    merge_conditions:\n      - check-success=x\n';
   assert.deepEqual(parseQueueRules(text), [{ name: 'release', queue: ['head=changeset-release/main', 'label=go'], merge: ['check-success=x'], unread: false }]);
 });
+
+test('READ (#10274): a queue rule\'s commit_message_format is skipped, and only that section', () => {
+  // The real file sets the squash message format on its queue rules. It shapes
+  // the commit message only, so the route still reads.
+  assert.match(MERGIFY, /^ {4}commit_message_format:$/m, 'the real file uses the option');
+  const real = releaseQueueRoute(MERGIFY, { labels: ['mergify-trial'], draft: false });
+  assert.equal(real.ok, true, real.reason);
+  // The same nested map under any other key is still content this reader
+  // does not understand, so the route refuses.
+  const renamed = MERGIFY.replaceAll('    commit_message_format:', '    some_future_option:');
+  assert.match(releaseQueueRoute(renamed, { labels: ['mergify-trial'], draft: false }).reason, /has lines this script cannot read/);
+  // A line that is not nested under it ends the skip: a misindented key is unread.
+  const misindented = MERGIFY.replace('      title: pr-title', '     title: pr-title');
+  assert.notEqual(misindented, MERGIFY, 'the fixture edit applied');
+  assert.match(releaseQueueRoute(misindented, { labels: ['mergify-trial'], draft: false }).reason, /has lines this script cannot read/);
+});

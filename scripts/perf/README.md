@@ -1719,6 +1719,22 @@ only make one tree repeat; every other edit perturbs the compressor the same
 way. **Lesson:** gate the JS on raw bytes, report brotli, and don't try to
 make a brotli number on a multi-megabyte JS chunk stable to better than ~0.5%.
 
+## The engine WASM is gated on raw bytes too (2026-11-13)
+
+The engine WASM embeds no timestamp, so it stayed on brotli after #7007. Its
+brotli-11 size is just as unsteady. CI's own measurements on `main` (the
+`Build packages + WASM` log of every PR and merge-queue run, base by base):
+#9756 changed the binary by -9 raw bytes and its brotli size by +1,547; #9883
+left the raw size identical (10,383,854 bytes on both bases) and moved brotli
+by -1,074. One window shrank raw by 12,762 bytes while brotli grew 1,156.
+With `main` 661 bytes under the brotli allowance at the time, those swings
+decided which Rust PRs passed. The raw size of one commit's WASM repeats
+exactly (every run on one base measured the same number) once it is built at
+CI's paths. **Lesson:** gate the WASM on raw bytes at 0.1%, as the viewer
+JS is, and keep its brotli size in the report as information. A change that
+trades raw for transfer size (the `wasm-opt` entry below) shows there, for a
+reviewer to read.
+
 ## Instruction counts track kernel and parse work, not scheduling (#6958)
 
 Replay before any gate: `instructions-replay.mjs` rebuilt both sides of 12

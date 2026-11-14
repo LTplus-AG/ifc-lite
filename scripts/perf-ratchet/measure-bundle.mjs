@@ -13,7 +13,7 @@
  *        [--out <file>] [--commit <sha>]
  *
  * Metrics (gated against tests/perf-ratchets/bundle.json):
- *   engine-wasm-brotli      brotli bytes of packages/wasm/pkg/ifc-lite_bg.wasm
+ *   engine-wasm-bytes       raw bytes of packages/wasm/pkg/ifc-lite_bg.wasm
  *   viewer-entry-js-bytes   raw bytes of the viewer's main entry chunk
  *   viewer-eager-js-bytes   summed raw bytes of every JS file index.html makes
  *                           the browser fetch before first paint (module
@@ -25,22 +25,28 @@
  *                           the whole chunk before it can accept a parse.
  *
  * Informational (reported, never gated, #7007):
+ *   engine-wasm-brotli      brotli bytes of the engine wasm (what is downloaded)
  *   viewer-entry-js-brotli  brotli bytes of the main entry chunk
  *   viewer-eager-js-brotli  summed brotli bytes of the eager JS, each file on its own
  *
  * Eager file counts and names remain diagnostic detail on the byte metric.
  *
- * WHY RAW FOR THE VIEWER JS, BROTLI FOR THE WASM (#7007). Raw JS bytes repeat
+ * WHY RAW BYTES (#7007 for the viewer JS, then the engine WASM). Raw bytes repeat
  * exactly: across clean builds of one tree and across CI re-runs. Brotli-11 of
  * the ~4.4 MB entry chunk does not track its input smoothly: replacing the
  * 24-character build timestamp (`__BUILD_DATE__`, same length, nothing else
  * changed) moves it between ~984.5 KB and ~989.3 KB, a jump as large as the
  * old 0.5% band. Every commit changes that timestamp, and any real edit
  * perturbs the compressor the same way, so a brotli gate on this JS reads
- * compressor noise. The engine WASM has no timestamp and stays on brotli,
- * because the perf ledger (scripts/perf/README.md) records that wasm-opt can
- * shrink raw WASM while growing its transfer size. Brotli is quality 11 (the
- * max, what a static host precompresses with) via node's zlib.
+ * compressor noise. The engine WASM has no timestamp but the same problem:
+ * CI measured edits that left its raw size unchanged (0 and -9 bytes) moving
+ * its brotli-11 size by -1,074 and +1,547 bytes, against 661 bytes of headroom
+ * on main at the time, so its brotli gate failed or passed PRs on compressor
+ * luck. Its raw size repeats exactly per commit. Brotli of the WASM stays in
+ * the report: the perf ledger (scripts/perf/README.md) records that wasm-opt
+ * can shrink raw WASM while growing its transfer size, which a reviewer reads
+ * there. Brotli is quality 11 (the max, what a static host precompresses with)
+ * via node's zlib.
  *
  * WHY index.html. It is the one artifact that states what the browser loads
  * eagerly; Vite lists the entry as `<script type="module" src>` and its
@@ -52,14 +58,14 @@
 import { readFileSync, readdirSync, writeFileSync, existsSync, mkdirSync, statSync } from 'node:fs';
 import { brotliCompressSync, constants as zlibConstants } from 'node:zlib';
 import { execFileSync } from 'node:child_process';
-import { dirname, join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const FAMILY = 'bundle';
 
-/** Brotli size at quality 11, the number the ratchet gates on. */
+/** Brotli size at quality 11, reported beside the gated raw sizes. */
 export function brotliSize(buf) {
   return brotliCompressSync(buf, {
     params: {
@@ -174,6 +180,7 @@ export function measureBundle({ wasm, dist, commit, measuredAt = new Date().toIS
   if (!existsSync(indexHtml)) throw new Error(`viewer build not found: no ${indexHtml} (build it: pnpm build:e2e)`);
 
   const wasmBytes = readFileSync(wasm);
+  const wasmName = basename(wasm);
   const { entry, files: jsEager } = eagerJsFiles(dist, readFileSync(indexHtml, 'utf8'));
   const eagerBytes = jsEager.map(({ file }) => readFileSync(file));
   const eagerRaw = eagerBytes.reduce((n, b) => n + b.length, 0);
@@ -191,12 +198,13 @@ export function measureBundle({ wasm, dist, commit, measuredAt = new Date().toIS
     commit,
     measuredAt,
     metrics: [
-      { id: 'engine-wasm-brotli', value: brotliSize(wasmBytes), detail: `raw ${wasmBytes.length} bytes` },
+      { id: 'engine-wasm-bytes', value: wasmBytes.length, detail: wasmName },
       { id: 'viewer-entry-js-bytes', value: entryBytes.length, detail: entryName },
       { id: 'viewer-eager-js-bytes', value: eagerRaw, detail: `${jsEager.length} files; ${eagerNames}` },
       { id: 'viewer-parser-worker-js-bytes', value: parserWorkerBytes, detail: parserWorker.name },
     ],
     informational: [
+      { id: 'engine-wasm-brotli', value: brotliSize(wasmBytes), unit: 'bytes', detail: `${wasmName}, quality 11` },
       { id: 'viewer-entry-js-brotli', value: entryBrotli, unit: 'bytes', detail: entryName },
       { id: 'viewer-eager-js-brotli', value: eagerBrotli, unit: 'bytes', detail: `${jsEager.length} files, each compressed on its own` },
     ],

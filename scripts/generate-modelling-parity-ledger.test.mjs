@@ -461,6 +461,10 @@ test('#9328 SVG empty geometry cannot certify a drawing', () => {
   for (const shape of ['<path d="M0 0 L1 1"/>', '<line x2="1"/>', '<polyline points="0,0 1,1"/>', '<polygon points="0,0 1,1"/>']) {
     assert.equal(ART.checkSvg(Buffer.from(`<svg>${shape}</svg>`)).status, 'pass', shape);
   }
+  for (const wrapper of ['defs', 'symbol', 'clipPath', 'mask', 'marker', 'pattern']) {
+    assert.equal(ART.checkSvg(Buffer.from(`<svg><${wrapper}><g><line x2="1"/></g></${wrapper}></svg>`)).status, 'fail', `${wrapper} geometry is never drawn`);
+  }
+  assert.equal(ART.checkSvg(Buffer.from('<svg><defs><line x2="1"/></defs><g><line x2="1"/></g></svg>')).status, 'pass', 'drawn geometry beside defs still counts');
 });
 
 test('#9328 per-row IFC classes apply to UI files and survive reopen', () => {

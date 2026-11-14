@@ -154,6 +154,9 @@ function drawable(tag, attrs) {
   return false;
 }
 
+// Geometry inside these is only defined, never painted by itself: it cannot certify linework.
+const NOT_RENDERED = new Set(['defs', 'symbol', 'clipPath', 'mask', 'marker', 'pattern']);
+
 const sanity = (kind) => `${kind.toUpperCase()} sanity check`;
 
 /**
@@ -179,7 +182,7 @@ export function checkSvg(buf) {
     if (close) {
       if (stack.pop() !== tag) return { name, status: 'fail', detail: `malformed: </${tag}> does not close the open element` };
     } else {
-      if (drawable(tag, m[3])) counts[tag] = (counts[tag] ?? 0) + 1;
+      if (!stack.some(open => NOT_RENDERED.has(open)) && drawable(tag, m[3])) counts[tag] = (counts[tag] ?? 0) + 1;
       if (!self) stack.push(tag);
     }
     if (!stack.length) rootEnd = m.index + whole.length;

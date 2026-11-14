@@ -222,6 +222,9 @@ export function useDrawing2DPersistence(): void {
         tagAnnotations2D: drawnMeanwhile(restoreElementTags(entry.tagAnnotations2D, entry.ownerModelId, activeModelId), live.tagAnnotations2D),
         cloudAnnotations2D: drawnMeanwhile(entry.cloudAnnotations2D, live.cloudAnnotations2D),
         dimensions2D: drawnMeanwhile(entry.dimensions2D ?? [], live.dimensions2D),
+        // Restored markup replaces what history would revert to.
+        dimension2DUndo: [],
+        dimension2DRedo: [],
         drawing2DDisplayOptions: entry.drawing2DDisplayOptions,
       });
     };

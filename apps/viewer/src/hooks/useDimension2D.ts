@@ -37,7 +37,8 @@ import { formatDimensionValue } from '@/lib/drawing2d-markup/dimension-graphics'
 import { drawingViewMapping, type DrawingViewMapping } from '@/lib/drawing2d-markup/drawing-view-mapping';
 import { placementOffset, placementOrientation, previewDimension } from '@/lib/drawing2d-markup/dimension-placement';
 import { hitTestDimensions, insideScreenClip, sheetViewportScreenRect, type DimensionLayoutContext, type DimensionScene } from '@/components/viewer/drawing/drawDimensions2D';
-import { dimensionPlaneStamp, isDimensionOnPlane, type Dimension2DElementRef } from '@/store/slices/drawing2DDimensions';
+import { isTextEditingElement } from '@/lib/keyboard-event';
+import { dimensionPlaneStamp, isDimensionOnPlane, type Dimension2D, type Dimension2DElementRef } from '@/store/slices/drawing2DDimensions';
 import type { DrawnSectionPlane, Point2D } from '@/store/slices/drawing2DSlice';
 
 /** Radius around the cursor in which key points are marked while the tool is active. */
@@ -99,7 +100,7 @@ export function useDimension2D(p: UseDimension2DParams) {
   const [markers, setMarkers] = useState<Point2D[]>([]);
   const [hover, setHover] = useState<DimensionHover | null>(null);
   const refs = useRef<(Dimension2DElementRef | undefined)[]>([]);
-  const dragging = useRef<{ id: string; grab: Point2D } | null>(null);
+  const dragging = useRef<{ id: string; grab: Point2D; before: Dimension2D[] } | null>(null);
 
   const mapping = useMapping(p);
   const paperScale = p.sheet ? p.sheet.sheet.scale.factor : p.displayScale;
@@ -138,8 +139,37 @@ export function useDimension2D(p: UseDimension2DParams) {
     window.addEventListener('keyup', onKey);
     return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKey); };
   }, [toolActive]);
+  // Ctrl/Cmd+Z undoes, Ctrl/Cmd+Shift+Z and Ctrl+Y redo, only while this tool is active. Capture phase
+  // on window, so the dimension history is replayed instead of the global workspace history (whose
+  // dispatcher also listens on window) and never both. Text fields and panels with their own history
+  // (`data-own-history`: Gantt, IDS Studio) keep their keys, and so does the workspace history whenever
+  // the dimension stack in that direction is empty.
   useEffect(() => {
-    const release = () => { dragging.current = null; };
+    if (!toolActive) return;
+    const onHistoryKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.defaultPrevented) return;
+      const target = e.target;
+      if (isTextEditingElement(target) || (target instanceof Element && target.closest('[data-own-history]'))) return;
+      const key = e.key.toLowerCase();
+      const redo = (key === 'z' && e.shiftKey) || (key === 'y' && !e.shiftKey && e.ctrlKey);
+      if (!redo && !(key === 'z' && !e.shiftKey)) return;
+      // Nothing to replay: leave the key to the workspace history.
+      const state = useViewerStore.getState();
+      if ((redo ? state.dimension2DRedo : state.dimension2DUndo).length === 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (redo) state.redoDimension2D(); else state.undoDimension2D();
+    };
+    window.addEventListener('keydown', onHistoryKey, true);
+    return () => window.removeEventListener('keydown', onHistoryKey, true);
+  }, [toolActive]);
+  useEffect(() => {
+    const release = () => {
+      const drag = dragging.current;
+      dragging.current = null;
+      // The whole drag is one history entry.
+      if (drag) useViewerStore.getState().commitDimension2DMove(drag.before);
+    };
     window.addEventListener('mouseup', release);
     return () => window.removeEventListener('mouseup', release);
   }, []);
@@ -213,7 +243,7 @@ export function useDimension2D(p: UseDimension2DParams) {
     if (!hitDim) return false;
     state.setSelectedAnnotation2D({ type: 'dimension', id: hitDim.id });
     const at = mapping.toDrawing(screen);
-    dragging.current = { id: hitDim.id, grab: { x: at.x - hitDim.a.x, y: at.y - hitDim.a.y } };
+    dragging.current = { id: hitDim.id, grab: { x: at.x - hitDim.a.x, y: at.y - hitDim.a.y }, before: state.dimensions2D };
     return true;
   }
 

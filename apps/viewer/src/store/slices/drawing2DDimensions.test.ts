@@ -66,6 +66,29 @@ describe('dimension actions', () => {
     s.getState().addDimension2D(dim('d1'));
     s.getState().updateDimension2D('d1', { orientation: 'vertical' });
     assert.equal(s.getState().dimensions2D[0].orientation, 'aligned', 'an update that would measure zero is refused');
+    assert.equal(s.getState().dimension2DUndo.length, 1, 'invalid operations never enter history');
+  });
+
+  it('undoes and redoes add, update, remove and clear snapshots without recording replay', () => {
+    const s = makeStore();
+    s.getState().addDimension2D(dim('one'));
+    s.getState().updateDimension2D('one', { offset: 2 });
+    s.getState().removeDimension2D('one');
+    s.getState().undoDimension2D(); assert.equal(s.getState().dimensions2D[0].offset, 2);
+    s.getState().undoDimension2D(); assert.equal(s.getState().dimensions2D[0].offset, 0.5);
+    s.getState().redoDimension2D(); assert.equal(s.getState().dimensions2D[0].offset, 2);
+    s.getState().clearDimensions2D(); s.getState().undoDimension2D();
+    assert.deepEqual(ids(s.getState().dimensions2D), ['one']);
+    assert.equal(s.getState().dimension2DUndo.length, 2, 'replay moves commands between stacks');
+  });
+
+  it('clears redo on a new command and caps history at 100', () => {
+    const s = makeStore();
+    s.getState().addDimension2D(dim('first')); s.getState().undoDimension2D();
+    s.getState().addDimension2D(dim('second'));
+    assert.equal(s.getState().dimension2DRedo.length, 0);
+    for (let i = 0; i < 110; i++) s.getState().addDimension2D(dim(`d${i}`));
+    assert.equal(s.getState().dimension2DUndo.length, 100);
   });
 
   it('places two points, then completes them into a dimension stamped with its plane', () => {

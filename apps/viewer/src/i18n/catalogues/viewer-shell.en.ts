@@ -23,6 +23,13 @@ export const viewerShellEn = {
   'viewerShell.staleDeployment.notice': 'A new version of the viewer is available — reload to continue.',
   'viewerShell.staleDeployment.reopenPrompt': 'The viewer updated to a new version and reloaded. Open {files} again to continue.',
   'viewerShell.staleDeployment.reopenAction': 'Open file…',
+  // A deployment that configures the viewer at start (`lib/features/host-start.ts`)
+  // shows this instead of the viewer when its configuration cannot be loaded.
+  'viewerShell.hostConfig.errorTitle': 'The viewer could not start',
+  'viewerShell.hostConfig.errorBody': 'Its settings could not be loaded, so nothing is shown. Reload the page. If this keeps happening, tell the people who run this site.',
+  'viewerShell.hostConfig.viewerLoadTitle': 'The viewer could not be loaded',
+  'viewerShell.hostConfig.viewerLoadBody': 'Its program files could not be downloaded, so nothing is shown. Reload the page. If this keeps happening, tell the people who run this site.',
+  'viewerShell.hostConfig.errorDetail': 'Technical detail: {detail}',
   'viewerShell.chunkLabel.appearancePanel': 'Appearance panel',
   'viewerShell.chunkLabel.chartsPanel': 'Charts panel',
   'viewerShell.chunkLabel.flowPanel': 'Flow panel',

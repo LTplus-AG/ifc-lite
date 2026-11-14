@@ -37,6 +37,23 @@ async function session(count = 1, readOnly = false) {
   } };
 }
 
+it.each([
+  { Height: 3, VGrid: [1, 2] },
+  { Height: 6, VGrid: Array.from({ length: 20 }, (_, i) => (i + 1) / 4 + 0.000000000123456) },
+])('#9352 get_entity reads the curtain-wall V-grid spec before export (height=$Height)', async ({ Height, VGrid }) => {
+  const { call } = await session();
+  const placed = await call('place_curtain_wall', { storey_express_id: 42, params: { ...CURTAIN, Height, VGrid } });
+  expect(placed.isError).not.toBe(true);
+  const expressId = placed.structuredContent!.expressId as number;
+  const result = await call('get_entity', { express_id: expressId, include: ['properties'] });
+  expect(result.isError).not.toBe(true);
+  expect(result.structuredContent!.properties).toEqual(expect.arrayContaining([
+    expect.objectContaining({ name: 'IfcLite_CurtainWallLayout', properties: expect.arrayContaining([
+      expect.objectContaining({ name: 'VGrid', value: JSON.stringify(VGrid) }),
+    ]) }),
+  ]));
+});
+
 describe('#6232 public design placement', () => {
   for (const [kind, params, type] of [['curtain_wall', CURTAIN, 'IFCCURTAINWALL'], ['grid', GRID, 'IFCGRID']] as const) {
     it(`${kind} exports its complete graph and one Undo retains preceding work`, async () => {

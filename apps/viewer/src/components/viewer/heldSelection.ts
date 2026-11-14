@@ -10,8 +10,8 @@ const EMPTY_SELECTION = new Set<number>();
 export function viewportSelection(
   state: PickGatingState,
   selectedId: number | null,
-  selectedIds: ReadonlySet<number>,
-): { selectedId: number | null; selectedIds: ReadonlySet<number> } {
+  selectedIds: Set<number>,
+): { selectedId: number | null; selectedIds: Set<number> } {
   return isGeometryHeld(state) ? { selectedId: null, selectedIds: EMPTY_SELECTION } : { selectedId, selectedIds };
 }
 

@@ -5,7 +5,33 @@
 import { Readable } from 'node:stream';
 import type { ReadableStream as WebReadableStream } from 'node:stream/web';
 import type { Plugin } from 'vite';
-import { createDaluxRelayHandler, loadDaluxRelayConfig } from '../../../server/sources/dalux-relay';
+import type { IncomingMessage } from 'node:http';
+import {
+  createDaluxRelayHandler,
+  loadDaluxRelayConfig,
+  MAX_RELAYED_BODY_BYTES,
+} from '../../../server/sources/dalux-relay';
+
+/**
+ * Reads a request body, keeping at most `limit` bytes. The handler answers 413
+ * for anything over its cap, so keeping one byte past it is enough to let it
+ * see the overflow. The rest is drained and dropped rather than abandoned:
+ * leaving the loop early would destroy the request and its socket, and the
+ * client would see a connection error instead of the 413.
+ */
+async function readBody(req: IncomingMessage, limit: number): Promise<Uint8Array<ArrayBuffer>> {
+  const chunks: Buffer[] = [];
+  let kept = 0;
+  for await (const chunk of req) {
+    if (kept >= limit) continue;
+    const buffer = chunk as Buffer;
+    const room = limit - kept;
+    const slice = buffer.byteLength > room ? buffer.subarray(0, room) : buffer;
+    chunks.push(slice);
+    kept += slice.byteLength;
+  }
+  return new Uint8Array(Buffer.concat(chunks));
+}
 
 /**
  * Serve `/api/dalux` in dev with the SAME handler production uses.
@@ -53,10 +79,17 @@ export function daluxRelayRoute(): Plugin {
               if (typeof v === 'string') headers.set(k, v);
               else if (Array.isArray(v)) headers.set(k, v.join(', '));
             }
-            // GET/HEAD/OPTIONS only reach the relay, so there is no body to
-            // forward; the handler rejects every other method itself.
+            // Only an upload POST carries a body. Buffer it, bounded by the
+            // same cap the handler enforces, so an oversized dev request is
+            // refused before it is held in memory; the handler re-checks the
+            // size, the route and the headers itself.
+            const method = req.method ?? 'GET';
+            let body: Uint8Array<ArrayBuffer> | undefined;
+            if (method === 'POST') {
+              body = await readBody(req, MAX_RELAYED_BODY_BYTES + 1);
+            }
             const response = await handler(
-              new Request(`http://localhost${url}`, { method: req.method ?? 'GET', headers }),
+              new Request(`http://localhost${url}`, { method, headers, body }),
             );
             res.statusCode = response.status;
             response.headers.forEach((value, key) => res.setHeader(key, value));

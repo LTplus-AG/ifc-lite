@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useViewerStore } from '@/store';
-import { isGeometryHeld } from '@/lib/pick-gating';
+import { isGeometryHeld, type PickGatingState } from '@/lib/pick-gating';
 
 export interface HeldPointerClick {
   x: number;
@@ -17,7 +17,8 @@ export interface HeldPointerClick {
   replay: (click: Omit<HeldPointerClick, 'replay'>) => void;
 }
 
-type HoldState = Parameters<typeof isGeometryHeld>[0] & {
+/** The store fields the queue reads: the gate's own, plus each model's load state (a failed load drops its queued click). */
+type HoldState = Omit<PickGatingState, 'models'> & {
   models: ReadonlyMap<string, { geometryRestorePending?: boolean; loadState?: string }>;
 };
 
@@ -27,7 +28,7 @@ export class LatestHeldPointerQueue {
 
   queue(click: HeldPointerClick, state: HoldState): boolean {
     if (!isGeometryHeld(state)) return false;
-    const pending = [...state.models].filter(([, model]) => model.geometryRestorePending || model.loadState === 'loading').map(([id]) => id);
+    const pending = [...state.models].filter(([, model]) => model.geometryRestorePending).map(([id]) => id);
     const models = pending.length ? pending : [...state.models.keys()];
     if (!models.length) return false;
     this.queued = { ...click, models };
@@ -73,30 +74,21 @@ export function queueHeldPointerClick(click: HeldPointerClick): boolean {
   return true;
 }
 
-/** Pointer movement/presses, wheel and keys after the queued click make replay stale. */
+/**
+ * Newer user input after the queued click makes its replay stale. A newer gesture is detected at its START
+ * (pointerdown/touchstart, a drag move, wheel, keydown); end events (pointerup/touchend/keyup) are not counted, because
+ * they may belong to the queued click's own gesture (Chrome on Linux fires `contextmenu` on press, so the release
+ * comes after the context-menu click was queued) and a newer gesture has already invalidated on its start.
+ */
 export function observeHeldPointerInput(_canvas: HTMLCanvasElement): () => void {
   const invalidate = (event: Event) => {
     if (event.type !== 'pointermove' || (event as PointerEvent).buttons !== 0) heldPointerQueue.invalidate();
   };
-  const key = () => heldPointerQueue.invalidate();
-  document.addEventListener('pointerdown', invalidate, true);
-  document.addEventListener('pointerup', invalidate, true);
-  document.addEventListener('pointermove', invalidate, true);
-  document.addEventListener('touchstart', invalidate, true);
-  document.addEventListener('touchmove', invalidate, true);
-  document.addEventListener('touchend', invalidate, true);
-  document.addEventListener('wheel', invalidate, true);
-  window.addEventListener('keydown', key, true);
-  window.addEventListener('keyup', key, true);
+  const docEvents = ['pointerdown', 'pointermove', 'touchstart', 'touchmove', 'wheel'] as const;
+  for (const type of docEvents) document.addEventListener(type, invalidate, true);
+  window.addEventListener('keydown', invalidate, true);
   return () => {
-    document.removeEventListener('pointerdown', invalidate, true);
-    document.removeEventListener('pointerup', invalidate, true);
-    document.removeEventListener('pointermove', invalidate, true);
-    document.removeEventListener('touchstart', invalidate, true);
-    document.removeEventListener('touchmove', invalidate, true);
-    document.removeEventListener('touchend', invalidate, true);
-    document.removeEventListener('wheel', invalidate, true);
-    window.removeEventListener('keydown', key, true);
-    window.removeEventListener('keyup', key, true);
+    for (const type of docEvents) document.removeEventListener(type, invalidate, true);
+    window.removeEventListener('keydown', invalidate, true);
   };
 }

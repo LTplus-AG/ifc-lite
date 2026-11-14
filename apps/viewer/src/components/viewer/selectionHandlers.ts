@@ -20,7 +20,7 @@ import { raycastForPolylinePoint, isNearPolylineStart,
   isDuplicateClickPoint,
 } from './measureHandlers.js';
 import { handlePointClick } from './measurePointMode.js';
-import { handleMeasureDown, handleMeasureUp, pressOutlivedReset } from './distanceClick.js';
+import { pressOutlivedReset } from './distanceClick.js';
 import { rememberVertexPress, unsnapFromPrevious } from './measurePress.js';
 import { pickViewportAppearanceFace, viewportFacePickError } from './appearance/face-mask/viewport-face-picker.js';
 import { resolve as translate } from '@/i18n/registry';
@@ -64,12 +64,8 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
         if (ctx.activeToolRef.current !== tool) return;
         const currentRect = canvas.getBoundingClientRect();
         const clientX = currentRect.left + x, clientY = currentRect.top + y;
-        if (tool === 'measure' && useViewerStore.getState().measureMode === 'distance') {
-          const pointer = (type: string) => new PointerEvent(type, { bubbles: true, clientX, clientY, shiftKey: e.shiftKey, ctrlKey: e.ctrlKey,
-            metaKey: e.metaKey, altKey: e.altKey, button: e.button, buttons: type === 'pointerdown' ? 1 : 0 });
-          handleMeasureDown(ctx, pointer('pointerdown'));
-          handleMeasureUp(ctx, pointer('pointerup'));
-        } else void handleSelectionClick(ctx, new MouseEvent('click', { bubbles: true, clientX, clientY, shiftKey: e.shiftKey,
+        // handleSelectionClick routes measure clicks itself (handleMeasureClickAt); a drag-measure press is a gesture, not a click, and is not queued.
+        void handleSelectionClick(ctx, new MouseEvent('click', { bubbles: true, clientX, clientY, shiftKey: e.shiftKey,
           ctrlKey: e.ctrlKey, metaKey: e.metaKey, altKey: e.altKey, button: e.button, buttons: 0, detail: 1 }));
       },
     });

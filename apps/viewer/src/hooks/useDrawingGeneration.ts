@@ -39,7 +39,8 @@ import * as IfcWasm from '@ifc-lite/wasm';
 import { customPlaneCenter, useViewerStore } from '@/store';
 import { saveGeneratedSectionConfig, consumeRestoredSectionConfig } from './useDrawing2DPersistence.js';
 import { buildModelViewIdFilter, selectModelMeshes } from '@/lib/type-view-visibility';
-import { isTypeVisible, type TypeVisibilityGate } from '@/store/typeVisibilityFilter';
+import { isMeshTypeVisible, type TypeVisibilityGate } from '@/store/typeVisibilityFilter';
+import { useRetypedClasses } from './useViewerSelectors.js';
 import { roomDrawingSymbolic } from '@/lib/collab/room-drawing-symbolic';
 import { ifcToViewerAxes } from '@/lib/geo/coordinate-frame';
 import { useDrawingRtcContext } from './useDrawingRtcContext.js';
@@ -160,6 +161,7 @@ export function useDrawingGeneration({
   setDrawingError,
 }: UseDrawingGenerationParams): UseDrawingGenerationResult {
   const structuralViewMode = useViewerStore((s) => s.structuralViewMode);
+  const retypedClasses = useRetypedClasses();
   // Subscribe to all provenance channels so pending → standalone/explicit retriggers the drawing.
   const { context: drawingRtcContext, key: drawingRtcContextKey } =
     useDrawingRtcContext(ifcDataStore);
@@ -507,17 +509,12 @@ export function useDrawingGeneration({
       // Filter meshes by visibility (respect 3D hiding/isolation)
       let meshesToProcess = modelMeshes;
 
-      // Class-level Visibility toggles (issue #2060). These are a GLOBAL
-      // filter, not a 3D-only one: `ViewportContainer` applies `isTypeVisible`
-      // to the mesh list it hands the renderer, but the drawing derives its own
-      // list from `geometryResult.meshes` and only ever filtered
-      // hiding/isolation. So a hidden IfcSpace / IfcOpeningElement was still
-      // cut — its fill and outline showed in the 2D Section view, and via the
-      // 3D section overlay (which uploads `drawing.cutPolygons` /
-      // `drawing.lines` verbatim, see `useRenderUpdates.ts`) in the 3D view
-      // too. Same shared mapping as the viewport, Cesium, basket and GLB
-      // export, so all six toggles stay in lockstep.
-      meshesToProcess = meshesToProcess.filter((mesh) => isTypeVisible(mesh.ifcType, typeVisibility, structuralViewMode));
+      // Class-level Visibility toggles (issue #2060) are a GLOBAL filter, not a
+      // 3D-only one. The drawing derives its own list from `geometryResult.meshes`,
+      // so without this a hidden IfcSpace / IfcOpeningElement was still cut, in the
+      // 2D Section view and in the 3D section overlay (`useRenderUpdates.ts`). Same
+      // shared mapping as the viewport, basket and GLB export, retypes included (#10119).
+      meshesToProcess = meshesToProcess.filter((mesh) => isMeshTypeVisible(mesh, typeVisibility, structuralViewMode, retypedClasses));
 
       // Filter out hidden entities (using combined multi-model set)
       if (combinedHiddenIds.size > 0) {
@@ -576,7 +573,7 @@ export function useDrawingGeneration({
         // cut by express id; without this, a profile sharing that same
         // express id would still be free to project it back in.
         projectionProfiles = projectionProfiles.filter((p) => isModelViewExpressId(p.expressId));
-        projectionProfiles = projectionProfiles.filter((p) => isTypeVisible(p.ifcType, typeVisibility, structuralViewMode));
+        projectionProfiles = projectionProfiles.filter((p) => isMeshTypeVisible(p, typeVisibility, structuralViewMode, retypedClasses));
         if (combinedHiddenIds.size > 0) {
           projectionProfiles = projectionProfiles.filter((p) => !combinedHiddenIds.has(p.expressId));
         }
@@ -896,7 +893,7 @@ export function useDrawingGeneration({
     ifcDataStore,
     sectionPlane,
     displayOptions,
-    typeVisibility, structuralViewMode,
+    typeVisibility, structuralViewMode, retypedClasses,
     combinedHiddenIds,
     combinedIsolatedIds,
     computedIsolatedIds,
@@ -996,7 +993,7 @@ export function useDrawingGeneration({
     const plane = JSON.stringify([sectionPlane.axis, sectionPlane.position, sectionPlane.flipped,
       sectionPlane.custom]);
     const inputs = [geometryResult, geometryResult?.meshes.length, ifcDataStore,
-      displayOptions, typeVisibility, structuralViewMode, combinedHiddenIds, combinedIsolatedIds,
+      displayOptions, typeVisibility, structuralViewMode, retypedClasses, combinedHiddenIds, combinedIsolatedIds,
       computedIsolatedIds, models, drawingRtcContextKey, isGeometryHeld(useViewerStore.getState())];
     const changed = inputs.some((value, index) => value !== previousInputs.current[index]);
     const planeChanged = plane !== previousPlane.current;

@@ -10,7 +10,7 @@ const state = (held: boolean, models: ReadonlyMap<string, { geometryRestorePendi
   geometryStreamingActive: false, loading: false, progress: null, models,
 });
 
-const click = (x: number, replay: () => void) => ({
+const click = (x: number, replay: (record: unknown) => void) => ({
   x, y: 19, shiftKey: true, ctrlKey: false, metaKey: true, altKey: false, button: 0, handler: 'selection:select', replay,
 });
 

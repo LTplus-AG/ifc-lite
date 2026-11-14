@@ -7,7 +7,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { markTraceWindow, startCpuTraceSafe, stopCpuTrace } from './load-scoreboard-cputrace.mjs';
+import { epochWindow, markTraceWindow, startCpuTraceSafe, stopCpuTrace } from './load-scoreboard-cputrace.mjs';
 
 function fakeSession({ complete = { stream: 's' }, close = false, emit = true } = {}) {
   const cdp = new EventEmitter();
@@ -75,6 +75,7 @@ test('a failing CPU trace never fails the wall-clock sample: the load gets past 
   const boom = { evaluate: async () => { throw new Error('page gone'); } };
   assert.equal((await startCpuTraceSafe({ newCDPSession: async () => { throw new Error('no CDP'); } }, boom)).error, 'trace start failed: no CDP');
   assert.equal(await markTraceWindow(boom, 1, 2, 1), 'trace marks failed: page gone');
+  assert.equal(await epochWindow(boom, 1, 2), null);
 });
 
 test('an IO.read that never answers ends at the same single deadline; the sample keeps no CPU figure, not a hang', async (t) => {

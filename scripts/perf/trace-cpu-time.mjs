@@ -37,6 +37,10 @@ import { isMainEntry } from '../lib/is-main-entry.mjs';
 export const TRACE_CATEGORIES = ['toplevel', 'blink.user_timing', '__metadata'];
 export const INPUT_MARK = 'scoreboard:input';
 export const INTERACTIVE_MARK = 'scoreboard:interactive';
+/** The input event (page clock) the viewer's in-page spans are relative to; defaults to the window start. */
+export const ORIGIN_MARK = 'scoreboard:origin';
+/** Largest share of task wall time in the window without thread time for which CPU still counts as measured. */
+export const MAX_UNTIMED_SHARE = 0.05;
 /** Main-thread spans that frame work done on dedicated workers. */
 export const WORKER_FRAME_SPANS = ['parser.worker', 'geometry.pool'];
 /** The stages the report shows first; every other span name is still computed. */
@@ -93,7 +97,8 @@ export function resolveWindow(events, { window = null } = {}) {
     source = 'scoreboard marks';
   }
   if (!(endMs > startMs)) throw new Error(`empty window ${startMs}..${endMs} ms`);
-  return { pid, offsetUs, startMs, endMs, startUs: offsetUs + startMs * 1000, endUs: offsetUs + endMs * 1000, source };
+  const origin = marks.find((m) => m.name === ORIGIN_MARK && m.pid === pid);
+  return { pid, offsetUs, startMs, endMs, startUs: offsetUs + startMs * 1000, endUs: offsetUs + endMs * 1000, source, spanOriginMs: origin ? origin.startTimeMs : startMs };
 }
 
 /**
@@ -215,13 +220,17 @@ export function traceCpuTime(trace, { window = null, spans = null } = {}) {
     threads,
     stages: null,
   };
-  // No thread time on any task: CPU is unavailable, never a measured zero (review #10138).
-  if (!result.threadTime) {
+  // CPU is measured only when the renderer's main thread has thread time in the window and at most MAX_UNTIMED_SHARE of
+  // task wall time lacks it; otherwise every figure is unavailable, never a partial or zero total (review #10138).
+  const mainTimed = threads.some((t) => t.role === 'rendererMain' && t.cpuMs > 0);
+  result.coverage = !result.threadTime ? 'no thread time in the window' : !mainTimed ? 'renderer main thread has no thread time in the window'
+    : result.uncountedWallShare > MAX_UNTIMED_SHARE ? `${(result.uncountedWallShare * 100).toFixed(1)}% of task wall time has no thread time` : 'ok';
+  if (result.coverage !== 'ok') {
     for (const k of Object.keys(result.cpuMs)) result.cpuMs[k] = null;
     return result;
   }
   if (spans) {
-    const toUs = (t) => w.offsetUs + (w.startMs + t) * 1000; // span times are ms from the input event
+    const toUs = (t) => w.offsetUs + (w.spanOriginMs + t) * 1000; // span times are ms from the input event (ORIGIN_MARK)
     const mainTasks = [], workerTasks = [];
     for (const [key, list] of tasks) {
       const [pid] = key.split(':').map(Number);

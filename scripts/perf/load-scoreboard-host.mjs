@@ -260,11 +260,14 @@ export function settleHostLoad(host, { ownOutside = null } = {}) {
   if (window === 'none') flag = classifyHostLoad({ psi: host.cpuPressureAvg10, limit: host.limit, builders: host.builders, groupCpuMs: builderCpuMs });
   else {
     const ownAfter = cgroupPressure(ownCgroupPath())?.totalUs;
-    const stallUs = Number.isFinite(ownAfter) && Number.isFinite(host.ownPressureBefore) ? ownAfter - host.ownPressureBefore + (ownOutside?.pressureUs ?? 0) : null;
+    // Each cgroup's `some` total is time with at least one of ITS tasks waiting; the union of the job cgroup and the browser
+    // scope is unknown, so the larger of the two is used (a lower bound; their sum could count one moment twice, review #10138).
+    const jobUs = Number.isFinite(ownAfter) && Number.isFinite(host.ownPressureBefore) ? ownAfter - host.ownPressureBefore : null;
+    const stallUs = jobUs === null ? null : Math.max(jobUs, ownOutside?.pressureUs ?? 0);
     const ownStallPct = stallUs === null || !(sampleMs > 0) ? null : (stallUs / (sampleMs * 1000)) * 100;
     const st = capAfter?.error ? host.capBefore : capAfter;
     flag = classifyCappedLoad({ window, ownStallPct, limit: host.limit, builders: host.builders, builderCpuMs, cappedPaths: st?.cappedPaths ?? [] });
-    host.cap = { window, id: st?.id ?? null, allowanceCores: st?.allowanceCores ?? null, ownStallPct: ownStallPct === null ? null : Math.round(ownStallPct * 10) / 10, error: capAfter?.error ?? host.capBefore?.error ?? null };
+    host.cap = { window, id: st?.id ?? null, allowanceCores: st?.allowanceCores ?? null, ownStallPct: ownStallPct === null ? null : Math.round(ownStallPct * 10) / 10, jobStallUs: jobUs, browserStallUs: ownOutside?.pressureUs ?? null, error: capAfter?.error ?? host.capBefore?.error ?? null };
   }
   host.cap ??= { window: 'none' };
   Object.assign(host, { groupCpuMs, builderCpuMs, foreignCpuMs, ownOutsideCgroupCpuMs: Number.isFinite(ownOutsideCpuMs) ? Math.round(ownOutsideCpuMs) : null, sampleMs, overlapsWatchdogPass, thermal, settled: true, ...flag });

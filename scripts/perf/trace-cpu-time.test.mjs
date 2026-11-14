@@ -120,3 +120,19 @@ test('thread time only after the window does not make an untimed window read as 
   assert.equal(r.threadTime, false);
   assert.equal(r.cpuMs.total, null);
 });
+
+test('stages are anchored at the input event (scoreboard:origin) even when the window starts earlier (first-paint arm)', () => {
+  // Window from page 50 ms (first paint) to 600 ms; input event at 100 ms: span times stay relative to 100 ms.
+  const ev = traceEventsOf(trace).map((e) => (e.name === 'scoreboard:input' ? { ...e, ts: 1050000, args: { data: { startTime: 50 } } } : e))
+    .concat([{ ph: 'I', cat: 'blink.user_timing', name: 'scoreboard:origin', pid: 10, tid: 1, ts: 1100000, args: { data: { startTime: 100 } } }]);
+  const r = traceCpuTime(ev, { spans });
+  assert.deepEqual(r.stages['scene.finalize'], { wallMs: 50, mainCpuMs: 50 }); // page 200..250, as with the input-anchored window
+});
+
+test('CPU is unavailable when only another process has thread time (renderer main untimed): no partial total', () => {
+  const ev = traceEventsOf(trace).map((e) => (e.ph === 'X' && e.pid === 10 ? (({ tdur: _t, ...x }) => x)(e) : e));
+  const r = traceCpuTime(ev);
+  assert.equal(r.coverage, 'renderer main thread has no thread time in the window');
+  assert.equal(r.cpuMs.total, null);
+  assert.equal(r.cpuMs.gpu, null);
+});

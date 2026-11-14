@@ -65,6 +65,11 @@ test('a sample settled inside an open window records the window and allowance an
     assert.equal(host.cap.window, 'inside');
     assert.equal(host.cap.allowanceCores, 2);
     assert.ok(host.cap.ownStallPct === null || host.cap.ownStallPct >= 0);
+    // The browser scope's stall is not added to the job's (one moment could count twice): the larger one is used.
+    const h3 = await hostQuiet({ maxWaitMs: 0 });
+    settleHostLoad(h3, { ownOutside: { cpuMs: 0, pressureUs: 5 } });
+    if (h3.cap.jobStallUs !== null) assert.equal(h3.cap.ownStallPct, Math.round((Math.max(h3.cap.jobStallUs, 5) / (h3.sampleMs * 1000)) * 1000) / 10);
+    assert.equal(h3.cap.browserStallUs, 5);
     // Restored before the sample ends: partial, flagged.
     const h2 = await hostQuiet({ maxWaitMs: 0 });
     writeFileSync(file, JSON.stringify({ id: 'live', cores: 2, appliedEpoch: Date.now() / 1000 - 5, restoredEpoch: Date.now() / 1000, entries: [] }));

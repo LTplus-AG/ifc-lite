@@ -178,7 +178,7 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
     const toAbs = open.originAbs + open.interactiveMs;
     if (instrOut) instrWindows.push({ label, window: await page.evaluate(([a, b]) => [performance.timeOrigin + a, performance.timeOrigin + b], [fromAbs, toAbs]) });
     // A mark created now with an earlier startTime gets its trace ts from that startTime (Chrome; args.data.callTime holds the creation time).
-    if (tracing) await page.evaluate(([a, b]) => { performance.mark('scoreboard:input', { startTime: a }); performance.mark('scoreboard:interactive', { startTime: b }); }, [fromAbs, toAbs]);
+    if (tracing) await page.evaluate(([a, b, o]) => { performance.mark('scoreboard:input', { startTime: a }); performance.mark('scoreboard:interactive', { startTime: b }); performance.mark('scoreboard:origin', { startTime: o }); }, [fromAbs, toAbs, open.originAbs]);
     Object.assign(open, { shell }, await waitUiQuiet(page, open.originAbs + open.interactiveMs, open.originAbs));
     if (tracing) Object.assign(open, await stopCpuTrace(tracing, { spans: open.trace, file: join(outDir, `${tag}-${label}.cputrace.json.gz`) }));
     if (early) open = rebaseToArm(open);

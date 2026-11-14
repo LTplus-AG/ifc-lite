@@ -243,17 +243,19 @@ export interface RhinoImport {
     name: string; description: string; objectType: string;
     layer: number;
     hidden: boolean;                        // object hidden or any layer on its path off; merged: all parts hidden
+    hiddenByObject: boolean;                // object's own flag, layers left out; merged: all parts
+    hiddenByLayer: boolean;                 // any layer on its path off; merged: all parts
     objectIds: string[];                    // Rhino UUIDs merged into this entity
     geometryType: string;                   // Rhino class: "Mesh", "Brep", "InstanceReference", "NurbsCurve", ...
     userStrings: RhinoUserStrings;          // the first object's, verbatim and in file order, then what merged objects add
     propertySets: { name: string; properties: [string, string][] }[];
   }[];
-  meshes: (RhinoImportGeometry & { entity: number; color: RhinoRgba; hidden: boolean })[];
+  meshes: (RhinoImportGeometry & { entity: number; color: RhinoRgba; hidden: boolean; hiddenByObject: boolean; hiddenByLayer: boolean })[];
   definitions: { name: string; meshes: (RhinoImportGeometry & { color: RhinoRgba | null })[] }[];
-  instances: { entity: number; definition: number; transform: number[]; color: RhinoRgba; hidden: boolean }[];
-  pointClouds: { entity: number; origin: RhinoVector3; positions: Float32Array; colors: Uint8Array | null; color: RhinoRgba; hidden: boolean }[];
-  curves: { entity: number; origin: RhinoVector3; positions: Float32Array; closed: boolean; color: RhinoRgba; hidden: boolean }[];
-  textDots: { entity: number; position: RhinoVector3; text: string; color: RhinoRgba; hidden: boolean }[];
+  instances: { entity: number; definition: number; transform: number[]; color: RhinoRgba; hidden: boolean; hiddenByObject: boolean; hiddenByLayer: boolean }[];
+  pointClouds: { entity: number; origin: RhinoVector3; positions: Float32Array; colors: Uint8Array | null; color: RhinoRgba; hidden: boolean; hiddenByObject: boolean; hiddenByLayer: boolean }[];
+  curves: { entity: number; origin: RhinoVector3; positions: Float32Array; closed: boolean; color: RhinoRgba; hidden: boolean; hiddenByObject: boolean; hiddenByLayer: boolean }[];
+  textDots: { entity: number; position: RhinoVector3; text: string; color: RhinoRgba; hidden: boolean; hiddenByObject: boolean; hiddenByLayer: boolean }[];
   skipped: Record<string, number>;          // by reason/type: "Point": 8, "Brep:no-render-mesh": 3
   warnings: string[];                       // one line per distinct condition
 }
@@ -302,6 +304,12 @@ interface RhinoImportGeometry {
   entity's flag except in an entity that merges parts that differ (see Layers,
   visibility, hierarchy). Added after v1 shipped, in v1: a reader that ignores
   it sees the same result as before.
+- `hiddenByObject` and `hiddenByLayer`, on an entity and on every geometry
+  record, are the two causes `hidden` folds together: the object's own flag
+  (`object.visible === false || mode === Hidden`) and a layer on its path off.
+  On a record `hidden` is their or. A merged entity's flag is true when all
+  its objects' are, so a merged entity can be hidden with neither set. Added
+  after v1 shipped, in v1, as `hidden` was (#10214).
 
 Guarantees, so the adapter never checks them: every index is in range; layers
 come parent first; every number is finite, after unit scaling and after every
@@ -704,6 +712,29 @@ transparency rule [test].
   flag for the user's show and hide [test: a crafted group of a visible box, a
   hidden box and a curve on an off layer, and one hidden object of its own].
   Not splitting the entity keeps D8: the parts are one IFC element.
+- A wholly hidden entity is kept for the user to show, and `hidden` alone
+  cannot tell a part hidden on its own from one hidden by its layer. Rhino
+  shows a part through Show Objects (its own flag) or by turning on the
+  layers on its path. A wholly hidden entity keeps what the one Rhino state
+  that shows its least hidden drawn parts would show: those parts' causes are
+  the ones that state clears, and a part with any other cause is left out.
+  So in a group on an off layer, a part also hidden on its own is left out;
+  when one part is hidden on its own and another only by its layer, both
+  actions are needed, and every part is kept. Only meshes and point clouds
+  count, since only they are drawn. Every off layer counts as the one layer
+  cause, so that state may turn on more than one layer. Showing the entity
+  then draws a state Rhino can be in [test: a crafted group on an off layer with one visible box
+  and one box hidden on its own; a group hidden on its own with one part also
+  on an off layer; parts that need different actions plus one that needs
+  both; a hidden mesh next to a curve] (#10214).
+- Showing a parent layer row does not show a child layer that starts hidden
+  because the parent was off. A `.3dm` layer row is an `IfcSpatialZone` row,
+  and its eye acts on the zone and what it holds directly, as for IFC; a
+  cascade that matched Rhino would show only child layers whose own
+  `layers[i].visible` is set, and in them only objects whose `hiddenByObject`
+  is not, which needs a per-row channel the shared tree code does not have.
+  For the same reason showing a layer row also shows an object on it that
+  Rhino hides on its own. Deferred (#10214).
 - Layers are reordered parent first, keeping file order among siblings. A
   layer whose parent is missing becomes a root; so does a layer in a parent
   cycle, with a warning. An object whose layer index is outside the table
@@ -1062,7 +1093,8 @@ Level 1 has no dialog. The defaults live in the reader.
   its storey elevation, `byStorey` membership and `getStoreyByElevation`.
 - Visibility per part (`rhinoViewerModel.test.ts`): a hidden mesh and a hidden
   point cloud merged into a shown entity are left out of the payload, and a
-  wholly hidden entity keeps its triangle and starts hidden.
+  wholly hidden entity keeps its triangle and starts hidden. A wholly hidden
+  merged entity keeps what one Rhino state would show of it (#10214).
 - The spatial tree of an ifc-lite export against the IFC it came from
   (`rhinoViewerModel.export.test.ts`): FZK through the Rust scene builder,
   `writeRhino3dm` and the reader, compared with the same IFC through

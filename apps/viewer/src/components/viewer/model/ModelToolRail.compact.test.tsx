@@ -49,7 +49,7 @@ beforeEach(async () => {
   globalThis.ResizeObserver = MeasuredResizeObserver;
   window.HTMLElement.prototype.getBoundingClientRect = function () {
     const measured = this.hasAttribute('data-model-tool-rail') ? height
-      : this.hasAttribute('data-rail-footer') ? 124
+      : this.hasAttribute('data-rail-footer') ? 86
       : this.hasAttribute('data-rail-divider') ? 1
       : this.tagName === 'BUTTON' ? 36 : 0;
     return new DOMRect(0, 0, 48, measured);
@@ -70,7 +70,7 @@ describe('Model rail fits its measured viewport (#6232 compact rail)', () => {
     const ui = render(<ModelToolRail />);
     assert.equal(ui.querySelector('nav')?.getAttribute('data-rail-layout'), 'grouped');
     assert.equal(ui.querySelectorAll('[data-rail-group]').length, 4);
-    for (const id of ['select', 'change-sets', 'plan', 'leave']) assert.ok(ui.querySelector(`[data-rail-tool="${id}"]`));
+    for (const id of ['select', 'change-sets', 'leave']) assert.ok(ui.querySelector(`[data-rail-tool="${id}"]`));
     const found: string[] = ['select'];
     for (const id of ['build', 'host', 'edit', 'circulation']) {
       const menu = await open(ui, id);
@@ -130,7 +130,7 @@ describe('Model rail fits its measured viewport (#6232 compact rail)', () => {
     resize(1100);
     assert.equal(ui.querySelector('nav')?.getAttribute('data-rail-layout'), 'full');
     assert.equal(ui.querySelectorAll('[data-rail-group]').length, 0);
-    assert.equal(ui.querySelectorAll('[data-rail-tool]').length, RAIL_TOOLS.length + 3);
+    assert.equal(ui.querySelectorAll('[data-rail-tool]').length, RAIL_TOOLS.length + 2);
     resize(600);
     assert.equal(ui.querySelector('nav')?.getAttribute('data-rail-layout'), 'grouped');
     assert.equal(ui.querySelectorAll('[data-rail-group]').length, 4);

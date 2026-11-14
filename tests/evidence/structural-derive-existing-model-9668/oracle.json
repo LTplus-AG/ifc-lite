@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "#9668: Apply refuses a file with any analysis model by default; refuse only an earlier derived one.",
+  "key": "packages/create/src/in-store/structural-derive-apply.ts",
+  "mutation": "tests/evidence/structural-derive-existing-model-9668/behaviour.oracle.patch",
+  "test": "packages/create/src/in-store/structural-derive-fixtures.test.ts"
+}

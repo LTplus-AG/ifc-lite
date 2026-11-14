@@ -8,6 +8,66 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
+## Presentation layer attribute reads (#9928)
+
+Resolve schema positions once per type during each index build and read only
+ownership attributes from unedited STEP records. Effective metadata remains the
+single path for overlays and source-free stores. Shape Items can be omitted when
+there are no mapped items and no assignments below shape models; mapped exports
+still need these edges, even when every assignment targets a shape model.
+**Measured win on the reported architectural model.** Exclusive Pop runs of the
+cold index, paired against current main, cut first-build time substantially while
+preserving every layer and member in the six-model/ten-shape comparison corpus.
+Full-record decoding is replaced by selective attribute reads; those reads still
+occur synchronously. The mapped export still needs its shape-representation
+edges: skipping them merely because assignments target shape models would lose
+layers reached through representation maps. This is an index-only measurement,
+not a geometry throughput or browser click-to-populated claim.
+
+## Retained selection highlights (#9835, #9916)
+
+**Diagnostic win on the real large-model WebGPU path.** Retaining merged highlight
+buffers removes repeated per-piece submission while orbiting an unchanged large
+selection. Same-camera checks include hide, isolate, glazing and x-ray context;
+shared desktop timings are diagnostic rather than a benchmark qualification.
+
+Lesson: preserve the per-piece path's hydration insertion history, not the latest
+selection Set order. The highlight does not write depth, so later overlapping
+selected surfaces decide the visible shading. Retire and rebuild pooled ranges
+together, and merge only contiguous compatible model/origin runs. Regrouping
+non-adjacent equal-origin pieces trades away visual correctness. Alternating
+origins can still cost one draw per piece, matching the original path; a per-vertex
+frame index and GPU origin table are the bounded-draw follow-up (#10008). Distinct
+textured origins reuse their original GPU buffers in the late highlight and
+outline-mask passes (#9946). This removes selection-time geometry copies and
+uploads, but still submits one highlight draw per selected textured piece.
+Uniform blocks share arena pages. Synthetic Metal checks preserve the glass
+and cutout picture; tinting the original textured draw was rejected because
+it moves selection before glass and retains texture cutouts. Keep stride
+variants on shared shaders and invalidate borrowed records with scene revisions.
+
+## Single-edit IFC derivations (#9296, R7 P3)
+
+**Diagnostic improvement; performance qualification remains open.** Storey display,
+plan grids, wall axes and the spatial tree now share a cache of the overlay reads
+made by their real derivations. A live overlay revision checks those dependencies
+without reparsing source entities; unrelated column placement changes retain them.
+Creation discovery, relationship/placement leaves, Undo/Redo, skip-history writes
+and atomic publications remain live. Cache ownership follows the source store and
+mutation view, including separate federated models.
+
+The mutation profile also exposed an all-product top-attachment scan. Without a
+moved slab or roof target, only explicitly refit products can need refitting; target
+moves keep the full dependent scan. The real loaded F5 UI probe shows why a kernel
+microbenchmark would miss both costs. Shared-host GPU timings are diagnostic and
+cannot qualify the session-scale row; remaining React reconciliation and renderer
+scheduling still need attention.
+
+Lesson: avoid global history-count keys for derived IFC state. Read dependencies
+include absent records and effective class discovery, and must be checked against
+live overlay revisions rather than journal length. Read-only creation snapshots
+also avoid exposing mutable rows to the next atomic transaction's guard.
+
 ## Raycast keeps one index across visibility changes (#9504)
 
 **Shipped.** `collectVisibleMeshData` rebuilt its list on every ray, and the BVH was
@@ -1658,6 +1718,22 @@ same-length timestamp swap alone is enough to jump it by ~0.5% (bimodal over
 only make one tree repeat; every other edit perturbs the compressor the same
 way. **Lesson:** gate the JS on raw bytes, report brotli, and don't try to
 make a brotli number on a multi-megabyte JS chunk stable to better than ~0.5%.
+
+## The engine WASM is gated on raw bytes too (2026-11-13)
+
+The engine WASM embeds no timestamp, so it stayed on brotli after #7007. Its
+brotli-11 size is just as unsteady. CI's own measurements on `main` (the
+`Build packages + WASM` log of every PR and merge-queue run, base by base):
+#9756 changed the binary by -9 raw bytes and its brotli size by +1,547; #9883
+left the raw size identical (10,383,854 bytes on both bases) and moved brotli
+by -1,074. One window shrank raw by 12,762 bytes while brotli grew 1,156.
+With `main` 661 bytes under the brotli allowance at the time, those swings
+decided which Rust PRs passed. The raw size of one commit's WASM repeats
+exactly (every run on one base measured the same number) once it is built at
+CI's paths. **Lesson:** gate the WASM on raw bytes at 0.1%, as the viewer
+JS is, and keep its brotli size in the report as information. A change that
+trades raw for transfer size (the `wasm-opt` entry below) shows there, for a
+reviewer to read.
 
 ## Instruction counts track kernel and parse work, not scheduling (#6958)
 

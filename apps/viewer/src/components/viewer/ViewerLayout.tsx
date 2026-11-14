@@ -8,14 +8,16 @@ import type { PanelImperativeHandle } from 'react-resizable-panels';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useTranslation } from '@/i18n';
 import { styleInterpolatedValues } from '@/i18n/richInterpolate';
+import { MobileSearchInline } from './MobileSearchInline';
 import { RibbonToolbar } from './ribbon/RibbonToolbar';
 import { HierarchyPanel } from './HierarchyPanel';
 import { StatusBar } from './StatusBar';
 import { FlavorDialogHost } from '@/components/extensions/FlavorDialogHost';
+import { AgentBridgeHost } from '@/components/agent-bridge/AgentBridgeHost';
 import { ViewportContainer } from './ViewportContainer';
 import { ModelToolRail } from './model/ModelToolRail';
 import { ModelWorkspaceSplit } from './model/ModelWorkspaceSplit';
-import { KeyboardShortcutsDialog, useKeyboardShortcutsDialog, type InfoDialogTab } from './KeyboardShortcutsDialog';
+import { KeyboardShortcutsDialog, useKeyboardShortcutsDialog } from './KeyboardShortcutsDialog';
 import { SettingsDialogHost } from './settings/SettingsDialog';
 import { ConfirmDialogHost } from '@/components/ui/confirm-dialog';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
@@ -139,21 +141,11 @@ export function ViewerLayout() {
 
   useEffect(() => {
     const openCommandPalette = () => setCommandPaletteOpen(true);
-    // With a `detail.tab` the event is a deep link (e.g. the Learn hub) and
-    // always opens; without it, it keeps its legacy toggle semantics.
-    const showShortcuts = (e: Event) => {
-      const tab = (e as CustomEvent<{ tab?: InfoDialogTab } | undefined>).detail?.tab;
-      if (tab) shortcutsDialog.openTab(tab);
-      else shortcutsDialog.toggle();
-    };
-
     window.addEventListener(EVENT_OPEN_COMMAND_PALETTE, openCommandPalette);
-    window.addEventListener('ifc-lite:show-shortcuts', showShortcuts);
     return () => {
       window.removeEventListener(EVENT_OPEN_COMMAND_PALETTE, openCommandPalette);
-      window.removeEventListener('ifc-lite:show-shortcuts', showShortcuts);
     };
-  }, [shortcutsDialog]);
+  }, []);
 
   const isMobile = useViewerStore((s) => s.isMobile);
   const leftPanelCollapsed = useViewerStore((s) => s.leftPanelCollapsed);
@@ -257,8 +249,8 @@ export function ViewerLayout() {
         <KeyboardShortcutsDialog open={shortcutsDialog.open} onClose={shortcutsDialog.close} initialTab={shortcutsDialog.tab} />
         <SettingsDialogHost />
         <FlavorDialogHost />
+        <AgentBridgeHost />
         <ConfirmDialogHost />
-        {/* Global dialogs above, overlays below */}
         <EntityContextMenu />
         <HoverTooltip />
         <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen}
@@ -273,7 +265,9 @@ export function ViewerLayout() {
             dropdown is open. Same persistent host pattern as `FlavorDialogHost`; `toolbar/export-commands.ts` owns the `trigger` one. */}
         <AnonymizedExportDialog surface="context_menu" />
         {/* The compact mobile controls (below or beside the viewport) and the desktop ribbon share command homes. */}
-        {!isMobile && <RibbonToolbar onShowShortcuts={shortcutsDialog.toggle} />}
+        {isMobile
+          ? <MobileSearchInline />
+          : <RibbonToolbar onShowShortcuts={shortcutsDialog.toggle} />}
         <WorkspaceMigrationNotice />
 
         {/* Main Content Area - Desktop Layout */}

@@ -64,13 +64,17 @@ By default the server binds `127.0.0.1`. Binding a non-loopback host requires ei
 | `--port <N>` | HTTP port (default 8765) |
 | `--host <h>` | HTTP host (default 127.0.0.1; non-loopback requires `--token` or `--insecure`) |
 | `--token <bearer>` | HTTP bearer token that maps to full scope |
-| `--insecure` | Allow a non-loopback bind without a token (development only) |
+| `--insecure` | Allow a non-loopback bind without a token (development only). With `--bridge`: accept a plain-`http` origin on a non-loopback host, with a warning |
 | `--read-only` | Hide mutation tools |
 | `--bsdd <url>` | Override the bSDD endpoint |
 | `--allow <path>` | Restrict file-system access (repeatable) |
 | `--viewer` | Auto-open the 3D viewer |
 | `--viewer-port <N>` | Preferred viewer port (0 = auto) |
 | `--open` | Auto-open the viewer **and** open its URL in the browser |
+| `--bridge` | Forward tools to a paired ifc-lite browser tab instead of loading files (see [Bridge to a browser tab](#bridge-to-a-browser-tab)) |
+| `--bridge-port <N>` | Bridge WebSocket port on 127.0.0.1 (default 21517; 0 = auto) |
+| `--bridge-viewer-url <url>` | Base of the pairing link (default `https://ifclite.com`). Its origin replaces the default in the allowlist |
+| `--allow-origin <origin>` | HTTP: let a browser origin read responses. Bridge: an extra origin that may connect (repeatable) |
 
 ## Scopes and permissions
 
@@ -105,10 +109,11 @@ Tools are grouped by capability. Everything below is registered in the default t
 | IDS authoring | `ids_audit`, `ids_lint`, `ids_read`, `ids_apply_ops`, `ids_write`, `ids_schema_search`, `ids_schema_entity`, `ids_schema_pset`, `ids_diff`, `ids_preview` *(planned)*, `ids_infer` *(planned)*, `ids_coverage` *(planned)*, `ids_test` *(planned)* |
 | Mutation | `entity_set_property`, `entity_delete_property`, `entity_set_attribute`, `entity_create`, `entity_delete`, `mutation_batch`, `mutation_undo`, `mutation_diff`, `model_save` |
 | Hosted modelling | `place_opening`, `place_door`, `place_window` |
+
 | Physical edits | `edit_hosted_element`, `edit_element_geometry`, `copy_elements`, `duplicate_element`, `array_elements` |
 | Native Room | `query_rooms`, `room_command` |
 | Design modelling | `place_curtain_wall`, `place_grid`, `place_grid_column` |
-| Storeys | `storey_list`, `storey_add`, `storey_rename`, `storey_plan_edit`, `storey_edit`, `storey_delete` |
+| Storeys | `storey_list`, `storey_plan_add`, `storey_add`, `storey_rename`, `storey_plan_edit`, `storey_edit`, `storey_delete`, `set_top_constraint`, `copy_to_storeys` |
 | Wall joins | `join_walls` |
 | BCF | `bcf_topic_list`, `bcf_topic_create`, `bcf_topic_update`, `bcf_topic_close`, `bcf_viewpoint_create`, `bcf_export` |
 | bSDD | `bsdd_search`, `bsdd_class`, `bsdd_property_sets`, `bsdd_match` |
@@ -166,7 +171,7 @@ final inputs but answer `UNSUPPORTED_OPERATION` until their engines ship.
 
 `join_walls` takes `a_express_id`, `b_express_id`, optional `model_id` and optional `options` (`Name`, `priority: 'a' | 'b'`, `tolerance` in metres and `priorities: { a?: number[]; b?: number[] }`). It uses `bim.store.joinWalls` and the canonical Model workspace core. Both walls must be straight and in the same placement frame. Unreadable hosted cuts, or an opening stranded by either joined end face, refuse atomically. One `mutation_undo` restores the complete earlier wall graph and any replaced relationship. The IFC export contains the join; headless geometry queries continue to read parsed geometry.
 
-`place_opening`, `place_door` and `place_window` run the same hosted creation core as the Model workspace and `bim.store.addOpening` / `addHostedDoor` / `addHostedWindow`. Supply `host_express_id` within the chosen `model_id` and PascalCase `params`. Offsets, sills and dimensions are metres in the wall's local frame; windows require `Sill`. Cuts outside the wall, overlapping source or overlay openings, and unreadable opening geometry are refused without a partial graph. One `mutation_undo` removes the complete placement. IFC2X3, IFC4 and IFC4X3 are supported. The exported STEP carries the void/fill graph; MCP geometry tools still read parsed geometry.
+`place_opening`, `place_door` and `place_window` run the same hosted creation core as the Model workspace and `bim.store.addOpening` / `addHostedDoor` / `addHostedWindow`. Supply `host_express_id` within the chosen `model_id` and PascalCase `params`. Wall parameters are `Offset`, `Width`, `Height` and optional `Sill`; windows require `Sill`. Offsets, sills and dimensions are metres in the wall's local frame. Wall cuts outside the wall, overlapping source or overlay openings, and unreadable opening geometry are refused without a partial graph. One `mutation_undo` removes the complete placement. IFC2X3, IFC4 and IFC4X3 are supported. The exported STEP carries the void/fill graph; MCP geometry tools still read parsed geometry.
 
 ```json
 {
@@ -176,6 +181,15 @@ final inputs but answer `UNSUPPORTED_OPERATION` until their engines ship.
     "host_express_id": 1222,
     "params": { "Offset": 8, "Width": 0.9, "Height": 2.1, "Name": "D1" }
   }
+}
+```
+
+For an `IfcSlab` host, `place_opening` accepts `Position: [x, y]` (opening centre in the slab’s local XY frame), `Width` along local X and `Depth` along local Y, all in metres. Optional `CutDepth` defaults to slab thickness plus 0.1 m; optional `Name`, `Description`, `ObjectType`, `Tag` and `GlobalId` are also supported. The canonical SDK slab writer does not check footprint fit or overlap. Doors and windows remain wall-hosted. For example:
+
+```json
+{
+  "host_express_id": 200,
+  "params": { "Position": [2, 3], "Width": 1.2, "Depth": 0.8, "Name": "Shaft" }
 }
 ```
 
@@ -389,6 +403,25 @@ When the viewer is open, every viewer-touching tool drives the live scene, and a
 4. Subscribe to `ifc-lite://viewer/selection` to be notified on each pick. `viewer_get_selection` reads the latest pick; `viewer_wait_for_selection` blocks until the next click.
 5. `viewer_close` when done.
 
+## Bridge to a browser tab
+
+`ifc-lite-mcp --bridge` lets a local agent work on the model open in an ifc-lite browser tab, including models loaded from a cloud source or carrying unsaved edits. The bridge speaks MCP over stdio to the agent and forwards tool calls over a WebSocket on `127.0.0.1` to one paired tab. It loads no model itself and takes no file arguments. It stops, freeing its port, when stdin ends, closes or errors, and on SIGINT or SIGTERM.
+
+```bash
+ifc-lite-mcp --bridge              # read-write if the tab allows it
+ifc-lite-mcp --bridge --read-only  # tools the tab labels as mutating stay off whatever the tab grants
+```
+
+- **Pairing.** The bridge mints a one-time code. The `bridge_status` tool, always listed, returns it with a link such as `https://ifclite.com/#mcp-bridge=1&port=21517&code=...`; the port and code sit in the URL fragment, which the browser never sends to a server. The same link is printed on stderr. The tab must send it within 3 s of connecting. A code works once. Wrong codes never retire it. After one, every comparison waits for a delay that doubles per wrong code (250 ms up to 5 s), and a waiting attempt keeps its slot even if it disconnects: at most 4 comparisons per delay, 0.8 per second at the cap, so a local process without the code cannot pair.
+- **One tab.** A new pairing replaces the paired tab, which is disconnected. While a tab is paired no code is live; `bridge_status` with `pair_new_tab: true` issues one.
+- **Guards.** The WebSocket upgrade is refused unless the `Origin` is allowlisted: the `--bridge-viewer-url` origin (default `https://ifclite.com`; a configured URL replaces the default, so add `--allow-origin https://ifclite.com` to keep it) plus each `--allow-origin` and the `Host` is loopback on the bridge port. Plain `http:` origins are accepted only on loopback hosts, unless `--insecure` is passed (with a warning). The pairing code is the authentication; the origin check only keeps other web pages out.
+- **Permissions.** The tab labels each tool `readOnly` or not, and says whether the user allowed changes. Read-only is the default. While read-only, tools the tab labels mutating are neither listed nor forwarded. The bridge cannot see what a tool does, so the labels are the tab's claim: the tab is the authority and must refuse model-changing calls itself while read-only. There is no tool for writing back to a cloud source.
+- **Tab-supplied data.** Tool names, descriptions and results come from the tab and from model data; the bridge tells the agent they are data, not instructions. Results carry text and structured content only. Descriptors, schemas and results are bounded in size and depth (see `BRIDGE_LIMITS`).
+- **Hostile frames.** Frames are bounded as a whole before any field is read; an unpaired connection may send at most 1.25 MiB; diagnostic strings derived from tab input (errors, log lines, client name) are clipped and stripped of control characters; tool names, descriptions and schemas are bounded by `BRIDGE_LIMITS`; tool results pass through as text, unaltered, within the result limits, and the agent is told to treat them as data; frame handlers run under a guard, so a frame cannot crash the process. A local process, or a page on an allowed origin (pages on other origins are refused before a slot is allocated), CAN block pairing for as long as it keeps attacking, by keeping the 4 unpaired slots busy so the real tab gets HTTP 429. It still cannot pair without the code. Allow only origins whose content you trust. The bridge logs "pairing is being blocked: every unpaired slot is busy …", and `bridge_status` reports `pairingPressure` and what to do.
+- **No tab.** Only `bridge_status` is listed, and any other call fails at once with `VIEWER_NOT_CONNECTED`. A tab that closes fails its pending calls the same way.
+
+The tab<->bridge frame protocol is transport-neutral and exported, browser-safe, as `@ifc-lite/mcp/bridge-protocol`. Tools are listed with MCP `annotations` (`readOnlyHint`, and `destructiveHint` for tools labelled mutating). In the viewer, open the pairing link in the tab that holds the model (or use **Sources → Local agent → Connect local agent**, or **Connect local agent…** in the command palette, and type the code). The viewer strips the code from the address bar at once and asks for confirmation before it connects; it serves its read tools only, never mutations, exports or viewer control. While paired, the status bar shows *Local agent connected · read-only* with Disconnect and an activity log (tool, model, duration, outcome; no arguments or results). A code works once, so after any drop the tab asks for a fresh link instead of reconnecting. Verified from a public `https` origin in Chromium 156 and Firefox 157: both block `ws://127.0.0.1` until the site may reach apps on this device (permission `loopback-network`). Chrome asks "Access other apps and services on this device" (site setting *Apps on device*); Firefox asks "<site> wants to access other apps and services on this device" (setting *Device apps and services*). Granting the older `local-network` / `local-network-access` permissions does not help. Safari is not verified. The full security model is in the [package README](https://github.com/LTplus-AG/ifc-lite/blob/main/packages/mcp/README.md#bridge-to-a-browser-tab---bridge).
+
 ## Wiring it into a client
 
 === "Claude Code"
@@ -591,6 +624,10 @@ takes `mode`:
 - `empty`, refused while the storey holds elements;
 - `move` with `target_storey_express_id`;
 - `delete_contents`.
+
+`storey_plan_add` accepts `Name`, `Elevation`, optional `reference_storey_express_id` and `building_express_id`, and returns the SDK plan's `refusal`, `bindings` and `unresized` elements without writing. `set_top_constraint` takes an `express_id` and the SDK `constraint` shape: `{kind: "fixed"}`, `{kind: "storeyAbove"}`, `{kind: "storey", storeyId}`, `{kind: "slab", slabId}` or `{kind: "roof", roofId}`. Roof constraints apply to walls.
+
+`copy_to_storeys` takes `express_ids` and `storey_express_ids`. It returns selected copies and `unattachedTops` notices per storey, carrying hosted children through the shared copy operation. Copied constraints and containment survive export and reopen.
 
 Lengths are metres. Each write is one `mutation_undo` batch. The dry runs work
 in read-only scope.

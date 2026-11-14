@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "packages/mcp/src/bridge/guards.ts",
+  "mutation": "tests/evidence/mcp-bridge-insecure-origin-9523/behaviour.oracle.patch",
+  "test": "packages/mcp/src/bridge/bridge-hardening.test.ts",
+  "why": "#9523: a plain-http origin on a non-loopback host must be refused without --insecure."
+}

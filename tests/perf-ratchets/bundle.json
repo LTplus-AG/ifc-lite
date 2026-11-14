@@ -1,20 +1,20 @@
 {
   "family": "bundle",
-  "description": "Transfer and boot size of what the viewer ships, measured by scripts/perf-ratchet/measure-bundle.mjs from the build job's artifacts: brotli (quality 11, node zlib) of the engine WASM, and raw bytes of the viewer's main entry chunk and of every JS file dist/index.html loads eagerly (eager bytes are the blocking ceiling, #7002). Viewer JS is gated raw because brotli-11 of it jumps by ~0.5% on a same-length timestamp change; its brotli sizes are reported, not gated (#7007). Raising a ceiling is a human PR with a justification (docs/guide/performance.md, 'Perf ratchet ceilings'); lowering is the daily perf-ratchet-lower.yml job.",
+  "description": "Transfer and boot size of what the viewer ships, measured by scripts/perf-ratchet/measure-bundle.mjs from the build job's artifacts: raw bytes of the engine WASM, of the viewer's main entry chunk, of every JS file dist/index.html loads eagerly (eager bytes are the blocking ceiling, #7002) and of the parser worker's own chunk, which every cold load fetches, compiles and evaluates before it can parse. Everything is gated raw because brotli-11 does not track its input smoothly: the viewer JS jumps by ~0.5% on a same-length timestamp change (#7007), and edits that left the engine WASM's raw size unchanged moved its brotli size by more than a PR's typical growth (scripts/perf/README.md). Brotli sizes, the engine WASM's among them, are reported, not gated. Raising a ceiling is a human PR with a justification (docs/guide/performance.md, 'Perf ratchet ceilings'); lowering is the daily perf-ratchet-lower.yml job.",
   "entries": [
     {
-      "id": "engine-wasm-brotli",
-      "metric": "brotli-bytes",
+      "id": "engine-wasm-bytes",
+      "metric": "raw-bytes",
       "unit": "bytes",
-      "description": "packages/wasm/pkg/ifc-lite_bg.wasm, the single-thread engine bundle",
-      "ceiling": 2437977,
+      "description": "raw size of packages/wasm/pkg/ifc-lite_bg.wasm, the single-thread engine bundle; its brotli size is reported, not gated",
+      "ceiling": 10406427,
       "tolerance": {
         "kind": "relative",
-        "value": 0.005
+        "value": 0.001
       },
       "provenance": {
-        "commit": "d7f3e7bbe726e1311736e035f9c986602450c8db",
-        "measuredAt": "2026-11-07T14:32:56.000Z"
+        "commit": "59a1f9aa38a2ea169af71104536cb207086de00e",
+        "measuredAt": "2026-11-13T13:01:35.571Z"
       }
     },
     {
@@ -37,7 +37,7 @@
       "metric": "raw-bytes",
       "unit": "bytes",
       "description": "summed raw size of every JS file dist/index.html loads eagerly: the module <script src> plus <link rel=modulepreload>",
-      "ceiling": 17745137,
+      "ceiling": 17761137,
       "tolerance": {
         "kind": "relative",
         "value": 0.001
@@ -45,6 +45,21 @@
       "provenance": {
         "commit": "3e5b79659becb6e30c18c48825149468dd0aec29",
         "measuredAt": "2026-11-11T07:18:06.896Z"
+      }
+    },
+    {
+      "id": "viewer-parser-worker-js-bytes",
+      "metric": "raw-bytes",
+      "unit": "bytes",
+      "description": "raw size of apps/viewer/dist/assets/parser.worker-*.js, the parser worker's own chunk (chunks it imports on demand are not counted)",
+      "ceiling": 4491334,
+      "tolerance": {
+        "kind": "relative",
+        "value": 0.001
+      },
+      "provenance": {
+        "commit": "4f8f7934bba2d3f34d68ea7251287d0d6bcdcdfb",
+        "measuredAt": "2026-11-12T08:53:00.000Z"
       }
     }
   ]

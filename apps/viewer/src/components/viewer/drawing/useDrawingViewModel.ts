@@ -16,6 +16,8 @@ import { useViewerStore } from '@/store';
 import type { Annotation2DTool } from '@/store/slices/drawing2DSlice';
 import type { DrawingInspectorTab } from '@/store/slices/drawingInspectorSlice';
 import { useMeasure2D } from '@/hooks/useMeasure2D';
+import { useElementTags } from '@/hooks/useElementTags';
+import { useDimension2D } from '@/hooks/useDimension2D';
 import { useAnnotation2D } from '@/hooks/useAnnotation2D';
 import { useDrawingWithReferences } from '@/hooks/useReferenceImagesForDrawing';
 import { useDxfUnderlaysForDrawing } from '@/hooks/useDxfUnderlay';
@@ -94,6 +96,7 @@ export function useDrawingViewModel() {
   const setTextAnnotation2DEditing = useViewerStore((s) => s.setTextAnnotation2DEditing);
   const cloudAnnotation2DPoints = useViewerStore((s) => s.cloudAnnotation2DPoints);
   const cloudAnnotations2D = useViewerStore((s) => s.cloudAnnotations2D);
+  const dimensions2D = useViewerStore((s) => s.dimensions2D);
   const addCloudAnnotation2DPoint = useViewerStore((s) => s.addCloudAnnotation2DPoint);
   const completeCloudAnnotation2D = useViewerStore((s) => s.completeCloudAnnotation2D);
   const cancelCloudAnnotation2D = useViewerStore((s) => s.cancelCloudAnnotation2D);
@@ -166,6 +169,13 @@ export function useDrawingViewModel() {
     setMeasure2DSnapPoint, cancelMeasure2D, completeMeasure2D,
   });
 
+  const elementTags = useElementTags(drawing, viewTransform, drawnPlane.axis, containerRef,
+    sheetEnabled && activeSheet ? { sheet: activeSheet, isPinned, cached: cachedSheetTransformRef.current } : undefined);
+  const dimensionTool = useDimension2D({
+    drawing, viewTransform, axis: drawnPlane.axis, containerRef, drawnPlane,
+    displayScale: displayOptions.scale, showHiddenLines: displayOptions.showHiddenLines, unitDisplayOverrides,
+    sheet: sheetEnabled && activeSheet ? { sheet: activeSheet, isPinned, cached: cachedSheetTransformRef.current } : undefined,
+  });
   const annotationHandlers = useAnnotation2D({
     drawing, viewTransform, sectionAxis: drawnPlane.axis, containerRef,
     activeTool: annotation2DActiveTool, setActiveTool: setAnnotation2DActiveTool,
@@ -179,6 +189,7 @@ export function useDrawingViewModel() {
 
   // Unified mouse handlers that dispatch to the right tool
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (elementTags.handleMouseDown(e) || dimensionTool.handleMouseDown(e)) return;
     if (annotation2DActiveTool === 'measure') {
       measureHandlers.handleMouseDown(e);
     } else if (annotation2DActiveTool === 'none') {
@@ -188,9 +199,10 @@ export function useDrawingViewModel() {
     } else {
       annotationHandlers.handleMouseDown(e);
     }
-  }, [annotation2DActiveTool, measureHandlers, annotationHandlers]);
+  }, [annotation2DActiveTool, measureHandlers, annotationHandlers, elementTags, dimensionTool]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (elementTags.handleMouseMove(e) || dimensionTool.handleMouseMove(e)) return;
     // If dragging an annotation, let the annotation handler handle it
     if (annotationHandlers.isDraggingRef.current) {
       annotationHandlers.handleMouseMove(e);
@@ -201,21 +213,22 @@ export function useDrawingViewModel() {
     } else {
       annotationHandlers.handleMouseMove(e);
     }
-  }, [annotation2DActiveTool, measureHandlers, annotationHandlers]);
+  }, [annotation2DActiveTool, measureHandlers, annotationHandlers, elementTags, dimensionTool]);
 
   const handleMouseUp = useCallback((e: React.MouseEvent) => {
     annotationHandlers.handleMouseUp(e);
     measureHandlers.handleMouseUp();
   }, [measureHandlers, annotationHandlers]);
 
+  const dimensionLeave = dimensionTool.handleMouseLeave;
   const canvasMouseHandlers = useMemo(() => ({
     onMouseDown: handleMouseDown,
     onMouseMove: handleMouseMove,
     onMouseUp: handleMouseUp,
     onMouseEnter: measureHandlers.handleMouseEnter,
-    onMouseLeave: measureHandlers.handleMouseLeave,
+    onMouseLeave: () => { measureHandlers.handleMouseLeave(); dimensionLeave(); },
     onDoubleClick: annotationHandlers.handleDoubleClick,
-  }), [handleMouseDown, handleMouseMove, handleMouseUp, measureHandlers, annotationHandlers]);
+  }), [handleMouseDown, handleMouseMove, handleMouseUp, measureHandlers, annotationHandlers, dimensionLeave]);
 
   // Display toggles. Symbolic and construction projection change which geometry
   // the generator emits, so they clear the drawing to force a regenerate.
@@ -274,10 +287,11 @@ export function useDrawingViewModel() {
   const markupCounts = useMemo(() => ({
     measurements: measure2DResults.length,
     areas: polygonArea2DResults.length,
-    texts: textAnnotations2D.length,
+    texts: textAnnotations2D.length + elementTags.texts.length,
     clouds: cloudAnnotations2D.length,
-  }), [measure2DResults.length, polygonArea2DResults.length, textAnnotations2D.length, cloudAnnotations2D.length]);
-  const hasMarkup = markupCounts.measurements + markupCounts.areas + markupCounts.texts + markupCounts.clouds > 0;
+    dimensions: dimensions2D.length,
+  }), [measure2DResults.length, polygonArea2DResults.length, textAnnotations2D.length, cloudAnnotations2D.length, elementTags.texts.length, dimensions2D.length]);
+  const hasMarkup = markupCounts.measurements + markupCounts.areas + markupCounts.texts + markupCounts.clouds + markupCounts.dimensions > 0;
 
   // Cursor style based on active tool
   const cursorClass = useMemo(() => {
@@ -286,6 +300,8 @@ export function useDrawingViewModel() {
       case 'measure':
       case 'polygon-area':
       case 'cloud':
+      case 'tag':
+      case 'dimension':
         return 'cursor-crosshair';
       case 'text':
         return 'cursor-text';
@@ -312,8 +328,8 @@ export function useDrawingViewModel() {
     measure2DMode, measure2DStart, measure2DCurrent, measure2DResults, measure2DSnapPoint, measure2DShiftLocked,
     annotation2DActiveTool, selectTool, annotation2DCursorPos,
     polygonArea2DPoints, polygonArea2DResults,
-    textAnnotations2D, textAnnotation2DEditing, handleTextConfirm, handleTextCancel,
-    cloudAnnotation2DPoints, cloudAnnotations2D,
+    textAnnotations2D, tagTexts: elementTags.texts, textAnnotation2DEditing, handleTextConfirm, handleTextCancel,
+    cloudAnnotation2DPoints, cloudAnnotations2D, dimensionTool,
     selectedAnnotation2D, clearAllAnnotations2D, markupCounts, hasMarkup,
     toggleIfcAnnotations, toggleConstructionProjection, toggle3DOverlay, toggleSymbolicRepresentations,
     togglePrintPreview, paperTheme,

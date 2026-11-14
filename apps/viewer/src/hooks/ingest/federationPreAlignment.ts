@@ -6,6 +6,7 @@
 
 import type { FederatedModel, PreAlignmentSnapshot } from '../../store/index.js';
 import { growPreAlignment } from '../../store/slices/data-mesh-prealign.js';
+import { captureInlineClouds, restoreInlineClouds } from './federationAlignClouds.js';
 
 /** The geometry channels federation alignment snapshots and restores. */
 export type AlignableGeometry = NonNullable<FederatedModel['geometryResult']>;
@@ -19,6 +20,7 @@ export function capturePreAlignment(geometry: AlignableGeometry): PreAlignmentSn
       positions: [],
       normals: [],
       origins: [],
+      clouds: captureInlineClouds(geometry.pointClouds),
       geometryAabbs: [],
       coordinateInfo: structuredClone(geometry.coordinateInfo),
       // Alignment replaces boxes instead of editing them, so the box objects
@@ -49,6 +51,7 @@ export function restorePreAlignment(
     if (box) meshes[i].geometryAabb = box;
     else delete meshes[i].geometryAabb;
   }
+  restoreInlineClouds(geometry.pointClouds, snapshot.clouds);
   geometry.coordinateInfo = structuredClone(snapshot.coordinateInfo);
   geometry.instancedGeometryAabbs = snapshot.instancedGeometryAabbs
     ? new Map(snapshot.instancedGeometryAabbs)

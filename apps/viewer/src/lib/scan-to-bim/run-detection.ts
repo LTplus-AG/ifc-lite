@@ -75,7 +75,11 @@ export function scanModels(models: ViewerState['models']): FederatedModel[] {
 
 function isIfcModel(model: FederatedModel): boolean {
   const schema = model.ifcDataStore?.schemaVersion;
-  return typeof model.pointCloudHandleId !== 'number' && typeof schema === 'string' && schema.startsWith('IFC') && schema !== 'IFC5';
+  // The marker beside the label (#9976): proposals are created as STEP records
+  // in the target's store, which a tabular one has not got. Before the marker
+  // existed the `IFC5` clause alone stood for "no STEP records".
+  return typeof model.pointCloudHandleId !== 'number' && model.ifcDataStore?.sourceKind !== 'tabular'
+    && typeof schema === 'string' && schema.startsWith('IFC') && schema !== 'IFC5';
 }
 
 /** The IFC model proposals are framed for: the active one when it is IFC, else the first IFC model. */

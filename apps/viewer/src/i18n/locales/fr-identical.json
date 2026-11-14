@@ -1,4 +1,8 @@
 {
+  "agentBridge.panel.duration": {
+    "value": "{ms} ms",
+    "reason": "Runtime placeholder with a unit symbol (milliseconds); no English prose."
+  },
   "align.mode.centre": {
     "value": "Centre",
     "reason": "French uses the same spelling « Centre » for this contextual label; reviewed against its feature meaning."
@@ -1863,6 +1867,10 @@
     "value": "Projection",
     "reason": "French uses the same spelling « Projection » for this contextual label; reviewed against its feature meaning."
   },
+  "section2d.snap.intersection": {
+    "value": "Intersection",
+    "reason": "French uses the same word, intersection, for the point where two drawn lines cross; it is the standard drafting term."
+  },
   "section2d.tools.distance": {
     "value": "Distance",
     "reason": "French uses the same spelling « Distance » for this contextual label; reviewed against its feature meaning."
@@ -2007,6 +2015,18 @@
     "value": "{storey} ({elevation} m)",
     "reason": "Storey names and signed elevations are runtime data; the metre symbol and punctuation contain no English prose."
   },
+  "structuralGlyphs.load.force": {
+    "value": "Force",
+    "reason": "French uses the same spelling « Force » for a structural load; reviewed against its feature meaning."
+  },
+  "structuralGlyphs.load.moment": {
+    "value": "Moment",
+    "reason": "French uses the same spelling « Moment » for a bending or torsion moment; reviewed against its feature meaning."
+  },
+  "structuralGlyphs.tooltip": {
+    "value": "{kind} · {entity}",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
   "tableChanges.matchTypeTag": {
     "value": "Tag",
     "reason": "French uses the same spelling « Tag » for this contextual label; reviewed against its feature meaning."
@@ -2058,6 +2078,22 @@
   "viewportLighting.container.emptyState.footer.discoverLink": {
     "value": "ifclite.dev →",
     "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "viewportLighting.container.emptyState.formats.gltf": {
+    "value": "glTF",
+    "reason": "Format family name on the welcome card: glTF is the exact product spelling of the format and is not localized."
+  },
+  "viewportLighting.container.emptyState.formats.ifc": {
+    "value": "IFC",
+    "reason": "Format family name on the welcome card: IFC is the schema acronym and is not localized in any language."
+  },
+  "viewportLighting.container.emptyState.formats.splats": {
+    "value": "Splats",
+    "reason": "Same spelling as the reviewed gaussianCapture.splats label for Gaussian splats; established term in this language."
+  },
+  "viewportLighting.container.emptyState.formats.terrain": {
+    "value": "Terrain",
+    "reason": "French uses the same spelling « Terrain » for a ground surface model; reviewed against the LandXML terrain meaning."
   },
   "viewportLighting.container.emptyState.scene.metres": {
     "value": "{value} m",
@@ -2166,5 +2202,9 @@
   "zonesPanel.zoneRow.rotationLabel": {
     "value": "Rotation (°)",
     "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "viewportLighting.container.emptyState.formats.rhino": {
+    "value": "Rhino",
+    "reason": "Format family name on the welcome card: Rhino is the product name of the authoring tool behind .3dm and is not localized in any language."
   }
 }

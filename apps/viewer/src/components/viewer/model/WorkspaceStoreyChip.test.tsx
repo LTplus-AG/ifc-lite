@@ -30,11 +30,12 @@ import { setRequestRemesh } from '@/lib/commands/modeling/transaction';
 import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
 import { StoreyPicker } from './StoreyPicker';
 import { ViewportHud, HudPopover, HudPopoverTrigger, HudPopoverContent } from '../../viewport-ui/hud';
-import { WorkspaceStoreyChip } from './WorkspaceStoreyChip';
+import { WorkspaceStoreyControl } from './WorkspaceStoreyChip';
+import { StatusBarWorkspaceChip } from '../StatusBarWorkspaceChip';
 import { Toaster } from '@/components/ui/toast';
 import { commitStoreyOp } from '@/store/slices/mutation-storey';
 
-const topLeft = () => document.querySelector('[data-hud-region="top-left"]');
+const topLeft = () => document.querySelector('[data-workspace-storey-control]');
 const chipButton = () => document.querySelector('[data-workspace-storey-chip]') as HTMLButtonElement | null;
 
 function openList(): HTMLButtonElement[] {
@@ -49,7 +50,7 @@ function openList(): HTMLButtonElement[] {
 beforeEach(async () => {
   await seedModelingSession();
   useViewerStore.setState({ editEnabled: false, selectedEntityId: null, levelDisplayMode: 'stacked', selectedStoreys: new Set() });
-  render(<><ViewportHud /><WorkspaceStoreyChip /></>);
+  render(<><ViewportHud /><WorkspaceStoreyControl /></>);
 });
 afterEach(() => {
   cleanup();
@@ -307,4 +308,82 @@ it('#9334 completing a copy closes the flow and reopens the chip on its storey l
     await waitFor(() => !document.querySelector('[data-copy-to-storeys]'), 'copy flow closed');
     assert.equal(openList().length, 2, 'the next chip opening shows its normal storey list');
   } finally { restore(); }
+});
+
+for (const layout of ['3d', 'plan'] as const) {
+  it(`#9389 choosing a storey restores the ${layout} drawing surface`, async () => {
+    act(() => useViewerStore.getState().enterModelWorkspace({ modelId: MODEL_ID, storeyId: STOREY }));
+    const target = render(layout === '3d'
+      ? <div data-testid="model-3d-panel"><canvas tabIndex={0} /></div>
+      : <div data-model-layout="plan"><div data-plan-focus-target tabIndex={-1} /></div>);
+    click(openList()[0]);
+    await waitFor(() => document.activeElement === target.querySelector(layout === '3d' ? 'canvas' : '[data-plan-focus-target]'), 'drawing surface receives focus');
+  });
+}
+it('#9389 Escape dismissal restores the trigger without stealing focus for drawing', async () => {
+  act(() => useViewerStore.getState().enterModelWorkspace({ modelId: MODEL_ID, storeyId: STOREY }));
+  render(<div data-testid="model-3d-panel"><canvas tabIndex={0} /></div>);
+  const options = openList();
+  act(() => options[0].dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+  await waitFor(() => !document.querySelector('[data-storey-picker]'), 'dismissed');
+  await waitFor(() => document.activeElement === chipButton(), 'Escape restores trigger focus');
+  assert.equal(document.activeElement === chipButton(), true);
+});
+it('#9389 outside dismissal preserves inspector input focus', async () => {
+  act(() => useViewerStore.getState().enterModelWorkspace({ modelId: MODEL_ID, storeyId: STOREY }));
+  const ui = render(<input aria-label="Inspector test field" />);
+  openList();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const input = ui.querySelector('input')!;
+  act(() => {
+    input.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, button: 0 }));
+    input.focus();
+    click(input);
+  });
+  await waitFor(() => !document.querySelector('[data-storey-picker]'), 'outside dismissal');
+  assert.equal(document.activeElement === input, true);
+});
+it('#9389 Back cancels preparation and returns to the storey list', async () => {
+  act(() => useViewerStore.getState().enterModelWorkspace({ modelId: MODEL_ID, storeyId: STOREY }));
+  const state = useViewerStore.getState();
+  const wall = state.addWall(MODEL_ID, STOREY, { Start: [0, 0, 0], End: [4, 0, 0], Height: 3, Thickness: 0.2 });
+  assert.ok('expressId' in wall);
+  act(() => state.setSelectedEntityId(wall.expressId));
+  openList();
+  const button = (label: string) => [...document.querySelectorAll('button')].find(b => b.textContent === label)!;
+  click(button('Copy to storeys…'));
+  await waitFor(() => !!button('Back to storeys'), 'copy loaded');
+  click(button('Select all storeys')); click(button('Prepare copies'));
+  click(button('Back to storeys'));
+  await waitFor(() => !!document.querySelector('[data-storey-picker]'), 'list restored');
+  assert.equal(document.querySelector('[data-copy-to-storeys]'), null);
+});
+it('#9389 changing selection dismisses the open copy picker', async () => {
+  act(() => useViewerStore.getState().enterModelWorkspace({ modelId: MODEL_ID, storeyId: STOREY }));
+  openList();
+  click([...document.querySelectorAll('button')].find(b => b.textContent === 'Copy to storeys…')!);
+  await waitFor(() => !!document.querySelector('[data-copy-to-storeys]'), 'copy loaded');
+  act(() => useViewerStore.getState().setSelectedEntityIds([80]));
+  await waitFor(() => !document.querySelector('[data-copy-to-storeys]'), 'selection change closes copy');
+});
+
+it('#9389 the chip and status bar share a live storey name through rename and undo', () => {
+  act(() => useViewerStore.getState().enterModelWorkspace({ modelId: MODEL_ID, storeyId: STOREY }));
+  const ui = render(<StatusBarWorkspaceChip />);
+  act(() => { commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'rename', storeyId: STOREY, Name: 'Lobby' }); });
+  assert.match(chipButton()?.textContent ?? '', /Lobby/);
+  assert.match(ui.textContent ?? '', /Lobby/);
+  act(() => useViewerStore.getState().undo(MODEL_ID));
+  assert.match(chipButton()?.textContent ?? '', /L0/);
+  assert.match(ui.textContent ?? '', /L0/);
+});
+
+it('#9389 the picker Add storey toast formats elevation with sign and two decimals', async () => {
+  act(() => useViewerStore.getState().enterModelWorkspace({ modelId: MODEL_ID, storeyId: STOREY }));
+  const notices = render(<Toaster />);
+  for (const dismiss of notices.querySelectorAll('[aria-label="Dismiss notification"]')) click(dismiss);
+  openList();
+  click([...document.querySelectorAll('[data-storey-picker-actions] button')].find(button => button.textContent?.includes('Add storey above'))!);
+  await waitFor(() => /added at \+6\.00 m/.test(notices.textContent ?? ''), 'the Add toast uses formatted elevation');
+  assert.equal(useViewerStore.getState().session?.storeyId, STOREY);
 });

@@ -247,9 +247,9 @@ for (const file of workflowFiles) {
       globs = prPaths;
     }
 
-    // Only this literal printf/sort wrapper preserves its arguments as filenames.
+    // Only this literal printf/sort wrapper preserves its arguments as filenames (a shard runner picks a subset).
     const commands = job.text.replace(/\\\r?\n/g, ' ').replace(
-      /\bnode[ \t]+--test[ \t]+(?:--test-reporter[\w-]*=\S+[ \t]+)*\$\([ \t]*printf[ \t]+'%s\\n'[ \t]+((?:scripts\/[\w./*-]+\.test\.mjs[ \t]+)+)\|[ \t]*(?:LC_ALL=C[ \t]+)?sort[ \t]+-u[ \t]*\)/g, (_, args) => `node --test ${args}`);
+      /\bnode[ \t]+(?:--test[ \t]+(?:--test-reporter[\w-]*=\S+[ \t]+)*|scripts\/ci-scripts-test-shards\.mjs[ \t]+(?:--(?:test-reporter(?:-destination)?|shard|of)=\S+[ \t]+)*)\$\([ \t]*printf[ \t]+'%s\\n'[ \t]+((?:scripts\/[\w./*-]+\.test\.mjs[ \t]+)+)\|[ \t]*(?:LC_ALL=C[ \t]+)?sort[ \t]+-u[ \t]*\)/g, (_, args) => `node --test ${args}`);
     for (const m of commands.matchAll(/\bnode\s+(?:--test\s+(?:--test-reporter[\w-]*=\S+\s+)*)?((?:scripts\/[\w./-]+\.mjs\s*)+)/g)) {
       for (const script of m[1].trim().split(/\s+/)) {
         recordGate(script, globs, `${rel}:${job.id}`);

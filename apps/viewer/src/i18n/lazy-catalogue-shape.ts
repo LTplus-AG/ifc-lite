@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { retainedCatalogueShape } from './retained-catalogue-shape';
 import { registryCatalogueShape } from './registry-catalogue-shape';
+import { structuralDeriveShape, type StructuralDeriveKey } from './structural-derive-catalogue-shape';
 import type { flowReviewEn } from './catalogues/flow-review.en';
 type ReviewKey = keyof typeof flowReviewEn extends `flowReview.${infer Key}` ? Key : never;
 /** Exact lazy keys and parameters validate contributed locales before feature code loads. */
@@ -333,7 +334,35 @@ const ifcFederationShape = {
   "applied": [],
 } as const satisfies Record<IfcFederationKey, readonly string[]>;
 
+/** The glyph overlay's tooltips (#9668); only the tooltip takes parameters. A regex, since this ships eagerly. */
+const STRUCTURAL_GLYPH_KEY = /^structuralGlyphs\.(support\.(fixed|pinned|roller|spring)|load\.(force|moment|temperature|displacement)|reaction)$/;
+
+/**
+ * The local agent bridge's keys (#9523), compact because this ships eagerly:
+ * every tail, and the parameters of the few that take any. Checked against
+ * `agent-bridge.en.ts` in `catalogue-problems.test.ts`.
+ */
+const AGENT_BRIDGE_TAILS = new Set(('row.title row.description row.connect dialog.title dialog.fromLink dialog.reads '
+  + 'dialog.readOnly dialog.localOnly dialog.browserPrompt dialog.start dialog.code dialog.codeHint dialog.port '
+  + 'dialog.codeRequired dialog.portInvalid dialog.connect dialog.tryAgain dialog.cancel dialog.connecting '
+  + 'chip.connected chip.connecting chip.ended chip.title panel.since panel.disconnect panel.pairAgain panel.dismiss '
+  + 'panel.activity panel.activityNote panel.noActivity panel.noModel panel.ok panel.error panel.cancelled panel.duration '
+  + 'failure.unreachable failure.origin failure.permissionDenied failure.pairingFailed failure.protocolMismatch '
+  + 'failure.handshakeTimeout failure.invalidMessage failure.busy failure.invalidLink ended.replaced '
+  + 'ended.bridgeShutdown ended.connectionLost ended.pageHidden dialog.unverified dialog.target dialog.replaces '
+  + 'failure.framed ended.flooded row.showActivity row.hideActivity failure.permissionPrompt dialog.permissionWait').split(' '));
+const AGENT_BRIDGE_PARAMETERS: Record<string, readonly string[]> = {
+  'dialog.reads': ['port'], 'dialog.target': ['port'], 'dialog.replaces': ['port'], 'panel.since': ['port', 'time'], 'panel.error': ['code'], 'panel.duration': ['ms'],
+  'failure.unreachable': ['port'], 'failure.origin': ['origin'],
+};
+
 export function lazyMessageParameters(key: string): readonly string[] | null {
+  if (key.startsWith('agentBridge.')) {
+    const tail = key.slice('agentBridge.'.length);
+    return AGENT_BRIDGE_TAILS.has(tail) ? AGENT_BRIDGE_PARAMETERS[tail] ?? [] : null;
+  }
+  if (key === 'structuralGlyphs.tooltip') return ['entity', 'kind'];
+  if (STRUCTURAL_GLYPH_KEY.test(key)) return [];
   if (Object.hasOwn(retainedCatalogueShape, key)) {
     return retainedCatalogueShape[key as keyof typeof retainedCatalogueShape];
   }
@@ -355,6 +384,10 @@ export function lazyMessageParameters(key: string): readonly string[] | null {
   if (key.startsWith('settings.ifcFederation.')) {
     const tail = key.slice('settings.ifcFederation.'.length);
     return Object.hasOwn(ifcFederationShape, tail) ? ifcFederationShape[tail as IfcFederationKey] : null;
+  }
+  if (key.startsWith('structuralDerive.')) {
+    const tail = key.slice('structuralDerive.'.length);
+    return Object.hasOwn(structuralDeriveShape, tail) ? structuralDeriveShape[tail as StructuralDeriveKey] : null;
   }
   if (key.startsWith('reviewWorkspace.')) {
     const tail = key.slice('reviewWorkspace.'.length);

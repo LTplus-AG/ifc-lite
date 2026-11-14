@@ -31,6 +31,7 @@ import { AnnotationLayer } from './annotations/AnnotationLayer';
 import { CollabPresenceLayer } from './CollabPresenceLayer';
 import { MeasurementSceneLayer } from './scene/MeasurementSceneLayer';
 import { BasepointOverlay } from './BasepointOverlay';
+import { StructuralGlyphLayer } from './structural/StructuralGlyphLayer';
 import { SceneOverlayRoot } from '@/components/viewport-ui/scene';
 import { DrawingRuntimeHost } from './drawing/DrawingRuntimeHost';
 import { BCFOverlay } from './bcf/BCFOverlay';
@@ -66,12 +67,12 @@ import { enqueueSourceLoad } from '@/lib/sources/loadQueue';
 import { toast, Toaster } from '@/components/ui/toast';
 import { reportFileOpenRejected } from '@/hooks/ingest/fileOpenRejected';
 import { Upload, AlertTriangle, ChevronDown, ExternalLink, Plus } from 'lucide-react';
-import { createBlankIfcFile } from '@/utils/createBlankIfc';
-import { launchModelCommand } from '@/lib/commands/modeling/keys-workspace';
+import { startBlankModel } from '@/hooks/startBlankModel';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
 import { type IfcDataStore } from '@ifc-lite/parser';
 import { getEffectiveGeoreference, hasDeclaredCrs, offersCesium } from '@/lib/geo/effective-georef';
 import { usePlacementProjectionKind } from '@/lib/geo/use-placement-projection-kind';
+import { markLoadIntent } from '@/lib/load-intent';
 
 /**
  * The primary container for the 3D viewport, managing IFC model loading,
@@ -100,6 +101,7 @@ export function ViewportContainer() {
   const sourceHost = useOptionalSourceHost();
   const releaseGeometryMemory = useViewerStore((s) => s.releaseGeometryMemory);
   const typeVisibility = useViewerStore((s) => s.typeVisibility);
+  const structuralViewMode = useViewerStore((s) => s.structuralViewMode);
   const typeViewMode = useViewerStore((s) => s.typeViewMode);
   const setHasTypeGeometry = useViewerStore((s) => s.setHasTypeGeometry);
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
@@ -164,18 +166,18 @@ export function ViewportContainer() {
           // Scan-based terrain is stamped `IfcGeographicElement`; honour the
           // same type-visibility gate as the mesh path so the Site toggle hides
           // it too (issue #1480).
-          if (!isTypeVisible(asset.ifcType, typeVisibility)) continue;
+          if (!isTypeVisible(asset.ifcType, typeVisibility, structuralViewMode)) continue;
           collected.push(asset.modelIndex === modelIndex ? asset : { ...asset, modelIndex });
         }
       }
     } else if (geometryResult?.pointClouds) {
       for (const asset of geometryResult.pointClouds) {
-        if (!isTypeVisible(asset.ifcType, typeVisibility)) continue;
+        if (!isTypeVisible(asset.ifcType, typeVisibility, structuralViewMode)) continue;
         collected.push(asset);
       }
     }
     return collected;
-  }, [storeModels, geometryResult, modelIdToIndex, typeVisibility]);
+  }, [storeModels, geometryResult, modelIdToIndex, typeVisibility, structuralViewMode]);
 
   // Keep the placement panel context available regardless of map/solar toggles.
   // The Cesium overlay and solar study also consume this effective georeference.
@@ -355,6 +357,7 @@ export function ViewportContainer() {
     const handleSourceDownload = (event: Event) => {
       const detail = (event as SourceDownloadEvent).detail;
       if (detail.items.length === 0) return;
+      markLoadIntent();
       // Take ownership of the items and drop the event's own reference so
       // consumed buffers become collectable as the queue works through them.
       const batch: Array<SourceDownloadItem | null> = [...detail.items];
@@ -422,6 +425,7 @@ export function ViewportContainer() {
   // Window drops on any viewer chrome route through the same guarded loader.
   // Unsupported WebGPU reports through the shared load-error card (#5851).
   const handleDrop = useCallback((dataTransfer: DataTransfer) => {
+    markLoadIntent(); // before any await: start-screen idle work stands down (load-intent.ts)
     // Capture live handles synchronously — the DataTransferItemList is neutered
     // once the drop event returns, so this must run before any await.
     const handlesPromise = handlesFromDataTransfer(dataTransfer);
@@ -461,6 +465,7 @@ export function ViewportContainer() {
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     if (files.length === 0) return;
+    markLoadIntent();
     // Reset while the event still owns this input; Retry uses the captured Files.
     e.target.value = '';
     const attempt = () => {
@@ -484,6 +489,7 @@ export function ViewportContainer() {
   // live handle per file so the model can be refreshed from disk. Falls back to
   // the hidden <input type="file"> on browsers without the API.
   const handleOpenClick = useCallback(async () => {
+    markLoadIntent(); // the picker may stay open for seconds
     if (!guardWebGpu(() => { void handleOpenClick(); })) return;
     if (!supportsFileSystemAccess()) {
       fileInputRef.current?.click();
@@ -508,15 +514,13 @@ export function ViewportContainer() {
   useReloadResume(webgpu.supported && !webgpu.checking, routeLoad, () => { void handleOpenClick(); });
 
   const handleStartBlank = useCallback(async () => {
+    markLoadIntent();
     if (!guardWebGpu(() => { void handleStartBlank(); }, { replay: 'on-retry' })) return;
-    const file = createBlankIfcFile();
-    const modelId = crypto.randomUUID();
-    // Must await: loadFile() calls resetViewerState() internally, which
-    // closes any Model workspace session; entering before that races.
-    await loadFile(file, { kind: 'primary', modelId });
-    const state = useViewerStore.getState();
-    if (state.activeModelId !== modelId || state.models.get(modelId)?.loadState !== 'complete') return;
-    if (state.enterModelWorkspace({ modelId })) launchModelCommand('wall.place'); // #6232
+    try { await startBlankModel(loadFile); }
+    catch (error) {
+      console.error('[ViewportContainer] Start blank failed', error);
+      toast.error(error instanceof Error ? error.message : String(error));
+    }
   }, [guardWebGpu, loadFile]);
 
   // Issue #540 "Merge Multilayer Walls" reload. The setting changes the produced
@@ -584,7 +588,7 @@ export function ViewportContainer() {
   const hasLoadedModels = storeModels.size > 0 || (geometryResult?.meshes && geometryResult.meshes.length > 0);
 
   const { hasTypeGeometry, filteredGeometry, geometryVersion, geometryReplacementVersion } = useFilteredGeometry(
-    mergedGeometryResult, geometryContentVersion, typeVisibility, typeViewMode);
+    mergedGeometryResult, geometryContentVersion, typeVisibility, typeViewMode, structuralViewMode);
 
   // Publish to the store so the toolbar can hide the Model/Types switch when
   // there is no type geometry to reveal.
@@ -606,11 +610,10 @@ export function ViewportContainer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mergedGeometryResult, filteredGeometry, geometryVersion]);
 
-  // Shared pure intersection for the renderer and the empty-result notice.
   const computedIsolatedIds = useVisibilityIsolation();
 
   const visibleResultEmpty = useMemo(() => isVisibleResultEmpty({
-    models: storeModels, geometryResult, hiddenEntities,
+    ...useViewerStore.getState(), models: storeModels, geometryResult, hiddenEntities,
   }, {
     meshes: filteredGeometry,
     pointClouds: mergedPointClouds,
@@ -618,7 +621,7 @@ export function ViewportContainer() {
     hasUnenumeratedInstances: [...storeModels].some(([id, model]) => model.visible
       && hasInstancedShards(id) && !model.geometryResult?.instancedGeometryHashes?.size),
   }), [storeModels, geometryResult, filteredGeometry, geometryVersion, mergedPointClouds,
-    computedIsolatedIds, hiddenEntities]);
+    computedIsolatedIds, hiddenEntities, typeVisibility, structuralViewMode, mutationVersion]);
 
   // Empty state when no file is loaded at all (show starting UI)
   // But NOT when models are loaded but just hidden - in that case show empty 3D canvas
@@ -809,6 +812,7 @@ export function ViewportContainer() {
         <CollabPresenceLayer />
         {bcfOverlayVisible && <BCFOverlay />}
         <BasepointOverlay />
+        <StructuralGlyphLayer isolatedIds={computedIsolatedIds} />
         <ZoneOverlay />
         <MeasurementSceneLayer />
         <ToolOverlays />

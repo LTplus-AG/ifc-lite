@@ -22,6 +22,7 @@ import { activeBottomPanel } from '@/lib/panels/bottom-panels';
 import { getPanelDef } from '@/lib/panels/registry';
 import { resolveMobileSheet } from '@/lib/panels/mobileSheet';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
+import { PanelHostHeaderContext } from '@/lib/panels/DeferredPanel';
 import { closeActiveAnalysisExtension, type AnalysisExtensionDefinition } from '@/services/analysis-extensions';
 import { MobilePanelHost } from './MobilePanelHost';
 
@@ -53,9 +54,11 @@ export function MobilePanelSheet({ analysisExtension }: {
         else closePanel(sheet.id);
       }}
     >
+      <PanelHostHeaderContext.Provider value={true}>
       {sheet.kind === 'extension'
         ? analysisExtension?.renderPanel({ onClose: closeActiveAnalysisExtension })
         : renderPanelBody(sheet.id, () => closePanel(sheet.id))}
+      </PanelHostHeaderContext.Provider>
     </MobilePanelHost>
   );
 }

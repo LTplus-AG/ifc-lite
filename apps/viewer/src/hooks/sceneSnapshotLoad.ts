@@ -15,8 +15,10 @@ import { decodeInstancedShard, type CoordinateInfo, type MeshData } from '@ifc-l
 import type { LoadTrace } from '@ifc-lite/load-trace';
 import { useViewerStore } from '../store/index.js';
 import { noteInstancedShardModel } from '../store/instancedShardModels.js';
+import { enqueueInstancedShards, instancedShardGeneration } from '../store/instancedShardQueue.js';
 import { fitCameraToSnapshot, lastFinalFitBounds, sceneSnapshotKey, type SnapshotCameraFit, setPendingColdCapture, setPendingSceneSnapshot, withdrawPendingColdCapture, withdrawPendingSceneSnapshot } from '../components/viewer/sceneSnapshotOwnership.js';
 import { readPerfFlag } from '../lib/perf/flags.js';
+import { tapSceneSnapshot } from '../lib/perf/sceneIdentityTap.js';
 import { recordFirstVisible } from '../lib/perf/loadTrace.js';
 import { clearSceneSnapshot, type CacheResult } from '../services/cacheService.js';
 import { isQuantizedEnabled } from '../utils/quantizedConfig.js';
@@ -43,8 +45,8 @@ function snapshotsEnabled(): boolean {
 }
 
 function snapshotKey(scene: SceneContents): string {
-  const { typeVisibility, typeViewMode } = useViewerStore.getState();
-  return sceneSnapshotKey(scene.sceneSnapshotPolicy(), typeViewMode, typeVisibility);
+  const { typeVisibility, typeViewMode, structuralViewMode } = useViewerStore.getState();
+  return sceneSnapshotKey(scene.sceneSnapshotPolicy(), typeViewMode, typeVisibility, structuralViewMode);
 }
 
 /** Level display moves pieces at arrival, so the batches would not be the cached geometry. */
@@ -69,7 +71,7 @@ async function rendererReady(isStale: (() => boolean) | undefined, timeoutMs = 3
   }
 }
 
-/** Direct, unlike a stream's store-queued shards: the first frame is complete, and an abandoned adoption can remove them. */
+/** Direct, unlike a stream's queued shards (`instancedShardQueue`): the first frame is complete, and an abandoned adoption can remove them. */
 function uploadSnapshotShards(scene: SceneContents, device: GPUDevice, modelId: string, shards: ArrayBuffer[]): void {
   if (shards.length > 0) noteInstancedShardModel(modelId);
   for (const bytes of shards) {
@@ -108,6 +110,7 @@ export async function adoptCachedSceneSnapshot(
   const adoption = trace.span('scene.snapshotAdopt', () => scene.adoptSceneSnapshot(snapshot, device, pipeline), { batches: snapshot.batches.length });
   if (!adoption) return null;
   trace.milestone('scene.snapshotAdopted');
+  tapSceneSnapshot('adopted', snapshot);
   uploadSnapshotShards(scene, device, modelId, shards);
   const camera = renderer.getCamera();
   camera.reset();
@@ -128,11 +131,12 @@ export async function publishAdoptedSceneMeshes(
   trace: LoadTrace,
   append: (modelId: string, meshes: MeshData[], coordinateInfo?: CoordinateInfo) => void,
 ): Promise<MeshData[]> {
+  const shardGeneration = instancedShardGeneration(); // a later reset supersedes the requeue below
   const chunks = await Promise.all(open.chunks.map((_, i) => trace.span('cache.chunkDecode', () => open.readChunk(i), { chunk: i })));
   if (isStale?.()) return [];
   const meshes = chunks.flat();
   setPendingSceneSnapshot(adopted.adoption, () => {
-    useViewerStore.getState().appendInstancedShards(modelId, adopted.shards);
+    enqueueInstancedShards(modelId, adopted.shards, shardGeneration);
     forgetRefusedSnapshot(cacheResult, cacheKey);
   }, adopted.fit, trace);
   append(modelId, meshes, open.coordinateInfo);
@@ -213,9 +217,12 @@ function noteSnapshotSkip(trace: LoadTrace, outcome: 'not-armed' | 'not-captured
  * writer. The writer runs only after the load is interactive, so it is loaded
  * then, outside the eager bundle.
  */
-function writeWhenSettled(captured: CapturedScene, entry: Promise<SnapshotEntry | null>, isStale: () => boolean, trace: LoadTrace): void {
+function writeWhenSettled(captured: CapturedScene, entry: Promise<SnapshotEntry | null>, isStale: () => boolean, trace: LoadTrace, modelId: string | null): void {
   const span = trace.begin('cache.writeSceneSnapshot', { batches: captured.snapshot.batches.length });
-  import('./sceneSnapshotWrite.js').then(({ writeCapturedScene }) => writeCapturedScene(captured, entry, isStale, trace, span), (err: unknown) => {
+  // Taken now, at the swap: a model removed while the writer module loads must not read as a record-less one.
+  const model = modelId === null ? undefined : useViewerStore.getState().models.get(modelId);
+  const swap = { hadRecord: model !== undefined, store: model?.ifcDataStore ?? null };
+  import('./sceneSnapshotWrite.js').then(({ writeCapturedScene }) => writeCapturedScene(captured, entry, isStale, trace, span, modelId, swap), (err: unknown) => {
     console.warn('[useIfcCache] Scene snapshot writer did not load:', err);
     trace.end(span, { outcome: 'failed', reason: 'writer-load' });
   });
@@ -228,6 +235,7 @@ export async function captureSceneSnapshotOfHit(
   decoded: Pick<DecodedCacheMetadata, 'headerInfo'>,
   isStale: (() => boolean) | undefined,
   trace: LoadTrace,
+  modelId: string | null = null,
 ): Promise<boolean> {
   const { createdAt, fullSourceHash, buffer: entry } = cacheResult;
   if (!snapshotsEnabled() || !cacheKey || createdAt === undefined || !(entry instanceof Blob) || !sceneMatchesCachedGeometry()) return false;
@@ -239,7 +247,7 @@ export async function captureSceneSnapshotOfHit(
   const section = decoded.headerInfo.sections.find((s) => s.type === SectionType.InstancedShards);
   const target: SnapshotEntry = { cacheKey, write: { createdAt, fullSourceHash }, shards: section ? { offset: section.offset, size: section.size } : null };
   const stale = isStale ?? (() => false);
-  armSceneCapture(renderer, stale, trace, (captured) => writeWhenSettled(captured, Promise.resolve(target), stale, trace));
+  armSceneCapture(renderer, stale, trace, (captured) => writeWhenSettled(captured, Promise.resolve(target), stale, trace, modelId));
   return false;
 }
 
@@ -276,7 +284,7 @@ export function armColdSceneCapture(isStale: () => boolean, trace: LoadTrace, mo
     arm: (renderer: Renderer) => {
       stopWatching();
       if (isStale()) return noteSnapshotSkip(trace, 'not-armed', 'superseded');
-      armSceneCapture(renderer, isStale, trace, (captured) => writeWhenSettled(captured, entry, isStale, trace), loadFailed);
+      armSceneCapture(renderer, isStale, trace, (captured) => writeWhenSettled(captured, entry, isStale, trace, modelId), loadFailed);
     },
     replaced: () => end('not-armed', 'superseded'),
     notStreamed: () => end('not-armed', 'not-streamed'),

@@ -153,6 +153,15 @@ export const PERF_FLAGS = [
     bindings: { global: '__IFC_LITE_QUANTIZED', urlParam: 'perf.quantized', benchmarkEnv: 'VIEWER_BENCHMARK_QUANTIZED' },
   },
   {
+    id: 'fastPath',
+    kind: 'kill-switch',
+    owner: '@louistrue',
+    removalCondition: 'Delete once the idle spare workers and the small-file fast path have shipped two releases with no boot, memory or load report.',
+    introducedAt: '2026-11-12',
+    default: true,
+    bindings: { urlParam: 'perf.fastPath' },
+  },
+  {
     id: 'sceneSnapshot',
     kind: 'kill-switch',
     owner: '@louistrue',
@@ -205,6 +214,15 @@ export const PERF_FLAGS = [
     introducedAt: '2026-10-08',
     default: false,
     bindings: { global: '__IFC_LITE_GPU_FRAME_TIMING', urlParam: 'perf.gpuFrameTiming' },
+  },
+  {
+    id: 'sceneIdentity',
+    kind: 'kill-switch',
+    owner: '@louistrue',
+    removalCondition: 'Keep while the load scoreboard verifies reopen output with an untimed identity pass; delete with that pass.',
+    introducedAt: '2026-11-12',
+    default: false,
+    bindings: { urlParam: 'perf.sceneIdentity' },
   },
   {
     id: 'perfTrace',

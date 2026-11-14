@@ -1,0 +1,11 @@
+--- a/packages/create/src/in-store/_structural-graph.ts
++++ b/packages/create/src/in-store/_structural-graph.ts
+@@ -69,7 +69,7 @@
+     if (!record) return [];
+     const definition = meta(record.type);
+     const chain = definition?.inheritanceChain ?? [];
+-    const resource = definition !== undefined && !chain.includes('IfcRoot') && definition.name !== 'IfcFaceBasedSurfaceModel' && !chain.includes('IfcConnectedFaceSet');
++    const resource = definition !== undefined && !chain.includes('IfcRoot');
+     return (definition?.allAttributes ?? []).flatMap((a, index) =>
+       isReference(a.type) && (!owned || a.name !== 'PlacementRelTo' && (resource || OWNED.has(a.name)))
+         ? refs(record.attributes[index]).map(target => ({ target, index, attribute: a })) : [])

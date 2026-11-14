@@ -32,7 +32,7 @@ function seedModels(count: number): number {
     ...fixtureModels(...models),
     hiddenEntities: new Set(), isolatedEntities: null, ghostExceptEntities: null, classFilter: null,
     selectedStoreys: new Set(), activeLensId: null, lensHiddenIds: new Set(), lensAppliedHiddenIds: [],
-    typeVisibility: { spaces: false, spatialZones: false, openings: false, virtualElements: false, site: true, ifcAnnotations: true, ifcGrid: true },
+    typeVisibility: { spaces: false, spatialZones: false, openings: false, virtualElements: false, site: true, ifcAnnotations: true, ifcGrid: true, structuralGlyphs: true },
     typeViewMode: 'model', hasTypeGeometry: false, hostHiddenIfcTypes: null,
     levelDisplayMode: 'stacked',
   });
@@ -58,6 +58,7 @@ const ACTIVATE: Record<VisibilityReasonId, (offset: number) => Partial<ViewerSta
   }),
   typeVisibility: () => ({ typeVisibility: { ...state().typeVisibility, site: false } }),
   typeViewMode: () => ({ typeViewMode: 'types', hasTypeGeometry: true }),
+  structuralViewMode: () => ({ structuralViewMode: 'analytical' }),
   hostTypes: () => ({ hostHiddenIfcTypes: new Set(['IFCSPACE']) }),
   // #5893: deliberately NOT rendered here, see SKIP_ROWS below.
   section: () => ({ sectionPlane: { ...state().sectionPlane, enabled: true } }),

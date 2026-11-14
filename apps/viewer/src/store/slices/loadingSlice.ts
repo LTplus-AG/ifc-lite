@@ -27,6 +27,8 @@ export interface LoadingSlice {
   geometryProgress: { phase: string; percent: number; indeterminate?: boolean } | null;
   metadataProgress: { phase: string; percent: number; indeterminate?: boolean } | null;
   error: string | null;
+  /** Monotonic identity for stale error actions (#8947); never reset. */
+  loadErrorSeq: number;
   /**
    * Cancellation hook for an in-flight long-running operation (e.g.
    * streaming a 100M-point scan). UI components can show a Cancel
@@ -125,6 +127,7 @@ export const createLoadingSlice: StateCreator<LoadingSlice, [], [], LoadingSlice
   geometryProgress: null,
   metadataProgress: null,
   error: null,
+  loadErrorSeq: 0,
   activeStreamCanceller: null,
   activeLoadCanceller: null,
   loadCancelSeq: 0,
@@ -147,7 +150,8 @@ export const createLoadingSlice: StateCreator<LoadingSlice, [], [], LoadingSlice
   // survive its error and attach itself to whatever sets a new one next.
   setError: (error) => {
     if (error === null) clearLoadReport();
-    set(error === null ? { error, lastLoadRetry: null } : { error });
+    set((state) => ({ error, loadErrorSeq: state.loadErrorSeq + 1,
+      ...(error === null ? { lastLoadRetry: null } : {}) }));
   },
   setActiveStreamCanceller: (activeStreamCanceller) => set({ activeStreamCanceller }),
   setActiveLoadCanceller: (activeLoadCanceller) => set({ activeLoadCanceller }),

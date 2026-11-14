@@ -12,6 +12,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { attachCapturedLoad } from '@/lib/error-reports/correlation';
 import { useShallow } from 'zustand/react/shallow';
 import { type FederatedModel, useViewerStore } from '@/store';
+import { enqueueInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
 import { resolveLoadTessellationTier, isMeshOnlyCacheEnabled } from '../store/constants.js';
 import { createModelLoadActivity, handOffToRetry, installModelLoadCanceller, LOAD_COMPLETE, settleOwnedLoadUi, watchLoadSupersession } from './modelLoadCanceller.js';
 import type { ModelLoadOptions } from './modelLoadOptions.js';
@@ -26,12 +27,13 @@ import { attachTextureBitmaps, type TextureBitmapStore } from '../utils/textureR
 import { modelAppearanceAssets } from '../lib/appearance/model-assets.js';
 import { WorkerParser } from '@ifc-lite/parser/browser';
 import { createModelLoadCompletion } from './ingest/modelLoadCompletion.js';
-import { beginGeometryKernel, openGeometryEvents } from './ingest/geometryEventSource.js';
+import { beginGeometryKernel, openGeometryEvents, runPickStart, claimFastGeometry, ADAPTIVE_SYNC_THRESHOLD_BYTES } from './ingest/geometryEventSource.js';
 import { memoryAccounting } from '../lib/perf/memoryAccounting.js';
 import { loadTracer, nextPaintOrTimeout } from '../lib/perf/loadTrace.js';
 import { countCopy } from '@ifc-lite/load-trace'; // #6957 full source-copy counters
 import { headIsZip, NO_ARCHIVE_IMAGES, sourceArrayBuffer } from './ingest/sourceBuffers.js';
 import { compactSource } from '../lib/source-compaction/source-compaction.js';
+import { runAfterModelSettled } from '../lib/perf/afterLoad.js';
 import {
   GeometryProcessor,
   geometryAabbAt,
@@ -107,6 +109,7 @@ import { classifyLoadError, errorCaptureProps, type LoadErrorKind } from '../lib
 import { formatLoadError } from '../lib/load-error-message.js';
 import { beginResumableLoad, noteStaleDeploymentLoadFailure } from '@/lib/reload-resume';
 import { surfaceStaleDeployment } from '../lib/stale-deployment.js';
+import { whenSceneSettled } from '@/lib/scene-settled';
 /**
  * The skip-tiny-cuts flag is no longer a hard constant: it is derived per-load
  * from the user's geometry-fidelity mode (`fast` vs `exact`, see
@@ -201,7 +204,6 @@ export function useIfcLoader() {
     setGeometryResult,
     setBoundedGeometryMode,
     appendGeometryBatch,
-    appendInstancedShards,
     updateMeshColors,
     updateCoordinateInfo,
     upsertModel,
@@ -218,7 +220,6 @@ export function useIfcLoader() {
     setGeometryResult: s.setGeometryResult,
     setBoundedGeometryMode: s.setBoundedGeometryMode,
     appendGeometryBatch: s.appendGeometryBatch,
-    appendInstancedShards: s.appendInstancedShards,
     updateMeshColors: s.updateMeshColors,
     updateCoordinateInfo: s.updateCoordinateInfo,
     upsertModel: s.upsertModel,
@@ -277,7 +278,7 @@ export function useIfcLoader() {
       abortGeometry?.();
     }, () => cancelOwnedStream, activity); // #5849: federated cancellation preserves loaded models
     // Every end of this load, completed or failed: the last live load ends the shared UI (L2).
-    const settleLoadUi = (progress: Parameters<typeof settleOwnedLoadUi>[1] = null) => settleOwnedLoadUi(releaseCanceller, progress);
+    const settleLoadUi = (progress: Parameters<typeof settleOwnedLoadUi>[1] = null) => settleOwnedLoadUi(releaseCanceller, progress, modelId);
 
     // Cold-storage residency (issue #1682 phase 3b): any new load invalidates
     // the previous entry-backed provider — a primary load replaces the model,
@@ -309,7 +310,7 @@ export function useIfcLoader() {
         scene.setColdGeometryProvider(null);
       }
     }
-
+    runPickStart({ file, target, kernel: geometryKernel, retry: options?.isResourceRetry === true || options?.tierOverride !== undefined, isCurrent }); // the one place work starts before the reset (ingest/pickStart.ts)
     // Track total elapsed time for complete user experience
     const totalStartTime = performance.now();
     const trace = loadTracer.startLoad(modelId, { journey: target.kind === 'federated' ? 'J4' : 'J1', modelKind: target.kind }, totalStartTime); // #6956
@@ -434,6 +435,7 @@ export function useIfcLoader() {
         // A non-federated load has no layer stack behind it (#1717).
         useViewerStore.getState().clearLayerStack();
       }
+      const shardGeneration = instancedShardGeneration(); // after our own reset: a later one supersedes our shards
 
       // Reset memory accounting so per-load summaries don't accumulate across files.
       memoryAccounting.reset();
@@ -515,7 +517,7 @@ export function useIfcLoader() {
         instancedShards: ArrayBuffer[] = [],
       ): Promise<void> => {
         // A complete model carries its identity (#7022); the pass ran beside the load.
-        const sourceContentHash = await placementIdentity;
+        const sourceContentHash = await trace.span('finalize.identityWait', () => placementIdentity);
         if (isStale()) return;
         // Ordering notice (issue #1804): alignment is baked into a scan at
         // ITS load time (an f64 decode-time offset — it cannot be applied
@@ -613,7 +615,7 @@ export function useIfcLoader() {
             federationAlignmentStatus, ifcSharedVerticalDatumAssumed, ...(landXmlAssumptionsApplied ? { landXmlAssumptionsApplied } : {}),
             ...buildModelLoadReportPatch(loadDiagnostics, format, patch, omittedTypeRecords),
           };
-          useViewerStore.getState().addModel(federatedModel);
+          trace.span('finalize.publish', () => useViewerStore.getState().addModel(federatedModel));
           activity.published = true;
           options?.onModelRegistered?.();
           // The registry also holds scans that arrived before any compatible
@@ -630,14 +632,12 @@ export function useIfcLoader() {
             toast.error('Point-cloud realignment failed; existing scan transforms were restored.');
           }
           // GPU-instancing (#1912): forward this model's shards now — NOT during
-          // streaming — because `useGeometryStreaming`'s drain re-homes each
-          // occurrence's raw entity id by `idOffset`, which is only known now
-          // (registerModelOffset ran a few lines up). AFTER addModel, so the
-          // renderer-side modelId → modelIndex / idOffset lookups
-          // (Viewport.tsx's `modelIdToIndex` / `modelIdToOffset`) already see
-          // this model when the drain effect runs.
+          // streaming — because the renderer drain re-homes each occurrence's raw
+          // entity id by `idOffset`, only known now (registerModelOffset ran above).
+          // AFTER addModel: the drain runs in a later task, once React committed it,
+          // so Viewport.tsx's `modelIdToIndex` / `modelIdToOffset` see this model.
           if (instancedShards.length > 0) {
-            appendInstancedShards(modelId, instancedShards);
+            enqueueInstancedShards(modelId, instancedShards, shardGeneration);
           }
           return;
         }
@@ -650,7 +650,7 @@ export function useIfcLoader() {
           idOffset = registerModelOffset(modelId, maxExpressId);
         }
 
-        updateModel(modelId, {
+        trace.span('finalize.publish', () => updateModel(modelId, {
           ifcDataStore: dataStore,
           landXmlDocument: patch?.landXmlDocument,
           sourceSchema: patch?.sourceSchema,
@@ -664,7 +664,7 @@ export function useIfcLoader() {
           pointCloudHandleId: patch?.pointCloudHandleId, gaussianSplat: patch?.gaussianSplat,
           ...(patch?.spatialReference ? { spatialReference: patch.spatialReference } : {}),
           ...buildModelLoadReportPatch(loadDiagnostics, format, patch, omittedTypeRecords),
-        });
+        }));
         activity.published = true;
         modelCompletion?.settleModel();
       };
@@ -1036,6 +1036,7 @@ export function useIfcLoader() {
           return;
         }
       }
+      if (format === '3dm') { await (await import('./ingest/rhinoLoad.js')).loadRhino3dmModel({ buffer, fileSizeMB, targetKind: target.kind, totalStartTime, wasHidden: wasHidden(), trace, signal: metadataAbort.signal, isStale, setProgress, settleLoadUi, onPrimary: (r) => { setGeometryResult(r.geometryResult); setIfcDataStore(r.dataStore); }, finalize: finalizeModel, onError: (code, message) => { updateModel(modelId, { loadState: 'error', loadError: message }); showLoadError(message, `rhino3dm_${code.replace(/-/g, '_')}`); } }); return; }  // awaited, never returned as a promise: the `finally` below aborts `metadataAbort`, which would cancel the read mid-flight.
 
       // The sampled cache key is a lookup hint, validated by the mtime/full
       // hash gates below. Placement matching uses its separate full identity.
@@ -1158,10 +1159,10 @@ export function useIfcLoader() {
             }
             if (cacheOutcome === 'serve') {
               const state = useViewerStore.getState();
-              if (target.kind === 'primary') await finalizeModel(state.ifcDataStore, state.geometryResult, getViewerSchemaVersion(state.ifcDataStore), {
+              if (target.kind === 'primary') await trace.span('load.finalize', () => finalizeModel(state.ifcDataStore, state.geometryResult, getViewerSchemaVersion(state.ifcDataStore), {
                 loadState: 'complete', cacheState: 'hit',
                 loadPath: 'cache', tessellationTier: loadTessellationTier, skipSmallCuts: skipSmallCutsAtLoad,
-              });
+              }));
               const servedGeometry = target.kind === 'primary' ? state.geometryResult : useViewerStore.getState().models.get(modelId)?.geometryResult ?? null;
               if (isStale()) return; // finalize awaited the identity pass (#7022)
               const cacheTotalMs = trace.finish({ journey: 'J2', loadPath: 'cache', cacheTier: cachePlan.tier });
@@ -1184,10 +1185,10 @@ export function useIfcLoader() {
                 fileSizeMB,
                 isStale: () => isStale(),
               });
-              settleLoadUi(LOAD_COMPLETE); // #1570, as the fresh path
+              trace.span('load.settleUi', () => settleLoadUi(LOAD_COMPLETE)); // #1570, as the fresh path (span: measurement)
               // #2183: compact the restored source, then drop this scope's binding to the raw file.
               const restoredStore = target.kind === 'federated' ? federatedHitStore : state.ifcDataStore;
-              if (restoredStore) void compactSource(restoredStore.source).then((o) => { if (o === 'compacted') buffer = new ArrayBuffer(0); });
+              if (restoredStore) runAfterModelSettled({ job: 'source-compaction', modelId, store: restoredStore }, () => void compactSource(restoredStore.source).then((o) => { if (o === 'compacted') buffer = new ArrayBuffer(0); }));
               // Belt-and-suspenders for BOTH tiers (#4269): revalidate the
               // full-content hash (this load's identity pass) and, if the source
               // changed with its mtime preserved, purge + auto-reload.
@@ -1344,11 +1345,10 @@ export function useIfcLoader() {
         memoryAccounting.setSourceBytes(buffer.byteLength);
       }
 
-      // #2183: after a completed load, compact the store's source and drop this scope's raw-buffer
+      // #2183: after a completed load (an after-load job, dropped with the model), compact the store's source and drop this scope's raw-buffer
       // bindings (closures here share one context, so any survivor would pin the whole file).
-      const compactSourceAfterLoad = (store: IfcDataStore) => void compactSource(store.source).then((o) => {
-        if (o === 'compacted') { buffer = new ArrayBuffer(0); sharedSource = null; }
-      });
+      const compactSourceAfterLoad = (store: IfcDataStore) => void runAfterModelSettled({ job: 'source-compaction', modelId, store }, () => void compactSource(store.source)
+        .then((o) => { if (o === 'compacted') { buffer = new ArrayBuffer(0); sharedSource = null; } }));
 
       // Data model parsing runs IN PARALLEL with geometry streaming.
       // Default path: parser runs in a Web Worker via WorkerParser, both
@@ -1417,15 +1417,15 @@ export function useIfcLoader() {
       // geometry-heavy files, and keep small files immediate.
       const parserWaitBudgetMs = Math.min(10_000, Math.max(1_000, fileSizeMB * 8));
       const parserEntityIndexHandoff = forwardEntityIndexTo(() => workerParserInstance, useParserWorker && fileSizeMB >= 32, parserWaitBudgetMs);
-
       // The geometry pre-pass only emits `entity-index` on the parallel
       // streaming path inside `processAdaptive`. Files smaller than the
       // sync threshold (2 MB) and the desktop-stable path don't fire it
-      // — gate `waitForEntityIndex` so the parser doesn't hang.
-      const ADAPTIVE_SYNC_THRESHOLD_MB = 2;
+      // — gate `waitForEntityIndex` so the parser doesn't hang. Nor does a fast-path run (ingest/fastPath.ts).
+      const ADAPTIVE_SYNC_THRESHOLD_MB = ADAPTIVE_SYNC_THRESHOLD_BYTES / (1024 * 1024);
       const sourceFingerprint = createSourceFingerprintCell(sharedSource, useParserWorker);
+      const fastRun = geometryKernel.kind === 'exact' ? claimFastGeometry(file, geometryProcessor.meshingSettings(), { target: target.kind, sourceIsFile: loadedBufferByteLength === file.size }) : null;
       const geometryWillEmitEntityIndex =
-        useParserWorker
+        !fastRun && useParserWorker
         && fileSizeMB >= ADAPTIVE_SYNC_THRESHOLD_MB && geometryKernel.kind === 'exact';
 
       const startDataModelParsing = () => {
@@ -1584,7 +1584,7 @@ export function useIfcLoader() {
         const geometryEvents = openGeometryEvents(geometryKernel, {
           processor: geometryProcessor, view: geometryView, fileSizeMB, signal: geometryAbort.signal, stallPhaseHandle,
           existingSab: sharedSource ?? undefined, sharedRtcOffset: target.kind === 'federated' ? target.sharedRtcOffset : undefined,
-          onEntityIndex: parserEntityIndexHandoff, sourceFingerprint, trace, modelId, activity,
+          onEntityIndex: parserEntityIndexHandoff, sourceFingerprint, trace, modelId, activity, fastRun,
         });
         const geometryIterator = geometryEvents[Symbol.asyncIterator]();
         let geometryIteratorClosed = false;
@@ -1724,13 +1724,13 @@ export function useIfcLoader() {
               }
 
               if (target.kind === 'primary') {
-                // Live GPU-instancing: hand the batch's IFNS shards to the store
-                // so useGeometryStreaming decodes + uploads them via the
-                // instanced path AS THEY STREAM IN. Primary-only: its id-offset
+                // Live GPU-instancing: queue the batch's IFNS shards (outside the
+                // store, NEW-1) so the renderer drain decodes + uploads them
+                // AS THEY STREAM IN. Primary-only: its id-offset
                 // is always 0 (the federation registry is cleared before every
                 // primary load), so there is nothing to wait on.
                 if (event.instancedShards && event.instancedShards.length > 0) {
-                  appendInstancedShards(modelId, event.instancedShards);
+                  enqueueInstancedShards(modelId, event.instancedShards, shardGeneration);
                 }
                 // Accumulate meshes for batched rendering
                 for (let i = 0; i < event.meshes.length; i++) pendingMeshes.push(event.meshes[i]);
@@ -1766,10 +1766,11 @@ export function useIfcLoader() {
                   appendGeometryBatch(modelId, [], event.coordinateInfo);
                   markFirstVisibleGeometry();
                 }
-              } else {
+              } else if (batchCount === 1 || eventReceived - lastRenderTime >= RENDER_INTERVAL_MS) {
                 // Federated add: accumulate into allMeshes only (done above) and
-                // surface progress — it paints atomically at completion via
-                // finalizeModel's addModel, never touching the active slot.
+                // surface progress at the flat throttle's cadence — it paints atomically at
+                // completion via finalizeModel's addModel, never touching the active slot.
+                lastRenderTime = eventReceived;
                 setProgress({
                   phase: `Processing geometry (${totalMeshes} meshes)`,
                   percent: 10 + Math.min(80, (allMeshes.length / 1000) * 0.8),
@@ -1929,7 +1930,7 @@ export function useIfcLoader() {
                     loadState: 'complete', loadPath: 'wasm', tessellationTier: loadTessellationTier, skipSmallCuts: skipSmallCutsAtLoad,
                   }, allInstancedShards));
                   // Background, like the primary write; compaction waits so the write keeps the raw length.
-                  if (cacheMeshes && !isStale()) void Promise.resolve(writeCache(cacheMeshes)).finally(() => compactSourceAfterLoad(dataStore));
+                  if (cacheMeshes && !isStale()) void whenSceneSettled(isCurrent).then((settled) => settled ? writeCache(cacheMeshes) : undefined).finally(() => compactSourceAfterLoad(dataStore));
                   else compactSourceAfterLoad(dataStore);
                   return;
                 }
@@ -1948,10 +1949,9 @@ export function useIfcLoader() {
                 // tables + geometry WITHOUT the source; re-open rehydrates from the fresh buffer, validated
                 // by the mtime guard + off-thread full hash (cacheTier.ts) — the key only keys the lookup.
                 // Files above 400MB (or with the mesh-only kill switch set) are not cached.
-                if (cacheable) {
-                  // Final safety pass so cache always contains post-style colors.
-                  applyColorUpdatesToMeshes(allMeshes, cumulativeColorUpdates);
-                  coldSceneCapture?.entryWritten((await writeCache(allMeshes)) || null);
+                if (cacheable && await whenSceneSettled(isCurrent)) { // not a load step: encode once the scene settles (a superseding load drops it)
+                  applyColorUpdatesToMeshes(allMeshes, cumulativeColorUpdates); // so the cache holds post-style colours
+                  coldSceneCapture?.entryWritten((await writeCache(allMeshes)) || null); // the stored scene waits for its entry
                 }
 
                 compactSourceAfterLoad(dataStore);
@@ -2156,7 +2156,7 @@ export function useIfcLoader() {
       try { appearanceLoad?.finishForModel(useViewerStore.getState().models.get(modelId)); }
       finally { geometryHandle?.release(); }
     }
-  }, [setLoading, setGeometryStreamingActive, setError, setProgress, setIfcDataStore, setGeometryResult, appendGeometryBatch, appendInstancedShards, updateMeshColors, updateCoordinateInfo, loadFromCache, saveToCache, loadFromServer, revalidateServedCacheHit]);
+  }, [setLoading, setGeometryStreamingActive, setError, setProgress, setIfcDataStore, setGeometryResult, appendGeometryBatch, updateMeshColors, updateCoordinateInfo, loadFromCache, saveToCache, loadFromServer, revalidateServedCacheHit]);
 
   // Keep the ref pointed at the latest loadFile so a background revalidation can
   // trigger a reparse-reload without loadFile depending on itself.

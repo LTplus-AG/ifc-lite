@@ -26,7 +26,7 @@
  * raw argument tokens are preserved byte-for-byte.
  */
 
-import { ENTITIES_IFC2X3, ENTITIES_IFC4_EXPRESS, ENTITIES_IFC4X3 } from '@ifc-lite/data';
+import { getEntitiesIfc2x3, getEntitiesIfc4Express, getEntitiesIfc4x3 } from '@ifc-lite/data';
 import { escapeStepString } from './step-serialization.js';
 import { frameArgs, stepRecordFrame } from './step-record-frame.js';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
@@ -50,16 +50,26 @@ function buildSchemaMap(
   return map;
 }
 
-const SCHEMA_MAPS: Record<IfcSchemaVersion, Map<string, RetypeEntityInfo>> = {
-  IFC2X3: buildSchemaMap(ENTITIES_IFC2X3),
+// Built on first use: the tables decode on first use too, and loading this
+// module must not decode them (the viewer's startup chunks carry it).
+let schemaMaps: Record<IfcSchemaVersion, Map<string, RetypeEntityInfo>> | undefined;
+function getSchemaMaps(): Record<IfcSchemaVersion, Map<string, RetypeEntityInfo>> {
+  if (schemaMaps === undefined) schemaMaps = buildSchemaMaps();
+  return schemaMaps;
+}
+
+function buildSchemaMaps(): Record<IfcSchemaVersion, Map<string, RetypeEntityInfo>> {
+  return {
+  IFC2X3: buildSchemaMap(getEntitiesIfc2x3()),
   // Not the raw `ENTITIES_IFC4`: retyping into one of its phantom IFC4
   // entities wrote a class IFC4 lacks, and into `IfcCartesianPointList3D`
   // appended a `TagList` IFC4 never had (#5204).
-  IFC4: buildSchemaMap(ENTITIES_IFC4_EXPRESS),
-  IFC4X3: buildSchemaMap(ENTITIES_IFC4X3),
+  IFC4: buildSchemaMap(getEntitiesIfc4Express()),
+  IFC4X3: buildSchemaMap(getEntitiesIfc4x3()),
   // IFC5 isn't STEP; never reached for retype, but keep the lookup total.
-  IFC5: buildSchemaMap(ENTITIES_IFC4X3),
-};
+  IFC5: buildSchemaMap(getEntitiesIfc4x3()),
+  };
+}
 
 /**
  * Look up a class's attribute layout + PredefinedType domain for a schema.
@@ -68,7 +78,8 @@ const SCHEMA_MAPS: Record<IfcSchemaVersion, Map<string, RetypeEntityInfo>> = {
  */
 function lookupEntityInfo(schema: IfcSchemaVersion, name: string): RetypeEntityInfo | null {
   const upper = name.toUpperCase();
-  return SCHEMA_MAPS[schema]?.get(upper) ?? SCHEMA_MAPS.IFC4.get(upper) ?? null;
+  const maps = getSchemaMaps();
+  return maps[schema]?.get(upper) ?? maps.IFC4.get(upper) ?? null;
 }
 
 /** Strip the dot-wrapping from a STEP enum token: `.ELEMENT.` → `ELEMENT`. */

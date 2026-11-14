@@ -21,7 +21,7 @@
  * a newer load (or model removal) hadn't superseded this one while the parse
  * was in flight. `finalizeModel` itself provides no protection either: none
  * of its internal writes (`addModel`, `buildSpatialIndexForModel`,
- * `appendInstancedShards`, `updateModel`) re-check the session — tracing
+ * `enqueueInstancedShards`, `updateModel`) re-check the session — tracing
  * confirmed zero `loadSessionRef` references inside its body. So a
  * superseded IFCX parse landing late used to overwrite whatever a newer,
  * already-displayed load had published, unconditionally.

@@ -20,6 +20,7 @@ import {
   type GeometryData,
 } from '@ifc-lite/cache';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import { createCacheChunkInflater } from './cacheChunkInflater.js';
 import { decodeCachedMetadata, loadFederatedCacheHit, readCachedInstancedShards, type CacheLoadResult } from './ifcCacheDecode.js';
 import { adoptCachedSceneSnapshot, captureSceneSnapshotOfHit, publishAdoptedSceneMeshes, abandonAdoptedSceneSnapshot, type AdoptedSceneSnapshot } from './sceneSnapshotLoad.js';
 import type { SnapshotEntry } from './sceneSnapshotWrite.js';
@@ -30,6 +31,7 @@ import { NOOP_LOAD_TRACE, type LoadTrace } from '@ifc-lite/load-trace';
 
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore } from '../store/index.js';
+import { enqueueInstancedShards, instancedShardGeneration } from '../store/instancedShardQueue.js';
 import { getCached, setCached, deleteCached, type CacheResult } from '../services/cacheService.js';
 import { recordFirstVisible } from '../lib/perf/loadTrace.js';
 
@@ -82,14 +84,12 @@ export function useIfcCache() {
     setProgress,
     setIfcDataStore,
     setGeometryResult,
-    appendInstancedShards,
     appendGeometryBatch,
     setGeometryStreamingActive,
   } = useViewerStore(useShallow((s) => ({
     setProgress: s.setProgress,
     setIfcDataStore: s.setIfcDataStore,
     setGeometryResult: s.setGeometryResult,
-    appendInstancedShards: s.appendInstancedShards,
     appendGeometryBatch: s.appendGeometryBatch,
     setGeometryStreamingActive: s.setGeometryStreamingActive,
   })));
@@ -124,7 +124,11 @@ export function useIfcCache() {
     isStale?: () => boolean,
     trace: LoadTrace = NOOP_LOAD_TRACE, // #6956: the J2 (warm open) spans land on the caller's load trace
   ): Promise<CacheLoadResult> => {
+    // Before any await: a reset during the IndexedDB reads supersedes this hit's shards.
+    const shardGeneration = instancedShardGeneration();
     let adopted: AdoptedSceneSnapshot | null = null;
+    // Compressed geometry chunks inflate on workers, which boot while the metadata decodes (only when there are any).
+    const inflater = createCacheChunkInflater();
     try {
       const cacheLoadStart = performance.now();
 
@@ -145,7 +149,7 @@ export function useIfcCache() {
       adopted = await adoptCachedSceneSnapshot(cacheResult, modelId, isStale, trace);
 
       const { dataStore, cacheBuffer, cacheBlob, headerInfo, geometrySection } =
-        await decodeCachedMetadata(cacheResult, fallbackSourceBuffer, trace);
+        await decodeCachedMetadata(cacheResult, fallbackSourceBuffer, trace, inflater.prepare);
 
       let meshCount = 0;
       let loadedTotalVertices = 0;
@@ -160,7 +164,8 @@ export function useIfcCache() {
         const open = openGeometryChunksV13(
           cacheBuffer,
           geometrySection.offset,
-          headerInfo.version
+          headerInfo.version,
+          { inflate: inflater.inflate, sharedArena: true },
         );
         loadedTotalVertices = open.totalVertices;
         loadedTotalTriangles = open.totalTriangles;
@@ -180,7 +185,7 @@ export function useIfcCache() {
           firstVisible = adopted.firstVisible;
           allMeshes = await publishAdoptedSceneMeshes(adopted, open, modelId, cacheResult, cacheKey, isStale, trace, appendGeometryBatch);
         } else {
-          if (await captureSceneSnapshotOfHit(cacheResult, cacheKey, { headerInfo }, isStale, trace)) {
+          if (await captureSceneSnapshotOfHit(cacheResult, cacheKey, { headerInfo }, isStale, trace, modelId)) {
             return { success: false, meshCount: 0, totalVertices: 0, totalTriangles: 0 };
           }
           getGlobalRenderer()?.getScene().limitStreamingFragments(CACHE_FIRST_PAINT_INDICES);
@@ -242,9 +247,10 @@ export function useIfcCache() {
         // Restore the GPU-instancing shards (opaque repeated occurrences that
         // were partitioned off the flat meshes).
         const shards = readCachedInstancedShards({ dataStore, cacheBuffer, cacheBlob, headerInfo, geometrySection });
-        if (shards.length > 0 && !adopted) appendInstancedShards(modelId, shards);
+        if (shards.length > 0 && !adopted) enqueueInstancedShards(modelId, shards, shardGeneration);
 
-        setIfcDataStore(dataStore);
+        // Measurement (post-pixel attribution): the store write, with its synchronous subscribers.
+        trace.span('cache.publishStore', () => setIfcDataStore(dataStore));
 
         // Cold-storage provider (issue #1682 phase 3b): with this wired the
         // scene may drop CPU meshData for cold chunks and restore them from
@@ -270,7 +276,7 @@ export function useIfcCache() {
         if (isStale?.()) {
           return { success: false, meshCount: 0, totalVertices: 0, totalTriangles: 0 };
         }
-        setIfcDataStore(dataStore);
+        trace.span('cache.publishStore', () => setIfcDataStore(dataStore));
       }
 
       trace.milestone('cache.storeReady'); // #6961: spatial tree and properties are queryable from here
@@ -303,6 +309,7 @@ export function useIfcCache() {
         totalTriangles: 0,
       };
     } finally {
+      inflater.close();
       abandonAdoptedSceneSnapshot(adopted);
     }
   }, [setProgress, setIfcDataStore, setGeometryResult]);
@@ -348,6 +355,7 @@ export function useIfcCache() {
       const cacheBuffer = await writer.write(cacheDataStore, geometry, new Uint8Array(sourceBuffer), {
         includeGeometry: true, compressGeometryChunksInWorker: true,
         omitSourceHash: true, onGeometryOrder: (ordered) => { meshOrder = ordered; },
+        yieldBetweenSections: true, // written while the page is interactive
       });
       console.log('[useIfcCache] Cache buffer written:', cacheBuffer.byteLength, 'bytes');
 

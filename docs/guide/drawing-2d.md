@@ -25,6 +25,18 @@ Each drawing includes:
 | **Architectural symbols** | Door swings, window frames, stair arrows |
 | **Annotations** | Dimensions and labels |
 
+## Element tags in the viewer
+
+In a plan or section drawing, choose **Tag** and click a door, window or space.
+Door and window tags show the IFC `Tag` (or a `Mark` property), falling back to
+`Name`. Space tags show `Name` and, when available,
+`Qto_SpaceBaseQuantities.NetFloorArea` in m². Labels read the current model data,
+so property edits update them. Regenerated drawings anchor tags to the element's
+cut centroid. Use **Select** to drag a tag's offset, or select it and press Delete.
+Tags are saved with the drawing markup and included in SVG, DXF, scaled PDF and
+sheet PDF exports. Scaled PDF uses `~` for the approximate-area symbol because
+its built-in font does not contain `≈`.
+
 ## Construction profiles
 
 Construction projection extracts constant `IfcExtrudedAreaSolid` profiles from
@@ -166,6 +178,11 @@ document.getElementById('drawing').innerHTML = svg;
 ```
 
 ### DXF Export
+
+Distance measurements and explicit linear dimensions share the same dimension graphics in SVG, DXF and PDF. DXF writes their segments and labels once on `IFC-DIMENSIONS`. Invalid or zero-length graphics are omitted using `isDxfDimensionExportable`, the same rule the download warning uses. Dimensions from another cut are reported separately and counted only once.
+
+For DWG delivery, export DXF and convert it with the free [ODA File Converter](https://www.opendesign.com/guestfiles/oda_file_converter) on your computer. The viewer exports DXF directly; the converter is a separate application.
+
 
 Drawings can also be exported as ASCII DXF R12 (`AC1009`) — the universal
 CAD interop baseline. Coordinates are written verbatim in the drawing's own

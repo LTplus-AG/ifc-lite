@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "packages/create/src/in-store/_structural-graph.ts",
+  "mutation": "tests/evidence/structural-group-source-9668/behaviour.oracle.patch",
+  "test": "packages/create/src/in-store/structural-group-assignment.test.ts",
+  "why": "#9668 / #9819: Edit and removal must recognize source-loaded structural group assignments without accepting non-structural groups."
+}

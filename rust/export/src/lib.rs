@@ -59,6 +59,9 @@ mod rooms;
 pub mod rooted_type;
 mod scene_input;
 mod schema_convert;
+mod schema_structural;
+mod schema_structural_diagnostics;
+mod schema_structural_axes;
 mod schema_mep;
 mod schema_detect;
 mod schema_ifc2x3_body;
@@ -167,7 +170,8 @@ pub use obj::{export_obj, export_obj_with_stats, ObjOptions, ObjStats};
 #[cfg(feature = "parquet-bos")]
 pub use parquet_bos::{export_bos, ParquetBosOptions};
 pub use step::{
-    export_step, export_step_to_writer, export_step_with_stats, AttrMutation, CopyOnWriteMutation,
+    export_step, export_step_to_writer, export_step_with_stats, export_step_with_diagnostics,
+    export_step_to_writer_with_diagnostics, AttrMutation, CopyOnWriteMutation,
     PropMutation, StepOptions, StepStats,
 };
 pub use step_json::export_step_json;

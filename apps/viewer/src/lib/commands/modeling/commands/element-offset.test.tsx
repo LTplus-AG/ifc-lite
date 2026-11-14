@@ -1,0 +1,77 @@
+// SPDX-License-Identifier: MPL-2.0
+import '@/test/setup-dom.js';
+import assert from 'node:assert/strict';
+import { beforeEach, afterEach, it } from 'node:test';
+import { StepExporter } from '@ifc-lite/export';
+import { useViewerStore } from '@/store';
+import { SAMPLE_MODEL as MODEL, GROUND_STOREY, seedAuthoringSample, parseIfc } from '@/test/authoring-sample-fixture';
+import { toGlobalIdFromModels } from '@/store/globalId';
+import { setRequestRemesh, type RemeshRequest } from '../transaction';
+import { commandPointerMove, commandPointerDown, writeCommandField, commitCommand, getCommandRuntime } from '../runtime';
+import type { SnapResult } from '@/lib/snap/types';
+import '../builtin';
+
+let storey: number;
+let restore: () => void;
+let remeshed: RemeshRequest[];
+beforeEach(async () => {
+  const { dataStore } = await seedAuthoringSample();
+  storey = [...dataStore.entities.expressId].find(id => dataStore.entities.getGlobalId(id) === GROUND_STOREY)!;
+  useViewerStore.setState({ workspaceMode: 'view', session: null, activeTool: 'select' });
+  assert.ok(useViewerStore.getState().enterModelWorkspace({ modelId: MODEL, storeyId: storey }));
+  remeshed = [];
+  restore = setRequestRemesh((_get, request) => { remeshed.push(request); });
+});
+afterEach(() => { restore(); useViewerStore.getState().exitModelWorkspace(); });
+function wall(y = 10, end: [number, number] = [5, y]) {
+  const r = useViewerStore.getState().addWall(MODEL, storey, { Start: [0,y,0], End: [...end,0], Thickness: .2, Height: 3 });
+  assert.ok('expressId' in r); return r.expressId;
+}
+function select(...ids: number[]) {
+  const s = useViewerStore.getState();
+  s.setSelectedEntityIds(ids.map(id => toGlobalIdFromModels(s.models, MODEL, id)));
+}
+function at(x: number, y: number, alt = false): SnapResult {
+  const plane = getCommandRuntime().ctx?.workplane; assert.ok(plane);
+  return { local: [x,y], render: plane.localToRender([x,y,0]), winner: null, guides: [], locked: false, modifiers: { alt, shift: false } };
+}
+function click(x: number, y: number, alt = false) { commandPointerMove(at(x,y,alt)); commandPointerDown(at(x,y,alt)); }
+function exported() {
+  const s = useViewerStore.getState();
+  return new StepExporter(s.models.get(MODEL)!.ifcDataStore!, s.mutationViews.get(MODEL)!).export({ schema: 'IFC4', applyMutations: true, timeStamp: '20260101T000000' }).content;
+}
+const graphOf = (bytes: Uint8Array) => new TextDecoder().decode(bytes).split('\n').filter(line => line.startsWith('#')).sort();
+const depth = () => useViewerStore.getState().undoStacks.get(MODEL)?.length ?? 0;
+async function exportedWall(id: number) {
+  const { MutablePropertyView, StoreEditor } = await import('@ifc-lite/mutations');
+  const dataStore = await parseIfc(exported());
+  const view = new MutablePropertyView(dataStore.properties ?? null, MODEL);
+  const { configureMutationView } = await import('@/utils/configureMutationView');
+  configureMutationView(view, dataStore);
+  const { readWallMetres } = await import('../../../../../../../packages/create/src/in-store/wall-size-edit');
+  const result = readWallMetres({ dataStore, view, editor: new StoreEditor(dataStore,view) },id);
+  assert.ok(result); return result;
+}
+
+for (const side of [-1,1]) it(`#9296 Offset exports a 5m parallel wall at y=${side*1.5}, and undoes once`, async () => {
+  const id = wall(0), d = depth(), before = exported(); select(id);
+  await useViewerStore.getState().startCommand('element.offset');
+  assert.equal(getCommandRuntime().command?.id, 'element.offset');
+  writeCommandField(0,1.5); click(2,side*2);
+  assert.equal(getCommandRuntime().command,null);
+  const { resolveEntityRef } = await import('@/store/resolveEntityRef');
+  const copied = resolveEntityRef(useViewerStore.getState().selectedEntityId!).expressId;
+  assert.notEqual(copied,id);
+  const ends = await exportedWall(copied);
+  assert.ok(Math.abs(ends.start[1]-side*1.5)<.001, JSON.stringify(ends));
+  assert.ok(Math.abs(Math.hypot(ends.end[0]-ends.start[0],ends.end[1]-ends.start[1])-5)<.001);
+  useViewerStore.getState().undo(MODEL); assert.equal(depth(),d); assert.deepEqual(graphOf(exported()),graphOf(before));
+});
+it('#9296 Offset refuses a non-wall and invalid distances without changing the graph', async () => {
+  const column = useViewerStore.getState().addColumn(MODEL,storey,{ Position: [0,0,0], Width: .3, Depth: .3, Height: 3 });
+  assert.ok('expressId' in column); select(column.expressId);
+  let before = exported(); await useViewerStore.getState().startCommand('element.offset'); commitCommand(); assert.equal(getCommandRuntime().command?.id,'element.offset'); assert.deepEqual(graphOf(exported()),graphOf(before));
+  const id = wall(0); select(id); await useViewerStore.getState().startCommand('element.offset'); before=exported();
+  assert.equal(getCommandRuntime().command?.id,'element.offset');
+  for (const value of [0,-1]) { writeCommandField(0,value); commitCommand(); assert.equal(getCommandRuntime().command?.id,'element.offset'); assert.deepEqual(graphOf(exported()),graphOf(before)); }
+});

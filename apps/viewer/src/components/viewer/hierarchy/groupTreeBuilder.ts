@@ -37,7 +37,7 @@ export function resolveMemberGeometry(
   dataStore: IfcDataStore,
   memberExpressId: number,
   toGlobal: (expressId: number) => number,
-  geometricIds: Set<number>,
+  geometricIds: ReadonlySet<number>,
   view?: MutablePropertyView | null,
 ): ResolvedMemberGeometry[] {
   if (!entityOwnership(dataStore, view)(memberExpressId)) return [];
@@ -72,7 +72,7 @@ export function buildGroupTree(
   ifcDataStore: IfcDataStore | null | undefined,
   expandedNodes: ExpansionLookup,
   _isMultiModel: boolean,
-  geometricIds?: Set<number>,
+  geometricIds?: ReadonlySet<number>,
   subFilter: GroupSubFilter = 'all',
   overlay?: TreeOverlay,
 ): TreeNode[] {

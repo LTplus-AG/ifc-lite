@@ -29,7 +29,7 @@ import { CommandMenuItem, DuplicateItems, ExtensionContextItems } from './Entity
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { effectiveContextType, sameEffectiveTypeIds } from './EntityContextMenu.effective-selection';
 import { sameEffectiveStoreyIds } from './EntityContextMenu.effective-storey';
-import { surfaceCommand, type SurfaceCommandId } from './surface-commands';
+import { surfaceCommand, type SurfaceCommandId } from './surface-command-registry';
 import { runSurfaceCommand } from './surface-command-run';
 
 export function EntityContextMenu() {

@@ -67,8 +67,9 @@ visible in the object's `IFC` property set so you can see what was rejected.
 Keys are matched ignoring case, so `ifc::class` works too.
 
 Any other key is sorted by its prefix. `Pset_WallCommon::FireRating` becomes property
-`FireRating` in set `Pset_WallCommon`. A key with no `::` goes into a set called
-`Attribute User Text`, under the whole key.
+`FireRating` in set `Pset_WallCommon`. A key with no `::`, a key with an empty set or
+property name, and any `Rhino::` key go into a set called `Attribute User Text`, under the
+whole key.
 
 Attribute User Text is text only, so every imported property is a string. Numbers are not
 guessed.
@@ -124,10 +125,12 @@ storeys for.
 - **Surfaces need their render meshes.** Rhino stores them with the file when you save
   from a shaded view without "Save Small". A surface saved without one cannot be drawn and
   is counted as skipped, with the remedy in the message.
-- **A point cloud far from the origin loses precision.** Points are held at single
-  precision after the cloud's own origin is folded in, so a cloud several kilometres out
-  is coarser than the meshes beside it. The viewer warns when it sees one
-  ([#10029](https://github.com/LTplus-AG/ifc-lite/issues/10029)).
+- **Deviation and 2D outlines of a point cloud far from the origin are coarse.** The cloud
+  itself is drawn and picked at full precision, because its origin is kept at double
+  precision. The deviation analysis and the traced 2D scan outline still work at single
+  precision, so at map-scale coordinates (thousands of kilometres) they can be off by
+  centimetres or more
+  ([#10094](https://github.com/LTplus-AG/ifc-lite/issues/10094)).
 - **A loaded `.3dm` cannot be exported as IFC STEP.** There are no STEP records behind it,
   so the export dialog refuses and says so. IFCX, glTF, CSV and the other content exports
   work normally.
@@ -138,7 +141,7 @@ storeys for.
 
 | What you see | What happened |
 |---|---|
-| "Not a Rhino .3dm file, or the file is damaged." | the file is not a Rhino archive, or the archive is incomplete or corrupt |
+| "Not a Rhino .3dm file, or the file is damaged." | the file starts like a Rhino archive but is incomplete or corrupt |
 | "This file was saved by a newer Rhino…" | the archive version is above Rhino 8 |
 | "This file is … ; the reader handles up to 400 MB." | over the size cap |
 | "…could not be read: it most likely needs more memory than the reader has." | the Rhino runtime ran out of memory part-way through |

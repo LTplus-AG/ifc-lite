@@ -40,7 +40,7 @@ Test inputs:
 3. A `.3dm` authored in Rhino shows its geometry with Rhino's colours and layer
    tree, and its user text as properties.
 4. Parsing never blocks the main thread. The 2.67 MB rhino3dm wasm loads only
-   when a `.3dm` is opened.
+   when a `.3dm` is first opened or exported.
 
 Non-goals for level 1: editing, writing back, exact NURBS display,
 annotations, textures, linked block files, and reading through the CLI or MCP.

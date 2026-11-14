@@ -4,7 +4,7 @@
 
 /** Diagnostic report sections of load-scoreboard-report.mjs that read rows directly (no verdict logic). */
 
-import { median } from './load-scoreboard-stats.mjs';
+import { browserShares, median } from './load-scoreboard-stats.mjs';
 
 /**
  * Per fixture x lane x side: how many samples had WebGL (the start screen's mark) drawing around the pick, and the
@@ -71,13 +71,22 @@ export const STALL_MS = 50;
  * first-paint clock by `pickDelayMs`) has its frame times, recorded on the change-event clock, moved by the same delay.
  */
 export function frameMarkOf(row) {
-  const times = row?.presentTimesFromChangeMs, g = row?.geometryMs, i = row?.interactiveMs;
-  if (!Array.isArray(times) || !Number.isFinite(g) || !Number.isFinite(i)) return null;
+  if (!Number.isFinite(row?.interactiveMs)) return null;
+  const next = frameMarkAtOrAfter(row, row?.geometryMs);
+  if (!next) return null;
+  const frameMs = Math.max(row.interactiveMs, next.frameMs);
+  return { frameMs, waitMs: frameMs - row.interactiveMs };
+}
+
+/** The first frame at or after `timeMs`, under the same gates and clock correction as `frameMarkOf`. */
+export function frameMarkAtOrAfter(row, timeMs) {
+  const times = row?.presentTimesFromChangeMs;
+  if (!Array.isArray(times) || !Number.isFinite(timeMs)) return null;
   const shift = Number.isFinite(row?.pickDelayMs) ? row.pickDelayMs : 0;
-  const next = times.map((t) => t + shift).find((t) => t >= g - 1e-6);
+  // Floor at `timeMs` only: frameMarkOf passes the scene-finished time; the metadata mark must not wait for it.
+  const next = times.map((t) => t + shift).find((t) => t >= timeMs - 1e-6);
   if (next === undefined) return null;
-  const frameMs = Math.max(i, next);
-  return { frameMs, waitMs: frameMs - i };
+  return { frameMs: next };
 }
 
 /** Fewer samples than this are listed, never summarized (the report's rule in `renderMarkdown`). */
@@ -94,8 +103,12 @@ export function bothMarksCell(rows) {
     const ok = rows.filter((r) => r.side === name && r.ok && Number.isFinite(r.interactiveMs));
     const marks = ok.map(frameMarkOf);
     const known = marks.filter(Boolean);
+    const tracksMetadata = /^browser-warm(?:1)?(?:-(?:early|settled))?$/.test(String(ok[0]?.lane ?? ''));
+    const metadata = tracksMetadata ? ok.map(metadataMarkOf).filter(Boolean) : [];
     return { n: ok.length, current: median(ok.map((r) => r.interactiveMs)), frame: known.length ? median(known.map((m) => m.frameMs)) : null,
       currentValues: ok.map((r) => r.interactiveMs), frameValues: known.map((m) => m.frameMs),
+      holdValues: metadata.map((m) => m.holdMs),
+      holdUnknown: tracksMetadata ? ok.length - metadata.length : 0,
       stalls: known.filter((m) => m.waitMs > STALL_MS).length, known: known.length, unknown: ok.length - known.length,
       maxWaitMs: known.length ? Math.max(...known.map((m) => m.waitMs)) : null };
   };
@@ -104,6 +117,20 @@ export function bothMarksCell(rows) {
   const gain = (a, b) => (enough && Number.isFinite(a) && Number.isFinite(b) && a > 0 ? 1 - b / a : null);
   const sameCohort = base.unknown === 0 && branch.unknown === 0;
   return { base, branch, gainCurrent: gain(base.current, branch.current), gainFrame: sameCohort ? gain(base.frame, branch.frame) : null };
+}
+
+/** A finite metadata milestone at or after the old mark (including the complete-frame guard) uses the old mark with no hold; absent milestones remain unknown. */
+export function metadataMarkOf(row) {
+  const milestone = row?.milestones?.['load.metadataInteractive'] ?? browserShares(row?.trace, row?.interactiveMs).milestones['load.metadataInteractive'];
+  const old = frameMarkOf(row);
+  if (!Number.isFinite(milestone) || !old) return null;
+  // The stored scene is on screen by the milestone (the viewer emits it after the snapshot's first paint); completeFrameMs guards older traces.
+  const guard = Math.max(milestone, Number.isFinite(row?.completeFrameMs) ? row.completeFrameMs : milestone);
+  if (guard >= old.frameMs) return { metadataFrameMs: old.frameMs, holdMs: 0 };
+  const next = frameMarkAtOrAfter(row, guard);
+  if (!next) return null;
+  const metadataFrameMs = Math.min(next.frameMs, old.frameMs);
+  return { metadataFrameMs, holdMs: Math.max(0, old.frameMs - metadataFrameMs) };
 }
 
 /** Markdown rows of the both-marks table (lanes with no frame times on either side are omitted). */
@@ -119,7 +146,15 @@ export function bothMarksRows(fixtures) {
     const c = l.bothMarks;
     if (!c || (c.base.known === 0 && c.branch.known === 0)) continue;
     const { base: b, branch: r } = c;
-    out.push(`| ${f.name} | ${lane} | ${val(b.current, b.currentValues)} | ${val(b.frame, b.frameValues)} | ${share(b)} | ${val(r.current, r.currentValues)} | ${val(r.frame, r.frameValues)} | ${share(r)} | ${pct(c.gainCurrent)} | ${pct(c.gainFrame)} |`);
+    const hold = (values, unknown) => {
+      const suffix = unknown ? ` (+${unknown} unknown)` : '';
+      if (!values.length) return unknown ? `unknown (${unknown})` : '—';
+      if (values.length < MIN_SUMMARY) return `${val(median(values), values)}${suffix}`;
+      const each = `samples ${values.map(ms).join(', ')}`;
+      const summary = `${ms(median(values))} [${ms(Math.min(...values))}-${ms(Math.max(...values))}] n=${values.length}`;
+      return `${each}; median ${summary}${suffix}`;
+    };
+    out.push(`| ${f.name} | ${lane} | ${val(b.current, b.currentValues)} | ${val(b.frame, b.frameValues)} | ${share(b)} | ${val(r.current, r.currentValues)} | ${val(r.frame, r.frameValues)} | ${share(r)} | ${pct(c.gainCurrent)} | ${pct(c.gainFrame)} | ${hold(b.holdValues, b.holdUnknown)} | ${hold(r.holdValues, r.holdUnknown)} |`);
   }
   return out;
 }
@@ -127,8 +162,8 @@ export function bothMarksRows(fixtures) {
 /** The both-marks section's markdown lines, or none when no lane has presented-frame times. */
 export function bothMarksSection(fixtures) {
   const rows = bothMarksRows(fixtures);
-  return rows.length ? ['', `## Both marks (browser verdicts use the frame mark; "frame" = first frame started (canvas texture acquired) at or after the scene finished; frame gain only when every sample has a frame mark; stall = next frame > ${STALL_MS} ms after the settled mark)`, '',
-    '| fixture | lane | base settled | base frame | base stalls | branch settled | branch frame | branch stalls | gain (settled) | gain (frame) |', '|---|---|---:|---:|---:|---:|---:|---:|---:|---:|', ...rows] : [];
+  return rows.length ? ['', `## Both marks (lane verdicts use the selected mark; current = settled, frame = first frame started (canvas texture acquired) at or after the scene finished; frame gain only when every sample has a frame mark; stall = next frame > ${STALL_MS} ms after the mark)`, '',
+    '| fixture | lane | base current | base frame | base stalls | branch current | branch frame | branch stalls | gain (current) | gain (frame) | base hold (per sample; median [min-max]) | branch hold (per sample; median [min-max]) |', '|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|', ...rows] : [];
 }
 
 /**

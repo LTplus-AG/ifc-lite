@@ -20,7 +20,6 @@ import { BOTTOM_PANEL_FLAG, BOTTOM_PANEL_IDS } from '../lib/panels/bottom-panels
 import { WORKSPACE_PANELS, type WorkspacePanelId } from '../lib/panels/registry.js';
 import type { ViewerState } from './index.js';
 import { SIDEBAR_PANEL_FLAGS } from './store-sync.js';
-import { closePanelWindow } from '../services/panel-windows.js';
 
 function patchFor(state: ViewerState, off: ReadonlySet<WorkspacePanelId>, chatOff: boolean): Partial<ViewerState> | null {
   const patch: Record<string, unknown> = {};
@@ -36,7 +35,8 @@ function patchFor(state: ViewerState, off: ReadonlySet<WorkspacePanelId>, chatOf
     patch.floatingPanels = state.floatingPanels.filter((panel) => !off.has(panel.id));
   }
   if (state.poppedOutIds.some((id) => off.has(id))) {
-    // The OS window is closed in `enforce` below; this keeps the store in step either way.
+    // Dropping the id is what closes its OS window: panel-windows reconciles
+    // its open windows against `poppedOutIds`.
     patch.poppedOutIds = state.poppedOutIds.filter((id) => !off.has(id));
   }
   if (chatOff && state.chatPanelVisible) patch.chatPanelVisible = false;
@@ -55,10 +55,7 @@ export function enforcePanelAvailability(store: StoreApi<ViewerState>): () => vo
   const chatOff = !isFeatureEnabled('ai.assistant');
   if (off.size === 0 && !chatOff) return () => {};
   const enforce = (state: ViewerState) => {
-    // A popped-out panel lives in its own OS window: close it the way the
-    // window's own close button does, which also re-docks it in the store.
-    for (const id of state.poppedOutIds) if (off.has(id)) closePanelWindow(id);
-    const patch = patchFor(store.getState(), off, chatOff);
+    const patch = patchFor(state, off, chatOff);
     if (patch) store.setState(patch);
   };
   enforce(store.getState());

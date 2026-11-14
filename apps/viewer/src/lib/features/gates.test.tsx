@@ -51,6 +51,12 @@ import { MEASURE_SECTION_TOUR } from '@/lib/tours/tours/measure-section';
 import { WELCOME_TOUR } from '@/lib/tours/tours/welcome';
 import { PanelGroupBrowser } from '@/components/viewer/ribbon/PanelGroupBrowser';
 import { ShortcutsTab } from '@/components/viewer/ShortcutsTab';
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+
+function ShortcutHarness() {
+  useKeyboardShortcuts();
+  return null;
+}
 
 function PrivacyNoticeHost() {
   usePrivacyDisclosure();
@@ -185,6 +191,28 @@ describe('panels, commands, shortcuts and tools switched off', () => {
     assert.equal(off.includes('hierarchy') || off.includes('properties'), false, 'the baseline panels cannot be switched off');
   });
 
+  it('enforcing availability keeps a change an earlier listener makes in the same update', () => {
+    const store = useViewerStore;
+    store.setState({ floatingPanels: [] });
+    resetFeaturesForTest({ default: 'none', enable: ['check.clash'] });
+    const at = { snap: 'free' as const, x: 0, y: 0, w: 300, h: 200 };
+    // Subscribed before the rule, so it runs first and nests its own update.
+    const stopEarlier = store.subscribe((state, previous) => {
+      if (state.floatingPanels.some((panel) => panel.id === 'bcf') && !previous.floatingPanels.some((panel) => panel.id === 'bcf')) {
+        store.setState({ floatingPanels: [...state.floatingPanels, { id: 'clash', ...at }] });
+      }
+    });
+    const stop = enforcePanelAvailability(store);
+    try {
+      store.setState({ floatingPanels: [{ id: 'bcf', ...at }] });
+      assert.deepEqual(store.getState().floatingPanels.map((panel) => panel.id), ['clash']);
+    } finally {
+      stop();
+      stopEarlier();
+      store.setState({ floatingPanels: [] });
+    }
+  });
+
   it('a tool that is off cannot be activated', () => {
     const store = useViewerStore;
     store.getState().setActiveTool('select');
@@ -242,8 +270,36 @@ describe('one tool table, and what follows from it', () => {
     assert.match(text, /Data validation/, 'the other panels of the Alt+digit row stay');
   });
 
+  it('keeps each panel on its Alt+digit when one before it is off, and the dialog says which', () => {
+    resetFeaturesForTest({ default: 'all', disable: ['check.bcf'] });
+    render(<ShortcutHarness />);
+    const altDigit = (digit: number) => {
+      const event = new window.KeyboardEvent('keydown', { key: String(digit), code: `Digit${digit}`, altKey: true, bubbles: true, cancelable: true });
+      act(() => { window.dispatchEvent(event); });
+      return event.defaultPrevented;
+    };
+    assert.equal(altDigit(3), false, 'Alt+3 is still BCF\'s key, and with BCF off it goes to the browser');
+    assert.equal(altDigit(4), true, 'Alt+4 still opens Data validation');
+    assert.equal(useViewerStore.getState().sidebarActivePanel, 'validation');
+    // The list no longer reads positionally once BCF is gone, so it names each key.
+    const text = render(<ShortcutsTab />).textContent ?? '';
+    assert.match(text, /4 Data validation/);
+  });
+
+  it('drops the bottom clause of the Alt+digit row when every bottom panel is off', () => {
+    resetFeaturesForTest({ default: 'all', disable: ['automate.scripting', 'data.schedule', 'data.lists'] });
+    const text = render(<ShortcutsTab />).textContent ?? '';
+    assert.match(text, /Open a panel from the rail \(1 Properties[^)]*7 Extensions\)/);
+    assert.doesNotMatch(text, /open at the bottom/);
+  });
+
+  // Pop-outs of switched-off panels: services/panel-windows.test.ts.
+
   it('puts a separator in the panel browser only between groups that render', () => {
-    resetFeaturesForTest({ default: 'none' }); // every analysis group empty; Properties and Hierarchy remain
+    // Quantify and Site render nothing here. The first group (Coordinate) holds
+    // Properties, which no host can switch off, so it always renders: this pins
+    // the separator count rather than reproducing a reachable bug.
+    resetFeaturesForTest({ default: 'none' });
     const ribbon = render(<PanelGroupBrowser />);
     const trigger = ribbon.querySelector<HTMLButtonElement>('button[aria-label="Browse panels"]');
     assert.ok(trigger);
@@ -256,18 +312,6 @@ describe('one tool table, and what follows from it', () => {
     const first = menu.firstElementChild;
     assert.equal(first?.querySelector('[role="separator"]'), null, 'no separator before the first group');
     assert.equal(menu.querySelectorAll('[role="separator"]').length, menu.querySelectorAll('[data-panel-group]').length - 1);
-  });
-
-  it('closes a popped-out panel that is off and keeps the store in step', () => {
-    const store = useViewerStore;
-    store.getState().setPanelPoppedOut('bcf', true);
-    resetFeaturesForTest({ default: 'all', disable: ['check.bcf'] });
-    const stop = enforcePanelAvailability(store);
-    try {
-      assert.deepEqual(store.getState().poppedOutIds.filter((id) => id === 'bcf'), []);
-    } finally {
-      stop();
-    }
   });
 });
 

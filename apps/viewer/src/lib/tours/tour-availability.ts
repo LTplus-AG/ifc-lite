@@ -13,16 +13,15 @@
 import { isFeatureEnabled } from '@/lib/features';
 import { isToolAvailable } from '@/lib/features/tools';
 import { isPanelAvailable } from '@/lib/panels/availability';
+import { toolOfAnchor } from './anchors';
 import type { TourDefinition } from './types';
-
-const TOOL_ANCHOR = /^tool-(.+)$/;
 
 export function isTourAvailable(tour: TourDefinition): boolean {
   if (!isFeatureEnabled('help.tours')) return false;
   const panels = [tour.panel, ...tour.steps.map((step) => step.panel)];
   if (!panels.every((panel) => panel === undefined || isPanelAvailable(panel))) return false;
   return tour.steps.every((step) => {
-    const tool = step.anchor ? TOOL_ANCHOR.exec(step.anchor)?.[1] : undefined;
+    const tool = step.anchor ? toolOfAnchor(step.anchor) : undefined;
     return tool === undefined || isToolAvailable(tool);
   });
 }

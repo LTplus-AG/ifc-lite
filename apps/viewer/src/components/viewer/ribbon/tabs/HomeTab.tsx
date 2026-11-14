@@ -45,33 +45,35 @@ export function HomeTab() {
         />
       </RibbonGroup>
 
-      {anyRibbonCommandAvailable(MEASURE_GROUP) && (<>
-      <RibbonGroupDivider />
+      {anyRibbonCommandAvailable(MEASURE_GROUP) && (
+        <>
+          <RibbonGroupDivider />
 
-      <RibbonGroup label={t('ribbon.home.measureGroup')}>
-        <RibbonCommandLargeButton
-          commandId="tool:measure"
-          icon={Measure}
-          active={activeTool === 'measure'}
-          disabled={shapeOnly}
-          tooltip={shapeOnly ? t(RETAINED_SHAPE_ONLY_REASON) : undefined}
-          {...tourAnchor(toolAnchor('measure'))}
-        />
-        <RibbonCommandLargeButton
-          commandId="tool:section"
-          icon={Section}
-          active={activeTool === 'section'}
-          {...tourAnchor(toolAnchor('section'))}
-        />
-        <RibbonCommandLargeButton
-          commandId="tool:annotate"
-          icon={Annotate}
-          active={activeTool === 'annotate'}
-          activeClassName="bg-amber-500/20 text-foreground ring-1 ring-inset ring-amber-500/50"
-          {...tourAnchor(toolAnchor('annotate'))}
-        />
-      </RibbonGroup>
-      </>)}
+          <RibbonGroup label={t('ribbon.home.measureGroup')}>
+            <RibbonCommandLargeButton
+              commandId="tool:measure"
+              icon={Measure}
+              active={activeTool === 'measure'}
+              disabled={shapeOnly}
+              tooltip={shapeOnly ? t(RETAINED_SHAPE_ONLY_REASON) : undefined}
+              {...tourAnchor(toolAnchor('measure'))}
+            />
+            <RibbonCommandLargeButton
+              commandId="tool:section"
+              icon={Section}
+              active={activeTool === 'section'}
+              {...tourAnchor(toolAnchor('section'))}
+            />
+            <RibbonCommandLargeButton
+              commandId="tool:annotate"
+              icon={Annotate}
+              active={activeTool === 'annotate'}
+              activeClassName="bg-amber-500/20 text-foreground ring-1 ring-inset ring-amber-500/50"
+              {...tourAnchor(toolAnchor('annotate'))}
+            />
+          </RibbonGroup>
+        </>
+      )}
 
       <RibbonGroupDivider />
 

@@ -3,8 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Live global and tool actions for the canonical keyboard table (#5841). */
-import { isPanelAvailable } from '@/lib/panels/availability';
 import { useEffect } from 'react';
+import { isPanelAvailable } from '@/lib/panels/availability';
 import { replayWorkspaceHistory } from '@/lib/model-placement/history';
 import { registerKeyboardCommand, type CommandRun } from '@/lib/commands/dispatcher';
 import type { KeyCommandId } from '@/lib/commands/keyboard-commands';

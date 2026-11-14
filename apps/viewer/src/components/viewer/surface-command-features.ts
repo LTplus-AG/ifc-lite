@@ -13,7 +13,7 @@
  */
 
 import { isFeatureEnabled, type FeatureId } from '@/lib/features';
-import { TOOL_FEATURE } from '@/lib/features/tools';
+import { toolFeatureRows } from '@/lib/features/tools';
 import { isPanelAvailable } from '@/lib/panels/availability';
 import type { SurfaceCommandDefinition } from './surface-command-types';
 import { surfaceCommand, type SurfaceCommandId } from './surface-command-registry';
@@ -21,7 +21,7 @@ import { surfaceCommand, type SurfaceCommandId } from './surface-command-registr
 /** A command with several features needs all of them on. */
 export const COMMAND_FEATURE: Readonly<Partial<Record<SurfaceCommandId, FeatureId | readonly FeatureId[]>>> = {
   // `tool:<name>` rows come from TOOL_FEATURE, the one tool table.
-  ...Object.fromEntries(Object.entries(TOOL_FEATURE).map(([tool, feature]) => [`tool:${tool}`, feature])),
+  ...toolFeatureRows('tool:'),
 
   'view:lighting': 'view.environment',
   'vis:save-view': 'view.presentation',

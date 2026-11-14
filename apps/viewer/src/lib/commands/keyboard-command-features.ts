@@ -12,12 +12,15 @@
  */
 
 import { isFeatureEnabled, type FeatureId } from '@/lib/features';
-import { TOOL_FEATURE } from '@/lib/features/tools';
+import { toolFeatureRows } from '@/lib/features/tools';
 import type { KeyCommandDefinition, KeyCommandId, KeyContext } from './keyboard-commands';
+
+/** `tool.<name>` names both a tool's shortcut and the key context it opens (Annotate has none, so its context row matches nothing). */
+const TOOL_ROWS = toolFeatureRows('tool.');
 
 export const KEY_COMMAND_FEATURE: Readonly<Partial<Record<KeyCommandId, FeatureId>>> = {
   // `tool.<name>` rows come from TOOL_FEATURE, the one tool table.
-  ...Object.fromEntries(Object.entries(TOOL_FEATURE).map(([tool, feature]) => [`tool.${tool}`, feature])),
+  ...TOOL_ROWS,
   'edit.toggleEditMode': 'edit.model',
   'edit.rotate': 'edit.model',
   'edit.duplicate': 'edit.model',
@@ -29,7 +32,7 @@ export const KEY_COMMAND_FEATURE: Readonly<Partial<Record<KeyCommandId, FeatureI
 /** Contexts owned by one feature. A `command.<id>` context counts as `command`. */
 export const KEY_CONTEXT_FEATURE: Readonly<Partial<Record<KeyContext, FeatureId>>> = {
   // A tool's own key context belongs to the tool (TOOL_FEATURE).
-  ...Object.fromEntries(Object.entries(TOOL_FEATURE).map(([tool, feature]) => [`tool.${tool}`, feature])),
+  ...TOOL_ROWS,
   command: 'edit.model',
   'workspace.model': 'edit.model',
   'panel.reposition': 'edit.placement',

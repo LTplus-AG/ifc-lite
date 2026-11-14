@@ -16,7 +16,7 @@ import {
   getDataTypes,
   getEntities,
   getPropertySets,
-  IFC_DATA_TYPES,
+  getIfcDataTypes,
   type IfcDataTypeInfo,
   type IfcEntityInfo,
   type IfcPropertySetInfo,
@@ -60,7 +60,12 @@ export interface GateContext {
 
 const VERSIONS: readonly IfcSchemaVersion[] = ['IFC2X3', 'IFC4', 'IFC4X3', 'IFC4X3_ADD2'];
 
-const DEFINED_TYPE_NAMES = new Set(IFC_DATA_TYPES.map((t) => t.name.toUpperCase()));
+// Built on first use (the data types decode on first use too).
+let definedTypeNames: ReadonlySet<string> | undefined;
+function getDefinedTypeNames(): ReadonlySet<string> {
+  if (definedTypeNames === undefined) definedTypeNames = new Set(getIfcDataTypes().map((t) => t.name.toUpperCase()));
+  return definedTypeNames;
+}
 
 async function loadVersion(version: IfcSchemaVersion): Promise<VersionTables> {
   const [entityList, psetList, dataTypeList, attributeList] = await Promise.all([
@@ -72,7 +77,7 @@ async function loadVersion(version: IfcSchemaVersion): Promise<VersionTables> {
   const entities = new Map<string, IfcEntityInfo>();
   for (const e of entityList) {
     const upper = e.name.toUpperCase();
-    if (!DEFINED_TYPE_NAMES.has(upper)) entities.set(upper, e);
+    if (!getDefinedTypeNames().has(upper)) entities.set(upper, e);
   }
   const psets = new Map<string, IfcPropertySetInfo>();
   const psetsByProperty = new Map<string, string[]>();

@@ -1,5 +1,19 @@
 # @ifc-lite/ifcx
 
+## 4.7.0
+
+### Minor Changes
+
+- [#9977](https://github.com/LTplus-AG/ifc-lite/pull/9977) [`14de48e`](https://github.com/LTplus-AG/ifc-lite/commit/14de48e75922802a99fed061e475e6848d1359b5) Thanks [@louistrue](https://github.com/louistrue)! - `detectFormat` now returns `'3dm'` for a Rhino archive, read from the 24-byte header magic. A `.3dm` used to fall through to `'unknown'` and on into the IFC path. This adds a `3dm` member to the return union; exhaustive switches need a new case. The viewer opens one as a model: dropping or picking a `.3dm` reads it in its own worker and loads its geometry, colours, entities and Attribute User Text through the same path every other format uses. Its store is labelled IFC4, the schema its classes belong to, and marked `sourceKind: 'tabular'`, so the STEP export, the merged export, appearance authoring and a room seed refuse it with a stated reason instead of writing an empty file.
+
+### Patch Changes
+
+- [#9865](https://github.com/LTplus-AG/ifc-lite/pull/9865) [`a6a6331`](https://github.com/LTplus-AG/ifc-lite/commit/a6a63314fa4c5da2696e394c727e57dee461ba66) Thanks [@louistrue](https://github.com/louistrue)! - `BUILDING_ELEMENT_TYPES` is built only where it is referenced (the constant is pure-annotated), and the writer's attribute lookup is built on first use, so in a bundle loading `@ifc-lite/ifcx` decodes no schema table (In a bundle; an unbundled Node import still evaluates the exported table constants when their modules load.) Same contents, in the same order.
+- Updated dependencies [[`b64317e`](https://github.com/LTplus-AG/ifc-lite/commit/b64317e8f60788b1c1b2b103a9ee279e41adfca7), [`a6a6331`](https://github.com/LTplus-AG/ifc-lite/commit/a6a63314fa4c5da2696e394c727e57dee461ba66), [`a6a6331`](https://github.com/LTplus-AG/ifc-lite/commit/a6a63314fa4c5da2696e394c727e57dee461ba66), [`6cbd92c`](https://github.com/LTplus-AG/ifc-lite/commit/6cbd92c9cd0dc6669c2429c80c9fed354ecee192), [`13ab690`](https://github.com/LTplus-AG/ifc-lite/commit/13ab690f111eeebe7dd2ac28a944feadc98fd5c4), [`9505c27`](https://github.com/LTplus-AG/ifc-lite/commit/9505c2734a8061b62277f034a1bb87ba822a025f), [`94dc7b6`](https://github.com/LTplus-AG/ifc-lite/commit/94dc7b6920513087abc48e573884ec9e02c523a4), [`6a109eb`](https://github.com/LTplus-AG/ifc-lite/commit/6a109eb861a66aafec75b544320e64f2ad246167), [`5b881f3`](https://github.com/LTplus-AG/ifc-lite/commit/5b881f35e0dee96e34aaa6a47c260c90d4c29b31), [`dded228`](https://github.com/LTplus-AG/ifc-lite/commit/dded228fd11fa6a7c514be1f6525f9b3906a0a7c), [`e4c95a6`](https://github.com/LTplus-AG/ifc-lite/commit/e4c95a6ccde8eaa013810c46bfa6dcc2ddbc4186), [`11c5359`](https://github.com/LTplus-AG/ifc-lite/commit/11c53595dab256d758e8c3af8c944c3c01279be8), [`67519f8`](https://github.com/LTplus-AG/ifc-lite/commit/67519f89ef51b53ae6bd1677bec9fd0ef29773f4), [`0f57524`](https://github.com/LTplus-AG/ifc-lite/commit/0f57524cfe347d29d68f53df7fc97f0b1f80d61a), [`53730fd`](https://github.com/LTplus-AG/ifc-lite/commit/53730fdab891c3463e18680f4a84f0c5674a25b0), [`cc5dcbd`](https://github.com/LTplus-AG/ifc-lite/commit/cc5dcbd4ee6cf35d624b0247edbb89ef35381c6e), [`ef74836`](https://github.com/LTplus-AG/ifc-lite/commit/ef748363a34f40ea69805973372e1476f590218b), [`a326e91`](https://github.com/LTplus-AG/ifc-lite/commit/a326e919aeaa416eeeaca15f698eb8117b923a4f), [`1ba591b`](https://github.com/LTplus-AG/ifc-lite/commit/1ba591b8b8ca2e232a49c000e285dca154749432)]:
+  - @ifc-lite/mutations@4.0.0
+  - @ifc-lite/data@7.0.0
+  - @ifc-lite/pointcloud@0.15.0
+
 ## 4.6.0
 
 ### Minor Changes

@@ -1,5 +1,49 @@
 # @ifc-lite/sandbox
 
+## 3.0.0
+
+### Major Changes
+
+- [#9430](https://github.com/LTplus-AG/ifc-lite/pull/9430) [`d136dfb`](https://github.com/LTplus-AG/ifc-lite/commit/d136dfb006619f6c5ad0d0a04abef6bfba66e7ec) Thanks [@louistrue](https://github.com/louistrue)! - Include model-qualified matched objects in rule coverage so object quality gates count federated models without conflating equal GlobalIds.
+  
+  Keep clash findings for distinct objects whose exporter repeated a GlobalId, while preserving self-pair suppression for geometry parts sharing the same source object reference.
+  
+  Breaking change: clash IDs involving repeated GlobalIds now include entity references to distinguish those objects. Comparisons against runs saved with the previous IDs may report resolved and added findings; establish a new baseline after upgrading. Ordinary identifiers retain their previous IDs; reserved-prefix and whitespace-containing keys, model IDs and rule IDs are escaped to prevent collisions.
+  
+  Tag and escape ambiguous identities so literal keys cannot collide with reference-qualified keys. Repeated-key endpoints carry `keyAmbiguous`; review decisions and element-pair exclusions distinguish their entity references, and portable analysis runs preserve and validate that marker. Decisions for ambiguous objects require renewal if their references are renumbered. `clashElementIdentity` exposes the same decision key to integrations.
+  
+  The SDK review adapter uses these keys for finding lineages and revision comparison. SDK consumers must also establish a new clash baseline after upgrading; the SDK release is major for this behavior change.
+  
+  CLI JSON, MCP clash rows, and sandbox `bim.clash` results also expose the changed IDs. Their releases carry the same compatibility migration (major for CLI and sandbox; minor for the pre-1.0 MCP package). Re-establish baselines and stored ID-based references after upgrading these integrations.
+  
+  The viewer also declares a major release: saved element-pair exclusions whose keys require escaping (reserved prefix or whitespace) must be renewed using the new identity encoding. Existing repeated-key exclusions likewise require renewed review to avoid transferring decisions between distinct objects.
+
+### Minor Changes
+
+- [#9409](https://github.com/LTplus-AG/ifc-lite/pull/9409) [`449a837`](https://github.com/LTplus-AG/ifc-lite/commit/449a837b9846c5a978493d6f6297955f59607236) Thanks [@louistrue](https://github.com/louistrue)! - Add planar mirror with hosted cuts and door handedness, classification creation and assignment, SDK store methods, and MCP tools.
+
+- [#9356](https://github.com/LTplus-AG/ifc-lite/pull/9356) [`646946f`](https://github.com/LTplus-AG/ifc-lite/commit/646946f3c1594bf126c29ee2c59d24759304daf5) Thanks [@louistrue](https://github.com/louistrue)! - Roofs by footprint ([#9296](https://github.com/LTplus-AG/ifc-lite/issues/9296)). `addRoofToStore` and `bim.store.addRoof` take `EdgeSlopes` (radians, one per footprint edge; 0 is a gable end) and `Overhang` (metres) on the rectangle and polygon forms. A hip, gable, mono-pitch, L-, T- or U-shaped roof is built from a weighted straight skeleton of the footprint: one `IfcRoof` with a plumb-cut solid per plane and its `HIP_ROOF`, `GABLE_ROOF`, `SHED_ROOF` or `FREEFORM` type. Each sloped edge is a pivot line at the base height. Footprints that are neither convex nor rectilinear are refused with a reason, as are slopes over 85° and overhangs that cross the eaves. The definition is recorded as `IfcLite_RoofFootprint`, and the planes report `Qto_RoofBaseQuantities`. New: `editFootprintRoofInStore` (`bim.store.editRoof`) changes one edge's slope, all slopes, the overhang or the thickness and rebuilds the planes as one atomic, undoable edit. The flat rectangle and polygon forms are unchanged.
+  
+  Angles are radians. Values above π/2 receive a degree-conversion hint; smaller numbers intended as degrees cannot be distinguished from radians.
+
+- [#9121](https://github.com/LTplus-AG/ifc-lite/pull/9121) [`baf4bdd`](https://github.com/LTplus-AG/ifc-lite/commit/baf4bdd632727134c1b694bdee8f9e8d2e3b0d2f) Thanks [@louistrue](https://github.com/louistrue)! - Storey authoring from the CLI and scripts ([#9025](https://github.com/LTplus-AG/ifc-lite/issues/9025), follow-up to [#9013](https://github.com/LTplus-AG/ifc-lite/issues/9013)). `ifc-lite storey <file> list|add|rename|edit|delete` lists storeys, adds them with the neighbours' naming and spacing, re-levels them (`--elevation` or `--floor-height`), and deletes them (`--move-to` or `--delete-contents`), with `--dry-run` and `--json`. It runs the same `bim.store` path as the viewer and MCP, so geometry follows storeys and every refusal is reported before anything is written. `bim.store.suggestStorey` exposes the neighbour-based defaults, and MCP `storey_add` now uses it. Scripts in the viewer's sandbox get the storey methods, typed in the generated `bim` globals, and the assistant's store method list includes them.
+
+### Patch Changes
+
+- [#9406](https://github.com/LTplus-AG/ifc-lite/pull/9406) [`206e3f5`](https://github.com/LTplus-AG/ifc-lite/commit/206e3f5dcc2aac68e8a4641312bb6debcb2d294b) Thanks [@louistrue](https://github.com/louistrue)! - Join coincident wall-chain endpoints automatically, carry grid-bound products when their grid moves, and enable native edge alignment in the headless CLI.
+  
+  Keep implicit wall joins best-effort: refused joins leave the wall added and report notices on the returned SDK entity reference. Explicit joins still refuse atomically.
+  
+  Share finite schema-name snapshots while indexing wall endpoints and reading a wall, and reuse the creation anchor for implicit joins to reduce cold overhead when no walls join.
+  
+  Discover implicit wall joins through a session endpoint index rather than rereading every wall for each addition. Commit index additions with their owning SDK/viewer transaction and invalidate on other model edits.
+  
+  When sliding a joined wall, extend or trim neighbours on their existing axes instead of rotating them. Recompute end cuts against the moved face; refuse parallel, non-finite, collapsed or reversed intersections atomically with an explanatory error. Rotations retain their existing corner carry.
+  
+  Maintain wall endpoints during public raw creation so the first ordinary wall addition does not rescan a raw-authored session. Incomplete geometry and intervening edits invalidate the cache.
+- Updated dependencies [[`a6a6331`](https://github.com/LTplus-AG/ifc-lite/commit/a6a63314fa4c5da2696e394c727e57dee461ba66), [`449a837`](https://github.com/LTplus-AG/ifc-lite/commit/449a837b9846c5a978493d6f6297955f59607236), [`206e3f5`](https://github.com/LTplus-AG/ifc-lite/commit/206e3f5dcc2aac68e8a4641312bb6debcb2d294b), [`63a0246`](https://github.com/LTplus-AG/ifc-lite/commit/63a0246ffaebf32c0a5f26a158f0214a87c3b5bc), [`e1b78b6`](https://github.com/LTplus-AG/ifc-lite/commit/e1b78b6a4d1eb2aa85a09eefcf26f103f287cb32), [`b085c65`](https://github.com/LTplus-AG/ifc-lite/commit/b085c65b50c4355e5d0db202f4f486f5703b48c9), [`94dc7b6`](https://github.com/LTplus-AG/ifc-lite/commit/94dc7b6920513087abc48e573884ec9e02c523a4), [`6a109eb`](https://github.com/LTplus-AG/ifc-lite/commit/6a109eb861a66aafec75b544320e64f2ad246167), [`23c730d`](https://github.com/LTplus-AG/ifc-lite/commit/23c730d90bc545dc9c5bfe083bceaf63d56eafe7), [`22777ff`](https://github.com/LTplus-AG/ifc-lite/commit/22777ff1da1b15770b42f890d0e1abb587e5a62d), [`5558939`](https://github.com/LTplus-AG/ifc-lite/commit/55589392fb1f67b89f79283996668eebcb867bb3), [`ee3786b`](https://github.com/LTplus-AG/ifc-lite/commit/ee3786b45a038e2ad727879eb47bb13aad1022b2), [`9a8ef4c`](https://github.com/LTplus-AG/ifc-lite/commit/9a8ef4c2412c926c16beaae7b2b8be387bd25cc6), [`cd4af81`](https://github.com/LTplus-AG/ifc-lite/commit/cd4af8155f5b42ed8e4710d3c0846a2b7326c252), [`646946f`](https://github.com/LTplus-AG/ifc-lite/commit/646946f3c1594bf126c29ee2c59d24759304daf5), [`d8fbc55`](https://github.com/LTplus-AG/ifc-lite/commit/d8fbc550f6d8030ba61663d058fe02063291801a), [`99e0b87`](https://github.com/LTplus-AG/ifc-lite/commit/99e0b874ac286aa0c9b4f9a27aa2adea32e6465c), [`baf4bdd`](https://github.com/LTplus-AG/ifc-lite/commit/baf4bdd632727134c1b694bdee8f9e8d2e3b0d2f), [`d136dfb`](https://github.com/LTplus-AG/ifc-lite/commit/d136dfb006619f6c5ad0d0a04abef6bfba66e7ec), [`e885a5e`](https://github.com/LTplus-AG/ifc-lite/commit/e885a5e05e4f72048077c0f47245bd8b02627c26), [`4877fa5`](https://github.com/LTplus-AG/ifc-lite/commit/4877fa5116e999450190c8bc6ac6b8d0514d17bd), [`a6654c0`](https://github.com/LTplus-AG/ifc-lite/commit/a6654c05850e2a46a12de659aa2b4c581b0d88f7), [`b64ba30`](https://github.com/LTplus-AG/ifc-lite/commit/b64ba30c3382bf91c8db11ab3883614f576b8fd0), [`7b15e6b`](https://github.com/LTplus-AG/ifc-lite/commit/7b15e6b08b4529e2ebf422748fb6ba36d47cd196)]:
+  - @ifc-lite/sdk@10.0.0
+
 ## 2.12.1
 
 ### Patch Changes

@@ -1,5 +1,19 @@
 # @ifc-lite/codegen
 
+## 1.20.0
+
+### Minor Changes
+
+- [#9839](https://github.com/LTplus-AG/ifc-lite/pull/9839) [`89c7356`](https://github.com/LTplus-AG/ifc-lite/commit/89c7356f2338a6fda31923a423d547418085688e) Thanks [@louistrue](https://github.com/louistrue)! - The generated schema registries are about a tenth of their former size and are decoded the first time they are used in bundles that do not read the exported constant. Each `schema-registry.ts` used to be one object literal (IFC4 1.6 MB of source, IFC4X3 1.9 MB, IFC2X3 1.3 MB) that every bundle carrying it compiled and evaluated on load. It is now a compact string (each name once, each distinct attribute once, inherited attribute lists and ancestry recorded as "derived from the parent" where that is exact) that decodes to the same registry: the same keys in the same order and the same values. `SCHEMA_REGISTRY` and the lookup helpers are unchanged and stay synchronous. The new `getSchemaRegistry()` in `@ifc-lite/codegen/ifc4`, `/ifc4x3` and `/ifc2x3` returns the same object, decoding it on first call, so a bundle whose code reads only the getter carries no load-time decode. An unbundled Node import still evaluates each exported constant when its module loads, as it evaluated the object literal before (now through the faster decode): `/* @__PURE__ */` lets a tree-shaking bundler drop a constant nothing reads, it does not defer it. The parser's per-version lookup (`getSchemaRegistryForVersion`) goes through it.
+
+- [#9866](https://github.com/LTplus-AG/ifc-lite/pull/9866) [`26ffc5e`](https://github.com/LTplus-AG/ifc-lite/commit/26ffc5e1d926193843c7d052285cf2fbb188cd54) Thanks [@louistrue](https://github.com/louistrue)! - Each generated schema bundle (`@ifc-lite/codegen/ifc4`, `/ifc4x3`, `/ifc2x3`) exports `CONCRETE_RELATIONSHIP_TYPES`: every concrete `IfcRelationship` subtype of that schema as an upper-cased STEP keyword, in registry order, generated from the registry. A relationship gate can be built from it without decoding the registry.
+
+### Patch Changes
+
+- [#9865](https://github.com/LTplus-AG/ifc-lite/pull/9865) [`a6a6331`](https://github.com/LTplus-AG/ifc-lite/commit/a6a63314fa4c5da2696e394c727e57dee461ba66) Thanks [@louistrue](https://github.com/louistrue)! - Each generated `SCHEMA_REGISTRY` constant carries a marker (`ifc-lite-eager-table:SCHEMA_REGISTRY:<schema>`) that survives in a built bundle exactly where the constant does, so a bundler build can check that its startup chunks do not decode a registry at load. The registry, `getSchemaRegistry()` and the lookup helpers are unchanged.
+- Updated dependencies [[`a6a6331`](https://github.com/LTplus-AG/ifc-lite/commit/a6a63314fa4c5da2696e394c727e57dee461ba66), [`6cbd92c`](https://github.com/LTplus-AG/ifc-lite/commit/6cbd92c9cd0dc6669c2429c80c9fed354ecee192), [`13ab690`](https://github.com/LTplus-AG/ifc-lite/commit/13ab690f111eeebe7dd2ac28a944feadc98fd5c4), [`9505c27`](https://github.com/LTplus-AG/ifc-lite/commit/9505c2734a8061b62277f034a1bb87ba822a025f), [`dded228`](https://github.com/LTplus-AG/ifc-lite/commit/dded228fd11fa6a7c514be1f6525f9b3906a0a7c), [`53730fd`](https://github.com/LTplus-AG/ifc-lite/commit/53730fdab891c3463e18680f4a84f0c5674a25b0), [`ef74836`](https://github.com/LTplus-AG/ifc-lite/commit/ef748363a34f40ea69805973372e1476f590218b)]:
+  - @ifc-lite/data@7.0.0
+
 ## 1.19.1
 
 ### Patch Changes

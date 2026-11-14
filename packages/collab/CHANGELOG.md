@@ -1,5 +1,36 @@
 # @ifc-lite/collab
 
+## 0.11.0
+
+### Minor Changes
+
+- [#9532](https://github.com/LTplus-AG/ifc-lite/pull/9532) [`440bcfe`](https://github.com/LTplus-AG/ifc-lite/commit/440bcfee4ed9136b94536863641fd639d1bb762a) Thanks [@louistrue](https://github.com/louistrue)! - Session teardown in `@ifc-lite/collab` now settles everything it leaves behind.
+  
+  - `createWebSocketProvider({ connect: false })` reports `'offline'` until `connect()` is called, rather than `'connecting'`. A destroyed provider rejects a `whenSynced` that has not settled yet, where it used to hang. Its `destroy()` is idempotent and releases status listeners, and `connect()` after destroy no longer opens a socket.
+  - `CollabSession.dispose()` is idempotent. It rejects a pending `whenSynced` with the new `CollabSessionDisposedError` and stops notifying status listeners. After dispose, `seed` and `transact` throw `CollabSessionDisposedError` instead of writing to a torn-down doc. The new `disposed` flag and `onDispose(listener)` let owners tie their own cleanup to the session.
+  - `attachHistorySidecar` runs captures one at a time, so each diff is taken against the previous recorded entry. Timer ticks are skipped while a capture is in flight. The driver detaches itself when its session is disposed. A capture that would run after detach rejects with `HistoryDriverDetachedError` and records nothing.
+  
+  Behaviour changes for existing callers (0.x, so this is the minor bump):
+  - `session.whenSynced` and the websocket provider's `whenSynced` can now reject on teardown. Previously they never settled. A caller awaiting them across a dispose should catch.
+  - `createWebSocketProvider({ connect: false }).status` starts at `'offline'`.
+
+### Patch Changes
+
+- [#9511](https://github.com/LTplus-AG/ifc-lite/pull/9511) [`6e880d7`](https://github.com/LTplus-AG/ifc-lite/commit/6e880d75bc21f085b054e0fc940140517ddb7da3) Thanks [@louistrue](https://github.com/louistrue)! - Orthographic top and bottom views are now exactly axis-aligned ([#9501](https://github.com/LTplus-AG/ifc-lite/issues/9501)). The presets used to stop 0.01 rad (about 0.6°) off the pole, which in orthographic projection drew the walls of every vertical member beside its section: a hollow column showed its inner walls and a band along one face. The presets now sit on the pole with the screen orientation carried by `up`, and `setRotation(azimuth, ±90)` does the same instead of clamping.
+  
+  Navigation from such a pose keeps the screen orientation:
+  - Orbiting first steps to the orbit range's edge. Before, orbiting off a plan BCF viewpoint or a horizontal section's "Set view" spun the screen by 90 to 180° on the first drag and could not tilt out of the plan.
+  - Fly look, Walk look, Walk spawn and first-person moves take their heading from screen-up and level `up` to world Y.
+  - Rotate left/right turns a plan.
+  - An SDK `setCamera` without `up` no longer carries a plan's horizontal up into a side view.
+  - Walking with collision off heads toward screen-up on a plan.
+  - Collab presence carries the camera's optional `up`, so "jump to peer" reproduces a plan's rotation.
+  - `getRotation` reads the heading from the camera's offset, and near the pole from the screen's up, blended continuously. The ViewCube no longer jumps to the end azimuth at the start of a tween to a top/bottom view or flips 180° at its end.
+- Updated dependencies [[`b64317e`](https://github.com/LTplus-AG/ifc-lite/commit/b64317e8f60788b1c1b2b103a9ee279e41adfca7), [`a6a6331`](https://github.com/LTplus-AG/ifc-lite/commit/a6a63314fa4c5da2696e394c727e57dee461ba66), [`a6a6331`](https://github.com/LTplus-AG/ifc-lite/commit/a6a63314fa4c5da2696e394c727e57dee461ba66), [`a6a6331`](https://github.com/LTplus-AG/ifc-lite/commit/a6a63314fa4c5da2696e394c727e57dee461ba66), [`6cbd92c`](https://github.com/LTplus-AG/ifc-lite/commit/6cbd92c9cd0dc6669c2429c80c9fed354ecee192), [`14de48e`](https://github.com/LTplus-AG/ifc-lite/commit/14de48e75922802a99fed061e475e6848d1359b5), [`13ab690`](https://github.com/LTplus-AG/ifc-lite/commit/13ab690f111eeebe7dd2ac28a944feadc98fd5c4), [`9505c27`](https://github.com/LTplus-AG/ifc-lite/commit/9505c2734a8061b62277f034a1bb87ba822a025f), [`94dc7b6`](https://github.com/LTplus-AG/ifc-lite/commit/94dc7b6920513087abc48e573884ec9e02c523a4), [`6a109eb`](https://github.com/LTplus-AG/ifc-lite/commit/6a109eb861a66aafec75b544320e64f2ad246167), [`5b881f3`](https://github.com/LTplus-AG/ifc-lite/commit/5b881f35e0dee96e34aaa6a47c260c90d4c29b31), [`dded228`](https://github.com/LTplus-AG/ifc-lite/commit/dded228fd11fa6a7c514be1f6525f9b3906a0a7c), [`11c5359`](https://github.com/LTplus-AG/ifc-lite/commit/11c53595dab256d758e8c3af8c944c3c01279be8), [`53730fd`](https://github.com/LTplus-AG/ifc-lite/commit/53730fdab891c3463e18680f4a84f0c5674a25b0), [`ef74836`](https://github.com/LTplus-AG/ifc-lite/commit/ef748363a34f40ea69805973372e1476f590218b), [`a326e91`](https://github.com/LTplus-AG/ifc-lite/commit/a326e919aeaa416eeeaca15f698eb8117b923a4f)]:
+  - @ifc-lite/mutations@4.0.0
+  - @ifc-lite/data@7.0.0
+  - @ifc-lite/ifcx@4.7.0
+
 ## 0.10.0
 
 ### Minor Changes

@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/rhino3dm",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Lazy Rhino 3dm reader and writer: .3dm bytes to plain RhinoImport data, encoded ifc-lite RhinoScene data to .3dm",
   "type": "module",
   "main": "./dist/index.js",

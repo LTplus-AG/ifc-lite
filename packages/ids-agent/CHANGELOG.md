@@ -1,5 +1,24 @@
 # @ifc-lite/ids-agent
 
+## 0.3.0
+
+### Minor Changes
+
+- [#8610](https://github.com/LTplus-AG/ifc-lite/pull/8610) [`9f36b04`](https://github.com/LTplus-AG/ifc-lite/commit/9f36b04474104146fb79b68836c2407408802171) Thanks [@dependabot](https://github.com/apps/dependabot)! - Require Anthropic SDK ^1.6.0 for the optional Anthropic adapter, matching its built and tested SDK types. Hosts using the adapter with a pre-1.x SDK must upgrade; other transports do not require this optional peer.
+
+- [#9534](https://github.com/LTplus-AG/ifc-lite/pull/9534) [`67519f8`](https://github.com/LTplus-AG/ifc-lite/commit/67519f89ef51b53ae6bd1677bec9fd0ef29773f4) Thanks [@louistrue](https://github.com/louistrue)! - Add `createWorkerRpc` to `@ifc-lite/wasm-lifecycle`: one request/response client with a dead latch (the first worker `error`, `messageerror`, missed deadline, failed start or `dispose()` rejects everything pending and every later call), cleanup when a `postMessage` throws, clamped deadlines, abort support and an init handshake. The point-cloud decode worker, the re-mesh client, the IDS agent's worker model bridge and the embed SDK now use it instead of their own copies.
+  
+  `createWorkerModelBridge` no longer leaves a call made after `dispose()` waiting forever: it rejects at once. Its new `watchErrors` option makes a worker crash or an unreadable message reject every pending and later call. A model-bridge or embed command whose `postMessage` throws no longer leaves a timer and a pending entry behind.
+
+### Patch Changes
+
+- Updated dependencies [[`a6a6331`](https://github.com/LTplus-AG/ifc-lite/commit/a6a63314fa4c5da2696e394c727e57dee461ba66), [`a6a6331`](https://github.com/LTplus-AG/ifc-lite/commit/a6a63314fa4c5da2696e394c727e57dee461ba66), [`a6a6331`](https://github.com/LTplus-AG/ifc-lite/commit/a6a63314fa4c5da2696e394c727e57dee461ba66), [`6cbd92c`](https://github.com/LTplus-AG/ifc-lite/commit/6cbd92c9cd0dc6669c2429c80c9fed354ecee192), [`13ab690`](https://github.com/LTplus-AG/ifc-lite/commit/13ab690f111eeebe7dd2ac28a944feadc98fd5c4), [`9505c27`](https://github.com/LTplus-AG/ifc-lite/commit/9505c2734a8061b62277f034a1bb87ba822a025f), [`d23dc72`](https://github.com/LTplus-AG/ifc-lite/commit/d23dc7247717cda9a2cd357ab052a7fa742d3ddd), [`23f2f05`](https://github.com/LTplus-AG/ifc-lite/commit/23f2f0562aa2c60d7114769b39431d73d5661f02), [`dded228`](https://github.com/LTplus-AG/ifc-lite/commit/dded228fd11fa6a7c514be1f6525f9b3906a0a7c), [`353d056`](https://github.com/LTplus-AG/ifc-lite/commit/353d0569469242c92b709c7ee21a10d3de342e4b), [`67519f8`](https://github.com/LTplus-AG/ifc-lite/commit/67519f89ef51b53ae6bd1677bec9fd0ef29773f4), [`53730fd`](https://github.com/LTplus-AG/ifc-lite/commit/53730fdab891c3463e18680f4a84f0c5674a25b0), [`ef74836`](https://github.com/LTplus-AG/ifc-lite/commit/ef748363a34f40ea69805973372e1476f590218b)]:
+  - @ifc-lite/data@7.0.0
+  - @ifc-lite/ids-authoring@0.3.5
+  - @ifc-lite/ids@3.4.5
+  - @ifc-lite/ai@0.2.1
+  - @ifc-lite/wasm-lifecycle@0.3.0
+
 ## 0.2.11
 
 ### Patch Changes

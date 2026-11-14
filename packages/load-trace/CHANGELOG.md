@@ -1,5 +1,11 @@
 # @ifc-lite/load-trace
 
+## 0.4.0
+
+### Minor Changes
+
+- [#9605](https://github.com/LTplus-AG/ifc-lite/pull/9605) [`354a85d`](https://github.com/LTplus-AG/ifc-lite/commit/354a85d6cf4182c874bbd302bb6329dbf31f70ca) Thanks [@louistrue](https://github.com/louistrue)! - Expose synchronous worker trace sub-stages and measure source installation, batch processing, collection, posting, pool readiness and sharded prepass work when load tracing is enabled.
+
 ## 0.3.0
 
 ### Minor Changes

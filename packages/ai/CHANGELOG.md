@@ -1,5 +1,13 @@
 # @ifc-lite/ai
 
+## 0.2.1
+
+### Patch Changes
+
+- [#9541](https://github.com/LTplus-AG/ifc-lite/pull/9541) [`d23dc72`](https://github.com/LTplus-AG/ifc-lite/commit/d23dc7247717cda9a2cd357ab052a7fa742d3ddd) Thanks [@louistrue](https://github.com/louistrue)! - Normalize tool-turn timeout delays with the same explicit timer range used by model requests, including invalid and overflowing inputs.
+- Updated dependencies [[`b64317e`](https://github.com/LTplus-AG/ifc-lite/commit/b64317e8f60788b1c1b2b103a9ee279e41adfca7), [`a6a6331`](https://github.com/LTplus-AG/ifc-lite/commit/a6a63314fa4c5da2696e394c727e57dee461ba66), [`d4b54b4`](https://github.com/LTplus-AG/ifc-lite/commit/d4b54b4a2a71e54a2aaf281db127a5c96507966c), [`3a8747b`](https://github.com/LTplus-AG/ifc-lite/commit/3a8747b6f6fa9eeef5941c27acae0024cc700b40), [`41a22de`](https://github.com/LTplus-AG/ifc-lite/commit/41a22de54b9e0a44340b7de08cfe878511bc7acd), [`74c9c09`](https://github.com/LTplus-AG/ifc-lite/commit/74c9c09a7f98abb8fdc87755d26e2c469d04781a), [`94dc7b6`](https://github.com/LTplus-AG/ifc-lite/commit/94dc7b6920513087abc48e573884ec9e02c523a4), [`6a109eb`](https://github.com/LTplus-AG/ifc-lite/commit/6a109eb861a66aafec75b544320e64f2ad246167), [`fc03027`](https://github.com/LTplus-AG/ifc-lite/commit/fc0302759de14482ad4cfa1a4c6d68666d296b49), [`d9bf99e`](https://github.com/LTplus-AG/ifc-lite/commit/d9bf99efb34c77cf9f2dab2c1d42d91dc62f1a85), [`dded228`](https://github.com/LTplus-AG/ifc-lite/commit/dded228fd11fa6a7c514be1f6525f9b3906a0a7c), [`11c5359`](https://github.com/LTplus-AG/ifc-lite/commit/11c53595dab256d758e8c3af8c944c3c01279be8), [`235d679`](https://github.com/LTplus-AG/ifc-lite/commit/235d67987352f8aeceea1fb4eefebca0aec2bca5), [`f549c19`](https://github.com/LTplus-AG/ifc-lite/commit/f549c1931835922b866b9a32f095f10af8376b9a), [`99e0b87`](https://github.com/LTplus-AG/ifc-lite/commit/99e0b874ac286aa0c9b4f9a27aa2adea32e6465c), [`46c2836`](https://github.com/LTplus-AG/ifc-lite/commit/46c2836224d8bcbaec3080fd06cb34a1208b1d4a), [`a326e91`](https://github.com/LTplus-AG/ifc-lite/commit/a326e919aeaa416eeeaca15f698eb8117b923a4f)]:
+  - @ifc-lite/export@4.14.0
+
 ## 0.2.0
 
 ### Minor Changes

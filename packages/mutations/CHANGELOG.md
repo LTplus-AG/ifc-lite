@@ -1,5 +1,40 @@
 # @ifc-lite/mutations
 
+## 4.0.0
+
+### Major Changes
+
+- [#9461](https://github.com/LTplus-AG/ifc-lite/pull/9461) [`dded228`](https://github.com/LTplus-AG/ifc-lite/commit/dded228fd11fa6a7c514be1f6525f9b3906a0a7c) Thanks [@louistrue](https://github.com/louistrue)! - Typed STEP attribute markers also accept positive integer arrays for `IfcLineIndex` and `IfcArcIndex`, preserving IFC4 indexed-polycurve segments when copying a file element with its own shape. Invalid segment aggregates refuse export.
+  
+  Breaking type change: code reading `value.typed.value` must now narrow arrays before treating the payload as a scalar. For scalar-only consumers, use `!Array.isArray(value.typed.value)` before reading it as `string | number | boolean`.
+
+### Minor Changes
+
+- [#9216](https://github.com/LTplus-AG/ifc-lite/pull/9216) [`b64317e`](https://github.com/LTplus-AG/ifc-lite/commit/b64317e8f60788b1c1b2b103a9ee279e41adfca7) Thanks [@louistrue](https://github.com/louistrue)! - Walls, slabs, roofs, columns and beams authored in the Model workspace now carry base quantities ([#9026](https://github.com/LTplus-AG/ifc-lite/issues/9026)). `deriveAuthoredBaseQuantities` reads `Qto_WallBaseQuantities`, `Qto_SlabBaseQuantities`, `Qto_RoofBaseQuantities`, `Qto_ColumnBaseQuantities` and `Qto_BeamBaseQuantities` off an overlay-created element's live geometry, so they follow every resize, split, door cut and undo with nothing to refresh, and net values subtract openings. Installed as the mutation view's quantity base, they reach the Properties and Measure panels and the STEP export alike. A derived set's GlobalId, and its relationship's, are named from the element, so exporting the same model twice writes the same file. A loaded file's elements are unchanged. `QuantityExtractor` now also receives the asking view and the entity id before aliasing.
+
+- [#9411](https://github.com/LTplus-AG/ifc-lite/pull/9411) [`94dc7b6`](https://github.com/LTplus-AG/ifc-lite/commit/94dc7b6920513087abc48e573884ec9e02c523a4) Thanks [@louistrue](https://github.com/louistrue)! - Publish synchronous authoring transactions and compound undo from touched overlay entries instead of copying the entire session. Index authored references for copy source resolution, add entity-scoped effective changes, and reuse schema name snapshots in relationship reads.
+
+- [#10127](https://github.com/LTplus-AG/ifc-lite/pull/10127) [`6a109eb`](https://github.com/LTplus-AG/ifc-lite/commit/6a109eb861a66aafec75b544320e64f2ad246167) Thanks [@louistrue](https://github.com/louistrue)! - Read raw authored property sets and current members through the session view, including type-owned sets and atomic drafts. Preserve empty type names and replace raw sets when high-level property edits are exported.
+
+- [#9547](https://github.com/LTplus-AG/ifc-lite/pull/9547) [`5b881f3`](https://github.com/LTplus-AG/ifc-lite/commit/5b881f35e0dee96e34aaa6a47c260c90d4c29b31) Thanks [@louistrue](https://github.com/louistrue)! - Persist and restore versioned overlay snapshots with source-content identity checks, logical row coordinates, optional host undo stacks, and atomic replacement. Created entities, skip-history edits, forgotten creation rows and the allocator survive persistence; derived indices are rebuilt. Caller-supplied full-source hashes prevent applying IDs to a different source. Existing journal-only export/import remains available.
+
+- [#9556](https://github.com/LTplus-AG/ifc-lite/pull/9556) [`11c5359`](https://github.com/LTplus-AG/ifc-lite/commit/11c53595dab256d758e8c3af8c944c3c01279be8) Thanks [@louistrue](https://github.com/louistrue)! - Keep per-operation authoring cost independent of session size. Read-only borrows (`readNewEntity`, `readNewEntities`, `readNewEntitiesOfType`, `getNewEntitiesReferencing`) now return frozen copies, so a write through one throws instead of silently bypassing the reference index. Inside a transaction they read unmodified rows without copying them into the draft. New `hasNewEntity` and `getNewEntityCount` answer without reading payloads. The express-id watermark is computed once per store. The effective entity index reads created rows on demand. Re-mesh context roots find created relationships through the reference index. Copy batches resolve each source's storey once. Effective metadata reads borrow rows and use one schema-name snapshot per overlay revision.
+
+- [#9284](https://github.com/LTplus-AG/ifc-lite/pull/9284) [`a326e91`](https://github.com/LTplus-AG/ifc-lite/commit/a326e919aeaa416eeeaca15f698eb8117b923a4f) Thanks [@louistrue](https://github.com/louistrue)! - New opt-in viewer setting, "Update quantities of edited elements" ([#9026](https://github.com/LTplus-AG/ifc-lite/issues/9026)). It is off by default and saved in the browser. You can turn it on in Settings → General or on the Quantities tab. When it is on, changing the shape of a loaded wall, slab, roof, column or beam recomputes that element's base quantity set from its new geometry. The same derivation that authored elements use does the work. The Properties and Measure panels show the new values, the STEP export writes them, and the refreshed set is labelled "Updated from geometry". When it is off, loaded files read and export as before.
+  
+  A refresh only replaces a `Qto_*BaseQuantities` (or IFC2X3 `BaseQuantities`) set the file already has. It never adds one. If you edit or delete a quantity yourself, your edit still wins, and undo takes back the refresh along with the edit.
+  
+  New API:
+  - `@ifc-lite/create` exports `withRefreshedBaseQuantities`, `refreshedBaseQuantitySet`, `refreshedBaseQuantitySets` and `hasRefreshableBaseQuantities`.
+  - `@ifc-lite/mutations` adds `MutablePropertyView.setQuantityBaseRevisions` / `getQuantityBaseRevisions` and the `QuantityBaseRevision` type. A view's quantity base uses them to name the sets it reads differently from the file.
+  - `@ifc-lite/export` writes the named sets the same way it writes an edited set.
+
+### Patch Changes
+
+- [#9865](https://github.com/LTplus-AG/ifc-lite/pull/9865) [`a6a6331`](https://github.com/LTplus-AG/ifc-lite/commit/a6a63314fa4c5da2696e394c727e57dee461ba66) Thanks [@louistrue](https://github.com/louistrue)! - The per-schema attribute-name index reads the schema tables through their getters, so in a bundle loading `@ifc-lite/mutations` decodes no table (In a bundle; an unbundled Node import still evaluates the exported table constants when their modules load.) Same contents.
+- Updated dependencies [[`a6a6331`](https://github.com/LTplus-AG/ifc-lite/commit/a6a63314fa4c5da2696e394c727e57dee461ba66), [`6cbd92c`](https://github.com/LTplus-AG/ifc-lite/commit/6cbd92c9cd0dc6669c2429c80c9fed354ecee192), [`13ab690`](https://github.com/LTplus-AG/ifc-lite/commit/13ab690f111eeebe7dd2ac28a944feadc98fd5c4), [`9505c27`](https://github.com/LTplus-AG/ifc-lite/commit/9505c2734a8061b62277f034a1bb87ba822a025f), [`dded228`](https://github.com/LTplus-AG/ifc-lite/commit/dded228fd11fa6a7c514be1f6525f9b3906a0a7c), [`53730fd`](https://github.com/LTplus-AG/ifc-lite/commit/53730fdab891c3463e18680f4a84f0c5674a25b0), [`ef74836`](https://github.com/LTplus-AG/ifc-lite/commit/ef748363a34f40ea69805973372e1476f590218b)]:
+  - @ifc-lite/data@7.0.0
+
 ## 3.2.0
 
 ### Minor Changes

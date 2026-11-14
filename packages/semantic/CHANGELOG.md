@@ -1,5 +1,12 @@
 # @ifc-lite/semantic
 
+## 0.2.4
+
+### Patch Changes
+
+- Updated dependencies [[`449a837`](https://github.com/LTplus-AG/ifc-lite/commit/449a837b9846c5a978493d6f6297955f59607236), [`206e3f5`](https://github.com/LTplus-AG/ifc-lite/commit/206e3f5dcc2aac68e8a4641312bb6debcb2d294b), [`646946f`](https://github.com/LTplus-AG/ifc-lite/commit/646946f3c1594bf126c29ee2c59d24759304daf5), [`baf4bdd`](https://github.com/LTplus-AG/ifc-lite/commit/baf4bdd632727134c1b694bdee8f9e8d2e3b0d2f), [`d136dfb`](https://github.com/LTplus-AG/ifc-lite/commit/d136dfb006619f6c5ad0d0a04abef6bfba66e7ec)]:
+  - @ifc-lite/sandbox@3.0.0
+
 ## 0.2.3
 
 ### Patch Changes

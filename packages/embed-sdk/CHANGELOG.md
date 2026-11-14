@@ -1,5 +1,24 @@
 # @ifc-lite/embed-sdk
 
+## 1.15.2
+
+### Patch Changes
+
+- [#9485](https://github.com/LTplus-AG/ifc-lite/pull/9485) [`be77d7c`](https://github.com/LTplus-AG/ifc-lite/commit/be77d7c3a725100e5c4a79d5cb3babac312039e1) Thanks [@louistrue](https://github.com/louistrue)! - When the `IFCLiteEmbed.create()` handshake times out, the embed is now destroyed before `create()` rejects: the iframe is removed and the window `message` listener is detached, so a READY arriving late no longer posts the configured token into the abandoned iframe, and host retries no longer stack iframes in the container.
+
+- [#9534](https://github.com/LTplus-AG/ifc-lite/pull/9534) [`67519f8`](https://github.com/LTplus-AG/ifc-lite/commit/67519f89ef51b53ae6bd1677bec9fd0ef29773f4) Thanks [@louistrue](https://github.com/louistrue)! - Add `createWorkerRpc` to `@ifc-lite/wasm-lifecycle`: one request/response client with a dead latch (the first worker `error`, `messageerror`, missed deadline, failed start or `dispose()` rejects everything pending and every later call), cleanup when a `postMessage` throws, clamped deadlines, abort support and an init handshake. The point-cloud decode worker, the re-mesh client, the IDS agent's worker model bridge and the embed SDK now use it instead of their own copies.
+  
+  `createWorkerModelBridge` no longer leaves a call made after `dispose()` waiting forever: it rejects at once. Its new `watchErrors` option makes a worker crash or an unreadable message reject every pending and later call. A model-bridge or embed command whose `postMessage` throws no longer leaves a timer and a pending entry behind.
+
+- [#9808](https://github.com/LTplus-AG/ifc-lite/pull/9808) [`644894b`](https://github.com/LTplus-AG/ifc-lite/commit/644894bf2b43ec77ecd831906202af25a0602dc9) Thanks [@louistrue](https://github.com/louistrue)! - The viewer draws the supports and loads of a structural analysis model ([#9668](https://github.com/LTplus-AG/ifc-lite/issues/9668)). Point, curve and surface connections with a restraining boundary condition show a fixed, pinned, roller or spring support symbol; actions show force arrows (one per point, a row along a member, a sparse grid over a face), moment arrows, and temperature and displacement markers. Symbols keep their screen size, capped at 3% of the model diagonal, but never below 0.25 m. Clicking one selects its connection or activity. The "Supports & loads" switch in the class visibility menu turns them off.
+  
+  `@ifc-lite/parser/structural-glyphs` exports `structuralGlyphs(store, extraction)`, which returns the glyph list as plain data in IFC world metres: kind, position, direction, magnitude, the size relative to the largest load of its kind in its load group (an action in no load group scales on its own), and the source entity. It is a subpath of its own so the viewer loads it only for a model with structural data.
+  
+  Embed hosts reach the same switch as the `structuralGlyphs` flag of `SET_TYPE_VISIBILITY` (`TYPE_VISIBILITY_FLAG_KEYS`).
+- Updated dependencies [[`353d056`](https://github.com/LTplus-AG/ifc-lite/commit/353d0569469242c92b709c7ee21a10d3de342e4b), [`67519f8`](https://github.com/LTplus-AG/ifc-lite/commit/67519f89ef51b53ae6bd1677bec9fd0ef29773f4), [`644894b`](https://github.com/LTplus-AG/ifc-lite/commit/644894bf2b43ec77ecd831906202af25a0602dc9)]:
+  - @ifc-lite/wasm-lifecycle@0.3.0
+  - @ifc-lite/embed-protocol@1.16.0
+
 ## 1.15.1
 
 ### Patch Changes

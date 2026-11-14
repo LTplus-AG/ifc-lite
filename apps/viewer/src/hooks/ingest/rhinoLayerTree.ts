@@ -11,14 +11,14 @@
  *
  * Two shapes, one rule for each:
  *
- * - **Stamped** — some layer carries the exporter's spatial stamp
+ * - **Stamped**: some layer carries the exporter's spatial stamp
  *   (`IFC::GlobalId` + `IFC::Class`, plus `IFC::Elevation` on a storey). Those
  *   layers become the spatial structure they name, with the GlobalId the
  *   source IFC gave them, and every other layer is transparent: an object
  *   rolls up to the nearest stamped layer above it. A file ifc-lite exported
  *   therefore comes back as project / site / building / storey, the tree the
  *   source IFC shows, rather than as the export's class sublayers.
- * - **Layers** — no stamp anywhere. Every layer becomes an `IfcSpatialZone`
+ * - **Layers**: no stamp anywhere. Every layer becomes an `IfcSpatialZone`
  *   under a root that stands for the file, and an object sits under its own
  *   layer. `IfcSpatialZone` is IFC's class for a named decomposition that is
  *   not a storey, which is what a Rhino layer is; it also keeps the layers out
@@ -83,7 +83,7 @@ const LAYER_CLASS = 'IfcSpatialZone';
  * file does not already hold as an object takes the next id after the last
  * entity, because a container is an entity of this store too and
  * `getMaxExpressId` and the federation offset have to cover it. `fileName`
- * labels a synthesised root, which stands for the file itself — a `.3dm`
+ * labels a synthesised root, which stands for the file itself; a `.3dm`
  * states no project name.
  */
 export function planRhinoTree(
@@ -164,7 +164,7 @@ export function planRhinoTree(
     // An object stands for the layer only when it IS that layer's entity:
     // same identity AND same class. A file that puts a spatial GlobalId on an
     // object of another class would otherwise replace the node with that
-    // object — and for an `IfcProject` stamp that leaves the store with no
+    // object, and for an `IfcProject` stamp that leaves the store with no
     // `IfcProject` row at all, which is a hierarchy the builder refuses to
     // build. The node stays, and the identity stays with the object.
     const entity = entityOfGlobalId.get(spatial.globalId);
@@ -228,9 +228,9 @@ export function planRhinoTree(
     if (index === rootLayer) containerOfLayer[index] = root;
     // A transparent layer inside a stamped structure rolls up to it: that is
     // what turns the export's class sublayers back into the IFC's tree. One
-    // outside every stamped structure is a layer of the user's own — a
+    // outside every stamped structure is a layer of the user's own (a
     // Rhino-authored file is all of them, and so is a layer somebody added to
-    // an export — and keeps its own zone.
+    // an export) and keeps its own zone.
     else if (transparent) {
       containerOfLayer[index] = underStamp[index] || !occupied[index] ? parent : addLayerZone(index, parent);
     }

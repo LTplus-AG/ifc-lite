@@ -256,6 +256,14 @@ describe('rhinoViewerModel, visibility per part', () => {
     // The hidden entity starts hidden through the tree; the shown one does not.
     assert.deepEqual(hiddenExpressIds, [2]);
   });
+
+  it('says the surfaces are hidden when every drawn part is a hidden part of a shown entity', async () => {
+    const result = await importOf(await craftRhinoPartlyHidden());
+    // Keep only the shown entity's hidden parts: nothing is left to draw.
+    result.meshes = result.meshes.filter((m) => m.entity === 0 && m.hidden);
+    assert.throws(() => rhinoViewerModel(result, new ArrayBuffer(0), 0, 'parts.3dm'), (error: unknown) =>
+      error instanceof RhinoImportError && error.code === 'no-renderable-geometry' && /hidden in Rhino/.test(error.message));
+  });
 });
 
 describe('rhinoViewerModel, the spatial tree of a stamped file', () => {

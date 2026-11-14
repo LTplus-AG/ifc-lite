@@ -306,10 +306,14 @@ export function rhinoViewerModel(result: RhinoImport, buffer: ArrayBuffer, parse
   const pointClouds = convertRhinoPointClouds(result);
   if (meshes.length === 0 && pointClouds.length === 0) {
     // The reader refuses a file it drew nothing from, so reaching here means it
-    // drew only curves or text dots, which this viewer cannot show yet.
+    // drew only curves or text dots, which this viewer cannot show yet, or
+    // every surface it drew is a part Rhino hides inside a shown object.
+    const allHidden = result.meshes.length > 0 || result.pointClouds.length > 0;
     throw new RhinoImportError(
       'no-renderable-geometry',
-      'This Rhino file holds only curves, text dots or points. The viewer does not draw those yet; add surfaces, meshes or point clouds to see it.',
+      allHidden
+        ? 'Every surface, mesh and point cloud in this Rhino file is hidden in Rhino, and the viewer does not draw its curves or text dots yet. Show them in Rhino to see the file here.'
+        : 'This Rhino file holds only curves, text dots or points. The viewer does not draw those yet; add surfaces, meshes or point clouds to see it.',
     );
   }
 

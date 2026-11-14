@@ -5,7 +5,7 @@
 /**
  * The spatial tree of ifc-lite's own export, against the IFC it came from:
  * FZK house, this repo's Rust scene builder, `writeRhino3dm`, the real reader,
- * then the adapter — and the same IFC through `IfcParser`. The storeys, their
+ * then the adapter, and the same IFC through `IfcParser`. The storeys, their
  * elevations and which storey each element sits on have to agree, because
  * that is what makes the storey filter and the storey-based section work on a
  * re-imported model (decision D3, docs/architecture/rhino-3dm-import.md).

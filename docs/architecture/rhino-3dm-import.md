@@ -737,14 +737,14 @@ transparency rule [test].
   the relationship graph (`IfcRelAggregates` between containers,
   `IfcRelContainedInSpatialStructure` to an object), and the hierarchy itself
   is the shared `SpatialHierarchyBuilder.buildFromCache`'s, off those two
-  tables — the same source-less path the viewer rebuilds a cached IFC model's
+  tables: the same source-less path the viewer rebuilds a cached IFC model's
   hierarchy from, so a `.3dm` tree cannot drift from the IFC one. It reads
   elevations from STEP bytes a `.3dm` store has none of, so the stamped
   elevations are written into the built hierarchy afterwards.
   - **Stamped** (any layer carries a placeable stamp, whatever the
     provenance): the stamped layers are the spatial structure they name, with
     the GlobalId the source IFC gave them, and every other layer is
-    transparent — an object rolls up to the nearest stamped layer above it. An
+    transparent: an object rolls up to the nearest stamped layer above it. An
     ifc-lite export therefore comes back as project / site / building / storey
     rather than as its class sublayers, and the model joins the unified storey
     list. A spatial element that has geometry sits on a class sublayer of its
@@ -768,9 +768,9 @@ transparency rule [test].
     `IfcProject` stamp, a stamp whose identity another container already took,
     and a stamp naming a spatial class the tree cannot place (the reader
     accepts a wider set, `IfcExternalSpatialElement` among it) are transparent.
-  - What the file says about itself — application, provenance, unit system,
+  - What the file says about itself (application, provenance, unit system,
     archive version, frame, layer count, earth anchor, skip counts, and the
-    document user text under the keys it is written with — rides the root
+    document user text under the keys it is written with) rides the root
     entity's property sets, which is where the model metadata panel shows an
     `IfcProject`'s own data.
 - Locked layers and objects are ignored: the viewer is read-only.
@@ -1066,7 +1066,7 @@ Level 1 has no dialog. The defaults live in the reader.
 - The spatial tree of an ifc-lite export against the IFC it came from
   (`rhinoViewerModel.export.test.ts`): FZK through the Rust scene builder,
   `writeRhino3dm` and the reader, compared with the same IFC through
-  `IfcParser` — the project identity, the site and building, the storey names
+  `IfcParser`: the project identity, the site and building, the storey names
   and elevations, and the storey each of the 83 drawn elements sits on.
 - The whole `loadFile` route hides what Rhino hides, through the loaded model's
   own express id range (`useIfcLoader.rhino3dm.test.tsx`).

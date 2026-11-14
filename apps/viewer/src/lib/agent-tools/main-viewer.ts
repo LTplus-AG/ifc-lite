@@ -4,15 +4,19 @@
 
 /**
  * The one module a local-agent bridge client imports (lazily, with
- * `import()`) to serve the main viewer's model read-only (#9523):
+ * `import()`) to serve the main viewer's model (#9523), read-only unless the
+ * user allows edits:
  *
- *   const host = createMainViewerToolHost(useViewerStore, bim);   // bim = useBim()
- *   const tools = mainViewerToolDefinitions();                     // send at handshake
- *   const result = await dispatchMainViewerTool(host, name, args, { signal });
+ *   const editor = createMainViewerEditor(useViewerStore);
+ *   const host = createMainViewerToolHost(useViewerStore, bim, { editor });   // bim = useBim()
+ *   const tools = mainViewerToolDefinitions();                                 // send at handshake
+ *   const result = await dispatchMainViewerTool(host, name, args, { signal, canEdit });
  */
 
 export { createMainViewerToolHost, type MainViewerToolHostOptions } from './main-viewer-host.js';
+export { createMainViewerEditor } from './main-viewer-edits.js';
 export {
+  MAIN_VIEWER_EDIT_TOOLS,
   MAIN_VIEWER_TOOL_ALLOWLIST,
   dispatchMainViewerTool,
   type AgentToolResult,

@@ -48,7 +48,7 @@ import { styleCutPolygons, type CutPolygonStyleContext } from '@/components/view
 import { drawCutPolygonsPdf, isPagePoint, prepareCutPolygonsPdf, type PdfCutPolygon } from '@/lib/export/section-pdf-cut-polygons';
 import { titleBlockWithEffectiveScale } from '@/hooks/titleBlockScaleField';
 import { scanOutlineDxfLayers, type ScanOutlineLayer } from '@/lib/scan-outline/scan-outline';
-import { boundsWithDimensions, dimensionsToSvg, dimensionsToDxfLayers, drawDimensionsPdf } from '@/lib/export/dimension-export';
+import { boundsWithDimensions, dimensionsToSvg, drawDimensionsPdf } from '@/lib/export/dimension-export';
 import { noticeOtherCutDimensionsLeftOut, useExportDimensionGraphics } from '@/hooks/useExportDimensions';
 
 function tryDrawingSvg(generate: () => string | null): string | null {
@@ -261,6 +261,7 @@ interface UseDrawingExportParams {
 }
 
 interface UseDrawingExportResult {
+  getExportDimensionGraphics: (paperScale: number) => ReturnType<ReturnType<typeof useExportDimensionGraphics>>;
   formatDistance: (distance: number) => string;
   handleExportSVG: () => void;
   handleExportDXF: () => void;
@@ -307,7 +308,7 @@ function useDrawingExport({
   // Georef edits replace the map, but subscribe to mutationVersion too so the
   // dependency is explicit (matches ViewportContainer / useAnchorGeoreference).
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
-  const dimensionGraphicsAt = useExportDimensionGraphics(); // on the current cut only
+  const dimensionGraphicsAt = useExportDimensionGraphics(measure2DResults); // on the current cut only
 
   // One properties cache per export, shared by every cut polygon it styles.
   const cutPolygonStyleContext = useCallback((): CutPolygonStyleContext => ({
@@ -487,43 +488,6 @@ function useDrawingExport({
       svg += `    <line x1="${startT.x.toFixed(4)}" y1="${startT.y.toFixed(4)}" x2="${endT.x.toFixed(4)}" y2="${endT.y.toFixed(4)}" stroke="${strokeColor}" stroke-width="${svgLineWidth.toFixed(4)}"${dashAttr}/>\n`;
     }
     svg += '  </g>\n';
-
-    // 4. DRAW COMPLETED MEASUREMENTS
-    if (measure2DResults.length > 0) {
-      svg += '  <g id="measurements">\n';
-      for (const result of measure2DResults) {
-        const { start, end, distance } = result;
-        // Transform measurement points with axis-specific flipping
-        const startT = { x: flipX ? -start.x : start.x, y: flipY ? -start.y : start.y };
-        const endT = { x: flipX ? -end.x : end.x, y: flipY ? -end.y : end.y };
-        const midX = (startT.x + endT.x) / 2;
-        const midY = (startT.y + endT.y) / 2;
-        const labelText = formatDistance(distance);
-
-        // Measurement styling (all in mm on paper, converted to model units)
-        const measureColor = '#2196F3';
-        const measureLineWidth = mmToModel(0.4);  // 0.4mm line on paper
-        const endpointRadius = mmToModel(1.5);    // 1.5mm radius on paper
-
-        // Draw line
-        svg += `    <line x1="${startT.x.toFixed(4)}" y1="${startT.y.toFixed(4)}" x2="${endT.x.toFixed(4)}" y2="${endT.y.toFixed(4)}" stroke="${measureColor}" stroke-width="${measureLineWidth.toFixed(4)}"/>\n`;
-
-        // Draw endpoints
-        svg += `    <circle cx="${startT.x.toFixed(4)}" cy="${startT.y.toFixed(4)}" r="${endpointRadius.toFixed(4)}" fill="${measureColor}"/>\n`;
-        svg += `    <circle cx="${endT.x.toFixed(4)}" cy="${endT.y.toFixed(4)}" r="${endpointRadius.toFixed(4)}" fill="${measureColor}"/>\n`;
-
-        // Draw label background and text
-        // Use 3mm text height on paper for readable labels
-        const fontSize = mmToModel(3);
-        const labelWidth = labelText.length * fontSize * 0.6;  // Approximate text width
-        const labelHeight = fontSize * 1.4;
-        const labelStroke = mmToModel(0.2);
-
-        svg += `    <rect x="${(midX - labelWidth / 2).toFixed(4)}" y="${(midY - labelHeight / 2).toFixed(4)}" width="${labelWidth.toFixed(4)}" height="${labelHeight.toFixed(4)}" fill="rgba(255,255,255,0.95)" stroke="${measureColor}" stroke-width="${labelStroke.toFixed(4)}"/>\n`;
-        svg += `    <text x="${midX.toFixed(4)}" y="${midY.toFixed(4)}" font-family="Arial, sans-serif" font-size="${fontSize.toFixed(4)}" fill="#000000" text-anchor="middle" dominant-baseline="middle" font-weight="500">${escapeXml(labelText)}</text>\n`;
-      }
-      svg += '  </g>\n';
-    }
 
     // 5. DRAW POLYGON AREA MEASUREMENTS
     if (polygonArea2DResults.length > 0) {
@@ -859,6 +823,7 @@ function useDrawingExport({
   // The point-cloud scan overlay (issue #1805) is likewise deliberately
   // excluded: it is a raster-like screen aid (tens of thousands of circles),
   // not vector content — SVG export carries it (opt-in) instead.
+  const getExportDimensionGraphics = useCallback((paperScale: number) => dimensionGraphicsAt(paperScale, sectionPlane.axis), [dimensionGraphicsAt, sectionPlane.axis]);
   const handleExportDXF = useCallback(() => {
     if (!drawing) return;
     const isCustomPlane = sectionPlane.custom !== undefined;
@@ -888,7 +853,6 @@ function useDrawingExport({
     const metadataComment = isGeoreferenced
       ? `ifc-lite section export - units: metres, CRS: ${georeference!.projectedCRS.name || 'unknown'}`
       : undefined;
-    const dimensionLayers = dimensionsToDxfLayers(dimensionGraphicsAt(displayOptions.scale, sectionPlane.axis));
     const dxf = exportToDXF(drawing, {
       showHiddenLines: displayOptions.showHiddenLines,
       coordinateTransform,
@@ -896,8 +860,8 @@ function useDrawingExport({
       underlays: [...mappedDxfUnderlayOptions(dxfUnderlays, sectionPlane.axis), elementTagsDxf(drawing, 3.5 * displayOptions.scale / 1000)],
       // The traced scan outline (#6871) on its own layer, through the same
       // georeference transform as the cut.
-      polylineLayers: [...(displayOptions.showScanSection ? scanOutlineDxfLayers(scanSection.outline) : []), ...dimensionLayers.polylineLayers],
-      textLayers: dimensionLayers.textLayers,
+      polylineLayers: displayOptions.showScanSection ? scanOutlineDxfLayers(scanSection.outline) : [],
+      dimensions: dimensionGraphicsAt(displayOptions.scale, sectionPlane.axis),
     });
     const stem = `section-${sectionPlane.axis}-${sectionPlane.position}`;
     downloadDxf(dxf, `${stem}.dxf`);
@@ -1219,6 +1183,7 @@ function useDrawingExport({
   }, [generateExportSVG, generateSheetSVG, sheetEnabled, activeSheet, sectionPlane, t]);
 
   return {
+    getExportDimensionGraphics,
     formatDistance,
     handleExportSVG,
     handleExportDXF,

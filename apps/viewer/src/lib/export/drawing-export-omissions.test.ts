@@ -34,6 +34,20 @@ describe('drawing export omissions (#5850)', () => {
     }
   });
 
+  it('names dimensions only when some were drawn on another cut; those on the current cut export everywhere', async () => {
+    // Dimensions on the current cut are not a markup kind the writers omit, so
+    // with none from another cut there is nothing to warn about.
+    assert.deepEqual(await omissions({ ...empty, otherCutDimensionCount: 0 }, 'pdf'), []);
+    assert.deepEqual(await omissions({ ...empty, otherCutDimensionCount: 0 }, 'dxf'), []);
+    for (const format of ['pdf', 'dxf'] as const) {
+      assert.deepEqual(await omissions({ ...empty, otherCutDimensionCount: 2 }, format), ['otherCutDimensions'], format);
+      assert.deepEqual(await omissions({
+        ...empty, otherCutDimensionCount: 1, markupCounts: { ...empty.markupCounts, clouds: 1 },
+      }, format), ['markups', 'otherCutDimensions'], format);
+      assert.deepEqual(await omissions({ ...empty, otherCutDimensionCount: 1, sheetScale: 50 }, format), ['otherCutDimensions'], `${format} sheet`);
+    }
+  });
+
   it('includes vectors in every format and omits only eligible raster references from DXF (#6615)', async () => {
     const content = { ...empty, visibleUnderlayCount: 2 };
     assert.deepEqual(await omissions(content, 'pdf'), []);
@@ -54,5 +68,14 @@ describe('drawing export omissions (#5850)', () => {
     assert.deepEqual(await omissions({ ...empty, sheetScale: 50, requestedScale: 50 }, 'pdf'), []);
     assert.deepEqual(await omissions({ ...empty, sheetScale: 50, requestedScale: 100 }, 'pdf'), ['requestedScale']);
     assert.deepEqual(await omissions({ ...empty, sheetScale: 50, requestedScale: 100 }, 'dxf'), []);
+  });
+  it('still names markups for a caller that passes counts without dimensions', async () => {
+    const legacy = { ...empty, markupCounts: { measurements: 1, areas: 0, texts: 0, clouds: 0 } };
+    assert.deepEqual(await omissions(legacy, 'pdf'), ['markups']);
+  });
+  it('ignores a current-cut dimension count passed with the other markup counts', async () => {
+    const counted = { ...empty, markupCounts: { ...empty.markupCounts, dimensions: 3 } };
+    assert.deepEqual(await omissions(counted, 'pdf'), []);
+    assert.deepEqual(await omissions(counted, 'dxf'), []);
   });
 });

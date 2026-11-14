@@ -39,6 +39,7 @@ export async function runProbe(probe, openFresh, base, { saveArtifact } = {}) {
   if (s.scriptedSteps.length) reasons.push(`scripted through the store: ${s.scriptedSteps.join(', ')}`);
   const result = {
     ...base,
+    ...(probe.capability === 'sheets-pdf-dwg' ? { source: { ...base.source, sheetDxfOracle: 1 } } : {}),
     capability: probe.capability,
     probe: 'ui',
     id: probe.id,

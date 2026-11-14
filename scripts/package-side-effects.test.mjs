@@ -224,7 +224,6 @@ const REVIEWED_PURE = new Map([
   ['packages/ids-agent/src/tools/schema-tools.ts', 'defineTool returns a plain object; nothing is registered'],
   ['packages/ids-authoring/src/bsdd/mapping.ts', 'maps a literal unit list into a constant'],
   ['packages/ids-authoring/src/document/fields.ts', 'flattens a local constant'],
-  ['packages/ids-authoring/src/gate/context.ts', 'maps a local constant'],
   ['packages/ids-authoring/src/lint/precision.ts', 'filters a local constant'],
   ['packages/ids-authoring/src/ops/schema-values.ts', 'JSON Schema built by local obj()/ref() helpers'],
   ['packages/ids-authoring/src/ops/schema.ts', 'JSON Schema built by local obj()/ref()/buildDefs() helpers'],
@@ -233,7 +232,6 @@ const REVIEWED_PURE = new Map([
   ['packages/ids-authoring/src/sidecar/sidecar-schema.ts', 'JSON Schema built by a local object() helper'],
   ['packages/ifcx/src/canonical.ts', 'a module-local TextEncoder'],
   ['packages/ifcx/src/types.ts', 'type tables derived from local constants'],
-  ['packages/ifcx/src/writer-entities.ts', 'fills a module-local Map from the schema tables'],
   ['packages/source-buildagil/src/scan.ts', 'a query string built from a local constant'],
 ]);
 

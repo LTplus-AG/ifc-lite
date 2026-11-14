@@ -137,6 +137,10 @@ export { ENTITIES_IFC4X3, getEntitiesIfc4x3 } from './ifc-schema/generated/entit
 // Raw and read-only for the same reason as the entity tables above; the async
 // `findDataType` cannot answer inside a synchronous guard.
 export { IFC_DATA_TYPES, getIfcDataTypes } from './ifc-schema/generated/data-types.js';
+// The exported-constant form of a lazily decoded table, and the record of
+// which ones a realm evaluated (the viewer's build-tail gate keeps them off
+// its startup chunks).
+export { eagerSchemaTable, eagerSchemaTablesEvaluated } from './ifc-schema/table-codec.js';
 export type {
   IfcAttributeInfo,
   IfcDataTypeInfo,
@@ -164,6 +168,7 @@ export { spatialLookups } from './spatial-lookups.js';
 export {
   iterateEffectiveEntities,
   countEffectiveEntityTypes,
+  sourceEntityClasses,
   type DerivedEntities,
   type EffectiveEntity,
   type EffectiveEntityOverlay,

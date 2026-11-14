@@ -13,7 +13,7 @@
  */
 
 import { DrawingProjectionSettings } from './DrawingProjectionSettings';
-import { Box, BoxSelect, Cloud, Eye, FileText, Hexagon, Layers, Maximize2, MoreHorizontal, MousePointer2, Palette, Pin, PinOff, Printer, Ruler, ScanLine, Shapes, Tag, Trash2, Type, ZoomIn, ZoomOut } from 'lucide-react';
+import { Box, BoxSelect, Cloud, Eye, FileText, Hexagon, Layers, Maximize2, MoreHorizontal, MousePointer2, Palette, Pin, PinOff, Printer, Ruler, RulerDimensionLine, ScanLine, Shapes, Tag, Trash2, Type, ZoomIn, ZoomOut } from 'lucide-react';
 import type { Annotation2DTool } from '@/store/slices/drawing2DSlice';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -27,6 +27,7 @@ export type DrawingWidthTier = 'wide' | 'compact' | 'narrow';
 const TOOLS: ReadonlyArray<{ tool: Annotation2DTool; icon: typeof Ruler; labelKey: TranslationKey }> = [
   { tool: 'none', icon: MousePointer2, labelKey: 'section2d.tools.select' },
   { tool: 'measure', icon: Ruler, labelKey: 'section2d.tools.distance' },
+  { tool: 'dimension', icon: RulerDimensionLine, labelKey: 'section2d.tools.dimension' },
   { tool: 'polygon-area', icon: Hexagon, labelKey: 'section2d.tools.area' },
   { tool: 'tag', icon: Tag, labelKey: 'section2d.tools.tag' },
   { tool: 'text', icon: Type, labelKey: 'section2d.tools.text' },

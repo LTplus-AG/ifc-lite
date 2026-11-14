@@ -141,6 +141,9 @@ export interface MeshRecords {
   positions: Float32Array;
   origin: readonly [number, number, number];
   salt: number;
+  /** The picking ids written into the entity lanes: the mesh's `expressId` and `entityIds` (by identity). */
+  expressId: number;
+  entityIds: Uint32Array | undefined;
   /** One 12-byte record per vertex. */
   records: ArrayBuffer;
   /** World bounds (`origin + position`, f64): what the batch merge reports. */
@@ -182,7 +185,8 @@ export function encodeMeshRecords(
   for (let v = 0; v < count; v++) {
     for (let axis = 0; axis < 3; axis++) {
       const at = v * 3 + axis;
-      const value = (rel[at] = p[at] + delta[axis]);
+      rel[at] = p[at] + delta[axis];
+      const value = rel[at]; // the stored f32, as the quantizer reads it
       if (!Number.isFinite(value)) return null;
       if (value < relMin[axis]) relMin[axis] = value;
       if (value > relMax[axis]) relMax[axis] = value;
@@ -217,7 +221,7 @@ export function encodeMeshRecords(
     u16[w16 + 3] = (ex << 8) | ey;
     u32[v * 3 + 2] = lanes[v] = packEntityLane(ids ? ids[v] : id, salt);
   }
-  return { frame, pin, relMin, relMax, qMax, positions: p, origin: [ox, oy, oz], salt, records, worldMin, worldMax, collapseRuns: collapseRunsOf(rel, lanes, mesh.indices) };
+  return { frame, pin, relMin, relMax, qMax, positions: p, origin: [ox, oy, oz], salt, expressId: id, entityIds: ids, records, worldMin, worldMax, collapseRuns: collapseRunsOf(rel, lanes, mesh.indices) };
 }
 
 /** `latticeCollapsesGeometry`'s per-triangle arithmetic over one mesh's frame-relative f32 positions, as runs. */
@@ -272,12 +276,27 @@ export function shiftedRecords(records: Pick<MeshRecords, 'pin' | 'qMax' | 'reco
   return true;
 }
 
-/** Whether `records` still describe `mesh`: the same positions array, origin and colour salt. */
+/** Whether `records` still describe `mesh`: the same positions array, origin, colour salt and picking ids. */
 export function recordsDescribe(records: MeshRecords, mesh: MeshData): boolean {
   const o = mesh.origin;
   return records.positions === mesh.positions && records.salt === colorSaltByte(mesh.color)
+    && records.expressId === mesh.expressId >>> 0 && records.entityIds === mesh.entityIds
     && records.origin[0] === (o ? o[0] : 0) && records.origin[1] === (o ? o[1] : 0) && records.origin[2] === (o ? o[2] : 0);
 }
+
+/**
+ * An edit is about to change `mesh.positions` in place, so its records no longer
+ * describe it. The records object can be shared by copies of the mesh (a
+ * placement copy keeps the same `positions` and `gpuRecords`), so it is retired
+ * for every holder, not only detached from this one.
+ */
+export function retireRecords(mesh: MeshData): void {
+  const records = mesh.gpuRecords;
+  if (!records) return;
+  records.positions = RETIRED_POSITIONS;
+  delete mesh.gpuRecords;
+}
+const RETIRED_POSITIONS = new Float32Array(0);
 
 /**
  * Whether a batch of these meshes may quantize (#9068), from their runs:

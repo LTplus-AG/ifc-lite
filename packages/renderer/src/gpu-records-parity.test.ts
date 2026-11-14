@@ -4,7 +4,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { MeshData } from '@ifc-lite/geometry';
-import { batchCollapseVerdict, encodeMeshRecords, recordsDescribe, shiftedRecords, MAX_QUANT_EXTENT, QUANT_STEP, type MeshRecords } from '@ifc-lite/geometry/gpu-records';
+import { batchCollapseVerdict, encodeMeshRecords, recordsDescribe, retireRecords, shiftedRecords, MAX_QUANT_EXTENT, QUANT_STEP, type MeshRecords } from '@ifc-lite/geometry/gpu-records';
 import { mergeGeometry } from './scene-geometry.js';
 import { latticeCollapsesGeometry, quantizeInterleaved } from './quantize.js';
 import { originPreservesTriangleTopology } from './scene-precision.js';
@@ -126,6 +126,31 @@ describe('per-mesh GPU records equal the batch merge and quantizer', () => {
     assert.ok(!recordsDescribe(r, { ...m, positions: new Float32Array(m.positions) }), 'other positions (a split piece, a lifted placement)');
     assert.ok(!recordsDescribe(r, { ...m, origin: [0, 0, 5] }), 'a moved origin (a translated model)');
     assert.ok(!recordsDescribe(r, { ...m, color: [0.1, 0.9, 0.2, 1] }), 'another colour salt');
+    assert.ok(!recordsDescribe(r, { ...m, expressId: m.expressId + 1 }), 'another picking id: the lanes carry the encoded one');
+    assert.ok(!recordsDescribe(r, { ...m, entityIds: new Uint32Array(m.positions.length / 3).fill(m.expressId) }), 'per-vertex ids the lanes do not carry');
+  });
+
+  it('an in-place edit retires the records for every mesh that shares them', () => {
+    const m = mesh(700, [1, 1, 1], 2);
+    m.gpuRecords = encodeMeshRecords(m, [0, 0, 0])!;
+    const placed = { ...m }; // a placement copy: same positions, same records object
+    const records = m.gpuRecords;
+    retireRecords(m);
+    assert.equal(m.gpuRecords, undefined, 'detached from the edited mesh');
+    assert.ok(!recordsDescribe(records, m), 'no longer describes the edited mesh');
+    assert.ok(!recordsDescribe(placed.gpuRecords!, placed), 'nor the copy that still holds them');
+    retireRecords(m); // no records: nothing to do
+  });
+
+  it('bounds the lattice by the stored f32 coordinates, not the unrounded sum', () => {
+    // f32(1 + 2^-27) = 1 and f32(64.9990234375 + 2^-27) = 64.9990234375: the stored
+    // coordinates span exactly the lattice range, the unrounded sum one ulp more.
+    const positions = new Float32Array([1, 0, 0, 64.9990234375, 0, 0, 1, 1, 0]);
+    const m: MeshData = { expressId: 800, positions, normals: new Float32Array(9), indices: new Uint32Array([0, 1, 2]), color: [0.5, 0.5, 0.5, 1], origin: [2 ** -27, 0, 0] };
+    const r = encodeMeshRecords(m, [0, 0, 0]);
+    assert.ok(r, 'a mesh whose stored coordinates fit the lattice gets records');
+    assert.equal(r!.relMax[0], 64.9990234375, 'relMax is the stored f32 value');
+    assert.equal(r!.relMin[0], 1, 'relMin is the stored f32 value');
   });
 
 });

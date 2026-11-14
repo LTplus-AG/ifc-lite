@@ -95,7 +95,9 @@ function decodeVertex(batch: BatchedMesh, dv: DataView, v: number, out: number[]
 /**
  * The first difference between two scenes' final batches, or null. Compares
  * keys, colours, finishes, ids, models, frames, bounds, encodings, indices,
- * LOD1 indices and every decoded vertex, one value at a time: a failure names
+ * LOD1 indices and every decoded vertex, one value at a time. The quantization
+ * origin and step are compared too: offsets shifted against another origin can
+ * decode to the same vertices: a failure names
  * one batch and one value, never the geometry.
  */
 export function firstBatchDifference(actual: readonly BatchedMesh[], expected: readonly BatchedMesh[]): string | null {
@@ -103,7 +105,7 @@ export function firstBatchDifference(actual: readonly BatchedMesh[], expected: r
   const a1: number[] = [], b1: number[] = [];
   for (let i = 0; i < actual.length; i++) {
     const a = actual[i], b = expected[i];
-    const head = (x: BatchedMesh) => JSON.stringify([x.colorKey, x.color, x.finish ?? null, x.origin, x.bounds, !!x.quantized, x.indexCount, x.lod1IndexCount ?? 0]);
+    const head = (x: BatchedMesh) => JSON.stringify([x.colorKey, x.color, x.finish ?? null, x.origin, x.bounds, x.quantized ? [x.quantized.min, x.quantized.step] : null, x.indexCount, x.lod1IndexCount ?? 0]);
     if (head(a) !== head(b)) return `batch ${i} (${b.colorKey}): header ${head(a).slice(0, 200)} vs ${head(b).slice(0, 200)}`;
     if (a.expressIds.length !== b.expressIds.length || a.expressIds.some((id, k) => id !== b.expressIds[k] || a.modelIndices?.[k] !== b.modelIndices?.[k])) return `batch ${i} (${b.colorKey}): pieces differ`;
     const ia = new Uint32Array(bufferBytes(a.indexBuffer).buffer, 0, a.indexCount), ib = new Uint32Array(bufferBytes(b.indexBuffer).buffer, 0, b.indexCount);

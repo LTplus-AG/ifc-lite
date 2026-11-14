@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "packages/geometry/src/gpu-records.ts",
+  "mutation": "tests/evidence/10164-gpu-records-describe/behaviour.oracle.patch",
+  "test": "packages/renderer/src/gpu-records-parity.test.ts",
+  "why": "Reverse application keeps every export but bounds the lattice by the unrounded sum, accepts records for another picking id, and only detaches retired records from the edited mesh, so a copy sharing them would still upload pre-edit vertices."
+}

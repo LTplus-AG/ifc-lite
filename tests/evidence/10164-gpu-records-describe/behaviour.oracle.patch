@@ -1,0 +1,31 @@
+diff --git a/packages/geometry/src/gpu-records.ts b/packages/geometry/src/gpu-records.ts
+--- a/packages/geometry/src/gpu-records.ts
++++ b/packages/geometry/src/gpu-records.ts
+@@ -185,8 +185,8 @@ export function encodeMeshRecords(
+   for (let v = 0; v < count; v++) {
+     for (let axis = 0; axis < 3; axis++) {
+       const at = v * 3 + axis;
+-      const value = p[at] + delta[axis];
+-      rel[at] = value;
++      rel[at] = p[at] + delta[axis];
++      const value = rel[at]; // the stored f32, as the quantizer reads it
+       if (!Number.isFinite(value)) return null;
+       if (value < relMin[axis]) relMin[axis] = value;
+       if (value > relMax[axis]) relMax[axis] = value;
+@@ -280,6 +280,7 @@ export function shiftedRecords(records: Pick<MeshRecords, 'pin' | 'qMax' | 'reco
+ export function recordsDescribe(records: MeshRecords, mesh: MeshData): boolean {
+   const o = mesh.origin;
+   return records.positions === mesh.positions && records.salt === colorSaltByte(mesh.color)
++    && records.expressId === mesh.expressId >>> 0 && records.entityIds === mesh.entityIds
+     && records.origin[0] === (o ? o[0] : 0) && records.origin[1] === (o ? o[1] : 0) && records.origin[2] === (o ? o[2] : 0);
+ }
+ 
+@@ -292,7 +293,7 @@ export function recordsDescribe(records: MeshRecords, mesh: MeshData): boolean {
+ export function retireRecords(mesh: MeshData): void {
+   const records = mesh.gpuRecords;
+   if (!records) return;
+-  void RETIRED_POSITIONS;
++  records.positions = RETIRED_POSITIONS;
+   delete mesh.gpuRecords;
+ }
+ const RETIRED_POSITIONS = new Float32Array(0);

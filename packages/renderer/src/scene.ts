@@ -22,7 +22,7 @@ import { interleaveTexturedVertices } from './textured-vertices.js';
 import { RgbaTexturePool } from './rgba-texture-pool.js';
 import { splitMeshForStreaming } from './scene-stream-split.js';
 import type { Mesh, BatchedMesh, Vec3, PickClipState, Material, MeshFinish } from './types.js';
-import type { MeshData } from '@ifc-lite/geometry';
+import type { MeshData } from '@ifc-lite/geometry'; import { retireRecords } from '@ifc-lite/geometry/gpu-records'; // in-place edits retire GPU records
 import { hostsOtherEntities } from './mesh-entity-hosting.js';
 import type { RenderPipeline } from './pipeline.js';
 import type { IndividualMeshFrame } from './individual-mesh-upload.js';
@@ -1502,7 +1502,7 @@ export class Scene {
         }
         if (shared) continue;
       }
-      const pos = meshData.positions;
+      retireRecords(meshData); const pos = meshData.positions; // moved in place below
       for (let i = 0; i < pos.length; i += 3) {
         pos[i] += dx;
         pos[i + 1] += dy;
@@ -1719,7 +1719,7 @@ export class Scene {
       // Fold the per-element local-frame origin into the pivot (world = origin + pos).
       const px = pivot[0] - (meshData.origin?.[0] ?? 0);
       const pz = pivot[2] - (meshData.origin?.[2] ?? 0);
-      const pos = meshData.positions;
+      retireRecords(meshData); const pos = meshData.positions; // rotated in place below
       for (let i = 0; i < pos.length; i += 3) {
         const dx = pos[i] - px;
         const dz = pos[i + 2] - pz;

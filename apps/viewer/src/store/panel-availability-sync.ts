@@ -19,6 +19,7 @@ import { BOTTOM_PANEL_FLAG, BOTTOM_PANEL_IDS } from '../lib/panels/bottom-panels
 import { WORKSPACE_PANELS, type WorkspacePanelId } from '../lib/panels/registry.js';
 import type { ViewerState } from './index.js';
 import { SIDEBAR_PANEL_FLAGS } from './store-sync.js';
+import { setEnforcedOffPanels } from './panel-enforced-off.js';
 
 function patchFor(state: ViewerState, off: ReadonlySet<WorkspacePanelId>): Partial<ViewerState> | null {
   const patch: Record<string, unknown> = {};
@@ -28,10 +29,14 @@ function patchFor(state: ViewerState, off: ReadonlySet<WorkspacePanelId>): Parti
   for (const id of BOTTOM_PANEL_IDS) {
     if (state[BOTTOM_PANEL_FLAG[id]] && off.has(id)) patch[BOTTOM_PANEL_FLAG[id]] = false;
   }
-  if (off.has(state.sidebarActivePanel)) patch.sidebarActivePanel = 'properties';
+  if (off.has(state.sidebarActivePanel)) {
+    // Like the exclusivity listener's close branch: the next docked panel still open, else Information.
+    const next = SIDEBAR_PANEL_FLAGS.find(([flag, id]) => state[flag] && !off.has(id));
+    patch.sidebarActivePanel = next ? next[1] : 'properties';
+  }
   // The top half cannot also be the bottom half (setSidebarActivePanel's rule).
   const secondary = state.sidebarSecondaryPanel;
-  if (secondary && (off.has(secondary) || (patch.sidebarActivePanel === 'properties' && secondary === 'properties'))) patch.sidebarSecondaryPanel = null;
+  if (secondary && (off.has(secondary) || secondary === patch.sidebarActivePanel)) patch.sidebarSecondaryPanel = null;
   if (state.floatingPanels.some((panel) => off.has(panel.id))) {
     patch.floatingPanels = state.floatingPanels.filter((panel) => !off.has(panel.id));
   }
@@ -56,6 +61,8 @@ export function enforcePanelAvailability(store: StoreApi<ViewerState>): () => vo
     const patch = patchFor(state, off);
     if (patch) store.setState(patch);
   };
+  setEnforcedOffPanels(off);
   enforce(store.getState());
-  return store.subscribe(enforce);
+  const stop = store.subscribe(enforce);
+  return () => { stop(); setEnforcedOffPanels(new Set()); };
 }

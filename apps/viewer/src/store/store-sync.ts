@@ -2,10 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { isPanelAvailable } from '@/lib/panels/availability';
 import type { StoreApi } from 'zustand';
 import type { WorkspacePanelId } from '@/lib/panels/registry';
 import type { ViewerState } from './index.js';
+import { isPanelEnforcedOff } from './panel-enforced-off.js';
 
 /** Docked sidebar flags; properties is the fallback when none is on. */
 export const SIDEBAR_PANEL_FLAGS: ReadonlyArray<readonly [keyof ViewerState, WorkspacePanelId]> = [
@@ -25,11 +25,9 @@ export function registerSidebarExclusivity(store: StoreApi<ViewerState>): void {
   store.subscribe((state, prev) => {
     let opened: WorkspacePanelId | null = null;
     for (const [flag, id] of SIDEBAR_PANEL_FLAGS) {
-      if (state[flag] && !prev[flag]) { opened = id; break; }
+      // A switched-off panel never takes the sidebar: the availability rule turns its flag back off.
+      if (state[flag] && !prev[flag] && !isPanelEnforcedOff(id)) { opened = id; break; }
     }
-
-    // A switched-off panel never takes the sidebar: the availability rule turns its flag back off.
-    if (opened && !isPanelAvailable(opened)) return;
     if (opened) {
       const patch: Record<string, boolean> = {};
       for (const [flag, id] of SIDEBAR_PANEL_FLAGS) {
@@ -45,7 +43,7 @@ export function registerSidebarExclusivity(store: StoreApi<ViewerState>): void {
     if (active !== 'properties') {
       const flag = SIDEBAR_PANEL_FLAGS.find(([, id]) => id === active)?.[0];
       if (flag && !state[flag] && prev[flag]) {
-        const next = SIDEBAR_PANEL_FLAGS.find(([f]) => state[f]);
+        const next = SIDEBAR_PANEL_FLAGS.find(([f, id]) => state[f] && !isPanelEnforcedOff(id));
         state.setSidebarActivePanel(next ? next[1] : 'properties');
       }
     }

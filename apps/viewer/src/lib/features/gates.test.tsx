@@ -194,7 +194,7 @@ describe('panels, commands, shortcuts and tools switched off', () => {
     }
   });
 
-  it('opening a panel that is off leaves the open panel where it was', () => {
+  it('opening a panel that is off leaves the open panel where it was (#10147)', () => {
     const store = useViewerStore;
     resetFeaturesForTest({ default: 'none', enable: ['check.clash'] });
     const stop = enforcePanelAvailability(store);
@@ -210,7 +210,7 @@ describe('panels, commands, shortcuts and tools switched off', () => {
     }
   });
 
-  it('closing a switched-off primary never leaves Information in both split halves', () => {
+  it('closing a switched-off primary never leaves Information in both split halves (#10147)', () => {
     const store = useViewerStore;
     resetFeaturesForTest({ default: 'none', enable: ['check.clash'] });
     store.setState({ sidebarActivePanel: 'lens', sidebarSecondaryPanel: 'properties' });
@@ -220,6 +220,38 @@ describe('panels, commands, shortcuts and tools switched off', () => {
       assert.equal(store.getState().sidebarSecondaryPanel, null);
     } finally {
       stop();
+      store.setState({ sidebarSecondaryPanel: null });
+    }
+  });
+
+  it('closing a panel while opening one that is off lands on an available panel (#10147)', () => {
+    const store = useViewerStore;
+    resetFeaturesForTest({ default: 'none', enable: ['check.clash', 'check.validation'] });
+    const stop = enforcePanelAvailability(store);
+    try {
+      store.getState().openWorkspacePanel('clash');
+      store.setState({ clashPanelVisible: false, bcfPanelVisible: true });
+      assert.equal(store.getState().bcfPanelVisible, false);
+      assert.equal(store.getState().sidebarActivePanel, 'properties', 'no stale active panel');
+      store.setState({ bcfPanelVisible: true, idsPanelVisible: true });
+      assert.equal(store.getState().bcfPanelVisible, false);
+      assert.equal(store.getState().sidebarActivePanel, 'validation', 'the available panel opened in the same update is adopted');
+    } finally {
+      stop();
+      store.setState({ clashPanelVisible: false, idsPanelVisible: false });
+    }
+  });
+
+  it('a switched-off primary hands the sidebar to the next open panel (#10147)', () => {
+    const store = useViewerStore;
+    resetFeaturesForTest({ default: 'none', enable: ['check.clash'] });
+    store.setState({ sidebarActivePanel: 'lens', clashPanelVisible: true });
+    const stop = enforcePanelAvailability(store);
+    try {
+      assert.equal(store.getState().sidebarActivePanel, 'clash');
+    } finally {
+      stop();
+      store.setState({ clashPanelVisible: false });
     }
   });
 

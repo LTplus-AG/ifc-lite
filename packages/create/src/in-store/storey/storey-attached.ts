@@ -34,6 +34,7 @@ import { setWallSectionInStore } from '../wall-section-edit.js';
 import { readWallMetres } from '../wall-size-edit.js';
 import { readPlacementLeaf, worldLiftInParent, writeShiftedPlacement } from './storey-placement.js';
 import { placementWorldZ } from './storey-grid.js';
+import { scaleWallQuantities, snapshotWallQuantities, wallGeometry } from './wall-height-quantities.js';
 
 export type AttachedKind = 'wall' | 'column' | 'linear' | 'curtainWall';
 
@@ -161,8 +162,16 @@ export function attachedTopEditsBody(target: EditTarget, id: number, kind: Attac
 }
 
 /** Move the element's top from `from` to `to` (metres, its `top` measure). Caller owns the atomic transaction. */
-export function writeAttachedTop(target: EditTarget, id: number, kind: AttachedKind, from: number, to: number): AttachedOutcome {
-  if (kind === 'wall') return setWallSectionInStore(target, id, { height: to });
+export function writeAttachedTop(target: EditTarget, id: number, kind: AttachedKind, from: number, to: number, options?: { readonly deferWallQuantities?: boolean }): AttachedOutcome {
+  if (kind === 'wall') {
+    // Roof callers finish clipping before deciding whether prism quantities apply.
+    if (options?.deferWallQuantities) return setWallSectionInStore(target, id, { height: to });
+    const geometry = wallGeometry(target.dataStore, target.view, target.editor, id);
+    const quantities = snapshotWallQuantities(target.dataStore, target.view, id);
+    const outcome = setWallSectionInStore(target, id, { height: to });
+    if (outcome.ok) scaleWallQuantities(target.dataStore, target.view, id, to / from, geometry, quantities);
+    return outcome;
+  }
   if (kind === 'curtainWall') return relayoutCurtainWallHeight(target, id, to);
   if (kind === 'column') return setColumnHeight(target, id, to);
   return liftLinearTop(target, id, to - from);

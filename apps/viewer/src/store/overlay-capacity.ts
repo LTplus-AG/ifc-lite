@@ -3,12 +3,12 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { federationRegistry } from '@ifc-lite/renderer';
-import { highestExistingExpressId, type MutablePropertyView } from '@ifc-lite/mutations';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { StoreApi } from 'zustand';
 import type { ViewerState } from './index.js';
 import type { FederatedModel } from './types.js';
-import { modelExpressIdFloor } from '@/utils/model-mutation-view';
+import { discardOverlappingRetainedEdits, modelExpressIdFloor, sourceWatermark } from '@/utils/model-mutation-view';
 
 let deferred = 0;
 const refreshers = new Set<() => void>();
@@ -35,19 +35,16 @@ export function overlayCapacity(modelId: string, nextId: number): boolean {
 /** Also used before source updates commit, so subscribers never see stale capacity. */
 export function refreshModelOverlayCapacity(model: FederatedModel, view?: MutablePropertyView): FederatedModel {
   const nextId = Math.max(view?.peekNextExpressId() ?? 1, minNextOverlayExpressId(model.id, model.ifcDataStore));
-  const firstRetained = view?.getCreatedExpressIdBounds().lowest ?? 0;
-  const sourceEnd = Math.max(model.maxExpressId, firstRetained > 0 && model.ifcDataStore?.entityIndex?.byId ? highestExistingExpressId(model.ifcDataStore) : 0);
-  const hasRetainedIdConflict = firstRetained > 0 && firstRetained <= sourceEnd ? true : undefined;
-  const hasOverlayCapacity = !hasRetainedIdConflict && overlayCapacity(model.id, nextId);
-  if (model.hasOverlayCapacity === hasOverlayCapacity && model.hasRetainedIdConflict === hasRetainedIdConflict) return model;
-  return { ...model, hasOverlayCapacity, hasRetainedIdConflict };
+  const hasOverlayCapacity = overlayCapacity(model.id, nextId);
+  if (model.hasOverlayCapacity === hasOverlayCapacity) return model;
+  return { ...model, hasOverlayCapacity };
 }
 
 /** Keep selectors on reactive model data, including lazy and direct overlay clients. */
 export function registerOverlayCapacity(store: Pick<StoreApi<ViewerState>, 'getState' | 'setState' | 'subscribe'>): () => void {
   let refreshing = false;
   const dirty = new Set<string>();
-  const bound = new Map<string, { view: MutablePropertyView; source: IfcDataStore | null; floor: () => number }>();
+  const bound = new Map<string, { view: MutablePropertyView; source: IfcDataStore | null; maxExpressId: number; floor: () => number }>();
   const refresh = () => {
     if (deferred || refreshing) return;
     refreshing = true;
@@ -66,8 +63,14 @@ export function registerOverlayCapacity(store: Pick<StoreApi<ViewerState>, 'getS
             bound.delete(modelId);
           }
           if (!model) continue;
-          if (view && (view !== binding?.view || model.ifcDataStore !== binding.source)) {
-            bound.set(modelId, { view, source: model.ifcDataStore, floor: modelExpressIdFloor(modelId, model.ifcDataStore) });
+          if (view && (view !== binding?.view || model.ifcDataStore !== binding.source || model.maxExpressId !== binding.maxExpressId)) {
+            // Only a new view or source can create an overlap; allocator ticks skip this scan.
+            const watermark = sourceWatermark(model.ifcDataStore);
+            discardOverlappingRetainedEdits(state, modelId, Math.max(model.maxExpressId, watermark));
+            // A discarded view re-marks this model through the store subscription.
+            if (store.getState().mutationViews.get(modelId) !== view) continue;
+            bound.set(modelId, { view, source: model.ifcDataStore, maxExpressId: model.maxExpressId,
+              floor: modelExpressIdFloor(modelId, model.ifcDataStore, watermark) });
           }
           if (view) view.configureExpressIdAllocator(bound.get(modelId)!.floor, () => mark(modelId));
           const updated = refreshModelOverlayCapacity(model, view);

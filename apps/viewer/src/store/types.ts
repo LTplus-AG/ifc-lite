@@ -530,7 +530,6 @@ export interface PreAlignmentSnapshot {
   instancedGeometryAabbs: Map<number, EntityWorldAabb> | undefined;
 }
 export interface FederatedModel extends ModelLoadReportFields {
-  hasRetainedIdConflict?: boolean; // Retained creations overlap the source; discard them before editing.
   hasOverlayCapacity?: boolean; // Reactive authoring capacity, maintained at ownership/allocator changes.
   id: string; // UUID generated on load.
   name: string; // Display name (filename by default, user can rename)

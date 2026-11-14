@@ -26,7 +26,6 @@ const DENIAL_KEY: Record<MutationDenialReason, TranslationKey> = {
   'collab-role': 'flowAssistant.preflightDeniedRole', 'model-unavailable': 'flowAssistant.preflightDeniedModel',
   'properties-loading': 'mutationPermission.propertiesLoading', 'properties-failed': 'mutationPermission.propertiesFailed',
   'id-space-exhausted': 'mutationPermission.idSpaceExhausted',
-  'retained-id-conflict': 'mutationPermission.retainedIdConflict',
 };
 const native = (error: unknown): TranslatableMessage =>
   ({ labelKey: 'flowAssistant.preflightNative', params: { message: error instanceof Error ? error.message : String(error) } });

@@ -10,6 +10,7 @@ import type { ServerPropertiesOwner, ServerPropertiesRun } from '@/store/slices/
 import { watchLoadSupersession } from '../modelLoadCanceller.js';
 import { federationRegistry, ModelRangeExtensionRefusedError } from '@ifc-lite/renderer';
 import { withDeferredOverlayCapacity } from '@/store/overlay-capacity';
+import { discardOverlappingRetainedEdits } from '@/utils/model-mutation-view';
 import { getMaxExpressId } from './viewerModelIngest.js';
 
 /** The geometry finalizer may still overwrite its placeholder with null. */
@@ -29,15 +30,17 @@ function waitForCompletion(modelId: string, signal: AbortSignal): Promise<void> 
 
 /** Publishes the hydrated store's ids and returns the model's ownership bound for the reverse
  *  resolvers: the store's highest id, or the published end when a later model clamps the range. */
-function extendModelIdRange(modelId: string, dataStore: IfcDataStore, beforeExtend: () => void): { maxExpressId: number } {
+function extendModelIdRange(modelId: string, dataStore: IfcDataStore, firstHydration: boolean, beforeExtend: () => void): { maxExpressId: number } {
   const registered = useViewerStore.getState().models.get(modelId)?.maxExpressId ?? 0;
   const maxExpressId = Math.max(registered, getMaxExpressId(dataStore, []));
   // An unregistered primary keeps the single-model `globalId === expressId` fallback.
   if (!federationRegistry.hasModel(modelId)) return { maxExpressId };
-  // Source-derived allocator floors do not mean any authored IDs exist.
-  // Refusal leaves both the existing source and authored overlay untouched.
-  const view = useViewerStore.getState().mutationViews.get(modelId);
-  const firstCreated = view?.getCreatedExpressIdBounds().lowest ?? 0;
+  // A first hydration discards kept creations the source overlaps, like a local reload.
+  // A refresh refuses instead, leaving the source and the edits made against it untouched.
+  const state = useViewerStore.getState();
+  const firstCreated = firstHydration
+    ? discardOverlappingRetainedEdits(state, modelId, maxExpressId)
+    : state.mutationViews.get(modelId)?.getCreatedExpressIdBounds().lowest ?? 0;
   beforeExtend();
   const published = federationRegistry.extendModel(modelId, maxExpressId, firstCreated);
   if (published < maxExpressId) console.warn(`[Server properties] Ids ${published + 1}..${maxExpressId} of model ${modelId} lie past the ids a later model owns; those entities cannot be selected or resolved, and the model cannot be edited`);
@@ -97,7 +100,7 @@ function start(modelId: string | null, isStale: (() => boolean) | undefined,
       withDeferredOverlayCapacity(() => {
         if (!lease.isCurrent() || !ownsModel()) return;
         let idRange: { maxExpressId: number };
-        try { idRange = extendModelIdRange(modelId, dataStore, () => { ownershipMayHaveChanged = true; }); }
+        try { idRange = extendModelIdRange(modelId, dataStore, !owner.model.ifcDataStore, () => { ownershipMayHaveChanged = true; }); }
         catch (error) {
           if (!(error instanceof ModelRangeExtensionRefusedError)) throw error;
           ownershipMayHaveChanged = false;

@@ -8,7 +8,7 @@ import { getModelForRef } from '../sdk/adapters/model-compat.js';
 
 type MutationPermissionState = Pick<ViewerState, 'editEnabled' | 'canCollabEdit' | 'models' | 'ifcDataStore'> & Partial<Pick<ViewerState, 'serverPropertiesRuns' | 'mutationViews'>>;
 
-export type MutationDenialReason = 'edit-mode' | 'collab-role' | 'model-unavailable' | 'workflow-running' | 'properties-loading' | 'properties-failed' | 'id-space-exhausted' | 'retained-id-conflict';
+export type MutationDenialReason = 'edit-mode' | 'collab-role' | 'model-unavailable' | 'workflow-running' | 'properties-loading' | 'properties-failed' | 'id-space-exhausted';
 
 export function mutationDenialKey(reason: MutationDenialReason) {
   switch (reason) {
@@ -19,7 +19,6 @@ export function mutationDenialKey(reason: MutationDenialReason) {
     case 'properties-loading': return 'mutationPermission.propertiesLoading' as const;
     case 'properties-failed': return 'mutationPermission.propertiesFailed' as const;
     case 'id-space-exhausted': return 'mutationPermission.idSpaceExhausted' as const;
-    case 'retained-id-conflict': return 'mutationPermission.retainedIdConflict' as const;
   }
 }
 
@@ -47,7 +46,6 @@ export function dataMutationPermission(state: MutationPermissionState, modelId?:
   if (modelId !== undefined) {
     const model = getModelForRef(state, modelId);
     if (!model?.ifcDataStore) return { allowed: false, reason: 'model-unavailable' };
-    if (state.models.get(modelId)?.hasRetainedIdConflict) return { allowed: false, reason: 'retained-id-conflict' };
     if (state.models.get(modelId)?.hasOverlayCapacity === false) {
       return { allowed: false, reason: 'id-space-exhausted' };
     }
@@ -95,7 +93,6 @@ export function mutationDenialMessage(reason: MutationDenialReason): string {
     case 'properties-loading': return 'The model\'s properties are still loading';
     case 'properties-failed': return 'The model\'s properties could not be loaded, so it cannot be edited';
     case 'id-space-exhausted': return 'This model does not have enough safe entity IDs for edits in this session';
-    case 'retained-id-conflict': return 'Retained edits overlap this model’s source IDs. Discard the retained edits before editing';
   }
 }
 

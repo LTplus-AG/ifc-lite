@@ -12,5 +12,4 @@ export const mutationPermissionFr = {
   "mutationPermission.propertiesLoading": "Les propriétés du modèle sont encore en cours de chargement",
   "mutationPermission.propertiesFailed": "Les propriétés du modèle n'ont pas pu être chargées : il ne peut pas être modifié",
   "mutationPermission.idSpaceExhausted": "Ce modèle ne dispose pas d’assez d’identifiants d’entité sûrs pour les modifications dans cette session",
-  "mutationPermission.retainedIdConflict": "Les modifications conservées chevauchent les identifiants source de ce modèle. Abandonnez-les avant de modifier le modèle",
 } satisfies Catalogue;

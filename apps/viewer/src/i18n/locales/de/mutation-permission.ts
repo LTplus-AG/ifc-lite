@@ -12,5 +12,4 @@ export const mutationPermissionDe = {
   'mutationPermission.propertiesLoading': 'Die Eigenschaften des Modells werden noch geladen',
   'mutationPermission.propertiesFailed': 'Die Eigenschaften des Modells konnten nicht geladen werden, daher ist es nicht bearbeitbar',
   'mutationPermission.idSpaceExhausted': 'Für dieses Modell sind in dieser Sitzung nicht genügend sichere Entitäts-IDs für Bearbeitungen verfügbar',
-  "mutationPermission.retainedIdConflict": "Beibehaltene Änderungen überschneiden sich mit den Quell-IDs dieses Modells. Verwerfen Sie diese Änderungen vor der Bearbeitung",
 } satisfies Catalogue;

@@ -7,9 +7,13 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { federationRegistry } from '@ifc-lite/renderer';
 import { configureMutationView } from './configureMutationView.js';
 
+/** Highest source ID the store holds (0 without an index). */
+export function sourceWatermark(source: IfcDataStore | null): number {
+  return source?.entityIndex?.byId ? highestExistingExpressId(source) : 0;
+}
+
 /** Same ownership floor for live overlays and allocating cold planners. */
-export function modelExpressIdFloor(modelId: string, source: IfcDataStore | null): () => number {
-  const watermark = source?.entityIndex?.byId ? highestExistingExpressId(source) : 0;
+export function modelExpressIdFloor(modelId: string, source: IfcDataStore | null, watermark = sourceWatermark(source)): () => number {
   return () => {
     const range = federationRegistry.getGlobalIdRange(modelId);
     const offset = federationRegistry.getOffset(modelId);
@@ -22,6 +26,19 @@ export function createModelMutationView(dataStore: IfcDataStore, modelId: string
   view.configureExpressIdAllocator(modelExpressIdFloor(modelId, dataStore));
   configureMutationView(view, dataStore);
   return view;
+}
+
+/** Kept creations at or below the source end would alias source entities on
+ *  every read and export path, so they are discarded. Returns the first kept
+ *  creation that survives (0 for none). */
+export function discardOverlappingRetainedEdits(
+  state: Pick<import('@/store').ViewerState, 'mutationViews' | 'clearMutationView'>, modelId: string, sourceEnd: number,
+): number {
+  const lowest = state.mutationViews.get(modelId)?.getCreatedExpressIdBounds().lowest ?? 0;
+  if (lowest === 0 || lowest > sourceEnd) return lowest;
+  console.warn(`[Model] Discarded kept edits of model ${modelId}: its new entities from #${lowest} overlap the loaded source, which ends at #${sourceEnd}`);
+  state.clearMutationView(modelId);
+  return 0;
 }
 
 /** Source-only views carry no work to reload, and must not retain an old allocator floor. */

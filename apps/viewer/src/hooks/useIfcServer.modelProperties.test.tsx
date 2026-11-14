@@ -757,6 +757,8 @@ it('batched view clear notifies once and preserves unrelated pending work (#1013
 });
 
 for (const provisional of [false, true]) for (const sourceMax of [990, 1003, 2000]) it(`${provisional ? 'LandXML' : 'local'} reload with source max ${sourceMax} preserves loadability with retained creations (#10139)`, () => {
+  const warnings: unknown[][] = [];
+  mock.method(console, 'warn', (...args: unknown[]) => { warnings.push(args); });
   try {
     const state = useViewerStore.getState();
     state.updateModel('server', { idOffset: state.registerModelOffset('server', 1000), maxExpressId: 1000, ifcDataStore: serverStoreAt(1000) });
@@ -775,10 +777,10 @@ for (const provisional of [false, true]) for (const sourceMax of [990, 1003, 200
     useViewerStore.getState().addModel({ ...fixtureModel('server'), idOffset, maxExpressId: sourceMax, ifcDataStore: source });
     assert.equal(useViewerStore.getState().models.get('server')!.ifcDataStore, source);
     if (sourceMax >= 1001) {
-      assert.deepEqual(dataMutationPermission(useViewerStore.getState(), 'server'), { allowed: false, reason: 'retained-id-conflict' });
+      // Kept creations would shadow source entities with the same IDs on read and export.
+      assert.equal(useViewerStore.getState().mutationViews.has('server'), false, 'overlapping kept edits are discarded');
+      assert.ok(warnings.some(args => /Discarded kept edits of model server/.test(String(args[0]))));
       assert.equal(federationRegistry.getGlobalIdRange('server')!.end, idOffset + sourceMax, 'only source ownership is published');
-      if (sourceMax < 1005) assert.throws(() => useViewerStore.getState().toGlobalId('server', 1005));
-      useViewerStore.getState().clearMutationView('server');
       assert.deepEqual(dataMutationPermission(useViewerStore.getState(), 'server'), { allowed: true });
     } else {
       for (let id = 1001; id <= 1005; id++) assert.equal(useViewerStore.getState().toGlobalId('server', id), idOffset + id);
@@ -787,14 +789,28 @@ for (const provisional of [false, true]) for (const sourceMax of [990, 1003, 200
   } finally { useViewerStore.getState().mutationViews.get('server')?.clear(); federationRegistry.clear(); }
 });
 
-it('first hydration refusal is labelled hydration, not re-hydration (#10139)', async () => {
-  try {
-  federationRegistry.registerModel('server', 100);
-  useViewerStore.getState().updateModel('server', { maxExpressId: 100 });
+it('first hydration discards kept creations the source overlaps and loads properties (#10139)', async () => {
+  mock.method(console, 'warn', () => {});
+  const idOffset = federationRegistry.registerModel('server', 100);
+  useViewerStore.getState().updateModel('server', { idOffset, maxExpressId: 100 });
   const retained = new MutablePropertyView(null, 'server');
   retained.setExpressIdWatermark(100);
   retained.createEntity('IfcMaterial', ['Retained']);
   useViewerStore.setState({ mutationViews: new Map([['server', retained]]) });
+  const source = serverStoreAt(150);
+  await act(async () => {
+    useServerModelProperties().start('server', undefined, async () => source);
+    await new Promise(resolve => setTimeout(resolve, 30));
+  });
+  assert.equal(useViewerStore.getState().serverPropertiesRuns.get('server')?.kind, 'succeeded');
+  assert.equal(useViewerStore.getState().mutationViews.has('server'), false);
+  assert.equal(useViewerStore.getState().models.get('server')?.ifcDataStore, source);
+  assert.equal(federationRegistry.getGlobalIdRange('server')!.end, idOffset + 150);
+  assert.deepEqual(dataMutationPermission(useViewerStore.getState(), 'server'), { allowed: true });
+});
+
+it('first hydration refusal is labelled hydration, not re-hydration (#10139)', async () => {
+  federationRegistry.reserveModel('server', 100);
   await act(async () => {
     useServerModelProperties().start('server', undefined, async () => serverStoreAt(150));
     await new Promise(resolve => setTimeout(resolve, 30));
@@ -802,7 +818,6 @@ it('first hydration refusal is labelled hydration, not re-hydration (#10139)', a
   const run = useViewerStore.getState().serverPropertiesRuns.get('server');
   assert.equal(run?.kind, 'failed');
   assert.match(run?.kind === 'failed' ? run.error : '', /^Server properties hydration refused:/);
-  } finally { useViewerStore.getState().clearMutationView('server'); federationRegistry.clear(); }
 });
 
 for (const failure of ['update', 'refresher', 'listener', 'listener-refusal'] as const) it(`a throwing ${failure} after ownership growth cannot restore the previous editable run (#10139)`, async () => {

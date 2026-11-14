@@ -72,7 +72,7 @@ function useSaveDrawingMarkupHandler() {
       if (outcome.refusal) {
         const refusal = outcome.refusal;
         toast.error(refusal === 'edit-mode' || refusal === 'collab-role' || refusal === 'model-unavailable' || refusal === 'workflow-running'
-          || refusal === 'properties-loading' || refusal === 'properties-failed' || refusal === 'id-space-exhausted' || refusal === 'retained-id-conflict'
+          || refusal === 'properties-loading' || refusal === 'properties-failed' || refusal === 'id-space-exhausted'
           ? t(mutationDenialKey(refusal)) : refusalText(refusal));
         return;
       }

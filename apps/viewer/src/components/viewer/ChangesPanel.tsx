@@ -30,7 +30,6 @@ function refusalKey(reason: RevertRefusal): TranslationKey {
     case 'properties-loading': return 'mutationPermission.propertiesLoading';
     case 'properties-failed': return 'mutationPermission.propertiesFailed';
     case 'id-space-exhausted': return 'mutationPermission.idSpaceExhausted';
-    case 'retained-id-conflict': return 'mutationPermission.retainedIdConflict';
     case 'newer-conflict': return 'changesPanel.revertUnavailable';
     case 'shared-room': return 'changesPanel.revertSharedRoom';
     case 'missing-view':

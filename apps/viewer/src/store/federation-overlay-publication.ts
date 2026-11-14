@@ -14,7 +14,6 @@ interface OverlayPublicationRegistry {
 
 interface OverlayPublicationModel {
   maxExpressId: number;
-  hasRetainedIdConflict?: boolean;
 }
 
 interface OverlayPublicationView {
@@ -59,7 +58,7 @@ export function toPublishedGlobalId(
     const view = views.get(modelId);
     const offset = registry.getOffset(modelId);
     const published = registry.getGlobalIdRange(modelId);
-    if (model === undefined || model.hasRetainedIdConflict || view === undefined || offset === null || published === null
+    if (model === undefined || view === undefined || offset === null || published === null
       || expressId <= model.maxExpressId || view.getNewEntity(expressId) === null) {
       throw error;
     }

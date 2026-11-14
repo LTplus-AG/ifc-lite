@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "apps/viewer/src/lib/settled-frame.ts",
+  "mutation": "tests/evidence/10067-settled-frame-wait/behaviour.oracle.patch",
+  "test": "apps/viewer/src/lib/settled-frame.test.ts",
+  "why": "Reverse application keeps every export the tests import but ends the wait on the first animation frame whatever it drew (main's behaviour), so work runs while a draw is still pending and the frame-submitted, restart-on-pending and cancel cases go red."
+}

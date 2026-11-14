@@ -59,7 +59,7 @@ export default {
       const step = dl ? readStep(dl.text) : null;
       const q = step ? wallQuantityCoverage(step) : [];
       const psets = step ? wallPropertySets(step) : [];
-      const classified = step ? classificationOf(step, selectedWall) : false;
+      const classified = step ? classificationOf(step, selectedWall, 'EF_25_10') : false;
       return {
         tasks, notes: [], evidence: [],
         exportText: dl?.text ?? null,

@@ -82,6 +82,22 @@ async function lift(canvas: HTMLCanvasElement) {
 }
 
 describe('a double-tap is a double-click (#9092)', () => {
+  it('replays a held command tap at its canvas-relative point with an offset canvas', async () => {
+    useViewerStore.getState().startCommand('wall.place');
+    const { canvas } = commandRig();
+    canvas.getBoundingClientRect = () => DOMRect.fromRect({ x: 300, y: 200, width: 800, height: 600 });
+    const models = new Map(useViewerStore.getState().models);
+    const [id, model] = [...models][0]!;
+    models.set(id, { ...model, geometryRestorePending: true });
+    act(() => useViewerStore.setState({ models }));
+    await tap(canvas, 340, 240);
+    const released = new Map(useViewerStore.getState().models);
+    const [releasedId, releasedModel] = [...released][0]!;
+    released.set(releasedId, { ...releasedModel, geometryRestorePending: false });
+    act(() => useViewerStore.setState({ models: released }));
+    assert.deepEqual(wallGesture().chain[0]?.map((v) => +v.toFixed(6)), [0.4, -0.4]);
+  });
+
   it('ends a wall chain where its first tap placed the point', async (t) => {
     clock(t);
     useViewerStore.getState().startCommand('wall.place');
@@ -525,6 +541,19 @@ describe('a command that follows the press gets a press-drag (#9092)', () => {
     await act(async () => { canvas.dispatchEvent(touchEvent('touchend', canvas, [])); });
     assert.equal(pose(camera), before, 'the corner drag orbited');
     assert.equal(spaceQuantity(left.id, 'GrossFloorArea'), 17.5, 'BUG: the corner did not move to where the finger lifted');
+  });
+
+  it('a press-drag command does not grab or advance its gesture while geometry is held', async (t) => {
+    const left = await roomEdit(t, 'shape');
+    if (!left) return;
+    const models = new Map(useViewerStore.getState().models);
+    const [id, model] = [...models][0]!;
+    models.set(id, { ...model, geometryRestorePending: true });
+    useViewerStore.setState({ models });
+    const { canvas } = commandRig();
+    roomDrag(canvas, at(4, 5), -100);
+    assert.equal((getCommandRuntime().gesture as RoomPlaceGesture).edit.drag, null,
+      'held touch must not call the command press or drag handlers');
   });
 
   /** room.place in edit mode with `tool`, on a box split at x = 4: the left room. */

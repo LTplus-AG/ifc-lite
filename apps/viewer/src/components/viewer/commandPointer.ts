@@ -180,6 +180,7 @@ function pressSnap(ctx: MouseHandlerContext, runtime: CommandRuntimeState, x: nu
 export function routeCommandPressDrag(ctx: MouseHandlerContext, x: number, y: number, mods: PointerModifiers, drag: boolean): boolean {
   const runtime = getCommandRuntime();
   if (!runtime.command?.pressDrags || !runtime.ctx) return false;
+  if (isGeometryHeld(useViewerStore.getState())) return false;
   const snap = pressSnap(ctx, runtime, x, y, mods);
   return snap !== null && (drag ? commandPressDrag : commandPressGrabs)(snap);
 }

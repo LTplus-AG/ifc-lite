@@ -164,8 +164,7 @@ export function createCommandTouchPress(canvas: HTMLCanvasElement, getTool: () =
       }
       const { ctx } = p;
       if (tap && isGeometryHeld(useViewerStore.getState())) {
-        const rect = canvas.getBoundingClientRect();
-        const at = { x: x - rect.left, y: y - rect.top };
+        const at = { x, y };
         const detail = p.onPress ? 1 : clickCount(p.runtime);
         queueHeldPointerClick({ ...at, shiftKey: e.shiftKey === true, ctrlKey: false, metaKey: false,
           altKey: e.altKey === true, button: 0, handler: 'touch:command', replay: () => {

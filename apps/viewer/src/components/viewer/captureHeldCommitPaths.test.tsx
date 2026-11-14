@@ -66,6 +66,26 @@ test('#9232 reposition refuses the capture-phase press before picking or setting
   } finally { h.unregister(); }
 });
 
+test('reposition picks at the click when a held press is released before its click', () => {
+  const h = rig();
+  const seeded = fixtureModels(fixtureModel('m', { entities: [{ expressId: 7, type: 'IfcWall' }] }));
+  useViewerStore.setState({ ...seeded, geometryStreamingActive: true });
+  useViewerStore.getState().openReposition(['m']);
+  setGlobalRendererRef({ current: h.renderer });
+  const finished: unknown[] = [], errors: string[] = [];
+  function Probe() { useRepositionPicking('source', (role) => finished.push(role), (message) => errors.push(message)); return null; }
+  render(<Probe />);
+  try {
+    act(() => { h.canvas.dispatchEvent(event('pointerdown')); });
+    useViewerStore.setState({ geometryStreamingActive: false });
+    act(() => { h.canvas.dispatchEvent(new MouseEvent('click', { button: 0, clientX: 20, clientY: 30, bubbles: true })); });
+    assert.equal(h.counts().picks, 1, 'the click point is picked after the hold ends');
+    assert.deepEqual(useViewerStore.getState().modelPlacement.preview?.source?.point, [1, -3, 2]);
+    assert.deepEqual(finished, ['target']);
+    assert.deepEqual(errors, []);
+  } finally { h.unregister(); }
+});
+
 test('#9232 scan landmark refuses before reading the capture-mirrored clipping state', async () => {
   const h = rig();
   const session = { validate() {} } as unknown as ScanSession;

@@ -93,10 +93,15 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
       }
     };
     let nextRole: PickRole | undefined;
+    let pressBeganHeld = false;
     const down = (event: PointerEvent) => {
       if (event.button !== 0) return;
-      event.preventDefault(); event.stopImmediatePropagation(); nextRole = undefined;
-      if (isGeometryHeld(useViewerStore.getState())) { nextRole = role === 'source' ? 'target' : null; return; }
+      event.preventDefault(); event.stopImmediatePropagation(); nextRole = undefined; pressBeganHeld = false;
+      if (isGeometryHeld(useViewerStore.getState())) {
+        pressBeganHeld = true;
+        nextRole = role === 'source' ? 'target' : null;
+        return;
+      }
       if (refuseCaptureHeldPick(renderer)) return;
       const hit = pick(event);
       if (!hit) { onError('No eligible point found. Zoom closer, choose another point, or enter coordinates.'); return; }
@@ -105,6 +110,12 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
         nextRole = role === 'source' ? 'target' : null;
       } catch (error) { onError(error instanceof Error ? error.message : String(error)); }
     };
+    const pickAndFinish = (event: MouseEvent, queuedRole: PickRole) => {
+      const hit = pick(event as PointerEvent);
+      if (!hit) { onError('No eligible point found. Zoom closer, choose another point, or enter coordinates.'); return; }
+      try { updateAnchor(event as PointerEvent, hit); finish(queuedRole); }
+      catch (error) { onError(error instanceof Error ? error.message : String(error)); }
+    };
     // Finish on click, after consuming the whole gesture. Changing the role on
     // pointerdown removed these listeners before release and also selected the
     // IFC entity through the ordinary viewer click handler.
@@ -112,22 +123,20 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
       if (event.button !== 0) return;
       event.preventDefault(); event.stopImmediatePropagation();
       if (event.type === 'click' && nextRole !== undefined) {
+        const queuedRole = nextRole;
         if (isGeometryHeld(useViewerStore.getState())) {
           const rect = canvas.getBoundingClientRect(), x = event.clientX - rect.left, y = event.clientY - rect.top;
-          const queuedRole = nextRole;
           queueHeldPointerClick({ x, y, shiftKey: event.shiftKey, ctrlKey: event.ctrlKey, metaKey: event.metaKey,
             altKey: event.altKey, button: event.button, handler: `reposition:${role}`, replay: () => {
               const currentRect = canvas.getBoundingClientRect();
               const replayed = new PointerEvent('pointerdown', { clientX: currentRect.left + x, clientY: currentRect.top + y,
                 shiftKey: event.shiftKey, ctrlKey: event.ctrlKey, metaKey: event.metaKey, altKey: event.altKey, button: 0 });
-              const hit = pick(replayed);
-              if (!hit) { onError('No eligible point found. Zoom closer, choose another point, or enter coordinates.'); return; }
-              try { updateAnchor(replayed, hit); finish(queuedRole); }
-              catch (error) { onError(error instanceof Error ? error.message : String(error)); }
+              pickAndFinish(replayed, queuedRole);
             } });
           return;
         }
-        finish(nextRole);
+        if (pressBeganHeld) { pickAndFinish(event, queuedRole); return; }
+        finish(queuedRole);
       }
     };
     canvas.addEventListener('pointerup', release, true);

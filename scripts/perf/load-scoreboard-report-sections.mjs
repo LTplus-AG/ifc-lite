@@ -84,11 +84,10 @@ export function frameMarkOf(row) {
 const MIN_SUMMARY = 3;
 
 /**
- * Both marks for one lane, per side, from the same samples: the current mark (what verdicts use) and the frame mark,
- * with the share of samples that hit the post-finalize stall (wait > STALL_MS) and the gains under both marks. The
- * frame gain needs every sample on both sides to have a frame mark: a median over a smaller cohort than the current
- * one could show a gain made by the missing samples alone, so with any unknown it is null. Verdicts stay on the
- * current mark; this makes an uneven tail visible beside it.
+ * Both marks for one lane, per side, from the same samples: the settled mark and the frame mark used for browser
+ * verdicts, with the share of samples that hit the post-finalize stall (wait > STALL_MS) and gains under both marks.
+ * The frame gain needs every sample on both sides to have a frame mark: a median over a smaller cohort could show a
+ * gain made by missing samples alone, so with any unknown it is null. The settled mark stays visible beside it.
  */
 export function bothMarksCell(rows) {
   const side = (name) => {
@@ -128,8 +127,8 @@ export function bothMarksRows(fixtures) {
 /** The both-marks section's markdown lines, or none when no lane has presented-frame times. */
 export function bothMarksSection(fixtures) {
   const rows = bothMarksRows(fixtures);
-  return rows.length ? ['', `## Both marks (verdicts use the current mark; "frame" = first frame started (canvas texture acquired) at or after the scene finished; frame gain only when every sample has a frame mark; stall = next frame > ${STALL_MS} ms after the mark)`, '',
-    '| fixture | lane | base current | base frame | base stalls | branch current | branch frame | branch stalls | gain (current) | gain (frame) |', '|---|---|---:|---:|---:|---:|---:|---:|---:|---:|', ...rows] : [];
+  return rows.length ? ['', `## Both marks (browser verdicts use the frame mark; "frame" = first frame started (canvas texture acquired) at or after the scene finished; frame gain only when every sample has a frame mark; stall = next frame > ${STALL_MS} ms after the settled mark)`, '',
+    '| fixture | lane | base settled | base frame | base stalls | branch settled | branch frame | branch stalls | gain (settled) | gain (frame) |', '|---|---|---:|---:|---:|---:|---:|---:|---:|---:|', ...rows] : [];
 }
 
 /**

@@ -42,7 +42,7 @@ export const METRICS = [
   // [key, label, smallest countable absolute difference]
   ['firstGeometryMs', 'first geometry ms', 1],
   [FRAME_KEY, 'interactive ms (frame mark, verdict)', 1],
-  ['interactiveMs', 'interactive ms (settled mark)', 1],
+  ['interactiveMs', 'interactive ms', 1],
   ['peakMemoryMiB', 'peak memory MiB', 1],
   ['uiQuietMs', 'UI quiet ms', 1],
   // `boot` lane only (absent elsewhere, so no verdict there).
@@ -263,7 +263,7 @@ function tierCell(f, lane) {
 
 /** Baseline table (one set). For an A/A run the base and branch sides are the same build, so values are pooled. */
 function baselineTable(summary, set, lanes) {
-  const lines = ['| fixture | MB | expected tier | lane | first geometry ms | interactive ms (browser: frame mark) | UI quiet ms | peak memory MiB | ok/failed | flagged (load / input delay) | observed tier, path | output |',
+  const lines = ['| fixture | MB | expected tier | lane | first geometry ms | interactive ms (verdict mark: browser frame, native batch) | UI quiet ms | peak memory MiB | ok/failed | flagged (load / input delay) | observed tier, path | output |',
     '|---|---:|---|---|---:|---:|---:|---:|---|---|---|---|'];
   for (const f of summary.fixtures.filter((x) => x.set === set)) {
     for (const lane of lanes) {
@@ -310,9 +310,11 @@ function verdictTable(summary, set, lanes) {
     for (const lane of lanes) {
       const l = f.lanes[lane];
       if (!l) continue;
-      for (const [key, label] of METRICS) {
+      for (const [key, defaultLabel] of METRICS) {
         const v = l.verdicts[key];
         if (!v) continue;
+        const label = key === 'interactiveMs' && lane.startsWith('browser')
+          ? 'interactive ms (settled mark)' : defaultLabel;
         const mark = v.pass ? 'PASS gain' : v.regression ? `FLAG ${v.verdict}` : v.verdict;
         const med = (side) => (v.samples[side] >= 3 ? n0(side === 'base' ? v.baseMedian : v.branchMedian) : `n=${v.samples[side]} (no median)`);
         lines.push(`| ${f.name} | ${lane} | ${label} | ${med('base')} | ${med('branch')} | ${signed(v.gain)} | ${pct(v.ownFloor)} | ${pct(v.aaFloor)} | ${pct(v.noiseFloor === null ? null : v.noiseFloor * 2)} | ${mark} | ${l.output} |`);

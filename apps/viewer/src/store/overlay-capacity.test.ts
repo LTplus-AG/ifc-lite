@@ -20,7 +20,8 @@ it('drains a reentrant view replacement before returning (#10139)', () => {
   federationRegistry.clear();
   try {
     federationRegistry.registerModel('A', 100);
-    const model = fixtureModel('A');
+    // Starts exhausted, so the first refresh rewrites the model and the subscriber replaces the view.
+    const model = { ...fixtureModel('A'), hasOverlayCapacity: false };
     const store = createStore<ViewerState>(() => ({ ...useViewerStore.getState(), ...fixtureModels(model), mutationViews: new Map() }));
     const replacement = new MutablePropertyView(null, 'A');
     let replaced = false;
@@ -62,7 +63,10 @@ it('cold planner and read lease predict the bound live allocator ID (#10139)', (
   federationRegistry.clear();
   try {
     federationRegistry.registerModel('A', 100);
-    useViewerStore.setState({ ...fixtureModels(fixtureModel('A')), mutationViews: new Map(), storeEditors: new Map() });
+    const model = fixtureModel('A');
+    // StoreEditor scans the source id index; an empty one keeps the floor on the published range.
+    Object.assign(model.ifcDataStore!.entityIndex, { byId: new Map() });
+    useViewerStore.setState({ ...fixtureModels(model), mutationViews: new Map(), storeEditors: new Map() });
     const cold = useViewerStore.getState();
     const planner = readModelEditTarget(cold, 'A')!;
     const lease = readOnlyModelEditLease(cold, 'A')!;

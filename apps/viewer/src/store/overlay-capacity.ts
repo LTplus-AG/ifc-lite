@@ -36,7 +36,8 @@ export function overlayCapacity(modelId: string, nextId: number): boolean {
 export function refreshModelOverlayCapacity(model: FederatedModel, view?: MutablePropertyView): FederatedModel {
   const nextId = Math.max(view?.peekNextExpressId() ?? 1, minNextOverlayExpressId(model.id, model.ifcDataStore));
   const hasOverlayCapacity = overlayCapacity(model.id, nextId);
-  if (model.hasOverlayCapacity === hasOverlayCapacity) return model;
+  // Unset means capacity; only an exhausted range is written, so unchanged models keep their identity.
+  if ((model.hasOverlayCapacity !== false) === hasOverlayCapacity) return model;
   return { ...model, hasOverlayCapacity };
 }
 

@@ -908,7 +908,7 @@ it('a commit that throws before the store swap fails the run even when capacity 
     updateModel('server', { idOffset: registerModelOffset('server', 1), maxExpressId: 1, ifcDataStore: result() });
     registerModelOffset('later', 10);
     useViewerStore.getState().setServerPropertiesRun('server', { kind: 'succeeded', runId: 42, result: undefined });
-    assert.equal(useViewerStore.getState().models.get('server')!.hasOverlayCapacity, true);
+    assert.notEqual(useViewerStore.getState().models.get('server')!.hasOverlayCapacity, false);
     useViewerStore.setState({ updateModel: () => { throw new Error('Update failed'); } });
     await act(async () => {
       useServerModelProperties().start('server', undefined, async () => serverStoreAt(1_000_001));

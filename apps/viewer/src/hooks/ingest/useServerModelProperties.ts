@@ -125,7 +125,7 @@ function start(modelId: string | null, isStale: (() => boolean) | undefined,
         useViewerStore.getState().updateModel(modelId, accepted
           ? { ifcDataStore: dataStore, ...idRange }
           : idRange);
-        if (accepted && !useViewerStore.getState().models.get(modelId)?.hasOverlayCapacity) {
+        if (accepted && useViewerStore.getState().models.get(modelId)?.hasOverlayCapacity === false) {
           console.warn(`[Server properties] Model ${modelId}: no id is left for edits in its safe range`);
         }
       });

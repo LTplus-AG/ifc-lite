@@ -90,7 +90,8 @@ export function getMaxExpressId(
   pointClouds: readonly Pick<PointCloudAsset, 'expressId'>[] = [],
 ): number {
   const maxExpressIdFromMeshes = meshes.reduce((max, mesh) => Math.max(max, mesh.expressId), 0);
-  const maxExpressIdFromEntities = dataStore ? highestExistingExpressId(dataStore) : 0;
+  // Indexless stores (test doubles, partial loads) carry no source ids yet, as before the shared scan.
+  const maxExpressIdFromEntities = dataStore?.entityIndex?.byId ? highestExistingExpressId(dataStore) : 0;
   const maxExpressIdFromPoints = pointClouds.reduce((max, asset) => Math.max(max, asset.expressId), 0);
   return Math.max(maxExpressIdFromMeshes, maxExpressIdFromEntities, maxExpressIdFromPoints);
 }

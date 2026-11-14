@@ -4,7 +4,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { isGeometryLoadStreaming } from './pick-gating.js';
+import { isGeometryLoadStreaming, isGeometryRestoreHeld } from './pick-gating.js';
 
 // `isGeometryLoadStreaming` is the gate behind `getPickOptions().isStreaming`:
 // when it returns true, `PickingManager.pick()` bails to null. These tests pin
@@ -68,5 +68,19 @@ describe('isGeometryLoadStreaming', () => {
       }),
       false,
     );
+  });
+});
+
+
+describe('isGeometryRestoreHeld', () => {
+  it('holds only while at least one model is restoring geometry', () => {
+    assert.equal(isGeometryRestoreHeld({ models: new Map([['a', { geometryRestorePending: false }], ['b', { geometryRestorePending: true }]]) }), true);
+    assert.equal(isGeometryRestoreHeld({ models: new Map([['a', { geometryRestorePending: false }]]) }), false);
+    assert.equal(isGeometryRestoreHeld({}), false);
+  });
+
+  it('leaves a cold streaming load on the existing non-restore path', () => {
+    assert.equal(isGeometryRestoreHeld({ models: new Map([['cold', {}]]) }), false);
+    assert.equal(isGeometryLoadStreaming({ geometryStreamingActive: true, loading: true, progress: null, models: new Map([['cold', {}]]) }), true);
   });
 });

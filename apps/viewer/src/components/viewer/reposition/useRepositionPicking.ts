@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { refuseCaptureHeldPick } from '@/lib/viewport-capture';
+import { isGeometryHeld, isGeometryRestoreHeld } from '@/lib/pick-gating';
 import type { EdgeLockInput } from '@ifc-lite/renderer';
 import { EDGE_LOCK_DEFAULTS } from '@/store/constants';
 import { useEffect, useState } from 'react';
@@ -81,6 +82,7 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
     };
     const move = (event: PointerEvent) => {
       if (event.buttons !== 0) return;
+      if (isGeometryHeld(useViewerStore.getState())) { setHover(null); return; }
       if (refuseCaptureHeldPick(renderer)) return;
       const hit = pick(event);
       setHover(hit);
@@ -93,6 +95,9 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
     const down = (event: PointerEvent) => {
       if (event.button !== 0) return;
       event.preventDefault(); event.stopImmediatePropagation(); nextRole = undefined;
+      if (isGeometryRestoreHeld(useViewerStore.getState())) {
+        return;
+      }
       if (refuseCaptureHeldPick(renderer)) return;
       const hit = pick(event);
       if (!hit) { onError('No eligible point found. Zoom closer, choose another point, or enter coordinates.'); return; }
@@ -107,7 +112,11 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
     const release = (event: MouseEvent) => {
       if (event.button !== 0) return;
       event.preventDefault(); event.stopImmediatePropagation();
-      if (event.type === 'click' && nextRole !== undefined) finish(nextRole);
+      if (event.type === 'click' && nextRole !== undefined) {
+        // A click during a reopen's restore hold is ignored, even for a press picked just before it began.
+        if (isGeometryRestoreHeld(useViewerStore.getState())) { nextRole = undefined; return; }
+        finish(nextRole);
+      }
     };
     canvas.addEventListener('pointerup', release, true);
     canvas.addEventListener('click', release, true);

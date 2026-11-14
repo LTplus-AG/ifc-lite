@@ -82,6 +82,42 @@ async function lift(canvas: HTMLCanvasElement) {
 }
 
 describe('a double-tap is a double-click (#9092)', () => {
+  it('#10218 ignores a command tap during restore even with an offset canvas', async () => {
+    useViewerStore.getState().startCommand('wall.place');
+    const { canvas } = commandRig();
+    canvas.getBoundingClientRect = () => DOMRect.fromRect({ x: 300, y: 200, width: 800, height: 600 });
+    const models = new Map(useViewerStore.getState().models);
+    const [id, model] = [...models][0]!;
+    models.set(id, { ...model, geometryRestorePending: true });
+    act(() => useViewerStore.setState({ models }));
+    await tap(canvas, 340, 240);
+    const released = new Map(useViewerStore.getState().models);
+    const [releasedId, releasedModel] = [...released][0]!;
+    released.set(releasedId, { ...releasedModel, geometryRestorePending: false });
+    act(() => useViewerStore.setState({ models: released }));
+    assert.equal(wallGesture().chain.length, 0);
+    await tap(canvas, 340, 240);
+    assert.equal(wallGesture().chain.length, 1, 'the same tap works after release');
+  });
+
+  it('#10218 a command touch that begins during restore and lifts after release places nothing', async () => {
+    useViewerStore.getState().startCommand('wall.place');
+    const { canvas } = commandRig();
+    const setPending = (pending: boolean) => {
+      const models = new Map(useViewerStore.getState().models);
+      const [id, model] = [...models][0]!;
+      models.set(id, { ...model, geometryRestorePending: pending });
+      act(() => useViewerStore.setState({ models }));
+    };
+    setPending(true);
+    press(canvas, ...at(10, 10));
+    setPending(false); // the hold ends while the finger is still down
+    await lift(canvas);
+    assert.equal(wallGesture().chain.length, 0, 'a touch begun during the hold must not place on its lift');
+    await tap(canvas, ...at(10, 10));
+    assert.equal(wallGesture().chain.length, 1, 'a tap after release places');
+  });
+
   it('ends a wall chain where its first tap placed the point', async (t) => {
     clock(t);
     useViewerStore.getState().startCommand('wall.place');
@@ -525,6 +561,44 @@ describe('a command that follows the press gets a press-drag (#9092)', () => {
     await act(async () => { canvas.dispatchEvent(touchEvent('touchend', canvas, [])); });
     assert.equal(pose(camera), before, 'the corner drag orbited');
     assert.equal(spaceQuantity(left.id, 'GrossFloorArea'), 17.5, 'BUG: the corner did not move to where the finger lifted');
+  });
+
+  it('a press-drag command does not grab or advance its gesture while geometry is held', async (t) => {
+    const left = await roomEdit(t, 'shape');
+    if (!left) return;
+    const models = new Map(useViewerStore.getState().models);
+    const [id, model] = [...models][0]!;
+    models.set(id, { ...model, geometryRestorePending: true });
+    useViewerStore.setState({ models });
+    const area = spaceQuantity(left.id, 'GrossFloorArea');
+    const { canvas } = commandRig();
+    roomDrag(canvas, at(4, 5), -100);
+    assert.equal((getCommandRuntime().gesture as RoomPlaceGesture).edit.drag, null,
+      'held touch must not call the command press or drag handlers');
+    assert.equal(spaceQuantity(left.id, 'GrossFloorArea'), area, 'a held drag must not move the corner (an ungated drag would commit and change the room)');
+  });
+
+  it('#10218 a press-drag touch begun during restore does not grab after the hold ends', async (t) => {
+    const left = await roomEdit(t, 'shape');
+    if (!left) return;
+    const area = spaceQuantity(left.id, 'GrossFloorArea');
+    const setPending = (pending: boolean) => {
+      const models = new Map(useViewerStore.getState().models);
+      const [id, model] = [...models][0]!;
+      models.set(id, { ...model, geometryRestorePending: pending });
+      act(() => useViewerStore.setState({ models }));
+    };
+    const { canvas } = commandRig();
+    const [x0, y0] = at(4, 5);
+    setPending(true);
+    act(() => { canvas.dispatchEvent(touchEvent('touchstart', canvas, [[x0, y0]])); });
+    setPending(false); // the hold ends before the finger first moves
+    act(() => {
+      for (let i = 1; i <= 5; i++) canvas.dispatchEvent(touchEvent('touchmove', canvas, [[x0 - (100 * i) / 5, y0]]));
+      canvas.dispatchEvent(touchEvent('touchend', canvas, []));
+    });
+    assert.equal((getCommandRuntime().gesture as RoomPlaceGesture).edit.drag, null, 'the held press never grabbed');
+    assert.equal(spaceQuantity(left.id, 'GrossFloorArea'), area, 'a press begun during the hold must not commit a corner drag');
   });
 
   /** room.place in edit mode with `tool`, on a box split at x = 4: the left room. */

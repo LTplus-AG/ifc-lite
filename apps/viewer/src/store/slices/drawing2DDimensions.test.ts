@@ -35,6 +35,16 @@ const dim = (id: string, patch: Partial<Dimension2D> = {}): Dimension2D => ({
 const ids = (list: { id: string }[]) => list.map((d) => d.id);
 
 describe('dimension actions', () => {
+  it('updates each same-id dimension from its own geometry (one undo step)', () => {
+    const s = makeStore();
+    s.setState({ dimensions2D: [dim('dup'), dim('dup', { a: { x: 10, y: 0 }, b: { x: 15, y: 0 } })] });
+    s.getState().updateDimension2D('dup', { offset: 2 });
+    const [first, second] = s.getState().dimensions2D;
+    assert.deepEqual([first.a, first.offset], [{ x: 0, y: 0 }, 2]);
+    assert.deepEqual([second.a, second.b, second.offset], [{ x: 10, y: 0 }, { x: 15, y: 0 }, 2], 'the second keeps its endpoints');
+    assert.equal(s.getState().dimension2DUndo.length, 1);
+  });
+
   it('adds, updates and removes dimensions', () => {
     const s = makeStore();
     s.getState().addDimension2D(dim('d1'));

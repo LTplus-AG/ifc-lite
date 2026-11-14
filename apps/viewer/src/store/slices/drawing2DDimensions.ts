@@ -199,11 +199,16 @@ export function createDimension2DActions(
     },
 
     updateDimension2D: (id, updates) => set((state) => {
-      const current = state.dimensions2D.find((d) => d.id === id);
-      if (!current) return {};
-      const next = { ...current, ...updates };
-      if (!isUsableDimension(next) || JSON.stringify(next) === JSON.stringify(current)) return {};
-      return recordDimensionChange(state, 'update', state.dimensions2D.map((d) => (d.id === id ? next : d)));
+      // Each entry under the id is updated from its own geometry, as before history existed.
+      let changed = false;
+      const after = state.dimensions2D.map((d) => {
+        if (d.id !== id) return d;
+        const next = { ...d, ...updates };
+        if (!isUsableDimension(next) || JSON.stringify(next) === JSON.stringify(d)) return d;
+        changed = true;
+        return next;
+      });
+      return changed ? recordDimensionChange(state, 'update', after) : {};
     }),
 
     removeDimension2D: (id) => set((state) => {

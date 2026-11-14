@@ -95,6 +95,33 @@ test('#10218 reposition ignores a press held during restore even when its click 
   } finally { h.unregister(); }
 });
 
+test('#10218 reposition: a press picked before restore whose click lands during the hold does not finish', () => {
+  const h = rig();
+  const seeded = fixtureModels(fixtureModel('m', { entities: [{ expressId: 7, type: 'IfcWall' }] }));
+  useViewerStore.setState({ ...seeded });
+  useViewerStore.getState().openReposition(['m']);
+  setGlobalRendererRef({ current: h.renderer });
+  const finished: unknown[] = [], errors: string[] = [];
+  function Probe() { useRepositionPicking('source', (role) => finished.push(role), (message) => errors.push(message)); return null; }
+  render(<Probe />);
+  const setPending = (pending: boolean) => {
+    const models = new Map(useViewerStore.getState().models);
+    const [id, model] = [...models][0]!;
+    models.set(id, { ...model, geometryRestorePending: pending });
+    useViewerStore.setState({ models });
+  };
+  try {
+    act(() => { h.canvas.dispatchEvent(event('pointerdown')); });
+    assert.equal(h.counts().picks, 1, 'the unheld press picked');
+    setPending(true); // a restore begins between press and click
+    act(() => { h.canvas.dispatchEvent(new MouseEvent('click', { button: 0, clientX: 20, clientY: 30, bubbles: true })); });
+    assert.deepEqual(finished, [], 'a click during the hold must not advance reposition');
+    setPending(false);
+    act(() => { h.canvas.dispatchEvent(event('pointerdown')); h.canvas.dispatchEvent(new MouseEvent('click', { button: 0, clientX: 20, clientY: 30, bubbles: true })); });
+    assert.deepEqual(finished, ['target'], 'after release the same press and click advance');
+  } finally { h.unregister(); }
+});
+
 test('#9232 scan landmark refuses before reading the capture-mirrored clipping state', async () => {
   const h = rig();
   const session = { validate() {} } as unknown as ScanSession;

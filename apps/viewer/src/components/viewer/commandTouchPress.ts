@@ -137,6 +137,7 @@ export function createCommandTouchPress(canvas: HTMLCanvasElement, getTool: () =
     move(touch, e) {
       const p = press;
       if (!p?.onPress) return false;
+      if (p.held) return false; // a press begun during a restore hold never grabs, even after the hold ends: the finger orbits
       if (!live(p)) return p.dragging; // the command ended under its drag: the rest of the drag moves nothing
       if (!p.pressed) {
         p.pressed = true;

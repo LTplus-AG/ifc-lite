@@ -113,6 +113,8 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
       if (event.button !== 0) return;
       event.preventDefault(); event.stopImmediatePropagation();
       if (event.type === 'click' && nextRole !== undefined) {
+        // A click during a reopen's restore hold is ignored, even for a press picked just before it began.
+        if (isGeometryRestoreHeld(useViewerStore.getState())) { nextRole = undefined; return; }
         finish(nextRole);
       }
     };

@@ -96,6 +96,9 @@ test('#10218 reopen ignores a viewport click until restored geometry can be pick
     const state = (globalThis as E2EWindow).__ifc_lite_viewer_store__!.getState();
     return { id: state.selectedEntityId, ids: [...state.selectedEntityIds] };
   })).toEqual(heldSelection);
+  // Clear it, so the post-release click has to select on its own.
+  await page.evaluate(() => (globalThis as E2EWindow).__ifc_lite_viewer_store__!.getState().setSelectedEntityId(null));
+  expect(await selectedExpressId(page)).toBeNull();
   await page.mouse.click(point.x, point.y);
   await expect.poll(() => selectedExpressId(page), { timeout: 10_000, message: 'a post-release click selects the element at the probe point' }).toBe(expected);
   expect(await page.evaluate(() => (globalThis as E2EWindow).__ifc_lite_geometry_restore_test__?.geometryRestoreBackstopFires?.())).toBe(0);

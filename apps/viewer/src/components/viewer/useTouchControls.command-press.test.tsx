@@ -578,6 +578,29 @@ describe('a command that follows the press gets a press-drag (#9092)', () => {
     assert.equal(spaceQuantity(left.id, 'GrossFloorArea'), area, 'a held drag must not move the corner (an ungated drag would commit and change the room)');
   });
 
+  it('#10218 a press-drag touch begun during restore does not grab after the hold ends', async (t) => {
+    const left = await roomEdit(t, 'shape');
+    if (!left) return;
+    const area = spaceQuantity(left.id, 'GrossFloorArea');
+    const setPending = (pending: boolean) => {
+      const models = new Map(useViewerStore.getState().models);
+      const [id, model] = [...models][0]!;
+      models.set(id, { ...model, geometryRestorePending: pending });
+      act(() => useViewerStore.setState({ models }));
+    };
+    const { canvas } = commandRig();
+    const [x0, y0] = at(4, 5);
+    setPending(true);
+    act(() => { canvas.dispatchEvent(touchEvent('touchstart', canvas, [[x0, y0]])); });
+    setPending(false); // the hold ends before the finger first moves
+    act(() => {
+      for (let i = 1; i <= 5; i++) canvas.dispatchEvent(touchEvent('touchmove', canvas, [[x0 - (100 * i) / 5, y0]]));
+      canvas.dispatchEvent(touchEvent('touchend', canvas, []));
+    });
+    assert.equal((getCommandRuntime().gesture as RoomPlaceGesture).edit.drag, null, 'the held press never grabbed');
+    assert.equal(spaceQuantity(left.id, 'GrossFloorArea'), area, 'a press begun during the hold must not commit a corner drag');
+  });
+
   /** room.place in edit mode with `tool`, on a box split at x = 4: the left room. */
   async function roomEdit(t: TestContext, tool: 'shape' | 'remove') {
     if (!ensureRoomWasm(t)) return null;

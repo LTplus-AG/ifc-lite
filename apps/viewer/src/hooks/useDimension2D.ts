@@ -100,7 +100,7 @@ export function useDimension2D(p: UseDimension2DParams) {
   const [markers, setMarkers] = useState<Point2D[]>([]);
   const [hover, setHover] = useState<DimensionHover | null>(null);
   const refs = useRef<(Dimension2DElementRef | undefined)[]>([]);
-  const dragging = useRef<{ id: string; grab: Point2D; from: Dimension2D } | null>(null);
+  const dragging = useRef<{ id: string; grab: Point2D; from: Dimension2D; model: string | null } | null>(null);
 
   const mapping = useMapping(p);
   const paperScale = p.sheet ? p.sheet.sheet.scale.factor : p.displayScale;
@@ -169,9 +169,9 @@ export function useDimension2D(p: UseDimension2DParams) {
       dragging.current = null;
       // The whole drag is one history entry, taken against the list as it is now with only the
       // dragged dimension back at its start: markup reconciled mid-drag is kept, and a dimension
-      // that is gone (restore, model switch, reset) records nothing.
+      // that is gone (restore, reset) or a drag that crossed a model switch records nothing.
       const state = useViewerStore.getState();
-      if (drag && state.dimensions2D.some((d) => d.id === drag.id)) {
+      if (drag && state.activeModelId === drag.model && state.dimensions2D.some((d) => d.id === drag.id)) {
         state.commitDimension2DMove(state.dimensions2D.map((d) => (d.id === drag.id ? drag.from : d)));
       }
     };
@@ -248,7 +248,7 @@ export function useDimension2D(p: UseDimension2DParams) {
     if (!hitDim) return false;
     state.setSelectedAnnotation2D({ type: 'dimension', id: hitDim.id });
     const at = mapping.toDrawing(screen);
-    dragging.current = { id: hitDim.id, grab: { x: at.x - hitDim.a.x, y: at.y - hitDim.a.y }, from: hitDim };
+    dragging.current = { id: hitDim.id, grab: { x: at.x - hitDim.a.x, y: at.y - hitDim.a.y }, from: hitDim, model: state.activeModelId };
     return true;
   }
 

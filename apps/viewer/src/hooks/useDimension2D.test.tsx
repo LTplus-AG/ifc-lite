@@ -505,6 +505,18 @@ it('a drag across a reconcile that keeps the dragged dimension is still one undo
   assert.deepEqual(live[1].a, { x: 0, y: 0 }, 'and puts the dragged one back where it started');
 });
 
+it('a drag that crosses a model switch records nothing, even onto a same-id dimension', () => {
+  const d1 = { id: 'd1', a: { x: 0, y: 0 }, b: { x: 4, y: 0 }, offset: -1, orientation: 'aligned' as const, plane: PLANE };
+  useViewerStore.setState({ drawing2D: drawing(), annotation2DActiveTool: 'none', activeModelId: 'A', dimensions2D: [d1] });
+  const canvas = render(<Harness />).firstElementChild!;
+  mouseDown(canvas, { clientX: 200, clientY: -100 });
+  mouseMove(canvas, { clientX: 250, clientY: -50 });
+  // Model B carries a dimension with the same id but other geometry.
+  act(() => useViewerStore.setState({ activeModelId: 'B', dimensions2D: [{ ...d1, a: { x: 7, y: 7 }, b: { x: 9, y: 7 } }], dimension2DUndo: [], dimension2DRedo: [] }));
+  act(() => { window.dispatchEvent(new window.MouseEvent('mouseup')); });
+  assert.equal(useViewerStore.getState().dimension2DUndo.length, 0);
+});
+
 it('placing a dimension with the tool is undoable from the keyboard', () => {
   useViewerStore.setState({ drawing2D: drawing(), annotation2DActiveTool: 'dimension' });
   const canvas = render(<Harness />).firstElementChild!;

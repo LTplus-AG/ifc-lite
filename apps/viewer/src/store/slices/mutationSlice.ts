@@ -61,8 +61,9 @@ export type { AuthoredElement };
 import { createCostUndoMutations, type CostUndoMethods } from './mutation-cost-undo.js';
 import { completeEntityRemoval, pruneStashByModel, type RemovedMeshStash } from './mutation-mesh-stash.js';
 import { applyDuplicatePreAlignmentBaseline } from './mutation-duplicate-prealign.js';
-import { pruneMutationHistory } from './mutation-history-prune.js';
+import { isGeorefMutation, pruneMutationHistory } from './mutation-history-prune.js';
 import { invalidateHistoryPatch } from './mutation-redo-remote-guard.js';
+import { hasPendingWorkOutsideView } from './pending-outside-view.js';
 import {
   resolvePlacementChain,
   resolveRotationState,
@@ -281,8 +282,9 @@ export interface MutationSlice extends CostUndoMethods {
   getMutationView: (modelId: string) => MutablePropertyView | null;
   /** Register a mutation view for a model */
   registerMutationView: (modelId: string, view: MutablePropertyView) => void;
-  /** Clear mutation view for a model */
-  clearMutationView: (modelId: string) => void;
+  /** Clear one model or a batch of models in one store commit. */
+  /** Drop the views and their history. `keepGeoref` keeps georeference edits (outside the view) unsaved and undoable. */
+  clearMutationView: (modelId: string | readonly string[], options?: { keepGeoref?: boolean }) => void;
 
   // Actions - Property Mutations
   /** Set a property value */
@@ -1050,32 +1052,38 @@ export const createMutationSlice: StateCreator<
     });
   },
 
-  clearMutationView: (modelId) => {
-    set((state) => {
-      const newViews = new Map(state.mutationViews);
-      newViews.delete(modelId);
-      const newEditors = new Map(state.storeEditors);
-      newEditors.delete(modelId);
-      const newDirty = new Set(state.dirtyModels);
-      newDirty.delete(modelId);
-      const newRemoved = pruneStashByModel(state.removedNewEntities, modelId);
-      const newRemovedMeshes = pruneStashByModel(state.removedMeshes, modelId);
-      const history = pruneMutationHistory(
-        modelId,
-        state.undoStacks,
-        state.redoStacks,
-        state.mutationBatchTags,
-        state.mutationMeshTranslations,
-      );
-      return {
-        ...dropFromChangeSets(state, state.undoStacks.get(modelId) ?? []),
-        mutationViews: newViews,
-        storeEditors: newEditors,
-        dirtyModels: newDirty,
-        removedNewEntities: newRemoved,
-        removedMeshes: newRemovedMeshes,
-        ...history,
-      };
+  clearMutationView: (modelIds, options) => {
+    set((initial) => {
+      const mutationViews = new Map(initial.mutationViews), storeEditors = new Map(initial.storeEditors);
+      const dirtyModels = new Set(initial.dirtyModels);
+      let removedNewEntities = initial.removedNewEntities, removedMeshes = initial.removedMeshes;
+      let history = { undoStacks: initial.undoStacks, redoStacks: initial.redoStacks,
+        mutationBatchTags: initial.mutationBatchTags, mutationMeshTranslations: initial.mutationMeshTranslations };
+      const discarded: Mutation[] = [];
+      for (const modelId of typeof modelIds === 'string' ? [modelIds] : modelIds) {
+        const undo = history.undoStacks.get(modelId) ?? [], redo = history.redoStacks.get(modelId) ?? [];
+        const keepGeoref = options?.keepGeoref === true && [...undo, ...redo].some(isGeorefMutation);
+        // What still makes the model unsaved without its view: a pending georeference
+        // value, or the schedule it owns (generated tasks or edits).
+        const stillUnsaved = options?.keepGeoref === true && hasPendingWorkOutsideView(initial, modelId);
+        mutationViews.delete(modelId);
+        storeEditors.delete(modelId);
+        if (!stillUnsaved) dirtyModels.delete(modelId);
+        removedNewEntities = pruneStashByModel(removedNewEntities, modelId);
+        removedMeshes = pruneStashByModel(removedMeshes, modelId);
+        for (const mutation of undo) if (!(keepGeoref && isGeorefMutation(mutation))) discarded.push(mutation);
+        if (keepGeoref) {
+          // Drops only the view's entries and their tags; georef entries keep theirs.
+          const { collabGeometryNotice: _notice, ...kept } = invalidateHistoryPatch(history.undoStacks, history.redoStacks,
+            history.mutationBatchTags, history.mutationMeshTranslations, modelId, (m) => !isGeorefMutation(m));
+          history = { ...history, ...kept };
+        } else {
+          history = pruneMutationHistory(modelId, history.undoStacks, history.redoStacks,
+            history.mutationBatchTags, history.mutationMeshTranslations);
+        }
+      }
+      return { mutationViews, storeEditors, dirtyModels, removedNewEntities, removedMeshes, ...history,
+        ...dropFromChangeSets(initial, discarded) };
     });
   },
 

@@ -92,11 +92,34 @@ export class MutableOverlayState {
    * the caller chose to add.
    */
   protected entityAliases: Map<number, number> = new Map();
-  protected nextAllocatedId: number = 0;
+  private allocatedId = 0;
+  protected sourceWatermark = 0;
+  protected minNextExpressId: () => number = () => 1;
+  private onNextExpressIdChange?: () => void;
+  private allocatorNotificationDepth = 0;
+  protected get nextAllocatedId(): number { return this.allocatedId; }
+  protected set nextAllocatedId(id: number) {
+    if (id === this.allocatedId) return;
+    this.allocatedId = id;
+    if (this.allocatorNotificationDepth === 0) this.onNextExpressIdChange?.();
+  }
+
+  /** Supply an external ownership floor without coupling mutations to a registry.
+   * The floor is read again on clear, because published ownership is permanent. */
+  configureExpressIdAllocator(minNextExpressId: () => number, onChange?: () => void): void {
+    this.minNextExpressId = minNextExpressId;
+    this.onNextExpressIdChange = onChange;
+    this.nextAllocatedId = Math.max(this.nextAllocatedId, this.sourceWatermark, minNextExpressId() - 1);
+  }
+
+  protected resetExpressIdAllocator(): void {
+    this.nextAllocatedId = Math.max(this.sourceWatermark, this.minNextExpressId() - 1);
+  }
 
   /** Seed the express-ID allocator above the parsed source. This changes no
    * IFC content; transactions validate the allocator separately from revision. */
   setExpressIdWatermark(maxExistingId: number): void {
+    this.sourceWatermark = Math.max(this.sourceWatermark, maxExistingId);
     if (maxExistingId > this.nextAllocatedId) {
       this.nextAllocatedId = maxExistingId;
     }
@@ -348,14 +371,25 @@ export class MutableOverlayState {
   }
 
   protected restoreOverlayState(state: ReturnType<MutableOverlayState['copyOverlayState']>, revision?: number): void {
-    Object.assign(this, state);
-    // Detached initialization preserves read fingerprints. Live publications
-    // still advance the token, including rollback and Undo/Redo.
-    if (revision === undefined) this.markOverlayChanged();
-    else this.mutationRevision = revision;
-    // A cloned snapshot carries a plain Map: rebuild the class index (#5413).
-    this.newEntities = NewEntityMap.from(this.newEntities);
-    this.overriddenEntities = NewEntityMap.from(this.overriddenEntities);
+    this.withDeferredAllocatorNotification(() => {
+      Object.assign(this, state);
+      // Detached initialization preserves read fingerprints; live restoration advances revision.
+      if (revision === undefined) this.markOverlayChanged();
+      else this.mutationRevision = revision;
+      // Cloned snapshots carry plain Maps: restore indexes before notifying readers (#10139).
+      this.newEntities = NewEntityMap.from(this.newEntities);
+      this.overriddenEntities = NewEntityMap.from(this.overriddenEntities);
+    });
+  }
+
+  /** Allocator observers may read records, indexes, history and revision synchronously. */
+  protected withDeferredAllocatorNotification<T>(action: () => T): T {
+    const previousId = this.nextAllocatedId;
+    this.allocatorNotificationDepth++;
+    try { return action(); }
+    finally {
+      if (--this.allocatorNotificationDepth === 0 && this.nextAllocatedId !== previousId) this.onNextExpressIdChange?.();
+    }
   }
 
   protected matchesOverlayState(state: ReturnType<MutableOverlayState['copyOverlayState']>): boolean {

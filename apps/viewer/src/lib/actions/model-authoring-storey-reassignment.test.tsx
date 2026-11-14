@@ -200,6 +200,9 @@ test('#7328 preserve an independently reparsed native envelope for unchanged-pub
 test('#7328 two real federated models with duplicate source/destination GlobalIds keep the explicit owning model isolated', async t => {
   if(!ensureRoomWasm(t))return;
   const s=await setup(false,true), saved=await parseIfc(s.bytesNow()), peer=await parseIfc(s.bytesNow()), state=useViewerStore.getState(), model=state.models.get(MODEL)!;
+  // These saved bytes already include the edits; install them as fresh source,
+  // rather than presenting the old creations as retained overlays at registration.
+  useViewerStore.setState({ mutationViews: new Map() });
   federationRegistry.clear();
   const ownOffset=state.registerModelOffset(MODEL,getMaxExpressId(saved,[])), peerOffset=state.registerModelOffset('peer',getMaxExpressId(peer,[]));
   const ownView=new MutablePropertyView(saved.properties,MODEL), peerView=new MutablePropertyView(peer.properties,'peer');
@@ -457,6 +460,9 @@ test('#7328 transported pins retain model ownership across two native models wit
   assert.notEqual(own, peer);
   assert.equal(own.entities.getGlobalId(s.id), peer.entities.getGlobalId(s.id));
   const state = useViewerStore.getState(), model = state.models.get(MODEL)!;
+  // These saved bytes already include the edits; install them as fresh source,
+  // rather than presenting the old creations as retained overlays at registration.
+  useViewerStore.setState({ mutationViews: new Map() });
   federationRegistry.clear();
   const ownOffset = state.registerModelOffset(MODEL, getMaxExpressId(own, []));
   const peerOffset = state.registerModelOffset('peer', getMaxExpressId(peer, []));

@@ -6,9 +6,9 @@ import { areWorkflowModelsReadLocked } from '../lib/flow/run-session.js';
 import type { ViewerState } from './index.js';
 import { getModelForRef } from '../sdk/adapters/model-compat.js';
 
-type MutationPermissionState = Pick<ViewerState, 'editEnabled' | 'canCollabEdit' | 'models' | 'ifcDataStore'>;
+type MutationPermissionState = Pick<ViewerState, 'editEnabled' | 'canCollabEdit' | 'models' | 'ifcDataStore'> & Partial<Pick<ViewerState, 'serverPropertiesRuns' | 'mutationViews'>>;
 
-export type MutationDenialReason = 'edit-mode' | 'collab-role' | 'model-unavailable' | 'workflow-running';
+export type MutationDenialReason = 'edit-mode' | 'collab-role' | 'model-unavailable' | 'workflow-running' | 'properties-loading' | 'properties-failed' | 'id-space-exhausted';
 
 export function mutationDenialKey(reason: MutationDenialReason) {
   switch (reason) {
@@ -16,6 +16,9 @@ export function mutationDenialKey(reason: MutationDenialReason) {
     case 'edit-mode': return 'mutationPermission.editModeRequired' as const;
     case 'collab-role': return 'mutationPermission.roleRequired' as const;
     case 'model-unavailable': return 'mutationPermission.modelUnavailable' as const;
+    case 'properties-loading': return 'mutationPermission.propertiesLoading' as const;
+    case 'properties-failed': return 'mutationPermission.propertiesFailed' as const;
+    case 'id-space-exhausted': return 'mutationPermission.idSpaceExhausted' as const;
   }
 }
 
@@ -34,8 +37,18 @@ export function mutationPermission(
 export function dataMutationPermission(state: MutationPermissionState, modelId?: string): ReturnType<typeof mutationPermission> {
   if (areWorkflowModelsReadLocked()) return { allowed: false, reason: 'workflow-running' };
   if (!state.canCollabEdit()) return { allowed: false, reason: 'collab-role' };
-  if (modelId !== undefined && !getModelForRef(state, modelId)?.ifcDataStore) {
-    return { allowed: false, reason: 'model-unavailable' };
+  // A server-loaded model gets its data model after registration, and the id range it owns grows
+  // then (`extendModel`). An id authored before that would collide with a hydrated entity, so no
+  // overlay id is allocated until the properties are in.
+  const properties = modelId === undefined ? undefined : state.serverPropertiesRuns?.get(modelId)?.kind;
+  if (properties === 'running') return { allowed: false, reason: 'properties-loading' };
+  if (properties === 'failed') return { allowed: false, reason: 'properties-failed' };
+  if (modelId !== undefined) {
+    const model = getModelForRef(state, modelId);
+    if (!model?.ifcDataStore) return { allowed: false, reason: 'model-unavailable' };
+    if (state.models.get(modelId)?.hasOverlayCapacity === false) {
+      return { allowed: false, reason: 'id-space-exhausted' };
+    }
   }
   return { allowed: true };
 }
@@ -77,6 +90,9 @@ export function mutationDenialMessage(reason: MutationDenialReason): string {
     case 'edit-mode': return 'Turn on Edit mode before changing a model';
     case 'collab-role': return 'Editing is disabled for your role in this shared session';
     case 'model-unavailable': return 'This model has no editable IFC data';
+    case 'properties-loading': return 'The model\'s properties are still loading';
+    case 'properties-failed': return 'The model\'s properties could not be loaded, so it cannot be edited';
+    case 'id-space-exhausted': return 'This model does not have enough safe entity IDs for edits in this session';
   }
 }
 

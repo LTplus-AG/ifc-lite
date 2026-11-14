@@ -23,11 +23,13 @@
 mod emit;
 mod open_edges;
 mod raw;
+mod restore;
 mod snap;
 
 pub(super) use emit::emit_plans;
 pub(super) use open_edges::{count_open_boundary_edges_at, open_edge_endpoints_at};
 use raw::conform_raw_triangles;
+use restore::restore_welded;
 use snap::snap_near_duplicates;
 
 use nalgebra::{Point3, Vector3};
@@ -170,6 +172,10 @@ pub(super) struct PlanRegion {
     pub(super) holes: Vec<Vec<nalgebra::Point2<f64>>>,
     pub(super) outer_conformed: Vec<nalgebra::Point2<f64>>,
     pub(super) holes_conformed: Vec<Vec<nalgebra::Point2<f64>>>,
+    /// Vertices the rim weld merged away from `outer` and from each hole, kept
+    /// so phase B can put back one an abutting bucket still has.
+    pub(super) outer_welded: Vec<super::ring_ops::Welded>,
+    pub(super) holes_welded: Vec<Vec<super::ring_ops::Welded>>,
     /// Did phase B actually change this region's rings?
     pub(super) changed: bool,
     /// Pass-1 CDT result, reused verbatim by the conformed pass for every region
@@ -339,7 +345,13 @@ pub(super) fn conform_plans(plans: &mut [PlanBucket], seam: &SeamMap) -> bool {
             // Snapping — not inserting a second near-duplicate vertex, which the
             // needle backstop would then drop — closes it without changing the
             // vertex count, so it cannot fight the never-lose-triangles guard.
-            let mut this = snap_near_duplicates(
+            // Before it, put back what the rim weld took from farther than
+            // CONFORM_TOL: no snap or insertion below can reach that.
+            let mut this = restore_welded(&mut region.outer_conformed, &region.outer_welded, &cands);
+            for (hole, welded) in region.holes_conformed.iter_mut().zip(&region.holes_welded) {
+                this |= restore_welded(hole, welded, &cands);
+            }
+            this |= snap_near_duplicates(
                 &mut region.outer_conformed,
                 &cands,
                 plan.origin,

@@ -47,12 +47,37 @@ const RIM_NOISE_CAP: f64 = 1.0 / 4096.0;
 /// genuine 1 mm chamfer on a long steel member. This runs in the already-
 /// non-exact consolidation post-pass; it does NOT touch the exact kernel's
 /// interner/predicates (no float weld in the determinism path).
+#[cfg(test)]
 pub(super) fn weld_near_coincident_2d(
     ring: &[nalgebra::Point2<f64>],
 ) -> Vec<nalgebra::Point2<f64>> {
+    weld_near_coincident_2d_tracked(ring).0
+}
+
+/// A ring vertex [`weld_near_coincident_2d`] merged onto a kept neighbour
+/// from farther away than the cross-bucket conform reconciles.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct Welded {
+    pub(super) kept: nalgebra::Point2<f64>,
+    pub(super) dropped: nalgebra::Point2<f64>,
+    /// `dropped` came before `kept` in ring order (the last vertex merged
+    /// onto the first); otherwise it came after it.
+    pub(super) before: bool,
+}
+
+/// [`weld_near_coincident_2d`], also reporting each vertex it merged away
+/// from more than `CONFORM_TOL` off its kept neighbour, in ring order.
+///
+/// The weld reaches 244 um and keeps whichever vertex of a pair the ring walk
+/// meets first, so two buckets walking the same rim in opposite directions
+/// keep different ones. The conform snaps and inserts within 100 um only, and
+/// uses this record to put back a vertex from the band between.
+pub(super) fn weld_near_coincident_2d_tracked(
+    ring: &[nalgebra::Point2<f64>],
+) -> (Vec<nalgebra::Point2<f64>>, Vec<Welded>) {
     let n = ring.len();
     if n < 4 {
-        return ring.to_vec();
+        return (ring.to_vec(), Vec::new());
     }
     let (mut minx, mut miny, mut maxx, mut maxy) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
     for p in ring {
@@ -63,12 +88,17 @@ pub(super) fn weld_near_coincident_2d(
     }
     let extent = (maxx - minx).max(maxy - miny);
     if !extent.is_finite() || extent <= 0.0 {
-        return ring.to_vec();
+        return (ring.to_vec(), Vec::new());
     }
     // extent · 2⁻¹³ rounded DOWN to a power of two, capped at an absolute
     // 2⁻¹² m so big rings can't swallow mm-scale features ⇒ exact, deterministic.
     let eps = (floor_pow2(extent) * RIM_NOISE_OF_SIZE).min(RIM_NOISE_CAP);
     let eps2 = eps * eps;
+    let tol = super::conform::CONFORM_TOL;
+    let far = |p: nalgebra::Point2<f64>, q: nalgebra::Point2<f64>| {
+        (p.x - q.x).abs() > tol || (p.y - q.y).abs() > tol
+    };
+    let mut welded: Vec<Welded> = Vec::new();
     let mut kept: Vec<nalgebra::Point2<f64>> = Vec::with_capacity(n);
     for &p in ring {
         let dup = kept.last().is_some_and(|q| {
@@ -78,6 +108,8 @@ pub(super) fn weld_near_coincident_2d(
         });
         if !dup {
             kept.push(p);
+        } else if let Some(&q) = kept.last().filter(|&&q| far(p, q)) {
+            welded.push(Welded { kept: q, dropped: p, before: false });
         }
     }
     // close-the-loop check: last vs first.
@@ -87,12 +119,15 @@ pub(super) fn weld_near_coincident_2d(
         let dy = last.y - first.y;
         if dx * dx + dy * dy < eps2 {
             kept.pop();
+            if far(last, first) {
+                welded.push(Welded { kept: first, dropped: last, before: true });
+            }
         }
     }
     if kept.len() >= 3 {
-        kept
+        (kept, welded)
     } else {
-        ring.to_vec()
+        (ring.to_vec(), Vec::new())
     }
 }
 

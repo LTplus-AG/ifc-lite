@@ -28,10 +28,34 @@ use std::collections::HashMap;
 
 const SLAB: u32 = 12381;
 
-fn slab() -> MeshData {
+fn fixture() -> Vec<u8> {
     let path = format!("{}/tests/fixtures/issue_8190_slab_12381.ifc", env!("CARGO_MANIFEST_DIR"));
-    let bytes = std::fs::read(&path).unwrap_or_else(|e| panic!("read {path}: {e}"));
-    let mut meshes: Vec<MeshData> = process_geometry(&bytes)
+    std::fs::read(&path).unwrap_or_else(|e| panic!("read {path}: {e}"))
+}
+
+/// The fixture with its `IfcSite` placement replaced by the identity, so the
+/// slab is cut aligned to the world axes instead of 23 degrees off them.
+fn fixture_at_origin() -> Vec<u8> {
+    let mut moved = String::from_utf8(fixture()).expect("the fixture is UTF-8");
+    for (from, to) in [
+        (
+            "#363298= IFCCARTESIANPOINT((1661267.2374,8178640.51319999,-14.1000000000012));",
+            "#363298= IFCCARTESIANPOINT((0.,0.,0.));",
+        ),
+        ("#363302= IFCAXIS2PLACEMENT3D(#363298,#19,#363300);", "#363302= IFCAXIS2PLACEMENT3D(#363298,$,$);"),
+    ] {
+        assert!(moved.contains(from), "the fixture's site placement line: {from}");
+        moved = moved.replace(from, to);
+    }
+    moved.into_bytes()
+}
+
+fn slab() -> MeshData {
+    slab_of(&fixture())
+}
+
+fn slab_of(bytes: &[u8]) -> MeshData {
+    let mut meshes: Vec<MeshData> = process_geometry(bytes)
         .meshes
         .into_iter()
         .filter(|m| m.express_id == SLAB)
@@ -117,4 +141,29 @@ fn issue_8190_partly_overlapping_flush_openings_fuse_in_slab_12381() {
     let jambs = (6.8250055 - 5.3835656 + 8.8250055 - 8.1435656) * 1.2;
     let on_plane = plane_area(&mesh, 16.570046, [5.3, 8.9]);
     assert!((on_plane - jambs).abs() < 5e-3, "y = 16.570046 carries {on_plane} m2, the jambs {jambs} m2");
+}
+
+fn area(mesh: &MeshData) -> f64 {
+    mesh.indices
+        .chunks_exact(3)
+        .map(|t| [t[0], t[1], t[2]].map(|i| world(mesh, i)))
+        .map(|[a, b, c]| {
+            let (u, v) = ([b[0] - a[0], b[1] - a[1], b[2] - a[2]], [c[0] - a[0], c[1] - a[1], c[2] - a[2]]);
+            let n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+            (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt() / 2.0
+        })
+        .sum()
+}
+
+/// The slab must come back closed wherever the site sits. With the site at
+/// the origin it is cut aligned to the world axes, and on `main` it then had
+/// 147 open edges at a 10 um weld.
+#[test]
+fn issue_8190_slab_12381_is_closed_with_the_site_at_the_origin() {
+    let (placed, moved) = (slab(), slab_of(&fixture_at_origin()));
+    for quantum in [1.0e-5, 1.0e-7] {
+        assert_eq!(open_edges(&moved, quantum), 0, "open edges at a {quantum} m weld");
+    }
+    let (a, b) = (area(&placed), area(&moved));
+    assert!((a - b).abs() < 0.01, "area {b} m2 at the origin, {a} m2 where the file places it");
 }

@@ -18,6 +18,8 @@ import type { MeshData } from '@ifc-lite/geometry';
 import { measureSnapOptions, updateSnapViz } from './measurePick.js';
 import { pressPastClickSlop } from './pointerGesture.js';
 import { measureCursor, noteMeasureCursor } from './measureCursor.js';
+import { isGeometryHeld } from '@/lib/pick-gating';
+import { useViewerStore } from '@/store';
 
 /**
  * Projects a world position onto the closest orthogonal constraint axis.
@@ -92,6 +94,7 @@ export function getApproximateWorldPosition(
  * Returns true if the event was handled (caller should early-return).
  */
 export function handleMeasureDrag(ctx: MouseHandlerContext, e: MouseEvent, x: number, y: number): boolean {
+  if (isGeometryHeld(useViewerStore.getState())) return true;
   const { mouseState } = ctx;
 
   // Check if shift is held for orthogonal constraint
@@ -108,6 +111,7 @@ export function handleMeasureDrag(ctx: MouseHandlerContext, e: MouseEvent, x: nu
     ctx.measureRaycastFrameRef.current = requestAnimationFrame(() => {
       ctx.measureRaycastPendingRef.current = false;
       ctx.measureRaycastFrameRef.current = null;
+      if (isGeometryHeld(useViewerStore.getState())) return;
       // Shift can change while a view change prevents its immediate re-pick (#9242).
       moveRubberBand(ctx, x, y, measureCursor(ctx)?.orthogonal ?? useOrthogonalConstraint);
     });
@@ -247,6 +251,7 @@ export function handleMeasureHover(
   y: number,
   pick?: (ctx: MouseHandlerContext, x: number, y: number) => void,
 ): boolean {
+  if (isGeometryHeld(useViewerStore.getState())) return true;
   const { renderer } = ctx;
 
   // Throttle hover snap detection more aggressively (100ms) to avoid performance issues
@@ -263,6 +268,7 @@ export function handleMeasureHover(
     ctx.measureRaycastFrameRef.current = requestAnimationFrame(() => {
       ctx.measureRaycastPendingRef.current = false;
       ctx.measureRaycastFrameRef.current = null;
+      if (isGeometryHeld(useViewerStore.getState())) return;
       if (pick) { pick(ctx, x, y); return; }
 
       // Use magnetic snap for hover preview
@@ -331,6 +337,7 @@ export interface PolylinePickResult {
  * `addPolylinePoint` / `finishPolyline` calls.
  */
 export function raycastForPolylinePoint(ctx: MouseHandlerContext, x: number, y: number): PolylinePickResult | null {
+  if (isGeometryHeld(useViewerStore.getState())) return null;
   const { canvas, renderer, camera } = ctx;
   const currentLock = ctx.edgeLockStateRef.current;
 

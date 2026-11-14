@@ -84,6 +84,8 @@ import { useTranslation } from '@/i18n';
 import { createCentreSurfaceZoom } from './zoomSurface.js';
 import type { MeasureCameraState } from './measureCameraState';
 import { observeViewportCanvas } from './viewportCanvasObserver';
+import { useViewportCursor } from './useViewportCursor.js';
+import { deferSelectionFrameWhileHeld } from './heldSelection.js';
 
 interface ViewportProps {
   geometry: MeshData[] | null;
@@ -543,29 +545,7 @@ export function Viewport({
     }
   }, [activeTool, isInitialized]);
 
-  // Set the cursor when the tool changes. Leaving Measure resets its gesture
-  // in the store (setActiveTool → resetMeasureGesture), and the mouse controls
-  // cancel the queued measure raycast on that reset (#8786).
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    // Leaving the section tool disarms face-pick so it doesn't ambush the
-    // user on re-entry to a different tool (issue #243).
-    if (activeTool !== 'section' && sectionPickMode) {
-      setSectionPickMode(false);
-    }
-
-    // Set cursor based on active tool. Section + pick-armed gets a
-    // crosshair to telegraph "click a face".
-    if (activeTool === 'measure' || activeTool === 'annotate') {
-      canvas.style.cursor = 'crosshair';
-    } else if (activeTool === 'section' && sectionPickMode) {
-      canvas.style.cursor = 'crosshair';
-    } else {
-      canvas.style.cursor = 'default';
-    }
-  }, [activeTool, sectionPickMode, setSectionPickMode]);
+  useViewportCursor(canvasRef, activeTool, sectionPickMode, setSectionPickMode);
 
   // Helper: calculate scale bar value (world-space size for 96px scale bar)
   const calculateScale = () => {
@@ -914,6 +894,7 @@ export function Viewport({
           return bounds;
         },
         frameSelection: (durationMs = 300) => {
+          if (deferSelectionFrameWhileHeld(durationMs)) return false;
           const bounds = useViewerStore.getState().cameraCallbacks.selectionBounds?.();
           if (!bounds) return false;
           return frameSelectionBounds(camera, renderer, bounds.min, bounds.max, durationMs, calculateScale);

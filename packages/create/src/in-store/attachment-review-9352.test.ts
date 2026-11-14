@@ -60,3 +60,25 @@ it.each([false, true])('#9352 insertion rebinds legacy relative walls on all tie
   s = session(await parse(s.text()));
   for (const id of [wall, other]) expect(readTopAttachment(readStoreyInventory(s.store, s.view), id)).toMatchObject({ binding: 'relative', targetStoreyId: added.storeyId });
 });
+
+
+for (const reopen of [false, true]) it.each(['flat', 'storey'] as const)(`#9352 pitched-to-%s net-only quantities use the prism geometry fallback (reopen=${reopen})`, async kind => {
+  let { s, wall, anchor } = await fixture();
+  const pitched = addRoofToStore(s.editor, anchor, { Position: [0, 0, 4], Width: 10, Depth: 8, Thickness: .25, EdgeSlopes: [Math.PI / 6, 0, Math.PI / 6, 0], Overhang: .5 }).roofId;
+  const flat = addRoofToStore(s.editor, anchor, { Position: [0, 0, 4], Width: 10, Depth: 8, Thickness: .25 }).roofId;
+  const above = addStoreyInStore(s.store, s.editor, { Name: 'Above', Elevation: 4 }).storeyId;
+  // A 24 m² original prism minus a fixed 4 m² opening deduction. No Height,
+  // Length, Width or gross quantity is available to replace the geometry oracle.
+  s.view.setQuantity(wall, 'Qto_WallBaseQuantities', 'NetSideArea', 20, QuantityType.Area);
+  setTopConstraintInStore(s.store, s.editor, wall, { kind: 'roof', roofId: pitched });
+  if (reopen) s = session(await parse(s.text()));
+  setTopConstraintInStore(s.store, s.editor, wall, kind === 'flat' ? { kind: 'roof', roofId: flat } : { kind: 'storey', storeyId: above });
+  const check = () => {
+    const values = s.view.getQuantitiesForEntity(wall, id => extractQuantitiesOnDemand(s.store, id)).find(set => set.name === 'Qto_WallBaseQuantities')!.quantities;
+    expect(values.find(q => q.name === 'NetSideArea')?.value).toBeCloseTo(28, 8);
+    expect(values.some(q => ['Height', 'GrossSideArea', 'GrossVolume'].includes(q.name))).toBe(false);
+  };
+  check();
+  s = session(await parse(s.text()));
+  check();
+});

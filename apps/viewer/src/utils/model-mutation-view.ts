@@ -8,8 +8,6 @@ import { federationRegistry } from '@ifc-lite/renderer';
 import { configureMutationView } from './configureMutationView.js';
 import { sourceWatermark } from './source-watermark.js';
 
-export { sourceWatermark };
-
 /** Same ownership floor for live overlays and allocating cold planners. */
 export function modelExpressIdFloor(modelId: string, source: IfcDataStore | null, watermark = sourceWatermark(source)): () => number {
   return () => {

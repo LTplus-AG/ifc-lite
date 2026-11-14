@@ -40,8 +40,9 @@ function idRangeTarget(modelId: string, dataStore: IfcDataStore): IdRangeTarget 
 
 /** Publishes the target and returns the model's ownership bound for the reverse resolvers:
  *  the store's highest id, or the published end when a later model clamps the range.
- *  Kept creations the source overlaps are discarded on a first hydration, like a local
- *  reload, but only once the registry accepted the source. A refresh refuses instead,
+ *  On a first hydration of a registered model, kept creations the source overlaps are
+ *  discarded once the registry granted their IDs; an unregistered primary's are discarded by
+ *  the capacity refresher when the source commits. A refresh refuses instead,
  *  leaving the source and the edits made against it untouched. */
 function publishIdRange(modelId: string, target: IdRangeTarget, firstHydration: boolean): { maxExpressId: number } {
   const { maxExpressId, firstCreated, overlaps } = target;
@@ -53,7 +54,10 @@ function publishIdRange(modelId: string, target: IdRangeTarget, firstHydration: 
       published = federationRegistry.extendModel(modelId, maxExpressId, discard ? 0 : firstCreated);
     } catch (error) {
       // A refusal changes no ownership; a later failure (a listener) may already have granted the IDs.
-      if (discard && !(error instanceof ModelRangeExtensionRefusedError)) discardOverlappingRetainedEdits(useViewerStore.getState(), modelId, maxExpressId);
+      if (discard && !(error instanceof ModelRangeExtensionRefusedError)) {
+        try { discardOverlappingRetainedEdits(useViewerStore.getState(), modelId, maxExpressId); }
+        catch (discardError) { console.error(`[Server properties] Discarding kept edits of ${modelId} failed`, discardError); }
+      }
       throw error;
     }
     // The registry owns the overlapped IDs now, whether or not this run commits its store.
@@ -131,13 +135,12 @@ function start(modelId: string | null, isStale: (() => boolean) | undefined,
         // Ownership is permanent even if extension/warning supersedes the lease.
         // Commit the hydrated store only if settlement still owns this model.
         const accepted = lease.isCurrent() && ownsModel();
-        const registered = federationRegistry.hasModel(modelId);
         if (accepted) {
           committing = dataStore;
-          // An unregistered primary owns no range: its overlapped kept edits go with the commit, never apart from it.
-          if (!registered && target.overlaps && firstHydration) discardOverlappingRetainedEdits(useViewerStore.getState(), modelId, target.maxExpressId);
           useViewerStore.getState().updateModel(modelId, { ifcDataStore: dataStore, ...idRange });
-        } else if (registered) {
+        } else if (federationRegistry.hasModel(modelId)) {
+          // An unregistered primary owns no range, so an uncommitted source must not move its bound:
+          // the capacity refresher discards kept edits against the committed source and bound only.
           useViewerStore.getState().updateModel(modelId, idRange);
         }
         if (accepted && useViewerStore.getState().models.get(modelId)?.hasOverlayCapacity === false) {

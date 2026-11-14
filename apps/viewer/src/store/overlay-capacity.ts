@@ -8,7 +8,8 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { StoreApi } from 'zustand';
 import type { ViewerState } from './index.js';
 import type { FederatedModel } from './types.js';
-import { discardOverlappingRetainedEdits, modelExpressIdFloor, sourceWatermark } from '@/utils/model-mutation-view';
+import { discardOverlappingRetainedEdits, modelExpressIdFloor } from '@/utils/model-mutation-view';
+import { sourceWatermark } from '@/utils/source-watermark';
 
 let deferred = 0;
 const refreshers = new Set<() => void>();

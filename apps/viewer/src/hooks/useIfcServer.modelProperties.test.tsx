@@ -1001,8 +1001,8 @@ it('an unregistered primary drops kept edits only together with a committed sour
   } finally { stop(); }
   assert.equal(federationRegistry.hasModel('server'), false);
   const state = useViewerStore.getState();
-  if (state.models.get('server')?.ifcDataStore === source) assert.equal(state.mutationViews.has('server'), false, 'a committed source drops the overlapped edits');
-  else assert.equal(state.mutationViews.get('server'), retained, 'a source that never loads drops nothing');
+  assert.equal(state.models.get('server')?.ifcDataStore, source, 'no discard lands before the commit, so the run is not superseded');
+  assert.equal(state.mutationViews.has('server'), false, 'the committed source drops the overlapped edits');
 });
 
 it('an unregistered primary refuses a refresh across in-session creations (#10139)', async () => {

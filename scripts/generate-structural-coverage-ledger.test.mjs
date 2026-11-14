@@ -282,6 +282,14 @@ test('convert (#9668): only the values the schemas force are excused, and only a
   assert.deepEqual(invalid, [{ id: 1, why: 'DestabilizingLoad: required value empty' }]);
   const unknown = renamedNonConforming(row, file, step(`#1=IFCSTRUCTURALCURVEACTION('const',.F.);`), schemas.other);
   assert.deepEqual(unknown, [{ id: 1, why: 'no such entity' }], 'a record written under a keyword the intermediate schema lacks');
+
+  // IFC4's planar action pins PredefinedType to CONST, so a filled slot must be CONST, not any enum member.
+  const planarRow = { ...row, entity: 'IfcStructuralPlanarAction' };
+  const planarFile = { path: 'p.ifc', step: step(`#1=IFCSTRUCTURALPLANARACTION('star',.T.,*);`) };
+  const planarThere = step(`#1=IFCSTRUCTURALPLANARACTION('star',.T.);`);
+  const planar = (back) => compareFile(planarRow, planarFile, { there: planarThere, step: step(back) }, schemas).problems;
+  assert.deepEqual(planar(`#1=IFCSTRUCTURALPLANARACTION('star',.T.,.CONST.);`), [], 'CONST fills the invalid slot');
+  assert.ok(planar(`#1=IFCSTRUCTURALPLANARACTION('star',.T.,.BILINEAR.);`).some((why) => why.includes('ConstPredefinedType')), 'BILINEAR on the planar action is schema-invalid');
 });
 
 const stepFile = (path, sha256, data) => ({ path, sha256, step: readStep(`ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;\n${data}\nENDSEC;END-ISO-10303-21;`) });

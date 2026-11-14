@@ -5,19 +5,6 @@
 import type { CopyContext } from './copy-product.js';
 import type { SourceAttributes } from './duplicate.js';
 import { resolveDuplicateSource } from './resolve-source.js';
-import { cloneEffectiveMetadata } from './edit/metadata-clone-effective.js';
-
-/** Preserve saved metadata as the copy's base before its attachment is edited.
- * Deleting a copied source property then retains a mask through export. */
-export function cloneCopiedMetadata(ctx: CopyContext, copiedFrom: ReadonlyMap<number, number>): void {
-  const view = ctx.editor.getMutationView();
-  for (const [copy, source] of copiedFrom) {
-    // Copy effective edits first: an alias must not make stale base values
-    // look like metadata the new product already authored for itself.
-    cloneEffectiveMetadata(view, ctx.editor, source, [copy]);
-    view.setEntityAlias(copy, view.resolveBaseEntityId(source));
-  }
-}
 
 /** Keep distinct definitions, including same-named ones. A separate copied
  * relationship per definition lets export replace only the edited definition. */

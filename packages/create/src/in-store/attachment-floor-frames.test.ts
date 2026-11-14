@@ -257,6 +257,25 @@ for (const kind of ['wall', 'column', 'beam', 'member'] as const) {
 }
 
 
+it('#9352 attached copies retain user quantity deletions through repeated copy and reopen', async () => {
+  let { s, home, middle, wall } = await setup(3);
+  writeTopAttachment(s.view, wall, guid(s, middle), 'relative');
+  s.view.setQuantity(wall, 'Qto_WallBaseQuantities', 'Height', 3, QuantityType.Length);
+  s.view.setQuantity(wall, 'Qto_WallBaseQuantities', 'GrossVolume', 2.4, QuantityType.Volume);
+  s = session(await parse(s.text()));
+  const sourceStore = s.store;
+  s.view.setQuantityExtractor(id => extractQuantitiesOnDemand(sourceStore, id));
+  s.view.deleteQuantity(wall, 'Qto_WallBaseQuantities', 'GrossVolume');
+  const [first] = copyBatchInStore(s.store, s.editor, [wall], [{ targetStoreyId: home, offset: [0, 2, 0] }]);
+  const [second] = copyBatchInStore(s.store, s.editor, [first.copyId], [{ targetStoreyId: home, offset: [0, 2, 0] }]);
+  s = session(await parse(s.text()));
+  for (const id of [wall, first.copyId, second.copyId]) {
+    const quantities = extractQuantitiesOnDemand(s.store, id).find(set => set.name === 'Qto_WallBaseQuantities')!.quantities;
+    expect(quantities.find(quantity => quantity.name === 'GrossVolume')).toBeUndefined();
+    expect(quantities.find(quantity => quantity.name === 'Height')?.value).toBeCloseTo(3, 8);
+  }
+});
+
 it('#9352 the shared attached-top writer updates existing wall quantities with the body', async () => {
   let { s, wall } = await setup(3);
   s.view.setQuantity(wall, 'Qto_WallBaseQuantities', 'Height', 3, QuantityType.Length);

@@ -124,6 +124,9 @@ export function rebindCopiedAttachments(
       const slabCopy = attachment.targetElementId === undefined ? undefined : copyOf.get(attachment.targetElementId);
       const here = inventory.storeys.find((storey) => storey.expressId === storeyId);
       if (!here) continue;
+      // Resolve the saved attachment base before SET/DELETE edits so an
+      // imported key stays deleted through export and subsequent copies.
+      view.setEntityAlias(copyId, view.resolveBaseEntityId(sourceId));
       const next = storeyNeighbour(inventory, storeyId, 1);
       // The record first; a copy whose body cannot be read keeps it only where it needs no refit (below).
       if (attachment.kind === 'element') {

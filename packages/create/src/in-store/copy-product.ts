@@ -25,13 +25,14 @@
  */
 
 import { cloneShape, type CopyShape } from './copy-shape.js';
+import { cloneEffectiveMetadata } from './edit/metadata-clone-effective.js';
 import { copyRoofPlaneParts } from './roof-plane-copy.js';
 import { iterateEffectiveEntityIds, type StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import { duplicateInStore, type SourceAttributes } from './duplicate.js';
 import type { DuplicateSourceScope } from './resolve-source.js';
-import { cloneCopiedMetadata, resolveCopySource } from './copy-metadata.js';
+import { resolveCopySource } from './copy-metadata.js';
 import { copyDependentSteps, copiedProductWork } from './copy-dependent-walk.js';
 import { follow, gridCopyRefusal, placeOnStorey, type Placed } from './copy-placement.js';
 import { asRef, createStyleEntityReader, indexExistingStyles, refList } from './style-entity-reader.js';
@@ -229,7 +230,7 @@ export function copyProductGraph(ctx: CopyContext, sourceId: number, transform: 
     if (ctx.read(original)?.type.toUpperCase() !== 'IFCROOF') continue;
     copyRoofPlaneParts(ctx.store, ctx.editor, original, target, acc.copiedFrom, ctx.guidRandom);
   }
-  cloneCopiedMetadata(ctx, acc.copiedFrom);
+  for (const [copiedId, originalId] of acc.copiedFrom) cloneEffectiveMetadata(ctx.editor.getMutationView(), ctx.editor, originalId, [copiedId]);
   return {
     copyId: copy.id, openingIds: acc.openingIds, fillingIds: acc.fillingIds, partIds: acc.partIds, storeyId: targetStoreyId,
     meshed: [copy.id, ...acc.partIds, ...acc.fillingIds], copiedFrom: acc.copiedFrom, carriedBy: acc.carriedBy,
@@ -320,3 +321,4 @@ function writeCopy(ctx: CopyContext, source: SourceAttributes, placed: Placed, s
 function relate(ctx: CopyContext, type: 'IfcRelVoidsElement' | 'IfcRelFillsElement', ownerHistory: string | null, relating: number, related: number): void {
   ctx.editor.addEntity(type, [generateIfcGuid(ctx.guidRandom), ownerHistory, null, null, `#${relating}`, `#${related}`]);
 }
+

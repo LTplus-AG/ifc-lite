@@ -62,15 +62,22 @@ value members, and a bare value only in a defined-type, enum or primitive slot.
 A file that fails gets no credit for the row. Not checked yet, so a convert pass
 can still overstate (tracked on #9668): aggregate shape and bounds (a
 scalar in a LIST slot), the kind of a bare value (an enum in a REAL slot), `*`
-outside derived slots, which select member a typed value is, enum values, and
-records of other entities. The registry is
+outside derived slots, which select member a typed value is, enum values
+(checked only where the source left a required slot empty), and records of
+other entities. The registry is
 generated from the same EXPRESS as the product uses, so a codegen error there
 would be shared by the oracle and the converter.
+
+Where the IFC schemas force a value or a class on the round trip, the probe
+expects that instead of the source value (cited in `probes/convert.mjs`).
 
 The derive probe compares the AxisVM roof truss against its authored analytical
 model within 1 mm (axis sine tolerance 0.001). Partial credit requires at least
 90% of reference/derived members to match axes, endpoints and physical links;
-below that floor it fails. Missing or extra connection records prevent a pass.
+below that floor it fails. On the reference side, AxisVM support-only points
+merge into member joints; support positions are compared in both directions,
+without comparing which degrees of freedom are restrained. Missing or extra
+connection records prevent a pass.
 
 ## Scoring and the ratchet
 
@@ -116,6 +123,8 @@ baseline files. `r1` here is a measurement revision, not a product climb round.
 
 A new in-store builder needs no new probe: add a step to `SCENE` in
 `probes/create-scene.mjs` naming the entities it emits and the values to expect.
+A builder that authors a load alone also names `appliedBy`, the activity the
+edit probe applies it from, since the extractor reads loads only through one.
 
 [R2 activity/result notes](baseline/r2-notes.md): 24 new create cells, 297.5/774 cells total; rows remain 56/119.
 

@@ -6953,7 +6953,14 @@ strictly less than 2× from 1K to 50K, and a passing F5 exercise result whose
 `metrics.ms` is strictly below 60 seconds. The F5 time comes from the exercise
 lane, not a substitute tower here. Missing sizes or F5 evidence fail the check.
 The baseline is a description of current main, not an accepted round-1 result
-or a speedup claim.
+or a speedup claim. Historical round-zero evidence completed the 1K
+population; the larger populations were censored at their reached counts, and
+F5 was unmeasured. Diagnostic samples at those reached counts cannot establish
+growth at the requested populations. A complete checkpoint and separate passing
+F5 evidence remain necessary; this clarification changes no acceptance limit. Export is output-proportional work, and a storey edit in this historical
+protocol affects that storey's growing contents. Their retained totals are not
+fixed-work timings and do not establish normalized growth; the ratchet remains
+unchanged.
 
 ### Load hillclimb stage instrumentation (#9605)
 

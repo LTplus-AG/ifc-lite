@@ -143,3 +143,42 @@ test('QUEUE: a comment between conditions does not drop the conditions after it 
   const text = 'queue_rules:\n  - name: release\n    queue_conditions:\n      - head=changeset-release/main\n    # entry gate\n      - label=go\n    merge_conditions:\n      - check-success=x\n';
   assert.deepEqual(parseQueueRules(text), [{ name: 'release', queue: ['head=changeset-release/main', 'label=go'], merge: ['check-success=x'], unread: false }]);
 });
+
+test('READ (#10274): a queue rule\'s commit_message_format is skipped, and only that section', () => {
+  // The real file sets the squash message format on its queue rules. It shapes
+  // the commit message only, so the route still reads.
+  assert.match(MERGIFY, /^ {4}commit_message_format:$/m, 'the real file uses the option');
+  const real = releaseQueueRoute(MERGIFY, { labels: ['mergify-trial'], draft: false });
+  assert.equal(real.ok, true, real.reason);
+  // The same nested map under any other key is still content this reader
+  // does not understand, so the route refuses.
+  for (const other of ['some_future_option', 'commit_message_formats']) {
+    const renamed = MERGIFY.replaceAll('    commit_message_format:', `    ${other}:`);
+    assert.match(releaseQueueRoute(renamed, { labels: ['mergify-trial'], draft: false }).reason, /has lines this script cannot read/, other);
+  }
+  // A line that is not nested under it ends the skip: a misindented key is unread.
+  const misindented = MERGIFY.replace('      title: pr-title', '     title: pr-title');
+  assert.notEqual(misindented, MERGIFY, 'the fixture edit applied');
+  assert.match(releaseQueueRoute(misindented, { labels: ['mergify-trial'], draft: false }).reason, /has lines this script cannot read/);
+  // Sibling keys at uneven indents are not one map, so a 7-space key refuses.
+  const uneven = MERGIFY.replace('      body: pr-body', '       body: pr-body');
+  assert.notEqual(uneven, MERGIFY, 'the fixture edit applied');
+  assert.match(releaseQueueRoute(uneven, { labels: ['mergify-trial'], draft: false }).reason, /has lines this script cannot read/);
+  // A list item needs an empty key right above it: one before any key, or
+  // after a key that already has a value, refuses.
+  for (const [from, to] of [
+    ['      title: pr-title\n', '        - co-authored-by\n      title: pr-title\n'],
+    ['      body: pr-body\n', '      body: pr-body\n        - stray\n'],
+  ]) {
+    const orphan = MERGIFY.replace(from, to);
+    assert.notEqual(orphan, MERGIFY, 'the fixture edit applied');
+    assert.match(releaseQueueRoute(orphan, { labels: ['mergify-trial'], draft: false }).reason, /has lines this script cannot read/, to);
+  }
+  // Only plain words are skipped: an open quote or a block scalar could run on
+  // into the conditions after it, so either one refuses.
+  for (const value of ['"pr-title', '|', '{{ title }}', '[a, b]']) {
+    const odd = MERGIFY.replace('      title: pr-title', `      title: ${value}`);
+    assert.notEqual(odd, MERGIFY, 'the fixture edit applied');
+    assert.match(releaseQueueRoute(odd, { labels: ['mergify-trial'], draft: false }).reason, /has lines this script cannot read/, value);
+  }
+});

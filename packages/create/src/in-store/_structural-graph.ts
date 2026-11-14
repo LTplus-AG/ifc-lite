@@ -84,7 +84,7 @@ export function structuralReader(store: IfcDataStore, editor: StoreEditor): Stru
     const record = read(id);
     const type = record && meta(record.type);
     const chain = [...(type?.inheritanceChain ?? []), type?.name ?? ''];
-    const structural = chain.some(t => /^(IfcStructural|IfcBoundary|IfcRelConnectsStructural)/.test(t));
+    const structural = chain.some(t => /^(IfcStructural|IfcBoundary|IfcRelConnectsStructural|IfcConnectionPointEccentricity$)/.test(t));
     const structuralAssignment = type?.name === 'IfcRelAssignsToGroup'
       && edges(id).some(e => e.attribute.name === 'RelatingGroup'
         && meta(read(e.target)?.type ?? '')?.name.startsWith('IfcStructural'));
@@ -98,8 +98,7 @@ export function structuralReader(store: IfcDataStore, editor: StoreEditor): Stru
 
 /** Removal needs incoming references from every live entity; edits only read
  * their target and any explicitly validated relationship endpoints. */
-export function structuralGraph(store: IfcDataStore, editor: StoreEditor): StructuralReader & { records: Map<number, StyleEntity> } {
-  const reader = structuralReader(store, editor);
+export function structuralGraph(store: IfcDataStore, editor: StoreEditor, reader: StructuralReader): StructuralReader & { records: Map<number, StyleEntity> } {
   const records = new Map<number, StyleEntity>();
   for (const { expressId } of iterateEffectiveEntityIds(store, editor.getMutationView())) {
     const record = reader.read(expressId);

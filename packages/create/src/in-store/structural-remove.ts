@@ -8,7 +8,8 @@ import { structuralGraph, structuralReader } from './_structural-graph.js';
 
 /** Remove a structural root and exclusively owned resources. Required direct
  * dependents refuse the entire operation; relationships detach or shrink.
- * Shared resources and all descendants reachable from a survivor stay live. */
+ * Shared resources and all descendants reachable from a survivor stay live.
+ * A shape aspect is removed with its product shape and kept while the shape is kept. */
 export function removeStructuralEntityInStore(store: IfcDataStore, editor: StoreEditor, expressId: number): void {
   if (store.source.byteLength === 0) {
     for (const { expressId: id } of iterateEffectiveEntityIds(store, editor.getMutationView())) {
@@ -67,25 +68,40 @@ export function removeStructuralEntityInStore(store: IfcDataStore, editor: Store
     }
   }
   if (blockers.length) throw new Error(`removeStructuralEntity: #${expressId} has dependents: ${blockers.join(', ')}`);
+  // A shape aspect belongs to the product shape it describes (the inverse
+  // HasShapeAspects), so it joins the closure when that shape does.
+  const aspectsOf = new Map<number, number[]>();
+  for (const [id, record] of graph.records) {
+    if (graph.meta(record.type)?.name !== 'IfcShapeAspect') continue;
+    for (const { target, attribute } of graph.edges(id)) {
+      if (attribute.name !== 'PartOfProductDefinitionShape') continue;
+      const list = aspectsOf.get(target);
+      if (list) list.push(id); else aspectsOf.set(target, [id]);
+    }
+  }
+  function* followers(id: number, owned = false) {
+    for (const { target } of graph.edges(id, owned)) yield target;
+    yield* aspectsOf.get(id) ?? [];
+  }
   // Iterative closure, bounded by the number of live entities even for cyclic
   // or branching file-supplied references. Never follow PlacementRelTo.
   const candidates = new Set(removed);
   const pending = [...removed];
   while (pending.length) {
-    for (const { target } of graph.edges(pending.pop()!, true)) {
+    for (const target of followers(pending.pop()!, true)) {
       if (!candidates.has(target)) { candidates.add(target); pending.push(target); }
     }
   }
   const kept = new Set<number>();
   for (const [id] of graph.records) {
     if (candidates.has(id)) continue;
-    for (const { target } of graph.edges(id)) {
+    for (const target of followers(id)) {
       if (candidates.has(target) && !removed.has(target)) kept.add(target);
     }
   }
   const survivors = [...kept];
   while (survivors.length) {
-    for (const { target } of graph.edges(survivors.pop()!)) {
+    for (const target of followers(survivors.pop()!)) {
       if (candidates.has(target) && !kept.has(target)) { kept.add(target); survivors.push(target); }
     }
   }

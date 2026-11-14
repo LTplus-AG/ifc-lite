@@ -11,7 +11,7 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import { registerRoomSymbolicSource } from '@/lib/collab/room-symbolic-source';
 import { exportModelStep } from './model-step-export';
 import { roomMergeInput } from '@/lib/collab/room-merged-export';
-import { stepRecordsUnavailableReason } from './step-records';
+import { stepRecordsUnavailableReason } from './step-records-reason';
 
 const OPTIONS = { schema: 'IFC4', applyMutations: true } as const;
 

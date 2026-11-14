@@ -6,7 +6,7 @@ import type { GeometryResult } from '@ifc-lite/geometry';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { FederatedModel } from '@/store';
 import { exportableModels } from '@/lib/export/capture-export';
-import { stepRecordsUnavailableReason } from '@/lib/export/step-records';
+import { stepRecordsUnavailableReason } from '@/lib/export/step-records-reason';
 
 export interface ExportModelListItem {
   id: string;
@@ -100,8 +100,8 @@ export function canWriteIfcFromStores(
 export type StepSkipReason = 'noRecords' | 'noData';
 
 /**
- * Shared check with the STEP writer: a registered portable room source can
- * provide STEP records even though the room store itself is tabular.
+ * What the dialog and a merged export say about a model with no STEP records.
+ * The rule itself is `stepRecordsUnavailableReason`, shared with the writer.
  */
 export function stepSkipReason(store: IfcDataStore | null | undefined): StepSkipReason | null {
   if (!store) return 'noData';

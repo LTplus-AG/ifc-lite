@@ -6,6 +6,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { roomStepExportSource, type RoomStepExportSource } from '@/lib/collab/room-step-export';
 import { roomSymbolicSource } from '@/lib/collab/room-symbolic-source';
+import { stepRecordsUnavailableReason } from './step-records-reason';
 
 /**
  * Why a STEP writer has no records to read for a store: `'roomMoved'` for a
@@ -13,11 +14,6 @@ import { roomSymbolicSource } from '@/lib/collab/room-symbolic-source';
  * covered by its portable source, `'noRecords'` for any other tabular store.
  */
 export type StepRecordsRefusal = 'roomMoved' | 'noRecords';
-
-/** The shared check used by the dialog and STEP writer for absent STEP records. */
-export function stepRecordsUnavailableReason(store: IfcDataStore): 'noRecords' | null {
-  return store.sourceKind === 'tabular' && !roomSymbolicSource(store) ? 'noRecords' : null;
-}
 
 /** A refusal, not a crash. User-facing wording lives in the `exportDialog.stepRecords.*` catalogue keys. */
 export class StepRecordsUnavailableError extends Error {

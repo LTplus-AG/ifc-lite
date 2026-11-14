@@ -345,10 +345,11 @@ type RhinoImportResponse =
   arrives with the instance path, and until then an unbaked result reaching
   the swap is an error rather than a silent loss of geometry.
 - Point clouds are the exception to "no per-vertex work": `PointCloudAsset`
-  has no origin and takes 0..1 float colours, so the adapter folds the origin,
-  takes the bounds and widens the colours in one pass per point. Stating
-  absolute positions, float colours and a bounding box in `RhinoImport` would
-  move that into the reader, and is a change to this contract.
+  takes the reader's f64 origin and f32 offsets as they are (#10029), but it
+  wants 0..1 float colours and a bounding box, so the adapter widens the
+  colours and takes the bounds in one pass per point. Stating float colours
+  and a bounding box in `RhinoImport` would move that into the reader, and is
+  a change to this contract.
 
 ## Mapping
 

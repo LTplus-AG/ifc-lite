@@ -14,6 +14,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { describe, it, mock, afterEach, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
+import rhino3dm from 'rhino3dm';
 import { isValidIfcGuid } from '@ifc-lite/encoding';
 import { PropertyValueType } from '@ifc-lite/data';
 
@@ -102,6 +103,31 @@ describe('rhinoViewerModel, crafted .3dm', () => {
     // 1.1 m corner is compared at millimetre resolution).
     const { max } = geometryResult.coordinateInfo.originalBounds;
     assert.deepEqual([max.x, max.y, max.z].map((v) => Math.round(v * 1000)), [1100, 3000, 0]);
+  });
+});
+
+describe('rhinoViewerModel, a point cloud far from the origin', () => {
+  it('keeps the reader double origin on the asset, so a national-grid point keeps its millimetres (#10029)', async () => {
+    const rhino = await rhino3dm();
+    const file = new rhino.File3dm();
+    file.settings().modelUnitSystem = rhino.UnitSystem.Meters;
+    const cloud = new rhino.PointCloud();
+    // One f32 step at 2,600,000 m is 0.25 m, so folding the origin into the
+    // positions would move these points by up to 12 cm.
+    cloud.add([2_600_000.123, 1_200_000.456, 400.789]);
+    cloud.add([2_600_001.123, 1_200_000.456, 400.789]);
+    file.objects().add(cloud, null);
+    const { geometryResult } = await payloadOf(file.toByteArray());
+
+    const asset = geometryResult.pointClouds?.[0];
+    assert.ok(asset?.origin, 'the cloud carries an f64 origin');
+    // Viewer Y-up is `x, z, -y` of the file's Z-up point.
+    const world = [0, 1, 2].map((axis) => asset.origin![axis] + asset.chunk.positions[axis]);
+    const expected = [2_600_000.123, 400.789, -1_200_000.456];
+    world.forEach((value, axis) => assert.ok(Math.abs(value - expected[axis]) < 1e-3, `axis ${axis}: ${value}`));
+    // Scene bounds read the bbox relative to that origin.
+    const { min } = geometryResult.coordinateInfo.originalBounds;
+    assert.ok(Math.abs(min.x - 2_600_000.123) < 1e-3, `bounds min.x ${min.x}`);
   });
 });
 

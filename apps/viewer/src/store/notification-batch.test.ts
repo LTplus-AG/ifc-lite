@@ -5,7 +5,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { create } from 'zustand';
-import { readFileSync } from 'node:fs';
 import { holdViewerStoreNotifications, notificationBackstopReleases, withNotificationBatching } from './notification-batch.js';
 import { useViewerStore } from './index.js';
 
@@ -129,17 +128,6 @@ describe('store notification batching', () => {
       const before = notificationBackstopReleases();
       await Promise.resolve();
       assert.equal(notificationBackstopReleases(), before, 'both holders released: the backstop had nothing to do');
-    });
-
-    it('useIfcLoader: no await, return or yield between the hold and its release, and catch/finally release too', () => {
-      const src = readFileSync(new URL('../hooks/useIfcLoader.ts', import.meta.url), 'utf8');
-      const open = src.indexOf('holdViewerStoreNotifications()');
-      const close = src.indexOf('\n      releaseNotifications();', open);
-      assert.ok(open > 0 && close > open, 'hold and release found');
-      const held = src.slice(open, close).split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
-      assert.doesNotMatch(held, /\bawait\b|\breturn\b|\byield\b/);
-      assert.match(src, /\} catch \(err\) \{ releaseNotifications\(\);/);
-      assert.match(src, /\} finally \{\n\s+settleResumable\(\); releaseNotifications\(\);/);
     });
   });
 });

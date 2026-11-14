@@ -319,21 +319,42 @@ impl ClippingProcessor {
     }
 }
 
-/// Apply the same mesh hygiene as the router before judging the all-or-nothing
-/// conform candidate. Triangulation can emit sub-grid collinear slivers beside
-/// an otherwise paired seam; they are not geometry and must not make a closed
+/// Apply the router's mesh hygiene before judging the all-or-nothing conform
+/// candidate. Triangulation can emit sub-grid collinear slivers beside an
+/// otherwise paired seam; they are not geometry and must not make a closed
 /// candidate look open at the acceptance bar.
+///
+/// The index-only cleanup is tried first and its result kept wherever it
+/// passes. It opens the candidate when a sliver's apex is a vertex the
+/// abutting bucket keeps: three consecutive rim vertices of a faceted arc
+/// that are collinear to under the sub-grid height, where the side facets end
+/// at the middle one (#8190 slab: six cap slivers, 18 open edges). The
+/// candidate is then cleaned the way void output is, splitting the triangle
+/// across each dropped sliver at its apex, and judged again.
 fn complete_conformed_candidate(
-    mut candidate: Mesh,
+    candidate: Mesh,
     complete: bool,
     require_exact: bool,
 ) -> Option<Mesh> {
-    candidate.clean_degenerate();
-    (complete
-        && !candidate.is_empty()
-        && count_open_boundary_edges_at(&candidate, 1.0e4) == 0
-        && (!require_exact || count_open_boundary_edges_exact(&candidate) == 0))
-        .then_some(candidate)
+    if !complete {
+        return None;
+    }
+    let closed = |mesh: &Mesh| {
+        !mesh.is_empty()
+            && count_open_boundary_edges_at(mesh, 1.0e4) == 0
+            && (!require_exact || count_open_boundary_edges_exact(mesh) == 0)
+    };
+    let mut cleaned = candidate.clone();
+    cleaned.clean_degenerate();
+    if closed(&cleaned) {
+        return Some(cleaned);
+    }
+    if cleaned.indices.len() == candidate.indices.len() {
+        return None; // nothing was dropped, so there is nothing to repair
+    }
+    let mut repaired = candidate;
+    repaired.clean_degenerate_watertight();
+    closed(&repaired).then_some(repaired)
 }
 
 fn count_open_boundary_edges_exact(mesh: &Mesh) -> usize {

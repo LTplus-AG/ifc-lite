@@ -197,12 +197,16 @@ mod tests {
     use super::*;
     use nalgebra::Point2;
 
-    fn emitted_triangles(points: &[[f64; 2]], indices: &[usize]) -> usize {
+    fn emitted(points: &[[f64; 2]], indices: &[usize]) -> Mesh {
         let points: Vec<Point2<f64>> = points.iter().map(|p| Point2::new(p[0], p[1])).collect();
         let basis = (Point3::origin(), Vector3::x(), Vector3::y(), Vector3::z());
         let mut mesh = Mesh::new();
         emit_region(&mut mesh, basis, &points, indices);
-        mesh.indices.len() / 3
+        mesh
+    }
+
+    fn emitted_triangles(points: &[[f64; 2]], indices: &[usize]) -> usize {
+        emitted(points, indices).triangle_count()
     }
 
     /// #8156: two needles across a 100 um neck share their short edge. Each
@@ -227,5 +231,18 @@ mod tests {
     fn a_shared_zero_length_edge_is_still_dropped() {
         let points = [[0.0, 0.0], [0.0, 0.0], [5.0, 1.0], [-5.0, -1.0]];
         assert_eq!(emitted_triangles(&points, &[0, 1, 2, 1, 0, 3]), 0);
+    }
+
+    /// Known limit: "shared short edge means a neck" is read in f64. A 10 nm
+    /// neck at x = 3 m is below f32 resolution there, so both needles are kept
+    /// and come out with zero area. The later `clean_degenerate` removes them.
+    #[test]
+    fn a_shared_short_edge_below_f32_resolution_emits_zero_area_triangles() {
+        let points = [[3.0, 0.0], [3.0 + 1.0e-8, 0.0], [8.0, 1.0], [-2.0, -1.0]];
+        let mut mesh = emitted(&points, &[0, 1, 2, 1, 0, 3]);
+        assert_eq!(mesh.triangle_count(), 2);
+        assert_eq!(mesh.positions[0..3], mesh.positions[3..6], "the neck collapses in f32");
+        mesh.clean_degenerate();
+        assert_eq!(mesh.triangle_count(), 0);
     }
 }

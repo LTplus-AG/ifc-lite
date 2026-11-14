@@ -114,7 +114,7 @@
  */
 
 import { PropertyValueType } from '@ifc-lite/data';
-import { SCHEMA_REGISTRY } from '@ifc-lite/parser';
+import { ifc4Registry } from './ifc4-registry.js';
 import { getSelectDefinedLeaves } from './select-qualification.js';
 import { serializeTypedMarker, toStepInteger } from './step-serialization.js';
 import { serializePropertyValue } from './property-value-serialization.js';
@@ -252,12 +252,13 @@ export const CONSTRAINED_IFC_VALUE_MEMBERS: readonly string[] = [...CONSTRAINED_
  */
 function relaxedMember(name: string, base: string): string | null {
   const seen = new Set<string>([name]);
-  let cursor: string | undefined = SCHEMA_REGISTRY.types[name];
+  const types = ifc4Registry().types;
+  let cursor: string | undefined = types[name];
   while (cursor && !seen.has(cursor)) {
     seen.add(cursor);
     const leaf = lookupNominalValueLeaf(cursor.toUpperCase());
     if (leaf && leaf[1] === base && !CONSTRAINED_MEMBERS.has(leaf[0])) return leaf[0];
-    cursor = SCHEMA_REGISTRY.types[cursor];
+    cursor = types[cursor];
   }
   return null;
 }
@@ -323,7 +324,7 @@ export function validatePropertyDataType(value: string | number | boolean | null
   if (value !== null && !valueFitsBase(value, base)) throw new Error(`Property value does not fit ${name}`);
   const constraint = CONSTRAINED_MEMBERS.get(name);
   if (value !== null && constraint && !constraint(value as number)) throw new Error(`Property value violates the domain of ${name}`);
-  const width = SCHEMA_REGISTRY.types[name]?.match(/^STRING\((\d+)\)/i);
+  const width = ifc4Registry().types[name]?.match(/^STRING\((\d+)\)/i);
   if (width && typeof value === 'string') {
     let count = 0;
     for (const _character of value) if (++count > Number(width[1])) throw new Error(`Property value exceeds the string width of ${name}`);

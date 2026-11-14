@@ -260,7 +260,7 @@ describe('IfcAppliedValue / IfcCostValue.Components (own attribute, inherited by
       // `UnitBasis : OPTIONAL IfcMeasureWithUnit` — a bare, single-valued
       // attribute at slot 4, not a list. Same shape as the file's existing
       // `IfcCostItem.OwnerHistory` regression guard: a bare excluded ref on
-      // a `NONREL_REF_LIST_TYPES` member must be left dangling, unfiltered,
+      // a `getNonRelRefListTypes()` member must be left dangling, unfiltered,
       // never made to withhold the whole record.
       const line = `#2=${token}($,$,$,#1,$,$,$,$,$,$);\n`;
       const store = buildParsedStore([
@@ -337,7 +337,7 @@ describe('the extended reach does not widen the criterion', () => {
 
 /**
  * The withhold half of `filterHiddenRefsFromRelationshipLine` is wrong for
- * `NONREL_REF_LIST_TYPES`. `IfcCostItem` is `IfcRoot -> ... -> IfcObject ->
+ * `getNonRelRefListTypes()`. `IfcCostItem` is `IfcRoot -> ... -> IfcObject ->
  * IfcControl -> IfcCostItem`, so its OWN slot 2 (`OwnerHistory`) is a bare,
  * single-valued `#N`, not a list — exactly the shape
  * `filterHiddenRefsFromRelationshipLine`'s bare-ref rule withholds the WHOLE
@@ -402,7 +402,7 @@ describe('IFC2X3: IfcCostItem has no CostValues/CostQuantities attributes at all
 /**
  * #5181: `IfcPropertySet.HasProperties` and `IfcElementQuantity.Quantities`
  * are both `SET [1:?] OF <entity>` on non-`IFCREL*` classes — precisely the
- * shape `NONREL_REF_LIST_TYPES` exists for, but outside the original
+ * shape `getNonRelRefListTypes()` exists for, but outside the original
  * hand-kept four-entry set (#5066). Now covered because
  * `nonrel-ref-list-types.ts` derives the set from the generated schema
  * registries rather than hand-enumerating it (see that file's doc for how
@@ -498,7 +498,7 @@ describe('#5181: IfcElementQuantity.Quantities (derived, not hand-kept)', () => 
 });
 
 /**
- * #5181: a type joins `NONREL_REF_LIST_TYPES` on ONE qualifying `[1:?]`
+ * #5181: a type joins `getNonRelRefListTypes()` on ONE qualifying `[1:?]`
  * attribute, but narrowing rewrites every parenthesised slot on the line.
  * `IfcFillAreaStyleTiles` qualifies through `Tiles : SET [1:?] OF
  * IfcStyledItem` and also carries `TilingPattern : LIST [2:2] OF IfcVector`.

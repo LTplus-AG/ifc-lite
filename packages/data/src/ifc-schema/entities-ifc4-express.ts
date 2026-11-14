@@ -29,6 +29,7 @@
 import type { IfcEntityInfo } from './types.js';
 import { getEntitiesIfc4 } from './generated/entities-ifc4.js';
 import { IFC4_EXPRESS_OVERRIDES, IFC4_UNDECLARED_ENTITIES } from './ifc4-express-corrections.js';
+import { eagerSchemaTable } from './table-codec.js';
 
 let entitiesIfc4Express: readonly IfcEntityInfo[] | undefined;
 
@@ -43,4 +44,4 @@ export function getEntitiesIfc4Express(): readonly IfcEntityInfo[] {
   return entitiesIfc4Express;
 }
 
-export const ENTITIES_IFC4_EXPRESS: readonly IfcEntityInfo[] = /* @__PURE__ */ getEntitiesIfc4Express();
+export const ENTITIES_IFC4_EXPRESS: readonly IfcEntityInfo[] = /* @__PURE__ */ eagerSchemaTable('ifc-lite-eager-table:ENTITIES_IFC4_EXPRESS', getEntitiesIfc4Express);

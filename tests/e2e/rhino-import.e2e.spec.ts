@@ -100,6 +100,11 @@ function byLoadPath(snapshots: ModelSnapshot[], loadPath: string): ModelSnapshot
 test.describe('Rhino .3dm import in the built viewer', () => {
   test.skip(!existsSync(IFC_MODEL), 'apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc is missing');
 
+  // FZK sits at the origin, so the two exports hold the same geometry. The
+  // `world` run proves the World option's path yields a file that overlays;
+  // it cannot tell an exporter that ignores the option from one that honours
+  // it. `exports.test.ts` on `fzk-far` covers the frame restore in Node, and
+  // #10219 tracks the same proof in the browser.
   for (const coordinates of ['local', 'world'] as const) {
     test(`an exported .3dm overlays the IFC it came from (${coordinates} coordinates)`, async ({ page }) => {
       const journey = await openViewerWith(page, IFC_MODEL, 'open the AC20 house');

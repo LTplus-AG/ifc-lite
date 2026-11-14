@@ -116,7 +116,7 @@ describe('rhinoViewerModel, a point cloud far from the origin', () => {
     // positions would move these points by up to 12 cm.
     cloud.add([2_600_000.123, 1_200_000.456, 400.789]);
     cloud.add([2_600_001.123, 1_200_000.456, 400.789]);
-    file.objects().add(cloud, null);
+    file.objects().add(cloud, new rhino.ObjectAttributes());
     const { geometryResult } = await payloadOf(file.toByteArray());
 
     const asset = geometryResult.pointClouds?.[0];

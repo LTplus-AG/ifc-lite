@@ -91,9 +91,11 @@ function readRules(text, topKey) {
     }
     // `commit_message_format` shapes the squash commit message only (#10273):
     // nothing under it can route, queue or gate a PR, so its nested map is
-    // skipped. Anything that is not nested under it is still unread.
+    // skipped. Only plain words are accepted there (`title: pr-title`,
+    // `trailers:`, `- co-authored-by`): a quote, bracket or block scalar could
+    // run on into the lines after it, so those are unread like anything else.
     if (section === 'commit_message_format') {
-      if (!/^ {6,}\S/.test(line)) unread(line);
+      if (!/^ {6,}(- )?[\w-]+(:(\s+[\w-]+)?)?\s*(#.*)?$/.test(line)) unread(line);
       continue;
     }
     if (section.startsWith('actions')) {

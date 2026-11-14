@@ -25,15 +25,16 @@
  * entity the registry doesn't know simply isn't auto-qualified.
  */
 
-import { SCHEMA_REGISTRY, getAllAttributesForEntity } from '@ifc-lite/parser';
+import { getAllAttributesForEntity } from '@ifc-lite/parser';
+import { ifc4Registry } from './ifc4-registry.js';
 import type { IfcAttributeValue, SchemaRegistry } from '@ifc-lite/parser';
 import { resolveExpressBase, serializeTypedMarker } from './step-serialization.js';
 
-function isSelectType(type: string, registry: SchemaRegistry = SCHEMA_REGISTRY): boolean {
+function isSelectType(type: string, registry: SchemaRegistry = ifc4Registry()): boolean {
   return Object.prototype.hasOwnProperty.call(registry.selects, type);
 }
 
-function isDefinedType(type: string, registry: SchemaRegistry = SCHEMA_REGISTRY): boolean {
+function isDefinedType(type: string, registry: SchemaRegistry = ifc4Registry()): boolean {
   return Object.prototype.hasOwnProperty.call(registry.types, type);
 }
 
@@ -41,7 +42,7 @@ function isDefinedType(type: string, registry: SchemaRegistry = SCHEMA_REGISTRY)
  * Every member of `selectName` that is not itself a select (nested selects
  * flattened), in `registry`'s order: defined types and entities alike.
  */
-export function getSelectMembers(selectName: string, registry: SchemaRegistry = SCHEMA_REGISTRY): string[] {
+export function getSelectMembers(selectName: string, registry: SchemaRegistry = ifc4Registry()): string[] {
   const members: string[] = [];
   const seen = new Set<string>();
   const walk = (sel: string): void => {
@@ -72,7 +73,7 @@ const selectLeafCache = new WeakMap<SchemaRegistry, Map<string, Map<string, stri
  * imply" but "is this token a member at all, and does it agree with the value".
  * One walk, one cache, one definition of what a qualifiable member is.
  */
-export function getSelectDefinedLeaves(selectName: string, registry: SchemaRegistry = SCHEMA_REGISTRY): Map<string, string> {
+export function getSelectDefinedLeaves(selectName: string, registry: SchemaRegistry = ifc4Registry()): Map<string, string> {
   let cache = selectLeafCache.get(registry);
   if (!cache) selectLeafCache.set(registry, (cache = new Map()));
   const cached = cache.get(selectName);

@@ -73,7 +73,7 @@ VITE_VIEWER_CONFIG_URL=/api/viewer/config pnpm --filter @ifc-lite/viewer build
 
 The viewer fetches that URL once before it mounts:
 
-- Same origin only. A URL on another origin is refused without a request, and so is an answer that was redirected to another origin.
+- Same origin only. A URL on another origin is refused without a request, and a redirect to another origin is not followed.
 - Sent with the user's session (`credentials: 'same-origin'`), so the endpoint can answer per user.
 - The page's `context` query parameter is forwarded. `/viewer/?context=abc` asks `/api/viewer/config?context=abc`, which lets the host say what the page is for.
 - The answer must be JSON in the shape above.

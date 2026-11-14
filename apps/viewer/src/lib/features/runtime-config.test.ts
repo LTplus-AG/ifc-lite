@@ -4,6 +4,8 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { jsonResponse } from '@/test/fetch-stub';
 import { normalizeProcessedModelHash } from '@ifc-lite/server-client';
 import { loadViewerRuntimeConfig, parseViewerRuntimeConfig, ViewerConfigError } from './runtime-config';
@@ -24,6 +26,15 @@ function fakeFetch(respond: () => Response | Promise<Response>): { fetch: typeof
   return { fetch, calls };
 }
 
+/** A local HTTP server on its own port, which makes it its own origin. */
+async function listen(handler: Parameters<typeof createServer>[1]): Promise<{ server: Server; origin: string }> {
+  const server = createServer(handler);
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  return { server, origin: `http://127.0.0.1:${(server.address() as AddressInfo).port}` };
+}
 
 async function rejection(promise: Promise<unknown>): Promise<ViewerConfigError> {
   try {
@@ -147,11 +158,49 @@ describe('fetching the host configuration', () => {
     assert.equal(calls.length, 0, 'the session must not be offered to another origin');
   });
 
-  it('refuses an answer that was redirected to another origin', async () => {
+  it('refuses an answer that a fetch of its own followed to another origin', async () => {
+    // A host entry may pass a fetch that ignores `mode`; the answer is still checked.
     const redirected = jsonResponse({ version: 1 });
     Object.defineProperty(redirected, 'url', { value: 'https://elsewhere.example/config.json' });
     const { fetch } = fakeFetch(() => redirected);
     assert.equal((await rejection(loadViewerRuntimeConfig({ url: '/config', pageUrl: PAGE, fetch }))).code, 'cross-origin');
+  });
+
+  it('does not follow a redirect to another origin, so that origin gets no request', async () => {
+    // Real servers and the platform fetch: what is under test is the request
+    // mode, which only a real fetch enforces.
+    let otherHits = 0;
+    const other = await listen((_req, res) => {
+      otherHits += 1;
+      res.end();
+    });
+    const homeRequests: string[] = [];
+    const home = await listen((req, res) => {
+      homeRequests.push(req.url ?? '');
+      if (req.url === '/moved') {
+        res.statusCode = 302;
+        res.setHeader('Location', '/config.json');
+      } else if (req.url === '/config.json') {
+        res.setHeader('Content-Type', 'application/json');
+        res.write('{"version":1}');
+      } else {
+        res.statusCode = 302;
+        res.setHeader('Location', `${other.origin}/config.json`);
+      }
+      res.end();
+    });
+    try {
+      const pageUrl = `${home.origin}/viewer/`;
+      const error = await rejection(loadViewerRuntimeConfig({ url: '/away', pageUrl, fetch: globalThis.fetch }));
+      assert.deepEqual(homeRequests, ['/away'], 'the request reached the page origin and was redirected');
+      assert.equal(otherHits, 0, 'the redirected request must never reach the other origin');
+      assert.equal(error.code, 'unreachable');
+      // A redirect that stays on the page origin is still followed.
+      assert.deepEqual(await loadViewerRuntimeConfig({ url: '/moved', pageUrl, fetch: globalThis.fetch }), { version: 1 });
+    } finally {
+      home.server.close();
+      other.server.close();
+    }
   });
 
   it('fails closed on a server error, even one with a usable body', async () => {

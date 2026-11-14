@@ -75,7 +75,7 @@ export function structuralReader(store: IfcDataStore, editor: StoreEditor): Stru
         ? refs(record.attributes[index]).map(target => ({ target, index, attribute: a })) : [])
       .filter(edge => {
         if (!owned) return true;
-        if (read(id)?.type.toUpperCase() === 'IFCSTRUCTURALCURVEACTION' && edge.attribute.name === 'AppliedLoad') return false; // Curve actions borrow their load; the builder takes an existing id.
+        if (record.type.toUpperCase() === 'IFCSTRUCTURALCURVEACTION' && edge.attribute.name === 'AppliedLoad') return false; // Curve actions borrow their load; the builder takes an existing id.
         const target = meta(read(edge.target)?.type ?? '');
         return target !== undefined && !target.inheritanceChain?.includes('IfcRoot')
           && !target.inheritanceChain?.includes('IfcRepresentationContext');

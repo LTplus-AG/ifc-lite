@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Source-free per-frame AABB calculation; preserves world/RTC arithmetic.
+use crate::math::aabb::Aabb3;
 use crate::{Mesh, Point3};
 use nalgebra::Matrix4;
 
@@ -24,18 +25,11 @@ pub(crate) fn evaluate(
             local[2] as f64 + mesh.origin[2],
         ))
     };
-    let mut world_min = Point3::new(f64::INFINITY, f64::INFINITY, f64::INFINITY);
-    let mut world_max = Point3::new(f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
     // An empty mesh keeps its historical bounds: the placed item origin.
     let origin = [0.0f32; 3];
     let vertices = if mesh.is_empty() { &origin[..] } else { &mesh.positions[..] };
-    for vertex in vertices.chunks_exact(3) {
-        let point = place(vertex);
-        for axis in 0..3 {
-            world_min[axis] = world_min[axis].min(point[axis]);
-            world_max[axis] = world_max[axis].max(point[axis]);
-        }
-    }
+    let placed = Aabb3::from_points(vertices.chunks_exact(3).map(|vertex| place(vertex).coords.into()));
+    let (world_min, world_max) = (Point3::from(placed.min), Point3::from(placed.max));
 
     // Apply RTC offset to opening bounds so they match wall mesh coordinate system
     // Wall mesh positions have RTC subtracted during transform_mesh, so opening bounds must match

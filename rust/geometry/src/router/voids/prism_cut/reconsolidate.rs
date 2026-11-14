@@ -26,9 +26,9 @@ use crate::csg::{ClippingProcessor, ConsolidationOutcome};
 use crate::mesh::Mesh;
 use crate::mesh_check::{ClosureVerdict, Degenerate, EdgeLedger, VertexKey};
 
-/// Open edges on the 1 mm grid the consolidation's own raw-versus-merged
-/// guard reads (`count_open_boundary_edges`): coarser than the spread between
-/// the per-bucket copies of one vertex, far finer than a real crack.
+/// Open edges on a 1 mm grid: coarser than the spread between the per-bucket
+/// copies of one vertex, far finer than a real crack. A triangle the grid
+/// collapses is skipped, not counted as open.
 fn open_edges(mesh: &Mesh) -> usize {
     EdgeLedger::build(mesh, VertexKey::GridMul(1.0e3), Degenerate::SkipTriangle).unbalanced().count()
 }

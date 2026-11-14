@@ -23,14 +23,12 @@ pub(super) fn can_adopt_refinement(boundary: ConsolidationBoundary, refined: &Me
     if !super::directed_closed(refined) || !boundary.accepts(refined) {
         return false;
     }
-    let mut probe = refined.clone();
-    probe.clean_degenerate();
-    if super::directed_closed(&probe) {
-        return true;
-    }
-    let mut probe = refined.clone();
-    probe.clean_degenerate_watertight();
-    super::directed_closed(&probe)
+    let closed_after = |clean: fn(&mut Mesh)| {
+        let mut probe = refined.clone();
+        clean(&mut probe);
+        super::directed_closed(&probe)
+    };
+    closed_after(Mesh::clean_degenerate) || closed_after(Mesh::clean_degenerate_watertight)
 }
 
 /// A seam repair may replace the audited mesh only if it retains its certificate.
@@ -123,16 +121,15 @@ pub(in crate::router::voids) fn finish_cut_verdict(
 /// apart and the cut bridges the gap with zero-area triangles.
 fn repaired_finish(candidate: &Mesh, host: &Mesh, boundary: ConsolidationBoundary) -> Option<Mesh> {
     let mut repaired = candidate.clone();
-    repaired.clean_degenerate_watertight();
-    repaired = dedup_cut_vertices(&repaired, host);
-    // The weld can flatten a triangle that was valid before it.
+    // More than one round only when the weld flattens a triangle that was
+    // valid before it.
     for _ in 0..REPAIR_ROUNDS {
         crate::progress::tick();
+        repaired.clean_degenerate_watertight();
+        repaired = dedup_cut_vertices(&repaired, host);
         if !repaired.needs_degenerate_cleanup() {
             break;
         }
-        repaired.clean_degenerate_watertight();
-        repaired = dedup_cut_vertices(&repaired, host);
     }
     (repaired.indices.len().is_multiple_of(3)
         && super::directed_closed(&repaired)
@@ -141,7 +138,7 @@ fn repaired_finish(candidate: &Mesh, host: &Mesh, boundary: ConsolidationBoundar
 }
 
 /// Clean-then-weld rounds the repaired finish may take. One is the norm.
-const REPAIR_ROUNDS: usize = 4;
+const REPAIR_ROUNDS: usize = 5;
 
 #[cfg(test)]
 mod tests {

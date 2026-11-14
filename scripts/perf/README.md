@@ -7403,3 +7403,62 @@ produces objects the renderer's hot paths already handle well; a JS rebuild has
 to match their shape (one literal with every field set) before it can save
 anything. Measure the consumers in a real trace before trusting a receive-side
 microbenchmark.
+
+## Streaming entity scan while the file arrives (spike, branch spike/streaming-scan; no PR, not built)
+
+**Rejected at the spike: the entity index arrives much earlier, but only about a third of the gain reaches interactive. The build bar was not met.**
+
+The spike ran behind a flag, `?streamScan=a|ab` (one build; the flag picks the arm), on plain .ifc files of 16 MiB and up.
+
+- **(a) early start.** At the pick, compute the source fingerprint from Blob slices and spawn the geometry pool, which the load adopts. Read and scan are unchanged.
+- **(b) streaming scan, on top of (a).**
+  - A reader worker streams the File into a SharedArrayBuffer and publishes a byte watermark.
+  - The pool scans fixed 8 MiB ranges as their bytes land. Only each slice is copied into wasm, and its offsets are corrected in JS.
+  - A slice that ends before its handoff record is rescanned after the read.
+  - The load adopts the finished shards and skips its own shard scan.
+
+Files under 16 MiB were untouched, including #9900's small-file fast path (< 10 MiB).
+
+The stitched entity index was bit-identical in all arms, with 0 rescans in every sample. FNV digest over ids, starts and lengths:
+
+- Holter: e264d53f, 2,807,815 entities
+- BWK: 42b35c10, 4,411,807 entities
+
+Method: capped timing on Pop, in one shared drain admission (slots 97-parser-bundle-a/-aa/-ab, 2026-11-14 13:18-13:31 CET), with three units:
+
+1. off vs a
+2. off vs off: the A/A, so the floor comes from the same admission
+3. off vs ab
+
+Each unit covered Holter and BWK browser-cold, 8 rounds per side. All 96 samples were inside the cap window and none was flagged. The harness was main + quiet-cpu-time (#10138). The build bar was fixed before the run: entity index at least ~300 ms earlier AND Holter interactive at least ~230 ms earlier.
+
+Paired medians, branch vs off. A/A floor = median |paired delta| from the off-vs-off unit; 2x the floor is the significance bar.
+
+| cell | A/A floor | (a) early start | (b) streaming scan |
+|---|---:|---:|---:|
+| Holter index-ready | 1.8% | 576 -> 559 ms (-15, n.s.) | 576 -> 340 ms (-233, -40%, gain) |
+| Holter interactive | 2.6% | 3,343 -> 3,319 ms (-14, n.s.) | 3,412 -> 3,322 ms (-77, -2.2%, n.s.) |
+| BWK index-ready | 8.3% | 872 -> 862 ms (-17, n.s.) | 949 -> 546 ms (-412, -43%, gain) |
+| BWK interactive | 3.9% | 3,277 -> 3,292 ms (-9, n.s.) | 3,350 -> 3,169 ms (-187, -5.6%, n.s.: 2x floor 7.7%) |
+
+Where (b)'s gain goes. Side medians, off -> ab, in ms from the pick:
+
+| milestone | Holter | BWK |
+|---|---:|---:|
+| entity index | 576 -> 340 (-236) | 949 -> 546 (-403) |
+| prepass styles | 759 -> 677 (-82) | 1,161 -> 999 (-162) |
+| first batch | 911 -> 880 (-31) | 1,332 -> 1,280 (-52) |
+| prepass complete | 1,622 -> 1,458 (-164) | 1,908 -> 1,602 (-306) |
+| parser complete | 3,140 -> 3,021 (-119) | 3,227 -> 3,049 (-178) |
+
+Between the index and the prepass styles the gap grows by about 150 ms on Holter and 240 ms on BWK, so a stage after the index absorbs most of the gain. This is not attributed: no trace was taken. The most likely candidate is the per-worker full-source install (`setSourceBytes`, 90-200 ms per worker), which moved from inside the shard scan to after the read.
+
+(a) alone had no measurable effect on any cell: worker spawn and the fingerprint were not on the critical path.
+
+**Lesson:** an earlier entity index does not shorten a cold load by itself. The stages after it (source install, prepass styles, first batch) have their own bounds. Before streaming the read again:
+
+1. Attribute the index-to-styles gap in a trace.
+2. Remove what fills it, for example with an incremental wasm source install.
+3. Re-measure.
+
+The spike's read-overlap pieces are kept on branch spike/streaming-scan: reader worker + watermark, slice scan with offset correction, and pool adoption.

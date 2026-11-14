@@ -28,8 +28,9 @@
 
 import { test, expect, type Page } from '@playwright/test';
 import { existsSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { basename } from 'node:path';
+import { readRhino3dm } from '../../packages/rhino3dm/src/index.js';
 import {
   FOREIGN_3DM, FZK_WALL, IFC_MODEL, SMALL_IFC,
   STEP_TIMEOUT_MS, addModel, entityByGlobalId, exportTo3dm, hidden, loadPaths, modelCount, modelSnapshots,
@@ -102,11 +103,8 @@ function byLoadPath(snapshots: ModelSnapshot[], loadPath: string): ModelSnapshot
 test.describe('Rhino .3dm import in the built viewer', () => {
   test.skip(!existsSync(IFC_MODEL), 'apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc is missing');
 
-  // FZK sits at the origin, so the two exports hold the same geometry. The
-  // `world` run proves the World option's path yields a file that overlays;
-  // it cannot tell an exporter that ignores the option from one that honours
-  // it. `exports.test.ts` on `fzk-far` covers the frame restore in Node, and
-  // #10219 tracks the same proof in the browser.
+  // The origin FZK cannot distinguish the local and world export frames.
+  // #10219's far-origin browser test below proves that distinction.
   for (const coordinates of ['local', 'world'] as const) {
     test(`an exported .3dm overlays the IFC it came from (${coordinates} coordinates)`, async ({ page }) => {
       const journey = await openViewerWith(page, IFC_MODEL, 'open the AC20 house');
@@ -165,6 +163,60 @@ test.describe('Rhino .3dm import in the built viewer', () => {
       expect(journey.errors).toEqual([]);
     });
   }
+
+  test('issue #10219: far-origin FZK local and world exports round-trip in the browser', async ({ page }) => {
+    const source = await readFile(IFC_MODEL, 'latin1');
+    const shifted = source.replace('#115= IFCLOCALPLACEMENT($,#114);',
+      '#115= IFCLOCALPLACEMENT($,#9999991);\n#9999991= IFCAXIS2PLACEMENT3D(#9999992,$,$);\n#9999992= IFCCARTESIANPOINT((2600000.,1200000.,400.));');
+    expect(shifted, 'the FZK site placement to move (#10219)').not.toBe(source);
+    const farIfcPath = test.info().outputPath('AC20-FZK-Haus-far.ifc');
+    await writeFile(farIfcPath, Buffer.from(shifted, 'latin1'));
+
+    const journey = await openViewerWith(page, farIfcPath, 'open the far-origin AC20 house');
+    const localBytes = await exportTo3dm(page, 'local', 'ac20-far-local.3dm');
+    const worldBytes = await exportTo3dm(page, 'world', 'ac20-far-world.3dm');
+
+    // Read the exported document metadata itself: a local file carries the
+    // frame restore, while world coordinates already include it.
+    const [localDocument, worldDocument] = await Promise.all([
+      readRhino3dm(localBytes), readRhino3dm(worldBytes),
+    ]);
+    expect(localDocument.document.frame).toBe('ifc-world-from-model');
+    expect(worldDocument.document.frame).toBe('file');
+
+    await journey.gpu.raceLoss('add both far-origin exports to the federation', async () => {
+      await addModel(page, localBytes, 'AC20-FZK-Haus-far-local.3dm', 2);
+      await addModel(page, worldBytes, 'AC20-FZK-Haus-far-world.3dm', 3);
+    });
+    const snapshots = await modelSnapshots(page);
+    const ifc = byLoadPath(snapshots, 'wasm');
+    const local = snapshots.find((snapshot) => snapshot.name === 'AC20-FZK-Haus-far-local.3dm');
+    const world = snapshots.find((snapshot) => snapshot.name === 'AC20-FZK-Haus-far-world.3dm');
+    expect(local, 'the re-imported local export').toBeDefined();
+    expect(world, 'the re-imported world export').toBeDefined();
+
+    // The boxes below are each in their own model's render frame, so they
+    // only say "same place" if the three models share one frame. A `.3dm`
+    // left off the IFC's anchor would otherwise still match box for box.
+    expect(Math.abs(ifc.drawOffset[0]), 'the far IFC draws from a far anchor').toBeGreaterThan(1e6);
+    expect(local!.drawOffset, 'the local .3dm draws in the IFC\'s frame').toEqual(ifc.drawOffset);
+    expect(world!.drawOffset, 'the world .3dm draws in the IFC\'s frame').toEqual(ifc.drawOffset);
+
+    for (const [coordinates, overlay] of [
+      ['local', overlayOf(ifc, local!)],
+      ['world', overlayOf(ifc, world!)],
+    ] as const) {
+      note('far-origin-overlay', `${coordinates}: ${overlay.matched.length} matched GlobalIds, worst corner gap ` +
+        `${overlay.worstGap.toExponential(6)} m at ${JSON.stringify(overlay.worstAt)}, per axis ${JSON.stringify(overlay.perAxis)}`);
+      expect(overlay.matched, `${coordinates}: exactly the FZK's 90 matched GlobalIds`).toHaveLength(FZK_MATCHED_ENTITIES);
+      expect(overlay.onlySecond, `${coordinates}: no geometry outside the IFC`).toEqual([]);
+      const missing = overlay.onlyFirst.filter((globalId) => !NOT_EXPORTED.test(ifc.classes[globalId] ?? ''));
+      expect(missing, `${coordinates}: no unexpected IFC entities missing`).toEqual([]);
+      expect(overlay.worstGap, `${coordinates}: worst corner gap at ${JSON.stringify(overlay.worstAt)}`)
+        .toBeLessThanOrEqual(OVERLAY_TOLERANCE_M);
+    }
+    expect(journey.errors).toEqual([]);
+  });
 
   test('a Rhino-authored file loads with its layer tree and its colours', async ({ page }) => {
     test.skip(!existsSync(FOREIGN_3DM), 'tests/models/rhino/mcneel-rhino3dm/file3dm_stuff.3dm is missing — run pnpm fixtures');

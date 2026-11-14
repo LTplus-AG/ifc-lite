@@ -50,6 +50,7 @@ import { hasSavedSheetChoice, loadSheet, saveSheet, sheetStorageKey } from '@/st
 import type { DrawingSheet } from '@ifc-lite/drawing-2d';
 import type { LegacyMoveContext } from './drawingPersistenceKey.js';
 import { legacyEntryEmbeddedMarkupIdentities } from '@/lib/drawing2d-markup/drawing-markup-legacy-absorbed';
+import { drawingMarkupItemExpressId } from '@/lib/overlay-parse/drawing-markup-read';
 
 export interface LegacyLocalRestore {
   retry: boolean;
@@ -162,11 +163,20 @@ const holdsAll = (stored: { id: string }[], moved: { id: string }[]) => {
  * explicit set on the other entry, even an empty one, does not hide it.
  * Neither recording one keeps the field absent, for the restore to derive.
  */
-function mergeAbsorbed(modelId: string, ...entries: PersistedDrawing2DEntry[]): string[] | undefined {
+function mergeAbsorbed(modelId: string, ...entries: PersistedDrawing2DEntry[]): string[] | undefined | null {
   if (entries.every((entry) => !entry.absorbedEmbeddedMarkup)) return undefined;
-  return [...new Set(entries.flatMap((entry) => entry.absorbedEmbeddedMarkup ?? legacyEntryEmbeddedMarkupIdentities(modelId, [
-    entry.measure2DResults, entry.polygonArea2DResults, entry.textAnnotations2D, entry.cloudAnnotations2D, entry.dimensions2D,
-  ]) ?? []))];
+  const sets: string[][] = [];
+  for (const entry of entries) {
+    const lists = [entry.measure2DResults, entry.polygonArea2DResults, entry.textAnnotations2D, entry.cloudAnnotations2D, entry.dimensions2D];
+    // Only items read from the file can be absorbed; an entry without any needs no readable file.
+    const fromFile = lists.some((list) => (list ?? []).some((item) => drawingMarkupItemExpressId(item.id) !== null));
+    const set = entry.absorbedEmbeddedMarkup ?? (fromFile ? legacyEntryEmbeddedMarkupIdentities(modelId, lists) : []);
+    // The file closed or is not readable yet: writing `[]` would lose this
+    // entry's share for good (the explicit set stops a later derivation).
+    if (!set) return null;
+    sets.push(set);
+  }
+  return [...new Set(sets.flat())];
 }
 
 function moveLegacyMarkup(key: string, legacy: string, modelId: string, unionById: LegacyMoveContext['unionById']): LocalMove<PersistedDrawing2DEntry> {
@@ -187,8 +197,15 @@ function moveLegacyMarkup(key: string, legacy: string, modelId: string, unionByI
     cloudAnnotations2D: unionById(earlier.cloudAnnotations2D, later.cloudAnnotations2D),
     dimensions2D: unionById(earlier.dimensions2D ?? [], later.dimensions2D ?? []),
     sectionConfig: later.sectionConfig ?? earlier.sectionConfig,
-    absorbedEmbeddedMarkup: mergeAbsorbed(modelId, earlier, later),
+    absorbedEmbeddedMarkup: undefined as string[] | undefined,
   } : later;
+  if (earlier) {
+    const absorbed = mergeAbsorbed(modelId, earlier, later);
+    // Not derivable now: keep both entries and retry on the next activation;
+    // show the merged markup meanwhile, with the set left for the restore to derive.
+    if (absorbed === null) return { complete: false, fallback: merged };
+    merged.absorbedEmbeddedMarkup = absorbed;
+  }
   saveDrawing2DEntry(key, merged);
   // The entry read back must BE the merged one, value for value. Comparing
   // ids is not enough: an entry whose write failed still holds every id when

@@ -431,6 +431,37 @@ describe('reopening a file whose localStorage entry was seeded from its own embe
     });
   }
 
+  // PR #10149 CodeRabbit: the merge must not record `[]` for an old entry it cannot read yet.
+  it('a pre-#7035 entry merged while the parsed store is not attached keeps the old entry and absorbs once it is', async () => {
+    const file = fileWithBytes(68, 'old-key-unreadable.ifc');
+    const legacyKey = createHash('sha256').update(new Uint8Array(await file.arrayBuffer())).digest('hex');
+    const identity = (await placementSourceIdentity(file))!;
+    writeOldEntry(legacyKey, [embeddedOriginMeasure(ANNOTATION_ID)]);
+    writeOldEntry(identity, [USER_MEASURE], [], []);
+
+    heldWasmReply();
+    await mount();
+    const store = await parseFixture();
+    useViewerStore.setState({ editEnabled: true, models: new Map([['old-key-unreadable', { ...modelFor('old-key-unreadable', file, store), ifcDataStore: null } as FederatedModel]]) } as never);
+    await act(async () => { useViewerStore.getState().setActiveModel('old-key-unreadable'); });
+    await decided('old-key-unreadable');
+    await waitFor(() => useViewerStore.getState().measure2DResults.length === 2, 'the merged markup is shown');
+    assert.notEqual(localStorage.getItem(`ifc-lite:drawing2d:${legacyKey}`) ?? Object.keys(localStorage).find((k) => k.endsWith(legacyKey)), null,
+      'the old entry is kept for a retry');
+    assert.deepEqual(loadDrawing2DEntry(identity, DEFAULTS)?.absorbedEmbeddedMarkup ?? [], [], 'no set recording the old entry as empty-handed is written');
+    assert.ok(Object.keys(localStorage).some((k) => k.endsWith(legacyKey)), 'the old entry is still stored');
+
+    // The load attaches the store; the next activation retries the move.
+    useViewerStore.setState({ models: new Map([['old-key-unreadable', modelFor('old-key-unreadable', file, store)]]) } as never);
+    await act(async () => { useViewerStore.getState().setActiveModel(null as never); });
+    await act(async () => { useViewerStore.getState().setActiveModel('old-key-unreadable'); });
+    await decided('old-key-unreadable');
+    await waitFor(() => absorbedEmbeddedMarkupFor('old-key-unreadable').has(EMBEDDED_GUID), 'the retried merge absorbs the old entry\'s item');
+    const saved = saveAndExport('old-key-unreadable', store);
+    assert.equal(annotations(saved), 2, 'the embedded copy is replaced, not duplicated');
+    assert.deepEqual(danglingRefs(saved), []);
+  });
+
   // PR #10149 review: a restore can run before the parsed store is attached.
   it('an entry from before the absorbed set restored before the store is attached stays undecided, then absorbs once it is', async () => {
     const file = fileWithBytes(67, 'still-loading.ifc');

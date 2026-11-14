@@ -34,6 +34,7 @@ import { useViewerStore } from '../store/index.js';
 import { enqueueInstancedShards, instancedShardGeneration } from '../store/instancedShardQueue.js';
 import { getCached, setCached, deleteCached, type CacheResult } from '../services/cacheService.js';
 import { recordFirstVisible } from '../lib/perf/loadTrace.js';
+import { publishMetadataAtMark } from '../lib/geometry-restore-gate.js';
 
 /**
  * Triangles a cache hit draws as transient streaming fragments for first paint
@@ -150,6 +151,8 @@ export function useIfcCache() {
 
       const { dataStore, cacheBuffer, cacheBlob, headerInfo, geometrySection } =
         await decodeCachedMetadata(cacheResult, fallbackSourceBuffer, trace, inflater.prepare);
+      // Reopen mark (user decision 2026-11-14): with the stored scene adopted, tree and properties go out before the geometry restore.
+      const earlyPublished = adopted !== null && !isStale?.() && publishMetadataAtMark(modelId, dataStore, adopted.firstVisible, trace);
 
       let meshCount = 0;
       let loadedTotalVertices = 0;
@@ -250,7 +253,7 @@ export function useIfcCache() {
         if (shards.length > 0 && !adopted) enqueueInstancedShards(modelId, shards, shardGeneration);
 
         // Measurement (post-pixel attribution): the store write, with its synchronous subscribers.
-        trace.span('cache.publishStore', () => setIfcDataStore(dataStore));
+        if (!earlyPublished) trace.span('cache.publishStore', () => setIfcDataStore(dataStore));
 
         // Cold-storage provider (issue #1682 phase 3b): with this wired the
         // scene may drop CPU meshData for cold chunks and restore them from
@@ -280,6 +283,7 @@ export function useIfcCache() {
       }
 
       trace.milestone('cache.storeReady'); // #6961: spatial tree and properties are queryable from here
+      if (!earlyPublished) trace.milestone('load.metadataInteractive'); // no stored scene: the mark is the whole load
       setProgress({ phase: 'Complete (from cache)', percent: 100 });
       const totalCacheTime = performance.now() - cacheLoadStart;
       console.log(`[useIfcCache] ✓ ${fileName} (cached) → ${meshCount} meshes | ${totalCacheTime.toFixed(0)}ms`);

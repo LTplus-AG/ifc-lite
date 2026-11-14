@@ -10,6 +10,8 @@ export interface PickGatingState {
   loading: boolean;
   /** Loader progress. Its `percent` is a DISPLAY value, not a load-state flag. */
   progress: { phase: string; percent: number; indeterminate?: boolean } | null;
+  /** Per-model geometry restore holds (lib/geometry-restore-gate.ts); optional for callers without models. */
+  models?: ReadonlyMap<string, { geometryRestorePending?: boolean }>;
 }
 
 /**
@@ -26,5 +28,13 @@ export interface PickGatingState {
  */
 export function isGeometryLoadStreaming(state: PickGatingState): boolean {
   if (state.geometryStreamingActive) return true;
+  if (state.models) for (const model of state.models.values()) if (model.geometryRestorePending) return true;
   return state.loading && state.progress !== null && state.progress.percent < 100;
 }
+
+/**
+ * The one gate for geometry-dependent interaction (pick, selection highlight,
+ * measure/snap, section caps): geometry still streaming, or a reopened model's
+ * geometry restore still pending (user decision 2026-11-14).
+ */
+export const isGeometryHeld = isGeometryLoadStreaming;

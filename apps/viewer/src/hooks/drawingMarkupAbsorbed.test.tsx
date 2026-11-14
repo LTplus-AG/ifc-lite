@@ -152,7 +152,7 @@ function saveAndExport(modelId: string, store: IfcDataStore): string {
   const s = useViewerStore.getState();
   const outcome = saveDrawingMarkupToModel(modelId, {
     measure2DResults: s.measure2DResults, polygonArea2DResults: s.polygonArea2DResults,
-    textAnnotations2D: s.textAnnotations2D, cloudAnnotations2D: s.cloudAnnotations2D,
+    textAnnotations2D: s.textAnnotations2D, cloudAnnotations2D: s.cloudAnnotations2D, dimensions2D: [],
   });
   assert.equal(outcome.refusal, null);
   const view = useViewerStore.getState().getMutationView(modelId);
@@ -322,7 +322,9 @@ describe('save markup to model keeps embedded markup the session never absorbed'
     assert.deepEqual(useViewerStore.getState().measure2DResults, []);
 
     // The deletion is saved: clearing removes the absorbed embedded annotation.
-    const outcome = saveDrawingMarkupToModel('deleted', { measure2DResults: [], polygonArea2DResults: [], textAnnotations2D: [], cloudAnnotations2D: [] });
+    const outcome = saveDrawingMarkupToModel('deleted', {
+      measure2DResults: [], polygonArea2DResults: [], textAnnotations2D: [], cloudAnnotations2D: [], dimensions2D: [],
+    });
     assert.equal(outcome.refusal, null);
     assert.equal(outcome.previousRemoved, 1);
   });

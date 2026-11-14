@@ -29,8 +29,9 @@ export function withFrameMarks(samples) {
 /** The frame-mark verdict, inconclusive (unverifiable) when any successful sample of the cell lacks frame times. */
 export function frameMarkVerdict(v, rows) {
   const missing = rows.filter((r) => r.ok && !Number.isFinite(r[FRAME_KEY])).length;
-  // More failed loads stays a regression; another inconclusive reason (host load, no A/A floor) stands. The missing
+  // Only "more failed loads" stays a regression: a timing verdict (gain or regression) from the samples that do have
+  // frame marks is an incomplete cohort. Another inconclusive reason (host load, no A/A floor) stands; the missing
   // frame times replace only "too few successful samples", which they themselves caused.
-  if (missing === 0 || v.regression || (v.verdict.startsWith('inconclusive') && v.verdict !== 'inconclusive: too few successful samples')) return v;
+  if (missing === 0 || v.verdict === 'regression: more failed loads' || (v.verdict.startsWith('inconclusive') && v.verdict !== 'inconclusive: too few successful samples')) return v;
   return { ...v, verdict: `inconclusive: unverifiable (${missing} sample(s) without frame times, no frame mark)`, pass: false, regression: false };
 }

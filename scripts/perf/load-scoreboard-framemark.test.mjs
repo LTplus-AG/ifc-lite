@@ -64,3 +64,18 @@ test('an A/A run records frame-mark floors beside the settled ones; a reference 
   const s = summarize(plan(), rows(), { floors: { fx: { 'browser-cold': { interactiveMs: 0.01 } } } });
   assert.match(s.fixtures[0].lanes['browser-cold'].verdicts.frameMs.verdict, /^inconclusive: no A\/A floor/);
 });
+
+test('a timing regression from the samples that have frame marks is not kept when one sample lacks them (review #10181)', async () => {
+  const { summarize } = await load('./load-scoreboard-report.mjs');
+  const six = { ...plan(), lanes: ['browser-cold'], rounds: 6 };
+  // Six rounds: five branch frames 40% slower, the sixth branch row has no frame times.
+  const r6 = [0, 1, 2, 3, 4, 5].flatMap((r) => [browserRow('base', r, 1000 + r, 0), browserRow('branch', r, 1400 + r, 0, r !== 5)]);
+  const settledOnly = summarize(six, r6, { floors: { fx: { 'browser-cold': { frameMs: 0.01, interactiveMs: 0.01 } } } }).fixtures[0].lanes['browser-cold'].verdicts;
+  assert.equal(settledOnly.interactiveMs.regression, true, 'the settled mark (complete) does read a regression');
+  assert.match(settledOnly.frameMs.verdict, /^inconclusive: unverifiable \(1 sample/);
+  assert.equal(settledOnly.frameMs.regression, false);
+  // More failed loads stays a regression whatever the frame marks.
+  const failed = r6.map((r) => (r.side === 'branch' && r.round < 2 ? { ...r, ok: false } : r));
+  const fv = summarize(six, failed, { floors: { fx: { 'browser-cold': { frameMs: 0.01, interactiveMs: 0.01 } } } }).fixtures[0].lanes['browser-cold'].verdicts.frameMs;
+  assert.equal(fv.verdict, 'regression: more failed loads');
+});

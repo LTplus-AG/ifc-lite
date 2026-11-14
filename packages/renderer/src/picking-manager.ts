@@ -25,7 +25,7 @@ import { pickPieceKey, planPickMeshHydration } from './pick-mesh-budget.js';
  * snapshot of pickable nodes and the sizing to use for the splat picker.
  * Returning empty / null disables point-pick for this frame.
  */
-export type PointPickProvider = () =>
+export type PointPickProvider = (filter?: PickOptions) =>
   | { nodes: ReadonlyArray<PointPickNode>; sizing: PointPickSizing }
   | null;
 
@@ -210,11 +210,8 @@ export class PickingManager {
         meshes = meshes.filter(mesh => isEntityVisible(mesh.expressId, options?.hiddenIds, options?.isolatedIds));
 
         const viewProj = this.camera.getViewProjMatrix().m;
-        const pointSnap = this.pointPickProvider?.() ?? null;
-        // Skip point picking when isolation excludes everything to keep
-        // existing visibility semantics (caller already filtered meshes
-        // accordingly; we don't filter point nodes here because per-asset
-        // visibility is binary and assets are tiny in count).
+        // The provider drops inline clouds the same filters hide from the draw (#10215).
+        const pointSnap = this.pointPickProvider?.(options) ?? null;
         const pointNodes = pointSnap?.nodes ?? undefined;
         const pointSizing = pointSnap?.sizing ?? undefined;
         // The point pass projects in this immutable RTE frame. Never decode a
@@ -249,9 +246,8 @@ export class PickingManager {
      *
      * Rect coordinates are in CSS pixels; we scale to canvas pixels
      * the same way `pick()` does. Visibility filters from `options`
-     * are applied to meshes before the pass; point nodes are not
-     * filtered (per-asset visibility is binary and the asset count is
-     * tiny).
+     * are applied to meshes before the pass, and to inline point clouds
+     * by the point provider (#10215).
      *
      * Batched models take the same route as `pick()`: hydrate the
      * missing individual meshes when that is affordable, otherwise fall
@@ -298,7 +294,7 @@ export class PickingManager {
                 clip,
                 { cameraWorld: this.camera.getRelativeToEyeFrame().getCameraWorld() },
             );
-            const cpuPointSnap = this.pointPickProvider?.() ?? null;
+            const cpuPointSnap = this.pointPickProvider?.(options) ?? null;
             if (!cpuPointSnap || cpuPointSnap.nodes.length === 0) return boxHits;
 
             // Point-only pick pass. Meshes are deliberately `[]`: this branch runs
@@ -354,7 +350,7 @@ export class PickingManager {
         let meshes = this.scene.getMeshes();
         meshes = meshes.filter((m) => isEntityVisible(m.expressId, options?.hiddenIds, options?.isolatedIds));
         const viewProj = this.camera.getViewProjMatrix().m;
-        const pointSnap = this.pointPickProvider?.() ?? null;
+        const pointSnap = this.pointPickProvider?.(options) ?? null;
         const pointRteSnapshot = capturePointRteSnapshot(this.camera);
         const hits = await picker.pickRect(
             sx0, sy0, sx1, sy1,

@@ -25,14 +25,24 @@ pub(super) fn flush_band(f: &CutterFrame) -> f64 {
 }
 
 /// The contact of a host facet with the cap at `cap` along the axis. A facet
-/// may tilt up to ten degrees off the cap, so its distance is that of its
-/// nearest vertex: the verdict must not turn on which vertex is listed first.
+/// may tilt up to ten degrees off the cap, so its distance is read where it
+/// matters: the nearest its plane comes to the cap over the cutter's
+/// footprint. A vertex beside the footprint, or the one listed first, decides
+/// nothing. A facet too steep to carry a depth keeps the pull-in.
 pub(super) fn contact(f: &CutterFrame, triangle: [Point3<f64>; 3], cap: f64) -> Contact {
     if !overlaps(f, triangle) {
         return Contact::Clear;
     }
-    let off = triangle.iter().map(|p| (p.coords.dot(&f.depth()) - cap).abs()).fold(f64::INFINITY, f64::min);
-    if off > flush_band(f) {
+    let axes = [f.frame.cross_a, f.frame.cross_b, f.depth()];
+    let [p, q, r] = triangle.map(|v| axes.map(|axis| v.coords.dot(&axis)));
+    let (e, g) = ([0, 1, 2].map(|k| q[k] - p[k]), [0, 1, 2].map(|k| r[k] - p[k]));
+    let n = [e[1] * g[2] - e[2] * g[1], e[2] * g[0] - e[0] * g[2], e[0] * g[1] - e[1] * g[0]];
+    // Offset from the cap of the facet's plane above footprint point `(u, v)`.
+    let off = |u: f64, v: f64| p[2] - (n[0] * (u - p[0]) + n[1] * (v - p[1])) / n[2] - cap;
+    let corners = [off(f.lo.x, f.lo.y), off(f.hi.x, f.lo.y), off(f.hi.x, f.hi.y), off(f.lo.x, f.hi.y)];
+    let (lo, hi) = corners.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), &c| (lo.min(c), hi.max(c)));
+    // Not `lo > band`: a plane with no finite depth compares false and stays `On`.
+    if lo > flush_band(f) || hi < -flush_band(f) {
         Contact::Band
     } else {
         Contact::On

@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! A recess that stops short of the far face of its host keeps the skin
-//! behind it.
+//! behind it (#10318).
 //!
 //! A recess ending under 1 mm from the far face used to be pushed through:
 //! a 12 mm sheet with an 11.2 mm recess lost its 0.8 mm skin. Three rules

@@ -84,8 +84,8 @@ fn sheet_and_blind_cutter() -> (Mesh, Mesh) {
     (sheet, cutter)
 }
 
-/// The far face is inside the cap band, so the cap qualifies. It was pushed
-/// through the skin, which read empty 4 mm out. With the skin seen and nothing
+/// #10318. The far face is inside the cap band, so the cap qualifies. It was
+/// pushed through the skin, which read empty 4 mm out. With the skin seen and nothing
 /// else told apart, it was pulled in a millimetre as a jamb instead.
 #[test]
 fn a_blind_end_behind_a_thin_skin_stays_where_authored() {
@@ -94,7 +94,7 @@ fn a_blind_end_behind_a_thin_skin_stays_where_authored() {
     assert_eq!(out.positions, cutter.positions);
 }
 
-/// The same cutter over a host that already carries the recess: the cap rests
+/// #10318. The same cutter over a host that already carries the recess: the cap rests
 /// on the floor of that void, so it is a jamb and is pulled inside the void.
 #[test]
 fn a_cap_resting_on_the_floor_of_an_existing_void_is_pulled_in() {
@@ -114,10 +114,18 @@ fn contact_is_on_within_the_flush_band_and_band_beyond_it() {
     assert!(contact(&frame, facet(0.0, [0.01125; 3]), 0.0112) == Contact::On);
     assert!(contact(&frame, facet(0.0, [0.012; 3]), 0.0112) == Contact::Band);
     assert!(contact(&frame, facet(10.0, [0.0112; 3]), 0.0112) == Contact::Clear);
-    // A tilted facet reads the same whichever vertex comes first.
+    // The footprint is [1, 2] x [1, 2]. A tilted facet that touches the cap
+    // only at a vertex beside it is 0.4 mm off over the footprint: not on the
+    // cap, whichever vertex comes first (#10318 review).
     for z in [[0.0112, 0.0118, 0.0118], [0.0118, 0.0112, 0.0118], [0.0118, 0.0118, 0.0112]] {
-        assert!(contact(&frame, facet(0.0, z), 0.0112) == Contact::On);
+        assert!(contact(&frame, facet(0.0, z), 0.0112) == Contact::Band);
     }
+    // One that crosses the cap plane over the footprint is on it, though each
+    // of its vertices is 0.6 mm off or beside the footprint.
+    assert!(contact(&frame, facet(0.0, [0.0106, 0.0112, 0.0112]), 0.0112) == Contact::On);
+    // A facet standing on edge has no depth over the footprint: the pull-in stays.
+    let wall = [Point3::new(1.5, 0.0, 0.0), Point3::new(1.5, 3.0, 0.0), Point3::new(1.5, 0.0, 1.0)];
+    assert!(contact(&frame, wall, 0.0112) == Contact::On);
     // 1 km out the f32 floor is 0.4 mm, so 0.3 mm is still on the cap.
     let far_cutter = GeometryRouter::make_box_mesh(Point3::new(999.0, 0.0, 0.0), Point3::new(1004.0, 4.0, 1.0));
     let far_frame = CutterFrame::new(&far_cutter, Vector3::z()).unwrap();

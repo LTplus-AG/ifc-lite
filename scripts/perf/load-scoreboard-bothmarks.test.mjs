@@ -68,7 +68,7 @@ test('fewer than three samples on a side are listed, never summarized, and get n
   assert.equal(c.gainCurrent, null);
   assert.equal(c.gainFrame, null);
   const [md] = bothMarksRows([{ name: 'FZK', lanes: { 'browser-cold': { bothMarks: c } } }]);
-  assert.match(md, /\| 120 \| 120 \| 0\/3 \| n=2: 90, 95 \| n=2: 90, 95 \| 0\/2 \| — \| — \|$/);
+  assert.match(md, /\| 120 \| 120 \| 0\/3 \| n=2: 90, 95 \| n=2: 90, 95 \| 0\/2 \| — \| — \| — \| — \|$/);
 });
 
 test('the listing rule counts each column: three samples with two known frame marks list the frame values (review #10043)', async () => {
@@ -77,5 +77,5 @@ test('the listing rule counts each column: three samples with two known frame ma
   const c = bothMarksCell([row('base', 100, [100]), row('base', 110, [110]), row('base', 120, null),
     row('branch', 90, [90]), row('branch', 95, [95]), row('branch', 99, [99])]);
   const [md] = bothMarksRows([{ name: 'FZK', lanes: { 'browser-cold': { bothMarks: c } } }]);
-  assert.match(md, /^\| FZK \| browser-cold \| 110 \| n=2: 100, 110 \| 0\/2 \(\+1 unknown\) \| 95 \| 95 \| 0\/3 \| \+13\.6% \| — \|$/);
+  assert.match(md, /^\| FZK \| browser-cold \| 110 \| n=2: 100, 110 \| 0\/2 \(\+1 unknown\) \| 95 \| 95 \| 0\/3 \| \+13\.6% \| — \| — \| — \|$/);
 });

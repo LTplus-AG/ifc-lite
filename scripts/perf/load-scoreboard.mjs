@@ -52,6 +52,8 @@ function parseArgs(argv) {
 /** Validate and normalize a plan; throws on anything that would make the table ambiguous. */
 export function loadPlan(path) {
   const plan = JSON.parse(readFileSync(path, 'utf8'));
+  plan.reopenVerdictMark ??= 'frame';
+  if (!['frame', 'metadata'].includes(plan.reopenVerdictMark)) throw new Error('plan.reopenVerdictMark must be frame or metadata');
   plan.lanes ??= DEFAULT_LANES;
   for (const lane of plan.lanes) if (!LANES.includes(lane)) throw new Error(`unknown lane ${lane}`);
   if (!Number.isInteger(plan.rounds) || plan.rounds < 1) throw new Error('plan.rounds must be a positive integer');

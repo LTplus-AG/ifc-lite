@@ -8,8 +8,8 @@
 import { identityLaneFor, laneIdentityVerdict, reopenOutputVerdict } from './load-scoreboard-identity.mjs';
 import { armProtocolOf, bothMarksCell, bothMarksSection, thermalSection, watchdogRows, webglPickRows } from './load-scoreboard-report-sections.mjs';
 export { watchdogRows, webglPickRows } from './load-scoreboard-report-sections.mjs';
-import { aaNoiseFloor, expectedCacheTier, median, rankShares, relativeSpread, verdictFor } from './load-scoreboard-stats.mjs';
-import { FRAME_KEY, frameMarkVerdict, primaryKey, withFrameMarks } from './load-scoreboard-frame-mark.mjs';
+import { aaNoiseFloor, expectedCacheTier, laneSummary, median, rankShares, relativeSpread, verdictFor } from './load-scoreboard-stats.mjs';
+import { FRAME_KEY, METADATA_FRAME_KEY, frameMarkVerdict, isReopenLane, metadataMarkVerdict, primaryKey, withFrameMarks, withMetadataMarks } from './load-scoreboard-frame-mark.mjs';
 
 /** The lanes a plan without a `lanes` key runs: exactly the set main had before the opt-in arms. */
 export const DEFAULT_LANES = ['native-cold', 'browser-cold', 'browser-cold-early', 'browser-warm1', 'browser-warm', 'boot'];
@@ -41,7 +41,8 @@ export const BOOT_FIXTURE = '(app shell)';
 export const METRICS = [
   // [key, label, smallest countable absolute difference]
   ['firstGeometryMs', 'first geometry ms', 1],
-  [FRAME_KEY, 'interactive ms (frame mark, verdict)', 1],
+  [FRAME_KEY, 'interactive ms (frame mark)', 1],
+  [METADATA_FRAME_KEY, 'interactive ms (metadata mark)', 1],
   ['interactiveMs', 'interactive ms (settled mark)', 1],
   ['peakMemoryMiB', 'peak memory MiB', 1],
   ['uiQuietMs', 'UI quiet ms', 1],
@@ -145,7 +146,9 @@ function pairsFor(rows, metric) {
 
 /** Summarize all samples. `floors`: an A/A report's `floors` (omit for an A/A run). */
 export function summarize(plan, rawSamples, { floors = null } = {}) {
-  const samples = withFrameMarks(rawSamples);
+  const reopenVerdictMark = plan.reopenVerdictMark ?? 'frame';
+  if (!['frame', 'metadata'].includes(reopenVerdictMark)) throw new Error(`unknown plan.reopenVerdictMark ${reopenVerdictMark}`);
+  const samples = withMetadataMarks(withFrameMarks(rawSamples));
   const fixtures = [];
   const planFixtures = [...plan.fixtures, ...(plan.lanes.includes('boot') ? [{ name: BOOT_FIXTURE, set: 'boot' }] : [])];
   for (const fx of planFixtures) {
@@ -192,12 +195,16 @@ export function summarize(plan, rawSamples, { floors = null } = {}) {
       const failures = { base: sides.base.failed, branch: sides.branch.failed };
       const verdicts = {}, laneFloors = {};
       for (const [key, , minAbs] of METRICS) {
+        if (key === METADATA_FRAME_KEY && !isReopenLane(lane)) continue;
         const pairs = pairsFor(rows, key);
         // A metric a lane never records has no verdict; interactive and the lane's verdict mark always get one.
         const unmeasured = pairs.every(([a, b]) => a === null && b === null);
-        if (unmeasured && key !== 'interactiveMs' && key !== primaryKey(lane) && !(EXPECTED_METRICS[lane] ?? []).includes(key)) continue;
+        if (unmeasured && key !== 'interactiveMs' && !(key === FRAME_KEY && lane.startsWith('browser')) && !(key === METADATA_FRAME_KEY && isReopenLane(lane))
+          && key !== primaryKey(lane, reopenVerdictMark) && !(EXPECTED_METRICS[lane] ?? []).includes(key)) continue;
         const v0 = withAaFloor(verdictFor(pairs, { failures, underLoad: { base: sides.base.underLoad, branch: sides.branch.underLoad }, aaFloor: floors?.[fx.name]?.[lane]?.[key] ?? null, minAbs, seed: 0x5eed }), floors);
-        verdicts[key] = key === FRAME_KEY ? frameMarkVerdict(v0, rows) : unmeasured && !v0.regression ? { ...v0, verdict: 'inconclusive: not measured on any sample (see measurement errors)' } : v0;
+        verdicts[key] = key === FRAME_KEY ? frameMarkVerdict(v0, rows)
+          : key === METADATA_FRAME_KEY ? metadataMarkVerdict(v0, rows)
+            : unmeasured && !v0.regression ? { ...v0, verdict: 'inconclusive: not measured on any sample (see measurement errors)' } : v0;
         // An A/A cell with a busy sample gives no floor: an inflated floor would hide later regressions.
         laneFloors[key] = sides.base.underLoad + sides.branch.underLoad > 0 ? null : aaNoiseFloor(pairs, { seed: 0x5eed });
       }
@@ -217,26 +224,13 @@ export function summarize(plan, rawSamples, { floors = null } = {}) {
           for (const key of Object.keys(verdicts)) verdicts[key] = { ...verdicts[key], verdict: why, pass: false, regression: false };
         }
       }
-      lanes[lane] = { sides, verdicts, floors: laneFloors, output, outputSource: identity !== null && output !== timed ? 'identity pass' : 'timed samples', armProtocol, primary: verdicts[primaryKey(lane)] ?? null, bothMarks: lane.startsWith('browser') ? bothMarksCell(rows) : null };
+      lanes[lane] = { sides, verdicts, floors: laneFloors, output, outputSource: identity !== null && output !== timed ? 'identity pass' : 'timed samples', armProtocol, primary: verdicts[primaryKey(lane, reopenVerdictMark)] ?? null, bothMarks: lane.startsWith('browser') ? bothMarksCell(rows) : null };
     }
     fixtures.push({ name: fx.name, set: fx.set ?? 'tuning', bytes: fx.bytes, expectedTier: Number.isFinite(fx.bytes) ? expectedCacheTier(fx.bytes) : null, lanes });
   }
   const floorsOut = {};
   for (const f of fixtures) for (const [lane, l] of Object.entries(f.lanes)) (floorsOut[f.name] ??= {})[lane] = l.floors;
-  return { name: plan.name, kind: plan.kind ?? 'compare', fixtures, floors: floorsOut, laneSummary: laneSummary(fixtures, plan.lanes) };
-}
-
-function laneSummary(fixtures, lanes) {
-  const out = {};
-  for (const lane of lanes) {
-    const rows = fixtures.filter((f) => f.lanes[lane]?.primary).map((f) => ({ fixture: f.name, set: f.set, ...f.lanes[lane].primary, output: f.lanes[lane].output }));
-    const by = (pred) => rows.filter(pred).map((r) => r.fixture);
-    out[lane] = {
-      gains: by((r) => r.pass), regressions: by((r) => r.regression), noDifference: by((r) => r.verdict === 'no significant difference'),
-      inconclusive: by((r) => r.verdict.startsWith('inconclusive')), outputChanged: by((r) => r.output !== 'match'),
-    };
-  }
-  return out;
+  return { name: plan.name, kind: plan.kind ?? 'compare', reopenVerdictMark, fixtures, floors: floorsOut, laneSummary: laneSummary(fixtures, plan.lanes) };
 }
 
 const n0 = (v) => (v === null || v === undefined || !Number.isFinite(v) ? '—' : Math.round(v).toLocaleString('en-US'));
@@ -263,8 +257,10 @@ function tierCell(f, lane) {
 
 /** Baseline table (one set). For an A/A run the base and branch sides are the same build, so values are pooled. */
 function baselineTable(summary, set, lanes) {
-  const lines = ['| fixture | MB | expected tier | lane | first geometry ms | interactive ms (browser: frame mark) | UI quiet ms | peak memory MiB | ok/failed | flagged (load / input delay) | observed tier, path | output |',
-    '|---|---:|---|---|---:|---:|---:|---:|---|---|---|---|'];
+  const selectedKey = (lane) => primaryKey(lane, summary.reopenVerdictMark);
+  const selectedLabel = summary.reopenVerdictMark === 'metadata' ? 'interactive ms (verdict mark: metadata on reopens)' : 'interactive ms (verdict mark)';
+  const lines = [`| fixture | MB | expected tier | lane | first geometry ms | ${selectedLabel} | interactive ms (frame mark) | interactive ms (metadata mark) | UI quiet ms | peak memory MiB | ok/failed | flagged (load / input delay) | observed tier, path | output |`,
+    '|---|---:|---|---|---:|---:|---:|---:|---:|---:|---|---|---|---|'];
   for (const f of summary.fixtures.filter((x) => x.set === set)) {
     for (const lane of lanes) {
       const l = f.lanes[lane];
@@ -278,7 +274,7 @@ function baselineTable(summary, set, lanes) {
       const warmNote = lane.startsWith('browser-warm') && /^none/.test(f.expectedTier ?? '') ? ' (no cache tier: warm = uncached reopen)' : '';
       const flags = summary.kind === 'aa' ? [l.sides.base, l.sides.branch] : [l.sides.base];
       const flagged = `${flags.reduce((a, x) => a + x.underLoad, 0)} / ${flags.reduce((a, x) => a + x.inputDelayed, 0)}`;
-      lines.push(`| ${f.name} | ${f.bytes ? (f.bytes / 2 ** 20).toFixed(1) : '—'} | ${f.expectedTier ?? '—'} | ${lane}${warmNote} | ${lane === 'native-cold' ? 'n/a (batch)' : cell(pooled('firstGeometryMs'))} | ${cell(pooled(primaryKey(lane)))} | ${lane === 'native-cold' ? 'n/a' : cell(pooled('uiQuietMs'))} | ${cell(pooled('peakMemoryMiB'))} | ${okFailed} | ${flagged} | ${tierCell(f, lane)} | ${l.output === 'match' ? (l.outputSource === 'identity pass' ? 'match (identity pass: reopen = own cold, both sides)' : (l.sides.base.fingerprints[0] ?? '').slice(0, 60)) : l.output} |`);
+      lines.push(`| ${f.name} | ${f.bytes ? (f.bytes / 2 ** 20).toFixed(1) : '—'} | ${f.expectedTier ?? '—'} | ${lane}${warmNote} | ${lane === 'native-cold' ? 'n/a (batch)' : cell(pooled('firstGeometryMs'))} | ${cell(pooled(selectedKey(lane)))} | ${cell(pooled(FRAME_KEY))} | ${isReopenLane(lane) ? cell(pooled(METADATA_FRAME_KEY)) : '—'} | ${lane === 'native-cold' ? 'n/a' : cell(pooled('uiQuietMs'))} | ${cell(pooled('peakMemoryMiB'))} | ${okFailed} | ${flagged} | ${tierCell(f, lane)} | ${l.output === 'match' ? (l.outputSource === 'identity pass' ? 'match (identity pass: reopen = own cold, both sides)' : (l.sides.base.fingerprints[0] ?? '').slice(0, 60)) : l.output} |`);
     }
   }
   return lines.join('\n');
@@ -335,7 +331,7 @@ export function renderMarkdown(summary, plan, host, samples = []) {
     out.push(`- Segment (${seg.fixtures}): host ${seg.start?.hostname}; ${seg.workerKind ?? 'no'} admission, job ${seg.workerJobId ?? 'none'}; power ${seg.start?.powerProfile ?? '?'} -> ${seg.end?.powerProfile ?? '?'}; max freq ${seg.start?.scalingMaxFreqKHz ?? '?'} -> ${seg.end?.scalingMaxFreqKHz ?? '?'} kHz; ${seg.start?.at} .. ${seg.end?.at ?? 'unfinished'}`);
   }
   out.push(`Sides: base = ${plan.sides.base.label}; branch = ${plan.sides.branch.label}. Rounds ${plan.rounds}, warm opens ${plan.warmOpens ?? 0}, order seed ${plan.seed}.`, '');
-  out.push(`Verdict mark (browser lanes) = frame mark: the first frame started at or after the scene finished, never before the settled mark; a sample without frame times leaves its cell unverifiable. Settled mark (its own row) = geometry streamed, drained and finalized, metadata ready, and the first frame after the store settled (README cold-load notes). UI quiet = end of the last main-thread long task before 500 ms without one. Native has no first-geometry event (batch call); native interactive = file read + full \`process_geometry\`. ${clockOrigins(plan.lanes)} Cells: median [min-max] n; fewer than 3 values are listed, never summarized.`, '');
+  out.push(`Verdict mark = ${summary.reopenVerdictMark === 'metadata' ? 'metadata mark on reopen lanes and frame mark on cold browser lanes' : 'frame mark on browser lanes'}: the frame mark is the first frame started at or after the scene finished, never before the settled mark; metadata mark is the first frame at or after \`load.metadataInteractive\`, capped at the frame mark. Missing frame or metadata marks leave their cells unverifiable. Settled mark (its own row) = geometry streamed, drained and finalized, metadata ready, and the first frame after the store settled (README cold-load notes). UI quiet = end of the last main-thread long task before 500 ms without one. Native has no first-geometry event (batch call); native interactive = file read + full \`process_geometry\`. ${clockOrigins(plan.lanes)} Cells: median [min-max] n; fewer than 3 values are listed, never summarized.`, '');
   for (const set of ['tuning', 'holdout', 'boot']) {
     if (!summary.fixtures.some((f) => f.set === set)) continue;
     out.push(`## Baseline (${set})`, '', baselineTable(summary, set, plan.lanes), '');

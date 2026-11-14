@@ -16,7 +16,7 @@ import type {
   SelectDefinition,
   TypeDefinition,
 } from './express-parser.js';
-import { buildSchemaRegistry, encodeSchemaRegistry, SCHEMA_REGISTRY_DECODER_SOURCE } from './schema-registry-codec.js';
+import { buildSchemaRegistry, concreteRelationshipTypes, encodeSchemaRegistry, SCHEMA_REGISTRY_DECODER_SOURCE } from './schema-registry-codec.js';
 
 export interface GeneratedCode {
   entities: string;       // Entity interfaces
@@ -457,6 +457,13 @@ function eagerSchemaRegistry(marker: string, get: () => SchemaRegistry): SchemaR
 }
 
 export const SCHEMA_REGISTRY: SchemaRegistry = /* @__PURE__ */ eagerSchemaRegistry('ifc-lite-eager-table:SCHEMA_REGISTRY:${schema.name}', getSchemaRegistry);
+
+/**
+ * Every concrete (non-abstract) \`IfcRelationship\` subtype of this schema, as
+ * an upper-cased STEP keyword, in registry order. Generated from the registry,
+ * so a relationship gate can be built without decoding it.
+ */
+export const CONCRETE_RELATIONSHIP_TYPES: readonly string[] = ${JSON.stringify(concreteRelationshipTypes(buildSchemaRegistry(schema)))};
 
 /**
  * Get entity metadata by name (case-insensitive)

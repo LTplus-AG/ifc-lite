@@ -100,7 +100,7 @@ export function KeyboardShortcutsDialog({ open, onClose, initialTab }: InfoDialo
         {/* Tabbed Content */}
         {/* The dialog unmounts when closed, so defaultValue re-applies on
             every open - enough for deep-linking without controlled tabs. */}
-        <Tabs defaultValue={initialTab ?? 'about'} className="flex min-h-0 flex-1 flex-col">
+        <Tabs defaultValue={initialTab === 'learn' && !learn ? 'about' : initialTab ?? 'about'} className="flex min-h-0 flex-1 flex-col">
           <div className="shrink-0 px-4 pt-4">
             {/* Wider than a phone: the strip scrolls sideways, and the
                 selected tab stays in view. */}

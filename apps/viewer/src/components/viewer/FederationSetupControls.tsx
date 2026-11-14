@@ -74,6 +74,8 @@ export function FederationSetupControls() {
   }, [exportFederationSetup, t]);
 
   useEffect(() => {
+    // The palette and ribbon rows are gated; the events they dispatch are too.
+    if (!isFeatureEnabled('files.federation-setup')) return;
     const onSave = () => handleSave();
     const onOpen = () => setupFileInputRef.current?.click();
     window.addEventListener(EVENT_SAVE, onSave);

@@ -13,7 +13,7 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
-import { cleanup, render, waitFor } from '@/test/render';
+import { cleanup, click, render, waitFor } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { useViewerStore } from '@/store';
 import { resetFeaturesForTest } from './index';
@@ -41,6 +41,17 @@ import { openIfcFilesWithHandles } from '@/services/file-system-access';
 import { KeyboardShortcutsDialog } from '@/components/viewer/KeyboardShortcutsDialog';
 import { queryTerrainElevation, resolveProjection } from '@/lib/geo/reproject';
 import { DEFAULT_PROFILE } from '@ifc-lite/semantic';
+import { RIBBON_TOUR } from '@/lib/tours/tours/ribbon';
+import { FederationSetupControls } from '@/components/viewer/FederationSetupControls';
+import { Toaster } from '@/components/ui/toast';
+import { PrivacyBanner } from '@/components/viewer/KeyboardShortcutsDialogTabs';
+import { SettingsDialog } from '@/components/viewer/settings/SettingsDialog';
+import { ScriptPanel } from '@/components/viewer/ScriptPanel';
+import { BimReactContext } from '@/sdk/BimProvider';
+import { ExtensionHostContext } from '@/sdk/ExtensionHostProvider';
+import type { BimContext } from '@ifc-lite/sdk';
+import type { ExtensionHostService } from '@/services/extensions/host';
+import { enforcePanelAvailability } from '@/store/panel-availability-sync';
 
 // Vite `define`s the About tab reads (see vite.config.ts).
 Object.assign(globalThis, { __APP_VERSION__: '0.0.0-test', __BUILD_DATE__: '2026-01-01T00:00:00Z' });
@@ -60,6 +71,13 @@ const PROJECTED_CRS = { id: 71, name: 'EPSG:25833', mapUnitScale: 1 } as Project
 
 /** Counts, not elements: an assertion diff that inspects a DOM node runs out of memory. */
 const buttonsNamed = (text: string) => [...document.querySelectorAll('button')].filter((button) => button.textContent?.includes(text)).length;
+/** Tab bodies that show content (inactive ones stay mounted but empty). */
+const activeBodies = () => [...document.querySelectorAll('[role="tabpanel"][data-state="active"]')].filter((panel) => panel.childElementCount > 0).length;
+/** The label of the one selected tab, or null when no tab is selected. */
+const selectedTab = () => {
+  const selected = [...document.querySelectorAll('[role="tab"][aria-selected="true"]')];
+  return selected.length === 1 ? selected[0].textContent : null;
+};
 
 describe('georeferencing goes with editing', () => {
   /** A model without georeferencing offers "Add Georeferencing" only where it can be saved. */
@@ -131,11 +149,41 @@ describe('files and samples off have no other door', () => {
     await assert.rejects(loadDemoProject(), /Sample models are switched off/);
   });
 
-  it('the learning hub goes with the tours it lists', () => {
+  it('only the tours that load sample content go with samples off', () => {
     resetFeaturesForTest({ default: 'all', disable: ['files.samples'] });
+    assert.equal(isTourAvailable(RIBBON_TOUR), true, 'the ribbon tour needs no model');
+    assert.equal(isTourAvailable(WELCOME_TOUR), false);
+    assert.equal(isSurfaceCommandAvailable({ id: 'learn:hub' }), true, 'the hub still lists the ribbon tour');
+  });
+
+  it('the learning hub goes with the tours it lists', () => {
+    resetFeaturesForTest({ default: 'all', disable: ['help.tours'] });
     assert.equal(isSurfaceCommandAvailable({ id: 'learn:hub' }), false);
     render(<KeyboardShortcutsDialog open onClose={() => {}} initialTab="about" />);
     assert.equal([...document.querySelectorAll('[role="tab"]')].filter((tab) => tab.textContent?.includes('Learn')).length, 0);
+  });
+
+  it('a deep link to the switched-off learning hub opens on About, not an empty body', () => {
+    resetFeaturesForTest({ default: 'all', disable: ['help.tours'] });
+    render(<KeyboardShortcutsDialog open onClose={() => {}} initialTab="learn" />);
+    assert.match(selectedTab() ?? '', /About/);
+    assert.equal(activeBodies(), 1);
+  });
+
+  it('the save-federation-setup event does nothing with federation setups off', async () => {
+    const saveAsked = async () => {
+      render(<><FederationSetupControls /><Toaster /></>);
+      act(() => { window.dispatchEvent(new CustomEvent('ifc-lite:save-federation-setup')); });
+      // With no model loaded, a save that runs answers with a toast.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const asked = document.querySelector('[data-toast-seq]') !== null;
+      for (const button of document.querySelectorAll('[data-toast-seq] button')) click(button);
+      cleanup();
+      return asked;
+    };
+    assert.equal(await saveAsked(), true, 'handled by default');
+    resetFeaturesForTest({ default: 'all', disable: ['files.federation-setup'] });
+    assert.equal(await saveAsked(), false);
   });
 
   it('no File System Access picker opens with local files off, whoever asks', async () => {
@@ -190,6 +238,45 @@ describe('AI and extensions off have no other door', () => {
     assert.equal(isAiChatAvailable(), true);
   });
 
+  it('authoring an extension needs the Script panel its chat lives in', () => {
+    resetFeaturesForTest({ default: 'all', disable: ['automate.scripting'] });
+    assert.equal(isSurfaceCommandAvailable({ id: 'extensions:author' }), false);
+  });
+
+  it('the Script panel mounts no chat pane on a first visit with AI off', () => {
+    const CHAT_KEY = 'ifc-lite-chat-panel-visible';
+    const savedFetch = globalThis.fetch;
+    globalThis.fetch = (() => Promise.reject(new Error('network disabled in test'))) as typeof fetch;
+    /** Separators in the panel: the chat pane's resize handle is the only one. */
+    const firstVisit = () => {
+      localStorage.removeItem(CHAT_KEY);
+      useViewerStore.setState({ chatPanelVisible: false });
+      const stop = enforcePanelAvailability(useViewerStore);
+      try {
+        render(
+          <BimReactContext.Provider value={{} as BimContext}>
+            <ExtensionHostContext.Provider value={{} as ExtensionHostService}>
+              <ScriptPanel />
+            </ExtensionHostContext.Provider>
+          </BimReactContext.Provider>,
+        );
+        const separators = document.querySelectorAll('[role="separator"][aria-orientation="vertical"]').length;
+        cleanup();
+        return { separators, visible: useViewerStore.getState().chatPanelVisible };
+      } finally {
+        stop();
+      }
+    };
+    try {
+      assert.deepEqual(firstVisit(), { separators: 1, visible: true }, 'opens by default');
+      resetFeaturesForTest({ default: 'all', disable: ['ai.assistant'] });
+      assert.deepEqual(firstVisit(), { separators: 0, visible: false });
+    } finally {
+      localStorage.removeItem(CHAT_KEY);
+      globalThis.fetch = savedFetch;
+    }
+  });
+
   it('a profile opened from a library does not open the flavor dialog', async () => {
     // Mounting the dialog here (no extension host) throws, so reaching it fails the test too.
     resetFeaturesForTest({ default: 'all', disable: ['automate.extensions'] });
@@ -212,6 +299,21 @@ describe('product links and outside services off have no other door', () => {
     render(<AboutTab />);
     render(<ShortcutsTab />);
     assert.deepEqual([...document.querySelectorAll('a[href^="https://"]')].map((a) => a.getAttribute('href')), []);
+  });
+
+  it('the expanded privacy banner links nowhere outside the viewer', () => {
+    resetFeaturesForTest({ default: 'all', disable: ['help.product-links'] });
+    render(<PrivacyBanner />);
+    click(document.querySelector('button')!);
+    assert.match(document.body.textContent ?? '', /WebAssembly/i, 'expanded');
+    assert.deepEqual([...document.querySelectorAll('a[href^="https://"]')].map((a) => a.getAttribute('href')), []);
+  });
+
+  it('settings opened on collaboration with live sessions off show the first section', () => {
+    resetFeaturesForTest({ default: 'all', disable: ['collab.sessions'] });
+    render(<SettingsDialog open section="collaboration" onSectionChange={() => {}} onOpenChange={() => {}} />);
+    assert.match(selectedTab() ?? '', /General/);
+    assert.equal(activeBodies(), 1);
   });
 
   it('bSDD is offered neither in the semantic profile nor to the agent', () => {

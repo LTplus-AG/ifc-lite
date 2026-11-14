@@ -63,7 +63,7 @@ export const FEATURE_CATALOGUE = [
   { id: 'files.sources', group: 'files', label: 'Cloud sources',
     description: 'The Cloud sources panel, which connects to common data environments and file services to open models from them.' },
   { id: 'files.samples', group: 'files', label: 'Sample models',
-    description: 'The sample project and the layers demo on the start screen and in empty panels. Guided tours load the sample project, so they go too.' },
+    description: 'The sample project and the layers demo on the start screen and in empty panels. Guided tours that load the sample project go too.' },
 
   { id: 'tools.measure', group: 'tools', label: 'Measure',
     description: 'The Measure tool and the Measurements panel.' },

@@ -81,3 +81,17 @@ for (const id of ['element.move', 'element.paste']) {
     assert.deepEqual(snap?.local.map((n) => +n.toFixed(3)), [1.2, 2.3]);
   });
 }
+
+for (const scale of [0, -1, NaN, Infinity]) {
+  it(`#9389 an off-plane or unmeasured cursor cannot derive an increment from ${scale}`, () => {
+    useViewerStore.getState().startCommand('wall.place');
+    const runtime = getCommandRuntime();
+    const result = solveCommandSnap(runtime, runtime.ctx!.workplane!, {
+      cursor: [1.237, 2.347], metresPerPixel: scale, sources: [], mods: NO_MODIFIERS,
+    });
+    assert.ok(result);
+    assert.ok(result.local.every(Number.isFinite));
+    assert.equal(result.winner?.increment, undefined);
+    assert.deepEqual(result.local, [1.237, 2.347]);
+  });
+}

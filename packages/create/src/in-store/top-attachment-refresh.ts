@@ -11,7 +11,7 @@ export function refreshTopAttachmentsInStore(target: EditTarget, moved: readonly
   if (!targets.size && !refit.length) return [];
   const dependents = new Set(refit);
   const inventory = readStoreyInventory(target.dataStore, target.view, { lazyRelationships: targets.size === 0 }), remesh: number[] = [];
-  for (const type of ['IFCWALL', 'IFCWALLSTANDARDCASE', 'IFCWALLELEMENTEDCASE', 'IFCCOLUMN', 'IFCBEAM', 'IFCMEMBER', 'IFCCURTAINWALL']) {
+  for (const type of ['IFCWALL', 'IFCWALLSTANDARDCASE', 'IFCWALLELEMENTEDCASE', 'IFCCOLUMN', 'IFCCOLUMNSTANDARDCASE', 'IFCBEAM', 'IFCBEAMSTANDARDCASE', 'IFCMEMBER', 'IFCMEMBERSTANDARDCASE', 'IFCCURTAINWALL']) {
     // A moved slab/roof can affect any attached product. With no moved
     // target, only explicitly refit products can have changed their top.
     // Keep the same effective-class/deletion checks and type ordering.

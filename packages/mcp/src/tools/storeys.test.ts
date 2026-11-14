@@ -181,3 +181,45 @@ it('#9352 the add plan accepts the same relative request as storey_add', async (
   expect(added.isError).not.toBe(true);
   expect(added.structuredContent).toMatchObject({ Name: 'Level 2', Elevation: -3 });
 });
+
+it('#9352 storey_delete rebinds relative elements and get_entity reads the new target', async () => {
+  const { registry, call } = await session();
+  const model = registry.get('alpha')!;
+  const S = model.bim.store;
+  const home = S.listStoreyLevels('alpha')[0].expressId;
+  const middle = S.addStorey('alpha', { Name: 'Middle', Elevation: 3 });
+  const upper = S.addStorey('alpha', { Name: 'Upper', Elevation: 6 });
+  const wall = S.addWall('alpha', home, { Start: [0, 5, 0], End: [4, 5, 0], Thickness: .2, Height: 3, TopConstraint: { kind: 'storeyAbove' } });
+  const deleted = await call('storey_delete', { storey_express_id: middle.expressId, mode: 'empty' });
+  expect(deleted.isError).not.toBe(true);
+  const read = await call('get_entity', { express_id: wall.expressId, include: ['properties', 'quantities'] });
+  expect(read.structuredContent!.properties).toEqual(expect.arrayContaining([
+    expect.objectContaining({ name: 'IfcLite_StoreyAttachment', properties: expect.arrayContaining([
+      expect.objectContaining({ name: 'TopConstraint', value: model.bim.entity(upper)!.globalId }),
+    ]) }),
+  ]));
+  expect(read.structuredContent?.quantities).toEqual(expect.arrayContaining([
+    expect.objectContaining({ name: 'Qto_WallBaseQuantities', quantities: expect.arrayContaining([
+      expect.objectContaining({ name: 'Height', value: 6 }),
+    ]) }),
+  ]));
+});
+
+
+it.each([false, true])('#9352 storey_delete reports an impossible pending top without changing the model (opening=%s)', async withOpening => {
+  const { registry, call } = await session();
+  const model = registry.get('alpha')!, S = model.bim.store;
+  const lower = S.listStoreyLevels('alpha')[0].expressId;
+  S.addStorey('alpha', { Name: 'Middle', Elevation: 3 });
+  const home = S.addStorey('alpha', { Name: 'Top', Elevation: 6 });
+  const z = withOpening ? -6 : 0;
+  const wall = S.addWall('alpha', home.expressId, { Start: [0, 5, z], End: [4, 5, z], Thickness: .2, Height: withOpening ? 4 : 3,
+    TopConstraint: { kind: 'storeyAbove' } });
+  if (withOpening) S.addHostedDoor('alpha', wall.expressId, { Offset: 1, Width: .9, Height: 3.5 });
+  const view = model.backend.getMutationView()!;
+  const before = structuredClone(view.getMutations());
+  const result = await call('storey_delete', { storey_express_id: home.expressId, mode: 'move', target_storey_express_id: lower });
+  expect(result.isError).toBe(true);
+  expect(JSON.stringify(result.content)).toMatch(/top|height|tall/i);
+  expect(view.getMutations()).toEqual(before);
+});

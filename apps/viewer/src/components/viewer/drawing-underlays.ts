@@ -74,7 +74,10 @@ export function drawDxfUnderlaysScreenSpace(
 
     for (const text of data.texts) {
       const fontPx = worldHeightToScreenPx(text.height);
-      if (fontPx < 4) continue; // declutter when zoomed far out
+      // Aligned text can grow past its estimated height once measured, so it is
+      // decluttered by its fitted size further down instead.
+      const fitsUniformly = text.fitUniform && text.fitWidth !== undefined && text.fitWidth > 0 && !text.text.includes('\n');
+      if (fontPx < 4 && !fitsUniformly) continue; // declutter when zoomed far out
       const anchor = modelToScreen(text.x, text.y);
       const tip = modelToScreen(text.x + text.dirX, text.y + text.dirY);
       const sx = tip.x - anchor.x;
@@ -98,6 +101,7 @@ export function drawDxfUnderlaysScreenSpace(
           const measured = ctx.measureText(lines[i]).width;
           if (Number.isFinite(measured) && measured > 0) stretch = fitPx / measured;
         }
+        if (fitPx && text.fitUniform && fontPx * stretch < 4) continue; // fitted size still too small
         ctx.save();
         // Aligned text scales height with width (uniform); fit/width-factor text stretches width only.
         if (stretch !== 1) ctx.scale(stretch, fitPx && text.fitUniform ? stretch : 1);

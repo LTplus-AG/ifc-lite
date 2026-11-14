@@ -80,6 +80,30 @@ describe('stretched DXF text', () => {
       assert.deepEqual(calls, ['scale 2 2']);
     });
 
+    it('canvas declutters aligned text by its fitted size, not its estimated height', () => {
+      const drawn: string[] = [];
+      const ctx = {
+        save() {}, restore() {}, beginPath() {}, moveTo() {}, lineTo() {}, closePath() {}, fill() {}, stroke() {},
+        setLineDash() {}, translate() {}, rotate() {}, scale() {}, measureText: () => ({ width: 3 }),
+        fillText(t: string) { drawn.push(t); }, textBaseline: 'alphabetic',
+      } as unknown as CanvasRenderingContext2D;
+      // 0.3 m at 10 px/m is 3 px (under the 4 px cut); a 7.2 px span over 3 px measured fits it to 7.2 px.
+      const tiny: Text = { ...stretched, height: 0.3, text: 'iiii', widthScale: undefined, fitWidth: 0.72, fitUniform: true };
+      drawDxfUnderlaysScreenSpace(ctx, wrap(tiny), mapPoint, w => w, h => h * 10);
+      assert.deepEqual(drawn, ['iiii']);
+      drawn.length = 0;
+      drawDxfUnderlaysScreenSpace(ctx, wrap({ ...tiny, fitWidth: 0.2 }), mapPoint, w => w, h => h * 10);
+      assert.deepEqual(drawn, [], 'still decluttered when the fitted size is under 4 px');
+    });
+
+    it('PDF fits only single-line text to fitWidth; multiline keeps widthScale', () => {
+      const doc = new jsPDF({ unit: 'mm', format: [100, 100] });
+      doc.getTextWidth = () => 24;
+      drawDxfUnderlaysPdf(doc, wrap({ ...fit, text: 'A\nBBBB' }), mapPoint, 10);
+      assert.match(doc.output(), /250\.? Tz/);
+      assert.doesNotMatch(doc.output(), /125\.? Tz/);
+    });
+
     it('PDF reaches an aligned span by font size, not Tz', () => {
       const doc = new jsPDF({ unit: 'mm', format: [100, 100] });
       doc.getTextWidth = () => 24;

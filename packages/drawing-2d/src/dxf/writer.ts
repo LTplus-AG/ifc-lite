@@ -293,7 +293,7 @@ export class DxfWriter {
     // zero-height, invisible TEXT entity, exactly what the guard exists to
     // skip. Reject non-finite heights outright instead.
     if (!clean.trim() || !Number.isFinite(height) || height <= 0) return;
-    this.extend(position);
+    this.extend(position); if (options.fitTo) this.extend(options.fitTo); // the fitted span is extent too
     const rotationDeg = options.rotationDeg ?? 0;
     const [hCode, vCode] = options.fitTo ? [options.fitUniform ? 3 : 5, 0] : [H_ALIGN_CODE[options.hAlign ?? 'left'], V_ALIGN_CODE[options.vAlign ?? 'baseline']];
     const needsAlignPoint = hCode !== 0 || vCode !== 0;

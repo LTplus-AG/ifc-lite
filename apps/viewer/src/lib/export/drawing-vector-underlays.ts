@@ -99,7 +99,7 @@ export function drawDxfUnderlaysPdf(doc: jsPDF, underlays: readonly DxfUnderlayR
           // Aligned/fit text stretches horizontally (PDF Tz); justification uses the stretched width.
           // With an exact span (fitWidth), stretch by the measured width so the line spans it exactly.
           const measured = doc.getTextWidth(line);
-          const fitMm = text.fitWidth !== undefined && Number.isFinite(text.fitWidth) && text.fitWidth > 0 && Number.isFinite(measured) && measured > 0
+          const fitMm = lines.length === 1 && text.fitWidth !== undefined && Number.isFinite(text.fitWidth) && text.fitWidth > 0 && Number.isFinite(measured) && measured > 0
             ? text.fitWidth * metresToMm : 0;
           const fit = fitMm ? fitMm / measured : text.widthScale && text.widthScale > 0 ? text.widthScale : 1;
           // Aligned text reaches the span by font size (height and width together), not Tz.

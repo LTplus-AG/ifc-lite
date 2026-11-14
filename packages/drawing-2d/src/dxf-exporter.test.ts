@@ -208,6 +208,9 @@ describe('DXFExporter', () => {
     const [text] = parseDxf(dxf).entities.filter((e): e is DxfTextEntity => e.kind === 'text');
     // Span 4 scaled by the placement (2) along the baseline.
     expect(text.fitWidth).toBeCloseTo(8, 6);
+    // The fitted end point is part of the header extent: the placed anchor (2,4) + 8 along +Y.
+    const extMax = dxf.slice(dxf.indexOf('$EXTMAX'), dxf.indexOf('$EXTMAX') + 80).split('\n');
+    expect(Number(extMax[4])).toBeCloseTo(12, 6);
   });
 
   it('stacks multi-line underlay text along the rotated text direction, with placement-scaled height (PR #1871 review)', () => {

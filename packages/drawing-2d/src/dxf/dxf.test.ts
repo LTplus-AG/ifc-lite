@@ -549,6 +549,16 @@ describe('consolidated additions (SPLINE, SOLID, lineweight, valign, unit heuris
     expect(fit.fitWidth).toBeCloseTo(2, 9);
   });
 
+  it('fits aligned TEXT horizontally once a non-uniform INSERT changes its aspect', () => {
+    const block = (sx: number, sy: number) => pairsToText(
+      [0, 'SECTION'], [2, 'BLOCKS'], [0, 'BLOCK'], [2, 'label'], [10, 0], [20, 0],
+      [0, 'TEXT'], [8, 't'], [10, 0], [20, 0], [11, 1], [21, 0], [40, 1], [1, 'ab'], [72, 3], [73, 0],
+      [0, 'ENDBLK'], [0, 'ENDSEC'],
+    ) + entitiesSection([0, 'INSERT'], [8, 't'], [2, 'label'], [10, 0], [20, 0], [41, sx], [42, sy]);
+    expect(layerByName(importDxf(block(2, 2)), 't').texts[0].fitUniform).toBe(true);
+    expect(layerByName(importDxf(block(2, 1)), 't').texts[0].fitUniform).toBeFalsy();
+  });
+
   it('counts the fit end point in the extent and unit heuristic', () => {
     const underlay = importDxf(entitiesSection(
       [0, 'TEXT'], [8, 't'], [10, 0], [20, 0], [11, 6000], [21, 0], [40, 100], [1, 'abcd'], [72, 5], [73, 0],

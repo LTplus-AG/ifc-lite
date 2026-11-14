@@ -22,14 +22,14 @@ export function cloneEffectiveMetadata(view: MutablePropertyView, editor: StoreE
   // Whole-set additions group their members in the change list. A prior copy
   // can still carry DELETE overrides against its saved definitions (#9352).
   // Read those definitions, then consult current overrides rather than history.
-  for (const set of extractPropertiesOnDemand(store, source, view)) {
+  for (const set of extractPropertiesOnDemand(store, view.resolveBaseEntityId(source), view, source)) {
     if (!propertyNames.has(set.name)) continue;
     for (const member of set.properties) if (view.getPropertyMutation(source, set.name, member.name)?.operation === 'DELETE'
       && !changes.some(row => row.kind === 'property' && row.setName === set.name && row.name === member.name)) {
       changes.push({ entityId: source, kind: 'property', setName: set.name, name: member.name, deleted: true });
     }
   }
-  for (const set of extractQuantitiesOnDemand(store, source, view)) {
+  for (const set of extractQuantitiesOnDemand(store, view.resolveBaseEntityId(source), view)) {
     if (!quantityNames.has(set.name)) continue;
     for (const member of set.quantities) if (view.getQuantityMutation(source, set.name, member.name)?.operation === 'DELETE'
       && !changes.some(row => row.kind === 'quantity' && row.setName === set.name && row.name === member.name)) {

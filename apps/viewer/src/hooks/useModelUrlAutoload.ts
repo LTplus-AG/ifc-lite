@@ -57,7 +57,6 @@ export function useModelUrlAutoload(): void {
     const { modelUrl, baseUrl: sourceBaseUrl } = source;
     if (!modelUrl) return;
     autoloadDoneRef.current = true;
-    if (!pageUrlModelAllowed('model')) return; // the host configuration opens its own model
 
     // `retry` is required at every call (#5851 review): a malformed or
     // cross-origin URL is the SAME url string on every attempt, so retrying
@@ -70,6 +69,7 @@ export function useModelUrlAutoload(): void {
 
     let resolvedUrl: URL | null = null;
     const attempt = async () => {
+      if (!pageUrlModelAllowed('model')) return; // a host asked for its own model; checked again on Retry
       markLoadIntent(); // the model is fetched before the load starts
       // Replay-safe (a fetch, no gesture): Retry on the unsupported card may
       // re-run it after the re-check. This effect never reaches the guard

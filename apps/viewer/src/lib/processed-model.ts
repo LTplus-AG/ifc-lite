@@ -13,7 +13,8 @@
  *
  * The request waits here until the mounted viewer takes it
  * (`useProcessedModelAutoload`), which loads it through the canonical
- * `loadFile` path. The `?processed=` URL entry files the same request.
+ * `loadFile` path. The `?processed=` URL entry files the same request, unless
+ * a host has asked for a model: the host's model wins over the page URL.
  */
 
 import { assertProcessedModelHash, type ProcessedModelRef } from '@ifc-lite/server-client';
@@ -34,6 +35,9 @@ export interface OpenProcessedModelOptions {
 let serverUrl: string = SERVER_URL;
 let pending: ProcessedModelRequest | null = null;
 const listeners = new Set<() => void>();
+/** A host asked for a model (`openProcessedModel`, or the configuration's start model); a model named in the page URL then yields. */
+let hostRequested = false;
+const ignoredLogged = new Set<'processed' | 'model'>();
 
 /** The processing server the viewer asks: the runtime value, else the build's `VITE_IFC_SERVER_URL`. */
 export function getProcessingServerUrl(): string {
@@ -61,15 +65,54 @@ export function serverUploadsEnabled(): boolean {
  * SHA-256, before anything is asked of the server.
  */
 export function openProcessedModel(model: ProcessedModelRequest, options?: OpenProcessedModelOptions): void {
-  const sha256 = assertProcessedModelHash(model.sha256);
+  const request = normalizedRequest(model);
   if (options?.serverUrl !== undefined) setProcessingServerUrl(options.serverUrl);
-  const bytes = Number.isSafeInteger(model.bytes) && model.bytes > 0 ? model.bytes : 0;
-  pending = { sha256, bytes, name: model.name || 'model.ifc' };
-  for (const listener of [...listeners]) listener();
+  hostRequested = true;
+  fileRequest(request);
 }
 
-let hostStartModel = false;
-const ignoredLogged = new Set<'processed' | 'model'>();
+/**
+ * The viewer's own `?processed=` entry: files the request the page URL names,
+ * unless a host already asked for a model (`pageUrlModelAllowed`). Unlike
+ * `openProcessedModel` it does not count as a host request.
+ */
+export function openProcessedModelFromUrl(model: ProcessedModelRequest): void {
+  if (pageUrlModelAllowed('processed')) fileRequest(normalizedRequest(model));
+}
+
+/**
+ * Whether a model named in the page URL (`?processed=`, `?model=`) may load.
+ * Not once a host has asked for one, through `openProcessedModel` or the
+ * configuration's start model (`applyProcessingConfig`): the host's model
+ * wins, also when it was asked for before the viewer mounted and is still
+ * waiting. The rule holds for the page; each ignored parameter is logged once.
+ */
+export function pageUrlModelAllowed(parameter: 'processed' | 'model'): boolean {
+  if (!hostRequested) return true;
+  if (!ignoredLogged.has(parameter)) {
+    ignoredLogged.add(parameter);
+    console.info(`[viewer] ?${parameter}= in the page URL is ignored: the host asked for its own model`);
+  }
+  return false;
+}
+
+/** Tests only: forget host requests, the waiting request and the ignored-parameter log. */
+export function resetProcessedModelRequestsForTests(): void {
+  hostRequested = false;
+  ignoredLogged.clear();
+  pending = null;
+}
+
+function normalizedRequest(model: ProcessedModelRequest): ProcessedModelRequest {
+  const sha256 = assertProcessedModelHash(model.sha256);
+  const bytes = Number.isSafeInteger(model.bytes) && model.bytes > 0 ? model.bytes : 0;
+  return { sha256, bytes, name: model.name || 'model.ifc' };
+}
+
+function fileRequest(request: ProcessedModelRequest): void {
+  pending = request;
+  for (const listener of [...listeners]) listener();
+}
 
 /**
  * Apply a host configuration's processing members (`server`, `open`). Called
@@ -78,24 +121,7 @@ const ignoredLogged = new Set<'processed' | 'model'>();
  */
 export function applyProcessingConfig(config: Pick<ViewerRuntimeConfig, 'server' | 'open'> | undefined): void {
   if (config?.server) setProcessingServerUrl(config.server.url);
-  if (config?.open) {
-    hostStartModel = true;
-    openProcessedModel(config.open.processedModel);
-  }
-}
-
-/**
- * Whether a model named in the page URL (`?processed=`, `?model=`) may load.
- * Not when the host configuration opens its own: only the host's model loads.
- * Each ignored parameter is logged, once for the page.
- */
-export function pageUrlModelAllowed(parameter: 'processed' | 'model'): boolean {
-  if (!hostStartModel) return true;
-  if (!ignoredLogged.has(parameter)) {
-    ignoredLogged.add(parameter);
-    console.info(`[viewer] ?${parameter}= in the page URL is ignored: the host configuration opens its own model`);
-  }
-  return false;
+  if (config?.open) openProcessedModel(config.open.processedModel); // a host request: the page URL yields
 }
 
 /** The mounted viewer's side: take the waiting request, once. */

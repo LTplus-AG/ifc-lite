@@ -31,7 +31,7 @@ const { useIfcLoader } = await import('./useIfcLoader.js');
 const { useProcessedModelAutoload } = await import('./useProcessedModelAutoload.js');
 const { isStepSourceModel } = await import('@/components/viewer/step-export-source');
 const { getReportPrompt, clearLoadReport } = await import('@/lib/error-reports/context');
-const { applyProcessingConfig, openProcessedModel, setProcessingServerUrl, takeProcessedModelRequest } = await import('@/lib/processed-model');
+const { applyProcessingConfig, openProcessedModel, resetProcessedModelRequestsForTests, setProcessingServerUrl, takeProcessedModelRequest } = await import('@/lib/processed-model');
 const { useModelUrlAutoload } = await import('./useModelUrlAutoload.js');
 
 const sha256 = 'c'.repeat(64);
@@ -86,7 +86,7 @@ afterEach(async () => {
   await act(async () => root.unmount()); container.remove(); mock.restoreAll();
   restoreGpu?.(); restoreGpu = undefined;
   window.history.replaceState(null, '', '/');
-  takeProcessedModelRequest(); setProcessingServerUrl('http://localhost:9999');
+  resetProcessedModelRequestsForTests(); setProcessingServerUrl('http://localhost:9999');
   useViewerStore.getState().clearAllModels();
 });
 
@@ -270,7 +270,7 @@ it('with no processing server configured, the error says so and offers no Retry'
   assert.equal(useViewerStore.getState().lastLoadRetry, null);
 });
 
-// Last in this file: a host's start model is fixed for the page, so nothing after this runs without it.
+// The host-request rule holds for the page; afterEach resets it, so each test below starts without one.
 function BothUrlEntries() { useProcessedModelAutoload(); useModelUrlAutoload(); return null; }
 it("with a host start model, ?processed= and ?model= in the page URL are ignored and only the host's model loads, from the host's server", async () => {
   stubWebGpu();
@@ -291,5 +291,37 @@ it("with a host start model, ?processed= and ?model= in the page URL are ignored
     const ignored = infos.map((args) => String(args[0])).filter((line) => /ignored/.test(line));
     assert.equal(ignored.length, 2, 'each ignored parameter logged once for the page');
     assert.ok(ignored.some((line) => line.includes('?processed=')) && ignored.some((line) => line.includes('?model=')), ignored.join('\n'));
+  } finally { globalThis.fetch = realFetch; }
+});
+
+it("a host request filed before the viewer mounts wins over ?processed= in the page URL", async () => {
+  stubWebGpu();
+  const infos: unknown[][] = [];
+  mock.method(console, 'info', (...args: unknown[]) => { infos.push(args); });
+  window.history.replaceState(null, '', `/?processed=${'d'.repeat(64)}&bytes=9&name=url.ifc`);
+  openProcessedModel({ sha256, bytes: 7_000_000, name: 'From the host.ifc' });
+  await act(async () => { root.render(<Probe fromUrl />); });
+  await act(async () => { await waitFor(() => model()?.loadState === 'complete', 'the host model loads'); });
+  assert.deepEqual(asked, [{ sha256, bytes: 7_000_000 }], "only the host's model is asked for");
+  assert.equal(model()?.name, 'From the host.ifc');
+  assert.equal(infos.filter((args) => /ignored/.test(String(args[0]))).length, 1, 'the ignored URL is logged once');
+});
+
+function ModelUrlEntry() { useModelUrlAutoload(); return null; }
+it("a host request filed before the viewer mounts also wins over ?model= in the page URL", async () => {
+  stubWebGpu();
+  const fetched: string[] = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL) => { fetched.push(String(input)); return new Response(null, { status: 404 }); }) as typeof fetch;
+  const infos: unknown[][] = [];
+  mock.method(console, 'info', (...args: unknown[]) => { infos.push(args); });
+  try {
+    window.history.replaceState(null, '', '/?model=other.ifc');
+    openProcessedModel({ sha256, bytes: 7_000_000, name: 'From the host.ifc' });
+    await act(async () => { root.render(<><Probe fromUrl /><ModelUrlEntry /></>); });
+    await act(async () => { await waitFor(() => model()?.loadState === 'complete', 'the host model loads'); });
+    assert.deepEqual(asked, [{ sha256, bytes: 7_000_000 }]);
+    assert.deepEqual(fetched.filter((url) => url.includes('other.ifc')), [], '?model= is not fetched');
+    assert.equal(infos.filter((args) => /\?model= .*ignored/.test(String(args[0]))).length, 1, 'logged once');
   } finally { globalThis.fetch = realFetch; }
 });

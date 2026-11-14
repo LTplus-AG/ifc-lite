@@ -19,6 +19,8 @@ import { cancelMeasureRaycast, isDuplicateClickPoint, projectOntoConstraintAxis 
 import { forgetVertexPress, rememberVertexPress, unsnapFromPrevious } from './measurePress.js';
 import { noteMeasureCursor } from './measureCursor.js';
 import { refuseCaptureHeldPick } from '@/lib/viewport-capture';
+import { isGeometryHeld } from '@/lib/pick-gating';
+import { setViewportInteractionCursor } from './heldPointerQueue.js';
 
 /** Presses that set a distance start, so their release can tell a first click from a second (#8771). */
 const startingPresses = new WeakSet<MouseState>();
@@ -131,7 +133,8 @@ export function handleMeasureDown(ctx: MouseHandlerContext, e: PointerEvent): bo
   const { canvas, mouseState } = ctx;
 
   mouseState.isDragging = true;
-  canvas.style.cursor = 'crosshair';
+  if (isGeometryHeld(useViewerStore.getState())) return true;
+  setViewportInteractionCursor(canvas, 'crosshair');
   const afterFinish = finishingPresses.has(mouseState);
   startingPresses.delete(mouseState);
   forgetDistancePress(mouseState);
@@ -157,6 +160,7 @@ export function handleMeasureDown(ctx: MouseHandlerContext, e: PointerEvent): bo
  */
 export function handleMeasureUp(ctx: MouseHandlerContext, e: PointerEvent): boolean {
   const { canvas, renderer, camera, mouseState } = ctx;
+  if (isGeometryHeld(useViewerStore.getState())) { mouseState.isDragging = false; return true; }
 
   // Cancel any pending raycast to avoid stale updates
   cancelMeasureRaycast(ctx);
@@ -220,6 +224,6 @@ export function handleMeasureUp(ctx: MouseHandlerContext, e: PointerEvent): bool
   startingPresses.delete(mouseState);
   mouseState.isDragging = false;
   mouseState.didDrag = false;
-  canvas.style.cursor = 'crosshair';
+  setViewportInteractionCursor(canvas, 'crosshair');
   return true;
 }

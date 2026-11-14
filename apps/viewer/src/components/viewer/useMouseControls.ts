@@ -41,7 +41,7 @@ import { forgetCommandPointer } from '@/lib/commands/modeling/pointer-replay';
 import { routeCommandPointer } from './commandPointer.js';
 import { refuseCaptureHeldPick } from '@/lib/viewport-capture';
 import { createCommandPressController } from './commandPress.js';
-import { handleSelectionClick, handleContextMenu as handleContextMenuSelection } from './selectionHandlers.js';
+import { handleSelectionClick, handleContextMenu as handleContextMenuSelection, setViewportInteractionCursor } from './selectionHandlers.js';
 import { handleMeasureDoubleClick } from './measurementDoubleClick.js';
 import { createViewportWheelZoom } from './wheelZoom.js';
 import { cameraPoseKey, createZoomSurfacePicker } from './zoomSurface.js';
@@ -485,12 +485,12 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       pointerGesture = gesture;
       beginMeasurePress(mouseState, tool === 'measure' && gesture === 'tool'); // #8786; any other press breaks the dblclick chain
       if (tool === 'command' && gesture === 'tool' && commandPress.begin(e)) {
-        canvas.style.cursor = 'crosshair';
+        setViewportInteractionCursor(canvas, 'crosshair');
         return;
       }
       // Right-button fly (#4868) takes priority over ordinary pan. A frozen
       // view refuses fly and falls back to the right-button pan path below.
-      if (gesture === 'fly' && fly.begin(canvas)) { clearHover(); canvas.style.cursor = 'crosshair'; return; }
+      if (gesture === 'fly' && fly.begin(canvas)) { clearHover(); setViewportInteractionCursor(canvas, 'crosshair'); return; }
 
       // Rectangle-select gesture: Ctrl/⌘ + LMB drag while in the
       // select tool. Suppresses orbit/pan; the rect is finalised
@@ -556,7 +556,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
 
       if (gesture === 'pan' || gesture === 'fly') {
         mouseState.isPanning = true;
-        canvas.style.cursor = 'move';
+        setViewportInteractionCursor(canvas, 'move');
       } else if (tool === 'measure' && gesture === 'tool') {
         if (handleMeasureDown(ctx, e)) return;
       }
@@ -622,7 +622,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
             if (!pressPastClickSlop(mouseState, e)) return;
             mouseState.didDrag = true;
             if (pendingOrbitPivot) orbitPivotStore.begin(pendingOrbitPivot); pendingOrbitPivot = null;
-            if (!mouseState.isPanning) canvas.style.cursor = 'grabbing';
+            if (!mouseState.isPanning) setViewportInteractionCursor(canvas, 'grabbing');
           }
         }
         const dx = e.clientX - mouseState.lastX;
@@ -671,7 +671,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       if (commandOwned) {
         mouseState.isDragging = false;
         mouseState.isPanning = false;
-        canvas.style.cursor = 'default';
+        setViewportInteractionCursor(canvas, 'default');
         return;
       }
       const flyEnd = e.button === 2 ? fly.end() : 'none';
@@ -725,7 +725,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
 
       mouseState.isDragging = false;
       mouseState.isPanning = false;
-      canvas.style.cursor = tool === 'pan' ? 'grab' : (tool === 'walk' || tool === 'measure' || tool === 'appearance-face' ? 'crosshair' : 'default');
+      setViewportInteractionCursor(canvas, tool === 'pan' ? 'grab' : (tool === 'walk' || tool === 'measure' || tool === 'appearance-face' ? 'crosshair' : 'default'));
     };
 
     const handleMouseLeave = () => {
@@ -751,7 +751,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       setSectionPickPreview(null);
       if (tool === 'measure') endMeasurePointHover(ctx);
       // Restore cursor based on active tool (same mapping as pointerup)
-      canvas.style.cursor = tool === 'pan' ? 'grab' : (tool === 'walk' || tool === 'measure' || tool === 'appearance-face' ? 'crosshair' : 'default');
+      setViewportInteractionCursor(canvas, tool === 'pan' ? 'grab' : (tool === 'walk' || tool === 'measure' || tool === 'appearance-face' ? 'crosshair' : 'default'));
       clearHover();
     };
     const handlePointerCancel = (e: PointerEvent) => {

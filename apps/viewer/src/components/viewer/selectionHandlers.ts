@@ -20,11 +20,14 @@ import { raycastForPolylinePoint, isNearPolylineStart,
   isDuplicateClickPoint,
 } from './measureHandlers.js';
 import { handlePointClick } from './measurePointMode.js';
-import { pressOutlivedReset } from './distanceClick.js';
+import { handleMeasureDown, handleMeasureUp, pressOutlivedReset } from './distanceClick.js';
 import { rememberVertexPress, unsnapFromPrevious } from './measurePress.js';
 import { pickViewportAppearanceFace, viewportFacePickError } from './appearance/face-mask/viewport-face-picker.js';
 import { resolve as translate } from '@/i18n/registry';
 import { refuseCaptureHeldPick } from '@/lib/viewport-capture';
+import { isGeometryHeld } from '@/lib/pick-gating';
+import { queueHeldPointerClick } from './heldPointerQueue.js';
+export { setViewportInteractionCursor } from './heldPointerQueue.js';
 
 /** The click-driven Measure modes' point placement; also a touch tap's (#5856). */
 export function handleMeasureClickAt(ctx: MouseHandlerContext, x: number, y: number): void {
@@ -50,6 +53,26 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
 
   // Skip selection for pan/walk tools - they don't select
   if (tool === 'pan' || tool === 'walk') {
+    return;
+  }
+  const storeState = useViewerStore.getState();
+  if (isGeometryHeld(storeState)) {
+    queueHeldPointerClick({
+      x, y, shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey, altKey: e.altKey,
+      button: e.button, handler: `selection:${tool}`,
+      replay: () => {
+        if (ctx.activeToolRef.current !== tool) return;
+        const currentRect = canvas.getBoundingClientRect();
+        const clientX = currentRect.left + x, clientY = currentRect.top + y;
+        if (tool === 'measure' && useViewerStore.getState().measureMode === 'distance') {
+          const pointer = (type: string) => new PointerEvent(type, { bubbles: true, clientX, clientY, shiftKey: e.shiftKey, ctrlKey: e.ctrlKey,
+            metaKey: e.metaKey, altKey: e.altKey, button: e.button, buttons: type === 'pointerdown' ? 1 : 0 });
+          handleMeasureDown(ctx, pointer('pointerdown'));
+          handleMeasureUp(ctx, pointer('pointerup'));
+        } else void handleSelectionClick(ctx, new MouseEvent('click', { bubbles: true, clientX, clientY, shiftKey: e.shiftKey,
+          ctrlKey: e.ctrlKey, metaKey: e.metaKey, altKey: e.altKey, button: e.button, buttons: 0, detail: 1 }));
+      },
+    });
     return;
   }
   // Every tool below picks: not through a capture's frame (#9137).

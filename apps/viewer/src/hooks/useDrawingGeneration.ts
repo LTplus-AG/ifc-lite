@@ -48,6 +48,7 @@ import { restoredCutPosition } from '@/lib/section/section-distance';
 import { markActiveDrawingGenerationCompleted } from '@/lib/drawing/active-canvas-snapshot';
 import { constructionProjectionEnabled } from '@/lib/drawing/construction-projection';
 import { drawingWithMaterialLayerFills } from '@/lib/drawing/material-layer-fills';
+import { isGeometryHeld } from '@/lib/pick-gating';
 // The winding-robust Rust `meshOutline2d` binding (issue #979) is gitignored →
 // CI-built, so reference it defensively: against an older wasm bundle it's
 // undefined and projection falls back to the TS mesh silhouette. The wasm
@@ -159,9 +160,7 @@ export function useDrawingGeneration({
   setDrawingError,
 }: UseDrawingGenerationParams): UseDrawingGenerationResult {
   const structuralViewMode = useViewerStore((s) => s.structuralViewMode);
-  // The legacy primary path can publish only `loading: false` when it finishes
-  // without exact RTC metadata. Subscribe to all provenance publication
-  // channels so pending → standalone/explicit retriggers the drawing.
+  // Subscribe to all provenance channels so pending → standalone/explicit retriggers the drawing.
   const { context: drawingRtcContext, key: drawingRtcContextKey } =
     useDrawingRtcContext(ifcDataStore);
 
@@ -195,7 +194,7 @@ export function useDrawingGeneration({
     elementToStorey: ReadonlyMap<number, number>;
   }>());
 
-  const computeDrawing = useCallback(async (isRegenerate = false, isCurrent: () => boolean = () => true) => {
+  const computeDrawing = useCallback(async (isRegenerate = false, isCurrent: () => boolean = () => true) => { if (isGeometryHeld(useViewerStore.getState())) return;
     if (!geometryResult?.meshes || geometryResult.meshes.length === 0) {
       // Clear the drawing when no geometry is available (e.g., all models hidden)
       setDrawing(null);
@@ -998,7 +997,7 @@ export function useDrawingGeneration({
       sectionPlane.custom]);
     const inputs = [geometryResult, geometryResult?.meshes.length, ifcDataStore,
       displayOptions, typeVisibility, structuralViewMode, combinedHiddenIds, combinedIsolatedIds,
-      computedIsolatedIds, models, drawingRtcContextKey];
+      computedIsolatedIds, models, drawingRtcContextKey, isGeometryHeld(useViewerStore.getState())];
     const changed = inputs.some((value, index) => value !== previousInputs.current[index]);
     const planeChanged = plane !== previousPlane.current;
     const activated = drawingActive && !wasActive.current;
@@ -1007,7 +1006,7 @@ export function useDrawingGeneration({
     previousInputs.current = inputs;
     previousPlane.current = plane;
     wasActive.current = drawingActive; wasPanelVisible.current = panelVisible;
-    if (!drawingActive) { if (deactivated) queue.cancel(); return; }
+    if (!drawingActive || isGeometryHeld(useViewerStore.getState())) { if (deactivated || isGeometryHeld(useViewerStore.getState())) queue.cancel(); return; }
     if (!geometryResult?.meshes.length) {
       queue.cancel();
       if (drawing) { setDrawing(null); setDrawingStatus('idle'); }

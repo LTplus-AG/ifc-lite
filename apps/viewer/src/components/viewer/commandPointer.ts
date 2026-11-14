@@ -47,6 +47,7 @@ import { toGlobalIdFromModels } from '@/store/globalId';
 import { createMeshSource, type MeshPick } from '@/lib/snap/sources/mesh';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { cancelMeasureRaycast } from './measureHandlers.js';
+import { isGeometryHeld } from '@/lib/pick-gating';
 
 /** Ghost ids a command preview may use (`ghost.ts` allocates from `commandGhostId`). */
 const GHOST_PICK_GUARD = 4;
@@ -193,6 +194,9 @@ export function routeCommandPointer(
 ): boolean {
   const runtime = getCommandRuntime();
   if (!runtime.command || !runtime.ctx) return false;
+  // The click path queues the command's discrete placement after release. Do
+  // not let press/move plumbing raycast partial geometry or report a miss.
+  if (isGeometryHeld(useViewerStore.getState())) return true;
   rememberCommandPointer((keys) => { routeCommandPointer(ctx, 'move', x, y, keys); }, mods);
   if (kind !== 'move') {
     const snap = pressSnap(ctx, runtime, x, y, mods);

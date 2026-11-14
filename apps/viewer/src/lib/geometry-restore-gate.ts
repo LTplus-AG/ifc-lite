@@ -27,7 +27,13 @@ import { useViewerStore } from '@/store';
 export const RESTORE_BACKSTOP_MS = 60_000;
 
 const backstops = new Map<string, ReturnType<typeof setTimeout>>();
+const delayedReleases = new Map<string, ReturnType<typeof setTimeout>>();
 let backstopFires = 0;
+
+type GeometryRestoreTestHook = { releaseDelayMs?: number; backstopFires?: number; geometryRestoreBackstopFires?: () => number };
+function testHook(): GeometryRestoreTestHook | undefined {
+  return (globalThis as typeof globalThis & { __ifc_lite_geometry_restore_test__?: GeometryRestoreTestHook }).__ifc_lite_geometry_restore_test__;
+}
 
 /** How many holds the backstop had to end (tests; non-zero in a session means a missed release). */
 export function geometryRestoreBackstopFires(): number { return backstopFires; }
@@ -40,6 +46,8 @@ function setPending(modelId: string, pending: boolean): void {
 }
 
 export function beginGeometryRestore(modelId: string): void {
+  const delayed = delayedReleases.get(modelId);
+  if (delayed !== undefined) { clearTimeout(delayed); delayedReleases.delete(modelId); }
   endGeometryRestore(modelId);
   setPending(modelId, true);
   backstops.set(modelId, setTimeout(() => {
@@ -47,6 +55,7 @@ export function beginGeometryRestore(modelId: string): void {
     // A model that is gone or already released is not a stuck hold.
     if (!useViewerStore.getState().models.get(modelId)?.geometryRestorePending) return;
     backstopFires += 1;
+    if (testHook()) testHook()!.backstopFires = backstopFires;
     console.warn(`[geometry-restore-gate] backstop released model ${modelId} after ${RESTORE_BACKSTOP_MS} ms: its load end never released it`);
     setPending(modelId, false);
   }, RESTORE_BACKSTOP_MS));
@@ -56,6 +65,18 @@ export function beginGeometryRestore(modelId: string): void {
 export function endGeometryRestore(modelId: string): void {
   const timer = backstops.get(modelId);
   if (timer !== undefined) { clearTimeout(timer); backstops.delete(modelId); }
+  const delay = testHook()?.releaseDelayMs;
+  if (delay && delay > 0 && useViewerStore.getState().models.get(modelId)?.geometryRestorePending) {
+    const previous = delayedReleases.get(modelId);
+    if (previous !== undefined) clearTimeout(previous);
+    delayedReleases.set(modelId, setTimeout(() => {
+      delayedReleases.delete(modelId);
+      setPending(modelId, false);
+    }, delay));
+    return;
+  }
+  const delayed = delayedReleases.get(modelId);
+  if (delayed !== undefined) { clearTimeout(delayed); delayedReleases.delete(modelId); }
   setPending(modelId, false);
 }
 

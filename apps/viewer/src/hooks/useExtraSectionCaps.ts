@@ -28,6 +28,7 @@ import { capCutConfig, capSignature } from '@/lib/section/section-cut-config';
 import { cuttingSectionBoxCapPlanes } from '@/lib/section/section-box-caps';
 import { visibleCutMeshes } from '@/lib/drawing/cut-meshes';
 import { createDrawingRequestQueue } from './drawingRequestQueue.js';
+import { isGeometryHeld } from '@/lib/pick-gating';
 
 export function useExtraSectionCaps(
   geometryResult: GeometryResult | null | undefined,
@@ -44,12 +45,13 @@ export function useExtraSectionCaps(
   const isolatedIds = useViewerStore((s) => s.isolatedEntities);
   const setCap = useViewerStore((s) => s.setSectionExtraCap);
   const prune = useViewerStore((s) => s.pruneSectionExtraCaps);
+  const geometryHeld = useViewerStore((s) => isGeometryHeld(s));
 
   const queueRef = useRef<ReturnType<typeof createDrawingRequestQueue> | null>(null);
   if (!queueRef.current) queueRef.current = createDrawingRequestQueue();
   // Bumped whenever what the cuts are made FROM changes, so every parked cap goes stale at once.
   const modelStateRef = useRef({ token: 0, inputs: [] as unknown[] });
-  const inputs = [geometryResult, hiddenIds, isolatedIds, computedIsolatedIds, typeVisibility, structuralViewMode];
+  const inputs = [geometryResult, hiddenIds, isolatedIds, computedIsolatedIds, typeVisibility, structuralViewMode, geometryHeld];
   if (inputs.some((v, i) => v !== modelStateRef.current.inputs[i])) {
     modelStateRef.current = { token: modelStateRef.current.token + 1, inputs };
   }
@@ -65,6 +67,7 @@ export function useExtraSectionCaps(
     const queue = queueRef.current!;
     prune(wanted.map((p) => p.id));
     const cancel = () => queue.cancel();
+    if (geometryHeld) return cancel;
     if (wanted.length === 0 || !geometryResult) return cancel;
 
     const stale = wanted.filter((p) => caps[p.id]?.signature !== `${modelToken}:${capSignature(p)}`);
@@ -103,5 +106,5 @@ export function useExtraSectionCaps(
     return cancel;
     // `caps` is read for staleness only; its own writes must not retrigger the cut.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wantedKey, modelToken, geometryResult]);
+  }, [wantedKey, modelToken, geometryResult, geometryHeld]);
 }

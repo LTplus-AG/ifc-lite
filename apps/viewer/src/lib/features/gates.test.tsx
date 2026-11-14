@@ -245,7 +245,7 @@ describe('panels, commands, shortcuts and tools switched off', () => {
   it('a switched-off primary hands the sidebar to the next open panel (#10147)', () => {
     const store = useViewerStore;
     resetFeaturesForTest({ default: 'none', enable: ['check.clash'] });
-    // A persisted layout, seeded flag by flag so exclusivity does not adopt Clash first: Lens on top, Clash flagged open.
+    // A persisted layout: Clash flagged open, Lens on top. Clash first, so Lens overwrites exclusivity's adoption of Clash.
     store.setState({ clashPanelVisible: true });
     store.setState({ sidebarActivePanel: 'lens' });
     const stop = enforcePanelAvailability(store);

@@ -182,3 +182,16 @@ test('a host with only a non-x86 PMU (aarch64 armv8_pmuv3_0) reports the support
   assert.equal(JSON.parse(readFileSync(out, 'utf8').split('\n')[0]).unavailable,
     'instruction counting supports x86 Linux PMUs cpu / cpu_core+cpu_atom; found: armv8_pmuv3_0, software');
 });
+
+test('a sampling period that is NaN, 0 or out of range falls back to 10 ms with a note instead of spinning', { skip: process.platform !== 'linux' }, () => {
+  const python = spawnSync('sh', ['-c', 'command -v python3'], { encoding: 'utf8' }).stdout.trim();
+  for (const bad of ['NaN', '0', '5000', 'abc']) {
+    const out = join(mkdtempSync(join(tmpdir(), 'period-')), 'i.ndjson');
+    const run = spawnSync('python3', [INSTR_WRAPPER, '-c', 'import time; time.sleep(0.3)'],
+      { env: { ...process.env, LOAD_SCOREBOARD_INSTR_CHROME: python, LOAD_SCOREBOARD_INSTR_OUT: out, LOAD_SCOREBOARD_INSTR_PERIOD_MS: bad }, encoding: 'utf8' });
+    assert.equal(run.status, 0, run.stderr);
+    assert.equal(run.stderr.trim(), `instr-chrome: LOAD_SCOREBOARD_INSTR_PERIOD_MS='${bad}' is not a finite 1..1000 ms; using 10 ms`);
+    const lines = readFileSync(out, 'utf8').trim().split('\n');
+    if (!JSON.parse(lines[0]).unavailable) assert.ok(lines.length < 100, `${bad}: ${lines.length} samples in ~0.3 s (10 ms period gives ~30)`);
+  }
+});

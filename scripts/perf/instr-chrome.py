@@ -16,9 +16,25 @@ No root and no `perf` binary: needs x86 Linux (PMUs `cpu`, or `cpu_core` + `cpu_
 aarch64 `armv8_pmuv3_*` are not supported and report unavailable), kernel.perf_event_paranoid <= 2. When counting is unavailable the first
 line is `{"unavailable": reason}` and Chrome still runs normally. The wrapper exits with Chrome's exit status.
 """
-import ctypes, json, os, signal, struct, sys, threading, time
+import ctypes, json, math, os, signal, struct, sys, threading, time
 
-PERIOD_S = float(os.environ.get('LOAD_SCOREBOARD_INSTR_PERIOD_MS', '10')) / 1000
+def period_s():
+    """Sampling period, parsed once: finite and within 1..1000 ms, else 10 ms with a note (NaN or 0 would spin the
+    sampler during the measured open; review #10138)."""
+    raw = os.environ.get('LOAD_SCOREBOARD_INSTR_PERIOD_MS')
+    if raw is None or raw == '':
+        return 0.01
+    try:
+        v = float(raw)
+    except ValueError:
+        v = float('nan')
+    if math.isfinite(v) and 1 <= v <= 1000:
+        return v / 1000
+    print(f'instr-chrome: LOAD_SCOREBOARD_INSTR_PERIOD_MS={raw!r} is not a finite 1..1000 ms; using 10 ms', file=sys.stderr)
+    return 0.01
+
+
+PERIOD_S = period_s()
 SYS_PERF_EVENT_OPEN = {'x86_64': 298}.get(os.uname().machine)  # x86 Linux only (no other host to test on)
 SUPPORTED = 'instruction counting supports x86 Linux PMUs cpu / cpu_core+cpu_atom'
 PMU_ROOT = os.environ.get('LOAD_SCOREBOARD_INSTR_PMU_ROOT', '/sys/bus/event_source/devices')  # override for tests

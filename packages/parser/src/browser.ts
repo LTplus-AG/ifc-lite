@@ -13,3 +13,4 @@
  */
 
 export { WorkerParser, type WorkerParserOptions } from './worker-parser.js';
+export { prepareSpareParserWorker as prepareSpareParser, hasSpareParserWorker, isSpareParserWorkerWarming, releaseSpareParserWorker } from './spare-parser-worker.js';

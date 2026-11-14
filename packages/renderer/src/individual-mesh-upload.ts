@@ -60,6 +60,8 @@ export interface MergedMeshGpu extends IndividualMeshGpu {
    * vertex lane (entity-color-table.ts).
    */
   representative: MeshData;
+  firstPiece: MeshData;
+  lastPiece: MeshData;
   pieces: number;
 }
 
@@ -268,7 +270,7 @@ export function uploadMergedMeshes(
         firstVertex += piece.positions.length / 3;
       }
       const representative = group.anchor;
-      uploaded.push({ ...uploadGeometry(device, interleaved, indices, representative, group.frame), representative, pieces: group.pieces.length });
+      uploaded.push({ ...uploadGeometry(device, interleaved, indices, representative, group.frame), representative, firstPiece: group.pieces[0], lastPiece: group.pieces[group.pieces.length - 1], pieces: group.pieces.length });
     }
   } catch (error) {
     for (const mesh of uploaded) {

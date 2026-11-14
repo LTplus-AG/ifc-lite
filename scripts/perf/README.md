@@ -38,7 +38,13 @@ together, and merge only contiguous compatible model/origin runs. Regrouping
 non-adjacent equal-origin pieces trades away visual correctness. Alternating
 origins can still cost one draw per piece, matching the original path; a per-vertex
 frame index and GPU origin table are the bounded-draw follow-up (#10008). Distinct
-textured origins remain tracked separately in #9946.
+textured origins reuse their original GPU buffers in the late highlight and
+outline-mask passes (#9946). This removes selection-time geometry copies and
+uploads, but still submits one highlight draw per selected textured piece.
+Uniform blocks share arena pages. Synthetic Metal checks preserve the glass
+and cutout picture; tinting the original textured draw was rejected because
+it moves selection before glass and retains texture cutouts. Keep stride
+variants on shared shaders and invalidate borrowed records with scene revisions.
 
 ## Single-edit IFC derivations (#9296, R7 P3)
 

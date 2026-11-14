@@ -28,17 +28,17 @@
 //! end.
 
 use ifc_lite_processing::{process, MeshData, ProcessingRequest};
+use ifc_lite_testkit::mesh::signed_volume;
 
 const HOST: u32 = 50;
 
-/// One wall under a site at `site_at`, yawed `yaw_deg` about Z. `host` is the
+/// One wall under a site at the origin, yawed `yaw_deg` about Z. `host` is the
 /// wall's `(length, thickness, height)`: a faceted box with one corner at the
 /// wall placement, as an exporter writes a finish layer or a clipped wall.
 /// Each opening is `(x0, x1, z0, z1, depth)`: a box entering the wall through
 /// its y = 0 face.
-fn fixture(site_at: [f64; 3], yaw_deg: f64, host: [f64; 3], openings: &[[f64; 5]]) -> String {
+fn fixture(yaw_deg: f64, host: [f64; 3], openings: &[[f64; 5]]) -> String {
     let (sin, cos) = yaw_deg.to_radians().sin_cos();
-    let [sx, sy, sz] = site_at;
     let [length, thickness, height] = host;
     let mut data = format!(
         "ISO-10303-21;
@@ -60,7 +60,7 @@ DATA;
 #11=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,#10,$,.MODEL_VIEW.,$);
 #12=IFCDIRECTION((1.,0.));
 #13=IFCDIRECTION((0.,1.,0.));
-#20=IFCCARTESIANPOINT(({sx:?},{sy:?},{sz:?}));
+#20=IFCCARTESIANPOINT((0.,0.,0.));
 #21=IFCDIRECTION(({cos:?},{sin:?},0.));
 #22=IFCAXIS2PLACEMENT3D(#20,#7,#21);
 #23=IFCLOCALPLACEMENT($,#22);
@@ -143,29 +143,18 @@ DATA;
     data
 }
 
-/// Enclosed volume and surface area of the cut host, read in f64 about the
-/// mesh's own centre.
-fn volume_and_area(ifc: &str) -> (f64, f64) {
-    let result = process(ifc.as_bytes(), &ProcessingRequest::full_pass(), &mut ());
-    let hosts: Vec<&MeshData> = result.meshes.iter().filter(|mesh| mesh.express_id == HOST).collect();
-    assert_eq!(hosts.len(), 1, "the wall meshes as one body");
-    let mesh = hosts[0];
-    let points: Vec<[f64; 3]> = mesh.positions.chunks_exact(3).map(|p| [0, 1, 2].map(|k| f64::from(p[k]))).collect();
-    let centre = points.iter().fold([0.0; 3], |c, p| [0, 1, 2].map(|k| c[k] + p[k] / points.len() as f64));
-    let (mut volume, mut area) = (0.0, 0.0);
-    for triangle in mesh.indices.chunks_exact(3) {
-        let [a, b, c] = [0, 1, 2].map(|k| {
-            let p = points[triangle[k] as usize];
-            [p[0] - centre[0], p[1] - centre[1], p[2] - centre[2]]
-        });
-        let (u, v) = ([b[0] - a[0], b[1] - a[1], b[2] - a[2]], [c[0] - a[0], c[1] - a[1], c[2] - a[2]]);
-        let normal = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
-        area += 0.5 * (normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]).sqrt();
-        volume += (a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0])
-            + a[2] * (b[0] * c[1] - b[1] * c[0]))
-            / 6.0;
-    }
-    (volume.abs(), area)
+/// Surface area of a mesh, read in f64.
+fn surface_area(mesh: &MeshData) -> f64 {
+    let point = |i: u32| [0, 1, 2].map(|k| f64::from(mesh.positions[i as usize * 3 + k]));
+    mesh.indices
+        .chunks_exact(3)
+        .map(|t| {
+            let [a, b, c] = [point(t[0]), point(t[1]), point(t[2])];
+            let (u, v) = ([0, 1, 2].map(|k| b[k] - a[k]), [0, 1, 2].map(|k| c[k] - a[k]));
+            let n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+            0.5 * (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt()
+        })
+        .sum()
 }
 
 /// Yaws the site is meshed under: axis-aligned, and rotated in plan.
@@ -174,32 +163,30 @@ const YAWS_DEG: [f64; 2] = [0.0, 30.0];
 /// The 12 mm sheet of the recess cases: 3 m long and 3 m high.
 const SHEET: [f64; 3] = [3.0, 0.012, 3.0];
 
-/// Volume of [`SHEET`] with a 0.4 m by 1 m recess `depth` deep, and what the
-/// cut returns, under each yaw.
-fn recessed_sheet(depth: f64) -> (f64, Vec<(f64, f64)>) {
-    let expected = SHEET[0] * SHEET[1] * SHEET[2] - 0.4 * 1.0 * depth;
-    let cut = YAWS_DEG
-        .iter()
-        .map(|&yaw| (yaw, volume_and_area(&fixture([0.0; 3], yaw, SHEET, &[[1.3, 1.7, 1.0, 2.0, depth]])).0))
-        .collect();
-    (expected, cut)
-}
-
-/// Every cut volume within 0.05% of `expected`, or the list of those that are not.
-fn assert_volumes(what: &str, expected: f64, cut: &[(f64, f64)]) -> Vec<String> {
-    cut.iter()
-        .filter(|(_, volume)| (volume - expected).abs() > 5.0e-4 * expected)
-        .map(|(yaw, volume)| format!("{what}, site yaw {yaw} deg: {volume:.6} m3, expected {expected:.6}"))
-        .collect()
+/// [`SHEET`] with a 0.4 m by 1 m recess of each depth, under each yaw: the
+/// cuts whose volume is more than 0.05% off.
+fn volume_mismatches(depths: &[f64]) -> Vec<String> {
+    let mut wrong = Vec::new();
+    for &depth in depths {
+        let expected = SHEET[0] * SHEET[1] * SHEET[2] - 0.4 * 1.0 * depth;
+        for yaw in YAWS_DEG {
+            let ifc = fixture(yaw, SHEET, &[[1.3, 1.7, 1.0, 2.0, depth]]);
+            let result = process(ifc.as_bytes(), &ProcessingRequest::full_pass(), &mut ());
+            let hosts: Vec<&MeshData> = result.meshes.iter().filter(|mesh| mesh.express_id == HOST).collect();
+            assert_eq!(hosts.len(), 1, "the wall meshes as one body");
+            let volume = signed_volume(&hosts[0].positions, &hosts[0].indices).abs();
+            if (volume - expected).abs() > 5.0e-4 * expected {
+                let mm = depth * 1000.0;
+                wrong.push(format!("{mm} mm recess, site yaw {yaw} deg: {volume:.6} m3, expected {expected:.6}"));
+            }
+        }
+    }
+    wrong
 }
 
 #[test]
 fn a_recess_keeps_a_skin_of_two_millimetres_or_more() {
-    let mut wrong = Vec::new();
-    for depth in [0.006, 0.010] {
-        let (expected, cut) = recessed_sheet(depth);
-        wrong.extend(assert_volumes(&format!("{} mm recess", depth * 1000.0), expected, &cut));
-    }
+    let wrong = volume_mismatches(&[0.006, 0.010]);
     assert!(wrong.is_empty(), "{wrong:#?}");
 }
 
@@ -207,47 +194,23 @@ fn a_recess_keeps_a_skin_of_two_millimetres_or_more() {
 /// yaws and for the 11 mm one at 30 degrees, the sheet cut through.
 #[test]
 fn a_recess_keeps_a_skin_thinner_than_a_millimetre() {
-    let mut wrong = Vec::new();
-    for depth in [0.011, 0.0112, 0.0118] {
-        let (expected, cut) = recessed_sheet(depth);
-        wrong.extend(assert_volumes(&format!("{} mm recess", depth * 1000.0), expected, &cut));
-    }
+    let wrong = volume_mismatches(&[0.011, 0.0112, 0.0118]);
     assert!(wrong.is_empty(), "{wrong:#?}");
 }
 
-/// Surface area of each mesh of `id`, smallest first.
-fn areas_of(ifc: &str, id: u32) -> Vec<f64> {
-    let result = process(ifc.as_bytes(), &ProcessingRequest::full_pass(), &mut ());
-    let mut areas: Vec<f64> = result
-        .meshes
-        .iter()
-        .filter(|mesh| mesh.express_id == id)
-        .map(|mesh| {
-            let point = |i: u32| [0, 1, 2].map(|k| f64::from(mesh.positions[i as usize * 3 + k]));
-            mesh.indices
-                .chunks_exact(3)
-                .map(|t| {
-                    let [a, b, c] = [point(t[0]), point(t[1]), point(t[2])];
-                    let (u, v) = ([0, 1, 2].map(|k| b[k] - a[k]), [0, 1, 2].map(|k| c[k] - a[k]));
-                    let n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
-                    0.5 * (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt()
-                })
-                .sum()
-        })
-        .collect();
-    areas.sort_by(f64::total_cmp);
-    areas
-}
-
 /// The Revit wall: two 12 mm finish layers and a 250 mm core. IfcOpenShell
-/// 0.8.2 cuts the wall to 45.1495 m2 of surface. Without the fix the layer
-/// with the recess comes back 13.1168 m2: the 1 mm skin, 19.2 mm by 3.65 m,
-/// is gone with both of its faces (0.140 m2). Each of the three rules in the
-/// module doc loses it alone.
+/// 0.8.2 cuts the wall to 45.1495 m2 of surface and 1.778319 m3. Without the
+/// fix the layer with the recess comes back 13.1168 m2: the 1 mm skin, 19.2 mm
+/// by 3.65 m, is gone with both of its faces (0.140 m2) and its 70 cm3. Each
+/// of the three rules in the module doc loses it alone. The volume bound is
+/// 30 cm3, so a skin left 2 mm thick (70 cm3 over) fails as well.
 #[test]
 fn a_finish_layer_keeps_the_skin_behind_an_11_mm_recess() {
     let ifc = include_str!("fixtures/thin_skin_recess_rvt01_14638.ifc");
-    let areas = areas_of(ifc, 14638);
+    let result = process(ifc.as_bytes(), &ProcessingRequest::full_pass(), &mut ());
+    let layers: Vec<&MeshData> = result.meshes.iter().filter(|mesh| mesh.express_id == 14638).collect();
+    let mut areas: Vec<f64> = layers.iter().map(|mesh| surface_area(mesh)).collect();
+    areas.sort_by(f64::total_cmp);
     let expected = [13.2569, 13.2570, 18.6354];
     assert_eq!(areas.len(), expected.len(), "one mesh per layer: {areas:?}");
     for (area, want) in areas.iter().zip(expected) {
@@ -255,4 +218,6 @@ fn a_finish_layer_keeps_the_skin_behind_an_11_mm_recess() {
     }
     let total: f64 = areas.iter().sum();
     assert!((total - 45.1495).abs() < 0.01, "wall surface {total:.4} m2, IfcOpenShell 45.1495");
+    let volume: f64 = layers.iter().map(|mesh| signed_volume(&mesh.positions, &mesh.indices).abs()).sum();
+    assert!((volume - 1.778319).abs() < 3.0e-5, "wall volume {volume:.6} m3, IfcOpenShell 1.778319");
 }

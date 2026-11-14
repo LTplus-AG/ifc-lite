@@ -368,9 +368,8 @@ pub(super) fn detect(host: &Mesh, f: &CutterFrame, pad: f64) -> ExitCaps {
         // A depth whose parity does not AGREE between two ray directions is not
         // evidence and is skipped rather than counted either way: the surface
         // there is not closed to a ray, and a coin flip must not remove a push.
-        // The first sample sits just past the flush band: a skin thinner than
-        // `probe_offset` behind the cap is host all the same (the 1 mm left by
-        // an 11 mm recess in a 12 mm sheet read empty at 4 mm and was pushed).
+        // `FLUSH_BAND` first: a skin thinner than `probe_offset` (4 mm or
+        // more) behind the cap is host all the same.
         [FLUSH_BAND, f.probe_offset(), pad * 0.5, pad].into_iter().any(|t| {
             point_inside_mesh_agreed(host, f.point_at(cu, cv, from + dir * t)).unwrap_or(false)
         })

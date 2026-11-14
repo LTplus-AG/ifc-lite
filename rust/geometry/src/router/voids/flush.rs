@@ -5,15 +5,17 @@
 //! How far a host face may sit from a cutter cap and still be on it.
 //!
 //! Three rules ask whether a cap ends ON a host face or short of it: the prism
-//! cap extension, the recess test of the rectangle paths, and the exit-cap
-//! probe. Each used to allow about a millimetre, so a recess ending within a
-//! millimetre of the far face was read as reaching it and pushed through. An
-//! 11 mm recess in a 12 mm finish layer lost its 1 mm skin that way, through
-//! whichever of the three ran.
+//! cap extension, the exit-cap probe, and the recess test of the rectangle
+//! paths. Each used to allow about a millimetre, so a recess ending within a
+//! millimetre of the far face was read as reaching it and pushed through.
 //!
-//! They share the bounds below, which are steps of the kernel grid: what
-//! rounding to the grid and f32 storage can move a face, and no more. Host
-//! material deeper than that behind a cap is a skin the author left.
+//! The two bounds here are steps of the kernel grid: what rounding to the
+//! grid can move a face, and no more. The extension and the probe use
+//! [`FLUSH_BAND`], the widest gap that is still flush; wider, and they take a
+//! skin the author left. The recess test uses the smaller
+//! [`recess_face_tol`], because the same tolerance decides that an opening
+//! starts inside the host, and wider there turns an interior opening into a
+//! recess.
 
 use crate::csg::plane_eps::PlaneEps;
 use crate::kernel::mesh_bridge::SNAP_GRID;

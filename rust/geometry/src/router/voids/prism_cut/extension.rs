@@ -51,12 +51,10 @@ pub(super) fn extend_prism_caps(pf: &mut PrismFrame, tris: &[PTri], aabbs: &[(V3
     let span = pf.d1() - pf.d0();
     let delta = (span * 0.1).clamp(0.005, 0.5);
     let mag = pf.corner_mag();
-    // Flush-exclusion band: a host FACE lying flush ON the cap plane (the
-    // flush window/sleeve case) is not material BEYOND the plane and must not
-    // block the extension; geometry past the band does. The band is grid
-    // rounding, not a millimetre: at 1 mm the skin behind an 11 mm recess in a
-    // 12 mm sheet sat inside it, unseen, and the cap went through it. The
-    // exact path draws the same line (`exit_cap`'s shallow probe).
+    // Flush-exclusion band: a host FACE within `FLUSH_BAND` of the cap plane
+    // lies on it (the flush window/sleeve case) and does not block the
+    // extension; geometry past the band does. `mag * 4.0e-7` is the f32
+    // floor, which passes the band beyond about 150 m from the origin.
     let band = FLUSH_BAND.max(mag * 4.0e-7);
     let pad = 1.0e-6 * (1.0 + mag);
     for hi_side in [false, true] {

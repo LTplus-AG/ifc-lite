@@ -50,6 +50,11 @@ export { BufferBuilder } from './buffer-builder.js';
 export { CoordinateHandler, NORMAL_COORD_THRESHOLD_M } from './coordinate-handler.js';
 export type { RtcFrame } from './rtc-frame.js';
 export { computeWorkerCount, pickWorkerCount, type WorkerCountInputs, type WorkerCountResult } from './worker-count.js';
+// SPIKE (streaming scan): a pool started at the pick.
+export { planLoadWorkerCount } from './worker-count.js';
+export { spawnGeometryWorker } from './geometry-worker-init.js';
+export { offerPoolAdoption, withdrawPoolAdoption, type PoolAdoption } from './pool-adoption.js';
+export type { ShardColumns } from './shard-stitch.js';
 export { getGeometryStreamWatchdogMs, type WatchdogInputs } from './watchdog.js';
 export { DEFAULT_HUNG_JOB_TIMEOUT_MS, type SkippedHungElements } from './hung-job-recovery.js';
 // #4902: which pre-worker pipeline phase a consumer's own stream watchdog

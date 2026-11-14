@@ -41,6 +41,7 @@ import { mergeShardStyleSlices, type MergedShardStyles, type StylesSlice } from 
 // (and vice versa) instead of fetching the same binary a second time.
 import { compileSharedWasmModule } from './wasm-shared-module.js';
 import { stitchShards, type ShardColumns } from './shard-stitch.js';
+import { takePoolAdoption } from './pool-adoption.js';
 import { NOOP_LOAD_TRACE, accountWorkerMessages, countCopy, enableWorkerTrace, isTraceSpansMessage } from '@ifc-lite/load-trace';
 import { resolveRtcFrame } from './rtc-frame.js';
 import {
@@ -156,6 +157,8 @@ export async function* processParallel(
     sharedBuffer = new SharedArrayBuffer(buffer.byteLength);
     new Uint8Array(sharedBuffer).set(countCopy('source.geometrySab', buffer));
   }
+  // SPIKE (streaming scan): a pool the viewer started at the pick.
+  const adoption = takePoolAdoption(sharedBuffer);
 
   // N independent WASM-instance workers, each running
   // `geometry.worker.ts` (one `@ifc-lite/wasm` instance per worker).
@@ -498,12 +501,17 @@ export async function* processParallel(
   // explicit `workerCountOverride` so the A/B knob can't OOM the tab.
   const fileSizeMB = buffer.byteLength / (1024 * 1024);
   const { cores, ...workerCountResult } = planLoadWorkerCount(fileSizeMB, options?.workerCountOverride);
-  const workerCount = workerCountResult.count;
+  const workerCount = adoption ? adoption.workers.length : workerCountResult.count;
 
   // Await the ONE shared compile (started up-front) so every worker instantiates
   // the SAME module via `initSync` instead of recompiling the binary N+1 times.
   // `null` (URL unresolved / compile failed) keeps the legacy per-worker `init`.
   const sharedWasmModule = await wasmModulePromise;
+  // SPIKE: wait for the shards scanned while the file arrived BEFORE this pool
+  // installs its handlers on the adopted workers (they report on their own
+  // message type, but must be finished before the pool owns them).
+  const adoptedShards = adoption?.shards ? await adoption.shards : null;
+  if (adoption) console.log(`[stream][spike] adopted ${adoption.workers.length} pick-time workers${adoptedShards ? `, ${adoptedShards.length} streamed shards` : ''}`);
   if (sharedWasmModule) {
     console.log('[stream] shared wasm module compiled once — workers initSync (no per-worker recompile)');
   }
@@ -533,7 +541,9 @@ export async function* processParallel(
   // throw would never be terminated — a spawned-worker-per-failed-load leak.
   try {
     for (let i = 0; i < workerCount; i++) {
-      const worker = makeGeometryWorker();
+      const worker = adoption && i < adoption.workers.length
+        ? enableWorkerTrace(accountWorkerMessages(adoption.workers[i], 'geometry'), trace, `geom-${tracedWorkers++}`)
+        : makeGeometryWorker();
       workers.push(worker);
       installWorkerHandlers(worker, i);
       postInitMessages(worker);
@@ -877,6 +887,14 @@ export async function* processParallel(
       return;
     }
     console.log(`[stream][shard] stitched ${stitched.ids.length} entities @ ${elapsed()}ms (shard scan started @ ${shardScanDispatchedAt}ms)`);
+    if ((globalThis as { __streamScanDigest?: boolean }).__streamScanDigest) {
+      // SPIKE identity: FNV-1a over the stitched columns and the attributed counts.
+      let h = 0x811c9dc5;
+      const mix = (v: number) => { h = Math.imul(h ^ (v >>> 0), 0x01000193) >>> 0; };
+      for (const col of [stitched.ids, stitched.starts, stitched.lengths]) { mix(col.length); for (let i = 0; i < col.length; i++) mix(col[i]); }
+      mix(stitched.oversizedIdCount ?? 0); mix(stitched.malformedRecordCount ?? 0);
+      console.log(`[stream][spike] index digest ${h.toString(16)} n=${stitched.ids.length} shards=${shards.length}`);
+    }
     // Exact-size SAB-backed columns straight from the stitch — no contiguity
     // copy needed, and deliverEntityIndex shares them zero-copy.
     const ids = stitched.ids;
@@ -1024,6 +1042,14 @@ export async function* processParallel(
     shardScanDispatchedAt = elapsed();
     shardScanSpan = trace.begin('geometry.shardScan', { shards: n }, poolSpan);
     gateTracker.markShardScanStarted();
+    if (adoptedShards) {
+      // SPIKE: already scanned while the file arrived. Stitch on a macrotask so
+      // `startPrepass` (assigned later in this synchronous setup) is real.
+      shardResults.length = 0;
+      for (const shard of adoptedShards) shardResults.push(shard);
+      shardResultsRemaining = 0;
+      setTimeout(onAllShardsReceived, 0);
+    } else {
     console.log(`[stream][shard] dispatching ${n} shard scans over ${(len / (1024 * 1024)).toFixed(1)}MB @ ${shardScanDispatchedAt}ms`);
     for (let i = 0; i < n; i++) {
       const rangeStart = Math.floor((i * len) / n);
@@ -1053,6 +1079,7 @@ export async function* processParallel(
       }
       startPrepass(false);
     });
+    }
   }
 
   const prepassWorker = makePrepassWorker();

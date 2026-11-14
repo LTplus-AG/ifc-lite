@@ -54,6 +54,8 @@ import { publishLoadTrace } from '../lib/perf/activeLoadTrace.js';
 import { acquireFileBuffer, type AcquiredBuffer } from '../utils/acquireFileBuffer.js';
 import { buildGeometryCacheKey } from './geometryCacheKey.js';
 import { armColdSceneCapture, coldCaptureEligible } from './sceneSnapshotLoad.js';
+import { startStreamScanAtPick, streamScanSessionFor } from './ingest/streamScanSpike.js';
+import { getGeomWorkerOverride as spikeWorkerOverride } from '@/store/constants';
 import { forwardEntityIndexTo, createSourceFingerprintCell, type EntityIndexSink } from './entityIndexHandoff.js';
 import { computeSourceFingerprint, computeSourceFingerprintFromBlob } from '@ifc-lite/cache';
 import { SERVER_URL, USE_SERVER, CACHE_SIZE_THRESHOLD, CACHE_MAX_SOURCE_SIZE, CACHE_MESH_ONLY_MAX_SIZE } from '../utils/ifcConfig.js';
@@ -311,6 +313,8 @@ export function useIfcLoader() {
       }
     }
     runPickStart({ file, target, kernel: geometryKernel, retry: options?.isResourceRetry === true || options?.tierOverride !== undefined, isCurrent }); // the one place work starts before the reset (ingest/pickStart.ts)
+    // SPIKE (`?streamScan=a|ab`, off by default): pool, fingerprint and (ab) read + scan from the pick.
+    startStreamScanAtPick(file, target.kind === 'primary' && geometryKernel.kind === 'exact' && options?.isResourceRetry !== true && options?.tierOverride === undefined, spikeWorkerOverride());
     // Track total elapsed time for complete user experience
     const totalStartTime = performance.now();
     const trace = loadTracer.startLoad(modelId, { journey: target.kind === 'federated' ? 'J4' : 'J1', modelKind: target.kind }, totalStartTime); // #6956
@@ -708,9 +712,18 @@ export function useIfcLoader() {
 
       if (!pointCloudFormat && !USE_SERVER && detectFormat(headBuf) === 'ifc') assertWasmSourceSize(file.size);
       const fileReadStart = performance.now();
+      const spike = pointCloudFormat ? null : streamScanSessionFor(file);
       const acquired: AcquiredBuffer = pointCloudFormat
         ? { buffer: headBuf, view: new Uint8Array(headBuf), isShared: false }
-        : await acquireFileBuffer(file);
+        : spike?.read ? await spike.read : await acquireFileBuffer(file);
+      if (spike) {
+        const m = spike.marks;
+        if (m.readDone !== undefined) trace.record('spike.read', m.pick, m.readDone);
+        void spike.adoption.shards?.then((shards) => {
+          if (shards && m.firstSlice !== undefined && m.scansDone !== undefined) trace.record('spike.sliceScan', m.firstSlice, m.scansDone);
+          console.log(`[spike] streamScan=${spike.mode} slices=${m.slices} rescans=${m.rescans} readDone=${m.readDone !== undefined ? (m.readDone - m.pick).toFixed(0) : '-'}ms scansDone=${m.scansDone !== undefined ? (m.scansDone - m.pick).toFixed(0) : '-'}ms after pick`);
+        });
+      }
       // The one source buffer; ArrayBuffer-only APIs copy at their call site (ingest/sourceBuffers.ts).
       let buffer: ArrayBuffer | SharedArrayBuffer = acquired.buffer;
       const fileReadMs = performance.now() - fileReadStart;
@@ -736,7 +749,9 @@ export function useIfcLoader() {
       }
 
       loadedBufferByteLength = buffer.byteLength;
-      const sourceKeyFingerprint = trace.span('source.fingerprint', () => computeSourceFingerprint(new Uint8Array(buffer)));
+      // SPIKE: a plain (non-archive) source has the same fingerprint from Blob slices, started at the pick.
+      const spikeFingerprint = spike && buffer === acquired.buffer ? await spike.fingerprint : null;
+      const sourceKeyFingerprint = spikeFingerprint ?? trace.span('source.fingerprint', () => computeSourceFingerprint(new Uint8Array(buffer)));
       modelSourceIdentity = `${file.name}:${sourceKeyFingerprint.hex}`;
       if (target.kind === 'primary') updateModel(modelId, { sourceFingerprint: modelSourceIdentity });
       // A SAB here is the un-unwrapped file, so `headBuf` is its head.

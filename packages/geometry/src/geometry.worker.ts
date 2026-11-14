@@ -188,6 +188,20 @@ export interface GeometryWorkerScanShardMessage {
   rangeEnd: number;
 }
 
+/**
+ * SPIKE (streaming scan): scan one range of a file that is still arriving,
+ * copying only the bytes the range needs into wasm. `sliceEnd` is how far the
+ * bytes had landed (range end + slack, or EOF). Offsets returned are GLOBAL.
+ */
+export interface GeometryWorkerScanSliceMessage {
+  type: 'scan-slice';
+  sharedBuffer: SharedArrayBuffer;
+  sliceIndex: number;
+  rangeStart: number;
+  rangeEnd: number;
+  sliceEnd: number;
+}
+
 export interface GeometryWorkerPrePassMessage {
   type: 'prepass-streaming';
   sourceFingerprint?: SharedArrayBuffer;
@@ -272,6 +286,7 @@ export type GeometryWorkerRequest =
   | GeometryWorkerSetTessellationQualityMessage
   | GeometryWorkerSetSkipSmallCutsMessage
   | GeometryWorkerScanShardMessage
+  | GeometryWorkerScanSliceMessage
   | GeometryWorkerResolveStylesShardMessage
   | GeometryWorkerPrePassShardedMessage
   | GeometryWorkerFinalizeStylesMessage
@@ -1525,6 +1540,43 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
             throw largeFilePrepassError(retryErr, sharedBuffer.byteLength) ?? retryErr;
         }
       }
+      return;
+    }
+
+    if (e.data.type === 'scan-slice') {
+      const ifcApi = await ensureInit();
+      const { sharedBuffer, sliceIndex, rangeStart, rangeEnd, sliceEnd } = e.data;
+      // The scanner treats a relative start of 0 as "start of file, skip the
+      // header", so a later range starts its slice one byte early (relative 1).
+      const base = rangeStart === 0 ? 0 : rangeStart - 1;
+      const scanApi = ifcApi as unknown as {
+        scanEntityIndexShard: (data: Uint8Array, rangeStart: number, rangeEnd: number) =>
+          { ids: Uint32Array; starts: Uint32Array; lengths: Uint32Array; classes: Uint8Array; handoff: number; oversizedIdStarts?: Uint32Array; malformedStart?: number };
+      };
+      let view: Uint8Array = new Uint8Array(sharedBuffer, base, sliceEnd - base);
+      let shard;
+      try {
+        shard = scanApi.scanEntityIndexShard(view, rangeStart - base, rangeEnd - base);
+      } catch (err) {
+        prepareSabViewRetry('scan-slice', err);
+        view = view.slice();
+        shard = scanApi.scanEntityIndexShard(view, rangeStart - base, rangeEnd - base);
+      }
+      if (base !== 0) {
+        const starts = shard.starts;
+        for (let i = 0; i < starts.length; i++) starts[i] += base;
+        if (shard.oversizedIdStarts) for (let i = 0; i < shard.oversizedIdStarts.length; i++) shard.oversizedIdStarts[i] += base;
+      }
+      const handoff = shard.handoff >= 0 ? shard.handoff + base : shard.handoff;
+      const malformedStart = shard.malformedStart === undefined ? undefined : shard.malformedStart + base;
+      (self as unknown as Worker).postMessage(
+        {
+          type: 'slice-result', sliceIndex,
+          ids: shard.ids, starts: shard.starts, lengths: shard.lengths, classes: shard.classes,
+          handoff, oversizedIdStarts: shard.oversizedIdStarts, malformedStart,
+        },
+        [shard.ids.buffer, shard.starts.buffer, shard.lengths.buffer, shard.classes.buffer, ...(shard.oversizedIdStarts ? [shard.oversizedIdStarts.buffer] : [])],
+      );
       return;
     }
 

@@ -498,7 +498,6 @@ export function useIfcLoader() {
         });
       }
       releaseNotifications(); // before the first await: a hold must never span one
-
       // The ONE finalizer for every format/platform/role. Primary keeps the
       // historical updateModel-only behaviour; federated runs the georef-align
       // → id-offset → addModel sequence lifted

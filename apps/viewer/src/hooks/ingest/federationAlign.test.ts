@@ -18,7 +18,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
-import type { CoordinateInfo, EntityWorldAabb, GeometryResult, MeshData } from '@ifc-lite/geometry';
+import type { CoordinateInfo, EntityWorldAabb, GeometryResult, MeshData, PointCloudAsset } from '@ifc-lite/geometry';
 import { alignGeometryToReference, type ModelSpatialPlacement } from './federationAlign.js';
 import { spatialReferenceFromIfc } from '../../lib/geo/ifc-spatial-reference.js';
 
@@ -696,5 +696,48 @@ describe('alignGeometryToReference with a map-absolute source (#2526)', () => {
       1e-3,
       'compliant source',
     );
+  });
+});
+
+describe('alignGeometryToReference — inline point clouds ride with the meshes (#10029)', () => {
+  function cloud(world: [number, number, number][], origin?: [number, number, number]): PointCloudAsset {
+    const o = origin ?? [0, 0, 0];
+    const positions = new Float32Array(world.flatMap((p) => p.map((v, axis) => v - o[axis])));
+    return { expressId: 90, ...(origin ? { origin } : {}), chunk: { pointCount: world.length, positions,
+      bbox: { min: [positions[0], positions[1], positions[2]], max: [positions[0], positions[1], positions[2]] } } };
+  }
+
+  it('moves a cloud point and the mesh vertex at the same world point together, keeping millimetres (same CRS)', async () => {
+    const mesh = boxMesh(33, [2_600_000.01, 0.02, 0.03], [2_600_000.01, 0.02, 0.03], [2_600_000, 0, 0]);
+    mesh.origin = [2_600_000, 0, 0];
+    const points = cloud([[2_600_000.01, 0.02, 0.03], [2_600_000.11, 0.02, 0.03]], [2_600_000, 0, 0]);
+    const geom = { ...geometry([mesh]), pointClouds: [points] };
+    const before = points.chunk;
+    assert.equal(await alignGeometryToReference(geom, georef({ eastings: 10 }), georef({})), 'same-crs');
+    const cloudX = (i: number) => points.origin![0] + points.chunk.positions[3 * i];
+    assert.ok(Math.abs(cloudX(0) - 2_600_010.01) < 1e-4, `cloud point at ${cloudX(0)}`);
+    assert.ok(Math.abs(cloudX(1) - cloudX(0) - 0.1) < 1e-4);
+    assert.ok(Math.abs(cloudX(0) - ((mesh.origin?.[0] ?? 0) + mesh.positions[0])) < 1e-4, 'cloud and mesh coincide');
+    assert.notEqual(points.chunk, before, 'a new chunk, so the old one is an intact rollback snapshot');
+    assert.equal(before.positions[0], Math.fround(0.01));
+  });
+
+  it('aligns a geometry holding only an inline cloud and gives it real bounds', async () => {
+    const points = cloud([[1, 2, 3]]);
+    const geom = { ...geometry([]), pointClouds: [points] };
+    assert.equal(await alignGeometryToReference(geom, georef({ eastings: 2500 }), georef({})), 'same-crs');
+    assert.ok(Math.abs(points.origin![0] + points.chunk.positions[0] - 2501) < 1e-3);
+    assert.ok(Math.abs(geom.coordinateInfo.originalBounds.min.x - 2501) < 1e-3);
+  });
+
+  it('keeps a missing (NaN) cloud point missing and still aligns the model', async () => {
+    const mesh = boxMesh(34, [0, 0, 0], [1, 1, 1]);
+    const points = cloud([[NaN, 0, 0], [1, 2, 3]]);
+    const geom = { ...geometry([mesh]), pointClouds: [points] };
+    assert.equal(await alignGeometryToReference(geom, georef({ eastings: 2500 }), georef({})), 'same-crs');
+    const p = points.chunk.positions;
+    assert.ok(Number.isNaN(p[0]) && Number.isNaN(p[1]) && Number.isNaN(p[2]), 'the missing point is not invented');
+    assert.ok(Math.abs(points.origin![0] + p[3] - 2501) < 1e-3);
+    assert.deepEqual(points.chunk.bbox, { min: [p[3], p[4], p[5]], max: [p[3], p[4], p[5]] });
   });
 });

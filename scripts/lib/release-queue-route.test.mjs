@@ -143,3 +143,12 @@ test('QUEUE: a comment between conditions does not drop the conditions after it 
   const text = 'queue_rules:\n  - name: release\n    queue_conditions:\n      - head=changeset-release/main\n    # entry gate\n      - label=go\n    merge_conditions:\n      - check-success=x\n';
   assert.deepEqual(parseQueueRules(text), [{ name: 'release', queue: ['head=changeset-release/main', 'label=go'], merge: ['check-success=x'], unread: false }]);
 });
+
+test('#10273 commit_message_format reads in its known shape and refuses anything else in it', () => {
+  const rule = (body) => `queue_rules:\n  - name: release\n    queue_conditions:\n      - head=changeset-release/main\n    merge_method: squash\n    commit_message_format:\n${body}`;
+  const known = rule('      title: pr-title\n      body: pr-body\n      trailers:\n        - co-authored-by\n');
+  assert.deepEqual(parseQueueRules(known).map((r) => r.unread), [false]);
+  for (const extra of ['      template: "{{ body }}"\n', '      title: "{{ title }} [skip ci]"\n', '        queue: release\n']) {
+    assert.deepEqual(parseQueueRules(rule(`      title: pr-title\n${extra}`)).map((r) => r.unread), [true], extra);
+  }
+});

@@ -100,6 +100,13 @@ function readRules(text, topKey) {
       }
       continue;
     }
+    if (section === 'commit_message_format') {
+      // Shapes only the squash message (#10273), never what is queued or merged.
+      // Exactly its known keys; anything else in it stays unread.
+      if (!/^ {6}(title|body):\s+[\w-]+\s*(#.*)?$/.test(line) && !/^ {6}trailers:\s*(#.*)?$/.test(line)
+        && !/^ {8}- [\w-]+\s*(#.*)?$/.test(line)) unread(line);
+      continue;
+    }
     if ((m = /^ {6}- (\S.*?)\s*$/.exec(line))) (rule.lists[section] ??= []).push(m[1]);
     else unread(line);
   }

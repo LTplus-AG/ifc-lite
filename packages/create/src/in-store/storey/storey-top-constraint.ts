@@ -94,11 +94,17 @@ export function setTopConstraintInStore(store: IfcDataStore, editor: StoreEditor
       }
       if (!storey) {
         writeTopAttachment(view, elementId, NEXT_STOREY_ABOVE, 'relative');
-        return { remesh: [] };
+        if (!wasClipped) return { remesh: [] };
+        // A pending level still replaces the old roof cut. Keep the current
+        // envelope height, then use the same planar/quantity path below.
+        const current = topWorld(inventory, draft, elementId);
+        if (!current) throw new Error(`#${elementId} has a body this editor cannot resize, so its top cannot be fitted`);
+        reach = current.world;
+      } else {
+        writeTopAttachment(view, elementId, storey.GlobalId, constraint.kind === 'storeyAbove' ? 'relative' : 'explicit');
+        // Storey floors in world Z: the target's floor frame where it has one.
+        reach = storeyFloorWorld(inventory, storey);
       }
-      writeTopAttachment(view, elementId, storey.GlobalId, constraint.kind === 'storeyAbove' ? 'relative' : 'explicit');
-      // Storey floors in world Z: the target's floor frame where it has one.
-      reach = storeyFloorWorld(inventory, storey);
     }
     const top = topWorld(inventory, draft, elementId);
     if (!top) throw new Error(`#${elementId} has a body this editor cannot resize, so its top cannot be fitted`);

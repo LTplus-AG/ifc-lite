@@ -109,13 +109,13 @@ it.each([false, true])('#9352 SDK roof quantity readback respects the final cut 
 });
 
 
-it.each([{ kind: 'roof', netOnly: false }, { kind: 'storey', netOnly: false }, { kind: 'roof', netOnly: true }] as const)('#9352 SDK reads preserved quantities after a pitched refit (target=$kind, netOnly=$netOnly)', async ({ kind, netOnly }) => {
+it.each([{ kind: 'roof', netOnly: false }, { kind: 'storey', netOnly: false }, { kind: 'roof', netOnly: true }, { kind: 'pending', netOnly: true }] as const)('#9352 SDK reads preserved quantities after a pitched refit (target=$kind, netOnly=$netOnly)', async ({ kind, netOnly }) => {
   const { store } = await parseModel(readFileSync(new URL('../../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url)), { disableWorkerScan: true });
   const backend = new HeadlessBackend(store, 'quantities.ifc', 'm');
   try {
     const bim = createBimContext({ backend }), S = bim.store;
     const home = S.listStoreyLevels('m')[0].expressId;
-    const above = S.addStorey('m', { Name: 'Above', Elevation: 4 });
+    const above = kind === 'pending' ? null : S.addStorey('m', { Name: 'Above', Elevation: 4 });
     const pitched = S.addRoof('m', home, { Position: [0, 20, 4], Width: 10, Depth: 8, Thickness: .25, EdgeSlopes: [Math.PI / 6, 0, Math.PI / 6, 0], Overhang: .5 });
     const flat = S.addRoof('m', home, { Position: [0, 20, 4], Width: 10, Depth: 8, Thickness: .25 });
     const wall = S.addWall('m', home, { Start: [5, 20, 0], End: [5, 28, 0], Thickness: .2, Height: 3, TopConstraint: { kind: 'fixed' } });
@@ -128,10 +128,12 @@ it.each([{ kind: 'roof', netOnly: false }, { kind: 'storey', netOnly: false }, {
       view.setQuantity(wall.expressId, 'Qto_WallBaseQuantities', 'GrossVolume', 4.8, QuantityType.Volume);
     }
     S.setTopConstraint(wall, { kind: 'roof', roofId: pitched.expressId });
-    S.setTopConstraint(wall, kind === 'roof' ? { kind: 'roof', roofId: flat.expressId } : { kind: 'storey', storeyId: above.expressId });
+    S.setTopConstraint(wall, kind === 'roof' ? { kind: 'roof', roofId: flat.expressId }
+      : kind === 'storey' ? { kind: 'storey', storeyId: above!.expressId } : { kind: 'storeyAbove' });
+    if (kind === 'pending') S.addStorey('m', { Name: 'First above', Elevation: 8 });
     const check = (context: typeof bim) => {
       const quantities = context.quantities(wall).find(set => set.name === 'Qto_WallBaseQuantities')!.quantities;
-      if (netOnly) expect(quantities.find(q => q.name === 'NetSideArea')?.value).toBeCloseTo(28, 8);
+      if (netOnly) expect(quantities.find(q => q.name === 'NetSideArea')?.value).toBeCloseTo(kind === 'pending' ? 60 : 28, 7);
       else {
         expect(quantities.find(q => q.name === 'Height')?.value).toBeCloseTo(4, 8);
         expect(quantities.find(q => q.name === 'GrossVolume')?.value).toBeCloseTo(6.4, 8);

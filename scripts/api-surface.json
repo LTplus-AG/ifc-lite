@@ -5836,6 +5836,7 @@
     "importDxf: function",
     "isCounterClockwise: function",
     "isDoorOrWindow: function",
+    "isDxfDimensionExportable: function",
     "isFeatureElementType: function",
     "isGPUComputeAvailable: function",
     "isIfcTypeVisible: function",

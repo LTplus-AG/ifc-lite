@@ -83,8 +83,8 @@ export const section2dEn = {
   'section2d.export.omission.rasterReferences': 'visible PDF/image reference underlays',
   'section2d.export.omission.requestedScale': 'the requested scale (the active sheet sets the PDF scale)',
   'section2d.export.omission.pdfTitle': 'This PDF will leave out:',
-  'section2d.export.omission.dxfTitle': 'Export drawing as DXF?',
-  'section2d.export.omission.dxfDescription': 'This DXF will leave out {items}. Export anyway?',
+  "section2d.export.omission.drawingTitle": "Export drawing with omissions?",
+  "section2d.export.omission.drawingDescription": "This output will leave out {items}. Continue?",
   'section2d.export.omission.continue': 'Export anyway',
   'section2d.export.otherCutDimensionsLeftOut': {
     one: '{count} dimension drawn on another cut was left out.',

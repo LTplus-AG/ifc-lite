@@ -79,8 +79,8 @@ export const section2dIt = {
   "section2d.export.omission.rasterReferences": "sfondi di riferimento PDF/immagine visibili",
   "section2d.export.omission.requestedScale": "la scala richiesta (la tavola attiva imposta la scala PDF)",
   "section2d.export.omission.pdfTitle": "Questo PDF ometterà:",
-  "section2d.export.omission.dxfTitle": "Esportare il disegno come DXF?",
-  "section2d.export.omission.dxfDescription": "Questo DXF ometterà {items}. Esportare comunque?",
+  "section2d.export.omission.drawingTitle": "Produrre il disegno con omissioni?",
+  "section2d.export.omission.drawingDescription": "In questo risultato mancheranno {items}. Continuare?",
   "section2d.export.omission.continue": "Esporta comunque",
   "section2d.export.otherCutDimensionsLeftOut": {
     "one": "{count} quota disegnata su un altro taglio è stata omessa.",

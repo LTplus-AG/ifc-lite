@@ -101,10 +101,13 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
         ))}
       </RibbonGroup>
 
-      {/* The export group renders nothing when a host switched export off; its divider goes with it. */}
-      {isFeatureEnabled('export.files') && <RibbonGroupDivider />}
+      {isFeatureEnabled('export.files') && (
+        <>
+          <RibbonGroupDivider />
 
       <RibbonExportGroup icons={RIBBON_EXPORT_ICONS} />
+        </>
+      )}
 
       {collabEnabled && (
         <>

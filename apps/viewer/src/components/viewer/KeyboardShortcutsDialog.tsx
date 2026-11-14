@@ -58,6 +58,7 @@ interface InfoDialogProps {
  */
 export function KeyboardShortcutsDialog({ open, onClose, initialTab }: InfoDialogProps) {
   const { t } = useTranslation();
+  const learn = isFeatureEnabled('help.tours');
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
@@ -104,7 +105,7 @@ export function KeyboardShortcutsDialog({ open, onClose, initialTab }: InfoDialo
             {/* Wider than a phone: the strip scrolls sideways, and the
                 selected tab stays in view. */}
             <TabsList scrollable className="w-full justify-start max-sm:h-auto">
-              {TABS.filter(({ value }) => value !== 'learn' || isFeatureEnabled('help.tours')).map(({ value, Icon, label }) => (
+              {TABS.filter(({ value }) => value !== 'learn' || learn).map(({ value, Icon, label }) => (
                 <TabsTrigger key={value} value={value} className={TAB_TRIGGER_CLASS}>
                   <Icon className="h-3.5 w-3.5" />
                   {t(label)}
@@ -120,7 +121,7 @@ export function KeyboardShortcutsDialog({ open, onClose, initialTab }: InfoDialo
           <DialogBody asChild><TabsContent value="about" className={TAB_BODY_CLASS}><AboutTab /></TabsContent></DialogBody>
           <DialogBody asChild><TabsContent value="whatsnew" className={TAB_BODY_CLASS}><ChunkErrorBoundary label="What's New tab"><Suspense fallback={null}><WhatsNewTab /></Suspense></ChunkErrorBoundary></TabsContent></DialogBody>
           <DialogBody asChild><TabsContent value="shortcuts" className={TAB_BODY_CLASS}><ShortcutsTab /></TabsContent></DialogBody>
-          {isFeatureEnabled('help.tours') && <DialogBody asChild><TabsContent value="learn" className={TAB_BODY_CLASS}><LearnTab onClose={onClose} /></TabsContent></DialogBody>}
+          {learn && <DialogBody asChild><TabsContent value="learn" className={TAB_BODY_CLASS}><LearnTab onClose={onClose} /></TabsContent></DialogBody>}
         </Tabs>
 
         {/* Footer */}

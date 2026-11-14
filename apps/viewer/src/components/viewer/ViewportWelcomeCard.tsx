@@ -25,6 +25,8 @@
 
 import { isFeatureEnabled } from '@/lib/features';
 import { isPanelAvailable } from '@/lib/panels/availability';
+import { isSurfaceCommandAvailable } from './surface-command-features';
+import { surfaceCommand } from './surface-command-registry';
 import { useEffect, useState } from 'react';
 import { Upload, Cloud, PackagePlus, Building2, GitMerge, ShieldCheck } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
@@ -115,9 +117,11 @@ export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentF
   // What a host switched off (`lib/features`) is left out, not disabled.
   const local = isFeatureEnabled('files.local');
   const samples = isFeatureEnabled('files.samples');
+  const sources = isPanelAvailable('sources');
+  const blank = isSurfaceCommandAvailable(surfaceCommand('file:new-blank', 'palette'));
   const hasRecent = local && recentFiles.length > 0;
   // No way to pick a model here: the page that embeds the viewer opens one.
-  const hostOpens = !local && !isFeatureEnabled('files.sources');
+  const hostOpens = !local && !sources;
 
   return (
     <div {...tourAnchor(TOUR_ANCHORS.emptyStateCard)} className="flex w-full max-w-[500px] flex-col">
@@ -151,7 +155,7 @@ export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentF
                 : t('viewportLighting.container.emptyState.openButton.required')}
           </span>
         </button>}
-        {isFeatureEnabled('files.sources') && <button
+        {sources && <button
           type="button"
           onClick={() => useViewerStore.getState().openPanelInHome('sources')}
           disabled={actionsDisabled}
@@ -162,7 +166,7 @@ export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentF
               lists every registered provider. */}
           <span>{t('viewportLighting.container.emptyState.openFromCloud')}</span>
         </button>}
-        {isFeatureEnabled('edit.model') && <button type="button" onClick={onStartBlank} disabled={actionsDisabled} className={SECONDARY}>
+        {blank && <button type="button" onClick={onStartBlank} disabled={actionsDisabled} className={SECONDARY}>
           <PackagePlus className="h-4 w-4" aria-hidden="true" />
           <span>{t('viewportLighting.container.emptyState.startBlank')}</span>
         </button>}

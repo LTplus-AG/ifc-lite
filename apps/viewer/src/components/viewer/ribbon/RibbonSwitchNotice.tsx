@@ -15,7 +15,7 @@
  * the one message on their first screen. See `isReturningVisitor`.
  */
 
-import { isFeatureEnabled } from '@/lib/features';
+import { isTourIdAvailable } from '@/lib/tours/tour-availability';
 import { useMemo, useState } from 'react';
 import { PanelTop, X } from 'lucide-react';
 import { startTour } from '@/lib/tours/controller';
@@ -87,7 +87,7 @@ export function RibbonSwitchNotice() {
       <span className="min-w-0 truncate text-foreground/80">
         {t('ribbon.notice.message')}
       </span>
-      {!isMobile && isFeatureEnabled('help.tours') && (
+      {!isMobile && isTourIdAvailable('ribbon') && (
         <>
           <button
             className="shrink-0 font-medium text-primary underline-offset-2 hover:underline"

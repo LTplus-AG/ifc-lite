@@ -25,6 +25,7 @@ import { ArrowUpRight, Command, Sparkles } from 'lucide-react';
 import { useTranslation } from '@/i18n';
 import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
 import { TourInvite } from '@/components/tours/TourInvite';
+import { isTourIdAvailable } from '@/lib/tours/tour-availability';
 
 const FOCUS = 'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded';
 const LINK = `inline-flex min-h-6 items-center gap-1.5 hover:text-primary transition-colors ${FOCUS}`;
@@ -36,7 +37,7 @@ export function WelcomeFooterChips({ tourAvailable }: {
   const { t } = useTranslation();
   // A host can switch the product links and the tours off (`lib/features`).
   const links = isFeatureEnabled('help.product-links');
-  const tour = tourAvailable && isFeatureEnabled('help.tours');
+  const tour = tourAvailable && isTourIdAvailable('welcome');
   return (
     <div className="mt-12 flex w-full flex-wrap items-center justify-between gap-x-6 gap-y-2 text-xs text-muted-foreground">
       {links || tour ? <p data-welcome-learn-line="" className="flex flex-wrap items-center gap-x-1.5 gap-y-1">

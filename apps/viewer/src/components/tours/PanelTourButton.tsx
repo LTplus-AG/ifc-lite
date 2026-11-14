@@ -10,19 +10,19 @@
  * vocabulary (h-5, data-chrome-btn / data-no-drag).
  */
 
-import { isFeatureEnabled } from '@/lib/features';
 import { GraduationCap } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useTranslation } from '@/i18n';
 import { startTour } from '@/lib/tours/controller';
 import { getToursForPanel } from '@/lib/tours/registry';
 import { isTourCompleted } from '@/lib/tours/storage';
+import { isTourAvailable } from '@/lib/tours/tour-availability';
 import type { WorkspacePanelId } from '@/lib/panels/registry';
 
 export function PanelTourButton({ panelId }: { panelId: WorkspacePanelId }) {
   const { t } = useTranslation();
-  const tour = getToursForPanel(panelId)[0];
-  if (!tour || !isFeatureEnabled('help.tours') || isTourCompleted(tour.id, tour.version)) return null;
+  const tour = getToursForPanel(panelId).find(isTourAvailable);
+  if (!tour || isTourCompleted(tour.id, tour.version)) return null;
 
   return (
     <Tooltip>

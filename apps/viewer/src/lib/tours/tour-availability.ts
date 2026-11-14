@@ -14,7 +14,8 @@ import { isFeatureEnabled } from '@/lib/features';
 import { isToolAvailable } from '@/lib/features/tools';
 import { isPanelAvailable } from '@/lib/panels/availability';
 import { toolOfAnchor } from './anchors';
-import type { TourDefinition } from './types';
+import { getTour } from './registry';
+import type { TourDefinition, TourId } from './types';
 
 export function isTourAvailable(tour: TourDefinition): boolean {
   if (!isFeatureEnabled('help.tours')) return false;
@@ -24,4 +25,10 @@ export function isTourAvailable(tour: TourDefinition): boolean {
     const tool = step.anchor ? toolOfAnchor(step.anchor) : undefined;
     return tool === undefined || isToolAvailable(tool);
   });
+}
+
+/** Whether the registered tour `id` can be offered (see `isTourAvailable`). */
+export function isTourIdAvailable(id: TourId): boolean {
+  const tour = getTour(id);
+  return tour !== undefined && isTourAvailable(tour);
 }

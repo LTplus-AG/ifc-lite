@@ -254,7 +254,10 @@ export const createCesiumSlice: StateCreator<CesiumSlice & CesiumCrossSliceState
   cesiumPlacementDraft: null,
 
   // The world context streams imagery and terrain from an outside service; a host can switch that off (`lib/features`).
-  setCesiumAvailable: (wanted) => set((s) => { const available = wanted && isFeatureEnabled('privacy.third-party'); return s.cesiumAvailable === available ? s : { cesiumAvailable: available }; }),
+  setCesiumAvailable: (wanted) => set((s) => {
+    const available = wanted && isFeatureEnabled('privacy.third-party');
+    return s.cesiumAvailable === available ? s : { cesiumAvailable: available };
+  }),
   setCesiumEnabled: (enabled) => set({ cesiumEnabled: enabled && isFeatureEnabled('privacy.third-party') }),
   toggleCesium: () => set((s) => ({
     cesiumEnabled: !s.cesiumEnabled,

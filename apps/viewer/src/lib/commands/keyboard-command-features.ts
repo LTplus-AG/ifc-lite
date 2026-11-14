@@ -27,7 +27,6 @@ export const KEY_COMMAND_FEATURE: Readonly<Partial<Record<KeyCommandId, FeatureI
   'edit.toggleEditMode': 'edit.model',
   'edit.rotate': 'edit.model',
   'edit.duplicate': 'edit.model',
-  'tool.split': 'edit.model',
 };
 
 /** Contexts owned by one feature. A `command.<id>` context counts as `command`. */

@@ -14,7 +14,6 @@
  * shown (the line's separator), so a dismissed invite leaves no stray dot.
  */
 
-import { isFeatureEnabled } from '@/lib/features';
 import { useState, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { useTranslation } from '@/i18n';
@@ -32,7 +31,7 @@ export function TourInvite({ leading }: { leading?: ReactNode } = {}) {
     return isInviteDismissed() || (welcome ? isTourCompleted(welcome.id, welcome.version) : true);
   });
 
-  if (hidden || isMobile || !isFeatureEnabled('help.tours')) return null;
+  if (hidden || isMobile) return null;
 
   return (
     <>

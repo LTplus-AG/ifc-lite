@@ -4,7 +4,7 @@
 
 import { useState } from 'react';
 import { Box, ChevronRight, Layers, Eye, EyeOff, FileBox, Layers3 } from 'lucide-react';
-import { isFeatureEnabled } from '@/lib/features';
+import { isIconFontOffered } from '@/lib/features/icon-font';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
@@ -113,8 +113,8 @@ export function HierarchyNode({
   const [actionsOpen, setActionsOpen] = useState(false);
   const resolvedType = node.ifcType || node.type;
   // Use Lucide icon for non-IFC structural nodes, Material Symbols for IFC classes
-  // The IFC class glyphs come from a hosted icon font; without it (`privacy.third-party` off) every node gets the generic icon.
-  const LucideIcon = NODE_TYPE_ICONS[node.type] ?? (isFeatureEnabled('privacy.third-party') ? undefined : Box);
+  // The IFC class glyphs come from a hosted icon font; a page without it gives every node the generic icon.
+  const LucideIcon = NODE_TYPE_ICONS[node.type] ?? (isIconFontOffered() ? undefined : Box);
   const iconCodepoint = getIfcIconCodepoint(resolvedType);
 
   const noGeometry = isNoGeometryNode(node);

@@ -14,8 +14,13 @@ import { isFeatureEnabled } from './index';
 
 const FONT_CSS = 'https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap';
 
+/** Whether this page links the font; without it the IFC class glyphs cannot render. */
+export function isIconFontOffered(): boolean {
+  return isFeatureEnabled('privacy.third-party');
+}
+
 export function linkIconFont(doc: Document = document): void {
-  if (!isFeatureEnabled('privacy.third-party')) return;
+  if (!isIconFontOffered()) return;
   if (doc.head.querySelector(`link[href="${FONT_CSS}"]`)) return;
   const preconnect = doc.createElement('link');
   preconnect.rel = 'preconnect';

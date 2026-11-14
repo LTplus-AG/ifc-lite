@@ -22,6 +22,7 @@ import {
 } from '../primitives';
 import { RibbonCommandLargeButton, RibbonCommandSmallButton } from '../command-button';
 import { anyRibbonCommandAvailable } from '../../surface-command-features';
+import { AUTHOR_GROUPS } from '../ribbon-tabs';
 
 const EDIT_ACTIVE_CLASS = 'bg-overlay-accent-soft text-foreground ring-1 ring-inset ring-overlay-accent/50';
 
@@ -52,10 +53,10 @@ export function AuthorTab() {
   // Unlike the other tabs even the leading group can go (edit.model off), so
   // the divider is drawn before every shown group but the first.
   const shown = {
-    edit: anyRibbonCommandAvailable(['author:undo', 'author:redo', 'panel:changeSets']),
-    create: anyRibbonCommandAvailable(['panel:appearance']),
-    properties: anyRibbonCommandAvailable(['author:bulk-properties', 'author:import-data']),
-    customize: anyRibbonCommandAvailable(['panel:extensions']),
+    edit: anyRibbonCommandAvailable(AUTHOR_GROUPS.edit),
+    create: anyRibbonCommandAvailable(AUTHOR_GROUPS.create),
+    properties: anyRibbonCommandAvailable(AUTHOR_GROUPS.properties),
+    customize: anyRibbonCommandAvailable(AUTHOR_GROUPS.customize),
   };
   const firstShown = (['edit', 'create', 'properties', 'customize'] as const).find((group) => shown[group]);
   const divider = (group: keyof typeof shown) => (group === firstShown ? null : <RibbonGroupDivider />);

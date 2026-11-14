@@ -15,6 +15,7 @@ export function inheritedFireRating(step, walls) {
   return walls.length === 2 && types.size === 1 && !types.has(undefined) && sets.length === 1 &&
     step.get([...types][0])?.args[5]?.some(r => r.ref === sets[0].id) &&
     !step.of('IFCRELDEFINESBYPROPERTIES').some(r => r.args[4]?.some(v => walls.some(w => w.id === v.ref)) &&
+      step.get(r.args[5])?.type === 'IFCPROPERTYSET' &&
       step.get(r.args[5])?.args[4]?.some(ref => step.get(ref)?.args[0] === 'FireRating'));
 }
 export function layerUsage(step, wall, thicknesses) {
@@ -67,7 +68,7 @@ export function plainLanguageReview(text) {
 const near = (a,b,t=.03) => Number.isFinite(a) && Number.isFinite(b) && Math.abs(a-b)<=t;
 const point = (a,b) => Array.isArray(a) && Array.isArray(b) && a.length===2 && b.length===2 && a.every((v,i)=>near(v,b[i]));
 export function alignedWalls(axes) {
-  return axes.length===2 && [3,6].every(y => axes.filter(w => near(w.start[1],y) && near(w.end[1],y) && near(w.start[0],0)).length===1);
+  return axes.length===2 && [3,6].every(y => axes.filter(w => near(w.start[1],y) && near(w.end[1],y) && near(w.start[0],0) && near(w.end[0],5)).length===1);
 }
 export function trimmedWalls(axes) {
   const walls=axes.filter(w => near(w.start[1],3) && near(w.end[1],3));

@@ -9,16 +9,31 @@ const PARAMETERS={M:2,L:2,H:1,V:1,C:6,S:4,Q:4,T:2,A:7,Z:0};
  */
 export function drawablePath(data) {
   const tokens=[];
-  const token=/[MmLlHhVvCcSsQqTtAaZz]|[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?/gy;
-  let offset=0;
+  const number=/[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?/y;
+  let offset=0, active='', parameters=0;
   while(offset<data.length) {
-    const separator=/^[\s,]+/.exec(data.slice(offset));
-    if(separator) {offset+=separator[0].length;continue;}
-    token.lastIndex=offset;
-    const match=token.exec(data);
-    if(!match) return false;
-    tokens.push(/^[A-Za-z]$/.test(match[0])?match[0]:Number(match[0]));
-    offset=token.lastIndex;
+    const separator=/^\s*(,)?\s*/.exec(data.slice(offset))[0];
+    if(separator.includes(',')) {
+      // A comma separates two parameters, never a command or end of data.
+      if(typeof tokens.at(-1)!=='number' || !/^[-+.0-9]/.test(data.slice(offset+separator.length))) return false;
+    }
+    offset+=separator.length;
+    if(offset===data.length) break;
+    const char=data[offset];
+    if(/[MmLlHhVvCcSsQqTtAaZz]/.test(char)) {
+      tokens.push(char); active=char.toUpperCase(); parameters=0; offset++; continue;
+    }
+    let value;
+    if(active==='A' && [3,4].includes(parameters%7)) {
+      if(char!=='0' && char!=='1') return false;
+      value=Number(char); offset++;
+    } else {
+      number.lastIndex=offset;
+      const match=number.exec(data);
+      if(!match) return false;
+      value=Number(match[0]); offset=number.lastIndex;
+    }
+    tokens.push(value); parameters++;
   }
   let i=0, first=true, drawable=false, current=[0,0], startPoint=[0,0];
   while(i<tokens.length) {

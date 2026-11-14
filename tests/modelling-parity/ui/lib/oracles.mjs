@@ -126,5 +126,23 @@ export function matchAreas(expected, actual, tolerance) {
 
 /** Exactly four distinct corner joins are required for the authored four-wall loop. */
 export function fourWallJoins(step) {
-  return step.of('IFCWALL').length === 4 && step.of('IFCRELCONNECTSPATHELEMENTS').length === 4 && uniqueWallJoins(step) === 4 && wallEndpointsJoined(step);
+  const walls=step.of('IFCWALL'), joins=step.of('IFCRELCONNECTSPATHELEMENTS');
+  if(walls.length!==4 || joins.length!==4 || uniqueWallJoins(step)!==4 || !wallEndpointsJoined(step)) return false;
+  const visited=new Set(), pending=[walls[0].id];
+  while(pending.length) {
+    const id=pending.pop();
+    if(visited.has(id)) continue;
+    visited.add(id);
+    for(const rel of joins) {
+      const a=rel.args[5].ref,b=rel.args[6].ref;
+      if(a===id) pending.push(b);
+      if(b===id) pending.push(a);
+    }
+  }
+  if(visited.size!==4) return false;
+  const corners=[];
+  for(const wall of step.wallAxes()) for(const point of [wall.start,wall.end]) {
+    if(!corners.some(p=>Math.hypot(p[0]-point[0],p[1]-point[1],p[2]-wall.z)<=.001)) corners.push([...point,wall.z]);
+  }
+  return corners.length===4;
 }

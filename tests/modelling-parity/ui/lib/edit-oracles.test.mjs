@@ -94,3 +94,22 @@ test('#9919 copied levels must stay at the requested +3 m and +6 m', () => {
   assert.equal(oracle.copyLevelElevations([3,6],walls),true);
   assert.equal(oracle.copyLevelElevations([3,0],[walls[0],[axis([0,0],[5,0],0)]]),false);
 });
+
+test('#9919 Align translates the displaced wall without stretching it', () => {
+  assert.equal(oracle.alignedWalls([axis([0,3],[5,3]),axis([0,6],[6,6])]),false);
+});
+test('#9919 disconnected coincident wall pairs cannot certify a four-corner loop', async () => {
+  const {fourWallJoins}=await import('./oracles.mjs');
+  const walls=[1,2,3,4].map(id=>{
+    const n=id*10, y=id<=2?0:4;
+    return `#${id}=IFCWALL('w${id}',$,$,$,$,$,#${n},$,$);
+#${n}=IFCPRODUCTDEFINITIONSHAPE($,$,(#${n+1}));
+#${n+1}=IFCSHAPEREPRESENTATION($,'Axis','Curve2D',(#${n+2}));
+#${n+2}=IFCPOLYLINE((#${n+3},#${n+4}));
+#${n+3}=IFCCARTESIANPOINT((0,${y}));
+#${n+4}=IFCCARTESIANPOINT((5,${y}));`;
+  }).join('\n');
+  const joins=[[1,2,'ATSTART'],[1,2,'ATEND'],[3,4,'ATSTART'],[3,4,'ATEND']].map(([a,b,end],i)=>
+    `#${100+i}=IFCRELCONNECTSPATHELEMENTS('r${i}',$,$,$,$,#${a},#${b},$,$,.${end}.,.${end}.);`).join('\n');
+  assert.equal(fourWallJoins(readStep(`DATA; ${walls} ${joins} ENDSEC;`)),false);
+});

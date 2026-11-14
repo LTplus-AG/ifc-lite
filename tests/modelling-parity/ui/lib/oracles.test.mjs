@@ -118,3 +118,8 @@ test('#9874 plain-language review requires visible non-STEP text', async () => {
   assert.equal(plainLanguageReview('Review changes\nCancel\nExport'),false);
   assert.equal(plainLanguageReview('Review changes\nNew IFCWALL #12\nEntity created\nCancel\nExport'),true);
 });
+
+test('#9919 wall quantities with MethodOfMeasurement do not override inherited FireRating', () => {
+  const s=readStep(fixture.replace('ENDSEC;', "#20=IFCELEMENTQUANTITY('q',$,$,$,'measured',()); #21=IFCRELDEFINESBYPROPERTIES('r',$,$,$,(#1),#20); ENDSEC;"));
+  assert.equal(inheritedFireRating(s,s.of('IFCWALL')),true);
+});

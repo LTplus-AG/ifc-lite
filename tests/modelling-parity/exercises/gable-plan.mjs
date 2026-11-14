@@ -24,9 +24,13 @@ export function opposingRoofPlans(triangles) {
   })).sort((a,b)=>a.min-b.min);
   const [a,b]=bands, tolerance=.001;
   if(Math.abs(a.max-b.min)>tolerance || Math.abs(a.alongMin-b.alongMin)>tolerance || Math.abs(a.alongMax-b.alongMax)>tolerance) return false;
-  const ridge=band=>band.points.filter(p=>Math.abs(p[0]-a.max)<=tolerance).map(p=>p[2]);
+  const ridge=band=>band.points.filter(p=>Math.abs(p[0]-a.max)<=tolerance);
   const left=ridge(a),right=ridge(b);
-  return left.length>=2 && right.length>=2 &&
-    Math.max(...left,...right)-Math.min(...left,...right)<=tolerance &&
-    Math.min(...left)>Math.max(a.low,b.low)+tolerance;
+  const span=points=>[Math.min(...points.map(p=>p[1])),Math.max(...points.map(p=>p[1]))];
+  const [leftFrom,leftTo]=span(left),[rightFrom,rightTo]=span(right);
+  const heights=[...left,...right].map(p=>p[2]);
+  return leftTo-leftFrom>tolerance && rightTo-rightFrom>tolerance &&
+    Math.abs(leftFrom-rightFrom)<=tolerance && Math.abs(leftTo-rightTo)<=tolerance &&
+    Math.max(...heights)-Math.min(...heights)<=tolerance &&
+    Math.min(...heights)>Math.max(a.low,b.low)+tolerance;
 }

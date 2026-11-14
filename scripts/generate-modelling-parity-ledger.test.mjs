@@ -13,6 +13,7 @@
  */
 
 import { test } from 'node:test';
+import * as nodeModule from 'node:module';
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -598,7 +599,7 @@ test('#9328 F2 accepts a measured gable and rejects a flat roof regardless of re
   }
 });
 
-test('#9328 failed fill checkpoints report the reached population without certifying completion', () => {
+test('#9328 failed fill checkpoints report the reached population without certifying completion', { skip: typeof nodeModule.registerHooks !== 'function' && 'requires node:module registerHooks (Node 22.15+)' }, () => {
   const dir=mkdtempSync(join(tmpdir(),'parity-worker-failure-'));
   try {
     const create=join(dir,'create.mjs'),loader=join(dir,'loader.mjs'),hook=join(dir,'hook.mjs'),checkpoint=join(dir,'checkpoint.json');
@@ -693,4 +694,37 @@ test('#9328 unpinned UI dist provenance is discovered from the runtime repositor
     assert.equal(source.probes.commit,repos[0].commit);
     assert.equal(source.dirty,true);
   } finally {rmSync(dir,{recursive:true,force:true});}
+});
+
+test('#9328 SVG arc flags may be adjacent to flags and coordinates', () => {
+  assert.equal(ART.checkSvg(Buffer.from('<svg><path d="M0 0 A1 1 0 011 2"/></svg>')).status,'pass');
+});
+test('#9328 SVG commas require numeric parameters on both sides', () => {
+  for (const d of ['M,0 0 L1 1','M0,,0 L1 1','M0 0, L1 1','M0 0 L1 1,'])
+    assert.equal(ART.checkSvg(Buffer.from(`<svg><path d="${d}"/></svg>`)).status,'fail',d);
+  assert.equal(ART.checkSvg(Buffer.from('<svg><path d="M0,0 L1,1"/></svg>')).status,'pass');
+});
+
+test('#9328 F2 mesh failures retain other checks and always close the session', { skip: typeof nodeModule.registerHooks !== 'function' && 'requires node:module registerHooks (Node 22.15+)' }, () => {
+  const hook=`import {registerHooks} from 'node:module';
+registerHooks({resolve(specifier,context,next){
+  if(specifier==='../probes/sdk/lib/parity.mjs') return {url:'data:text/javascript,'+encodeURIComponent("export async function meshIfc(){throw new Error('fixture extraction failure');}"),shortCircuit:true};
+  return next(specifier,context);
+}});`;
+  const script=`
+import assert from 'node:assert/strict';
+import {runExercise} from ${JSON.stringify(pathToFileURL(join(ROOT,'tests/modelling-parity/ui/exercises.mjs')).href)};
+let closed=0, judged=0;
+const s={download:{text:'DATA; ENDSEC;'},findings:[],counters:{cameraJumps:0},scriptedSteps:[],pageErrors:[],state:async()=>null,close:async()=>{closed++;}};
+const ex={id:'F2',steps:[],oracle:(_step,meshes)=>{judged++;assert.equal(meshes,undefined);return [{name:'remaining check',ok:true}];}};
+const options={openFresh:async()=>s,theme:'light',base:{}};
+const {result}=await runExercise(ex,options);
+assert.equal(judged,1);assert.equal(closed,1);assert.equal(result.status,'partial');
+assert.equal(result.checks.find(c=>c.name==='remaining check').ok,true);
+assert.match(result.checks.find(c=>c.name==='exported mesh extraction').detail,/fixture extraction failure/);
+await assert.rejects(runExercise({...ex,oracle:()=>{throw new Error('fixture oracle failure');}},options),/fixture oracle failure/);
+assert.equal(closed,2);
+`;
+  const r=spawnSync(process.execPath,['--import','data:text/javascript,'+encodeURIComponent(hook),'--input-type=module','-e',script],{encoding:'utf8',timeout:10000});
+  assert.equal(r.status,0,r.stderr);
 });

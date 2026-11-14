@@ -110,3 +110,20 @@ test('#9328 overlapping opposing roof panels cannot certify a gable', () => {
   compareFzk({text:"#1=IFCSLAB('a',$,$,$,$,$,$,$,.ROOF.);\n#2=IFCSLAB('b',$,$,$,$,$,$,$,.ROOF.);",find:id=>panel(id===1?1:-1),levels:[],emit:(name,cap,status)=>rows.push({name,status})});
   assert.equal(rows.find(r=>r.name==='reference-gable-roof').status,'fail');
 });
+
+test('#9328 opposing roof plans require the same positive-length ridge', async () => {
+  const {opposingRoofPlans}=await import('./gable-plan.mjs');
+  const up=tri=>{
+    const [a,b,c]=tri;
+    return (b[2]-a[2])*(c[0]-a[0])-(b[0]-a[0])*(c[2]-a[2])>0?tri:[a,c,b];
+  };
+  const face=(z,from,to)=>{
+    const a=[0,0,z],b=[10,0,z],c=[from,3,5],d=[to,3,5];
+    return [[a,c,b],[b,c,d]].map(up);
+  };
+  assert.equal(opposingRoofPlans([...face(0,0,10),...face(10,0,10)]),true);
+  assert.equal(opposingRoofPlans([...face(0,0,10),...face(10,.5,9.5)]),false);
+  // Repeated apex occurrences from two triangles are still a zero-length ridge.
+  const apex=(z,x)=>{const a=[0,0,z],b=[10,0,z],m=[5,0,z],p=[x,3,5];return [[a,p,m],[m,p,b]].map(up);};
+  assert.equal(opposingRoofPlans([...apex(0,0),...apex(10,10)]),false);
+});

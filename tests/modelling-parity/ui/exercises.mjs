@@ -388,93 +388,101 @@ export const EXERCISES = {
  */
 export async function runExercise(ex, { openFresh, theme, shots, frames, saveArtifact, base }) {
   const s = await openFresh(`${ex.id}-${theme}`, theme, shots);
-  const tasks = [];
-  const notes = [];
-  const frameResults = [];
-  const frameFailures = [];
-  const evidence = [];
-  let cam = ex.drawCam;
-  let aimed = false;
-  for (const st of ex.steps) {
-    if (st.cam) cam = st.cam;
-    if (aimed || st.name !== 'Start blank') {
-      if (!aimed || st.cam) await s.harness.aim(cam.pos, cam.target);
-      aimed = true;
-    }
-    const t = await task(s, st.name, () => st.run(s));
-    tasks.push(t);
-    if (!t.ok) {
-      notes.push(`step "${st.name}" failed: ${t.error}`);
-      const shot = await s.shot(`fail-${tasks.length}`);
-      if (shot) evidence.push(shot);
-      // Recover to a known state so later steps still measure something.
-      await s.page.keyboard.press('Escape').catch(() => {});
-      await s.page.keyboard.press('Escape').catch(() => {});
-    }
-    const t2 = await toasts(s);
-    for (const msg of t2) if (/can't|cannot|doesn't|don't|failed|error|no storey|point at/i.test(msg) && !notes.includes(`toast: ${msg}`)) notes.push(`toast: ${msg}`);
-    if (st.checkpoint && frames) {
-      const id = `${ex.id}-${st.checkpoint}`;
-      try {
-        if (!st.keepCamera) await s.harness.aim(ex.frameCam.pos, ex.frameCam.target, { pin: false });
-        await s.harness.dismissToasts();
-        await s.settle(1200);
-        const metrics = await measureLayout(s.page);
-        const file = `${id}.${theme}.png`;
-        const png = await s.page.screenshot();
-        await writeFile(join(frames, file), png);
-        frameResults.push({ scene: id, title: `${ex.id}: ${st.name}`, theme, viewport: { width: 1600, height: 900 }, file, sha256: sha256(png), metrics, pageErrors: [...s.pageErrors] });
-        if (!st.keepCamera) await s.harness.aim(cam.pos, cam.target);
-      } catch (error) {
-        frameFailures.push({ scene: id, theme, error: String(error).slice(0, 500) });
+  try {
+    const tasks = [];
+    const notes = [];
+    const frameResults = [];
+    const frameFailures = [];
+    const evidence = [];
+    let cam = ex.drawCam;
+    let aimed = false;
+    for (const st of ex.steps) {
+      if (st.cam) cam = st.cam;
+      if (aimed || st.name !== 'Start blank') {
+        if (!aimed || st.cam) await s.harness.aim(cam.pos, cam.target);
+        aimed = true;
+      }
+      const t = await task(s, st.name, () => st.run(s));
+      tasks.push(t);
+      if (!t.ok) {
+        notes.push(`step "${st.name}" failed: ${t.error}`);
+        const shot = await s.shot(`fail-${tasks.length}`);
+        if (shot) evidence.push(shot);
+        // Recover to a known state so later steps still measure something.
+        await s.page.keyboard.press('Escape').catch(() => {});
+        await s.page.keyboard.press('Escape').catch(() => {});
+      }
+      const t2 = await toasts(s);
+      for (const msg of t2) if (/can't|cannot|doesn't|don't|failed|error|no storey|point at/i.test(msg) && !notes.includes(`toast: ${msg}`)) notes.push(`toast: ${msg}`);
+      if (st.checkpoint && frames) {
+        const id = `${ex.id}-${st.checkpoint}`;
+        try {
+          if (!st.keepCamera) await s.harness.aim(ex.frameCam.pos, ex.frameCam.target, { pin: false });
+          await s.harness.dismissToasts();
+          await s.settle(1200);
+          const metrics = await measureLayout(s.page);
+          const file = `${id}.${theme}.png`;
+          const png = await s.page.screenshot();
+          await writeFile(join(frames, file), png);
+          frameResults.push({ scene: id, title: `${ex.id}: ${st.name}`, theme, viewport: { width: 1600, height: 900 }, file, sha256: sha256(png), metrics, pageErrors: [...s.pageErrors] });
+          if (!st.keepCamera) await s.harness.aim(cam.pos, cam.target);
+        } catch (error) {
+          frameFailures.push({ scene: id, theme, error: String(error).slice(0, 500) });
+        }
       }
     }
+    let checks = [];
+    let targetFrom = null;
+    let ifcPath = null;
+    if (s.download?.text) {
+      if (saveArtifact) ifcPath = await saveArtifact(ex.id, `${ex.id}.ui.${theme}.ifc`, s.download.bytes);
+      let meshes;
+      if (ex.id === 'F2') {
+        try { meshes = await meshIfc(s.download.text); }
+        catch (error) { checks.push({ name: 'exported mesh extraction', ok: false, detail: String(error) }); }
+      }
+      const judged = await ex.oracle(readStep(s.download.text), meshes);
+      checks.push(...(Array.isArray(judged) ? judged : judged.checks));
+      if (!Array.isArray(judged)) targetFrom = judged.target;
+    } else {
+      checks = [{ name: 'the model was exported', ok: false, detail: 'no download' }];
+    }
+    notes.push(...s.findings);
+    if (s.counters.cameraJumps) notes.push(`the camera moved by itself ${s.counters.cameraJumps} time(s) during drawing`);
+    const session = await readSession(s).catch(() => null);
+    const ok = checks.filter((c) => c.ok).length;
+    const status = ok === checks.length && !s.scriptedSteps.length && tasks.every((t) => t.ok) ? 'pass' : ok > 0 ? 'partial' : 'fail';
+    const reasons = [...checks.filter((c) => !c.ok).map((c) => `${c.name}: ${c.detail}`), ...tasks.filter((t) => !t.ok).map((t) => `step "${t.name}" failed`)];
+    const result = {
+      ...base,
+      capability: null,
+      exercise: ex.id,
+      probe: 'exercise',
+      mode: 'ui',
+      id: `${ex.id}.ui`,
+      title: ex.title,
+      status,
+      ...(status === 'pass' ? {} : { reason: reasons.join('; ') }),
+      metrics: {
+        ms: tasks.reduce((n, t) => n + t.ms, 0),
+        actions: tasks.reduce((n, t) => n + t.actions, 0),
+        clicks: s.counters.clicks,
+        keys: s.counters.keys,
+        steps: tasks.length,
+        cameraJumps: s.counters.cameraJumps,
+      },
+      checks,
+      ...(targetFrom ? { target: targetFrom } : {}),
+      tasks,
+      notes,
+      scripted: s.scriptedSteps,
+      pageErrors: s.pageErrors,
+      finalSession: session,
+      evidence: [...evidence.map((e) => `shots/${e.file}`), ...frameResults.map((f) => `frames/${f.file}`), ...(ifcPath ? [ifcPath] : [])],
+      ...(ifcPath ? { artifacts: { ifc: ifcPath } } : {}),
+    };
+    return { result, frames: frameResults, frameFailures };
+  } finally {
+    await s.close();
   }
-  let checks = [];
-  let targetFrom = null;
-  let ifcPath = null;
-  if (s.download?.text) {
-    if (saveArtifact) ifcPath = await saveArtifact(ex.id, `${ex.id}.ui.${theme}.ifc`, s.download.bytes);
-    const judged = await ex.oracle(readStep(s.download.text), ex.id === 'F2' ? await meshIfc(s.download.text) : undefined);
-    checks = Array.isArray(judged) ? judged : judged.checks;
-    if (!Array.isArray(judged)) targetFrom = judged.target;
-  } else {
-    checks = [{ name: 'the model was exported', ok: false, detail: 'no download' }];
-  }
-  notes.push(...s.findings);
-  if (s.counters.cameraJumps) notes.push(`the camera moved by itself ${s.counters.cameraJumps} time(s) during drawing`);
-  const session = await readSession(s).catch(() => null);
-  await s.close();
-  const ok = checks.filter((c) => c.ok).length;
-  const status = ok === checks.length && !s.scriptedSteps.length && tasks.every((t) => t.ok) ? 'pass' : ok > 0 ? 'partial' : 'fail';
-  const reasons = [...checks.filter((c) => !c.ok).map((c) => `${c.name}: ${c.detail}`), ...tasks.filter((t) => !t.ok).map((t) => `step "${t.name}" failed`)];
-  const result = {
-    ...base,
-    capability: null,
-    exercise: ex.id,
-    probe: 'exercise',
-    mode: 'ui',
-    id: `${ex.id}.ui`,
-    title: ex.title,
-    status,
-    ...(status === 'pass' ? {} : { reason: reasons.join('; ') }),
-    metrics: {
-      ms: tasks.reduce((n, t) => n + t.ms, 0),
-      actions: tasks.reduce((n, t) => n + t.actions, 0),
-      clicks: s.counters.clicks,
-      keys: s.counters.keys,
-      steps: tasks.length,
-      cameraJumps: s.counters.cameraJumps,
-    },
-    checks,
-    ...(targetFrom ? { target: targetFrom } : {}),
-    tasks,
-    notes,
-    scripted: s.scriptedSteps,
-    pageErrors: s.pageErrors,
-    finalSession: session,
-    evidence: [...evidence.map((e) => `shots/${e.file}`), ...frameResults.map((f) => `frames/${f.file}`), ...(ifcPath ? [ifcPath] : [])],
-    ...(ifcPath ? { artifacts: { ifc: ifcPath } } : {}),
-  };
-  return { result, frames: frameResults, frameFailures };
 }

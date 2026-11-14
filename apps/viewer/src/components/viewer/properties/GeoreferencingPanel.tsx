@@ -13,7 +13,6 @@
  */
 
 import { useState, useCallback, useMemo } from 'react';
-import { isFeatureEnabled } from '@/lib/features';
 import { Globe, MapPin, Search, ChevronRight, AlertTriangle, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { TEXT_LINK_CLASS } from '@/components/ui/text-link';
@@ -25,7 +24,7 @@ import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import { EpsgLookupDialog, type EpsgResult } from './EpsgLookupDialog';
 import { FederationAlignmentControls } from './FederationAlignmentControls';
 import { PrecisionGridBadge } from './PrecisionGridBadge';
-import { LocationMap, type PickedPosition } from './location-map-gate';
+import { LocationMap, type PickedPosition } from './LocationMap';
 import { computeOrthogonalHeightForBaseAltitude } from '@/lib/geo/cesium-placement';
 import {
   detectScaleUnitMismatch,
@@ -335,9 +334,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
   }, [modelId, setGeorefFields, mergedCRS, mergedConversion, mutations, initializeMapConversionDefaults, requestAlignmentReload]);
 
   const hasData = mergedCRS || mergedConversion;
-  // Georeferencing is model data placed by the Placement feature; a host can switch either off (`lib/features`).
-  const editable = enableEditing && isFeatureEnabled('edit.placement') && isFeatureEnabled('edit.model')
-    && !!modelId && canUseStandardGeoreferencing && !isReadOnlyCoordinateOperation(georef);
+  const editable = enableEditing && !!modelId && canUseStandardGeoreferencing && !isReadOnlyCoordinateOperation(georef);
 
   // When no georef data exists, show "Add Georeferencing" in edit mode
   if (!hasData && !georef?.hasGeoreference) {

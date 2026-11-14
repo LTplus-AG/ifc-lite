@@ -1168,7 +1168,7 @@ export function PropertiesPanel() {
             georefPanel={{
               georef: renderedGeoref,
               modelId: selectedEntity?.modelId === 'legacy' ? '__legacy__' : (model?.id ?? selectedEntity?.modelId),
-              enableEditing: geometryEditMode,
+              enableEditing: geometryEditMode && isFeatureEnabled('edit.placement'),
               schemaVersion: activeDataStore?.schemaVersion,
               coordinateInfo: (model?.geometryResult ?? geometryResult)?.coordinateInfo,
               geometryResult: model?.geometryResult ?? geometryResult,

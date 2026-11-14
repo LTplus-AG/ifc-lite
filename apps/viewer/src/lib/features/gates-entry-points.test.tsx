@@ -19,7 +19,9 @@ import { useViewerStore } from '@/store';
 import { resetFeaturesForTest } from './index';
 import { isSurfaceCommandAvailable, isAiChatAvailable } from '@/components/viewer/surface-command-features';
 import { SURFACE_COMMANDS } from '@/components/viewer/surface-command-registry';
-import { GeoreferencingPanel } from '@/components/viewer/properties/GeoreferencingPanel';
+import { ModelMetadataPanel } from '@/components/viewer/properties/ModelMetadataPanel';
+import { IfcParser } from '@ifc-lite/parser';
+import type { FederatedModel } from '@/store';
 import { GeoreferenceTab } from '@/components/viewer/placement/GeoreferenceTab';
 import { PositionedDownload } from '@/components/viewer/PositionedDownload';
 import { PanelModelGate } from '@/components/viewer/PanelModelGate';
@@ -60,24 +62,25 @@ const PROJECTED_CRS = { id: 71, name: 'EPSG:25833', mapUnitScale: 1 } as Project
 const buttonsNamed = (text: string) => [...document.querySelectorAll('button')].filter((button) => button.textContent?.includes(text)).length;
 
 describe('georeferencing goes with editing', () => {
-  /** Editable georef rows draw a pen; a read-only panel draws none. */
-  function penCount(): number {
-    const ui = render(<GeoreferencingPanel modelId="A" enableEditing schemaVersion="IFC4"
-      georef={{ hasGeoreference: true, mapConversion: MAP_CONVERSION, projectedCRS: PROJECTED_CRS, source: 'mapConversion' }} />);
-    const trigger = [...ui.querySelectorAll('button')].find((button) => button.textContent?.includes('Coordinate Operation'));
-    assert.ok(trigger);
-    act(() => { trigger.click(); });
-    const pens = ui.querySelectorAll('svg.lucide-pen-line').length;
+  /** A model without georeferencing offers "Add Georeferencing" only where it can be saved. */
+  async function addGeorefOffered(): Promise<number> {
+    const source = `ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n`;
+    const bytes = new TextEncoder().encode(source);
+    const store = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, { disableWorkerScan: true });
+    const model = { ...fixtureModel('geo'), ifcDataStore: store, fileSize: 200, maxExpressId: 1, loadedAt: 1 } as FederatedModel;
+    useViewerStore.setState({ ...fixtureModels(model), editEnabled: true });
+    render(<ModelMetadataPanel model={model} />);
+    const offered = buttonsNamed('Add Georeferencing');
     cleanup();
-    return pens;
+    return offered;
   }
 
-  it('the Properties georeferencing rows are read-only with edit.model or edit.placement off', () => {
-    assert.ok(penCount() > 0, 'editable by default');
+  it('the model panel offers no georeferencing edit with edit.model or edit.placement off', async () => {
+    assert.equal(await addGeorefOffered(), 1, 'offered by default');
     resetFeaturesForTest({ default: 'all', disable: ['edit.model'] });
-    assert.equal(penCount(), 0, 'edit.model off');
+    assert.equal(await addGeorefOffered(), 0, 'edit.model off');
     resetFeaturesForTest({ default: 'all', disable: ['edit.placement'] });
-    assert.equal(penCount(), 0, 'edit.placement off');
+    assert.equal(await addGeorefOffered(), 0, 'edit.placement off');
   });
 
   it('the Placement panel says editing is off instead of offering a switch that does nothing', async () => {

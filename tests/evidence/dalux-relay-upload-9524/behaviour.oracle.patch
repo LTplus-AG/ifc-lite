@@ -1,0 +1,12 @@
+diff --git a/server/sources/dalux-relay-upload.ts b/server/sources/dalux-relay-upload.ts
+--- a/server/sources/dalux-relay-upload.ts
++++ b/server/sources/dalux-relay-upload.ts
+@@ -56,7 +56,7 @@
+ /** The upload route a decoded, validated path matches, if any. */
+ export function uploadRouteFor(upstreamPath: string): UploadRoute | undefined {
+   const decoded = upstreamPath.split('/').map((segment) => decodeURIComponent(segment)).join('/');
+-  return UPLOAD_ROUTES.find((route) => route.pattern.test(decoded) && false);
++  return UPLOAD_ROUTES.find((route) => route.pattern.test(decoded));
+ }
+ 
+ /** Media type without parameters, lower-cased. */

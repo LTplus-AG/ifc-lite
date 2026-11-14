@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { DXF_TEXT_LINE_HEIGHT_FACTOR } from '@/lib/drawing/dxf-text-layout';
+import { dxfTextLineOffset } from '@/lib/drawing/dxf-text-layout';
 import type { Drawing2D, Point2D } from '@ifc-lite/drawing-2d';
 import type { DxfUnderlayRenderData } from './dxfUnderlayMath';
 import { drawingWithReferenceBounds, type DrawingReferenceImage } from '@/lib/appearance/references/drawing';
@@ -27,8 +27,11 @@ export function drawingWithDxfBounds(drawing: Drawing2D | null, references: read
       const width = text.height * lines.reduce((longest, line) => Math.max(longest, line.length), 0);
       const left = text.align === 'right' ? -width : text.align === 'center' ? -width / 2 : 0;
       // Cardinal display/export mappings may reverse the stacking perpendicular.
-      // Cover both directions and one glyph height beyond the final baseline.
-      const extent = text.height * (1 + (lines.length - 1) * DXF_TEXT_LINE_HEIGHT_FACTOR);
+      // Cover both directions and one glyph height beyond the farthest line of
+      // the attached block (bottom grows up, middle centres, top grows down).
+      const extent = text.height + Math.max(
+        Math.abs(dxfTextLineOffset(0, lines.length, text.valign, text.height)),
+        Math.abs(dxfTextLineOffset(lines.length - 1, lines.length, text.valign, text.height)));
       for (const x of [left,left+width]) for (const y of [-extent,extent]) include({x:text.x+ux*x-uy*y,y:text.y+uy*x+ux*y});
     }
   }

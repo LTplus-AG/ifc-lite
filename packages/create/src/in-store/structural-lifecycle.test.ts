@@ -38,6 +38,86 @@ describe.each(['IFC2X3', 'IFC4', 'IFC4X3'])('%s structural lifecycle #9668', sch
     expect((await parse(text)).entityIndex.byId.size).toBe(scene.before.entities.size);
   });
 
+  const curveLoadDetails = (scene: Awaited<ReturnType<typeof lifecycleScene>>) => {
+    const activity = scene.editor.getNewEntity(scene.id)!;
+    const loadId = Number(String(activity.attributes[7]).slice(1));
+    const configuration = scene.editor.getNewEntity(loadId)!;
+    const sampleLoads = (configuration.attributes[1] as string[]).map(value => Number(value.slice(1)));
+    return { actionId: scene.id, loadId, sampleLoads };
+  };
+  const expectBorrowedCurveLoad = async (scene: Awaited<ReturnType<typeof lifecycleScene>>, details: ReturnType<typeof curveLoadDetails>, view = scene.view) => {
+    const after = await parse(new TextDecoder().decode(new exporter.StepExporter(scene.store, view)
+      .export({ schema: schema as 'IFC2X3' | 'IFC4' | 'IFC4X3', applyMutations: true }).content));
+    expect(after.entityIndex.byId.has(details.actionId)).toBe(false);
+    expect(after.entityIndex.byId.has(details.loadId)).toBe(true);
+    for (const id of details.sampleLoads) expect(after.entityIndex.byId.has(id)).toBe(true);
+    expect(parser.extractStructuralOnDemand(after).activities.some(a => a.expressId === details.actionId)).toBe(false);
+  };
+
+  it.skipIf(schema === 'IFC2X3')('keeps curve action load configuration and samples on removal', async () => {
+    const scene = await lifecycleScene(pkgs, schema, 'curve-action');
+    const details = curveLoadDetails(scene);
+    create.removeStructuralEntityInStore(scene.store, scene.editor, scene.id);
+    await expectBorrowedCurveLoad(scene, details);
+  });
+
+  it.skipIf(schema === 'IFC2X3')('keeps a curve action borrowed load after a source reload', async () => {
+    const scene = await lifecycleScene(pkgs, schema, 'curve-action');
+    const store = await parse(scene.exportText());
+    const globalId = String(scene.editor.getNewEntity(scene.id)!.attributes[0]);
+    const sourceActivity = parser.extractStructuralOnDemand(store).activities.find(a => a.globalId === globalId)!;
+    const loadId = sourceActivity.appliedLoad!.expressId;
+    const loadRecord = new parser.EntityExtractor(store.source).extractEntity(store.entityIndex.byId.get(loadId)!)!;
+    const sampleLoads = (loadRecord.attributes[1] as number[]).map(Number);
+    const view = new mutations.MutablePropertyView(null, 'reloaded-curve-action');
+    const editor = new mutations.StoreEditor(store, view);
+    create.removeStructuralEntityInStore(store, editor, scene.id);
+    const after = await parse(new TextDecoder().decode(new exporter.StepExporter(store, view)
+      .export({ schema: schema as 'IFC4' | 'IFC4X3', applyMutations: true }).content));
+    expect(after.entityIndex.byId.has(scene.id)).toBe(false);
+    expect(after.entityIndex.byId.has(loadId)).toBe(true);
+    for (const id of sampleLoads) expect(after.entityIndex.byId.has(id)).toBe(true);
+  });
+
+  it.skipIf(schema === 'IFC2X3')('keeps a curve action borrowed load after an atomic removal', async () => {
+    const scene = await lifecycleScene(pkgs, schema, 'curve-action');
+    const details = curveLoadDetails(scene);
+    scene.view.prepareAtomic(draft => create.removeStructuralEntityInStore(scene.store,
+      new mutations.StoreEditor(scene.store, draft), scene.id)).commit();
+    await expectBorrowedCurveLoad(scene, details);
+  });
+
+  it.skipIf(schema === 'IFC2X3')('keeps a curve action borrowed load after undo and a second removal', async () => {
+    const scene = await lifecycleScene(pkgs, schema, 'curve-action');
+    const details = curveLoadDetails(scene);
+    const overlay = scene.view as unknown as {
+      copyOverlayState(): unknown;
+      restoreOverlayState(snapshot: unknown): void;
+    };
+    const snapshot = overlay.copyOverlayState();
+    create.removeStructuralEntityInStore(scene.store, scene.editor, scene.id);
+    overlay.restoreOverlayState(snapshot);
+    create.removeStructuralEntityInStore(scene.store, scene.editor, scene.id);
+    await expectBorrowedCurveLoad(scene, details);
+  });
+
+  const actionSteps = schema === 'IFC2X3'
+    ? ['point-action', 'linear-action', 'PlanarAction-PlanarForce', 'PlanarAction-Temperature', 'PointReaction-SingleForce', 'PointReaction-SingleDisplacement']
+    : ['point-action', 'linear-action', 'PlanarAction-PlanarForce', 'PlanarAction-Temperature', 'SurfaceAction-PlanarForce', 'PointReaction-SingleForce', 'PointReaction-SingleDisplacement', 'CurveReaction-LinearForce', 'SurfaceReaction-PlanarForce'];
+  it.each(actionSteps)('%s still removes its builder-created load after a source reload', async step => {
+    const scene = await lifecycleScene(pkgs, schema, step);
+    const globalId = String(scene.editor.getNewEntity(scene.id)!.attributes[0]);
+    const store = await parse(scene.exportText());
+    const sourceActivity = parser.extractStructuralOnDemand(store).activities.find(a => a.globalId === globalId)!;
+    const loadId = sourceActivity.appliedLoad!.expressId;
+    const view = new mutations.MutablePropertyView(null, 'reloaded-owned-action');
+    const editor = new mutations.StoreEditor(store, view);
+    create.removeStructuralEntityInStore(store, editor, scene.id);
+    const after = await parse(new TextDecoder().decode(new exporter.StepExporter(store, view)
+      .export({ schema: schema as 'IFC2X3' | 'IFC4' | 'IFC4X3', applyMutations: true }).content));
+    expect(after.entityIndex.byId.has(loadId)).toBe(false);
+  });
+
   it('keeps a vertex point shared by a different member geometry', async () => {
     const scene = await lifecycleScene(pkgs, schema, 'curve-member');
     const firstShape = scene.editor.getNewEntities().find(e => e.type === 'IfcVertexPoint')!;

@@ -21,6 +21,7 @@
 import type { jsPDF } from 'jspdf';
 import { isDxfDimensionExportable } from '@ifc-lite/drawing-2d';
 import type { Dimension2D } from '@/store/slices/drawing2DDimensions';
+import { pdfRotatedTextStart } from './pdf-text-placement';
 import {
   dimensionGraphics,
   type DimensionGraphics,
@@ -119,8 +120,6 @@ export function dimensionsToSvg(graphics: readonly DimensionGraphics[], map: Dim
 }
 
 const PT_PER_MM = 72 / 25.4;
-/** Cap height of the standard PDF Helvetica, in ems. */
-const CAP_HEIGHT_EM = 0.718;
 
 /** Draw the dimensions on a jsPDF page in millimetres; `map` takes drawing points to page mm (y down). */
 export function drawDimensionsPdf(doc: jsPDF, graphics: readonly DimensionGraphics[], map: DimensionMapPoint): void {
@@ -144,15 +143,12 @@ export function drawDimensionsPdf(doc: jsPDF, graphics: readonly DimensionGraphi
     const t = placeDimensionText(g.text, map);
     doc.setFontSize(t.size * PT_PER_MM);
     // jsPDF applies `align`/`baseline` along the page axes, not along a
-    // rotated baseline, so place the start of the baseline here: back half
-    // the width along it, and half a cap height down across it.
-    const rad = (t.angleDeg * Math.PI) / 180;
-    const along = { x: Math.cos(rad), y: Math.sin(rad) };
-    const down = { x: -along.y, y: along.x };
-    const half = doc.getTextWidth(g.text.value) / 2;
-    const drop = CAP_HEIGHT_EM * t.size / 2;
+    // rotated baseline, so place the start of the baseline centred along it
+    // and half a cap height down across it.
+    const start = pdfRotatedTextStart(t, (t.angleDeg * Math.PI) / 180, doc.getTextWidth(g.text.value), t.size,
+      'center', 'middle');
     // jsPDF angles turn counter-clockwise as seen on the page.
-    doc.text(g.text.value, t.x - along.x * half + down.x * drop, t.y - along.y * half + down.y * drop, { angle: -t.angleDeg });
+    doc.text(g.text.value, start.x, start.y, { angle: -t.angleDeg });
   }
   doc.restoreGraphicsState();
 }

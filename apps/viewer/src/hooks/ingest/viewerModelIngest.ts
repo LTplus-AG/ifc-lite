@@ -33,6 +33,15 @@ export interface ViewerModelPayload {
   /** IFCX path ↔ expressId maps (only present for IFCX-parsed models). */
   pathToId?: Map<string, number>;
   idToPath?: Map<number, string>;
+  /**
+   * Model-local express ids the source file states are hidden. Nothing here
+   * applies them: the format's own `loadFile` branch does, through
+   * `applyInitialHiddenState`, once `finalizeModel` has registered the model
+   * and its express id range. A format whose file says nothing about
+   * visibility leaves this out. Only the `.3dm` branch sets it today; a second
+   * format setting it would have to call the same helper.
+   */
+  hiddenExpressIds?: number[];
 }
 
 export interface ParseIfcxOptions {

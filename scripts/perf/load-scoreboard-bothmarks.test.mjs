@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-// Both marks side by side: the current interactive mark (verdicts) and the first frame presented after the
+// Both marks side by side: the settled interactive mark and the first frame presented after the
 // scene finished, with the share of samples whose next frame comes more than 50 ms after the mark.
 
 import { test } from 'node:test';
@@ -15,7 +15,7 @@ async function load(path) {
   return mod;
 }
 
-test('the frame mark is the first frame presented at or after finalize end, never before the current mark; missing times are unknown', async () => {
+test('the frame mark is the first frame presented at or after finalize end, never before the settled mark; missing times are unknown', async () => {
   const { frameMarkOf } = await load('./load-scoreboard-report-sections.mjs');
   // Measured: #9900 Holter cold (pair-9900 branch r0): mark = finalize end 3,492.8; next presented frame 3,660.8.
   assert.deepEqual(frameMarkOf({ geometryMs: 3492.8, interactiveMs: 3492.8, presentTimesFromChangeMs: [3300, 3490, 3660.8, 3700] }), { frameMs: 3660.8, waitMs: 3660.8 - 3492.8 });

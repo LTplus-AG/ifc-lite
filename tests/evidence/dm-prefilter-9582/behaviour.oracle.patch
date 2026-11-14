@@ -1,0 +1,14 @@
+diff --git a/rust/processing/src/data_model/rooted.rs b/rust/processing/src/data_model/rooted.rs
+--- a/rust/processing/src/data_model/rooted.rs
++++ b/rust/processing/src/data_model/rooted.rs
+@@ -299,7 +299,9 @@ pub(crate) fn metadata_jobs<'j, 'a>(
+         all_entities
+             .iter()
+             .filter(|job| {
+-                let _ = &referenced;
++                if referenced.contains(&job.id) {
++                    return true;
++                }
+                 *keep_type
+                     .entry(job.type_name)
+                     .or_insert_with(|| may_carry_global_id(job.type_name))

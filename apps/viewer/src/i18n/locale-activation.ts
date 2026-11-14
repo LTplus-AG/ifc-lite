@@ -26,6 +26,41 @@ export type CatalogueLoader = () => Promise<unknown>;
 export interface LocaleEnvironment {
   storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | null;
   languages: readonly string[];
+  /**
+   * The locale a deploying host prefers (`ViewerRuntimeConfig.locale`). It is
+   * only the initial default, while the user has made no choice in Settings:
+   * Settings then shows it as the selected language, and Auto still means the
+   * browser's languages, as its label says.
+   */
+  hostLocale?: string;
+}
+
+/**
+ * Set when the user picks Auto while a host locale is set, so the host's
+ * default does not come back on the next visit. Its own key, so
+ * `LOCALE_STORAGE_KEY` only ever holds a BCP 47 tag. Like the locale key it
+ * lives in `localStorage`, so it applies to the whole site (every viewer page
+ * on this origin), not to one deployment's configuration. Without a host
+ * locale Auto just forgets the choice, as before.
+ */
+export const LOCALE_AUTO_STORAGE_KEY = 'ifc-lite:locale-auto';
+
+function readAutoChosen(storage: LocaleEnvironment['storage']): boolean {
+  try {
+    return storage?.getItem(LOCALE_AUTO_STORAGE_KEY) === '1';
+  } catch (error) {
+    console.warn('[i18n] Could not read the stored Auto choice.', error);
+    return false;
+  }
+}
+
+function writeAutoChosen(storage: LocaleEnvironment['storage'], auto: boolean): void {
+  try {
+    if (auto) storage?.setItem(LOCALE_AUTO_STORAGE_KEY, '1');
+    else storage?.removeItem(LOCALE_AUTO_STORAGE_KEY);
+  } catch (error) {
+    console.warn('[i18n] Could not remember the Auto choice; it applies to this session only.', error);
+  }
 }
 
 function readStoredLocale(storage: LocaleEnvironment['storage']): string | null {
@@ -109,12 +144,14 @@ export function createLocaleActivator(
   };
 }
 
-/** Pick the startup locale: the stored Settings choice, then browser languages. */
+/** Pick the startup locale: the stored Settings choice, else the host's locale; then browser languages. */
 export async function activateStartupLocale(
   activator: LocaleActivator,
   environment: LocaleEnvironment,
 ): Promise<Locale> {
-  const requested = [readStoredLocale(environment.storage), ...environment.languages]
+  const stored = readStoredLocale(environment.storage);
+  const head = stored !== null ? [stored] : readAutoChosen(environment.storage) ? [] : [environment.hostLocale];
+  const requested = [...head, ...environment.languages]
     .filter((tag): tag is string => typeof tag === 'string' && tag.trim() !== '');
   return activator.activate(requested);
 }
@@ -128,7 +165,10 @@ export interface LocaleChoice {
   /** Remember `locale` on this browser and switch to it without a reload. Rejects,
    *  remembering nothing and restoring the previous choice, when it fails to load. */
   choose(locale: Locale): Promise<Locale>;
-  /** Forget the choice and follow the browser languages again. */
+  /**
+   * Auto: forget the choice and follow the browser languages, also over a
+   * host locale (remembered under `LOCALE_AUTO_STORAGE_KEY` then).
+   */
   clear(): Promise<Locale>;
 }
 
@@ -141,7 +181,12 @@ export function createLocaleChoice(activator: LocaleActivator, environment: Loca
   const chosen = (): Locale | null => {
     if (session) return session.locale;
     const stored = readStoredLocale(environment.storage);
-    return stored === null ? null : negotiateLocale([stored], activator.available);
+    if (stored !== null) return negotiateLocale([stored], activator.available);
+    if (readAutoChosen(environment.storage) || !environment.hostLocale) return null;
+    // No choice yet, over a host locale: name what is actually active (the host
+    // locale, or what applied when it failed to load), never claim Auto.
+    const active = getLocale();
+    return activator.available.includes(active) ? active : null;
   };
   return {
     available: activator.available,
@@ -160,12 +205,14 @@ export function createLocaleChoice(activator: LocaleActivator, environment: Loca
       }
       session = { locale };
       storeLocale(environment.storage, locale);
+      writeAutoChosen(environment.storage, false);
       return active;
     },
     clear() {
       latest += 1;
       session = { locale: null };
       forgetLocale(environment.storage);
+      writeAutoChosen(environment.storage, Boolean(environment.hostLocale));
       return activator.activate(environment.languages);
     },
   };
@@ -173,7 +220,7 @@ export function createLocaleChoice(activator: LocaleActivator, environment: Loca
 
 let installedChoice: LocaleChoice | null = null;
 
-/** Called once by `locales.boot.ts`; tests install their own. */
+/** Called once by `startLocales` (`locales.boot.ts`); tests install their own. */
 export function installLocaleChoice(choice: LocaleChoice | null): void {
   installedChoice = choice;
 }

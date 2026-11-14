@@ -36,8 +36,6 @@ export function unwritten(level, name, plan, covers) {
   };
 }
 
-const cap = (id) => (row) => row.id === id;
-
 export const PROBES = [
   fixture,
   read,
@@ -49,5 +47,4 @@ export const PROBES = [
   edit,
   remove,
   ...capabilities,
-  unwritten('capability', 'capability:check-stale-after-physical-change', 'move a physical element and assert its linked item is reported stale', cap('cap/check-stale-after-physical-change')),
 ];

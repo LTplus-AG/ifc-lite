@@ -25,7 +25,7 @@ import { readRhino3dm } from '@ifc-lite/rhino3dm';
 import { useViewerStore } from '@/store';
 import { isSupportedModelFile } from '@/services/supported-model-files';
 import { installFakeRhinoImportWorker, type FakeRhinoImportWorkerHandle } from '@/test/rhino-import-worker-fake.js';
-import { CRAFTED_GLOBAL_ID, CRAFTED_VERTEX_VIEWER, craftRhino3dm } from '@/test/rhino-3dm-fixture.js';
+import { CRAFTED_GLOBAL_ID, CRAFTED_VERTEX_VIEWER, craftRhino3dm, craftRhinoLayerTree } from '@/test/rhino-3dm-fixture.js';
 import { useIfcLoader } from './useIfcLoader.js';
 
 let hookApi: ReturnType<typeof useIfcLoader> | null = null;
@@ -79,7 +79,8 @@ describe('useIfcLoader .3dm route', () => {
     assert.equal(model.ifcDataStore?.sourceKind, 'tabular');
     assert.equal(model.loadError, null);
     assert.equal(useViewerStore.getState().loading, false);
-    assert.equal(model.ifcDataStore?.entityCount, 2);
+    // Two objects plus the tree's root and its one layer (rhinoLayerTree.ts).
+    assert.equal(model.ifcDataStore?.entityCount, 4);
     assert.equal(model.ifcDataStore?.entities.getGlobalId(1), CRAFTED_GLOBAL_ID);
     assert.equal(model.geometryResult?.meshes.length, 2);
     assert.equal(model.geometryResult?.totalTriangles, 2);
@@ -100,6 +101,28 @@ describe('useIfcLoader .3dm route', () => {
     assert.ok(second.idOffset > first.maxExpressId, 'the federated range starts past the primary watermark');
     assert.equal(second.geometryResult.meshes[0].expressId, 1 + second.idOffset);
     assert.equal(useViewerStore.getState().models.size, 2);
+  });
+
+  it('starts Rhino\'s hidden objects and layers hidden, on this model\'s ids', async () => {
+    const layered = new File([(await craftRhinoLayerTree()).slice()], 'layers.3dm');
+    // Federated behind a primary, so the ids it hides have to go through this
+    // model's own offset.
+    await act(async () => hookApi!.loadFile(file('first.3dm'), { kind: 'primary' }));
+
+    await act(async () => hookApi!.loadFile(layered, { kind: 'federated', modelId: 'rhino-layers' }));
+
+    const state = useViewerStore.getState();
+    const model = state.models.get('rhino-layers');
+    assert.ok(model?.ifcDataStore, 'the model is registered');
+    const hiddenNames = [...state.hiddenEntities]
+      .map((globalId) => model.ifcDataStore!.entities.getName(globalId - model.idOffset)).sort();
+    // The hidden object, the layer that is off and its object: the ids went
+    // through this model's own range, not the raw express ids.
+    assert.deepEqual(hiddenNames, ['Offcut', 'Scaffold', 'Tower']);
+    assert.ok(model.idOffset > 0, 'a federated model is offset, so a raw express id would hide the wrong thing');
+    // Showing them again is the ordinary channel, so the tree can.
+    state.showEntities([...state.hiddenEntities]);
+    assert.equal(useViewerStore.getState().hiddenEntities.size, 0);
   });
 
   it('shows the reader refusal for a file that is not a .3dm after all', async () => {

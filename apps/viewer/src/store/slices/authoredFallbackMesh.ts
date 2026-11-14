@@ -23,7 +23,7 @@ import type { CoordinateInfo, MeshData } from '@ifc-lite/geometry';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { ViewerState } from '../index.js';
 import type { AuthoredElement } from './authoredElement.js';
-import { profileSectionExtent } from '@ifc-lite/create';
+import { getFootprintRoofPlaneParts, profileSectionExtent } from '@ifc-lite/create';
 import { buildElementMesh, type ElementMeshPayload } from './authoredElementMeshes.js';
 import { authoredDataStore } from './authoredTreeEntry.js';
 import { toGlobalIdFromModels } from '../globalId.js';
@@ -81,6 +81,12 @@ function isLiveWithoutMesh(state: ViewerState, modelId: string, entityId: number
   if (!view?.getNewEntity(entityId) || view.getTombstones().has(entityId)) return false;
   const globalId = toGlobalIdFromModels(state.models, modelId, entityId);
   const meshes = (state.models.get(modelId)?.geometryResult ?? (state.models.size === 0 ? state.geometryResult : null))?.meshes ?? [];
+  const store = authoredDataStore(state, modelId);
+  if (store && view) {
+    const planes = getFootprintRoofPlaneParts(store, view, entityId);
+    const planeIds = new Set(planes.map(id => toGlobalIdFromModels(state.models, modelId, id)));
+    if (planeIds.size > 0 && [...planeIds].every(id => meshes.some(mesh => mesh.expressId === id))) return false;
+  }
   return !meshes.some((mesh) => mesh.expressId === globalId);
 }
 

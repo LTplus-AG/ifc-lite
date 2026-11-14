@@ -570,7 +570,7 @@ test('META: absent, empty or unreadable input never passes any verdict, identity
     const unver = R.summarize(plan, rows.map((r) => ({ ...r, fingerprint: 'UNVERIFIABLE (no model in the store)' })), { floors: {} })
       .fixtures.find((f) => f.name === fixture).lanes[lane];
     add(`${lane}: output identity when every fingerprint is UNVERIFIABLE`, unver.output, unver.output !== 'match');
-    const timed = R.summarize(plan, rows.map((r, i) => ({ ...r, interactiveMs: 1000 + (i % 3), fingerprint: 'm=1' })), { floors: {} })
+    const timed = R.summarize(plan, rows.map((r, i) => ({ ...r, interactiveMs: 1000 + (i % 3), geometryMs: 1000 + (i % 3), presentTimesFromChangeMs: [1000 + (i % 3)], fingerprint: 'm=1' })), { floors: {} })
       .fixtures.find((f) => f.name === fixture).lanes[lane];
     add(`${lane}: verdict when the A/A floors lack this cell`, timed.primary.verdict, /^inconclusive: no A\/A floor/.test(timed.primary.verdict));
     for (const key of (R.EXPECTED_METRICS[lane] ?? []).filter((k) => k !== 'interactiveMs')) {

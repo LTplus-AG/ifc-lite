@@ -5,8 +5,9 @@
 import { act } from 'react';
 
 /**
- * Let the load window close after the store settled: it closes one painted
- * frame later, in a task behind that frame (hooks/loadWindow.ts), so the
+ * Let the load window close after the store settled: it closes once the
+ * settled scene has been drawn (lib/settled-frame.ts; with nothing to draw in a
+ * test, two animation frames), in a task behind that frame, so the
  * whole-model consumers do not delay the settled frame. Await this after the
  * store change that ends a load, before asserting settled values. Waits for
  * the transition (`until`, by default the window's close once the store is

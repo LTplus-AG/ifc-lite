@@ -14,7 +14,7 @@
  * screen under 360px moves Home and Fit into More (`compactCommands`).
  */
 
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { Download, MoreHorizontal } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
@@ -57,7 +57,11 @@ const BAR_CLASS: Record<MobileCommandPlacement, string> = {
   'side-rail': 'flex flex-col items-center box-content w-11 border-l overflow-y-auto pr-safe-0 pt-safe-1 pb-safe-1',
 };
 
-export function MobileToolbar({ placement = 'bottom-bar' }: { placement?: MobileCommandPlacement }) {
+export function MobileToolbar({ placement = 'bottom-bar', style }: {
+  placement?: MobileCommandPlacement;
+  /** The shell places the bar on its grid (`gridArea`). */
+  style?: CSSProperties;
+}) {
   const { t } = useTranslation();
   const rail = placement === 'side-rail';
   // Neighbouring hit areas meet edge to edge along the bar's axis.
@@ -116,7 +120,7 @@ export function MobileToolbar({ placement = 'bottom-bar' }: { placement?: Mobile
   };
 
   return (
-    <div data-command-surface="mobile" data-command-placement={placement} className={cn(BAR_CLASS[placement], 'bg-white border-border relative z-50')}>
+    <div data-command-surface="mobile" data-command-placement={placement} style={style} className={cn(BAR_CLASS[placement], 'bg-white border-border relative z-50')}>
       {fileCommands.fileInputs}
 
       {/* Open File */}

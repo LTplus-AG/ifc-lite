@@ -29,7 +29,7 @@ import { normalize } from '../tests/structural-coverage/lib/values.mjs';
 import { readStep } from '../tests/structural-coverage/lib/step.mjs';
 import { unwritten } from '../tests/structural-coverage/probes/index.mjs';
 import { SCENE, stepsFor } from '../tests/structural-coverage/probes/create-scene.mjs';
-import { nonConforming } from '../tests/structural-coverage/probes/convert.mjs';
+import { compareFile, nonConforming, renamedNonConforming } from '../tests/structural-coverage/probes/convert.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const GENERATOR = join(ROOT, 'scripts/generate-structural-coverage-ledger.mjs');
@@ -199,6 +199,97 @@ ENDSEC;END-ISO-10303-21;`);
   assert.match(held[5], /typed IFCBOOLEAN in IfcMeasure$/, "the [] suffix is stripped before the slot check");
   const cyclic = { ...registry, selects: { ...registry.selects, IfcA: ['IfcB'], IfcB: ['IfcA'] } };
   assert.throws(() => nonConforming(holders, 'IfcHolder', cyclic), /select IfcA nests in a cycle/);
+});
+
+test('convert (#9668): only the values the schemas force are excused, and only as the schemas force them', () => {
+  const step = (data) => stepFile('', '', data).step;
+  const slot = (name, type, optional) => ({ name, type, optional });
+  const action = [slot('GlobalId', 'IfcGloballyUniqueId', false), slot('DestabilizingLoad', 'IfcBoolean', true), slot('PredefinedType', 'IfcStructuralSurfaceActivityTypeEnum', false)];
+  const registry = (entities) => ({ entities, selects: {}, types: {}, enums: { IfcStructuralSurfaceActivityTypeEnum: ['CONST', 'BILINEAR', 'DISCRETE', 'ISOCONTOUR', 'USERDEFINED', 'NOTDEFINED'] } });
+  const rooted = new Map(['IFCSTRUCTURALSURFACEACTION', 'IFCSTRUCTURALPLANARACTION'].map((t) => [t, { rooted: true }]));
+  const schemas = {
+    own: { types: rooted, registry: registry({
+      IfcStructuralSurfaceAction: { allAttributes: action, inheritanceChain: ['IfcStructuralSurfaceAction'] },
+      IfcStructuralPlanarAction: { allAttributes: action, inheritanceChain: ['IfcStructuralPlanarAction', 'IfcStructuralSurfaceAction'] },
+    }) },
+    // As IFC2X3: DestabilizingLoad is required, and there is no PredefinedType.
+    other: { types: rooted, registry: registry({
+      IfcStructuralPlanarAction: { allAttributes: [action[0], slot('DestabilizingLoad', 'BOOLEAN', false)], inheritanceChain: ['IfcStructuralPlanarAction'] },
+    }) },
+  };
+  const row = { schema: 'IFC4', entity: 'IfcStructuralSurfaceAction', rooted: true, attributes: ['GlobalId', 'DestabilizingLoad', 'PredefinedType'], own: ['DestabilizingLoad', 'PredefinedType'] };
+  const file = { path: 'f.ifc', step: step(`#1=IFCSTRUCTURALSURFACEACTION('const',$,.CONST.);
+#2=IFCSTRUCTURALSURFACEACTION('bilinear',$,.BILINEAR.);
+#3=IFCSTRUCTURALSURFACEACTION('untyped',.T.,$);
+#4=IFCSTRUCTURALSURFACEACTION('bogus',.T.,$);
+#5=IFCSTRUCTURALSURFACEACTION('star',.T.,*);
+#6=IFCSTRUCTURALSURFACEACTION('blank',$,.BILINEAR.);
+#7=IFCSTRUCTURALSURFACEACTION('filled',.T.,$);
+#8=IFCSTRUCTURALSURFACEACTION('left',.T.,$);
+#9=IFCSTRUCTURALSURFACEACTION('label',.T.,.CONST.);
+#10=IFCSTRUCTURALSURFACEACTION('typed',.T.,IFCLABEL('CONST'));
+#11=IFCSTRUCTURALSURFACEACTION('copied',.T.,.BILINEAR.);`) };
+  const there = step(`#1=IFCSTRUCTURALPLANARACTION('const',.F.);
+#2=IFCSTRUCTURALPLANARACTION('bilinear',.F.);
+#3=IFCSTRUCTURALPLANARACTION('untyped',.T.);
+#4=IFCSTRUCTURALPLANARACTION('bogus',.T.);
+#5=IFCSTRUCTURALPLANARACTION('star',.T.);
+#6=IFCSTRUCTURALPLANARACTION('blank',.F.);
+#7=IFCSTRUCTURALPLANARACTION('filled',.T.);
+#8=IFCSTRUCTURALPLANARACTION('left',.T.);
+#9=IFCSTRUCTURALPLANARACTION('label',.T.);
+#10=IFCSTRUCTURALPLANARACTION('typed',.T.);
+#11=IFCSTRUCTURALPLANARACTION('copied',.T.);`);
+  const problems = (back) => compareFile(row, file, { there, step: step(back) }, schemas).problems;
+
+  assert.deepEqual(problems(`#1=IFCSTRUCTURALPLANARACTION('const',.F.,.CONST.);
+#2=IFCSTRUCTURALSURFACEACTION('bilinear',.F.,.BILINEAR.);
+#3=IFCSTRUCTURALPLANARACTION('untyped',.T.,.CONST.);
+#4=IFCSTRUCTURALSURFACEACTION('bogus',.T.,.BILINEAR.);
+#5=IFCSTRUCTURALSURFACEACTION('star',.T.,*);
+#6=IFCSTRUCTURALSURFACEACTION('blank',$,.BILINEAR.);
+#7=IFCSTRUCTURALPLANARACTION('filled',.T.,.CONST.);
+#8=IFCSTRUCTURALSURFACEACTION('left',.T.,$);
+#9=IFCSTRUCTURALPLANARACTION('label',.T.,.CONST.);
+#10=IFCSTRUCTURALSURFACEACTION('typed',.T.,IFCLABEL('CONST'));
+#11=IFCSTRUCTURALSURFACEACTION('copied',.T.,.BILINEAR.);`), [], 'the constant subtype, the IFC2X3 fill carried back, a fill of a slot the source left invalid, and values back as written');
+
+  const found = problems(`#1=IFCSTRUCTURALPLANARACTION('const',.T.,.CONST.);
+#2=IFCSTRUCTURALPLANARACTION('bilinear',.F.,.BILINEAR.);
+#3=IFCSTRUCTURALSURFACEACTION('untyped',.T.,IFCLABEL('x'));
+#4=IFCSTRUCTURALSURFACEACTION('bogus',.T.,.BOGUS.);
+#5=IFCSTRUCTURALSURFACEACTION('star',.T.,.CONST.);
+#6=IFCSTRUCTURALSURFACEACTION('blank',$,.BILINEAR.);
+#7=IFCSTRUCTURALPLANARACTION('filled',.T.,.BILINEAR.);
+#8=IFCSTRUCTURALPLANARACTION('left',.T.,$);
+#9=IFCSTRUCTURALPLANARACTION('label',.T.,IFCLABEL('CONST'));
+#10=IFCSTRUCTURALPLANARACTION('typed',.T.,.CONST.);
+#11=IFCSTRUCTURALSURFACEACTIONVARYING('copied',.T.,.BILINEAR.);`);
+  assert.equal(found.length, 9, found.join('\n'));
+  assert.match(found[0], /#1: DestabilizingLoad true, was null \(written false in IFC2X3, which requires it\)/, 'the fill must come back as written');
+  assert.match(found[1], /#2: came back as IFCSTRUCTURALPLANARACTION/, 'only a CONST action may come back as the constant subtype');
+  assert.match(found[2], /#3: PredefinedType left empty in the source, which IFC4 requires; came back not a member of IfcStructuralSurfaceActivityTypeEnum/);
+  assert.match(found[3], /#4: PredefinedType left empty in the source, which IFC4 requires; came back not a member of IfcStructuralSurfaceActivityTypeEnum/);
+  assert.match(found[4], /#7: came back as IFCSTRUCTURALPLANARACTION/, 'an empty PredefinedType takes the constant subtype only when filled as CONST');
+  assert.match(found[5], /#8: came back as IFCSTRUCTURALPLANARACTION/);
+  assert.match(found[6], /#9: came back as IFCSTRUCTURALPLANARACTION/, 'only the CONST enum member, not a value that reads as CONST');
+  assert.match(found[7], /#10: came back as IFCSTRUCTURALPLANARACTION/, 'on the source side too');
+  assert.match(found[8], /#11: came back as IFCSTRUCTURALSURFACEACTIONVARYING/, 'a keyword the schema lacks is a class change, not a loss');
+
+  // A record converted under another class is held to the intermediate schema too.
+  assert.deepEqual(renamedNonConforming(row, file, there, schemas.other), []);
+  const invalid = renamedNonConforming(row, file, step(`#1=IFCSTRUCTURALPLANARACTION('const',$);`), schemas.other);
+  assert.deepEqual(invalid, [{ id: 1, why: 'DestabilizingLoad: required value empty' }]);
+  const unknown = renamedNonConforming(row, file, step(`#1=IFCSTRUCTURALCURVEACTION('const',.F.);`), schemas.other);
+  assert.deepEqual(unknown, [{ id: 1, why: 'no such entity' }], 'a record written under a keyword the intermediate schema lacks');
+
+  // IFC4's planar action pins PredefinedType to CONST, so a filled slot must be CONST, not any enum member.
+  const planarRow = { ...row, entity: 'IfcStructuralPlanarAction' };
+  const planarFile = { path: 'p.ifc', step: step(`#1=IFCSTRUCTURALPLANARACTION('star',.T.,*);`) };
+  const planarThere = step(`#1=IFCSTRUCTURALPLANARACTION('star',.T.);`);
+  const planar = (back) => compareFile(planarRow, planarFile, { there: planarThere, step: step(back) }, schemas).problems;
+  assert.deepEqual(planar(`#1=IFCSTRUCTURALPLANARACTION('star',.T.,.CONST.);`), [], 'CONST fills the invalid slot');
+  assert.ok(planar(`#1=IFCSTRUCTURALPLANARACTION('star',.T.,.BILINEAR.);`).some((why) => why.includes('ConstPredefinedType')), 'BILINEAR on the planar action is schema-invalid');
 });
 
 const stepFile = (path, sha256, data) => ({ path, sha256, step: readStep(`ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;\n${data}\nENDSEC;END-ISO-10303-21;`) });

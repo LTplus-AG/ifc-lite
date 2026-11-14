@@ -1,0 +1,864 @@
+{
+  "schema": "ifclite-parity-ui-baseline/1",
+  "issue": 9296,
+  "round": 0,
+  "label": "candidate",
+  "source": {
+    "commit": "d7dcaa248c14357a5218974504fbdc1234d6c024",
+    "dirty": true,
+    "probes": {
+      "commit": "38520159a4a53ee63cdb7a1ce0e596555f35b454",
+      "dirty": false
+    }
+  },
+  "distIndexSha256": "e3431a8eaa5449fcfbb7f3ee42a744d2dade5de6f8f00df9dc8fc91dca933283",
+  "distSource": {
+    "commit": "d7dcaa248c14357a5218974504fbdc1234d6c024",
+    "build": "pnpm turbo build --filter=@ifc-lite/viewer"
+  },
+  "adapter": {
+    "vendor": "nvidia",
+    "architecture": "blackwell"
+  },
+  "viewport": {
+    "width": 1600,
+    "height": 900
+  },
+  "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --dist-commit d7dcaa248c14357a5218974504fbdc1234d6c024 --out <out> --no-probes --exercises F1,F2 --no-frames --themes light,dark --round 0 --baseline tests/modelling-parity/ui/baseline/harness-exercises-2026-11-13.json",
+  "results": [
+    {
+      "schema": "ifclite-parity-result/1",
+      "source": {
+        "commit": "d7dcaa248c14357a5218974504fbdc1234d6c024",
+        "dirty": true,
+        "probes": {
+          "commit": "38520159a4a53ee63cdb7a1ce0e596555f35b454",
+          "dirty": false
+        }
+      },
+      "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --dist-commit d7dcaa248c14357a5218974504fbdc1234d6c024 --out <out> --no-probes --exercises F1,F2 --no-frames --themes light,dark --round 0 --baseline tests/modelling-parity/ui/baseline/harness-exercises-2026-11-13.json",
+      "capability": null,
+      "exercise": "F1",
+      "probe": "exercise",
+      "mode": "ui",
+      "id": "F1.ui.light",
+      "title": "A room, 5x4 m, with a door, window, floor slab and space",
+      "status": "pass",
+      "metrics": {
+        "ms": 11669,
+        "actions": 48,
+        "clicks": 9,
+        "keys": 39,
+        "steps": 8,
+        "cameraJumps": 0
+      },
+      "checks": [
+        {
+          "name": "4 walls",
+          "ok": true,
+          "detail": "4"
+        },
+        {
+          "name": "walls joined at every corner (4 joins)",
+          "ok": true,
+          "detail": "4"
+        },
+        {
+          "name": "1 door(s)",
+          "ok": true,
+          "detail": "1"
+        },
+        {
+          "name": "1 window(s)",
+          "ok": true,
+          "detail": "1"
+        },
+        {
+          "name": "every door and window fills its own opening in a wall",
+          "ok": true,
+          "detail": "2 hosted"
+        },
+        {
+          "name": "1 floor slab(s)",
+          "ok": true,
+          "detail": "1"
+        },
+        {
+          "name": "1 space(s)",
+          "ok": true,
+          "detail": "1"
+        },
+        {
+          "name": "every element is contained in a storey",
+          "ok": true,
+          "detail": "0 uncontained"
+        },
+        {
+          "name": "walls are exactly 5, 4, 5, 4 m",
+          "ok": true,
+          "detail": "5.000, 4.000, 5.000, 4.000"
+        },
+        {
+          "name": "space floor area 18.24 m2 (inside the walls)",
+          "ok": true,
+          "detail": "{\"GrossFloorArea\":20.000043097882703,\"NetFloorArea\":18.239988746940803,\"GrossPerimeter\":17.19999405891209,\"NetPerimeter\":17.19999405891209,\"Height\":3,\"GrossVolume\":60.00012929364811}"
+        }
+      ],
+      "tasks": [
+        {
+          "name": "Start blank",
+          "ok": true,
+          "ms": 2934,
+          "actions": 1
+        },
+        {
+          "name": "walls: typed 5/4/5/4 m (wall tool is active after Start blank)",
+          "ok": true,
+          "ms": 3639,
+          "actions": 24
+        },
+        {
+          "name": "door: Shift+D, click the south wall",
+          "ok": true,
+          "ms": 922,
+          "actions": 4
+        },
+        {
+          "name": "window: Shift+W, click the east wall",
+          "ok": true,
+          "ms": 891,
+          "actions": 4
+        },
+        {
+          "name": "floor slab: Shift+S, click a corner, typed 5 x 4",
+          "ok": true,
+          "ms": 1598,
+          "actions": 8
+        },
+        {
+          "name": "space: Shift+O, click inside",
+          "ok": true,
+          "ms": 884,
+          "actions": 4
+        },
+        {
+          "name": "export: File > Modified IFC (review dialog)",
+          "ok": true,
+          "ms": 530,
+          "actions": 2
+        },
+        {
+          "name": "export: confirm",
+          "ok": true,
+          "ms": 271,
+          "actions": 1
+        }
+      ],
+      "notes": [],
+      "scripted": [],
+      "pageErrors": [],
+      "finalSession": {
+        "command": null,
+        "phase": "idle",
+        "storeyId": 26,
+        "modelId": "798e1f87-9f70-47d3-91d0-dc654fc1aa46",
+        "selected": 1,
+        "layout": "auto"
+      },
+      "evidence": [
+        "artifacts/F1/F1.ui.light.ifc"
+      ],
+      "artifacts": {
+        "ifc": "artifacts/F1/F1.ui.light.ifc"
+      },
+      "theme": "light"
+    },
+    {
+      "schema": "ifclite-parity-result/1",
+      "source": {
+        "commit": "d7dcaa248c14357a5218974504fbdc1234d6c024",
+        "dirty": true,
+        "probes": {
+          "commit": "38520159a4a53ee63cdb7a1ce0e596555f35b454",
+          "dirty": false
+        }
+      },
+      "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --dist-commit d7dcaa248c14357a5218974504fbdc1234d6c024 --out <out> --no-probes --exercises F1,F2 --no-frames --themes light,dark --round 0 --baseline tests/modelling-parity/ui/baseline/harness-exercises-2026-11-13.json",
+      "capability": null,
+      "exercise": "F1",
+      "probe": "exercise",
+      "mode": "ui",
+      "id": "F1.ui.dark",
+      "title": "A room, 5x4 m, with a door, window, floor slab and space",
+      "status": "pass",
+      "metrics": {
+        "ms": 11506,
+        "actions": 48,
+        "clicks": 9,
+        "keys": 39,
+        "steps": 8,
+        "cameraJumps": 0
+      },
+      "checks": [
+        {
+          "name": "4 walls",
+          "ok": true,
+          "detail": "4"
+        },
+        {
+          "name": "walls joined at every corner (4 joins)",
+          "ok": true,
+          "detail": "4"
+        },
+        {
+          "name": "1 door(s)",
+          "ok": true,
+          "detail": "1"
+        },
+        {
+          "name": "1 window(s)",
+          "ok": true,
+          "detail": "1"
+        },
+        {
+          "name": "every door and window fills its own opening in a wall",
+          "ok": true,
+          "detail": "2 hosted"
+        },
+        {
+          "name": "1 floor slab(s)",
+          "ok": true,
+          "detail": "1"
+        },
+        {
+          "name": "1 space(s)",
+          "ok": true,
+          "detail": "1"
+        },
+        {
+          "name": "every element is contained in a storey",
+          "ok": true,
+          "detail": "0 uncontained"
+        },
+        {
+          "name": "walls are exactly 5, 4, 5, 4 m",
+          "ok": true,
+          "detail": "5.000, 4.000, 5.000, 4.000"
+        },
+        {
+          "name": "space floor area 18.24 m2 (inside the walls)",
+          "ok": true,
+          "detail": "{\"GrossFloorArea\":20.000043097882703,\"NetFloorArea\":18.239988746940803,\"GrossPerimeter\":17.19999405891209,\"NetPerimeter\":17.19999405891209,\"Height\":3,\"GrossVolume\":60.00012929364811}"
+        }
+      ],
+      "tasks": [
+        {
+          "name": "Start blank",
+          "ok": true,
+          "ms": 2931,
+          "actions": 1
+        },
+        {
+          "name": "walls: typed 5/4/5/4 m (wall tool is active after Start blank)",
+          "ok": true,
+          "ms": 3580,
+          "actions": 24
+        },
+        {
+          "name": "door: Shift+D, click the south wall",
+          "ok": true,
+          "ms": 878,
+          "actions": 4
+        },
+        {
+          "name": "window: Shift+W, click the east wall",
+          "ok": true,
+          "ms": 890,
+          "actions": 4
+        },
+        {
+          "name": "floor slab: Shift+S, click a corner, typed 5 x 4",
+          "ok": true,
+          "ms": 1579,
+          "actions": 8
+        },
+        {
+          "name": "space: Shift+O, click inside",
+          "ok": true,
+          "ms": 878,
+          "actions": 4
+        },
+        {
+          "name": "export: File > Modified IFC (review dialog)",
+          "ok": true,
+          "ms": 501,
+          "actions": 2
+        },
+        {
+          "name": "export: confirm",
+          "ok": true,
+          "ms": 269,
+          "actions": 1
+        }
+      ],
+      "notes": [],
+      "scripted": [],
+      "pageErrors": [],
+      "finalSession": {
+        "command": null,
+        "phase": "idle",
+        "storeyId": 26,
+        "modelId": "c22ae867-786d-4ea9-9be7-0b2a857cb91d",
+        "selected": 1,
+        "layout": "auto"
+      },
+      "evidence": [
+        "artifacts/F1/F1.ui.dark.ifc"
+      ],
+      "artifacts": {
+        "ifc": "artifacts/F1/F1.ui.dark.ifc"
+      },
+      "theme": "dark"
+    },
+    {
+      "schema": "ifclite-parity-result/1",
+      "source": {
+        "commit": "d7dcaa248c14357a5218974504fbdc1234d6c024",
+        "dirty": true,
+        "probes": {
+          "commit": "38520159a4a53ee63cdb7a1ce0e596555f35b454",
+          "dirty": false
+        }
+      },
+      "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --dist-commit d7dcaa248c14357a5218974504fbdc1234d6c024 --out <out> --no-probes --exercises F1,F2 --no-frames --themes light,dark --round 0 --baseline tests/modelling-parity/ui/baseline/harness-exercises-2026-11-13.json",
+      "capability": null,
+      "exercise": "F2",
+      "probe": "exercise",
+      "mode": "ui",
+      "id": "F2.ui.light",
+      "title": "The KIT FZK-Haus: 12x10 m, storeys at 0 and 2.7 m, 13 walls, 5 doors, 11 windows, a stair, 7 spaces, a 30 degree gable roof",
+      "status": "partial",
+      "reason": "space areas match the reference (rel 0.05, matched by area): areas 14.304086147102808, 13.80601699909615, 24.276506829196105, 16.15, 11.115, 34.849999999999994, 115.63983871540023",
+      "metrics": {
+        "ms": 62654,
+        "actions": 348,
+        "clicks": 64,
+        "keys": 284,
+        "steps": 18,
+        "cameraJumps": 0
+      },
+      "checks": [
+        {
+          "name": "Erdgeschoss at 0 m",
+          "ok": true,
+          "detail": "Erdgeschoss@0"
+        },
+        {
+          "name": "Erdgeschoss: 9 walls (rel 0.15)",
+          "ok": true,
+          "detail": "9"
+        },
+        {
+          "name": "Erdgeschoss: wall length 69.8 m (rel 0.05)",
+          "ok": true,
+          "detail": "69.67"
+        },
+        {
+          "name": "Erdgeschoss: 5 doors",
+          "ok": true,
+          "detail": "5"
+        },
+        {
+          "name": "Erdgeschoss: every door fills its own opening in a wall",
+          "ok": true,
+          "detail": "5 hosted"
+        },
+        {
+          "name": "Erdgeschoss: doors sizes match (abs 0.05 m)",
+          "ok": true,
+          "detail": "all matched"
+        },
+        {
+          "name": "Erdgeschoss: 9 windows",
+          "ok": true,
+          "detail": "9"
+        },
+        {
+          "name": "Erdgeschoss: every window fills its own opening in a wall",
+          "ok": true,
+          "detail": "9 hosted"
+        },
+        {
+          "name": "Erdgeschoss: windows sizes match (abs 0.05 m)",
+          "ok": true,
+          "detail": "all matched"
+        },
+        {
+          "name": "Erdgeschoss: 1 stair(s)",
+          "ok": true,
+          "detail": "1"
+        },
+        {
+          "name": "Dachgeschoss at 2.7 m",
+          "ok": true,
+          "detail": "Dachgeschoss@2.7"
+        },
+        {
+          "name": "Dachgeschoss: 4 walls (rel 0.15)",
+          "ok": true,
+          "detail": "4"
+        },
+        {
+          "name": "Dachgeschoss: wall length 44 m (rel 0.05)",
+          "ok": true,
+          "detail": "44.00"
+        },
+        {
+          "name": "Dachgeschoss: 0 doors",
+          "ok": true,
+          "detail": "0"
+        },
+        {
+          "name": "Dachgeschoss: 2 windows",
+          "ok": true,
+          "detail": "2"
+        },
+        {
+          "name": "Dachgeschoss: every window fills its own opening in a wall",
+          "ok": true,
+          "detail": "2 hosted"
+        },
+        {
+          "name": "Dachgeschoss: windows sizes match (abs 0.05 m)",
+          "ok": true,
+          "detail": "all matched"
+        },
+        {
+          "name": "Dachgeschoss: 0 stair(s)",
+          "ok": true,
+          "detail": "0"
+        },
+        {
+          "name": "footprint 12 x 10 m (abs 0.15)",
+          "ok": true,
+          "detail": "12.00 x 10.00"
+        },
+        {
+          "name": "7 spaces",
+          "ok": true,
+          "detail": "7"
+        },
+        {
+          "name": "space areas match the reference (rel 0.05, matched by area)",
+          "ok": false,
+          "detail": "areas 14.304086147102808, 13.80601699909615, 24.276506829196105, 16.15, 11.115, 34.849999999999994, 115.63983871540023"
+        },
+        {
+          "name": "gable roof at 30 degrees",
+          "ok": true,
+          "detail": "Exported roof passes surface samples and volume at 30 degrees"
+        }
+      ],
+      "target": "tests/modelling-parity/references/f2-fzk-haus-target.json",
+      "tasks": [
+        {
+          "name": "Start blank",
+          "ok": true,
+          "ms": 2925,
+          "actions": 1
+        },
+        {
+          "name": "storeys: Manage storeys, add above, floor-to-floor 2.7, rename both, draw on Erdgeschoss",
+          "ok": true,
+          "ms": 5654,
+          "actions": 39
+        },
+        {
+          "name": "close the storey manager: Back to the inspector",
+          "ok": true,
+          "ms": 235,
+          "actions": 1
+        },
+        {
+          "name": "EG base slab: Shift+S, typed 12 x 10",
+          "ok": true,
+          "ms": 1821,
+          "actions": 12
+        },
+        {
+          "name": "EG outer walls: W, typed 12/10/12/10 m",
+          "ok": true,
+          "ms": 3972,
+          "actions": 29
+        },
+        {
+          "name": "EG inner walls: 5 walls, Alt+click each start (no surface snap), typed length and angle",
+          "ok": true,
+          "ms": 6459,
+          "actions": 49
+        },
+        {
+          "name": "EG doors: Shift+D, sizes in the Defaults panel, click the host walls",
+          "ok": true,
+          "ms": 10558,
+          "actions": 58
+        },
+        {
+          "name": "EG windows: Shift+W, 2.0 x 1.2 sill 0.8 in the Defaults panel, click 9 wall points",
+          "ok": true,
+          "ms": 7444,
+          "actions": 28
+        },
+        {
+          "name": "EG spaces: Shift+O, Pick in the 3 walled rooms, Draw rectangles for Kueche, Flur, Wohnen (no wall between them)",
+          "ok": true,
+          "ms": 6904,
+          "actions": 43
+        },
+        {
+          "name": "stair EG to DG: Shift+T, click the foot and the head of a 3.6 m run",
+          "ok": true,
+          "ms": 1264,
+          "actions": 5
+        },
+        {
+          "name": "switch to Dachgeschoss (storey chip)",
+          "ok": true,
+          "ms": 488,
+          "actions": 2
+        },
+        {
+          "name": "DG floor slab: Shift+S, typed 12 x 10",
+          "ok": true,
+          "ms": 1687,
+          "actions": 10
+        },
+        {
+          "name": "DG walls: W, typed 12/10/12/10 m",
+          "ok": true,
+          "ms": 4216,
+          "actions": 29
+        },
+        {
+          "name": "DG gable windows: Shift+W, 1.0 x 1.0 in the Defaults panel, click both gable walls",
+          "ok": true,
+          "ms": 3529,
+          "actions": 13
+        },
+        {
+          "name": "DG space: Shift+O, Pick inside",
+          "ok": true,
+          "ms": 1006,
+          "actions": 4
+        },
+        {
+          "name": "DG gable roof: Roof tool, Gable preset, 30-degree pitch, typed 12 x 10",
+          "ok": true,
+          "ms": 3598,
+          "actions": 22
+        },
+        {
+          "name": "export: File > Modified IFC (review dialog)",
+          "ok": true,
+          "ms": 578,
+          "actions": 2
+        },
+        {
+          "name": "export: confirm",
+          "ok": true,
+          "ms": 316,
+          "actions": 1
+        }
+      ],
+      "notes": [],
+      "scripted": [],
+      "pageErrors": [],
+      "finalSession": {
+        "command": null,
+        "phase": "idle",
+        "storeyId": 36,
+        "modelId": "ec8a69fd-5640-4e79-bec9-9a12318902b7",
+        "selected": 1,
+        "layout": "auto"
+      },
+      "evidence": [
+        "artifacts/F2/F2.ui.light.ifc"
+      ],
+      "artifacts": {
+        "ifc": "artifacts/F2/F2.ui.light.ifc"
+      },
+      "theme": "light"
+    },
+    {
+      "schema": "ifclite-parity-result/1",
+      "source": {
+        "commit": "d7dcaa248c14357a5218974504fbdc1234d6c024",
+        "dirty": true,
+        "probes": {
+          "commit": "38520159a4a53ee63cdb7a1ce0e596555f35b454",
+          "dirty": false
+        }
+      },
+      "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --dist-commit d7dcaa248c14357a5218974504fbdc1234d6c024 --out <out> --no-probes --exercises F1,F2 --no-frames --themes light,dark --round 0 --baseline tests/modelling-parity/ui/baseline/harness-exercises-2026-11-13.json",
+      "capability": null,
+      "exercise": "F2",
+      "probe": "exercise",
+      "mode": "ui",
+      "id": "F2.ui.dark",
+      "title": "The KIT FZK-Haus: 12x10 m, storeys at 0 and 2.7 m, 13 walls, 5 doors, 11 windows, a stair, 7 spaces, a 30 degree gable roof",
+      "status": "partial",
+      "reason": "space areas match the reference (rel 0.05, matched by area): areas 14.304086147102808, 13.80601699909615, 24.276506829196105, 16.15, 11.115, 34.849999999999994, 115.63983871540023",
+      "metrics": {
+        "ms": 62354,
+        "actions": 348,
+        "clicks": 64,
+        "keys": 284,
+        "steps": 18,
+        "cameraJumps": 0
+      },
+      "checks": [
+        {
+          "name": "Erdgeschoss at 0 m",
+          "ok": true,
+          "detail": "Erdgeschoss@0"
+        },
+        {
+          "name": "Erdgeschoss: 9 walls (rel 0.15)",
+          "ok": true,
+          "detail": "9"
+        },
+        {
+          "name": "Erdgeschoss: wall length 69.8 m (rel 0.05)",
+          "ok": true,
+          "detail": "69.67"
+        },
+        {
+          "name": "Erdgeschoss: 5 doors",
+          "ok": true,
+          "detail": "5"
+        },
+        {
+          "name": "Erdgeschoss: every door fills its own opening in a wall",
+          "ok": true,
+          "detail": "5 hosted"
+        },
+        {
+          "name": "Erdgeschoss: doors sizes match (abs 0.05 m)",
+          "ok": true,
+          "detail": "all matched"
+        },
+        {
+          "name": "Erdgeschoss: 9 windows",
+          "ok": true,
+          "detail": "9"
+        },
+        {
+          "name": "Erdgeschoss: every window fills its own opening in a wall",
+          "ok": true,
+          "detail": "9 hosted"
+        },
+        {
+          "name": "Erdgeschoss: windows sizes match (abs 0.05 m)",
+          "ok": true,
+          "detail": "all matched"
+        },
+        {
+          "name": "Erdgeschoss: 1 stair(s)",
+          "ok": true,
+          "detail": "1"
+        },
+        {
+          "name": "Dachgeschoss at 2.7 m",
+          "ok": true,
+          "detail": "Dachgeschoss@2.7"
+        },
+        {
+          "name": "Dachgeschoss: 4 walls (rel 0.15)",
+          "ok": true,
+          "detail": "4"
+        },
+        {
+          "name": "Dachgeschoss: wall length 44 m (rel 0.05)",
+          "ok": true,
+          "detail": "44.00"
+        },
+        {
+          "name": "Dachgeschoss: 0 doors",
+          "ok": true,
+          "detail": "0"
+        },
+        {
+          "name": "Dachgeschoss: 2 windows",
+          "ok": true,
+          "detail": "2"
+        },
+        {
+          "name": "Dachgeschoss: every window fills its own opening in a wall",
+          "ok": true,
+          "detail": "2 hosted"
+        },
+        {
+          "name": "Dachgeschoss: windows sizes match (abs 0.05 m)",
+          "ok": true,
+          "detail": "all matched"
+        },
+        {
+          "name": "Dachgeschoss: 0 stair(s)",
+          "ok": true,
+          "detail": "0"
+        },
+        {
+          "name": "footprint 12 x 10 m (abs 0.15)",
+          "ok": true,
+          "detail": "12.00 x 10.00"
+        },
+        {
+          "name": "7 spaces",
+          "ok": true,
+          "detail": "7"
+        },
+        {
+          "name": "space areas match the reference (rel 0.05, matched by area)",
+          "ok": false,
+          "detail": "areas 14.304086147102808, 13.80601699909615, 24.276506829196105, 16.15, 11.115, 34.849999999999994, 115.63983871540023"
+        },
+        {
+          "name": "gable roof at 30 degrees",
+          "ok": true,
+          "detail": "Exported roof passes surface samples and volume at 30 degrees"
+        }
+      ],
+      "target": "tests/modelling-parity/references/f2-fzk-haus-target.json",
+      "tasks": [
+        {
+          "name": "Start blank",
+          "ok": true,
+          "ms": 2841,
+          "actions": 1
+        },
+        {
+          "name": "storeys: Manage storeys, add above, floor-to-floor 2.7, rename both, draw on Erdgeschoss",
+          "ok": true,
+          "ms": 5602,
+          "actions": 39
+        },
+        {
+          "name": "close the storey manager: Back to the inspector",
+          "ok": true,
+          "ms": 233,
+          "actions": 1
+        },
+        {
+          "name": "EG base slab: Shift+S, typed 12 x 10",
+          "ok": true,
+          "ms": 1824,
+          "actions": 12
+        },
+        {
+          "name": "EG outer walls: W, typed 12/10/12/10 m",
+          "ok": true,
+          "ms": 3992,
+          "actions": 29
+        },
+        {
+          "name": "EG inner walls: 5 walls, Alt+click each start (no surface snap), typed length and angle",
+          "ok": true,
+          "ms": 6465,
+          "actions": 49
+        },
+        {
+          "name": "EG doors: Shift+D, sizes in the Defaults panel, click the host walls",
+          "ok": true,
+          "ms": 10569,
+          "actions": 58
+        },
+        {
+          "name": "EG windows: Shift+W, 2.0 x 1.2 sill 0.8 in the Defaults panel, click 9 wall points",
+          "ok": true,
+          "ms": 7449,
+          "actions": 28
+        },
+        {
+          "name": "EG spaces: Shift+O, Pick in the 3 walled rooms, Draw rectangles for Kueche, Flur, Wohnen (no wall between them)",
+          "ok": true,
+          "ms": 6796,
+          "actions": 43
+        },
+        {
+          "name": "stair EG to DG: Shift+T, click the foot and the head of a 3.6 m run",
+          "ok": true,
+          "ms": 1247,
+          "actions": 5
+        },
+        {
+          "name": "switch to Dachgeschoss (storey chip)",
+          "ok": true,
+          "ms": 465,
+          "actions": 2
+        },
+        {
+          "name": "DG floor slab: Shift+S, typed 12 x 10",
+          "ok": true,
+          "ms": 1689,
+          "actions": 10
+        },
+        {
+          "name": "DG walls: W, typed 12/10/12/10 m",
+          "ok": true,
+          "ms": 4121,
+          "actions": 29
+        },
+        {
+          "name": "DG gable windows: Shift+W, 1.0 x 1.0 in the Defaults panel, click both gable walls",
+          "ok": true,
+          "ms": 3569,
+          "actions": 13
+        },
+        {
+          "name": "DG space: Shift+O, Pick inside",
+          "ok": true,
+          "ms": 940,
+          "actions": 4
+        },
+        {
+          "name": "DG gable roof: Roof tool, Gable preset, 30-degree pitch, typed 12 x 10",
+          "ok": true,
+          "ms": 3601,
+          "actions": 22
+        },
+        {
+          "name": "export: File > Modified IFC (review dialog)",
+          "ok": true,
+          "ms": 615,
+          "actions": 2
+        },
+        {
+          "name": "export: confirm",
+          "ok": true,
+          "ms": 336,
+          "actions": 1
+        }
+      ],
+      "notes": [],
+      "scripted": [],
+      "pageErrors": [],
+      "finalSession": {
+        "command": null,
+        "phase": "idle",
+        "storeyId": 36,
+        "modelId": "796158c2-e0e6-4b7d-b0b2-b2c442d9b245",
+        "selected": 1,
+        "layout": "auto"
+      },
+      "evidence": [
+        "artifacts/F2/F2.ui.dark.ifc"
+      ],
+      "artifacts": {
+        "ifc": "artifacts/F2/F2.ui.dark.ifc"
+      },
+      "theme": "dark"
+    }
+  ],
+  "frames": [],
+  "frameFailures": []
+}

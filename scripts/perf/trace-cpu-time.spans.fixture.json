@@ -1,0 +1,7 @@
+[{"attrs": {}, "startMs": 0, "endMs": 500, "spans": [
+  ["geometry.pool", "main", 0, 500, 0, 1, null],
+  ["scene.finalize", "main", 100, 50, 0, 2, null],
+  ["scene.finalize", "main", 120, 10, 0, 3, null],
+  ["geometry.firstVisible", "main", 0, 400, 1, 4, null],
+  ["shard.scan", "geom-0", 50, 100, 0, 5, 1]
+]}]

@@ -23,7 +23,8 @@
  * released when ITS OWN load has ended: the loader marks that point
  * (`markModelLoadEnded`, at the settle of that load's UI: after finalize and
  * publication), then the geometry tail must be idle (or `MAX_TAIL_WAIT_MS` must
- * have passed since the mark), then a frame must paint. For a single load that
+ * have passed since the mark), then the viewport must have drawn the settled
+ * scene (`afterSettledFrame`, lib/settled-frame.ts). For a single load that
  * is the same point as the window's own close. The record turning `complete`
  * is not that point (on a cache hit it is ~400 ms earlier), and another
  * model's load does not extend it: in a multi-file open the next file's load
@@ -44,11 +45,11 @@ import { useSyncExternalStore } from 'react';
 import { useViewerStore, type ViewerState } from '@/store';
 import { isGeometryTailBusy } from './geometryTail.js';
 import { subscribeModelLoadEnded } from './modelLoadEnd.js';
+import { afterSettledFrame, viewerRequestFrame, type AfterSettledFrame } from '@/lib/settled-frame';
 
 export const MAX_TAIL_WAIT_MS = 3_000;
 export const MAX_STORE_BUSY_MS = 30_000;
 const BACKSTOP_MS = 100;
-const CLOSE_BACKSTOP_MS = 1_000;
 
 /** A model's load lifecycle as the store reports it (`FederatedModel.loadState`). */
 export type ModelLoadState = string | undefined;
@@ -67,6 +68,8 @@ export interface LoadWindowDeps {
   now: () => number;
   requestFrame: (fn: () => void) => void;
   setTimer: (fn: () => void, ms: number) => void;
+  /** Run a release once the settled scene has been drawn (lib/settled-frame.ts). */
+  afterSettledFrame: AfterSettledFrame;
 }
 
 /** What the window holds right now; a new object whenever that changes. */
@@ -99,8 +102,8 @@ export function createLoadWindow(deps: LoadWindowDeps): LoadWindow {
   let settled = new Set<string>();
   /** When the loader marked each model's load as ended, inside this window. */
   const loadEndedAt = new Map<string, number>();
-  /** Models whose release waits behind a painted frame. */
-  const releasing = new Set<string>();
+  /** Models whose release waits for the settled scene to be drawn, with that wait's cancel. */
+  const releasing = new Map<string, { cancel: () => void }>();
   /**
    * Real models are registered and none is called `legacy`: then `legacy` names
    * no load (a caller with no model id to ask about), so it is not held. Only
@@ -144,6 +147,7 @@ export function createLoadWindow(deps: LoadWindowDeps): LoadWindow {
     open = false;
     settled = new Set();
     loadEndedAt.clear();
+    for (const wait of releasing.values()) wait.cancel();
     releasing.clear();
     tailSince = -1;
     publish();
@@ -151,7 +155,7 @@ export function createLoadWindow(deps: LoadWindowDeps): LoadWindow {
   /**
    * A model that is not held but is seen loading again (a reload) is held from
    * then on. A held model whose load the loader has marked ended is released
-   * once the tail is idle (or its tail limit passed) and a frame has painted;
+   * once the tail is idle (or its tail limit passed) and the settled scene has been drawn;
    * the store's loading flags, which the next load of a multi-file open sets,
    * do not delay it.
    */
@@ -165,33 +169,34 @@ export function createLoadWindow(deps: LoadWindowDeps): LoadWindow {
       if (LOADING_STATES.has(state)) {
         if (settled.delete(id)) changed = true;
         loadEndedAt.delete(id); // a new load of this model is in progress
+        releasing.get(id)?.cancel(); // its release wait is superseded: it must not publish the new load
         releasing.delete(id);
         continue;
       }
       if (settled.has(id) || releasing.has(id) || !loadEndedAt.has(id)) continue;
       if (modelTailWaiting(id)) { waiting = true; continue; }
-      releaseAfterPaint(id);
+      releaseAfterSettledFrame(id);
     }
     if (changed) publish();
     if (waiting) scheduleCheck();
   };
   const modelTailWaiting = (id: string): boolean =>
     deps.tailBusy() && deps.now() - (loadEndedAt.get(id) ?? deps.now()) < MAX_TAIL_WAIT_MS;
-  // As the window's own close: after the frame that shows the settled model,
+  // As the window's own close: after the settled model has been drawn,
   // re-checking the tail, which can start again before that frame.
-  const releaseAfterPaint = (id: string): void => {
-    releasing.add(id);
-    let done = false;
+  const releaseAfterSettledFrame = (id: string): void => {
+    const wait = { cancel: (): void => {} };
+    releasing.set(id, wait);
     const finish = (): void => {
-      if (done) return;
-      done = true;
-      if (!releasing.delete(id) || !open) return; // seen loading again, or the window closed
+      // Only this release's own wait may publish: a reload replaces the entry.
+      if (releasing.get(id) !== wait) return;
+      releasing.delete(id);
+      if (!open) return;
       if (modelTailWaiting(id)) { scheduleCheck(); return; }
       settled.add(id);
       publish();
     };
-    deps.requestFrame(() => deps.setTimer(finish, 0));
-    deps.setTimer(finish, CLOSE_BACKSTOP_MS);
+    wait.cancel = deps.afterSettledFrame(finish);
   };
   const busyCapped = (): boolean => busySince >= 0 && deps.now() - busySince >= MAX_STORE_BUSY_MS;
   const tailWaiting = (): boolean => deps.tailBusy() && tailSince >= 0 && deps.now() - tailSince < MAX_TAIL_WAIT_MS;
@@ -214,26 +219,26 @@ export function createLoadWindow(deps: LoadWindowDeps): LoadWindow {
       evaluate();
     }, Math.max(0, MAX_STORE_BUSY_MS - (deps.now() - busySince)));
   };
-  // Close only after the frame that shows the settled store has painted: the
+  // Close only after the viewport has drawn the settled scene: the
   // consumers recompute when they are told, and doing that in the same task as
   // the settle put their whole-model walks in front of the first settled frame.
-  const closeAfterPaint = (): void => {
+  const closeAfterSettledFrame = (): void => {
     if (closeScheduled) return;
     closeScheduled = true;
-    let done = false;
+    const period = busyPeriod;
     const finish = (): void => {
-      if (done) return;
-      done = true;
       closeScheduled = false;
       if (!open) return;
       if (deps.storeBusy() && !busyCapped()) return; // a new load began meanwhile: still open
+      // A load that started and ended while this wait was armed has a scene of
+      // its own to draw: this wait's frame proves nothing about it, so wait again.
+      if (period !== busyPeriod) { closeAfterSettledFrame(); return; }
       // The tail can start again between the check and this task (a late
       // fragment or shard): re-check it, within the same tail limit.
       if (!deps.storeBusy() && tailWaiting()) { scheduleCheck(); return; }
       closeWindow();
     };
-    deps.requestFrame(() => deps.setTimer(finish, 0));
-    deps.setTimer(finish, CLOSE_BACKSTOP_MS); // hidden tab: frames stop
+    deps.afterSettledFrame(finish); // its backstop covers a hidden tab, where frames stop
   };
   const evaluate = (): void => {
     if (deps.storeBusy()) {
@@ -246,7 +251,7 @@ export function createLoadWindow(deps: LoadWindowDeps): LoadWindow {
         return;
       }
       // Loading for longer than any load: a stuck flag must not hide the values for ever.
-      if (open) closeAfterPaint();
+      if (open) closeAfterSettledFrame();
       return;
     }
     busySince = -1;
@@ -254,7 +259,7 @@ export function createLoadWindow(deps: LoadWindowDeps): LoadWindow {
     observeModels();
     if (tailSince < 0) tailSince = deps.now();
     if (tailWaiting()) { scheduleCheck(); return; }
-    closeAfterPaint();
+    closeAfterSettledFrame();
   };
 
   // Observe the store from creation, not only while a consumer is subscribed:
@@ -297,8 +302,9 @@ function getViewerLoadWindow(): LoadWindow {
     subscribeLoadEnded: subscribeModelLoadEnded,
     tailBusy: isGeometryTailBusy,
     now: () => performance.now(),
-    requestFrame: (fn) => { if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => fn()); else setTimeout(fn, 16); },
+    requestFrame: viewerRequestFrame,
     setTimer: (fn, ms) => { setTimeout(fn, ms); },
+    afterSettledFrame,
   });
   return viewerLoadWindowInstance;
 }

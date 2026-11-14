@@ -15,32 +15,37 @@ export async function lifecycleScene(pkgs, schema, stepId) {
   const editor = new pkgs.mutations.StoreEditor(store, view);
   const anchor = pkgs.create.resolveSpatialAnchor(store, 45, view);
   const done = new Map();
+  const ctx = { create: pkgs.create, editor, anchor, done };
   const steps = stepsFor(schema);
   const helper = () => {
     if (!done.has('$helper')) done.set('$helper', pkgs.create.addStructuralCurveMemberToStore(editor, anchor, { Start: [0,0,0], End: [2,0,0] }).memberId);
     return done.get('$helper');
   };
+  const connectActivity = (activity, item = helper()) => pkgs.create.connectStructuralActivityToItemInStore(editor, anchor.ownerHistoryId, item, activity);
   const needsGroup = step => schema === 'IFC2X3' && Object.keys(step.emits).some(t => ['IfcStructuralLoadGroup', 'IfcStructuralAnalysisModel'].includes(t));
   const groupActivity = () => {
     if (!done.has('$activity')) {
       const activity = pkgs.create.addStructuralPointActionToStore(editor, anchor, { ForceZ: -1 }).activityId;
-      pkgs.create.connectStructuralActivityToItemInStore(editor, anchor.ownerHistoryId, helper(), activity);
+      connectActivity(activity);
       done.set('$activity', activity);
     }
     return done.get('$activity');
   };
-  const needsHelper = step => needsGroup(step) || Object.keys(step.emits).some(t => /Connection$|Action$|Reaction$/.test(t));
+  // build() links a returned connection, action or reaction to the helper, so
+  // a step that emits one or whose builder authors one needs it first.
+  const needsHelper = step => needsGroup(step)
+    || [...Object.keys(step.emits), step.builder].some(t => /(Connection|Action|Reaction)(ToStore)?$/.test(t));
   const build = step => {
     if (done.has(step.id)) return done.get(step.id);
     for (const need of step.needs ?? []) build(steps.find(s => s.id === need));
     if (needsHelper(step)) helper();
     if (needsGroup(step)) groupActivity();
-    const id = step.build({ create: pkgs.create, editor, anchor, done });
+    const id = step.build(ctx);
     done.set(step.id, id);
     if (needsGroup(step)) pkgs.create.assignToStructuralGroupInStore(editor, anchor.ownerHistoryId, id, [step.emits.IfcStructuralAnalysisModel ? helper() : groupActivity()]);
     const type = editor.getEntityType(id);
     if (/^IfcStructural.*Connection$/.test(type)) pkgs.create.connectStructuralMemberToConnectionInStore(editor, anchor.ownerHistoryId, helper(), id);
-    if (/^IfcStructural.*(Action|Reaction)$/.test(type)) pkgs.create.connectStructuralActivityToItemInStore(editor, anchor.ownerHistoryId, helper(), id);
+    if (/^IfcStructural.*(Action|Reaction)$/.test(type)) connectActivity(id);
     return id;
   };
   const step = steps.find(s => s.id === stepId);
@@ -55,8 +60,16 @@ export async function lifecycleScene(pkgs, schema, stepId) {
     }
   }
   const before = readStep(exportText());
+  const helperReady = done.has('$helper');
   const id = build(step);
-  return { store, view, editor, anchor, id, step, before, exportText };
+  // A helper first built here would be counted as owned by the occurrence.
+  if (!helperReady && done.has('$helper')) throw new Error(`lifecycle scene: step ${step.id} built the helper after the snapshot`);
+  // Not part of the scene `remove` counts against, so only the edit probe calls it.
+  const applyLoad = () => {
+    const activity = step.appliedBy?.(ctx, id);
+    if (activity) connectActivity(activity, step.appliedTo && build(steps.find(s => s.id === step.appliedTo)));
+  };
+  return { store, view, editor, anchor, id, step, before, exportText, applyLoad };
 }
 
 /** A second schema-valid owner shares the first occurrence's resources. Remove

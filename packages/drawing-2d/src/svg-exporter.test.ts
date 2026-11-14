@@ -75,6 +75,31 @@ describe('SVGExporter underlays', () => {
     expect(svg).toContain('stroke="#112233"');
   });
 
+  // Per-line tspan y relative to the text anchor, in the rotated text frame.
+  const lineOffsets = (svg: string) => {
+    const anchorY = Number(/<text [^>]*\by="([-\d.]+)"/.exec(svg)![1]);
+    return [...svg.matchAll(/<tspan x="[-\d.]+" y="([-\d.]+)"/g)].map((m) => Number(m[1]) - anchorY);
+  };
+  const withText = (text: string, valign: 'bottom' | 'middle') => {
+    const u = underlay();
+    u.layers[0].texts[0] = { ...u.layers[0].texts[0], text, valign };
+    return exportToSVG(emptyDrawing(), { underlays: [{ underlay: u }] });
+  };
+
+  it('lifts a bottom-attached multi-line block so its last line sits on the point', () => {
+    // 1:100 → 2 m height is a 20 mm font, 26 mm line spacing.
+    expect(lineOffsets(withText('A\nB\nC', 'bottom'))).toEqual([-52, -26, 0]);
+    expect(lineOffsets(withText('A\nB\nC', 'middle'))).toEqual([-26, 0, 26]);
+  });
+
+  it('places every line absolutely, so empty lines keep the block offset (PR #10195 review)', () => {
+    // A leading empty tspan has no glyph to carry a dy; "B" must still land on the point.
+    const leading = withText('\nB', 'bottom');
+    expect(lineOffsets(leading)).toEqual([-26, 0]);
+    expect(leading).toMatch(/<tspan x="[-\d.]+" y="[-\d.]+"><\/tspan><tspan x="[-\d.]+" y="([-\d.]+)">B</);
+    expect(lineOffsets(withText('A\n\nC', 'bottom'))).toEqual([-52, -26, 0]);
+  });
+
   it('honours per-layer visibility overrides', () => {
     const svg = exportToSVG(emptyDrawing(), {
       underlays: [{ underlay: underlay(), layerVisibility: { ANNO: false } }],

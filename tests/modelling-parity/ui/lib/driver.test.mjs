@@ -28,3 +28,26 @@ test('#9874 setupRoom marks the retained task used after an oracle throws', asyn
   assert.ok(s.completedTasks[0].actions > 0);
   assert.equal(s.completedTasks.filter(t => !t.setup).length, 0);
 });
+
+test('#9328 a failed Start blank stops the probe before it can use the previous model', async () => {
+  const { runProbe } = await import('../probes.mjs');
+  let ran=false,aimed=false,closed=false;
+  const s={
+    counters:{clicks:0,keys:0,cameraJumps:0},scriptedSteps:[],findings:[],pageErrors:[],
+    page:{getByRole:()=>({click:async()=>{}})},
+    ui:{click:async()=>{throw new Error('Start blank unavailable');}},
+    harness:{aim:async()=>{aimed=true;}},close:async()=>{closed=true;},
+  };
+  const probe={id:'fixture',capability:'wall-chains-autojoin',title:'fixture',run:async()=>{
+    ran=true;return {tasks:[],checks:[{name:'stale wall exists',ok:true}],notes:[]};
+  }};
+  const {result}=await runProbe(probe,async()=>s,{});
+  assert.equal(ran,false,'probe must not inspect the stale model');
+  assert.equal(aimed,false);
+  assert.equal(closed,true);
+  assert.equal(result.status,'error');
+  assert.match(result.reason,/Start blank unavailable/);
+  assert.equal(result.tasks.length,1);
+  assert.equal(result.tasks[0].setup,true);
+  assert.equal(result.tasks[0].ok,false);
+});

@@ -333,8 +333,8 @@ function convertRecord(
     return resolveUnrepresentedEntity(prefix, entityType, attrsRaw, toSchema, random, withheldRefIds !== undefined);
   }
   structuralDiagnostics?.inspect(line, fromSchema, toSchema);
-
-  if (structuralAxis) return `${prefix}${newType}(${args.join(',')},${structuralAxis});`;
+  const rewritten = structuralDiagnostics?.restoredLink(entityType, args) ?? (structuralAxis && `${newType}(${args.join(',')},${structuralAxis})`);
+  if (rewritten) return `${prefix}${rewritten};`;
   const structural = structuralAttributes(entityType, args, fromSchema, toSchema);
   if (structural !== null) return `${prefix}${newType}(${structural});`;
   // No representation in the target schema: an IFCPROXY keeping their

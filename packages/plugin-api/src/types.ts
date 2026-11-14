@@ -1,6 +1,8 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import type { UploadTarget, UploadOptions, UploadResult, DownloadOptions } from './file-transfer-types.js';
+export type { UploadTarget, UploadOptions, UploadResult, UploadConflict, DownloadOptions } from './file-transfer-types.js';
 
 import type { SourceAuth } from './source-auth.js';
 export type { SourceAuth, SourceIdentity } from './source-auth.js';
@@ -11,13 +13,8 @@ export type { SourceAuth, SourceIdentity } from './source-auth.js';
 // This package is dependency-free. Plugins import only from here; they never
 // touch the DOM, the store, or any app-internal module.
 //
-// Shape notes (v2). The v1 contract was drawn around a single provider whose
-// API cannot filter server-side, and it encoded that limitation as the
-// interface. v2 is drawn against two deliberately dissimilar providers — a
-// static-API-key CDE with no CORS and no server-side folder filtering, and an
-// OAuth CDE with per-folder listing, cursor pagination and pre-signed download
-// URLs on a foreign host. Every difference between them is expressed as a
-// declared capability rather than as an assumption.
+// Providers differ in auth, CORS, filtering and download transport. Declare
+// those differences as capabilities rather than assuming one provider's API.
 // ============================================================================
 
 // ---------------------------------------------------------------------------
@@ -165,7 +162,23 @@ export interface ProviderCapabilities {
    * `apps/viewer/src/components/sources/sourceCatalogPaging.ts`).
    */
   readonly eagerFileSweep?: boolean;
+  /**
+   * The write-back modes `uploadFile` supports. Omit (or leave empty) for a
+   * read-only provider; the host then hides every "save back to the source"
+   * affordance. A provider lists only modes its API genuinely supports, and
+   * `uploadFile` must reject a target whose `mode` is not listed.
+   *
+   * - `new-version`: a new revision of an existing file.
+   * - `new-file`: a new file, named by the caller, in the container the caller
+   *   chooses (typically the original file's own).
+   * - `new-location`: a new file in a different container than the original.
+   *   Separate from `new-file` because some stores cannot create into
+   *   arbitrary folders (Dalux refuses published and shared file areas).
+   */
+  readonly writeBack?: readonly WriteBackMode[];
 }
+
+export type WriteBackMode = 'new-version' | 'new-file' | 'new-location';
 
 // ---------------------------------------------------------------------------
 // Preferences schema (host-rendered settings modal)
@@ -369,14 +382,6 @@ export interface SourceFileRef {
   readonly revisionId?: string;
 }
 
-export interface DownloadOptions {
-  readonly signal?: AbortSignal;
-  /** Called with bytes received and, when the provider knows it, the total. */
-  readonly onProgress?: (received: number, total?: number) => void;
-  /** Preparation/conversion has no fabricated byte percentage. */
-  readonly onPhase?: (phase: 'preparing' | 'downloading') => void;
-}
-
 // ---------------------------------------------------------------------------
 // File filter
 // ---------------------------------------------------------------------------
@@ -421,10 +426,7 @@ export interface FileSourceProvider {
     options?: ListOptions,
   ): Promise<Page<SourceContainer>>;
 
-  /**
-   * List files in a container. Whether descendants are included is governed by
-   * `capabilities.listFilesIsRecursive`.
-   */
+  /** List container files; descendants follow `capabilities.listFilesIsRecursive`. */
   listFiles(
     ctx: PluginContext,
     projectId: string,
@@ -435,6 +437,20 @@ export interface FileSourceProvider {
 
   /** Download file content. */
   download(ctx: PluginContext, ref: SourceFileRef, options?: DownloadOptions): Promise<ArrayBuffer>;
+
+  /**
+   * Optional: write bytes back to the source. Present only when
+   * `capabilities.writeBack` is non-empty. Never overwrites existing bytes:
+   * `new-version` appends a revision, the other modes create a file. A refused
+   * write resolves to `{ ok: false, conflict }`; anything else that goes wrong
+   * rejects like every other method.
+   */
+  uploadFile?(
+    ctx: PluginContext,
+    target: UploadTarget,
+    bytes: ArrayBuffer,
+    options?: UploadOptions,
+  ): Promise<UploadResult>;
 
   /** Optional: revision history for one file, newest first. */
   listRevisions?(

@@ -30,7 +30,7 @@ import { StringTable } from '@ifc-lite/data';
 export function buildEntityTable(
   dataModel: DataModel,
   strings: StringTable
-): { entities: EntityTable; entityById: CompactEntityIndex; typeGroups: Map<IfcTypeEnum, number[]> } {
+): { entities: EntityTable; entityById: CompactEntityIndex; byType: Map<string, number[]> } {
   // Columnar consumption (issue #1841): iterate the decoder's raw columns by
   // index instead of a per-entity Map (V8 caps Map at 2^24 entries).
   const cols = dataModel.entities.columns;
@@ -59,6 +59,8 @@ export function buildEntityTable(
   // Maps for fast lookup
   const globalIdToExpressId = new Map<string, number>();
   const typeGroups = new Map<IfcTypeEnum, number[]>();
+  // The type index every store shares: each declared class under its uppercase STEP name.
+  const byType = new Map<string, number[]>();
 
   // Canonical compact byId index (replaces the hand-rolled Map of faked
   // EntityRef objects). The server has no source buffer, so byteOffset /
@@ -74,7 +76,13 @@ export function buildEntityTable(
     typeEnumArr[idx] = typeVal;
     // Same canonicalisation as `EntityTableBuilder.add` and `setTypeOverride`
     // below, so all three EntityTable implementations spell a class the same way.
-    rawTypeNameArr[idx] = strings.intern(IFC_ENTITY_NAMES[typeName.toUpperCase()] ?? typeName);
+    const upperName = typeName.toUpperCase();
+    rawTypeNameArr[idx] = strings.intern(IFC_ENTITY_NAMES[upperName] ?? typeName);
+    if (upperName) {
+      const ids = byType.get(upperName);
+      if (ids) ids.push(id);
+      else byType.set(upperName, [id]);
+    }
     const globalIdString = cols.globalId[idx] || '';
     globalIdArr[idx] = strings.intern(globalIdString);
     if (globalIdString) {
@@ -190,10 +198,11 @@ export function buildEntityTable(
       // them. All three EntityTable implementations must agree here.
       else typeOverrides.set(id, IFC_ENTITY_NAMES[typeName.toUpperCase()] ?? typeName.toUpperCase());
     },
+    clearTypeOverrides: () => { if (typeOverrides.size > 0) { typeRevision++; typeOverrides.clear(); } },
     getExpressIdByGlobalId: (gid) => {
       return globalIdToExpressId.get(gid) ?? -1;
     },
   };
 
-  return { entities, entityById, typeGroups };
+  return { entities, entityById, byType };
 }

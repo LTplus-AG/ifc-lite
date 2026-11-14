@@ -2,13 +2,42 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! The streamed parse's background data-model fill: what its serialization
-//! result leaves in the cache. Split out of `parquet_stream.rs` for the
-//! module-size rule.
+//! The streamed parse's background data-model fill: the task spawned off the
+//! stream, and what its serialization result leaves in the cache. Split out of
+//! `parquet_stream.rs` for the module-size rule.
 
 use super::cache_keys::data_model_refusal_key;
 use crate::services::parquet_data_model::DataModelParquetError;
 use crate::services::cache::DiskCache;
+use crate::services::{extract_data_model_with, serialize_data_model_to_parquet, DataModelOptions};
+use std::sync::Arc;
+
+/// Extract the data model and write it to its cache entry, off the stream.
+///
+/// Holds `_in_flight` for the task's whole lifetime (#5129) and `_admission`
+/// for the request's (#7676, SERVER-8) -- see the call site in
+/// `parquet_stream.rs` for why each must outlive the cache write.
+pub(super) async fn fill_data_model_cache(
+    content: bytes::Bytes,
+    options: DataModelOptions,
+    cache: Arc<DiskCache>,
+    dm_key: String,
+    _in_flight: crate::in_flight::InFlightGuard,
+    _admission: Arc<crate::admission::AdmissionGuard>,
+) {
+    // The extraction applies the entities variant itself (#9582): this fill
+    // runs beside the stream it was spawned from, so its peak is the one with
+    // a ceiling.
+    let dm_result = tokio::task::spawn_blocking(move || extract_data_model_with(&content, options)).await;
+
+    if let Ok(data_model) = dm_result {
+        let serialize_result =
+            tokio::task::spawn_blocking(move || serialize_data_model_to_parquet(&data_model)).await;
+        cache_streamed_data_model(&cache, &dm_key, serialize_result).await;
+    }
+    // `_in_flight` drops here, clearing the marker only after the cache write
+    // (success or failure) is fully resolved.
+}
 
 /// Cache a serialized data model under `dm_key`, or record why it was refused
 /// so `GET /parse/data-model` answers 400 with the reason instead of a 404

@@ -18,7 +18,7 @@ use super::{
 };
 use crate::error::ApiError;
 use crate::services::{
-    baked_basis_zup, extract_data_model, serialize_data_model_to_parquet,
+    baked_basis_zup, extract_data_model_with, serialize_data_model_to_parquet, DataModelOptions,
     serialize_to_parquet_optimized_with_stats, VERTEX_MULTIPLIER,
 };
 use crate::types::{with_finishes, CollectedFinishes};
@@ -119,21 +119,20 @@ pub async fn parse_parquet_optimized(
             // each on its own rayon thread.
             // #5984: the pass joins each mesh's finish itself (`with_finishes`).
             let mut finishes = CollectedFinishes::default();
-            let (mut result, mut data_model) = rayon::join(
+            let (mut result, data_model) = rayon::join(
                 || process(&content, &with_finishes(ProcessingRequest::full_pass().opening_filter(opening_filter).quality(tessellation_quality).layer_slicing(query.layer_slicing)), &mut finishes),
-                || extract_data_model(&content),
+                || extract_data_model_with(&content, DataModelOptions::for_entities(data_model_entities)),
             );
             let meshes = finishes.attach(std::mem::take(&mut result.meshes));
+            // The stats describe the MODEL (#6034), so the header both
+            // variants share carries `total_entities`, not the served
+            // variant's row count (#9582).
             let dm_stats = DataModelStats {
-                entity_count: data_model.entities.len(),
+                entity_count: data_model.total_entities,
                 property_set_count: data_model.property_sets.len(),
                 relationship_count: data_model.relationships.len(),
                 spatial_node_count: data_model.spatial_hierarchy.nodes.len(),
             };
-            // After the stats (#6034): they describe the MODEL, so the header
-            // they go into is the same for both entities variants, and the
-            // one metadata entry both share can never disagree with either.
-            data_model_entities.apply(&mut data_model);
             // Don't include normals by default - client can compute them
             // The frame `result`'s vertices were baked in (#4118): the
             // collator's emitted `rel` is consumed directly by this route, so

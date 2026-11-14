@@ -1,0 +1,24 @@
+--- a/rust/geometry/src/kernel/arrangement/classify_ray_bvh.rs
++++ b/rust/geometry/src/kernel/arrangement/classify_ray_bvh.rs
+@@ -42,6 +42,20 @@
+         if super::classify_bvh_tests::FORCE_LINEAR.with(|f| f.get()) {
+             return point_inside(p, comp, self.exts[k], self.aabbs[k]);
+         }
+-        point_inside(p, comp, self.exts[k], self.aabbs[k])
++        let far = sound_far(p, ray_dir(), self.exts[k], self.aabbs[k]);
++        let (bvh, reach) = self.ray_bvhs[k].get_or_init(|| {
++            let (lo, hi) = self.aabbs[k];
++            let box_mag = (0..3).fold(0.0f64, |m, i| m.max(lo[i].abs()).max(hi[i].abs()));
++            // Covers the tree and any segment that starts within a few extents of it.
++            let reach = 4.0 * (box_mag + self.exts[k]);
++            (Bvh::build_with_min_pad(comp, PAD_REL * reach), reach)
++        });
++        let query_mag = (0..3).fold(0.0f64, |m, i| m.max(p[i].abs()).max(far[i].abs()));
++        if !(query_mag <= *reach) {
++            return point_inside(p, comp, self.exts[k], self.aabbs[k]);
++        }
++        let mut candidates = Vec::new();
++        bvh.ray_candidates(p, far, &mut candidates);
++        candidates.iter().filter(|&&i| exact_seg_hits_tri(p, far, &comp[i as usize])).count() % 2 == 1
+     }
+ }

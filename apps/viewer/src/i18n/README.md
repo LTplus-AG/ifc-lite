@@ -48,8 +48,10 @@ export default {
 No viewer code changes. `locales.boot.ts` discovers the file as a lazy chunk,
 and it appears in Settings → General → Language under its own name. The viewer
 uses the choice made there (remembered in `localStorage` under
-`ifc-lite:locale`; "Auto" forgets it), then the browser's languages (`de-CH`
-matches `de`), then English. Switching applies without a reload, and
+`ifc-lite:locale`; "Auto" forgets it), then the locale a deploying host
+configured (`ViewerRuntimeConfig.locale`, only while the user has not chosen;
+"Auto" over a host locale is remembered under `ifc-lite:locale-auto`, for the
+whole site), then the browser's languages (`de-CH` matches `de`), then English. Switching applies without a reload, and
 `<html lang>` follows the active locale. There is no URL parameter for the
 language.
 

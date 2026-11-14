@@ -44,7 +44,7 @@ describe('the .3dm size ceiling', () => {
       read: async () => { throw new Error('the reader was asked for a file already over the cap'); },
     });
     try {
-      const error = await prepareRhinoViewerModel(new ArrayBuffer(MAX_3DM_BYTES + 1))
+      const error = await prepareRhinoViewerModel(new ArrayBuffer(MAX_3DM_BYTES + 1), 'big.3dm')
         .then(() => null, (reason: unknown) => reason);
 
       assert.ok(error instanceof RhinoImportError, 'an oversized archive is refused as a Rhino import error');
@@ -68,7 +68,7 @@ describe('the .3dm size ceiling', () => {
     try {
       let error: unknown;
       const copied = await copiesDuring(async () => {
-        error = await prepareRhinoViewerModel(sharedOfLength(MAX_3DM_BYTES + 1)).then(() => null, (reason: unknown) => reason);
+        error = await prepareRhinoViewerModel(sharedOfLength(MAX_3DM_BYTES + 1), 'big.3dm').then(() => null, (reason: unknown) => reason);
       });
       assert.ok(error instanceof RhinoImportError);
       assert.equal(error.code, 'too-large');
@@ -85,7 +85,7 @@ describe('the .3dm size ceiling', () => {
     for (const loaded of [new SharedArrayBuffer(16), sharedOfLength(MAX_3DM_BYTES + 1)]) {
       let error: unknown;
       const copied = await copiesDuring(async () => {
-        error = await prepareRhinoViewerModel(loaded, undefined, controller.signal).then(() => null, (reason: unknown) => reason);
+        error = await prepareRhinoViewerModel(loaded, 'big.3dm', undefined, controller.signal).then(() => null, (reason: unknown) => reason);
       });
       // What `loadRhino3dmModel` treats as a cancel, as the worker client rejects.
       assert.ok(error instanceof DOMException && error.name === 'AbortError');

@@ -144,3 +144,25 @@ test('the report names cells with throttled or unreadable-thermal samples and th
   assert.deepEqual(thermalRows([row('BWK', 'base', { startC: 92, endC: 93, throttleEvents: 0, throttleMs: 250 })]), ['| BWK | browser-cold | base | 1 | 1 | 1 | 0 | 250 | 93 |']);
   assert.deepEqual(thermalRows([row('BWK', 'base', { startC: 80, endC: 80, throttleEvents: 0, throttleMs: null })]), ['| BWK | browser-cold | base | 1 | 0 | 0 | 1 | — | 80 |']);
 });
+
+test('the benchmark browser outside the job cgroup is the sample\'s own CPU, not foreign (Chromium moves itself into its own scope)', async () => {
+  const { hostQuiet, settleHostLoad, outsideOwnCgroup } = await load('./load-scoreboard-host.mjs');
+  // A process in our own cgroup is never counted as outside it.
+  const mine = outsideOwnCgroup([process.pid]);
+  assert.deepEqual([mine.cpuMs, mine.pressureUs, mine.scopes], [0, 0, 0]);
+  const plain = settleHostLoad(await hostQuiet({ maxWaitMs: 0 }));
+  const own = settleHostLoad(await hostQuiet({ maxWaitMs: 0 }), { ownOutside: { cpuMs: 1e9, pressureUs: 0 } });
+  if (plain.foreignCpuMs !== null) {
+    assert.equal(own.foreignCpuMs, 0); // subtracted (clamped at 0)
+    assert.equal(own.ownOutsideCgroupCpuMs, 1e9);
+    assert.equal(plain.ownOutsideCgroupCpuMs, null);
+  }
+});
+
+test('the pre-sample wait override is bounded both ways: 0..600000 ms, anything else is the 20 s default', async () => {
+  const { quietWaitMs } = await load('./load-scoreboard-host.mjs');
+  const at = (v) => { if (v === undefined) delete process.env.LOAD_SCOREBOARD_QUIET_WAIT_MS; else process.env.LOAD_SCOREBOARD_QUIET_WAIT_MS = v; return quietWaitMs(); };
+  try {
+    assert.deepEqual(['0', '5000', '600000', 'Infinity', '1e309', '-1', '', 'abc', undefined].map(at), [0, 5000, 600000, 20000, 20000, 20000, 20000, 20000, 20000]);
+  } finally { delete process.env.LOAD_SCOREBOARD_QUIET_WAIT_MS; }
+});

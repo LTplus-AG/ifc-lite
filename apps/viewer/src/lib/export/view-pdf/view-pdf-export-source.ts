@@ -30,7 +30,7 @@
  * contract every other snapshot-style export in the viewer has.
  */
 
-import { resolveViewHiddenEntities } from '@/lib/visibility/structural-view';
+import { resolveViewHiddenEntities, retypedClasses } from '@/lib/visibility/structural-view';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { getGlobalCanvas, getGlobalRenderer } from '@/hooks/useBCF';
 import { resolveBoxSectionInputs, resolveExtraSectionInputs, resolveSectionInput } from '@/lib/section/section-plane-inputs';
@@ -78,6 +78,7 @@ export function readViewPdfSource(state: ViewerState): ViewPdfSource {
       isolatedEntities: state.isolatedEntities,
       computedIsolatedIds: computeIsolationFilterSet(state),
       typeVisibility: state.typeVisibility, structuralViewMode: state.structuralViewMode,
+      retypedClasses: retypedClasses(state),
       // Invisible models contribute no meshes at all (they are dropped in
       // `gatherDrawnMeshes`, mirroring `mergedGeometryResult`), so there is no
       // per-index gate left to apply.

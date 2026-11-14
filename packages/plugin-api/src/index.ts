@@ -33,6 +33,11 @@ export type {
   SourceProject,
   SourceRevision,
   SourceTag,
+  UploadConflict,
+  UploadOptions,
+  UploadResult,
+  UploadTarget,
+  WriteBackMode,
 } from './types.js';
 
 export { readWithProgress } from './progress.js';

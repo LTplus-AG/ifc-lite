@@ -60,3 +60,17 @@ export const quickjsRuntimeChunkGroup = {
   includeDependenciesRecursively: false,
   test: /\/node_modules\/(?:\.pnpm\/[^/]+\/node_modules\/)?(?:quickjs-emscripten-core\/dist\/(?!index\.mjs$)[^/]+\.mjs$|@jitl\/quickjs-ffi-types\/)/,
 };
+
+/**
+ * Vite's dynamic-import preload helper, claimed so it does not land in
+ * whichever vendor chunk reaches it first. It did: the hosted entry
+ * (`main-hosted.tsx`), whose only dynamic import is the viewer itself, pulled
+ * the 3 MB `exporters` chunk in statically just for this helper, which held
+ * back the configuration request it exists to start early.
+ */
+export const preloadHelperChunkGroup = {
+  name: 'preload-helper',
+  priority: 50,
+  includeDependenciesRecursively: false,
+  test: /vite\/preload-helper/,
+};

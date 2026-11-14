@@ -10,19 +10,17 @@
  * The layout is read back from the parts `addCurtainWallToStore` writes
  * (`curtain-wall.ts`): mullions stand at their U offset and run full height,
  * transoms lie at their V height along the path, panels fill the openings.
- * The U grid is unchanged. The file records no V-grid spec, so the V grid is
- * read from where the transoms are: interior lines at exact equal fractions
- * of the height are re-spaced proportionally to the new height, and any
- * other line keeps its height above the base. That includes lines GIVEN at
- * heights that happen to divide the wall equally (`VGrid: [1, 2]` on a 3 m
- * wall): they are re-spaced proportionally too (to 1.33 m and 2.67 m at
- * 4 m), not kept. Recording the spec needs a property set whose GlobalId
- * stays the same across exports; tracked in #9352.
+ * The U grid is unchanged. New walls record their V-grid spec: bay counts
+ * resize proportionally and explicit metre offsets stay at their heights.
+ * Older files without a spec reconstruct intent from the existing geometry:
+ * equal rows resize proportionally, other rows retain their offsets.
  * Mullions get the new height, transoms and panels move to their new rows and
  * panels take the new clear heights. A layout whose rows no longer fit is
  * refused, as the builder refuses it.
  */
 
+import { readCurtainWallVGrid } from './curtain-wall-spec.js';
+import type { CurtainWallGridSpec } from './curtain-wall.js';
 import { editOwnershipRefusal, expandAffectedSet } from '@ifc-lite/export';
 import { readPlacementLeaf, writeShiftedPlacement } from './storey/storey-placement.js';
 import { AnchorEntityReader } from './resolve-anchor.js';
@@ -122,7 +120,7 @@ const distinct = (values: readonly number[]): number[] => {
 const rowOf = (rows: readonly number[], value: number): number => rows.findIndex((row) => Math.abs(row - value) <= EPS);
 
 /** The new V layout for `height`, or the reason the rows no longer fit. */
-function relaidRows(wall: CurtainWallParts, height: number): { transoms: number[]; panels: Array<[number, number]>; rows: number[]; panelRows: number[] } | string {
+function relaidRows(wall: CurtainWallParts, height: number, spec: CurtainWallGridSpec | undefined): { transoms: number[]; panels: Array<[number, number]>; rows: number[]; panelRows: number[] } | string {
   const transoms = wall.parts.filter((part) => part.role === 'transom');
   const panels = wall.parts.filter((part) => part.role === 'panel');
   const rows = distinct(transoms.map((part) => part.v));
@@ -137,8 +135,9 @@ function relaidRows(wall: CurtainWallParts, height: number): { transoms: number[
   const bottom = panels.find((panel) => Math.abs(panel.v - panelRows[0]) <= EPS)!;
   const h = edge ? 2 * rows[0] : interior.length ? 2 * (interior[0] - bottom.depth) : 0;
   const n = interior.length + 1;
-  const proportional = interior.every((line, k) => Math.abs(line - wall.height * (k + 1) / n) <= EPS);
-  const lines = interior.map((line, k) => (proportional ? height * (k + 1) / n : line));
+  if (spec !== undefined && (typeof spec === 'number' ? spec !== n : spec.length !== interior.length)) return 'its recorded VGrid does not match its parts';
+  const proportional = typeof spec === 'number' || spec === undefined && interior.every((line, k) => Math.abs(line - wall.height * (k + 1) / n) <= EPS);
+  const lines = interior.map((line, k) => (proportional ? height * (k + 1) / n : Array.isArray(spec) ? spec[k] : line));
   const newRows = edge ? [h / 2, ...lines, height - h / 2] : lines;
   const all = [0, ...lines, height];
   const bays: Array<[number, number]> = [];
@@ -161,7 +160,10 @@ export function relayoutCurtainWallHeight(target: EditTarget, curtainWallId: num
   const wall = readCurtainWallParts(target, curtainWallId);
   if (!wall) return { ok: false, reason: 'This curtain wall is not a mullion, transom and panel layout this editor can rebuild' };
   if (Math.abs(wall.height - height) < 1e-9) return { ok: true, remesh: [] };
-  const layout = relaidRows(wall, height);
+  let spec: CurtainWallGridSpec | undefined;
+  try { spec = readCurtainWallVGrid(target.view, curtainWallId); }
+  catch (error) { return { ok: false, reason: error instanceof Error ? error.message : String(error) }; }
+  const layout = relaidRows(wall, height, spec);
   if (typeof layout === 'string') return { ok: false, reason: `This curtain wall cannot be laid out ${height.toFixed(3)} m tall: ${layout}` };
   const scale = getModelLengthUnitScale(target.dataStore);
   const native = (metres: number) => snap(metres / scale);

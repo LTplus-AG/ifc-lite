@@ -147,7 +147,6 @@ const REPORTER_NEEDS = new Map([
   ['geometry-platform.yml', ['native-adapter', 'native-corpus-result']],
   ['ifcopenshell-parity.yml', ['full', 'cost-full']],
   ['perf-ratchet-lower.yml', ['lower']],
-  ['wide-arithmetic.yml', ['wide-arithmetic-tripwire']],
   ['xmatch-fixture.yml', ['content-matching-fixture']],
 ]);
 

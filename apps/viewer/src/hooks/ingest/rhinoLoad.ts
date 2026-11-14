@@ -20,12 +20,17 @@ import type { GeometryResult } from '@ifc-lite/geometry';
 import { captureModelLoaded, snapshotFromGeometry } from '../../utils/loadTelemetry.js';
 import { LOAD_COMPLETE } from '../modelLoadCanceller.js';
 import { RhinoImportError } from '../../lib/import/rhino-import-client.js';
+import { applyInitialHiddenState } from './initialHiddenState.js';
 import { prepareRhinoViewerModel } from './rhinoViewerModel.js';
 import type { ViewerModelPayload } from './viewerModelIngest.js';
 
 export interface RhinoLoadOptions {
   /** The load's own source buffer, as loaded. It becomes the store's `source`, unshared first if it is a `SharedArrayBuffer`. */
   buffer: ArrayBuffer | SharedArrayBuffer;
+  /** The model this load registers, for the ids the hidden state goes through. */
+  modelId: string;
+  /** The file's name; it labels the tree's root when the file has no spatial stamps. */
+  fileName: string;
   fileSizeMB: number;
   targetKind: 'primary' | 'federated';
   totalStartTime: number;
@@ -57,7 +62,7 @@ export async function loadRhino3dmModel(options: RhinoLoadOptions): Promise<void
   const { isStale, setProgress, settleLoadUi } = options;
   setProgress({ phase: 'Reading Rhino .3dm', percent: 10 });
   try {
-    const result = await prepareRhinoViewerModel(options.buffer, setProgress, options.signal);
+    const result = await prepareRhinoViewerModel(options.buffer, options.fileName, setProgress, options.signal);
     // Stale-guard-after-await (as on the IFCX branch): the read is the only
     // await here and a newer load may have superseded this one while it ran.
     // Nothing was acquired before this point, so there is nothing to unwind.
@@ -65,6 +70,8 @@ export async function loadRhino3dmModel(options: RhinoLoadOptions): Promise<void
     if (options.targetKind === 'primary') options.onPrimary(result);
     await options.finalize(result.dataStore, result.geometryResult, 'IFC4', { loadPath: '3dm' });
     if (isStale()) return;
+    // After `finalize`, which is when the model's express id range is known.
+    applyInitialHiddenState(options.modelId, result.hiddenExpressIds ?? []);
     captureModelLoaded({
       format: '3dm', file_size_mb: Math.round(options.fileSizeMB * 100) / 100, load_target: options.targetKind,
       load_path: '3dm', total_elapsed_ms: Math.round(performance.now() - options.totalStartTime), was_hidden: options.wasHidden,

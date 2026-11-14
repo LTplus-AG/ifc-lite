@@ -537,16 +537,16 @@ function parseText(body: DxfPair[]): DxfTextEntity {
         break;
     }
   }
+  // Aligned (3) / Fit (5) span points 10-11; unstretched, they stay left-aligned at 10.
+  const stretched = hJust === 3 || hJust === 5;
   if (hJust === 1 || hJust === 4) e.hAlign = 'center';
   else if (hJust === 2) e.hAlign = 'right';
-  if (vJust === 1) e.vAlign = 'bottom';
-  else if (vJust === 2) e.vAlign = 'middle';
+  if (stretched) e.vAlign = 'baseline';
+  else if (vJust === 1) e.vAlign = 'bottom';
+  else if (vJust === 2 || (vJust === 0 && hJust === 4)) e.vAlign = 'middle'; // Middle (72=4) centres both ways
   else if (vJust === 3) e.vAlign = 'top';
-  // Non-default justification anchors at the second alignment point.
-  if ((hJust !== 0 || vJust !== 0) && alignX !== null && alignY !== null) {
-    e.x = alignX;
-    e.y = alignY;
-  }
+  // Other non-default justification anchors at the second alignment point.
+  if (!stretched && (hJust || vJust) && alignX !== null && alignY !== null) { e.x = alignX; e.y = alignY; }
   return e;
 }
 

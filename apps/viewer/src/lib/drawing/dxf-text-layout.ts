@@ -2,5 +2,5 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/** DXF multiline glyph spacing shared by display, extents and exports. */
-export const DXF_TEXT_LINE_HEIGHT_FACTOR = 1.3;
+/** DXF multiline spacing and block attachment, shared by display, extents and exports. */
+export { DXF_TEXT_LINE_HEIGHT_FACTOR, dxfTextLineOffset } from '@ifc-lite/drawing-2d';

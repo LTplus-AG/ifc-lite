@@ -43,7 +43,8 @@ export function mirrorElementsInStore(store: IfcDataStore, editor: StoreEditor, 
     const view = draft.getMutationView(), reader = new AnchorEntityReader(store, view);
     const plan = planElementTransform({ dataStore: store, view, selected, storeyOf: id => effectiveStoreyId(store, view, id) ?? null });
     if (plan.refused.length) throw new Error('Mirror requires local placements under a storey');
-    const products = new Set(expandAffectedSet(store, view, selected, 'hostsChanged'));
+    const products = new Set([...expandAffectedSet(store, view, selected, 'hostsChanged'),
+      ...plan.roots.map(root => root.expressId), ...plan.carried]);
     const roots = new Map(plan.roots.map(r => [r.expressId, r]));
     const placements = new Set<number>();
     const references = effectiveReferencers(store, view);

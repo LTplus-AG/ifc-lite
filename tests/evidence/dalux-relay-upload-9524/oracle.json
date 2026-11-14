@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "#9524 must actually relay valid file uploads. Disable upload-route admission while retaining modules and the real HTTP handler tests.",
+  "key": "server/sources/dalux-relay-upload.ts",
+  "mutation": "tests/evidence/dalux-relay-upload-9524/behaviour.oracle.patch",
+  "test": "scripts/dalux-relay-upload.test.mjs"
+}

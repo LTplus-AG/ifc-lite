@@ -126,3 +126,30 @@ export function classifyFormFactor({ width, height, coarsePointer, segments }: F
 export function mobileCommandPlacement(formFactor: FormFactor): MobileCommandPlacement {
   return formFactor.commandPlacement === 'side-rail' ? 'side-rail' : 'bottom-bar';
 }
+
+/**
+ * Where an open panel lives on a mobile form factor (#9718), the one decision
+ * every mobile panel host (Hierarchy, the single-panel sheet, the Panels list)
+ * reads:
+ * - `sheet`: a modal bottom sheet over the model, for a portrait phone and the
+ *   cover screen, whose width a side pane would take from the model.
+ * - `side-pane`: a non-modal pane docked beside the viewport, for a phone on its
+ *   side (a bottom sheet would cover most of a 412px-tall view) and a near-tablet.
+ *   The model stays visible and interactive next to it.
+ * - `segment`: the window spans a fold; the viewport fills one segment and the
+ *   panel, non-modal, shares the other with the commands.
+ * The desktop has no mobile host; it reads `sheet`, the shell's default.
+ */
+export type MobilePanelHostKind = 'sheet' | 'side-pane' | 'segment';
+
+export function mobilePanelHost(formFactor: FormFactor): MobilePanelHostKind {
+  switch (formFactor.mode) {
+    case 'phone-landscape':
+    case 'tablet-touch':
+      return 'side-pane';
+    case 'folded':
+      return formFactor.fold ? 'segment' : 'sheet';
+    default:
+      return 'sheet';
+  }
+}

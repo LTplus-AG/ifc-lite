@@ -79,6 +79,27 @@ export function isTypeVisible(
   return typeVisibility[key];
 }
 
+const VISIBILITY_KEYS = [...new Set(Object.values(IFC_TYPE_TO_VISIBILITY_KEY))];
+
+/** Whether `isTypeVisible` can drop anything: a structural mode or any class toggle off. */
+export function classFilterActive(typeVisibility: TypeVisibilityGate, mode: StructuralViewMode = 'both'): boolean {
+  return mode !== 'both' || VISIBILITY_KEYS.some((key) => !typeVisibility[key]);
+}
+
+/** Global id to class after edits, for retyped entities (`retypedClasses`). */
+export type RetypedClasses = ReadonlyMap<number, string>;
+
+/** `isTypeVisible` for a mesh, by its entity's class after a retype, else the
+ *  class it was meshed with. `expressId` is the global id every mesh list carries (#10119). */
+export function isMeshTypeVisible(
+  mesh: { expressId: number; ifcType?: string },
+  typeVisibility: TypeVisibilityGate,
+  mode: StructuralViewMode | undefined,
+  retyped: RetypedClasses | undefined,
+): boolean {
+  return isTypeVisible(retyped?.get(mesh.expressId) ?? mesh.ifcType, typeVisibility, mode);
+}
+
 /**
  * Build the set of IFC class names that are currently hidden by the toggles —
  * used by the GLB exporter to drop them on a visible-only export so the file

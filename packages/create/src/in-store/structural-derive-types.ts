@@ -95,6 +95,15 @@
  * to its element, a node to the elements whose ends meet there and to its
  * footing.
  *
+ * Provenance. A curve member carries an `IfcLite_StructuralDerivation`
+ * property set, when the plan has its `physicalAxis` (the planner always sets
+ * it) and its element has a GlobalId, naming that GlobalId and the element's line (the
+ * rule above, before joints moved its ends) in metres in the axes of its
+ * storey, which the member's placement is relative to. The
+ * `structural-stale-item` check in `@ifc-lite/parser` compares it with the
+ * element's line now, to report members whose element moved since. Surface
+ * members and nodes get no record.
+ *
  * Existing analysis models. When the file already has any
  * IfcStructuralAnalysisModel (authored or derived), the plan lists them
  * (`existingAnalysisModels`) and apply refuses, unless
@@ -199,6 +208,12 @@ export interface PlannedCurveMember {
   end: Vec3;
   /** Where the line came from. */
   axisSource: 'axis' | 'extrusion' | 'profile';
+  /**
+   * The element's line, before joints moved its ends; apply records it on the
+   * member. The planner always sets it. A plan built without it derives the
+   * member with no record, which the stale check then leaves out.
+   */
+  physicalAxis?: [Vec3, Vec3];
   startNode: number;
   endNode: number;
   loadBearing: MemberLoadBearing;

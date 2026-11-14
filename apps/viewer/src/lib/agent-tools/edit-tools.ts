@@ -30,8 +30,8 @@ export function isEditTool(name: string): name is EditToolName {
 
 export const editNotAllowed = () => new ToolExecutionError({
   code: ToolErrorCode.READ_ONLY,
-  message: 'The user has not allowed the agent to edit this model; the viewer serves it read-only.',
-  hint: 'Ask the user to turn on "Allow the agent to edit this model" in the viewer tab, then retry.',
+  message: 'The user has not allowed the agent to edit models in this tab; the viewer serves them read-only.',
+  hint: 'Ask the user to turn on "Allow the agent to edit models in this tab" in the viewer tab, then retry.',
 });
 
 function text(args: Record<string, unknown>, key: string): string {

@@ -176,6 +176,38 @@ describe('locale activation from contributed catalogues (#4785)', () => {
     assert.ok(warnings.length >= 3, 'each refused storage call is reported, not swallowed');
   });
 
+  it("a deploying host's locale is the initial default; a Settings choice wins and Auto means the browser", async () => {
+    const loaders = { de: async () => GERMAN, fr: async () => ({}) };
+    const fresh = await activateStartupLocale(createLocaleActivator(loaders, { lang: 'en' }),
+      environment({ languages: ['fr'], hostLocale: 'de-CH' }));
+    assert.equal(fresh, 'de', 'with no choice stored, the host locale beats the browser');
+
+    const storage = memoryStorage();
+    const activator = createLocaleActivator(loaders, { lang: 'en' });
+    await activateStartupLocale(activator, environment({ storage, languages: ['fr'], hostLocale: 'de' }));
+    const hosted = createLocaleChoice(activator, environment({ storage, languages: ['fr'], hostLocale: 'de' }));
+    assert.equal(hosted.chosen(), 'de', 'Settings shows the language that applies, not Auto');
+    assert.equal(await hosted.clear(), 'fr', 'Auto means the browser languages, as labelled');
+    assert.equal(hosted.chosen(), null);
+    assert.equal(storage.values.get(LOCALE_STORAGE_KEY), undefined, 'the locale key holds only BCP 47 tags');
+    const next = await activateStartupLocale(createLocaleActivator(loaders, { lang: 'en' }),
+      environment({ storage, languages: ['fr'], hostLocale: 'de' }));
+    assert.equal(next, 'fr', 'Auto survives the next visit; the host default does not come back');
+
+    storage.setItem(LOCALE_STORAGE_KEY, 'fr');
+    const chosen = await activateStartupLocale(createLocaleActivator(loaders, { lang: 'en' }),
+      environment({ storage, languages: ['de'], hostLocale: 'de' }));
+    assert.equal(chosen, 'fr', 'the language the user chose in Settings wins over the host');
+  });
+
+  it('shows what is active when the host locale failed to load, not the host locale', async () => {
+    const loaders = { de: async () => { throw new Error('chunk 404'); } };
+    const activator = createLocaleActivator(loaders, { lang: 'en' });
+    const env = environment({ languages: ['en'], hostLocale: 'de' });
+    assert.equal(await activateStartupLocale(activator, env), 'en');
+    assert.equal(createLocaleChoice(activator, env).chosen(), 'en');
+  });
+
   it('#9061 refuses a locale the viewer does not ship', async () => {
     const choice = createLocaleChoice(createLocaleActivator({ de: async () => GERMAN }), environment());
     await assert.rejects(choice.choose('xx'), /Unknown locale "xx"/);

@@ -241,12 +241,14 @@ fn a_candidate_torn_only_by_index_only_cleanup_is_repaired_and_accepted_8190() {
     assert_eq!(accepted.triangle_count(), 6, "the sliver goes, the bottom face becomes two");
 }
 
-/// #8190, driven through emission instead of handing the bar a prebuilt mesh.
+/// #8190, from emission to the bar instead of handing the bar a prebuilt mesh
+/// (the slab fixture test in `ifc-lite-processing` covers the whole pipeline).
 /// A prism whose caps carry three near-collinear rim vertices `a`, `m`, `b`
 /// (`m` 10 um proud of a-b), with the side faces ending at `m`. Emission
-/// triangulates each cap with the sub-grid sliver a-m-b and has no degenerate
-/// cleanup of its own, so the bar receives a closed candidate, sees its own
-/// index-only cleanup open it, and repairs it.
+/// triangulates each cap with the sub-grid sliver a-m-b. Its only drop is the
+/// needle backstop, a short-edge rule the sliver's 3 mm legs are clear of; it
+/// has no thin-triangle cleanup. So the bar receives a closed candidate, sees
+/// its own index-only cleanup open it, and repairs it.
 #[test]
 fn an_emitted_candidate_reaches_the_bar_with_its_sub_grid_sliver_8190() {
     use nalgebra::Point2;
@@ -275,7 +277,7 @@ fn an_emitted_candidate_reaches_the_bar_with_its_sub_grid_sliver_8190() {
                 holes_conformed: Vec::new(),
                 outer_welded: Vec::new(),
                 holes_welded: Vec::new(),
-                changed: true,
+                changed: false,
                 cached: None,
             }],
         }
@@ -298,17 +300,20 @@ fn an_emitted_candidate_reaches_the_bar_with_its_sub_grid_sliver_8190() {
         });
     }
 
+    // As in `candidates::emit`: the baseline pass fills the CDT cache, and the
+    // conformed pass reuses it for a region phase B left alone.
+    conform::emit_plans(&mut plans, false);
     let (candidate, complete) = conform::emit_plans(&mut plans, true);
     assert!(complete);
     assert_eq!(count_open_boundary_edges_exact(&candidate), 0, "emitted closed");
     let mut index_only = candidate.clone();
     index_only.clean_degenerate();
-    // One sliver per cap here; the counts are the triangulator's business.
-    assert!(index_only.triangle_count() < candidate.triangle_count(), "emission kept the slivers");
+    assert!(candidate.needs_degenerate_cleanup(), "emission kept the slivers");
     assert!(count_open_boundary_edges_exact(&index_only) > 0, "a-b against a-m and m-b");
 
     let accepted = complete_conformed_candidate(candidate, complete, true)
         .expect("the caps are split at the sliver's apex");
     assert_eq!(count_open_boundary_edges_at(&accepted, 1.0e4), 0);
     assert_eq!(count_open_boundary_edges_exact(&accepted), 0);
+    assert!(!accepted.needs_degenerate_cleanup(), "the slivers are gone");
 }

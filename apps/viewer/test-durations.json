@@ -310,7 +310,6 @@
     "src/components/viewer/ViewportContainer.i18n.test.tsx": 5.1,
     "src/components/viewer/ViewportContainer.windowDrop.test.tsx": 8,
     "src/components/viewer/ViewportLoadErrorCard.test.tsx": 7,
-    "src/components/viewer/ViewportLoadingCard.test.tsx": 5.7,
     "src/components/viewer/ViewportOverlays.federation.test.tsx": 6.2,
     "src/components/viewer/ViewportOverlays.key-hints.test.tsx": 8,
     "src/components/viewer/ViewportOverlays.loadErrorExclusive.test.tsx": 4.4,

@@ -193,14 +193,13 @@ export function MobileToolbar({ placement = 'bottom-bar', style }: {
       {/* Loading progress: a thin line along the bar's edge that meets the
           viewport (its top), out of the row (#8802). In the row it took width
           the seven 44px targets need, so at 320px loading pushed More
-          off-screen and the bar scrolled. It does not take taps; the loading
-          card announces each phase. */}
+          off-screen and the bar scrolled. It does not take taps; its accessible value describes the phase. */}
       {loading && activeProgress && (
         // Native <progress>: a progressbar to assistive tech, indeterminate
         // when it has no value.
         <progress
           data-mobile-load-progress
-          aria-label={t('viewportLighting.container.loadingCard.titleFallback')}
+          aria-label={t('viewportLighting.mobileToolbar.loadingLabel')}
           aria-valuetext={activeProgress.indeterminate ? activeProgress.phase : `${activeProgress.phase} · ${loadPercent}%`}
           max={100}
           value={activeProgress.indeterminate ? undefined : loadPercent}

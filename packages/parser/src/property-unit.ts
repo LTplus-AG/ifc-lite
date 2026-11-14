@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { MetadataReadView } from './effective-metadata-record.js';
+import { propertyRecord, propertyReference } from './current-property-record.js';
 import type { IfcDataStore } from './columnar-parser.js';
 import type { EntityExtractor } from './entity-extractor.js';
 import { measureUnit, resolveUnitByRef } from './project-units.js';
@@ -33,22 +35,21 @@ export function resolvePropertyUnit(
   propertyType: string,
   attributes: unknown[],
   /** The value's IFC measure type when tagged; an explicit unit of another dimension is reported unresolved. */
-  dataType?: string,
+  dataType?: string, view?: MetadataReadView,
 ): ExplicitPropertyUnit | undefined {
   // IfcPropertyTableValue carries DefiningUnit and DefinedUnit (slots 5 and
   // 6); a single `unit` cannot represent both, so a table reports none.
   const type = propertyType.toUpperCase();
   const unitIndex = type === 'IFCPROPERTYBOUNDEDVALUE' ? 4
     : type === 'IFCPROPERTYSINGLEVALUE' || type === 'IFCPROPERTYLISTVALUE' ? 3 : -1;
-  const unitRef = unitIndex >= 0 && typeof attributes[unitIndex] === 'number'
-    ? attributes[unitIndex]
-    : undefined;
+  const raw = attributes[unitIndex];
+  const unitRef = view ? propertyReference(raw) ?? undefined : unitIndex >= 0 && typeof raw === 'number' ? raw : undefined;
   if (unitRef === undefined) return undefined;
 
   // @raw-entity-enumeration-ok unit resolver follows this property's explicit source unit reference
   const entry = resolveUnitByRef(extractor, {
     byId: { get: (id) => store.entityIndex.byId.get(id) ?? store.deferredEntityIndex?.get(id) },
-  }, unitRef);
+  }, unitRef, view ? id => propertyRecord(store, id, view, extractor) : undefined);
   const measure = dataType ? measureUnit(dataType) : undefined;
   const compatible = !entry || !measure
     || (measure.kind === 'typed' && entry.unitType === measure.unitType)

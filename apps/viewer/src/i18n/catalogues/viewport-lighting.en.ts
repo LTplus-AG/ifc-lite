@@ -80,15 +80,6 @@ export const viewportLightingEn = {
   'viewportLighting.container.emptyState.footer.discoverLink': 'ifclite.dev →',
   'viewportLighting.container.emptyState.footer.shortcutsLabel': 'Shortcuts',
   // ── ViewportContainer.tsx — loaded-model "Add Model" drop overlay ────
-  // ── ViewportLoadingCard.tsx — in-viewport load progress + Cancel (#5849) ─
-  'viewportLighting.container.loadingCard.title': 'Loading {name}',
-  'viewportLighting.container.loadingCard.titleFallback': 'Loading model…',
-  'viewportLighting.container.loadingCard.cancel': 'Cancel',
-  'viewportLighting.container.loadingCard.phase.reading': 'Reading',
-  'viewportLighting.container.loadingCard.phase.parsing': 'Parsing',
-  'viewportLighting.container.loadingCard.phase.geometry': 'Geometry',
-  'viewportLighting.container.loadingCard.phase.metadata': 'Metadata',
-  'viewportLighting.container.loadingCard.phase.rendering': 'Rendering',
 
   // ── ViewportLoadErrorCard.tsx — one load-error card for every load
   // path: the picker, drop, ?model= autoload and federated adds (#5851) ──
@@ -230,4 +221,5 @@ export const viewportLightingEn = {
   'viewportLighting.sunSkyPanel.sunStudy.readout.sunset': 'Sunset',
   'viewportLighting.sunSkyPanel.sunStudy.readout.noon': 'Noon',
   'viewportLighting.sunSkyPanel.sunStudy.readout.site': 'Site',
+  'viewportLighting.mobileToolbar.loadingLabel': 'Loading model…',
 } as const satisfies Record<string, TranslationValue>;

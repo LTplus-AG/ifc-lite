@@ -50,3 +50,18 @@ test('the wrapper runs the real program with its arguments and exit status, and 
     assert.ok(Object.values(last.c).reduce((a, b) => a + b, 0) > 3e6, 'a 3M-iteration loop retires more than 3M instructions');
   }
 });
+
+test('an unavailable counter (e.g. macOS) is carried on every lane and shown in the report with its reason', async () => {
+  const { laneInstructions } = await import('./load-scoreboard-instr.mjs');
+  const { cpuTimeSummary, cpuTimeSection } = await import('./load-scoreboard-report-cpu.mjs');
+  const lanes = laneInstructions({ 'browser-cold': { ok: true }, 'browser-warm': { ok: true } }, { unavailable: 'instruction counting is Linux only (darwin)' });
+  assert.deepEqual(Object.values(lanes).map((l) => l.instructions.unavailable), ['instruction counting is Linux only (darwin)', 'instruction counting is Linux only (darwin)']);
+  const rows = [0, 1].flatMap((n) => ['base', 'branch'].map((side) => ({ fixture: 'FZK', lane: 'browser-cold', side, round: n, interactiveMs: 500, ...lanes['browser-cold'] })));
+  const line = cpuTimeSection(rows, { cpuTime: cpuTimeSummary({ kind: 'aa', lanes: ['browser-cold'] }, rows) }).find((l) => l.startsWith('| FZK |'));
+  assert.match(line, /instructions unavailable 4: instruction counting is Linux only \(darwin\)/);
+  // A lane without a measured window (its open failed) says so instead of reading zero.
+  const p = parseInstrSamples(samples);
+  const two = laneInstructions({ a: {}, b: {} }, { parsed: p, windows: [{ lane: 'a', window: [1005, 1025] }] });
+  assert.equal(two.a.instructions.total, 525);
+  assert.match(two.b.instructions.unavailable, /no measured window/);
+});

@@ -9,7 +9,7 @@
 
 import { readdirSync, readFileSync, readlinkSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { capActive, capWindowOf, cgroupPressure, classifyCappedLoad, readCapState } from './load-scoreboard-cap.mjs';
+import { capActive, capWindowOf, cgroupPressure, classifyCappedLoad, readCapState, stallRange } from './load-scoreboard-cap.mjs';
 
 function readText(path) { try { return readFileSync(path, 'utf8').trim(); } catch { return null; } }
 
@@ -224,7 +224,8 @@ export function outsideOwnCgroup(pids) {
     cpuMs += cgroupUsageMs(cg) ?? 0;
     pressureUs += cgroupPressure(cg)?.totalUs ?? 0;
   }
-  return { cpuMs, pressureUs, scopes: scopes.size };
+  // Read at the same moment as the scope counters: settleHostLoad ends the foreign-CPU interval here.
+  return { cpuMs, pressureUs, scopes: scopes.size, hostBusyMs: hostBusyMs(), ownCgroupMs: ownCgroupMs() };
 }
 
 /**
@@ -243,7 +244,10 @@ export function settleHostLoad(host, { ownOutside = null } = {}) {
   // Measurement only (not a flag yet): CPU the rest of the host used during the sample, whatever its process names,
   // = host busy time minus this job's own cgroup. Recorded so a threshold can be set from real slots (B3: bursts
   // of foreign activity every ~10 min slowed samples with no builder visible at their start).
-  const busy = hostBusyMs(), own = ownCgroupMs();
+  // When the browser sample took a cut just before closing Chrome (outsideOwnCgroup), host busy and own cgroup are read
+  // there too, so Chrome's shutdown CPU never lands in foreignCpuMs (review #10138).
+  const cut = Number.isFinite(ownOutside?.hostBusyMs) && Number.isFinite(ownOutside?.ownCgroupMs);
+  const busy = cut ? ownOutside.hostBusyMs : hostBusyMs(), own = cut ? ownOutside.ownCgroupMs : ownCgroupMs();
   const ownOutsideMs = Number.isFinite(ownOutsideCpuMs) ? ownOutsideCpuMs : 0;
   const foreignCpuMs = [busy, own, host.hostBusyBefore, host.ownCgroupBefore].every(Number.isFinite)
     ? Math.max(0, Math.round((busy - host.hostBusyBefore) - (own - host.ownCgroupBefore) - ownOutsideMs)) : null;
@@ -262,14 +266,13 @@ export function settleHostLoad(host, { ownOutside = null } = {}) {
   if (window === 'none') flag = classifyHostLoad({ psi: host.cpuPressureAvg10, limit: host.limit, builders: host.builders, groupCpuMs: builderCpuMs });
   else {
     const ownAfter = cgroupPressure(ownCgroupPath())?.totalUs;
-    // Each cgroup's `some` total is time with at least one of ITS tasks waiting; the union of the job cgroup and the browser
-    // scope is unknown, so the larger of the two is used (a lower bound; their sum could count one moment twice, review #10138).
+    // Job cgroup and browser scope: their union stall lies in [max, sum]; flag on the sum (stallRange, load-scoreboard-cap.mjs).
     const jobUs = Number.isFinite(ownAfter) && Number.isFinite(host.ownPressureBefore) ? ownAfter - host.ownPressureBefore : null;
-    const stallUs = jobUs === null ? null : Math.max(jobUs, ownOutside?.pressureUs ?? 0);
-    const ownStallPct = stallUs === null || !(sampleMs > 0) ? null : (stallUs / (sampleMs * 1000)) * 100;
+    const range = stallRange(jobUs, ownOutside?.pressureUs, sampleMs);
+    const ownStallPct = range.highPct;
     const st = capAfter?.error ? host.capBefore : capAfter;
     flag = classifyCappedLoad({ window, ownStallPct, limit: host.limit, builders: host.builders, builderCpuMs, cappedPaths: st?.cappedPaths ?? [] });
-    host.cap = { window, id: st?.id ?? null, allowanceCores: st?.allowanceCores ?? null, ownStallPct: ownStallPct === null ? null : Math.round(ownStallPct * 10) / 10, jobStallUs: jobUs, browserStallUs: ownOutside?.pressureUs ?? null, error: capAfter?.error ?? host.capBefore?.error ?? null };
+    host.cap = { window, id: st?.id ?? null, allowanceCores: st?.allowanceCores ?? null, ownStallPct: ownStallPct === null ? null : Math.round(ownStallPct * 10) / 10, ownStallRangePct: range.lowPct === null ? null : [Math.round(range.lowPct * 10) / 10, Math.round(range.highPct * 10) / 10], jobStallUs: jobUs, browserStallUs: ownOutside?.pressureUs ?? null, error: capAfter?.error ?? host.capBefore?.error ?? null };
   }
   host.cap ??= { window: 'none' };
   Object.assign(host, { groupCpuMs, builderCpuMs, foreignCpuMs, ownOutsideCgroupCpuMs: Number.isFinite(ownOutsideCpuMs) ? Math.round(ownOutsideCpuMs) : null, sampleMs, overlapsWatchdogPass, thermal, settled: true, ...flag });

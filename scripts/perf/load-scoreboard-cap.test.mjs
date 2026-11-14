@@ -65,10 +65,13 @@ test('a sample settled inside an open window records the window and allowance an
     assert.equal(host.cap.window, 'inside');
     assert.equal(host.cap.allowanceCores, 2);
     assert.ok(host.cap.ownStallPct === null || host.cap.ownStallPct >= 0);
-    // The browser scope's stall is not added to the job's (one moment could count twice): the larger one is used.
+    // The flag uses the upper bound of the union (job + browser scope, capped at 100 %); the range is recorded.
     const h3 = await hostQuiet({ maxWaitMs: 0 });
     settleHostLoad(h3, { ownOutside: { cpuMs: 0, pressureUs: 5 } });
-    if (h3.cap.jobStallUs !== null) assert.equal(h3.cap.ownStallPct, Math.round((Math.max(h3.cap.jobStallUs, 5) / (h3.sampleMs * 1000)) * 1000) / 10);
+    if (h3.cap.jobStallUs !== null) {
+      assert.equal(h3.cap.ownStallPct, Math.round(Math.min(100, ((h3.cap.jobStallUs + 5) / (h3.sampleMs * 1000)) * 100) * 10) / 10);
+      assert.ok(h3.cap.ownStallRangePct[0] <= h3.cap.ownStallRangePct[1]);
+    }
     assert.equal(h3.cap.browserStallUs, 5);
     // Restored before the sample ends: partial, flagged.
     const h2 = await hostQuiet({ maxWaitMs: 0 });
@@ -95,4 +98,25 @@ test('an arm-lane sample gets the plan or side cpuTrace option and settles its h
   assert.deepEqual(calls.map((c) => c.cpuTrace), [true, false]);
   const host = rows[0].host;
   if (host.foreignCpuMs !== null) assert.deepEqual([host.foreignCpuMs, host.ownOutsideCgroupCpuMs], [0, 1e9]);
+});
+
+test('benchmark stall in a cap window: the range [max, min(sum, 100%)] is reported and the flag uses the sum', async () => {
+  const { stallRange } = await import('./load-scoreboard-cap.mjs');
+  // 4 ms in the job cgroup + 4 ms in the browser scope in a 100 ms sample: 4-8 %; the sum (8 %) flags at the 5 % limit.
+  assert.deepEqual(stallRange(4000, 4000, 100), { lowPct: 4, highPct: 8 });
+  assert.equal(classifyCappedLoad({ window: 'inside', ownStallPct: stallRange(4000, 4000, 100).highPct, limit: 5 }).underLoad, true);
+  assert.deepEqual(stallRange(90000, 50000, 100), { lowPct: 90, highPct: 100 }); // capped at 100 %
+  assert.deepEqual(stallRange(1000, undefined, 100), { lowPct: 1, highPct: 1 });
+  assert.deepEqual(stallRange(null, 5, 100), { lowPct: null, highPct: null });
+});
+
+test('the foreign-CPU interval ends at the cut taken before Chrome closes, so its shutdown CPU is not foreign', async () => {
+  const { hostQuiet, settleHostLoad } = await import('./load-scoreboard-host.mjs');
+  const host = await hostQuiet({ maxWaitMs: 0 });
+  if (!Number.isFinite(host.hostBusyBefore) || !Number.isFinite(host.ownCgroupBefore)) return; // no /proc/stat or cgroup here
+  const cut = { cpuMs: 200, pressureUs: 0, hostBusyMs: host.hostBusyBefore + 1000, ownCgroupMs: host.ownCgroupBefore + 300 };
+  // Burn CPU after the cut: it must not change the figure.
+  const t = Date.now(); while (Date.now() - t < 50) { /* busy */ }
+  settleHostLoad(host, { ownOutside: cut });
+  assert.equal(host.foreignCpuMs, 500); // 1000 host busy - 300 job - 200 browser scope, all at the cut
 });

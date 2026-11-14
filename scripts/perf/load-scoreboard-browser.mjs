@@ -35,7 +35,7 @@ import { readGpuHealth } from '../../tests/benchmark/gpu-health.ts';
 import { IDENTITY_QUERY, corruptStoredSnapshots, readSceneIdentity, settleIdentityWrites } from './load-scoreboard-identity.mjs';
 import { startCpuTrace, stopCpuTrace } from './load-scoreboard-cputrace.mjs';
 import { outsideOwnCgroup } from './load-scoreboard-host.mjs';
-import { INSTR_WRAPPER, instructionsIn, parseInstrSamples } from './load-scoreboard-instr.mjs';
+import { INSTR_WRAPPER, laneInstructions, parseInstrSamples } from './load-scoreboard-instr.mjs';
 
 /** Lane-name suffix of each arm; the default arm keeps the default lane names. */
 export const ARM_LANE_SUFFIX = { quiet: '', 'first-paint': '-early', 'boot-settled': '-settled' };
@@ -281,13 +281,14 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
     await context?.close().catch(() => {});
     rmSync(profileDir, { recursive: true, force: true });
     writeFileSync(join(outDir, `${tag}.console.log`), consoleLogs.join('\n'));
-    if (instrOut) {
-      // The wrapper writes its last totals when Chrome has exited; the open windows were taken from the page.
-      const parsed = parseInstrSamples(existsSync(instrOut) ? readFileSync(instrOut, 'utf8') : '');
+    if (instructions && pass === 'timing') {
+      // The wrapper writes its last totals when Chrome has exited; the open windows were taken from the page. Every lane
+      // carries a figure or the reason it has none (non-Linux, permissions, wrapper output).
+      const parsed = instrOut ? parseInstrSamples(existsSync(instrOut) ? readFileSync(instrOut, 'utf8') : '') : null;
       const laneOf = { cold: coldLane, warm1: warmOpens > 1 ? warm1Lane : warmLane, [`warm${warmOpens}`]: warmLane };
-      for (const { label, window } of instrWindows) if (lanes[laneOf[label]]) lanes[laneOf[label]].instructions = instructionsIn(parsed, window[0], window[1]);
-      if (parsed.unavailable) meta.instructionsUnavailable = parsed.unavailable;
-      rmSync(instrOut, { force: true });
+      laneInstructions(lanes, { parsed, unavailable: instrOut ? null : meta.instructionsUnavailable, windows: instrWindows.map(({ label, window }) => ({ lane: laneOf[label], window })) });
+      if (parsed?.unavailable) meta.instructionsUnavailable = parsed.unavailable;
+      if (instrOut) rmSync(instrOut, { force: true });
     }
   }
   return result;

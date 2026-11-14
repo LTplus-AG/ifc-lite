@@ -56,6 +56,20 @@ export function cgroupPressure(cgroup, root = '/sys/fs/cgroup') {
   } catch { return null; }
 }
 
+/**
+ * The benchmark's stall share in a cap window from its two cgroups' `some` stall times (µs) over `sampleMs`.
+ * The job cgroup and the browser scope hold different tasks, so their stall intervals are neither additive (they may
+ * overlap: the sum can count one moment twice) nor nested (they may be disjoint: the larger misses the other's time).
+ * The union lies in [max, min(sum, 100 %)]. Both ends are reported; the flag uses the UPPER bound, so an unknown
+ * overlap errs toward rerunning a round, never toward calling a starved sample quiet (review #10138, both directions).
+ */
+export function stallRange(jobUs, browserUs, sampleMs) {
+  if (!Number.isFinite(jobUs) || !(sampleMs > 0)) return { lowPct: null, highPct: null };
+  const b = Number.isFinite(browserUs) ? browserUs : 0;
+  const pct = (us) => Math.min(100, (us / (sampleMs * 1000)) * 100);
+  return { lowPct: pct(Math.max(jobUs, b)), highPct: pct(jobUs + b) };
+}
+
 /** Whether `cgroup` is one of the capped cgroups or inside one. */
 export function isCapped(cgroup, cappedPaths) {
   return (cappedPaths ?? []).some((p) => cgroup === p || cgroup.startsWith(`${p}/`));

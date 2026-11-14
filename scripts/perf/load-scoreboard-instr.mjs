@@ -57,3 +57,18 @@ export function instructionsIn(parsed, startMs, endMs) {
   const gap = (t) => Math.min(...s.map((r) => Math.abs(r.t - t)));
   return { total: Object.values(pmu).reduce((x, y) => x + y, 0), pmu, edgeGapMs: Math.round(Math.max(gap(startMs), gap(endMs)) * 10) / 10 };
 }
+
+/**
+ * Instruction figures for each lane of a sample that requested counting: the window's count, or `unavailable` with the
+ * reason (platform, permissions, wrapper output) on every lane, so the report shows why (review #10138).
+ * `windows`: [{ lane, window: [startEpochMs, endEpochMs] }]; `parsed`: parseInstrSamples output or null.
+ */
+export function laneInstructions(lanes, { parsed = null, windows = [], unavailable = null }) {
+  const reason = unavailable ?? parsed?.unavailable ?? null;
+  for (const [name, lane] of Object.entries(lanes)) {
+    const w = windows.find((x) => x.lane === name);
+    lane.instructions = reason ? { total: null, pmu: null, unavailable: reason }
+      : w ? instructionsIn(parsed, w.window[0], w.window[1]) : { total: null, pmu: null, unavailable: 'no measured window for this lane (open failed)' };
+  }
+  return lanes;
+}

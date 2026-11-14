@@ -16,7 +16,7 @@ const PANEL_EXPORT_SURFACES = [
 export type ExportSurface = UiSurface | (typeof PANEL_EXPORT_SURFACES)[number];
 
 const EXPORT_FORMATS = [
-  'ifc', 'ifcx', 'ifczip', 'ifc-anonymized', 'zip', 'glb', 'kmz', 'usda', 'hbjson',
+  'ifc', 'ifcx', 'ifczip', 'ifc-anonymized', 'zip', 'glb', 'kmz', 'usda', '3dm', 'hbjson',
   'dfjson', 'csv', 'json', 'png', 'pdf', 'pdf-3d-view', 'xlsx', 'bcfzip', 'dxf',
   'svg', 'html', 'ids', 'iflv', 'xml', 'landxml', 'extension', 'other',
 ] as const;

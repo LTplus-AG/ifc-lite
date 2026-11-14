@@ -35,6 +35,7 @@ const wasm = vi.hoisted(() => {
 });
 
 vi.mock('@ifc-lite/wasm', () => ({
+  ENGINE_BINARY_URL: null,
   default: async () => undefined,
   initSync: () => undefined,
   setGeometryProgressCallback: () => undefined,

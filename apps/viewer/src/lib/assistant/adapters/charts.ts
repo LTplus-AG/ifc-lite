@@ -19,7 +19,7 @@ function dashboardOf(s: ViewerState): DashboardSpec | null {
 function sourceInputs(s: ViewerState, source: ChartSource, scope: DashboardSpec['scope']): unknown[] {
   switch (source) {
     case 'elements': return [s.models, s.activeModelId, s.pinboardEntities, s.mutationViews, s.unitDisplayOverrides,
-      ...(scope.kind === 'visible' ? [s.hiddenEntities, s.isolatedEntities, s.classFilter, s.lensHiddenIds, s.selectedStoreys, s.typeVisibility, s.chartVisibilityOwned] : [])];
+      ...(scope.kind === 'visible' ? [s.hiddenEntities, s.isolatedEntities, s.classFilter, s.lensHiddenIds, s.selectedStoreys, s.typeVisibility, s.structuralViewMode, s.chartVisibilityOwned] : [])];
     case 'clash': return [s.clashResult, s.clashReviews, s.clashGroups, s.clashRunSeq, s.models, s.savedClashReports, s.mutationVersion];
     case 'bcf': return [s.bcfProject, s.models];
     case 'schedule': return [s.scheduleData, s.scheduleSourceModelId, s.playbackTime, s.animationEnabled, s.models];

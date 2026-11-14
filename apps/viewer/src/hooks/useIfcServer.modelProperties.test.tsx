@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { useViewerStore } from '@/store';
+import { useServerModelProperties } from './ingest/useServerModelProperties.js';
 import { useActivityJournal, cancelActivity } from '@/lib/activity/activity-journal';
 import { installModelLoadCanceller } from './modelLoadCanceller.js';
 import { fixtureModel, fixtureDataStore } from '@/test/store-fixture.js';
@@ -33,7 +34,7 @@ async function start() {
     entered();
     return new Promise<ArrayBuffer>(resolve => { release = resolve; });
   });
-  await act(async () => { pending = api.loadFromServer(file, new ArrayBuffer(1), () => stale); await ready; });
+  await act(async () => { pending = api.loadFromServer(file, new ArrayBuffer(1), () => stale, undefined, 'server'); await ready; });
   assert.ok(signal, 'optional polling must receive its own model-owned signal');
 }
 beforeEach(async () => {
@@ -121,10 +122,9 @@ for (const modelId of [null, 'not-registered']) {
     useViewerStore.getState().clearAllModels();
     const warnings: unknown[][] = [];
     mock.method(console, 'warn', (...args: unknown[]) => { warnings.push(args); });
-    let calls = 0;
-    mock.method(IfcServerClient.prototype, 'fetchDataModel', async () => { calls++; return null; });
-    await act(async () => { await api.loadFromServer(file, new ArrayBuffer(1), undefined, undefined, modelId); });
-    assert.equal(calls, 0);
+    let hydrations = 0;
+    useServerModelProperties().start(modelId, undefined, async () => { hydrations++; return null; });
+    assert.equal(hydrations, 0);
     assert.equal(warnings.some(args => String(args[0]).includes('registered model')), true);
   });
 }
@@ -134,7 +134,7 @@ it('#9538 a missing optional response preserves properties already belonging to 
   const warnings: unknown[][] = [];
   mock.method(console, 'warn', (...args: unknown[]) => { warnings.push(args); });
   mock.method(IfcServerClient.prototype, 'fetchDataModel', async () => null);
-  await act(async () => { await api.loadFromServer(file, new ArrayBuffer(1)); await new Promise(resolve => setTimeout(resolve, 200)); });
+  await act(async () => { await api.loadFromServer(file, new ArrayBuffer(1), undefined, undefined, 'server'); await new Promise(resolve => setTimeout(resolve, 200)); });
   assert.equal(useViewerStore.getState().ifcDataStore === existing, true);
   assert.equal(warnings.length, 0, 'a missing optional response is not a decode failure');
 });
@@ -207,8 +207,59 @@ for (const included of [true, false]) {
     }));
     let calls = 0;
     mock.method(IfcServerClient.prototype, 'fetchDataModel', async () => { calls++; return wire; });
-    await act(async () => { await api.loadFromServer(file, new ArrayBuffer(1)); await new Promise(resolve => setTimeout(resolve, 200)); });
+    await act(async () => { await api.loadFromServer(file, new ArrayBuffer(1), undefined, undefined, 'server'); await new Promise(resolve => setTimeout(resolve, 200)); });
     assert.equal(calls, included ? 0 : 1);
     assert.equal(useViewerStore.getState().models.get('server')?.ifcDataStore?.entities.getName(1), 'Server properties');
   });
 }
+
+it('#9538 follow-up: only the second start on the same live model may publish', async () => {
+  const properties = useServerModelProperties();
+  let first!: (store: ReturnType<typeof result>) => void;
+  let second!: (store: ReturnType<typeof result>) => void;
+  let firstSignal!: AbortSignal;
+  properties.start('server', undefined, signal => {
+    firstSignal = signal;
+    return new Promise(resolve => { first = resolve; });
+  });
+  properties.start('server', undefined, () => new Promise(resolve => { second = resolve; }));
+  assert.equal(firstSignal.aborted, true, 'the first lease must lose ownership immediately');
+  const discarded = fixtureDataStore([{ expressId: 1, type: 'IfcWall', name: 'Discarded first result' }]);
+  await act(async () => { first(discarded); await new Promise(resolve => setTimeout(resolve, 20)); });
+  assert.equal(useViewerStore.getState().models.get('server')?.ifcDataStore === null, true);
+  const current = result();
+  await act(async () => { second(current); await new Promise(resolve => setTimeout(resolve, 20)); });
+  assert.equal(useViewerStore.getState().models.get('server')?.ifcDataStore === current, true);
+});
+it('#9538 follow-up: starting a server load for another model preserves the first poll', async () => {
+  await start();
+  const firstSignal = signal;
+  const otherFile = new File(['IFC'], 'other.ifc');
+  useViewerStore.getState().addModel({ ...fixtureModel('other'), sourceFile: otherFile, ifcDataStore: null, loadState: 'complete' });
+  mock.method(IfcServerClient.prototype, 'fetchDataModel', async () => null);
+  await act(async () => { await api.loadFromServer(otherFile, new ArrayBuffer(1), undefined, undefined, 'other'); });
+  assert.equal(firstSignal.aborted, false, 'only the requested model run may be cancelled');
+  await act(async () => { release(wire); await new Promise(resolve => setTimeout(resolve, 200)); });
+  assert.equal(useViewerStore.getState().models.get('server')?.ifcDataStore?.entities.getName(1), 'Server properties');
+  assert.equal(useViewerStore.getState().models.get('other')?.ifcDataStore === null, true);
+});
+it('#9601 same-model retry aborts the old poll before the new attempt can hydrate', async () => {
+  await start(); await pending;
+  const oldSignal = signal;
+  const parsed = await IfcServerClient.prototype.parse(file);
+  let entered!: () => void;
+  let resume!: () => void;
+  const parsing = new Promise<void>(resolve => { entered = resolve; });
+  const held = new Promise<void>(resolve => { resume = resolve; });
+  mock.method(IfcServerClient.prototype, 'parse', async () => { entered(); await held; return parsed; });
+  let hydrations = 0;
+  mock.method(IfcServerClient.prototype, 'fetchDataModel', async () => { hydrations++; return null; });
+  pending = api.loadFromServer(file, new ArrayBuffer(1), undefined, undefined, 'server');
+  try {
+    await parsing;
+    assert.equal(hydrations, 0, 'the retry is still held before optional hydration');
+    assert.equal(oldSignal.aborted, true, 'retry cancellation must happen before a later start replaces the lease');
+    assert.equal(useViewerStore.getState().models.get('server')?.sourceFile === file, true);
+    assert.equal(useViewerStore.getState().models.get('server')?.ifcDataStore === null, true);
+  } finally { resume(); await pending; }
+});

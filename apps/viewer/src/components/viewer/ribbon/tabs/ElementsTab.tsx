@@ -13,7 +13,7 @@ import { openSelectedEntityActions, selectedEntityActionTarget } from '../../sel
 import { resolveGlobalId, useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { BimReactContext } from '@/sdk/BimProvider';
-import { surfaceCommand } from '../../surface-commands';
+import { surfaceCommand } from '../../surface-command-registry';
 import { ClassVisibilityMenuContent, useVisibleClassCount } from '../../toolbar/ClassVisibilityMenu';
 import {
   RibbonGroup,

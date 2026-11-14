@@ -92,6 +92,20 @@ describe('addElementTypeToStore', () => {
     expect(() => addElementTypeToStore(editor, anchor, { Type: 'IfcWallType', Name: 'x', PredefinedType: 'BRICK' }))
       .toThrow(/IfcWallType.PredefinedType must be one of .*SOLIDWALL.*; got BRICK/);
   });
+
+  // IfcSpaceType is an IfcSpatialElementType from IFC4 on, not an IfcElementType: a space's "New type" was refused (#9296).
+  for (const schema of ['IFC4', 'IFC4X3', 'IFC2X3'] as const) {
+    it(`writes an ${schema} IfcSpaceType, the type a space is given`, () => {
+      const { view, editor, anchor } = synthetic(schema);
+      // IFC2X3's IfcSpaceTypeEnum has only USERDEFINED and NOTDEFINED.
+      const predefined = schema === 'IFC2X3' ? 'NOTDEFINED' : 'SPACE';
+      const { typeId } = addElementTypeToStore(editor, anchor, { Type: 'IfcSpaceType', Name: 'Office', PredefinedType: predefined });
+      const space = created(view, typeId);
+      expect(space.type).toBe('IfcSpaceType');
+      expect(space.attributes[2]).toBe('Office');
+      expect(space.attributes).toContain(`.${predefined}.`);
+    });
+  }
 });
 
 describe('assignTypeInStore', () => {

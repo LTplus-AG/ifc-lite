@@ -24,6 +24,19 @@
 // wrapper so the test entry point (`__acquireFileBufferWithThreshold`) can
 // run without ever loading `ifcConfig`.
 
+/** Bytes copied between returns to the event loop while streaming a large file into its buffer. */
+export const READ_YIELD_BYTES = 8 * 1024 * 1024;
+
+/** One macrotask turn without timer clamping (setTimeout nests to >= 4 ms). */
+function yieldToEventLoop(): Promise<void> {
+  if (typeof MessageChannel === 'undefined') return new Promise((resolve) => setTimeout(resolve, 0));
+  return new Promise((resolve) => {
+    const channel = new MessageChannel();
+    channel.port1.onmessage = () => { channel.port1.close(); resolve(); };
+    channel.port2.postMessage(null);
+  });
+}
+
 export interface AcquiredBuffer {
   /**
    * Underlying buffer. Either a `SharedArrayBuffer` (large files when SAB is
@@ -74,6 +87,7 @@ export async function __acquireFileBufferWithThreshold(
   const view = new Uint8Array(sab);
   const reader = (file.stream() as ReadableStream<Uint8Array>).getReader();
   let offset = 0;
+  let sinceYield = 0;
 
   try {
     // Stream chunks from the File directly into the SAB. No intermediate
@@ -91,6 +105,14 @@ export async function __acquireFileBufferWithThreshold(
       }
       view.set(value, offset);
       offset += value.byteLength;
+      // Chunks that are already buffered resolve as microtasks, so without this the whole read is one long
+      // main-thread task (BWK, 327 MB: 250-300 ms) that holds back everything else the load started, such
+      // as the renderer's device response and the cache lookup.
+      sinceYield += value.byteLength;
+      if (sinceYield >= READ_YIELD_BYTES) {
+        sinceYield = 0;
+        await yieldToEventLoop();
+      }
     }
   } finally {
     // releaseLock can throw if the reader is already closed/released by the

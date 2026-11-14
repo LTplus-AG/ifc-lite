@@ -14,6 +14,7 @@
  * its home region, so one skip no longer breaks every later step (#5608).
  */
 
+import { preloadDeferredPanel } from '@/lib/panels/deferred-panel-modules';
 import { anchorSelector } from './anchors';
 import type { TourBrokenReason, TourStep, ViewerStoreApi } from './types';
 
@@ -38,6 +39,7 @@ export async function resolveAnchor(
   store: ViewerStoreApi,
   step: TourStep,
   isCurrent: () => boolean,
+  loadPanel: typeof preloadDeferredPanel = preloadDeferredPanel,
 ): Promise<AnchorResolution> {
   if (!step.anchor) return { el: null, reason: 'anchor-missing', redocked: false };
 
@@ -53,6 +55,17 @@ export async function resolveAnchor(
     }
   }
 
+  // Network time is not anchor rot. Start the existing DOM timeout only once
+  // the requested deferred panel's code is available, even on a slow link.
+  if (step.panel) {
+    if (!isCurrent()) return { el: null, redocked };
+    try {
+      await loadPanel(step.panel);
+    } catch (error) {
+      console.warn('[tour] panel module could not load', error);
+      return { el: null, reason: 'anchor-missing', redocked };
+    }
+  }
   const deadline = performance.now() + RESOLVE_TIMEOUT_MS;
   while (performance.now() < deadline) {
     if (!isCurrent()) return { el: null, redocked };

@@ -212,9 +212,26 @@ const NON_HIERARCHY_REL_TYPES: ReadonlySet<string> = new Set([
     ...PROPERTY_REL_TYPES,
     ...ASSOCIATION_REL_TYPES,
 ]);
-export const HIERARCHY_REL_TYPES: ReadonlySet<string> = new Set(
-    [...getAllConcreteRelationshipTypes()].filter(t => !NON_HIERARCHY_REL_TYPES.has(t)),
-);
+//
+// Built on first use, not when this module loads: the walk reads all three
+// bundled schema registries, which are decoded on first use. Before, every
+// bundle that loaded the parser decoded all three at start-up (the browser
+// parser worker before it could accept a parse) whatever schema the file
+// declared. `scripts/lib/server-browser-type-extractors.mjs` reads this
+// builder's body to find what the gate admits; keep its shape.
+function buildHierarchyRelTypes(): ReadonlySet<string> {
+    return new Set(
+        [...getAllConcreteRelationshipTypes()].filter(t => !NON_HIERARCHY_REL_TYPES.has(t)),
+    );
+}
+
+let hierarchyRelTypes: ReadonlySet<string> | undefined;
+
+/** The hierarchy relationship gate (see above); the same set on every call. */
+export function getHierarchyRelTypes(): ReadonlySet<string> {
+    if (hierarchyRelTypes === undefined) hierarchyRelTypes = buildHierarchyRelTypes();
+    return hierarchyRelTypes;
+}
 
 // Attributes to skip in extractAllEntityAttributes (shown elsewhere or non-displayable)
 export const SKIP_DISPLAY_ATTRS = new Set(['GlobalId', 'OwnerHistory', 'ObjectPlacement', 'Representation', 'HasPropertySets', 'RepresentationMaps']);

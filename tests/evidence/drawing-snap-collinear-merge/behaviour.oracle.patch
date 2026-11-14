@@ -1,0 +1,22 @@
+diff --git b/apps/viewer/src/lib/drawing2d-markup/drawing-snap-merge.ts a/apps/viewer/src/lib/drawing2d-markup/drawing-snap-merge.ts
+index 96ee331944..e2ca587333 100644
+--- b/apps/viewer/src/lib/drawing2d-markup/drawing-snap-merge.ts
++++ a/apps/viewer/src/lib/drawing2d-markup/drawing-snap-merge.ts
+@@ -81,7 +81,7 @@ export function simplifyRing(ring: readonly Pt[], owner: string, owners: VertexO
+     for (let i = 0; i < pts.length && pts.length > 3; i++) {
+       const prev = pts[(i - 1 + pts.length) % pts.length];
+       const next = pts[(i + 1) % pts.length];
+-      if (false) {
++      if (sameDirection(prev, pts[i], next) && !owners.sharedWithOther(pts[i], owner)) {
+         pts.splice(i, 1);
+         changed = true;
+         i--;
+@@ -139,7 +139,7 @@ export function mergeCollinearSegments(
+     const ei = ends(i, key);
+     const ej = ends(j, key);
+     if (!ei || !ej) continue;
+-    continue;
++    if (!sameDirection(ei.far, ei.near, ej.far) || owners.sharedWithOther(ei.near, owner)) continue;
+     unlink(i, ei.far);
+     unlink(j, ej.far);
+     at.delete(key);

@@ -111,34 +111,16 @@ pub(super) fn extract_face_bounds(
     decoder: &mut EntityDecoder,
     quality: TessellationQuality,
 ) -> Result<FaceBounds> {
-    let bounds = face
-        .get(0)
-        .ok_or_else(|| Error::geometry("FaceSurface missing Bounds".to_string()))?
-        .as_list()
-        .ok_or_else(|| Error::geometry("Expected bounds list".to_string()))?;
+    Ok(classify_bounds(read_bounds(face, decoder, quality)?))
+}
+
+/// One outer ring and its holes: the last `IfcFaceOuterBound` (earlier ones
+/// become holes), else the largest unclassified bound.
+fn classify_bounds(bounds: Vec<(bool, Vec<Point3<f64>>)>) -> FaceBounds {
     let mut outer = None;
     let mut holes = Vec::new();
     let mut unclassified = Vec::new();
-
-    for bound in bounds {
-        let (bound_entity, loop_entity) = resolve_bound_loop(face, bound, decoder)?;
-        let read = match loop_entity.ifc_type {
-            IfcType::IfcEdgeLoop => extract_edge_loop_points(&loop_entity, decoder, quality),
-            IfcType::IfcPolyLoop => read_loop_points_by_id(loop_entity.id, decoder).ok_or(Refused),
-            // Other loop kinds (IfcVertexLoop) carry no area; skipped as before.
-            _ => Ok(Vec::new()),
-        };
-        let mut points = refuse_unreadable(face, &loop_entity, read)?;
-        // A readable loop of under three points is degenerate, not unread.
-        if points.len() < 3 {
-            continue;
-        }
-        let orientation = bound_entity.get_bool(1).unwrap_or(true);
-        if !orientation {
-            points.reverse();
-        }
-
-        let is_outer = bound_entity.ifc_type == IfcType::IfcFaceOuterBound;
+    for (is_outer, points) in bounds {
         if is_outer {
             if let Some(previous) = outer.take() {
                 holes.push(previous);
@@ -158,7 +140,57 @@ pub(super) fn extract_face_bounds(
         outer = Some(unclassified.swap_remove(outer_index));
         holes.extend(unclassified);
     }
-    Ok(FaceBounds { outer, holes })
+    FaceBounds { outer, holes }
+}
+
+/// A face's regions, its bounds read once: each bound its own region when
+/// every bound is an `IfcFaceOuterBound` and there are several (AxisVM writes
+/// a structural slab as one face of many outer-bound triangles, #9668), else
+/// the one outer ring with its holes.
+pub(super) fn face_regions(
+    face: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+    quality: TessellationQuality,
+) -> Result<Vec<FaceBounds>> {
+    let bounds = read_bounds(face, decoder, quality)?;
+    if bounds.len() > 1 && bounds.iter().all(|(is_outer, _)| *is_outer) {
+        return Ok(bounds.into_iter().map(|(_, points)| FaceBounds { outer: Some(points), holes: Vec::new() }).collect());
+    }
+    Ok(vec![classify_bounds(bounds)])
+}
+
+/// Every bound of `face` with at least three points, oriented, in order, with
+/// whether it is an `IfcFaceOuterBound`.
+fn read_bounds(
+    face: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+    quality: TessellationQuality,
+) -> Result<Vec<(bool, Vec<Point3<f64>>)>> {
+    let bounds = face
+        .get(0)
+        .ok_or_else(|| Error::geometry("FaceSurface missing Bounds".to_string()))?
+        .as_list()
+        .ok_or_else(|| Error::geometry("Expected bounds list".to_string()))?;
+    let mut out = Vec::new();
+    for bound in bounds {
+        let (bound_entity, loop_entity) = resolve_bound_loop(face, bound, decoder)?;
+        let read = match loop_entity.ifc_type {
+            IfcType::IfcEdgeLoop => extract_edge_loop_points(&loop_entity, decoder, quality),
+            IfcType::IfcPolyLoop => read_loop_points_by_id(loop_entity.id, decoder).ok_or(Refused),
+            // Other loop kinds (IfcVertexLoop) carry no area; skipped as before.
+            _ => Ok(Vec::new()),
+        };
+        let mut points = refuse_unreadable(face, &loop_entity, read)?;
+        // A readable loop of under three points is degenerate, not unread.
+        if points.len() < 3 {
+            continue;
+        }
+        if !bound_entity.get_bool(1).unwrap_or(true) {
+            points.reverse();
+        }
+        out.push((bound_entity.ifc_type == IfcType::IfcFaceOuterBound, points));
+    }
+    Ok(out)
 }
 
 fn projected_area(points: &[Point3<f64>]) -> f64 {

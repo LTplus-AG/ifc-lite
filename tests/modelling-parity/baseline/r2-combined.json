@@ -1,0 +1,1539 @@
+{
+  "schema": "ifclite-parity-summary/1",
+  "generatedAt": "2026-11-13T03:21:42.545Z",
+  "inputs": [
+    "tests/modelling-parity/.out/r2-sdk",
+    "tests/modelling-parity/.out/r2-exercises",
+    "tests/modelling-parity/.out/r2-ui-probes",
+    "tests/modelling-parity/.out/r2-ui-exercises"
+  ],
+  "sources": [
+    {
+      "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+      "dirty": false
+    }
+  ],
+  "results": 6818,
+  "score": 23,
+  "maxScore": 25,
+  "tableStakesIds": [
+    "storeys",
+    "grids",
+    "wall-chains-autojoin",
+    "layered-walls",
+    "wall-top-base-constraints",
+    "slab-with-openings",
+    "roof-by-footprint",
+    "columns-beams-on-grid-follow-levels",
+    "curtain-walls",
+    "hosted-doors-windows-from-types",
+    "stairs-railings",
+    "type-editing",
+    "materials",
+    "transforms-move-copy-rotate-mirror-array",
+    "align-offset-trim-split",
+    "copy-to-levels",
+    "snapping-inference",
+    "typed-input-temp-dims",
+    "rooms-with-area",
+    "schedules-quantities",
+    "plans-sections-elevations",
+    "dimensions-tags",
+    "sheets-pdf-dwg",
+    "psets-classification-valid-ifc4",
+    "large-tall-model-performance"
+  ],
+  "counts": {
+    "met": 21,
+    "partial": 4,
+    "missing": 0
+  },
+  "levelTotals": {
+    "sdk": {
+      "passed": 20,
+      "total": 25,
+      "applicable": 20
+    },
+    "ui": {
+      "passed": 21,
+      "total": 25,
+      "applicable": 25
+    },
+    "output": {
+      "passed": 23,
+      "total": 25,
+      "applicable": 23
+    }
+  },
+  "rows": [
+    {
+      "capability": "storeys",
+      "title": "Storeys and levels",
+      "group": "Levels and grids",
+      "tableStakes": true,
+      "status": "met",
+      "levels": {
+        "sdk": {
+          "status": "pass",
+          "id": "sdk.storeys",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "ui": {
+          "status": "pass",
+          "id": "ui.storeys",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "output": {
+          "status": "pass",
+          "id": "output.storeys",
+          "results": 2,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "exercise": {
+          "status": "pass",
+          "id": "F1.raise-floor",
+          "results": 172,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "perf": {
+          "status": "none",
+          "results": 0
+        }
+      }
+    },
+    {
+      "capability": "grids",
+      "title": "Structural grids",
+      "group": "Levels and grids",
+      "tableStakes": true,
+      "status": "met",
+      "levels": {
+        "sdk": {
+          "status": "pass",
+          "id": "sdk.grids",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "ui": {
+          "status": "pass",
+          "id": "ui.grids",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "output": {
+          "status": "pass",
+          "id": "output.grids",
+          "results": 2,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "exercise": {
+          "status": "pass",
+          "id": "F4.grid",
+          "results": 6,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "perf": {
+          "status": "none",
+          "results": 0
+        }
+      }
+    },
+    {
+      "capability": "wall-chains-autojoin",
+      "title": "Wall chains that auto-join",
+      "group": "Walls",
+      "tableStakes": true,
+      "status": "met",
+      "levels": {
+        "sdk": {
+          "status": "pass",
+          "id": "sdk.wall-chains-autojoin",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "ui": {
+          "status": "pass",
+          "id": "ui.wall-chain",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "output": {
+          "status": "pass",
+          "id": "output.wall-chains-autojoin",
+          "results": 2,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "exercise": {
+          "status": "pass",
+          "id": "F1.join-0",
+          "results": 120,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "perf": {
+          "status": "none",
+          "results": 0
+        }
+      }
+    },
+    {
+      "capability": "layered-walls",
+      "title": "Layered (compound) walls",
+      "group": "Walls",
+      "tableStakes": true,
+      "status": "met",
+      "levels": {
+        "sdk": {
+          "status": "pass",
+          "id": "sdk.layered-walls",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "ui": {
+          "status": "pass",
+          "id": "ui.layered-walls",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "output": {
+          "status": "pass",
+          "id": "output.layered-walls",
+          "results": 2,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "exercise": {
+          "status": "partial",
+          "id": "F2.ui.dark",
+          "reason": "space areas match the reference (rel 0.05, matched by area): areas 14.30, 13.81, 24.28, 16.15, 11.12, 34.85, 115.64; unmatched reference 107.16, 25.99, 22.07, 12.99, 12.5; gable roof at 30 degrees: no roof: the UI has no sloped or gable roof (the Slab tool's Roof class makes a flat slab on the active storey floor; see ui.roof and #9214)",
+          "results": 2,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "perf": {
+          "status": "none",
+          "results": 0
+        }
+      }
+    },
+    {
+      "capability": "wall-top-base-constraints",
+      "title": "Wall top and base constraints",
+      "group": "Walls",
+      "tableStakes": true,
+      "status": "met",
+      "levels": {
+        "sdk": {
+          "status": "pass",
+          "id": "sdk.wall-top-base-constraints",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "ui": {
+          "status": "pass",
+          "id": "ui.wall-constraints",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "output": {
+          "status": "pass",
+          "id": "output.wall-top-base-constraints",
+          "results": 2,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "exercise": {
+          "status": "pass",
+          "id": "F1.attach-0",
+          "results": 620,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "perf": {
+          "status": "none",
+          "results": 0
+        }
+      }
+    },
+    {
+      "capability": "slab-with-openings",
+      "title": "Slabs from outlines, with openings",
+      "group": "Slabs and roofs",
+      "tableStakes": true,
+      "status": "met",
+      "levels": {
+        "sdk": {
+          "status": "pass",
+          "id": "sdk.slab-with-openings",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "ui": {
+          "status": "pass",
+          "id": "ui.slab-openings",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "output": {
+          "status": "pass",
+          "id": "output.slab-with-openings",
+          "results": 2,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "exercise": {
+          "status": "pass",
+          "id": "F1.slab",
+          "results": 142,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "perf": {
+          "status": "none",
+          "results": 0
+        }
+      }
+    },
+    {
+      "capability": "roof-by-footprint",
+      "title": "Roof by footprint (hip, gable, mono-pitch)",
+      "group": "Slabs and roofs",
+      "tableStakes": true,
+      "status": "met",
+      "levels": {
+        "sdk": {
+          "status": "pass",
+          "id": "sdk.roof-by-footprint",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "ui": {
+          "status": "pass",
+          "id": "ui.roof",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "output": {
+          "status": "pass",
+          "id": "output.roof-by-footprint",
+          "results": 2,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "exercise": {
+          "status": "pass",
+          "id": "F2.gable-roof-attempt",
+          "results": 8,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "perf": {
+          "status": "none",
+          "results": 0
+        }
+      }
+    },
+    {
+      "capability": "columns-beams-on-grid-follow-levels",
+      "title": "Columns and beams on grids that follow levels",
+      "group": "Structure",
+      "tableStakes": true,
+      "status": "met",
+      "levels": {
+        "sdk": {
+          "status": "pass",
+          "id": "sdk.columns-beams-on-grid-follow-levels",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "ui": {
+          "status": "pass",
+          "id": "ui.grid-columns",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "output": {
+          "status": "pass",
+          "id": "output.columns-beams-on-grid-follow-levels",
+          "results": 2,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "exercise": {
+          "status": "pass",
+          "id": "F2.beam-0",
+          "results": 4730,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "perf": {
+          "status": "none",
+          "results": 0
+        }
+      }
+    },
+    {
+      "capability": "curtain-walls",
+      "title": "Curtain walls with grids, mullions and panels",
+      "group": "Facade",
+      "tableStakes": true,
+      "status": "met",
+      "levels": {
+        "sdk": {
+          "status": "pass",
+          "id": "sdk.curtain-walls",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "ui": {
+          "status": "pass",
+          "id": "ui.curtain-wall",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "output": {
+          "status": "pass",
+          "id": "output.curtain-walls",
+          "results": 2,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "exercise": {
+          "status": "pass",
+          "id": "F4.bounds-10315",
+          "results": 472,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "perf": {
+          "status": "none",
+          "results": 0
+        }
+      }
+    },
+    {
+      "capability": "hosted-doors-windows-from-types",
+      "title": "Hosted doors and windows from types",
+      "group": "Openings and circulation",
+      "tableStakes": true,
+      "status": "met",
+      "levels": {
+        "sdk": {
+          "status": "pass",
+          "id": "sdk.hosted-doors-windows-from-types",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "ui": {
+          "status": "pass",
+          "id": "ui.hosted-openings",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "output": {
+          "status": "pass",
+          "id": "output.hosted-doors-windows-from-types",
+          "results": 2,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "exercise": {
+          "status": "pass",
+          "id": "F1.door",
+          "results": 80,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "perf": {
+          "status": "none",
+          "results": 0
+        }
+      }
+    },
+    {
+      "capability": "stairs-railings",
+      "title": "Stairs and railings between levels",
+      "group": "Openings and circulation",
+      "tableStakes": true,
+      "status": "met",
+      "levels": {
+        "sdk": {
+          "status": "pass",
+          "id": "sdk.stairs-railings",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "ui": {
+          "status": "pass",
+          "id": "ui.stair",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "output": {
+          "status": "pass",
+          "id": "output.stairs-railings",
+          "results": 2,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "exercise": {
+          "status": "pass",
+          "id": "F2.bounds-1316",
+          "results": 132,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "perf": {
+          "status": "none",
+          "results": 0
+        }
+      }
+    },
+    {
+      "capability": "type-editing",
+      "title": "Type editing that updates every instance",
+      "group": "Types and materials",
+      "tableStakes": true,
+      "status": "met",
+      "levels": {
+        "sdk": {
+          "status": "pass",
+          "id": "sdk.type-editing",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "ui": {
+          "status": "pass",
+          "id": "ui.type-editing",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "output": {
+          "status": "pass",
+          "id": "output.type-editing",
+          "results": 2,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "exercise": {
+          "status": "none",
+          "results": 0
+        },
+        "perf": {
+          "status": "none",
+          "results": 0
+        }
+      }
+    },
+    {
+      "capability": "materials",
+      "title": "Materials with appearance",
+      "group": "Types and materials",
+      "tableStakes": true,
+      "status": "met",
+      "levels": {
+        "sdk": {
+          "status": "pass",
+          "id": "sdk.materials",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "ui": {
+          "status": "pass",
+          "id": "ui.materials",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "output": {
+          "status": "pass",
+          "id": "output.materials",
+          "results": 2,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "exercise": {
+          "status": "partial",
+          "id": "F2.ui.dark",
+          "reason": "space areas match the reference (rel 0.05, matched by area): areas 14.30, 13.81, 24.28, 16.15, 11.12, 34.85, 115.64; unmatched reference 107.16, 25.99, 22.07, 12.99, 12.5; gable roof at 30 degrees: no roof: the UI has no sloped or gable roof (the Slab tool's Roof class makes a flat slab on the active storey floor; see ui.roof and #9214)",
+          "results": 2,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "perf": {
+          "status": "none",
+          "results": 0
+        }
+      }
+    },
+    {
+      "capability": "transforms-move-copy-rotate-mirror-array",
+      "title": "Move, copy, rotate, mirror, array",
+      "group": "Editing",
+      "tableStakes": true,
+      "status": "met",
+      "levels": {
+        "sdk": {
+          "status": "pass",
+          "id": "sdk.transforms-move-copy-rotate-mirror-array",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "ui": {
+          "status": "pass",
+          "id": "ui.transforms",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "output": {
+          "status": "pass",
+          "id": "output.transforms-move-copy-rotate-mirror-array",
+          "results": 2,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "exercise": {
+          "status": "pass",
+          "id": "F6.move-wall",
+          "results": 4,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "perf": {
+          "status": "none",
+          "results": 0
+        }
+      }
+    },
+    {
+      "capability": "align-offset-trim-split",
+      "title": "Align, offset, trim/extend, split",
+      "group": "Editing",
+      "tableStakes": true,
+      "status": "met",
+      "levels": {
+        "sdk": {
+          "status": "pass",
+          "id": "sdk.align-offset-trim-split",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "ui": {
+          "status": "pass",
+          "id": "ui.align-trim-split",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "output": {
+          "status": "pass",
+          "id": "output.align-offset-trim-split",
+          "results": 2,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "exercise": {
+          "status": "none",
+          "results": 0
+        },
+        "perf": {
+          "status": "none",
+          "results": 0
+        }
+      }
+    },
+    {
+      "capability": "copy-to-levels",
+      "title": "Copy to levels",
+      "group": "Editing",
+      "tableStakes": true,
+      "status": "met",
+      "levels": {
+        "sdk": {
+          "status": "pass",
+          "id": "sdk.copy-to-levels",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "ui": {
+          "status": "pass",
+          "id": "ui.copy-to-levels",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "output": {
+          "status": "pass",
+          "id": "output.copy-to-levels",
+          "results": 2,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "exercise": {
+          "status": "pass",
+          "id": "F4.copy-coverage",
+          "results": 118,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "perf": {
+          "status": "none",
+          "results": 0
+        }
+      }
+    },
+    {
+      "capability": "snapping-inference",
+      "title": "Snapping and inference",
+      "group": "Precision input",
+      "tableStakes": true,
+      "status": "met",
+      "levels": {
+        "sdk": {
+          "status": "skip",
+          "id": "sdk.snapping-inference",
+          "reason": "UI-only capability: a headless script passes exact coordinates, so there is nothing to probe at the SDK level; measured by the UI probe (L4)",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          },
+          "applicable": false
+        },
+        "ui": {
+          "status": "pass",
+          "id": "ui.snapping",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "output": {
+          "status": "none",
+          "results": 0,
+          "applicable": false
+        },
+        "exercise": {
+          "status": "pass",
+          "id": "F1.ui.dark",
+          "results": 4,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "perf": {
+          "status": "none",
+          "results": 0
+        }
+      }
+    },
+    {
+      "capability": "typed-input-temp-dims",
+      "title": "Typed input and temporary dimensions",
+      "group": "Precision input",
+      "tableStakes": true,
+      "status": "met",
+      "levels": {
+        "sdk": {
+          "status": "skip",
+          "id": "sdk.typed-input-temp-dims",
+          "reason": "UI-only capability: a headless script passes exact coordinates, so there is nothing to probe at the SDK level; measured by the UI probe (L4)",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          },
+          "applicable": false
+        },
+        "ui": {
+          "status": "pass",
+          "id": "ui.typed-dims",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "output": {
+          "status": "none",
+          "results": 0,
+          "applicable": false
+        },
+        "exercise": {
+          "status": "pass",
+          "id": "F1.ui.dark",
+          "results": 4,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "perf": {
+          "status": "none",
+          "results": 0
+        }
+      }
+    },
+    {
+      "capability": "rooms-with-area",
+      "title": "Rooms with computed area",
+      "group": "Spaces and data",
+      "tableStakes": true,
+      "status": "met",
+      "levels": {
+        "sdk": {
+          "status": "pass",
+          "id": "sdk.rooms-with-area",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "ui": {
+          "status": "pass",
+          "id": "ui.rooms",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "output": {
+          "status": "pass",
+          "id": "output.rooms-with-area",
+          "results": 2,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "exercise": {
+          "status": "pass",
+          "id": "F1.space",
+          "results": 40,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "perf": {
+          "status": "none",
+          "results": 0
+        }
+      }
+    },
+    {
+      "capability": "schedules-quantities",
+      "title": "Schedules and quantities",
+      "group": "Spaces and data",
+      "tableStakes": true,
+      "status": "partial",
+      "levels": {
+        "sdk": {
+          "status": "pass",
+          "id": "sdk.schedules-quantities",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "ui": {
+          "status": "partial",
+          "id": "ui.schedules",
+          "reason": "group and footer totals refresh to 11 m after editing: null; task \"edit one wall length to 6 m and read live totals\" failed: Wall Length is read-only in Model inspector; cannot edit it to 6 m.",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "output": {
+          "status": "pass",
+          "id": "output.schedules-quantities",
+          "results": 2,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "exercise": {
+          "status": "pass",
+          "id": "F1.quantities-IFC2X3",
+          "results": 24,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "perf": {
+          "status": "none",
+          "results": 0
+        }
+      }
+    },
+    {
+      "capability": "plans-sections-elevations",
+      "title": "Plans, sections and elevations",
+      "group": "Documentation",
+      "tableStakes": true,
+      "status": "met",
+      "levels": {
+        "sdk": {
+          "status": "skip",
+          "id": "sdk.plans-sections-elevations",
+          "reason": "documentation capability: the headless SDK has no operation that cuts plans, sections or elevations from the model or lays out sheets (bim.drawing only offers presets, symbols and SVG export of a caller-built drawing); measured by the UI probe (L4)",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          },
+          "applicable": false
+        },
+        "ui": {
+          "status": "pass",
+          "id": "ui.plan-section",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "output": {
+          "status": "pass",
+          "id": "output.plans-sections-elevations.ui0",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "exercise": {
+          "status": "none",
+          "results": 0
+        },
+        "perf": {
+          "status": "none",
+          "results": 0
+        }
+      }
+    },
+    {
+      "capability": "dimensions-tags",
+      "title": "Dimensions and tags",
+      "group": "Documentation",
+      "tableStakes": true,
+      "status": "partial",
+      "levels": {
+        "sdk": {
+          "status": "skip",
+          "id": "sdk.dimensions-tags",
+          "reason": "documentation capability: the headless SDK has no operation that cuts plans, sections or elevations from the model or lays out sheets (bim.drawing only offers presets, symbols and SVG export of a caller-built drawing); measured by the UI probe (L4)",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          },
+          "applicable": false
+        },
+        "ui": {
+          "status": "partial",
+          "id": "ui.drawing-dims",
+          "reason": "a tag tool for elements (door, window, room tags): tag control found, but no entity-bound tag placement/export oracle has passed",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "output": {
+          "status": "pass",
+          "id": "output.dimensions-tags.ui0",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "exercise": {
+          "status": "none",
+          "results": 0
+        },
+        "perf": {
+          "status": "none",
+          "results": 0
+        }
+      }
+    },
+    {
+      "capability": "sheets-pdf-dwg",
+      "title": "Sheets, PDF and DWG/DXF export",
+      "group": "Documentation",
+      "tableStakes": true,
+      "status": "partial",
+      "levels": {
+        "sdk": {
+          "status": "skip",
+          "id": "sdk.sheets-pdf-dwg",
+          "reason": "documentation capability: the headless SDK has no operation that cuts plans, sections or elevations from the model or lays out sheets (bim.drawing only offers presets, symbols and SVG export of a caller-built drawing); measured by the UI probe (L4)",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          },
+          "applicable": false
+        },
+        "ui": {
+          "status": "partial",
+          "id": "ui.sheet",
+          "reason": "drawing exported as DWG: no DWG export exists",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "output": {
+          "status": "pass",
+          "id": "output.sheets-pdf-dwg.ui0",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "exercise": {
+          "status": "none",
+          "results": 0
+        },
+        "perf": {
+          "status": "none",
+          "results": 0
+        }
+      }
+    },
+    {
+      "capability": "psets-classification-valid-ifc4",
+      "title": "Psets, classification and valid IFC4",
+      "group": "Spaces and data",
+      "tableStakes": true,
+      "status": "met",
+      "levels": {
+        "sdk": {
+          "status": "pass",
+          "id": "sdk.psets-classification-valid-ifc4",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "ui": {
+          "status": "pass",
+          "id": "ui.export-ifc4",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "output": {
+          "status": "pass",
+          "id": "output.psets-classification-valid-ifc4",
+          "results": 2,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "exercise": {
+          "status": "pass",
+          "id": "F1.export-IFC2X3",
+          "results": 56,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "perf": {
+          "status": "none",
+          "results": 0
+        }
+      }
+    },
+    {
+      "capability": "large-tall-model-performance",
+      "title": "Large and tall model performance",
+      "group": "Scale",
+      "tableStakes": true,
+      "status": "partial",
+      "levels": {
+        "sdk": {
+          "status": "pass",
+          "id": "sdk.large-tall-model-performance",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "ui": {
+          "status": "partial",
+          "id": "ui.session-scale",
+          "reason": "single-edit median below 100 ms including remesh: {\"count\":5,\"medianMs\":145,\"p95Ms\":360,\"maxMs\":360}; exclusive benchmark admission: DIAGNOSTIC: PC benchmark admission is disabled; no timing qualification under the shared GPU helper",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "output": {
+          "status": "pass",
+          "id": "output.large-tall-model-performance",
+          "results": 1,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "exercise": {
+          "status": "pass",
+          "id": "F1.authoring-time",
+          "results": 26,
+          "source": {
+            "commit": "a7a16a70b272588001d105b59e9b171b84a8ec3f",
+            "dirty": false
+          }
+        },
+        "perf": {
+          "status": "none",
+          "results": 0
+        }
+      }
+    },
+    {
+      "capability": "curved-walls",
+      "title": "Curved walls",
+      "group": "Beyond table stakes",
+      "tableStakes": false,
+      "status": "missing",
+      "levels": {
+        "sdk": {
+          "status": "none",
+          "results": 0
+        },
+        "ui": {
+          "status": "none",
+          "results": 0
+        },
+        "output": {
+          "status": "none",
+          "results": 0
+        },
+        "exercise": {
+          "status": "none",
+          "results": 0
+        },
+        "perf": {
+          "status": "none",
+          "results": 0
+        }
+      }
+    },
+    {
+      "capability": "ramps",
+      "title": "Ramps and sloped slabs",
+      "group": "Beyond table stakes",
+      "tableStakes": false,
+      "status": "missing",
+      "levels": {
+        "sdk": {
+          "status": "none",
+          "results": 0
+        },
+        "ui": {
+          "status": "none",
+          "results": 0
+        },
+        "output": {
+          "status": "none",
+          "results": 0
+        },
+        "exercise": {
+          "status": "none",
+          "results": 0
+        },
+        "perf": {
+          "status": "none",
+          "results": 0
+        }
+      }
+    },
+    {
+      "capability": "ceilings",
+      "title": "Ceilings",
+      "group": "Beyond table stakes",
+      "tableStakes": false,
+      "status": "missing",
+      "levels": {
+        "sdk": {
+          "status": "none",
+          "results": 0
+        },
+        "ui": {
+          "status": "none",
+          "results": 0
+        },
+        "output": {
+          "status": "none",
+          "results": 0
+        },
+        "exercise": {
+          "status": "none",
+          "results": 0
+        },
+        "perf": {
+          "status": "none",
+          "results": 0
+        }
+      }
+    },
+    {
+      "capability": "footings",
+      "title": "Footings and foundations",
+      "group": "Beyond table stakes",
+      "tableStakes": false,
+      "status": "missing",
+      "levels": {
+        "sdk": {
+          "status": "none",
+          "results": 0
+        },
+        "ui": {
+          "status": "none",
+          "results": 0
+        },
+        "output": {
+          "status": "none",
+          "results": 0
+        },
+        "exercise": {
+          "status": "none",
+          "results": 0
+        },
+        "perf": {
+          "status": "none",
+          "results": 0
+        }
+      }
+    },
+    {
+      "capability": "groups",
+      "title": "Groups",
+      "group": "Beyond table stakes",
+      "tableStakes": false,
+      "status": "missing",
+      "levels": {
+        "sdk": {
+          "status": "none",
+          "results": 0
+        },
+        "ui": {
+          "status": "none",
+          "results": 0
+        },
+        "output": {
+          "status": "none",
+          "results": 0
+        },
+        "exercise": {
+          "status": "none",
+          "results": 0
+        },
+        "perf": {
+          "status": "none",
+          "results": 0
+        }
+      }
+    },
+    {
+      "capability": "georeferencing",
+      "title": "Georeferencing",
+      "group": "Beyond table stakes",
+      "tableStakes": false,
+      "status": "missing",
+      "levels": {
+        "sdk": {
+          "status": "none",
+          "results": 0
+        },
+        "ui": {
+          "status": "none",
+          "results": 0
+        },
+        "output": {
+          "status": "none",
+          "results": 0
+        },
+        "exercise": {
+          "status": "none",
+          "results": 0
+        },
+        "perf": {
+          "status": "none",
+          "results": 0
+        }
+      }
+    },
+    {
+      "capability": "terrain",
+      "title": "Terrain",
+      "group": "Out of scope for this climb",
+      "tableStakes": false,
+      "status": "missing",
+      "levels": {
+        "sdk": {
+          "status": "none",
+          "results": 0
+        },
+        "ui": {
+          "status": "none",
+          "results": 0
+        },
+        "output": {
+          "status": "none",
+          "results": 0
+        },
+        "exercise": {
+          "status": "none",
+          "results": 0
+        },
+        "perf": {
+          "status": "none",
+          "results": 0
+        }
+      }
+    },
+    {
+      "capability": "mep",
+      "title": "MEP systems",
+      "group": "Out of scope for this climb",
+      "tableStakes": false,
+      "status": "missing",
+      "levels": {
+        "sdk": {
+          "status": "none",
+          "results": 0
+        },
+        "ui": {
+          "status": "none",
+          "results": 0
+        },
+        "output": {
+          "status": "none",
+          "results": 0
+        },
+        "exercise": {
+          "status": "none",
+          "results": 0
+        },
+        "perf": {
+          "status": "none",
+          "results": 0
+        }
+      }
+    },
+    {
+      "capability": "co-editing",
+      "title": "Multi-user co-editing",
+      "group": "Out of scope for this climb",
+      "tableStakes": false,
+      "status": "missing",
+      "levels": {
+        "sdk": {
+          "status": "none",
+          "results": 0
+        },
+        "ui": {
+          "status": "none",
+          "results": 0
+        },
+        "output": {
+          "status": "none",
+          "results": 0
+        },
+        "exercise": {
+          "status": "none",
+          "results": 0
+        },
+        "perf": {
+          "status": "none",
+          "results": 0
+        }
+      }
+    }
+  ]
+}

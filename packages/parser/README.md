@@ -182,3 +182,12 @@ the native configuration walk keeps its depth, path-cycle and work bounds and
 reports dropped slots and truncation. Existing normalized structural DTO casing
 is unchanged. IFC2X3-only divergences remain the native reader's documented
 best-effort boundary.
+
+`extractStructuralOnDemand(store, view?)` also exposes model-local EXPRESS
+references as `analysisModels[].OrientationOf2DPlane` and `SharedPlacement`,
+`activities[].CausedBy` and `VaryingAppliedLoadLocation`, and
+`members[].VaryingThicknessLocation`. IFC2X3 varying actions retain ordered
+load reference ids in `SubsequentAppliedLoads`; varying surface members retain
+numeric stations in `SubsequentThickness`. Attributes absent from the file's
+schema are `undefined`. Resolve these ids within the same model; load-reference
+arrays preserve station order and repeated references.

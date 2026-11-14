@@ -16,7 +16,7 @@ export async function exportRegistryModel(): Promise<{ bytes: Uint8Array<ArrayBu
   const id = state.activeModelId ?? (state.models.size === 1 ? state.models.keys().next().value : undefined);
   if (!id) throw new RegistryError('Open and select an IFC model before publishing.');
   const model = state.models.get(id);
-  if (!model || model.schemaVersion === 'IFC5') throw new RegistryError('Select an IFC STEP model for this demo.');
+  if (!model || model.schemaVersion === 'IFC5' || model.ifcDataStore?.sourceKind === 'tabular') throw new RegistryError('Select an IFC STEP model for this demo.');
   const data = await ensureModelExportReady(id);
   if (!data) throw new RegistryError('The model is not ready to export.');
   const schedule = collectChangedModels(state).scheduleTargetModelId === id ? {

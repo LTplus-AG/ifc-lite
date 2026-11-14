@@ -5,6 +5,8 @@
 import type { Catalogue } from '../../registry';
 
 export const storeyManagerIt = {
+  "storeyManager.insert.before": "Attuale",
+  "storeyManager.insert.after": "Dopo inserimento",
   "storeyManager.title": "Piani",
   "storeyManager.subtitle": "{model} · {count} piani",
   "storeyManager.open": "Gestisci piani…",
@@ -116,7 +118,7 @@ export const storeyManagerIt = {
   "storeyManager.delete": "Elimina {storey}",
   "storeyManager.deleted": "{storey} eliminato",
   "storeyManager.undo": "Annulla",
-  "storeyManager.undoStale": "Eliminazione non annullata: sono presenti modifiche successive. Annullale prima dalla barra degli strumenti.",
+  "storeyManager.undoStale": "Impossibile annullare: altre modifiche sono successive a questa operazione. Annullale prima dalla barra degli strumenti.",
   "storeyManager.delete.title": {
     "one": "{storey} contiene {count} elemento",
     "many": "{storey} contiene {count} elementi",
@@ -139,6 +141,7 @@ export const storeyManagerIt = {
   "storeyManager.readOnly": "I piani possono essere elencati ma non modificati: {reason}",
   "storeyManager.error": "Impossibile leggere i piani: {reason}",
   "storeyManager.drawOn": "Disegna qui",
+  "storeyManager.copy.back": "Torna ai piani",
   "storeyManager.copy.title": "Copia su altri piani…",
   "storeyManager.copy.empty": "Seleziona prima gli elementi da copiare",
   "storeyManager.copy.all": "Seleziona tutti i piani",
@@ -169,5 +172,5 @@ export const storeyManagerIt = {
   "storeyManager.copy.newElements": {"one": "{count} nuovo elemento", "many": "{count} nuovi elementi", "other": "{count} nuovi elementi"},
   "storeyManager.copy.undoStale": "Copia non annullata: sono presenti modifiche successive. Annullale prima dalla barra degli strumenti.",
   "storeyManager.insert.move": "{storey} si sposta da {from} a {to} m",
-  "storeyManager.impact.wallTops": {"one": "Aggiorna {count} sommità di muro", "many": "Aggiorna {count} sommità di muri", "other": "Aggiorna {count} sommità di muri"},
+  "storeyManager.impact.wallTops": {"one": "aggiorna {count} sommità di muro", "many": "aggiorna {count} sommità di muri", "other": "aggiorna {count} sommità di muri"},
 } satisfies Catalogue;

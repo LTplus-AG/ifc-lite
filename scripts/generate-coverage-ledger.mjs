@@ -140,7 +140,7 @@ const ENTITY_FILE = {
 
 const registryTables = new Map(); // schema -> Map<name, {isAbstract}>
 for (const schema of SCHEMAS) {
-  const table = parseEntityTable(read(ENTITY_FILE[schema]));
+  const table = parseEntityTable(read(ENTITY_FILE[schema]), `coverage-ledger: registry(${schema}) ${ENTITY_FILE[schema]}`);
   assertNonEmpty(`registry(${schema})`, table);
   registryTables.set(schema, table);
 }

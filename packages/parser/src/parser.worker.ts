@@ -18,7 +18,7 @@
 import { readPrepassFingerprint } from './prepass-source-fingerprint.js';
 import init, { IfcAPI } from '@ifc-lite/wasm';
 import { initWasmWithRetry } from './wasm-init-retry.js';
-import { IfcParser } from './index.js';
+import { IfcParser } from './ifc-parser.js';
 import { extractGeoreferencingOnDemand } from './on-demand-georeferencing.js';
 import type { IfcDataStore } from './columnar-parser.js';
 import type { WasmScanApi } from './entity-scanner.js';

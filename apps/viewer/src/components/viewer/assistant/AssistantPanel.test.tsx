@@ -21,6 +21,7 @@ import { setAssistantDraft } from '@/lib/assistant/composer-draft';
 import { useAssistantPlacement } from '@/lib/assistant/placement';
 import { summarizeClashes, type Clash } from '@ifc-lite/clash';
 import { findPanelAction, runPanelAction } from '@/test/panel-header.js';
+import { formFactorState } from '@/test/form-factor-state';
 
 const initial = useViewerStore.getState();
 const initialGenerationLanguage = useGenerationLanguagePreference.getState().language;
@@ -68,6 +69,8 @@ test('registered Clash and Data validation headers expose the actual contextual 
   cleanup();
   setValidationSourceChoice('ids');
   const validation = render(renderPanelBody('validation', () => undefined));
+  // #9634: prove the real panel mounted before asserting an action is absent.
+  await waitFor(() => validation.querySelector('[data-validation-panel]') !== null, 'Data validation feature mounted');
   // No report is attached yet, so the source mismatch hides discussion.
   assert.equal(await findPanelAction(validation, 'Discuss with AI'), undefined);
   // #6833: the manual side discusses the manual checklist (human verdicts), not the IDS report.
@@ -209,7 +212,7 @@ test('#7053 language extensions survive portable conversation decoding and malfo
 
 test('#7053 a floating Assistant keeps Back to Clash when the native sidebar is collapsed', () => {
   useViewerStore.setState({ sidebarActivePanel: 'clash', sidebarMode: 'expanded', rightPanelCollapsed: false,
-    isMobile: false, floatingPanels: [], poppedOutIds: [] });
+    ...formFactorState(false), floatingPanels: [], poppedOutIds: [] });
   useAssistantPlacement.setState({ placement: 'floating', returnTarget: 'clash' });
   replaceEvidence(captureEvidence('clash'));
   const ui = render(<AssistantPanel />);

@@ -133,6 +133,8 @@ export const bcfFr = {
   "bcf.panel.untitledTopic": "Sans titre",
   "bcf.panel.importError": "Échec de l’import du fichier BCF",
   "bcf.panel.exportError": "Échec de l’export du fichier BCF",
+  "bcf.panel.createTopicFailed": "Impossible de créer le sujet. {message}",
+  "bcf.panel.addViewpointFailed": "Impossible d’ajouter le point de vue au sujet. {message}",
   "bcf.panel.busy": "Traitement du fichier BCF…",
   "bcf.panel.captureViewpointFailed": "Impossible de capturer un point de vue. Attendez la fin du chargement du modèle, puis réessayez.",
   "bcf.topicList.emptyDescription": "Un sujet consigne un problème avec un point de vue, des commentaires et un statut.",

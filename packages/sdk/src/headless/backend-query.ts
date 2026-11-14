@@ -38,7 +38,6 @@ import { iterateEffectiveEntityIds, type MutablePropertyView } from '@ifc-lite/m
 import type { CreatedEntity, PendingOverlay } from './overlay.js';
 import { authoredValue } from './authored-attribute-value.js';
 import { foldRelationshipRows } from './backend-query-relationships.js';
-import { liveTypeProperties } from './backend-query-type-properties.js';
 // `expandTypes` used to be defined here; it now comes from `@ifc-lite/parser`,
 // shared with the other query backends (see `query-backend-maps.ts`). Re-exported
 // so this module's consumers are unaffected by where it lives.
@@ -315,8 +314,7 @@ export function createQueryAdapter(
       return extractMaterialsOnDemand(store, ref.expressId, liveView());
     },
     typeProperties(ref: EntityRef): TypePropertiesData | null {
-      const pending = overlay();
-      const info = pending ? liveTypeProperties(ref, pending, adapter.related, entityData) : extractTypePropertiesOnDemand(store, ref.expressId);
+      const info = extractTypePropertiesOnDemand(store, ref.expressId, liveView());
       if (!info) return null;
       return {
         typeName: info.typeName,

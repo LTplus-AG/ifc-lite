@@ -1,0 +1,12 @@
+diff --git a/packages/create/src/in-store/structural-derive-idealise.ts b/packages/create/src/in-store/structural-derive-idealise.ts
+--- a/packages/create/src/in-store/structural-derive-idealise.ts
++++ b/packages/create/src/in-store/structural-derive-idealise.ts
+@@ -111,7 +111,7 @@ export function idealisePlate(prism: PrismFact): PlateIdealisation {
+   const half = scale(f.u, f.long / 2);
+   const a = sub(f.centre, half);
+   const b = add(f.centre, half);
+-  return { boundary: [a, b, add(b, prism.extrusion), add(a, prism.extrusion)], thickness: f.depth };
++  return { boundary: [a, b, add(b, prism.extrusion), add(a, prism.extrusion)], thickness: f.short };
+ }
+ 
+ /**

@@ -19,6 +19,7 @@ import { JsonRpcMessage, JsonRpcId } from '../protocol/index.js';
 import { errorResponse, parseMessage, isJsonRpcRequest, isJsonRpcNotification } from '../protocol/jsonrpc.js';
 import { JsonRpcErrorCode } from '../protocol/index.js';
 import { MCPServer, OutgoingMessageSink } from '../server.js';
+import { describeThrown } from '../errors.js';
 import { routeConsoleToStderr } from './stdio-console.js';
 
 export interface StdioTransportOptions {
@@ -26,6 +27,9 @@ export interface StdioTransportOptions {
   stdout?: Writable;
   stderr?: Writable;
 }
+
+/** Why the transport closed: the peer ended stdin, stdin failed, or stdout failed (EPIPE: the peer is gone). */
+export type StdioCloseReason = 'stdin-end' | 'stdin-error' | 'stdout-error' | 'closed';
 
 export class StdioTransport {
   private stdin: Readable;
@@ -36,6 +40,7 @@ export class StdioTransport {
   private waitingRequests = new Map<JsonRpcId, { cancelled: boolean }>();
   private server: MCPServer | null = null;
   private closed = false;
+  private closeListeners: Array<(reason: StdioCloseReason) => void> = [];
 
   constructor(opts: StdioTransportOptions = {}) {
     this.stdin = opts.stdin ?? process.stdin;
@@ -52,30 +57,65 @@ export class StdioTransport {
     // UTF-8 — MCP spec mandates it.
     this.stdin.setEncoding('utf8');
     this.stdin.on('data', (chunk: string) => this.onData(chunk));
-    this.stdin.on('end', () => this.close());
+    this.stdin.on('end', () => this.close('stdin-end'));
     this.stdin.on('error', (err: Error) => {
       this.stderr.write(`[ifc-lite-mcp] stdin error: ${err.message}\n`);
-      this.close();
+      this.close('stdin-error');
+    });
+    // A failed stdout write (EPIPE, ECONNRESET, ...) means the peer stopped
+    // reading for good. Without a listener it is an uncaught exception that
+    // kills the process; treat it as the peer closing instead.
+    this.stdout.on('error', (err: Error) => {
+      if (this.closed) return;
+      this.stderr.write(`[ifc-lite-mcp] stdout closed by the peer (${(err as NodeJS.ErrnoException).code ?? err.message}); stopping\n`);
+      this.close('stdout-error');
+      // Nothing can be answered any more: stop reading requests too.
+      this.stdin.destroy();
     });
   }
 
-  close(): void {
+  /** Called once when the transport closes, with the reason. */
+  onClose(listener: (reason: StdioCloseReason) => void): void {
+    this.closeListeners.push(listener);
+  }
+
+  close(reason: StdioCloseReason = 'closed'): void {
     if (this.closed) return;
     this.closed = true;
     this.waitingRequests.clear();
     this.server?.detach();
     this.server = null;
+    for (const l of this.closeListeners.splice(0)) {
+      try {
+        l(reason);
+      } catch (err) {
+        this.stderr.write(`[ifc-lite-mcp] close listener failed: ${describeThrown(err)}\n`);
+      }
+    }
   }
 
   private makeSink(): OutgoingMessageSink {
     return {
       send: (message: JsonRpcMessage) => {
         if (this.closed) return;
+        let line: string;
         try {
-          const line = JSON.stringify(message) + '\n';
+          line = JSON.stringify(message) + '\n';
+        } catch (err) {
+          const why = describeThrown(err);
+          this.stderr.write(`[ifc-lite-mcp] failed to serialize outgoing message: ${why}\n`);
+          // A response that cannot be serialized must still answer its request,
+          // or the client waits forever. Notifications are dropped (logged above).
+          const id = 'id' in message && ('result' in message || 'error' in message) ? message.id : undefined;
+          if (id === undefined || id === null) return;
+          line = JSON.stringify(errorResponse(id, JsonRpcErrorCode.InternalError, `Response could not be serialized: ${why}`)) + '\n';
+        }
+        try {
           this.stdout.write(line);
         } catch (err) {
-          this.stderr.write(`[ifc-lite-mcp] failed to serialize outgoing message: ${(err as Error).message}\n`);
+          // Some streams throw synchronously once destroyed; same meaning as an 'error' event.
+          this.stderr.write(`[ifc-lite-mcp] stdout write failed: ${describeThrown(err)}\n`);
+          this.close('stdout-error');
         }
       },
     };
@@ -88,7 +128,12 @@ export class StdioTransport {
       const line = this.buffer.slice(0, newline).trim();
       this.buffer = this.buffer.slice(newline + 1);
       if (line.length > 0) {
-        this.dispatch(parseMessage(line));
+        // One bad line must never take the process down with it.
+        try {
+          this.dispatch(parseMessage(line));
+        } catch (err) {
+          this.stderr.write(`[ifc-lite-mcp] failed to handle an incoming message: ${describeThrown(err)}\n`);
+        }
       }
       newline = this.buffer.indexOf('\n');
     }
@@ -140,7 +185,7 @@ export class StdioTransport {
         void sink.send(response);
       }
     } catch (err) {
-      this.stderr.write(`[ifc-lite-mcp] handler error: ${(err as Error).message}\n`);
+      this.stderr.write(`[ifc-lite-mcp] handler error: ${describeThrown(err)}\n`);
     }
   }
 }

@@ -1,0 +1,13 @@
+diff --git b/packages/export/src/renumber-step-ids.ts a/packages/export/src/renumber-step-ids.ts
+index 964f045137..740c8bfc6f 100644
+--- b/packages/export/src/renumber-step-ids.ts
++++ a/packages/export/src/renumber-step-ids.ts
+@@ -123,7 +123,7 @@ function segments(text: string): Array<{ text: string; verbatim: boolean }> {
+ /** `#digits` tokens in code: outside string literals, comments and `<...>` literals. */
+ function referencedIds(text: string, into: Set<number>): void {
+   for (const part of segments(text)) {
+-    // (comments and <uri> literals scanned as code)
++    if (part.verbatim) continue;
+     const code = part.text;
+     for (let i = 0; i < code.length; i++) {
+       const c = code[i];

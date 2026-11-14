@@ -13,6 +13,7 @@ import { resolvedGeometryOptions, type HeadlessBackendOptions } from './options.
 import { createHeadlessRoomBackend } from './headless-backend-room.js';
 import { createRecordedModellingBackend } from './headless-backend-modelling.js';
 import { createRecordedRoofBackend } from './headless-backend-roof.js';
+import { withWallAutojoinAppend } from '@ifc-lite/create';
 
 export function createHeadlessStoreAdapter(
   dataStore: IfcDataStore, modelId: string, get: () => StoreEditor, assertKnownModelId: (id: string) => void,
@@ -31,8 +32,11 @@ export function createHeadlessStoreAdapter(
       // backend does not answer for: echoing the caller's id back would mint
       // a ref the next write rejects, entity already created (#3764).
       assertKnownModelId(modelId);
-      const ref = get().addEntity(def.type, def.attributes as Parameters<StoreEditor['addEntity']>[1]);
-      return { modelId, expressId: ref.expressId };
+      const editor = get();
+      return withWallAutojoinAppend(dataStore, editor.getMutationView(), def.type, () => {
+        const ref = editor.addEntity(def.type, def.attributes as Parameters<StoreEditor['addEntity']>[1]);
+        return { modelId, expressId: ref.expressId };
+      });
     },
     removeEntity: (ref) => get().removeEntity(ref.expressId),
     setPositionalAttribute: (ref, index, value) => {

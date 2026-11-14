@@ -96,9 +96,12 @@ function buildOwnership(schemaVersion: IfcDataStore['schemaVersion']) {
   const layeredClasses = new Set([...shapeTypes,
     ...expandTypeNamesToDescendants(['IfcRepresentationItem'], schemaVersion)]
     .map(type => type.toUpperCase()));
-  const types = [...productTypes, ...shapeTypes, ...containers.keys(), ...LAYER_TYPES,
-    'IfcProductDefinitionShape', 'IfcProductRepresentation', 'IfcRepresentationMap', 'IfcMappedItem',
-    'IfcBooleanResult', 'IfcBooleanClippingResult', 'IfcCsgSolid', 'IfcShapeAspect'];
+  // Structural classes sit between a product and its shape models. Constituent
+  // classes are the geometry below a shape model: in a BREP export they are
+  // most of the file, and only an assignment to one of them makes them matter.
+  const structuralTypes = [...productTypes, ...shapeTypes,
+    'IfcProductDefinitionShape', 'IfcProductRepresentation', 'IfcRepresentationMap', 'IfcMappedItem'];
+  const constituentTypes = [...containers.keys(), 'IfcBooleanResult', 'IfcBooleanClippingResult', 'IfcCsgSolid'];
   const attributesFor = (type: string): readonly string[] => {
     if (productClasses.has(type)) return ['Representation'];
     if (shapeClasses.has(type)) return ['Items'];
@@ -109,7 +112,7 @@ function buildOwnership(schemaVersion: IfcDataStore['schemaVersion']) {
     if (type === 'IFCBOOLEANRESULT' || type === 'IFCBOOLEANCLIPPINGRESULT') return ['FirstOperand', 'SecondOperand'];
     return containers.get(type) ?? [];
   };
-  return { productClasses, shapeModelClasses, layeredClasses, types, attributesFor };
+  return { productClasses, shapeModelClasses, layeredClasses, productTypes, structuralTypes, constituentTypes, attributesFor };
 }
 
 /** The same ownership edges in both directions; never follow placements/styles. */

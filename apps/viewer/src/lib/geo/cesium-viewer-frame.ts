@@ -3,18 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { CoordinateInfo } from '@ifc-lite/geometry';
+import { viewerFrameCenter } from './map-absolute';
 import type { GeodesicPosition } from './cesium-bridge';
 import type { ViewerToEnuRotation } from './viewer-enu-rotation';
-
-/** Camera and model consume the same renderer coordinates, after originShift. */
-export function viewerFrameCenter(coordinateInfo: CoordinateInfo | undefined) {
-  const bounds = coordinateInfo?.shiftedBounds;
-  return bounds ? {
-    x: (bounds.min.x + bounds.max.x) / 2,
-    y: (bounds.min.y + bounds.max.y) / 2,
-    z: (bounds.min.z + bounds.max.z) / 2,
-  } : { x: 0, y: 0, z: 0 };
-}
 
 /** The one viewer-to-ECEF matrix used by both the camera and the model. */
 export function buildViewerToEcefMatrix(

@@ -1,0 +1,13 @@
+diff --git a/apps/viewer/src/lib/agent-tools/main-viewer-host.ts b/apps/viewer/src/lib/agent-tools/main-viewer-host.ts
+index caa0cbbc4a..7da53c65ff 100644
+--- a/apps/viewer/src/lib/agent-tools/main-viewer-host.ts
++++ b/apps/viewer/src/lib/agent-tools/main-viewer-host.ts
+@@ -110,7 +110,7 @@ export function createMainViewerToolHost(
+           ...(composedInto ? { composedInto } : {}),
+           store: entry.ifcDataStore,
+           bim,
+-          mutationView: () => (id ? null : getMutationViewForModel(store, id)),
++          mutationView: () => getMutationViewForModel(store, id),
+         };
+       });
+     },

@@ -17,8 +17,18 @@
  */
 
 import type {
+  StructuralLoadInStoreParams, StructuralCurveActionInStoreParams, StructuralMemberConnectionOptions,
+  StructuralEntityEdit,
+  StructuralCurveReactionInStoreParams,
+  StructuralPointReactionInStoreParams,
+  StructuralResultGroupInStoreParams,
+  StructuralSurfaceActionInStoreParams,
+  StructuralSurfaceReactionInStoreParams,
   StructuralAnalysisModelInStoreParams,
   StructuralCurveMemberInStoreParams,
+  StructuralSurfaceMemberInStoreParams,
+  StructuralCurveConnectionInStoreParams,
+  StructuralSurfaceConnectionInStoreParams,
   StructuralLinearActionInStoreParams,
   StructuralLoadGroupInStoreParams,
   StructuralPointActionInStoreParams,
@@ -27,6 +37,24 @@ import type {
 import type { EntityRef } from './types.js';
 
 export interface StructuralStoreBackendMethods {
+  addStructuralLoad?(modelId: string, params: StructuralLoadInStoreParams): EntityRef;
+  addStructuralCurveAction?(modelId: string, params: StructuralCurveActionInStoreParams): EntityRef;
+  connectStructuralElement?(modelId: string, RelatingElement: number, RelatedStructuralMember: number): EntityRef;
+  editStructuralEntity?(modelId: string, expressId: number, patch: StructuralEntityEdit): EntityRef;
+  removeStructuralEntity?(modelId: string, expressId: number): EntityRef;
+  addStructuralPlanarAction?(modelId: string, params: StructuralSurfaceActionInStoreParams): EntityRef;
+  addStructuralSurfaceAction?(modelId: string, params: StructuralSurfaceActionInStoreParams): EntityRef;
+  addStructuralPointReaction?(modelId: string, params: StructuralPointReactionInStoreParams): EntityRef;
+  addStructuralCurveReaction?(modelId: string, params: StructuralCurveReactionInStoreParams): EntityRef;
+  addStructuralSurfaceReaction?(modelId: string, params: StructuralSurfaceReactionInStoreParams): EntityRef;
+  addStructuralResultGroup?(modelId: string, params: StructuralResultGroupInStoreParams): EntityRef;
+
+  /** `IfcStructuralSurfaceMember` with planar Face topology, anchored to a storey. Optional capability. */
+  addStructuralSurfaceMember?(modelId: string, storeyExpressId: number, params: StructuralSurfaceMemberInStoreParams): EntityRef;
+  /** `IfcStructuralCurveConnection` with Edge topology, anchored to a storey. Optional capability. */
+  addStructuralCurveConnection?(modelId: string, storeyExpressId: number, params: StructuralCurveConnectionInStoreParams): EntityRef;
+  /** `IfcStructuralSurfaceConnection` with planar Face topology, anchored to a storey. Optional capability. */
+  addStructuralSurfaceConnection?(modelId: string, storeyExpressId: number, params: StructuralSurfaceConnectionInStoreParams): EntityRef;
   /** `IfcStructuralAnalysisModel` — no storey anchor (`IfcGroup`, not `IfcProduct`). */
   addStructuralAnalysisModel(modelId: string, params: StructuralAnalysisModelInStoreParams): EntityRef;
   /** `IfcStructuralCurveMember`, anchored to a storey for its `ObjectPlacement`. */
@@ -40,7 +68,7 @@ export interface StructuralStoreBackendMethods {
   /** `IfcStructuralLinearAction` + its `IfcStructuralLoadLinearForce` — no storey anchor. */
   addStructuralLinearAction(modelId: string, params: StructuralLinearActionInStoreParams): EntityRef;
   /** `IfcRelConnectsStructuralMember` linking a curve member to a point connection. */
-  connectStructuralMemberToConnection(modelId: string, memberExpressId: number, connectionExpressId: number): EntityRef;
+  connectStructuralMemberToConnection(modelId: string, memberExpressId: number, connectionExpressId: number, options?: StructuralMemberConnectionOptions): EntityRef;
   /** `IfcRelConnectsStructuralActivity` applying an action/reaction to the member or connection it acts on. */
   connectStructuralActivityToItem(modelId: string, itemExpressId: number, activityExpressId: number): EntityRef;
   /** `IfcRelAssignsToGroup` — members/connections into an analysis model, or activities into a load group. */

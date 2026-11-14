@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "apps/viewer/src/lib/drawing2d-markup/drawing-markup-absorbed.ts",
+  "mutation": "tests/evidence/markup-resave-absorbed-10083/behaviour.oracle.patch",
+  "test": "apps/viewer/src/hooks/drawingMarkupAbsorbed.test.tsx",
+  "why": "#10083: reverse application keeps every export but records no absorbed embedded annotation, so neither the embedded restore nor a reopened localStorage entry lets a save replace the file's own markup, and the absorbed-set tests fail."
+}

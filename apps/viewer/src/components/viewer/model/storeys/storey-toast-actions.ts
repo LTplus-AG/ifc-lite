@@ -27,12 +27,12 @@ export function showCopiedStoreys(modelId: string): void {
   state.setStoreyContextMode('all');
 }
 
-export function undoCopiedStoreys(modelId: string, step: string | null): void {
+export function undoCopiedStoreys(modelId: string, step: string | null, staleKey: 'storeyManager.undoStale' | 'storeyManager.copy.undoStale' = 'storeyManager.copy.undoStale'): void {
   const state = useViewerStore.getState();
   const denied = mutationDenial(state, modelId);
-  if (denied) { toast.error(resolve('storeyManager.copy.readOnly', { reason: denied })); return; }
+  if (denied) { toast.error(resolve('storeyManager.readOnly', { reason: denied })); return; }
   const latest = state.undoStacks.get(modelId)?.at(-1);
   const latestStep = latest ? state.mutationBatchTags.get(latest.id) ?? latest.id : null;
   if (step && latestStep === step) state.undo(modelId);
-  else toast.error(resolve('storeyManager.copy.undoStale'));
+  else toast.error(resolve(staleKey));
 }

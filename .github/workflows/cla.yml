@@ -13,7 +13,9 @@ name: CLA
 # `scripts/cla-gate.mjs` from it. It must never check out or run PR code.
 on:
   pull_request_target:
-    types: [opened, reopened, synchronize]
+    # `edited` covers a base-branch change, which changes the PR's commits
+    # without changing its head; the script ignores every other edit.
+    types: [opened, reopened, synchronize, edited]
   issue_comment:
     types: [created]
   # Rechecks every open pull request. Run it once before making `CLA` a
@@ -38,7 +40,8 @@ jobs:
     # recheck, reach a runner; the script still matches the phrase exactly.
     # `contains` is case-insensitive.
     if: >-
-      github.event_name == 'pull_request_target' || github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base)) ||
+      github.event_name == 'workflow_dispatch' ||
       (github.event.issue.pull_request &&
        (contains(github.event.comment.body, 'hereby sign the CLA') ||
         contains(github.event.comment.body, 'recheck')))

@@ -22,6 +22,10 @@ import './disable-react-dev-perf-track';
 // translation extension mutating the DOM can't crash the reconciler. See
 // harden-dom-mutations.ts (PostHog issues #1229/#1230/#1232).
 import './harden-dom-mutations';
+// Before anything that reads `location` (analytics, routing, share links):
+// takes a local-agent pairing link's one-time code out of the address bar
+// (#9523). Imports nothing; see lib/agent-bridge/pairing-fragment.ts.
+import './lib/agent-bridge/pairing-fragment.boot';
 // Before react-dom too: under ?perfTrace=1, switches the #6957 counters on
 // before the store and renderer exist, and counts React commits.
 import './lib/perf/reactCommits';
@@ -42,7 +46,7 @@ import './lib/placement-edit.boot';
 import './i18n/locales.boot';
 import { installWasmVersionSkewRecovery } from './lib/wasm-version-skew';
 import { installChunkVersionSkewRecovery } from './lib/chunk-version-skew';
-import { scheduleWasmPrewarm } from './lib/wasm-prewarm';
+import { scheduleWasmPrewarm, scheduleFastPath } from './lib/wasm-prewarm';
 import { initializeUserContent } from './lib/storage/content-boot';
 import type { FileSourceProviderFactory } from './services/sources/source-host';
 
@@ -95,4 +99,14 @@ export function mountViewer(container: HTMLElement, options: ViewerBootstrapOpti
   // Pull the geometry engine binary down while the user is still deciding which
   // file to open, instead of on the click that opens it. See wasm-prewarm.ts.
   scheduleWasmPrewarm();
+  // Spare parser + small-file geometry workers, prepared at idle (lib/fast-path).
+  // The runtime is its own chunk and applies its own gates.
+  scheduleFastPath();
+
+  // Decode the schema tables a first interaction reads once a load has
+  // settled and the page is idle (lib/schema-tables/warm-schema-tables.ts).
+  // Loaded on demand so it adds nothing to the startup graph; it does nothing
+  // until a model has loaded.
+  void import('./lib/schema-tables/warm-schema-tables').then(({ startSchemaTableWarm }) => { startSchemaTableWarm(); })
+    .catch((err: unknown) => { console.warn('[schema-table warm] not started:', err); });
 }

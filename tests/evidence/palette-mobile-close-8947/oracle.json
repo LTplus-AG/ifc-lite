@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "apps/viewer/src/components/viewer/MobileSearchInline.tsx",
+  "mutation": "tests/evidence/palette-mobile-close-8947/behaviour.oracle.patch",
+  "test": "apps/viewer/src/components/viewer/SearchInline.palette-access.test.tsx",
+  "why": "#8947: the mounted touch-close regression must fail when the real mobile close button stops dismissing search; keep imports and the component mounted so failure is behavioral, not a load error."
+}

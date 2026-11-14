@@ -56,6 +56,19 @@ describe('#6232 D5 shared trim/extend', () => {
     expect(s.editor.addEntity('IfcCartesianPoint', [[1, 2, 3]]).expressId).toBe(next);
   });
 
+  it('refuses a wall join in a store marked tabular, whatever its schema label', async () => {
+    const s = await session();
+    expect(s.store.schemaVersion).not.toBe('IFC5');
+    expect(s.store.source.byteLength).toBeGreaterThan(0);
+    const join = () => trimExtendElementInStore(s.store, s.editor, s.wall, { mode: 'extend', click: [8, 5], boundary: { wallId: s.boundary } });
+    const before = s.snapshot();
+    s.store.sourceKind = 'tabular';
+    expect(join).toThrow('Wall joins are authored in IFC2X3, IFC4 and IFC4X3 models only');
+    expect(s.snapshot()).toEqual(before);
+    s.store.sourceKind = 'step';
+    expect(join().joined).toBe(true);
+  });
+
   it('refuses an ambiguous or deleted boundary without mutation', async () => {
     const s = await session();
     s.editor.removeEntity(s.boundary);

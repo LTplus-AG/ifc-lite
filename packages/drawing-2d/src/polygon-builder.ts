@@ -26,6 +26,8 @@ import {
   ensureCW,
 } from './math.js';
 
+import { removeCollinearRingVertices } from './polygon-helpers.js';
+
 export { simplifyPolygon, polygonBounds } from './polygon-helpers.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -50,6 +52,11 @@ interface Loop {
 export class PolygonBuilder {
   /** Tolerance for vertex matching */
   private tolerance: number;
+  /**
+   * Float32 rounding noise of the entity being processed (`maxAbs · 2⁻²²`,
+   * set by `withScaleAwareTolerance`). Floors the collinear-vertex tolerance.
+   */
+  private float32NoiseFloor = 0;
 
   constructor(tolerance: number = 0.0001) {
     this.tolerance = tolerance;
@@ -100,11 +107,14 @@ export class PolygonBuilder {
       if (Math.abs(b.y) > maxAbs) maxAbs = Math.abs(b.y);
     }
     const original = this.tolerance;
-    this.tolerance = Math.max(original, maxAbs * 2 ** -22);
+    const originalFloor = this.float32NoiseFloor;
+    this.float32NoiseFloor = maxAbs * 2 ** -22;
+    this.tolerance = Math.max(original, this.float32NoiseFloor);
     try {
       return fn();
     } finally {
       this.tolerance = original;
+      this.float32NoiseFloor = originalFloor;
     }
   }
 
@@ -252,7 +262,20 @@ export class PolygonBuilder {
 
     // Build closed loops. Multi-material (per-layer) groups additionally STITCH
     // disconnected open band segments at the interface chords (see `buildLoops`).
-    const loops = this.buildLoops(segments2D, color !== undefined);
+    // Tessellation splits (a triangle edge crossing the cut plane) leave
+    // collinear vertices on straight faces; drop them so ring vertices are real
+    // corners. The tolerance is far below the weld tolerance so finely
+    // tessellated arcs keep their vertices, but never below the float32
+    // rounding noise of the source coordinates: an origin-less element ~100 m
+    // out rounds each coordinate by a few µm, which pushes a split point on a
+    // sloped face off its chord by more than 1% of the weld tolerance. The
+    // floor uses the same LOCAL magnitude as the weld floor, so an element
+    // placed far away through its RTC origin is not given a looser one.
+    const collinearTolerance = Math.max(this.tolerance * 0.01, this.float32NoiseFloor);
+    const loops = this.buildLoops(segments2D, color !== undefined).map((loop) => ({
+      ...loop,
+      points: removeCollinearRingVertices(loop.points, collinearTolerance),
+    }));
 
     if (loops.length === 0) return [];
 

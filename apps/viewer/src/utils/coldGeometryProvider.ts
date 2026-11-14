@@ -65,7 +65,7 @@ export function makeColdGeometryProvider(input: {
     const info = chunks[index];
     const start = geometrySectionOffset + info.byteOffset;
     const stored = await readRange(source, start, start + info.byteLength);
-    const meshes = await decodeGeometryChunk(stored, info, version);
+    const meshes = await decodeGeometryChunk(stored, info, version, { sharedArena: true });
     lru.set(index, meshes);
     while (lru.size > DECODED_LRU_MAX) {
       const oldest = lru.keys().next().value as number;

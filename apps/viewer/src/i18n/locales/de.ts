@@ -85,6 +85,7 @@ import { ionUploadDe } from './de/ion-upload';
 import { keyboardShortcutsDe } from './de/keyboard-shortcuts';
 import { landxmlGeorefAssumptionsDe } from './de/landxml-georef-assumptions';
 import { landXmlTerrainExportDe } from './de/landxml-terrain-export';
+import { rhinoExportDe } from './de/rhino-export';
 import { landxmlDe } from './de/landxml';
 import { layersPanelDe } from './de/layers-panel';
 import { lensPanelDe } from './de/lens-panel';
@@ -115,6 +116,7 @@ import { propertiesDe } from './de/properties';
 import { propertyEditorDe } from './de/property-editor';
 import { pushPullAlignDe } from './de/push-pull-align';
 import { registryDe } from './de/registry';
+import { agentBridgeDe } from './de/agent-bridge';
 import { relationshipCardDe } from './de/relationship-card';
 import { remeshDe } from './de/remesh';
 import { repositionPanelDe } from './de/reposition-panel';
@@ -148,8 +150,10 @@ import { splitToolDe } from './de/split-tool';
 import { stairRailingDe } from './de/stair-railing';
 import { storeyContextDe } from './de/storey-context';
 import { storeyManagerDe } from './de/storey-manager';
+import { structuralGlyphsDe } from './de/structural-glyphs';
 import { structuralPropertiesDe } from './de/structural-properties';
 import { structuralReviewDe } from './de/structural-review';
+import { structuralDeriveDe } from './de/structural-derive';
 import { sweptDiskInspectionDe } from './de/swept-disk-inspection';
 import { tableCorrectionsDe } from './de/table-corrections';
 import { terrainImageryDe } from './de/terrain-imagery';
@@ -248,6 +252,7 @@ export default {
   ...keyboardShortcutsDe,
   ...landxmlGeorefAssumptionsDe,
   ...landXmlTerrainExportDe,
+  ...rhinoExportDe,
   ...landxmlDe,
   ...layersPanelDe,
   ...lensPanelDe,
@@ -278,6 +283,7 @@ export default {
   ...propertyEditorDe,
   ...pushPullAlignDe,
   ...registryDe,
+  ...agentBridgeDe,
   ...relationshipCardDe,
   ...remeshDe,
   ...repositionPanelDe,
@@ -311,8 +317,10 @@ export default {
   ...stairRailingDe,
   ...storeyContextDe,
   ...storeyManagerDe,
+  ...structuralGlyphsDe,
   ...structuralPropertiesDe,
   ...structuralReviewDe,
+  ...structuralDeriveDe,
   ...sweptDiskInspectionDe,
   ...tableCorrectionsDe,
   ...terrainImageryDe,

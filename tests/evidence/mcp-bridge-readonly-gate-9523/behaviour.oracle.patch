@@ -1,0 +1,11 @@
+--- a/packages/mcp/src/bridge/tab-bridge.ts
++++ b/packages/mcp/src/bridge/tab-bridge.ts
+@@ -152,7 +152,7 @@ export class TabBridge {
+     }
+     const tool = s.tools.find((t) => t.name === name);
+     if (!tool) return Promise.reject(new BridgeCallError('unknown-tool', `The connected viewer does not offer a tool named '${name}'.`));
+-    if (false) {
++    if (!tool.readOnly && this.effectivePermission(s) === 'read-only') {
+       return Promise.reject(new BridgeCallError(
+         'read-only',
+         this.opts.readOnlyCeiling

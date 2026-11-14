@@ -44,7 +44,7 @@ export function StoreyImpact({ draft, rows, onSelect, previewHint = true, reboun
       data-storey-impact
       className="mx-2 mb-2 space-y-1 rounded-md border border-border bg-muted/40 p-2 text-2xs"
     >
-      <p className="text-muted-foreground">
+      <p className="text-foreground">
         {t(draft.field === 'elevation' ? 'storeyManager.mode.elevation' : 'storeyManager.mode.height', { storey })}
       </p>
       {plan && plan.refusals.length === 0 && (
@@ -59,7 +59,7 @@ export function StoreyImpact({ draft, rows, onSelect, previewHint = true, reboun
               </Button>
             </div>
           ))}
-          {previewHint && <p className="flex items-center gap-1 text-muted-foreground">
+          {previewHint && <p className="flex items-center gap-1 text-foreground">
             <Eye aria-hidden className="h-3 w-3" />
             {t(shared ? 'storeyManager.impact.planOnly' : 'storeyManager.impact.preview')}
             <span aria-hidden>·</span>

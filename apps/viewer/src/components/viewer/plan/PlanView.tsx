@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { createPortal } from 'react-dom';
+
 /**
  * The Model workspace's editable plan (charter #6232, M2 §1.5): the session
  * storey cut 1.2 m above its floor (`usePlanCut`), drawn in workplane-local
@@ -92,7 +94,8 @@ function usePlanFrame(): { plane: Workplane | null; axes: WallAxis[] } {
   return { plane, axes };
 }
 
-export function PlanView({ layout }: { layout: ModelLayout }) {
+/** `hidden`: kept mounted behind 3D, so no cut is requested until it shows (#9296). */
+export function PlanView({ layout, headerHost, hidden = false }: { layout: ModelLayout; headerHost?: HTMLElement | null; hidden?: boolean }) {
   const { t } = useTranslation();
   const session = useViewerStore((s) => s.session);
   const selectedIds = useViewerStore((s) => s.selectedEntityIds);
@@ -102,7 +105,7 @@ export function PlanView({ layout }: { layout: ModelLayout }) {
   const runtime = useCommandRuntime();
   const { plane, axes } = usePlanFrame();
   const designGrids = usePlanGridAxes();
-  const cut = usePlanCut(session?.modelId ?? null, session?.storeyId ?? null, plane);
+  const cut = usePlanCut(hidden ? null : session?.modelId ?? null, session?.storeyId ?? null, plane);
   const handles = usePlanHandles(plane, cut.polygons);
   const [grid, setGrid] = useState(true);
   const [hovered, setHovered] = useState<number | null>(null);
@@ -127,7 +130,8 @@ export function PlanView({ layout }: { layout: ModelLayout }) {
 
   const gridMargin = useMemo(() => designGrids.reduce((margin, axis) => Math.max(margin, gridLabelRadius(axis.AxisTag) + 2), 0), [designGrids]);
   const frame = useCallback((w: number, h: number) => fitPlan(cut.polygons, cut.lines, [...axes, ...designGrids], w, h, gridMargin), [cut.polygons, cut.lines, axes, designGrids, gridMargin]);
-  const { size, fit, refit, panBy } = usePlanViewport(hostRef, svgRef, frame, `${session?.modelId}:${session?.storeyId}`, cut.settled);
+  // A hidden plan's empty cut is not its content: frame only once it shows and its cut settles.
+  const { size, fit, refit, panBy } = usePlanViewport(hostRef, svgRef, frame, `${session?.modelId}:${session?.storeyId}`, !hidden && cut.settled);
   const gridLines = useMemo(() => (grid && fit ? planGrid(fit, size.width, size.height) : null), [grid, fit, size.width, size.height]);
 
   // Snap sources read the latest drawing through refs: no rebuild per render.
@@ -260,10 +264,12 @@ export function PlanView({ layout }: { layout: ModelLayout }) {
   const Plan = command?.hud.Plan;
   const project = useCallback((p: Vec2) => (fit ? toScreen(fit, p) : ([0, 0] as const)), [fit]);
 
+  const header = <PlanHeader layout={layout} grid={grid} onToggleGrid={() => setGrid((g) => !g)} onFit={refit} loading={cut.loading} simplified={cut.simplified} failed={cut.failed} onRetry={cut.retry} />;
+
   return (
     <section data-plan-view data-plan-cut-ms={cut.ms === null ? undefined : Math.round(cut.ms)} aria-label={t('modelWorkspace.plan.title')} className="flex h-full w-full flex-col bg-background">
-      <PlanHeader layout={layout} grid={grid} onToggleGrid={() => setGrid((g) => !g)} onFit={refit} loading={cut.loading} simplified={cut.simplified} failed={cut.failed} onRetry={cut.retry} />
-      <div ref={hostRef} className="relative min-h-0 flex-1 overflow-hidden">
+      {headerHost ? createPortal(header, headerHost) : header}
+      <div ref={hostRef} data-plan-focus-target tabIndex={-1} className="relative min-h-0 flex-1 overflow-hidden">
         <svg
           ref={svgRef}
           data-plan-canvas

@@ -9,6 +9,7 @@ import init from '@ifc-lite/wasm';
 
 const binding = vi.hoisted(() => ({ actions: [] as string[], instance: undefined as WebAssembly.Instance | undefined, loaderUrl: 'https://viewer.test/fallback.wasm' }));
 vi.mock('@ifc-lite/wasm', () => ({
+  ENGINE_BINARY_URL: null,
   // Public loader contract, backed by actual WebAssembly instantiation. An
   // omitted module must perform a second fetch, making bridge bypass observable.
   default: async (arg?: { module_or_path: WebAssembly.Module | Promise<WebAssembly.Module> }) => {

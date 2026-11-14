@@ -28,3 +28,16 @@ Self-hosted deployments without `VITE_CLOUD_HOSTED=true` retain the direct SDK s
 
 For a local sign-in, pull, edit and publish walkthrough, see the
 [local registry guide](local-registry.md).
+
+### Dalux revision history
+
+The Dalux Versions panel combines revisions pinned by coordination version sets
+with the file’s current revision, including uploads not yet added to a set.
+Multiple sets pinning the same revision produce one row naming those sets.
+Historical rows sort by date, then numeric revision number for same-day ties.
+Unknown dates stay blank, and raw user IDs are not shown as names.
+
+The project sweep is cached for five minutes and reads fresh pins when rebuilt.
+A failed or undecodable set produces an explicit incomplete-history error with a
+short retry window. Projects with more than 250 version sets show an unavailable
+history error rather than a potentially misleading subset.

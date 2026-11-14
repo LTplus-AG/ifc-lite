@@ -32,11 +32,17 @@
  * `assignCostItemsToScheduleInStore`, there is no merge-into-existing-list
  * variant here; a caller assigning the same object into the same group
  * twice gets two `IfcRelAssignsToGroup` records, which importers fold
- * together same as `IfcRelContainedInSpatialStructure` does.
+ * together same as `IfcRelContainedInSpatialStructure` does. That holds for
+ * IFC4 and IFC4X3 only: IFC2X3 allows one `IfcRelAssignsToGroup` per group,
+ * so there a second call on the same group writes an invalid file.
  *
  * Pure: no I/O, no parser access — operates entirely through the editor.
  */
 
+import { prepareMemberConnection, type StructuralMemberConnectionOptions } from './_structural-connection-options.js';
+export type { StructuralMemberConnectionOptions } from './_structural-connection-options.js';
+import { schemaRegistry, conformsTo } from './schema-attributes.js';
+import type { SpatialAnchorSchema } from './anchor.js';
 import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { ownerHistoryRef } from './_emit-helpers.js';
@@ -48,8 +54,14 @@ export function connectStructuralMemberToConnectionInStore(
   memberId: number,
   connectionId: number,
   random?: RandomSource,
+  options: StructuralMemberConnectionOptions = {},
 ): number {
-  return editor.addEntity('IfcRelConnectsStructuralMember', [
+  const emitOptions = prepareMemberConnection(options);
+  const registry = schemaRegistry(editor.getSchemaVersion() as SpatialAnchorSchema | undefined, 'connectStructuralMemberToConnectionInStore');
+  if (!conformsTo(registry, editor.getEntityType(memberId) ?? '', 'IfcStructuralMember') || !conformsTo(registry, editor.getEntityType(connectionId) ?? '', 'IfcStructuralConnection')) throw new Error('connectStructuralMemberToConnectionInStore: requires a member and a connection');
+  if (editor.getSchemaVersion() === 'IFC2X3' && !ownerHistoryId) throw new Error('connectStructuralMemberToConnectionInStore: IFC2X3 requires OwnerHistory');
+  const { additional, constraint } = emitOptions(editor);
+  const attrs: Parameters<StoreEditor['addEntity']>[1] = [
     generateIfcGuid(random),
     ownerHistoryRef(ownerHistoryId),
     null,
@@ -57,10 +69,13 @@ export function connectStructuralMemberToConnectionInStore(
     `#${memberId}`,
     `#${connectionId}`,
     null, // AppliedCondition
-    null, // AdditionalConditions
+    additional === undefined ? null : `#${additional}`, // AdditionalConditions
     null, // SupportedLength
     null, // ConditionCoordinateSystem
-  ]).expressId;
+    ...(constraint === undefined ? [] : [`#${constraint}`]),
+  ];
+  return constraint === undefined ? editor.addEntity('IfcRelConnectsStructuralMember', attrs).expressId
+    : editor.addEntity('IfcRelConnectsWithEccentricity', attrs).expressId;
 }
 
 /** Apply a structural activity (action/reaction) to the member or connection it acts on. */
@@ -85,6 +100,9 @@ export function connectStructuralActivityToItemInStore(
  * Assign objects into an `IfcGroup` (an analysis model gathering its
  * members/connections, or a load group gathering its activities).
  * `objectIds` must be non-empty — `RelatedObjects` is `SET [1:?]`.
+ * Each call writes a new relationship. IFC2X3 allows exactly one per group
+ * (`IfcGroup.IsGroupedBy` is not a set there), so pass all of a group's
+ * objects in one call.
  */
 export function assignToStructuralGroupInStore(
   editor: StoreEditor,

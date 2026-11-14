@@ -1,0 +1,94 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * The pairing link's first touch (#9523). `ifc-lite-mcp --bridge` prints
+ *
+ *   https://ifclite.com/#mcp-bridge=1&port=21517&code=ABCDE-FGHJK-MNPQR-STVWX
+ *
+ * The one-time code must not linger in the address bar, the history entry or
+ * anything that reads `location` later (analytics, share links), so the
+ * bootstrap calls {@link takePairingFragment} before any other viewer module
+ * runs, and again on `hashchange`: a link opened in the tab that already
+ * holds the model is a same-document navigation that never re-runs the boot.
+ * This module only recognises and removes the fragment; it does not parse the
+ * code, open a socket or import the bridge client. Parsing and the user's
+ * confirmation happen in the lazily loaded connect dialog.
+ *
+ * Eager by design, so this module imports nothing. The key is the bridge
+ * protocol's `PAIRING_FRAGMENT_KEY` (a test pins the two together).
+ */
+
+const PAIRING_KEY = 'mcp-bridge';
+
+let pending: string | null = null;
+const listeners = new Set<() => void>();
+
+interface LocationLike { pathname: string; search: string; hash: string }
+interface HistoryLike { state: unknown; replaceState(data: unknown, unused: string, url?: string): void }
+
+/**
+ * If `loc.hash` is a pairing link, remove the fragment from the current
+ * history entry (path and query stay as they are) and keep its text in memory
+ * for the connect dialog. Returns the fragment, or null for any other URL.
+ */
+export function takePairingFragment(loc: LocationLike, history: HistoryLike, opts: { framed?: boolean } = {}): string | null {
+  const hash = loc.hash;
+  if (hash.length < 2 || !new URLSearchParams(hash.slice(1)).has(PAIRING_KEY)) return null;
+  try {
+    history.replaceState(history.state, '', `${loc.pathname}${loc.search}`);
+  } catch (err) {
+    // A sandboxed or opaque-origin document can refuse replaceState. The link
+    // is still honoured (the user still has to confirm), but say why the code
+    // stayed visible.
+    console.warn('[agent-bridge] could not remove the pairing code from the address bar', err);
+  }
+  // A framed viewer never pairs (see `isFramed`): the code is removed and dropped.
+  if (opts.framed) return null;
+  pending = hash;
+  for (const listener of [...listeners]) listener();
+  return hash;
+}
+
+/** The pairing fragment taken at boot or on a later `hashchange`, handed out once. */
+export function consumePendingPairingFragment(): string | null {
+  const fragment = pending;
+  pending = null;
+  return fragment;
+}
+
+/** Called whenever a pairing fragment is taken; read it with {@link consumePendingPairingFragment}. */
+export function onPairingFragment(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
+}
+
+/**
+ * True when this document is inside a frame. A framing page could drive or
+ * overlay the confirm dialog, so a framed viewer ignores pairing links and
+ * disables every way to connect. Comparing `top` with `self` is allowed
+ * across origins.
+ */
+export function isFramed(win: { self: unknown; top: unknown } | undefined = typeof window === 'undefined' ? undefined : window): boolean {
+  if (!win) return false;
+  try {
+    return win.self !== win.top;
+  } catch (err) {
+    console.debug('[agent-bridge] could not compare window.top; treating the page as framed', err);
+    return true;
+  }
+}
+
+/** Strip now, and on every later `popstate` / `hashchange` before other listeners run. Returns an uninstaller. */
+export function installPairingFragmentStrip(win: Window | undefined = typeof window === 'undefined' ? undefined : window): () => void {
+  if (!win) return () => {};
+  const take = () => { takePairingFragment(win.location, win.history, { framed: isFramed(win) }); };
+  take();
+  win.addEventListener('popstate', take, { capture: true });
+  win.addEventListener('hashchange', take, { capture: true });
+  return () => {
+    win.removeEventListener('popstate', take, { capture: true });
+    win.removeEventListener('hashchange', take, { capture: true });
+  };
+}

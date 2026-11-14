@@ -1,0 +1,21 @@
+diff --git a/apps/viewer/src/hooks/ingest/tabularDataStore.ts b/apps/viewer/src/hooks/ingest/tabularDataStore.ts
+index 6352938..0b924db 100644
+--- a/apps/viewer/src/hooks/ingest/tabularDataStore.ts
++++ b/apps/viewer/src/hooks/ingest/tabularDataStore.ts
+@@ -90,5 +90,16 @@ export function buildTabularDataStore(tables: TabularStoreTables, meta: TabularS
+     if (bucket) bucket.push(id);
+     else idsByType.set(key, [id]);
+   }
++  dataStore.getEntity = (expressId) =>
++    knownIds.has(expressId)
++      ? { expressId, type: entityTable.getTypeName(expressId), attributes: [] }
++      : null;
++  dataStore.getEntitiesByType = (typeName) =>
++    (idsByType.get(typeName.toUpperCase()) ?? []).map((expressId) => ({
++      expressId,
++      type: entityTable.getTypeName(expressId),
++      attributes: [],
++    }));
++
+   return dataStore;
+ }

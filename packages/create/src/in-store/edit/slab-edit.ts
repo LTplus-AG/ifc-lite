@@ -55,6 +55,8 @@ export type SlabLikeType = 'IfcSlab' | 'IfcRoof' | 'IfcPlate' | 'IfcSpace';
 
 const SLAB_LIKE_STEP_TYPES: Record<string, SlabLikeType> = {
   IFCSLAB: 'IfcSlab',
+  IFCSLABSTANDARDCASE: 'IfcSlab',
+  IFCSLABELEMENTEDCASE: 'IfcSlab',
   IFCROOF: 'IfcRoof',
   IFCPLATE: 'IfcPlate',
   IFCSPACE: 'IfcSpace',

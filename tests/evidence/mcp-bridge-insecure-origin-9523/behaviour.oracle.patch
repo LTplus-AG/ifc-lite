@@ -1,0 +1,9 @@
+--- a/packages/mcp/src/bridge/guards.ts
++++ b/packages/mcp/src/bridge/guards.ts
+@@ -58,5 +58,5 @@ export function isLoopbackHostname(hostname: string): boolean {
+  */
+ export function isInsecureRemoteOrigin(origin: string): boolean {
+   const url = new URL(origin);
+-  return false;
++  return url.protocol === 'http:' && !isLoopbackHostname(url.hostname);
+ }

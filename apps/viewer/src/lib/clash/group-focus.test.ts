@@ -40,8 +40,9 @@ describe('manual clash group focus (#4921)', () => {
       typeVisibility: {
         spaces: true, spatialZones: true, openings: true, virtualElements: true,
         site: true, ifcAnnotations: true, ifcGrid: true,
+        structuralGlyphs: true,
       },
-      typeViewMode: 'model',
+      typeViewMode: 'model', structuralViewMode: 'both',
     });
   });
 
@@ -51,6 +52,29 @@ describe('manual clash group focus (#4921)', () => {
     if (!focused) return null;
     const { sceneRevision: _sceneRevision, frameReady: _frameReady, ...rest } = focused;
     return rest;
+  }
+
+  it('#9923 keeps an all-on boolean map when structural mode is both', async () => {
+    const before = useViewerStore.getState().typeVisibility;
+    const focused = focusClashGroup([clash('structural-both',10,20)],
+      (element)=>({modelId:element.model,expressId:element.ref}),mock.fn(),'isolate');
+    await focused?.frameReady;
+    assert.equal(useViewerStore.getState().typeVisibility,before,'no spurious class reset');
+    assert.ok(Object.values(before).every((flag)=>typeof flag === 'boolean' && flag));
+  });
+
+  for (const mode of ['physical','analytical'] as const) {
+    it(`#9923 normalizes ${mode} independently of the boolean visibility map`, async () => {
+      useViewerStore.getState().setStructuralViewMode(mode);
+      const focused = focusClashGroup([clash('structural-focus',10,20)],
+        (element)=>({modelId:element.model,expressId:element.ref}),mock.fn(),'isolate');
+      assert.ok(focused);
+      await focused.frameReady;
+      assert.equal(useViewerStore.getState().structuralViewMode,'both');
+      assert.ok(Object.values(useViewerStore.getState().typeVisibility).every((flag)=>typeof flag === 'boolean' && flag));
+      useViewerStore.getState().setStructuralViewMode(mode);
+      assert.equal(focusedSceneRevisionIsCurrent(focused),false,'a later structural mask invalidates capture');
+    });
   }
 
   it('selects every distinct object through its model ref and applies one focus operation', async () => {
@@ -656,6 +680,7 @@ describe('manual clash group focus (#4921)', () => {
       typeVisibility: {
         spaces: false, spatialZones: false, openings: false, virtualElements: false,
         site: true, ifcAnnotations: true, ifcGrid: true,
+        structuralGlyphs: true,
       },
       typeViewMode: 'types',
     });

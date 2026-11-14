@@ -5,18 +5,16 @@
 import { pendingReport, recentReport, subscribeRecentReport } from '@/lib/error-reports/pending';
 import { lazy, Suspense, useEffect, useSyncExternalStore } from 'react';
 import { useTranslation } from '@/i18n';
-import { dismissErrorReport, getReportPrompt, offerErrorReport, openErrorReport, subscribeReportPrompt } from '@/lib/error-reports/context';
+import { dismissErrorReport, getReportPrompt, offerErrorReport, subscribeReportPrompt } from '@/lib/error-reports/context';
+import { openErrorReportDestination, registerErrorReportHost } from '@/lib/error-reports/destination';
 const ErrorReportDialog = lazy(() => import('./ErrorReportDialog').then(module => ({ default: module.ErrorReportDialog })));
 /** Independent of renderer/store: remains usable when the viewport failed. */
 export function ErrorReportHost() {
   const prompt = useSyncExternalStore(subscribeReportPrompt, getReportPrompt, () => null);
   const { t } = useTranslation();
   const recentId = useSyncExternalStore(subscribeRecentReport, recentReport, () => undefined);
-  const reopenRecent = () => {
-    if (!recentId) return;
-    offerErrorReport({ errorCode: 'report_resume', resumeReportId: recentId }, true);
-    openErrorReport();
-  };
+  const reopenRecent = () => openErrorReportDestination('recent');
+  useEffect(registerErrorReportHost, []);
   useEffect(() => {
     const resumeReportId = pendingReport();
     if (resumeReportId) offerErrorReport({ errorCode: 'report_resume', resumeReportId });
@@ -35,7 +33,7 @@ export function ErrorReportHost() {
   return <aside aria-label={t('errorReport.invite')} className="fixed bottom-12 right-4 z-50 max-w-sm rounded-lg border bg-background p-4 shadow-lg">
     <p className="text-sm font-medium">{t('errorReport.invite')}</p>
     <p className="my-2 text-xs text-muted-foreground">{t('errorReport.intro')}</p>
-    <button type="button" className="mr-3 rounded border px-3 py-1 text-sm" onClick={openErrorReport}>{t('errorReport.open')}</button>
+    <button type="button" className="mr-3 rounded border px-3 py-1 text-sm" onClick={() => openErrorReportDestination()}>{t('errorReport.open')}</button>
     <button type="button" className="text-sm" onClick={dismissErrorReport}>{t('errorReport.dismiss')}</button>
     {recentId && <button type="button" className="mt-2 block text-sm underline" onClick={reopenRecent}>{t('errorReport.viewRecent')}</button>}
   </aside>;

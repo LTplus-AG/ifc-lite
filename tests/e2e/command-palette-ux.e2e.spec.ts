@@ -130,9 +130,9 @@ test.describe('#8946 unloaded palette UX', () => {
         }
         await expectSearchTop(search, initial!.y);
         await search.fill('secton');
-        // #8965 projects the canonical section-add entries; Down (Z) ranks first for this typo.
-        await expect(options.first()).toHaveAttribute('data-command-id', 'section-add:down');
-        await expect(options.first()).toHaveAttribute('aria-label', 'Down (Z)');
+        // #8947: a visible-name typo outranks a match in Down's hidden section keyword.
+        await expect(options.first()).toHaveAttribute('data-command-id', 'tool:section');
+        await expect(options.first()).toHaveAttribute('aria-label', 'Section');
         await expectSearchTop(search, initial!.y);
 
         await search.fill('Settings');

@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "packages/create/src/in-store/structural-remove.ts",
+  "mutation": "tests/evidence/structural-source-less-9668/behaviour.oracle.patch",
+  "test": "packages/create/src/in-store/structural-source-less-removal.test.ts",
+  "why": "#9668 / #9819: Metadata-only ownership refusal must name the requested entity, while readable overlay-only stores remain supported."
+}

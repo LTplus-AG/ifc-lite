@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CheckCircle2, CloudDownload, LogOut, XCircle } from 'lucide-react';
-import { useSingleFlight } from '@/hooks/useSingleFlight';
+import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { Spinner } from '@/components/ui/spinner';
 import {
   Dialog,
@@ -62,20 +62,15 @@ export function BCFServerDialog({ open, onOpenChange }: BCFServerDialogProps) {
   const [initialUsername, setInitialUsername] = useState('');
   const [projects, setProjects] = useState<BcfProjectDto[] | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState('');
-  // One topic pull at a time (C-2): a same-tick double press is refused; a
-  // disconnect or account switch releases it (the generation guard below
-  // still drops its late result).
-  const pullFlight = useSingleFlight();
-  const busy = pullFlight.busy;
-  const releasePull = pullFlight.release;
-  const runPull = pullFlight.run;
+  // One pull owns this dialog; reset aborts it on close or account change.
+  const { busy, reset, start: runPull } = useAsyncRun();
   const [progress, setProgress] = useState<BcfSyncProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Number of local topics the next pull would replace; non-null means the
   // user must confirm before we overwrite them (they may be unexported).
   const [replaceCount, setReplaceCount] = useState<number | null>(null);
 
-  // A project-list or topic-pull request can outlive the connection it was
+  // A project-list request can outlive the connection it was
   // issued for (disconnect, or another tab signing in mid-flight). Results
   // carrying a stale generation are dropped so they can never pair the new
   // connection with the old account's data.
@@ -116,9 +111,9 @@ export function BCFServerDialog({ open, onOpenChange }: BCFServerDialogProps) {
     setError(null);
     setProgress(null);
     setReplaceCount(null);
-    releasePull();
+    reset();
     if (saved) void loadProjects();
-  }, [loadProjects, releasePull]);
+  }, [loadProjects, reset]);
 
   // Re-seed from the saved connection only on the closed -> open transition,
   // so parent re-renders never wipe in-progress typing.
@@ -166,8 +161,11 @@ export function BCFServerDialog({ open, onOpenChange }: BCFServerDialogProps) {
     setProjects(null);
     setSelectedProjectId('');
     setError(null);
-    releasePull();
-  }, [releasePull]);
+    // No pull to release here. clearBcfServerConfig() dispatches the change
+    // event in this same tab, so the subscription below already ran
+    // applySavedConnection(null), which releases one; and Disconnect is
+    // disabled while a pull runs anyway.
+  }, []);
 
   const handlePull = useCallback(async () => {
     const project = projects?.find((p) => p.project_id === selectedProjectId);
@@ -179,8 +177,7 @@ export function BCFServerDialog({ open, onOpenChange }: BCFServerDialogProps) {
       setReplaceCount(localTopics);
       return;
     }
-    await runPull(async () => {
-      const generation = sessionGenerationRef.current;
+    await runPull(async ({ signal, isCurrent }) => {
       setReplaceCount(null);
       setError(null);
       setBcfError(null);
@@ -189,11 +186,12 @@ export function BCFServerDialog({ open, onOpenChange }: BCFServerDialogProps) {
           project.project_id,
           project.name ?? 'BCF project',
           (progress) => {
-            if (generation !== sessionGenerationRef.current) return;
+            if (!isCurrent()) return;
             setProgress(progress);
           },
+          signal,
         );
-        if (generation !== sessionGenerationRef.current) return;
+        if (!isCurrent()) return;
         setBcfProject(result.project);
         posthog.capture('bcf_server_synced', {
           topic_count: result.project.topics.size,
@@ -212,14 +210,19 @@ export function BCFServerDialog({ open, onOpenChange }: BCFServerDialogProps) {
         }
         onOpenChange(false);
       } catch (err) {
-        if (generation !== sessionGenerationRef.current) return;
+        if (!isCurrent()) return;
         setError(err instanceof Error ? err.message : String(err));
       } finally {
-        if (generation === sessionGenerationRef.current) setProgress(null);
+        if (isCurrent()) setProgress(null);
       }
     });
   }, [runPull, projects, selectedProjectId, replaceCount, setBcfProject, setBcfError, onOpenChange]);
 
+  useEffect(() => () => {
+    wasOpenRef.current = false;
+    sessionGenerationRef.current += 1;
+    reset();
+  }, [open, reset]);
   const connected = config !== null;
 
   return (
@@ -281,7 +284,7 @@ export function BCFServerDialog({ open, onOpenChange }: BCFServerDialogProps) {
                 )}
               </div>
               {progress && (
-                <p className="text-xs text-muted-foreground" role="status">
+                <p role="status" className="text-xs text-muted-foreground">
                   {progress.phase === 'topics'
                     ? t('bcf.serverDialog.fetchingTopics', { loaded: progress.loaded })
                     : progress.total

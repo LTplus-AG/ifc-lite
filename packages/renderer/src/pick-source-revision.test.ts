@@ -94,6 +94,14 @@ describe('point clouds in the pick-geometry revision (#9029)', () => {
       'reloading points with the same expressId and modelIndex');
   });
 
+  it('#10029 the same chunk at a new origin counts (an RTC rebase moves the origin only)', () => {
+    const { renderer, bumps } = setup();
+    const list = [{ expressId: 3, modelIndex: 2, origin: [1, 0, 0] as [number, number, number], chunk: chunk(3) }];
+    renderer.setPointClouds(list);
+    assert.equal(bumps(() => renderer.setPointClouds([{ ...list[0] }])), false, 'same origin array, re-stamped');
+    assert.equal(bumps(() => renderer.setPointClouds([{ ...list[0], origin: [2, 0, 0] }])), true, 'a moved origin');
+  });
+
   it('#9093 re-installing the same embedded list after teardown counts', () => {
     const { renderer, bumps } = setup();
     const list = [{ expressId: 3, modelIndex: 2, chunk: chunk(3) }];

@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "Structural faces must take their plane normal from the loop's area vector; restore the single-vertex-triple normal, which points against the loop at a reflex first corner, while keeping the builders and tests loadable.",
+  "key": "packages/create/src/in-store/_structural-face.ts",
+  "mutation": "tests/evidence/structural-face-normal-9668/behaviour.oracle.patch",
+  "test": "packages/create/src/in-store/structural-surfaces.test.ts"
+}

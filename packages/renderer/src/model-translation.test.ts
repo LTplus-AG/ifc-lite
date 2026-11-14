@@ -35,7 +35,18 @@ function recordingGpu() {
       return buffer;
     },
     createBindGroup() { return {}; },
+    // Finalize assembles a streamed bucket's batch from its fragments: a GPU
+    // copy into a fresh buffer, never a CPU write.
+    createCommandEncoder() {
+      return {
+        copyBufferToBuffer(from: { data: ArrayBuffer }, fromOffset: number, to: { data: ArrayBuffer }, toOffset: number, size: number) {
+          new Uint8Array(to.data, toOffset, size).set(new Uint8Array(from.data, fromOffset, size));
+        },
+        finish: () => ({}),
+      };
+    },
     queue: {
+      submit() {},
       // The ONLY write allowed is a new buffer's initial fill, issued right
       // after its allocation (`createStaticGpuBuffer`, #5429). Rewriting any
       // existing buffer is a vertex re-upload, which flat translation must

@@ -102,6 +102,8 @@ describe('cache compression ownership and lifecycle (#3985)', () => {
     expect(starts).toBe(0);
     const startup = new GeometryCompressionSession(() => { throw new Error('blocked worker'); });
     await expect(startup.compress(new Uint8Array(10))).rejects.toThrow('blocked worker');
+    // A failed session reports its failure, also for a buffer it would refuse anyway (review).
+    await expect(startup.compress(new Uint8Array(new ArrayBuffer(16), 4, 8))).rejects.toThrow('blocked worker');
     const port = new CodecPort();
     port.postMessage = () => { throw new Error('transfer failed'); };
     const session = new GeometryCompressionSession(() => port);

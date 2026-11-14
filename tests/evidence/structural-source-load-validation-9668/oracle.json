@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "packages/create/src/in-store/structural-edit.ts",
+  "mutation": "tests/evidence/structural-source-load-validation-9668/behaviour.oracle.patch",
+  "test": "packages/create/src/in-store/structural-source-edit-validation.test.ts",
+  "why": "#9668 / #9819: Imported structural loads and load cases must receive the same atomic validation as overlay records."
+}

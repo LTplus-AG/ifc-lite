@@ -45,7 +45,7 @@ function Arrowhead({ id, className }: { id: string; className: string }) {
 
 export function OverlayDefs() {
   return (
-    <defs>
+    <defs aria-hidden="true">
       <filter id={OVERLAY_GLOW_FILTER_ID} x="-75%" y="-75%" width="250%" height="250%">
         <feGaussianBlur stdDeviation="3" result="blur" />
         <feMerge>

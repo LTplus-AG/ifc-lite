@@ -6,6 +6,7 @@ import type { StructuralStoreBackendMethods } from './store-structural-types.js'
 import type { ModellingStoreBackendMethods } from './store-modelling-types.js';
 import type { GroupStoreBackendMethods } from './store-group-types.js';
 import type { RoofStoreBackendMethods } from './store-roof-types.js';
+import type { StructuralDerivationStoreBackendMethods } from './store-structural-derive.js';
 
 /** Shared authoring capabilities keep the main backend declaration inside its size budget. */
-export interface StoreAuthoringBackendMethods extends CostStoreBackendMethods, StructuralStoreBackendMethods, ModellingStoreBackendMethods, GroupStoreBackendMethods, RoofStoreBackendMethods {}
+export interface StoreAuthoringBackendMethods extends CostStoreBackendMethods, StructuralStoreBackendMethods, ModellingStoreBackendMethods, GroupStoreBackendMethods, RoofStoreBackendMethods, StructuralDerivationStoreBackendMethods {}

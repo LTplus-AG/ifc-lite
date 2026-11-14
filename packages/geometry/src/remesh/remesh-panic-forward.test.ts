@@ -11,6 +11,7 @@ import type { RemeshWorkerInbound, RemeshWorkerOutbound } from './remesh-protoco
 const faults = vi.hoisted(() => ({ init: false, ordinary: false, instances: 0, request: true, config: false, cleanup: false, clear: false, omitLocation: false, message: 'unreachable' }));
 const LOCATION = 'rust/geometry/src/example.rs:42:9';
 vi.mock('@ifc-lite/wasm', () => ({
+  ENGINE_BINARY_URL: null,
   default: async () => { if (faults.init) trap(); },
   initSync: () => { if (faults.init) trap(); },
   IfcAPI: class {

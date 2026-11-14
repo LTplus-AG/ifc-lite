@@ -242,7 +242,7 @@ describe('storey manager (#9013)', () => {
     assert.ok(view.getNewEntity(later.expressId), 'the later wall is still authored');
     assert.equal(view.isDeleted(later.expressId), false, 'the later wall stays');
     assert.equal(rows(ui).length, 1, 'the storey stays deleted');
-    await waitFor(() => (document.body.textContent ?? '').includes('Not undone: later edits came after this deletion'), 'the toast says why');
+    await waitFor(() => (document.body.textContent ?? '').includes('Not undone: later edits came after this edit'), 'the toast says why');
   });
 
   it('deletion choices opened in one model are not offered for another model with the same storey ids (#9037 review)', async () => {
@@ -377,7 +377,7 @@ it('#9334 insertion distinguishes explicit wall resizes from relative top update
   assert.match(ui.querySelector('[data-storey-insertion]')?.textContent ?? '', /Floor-to-floor stays 3.00 m. Storeys shifted: 1/);
   const impact = ui.querySelector('[data-storey-impact-summary]')?.textContent ?? '';
   assert.match(impact, /resizes 1 wall(?: ·|$)/, 'the explicit GUID-bound wall really stretches');
-  assert.match(impact, /Updates 1 wall top(?: ·|$)/, 'only the relative top rebinds without a final resize');
+  assert.match(impact, /updates 1 wall top(?: ·|$)/, 'only the relative top rebinds without a final resize');
   const confirm = [...ui.querySelectorAll('button')].find(b => b.textContent === 'Insert storey')!;
   click(confirm);
   await waitFor(() => rows(ui).length === 3, 'inserted floor appears');
@@ -468,4 +468,65 @@ it('#9334 a refused insertion rolls back the preceding floor-height edit', () =>
   assert.equal(result.ok, false);
   assert.deepEqual(elevations(), [0, 3]);
   assert.equal(useViewerStore.getState().undoStacks.get(MODEL_ID)?.length ?? 0, depth);
+});
+
+it('#9389 insertion renumbers numbered neighbours atomically and Undo restores their names', () => {
+  const review = reviewStoreyInsertion(MODEL_ID, STOREY, n => `Level ${n}`)!;
+  assert.equal(review.params.Name, 'L1');
+  const result = commitStoreyInsertion(MODEL_ID, review);
+  assert.equal(result.ok, true);
+  assert.deepEqual(modelStoreys(useViewerStore.getState(), MODEL_ID).map(s => s.name), ['L0', 'L1', 'L2']);
+  act(() => useViewerStore.getState().undo(MODEL_ID));
+  assert.deepEqual(modelStoreys(useViewerStore.getState(), MODEL_ID).map(s => s.name), ['L0', 'L1']);
+});
+it('#9389 a header add clears a visible insertion review and its diagram', async () => {
+  const ui = await mount();
+  click(rows(ui)[1].querySelector('[aria-label="Insert storey above L0"]')!);
+  await waitFor(() => !!ui.querySelector('[data-storey-insertion]'), 'review opened');
+  assert.ok(ui.querySelector('[data-storey-strip-inserted]'));
+  assert.ok(ui.querySelector('[data-storey-strip-move]'));
+  click([...ui.querySelectorAll('button')].find(b => b.textContent?.includes('Add storey above'))!);
+  await waitFor(() => !ui.querySelector('[data-storey-insertion]'), 'structural edit clears review');
+  assert.equal(ui.querySelector('[data-storey-strip-inserted]'), null);
+});
+
+it('#9389 structural add and level edits offer one-step Undo from their toasts', async () => {
+  const { StoreyManager } = await import('./StoreyManager');
+  const ui = render(<><StoreyManager onBack={() => {}} /><Toaster /></>);
+  for (const dismiss of ui.querySelectorAll('[aria-label="Dismiss notification"]')) click(dismiss);
+  await waitFor(() => rows(ui).length === 2, 'rows loaded');
+  click([...ui.querySelectorAll('button')].find(b => b.textContent?.includes('Add storey above'))!);
+  await waitFor(() => rows(ui).length === 3, 'added');
+  const undo = () => [...ui.querySelectorAll('button')].filter(b => b.textContent === 'Undo').at(-1)!;
+  click(undo());
+  await waitFor(() => rows(ui).length === 2, 'toast Undo removes added storey');
+  for (const dismiss of ui.querySelectorAll('[aria-label="Dismiss notification"]')) click(dismiss);
+  const height = field(rows(ui)[1], 'height');
+  edit(height, '4.00'); press(height, 'Enter');
+  await waitFor(() => elevations()[1] === 4, 'height committed');
+  click(undo());
+  await waitFor(() => elevations()[1] === 3, 'toast Undo restores height and storeys together');
+});
+
+it('#9389 insertion preserves custom storey names', () => {
+  act(() => {
+    commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'rename', storeyId: STOREY, Name: 'Lobby' });
+    commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'rename', storeyId: UPPER_STOREY, Name: 'Roof' });
+  });
+  const review = reviewStoreyInsertion(MODEL_ID, STOREY, n => `Level ${n}`)!;
+  assert.deepEqual(review.renames, []);
+  assert.equal(commitStoreyInsertion(MODEL_ID, review).ok, true);
+  assert.deepEqual(modelStoreys(useViewerStore.getState(), MODEL_ID).map(level => level.name), ['Lobby', 'Level 3', 'Roof']);
+});
+
+it('#9389 insertion preserves mixed number widths without merging distinct names', () => {
+  const added = commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'add', params: { Name: 'L01', Elevation: 6, referenceStoreyId: UPPER_STOREY } });
+  assert.equal(added.ok, true);
+  const review = reviewStoreyInsertion(MODEL_ID, STOREY, n => `Level ${n}`)!;
+  assert.equal(commitStoreyInsertion(MODEL_ID, review).ok, true);
+  const names = modelStoreys(useViewerStore.getState(), MODEL_ID).map(level => level.name);
+  assert.deepEqual(names, ['L0', 'L1', 'L2', 'L02']);
+  assert.equal(new Set(names).size, names.length);
+  act(() => useViewerStore.getState().undo(MODEL_ID));
+  assert.deepEqual(modelStoreys(useViewerStore.getState(), MODEL_ID).map(level => level.name), ['L0', 'L1', 'L01']);
 });

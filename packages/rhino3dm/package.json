@@ -1,7 +1,7 @@
 {
   "name": "@ifc-lite/rhino3dm",
   "version": "0.1.0",
-  "description": "Lazy Rhino 3dm writer for encoded ifc-lite RhinoScene data",
+  "description": "Lazy Rhino 3dm reader and writer: .3dm bytes to plain RhinoImport data, encoded ifc-lite RhinoScene data to .3dm",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -19,10 +19,11 @@
     "test": "vitest run"
   },
   "devDependencies": {
+    "@ifc-lite/wasm": "workspace:^",
     "@mergifyio/vitest": "^2026.10.11",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.5",
-    "vite": "^8.3.5"
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
   },
   "license": "MPL-2.0",
   "repository": {
@@ -40,6 +41,8 @@
   "homepage": "https://ifclite.dev/docs/",
   "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
   "dependencies": {
+    "@ifc-lite/data": "workspace:^",
+    "@ifc-lite/encoding": "workspace:^",
     "rhino3dm": "8.35.0"
   },
   "imports": {

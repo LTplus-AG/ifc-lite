@@ -20,9 +20,9 @@ export function AppearanceStreamingHarness({ renderer }: { renderer: Renderer })
     modelCount: models.size, presentInstancedModelIndices: new Set(modelIndices(models).values()),
     isInitialized: true, isStreaming: false, geometryBoundsRef, clearColorRef,
     pendingMeshColorUpdates: null, pendingColorUpdates: null, pendingMeshRemovals: null,
-    pendingMeshTranslations: null, pendingMeshRotations: null, pendingInstancedShards: null,
+    pendingMeshTranslations: null, pendingMeshRotations: null,
     clearPendingMeshColorUpdates: noop, clearPendingColorUpdates: noop, clearPendingMeshRemovals: noop,
     pruneGeometryMeshes: noop,
-    clearPendingMeshTranslations: noop, clearPendingMeshRotations: noop, clearInstancedShards: noop });
+    clearPendingMeshTranslations: noop, clearPendingMeshRotations: noop });
   return null;
 }

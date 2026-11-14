@@ -12,6 +12,7 @@
  */
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
+import { PanelHostHeaderContext } from '@/lib/panels/DeferredPanel';
 import type { BottomPanelId } from '@/lib/panels/bottom-panels';
 import { closeActiveAnalysisExtension, type AnalysisExtensionDefinition } from '@/services/analysis-extensions';
 import { useViewerStore } from '@/store';
@@ -198,9 +199,11 @@ export function BottomStrip({ dockedPanel, analysisExtension, containerRef, clos
           aria-labelledby={!analysisExtension && dockedPanel ? `bottom-strip-tab-${dockedPanel}` : undefined}
         >
           <BottomStripHeaderSlotContext.Provider value={analysisExtension ? null : headerSlot}>
-            {analysisExtension
-              ? analysisExtension.renderPanel({ onClose: closeActiveAnalysisExtension })
-              : dockedPanel && renderPanelBody(dockedPanel, () => closePanel(dockedPanel))}
+            <PanelHostHeaderContext.Provider value={!analysisExtension}>
+              {analysisExtension
+                ? analysisExtension.renderPanel({ onClose: closeActiveAnalysisExtension })
+                : dockedPanel && renderPanelBody(dockedPanel, () => closePanel(dockedPanel))}
+            </PanelHostHeaderContext.Provider>
           </BottomStripHeaderSlotContext.Provider>
         </div>
       </div>

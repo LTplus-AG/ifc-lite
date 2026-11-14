@@ -15,6 +15,11 @@ export const MESH_VERTEX_BUFFERS: GPUVertexBufferLayout[] = [{
   ],
 }];
 
+/** Same untextured shader inputs over a textured piece's existing UV-bearing buffer. */
+export const TEXTURED_HIGHLIGHT_VERTEX_BUFFERS: GPUVertexBufferLayout[] = [
+  { ...MESH_VERTEX_BUFFERS[0], arrayStride: 36 },
+];
+
 /**
  * Vertex buffers every instanced pipeline reads:
  *

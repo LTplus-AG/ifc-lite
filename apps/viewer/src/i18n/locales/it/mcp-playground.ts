@@ -40,6 +40,7 @@ export const mcpPlaygroundIt = {
   "mcp.playgroundChat.placeholderAddNote": "Aggiungi una nota (o invia direttamente per validare il file allegato)…",
   "mcp.playgroundChat.placeholderDefault": "Chiedi all'agente: rilascia un .ids sulla chat per validarlo.",
   "mcp.playgroundChat.stopped": "Interrotto",
+  "mcp.playgroundChat.finishingTool": "Completamento dello strumento precedente… Premi di nuovo Interrompi per riattivare Invio. L’esito potrebbe restare sconosciuto.",
   "mcp.playgroundChat.send": "Invia",
   "mcp.playgroundChat.footerHintNoAttachments": "BYOK · {tools} strumenti · Invio per inviare · ⇧+Invio per andare a capo · rilascia file per allegarli",
   "mcp.playgroundChat.footerHintWithAttachments": {

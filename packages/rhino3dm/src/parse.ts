@@ -63,6 +63,7 @@ export function readRhinoScene(scene: EncodedRhinoScene): { manifest: RhinoScene
     if (l.parent !== null) index(l.parent, i, 'parent (must precede child)');
     vector(l.color, 4, 'layer.color', true);
     check(typeof l.visible === 'boolean' && typeof l.locked === 'boolean', 'layer visibility/locked');
+    strings(l.userStrings, 'layer.userStrings');
   });
   materials.forEach(v => { const a = record(v, 'material'); str(a.name, 'material.name'); vector(a.diffuse, 3, 'diffuse', true); num(a.transparency, 'transparency'); check(a.transparency >= 0 && a.transparency <= 1, 'transparency'); });
   groups.forEach(v => str(record(v, 'group').name, 'group.name'));

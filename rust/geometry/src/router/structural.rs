@@ -19,15 +19,17 @@ use ifc_lite_core::{DecodedEntity, IfcType};
 ///
 /// Accepts `IfcStructuralCurveMember` (including its varying subtype) with
 /// representation type `'Edge'`, and `IfcStructuralSurfaceMember` with
-/// representation type `'Face'`. Point and surface connections remain out of
-/// scope.
+/// representation type `'Face'`; either with `'Undefined'`, the topology
+/// representation type that states no kind (AxisVM writes it for every
+/// member, #9668), since the items' own types then route them. Point and
+/// surface connections remain out of scope.
 pub(crate) fn accepts(element: &DecodedEntity, rep_type: &str) -> bool {
     (element
         .ifc_type
         .is_subtype_of(IfcType::IfcStructuralCurveMember)
-        && rep_type == "Edge")
+        && matches!(rep_type, "Edge" | "Undefined"))
         || (element
             .ifc_type
             .is_subtype_of(IfcType::IfcStructuralSurfaceMember)
-            && rep_type == "Face")
+            && matches!(rep_type, "Face" | "Undefined"))
 }

@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "The assistant's structural review must keep Prepare disabled until the lazily loaded write path has loaded; enable it from the start and a Prepare click during the load is refused as still loading.",
+  "key": "apps/viewer/src/sdk/adapters/store-adapter-structural-impl.ts",
+  "mutation": "tests/evidence/structural-review-awaits-writes-9668/behaviour.oracle.patch",
+  "test": "apps/viewer/src/lib/assistant/adapters/selection-native-structural-request.test.tsx"
+}

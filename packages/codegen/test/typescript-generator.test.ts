@@ -7,8 +7,25 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import ts from 'typescript';
 import { parseExpressSchema } from '../src/express-parser.js';
 import { generateTypeScript } from '../src/typescript-generator.js';
+import type { RegistryData, RegistryEntity, RegistryAttribute } from '../src/schema-registry-codec.js';
+
+/** Run an emitted schema-registry.ts and return what it exports. The registry
+ *  is a compact string decoded at run time, so its content is only visible by
+ *  running it. */
+async function emittedRegistry(code: string): Promise<{
+  SCHEMA_REGISTRY: RegistryData;
+  getSchemaRegistry(): RegistryData;
+  getEntityMetadata(name: string): RegistryEntity | undefined;
+  getAllAttributesForEntity(name: string): RegistryAttribute[];
+  getInheritanceChainForEntity(name: string): string[];
+  isKnownEntity(name: string): boolean;
+}> {
+  const js = ts.transpileModule(code, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
+  return await import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);
+}
 
 describe('TypeScript Generator', () => {
   describe('Entity interface generation', () => {
@@ -52,7 +69,7 @@ describe('TypeScript Generator', () => {
      * emitted inside a string literal that no typecheck can ever look at.
      * Assert both, so a leak cannot hide in the quiet channel.
      */
-    it('never emits an EXPRESS element qualifier into a type or the registry', () => {
+    it('never emits an EXPRESS element qualifier into a type or the registry', async () => {
       const schema = parseExpressSchema(`
         SCHEMA TEST;
 
@@ -72,7 +89,9 @@ describe('TypeScript Generator', () => {
       expect(code.schemaRegistry).not.toMatch(/\bUNIQUE\b/);
       // Paired with the negative above so an empty or attribute-less registry
       // cannot satisfy it by having nothing to leak.
-      expect(code.schemaRegistry).toContain("name: 'SymbolicBound',\n          type: 'IfcGridAxis',");
+      const { SCHEMA_REGISTRY } = await emittedRegistry(code.schemaRegistry);
+      const types = SCHEMA_REGISTRY.entities.EntQualified.attributes.map((a) => [a.name, a.type]);
+      expect(types).toEqual([['SymbolicBound', 'IfcGridAxis'], ['Unbounded', 'IfcGridAxis'], ['OptionalUnique', 'IfcGridAxis']]);
     });
 
     it('should generate interface with inheritance', () => {
@@ -225,7 +244,7 @@ describe('TypeScript Generator', () => {
   });
 
   describe('Schema registry generation', () => {
-    it('should generate schema registry', () => {
+    it('should generate schema registry', async () => {
       const schema = parseExpressSchema(`
         SCHEMA TEST;
 
@@ -239,14 +258,29 @@ describe('TypeScript Generator', () => {
 
       const code = generateTypeScript(schema);
 
-      expect(code.schemaRegistry).toContain('export const SCHEMA_REGISTRY');
-      expect(code.schemaRegistry).toContain("name: 'TEST'");
-      expect(code.schemaRegistry).toContain('IfcRoot: {');
-      expect(code.schemaRegistry).toContain("name: 'IfcRoot'");
-      expect(code.schemaRegistry).toContain("name: 'GlobalId'");
+      const mod = await emittedRegistry(code.schemaRegistry);
+      expect(mod.SCHEMA_REGISTRY.name).toBe('TEST');
+      expect(Object.keys(mod.SCHEMA_REGISTRY.entities)).toEqual(['IfcRoot']);
+      expect(mod.SCHEMA_REGISTRY.entities.IfcRoot).toEqual({
+        name: 'IfcRoot',
+        isAbstract: false,
+        attributes: [
+          { name: 'GlobalId', type: 'IfcGloballyUniqueId', optional: false, isArray: false, isList: false, isSet: false },
+          { name: 'Name', type: 'IfcLabel', optional: true, isArray: false, isList: false, isSet: false },
+        ],
+        allAttributes: [
+          { name: 'GlobalId', type: 'IfcGloballyUniqueId', optional: false, isArray: false, isList: false, isSet: false },
+          { name: 'Name', type: 'IfcLabel', optional: true, isArray: false, isList: false, isSet: false },
+        ],
+        inheritanceChain: ['IfcRoot'],
+      });
+      // A root entity has no `parent` key at all, as the literal registry had.
+      expect(Object.keys(mod.SCHEMA_REGISTRY.entities.IfcRoot)).toEqual(['name', 'isAbstract', 'attributes', 'allAttributes', 'inheritanceChain']);
+      // Decoded once: the getter and the constant are the same object.
+      expect(mod.getSchemaRegistry()).toBe(mod.SCHEMA_REGISTRY);
     });
 
-    it('should include inheritance chain in registry', () => {
+    it('should include inheritance chain in registry', async () => {
       const schema = parseExpressSchema(`
         SCHEMA TEST;
 
@@ -264,10 +298,12 @@ describe('TypeScript Generator', () => {
 
       const code = generateTypeScript(schema);
 
-      expect(code.schemaRegistry).toContain("inheritanceChain: ['IfcRoot', 'IfcObject']");
+      const { SCHEMA_REGISTRY } = await emittedRegistry(code.schemaRegistry);
+      expect(SCHEMA_REGISTRY.entities.IfcObject.inheritanceChain).toEqual(['IfcRoot', 'IfcObject']);
+      expect(SCHEMA_REGISTRY.entities.IfcObject.parent).toBe('IfcRoot');
     });
 
-    it('should include allAttributes in registry', () => {
+    it('should include allAttributes in registry', async () => {
       const schema = parseExpressSchema(`
         SCHEMA TEST;
 
@@ -286,11 +322,15 @@ describe('TypeScript Generator', () => {
       const code = generateTypeScript(schema);
 
       // IfcObject should have allAttributes including GlobalId from parent
-      expect(code.schemaRegistry).toContain('allAttributes: [');
-      expect(code.schemaRegistry).toMatch(/IfcObject[\s\S]*allAttributes:[\s\S]*GlobalId/);
+      const { SCHEMA_REGISTRY } = await emittedRegistry(code.schemaRegistry);
+      const object = SCHEMA_REGISTRY.entities.IfcObject;
+      expect(object.attributes.map((a) => a.name)).toEqual(['ObjectType']);
+      expect(object.allAttributes?.map((a) => a.name)).toEqual(['GlobalId', 'ObjectType']);
+      // Inherited entries are the child's own objects, not shared with the parent.
+      expect(object.allAttributes?.[0]).not.toBe(SCHEMA_REGISTRY.entities.IfcRoot.allAttributes?.[0]);
     });
 
-    it('should generate helper functions', () => {
+    it('should generate helper functions', async () => {
       const schema = parseExpressSchema(`
         SCHEMA TEST;
         ENTITY IfcRoot;
@@ -301,15 +341,19 @@ describe('TypeScript Generator', () => {
 
       const code = generateTypeScript(schema);
 
-      expect(code.schemaRegistry).toContain('export function getEntityMetadata');
-      expect(code.schemaRegistry).toContain('export function getAllAttributesForEntity');
-      expect(code.schemaRegistry).toContain('export function getInheritanceChainForEntity');
-      expect(code.schemaRegistry).toContain('export function isKnownEntity');
+      const mod = await emittedRegistry(code.schemaRegistry);
+      expect(mod.getEntityMetadata('IFCROOT')?.name).toBe('IfcRoot');
+      expect(mod.getAllAttributesForEntity('IfcRoot').map((a) => a.name)).toEqual(['GlobalId']);
+      expect(mod.getInheritanceChainForEntity('IFCROOT')).toEqual(['IfcRoot']);
+      expect(mod.isKnownEntity('IfcRoot')).toBe(true);
+      // Own-property lookups only (#3063).
+      expect(mod.isKnownEntity('constructor')).toBe(false);
+      expect(mod.getEntityMetadata('__proto__')).toBeUndefined();
     });
   });
 
   describe('Full generation', () => {
-    it('should generate all code sections', () => {
+    it('should generate all code sections', async () => {
       const schema = parseExpressSchema(`
         SCHEMA TEST;
 
@@ -354,7 +398,10 @@ describe('TypeScript Generator', () => {
       expect(code.types).toContain('export type IfcLabel = string');
       expect(code.enums).toContain('export enum IfcWallTypeEnum');
       expect(code.selects).toContain('export type IfcValue');
-      expect(code.schemaRegistry).toContain('SCHEMA_REGISTRY');
+      const { SCHEMA_REGISTRY } = await emittedRegistry(code.schemaRegistry);
+      expect(SCHEMA_REGISTRY.enums.IfcWallTypeEnum).toEqual(['MOVABLE', 'SOLIDWALL']);
+      expect(SCHEMA_REGISTRY.selects.IfcValue).toEqual(['IfcLabel', 'IfcInteger']);
+      expect(SCHEMA_REGISTRY.types.IfcLabel).toBe('STRING');
     });
   });
 

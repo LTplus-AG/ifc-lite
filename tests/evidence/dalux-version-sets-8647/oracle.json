@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "Every production file of the Dalux version-set sweep is new, so a whole-change revert deletes the module commit-index.test.ts imports and the oracle reports REVERT-BROKE-BUILD instead of a verdict",
+  "key": "packages/source-dalux/src/commit-index.ts",
+  "mutation": "tests/evidence/dalux-version-sets-8647/behaviour.oracle.patch",
+  "test": "packages/source-dalux/test/commit-index.test.ts"
+}

@@ -9,7 +9,7 @@
  * converted here and the conversion is reported for the review.
  */
 
-import { IFC_DATA_TYPES } from '@ifc-lite/data';
+import { getIfcDataTypes } from '@ifc-lite/data';
 import { translateXsdRegex, type IDSConstraint } from '@ifc-lite/ids';
 import { isRecord, onlyKeys, plainText } from './proposal-json';
 
@@ -51,7 +51,7 @@ export function unitConversions(constraint: IDSConstraint | undefined, unit: str
 
 /** The XSD type behind an IFC data type, or null when the name is not an IFC data type. */
 export function dataTypeBase(dataType: string): string | null {
-  return IFC_DATA_TYPES.find(entry => entry.name === dataType)?.backingType ?? null;
+  return getIfcDataTypes().find(entry => entry.name === dataType)?.backingType ?? null;
 }
 
 type Scalar = string | number | boolean;

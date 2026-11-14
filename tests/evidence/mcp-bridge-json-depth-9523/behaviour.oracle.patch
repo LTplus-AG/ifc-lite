@@ -1,0 +1,10 @@
+--- a/packages/mcp/src/bridge/json-bounds.ts
++++ b/packages/mcp/src/bridge/json-bounds.ts
+@@ -45,6 +45,7 @@ export function checkJsonBounds(value: unknown, bounds: JsonBounds, label: strin
+     // JSON.parse turns 1e999 into Infinity, which re-serializes as null: refuse it.
+     if (typeof v === 'number' && !Number.isFinite(v)) return `${label} contains a non-finite number`;
+     if (typeof v !== 'object' || v === null) continue;
++    if (depth >= bounds.maxDepth) return `${label} is nested deeper than ${bounds.maxDepth} levels`;
+     const remaining = bounds.maxNodes - nodes;
+     if (Array.isArray(v)) {
+       if (v.length > remaining) return tooMany;

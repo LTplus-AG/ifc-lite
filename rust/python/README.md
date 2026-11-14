@@ -733,7 +733,8 @@ layer slicing disabled.
 
 Inspect `json.loads(scene["manifest"])["warnings"]` before writing. The packaged
 pure-Python `write_3dm(scene, path, *, version=8)` supports archive versions 7
-and 8 and uses `rhino3dm==8.35.0`. It preserves layer hierarchy, materials,
+and 8 and uses `rhino3dm==8.35.0`. It preserves layer hierarchy and layer user text
+(`IFC::GlobalId`, `IFC::Class` and, on storeys, `IFC::Elevation` in metres), materials,
 groups, blocks, document settings/user text and deterministic scene object IDs.
 `IFC::GlobalId` user text is the portable identity; Python also sets
 `ObjectAttributes.Id`. openNURBS silently replaces duplicate IDs, so do not

@@ -20,7 +20,7 @@
 
 import type { IfcSourceBytes } from '@ifc-lite/parser';
 import { getAttributeNamesAcrossSchemas, resolveEntityNameAlias } from '@ifc-lite/parser';
-import { ENTITIES_IFC2X3, ENTITIES_IFC4_EXPRESS, ENTITIES_IFC4X3, type IfcEntityInfo } from '@ifc-lite/data';
+import { getEntitiesIfc2x3, getEntitiesIfc4Express, getEntitiesIfc4x3, type IfcEntityInfo } from '@ifc-lite/data';
 import { createSourceRefReader, decodeRange } from './source-ref-bounds.js';
 import { readStepSlots } from './step-argument-parser.js';
 
@@ -85,12 +85,19 @@ export function readEntityArgs(
  */
 export type SourceStepSchema = 'IFC2X3' | 'IFC4' | 'IFC4X3';
 
-const ATTRIBUTE_NAMES_BY_SCHEMA: Readonly<Record<SourceStepSchema, ReadonlyMap<string, readonly string[]>>> = {
-  IFC2X3: attributeTableByUpperName(ENTITIES_IFC2X3),
-  // Checked against the IFC4 EXPRESS registry (#5204): no phantom rows, no `TagList`.
-  IFC4: attributeTableByUpperName(ENTITIES_IFC4_EXPRESS),
-  IFC4X3: attributeTableByUpperName(ENTITIES_IFC4X3),
-};
+// Built on first use (the tables decode on first use too).
+let attributeNamesBySchema: Readonly<Record<SourceStepSchema, ReadonlyMap<string, readonly string[]>>> | undefined;
+function getAttributeNamesBySchema(): Readonly<Record<SourceStepSchema, ReadonlyMap<string, readonly string[]>>> {
+  if (attributeNamesBySchema === undefined) {
+    attributeNamesBySchema = {
+      IFC2X3: attributeTableByUpperName(getEntitiesIfc2x3()),
+      // Checked against the IFC4 EXPRESS registry (#5204): no phantom rows, no `TagList`.
+      IFC4: attributeTableByUpperName(getEntitiesIfc4Express()),
+      IFC4X3: attributeTableByUpperName(getEntitiesIfc4x3()),
+    };
+  }
+  return attributeNamesBySchema;
+}
 
 function attributeTableByUpperName(table: readonly IfcEntityInfo[]): Map<string, readonly string[]> {
   const map = new Map<string, readonly string[]>();
@@ -149,7 +156,7 @@ export function stepSourceSchema(schemaVersion: string | undefined): SourceStepS
  */
 export function attrIndex(type: string, name: string, schema?: SourceStepSchema): number {
   if (schema) {
-    const names = ATTRIBUTE_NAMES_BY_SCHEMA[schema].get(resolveEntityNameAlias(type).toUpperCase());
+    const names = getAttributeNamesBySchema()[schema].get(resolveEntityNameAlias(type).toUpperCase());
     if (names) return names.indexOf(name);
   }
   return getAttributeNamesAcrossSchemas(type).indexOf(name);

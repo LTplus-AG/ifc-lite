@@ -29,9 +29,9 @@ it('#9296 first authored geometry leaves the camera where the user put it', asyn
     const clearColorRef = useRef<[number,number,number,number]>([0,0,0,1]);
     useGeometryStreaming({ rendererRef, geometry, geometryReplacementVersion: version, isInitialized: true, isStreaming: false, modelCount: 1,
       geometryBoundsRef, clearColorRef, pendingMeshColorUpdates: null, pendingColorUpdates: null,
-      pendingMeshRemovals: null, pendingMeshTranslations: null, pendingMeshRotations: null, pendingInstancedShards: null,
+      pendingMeshRemovals: null, pendingMeshTranslations: null, pendingMeshRotations: null,
       clearPendingMeshColorUpdates: noop, clearPendingColorUpdates: noop, clearPendingMeshRemovals: noop,
-      pruneGeometryMeshes: noop, clearPendingMeshTranslations: noop, clearPendingMeshRotations: noop, clearInstancedShards: noop });
+      pruneGeometryMeshes: noop, clearPendingMeshTranslations: noop, clearPendingMeshRotations: noop });
     return null;
   }
   try {

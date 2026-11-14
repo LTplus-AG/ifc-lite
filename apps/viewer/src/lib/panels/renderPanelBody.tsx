@@ -11,6 +11,8 @@
  * hosts stay in lock-step.
  */
 
+import { loadBcfPanel, loadValidationPanel, loadLensPanel, loadGanttPanel, loadListPanel, loadExtensionsPanel } from './deferred-panel-modules';
+import { DeferredPanel } from './DeferredPanel';
 import { AssistantSourceContext } from '@/components/viewer/assistant/AssistantAction';
 import { lazy, Suspense, type ReactNode } from 'react';
 import { panelModelGateMode, type WorkspacePanelId } from './registry';
@@ -21,12 +23,6 @@ const InfluxPanel = lazy(() => import('@/components/viewer/influx/InfluxPanel').
 
 const ComparePanel = lazy(() => import('@/components/viewer/ComparePanel').then(module => ({ default: module.ComparePanel })));
 const ClashPanel = lazy(() => import('@/components/viewer/ClashPanel').then(module => ({ default: module.ClashPanel })));
-import { BCFPanel } from '@/components/viewer/BCFPanel';
-import { ValidationPanel } from '@/components/viewer/validation/ValidationPanel';
-import { LensPanel } from '@/components/viewer/LensPanel';
-import { ExtensionsPanel } from '@/components/extensions/ExtensionsPanel';
-import { GanttPanel } from '@/components/viewer/schedule/GanttPanel';
-import { ListPanel } from '@/components/viewer/lists/ListPanel';
 import { RoomPanel } from '@/components/viewer/RoomPanel';
 import { ZonesPanel } from '@/components/viewer/ZonesPanel';
 // Opened on demand; kept off the boot path (eager-bundle ratchet, #8341).
@@ -187,14 +183,14 @@ function panelBody(id: WorkspacePanelId, onClose: () => void): ReactNode {
     // whenever the panel showed one of the branches that lacked it.
     case 'properties': return <div {...tourAnchor(TOUR_ANCHORS.propertiesPanel)} className="h-full"><PropertiesPanel /></div>;
     case 'compare': return <ChunkErrorBoundary key="compare" label="Compare models"><Suspense fallback={null}><ComparePanel onClose={onClose} /></Suspense></ChunkErrorBoundary>;
-    case 'bcf': return <BCFPanel onClose={onClose} />;
-    case 'validation': return <ValidationPanel onClose={onClose} />;
-    case 'lens': return <LensPanel onClose={onClose} />;
+    case 'bcf': return <DeferredPanel id="bcf" onClose={onClose} load={loadBcfPanel} />;
+    case 'validation': return <DeferredPanel id="validation" onClose={onClose} load={loadValidationPanel} />;
+    case 'lens': return <DeferredPanel id="lens" onClose={onClose} load={loadLensPanel} />;
     case 'clash': return <ChunkErrorBoundary key="clash" label="Clash panel"><Suspense fallback={null}><ClashPanel onClose={onClose} /></Suspense></ChunkErrorBoundary>;
-    case 'extensions': return <ExtensionsPanel onClose={onClose} />;
+    case 'extensions': return <DeferredPanel id="extensions" onClose={onClose} load={loadExtensionsPanel} />;
     case 'script': return <ChunkErrorBoundary label="Script panel"><Suspense fallback={null}><ScriptPanel /></Suspense></ChunkErrorBoundary>;
-    case 'gantt': return <GanttPanel />;
-    case 'lists': return <ListPanel />;
+    case 'gantt': return <DeferredPanel id="gantt" onClose={onClose} load={loadGanttPanel} />;
+    case 'lists': return <DeferredPanel id="lists" onClose={onClose} load={loadListPanel} />;
     case 'collab': return <RoomPanel onClose={onClose} />;
     case 'zones': return <ZonesPanel onClose={onClose} />;
     case 'loadReport': return <LoadReportPanelBody onClose={onClose} />;

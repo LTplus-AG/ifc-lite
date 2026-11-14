@@ -7,9 +7,18 @@
 import { safeUtf8Decode } from '@ifc-lite/data';
 
 /**
- * Detect if a buffer contains IFCX (JSON), IFC (STEP), or GLB (binary glTF) format.
+ * The first 24 bytes of every Rhino archive, ahead of its version digits. The
+ * reader holds the same string, with the version check beside it
+ * (`packages/rhino3dm/src/read/header.ts`); sharing it would mean a package
+ * edge from this dependency-free sniffer.
  */
-export function detectFormat(buffer: ArrayBuffer): 'ifcx' | 'ifc' | 'glb' | 'unknown' {
+const RHINO_3DM_MAGIC = '3D Geometry File Format ';
+
+/**
+ * Detect if a buffer contains IFCX (JSON), IFC (STEP), GLB (binary glTF) or
+ * Rhino (.3dm) format.
+ */
+export function detectFormat(buffer: ArrayBuffer): 'ifcx' | 'ifc' | 'glb' | '3dm' | 'unknown' {
   // Check GLB magic bytes first (binary format, 4-byte magic: 0x46546C67 = 'glTF')
   if (buffer.byteLength >= 4) {
     const magic = new DataView(buffer).getUint32(0, true);
@@ -27,6 +36,13 @@ export function detectFormat(buffer: ArrayBuffer): 'ifcx' | 'ifc' | 'glb' | 'unk
   // IFCX is JSON starting with {
   if (start.startsWith('{')) {
     return 'ifcx';
+  }
+
+  // A Rhino archive is binary, but its magic is ASCII and the decoder above is
+  // non-fatal, so the first 24 characters survive whatever follows. Checked
+  // before the STEP branch, because a binary tail can hold anything.
+  if (start.startsWith(RHINO_3DM_MAGIC)) {
+    return '3dm';
   }
 
   // IFC STEP starts with ISO-10303-21

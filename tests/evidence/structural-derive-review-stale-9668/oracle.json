@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "#9668: Apply must refuse a derivation reviewed before the model changed; skip the staleness check.",
+  "key": "apps/viewer/src/lib/actions/structural-derive-review.ts",
+  "mutation": "tests/evidence/structural-derive-review-stale-9668/behaviour.oracle.patch",
+  "test": "apps/viewer/src/lib/actions/structural-derive-review.test.ts"
+}

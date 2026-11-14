@@ -2,8 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { effectiveTypeProperties } from './properties/effectiveTypeProperties';
-import { useMemo, useState, useCallback, useEffect } from 'react';
+import { effectiveTypeProperties, liveTypeOccurrences } from './properties/effectiveTypeProperties';
+import { lazy, Suspense, useMemo, useState, useCallback, useEffect } from 'react';
 import { useTranslation } from '@/i18n';
 import { Building2, Layers, FileText, Calculator, Tag, MousePointer2, PenLine, ChevronDown } from 'lucide-react';
 import { EditToolbar } from './PropertyEditor';
@@ -14,7 +14,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { EmptyState } from '@/components/ui/empty-state';
 import { useViewerStore } from '@/store';
-import { mutationDenialKey, mutationPermission } from '@/store/mutation-permission';
+import { mutationDenialKey, dataMutationPermission } from '@/store/mutation-permission';
 import { effectiveQuantitySets } from './properties/effectiveSets';
 import { readOccurrenceQuantityResult } from './properties/readOccurrenceQuantityResult';
 import { useSelectAssembly } from './properties/useSelectAssembly';
@@ -23,7 +23,7 @@ import { useIfc } from '@/hooks/useIfc';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { IfcQuery } from '@ifc-lite/query';
 import { extractClassificationsOnDemand, extractTypeEntityOwnProperties, extractGeoreferencingOnDemand, extractLengthUnitScale, ProjectUnits, taskProductExpressIds, taskProductGlobalIds, type IfcDataStore, type MaterialPsetGroup } from '@ifc-lite/parser';
-import { RelationshipType, isSpatialStructureTypeName, isStoreyLikeSpatialTypeName } from '@ifc-lite/data';
+import { isSpatialStructureTypeName, isStoreyLikeSpatialTypeName } from '@ifc-lite/data';
 import type { EntityRef, FederatedModel } from '@/store/types';
 import { ZoneVolumeBreakdown } from './ZoneVolumeBreakdown';
 import type { ZoneSet } from '@/lib/zones';
@@ -46,7 +46,7 @@ import { ClassificationCard } from './properties/ClassificationCard';
 import { MaterialCard } from './properties/MaterialCard';
 import { MaterialTotalsPanel } from './properties/MaterialTotalsPanel';
 import { ScheduleCard } from './properties/ScheduleCard';
-import { StructuralCard } from './properties/StructuralCard';
+import { structuralCardSubject } from './properties/selectedStructuralMember';
 import { TaskEditCard } from './properties/TaskEditCard';
 import { DocumentCard } from './properties/DocumentCard';
 import { effectiveDocuments } from './properties/effectiveDocuments';
@@ -80,6 +80,10 @@ import { AttributeEditorField } from './properties/AttributeEditorField';
 import { CopyValueButton } from './properties/CopyValueButton';
 import { SelectionSummaryPanel } from './properties/SelectionSummaryPanel';
 import { AssistantAction } from './assistant/AssistantAction';
+import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
+
+// Loaded on the first structural selection: it is not entry-chunk weight (#9668).
+const StructuralCard = lazy(() => import('./properties/StructuralCard').then((m) => ({ default: m.StructuralCard })));
 
 export function PropertiesPanel() {
   const { t, locale } = useTranslation();
@@ -139,21 +143,17 @@ export function PropertiesPanel() {
   const multiSelectionCount = useViewerStore((s) => s.selectedEntitiesSet.size);
   const [find, setFind] = useState('');
 
-  // Inline property editing is gated by the global edit-mode pill in
-  // the main toolbar (see `uiSlice.editEnabled`). Reading it from the
-  // store keeps every edit affordance — properties, attributes,
-  // geometry manipulators, georeference placement, the Model workspace's draw
-  // tools — behind a single switch.
-  const editEnabled = useViewerStore((s) => s.editEnabled);
+  // Data editing is available in place, independent of the Model workspace (#9296).
   const collabRole = useViewerStore((s) => s.collabRole);
   const editPermission = useMemo(
-    () => mutationPermission(useViewerStore.getState(), selectedEntity?.modelId),
-    [editEnabled, collabRole, selectedEntity?.modelId, models],
+    () => dataMutationPermission(useViewerStore.getState(), selectedEntity?.modelId),
+    [collabRole, selectedEntity?.modelId, models],
   );
-  const editMode = editEnabled && editPermission.allowed;
+  const editMode = editPermission.allowed;
+  // Geometry and georeference placement stay in the Model workspace.
+  const geometryEditMode = useViewerStore((s) => s.workspaceMode === 'model' && s.editEnabled) && editMode;
   const propertiesActiveTab = useViewerStore((s) => s.propertiesActiveTab);
   const setPropertiesActiveTab = useViewerStore((s) => s.setPropertiesActiveTab);
-  const setEditEnabled = useViewerStore((s) => s.setEditEnabled);
   const pendingPropertyFocus = useViewerStore((s) => s.pendingPropertyFocus);
   const setPendingPropertyFocus = useViewerStore((s) => s.setPendingPropertyFocus);
   const georefMutations = useViewerStore((s) => s.georefMutations);
@@ -161,7 +161,7 @@ export function PropertiesPanel() {
   // One-shot "jump to the property I just added in bSDD" focus (issue #1107).
   // The bSDD card arms `pendingPropertyFocus` and the user crosses over via its
   // "Edit in Properties" bar. When we land on the Properties tab for the same
-  // entity, enter edit mode, remember which row to highlight, and consume the
+  // entity, remember which row to highlight, and consume the
   // request so it fires exactly once.
   const [focusedPropKey, setFocusedPropKey] = useState<string | null>(null);
 
@@ -172,13 +172,12 @@ export function PropertiesPanel() {
     // Match on the same raw modelId + expressId the selection carries; a stale
     // focus for a different entity is left untouched (never consumed here).
     if (focus.modelId !== selectedEntity.modelId || focus.entityId !== selectedEntity.expressId) return;
-    setEditEnabled(true);
     setFind(''); // A prior query must not hide the row bSDD asked us to reveal.
     // entityId-qualified key so it can only ever highlight the occurrence row
     // (not an inherited type pset that happens to share the name).
     setFocusedPropKey(`${focus.entityId}:${focus.psetName}:${focus.propName}`);
     setPendingPropertyFocus(null);
-  }, [propertiesActiveTab, pendingPropertyFocus, selectedEntity, setEditEnabled, setPendingPropertyFocus]);
+  }, [propertiesActiveTab, pendingPropertyFocus, selectedEntity, setPendingPropertyFocus]);
 
   // A new selection abandons the arm-then-cross-over gesture: it was tied to the
   // previous element, so drop any armed focus and clear the transient highlight
@@ -767,18 +766,13 @@ export function PropertiesPanel() {
     const out = effectiveStructuralData(dataStore as IfcDataStore, mutationView);
     return out.hasStructural ? out : null;
   }, [model, ifcDataStore, selectedEntity?.modelId, mutationViews, mutationVersion]);
-  /** True when the selection is itself a structural member the extraction
-   *  knows about — used, like `hasScheduleForSelection`, to keep the
-   *  separator above StructuralCard from rendering on its own. */
-  const hasStructuralForSelection = useMemo(() => {
-    if (!selectedEntity || !structuralData) return false;
-    const gid = selectedEntityGlobalId;
-    const expressId = selectedEntity.expressId;
-    return structuralData.members.some((m) => {
-      if (gid && m.globalId === gid) return true;
-      return expressId > 0 && m.expressId === expressId;
-    });
-  }, [selectedEntity, structuralData, selectedEntityGlobalId]);
+  /** True when StructuralCard renders for the selection: asks the card's own
+   *  question, like `hasScheduleForSelection`, so the separator above it never
+   *  renders on its own. */
+  const hasStructuralForSelection = useMemo(
+    () => !!selectedEntity && !!structuralCardSubject(structuralData, selectedEntity.expressId, selectedEntityGlobalId),
+    [selectedEntity, structuralData, selectedEntityGlobalId],
+  );
 
   // Extract georeferencing info for the model (used in coordinates section)
   const georef = useMemo(() => {
@@ -953,39 +947,32 @@ export function PropertiesPanel() {
     const dataStore = model?.ifcDataStore ?? ifcDataStore;
     if (!dataStore?.relationships) return null;
 
+    const view = mutationViews.get(selectedEntity.modelId === 'legacy' ? '__legacy__' : selectedEntity.modelId);
     if (isTypeEntity) {
       const typeId = selectedEntity.expressId;
-      const affectedOccurrenceIds = dataStore.relationships.getRelated(
-        typeId,
-        RelationshipType.DefinesByType,
-        'forward'
-      );
-
       return {
         mode: 'type' as const,
         typeId,
-        typeEntityName: dataStore.entities.getTypeName(typeId),
-        affectedCount: affectedOccurrenceIds.length,
+        typeName: dataStore.entities.getName(typeId),
+        typeEntityName: view?.getNewEntity(typeId)?.type ?? dataStore.entities.getTypeName(typeId),
+        affectedCount: liveTypeOccurrences(dataStore as IfcDataStore, view, typeId).length,
       };
     }
 
     if (typeProperties && inheritedTypeProperties.length > 0) {
-      const affectedOccurrenceIds = dataStore.relationships.getRelated(
-        typeProperties.typeId,
-        RelationshipType.DefinesByType,
-        'forward'
-      );
-
       return {
         mode: 'inherited' as const,
         typeId: typeProperties.typeId,
-        typeEntityName: dataStore.entities.getTypeName(typeProperties.typeId),
-        affectedCount: affectedOccurrenceIds.length,
+        typeEntityName: typeProperties.typeEntityName,
+        typeName: typeProperties.typeName,
+        affectedCount: liveTypeOccurrences(dataStore as IfcDataStore, view, typeProperties.typeId).length,
+        // The inherited value can also be overridden on the selected occurrence alone (#9296).
+        occurrenceId: selectedEntity.expressId,
       };
     }
 
     return null;
-  }, [editMode, selectedEntity, model, ifcDataStore, isTypeEntity, typeProperties, inheritedTypeProperties]);
+  }, [editMode, selectedEntity, model, ifcDataStore, isTypeEntity, typeProperties, inheritedTypeProperties, mutationViews]);
 
   // Combined list of all properties for bSDD deduplication and edit toolbar
   const mergedProperties: PropertySet[] = useMemo(
@@ -1171,14 +1158,14 @@ export function PropertiesPanel() {
         {/* Part of Assembly (#3620) */}
         <AssemblyBadge assembly={assemblyParent} onSelect={handleSelectAssembly} />
         {/* World coordinates + Georeferencing: one Position row with a disclosure */}
-        {(entityCoordinates || renderedGeoref || editMode) && (
+        {(entityCoordinates || renderedGeoref || geometryEditMode) && (
           <EntityPositionSection
             coordinates={entityCoordinates}
             crsName={renderedGeoref?.projectedCRS?.name}
             georefPanel={{
               georef: renderedGeoref,
               modelId: selectedEntity?.modelId === 'legacy' ? '__legacy__' : (model?.id ?? selectedEntity?.modelId),
-              enableEditing: editMode,
+              enableEditing: geometryEditMode,
               schemaVersion: activeDataStore?.schemaVersion,
               coordinateInfo: (model?.geometryResult ?? geometryResult)?.coordinateInfo,
               geometryResult: model?.geometryResult ?? geometryResult,
@@ -1284,7 +1271,7 @@ export function PropertiesPanel() {
       )}
 
       {/* Tabs */}
-      {editEnabled && !editPermission.allowed && selectedEntity && (
+      {!editPermission.allowed && selectedEntity && (
         <output className="block border-b px-3 py-2 text-xs text-muted-foreground">
           {t(mutationDenialKey(editPermission.reason))}
         </output>
@@ -1348,11 +1335,11 @@ export function PropertiesPanel() {
             {/* Edit toolbar - only shown when edit mode is active */}
             {editMode && selectedEntity && (
               <div className="space-y-2 border-b border-border p-2">
-                <GeometryEditCard
+                {geometryEditMode && <GeometryEditCard
                   modelId={selectedEntity.modelId}
                   entityId={selectedEntity.expressId}
                   entityLabel={entityType ? `${entityType} #${selectedEntity.expressId}` : `#${selectedEntity.expressId}`}
-                />
+                />}
                 <EditToolbar
                   modelId={selectedEntity.modelId}
                   entityId={selectedEntity.expressId}
@@ -1496,19 +1483,25 @@ export function PropertiesPanel() {
                   </>
                 )}
 
-                {/* Structural analysis — analysis model, connections and
-                    applied loads for a selected IfcStructuralMember. Gated
-                    on `hasStructuralForSelection` for the same reason as the
+                {/* Structural analysis: a structural record's attributes, loads
+                    and conditions, a member's model, connections and loads, and the physical-to-analytical
+                    counterparts of either end of the link (#9668). Gated on
+                    `hasStructuralForSelection` for the same reason as the
                     schedule separator above. */}
                 {!findQuery && selectedEntity && structuralData && hasStructuralForSelection && (
-                  <>
-                    <StructuralCard
-                      structuralData={structuralData}
-                      sourceUnavailable={!activeDataStore?.source?.length}
-                      selectedExpressId={selectedEntity.expressId}
-                      selectedGlobalId={selectedEntityGlobalId}
-                    />
-                  </>
+                  <ChunkErrorBoundary key={`${selectedEntity.modelId}:${selectedEntity.expressId}`} label="Structural Analysis card">
+                    <Suspense fallback={null}>
+                      <StructuralCard
+                        structuralData={structuralData}
+                        sourceUnavailable={!activeDataStore?.source?.length}
+                        selectedExpressId={selectedEntity.expressId}
+                        selectedGlobalId={selectedEntityGlobalId}
+                        describeEntity={(expressId) => overlayAwareQuery.entityData({ modelId: selectedEntity.modelId, expressId })}
+                        onSelectEntity={handleSelectRelatedEntity}
+                        schemaVersion={activeDataStore?.schemaVersion} projectUnits={quantityUnitContext.value} unitDisplayOverrides={unitDisplayOverrides}
+                      />
+                    </Suspense>
+                  </ChunkErrorBoundary>
                 )}
               </div>
             )}

@@ -22,16 +22,18 @@
  * Later schemas still win when no schema is named, matching the parser's union.
  */
 
-import { ENTITIES_IFC2X3, ENTITIES_IFC4_EXPRESS, ENTITIES_IFC4X3, type IfcEntityInfo } from '@ifc-lite/data';
+import { getEntitiesIfc2x3, getEntitiesIfc4Express, getEntitiesIfc4x3, type IfcEntityInfo } from '@ifc-lite/data';
 import { getAttributeNamesAcrossSchemas } from '@ifc-lite/parser';
 
-/** Bundled schemas, oldest first. */
-const SCHEMA_TABLES: ReadonlyArray<readonly [string, readonly IfcEntityInfo[]]> = [
-  ['IFC2X3', ENTITIES_IFC2X3],
+/** Bundled schemas, oldest first. Getters: the table constants live in a
+ *  chunk the viewer loads at startup, and importing one from here kept it
+ *  (decoded at boot) there. */
+const SCHEMA_TABLES: ReadonlyArray<readonly [string, () => readonly IfcEntityInfo[]]> = [
+  ['IFC2X3', getEntitiesIfc2x3],
   // Checked against the IFC4 EXPRESS registry, so an agent asking about IFC4
   // is not told about entities or attributes IFC4 lacks (#5204).
-  ['IFC4', ENTITIES_IFC4_EXPRESS],
-  ['IFC4X3', ENTITIES_IFC4X3],
+  ['IFC4', getEntitiesIfc4Express],
+  ['IFC4X3', getEntitiesIfc4x3],
 ];
 
 let bySchema: Map<string, Map<string, IfcEntityInfo>> | null = null;
@@ -39,7 +41,7 @@ function tables(): Map<string, Map<string, IfcEntityInfo>> {
   if (!bySchema) {
     bySchema = new Map(SCHEMA_TABLES.map(([schema, list]) => [
       schema,
-      new Map(list.map((entity) => [entity.name.toUpperCase(), entity])),
+      new Map(list().map((entity) => [entity.name.toUpperCase(), entity])),
     ]));
   }
   return bySchema;

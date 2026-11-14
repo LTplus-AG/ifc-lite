@@ -114,6 +114,7 @@ export const appearanceWorkflowsEn = {
   'appearance.controller.adjustMapping': 'Adjust the mapping to preview another appearance.',
   'appearance.controller.leaveRoom': 'Leave the shared session to edit appearance, then share the finished model.',
   'appearance.controller.openIfc': 'Open an IFC model to apply appearance.',
+  'appearance.controller.requiresStepRecords': 'Appearance authoring needs a model with IFC records behind it. This one was read into tables instead.',
   'appearance.controller.requiresIfc4': 'Appearance authoring currently needs an IFC4 or IFC4X3 model.',
   'appearance.controller.waitForModel': 'Wait for the model to finish loading.',
   'appearance.controller.preparingPreview': 'Preparing appearance preview…',

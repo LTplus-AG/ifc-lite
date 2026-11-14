@@ -27,7 +27,7 @@
 import type { ProcessParallelOptions } from './geometry-parallel-options.js';
 import { postGeometryWorkerInit, spawnGeometryWorker } from './geometry-worker-init.js';
 import type { CoordinateHandler } from './coordinate-handler.js';
-import type { MeshData } from './types.js';
+import type { MeshData } from './types.js'; import { unpackFlatBatch } from './flat-batch-pack.js';
 import type { ByteStreamingPrePassResult } from './byte-streaming-prepass-result.js';
 import type { StreamingGeometryEvent } from './index.js';
 import { mergeGeometryDiagnostics, type GeometryDiagnostics } from './diagnostics.js';
@@ -37,8 +37,7 @@ import { readBatchSizingOverride, readShardScanFlag, readVisibilityFilterOverrid
 import { notifyIfWasmAssetUnavailable, notifyIfWorkerScriptUnavailable } from './wasm-asset-error.js';
 import { restashWasmPanicLocation } from './wasm-panic-forward.js';
 import { mergeShardStyleSlices, type MergedShardStyles, type StylesSlice } from './shard-style-merge.js';
-// The compiled-module memo lives in its own module so the main-thread
-// `IfcLiteBridge.init()` path can reuse whatever this pool already compiled
+// The compiled-module memo lives in its own module so the main-thread `IfcLiteBridge.init()` path can reuse whatever this pool already compiled
 // (and vice versa) instead of fetching the same binary a second time.
 import { compileSharedWasmModule } from './wasm-shared-module.js';
 import { stitchShards, type ShardColumns } from './shard-stitch.js';
@@ -134,8 +133,7 @@ export async function* processParallel(
   coordinator.reset();
   yield { type: 'start', totalEstimate: buffer.length / 1000 };
   yield { type: 'model-open', modelID: 0 };
-  // Kick off the ONE shared wasm compile immediately so it overlaps the SAB
-  // setup + worker-count planning below; awaited just before the workers init
+  // Kick off the ONE shared wasm compile immediately so it overlaps the SAB setup + worker-count planning below; awaited just before the workers init
   // (see `compileSharedWasmModule`). Null ⇒ each worker self-inits (unchanged).
   const wasmModulePromise = compileSharedWasmModule(options?.wasmUrls?.wasm);
 
@@ -281,6 +279,7 @@ export async function* processParallel(
       const msg = e.data;
       if (isTraceSpansMessage(msg)) { trace.merge(msg.payload, poolSpan); return; }
       if (msg.type === 'ready') {
+        if (trace.enabled) trace.span('geometry.workerReady', () => {}, { worker: workerIndex }, poolSpan);
         console.log(`[stream] worker[${workerIndex}] WASM ready @ ${elapsed()}ms`);
         return;
       }
@@ -300,6 +299,7 @@ export async function* processParallel(
           // Absent = "no stop reported". TODO(#3699): no wasm build sets it yet.
           malformedStart: msg.malformedStart as number | undefined,
         };
+        if (trace.enabled) trace.span('geometry.shardScanReceived', () => {}, { worker: workerIndex, shard: si }, shardScanSpan);
         shardResultsRemaining--;
         console.log(`[stream][shard] worker[${workerIndex}] shard ${si} done @ ${elapsed()}ms (${(msg.ids as Uint32Array).length} entities, remaining=${shardResultsRemaining})`);
         if (shardResultsRemaining === 0) {
@@ -380,7 +380,7 @@ export async function* processParallel(
         // typed-array types, so re-mapping every mesh here only re-allocated
         // ~one wrapper object per mesh (~110k per large load) on the main
         // thread. Pass the transferred objects straight through.
-        const meshes: MeshData[] = msg.meshes as MeshData[];
+        const meshes: MeshData[] = unpackFlatBatch(msg.meshes as MeshData[], msg.flatVertices);
         // Opaque repeated occurrences render only through per-batch IFNS shards;
         // include them in the running total even though they are not flat meshes.
         const instancedShards = (msg as { instancedShards?: ArrayBuffer[] }).instancedShards;

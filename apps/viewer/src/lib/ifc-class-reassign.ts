@@ -13,18 +13,20 @@
  */
 
 import {
-  ENTITIES_IFC2X3,
-  ENTITIES_IFC4_EXPRESS,
-  ENTITIES_IFC4X3,
+  getEntitiesIfc2x3,
+  getEntitiesIfc4Express,
+  getEntitiesIfc4x3,
   type IfcEntityInfo,
 } from '@ifc-lite/data';
 
 export type ReassignSchema = 'IFC2X3' | 'IFC4' | 'IFC4X3';
 
-const SCHEMA_LISTS: Record<ReassignSchema, readonly IfcEntityInfo[]> = {
-  IFC2X3: ENTITIES_IFC2X3,
-  IFC4: ENTITIES_IFC4_EXPRESS, // checked against IFC4's EXPRESS schema (#5204)
-  IFC4X3: ENTITIES_IFC4X3,
+// Getters: this module is on the viewer's startup path, and reading the table
+// constants there decoded all three tables at boot.
+const SCHEMA_LISTS: Record<ReassignSchema, () => readonly IfcEntityInfo[]> = {
+  IFC2X3: getEntitiesIfc2x3,
+  IFC4: getEntitiesIfc4Express, // checked against IFC4's EXPRESS schema (#5204)
+  IFC4X3: getEntitiesIfc4x3,
 };
 
 /**
@@ -59,7 +61,7 @@ function indexFor(schema: ReassignSchema): Map<string, IfcEntityInfo> {
   let idx = indexCache.get(schema);
   if (!idx) {
     idx = new Map();
-    for (const e of SCHEMA_LISTS[schema]) idx.set(e.name.toUpperCase(), e);
+    for (const e of SCHEMA_LISTS[schema]()) idx.set(e.name.toUpperCase(), e);
     indexCache.set(schema, idx);
   }
   return idx;
@@ -88,7 +90,7 @@ export function getReassignTargets(schema: ReassignSchema): string[] {
   if (cached) return cached;
   const byUpper = indexFor(schema);
   const out: string[] = [];
-  for (const e of SCHEMA_LISTS[schema]) {
+  for (const e of SCHEMA_LISTS[schema]()) {
     if (e.abstract) continue;
     if (!isSubtypeOf(e, 'IFCELEMENT', byUpper)) continue;
     out.push(e.name);

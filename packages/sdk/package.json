@@ -5,7 +5,9 @@
   "type": "module",
   "sideEffects": [
     "./src/index.ts",
-    "./dist/index.js"
+    "./dist/index.js",
+    "./src/namespaces/store-structural.ts",
+    "./dist/namespaces/store-structural.js"
   ],
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

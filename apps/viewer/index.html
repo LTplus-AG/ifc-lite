@@ -3,6 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <!-- The viewer themes itself, light and dark (#9718). Declaring both keeps a
+       browser from force-darkening the page: Samsung Internet's dark mode and
+       Chrome's auto dark theme invert the DOM but not the WebGPU canvas, which
+       left dark chrome and a dark-on-white ViewCube over a light model view. -->
+  <meta name="color-scheme" content="light dark">
   <title>IFClite Viewer</title>
   <script>
     // Apply theme before first paint to prevent flash of wrong theme.

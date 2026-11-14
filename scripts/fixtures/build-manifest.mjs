@@ -143,7 +143,8 @@ const SKIP_DIRS = new Set(['local']);
 // Recognised fixture extensions. Add new types here when needed.
 // .ifczip: zip container fixtures (textured models ship images as siblings
 // of the .ifc inside the archive, #1781).
-const FIXTURE_EXT = /\.(ifc|ifcx|ifczip|xml|landxml)$/i;
+// .3dm: Rhino models for the @ifc-lite/rhino3dm reader.
+const FIXTURE_EXT = /\.(ifc|ifcx|ifczip|xml|landxml|3dm)$/i;
 const LANDXML_EXT = /\.(xml|landxml)$/i;
 
 const LFS_RE = /^version https:\/\/git-lfs\.github\.com\/spec\/v1\noid sha256:([a-f0-9]{64})\nsize (\d+)\n?$/;
@@ -255,18 +256,19 @@ function retainGaussianProvenance(entry) {
   return { ...entry, provenance: previous.provenance, gaussian: previous.gaussian };
 }
 
-function retainUpstreamArchive(entry) {
+function retainUpstreamSource(entry) {
   const previous = previousEntries.get(entry.path);
-  if (!previous?.upstream_archive) return entry;
+  const key = previous?.upstream_archive ? 'upstream_archive' : previous?.upstream_file ? 'upstream_file' : null;
+  if (!key) return entry;
   if (previous.sha256 !== entry.sha256 || previous.size !== entry.size) {
-    throw new Error(`refusing to change upstream fixture ${entry.path} without reviewing its pinned archive`);
+    throw new Error(`refusing to change upstream fixture ${entry.path} without reviewing its pinned source`);
   }
-  return { ...entry, upstream_archive: previous.upstream_archive };
+  return { ...entry, [key]: previous[key] };
 }
 
 const out = {
   ...header,
-  files: files.map(({ source: _src, ...rest }) => retainUpstreamArchive(retainGaussianProvenance(retainLandXmlProvenance(rest)))),
+  files: files.map(({ source: _src, ...rest }) => retainUpstreamSource(retainGaussianProvenance(retainLandXmlProvenance(rest)))),
 };
 
 assertValidManifest(out);

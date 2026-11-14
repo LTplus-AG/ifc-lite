@@ -5,6 +5,7 @@
 import type { Catalogue } from '../../registry';
 
 export const modelWorkspaceRu = {
+  'modelWorkspace.leave': 'Выйти',
   "modelWorkspace.rail.aria": "Инструменты моделирования",
   "modelWorkspace.rail.hosted": "Проёмы, двери и окна",
   "modelWorkspace.rail.circulation": "Лестницы и ограждения",
@@ -51,5 +52,5 @@ export const modelWorkspaceRu = {
   "modelWorkspace.layout.plan": "План",
   "modelWorkspace.layout.split": "Разделить",
   "modelWorkspace.layout.3d": "3D",
-  "modelWorkspace.hint.onboarding": "W стена · Shift+S плита · нажмите элемент для редактирования · E выход",
+  "modelWorkspace.hint.onboarding": "W стена · Shift+S плита · нажмите элемент для редактирования · M выход",
 } satisfies Catalogue;

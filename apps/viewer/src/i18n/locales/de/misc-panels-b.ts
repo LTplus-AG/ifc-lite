@@ -111,6 +111,10 @@ export const miscPanelsBDe = {
   'shareDialog.guestName': 'Gast',
   'shareDialog.roomCreationFailed':
     'Es wurde keine Sitzung erstellt. Schließen und öffnen Sie diesen Dialog erneut, um es noch einmal zu versuchen.',
+  'shareDialog.shareSkipped.noRecords':
+    'Nicht in der geteilten Sitzung enthalten, keine IFC-Datensätze zum Teilen vorhanden: {models}.',
+  'shareDialog.shareSkipped.allRefused':
+    'Hier kann nichts geteilt werden, keine IFC-Datensätze zum Teilen vorhanden: {models}.',
   'shareDialog.linkCreationFailed': 'Erstellen des Links fehlgeschlagen. Prüfen Sie die Verbindung und versuchen Sie es erneut.',
   'shareDialog.joinedViaInvite':
     'Sie sind über eine Einladung beigetreten – wenn Sie sie teilen, wird derselbe Zugriff weitergegeben. Nur die Sitzungsadministration kann neue Links erstellen.',

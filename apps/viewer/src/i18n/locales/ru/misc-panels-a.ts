@@ -142,4 +142,9 @@ export const miscPanelsARu = {
   "spaceMousePanel.copyFailedLabel": "Копирование не удалось, попробуйте снова",
   "spaceMousePanel.copyDeviceReportLabel": "Скопировать отчёт об устройстве",
   "spaceMousePanel.reportHintMessage": "Если на вашем устройстве отображается некорректное или отсутствующее движение, скопируйте этот отчёт и вставьте его в задачу на GitHub, чтобы можно было исправить расположение осей для вашей модели.",
+  "spaceMousePanel.useDriverLabel": "Использовать драйвер 3Dconnexion",
+  "spaceMousePanel.useDriverHint": "Подключение через запущенный драйвер 3DxWare вместо WebHID. Скорость, оси и режим навигации берутся из ваших настроек 3Dconnexion. SDK 3Dconnexion загружается, только пока этот параметр включён.",
+  "spaceMousePanel.driverConnecting": "Подключение к драйверу 3Dconnexion…",
+  "spaceMousePanel.driverConnected": "Подключено через драйвер 3Dconnexion",
+  "spaceMousePanel.driverUnavailable": "Драйвер 3Dconnexion недоступен, поэтому используется WebHID. Убедитесь, что запущен 3DxWare 10.",
 } satisfies Catalogue;

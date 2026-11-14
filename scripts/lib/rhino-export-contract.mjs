@@ -57,6 +57,15 @@ function rhinoExportContract(api, wallBytes, test, defaults) {
       const manifest = JSON.parse(scene.manifest);
       assert.equal(manifest.format, 'ifc-lite.rhino-scene');
       assert.ok(manifest.objects.length > 0);
+      // Import decision D3: every layer carries `userStrings`, and the layers that stand
+      // for the project and the spatial structure carry their IFC identity.
+      for (const layer of manifest.layers) assert.ok(Array.isArray(layer.userStrings), `layer "${layer.name}" lacks userStrings`);
+      const classes = manifest.layers.map(l => Object.fromEntries(l.userStrings)).filter(t => t['IFC::Class']);
+      for (const text of classes) assert.match(text['IFC::GlobalId'], /^[0-9A-Za-z_$]{22}$/);
+      for (const cls of ['IfcProject', 'IfcSite', 'IfcBuilding', 'IfcBuildingStorey']) {
+        assert.ok(classes.some(t => t['IFC::Class'] === cls), `no layer stamped ${cls}`);
+      }
+      assert.ok(classes.filter(t => t['IFC::Class'] === 'IfcBuildingStorey').every(t => Number.isFinite(Number(t['IFC::Elevation']))));
       assert.ok(scene.blob instanceof Uint8Array);
     } finally { scene.free(); }
     for (const options of ['{"unknown":true}', '{"units":"yards"}', '{"normals":null}']) {

@@ -36,6 +36,7 @@ mod oversized_ids;
 mod record;
 mod record_strings;
 mod report_sink;
+pub use report_sink::scan_report_events;
 mod scanner;
 mod slots;
 mod tokenizer;

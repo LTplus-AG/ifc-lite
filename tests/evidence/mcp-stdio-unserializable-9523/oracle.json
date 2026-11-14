@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "packages/mcp/src/bridge/tab-bridge.ts",
+  "mutation": "tests/evidence/mcp-stdio-unserializable-9523/behaviour.oracle.patch",
+  "test": "packages/mcp/src/transport/stdio-serialize.test.ts",
+  "why": "#9523: a response stdio cannot serialize must still answer its request with an error."
+}

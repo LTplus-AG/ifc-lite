@@ -271,13 +271,11 @@ export function Viewport({
     pendingMeshRemovals,
     pendingMeshTranslations,
     pendingMeshRotations,
-    pendingInstancedShards,
     clearPendingColorUpdates,
     clearPendingMeshColorUpdates,
     clearPendingMeshRemovals, pruneGeometryMeshes,
     clearPendingMeshTranslations,
     clearPendingMeshRotations,
-    clearInstancedShards,
   } = useColorUpdateState();
 
   // IFC data state
@@ -1390,7 +1388,6 @@ export function Viewport({
     pendingMeshRemovals,
     pendingMeshTranslations,
     pendingMeshRotations,
-    pendingInstancedShards,
     currentLevelY,
     modelIdToIndex,
     modelIdToOffset,
@@ -1400,7 +1397,6 @@ export function Viewport({
     clearPendingMeshRemovals, pruneGeometryMeshes,
     clearPendingMeshTranslations,
     clearPendingMeshRotations,
-    clearInstancedShards,
     clearColorRef,
     releaseGeometryAfterFinalize: releaseGeometryAfterStream,
     onGeometryReleased,

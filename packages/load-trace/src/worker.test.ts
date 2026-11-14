@@ -137,3 +137,28 @@ describe('worker trace alignment (#6956)', () => {
     expect(sent).toEqual([]);
   });
 });
+
+// Load hillclimb measurement contract: synchronous sub-stages preserve the handler result.
+it('records synchronous worker sub-stages only after enable', async () => {
+  const posted: TraceSpansMessage[] = [];
+  let now = 1;
+  const host = createWorkerTraceHost({ spanNames: {}, post: (m) => posted.push(m), now: () => now, timeOrigin: 0 });
+  expect(host.begin('worker.batch.wasm')).toBe(-1);
+  host.end(-1);
+  host.flush();
+  expect(posted).toEqual([]);
+  await host({ type: 'load-trace:enable', thread: 'geom-0' }, async () => {});
+  await host({ type: 'batch' }, async () => {
+    const wasm = host.begin('worker.batch.wasm');
+    now = 3;
+    host.end(wasm);
+    host.end(wasm); // a second end (the caller's finally) records nothing
+    const collect = host.begin('worker.batch.collect');
+    now = 5;
+    host.end(collect);
+  });
+  expect(posted.flatMap((m) => m.payload.spans)).toEqual([
+    { name: 'worker.batch.wasm', start: 1, end: 3 },
+    { name: 'worker.batch.collect', start: 3, end: 5 },
+  ]);
+});

@@ -362,6 +362,7 @@ describe('VisibilitySlice', () => {
         site: true,
         ifcAnnotations: true,
         ifcGrid: true,
+        structuralGlyphs: true,
       });
     });
   });

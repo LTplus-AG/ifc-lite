@@ -104,6 +104,7 @@ export const appearanceWorkflowsRu = {
   "appearance.controller.adjustMapping": "Настройте наложение текстуры для предварительного просмотра другого внешнего вида.",
   "appearance.controller.leaveRoom": "Выйдите из совместной сессии, чтобы отредактировать внешний вид, а затем поделитесь готовой моделью.",
   "appearance.controller.openIfc": "Откройте модель IFC, чтобы применить внешний вид.",
+  "appearance.controller.requiresStepRecords": "Для создания внешнего вида нужна модель с записями IFC. Эта была прочитана в виде таблиц.",
   "appearance.controller.requiresIfc4": "Для создания внешнего вида в настоящее время требуется модель в формате IFC4 или IFC4X3.",
   "appearance.controller.waitForModel": "Дождитесь завершения загрузки модели.",
   "appearance.controller.preparingPreview": "Подготовка предварительного просмотра внешнего вида…",

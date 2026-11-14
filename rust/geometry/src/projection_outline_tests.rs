@@ -250,3 +250,101 @@ fn non_finite_triangles_are_skipped_and_negative_zero_is_kept() {
     let out = mesh_outline_2d(&pos, &idx, ProjectionAxis::Y, false).expect("-0.0 box");
     assert_eq!(out.axis_min, 0.0);
 }
+
+/// One triangle in the Y view, given as (x, z) corners. A lone triangle is
+/// returned without a union, so `Ok`/`Empty` reports the guard's decision
+/// directly rather than whatever i_overlay does with the shape.
+fn lone_triangle(corners: [[f32; 2]; 3]) -> Result<MeshOutline, NoOutline> {
+    let pos: Vec<f32> = corners.iter().flat_map(|c| [c[0], 0.0, c[1]]).collect();
+    mesh_outline_2d(&pos, &[0, 1, 2], ProjectionAxis::Y, false)
+}
+
+/// A triangle with no extent at all, and a near-collinear needle (10 m long,
+/// 1 µm tall: f32 rounding residue on a straight edge), are not footprint.
+/// The needle's doubled area (1e-5 m²) is ABOVE the absolute bound, so only
+/// the aspect rule drops it. Mutation: delete either rule, or invert its
+/// comparison.
+#[test]
+fn zero_area_and_sliver_triangles_are_skipped() {
+    let point = [[2.0, 3.0], [2.0, 3.0], [2.0, 3.0]];
+    let needle = [[0.0, 0.0], [10.0, 0.0], [5.0, 1e-6]];
+    // The same needle far from the origin and off-axis, vertex order rotated.
+    let far_needle = [[205.0, 105.0], [200.0, 100.0], [210.0, 110.00002]];
+    for (name, tri) in [
+        ("point", point),
+        ("needle", needle),
+        ("far needle", far_needle),
+    ] {
+        assert_eq!(lone_triangle(tri).err(), Some(NoOutline::Empty), "{name}");
+        let reversed = [tri[0], tri[2], tri[1]];
+        assert_eq!(
+            lone_triangle(reversed).err(),
+            Some(NoOutline::Empty),
+            "{name} reversed"
+        );
+    }
+
+    // Appended to a real mesh, clear of its footprint, they change nothing.
+    let (pos, idx) = box_mesh(1.0, 4.0, 0.0, 2.0, -1.0, 1.0, false);
+    let clean = mesh_outline_2d(&pos, &idx, ProjectionAxis::Y, false).expect("clean");
+    let (mut p, mut i) = (pos.clone(), idx.clone());
+    for tri in [point, needle, far_needle] {
+        let base = (p.len() / 3) as u32;
+        // Shifted in z so nothing touches the box's x-z footprint.
+        p.extend(tri.iter().flat_map(|c| [c[0], 1.0, c[1] + 20.0]));
+        i.extend_from_slice(&[base, base + 1, base + 2]);
+    }
+    let out = mesh_outline_2d(&p, &i, ProjectionAxis::Y, false).expect("box survives");
+    assert_eq!(out.contours, clean.contours);
+}
+
+/// Thin is not degenerate. A 1 mm strip is real geometry (sheet metal, a
+/// membrane edge) whether it runs one metre or the length of a building, and
+/// a 1 mm facet is a real feature. Each must come back as its own outline
+/// with its extent intact. Mutation: raise either threshold a few decades.
+#[test]
+fn thin_but_real_triangles_are_kept() {
+    let cases: [(&str, [[f32; 2]; 3], f32, f32); 4] = [
+        (
+            "1 mm x 1 m",
+            [[0.0, 0.0], [1.0, 0.0], [0.0, 0.001]],
+            1.0,
+            0.001,
+        ),
+        (
+            "1 mm x 100 m",
+            [[0.0, 0.0], [100.0, 0.0], [50.0, 0.001]],
+            100.0,
+            0.001,
+        ),
+        (
+            "1 mm x 1 mm",
+            [[0.0, 0.0], [0.001, 0.0], [0.0, 0.001]],
+            0.001,
+            0.001,
+        ),
+        // 1 mm x 1 m again, 300 m from the origin where f32 is coarsest.
+        (
+            "far 1 mm x 1 m",
+            [[300.0, 300.0], [301.0, 300.0], [300.0, 300.001]],
+            1.0,
+            0.001,
+        ),
+    ];
+    for (name, tri, width, height) in cases {
+        let out = lone_triangle(tri).unwrap_or_else(|e| panic!("{name} dropped: {e:?}"));
+        assert_eq!(out.contours.len(), 1, "{name}");
+        assert_eq!(out.contours[0].len(), 3, "{name}");
+        let (minu, minv, maxu, maxv) = bbox_2d(&out.contours);
+        assert!(
+            (maxu - minu - width).abs() < width * 1e-3,
+            "{name} width {}",
+            maxu - minu
+        );
+        assert!(
+            (maxv - minv - height).abs() < height * 0.05,
+            "{name} height {}",
+            maxv - minv
+        );
+    }
+}

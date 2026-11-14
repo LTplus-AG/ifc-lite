@@ -4,8 +4,9 @@
 
 /**
  * The per-model session state that lives outside the store, released when its
- * model leaves: appearance assets and the 2D markup snapshots
- * (`liveMarkupCache`). Model ids are reused (`room:<id>`, explicit flow ids),
+ * model leaves: appearance assets, the 2D markup snapshots
+ * (`liveMarkupCache`) and undrained GPU-instancing shards
+ * (`instancedShardQueue`). Model ids are reused (`room:<id>`, explicit flow ids),
  * so either one outliving its model is handed to the next model given that id.
  *
  * These are side effects, so they run in the entry points rather than in a
@@ -17,15 +18,18 @@
 
 import { modelAppearanceAssets } from '../../lib/appearance/model-assets.js';
 import { forgetLiveMarkup } from './drawing2DSlice.markupTransition.js';
+import { discardInstancedShards } from '../instancedShardQueue.js';
 
 /** After `removeModel`'s `set`: release `modelId`'s session state. */
 export function releaseRemovedModelSession(modelId: string): void {
   modelAppearanceAssets.remove(modelId);
   forgetLiveMarkup(modelId);
+  discardInstancedShards(modelId);
 }
 
 /** After `clearAllModels`' `set`: release every model's session state. */
 export function releaseAllModelSessions(): void {
   modelAppearanceAssets.clear();
   forgetLiveMarkup();
+  discardInstancedShards();
 }

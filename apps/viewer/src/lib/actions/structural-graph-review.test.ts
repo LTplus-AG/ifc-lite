@@ -5,7 +5,8 @@ import '@/test/setup-dom.js';
 import 'fake-indexeddb/auto';
 import assert from 'node:assert/strict';
 import { assertSameNativeIfcGraph } from '@/test/native-ifc-graph';
-import { afterEach, test } from 'node:test';
+import { afterEach, before, test } from 'node:test';
+import { loadStructuralWrites } from '@/sdk/adapters/store-adapter-structural';
 import { asSourceBytes, effectiveMetadataRecord, extractStructuralOnDemand } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { seedAuthoringSample, SAMPLE_MODEL, GROUND_STOREY, parseIfc, danglingReferences } from '@/test/authoring-sample-fixture';
@@ -17,6 +18,8 @@ import { prepareStructuralReview } from './structural-graph-review';
 import { commitReviewedStructural } from './structural-graph-receipt';
 import { decodeModelChangeReceipt } from './receipts';
 import { undoModelChanges } from './model-change-commit';
+// The viewer's structural write path is its own chunk (#9668); its UI awaits it before preparing.
+before(() => loadStructuralWrites());
 const initial = useViewerStore.getState();
 afterEach(() => useViewerStore.setState(initial, true));
 async function setup() {

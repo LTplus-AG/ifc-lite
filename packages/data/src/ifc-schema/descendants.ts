@@ -51,7 +51,7 @@ import { ENTITY_NAME_ALIASES, CROSS_SCHEMA_RENAMES } from './entity-aliases.js';
 // The same per-version map `getEntities` answers from. Shared rather than
 // re-declared here: a second copy would let a future schema version reach one
 // of the two and give `getEntities` and this resolver different worlds.
-import { ENTITIES_BY_VERSION } from './index.js';
+import { entitiesForVersion } from './index.js';
 import type { IfcSchemaVersion } from './types.js';
 
 const ALL_VERSIONS: readonly IfcSchemaVersion[] = ['IFC2X3', 'IFC4', 'IFC4X3'];
@@ -71,7 +71,7 @@ function tableFor(v: IfcSchemaVersion): SchemaTable {
   if (cached) return cached;
   const children = new Map<string, string[]>();
   const names = new Set<string>();
-  for (const entity of ENTITIES_BY_VERSION[v]) {
+  for (const entity of entitiesForVersion(v)) {
     const name = entity.name.toUpperCase();
     names.add(name);
     if (!entity.parent) continue;

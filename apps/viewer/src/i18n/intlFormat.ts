@@ -45,6 +45,16 @@ export function formatLocaleList(locale: string, values: readonly string[]): str
   return new Intl.ListFormat(supportedLocale(locale), { style: 'long', type: 'conjunction' }).format(values);
 }
 
+/**
+ * A list of values that are one quantity's components (`0, 0, -1`), with no
+ * conjunction. Where the locale's decimal separator is a comma, items are
+ * separated by `; ` so `1,5; 0` is never read as three numbers.
+ */
+export function formatLocaleValueList(locale: string, values: readonly string[]): string {
+  const decimal = new Intl.NumberFormat(supportedLocale(locale)).formatToParts(1.5).find((part) => part.type === 'decimal')?.value;
+  return values.join(decimal === ',' ? '; ' : ', ');
+}
+
 export function formatLocaleDate(
   locale: string,
   value: number | Date,

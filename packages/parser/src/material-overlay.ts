@@ -9,7 +9,8 @@ import { parsedWriteValue } from './property-value-parser.js';
 import { resolveOwnMaterialDefIds } from './material-associations.js';
 import type { IfcDataStore } from './columnar-parser.js';
 import { resolveEffectiveEntityRecord, type EffectiveEntityRecord } from './effective-entity-record.js';
-import { resolveEffectiveRelationshipOverlay } from './effective-relationship-overlay.js';
+import { selectionRelationshipIds, selectionRelationshipCacheKey } from './selection-relationship-ids.js';
+import { selectionRelationshipOverlay, selectedRelationshipMembers } from './selection-relationship-overlay.js';
 
 export interface MaterialReadView extends EffectiveEntityOverlay {
   getNewEntities(): ReadonlyArray<{ readonly expressId: number; readonly type: string; readonly attributes?: readonly unknown[] }>;
@@ -17,6 +18,7 @@ export interface MaterialReadView extends EffectiveEntityOverlay {
   getPositionalMutationsForEntity?(id: number): ReadonlyMap<number, unknown> | null;
   getAttributeMutationsForEntity?(id: number): ReadonlyArray<{ name: string; value: string }>;
   getMutationRevision?(): number;
+  getAttributeOverrideEntityIds?(): number[];
   getEffectiveChanges?(): ReadonlyArray<{ entityId: number; kind: string }>;
   resolveBaseEntityId?(id: number): number;
 }
@@ -62,21 +64,23 @@ export function materialRecordReader(store: IfcDataStore, view?: MaterialReadVie
 }
 
 interface Edges { own: Map<number, number[]>; types: Map<number, number[]>; unavailable: boolean }
-const edgesCache = new WeakMap<IfcDataStore, WeakMap<MaterialReadView, { revision: number; data: Edges }>>();
+const edgesCache = new WeakMap<IfcDataStore, WeakMap<MaterialReadView, { revision: number; data: Map<number, Edges> }>>();
 const relTypes = ['IFCRELASSOCIATESMATERIAL', 'IFCRELDEFINESBYTYPE'];
-function materialEdges(store: IfcDataStore, view: MaterialReadView): Edges {
+function materialEdges(store: IfcDataStore, view: MaterialReadView, entityId: number, primaryId = entityId): Edges {
   const revision = view.getMutationRevision?.();
   const cached = edgesCache.get(store)?.get(view);
-  if (revision !== undefined && cached?.revision === revision) return cached.data;
+  const cacheKey = selectionRelationshipCacheKey(store, view, entityId, cached && cached.revision === revision ? cached.data : undefined, primaryId);
+  if (revision !== undefined && cached?.revision === revision && cached.data.has(cacheKey)) return cached.data.get(cacheKey)!;
   // Source relationship records feed the canonical schema-derived endpoint reader.
   // @raw-entity-enumeration-ok canonical effective relationship inventory once per model/view revision
-  const ids = relTypes.flatMap(type => store.entityIndex.byType.get(type) ?? []);
+  const ids = (cacheKey === -1 ? null : selectionRelationshipIds(store, view, entityId, [RelationshipType.AssociatesMaterial, RelationshipType.DefinesByType], relTypes))
+    ?? relTypes.flatMap(type => store.entityIndex.byType.get(type) ?? []);
   for (const [id, mutation] of view.getTypeMutations?.() ?? []) {
     const sourceType = store.entityIndex.byId.get(id)?.type ?? store.deferredEntityIndex?.get(id)?.type;
     if (relTypes.includes(mutation.newType.toUpperCase()) || (sourceType && relTypes.includes(sourceType.toUpperCase()))) ids.push(id);
   }
   const sourceAvailable = Boolean(store.source?.length);
-  const overlay = resolveEffectiveRelationshipOverlay(sourceAvailable ? store : { ...store, getEntity: () => null }, {
+  const overlay = selectionRelationshipOverlay(sourceAvailable ? store : { ...store, getEntity: () => null }, view, {
     createdEntities: () => view.getNewEntities().filter(row => row.attributes !== undefined)
       .map(row => ({ ...row, attributes: [...row.attributes!] } as IfcEntity)),
     mutatedEntityIds: () => ids,
@@ -90,7 +94,7 @@ function materialEdges(store: IfcDataStore, view: MaterialReadView): Edges {
     const target = relation.relationshipType.toUpperCase() === relTypes[0] ? own
       : relation.relationshipType.toUpperCase() === relTypes[1] ? types : null;
     if (!target) continue;
-    for (const recipient of relation.related) {
+    for (const recipient of selectedRelationshipMembers(relation, entityId, cacheKey === -1)) {
       if (view.isDeleted(recipient)) continue;
       const values = target.get(recipient) ?? [];
       for (const id of relation.relating) if (!view.isDeleted(id) && !values.includes(id)) values.push(id);
@@ -103,7 +107,9 @@ function materialEdges(store: IfcDataStore, view: MaterialReadView): Edges {
   const data = { own, types, unavailable };
   if (revision !== undefined) {
     let model = edgesCache.get(store); if (!model) { model = new WeakMap(); edgesCache.set(store, model); }
-    model.set(view, { revision, data });
+    const rows = cached?.revision === revision ? cached.data : new Map<number, Edges>();
+    rows.set(cacheKey, data);
+    model.set(view, { revision, data: rows });
   }
   return data;
 }
@@ -112,13 +118,15 @@ function materialEdges(store: IfcDataStore, view: MaterialReadView): Edges {
 export function materialAssignmentState(store: IfcDataStore, entityId: number, view?: MaterialReadView | null) {
   const baseId = view?.resolveBaseEntityId?.(entityId) ?? entityId;
   const subjects = [...new Set([baseId, entityId])];
-  const current = view ? materialEdges(store, view) : null;
+  let unavailable = false;
   const hasSource = Boolean(store.source?.length);
   const original = (id: number, kind: 'own' | 'types'): number[] => {
     return kind === 'own' ? resolveOwnMaterialDefIds(store, id)
       : store.relationships?.getRelated(id, RelationshipType.DefinesByType, 'inverse') ?? [];
   };
   const read = (id: number, kind: 'own' | 'types') => {
+    const current = view ? materialEdges(store, view, id, entityId) : null;
+    unavailable ||= current?.unavailable ?? false;
     const edited = current?.[kind].get(id) ?? [];
     if (current && hasSource) return edited;
     return [...new Set([...original(id, kind), ...edited])];
@@ -131,8 +139,8 @@ export function materialAssignmentState(store: IfcDataStore, entityId: number, v
     }
   }
   const known = Boolean(store.relationships) || subjects.some(id => (store.onDemandMaterialMap?.get(id)?.length ?? 0) > 0)
-    || Boolean(current && hasSource);
-  return { ownerId, defIds, complete: known && !current?.unavailable };
+    || Boolean(view && hasSource);
+  return { ownerId, defIds, complete: known && !unavailable };
 }
 
 /** Whether the supplied model can prove the selected element’s complete material membership. */

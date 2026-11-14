@@ -143,6 +143,14 @@ resolution inside the worker entirely. For webpack 5 use
 for other bundlers, any string the runtime can resolve to the binary
 works.
 
+### Mesh-only pages: the geometry-core engine
+
+A page that only meshes IFC can alias `@ifc-lite/wasm` to
+`@ifc-lite/wasm/core` (exact match, e.g. Vite
+`{ find: /^@ifc-lite\/wasm$/, replacement: '@ifc-lite/wasm/core' }`), a smaller
+engine without the exporters, LandXML, clash, scan and PDF methods. The meshes
+are byte-identical. If you pass `wasmUrls.wasm`, point it at the core binary as well (`ENGINE_BINARY_URL.href` from `@ifc-lite/wasm/core`). See the [Geometry Processing guide](https://ifclite.dev/docs/guide/geometry/#smaller-engine-for-mesh-only-pages-geometry-core).
+
 ## Performance
 
 - **First triangles:** 300–500ms (streaming path)

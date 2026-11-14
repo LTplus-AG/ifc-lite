@@ -10,7 +10,7 @@ import { act } from 'react';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import type { Lens, LensRule } from '@ifc-lite/lens';
 import { federationRegistry } from '@ifc-lite/renderer';
-import { render, click, cleanup } from '@/test/render';
+import { render, click, cleanup, waitFor } from '@/test/render';
 import { useViewerStore } from '@/store';
 import { LensRuntimeHost } from '@/components/viewer/LensRuntimeHost';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
@@ -119,6 +119,8 @@ test('the Lens panel header attaches the active lens (#6833)', async () => {
   render(<LensRuntimeHost />);
   await activate({ id: 'walls', name: 'Walls', rules: [typeRule('walls', 'IfcWall')] });
   const panel = render(renderPanelBody('lens', () => undefined));
+  // #9634: the first render is the lazy feature's loading shell.
+  await waitFor(() => panel.querySelector('button[aria-label="Discuss with AI"]') !== null, 'lens feature mounted');
   const discuss = panel.querySelector('button[aria-label="Discuss with AI"]');
   assert.ok(discuss);
   click(discuss);

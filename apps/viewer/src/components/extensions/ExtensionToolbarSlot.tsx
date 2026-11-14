@@ -83,7 +83,7 @@ export function ExtensionToolbarSlot({ slot }: ExtensionToolbarSlotProps) {
   // button silently runs the first extension's handler.
   const handleClick = (contribution: (typeof contributions)[number]) => {
     const { command: commandId } = contribution.payload;
-    void host.runCommand(commandId, contribution.extensionId, () =>
+    void host.runCommand(commandId, contribution.extensionId, undefined, () =>
       currentHost.current === host && host.slotRegistry.getAll(slot).includes(contribution))
       .catch((err) => {
         toast.error(describeRunCommandError(commandId, err));

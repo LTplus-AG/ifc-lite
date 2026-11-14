@@ -112,7 +112,7 @@ function mount(initialHost: BoundaryHost, ribbon = false) {
 }
 const icons: ExportIconSet = {
   ifc: Puzzle, anonymized: Puzzle, 'modified-ifc': Puzzle, glb: Puzzle, kmz: Puzzle,
-  ion: Puzzle, usd: Puzzle, energy: Puzzle, 'landxml-terrain': Puzzle, csv: Puzzle,
+  ion: Puzzle, usd: Puzzle, '3dm': Puzzle, energy: Puzzle, 'landxml-terrain': Puzzle, csv: Puzzle,
   json: Puzzle, screenshot: Puzzle, pdf: Puzzle, extension: Puzzle,
 };
 

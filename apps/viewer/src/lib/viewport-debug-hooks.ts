@@ -2,11 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { readPerfFlag } from './perf/flags.js';
+import { sceneIdentityEnabled, tappedSceneSnapshots } from './perf/sceneIdentityTap.js';
 import { appearanceSourceTriangle, MathUtils, type Renderer } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
 import { getPointCloudScanSample } from '@/hooks/ingest/pointCloudScanCache';
 import { activeVisibilityReasons } from '@/lib/visibility/visibility-reasons';
 import { useViewerStore } from '@/store';
+import { isSceneSettled } from '@/lib/scene-settled';
 
 /** One resident part of an owner as plain data: no buffers, no live objects. */
 export interface ScenePartSnapshot {
@@ -109,8 +111,27 @@ export function installViewportDebugHooks(
   // Opt-in only: a renderer starts with timing off, so the default install
   // still just stores the renderer (#5895 witness contract).
   if (timingFlag === true || timingFlag === 1 || timingFlag === '1') renderer.setGpuFrameTiming(true);
+  // Scoreboard identity pass only (`?perf.sceneIdentity=1`): hash what the scene holds, after the timer.
+  if (sceneIdentityEnabled()) {
+    host.__ifc_lite_scene_identity__ = async (opts?: { perElement?: boolean }) => {
+      const scene = renderer.getScene();
+      const { scenePieceIdentity } = await import('./perf/sceneIdentity.js');
+      // The viewer's own settled check (queued meshes, streaming fragments, pending shards too), so the
+      // scoreboard never hashes a scene that is still filling in (review #9863).
+      const { isSceneSettled } = await import('./scene-settled.js');
+      const settled = isSceneSettled();
+      const tap = tappedSceneSnapshots();
+      const pieces = scenePieceIdentity(scene);
+      return { settled, hydrating: scene.isSceneSnapshotHydrating(), finalizing: scene.isFinalizeInProgress(), instancedEntities: scene.getInstancedEntityCount(),
+        pieces: { pieces: pieces.pieces, elements: pieces.elements, sig: pieces.sig, ...(opts?.perElement ? { perElement: pieces.perElement } : {}) },
+        snapshots: tap.snapshots, pending: tap.pending };
+    };
+  }
   // Constant-time read of the renderer-owned snapshot; no scene collection walks.
   host.__ifc_lite_render_frame__ = () => renderer.getFrameStats();
+  // Constant-time: the viewer's own settled rule (store not streaming, no pending shards, no queued meshes,
+  // no streaming fragments, no finalize running). The load scoreboard gates its interactive mark on it.
+  host.__ifc_lite_scene_settled__ = () => isSceneSettled();
   host.__ifc_lite_render_stats__ = () => ({
     gpuTiming: renderer.getGpuFrameTiming(),
     adapter: renderer.getAdapterInfo(),
@@ -215,7 +236,9 @@ export function clearViewportDebugHooks(): void {
   const host = globalThis as Record<string, unknown>;
   setSourceSegmentScreenProbe(null);
   delete host.__ifc_lite_render_frame__;
+  delete host.__ifc_lite_scene_settled__;
   delete host.__ifc_lite_render_stats__;
+  delete host.__ifc_lite_scene_identity__;
   delete host.__ifc_lite_capture_color_frame__;
   delete host.__ifc_lite_capture_color_diagnostic__;
   delete host.__ifc_lite_view_projection__;

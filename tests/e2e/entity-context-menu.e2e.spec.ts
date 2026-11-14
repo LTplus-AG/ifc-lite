@@ -53,7 +53,7 @@ test('authored IFC entity menu exposes actions, arrow navigation, submenu and fo
   }, undefined, { timeout: 180_000 });
 
   await page.getByRole('tab', { name: 'Author', exact: true }).click();
-  const modelWorkspace = page.getByRole('tabpanel', { name: 'Author' }).getByRole('button', { name: 'Model', exact: true });
+  const modelWorkspace = page.locator('[data-command-id="tool:edit-mode"]');
   await modelWorkspace.click();
   await expect(modelWorkspace).toHaveAttribute('aria-pressed', 'true');
 
@@ -224,7 +224,7 @@ test('Revit assembly Duplicate carries both beams and removes the full subgraph 
         [...state.models.values()].every((m) => m.ifcDataStore && (m.geometryResult?.meshes.length ?? 0) > 0);
     }, undefined, { timeout: 180_000 });
     await page.getByRole('tab', { name: 'Author', exact: true }).click();
-    await page.getByRole('tabpanel', { name: 'Author' }).getByRole('button', { name: 'Model', exact: true }).click();
+    await page.locator('[data-command-id="tool:edit-mode"]').click();
     const before = await page.evaluate(async () => {
       const moduleUrl = '/src/store/index.ts';
       const module = await import(moduleUrl);

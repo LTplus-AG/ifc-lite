@@ -1,0 +1,12 @@
+diff --git a/packages/create/src/in-store/structural-derive-shape.ts b/packages/create/src/in-store/structural-derive-shape.ts
+--- a/packages/create/src/in-store/structural-derive-shape.ts
++++ b/packages/create/src/in-store/structural-derive-shape.ts
+@@ -220,7 +220,7 @@ export function readElementShape(reader: GeometryEntityReader, productId: number
+   const reps = representations(reader, product);
+   const out: ElementShape = {};
+   const axis = withAxis ? readAxis(reader, reps.get('AXIS')) : null;
+-  if (axis) out.axis = axis.map((p) => applyFrame(placement, p)) as [Vec3, Vec3];
++  if (axis) out.axis = axis.map((p) => scale(applyFrame(placement, p), metres)) as [Vec3, Vec3];
+   // RepresentationIdentifier is optional; an unnamed representation counts as Body, as in resolve-host's bodyBounds.
+   const prism = readPrism(reader, reps.get('BODY') ?? reps.get(''), placement, metres);
+   if (typeof prism === 'string') out.shapeIssue = prism;

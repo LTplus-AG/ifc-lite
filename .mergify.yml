@@ -29,10 +29,14 @@ priority_rules:
     allow_checks_interruption: true
 
 queue_rules:
+  # Every queue also requires the `CLA` status on the PR itself (cla.yml). The
+  # CLA gate does not re-check Mergify's own batch PRs, because their commits come
+  # from PRs that already passed; this condition is what makes that true.
   - name: release
     queue_conditions:
       - label=mergify-trial
       - -draft
+      - status-success=CLA
       - head=changeset-release/main
     merge_conditions:
       - check-success=Build + WASM + Rust + Node
@@ -46,6 +50,7 @@ queue_rules:
     queue_conditions:
       - label=mergify-trial
       - -draft
+      - status-success=CLA
       - -head=changeset-release/main
       - -files~=^tests/perf-ratchets/
     # Skipped jobs do not satisfy check-success, so a batch that ran only the fast
@@ -64,6 +69,7 @@ queue_rules:
     queue_conditions:
       - label=mergify-trial
       - -draft
+      - status-success=CLA
       - -head=changeset-release/main
       - files~=^tests/perf-ratchets/
     merge_conditions:
@@ -78,6 +84,7 @@ pull_request_rules:
     conditions:
       - label=mergify-trial
       - -draft
+      - status-success=CLA
       - -head=changeset-release/main
       - -files~=^tests/perf-ratchets/
     actions:
@@ -88,6 +95,7 @@ pull_request_rules:
     conditions:
       - label=mergify-trial
       - -draft
+      - status-success=CLA
       - -head=changeset-release/main
       - files~=^tests/perf-ratchets/
     actions:
@@ -98,6 +106,7 @@ pull_request_rules:
     conditions:
       - label=mergify-trial
       - -draft
+      - status-success=CLA
       - head=changeset-release/main
     actions:
       queue:

@@ -1,0 +1,13 @@
+diff --git b/apps/viewer/src/components/viewer/assistant/StructuralReviewFlow.tsx a/apps/viewer/src/components/viewer/assistant/StructuralReviewFlow.tsx
+index b7f7b2f934..062b9fabc4 100644
+--- b/apps/viewer/src/components/viewer/assistant/StructuralReviewFlow.tsx
++++ a/apps/viewer/src/components/viewer/assistant/StructuralReviewFlow.tsx
+@@ -97,7 +97,7 @@ export function StructuralReviewControls<R extends { validate(): void }>({ flow,
+   const acknowledge = !receipt && <label className="flex items-center gap-2"><input type="checkbox" checked={acknowledged} onChange={event => setAcknowledged(event.target.checked)} />{acknowledgement}</label>;
+   return <>
+     {!acknowledgeEach && acknowledge}
+-    {!receipt && <Button size="sm" variant="outline" disabled={!build} onClick={() => build && flow.prepare(build)}>{prepareLabel}</Button>}
++    {!receipt && <Button size="sm" variant="outline" disabled={!build || writes === 'loading'} onClick={() => writes === 'ready' ? build && flow.prepare(build) : loadWrites()}>{prepareLabel}</Button>}
+     {review && <>
+       {details}
+       {acknowledgeEach && acknowledge}

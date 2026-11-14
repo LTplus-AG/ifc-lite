@@ -1,0 +1,6 @@
+# Verbatim upstream bytes (BIMvoice/ifc-sheet): provenance.json pins their
+# sha256 and provenance.test.ts checks it, so no checkout may rewrite line
+# endings and whitespace checks must not ask anyone to "fix" them.
+curves.ts -whitespace eol=lf linguist-vendored
+intersect.ts -whitespace eol=lf linguist-vendored
+snaps.ts -whitespace eol=lf linguist-vendored

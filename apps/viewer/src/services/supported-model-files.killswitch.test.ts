@@ -30,6 +30,7 @@ it('the kill-switch build offers no .splat anywhere, and keeps .ply for point cl
   assert.ok(!files.FILE_ACCEPT.split(',').includes('.splat'), 'file input accept');
   assert.ok(!(await fileSystemPickerExtensions()).includes('.splat'), 'File System Access picker');
   assert.equal(files.isSupportedModelFile(new File([], 'scan.splat')), false, 'the drop and picker guard refuse a capture');
+  assert.ok(!files.DROP_FORMAT_GROUPS.some((group) => group.extensions.includes('.splat')), 'welcome card format list');
   assert.ok(files.FILE_ACCEPT.split(',').includes('.ply'));
   assert.equal(files.isSupportedModelFile(new File([], 'scan.ply')), true, 'ordinary point clouds still open');
 });

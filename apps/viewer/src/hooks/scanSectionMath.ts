@@ -137,7 +137,7 @@ export interface SelectScanBandParams {
    * pre-alignment coordinates while the 3D view draws it aligned. Omit for
    * an unaligned asset.
    */
-  model?: Float32Array;
+  model?: Float32Array | Float64Array;
   /**
    * Whether `model` already lands in the viewer render frame. The aligned
    * matrix does (the whole viewer shift is folded into its decode offset,

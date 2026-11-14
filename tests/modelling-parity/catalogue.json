@@ -11,7 +11,7 @@
     "perf": "L3"
   },
   "scoring": "A table-stakes row is met (1) when every applicable level's best result is pass, partial (0.5) when any level has a pass or partial, and missing (0) otherwise. skip never counts as a pass. Rows with tableStakes: false are reported but never scored.",
-  "commonOutputOracle": "The SDK probe's exported IFC4 has no errors in `ifc-lite validate`, no issues in IfcOpenShell validate with express rules, and reopens with the session's product census (counts by IFC class) and the row's key entity classes intact; a second export from the reopened model keeps that census. Files a UI result hands over are judged too: an IFC by the same checks, an SVG/PDF/DXF drawing by a sanity check only. A row's output `requires` names the file kinds it needs (default: an IFC).",
+  "commonOutputOracle": "The SDK probe's exported IFC4 has no errors in `ifc-lite validate`, no issues in IfcOpenShell validate with express rules, and reopens with the session's product census (counts by IFC class) and the row's key entity classes intact; a second export from the reopened model keeps that census. Files a UI result hands over are judged too: an IFC by the same checks, an SVG/PDF/DXF drawing by sanity checks, with independent ezdxf structure, dimension and scale checks for the sheet DXF. A row's output `requires` names the file kinds it needs (default: an IFC).",
   "capabilities": [
     {
       "id": "storeys",
@@ -301,14 +301,14 @@
     },
     {
       "id": "sheets-pdf-dwg",
-      "title": "Sheets, PDF and DWG/DXF export",
+      "title": "Sheets, PDF and DXF export",
       "group": "Documentation",
       "tableStakes": true,
       "reference": "Revit sheets with title blocks and PDF/DWG export, Archicad Layout Book and Publisher, Bonsai sheets with SVG/PDF.",
       "probes": {
         "sdk": { "owner": "L1", "applicable": false, "script": "tests/modelling-parity/probes/sdk/sheets-pdf-dwg.js", "oracle": "Documentation capability: the SDK level reports skip." },
-        "ui": { "owner": "L4", "applicable": true, "oracle": "Place a plan and a section on an A1 sheet with a title block and export it to PDF and DXF in a few actions." },
-        "output": { "owner": "L1", "applicable": true, "requires": [["pdf"], ["dxf"]], "oracle": "Handed over by the UI probe (L4) under $PARITY_OUT/artifacts/<id>/ per the contract's Handoffs. Both a sheet PDF (at least one page; the MediaBox is reported) and a DXF (ENTITIES with linework, EOF) pass the sanity check; the target is the sheet's paper size and per-category layers in a third-party reader. Drawing files get a sanity check only (they parse, are not empty and carry linework or pages), not a check of the drawing's correctness." }
+        "ui": { "owner": "L4", "applicable": true, "oracle": "Enable a sheet with its frame and title block, export its PDF, and export the sheet drawing with a Distance dimension to DXF through the UI. Independently parse the DXF: named wall and dimension layers, two closed rectangular 200 mm by 3 m cut walls with a 5.2 m outer span (104 mm at 1:50), a 5.2 m outer-span dimension line and matching TEXT, explicit metre units, finite coordinates, and no reader audit errors or repairs." },
+        "output": { "owner": "L1", "applicable": true, "requires": [["pdf"], ["dxf"]], "oracle": "Handed over by the UI probe (L4) under $PARITY_OUT/artifacts/<id>/ per the contract's Handoffs. The sheet PDF passes page/MediaBox sanity. The DXF is independently read with ezdxf: R12 with explicit metre units; named wall and dimension layers; two closed rectangular 200 mm by 3 m cut walls span 5.2 m, equivalent to 104 mm at 1:50; a 5.2 m outer-span dimension LINE and matching TEXT; finite coordinates; no audit errors or repairs. Empty files and files missing dimension text fail." }
       },
       "exercises": { "owner": "L2", "refs": ["F3"] }
     },
@@ -444,6 +444,30 @@
         "sdk": { "owner": "L1", "applicable": true, "oracle": "Out of scope for this climb." },
         "ui": { "owner": "L4", "applicable": true, "oracle": "Out of scope for this climb." },
         "output": { "owner": "L1", "applicable": true, "oracle": "Out of scope for this climb." }
+      }
+    },
+    {
+      "id": "dwg-export",
+      "title": "DWG export",
+      "group": "Beyond table stakes",
+      "tableStakes": false,
+      "reference": "Owner decision 2026-11-13 (#9296): DWG is a closed format. Autodesk RealDWG and ODA Drawings SDK writers require commercial licences; LibreDWG is GPL-3.0-or-later. None is selected for distribution in this MPL-2.0 web viewer. DXF is the interchange route; the free ODA File Converter is the user-side route to DWG.",
+      "probes": {
+        "sdk": {
+          "owner": "L1",
+          "applicable": false,
+          "oracle": "Unscored licensing decision; native DWG export is not shipped."
+        },
+        "ui": {
+          "owner": "L4",
+          "applicable": false,
+          "oracle": "Unscored licensing decision; native DWG export is not shipped."
+        },
+        "output": {
+          "owner": "L1",
+          "applicable": false,
+          "oracle": "Unscored licensing decision; native DWG export is not shipped."
+        }
       }
     }
   ]

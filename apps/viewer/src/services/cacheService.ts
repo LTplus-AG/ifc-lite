@@ -62,7 +62,7 @@ export type SetCachedFn = (
   fileSize: number,
   sourceBuffer?: ArrayBuffer,
   meta?: CacheEntryMeta,
-) => Promise<void>;
+) => Promise<SceneSnapshotWrite | null>;
 
 /**
  * Function signature for deleting cached data
@@ -142,6 +142,7 @@ export async function getCached(key: string): Promise<CacheResult | null> {
  * @param fileName - Original file name for logging
  * @param fileSize - Original file size for logging
  * @param sourceBuffer - Optional source file for on-demand extraction
+ * @returns The stored write's identity, or null when the write was skipped
  */
 export async function setCached(
   key: string,
@@ -150,7 +151,7 @@ export async function setCached(
   fileSize: number,
   sourceBuffer?: ArrayBuffer,
   meta?: CacheEntryMeta,
-): Promise<void> {
+): Promise<SceneSnapshotWrite | null> {
   const service = await getCacheService();
   return service.setCached(key, data, fileName, fileSize, sourceBuffer, meta);
 }

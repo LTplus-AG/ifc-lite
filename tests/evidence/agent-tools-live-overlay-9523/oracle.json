@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "apps/viewer/src/lib/agent-tools/main-viewer-host.ts",
+  "mutation": "tests/evidence/agent-tools-live-overlay-9523/behaviour.oracle.patch",
+  "test": "apps/viewer/src/lib/agent-tools/main-viewer-host.test.ts",
+  "why": "#9523: a main-viewer handle without the store's live overlay misses the user's unsaved edits, created entities and deletions."
+}

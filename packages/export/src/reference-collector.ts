@@ -40,7 +40,7 @@ import type { IfcSchemaVersion } from './schema-converter.js';
 // `subset-roots.ts`, which derives IFC_ROOT_TYPES the same way. Re-exported
 // below so every existing `from './reference-collector.js'` import keeps
 // working unchanged.
-import { INFRASTRUCTURE_TYPES, PRODUCT_TYPES, collectDescendantNames } from './entity-type-sets.js';
+import { INFRASTRUCTURE_TYPES, PRODUCT_TYPES, collectDescendantNames, getProductTypes } from './entity-type-sets.js';
 export { INFRASTRUCTURE_TYPES, PRODUCT_TYPES, collectDescendantNames };
 
 /**
@@ -859,7 +859,7 @@ export function getVisibleEntityIds(
     }
 
     // For product/element entities: check visibility
-    if (PRODUCT_TYPES.has(typeUpper)) {
+    if (getProductTypes().has(typeUpper)) {
       const isHidden = hiddenIds.has(expressId);
       const isNotIsolated = isolatedIds !== null && !isolatedIds.has(expressId);
 

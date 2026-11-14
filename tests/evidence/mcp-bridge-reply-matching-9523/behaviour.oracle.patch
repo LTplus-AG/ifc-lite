@@ -1,0 +1,11 @@
+--- a/packages/mcp/src/bridge/session.ts
++++ b/packages/mcp/src/bridge/session.ts
+@@ -96,7 +96,7 @@ export class BridgeSession {
+ 
+   /** Settle a pending call with the tab's result. False when `id` is not pending here. */
+   settle(id: string, result: BridgeCallResult): boolean {
+-    const p = this.pending.get(id) ?? this.pending.values().next().value;
++    const p = this.pending.get(id);
+     if (!p) return false;
+     p.resolve(result);
+     return true;

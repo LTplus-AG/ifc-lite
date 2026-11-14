@@ -24,6 +24,7 @@ import {
   createOrdinaryStoreBackend,
   createRoofStoreBackend,
   createStructuralStoreBackend,
+  createStructuralDerivationStoreBackend,
   type CostBackendMethods,
   type CostStoreBackendMethods,
   type GroupStoreBackendMethods,
@@ -31,6 +32,7 @@ import {
   type OrdinaryStoreBackendMethods,
   type RoofStoreBackendMethods,
   type StructuralStoreBackendMethods,
+  type StructuralDerivationStoreBackendMethods,
 } from '@ifc-lite/sdk';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
@@ -48,7 +50,7 @@ export interface StoreAuthoringDeps {
 
 export function createStoreAuthoring(
   deps: StoreAuthoringDeps,
-): CostStoreBackendMethods & StructuralStoreBackendMethods & ModellingStoreBackendMethods & OrdinaryStoreBackendMethods & GroupStoreBackendMethods & RoofStoreBackendMethods {
+): CostStoreBackendMethods & StructuralStoreBackendMethods & ModellingStoreBackendMethods & OrdinaryStoreBackendMethods & GroupStoreBackendMethods & RoofStoreBackendMethods & StructuralDerivationStoreBackendMethods {
   const resolveModel = (modelId?: string) => {
     deps.assertModel(modelId ?? '');
     return {
@@ -63,6 +65,7 @@ export function createStoreAuthoring(
     ...createCostStoreBackend(resolve, deps.cost),
     ...createGroupStoreBackend(resolve),
     ...createStructuralStoreBackend(resolve),
+    ...createStructuralDerivationStoreBackend(resolve),
     ...createModellingStoreBackend(resolve),
     ...createOrdinaryStoreBackend(resolveModel),
     ...createRoofStoreBackend(resolveModel),

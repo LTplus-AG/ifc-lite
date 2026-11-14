@@ -99,7 +99,7 @@ export async function bindAlignment(modelId: string, expressId: number, distance
   useAlignmentToolState.setState({ choosing: true, busy: true, error: undefined });
   try {
     const model = modelFor(modelId);
-    if (!model?.ifcDataStore || model.schemaVersion === 'IFC5' || model.sourceSchema) {
+    if (!model?.ifcDataStore || model.schemaVersion === 'IFC5' || model.ifcDataStore.sourceKind === 'tabular' || model.sourceSchema) {
       throw new Error('A STEP IFC alignment model is required');
     }
     if (!model.geometryResult || ('loadState' in model && model.loadState && model.loadState !== 'complete' && model.loadState !== 'error')) {

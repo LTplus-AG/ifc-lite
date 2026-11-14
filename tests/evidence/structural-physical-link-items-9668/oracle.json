@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "#9668: IfcRelAssignsToProduct must carry every derived item of an element; keep only the first.",
+  "key": "packages/create/src/in-store/structural-physical-link.ts",
+  "mutation": "tests/evidence/structural-physical-link-items-9668/behaviour.oracle.patch",
+  "test": "packages/create/src/in-store/structural-derive.test.ts"
+}

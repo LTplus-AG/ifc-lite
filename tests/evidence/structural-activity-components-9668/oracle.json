@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "packages/create/src/in-store/_structural-activity.ts",
+  "mutation": "tests/evidence/structural-activity-components-9668/behaviour.oracle.patch",
+  "test": "packages/create/src/in-store/structural-activity-results.test.ts",
+  "why": "#9668: file round trips must observe authored load components and result linearity."
+}

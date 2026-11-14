@@ -19,6 +19,7 @@ import { commitStoreyOp } from '@/store/slices/mutation-storey';
 import { keepStoreyPreview, previewStoreyLevel, revertStoreyPreview } from '@/lib/storeys/storey-preview';
 import { parseStoreyLength } from '@/lib/storeys/storey-length';
 import { refusalText } from '@/lib/storeys/storey-text';
+import { storeyUndoAction } from './storey-toast';
 import { storeyRows } from '@/lib/storeys/storey-actions';
 
 export type LevelField = 'elevation' | 'height';
@@ -127,6 +128,7 @@ export function useStoreyLevelEditing(modelId: string | null) {
     if (previewed.current === JSON.stringify(edit) && keepStoreyPreview(useViewerStore)) {
       previewed.current = null;
       setDraft(null);
+      toast.success(t('storeyManager.undoLabel'), storeyUndoAction(modelId));
       return true;
     }
     revertPreview();
@@ -138,6 +140,7 @@ export function useStoreyLevelEditing(modelId: string | null) {
       return false;
     }
     setDraft(null);
+    toast.success(t('storeyManager.undoLabel'), storeyUndoAction(modelId));
     return true;
   }, [modelId, parse, revertPreview, t]);
 

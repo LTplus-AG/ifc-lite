@@ -5,6 +5,7 @@
 import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { dimensionGraphics } from '@/lib/drawing2d-markup/dimension-graphics';
 import { act } from 'react';
 import { cleanup, click, render, waitFor } from '@/test/render.js';
 import { loadDialogs } from '@/test/dialog-host.js';
@@ -85,7 +86,7 @@ describe('drawing export notices (#5850)', () => {
     let exports = 0;
     render(<>
       <DrawingExportMenu {...props({
-        markupCounts: { ...emptyCounts, measurements: 1 }, visibleUnderlayCount: 1, visibleRasterReferenceCount: 1,
+        markupCounts: { ...emptyCounts, texts: 1 }, visibleUnderlayCount: 1, visibleRasterReferenceCount: 1,
         onExportDxf: () => { exports++; },
       })} />
       <ConfirmDialogHost />
@@ -111,6 +112,101 @@ describe('drawing export notices (#5850)', () => {
     click(confirm);
     await waitFor(() => exports === 1, 'confirming exports exactly once');
   });
+
+  it('names dimensions drawn on another cut in the PDF and DXF notices', async () => {
+    const { ConfirmDialogHost } = await loadDialogs();
+    render(<>
+      <DrawingExportMenu {...props({ otherCutDimensionCount: 2 })} />
+      <ConfirmDialogHost />
+    </>);
+    openMenu();
+    selectItem('Download PDF');
+    const pdfDialog = document.body.querySelector('[role="dialog"]');
+    assert.ok(pdfDialog);
+    assert.match(pdfDialog.textContent ?? '', /dimensions drawn on another cut/);
+    assert.doesNotMatch(pdfDialog.textContent ?? '', /drawing markups/);
+    cleanup();
+
+    let exports = 0;
+    render(<>
+      <DrawingExportMenu {...props({ otherCutDimensionCount: 1, onExportDxf: () => { exports++; } })} />
+      <ConfirmDialogHost />
+    </>);
+    openMenu();
+    selectItem('Download DXF');
+    const dxfDialog = document.body.querySelector('[role="alertdialog"]');
+    assert.ok(dxfDialog, 'DXF asks before leaving out other-cut dimensions');
+    assert.match(dxfDialog.textContent ?? '', /leave out dimensions drawn on another cut/);
+    assert.equal(exports, 0);
+  });
+
+  it('warns before DXF skips a zero-length Distance through the shared graphics path (#10020)', async () => {
+    const { ConfirmDialogHost } = await loadDialogs();
+    let exports = 0;
+    render(<>
+      <DrawingExportMenu {...props({
+        markupCounts: { ...emptyCounts, measurements: 1 },
+        dimensionGraphicsAt: paperScale => [dimensionGraphics({ id: 'zero', a: { x: 2, y: 3 }, b: { x: 2, y: 3 },
+          offset: 0, orientation: 'aligned' }, { paperScale, format: () => '0 m' })],
+        onExportDxf: () => { exports++; },
+      })} />
+      <ConfirmDialogHost />
+    </>);
+    openMenu();
+    selectItem('Download DXF');
+    const dialog = document.body.querySelector('[role="alertdialog"]');
+    assert.ok(dialog);
+    assert.match(dialog.textContent ?? '', /drawing markups/);
+    assert.equal(exports, 0);
+    const cancel = [...dialog.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Cancel');
+    assert.ok(cancel);
+    click(cancel);
+    assert.equal(exports, 0);
+  });
+
+  for (const item of ['Download SVG', 'Print']) {
+    it(`${item} leaves the other-cut notice to the successful handler, with no duplicate prompt (#10020, #10167)`, async () => {
+      const { ConfirmDialogHost } = await loadDialogs();
+      let exports = 0;
+      render(<>
+        <DrawingExportMenu {...props({ otherCutDimensionCount: 1,
+          markupCounts: { ...emptyCounts, dimensions: 1 }, dimensionGraphicsAt: () => [],
+          onExportSvg: () => { exports++; }, onPrint: () => { exports++; },
+        })} />
+        <ConfirmDialogHost />
+      </>);
+      openMenu();
+      selectItem(item);
+      assert.equal(document.body.querySelector('[role="alertdialog"]'), null, 'the handler supplies the single counted other-cut notice');
+      assert.equal(exports, 1);
+    });
+  }
+
+  for (const item of ['Download SVG', 'Print']) {
+    it(`${item} warns before the shared rule drops a zero-length dimension (#10020)`, async () => {
+      const { ConfirmDialogHost } = await loadDialogs();
+      let exports = 0;
+      render(<>
+        <DrawingExportMenu {...props({
+          markupCounts: { ...emptyCounts, measurements: 1 },
+          dimensionGraphicsAt: paperScale => [dimensionGraphics({ id: 'zero', a: { x: 0, y: 0 }, b: { x: 0, y: 0 },
+            offset: 0, orientation: 'aligned' }, { paperScale, format: () => '0 m' })],
+          onExportSvg: () => { exports++; }, onPrint: () => { exports++; },
+        })} />
+        <ConfirmDialogHost />
+      </>);
+      openMenu();
+      selectItem(item);
+      const dialog = document.body.querySelector('[role="alertdialog"]');
+      assert.ok(dialog);
+      assert.match(dialog.textContent ?? '', /drawing markups/);
+      assert.equal(exports, 0);
+      const confirm = [...dialog.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Export anyway');
+      assert.ok(confirm);
+      click(confirm);
+      await waitFor(() => exports === 1, 'confirmation invokes the selected output once');
+    });
+  }
 
   it('exports immediately when the DXF writer has nothing to omit', () => {
     let exports = 0;

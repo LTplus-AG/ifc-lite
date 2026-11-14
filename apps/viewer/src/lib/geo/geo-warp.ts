@@ -48,12 +48,11 @@ import { totalYupOffset } from '@ifc-lite/geometry/world-frame';
 import type { CesiumModelOriginInfo } from './cesium-bridge';
 import { isGeographicProj4, projectedDefinitionInMetres } from './proj4-utils';
 import { isWithinWktDefinitionExtent, isWktDefinition } from './wkt-projection';
-import { effectiveMapConversionForGeometry, isMapAbsoluteGeometry } from './map-absolute';
+import { effectiveMapConversionForGeometry, isMapAbsoluteGeometry, viewerFrameCenter } from './map-absolute';
 import { getEffectiveAxisScales, resolveMapUnitToMetreScale } from './geo-scale';
 import { gridCoordinateSource } from './ground-scale';
 import { resolveMapAxisDirection } from './map-axis-direction';
 import { viewerToEnuRotation } from './viewer-enu-rotation';
-import { viewerFrameCenter } from './cesium-viewer-frame';
 import { ecefToGeodetic, enuFrameAt, geodeticToEcef } from './geo-ecef';
 
 /** The origin fields the mapping reads, as `computeCesiumModelOrigin` returns them. */

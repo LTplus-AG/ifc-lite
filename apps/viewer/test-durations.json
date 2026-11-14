@@ -831,7 +831,7 @@
     "src/components/viewer/tools/sectionPickPreviewAnchors.test.ts": 0.6,
     "src/components/viewer/tools/zoneDrag.test.ts": 0.5,
     "src/components/viewer/underlay-recovery.test.tsx": 3,
-    "src/components/viewer/usd-export-source.test.ts": 2,
+    "src/components/viewer/step-export-source.test.ts": 2,
     "src/components/viewer/useAnimationLoop.capture-lifecycle.test.tsx": 5.9,
     "src/components/viewer/useAnimationLoop.capture-refusal.test.tsx": 4.4,
     "src/components/viewer/useAnimationLoop.capture.test.tsx": 3.8,

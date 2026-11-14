@@ -17,8 +17,9 @@
  * overlay-created record reads here exactly as it will be saved.
  *
  * Express ids are preserved, overlay-allocated ones included, so the mesher's
- * output keys straight back onto the model. Styles are deliberately NOT in the
- * buffer: the caller sends the load-time style wire entries instead.
+ * output keys straight back onto the model. Geometry styles use the caller's
+ * load-time wire; material appearances travel with the effective subgraph so
+ * its pre-pass can refresh their colours after edits.
  */
 
 import { asSourceBytes, type IfcDataStore } from '@ifc-lite/parser';
@@ -108,6 +109,15 @@ export function serializeEntitySubgraph(
 
   // Iterative (explicit queue + visited set), so cycles and long chains end.
   const walked = collectReferencedEntityIds(walkRoots, store.source, index);
+  // Material appearances are inverse references, not reachable from IfcMaterial.
+  // Include only definitions of materials reached by this remesh (#9296).
+  for (const id of index.byType.get('IFCMATERIALDEFINITIONREPRESENTATION') ?? []) {
+    const line = writer.line(id);
+    const slot = line === null ? undefined : readStepSlots(line)?.slots[3];
+    const material = slot === undefined ? undefined : refGroupFromArg(slot);
+    if (typeof material !== 'number' || !walked.has(material)) continue;
+    for (const child of collectReferencedEntityIds(new Set([id]), store.source, index)) walked.add(child);
+  }
   const owningGrid = gridReferenceContext(index, (id) => writer.line(id, false), schema);
   const expandedGrids = new Set<number>();
   // Set iteration visits newly added ids too. Each owning grid expands once,

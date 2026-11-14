@@ -24,9 +24,28 @@ export function reviewStoreyInsertion(modelId: string, referenceId: number, fall
   const lowerId = lower.expressId;
   const suggestion = storeySuggestion(s, modelId, lowerId, 'above', fallbackName);
   if (!suggestion) return null;
+  const match = /^(.*?)(-?\d+)(\D*)$/.exec(lower.Name.trim());
+  const renames: { id: number; Name: string }[] = [];
+  let Name = suggestion.Name;
+  if (match && Number.isSafeInteger(Number(match[2])) && Number.isSafeInteger(Number(match[2]) + 1)) {
+    const [, prefix, digits, suffix] = match;
+    const next = Number(digits) + 1;
+    const numbered = (n: number, width = digits.replace('-', '').length) => prefix + (n < 0 ? '-' : '') + String(Math.abs(n)).padStart(width, '0') + suffix;
+    const candidates = siblings.flatMap(level => {
+      const m = /^(.*?)(-?\d+)(\D*)$/.exec(level.Name.trim());
+      return level.elevation > lower.elevation && m && m[1] === prefix && m[3] === suffix && Number.isSafeInteger(Number(m[2]) + 1) && Number(m[2]) >= next
+        ? [{ id: level.expressId, Name: numbered(Number(m[2]) + 1, m[2].replace('-', '').length) }] : [];
+    });
+    const occupied = new Set(siblings.filter(level => !candidates.some(c => c.id === level.expressId)).map(level => level.Name.toLowerCase()));
+    const proposed = new Set([numbered(next), ...candidates.map(c => c.Name)].map(name => name.toLowerCase()));
+    if (proposed.size === candidates.length + 1 && !occupied.has(numbered(next).toLowerCase()) && candidates.every(c => !occupied.has(c.Name.toLowerCase()))) {
+      Name = numbered(next);
+      renames.push(...candidates);
+    }
+  }
   const plan = planStoreyLevelEdit(inventory, { kind: 'floorHeight', storeyId: lowerId, Height: lower.height * 2 });
   const reboundWallIds = plan.walls.filter(wall => wall.storeyId === lowerId && readTopAttachment(inventory, wall.wallId)?.binding === 'relative').map(wall => wall.wallId);
-  return { plan, reboundWallIds, height: lower.height, params: { Name: suggestion.Name, Elevation: lower.elevation + lower.height, referenceStoreyId: lowerId }, version: s.mutationVersion, entry: s.session?.entry };
+  return { plan, renames, reboundWallIds, height: lower.height, params: { Name, Elevation: lower.elevation + lower.height, referenceStoreyId: lowerId }, version: s.mutationVersion, entry: s.session?.entry };
 }
 
 export type StoreyInsertion = NonNullable<ReturnType<typeof reviewStoreyInsertion>>;
@@ -39,6 +58,7 @@ export function commitStoreyInsertion(modelId: string, reviewed: StoreyInsertion
     commit: (_g, tx) => {
       const remesh = recordModellingCommit(tx.api, modelId, (editor, dataStore) => editor.runAtomic(draft => {
         const shifted = applyStoreyLevelEdit(dataStore, draft, reviewed.plan.edit, reviewed.plan);
+        for (const rename of reviewed.renames) draft.setAttribute(rename.id, 'Name', rename.Name);
         const added = addStoreyInStore(dataStore, draft, reviewed.params);
         storeyId = added.storeyId;
         return [...new Set([...shifted.plan.moved, ...shifted.reshaped, ...added.reshaped])];

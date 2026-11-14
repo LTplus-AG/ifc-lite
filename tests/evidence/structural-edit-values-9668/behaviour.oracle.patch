@@ -1,0 +1,10 @@
+--- a/packages/create/src/in-store/structural-edit.ts
++++ b/packages/create/src/in-store/structural-edit.ts
+@@ -90,6 +90,6 @@
+     throw new Error('editStructuralEntity: IfcStructuralLoadCase requires LOAD_CASE');
+   }
+   editor.runAtomic(draft => {
+-    for (const [index, value] of writes) draft.setPositionalAttribute(expressId, index, null);
++    for (const [index, value] of writes) draft.setPositionalAttribute(expressId, index, value);
+   });
+ }

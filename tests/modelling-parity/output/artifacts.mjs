@@ -67,7 +67,7 @@ export function censusClassesByStepType() {
   for (const rel of ENTITY_TABLES) {
     const file = resolve(ROOT, rel);
     if (!existsSync(file)) throw new Error(`fileClasses: schema table ${rel} is missing; cannot resolve IFC subtypes`);
-    for (const [name, e] of parseEntityTable(readFileSync(file, 'utf8'))) if (!parent.has(name)) parent.set(name, e.parent);
+    for (const [name, e] of parseEntityTable(readFileSync(file, 'utf8'), `fileClasses: ${rel}`)) if (!parent.has(name)) parent.set(name, e.parent);
   }
   if (!parent.has('IfcWallStandardCase')) throw new Error('fileClasses: the schema tables lost IfcWallStandardCase; the subtype parser is broken');
   const census = new Set(CENSUS_CLASSES);

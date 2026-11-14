@@ -48,6 +48,8 @@ export function simplifyIndicesByClustering(
   strideFloats: number,
   indices: Uint32Array,
   cellSize: number,
+  /** Float offset of the u32 entity lane in each record: 6 in the batch layout. */
+  idLaneOffset = 6,
 ): Uint32Array | null {
   const triangleCount = (indices.length / 3) | 0;
   if (triangleCount < LOD_MIN_TRIANGLES) return null;
@@ -82,7 +84,7 @@ export function simplifyIndicesByClustering(
   // a neighbour entity's id lane — wrong object-id target output (separation
   // lines) and wrong overlay depth-salt at LOD distance. Costs a little
   // reduction ratio; correctness first.
-  const idLane = strideFloats > 6
+  const idLane = strideFloats > idLaneOffset
     ? new Uint32Array(vertexData.buffer, vertexData.byteOffset, vertexData.length)
     : null;
 
@@ -93,7 +95,7 @@ export function simplifyIndicesByClustering(
     const cx = Math.floor(vertexData[base] / cellSize);
     const cy = Math.floor(vertexData[base + 1] / cellSize);
     const cz = Math.floor(vertexData[base + 2] / cellSize);
-    const entity = idLane ? idLane[base + 6] : 0;
+    const entity = idLane ? idLane[base + idLaneOffset] : 0;
     // #3991: normal LOD cells fit in a small neighborhood. Pack that exact
     // neighborhood with the FULL u32 entity lane instead of allocating a key
     // string per vertex. Keep generic tiny-cell/huge/nonfinite inputs exact.

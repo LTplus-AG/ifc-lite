@@ -119,6 +119,7 @@ export function PdfViewExportDialog({ surface, trigger, exportViewPdf }: PdfView
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
   const typeVisibility = useViewerStore((s) => s.typeVisibility);
+  const structuralViewMode = useViewerStore((s) => s.structuralViewMode);
   const sectionPlane = useViewerStore((s) => s.sectionPlane);
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
   const classFilter = useViewerStore((s) => s.classFilter);
@@ -150,7 +151,7 @@ export function PdfViewExportDialog({ surface, trigger, exportViewPdf }: PdfView
   const source = useMemo(
     () => (open ? readViewPdfSource(useViewerStore.getState()) : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- these are invalidation triggers; the values are read from getState() above.
-    [open, models, geometryResult, hiddenEntities, isolatedEntities, typeVisibility,
+    [open, models, geometryResult, hiddenEntities, isolatedEntities, typeVisibility, structuralViewMode,
       sectionPlane, selectedStoreys, classFilter, projectionMode],
   );
 

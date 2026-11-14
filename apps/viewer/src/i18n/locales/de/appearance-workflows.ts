@@ -110,6 +110,7 @@ export const appearanceWorkflowsDe = {
   'appearance.controller.adjustMapping': 'Passen Sie die Abbildung an, um eine andere Darstellung in der Vorschau zu sehen.',
   'appearance.controller.leaveRoom': 'Verlassen Sie die geteilte Sitzung, um die Darstellung zu bearbeiten, und teilen Sie dann das fertige Modell.',
   'appearance.controller.openIfc': 'Öffnen Sie ein IFC-Modell, um eine Darstellung anzuwenden.',
+  'appearance.controller.requiresStepRecords': 'Das Erstellen von Darstellungen erfordert ein Modell mit IFC-Datensätzen. Dieses wurde stattdessen in Tabellen eingelesen.',
   'appearance.controller.requiresIfc4': 'Das Erstellen von Darstellungen erfordert derzeit ein IFC4- oder IFC4X3-Modell.',
   'appearance.controller.waitForModel': 'Warten Sie, bis das Modell vollständig geladen ist.',
   'appearance.controller.preparingPreview': 'Darstellungsvorschau wird vorbereitet …',

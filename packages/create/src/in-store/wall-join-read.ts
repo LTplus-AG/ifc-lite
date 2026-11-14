@@ -16,7 +16,7 @@
  */
 
 import { wallBaseSolid } from './edit/wall-base-solid.js';
-import type { IfcDataStore } from '@ifc-lite/parser';
+import { createSchemaEntityNameSnapshot, getSchemaRegistryForVersion, type IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { AnchorEntityReader } from './resolve-anchor.js';
 import type { WallJoinTarget } from './wall-join-apply.js';
@@ -142,17 +142,15 @@ function bodyExtent(reader: AnchorEntityReader, profileId: number): BodyExtent |
 
 const clean = (v: number): number => (Math.abs(v) <= EPS ? 0 : v);
 
-/**
- * Read wall `wallId` as a join target. `lengthUnitScale` is the model's native
- * unit in metres; the target's plan values are metres.
- */
-export function readWallJoinTarget(
-  store: IfcDataStore,
-  view: MutablePropertyView | null | undefined,
-  wallId: number,
-  lengthUnitScale: number,
-): WallJoinRead | null {
-  const reader = new AnchorEntityReader(store, view);
+function wallReader(store: IfcDataStore, view: MutablePropertyView | null | undefined): AnchorEntityReader {
+  const schema = store.schemaVersion;
+  const names = schema === 'IFC2X3' || schema === 'IFC4' || schema === 'IFC4X3'
+    ? createSchemaEntityNameSnapshot(getSchemaRegistryForVersion(schema)) : undefined;
+  return new AnchorEntityReader(store, view, names);
+}
+
+function readWallBase(store: IfcDataStore, view: MutablePropertyView | null | undefined, wallId: number,
+  reader = wallReader(store, view)) {
   const wall = reader.entity(wallId);
   if (!wall || !WALL_TYPES.has(wall.type.toUpperCase())) return null;
 
@@ -184,6 +182,55 @@ export function readWallJoinTarget(
   const repOf = (identifier: string) => ids.find((id) => reader.entity(id)?.attributes[1] === identifier) ?? null;
   const bodyRepId = repOf('Body') ?? ids[0];
   const axisRepId = repOf('Axis');
+  return { reader, placement, axisPlacementId, locationPointId, refDirectionId, location, dir, productShapeId, ids, bodyRepId, axisRepId };
+}
+
+export interface WallEndpoints {
+  wallId: number;
+  parentPlacementId: number | null;
+  /** Native elevation: matches the join's existing same-plane tolerance. */
+  elevation: number;
+  start: PlanPoint;
+  end: PlanPoint;
+}
+
+/** Seed the session index from Axis curves without loading body profiles.
+ * Axis-free supported walls use the canonical body reader once at indexing. */
+export function readWallJoinEndpoints(store: IfcDataStore, view: MutablePropertyView | null | undefined, wallId: number, scale: number,
+  sourceReader?: AnchorEntityReader): WallEndpoints | null {
+  const base = readWallBase(store, view, wallId, sourceReader);
+  if (!base) return null;
+  const { reader, axisRepId, placement, location, dir } = base;
+  if (axisRepId !== null) {
+    const items = reader.entity(axisRepId)?.attributes[3];
+    const points = Array.isArray(items) && items.length === 1 ? polylinePoints(reader, refId(items[0])) : null;
+    if (!points || points.length !== 2 || points.some(p => Math.abs(p[1]) > EPS) || !(points[1][0] > points[0][0])) return null;
+    const unit = Number.isFinite(scale) && scale > 0 ? scale : 1;
+    const at = (x: number): PlanPoint => [Math.round((location[0] + dir[0] * x) * unit * 1e9) / 1e9, Math.round((location[1] + dir[1] * x) * unit * 1e9) / 1e9];
+    return { wallId, parentPlacementId: refId(placement.attributes[0]), elevation: location[2], start: at(points[0][0]), end: at(points[1][0]) };
+  }
+  const wall = readWallJoinRecord(store, view, wallId, scale, sourceReader);
+  return wall ? { wallId, parentPlacementId: wall.parentPlacementId, elevation: wall.location[2], start: wall.wall.start, end: wall.wall.end } : null;
+}
+
+export function readWallJoinTarget(store: IfcDataStore, view: MutablePropertyView | null | undefined, wallId: number, scale: number): WallJoinRead | null {
+  return readWallJoinRecord(store, view, wallId, scale);
+}
+
+/**
+ * Read wall `wallId` as a join target. `lengthUnitScale` is the model's native
+ * unit in metres; the target's plan values are metres.
+ */
+function readWallJoinRecord(
+  store: IfcDataStore,
+  view: MutablePropertyView | null | undefined,
+  wallId: number,
+  lengthUnitScale: number,
+  sourceReader?: AnchorEntityReader,
+): WallJoinRead | null {
+  const base = readWallBase(store, view, wallId, sourceReader);
+  if (!base) return null;
+  const { reader, placement, axisPlacementId, locationPointId, refDirectionId, location, dir, productShapeId, ids, bodyRepId, axisRepId } = base;
   const bodyItems = reader.entity(bodyRepId)?.attributes[3];
   const solidId = wallBaseSolid(reader, view, wallId, Array.isArray(bodyItems) && bodyItems.length > 0 ? refId(bodyItems[0]) : null);
   const solid = solidId === null ? null : reader.entity(solidId);

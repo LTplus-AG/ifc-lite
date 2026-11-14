@@ -26,6 +26,8 @@ The check turns green, and you won't be asked again for later pull requests. Eve
 
 If someone else's commits are in your pull request, they need to sign too. The check can only match commits to people through GitHub accounts, so a commit made with an email that isn't linked to any account blocks it. Add that email to your GitHub account and comment `recheck`, or re-author the commits with a linked email.
 
+People named in a `Co-authored-by:` line sign too. Write the trailer with the co-author's GitHub noreply address (`ID+login@users.noreply.github.com`, shown in their GitHub email settings) so the check can match it to their account. A co-author line with any other email blocks the check until that person has signed by email or PDF. AI coding assistants named as co-authors need no signature.
+
 You can also sign by email or as a signed PDF. CLA.md describes both routes. Use one of them if your country requires a handwritten signature for this kind of agreement.
 
 ## Contributing for an employer or your own company

@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type {
+  IfcStoreBase,
   StringTable,
   EntityTable,
   PropertyTable,
@@ -21,6 +22,7 @@ import { SchemaVersion, type CacheDataStore, type CacheEntityIndex } from './typ
  * `@ifc-lite/data`, which `@ifc-lite/cache` depends on regardless.
  */
 export interface ParsedIfcStore {
+  selectionRelationshipIndex?: IfcStoreBase['selectionRelationshipIndex'];
   schemaVersion: 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
   entityCount: number;
   strings: StringTable;
@@ -102,6 +104,7 @@ function toSchemaVersion(schemaVersion: ParsedIfcStore['schemaVersion']): Schema
 export function toCacheDataStore(store: ParsedIfcStore): CacheDataStore {
   // @raw-entity-enumeration-ok Cache metadata counts the parsed source snapshot, not live overlay rows.
   return {
+    selectionRelationshipIndex: store.selectionRelationshipIndex,
     schema: toSchemaVersion(store.schemaVersion),
     entityCount: store.entityCount || store.entities.count,
     strings: store.strings,

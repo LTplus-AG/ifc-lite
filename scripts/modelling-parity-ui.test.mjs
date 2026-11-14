@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { PROBES } from '../tests/modelling-parity/ui/probes.mjs';
 import { readStep } from '../tests/modelling-parity/ui/lib/step.mjs';
-import { wallSize, layerThicknesses, scheduleLengths } from '../tests/modelling-parity/ui/probes-u4.mjs';
+import { wallSize, layerThicknesses, scheduleLengths } from '../tests/modelling-parity/ui/lib/authoring-helpers.mjs';
 import { EXERCISES } from '../tests/modelling-parity/ui/exercises.mjs';
 
 test('#9296 F2 room volumes stop below the next storey occupancy band', async () => {

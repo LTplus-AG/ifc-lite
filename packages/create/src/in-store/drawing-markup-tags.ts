@@ -11,7 +11,7 @@
  * Without this, saved markup reads back through the generic symbolic-overlay
  * parser as plain polylines/text/fills — visible, but no longer the typed
  * `Measure2DResult` / `PolygonArea2DResult` / `TextAnnotation2D` /
- * `CloudAnnotation2D` it started as, and no longer editable as one.
+ * `CloudAnnotation2D` / `Dimension2D` it started as, and no longer editable as one.
  *
  * Exported from this ONE place so a future read-side translator (issue
  * #4153's read-back follow-up — not implemented here) imports these instead
@@ -25,6 +25,7 @@ export const DRAWING_MARKUP_OBJECTTYPE = {
   POLYGON_AREA: 'IfcLite:Markup:PolygonArea',
   TEXT: 'IfcLite:Markup:Text',
   CLOUD: 'IfcLite:Markup:Cloud',
+  DIMENSION: 'IfcLite:Markup:Dimension',
 } as const;
 
 export type DrawingMarkupObjectType =

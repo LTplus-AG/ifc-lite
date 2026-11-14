@@ -5,7 +5,7 @@
 /** Create BCF draft batches from the live clash run (#6896). */
 
 import { useCallback } from 'react';
-import { useSingleFlight } from '@/hooks/useSingleFlight';
+import { useAsyncRun } from '@/hooks/useAsyncRun';
 import type { Clash } from '@ifc-lite/clash';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
@@ -28,9 +28,9 @@ export function currentDraftRun(): DraftRun | null {
 export function useBcfDraftActions() {
   const { t } = useTranslation();
   // C-2: one draft at a time; a same-tick double press would save two batches.
-  const flight = useSingleFlight();
+  const flight = useAsyncRun();
   const drafting = flight.busy;
-  const runDraft = flight.run;
+  const runDraft = flight.start;
   const open = useCallback((batch: DraftBatch) => {
     useBcfDraftLibrary.setState({ activeId: batch.id, dialogOpen: true });
     useViewerStore.getState().setBcfPanelVisible(true);

@@ -176,10 +176,12 @@ function ensureRoomParse(
   const existing = inflight?.get(key);
   if (existing) return existing;
 
+  const parseOrder = ++parseStarts;
   const promise = (async () => {
     let result: ParseResult;
     try {
       result = await parseAnnotations(store, elevationRebase, undefined, await roomFlat(roomSource), spatial);
+      recordLastParse(store, frameOf('standalone', elevationRebase), result, parseOrder);
     } catch (error) {
       // eslint-disable-next-line no-console
       console.warn('[useSymbolicAnnotations] room parse failed:', error);
@@ -202,6 +204,20 @@ function ensureRoomParse(
   entries.set(key, promise);
   return promise;
 }
+
+/**
+ * Each store's latest landed parse and the frame it was made in. A display reader
+ * keeps showing it while a re-parse for a new key (an edit, a mutation version)
+ * is pending, instead of dropping the store; never across a frame change (RTC
+ * frame or elevation rebase), where it would be drawn in the wrong place.
+ */
+let LAST_PARSE = new WeakMap<IfcDataStore, { frame: string; result: ParseResult; parseOrder: number }>();
+/** Parse start order: a parse that lands after a newer one does not replace it as the last parse. */
+let parseStarts = 0;
+function recordLastParse(store: IfcDataStore, frame: string, result: ParseResult, parseOrder: number): void {
+  if ((LAST_PARSE.get(store)?.parseOrder ?? 0) < parseOrder) LAST_PARSE.set(store, { frame, result, parseOrder });
+}
+const frameOf = (rtcKey: string, rebase: ReturnType<typeof elevationRebaseFor>): string => `${rtcKey}|${rebase.primitive}|${rebase.storeyTable}`;
 
 /** Subscribers that want to re-render when a new parse result lands. */
 type CacheListener = () => void;
@@ -243,10 +259,12 @@ export function ensureParseFor(stores: Array<IfcDataStore | SymbolicParseStoreBi
       continue;
     }
 
+    const parseOrder = ++parseStarts;
     const promise = (async () => {
       try {
         const result = await parseAnnotations(store, elevationRebase, rtc.frame, await sourceFlatFor(store, rtc), spatial);
         cacheParseResult(key, result);
+        recordLastParse(store, frameOf(rtc.key, elevationRebase), result, parseOrder);
         notifyCacheChange();
       } catch (error) {
         // Cache empty on failure so we don't retry a doomed parse every tick
@@ -277,6 +295,7 @@ export function __resetSymbolicAnnotationsCacheForTests(): void {
   ROOM_FLAT_INFLIGHT = new WeakMap();
   ROOM_PARSE_CACHE = new WeakMap();
   ROOM_PARSE_INFLIGHT = new WeakMap();
+  LAST_PARSE = new WeakMap();
 }
 
 /** @internal test-only probe for one weakly retained portable STEP parse. */
@@ -328,6 +347,27 @@ export function getParseFor(value: IfcDataStore | SymbolicParseStoreBinding | nu
   if (key === null) return undefined;
   const roomSource = roomSymbolicSource(store);
   return roomSource ? ROOM_PARSE_CACHE.get(roomSource)?.get(key) : PARSE_CACHE.get(key);
+}
+
+/**
+ * What an overlay should draw for a store: its exact parse, else its latest
+ * parse in the same frame while the new one is pending (see LAST_PARSE).
+ * Readers that must match the exact source (markup restore) use getParseFor.
+ */
+export function getDisplayParseFor(value: IfcDataStore | SymbolicParseStoreBinding | null | undefined): ParseResult | undefined {
+  const exact = getParseFor(value);
+  if (exact || !value) return exact;
+  const { store } = bindingOf(value);
+  const rtc = roomSymbolicSource(store) ? { mode: 'standalone' as const, key: 'standalone' } : overlayRtcContextFor(store);
+  if (rtc.mode === 'pending') return undefined;
+  const last = LAST_PARSE.get(store);
+  return last && last.frame === frameOf(rtc.key, elevationRebaseFor(store)) ? last.result : undefined;
+}
+
+/** Whether `store` has had an overlay parse land (any key or frame): a re-parse of it is an update, not its first parse after a load. */
+export function storeHasParse(store: IfcDataStore): boolean {
+  const room = roomSymbolicSource(store);
+  return LAST_PARSE.has(store) || (room !== undefined && (ROOM_PARSE_CACHE.get(room)?.size ?? 0) > 0); // a rebound room source starts an empty room cache
 }
 
 /**

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { CallToolResult, JsonSchema, ToolScope } from '../protocol/index.js';
+import type { CallToolResult, JsonSchema, ToolAnnotations, ToolScope } from '../protocol/index.js';
 import type { ToolContext } from '../context.js';
 
 export interface Tool {
@@ -10,6 +10,10 @@ export interface Tool {
   description: string;
   inputSchema: JsonSchema;
   scope?: ToolScope;
+  /** Human-readable name for `tools/list`. */
+  title?: string;
+  /** MCP behaviour hints for `tools/list`. */
+  annotations?: ToolAnnotations;
   handler(input: Record<string, unknown>, ctx: ToolContext): Promise<CallToolResult> | CallToolResult;
 }
 

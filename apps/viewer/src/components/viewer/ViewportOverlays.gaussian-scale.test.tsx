@@ -10,6 +10,7 @@ import { render, cleanup } from '@/test/render.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { ViewportOverlays } from './ViewportOverlays.js';
+import { formFactorState } from '@/test/form-factor-state';
 
 function ifc(): FederatedModel {
   const model = fixtureModel('ifc');
@@ -32,7 +33,7 @@ const metric = (ui: HTMLElement) => ui.querySelector('[data-testid="viewport-met
 const note = (ui: HTMLElement) => ui.querySelector('[data-testid="viewport-capture-scale-note"]');
 
 describe('Gaussian capture scale disclosure (#8566)', () => {
-  beforeEach(() => useViewerStore.setState({ ...fixtureModels(), isMobile: false, error: null, loading: false }));
+  beforeEach(() => useViewerStore.setState({ ...fixtureModels(), ...formFactorState(false), error: null, loading: false }));
   afterEach(cleanup);
 
   it('never shows metres for a lone capture, including explicitly placed captures and zoom updates', () => {

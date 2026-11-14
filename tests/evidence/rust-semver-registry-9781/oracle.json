@@ -1,0 +1,6 @@
+{
+  "issue": 7955,
+  "key": "scripts/check-rust-semver-registry.mjs",
+  "mutation": "tests/evidence/rust-semver-registry-9781/behaviour.oracle.patch",
+  "why": "Reverse application keeps the module and its exports but never records that a cargo runner was asked and never writes needs_cargo=false, so a moved crate version would skip the full gate and a final verdict would never skip cargo."
+}

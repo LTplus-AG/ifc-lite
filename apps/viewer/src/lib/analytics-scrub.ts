@@ -127,7 +127,7 @@ const scrubProperties = (
       continue;
     }
     if (k === 'model_count' && typeof v === 'number' && Number.isSafeInteger(v) && v >= 0) continue; // aggregate only
-    if (k === 'load_path' && typeof v === 'string' && /^(?:wasm|cache|server|point-cloud|landxml)$/.test(v)) continue; // closed pipeline id, never a file path (#6961)
+    if (k === 'load_path' && typeof v === 'string' && /^(?:wasm|cache|server|point-cloud|landxml|3dm)$/.test(v)) continue; // closed pipeline id, never a file path (#6961)
     if (SENSITIVE_KEY.test(k)) {
       delete props[k];
       continue;

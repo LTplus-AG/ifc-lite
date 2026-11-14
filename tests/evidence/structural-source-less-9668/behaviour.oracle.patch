@@ -1,0 +1,16 @@
+--- a/packages/create/src/in-store/structural-remove.ts
++++ b/packages/create/src/in-store/structural-remove.ts
+@@ -5,2 +5,2 @@
+-import type { StoreEditor } from '@ifc-lite/mutations';
++import { iterateEffectiveEntityIds, type StoreEditor } from '@ifc-lite/mutations';
+ import type { IfcDataStore } from '@ifc-lite/parser';
+@@ -12,2 +12,9 @@
+ export function removeStructuralEntityInStore(store: IfcDataStore, editor: StoreEditor, expressId: number): void {
++  if (store.source.byteLength === 0) {
++    for (const { expressId: id } of iterateEffectiveEntityIds(store, editor.getMutationView())) {
++      if (!editor.getNewEntity(id)) {
++        throw new Error(`removeStructuralEntity: cannot remove #${expressId} from a source-less model; raw entity records are required to inspect ownership`);
++      }
++    }
++  }
+   const graph = structuralGraph(store, editor);

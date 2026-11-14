@@ -5,6 +5,15 @@
 import type { Catalogue } from '../../registry';
 
 export const moveRotateDe = {
+  'moveRotate.mirror.label': "Spiegeln",
+  'moveRotate.mirror.hintStart': "Ersten Punkt der Spiegelachse anklicken",
+  'moveRotate.mirror.hintEnd': "Zweiten Achsenpunkt anklicken oder Winkel eingeben und Enter · Alt behält das Original",
+  'moveRotate.mirror.keepOriginal': "Original behalten",
+  'moveRotate.offset.label': "Versetzen",
+  'moveRotate.offset.hint': "Positiven Abstand eingeben und die Seite für die parallele Kopie anklicken",
+  'moveRotate.offset.wallOnly': "Eine gerade Wand zum Versetzen auswählen",
+  'commands.model.mirror': "Auswahl spiegeln (Modellbereich)",
+  'commands.model.offset': "Wand versetzen (Modellbereich)",
   'moveRotate.move.label': 'Verschieben',
   'moveRotate.move.hintBase': 'Klicken Sie auf den Ausgangspunkt oder geben Sie einen Abstand ein',
   'moveRotate.move.hintTarget': 'Klicken Sie auf das Ziel oder geben Sie Abstand und Richtung ein und drücken Sie dann Enter',

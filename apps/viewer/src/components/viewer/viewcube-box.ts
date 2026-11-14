@@ -31,6 +31,16 @@ export const VIEW_CUBE_RIGHT_INSET_PX = VIEW_CUBE_INSET_PX + 8;
 /** Top inset plus size: how far the cube reaches down from the top edge. */
 export const VIEW_CUBE_REACH_PX = VIEW_CUBE_INSET_PX + VIEW_CUBE_SIZE_PX;
 
+/**
+ * The cube's top as CSS: its inset, or the screen's top system inset (status
+ * bar, Dynamic Island) where that is deeper, so the cube is never under it
+ * (#9718). Equal to `VIEW_CUBE_INSET_PX` wherever there is no inset.
+ */
+export const VIEW_CUBE_TOP = `max(${VIEW_CUBE_INSET_PX}px, env(safe-area-inset-top))`;
+
+/** `VIEW_CUBE_REACH_PX` as CSS, following `VIEW_CUBE_TOP` below a top system inset. */
+export const VIEW_CUBE_REACH = `calc(${VIEW_CUBE_TOP} + ${VIEW_CUBE_SIZE_PX}px)`;
+
 /** Right inset plus size: how far the cube reaches in from the right edge. */
 export const VIEW_CUBE_REACH_X_PX = VIEW_CUBE_RIGHT_INSET_PX + VIEW_CUBE_SIZE_PX;
 

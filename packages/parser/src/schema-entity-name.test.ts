@@ -111,6 +111,22 @@ it('fresh snapshots reuse the name index while ordered keys are unchanged #8452'
   } finally { writes.mockRestore(); }
 });
 
+// #9906: a reader without a snapshot checks the registry's ordered keys on
+// every lookup. That check serialised every entity name (about 18 microseconds
+// per lookup on IFC2X3) and was most of the time a metadata read took: 64% of
+// resolving presentation layers on a 326 MB model.
+it('checks the ordered keys on each lookup without serialising the registry #9906', () => {
+  const registry = getSchemaRegistryForVersion('IFC2X3');
+  const serialised = vi.spyOn(JSON, 'stringify');
+  let names: Array<string | undefined>, calls: number;
+  try {
+    names = Array.from({ length: 50 }, () => getCanonicalEntityName(registry, 'IFCSHAPEREPRESENTATION'));
+    for (let i = 0; i < 50; i++) names.push(getAttributeNamesForSchema('IFCSHAPEREPRESENTATION', 'IFC2X3').at(-1));
+    calls = serialised.mock.calls.length;
+  } finally { serialised.mockRestore(); }
+  expect(new Set(names)).toEqual(new Set(['IfcShapeRepresentation', 'Items']));
+  expect(calls).toBe(0);
+});
 
 it('snapshot reads retain the empty-registry diagnostic after their witness is hidden #8452', () => {
   const registry = getSchemaRegistryForVersion('IFC4'), original = registry.entities;

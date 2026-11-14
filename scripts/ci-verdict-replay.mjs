@@ -70,7 +70,7 @@ function readEvent(args) {
 }
 
 /** `check_runs` for the SHA: every run, not GitHub's default "latest per name". */
-function fetchCheckRuns(args, sha) {
+function fetchCheckRuns(args, sha, checkName = args.checkName) {
   if (args.checkRunsFile) {
     const parsed = JSON.parse(readFileSync(args.checkRunsFile, 'utf8'));
     return Array.isArray(parsed) ? parsed : parsed.check_runs;
@@ -79,7 +79,7 @@ function fetchCheckRuns(args, sha) {
   // `filter=all`, deliberately: the default `latest` keeps ONE run per check
   // name, which on the probe is this very run's in-progress aggregate.
   const page = gh(
-    ['api', `repos/${args.repo}/commits/${sha}/check-runs?check_name=${encodeURIComponent(args.checkName)}&filter=all&per_page=100`, '--method', 'GET'],
+    ['api', `repos/${args.repo}/commits/${sha}/check-runs?check_name=${encodeURIComponent(checkName)}&filter=all&per_page=100`, '--method', 'GET'],
     `the check runs of ${sha.slice(0, 9)}`,
   );
   if (!page || !Array.isArray(page.check_runs)) throw new GhError('GH_BAD_SHAPE', 'check-runs response carried no check_runs array');
@@ -120,6 +120,16 @@ export function run(argv) {
     const verdict = selectReplayVerdict(fetchCheckRuns(args, sha), { sha, checkName: args.checkName, excludeRunId: args.runId });
     if (!verdict.found) {
       console.log(`[verdict-replay] title/body edit of ${sha.slice(0, 9)}, but ${verdict.reason}; the full lane set runs.`);
+      emit(args, 'noop', 'false');
+      return 0;
+    }
+    // REFUSE_REPLAY_AFTER names a check that runs only in a reduced lane whose
+    // justification may have lapsed (test.yml sets it to `Release PR checks`
+    // when the release PR's lean lane does not hold now). If it succeeded on
+    // this head, the verdict may rest on skipped lanes: run in full instead.
+    const refuseAfter = process.env.REFUSE_REPLAY_AFTER;
+    if (refuseAfter && fetchCheckRuns(args, sha, refuseAfter).some((r) => r?.name === refuseAfter && r.head_sha === sha && r.conclusion === 'success')) {
+      console.log(`[verdict-replay] title/body edit of ${sha.slice(0, 9)}, but "${refuseAfter}" succeeded on it, so its verdict came from a reduced lane that does not hold now; the full lane set runs.`);
       emit(args, 'noop', 'false');
       return 0;
     }

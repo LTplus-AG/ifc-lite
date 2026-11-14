@@ -10,7 +10,7 @@ import { IDSAuditSummary } from '@/components/viewer/IDSAuditSummary.js';
 import { FoldedGroupEditor } from '@/components/viewer/validation/FoldedGroupEditor.js';
 import { FLOW_PRIMARY_BUTTON } from '@/components/viewer/flow/flow-button.js';
 import { cleanup, render, click } from '@/test/render.js';
-import { closeContrastBrowser, withThemedPage, measureTextContrastOnSurface, type Theme } from './render-harness.js';
+import { CONTRAST_BROWSER_SKIP, closeContrastBrowser, withThemedPage, measureTextContrastOnSurface, type Theme } from './render-harness.js';
 import { WCAG_AA_NORMAL_TEXT } from './wcag.js';
 
 afterEach(cleanup);
@@ -20,7 +20,7 @@ after(closeContrastBrowser);
 describe('remaining root status roles (Refs #8802)', () => {
   for (const [severity, role] of [['error', 'danger'], ['warning', 'warn'], ['info', 'info']] as const) {
     for (const theme of ['light', 'dark', 'colorful'] as Theme[]) {
-      it(`${severity} audit row paints its role and clears AA in ${theme}`, async () => {
+      it(`${severity} audit row paints its role and clears AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
         const ui = render(<IDSAuditSummary report={{ status: 'error', issues: [{ severity, code: 'E_PARSE_XML', message: 'Audit diagnostic', path: '/' }] }} />);
         const expand = ui.querySelector('button');
         assert.ok(expand);
@@ -43,7 +43,7 @@ describe('remaining root status roles (Refs #8802)', () => {
     }
   }
   for (const theme of ['light', 'dark', 'colorful'] as Theme[]) {
-    it(`Flow's primary action uses the primary role in ${theme}`, async () => {
+    it(`Flow's primary action uses the primary role in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       await withThemedPage(theme, `<div class="bg-card"><button id="action" class="${FLOW_PRIMARY_BUTTON}">Run</button><i id="expected" class="border border-primary text-primary"></i></div>`, async page => {
         const read = (selector: string) => page.$eval(selector, el => {
           const s = getComputedStyle(el);
@@ -61,14 +61,14 @@ describe('remaining root status roles (Refs #8802)', () => {
   }
   // `.dark .bg-white` wins over any `dark:bg-*` beside it, which is why those
   // classes could be dropped: dark mode paints the panel surface either way.
-  it('a white surface paints the panel in dark mode, so a dark:bg class beside it does nothing', async () => {
+  it('a white surface paints the panel in dark mode, so a dark:bg class beside it does nothing', { skip: CONTRAST_BROWSER_SKIP }, async () => {
     await withThemedPage('dark', '<div id="white" class="bg-white"></div><div id="both" class="bg-white dark:bg-muted"></div><div id="panel" class="bg-card"></div>', async page => {
       const bg = (selector: string) => page.$eval(selector, el => getComputedStyle(el).backgroundColor);
       assert.equal(await bg('#both'), await bg('#white'));
       assert.equal(await bg('#white'), await bg('#panel'));
     });
   });
-  it('dark range chip and remove hover differ from their surface', async () => {
+  it('dark range chip and remove hover differ from their surface', { skip: CONTRAST_BROWSER_SKIP }, async () => {
     const ui = render(<FoldedGroupEditor groups={[{ combinator: 'AND', rules: [Rule.attribute('Tag', 'gte', '10'), Rule.attribute('Tag', 'lte', '20')] }]} activeGroup={0} models={[]} onChange={() => {}} />);
     const chip = ui.querySelector('input[type="number"]')?.parentElement?.querySelector('span');
     assert.ok(chip?.parentElement);

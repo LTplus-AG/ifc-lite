@@ -16,9 +16,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { tmpdir } from 'node:os';
+import { tmpdir, homedir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const readerVenv = join(homedir(), 'modelling-parity/venv/bin/python');
+const readerPython = process.env.PARITY_PYTHON ?? (existsSync(readerVenv) ? readerVenv : 'python3');
+const readerAvailable = spawnSync(readerPython, ['-c','import ezdxf'], { encoding: 'utf8' }).status === 0;
 
 const SCRIPTS = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(SCRIPTS, '..');
@@ -253,7 +257,7 @@ test('artifact sets: UI handoffs count, failing results and SDK intermediates do
   assert.deepEqual(storeys[0].census, { IfcWall: 2 });
 });
 
-test('output runner: documentation rows are judged on UI-handed drawings and can pass', () => {
+test('#10030 Output distinguishes semantic DXF rejection from reader absence', async t => {
   const dir = mkdtempSync(join(tmpdir(), 'parity-output-ui-'));
   try {
     const art = join(dir, 'ui', 'artifacts', 'sheets-pdf-dwg');
@@ -272,12 +276,27 @@ test('output runner: documentation rows are judged on UI-handed drawings and can
     const r = spawnSync(process.execPath, [join(ROOT, 'tests/modelling-parity/output/run.mjs'), '--out', out, '--ui', join(dir, 'ui'), '--only', 'sheets-pdf-dwg,plans-sections-elevations,dimensions-tags,roof-by-footprint'], { encoding: 'utf8' });
     assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
     const read = (id) => JSON.parse(readFileSync(join(out, 'output', `${id}.json`), 'utf8'));
-    assert.equal(read('sheets-pdf-dwg').status, 'pass', JSON.stringify(read('sheets-pdf-dwg')));
+    assert.equal(read('sheets-pdf-dwg').status, 'partial', 'linework-only DXF cannot prove dimensions and scale');
+    const semantic=read('sheets-pdf-dwg');
+    assert.equal(semantic.source.sheetDxfOracle,1,'fresh Output evidence carries the sheet oracle version');
+    await t.test('reader-present semantic dimension rejection', { skip: !readerAvailable && 'ezdxf unavailable: semantic coverage not exercised' }, () => { // @source-text-assertion-ok asserts on executed generator/runner output, not source text
+      assert.ok(!semantic.checks.some(c=>c.name === 'independent DXF reader available'), JSON.stringify(semantic));
+      assert.equal(semantic.checks.find(c=>c.name === '5.2 m outer-span dimension line and matching dimension TEXT')?.status,'fail',JSON.stringify(semantic));
+    });
+    await t.test('reader-unavailable partial cap without claiming semantic rejection', () => { // @source-text-assertion-ok asserts on executed generator/runner output, not source text
+      const missing=spawnSync(process.execPath,[join(ROOT,'tests/modelling-parity/output/run.mjs'),'--out',out,'--ui',join(dir,'ui'),'--only','sheets-pdf-dwg','--python',join(dir,'unavailable-python')],{encoding:'utf8'});
+      assert.equal(missing.status,0,missing.stderr);
+      const absent=read('sheets-pdf-dwg');
+      assert.equal(absent.status,'partial');
+      assert.equal(absent.checks.find(c=>c.name==='independent DXF reader available')?.status,'fail');
+      assert.equal(absent.checks.some(c=>c.name==='5.2 m outer-span dimension line and matching dimension TEXT'),false);
+    });
+    if (!readerAvailable) t.diagnostic('DXF reader unavailable: availability and partial-cap coverage passed; semantic rejection is SKIPPED.');
     assert.equal(read('plans-sections-elevations').status, 'pass');
     assert.equal(read('dimensions-tags').status, 'fail', 'a listed file that is not there fails');
     assert.equal(read('roof-by-footprint').status, 'skip', 'no SDK result and no UI handoff');
     const s = score(realCatalogue, readResults([out, join(dir, 'ui')]));
-    assert.equal(s.rows.find((x) => x.capability === 'sheets-pdf-dwg').status, 'met', 'UI pass + output pass, SDK not applicable');
+    assert.equal(s.rows.find((x) => x.capability === 'sheets-pdf-dwg').status, 'partial', 'a UI pass cannot mask the incomplete DXF output');
     rmSync(join(art, 'a1.dxf'));
     spawnSync(process.execPath, [join(ROOT, 'tests/modelling-parity/output/run.mjs'), '--out', out, '--ui', join(dir, 'ui'), '--only', 'sheets-pdf-dwg'], { encoding: 'utf8' });
     assert.equal(read('sheets-pdf-dwg').status, 'partial', 'the DXF a sheet row requires is missing');
@@ -417,4 +436,21 @@ test('#9296 exercises with null capability report against catalogue refs without
   assert.equal(s.rows[0].status, 'missing');
   assert.equal(s.score, 0);
   assert.equal(s.unknownCapabilities, undefined);
+});
+
+test('#10030 sheet provenance follows selected row evidence, including met rows', () => {
+  for(const fresh of [false,true]) {
+    const source={commit:'sheet-build',dirty:false,...(fresh?{sheetDxfOracle:1}:{})};
+    const s=summaryOf([result('sheets-pdf-dwg','ui','pass',{source}),result('sheets-pdf-dwg','output','pass',{source}),...['sdk','ui','output'].map(probe=>result('layered-walls',probe,'pass')),result('layered-walls','exercise','partial')],'2027-01-01T00:00:00.000Z');
+    const dir=tree({'r.json':s});
+    try {
+      assert.equal(generate(dir).status,0);
+      const ledger=readFileSync(join(dir,'docs/architecture/modelling-parity-ledger.md'),'utf8');
+      const row=ledger.split('\n').find(line=>line.includes('(`sheets-pdf-dwg`)')); // @source-text-assertion-ok asserts on executed generator/runner output, not source text
+      assert.equal(row.includes('Historical sheet evidence'),!fresh); // @source-text-assertion-ok asserts on executed generator/runner output, not source text
+      assert.equal(row.includes('oracle version unrecorded'),!fresh); // @source-text-assertion-ok executed generator output, not source text
+      assert.ok(ledger.split('\n').find(line=>line.includes('(`layered-walls`)')).endsWith('|  |'),'unrelated met rows keep an empty Why not met cell'); // @source-text-assertion-ok executed generator output, not source text
+      assert.equal(JSON.parse(readFileSync(join(dir,'tests/modelling-parity/baseline/r.json'),'utf8')).score,s.score);
+    } finally {rmSync(dir,{recursive:true,force:true});}
+  }
 });

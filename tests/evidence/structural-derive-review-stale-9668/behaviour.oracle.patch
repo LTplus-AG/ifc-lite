@@ -1,0 +1,11 @@
+diff --git a/apps/viewer/src/lib/actions/structural-derive-review.ts b/apps/viewer/src/lib/actions/structural-derive-review.ts
+--- a/apps/viewer/src/lib/actions/structural-derive-review.ts
++++ b/apps/viewer/src/lib/actions/structural-derive-review.ts
+@@ -72,6 +72,7 @@ export function prepareStructuralDerivationReview(store: StoreApi<ViewerState>,
+     commit() {
+       if (used) throw new Error('This derivation has already been applied');
+       if (blocked) throw new Error('This derivation has nothing it may write');
++      validate();
+       // The deep overlay comparison, only at Apply: store updates run the cheap check above.
+       lease.validate();
+       const batchId = crypto.randomUUID();

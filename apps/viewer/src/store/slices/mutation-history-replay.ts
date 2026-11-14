@@ -26,6 +26,7 @@ import { newMutationBatchId, withMutationBatchTags } from './mutation-batch-tags
 import { remeshForBatch } from '@/lib/remesh/remesh-registry.js';
 import { moveChangeSetEntries, recordHistory } from './mutation-history-record.js';
 import { isGeorefMutation } from './mutation-history-prune.js';
+import { roomSlotFor } from '@/lib/collab/room-model-target.js';
 
 type Get = () => ViewerState;
 type Set = (partial: Partial<ViewerState> | ((s: ViewerState) => Partial<ViewerState>)) => void;
@@ -71,6 +72,15 @@ export function georefPatch(s: ViewerState, modelId: string, mutation: Mutation,
 
 /** One undo or redo: the top mutation, or the whole batch it belongs to. */
 export function replayHistory(get: Get, set: Set, api: StoreApi<ViewerState>, modelId: string, direction: Direction): void {
+  const state = get();
+  const session = state.collabSession && roomSlotFor(state, modelId) ? state.collabSession : null;
+  const replay = () => replayHistoryBatch(get, set, api, modelId, direction);
+  if (session) session.transact(replay);
+  else replay();
+}
+
+/** Keep body, properties and restored identities in the same room transaction. */
+function replayHistoryBatch(get: Get, set: Set, api: StoreApi<ViewerState>, modelId: string, direction: Direction): void {
   pruneInverseMutationTargets(api);
   const { source } = stackKeys(direction);
   const moved: Mutation[] = [];

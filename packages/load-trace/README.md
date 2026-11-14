@@ -129,3 +129,8 @@ perfTally('render.mergeGeometry', vertices, 'vertices');              // render.
   window and attributes LoAF blocking time to the innermost main-thread span
   open when each frame started.
 - With counters off, every wrapper returns its target unchanged.
+
+Worker trace hosts expose synchronous `begin(name)` and `end(token)` for
+sub-stages. Before enable, begin returns -1 and end is a no-op; ending a token
+twice records it once. Completed sub-stages drain with the existing
+handler/flush protocol.

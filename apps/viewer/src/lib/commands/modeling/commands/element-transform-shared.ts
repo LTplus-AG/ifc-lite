@@ -132,8 +132,12 @@ const GHOST_VERTEX_BUDGET = 300_000;
 
 /** The selection's meshes with `op` applied, in render space, as ghosts under `ghostId`. */
 export function transformedGhosts(s: ViewerState, selection: TransformSelection, op: ElementTransformOp, up: Vec3, ghostId: number): MeshData[] {
+  return selectionGhosts(s, selection, renderTransform(op, up), ghostId);
+}
+
+/** Apply a render-space affine map to selection meshes, including reflected winding. */
+export function selectionGhosts(s: ViewerState, selection: TransformSelection, apply: (p: Vec3) => Vec3, ghostId: number, reflected = false): MeshData[] {
   const toRender = toRenderFor(s, selection.modelId);
-  const apply = renderTransform(op, up);
   const out: MeshData[] = [];
   let budget = GHOST_VERTEX_BUDGET;
   for (const mesh of meshesOf(s, selection)) {
@@ -152,7 +156,9 @@ export function transformedGhosts(s: ViewerState, selection: TransformSelection,
         normals.set([tip[0] - moved[0], tip[1] - moved[1], tip[2] - moved[2]], i);
       }
     }
-    out.push({ expressId: ghostId, positions, normals, indices: mesh.indices, color: GHOST_COLOR });
+    const indices = reflected ? mesh.indices.slice() : mesh.indices;
+    if (reflected) for (let i = 0; i + 2 < indices.length; i += 3) [indices[i + 1], indices[i + 2]] = [indices[i + 2], indices[i + 1]];
+    out.push({ expressId: ghostId, positions, normals, indices, color: GHOST_COLOR });
   }
   return out;
 }

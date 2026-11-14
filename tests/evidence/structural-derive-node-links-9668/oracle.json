@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "#9668: Every derived node must be linked to the physical elements whose ends meet there; drop the node links.",
+  "key": "packages/create/src/in-store/structural-derive-apply.ts",
+  "mutation": "tests/evidence/structural-derive-node-links-9668/behaviour.oracle.patch",
+  "test": "packages/create/src/in-store/structural-derive.test.ts"
+}

@@ -32,6 +32,7 @@ import {
 import { alignNormals } from './alignment-normals.js';
 import { canonicalRendererPlacement } from './federationCanonicalReference.js';
 import { emptyAlignedCoordinateInfo } from './federationEmptyFrame.js';
+import { captureInlineClouds, commitInlineClouds, restoreInlineClouds, stageInlineClouds } from './federationAlignClouds.js';
 
 type FederatedGeometryResult = NonNullable<FederatedModel['geometryResult']>;
 
@@ -126,7 +127,9 @@ function applyAlignmentTransformAndUpdateBounds(
   const originalInstancedAabbs = geometry.instancedGeometryAabbs
     ? new Map(geometry.instancedGeometryAabbs)
     : undefined;
+  const originalClouds = captureInlineClouds(geometry.pointClouds);
   const restoreSourceFrame = () => {
+    restoreInlineClouds(geometry.pointClouds, originalClouds);
     for (let index = 0; index < geometry.meshes.length; index++) {
       const mesh = geometry.meshes[index];
       mesh.positions = originalPositions[index];
@@ -230,6 +233,13 @@ function applyAlignmentTransformAndUpdateBounds(
   // coords, hence the offset strip/re-apply, and the reference offset is the
   // one the model now carries (set on `coordinateInfo` below).
   const referenceOffset = totalYupOffset(referenceInfo);
+  const stagedClouds = stageInlineClouds(geometry.pointClouds, (x, y, z) => applyAffineTransform(transform, x, y, z),
+    (x, y, z) => { found = updateBounds(bounds, x, y, z) || found; });
+  if (!stagedClouds) {
+    restoreSourceFrame();
+    console.warn('[ifc-lite] Same-CRS alignment refused: an inline point cloud could not be aligned.');
+    return false;
+  }
   try {
     for (const [index, mesh] of geometry.meshes.entries()) {
       const staged = stagedMeshes[index];
@@ -237,6 +247,7 @@ function applyAlignmentTransformAndUpdateBounds(
       mesh.origin = staged.origin;
       mesh.normals = staged.normals;
     }
+    commitInlineClouds(stagedClouds);
     alignEntityWorldAabbs(
       geometry,
       toAbsoluteFrameMap(
@@ -303,7 +314,9 @@ async function alignGeometryAcrossCrs(geometry: FederatedGeometryResult, source:
   const originalInstancedAabbs = geometry.instancedGeometryAabbs
     ? new Map(geometry.instancedGeometryAabbs)
     : undefined;
+  const originalClouds = captureInlineClouds(geometry.pointClouds);
   const restoreSourceFrame = () => {
+    restoreInlineClouds(geometry.pointClouds, originalClouds);
     for (let index = 0; index < geometry.meshes.length; index++) {
       geometry.meshes[index].positions = originalPositions[index];
       geometry.meshes[index].origin = originalOrigins[index];
@@ -401,6 +414,14 @@ async function alignGeometryAcrossCrs(geometry: FederatedGeometryResult, source:
     stagedMeshes[meshIndex] = { positions: staged, origin: [transformedOrigin[0], transformedOrigin[1], transformedOrigin[2]] };
   }
 
+  const stagedClouds = stageInlineClouds(geometry.pointClouds, toReferenceFrame,
+    (x, y, z) => { found = updateBounds(bounds, x, y, z) || found; });
+  if (!stagedClouds) {
+    restoreSourceFrame();
+    console.warn('[ifc-lite] Cross-CRS alignment refused: an inline point cloud could not be reprojected.', pointMap.firstError());
+    return false;
+  }
+
   if (!found) {
     if (allowEmptyGeometry && attempts === 0) {
       geometry.coordinateInfo = emptyAlignedCoordinateInfo(originalCoordinateInfo, reference.coordinateInfo);
@@ -436,6 +457,7 @@ async function alignGeometryAcrossCrs(geometry: FederatedGeometryResult, source:
       mesh.positions = staged.positions;
       mesh.origin = staged.origin;
     }
+    commitInlineClouds(stagedClouds);
 
   // Same trip for the per-entity world boxes (#1891): meshed entities re-measured
   // from the reprojected vertices, the instanced-only channel corner-transformed

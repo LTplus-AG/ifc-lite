@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { resolvedElementTags, elementTagsSvg } from '@/lib/drawing/element-tags';
+import { escapeTagXml as escapeXml, elementTagsDxf, drawElementTagsPdf } from '@/lib/drawing/element-tag-export';
 import { useCallback } from 'react';
 import { buildDxfUnderlaySvg, drawDxfUnderlaysPdf, mappedDxfUnderlayOptions } from '@/lib/export/drawing-vector-underlays';
 import { drawingReferenceSvg, snapshotDrawingReferences, rasterizeReferenceLayer } from '@/lib/export/drawing-raster-references';
@@ -46,6 +48,8 @@ import { styleCutPolygons, type CutPolygonStyleContext } from '@/components/view
 import { drawCutPolygonsPdf, isPagePoint, prepareCutPolygonsPdf, type PdfCutPolygon } from '@/lib/export/section-pdf-cut-polygons';
 import { titleBlockWithEffectiveScale } from '@/hooks/titleBlockScaleField';
 import { scanOutlineDxfLayers, type ScanOutlineLayer } from '@/lib/scan-outline/scan-outline';
+import { boundsWithDimensions, dimensionsToSvg, drawDimensionsPdf } from '@/lib/export/dimension-export';
+import { noticeOtherCutDimensionsLeftOut, useExportDimensionGraphics } from '@/hooks/useExportDimensions';
 
 function tryDrawingSvg(generate: () => string | null): string | null {
   try { return generate(); }
@@ -257,6 +261,7 @@ interface UseDrawingExportParams {
 }
 
 interface UseDrawingExportResult {
+  getExportDimensionGraphics: (paperScale: number) => ReturnType<ReturnType<typeof useExportDimensionGraphics>>;
   formatDistance: (distance: number) => string;
   handleExportSVG: () => void;
   handleExportDXF: () => void;
@@ -303,6 +308,7 @@ function useDrawingExport({
   // Georef edits replace the map, but subscribe to mutationVersion too so the
   // dependency is explicit (matches ViewportContainer / useAnchorGeoreference).
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
+  const dimensionGraphicsAt = useExportDimensionGraphics(measure2DResults); // on the current cut only
 
   // One properties cache per export, shared by every cut polygon it styles.
   const cutPolygonStyleContext = useCallback((): CutPolygonStyleContext => ({
@@ -324,23 +330,14 @@ function useDrawingExport({
     // extracted to svgExportViewport.ts (see that file's docstring for why
     // this transform doesn't map points at all — the SVG's own
     // width/height-vs-viewBox ratio does the scaling).
-    const viewport = computeSvgExportViewport(bounds, displayOptions.scale, sectionPlane.axis);
+    const dims = dimensionGraphicsAt(displayOptions.scale || 100, sectionPlane.axis); // the viewBox must hold them too
+    const viewport = computeSvgExportViewport(boundsWithDimensions(bounds, dims), displayOptions.scale, sectionPlane.axis);
     const { widthMm: svgWidthMm, heightMm: svgHeightMm, viewBoxMinX, viewBoxMinY, viewBoxWidth: viewWidth, viewBoxHeight: viewHeight, flipX, flipY, effectiveScale } = viewport;
 
     // Convert mm on paper to model units (meters)
     // At 1:100 scale, 1mm on paper = 0.1m in model space
     // Formula: modelUnits = paperMm * scale / 1000
     const mmToModel = (mm: number) => svgExportMmToWorld(mm, effectiveScale);
-
-    // Helper to escape XML
-    const escapeXml = (str: string): string => {
-      return str
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&apos;');
-    };
 
     // flipX/flipY (axis-specific, matching canvas rendering) come from
     // `viewport` above — computeSvgExportViewport resolves the same
@@ -492,43 +489,6 @@ function useDrawingExport({
     }
     svg += '  </g>\n';
 
-    // 4. DRAW COMPLETED MEASUREMENTS
-    if (measure2DResults.length > 0) {
-      svg += '  <g id="measurements">\n';
-      for (const result of measure2DResults) {
-        const { start, end, distance } = result;
-        // Transform measurement points with axis-specific flipping
-        const startT = { x: flipX ? -start.x : start.x, y: flipY ? -start.y : start.y };
-        const endT = { x: flipX ? -end.x : end.x, y: flipY ? -end.y : end.y };
-        const midX = (startT.x + endT.x) / 2;
-        const midY = (startT.y + endT.y) / 2;
-        const labelText = formatDistance(distance);
-
-        // Measurement styling (all in mm on paper, converted to model units)
-        const measureColor = '#2196F3';
-        const measureLineWidth = mmToModel(0.4);  // 0.4mm line on paper
-        const endpointRadius = mmToModel(1.5);    // 1.5mm radius on paper
-
-        // Draw line
-        svg += `    <line x1="${startT.x.toFixed(4)}" y1="${startT.y.toFixed(4)}" x2="${endT.x.toFixed(4)}" y2="${endT.y.toFixed(4)}" stroke="${measureColor}" stroke-width="${measureLineWidth.toFixed(4)}"/>\n`;
-
-        // Draw endpoints
-        svg += `    <circle cx="${startT.x.toFixed(4)}" cy="${startT.y.toFixed(4)}" r="${endpointRadius.toFixed(4)}" fill="${measureColor}"/>\n`;
-        svg += `    <circle cx="${endT.x.toFixed(4)}" cy="${endT.y.toFixed(4)}" r="${endpointRadius.toFixed(4)}" fill="${measureColor}"/>\n`;
-
-        // Draw label background and text
-        // Use 3mm text height on paper for readable labels
-        const fontSize = mmToModel(3);
-        const labelWidth = labelText.length * fontSize * 0.6;  // Approximate text width
-        const labelHeight = fontSize * 1.4;
-        const labelStroke = mmToModel(0.2);
-
-        svg += `    <rect x="${(midX - labelWidth / 2).toFixed(4)}" y="${(midY - labelHeight / 2).toFixed(4)}" width="${labelWidth.toFixed(4)}" height="${labelHeight.toFixed(4)}" fill="rgba(255,255,255,0.95)" stroke="${measureColor}" stroke-width="${labelStroke.toFixed(4)}"/>\n`;
-        svg += `    <text x="${midX.toFixed(4)}" y="${midY.toFixed(4)}" font-family="Arial, sans-serif" font-size="${fontSize.toFixed(4)}" fill="#000000" text-anchor="middle" dominant-baseline="middle" font-weight="500">${escapeXml(labelText)}</text>\n`;
-      }
-      svg += '  </g>\n';
-    }
-
     // 5. DRAW POLYGON AREA MEASUREMENTS
     if (polygonArea2DResults.length > 0) {
       svg += '  <g id="polygon-area-measurements">\n';
@@ -614,9 +574,11 @@ function useDrawingExport({
       );
     }
 
+    svg += elementTagsSvg(resolvedElementTags(drawing), (x, y) => ({ x: flipX ? -x : x, y: flipY ? -y : y }), mmToModel(3.5));
+    svg += dimensionsToSvg(dims, (x, y) => ({ x: flipX ? -x : x, y: flipY ? -y : y }), mmToModel);
     svg += '</svg>';
     return svg;
-  }, [drawing, displayOptions, cutPolygonStyleContext, measure2DResults, polygonArea2DResults, textAnnotations2D, cloudAnnotations2D, sectionPlane.axis, dxfUnderlays, scanSection]);
+  }, [drawing, displayOptions, cutPolygonStyleContext, measure2DResults, polygonArea2DResults, textAnnotations2D, cloudAnnotations2D, sectionPlane.axis, dxfUnderlays, scanSection, dimensionGraphicsAt]);
 
   // Generate SVG with drawing sheet (frame, title block, scale bar)
   // This generates coordinates directly in paper mm space (like the canvas rendering)
@@ -685,16 +647,6 @@ function useDrawingExport({
     // Drawing content FIRST (so frame/title block render on top)
     svg += `  <g id="drawing-content" clip-path="url(#viewport-clip)">
 `;
-
-    // Helper to escape XML
-    const escapeXml = (str: string): string => {
-      return str
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&apos;');
-    };
 
     // Helper to get polygon path in paper coordinates
     const polygonToPath = (polygon: { outer: { x: number; y: number }[]; holes: { x: number; y: number }[][] }): string => {
@@ -812,8 +764,9 @@ function useDrawingExport({
       );
     }
 
+    svg += elementTagsSvg(resolvedElementTags(drawing), modelToPaper, 3.5);
+    svg += dimensionsToSvg(dimensionGraphicsAt(1000 / scaleFactor, { flipX, flipY }), modelToPaper, (mm) => mm);
     svg += '  </g>\n\n';
-
     // Render frame (on top of drawing content)
     const frameResult = renderFrame(activeSheet.paper, activeSheet.frame);
     svg += frameResult.svgElements;
@@ -847,7 +800,7 @@ function useDrawingExport({
     // identity when the axis changes, and the canvas rewrote the cache on
     // every fresh draw — neither of which this callback controls.
     // `cachedSheetTransformRef` is a ref: stable identity, read at call time.
-  }, [drawing, activeSheet, displayOptions, cutPolygonStyleContext, dxfUnderlays, scanSection, sectionPlane.axis, isPinned]);
+  }, [drawing, activeSheet, displayOptions, cutPolygonStyleContext, dxfUnderlays, scanSection, sectionPlane.axis, isPinned, dimensionGraphicsAt]);
   // Export SVG
   const handleExportSVG = useCallback(() => {
     // Use sheet export if enabled, otherwise raw drawing export
@@ -859,7 +812,8 @@ function useDrawingExport({
     downloadFile(svg, `${stem}.svg`, 'image/svg+xml');
     trackExportCompleted({ format: 'svg', surface: 'drawing_panel' });
     posthog.capture('drawing_exported', { format: 'svg', axis: sectionPlane.axis, sheet_enabled: sheetEnabled });
-  }, [generateExportSVG, generateSheetSVG, sheetEnabled, activeSheet, sectionPlane]);
+    noticeOtherCutDimensionsLeftOut(t);
+  }, [generateExportSVG, generateSheetSVG, sheetEnabled, activeSheet, sectionPlane, t]);
   // Export DXF (issue #1861). Unlike SVG, DXF has no paper space, so this
   // always exports the raw model-space drawing (sheet frame/title block are
   // not represented) — real-world metres, with a plan ('down') section
@@ -869,6 +823,7 @@ function useDrawingExport({
   // The point-cloud scan overlay (issue #1805) is likewise deliberately
   // excluded: it is a raster-like screen aid (tens of thousands of circles),
   // not vector content — SVG export carries it (opt-in) instead.
+  const getExportDimensionGraphics = useCallback((paperScale: number) => dimensionGraphicsAt(paperScale, sectionPlane.axis), [dimensionGraphicsAt, sectionPlane.axis]);
   const handleExportDXF = useCallback(() => {
     if (!drawing) return;
     const isCustomPlane = sectionPlane.custom !== undefined;
@@ -902,10 +857,11 @@ function useDrawingExport({
       showHiddenLines: displayOptions.showHiddenLines,
       coordinateTransform,
       metadataComment,
-      underlays: mappedDxfUnderlayOptions(dxfUnderlays, sectionPlane.axis),
+      underlays: [...mappedDxfUnderlayOptions(dxfUnderlays, sectionPlane.axis), elementTagsDxf(drawing, 3.5 * displayOptions.scale / 1000)],
       // The traced scan outline (#6871) on its own layer, through the same
       // georeference transform as the cut.
       polylineLayers: displayOptions.showScanSection ? scanOutlineDxfLayers(scanSection.outline) : [],
+      dimensions: dimensionGraphicsAt(displayOptions.scale, sectionPlane.axis),
     });
     const stem = `section-${sectionPlane.axis}-${sectionPlane.position}`;
     downloadDxf(dxf, `${stem}.dxf`);
@@ -916,8 +872,8 @@ function useDrawingExport({
       georeferenced: isGeoreferenced,
     });
   }, [
-    drawing, dxfUnderlays, displayOptions.showHiddenLines, displayOptions.showScanSection, scanSection.outline,
-    sectionPlane, ifcDataStore, coordinateInfo, storeModels, anchorModelIdOverride, georefMutations, mutationVersion,
+    drawing, dxfUnderlays, displayOptions.scale, displayOptions.showHiddenLines, displayOptions.showScanSection, scanSection.outline,
+    sectionPlane, ifcDataStore, coordinateInfo, storeModels, anchorModelIdOverride, georefMutations, mutationVersion, dimensionGraphicsAt,
   ]);
   // Export scaled PDF (issue #2042): a true-vector PDF sized so the
   // requested scale ("1:N") is EXACT — the page itself is sized to the
@@ -927,7 +883,7 @@ function useDrawingExport({
   //
   // Scope, deliberately smaller than the SVG export: cut-polygon fills and
   // outlines (same colours as the SVG, via resolveCutPolygonStyle) and
-  // drawing LINES. Not yet included: text/cloud annotations, and the
+  // drawing LINES, live element tags and dimensions. Not yet included: text/cloud annotations, and the
   // point-cloud scan overlay. Those are straightforward follow-ups once this scale
   // plumbing is reviewed; see the PR description. Reference raster pages and
   // DXF vectors are included beneath these strokes (#6615).
@@ -1053,9 +1009,10 @@ function useDrawingExport({
     // about zero, which is not the case for a model at ordinary world
     // coordinates (showstopper found on PR #2119).
     const currentAxis = sectionPlane.axis;
+    const dimensionSnapshot = dimensionGraphicsAt(effectiveScale, currentAxis);
     let layout: PdfScaleLayout;
     try {
-      layout = computePdfSectionLayout(drawing.bounds, currentAxis, effectiveScale, 10);
+      layout = computePdfSectionLayout(boundsWithDimensions(drawing.bounds, dimensionSnapshot), currentAxis, effectiveScale, 10);
     } catch (err) {
       toast.error(err instanceof Error ? t('section2d.export.invalidScaleDetail', { error: err.message }) : t('section2d.export.invalidScale'));
       return;
@@ -1074,6 +1031,7 @@ function useDrawingExport({
     // Own mapped vectors at click time; model/reference edits during async export
     // cannot replace the geometry whose bounds/scale were used above.
     const vectorSnapshot = structuredClone(dxfUnderlays);
+    const tagSnapshot = resolvedElementTags(drawing);
     void recordActivity({ kind: 'export', title: 'activityTray.job.export', panel: 'drawing',
       subject: `section-${sectionPlane.axis}-${sectionPlane.position} · PDF` }, async () => {
       try {
@@ -1133,6 +1091,8 @@ function useDrawingExport({
           doc.line(p0.x, p0.y, p1.x, p1.y);
         }
         doc.setLineDashPattern([], 0);
+        drawElementTagsPdf(doc, tagSnapshot, mapPoint);
+        drawDimensionsPdf(doc, dimensionSnapshot, mapPoint);
         // v1 has no title block, so this filename is the SOLE record of the
         // sheet's scale — round-tripping through Math.round() here would
         // file a 1:99.5 export as "…-1-100", silently misreporting it (same
@@ -1151,7 +1111,7 @@ function useDrawingExport({
     }).catch((err: unknown) => {
       toast.error(err instanceof Error ? t('section2d.export.pdfFailed', { error: err.message }) : t('section2d.export.pdfFailedGeneric'));
     });
-  }, [drawing, dxfUnderlays, displayOptions.scale, displayOptions.showHiddenLines, sectionPlane, sheetEnabled, activeSheet, generateSheetSVG, cutPolygonStyleContext, t]);
+  }, [drawing, dxfUnderlays, displayOptions.scale, displayOptions.showHiddenLines, sectionPlane, sheetEnabled, activeSheet, generateSheetSVG, cutPolygonStyleContext, dimensionGraphicsAt, t]);
 
   // Print handler
   const handlePrint = useCallback(() => {
@@ -1219,9 +1179,11 @@ function useDrawingExport({
       </html>
     `);
     printWindow.document.close();
+    noticeOtherCutDimensionsLeftOut(t);
   }, [generateExportSVG, generateSheetSVG, sheetEnabled, activeSheet, sectionPlane, t]);
 
   return {
+    getExportDimensionGraphics,
     formatDistance,
     handleExportSVG,
     handleExportDXF,

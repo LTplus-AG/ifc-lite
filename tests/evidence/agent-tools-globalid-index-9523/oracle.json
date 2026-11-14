@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "apps/viewer/src/lib/agent-tools/refs.ts",
+  "mutation": "tests/evidence/agent-tools-globalid-index-9523/behaviour.oracle.patch",
+  "test": "apps/viewer/src/lib/agent-tools/main-viewer-host.test.ts",
+  "why": "#9523: a GlobalId lookup that builds every entity in the model freezes the user's tab; the lookup must read only the overlay's own entities and the entity table index."
+}

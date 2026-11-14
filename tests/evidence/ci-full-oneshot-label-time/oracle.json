@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "scripts/ci-full-oneshot.mjs",
+  "mutation": "tests/evidence/ci-full-oneshot-label-time/behaviour.oracle.patch",
+  "test": "scripts/ci-full-oneshot.test.mjs",
+  "why": "Reverse application keeps the module and its exports but drops the check that ci:full was applied before the finished run was created, so a label added mid-run is removed before the full pass it asked for."
+}

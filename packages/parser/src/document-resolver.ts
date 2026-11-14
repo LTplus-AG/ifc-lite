@@ -7,7 +7,8 @@ import type { IfcDataStore } from './columnar-parser.js';
 import { getReference } from './attribute-helpers.js';
 import { normalizeIfcTypeName } from './ifc-schema.js';
 import { effectiveMetadataRecord, type MetadataReadView } from './effective-metadata-record.js';
-import { resolveEffectiveRelationshipOverlay } from './effective-relationship-overlay.js';
+import { selectionRelationshipIds, selectionRelationshipCacheKey } from './selection-relationship-ids.js';
+import { selectionRelationshipOverlay, selectedRelationshipMembers } from './selection-relationship-overlay.js';
 
 /** Existing normalized document fields; identity describes the associated native target. */
 export interface DocumentInfo {
@@ -29,17 +30,19 @@ export interface DocumentInfo {
 }
 
 interface DocumentEdges { references: Map<number, number[]>; types: Map<number, number[]> }
-const cache = new WeakMap<IfcDataStore, WeakMap<MetadataReadView, { revision: number; source: IfcDataStore['source']; edges: DocumentEdges }>>();
+const cache = new WeakMap<IfcDataStore, WeakMap<MetadataReadView, { revision: number; source: IfcDataStore['source']; edges: Map<number, DocumentEdges> }>>();
 
-function effectiveEdges(store: IfcDataStore, view: MetadataReadView): DocumentEdges {
+function effectiveEdges(store: IfcDataStore, view: MetadataReadView, entityId: number, primaryId = entityId): DocumentEdges {
   const revision = view.getMutationRevision();
   const previous = cache.get(store)?.get(view);
-  if (previous?.revision === revision && previous.source === store.source) return previous.edges;
+  const cacheKey = selectionRelationshipCacheKey(store, view, entityId, previous?.revision === revision ? previous.edges : undefined, primaryId);
+  if (previous?.revision === revision && previous.source === store.source && previous.edges.has(cacheKey)) return previous.edges.get(cacheKey)!;
   const kinds = ['IFCRELASSOCIATESDOCUMENT', 'IFCRELDEFINESBYTYPE'];
   // @raw-entity-enumeration-ok native source relationship ids feed the canonical effective relationship reader
-  const sourceIds = kinds.flatMap(type => store.entityIndex.byType.get(type) ?? []);
+  const sourceIds = (cacheKey === -1 ? null : selectionRelationshipIds(store, view, entityId, [RelationshipType.AssociatesDocument, RelationshipType.DefinesByType], kinds))
+    ?? kinds.flatMap(type => store.entityIndex.byType.get(type) ?? []);
   sourceIds.push(...(view.getTypeMutations?.().keys() ?? []));
-  const overlay = resolveEffectiveRelationshipOverlay(store.source?.length ? store : { ...store, getEntity: () => null }, {
+  const overlay = selectionRelationshipOverlay(store.source?.length ? store : { ...store, getEntity: () => null }, view, {
     createdEntities: () => view.getNewEntities(), mutatedEntityIds: () => sourceIds,
     namedAttributes: id => view.getAttributeMutationsForEntity(id).map(row => [row.name, row.value] as const),
     positionalAttributes: id => view.getPositionalMutationsForEntity(id) ?? [],
@@ -51,7 +54,7 @@ function effectiveEdges(store: IfcDataStore, view: MetadataReadView): DocumentEd
     const type = relation.relationshipType.toUpperCase();
     const target = type === kinds[0] ? edges.references : type === kinds[1] ? edges.types : null;
     if (!target) continue;
-    for (const subject of relation.related) {
+    for (const subject of selectedRelationshipMembers(relation, entityId, cacheKey === -1)) {
       if (view.isDeleted(subject)) continue;
       const values = target.get(subject) ?? [];
       for (const id of relation.relating) if (!values.includes(id)) values.push(id);
@@ -60,7 +63,9 @@ function effectiveEdges(store: IfcDataStore, view: MetadataReadView): DocumentEd
   }
   let modelCache = cache.get(store);
   if (!modelCache) { modelCache = new WeakMap(); cache.set(store, modelCache); }
-  modelCache.set(view, { revision, source: store.source, edges });
+  const rows = previous?.revision === revision && previous.source === store.source ? previous.edges : new Map<number, DocumentEdges>();
+  rows.set(cacheKey, edges);
+  modelCache.set(view, { revision, source: store.source, edges: rows });
   return edges;
 }
 
@@ -115,9 +120,9 @@ export function extractDocumentsOnDemand(store: IfcDataStore, entityId: number, 
   if (view?.isDeleted(entityId)) return [];
   const baseId = view?.resolveBaseEntityId?.(entityId) ?? entityId;
   const subjects = baseId === entityId ? [entityId] : [entityId, baseId];
-  const edges = view ? effectiveEdges(store, view) : null;
-  const live = edges ? [...subjects, ...subjects.flatMap(id => edges.types.get(id) ?? [])]
-    .flatMap(id => edges.references.get(id) ?? []) : [];
+  const edges = view ? effectiveEdges(store, view, entityId) : null;
+  const live = edges ? [...subjects, ...subjects.flatMap(id => effectiveEdges(store, view!, id, entityId).types.get(id) ?? [])]
+    .flatMap(id => effectiveEdges(store, view!, id, entityId).references.get(id) ?? []) : [];
   if (store.source?.length) {
     return [...new Set(edges ? live : forwardedReferences(store, subjects))].map(id => documentRecord(store, id, view));
   }

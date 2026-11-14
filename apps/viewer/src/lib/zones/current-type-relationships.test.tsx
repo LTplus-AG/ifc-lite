@@ -67,7 +67,7 @@ function bytesOf(lines: string[]) {
 const parse = (lines: string[]) => new IfcParser().parseColumnar(bytesOf(lines), { disableWorkerScan: true });
 
 /** The same store with no graph to consult, so every relationship is read from its record. */
-const everyRelationshipRead = (store: IfcDataStore): IfcDataStore => ({ ...store, relationships: new RelationshipGraphBuilder().build() });
+const everyRelationshipRead = (store: IfcDataStore): IfcDataStore => ({ ...store, relationships: new RelationshipGraphBuilder().build(), selectionRelationshipIndex: undefined });
 
 /** 'A: Qto_Own,Qto_Related' for a typed element, 'none' without quantities, 'refused' when unavailable. */
 const describe = (store: IfcDataStore, id: number, view: MutablePropertyView) => {
@@ -214,7 +214,7 @@ test('#9192 a model past the old 65,536-row limit, as Holter and BWK are, gets t
   assert.equal(describe(oracle, FILLER, new MutablePropertyView(null, 'm')), 'A: Qto_Own,Qto_Related', 'the full read agrees for #15');
 });
 
-test('#9192 past the old 65,536-row limit, the store emitted before the definition edges exist refuses as still loading; the full store answers', async () => {
+test('#9192 past the old 65,536-row limit, worker coverage answers before definition edges arrive and agrees with the full store', async () => {
   // That store is the active one while property parsing goes on; without definition edges it
   // would read every definition relationship from source, synchronously in the panel's render.
   const { store, early } = await parseLarge();
@@ -224,9 +224,9 @@ test('#9192 past the old 65,536-row limit, the store emitted before the definiti
   const counted: IfcDataStore = { ...early, getEntity: id => { reads.push(id); return early.getEntity(id); } };
   const view = new MutablePropertyView(null, 'm');
   const read = readCurrentTypeQuantities(counted, 10, view);
-  assert.equal(read.status, 'unavailable');
-  assert.match(read.reason ?? '', /^Native type relationships are still loading \(more than 65536 relationships\)$/);
-  assertReadIds(reads.filter(isRelationship), [], 'the refusal reads no relationship');
+  assert.equal(read.status, 'available');
+  assert.equal(describe(counted, 10, view), 'A: Qto_Own,Qto_Related');
+  assertReadIds(reads.filter(isRelationship), [30, 36], 'worker coverage reads only the occurrence and type relationships');
   // The same view, as the viewer keeps it across the swap.
   assert.deepEqual(describeAll(store, view), CLEAN, 'the full store answers');
 });
@@ -248,7 +248,7 @@ test('#9192 a complete store past 65,536 typing rows with no native definition r
   assert.equal(describe(everyRelationshipRead(store), 10, view), 'A: Qto_Own,Qto_Related', 'reading every relationship agrees');
 });
 
-test('#9192 the panel says still loading on the early store of a large model, then shows the answer once the full store replaces it', async () => {
+test('#9192 the panel preserves inherited quantities from worker coverage across the early-to-full store swap', async () => {
   const { store, early } = await parseLarge();
   const seed = (ifcDataStore: IfcDataStore) => useViewerStore.setState({
     models: new Map([['a', { ...fixtureModel('a'), ifcDataStore }]]), activeModelId: 'a', ifcDataStore,
@@ -258,8 +258,9 @@ test('#9192 the panel says still loading on the early store of a large model, th
   assert.ok(getOrCreateMutationView(useViewerStore, 'a'));
   useViewerStore.setState({ selectedEntity: { modelId: 'a', expressId: 10 }, selectedEntityId: 10 });
   const panel = render(<PropertiesPanel />);
-  assert.match(panel.textContent ?? '', /still loading/);
-  assert.doesNotMatch(panel.textContent ?? '', /Qto_Related/);
+  assert.match(panel.textContent ?? '', /Qto_Own/);
+  assert.match(panel.textContent ?? '', /Qto_Related/);
+  assert.doesNotMatch(panel.textContent ?? '', /still loading/);
 
   act(() => seed(store));
   assert.match(panel.textContent ?? '', /Qto_Own/);
@@ -288,7 +289,11 @@ test('#9192 the row limit still refuses, says so, without reading a relationship
   view.setPositionalAttribute(100_000, 4, ['#11']);
   rowsWalked = 0;
   assert.equal(readCurrentTypeQuantities(counted, 12, view).status, 'unavailable', 'the limit still holds at the next revision');
-  assert.ok(rowsWalked > 131_072, `a new revision walks the rows again (walked ${rowsWalked})`);
+  assert.ok(rowsWalked < 16, `a new revision checks only the affected rows (checked ${rowsWalked})`);
+  // Invalidation must also recover once edits bring the count within budget.
+  const excess = store.selectionRelationshipIndex!.typeRows - 131_072;
+  for (let i = 0; i < excess; i++) view.deleteEntity(100_000 + i);
+  assert.equal(describe(counted, 12, view), 'B: Qto_B');
 });
 
 test('#9192 the reference budget counts only what a read of each relationship counts', async () => {

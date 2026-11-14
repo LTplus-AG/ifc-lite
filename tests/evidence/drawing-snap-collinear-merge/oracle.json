@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "apps/viewer/src/lib/drawing2d-markup/drawing-snap-merge.ts",
+  "mutation": "tests/evidence/drawing-snap-collinear-merge/behaviour.oracle.patch",
+  "test": "apps/viewer/src/lib/drawing2d-markup/drawing-snap.test.ts",
+  "why": "Reverse application keeps every export the adapter and witness import but stops simplifyRing and mergeCollinearSegments from dropping same-entity collinear split vertices, so a tessellation split point is offered as an endpoint and the face midpoint lands mid-piece."
+}

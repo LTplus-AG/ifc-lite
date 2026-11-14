@@ -1,0 +1,11 @@
+diff --git a/apps/viewer/src/lib/agent-tools/refs.ts b/apps/viewer/src/lib/agent-tools/refs.ts
+index 1f1d0c83ee..90a28482cf 100644
+--- a/apps/viewer/src/lib/agent-tools/refs.ts
++++ b/apps/viewer/src/lib/agent-tools/refs.ts
+@@ -60,5 +60,5 @@ export function formatBytes(bytes: number): string {
+ 
+ /** Every entity query a tool makes is pinned to its own model, so a federated session never mixes results. */
+ export function modelQuery(model: ReadyModel) {
+-  return model.bim.query();
++  return model.bim.query().model(model.id);
+ }

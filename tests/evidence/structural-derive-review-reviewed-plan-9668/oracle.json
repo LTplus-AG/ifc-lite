@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "#9668: Apply writes the plan the user reviewed; plan again at Apply instead.",
+  "key": "apps/viewer/src/lib/actions/structural-derive-review.ts",
+  "mutation": "tests/evidence/structural-derive-review-reviewed-plan-9668/behaviour.oracle.patch",
+  "test": "apps/viewer/src/lib/actions/structural-derive-review.test.ts"
+}

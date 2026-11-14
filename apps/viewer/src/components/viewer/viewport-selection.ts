@@ -14,10 +14,12 @@
 
 import { useViewerStore, resolveEntityRef } from '@/store';
 import { selectLandXmlViewportPick } from './landXmlViewportSelection.js';
+import { consumeWallTopPick } from '@/lib/wall-top-pick';
 import { fieldTelemetry } from '@/lib/perf/fieldTelemetryLoader';
 
 /** A plain click: select `globalId` alone, or clear the selection on a miss (null). */
 export function selectPickedGlobalId(globalId: number | null): void {
+  if (consumeWallTopPick(globalId)) return;
   fieldTelemetry?.noteInspectSelection(globalId); // #6961: a sampled click's pick landed
   const state = useViewerStore.getState();
   // Gate on EITHER set: `selectedEntityIds` is the legacy global-id set that
@@ -39,6 +41,7 @@ export function selectPickedGlobalId(globalId: number | null): void {
 
 /** A multi-select click (Ctrl in 3D, Shift in the plan): add or remove `globalId`. */
 export function toggleGlobalIdInSelection(globalId: number): void {
+  if (consumeWallTopPick(globalId)) return;
   const entityRef = resolveEntityRef(globalId);
   const state = useViewerStore.getState();
   // The first multi-select click keeps the existing single selection.

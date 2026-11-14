@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "#9668: Apply waits for the acknowledgement; enable it without one.",
+  "key": "apps/viewer/src/components/viewer/assistant/StructuralReviewFlow.tsx",
+  "mutation": "tests/evidence/structural-review-acknowledgement-9668/behaviour.oracle.patch",
+  "test": "apps/viewer/src/components/viewer/assistant/StructuralDerivationReview.test.tsx"
+}

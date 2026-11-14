@@ -3,35 +3,35 @@
   "repin": "IFC_LITE_REPIN_GOLDEN=1 cargo test -p ifc-lite-export --features parquet-bos --test export_golden -- --exact parquet_bos",
   "cases": {
     "AC20-FZK-Haus": {
-      "fnv1a64": "d7a7c439fac8805f",
-      "bytes": 234894
+      "fnv1a64": "d9ac7503da3e17f6",
+      "bytes": 234897
     },
     "IfcOpenHouse_IFC4": {
-      "fnv1a64": "178ab2cfce3c0c86",
+      "fnv1a64": "478fc48f87695a39",
       "bytes": 32014
     },
     "bath_csg_solid": {
-      "fnv1a64": "6093b26b6903510e",
-      "bytes": 6496
+      "fnv1a64": "4a363eeed1481950",
+      "bytes": 6498
     },
     "bonsai-terrain": {
-      "fnv1a64": "1237475f0ac6ff64",
-      "bytes": 4653
+      "fnv1a64": "71b790b2a39df60d",
+      "bytes": 4651
     },
     "c6_data_model_synthetic": {
-      "fnv1a64": "9eb0eff2b3a8da03",
-      "bytes": 6110
+      "fnv1a64": "1784cd7aacd92fd4",
+      "bytes": 6112
     },
     "duplex": {
-      "fnv1a64": "084be94a7029fe90",
-      "bytes": 276735
+      "fnv1a64": "23ec7402b39b6ae1",
+      "bytes": 276734
     },
     "mapped_instances_synthetic": {
-      "fnv1a64": "f9347619574e3679",
-      "bytes": 7872
+      "fnv1a64": "1c97c82500a28fbb",
+      "bytes": 7869
     },
     "wall_two_openings": {
-      "fnv1a64": "d50f29dc52085625",
+      "fnv1a64": "4d6808318ebe5951",
       "bytes": 7056
     }
   }

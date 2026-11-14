@@ -10,13 +10,17 @@
  * `pushCreateEntityUndo` spy) rather than a full Zustand store.
  */
 
-import { describe, it } from 'node:test';
+import { before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { StoreApi } from './types.js';
 import { createStoreAdapter } from './store-adapter.js';
+import { loadStructuralWrites } from './store-adapter-structural.js';
 import { pathForGuid, registerEntityPath, registerStoreSlot, unregisterEntityPath } from '@/lib/collab/entity-paths.js';
+
+// The structural write path loads in its own chunk (#9668); these tests call it synchronously.
+before(() => loadStructuralWrites());
 
 const STEP = [
   'ISO-10303-21;', 'HEADER;', "FILE_DESCRIPTION((''),'2;1');",

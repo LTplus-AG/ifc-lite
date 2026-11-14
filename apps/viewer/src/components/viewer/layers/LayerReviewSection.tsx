@@ -19,7 +19,7 @@ import { toast } from '@/components/ui/toast';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { useBCF } from '@/hooks/useBCF';
-import { useSingleFlight } from '@/hooks/useSingleFlight';
+import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { captureViewpointForCreate } from '@/hooks/bcf/capture-viewpoint-for-create';
 import {
   addTopicToProject,
@@ -91,9 +91,9 @@ function CandidateReview({
   const [withViewpoint, setWithViewpoint] = useState(true);
   // One registry action at a time (C-2): a same-tick double press is refused
   // before React re-renders the buttons disabled.
-  const flight = useSingleFlight();
+  const flight = useAsyncRun();
   const busy = flight.busy;
-  const runAction = flight.run;
+  const runAction = flight.start;
 
   // The commented entity is the ACTIVE 3D selection (last-selected wins,
   // matching the selection slice), translated back to its composition
@@ -131,7 +131,7 @@ function CandidateReview({
     return () => { refreshTicket.current++; };
   }, [refresh]);
 
-  const openReview = useCallback(() => runAction(async (isCurrent) => {
+  const openReview = useCallback(() => runAction(async ({ isCurrent }) => {
     try {
       // A freshly published local candidate is not on the registry yet;
       // the reviews route 404s unknown layer ids. Same push-first step
@@ -147,7 +147,7 @@ function CandidateReview({
 
   const postComment = useCallback(async () => {
     if (!review || !selectedPath || title.trim().length === 0) return;
-    await runAction(async (isCurrent) => {
+    await runAction(async ({ isCurrent }) => {
       try {
         let viewpoint: Record<string, unknown> | undefined;
         if (withViewpoint) {

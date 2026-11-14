@@ -38,7 +38,7 @@ export function RectSelectionOverlay({ rect }: RectSelectionOverlayProps) {
   const height = Math.abs(rect.y1 - rect.y0);
   if (width < 1 || height < 1) return null;
   return createPortal(
-    <rect
+    <rect aria-hidden="true"
       data-scene-primitive="rect-selection"
       x={left}
       y={top}

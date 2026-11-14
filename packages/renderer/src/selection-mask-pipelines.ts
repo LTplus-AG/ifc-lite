@@ -20,7 +20,7 @@ import { emptyBindGroup, emptyBindGroupLayout, sectionExclusions, withSectionExc
  * occurrences, or the hovered id's.
  */
 
-import { INSTANCED_RTE_DELTA_SLOT, INSTANCED_VERTEX_BUFFERS } from './instanced-vertex-layout.js';
+import { INSTANCED_RTE_DELTA_SLOT, INSTANCED_VERTEX_BUFFERS, TEXTURED_HIGHLIGHT_VERTEX_BUFFERS } from './instanced-vertex-layout.js';
 import { drawInstanceRuns, uploadInstancedRteDeltas, type InstanceRun } from './instanced-rte.js';
 import type { WorldPoint } from './relative-to-eye.js';
 import type { InstancedTemplateGPU } from './scene-instance-types.js';
@@ -47,12 +47,12 @@ export type MaskKind = 'selectedVisible' | 'hoverVisible' | 'selectedAll';
 
 export type MaskPipelines = Record<MaskKind, GPURenderPipeline>;
 
-export function createGeometricMaskPipelines(device: GPUDevice, meshLayout: GPUBindGroupLayout, samples: number, hoverLayout?: GPUBindGroupLayout): MaskPipelines {
+export function createGeometricMaskPipelines(device: GPUDevice, meshLayout: GPUBindGroupLayout, samples: number, hoverLayout?: GPUBindGroupLayout, textured = false): MaskPipelines {
   const instanced = hoverLayout !== undefined;
   const layout = device.createPipelineLayout({ bindGroupLayouts: withSectionExclusions(device, [meshLayout, hoverLayout ?? emptyBindGroupLayout(device), opaqueVisibilityLayout(device, samples)]) });
   const vertex: GPUVertexState = {
     module: device.createShaderModule({ code: mainShaderSource.replace('@location(8) @interpolate(linear)', '@location(8) @interpolate(linear, sample)') }),
-    entryPoint: instanced ? 'vs_instanced' : 'vs_main', buffers: instanced ? INSTANCED_VERTEX_BUFFERS : [INSTANCED_VERTEX_BUFFERS[0]],
+    entryPoint: instanced ? 'vs_instanced' : 'vs_main', buffers: instanced ? INSTANCED_VERTEX_BUFFERS : textured ? TEXTURED_HIGHLIGHT_VERTEX_BUFFERS : [INSTANCED_VERTEX_BUFFERS[0]],
   };
   return createMaskPipelines(device, 'geometric-mask', layout, vertex, device.createShaderModule({ code: selectionMaskFragmentSource(instanced, samples) }), samples);
 }

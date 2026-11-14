@@ -308,3 +308,24 @@ describe('shouldSuppressChunkSkewNoise', () => {
     );
   });
 });
+
+it('offline panel imports surface without navigation or spending reload recovery (#9634)', () => {
+  const original = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  const network = { onLine: false };
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: network });
+  try {
+    const h = makeDeps();
+    const event = makeEvent(new TypeError('Failed to fetch dynamically imported module: /assets/BCFPanel.js'));
+    assert.equal(handlePreloadError(event, h.deps), 'surfaced');
+    assert.equal(event.defaultPrevented, false, 'the import still rejects to its error boundary');
+    assert.equal(h.reloads, 0);
+    assert.equal(h.stored, null, 'offline failures do not consume the reload budget');
+    assert.equal(h.pendingAt, null, 'offline errors are not suppressed as reload noise');
+    network.onLine = true;
+    assert.equal(handlePreloadError(event, h.deps), 'reloaded', 'online deploy-skew recovery still works');
+    assert.equal(h.reloads, 1);
+  } finally {
+    if (original) Object.defineProperty(globalThis, 'navigator', original);
+    else Reflect.deleteProperty(globalThis, 'navigator');
+  }
+});

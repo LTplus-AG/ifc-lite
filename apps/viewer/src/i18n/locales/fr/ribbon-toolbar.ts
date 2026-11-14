@@ -133,8 +133,6 @@ export const ribbonToolbarFr = {
   'ribbon.analyze.appsGroup': 'Applications',
   'ribbon.author.editGroup': 'Édition',
   'ribbon.author.editMode': 'Modèle',
-  'ribbon.author.enterEditTooltip': 'Entrer dans l’espace de travail Modèle : dessiner et modifier sur un étage',
-  'ribbon.author.exitEditTooltip': 'Quitter l’espace de travail Modèle',
   'ribbon.author.editLockedTooltip': 'La modification nécessite un accès éditeur dans cette session partagée',
   'ribbon.author.undo': 'Annuler',
   'ribbon.author.redo': 'Rétablir',

@@ -17,6 +17,7 @@ export const visibilityReasonsDe = {
   'visibilityReasons.modelHidden': 'Ausgeblendete Modelle',
   'visibilityReasons.lens': 'Aktive Linse',
   'visibilityReasons.typeVisibility': 'Ausgeblendete IFC-Klassen',
+  'visibilityReasons.structuralViewMode': 'Tragwerksmodellansicht',
   'visibilityReasons.typeViewMode': 'Typenansicht',
   'visibilityReasons.hostTypes': 'Vom Host ausgeblendete Klassen',
   'visibilityReasons.section': 'Schnitt',

@@ -40,7 +40,9 @@ function isAriaDisabled(value: React.AriaAttributes['aria-disabled']): boolean {
 }
 
 /** Click handler shared by both button sizes: blur to close the tooltip
- *  after a click (house pattern); an aria-disabled control runs nothing. */
+ *  after a pointer click (house pattern, `releasePointerFocus`); keyboard
+ *  activation (`detail === 0`) keeps focus on the control. An aria-disabled
+ *  control runs nothing. */
 function ribbonActivate(
   e: React.MouseEvent<HTMLButtonElement>,
   ariaDisabled: React.AriaAttributes['aria-disabled'],
@@ -50,7 +52,7 @@ function ribbonActivate(
     e.preventDefault();
     return;
   }
-  e.currentTarget.blur();
+  if (e.detail > 0) e.currentTarget.blur();
   onClick?.(e);
 }
 

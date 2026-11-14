@@ -10,10 +10,9 @@ import { entityClip } from './section-exclusions.js';
 
 import { Camera } from './camera.js';
 import { isEntityVisible } from './entity-visibility.js';
-import type { SceneContents } from './scene-contents.js';
 import { Raycaster, type Intersection, type Ray } from './raycaster.js';
 import { SnapDetector, SnapType, type SnapTarget, type SnapOptions, type EdgeLockInput, type MagneticSnapResult } from './snap-detector.js';
-import { BVH } from './bvh.js';
+import { RaycastFlatIndex, type RaycastScene } from './raycast-flat-index.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { PickClipState, PickOptions } from './types.js';
 import { pointClipped } from './scene-raycaster.js';
@@ -29,10 +28,8 @@ import {
     type PointCloudSnapCamera,
 } from './raycast-point-cloud-query.js';
 export type { PointCloudRaySource, PointCloudRayProvider } from './raycast-point-cloud-query.js';
-/** Raycast-only capability; does not widen Renderer.getScene()'s public surface. */
-type RaycastScene = SceneContents & {
-    getTexturedMeshes?(): readonly Pick<MeshData, 'expressId' | 'modelIndex'>[];
-};
+/** Below this many flat pieces a BVH costs more than testing them all. */
+const BVH_THRESHOLD = 100;
 
 export class RaycastEngine {
     private camera: Camera;
@@ -40,21 +37,9 @@ export class RaycastEngine {
     private canvas: HTMLCanvasElement;
     private raycaster: Raycaster;
     private snapDetector: SnapDetector;
-    private bvh: BVH;
+    private flatIndex: RaycastFlatIndex;
     private pointCloudProvider: PointCloudRayProvider | null = null;
     private sourceSnapCurves: readonly SourceSnapCurve[] = [];
-
-    // BVH cache
-    private bvhCache: {
-        meshCount: number;
-        /** Exact ordered objects used to build the BVH. Geometry pieces with
-         *  equal ids and buffer lengths can still occupy different bounds. */
-        meshData: MeshData[];
-        isBuilt: boolean;
-    } | null = null;
-
-    // Performance constants
-    private readonly BVH_THRESHOLD = 100;
 
     constructor(camera: Camera, scene: RaycastScene, canvas: HTMLCanvasElement) {
         this.camera = camera;
@@ -62,7 +47,7 @@ export class RaycastEngine {
         this.canvas = canvas;
         this.raycaster = new Raycaster();
         this.snapDetector = new SnapDetector();
-        this.bvh = new BVH();
+        this.flatIndex = new RaycastFlatIndex(scene, BVH_THRESHOLD);
     }
 
     /** Slab ray-AABB test, used to cull instanced occurrences before materializing
@@ -89,114 +74,41 @@ export class RaycastEngine {
         return tmax >= Math.max(tmin, 0);
     }
 
-    private collectVisibleMeshData(options?: PickOptions, ray?: Ray): MeshData[] {
-        const allMeshData: MeshData[] = [];
-        const meshes = this.scene.getMeshes();
-        const batchedMeshes = this.scene.getBatchedMeshes();
-        const queriedOwners = new Set<string>();
-        const seenPieces = new Set<MeshData>();
+    private visibilityFilter(options?: PickOptions): ((piece: MeshData) => boolean) | undefined {
+        const hidden = options?.hiddenIds, isolated = options?.isolatedIds;
+        if ((hidden == null || hidden.size === 0) && isolated == null) return undefined;
+        return piece => isEntityVisible(piece.expressId, hidden, isolated);
+    }
+
+    /** Flat candidates near the ray, plus ray-culled instanced occurrences. */
+    private meshesForRay(options: PickOptions | undefined, ray: Ray): MeshData[] {
+        const allMeshData = this.flatIndex.query(ray, this.visibilityFilter(options));
         const seenInstancedKeys = new Set<string>();
-
-        const pushVisiblePieces = (expressId: number, modelIndex?: number) => {
-            // One owner/model query returns every resident fragment. Deduplicate
-            // the query, then retain each distinct MeshData object; geometry
-            // signatures can collide for equal-sized fragments sharing a vertex.
-            const ownerKey = `${expressId}:${modelIndex ?? 'any'}`;
-            if (queriedOwners.has(ownerKey)) return;
-            queriedOwners.add(ownerKey);
-            const pieces = this.scene.getMeshDataPieces(expressId, modelIndex);
-            if (!pieces) return;
-
-            for (const piece of pieces) {
-                // Apply visibility filtering
-                if (!isEntityVisible(piece.expressId, options?.hiddenIds, options?.isolatedIds)) continue;
-
-                if (seenPieces.has(piece)) continue;
-                seenPieces.add(piece);
-                allMeshData.push(piece);
-            }
-        };
-
-        // All flat drawable passes share retained geometry, visibility and model scoping.
-        for (const mesh of meshes) pushVisiblePieces(mesh.expressId, mesh.modelIndex);
-        for (const mesh of this.scene.getTexturedMeshes?.() ?? []) {
-            pushVisiblePieces(mesh.expressId, mesh.modelIndex);
-        }
-
-        // Collect mesh data from batched meshes. Batches group by colour, NOT
-        // by model (see Scene.bucketBaseKey / BatchedMesh.modelIndices), so
-        // two federated models sharing an expressId AND colour can be
-        // co-batched. Scope each entry to ITS OWN modelIndex (parallel array,
-        // same index = same source piece) rather than calling
-        // getMeshDataPieces(expressId) unscoped, which would return every
-        // model's pieces for that id — including ones with no entry in this
-        // batch or scene at all.
-        for (const batch of batchedMeshes) {
-            for (let i = 0; i < batch.expressIds.length; i++) {
-                pushVisiblePieces(batch.expressIds[i], batch.modelIndices?.[i]);
-            }
-        }
 
         // GPU-instanced occurrences live only in the shard, not meshDataMap. Materialize
         // their per-occurrence triangles ON DEMAND so measure-snap / section-face-pick
         // work over them — but only for occurrences whose world AABB the ray actually
-        // hits, so we never expand the whole instanced population per ray. When no ray
-        // is supplied (defensive) we skip instanced rather than expand everything.
-        if (ray) {
-            for (const eid of this.scene.getInstancedEntityIds()) {
-                if (!isEntityVisible(eid, options?.hiddenIds, options?.isolatedIds)) continue;
-                const bounds = this.scene.getInstancedEntityBounds(eid);
-                if (!bounds || !this.rayHitsBounds(ray, bounds)) continue;
-                const pieces = this.scene.getInstancedMeshDataPieces(eid);
-                if (!pieces) continue;
-                // Key by piece INDEX, not buffer sizes: an entity can have several
-                // sub-pieces with identical position/index lengths, which a
-                // size-based key would collide → the later piece dropped → raycast
-                // / snap silently misses part of the instance. (#1238 review)
-                for (let p = 0; p < pieces.length; p++) {
-                    const piece = pieces[p];
-                    const key = `${piece.expressId}:inst:${p}`;
-                    if (seenInstancedKeys.has(key)) continue;
-                    seenInstancedKeys.add(key);
-                    allMeshData.push(piece);
-                }
+        // hits, so we never expand the whole instanced population per ray.
+        for (const eid of this.scene.getInstancedEntityIds()) {
+            if (!isEntityVisible(eid, options?.hiddenIds, options?.isolatedIds)) continue;
+            const bounds = this.scene.getInstancedEntityBounds(eid);
+            if (!bounds || !this.rayHitsBounds(ray, bounds)) continue;
+            const pieces = this.scene.getInstancedMeshDataPieces(eid);
+            if (!pieces) continue;
+            // Key by piece INDEX, not buffer sizes: an entity can have several
+            // sub-pieces with identical position/index lengths, which a
+            // size-based key would collide → the later piece dropped → raycast
+            // / snap silently misses part of the instance. (#1238 review)
+            for (let p = 0; p < pieces.length; p++) {
+                const piece = pieces[p];
+                const key = `${piece.expressId}:inst:${p}`;
+                if (seenInstancedKeys.has(key)) continue;
+                seenInstancedKeys.add(key);
+                allMeshData.push(piece);
             }
         }
 
         return allMeshData;
-    }
-
-    /**
-     * Filter meshes using BVH acceleration structure if beneficial.
-     * Rebuilds BVH if the mesh count has changed.
-     */
-    private filterWithBVH(allMeshData: MeshData[], ray: Ray): MeshData[] {
-        if (allMeshData.length <= this.BVH_THRESHOLD) {
-            return allMeshData;
-        }
-
-        // Instanced pieces are materialized per-ray and resident fragments can
-        // be replaced or reordered while keeping the same ids and buffer sizes.
-        // Reuse is safe only for the exact ordered objects the BVH indexed.
-        const needsRebuild =
-            !this.bvhCache ||
-            !this.bvhCache.isBuilt ||
-            this.bvhCache.meshCount !== allMeshData.length ||
-            this.bvhCache.meshData.some((mesh, index) => mesh !== allMeshData[index]);
-
-        if (needsRebuild) {
-            // Build BVH only when needed
-            this.bvh.build(allMeshData);
-            this.bvhCache = {
-                meshCount: allMeshData.length,
-                meshData: allMeshData,
-                isBuilt: true,
-            };
-        }
-
-        // Use BVH to filter meshes
-        const meshIndices = this.bvh.getMeshesForRay(ray, allMeshData);
-        return meshIndices.map(i => allMeshData[i]);
     }
 
     /**
@@ -234,14 +146,10 @@ export class RaycastEngine {
             const ray = this.camera.unprojectToRay(x, y, viewport.width, viewport.height);
 
             // Get all mesh data from scene
-            const allMeshData = this.collectVisibleMeshData(options, ray);
-
-            if (allMeshData.length === 0) {
+            const meshesToTest = this.meshesForRay(options, ray);
+            if (meshesToTest.length === 0) {
                 return null;
             }
-
-            // Use BVH for performance if we have many meshes
-            const meshesToTest = this.filterWithBVH(allMeshData, ray);
 
             // Perform raycasting
             const intersection = this.raycaster.raycast(ray, meshesToTest,
@@ -312,7 +220,7 @@ export class RaycastEngine {
             // model (no IFC mesh loaded at all) must still fall through
             // to the point-cloud query below instead of returning a hard
             // miss.
-            const allMeshData = this.collectVisibleMeshData(options, ray);
+            const meshesToTest = this.meshesForRay(options, ray);
 
             const cameraPos = this.camera.getPosition();
             const cameraFov = this.camera.getFOV();
@@ -320,10 +228,7 @@ export class RaycastEngine {
             let intersection: Intersection | null = null;
             let magneticResult: MagneticSnapResult = { snapTarget: null, edgeLock: releasedEdgeLock() };
 
-            if (allMeshData.length > 0) {
-                // Use BVH for performance if we have many meshes
-                const meshesToTest = this.filterWithBVH(allMeshData, ray);
-
+            if (meshesToTest.length > 0) {
                 // Same clip policy as raycastScene: what the section removed cannot be hit (#8659).
                 intersection = this.raycaster.raycast(ray, meshesToTest,
                     hit => !pointClipped(entityClip(clip, hit.expressId), hit.point.x, hit.point.y, hit.point.z));
@@ -410,7 +315,20 @@ export class RaycastEngine {
      * Invalidate BVH cache (call when geometry changes)
      */
     invalidateBVHCache(): void {
-        this.bvhCache = null;
+        this.flatIndex.invalidate();
+    }
+
+    /** True when the flat index is warm; instances can still materialize per ray. */
+    isCacheWarm(): boolean {
+        return this.flatIndex.isWarm();
+    }
+
+    /** Release this engine before discarding it; create a new engine to resume picking. */
+    dispose(): void {
+        this.flatIndex.dispose();
+        this.snapDetector.clearCache();
+        this.pointCloudProvider = null;
+        this.sourceSnapCurves = [];
     }
 
     /** Get the raycaster for advanced usage. */

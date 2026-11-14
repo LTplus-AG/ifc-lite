@@ -175,6 +175,27 @@ describe('Scene streaming finalize is incremental (#5358)', () => {
     for (const fragment of fragments) assert.ok(fragment.destroyed > 0, 'fragment freed once replaced');
   });
 
+  it('a failed async finalize keeps the bytes of a mesh that joined a kept bucket meanwhile', async () => {
+    // Review finding on #9759: the rollback restored a kept (intact) bucket's
+    // pre-finalize byte count, dropping a mesh routed into it during the window,
+    // so later routing could admit a batch past the GPU buffer limit.
+    const { scene, stream } = harness();
+    stream([triangle(1, 0, RED), triangle(2, 0, GREEN, 5)]);
+    const create = scene['createBatchedMesh'];
+    let bucketBuilds = 0;
+    scene['createBatchedMesh'] = (meshes: MeshData[], color: [number, number, number, number], d: GPUDevice, p: RenderPipeline, key?: string) => {
+      if (key !== undefined && ++bucketBuilds === 2) throw new RangeError('createBuffer failed');
+      return create(meshes, color, d, p, key);
+    };
+    const finalizing = scene.finalizeStreamingAsync(device, pipeline, 0);
+    stream([triangle(3, 0, RED, 1), triangle(4, 0, GREEN, 6)]); // the same buckets, while the finalize is mid-way
+    await assert.rejects(finalizing, /createBuffer failed/);
+    for (const bucket of scene['buckets'].values() as Iterable<{ key: string; meshData: MeshData[]; vertexBytes: number }>) {
+      const held = bucket.meshData.reduce((sum, md) => sum + (md.positions.length / 3) * 28, 0);
+      assert.strictEqual(bucket.vertexBytes, held, `${bucket.key}: ${bucket.vertexBytes} counted for ${held} held`);
+    }
+  });
+
   it('restores the bucket map when the rebuild fails, so a retry rebuilds the same set', () => {
     const { scene, built, stream } = harness();
     stream([triangle(1, 0, RED)]);

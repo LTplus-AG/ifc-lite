@@ -108,7 +108,7 @@ export function useDrawingLayers(vm: DrawingViewModel) {
     outline: { enabled: displayOptions.scanSectionOutline, maxGap: displayOptions.scanSectionOutlineMaxGap },
   });
 
-  const { handleExportSVG, handleExportDXF, handleExportPDF, handlePrint } = useDrawingExport({
+  const { handleExportSVG, handleExportDXF, handleExportPDF, handlePrint, getExportDimensionGraphics } = useDrawingExport({
     // Only the drawing on screen exports: a dialog left open while the cut
     // fails must not write the drawing the error now hides.
     drawing: vm.exportableDrawing, displayOptions, sectionPlane: drawnPlane, activePresetId: vm.activePresetId,
@@ -130,7 +130,7 @@ export function useDrawingLayers(vm: DrawingViewModel) {
   return {
     ifcAnnotationData, dxfUnderlayData, dxfGeoreferenceAvailable, handleCenterDxfUnderlay,
     scanSectionLayer,
-    handleExportSVG, handleExportDXF, handleExportPDF, handlePrint,
+    handleExportSVG, handleExportDXF, handleExportPDF, handlePrint, getExportDimensionGraphics,
   };
 }
 

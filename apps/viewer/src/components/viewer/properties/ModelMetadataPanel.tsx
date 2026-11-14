@@ -19,7 +19,7 @@ import { useViewerStore } from '@/store';
 import { getIfcLengthUnitScale } from '@/lib/geo/effective-georef';
 import { computeModelStats } from './modelMetadataStats';
 import { effectiveEntityCount, effectiveMaxExpressId } from '@/lib/effective-entity-count';
-import { collectEffectivePhysicalEntityIds } from '@/lib/physical-objects';
+import { sharedEffectivePhysicalEntityIds } from '@/lib/physical-objects';
 import { useTranslation } from '@/i18n';
 import { ACTION_NAME_KEYS } from '@/lib/commands/action-names';
 import { formatLocaleDate, formatLocaleNumber } from '@/i18n/intlFormat';
@@ -31,6 +31,7 @@ import { TerrainImageryCard } from './TerrainImageryCard';
 import { effectiveClassificationSystems } from './effective-classification-systems';
 import { normalizeMutationModelId } from '@/sdk/adapters/mutation-view';
 import { useStreamingThrottled } from '@/hooks/useStreamingThrottled';
+import { useLoadWindowHold } from '@/hooks/loadWindow';
 import { isModelStreaming } from '@/lib/streaming-refresh';
 import { GaussianCaptureMetadataPanel } from './GaussianCaptureMetadataPanel';
 
@@ -42,6 +43,9 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
     : <IfcModelMetadataPanel model={model} />;
 }
 
+/** Shown while this model's load settles; a number is never shown before it is final. */
+const STAT_PENDING = '—';
+
 /** IFC (and source-model) metadata: file info, schema version, entity counts, etc. */
 function IfcModelMetadataPanel({ model }: { model: FederatedModel }) {
   const { t, locale, revision } = useTranslation();
@@ -51,6 +55,10 @@ function IfcModelMetadataPanel({ model }: { model: FederatedModel }) {
   // Display-unit converter overrides (issue #1573 proposal 2).
   const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
   const fromGlobalId = useViewerStore((s) => s.fromGlobalId);
+  // This model's whole-model statistics wait while it loads (loadWindow.ts):
+  // computed then, they ran in the drain and finalize that end the load. A
+  // model that had settled keeps its statistics while another model loads.
+  const statsHeld = useLoadWindowHold().isHeld(model.id);
   const mutationView = useViewerStore((s) => s.getMutationView?.(normalizeMutationModelId(s, model.id)));
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
 
@@ -94,8 +102,8 @@ function IfcModelMetadataPanel({ model }: { model: FederatedModel }) {
   // Membership changes with source/overlay edits, not with each streamed
   // geometry batch. Keep it stable while the shaped count catches up.
   const physicalIds = useMemo(
-    () => dataStore?.spatialHierarchy ? collectEffectivePhysicalEntityIds(dataStore, mutationView) : new Set<number>(),
-    [dataStore, mutationView, mutationVersion],
+    () => !statsHeld && dataStore?.spatialHierarchy ? sharedEffectivePhysicalEntityIds(dataStore, mutationView, mutationVersion) : new Set<number>(),
+    [dataStore, statsHeld, mutationView, mutationVersion],
   );
 
   // Count storeys and elements — see `modelMetadataStats.ts` for what
@@ -109,7 +117,7 @@ function IfcModelMetadataPanel({ model }: { model: FederatedModel }) {
     (held, next) => held.modelId === next.modelId && held.streaming && next.streaming,
   ).geometry;
   const stats = useMemo(
-    () => computeModelStats(dataStore, statsGeometry, {
+    () => statsHeld ? null : computeModelStats(dataStore, statsGeometry, {
       mutationView,
       physicalIds,
       // A completed cache hit may validly contain no geometry result. That is
@@ -126,7 +134,7 @@ function IfcModelMetadataPanel({ model }: { model: FederatedModel }) {
         return ref?.modelId === model.id ? ref.expressId : undefined;
       },
     }),
-    [dataStore, fromGlobalId, model.geometryLoadState, statsGeometry, model.id, model.loadState, mutationView, physicalIds],
+    [dataStore, statsHeld, fromGlobalId, model.geometryLoadState, statsGeometry, model.id, model.loadState, mutationView, physicalIds],
   );
 
   // The statistics describe the model as edited; the file rows above them stay
@@ -257,12 +265,12 @@ function IfcModelMetadataPanel({ model }: { model: FederatedModel }) {
           />
           <InspectorRow
             label={model.sourceSchema ? t('properties.modelMetadata.sourcePoints') : t('properties.modelMetadata.buildingStoreys')}
-            value={formatLocaleNumber(locale, model.sourceSchema ? landXmlStats.points : stats.storeys)}
+            value={model.sourceSchema ? formatLocaleNumber(locale, landXmlStats.points) : stats ? formatLocaleNumber(locale, stats.storeys) : STAT_PENDING}
             copy={false}
           />
           <InspectorRow
             label={model.sourceSchema ? t('properties.modelMetadata.sourceOverlays') : t('properties.modelMetadata.elementsWithGeometry')}
-            value={formatLocaleNumber(locale, model.sourceSchema ? landXmlStats.overlays : stats.elementsWithGeometry)}
+            value={model.sourceSchema ? formatLocaleNumber(locale, landXmlStats.overlays) : stats ? formatLocaleNumber(locale, stats.elementsWithGeometry) : STAT_PENDING}
             copy={false}
           />
           {!model.sourceSchema && (

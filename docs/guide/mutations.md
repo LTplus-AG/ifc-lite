@@ -558,9 +558,9 @@ Builders read the schema from the resolved anchor (`anchor.schema`) and drop att
 
 #### Roofs by footprint
 
-`addRoofToStore` (and `bim.store.addRoof`) makes a roof by footprint, as Revit's Roof by Footprint and Archicad's multi-plane roof do, when its rectangle or polygon params carry `EdgeSlopes` or `Overhang`. `EdgeSlopes[i]` is the slope of the edge from point i to point i+1, in radians. For a rectangle the edges run from its `Position` corner along +X and then anticlockwise. A slope of 0 is a gable end, or the high side of a mono-pitch roof. Each sloped edge is a pivot line: the roof's underside passes through it at the placement's height (`Position[2]`, storey-relative) and rises inward at its slope. `Overhang` (metres) carries every edge out horizontally. Eaves drop with their plane and gable ends move out as a rake. `Thickness` is measured square to each plane.
+`addRoofToStore` (and `bim.store.addRoof`) makes a roof by footprint when its rectangle or polygon params carry `EdgeSlopes` or `Overhang`. `EdgeSlopes[i]` is the slope of the edge from point i to point i+1, in radians. For a rectangle the edges run from its `Position` corner along +X and then anticlockwise. A slope of 0 is a gable end, or the high side of a mono-pitch roof. Each sloped edge is a pivot line: the roof's underside passes through it at the placement's height (`Position[2]`, storey-relative) and rises inward at its slope. `Overhang` (metres) carries every edge out horizontally. Eaves drop with their plane and gable ends move out as a rake. `Thickness` is measured square to each plane.
 
-The planes come from a weighted straight skeleton of the footprint. Hip, gable, mono-pitch and L-, T- and U-shaped roofs work on convex and rectilinear footprints; anything else is refused with a reason, as are slopes over 85° and an overhang that would cross the eaves. The result is one `IfcRoof` whose Body holds one `IfcExtrudedAreaSolid` per plane: the plane's outline is swept straight up, which gives plumb eaves. Hips and ridges between planes of one slope meet exactly; where neighbouring slopes differ, their tops meet with a small step (`Thickness` × (1/cos a − 1/cos b)). Its `PredefinedType` (`ShapeType` on IFC2X3) follows from the slopes: `HIP_ROOF`, `GABLE_ROOF`, `SHED_ROOF`, `FREEFORM`, or `FLAT_ROOF` when no edge slopes. Angles are radians: values above π/2 receive a degree-conversion hint, but smaller numbers intended as degrees cannot be distinguished from radians. The definition is recorded on the roof as `IfcLite_RoofFootprint` (`Footprint`, `EdgeSlopes`, `Overhang`, `Thickness`, in metres and radians). Base quantities are derived from the planes as `Qto_RoofBaseQuantities` (`GrossArea` and `NetArea` sloped, `ProjectedArea` in plan).
+The planes come from a weighted straight skeleton of the footprint. Hip, gable, mono-pitch and L-, T- and U-shaped roofs work on convex and rectilinear footprints. Arbitrary reflex angles are also supported when every edge has the same pitch. Unequal pitches at a nonrectilinear inside corner, unequal slopes at an inside corner under an overhang, slopes over 85°, and overhangs that would cross the eaves are refused with a reason. The result is one `IfcRoof` whose Body holds one `IfcExtrudedAreaSolid` per plane: the plane's outline is swept straight up, which gives plumb eaves. Hips and ridges between planes of one slope meet exactly; where neighbouring slopes differ, their tops meet with a small step (`Thickness` × (1/cos a − 1/cos b)). Its `PredefinedType` (`ShapeType` on IFC2X3) follows from the slopes: `HIP_ROOF`, `GABLE_ROOF`, `SHED_ROOF`, `FREEFORM`, or `FLAT_ROOF` when no edge slopes. Angles are radians: values above π/2 receive a degree-conversion hint, but smaller numbers intended as degrees cannot be distinguished from radians. The definition is recorded on the roof as `IfcLite_RoofFootprint` (`Footprint`, `EdgeSlopes`, `Overhang`, `Thickness`, in metres and radians). Base quantities are derived from the planes as `Qto_RoofBaseQuantities` (`GrossArea` and `NetArea` sloped, `ProjectedArea` in plan).
 
 Per-plane styles follow their footprint edges when edited. A flat plane's style is inherited by all new pitched planes. Flattening pitched planes preserves a shared uniform style; distinct or partly styled planes refuse atomically rather than losing or mixing their styles. Explicit `null` footprint fields are invalid; omit a field to use its default.
 
@@ -805,7 +805,7 @@ The viewer surfaces store-level edits through the following controls — see [Vi
   - **Raw STEP tab** in the properties panel — inline pen-icon editor on every positional argument. Edited rows show a purple dot; the editor parses the same STEP literal conventions as `setPositionalAttribute`. The tab also opens for overlay-only entities (freshly added or duplicated) so newly-created walls / columns / spaces are immediately inspectable, even before export.
   - **Right-click → Delete entity** — calls `removeEntity`, surfaces a toast with undo support.
   - **Right-click on a storey → Add Column here…** — opens the Add Column dialog, calls `addColumn` on submit, and selects the new column in the 3D scene.
-  - **Model workspace** (Author ribbon → Model, or `E`). A tool rail with one command per kind: Wall, Slab (also roof and plate), Column, Beam (also member), Room, Opening, Door, Window, Stair, Railing, Curtain wall, Grid; plus Split, Move, Rotate, Copy / Array and the inspector's type, material and size fields. Storey-workplane placement tools use snapping, a live ghost and typed bar values. Hosted Door/Window tools are wall-relative. Split, Move, Rotate, Copy / Array and inspector edits use their own interaction flows. The **Room** command's **Auto** runs the wall-graph face finder on the storey (or every storey), and its Edit, Footprint and leak-check modes reshape the rooms.
+  - **Model workspace** (ribbon tab row → Model, or `M`). A tool rail with one command per kind: Wall, Slab (also roof and plate), Column, Beam (also member), Room, Opening, Door, Window, Stair, Railing, Curtain wall, Grid; plus Split, Move, Rotate, Copy / Array and the inspector's type, material and size fields. Storey-workplane placement tools use snapping, a live ghost and typed bar values. Hosted Door/Window tools are wall-relative. Split, Move, Rotate, Copy / Array and inspector edits use their own interaction flows. The **Room** command's **Auto** runs the wall-graph face finder on the storey (or every storey), and its Edit, Footprint and leak-check modes reshape the rooms.
 
 All paths route through the same `mutationSlice` actions that wrap `StoreEditor`, so undo/redo (`Ctrl+Z` / `Ctrl+Shift+Z`) covers store-level edits identically to property edits. Each commit also injects a renderer-frame mesh into the geometry pipeline so the new element appears in 3D the moment the action fires — no export+reparse round-trip required.
 
@@ -848,6 +848,18 @@ A copy of an element on a grid (one whose placement reaches an `IfcGridPlacement
 `reshapeWallAxis` from `@ifc-lite/create` calculates the wall on its new plan axis before a join recuts the changed end. It retains a supported cut at an unchanged endpoint when the axis direction stays the same, including cuts read from a four-point profile without a join relationship. A cut is measured from its own endpoint: extending Start does not shift EndCut. A changed endpoint or axis direction starts square.
 
 The canonical `reshapeWallsInStore` writer uses this calculation too. Trim/Extend uses it for the ghost, so an unchanged joined or custom-cut face matches the body that is committed. Existing joins are then recomputed by the writer; callers group those writes in their atomic undo transaction.
+
+Sliding one joined wall extends or trims a connected neighbour on the
+neighbour's existing axis, preserving its direction and opposite endpoint.
+The connected endpoint is solved at the intersection of the two axis lines;
+the body then stops at the moved wall's face for a T or butt join. The moved
+wall's connected ends can also extend or trim to retain their joins, while its
+placement follows the requested transform. An imported mitre can become a
+butt corner when the profiles are resolved. Both walls require remeshing.
+Parallel or near-parallel lines, non-finite intersections, and intersections
+that collapse or reverse a wall refuse the transaction with an explanatory
+error. A slide never silently rotates a neighbour as a fallback. A rotation
+carries its joined endpoint through the turn.
 
 ```typescript
 import { reshapeWallAxis, wallBodyOutline, type WallJoinWall } from '@ifc-lite/create';
@@ -1259,3 +1271,56 @@ For asynchronous work on a fork, use
 `const fork = view.prepareAtomic(draft => draft).result` and leave that
 transaction uncommitted. Later asynchronous code can edit, snapshot or export
 the detached fork without publishing it to the original view.
+
+Walls added through `bim.store.addWall` join coincident, non-parallel chain
+endpoints automatically. Crossings and T junctions still use `joinWalls`.
+Implicit joins are best-effort: if a join is refused (for example, a loaded
+wall has unreadable hosted-opening geometry), the new wall is still added
+without that join. The returned entity ref includes `notices?: string[]`
+with the skipped pair and reason. Explicit `joinWalls` requests still refuse
+atomically. Low-level `addOrdinaryElementInStore` callers can collect the
+same notices through `options.notices`; otherwise they are logged.
+Candidate discovery uses a session endpoint index, partitioned by parent
+placement and elevation. It reads the new wall once and checks full geometry
+only for matching endpoints. Other edits (including Undo/Redo) invalidate the
+index. Hosts wrapping creation in their own atomic transaction use
+`withWallAutojoinIndex` around that committed transaction and pass its staged
+index through `createOrdinaryStoreBackend` (or `options.wallIndex`); failed
+transactions do not publish candidate entries.
+Moving an `IfcGrid` with `transformElements` carries its grid-bound products.
+Products placed directly with `IfcGridPlacement` are included in the remesh
+result. Hosted openings and fillings placed independently on the storey move
+with a grid-bound host as separate roots. A move that would separate a carried
+wall from a stationary wall linked by `IfcRelConnectsPathElements` refuses
+atomically with a reason; include the other joined wall in the move or remove
+the join first. Joined walls carried together remain connected.
+The headless CLI supports `alignElements` using current native mesh bounds,
+including hosted cuts, rather than uncut parametric bounding boxes.
+
+The wall endpoint index also follows public raw `addEntity` creation. Incomplete
+forward-reference graphs and intervening geometry edits invalidate it; ordinary
+wall creation then reads the completed effective graph.
+Mirror upright local products with `bim.store.mirrorElements(modelId, ids,
+{ axis: [[0, 0], [0, 10]], copy: true })`. The axis uses storey-local IFC XY
+metres; omit `copy` to edit in place. Hosted openings and fillings travel with
+their host. The reflected representation retains its handedness and door
+operation names swap left and right. Shared door styles (IFC2X3) and types
+are cloned for the mirrored doors, preserving unselected users. Grids are
+refused atomically. In-place selections must include both
+sides of any wall join; shared placements, shape aspects and additional
+representation owners (such as presentation layers) are refused before writing.
+
+`bim.store.addClassification(modelId, { System: 'Uniclass 2015',
+Identification: 'EF_25_10', Name: 'Walls', objects: ids })` returns a classification
+reference, reusing a system of the same name and edition. An omitted edition
+only matches a system without an edition. Assign more objects
+with `bim.store.assignClassification(modelId, reference.expressId, ids)`.
+An object can retain several classifications.
+
+
+Property extractor callbacks receive `(sourceEntityId, currentView, occurrenceId)`.
+Existing callbacks taking only the source id remain supported. Forward the view
+to the parser's property extractor to read raw property-set records in the same
+atomic draft; use the occurrence id when resolving a copied entity's live
+relationships. This keeps raw STEP authoring and high-level property edits
+readable before export.

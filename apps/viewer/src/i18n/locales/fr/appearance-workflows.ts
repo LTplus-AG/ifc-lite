@@ -108,6 +108,7 @@ export const appearanceWorkflowsFr = {
   'appearance.controller.adjustMapping': 'Ajustez le mappage pour prévisualiser une autre apparence.',
   'appearance.controller.leaveRoom': 'Quittez la session partagée pour modifier l’apparence, puis partagez le modèle terminé.',
   'appearance.controller.openIfc': 'Ouvrez un modèle IFC pour appliquer une apparence.',
+  'appearance.controller.requiresStepRecords': 'La création d’apparences nécessite un modèle avec des enregistrements IFC. Celui-ci a été lu sous forme de tables.',
   'appearance.controller.requiresIfc4': 'La création d’apparences nécessite actuellement un modèle IFC4 ou IFC4X3.',
   'appearance.controller.waitForModel': 'Attendez la fin du chargement du modèle.',
   'appearance.controller.preparingPreview': 'Préparation de l’aperçu de l’apparence…',

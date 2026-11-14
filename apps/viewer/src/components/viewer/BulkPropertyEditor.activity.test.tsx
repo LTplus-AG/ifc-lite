@@ -75,7 +75,7 @@ it('#7128 native bulk permission failure reports partial writes without claiming
   const { view, apply } = await setup();
   let changed = false;
   const off = useActivityJournal.subscribe(({ jobs }) => {
-    if (!changed && jobs.at(-1)?.progress?.done === 500) { changed = true; useViewerStore.setState({ editEnabled: false }); }
+    if (!changed && jobs.at(-1)?.progress?.done === 500) { changed = true; useViewerStore.setState({ collabRole: 'viewer' }); }
   });
   try { apply(); await waitFor(() => useActivityJournal.getState().jobs.at(-1)?.outcome === 'partial', 'partial native failure'); }
   finally { off(); }

@@ -7,7 +7,7 @@ import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { readBCF, createBCFProject, createBCFTopic, type BCFProject } from '@ifc-lite/bcf';
-import { render, cleanup } from '@/test/render';
+import { render, cleanup, waitFor } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { useViewerStore } from '@/store';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
@@ -99,6 +99,8 @@ test('the BCF panel header attaches the BCF topics (#6833)', async () => {
   useViewerStore.setState(fixtureModels(fixtureModel('haus')));
   useViewerStore.getState().setBcfProject(await bimcollabProject());
   const panel = render(renderPanelBody('bcf', () => undefined));
+  // #9634: the first render is the lazy feature's loading shell.
+  await waitFor(() => panel.querySelector('button[data-panel-action="bcf-import"]') !== null, 'bcf feature mounted');
   // A header action, inline or in the shared header's More actions (#8802).
   await runPanelAction(panel, 'Discuss with AI');
   assert.equal(useAssistant.getState().snapshot?.source, 'bcf');

@@ -33,8 +33,12 @@ export function usePlacementMutationDrain(params: Params): void {
 
     if (pending !== null) {
       if (pending.size > 0) {
-        if (kind === 'translations') scene.translateMeshesForEntities(pending);
-        else scene.rotateMeshesForEntities(pending);
+        const moved = kind === 'translations'
+          ? scene.translateMeshesForEntities(pending)
+          : scene.rotateMeshesForEntities(pending);
+        // Positions moved in place, keeping piece identity: the raycast BVH and
+        // snap caches cannot tell, so drop them (see SnapDetector's cache note).
+        if (moved > 0) renderer.clearCaches();
         needsGpuRetry.current = true;
       }
       // New edits must merge only unapplied deltas, even if this upload fails.

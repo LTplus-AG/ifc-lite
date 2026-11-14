@@ -31,6 +31,12 @@ export class HoverMeshCache {
    * The GPU pieces for `(modelIndex, id)`: cached while the key is unchanged,
    * otherwise `pieces()` is re-read and uploaded. Throws when an upload fails,
    * having freed what it created and cached nothing.
+   *
+   * @param revision `Scene.getPickGeometryRevision()`. The copies are frozen
+   *   geometry, so the entity moving or gaining a piece while it stays hovered
+   *   has to rebuild them. A selected entity used to lend its own selection
+   *   meshes instead, which an edit evicts; inside a pooled selection (#9835)
+   *   it gets these copies, and nothing else would refresh them.
    */
   resolve(
     device: GPUDevice,
@@ -38,8 +44,9 @@ export class HoverMeshCache {
     modelIndex: number | undefined,
     pieces: () => readonly MeshData[] | undefined,
     frameOf: (meshData: MeshData) => IndividualMeshFrame,
+    revision?: number,
   ): readonly IndividualMeshGpu[] {
-    const key = `${modelIndex ?? 'any'}:${id}`;
+    const key = `${modelIndex ?? 'any'}:${id}:${revision ?? ''}`;
     if (key === this.key) return this.pieces;
     this.release();
     const source = pieces() ?? [];

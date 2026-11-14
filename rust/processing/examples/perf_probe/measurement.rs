@@ -9,7 +9,7 @@ use std::time::Instant;
 use ifc_lite_core::build_entity_index;
 use ifc_lite_geometry::csg::reset_csg_census;
 use ifc_lite_processing::{process_geometry, ProcessingStats};
-use super::{fingerprint, summarize_census, CensusSummary, Probe};
+use super::{fingerprint, result_cache, summarize_census, CensusSummary, Probe};
 
 pub(super) struct ColdTiming {
     pub(super) file_read_ms: f64,
@@ -24,7 +24,15 @@ pub(super) fn validate_cold(cold: bool, iters: usize, fixtures: usize) -> Result
     }
 }
 
-pub(super) fn run(path: &str, iters: usize, want_census: bool, want_fingerprint: bool, cold: bool) -> Option<Probe> {
+pub(super) fn run(
+    path: &str,
+    iters: usize,
+    want_census: bool,
+    want_fingerprint: bool,
+    want_result_fingerprint: bool,
+    cold: bool,
+    cache: Option<&result_cache::CacheArgs>,
+) -> Option<Probe> {
     let read_started = Instant::now();
     let content = match std::fs::read(path) {
         Ok(c) => c,
@@ -56,13 +64,25 @@ pub(super) fn run(path: &str, iters: usize, want_census: bool, want_fingerprint:
     let mut all_totals_ms = Vec::with_capacity(iters);
     let mut all_wall_ms = Vec::with_capacity(iters);
     let mut fingerprints = want_fingerprint.then(Vec::new);
+    let mut cache_report = None;
+    let mut result_fingerprint = None;
     for _ in 0..iters.max(1) {
         if want_census {
             reset_csg_census();
         }
         let started = Instant::now();
-        let result = process_geometry(&content);
+        let result = match cache {
+            Some(args) => {
+                let (result, report) = result_cache::process(&content, args);
+                cache_report = Some(report);
+                result
+            }
+            None => process_geometry(&content),
+        };
         all_wall_ms.push(started.elapsed().as_secs_f64() * 1e3);
+        if want_result_fingerprint {
+            result_fingerprint = Some(ifc_lite_processing::result_fingerprint(&result, true));
+        }
         if cold { entities = result.metadata.entity_count; }
         if let Some(hashes) = &mut fingerprints {
             hashes.push(fingerprint::mesh_fingerprint(&result.meshes));
@@ -93,6 +113,8 @@ pub(super) fn run(path: &str, iters: usize, want_census: bool, want_fingerprint:
         all_wall_ms,
         fingerprints,
         census: best_census,
+        cache_report,
+        result_fingerprint,
     })
 }
 

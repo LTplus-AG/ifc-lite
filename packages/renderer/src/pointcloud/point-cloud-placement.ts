@@ -75,6 +75,29 @@ export class PointCloudPlacements {
   }
 }
 
+/** An inline asset's f64 origin (#10029) as a placement baseline. It enters
+ * where a streamed scan's decode origin does, so rendering (RTE), picking,
+ * snapping and bounds read it exactly; a model translation composes on top. */
+export function originMatrix(origin: readonly [number, number, number]): Float64Array {
+  // Checked before the caller uploads anything, so a bad origin leaves no node behind.
+  if (!renderableOrigin(origin)) throw new Error('Pointcloud origin needs three finite coordinates in the renderable range.');
+  const [x, y, z] = origin;
+  return new Float64Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, z, 1]);
+}
+
+function renderableOrigin(origin: readonly number[]): boolean {
+  return origin.length === 3 && origin.every((v) => Number.isFinite(v) && Number.isFinite(Math.fround(v)));
+}
+
+/** For bulk replacement: one cloud with a bad origin is skipped, not left to
+ * throw after the old clouds are gone (a throw from the viewer's sync effect
+ * unmounts the page). */
+export function skipUnrenderableOrigin(asset: { expressId: number; origin?: readonly number[] }): boolean {
+  if (!asset.origin || renderableOrigin(asset.origin)) return false;
+  console.warn(`[PointCloudRenderer] point cloud ${asset.expressId} skipped: origin ${asset.origin.join(', ')} is not renderable`);
+  return true;
+}
+
 /**
  * A copy of the canonical float64 placement, for CPU callers that compose
  * coordinates with it (#6894). `node.model` is the float32 GPU copy and rounds

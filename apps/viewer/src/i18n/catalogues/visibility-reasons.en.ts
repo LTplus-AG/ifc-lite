@@ -18,6 +18,7 @@ export const visibilityReasonsEn = {
   'visibilityReasons.modelHidden': 'Hidden models',
   'visibilityReasons.lens': 'Active lens',
   'visibilityReasons.typeVisibility': 'Hidden IFC classes',
+  'visibilityReasons.structuralViewMode': 'Structural model view',
   'visibilityReasons.typeViewMode': 'Types view',
   'visibilityReasons.hostTypes': 'Classes hidden by host',
   'visibilityReasons.section': 'Section cut',

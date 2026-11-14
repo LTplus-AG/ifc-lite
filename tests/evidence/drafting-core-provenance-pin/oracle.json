@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "apps/viewer/src/lib/drafting-core/provenance.json",
+  "mutation": "tests/evidence/drafting-core-provenance-pin/behaviour.oracle.patch",
+  "test": "apps/viewer/src/lib/drafting-core/provenance.test.ts",
+  "why": "Reverse application records a sha256 for the byte-pinned snaps.ts that its vendored bytes do not have, so the pin check must go red; it proves provenance.test.ts really hashes the vendored files against the manifest."
+}

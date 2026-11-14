@@ -1,0 +1,12 @@
+diff --git a/packages/create/src/in-store/structural-derive-joints.ts b/packages/create/src/in-store/structural-derive-joints.ts
+--- a/packages/create/src/in-store/structural-derive-joints.ts
++++ b/packages/create/src/in-store/structural-derive-joints.ts
+@@ -92,7 +92,7 @@ export function joinEnds(
+   supported: (p: Vec3) => boolean,
+ ): { pieces: Array<{ source: number; start: Vec3; end: Vec3 }>; extended: ExtendedEnd[] } {
+   // A set reach is never below the tolerance: an end within it already touches.
+-  const reachOf = (section: number | null) => (jointReach !== null ? Math.max(tolerance, jointReach) : tolerance);
++  const reachOf = (section: number | null) => (jointReach !== null ? Math.max(tolerance, jointReach) : tolerance + (section ?? 0) / 2);
+   const maxReach = lines.reduce((m, line) => Math.max(m, reachOf(line.section)), tolerance);
+   const ends = lines.flatMap((line): Vec3[] => [[...line.start], [...line.end]]);
+   const roots = clusterEnds(ends, tolerance);

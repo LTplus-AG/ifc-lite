@@ -5,6 +5,8 @@
 import type { Catalogue } from '../../registry';
 
 export const storeyManagerRu = {
+  "storeyManager.insert.before": "Сейчас",
+  "storeyManager.insert.after": "После вставки",
   "storeyManager.title": "Этажи",
   "storeyManager.subtitle": "{model} · этажей: {count}",
   "storeyManager.open": "Управление этажами…",
@@ -129,7 +131,7 @@ export const storeyManagerRu = {
   "storeyManager.delete": "Удалить {storey}",
   "storeyManager.deleted": "{storey} удалён",
   "storeyManager.undo": "Отменить",
-  "storeyManager.undoStale": "Не отменено: после этого удаления были другие изменения. Сначала отмените их на панели инструментов.",
+  "storeyManager.undoStale": "Не отменено: после этого изменения были другие правки. Сначала отмените их на панели инструментов.",
   "storeyManager.delete.title": {
     "one": "{storey} содержит {count} элемент",
     "few": "{storey} содержит {count} элемента",
@@ -154,6 +156,7 @@ export const storeyManagerRu = {
   "storeyManager.readOnly": "Этажи можно просматривать, но не изменять: {reason}",
   "storeyManager.error": "Не удалось прочитать этажи: {reason}",
   "storeyManager.drawOn": "Рисовать на",
+  "storeyManager.copy.back": "Назад к этажам",
   "storeyManager.copy.title": "Копировать на этажи…",
   "storeyManager.copy.empty": "Сначала выберите элементы",
   "storeyManager.copy.all": "Выбрать все этажи",
@@ -166,8 +169,8 @@ export const storeyManagerRu = {
   "storeyManager.copy.done": {"one": "Скопирован {count} элемент на {targets}", "few": "Скопированы {count} элемента на {targets}", "many": "Скопировано {count} элементов на {targets}", "other": "Скопировано {count} элемента на {targets}"},
   "storeyManager.copy.stale": "Модель изменилась. Подготовьте копии заново.",
   "storeyManager.wallTarget": "До {storey} ({elevation} м)",
-  'storeyManager.copy.from': 'С этажа',
-  'storeyManager.copy.to': 'По этаж',
+  "storeyManager.copy.from": "С этажа",
+  "storeyManager.copy.to": "До этажа",
   "storeyManager.copy.readOnly": "Копирование недоступно: {reason}",
   "storeyManager.copy.working": "Копирование…",
   "storeyManager.wallNextMissing": "Следующий этаж выше (пока отсутствует)",
@@ -184,5 +187,5 @@ export const storeyManagerRu = {
   "storeyManager.copy.newElements": {"one": "{count} новый элемент", "few": "{count} новых элемента", "many": "{count} новых элементов", "other": "{count} нового элемента"},
   "storeyManager.copy.undoStale": "Не отменено: после копирования были другие изменения. Сначала отмените их на панели инструментов.",
   "storeyManager.insert.move": "{storey}: смещение с {from} до {to} м",
-  "storeyManager.impact.wallTops": {"one": "Обновляет верх {count} стены", "few": "Обновляет верх {count} стен", "many": "Обновляет верх {count} стен", "other": "Обновляет верх {count} стены"},
+  "storeyManager.impact.wallTops": {"one": "обновляет верх {count} стены", "few": "обновляет верх {count} стен", "many": "обновляет верх {count} стен", "other": "обновляет верх {count} стены"},
 } satisfies Catalogue;

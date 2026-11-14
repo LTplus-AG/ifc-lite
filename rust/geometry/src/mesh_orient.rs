@@ -151,6 +151,16 @@ impl OrientVerdict {
     }
 }
 
+/// A coordinate's weld-grid key: `(v * WELD_SCALE).round() as i64`, bit for
+/// bit, via `grid::round_i64` instead of a libm `round` call per coordinate.
+#[inline(always)]
+fn grid_key(v: f32) -> i64 {
+    // Test builds count the coordinates quantised without libm.
+    #[cfg(test)]
+    tests::note_inline_round();
+    crate::grid::round_i64(v as f64 * WELD_SCALE)
+}
+
 /// Orient every connected component of `mesh` consistently and outward, in place.
 /// Returns `true` iff any triangle's winding was flipped (the caller must then
 /// recompute normals — the existing ones were baked with the old winding).
@@ -189,10 +199,10 @@ pub fn orient_mesh_outward_verdict(mesh: &mut Mesh) -> OrientVerdict {
     // is mutated.
     let mut scratch = ORIENT_SCRATCH.with(|c| c.borrow_mut().take()).unwrap_or_default();
     let OrientScratch { vid_of, vpos, corner, edge_tris, flip, visited, comp, stack, closed_tris, closed_spans } = &mut scratch;
-    // Clear (retain capacity) before use so no stale data leaks in; the reserves
-    // restore the original `with_capacity` sizing.
-    vid_of.clear();
-    vid_of.reserve(vertex_count);
+    // Empty before use so no stale data leaks in; the reserves restore the
+    // original `with_capacity` sizing. `reset_for` keeps the reset O(this mesh)
+    // after an outsized one (the map is never iterated, so its size is unseen).
+    crate::scratch_map::reset_for(vid_of, vertex_count);
     vpos.clear();
     corner.clear();
     corner.reserve(mesh.indices.len());
@@ -202,7 +212,7 @@ pub fn orient_mesh_outward_verdict(mesh: &mut Mesh) -> OrientVerdict {
     // use corner slots instead, so scratch never exceeds the old corner budget.
     let indexed = vertex_count < mesh.indices.len();
     if indexed { corner.resize(vertex_count, u32::MAX); }
-    let q = |v: f32| (v as f64 * WELD_SCALE).round() as i64;
+    let q = grid_key;
     for &idx in &mesh.indices {
         if indexed && corner[idx as usize] != u32::MAX { continue; }
         let b = idx as usize * 3;

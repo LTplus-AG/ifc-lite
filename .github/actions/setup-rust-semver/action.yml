@@ -1,0 +1,23 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+name: Setup Rust semver gate
+description: Install stable Rust and cargo-semver-checks for scripts/check-rust-semver.mjs. Shared by test.yml's rust-semver job and rust-semver-canary.yml, so the canary proves the install PRs run. release.yml still carries its own copy of these pins.
+
+runs:
+  using: composite
+  steps:
+    # A stable toolchain, not the dated nightly in rust-toolchain.toml:
+    # cargo-semver-checks refuses a nightly outright ("rustc version is not
+    # high enough: >=1.93.0 needed, got 1.93.0-nightly"). The gate invokes it
+    # as `cargo +stable semver-checks`, so this only has to exist.
+    - name: Install stable Rust
+      uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 2026-05
+      with:
+        toolchain: stable
+
+    # Prebuilt binary. `cargo install cargo-semver-checks --locked` compiles
+    # it from source (~5 min).
+    - name: Install cargo-semver-checks
+      uses: taiki-e/install-action@4f5ee4a4759116abc6b10af05f20374e179d8ca3 # cargo-semver-checks (snapshot pinned 2026-08)

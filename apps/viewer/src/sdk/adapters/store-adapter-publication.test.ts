@@ -14,7 +14,11 @@ import { bindRoomPropertyApi } from '@/lib/collab/room-property-api';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { registerStoreSlot, registerEntityPath, unregisterEntityPath, pathForGuid, pathForEntity } from '@/lib/collab/entity-paths';
 import { parseIfcxViewerModel } from '@/hooks/ingest/viewerModelIngest';
+import { beginCollabAttempt, collabAttemptApis } from '@/lib/collab/session-attempt';
 import { createStoreAdapter } from './store-adapter.js';
+
+// The slice's own mirror, captured before any test swaps in a stub.
+const sliceMirrorEntityCreate = useViewerStore.getState().mirrorEntityCreate;
 
 const MODEL = 'publication';
 async function seed() {
@@ -43,8 +47,8 @@ for (const failure of ['shell', 'create-throw', 'attribute']) it(`failed ${failu
       if (++shells === 3 && failure === 'shell') return; // Genuine absent registration after two real Yjs shell writes.
       assert.ok(guid);
       const path = pathForGuid(data, guid);
-      session.transact(() => createEntity(session.doc, path, { ifcClass: type }));
       registerEntityPath(data, id, path);
+      session.transact(() => createEntity(session.doc, path, { ifcClass: type }));
       if (shells === 3 && failure === 'create-throw') throw new Error('Injected failure after registered shell');
     },
     mirrorAttributeEdit: (_model, id, name, value) => {
@@ -95,6 +99,38 @@ it('ordinary creation records only its appended journal rows as existing authori
   t.diagnostic(`Actual ordinary journal recording: ${JSON.stringify(measured)}`);
 });
 
+it('the real create mirror resolves a new entity path when its creation publishes, and rolls it back on failure (#9453)', async () => {
+  const { data } = await seed();
+  const collab = await import('@ifc-lite/collab');
+  const session = await createCollabSession({ roomId: 'mirror-path-publication', user: { id: 'test', name: 'Test' }, provider: 'memory' });
+  const slot = { slotId: 'm0', pathPrefix: '/m0' };
+  registerStoreSlot(data, slot);
+  const attempt = beginCollabAttempt(session.roomId);
+  attempt.adopt(session);
+  const apis = collabAttemptApis(collab);
+  attempt.apis = apis;
+  useViewerStore.setState({ collabRoomId: session.roomId, collabSession: session, collabRoomModels: new Map([[MODEL, slot]]),
+    mirrorEntityCreate: sliceMirrorEntityCreate });
+  const id = 900_001, guid = '0Roof9453PublishPath01';
+  const expected = pathForGuid(data, guid);
+  const published: (string | null)[] = [];
+  session.doc.on('afterTransaction', () => published.push(pathForEntity(data, id) ?? null));
+  try {
+    useViewerStore.getState().mirrorEntityCreate(MODEL, id, 'IfcRoof', guid, null);
+    assert.ok(published.length > 0, 'the creation published a real Yjs transaction');
+    assert.equal(published[0], expected, 'observers of the creating transaction resolve the new entity path');
+    assert.equal(pathForEntity(data, id), expected);
+
+    const failedId = 900_002, failedGuid = '0Roof9453PublishFail01';
+    attempt.apis = { ...apis, doc: { ...apis.doc, createEntity: () => { throw new Error('Injected room create failure'); } } };
+    assert.throws(() => useViewerStore.getState().mirrorEntityCreate(MODEL, failedId, 'IfcRoof', failedGuid, null), /Injected room create failure/);
+    assert.equal(pathForEntity(data, failedId) ?? null, null, 'a failed creation leaves no registered path behind');
+  } finally {
+    attempt.retire();
+    useViewerStore.setState({ collabRoomId: null, collabSession: null, collabRoomModels: new Map() });
+  }
+});
+
 async function roofRoom() {
   bindRoomPropertyApi({ getPropertyValue, setPropertyValue, deletePropertyValue });
   const { data, view, adapter } = await seed();
@@ -103,10 +139,12 @@ async function roofRoom() {
   registerStoreSlot(data, slot);
   useViewerStore.setState({ collabRoomId: session.roomId, collabSession: session, collabRoomModels: new Map([[MODEL, slot]]),
     mirrorEntityCreate: (_model, id, type, guid) => {
-      assert.ok(guid);
-      const path = pathForGuid(data, guid);
-      session.transact(() => createEntity(session.doc, path, { ifcClass: type }));
+      // Undo restores geometry records without IFC GlobalIds through their
+      // existing room paths, just as the production mirror does.
+      const path = pathForEntity(data, id) ?? (guid ? pathForGuid(data, guid) : null);
+      assert.ok(path, 'a restored geometry record retains its room identity');
       registerEntityPath(data, id, path);
+      session.transact(() => createEntity(session.doc, path, { ifcClass: type }));
     },
     mirrorAttributeEdit: (_model, id, name, value) => {
       const path = pathForEntity(data, id); assert.ok(path);
@@ -115,6 +153,7 @@ async function roofRoom() {
     mirrorEntityRemove: (_model, id) => {
       const path = pathForEntity(data, id);
       if (path) session.transact(() => deleteEntity(session.doc, path));
+      // The production mirror retains the identity so undo can restore it.
     },
     mirrorPropertyEdit: (_model, id, pset, prop, value) => {
       const path = pathForEntity(data, id); assert.ok(path);
@@ -197,6 +236,34 @@ for (const surface of ['SDK', 'UI'] as const) for (const failAt of [1, 3]) {
     }
   });
 }
+
+it('one throwing restore does not stop the rest of a refused roof edit rollback (#9453 review)', async () => {
+  const { adapter, session } = await roofRoom();
+  const roof = adapter.addRoof(MODEL, 42, { Position: [0,0,4], Width: 10, Depth: 8, Thickness: .25, EdgeSlopes: Array(4).fill(Math.PI / 6) });
+  const original = useViewerStore.getState().mirrorPropertyEdit;
+  let writes = 0, restores = 0;
+  useViewerStore.setState({ mirrorPropertyEdit: (...args) => {
+    original(...args);
+    if (++writes === 3) throw new Error('Injected roof property publication failure');
+  } });
+  bindRoomPropertyApi({ getPropertyValue, deletePropertyValue: (...args: Parameters<typeof deletePropertyValue>) => {
+    if (++restores === 1) throw new Error('Injected restore failure');
+    return deletePropertyValue(...args);
+  }, setPropertyValue: (...args: Parameters<typeof setPropertyValue>) => {
+    if (++restores === 1) throw new Error('Injected restore failure');
+    return setPropertyValue(...args);
+  } });
+  try {
+    assert.throws(() => adapter.editRoof!(roof, { Edge: { Index: 1, Slope: 0 }, Overhang: .5 }), /Injected roof property publication failure/,
+      'the publication failure, not the restore failure, is what the edit reports');
+    assert.ok(restores > 1, 'the remaining definition fields were still restored');
+    assert.match(String(useViewerStore.getState().collabGeometryNotice), /could not be shared/);
+  } finally {
+    useViewerStore.setState({ mirrorPropertyEdit: original, collabGeometryNotice: null });
+    bindRoomPropertyApi({ getPropertyValue, setPropertyValue, deletePropertyValue });
+    session.dispose();
+  }
+});
 
 for (const failAt of [1, 3]) it(`roof edit property publication failure after ${failAt} real writes preserves local and peer state (#9356 review)`, async () => {
   const { view, adapter, session } = await roofRoom();

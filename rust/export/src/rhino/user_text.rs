@@ -34,6 +34,7 @@ const TYPE: Key = ("IFC::Type", "ifc::type");
 const TYPE_GLOBAL_ID: Key = ("IFC::TypeGlobalId", "ifc::typeglobalid");
 const MATERIAL: Key = ("IFC::Material", "ifc::material");
 const PRESENTATION_LAYER: Key = ("IFC::PresentationLayer", "ifc::presentationlayer");
+const ELEVATION: Key = ("IFC::Elevation", "ifc::elevation");
 
 /// One element's user text, built once and copied onto each of its objects.
 /// A repeated key is renamed ` #2`, ` #3`, remembering that it had to. Keys
@@ -155,6 +156,25 @@ fn property_value(p: &PropValue) -> String {
     }
 }
 
+/// The user strings of the layer that stands for IFC entity `id` (the project
+/// or a spatial structure element), so a reader can rebuild the spatial tree
+/// from the layer table: `IFC::GlobalId`, `IFC::Class`, and for a storey
+/// `IFC::Elevation` in metres (the value storey layers are ordered by),
+/// rounded to the nanometre.
+pub(super) fn layer_text(info: &ModelInfo, id: u32) -> Vec<(String, String)> {
+    let Some((global_id, class)) = info.identity(id) else { return Vec::new() };
+    let mut t = UserText::new();
+    t.push(GLOBAL_ID, global_id.unwrap_or_default());
+    t.push(CLASS, class);
+    // Metres are `Elevation * unit scale`, which is rarely exact (3300 mm is
+    // 3.3000000000000003 m): write it to the nanometre. A value that is not
+    // finite after rounding is not written.
+    if let Some(elevation) = info.elevation(id).map(|e| (e * 1e9).round() / 1e9).filter(|e| e.is_finite()) {
+        t.push(ELEVATION, &fmt_num(elevation));
+    }
+    t.pairs
+}
+
 /// Every user string of element `id`, in table order: identity, attributes,
 /// then the element's own property and quantity entries, then inherited ones
 /// (so an own entry claims a key first). `facts` carry the row-resolved
@@ -230,7 +250,7 @@ mod tests {
     fn fixed_keys_are_folded() {
         let fixed = [
             GLOBAL_ID, CLASS, EXPRESS_ID, NAME, DESCRIPTION, OBJECT_TYPE, TAG, PREDEFINED_TYPE, CONTAINER, CONTAINER_GLOBAL_ID, TYPE,
-            TYPE_GLOBAL_ID, MATERIAL, PRESENTATION_LAYER,
+            TYPE_GLOBAL_ID, MATERIAL, PRESENTATION_LAYER, ELEVATION,
         ];
         for (key, folded) in fixed {
             assert_eq!(fold_case(key), folded);

@@ -89,10 +89,12 @@ export class SharedSetDetachments {
       pass.skipPropertySetIds.add(setId);
       for (const memberId of getPropertyIdsInSet(ctx, setId)) pass.skipPropertySetIds.add(memberId);
     };
+    const candidates = new Set(this.typeOwned.keys());
     const keptByRelation = new Set<number>();
     const touchedSetByRel = new Map<number, number>();
     for (const [relId, { setId, detached }] of this.byRel) {
       touchedSetByRel.set(relId, setId);
+      candidates.add(setId);
       const related = index.relatedByRel.get(relId) ?? [];
       if (related.some((id) => !detached.has(id) && survives(id))) {
         pass.detachedRelatedObjects.set(relId, detached);
@@ -100,17 +102,17 @@ export class SharedSetDetachments {
         continue;
       }
       pass.skipRelationshipIds.add(relId);
-      withhold(setId);
     }
-    if (this.typeOwned.size === 0) return;
+    if (candidates.size === 0) return;
 
-    // Only paid for when a type object's own set was edited: every other
-    // owner of those sets, among live type objects and live relations.
+    // A copied occurrence can have a separate relationship to the same set
+    // (#9296). Withhold the definition only after checking every surviving
+    // relationship and type owner, not just the relationship being detached.
     const stillNamed = new Set(keptByRelation);
     for (const [entityId, rels] of index.relDefinesByEntity) {
       if (!survives(entityId)) continue;
       for (const { relId, psetId } of rels) {
-        if (touchedSetByRel.has(relId) || !this.typeOwned.has(psetId)) continue;
+        if (touchedSetByRel.has(relId) || !candidates.has(psetId)) continue;
         if (!pass.skipRelationshipIds.has(relId)) stillNamed.add(psetId);
       }
     }
@@ -119,11 +121,11 @@ export class SharedSetDetachments {
       for (const typeId of ids) {
         if (!survives(typeId)) continue;
         for (const setId of getTypeOwnedHasPropertySetIds(ctx, typeId, pass.effective)) {
-          if (this.typeOwned.get(setId)?.has(typeId) === false) stillNamed.add(setId);
+          if (candidates.has(setId) && !this.typeOwned.get(setId)?.has(typeId)) stillNamed.add(setId);
         }
       }
     }
-    for (const setId of this.typeOwned.keys()) {
+    for (const setId of candidates) {
       if (!stillNamed.has(setId)) withhold(setId);
     }
   }

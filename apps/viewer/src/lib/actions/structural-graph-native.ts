@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { createStructuralStoreBackend, resolveLiveOwnerHistoryId } from '@ifc-lite/sdk';
+import { resolveLiveOwnerHistoryId } from '@ifc-lite/sdk';
 import { liveEntityConforms } from '@ifc-lite/create';
 import { effectiveMetadataRecord, getAttributeTypeForSchema, getSchemaRegistryForVersion } from '@ifc-lite/parser';
 import { isValidIfcGuid } from '@ifc-lite/encoding';
@@ -12,12 +12,14 @@ import { structuralClosure, type StructuralSnapshot } from './structural-graph-e
 import { structuralRef, type StructuralProposal, type StructuralRef } from './structural-graph-proposal';
 import { uniqueSplitGuid } from './model-authoring-split';
 import { nativeLengthUnitAvailable } from './model-authoring-read-target';
+import { loadedStructuralWrites } from '@/sdk/adapters/store-adapter-structural';
 export interface StructuralWriteRow { index: number; expressId: number }
 const types = { 'structural.analysis.create': 'IfcStructuralAnalysisModel', 'structural.member.create': 'IfcStructuralCurveMember', 'structural.connection.create': 'IfcStructuralPointConnection', 'structural.group.create': 'IfcStructuralLoadGroup', 'structural.pointAction.create': 'IfcStructuralPointAction', 'structural.linearAction.create': 'IfcStructuralLinearAction' } as const;
 export function writeStructuralOperations(_state: Pick<ViewerState, 'models' | 'mutationViews'>, target: ModelEditTarget, draft: StoreEditor,
   proposal: StructuralProposal, snapshot: StructuralSnapshot, approved: ReadonlySet<number>): StructuralWriteRow[] {
   const { modelId, dataStore } = target, view = draft.getMutationView(), refs = new Map<string, number>(), captured = new Set(snapshot.records.map(row => row.expressId));
-  const write = createStructuralStoreBackend(() => ({ modelId, store: dataStore, editor: draft, mutationView: view, ownerHistoryId: resolveLiveOwnerHistoryId(dataStore, draft, view) }));
+  // The builders load in their own chunk (#9668); callers await `loadStructuralWrites()` first.
+  const write = loadedStructuralWrites('Native Structural review').createStructuralStoreBackend(() => ({ modelId, store: dataStore, editor: draft, mutationView: view, ownerHistoryId: resolveLiveOwnerHistoryId(dataStore, draft, view) }));
   const resolve = (ref: StructuralRef, expected?: string) => {
     const id = typeof ref === 'number' ? ref : refs.get(ref.ref);
     if (id === undefined || typeof ref === 'number' && !captured.has(id) || view.isDeleted(id)) throw new Error('Approve the earlier creation or attach the complete native reference');

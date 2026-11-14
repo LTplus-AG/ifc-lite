@@ -138,7 +138,11 @@ it('keeps runtime detail alongside a category without renaming registered comman
   const file = document.querySelector('[data-runtime-source="recent-file"]');
   assert.ok(file?.textContent?.includes(runtime.label));
   assert.ok(file?.textContent?.includes('Datei'));
-  assert.equal(file?.querySelector('[title="1.4 MB"]')?.textContent, '1.4 MB');
+  assert.ok(file);
+  assert.ok([...file.querySelectorAll('span')].some(span => span.textContent === '1.4 MB' && !span.hidden),
+    'file size remains visible secondary text alongside the category');
+  assert.equal(file.hasAttribute('aria-label'), false, 'runtime name includes native label, category and visible detail');
+  assert.equal(file.querySelector('[data-command-label]')?.textContent, runtime.label);
   const frame = document.querySelector('[data-command-id="view:frame"]');
   assert.equal(frame?.getAttribute('aria-label'), resolveEnglish(surfaceCommand('view:frame', 'palette').labelKey));
   assert.ok(frame?.textContent?.includes('Ansicht'));

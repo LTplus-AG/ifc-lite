@@ -86,13 +86,11 @@ impl EdgeAdjacency {
         }
         match &mut self.storage {
             Storage::Dense { first, links } => {
-                first.clear();
-                first.reserve(triangles * 2);
+                crate::scratch_map::reset_for(first, triangles * 2);
                 links.reset(slots);
             }
             Storage::Wide(edges) => {
-                edges.clear();
-                edges.reserve(triangles * 2);
+                crate::scratch_map::reset_for(edges, triangles * 2);
             }
         }
     }

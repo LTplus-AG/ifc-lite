@@ -38,11 +38,10 @@ function Viewport({ renderer }: { renderer: Renderer }) {
     presentInstancedModelIndices: new Set(indices.values()), isInitialized: true, isStreaming: false,
     geometryBoundsRef, clearColorRef, pendingMeshColorUpdates: null, pendingColorUpdates: null,
     pendingMeshRemovals: s.pendingMeshRemovals, pendingMeshTranslations: null,
-    pendingMeshRotations: null, pendingInstancedShards: null,
+    pendingMeshRotations: null,
     clearPendingMeshColorUpdates: s.clearPendingMeshColorUpdates, clearPendingColorUpdates: s.clearPendingColorUpdates,
     clearPendingMeshRemovals: s.clearPendingMeshRemovals, pruneGeometryMeshes: s.pruneGeometryMeshes,
-    clearPendingMeshTranslations: s.clearPendingMeshTranslations, clearPendingMeshRotations: s.clearPendingMeshRotations,
-    clearInstancedShards: s.clearInstancedShards });
+    clearPendingMeshTranslations: s.clearPendingMeshTranslations, clearPendingMeshRotations: s.clearPendingMeshRotations });
   return null;
 }
 

@@ -26,7 +26,7 @@ import { authoredEntityRefs, type EffectiveEntityIndex } from './effective-index
 import { HAS_PROPERTY_SETS_SLOT } from './type-owned-psets.js';
 import type { IfcSchemaVersion } from './schema-converter.js';
 import { firstWrittenOwnerHistoryRef } from './schema-converter-owner-history.js';
-import { nativeSetLine, decodeNativeSetLine } from './step-native-set-record.js';
+import { nativeSetLine, decodeNativeSetLine, currentSetLine } from './step-native-set-record.js';
 import { frameArgs, stepRecordFrame, stepRecordHead } from './step-record-frame.js';
 import type { SourceLineMutations } from './step-exporter.js';
 
@@ -157,7 +157,7 @@ export function entityLineText(ctx: PropertySetContext, entityId: number): strin
  * Get the name of a property set by parsing the entity
  */
 export function getPropertySetName(ctx: PropertySetContext, psetId: number): string | null {
-  const entityText = entityLineText(ctx, psetId);
+  const entityText = currentSetLine(ctx, psetId);
   if (entityText === null) return null;
 
   // Parse: IFCPROPERTYSET('guid',$,'Name',$,...) - Name is 3rd argument
@@ -194,7 +194,7 @@ export function getElementQuantityName(ctx: PropertySetContext, entityId: number
  * Get IDs of properties in a property set
  */
 export function getPropertyIdsInSet(ctx: PropertySetContext, psetId: number): number[] {
-  const entityText = entityLineText(ctx, psetId);
+  const entityText = currentSetLine(ctx, psetId);
   if (entityText === null) return [];
 
   // Parse: IFCPROPERTYSET(...,(#prop1,#prop2,...)); - Last argument is properties

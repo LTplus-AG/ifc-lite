@@ -6,7 +6,7 @@ import '@/test/setup-dom.js';
 import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { render, click, cleanup } from '@/test/render';
+import { render, click, cleanup, waitFor } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { useViewerStore } from '@/store';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
@@ -96,11 +96,13 @@ test('an open checklist with no items is available and empty (#6833)', () => {
 });
 
 // #6833: the Data validation panel's manual side discusses the manual checklist.
-test('Data validation on the manual side attaches the manual checklist from its header (#6833)', () => {
+test('Data validation on the manual side attaches the manual checklist from its header (#6833)', async () => {
   useViewerStore.setState(fixtureModels(model('arch', 'fp-arch')));
   useViewerStore.getState().setManualChecklist(checklist(1));
   setValidationSourceChoice('manual');
   const panel = render(renderPanelBody('validation', () => undefined));
+  // #9634: the first render is the lazy feature's loading shell.
+  await waitFor(() => panel.querySelector('button[aria-label="Discuss with AI"]') !== null, 'validation feature mounted');
   const discuss = panel.querySelector('button[aria-label="Discuss with AI"]');
   assert.ok(discuss);
   click(discuss);

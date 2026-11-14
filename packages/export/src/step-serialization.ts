@@ -21,7 +21,8 @@
  *     generic STEP token, and worth reading on its own.
  */
 
-import { serializeValue, SCHEMA_REGISTRY, type IfcAttributeValue, type SchemaRegistry } from '@ifc-lite/parser';
+import { serializeValue, type IfcAttributeValue, type SchemaRegistry } from '@ifc-lite/parser';
+import { ifc4Registry } from './ifc4-registry.js';
 import { QuantityType, formatStepReal, escapeStepString, isCompleteStepNumericLiteral } from '@ifc-lite/data';
 
 /**
@@ -68,7 +69,7 @@ function canonicalTypeName(typeName: string, types: SchemaRegistry['types']): st
  * The name is matched case-insensitively, with the `Ifc` prefix optional
  * (#8312). `registry` defaults to the parser's IFC4 pin.
  */
-export function resolveExpressBase(typeName: string, registry: SchemaRegistry = SCHEMA_REGISTRY): string | null {
+export function resolveExpressBase(typeName: string, registry: SchemaRegistry = ifc4Registry()): string | null {
   let cursor: string | undefined = canonicalTypeName(typeName, registry.types);
   const seen = new Set<string>();
   while (cursor && !seen.has(cursor)) {

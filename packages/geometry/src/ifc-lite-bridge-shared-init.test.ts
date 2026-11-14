@@ -35,7 +35,7 @@ const wasm = vi.hoisted(() => {
   };
 });
 
-vi.mock('@ifc-lite/wasm', () => ({ default: wasm.init, IfcAPI: wasm.IfcAPI }));
+vi.mock('@ifc-lite/wasm', () => ({ ENGINE_BINARY_URL: null, default: wasm.init, IfcAPI: wasm.IfcAPI }));
 
 const g = globalThis as Record<string, unknown>;
 

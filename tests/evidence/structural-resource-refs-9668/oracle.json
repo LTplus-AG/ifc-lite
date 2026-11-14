@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "packages/create/src/in-store/_structural-graph.ts",
+  "mutation": "tests/evidence/structural-resource-refs-9668/behaviour.oracle.patch",
+  "test": "packages/create/src/in-store/structural-resource-ownership.test.ts",
+  "why": "#9668 / #9819: Nested resource aggregates are references, but typed numeric trim values must not collect unrelated entities with the same ID."
+}

@@ -111,8 +111,8 @@ export const TEARDOWN_EXEMPTIONS: Readonly<Record<string, string>> = {
     'expressId.',
 
   spaceMouseSlice:
-    'WebHID device connection state and sensitivity — no field references a modelId or ' +
-    'expressId.',
+    'WebHID device connection state, sensitivity, and the 3Dconnexion driver opt-in and its ' +
+    'status (#9131) — no field references a modelId or expressId.',
 
   appearanceSlice:
     'The assignment recipe contains only saved logical membership, never live plans or views. ' +

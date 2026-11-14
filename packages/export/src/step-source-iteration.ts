@@ -56,7 +56,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { filterHiddenRefsFromRelationshipLine } from './reference-collector.js';
 import { narrowNonRelPositionalRefLists } from './nonrel-positional-ref-narrowing.js';
 import { STYLE_RESCUE_TYPES } from './style-closure.js';
-import { NONREL_REF_LIST_TYPES } from './nonrel-ref-list-types.js';
+import { getNonRelRefListTypes } from './nonrel-ref-list-types.js';
 import { styleEntityWithheldWarning } from './step-export-types.js';
 import { applySourceLineMutationsReported } from './step-attribute-mutations.js';
 import type { IfcSchemaVersion } from './schema-converter.js';
@@ -284,7 +284,7 @@ export function writeSourceEntityLines(
           continue;
         }
         nextEntityText = filtered;
-      } else if (mayNameOmittedRefs && NONREL_REF_LIST_TYPES.has(effectiveRelType)) {
+      } else if (mayNameOmittedRefs && getNonRelRefListTypes().has(effectiveRelType)) {
         // `IfcCostItem.CostValues`, `IfcPropertySet.HasProperties`,
         // `IfcElementQuantity.Quantities`, … (`nonrel-ref-list-types.ts`,
         // derived from the schema registries — #5181): direct LIST/SET

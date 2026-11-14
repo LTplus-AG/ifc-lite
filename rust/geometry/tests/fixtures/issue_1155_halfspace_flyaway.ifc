@@ -1,12 +1,12 @@
 ISO-10303-21;
 HEADER;
 FILE_DESCRIPTION(('ViewDefinition[CoordinationView_V2.0, QuantityTakeOffAddOnView]', 'Option [BaseQuantities:On]', 'Option [GridExport:On]', 'Option [Assemblies:On]', 'Option [Bolts:Off]', 'Option [Rebars:Off]', 'Option [PourObjects:Off]', 'Option [Welds:Off]', 'Option [SurfaceTreatments:Off]', 'Option [LocationBy:0]', 'Option [ViewColors:Off]', 'Option [SectionedSpine:Off]', 'Option [PropertySets:On]', 'Option [Export all:Off]'),'2;1');
-FILE_NAME('Building.ifc','2024-03-31T13:10:26',('MYADMIN\\Yura'),('Structural Designer'),'IFC Parser version: 3.13.2','Tekla Structures 2023 Service Pack 1, IFC Export Version: 4.0.0.0 Mar 29 2023','');
+FILE_NAME('Building.ifc','2024-03-31T13:10:26',('redacted-user'),('Structural Designer'),'IFC Parser version: 3.13.2','Tekla Structures 2023 Service Pack 1, IFC Export Version: 4.0.0.0 Mar 29 2023','');
 FILE_SCHEMA(('IFC2X3'));
 ENDSEC;
 
 DATA;
-#1= IFCPERSON('MYADMIN\\Yura','Undefined',$,$,$,$,$,$);
+#1= IFCPERSON('redacted-user','Undefined',$,$,$,$,$,$);
 #2= IFCORGANIZATION($,'Trimble Solutions Corporation',$,$,$);
 #3= IFCPERSONANDORGANIZATION(#1,#2,$);
 #4= IFCAPPLICATION(#2,'2023 Service Pack 1','Tekla Structures','Multi material modeling');

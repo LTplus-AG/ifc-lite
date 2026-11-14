@@ -14,8 +14,8 @@
  *     "description": "what this family measures and how",
  *     "entries": [
  *       {
- *         "id": "engine-wasm-brotli",        // unique within the family
- *         "metric": "brotli-bytes",          // what kind of number it is
+ *         "id": "engine-wasm-bytes",         // unique within the family
+ *         "metric": "raw-bytes",             // what kind of number it is
  *         "unit": "bytes",                   // optional, for the report
  *         "fixture": "tests/models/x.ifc",   // optional: the input measured
  *         "description": "...",              // optional
@@ -38,7 +38,7 @@
  *     "family": "bundle",
  *     "commit": "<sha the measurement was taken at>",
  *     "measuredAt": "<ISO-8601>",
- *     "metrics": [ { "id": "engine-wasm-brotli", "value": 1290000, "detail": "..." } ],
+ *     "metrics": [ { "id": "engine-wasm-bytes", "value": 10400000, "detail": "..." } ],
  *     "informational": [ { "id": "viewer-entry-js-brotli", "value": 984000, "unit": "bytes" } ]
  *   }
  *

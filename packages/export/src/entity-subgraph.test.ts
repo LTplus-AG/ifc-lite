@@ -237,3 +237,20 @@ describe('serializeEntitySubgraph (#6232)', () => {
     expect(large.gets).toBeLessThan(4 * large.size);
   });
 });
+
+
+it('carries source material appearances but not unused material definitions (#9296)', async () => {
+  const source = model(1).replace('ENDSEC;\nEND-ISO', `#700=IFCCOLOURRGB($,0.71,0.32,0.23);
+#701=IFCSURFACESTYLERENDERING(#700,0.,$,$,$,$,$,$,.NOTDEFINED.);
+#702=IFCSURFACESTYLE($,.BOTH.,(#701));
+#703=IFCSTYLEDITEM($,(#702),$);
+#704=IFCSTYLEDREPRESENTATION(#20,'Style','Material',(#703));
+#705=IFCMATERIALDEFINITIONREPRESENTATION($,$,(#704),#130);
+#706=IFCMATERIAL('Unused',$,$);
+#707=IFCMATERIALDEFINITIONREPRESENTATION($,$,(#704),#706);
+ENDSEC;\nEND-ISO`);
+  const store = await parse(source);
+  const sub = serializeEntitySubgraph(store, null, { targets: new Set([WALL]) });
+  for (const id of [700, 701, 702, 703, 704, 705]) expect(sub.ids.has(id), `#${id}`).toBe(true);
+  expect(sub.ids.has(707)).toBe(false);
+});

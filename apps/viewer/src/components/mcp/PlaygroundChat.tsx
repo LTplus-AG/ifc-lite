@@ -33,7 +33,7 @@ import { modelSwapNotice, type SwapModelRef } from './playground-model-swap.js';
 import { anthropicErrorMessage } from '@/lib/llm/anthropic-client';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { ArrowUp, Check, ChevronDown, ChevronRight, Download, RefreshCcw, Square, Wrench } from 'lucide-react';
+import { ArrowUp, ChevronDown, ChevronRight, RefreshCcw, Square, Wrench } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { cn } from '@/lib/utils';
@@ -52,9 +52,8 @@ import {
   anthropicToolDefinitions,
   type DispatchContext,
   type LoadedPlaygroundModel,
-  type ToolDispatchResult,
 } from './playground-dispatcher';
-import { playgroundFiles, formatBytes as formatFileBytes } from './playground-files';
+import { formatBytes as formatFileBytes } from './playground-files';
 import {
   playgroundUploads,
   usePlaygroundUploads,
@@ -66,6 +65,8 @@ import { Paperclip, X } from 'lucide-react';
 import { runConversation, type ChatMessage, type ChatToolCall } from './playground-conversation';
 import { MARKDOWN_COMPONENTS } from './playground-markdown';
 import { PlaygroundHeader } from './playground-chat-header';
+import { InlineDownload } from './playground-inline-download';
+export { InlineDownload } from './playground-inline-download';
 export type { ChatToolCall } from './playground-conversation';
 
 // ── component ──────────────────────────────────────────────────────────────
@@ -95,8 +96,15 @@ export function PlaygroundChat({
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
+  // Physical dispatch lifetime outlives a user Stop if the tool cannot abort.
+  const dispatchPending = useRef<{ assistantId: string; released: boolean } | null>(null);
+  const [dispatching, setDispatching] = useState(false);
   const { busy: isStreaming, start, reset } = useAsyncRun({ key: model, label: 'playground conversation' });
   useEffect(() => {
+    // A new IFC model retires any stopped tool's lock; written here, not during
+    // render, so a discarded render cannot release it.
+    dispatchPending.current = null;
+    setDispatching(false);
     setMessages(prior => prior.map(message => message.pending ? { ...message, pending: false } : message));
   }, [model]);
   const [error, setError] = useState<LiveTranslationMessage | null>(null); const errorText = resolveLiveMessage(t, error);
@@ -168,6 +176,7 @@ export function PlaygroundChat({
         return;
       }
       return start(async ({ signal, isCurrent }) => {
+        const loadId = loadCounter.current;
         setError(null);
 
         // Prepend a tiny system-note prefix when files were attached so the
@@ -186,6 +195,7 @@ export function PlaygroundChat({
           toolCalls: [],
           pending: true,
         };
+        const attempt = { assistantId: assistantMessage.id, released: false };
         setMessages((m) => [...m, userMessage, assistantMessage]);
 
         const credentials = { apiKey: keys.anthropicKey, workspaceId: keys.anthropicWorkspaceId };
@@ -199,6 +209,18 @@ export function PlaygroundChat({
             model,
             assistantId: assistantMessage.id,
             getDispatchContext: dispatchContext ?? (() => ({})),
+            onDispatchChange: pending => {
+              if (loadCounter.current !== loadId || attempt.released) return;
+              dispatchPending.current = pending ? attempt : null;
+              setDispatching(pending);
+            },
+            onToolResult: call => {
+              // loadCounter owns IFC-swap discards; force-release seals cancellation.
+              if (loadCounter.current !== loadId || attempt.released) return;
+              setMessages(prior => prior.map(message => message.id === assistantMessage.id
+                ? { ...message, toolCalls: message.toolCalls?.map(previous => previous.id === call.id ? call : previous) }
+                : message));
+            },
             onUpdate: (patch) => { if (isCurrent()) setMessages((m) =>
               m.map((msg) => (msg.id === assistantMessage.id ? { ...msg, ...patch } : msg)),
             ); },
@@ -227,6 +249,21 @@ export function PlaygroundChat({
   );
 
   const stop = () => {
+    if (!isStreaming && dispatchPending.current) {
+      const attempt = dispatchPending.current;
+      attempt.released = true;
+      dispatchPending.current = null;
+      setDispatching(false);
+      setMessages(prior => prior.map(message => message.id === attempt.assistantId
+        ? { ...message, toolCalls: message.toolCalls?.map(call => call.result ? call : {
+            ...call, finishedAt: Date.now(), result: {
+              text: 'Cancelled while the tool was still running; outcome unknown. Do not retry mutations automatically.',
+              structured: null, isError: true, errorCode: 'CANCELLED',
+            },
+          }) }
+        : message));
+      return;
+    }
     reset();
     setMessages(prior => prior.map(message => message.pending
       ? { ...message, pending: false, ...(message.text ? {} : { displayTextKey: 'mcp.playgroundChat.stopped' as const }) }
@@ -236,7 +273,7 @@ export function PlaygroundChat({
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = input.trim();
-    if ((!trimmed && pendingAttachments.length === 0) || isStreaming) return;
+    if ((!trimmed && pendingAttachments.length === 0) || isStreaming || dispatchPending.current) return;
     const attachedThisTurn = pendingAttachments;
     setInput('');
     setPendingNames([]);
@@ -297,6 +334,7 @@ export function PlaygroundChat({
   }
 
   // ── render ──────────────────────────────────────────────────────────────
+  const canStop = isStreaming || dispatching;
   return (
     <div className="flex h-full min-h-0 flex-col bg-[#0f0f12] text-[#ede4d3]">
       <PlaygroundHeader
@@ -421,19 +459,21 @@ export function PlaygroundChat({
             style={{ fontFamily: '"Bricolage Grotesque", system-ui, sans-serif' }}
           />
           <button
-            type={isStreaming ? 'button' : 'submit'}
-            onClick={isStreaming ? stop : undefined}
-            disabled={!isStreaming && ((!input.trim() && pendingAttachments.length === 0) || !model || !keys.anthropicKey)}
+            type={canStop ? 'button' : 'submit'}
+            onClick={canStop ? stop : undefined}
+            disabled={!canStop && ((!input.trim() && pendingAttachments.length === 0) || !model || !keys.anthropicKey)}
             className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-[#d6ff3f] text-[#0a0a0c] transition-opacity disabled:opacity-30"
-            aria-label={t(isStreaming ? 'chat.panel.stopGeneratingTooltip' : 'mcp.playgroundChat.send')}
+            aria-label={t(canStop ? 'chat.panel.stopGeneratingTooltip' : 'mcp.playgroundChat.send')}
           >
-            {isStreaming ? <Square size={14} fill="currentColor" /> : <ArrowUp size={14} strokeWidth={2.5} />}
+            {canStop ? <Square size={14} fill="currentColor" /> : <ArrowUp size={14} strokeWidth={2.5} />}
           </button>
         </div>
         <p className="mt-1.5 text-2xs text-white/40">
-          {uploads.length > 0
-            ? t('mcp.playgroundChat.footerHintWithAttachments', { tools: tools.length, count: uploads.length })
-            : t('mcp.playgroundChat.footerHintNoAttachments', { tools: tools.length })}
+          {!isStreaming && dispatching
+            ? t('mcp.playgroundChat.finishingTool')
+            : uploads.length > 0
+              ? t('mcp.playgroundChat.footerHintWithAttachments', { tools: tools.length, count: uploads.length })
+              : t('mcp.playgroundChat.footerHintNoAttachments', { tools: tools.length })}
         </p>
         {dragOver && (
           <div
@@ -639,76 +679,6 @@ export function ToolCallView({ call, showDownload = true }: { call: ChatToolCall
 
 function rid(): string {
   return Math.random().toString(36).slice(2, 11);
-}
-
-/**
- * InlineDownload — chartreuse "Get .bcf" / "Save IFC" pill that surfaces
- * directly under the tool-call header whenever a tool produced a file. The
- * file is already in the playgroundFiles store (so the sidebar Downloads
- * panel mirrors it); this is the discoverable, in-context offer right next
- * to the action that produced it.
- *
- * UX rules baked in:
- *   • The artifact NEVER auto-downloads. The user has to click.
- *   • After a click, the button shows "Saved" for ~2s so the user has
- *     visible feedback without losing the affordance to re-download.
- *   • Re-clicking re-runs the download — useful if the user closed the
- *     prompt by accident.
- */
-export function InlineDownload({
-  download,
-}: {
-  download: NonNullable<ToolDispatchResult['download']>;
-}): ReactNode {
-  const { t } = useTranslation();
-  const [savedAt, setSavedAt] = useState<number | null>(null);
-  const justSaved = savedAt != null && Date.now() - savedAt < 2000;
-  useEffect(() => {
-    if (savedAt == null) return;
-    const t = setTimeout(() => setSavedAt(null), 2000);
-    return () => clearTimeout(t);
-  }, [savedAt]);
-
-  return (
-    <div className="border-t border-white/5 px-3 py-2">
-      <button aria-label={justSaved ? t('mcp.playgroundChat.savedLabel') : download.label}
-        onClick={() => {
-          playgroundFiles.download(download.fileId);
-          setSavedAt(Date.now());
-        }}
-        className={cn(
-          'group flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left transition-colors',
-          justSaved ? 'bg-white/10' : 'bg-[#d6ff3f] hover:bg-[#e6ff66]',
-        )}
-        style={justSaved ? { color: '#d6ff3f' } : { color: '#0a0a0c' }}
-      >
-        <span className="flex min-w-0 items-center gap-2.5">
-          <span
-            className={cn(
-              'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded',
-              justSaved ? 'bg-white/10' : 'bg-black/10',
-            )}
-          >
-            {justSaved ? <Check size={14} strokeWidth={2.6} /> : <Download size={14} strokeWidth={2.4} />}
-          </span>
-          <span className="flex min-w-0 flex-col leading-tight">
-            <span
-              className="truncate text-sm font-semibold"
-              style={{ fontFamily: '"Bricolage Grotesque", system-ui, sans-serif' }}
-            >
-              {justSaved ? t('mcp.playgroundChat.savedLabel') : download.label}
-            </span>
-            <span
-              className={cn('truncate text-2xs', justSaved ? 'text-white/50' : 'text-black/55')}
-              style={{ fontFamily: '"JetBrains Mono", monospace' }}
-            >
-              {download.filename} · {formatFileBytes(download.size)}
-            </span>
-          </span>
-        </span>
-      </button>
-    </div>
-  );
 }
 
 // Tiny re-export so the playground page can show an empty-state CTA.

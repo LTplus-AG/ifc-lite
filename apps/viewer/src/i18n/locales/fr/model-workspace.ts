@@ -5,6 +5,7 @@
 import type { Catalogue } from '../../registry';
 
 export const modelWorkspaceFr = {
+  'modelWorkspace.leave': 'Quitter',
   "modelWorkspace.rail.aria": "Outils de modélisation",
   "modelWorkspace.rail.hosted": "Ouvertures, portes et fenêtres",
   "modelWorkspace.rail.circulation": "Escaliers et garde-corps",
@@ -51,5 +52,5 @@ export const modelWorkspaceFr = {
   "modelWorkspace.layout.plan": "Plan",
   "modelWorkspace.layout.split": "Vue partagée",
   "modelWorkspace.layout.3d": "3D",
-  "modelWorkspace.hint.onboarding": "W mur · Maj+S dalle · cliquer sur un élément pour le modifier · E pour quitter",
+  "modelWorkspace.hint.onboarding": "W mur · Maj+S dalle · cliquer sur un élément pour le modifier · M pour quitter",
 } satisfies Catalogue;

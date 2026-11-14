@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "packages/export/src/renumber-step-ids.ts",
+  "mutation": "tests/evidence/renumber-step-ids-comments/behaviour.oracle.patch",
+  "test": "packages/export/src/renumber-step-ids.test.ts",
+  "why": "Reverse application keeps the module and its exports but scans comments and <uri> literals inside a statement as code, so a #id written in a comment or a URI is reported as a reference."
+}

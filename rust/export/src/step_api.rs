@@ -151,7 +151,7 @@ pub struct StepStats {
     /// requires a value (#5307, the Rust twin of #5202). The converter never
     /// invents one: no measure, label, identifier, reference, flag or enum.
     /// Non-zero means the file is not valid IFC4. Counted per slot, not per
-    /// record. Zero for every other direction, including IFC2X3 -> IFC4.
+    /// record. Applies to structural upgrades from IFC2X3 as well as IFC4X3 downgrades.
     pub ifc4_required_slots_unfilled: usize,
     /// Enum values the target schema does not define that a conversion wrote
     /// as `.NOTDEFINED.` or `$`, or as `.USERDEFINED.` without room for the

@@ -276,11 +276,16 @@ export function SourceFolderStep({
           <SourceFolderLocation trail={trail} folders={favouriteFolders}
             selected={selectedContainer ?? selectedFileArea} searchActive={searchActive} isFavourite={isFolderFavourite}
             onSelect={onSelectContainer} onToggle={onToggleFolderFavourite} />
-          {!searchActive && childFolders.length > 0 && (
+          {!searchActive && (childFolders.length > 0 || loadingFolders) && (
             <div className="border-b px-3 py-2">
               <div className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">
                 {t('sources.sourceFolderStep.subfoldersHeading')}
               </div>
+              {childFolders.length === 0 && (
+                <output aria-label={t('sources.sourceFolderStep.subfoldersHeading')} className="flex items-center justify-center gap-2 py-3 text-xs text-muted-foreground">
+                  <Spinner size="sm" />{t('sources.sourceEntityList.loading')}
+                </output>
+              )}
               <div className="flex flex-wrap gap-1">
                 {childFolders.map((folder) => {
                   const inactive = activeFolderIds !== undefined && !activeFolderIds.has(folder.id);

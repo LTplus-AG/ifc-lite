@@ -76,7 +76,10 @@ describe('DaluxBuildProvider', () => {
     expect(provider.manifest.capabilities).toEqual({
       containerListing: 'flat-subtree',
       listFilesIsRecursive: true,
-      revisionHistory: false,
+      // `listRevisions` now reconstructs history from version sets
+      // (`revision-methods.ts`) -- see `provider.test.ts`'s and
+      // `revision-methods.test.ts`'s own coverage of that method.
+      revisionHistory: true,
       downloadHistoricalRevisions: true,
       changeDetection: true,
       search: false,

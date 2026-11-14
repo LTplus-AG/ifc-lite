@@ -101,9 +101,9 @@ function Connector({ from, to, color }: { from: Vec3; to: Vec3; color: string })
 
   return createPortal(
     <>
-      <g ref={anchor1} style={{ display: 'none' }} data-scene-primitive="bcf-connector-anchor" />
-      <g ref={anchor2} style={{ display: 'none' }} data-scene-primitive="bcf-connector-anchor" />
-      <line
+      <g aria-hidden="true" ref={anchor1} style={{ display: 'none' }} data-scene-primitive="bcf-connector-anchor" />
+      <g aria-hidden="true" ref={anchor2} style={{ display: 'none' }} data-scene-primitive="bcf-connector-anchor" />
+      <line aria-hidden="true"
         ref={lineRef}
         style={{ display: 'none' }}
         data-scene-primitive="bcf-connector"

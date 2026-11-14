@@ -18,8 +18,9 @@ import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { cn } from '@/lib/utils';
 import { useViewportStatusSummary } from '@/hooks/useViewportStatusSummary';
 import { ViewCube, type ViewCubeRef } from './ViewCube';
-import { VIEW_CUBE_INSET_PX, VIEW_CUBE_RIGHT_INSET_PX } from './viewcube-box';
-import { MOBILE_NAV_BOTTOM } from './mobile-overlay-layout';
+import { VIEW_CUBE_RIGHT_INSET_PX, VIEW_CUBE_TOP } from './viewcube-box';
+import { mobileNavRowClearance, MOBILE_NAV_ROW, mobileNavRowStyle } from './mobile-overlay-layout';
+import { mobileCommandPlacement } from '@/lib/layout/form-factor';
 import { AxisHelper, type AxisHelperRef } from './AxisHelper';
 import { FlySpeedIndicator } from './FlySpeedIndicator';
 import { WalkIndicator } from './walk/WalkIndicator';
@@ -30,8 +31,6 @@ import { useTranslation } from '@/i18n';
 // zero-net addition since this already lives inside the same viewport panel.
 import { GitHubStarPrompt } from './GitHubStarPrompt';
 import { ViewportHud } from '../viewport-ui/hud/ViewportHud';
-import { WorkspaceStoreyChip } from './model/WorkspaceStoreyChip';
-import { WorkplaneHeightChip } from './model/WorkplaneHeightControl';
 import { ViewportLoadingCard } from './ViewportLoadingCard';
 import { ViewportLoadErrorCard } from './ViewportLoadErrorCard';
 import { SectionParkedChip } from './tools/SectionParkedChip';
@@ -74,10 +73,12 @@ export function ViewportOverlays({
   // Exactly one of the loading/error cards ever renders (#5851 nit): a
   // failure can land while `loading` has not yet flipped false for an
   // unrelated concurrent load, and the two must never occupy the same
-  // centered viewport slot at once. Error wins.
+  // viewport at once. Error wins.
+  const loading = useViewerStore((s) => s.loading);
   const hasLoadError = useViewerStore((s) => s.error !== null);
   const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
   const isMobile = useViewerStore((s) => s.isMobile);
+  const navPlacement = useViewerStore((s) => mobileCommandPlacement(s.formFactor));
   const setOnCameraRotationChange = useViewerStore((s) => s.setOnCameraRotationChange);
   const { t } = useTranslation();
 
@@ -174,8 +175,6 @@ export function ViewportOverlays({
           anything below portals in. */}
       <ViewportHud />
       {!hideViewCube && <GitHubStarPrompt />}
-      <WorkspaceStoreyChip />
-      <WorkplaneHeightChip />
       {hasLoadError ? <ViewportLoadErrorCard /> : <ViewportLoadingCard />}
       <SectionParkedChip />
       <MeasurementsVisibilityChip />
@@ -187,8 +186,9 @@ export function ViewportOverlays({
           (`toolbar/CameraCommands`). */}
       {isMobile && !cesiumEnabled && (
         <div
-          className="absolute left-4 flex flex-col gap-1 rounded-md border bg-background/90 p-1 backdrop-blur-sm"
-          style={{ bottom: MOBILE_NAV_BOTTOM }}
+          data-mobile-nav-pill
+          className="absolute flex flex-col gap-1 rounded-md border bg-background/90 p-1 backdrop-blur-sm"
+          style={mobileNavRowStyle(navPlacement, 'left')}
         >
           <Tooltip>
             <TooltipTrigger asChild>
@@ -232,7 +232,9 @@ export function ViewportOverlays({
           off-palette accent. The 3D overlays along the bottom edge are
           deliberately plain, and this sits in that row. */}
       {isMobile && (objectCounts.hidden > 0 || objectCounts.ghosted > 0) && (
-        <output className="absolute right-4 bottom-4 flex flex-col items-end gap-1">
+        // Above the Panels button, which shares the bottom row with the Home/zoom pill.
+        <output className={`absolute flex flex-col items-end gap-1 ${loading && !hasLoadError ? '-translate-y-12' : ''}`}
+          style={{ right: MOBILE_NAV_ROW[navPlacement].right, bottom: mobileNavRowClearance(navPlacement) }}>
           <span className="text-xs text-foreground/80 tabular-nums">
             {[
               objectCounts.hidden > 0 && t('shellChrome.statusBar.hiddenCount', { count: objectCounts.hidden }),
@@ -246,9 +248,9 @@ export function ViewportOverlays({
 
       {/* Context Info — Storey names. Desktop shows this in `StatusBar`
           (#5504); mobile keeps it here, top-center (the URL bar steals the
-          bottom). */}
+          bottom), below the status bar or Dynamic Island (#9718). */}
       {isMobile && storeyNames && storeyNames.length > 0 && (
-        <div className="absolute left-1/2 -translate-x-1/2 top-4 px-4 py-2 bg-background/80 backdrop-blur-sm rounded-full border shadow-sm">
+        <div className="absolute left-1/2 -translate-x-1/2 top-[max(1rem,env(safe-area-inset-top))] px-4 py-2 bg-background/80 backdrop-blur-sm rounded-full border shadow-sm">
           <div className="flex items-center gap-2 text-sm">
             <Layers className="h-4 w-4 text-primary" />
             <span className="font-medium">
@@ -262,7 +264,7 @@ export function ViewportOverlays({
 
       {/* ViewCube (top-right) */}
       {!hideViewCube && (
-        <div className="absolute" style={{ top: VIEW_CUBE_INSET_PX, right: VIEW_CUBE_RIGHT_INSET_PX }} {...tourAnchor(TOUR_ANCHORS.viewcube)}>
+        <div className="absolute" style={{ top: VIEW_CUBE_TOP, right: VIEW_CUBE_RIGHT_INSET_PX }} {...tourAnchor(TOUR_ANCHORS.viewcube)}>
           <ViewCube
             ref={viewCubeRef}
             onViewChange={handleViewChange}

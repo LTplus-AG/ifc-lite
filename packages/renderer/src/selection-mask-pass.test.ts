@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { SelectionMaskPass, type HoveredMesh, type SelectionMaskFrame } from './selection-mask-pass.js';
 import type { WebGPUDevice } from './device.js';
 import type { InstancedRteDeltaStream } from './instanced-rte.js';
-import { INSTANCED_VERTEX_BUFFERS } from './instanced-vertex-layout.js';
+import { TEXTURED_HIGHLIGHT_VERTEX_BUFFERS, INSTANCED_VERTEX_BUFFERS } from './instanced-vertex-layout.js';
 import type { WorldPoint } from './relative-to-eye.js';
 
 /**
@@ -27,13 +27,14 @@ function fakeDevice() {
   const stats = {
     buffers: [] as { size: number; usage: number; destroyed: boolean }[], bindGroups: 0, writes: 0, textures: 0,
     passes: [] as { view: unknown; loadOp: string }[],
+    descriptors: [] as GPURenderPipelineDescriptor[],
   };
   const pass = { setPipeline() {}, setBindGroup() {}, setVertexBuffer() {}, setIndexBuffer() {}, drawIndexed() {}, end() {} };
   const gpu = {
     createBindGroupLayout: () => ({}),
     createPipelineLayout: () => ({}),
     createShaderModule: () => ({}),
-    createRenderPipeline: () => ({}),
+    createRenderPipeline: (descriptor: GPURenderPipelineDescriptor) => { stats.descriptors.push(descriptor); return {}; },
     createTexture: (desc: { label?: string }) => { stats.textures++; return { createView: () => ({ label: desc.label }), destroy() {} }; },
     createBuffer: (desc: { size: number; usage: number }) => {
       const b = { size: desc.size, usage: desc.usage, destroyed: false, destroy() { b.destroyed = true; } };
@@ -288,3 +289,27 @@ describe('SelectionMaskPass outlines GPU-instanced occurrences (#5745)', () => {
   });
 });
 
+
+it('stride-36 highlight and mask layouts share every flat attribute (#9946)', () => {
+  assert.equal(TEXTURED_HIGHLIGHT_VERTEX_BUFFERS[0].arrayStride, 36);
+  assert.deepEqual(TEXTURED_HIGHLIGHT_VERTEX_BUFFERS[0].attributes, INSTANCED_VERTEX_BUFFERS[0].attributes);
+  assert.equal(INSTANCED_VERTEX_BUFFERS[0].arrayStride, 28);
+});
+
+it('mask variants use the same modules and are cached across frames (#9946)', () => {
+  const { device, encoder, stats } = fakeDevice();
+  const pass = new SelectionMaskPass(device, {} as GPUBindGroupLayout, 1);
+  const selected = [{ vertexBuffer: {} as GPUBuffer, indexBuffer: {} as GPUBuffer, indexCount: 3,
+    bindGroup: {} as GPUBindGroup, vertexStride: 36 as const }];
+  for (let i = 0; i < 3; i++) pass.encode({ ...frame(encoder, null), selected });
+  assert.equal(stats.descriptors.length, 6, 'three mask kinds per stride, created only once');
+  for (let i = 0; i < 3; i++) {
+    const flat = stats.descriptors[i], textured = stats.descriptors[i + 3];
+    assert.equal(textured.vertex.module, flat.vertex.module);
+    assert.equal(textured.fragment?.module, flat.fragment?.module);
+    assert.deepEqual(textured.depthStencil, flat.depthStencil);
+    assert.deepEqual(Array.from(textured.vertex.buffers!)[0]?.attributes, Array.from(flat.vertex.buffers!)[0]?.attributes);
+    assert.equal(Array.from(textured.vertex.buffers!)[0]?.arrayStride, 36);
+  }
+  pass.destroy();
+});

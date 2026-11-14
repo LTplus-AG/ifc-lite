@@ -11,6 +11,7 @@ import { perfCounters, type PerfCounterRegistry } from './counters.js';
  *
  *   msg.<label>.<dir>.count          messages
  *   msg.<label>.<dir>.cloneBytes     estimated structured-clone payload
+ *   msg.<label>.out.transferObjects  entries in the transfer list
  *   msg.<label>.out.transferBytes    ArrayBuffers in the transfer list (moved, not copied)
  *   msg.<label>.in.bufferBytes       ArrayBuffers received: the receiver cannot
  *                                    tell a transferred buffer from a cloned one
@@ -97,6 +98,7 @@ export function accountWorkerMessages<W extends MessageEndpoint>(
       for (const value of list) if (value instanceof ArrayBuffer) transferBytes += value.byteLength;
       const prefix = prefixOf();
       registry.add(`${prefix}.out.count`);
+      registry.add(`${prefix}.out.transferObjects`, list.size);
       registry.add(`${prefix}.out.cloneBytes`, est.cloneBytes);
       registry.add(`${prefix}.out.transferBytes`, transferBytes);
       registry.add(`${prefix}.out.sharedBytes`, est.sharedBytes);

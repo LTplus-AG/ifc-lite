@@ -26,6 +26,21 @@
 //
 // `--dumps` is the --callgrind-out-file path; its numbered siblings
 // (`<path>.1`, `<path>.2`, ...) are read too. Exit 1 on an unusable run.
+//
+// OWN CODE ONLY. `phases` counts the SELF cost of functions in the probe's own
+// binary: ifc-lite and the Rust std and crates statically linked into it. The
+// shared system libraries (libc, the dynamic loader, libgcc, the vDSO) are left
+// out. glibc's string routines retire a number of instructions that depends on
+// the alignment of the buffers they are given, so an unrelated change that
+// shifts the binary's layout moved FZK's parse phases by up to ~0.14% through
+// `__memcmp_avx2_movbe` alone; the count also depended on which glibc variant
+// the host's CPU selects. Self cost rather than inclusive: the inclusive cost of
+// our functions would pull those library bodies back in, while self cost keeps
+// every call site's own instructions (argument setup, the call, the result
+// test), so code that calls into libc more often still counts more.
+// `externalCalls` (calls from the binary into those libraries, a deterministic
+// count) and `allObjects` (the previous whole-process phases, libraries
+// included) are reported beside it as information.
 
 import { readFileSync, readdirSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
@@ -45,6 +60,50 @@ export const MARKERS = [
   ['total_end', 'pipelineUntimed'],
 ];
 const EXIT_SEGMENT = 'afterPipeline';
+
+/** Shared objects whose instructions are not ours: libc, ld.so, libgcc, the vDSO, valgrind preloads. */
+export function isSystemObject(name) {
+  return /\.so(\.\d+)*$/.test(name) || /^\[vdso\]$|vgpreload/.test(name);
+}
+
+/**
+ * Self Ir per side of one dump, read from its cost lines: `own` (not a system
+ * object), `system` (shared libraries), and `externalCalls` (calls from own code
+ * into a system object). A cost line directly after `calls=` is the inclusive
+ * cost of that call, already counted as the callee's self cost, so it is
+ * skipped. Name compression (`ob=(3) /path`, later `ob=(3)`) is per file.
+ */
+export function selfCosts(text) {
+  const names = new Map();
+  const nameOf = (value) => {
+    const m = value.match(/^\((\d+)\)(?:\s+(.*))?$/);
+    if (!m) return value.trim();
+    if (m[2] !== undefined) names.set(m[1], m[2].trim());
+    return names.get(m[1]) ?? '';
+  };
+  let positions = 1;
+  let ob = '';
+  let cob = null;
+  let calls = null;
+  const out = { own: 0, system: 0, externalCalls: 0 };
+  for (const line of text.split('\n')) {
+    if (line.startsWith('positions:')) positions = line.slice(10).trim().split(/\s+/).filter(Boolean).length;
+    else if (line.startsWith('ob=')) ob = nameOf(line.slice(3));
+    else if (line.startsWith('cob=')) cob = nameOf(line.slice(4));
+    else if (line.startsWith('calls=')) calls = Number(line.slice(6).trim().split(/\s+/)[0]);
+    else if (/^[0-9+*-]/.test(line)) {
+      const ir = Number(line.trim().split(/\s+/)[positions] ?? 0);
+      if (!Number.isSafeInteger(ir)) throw new Error(`bad cost line: ${line}`);
+      if (calls !== null) {
+        if (!isSystemObject(ob) && isSystemObject(cob ?? ob)) out.externalCalls += calls;
+        calls = null;
+        cob = null;
+      } else if (isSystemObject(ob)) out.system += ir;
+      else out.own += ir;
+    } else if (line.startsWith('fn=')) cob = null;
+  }
+  return out;
+}
 const MARKER_RE = /^--dump-before=.*::phase_marks::([a-z_]+)$/;
 
 /** Parse one callgrind dump: its ordinal, trigger and Ir total. */
@@ -61,7 +120,11 @@ export function parseDump(text) {
   }
   const ir = Number(total.split(/\s+/)[0]);
   if (!Number.isSafeInteger(ir) || ir < 0) throw new Error(`bad Ir total: ${total}`);
-  return { part: Number(field('part') ?? 0), trigger, ir };
+  const costs = selfCosts(text);
+  if (costs.own + costs.system !== ir) {
+    throw new Error(`self costs add up to ${costs.own + costs.system} Ir, the dump's total is ${ir}`);
+  }
+  return { part: Number(field('part') ?? 0), trigger, ir, ...costs };
 }
 
 /** Name of the segment a dump closes. */
@@ -92,23 +155,37 @@ export function phaseCounts(dumps) {
   if (ordered.at(-1)?.trigger !== 'Program termination') {
     throw new Error('the final program-termination dump is missing');
   }
-  const segments = {};
-  for (const dump of ordered) {
-    const name = segmentOf(dump.trigger);
-    segments[name] = (segments[name] ?? 0) + dump.ir;
-  }
-  const parseIr = segments.entityScan + segments.lookup + segments.preprocess + segments.parseUntimed;
+  const fold = (key) => {
+    const segments = {};
+    for (const dump of ordered) {
+      const name = segmentOf(dump.trigger);
+      segments[name] = (segments[name] ?? 0) + dump[key];
+    }
+    return segments;
+  };
+  const own = fold('own');
+  const all = fold('ir');
+  const calls = fold('externalCalls');
   return {
-    phases: {
-      parseIr,
-      entityScanIr: segments.entityScan,
-      lookupIr: segments.lookup,
-      preprocessIr: segments.preprocess,
-      geometryIr: segments.geometry,
-      totalIr: parseIr + segments.pipelineUntimed + segments.geometry,
-    },
-    outside: { beforePipelineIr: segments.beforePipeline, afterPipelineIr: segments.afterPipeline },
+    phases: phasesOf(own),
+    allObjects: phasesOf(all),
+    externalCalls: phasesOf(calls, 'Calls'),
+    outside: { beforePipelineIr: own.beforePipeline, afterPipelineIr: own.afterPipeline },
     processIr: ordered.reduce((sum, d) => sum + d.ir, 0),
+  };
+}
+
+/** The ProcessingStats windows over one fold of segment counts, keyed `<phase><unit>`. */
+function phasesOf(segments, unit = 'Ir') {
+  const at = (name) => segments[name] ?? 0;
+  const parse = at('entityScan') + at('lookup') + at('preprocess') + at('parseUntimed');
+  return {
+    [`parse${unit}`]: parse,
+    [`entityScan${unit}`]: at('entityScan'),
+    [`lookup${unit}`]: at('lookup'),
+    [`preprocess${unit}`]: at('preprocess'),
+    [`geometry${unit}`]: at('geometry'),
+    [`total${unit}`]: parse + at('pipelineUntimed') + at('geometry'),
   };
 }
 
@@ -152,7 +229,8 @@ export function formatReport(r) {
   ];
   const lines = [`${r.fixture} @ ${r.commit}`, `  ${r.meshes} meshes | ${r.vertices} verts | ${r.triangles} tris`];
   for (const [label, ir] of rows) lines.push(`  ${label.padEnd(16)} ${ir.toLocaleString('en-US').padStart(16)} Ir`);
-  lines.push(`  (whole process ${r.processIr.toLocaleString('en-US')} Ir)`);
+  lines.push(`  (own code only; with system libraries the total is ${r.allObjects.totalIr.toLocaleString('en-US')} Ir,`);
+  lines.push(`   ${r.externalCalls.totalCalls.toLocaleString('en-US')} calls into them; whole process ${r.processIr.toLocaleString('en-US')} Ir)`);
   return lines.join('\n');
 }
 

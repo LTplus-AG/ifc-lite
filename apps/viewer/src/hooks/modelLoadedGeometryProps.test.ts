@@ -270,6 +270,9 @@ const loader = stripSource(readFileSync(loaderPath, 'utf8'), loaderPath);
 // #7955 M2-C moved the exact processAdaptive options out of the loader, unchanged.
 const geometrySourcePath = fileURLToPath(new URL('./ingest/geometryEventSource.ts', import.meta.url));
 const geometrySource = stripSource(readFileSync(geometrySourcePath, 'utf8'), geometrySourcePath);
+// The small-file fast path moved the shared processAdaptive options into one builder, unchanged.
+const adaptiveOptionsPath = fileURLToPath(new URL('./ingest/adaptiveGeometryOptions.ts', import.meta.url));
+const adaptiveOptions = stripSource(readFileSync(adaptiveOptionsPath, 'utf8'), adaptiveOptionsPath);
 
 /**
  * The argument list of ONE `captureModelLoaded(…)` call in `useIfcLoader.ts` —
@@ -396,7 +399,8 @@ describe('ifc_model_loaded wiring (#2388)', () => {
   });
 
   it('opts in to hung-call recovery only because it reads the skipped elements, and never caches a partial model (#4884)', () => {
-    assert.match(geometrySource.masked, /hungJobTimeoutMs: DEFAULT_HUNG_JOB_TIMEOUT_MS/);
+    assert.match(adaptiveOptions.masked, /hungJobTimeoutMs: DEFAULT_HUNG_JOB_TIMEOUT_MS/);
+    assert.match(geometrySource.masked, /processAdaptive\(request\.view, adaptiveGeometryOptions\(/);
     const cacheGate = src.indexOf('!skippedHungElements &&');
     assert.notEqual(cacheGate, -1, 'the cache write must be gated on skippedHungElements');
     const saveIdx = src.indexOf('saveToCache(cacheKey', cacheGate);

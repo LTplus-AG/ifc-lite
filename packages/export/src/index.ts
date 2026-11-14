@@ -28,6 +28,7 @@ export type {
 } from './anonymize-types.js';
 export { MergedExporter, type MergeModelInput, type MergeExportOptions, type MergeExportResult, type MergeBlobExportResult, type ExportProgress } from './merged-exporter.js';
 export { collectReferencedEntityIds, getVisibleEntityIds } from './reference-collector.js';
+export { renumberStepIds, type RenumberStepIdsOptions, type RenumberStepIdsResult } from './renumber-step-ids.js';
 export { collectStyleEntities } from './style-closure.js';
 export { convertEntityType, convertStepLine, needsConversion, describeConversion, type IfcSchemaVersion } from './schema-converter.js';
 export {

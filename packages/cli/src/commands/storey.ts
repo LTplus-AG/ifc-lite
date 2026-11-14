@@ -10,6 +10,7 @@
  * stairs refit; every refusal is reported before anything is written.
  */
 
+import { storeyElementId, storeyTopConstraint } from './storey-constraint.js';
 import { writeFile } from 'node:fs/promises';
 import { StepExporter } from '@ifc-lite/export';
 import type { StoreyDeleteMode, StoreyLevelEdit, StoreySummary } from '@ifc-lite/create';
@@ -26,6 +27,10 @@ Actions:
                                              Add a storey (copies the neighbouring storeys' placement);
                                              --building picks the building in a model with several
   add --from <storey> [--below] --out F      Add above (or below) a storey with its neighbours' naming and spacing
+  constrain --element ID --top fixed|storeyAbove|storey|slab|roof [--target ID] --out F
+                                             Fit an element top; --target names an explicit storey, slab or roof
+  copy --ids ID,... --to <storey> [--to <storey> ...] --out F
+                                             Copy selected products and their hosted children to target floors
   rename --storey <storey> --name N --out F  Rename a storey
   edit --storey <storey> --elevation M --out F
                                              Move that storey only; its contents move with it
@@ -37,7 +42,7 @@ Actions:
 <storey> is a storey name, or #<express id> (a bare number is the id unless a storey has that name). Lengths are metres.
 
 Options:
-  --dry-run   Plan an edit or delete and report it (refusals, moves, resized walls, refit stairs); write nothing
+  --dry-run   Plan an add, edit or delete, or preview a constrain/copy, and report it (refusals, moves, resized walls, refit stairs); write nothing
   --json      Machine-readable output`;
 
 /**
@@ -161,11 +166,43 @@ export async function storeyCommand(args: string[]): Promise<void> {
       const building = flagValue(args, '--building');
       const buildingId = building === undefined ? undefined : Number(building.replace(/^#/, ''));
       if (buildingId !== undefined && !Number.isInteger(buildingId)) refuse('--building must be the express id of an IfcBuilding');
-      // A dry run makes the same add in memory, so it is refused exactly as the real one; only the file is not written.
-      const ref = run(() => s.addStorey(modelId, { Name: Name!, Elevation: Elevation!, referenceStoreyId, buildingId }), { Name, Elevation });
-      if (dryRun) { report({ action, Name, Elevation }, json); return; }
+      const params = { Name: Name!, Elevation: Elevation!, referenceStoreyId, buildingId };
+      if (dryRun) {
+        const plan = s.planAddStorey(modelId, params);
+        report({ action, Name, Elevation, ...plan, ...(plan.refusal ? { refusals: [{ message: plan.refusal }] } : {}) }, json);
+        if (plan.refusal) return fatal(`Refused: ${plan.refusal}`);
+        return;
+      }
+      const ref = run(() => s.addStorey(modelId, params), { Name, Elevation });
       if (!json) process.stderr.write(`Added ${Name} at ${Elevation!.toFixed(3)} m as #${ref.expressId}\n`);
       await save({ action, added: ref.expressId });
+      return;
+    }
+    case 'constrain': {
+      if (!dryRun && !out) refuse('--out <file.ifc> is required (or use --dry-run)');
+      const rawId = flagValue(args, '--element'), top = flagValue(args, '--top'), target = flagValue(args, '--target');
+      const id = run(() => storeyElementId(rawId, '--element'));
+      const constraint = run(() => storeyTopConstraint(top, target, value => resolveStorey(rows(), value, '--target')));
+      const changed = run(() => s.setTopConstraint({ modelId, expressId: id }, constraint));
+      const summary = { action, element: id, constraint, changed };
+      if (dryRun) { report(summary, json); return; }
+      await save(summary);
+      return;
+    }
+    case 'copy': {
+      if (!dryRun && !out) refuse('--out <file.ifc> is required (or use --dry-run)');
+      const rawIds = flagValue(args, '--ids');
+      const targets = repeatedFlagValues(args, '--to');
+      if (targets.length === 0) refuse('copy needs --to <storey> (repeat for multiple target floors)');
+      const ids = run(() => (rawIds ?? '').split(',').map(value => storeyElementId(value.trim(), '--ids')));
+      const targetIds = targets.map(value => resolveStorey(rows(), value, '--to'));
+      const copies = run(() => s.copyToStoreys(modelId, ids, targetIds));
+      const summary = { action, copies };
+      if (!json) for (const group of copies) for (const ref of group.refs) for (const notice of ref.unattachedTops ?? []) {
+        process.stderr.write(`Note: #${notice.expressId} ${notice.reason}\n`);
+      }
+      if (dryRun) { report(summary, json); return; }
+      await save(summary);
       return;
     }
     case 'rename': {
@@ -237,10 +274,20 @@ export async function storeyCommand(args: string[]): Promise<void> {
 function isFlagValue(args: readonly string[], value: string): boolean {
   const index = args.indexOf(value);
   const previous = index > 0 ? args[index - 1] : '';
-  return ['--out', '--name', '--elevation', '--from', '--storey', '--floor-height', '--move-to'].includes(previous);
+  return ['--out', '--name', '--elevation', '--from', '--storey', '--floor-height', '--move-to', '--ids', '--to', '--element', '--top', '--target'].includes(previous);
 }
 
 function report(summary: Record<string, unknown>, json: boolean): void {
   if (json) printJson({ ...summary, dryRun: true });
   else process.stderr.write(`Dry run: ${JSON.stringify(summary)}\n`);
+}
+
+/** Repeated targets remain separate so storey names may contain commas. */
+function repeatedFlagValues(args: readonly string[], flag: string): string[] {
+  return args.flatMap((arg, i) => {
+    if (arg !== flag) return [];
+    const value = args[i + 1];
+    if (value === undefined || value.startsWith('--')) return refuse(`${flag} needs a value`);
+    return [value];
+  });
 }

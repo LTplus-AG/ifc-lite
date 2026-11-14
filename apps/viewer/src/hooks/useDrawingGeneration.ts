@@ -47,6 +47,7 @@ import { FIRST_SECTION_PLANE_NAME } from '@/lib/section/section-plane-set';
 import { restoredCutPosition } from '@/lib/section/section-distance';
 import { markActiveDrawingGenerationCompleted } from '@/lib/drawing/active-canvas-snapshot';
 import { constructionProjectionEnabled } from '@/lib/drawing/construction-projection';
+import { drawingWithMaterialLayerFills } from '@/lib/drawing/material-layer-fills';
 // The winding-robust Rust `meshOutline2d` binding (issue #979) is gitignored →
 // CI-built, so reference it defensively: against an older wasm bundle it's
 // undefined and projection falls back to the TS mesh silhouette. The wasm
@@ -157,7 +158,7 @@ export function useDrawingGeneration({
   setDrawingProgress,
   setDrawingError,
 }: UseDrawingGenerationParams): UseDrawingGenerationResult {
-
+  const structuralViewMode = useViewerStore((s) => s.structuralViewMode);
   // The legacy primary path can publish only `loading: false` when it finishes
   // without exact RTC metadata. Subscribe to all provenance publication
   // channels so pending → standalone/explicit retriggers the drawing.
@@ -517,7 +518,7 @@ export function useDrawingGeneration({
       // `drawing.lines` verbatim, see `useRenderUpdates.ts`) in the 3D view
       // too. Same shared mapping as the viewport, Cesium, basket and GLB
       // export, so all six toggles stay in lockstep.
-      meshesToProcess = meshesToProcess.filter((mesh) => isTypeVisible(mesh.ifcType, typeVisibility));
+      meshesToProcess = meshesToProcess.filter((mesh) => isTypeVisible(mesh.ifcType, typeVisibility, structuralViewMode));
 
       // Filter out hidden entities (using combined multi-model set)
       if (combinedHiddenIds.size > 0) {
@@ -576,7 +577,7 @@ export function useDrawingGeneration({
         // cut by express id; without this, a profile sharing that same
         // express id would still be free to project it back in.
         projectionProfiles = projectionProfiles.filter((p) => isModelViewExpressId(p.expressId));
-        projectionProfiles = projectionProfiles.filter((p) => isTypeVisible(p.ifcType, typeVisibility));
+        projectionProfiles = projectionProfiles.filter((p) => isTypeVisible(p.ifcType, typeVisibility, structuralViewMode));
         if (combinedHiddenIds.size > 0) {
           projectionProfiles = projectionProfiles.filter((p) => !combinedHiddenIds.has(p.expressId));
         }
@@ -600,7 +601,7 @@ export function useDrawingGeneration({
           ? createMeshOutlineProvider(meshOutline2dFn)
           : undefined;
 
-      const result = await generator.generate(
+      const result = drawingWithMaterialLayerFills(await generator.generate(
         meshesToProcess,
         config,
         {
@@ -615,8 +616,7 @@ export function useDrawingGeneration({
           onProgress: progressCallback,
         },
         projectionOn ? projectionProfiles : undefined,
-      );
-
+      )); // layers of one element fill per material (#9296)
       if (!isCurrent()) return;
 
       let completedDrawing = result;
@@ -897,7 +897,7 @@ export function useDrawingGeneration({
     ifcDataStore,
     sectionPlane,
     displayOptions,
-    typeVisibility,
+    typeVisibility, structuralViewMode,
     combinedHiddenIds,
     combinedIsolatedIds,
     computedIsolatedIds,
@@ -997,7 +997,7 @@ export function useDrawingGeneration({
     const plane = JSON.stringify([sectionPlane.axis, sectionPlane.position, sectionPlane.flipped,
       sectionPlane.custom]);
     const inputs = [geometryResult, geometryResult?.meshes.length, ifcDataStore,
-      displayOptions, typeVisibility, combinedHiddenIds, combinedIsolatedIds,
+      displayOptions, typeVisibility, structuralViewMode, combinedHiddenIds, combinedIsolatedIds,
       computedIsolatedIds, models, drawingRtcContextKey];
     const changed = inputs.some((value, index) => value !== previousInputs.current[index]);
     const planeChanged = plane !== previousPlane.current;

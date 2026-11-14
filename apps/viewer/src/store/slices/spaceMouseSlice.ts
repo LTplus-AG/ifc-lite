@@ -10,13 +10,21 @@
  * sensitivity. The actual WebHID connection + per-frame camera driving lives
  * in `useSpaceMouseControls` (it needs the renderer); the hook registers its
  * `connect` action here so the panel button can trigger it inside a click
- * handler (WebHID's user-gesture requirement). Sensitivity persists in
- * localStorage; the rest is session state.
+ * handler (WebHID's user-gesture requirement). Sensitivity and the
+ * "Use the 3Dconnexion driver" opt-in (#9131) persist in localStorage; the
+ * rest is session state.
  */
 
 import type { StateCreator } from 'zustand';
 import { SENSITIVITY } from '@/lib/spacemouse/constants';
 import type { SpaceMouseDiagnostics } from '@/lib/spacemouse/device';
+
+/**
+ * Where the opt-in 3Dconnexion driver path stands (#9131). `off` while the
+ * setting is off; `unavailable` when the driver did not answer, in which case
+ * the WebHID path stays in use.
+ */
+export type SpaceMouseDriverStatus = 'off' | 'connecting' | 'connected' | 'unavailable';
 
 export interface SpaceMouseSlice {
   /** True when navigator.hid exists (Chromium-based browsers). */
@@ -43,6 +51,12 @@ export interface SpaceMouseSlice {
    * the store would be waste).
    */
   spaceMouseGetDiagnostics: (() => SpaceMouseDiagnostics) | null;
+  /** "Use the 3Dconnexion driver" (persisted, off by default). */
+  spaceMouseUseDriver: boolean;
+  /** State of the driver path; see {@link SpaceMouseDriverStatus}. */
+  spaceMouseDriverStatus: SpaceMouseDriverStatus;
+  /** Why the driver path is `unavailable`, for a tooltip; null otherwise. */
+  spaceMouseDriverError: string | null;
 
   setSpaceMouseSupported: (supported: boolean) => void;
   setSpaceMouseConnected: (connected: boolean, deviceName?: string | null) => void;
@@ -51,9 +65,13 @@ export interface SpaceMouseSlice {
   setSpaceMouseConnect: (connect: (() => void) | null) => void;
   setSpaceMouseDisconnect: (disconnect: (() => void) | null) => void;
   setSpaceMouseGetDiagnostics: (getDiagnostics: (() => SpaceMouseDiagnostics) | null) => void;
+  setSpaceMouseUseDriver: (useDriver: boolean) => void;
+  setSpaceMouseDriverStatus: (status: SpaceMouseDriverStatus, error?: string | null) => void;
 }
 
 const STORAGE_KEY = 'ifc-lite:spacemouse';
+/** Separate key, so the existing `{ sensitivity }` entry keeps its shape. */
+const DRIVER_STORAGE_KEY = 'ifc-lite:spacemouse-driver';
 
 function clampSensitivity(value: number): number {
   if (!Number.isFinite(value)) return SENSITIVITY.default;
@@ -69,7 +87,8 @@ function loadSensitivity(): number {
       return clampSensitivity((parsed as { sensitivity: number }).sensitivity);
     }
     return SENSITIVITY.default;
-  } catch {
+  } catch (err) {
+    console.warn('[spacemouse] ignoring an unreadable sensitivity preference:', err);
     return SENSITIVITY.default;
   }
 }
@@ -77,7 +96,29 @@ function loadSensitivity(): number {
 function persistSensitivity(sensitivity: number): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ sensitivity }));
-  } catch { /* storage unavailable */ }
+  } catch (err) {
+    console.warn('[spacemouse] could not persist the sensitivity preference:', err);
+  }
+}
+
+function loadUseDriver(): boolean {
+  try {
+    const raw = localStorage.getItem(DRIVER_STORAGE_KEY);
+    if (!raw) return false;
+    const parsed: unknown = JSON.parse(raw);
+    return typeof parsed === 'object' && parsed !== null && 'enabled' in parsed && parsed.enabled === true;
+  } catch (err) {
+    console.warn('[spacemouse] ignoring an unreadable 3Dconnexion driver preference:', err);
+    return false;
+  }
+}
+
+function persistUseDriver(enabled: boolean): void {
+  try {
+    localStorage.setItem(DRIVER_STORAGE_KEY, JSON.stringify({ enabled }));
+  } catch (err) {
+    console.warn('[spacemouse] could not persist the 3Dconnexion driver preference:', err);
+  }
 }
 
 export const createSpaceMouseSlice: StateCreator<SpaceMouseSlice, [], [], SpaceMouseSlice> = (set) => ({
@@ -89,6 +130,9 @@ export const createSpaceMouseSlice: StateCreator<SpaceMouseSlice, [], [], SpaceM
   spaceMouseConnect: null,
   spaceMouseDisconnect: null,
   spaceMouseGetDiagnostics: null,
+  spaceMouseUseDriver: loadUseDriver(),
+  spaceMouseDriverStatus: 'off',
+  spaceMouseDriverError: null,
 
   setSpaceMouseSupported: (spaceMouseSupported) => set({ spaceMouseSupported }),
   setSpaceMouseConnected: (spaceMouseConnected, deviceName = null) =>
@@ -107,4 +151,13 @@ export const createSpaceMouseSlice: StateCreator<SpaceMouseSlice, [], [], SpaceM
   setSpaceMouseConnect: (spaceMouseConnect) => set({ spaceMouseConnect }),
   setSpaceMouseDisconnect: (spaceMouseDisconnect) => set({ spaceMouseDisconnect }),
   setSpaceMouseGetDiagnostics: (spaceMouseGetDiagnostics) => set({ spaceMouseGetDiagnostics }),
+  setSpaceMouseUseDriver: (spaceMouseUseDriver) => {
+    persistUseDriver(spaceMouseUseDriver);
+    set({ spaceMouseUseDriver });
+  },
+  setSpaceMouseDriverStatus: (spaceMouseDriverStatus, error = null) =>
+    set({
+      spaceMouseDriverStatus,
+      spaceMouseDriverError: spaceMouseDriverStatus === 'unavailable' ? error : null,
+    }),
 });

@@ -136,6 +136,22 @@ export class EntityExtractor {
     }
   }
 
+  /** Read one positional attribute without decoding the other values (#9928).
+   * Uses the full reader's lexical and value rules, including STEP comments,
+   * escaped strings, typed values and nested aggregates. */
+  extractAttribute(ref: EntityRef, index: number): unknown {
+    if (!Number.isInteger(index) || index < 0) return undefined;
+    const text = this.source.decodeUtf8(ref.byteOffset, ref.byteOffset + ref.byteLength);
+    const match = text.match(ENTITY_RECORD_RE);
+    if (!match || !isIndexableExpressId(Number(match[1]))) return undefined;
+    const params = entityParameters(text, match[0].length);
+    if (params === undefined) return undefined;
+    const tokens = splitTopLevelItems(params, index + 1);
+    const token = tokens[index];
+    if (token === undefined || (!token && index === tokens.length - 1)) return undefined;
+    return this.parseAttributeValue(token);
+  }
+
   private parseAttributes(paramsText: string): {
     attributes: any[];
     enumAttrIndices?: number[];
@@ -292,7 +308,7 @@ export class EntityExtractor {
  * so tokens it sits between (`5/* c *\/6`) are not spliced into one. An
  * unterminated literal runs to the end of the text.
  */
-function splitTopLevelItems(text: string): string[] {
+function splitTopLevelItems(text: string, lastIndex = Infinity): string[] {
   const items: string[] = [];
   const scan = new StepTextScan(text);
   let depth = 0;
@@ -312,6 +328,7 @@ function splitTopLevelItems(text: string): string[] {
       i = comment - 1;
     } else if (char === ',' && depth === 0) {
       items.push(current.trim());
+      if (items.length > lastIndex) return items;
       current = '';
     } else {
       if (char === '(') depth++;

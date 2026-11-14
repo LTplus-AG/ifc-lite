@@ -112,6 +112,10 @@ export const miscPanelsBIt = {
   'shareDialog.guestName': 'Ospite',
   'shareDialog.roomCreationFailed':
     'Non è stata creata alcuna sessione. Chiudi e riapri questa finestra per riprovare.',
+  'shareDialog.shareSkipped.noRecords':
+    'Esclusi dalla sessione condivisa, nessun record IFC da condividere: {models}.',
+  'shareDialog.shareSkipped.allRefused':
+    'Qui non c’è nulla da condividere, nessun record IFC da condividere: {models}.',
   'shareDialog.linkCreationFailed': 'Creazione del link non riuscita. Controlla la connessione e riprova.',
   'shareDialog.joinedViaInvite':
     'Sei entrato tramite un invito: condividerlo inoltra lo stesso accesso. Solo l’amministratore della sessione può generare nuovi link.',

@@ -30,7 +30,9 @@ export function bindCommandKeys(command: ModelingCommand, actions: CommandKeyAct
     registerKeyboardCommand('command.cancel', () => actions.cancel(), { active }),
     registerKeyboardCommand('command.undoPoint', () => actions.undoPoint(), { active }),
     registerKeyboardCommand('command.nextField', () => actions.nextField(), { active }),
-    registerKeyboardCommand('command.typeValue', (event) => actions.typeValue(event.key), { active }),
+    // Digits type into the running command before Model's 1/2/3 layout keys;
+    // with no field to edit it returns false and the layout key still runs.
+    registerKeyboardCommand('command.typeValue', (event) => actions.typeValue(event.key), { active, priority: 1 }),
     registerKeyboardCommand('command.toggleSnap', () => actions.toggleSnap(), { active }),
     ...(command.keys ?? []).map((key) => registerKeyboardCommand(
       key.commandKey,

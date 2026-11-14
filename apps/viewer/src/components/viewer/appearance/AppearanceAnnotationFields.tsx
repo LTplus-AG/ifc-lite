@@ -30,6 +30,7 @@ export function AppearanceAnnotationFields({ referenceId, name, disabled }: {
   const [expanded, setExpanded] = useState(false);
   const [representation, setRepresentation] = useState<'image' | 'fills'>('image');
   const pdf = useViewerStore(state => state.appearanceReferences.get(referenceId)?.pdf);
+  const [pdfBusy, setPdfBusy] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<AnnotationMessage>(null);
   const [error, setError] = useState(false);
@@ -63,7 +64,7 @@ export function AppearanceAnnotationFields({ referenceId, name, disabled }: {
     <summary className="cursor-pointer text-2xs font-medium">{t('appearance.annotationFields.summary')}</summary>
     <div className="mt-2 space-y-2" aria-busy={busy}>
       <p className="text-2xs text-muted-foreground">{t('appearance.annotationFields.description')}</p>
-      <fieldset disabled={disabled || busy || !!room} className="space-y-2">
+      <fieldset disabled={disabled || busy || pdfBusy || !!room} className="space-y-2">
         <label className="block text-2xs">{t('appearance.annotationFields.representationLabel')}<select aria-label={t('appearance.annotationFields.representationAriaLabel')} className={appearanceSelectClass} value={representation}
           onChange={event => setRepresentation(event.target.value === 'fills' ? 'fills' : 'image')}>
           <option value="image">{t('appearance.annotationFields.representationImage')}</option><option value="fills" disabled={!pdf}>{t('appearance.annotationFields.representationPdfVectors')}</option>
@@ -82,7 +83,7 @@ export function AppearanceAnnotationFields({ referenceId, name, disabled }: {
         {representation === 'image' && <Button type="button" variant="outline" size="sm" disabled={!modelId || containerId === undefined || !Name.trim() || !!denialReason}
           title={denialReason ? t(mutationDenialKey(denialReason)) : undefined} onClick={() => { void save(); }}>{t('appearance.annotationFields.createAnnotation')}</Button>}
       </fieldset>
-      {expanded && representation === 'fills' && <PdfAnnotationFields referenceId={referenceId} modelId={modelId} containerId={containerId} Name={Name} disabled={disabled || busy || !!room || !!denialReason} />}
+      {expanded && representation === 'fills' && <PdfAnnotationFields onBusyChange={setPdfBusy} referenceId={referenceId} modelId={modelId} containerId={containerId} Name={Name} disabled={disabled || busy || !!room || !!denialReason} />}
       {room && <p className="text-2xs text-muted-foreground">{t('appearance.annotationFields.leaveRoomNotice')}</p>}
       {denialReason && <output className="block text-2xs text-muted-foreground">{t(mutationDenialKey(denialReason))}</output>}
       {busy && <Button type="button" variant="ghost" size="sm" onClick={() => { operation.current?.abort(); setMessage({ key: 'appearance.annotationFields.cancelled' }); }}>{t('appearance.annotationFields.cancelCreation')}</Button>}

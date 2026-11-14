@@ -604,3 +604,173 @@ describe('jumping to a favourite folder past the first page', () => {
     );
   });
 });
+
+class ConcurrentFolderProvider extends FakeProvider {
+  override readonly manifest: PluginManifest = {
+    ...directChildrenManifest,
+    capabilities: { ...directChildrenManifest.capabilities, eagerFileSweep: true },
+  };
+  areaFileCalls = 0;
+  private pending = new Map<string, Array<() => void>>();
+  constructor(private readonly holdArea = false) { super(); }
+  override listContainers(c: PluginContext, project: string, parent?: string): Promise<Page<SourceContainer>> {
+    return !parent || parent === 'area-1' ? super.listContainers(c, project, parent) : Promise.resolve({ items: [] });
+  }
+  override async listFiles(_ctx?: PluginContext, _project?: string, container?: string): Promise<Page<SourceFile>> {
+    if (container === 'area-1') this.areaFileCalls++;
+    if (container === FOLDER.id || container === OTHER_FOLDER.id || (this.holdArea && container === 'area-1')) {
+      await new Promise<void>(resolve => this.pending.set(container, [...(this.pending.get(container) ?? []), resolve]));
+    }
+    return { items: container === FOLDER.id ? [IN_FOLDER] : container === OTHER_FOLDER.id ? [ELSEWHERE] : [] };
+  }
+  release(id: string): void { for (const finish of this.pending.get(id) ?? []) finish(); this.pending.delete(id); }
+  releaseAll(): void { for (const id of this.pending.keys()) this.release(id); }
+}
+
+const fileSpinner = () => [...document.querySelectorAll('output')].some(node => node.textContent?.includes('Loading'));
+
+it('#9567 selected Y files render while X is still loading with eager per-folder files', async () => {
+  const provider = new ConcurrentFolderProvider();
+  try {
+    await jumpTo(favourite({ containerId: 'area-1', containerName: 'Documents' }), provider);
+    act(() => button('Models')!.click()); await pump();
+    assert.equal(fileSpinner(), true, 'X owns its loading state');
+    act(() => button('Drawings')!.click()); await pump();
+    assert.equal(fileSpinner(), true, 'Y owns its loading state');
+    provider.release(OTHER_FOLDER.id); await pump();
+    assert.equal(text().includes('Podium.ifc'), true, 'ready Y files are visible before X finishes');
+    assert.equal(fileSpinner(), false);
+    act(() => button('Models')!.click()); await pump();
+    assert.equal(fileSpinner(), true, 'the still-pending X keeps its own loading state');
+    assert.equal(text().includes('Podium.ifc'), false);
+    provider.release(FOLDER.id); await pump();
+    assert.equal(text().includes('Tower.ifc'), true);
+    assert.equal(fileSpinner(), false);
+  } finally { provider.releaseAll(); await pump(); }
+});
+
+it('#9567 a folder finishing cannot clear the initial area file spinner', async () => {
+  const provider = new ConcurrentFolderProvider(true);
+  try {
+    await jumpTo(favourite({ containerId: 'area-1', containerName: 'Documents' }), provider);
+    assert.equal(fileSpinner(), true, 'initial per-folder area files are still pending');
+    act(() => button('Models')!.click()); await pump();
+    provider.release(FOLDER.id); await pump();
+    assert.equal(text().includes('Tower.ifc'), true);
+    act(() => button('Documents')!.click()); await pump();
+    assert.equal(provider.areaFileCalls, 1, 'clicking the root must not start another eager sweep');
+    assert.equal(fileSpinner(), true, 'the initial area request still owns the area spinner');
+    provider.release('area-1'); await pump();
+    assert.equal(fileSpinner(), false);
+  } finally { provider.releaseAll(); await pump(); }
+});
+
+it('#9567 recursive file scans keep a selected folder loading until the area scan completes', async () => {
+  const provider = new DeferringProvider('files');
+  try {
+    await jumpTo(favourite(), provider);
+    assert.equal(trail(), 'Documents / Models', 'the favourite selects the folder before its files arrive');
+    assert.equal(fileSpinner(), true, 'recursive files are owned by the area scan for every selection');
+    provider.release(); await pump();
+    assert.equal(text().includes('Tower.ifc'), true);
+    assert.equal(fileSpinner(), false);
+  } finally { provider.release(); await pump(); }
+});
+
+it('#9567 X files survive the initial area sync completing', async () => {
+  const provider = new ConcurrentFolderProvider(true);
+  try {
+    await jumpTo(favourite({ containerId: 'area-1', containerName: 'Documents' }), provider);
+    act(() => button('Models')!.click()); await pump();
+    provider.release(FOLDER.id); await pump();
+    assert.equal(text().includes('Tower.ifc'), true);
+    provider.release('area-1'); await pump();
+    assert.equal(text().includes('Tower.ifc'), true, 'X files survive the area sync completing');
+    assert.equal(fileSpinner(), false);
+  } finally { provider.releaseAll(); await pump(); }
+});
+
+it('#9567 an uncached selected folder shows its own folder spinner while child fetch is held', async () => {
+  class HeldChildrenProvider extends FakeProvider {
+    override readonly manifest: PluginManifest = { ...manifest, capabilities: { ...manifest.capabilities, containerListing: 'direct-children', listFilesIsRecursive: false } };
+    release = () => {};
+    releaseFiles = () => {};
+    override listContainers(c: PluginContext, project: string, parent?: string): Promise<Page<SourceContainer>> {
+      if (parent === FOLDER.id) return new Promise(resolve => { this.release = () => resolve({ items: [{ id: 'new-child', name: 'New child', parentId: FOLDER.id }] }); });
+      return super.listContainers(c, project, parent);
+    }
+    override listFiles(_c?: PluginContext, _project?: string, parent?: string): Promise<Page<SourceFile>> {
+      if (parent === FOLDER.id) return new Promise(resolve => { this.releaseFiles = () => resolve({ items: [] }); });
+      return Promise.resolve({ items: [] });
+    }
+  }
+  const provider = new HeldChildrenProvider();
+  try {
+    await jumpTo(favourite({ containerId: 'area-1', containerName: 'Documents' }), provider);
+    act(() => button('Models')!.click()); await pump();
+    assert.equal(trail(), 'Documents / Models');
+    assert.equal(Boolean(document.querySelector('output[aria-label="Subfolders"]')), true, 'selected folder loading is visible independently of file loading');
+    assert.equal(text().includes('New child'), false, 'the child list is empty while fetchContainers is pending');
+    provider.release(); await pump();
+    assert.equal(Boolean(document.querySelector('output[aria-label="Subfolders"]')), false);
+    assert.equal(text().includes('New child'), true);
+    assert.equal(fileSpinner(), true, 'files can remain pending after children arrive');
+  } finally { provider.release(); provider.releaseFiles(); await pump(); }
+});
+
+it('#9567 failed manual recursive file sync leaves subfolders enabled', async () => {
+  class FailedSyncProvider extends FakeProvider {
+    fail = false;
+    reject = () => {};
+    override listFiles(): Promise<Page<SourceFile>> {
+      if (this.fail) return new Promise((_resolve, reject) => { this.reject = () => reject(new Error('file listing unavailable')); });
+      return super.listFiles();
+    }
+  }
+  const provider = new FailedSyncProvider();
+  try {
+    await jumpTo(favourite({ containerId: 'area-1', containerName: 'Documents' }), provider);
+    assert.equal(button('Models')!.disabled, false);
+    provider.fail = true;
+    act(() => button('Sync')!.click()); await pump();
+    const disabledWhilePending = button('Models')!.disabled;
+    provider.reject(); await pump();
+    assert.equal(text().includes('file listing unavailable'), true);
+    assert.equal(button('Models')!.disabled, false, 'a failed file listing cannot assert that the folder is empty');
+    assert.equal(disabledWhilePending, false, 'folder-only data cannot disable folders while files are pending');
+  } finally { provider.reject(); await pump(); }
+});
+
+it('#9567 a manual folder refresh preserves a sibling opened from the old tree', async () => {
+  class FolderRefreshProvider extends FakeProvider {
+    override readonly manifest: PluginManifest = { ...directChildrenManifest };
+    refreshing = false;
+    releaseArea = () => {};
+    releaseChildren = () => {};
+    override async listContainers(c: PluginContext, project: string, parent?: string): Promise<Page<SourceContainer>> {
+      if (this.refreshing && parent === 'area-1') await new Promise<void>(resolve => { this.releaseArea = resolve; });
+      if (this.refreshing && parent === OTHER_FOLDER.id) await new Promise<void>(resolve => { this.releaseChildren = resolve; });
+      if (parent === FOLDER.id) return { items: [{ id: 'old-child', name: 'Old child', parentId: FOLDER.id }] };
+      if (parent === OTHER_FOLDER.id) return { items: [{ id: 'fresh-child', name: 'Fresh child', parentId: OTHER_FOLDER.id }] };
+      return super.listContainers(c, project, parent);
+    }
+    override listFiles(): Promise<Page<SourceFile>> { return Promise.resolve({ items: [] }); }
+  }
+  const provider = new FolderRefreshProvider();
+  try {
+    await jumpTo(favourite({ containerId: 'area-1', containerName: 'Documents' }), provider);
+    act(() => button('Models')!.click()); await pump();
+    assert.equal(text().includes('Old child'), true);
+    provider.refreshing = true;
+    act(() => button('Sync')!.click()); await pump();
+    act(() => button('Drawings')!.click()); await pump();
+    assert.equal(Boolean(document.querySelector('output[aria-label="Subfolders"]')), true);
+    provider.releaseChildren(); await pump();
+    assert.equal(text().includes('Fresh child'), true);
+    assert.equal(Boolean(document.querySelector('output[aria-label="Subfolders"]')), false);
+    provider.releaseArea(); await pump();
+    assert.equal(text().includes('Fresh child'), true, 'Y children remain visible after the area folder refresh');
+    assert.equal(Boolean(document.querySelector('output[aria-label="Subfolders"]')), false, 'Y has completed and must not spin');
+    assert.equal(text().includes('Old child'), false, 'the untouched old parent page is retired');
+  } finally { provider.releaseChildren(); provider.releaseArea(); await pump(); }
+});

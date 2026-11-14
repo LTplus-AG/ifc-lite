@@ -11,9 +11,9 @@
 // What it does:
 //   1. Reads tests/models/manifest.json.
 //   2. Skips every entry the fetcher takes from its pinned upstream source
-//      (`upstreamBlobUrl` in download-url.mjs: upstream archives and reviewed,
-//      unmodified LandXML source bytes). Those are redistributed by their
-//      authors, never by this project's public release.
+//      (`upstreamBlobUrl` in download-url.mjs: upstream archives, upstream
+//      files and reviewed, unmodified LandXML source bytes). Those are
+//      redistributed by their authors, never by this project's public release.
 //   3. For each remaining entry: requires the real file content to be present
 //      at tests/models/<path> and to match the manifest sha256.
 //   4. Creates the GitHub release `<release_tag>` if it doesn't exist.

@@ -62,7 +62,7 @@ ifc-lite ships its public npm packages under the `@ifc-lite/*` scope, plus the `
 | [`@ifc-lite/opencde-foundation`](https://www.npmjs.com/package/@ifc-lite/opencde-foundation) | buildingSMART OpenCDE Foundation API client: version discovery, auth discovery, OAuth2 flows and the shared HTTP client used by every OpenCDE service client |
 | [`@ifc-lite/plugin-api`](https://www.npmjs.com/package/@ifc-lite/plugin-api) | Dependency-free type surface for ifc-lite file-source plugins |
 | [`@ifc-lite/regex-guard`](https://www.npmjs.com/package/@ifc-lite/regex-guard) | A shared, dependency-free guard against catastrophic-backtracking (ReDoS) regex patterns compiled from untrusted input |
-| [`@ifc-lite/rhino3dm`](https://www.npmjs.com/package/@ifc-lite/rhino3dm) | Lazy Rhino 3dm writer for encoded ifc-lite RhinoScene data |
+| [`@ifc-lite/rhino3dm`](https://www.npmjs.com/package/@ifc-lite/rhino3dm) | Lazy Rhino 3dm reader and writer: .3dm bytes to plain RhinoImport data, encoded ifc-lite RhinoScene data to .3dm |
 | [`@ifc-lite/rules`](https://www.npmjs.com/package/@ifc-lite/rules) | Filter-rule vocabulary, evaluator and .rules.json information-validation engine for IFC-Lite |
 | [`@ifc-lite/semantic`](https://www.npmjs.com/package/@ifc-lite/semantic) | Portable semantic datasets, profiles, validation and IFC identity resolution |
 | [`@ifc-lite/source-autodesk`](https://www.npmjs.com/package/@ifc-lite/source-autodesk) | Autodesk Forma and Data Exchange cloud-source provider for ifc-lite |
@@ -186,6 +186,12 @@ Many more on-demand extractors are exported (classifications, materials, documen
 `secondsToIso8601Duration(seconds: number): string | undefined` is a new export: it renders a signed number of seconds as an ISO 8601 duration string suitable for `IfcDuration` (`86400` -> `"P1D"`, `-172800` -> `"-P2D"`), preferring the coarsest whole unit that divides cleanly and falling back to a decimal-seconds form for fractional values. It returns `undefined` for non-finite input (`NaN`, `±Infinity`) rather than fabricating `"PT0S"`. `parseIso8601Duration(value: string | undefined): number | undefined` is its decode counterpart — already public before this change — and the two form a round trip: `parseIso8601Duration(secondsToIso8601Duration(s)) === s` for every finite, representable `s`. Both also accept/emit the ISO 8601-2 signed extension (`-P2D`) to carry IFC schedule lead time; see `docs/guide/schedule-import.md`.
 
 Other exports include the STEP scanning/tokenizing building blocks (`StepTokenizer`, `EntityExtractor`, `scanIfcEntities`, `CompactEntityIndex`), unit extraction (`extractProjectUnits`, `ProjectUnits`), the STEP serializer helpers (`generateStepFile`, `toStepLine`, `serializeValue`), the generated IFC schema registry (`SCHEMA_REGISTRY`, `getAttributeNames`), and re-exported IFCX parsing from `@ifc-lite/ifcx`.
+
+`EntityExtractor.extractAttribute(ref, index)` reads one zero-based positional
+attribute with the same STEP value rules as `extractEntity`, without decoding
+unrequested values. Missing attributes return `undefined`. It reads source data;
+use the effective metadata APIs when mutation overlays must be applied.
+
 
 ---
 
@@ -591,6 +597,26 @@ class MergedExporter {
 
 Spatial matching is tunable per container type via `mergeSites` / `mergeBuildings` (`'single' | 'by-name'`) and `mergeStoreys` (`'by-name' | 'by-elevation' | 'by-name-then-elevation'`).
 
+### renumberStepIds
+
+Give every entity instance of a STEP file a new `#id` from a seeded permutation and rewrite every reference to match. Only `#digits` tokens outside string literals, comments and `<uri>` literals change, so `'Room #205'` survives; references are rewritten in DATA and in edition-3 ANCHOR and REFERENCE sections, and the HEADER and comments are copied as is. Useful for teaching that `#id`s are file-local (GlobalIds stay), and for test corpora that must not depend on `#id` values or instance order.
+
+```typescript
+import { renumberStepIds } from '@ifc-lite/export';
+import { readFileSync } from 'node:fs';
+
+let seed = 42;
+const random = () => {
+  seed = (seed * 1103515245 + 12345) % 2147483648;
+  return seed / 2147483648;
+};
+
+const source = readFileSync('model.ifc', 'latin1');
+const { text, idMap, danglingReferences } = renumberStepIds(source, { random, reorder: true });
+// idMap: old #id -> new #id. New ids are 1..n, skipping any id a dangling reference uses.
+console.log(idMap.size, danglingReferences.length, text.length);
+```
+
 ### ParquetExporter
 
 Creates a `.bos` archive (ZIP of Parquet files) from a parsed store, optionally with geometry buffers.
@@ -832,6 +858,8 @@ interface ProjectParams {
   LengthUnit?: string;  // 'METRE' (default), 'MILLIMETRE', 'FOOT'
   Author?: string;
   Organization?: string;
+  FileName?: string;                    // STEP header FILE_NAME.name; default: 'created.ifc'
+  FileDescription?: string | string[];  // STEP header FILE_DESCRIPTION entries; default: 'Created by ifc-lite'
   Timestamp?: number | Date;   // fixed creation instant (header + owner history); default: wall clock
   GuidSource?: () => string;   // deterministic GlobalId source; default: platform CSPRNG
 }

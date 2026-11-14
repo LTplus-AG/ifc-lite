@@ -125,6 +125,48 @@ export class BufferWriter {
   }
 }
 
+/** Arena block size: one allocation serves many mesh arrays. */
+const ARENA_BLOCK_BYTES = 1 << 20;
+
+/**
+ * Aligned storage for the 4-byte arrays a reader copies out (mesh positions, normals, indices).
+ * Allocating one ArrayBuffer per array was most of a large cache hit's chunk decode in Chrome
+ * (~150 vs ~75 ms for Holter-shaped data). Arrays from one arena share ~1 MiB blocks, so a
+ * structured clone of one of them copies its whole block: post an owned copy instead.
+ */
+export class ArrayArena {
+  /** The buffer the last `take` returned an offset into. */
+  buffer: ArrayBuffer | null = null;
+  private block: ArrayBuffer | null = null;
+  private used = 0;
+  /** Bytes the caller still expects to take: a new block is no larger than that (a small chunk keeps a small block). */
+  private expected: number;
+
+  /** `capacityHint`: an upper bound of the bytes that will be taken, e.g. a chunk record's decompressed length. */
+  constructor(capacityHint = Number.POSITIVE_INFINITY) {
+    this.expected = capacityHint;
+  }
+
+  /** Reserve `byteLength` bytes at a 4-byte aligned offset; read the buffer from `buffer`. */
+  take(byteLength: number): number {
+    const size = (byteLength + 3) & ~3;
+    this.expected = Math.max(0, this.expected - size);
+    // A large array gets its own buffer: it would waste most of a block's tail.
+    if (size > ARENA_BLOCK_BYTES / 4) {
+      this.buffer = new ArrayBuffer(size);
+      return 0;
+    }
+    if (this.block === null || this.used + size > this.block.byteLength) {
+      this.block = new ArrayBuffer(Math.min(ARENA_BLOCK_BYTES, size + Math.ceil(this.expected / 4) * 4));
+      this.used = 0;
+    }
+    const byteOffset = this.used;
+    this.used += size;
+    this.buffer = this.block;
+    return byteOffset;
+  }
+}
+
 /**
  * Reader for parsing binary buffers
  */
@@ -132,6 +174,8 @@ export class BufferReader {
   private view: DataView;
   private bytes: Uint8Array;
   private offset: number = 0;
+  /** When set, 4-byte arrays are copied into it instead of one ArrayBuffer each. */
+  arena: ArrayArena | null = null;
 
   constructor(buffer: ArrayBuffer) {
     this.view = new DataView(buffer);
@@ -237,8 +281,24 @@ export class BufferReader {
   }
 
   readUint32Array(length: number): Uint32Array {
+    if (this.arena) {
+      const byteOffset = this.readIntoArena(length * 4);
+      return new Uint32Array(this.arenaBuffer!, byteOffset, length);
+    }
     const bytes = this.readBytes(length * 4);
     return new Uint32Array(bytes.buffer, bytes.byteOffset, length);
+  }
+
+  private arenaBuffer: ArrayBuffer | null = null;
+
+  /** Copy the next `byteLength` bytes into the arena; returns their offset in `arenaBuffer`. */
+  private readIntoArena(byteLength: number): number {
+    this.ensureAvailable(byteLength);
+    const byteOffset = this.arena!.take(byteLength);
+    const buffer = (this.arenaBuffer = this.arena!.buffer!);
+    new Uint8Array(buffer, byteOffset, byteLength).set(this.bytes.subarray(this.offset, this.offset + byteLength));
+    this.offset += byteLength;
+    return byteOffset;
   }
 
   readInt32Array(length: number): Int32Array {
@@ -247,6 +307,10 @@ export class BufferReader {
   }
 
   readFloat32Array(length: number): Float32Array {
+    if (this.arena) {
+      const byteOffset = this.readIntoArena(length * 4);
+      return new Float32Array(this.arenaBuffer!, byteOffset, length);
+    }
     const bytes = this.readBytes(length * 4);
     return new Float32Array(bytes.buffer, bytes.byteOffset, length);
   }

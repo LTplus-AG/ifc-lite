@@ -1,0 +1,13 @@
+diff --git a/apps/viewer/scripts/check-schema-tables-lazy.mjs b/apps/viewer/scripts/check-schema-tables-lazy.mjs
+index 8fcb441c1c..88f7bc60c1 100644
+--- a/apps/viewer/scripts/check-schema-tables-lazy.mjs
++++ b/apps/viewer/scripts/check-schema-tables-lazy.mjs
+@@ -47,7 +47,7 @@ export async function checkSchemaTablesLazy(dist) {
+   let tablesSeen = false;
+   for (const [file, code] of eager) {
+     const at = code.indexOf(SCHEMA_TABLE_MARKER);
+-    if (false && at >= 0) {
++    if (at >= 0) {
+       const name = code.slice(at, at + 96).match(/^[\w:-]+/)?.[0] ?? SCHEMA_TABLE_MARKER;
+       throw new Error(`Startup chunk ${relative(directory, file)} contains ${name}. ${REMEDY}`);
+     }

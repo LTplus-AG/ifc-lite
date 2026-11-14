@@ -33,14 +33,16 @@ static LOCAL_FRAME_OVERRIDE: std::sync::atomic::AtomicI8 = std::sync::atomic::At
 /// SAME flag state (wasm defaults ON, native defaults OFF below), so the two
 /// targets' outputs are comparable byte-for-byte.
 pub fn local_frame_set_enabled_override(v: Option<bool>) {
-    LOCAL_FRAME_OVERRIDE.store(
-        match v {
-            None => -1,
-            Some(false) => 0,
-            Some(true) => 1,
-        },
-        std::sync::atomic::Ordering::Relaxed,
-    );
+    crate::output_policy::mutate(|| {
+        LOCAL_FRAME_OVERRIDE.store(
+            match v {
+                None => -1,
+                Some(false) => 0,
+                Some(true) => 1,
+            },
+            std::sync::atomic::Ordering::Release,
+        )
+    });
 }
 
 /// Whether per-element local-frame vertex precision is enabled.
@@ -54,7 +56,7 @@ pub fn local_frame_set_enabled_override(v: Option<bool>) {
 /// in. Env/cfg default read once and cached. An explicit per-router policy takes
 /// precedence; otherwise [`local_frame_set_enabled_override`] selects this fallback.
 pub(crate) fn local_frame_enabled() -> bool {
-    match LOCAL_FRAME_OVERRIDE.load(std::sync::atomic::Ordering::Relaxed) {
+    match LOCAL_FRAME_OVERRIDE.load(std::sync::atomic::Ordering::Acquire) {
         0 => return false,
         1 => return true,
         _ => {}

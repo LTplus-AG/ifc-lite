@@ -25,6 +25,7 @@ export const propertyEditorDe = {
     "other": "{count} Exemplare können die Änderung übernehmen, sofern sie nicht lokal überschrieben sind."
   },
   "propertyEditor.inline.applyToType": "Auf Typ anwenden",
+  "propertyEditor.inline.overrideOnElement": "Nur an diesem Bauteil überschreiben",
   "propertyEditor.inline.keepEditing": "Weiter bearbeiten",
   "propertyEditor.valueType.string": "Zeichenkette",
   "propertyEditor.valueType.label": "Bezeichnung",
@@ -89,6 +90,10 @@ export const propertyEditorDe = {
   "propertyEditor.material.trigger": "Material hinzufügen",
   "propertyEditor.material.title": "Material hinzufügen",
   "propertyEditor.material.description": "Diesem {entityType} ein Material zuweisen.",
+  "propertyEditor.material.picker": "Werkstoff",
+  "propertyEditor.material.colourHex": "Materialfarbe als Hexwert",
+  "propertyEditor.material.colour": "Materialfarbe",
+  "propertyEditor.material.colourHint": "Die Farbe gilt für neue Materialien. Vorhandene Namen behalten ihr gespeichertes Erscheinungsbild.",
   "propertyEditor.material.name": "Materialname",
   "propertyEditor.material.namePlaceholder": "z. B. Beton C30/37",
   "propertyEditor.material.category": "Kategorie",

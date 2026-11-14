@@ -19,10 +19,11 @@ import { mutationDenial } from '@/store/mutation-permission';
 import { copySources } from '@/lib/commands/modeling/copy-elements';
 import { copySourceSummary } from './copy-summary';
 import { loadStoreyToastAction } from './storey-toast';
+import { showCopiedStoreys } from './storey-toast-actions';
 import { formatStoreyElevation } from '../StoreyPicker';
 
 /** #9296: one transform per storey, one atomic copy, one undo step. */
-export function CopyToStoreys({ onDone }: { onDone?: () => void } = {}) {
+export function CopyToStoreys({ onDone, onBack }: { onDone?: () => void; onBack?: () => void } = {}) {
   const { t } = useTranslation();
   const [selection] = useState(() => selectedElements(useViewerStore.getState()));
   const denial = useViewerStore(s => selection ? mutationDenial(s, selection.modelId) : null);
@@ -36,6 +37,17 @@ export function CopyToStoreys({ onDone }: { onDone?: () => void } = {}) {
   const version = useRef(useViewerStore.getState().mutationVersion);
   const generation = useRef(0);
   const prepared = useRef<CopyTransform[]>([]);
+  const [stale, setStale] = useState(false);
+  useEffect(() => {
+    const initial = useViewerStore.getState();
+    return useViewerStore.subscribe(now => {
+      if (now.selectedEntityId === initial.selectedEntityId && now.selectedEntityIds === initial.selectedEntityIds && now.session?.entry === initial.session?.entry) return;
+      generation.current++;
+      prepared.current = [];
+      setStale(true);
+      onDone?.();
+    });
+  }, [onDone]);
   useEffect(() => () => { generation.current++; }, []);
   useEffect(() => {
     if (denial === null) return;
@@ -54,7 +66,7 @@ export function CopyToStoreys({ onDone }: { onDone?: () => void } = {}) {
   };
   const cancel = () => { generation.current++; setProgress(null); setReady(false); setBusy(false); prepared.current = []; };
   const prepare = async () => {
-    if (!selection || denial !== null) return;
+    if (!selection || stale || denial !== null) return;
     const token = ++generation.current;
     version.current = useViewerStore.getState().mutationVersion;
     setProgress(0);
@@ -77,7 +89,7 @@ export function CopyToStoreys({ onDone }: { onDone?: () => void } = {}) {
     }
   };
   const commit = async () => {
-    if (!selection || denial !== null) return;
+    if (!selection || stale || denial !== null) return;
     const token = generation.current;
     const entry = useViewerStore.getState().session?.entry;
     setBusy(true);
@@ -92,12 +104,13 @@ export function CopyToStoreys({ onDone }: { onDone?: () => void } = {}) {
       const sources = copySources(useViewerStore.getState(), selection.modelId, selection.ids);
       if ('refusal' in sources) throw new Error(sources.refusal);
       const copies = createStoreAdapter(useViewerStore).copyElements!(selection.modelId, sources.ids, prepared.current);
+      showCopiedStoreys(selection.modelId);
       const state = useViewerStore.getState();
       const top = state.undoStacks.get(selection.modelId)?.at(-1);
       const step = top ? state.mutationBatchTags.get(top.id) ?? top.id : null;
       toast.success(t('storeyManager.copy.done', { count: copies.length, targets: t('storeyManager.copy.targets', { count: picked.size }) }), [
         { label: t('storeyManager.copy.show'), dismiss: false, onClick: () => loadStoreyToastAction(actions => actions.showCopiedStoreys(selection.modelId)) },
-        { label: t('storeyManager.undo'), onClick: () => loadStoreyToastAction(actions => actions.undoCopiedStoreys(selection.modelId, step)) },
+        { label: t('storeyManager.undo'), dismiss: false, onClick: () => loadStoreyToastAction(actions => actions.undoCopiedStoreys(selection.modelId, step)) },
       ], `copy-to-storeys:${selection.modelId}`);
       cancel();
       onDone?.();
@@ -106,8 +119,12 @@ export function CopyToStoreys({ onDone }: { onDone?: () => void } = {}) {
       cancel();
     } finally { if (token === generation.current) setBusy(false); }
   };
+  if (stale) return <output className="block p-2 text-xs">{t('storeyManager.copy.stale')}</output>;
   return <div data-copy-to-storeys className="flex w-64 flex-col gap-2 p-2">
-    <p className="text-xs font-medium">{t('storeyManager.copy.title')}</p>
+    <div className="flex flex-wrap items-center gap-2">
+      {onBack && <Button size="sm" variant="ghost" onClick={() => { cancel(); onBack(); }}>{t('storeyManager.copy.back')}</Button>}
+      <p className="text-xs font-medium">{t('storeyManager.copy.title')}</p>
+    </div>
     {denial !== null && <output className="text-xs text-muted-foreground">{t('storeyManager.copy.readOnly', { reason: denial })}</output>}
     {!selection ? <p className="text-xs">{t('storeyManager.copy.empty')}</p> : <>
       {progress === null && <>

@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "packages/create/src/in-store/_structural-graph.ts",
+  "mutation": "tests/evidence/structural-composite-owned-9668/behaviour.oracle.patch",
+  "test": "packages/create/src/in-store/structural-composite-ownership.test.ts",
+  "why": "#9668 / #9819: Composite curve removal must reclaim exclusive segments and parent curves while preserving shared descendants."
+}

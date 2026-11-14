@@ -124,6 +124,10 @@ it('#9334 copy completion offers Show and Undo, revealing hidden storeys and und
   await waitFor(() => !!button(ui, 'Show'), 'completion toast');
   assert.match(ui.textContent ?? '', /Copied 2 elements to 2 storeys/);
   assert.ok(button(ui, 'Undo'));
+  assert.equal(useViewerStore.getState().storeyContextMode, 'all', '#9389 copies are visible immediately');
+  assert.equal(useViewerStore.getState().levelDisplayMode, 'stacked');
+  act(() => useViewerStore.getState().setStoreyContextMode('hide'));
+  assert.equal(useViewerStore.getState().storeyContextMode, 'hide', '#9334 Show starts from a different visibility mode');
   click(button(ui, 'Show'));
   await waitFor(() => useViewerStore.getState().storeyContextMode === 'all', 'the first-click Show action loads');
   assert.equal(useViewerStore.getState().storeyContextMode, 'all');
@@ -155,7 +159,46 @@ it('#9334 the copy toast refuses Undo with an explanation after editing permissi
   const depth = useViewerStore.getState().undoStacks.get(MODEL_ID)!.length;
   act(() => useViewerStore.setState({ editEnabled: false }));
   click(button(ui, 'Undo'));
-  await waitFor(() => /Copying is unavailable/.test(ui.querySelector('[role="alert"]')?.textContent ?? ''), 'the lazy Undo action checks current editing permission');
+  await waitFor(() => /Storeys can be listed but not edited/.test(ui.querySelector('[role="alert"]')?.textContent ?? ''), 'the lazy Undo action checks current editing permission');
   assert.equal(useViewerStore.getState().undoStacks.get(MODEL_ID)!.length, depth);
-  assert.match(ui.querySelector('[role="alert"]')?.textContent ?? '', /Copying is unavailable/);
+  assert.match(ui.querySelector('[role="alert"]')?.textContent ?? '', /Storeys can be listed but not edited/);
+});
+
+it('#9389 a changed selection invalidates a painted commit without writing', async () => {
+  const ui = render(<CopyToStoreys />);
+  const before = walls().length;
+  click(button(ui, 'Select all storeys')); click(button(ui, 'Prepare copies'));
+  await waitFor(() => !!button(ui, 'Copy now'), 'prepared');
+  click(button(ui, 'Copy now'));
+  act(() => useViewerStore.getState().setSelectedEntityIds([]));
+  await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+  assert.equal(walls().length, before);
+  assert.equal(button(ui, 'Copy now'), undefined);
+});
+it('#9389 a refused copy Undo stays available for a retry', async () => {
+  const ui = render(<><CopyToStoreys /><Toaster /></>);
+  const before = walls().length;
+  click(button(ui, 'Select all storeys')); click(button(ui, 'Prepare copies'));
+  await waitFor(() => !!button(ui, 'Copy now'), 'prepared');
+  click(button(ui, 'Copy now'));
+  await waitFor(() => !!button(ui, 'Undo'), 'completion');
+  act(() => useViewerStore.setState({ editEnabled: false }));
+  click(button(ui, 'Undo'));
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.ok(button(ui, 'Undo'));
+  act(() => useViewerStore.setState({ editEnabled: true }));
+  click(button(ui, 'Undo'));
+  await waitFor(() => walls().filter(w => !useViewerStore.getState().mutationViews.get(MODEL_ID)!.isDeleted(w.expressId)).length === before, 'retry undoes the copy');
+});
+it('#9389 a palette invocation cannot open copy in a replacement session', async () => {
+  let opens = 0;
+  const { COPY_TO_STOREYS_EVENT } = await import('@/lib/actions/copy-to-storeys-open');
+  const opened = () => { opens++; };
+  window.addEventListener(COPY_TO_STOREYS_EVENT, opened);
+  try {
+    WORKSPACE_SURFACE_COMMANDS.find(c => c.id === 'model:copy-to-storeys')!.run();
+    act(() => { useViewerStore.getState().exitModelWorkspace(); useViewerStore.getState().enterModelWorkspace({ modelId: MODEL_ID, storeyId: STOREY }); });
+    await new Promise(resolve => setTimeout(resolve, 30));
+    assert.equal(opens, 0);
+  } finally { window.removeEventListener(COPY_TO_STOREYS_EVENT, opened); }
 });

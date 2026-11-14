@@ -33,7 +33,8 @@ export function isCatalogComplete(
 ): boolean {
   for (const page of containersByParent.values()) if (page.cursor !== undefined) return false;
   for (const page of filesByContainer.values()) if (page.cursor !== undefined) return false;
-  return containersByParent.size > 0 || filesByContainer.size > 0;
+  // A folder-only catalog cannot establish which folders contain files.
+  return containersByParent.size > 0 && filesByContainer.size > 0;
 }
 
 /**

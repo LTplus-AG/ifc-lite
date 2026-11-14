@@ -24,7 +24,7 @@
  */
 
 import type { EffectiveEntityOverlay } from '@ifc-lite/data';
-import { getAttributeNamesAcrossSchemas, SCHEMA_REGISTRY } from '@ifc-lite/parser';
+import { getAttributeNamesAcrossSchemas, getSchemaRegistryForVersion } from '@ifc-lite/parser';
 
 /**
  * Overlay entity visibility, decoupled from `@ifc-lite/mutations` in the same
@@ -143,12 +143,14 @@ const EXPRESS_PRIMITIVES = new Set(['BOOLEAN', 'LOGICAL', 'INTEGER', 'REAL', 'NU
  * depend on). `null` for an unknown type.
  */
 function expressBase(typeName: string): string | null {
+  // The IFC4 pin, read on first use (the same object `SCHEMA_REGISTRY` is).
+  const types = getSchemaRegistryForVersion('IFC4').types;
   let cursor: string | undefined = typeName;
   const seen = new Set<string>();
   while (cursor && !seen.has(cursor)) {
     seen.add(cursor);
-    const underlying: string | undefined = Object.prototype.hasOwnProperty.call(SCHEMA_REGISTRY.types, cursor)
-      ? SCHEMA_REGISTRY.types[cursor]
+    const underlying: string | undefined = Object.prototype.hasOwnProperty.call(types, cursor)
+      ? types[cursor]
       : undefined;
     if (!underlying) return null;
     const head = underlying.replace(/\(.*$/, '').trim().toUpperCase();

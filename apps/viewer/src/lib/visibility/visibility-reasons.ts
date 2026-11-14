@@ -38,6 +38,7 @@ export type VisibilityReasonId =
   | 'lens'
   | 'typeVisibility'
   | 'typeViewMode'
+  | 'structuralViewMode'
   | 'hostTypes'
   | 'section'
   | 'measurements';
@@ -171,6 +172,13 @@ export const VISIBILITY_REASONS: readonly VisibilityReason[] = [
     resetPolicy: 'kept',
     isActive: (s) => s.typeViewMode === 'types' && s.hasTypeGeometry,
     clear: (store) => store.getState().setTypeViewMode('model'),
+  },
+  {
+    id: 'structuralViewMode',
+    labelKey: 'visibilityReasons.structuralViewMode',
+    resetPolicy: 'cleared',
+    isActive: (s) => s.structuralViewMode !== 'both',
+    clear: (store) => store.getState().setStructuralViewMode('both'),
   },
   {
     id: 'hostTypes',

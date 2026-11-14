@@ -12,6 +12,7 @@
  * module-size budget.
  */
 
+import type { MetadataReadView } from './effective-metadata-record.js';
 import type { IfcAttributeValue, IfcEntity } from './types.js';
 import type { EntityExtractor } from './entity-extractor.js';
 import { PropertyValueType } from '@ifc-lite/data';
@@ -327,14 +328,14 @@ export function parsePropertyValueWithComplex(
     store: IfcDataStore,
     extractor: EntityExtractor,
     propEntity: IfcEntity,
-    budget?: ComplexPropertyBudget
+    budget?: ComplexPropertyBudget, view?: MetadataReadView
 ): ParsedIfcPropertyValue {
     const type = propEntity.type.toUpperCase();
     if (type === 'IFCCOMPLEXPROPERTY') {
-        return resolveComplexPropertyValue(store, extractor, propEntity, budget);
+        return resolveComplexPropertyValue(store, extractor, propEntity, budget, view);
     }
     if (type === 'IFCPROPERTYREFERENCEVALUE') {
-        return resolvePropertyReferenceValue(store, extractor, propEntity);
+        return resolvePropertyReferenceValue(store, extractor, propEntity, view);
     }
     return parsePropertyValue(propEntity);
 }

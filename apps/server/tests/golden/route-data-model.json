@@ -3,31 +3,31 @@
   "repin": "IFC_LITE_REPIN_GOLDEN=1 cargo test -p ifc-lite-server route_golden_tests  # rewrites all route-*.json; unmoved ones stay byte-identical",
   "cases": {
     "AB22_IFC4X3": {
-      "fnv1a64": "c25228b3ce2e6754",
+      "fnv1a64": "7af82eec7b070be0",
       "bytes": 47897
     },
     "AC20-FZK-Haus": {
-      "fnv1a64": "726a583612b102a7",
+      "fnv1a64": "bc9e7aca5785238d",
       "bytes": 416522
     },
     "BIMcollab_STR_IFC2X3": {
-      "fnv1a64": "c72e85f9ac94c081",
+      "fnv1a64": "fc8a59691c78ea73",
       "bytes": 146186
     },
     "IfcOpenHouse_IFC4": {
-      "fnv1a64": "c5786b2e6e1fb112",
+      "fnv1a64": "318a6b37973a4c06",
       "bytes": 37503
     },
     "c6-synthetic": {
-      "fnv1a64": "4f1b116e222914fc",
+      "fnv1a64": "f5807dccc12f1aac",
       "bytes": 24127
     },
     "parity-fixture": {
-      "fnv1a64": "6119cc79c7fd85f8",
+      "fnv1a64": "115c08b6576f4d22",
       "bytes": 13137
     },
     "signal_IFC4X3_ADD2": {
-      "fnv1a64": "2927f064e88d9dcb",
+      "fnv1a64": "98533a244a67911f",
       "bytes": 39925
     }
   }

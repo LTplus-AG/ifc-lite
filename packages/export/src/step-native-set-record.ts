@@ -31,3 +31,14 @@ export function decodeNativeSetLine(line: string, id: number): IfcEntity {
   if (!entity) throw new Error(`Type quantity source #${id} cannot be decoded`);
   return entity;
 }
+
+/** The current raw set may have been authored or renamed during this session (#9352). */
+export function currentSetLine(ctx: PropertySetContext, id: number): string | null {
+  const view = ctx.mutationView;
+  if (view?.getNewEntity(id) || view?.getPositionalMutationsForEntity(id)?.size
+    || view?.getAttributeMutationsForEntity(id).length) {
+    const named = new Map(view?.getAttributeMutationsForEntity(id).map(m => [m.name, m.value]));
+    return nativeSetLine(ctx, id, ctx.dataStore.schemaVersion as IfcSchemaVersion, named);
+  }
+  return entityLineText(ctx, id);
+}

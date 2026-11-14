@@ -73,6 +73,8 @@ import {
 } from './drawing-markup-read-geometry.js';
 import { resolveTrustedOrComputed } from './drawing-markup-read-trust.js';
 import { toAuthoredPoint, type DrawingMarkupPlacementAnchor } from './drawing-markup-read-placement.js';
+import { readDimension } from './drawing-markup-read-dimension.js';
+import type { Dimension2D } from '@/store/slices/drawing2DDimensions';
 
 export type { DrawingMarkupPlacementAnchor } from './drawing-markup-read-placement.js';
 
@@ -269,10 +271,17 @@ export interface DrawingMarkupReadResult {
   polygonArea2DResults: PolygonArea2DResult[];
   textAnnotations2D: TextAnnotation2D[];
   cloudAnnotations2D: CloudAnnotation2D[];
+  dimensions2D: Dimension2D[];
+}
+
+/** The annotation a restored item was read from: the `ifc-<kind>-<expressId>` ids the readers above assign. */
+export function drawingMarkupItemExpressId(id: string): number | null {
+  const match = /^ifc-(?:measure|polygon|text|cloud|dimension)-([1-9][0-9]*)$/.exec(id);
+  return match ? Number(match[1]) : null;
 }
 
 function emptyResult(): DrawingMarkupReadResult {
-  return { measure2DResults: [], polygonArea2DResults: [], textAnnotations2D: [], cloudAnnotations2D: [] };
+  return { measure2DResults: [], polygonArea2DResults: [], textAnnotations2D: [], cloudAnnotations2D: [], dimensions2D: [] };
 }
 
 /**
@@ -289,6 +298,7 @@ export function readDrawingMarkupAnnotation(
   | { kind: 'polygon'; value: PolygonArea2DResult }
   | { kind: 'text'; value: TextAnnotation2D }
   | { kind: 'cloud'; value: CloudAnnotation2D }
+  | { kind: 'dimension'; value: Dimension2D }
   | null {
   const objectType = source.objectType as DrawingMarkupObjectType | null | undefined;
   switch (objectType) {
@@ -307,6 +317,10 @@ export function readDrawingMarkupAnnotation(
     case DRAWING_MARKUP_OBJECTTYPE.CLOUD: {
       const value = readCloud(source, anchor);
       return value ? { kind: 'cloud', value } : null;
+    }
+    case DRAWING_MARKUP_OBJECTTYPE.DIMENSION: {
+      const value = readDimension(source, anchor);
+      return value ? { kind: 'dimension', value } : null;
     }
     default:
       return null; // untagged — not our concern, generic overlay handles it
@@ -370,6 +384,7 @@ export function readDrawingMarkupFromParseResult(
       case 'polygon': result.polygonArea2DResults.push(read.value); break;
       case 'text': result.textAnnotations2D.push(read.value); break;
       case 'cloud': result.cloudAnnotations2D.push(read.value); break;
+      case 'dimension': result.dimensions2D.push(read.value); break;
     }
   }
   return result;

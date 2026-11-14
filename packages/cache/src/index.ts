@@ -65,9 +65,11 @@ export {
   decodeGeometryChunk,
   groupMeshesIntoChunks,
   buildGeometrySectionV13,
+  inflateRaw,
 } from './sections/geometry-chunks.js';
 export { readInstancedShards } from './sections/instanced-shards.js';
-export type { GeometryHead } from './sections/geometry-chunks.js';
+export type { ChunkDecodeOptions, GeometryHead, ChunkInflate } from './sections/geometry-chunks.js';
+// The worker inflate pool is the `@ifc-lite/cache/chunk-inflate-pool` subpath, so a viewer loads it lazily.
 export type { GeometryChunkInfo } from './types.js';
 
 export type {
@@ -85,7 +87,7 @@ export type {
 
 // Utilities
 export { xxhash64, xxhash64Hex } from './utils/hash.js';
-export { BufferWriter, BufferReader } from './utils/buffer-utils.js';
+export { ArrayArena, BufferWriter, BufferReader } from './utils/buffer-utils.js';
 
 // Source fingerprinting (#5138 PR 7b: moved from the viewer so headless
 // callers — the CLI, the MCP server — can compute the SAME

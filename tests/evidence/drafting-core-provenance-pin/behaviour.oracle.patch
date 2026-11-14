@@ -1,0 +1,13 @@
+diff --git b/apps/viewer/src/lib/drafting-core/provenance.json a/apps/viewer/src/lib/drafting-core/provenance.json
+index cbedcdc0ad..131cce8b6f 100644
+--- b/apps/viewer/src/lib/drafting-core/provenance.json
++++ a/apps/viewer/src/lib/drafting-core/provenance.json
+@@ -6,7 +6,7 @@
+   "files": [
+     { "path": "curves.ts", "upstream": "apps/viewer/src/drafting/curves.ts", "sha256": "764660d8cfce54d77b9691f4656a06fd1beb38c48e7bfbebe79ad82964b05cea", "adapted": false },
+     { "path": "intersect.ts", "upstream": "apps/viewer/src/drafting/intersect.ts", "sha256": "b8499761daa8a0f4230720304c94db08f511a3b92cf50eaa8d48b323e8047dc2", "adapted": false },
+-    { "path": "snaps.ts", "upstream": "apps/viewer/src/drafting/snaps.ts", "sha256": "0000000000000000000000000000000000000000000000000000000000000000", "adapted": false },
++    { "path": "snaps.ts", "upstream": "apps/viewer/src/drafting/snaps.ts", "sha256": "a592073458f99fe468f4419241927a381b6c68ef6ca3d7af7d71489a86b7135a", "adapted": false },
+     { "path": "types.ts", "upstream": "apps/viewer/src/drafting/types.ts", "sha256": "e5bdad6de186d45399b8acf38e3740d1f842376a4d12a03f99d4b48a6859b72f", "adapted": true },
+     { "path": "vec.ts", "upstream": "apps/viewer/src/drafting/vec.ts", "sha256": "15de08149504cb2330ab4d51db2d685cc8ba54cce78780a1b4126d75e050b665", "adapted": true }
+   ]

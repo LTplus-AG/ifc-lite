@@ -10,6 +10,8 @@ import proj4 from 'proj4';
 import { computeCesiumModelOrigin, computeGridConvergence, createCesiumBridge, viewerToEnuRotation } from './cesium-bridge.js';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
+import { computeModelCenterInIfcMeters } from './map-absolute.js';
+import { viewerToIfcAxes } from './coordinate-frame.js';
 import PROJ_ORACLE from './__fixtures__/proj-oracle.json' with { type: 'json' };
 
 const KROVAK =
@@ -267,5 +269,104 @@ describe('createCesiumBridge with a unit-slipped map-absolute site anchor (#9480
     const origin = await computeCesiumModelOrigin(conversion, crs, coordinateInfo, 0.001);
     assert.ok(origin);
     assert.equal(origin.gridSource, 'mapAbsolute');
+  });
+});
+
+describe('createCesiumBridge with stray elements far outside a map-absolute model', () => {
+  // A synthetic #2526-shaped export (site in mm at the UTM anchor, 60 walls
+  // under it) plus 3 proxies whose placements are absolute with site-local
+  // numbers, so they sit at the local origin, 6000 km from the building.
+  // Bounds are what the real WASM pipeline reports for that file. Before the
+  // fix the bounds centre fell halfway, the #2526 guard missed, and the model
+  // landed in the mid-Atlantic.
+  const rtc = { x: 311987.5867813219, y: 5996133.899618746, z: 14 };
+  const clean = { min: { x: -12.334, y: 0, z: -15.154 }, max: { x: 14.18, y: 3, z: 15.819 } };
+  const streamed = { min: { x: -312021.566, y: 0, z: -15.154 }, max: { x: 14.18, y: 28.7, z: 5996126.615 } };
+  const info = (bounds: CoordinateInfo['shiftedBounds'], shift = { x: 0, y: 0, z: 0 }, wasmRtcOffset = rtc): CoordinateInfo => ({
+    originShift: shift,
+    originalBounds: {
+      min: { x: bounds.min.x + shift.x, y: bounds.min.y + shift.y, z: bounds.min.z + shift.z },
+      max: { x: bounds.max.x + shift.x, y: bounds.max.y + shift.y, z: bounds.max.z + shift.z },
+    },
+    shiftedBounds: bounds,
+    hasLargeCoordinates: false,
+    wasmRtcOffset,
+    lengthUnitScale: 0.001,
+  });
+  const mid = (b: CoordinateInfo['shiftedBounds']) => ({
+    x: (b.min.x + b.max.x) / 2, y: (b.min.y + b.max.y) / 2, z: (b.min.z + b.max.z) / 2,
+  });
+  /** Asserts the georeference pivots on the box centre: IFC world = centre + RTC (viewer Y-up -> IFC Z-up). */
+  const assertCentrePivot = (b: CoordinateInfo['shiftedBounds'], offset = rtc) => {
+    const c = viewerToIfcAxes(mid(b));
+    const got = computeModelCenterInIfcMeters(info(b, undefined, offset));
+    const want = { ifcX: c.x + offset.x, ifcY: c.y + offset.y, ifcZ: c.z + offset.z };
+    for (const k of ['ifcX', 'ifcY', 'ifcZ'] as const) {
+      assert.ok(Math.abs(got[k] - want[k]) < 1e-6, `${k} ${got[k]} should be ${want[k]}`);
+    }
+  };
+  // The sync `process()` path re-centres on the polluted box as well.
+  const syncShift = { x: -156003.693, y: 14.35, z: 2998055.73 };
+  const synced = {
+    min: { x: -156017.873, y: -14.35, z: -2998070.884 },
+    max: { x: 156017.873, y: 14.35, z: 2998070.884 },
+  };
+  const conversion: MapConversion = {
+    id: 13, sourceCRS: 9, targetCRS: 12, eastings: 311988.181, northings: 5996148.565,
+    orthogonalHeight: 0, xAxisAbscissa: 0, xAxisOrdinate: 1,
+  };
+  const crs: ProjectedCRS = { id: 12, name: 'EPSG:25833', geodeticDatum: 'ETRS89', mapUnit: 'METRE', mapUnitScale: 1 };
+
+  for (const [label, polluted] of [
+    ['streaming', info(streamed)],
+    ['sync', info(synced, syncShift)],
+  ] as const) {
+    it(`places the RTC origin where the stray-free model puts it (${label})`, async () => {
+      const reference = await createCesiumBridge(conversion, crs, info(clean), 0.001);
+      const bridge = await createCesiumBridge(conversion, crs, polluted, 0.001);
+      assert.ok(reference && bridge);
+      assert.strictEqual(bridge.rotationAngle, 0);
+      // The RTC origin in the renderer frame is -originShift.
+      const { x, y, z } = polluted.originShift;
+      const geo = bridge.viewerToGeodetic(-x, -y, -z);
+      const want = reference.viewerToGeodetic(0, 0, 0);
+      assert.ok(geo && want);
+      assert.ok(Math.abs(geo.latitude - want.latitude) < 1e-9, `lat ${geo.latitude} should be ${want.latitude}`);
+      assert.ok(Math.abs(geo.longitude - want.longitude) < 1e-9, `lon ${geo.longitude} should be ${want.longitude}`);
+      assert.ok(Math.abs(geo.height - want.height) < 1e-6, `height ${geo.height} should be ${want.height}`);
+      const origin = await computeCesiumModelOrigin(conversion, crs, polluted, 0.001);
+      assert.equal(origin?.gridSource, 'mapAbsolute');
+    });
+  }
+
+  it('keeps the bounds centre as the pivot while it is inside the RTC window', async () => {
+    // A long model whose centre is 7 km from the RTC origin: no stray-element signature.
+    const long = { min: { x: -2000, y: 0, z: -15 }, max: { x: 16000, y: 3, z: 15 } };
+    const origin = await computeCesiumModelOrigin(conversion, crs, info(long), 0.001);
+    const centred = await computeCesiumModelOrigin(conversion, crs, info(clean), 0.001);
+    assert.ok(origin && centred);
+    assert.ok(Math.abs(origin.easting - centred.easting - (mid(long).x - mid(clean).x)) < 1e-6, `easting ${origin.easting}`);
+  });
+
+  it('keeps the bounds centre for a long or federated model that never reaches the world origin', () => {
+    for (const box of [
+      // A 30 km corridor whose RTC median sits at one end: centre 15 km off.
+      { min: { x: -100, y: 0, z: -15 }, max: { x: 30_000, y: 3, z: 15 } },
+      // A model federated onto another model's anchor, 10.5 km away from it.
+      { min: { x: 9_500, y: 0, z: -15 }, max: { x: 11_500, y: 3, z: 15 } },
+    ]) {
+      assertCentrePivot(box);
+    }
+  });
+
+  it('keeps the bounds centre unless the box reaches a projected-CRS RTC origin', () => {
+    // A local-coordinate corridor from 5 km to 40 km, median near 38 km: it
+    // reaches its own origin, but its RTC origin is no map anchor.
+    const corridor = { min: { x: -33_000, y: 0, z: -15 }, max: { x: 2_000, y: 3, z: 15 } };
+    assertCentrePivot(corridor, { x: 38_000, y: 0, z: 0 });
+    // Geometry only at the file origin, none at the anchor: the box reaches the
+    // world origin but not the RTC origin.
+    const unplaced = { min: { x: -rtc.x - 50, y: -14, z: rtc.y - 50 }, max: { x: -rtc.x + 50, y: 0, z: rtc.y + 50 } };
+    assertCentrePivot(unplaced);
   });
 });

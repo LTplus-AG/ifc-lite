@@ -256,6 +256,11 @@ export function SourceBrowser({
   );
 
   const selectedContainerId = selectedContainer?.id ?? null;
+  const selectedContainerLoading = selectedContainerId !== null && catalog.loadingContainers.has(selectedContainerId);
+  const loadingFolders = catalog.loadingFolders || selectedContainerLoading;
+  const loadingFiles = selectedContainerLoading || (
+    (capabilities.listFilesIsRecursive || selectedContainerId === selectedFileArea?.id) && catalog.loadingFiles
+  );
 
   useSourceFavouriteJump({
     target: openTarget,
@@ -264,8 +269,8 @@ export function SourceBrowser({
     selectedContainer,
     sortedFolders,
     allFiles,
-    loadingFolders: catalog.loadingFolders,
-    loadingFiles: catalog.loadingFiles,
+    loadingFolders,
+    loadingFiles,
     filesHaveMore: catalog.hasMoreFiles(selectedContainerId),
     foldersHaveMore: catalog.hasMoreFolders(selectedContainerId),
     enterFileArea: enterFileAreaDirect,
@@ -340,8 +345,8 @@ export function SourceBrowser({
             capabilities.listFilesIsRecursive &&
             catalog.catalogComplete
           }
-          loadingFolders={catalog.loadingFolders}
-          loadingFiles={search.active ? search.loading : catalog.loadingFiles}
+          loadingFolders={loadingFolders}
+          loadingFiles={search.active ? search.loading : loadingFiles}
           sortedFiles={sortedFiles}
           selectedFiles={selectedFiles}
           onToggleFile={toggleFile}

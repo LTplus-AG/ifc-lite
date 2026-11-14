@@ -19,6 +19,7 @@
  * required-slot passes use (position `i` need not be attribute `i`).
  */
 
+import { StructuralDiagnostics } from './schema-converter-structural-diagnostics.js';
 import { getSchemaRegistryForVersion, type SchemaVersionWithRegistry } from '@ifc-lite/parser';
 import { escapeStepString } from './step-serialization.js';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
@@ -64,6 +65,8 @@ const LOSS_TEXT: Record<Loss, string> = {
 
 /** Enum reconciliation for one export: rewrites, and counts what it lost. */
 export class EnumReconciliation {
+  /** Reuses this per-export collector so both STEP writers forward structural losses. */
+  readonly structural = new StructuralDiagnostics();
   private readonly losses = new Map<Loss, Map<string, number>>();
 
   /** Reconcile `line`, already converted to `toSchema`. */
@@ -116,7 +119,7 @@ export class EnumReconciliation {
       const total = [...where.values()].reduce((a, b) => a + b, 0);
       out.push(`${total} enum value(s) the target schema does not define were ${LOSS_TEXT[loss]}: ${[...where.keys()].join(', ')} (#5365).`);
     }
-    return out;
+    return [...out, ...this.structural.warnings()];
   }
 
   private record(loss: Loss, where: string): void {

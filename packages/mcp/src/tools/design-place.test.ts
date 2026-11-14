@@ -5,7 +5,7 @@
 /** #6232 D5: actual JSON-RPC tools, real Bonsai source, atomic graph Undo and federation isolation. */
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { EntityExtractor, IfcParser } from '@ifc-lite/parser';
+import { EntityExtractor, IfcParser, extractPropertiesOnDemand } from '@ifc-lite/parser';
 import { placedBodyExtent, readHostedElementSize, readHostedFill } from '@ifc-lite/create';
 import { getCompleteEntityIndex } from '../../../export/src/entity-iteration.js';
 import type { GridInStoreParams } from '@ifc-lite/create';
@@ -190,4 +190,25 @@ it('#6232 public hosted edit resizes imported physical geometry, isolates federa
   expect(registry.get('alpha')!.backend.getMutationView()).toBeNull();
   const readonly = await session(1, true);
   expect((await readonly.call('edit_hosted_element', { express_id: 1262, patch: { OverallWidth: 1.2 } })).isError).toBe(true);
+});
+
+
+it('#9352 MCP reads raw authored occurrence and type properties before and after export', async () => {
+  const { registry, call } = await session();
+  const model = registry.get('alpha')!, S = model.bim.store;
+  const type = S.addElementType('alpha', { Type: 'IfcWallType', Name: 'Raw type', PredefinedType: 'STANDARD' });
+  S.assignType('alpha', type.expressId, [1222]);
+  const prop = S.addEntity('alpha', { type: 'IfcPropertySingleValue', attributes: ['FireRating', null, { typed: { type: 'IfcLabel', value: 'EI60' } }, null] });
+  const set = S.addEntity('alpha', { type: 'IfcPropertySet', attributes: ['0000000000000000000001', null, 'Pset_RawAuthoring', null, [`#${prop.expressId}`]] });
+  S.setPositionalAttribute(type, 5, [`#${set.expressId}`]);
+  S.addEntity('alpha', { type: 'IfcRelDefinesByProperties', attributes: ['0000000000000000000002', null, null, null, ['#1222'], `#${set.expressId}`] });
+  const result = await call('get_entity', { express_id: 1222, include: ['properties', 'type_properties'] });
+  expect(result.isError).not.toBe(true);
+  const expected = expect.arrayContaining([expect.objectContaining({ name: 'Pset_RawAuthoring',
+    properties: expect.arrayContaining([expect.objectContaining({ name: 'FireRating', value: 'EI60' })]) })]);
+  expect(result.structuredContent?.properties).toEqual(expected);
+  expect(result.structuredContent?.typeProperties).toMatchObject({ typeName: 'Raw type', properties: expected });
+  const saved = model.bim.export.ifc();
+  const store = await new IfcParser().parseColumnar((typeof saved === 'string' ? new TextEncoder().encode(saved) : saved).slice().buffer as ArrayBuffer, { disableWorkerScan: true });
+  expect(extractPropertiesOnDemand(store, 1222)).toEqual(expected);
 });

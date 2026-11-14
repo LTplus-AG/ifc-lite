@@ -1,0 +1,26 @@
+diff --git a/packages/data/src/ifc-schema/table-codec.ts b/packages/data/src/ifc-schema/table-codec.ts
+index 9ed0e921a8..afb9aaffa4 100644
+--- a/packages/data/src/ifc-schema/table-codec.ts
++++ b/packages/data/src/ifc-schema/table-codec.ts
+@@ -42,7 +42,7 @@ export function decodeSchemaTable(text: string): unknown {
+   const decode = (x: Encoded): unknown => {
+     if (typeof x === 'number') {
+       if (x >= 0) return s[x];
+-      return x === -1 ? true : x === -2 ? false : x === -3 ? null : null;
++      return x === -1 ? true : x === -2 ? false : x === -3 ? undefined : null;
+     }
+     const tag = x[0] as number;
+     if (tag === -1) return x[1];
+diff --git a/scripts/lib/entity-table.mjs b/scripts/lib/entity-table.mjs
+index f1c7cc7d3e..2ae4fe1cef 100644
+--- a/scripts/lib/entity-table.mjs
++++ b/scripts/lib/entity-table.mjs
+@@ -72,7 +72,7 @@ export function decodeEncodedTable(text) {
+   const decode = (x) => {
+     if (typeof x === 'number') {
+       if (x >= 0) return s[x];
+-      return x === -1 ? true : x === -2 ? false : x === -3 ? null : null;
++      return x === -1 ? true : x === -2 ? false : x === -3 ? undefined : null;
+     }
+     const tag = x[0];
+     if (tag === -1) return x[1];

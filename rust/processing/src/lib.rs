@@ -83,6 +83,11 @@ pub mod stream_meta;
 pub mod style;
 mod symbolic;
 mod types;
+/// Native warm-load cache of complete results; off unless a caller opts in.
+#[cfg(all(feature = "native-result-cache", not(target_arch = "wasm32")))]
+pub mod result_cache;
+mod result_fingerprint;
+pub use result_fingerprint::result_fingerprint;
 
 pub use geometry_export::{
     build_geometry_data_export, build_colored_geometry_data_export, ColoredGeometryDataExport,

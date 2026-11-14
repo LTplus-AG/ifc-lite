@@ -42,7 +42,7 @@ test('Bulk Selection edits three walls across two IFC models in one undo step (#
 
   // Bulk authoring is available through the viewer's Model workspace.
   await page.getByRole('tab', { name: 'Author', exact: true }).click();
-  const modelWorkspace = page.getByRole('tabpanel', { name: 'Author' }).getByRole('button', { name: 'Model', exact: true });
+  const modelWorkspace = page.locator('[data-command-id="tool:edit-mode"]');
   await modelWorkspace.click();
   await expect(modelWorkspace).toHaveAttribute('aria-pressed', 'true');
 

@@ -5,6 +5,7 @@
 import { registryProxy } from './registry-proxy.ts';
 import { viewerAliases } from './vite-aliases';
 import { collectPackageVersions } from './vite-package-versions';
+import { bundleAnalysis } from './vite-bundle-analysis';
 import { legacyManualChunk, quickjsRuntimeChunkGroup, tslibChunkGroup } from './vite-chunks';
 import { defineConfig, loadEnv } from 'vite';
 import { retainedEngine } from './vite-plugins/retained-engine';
@@ -205,6 +206,7 @@ export default defineConfig(({ mode }) => {
   } as const;
   return {
   plugins: [
+    ...(process.env.VITE_BUNDLE_ANALYSIS === '1' ? [bundleAnalysis()] : []),
     retainedEngine(retained),
     react(),
     Icons({
@@ -358,6 +360,11 @@ export default defineConfig(({ mode }) => {
       'quickjs-emscripten',
       '@jitl/quickjs-wasmfile-release-asyncify',
       'esbuild-wasm',
+      // Pre-bundling missed it at startup and found it on the first model load,
+      // then reloaded the page mid-session (dev only; validation-colors e2e).
+      // Excluded, not included: the browser entry is one ESM file whose wasm the
+      // worker locates by URL, as with the emscripten builds above.
+      'rhino3dm',
       // maplibre-gl v6 resolves its worker as a SIBLING FILE of its own module:
       //
       //   new URL(`./maplibre-gl-worker.mjs`, import.meta.url)

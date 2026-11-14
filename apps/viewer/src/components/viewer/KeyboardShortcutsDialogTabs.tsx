@@ -13,6 +13,8 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, Package, ShieldCheck, ExternalLink } from 'lucide-react';
 import { useTranslation } from '@/i18n';
+// Only the constant: the attribution module imports nothing from the SDK.
+import { THREEDCONNEXION_ATTRIBUTION } from '@/lib/spacemouse-driver/attribution';
 
 const GITHUB_URL = 'https://github.com/LTplus-AG/ifc-lite';
 
@@ -154,6 +156,13 @@ export function AboutTab() {
 
       {/* Privacy & Security */}
       <PrivacyBanner />
+
+      {/* Required by the 3Dconnexion SDK licence (section 2) while the opt-in
+          driver integration ships (#9131): verbatim and in English, so it is
+          deliberately not a translation key. */}
+      <p lang="en" className="pt-2 border-t text-2xs leading-snug text-muted-foreground">
+        {THREEDCONNEXION_ATTRIBUTION}
+      </p>
 
       {/* Package Versions */}
       {packageVersions.length > 0 && (

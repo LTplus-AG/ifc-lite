@@ -198,6 +198,8 @@ export const bcfEn = {
   'bcf.panel.untitledTopic': 'Untitled',
   'bcf.panel.importError': 'Failed to import BCF file',
   'bcf.panel.exportError': 'Failed to export BCF file',
+  'bcf.panel.createTopicFailed': 'Could not create the topic. {message}',
+  'bcf.panel.addViewpointFailed': 'Could not add the viewpoint to the topic. {message}',
   'bcf.panel.busy': 'Processing BCF file…',
   'bcf.panel.captureViewpointFailed': 'Could not capture a viewpoint. Wait for the model to finish loading, then try again.',
 } as const satisfies Record<string, TranslationValue>;

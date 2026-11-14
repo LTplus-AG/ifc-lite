@@ -340,6 +340,10 @@ describe('symbolic cache follows live spatial bucket mappings (#5236/#5249)', ()
         root!.render(createElement(Probe));
         await new Promise((resolve) => setTimeout(resolve, 0));
       });
+      // A store's first parse is an after-load job (next idle period); bounded wait for it to land.
+      for (let i = 0; i < 100 && symbolicLineVertexData(rendered.annotation).length === 0; i++) {
+        await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+      }
       assert.equal(firstWorldY(rendered.annotation), 10, 'the first parse uses the initial storey elevation');
 
       target.spatialHierarchy!.storeyElevations.set(90, 25);

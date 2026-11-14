@@ -26,6 +26,7 @@ import { ViewportHud } from '@/components/viewport-ui/hud';
 import { ToolOverlays } from '@/components/viewer/ToolOverlays';
 import { ModelInspectorPanel } from '@/components/viewer/model-inspector/ModelInspectorPanel';
 import { loadModelLayout } from './authoringSessionSidebar.js';
+import { formFactorState } from '@/test/form-factor-state';
 
 const at = (x: number, y: number) => ({ local: [x, y] as const, winner: null, guides: [], locked: false });
 const outlines = (root: ParentNode) => [...root.querySelectorAll('[data-scene-primitive="plane-outline"]')] as SVGPolygonElement[];
@@ -33,7 +34,7 @@ const outlines = (root: ParentNode) => [...root.querySelectorAll('[data-scene-pr
 beforeEach(async () => {
   await seedModelingSession();
   localStorage.clear();
-  useViewerStore.setState({ editEnabled: false, selectedEntityId: null, isMobile: false });
+  useViewerStore.setState({ editEnabled: false, selectedEntityId: null, ...formFactorState(false) });
   useViewerStore.getState().showWorkspacePanel('changes');
 });
 afterEach(() => {
@@ -47,6 +48,22 @@ describe('Model workspace sidebar hand-over (#6232 M2.1)', () => {
     assert.equal(useViewerStore.getState().sidebarActivePanel, 'model');
     useViewerStore.getState().exitModelWorkspace();
     assert.equal(useViewerStore.getState().sidebarActivePanel, 'changes');
+  });
+
+  it('restores sidebar mode after Split makes room beside a different panel (#9296)', async () => {
+    const { publishSplitWidth } = await import('@/components/viewer/model/model-layout');
+    const state = () => useViewerStore.getState();
+    state().setSidebarMode('expanded');
+    state().enterModelWorkspace();
+    state().showWorkspacePanel('bcf');
+    publishSplitWidth(700);
+    try {
+      state().setModelLayout('split');
+      assert.equal(state().sidebarMode, 'collapsed');
+      state().exitModelWorkspace();
+      assert.equal(state().sidebarActivePanel, 'bcf', 'the chosen panel stays');
+      assert.equal(state().sidebarMode, 'expanded', 'the pre-workspace mode returns');
+    } finally { publishSplitWidth(0); }
   });
 
   it("a panel the user opened meanwhile stays: their choice wins", () => {
@@ -65,7 +82,7 @@ describe('Model workspace sidebar hand-over (#6232 M2.1)', () => {
   });
 
   it('phones keep their sheet shut: nothing is taken over', () => {
-    useViewerStore.setState({ isMobile: true });
+    useViewerStore.setState({ ...formFactorState(true) });
     useViewerStore.getState().enterModelWorkspace();
     assert.equal(useViewerStore.getState().sidebarActivePanel, 'changes');
   });

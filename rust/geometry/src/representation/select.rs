@@ -143,7 +143,9 @@ impl Select {
                 (rep.ifc_type == IfcType::IfcShapeRepresentation
                     && is_rtc_votable_representation(rep_type))
                     || (rep.ifc_type == IfcType::IfcTopologyRepresentation
-                        && rep_type == "Face"
+                        && (rep_type == "Face"
+                            || (rep_type == "Undefined"
+                                && element.ifc_type.is_subtype_of(IfcType::IfcStructuralSurfaceMember)))
                         && crate::router::structural::accepts(element, rep_type))
             }),
             Select::Any => true,

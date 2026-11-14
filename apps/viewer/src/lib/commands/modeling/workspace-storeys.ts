@@ -8,6 +8,8 @@
  * storey chip, its picker and PageUp / PageDown all read this one list.
  */
 
+import type { MutablePropertyView } from '@ifc-lite/mutations';
+import { derivedState } from '@/lib/derived-state';
 import type { ViewerState } from '@/store';
 import { effectiveStoreyElevation, effectiveStoreyIds } from '@/lib/commands/modeling/effective-storeys';
 import { effectiveTreeEntityName } from '@/components/viewer/hierarchy/effectiveTypeEntities';
@@ -26,7 +28,7 @@ export function modelStoreys(s: Pick<ViewerState, 'models' | 'mutationViews'>, m
   const store = s.models.get(modelId)?.ifcDataStore;
   if (!store) return [];
   const view = s.mutationViews.get(modelId);
-  return effectiveStoreyIds(store, view)
+  const derive = (view: MutablePropertyView | undefined) => effectiveStoreyIds(store, view)
     .map((expressId) => ({
       modelId,
       expressId,
@@ -35,6 +37,7 @@ export function modelStoreys(s: Pick<ViewerState, 'models' | 'mutationViews'>, m
       elevation: effectiveStoreyElevation(store, view, expressId),
     }))
     .sort((a, b) => a.elevation - b.elevation || a.expressId - b.expressId);
+  return view ? derivedState(store, view, `storeys:${modelId}`, derive) : derive(view);
 }
 
 /** Models the workspace can open on: the ones carrying parsed IFC data. */

@@ -1,0 +1,13 @@
+diff --git b/packages/export/src/renumber-step-ids.ts a/packages/export/src/renumber-step-ids.ts
+index 5a101a5fd4..aff5d4a3df 100644
+--- b/packages/export/src/renumber-step-ids.ts
++++ a/packages/export/src/renumber-step-ids.ts
+@@ -184,7 +184,7 @@ export function renumberStepIds(text: string, options: RenumberStepIdsOptions):
+   const blocked = new Set(danglingReferences);
+   const pool: number[] = [];
+   for (let candidate = 1; pool.length < declared.size; candidate++) {
+-    pool.push(candidate);
++    if (!blocked.has(candidate)) pool.push(candidate);
+   }
+   shuffleInPlace(pool, options.random);
+   const idMap = new Map<number, number>();

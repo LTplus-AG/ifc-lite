@@ -6,13 +6,17 @@
  * #5167 S.1: the structural authoring surface must be REACHABLE, not merely
  * declared.
  *
- * `StoreBackendMethods` is a structural type, so adding the nine
+ * `StoreBackendMethods` is a structural type, so adding the
  * `addStructural*` / `connectStructural*` / `assignToStructuralGroup` methods
- * to the interface without wiring a backend does not make them callable — it
- * only breaks every host's typecheck. That is exactly the state this package
- * was in before `createStructuralStoreBackend` was spread into the CLI
- * backend, and no round-trip test in `@ifc-lite/create` or `@ifc-lite/sdk`
- * would have noticed, because they reach the builders directly.
+ * to the interface without wiring a backend does not make them callable. For
+ * the required ones it breaks every host's typecheck. The three optional ones
+ * (surface member, curve and surface connection) are guarded inside the SDK by
+ * `createStructuralStoreBackend`'s `Required<>` return type, but a host that
+ * never spreads that factory still compiles, and only this test catches it.
+ * That is the state this package was in before `createStructuralStoreBackend`
+ * was spread into the CLI backend, and no round-trip test in `@ifc-lite/create`
+ * or `@ifc-lite/sdk` would have noticed, because they reach the builders
+ * directly.
  *
  * These assertions read the resolved backend store surface as a VALUE rather
  * than invoking it. That is deliberate: it keeps the failure an ordinary
@@ -43,6 +47,9 @@ const STRUCTURAL_STORE_METHODS = [
   'addStructuralAnalysisModel',
   'addStructuralCurveMember',
   'addStructuralPointConnection',
+  'addStructuralSurfaceMember',
+  'addStructuralCurveConnection',
+  'addStructuralSurfaceConnection',
   'addStructuralLoadGroup',
   'addStructuralPointAction',
   'addStructuralLinearAction',

@@ -38,7 +38,7 @@ import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { EffectiveEntityIndex } from './effective-index.js';
 import type { AnonymizeOptions } from './anonymize-types.js';
 import { attrIndex, readEntityArgs, stepSourceSchema } from './subset-entity-reader.js';
-import { IFC_ROOT_TYPES } from './subset-roots.js';
+import { getIfcRootTypes } from './subset-roots.js';
 import { HAS_PROPERTY_SETS_SLOT, isTypeClass } from './type-owned-psets.js';
 
 /** `Name`/`LongName`/`Description`/`Tag` — the `IfcRoot`-declared text
@@ -141,7 +141,7 @@ export function applyScrub(
   // expressId order") — determinism depends on this sort, not on Set
   // insertion order, which `includedIds` makes no promise about.
   const rootIds = [...includedIds]
-    .filter((id) => IFC_ROOT_TYPES.has(index.typeOf(id) ?? ''))
+    .filter((id) => getIfcRootTypes().has(index.typeOf(id) ?? ''))
     .sort((a, b) => a - b);
   const pseudonymCounters = new Map<string, number>();
 
@@ -317,7 +317,7 @@ function pseudonymizeNonRootNames(
   const slotsFor = (typeUpper: string) => {
     let slots = slotsByType.get(typeUpper);
     if (slots === undefined) {
-      slots = IFC_ROOT_TYPES.has(typeUpper) || isNonRootNameExempt(typeUpper)
+      slots = getIfcRootTypes().has(typeUpper) || isNonRootNameExempt(typeUpper)
         ? []
         : NON_ROOT_NAME_ATTRIBUTES
           .map((name) => [name, attrIndex(typeUpper, name, schema)] as const)

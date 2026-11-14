@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useState, useLayoutEffect, useCallback, lazy, Suspense } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, lazy, Suspense } from 'react';
 import { X, Sparkles, Info, Keyboard, ExternalLink, GraduationCap } from 'lucide-react';
 import { IconButton } from '@/components/ui/icon-button';
 import { Dialog, DialogBody, DialogContent, DialogTitle } from '@/components/ui/dialog';
@@ -11,6 +11,7 @@ import { LearnTab } from '@/components/tours/LearnTab';
 import { navigateToPath } from '@/services/app-navigation';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { registerKeyboardCommand } from '@/lib/commands/dispatcher';
+import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
 import { AboutTab } from './KeyboardShortcutsDialogTabs';
 import { ShortcutsTab } from './ShortcutsTab';
 import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
@@ -151,6 +152,16 @@ export function useKeyboardShortcutsDialog() {
     setTab(next);
     setOpen(true);
   }, []);
+
+  useEffect(() => {
+    const showShortcuts = (event: Event) => {
+      const tab = (event as CustomEvent<{ tab?: InfoDialogTab } | undefined>).detail?.tab;
+      if (tab) openTab(tab);
+      else toggle();
+    };
+    window.addEventListener(EVENT_SHOW_SHORTCUTS, showShortcuts);
+    return () => window.removeEventListener(EVENT_SHOW_SHORTCUTS, showShortcuts);
+  }, [openTab, toggle]);
 
   useLayoutEffect(() => {
     const toggleFromKey = () => {

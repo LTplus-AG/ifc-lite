@@ -5,6 +5,15 @@
 import type { Catalogue } from '../../registry';
 
 export const moveRotateFr = {
+  'moveRotate.mirror.label': "Symétrie",
+  'moveRotate.mirror.hintStart': "Cliquer le premier point de l’axe de symétrie",
+  'moveRotate.mirror.hintEnd': "Cliquer le second point ou saisir un angle et Entrée · Alt conserve l’original",
+  'moveRotate.mirror.keepOriginal': "Conserver l’original",
+  'moveRotate.offset.label': "Décalage",
+  'moveRotate.offset.hint': "Saisir une distance positive et cliquer le côté de la copie parallèle",
+  'moveRotate.offset.wallOnly': "Sélectionner un mur droit à décaler",
+  'commands.model.mirror': "Symétrie de la sélection (espace Modèle)",
+  'commands.model.offset': "Décaler un mur (espace Modèle)",
   "moveRotate.move.label": "Déplacer",
   "moveRotate.move.hintBase": "Cliquez sur le point de départ du déplacement, ou saisissez une distance",
   "moveRotate.move.hintTarget": "Cliquez sur la destination, ou saisissez une distance et une direction, puis Entrée",

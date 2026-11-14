@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "#9889: a tabular store has no STEP bytes, so getEntity and getEntitiesByType must answer from the entity table; drop the overrides and every entity reads as absent.",
+  "key": "apps/viewer/src/hooks/ingest/tabularDataStore.ts",
+  "mutation": "tests/evidence/tabular-data-store-9889/behaviour.oracle.patch",
+  "test": "apps/viewer/src/hooks/ingest/tabularDataStore.test.ts"
+}

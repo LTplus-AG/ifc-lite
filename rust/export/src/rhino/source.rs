@@ -201,6 +201,16 @@ impl ModelInfo {
             .unwrap_or_else(|| format!("{ifc_type} #{id}"))
     }
 
+    /// GlobalId and IFC class of the project or of a kept row; `None` for
+    /// any other id.
+    pub(super) fn identity(&self, id: u32) -> Option<(Option<&str>, &str)> {
+        if Some(id) == self.project {
+            Some((self.project_info.global_id.as_deref(), "IfcProject"))
+        } else {
+            self.rows.get(&id).map(|row| (row.global_id.as_deref(), row.ifc_type.as_str()))
+        }
+    }
+
     /// Storey elevation in metres (`Elevation`, else the placement's z, as
     /// the spatial hierarchy reads it). `None` for anything else.
     pub(super) fn elevation(&self, id: u32) -> Option<f64> {

@@ -69,6 +69,7 @@ export interface ViewMeshInput {
   computedIsolatedIds: ReadonlySet<number> | null | undefined;
   /** The class-level toggles (`typeVisibility`). */
   typeVisibility: TypeVisibilityGate;
+  structuralViewMode?: 'both' | 'physical' | 'analytical';
   /**
    * Per-model visibility keyed by `MeshData.modelIndex`. An index that is
    * ABSENT from the map counts as visible, so the single-model path can pass
@@ -98,7 +99,7 @@ export function collectViewMeshes(input: ViewMeshInput): MeshData[] {
   return complete.filter(
     (mesh) =>
       isModelVisible(mesh.modelIndex, input.modelVisibility) &&
-      isTypeVisible(mesh.ifcType, input.typeVisibility) &&
+      isTypeVisible(mesh.ifcType, input.typeVisibility, input.structuralViewMode) &&
       isEntityVisible(mesh.expressId, input.hiddenEntities, isolatedIds),
   );
 }

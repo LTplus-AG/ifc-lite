@@ -16,6 +16,7 @@ import { roomPropertyApi } from '@/lib/collab/room-property-api.js';
 import { pathForEntity } from '@/lib/collab/entity-paths.js';
 import { roomSlotFor } from '@/lib/collab/room-model-target.js';
 import { mutationDenial } from '../mutation-permission.js';
+import { rememberRemesh } from '@/lib/remesh/remesh-registry.js';
 import { modelEditTarget, recordModellingEdit, type ModelEditTarget, type ModellingStore } from './mutation-modelling-records.js';
 
 export type RoofEditOutcome = { readonly ok: true; readonly remesh: number[] } | { readonly ok: false; readonly reason: string };
@@ -26,6 +27,7 @@ export function editRoofIn(store: ModellingStore, modelId: string, expressId: nu
   if (refusal) return { ok: false, reason: refusal };
   const target = modelEditTarget(store.getState(), modelId);
   if (!target) return { ok: false, reason: `No model loaded for id "${modelId}"` };
+  const depth = store.getState().undoStacks.get(modelId)?.length ?? 0;
   try {
     const remesh = withRoofDefinitionRollback(store, target, expressId, publish => recordModellingEdit(store, modelId, (_methods, draft) => {
       const definition = editFootprintRoofInStore(target.dataStore, draft, expressId, patch);
@@ -33,9 +35,54 @@ export function editRoofIn(store: ModellingStore, modelId: string, expressId: nu
       publish(definition);
       return [expressId, ...attached];
     }));
+    const state = store.getState(), stack = state.undoStacks.get(modelId) ?? [];
+    const last = stack.length > depth ? stack.at(-1) : undefined;
+    const batch = last ? state.mutationBatchTags.get(last.id) : undefined;
+    if (batch) rememberRemesh(store.getState, batch, modelId, [expressId], 'shape',
+      () => mirrorRoofHistoryDefinition(store, modelId, expressId), error => {
+        const roomId = store.getState().collabSession?.roomId ?? 'the active room';
+        const detail = error instanceof Error ? ` (${error.message})` : '';
+        store.setState({ collabGeometryNotice: `Roof #${expressId} history was restored and remeshed locally, but its shared definition could not be updated in room "${roomId}"${detail}.` });
+      });
     return { ok: true, remesh };
   } catch (error) {
     return { ok: false, reason: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/** Replay uses the loaded property runtime, just like rollback, inside the history transaction. */
+function mirrorRoofHistoryDefinition(store: ModellingStore, modelId: string, id: number): void {
+  const state = store.getState(), session = state.collabSession;
+  const data = state.models.get(modelId)?.ifcDataStore, view = state.mutationViews.get(modelId);
+  if (!session || !data || !view || view.isDeleted(id) || !roomSlotFor(state, modelId) || !state.canCollabEdit()) return;
+  const definition = view.getForEntity(id).find(pset => pset.name === ROOF_FOOTPRINT_PSET), path = pathForEntity(data, id);
+  if (!definition || !path) return;
+  const api = roomPropertyApi();
+  const properties = definition.properties.flatMap(property => {
+    const value = property.value;
+    return typeof value === 'string' || typeof value === 'number' ? [{ ...property, value }] : [];
+  });
+  const before = new Map(properties.map(property => [property.name, structuredClone(
+    api.getPropertyValue(session.doc, path, ROOF_FOOTPRINT_PSET, property.name))]));
+  try {
+    for (const property of properties) {
+      const value = property.value;
+      const previous = before.get(property.name);
+      api.setPropertyValue(session.doc, path, ROOF_FOOTPRINT_PSET, property.name,
+        { ...previous, type: previous?.type ?? (typeof value === 'string' ? 'IfcText' : 'IfcReal'), value });
+    }
+  } catch (error) {
+    // History has already restored the local view. Restore every shared field
+    // touched so a partial Yjs publication cannot leave stale roof metadata.
+    for (const [name, value] of before) {
+      try {
+        if (value === undefined) api.deletePropertyValue(session.doc, path, ROOF_FOOTPRINT_PSET, name);
+        else api.setPropertyValue(session.doc, path, ROOF_FOOTPRINT_PSET, name, value);
+      } catch (rollbackError) {
+        console.warn(`[roof-history] could not restore shared definition for room "${session.roomId}"`, rollbackError);
+      }
+    }
+    throw error;
   }
 }
 
@@ -63,9 +110,17 @@ function withRoofDefinitionRollback<T>(store: ModellingStore, target: ModelEditT
     try { return edit(publish); }
     catch (error) {
       for (const [name, value] of before) {
-        if (value === undefined) api.deletePropertyValue(room.session.doc, room.path, ROOF_FOOTPRINT_PSET, name);
-        else api.setPropertyValue(room.session.doc, room.path, ROOF_FOOTPRINT_PSET, name, value);
+        try {
+          if (value === undefined) api.deletePropertyValue(room.session.doc, room.path, ROOF_FOOTPRINT_PSET, name);
+          else api.setPropertyValue(room.session.doc, room.path, ROOF_FOOTPRINT_PSET, name, value);
+        } catch (rollbackError) {
+          console.warn(`[roof] could not restore shared definition for room "${room.session.roomId}"`, rollbackError);
+        }
       }
+      // A refused draft is unchanged locally and in the room. Surface the
+      // publication failure through the layout's existing notice channel.
+      if (before.size > 0) store.setState({ collabGeometryNotice:
+        `Roof #${id} was not changed because it could not be shared with room "${room.session.roomId}". The previous shared roof was restored.` });
       throw error;
     }
   });

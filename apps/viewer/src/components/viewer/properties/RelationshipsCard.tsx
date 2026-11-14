@@ -165,7 +165,7 @@ function RelationshipEdgeItem({ relation, onSelect }: {
   );
 }
 
-function RelItem({ item, onSelect }: {
+export function RelItem({ item, onSelect }: {
   item: { id: number; name?: string; type: string };
   onSelect?: (id: number) => void;
 }) {

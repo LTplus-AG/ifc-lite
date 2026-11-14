@@ -18,7 +18,7 @@ import { IfcParser } from '@ifc-lite/parser';
 import { forwardClosure, parseStep } from './extract-entities.js';
 import { splitTopLevelStepArgs } from './step-args.js';
 import { refsOutsideStrings, splitTopLevelArgs } from './subset-relations.js';
-import { collectDanglingReferences } from './validate.js';
+import { collectDanglingReferences } from './validate-references.js';
 
 const vectors: { name: string; literal: string }[] = JSON.parse(readFileSync(
   new URL('../../../../rust/core/tests/fixtures/step-page-directive.json', import.meta.url), 'utf8',

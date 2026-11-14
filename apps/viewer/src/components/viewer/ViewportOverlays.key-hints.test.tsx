@@ -25,11 +25,12 @@ import { KEY_COMMANDS } from '@/lib/commands/keyboard-commands';
 import { formatCommandKeys } from '@/lib/commands/shortcut-label';
 import { en } from '@/i18n/en';
 import { ViewportOverlays } from './ViewportOverlays';
+import { formFactorState } from '@/test/form-factor-state';
 
 const mounted: Array<{ root: Root; container: HTMLElement }> = [];
 
 function renderMobileOverlays(): HTMLElement {
-  useViewerStore.setState({ isMobile: true });
+  useViewerStore.setState({ ...formFactorState(true) });
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);
@@ -60,7 +61,7 @@ afterEach(() => {
     act(() => root.unmount());
     container.remove();
   }
-  useViewerStore.setState({ isMobile: false });
+  useViewerStore.setState({ ...formFactorState(false) });
 });
 
 describe('mobile nav tooltip key hints (#5846)', () => {

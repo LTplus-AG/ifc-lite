@@ -13,7 +13,7 @@ import { act } from 'react';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
-import { readHostedFill, readWallJoinTarget } from '@ifc-lite/create';
+import { readHostOpeningExtents, readHostedFill, readWallJoinTarget } from '@ifc-lite/create';
 import { IfcAPI, initSync } from '@ifc-lite/wasm';
 import { AnchorEntityReader } from '../../../../../../../packages/create/src/in-store/resolve-anchor.js';
 import { insideMesh, meshWalls } from '../../../../../../../packages/create/src/in-store/wall-join-mesh.oracle.js';
@@ -136,3 +136,51 @@ for (const mode of ['single', 'multi'] as const) for (const unit of ['metre', 'm
     });
   });
 }
+
+// #9296 H: a shaft uses the same host-relative graph after export/reload.
+for (const subtype of ['IFCSLAB', 'IFCSLABSTANDARDCASE', 'IFCSLABELEMENTEDCASE']) for (const unit of ['metre', 'millimetre'] as const) for (const turned of [false, true]) it(`${subtype} shaft in ${unit}, turned=${turned} preserves its source host placement and one-step Undo (#9296)`, async () => {
+  await seedModelingSession({ unit, storeyOffset: [3,3] });
+  const host = built(state().addSlab(MODEL_ID, STOREY, { Position: [5,5,0], Width: 5, Depth: 4, Thickness: .2, ExtrudedDirection: [0,0,-1] }));
+  if (turned) state().rotateEntity(MODEL_ID, host, Math.PI / 2);
+  const sourceReader = new AnchorEntityReader(live().store, live().view);
+  const placement = refId(sourceReader.entity(host)!.attributes[5]);
+  const witness = live().editor.addEntity('IfcBuildingElementProxy', ['2ZQ$n5SLP5MBLyL442paFx', null,
+    'Shared slab placement witness', null, null, `#${placement}`, null, null, '.NOTDEFINED.']).expressId;
+  const sourceText = exportModel().replace(new RegExp(`(#${host}\\s*=\\s*)IFCSLAB\\(`), `$1${subtype}(`);
+  await seedModelingSession({ step: sourceText });
+  const { store, view } = live(), reader = new AnchorEntityReader(store, view);
+  const originalHost = reader.entity(host);
+  assert.equal(originalHost?.type.toUpperCase(), subtype);
+  // Follow the shared LocalPlacement -> Axis2Placement3D -> Location and
+  // direction records, not just the product's unchanged reference numbers.
+  const graph = new Map<number, ReturnType<typeof reader.entity>>();
+  function snapshot(id: number) {
+    if (graph.has(id)) return;
+    const entity = reader.entity(id); graph.set(id, entity);
+    for (const value of entity?.attributes ?? []) {
+      if (typeof value === 'string' && /^#\d+$/.test(value)) snapshot(refId(value));
+    }
+  }
+  snapshot(placement);
+  const unchanged = () => {
+    assert.equal(refId(reader.entity(witness)!.attributes[5]), placement);
+    for (const [id, original] of graph) assert.deepEqual(reader.entity(id), original, `shared placement record #${id}`);
+  };
+  const restore = setRequestRemesh(() => {});
+  try {
+    state().startCommand('opening.place');
+    act(() => { const point = at(turned ? 3 : 7,7); commandPointerMove(point); commandPointerDown(point); });
+    const cuts = readHostOpeningExtents(store, host, view);
+    assert.equal(cuts.cuts.length, 1, 'a real host-relative cut was created');
+    assert.deepEqual(reader.entity(host), originalHost);
+    unchanged();
+    const nativeScale = unit === 'metre' ? 1 : 1000;
+    const cut = cuts.cuts[0].bounds;
+    assert.ok(Math.abs((cut.min[0]+cut.max[0])/2/nativeScale - 2) < 1e-6);
+    assert.ok(Math.abs((cut.min[1]+cut.max[1])/2/nativeScale - 2) < 1e-6);
+    state().undo(MODEL_ID);
+    assert.equal(readHostOpeningExtents(store, host, view).cuts.length, 0);
+    assert.deepEqual(reader.entity(host), originalHost);
+    unchanged();
+  } finally { restore(); }
+});

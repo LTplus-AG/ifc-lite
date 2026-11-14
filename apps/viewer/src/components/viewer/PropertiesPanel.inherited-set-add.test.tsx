@@ -17,13 +17,14 @@ import '@/test/setup-dom.js';
 
 import { afterEach, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { advance, cleanup, click, render, type } from '@/test/render.js';
+import { advance, cleanup, click, press, render, type } from '@/test/render.js';
 import { useViewerStore, type ViewerState } from '@/store';
 import { extractPropertiesOnDemand, extractTypeEntityOwnProperties, type IfcDataStore } from '@ifc-lite/parser';
 import { PropertyValueType } from '@ifc-lite/data';
 import { replayWorkspaceHistory } from '@/lib/model-placement/history';
 import { addToPropertySet } from '@/lib/properties/add-to-property-set';
-import { exportAndReparse, fileRows, panelRows, parseStep, seedModel } from '@/test/properties-panel-harness.js';
+import { exportAndReparse, fileRows, openInlineEditor, panelRows, parseStep, seedModel } from '@/test/properties-panel-harness.js';
+import { toast } from '@/components/ui/toast';
 import { PropertiesPanel } from './PropertiesPanel.js';
 
 const MODEL_ID = 'm1';
@@ -199,6 +200,34 @@ describe('Adding to a type-inherited set overrides it with every property (#5966
     }, 'Custom_S', [{ name: 'S2', value: 's2', type: PropertyValueType.Label }]);
     const set = useViewerStore.getState().mutationViews.get(MODEL_ID)!.getForEntity(10).find((p) => p.name === 'Custom_S');
     assert.deepEqual(set?.properties.map((p) => p.name).sort(), ['S1', 'S2']);
+  });
+
+  it('names the actual type when an inherited override cannot copy a unit-bearing sibling (#9296)', async () => {
+    const full = await parseStep(MODEL.replace("IFCLABEL('t2'),$", "IFCLABEL('t2'),#31"));
+    seedModel(MODEL_ID, ID_OFFSET, full, WALL);
+    const container = render(<PropertiesPanel />);
+    await advance(0);
+    const messages: string[] = [];
+    const original = toast.error;
+    toast.error = (message: string) => { messages.push(message); };
+    try {
+      const row = await openInlineEditor(container, '90:Custom_T:T1');
+      const input = row.querySelector<HTMLInputElement>('input[aria-label="T1"]');
+      assert.ok(input);
+      type(input, 'changed');
+      press(input, 'Enter');
+      await advance(0);
+      const override = [...container.querySelectorAll('button')].find(b => b.textContent?.trim() === 'Override On This Element');
+      assert.ok(override);
+      click(override);
+      await advance(0);
+      assert.equal(messages.length, 1);
+      assert.match(messages[0], /on WT/);
+      assert.doesNotMatch(messages[0], /IfcWallType/);
+      assert.equal(useViewerStore.getState().mutationViews.get(MODEL_ID)!.getForEntity(WALL).some(p => p.name === 'Custom_T'), false);
+    } finally {
+      toast.error = original;
+    }
   });
 
   it('refuses, with nothing written, a set holding a property it cannot copy exactly', async () => {

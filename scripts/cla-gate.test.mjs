@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { createHash } from 'node:crypto';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -13,6 +14,7 @@ import {
   ClaGateError,
   addSignature,
   claFingerprint,
+  coAuthors,
   commentBody,
   decideEvent,
   evaluate,
@@ -27,7 +29,7 @@ const REPO = 'LTplus-AG/ifc-lite';
 const alice = { id: 101, login: 'alice', type: 'User' };
 const bob = { id: 202, login: 'bob', type: 'User' };
 const louis = { id: 78563314, login: 'louistrue', type: 'User' };
-const commit = (author, email = `${author?.login ?? 'x'}@example.com`) => ({ author, commit: { author: { email } } });
+const commit = (author, email = `${author?.login ?? 'x'}@example.com`, message = 'change') => ({ author, commit: { author: { email }, message } });
 const signedBy = (...users) => ({
   cla_version: CLA_VERSION,
   signatures: users.map((u) => ({ github_id: u.id, login: u.login })),
@@ -59,6 +61,12 @@ test('the sign phrase forgives case, outer whitespace and a final full stop, not
 test('pull request events evaluate; closed and labeled do not', () => {
   assert.deepEqual(decideEvent('pull_request_target', { action: 'synchronize', pull_request: { number: 7 } }), { action: 'evaluate', number: 7 });
   assert.equal(decideEvent('pull_request_target', { action: 'closed', pull_request: { number: 7 } }).action, 'ignore');
+  // Retargeting changes the commit list under an unchanged head.
+  assert.deepEqual(
+    decideEvent('pull_request_target', { action: 'edited', changes: { base: { ref: { from: 'stack' } } }, pull_request: { number: 7 } }),
+    { action: 'evaluate', number: 7 },
+  );
+  assert.equal(decideEvent('pull_request_target', { action: 'edited', changes: { title: { from: 'x' } }, pull_request: { number: 7 } }).action, 'ignore');
 });
 
 test('a sign comment on a pull request signs for its commenter only', () => {
@@ -210,6 +218,11 @@ test('the first signature creates the orphan signatures branch, then the PR goes
   assert.deepEqual(commitCall[1].parents, [], 'the signatures branch shares no history with main');
   assert.equal(state.record.signatures[0].github_id, 101);
   assert.equal(state.record.signatures[0].cla_commit, 'a'.repeat(40));
+  assert.equal(
+    state.record.signatures[0].comment_sha256,
+    createHash('sha256').update(SIGN_PHRASE).digest('hex'),
+    'the signed words are pinned against a later edit',
+  );
   assert.equal(state.status.state, 'success');
 });
 
@@ -362,4 +375,44 @@ test('a manual run gives every open pull request a status', () => {
   const out = run({ eventName: 'workflow_dispatch', payload: {}, repo: REPO, claText, claCommit: '1'.repeat(40), spawn });
   assert.deepEqual(out.alsoChecked, [4, 5, 6]);
   assert.equal(state.statuses.length, 3);
+});
+
+// ---- co-author trailers ------------------------------------------------------
+
+test('a co-author named by a GitHub noreply address must sign, even on a maintainer commit', () => {
+  const msg = 'feat: x\n\nCo-authored-by: Alice A <101+alice@users.noreply.github.com>';
+  const r = evaluate({ user: louis }, [commit(louis, 'l@x', msg)], signedBy());
+  assert.equal(r.state, 'failure');
+  assert.deepEqual(r.missing.map((u) => u.id), [101]);
+  assert.equal(evaluate({ user: louis }, [commit(louis, 'l@x', msg)], signedBy(alice)).state, 'success');
+});
+
+test('AI assistants, LTplus addresses and named bots as co-authors need no signature', () => {
+  const msg = [
+    'Co-authored-by: Claude <noreply@anthropic.com>',
+    'co-authored-by: Codex <noreply@openai.com>',
+    'Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>',
+    'Co-authored-by: L <78563314+louistrue@users.noreply.github.com>',
+    'Co-authored-by: L <louistrue@users.noreply.github.com>',
+    'Co-authored-by: L <Louis@LT.plus>',
+    'Co-authored-by: gha <41898282+github-actions[bot]@users.noreply.github.com>',
+  ].join('\n');
+  assert.equal(evaluate({ user: louis }, [commit(louis, 'l@x', `x\n\n${msg}`)], signedBy()).state, 'success');
+});
+
+test('a co-author with another email blocks until an offline signature covers that email', () => {
+  const c = commit(louis, 'l@x', 'x\n\nCo-authored-by: Someone <Someone@Corp.com>');
+  const r = evaluate({ user: louis }, [c], signedBy());
+  assert.equal(r.state, 'failure');
+  assert.deepEqual(r.coauthorEmails, ['someone@corp.com']);
+  assert.match(commentBody(r, 'c', 'f'), /Co-authored-by/);
+  assert.equal(evaluate({ user: louis }, [c], { ...signedBy(), offline: [{ email: 'someone@corp.com' }] }).state, 'success');
+});
+
+test('co-author parsing reads trailer lines only and an id-less noreply address by login', () => {
+  assert.deepEqual(coAuthors('mention Co-authored-by: X <x@y.z> inline\nCo-authored-by: Bob <bob@users.noreply.github.com>'),
+    [{ user: { id: undefined, login: 'bob', type: 'User' } }]);
+  assert.deepEqual(coAuthors('Co-authored-by: C <noreply@anthropic.com>'), [], 'exempt addresses are dropped while parsing');
+  const r = evaluate({ user: louis }, [commit(louis, 'l@x', 'x\n\nCo-authored-by: Bob <bob@users.noreply.github.com>')], signedBy(bob));
+  assert.equal(r.state, 'success', 'an id-less co-author matches the signature by login');
 });

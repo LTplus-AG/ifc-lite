@@ -7,7 +7,6 @@ import type { MutablePropertyView } from '@ifc-lite/mutations';
 import {
   extractPropertiesOnDemand,
   extractQuantitiesOnDemand,
-  extractTypeEntityOwnProperties,
   extractTypeEntityOwnQuantities,
   getInheritanceChainAcrossSchemas,
   type IfcDataStore,
@@ -30,9 +29,7 @@ export function configureSourceMutationView(store: IfcDataStore, view: MutablePr
     }
     return result;
   };
-  view.setOnDemandExtractor(id => isTypeObject(id)
-    ? extractTypeEntityOwnProperties(store, id)
-    : extractPropertiesOnDemand(store, id));
+  view.setOnDemandExtractor((id, current = view, occurrenceId = id) => extractPropertiesOnDemand(store, id, current, occurrenceId));
   configureAuthoredQuantityReader(store, view, id => isTypeObject(id)
     ? extractTypeEntityOwnQuantities(store, id)
     : extractQuantitiesOnDemand(store, id));

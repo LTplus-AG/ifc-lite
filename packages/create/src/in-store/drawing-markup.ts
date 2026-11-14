@@ -30,11 +30,11 @@
  * or renumbered.
  */
 
-import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
+import type { RandomSource } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { SpatialAnchorSchema } from './anchor.js';
 import { toNativeLength } from './anchor.js';
-import { emitLocalPlacement, ownerHistoryRef } from './_emit-helpers.js';
+import { emitLocalPlacement } from './_emit-helpers.js';
 import {
   emitMarkupPolyline,
   emitMarkupPoint2DPlacement,
@@ -42,6 +42,8 @@ import {
   emitMarkupRepresentation,
 } from './drawing-markup-geometry.js';
 import { DRAWING_MARKUP_OBJECTTYPE, DRAWING_MARKUP_PSET_NAME, DRAWING_MARKUP_QSET_NAME } from './drawing-markup-tags.js';
+import { assertFiniteNonNegative, assertFinitePoint, emitAnnotation } from './drawing-markup-emit.js';
+import { addDimensionMarkupToStore, type DimensionMarkupParams, type DimensionMarkupResult } from './drawing-markup-dimension.js';
 
 export {
   DRAWING_MARKUP_OBJECTTYPE,
@@ -143,59 +145,6 @@ export interface CloudMarkupResult {
   fillAreaId: number;
   shapeRepId: number;
   productShapeId: number;
-}
-
-/**
- * A drawing-space coordinate may legitimately be negative or zero — the
- * caller's own drawing origin, not this module's to constrain — so this only
- * rejects NaN/Infinity, never a sign check. Same split `spatial-zone.ts`'s
- * `validateZone` uses for its Footprint points, the closest analog: without
- * it, a NaN/Infinity coordinate reaches `IfcCartesianPoint` as the literal
- * `$` inside a mandatory-REAL attribute list — schema-invalid STEP written
- * with no error.
- */
-function assertFinitePoint(functionName: string, label: string, p: MarkupPoint2D): void {
-  if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) {
-    throw new Error(`${functionName}: ${label} needs a finite point`);
-  }
-}
-
-/**
- * Distance/area/perimeter/extent are derived measurements: never negative,
- * but legitimately zero (a degenerate measurement, e.g. a zero-length
- * measure). So this rejects NaN/Infinity and negative values, not `<= 0`
- * like `_emit-helpers.ts`'s `assertPositiveFinite` (which guards true
- * dimensions — Width, Height — that can never be zero). Without this, a NaN
- * silently becomes a zeroed quantity value on write (`toNativeLength(NaN)`
- * multiplies through to `NaN`, which the STEP writer would still need to
- * catch) rather than failing loudly here.
- */
-function assertFiniteNonNegative(functionName: string, label: string, value: number): void {
-  if (!Number.isFinite(value) || value < 0) {
-    throw new Error(`${functionName}: ${label} must be finite and non-negative`);
-  }
-}
-
-/** IfcAnnotation attribute order: GlobalId, OwnerHistory, Name, Description,
- *  ObjectType, ObjectPlacement, Representation — same 7-slot shape across
- *  IFC2X3/IFC4/IFC4X3 (schema-registry.ts `IfcAnnotation.allAttributes`). */
-function emitAnnotation(
-  editor: StoreEditor,
-  anchor: MarkupAnchor,
-  name: string,
-  objectType: string,
-  placementId: number,
-  productShapeId: number,
-): number {
-  return editor.addEntity('IfcAnnotation', [
-    generateIfcGuid(anchor.guidRandom),
-    ownerHistoryRef(anchor.ownerHistoryId),
-    name,
-    null,
-    objectType,
-    `#${placementId}`,
-    `#${productShapeId}`,
-  ]).expressId;
 }
 
 /** A polyline annotation for one `Measure2DResult`. Distance is preserved as
@@ -335,7 +284,7 @@ export function addCloudMarkupToStore(
   return { annotationId, placementId, polylineId, fillAreaId, shapeRepId, productShapeId };
 }
 
-/** Batch input mirroring the four markup arrays on `Drawing2DState`
+/** Batch input mirroring the markup arrays on `Drawing2DState`
  *  (`apps/viewer/src/store/slices/drawing2DSlice.ts`) structurally, without
  *  importing that module. `id` fields are accepted and ignored here — the
  *  overlay expressId IS the new stable identity; carrying the old
@@ -345,6 +294,8 @@ export interface DrawingMarkupBatchInput {
   polygonArea2DResults?: Array<{ id: string } & PolygonAreaMarkupParams>;
   textAnnotations2D?: Array<{ id: string } & TextMarkupParams>;
   cloudAnnotations2D?: Array<{ id: string } & CloudMarkupParams>;
+  /** Dimensions with their drawn graphics laid out by the caller (see `drawing-markup-dimension.ts`). */
+  dimensions2D?: Array<{ id: string } & DimensionMarkupParams>;
 }
 
 export interface DrawingMarkupBatchResult {
@@ -353,6 +304,7 @@ export interface DrawingMarkupBatchResult {
   polygons: PolygonAreaMarkupResult[];
   texts: TextMarkupResult[];
   clouds: CloudMarkupResult[];
+  dimensions: DimensionMarkupResult[];
 }
 
 /**
@@ -374,5 +326,6 @@ export function addDrawingMarkupToStore(
   const polygons = (input.polygonArea2DResults ?? []).map((p) => addPolygonAreaMarkupToStore(editor, anchor, subContextId, p));
   const texts = (input.textAnnotations2D ?? []).map((t) => addTextMarkupToStore(editor, anchor, subContextId, t));
   const clouds = (input.cloudAnnotations2D ?? []).map((c) => addCloudMarkupToStore(editor, anchor, subContextId, c));
-  return { subContextId, measures, polygons, texts, clouds };
+  const dimensions = (input.dimensions2D ?? []).map((d) => addDimensionMarkupToStore(editor, anchor, subContextId, d));
+  return { subContextId, measures, polygons, texts, clouds, dimensions };
 }

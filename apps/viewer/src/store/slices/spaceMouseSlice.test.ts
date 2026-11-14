@@ -79,4 +79,35 @@ describe('spaceMouseSlice', () => {
     const s = makeStore();
     assert.strictEqual(s.getState().spaceMouseSensitivity, SENSITIVITY.default);
   });
+
+  // #9131: the opt-in driver path is off unless the user turned it on.
+  it('the 3Dconnexion driver opt-in is off by default and survives a reload once turned on', () => {
+    assert.strictEqual(makeStore().getState().spaceMouseUseDriver, false);
+    makeStore().getState().setSpaceMouseUseDriver(true);
+    assert.strictEqual(makeStore().getState().spaceMouseUseDriver, true);
+    makeStore().getState().setSpaceMouseUseDriver(false);
+    assert.strictEqual(makeStore().getState().spaceMouseUseDriver, false);
+  });
+
+  it('the driver opt-in does not disturb the persisted sensitivity entry (#9131)', () => {
+    const s = makeStore();
+    s.getState().setSpaceMouseSensitivity(SENSITIVITY.max);
+    s.getState().setSpaceMouseUseDriver(true);
+    assert.strictEqual(makeStore().getState().spaceMouseSensitivity, SENSITIVITY.max);
+  });
+
+  it('a corrupt driver preference falls back to off (#9131)', () => {
+    localStorage.setItem('ifc-lite:spacemouse-driver', '{not json');
+    assert.strictEqual(makeStore().getState().spaceMouseUseDriver, false);
+    localStorage.setItem('ifc-lite:spacemouse-driver', JSON.stringify({ enabled: 'yes' }));
+    assert.strictEqual(makeStore().getState().spaceMouseUseDriver, false);
+  });
+
+  it('a driver error is kept only while the driver path is unavailable (#9131)', () => {
+    const s = makeStore();
+    s.getState().setSpaceMouseDriverStatus('unavailable', 'driver not reachable');
+    assert.strictEqual(s.getState().spaceMouseDriverError, 'driver not reachable');
+    s.getState().setSpaceMouseDriverStatus('connected', 'stale');
+    assert.strictEqual(s.getState().spaceMouseDriverError, null);
+  });
 });

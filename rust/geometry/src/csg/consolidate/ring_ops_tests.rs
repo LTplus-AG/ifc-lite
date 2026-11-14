@@ -178,3 +178,16 @@ fn tracked_weld_re_anchors_what_was_merged_onto_a_last_vertex_the_closing_merge_
     let ahead = |dropped| Welded { kept: corners[0], dropped, before: true };
     assert_eq!(welded, [ahead(d2), ahead(d1), ahead(last)]);
 }
+
+/// #8190 review: `d` is merged onto `last` from within `CONFORM_TOL`, and the
+/// closing merge then takes `last`. `d` is beyond the tolerance of the first
+/// vertex, its neighbour now, and is recorded against it; `last` is not.
+#[test]
+fn tracked_weld_judges_a_merge_against_the_neighbour_the_closing_merge_leaves_it() {
+    let p = nalgebra::Point2::new;
+    let (first, last, d) = (p(0.0, 0.0), p(-9.0e-5, -9.0e-5), p(-1.7e-4, -1.8e-4));
+    let ring = [first, p(4.0, 0.0), p(4.0, 4.0), p(-4.0, 4.0), p(-4.0, -1.0), last, d];
+    let (kept, welded) = weld_near_coincident_2d_tracked(&ring);
+    assert_eq!(kept, ring[..5]);
+    assert_eq!(welded, [Welded { kept: first, dropped: d, before: true }]);
+}

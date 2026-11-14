@@ -25,9 +25,10 @@ use nalgebra::Point2;
 ///
 /// A vertex is left out when its kept neighbour is no longer in `ring` (the
 /// collinear simplify removed it) or is there twice (a ring pinched at it),
-/// when the ring already has a vertex within `CONFORM_TOL` of the candidate,
-/// or when the candidate lies on one of the ring's edges, where `conform_ring`
-/// inserts it afterwards: put back here as well it would be in the ring twice.
+/// or when the ring already has a vertex within `CONFORM_TOL` of the candidate.
+/// A candidate that lies on one of the ring's edges goes into that edge, as
+/// `conform_ring` would put it afterwards: next to its neighbour as well, it
+/// would be in the ring twice.
 pub(super) fn restore_welded(
     ring: &mut Vec<Point2<f64>>,
     welded: &[Welded],
@@ -45,7 +46,7 @@ pub(super) fn restore_welded(
         }
         let mut anchors = ring.iter().enumerate().filter(|&(_, &p)| p == gone.kept);
         let (Some((at, _)), None) = (anchors.next(), anchors.next()) else { continue };
-        if conform_ring(&mut ring.clone(), &[q]) {
+        if conform_ring(ring, &[q]) {
             continue;
         }
         ring.insert(if gone.before { at } else { at + 1 }, q);
@@ -104,15 +105,30 @@ mod tests {
     }
 
     /// #8190 review: a vertex that folds back onto the edge leading to its kept
-    /// neighbour is `conform_ring`'s to insert. Restored as well, it would be
+    /// neighbour goes into that edge. After its neighbour as well, it would be
     /// in the ring twice and the region would fail to triangulate.
     #[test]
-    fn leaves_a_vertex_on_a_ring_edge_to_conform_ring() {
+    fn puts_a_vertex_on_a_ring_edge_into_that_edge() {
         let (k, d) = (p(1.0, 0.0), p(1.0 - 2.0e-4, 0.0));
         let welded = [Welded { kept: k, dropped: d, before: false }];
         let mut ring = vec![p(0.0, 0.0), k, p(1.0, 1.0), p(0.0, 1.0)];
-        assert!(!restore_welded(&mut ring, &welded, &[d]));
-        assert!(conform_ring(&mut ring, &[d]));
+        assert!(restore_welded(&mut ring, &welded, &[d]));
         assert_eq!(ring, vec![p(0.0, 0.0), d, k, p(1.0, 1.0), p(0.0, 1.0)]);
+        assert!(!conform_ring(&mut ring, &[d]), "and conform_ring has nothing left to add");
+    }
+
+    /// #8190 review: `d2` lies on the edge out of `k` and `d1` does not. `d2`
+    /// goes into the edge at once: left for later, restoring `d1` would have
+    /// replaced that edge and `d2` would be lost.
+    #[test]
+    fn an_edge_vertex_is_placed_before_a_later_restore_replaces_its_edge() {
+        let (k, d1, d2) = (p(0.0, 0.0), p(1.5e-4, 2.0e-4), p(2.0e-4, 0.0));
+        let welded = [
+            Welded { kept: k, dropped: d1, before: false },
+            Welded { kept: k, dropped: d2, before: false },
+        ];
+        let mut ring = vec![k, p(4.0, 0.0), p(4.0, 4.0), p(0.0, 4.0)];
+        assert!(restore_welded(&mut ring, &welded, &[d1, d2]));
+        assert_eq!(ring, vec![k, d1, d2, p(4.0, 0.0), p(4.0, 4.0), p(0.0, 4.0)]);
     }
 }

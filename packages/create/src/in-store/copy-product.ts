@@ -226,11 +226,13 @@ export function copyProductGraph(ctx: CopyContext, sourceId: number, transform: 
   const acc: Dependents = { placements: new Map([[source.placementExpressId, copy.placementId]]), openingIds: [], fillingIds: [], partIds: [], copiedFrom: new Map([[copy.id, sourceId]]), carriedBy: new Map(), boundToGrid: [], cameFree: [] };
   noteGridOutcome(acc, placed, copy.id);
   copyDependents(ctx, sourceId, copy.id, source, targetStoreyId, move, acc, options.shape);
+  // Snapshot roots: roof copying appends plane parts to this map.
+  // eslint-disable-next-line unicorn/no-useless-spread
   for (const [target, original] of [...acc.copiedFrom]) {
     if (ctx.read(original)?.type.toUpperCase() !== 'IFCROOF') continue;
     copyRoofPlaneParts(ctx.store, ctx.editor, original, target, acc.copiedFrom, ctx.guidRandom);
   }
-  for (const [copiedId, originalId] of acc.copiedFrom) cloneEffectiveMetadata(ctx.editor.getMutationView(), ctx.editor, originalId, [copiedId]);
+  for (const [copiedId, originalId] of acc.copiedFrom) cloneEffectiveMetadata(ctx.editor.getMutationView(), ctx.editor, originalId, [copiedId], ctx.store);
   return {
     copyId: copy.id, openingIds: acc.openingIds, fillingIds: acc.fillingIds, partIds: acc.partIds, storeyId: targetStoreyId,
     meshed: [copy.id, ...acc.partIds, ...acc.fillingIds], copiedFrom: acc.copiedFrom, carriedBy: acc.carriedBy,

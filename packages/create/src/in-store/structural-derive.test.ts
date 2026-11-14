@@ -7,13 +7,14 @@
 // Set STRUCTURAL_DERIVE_OUT=<dir> to keep the written files (ifcopenshell validation).
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { generateIfcGuid } from '@ifc-lite/encoding';
-import { IfcParser, extractPropertiesOnDemand, extractStructuralOnDemand, structuralCounterparts, type IfcDataStore } from '@ifc-lite/parser';
+import { IfcParser, STRUCTURAL_DERIVATION_PSET, extractPropertiesOnDemand, extractStructuralOnDemand, structuralConsistencyIssues, structuralCounterparts, type IfcDataStore } from '@ifc-lite/parser';
 import { StepExporter } from '@ifc-lite/export';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
-import { addColumnToStore, applyStructuralDerivation, planStructuralDerivation, readStructuralDerivationFacts, resolveSpatialAnchor } from '../index.js';
+import { addColumnToStore, applyStructuralDerivation, planStructuralDerivation, readStructuralDerivationFacts, resolveSpatialAnchor, structuralPhysicalAxes, transformElementsInStore } from '../index.js';
 import { liveStructuralExtraction } from './structural-derive-facts.js';
+import type { Vec3 } from './structural-derive-types.js';
 
 type Schema = 'IFC2X3' | 'IFC4' | 'IFC4X3';
 
@@ -349,5 +350,127 @@ describe('derive structural analysis model: reading shapes and containment (#966
     expect(fact(102).shapeIssue).toMatch(/arc segments/);
     expect(fact(columnId).storeyId).toBe(32);
     expect(facts.defaultStoreyId).toBe(30);
+  });
+});
+
+describe.each(['IFC2X3', 'IFC4', 'IFC4X3'] as const)('derive provenance and the stale check, %s (#9668)', (schema) => {
+  type Edit = (store: IfcDataStore, editor: StoreEditor) => void;
+  /** Parse STEP text, edit it and write it back. */
+  async function exportAfter(input: string, edit: Edit): Promise<string> {
+    const store = await parse(input);
+    const editor = session(store);
+    edit(store, editor);
+    const { content } = new StepExporter(store, editor.getMutationView()).export({ schema, applyMutations: true });
+    return typeof content === 'string' ? content : new TextDecoder().decode(content);
+  }
+  const derive: Edit = (store, editor) =>
+    applyStructuralDerivation(editor, store, planStructuralDerivation(readStructuralDerivationFacts(store, editor)), seeded());
+  /** The derived model, written once per schema. */
+  let text: string;
+  beforeAll(async () => {
+    text = await exportAfter(model(schema), derive);
+  });
+  /** The stale findings on the derived model after `edit`, written and parsed again. */
+  async function staleAfter(edit: Edit) {
+    const edited = await parse(await exportAfter(text, edit));
+    return structuralConsistencyIssues(edited, { physicalAxes: structuralPhysicalAxes(edited) }).filter((issue) => issue.rule === 'structural-stale-item');
+  }
+  const move = (delta: [number, number]): Edit => (store, editor) =>
+    transformElementsInStore({ dataStore: store, view: editor.getMutationView(), editor, selected: [byName(store, 'B1')], op: { kind: 'move', delta } });
+
+  it("records each curve member's element and its line in metres, and reports nothing stale until the element moves", async () => {
+    const store = await parse(text);
+    const data = extractStructuralOnDemand(store);
+    const beam = byName(store, 'B1');
+    const [member] = data.members.filter((m) => m.physicalElementIds?.includes(beam));
+    const record = store.getProperties(member.expressId).find((set) => set.name === STRUCTURAL_DERIVATION_PSET)!;
+    // The Axis representation's line, before joints moved the member's ends.
+    expect(Object.fromEntries(record.properties.map((p) => [p.name, p.value]))).toEqual({
+      PhysicalElement: store.entities.getGlobalId(beam),
+      PhysicalAxisStartX: 0, PhysicalAxisStartY: 0, PhysicalAxisStartZ: 3,
+      PhysicalAxisEndX: 6, PhysicalAxisEndY: 0, PhysicalAxisEndZ: 3,
+    });
+    const curve = data.members.filter((m) => m.type === 'IfcStructuralCurveMember');
+    expect(curve.filter((m) => store.getProperties(m.expressId).some((set) => set.name === STRUCTURAL_DERIVATION_PSET))).toHaveLength(curve.length);
+    expect(await staleAfter(() => {})).toEqual([]);
+    expect(await staleAfter((s, editor) => {
+      editor.setAttribute(byName(s, 'B1'), 'Name', 'B1 renamed');
+      editor.addPropertySet(byName(s, 'B1'), 'Test_Unrelated', [{ name: 'Note', value: 'x', type: 'LABEL' }]);
+    })).toEqual([]);
+  });
+
+  it('reports the member of a beam moved along its own axis or across it, and only that member, by the distance moved', async () => {
+    const store = await parse(text);
+    const beam = byName(store, 'B1');
+    const members = extractStructuralOnDemand(store).members.filter((m) => m.physicalElementIds?.includes(beam)).map((m) => m.expressId);
+    for (const delta of [[0.4, 0], [0, 0.4]] as Array<[number, number]>) {
+      const stale = await staleAfter(move(delta));
+      expect(stale.map((issue) => [issue.entityId, issue.target])).toEqual(members.map((id) => [id, beam]));
+      for (const issue of stale) expect(issue.distance).toBeCloseTo(0.4, 6);
+    }
+    expect(await staleAfter(move([0.0005, 0]))).toEqual([]);
+  });
+
+  const storeyPlacement = '#20=IFCLOCALPLACEMENT($,#6);';
+  /** `step` with its storey (and every element on it) placed by `origin` (mm), `axis` and `ref`. */
+  const placeStorey = (step: string, origin: string, axis: string, ref: string) => {
+    expect(step.split(storeyPlacement)).toHaveLength(2);
+    return step.replace(storeyPlacement, `#20=IFCLOCALPLACEMENT($,#99001);
+#99001=IFCAXIS2PLACEMENT3D(#99002,#99003,#99004);
+#99002=IFCCARTESIANPOINT((${origin}));
+#99003=IFCDIRECTION((${axis}));
+#99004=IFCDIRECTION((${ref}));`);
+  };
+  /** Far from the origin (2600 km), tilted, with a RefDirection not square to the Axis. */
+  const skew = ['2600000000.,1200000000.,450000.', '0.1,-0.2,1.', '0.7,1.,0.3'] as const;
+  const driftOrStale = (store: IfcDataStore) => structuralConsistencyIssues(store, { physicalAxes: structuralPhysicalAxes(store) })
+    .filter((issue) => issue.rule === 'structural-stale-item' || issue.rule === 'structural-axis-drift');
+
+  it('reports nothing when the storey moves and turns, carrying elements and members with it', async () => {
+    const after = await parse(placeStorey(text, '1000.,2000.,500.', '0.,0.,1.', '0.,1.,0.'));
+    const beam = byName(after, 'B1');
+    // The beam really moved in world coordinates: (0,0,3)-(6,0,3) becomes (1,2,3.5)-(1,8,3.5).
+    const [a, b] = structuralPhysicalAxes(after).get(beam)!;
+    expect([...a, ...b].map((v) => +v.toFixed(6) + 0)).toEqual([1, 2, 3.5, 1, 8, 3.5]);
+    expect(driftOrStale(after)).toEqual([]);
+  });
+
+  it('reads the record back through a storey far from the origin, tilted, with a RefDirection not square to its Axis', async () => {
+    // Placed after derive: the record was written under an identity storey and is read through this one.
+    expect(driftOrStale(await parse(placeStorey(text, ...skew)))).toEqual([]);
+    // Derived under it: the record is written through derive's frame and read through the parser's.
+    const derivedSkewed = await parse(await exportAfter(placeStorey(model(schema), ...skew), derive));
+    const curve = extractStructuralOnDemand(derivedSkewed).members.filter((m) => m.type === 'IfcStructuralCurveMember');
+    expect(curve.length).toBeGreaterThan(0);
+    expect(curve.filter((m) => !derivedSkewed.getProperties(m.expressId).some((set) => set.name === STRUCTURAL_DERIVATION_PSET))).toEqual([]);
+    expect(driftOrStale(derivedSkewed)).toEqual([]);
+  });
+});
+
+describe('derive provenance: apply checks the recorded axis (#9668)', () => {
+  it('refuses a plan whose physical axis is not two finite points, writing nothing', async () => {
+    const store = await parse(model('IFC4'));
+    const editor = session(store);
+    const plan = planStructuralDerivation(readStructuralDerivationFacts(store, editor));
+    const before = editor.getNewEntities().length;
+    for (const axis of [[[0, 0, Number.NaN], [1, 0, 0]], [[0, 0], [1, 0]]]) {
+      const bad = structuredClone(plan);
+      bad.curveMembers[0].physicalAxis = axis as [Vec3, Vec3];
+      expect(() => applyStructuralDerivation(editor, store, bad)).toThrow(/physical axis that is not two finite points/);
+    }
+    expect(editor.getNewEntities().length).toBe(before);
+  });
+
+  it('applies a plan without physical axes and records nothing for its members', async () => {
+    const store = await parse(model('IFC4'));
+    const editor = session(store);
+    const plan = planStructuralDerivation(readStructuralDerivationFacts(store, editor));
+    for (const member of plan.curveMembers) delete member.physicalAxis;
+    applyStructuralDerivation(editor, store, plan, seeded());
+    const { content } = new StepExporter(store, editor.getMutationView()).export({ schema: 'IFC4', applyMutations: true });
+    const reread = await parse(typeof content === 'string' ? content : new TextDecoder().decode(content));
+    const members = extractStructuralOnDemand(reread).members;
+    expect(members.length).toBe(plan.curveMembers.length + plan.surfaceMembers.length);
+    expect(members.filter((m) => reread.getProperties(m.expressId).some((set) => set.name === STRUCTURAL_DERIVATION_PSET))).toEqual([]);
   });
 });

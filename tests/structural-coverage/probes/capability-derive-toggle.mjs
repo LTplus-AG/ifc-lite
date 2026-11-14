@@ -184,7 +184,8 @@ export async function deriveInto(ctx,file) {
 }
 
 export async function measureDerivation(ctx,file) {
-    const expected = referenceGeometry(file.step);
+    // AxisVM's support-only points merge into their joint on the reference only.
+    const expected = referenceGeometry(file.step, { mergeSupports:true });
     return {actual:referenceGeometry(readStep(await deriveInto(ctx,file))),expected};
 }
 

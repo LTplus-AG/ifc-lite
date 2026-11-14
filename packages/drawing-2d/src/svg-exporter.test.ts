@@ -75,6 +75,18 @@ describe('SVGExporter underlays', () => {
     expect(svg).toContain('stroke="#112233"');
   });
 
+  it('lifts a bottom-attached multi-line block so its last line sits on the point', () => {
+    const multi = underlay();
+    multi.layers[0].texts[0] = { ...multi.layers[0].texts[0], text: 'A\nB\nC', valign: 'bottom' };
+    // 1:100 → 2 m height is a 20 mm font, 26 mm line spacing.
+    const svg = exportToSVG(emptyDrawing(), { underlays: [{ underlay: multi }] });
+    expect([...svg.matchAll(/<tspan[^>]* dy="([-\d.]+)"/g)].map((m) => Number(m[1]))).toEqual([-52, 26, 26]);
+    const middle = underlay();
+    middle.layers[0].texts[0] = { ...middle.layers[0].texts[0], text: 'A\nB\nC', valign: 'middle' };
+    const centred = exportToSVG(emptyDrawing(), { underlays: [{ underlay: middle }] });
+    expect([...centred.matchAll(/<tspan[^>]* dy="([-\d.]+)"/g)].map((m) => Number(m[1]))).toEqual([-26, 26, 26]);
+  });
+
   it('honours per-layer visibility overrides', () => {
     const svg = exportToSVG(emptyDrawing(), {
       underlays: [{ underlay: underlay(), layerVisibility: { ANNO: false } }],

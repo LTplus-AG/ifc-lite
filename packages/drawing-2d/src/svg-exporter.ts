@@ -38,6 +38,7 @@ import {
   type Transform2D,
 } from './svg-transform.js';
 import { applyDxfPlacement } from './dxf/convert.js';
+import { DXF_TEXT_LINE_HEIGHT_FACTOR, dxfTextLineOffset } from './dxf/text-layout.js';
 import { DEFAULT_DXF_PLACEMENT, type DxfPlacement, type DxfUnderlay } from './dxf/types.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -499,10 +500,13 @@ export class SVGExporter {
             : text.valign === 'middle' ? 'central'
               : text.valign === 'top' ? 'text-before-edge'
                 : 'alphabetic';
-        // Multiline MTEXT stacks with tspans, matching the canvas layout.
+        // Multiline MTEXT stacks with tspans, matching the canvas layout; the
+        // first one carries the block's attachment offset.
         const lines = text.text.split('\n');
         const content = lines
-          .map((line, i) => `<tspan x="${svgNum(anchor.x)}" dy="${i === 0 ? 0 : svgNum(heightMm * 1.3)}">${this.escapeXml(line)}</tspan>`)
+          .map((line, i) => `<tspan x="${svgNum(anchor.x)}" dy="${svgNum(i === 0
+            ? dxfTextLineOffset(0, lines.length, text.valign, heightMm)
+            : heightMm * DXF_TEXT_LINE_HEIGHT_FACTOR)}">${this.escapeXml(line)}</tspan>`)
           .join('');
         layer += `      <text x="${svgNum(anchor.x)}" y="${svgNum(anchor.y)}" font-family="Arial, sans-serif" font-size="${svgNum(heightMm)}" fill="${text.color ?? dxfLayer.color}" text-anchor="${anchorAttr}" dominant-baseline="${baseline}" transform="rotate(${svgNum(angle, 2)} ${svgNum(anchor.x)} ${svgNum(anchor.y)})">${content}</text>\n`;
       }

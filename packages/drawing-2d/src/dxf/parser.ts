@@ -537,13 +537,21 @@ function parseText(body: DxfPair[]): DxfTextEntity {
         break;
     }
   }
+  // Aligned (3) and Fit (5) run from point 10 to point 11 on the baseline.
+  // Stretching to fit between them is not implemented, so they stay
+  // left-aligned at the start point; anchoring at point 11 would start the
+  // label where it should end.
+  const stretched = hJust === 3 || hJust === 5;
   if (hJust === 1 || hJust === 4) e.hAlign = 'center';
   else if (hJust === 2) e.hAlign = 'right';
   if (vJust === 1) e.vAlign = 'bottom';
   else if (vJust === 2) e.vAlign = 'middle';
   else if (vJust === 3) e.vAlign = 'top';
-  // Non-default justification anchors at the second alignment point.
-  if ((hJust !== 0 || vJust !== 0) && alignX !== null && alignY !== null) {
+  // "Middle" (72=4) centres both ways; its 73 is 0.
+  else if (hJust === 4) e.vAlign = 'middle';
+  if (stretched) e.vAlign = 'baseline';
+  // Other non-default justification anchors at the second alignment point.
+  if (!stretched && (hJust !== 0 || vJust !== 0) && alignX !== null && alignY !== null) {
     e.x = alignX;
     e.y = alignY;
   }

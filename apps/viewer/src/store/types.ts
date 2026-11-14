@@ -584,11 +584,7 @@ export interface FederatedModel extends ModelLoadReportFields {
    * Use this to convert back to original IDs for property lookup
    */
   idOffset: number;
-  /**
-   * Highest local expressId this model owns (`idOffset + maxExpressId` bounds its global ids for
-   * the reverse resolvers). Normally the source's highest id; for a server model whose range a
-   * later model clamped, the published end, below the store's highest id.
-   */
+  /** Highest local expressId this model owns (bounds its global ids for the reverse resolvers); the published end when a later model clamped it. */
   maxExpressId: number;
   /** True when a later model left no published ids for authoring above `maxExpressId`; editing is refused. Persists until a hydration that fits clears it; offset space is never given back. */
   idSpaceExhausted?: boolean;

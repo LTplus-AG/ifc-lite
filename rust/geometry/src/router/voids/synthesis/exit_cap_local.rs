@@ -11,21 +11,31 @@ use super::{CutterFrame, Point3, BAND_FRACTION};
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) enum Contact {
     /// Not over the cutter's footprint.
-    None,
+    Clear,
     /// Over the footprint, within the cap band (a millimetre or more) of its plane.
     Band,
     /// Over the footprint and within the flush band: the cap rests on it.
     On,
 }
 
-/// The contact of a host facet `off` along the axis from a cap. An offset that
-/// is not a number reads as `On`, which keeps the pull-in.
-pub(super) fn contact(f: &CutterFrame, triangle: [Point3<f64>; 3], off: f64) -> Contact {
-    let mag = triangle.iter().map(|p| p.coords.amax()).fold(0.0, f64::max);
-    match (overlaps(f, triangle), off.abs() > flush_band_at(mag)) {
-        (false, _) => Contact::None,
-        (true, true) => Contact::Band,
-        (true, false) => Contact::On,
+/// The flush band where this cutter sits. One value per cutter, so the skin
+/// sample and the facet test draw the same line.
+pub(super) fn flush_band(f: &CutterFrame) -> f64 {
+    flush_band_at([f.lo, f.hi].iter().map(|p| f.point_at(p.x, p.y, p.z).coords.amax()).fold(0.0, f64::max))
+}
+
+/// The contact of a host facet with the cap at `cap` along the axis. A facet
+/// may tilt up to ten degrees off the cap, so its distance is that of its
+/// nearest vertex: the verdict must not turn on which vertex is listed first.
+pub(super) fn contact(f: &CutterFrame, triangle: [Point3<f64>; 3], cap: f64) -> Contact {
+    if !overlaps(f, triangle) {
+        return Contact::Clear;
+    }
+    let off = triangle.iter().map(|p| (p.coords.dot(&f.depth()) - cap).abs()).fold(f64::INFINITY, f64::min);
+    if off > flush_band(f) {
+        Contact::Band
+    } else {
+        Contact::On
     }
 }
 

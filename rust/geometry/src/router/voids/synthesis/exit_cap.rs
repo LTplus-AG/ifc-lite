@@ -11,7 +11,6 @@
 //! Occupancy beyond a cap still separates an exit from a jamb, independent of
 //! host winding. Uncertain finite-contact arithmetic retains the old verdict.
 
-use super::super::flush::flush_band_at;
 use super::super::geom::{mesh_point, point_inside_mesh_agreed, project_aabb_in_frame};
 use super::super::{OpeningFrame, NORMALIZE_EPSILON};
 // Re-exported (not just imported) so `exit_cap::any_vertex_is_large` and
@@ -282,7 +281,7 @@ pub(super) fn detect(host: &Mesh, f: &CutterFrame, pad: f64) -> ExitCaps {
     let (d, band) = (f.depth(), f.cap_band());
     let (mut min_has_surface, mut max_has_surface) = (false, false);
     let (mut host_at_min, mut host_at_max) = (omn, omx);
-    let (mut min_local, mut max_local) = (local::Contact::None, local::Contact::None);
+    let (mut min_local, mut max_local) = (local::Contact::Clear, local::Contact::Clear);
     // Keep global qualification and exit offsets: remote coplanar facets can
     // still require exit clearance. Only a jamb pull-in needs finite contact;
     // otherwise an unrelated floor shortens a new authored blind recess.
@@ -306,12 +305,12 @@ pub(super) fn detect(host: &Mesh, f: &CutterFrame, pad: f64) -> ExitCaps {
         let s = a.coords.dot(&d);
         if (s - omn).abs() <= band {
             min_has_surface = true;
-            min_local = min_local.max(local::contact(f, [a, b, c], s - omn));
+            min_local = min_local.max(local::contact(f, [a, b, c], omn));
             host_at_min = host_at_min.min(s);
         }
         if (s - omx).abs() <= band {
             max_has_surface = true;
-            max_local = max_local.max(local::contact(f, [a, b, c], s - omx));
+            max_local = max_local.max(local::contact(f, [a, b, c], omx));
             host_at_max = host_at_max.max(s);
         }
     }
@@ -376,7 +375,7 @@ pub(super) fn detect(host: &Mesh, f: &CutterFrame, pad: f64) -> ExitCaps {
         }
         // Then just past the flush band: a skin thinner than `probe_offset`
         // (4 mm or more) behind the cap is host all the same.
-        at(flush_band_at(f.point_at(cu, cv, from).coords.amax())).then_some(local::Contact::On)
+        at(local::flush_band(f)).then_some(local::Contact::On)
     };
     // Probe ONLY a cap that qualified: `jamb_needs` casts up to four points
     // and two rays each, and for a cap that is already `Free` every one of

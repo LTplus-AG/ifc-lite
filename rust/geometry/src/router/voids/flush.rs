@@ -6,8 +6,11 @@
 //!
 //! Three rules ask whether a cap ends ON a host face or short of it: the prism
 //! cap extension, the exit-cap probe, and the recess test of the rectangle
-//! paths. Each used to allow about a millimetre, so a recess ending within a
-//! millimetre of the far face was read as reaching it and pushed through.
+//! paths. The first two allowed about a millimetre, so a recess ending within
+//! a millimetre of the far face was read as reaching it and pushed through.
+//! The recess test erred the other way: its tolerance was under what rounding
+//! to the grid moves a face, so a recess starting on a face read as floating
+//! inside the host, and was extended through the far face as well.
 //!
 //! The two bounds here are steps of the kernel grid, floored at f32 noise:
 //! what rounding can move a face, and no more. The extension and the probe use

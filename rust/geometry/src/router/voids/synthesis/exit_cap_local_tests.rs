@@ -107,17 +107,19 @@ fn a_cap_resting_on_the_floor_of_an_existing_void_is_pulled_in() {
 
 #[test]
 fn contact_is_on_within_the_flush_band_and_band_beyond_it() {
+    // The cutter's far cap is at z = 0.0112.
     let (_, cutter) = sheet_and_blind_cutter();
     let frame = CutterFrame::new(&cutter, Vector3::z()).unwrap();
-    let over = [Point3::new(0.0, 0.0, 0.0), Point3::new(3.0, 0.0, 0.0), Point3::new(0.0, 3.0, 0.0)];
-    let beside = over.map(|p| p + Vector3::new(10.0, 0.0, 0.0));
-    assert!(contact(&frame, over, 5.0e-5) == Contact::On);
-    assert!(contact(&frame, over, -8.0e-4) == Contact::Band);
-    assert!(contact(&frame, over, f64::NAN) == Contact::On);
-    assert!(contact(&frame, beside, 0.0) == Contact::None);
+    let facet = |x: f64, z: [f64; 3]| [Point3::new(x, 0.0, z[0]), Point3::new(x + 3.0, 0.0, z[1]), Point3::new(x, 3.0, z[2])];
+    assert!(contact(&frame, facet(0.0, [0.01125; 3]), 0.0112) == Contact::On);
+    assert!(contact(&frame, facet(0.0, [0.012; 3]), 0.0112) == Contact::Band);
+    assert!(contact(&frame, facet(10.0, [0.0112; 3]), 0.0112) == Contact::Clear);
+    // A tilted facet reads the same whichever vertex comes first.
+    for z in [[0.0112, 0.0118, 0.0118], [0.0118, 0.0112, 0.0118], [0.0118, 0.0118, 0.0112]] {
+        assert!(contact(&frame, facet(0.0, z), 0.0112) == Contact::On);
+    }
     // 1 km out the f32 floor is 0.4 mm, so 0.3 mm is still on the cap.
-    let far = over.map(|p| p + Vector3::new(1000.0, 0.0, 0.0));
     let far_cutter = GeometryRouter::make_box_mesh(Point3::new(999.0, 0.0, 0.0), Point3::new(1004.0, 4.0, 1.0));
     let far_frame = CutterFrame::new(&far_cutter, Vector3::z()).unwrap();
-    assert!(contact(&far_frame, far, 3.0e-4) == Contact::On);
+    assert!(contact(&far_frame, facet(1000.0, [1.0003; 3]), 1.0) == Contact::On);
 }

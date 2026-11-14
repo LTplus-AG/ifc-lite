@@ -35,6 +35,7 @@
  * the camera was over 1,000 km from the world origin (#6400).
  */
 
+import { isBorrowedSelection } from './textured-selection.js';
 import { packClipBox } from './clip-box.js';
 import { MESH_FLAG_RTE_DRAWABLE, MESH_FLAGS_BYTE_OFFSET, MESH_UNIFORM_OFFSET, packRteFragmentSpace } from './mesh-rte-uniforms.js';
 import type { RelativeToEyeFrame } from './relative-to-eye.js';
@@ -79,7 +80,7 @@ export function matchesHoveredMesh(mesh: Mesh, hoveredId: number, selectedModelI
 
 function toSelectable(mesh: Mesh): SelectableMesh | null {
   if (!mesh.bindGroup) return null;
-  return { vertexBuffer: mesh.vertexBuffer, indexBuffer: mesh.indexBuffer, indexCount: mesh.indexCount, bindGroup: mesh.bindGroup };
+  return { vertexBuffer: mesh.vertexBuffer, indexBuffer: mesh.indexBuffer, indexCount: mesh.indexCount, bindGroup: mesh.bindGroup, ...(isBorrowedSelection(mesh) ? { vertexStride: 36 as const } : {}) };
 }
 
 const IDENTITY_TRANSFORM: Mesh['transform'] = { m: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]) };

@@ -245,3 +245,20 @@ describe('slot.run settles the lease from how the task ends', () => {
     assert.equal(ended.kind === 'cancelled' ? ended.reason : null, 'scope');
   });
 });
+
+it('fails a refresh row while atomically restoring its prior record (#10139)', () => {
+  const { slot, store, job } = slotOn({ journal: true });
+  const previous = { kind: 'succeeded' as const, runId: 42, result: 'retained' };
+  const lease = slot.begin({ model: 'a' });
+  const observed: TestRun[] = [];
+  const stop = store.subscribe(state => observed.push(state.job));
+  try { assert.equal(lease.fail('Refresh unavailable', { record: previous }), true); }
+  finally { stop(); }
+  assert.deepEqual(observed, [previous]);
+  assert.equal(lease.signal.aborted, true);
+  assert.equal(lease.isCurrent(), false);
+  assert.equal(lease.succeed('late'), false);
+  assert.deepEqual(job(), previous);
+  assert.equal(rows()[0].outcome, 'failed');
+  assert.equal(rows()[0].detail, 'Refresh unavailable');
+});

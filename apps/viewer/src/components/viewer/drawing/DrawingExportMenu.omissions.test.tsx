@@ -165,6 +165,24 @@ describe('drawing export notices (#5850)', () => {
   });
 
   for (const item of ['Download SVG', 'Print']) {
+    it(`${item} leaves the other-cut notice to the successful handler, with no duplicate prompt (#10020, #10167)`, async () => {
+      const { ConfirmDialogHost } = await loadDialogs();
+      let exports = 0;
+      render(<>
+        <DrawingExportMenu {...props({ otherCutDimensionCount: 1,
+          markupCounts: { ...emptyCounts, dimensions: 1 }, dimensionGraphicsAt: () => [],
+          onExportSvg: () => { exports++; }, onPrint: () => { exports++; },
+        })} />
+        <ConfirmDialogHost />
+      </>);
+      openMenu();
+      selectItem(item);
+      assert.equal(document.body.querySelector('[role="alertdialog"]'), null, 'the handler supplies the single counted other-cut notice');
+      assert.equal(exports, 1);
+    });
+  }
+
+  for (const item of ['Download SVG', 'Print']) {
     it(`${item} warns before the shared rule drops a zero-length dimension (#10020)`, async () => {
       const { ConfirmDialogHost } = await loadDialogs();
       let exports = 0;

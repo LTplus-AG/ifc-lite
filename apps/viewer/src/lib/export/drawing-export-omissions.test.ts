@@ -116,7 +116,9 @@ describe('drawing export omissions (#5850)', () => {
       assert.deepEqual(await omissions(content, format), []);
       assert.deepEqual(await omissions({ ...content, sheetScale: 50 }, format), ['markups']);
       assert.deepEqual(await omissions({ ...content, dimensionGraphics: [graphic(0)] }, format), ['markups']);
-      assert.deepEqual(await omissions({ ...content, otherCutDimensionCount: 1 }, format), ['otherCutDimensions']);
+      // #10167 supplies the single counted other-cut toast after successful output.
+      assert.deepEqual(await omissions({ ...content, otherCutDimensionCount: 1 }, format), []);
+      assert.deepEqual(await omissions({ ...content, otherCutDimensionCount: 1, dimensionGraphics: [graphic(0)] }, format), ['markups']);
     }
   });
 

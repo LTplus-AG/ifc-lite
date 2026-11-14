@@ -7,6 +7,7 @@ import { commandPointerCancel, getCommandRuntime, type CommandRuntimeState } fro
 import { refuseCaptureHeldPick } from '@/lib/viewport-capture';
 import { releasePointer } from '@/lib/pointer-capture';
 import { useViewerStore } from '@/store';
+import { isGeometryHeld } from '@/lib/pick-gating';
 import { cancelCommandPointer, routeCommandPointer } from './commandPointer.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 
@@ -14,6 +15,7 @@ interface Press {
   pointerId: number;
   runtime: CommandRuntimeState;
   onPress: boolean;
+  held: boolean;
 }
 
 export function createCommandPressController(ctx: MouseHandlerContext) {
@@ -49,12 +51,14 @@ export function createCommandPressController(ctx: MouseHandlerContext) {
       const runtime = getCommandRuntime();
       if (!runtime.command || !runtime.ctx) return false;
       cancelCommandPointer(ctx);
-      press = { pointerId: event.pointerId, runtime, onPress: runtime.command.pointerDownOnPress?.(runtime.gesture) === true };
+      press = { pointerId: event.pointerId, runtime, onPress: runtime.command.pointerDownOnPress?.(runtime.gesture) === true,
+        held: isGeometryHeld(useViewerStore.getState()) };
       if (press.onPress) feed('down', event);
       return true;
     },
     move(event: PointerEvent): boolean {
       if (!press || event.pointerId !== press.pointerId) return false;
+      if (press.held) return true;
       if (!sameRuntime(press) || (event.buttons & 1) === 0) { cancel(); return true; }
       feed('move', event);
       return true;
@@ -66,8 +70,9 @@ export function createCommandPressController(ctx: MouseHandlerContext) {
       press = null; // Clear before releasePointer emits lostpointercapture.
       const current = sameRuntime(owner);
       cancelCommandPointer(ctx);
-      ctx.mouseState.didDrag = owner.onPress || !current;
-      if (owner.onPress && current) feed('up', event);
+      ctx.mouseState.didDrag = owner.held || owner.onPress || !current;
+      // A press taken before a restore hold and released during it: its 'up' would be held back, leaving the drag grabbed.
+      if (owner.onPress && current && !owner.held) { if (isGeometryHeld(useViewerStore.getState())) commandPointerCancel(); else feed('up', event); }
       return true;
     },
     cancel,

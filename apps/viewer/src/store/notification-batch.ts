@@ -20,8 +20,8 @@
  * that flush notifies normally.
  *
  * Contract for holders: synchronous code only, and release on every path
- * (`release` is idempotent). A hold left open across an `await` would delay
- * every subscriber, React included, until it closes.
+ * (`release` is idempotent). The microtask backstop in
+ * `holdViewerStoreNotifications` bounds a missed release to the current task.
  *
  * Outermost middleware: it wraps only `subscribe`, so `withStoreChurnCounters`
  * (#6957) counts the callbacks that actually run.
@@ -35,6 +35,9 @@ interface StoreBatch { getState: () => unknown; due: Map<object, { listener: Lis
 let depth = 0;
 /** Per store: due subscriptions -> the state before their first deferred write (insertion order = subscription order). */
 const stores = new Set<StoreBatch>();
+let backstopReleases = 0;
+/** How many holds the microtask backstop had to release (tests; a non-zero count in a load means a missed release path). */
+export function notificationBackstopReleases(): number { return backstopReleases; }
 
 function flush(): void {
   for (const store of stores) {
@@ -48,17 +51,31 @@ function flush(): void {
   }
 }
 
-/** Open a hold; the returned release is idempotent and flushes when the last hold closes. */
+/**
+ * Open a hold; the returned release is idempotent and flushes when the last hold closes.
+ *
+ * Backstop: a hold can never outlive the task that opened it. A microtask
+ * queued here releases it if the holder has not, so a hold left open by a
+ * missed path, or spanning an `await`, ends at the first microtask
+ * checkpoint, and subscribers then see the state as usual.
+ */
 export function holdViewerStoreNotifications(): () => void {
   depth += 1;
   let open = true;
-  return () => {
+  const release = () => {
     if (!open) return;
     open = false;
     depth -= 1;
     if (depth === 0) flush();
   };
+  queueMicrotask(() => {
+    if (!open) return;
+    backstopReleases += 1;
+    release();
+  });
+  return release;
 }
+
 
 export function withNotificationBatching<
   T,

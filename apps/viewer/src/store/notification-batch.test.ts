@@ -5,7 +5,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { create } from 'zustand';
-import { holdViewerStoreNotifications, withNotificationBatching } from './notification-batch.js';
+import { readFileSync } from 'node:fs';
+import { holdViewerStoreNotifications, notificationBackstopReleases, withNotificationBatching } from './notification-batch.js';
 import { useViewerStore } from './index.js';
 
 type S = { a: number; b: number; bump: () => void };
@@ -83,5 +84,62 @@ describe('store notification batching', () => {
     off2();
     assert.ok(free >= 6, `without a hold the reset notified ${free} times`);
     assert.equal(held, 1);
+  });
+
+  describe('the hold never outlives the synchronous reset', () => {
+    it('a throw inside a held burst: the catch/finally release notifies once and leaves no hold', () => {
+      const store = makeStore(); let n = 0;
+      store.subscribe(() => { n += 1; });
+      const release = holdViewerStoreNotifications();
+      try {
+        try { store.getState().bump(); throw new Error('reset failed'); }
+        catch { release(); }
+      } finally { release(); }
+      assert.equal(n, 1);
+      store.getState().bump();
+      assert.equal(n, 2, 'later writes notify immediately: no hold left open');
+    });
+
+    it('a hold left open (missed release, or an await inside it) is released by the microtask backstop', async () => {
+      const store = makeStore(); let n = 0;
+      store.subscribe(() => { n += 1; });
+      const before = notificationBackstopReleases();
+      holdViewerStoreNotifications(); // never released by its holder
+      store.getState().bump();
+      assert.equal(n, 0);
+      await Promise.resolve(); // the first microtask checkpoint, as an `await` in the holder would reach
+      assert.equal(n, 1);
+      assert.equal(notificationBackstopReleases(), before + 1);
+      store.getState().bump();
+      assert.equal(n, 2);
+    });
+
+    it('a re-entrant load (a second hold opened and released inside the first, or outliving it) flushes once, at the last release', async () => {
+      const store = makeStore(); const seen: Array<[number, number]> = [];
+      store.subscribe((s, p) => seen.push([s.a, p.a]));
+      const first = holdViewerStoreNotifications();
+      store.getState().bump();
+      const second = holdViewerStoreNotifications(); // e.g. a primary load started from inside the first one
+      store.getState().bump();
+      first(); // the outer load releases first
+      assert.deepEqual(seen, []);
+      store.getState().bump();
+      second();
+      assert.deepEqual(seen, [[3, 0]]);
+      const before = notificationBackstopReleases();
+      await Promise.resolve();
+      assert.equal(notificationBackstopReleases(), before, 'both holders released: the backstop had nothing to do');
+    });
+
+    it('useIfcLoader: no await, return or yield between the hold and its release, and catch/finally release too', () => {
+      const src = readFileSync(new URL('../hooks/useIfcLoader.ts', import.meta.url), 'utf8');
+      const open = src.indexOf('holdViewerStoreNotifications()');
+      const close = src.indexOf('\n      releaseNotifications();', open);
+      assert.ok(open > 0 && close > open, 'hold and release found');
+      const held = src.slice(open, close).split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
+      assert.doesNotMatch(held, /\bawait\b|\breturn\b|\byield\b/);
+      assert.match(src, /\} catch \(err\) \{ releaseNotifications\(\);/);
+      assert.match(src, /\} finally \{\n\s+settleResumable\(\); releaseNotifications\(\);/);
+    });
   });
 });

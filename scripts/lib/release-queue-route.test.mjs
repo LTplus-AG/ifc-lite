@@ -158,6 +158,10 @@ test('READ (#10274): a queue rule\'s commit_message_format is skipped, and only 
   const misindented = MERGIFY.replace('      title: pr-title', '     title: pr-title');
   assert.notEqual(misindented, MERGIFY, 'the fixture edit applied');
   assert.match(releaseQueueRoute(misindented, { labels: ['mergify-trial'], draft: false }).reason, /has lines this script cannot read/);
+  // Sibling keys at uneven indents are not one map, so a 7-space key refuses.
+  const uneven = MERGIFY.replace('      body: pr-body', '       body: pr-body');
+  assert.notEqual(uneven, MERGIFY, 'the fixture edit applied');
+  assert.match(releaseQueueRoute(uneven, { labels: ['mergify-trial'], draft: false }).reason, /has lines this script cannot read/);
   // Only plain words are skipped: an open quote or a block scalar could run on
   // into the conditions after it, so either one refuses.
   for (const value of ['"pr-title', '|', '{{ title }}', '[a, b]']) {

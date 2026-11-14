@@ -91,11 +91,14 @@ function readRules(text, topKey) {
     }
     // `commit_message_format` shapes the squash commit message only (#10273):
     // nothing under it can route, queue or gate a PR, so its nested map is
-    // skipped. Only plain words are accepted there (`title: pr-title`,
-    // `trailers:`, `- co-authored-by`): a quote, bracket or block scalar could
-    // run on into the lines after it, so those are unread like anything else.
+    // skipped. Only two shapes are accepted there, at their exact indent: a
+    // 6-space key with a plain word or nothing (`title: pr-title`,
+    // `trailers:`) and an 8-space item of one plain word (`- co-authored-by`).
+    // A quote, bracket or block scalar could run on into the lines after it,
+    // and any other indent is not this map, so those are unread like anything
+    // else.
     if (section === 'commit_message_format') {
-      if (!/^ {6,}(- )?[\w-]+(:(\s+[\w-]+)?)?\s*(#.*)?$/.test(line)) unread(line);
+      if (!/^( {6}[\w-]+:(\s+[\w-]+)?| {8}- [\w-]+)\s*(#.*)?$/.test(line)) unread(line);
       continue;
     }
     if (section.startsWith('actions')) {

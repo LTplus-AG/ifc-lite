@@ -12,6 +12,7 @@
 import { PenLine } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
+import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 
@@ -23,8 +24,7 @@ export function StatusBarWorkspaceChip() {
   const storeyName = useViewerStore((s) => {
     const session = s.session;
     if (!session || session.storeyId === null) return null;
-    const store = s.models.get(session.modelId)?.ifcDataStore;
-    return store?.entities.getName(session.storeyId) || null;
+    return modelStoreys(s, session.modelId).find(level => level.expressId === session.storeyId)?.name ?? null;
   });
   const toggleEditEnabled = useViewerStore((s) => s.toggleEditEnabled);
   if (!hasModel || !canEdit) return null;

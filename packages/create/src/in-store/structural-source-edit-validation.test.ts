@@ -72,3 +72,21 @@ describe.each(['IFC4', 'IFC4X3'] as const)('%s load-case predefined type validat
     }
   });
 });
+
+// #9668: the eccentricity of a member-connection relationship is a structural resource.
+describe.each(['IFC2X3', 'IFC4', 'IFC4X3'] as const)('%s connection eccentricity edit', schema => {
+  it.each(['source', 'overlay'] as const)('edits EccentricityInX and the extractor returns it (%s)', async storage => {
+    const eccentricityOf = async (text: string) => parser.extractStructuralOnDemand(await parse(text)).members
+      .flatMap(m => m.IfcRelConnectsStructuralMember ?? []).find(r => r.ConnectionConstraint)?.ConnectionConstraint;
+    const scene = await editScene(schema, storage, 'IfcFailureConnectionCondition');
+    const initial = await eccentricityOf(scene.created);
+    expect(initial).toBeDefined();
+    const expressId = initial!.expressId;
+    create.editStructuralEntityInStore(scene.store, scene.editor, expressId, { EccentricityInX: 0.15 });
+    const edited = scene.exportText();
+    expect(await eccentricityOf(edited)).toMatchObject({ expressId, EccentricityInX: 0.15, EccentricityInY: 0.2 });
+    // Its relationship requires it, so removal goes through that relationship.
+    expect(() => create.removeStructuralEntityInStore(scene.store, scene.editor, expressId)).toThrow(/remove the relationship that owns it/);
+    expect(scene.exportText()).toBe(edited);
+  });
+});

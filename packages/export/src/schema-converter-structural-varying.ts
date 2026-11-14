@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 /** Matches rust/export/src/schema_structural_varying.rs (#9668). */
 import type { IfcDataStore } from '@ifc-lite/parser';
+import { destabilizingUnknown } from './schema-converter-structural.js';
 import { listItems } from './schema-converter-structural-axes.js';
 import { refId } from './schema-ifc2x3-records.js';
 import { decodeRange } from './source-ref-bounds.js';
@@ -99,7 +100,7 @@ export class StructuralVarying {
     if (!config?.type || config.values.length < kind.min || !(kind.first as readonly string[]).includes(config.type) || aspects?.length !== 1) return undefined;
     const [first, ...rest] = config.values.map((v) => `#${v}`);
     // `inspect` reports this for the records it sees; a rewritten one skips it.
-    const losses = args[9].trim() === '$' ? [TO_IFC2X3, `${entity}.DestabilizingLoad is unknown; IFC2X3 requires a boolean, so the writer substitutes .F.`] : [TO_IFC2X3];
+    const losses = [TO_IFC2X3, ...(args[9].trim() === '$' ? [destabilizingUnknown(entity)] : [])];
     return { body: `${kind.ifc2x3}(${[...args.slice(0, 7), first, args[8], args[9], '$', args[10], `#${aspects[0]}`, `(${rest.join(',')})`].join(',')})`, losses };
   }
 }

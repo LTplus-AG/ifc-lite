@@ -148,7 +148,7 @@ impl StructuralVarying {
         let tail = [format!("#{}", values[0]), args[8].clone(), args[9].clone(), "$".into(), args[10].clone(), format!("#{aspect}"), format!("({rest})")];
         let mut losses = vec![TO_IFC2X3.to_string()];
         // `inspect` reports this for the records it sees; a rewritten one skips it.
-        if args[9].trim() == "$" { losses.push(format!("{entity}.DestabilizingLoad is unknown; IFC2X3 requires a boolean, so the writer substitutes .F.")); }
+        if args[9].trim() == "$" { losses.push(crate::schema_structural::destabilizing_unknown(entity)); }
         Some((format!("{}({})", kind.ifc2x3, [&args[..7], &tail].concat().join(",")), losses))
     }
 

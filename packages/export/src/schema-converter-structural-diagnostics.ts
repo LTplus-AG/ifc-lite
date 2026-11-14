@@ -2,7 +2,7 @@
 /** Matches rust/export/src/schema_structural_diagnostics.rs (#9668). */
 import { getSchemaRegistryForVersion, getCanonicalEntityName, type IfcDataStore } from '@ifc-lite/parser';
 import { convertEntityType } from './schema-converter.js';
-import { isStructuralAssignmentConversion } from './schema-converter-structural.js';
+import { destabilizingUnknown, isStructuralAssignmentConversion } from './schema-converter-structural.js';
 import { StructuralAxes } from './schema-converter-structural-axes.js';
 import { StructuralLinks } from './schema-converter-structural-links.js';
 import { StructuralVarying } from './schema-converter-structural-varying.js';
@@ -50,7 +50,7 @@ export class StructuralDiagnostics {
       if (attr.name === 'PredefinedType' && rec.slots[i]?.trim() === '.CONST.'
         && ['IFCSTRUCTURALCURVEACTION', 'IFCSTRUCTURALSURFACEACTION', 'IFCSTRUCTURALLINEARACTION', 'IFCSTRUCTURALPLANARACTION'].includes(rec.type)) return;
       if (attr.name === 'DestabilizingLoad' && rec.slots[i]?.trim() === '$' && to === 'IFC2X3')
-        this.record(`${rec.type}.DestabilizingLoad is unknown; IFC2X3 requires a boolean, so the writer substitutes .F.`);
+        this.record(destabilizingUnknown(rec.type));
       if (!tgt.includes(attr.name) && rec.slots[i] && !['$', '*', ''].includes(rec.slots[i].trim())) {
         const effect = attr.name === 'ConditionCoordinateSystem' ? '; restraint directions in that coordinate system are not preserved' : '';
         this.record(`${rec.type}.${attr.name} has no slot in ${to}; its value is omitted${effect}`);

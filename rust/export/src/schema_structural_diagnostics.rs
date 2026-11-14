@@ -3,6 +3,8 @@
 use std::collections::BTreeMap;
 use crate::schema_convert::{rename_type, schema_attribute_names};
 
+const LINK: &str = "IfcRelAssignsToProduct linking one structural member to its element is written as IfcRelConnectsStructuralElement, the IFC2X3 physical-to-analytical link";
+
 #[derive(Default)]
 pub(crate) struct StructuralDiagnostics {
     losses: BTreeMap<String, usize>,
@@ -31,7 +33,7 @@ impl StructuralDiagnostics {
             if *name == "PredefinedType" && value.trim() == ".CONST."
                 && matches!(entity, "IFCSTRUCTURALCURVEACTION" | "IFCSTRUCTURALSURFACEACTION" | "IFCSTRUCTURALLINEARACTION" | "IFCSTRUCTURALPLANARACTION") { continue; }
             if *name == "DestabilizingLoad" && value.trim() == "$" && to == "IFC2X3" {
-                self.record(format!("{entity}.DestabilizingLoad is unknown; IFC2X3 requires a boolean, so the writer substitutes .F."));
+                self.record(crate::schema_structural::destabilizing_unknown(entity));
             }
             if !tgt.contains(name) && !matches!(value.trim(), "$" | "*" | "") {
                 let effect = if *name == "ConditionCoordinateSystem" { "; restraint directions in that coordinate system are not preserved" } else { "" };
@@ -52,11 +54,10 @@ impl StructuralDiagnostics {
     /// (`StructuralLinks`, `StructuralVarying`, each armed only for its schema
     /// pair): the target record body, reported because the class changes.
     pub(crate) fn rewrite(&mut self, id: u32, entity: &str, args: &[String]) -> Option<String> {
-        if let Some(attrs) = self.links.link(entity, args) {
-            self.record("IfcRelAssignsToProduct linking one structural member to its element is written as IfcRelConnectsStructuralElement, the IFC2X3 physical-to-analytical link".into());
-            return Some(format!("IFCRELCONNECTSSTRUCTURALELEMENT({attrs})"));
-        }
-        let (body, losses) = self.varying.rewrite(id, entity, args)?;
+        let (body, losses) = match self.links.link(entity, args) {
+            Some(attrs) => (format!("IFCRELCONNECTSSTRUCTURALELEMENT({attrs})"), vec![LINK.to_string()]),
+            None => self.varying.rewrite(id, entity, args)?,
+        };
         losses.into_iter().for_each(|loss| self.record(loss));
         Some(body)
     }

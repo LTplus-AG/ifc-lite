@@ -520,6 +520,20 @@ it('a drag that crosses a model switch records nothing, even onto a same-id dime
   assert.equal(useViewerStore.getState().dimension2DUndo.length, 0);
 });
 
+it('a drag interrupted by a switch away and back (A→B→A) records nothing', () => {
+  const d1 = { id: 'd1', a: { x: 0, y: 0 }, b: { x: 4, y: 0 }, offset: -1, orientation: 'aligned' as const, plane: PLANE };
+  useViewerStore.setState({ drawing2D: drawing(), annotation2DActiveTool: 'none', activeModelId: 'A', dimensions2D: [d1] });
+  const canvas = render(<Harness />).firstElementChild!;
+  mouseDown(canvas, { clientX: 200, clientY: -100 });
+  mouseMove(canvas, { clientX: 250, clientY: -50 });
+  act(() => useViewerStore.setState({ activeModelId: 'B', dimensions2D: [], dimension2DUndo: [], dimension2DRedo: [] }));
+  act(() => useViewerStore.setState({ activeModelId: 'A', dimensions2D: [d1], dimension2DUndo: [], dimension2DRedo: [] }));
+  mouseMove(canvas, { clientX: 300, clientY: 0 });
+  act(() => { window.dispatchEvent(new window.MouseEvent('mouseup')); });
+  assert.deepEqual(useViewerStore.getState().dimensions2D[0].a, { x: 0, y: 0 }, 'not moved after the round trip');
+  assert.equal(useViewerStore.getState().dimension2DUndo.length, 0, 'and nothing recorded');
+});
+
 it('placing a dimension with the tool is undoable from the keyboard', () => {
   useViewerStore.setState({ drawing2D: drawing(), annotation2DActiveTool: 'dimension' });
   const canvas = render(<Harness />).firstElementChild!;

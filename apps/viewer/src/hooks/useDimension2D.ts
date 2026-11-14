@@ -163,6 +163,11 @@ export function useDimension2D(p: UseDimension2DParams) {
     window.addEventListener('keydown', onHistoryKey, true);
     return () => window.removeEventListener('keydown', onHistoryKey, true);
   }, [toolActive]);
+  // Any model switch ends a drag for good (even A→B→A before the next move), so a drag
+  // never moves or records against markup it did not start on.
+  useEffect(() => useViewerStore.subscribe((s, prev) => {
+    if (s.activeModelId !== prev.activeModelId) dragging.current = null;
+  }), []);
   useEffect(() => {
     const release = () => {
       const drag = dragging.current;
@@ -256,8 +261,6 @@ export function useDimension2D(p: UseDimension2DParams) {
     const screen = screenPoint(e);
     if (!screen) return false;
     const state = useViewerStore.getState();
-    // A drag ends at a model switch: it never moves the next model's markup.
-    if (dragging.current && dragging.current.model !== state.activeModelId) dragging.current = null;
     const drag = dragging.current;
     if (drag) {
       const at = mapping.toDrawing(screen);

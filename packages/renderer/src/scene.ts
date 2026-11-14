@@ -18,10 +18,12 @@ import { createStaticGpuBuffer } from './gpu-static-upload.js';
 import { createSceneAppearancePreview, rebindSceneAppearanceAccess, type SceneAppearanceAccess } from './scene-appearance-preview.js';
 import { AppearanceBuckets } from './scene-appearance-buckets.js';
 import { AuthoredPreparationRegistry, prepareSceneAuthoredOwner } from './scene-authored-owner.js';
+import { captureTexturedSource, findTexturedDrawable, type TexturedMesh, type TexturedSource } from './textured-drawable.js';
+export type { TexturedMesh } from './textured-drawable.js';
 import { interleaveTexturedVertices } from './textured-vertices.js';
 import { RgbaTexturePool } from './rgba-texture-pool.js';
 import { splitMeshForStreaming } from './scene-stream-split.js';
-import type { Mesh, BatchedMesh, Vec3, PickClipState, Material, MeshFinish } from './types.js';
+import type { Mesh, BatchedMesh, Vec3, PickClipState } from './types.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import { hostsOtherEntities } from './mesh-entity-hosting.js';
 import type { RenderPipeline } from './pipeline.js';
@@ -102,49 +104,6 @@ interface BatchBucket {
  * Accepts the structural shape so it works for both BatchedMesh and
  * Mesh — they each carry the same buffer trio.
  */
-/** A surface-textured mesh (#961): its own interleaved vertex buffer (with a UV
- *  lane), index buffer, per-mesh uniform buffer, GPU texture + sampler, and a
- *  bindGroup wiring all three. Drawn per-mesh in a dedicated sub-pass. */
-export interface TexturedMesh {
-  expressId: number;
-  modelIndex?: number;
-  bounds?: { min: [number, number, number]; max: [number, number, number] };
-  vertexBuffer: GPUBuffer;
-  indexBuffer: GPUBuffer;
-  indexCount: number;
-  uniformBuffer: GPUBuffer;
-  texture: GPUTexture;
-  sampler: GPUSampler;
-  bindGroup: GPUBindGroup;
-  /** Authored tint (multiplies the sampled texel); white = texture passthrough. */
-  color: [number, number, number, number];
-  /** A caller-supplied finish, mirroring {@link Mesh.material}. */
-  material?: Material;
-  /** IFC-authored finish (#5582), copied from `MeshData.material` at upload
-   *  (#5984); like {@link Mesh.finish}, `packMeshMaterial` prefers it. */
-  finish?: MeshFinish;
-  /**
-   * The mesh's per-element local frame (`MeshData.origin`, already Y-up) — the
-   * renderer must reconstruct `world = origin + position`.
-   *
-   * The interleaved vertex buffer stores positions RELATIVE to this, which is
-   * the whole point of the local frame (#1114): keeping the world magnitude out
-   * of f32 so building-scale coordinates don't collapse adjacent vertices into
-   * degenerate fans. So it is applied as the draw's model translation, never
-   * folded back into the vertex data.
-   *
-   * `[0, 0, 0]` for the #961 orphan type-geometry path, whose positions are
-   * already absolute (`transform_mesh_local`); non-zero for the #1793
-   * occurrence path (`apply_submesh_placement` → `transform_mesh_world`), which
-   * is what real exporters write. Dropping it drew every textured occurrence
-   * collapsed toward the world origin (#1973).
-   */
-  origin: [number, number, number];
-  /** Set when `texture` lives in the shared registry (#1781: one GPU texture
-   *  per `IfcImageTexture`, sampled by many meshes) — released by refcount,
-   *  never destroyed per-mesh. Undefined for per-mesh #961 blob/pixel uploads. */
-  sharedTextureKey?: number;
-}
 
 /**
  * One GPU-uploaded instanced template: unique geometry (slot-0 vertex + index
@@ -179,10 +138,8 @@ export class Scene {
   private meshDataMap: Map<number, MeshData[]> = new Map();         // Map expressId -> MeshData[] (for lazy buffer creation, accumulates multiple pieces)
   private boundingBoxes: Map<number, BoundingBox> = new Map();      // Map expressId -> bounding box (computed lazily)
   private texturedMeshes: TexturedMesh[] = [];                      // #961: IFC surface-textured meshes (own buffers/texture/bindGroup)
-  /** The `positions` each textured drawable was uploaded from. Matched by the
-   *  array, not the MeshData: the appearance preview installs `{...part}`
-   *  copies, which share the array but not the object identity. */
-  private texturedSourcePositions = new WeakMap<TexturedMesh, MeshData['positions']>();
+  /** Uploaded field identities: preview wrappers share them, distinct pieces need not. */
+  private texturedSources = new WeakMap<TexturedMesh, TexturedSource>();
   /** #1781: GPU textures shared across meshes, keyed by `MeshTextureRef.textureId`
    *  (one `IfcImageTexture` → one upload, sampled by every face set mapping it).
    *  Refcounted: entries die when the last referencing mesh is removed / on clear(). */
@@ -599,9 +556,13 @@ export class Scene {
    *  unquantized, so a highlight/hover copy must use that frame — the batch
    *  frame lands a few f32 ulps off and z-fights the texture. */
   getTexturedDrawOrigin(meshData: MeshData): readonly [number, number, number] | null {
-    const positions = this.derivedMeshProvenance.placedSourceFor(meshData, this.modelTranslations).positions;
-    const tm = this.texturedMeshes.find((m) => m.expressId === meshData.expressId && this.texturedSourcePositions.get(m) === positions);
-    return tm ? tm.origin : null;
+    return this.getTexturedDrawable(meshData)?.origin ?? null;
+  }
+
+  /** Live owner of the existing textured buffers; cached by pick-geometry revision. */
+  getTexturedDrawable(meshData: MeshData): TexturedMesh | undefined {
+    const source = this.derivedMeshProvenance.placedSourceFor(meshData, this.modelTranslations);
+    return findTexturedDrawable(this, source, this.texturedSources, meshData.expressId);
   }
 
   /** The frame a highlight/hover copy of `meshData` is built in, so it renders
@@ -3553,7 +3514,7 @@ export class Scene {
         ...(sharedTextureKey !== undefined ? { sharedTextureKey } : {}),
       }, meshData.modelIndex ?? 0);
       this.texturedMeshes.push(drawable); this.pickGeometryRevision++;
-      this.texturedSourcePositions.set(drawable, meshData.positions);
+      this.texturedSources.set(drawable, captureTexturedSource(meshData));
     } catch (error) {
       vertexBuffer?.destroy();
       indexBuffer?.destroy();

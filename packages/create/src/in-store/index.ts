@@ -246,6 +246,13 @@ export {
   type DrawingMarkupBatchInput,
   type DrawingMarkupBatchResult,
 } from './drawing-markup.js';
+export {
+  addDimensionMarkupToStore,
+  type DimensionMarkupOrientation,
+  type DimensionMarkupParams,
+  type DimensionMarkupResult,
+  type DimensionMarkupSegment,
+} from './drawing-markup-dimension.js';
 
 export { reanchorHostedOpeningsInStore } from './hosted-placement-edit.js';
 export { reassignHostedOpeningsInStore, type HostedOpeningReassignment } from './hosted-placement-edit.js';

@@ -210,7 +210,8 @@ export interface PlannedCurveMember {
   axisSource: 'axis' | 'extrusion' | 'profile';
   /**
    * The element's line, before joints moved its ends; apply records it on the
-   * member. The planner always sets it; a plan without it writes no record.
+   * member. The planner always sets it. A plan built without it derives the
+   * member with no record, which the stale check then leaves out.
    */
   physicalAxis?: [Vec3, Vec3];
   startNode: number;

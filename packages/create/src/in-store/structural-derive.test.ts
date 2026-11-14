@@ -410,21 +410,38 @@ describe.each(['IFC2X3', 'IFC4', 'IFC4X3'] as const)('derive provenance and the 
     expect(await staleAfter(move([0.0005, 0]))).toEqual([]);
   });
 
-  it('reports nothing when the storey moves and turns, carrying elements and members with it', async () => {
-    const storeyPlacement = '#20=IFCLOCALPLACEMENT($,#6);';
-    expect(text.split(storeyPlacement)).toHaveLength(2);
-    const turned = text.replace(storeyPlacement, `#20=IFCLOCALPLACEMENT($,#99001);
+  const storeyPlacement = '#20=IFCLOCALPLACEMENT($,#6);';
+  /** `step` with its storey (and every element on it) placed by `origin` (mm), `axis` and `ref`. */
+  const placeStorey = (step: string, origin: string, axis: string, ref: string) => {
+    expect(step.split(storeyPlacement)).toHaveLength(2);
+    return step.replace(storeyPlacement, `#20=IFCLOCALPLACEMENT($,#99001);
 #99001=IFCAXIS2PLACEMENT3D(#99002,#99003,#99004);
-#99002=IFCCARTESIANPOINT((1000.,2000.,500.));
-#99003=IFCDIRECTION((0.,0.,1.));
-#99004=IFCDIRECTION((0.,1.,0.));`);
-    const after = await parse(turned);
+#99002=IFCCARTESIANPOINT((${origin}));
+#99003=IFCDIRECTION((${axis}));
+#99004=IFCDIRECTION((${ref}));`);
+  };
+  /** Far from the origin (2600 km), tilted, with a RefDirection not square to the Axis. */
+  const skew = ['2600000000.,1200000000.,450000.', '0.1,-0.2,1.', '0.7,1.,0.3'] as const;
+  const driftOrStale = (store: IfcDataStore) => structuralConsistencyIssues(store, { physicalAxes: structuralPhysicalAxes(store) })
+    .filter((issue) => issue.rule === 'structural-stale-item' || issue.rule === 'structural-axis-drift');
+
+  it('reports nothing when the storey moves and turns, carrying elements and members with it', async () => {
+    const after = await parse(placeStorey(text, '1000.,2000.,500.', '0.,0.,1.', '0.,1.,0.'));
     const beam = byName(after, 'B1');
     // The beam really moved in world coordinates: (0,0,3)-(6,0,3) becomes (1,2,3.5)-(1,8,3.5).
     const [a, b] = structuralPhysicalAxes(after).get(beam)!;
     expect([...a, ...b].map((v) => +v.toFixed(6) + 0)).toEqual([1, 2, 3.5, 1, 8, 3.5]);
-    const issues = structuralConsistencyIssues(after, { physicalAxes: structuralPhysicalAxes(after) });
-    expect(issues.filter((issue) => issue.rule === 'structural-stale-item' || issue.rule === 'structural-axis-drift')).toEqual([]);
+    expect(driftOrStale(after)).toEqual([]);
+  });
+
+  it('reads the record back through a storey far from the origin, tilted, with a RefDirection not square to its Axis', async () => {
+    // Placed after derive: the record was written under an identity storey and is read through this one.
+    expect(driftOrStale(await parse(placeStorey(text, ...skew)))).toEqual([]);
+    // Derived under it: the record is written through derive's frame and read through the parser's.
+    const derivedSkewed = await parse(await exportAfter(placeStorey(model(schema), ...skew), (store, editor) =>
+      applyStructuralDerivation(editor, store, planStructuralDerivation(readStructuralDerivationFacts(store, editor)), seeded())));
+    expect(extractStructuralOnDemand(derivedSkewed).members.length).toBeGreaterThan(0);
+    expect(driftOrStale(derivedSkewed)).toEqual([]);
   });
 });
 
@@ -442,7 +459,7 @@ describe('derive provenance: apply checks the recorded axis (#9668)', () => {
     expect(editor.getNewEntities().length).toBe(before);
   });
 
-  it('applies a plan without physical axes, as an earlier version made them, and records nothing', async () => {
+  it('applies a plan without physical axes and records nothing for its members', async () => {
     const store = await parse(model('IFC4'));
     const editor = session(store);
     const plan = planStructuralDerivation(readStructuralDerivationFacts(store, editor));

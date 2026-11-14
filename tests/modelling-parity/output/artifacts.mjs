@@ -9,11 +9,12 @@
  * SDK results hand over `artifacts.ifc`. UI results (L4) hand over files under
  * `$PARITY_OUT/artifacts/<capability-id>/`, listed in `evidence` and in
  * `artifacts.{ifc,svg,pdf,dxf}` (contract "Handoffs"). IFC files get the full
- * validation in run.mjs. SVG, PDF and DXF get only a sanity check: the file
- * parses, is not empty and carries drawing content. That is not a validation
- * of the drawing's correctness, and the ledger says so.
+ * validation in run.mjs. SVG is tag-balanced; PDF/DXF structure is sanity-checked.
+ * Drawings must be non-empty and carry content. Sheet DXF additionally receives
+ * the independent geometric checks described in run.mjs.
  */
 
+import { drawablePath } from './svg-path.mjs';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { parseEntityTable } from '../../../scripts/lib/entity-table.mjs';
@@ -115,6 +116,47 @@ export function artifactSets(results, capability, { root }) {
   return sets;
 }
 
+/** Row requirements supplement the file census, including for UI handoffs. */
+export function requiredIfcClasses(cap, source, content) {
+  return [...new Set([...(cap.probes?.output?.requiredClasses ?? []),
+    ...(source === 'sdk' ? cap.probes?.output?.keyTypes ?? [] : fileClasses(content))])].sort();
+}
+
+export function checkRequiredIfcClasses(cap, content) {
+  const present = new Set(fileClasses(content));
+  const missing = (cap.probes?.output?.requiredClasses ?? []).filter(k => !present.has(k));
+  return { name: 'required IFC classes', status: missing.length ? 'fail' : 'pass',
+    detail: missing.length ? `missing from handed-over IFC: ${missing.join(', ')}` : 'row requirements present' };
+}
+
+export function missingIfcClasses(census, required) {
+  return required.filter(k => !Object.entries(census).some(([t, n]) => n > 0 && t.replace(/StandardCase$/, '') === k));
+}
+
+/** Conservative drawable-geometry check; this is tag-balanced sanity, not an XML parser. */
+function drawable(tag, attrs) {
+  const attributes=new Map(); let duplicate=false;
+  const remaining=attrs.replace(/(?:^|\s)([A-Za-z_:][\w:.-]*)\s*=\s*(["'])(.*?)\2/gs, (_whole,key,_quote,value)=>{
+    if(attributes.has(key)) duplicate=true;
+    attributes.set(key,value); return '';
+  });
+  if(duplicate || remaining.trim()) return false;
+  const attr=key=>attributes.get(key);
+  if (tag === 'path') return drawablePath(attr('d') ?? '');
+  if (tag === 'line') {
+    const values = ['x1','y1','x2','y2'].map(k => Number(attr(k) ?? 0));
+    return values.every(Number.isFinite) && (values[0] !== values[2] || values[1] !== values[3]);
+  }
+  if (tag === 'polyline' || tag === 'polygon') {
+    const points = (attr('points') ?? '').trim().split(/[\s,]+/).map(Number);
+    return points.length >= 4 && points.length % 2 === 0 && points.every(Number.isFinite) && points.some((v,i)=>v!==points[i%2]);
+  }
+  return false;
+}
+
+// Geometry inside these is only defined, never painted by itself: it cannot certify linework.
+const NOT_RENDERED = new Set(['defs', 'symbol', 'clipPath', 'mask', 'marker', 'pattern']);
+
 const sanity = (kind) => `${kind.toUpperCase()} sanity check`;
 
 /**
@@ -140,7 +182,7 @@ export function checkSvg(buf) {
     if (close) {
       if (stack.pop() !== tag) return { name, status: 'fail', detail: `malformed: </${tag}> does not close the open element` };
     } else {
-      counts[tag] = (counts[tag] ?? 0) + 1;
+      if (!stack.some(open => NOT_RENDERED.has(open)) && drawable(tag, m[3])) counts[tag] = (counts[tag] ?? 0) + 1;
       if (!self) stack.push(tag);
     }
     if (!stack.length) rootEnd = m.index + whole.length;

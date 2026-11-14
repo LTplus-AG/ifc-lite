@@ -104,8 +104,8 @@ import { getSchemaRegistryForVersion, type SchemaVersionWithRegistry } from '@if
 const REGISTRY_VERSIONS: readonly SchemaVersionWithRegistry[] = ['IFC2X3', 'IFC4', 'IFC4X3'];
 
 /**
- * Builds {@link NONREL_REF_LIST_TYPES} (STEP type tokens) and
- * {@link NONREL_REF_LIST_REGISTRY_NAMES} (STEP token -> the registry's own
+ * Builds {@link getNonRelRefListTypes} (STEP type tokens) and
+ * {@link getNonRelRefListRegistryNames} (STEP token -> the registry's own
  * PascalCase entity name, e.g. `IFCPROPERTYSET` -> `IfcPropertySet`) in one
  * pass over all three schema registries, so the two can never disagree with
  * each other about which classes are covered — the same defect shape as the
@@ -157,18 +157,31 @@ function deriveNonRelRefListEntities(): {
   return { types, registryNames };
 }
 
-const DERIVED = deriveNonRelRefListEntities();
+let derived: ReturnType<typeof deriveNonRelRefListEntities> | undefined;
+
+/**
+ * Built on the first call, not at module load: deriving it decodes all three
+ * schema registries, which would otherwise run at viewer start-up.
+ */
+function getDerived(): ReturnType<typeof deriveNonRelRefListEntities> {
+  derived ??= deriveNonRelRefListEntities();
+  return derived;
+}
 
 /** See the module doc: derived, not hand-kept, from the schema registries. */
-export const NONREL_REF_LIST_TYPES: ReadonlySet<string> = DERIVED.types;
+export function getNonRelRefListTypes(): ReadonlySet<string> {
+  return getDerived().types;
+}
 
 /**
  * `effectiveRelType` (the STEP type token, e.g. `IFCPROPERTYSET`) to the
  * exact PascalCase key the generated schema registries use
- * (`IfcPropertySet`), for every type in {@link NONREL_REF_LIST_TYPES} —
+ * (`IfcPropertySet`), for every type in {@link getNonRelRefListTypes} —
  * consumed by `nonrel-positional-ref-narrowing.ts` to read
  * `allAttributes[slotIndex]` back out of the version-correct registry.
- * Derived alongside `NONREL_REF_LIST_TYPES` from the exact same registry
+ * Derived alongside `getNonRelRefListTypes()` from the exact same registry
  * entities, so the two sets can never drift apart.
  */
-export const NONREL_REF_LIST_REGISTRY_NAMES: ReadonlyMap<string, string> = DERIVED.registryNames;
+export function getNonRelRefListRegistryNames(): ReadonlyMap<string, string> {
+  return getDerived().registryNames;
+}

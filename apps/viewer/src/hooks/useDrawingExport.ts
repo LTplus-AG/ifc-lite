@@ -49,7 +49,7 @@ import { drawCutPolygonsPdf, isPagePoint, prepareCutPolygonsPdf, type PdfCutPoly
 import { titleBlockWithEffectiveScale } from '@/hooks/titleBlockScaleField';
 import { scanOutlineDxfLayers, type ScanOutlineLayer } from '@/lib/scan-outline/scan-outline';
 import { boundsWithDimensions, dimensionsToSvg, dimensionsToDxfLayers, drawDimensionsPdf } from '@/lib/export/dimension-export';
-import { useExportDimensionGraphics } from '@/hooks/useExportDimensions';
+import { noticeOtherCutDimensionsLeftOut, useExportDimensionGraphics } from '@/hooks/useExportDimensions';
 
 function tryDrawingSvg(generate: () => string | null): string | null {
   try { return generate(); }
@@ -848,7 +848,8 @@ function useDrawingExport({
     downloadFile(svg, `${stem}.svg`, 'image/svg+xml');
     trackExportCompleted({ format: 'svg', surface: 'drawing_panel' });
     posthog.capture('drawing_exported', { format: 'svg', axis: sectionPlane.axis, sheet_enabled: sheetEnabled });
-  }, [generateExportSVG, generateSheetSVG, sheetEnabled, activeSheet, sectionPlane]);
+    noticeOtherCutDimensionsLeftOut(t);
+  }, [generateExportSVG, generateSheetSVG, sheetEnabled, activeSheet, sectionPlane, t]);
   // Export DXF (issue #1861). Unlike SVG, DXF has no paper space, so this
   // always exports the raw model-space drawing (sheet frame/title block are
   // not represented) — real-world metres, with a plan ('down') section
@@ -1214,6 +1215,7 @@ function useDrawingExport({
       </html>
     `);
     printWindow.document.close();
+    noticeOtherCutDimensionsLeftOut(t);
   }, [generateExportSVG, generateSheetSVG, sheetEnabled, activeSheet, sectionPlane, t]);
 
   return {

@@ -14,7 +14,7 @@ import { useViewerStore } from '@/store';
 import { getGeomWorkerOverride, resolveLoadTessellationTier } from '@/store/constants';
 import { USE_SERVER } from '@/utils/ifcConfig';
 import { getPerfFlagDefinition, readPerfFlag } from '@/lib/perf/flags';
-import { isFeatureEnabled } from '@/lib/features';
+import { isFeatureEnabled, type FeatureId } from '@/lib/features';
 import { mayWarmUp, scheduleWhenIdle } from '@/lib/warm-runtime-gate';
 import { registerPickStarter } from '@/hooks/ingest/pickStart';
 import { setFastGeometryClaimer } from '@/hooks/ingest/fastPath';
@@ -47,14 +47,16 @@ export function fastPathSwitch(): unknown {
   return readPerfFlag('fastPath') ?? getPerfFlagDefinition('fastPath').default;
 }
 
+/** The features that each open a model in the browser. */
+export const MODEL_SOURCES = ['files.local', 'files.samples', 'files.sources'] as const satisfies readonly FeatureId[];
+
 /**
  * Whether this page can open a model at all. A host can switch off every
  * picker; then the warm-up's sample fetch and spare workers would serve no
  * load. `?model=` still autoloads with the pickers off, so it counts.
  */
 export function pageCanOpenModels(): boolean {
-  return isFeatureEnabled('files.local') || isFeatureEnabled('files.samples') || isFeatureEnabled('files.sources')
-    || new URLSearchParams(window.location.search).has('model');
+  return MODEL_SOURCES.some((id) => isFeatureEnabled(id)) || Boolean(new URLSearchParams(window.location.search).get('model'));
 }
 
 /** Start the fast-path runtime once (idempotent). Returns whether it runs. */

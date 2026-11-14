@@ -62,6 +62,7 @@ export default {
           const rec = before.of(row.entity).find(r => !scene.before.entities.has(r.id));
           if (!rec) throw new Error('builder did not emit the entity');
           const edit = (EDITS[row.root] ?? EDIT_NAME)(ctx.pkgs.create, scene);
+          scene.applyLoad();
           const intact = readStep(scene.exportText());
           ctx.pkgs.create.editStructuralEntityInStore(scene.store, scene.editor, rec.id, edit.patch);
           const text = scene.exportText();

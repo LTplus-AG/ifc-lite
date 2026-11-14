@@ -74,3 +74,14 @@ test('A/A runs record metadata frame floors, and a reference without them is inc
   const noReferenceFloor = summarize(plan('metadata'), samples(), { floors: { fx: { 'browser-warm1': { frameMs: 0.01, interactiveMs: 0.01 } } } });
   assert.match(noReferenceFloor.fixtures[0].lanes['browser-warm1'].verdicts.metadataFrameMs.verdict, /^inconclusive: no A\/A floor/);
 });
+
+test('the metadata mark does not wait for the geometry restore (review finding on #10210)', () => {
+  // Milestone 200 ms, stored scene painted 240 ms, frames 250/350 ms, restore (geometryMs) ends 300 ms.
+  const mark = metadataMarkOf({ geometryMs: 300, interactiveMs: 340, completeFrameMs: 240, presentTimesFromChangeMs: [250, 350],
+    milestones: { 'load.metadataInteractive': 200 } });
+  assert.deepEqual(mark, { metadataFrameMs: 250, holdMs: 100 }, 'the 250 ms frame is the mark; the old mark is the 350 ms frame');
+  // A trace without the stored-scene paint field still floors at the milestone only.
+  const noPaint = metadataMarkOf({ geometryMs: 300, interactiveMs: 340, presentTimesFromChangeMs: [250, 350],
+    milestones: { 'load.metadataInteractive': 200 } });
+  assert.equal(noPaint.metadataFrameMs, 250);
+});

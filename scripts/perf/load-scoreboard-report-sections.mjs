@@ -80,10 +80,11 @@ export function frameMarkOf(row) {
 
 /** The first frame at or after `timeMs`, under the same gates and clock correction as `frameMarkOf`. */
 export function frameMarkAtOrAfter(row, timeMs) {
-  const times = row?.presentTimesFromChangeMs, g = row?.geometryMs;
-  if (!Array.isArray(times) || !Number.isFinite(g) || !Number.isFinite(timeMs)) return null;
+  const times = row?.presentTimesFromChangeMs;
+  if (!Array.isArray(times) || !Number.isFinite(timeMs)) return null;
   const shift = Number.isFinite(row?.pickDelayMs) ? row.pickDelayMs : 0;
-  const next = times.map((t) => t + shift).find((t) => t >= Math.max(g, timeMs) - 1e-6);
+  // Floor at `timeMs` only: frameMarkOf passes the scene-finished time; the metadata mark must not wait for it.
+  const next = times.map((t) => t + shift).find((t) => t >= timeMs - 1e-6);
   if (next === undefined) return null;
   return { frameMs: next };
 }
@@ -124,7 +125,8 @@ export function metadataMarkOf(row) {
   const milestone = row?.milestones?.['load.metadataInteractive'] ?? browserShares(row?.trace, row?.interactiveMs).milestones['load.metadataInteractive'];
   const old = frameMarkOf(row);
   if (!Number.isFinite(milestone) || !old) return null;
-  const next = frameMarkAtOrAfter(row, milestone);
+  // The stored scene is on screen by the milestone (the viewer emits it after the snapshot's first paint); completeFrameMs guards older traces.
+  const next = frameMarkAtOrAfter(row, Math.max(milestone, Number.isFinite(row?.completeFrameMs) ? row.completeFrameMs : milestone));
   if (!next) return null;
   const metadataFrameMs = Math.min(next.frameMs, old.frameMs);
   return { metadataFrameMs, holdMs: Math.max(0, old.frameMs - metadataFrameMs) };

@@ -116,6 +116,6 @@ describe('IFCX federation ownership includes every source row (#6564)', () => {
 
 it('includes deferred source IDs in the same watermark used by the authoring allocator', () => {
   const store = storeFor([1, 2], true);
-  store.deferredEntityIndex = new Map([[100, { type: 'IFCPROPERTYSINGLEVALUE', byteOffset: 0, byteLength: 1 }]]);
+  store.deferredEntityIndex = new Map([[100, { expressId: 100, type: 'IFCPROPERTYSINGLEVALUE', byteOffset: 0, byteLength: 1, lineNumber: 1 }]]);
   assert.equal(getMaxExpressId(store, []), 100);
 });

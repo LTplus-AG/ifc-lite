@@ -1,0 +1,18 @@
+all_scopes: false
+checking_base_sha: 6c381d775e0c157f73595a0afa00bc00fc3c26f6
+previous_check_retries: []
+previous_failed_batches:
+  - batch_pr_head_sha: 4b66df7f8514d356e26722e7bcad84a556acb74c
+    batch_pr_number: 10259
+    checked_pull_requests:
+      - 10183
+      - 10224
+      - 10151
+      - 10106
+      - 10210
+    draft_pr_head_sha: 4b66df7f8514d356e26722e7bcad84a556acb74c
+    draft_pr_number: 10259
+pull_requests:
+  - number: 10183
+    scopes: []
+scopes: []

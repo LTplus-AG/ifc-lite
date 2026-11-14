@@ -3,7 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { iterateEffectiveEntityIds, type MutablePropertyView } from '@ifc-lite/mutations';
-import { effectiveMetadataRecord, type IfcDataStore } from '@ifc-lite/parser';
+import type { IfcDataStore } from '@ifc-lite/parser';
+import { presentationLayerReader } from './presentation-layer-reader';
 
 import { LAYER_TYPES, references, presentationOwnership } from './presentation-layer-ownership';
 
@@ -76,17 +77,14 @@ function buildPresentationLayers(store: IfcDataStore, view: MutablePropertyView 
   const layerEntries = [...iterateEffectiveEntityIds(store, view, LAYER_TYPES)];
   if (layerEntries.length === 0) return [];
   const plan = presentationOwnership(store.schemaVersion);
-  const read = (id: number) => effectiveMetadataRecord(store, id, view);
+  const read = presentationLayerReader(store, view);
   // Only records read outside the downward walk repeat; that walk reads each once.
-  const remembered = new Map<number, ReturnType<typeof effectiveMetadataRecord>>();
+  const remembered = new Map<number, ReturnType<typeof read>>();
   const recall = (id: number) => {
     if (!remembered.has(id)) remembered.set(id, read(id));
     return remembered.get(id) ?? null;
   };
-  const value = (record: NonNullable<ReturnType<typeof read>>, name: string): unknown => {
-    const index = record.names.indexOf(name);
-    return index < 0 ? undefined : record.attributes[index];
-  };
+  const value = (record: NonNullable<ReturnType<typeof read>>, name: string): unknown => record.value(name);
 
   const layers: Array<Omit<PresentationLayer, 'productIds'> & { assignedItems: number[] }> = [];
   for (const entry of layerEntries) {
@@ -137,6 +135,10 @@ function buildPresentationLayers(store: IfcDataStore, view: MutablePropertyView 
     for (const entry of iterateEffectiveEntityIds(store, view, plan.constituentTypes)) constituents.add(entry.expressId);
   }
 
+  // With no constituent assignments or mapped items, nothing below a shape
+  // model can lead to an assigned seed. Its incoming edge is sufficient.
+  const terminalShapes = !constituents
+    && iterateEffectiveEntityIds(store, view, ['IfcMappedItem']).next().done;
   const parents = new Map<number, number[]>();
   const products = new Set<number>();
   const entered = new Set<number>();
@@ -157,7 +159,7 @@ function buildPresentationLayers(store: IfcDataStore, view: MutablePropertyView 
       if (owners) owners.push(id); else parents.set(child, [id]);
       if (!entered.has(child) && (structural.has(child) || constituents?.has(child))) pending.push(child);
     };
-    for (const attribute of plan.attributesFor(type)) for (const child of references(value(record, attribute))) own(child);
+    for (const attribute of terminalShapes && plan.shapeModelClasses.has(type) ? [] : plan.attributesFor(type)) for (const child of references(value(record, attribute))) own(child);
     for (const shape of aspects.get(id) ?? []) own(shape);
   }
 

@@ -33,13 +33,15 @@ export interface DrawingExportMenuProps {
   sheetEnabled: boolean;
   activeSheet: DrawingSheet | null;
   markupCounts: DrawingExportContent['markupCounts'];
+  /** Dimensions drawn on another cut, left out of every export. */
+  otherCutDimensionCount?: number;
   visibleUnderlayCount: number;
   visibleRasterReferenceCount?: number;
 }
 
 export function DrawingExportMenu({
   hasDrawing, compact, onExportSvg, onExportDxf, onExportPdf, onPrint,
-  displayedScale, sheetEnabled, activeSheet, markupCounts, visibleUnderlayCount, visibleRasterReferenceCount = 0,
+  displayedScale, sheetEnabled, activeSheet, markupCounts, otherCutDimensionCount = 0, visibleUnderlayCount, visibleRasterReferenceCount = 0,
 }: DrawingExportMenuProps) {
   const { t } = useTranslation();
   const { confirmDialog } = useDialogs();
@@ -47,6 +49,7 @@ export function DrawingExportMenu({
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
   const content: DrawingExportContent = {
     markupCounts,
+    otherCutDimensionCount,
     visibleUnderlayCount,
     visibleRasterReferenceCount,
     sheetScale: sheetEnabled && activeSheet ? activeSheet.scale.factor : null,

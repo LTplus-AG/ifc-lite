@@ -25,6 +25,7 @@ import { useViewerStore, type RibbonTabId } from '@/store';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
 import { availableRibbonTabs } from './ribbon-tabs';
+import { isFeatureEnabled } from '@/lib/features';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
 import { ThemeSwitch } from '../ThemeSwitch';
 import { SearchInline } from '../SearchInline';
@@ -165,7 +166,7 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
 
         {/* Export modified IFC… — pending-mutation affordance must stay visible
             regardless of the active tab or collapse state. */}
-        <ExportChangesButton surface="ribbon" />
+        {isFeatureEnabled('export.files') && <ExportChangesButton surface="ribbon" />}
 
         <div className="ml-1 flex shrink-0 items-center gap-0.5 border-l border-divider pl-2">
           <RibbonCommandSmallButton commandId="tool:edit-mode"

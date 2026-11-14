@@ -21,17 +21,30 @@ import { fileURLToPath } from 'node:url';
 
 export const INSTR_WRAPPER = fileURLToPath(new URL('./instr-chrome.py', import.meta.url));
 /** Share of enabled time the counters must have run in a window: complete (below it the PMU was multiplexed; review #10138). */
-export const MIN_PMU_COVERAGE = 0.9999; // complete coverage, allowing ns rounding (measured 1.0000 without contention)
+/**
+ * Lifetime PMU coverage required: (sum of the PMUs' running time) / (enabled time) from the first sample to the final
+ * totals, read after every descendant exited, when their times are folded in exactly (1.0000000 measured on Pop in three
+ * runs with 12 busy children). Within a window the same ratio is NOT a valid test: live inherited children's
+ * enabled/running times update lazily and non-atomically across the two PMUs (0.9956-1.0037 over >= 500 ms windows
+ * uncontended, about half below 99.99%), while their counts are read live. The window ratio is reported as information.
+ * Bound: the tolerance admits a lifetime gap of at most 0.01% of the sample's enabled time; even if all of it fell inside
+ * the window, the window's count moves by at most 0.01% x (lifetime / window), about 0.03% (Holter) to 0.08% (FZK). An
+ * instruction verdict needs a gain >= 2x the instruction A/A floor (1.0-1.2%), i.e. >= 2%: the tolerance is more than an
+ * order of magnitude below the smallest decidable effect.
+ */
+export const MIN_PMU_COVERAGE = 0.9999;
 
 /** Parse the wrapper's NDJSON: { unavailable } or { samples: [{ t, c: { pmu: count } }] } (time-ordered). */
 export function parseInstrSamples(text) {
   const lines = String(text ?? '').split('\n').filter(Boolean);
   const rows = [];
+  let final = null;
   for (const line of lines) {
     let r;
     try { r = JSON.parse(line); } catch { continue; }
     if (r.unavailable) return { unavailable: r.unavailable };
-    if (Number.isFinite(r.t) && r.c && !r.final) rows.push(r);
+    if (Number.isFinite(r.t) && r.c && r.final) final = r;
+    else if (Number.isFinite(r.t) && r.c) rows.push(r);
   }
   if (rows.length < 2) return { unavailable: lines.length ? 'fewer than two counter samples' : 'no counter output (wrapper did not run)' };
   // Every sample must carry the same PMUs: a missing one would read as "no change" there (review #10138).
@@ -40,7 +53,12 @@ export function parseInstrSamples(text) {
   // Scheduling coverage (time enabled / running) is required: without it multiplexing cannot be ruled out (review #10138).
   if (rows.some((r) => !Number.isFinite(r.e) || !r.r || keys({ c: r.r }) !== keys(rows[0]) || Object.values(r.r).some((v) => !Number.isFinite(v)))) return { unavailable: 'counter samples without PMU scheduling coverage (time enabled/running)' };
   rows.sort((a, b) => a.t - b.t);
-  return { samples: rows };
+  // Lifetime coverage from the exact final totals (see MIN_PMU_COVERAGE); no final totals = coverage unknown.
+  if (!final || !Number.isFinite(final.e) || !final.r) return { unavailable: 'no final counter totals: lifetime PMU coverage unknown' };
+  const dE = final.e - rows[0].e, dR = Object.keys(final.r).reduce((a, k) => a + (final.r[k] - (rows[0].r[k] ?? 0)), 0);
+  const lifetimeCoverage = dE > 0 ? dR / dE : null;
+  if (!(lifetimeCoverage >= MIN_PMU_COVERAGE)) return { unavailable: lifetimeCoverage === null ? 'counters never ran (no enabled time)' : `PMU multiplexed: counters ran ${(lifetimeCoverage * 100).toFixed(4)}% of their enabled time over the sample (>= ${MIN_PMU_COVERAGE * 100}% required)` };
+  return { samples: rows, lifetimeCoverage };
 }
 
 function at(samples, t) {
@@ -75,9 +93,8 @@ export function instructionsIn(parsed, startMs, endMs) {
   const dE = s[i1].e - s[i0].e, dR = Object.keys(s[i1].r).reduce((acc, k) => acc + (s[i1].r[k] - s[i0].r[k]), 0);
   // No enabled time between the bracketing samples: the counters did not run, so nothing was measured (review #10138).
   if (!(dE > 0)) return { total: null, pmu: null, coverage: null, unavailable: 'counters not running in this window (no enabled time)' };
-  const coverage = dR / dE;
-  if (coverage < MIN_PMU_COVERAGE) return { total: null, pmu: null, coverage, unavailable: `PMU multiplexed: counters ran ${(coverage * 100).toFixed(1)}% of their enabled time (complete coverage required)` };
-  return { total: Object.values(pmu).reduce((x, y) => x + y, 0), pmu, coverage: Math.round(coverage * 10000) / 10000, edgeGapMs: Math.round(Math.max(gap(startMs), gap(endMs)) * 10) / 10 };
+  // Information only (see MIN_PMU_COVERAGE): the window ratio, unrounded, and the lifetime ratio that decided.
+  return { total: Object.values(pmu).reduce((x, y) => x + y, 0), pmu, coverage: dR / dE, lifetimeCoverage: parsed.lifetimeCoverage, edgeGapMs: Math.round(Math.max(gap(startMs), gap(endMs)) * 10) / 10 };
 }
 
 /**

@@ -36,7 +36,7 @@ test('thread time per role: straddling tasks by their share inside, nested tasks
   assert.equal(r.cpuMs.browser, 6);
   assert.equal(r.cpuMs.otherRenderers, 5);
   assert.equal(r.cpuMs.total, 90 + 290 + 3 + 9);
-  // The 10 ms EpollEvent without tdur is wall the trace could not attribute.
+  // The 0.1 ms EpollEvent without tdur is wall the trace could not attribute.
   assert.ok(r.uncountedWallShare > 0 && r.uncountedWallShare < 0.05);
   assert.equal(r.window.wallMs, 500);
 });
@@ -215,4 +215,20 @@ test('A/A floors of a -settled cell with undeclared different arming are withhel
   // No scoreboard marks and no CrRendererMain metadata: the page clock cannot be identified, so no window is guessed.
   const bare = traceEventsOf(trace).filter((e) => e.ph !== 'M' && !String(e.name).includes('scoreboard'));
   assert.throws(() => traceCpuTime(bare, { window: [200, 250] }), /cannot align the page clock/);
+});
+
+test('untimed coverage is judged over the roles the total sums, so other processes\' timed work cannot dilute a gap', () => {
+  // Renderer main: 100 ms untimed + 1 ms timed; another renderer: 2,000 ms timed. Over all processes 100/2,101 = 4.8 %
+  // would pass; over the load's own roles the main thread is 99 % untimed, so CPU is unavailable.
+  const base = traceEventsOf(trace).filter((e) => e.ph === 'M' || e.cat === 'blink.user_timing');
+  const ev = base.concat([
+    { ph: 'X', cat: 'toplevel', name: 'T', pid: 10, tid: 1, ts: 1150000, dur: 100000 },
+    { ph: 'X', cat: 'toplevel', name: 'T', pid: 10, tid: 1, ts: 1300000, dur: 1000, tdur: 1000 },
+    ...Array.from({ length: 4 }, (_, i) => ({ ph: 'X', cat: 'toplevel', name: 'T', pid: 40, tid: 1, ts: 1100000 + i * 100000, dur: 100000, tdur: 100000 })),
+    ...Array.from({ length: 16 }, (_, i) => ({ ph: 'X', cat: 'toplevel', name: 'T', pid: 40, tid: 2 + i, ts: 1100000, dur: 100000, tdur: 100000 })),
+  ]);
+  const r = traceCpuTime(ev);
+  assert.equal(r.cpuMs.total, null);
+  assert.equal(Math.round(r.uncountedWallShareByRole.rendererMain * 100) / 100, 0.99);
+  assert.ok(r.coverage.startsWith('rendererMain 99.0%'), r.coverage);
 });

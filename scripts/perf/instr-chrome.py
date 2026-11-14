@@ -146,9 +146,11 @@ def main():
         # Final totals after Chrome and all its descendants exited. (Periodic reads already include live descendants:
         # read() on an inherited event sums the live child events too, __perf_event_read_value walking child_list.)
         try:
-            counts = {name: struct.unpack('QQQ', os.read(fd, 24))[0] for name, fd in fds.items()}
+            vals = {name: struct.unpack('QQQ', os.read(fd, 24)) for name, fd in fds.items()}
             if out:
-                out.write(json.dumps({'t': round(time.time() * 1000, 2), 'c': counts, 'final': True}) + '\n')
+                # After every descendant exited its times are folded in exactly: this line carries the lifetime coverage.
+                out.write(json.dumps({'t': round(time.time() * 1000, 2), 'c': {n: v[0] for n, v in vals.items()}, 'e': max(v[1] for v in vals.values()),
+                                      'r': {n: v[2] for n, v in vals.items()}, 'final': True}) + '\n')
         except (OSError, struct.error):
             pass  # the final totals are informational; Chrome's exit status is still returned
     if out:

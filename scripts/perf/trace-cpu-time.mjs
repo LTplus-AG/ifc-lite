@@ -41,6 +41,8 @@ export const INTERACTIVE_MARK = 'scoreboard:interactive';
 export const ORIGIN_MARK = 'scoreboard:origin';
 /** Largest share of task wall time in the window without thread time for which CPU still counts as measured. */
 export const MAX_UNTIMED_SHARE = 0.05;
+/** The roles cpuMs.total sums: the load's renderer (main, workers, other threads) and the GPU process. */
+export const TOTAL_ROLES = ['rendererMain', 'workers', 'rendererOther', 'gpu'];
 /** Main-thread spans that frame work done on dedicated workers. */
 export const WORKER_FRAME_SPANS = ['parser.worker', 'geometry.pool'];
 /** The stages the report shows first; every other span name is still computed. */
@@ -201,7 +203,8 @@ export function traceCpuTime(trace, { window = null, spans = null } = {}) {
   const tasks = topLevelTasks(events);
   const totals = { rendererMain: 0, workers: 0, rendererOther: 0, gpu: 0, browser: 0, otherRenderers: 0, other: 0 };
   const threads = [];
-  let withTdur = 0, wallAll = 0, wallNoTdur = 0;
+  let withTdur = 0;
+  const roleWall = {}, roleNoTdur = {};
   for (const [key, list] of tasks) {
     const [pid, tid] = key.split(':').map(Number);
     const processName = proc.get(pid) ?? '', threadName = thread.get(key) ?? '';
@@ -209,17 +212,27 @@ export function traceCpuTime(trace, { window = null, spans = null } = {}) {
     const r = cpuIn(list, w.startUs, w.endUs);
     if (r.wall === 0 && r.cpu === 0) continue;
     totals[role] += r.cpu;
-    wallAll += r.wall; wallNoTdur += r.wallWithoutTdur;
+    roleWall[role] = (roleWall[role] ?? 0) + r.wall;
+    roleNoTdur[role] = (roleNoTdur[role] ?? 0) + r.wallWithoutTdur;
     if (r.cpu > 0 || list.some((t) => t.tdur !== null && t.ts < w.endUs && t.ts + t.dur > w.startUs)) withTdur++; // thread time measured IN the window (review #10138)
     threads.push({ pid, tid, process: processName, thread: threadName, role, cpuMs: ms(r.cpu), busyWallMs: ms(r.wall) });
   }
   threads.sort((a, b) => b.cpuMs - a.cpuMs);
   const renderer = totals.rendererMain + totals.workers + totals.rendererOther;
+  // Untimed share per role, and over exactly the roles cpuMs.total sums (review #10138): other processes' timed work
+  // must not dilute a gap in the load's own threads.
+  const share = (roles) => {
+    const all = roles.reduce((a, k) => a + (roleWall[k] ?? 0), 0), no = roles.reduce((a, k) => a + (roleNoTdur[k] ?? 0), 0);
+    return all > 0 ? Math.round((no / all) * 1e6) / 1e6 : null;
+  };
+  const byRole = Object.fromEntries(Object.keys(totals).map((k) => [k, share([k])]));
   const result = {
     window: { startMs: w.startMs, endMs: w.endMs, wallMs: Math.round((w.endMs - w.startMs) * 100) / 100, source: w.source, rendererPid: w.pid },
     threadTime: withTdur > 0,
-    // Share of top-level task wall time inside the window whose events carried no thread time (not counted).
-    uncountedWallShare: wallAll > 0 ? Math.round((wallNoTdur / wallAll) * 1000) / 1000 : null,
+    // Share of top-level task wall time inside the window whose events carried no thread time (not counted), over the
+    // roles in cpuMs.total, and per role.
+    uncountedWallShare: share(TOTAL_ROLES),
+    uncountedWallShareByRole: byRole,
     cpuMs: {
       rendererMain: ms(totals.rendererMain), workers: ms(totals.workers), rendererOther: ms(totals.rendererOther), renderer: ms(renderer),
       gpu: ms(totals.gpu), browser: ms(totals.browser), otherRenderers: ms(totals.otherRenderers),
@@ -233,11 +246,13 @@ export function traceCpuTime(trace, { window = null, spans = null } = {}) {
   // task wall time lacks it; otherwise every figure is unavailable, never a partial or zero total (review #10138).
   const mainTimed = threads.some((t) => t.role === 'rendererMain' && t.cpuMs > 0);
   result.coverage = !result.threadTime ? 'no thread time in the window' : !mainTimed ? 'renderer main thread has no thread time in the window'
-    : result.uncountedWallShare > MAX_UNTIMED_SHARE ? `${(result.uncountedWallShare * 100).toFixed(1)}% of task wall time has no thread time` : 'ok';
+    : TOTAL_ROLES.some((k) => byRole[k] > MAX_UNTIMED_SHARE) ? `${TOTAL_ROLES.filter((k) => byRole[k] > MAX_UNTIMED_SHARE).map((k) => `${k} ${(byRole[k] * 100).toFixed(1)}%`).join(', ')} of task wall time has no thread time` : 'ok';
   if (result.coverage !== 'ok') {
     for (const k of Object.keys(result.cpuMs)) result.cpuMs[k] = null;
     return result;
   }
+  // Roles outside the total (browser, other renderers) are reported only when their own coverage holds.
+  for (const k of ['browser', 'otherRenderers']) if (byRole[k] > MAX_UNTIMED_SHARE) result.cpuMs[k] = null;
   if (spans) {
     const toUs = (t) => w.offsetUs + (w.spanOriginMs + t) * 1000; // span times are ms from the input event (ORIGIN_MARK)
     const mainTasks = [], workerTasks = [];

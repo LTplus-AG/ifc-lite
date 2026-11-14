@@ -42,16 +42,24 @@ export async function startCpuTrace(context, page) {
   return cdp;
 }
 
-async function readStream(cdp, handle) {
+async function readStream(cdp, handle, guard) {
   const chunks = [];
   for (;;) {
-    const c = await cdp.send('IO.read', { handle, size: 1 << 20 });
+    const c = await guard(cdp.send('IO.read', { handle, size: 1 << 20 }));
     chunks.push(c.base64Encoded ? Buffer.from(c.data, 'base64') : Buffer.from(c.data, 'utf8'));
     if (c.eof) break;
   }
-  await cdp.send('IO.close', { handle }).catch(() => {});
+  await guard(cdp.send('IO.close', { handle })).catch(() => {});
   return Buffer.concat(chunks).toString('utf8');
 }
+
+/**
+ * One deadline for the whole collection step (Tracing.end, tracingComplete, every IO.read): measured on Pop, a 1.15 GB
+ * raw trace took 38.7 s end to last read (~34 ms/MB); proof3's Holter trace is 25.7 MB raw (~0.9 s). 15 s leaves > 10x
+ * headroom while a stuck trace can cost a 420 s cap window at most 15 s; on expiry CPU time is unavailable, the sample
+ * is kept (review #10138).
+ */
+export const TRACE_COLLECT_TIMEOUT_MS = 15000;
 
 /** The few heaviest threads are enough in a row; the gzipped trace keeps them all. */
 const THREADS_KEPT = 12;
@@ -60,23 +68,23 @@ const THREADS_KEPT = 12;
  * Stop tracing, keep the trace gzipped at `file`, and summarize it. Never throws: a trace that cannot be read
  * or summarized is recorded as `cpuTime: { error }`, and the timing row stays valid.
  */
-export async function stopCpuTrace(cdp, { spans = null, file = null, completeTimeoutMs = 120000 } = {}) {
+export async function stopCpuTrace(cdp, { spans = null, file = null, collectTimeoutMs = TRACE_COLLECT_TIMEOUT_MS } = {}) {
   let timer = null, onComplete = null, onClose = null;
   try {
-    // ONE settled structure (review #10138): Tracing.end and the completion event are combined (Promise.all subscribes to
-    // both at once, so neither can reject unhandled), and that pair races a timeout, so a Tracing.end that never
-    // settles, a completion that never comes, or a session that closes all end the wait with an error.
+    // ONE deadline races every await of the collection (review #10138). Tracing.end and the completion event are
+    // combined with Promise.all (both subscribed at once, so neither can reject unhandled when the session closes).
+    const deadline = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`trace collection not finished within ${collectTimeoutMs} ms`)), collectTimeoutMs);
+    });
+    const guard = (p) => Promise.race([p, deadline]);
     const complete = new Promise((resolve, reject) => {
       onComplete = resolve;
       onClose = () => reject(new Error('CDP session closed before Tracing.tracingComplete'));
       cdp.once('Tracing.tracingComplete', onComplete);
       cdp.once?.('close', onClose);
     });
-    const timeout = new Promise((_, reject) => {
-      timer = setTimeout(() => reject(new Error(`Tracing.end / tracingComplete not settled within ${completeTimeoutMs} ms`)), completeTimeoutMs);
-    });
-    const [, { stream, dataLossOccurred }] = await Promise.race([Promise.all([cdp.send('Tracing.end'), complete]), timeout]);
-    const text = await readStream(cdp, stream);
+    const [, { stream, dataLossOccurred }] = await guard(Promise.all([cdp.send('Tracing.end'), complete]));
+    const text = await readStream(cdp, stream, guard);
     if (file) writeFileSync(file, gzipSync(text));
     // Chrome dropped events: the retained ones can look complete, so no CPU figure (the raw trace is kept).
     if (dataLossOccurred) return { cpuTraceFile: file, cpuTime: { error: 'Chrome reported trace data loss (dataLossOccurred)', dataLoss: true } };
@@ -88,6 +96,8 @@ export async function stopCpuTrace(cdp, { spans = null, file = null, completeTim
     clearTimeout(timer);
     cdp.off?.('Tracing.tracingComplete', onComplete);
     cdp.off?.('close', onClose);
-    await cdp.detach().catch(() => {});
+    let t2 = null; // a stuck session must not hold the sample on detach either
+    await Promise.race([cdp.detach().catch(() => {}), new Promise((r) => { t2 = setTimeout(r, 1000); })]);
+    clearTimeout(t2);
   }
 }

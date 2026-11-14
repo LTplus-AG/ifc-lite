@@ -19,7 +19,7 @@ const samples = ndjson([
   { t: 1010, c: { cpu_core: 100, cpu_atom: 50 }, e: 10e6, r: { cpu_core: 6e6, cpu_atom: 4e6 } },
   { t: 1020, c: { cpu_core: 300, cpu_atom: 150 }, e: 20e6, r: { cpu_core: 12e6, cpu_atom: 8e6 } },
   { t: 1030, c: { cpu_core: 300, cpu_atom: 450 }, e: 30e6, r: { cpu_core: 14e6, cpu_atom: 16e6 } },
-  { t: 1100, c: { cpu_core: 999, cpu_atom: 999 }, final: true },
+  { t: 1100, c: { cpu_core: 999, cpu_atom: 999 }, e: 40e6, r: { cpu_core: 20e6, cpu_atom: 20e6 }, final: true },
 ]);
 
 test('instructions in a window: interpolated at both edges, per PMU and summed, with the interpolation span', () => {
@@ -124,28 +124,39 @@ test('a periodic read includes LIVE inherited children (kernel __perf_event_read
   assert.ok(sum(live) - sum(before) >= 0.9 * childTotal, `live read ${sum(live) - sum(before)} vs total after exit ${childTotal}`);
 });
 
-test('a window where the counters ran under 99% of their enabled time (PMU multiplexed) is unavailable, not a short count', () => {
-  const rows = [0, 1, 2, 3].map((i) => ({ t: 1000 + i * 10, c: { cpu_core: i * 100, cpu_atom: i * 50 }, e: i * 10e6, r: { cpu_core: i * 3e6, cpu_atom: i * 2e6 } }));
-  const r = instructionsIn(parseInstrSamples(rows.map((x) => JSON.stringify(x)).join('\n')), 1005, 1025);
-  assert.equal(r.total, null);
-  assert.match(r.unavailable, /PMU multiplexed: counters ran 50.0%/);
-  assert.equal(instructionsIn(parseInstrSamples(samples), 1005, 1025).coverage, 1);
-  // Samples without scheduling coverage cannot rule multiplexing out.
-  assert.match(parseInstrSamples(rows.map(({ e: _e, ...x }) => JSON.stringify(x)).join('\n')).unavailable, /scheduling coverage/);
+test('lifetime PMU coverage decides: 0.99996 is accepted and reported unrounded, 0.9998 and a multiplexed run are rejected', () => {
+  const run = (cov) => {
+    const rows = [0, 1, 2, 3].map((i) => ({ t: 1000 + i * 10, c: { cpu_core: i * 100, cpu_atom: i * 50 }, e: i * 10e6, r: { cpu_core: i * 6e6, cpu_atom: i * 4e6 } }));
+    rows.push({ t: 1100, c: { cpu_core: 400, cpu_atom: 200 }, e: 1e9, r: { cpu_core: 0.6e9 * cov, cpu_atom: 0.4e9 * cov }, final: true });
+    return parseInstrSamples(rows.map((x) => JSON.stringify(x)).join('\n'));
+  };
+  const ok = run(0.99996);
+  assert.equal(ok.lifetimeCoverage, 0.99996);
+  const r = instructionsIn(ok, 1005, 1025);
+  assert.equal(r.total, 300); // 1005..1025 interpolated: cpu_core 50 -> 250, cpu_atom 25 -> 125
+  assert.equal(r.lifetimeCoverage, 0.99996);
+  assert.match(run(0.9998).unavailable, /PMU multiplexed: counters ran 99.9800% of their enabled time over the sample/);
+  assert.match(run(0.5).unavailable, /PMU multiplexed/);
+  // No final totals: lifetime coverage unknown; samples without scheduling fields: unavailable.
+  const noFinal = [0, 1, 2].map((i) => JSON.stringify({ t: i, c: { cpu: i }, e: i, r: { cpu: i } })).join('\n');
+  assert.match(parseInstrSamples(noFinal).unavailable, /no final counter totals/);
 });
 
 test('a very long sample history does not overflow the argument limit', () => {
   const n = 250000, rows = [];
   for (let i = 0; i < n; i++) rows.push(JSON.stringify({ t: i, c: { cpu: i * 10 }, e: i * 1e6, r: { cpu: i * 1e6 } }));
+  rows.push(JSON.stringify({ t: n, c: { cpu: n * 10 }, e: n * 1e6, r: { cpu: n * 1e6 }, final: true }));
   const r = instructionsIn(parseInstrSamples(rows.join('\n')), 1000.5, 200000.5);
   assert.equal(r.total, 1990000);
 });
 
-test('a window where the counters never ran (no enabled time) is unavailable; coverage must be complete', () => {
-  const still = [0, 1, 2].map((i) => ({ t: 1000 + i * 10, c: { cpu: 0 }, e: 0, r: { cpu: 0 } }));
-  const r = instructionsIn(parseInstrSamples(still.map((x) => JSON.stringify(x)).join('\n')), 1005, 1015);
+test('a window where the counters never ran (no enabled time) is unavailable, never a measured zero', () => {
+  // Lifetime coverage fine, but no enabled time between the samples bracketing this window.
+  const rows = [{ t: 1000, c: { cpu: 0 }, e: 0, r: { cpu: 0 } }, { t: 1010, c: { cpu: 0 }, e: 0, r: { cpu: 0 } }, { t: 1020, c: { cpu: 0 }, e: 0, r: { cpu: 0 } },
+    { t: 1030, c: { cpu: 500 }, e: 5e6, r: { cpu: 5e6 } }, { t: 1100, c: { cpu: 500 }, e: 5e6, r: { cpu: 5e6 }, final: true }];
+  const r = instructionsIn(parseInstrSamples(rows.map((x) => JSON.stringify(x)).join('\n')), 1005, 1015);
   assert.deepEqual([r.total, r.unavailable], [null, 'counters not running in this window (no enabled time)']);
-  // 99.5% running: incomplete, rejected (complete coverage required).
-  const part = [0, 1, 2].map((i) => ({ t: 1000 + i * 10, c: { cpu: i * 100 }, e: i * 1000e6, r: { cpu: i * 995e6 } }));
-  assert.equal(instructionsIn(parseInstrSamples(part.map((x) => JSON.stringify(x)).join('\n')), 1005, 1015).total, null);
+  // A run whose counters never ran at all.
+  const never = rows.map((x) => ({ ...x, e: 0, r: { cpu: 0 }, c: { cpu: 0 } }));
+  assert.equal(parseInstrSamples(never.map((x) => JSON.stringify(x)).join('\n')).unavailable, 'counters never ran (no enabled time)');
 });

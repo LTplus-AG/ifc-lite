@@ -51,6 +51,24 @@ rt('buildMeasured maps every phase to a <fixture>.<phase> metric and validates',
   assert.equal(measure.buildMeasured({ set: 'large', report: REPORT, commit: 'abc1234' }).family, 'native-instructions-large');
 });
 
+rt('buildMeasured gates own-code counts and reports whole-process counts and system calls as information', () => {
+  const report = {
+    ...REPORT,
+    allObjects: { parseIr: 130, entityScanIr: 80, lookupIr: 11, preprocessIr: 30, geometryIr: 400, totalIr: 540 },
+    externalCalls: { parseCalls: 9, entityScanCalls: 5, lookupCalls: 1, preprocessCalls: 3, geometryCalls: 20, totalCalls: 29 },
+  };
+  const m = measure.buildMeasured({ set: 'small', report, commit: 'abc1234', measuredAt: '2026-11-13T00:00:00.000Z' });
+  assert.deepEqual(ceilings.validateMeasuredFile(m), []);
+  assert.equal(m.metrics.find((x) => x.id === 'fzk-haus.entity-scan').value, 60);
+  const info = Object.fromEntries(m.informational.map((x) => [x.id, x.value]));
+  assert.equal(info['fzk-haus.entity-scan-all-objects'], 80);
+  assert.equal(info['fzk-haus.total-all-objects'], 540);
+  assert.equal(info['fzk-haus.preprocess-system-calls'], 3);
+  // The large set skips lookup everywhere, informational included.
+  const large = measure.buildMeasured({ set: 'large', report, commit: 'a' });
+  assert.ok(!large.informational.some((x) => x.id.includes('.lookup')));
+});
+
 rt('buildMeasured refuses a zero, missing or unknown input instead of measuring nothing', () => {
   const bad = (phases) => ({ ...REPORT, phases });
   assert.throws(() => measure.buildMeasured({ set: 'small', report: bad({ ...REPORT.phases, lookupIr: 0 }), commit: 'a' }), /lookupIr/);

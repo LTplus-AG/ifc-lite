@@ -19,8 +19,10 @@
 //! Running it first on every cut moves two dozen hosts and costs one of them
 //! a percent of its volume, so it stays where it is and is brought forward
 //! only here: the consolidated cut is open, the raw one was not, and the
-//! retry is kept only if it comes back strictly closed.
+//! retry is kept only if it comes back strictly closed with the raw cut's
+//! volume.
 
+use super::checks::result_volume_within_bounds;
 use super::dedup_cut_vertices;
 use crate::csg::{ClippingProcessor, ConsolidationOutcome};
 use crate::mesh::Mesh;
@@ -54,9 +56,10 @@ pub(super) fn consolidate(
         return (first, verdict);
     }
     let retry = ClippingProcessor::consolidate_prism_cut(dedup_cut_vertices(&raw, host), host);
-    // Strictly closed, not just closed on the 1 mm grid.
+    // Strictly closed, not just closed on the 1 mm grid, and the same solid:
+    // with no cutter volume to spend, the bound allows quantization only.
     let retried = ClosureVerdict::for_mesh(&retry.mesh);
-    if retried.is_directed_closed() {
+    if retried.is_directed_closed() && result_volume_within_bounds(&raw, &retry.mesh, 0.0) {
         (retry, retried)
     } else {
         (first, verdict)

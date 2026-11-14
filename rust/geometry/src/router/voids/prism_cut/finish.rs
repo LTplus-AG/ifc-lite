@@ -23,12 +23,19 @@ pub(super) fn can_adopt_refinement(boundary: ConsolidationBoundary, refined: &Me
     if !super::directed_closed(refined) || !boundary.accepts(refined) {
         return false;
     }
-    let closed_after = |clean: fn(&mut Mesh)| {
+    let cleaned = |clean: fn(&mut Mesh)| {
         let mut probe = refined.clone();
         clean(&mut probe);
-        super::directed_closed(&probe)
+        probe
     };
-    closed_after(Mesh::clean_degenerate) || closed_after(Mesh::clean_degenerate_watertight)
+    // The finalizer tries its sliver repair only on a result the index-only
+    // cleanup leaves hairline closed, so the repair counts only then. These
+    // probes skip the finalizer's weld: a bar no looser than the one before,
+    // not a prediction of the finish.
+    let by_index = cleaned(Mesh::clean_degenerate);
+    super::directed_closed(&by_index)
+        || (super::closed_enough_to_emit(&by_index)
+            && super::directed_closed(&cleaned(Mesh::clean_degenerate_watertight)))
 }
 
 /// A seam repair may replace the audited mesh only if it retains its certificate.
@@ -87,7 +94,8 @@ pub(in crate::router::voids) fn finish_cut_verdict(
     if verdict.closed_enough_to_emit()
         && boundary.accepts(&hygienic)
     {
-        if !verdict.is_directed_closed() {
+        // Nothing dropped, nothing to repair: the two cleanups then agree.
+        if !verdict.is_directed_closed() && hygienic.indices.len() != candidate.indices.len() {
             if let Some(repaired) = repaired_finish(&candidate, host, boundary) {
                 return Some((repaired, true));
             }
@@ -132,6 +140,7 @@ fn repaired_finish(candidate: &Mesh, host: &Mesh, boundary: ConsolidationBoundar
         }
     }
     (repaired.indices.len().is_multiple_of(3)
+        && !repaired.needs_degenerate_cleanup()
         && super::directed_closed(&repaired)
         && boundary.accepts(&repaired))
     .then_some(repaired)

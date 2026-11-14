@@ -102,6 +102,10 @@ fn a_cut_with_two_copies_of_a_crossing_consolidates_closed() {
     };
     let mesh = cut(&content, 11232);
     assert_eq!(open_edges(&mesh), 0, "#11232 must stay closed");
+    assert!(
+        ifc_lite_geometry::mesh_check::ClosureVerdict::for_mesh(&mesh).is_directed_closed(),
+        "#11232 must be strictly closed, not only on the 1 mm grid"
+    );
     let volume_cm3 = (mesh_volume(&mesh) * 1.0e6).round() as i64;
     assert!((39_200..=39_500).contains(&volume_cm3), "#11232 volume {volume_cm3} cm3");
 }

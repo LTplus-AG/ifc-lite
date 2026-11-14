@@ -439,8 +439,8 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     // (0, 0, 0) framing while linearly-placed railway geometry sat at
     // its MGA-territory world coords (~330, 123 after RTC), invisible
     // to the user. Compute the size first so the branch reflects
-    // whether the data is actually usable, not just whether the
-    // property exists.
+    // whether the data is actually usable, not just whether the property exists.
+    if (isStreaming && geometry.length > 0 && !finalBoundsRefittedRef.current) robustFitAccRef.current.scan(geometry); // fold each commit (restored sessions too); the stream-end refit only sorts and trims
     if (useViewerStore.getState().session) cameraFittedRef.current = true;
     else if (!cameraFittedRef.current) {
       const fitStart = performance.now();
@@ -531,7 +531,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
           toast.info('Linear infrastructure — pan along the alignment, or select an element and press F to zoom in');
         }
       }
-    } else if (isStreaming && geometry.length > 0 && !finalBoundsRefittedRef.current) robustFitAccRef.current.scan(geometry); // fitted early: fold later batches as they commit, so the stream-end refit only sorts and trims
+    }
 
     renderer.requestRender();
   }, [geometryKernel, geometry, geometryVersion, geometryReplacementVersion, geometryContentVersion, appearanceSourceGeometry, coordinateInfo, isInitialized, gpuRecoveryEpoch, isStreaming, modelCount]);

@@ -98,8 +98,8 @@ describe('instances', () => {
     expect(baked.meshes[0].color).not.toBe(baked.meshes[3].color);
     expect(instanced.instances[0].color).not.toBe(instanced.instances[1].color);
     for (const result of [instanced, baked]) {
-      expect(result.curves).toEqual([{ entity: 0, origin: [10, 0, 0], positions: new Float32Array([0, 0, 0, 1, 0, 0]), closed: false, color: [200 / 255, 0, 0, 1], hidden: false }]);
-      expect(result.textDots).toEqual([{ entity: 0, position: [10, 0, 2], text: 'tag', color: [1 / 255, 1 / 255, 1 / 255, 1], hidden: false }]);
+      expect(result.curves).toEqual([{ entity: 0, origin: [10, 0, 0], positions: new Float32Array([0, 0, 0, 1, 0, 0]), closed: false, color: [200 / 255, 0, 0, 1], hidden: false, hiddenByObject: false, hiddenByLayer: false }]);
+      expect(result.textDots).toEqual([{ entity: 0, position: [10, 0, 2], text: 'tag', color: [1 / 255, 1 / 255, 1 / 255, 1], hidden: false, hiddenByObject: false, hiddenByLayer: false }]);
     }
   });
 });

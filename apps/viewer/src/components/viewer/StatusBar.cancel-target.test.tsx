@@ -3,13 +3,13 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * While a model loads, both Cancel buttons meet the 24x24 CSS px target
+ * While a model loads, the Cancel button meets the 24x24 CSS px target
  * minimum (WCAG 2.2 2.5.8) that `target-size-focus-5826.e2e.spec.ts` enforces
  * (#8802). The status bar's Cancel was a 14px uppercase label with `py-0.5`
  * and a border: 20px tall, which that spec caught mid-load. The fix must not
  * grow the 28px status bar.
  *
- * The real StatusBar and ViewportLoadingCard are mounted (happy-dom), then
+ * The real StatusBar is mounted (happy-dom), then
  * their markup is laid out in real Chrome with the compiled app stylesheet.
  * Only numbers leave the page, never an element.
  */
@@ -29,7 +29,6 @@ import { ExtensionHostContext } from '@/sdk/ExtensionHostProvider.js';
 import { cleanup, render } from '@/test/render.js';
 import { CONTRAST_BROWSER_SKIP, closeContrastBrowser, warmContrastBrowser, withThemedPage } from '@/test/contrast/render-harness.js';
 import { StatusBar } from './StatusBar.js';
-import { ViewportLoadingCard } from './ViewportLoadingCard.js';
 
 const MIN_TARGET_PX = 24;
 /** The status bar's own height (`h-7`), which the Cancel must fit inside. */
@@ -64,7 +63,6 @@ it('the loading Cancel targets are at least 24x24 CSS px and the status bar keep
   }));
   const ui = render(
     <ExtensionHostContext.Provider value={stubHost}>
-      <div data-test-viewport style={{ position: 'relative', width: 800, height: 400 }}><ViewportLoadingCard /></div>
       <StatusBar />
     </ExtensionHostContext.Provider>,
   );
@@ -78,18 +76,16 @@ it('the loading Cancel targets are at least 24x24 CSS px and the status bar keep
         const rect = el?.getBoundingClientRect();
         return rect ? { width: Math.round(rect.width), height: Math.round(rect.height) } : { width: 0, height: 0 };
       };
-      const card = document.querySelector('[data-viewport-loading-card]');
       const statusCancel = [...document.querySelectorAll('button[title]')]
-        .find((button) => !card?.contains(button) && /cancel/i.test(button.textContent ?? '')) ?? null;
+        .find((button) => /cancel/i.test(button.textContent ?? '')) ?? null;
       return {
         statusCancel: box(statusCancel),
         statusBar: box(statusCancel?.closest('.h-7') ?? null),
-        cardCancel: box(card?.querySelector('button') ?? null),
       };
     });
   });
 
-  for (const [name, size] of [['status bar Cancel', measured.statusCancel], ['loading card Cancel', measured.cardCancel]] as const) {
+  for (const [name, size] of [['status bar Cancel', measured.statusCancel]] as const) {
     assert.ok(size.width >= MIN_TARGET_PX && size.height >= MIN_TARGET_PX,
       `${name} is ${size.width}x${size.height}px, expected at least ${MIN_TARGET_PX}x${MIN_TARGET_PX}`);
   }

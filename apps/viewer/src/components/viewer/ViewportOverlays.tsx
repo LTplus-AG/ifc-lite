@@ -31,7 +31,6 @@ import { useTranslation } from '@/i18n';
 // zero-net addition since this already lives inside the same viewport panel.
 import { GitHubStarPrompt } from './GitHubStarPrompt';
 import { ViewportHud } from '../viewport-ui/hud/ViewportHud';
-import { ViewportLoadingCard } from './ViewportLoadingCard';
 import { ViewportLoadErrorCard } from './ViewportLoadErrorCard';
 import { SectionParkedChip } from './tools/SectionParkedChip';
 import { MeasurementsVisibilityChip } from './tools/MeasurementsVisibilityChip';
@@ -175,7 +174,7 @@ export function ViewportOverlays({
           anything below portals in. */}
       <ViewportHud />
       {!hideViewCube && <GitHubStarPrompt />}
-      {hasLoadError ? <ViewportLoadErrorCard /> : <ViewportLoadingCard />}
+      {hasLoadError && <ViewportLoadErrorCard />}
       <SectionParkedChip />
       <MeasurementsVisibilityChip />
       <FlySpeedIndicator />

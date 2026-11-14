@@ -24,6 +24,9 @@ function stiffnessType(entity: string, index: number): string | null {
 /** Same semantic stiffness fields; only their EXPRESS names/value wrappers changed. */
 export function isStructuralBoundaryCondition(entity: string): boolean { return stiffnessType(entity, 1) !== null; }
 
+/** The loss reported when IFC2X3's required DestabilizingLoad is written as .F. for an unknown value. */
+export const destabilizingUnknown = (entity: string): string => `${entity}.DestabilizingLoad is unknown; IFC2X3 requires a boolean, so the writer substitutes .F.`;
+
 /** One target policy shared by rewriting, preview and diagnostics. */
 export function isStructuralAssignmentConversion(entity: string, from: string, to: string): boolean {
   return entity === 'IFCRELCONNECTSSTRUCTURALELEMENT' && from === 'IFC2X3' && ['IFC4', 'IFC4X3', 'IFC5'].includes(to);

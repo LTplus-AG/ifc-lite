@@ -111,8 +111,21 @@ ifc-lite structural model-4.ifc --json
 ```
 
 Downgrading to IFC2X3 refuses resource types that it cannot represent, such as
-`IfcStructuralLoadConfiguration` and `IfcMaterialProfileSet`. Inspect the loss
-report before relying on a conversion.
+`IfcMaterialProfileSet` and an `IfcStructuralLoadConfiguration` that no varying
+action takes (below). Inspect the loss report before relying on a conversion.
+
+IFC2X3's `IfcStructuralLinearActionVarying` and
+`IfcStructuralPlanarActionVarying` become an IFC4 curve or surface action with
+`PredefinedType` `NOTDEFINED` and an `IfcStructuralLoadConfiguration` holding
+the loads without `Locations`. The `IfcShapeAspect` that places them stays on
+the action's representation, so the downgrade writes the varying action back.
+Both directions convert an action only when the other one can convert it back:
+its representation has exactly one `IfcShapeAspect`, and its loads share one
+type the IFC2X3 action admits. An IFC4 action also needs a `PredefinedType` of
+`NOTDEFINED`, `LINEAR` or `POLYGONAL` (curve) or `NOTDEFINED` or `BILINEAR`
+(surface): values linear between their locations. Other actions keep their
+previous handling.
+Both need an unedited full export.
 
 The viewer's read and review surfaces do not provide a structural schema
 conversion editor. Conversion is not lossless for all records. The ledger

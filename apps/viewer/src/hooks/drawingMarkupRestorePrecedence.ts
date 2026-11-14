@@ -25,7 +25,7 @@
 
 import { useViewerStore } from '@/store';
 import { getDefaultDrawing2DState } from '@/store/slices/drawing2DSlice.js';
-import { loadDrawing2DEntry } from '@/store/slices/drawing2DSlice.persistence.js';
+import { loadDrawing2DEntry, type PersistedDrawing2DEntry } from '@/store/slices/drawing2DSlice.persistence.js';
 
 /** modelId -> resolved content hash, or `null` when one could not be computed (no `sourceFile`). */
 const hashCache = new Map<string, { hash: string | null; source?: WeakRef<File>; legacyMarkupKey?: string }>();
@@ -90,7 +90,24 @@ export function hasPersistedMarkupEntryFor(modelId: string): 'pending' | boolean
   if (!hash) return false;
   const defaults = getDefaultDrawing2DState().drawing2DDisplayOptions;
   const legacy = hashCache.get(modelId)?.legacyMarkupKey;
-  return loadDrawing2DEntry(hash, defaults) !== null || !!legacy && loadDrawing2DEntry(legacy, defaults) !== null;
+  return outranksEmbeddedMarkup(loadDrawing2DEntry(hash, defaults))
+    || !!legacy && outranksEmbeddedMarkup(loadDrawing2DEntry(legacy, defaults));
+}
+
+/**
+ * Whether a saved entry takes precedence over the file's embedded markup. An
+ * entry whose four markup lists are empty and that was not seeded from (or
+ * saved after) an embedded restore holds no markup decision: it is what a
+ * display-option change or a 2D section generation persists while the
+ * embedded restore is still waiting for its parse. Letting it win would hide
+ * the file's markup on this and every later reopen. An empty entry that names
+ * absorbed annotations is a deliberate deletion of them, and still wins.
+ */
+function outranksEmbeddedMarkup(entry: PersistedDrawing2DEntry | null): boolean {
+  if (!entry) return false;
+  return (entry.absorbedEmbeddedMarkup?.length ?? 0) > 0
+    || entry.measure2DResults.length > 0 || entry.polygonArea2DResults.length > 0
+    || entry.textAnnotations2D.length > 0 || entry.cloudAnnotations2D.length > 0;
 }
 
 /**

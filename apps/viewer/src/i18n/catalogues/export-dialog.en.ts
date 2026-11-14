@@ -90,6 +90,8 @@ export const exportDialogEn = {
   // through the UI — kept only so `onExport` always has an i18n'd message to
   // return rather than a thrown/untranslated string.
   'exportDialog.notReadyError': 'Select a model and schema before exporting.',
+  'exportDialog.stepRecords.roomMoved': '"{model}" cannot be exported as IFC STEP: it no longer matches the IFC file it was shared from, after root changes in the room or local edits to elements that file does not have. Export it on its own as IFC5 (IFCX).',
+  'exportDialog.stepRecords.noRecords': '"{model}" has no IFC STEP records to export from. Export it on its own as IFC5 (IFCX).',
   'exportDialog.landXml.imageryExported': 'The draped imagery is textured on the terrain and ships beside the IFC as {entry} in an .ifcZIP.',
   'exportDialog.landXml.imageryRefused': 'The draped imagery was not exported: {reason}',
   'exportDialog.landXml.imageryWillExport': 'The draped imagery {name} ({crs}) will be textured on the terrain and shipped beside the IFC in an .ifcZIP. {percent} % of the terrain\'s vertices lie on the image; beyond it, IFC consumers clamp to the image\'s edge pixels rather than showing the flat terrain colour.',

@@ -15,6 +15,7 @@ import { appendSetsFromSecondSource, setIdentityKey } from './property-set-merge
 import type { TypeQuantityInfo } from './on-demand-extractors.js';
 import { findSourceProjectLengthUnit, normalizeMapUnitName } from './source-project-length-unit.js';
 
+
 const MAX_TYPE_DEFINITIONS = 256;
 const MAX_QUANTITY_REFERENCES = 4_096;
 const MAX_UNIT_READS = 512;
@@ -30,6 +31,7 @@ const unavailable = (reason: string): CurrentTypeQuantityResult => ({ status: 'u
 // Existing concrete views expose canonical quantity claims; partial metadata
 // providers retain their native-only contract. Export nomination is history-led.
 interface QuantityJournalView extends MetadataReadView {
+    getMutationsForEntity?(entityId: number): readonly { type: string; entityId: number; psetName?: string; propName?: string }[];
     getMutations?(): readonly { type: string; entityId: number; psetName?: string; propName?: string }[];
     getQuantityMutation?(entityId: number, qsetName: string, quantityName: string): unknown;
     isQuantitySetDeleted?(entityId: number, qsetName: string): boolean;
@@ -130,7 +132,7 @@ function readTypeQuantities(store: IfcDataStore, typeId: number, view: MetadataR
     const explicitUnitTypes = new Map<string, string>();
     let quantityReferences = 0;
     const journal = view as QuantityJournalView;
-    const names = new Set(journal.getMutations?.().filter(row => row.entityId === typeId &&
+    const names = new Set((journal.getMutationsForEntity?.(typeId) ?? journal.getMutations?.())?.filter(row => row.entityId === typeId &&
         ['CREATE_QUANTITY', 'UPDATE_QUANTITY', 'DELETE_QUANTITY', 'DELETE_QUANTITY_SET'].includes(row.type) &&
         typeof row.psetName === 'string' && (journal.getQuantityMutation === undefined
             || journal.isQuantitySetDeleted?.(typeId, row.psetName)

@@ -60,6 +60,40 @@ export interface DXFExportOptions {
    * drawing space and go through `coordinateTransform` like everything else.
    */
   polylineLayers?: DXFPolylineLayer[];
+  /**
+   * Extra single-line TEXT layers drawn on top of everything else (e.g. the
+   * viewer's dimension values). Positions are in drawing space and go
+   * through `coordinateTransform`; see {@link DXFText} for the angle.
+   */
+  textLayers?: DXFTextLayer[];
+}
+
+/** One single-line TEXT entity of a {@link DXFTextLayer}. */
+export interface DXFText {
+  /** Alignment point, in drawing space. */
+  position: Point2D;
+  text: string;
+  /** Text height in output units (metres). */
+  height: number;
+  /**
+   * Baseline direction in drawing space (default +x). The written angle is
+   * measured after `coordinateTransform`, so text keeps its direction
+   * through a flip or rotation of the output frame.
+   */
+  direction?: Point2D;
+  /** Turn the text half a turn when it would otherwise read upside down in the output frame (y up). Default false. */
+  keepUpright?: boolean;
+  hAlign?: 'left' | 'center' | 'right';
+  vAlign?: 'baseline' | 'bottom' | 'middle' | 'top';
+}
+
+/** One named layer of TEXT entities to embed. */
+export interface DXFTextLayer {
+  /** DXF layer name (R12: letters, digits, `-`, `_`, `$`). */
+  name: string;
+  /** CSS colour mapped to the nearest ACI colour by the writer. */
+  color: string;
+  texts: readonly DXFText[];
 }
 
 /** One named layer of polylines to embed. */
@@ -103,6 +137,7 @@ export class DXFExporter {
       coordinateTransform = (p: Point2D) => p,
       metadataComment,
       polylineLayers = [],
+      textLayers = [],
     } = options;
 
     const writer = new DxfWriter({ headerComment: metadataComment });
@@ -140,6 +175,17 @@ export class DXFExporter {
       const layer = writer.layer(extra.name, extra.color);
       for (const polyline of extra.polylines) {
         writer.addPolyline(polyline.map(map), layer, extra.closed ?? true);
+      }
+    }
+
+    for (const extra of textLayers) {
+      const layer = writer.layer(extra.name, extra.color);
+      for (const text of extra.texts) {
+        writer.addText(map(text.position), text.text, text.height, layer, {
+          rotationDeg: outputTextAngle(text, map),
+          hAlign: text.hAlign,
+          vAlign: text.vAlign,
+        });
       }
     }
 
@@ -262,6 +308,23 @@ export class DXFExporter {
       }
     }
   }
+}
+
+/** The TEXT rotation in degrees for `text` once its baseline has gone through `map`. */
+function outputTextAngle(text: DXFText, map: (p: Point2D) => Point2D): number {
+  const { position: p, direction: d = { x: 1, y: 0 } } = text;
+  const anchor = map(p);
+  const tip = map({ x: p.x + d.x, y: p.y + d.y });
+  let dx = tip.x - anchor.x;
+  let dy = tip.y - anchor.y;
+  // Upright in a y-up frame: reading rightwards, or bottom to top when vertical.
+  if (text.keepUpright && (dx < -1e-9 || (Math.abs(dx) <= 1e-9 && dy < 0))) {
+    dx = -dx;
+    dy = -dy;
+  }
+  const deg = (Math.atan2(dy, dx) * 180) / Math.PI;
+  // atan2 of a vanishing vector is 0; keep -0 out of the file.
+  return deg + 0;
 }
 
 /** Export a `Drawing2D` to an ASCII DXF string. */

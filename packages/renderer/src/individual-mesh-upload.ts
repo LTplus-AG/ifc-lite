@@ -17,6 +17,7 @@
 
 import type { MeshData } from '@ifc-lite/geometry';
 import { colorKey } from './chunk-grid.js';
+import { ENTITY_LANE_ID_SPAN } from './entity-color-table.js';
 import { BATCH_CONSTANTS } from './constants.js';
 import { MathUtils } from './math.js';
 import { MAX_PICK_MESH_CREATION } from './pick-mesh-budget.js';
@@ -50,10 +51,17 @@ export interface IndividualMeshGpu {
   rteOrigin: [number, number, number];
 }
 
-/** One GPU mesh standing for `pieces` same-coloured pieces of an entity. */
+/** One GPU mesh standing for `pieces` same-coloured pieces, of one entity or of a pooled selection (#9835). */
 export interface MergedMeshGpu extends IndividualMeshGpu {
-  /** The first piece merged: every piece here shares its colour, finish and model. */
+  /**
+   * The piece with the lowest entity id (the first of them): every piece here
+   * shares its model and, unless merged `anyColour`, its colour and finish, and
+   * that id is the anchor a draw needs to rebuild full ids from the 24-bit
+   * vertex lane (entity-color-table.ts).
+   */
   representative: MeshData;
+  firstPiece: MeshData;
+  lastPiece: MeshData;
   pieces: number;
 }
 
@@ -85,30 +93,33 @@ function writePieceVertices(interleaved: Float32Array, lanes: Uint32Array, first
     ? (v: number) => Math.round(v * 1024) / 1024
     : (v: number) => v;
   const p = meshData.positions;
+  // Everything below is the same for every vertex of the piece, so it is worked
+  // out once: a pooled selection writes millions of vertices in one go (#9835).
+  const normals = meshData.normals.length > 0 ? meshData.normals : null;
+  let encodedId = meshData.expressId >>> 0;
+  if (encodedId > MAX_ENCODED_ENTITY_ID) {
+    if (!warnedEntityIdRange) {
+      warnedEntityIdRange = true;
+      console.warn('[Renderer] expressId exceeds 24-bit seam-ID encoding range; seam lines may collide.');
+    }
+    encodedId = encodedId & MAX_ENCODED_ENTITY_ID;
+  }
+  // Stamp the SAME high-byte material-colour salt as the batch path
+  // (mergeGeometry) so this individual/selection mesh computes the
+  // identical depth nudge as its source batch — otherwise the highlight
+  // (selection pipeline, reverse-Z 'greater-equal') would z-fight or drop
+  // out against the salted base depth. Low 24 bits stay the picking id.
+  const lane = packEntityLane(encodedId, colorSaltByte(meshData.color));
   for (let i = 0; i < vertexCount; i++) {
     const base = (firstVertex + i) * FLOATS_PER_VERTEX;
     const posBase = i * 3;
     interleaved[base] = so ? snap(fr(p[posBase] + dx)) : snap(p[posBase]);
     interleaved[base + 1] = so ? snap(fr(p[posBase + 1] + dy)) : snap(p[posBase + 1]);
     interleaved[base + 2] = so ? snap(fr(p[posBase + 2] + dz)) : snap(p[posBase + 2]);
-    const hasNormals = meshData.normals.length > 0;
-    interleaved[base + 3] = hasNormals ? meshData.normals[posBase] : 0;
-    interleaved[base + 4] = hasNormals ? meshData.normals[posBase + 1] : 0;
-    interleaved[base + 5] = hasNormals ? meshData.normals[posBase + 2] : 0;
-    let encodedId = meshData.expressId >>> 0;
-    if (encodedId > MAX_ENCODED_ENTITY_ID) {
-      if (!warnedEntityIdRange) {
-        warnedEntityIdRange = true;
-        console.warn('[Renderer] expressId exceeds 24-bit seam-ID encoding range; seam lines may collide.');
-      }
-      encodedId = encodedId & MAX_ENCODED_ENTITY_ID;
-    }
-    // Stamp the SAME high-byte material-colour salt as the batch path
-    // (mergeGeometry) so this individual/selection mesh computes the
-    // identical depth nudge as its source batch — otherwise the highlight
-    // (selection pipeline, reverse-Z 'greater-equal') would z-fight or drop
-    // out against the salted base depth. Low 24 bits stay the picking id.
-    lanes[base + 6] = packEntityLane(encodedId, colorSaltByte(meshData.color));
+    interleaved[base + 3] = normals ? normals[posBase] : 0;
+    interleaved[base + 4] = normals ? normals[posBase + 1] : 0;
+    interleaved[base + 5] = normals ? normals[posBase + 2] : 0;
+    lanes[base + 6] = lane;
   }
 
 }
@@ -160,38 +171,58 @@ export function uploadIndividualMesh(device: GPUDevice, meshData: MeshData, fram
 }
 
 interface MergeGroup {
+  key: string;
+  /** The first piece's frame: every piece here shares its origin. */
   frame: IndividualMeshFrame;
+  /** The piece with the lowest entity id so far. */
+  anchor: MeshData;
   pieces: MeshData[];
+  /** Each piece's own frame: the lattice snap follows the piece's batch. */
+  frames: IndividualMeshFrame[];
   vertices: number;
   indices: number;
 }
 
 /**
  * Partition pieces so each group can draw as one mesh without changing what
- * any piece looks like: same model, same frame (the f32 fold is per frame, and
- * a frameless piece keeps its own origin), same colour and finish, as a batch
- * bucket has. A group fills up at `maxBytes`, one GPU buffer's worth.
+ * any piece looks like: same model, same origin (the f32 fold is per frame, and
+ * a frameless piece keeps its own origin), and within one 2^24 page of entity
+ * ids, so the vertex lane names each entity. A group fills up at `maxBytes`,
+ * one GPU buffer's worth.
+ *
+ * Without `anyColour` a group also shares colour, finish and quantization, as
+ * a batch bucket does, and takes its pieces from anywhere in the list.
+ *
+ * With it and `inOrder`, a group is a RUN: it only takes the piece that follows
+ * its last one, so the list's order is the draw order across groups as well as
+ * within them. Whether the piece's batch is quantized is not a reason to split
+ * there: the snap is applied per piece when its vertices are written.
  */
-function groupPieces(pieces: readonly MeshData[], frameOf: (meshData: MeshData) => IndividualMeshFrame, maxBytes: number): MergeGroup[] {
+function groupPieces(pieces: readonly MeshData[], frameOf: (meshData: MeshData) => IndividualMeshFrame, maxBytes: number, anyColour: boolean, inOrder: boolean): MergeGroup[] {
   const groups: MergeGroup[] = [];
   const open = new Map<string, MergeGroup>();
+  let last: MergeGroup | undefined;
   for (const piece of pieces) {
     const vertices = piece.positions.length / 3;
     const indices = piece.indices.length;
     if (vertices === 0 || indices === 0) continue;
     const frame = frameOf(piece);
     const origin = frame.sharedOrigin ?? piece.origin;
-    const key = `${piece.modelIndex ?? ''}|${frame.quantized ? 'q' : 'f'}|${frame.sharedOrigin ? 's' : 'o'}|${origin?.join() ?? ''}|${colorKey(piece.color, piece.material)}`;
-    let group = open.get(key);
+    const where = `${piece.modelIndex ?? ''}|${Math.floor(piece.expressId / ENTITY_LANE_ID_SPAN)}|${frame.sharedOrigin ? 's' : 'o'}|${origin?.join() ?? ''}`;
+    const key = anyColour ? where : `${where}|${frame.quantized ? 'q' : 'f'}|${colorKey(piece.color, piece.material)}`;
+    let group = inOrder ? (last?.key === key ? last : undefined) : open.get(key);
     if (group && group.pieces.length > 0
       && ((group.vertices + vertices) * BATCH_CONSTANTS.BYTES_PER_VERTEX > maxBytes
         || (group.indices + indices) * BATCH_CONSTANTS.BYTES_PER_INDEX > maxBytes)) group = undefined;
     if (!group) {
-      group = { frame, pieces: [], vertices: 0, indices: 0 };
-      open.set(key, group);
+      group = { key, frame, anchor: piece, pieces: [], frames: [], vertices: 0, indices: 0 };
+      if (!inOrder) open.set(key, group);
       groups.push(group);
     }
+    last = group;
+    if (piece.expressId < group.anchor.expressId) group.anchor = piece;
     group.pieces.push(piece);
+    group.frames.push(frame);
     group.vertices += vertices;
     group.indices += indices;
   }
@@ -202,32 +233,44 @@ function groupPieces(pieces: readonly MeshData[], frameOf: (meshData: MeshData) 
  * Upload an entity's pieces merged: one mesh per group, so the allocations and
  * draws scale with the entity's colours and frames, not its piece count. A
  * throw part-way frees what this call already created.
+ *
+ * @param anyColour Keep pieces of every colour and finish together, in the
+ *   order given. Only for meshes drawn as selection highlight alone, which
+ *   reads neither (`fs_main`'s selected branch). The triangles then draw in the
+ *   caller's order, as one copy per piece would: across meshes too, because a
+ *   mesh is a run of adjacent pieces that share a model and origin, and a piece
+ *   of another model or origin in between starts the next mesh. There is no
+ *   regrouping threshold: preserving order can cost one draw per piece for
+ *   interleaved frames, but never more than the per-piece path. The
+ *   representative does not stand for the colour of the rest.
  */
 export function uploadMergedMeshes(
   device: GPUDevice,
   pieces: readonly MeshData[],
   frameOf: (meshData: MeshData) => IndividualMeshFrame,
+  anyColour = false,
 ): MergedMeshGpu[] {
   const limit = Math.min(device.limits?.maxBufferSize ?? BATCH_CONSTANTS.FALLBACK_MAX_BUFFER_SIZE, BATCH_CONSTANTS.FALLBACK_MAX_BUFFER_SIZE);
   const maxBytes = Math.floor(limit * BATCH_CONSTANTS.BUFFER_SIZE_SAFETY_FACTOR);
   const uploaded: MergedMeshGpu[] = [];
   try {
-    for (const group of groupPieces(pieces, frameOf, maxBytes)) {
+    const groups = groupPieces(pieces, frameOf, maxBytes, anyColour, anyColour);
+    for (const group of groups) {
       const interleavedRaw = new ArrayBuffer(group.vertices * BATCH_CONSTANTS.BYTES_PER_VERTEX);
       const interleaved = new Float32Array(interleavedRaw);
       const lanes = new Uint32Array(interleavedRaw);
       const indices = new Uint32Array(group.indices);
       let firstVertex = 0;
       let firstIndex = 0;
-      for (const piece of group.pieces) {
-        writePieceVertices(interleaved, lanes, firstVertex, piece, group.frame);
+      for (const [i, piece] of group.pieces.entries()) {
+        writePieceVertices(interleaved, lanes, firstVertex, piece, group.frames[i]);
         const source = piece.indices;
         for (let i = 0; i < source.length; i++) indices[firstIndex + i] = source[i] + firstVertex;
         firstIndex += source.length;
         firstVertex += piece.positions.length / 3;
       }
-      const representative = group.pieces[0];
-      uploaded.push({ ...uploadGeometry(device, interleaved, indices, representative, group.frame), representative, pieces: group.pieces.length });
+      const representative = group.anchor;
+      uploaded.push({ ...uploadGeometry(device, interleaved, indices, representative, group.frame), representative, firstPiece: group.pieces[0], lastPiece: group.pieces[group.pieces.length - 1], pieces: group.pieces.length });
     }
   } catch (error) {
     for (const mesh of uploaded) {

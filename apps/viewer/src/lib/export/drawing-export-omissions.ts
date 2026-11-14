@@ -5,10 +5,16 @@
 import type { TranslationKey } from '@/i18n';
 
 export type DrawingExportFormat = 'pdf' | 'dxf';
-export type DrawingExportOmission = 'markups' | 'rasterReferences' | 'requestedScale';
+export type DrawingExportOmission = 'markups' | 'otherCutDimensions' | 'rasterReferences' | 'requestedScale';
 
 export interface DrawingExportContent {
-  markupCounts: Readonly<{ measurements: number; areas: number; texts: number; clouds: number }>;
+  /**
+   * Markup kinds the PDF and DXF writers do not draw. `dimensions` is accepted from callers that count every
+   * markup kind but never makes an omission: dimensions on the current cut export everywhere.
+   */
+  markupCounts: Readonly<{ measurements: number; areas: number; texts: number; clouds: number; dimensions?: number }>;
+  /** Dimensions drawn on another cut (`isDimensionOnPlane`), which every export leaves out. */
+  otherCutDimensionCount?: number;
   /** Count only underlays the drawing actually shows (opacity > 0). */
   visibleUnderlayCount: number;
   /** Visible, available, non-edge-on PDF/image references. DXF has no raster embedding. */
@@ -20,20 +26,22 @@ export interface DrawingExportContent {
 
 export const DRAWING_OMISSION_LABEL_KEYS = {
   markups: 'section2d.export.omission.markups',
+  otherCutDimensions: 'section2d.export.omission.otherCutDimensions',
   rasterReferences: 'section2d.export.omission.rasterReferences',
   requestedScale: 'section2d.export.omission.requestedScale',
 } as const satisfies Record<DrawingExportOmission, TranslationKey>;
 
-/** #6615: vector references export everywhere; only DXF omits raster references. */
+/** #6615: vector references export everywhere; only DXF omits raster references. Dimensions on the current cut export everywhere; those from another cut nowhere. */
 export function drawingExportOmissions(
   content: DrawingExportContent,
   format: DrawingExportFormat,
 ): DrawingExportOmission[] {
   const omissions: DrawingExportOmission[] = [];
-  const { markupCounts, visibleRasterReferenceCount = 0, sheetScale, requestedScale } = content;
+  const { markupCounts, otherCutDimensionCount = 0, visibleRasterReferenceCount = 0, sheetScale, requestedScale } = content;
   if (markupCounts.measurements + markupCounts.areas + markupCounts.texts + markupCounts.clouds > 0) {
     omissions.push('markups');
   }
+  if (otherCutDimensionCount > 0) omissions.push('otherCutDimensions');
   if (visibleRasterReferenceCount > 0 && format === 'dxf') {
     omissions.push('rasterReferences');
   }

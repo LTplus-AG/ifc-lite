@@ -57,6 +57,7 @@ for (const [label, prefs, granted] of PREF_SETS) {
     await page.goto(pageUrl);
     const permissionsBefore = await page.evaluate(() => globalThis.queryPermissions());
     const socket = await page.evaluate(([p]) => globalThis.probeSocket(p, 8000), [Number(bridgePort)]);
+    if (!socket || typeof socket !== 'object') throw new Error(`probeSocket returned no result: ${JSON.stringify(socket)}`);
     const permissionsAfter = await page.evaluate(() => globalThis.queryPermissions());
     run = { label, prefs, isSecureContext: await page.evaluate(() => isSecureContext), permissionsBefore, socket, permissionsAfter, console: consoleLines };
   } catch (err) { run = { label, prefs, error: String(err), console: consoleLines }; }
@@ -64,4 +65,8 @@ for (const [label, prefs, granted] of PREF_SETS) {
   report.runs.push(run);
   await browser.close();
 }
+// A run without a socket result means the probe page or script did not work: that fails the run, it is not
+// an observation of how Firefox treats the socket.
+report.failures = report.runs.filter((r) => r.error).map((r) => `${r.label}: ${r.error}`);
 writeFileSync(`${out}/ff-socket-probe.json`, JSON.stringify(report, null, 2));
+if (report.failures.length) { console.error(`ff-socket-probe: ${report.failures.length} run(s) failed`); process.exit(1); }

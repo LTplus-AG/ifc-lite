@@ -17,8 +17,9 @@
 //! coordinate of the host and its cutters within the world quantum of another
 //! is moved to one shared value. Coordinates that differ by more than that are
 //! untouched, so real features are never merged. It is a RETRY: the caller
-//! runs it only when the unsnapped cut came back open, and keeps it only when
-//! it is closed and consistently wound, so every already-clean cut stays
+//! runs it only when the unsnapped cut came back open, or closed with slivers
+//! from an opening that only touches the host ([`touches_host`]), and keeps
+//! it only when it is closed and consistently wound, so every clean cut stays
 //! byte-identical (snapping unconditionally regressed the geometry census,
 //! #5905).
 
@@ -139,6 +140,23 @@ pub(super) fn snap_to_frame_planes(host: &mut Mesh, openings: &mut [CutterKind],
             CutterKind::DiagonalRectangular(m, _) => snap_mesh(m),
         }
     }
+}
+
+/// Whether an opening only touches the host: on some frame axis its bounds
+/// enter the host's by no more than `tol`, or stop short of them by no more
+/// than that. `tol` is [`frame_snap_tolerance`], so such an opening is one
+/// whose face the author put ON a host face and f32 world storage moved off
+/// it. Cut as stored it shaves the host or chips its corners; the snap puts
+/// the two faces back on one plane and the opening then cuts nothing.
+pub(super) fn touches_host(host: &Mesh, openings: &[CutterKind], tol: f64) -> bool {
+    let (host_lo, host_hi) = host.bounds();
+    openings.iter().any(|op| {
+        let (lo, hi) = op.cutter().bounds();
+        let entered = (0..3)
+            .map(|k| hi[k].min(host_hi[k] as f64) - lo[k].max(host_lo[k] as f64))
+            .fold(f64::INFINITY, f64::min);
+        entered.abs() <= tol
+    })
 }
 
 /// Every undirected edge is used exactly once in each direction (closed,

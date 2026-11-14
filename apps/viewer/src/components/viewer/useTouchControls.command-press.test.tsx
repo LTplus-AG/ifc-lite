@@ -552,10 +552,12 @@ describe('a command that follows the press gets a press-drag (#9092)', () => {
     const [id, model] = [...models][0]!;
     models.set(id, { ...model, geometryRestorePending: true });
     useViewerStore.setState({ models });
+    const area = spaceQuantity(left.id, 'GrossFloorArea');
     const { canvas } = commandRig();
     roomDrag(canvas, at(4, 5), -100);
     assert.equal((getCommandRuntime().gesture as RoomPlaceGesture).edit.drag, null,
       'held touch must not call the command press or drag handlers');
+    assert.equal(spaceQuantity(left.id, 'GrossFloorArea'), area, 'a held drag must not move the corner (an ungated drag would commit and change the room)');
   });
 
   /** room.place in edit mode with `tool`, on a box split at x = 4: the left room. */

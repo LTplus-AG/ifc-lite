@@ -152,7 +152,7 @@ export function useIfcCache() {
       const { dataStore, cacheBuffer, cacheBlob, headerInfo, geometrySection } =
         await decodeCachedMetadata(cacheResult, fallbackSourceBuffer, trace, inflater.prepare);
       // Reopen mark (user decision 2026-11-14): with the stored scene adopted, tree and properties go out before the geometry restore.
-      const earlyPublished = adopted !== null && !isStale?.() && publishMetadataAtMark(modelId, dataStore, adopted.firstVisible, trace);
+      const earlyPublished = adopted !== null && !isStale?.() && publishMetadataAtMark(modelId, dataStore, adopted.firstVisible, trace, isStale);
 
       let meshCount = 0;
       let loadedTotalVertices = 0;

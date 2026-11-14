@@ -117,4 +117,21 @@ describe('geometry restore gate (reopen mark, 2026-11-14)', () => {
     assert.deepEqual(marks, ['load.metadataInteractive']);
     endGeometryRestore('a');
   });
+
+  it('publishMetadataAtMark: a load cancelled or superseded before the scene is shown emits no mark', async () => {
+    addModel('a');
+    useViewerStore.getState().setActiveModel('a');
+    const marks: string[] = [];
+    const trace = { span: (_n: string, fn: () => unknown) => fn(), milestone: (n: string) => { marks.push(n); } } as unknown as LoadTrace;
+    let shown!: () => void;
+    const sceneShown = new Promise<void>((resolve) => { shown = resolve; });
+    let stale = false;
+    publishMetadataAtMark('a', { schemaVersion: 'IFC4' } as unknown as IfcDataStore, sceneShown, trace, () => stale);
+    stale = true; // superseded while the stored scene was still on its way
+    shown();
+    await sceneShown; await Promise.resolve();
+    assert.deepEqual(marks, [], 'a stale load must not report a reopen as interactive');
+    endGeometryRestore('a');
+  });
 });
+

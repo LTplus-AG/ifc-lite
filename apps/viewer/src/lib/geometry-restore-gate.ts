@@ -91,9 +91,11 @@ export function publishMetadataAtMark(
   dataStore: IfcDataStore,
   sceneShown: Promise<void> | undefined,
   trace: LoadTrace,
+  isStale?: () => boolean,
 ): true {
   beginGeometryRestore(modelId);
   trace.span('cache.publishStore', () => useViewerStore.getState().setIfcDataStore(dataStore));
-  void Promise.resolve(sceneShown).then(() => trace.milestone('load.metadataInteractive'));
+  // A load cancelled or superseded before its scene is shown reports no interactive reopen.
+  void Promise.resolve(sceneShown).then(() => { if (!isStale?.()) trace.milestone('load.metadataInteractive'); });
   return true;
 }

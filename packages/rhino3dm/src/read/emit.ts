@@ -6,7 +6,7 @@ import type { Part } from './geometry.js';
 import { plural, type Report } from './report.js';
 import type {
   RhinoImportCurve, RhinoImportDefinition, RhinoImportInstance, RhinoImportMesh,
-  RhinoImportPointCloud, RhinoImportTextDot, RhinoRgba,
+  RhinoImportPointCloud, RhinoImportTextDot, RhinoImportVisibility, RhinoRgba,
 } from './types.js';
 import type { RhinoVector3 } from '../types.js';
 import { determinant3, hasLinearPart, keepsF32, reach, transformNormals, transformPoint, transformVectors, type Xform } from './xform.js';
@@ -39,10 +39,12 @@ function flipWinding(indices: Uint32Array): Uint32Array {
  */
 export const MAX_TEXT_DOTS = 100_000;
 
+const UNSET: RhinoImportVisibility = { hidden: false, hiddenByObject: false, hiddenByLayer: false };
+
 /**
  * Collects the output geometry and enforces the drawing budget. `entity`
  * holds the index of the source object until the reader maps it to an entity,
- * and `hidden` is false until the reader sets that object's flag.
+ * and the visibility flags are false until the reader sets that object's.
  */
 export class Emitter {
   readonly meshes: RhinoImportMesh[] = [];
@@ -127,7 +129,7 @@ export class Emitter {
     if (part.kind === 'dot') {
       this.dotVisits++;
       if (!origin.every(Number.isFinite)) this.report.skip('TextDot:invalid');
-      else this.textDots.push({ entity: object, position: origin, text: part.text, color: [...color], hidden: false });
+      else this.textDots.push({ entity: object, position: origin, text: part.text, color: [...color], ...UNSET });
       return true;
     }
     if (this.exhausted) return false;
@@ -135,13 +137,13 @@ export class Emitter {
     if (!this.take(cost(part))) return false;
     const linear = xform !== null && hasLinearPart(xform) ? xform : null;
     const positions = linear ? transformVectors(linear, part.positions) : this.own(part.positions);
-    if (part.kind === 'curve') this.curves.push({ entity: object, origin, positions, closed: part.closed, color: [...color], hidden: false });
-    else if (part.kind === 'points') this.pointClouds.push({ entity: object, origin, positions, colors: part.colors && this.own(part.colors), color: [...color], hidden: false });
+    if (part.kind === 'curve') this.curves.push({ entity: object, origin, positions, closed: part.closed, color: [...color], ...UNSET });
+    else if (part.kind === 'points') this.pointClouds.push({ entity: object, origin, positions, colors: part.colors && this.own(part.colors), color: [...color], ...UNSET });
     else {
       // A mirroring placement turns each triangle inside out, so its winding is reversed.
       const mirrored = linear !== null && determinant3(linear) < 0;
       this.meshes.push({
-        entity: object, origin, positions, color: [...color], hidden: false,
+        entity: object, origin, positions, color: [...color], ...UNSET,
         normals: linear ? transformNormals(linear, part.normals) : this.own(part.normals),
         indices: mirrored ? flipWinding(part.indices) : this.own(part.indices),
       });
@@ -190,7 +192,7 @@ export class Emitter {
       this.definitionIndex.set(id, definition);
       this.definitions.push({ name: block.name, meshes: block.meshes.map(m => ({ ...m, positions: this.own(m.positions), normals: this.own(m.normals), indices: this.own(m.indices) })) });
     }
-    this.instances.push({ entity: object, definition, transform: xform, color: [...color], hidden: false });
+    this.instances.push({ entity: object, definition, transform: xform, color: [...color], ...UNSET });
     return true;
   }
 }

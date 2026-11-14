@@ -23,7 +23,7 @@ it.each([false, true])('#9352 MCP quantity readback follows the final roof cut (
 });
 
 
-it.each(['roof', 'storey'] as const)('#9352 MCP reads correct pitched-to-%s quantities through export and reopen', async kind => {
+it.each([{ kind: 'roof', netOnly: false }, { kind: 'storey', netOnly: false }, { kind: 'roof', netOnly: true }] as const)('#9352 MCP reads correct pitched quantities (target=$kind, netOnly=$netOnly) through export and reopen', async ({ kind, netOnly }) => {
   const { registry, call } = await liveToolSession(1);
   const model = registry.get('alpha')!, S = model.bim.store;
   const home = S.listStoreyLevels('alpha')[0].expressId;
@@ -32,16 +32,24 @@ it.each(['roof', 'storey'] as const)('#9352 MCP reads correct pitched-to-%s quan
   const flat = S.addRoof('alpha', home, { Position: [0, 20, 4], Width: 10, Depth: 8, Thickness: .25 });
   const wall = S.addWall('alpha', home, { Start: [5, 20, 0], End: [5, 28, 0], Thickness: .2, Height: 3, TopConstraint: { kind: 'fixed' } });
   const view = model.backend.getMutationView()!;
-  view.setQuantity(wall.expressId, 'Qto_WallBaseQuantities', 'Height', 3, QuantityType.Length);
-  view.setQuantity(wall.expressId, 'Qto_WallBaseQuantities', 'GrossVolume', 4.8, QuantityType.Volume);
+  if (netOnly) {
+    S.addHostedDoor('alpha', wall.expressId, { Offset: 3, Width: 2, Height: 2 });
+    view.setQuantity(wall.expressId, 'Qto_WallBaseQuantities', 'NetSideArea', 20, QuantityType.Area);
+  } else {
+    view.setQuantity(wall.expressId, 'Qto_WallBaseQuantities', 'Height', 3, QuantityType.Length);
+    view.setQuantity(wall.expressId, 'Qto_WallBaseQuantities', 'GrossVolume', 4.8, QuantityType.Volume);
+  }
   expect((await call('set_top_constraint', { express_id: wall.expressId, constraint: { kind: 'roof', roofId: pitched.expressId } })).isError).not.toBe(true);
   expect((await call('set_top_constraint', { express_id: wall.expressId, constraint: kind === 'roof' ? { kind: 'roof', roofId: flat.expressId } : { kind: 'storey', storeyId: above.expressId } })).isError).not.toBe(true);
   const result = await call('get_entity', { express_id: wall.expressId, include: ['quantities'] });
   expect(result.isError).not.toBe(true);
   const sets = result.structuredContent!.quantities as Array<{ name: string; quantities: Array<{ name: string; value: number }> }>;
   const check = (quantities: Array<{ name: string; value: number }>) => {
-    expect(quantities.find(q => q.name === 'Height')?.value).toBeCloseTo(4, 8);
-    expect(quantities.find(q => q.name === 'GrossVolume')?.value).toBeCloseTo(6.4, 8);
+    if (netOnly) expect(quantities.find(q => q.name === 'NetSideArea')?.value).toBeCloseTo(28, 8);
+    else {
+      expect(quantities.find(q => q.name === 'Height')?.value).toBeCloseTo(4, 8);
+      expect(quantities.find(q => q.name === 'GrossVolume')?.value).toBeCloseTo(6.4, 8);
+    }
   };
   check(sets.find(set => set.name === 'Qto_WallBaseQuantities')!.quantities);
   const output = model.bim.export.ifc(), bytes = typeof output === 'string' ? new TextEncoder().encode(output) : output;

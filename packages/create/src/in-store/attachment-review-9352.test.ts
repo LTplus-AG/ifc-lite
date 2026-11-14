@@ -6,6 +6,8 @@ import { QuantityType } from '@ifc-lite/data';
 import { extractQuantitiesOnDemand } from '@ifc-lite/parser';
 import { IfcCreator } from '../ifc-creator.js';
 import { addOrdinaryElementInStore } from './ordinary-element.js';
+import { addHostedDoorToStore } from './hosted-fill.js';
+import { resolveHostAnchor } from './resolve-host.js';
 import { addRoofToStore } from './roof.js';
 import { resolveSpatialAnchor } from './resolve-anchor.js';
 import { addStoreyInStore } from './storey/storey-add.js';
@@ -67,6 +69,7 @@ for (const reopen of [false, true]) it.each(['flat', 'storey'] as const)(`#9352 
   const pitched = addRoofToStore(s.editor, anchor, { Position: [0, 0, 4], Width: 10, Depth: 8, Thickness: .25, EdgeSlopes: [Math.PI / 6, 0, Math.PI / 6, 0], Overhang: .5 }).roofId;
   const flat = addRoofToStore(s.editor, anchor, { Position: [0, 0, 4], Width: 10, Depth: 8, Thickness: .25 }).roofId;
   const above = addStoreyInStore(s.store, s.editor, { Name: 'Above', Elevation: 4 }).storeyId;
+  addHostedDoorToStore(s.editor, resolveHostAnchor(s.store, wall, s.view), { Offset: 3, Width: 2, Height: 2 });
   // A 24 m² original prism minus a fixed 4 m² opening deduction. No Height,
   // Length, Width or gross quantity is available to replace the geometry oracle.
   s.view.setQuantity(wall, 'Qto_WallBaseQuantities', 'NetSideArea', 20, QuantityType.Area);

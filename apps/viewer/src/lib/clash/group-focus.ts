@@ -54,6 +54,7 @@ export interface FocusedClashGroup {
     levelDisplayMode: ViewerState['levelDisplayMode'];
     classFilter: ViewerState['classFilter'];
     typeVisibility: ViewerState['typeVisibility'];
+    structuralViewMode: ViewerState['structuralViewMode'];
     typeViewMode: ViewerState['typeViewMode'];
   };
 }
@@ -118,6 +119,7 @@ export function focusedSceneRevisionIsCurrent(focused: FocusedClashGroup): boole
     && state.levelDisplayMode === revision.levelDisplayMode
     && state.classFilter === revision.classFilter
     && state.typeVisibility === revision.typeVisibility
+    && state.structuralViewMode === revision.structuralViewMode
     && state.typeViewMode === revision.typeViewMode;
 }
 
@@ -178,6 +180,7 @@ export function focusClashGroup(
   // represent it. Clear it before composing the clash focus/capture state.
   const waitForPresentationReset = hiddenParticipatingModelIds.length > 0
     || state.classFilter !== null
+    || state.structuralViewMode !== 'both'
     || !Object.values(state.typeVisibility).every(Boolean)
     || state.typeViewMode !== 'model';
   // BCF cannot serialize a viewer-only whole-model visibility toggle. Reveal
@@ -192,10 +195,11 @@ export function focusClashGroup(
   // Normalize them in one render before framing so the PNG and reopened
   // viewpoint agree. This deliberately leaves the user's persisted defaults
   // alone; the capture transition is presentation state, not a preference.
-  if (!Object.values(state.typeVisibility).every(Boolean) || state.typeViewMode !== 'model') {
+  if (state.structuralViewMode !== 'both'
+    || !Object.values(state.typeVisibility).every(Boolean) || state.typeViewMode !== 'model') {
     useViewerStore.setState({
       typeVisibility: { ...ALL_TYPES_VISIBLE },
-      typeViewMode: 'model',
+      typeViewMode: 'model', structuralViewMode: 'both',
     });
   }
   // Renderer presentation channels match mesh ids. A geometry-less aggregate
@@ -301,7 +305,7 @@ export function focusClashGroup(
       selectedStoreys: focusedState.selectedStoreys,
       levelDisplayMode: focusedState.levelDisplayMode,
       classFilter: focusedState.classFilter,
-      typeVisibility: focusedState.typeVisibility,
+      typeVisibility: focusedState.typeVisibility, structuralViewMode: focusedState.structuralViewMode,
       typeViewMode: focusedState.typeViewMode,
     },
   };

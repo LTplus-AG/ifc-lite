@@ -114,8 +114,7 @@ export class StructuralVarying {
 
   private toIfc2x3(entity: string, args: readonly string[]): Rewrite | undefined {
     const kind = KINDS.find((k) => k.ifc4 === entity);
-    const spread: readonly string[] | undefined = kind?.spread;
-    if (!kind || args.length !== 12 || !spread?.includes(args[11].trim().toUpperCase())) return undefined;
+    if (!kind || args.length !== 12 || !(kind.spread as readonly string[]).includes(args[11].trim().toUpperCase())) return undefined;
     const values = this.configs.get(refId(args[7]) ?? -1);
     if (!values) return undefined;
     const aspect = this.convertible(kind, args[6], values);

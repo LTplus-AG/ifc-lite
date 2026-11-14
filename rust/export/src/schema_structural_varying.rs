@@ -13,7 +13,7 @@
 //! back are converted (`Source::convertible` decides both directions). Both
 //! read the source, so only an unedited full export arms them. Twin of
 //! `packages/export/src/schema-converter-structural-varying.ts`.
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use crate::schema_ifc2x3_records::ref_id;
 use crate::schema_structural_axes::list_items;
 use crate::step_record_frame::record_frame;
@@ -47,7 +47,7 @@ pub(crate) struct StructuralVarying {
     /// IFC2X3 -> IFC4: varying action id -> (kind, loads, the id allocated for its configuration).
     upgrades: HashMap<u32, (&'static Kind, Vec<u32>, u32)>,
     /// Configuration records written so far, by id.
-    pending: std::collections::BTreeMap<u32, String>,
+    pending: BTreeMap<u32, String>,
     /// IFC4 -> IFC2X3: action id -> (kind, configuration values, shape aspect).
     downgrades: HashMap<u32, (&'static Kind, Vec<u32>, u32)>,
     consumed: HashSet<u32>,
@@ -64,8 +64,6 @@ struct Source {
     configs: HashMap<u32, Vec<u32>>,
     /// The actions this direction converts from, with their arguments.
     actions: Vec<(u32, &'static Kind, Vec<String>)>,
-    /// Load id -> the activities naming it as AppliedLoad.
-    referrers: HashMap<u32, Vec<u32>>,
 }
 
 /// The record's top-level arguments, framed by the shared record reader.
@@ -90,7 +88,6 @@ fn refs(token: &str) -> Option<Vec<u32>> {
 impl Source {
     fn scan(content: &[u8], kept: impl Fn(u32, usize) -> bool, upgrade: bool) -> Self {
         let mut source = Self::default();
-        let mut activity: HashMap<String, bool> = HashMap::new();
         let mut scanner = ifc_lite_core::EntityScanner::new(content);
         while let Some((id, ty, start, end)) = scanner.next_entity() {
             // Every structural record but the shape aspect starts so; the prefix keeps the rest of the file cheap.
@@ -101,16 +98,14 @@ impl Source {
             if ifc_lite_core::SchemaVersion::Ifc2x3.is_subtype_of(&ty, "IfcStructuralLoad") { source.loads.insert(id, ty); continue; }
             let kind = KINDS.iter().find(|k| if upgrade { k.ifc2x3 == ty } else { k.ifc4 == ty });
             let config = !upgrade && ty == "IFCSTRUCTURALLOADCONFIGURATION";
-            let is_activity = !upgrade && *activity.entry(ty).or_insert_with_key(|t| ifc_lite_core::SchemaVersion::Ifc4.is_subtype_of(t, "IfcStructuralActivity"));
-            if !(shape || kind.is_some() || config || is_activity) { continue; }
+            if !(shape || kind.is_some() || config) { continue; }
             let Some(args) = record(content, start, end) else { continue };
             if shape {
                 if let Some(of) = ref_id(args.get(4).map(String::as_str)) { source.aspects.entry(of).or_default().push(id); }
             } else if config {
                 if let Some(values) = args.get(1).and_then(|v| refs(v)).filter(|v| !v.is_empty()) { source.configs.insert(id, values); }
-            } else {
-                if let Some(load) = ref_id(args.get(7).map(String::as_str)).filter(|_| is_activity) { source.referrers.entry(load).or_default().push(id); }
-                if let Some(kind) = kind { source.actions.push((id, kind, args)); }
+            } else if let Some(kind) = kind {
+                source.actions.push((id, kind, args));
             }
         }
         source
@@ -153,18 +148,17 @@ impl StructuralVarying {
         let mut result = Self::default();
         for (id, kind, args) in &source.actions {
             if args.len() != 12 || !kind.spread.iter().any(|s| args[11].trim().eq_ignore_ascii_case(s)) { continue; }
-            let Some(values) = ref_id(Some(&args[7])).and_then(|c| source.configs.get(&c)) else { continue };
+            let Some((config, values)) = ref_id(Some(&args[7])).and_then(|c| source.configs.get_key_value(&c)) else { continue };
             // A configuration named outside AppliedLoad would dangle once it is dropped.
             if args.iter().enumerate().any(|(i, a)| i != 7 && names_config(a)) { continue; }
             if let Some(aspect) = source.convertible(kind, &args[6], values, None) {
                 result.downgrades.insert(*id, (*kind, values.clone(), aspect));
+                result.consumed.insert(*config);
             }
         }
-        result.consumed = source.referrers.into_iter()
-            .filter(|(config, by)| source.configs.contains_key(config) && by.iter().all(|a| result.downgrades.contains_key(a)))
-            .map(|(config, _)| config).collect();
         if !result.consumed.is_empty() {
-            // Any other record naming a consumed configuration keeps it, so nothing dangles.
+            // Any other record naming a consumed configuration (an action that does not
+            // convert, or a slot the schema does not allow) keeps it, so nothing dangles.
             let mut scanner = ifc_lite_core::EntityScanner::new(content);
             while let Some((id, _, start, end)) = scanner.next_entity() {
                 if result.downgrades.contains_key(&id) || !kept(id, start) { continue; }

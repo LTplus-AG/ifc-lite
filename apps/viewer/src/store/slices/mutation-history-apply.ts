@@ -12,7 +12,7 @@
 
 import { replayQuantityMutation, type MutablePropertyView, type IfcAttributeValue, type Mutation } from '@ifc-lite/mutations';
 import type { ViewerState } from '../index.js';
-import { syncAuthoredTreeEntry } from './authoredTreeEntry.js';
+import { authoredDataStore, syncAuthoredTreeEntry } from './authoredTreeEntry.js';
 import { mirrorCreateEntityRedo, mirrorSourceEntityRestore } from './mutation-cost-undo.js';
 import { stashAndPruneEntityMesh, restoreStashedEntityMesh } from './mutation-mesh-stash.js';
 import { isTargetTombstoned } from './mutation-redo-remote-guard.js';
@@ -40,6 +40,21 @@ export function syncTypeOverride(get: Get, modelId: string, entityId: number): v
   const newType = view?.getEntityTypeMutation?.(entityId)?.newType ?? null;
   const dataStore = get().models.get(modelId)?.ifcDataStore ?? get().ifcDataStore;
   dataStore?.entities?.setTypeOverride?.(entityId, newType);
+}
+
+/**
+ * Clear a model's view and every EntityTable override its retypes wrote.
+ * Resets the whole table rather than replaying the view's retypes: a deleted
+ * created entity's retype moves into the view's private stash, where the view
+ * can no longer name it, yet its override stays on the table.
+ */
+export function clearViewAndTypeOverrides(get: Get, modelId: string): void {
+  const view = get().mutationViews.get(modelId);
+  if (!view) return;
+  view.clear();
+  // Only this model's own table: a whole-table reset must never reach another
+  // loaded model's table through `syncTypeOverride`'s legacy fallback.
+  authoredDataStore(get(), modelId)?.entities?.clearTypeOverrides?.();
 }
 
 /**

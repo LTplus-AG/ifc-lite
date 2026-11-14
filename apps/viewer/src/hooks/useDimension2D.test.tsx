@@ -550,6 +550,21 @@ it('a drag whose dimension is replaced by a same-id one mid-drag stops and recor
   assert.equal(useViewerStore.getState().dimension2DUndo.length, 0, 'and no stale before-state is recorded');
 });
 
+it('undoing a drag puts every same-id dimension back at its own start', () => {
+  const first = { id: 'dup', a: { x: 0, y: 0 }, b: { x: 4, y: 0 }, offset: -1, orientation: 'aligned' as const, plane: PLANE };
+  const second = { ...first, a: { x: 0, y: -6 }, b: { x: 3, y: -6 } };
+  useViewerStore.setState({ drawing2D: drawing(), annotation2DActiveTool: 'none', dimensions2D: [first, second] });
+  const canvas = render(<Harness />).firstElementChild!;
+  mouseDown(canvas, { clientX: 200, clientY: -100 });
+  mouseMove(canvas, { clientX: 300, clientY: 0 });
+  act(() => { window.dispatchEvent(new window.MouseEvent('mouseup')); });
+  assert.equal(useViewerStore.getState().dimension2DUndo.length, 1);
+  act(() => useViewerStore.getState().undoDimension2D());
+  const [a, b] = useViewerStore.getState().dimensions2D;
+  assert.deepEqual([a.a, a.b], [first.a, first.b]);
+  assert.deepEqual([b.a, b.b], [second.a, second.b], 'the second is restored to its own geometry');
+});
+
 it('placing a dimension with the tool is undoable from the keyboard', () => {
   useViewerStore.setState({ drawing2D: drawing(), annotation2DActiveTool: 'dimension' });
   const canvas = render(<Harness />).firstElementChild!;

@@ -102,7 +102,7 @@ export function useDimension2D(p: UseDimension2DParams) {
   const refs = useRef<(Dimension2DElementRef | undefined)[]>([]);
   // `live` is the dimension object this drag last wrote; any other object under the id means the
   // markup was replaced mid-drag (restore, reset), which ends the drag without recording.
-  const dragging = useRef<{ id: string; grab: Point2D; from: Dimension2D; model: string | null; live: Dimension2D } | null>(null);
+  const dragging = useRef<{ id: string; grab: Point2D; from: Dimension2D[]; model: string | null; live: Dimension2D } | null>(null);
 
   const mapping = useMapping(p);
   const paperScale = p.sheet ? p.sheet.sheet.scale.factor : p.displayScale;
@@ -179,7 +179,9 @@ export function useDimension2D(p: UseDimension2DParams) {
       // that is gone or was replaced, or a drag that crossed a model switch, records nothing.
       const state = useViewerStore.getState();
       if (drag && state.activeModelId === drag.model && state.dimensions2D.find((d) => d.id === drag.id) === drag.live) {
-        state.commitDimension2DMove(state.dimensions2D.map((d) => (d.id === drag.id ? drag.from : d)));
+        // A move translates every entry under the id, so each goes back to its own start.
+        let k = 0;
+        state.commitDimension2DMove(state.dimensions2D.map((d) => (d.id === drag.id ? (drag.from[k++] ?? d) : d)));
       }
     };
     window.addEventListener('mouseup', release);
@@ -255,7 +257,8 @@ export function useDimension2D(p: UseDimension2DParams) {
     if (!hitDim) return false;
     state.setSelectedAnnotation2D({ type: 'dimension', id: hitDim.id });
     const at = mapping.toDrawing(screen);
-    dragging.current = { id: hitDim.id, grab: { x: at.x - hitDim.a.x, y: at.y - hitDim.a.y }, from: hitDim, model: state.activeModelId, live: hitDim };
+    dragging.current = { id: hitDim.id, grab: { x: at.x - hitDim.a.x, y: at.y - hitDim.a.y }, from: state.dimensions2D.filter((d) => d.id === hitDim.id), model: state.activeModelId,
+      live: state.dimensions2D.find((d) => d.id === hitDim.id) ?? hitDim };
     return true;
   }
 

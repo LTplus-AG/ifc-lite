@@ -74,14 +74,21 @@ async function worldToScreen(page, p) {
   }, p);
 }
 
-const applyView = async (page, pos, target) => {
-  await page.waitForFunction(() => { const cb = globalThis.__ifc_lite_viewer_store__?.getState().cameraCallbacks; return typeof cb?.getViewpoint === "function" && typeof cb?.applyViewpoint === "function"; }, null, { timeout: 30000 });
+export async function applyView(page, pos, target) {
+  try {
+    await page.waitForFunction(() => {
+      const cb = globalThis.__ifc_lite_viewer_store__?.getState().cameraCallbacks;
+      return typeof cb?.getViewpoint === 'function' && typeof cb?.applyViewpoint === 'function';
+    }, undefined, { timeout: 30000 });
+  } catch (error) {
+    throw new Error('Camera callbacks were not ready within 30000 ms', { cause: error });
+  }
   return page.evaluate(([pos, target]) => {
-  const cb = globalThis.__ifc_lite_viewer_store__.getState().cameraCallbacks;
-  const cur = cb.getViewpoint();
-  cb.applyViewpoint({ ...cur, position: { x: pos[0], y: pos[2], z: -pos[1] }, target: { x: target[0], y: target[2], z: -target[1] }, up: { x: 0, y: 1, z: 0 } }, false);
-}, [pos, target]);
-};
+    const cb = globalThis.__ifc_lite_viewer_store__.getState().cameraCallbacks;
+    const cur = cb.getViewpoint();
+    cb.applyViewpoint({ ...cur, position: { x: pos[0], y: pos[2], z: -pos[1] }, target: { x: target[0], y: target[2], z: -target[1] }, up: { x: 0, y: 1, z: 0 } }, false);
+  }, [pos, target]);
+}
 const viewMatrix = (page) => page.evaluate(() => globalThis.__ifc_lite_view_projection__());
 const sameMatrix = (a, b) => a && b && a.every((v, i) => Math.abs(v - b[i]) < 1e-5);
 

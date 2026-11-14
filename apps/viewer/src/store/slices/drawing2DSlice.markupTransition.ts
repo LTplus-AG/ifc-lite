@@ -186,6 +186,9 @@ const FIELD_CLASSIFICATION = {
   cloudAnnotations2D: 'committed',
   dimension2DPoints: 'in-progress',
   dimensions2D: 'committed',
+  // History belongs to the live markup it edits: never cached, cleared when `activeModelId` moves.
+  dimension2DUndo: 'in-progress',
+  dimension2DRedo: 'in-progress',
   selectedAnnotation2D: 'in-progress',
   dxfUnderlays: 'preserved',
 } satisfies Record<keyof Drawing2DState, 'committed' | 'in-progress' | 'preserved'>;
@@ -248,6 +251,8 @@ export function inProgressClearPatch(): Drawing2DTransitionClearPatch {
     polygonArea2DPoints: [],
     cloudAnnotation2DPoints: [],
     dimension2DPoints: [],
+    dimension2DUndo: [],
+    dimension2DRedo: [],
     measure2DStart: null,
     measure2DCurrent: null,
     measure2DSnapPoint: null,

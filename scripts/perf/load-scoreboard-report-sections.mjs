@@ -119,13 +119,15 @@ export function bothMarksCell(rows) {
   return { base, branch, gainCurrent: gain(base.current, branch.current), gainFrame: sameCohort ? gain(base.frame, branch.frame) : null };
 }
 
-/** Metadata frame mark is capped at the old mark so an absent or late milestone cannot move it later. */
+/** A finite metadata milestone at or after the old mark (including the complete-frame guard) uses the old mark with no hold; absent milestones remain unknown. */
 export function metadataMarkOf(row) {
   const milestone = row?.milestones?.['load.metadataInteractive'] ?? browserShares(row?.trace, row?.interactiveMs).milestones['load.metadataInteractive'];
   const old = frameMarkOf(row);
   if (!Number.isFinite(milestone) || !old) return null;
   // The stored scene is on screen by the milestone (the viewer emits it after the snapshot's first paint); completeFrameMs guards older traces.
-  const next = frameMarkAtOrAfter(row, Math.max(milestone, Number.isFinite(row?.completeFrameMs) ? row.completeFrameMs : milestone));
+  const guard = Math.max(milestone, Number.isFinite(row?.completeFrameMs) ? row.completeFrameMs : milestone);
+  if (guard >= old.frameMs) return { metadataFrameMs: old.frameMs, holdMs: 0 };
+  const next = frameMarkAtOrAfter(row, guard);
   if (!next) return null;
   const metadataFrameMs = Math.min(next.frameMs, old.frameMs);
   return { metadataFrameMs, holdMs: Math.max(0, old.frameMs - metadataFrameMs) };

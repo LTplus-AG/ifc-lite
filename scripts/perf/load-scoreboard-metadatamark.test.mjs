@@ -30,6 +30,12 @@ test('metadata mark uses the first frame at or after its milestone and reports t
   assert.deepEqual(late, { metadataFrameMs: 450, holdMs: 0 }, 'a milestone after scene completion is capped at the old mark');
 });
 
+test('a late metadata milestone with no later captured frame is capped at the old mark (review #10210)', () => {
+  const mark = metadataMarkOf({ geometryMs: 300, interactiveMs: 450, presentTimesFromChangeMs: [350, 400, 470],
+    milestones: { 'load.metadataInteractive': 480 } });
+  assert.deepEqual(mark, { metadataFrameMs: 450, holdMs: 0 });
+});
+
 test('missing metadata milestones make reopen cells explicitly unverifiable and leave cold lanes on frame verdicts', () => {
   const absent = samples().map((sample) => sample.lane === 'browser-warm1' ? { ...sample, milestones: undefined } : sample);
   const summary = summarize(plan('metadata'), absent, { floors });

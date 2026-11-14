@@ -62,6 +62,9 @@ beforeEach(async () => {
     stats: { total_meshes: 0, total_vertices: 0, total_triangles: 0, parse_time_ms: 1, geometry_time_ms: 1, total_time_ms: 2, from_cache: false },
   }));
   useViewerStore.getState().clearAllModels();
+  // #10139: all-models-cleared deliberately retains mutation state for reloads.
+  // Each test starts a new model lifetime, not the previous test's retained allocator.
+  useViewerStore.setState({ mutationViews: new Map(), storeEditors: new Map() });
   const model = { ...fixtureModel('server'), ifcDataStore: null, sourceFile: file, loadState: 'complete' as const };
   useViewerStore.getState().addModel(model);
   container = document.createElement('div'); document.body.append(container);
@@ -227,7 +230,7 @@ it('reports no id left for edits when the hydrated store exactly fits its envelo
       useServerModelProperties().start('server', undefined, async () => serverStoreAt(1_000_001));
       await new Promise(resolve => setTimeout(resolve, 50));
     });
-    assert.ok(warnings.some(args => /no id is left for edits/.test(String(args[0]))), JSON.stringify(warnings));
+    assert.ok(warnings.some(args => /no id is left for edits/.test(String(args[0]))), JSON.stringify(warnings, (_key, value) => value instanceof Error ? value.message : value));
   } finally { federationRegistry.clear(); }
 });
 

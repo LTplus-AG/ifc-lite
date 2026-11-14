@@ -473,6 +473,20 @@ it('a dimension drag is one undo step', () => {
   assert.deepEqual(useViewerStore.getState().dimensions2D[0].a, { x: 0, y: 0 });
 });
 
+it('a drag whose markup is replaced mid-drag records nothing on release', () => {
+  useViewerStore.setState({ drawing2D: drawing(), annotation2DActiveTool: 'none',
+    dimensions2D: [{ id: 'd1', a: { x: 0, y: 0 }, b: { x: 4, y: 0 }, offset: -1, orientation: 'aligned', plane: PLANE }] });
+  const canvas = render(<Harness />).firstElementChild!;
+  mouseDown(canvas, { clientX: 200, clientY: -100 });
+  mouseMove(canvas, { clientX: 250, clientY: -50 });
+  // A restore replaces the markup (and resets its history) while the button is held.
+  const restored = [{ id: 'r1', a: { x: 9, y: 9 }, b: { x: 12, y: 9 }, offset: 1, orientation: 'aligned' as const, plane: PLANE }];
+  act(() => useViewerStore.setState({ dimensions2D: restored, dimension2DUndo: [], dimension2DRedo: [] }));
+  act(() => { window.dispatchEvent(new window.MouseEvent('mouseup')); });
+  assert.equal(useViewerStore.getState().dimension2DUndo.length, 0, 'no stale pre-drag snapshot to undo into');
+  assert.deepEqual(liveIds(), ['r1']);
+});
+
 it('placing a dimension with the tool is undoable from the keyboard', () => {
   useViewerStore.setState({ drawing2D: drawing(), annotation2DActiveTool: 'dimension' });
   const canvas = render(<Harness />).firstElementChild!;

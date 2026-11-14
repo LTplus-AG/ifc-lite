@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>bridge socket probe</title>
+<p>#9523 bridge socket probe: opens ws://127.0.0.1:&lt;port&gt;/ and reports what the browser does.</p>
+<script>
+// Called by the harness. Never sends a pairing code: it only observes open/close, so no code is consumed.
+globalThis.probeSocket = (port, waitMs) => new Promise((resolve) => {
+  const t0 = performance.now();
+  const events = [];
+  const at = () => Math.round(performance.now() - t0);
+  let ws;
+  try { ws = new WebSocket(`ws://127.0.0.1:${port}/`); }
+  catch (err) { resolve({ threw: String(err), events }); return; }
+  ws.onopen = () => { events.push({ e: 'open', ms: at() }); ws.close(1000, 'probe'); };
+  ws.onerror = () => events.push({ e: 'error', ms: at() });
+  ws.onclose = (ev) => { events.push({ e: 'close', ms: at(), code: ev.code, wasClean: ev.wasClean }); resolve({ events, readyState: ws.readyState }); };
+  setTimeout(() => resolve({ events, readyState: ws.readyState, note: `still pending after ${waitMs} ms` }), waitMs);
+});
+globalThis.queryPermissions = async () => {
+  const out = {};
+  for (const name of ['loopback-network', 'local-network-access', 'local-network']) {
+    try { out[name] = (await navigator.permissions.query({ name })).state; } catch (err) { out[name] = `rejects: ${err.name}`; }
+  }
+  return out;
+};
+</script>

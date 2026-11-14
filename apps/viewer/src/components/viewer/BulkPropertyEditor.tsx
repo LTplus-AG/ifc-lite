@@ -1,6 +1,8 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import { createModelMutationView } from '@/utils/model-mutation-view';
 import { useBulkExecutionScroll } from './useBulkExecutionScroll';
 import { useDialogOperation } from './authoring-operation';
 import { bulkDraftKey, useBulkCompletedDraft, useBulkTargetSource } from './useBulkDraft';
@@ -42,16 +44,13 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { useViewerStore } from '@/store';
 import { canMutateData, mutationDenialKey, dataMutationPermissionForModels } from '@/store/mutation-permission';
-import { configureMutationView } from '@/utils/configureMutationView';
 import { PropertyValueType } from '@ifc-lite/data';
 import {
   BulkQueryEngine,
-  MutablePropertyView,
   type BulkAction,
   type BulkQueryPreview,
   type BulkQueryResult,
 } from '@ifc-lite/mutations';
-import type { IfcDataStore } from '@ifc-lite/parser';
 import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { FilterGroupEditor, type FilterGroupEditorState } from './FilterGroupEditor';
@@ -193,9 +192,7 @@ export function BulkPropertyEditor(props: ToolDialogProps) {
 
     // Create new mutation view with on-demand property extractor
     const dataStore = selectedModel.ifcDataStore;
-    mutationView = new MutablePropertyView(dataStore.properties || null, selectedModelId);
-
-    configureMutationView(mutationView, dataStore as IfcDataStore);
+    mutationView = createModelMutationView(dataStore, selectedModelId);
 
     // Register the mutation view
     registerMutationView(selectedModelId, mutationView);
@@ -222,8 +219,7 @@ export function BulkPropertyEditor(props: ToolDialogProps) {
     for (const modelId of targetGroups.keys()) {
       const dataStore = models.get(modelId)?.ifcDataStore;
       if (!dataStore || getMutationView(modelId)) continue;
-      const view = new MutablePropertyView(dataStore.properties || null, modelId);
-      configureMutationView(view, dataStore);
+      const view = createModelMutationView(dataStore, modelId);
       registerMutationView(modelId, view);
     }
   }, [open, targetSource, targetGroups, models, getMutationView, registerMutationView]);

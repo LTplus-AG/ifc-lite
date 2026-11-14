@@ -2,12 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { createModelMutationView } from '@/utils/model-mutation-view';
 import { validatePropertyDataType } from '@ifc-lite/export';
 import { PROPERTY_TYPE_NAMES } from '@ifc-lite/ifcx';
 import { getAttributeNamesAcrossSchemas, type IfcDataStore } from '@ifc-lite/parser';
 import type { Property, PropertyValue, Quantity } from '@ifc-lite/data';
 import { MutablePropertyView, StoreEditor, type Mutation } from '@ifc-lite/mutations';
-import { configureMutationView } from '@/utils/configureMutationView';
 import { roomSymbolicSource } from './room-symbolic-source';
 import { propertyValueTypeFor } from './mutation-bridge';
 import { asExpressIdRef, readAttributes, resolvePlacementChain } from '@/lib/placement-core';
@@ -42,8 +42,7 @@ function snapshotView(
   portable: NonNullable<ReturnType<typeof roomSymbolicSource>>,
   modelId: string,
 ): MutablePropertyView {
-  const view = new MutablePropertyView(portable.dataStore.properties, modelId);
-  configureMutationView(view, portable.dataStore);
+  const view = createModelMutationView(portable.dataStore, modelId);
   const editor = new StoreEditor(portable.dataStore, view);
   const attrs = [
     ['Name', (id: number) => portable.dataStore.entities.getName(id)],

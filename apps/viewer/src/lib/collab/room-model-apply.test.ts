@@ -76,7 +76,8 @@ describe('applyRoomModelData', () => {
       getState as Parameters<typeof createDataSlice>[1],
       undefined as unknown as Parameters<typeof createDataSlice>[2],
     );
-    state = { ...modelSlice, ...dataSlice } as TestState;
+    // updateModel refreshes overlay capacity from the model's mutation view.
+    state = { ...modelSlice, ...dataSlice, mutationViews: new Map() } as TestState;
   });
 
   it('leaves the user\'s active model untouched when the room model is not active', () => {

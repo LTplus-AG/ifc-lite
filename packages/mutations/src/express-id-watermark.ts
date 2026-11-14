@@ -56,7 +56,10 @@ export function rescanHighestExpressId(store: MutationStoreShape): number {
 function scanHighestExpressId(store: MutationStoreShape): number {
   let max = 0;
   // @raw-entity-enumeration-ok allocator watermark must include tombstoned source IDs so a new entity never reuses one
-  for (const id of store.entityIndex.byId.keys()) {
+  const index = store.entityIndex.byId;
+  const compactMax = 'maxExpressId' in index ? index.maxExpressId : undefined;
+  if (typeof compactMax === 'number') max = compactMax;
+  else for (const id of index.keys()) {
     if (id > max) max = id;
   }
   const deferred = store.deferredEntityIndex;
@@ -66,7 +69,11 @@ function scanHighestExpressId(store: MutationStoreShape): number {
     }
   }
   const table = store.entities?.expressId;
-  if (table) {
+  // Compact stores derive table rows from the same primary refs (columnar-parser)
+  // or fill table + compact index together (viewer/serverEntityTable). Deferred
+  // property atoms are separate and checked above. Only map/indexless stores
+  // (e.g. IFCX/collab) can have table-only IDs.
+  if (table && typeof compactMax !== 'number') {
     for (let i = 0; i < table.length; i++) {
       const id = table[i];
       if (id !== undefined && id > max) max = id;

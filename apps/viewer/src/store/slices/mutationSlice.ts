@@ -281,8 +281,8 @@ export interface MutationSlice extends CostUndoMethods {
   getMutationView: (modelId: string) => MutablePropertyView | null;
   /** Register a mutation view for a model */
   registerMutationView: (modelId: string, view: MutablePropertyView) => void;
-  /** Clear mutation view for a model */
-  clearMutationView: (modelId: string) => void;
+  /** Clear one model or a batch of models in one store commit. */
+  clearMutationView: (modelId: string | readonly string[]) => void;
 
   // Actions - Property Mutations
   /** Set a property value */
@@ -1050,32 +1050,26 @@ export const createMutationSlice: StateCreator<
     });
   },
 
-  clearMutationView: (modelId) => {
-    set((state) => {
-      const newViews = new Map(state.mutationViews);
-      newViews.delete(modelId);
-      const newEditors = new Map(state.storeEditors);
-      newEditors.delete(modelId);
-      const newDirty = new Set(state.dirtyModels);
-      newDirty.delete(modelId);
-      const newRemoved = pruneStashByModel(state.removedNewEntities, modelId);
-      const newRemovedMeshes = pruneStashByModel(state.removedMeshes, modelId);
-      const history = pruneMutationHistory(
-        modelId,
-        state.undoStacks,
-        state.redoStacks,
-        state.mutationBatchTags,
-        state.mutationMeshTranslations,
-      );
-      return {
-        ...dropFromChangeSets(state, state.undoStacks.get(modelId) ?? []),
-        mutationViews: newViews,
-        storeEditors: newEditors,
-        dirtyModels: newDirty,
-        removedNewEntities: newRemoved,
-        removedMeshes: newRemovedMeshes,
-        ...history,
-      };
+  clearMutationView: (modelIds) => {
+    set((initial) => {
+      const mutationViews = new Map(initial.mutationViews), storeEditors = new Map(initial.storeEditors);
+      const dirtyModels = new Set(initial.dirtyModels);
+      let removedNewEntities = initial.removedNewEntities, removedMeshes = initial.removedMeshes;
+      let history = { undoStacks: initial.undoStacks, redoStacks: initial.redoStacks,
+        mutationBatchTags: initial.mutationBatchTags, mutationMeshTranslations: initial.mutationMeshTranslations };
+      const discarded: Mutation[] = [];
+      for (const modelId of typeof modelIds === 'string' ? [modelIds] : modelIds) {
+        mutationViews.delete(modelId);
+        storeEditors.delete(modelId);
+        dirtyModels.delete(modelId);
+        removedNewEntities = pruneStashByModel(removedNewEntities, modelId);
+        removedMeshes = pruneStashByModel(removedMeshes, modelId);
+        for (const mutation of history.undoStacks.get(modelId) ?? []) discarded.push(mutation);
+        history = pruneMutationHistory(modelId, history.undoStacks, history.redoStacks,
+          history.mutationBatchTags, history.mutationMeshTranslations);
+      }
+      return { mutationViews, storeEditors, dirtyModels, removedNewEntities, removedMeshes, ...history,
+        ...dropFromChangeSets(initial, discarded) };
     });
   },
 

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { createModelMutationView } from '@/utils/model-mutation-view';
 /**
  * Emit a zone set as `IfcSpatialZone` entities (issue #2508 item 3), so the
  * zones themselves - not just the numbers about them - survive an export.
@@ -41,7 +42,6 @@ import { canMutate, mutationPermission, type MutationDenialReason } from '@/stor
 import type { FederatedModel } from '@/store/types';
 import type { RenderFrameOffsets } from '@/components/viewer/tools/measure-modes/coordinates';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
-import { configureMutationView } from '@/utils/configureMutationView';
 import { geometryVolumesSurviveAlignment } from '@/lib/compare/alignmentTrust';
 import { resolveRenderFrame } from './useRenderFrameOffsets.js';
 import { collidesByName } from './useZoneWriteBack.js';
@@ -136,8 +136,7 @@ function contextFor(
 
   let view = state.getMutationView(modelId);
   if (!view) {
-    view = new MutablePropertyView(store.properties || null, modelId);
-    configureMutationView(view, store);
+    view = createModelMutationView(store, modelId);
     state.registerMutationView(modelId, view);
   }
   let editor = state.storeEditors.get(modelId);

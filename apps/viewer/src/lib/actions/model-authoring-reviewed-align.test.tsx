@@ -47,6 +47,8 @@ async function setup(federated = false) {
     const state = useViewerStore.getState(), base = state.models.get(MODEL)!; assert.ok(base.ifcDataStore);
     const saved = await parseIfc(editedModelBytes(base.ifcDataStore, view)), peer = await parseIfc(saved.source.materialize());
     owner = 'peer';
+    // Saved creations are now source entities, not retained overlay claims.
+    useViewerStore.setState({ mutationViews: new Map() });
     const firstOffset = state.registerModelOffset(MODEL, getMaxExpressId(saved, []));
     const peerOffset = state.registerModelOffset(owner, getMaxExpressId(peer, []));
     const savedView = new MutablePropertyView(saved.properties, MODEL); view = new MutablePropertyView(peer.properties, owner);

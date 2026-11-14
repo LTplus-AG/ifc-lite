@@ -2,12 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
+import { createModelMutationView } from '@/utils/model-mutation-view';
+import { StoreEditor } from '@ifc-lite/mutations';
 import { extractProjectUnits } from '@ifc-lite/parser';
 import { getModelLengthUnitScale } from '@/lib/length-unit-scale';
 import type { ViewerState } from '@/store';
 import type { ModelEditTarget } from '@/store/slices/mutation-modelling-records';
-import { configureMutationView } from '@/utils/configureMutationView';
 
 export type NativeReadState = Pick<ViewerState, 'models' | 'mutationViews'>;
 export interface NativeReadLease { target: ModelEditTarget; validate(): void }
@@ -29,8 +29,7 @@ export function readOnlyModelEditLease(state: NativeReadState, modelId: string):
     const prepared = live.prepareAtomic(view => ({ modelId, dataStore, view, editor: new StoreEditor(dataStore, view) }));
     return { target: prepared.result, validate: prepared.validate };
   }
-  const view = new MutablePropertyView(dataStore.properties ?? null, modelId);
-  configureMutationView(view, dataStore);
+  const view = createModelMutationView(dataStore, modelId);
   return { target: { modelId, dataStore, view, editor: new StoreEditor(dataStore, view) }, validate: () => {} };
 }
 

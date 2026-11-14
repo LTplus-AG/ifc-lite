@@ -7,8 +7,8 @@
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { extractEntityAttributesOnDemand } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
-import type { ViewerState } from '@/store';
 import { configureMutationView } from '@/utils/configureMutationView';
+import type { ViewerState } from '@/store';
 import { effectiveListStringAttribute } from '@/lib/lists/effective-provider-entities';
 import type { ChangeScalar, ModelChange } from '@ifc-lite/ai/artifacts';
 
@@ -27,7 +27,7 @@ export function modelReader(state: ViewerState, modelId: string): ModelReader | 
   if (!dataStore) return null;
   const live = state.mutationViews.get(modelId);
   if (live) return { dataStore, view: live };
-  const view = new MutablePropertyView(dataStore.properties || null, modelId);
+  const view = new MutablePropertyView(dataStore.properties ?? null, modelId);
   configureMutationView(view, dataStore);
   return { dataStore, view };
 }

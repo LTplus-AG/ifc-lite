@@ -2,15 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * Mutable property view - overlay pattern for property mutations
- *
- * This class provides a mutable view over an immutable PropertyTable.
- * Changes are tracked separately and applied on-the-fly during reads.
- *
- * Supports both pre-built property tables and on-demand property extraction
- * for optimal performance with large models.
- */
+/** Mutable overlay over immutable or on-demand properties; changes apply on reads. */
 
 import { runSparseAtomic } from './sparse-atomic.js';
 import { readEntitySnapshot } from './entity-read-barrier.js';
@@ -54,6 +46,7 @@ export class MutablePropertyView extends MutableOverlayState {
   private quantityBaseRevisions: ((view: MutablePropertyView) => Iterable<QuantityBaseRevision>) | null = null;
   private attributeExtractor: AttributeExtractor | null = null;
   private modelId: string;
+  private expressIdFloor(): number { return Math.max(this.sourceWatermark + 1, this.minNextExpressId()); }
 
   constructor(baseTable: PropertyTable | null, modelId: string) {
     super();
@@ -64,6 +57,7 @@ export class MutablePropertyView extends MutableOverlayState {
       capture: () => this.overlayState(),
       rebuild: snapshot => {
         const draft = new MutablePropertyView(this.baseTable, this.modelId);
+        draft.configureExpressIdAllocator(() => this.expressIdFloor());
         draft.restoreOverlayState(snapshot);
         for (const id of draft.getAttributeOverrideEntityIds()) draft.indexAttributeOverride(id);
         return draft.overlayState();
@@ -72,6 +66,7 @@ export class MutablePropertyView extends MutableOverlayState {
       publish: snapshot => this.restoreOverlayState(snapshot),
       draft: snapshot => {
         const draft = new MutablePropertyView(this.baseTable, this.modelId);
+        draft.configureExpressIdAllocator(() => this.expressIdFloor());
         draft.onDemandExtractor = this.onDemandExtractor;
         draft.quantityExtractor = this.quantityExtractor;
         draft.quantityBaseRevisions = this.quantityBaseRevisions;
@@ -93,7 +88,6 @@ export class MutablePropertyView extends MutableOverlayState {
     return runSparseAtomic(this, edit, false).result;
   }
 
-
   /**
    * Prepare an overlay publication without changing live IFC state (#4243).
    * Use for commands that must validate other synchronous resources first.
@@ -103,6 +97,7 @@ export class MutablePropertyView extends MutableOverlayState {
   prepareAtomic<T>(edit: (draft: MutablePropertyView) => T): { result: T; validate(): void; commit(): void; rollback(): void } {
     const original = this.copyOverlayState();
     const draft = new MutablePropertyView(this.baseTable, this.modelId);
+    draft.configureExpressIdAllocator(() => this.expressIdFloor());
     draft.onDemandExtractor = this.onDemandExtractor;
     draft.quantityExtractor = this.quantityExtractor;
     draft.quantityBaseRevisions = this.quantityBaseRevisions;
@@ -1163,31 +1158,30 @@ export class MutablePropertyView extends MutableOverlayState {
     if (!type || typeof type !== 'string') {
       throw new Error('createEntity: type is required');
     }
-    // Preserve the type string the caller passed (canonical PascalCase per
-    // the public contract). UPPERCASE STEP tokens still work because the
-    // STEP exporter upper-cases at write time — but `NewEntity.type` no
-    // longer mangles `IfcColumn` into `IFCCOLUMN` for downstream consumers.
-    const expressId = ++this.nextAllocatedId;
-    const creationId = generateMutationId();
-    const entity: NewEntity = {
-      expressId,
-      type: type.trim(),
-      attributes: attributes.slice(),
-      creationId,
-    };
-    this.newEntities.set(expressId, entity);
-    this.indexAttributeOverride(expressId);
-    this.markOverlayChanged();
-
-    this.mutationHistory.push({
-      id: creationId,
-      type: 'CREATE_ENTITY',
-      timestamp: Date.now(),
-      modelId: this.modelId,
-      entityId: expressId,
-      attributeName: entity.type,
+    return this.withDeferredAllocatorNotification(() => {
+      // Preserve canonical PascalCase for consumers; the STEP exporter upper-cases
+      // at write time, and callers may still supply UPPERCASE STEP tokens.
+      const expressId = ++this.nextAllocatedId;
+      const creationId = generateMutationId();
+      const entity: NewEntity = {
+        expressId,
+        type: type.trim(),
+        attributes: attributes.slice(),
+        creationId,
+      };
+      this.newEntities.set(expressId, entity);
+      this.indexAttributeOverride(expressId);
+      this.markOverlayChanged();
+      this.mutationHistory.push({
+        id: creationId,
+        type: 'CREATE_ENTITY',
+        timestamp: Date.now(),
+        modelId: this.modelId,
+        entityId: expressId,
+        attributeName: entity.type,
+      });
+      return entity;
     });
-    return entity;
   }
 
   /**
@@ -1244,7 +1238,6 @@ export class MutablePropertyView extends MutableOverlayState {
     return Array.from(this.newEntities.values());
   }
 
-  /** Look up a single overlay-created entity. */
   /** Created entities authored as `type`, in creation order, from an index (#5413). */
   getNewEntitiesOfType(type: string): IterableIterator<NewEntity> { return this.newEntities.ofType(type); }
   /** Authored reference candidates, before named/positional overrides. */
@@ -1259,6 +1252,17 @@ export class MutablePropertyView extends MutableOverlayState {
   /** Ids and authored classes of created entities (of `type`, when given), in creation order; reads no payload, copies no row. */
   *readNewEntityKinds(type?: string): IterableIterator<{ expressId: number; type: string }> {
     for (const row of type === undefined ? this.newEntities.peekValues() : this.newEntities.peekOfType(type)) yield { expressId: row.expressId, type: row.type };
+  }
+  /** Bounds of IDs this overlay created (live, forgotten, or stashed/undoable).
+   * Both bounds cover all retained creations (zero if absent).
+   * Source tombstones and source-only allocator floors are never creation claims. */
+  getCreatedExpressIdBounds(): { lowest: number; highest: number } {
+    let lowest = Infinity, highest = 0;
+    for (const ids of [this.newEntities.keys(), this.forgottenCreatedEntities]) for (const id of ids) {
+      lowest = Math.min(lowest, id);
+      highest = Math.max(highest, id);
+    }
+    return { lowest: lowest === Infinity ? 0 : lowest, highest };
   }
   /** Whether the overlay created `id` and still holds it; reads no payload. */
   hasNewEntity(id: number): boolean { return this.newEntities.has(id); }
@@ -1327,26 +1331,17 @@ export class MutablePropertyView extends MutableOverlayState {
    * restore (the slice's undo stack does this).
    */
   restoreNewEntity(entity: NewEntity): void {
-    this.newEntities.set(entity.expressId, entity);
-    this.markOverlayChanged();
-    // `deleteEntity` both tombstones an overlay-created entity (for the
-    // unified isDeleted() / getEffectiveEntityIndex() answer) and forgets it
-    // (for collectEffectiveChanges()'s row filter), so the inverse has to
-    // clear both — otherwise the restored record is either still "deleted"
-    // per isDeleted() (stale tombstone) or still invisible to the review
-    // diff (stale forgotten-entity mark).
-    this.tombstones.delete(entity.expressId);
-    this.forgottenCreatedEntities.delete(entity.expressId);
-    // Without this the next createEntity() can hand out the same id and
-    // overwrite the restored entity.
-    if (entity.expressId > this.nextAllocatedId) {
-      this.nextAllocatedId = entity.expressId;
-    }
-    // Bring back whatever `deleteEntity` purged (property/quantity/attribute
-    // mutations, newPsets/newQsets, history) — a no-op if this entity was
-    // never forgotten (e.g. a plain create with nothing purged).
-    this.unstashEntityOverlay(entity.expressId);
-    this.indexAttributeOverride(entity.expressId);
+    this.withDeferredAllocatorNotification(() => {
+      this.newEntities.set(entity.expressId, entity);
+      this.markOverlayChanged();
+      // Undo both delete markers so effective reads and the review diff see the row.
+      this.tombstones.delete(entity.expressId);
+      this.forgottenCreatedEntities.delete(entity.expressId);
+      // Imported/restored IDs must not be handed out by the next allocation.
+      if (entity.expressId > this.nextAllocatedId) this.nextAllocatedId = entity.expressId;
+      this.unstashEntityOverlay(entity.expressId);
+      this.indexAttributeOverride(entity.expressId);
+    });
   }
 
   /**
@@ -1780,9 +1775,7 @@ export class MutablePropertyView extends MutableOverlayState {
     });
   }
 
-  /**
-   * Clear all mutations (reset to base state)
-   */
+  /** Clear mutations while preserving the source and externally owned ID floor. */
   clear(): void {
     this.markOverlayChanged();
     this.propertyTargets.clear();
@@ -1806,7 +1799,7 @@ export class MutablePropertyView extends MutableOverlayState {
     this.forgottenCreatedEntities.clear();
     this.forgottenEntityOverlay.clear();
     this.entityAliases.clear();
-    this.nextAllocatedId = 0;
+    this.resetExpressIdAllocator();
     this.mutationHistory = [];
   }
 

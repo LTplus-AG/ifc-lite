@@ -325,7 +325,7 @@ describe('EntityContextMenu — federation-space selection', () => {
 
   it('selects the live class after deletion, creation, and retype (#5249)', () => {
     const view = new MutablePropertyView(null, 'm1');
-    view.setExpressIdWatermark(88);
+    view.setExpressIdWatermark(100_000); // authored IDs start above the model source max
     view.deleteEntity(FIXTURE_WALL_C);
     view.setEntityType(FIXTURE_WALL_B, 'IfcDoor');
     view.setEntityType(FIXTURE_WINDOW, 'IfcWall');
@@ -349,7 +349,7 @@ describe('EntityContextMenu — federation-space selection', () => {
   it('reads the legacy mutation view when no federation model is registered (#5249)', () => {
     const store = useViewerStore.getState().models.get('m1')!.ifcDataStore!;
     const view = new MutablePropertyView(null, '__legacy__');
-    view.setExpressIdWatermark(88);
+    view.setExpressIdWatermark(100_000); // authored IDs start above the model source max
     view.deleteEntity(FIXTURE_WALL_B);
     const created = view.createEntity('IfcWall', [guid(89), null, 'New Wall', null, null, null, null, null]);
     useViewerStore.setState({ models: new Map(), ifcDataStore: store,
@@ -378,7 +378,7 @@ describe('EntityContextMenu — federation-space selection', () => {
 
   it('selects live containment after deleting an element and creating an element plus relationship (#5249)', () => {
     const view = new MutablePropertyView(null, 'm1');
-    view.setExpressIdWatermark(88);
+    view.setExpressIdWatermark(100_000); // authored IDs start above the model source max
     view.deleteEntity(FIXTURE_WALL_B);
     const created = view.createEntity('IfcWall', [guid(89), null, 'New Wall', null, null, null, null, null]);
     view.createEntity('IfcRelContainedInSpatialStructure', [
@@ -423,7 +423,7 @@ describe('EntityContextMenu — federation-space selection', () => {
 
   it('finds the storey of an overlay-created aggregated part but selects direct members (#5249)', () => {
     const view = new MutablePropertyView(null, 'm1');
-    view.setExpressIdWatermark(88);
+    view.setExpressIdWatermark(100_000); // authored IDs start above the model source max
     const part = view.createEntity('IfcBuildingElementPart', [guid(89), null, 'Part', null, null, null, null, null]);
     view.createEntity('IfcRelAggregates', [
       guid(90), null, null, null, `#${FIXTURE_WALL_B}`, [`#${part.expressId}`],
@@ -440,7 +440,7 @@ describe('EntityContextMenu — federation-space selection', () => {
 
   it('finds the storey through an overlay-created IfcRelNests edge (#5249 review)', () => {
     const view = new MutablePropertyView(null, 'm1');
-    view.setExpressIdWatermark(88);
+    view.setExpressIdWatermark(100_000); // authored IDs start above the model source max
     const part = view.createEntity('IfcBuildingElementPart', [guid(89), null, 'Nested part', null, null, null, null, null]);
     view.createEntity('IfcRelNests', [
       guid(90), null, null, null, `#${FIXTURE_WALL_B}`, [`#${part.expressId}`],

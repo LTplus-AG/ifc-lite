@@ -9,15 +9,16 @@
  * shared room the recorded definition is published with the body.
  */
 
-import { refreshTopAttachmentsInStore, editFootprintRoofInStore, footprintDefinitionProperties, ROOF_FOOTPRINT_PSET, type RoofFootprintEdit, type FootprintRoofDefinition } from '@ifc-lite/create';
+import { getFootprintRoofPlaneParts, refreshTopAttachmentsInStore, editFootprintRoofInStore, footprintDefinitionProperties, ROOF_FOOTPRINT_PSET, type RoofFootprintEdit, type FootprintRoofDefinition } from '@ifc-lite/create';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { PropertyValue } from '@ifc-lite/collab';
+import { mirrorRoofMeasurements } from './mutation-roof-measurements.js';
 import { roomPropertyApi } from '@/lib/collab/room-property-api.js';
 import { pathForEntity } from '@/lib/collab/entity-paths.js';
 import { roomSlotFor } from '@/lib/collab/room-model-target.js';
 import { mutationDenial } from '../mutation-permission.js';
 import { rememberRemesh } from '@/lib/remesh/remesh-registry.js';
-import { modelEditTarget, recordModellingEdit, type ModelEditTarget, type ModellingStore } from './mutation-modelling-records.js';
+import { modelEditTarget, recordResolvedModellingCommit, type ModelEditTarget, type ModellingStore } from './mutation-modelling-records.js';
 
 export type RoofEditOutcome = { readonly ok: true; readonly remesh: number[] } | { readonly ok: false; readonly reason: string };
 type RoofDefinition = FootprintRoofDefinition | ReturnType<MutablePropertyView['getForEntity']>[number]['properties'];
@@ -29,16 +30,15 @@ export function editRoofIn(store: ModellingStore, modelId: string, expressId: nu
   if (!target) return { ok: false, reason: `No model loaded for id "${modelId}"` };
   const depth = store.getState().undoStacks.get(modelId)?.length ?? 0;
   try {
-    const remesh = withRoofDefinitionRollback(store, target, expressId, publish => recordModellingEdit(store, modelId, (_methods, draft) => {
+    const { remesh } = withRoofDefinitionRollback(store, target, expressId, publish => recordResolvedModellingCommit(store, target, draft => draft.runAtomic(draft => {
       const definition = editFootprintRoofInStore(target.dataStore, draft, expressId, patch);
       const attached = refreshTopAttachmentsInStore({ ...target, editor: draft, view: draft.getMutationView() }, [expressId]);
-      publish(definition);
-      return [expressId, ...attached];
-    }));
+      return { definition, remesh: [expressId, ...getFootprintRoofPlaneParts(target.dataStore, draft.getMutationView(), expressId), ...attached] };
+    }), undefined, false, (result, view) => publish(result.definition, view)));
     const state = store.getState(), stack = state.undoStacks.get(modelId) ?? [];
     const last = stack.length > depth ? stack.at(-1) : undefined;
     const batch = last ? state.mutationBatchTags.get(last.id) : undefined;
-    if (batch) rememberRemesh(store.getState, batch, modelId, [expressId], 'shape',
+    if (batch) rememberRemesh(store.getState, batch, modelId, [expressId], 'hostsChanged',
       () => mirrorRoofHistoryDefinition(store, modelId, expressId), error => {
         const roomId = store.getState().collabSession?.roomId ?? 'the active room';
         const detail = error instanceof Error ? ` (${error.message})` : '';
@@ -71,6 +71,8 @@ function mirrorRoofHistoryDefinition(store: ModellingStore, modelId: string, id:
       api.setPropertyValue(session.doc, path, ROOF_FOOTPRINT_PSET, property.name,
         { ...previous, type: previous?.type ?? (typeof value === 'string' ? 'IfcText' : 'IfcReal'), value });
     }
+    const target = modelEditTarget(state, modelId);
+    if (target) mirrorRoofMeasurements(store, target, id, view);
   } catch (error) {
     // History has already restored the local view. Restore every shared field
     // touched so a partial Yjs publication cannot leave stale roof metadata.
@@ -88,7 +90,7 @@ function mirrorRoofHistoryDefinition(store: ModellingStore, modelId: string, id:
 
 /** Yjs does not roll back on throw: restore definition values before peers observe the transaction. */
 function withRoofDefinitionRollback<T>(store: ModellingStore, target: ModelEditTarget, id: number,
-  edit: (publish: (definition: RoofDefinition) => void) => T): T {
+  edit: (publish: (definition: RoofDefinition, view?: MutablePropertyView) => void) => T): T {
   const state = store.getState();
   const session = roomSlotFor(state, target.modelId) ? state.collabSession : null;
   const path = session ? pathForEntity(target.dataStore, id) : null;
@@ -96,19 +98,31 @@ function withRoofDefinitionRollback<T>(store: ModellingStore, target: ModelEditT
   const room = session && path ? { session, path } : null;
   const api = room ? roomPropertyApi() : null;
   const before = new Map<string, PropertyValue | undefined>();
-  const publish = (definition: RoofDefinition) => {
-    // Edits return the definition; creation already recorded it in its draft.
-    const properties = 'Footprint' in definition ? footprintDefinitionProperties(definition)
-      : definition.map(property => [property.name, property.value, property.type] as const);
-    for (const [name, value, type] of properties) {
-      if (room && api && !before.has(name)) before.set(name, structuredClone(api.getPropertyValue(room.session.doc, room.path, ROOF_FOOTPRINT_PSET, name)));
-      store.getState().mirrorPropertyEdit(target.modelId, id, ROOF_FOOTPRINT_PSET, name, value, type);
+  const measurementRollbacks: Array<() => void> = [];
+  let publicationFailure: unknown;
+  const publish = (definition: RoofDefinition, view = target.view) => {
+    try {
+      // Edits return the definition; creation already recorded it in its draft.
+      const properties = 'Footprint' in definition ? footprintDefinitionProperties(definition)
+        : definition.map(property => [property.name, property.value, property.type] as const);
+      for (const [name, value, type] of properties) {
+        if (room && api && !before.has(name)) before.set(name, structuredClone(api.getPropertyValue(room.session.doc, room.path, ROOF_FOOTPRINT_PSET, name)));
+        store.getState().mirrorPropertyEdit(target.modelId, id, ROOF_FOOTPRINT_PSET, name, value, type);
+      }
+      const rollback = mirrorRoofMeasurements(store, target, id, view);
+      if (rollback) measurementRollbacks.push(rollback);
+    } catch (error) {
+      // Source publication converts a failed callback to a generic refusal.
+      // Keep the original error for the caller after restoring shared values.
+      publicationFailure = error;
+      throw error;
     }
   };
   if (!room || !api) return edit(publish);
   return room.session.transact(() => {
     try { return edit(publish); }
     catch (error) {
+      for (const rollback of measurementRollbacks.reverse()) rollback();
       for (const [name, value] of before) {
         try {
           if (value === undefined) api.deletePropertyValue(room.session.doc, room.path, ROOF_FOOTPRINT_PSET, name);
@@ -121,7 +135,7 @@ function withRoofDefinitionRollback<T>(store: ModellingStore, target: ModelEditT
       // publication failure through the layout's existing notice channel.
       if (before.size > 0) store.setState({ collabGeometryNotice:
         `Roof #${id} was not changed because it could not be shared with room "${room.session.roomId}". The previous shared roof was restored.` });
-      throw error;
+      throw publicationFailure ?? error;
     }
   });
 }
@@ -132,5 +146,5 @@ export function mirrorNewRoofDefinition(store: ModellingStore, modelId: string, 
   if (!definition) return;
   const target = modelEditTarget(store.getState(), modelId);
   if (!target) throw new Error(`No model loaded for id "${modelId}"`);
-  withRoofDefinitionRollback(store, target, id, publish => publish(definition.properties));
+  withRoofDefinitionRollback(store, target, id, publish => publish(definition.properties, view));
 }

@@ -87,3 +87,17 @@ test('#9357 F2 requests two opposing 30 degree pitches and the reference overhan
   const area = (roof.Width + 2 * roof.Overhang) * (roof.Depth + 2 * roof.Overhang) / Math.cos(roof.EdgeSlopes[0]);
   assert.ok(Math.abs(area - target.roof.totalUpwardArea) < 0.01, `Expected reference roof area, got ${area}`);
 });
+
+// #9357: the roof has no own mesh; the two aggregated slabs carry all geometry.
+test('#9357 the F2 gable oracle aggregates roof planes exactly once', () => {
+  const text="#10=IFCROOF('r',$,$,$,$,$,$,$,.GABLE_ROOF.);\n#1=IFCSLAB('a',$,$,$,$,$,$,$,.ROOF.);\n#2=IFCSLAB('b',$,$,$,$,$,$,$,.ROOF.);\n#11=IFCRELAGGREGATES('rel',$,$,$,#10,(#1,#2));";
+  const slope=Math.tan(Math.PI/6), width=13, depth=5.5, height=depth*slope;
+  const a=[0,0,0], b=[width,0,0], c=[0,height,depth], d=[width,height,depth];
+  const e=[0,0,2*depth], f=[width,0,2*depth];
+  const meshes=new Map([[1,{triangles:[[a,c,b],[b,c,d]]}],[2,{triangles:[[c,e,d],[d,e,f]]}]]);
+  const rows=[];
+  compareFzk({text,find:id=>meshes.get(id),levels:[],emit:(name,cap,status,reason,metrics)=>rows.push({name,status,metrics})});
+  assert.deepEqual(rows.filter(r=>['reference-gable-roof','reference-roof-area'].includes(r.name)).map(r=>r.status),['pass','pass']);
+  const area=rows.find(r=>r.name==='reference-roof-area').metrics.area;
+  assert.ok(Math.abs(area-165.122177)<1e-5,`aggregate upward area ${area}`);
+});

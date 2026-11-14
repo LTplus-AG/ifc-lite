@@ -32,6 +32,7 @@
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
+import { PART_TYPE } from '../roof-plane-parts.js';
 import { ROOF_FOOTPRINT_PSET } from '../roof-footprint.js';
 import {
   asExpressIdRef,
@@ -245,6 +246,7 @@ export function resolveSlabEditChain(
   const placementOrigin = chain.coordinates;
 
   const elementAttrs = readAttributes(dataStore, view, editor, expressId);
+  if (elementAttrs?.[4] === PART_TYPE) return null;
   if (!elementAttrs) return null;
   const productShapeId = asExpressIdRef(elementAttrs[6]);
   if (productShapeId === null) return null;

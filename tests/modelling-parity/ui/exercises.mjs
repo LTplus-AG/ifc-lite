@@ -1,7 +1,9 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-
+import { meshIfc } from '../probes/sdk/lib/parity.mjs';
+import { roofGeometry } from './lib/oracles.mjs';
+import { matchAreas } from './lib/oracles.mjs';
 /**
  * UI exercise runs F1 and F2 for the modelling parity climb (#9296).
  *
@@ -176,7 +178,7 @@ function fzkTarget() {
   return loadTarget(TARGET_FILE,FZK_TARGET_FALLBACK);
 }
 
-function fzkOracle(step) {
+function fzkOracle(step, meshes) {
   const T = fzkTarget();
   const tol = T.tolerances;
   const checks = [];
@@ -220,17 +222,15 @@ function fzkOracle(step) {
   checks.push({ name: `footprint ${T.footprint.bboxWidthX} x ${T.footprint.bboxDepthY} m (abs ${tol.footprintBboxM.value})`, ok: near(bw, T.footprint.bboxWidthX, tol.footprintBboxM.value) && near(bd, T.footprint.bboxDepthY, tol.footprintBboxM.value), detail: `${bw.toFixed(2)} x ${bd.toFixed(2)}` });
   const spaces = step.of('IFCSPACE');
   checks.push({ name: `${T.totals.spaces} spaces`, ok: spaces.length === T.totals.spaces, detail: `${spaces.length}` });
-  // The UI names rooms "Room N", so spaces are matched to reference areas greedily by area, not by name.
+  // The UI names rooms "Room N", so spaces are matched to reference areas one-to-one, not by name.
   const got = spaces.map((sp) => { const q = step.quantities(sp.id); return q.NetFloorArea ?? q.GrossFloorArea ?? null; }).filter((v) => typeof v === 'number');
-  const pool = [...got];
-  const unmatched = [];
-  for (const ref of T.spaces.map((x) => x.area).sort((a, b) => b - a)) {
-    const i = pool.findIndex((v) => Math.abs(v - ref) <= ref * tol.spaceAreaM2.value);
-    if (i >= 0) pool.splice(i, 1); else unmatched.push(ref);
-  }
-  checks.push({ name: `space areas match the reference (rel ${tol.spaceAreaM2.value}, matched by area)`, ok: unmatched.length === 0 && got.length === T.spaces.length, detail: `areas ${got.map((v) => v.toFixed(2)).join(', ')}; unmatched reference ${unmatched.join(', ') || 'none'}` });
-  const roofs = [...step.of('IFCROOF'), ...step.of('IFCSLAB').filter((x) => x.args?.[8]?.enum === 'ROOF')];
-  checks.push({ name: `${T.roof.inferredForm} roof at ${T.roof.slopes[0].tiltDeg} degrees`, ok: false, detail: roofs.length ? `${roofs.length} roof element(s), flat` : 'no roof: the UI has no sloped or gable roof (the Slab tool\'s Roof class makes a flat slab on the active storey floor; see ui.roof and #9214)' });
+  checks.push({ name: `space areas match the reference (rel ${tol.spaceAreaM2.value}, matched by area)`, ok: matchAreas(T.spaces.map(x => x.area), got, tol.spaceAreaM2.value), detail: `areas ${got.join(', ')}` });
+  const geometry = roofGeometry(step, meshes ?? new Map(), {
+    footprint: [[0,0],[12,0],[12,10],[0,10]],
+    slopes: [Math.PI/6,0,Math.PI/6,0], thickness: .3,
+  });
+  checks.push({ name: `${T.roof.inferredForm} roof at ${T.roof.slopes[0].tiltDeg} degrees`, ok: geometry === true,
+    detail: geometry === true ? 'Exported roof passes surface samples and volume at 30 degrees' : String(geometry) });
   return { checks, target: T.from };
 }
 
@@ -362,106 +362,127 @@ export const EXERCISES = {
         run: async (s) => { await tool(s, 'room.place'); await roomMode(s, 'Pick'); await s.ui.clickWorld([6, 5, 2.7], { modifiers: ['Alt'] }); await escape(s); },
         checkpoint: 'DG-done',
       },
+      { name: 'DG gable roof: Roof tool, Gable preset, 30-degree pitch, typed 12 x 10', run: async s => {
+        await escape(s);
+        await s.ui.key('Shift+Y',{settle:300});
+        await s.ui.click(s.page.getByRole('radio',{name:'Gable',exact:true}));
+        const pitch=s.page.getByRole('spinbutton',{name:'Pitch',exact:true});
+        await s.ui.click(pitch); await s.ui.key('Control+A'); await s.ui.type('30'); await s.ui.key('Tab');
+        const overhang=s.page.getByRole('spinbutton',{name:'Overhang',exact:true});
+        await s.ui.click(overhang); await s.ui.key('Control+A'); await s.ui.type('0'); await s.ui.key('Tab');
+        await s.ui.clickWorld([0,0,5.4],{modifiers:['Alt']});
+        await s.ui.hoverWorld([12,10,5.4]);
+        await typeFields(s,[12,10]);
+        await escape(s);
+      } },
       { name: 'export: File > Modified IFC (review dialog)', run: (s) => openExportReview(s), checkpoint: 'export-review', keepCamera: true },
       { name: 'export: confirm', run: async (s) => { s.download = await confirmExport(s); }, checkpoint: 'done' },
     ],
-    oracle: (step) => fzkOracle(step),
+    oracle: (step, meshes) => fzkOracle(step, meshes),
   },
 };
 
 /**
  * Run one exercise in a fresh page. `measured` marks the run whose actions
- * and timings are reported; the other theme's run only writes frames.
+ * and timings are reported. Every theme retains its IFC artifact.
  */
-export async function runExercise(ex, { openFresh, theme, shots, frames, saveArtifact, base, measured }) {
+export async function runExercise(ex, { openFresh, theme, shots, frames, saveArtifact, base }) {
   const s = await openFresh(`${ex.id}-${theme}`, theme, shots);
-  const tasks = [];
-  const notes = [];
-  const frameResults = [];
-  const frameFailures = [];
-  const evidence = [];
-  let cam = ex.drawCam;
-  let aimed = false;
-  for (const st of ex.steps) {
-    if (st.cam) cam = st.cam;
-    if (aimed || st.name !== 'Start blank') {
-      if (!aimed || st.cam) await s.harness.aim(cam.pos, cam.target);
-      aimed = true;
-    }
-    const t = await task(s, st.name, () => st.run(s));
-    tasks.push(t);
-    if (!t.ok) {
-      notes.push(`step "${st.name}" failed: ${t.error}`);
-      const shot = await s.shot(`fail-${tasks.length}`);
-      if (shot) evidence.push(shot);
-      // Recover to a known state so later steps still measure something.
-      await s.page.keyboard.press('Escape').catch(() => {});
-      await s.page.keyboard.press('Escape').catch(() => {});
-    }
-    const t2 = await toasts(s);
-    for (const msg of t2) if (/can't|cannot|doesn't|don't|failed|error|no storey|point at/i.test(msg) && !notes.includes(`toast: ${msg}`)) notes.push(`toast: ${msg}`);
-    if (st.checkpoint && frames) {
-      const id = `${ex.id}-${st.checkpoint}`;
-      try {
-        if (!st.keepCamera) await s.harness.aim(ex.frameCam.pos, ex.frameCam.target, { pin: false });
-        await s.harness.dismissToasts();
-        await s.settle(1200);
-        const metrics = await measureLayout(s.page);
-        const file = `${id}.${theme}.png`;
-        const png = await s.page.screenshot();
-        await writeFile(join(frames, file), png);
-        frameResults.push({ scene: id, title: `${ex.id}: ${st.name}`, theme, viewport: { width: 1600, height: 900 }, file, sha256: sha256(png), metrics, pageErrors: [...s.pageErrors] });
-        if (!st.keepCamera) await s.harness.aim(cam.pos, cam.target);
-      } catch (error) {
-        frameFailures.push({ scene: id, theme, error: String(error).slice(0, 500) });
+  try {
+    const tasks = [];
+    const notes = [];
+    const frameResults = [];
+    const frameFailures = [];
+    const evidence = [];
+    let cam = ex.drawCam;
+    let aimed = false;
+    for (const st of ex.steps) {
+      if (st.cam) cam = st.cam;
+      if (aimed || st.name !== 'Start blank') {
+        if (!aimed || st.cam) await s.harness.aim(cam.pos, cam.target);
+        aimed = true;
+      }
+      const t = await task(s, st.name, () => st.run(s));
+      tasks.push(t);
+      if (!t.ok) {
+        notes.push(`step "${st.name}" failed: ${t.error}`);
+        const shot = await s.shot(`fail-${tasks.length}`);
+        if (shot) evidence.push(shot);
+        // Recover to a known state so later steps still measure something.
+        await s.page.keyboard.press('Escape').catch(() => {});
+        await s.page.keyboard.press('Escape').catch(() => {});
+      }
+      const t2 = await toasts(s);
+      for (const msg of t2) if (/can't|cannot|doesn't|don't|failed|error|no storey|point at/i.test(msg) && !notes.includes(`toast: ${msg}`)) notes.push(`toast: ${msg}`);
+      if (st.checkpoint && frames) {
+        const id = `${ex.id}-${st.checkpoint}`;
+        try {
+          if (!st.keepCamera) await s.harness.aim(ex.frameCam.pos, ex.frameCam.target, { pin: false });
+          await s.harness.dismissToasts();
+          await s.settle(1200);
+          const metrics = await measureLayout(s.page);
+          const file = `${id}.${theme}.png`;
+          const png = await s.page.screenshot();
+          await writeFile(join(frames, file), png);
+          frameResults.push({ scene: id, title: `${ex.id}: ${st.name}`, theme, viewport: { width: 1600, height: 900 }, file, sha256: sha256(png), metrics, pageErrors: [...s.pageErrors] });
+          if (!st.keepCamera) await s.harness.aim(cam.pos, cam.target);
+        } catch (error) {
+          frameFailures.push({ scene: id, theme, error: String(error).slice(0, 500) });
+        }
       }
     }
+    let checks = [];
+    let targetFrom = null;
+    let ifcPath = null;
+    if (s.download?.text) {
+      if (saveArtifact) ifcPath = await saveArtifact(ex.id, `${ex.id}.ui.${theme}.ifc`, s.download.bytes);
+      let meshes;
+      if (ex.id === 'F2') {
+        try { meshes = await meshIfc(s.download.text); }
+        catch (error) { checks.push({ name: 'exported mesh extraction', ok: false, detail: String(error) }); }
+      }
+      const judged = await ex.oracle(readStep(s.download.text), meshes);
+      checks.push(...(Array.isArray(judged) ? judged : judged.checks));
+      if (!Array.isArray(judged)) targetFrom = judged.target;
+    } else {
+      checks = [{ name: 'the model was exported', ok: false, detail: 'no download' }];
+    }
+    notes.push(...s.findings);
+    if (s.counters.cameraJumps) notes.push(`the camera moved by itself ${s.counters.cameraJumps} time(s) during drawing`);
+    const session = await readSession(s).catch(() => null);
+    const ok = checks.filter((c) => c.ok).length;
+    const status = ok === checks.length && !s.scriptedSteps.length && tasks.every((t) => t.ok) ? 'pass' : ok > 0 ? 'partial' : 'fail';
+    const reasons = [...checks.filter((c) => !c.ok).map((c) => `${c.name}: ${c.detail}`), ...tasks.filter((t) => !t.ok).map((t) => `step "${t.name}" failed`)];
+    const result = {
+      ...base,
+      capability: null,
+      exercise: ex.id,
+      probe: 'exercise',
+      mode: 'ui',
+      id: `${ex.id}.ui`,
+      title: ex.title,
+      status,
+      ...(status === 'pass' ? {} : { reason: reasons.join('; ') }),
+      metrics: {
+        ms: tasks.reduce((n, t) => n + t.ms, 0),
+        actions: tasks.reduce((n, t) => n + t.actions, 0),
+        clicks: s.counters.clicks,
+        keys: s.counters.keys,
+        steps: tasks.length,
+        cameraJumps: s.counters.cameraJumps,
+      },
+      checks,
+      ...(targetFrom ? { target: targetFrom } : {}),
+      tasks,
+      notes,
+      scripted: s.scriptedSteps,
+      pageErrors: s.pageErrors,
+      finalSession: session,
+      evidence: [...evidence.map((e) => `shots/${e.file}`), ...frameResults.map((f) => `frames/${f.file}`), ...(ifcPath ? [ifcPath] : [])],
+      ...(ifcPath ? { artifacts: { ifc: ifcPath } } : {}),
+    };
+    return { result, frames: frameResults, frameFailures };
+  } finally {
+    await s.close();
   }
-  let checks = [];
-  let targetFrom = null;
-  let ifcPath = null;
-  if (s.download?.text) {
-    if (measured && saveArtifact) ifcPath = await saveArtifact(ex.id, `${ex.id}.ui.ifc`, s.download.bytes);
-    const judged = ex.oracle(readStep(s.download.text));
-    checks = Array.isArray(judged) ? judged : judged.checks;
-    if (!Array.isArray(judged)) targetFrom = judged.target;
-  } else {
-    checks = [{ name: 'the model was exported', ok: false, detail: 'no download' }];
-  }
-  notes.push(...s.findings);
-  if (s.counters.cameraJumps) notes.push(`the camera moved by itself ${s.counters.cameraJumps} time(s) during drawing`);
-  const session = await readSession(s).catch(() => null);
-  await s.close();
-  const ok = checks.filter((c) => c.ok).length;
-  const status = ok === checks.length && !s.scriptedSteps.length && tasks.every((t) => t.ok) ? 'pass' : ok > 0 ? 'partial' : 'fail';
-  const reasons = [...checks.filter((c) => !c.ok).map((c) => `${c.name}: ${c.detail}`), ...tasks.filter((t) => !t.ok).map((t) => `step "${t.name}" failed`)];
-  const result = {
-    ...base,
-    capability: null,
-    exercise: ex.id,
-    probe: 'exercise',
-    mode: 'ui',
-    id: `${ex.id}.ui`,
-    title: ex.title,
-    status,
-    ...(status === 'pass' ? {} : { reason: reasons.join('; ') }),
-    metrics: {
-      ms: tasks.reduce((n, t) => n + t.ms, 0),
-      actions: tasks.reduce((n, t) => n + t.actions, 0),
-      clicks: s.counters.clicks,
-      keys: s.counters.keys,
-      steps: tasks.length,
-      cameraJumps: s.counters.cameraJumps,
-    },
-    checks,
-    ...(targetFrom ? { target: targetFrom } : {}),
-    tasks,
-    notes,
-    scripted: s.scriptedSteps,
-    pageErrors: s.pageErrors,
-    finalSession: session,
-    evidence: [...evidence.map((e) => `shots/${e.file}`), ...frameResults.map((f) => `frames/${f.file}`), ...(ifcPath ? [ifcPath] : [])],
-    ...(ifcPath ? { artifacts: { ifc: ifcPath } } : {}),
-  };
-  return { result, frames: frameResults, frameFailures };
 }

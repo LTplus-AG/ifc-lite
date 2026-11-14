@@ -17,6 +17,7 @@ export const visibilityReasonsRu = {
   "visibilityReasons.modelHidden": "Скрытые модели",
   "visibilityReasons.lens": "Активная схема отображения",
   "visibilityReasons.typeVisibility": "Скрытые классы IFC",
+  "visibilityReasons.structuralViewMode": "Вид структурной модели",
   "visibilityReasons.typeViewMode": "Вид Типы",
   "visibilityReasons.hostTypes": "Классы скрыты хостом",
   "visibilityReasons.section": "Сечение",

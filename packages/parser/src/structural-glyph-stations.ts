@@ -10,11 +10,11 @@
 import { add, cross, dot, frameFrom, length, normalize, scale, sub, type Frame, type ItemShape, type Vec3 } from './structural-item-geometry.js';
 
 /** Fractions along an edge where a distributed load or support repeats. */
-const EDGE_STATIONS = [0, 0.25, 0.5, 0.75, 1];
+export const EDGE_STATIONS = [0, 0.25, 0.5, 0.75, 1];
 /** Lattice fractions over a face's bounding box, per axis (at most 3 x 3 arrows per face). */
 const FACE_LATTICE = [1 / 6, 1 / 2, 5 / 6];
 
-const lerp = (a: Vec3, b: Vec3, t: number): Vec3 => add(a, scale(sub(b, a), t));
+export const lerp = (a: Vec3, b: Vec3, t: number): Vec3 => add(a, scale(sub(b, a), t));
 
 /** Newell normal of a polygon, null when degenerate. */
 function polygonNormal(polygon: readonly Vec3[]): Vec3 | null {
@@ -182,4 +182,23 @@ export const pointIn = (frame: Frame, u: number, v: number): Vec3 => add(frame.o
 export function pointAlong(start: Vec3, end: Vec3, distance: number): Vec3 {
   const l = length(sub(end, start));
   return l > 0 ? lerp(start, end, Math.min(1, Math.max(0, distance / l))) : start;
+}
+
+/** Metres a point may lie off a shape and still be on it. */
+const ON_SHAPE_TOLERANCE = 1e-3;
+
+/** Whether `p` lies on a shape: at the vertex, on the edge segment, or on the face (in its plane, inside its bounds, off its openings). */
+export function onShape(shape: ItemShape, p: Vec3): boolean {
+  if (shape.kind === 'vertex') return length(sub(p, shape.point)) <= ON_SHAPE_TOLERANCE;
+  if (shape.kind === 'edge') {
+    const d = sub(shape.end, shape.start);
+    const t = Math.max(0, Math.min(1, dot(sub(p, shape.start), d) / (dot(d, d) || 1)));
+    return length(sub(p, lerp(shape.start, shape.end, t))) <= ON_SHAPE_TOLERANCE;
+  }
+  const face = flatten(shape.polygon, shape.innerBounds);
+  if (!face) return false;
+  const r = sub(p, face.frame.origin);
+  const uv = [dot(r, face.frame.x), dot(r, face.frame.y)] as const;
+  return Math.abs(dot(r, face.frame.z)) <= ON_SHAPE_TOLERANCE
+    && (onFace(uv, face.flat, face.holes) || clearance(uv, face.flat) <= ON_SHAPE_TOLERANCE);
 }

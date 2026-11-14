@@ -17,7 +17,7 @@ import type { MetadataReadView } from '../src/effective-metadata-record.js';
 const gid = (n: number) => String(n).padStart(22, '0');
 const NO_EDITS: MetadataReadView = {
   isDeleted: () => false, getNewEntities: () => [], getNewEntity: () => null,
-  getPositionalMutationsForEntity: () => null, getAttributeMutationsForEntity: () => [], getMutationRevision: () => 0,
+  getPositionalMutationsForEntity: () => null, getAttributeMutationsForEntity: () => [], getMutationRevision: () => 0, getAttributeOverrideEntityIds: () => [], getTombstones: () => new Set(),
 };
 
 /** Wall type #20 typing wall #10; qset #21 (Qto_Probe) and pset #23 are attached to the type by `typeDefinition`. */

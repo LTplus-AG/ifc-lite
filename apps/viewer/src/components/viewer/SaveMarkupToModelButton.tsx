@@ -24,6 +24,7 @@ import { useMutationDenialReason } from '@/hooks/useMutationDenialReason';
 import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
 import { saveDrawingMarkupToModel, type SaveMarkupRefusal } from '@/lib/drawing2d-markup/drawing-markup-save';
+import { dimensionPaperScale, dimensionSaveParams } from '@/lib/drawing2d-markup/dimension-markup-save';
 
 function targetViewFor(axis: string | undefined): 'PLAN_VIEW' | 'SECTION_VIEW' {
   return axis === 'down' ? 'PLAN_VIEW' : 'SECTION_VIEW';
@@ -39,7 +40,7 @@ function refusalText(refusal: Exclude<SaveMarkupRefusal, MutationDenialReason> |
     case 'no-root-context':
       return 'This model has no 3D representation context to attach markup to.';
     case 'nothing-to-save':
-      return 'No markup to save — draw a measurement, area, note or cloud first.';
+      return 'No markup to save — draw a measurement, area, note, cloud or dimension first.';
     case 'invalid-markup':
       return 'One of your markup items has an invalid (missing or infinite) measurement and cannot be saved — check the console for which one, delete it, and try again.';
   }
@@ -54,6 +55,7 @@ function useSaveDrawingMarkupHandler() {
   const polygonArea2DResults = useViewerStore((s) => s.polygonArea2DResults);
   const textAnnotations2D = useViewerStore((s) => s.textAnnotations2D);
   const cloudAnnotations2D = useViewerStore((s) => s.cloudAnnotations2D);
+  const dimensions2D = useViewerStore((s) => s.dimensions2D);
   const sectionAxis = useViewerStore((s) => s.sectionPlane.axis);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -64,9 +66,19 @@ function useSaveDrawingMarkupHandler() {
     }
     setIsSaving(true);
     try {
+      // Layout inputs are read at click time: they shape the saved graphics, not what the menu shows.
+      const state = useViewerStore.getState();
+      const layout = {
+        paperScale: dimensionPaperScale(state),
+        unitDisplayOverrides: state.unitDisplayOverrides,
+        drawnPlane: state.drawing2DPlane,
+      };
       const outcome = saveDrawingMarkupToModel(
         activeModelId,
-        { measure2DResults, polygonArea2DResults, textAnnotations2D, cloudAnnotations2D },
+        {
+          measure2DResults, polygonArea2DResults, textAnnotations2D, cloudAnnotations2D,
+          dimensions2D: dimensions2D.map((d) => dimensionSaveParams(d, layout)),
+        },
         targetViewFor(sectionAxis),
       );
       if (outcome.refusal) {
@@ -75,7 +87,8 @@ function useSaveDrawingMarkupHandler() {
           ? t(mutationDenialKey(refusal)) : refusalText(refusal));
         return;
       }
-      const saved = outcome.measuresSaved + outcome.polygonsSaved + outcome.textsSaved + outcome.cloudsSaved;
+      const saved = outcome.measuresSaved + outcome.polygonsSaved + outcome.textsSaved + outcome.cloudsSaved
+        + outcome.dimensionsSaved;
       toast.success(
         saved > 0
           ? `Added ${saved} markup annotation${saved === 1 ? '' : 's'} to the model — use Export modified IFC… to save it to a file.`
@@ -88,7 +101,7 @@ function useSaveDrawingMarkupHandler() {
     } finally {
       setIsSaving(false);
     }
-  }, [activeModelId, measure2DResults, polygonArea2DResults, textAnnotations2D, cloudAnnotations2D, sectionAxis, t]);
+  }, [activeModelId, measure2DResults, polygonArea2DResults, textAnnotations2D, cloudAnnotations2D, dimensions2D, sectionAxis, t]);
 
   return { handleSave, isSaving, disabled: !activeModelId || isSaving || !!denialReason, denialReason };
 }

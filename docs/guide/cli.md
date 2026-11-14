@@ -197,6 +197,22 @@ Supports property filters (`--where`), missing-property checks (`--missing`), he
 
 ---
 
+### `structural` - Read structural analysis
+
+Read structural analysis data without modifying the file:
+
+```bash
+ifc-lite structural model.ifc
+ifc-lite structural model.ifc --json > structural.json
+```
+
+The table counts analysis models, members, connections, loads, load groups and
+cases, reactions, result groups and physical links. JSON includes their read-model
+records, actions' resolved `appliedLoad` values, and a `links` array pairing
+model-local `structuralItemId` and `physicalElementId`. Missing parser values
+are omitted. `loadsTruncated` flags a bounded applied-load walk. See
+[Structural analysis](structural-analysis.md) for coverage and limits.
+
 ### `info` — Model Summary
 
 Print schema version, entity counts, storeys, and top entity types.
@@ -971,6 +987,10 @@ ifc-lite storey model.ifc add --name "Basement" --elevation -3 --out basement.if
 ifc-lite storey model.ifc edit --storey "Level 1" --floor-height 3.5 --out raised.ifc
 ifc-lite storey model.ifc edit --storey "Level 2" --elevation 3.8 --dry-run
 ifc-lite storey model.ifc delete --storey "Level 2" --move-to "Level 1" --out merged.ifc
+ifc-lite storey model.ifc add --name "Mezzanine" --elevation 1.5 --dry-run --json
+ifc-lite storey model.ifc constrain --element 100 --top storeyAbove --out attached.ifc
+ifc-lite storey model.ifc constrain --element 100 --top slab --target 200 --out attached.ifc
+ifc-lite storey model.ifc copy --ids 100,101 --to "Level 2" --to "Level 3" --out copies.ifc
 ```
 
 `--elevation` moves only that storey. `--floor-height` sets the gap to the storey above, and every storey above in the same building shifts by the same amount. A storey is named by its exact name (letter case is a fallback), or `#<express id>`; a bare number is read as the express ID unless a storey also has that name, which is refused as ambiguous. Lengths are metres.
@@ -987,8 +1007,13 @@ ifc-lite storey model.ifc delete --storey "Level 2" --move-to "Level 1" --out me
 | `--floor-height <m>` | New floor-to-floor height of `--storey` |
 | `--move-to <storey>` | Delete, moving the contents to this storey (same identity and position) |
 | `--delete-contents` | Delete the storey and everything it holds |
-| `--dry-run` | Make the change in memory and report it, refused exactly as the real one; write nothing |
+| `--element <id>` / `--top <kind>` | Constrain an element top: `fixed`, `storeyAbove`, `storey`, `slab` or `roof` (walls) |
+| `--target <id-or-storey>` | Target storey name/ID for `--top storey`, or slab/roof express ID |
+| `--ids <id,...>` / `--to <storey>` | Copy selected products to each target floor; repeat `--to` for more floors |
+| `--dry-run` | Return the canonical add/edit/delete plan or preview constrain/copy in memory; write no file |
 | `--json` | Machine-readable output |
+
+An add dry-run with `--json` includes `refusal`, `bindings` and `unresized` from `bim.store.planAddStorey`. Copy output includes the selected refs per storey and any unattached-top notices. A top constraint is saved in the IFC and follows later storey edits after reopening.
 
 ---
 
@@ -1171,6 +1196,7 @@ Checks:
   - `structural-unlinked-element`: a beam, column, member, slab, wall, footing or pile that is load bearing and has no structural member or connection assigned. Runs only when the file has an analytical model. Detailed up to the first 50, after which a single rollup issue reports the remaining count and the total. `Pset_*Common.LoadBearing` is read from the occurrence, else its type. An element where that value is missing or not a boolean (IfcLogical UNKNOWN) counts as load bearing; `LoadBearing = false` is never reported.
   - `structural-unlinked-item`: a structural member or connection with no physical element assigned. Members and connections are each checked only when the file links at least one of that kind.
   - `structural-class-mismatch`: a curve member assigned to a slab or wall, or a surface member assigned to a beam, column or member (`target` names the physical element).
+  - `structural-unconnected-member`: a structural member with no `IfcRelConnectsStructuralMember`. Checked only when the file connects at least one member.
 
 Returns exit code 0 (valid) or 1 (errors found).
 
@@ -1879,6 +1905,7 @@ The `semantic` command reads JSON/SPARQL providers, generates shared profile art
 | `doctor` | Check CLI runtime, package versions and WASM binary |
 | `info` | Model summary (schema, entities, storeys) |
 | `query` | Query entities by type/properties/quantities |
+| `structural` | Read analysis models, members, connections, loads, reactions and physical links |
 | `props` | All properties for a single entity |
 | `export` | Export data / geometry / energy model |
 | `schedule` | Tabular schedule of one class (csv/json/md/html) |

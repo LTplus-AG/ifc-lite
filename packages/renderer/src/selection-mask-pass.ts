@@ -41,13 +41,14 @@ import {
   type MaskPipelines,
 } from './selection-mask-pipelines.js';
 import { OPAQUE_VISIBILITY_GROUP } from './shaders/opaque-visibility.wgsl.js';
-import { MESH_VERTEX_BUFFERS } from './instanced-vertex-layout.js';
+import { MESH_VERTEX_BUFFERS, TEXTURED_HIGHLIGHT_VERTEX_BUFFERS } from './instanced-vertex-layout.js';
 
 export interface SelectableMesh {
   vertexBuffer: GPUBuffer;
   indexBuffer: GPUBuffer;
   indexCount: number;
   bindGroup: GPUBindGroup;
+  vertexStride?: 36;
 }
 
 /**
@@ -98,6 +99,8 @@ export class SelectionMaskPass {
   private readonly meshBindGroupLayout: GPUBindGroupLayout;
   private readonly sampleCount: number;
   private readonly pipelines: MaskPipelines;
+  private readonly texturedPipelines: MaskPipelines;
+  private texturedGeometricPipelines: MaskPipelines | null = null;
   private geometricPipelines: MaskPipelines | null = null;
   /** Built on the first frame with an instanced selection or hover. */
   private instanced: InstancedSelectionMask | null = null;
@@ -121,6 +124,7 @@ export class SelectionMaskPass {
     });
     const vertex: GPUVertexState = { module: vertexModule, entryPoint: 'vs_main', buffers: MESH_VERTEX_BUFFERS };
     this.pipelines = createMaskPipelines(this.device, 'selection-mask', layout, vertex, fragmentModule, sampleCount);
+    this.texturedPipelines = createMaskPipelines(this.device, 'selection-mask-textured', layout, { ...vertex, buffers: TEXTURED_HIGHLIGHT_VERTEX_BUFFERS }, fragmentModule, sampleCount);
   }
 
   /** Nothing to draw this frame: caller skips the pass and the outline composite entirely. */
@@ -159,6 +163,11 @@ export class SelectionMaskPass {
         pass.setPipeline(this.geometricPipelines[kind]); pass.setBindGroup(OPAQUE_VISIBILITY_GROUP, frame.geometricVisibility);
       } else { pass.setPipeline(this.pipelines[kind]); pass.setBindGroup(OPAQUE_VISIBILITY_GROUP, emptyBindGroup(this.device)); }
       for (const mesh of meshes) {
+        const textured = mesh.vertexStride === 36;
+        if (visible && frame.geometricVisibility) {
+          if (textured) this.texturedGeometricPipelines ??= createGeometricMaskPipelines(this.device, this.meshBindGroupLayout, this.sampleCount, undefined, true);
+          pass.setPipeline((textured ? this.texturedGeometricPipelines! : this.geometricPipelines!)[kind]);
+        } else pass.setPipeline((textured ? this.texturedPipelines : this.pipelines)[kind]);
         pass.setBindGroup(3, sectionExclusions(this.device).bindGroup);
         pass.setBindGroup(0, mesh.bindGroup);
         pass.setVertexBuffer(0, mesh.vertexBuffer);
@@ -174,7 +183,7 @@ export class SelectionMaskPass {
     draw(targets.visibleView, 'selectedVisible', frame.selected);
     if (frame.hovered.length > 0 || (instancedFrame?.hovered.length ?? 0) > 0) {
       draw(targets.visibleView, 'hoverVisible', frame.hovered.map((h, i) => ({
-        vertexBuffer: h.vertexBuffer, indexBuffer: h.indexBuffer, indexCount: h.indexCount, bindGroup: this.hoverGroup(h, i),
+        vertexBuffer: h.vertexBuffer, indexBuffer: h.indexBuffer, indexCount: h.indexCount, bindGroup: this.hoverGroup(h, i), vertexStride: h.vertexStride,
       })));
     }
     draw(targets.allView, 'selectedAll', frame.selected);

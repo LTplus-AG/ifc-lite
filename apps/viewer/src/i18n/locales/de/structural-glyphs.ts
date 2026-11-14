@@ -13,5 +13,6 @@ export const structuralGlyphsDe = {
   "structuralGlyphs.load.moment": "Moment",
   "structuralGlyphs.load.temperature": "Temperaturlast",
   "structuralGlyphs.load.displacement": "Auflagerverschiebung",
+  "structuralGlyphs.reaction": "Reaktion",
   "structuralGlyphs.tooltip": "{kind} · {entity}",
 } satisfies Catalogue;

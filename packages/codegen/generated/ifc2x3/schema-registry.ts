@@ -56,7 +56,18 @@ export function getSchemaRegistry(): SchemaRegistry {
   return decodedSchemaRegistry;
 }
 
-export const SCHEMA_REGISTRY: SchemaRegistry = /* @__PURE__ */ getSchemaRegistry();
+const eagerRegistriesEvaluated: string[] = [];
+
+/** The exported-constant form: returns `get()`, and records a marker that
+ * survives in a built bundle exactly where this constant does
+ * (`apps/viewer/scripts/check-schema-tables-lazy.mjs` keeps it off the
+ * viewer's startup chunks). */
+function eagerSchemaRegistry(marker: string, get: () => SchemaRegistry): SchemaRegistry {
+  eagerRegistriesEvaluated.push(marker);
+  return get();
+}
+
+export const SCHEMA_REGISTRY: SchemaRegistry = /* @__PURE__ */ eagerSchemaRegistry('ifc-lite-eager-table:SCHEMA_REGISTRY:IFC2X3', getSchemaRegistry);
 
 /**
  * Get entity metadata by name (case-insensitive)

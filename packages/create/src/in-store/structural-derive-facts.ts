@@ -56,19 +56,27 @@ function readLoadBearing(store: IfcDataStore, view: MutablePropertyView, id: num
   return loadBearingIn(view.getForEntity(id)) ?? loadBearingIn(extractTypePropertiesOnDemand(store, id)?.properties ?? []);
 }
 
-export function readStructuralDerivationFacts(store: IfcDataStore, editor: StoreEditor): StructuralDerivationFacts {
-  if (store.schemaVersion === 'IFC5') throw new Error('Structural derivation: IFC5 is not supported; use IFC2X3, IFC4 or IFC4X3');
-  const view = editor.getMutationView();
-  // Nothing is written while facts are read, so one parse per record is enough:
-  // placements, profiles and storeys are shared by many elements.
+/**
+ * A live entity reader for shape facts, and the file's length-unit scale.
+ * Nothing is written while shapes are read, so one parse per record is enough:
+ * placements, profiles and storeys are shared by many elements.
+ */
+export function shapeReader(store: IfcDataStore, editor: StoreEditor, label: string): { reader: { entity(id: number): StyleEntity | null }; metres: number } {
   const live = createStyleEntityReader(store, editor);
   const cache = new Map<number, StyleEntity | null>();
-  const read = (id: number) => {
+  const entity = (id: number) => {
     if (!cache.has(id)) cache.set(id, live(id));
     return cache.get(id)!;
   };
-  const reader = { entity: read };
-  const metres = store.source.byteLength > 0 ? safeLengthUnitScale(store.source, store.entityIndex, 'readStructuralDerivationFacts') ?? 1 : 1;
+  const metres = store.source.byteLength > 0 ? safeLengthUnitScale(store.source, store.entityIndex, label) ?? 1 : 1;
+  return { reader: { entity }, metres };
+}
+
+export function readStructuralDerivationFacts(store: IfcDataStore, editor: StoreEditor): StructuralDerivationFacts {
+  if (store.schemaVersion === 'IFC5') throw new Error('Structural derivation: IFC5 is not supported; use IFC2X3, IFC4 or IFC4X3');
+  const view = editor.getMutationView();
+  const { reader, metres } = shapeReader(store, editor, 'readStructuralDerivationFacts');
+  const read = reader.entity;
   const structural = liveStructuralExtraction(store, view);
   // Containment as the session has it (created, moved and deleted elements), resolved for every element at once.
   const storeyOf = effectiveStoreyResolver(store, effectiveSpatialContext(store, view));

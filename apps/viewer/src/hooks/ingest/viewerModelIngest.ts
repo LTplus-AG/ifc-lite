@@ -101,11 +101,11 @@ export function getMaxExpressId(
       }
     }
   }
-  // IFCX has no STEP byte-offset index. Its parsed entity table owns spatial
-  // and other unmeshed rows too; reserving only rendered IDs strands those
-  // rows outside the strict federation range (#6564).
-  if (dataStore?.schemaVersion === 'IFC5') {
-    // @raw-entity-enumeration-ok load-time IFCX ownership watermark precedes installation of live overlays
+  // A tabular store (IFCX is one) has no STEP byte-offset index. Its entity
+  // table owns spatial and other unmeshed rows too; reserving only rendered IDs
+  // strands those rows outside the strict federation range (#6564).
+  if (dataStore?.sourceKind === 'tabular') {
+    // @raw-entity-enumeration-ok load-time tabular ownership watermark precedes installation of live overlays
     for (const id of dataStore.entities.expressId) {
       maxExpressIdFromEntities = Math.max(maxExpressIdFromEntities, id);
     }
@@ -201,12 +201,13 @@ export async function parseIfcxViewerModel(
   // section-plane slider, and camera near/far all see the points too.
   for (const pc of pointClouds) {
     const { min, max } = pc.chunk.bbox;
-    bounds.min.x = Math.min(bounds.min.x, min[0]);
-    bounds.min.y = Math.min(bounds.min.y, min[1]);
-    bounds.min.z = Math.min(bounds.min.z, min[2]);
-    bounds.max.x = Math.max(bounds.max.x, max[0]);
-    bounds.max.y = Math.max(bounds.max.y, max[1]);
-    bounds.max.z = Math.max(bounds.max.z, max[2]);
+    const [ox, oy, oz] = pc.origin ?? [0, 0, 0]; // bbox is relative to it (#10029)
+    bounds.min.x = Math.min(bounds.min.x, ox + min[0]);
+    bounds.min.y = Math.min(bounds.min.y, oy + min[1]);
+    bounds.min.z = Math.min(bounds.min.z, oz + min[2]);
+    bounds.max.x = Math.max(bounds.max.x, ox + max[0]);
+    bounds.max.y = Math.max(bounds.max.y, oy + max[1]);
+    bounds.max.z = Math.max(bounds.max.z, oz + max[2]);
   }
   return {
     dataStore: buildIfcxDataStore(ifcxResult, buffer),

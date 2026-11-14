@@ -67,6 +67,9 @@ import { useViewerStore } from '@/store';
 import { mutationPermission, type MutationDenialReason } from '@/store/mutation-permission';
 import { firstEffectiveStoreyId } from '@/lib/first-effective-storey';
 import { getDrawingMarkupModelContext } from './drawing-markup-context.js';
+import { removeEmbeddedDrawingMarkup } from './drawing-markup-embedded-sweep.js';
+import { absorbedEmbeddedMarkupFor } from './drawing-markup-absorbed.js';
+import { findInvalidDimension, type DimensionSaveParams } from './dimension-markup-save.js';
 
 /**
  * `Drawing2DState`'s own four markup array shapes (`drawing2DSlice.ts`,
@@ -83,6 +86,8 @@ export interface SaveMarkupInput {
   polygonArea2DResults: Array<{ id: string } & PolygonAreaMarkupParams>;
   textAnnotations2D: Array<{ id: string } & TextMarkupParams>;
   cloudAnnotations2D: Array<{ id: string; points: Array<{ x: number; y: number }>; label: string }>;
+  /** Dimensions with their graphics laid out (`dimension-markup-save.ts`'s `dimensionSaveParams`). */
+  dimensions2D: DimensionSaveParams[];
 }
 
 export type SaveMarkupRefusal = MutationDenialReason | 'no-model' | 'no-anchor' | 'no-root-context' | 'nothing-to-save' | 'invalid-markup';
@@ -92,12 +97,13 @@ export interface SaveMarkupOutcome {
   polygonsSaved: number;
   textsSaved: number;
   cloudsSaved: number;
+  dimensionsSaved: number;
   /** Annotations swept from an earlier save this run replaced. */
   previousRemoved: number;
   refusal: SaveMarkupRefusal | null;
 }
 
-const EMPTY_COUNTS = { measuresSaved: 0, polygonsSaved: 0, textsSaved: 0, cloudsSaved: 0, previousRemoved: 0 };
+const EMPTY_COUNTS = { measuresSaved: 0, polygonsSaved: 0, textsSaved: 0, cloudsSaved: 0, dimensionsSaved: 0, previousRemoved: 0 };
 
 /** `IfcAnnotation.ObjectType`'s positional index — see `drawing-markup.ts`'s `emitAnnotation`. */
 const ANNOTATION_OBJECT_TYPE_INDEX = 4;
@@ -223,6 +229,10 @@ function findInvalidMarkup(input: SaveMarkupInput, validClouds: SaveMarkupInput[
   for (const c of validClouds) {
     if (!isFinitePoint(c.points[0]) || !isFinitePoint(c.points[1])) return `cloud "${c.id}" has a non-finite point`;
   }
+  for (const d of input.dimensions2D) {
+    const problem = findInvalidDimension(d);
+    if (problem) return `dimension "${d.id}" ${problem}`;
+  }
   return null;
 }
 
@@ -252,7 +262,8 @@ export function saveDrawingMarkupToModel(
   );
 
   const total =
-    input.measure2DResults.length + input.polygonArea2DResults.length + input.textAnnotations2D.length + validClouds.length;
+    input.measure2DResults.length + input.polygonArea2DResults.length + input.textAnnotations2D.length + validClouds.length
+    + input.dimensions2D.length;
 
   // Validate BEFORE touching the store at all — see `findInvalidMarkup`'s
   // doc comment for why this has to happen ahead of the sweep below, not
@@ -282,43 +293,51 @@ export function saveDrawingMarkupToModel(
 
   // Sweep BEFORE checking `total === 0`: an empty batch with a previous save
   // present is a legitimate "clear the saved markup" — not a no-op refusal.
-  const previousRemoved = removeDrawingMarkupFromStore(editor);
-
-  if (total === 0) {
-    if (previousRemoved > 0) useViewerStore.getState().markModelsDirty([modelId]);
-    return { ...EMPTY_COUNTS, previousRemoved, refusal: previousRemoved > 0 ? null : 'nothing-to-save' };
-  }
-
-  // `findInvalidMarkup` above covers every guard `addDrawingMarkupToStore`
-  // (and the builders it calls) can throw on today, so this should never
-  // fire — kept as a last-resort net, not the primary defense, since
-  // `StoreEditor` has no checkpoint/rollback: without this, a THIRD failure
-  // mode neither guard above catches would leave orphaned overlay entities
-  // (the sub-context, and whichever items were added before the throw) with
-  // no error surfaced and no `markModelsDirty`, i.e. a half-written overlay
-  // that silently looks clean.
-  const idsBeforeWrite = new Set(editor.getNewEntities().map((e) => e.expressId));
-  let result;
+  // Markup the file was opened with is replaced too, else a reopened,
+  // restored model gains a second copy of every embedded annotation — but
+  // only what the session absorbed (`drawing-markup-absorbed.ts`): embedded
+  // markup the restore never loaded is kept, the new batch goes beside it,
+  // and a clear leaves it in place as well.
+  //
+  // Both sweeps and the write are ONE `runAtomic` edit: `findInvalidMarkup`
+  // above covers every guard `addDrawingMarkupToStore` (and the builders it
+  // calls) can throw on today, so the catch should never fire — but if a
+  // failure mode neither guard catches does, the staged edit is discarded
+  // whole, and the swept annotations are still there rather than gone with
+  // nothing written in their place.
+  const absorbed = absorbedEmbeddedMarkupFor(modelId);
+  let saved;
   try {
-    result = addDrawingMarkupToStore(
-      editor,
-      anchor,
-      rootContextId,
-      {
-        measure2DResults: input.measure2DResults,
-        polygonArea2DResults: input.polygonArea2DResults,
-        textAnnotations2D: input.textAnnotations2D,
-        cloudAnnotations2D: validClouds,
-      },
-      targetView,
-    );
+    saved = editor.runAtomic((draft) => {
+      const removed = removeDrawingMarkupFromStore(draft) + removeEmbeddedDrawingMarkup(dataStore, draft, absorbed);
+      if (total === 0) return { previousRemoved: removed, result: null };
+      return {
+        previousRemoved: removed,
+        result: addDrawingMarkupToStore(
+          draft,
+          anchor,
+          rootContextId,
+          {
+            measure2DResults: input.measure2DResults,
+            polygonArea2DResults: input.polygonArea2DResults,
+            textAnnotations2D: input.textAnnotations2D,
+            cloudAnnotations2D: validClouds,
+            dimensions2D: input.dimensions2D,
+          },
+          targetView,
+        ),
+      };
+    });
   } catch (error) {
-    for (const entity of editor.getNewEntities()) {
-      if (!idsBeforeWrite.has(entity.expressId)) editor.removeEntity(entity.expressId);
-    }
     // eslint-disable-next-line no-console
     console.warn('[saveDrawingMarkupToModel] addDrawingMarkupToStore threw despite pre-validation:', error);
     return { ...EMPTY_COUNTS, refusal: 'invalid-markup' };
+  }
+  const { previousRemoved, result } = saved;
+
+  if (!result) {
+    if (previousRemoved > 0) useViewerStore.getState().markModelsDirty([modelId]);
+    return { ...EMPTY_COUNTS, previousRemoved, refusal: previousRemoved > 0 ? null : 'nothing-to-save' };
   }
   useViewerStore.getState().markModelsDirty([modelId]);
 
@@ -327,6 +346,7 @@ export function saveDrawingMarkupToModel(
     polygonsSaved: result.polygons.length,
     textsSaved: result.texts.length,
     cloudsSaved: result.clouds.length,
+    dimensionsSaved: result.dimensions.length,
     previousRemoved,
     refusal: null,
   };

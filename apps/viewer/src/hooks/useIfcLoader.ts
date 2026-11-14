@@ -27,12 +27,13 @@ import { attachTextureBitmaps, type TextureBitmapStore } from '../utils/textureR
 import { modelAppearanceAssets } from '../lib/appearance/model-assets.js';
 import { WorkerParser } from '@ifc-lite/parser/browser';
 import { createModelLoadCompletion } from './ingest/modelLoadCompletion.js';
-import { beginGeometryKernel, openGeometryEvents } from './ingest/geometryEventSource.js';
+import { beginGeometryKernel, openGeometryEvents, runPickStart, claimFastGeometry, ADAPTIVE_SYNC_THRESHOLD_BYTES } from './ingest/geometryEventSource.js';
 import { memoryAccounting } from '../lib/perf/memoryAccounting.js';
 import { loadTracer, nextPaintOrTimeout } from '../lib/perf/loadTrace.js';
 import { countCopy } from '@ifc-lite/load-trace'; // #6957 full source-copy counters
 import { headIsZip, NO_ARCHIVE_IMAGES, sourceArrayBuffer } from './ingest/sourceBuffers.js';
 import { compactSource } from '../lib/source-compaction/source-compaction.js';
+import { runAfterModelSettled } from '../lib/perf/afterLoad.js';
 import {
   GeometryProcessor,
   geometryAabbAt,
@@ -277,7 +278,7 @@ export function useIfcLoader() {
       abortGeometry?.();
     }, () => cancelOwnedStream, activity); // #5849: federated cancellation preserves loaded models
     // Every end of this load, completed or failed: the last live load ends the shared UI (L2).
-    const settleLoadUi = (progress: Parameters<typeof settleOwnedLoadUi>[1] = null) => settleOwnedLoadUi(releaseCanceller, progress);
+    const settleLoadUi = (progress: Parameters<typeof settleOwnedLoadUi>[1] = null) => settleOwnedLoadUi(releaseCanceller, progress, modelId);
 
     // Cold-storage residency (issue #1682 phase 3b): any new load invalidates
     // the previous entry-backed provider — a primary load replaces the model,
@@ -309,7 +310,7 @@ export function useIfcLoader() {
         scene.setColdGeometryProvider(null);
       }
     }
-
+    runPickStart({ file, target, kernel: geometryKernel, retry: options?.isResourceRetry === true || options?.tierOverride !== undefined, isCurrent }); // the one place work starts before the reset (ingest/pickStart.ts)
     // Track total elapsed time for complete user experience
     const totalStartTime = performance.now();
     const trace = loadTracer.startLoad(modelId, { journey: target.kind === 'federated' ? 'J4' : 'J1', modelKind: target.kind }, totalStartTime); // #6956
@@ -516,7 +517,7 @@ export function useIfcLoader() {
         instancedShards: ArrayBuffer[] = [],
       ): Promise<void> => {
         // A complete model carries its identity (#7022); the pass ran beside the load.
-        const sourceContentHash = await placementIdentity;
+        const sourceContentHash = await trace.span('finalize.identityWait', () => placementIdentity);
         if (isStale()) return;
         // Ordering notice (issue #1804): alignment is baked into a scan at
         // ITS load time (an f64 decode-time offset — it cannot be applied
@@ -614,7 +615,7 @@ export function useIfcLoader() {
             federationAlignmentStatus, ifcSharedVerticalDatumAssumed, ...(landXmlAssumptionsApplied ? { landXmlAssumptionsApplied } : {}),
             ...buildModelLoadReportPatch(loadDiagnostics, format, patch, omittedTypeRecords),
           };
-          useViewerStore.getState().addModel(federatedModel);
+          trace.span('finalize.publish', () => useViewerStore.getState().addModel(federatedModel));
           activity.published = true;
           options?.onModelRegistered?.();
           // The registry also holds scans that arrived before any compatible
@@ -649,7 +650,7 @@ export function useIfcLoader() {
           idOffset = registerModelOffset(modelId, maxExpressId);
         }
 
-        updateModel(modelId, {
+        trace.span('finalize.publish', () => updateModel(modelId, {
           ifcDataStore: dataStore,
           landXmlDocument: patch?.landXmlDocument,
           sourceSchema: patch?.sourceSchema,
@@ -663,7 +664,7 @@ export function useIfcLoader() {
           pointCloudHandleId: patch?.pointCloudHandleId, gaussianSplat: patch?.gaussianSplat,
           ...(patch?.spatialReference ? { spatialReference: patch.spatialReference } : {}),
           ...buildModelLoadReportPatch(loadDiagnostics, format, patch, omittedTypeRecords),
-        });
+        }));
         activity.published = true;
         modelCompletion?.settleModel();
       };
@@ -1157,10 +1158,10 @@ export function useIfcLoader() {
             }
             if (cacheOutcome === 'serve') {
               const state = useViewerStore.getState();
-              if (target.kind === 'primary') await finalizeModel(state.ifcDataStore, state.geometryResult, getViewerSchemaVersion(state.ifcDataStore), {
+              if (target.kind === 'primary') await trace.span('load.finalize', () => finalizeModel(state.ifcDataStore, state.geometryResult, getViewerSchemaVersion(state.ifcDataStore), {
                 loadState: 'complete', cacheState: 'hit',
                 loadPath: 'cache', tessellationTier: loadTessellationTier, skipSmallCuts: skipSmallCutsAtLoad,
-              });
+              }));
               const servedGeometry = target.kind === 'primary' ? state.geometryResult : useViewerStore.getState().models.get(modelId)?.geometryResult ?? null;
               if (isStale()) return; // finalize awaited the identity pass (#7022)
               const cacheTotalMs = trace.finish({ journey: 'J2', loadPath: 'cache', cacheTier: cachePlan.tier });
@@ -1183,10 +1184,10 @@ export function useIfcLoader() {
                 fileSizeMB,
                 isStale: () => isStale(),
               });
-              settleLoadUi(LOAD_COMPLETE); // #1570, as the fresh path
+              trace.span('load.settleUi', () => settleLoadUi(LOAD_COMPLETE)); // #1570, as the fresh path (span: measurement)
               // #2183: compact the restored source, then drop this scope's binding to the raw file.
               const restoredStore = target.kind === 'federated' ? federatedHitStore : state.ifcDataStore;
-              if (restoredStore) void compactSource(restoredStore.source).then((o) => { if (o === 'compacted') buffer = new ArrayBuffer(0); });
+              if (restoredStore) runAfterModelSettled({ job: 'source-compaction', modelId, store: restoredStore }, () => void compactSource(restoredStore.source).then((o) => { if (o === 'compacted') buffer = new ArrayBuffer(0); }));
               // Belt-and-suspenders for BOTH tiers (#4269): revalidate the
               // full-content hash (this load's identity pass) and, if the source
               // changed with its mtime preserved, purge + auto-reload.
@@ -1343,11 +1344,10 @@ export function useIfcLoader() {
         memoryAccounting.setSourceBytes(buffer.byteLength);
       }
 
-      // #2183: after a completed load, compact the store's source and drop this scope's raw-buffer
+      // #2183: after a completed load (an after-load job, dropped with the model), compact the store's source and drop this scope's raw-buffer
       // bindings (closures here share one context, so any survivor would pin the whole file).
-      const compactSourceAfterLoad = (store: IfcDataStore) => void compactSource(store.source).then((o) => {
-        if (o === 'compacted') { buffer = new ArrayBuffer(0); sharedSource = null; }
-      });
+      const compactSourceAfterLoad = (store: IfcDataStore) => void runAfterModelSettled({ job: 'source-compaction', modelId, store }, () => void compactSource(store.source)
+        .then((o) => { if (o === 'compacted') { buffer = new ArrayBuffer(0); sharedSource = null; } }));
 
       // Data model parsing runs IN PARALLEL with geometry streaming.
       // Default path: parser runs in a Web Worker via WorkerParser, both
@@ -1416,15 +1416,15 @@ export function useIfcLoader() {
       // geometry-heavy files, and keep small files immediate.
       const parserWaitBudgetMs = Math.min(10_000, Math.max(1_000, fileSizeMB * 8));
       const parserEntityIndexHandoff = forwardEntityIndexTo(() => workerParserInstance, useParserWorker && fileSizeMB >= 32, parserWaitBudgetMs);
-
       // The geometry pre-pass only emits `entity-index` on the parallel
       // streaming path inside `processAdaptive`. Files smaller than the
       // sync threshold (2 MB) and the desktop-stable path don't fire it
-      // — gate `waitForEntityIndex` so the parser doesn't hang.
-      const ADAPTIVE_SYNC_THRESHOLD_MB = 2;
+      // — gate `waitForEntityIndex` so the parser doesn't hang. Nor does a fast-path run (ingest/fastPath.ts).
+      const ADAPTIVE_SYNC_THRESHOLD_MB = ADAPTIVE_SYNC_THRESHOLD_BYTES / (1024 * 1024);
       const sourceFingerprint = createSourceFingerprintCell(sharedSource, useParserWorker);
+      const fastRun = geometryKernel.kind === 'exact' ? claimFastGeometry(file, geometryProcessor.meshingSettings(), { target: target.kind, sourceIsFile: loadedBufferByteLength === file.size }) : null;
       const geometryWillEmitEntityIndex =
-        useParserWorker
+        !fastRun && useParserWorker
         && fileSizeMB >= ADAPTIVE_SYNC_THRESHOLD_MB && geometryKernel.kind === 'exact';
 
       const startDataModelParsing = () => {
@@ -1583,7 +1583,7 @@ export function useIfcLoader() {
         const geometryEvents = openGeometryEvents(geometryKernel, {
           processor: geometryProcessor, view: geometryView, fileSizeMB, signal: geometryAbort.signal, stallPhaseHandle,
           existingSab: sharedSource ?? undefined, sharedRtcOffset: target.kind === 'federated' ? target.sharedRtcOffset : undefined,
-          onEntityIndex: parserEntityIndexHandoff, sourceFingerprint, trace, modelId, activity,
+          onEntityIndex: parserEntityIndexHandoff, sourceFingerprint, trace, modelId, activity, fastRun,
         });
         const geometryIterator = geometryEvents[Symbol.asyncIterator]();
         let geometryIteratorClosed = false;

@@ -37,5 +37,14 @@ function deriveEntityRegistryNames(): ReadonlyMap<string, string> {
   return names;
 }
 
-/** STEP type token -> registry PascalCase entity name, across IFC2X3/IFC4/IFC4X3. */
-export const ENTITY_REGISTRY_NAMES: ReadonlyMap<string, string> = deriveEntityRegistryNames();
+let entityRegistryNames: ReadonlyMap<string, string> | undefined;
+
+/**
+ * STEP type token -> registry PascalCase entity name, across IFC2X3/IFC4/IFC4X3.
+ * Built on the first call, not at module load: building it decodes all three
+ * registries, which would otherwise run at viewer start-up.
+ */
+export function getEntityRegistryNames(): ReadonlyMap<string, string> {
+  entityRegistryNames ??= deriveEntityRegistryNames();
+  return entityRegistryNames;
+}

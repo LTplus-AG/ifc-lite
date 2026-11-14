@@ -12,34 +12,20 @@
  * the way to a changed storey are copied; everything else is shared.
  */
 
+import { derivedState } from '@/lib/derived-state';
 import { IfcTypeEnum, type SpatialHierarchy, type SpatialNode } from '@ifc-lite/data';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { effectiveStoreyElevation, readStoreyInventory } from '@ifc-lite/create';
 import { effectiveTreeEntityName } from './effectiveTypeEntities.js';
 
-const cache = new WeakMap<SpatialNode, { view: MutablePropertyView; revision: string; project: SpatialNode }>();
-
-/**
- * A cheap revision of the overlay. Counts alone collide: a preview undone and
- * replaced by another adds as many mutations and entities as the first. The
- * last mutation's id and the highest authored express id never repeat, so
- * two different overlay states never share a revision.
- */
-function revision(view: MutablePropertyView): string {
-  const mutations = view.getMutations();
-  let newest = 0, entities = 0;
-  for (const entity of view.getNewEntities()) { entities++; if (entity.expressId > newest) newest = entity.expressId; }
-  return `${mutations.length}:${mutations.at(-1)?.id ?? ''}:${entities}:${newest}:${view.getTombstones().size}`;
-}
-
 export function effectiveSpatialProject(store: IfcDataStore, view: MutablePropertyView | null | undefined): SpatialNode | undefined {
   const project = store.spatialHierarchy?.project;
   if (!project || !view?.hasPendingChanges()) return project;
-  const at = revision(view);
-  const hit = cache.get(project);
-  if (hit && hit.view === view && hit.revision === at) return hit.project;
+  return derivedState(store, view, project, tracked => rebuildSpatialProject(store, tracked, project));
+}
 
+function rebuildSpatialProject(store: IfcDataStore, view: MutablePropertyView, project: SpatialNode): SpatialNode {
   const inventory = readStoreyInventory(store, view);
   const live = new Map(inventory.storeys.map((storey) => [storey.expressId, storey]));
   const placed = new Set<number>();
@@ -89,9 +75,7 @@ export function effectiveSpatialProject(store: IfcDataStore, view: MutableProper
     return { ...node, children, name, elevation: record.elevation, elements };
   };
 
-  const effective = rebuild(project) ?? project;
-  cache.set(project, { view, revision: at, project: effective });
-  return effective;
+  return rebuild(project) ?? project;
 }
 
 /**

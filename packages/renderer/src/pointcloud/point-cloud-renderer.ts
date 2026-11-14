@@ -17,7 +17,7 @@ import { assertModelTranslation } from '../model-translation.js';
 
 import type { PointCloudAsset } from '@ifc-lite/geometry';
 import { PointCloudHandleIds } from './point-cloud-handle-ids.js';
-import { exactPlacement, PointCloudPlacements, unionPointCloudBounds } from './point-cloud-placement.js';
+import { exactPlacement, originMatrix, PointCloudPlacements, skipUnrenderableOrigin, unionPointCloudBounds } from './point-cloud-placement.js';
 import { PointCloudVisibility } from './point-cloud-visibility.js';
 import { PointRenderPipeline, POINT_QUAD_VERTS, POINT_UNIFORM_SIZE } from './point-pipeline.js';
 import {
@@ -208,24 +208,23 @@ export class PointCloudRenderer {
 
   // ─── one-shot API (IFCx) ──────────────────────────────────────────────────
 
-  /**
-   * Replace every IFCx-owned asset with `assets`. Streamed assets are
-   * untouched. Use this from the viewer's IFCx sync hook.
-   */
+  /** Replace every IFCx-owned asset with `assets`; streamed assets are untouched. */
   setAssets(assets: ReadonlyArray<PointCloudAsset>): void {
     this.clearOwner('ifcx');
-    for (const asset of assets) {
-      if (asset.chunk.pointCount === 0) continue; // streamed identity descriptors carry no geometry
-      this.addAsset(asset);
-    }
+    this.addAssets(assets.filter((asset) => asset.chunk.pointCount > 0)); // streamed descriptors carry no geometry
   }
 
+  /** A bad origin skips that cloud with a warning instead of throwing halfway through the batch (#10029). */
+  addAssets(assets: ReadonlyArray<PointCloudAsset>): void { for (const asset of assets) if (!skipUnrenderableOrigin(asset)) this.addAsset(asset); }
+
   addAsset(asset: PointCloudAsset): PointCloudAssetHandle {
+    const origin = asset.origin && originMatrix(asset.origin); // f64 baseline (#10029)
     const node = uploadAssetToGpu(this.device, this.pipeline, asset);
     const id = this.handleIds.allocate();
     this.nodes.set(id, node);
     this.nodeOwners.set(id, 'ifcx');
     this.visibility.add(id);
+    if (origin) this.placements.align(node, origin);
     this.placements.translate(node, this.modelTranslations.get(asset.modelIndex ?? 0) ?? [0, 0, 0]);
     return { id };
   }

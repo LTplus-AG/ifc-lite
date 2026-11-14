@@ -193,7 +193,7 @@ describe('convergeFederationRtcFrame - load order and overlapping loads', () => 
   });
 
   it('never moves a raw point cloud loaded before the anchor', () => {
-    const cloud = model('P', 1, { ...geometry([]), pointClouds: [{ expressId: 1 }] } as unknown as GeometryResult);
+    const cloud = model('P', 1, { ...geometry([]), pointClouds: [{ expressId: 1, chunk: { pointCount: 0 } }] } as unknown as GeometryResult);
     const before = cloud.geometryResult!.coordinateInfo;
     seed([cloud, anchoredModel(2)]);
     convergeFederationRtcFrame();

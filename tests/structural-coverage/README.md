@@ -70,7 +70,10 @@ would be shared by the oracle and the converter.
 The derive probe compares the AxisVM roof truss against its authored analytical
 model within 1 mm (axis sine tolerance 0.001). Partial credit requires at least
 90% of reference/derived members to match axes, endpoints and physical links;
-below that floor it fails. Missing or extra connection records prevent a pass.
+below that floor it fails. On the reference side, AxisVM support-only points
+merge into member joints; support positions are compared in both directions,
+without comparing which degrees of freedom are restrained. Missing or extra
+connection records prevent a pass.
 
 ## Scoring and the ratchet
 

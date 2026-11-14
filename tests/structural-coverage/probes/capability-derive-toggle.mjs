@@ -19,7 +19,7 @@ const cross = (a, b) => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1
 const unit = (v) => v.map((x) => x / Math.hypot(...v));
 
 /** Independent STEP geometry oracle. Refuse unsupported topology and cyclic placements. */
-function referenceGeometry(step) {
+function referenceGeometry(step, { mergeSupports = false } = {}) {
   const get = (ref) => { const e = step.get(ref); if (!e) throw new Error(`missing reference ${JSON.stringify(ref)}`); return e; };
   const point = (ref) => get(ref).args[0];
   const transform = (p, placement, seen = new Set()) => {
@@ -56,22 +56,57 @@ function referenceGeometry(step) {
     return { id: e.id, ends: edge.args.slice(0,2).map((v) => transform(vertex(v), e.args[5])), links: [...(links.get(e.id) ?? [])].sort((a,b)=>a-b) };
   });
   const nodes = step.of('IFCSTRUCTURALPOINTCONNECTION').map((e) => {
-    if (!e.args[6]) return { id:e.id, position:transform([0,0,0],e.args[5]) };
-    const t = topology(e);
-    const p = t.type === 'IFCVERTEXPOINT' ? vertex({ref:t.id}) : point({ref:t.id});
-    return { id:e.id, position:transform(p,e.args[5]) };
+    const position = !e.args[6] ? transform([0,0,0],e.args[5]) : (() => {
+      const t = topology(e);
+      const p = t.type === 'IFCVERTEXPOINT' ? vertex({ref:t.id}) : point({ref:t.id});
+      return transform(p,e.args[5]);
+    })();
+    const condition = e.args[7]?.ref ? step.get(e.args[7].ref) : undefined;
+    const support = Boolean(condition?.args.slice(1).some(isRestraintValue));
+    return { id:e.id, position, support };
   });
   // A reference node's physical counterparts are the physical products of
   // its incident authored members, even when the file omits direct node links.
+  const memberRelations = [...step.of('IFCRELCONNECTSSTRUCTURALMEMBER'), ...step.of('IFCRELCONNECTSWITHECCENTRICITY')];
+  const relationsByNode = new Map();
+  const nodesById = new Map(nodes.map((node) => [node.id,node]));
+  for (const relation of memberRelations) {
+    const nodeId = relation.args[5]?.ref;
+    const node = nodesById.get(nodeId);
+    if (node) node.memberConnected = true;
+    if (!relationsByNode.has(nodeId)) relationsByNode.set(nodeId, []);
+    relationsByNode.get(nodeId).push(relation);
+  }
   for (const node of nodes) {
     const physical = new Set(links.get(node.id) ?? []);
-    for (const r of [...step.of('IFCRELCONNECTSSTRUCTURALMEMBER'), ...step.of('IFCRELCONNECTSWITHECCENTRICITY')]) {
-      if (r.args[5]?.ref !== node.id) continue;
+    const incident = relationsByNode.get(node.id) ?? [];
+    for (const r of incident) {
       for (const id of links.get(r.args[4]?.ref) ?? []) physical.add(id);
     }
     node.links = [...physical].sort((a,b)=>a-b);
   }
-  return { members, nodes };
+  return { members, nodes:mergeSupports ? mergeSupportOnlyNodes(nodes) : nodes };
+}
+
+/** AxisVM exports some conditioned support points separately from their member joint. */
+export function mergeSupportOnlyNodes(nodes) {
+  const kept = nodes.map((node) => ({ ...node }));
+  return kept.filter((node) => {
+    const supportOnly = node.support && !node.memberConnected && !(node.links?.length);
+    const joint = supportOnly && kept.find((other) => other !== node &&
+      other.memberConnected &&
+      distance(other.position,node.position) <= TOLERANCE);
+    if (!joint) return true;
+    joint.support = true;
+    return false;
+  });
+}
+
+/** readStep gives raw numbers, typed selects as {type, value}, and enums as {enum}. */
+export function isRestraintValue(value) {
+  let actual = value && typeof value === 'object' && 'value' in value ? value.value : value;
+  if (actual && typeof actual === 'object' && 'enum' in actual) actual = actual.enum;
+  return actual === true || actual === 'T' || actual === '.T.' || (typeof actual === 'number' && actual !== 0);
 }
 
 /** Both directions matter: missing or extra members/nodes must fail too. */
@@ -93,14 +128,26 @@ export function compareDerived(actual, expected) {
   for (const extra of remaining) problems.push(`extra derived member #${extra.id}: ${JSON.stringify(extra)}`);
   const nodes = new Set(actual.nodes);
   for (const ref of expected.nodes) {
-    const hit = [...nodes].find((a) => distance(a.position,ref.position) <= TOLERANCE && JSON.stringify(a.links) === JSON.stringify(ref.links));
-    if (hit) nodes.delete(hit); else problems.push(`reference connection #${ref.id}: no derived point with links ${JSON.stringify(ref.links)} within ${TOLERANCE} m at ${JSON.stringify(ref.position)}`);
+    const candidates = [...nodes].filter((a) => distance(a.position,ref.position) <= TOLERANCE && JSON.stringify(a.links) === JSON.stringify(ref.links));
+    // Prefer the candidate with the same support state, so coincident nodes match whatever their order.
+    const hit = candidates.find((a) => Boolean(a.support) === Boolean(ref.support)) ?? candidates[0];
+    if (!hit) { problems.push(`reference connection #${ref.id}: no derived point with links ${JSON.stringify(ref.links)} within ${TOLERANCE} m at ${JSON.stringify(ref.position)}`); continue; }
+    nodes.delete(hit);
+    // Support is compared on the matched pair, so a support elsewhere cannot stand in for it.
+    if (Boolean(hit.support) !== Boolean(ref.support)) {
+      problems.push(`connection #${ref.id} at ${JSON.stringify(ref.position)}: reference ${ref.support ? 'has' : 'has no'} support, derived #${hit.id} ${hit.support ? 'has' : 'has no'} support`);
+    }
   }
   for (const extra of nodes) problems.push(`extra derived connection #${extra.id} at ${JSON.stringify(extra.position)}`);
+  const referenceSupports = expected.nodes.filter((node) => node.support);
+  const derivedSupports = actual.nodes.filter((node) => node.support);
+  if (derivedSupports.length !== referenceSupports.length) {
+    problems.push(`support count mismatch: derived has ${derivedSupports.length} at ${JSON.stringify(derivedSupports.map((node) => node.position))}; reference has ${referenceSupports.length} at ${JSON.stringify(referenceSupports.map((node) => node.position))}`);
+  }
   const memberMatchRatio = matchedMembers / Math.max(1, expected.members.length, actual.members.length);
   const status = !expected.members.length || !expected.nodes.length || memberMatchRatio < MIN_MEMBER_MATCH_RATIO
     ? 'fail' : problems.length ? 'partial' : 'pass';
-  return { status, reason: problems.join('; '), mismatches: problems, toleranceMetres: TOLERANCE, axisSineTolerance: TOLERANCE, counts: { matchedMembers, memberMatchRatio, referenceMembers: expected.members.length, derivedMembers: actual.members.length, referenceNodes: expected.nodes.length, derivedNodes: actual.nodes.length } };
+  return { status, reason: problems.join('; '), mismatches: problems, toleranceMetres: TOLERANCE, axisSineTolerance: TOLERANCE, counts: { matchedMembers, memberMatchRatio, referenceMembers: expected.members.length, derivedMembers: actual.members.length, referenceNodes: expected.nodes.length, derivedNodes: actual.nodes.length, supportReferenceNodes: referenceSupports.length, supportDerivedNodes: derivedSupports.length } };
 }
 
 /** The file without its authored analytical graph: physical geometry, ids and properties kept. */
@@ -139,7 +186,8 @@ export async function deriveInto(ctx,file) {
 }
 
 export async function measureDerivation(ctx,file) {
-    const expected = referenceGeometry(file.step);
+    // AxisVM's support-only points merge into their joint on the reference only.
+    const expected = referenceGeometry(file.step, { mergeSupports:true });
     return {actual:referenceGeometry(readStep(await deriveInto(ctx,file))),expected};
 }
 

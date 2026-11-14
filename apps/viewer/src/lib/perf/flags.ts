@@ -153,6 +153,15 @@ export const PERF_FLAGS = [
     bindings: { global: '__IFC_LITE_QUANTIZED', urlParam: 'perf.quantized', benchmarkEnv: 'VIEWER_BENCHMARK_QUANTIZED' },
   },
   {
+    id: 'fastPath',
+    kind: 'kill-switch',
+    owner: '@louistrue',
+    removalCondition: 'Delete once the idle spare workers and the small-file fast path have shipped two releases with no boot, memory or load report.',
+    introducedAt: '2026-11-12',
+    default: true,
+    bindings: { urlParam: 'perf.fastPath' },
+  },
+  {
     id: 'sceneSnapshot',
     kind: 'kill-switch',
     owner: '@louistrue',

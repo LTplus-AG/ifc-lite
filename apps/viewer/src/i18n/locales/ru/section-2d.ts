@@ -75,6 +75,7 @@ export const section2dRu = {
   "section2d.export.invalidScale": "Не удалось экспортировать PDF: недопустимый масштаб.",
   "section2d.export.allowPopups": "Разрешите всплывающие окна для печати.",
   "section2d.export.omission.markups": "разметка чертежа (измерения, площади, текст и облака изменений)",
+  "section2d.export.omission.otherCutDimensions": "размеры, нанесённые на другом разрезе",
   "section2d.export.omission.rasterReferences": "видимые подложки PDF/изображений",
   "section2d.export.omission.requestedScale": "запрашиваемый масштаб (масштаб PDF задаётся активным листом)",
   "section2d.export.omission.pdfTitle": "Из этого PDF будет исключено:",

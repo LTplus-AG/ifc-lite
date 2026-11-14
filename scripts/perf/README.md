@@ -8,6 +8,18 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
+## After-load jobs wait for the load window (#9915, closed)
+
+**Rejected: gating the after-load queue (snapshot write, overlay parse, source compaction, tier-1 search) on #9855's load window does not move a Holter reopen.**
+- Capped timed A/B r43, main 65083544b0 vs #9915 f6533d5f9f (main merged in), 5 rounds. The same admission carried an A/A of main against itself; every sample was inside its cap window and none was flagged.
+- Snapshot reopen 1,230 -> 1,221 ms (+0.7%, capped A/A 2x floor 3.3%).
+- First reopen 1,279 -> 1,261 (+1.4%, 5.8%).
+- Cold 3,287 -> 3,289 (-0.1%, 6.2%), with output identical.
+- An earlier uncapped run read +6.8% on the snapshot reopen, against an 8.7% own floor. Under the cap the same cell's A/A floor is 1.7%, so that reading was host noise.
+- These are the first capped A/A floors for the reopen cells (Holter, n=5): own floor 2.9% first reopen and 1.7% snapshot reopen, against 3.1% cold.
+
+Lesson: once #9855 holds the store's panel work behind the window, the after-load jobs most likely no longer start before interactive on a reopen. This was not traced on this build. Size a change of start order from a trace of the current main, not from a trace taken before the change it builds on landed. Uncapped floors on Pop (8-25%) cannot decide a 5-10% effect; time such changes capped.
+
 ## Cache-hit chunk decode on the workers (#9925) and lazy relationship maps (#9932, closed)
 
 **Rejected: decoding a cache hit's geometry chunks on the cache workers (#9925) makes the Holter snapshot reopen ~60 ms slower, not faster.**

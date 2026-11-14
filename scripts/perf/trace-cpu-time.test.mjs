@@ -102,13 +102,26 @@ test('a trace without thread time reports CPU as unavailable (null), never as a 
   assert.equal(r.stages, null);
 });
 
-test('instructions appear in the CPU section as information: medians and A/A floor, no verdict', async () => {
-  const { cpuTimeSummary, cpuTimeSection } = await import('./load-scoreboard-report-cpu.mjs');
-  const rows = [0, 1, 2, 3, 4].flatMap((n) => ['base', 'branch'].map((side) => ({ ok: true, fixture: 'FZK', lane: 'browser-cold', side, round: n,
-    interactiveMs: 500, instructions: { total: (side === 'base' ? 2000e6 : 2010e6) + n * 1e6 } })));
-  const s = cpuTimeSummary({ kind: 'aa', lanes: ['browser-cold'] }, rows);
+test('instructions are the third verdict column: A/A floor recorded, compare judged against it by the wall rule', async () => {
+  const { cpuTimeSummary, cpuTimeSection, addCpuFloors } = await import('./load-scoreboard-report-cpu.mjs');
+  const row = (side, n, instrM) => ({ ok: true, fixture: 'FZK', lane: 'browser-cold', side, round: n, interactiveMs: 500, instructions: { total: instrM * 1e6 } });
+  const rounds = [0, 1, 2, 3, 4];
+  const aaRows = rounds.flatMap((n) => [row('base', n, 2000 + n), row('branch', n, 2010 + n)]);
+  const s = cpuTimeSummary({ kind: 'aa', lanes: ['browser-cold'] }, aaRows);
   assert.ok(s.cells[0].instructions.aaFloor > 0 && s.cells[0].instructions.aaFloor < 0.01);
-  assert.match(cpuTimeSection(rows, { cpuTime: s }).find((l) => l.startsWith('| FZK |')), /\| 2,002 \/ 2,012 \|/);
+  const summary = { floors: {}, cpuTime: s };
+  addCpuFloors(summary, s);
+  assert.equal(summary.floors.FZK['browser-cold'].instructionsM, s.cells[0].instructions.aaFloor);
+  assert.match(cpuTimeSection(aaRows, summary).find((l) => l.startsWith('| FZK |')), /\| 2,002 \/ 2,012 \|/);
+  // Compare: 10% fewer instructions against a 1% instruction floor is a gain; 0.5% is no significant difference.
+  const ab = (k) => rounds.flatMap((n) => [row('base', n, 2000 + n), row('branch', n, (2000 + n) * k)]);
+  const floors = { FZK: { 'browser-cold': { interactiveMs: 0.03, instructionsM: 0.01 } } };
+  const plan = { kind: 'compare', lanes: ['browser-cold'] };
+  assert.equal(cpuTimeSummary(plan, ab(0.9), { floors }).cells[0].instructions.verdict.verdict, 'gain');
+  assert.equal(cpuTimeSummary(plan, ab(0.995), { floors }).cells[0].instructions.verdict.verdict, 'no significant difference');
+  assert.match(cpuTimeSummary(plan, ab(0.9), { floors: { FZK: { 'browser-cold': {} } } }).cells[0].instructions.verdict.verdict, /^inconclusive: no instruction A\/A floor/);
+  const line = cpuTimeSection(ab(0.9), { cpuTime: cpuTimeSummary(plan, ab(0.9), { floors }) }).find((l) => l.startsWith('| FZK |'));
+  assert.match(line, /PASS gain \|$/);
 });
 
 test('thread time only after the window does not make an untimed window read as zero CPU', () => {

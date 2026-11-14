@@ -10,6 +10,9 @@
  * so a merged floors file carries CPU floors beside the wall ones.
  * Evidence (quiet lane 2026-11-13, Pop): CPU-total A/A floors 3.6% (FZK) / 1.9% (Holter) with the cap, 6.4% / 9.0% hot
  * and uncapped (CPU time follows thermal throttling); Mac unthrottled 4.3% / 1.3%.
+ * Retired user-space instructions (opt-in `instructions`, load-scoreboard-instr.mjs) are the THIRD verdict column by the
+ * same rule against the recorded `instructionsM` A/A floor: capped A/A 2026-11-14 floors 1.00% (FZK) / 1.20% (Holter),
+ * under the < 2% bar fixed before that run; they do not move with clock speed or throttling. Wall stays the verdict.
  */
 
 import { aaNoiseFloor, gainOf, median, ownNoiseFloor, verdictFor } from './load-scoreboard-stats.mjs';
@@ -54,26 +57,33 @@ export function cpuTimeSummary(plan, samples, { floors = null } = {}) {
       const underLoad = { base: side('base').filter((r) => r.host?.underLoad).length, branch: side('branch').filter((r) => r.host?.underLoad).length };
       const failures = { base: side('base').filter((r) => !r.ok).length, branch: side('branch').filter((r) => !r.ok).length };
       const cell = { fixture, lane, n: [side('base').length, side('branch').length], medians };
-      // Instructions: information only (no verdict) until a recorded A/A floor below 2% on the goal cells promotes them.
+      // Instructions: the THIRD verdict column, by the same rule against the recorded instruction A/A floor (promoted by the
+      // capped A/A of 2026-11-14: floors 1.00% FZK, 1.20% Holter, under the < 2% bar fixed before the run). Wall stays primary.
       const ipairs = pairsOf(INSTR_COLUMN[1]);
-      cell.instructions = ipairs.some(([a, b]) => a !== null && b !== null)
-        ? { aaFloor: kind === 'aa' && underLoad.base + underLoad.branch === 0 ? aaNoiseFloor(ipairs, { seed: 0x5eed }) : null, ownFloor: ownNoiseFloor(ipairs), gain: kind === 'aa' ? null : gainOf(ipairs.map((p) => p[0]).filter(Number.isFinite), ipairs.map((p) => p[1]).filter(Number.isFinite)) }
-        : null;
+      if (ipairs.some(([a, b]) => a !== null && b !== null)) {
+        cell.instructions = { aaFloor: kind === 'aa' && underLoad.base + underLoad.branch === 0 ? aaNoiseFloor(ipairs, { seed: 0x5eed }) : null, ownFloor: ownNoiseFloor(ipairs) };
+        if (kind !== 'aa') cell.instructions.verdict = verdictWithFloor(ipairs, { failures, underLoad, floors, fixture, lane, key: INSTR_FLOOR_KEY, label: 'instruction' });
+      } else cell.instructions = null;
       if (kind === 'aa') {
         cell.aaFloor = underLoad.base + underLoad.branch > 0 ? null : aaNoiseFloor(pairs, { seed: 0x5eed });
         cell.aaFloorFlagged = aaNoiseFloor(pairs, { seed: 0x5eed }); // floor with flagged samples kept, information only
       } else {
-        const aaFloor = floors?.[fixture]?.[lane]?.[CPU_FLOOR_KEY] ?? null;
-        let v = verdictFor(pairs, { failures, underLoad, aaFloor, minAbs: 1, seed: 0x5eed });
-        if (floors && !Number.isFinite(aaFloor) && !v.verdict.startsWith('inconclusive') && v.verdict !== 'regression: more failed loads') {
-          v = { ...v, verdict: `inconclusive: no CPU A/A floor for this cell (own floor alone: ${v.verdict})`, pass: false, regression: false };
-        }
-        cell.verdict = v;
+        cell.verdict = verdictWithFloor(pairs, { failures, underLoad, floors, fixture, lane, key: CPU_FLOOR_KEY, label: 'CPU' });
       }
       cells.push(cell);
     }
   }
   return { kind, cells };
+}
+
+/** verdictFor against the recorded A/A floor of `key`; with an A/A reference lacking that floor: inconclusive. */
+function verdictWithFloor(pairs, { failures, underLoad, floors, fixture, lane, key, label }) {
+  const aaFloor = floors?.[fixture]?.[lane]?.[key] ?? null;
+  const v = verdictFor(pairs, { failures, underLoad, aaFloor, minAbs: 1, seed: 0x5eed });
+  if (floors && !Number.isFinite(aaFloor) && !v.verdict.startsWith('inconclusive') && v.verdict !== 'regression: more failed loads') {
+    return { ...v, verdict: `inconclusive: no ${label} A/A floor for this cell (own floor alone: ${v.verdict})`, pass: false, regression: false };
+  }
+  return v;
 }
 
 /** Add CPU A/A floors to a summary's floors (A/A runs), so merged floors files carry them. */
@@ -91,13 +101,15 @@ export function cpuTimeSection(samples, summary) {
   const cpu = summary.cpuTime;
   if (!cpu?.cells?.length) return [];
   const aa = cpu.kind === 'aa';
-  const lines = ['', `## CPU time, second measure (thread time from the Chrome trace, input event to interactive; ms, median base / branch). ${aa ? 'A/A floor of CPU total (no floor when a sample was under load; the value with those samples kept is in brackets).' : 'CPU verdict: gain >= 2x max(own floor, CPU A/A floor), as for wall time; the wall verdict above is the verdict.'}`, '',
-    `| fixture | lane | n | wall interactive | ${CPU_COLUMNS.map(([l]) => `CPU ${l}`).join(' | ')} | ${INSTR_COLUMN[0]} | ${aa ? 'CPU total A/A floor | instructions A/A floor' : 'CPU total: gain / own / A/A floor | CPU verdict | instructions: gain / own floor (information)'} |`,
-    `|---|---|---:|${'---:|'.repeat(CPU_COLUMNS.length + 2)}${aa ? '---:|---:|' : '---|---|---|'}`];
+  const lines = ['', `## CPU time and instructions, second and third measures (thread time from the Chrome trace and retired user-space instructions, input event to interactive; ms / millions, median base / branch). ${aa ? 'A/A floors (no floor when a sample was under load; the CPU value with those samples kept is in brackets).' : 'CPU and instruction verdicts: gain >= 2x max(own floor, recorded A/A floor of that measure), as for wall time; the wall verdict above is the verdict.'}`, '',
+    `| fixture | lane | n | wall interactive | ${CPU_COLUMNS.map(([l]) => `CPU ${l}`).join(' | ')} | ${INSTR_COLUMN[0]} | ${aa ? 'CPU total A/A floor | instructions A/A floor' : 'CPU total: gain / own / A/A floor | CPU verdict | instructions: gain / own / A/A floor | instruction verdict'} |`,
+    `|---|---|---:|${'---:|'.repeat(CPU_COLUMNS.length + 2)}${aa ? '---:|---:|' : '---|---|---|---|'}`];
   for (const c of cpu.cells) {
     const med = Object.values(c.medians).map(([b, r]) => `${n0(b)} / ${n0(r)}`).join(' | ');
+    const mark = (v) => (!v ? '—' : v.pass ? 'PASS gain' : v.regression ? `FLAG ${v.verdict}` : v.verdict);
+    const floors3 = (v) => (v ? `${pct(v.gain)} / ${pct(v.ownFloor)} / ${pct(v.aaFloor)}` : '—');
     const tail = aa ? `${pct(c.aaFloor)} (${pct(c.aaFloorFlagged)}) | ${pct(c.instructions?.aaFloor)}`
-      : `${pct(c.verdict.gain)} / ${pct(c.verdict.ownFloor)} / ${pct(c.verdict.aaFloor)} | ${c.verdict.pass ? 'PASS gain' : c.verdict.regression ? `FLAG ${c.verdict.verdict}` : c.verdict.verdict} | ${c.instructions ? `${pct(c.instructions.gain)} / ${pct(c.instructions.ownFloor)}` : '—'}`;
+      : `${floors3(c.verdict)} | ${mark(c.verdict)} | ${floors3(c.instructions?.verdict)} | ${mark(c.instructions?.verdict)}`;
     lines.push(`| ${c.fixture} | ${c.lane} | ${c.n.join('/')} | ${med} | ${tail} |`);
   }
   return lines;

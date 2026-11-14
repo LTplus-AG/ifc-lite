@@ -13,9 +13,29 @@ use super::closed_enough_to_emit;
 
 /// Optional refinement must retain the adopted remote repair's certificate;
 /// the established coarser probes alone can hide newly collapsed faces.
-pub(super) fn can_adopt_refinement(boundary: ConsolidationBoundary, refined: &Mesh, probe: &Mesh) -> bool {
-    super::directed_closed(refined) && super::closed_enough_to_emit(probe)
-        && boundary.accepts(refined)
+///
+/// The refined mesh is adopted only when the cleanup the finalizer runs next
+/// leaves it strictly closed. Bisection halves a needle toward its sharp
+/// corner until the pieces fall below the cleanup grid, and it also splits
+/// the zero-area triangles a flush cutter face leaves; dropping those opens a
+/// T-junction chain, which a hairline-tolerant probe let through.
+pub(super) fn can_adopt_refinement(boundary: ConsolidationBoundary, refined: &Mesh) -> bool {
+    if !super::directed_closed(refined) || !boundary.accepts(refined) {
+        return false;
+    }
+    let cleaned = |clean: fn(&mut Mesh)| {
+        let mut probe = refined.clone();
+        clean(&mut probe);
+        probe
+    };
+    // The finalizer tries its sliver repair only on a result the index-only
+    // cleanup leaves hairline closed, so the repair counts only then. These
+    // probes skip the finalizer's weld: a bar no looser than the one before,
+    // not a prediction of the finish.
+    let by_index = cleaned(Mesh::clean_degenerate);
+    super::directed_closed(&by_index)
+        || (super::closed_enough_to_emit(&by_index)
+            && super::directed_closed(&cleaned(Mesh::clean_degenerate_watertight)))
 }
 
 /// A seam repair may replace the audited mesh only if it retains its certificate.
@@ -74,6 +94,12 @@ pub(in crate::router::voids) fn finish_cut_verdict(
     if verdict.closed_enough_to_emit()
         && boundary.accepts(&hygienic)
     {
+        // Nothing dropped, nothing to repair: the two cleanups then agree.
+        if !verdict.is_directed_closed() && hygienic.indices.len() != candidate.indices.len() {
+            if let Some(repaired) = repaired_finish(&candidate, host, boundary) {
+                return Some((repaired, true));
+            }
+        }
         return Some((hygienic, verdict.is_directed_closed()));
     }
 
@@ -91,6 +117,37 @@ pub(in crate::router::voids) fn finish_cut_verdict(
     original.closed_enough_to_emit()
         .then(|| (candidate, original.is_directed_closed()))
 }
+
+/// The candidate cleaned the way void output is: each dropped sliver's apex
+/// is put back into the triangle across its long edge (#5313). Returned only
+/// when that leaves the cut strictly closed.
+///
+/// The index-only cleanup above opens a T-junction wherever a dropped sliver
+/// was the only triangle joining its apex to the edge it lies on. A cutter
+/// face flush with a host face produces exactly that: the cutter is held in
+/// f64 and the host in f32, so the two planes sit up to half an f32 step
+/// apart and the cut bridges the gap with zero-area triangles.
+fn repaired_finish(candidate: &Mesh, host: &Mesh, boundary: ConsolidationBoundary) -> Option<Mesh> {
+    let mut repaired = candidate.clone();
+    // More than one round only when the weld flattens a triangle that was
+    // valid before it.
+    for _ in 0..REPAIR_ROUNDS {
+        crate::progress::tick();
+        repaired.clean_degenerate_watertight();
+        repaired = dedup_cut_vertices(&repaired, host);
+        if !repaired.needs_degenerate_cleanup() {
+            break;
+        }
+    }
+    (repaired.indices.len().is_multiple_of(3)
+        && !repaired.needs_degenerate_cleanup()
+        && super::directed_closed(&repaired)
+        && boundary.accepts(&repaired))
+    .then_some(repaired)
+}
+
+/// Clean-then-weld rounds the repaired finish may take. One is the norm.
+const REPAIR_ROUNDS: usize = 5;
 
 #[cfg(test)]
 mod tests {
@@ -122,7 +179,7 @@ mod tests {
     #[test]
     fn issue_7633_refinement_rejects_grid_collapse_only_for_certified_repairs() {
         let probe = tetrahedron(0.0);
-        assert!(can_adopt_refinement(ConsolidationBoundary::CertifiedRemote, &probe, &probe));
+        assert!(can_adopt_refinement(ConsolidationBoundary::CertifiedRemote, &probe));
         let mut refined = probe.clone();
         // A nonzero-area face whose three vertices collapse into one grid cell
         // is invisible to the coarse closure walk, but invalidates the certificate.
@@ -132,8 +189,8 @@ mod tests {
         assert!(super::super::directed_closed(&refined));
         assert!(closed_enough_to_emit(&refined));
         assert!(!kernel_grid::is_closed(&refined));
-        assert!(can_adopt_refinement(ConsolidationBoundary::Established, &refined, &probe));
-        assert!(!can_adopt_refinement(ConsolidationBoundary::CertifiedRemote, &refined, &probe));
+        assert!(can_adopt_refinement(ConsolidationBoundary::Established, &refined));
+        assert!(!can_adopt_refinement(ConsolidationBoundary::CertifiedRemote, &refined));
     }
 
     #[test]
@@ -183,6 +240,65 @@ mod tests {
         assert!(kernel_grid::is_closed(&finished));
         assert!(closed_enough_to_emit(&finished));
         assert_eq!(finished.triangle_count(), candidate.triangle_count());
+    }
+
+    /// A sliver whose apex the neighbouring faces end at: dropping it by
+    /// index leaves the opposite face spanning A-B while they stop at D.
+    fn tetrahedron_with_sliver_on_one_edge() -> Mesh {
+        let (a, b, c, d, apex) = (
+            [0.0, 0.000_049, 0.0], [1.0, 0.000_049, 0.0],
+            [0.0, 1.0, 0.0], [0.5, 0.000_061, 0.0], [0.0, 0.0, 1.0],
+        );
+        let mut mesh = Mesh::new();
+        for face in [[a, b, d], [a, d, c], [d, b, c], [a, apex, b], [a, c, apex], [b, apex, c]] {
+            push_triangle(&mut mesh, face);
+        }
+        mesh
+    }
+
+    #[test]
+    fn a_dropped_sliver_is_repaired_instead_of_left_as_a_hairline() {
+        let candidate = tetrahedron_with_sliver_on_one_edge();
+        assert!(super::super::directed_closed(&candidate), "premise: the candidate is closed");
+        let mut by_index = candidate.clone();
+        by_index.clean_degenerate();
+        assert_eq!(by_index.triangle_count(), 5, "premise: cleanup drops the 12 micrometre face");
+        assert!(
+            closed_enough_to_emit(&by_index) && !super::super::directed_closed(&by_index),
+            "premise: index-only cleanup leaves a T-junction the hairline bar tolerates"
+        );
+
+        let (finished, directed) =
+            finish_cut_verdict(candidate.clone(), &candidate, ConsolidationBoundary::Established)
+                .expect("a closed candidate finishes");
+        assert!(directed && super::super::directed_closed(&finished), "the finish is strictly closed");
+        assert_eq!(finished.triangle_count(), 6, "the face across the sliver is split at its apex");
+        assert!(!finished.needs_degenerate_cleanup());
+    }
+
+    #[test]
+    fn refinement_is_adopted_only_when_its_cleanup_stays_closed() {
+        // Closed as refined, and still closed once its sliver is repaired.
+        let repairable = tetrahedron_with_sliver_on_one_edge();
+        assert!(can_adopt_refinement(ConsolidationBoundary::Established, &repairable));
+
+        // A sliver strip no apex repair can close: a 12 micrometre face with
+        // two long sides. Dropping it opens the solid along both.
+        let (h, n) = (0.000_012, 0.000_05);
+        let (a, b, c, d) = ([0.0, n, 0.0], [1.0, n, 0.0], [1.0, n + h, 0.0], [0.0, n + h, 0.0]);
+        let (e, apex) = ([0.5, 1.0, 0.0], [0.5, 0.3, 1.0]);
+        let mut strip = Mesh::new();
+        for face in [
+            [a, b, c], [a, c, d], [d, c, e],
+            [a, apex, b], [b, apex, c], [c, apex, e], [e, apex, d], [d, apex, a],
+        ] {
+            push_triangle(&mut strip, face);
+        }
+        assert!(super::super::directed_closed(&strip), "premise: the refined mesh is closed");
+        let mut cleaned = strip.clone();
+        cleaned.clean_degenerate_watertight();
+        assert!(!super::super::directed_closed(&cleaned), "premise: its cleanup opens it");
+        assert!(!can_adopt_refinement(ConsolidationBoundary::Established, &strip));
     }
 
     #[test]

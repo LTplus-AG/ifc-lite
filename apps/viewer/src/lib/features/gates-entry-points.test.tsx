@@ -45,6 +45,7 @@ import { RIBBON_TOUR } from '@/lib/tours/tours/ribbon';
 import { FederationSetupControls } from '@/components/viewer/FederationSetupControls';
 import { Toaster } from '@/components/ui/toast';
 import { latestToast } from '@/test/toasts';
+import { captureFetch } from '@/test/fetch-stub';
 import { PrivacyBanner } from '@/components/viewer/KeyboardShortcutsDialogTabs';
 import { SettingsDialog } from '@/components/viewer/settings/SettingsDialog';
 import { ScriptPanel } from '@/components/viewer/ScriptPanel';
@@ -245,8 +246,7 @@ describe('AI and extensions off have no other door', () => {
 
   it('the Script panel mounts no chat pane on a first visit with AI off', () => {
     const CHAT_KEY = 'ifc-lite-chat-panel-visible';
-    const savedFetch = globalThis.fetch;
-    globalThis.fetch = (() => Promise.reject(new Error('network disabled in test'))) as typeof fetch;
+    const network = captureFetch(() => Promise.reject(new Error('network disabled in test')));
     /** Separators in the panel: the chat pane's resize handle is the only one. */
     const firstVisit = () => {
       localStorage.removeItem(CHAT_KEY);
@@ -273,7 +273,7 @@ describe('AI and extensions off have no other door', () => {
       assert.deepEqual(firstVisit(), { separators: 0, visible: false });
     } finally {
       localStorage.removeItem(CHAT_KEY);
-      globalThis.fetch = savedFetch;
+      network.restore();
     }
   });
 

@@ -40,7 +40,8 @@ import { CesiumPlacementGizmo } from './placement/CesiumPlacementGizmo';
 import { useSolarEnvironment } from '@/hooks/useSolarEnvironment';
 import { useSolarSweep } from '@/hooks/useSolarSweep';
 import { getViewerStoreApi, useViewerStore } from '@/store';
-import { isTypeVisible } from '@/store/typeVisibilityFilter';
+import { isMeshTypeVisible } from '@/store/typeVisibilityFilter';
+import { useRetypedClasses } from '@/hooks/useViewerSelectors';
 import { hasInstancedShards } from '@/store/instancedShardModels';
 import { isVisibleResultEmpty } from '@/lib/visibility/effective-empty';
 import { useVisibilityIsolation } from '@/hooks/useVisibilityIsolation';
@@ -102,6 +103,7 @@ export function ViewportContainer() {
   const releaseGeometryMemory = useViewerStore((s) => s.releaseGeometryMemory);
   const typeVisibility = useViewerStore((s) => s.typeVisibility);
   const structuralViewMode = useViewerStore((s) => s.structuralViewMode);
+  const retypedClasses = useRetypedClasses();
   const typeViewMode = useViewerStore((s) => s.typeViewMode);
   const setHasTypeGeometry = useViewerStore((s) => s.setHasTypeGeometry);
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
@@ -166,18 +168,18 @@ export function ViewportContainer() {
           // Scan-based terrain is stamped `IfcGeographicElement`; honour the
           // same type-visibility gate as the mesh path so the Site toggle hides
           // it too (issue #1480).
-          if (!isTypeVisible(asset.ifcType, typeVisibility, structuralViewMode)) continue;
+          if (!isMeshTypeVisible(asset, typeVisibility, structuralViewMode, retypedClasses)) continue;
           collected.push(asset.modelIndex === modelIndex ? asset : { ...asset, modelIndex });
         }
       }
     } else if (geometryResult?.pointClouds) {
       for (const asset of geometryResult.pointClouds) {
-        if (!isTypeVisible(asset.ifcType, typeVisibility, structuralViewMode)) continue;
+        if (!isMeshTypeVisible(asset, typeVisibility, structuralViewMode, retypedClasses)) continue;
         collected.push(asset);
       }
     }
     return collected;
-  }, [storeModels, geometryResult, modelIdToIndex, typeVisibility, structuralViewMode]);
+  }, [storeModels, geometryResult, modelIdToIndex, typeVisibility, structuralViewMode, retypedClasses]);
 
   // Keep the placement panel context available regardless of map/solar toggles.
   // The Cesium overlay and solar study also consume this effective georeference.
@@ -588,7 +590,7 @@ export function ViewportContainer() {
   const hasLoadedModels = storeModels.size > 0 || (geometryResult?.meshes && geometryResult.meshes.length > 0);
 
   const { hasTypeGeometry, filteredGeometry, geometryVersion, geometryReplacementVersion } = useFilteredGeometry(
-    mergedGeometryResult, geometryContentVersion, typeVisibility, typeViewMode, structuralViewMode);
+    mergedGeometryResult, geometryContentVersion, typeVisibility, typeViewMode, structuralViewMode, retypedClasses);
 
   // Publish to the store so the toolbar can hide the Model/Types switch when
   // there is no type geometry to reveal.

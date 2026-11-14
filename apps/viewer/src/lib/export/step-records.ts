@@ -6,6 +6,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { roomStepExportSource, type RoomStepExportSource } from '@/lib/collab/room-step-export';
 import { roomSymbolicSource } from '@/lib/collab/room-symbolic-source';
+import { stepRecordsUnavailableReason } from './step-records-reason';
 
 /**
  * Why a STEP writer has no records to read for a store: `'roomMoved'` for a
@@ -52,6 +53,7 @@ export function stepExportSource(
   const portable = roomStepExportSource(store, view, modelId);
   if (portable) return portable;
   if (roomSymbolicSource(store)) throw new StepRecordsUnavailableError('roomMoved', modelName);
-  if (store.sourceKind === 'tabular') throw new StepRecordsUnavailableError('noRecords', modelName);
+  const reason = stepRecordsUnavailableReason(store);
+  if (reason) throw new StepRecordsUnavailableError(reason, modelName);
   return null;
 }

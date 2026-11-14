@@ -10,6 +10,7 @@ import { useTranslation } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { usePortalContainer } from './portal-container';
 import { Dialog, useToastDialog } from './dialog-root';
+import { useDialogNoticeLayout } from './dialog-notice-layout';
 import { ToastMessages, useToastItems } from './toast';
 import { refreshToastDialogs, registerToastDialog } from './toast-store';
 
@@ -64,6 +65,8 @@ const DialogContent = React.forwardRef<
     return refreshToastDialogs;
   }, [owner.id, owner.ancestors, owner.open, owner.modal]);
   const notices = useToastItems().filter(item => owner.modal && owner.open && item.dialogId === owner.id);
+  const noticeShelf = React.useRef<HTMLDivElement>(null);
+  useDialogNoticeLayout(noticeShelf, notices.length > 0);
   return (
   <DialogPortal container={usePortalContainer()}>
     <DialogOverlay className={overlayClassName} />
@@ -71,18 +74,18 @@ const DialogContent = React.forwardRef<
       ref={ref}
       className={cn(
         'fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg',
-        scrollBody && DIALOG_SCROLL_BODY_LAYOUT,
+        // Apply the default cap before any notice arrives, so it cannot recenter the panel.
+        scrollBody ? DIALOG_SCROLL_BODY_LAYOUT : 'max-h-[calc(100dvh-2rem)] overflow-y-auto',
         viewportBounds && 'max-h-[85dvh]',
         viewportBounds === 'both' && 'w-[calc(100%-2rem)]',
-        className,
-        // A notice shelf may lift the default cap, but never loosens viewportBounds' stricter 85dvh.
-        notices.length > 0 && (viewportBounds ? 'overflow-y-auto' : 'max-h-[calc(100dvh-2rem)] overflow-y-auto')
+        className
       )}
       {...props}
     >
+      {/* Overlay notices without changing the panel height, scroll position or control coordinates. */}
       {owner.modal && (
-        <div data-dialog-notices={notices.length > 0 ? '' : undefined} className={cn(
-          notices.length > 0 ? 'col-span-full min-w-0 shrink-0 max-h-[30dvh] overflow-y-auto pr-8' : 'sr-only pointer-events-none',
+        <div ref={noticeShelf} data-dialog-notices={notices.length > 0 ? '' : undefined} className={cn(
+          notices.length > 0 ? 'absolute inset-x-0 bottom-full z-10 col-span-full min-w-0 shrink-0 max-h-[30dvh] overflow-y-auto' : 'sr-only pointer-events-none',
         )}>
           <ToastMessages items={notices} insideDialog />
         </div>

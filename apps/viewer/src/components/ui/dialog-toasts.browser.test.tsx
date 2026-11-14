@@ -40,7 +40,7 @@ async function receivesPointer(locator: Locator) {
   });
 }
 
-it('#9875 A: an error raised during a modal is visible and unobscured inside its panel', async () => {
+it('#9875 A: an error raised during a modal is visible and unobscured in its modal scope', async () => {
   render(<Toaster />);
   openDialog();
   act(() => toast.error('The reviewed changes could not be saved.'));
@@ -94,12 +94,14 @@ it('#9875 C: a pre-existing persistent storey notice stays beneath a newly opene
     await settle(page);
     const dialog = page.getByRole('dialog');
     await dialog.locator('..').locator('[data-dialog-notices]').evaluate(positionDialogNotices);
-    assert.equal(await dialog.getByText('Level 3 added').count(), 0);
+    assert.equal(await dialog.locator('..').getByText('Level 3 added').count(), 0,
+      'the old app notice must not migrate into the modal scope');
     assert.equal(await dialog.locator('..').getByText('A new review failure').isVisible(), true);
     const button = dialog.getByRole('button', { name: 'Export', exact: true });
     const bounds = await button.boundingBox();
     assert.ok(bounds);
     const oldNotice = page.locator('[data-toast-seq]').filter({ hasText: 'Level 3 added' });
+    assert.equal(await oldNotice.count(), 1, 'the app notice must still exist');
     await oldNotice.evaluate((row, position) => {
       const anchor = row.parentElement!.parentElement!;
       Object.assign(anchor.style, { left: `${position.x}px`, top: `${position.y}px`, bottom: 'auto', right: 'auto' });
@@ -128,11 +130,17 @@ for (const layout of ['grid', 'below', 'gridTall', 'scrollBody', 'viewportBounds
       toast.info('IFClite stores an action log in this browser.');
     });
     const panel = document.querySelector<HTMLElement>('[role="dialog"]')!;
-    const update = { className: panel.className, shelf: panel.parentElement!.querySelector('[data-notice-shelf]')!.outerHTML };
+    const shelf = panel.parentElement!.querySelector<HTMLElement>('[data-notice-shelf]');
+    assert.ok(shelf, 'the mounted modal owns a notice shelf');
+    const update = { className: panel.className, shelf: shelf.outerHTML };
+    const dismissButtons = shelf.querySelectorAll<HTMLButtonElement>('button[aria-label="Dismiss notification"]');
+    assert.equal(dismissButtons.length, 2, 'both notice dismiss buttons must exist before clicking');
     act(() => {
-      for (const button of panel.querySelectorAll<HTMLButtonElement>('button[aria-label="Dismiss notification"]')) button.click();
+      for (const button of dismissButtons) button.click();
     });
-    const dismissed = { shelf: panel.parentElement!.querySelector('[data-notice-shelf]')!.outerHTML };
+    assert.equal(shelf.querySelectorAll('[data-toast-seq]').length, 0, 'both notices must actually be dismissed');
+    assert.equal(shelf.textContent, '', 'the live shelf must be empty after dismissal');
+    const dismissed = { shelf: shelf.outerHTML };
     await withThemedPage('light', before, async page => {
       const height = layout === 'phoneCap' ? 640 : 900;
       await settle(page, layout === 'phoneCap' ? 320 : 1600, height);
@@ -170,6 +178,8 @@ for (const layout of ['grid', 'below', 'gridTall', 'scrollBody', 'viewportBounds
         element.parentElement!.querySelector('[data-notice-shelf]')!.outerHTML = cleared.shelf;
         (element.querySelector('[data-dialog-notice-slot]') as HTMLElement).style.display = 'none';
       }, dismissed);
+      assert.equal(await dialog.locator('..').locator('[data-notice-shelf] [data-toast-seq]').count(), 0,
+        'the dismissal snapshot must contain no notices');
       assert.deepEqual(await field.boundingBox(), fieldBounds, 'dismissal restores the original content layout');
       assert.equal(await receivesPointer(field), true);
     });

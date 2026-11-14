@@ -187,8 +187,11 @@ export function duplicateInStore(
   }
 
   for (const association of source.associations ?? []) {
-    if (association.relId !== undefined && association.relatedIds === undefined) {
-      throw new Error('duplicateInStore: an association with relId must include relatedIds before it can be extended');
+    // Only a shared IfcRelDefinesByType is extended in place, so only it needs
+    // the collected RelatedObjects; other associations are replayed fresh.
+    if (association.relId !== undefined && association.relatedIds === undefined
+      && association.relType.toUpperCase() === 'IFCRELDEFINESBYTYPE') {
+      throw new Error('duplicateInStore: an IfcRelDefinesByType association with relId must include relatedIds before it can be extended');
     }
   }
 

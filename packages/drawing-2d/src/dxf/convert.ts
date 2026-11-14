@@ -371,7 +371,7 @@ function emitEntities(entities: DxfEntity[], ctx: RenderCtx, state: ConvertState
         const text: DxfUnderlayText = {
           position: anchor,
           text: entity.text,
-          height: entity.height * scaleEstimate * state.unitScale,
+          height: entity.height * (keepsAspect || len <= 1e-12 ? scaleEstimate : scaleEstimate ** 2 / (len / state.unitScale)) * state.unitScale, // glyph height: area / baseline scale
           dirX,
           dirY,
           align: entity.hAlign,

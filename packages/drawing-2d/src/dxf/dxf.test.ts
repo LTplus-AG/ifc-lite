@@ -556,7 +556,11 @@ describe('consolidated additions (SPLINE, SOLID, lineweight, valign, unit heuris
       [0, 'ENDBLK'], [0, 'ENDSEC'],
     ) + entitiesSection([0, 'INSERT'], [8, 't'], [2, 'label'], [10, 0], [20, 0], [41, sx], [42, sy]);
     expect(layerByName(importDxf(block(2, 2)), 't').texts[0].fitUniform).toBe(true);
-    expect(layerByName(importDxf(block(2, 1)), 't').texts[0].fitUniform).toBeFalsy();
+    const stretched = layerByName(importDxf(block(2, 1)), 't').texts[0];
+    expect(stretched.fitUniform).toBeFalsy();
+    // An X-only scale stretches along the baseline and leaves the glyph height alone.
+    const unscaled = layerByName(importDxf(block(1, 1)), 't').texts[0];
+    expect(stretched.height).toBeCloseTo(unscaled.height, 9);
   });
 
   it('counts the fit end point in the extent and unit heuristic', () => {

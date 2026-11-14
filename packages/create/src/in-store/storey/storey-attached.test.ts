@@ -19,7 +19,7 @@ import { IfcCreator } from '../../ifc-creator.js';
 import { addOrdinaryElementInStore } from '../ordinary-element.js';
 import { addHostedElementInStore } from '../hosted-element.js';
 import { addCurtainWallToStore } from '../curtain-wall.js';
-import { readCurtainWallParts } from '../curtain-wall-relayout.js';
+import { relayoutCurtainWallHeight, readCurtainWallParts } from '../curtain-wall-relayout.js';
 import { addGridToStore } from '../grid.js';
 import { addColumnOnGridToStore } from '../grid-column.js';
 import { addStairToStore } from '../stair.js';
@@ -406,4 +406,30 @@ describe('the bim.store authoring default (#9296)', () => {
     expect(readTopAttachment(inventory, short)).toBeNull();
     expect(readTopAttachment(inventory, opted)).toBeNull();
   });
+});
+
+// #9352: authored offsets must remain offsets even when they form equal bays.
+it.each([false, true])('explicit equal V-grid offsets survive relayout (reopen=%s)', async (reopen) => {
+  let s: Session = await levels();
+  const l1 = readStoreyInventory(s.store, s.view).storeys[0].expressId;
+  const built = addCurtainWallToStore(s.editor, anchor(s, l1)(s.editor), {
+    Start: [0, 0, 0], End: [6, 0, 0], Height: 3, UGrid: 2, VGrid: [1, 2],
+  });
+  if (reopen) s = session(await parse(s.text()));
+  expect(relayoutCurtainWallHeight(target(s), built.curtainWallId, 4).ok).toBe(true);
+  const after = readCurtainWallParts(target(s), built.curtainWallId)!;
+  const rows = [...new Set(after.parts.filter(p => p.role === 'transom').map(p => p.v))].sort((a, b) => a - b);
+  expect(rows.slice(1, -1)).toEqual([1, 2]);
+});
+
+it('#9352 attachment and curtain-wall layout exports are deterministic without a random seed', async () => {
+  const s = await levels();
+  const built = addCurtainWallToStore(s.editor, anchor(s, s.l1)(s.editor), {
+    Start: [0, 0, 0], End: [6, 0, 0], Height: 3, UGrid: 2, VGrid: [1, 2],
+  });
+  writeTopAttachment(s.view, built.curtainWallId, s.guid(s.l2), 'relative');
+  const first = s.text();
+  expect(s.text()).toBe(first);
+  const reopened = session(await parse(first));
+  expect(readTopAttachment(readStoreyInventory(reopened.store, reopened.view), built.curtainWallId)?.binding).toBe('relative');
 });

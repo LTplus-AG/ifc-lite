@@ -426,6 +426,18 @@ describe('fast path runtime', () => {
     rt.stop();
   });
 
+  it('releases the geometry spare before an IFCZIP expands beyond its compressed size', async () => {
+    const h = host();
+    const rt = createFastPathRuntime(h.deps)!;
+    await ready(h);
+    const packed = ifc('compressed.ifczip', 9 * 1024 * 1024);
+    h.pick({ file: packed });
+    assert.equal(h.workers[0].terminated, true, 'the spare is gone before archive expansion begins');
+    assert.equal(rt.state().geometrySpare, 'none', 'the whole-tab worker budget no longer misses a ready spare');
+    assert.equal(h.claim(packed), null, 'IFCZIP continues through the normal loader');
+    rt.stop();
+  });
+
   it('a pick at or above the fast-path bound terminates the geometry spare before the load (the worker budget does not count it), then refills after the load', async () => {
     const h = host();
     const rt = createFastPathRuntime(h.deps)!;

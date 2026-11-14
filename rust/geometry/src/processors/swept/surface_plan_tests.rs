@@ -470,3 +470,75 @@ fn gradient_swept_disks_meeting_at_a_point_share_its_section() {
         assert!(offsets.iter().all(|x| x.abs() < 3e-5), "{range}: section leans {offsets:?}");
     }
 }
+
+/// A plan bending left on a 200 m radius arc under a constant 2 % grade from
+/// 10 m (#20), followed by `solid` (#30, along #20).
+fn bend(solid: &str) -> String {
+    format!(
+        "#1=IFCCARTESIANPOINT((0.,0.));
+        #2=IFCDIRECTION((1.,0.));
+        #3=IFCAXIS2PLACEMENT2D(#1,$);
+        #4=IFCCIRCLE(#3,200.);
+        #5=IFCAXIS2PLACEMENT2D(#1,#2);
+        #6=IFCCURVESEGMENT(.CONTINUOUS.,#5,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(200.),#4);
+        #7=IFCCOMPOSITECURVE((#6),.F.);
+        #8=IFCVECTOR(#2,1.);
+        #9=IFCLINE(#1,#8);
+        #10=IFCCARTESIANPOINT((0.,10.));
+        #11=IFCDIRECTION((1.,0.02));
+        #12=IFCAXIS2PLACEMENT2D(#10,#11);
+        #13=IFCCURVESEGMENT(.CONTINUOUS.,#12,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(210.),#9);
+        #20=IFCGRADIENTCURVE((#13),.F.,#7,$);
+        {solid}"
+    )
+}
+
+/// Vertices of `a` that coincide with a vertex of `b`.
+fn shared_vertices(a: &[f32], b: &[f32]) -> usize {
+    a.chunks_exact(3)
+        .filter(|p| b.chunks_exact(3).any(|q| (0..3).all(|i| (p[i] - q[i]).abs() < 1e-4)))
+        .count()
+}
+
+/// On a bend, a rotation-minimising frame turns with the curve from wherever
+/// the sweep starts, so two round sweeps trimmed at the same station put
+/// their ring vertices at different angles there. The frames of a curve with
+/// evaluated tangents depend on the station alone, so the shared rings are
+/// the same set of vertices.
+#[test]
+fn round_gradient_sweeps_on_a_bend_place_the_same_ring_where_they_meet() {
+    let disk = |range: &str| {
+        let source = bend(&format!("#30=IFCSWEPTDISKSOLID(#20,0.5,$,{range});"));
+        let mut decoder = EntityDecoder::new(&source);
+        let entity = decoder.decode_by_id(30).unwrap();
+        SweptDiskSolidProcessor::new(IfcSchema::new())
+            .lower(&entity, &mut decoder, TessellationQuality::Medium)
+            .unwrap()
+            .unwrap()
+            .evaluate()
+            .positions
+    };
+    let round = |range: &str| {
+        let source = bend(&format!(
+            "#31=IFCCIRCLEPROFILEDEF(.AREA.,$,$,0.5);
+            #32=IFCDIRECTION((0.,0.,1.));
+            #30=IFCFIXEDREFERENCESWEPTAREASOLID(#31,$,#20,{range},#32);"
+        ));
+        let mut decoder = EntityDecoder::new(&source);
+        let entity = decoder.decode_by_id(30).unwrap();
+        SurfaceCurveSweptAreaSolidProcessor::new(IfcSchema::new())
+            .lower(&entity, &mut decoder, TessellationQuality::Medium)
+            .unwrap()
+            .unwrap()
+            .evaluate()
+            .unwrap()
+            .positions
+    };
+    let (first, second) = (disk("0.,100."), disk("100.,200."));
+    assert!(shared_vertices(&first, &second) >= 24, "swept disks share {} vertices", shared_vertices(&first, &second));
+    let (first, second) = (
+        round("IFCPARAMETERVALUE(0.),IFCPARAMETERVALUE(100.)"),
+        round("IFCPARAMETERVALUE(100.),IFCPARAMETERVALUE(200.)"),
+    );
+    assert!(shared_vertices(&first, &second) >= 8, "round sweeps share {} vertices", shared_vertices(&first, &second));
+}

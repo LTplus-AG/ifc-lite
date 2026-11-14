@@ -104,10 +104,28 @@ fn chord_tangents(curve_points: &[Point3<f64>]) -> Vec<Vector3<f64>> {
     tangents
 }
 
-/// Rotation-minimising `(perp1s, perp2s)` along the given unit `tangents`:
-/// the chord tangents of [`build_tube_rmf`], or a curve's own evaluated
-/// tangents, so two sweeps that meet at a sample share its section plane.
-pub(crate) fn rmf_frames(tangents: &[Vector3<f64>]) -> (Vec<Vector3<f64>>, Vec<Vector3<f64>>) {
+/// Section frames along a curve's own evaluated unit tangents (an
+/// alignment): Axis1 is the horizontal normal to the left of the tangent and
+/// Axis2 = tangent x Axis1, so a station's frame depends on that station
+/// alone. Two sweeps trimmed at the same station then place the same ring,
+/// vertex for vertex, wherever each one starts. A vertical tangent has no
+/// horizontal normal; the whole curve then keeps the rotation-minimising
+/// frame along its tangents.
+pub(crate) fn curve_frames(tangents: &[Vector3<f64>]) -> (Vec<Vector3<f64>>, Vec<Vector3<f64>>) {
+    let mut perp1s = Vec::with_capacity(tangents.len());
+    let mut perp2s = Vec::with_capacity(tangents.len());
+    for t in tangents {
+        let Some(left) = Vector3::new(-t.y, t.x, 0.0).try_normalize(1e-9) else {
+            return rmf_frames(tangents);
+        };
+        perp1s.push(left);
+        perp2s.push(t.cross(&left).normalize());
+    }
+    (perp1s, perp2s)
+}
+
+/// Rotation-minimising `(perp1s, perp2s)` along the given unit `tangents`.
+fn rmf_frames(tangents: &[Vector3<f64>]) -> (Vec<Vector3<f64>>, Vec<Vector3<f64>>) {
     let n = tangents.len();
     let mut perp1s = Vec::with_capacity(n);
     let mut perp2s = Vec::with_capacity(n);
@@ -195,9 +213,9 @@ fn build_tube_along(
 
     // Build a rotation-minimising frame across all sample points up-front.
     // (Per-iteration `up` selection caused frame flips at sharp bends.)
-    // The curve's own tangents when it has them (see `rmf_frames`).
+    // The curve's own tangents when it has them (see `curve_frames`).
     let (perp1s, perp2s) = match tangents {
-        Some(tangents) if tangents.len() == n => rmf_frames(tangents),
+        Some(tangents) if tangents.len() == n => curve_frames(tangents),
         _ => {
             let (_, perp1s, perp2s) = build_tube_rmf(curve_points);
             (perp1s, perp2s)

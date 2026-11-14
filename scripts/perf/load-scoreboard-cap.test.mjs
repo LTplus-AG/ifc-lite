@@ -23,6 +23,8 @@ test('the window of a sample: inside only when open at both ends in the same win
   assert.equal(capWindowOf(st(), st({ id: 'w2' }), 2000, 3000), 'partial');
   assert.equal(capWindowOf(st({ restoredMs: 1500 }), st({ restoredMs: 1500 }), 2000, 3000), 'none'); // an old, closed window
   assert.equal(capWindowOf(st(), { error: 'bad json' }, 2000, 3000), 'partial');
+  // Applied and restored entirely inside the sample: neither end is capped, but the sample overlaps the window.
+  assert.equal(capWindowOf(st({ appliedMs: 2500, restoredMs: 2800 }), st({ appliedMs: 2500, restoredMs: 2800 }), 2000, 3000), 'partial');
 });
 
 test('in a window: own starvation or an uncapped busy builder flags; a capped builder does not; partial always flags', () => {

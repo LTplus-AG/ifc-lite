@@ -110,3 +110,13 @@ test('instructions appear in the CPU section as information: medians and A/A flo
   assert.ok(s.cells[0].instructions.aaFloor > 0 && s.cells[0].instructions.aaFloor < 0.01);
   assert.match(cpuTimeSection(rows, { cpuTime: s }).find((l) => l.startsWith('| FZK |')), /\| 2,002 \/ 2,012 \|/);
 });
+
+test('thread time only after the window does not make an untimed window read as zero CPU', () => {
+  const ev = traceEventsOf(trace).filter((e) => e.ph !== 'X').concat([
+    { ph: 'X', cat: 'toplevel', name: 'T', pid: 10, tid: 1, ts: 1200000, dur: 50000 }, // inside, no tdur
+    { ph: 'X', cat: 'toplevel', name: 'T', pid: 10, tid: 1, ts: 1700000, dur: 50000, tdur: 50000 }, // after the window
+  ]);
+  const r = traceCpuTime(ev);
+  assert.equal(r.threadTime, false);
+  assert.equal(r.cpuMs.total, null);
+});

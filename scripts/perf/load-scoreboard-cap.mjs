@@ -41,8 +41,10 @@ export function capWindowOf(before, after, startMs, endMs) {
   if (!before && !after) return 'none';
   if (before?.error || after?.error) return 'partial'; // unreadable state is never quiet
   const atStart = capActive(before, startMs), atEnd = capActive(after, endMs);
-  if (!atStart && !atEnd) return 'none';
-  return atStart && atEnd && before.id === after.id ? 'inside' : 'partial';
+  // A window that opened or closed during the sample (even both, entirely inside it) overlaps it: partial (review #10138).
+  const edgeInside = [before, after].some((st) => st && [st.appliedMs, st.restoredMs].some((t) => Number.isFinite(t) && t > startMs && t < endMs));
+  if (!atStart && !atEnd) return edgeInside ? 'partial' : 'none';
+  return atStart && atEnd && before.id === after.id && !edgeInside ? 'inside' : 'partial';
 }
 
 /** `some` line of a cgroup's cpu.pressure: { avg10 (%), totalUs }, or null when unreadable. */

@@ -134,7 +134,6 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
   const env = { ...process.env, VK_ICD_FILENAMES: NVIDIA_ICD, VK_DRIVER_FILES: NVIDIA_ICD };
   // Opt-in instruction counting (load-scoreboard-instr.mjs): Chrome runs under the counting wrapper; timed pass only.
   const instrOut = instructions && pass === 'timing' && process.platform === 'linux' ? `${profileDir}.instr.ndjson` : null;
-  if (instructions && pass === 'timing' && !instrOut) meta.instructionsUnavailable = `instruction counting is Linux only (${process.platform})`;
   if (instrOut) Object.assign(env, { LOAD_SCOREBOARD_INSTR_CHROME: executablePath, LOAD_SCOREBOARD_INSTR_OUT: instrOut });
   const instrWindows = [];
   const query = `?perfTrace=1${side.query ? `&${side.query}` : ''}${pass === 'identity' ? `&${IDENTITY_QUERY}` : ''}`;
@@ -143,6 +142,8 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
   const timeoutMs = Math.max(15 * 60 * 1000, sizeMB * 12 * 1000);
   const consoleLogs = [];
   const meta = { pass, query, executablePath, chromeArgs: CHROME_ARGS, pageErrors: [], crashed: false, identityOpens: [] };
+  // Declared here, after meta (review #10138): a non-Linux host records why instead of throwing.
+  if (instructions && pass === 'timing' && !instrOut) meta.instructionsUnavailable = `instruction counting is Linux only (${process.platform})`;
   const lanes = { [coldLane]: { lane: coldLane, ok: false } };
   if (warmOpens > 1) lanes[warm1Lane] = { lane: warm1Lane, ok: false };
   if (warmOpens > 0) lanes[warmLane] = { lane: warmLane, ok: false };
@@ -171,8 +172,13 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
     open.presentTimesFromChangeMs = presentTimes(counters.frames, open.originAbs, open.originAbs + open.interactiveMs + 3000);
     open.webgl = webglAroundPick(counters.gl, open.originAbs, open.originAbs + open.interactiveMs);
     // Epoch window of this open for the instruction counter (after the open; not timed).
-    if (instrOut) instrWindows.push({ label, window: await page.evaluate(([o, i]) => [performance.timeOrigin + o, performance.timeOrigin + o + i], [open.originAbs, open.interactiveMs]) });
-    if (tracing) await page.evaluate(([o, i]) => { performance.mark('scoreboard:input', { startTime: o }); performance.mark('scoreboard:interactive', { startTime: o + i }); }, [open.originAbs, open.interactiveMs]);
+    // The measured interval of this open (page clock): from the input event, or for the first-paint arm from the
+    // first paint (rebaseToArm adds that pick delay to the wall time), to the interactive mark (review #10138).
+    const fromAbs = early && Number.isFinite(shell?.armedAtMs) && shell.armedAtMs <= open.originAbs ? shell.armedAtMs : open.originAbs;
+    const toAbs = open.originAbs + open.interactiveMs;
+    if (instrOut) instrWindows.push({ label, window: await page.evaluate(([a, b]) => [performance.timeOrigin + a, performance.timeOrigin + b], [fromAbs, toAbs]) });
+    // A mark created now with an earlier startTime gets its trace ts from that startTime (Chrome; args.data.callTime holds the creation time).
+    if (tracing) await page.evaluate(([a, b]) => { performance.mark('scoreboard:input', { startTime: a }); performance.mark('scoreboard:interactive', { startTime: b }); }, [fromAbs, toAbs]);
     Object.assign(open, { shell }, await waitUiQuiet(page, open.originAbs + open.interactiveMs, open.originAbs));
     if (tracing) Object.assign(open, await stopCpuTrace(tracing, { spans: open.trace, file: join(outDir, `${tag}-${label}.cputrace.json.gz`) }));
     if (early) open = rebaseToArm(open);

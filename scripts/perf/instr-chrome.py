@@ -60,6 +60,11 @@ def open_counters(pid):
             errors.append(f'{name}: errno {ctypes.get_errno()} ({os.strerror(ctypes.get_errno())})')
         else:
             fds[name] = fd
+    if fds and errors:
+        # All PMUs or none: a hybrid CPU with only cpu_core open would silently drop work on atom cores (review #10138).
+        for fd in fds.values():
+            os.close(fd)
+        return {}, f'only some PMUs could be opened ({"; ".join(errors)}); counting all-or-nothing'
     if not fds:
         paranoid = None
         try:

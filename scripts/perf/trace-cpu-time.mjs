@@ -196,7 +196,7 @@ export function traceCpuTime(trace, { window = null, spans = null } = {}) {
     if (r.wall === 0 && r.cpu === 0) continue;
     totals[role] += r.cpu;
     wallAll += r.wall; wallNoTdur += r.wallWithoutTdur;
-    if (list.some((t) => t.tdur !== null)) withTdur++;
+    if (r.cpu > 0 || list.some((t) => t.tdur !== null && t.ts < w.endUs && t.ts + t.dur > w.startUs)) withTdur++; // thread time measured IN the window (review #10138)
     threads.push({ pid, tid, process: processName, thread: threadName, role, cpuMs: ms(r.cpu), busyWallMs: ms(r.wall) });
   }
   threads.sort((a, b) => b.cpuMs - a.cpuMs);

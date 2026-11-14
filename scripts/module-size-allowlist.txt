@@ -178,7 +178,7 @@
    457 packages/data/src/step-serializers.ts
    508 packages/data/src/types.ts
    541 packages/drawing-2d/src/drawing-generator.ts
-   506 packages/drawing-2d/src/dxf/convert.ts
+   502 packages/drawing-2d/src/dxf/convert.ts
    706 packages/drawing-2d/src/dxf/parser.ts
    413 packages/drawing-2d/src/dxf/writer.ts
    421 packages/drawing-2d/src/edge-extractor.ts

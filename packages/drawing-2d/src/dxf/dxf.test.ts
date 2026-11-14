@@ -549,6 +549,15 @@ describe('consolidated additions (SPLINE, SOLID, lineweight, valign, unit heuris
     expect(fit.fitWidth).toBeCloseTo(2, 9);
   });
 
+  it('counts the fit end point in the extent and unit heuristic', () => {
+    const underlay = importDxf(entitiesSection(
+      [0, 'TEXT'], [8, 't'], [10, 0], [20, 0], [11, 6000], [21, 0], [40, 100], [1, 'abcd'], [72, 5], [73, 0],
+    ));
+    // A 6000-unit span trips the >5000 millimetre heuristic, so it is 6 m, not 6000 m.
+    expect(underlay.unitScale).toBe(0.001);
+    expect(underlay.bounds.max.x).toBeCloseTo(6, 9);
+  });
+
   it('honours the relative X scale (41) on plain TEXT', () => {
     const underlay = importDxf(entitiesSection(
       [0, 'TEXT'], [8, 'w'], [10, 0], [20, 0], [40, 1], [1, 'ab'], [41, 0.5],

@@ -111,8 +111,8 @@ ifc-lite structural model-4.ifc --json
 ```
 
 Downgrading to IFC2X3 refuses resource types that it cannot represent, such as
-`IfcStructuralLoadConfiguration` and `IfcMaterialProfileSet`. Inspect the loss
-report before relying on a conversion.
+`IfcMaterialProfileSet` and an `IfcStructuralLoadConfiguration` that no varying
+action takes (below). Inspect the loss report before relying on a conversion.
 
 IFC2X3's `IfcStructuralLinearActionVarying` and
 `IfcStructuralPlanarActionVarying` become an IFC4 curve or surface action with

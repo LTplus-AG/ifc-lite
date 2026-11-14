@@ -46,7 +46,9 @@ export function drawingExportOmissions(
   if (unknown + rejected + unsupportedMarkup > 0) {
     omissions.push('markups');
   }
-  if (otherCutDimensionCount > 0) omissions.push('otherCutDimensions');
+  // SVG/Print already give the counted #10167 notice after successful output.
+  // Keep rejected/unknown current-cut graphics in the preflight, without a second other-cut notice.
+  if (otherCutDimensionCount > 0 && (format === 'pdf' || format === 'dxf')) omissions.push('otherCutDimensions');
   if (visibleRasterReferenceCount > 0 && format === 'dxf') {
     omissions.push('rasterReferences');
   }

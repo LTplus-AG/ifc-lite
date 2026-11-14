@@ -116,6 +116,8 @@ baseline files. `r1` here is a measurement revision, not a product climb round.
 
 A new in-store builder needs no new probe: add a step to `SCENE` in
 `probes/create-scene.mjs` naming the entities it emits and the values to expect.
+A builder that authors a load alone also names `appliedBy`, the activity the
+edit probe applies it from, since the extractor reads loads only through one.
 
 [R2 activity/result notes](baseline/r2-notes.md): 24 new create cells, 297.5/774 cells total; rows remain 56/119.
 

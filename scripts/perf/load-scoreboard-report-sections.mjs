@@ -165,3 +165,6 @@ export function thermalSection(samples) {
     '| fixture | lane | side | samples | throttled | at or above 90 C | unreadable | max throttle ms in a sample | hottest package C |', '|---|---|---|---:|---:|---:|---:|---:|---:|', ...rows] : [];
 }
 
+
+
+export { cpuTimeSection } from './load-scoreboard-report-cpu.mjs';

@@ -4,7 +4,7 @@
 
 import { iterateEffectiveEntityIds, type StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { structuralGraph } from './_structural-graph.js';
+import { structuralGraph, structuralReader } from './_structural-graph.js';
 
 /** Remove a structural root and exclusively owned resources. Required direct
  * dependents refuse the entire operation; relationships detach or shrink.
@@ -17,8 +17,14 @@ export function removeStructuralEntityInStore(store: IfcDataStore, editor: Store
       }
     }
   }
-  const graph = structuralGraph(store, editor);
-  graph.requireStructural(expressId);
+  // Lazy single-record check before the full-store graph is built.
+  const reader = structuralReader(store, editor);
+  // Required by IfcRelConnectsWithEccentricity and optional on non-structural
+  // connections, so it is removed only with the relationship that owns it.
+  if (reader.meta(reader.requireStructural(expressId).type)?.name === 'IfcConnectionPointEccentricity') {
+    throw new Error(`removeStructuralEntity: #${expressId} is an IfcConnectionPointEccentricity; remove the relationship that owns it`);
+  }
+  const graph = structuralGraph(store, editor, reader);
   // Schema inheritance covers derived links and uppercase source type names.
   const isA = (type: string, base: string) => graph.meta(type)?.inheritanceChain?.includes(base) ?? false;
   const removed = new Set([expressId]);

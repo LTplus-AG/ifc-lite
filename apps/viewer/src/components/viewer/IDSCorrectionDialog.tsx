@@ -57,7 +57,6 @@ import {
   CorrectionValueError,
   type CorrectionApplyResult,
 } from '@/hooks/ids/idsCorrection';
-import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { scaleCorrectionForWrite } from '@/hooks/ids/idsCorrectionScale';
 import type { IDSSpecificationResult } from '@ifc-lite/ids';
 import { getCorrectableRequirements } from '@/hooks/ids/idsCorrectableRequirements';

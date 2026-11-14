@@ -47,7 +47,6 @@ import { canMutateData, mutationDenialKey, dataMutationPermissionForModels } fro
 import { PropertyValueType } from '@ifc-lite/data';
 import {
   BulkQueryEngine,
-  type MutablePropertyView,
   type BulkAction,
   type BulkQueryPreview,
   type BulkQueryResult,

@@ -59,7 +59,6 @@ import { defaultAuthoringModelId } from '@/lib/model-placement/history';
 import { PropertyValueType } from '@ifc-lite/data';
 import {
   CsvConnector,
-  type MutablePropertyView,
   type CsvRow,
   type MatchStrategy,
   type PropertyMapping,

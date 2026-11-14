@@ -4,6 +4,7 @@
 
 /** Mutable overlay over immutable or on-demand properties; changes apply on reads. */
 
+import { createdExpressIdBounds } from './created-express-id-bounds.js';
 import { runSparseAtomic } from './sparse-atomic.js';
 import { readEntitySnapshot } from './entity-read-barrier.js';
 import { registerCooperativeOverlay } from './cooperative-overlay-access.js';
@@ -1254,15 +1255,11 @@ export class MutablePropertyView extends MutableOverlayState {
   *readNewEntityKinds(type?: string): IterableIterator<{ expressId: number; type: string }> {
     for (const row of type === undefined ? this.newEntities.peekValues() : this.newEntities.peekOfType(type)) yield { expressId: row.expressId, type: row.type };
   }
-  /** Highest claimed ID, including deleted and undoable creations, or zero.
-   * An optional ceiling checks a source-growth interval without counting higher IDs.
-   * Unlike the allocator position, source floors alone never constitute a claim. */
-  highestAuthoredExpressId(ceiling = Infinity): number {
-    let max = 0;
-    for (const ids of [this.newEntities.keys(), this.tombstones, this.forgottenCreatedEntities, this.forgottenEntityOverlay.keys()]) {
-      for (const id of ids) if (id <= ceiling && id > max) max = id;
-    }
-    return max;
+  /** Bounds of IDs this overlay created (live, forgotten, or stashed/undoable).
+   * `lowest` covers all creations; `highest` only those <= ceiling (zero if absent).
+   * Source tombstones and source-only allocator floors are never creation claims. */
+  getCreatedExpressIdBounds(ceiling = Infinity): { lowest: number; highest: number } {
+    return createdExpressIdBounds([this.newEntities.keys(), this.forgottenCreatedEntities, this.forgottenEntityOverlay.keys()], ceiling);
   }
   /** Whether the overlay created `id` and still holds it; reads no payload. */
   hasNewEntity(id: number): boolean { return this.newEntities.has(id); }

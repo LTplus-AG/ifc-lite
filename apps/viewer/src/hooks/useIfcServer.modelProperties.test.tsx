@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { useViewerStore } from '@/store';
+import { createMutationSlice } from '@/store/slices/mutationSlice';
 import { federationRegistry } from '@ifc-lite/renderer';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { discardUnchangedMutationViews } from '@/utils/model-mutation-view';
@@ -612,14 +613,15 @@ it('hydrates below retained unpublished creations after clear/reload (#10139)', 
   } finally { useViewerStore.getState().mutationViews.get('server')?.clear(); federationRegistry.clear(); }
 });
 
-it('a refused refresh never revives an ownerless running lease and reports refusal in the tray (#10139)', async () => {
+for (const previousKind of ['cancelled', 'running'] as const) it(`a refused refresh of a ${previousKind} run keeps loaded properties editable and reports refusal in the tray (#10139)`, async () => {
   try {
     federationRegistry.registerModel('server', 100);
     useViewerStore.getState().updateModel('server', { maxExpressId: 100, ifcDataStore: result() });
     const view = getOrCreateMutationView(useViewerStore, 'server')!;
     view.createEntity('IfcMaterial', ['Authored']);
-    useViewerStore.getState().setServerPropertiesRun('server', { kind: 'running', runId: 99,
-      owner: { model: useViewerStore.getState().models.get('server')! } });
+    useViewerStore.getState().setServerPropertiesRun('server', previousKind === 'running'
+      ? { kind: 'running', runId: 99, owner: { model: useViewerStore.getState().models.get('server')! } }
+      : { kind: 'cancelled', runId: 99, reason: 'user' });
     const previous = useViewerStore.getState().models.get('server')!.ifcDataStore;
     let deliver!: () => void;
     await act(async () => {
@@ -629,11 +631,11 @@ it('a refused refresh never revives an ownerless running lease and reports refus
     assert.ok(job);
     await act(async () => { deliver(); await new Promise(resolve => setTimeout(resolve, 30)); });
     assert.equal(useViewerStore.getState().models.get('server')!.ifcDataStore, previous);
-    assert.equal(useViewerStore.getState().serverPropertiesRuns.get('server')?.kind, 'failed');
+    assert.equal(useViewerStore.getState().serverPropertiesRuns.get('server')?.kind, 'succeeded');
     const row = useActivityJournal.getState().jobs.find(row => row.id === job.id)!;
     assert.equal(row.outcome, 'failed');
     assert.match(row.detail!, /refused/i);
-    assert.deepEqual(dataMutationPermission(useViewerStore.getState(), 'server'), { allowed: false, reason: 'properties-failed' });
+    assert.deepEqual(dataMutationPermission(useViewerStore.getState(), 'server'), { allowed: true });
   } finally { useViewerStore.getState().mutationViews.get('server')?.clear(); federationRegistry.clear(); }
 });
 
@@ -653,4 +655,89 @@ it('discards unchanged views in one store commit, retaining pending edits (#1013
   assert.equal(useViewerStore.getState().mutationViews.has('clean-b'), false);
   assert.equal(useViewerStore.getState().mutationViews.get('dirty'), dirty);
   dirty.clear();
+});
+
+
+it('source deletion survives clear/reload without blocking hydration (#10139)', async () => {
+  try {
+    useViewerStore.getState().updateModel('server', { maxExpressId: 300, idOffset: federationRegistry.registerModel('server', 300) });
+    await act(async () => {
+      useServerModelProperties().start('server', undefined, async () => serverStoreAt(500));
+      await new Promise(resolve => setTimeout(resolve, 30));
+    });
+    const view = getOrCreateMutationView(useViewerStore, 'server')!;
+    view.deleteEntity(500); // Non-meshed SOURCE entity, never created by this overlay.
+    useViewerStore.getState().clearAllModels();
+    assert.equal(useViewerStore.getState().mutationViews.get('server'), view);
+    useViewerStore.getState().addModel({ ...fixtureModel('server'), sourceFile: file, ifcDataStore: null,
+      maxExpressId: 300, idOffset: federationRegistry.registerModel('server', 300), loadState: 'complete' });
+    const hydrated = serverStoreAt(500);
+    await act(async () => {
+      useServerModelProperties().start('server', undefined, async () => hydrated);
+      await new Promise(resolve => setTimeout(resolve, 30));
+    });
+    assert.equal(useViewerStore.getState().models.get('server')?.ifcDataStore, hydrated);
+    assert.equal(view.isDeleted(500), true);
+    assert.deepEqual(dataMutationPermission(useViewerStore.getState(), 'server'), { allowed: true });
+  } finally { useViewerStore.getState().mutationViews.get('server')?.clear(); federationRegistry.clear(); }
+});
+
+for (const previousKind of ['idle', 'succeeded', 'failed'] as const) {
+  it(`a refused refresh restores ${previousKind} in one run commit without a transient lock (#10139)`, async () => {
+    try {
+      federationRegistry.registerModel('server', 100);
+      useViewerStore.getState().updateModel('server', { maxExpressId: 100, ifcDataStore: result() });
+      getOrCreateMutationView(useViewerStore, 'server')!.createEntity('IfcMaterial', ['Retained']);
+      const previous = previousKind === 'idle' ? { kind: 'idle' as const }
+        : previousKind === 'succeeded' ? { kind: 'succeeded' as const, runId: 23, result: undefined }
+        : { kind: 'failed' as const, runId: 23, error: 'Previous failure' };
+      useViewerStore.getState().setServerPropertiesRun('server', previous);
+      let deliver!: () => void;
+      useServerModelProperties().start('server', undefined, () => new Promise(resolve => { deliver = () => resolve(serverStoreAt(150)); }));
+      const job = useActivityJournal.getState().jobs.find(row => row.outcome === 'running' && row.phase?.startsWith('Server properties'))!;
+      const observed: unknown[] = [];
+      const stop = useViewerStore.subscribe((next, prev) => {
+        if (next.serverPropertiesRuns !== prev.serverPropertiesRuns) observed.push(next.serverPropertiesRuns.get('server') ?? { kind: 'idle' });
+      });
+      try { await act(async () => { deliver(); await new Promise(resolve => setTimeout(resolve, 30)); }); }
+      finally { stop(); }
+      assert.deepEqual(observed, [previous], 'subscribers must see exactly the restored run, with no intermediate failure');
+      const row = useActivityJournal.getState().jobs.find(row => row.id === job.id)!;
+      assert.equal(row.outcome, 'failed');
+      assert.match(row.detail!, /refused/i);
+    } finally { useViewerStore.getState().mutationViews.get('server')?.clear(); federationRegistry.clear(); }
+  });
+}
+
+it('retained 1001..1005 stay publishable after reload with source max 990 (#10139)', async () => {
+  try {
+    federationRegistry.registerModel('server', 1000);
+    useViewerStore.getState().updateModel('server', { maxExpressId: 1000, ifcDataStore: serverStoreAt(1000) });
+    const view = getOrCreateMutationView(useViewerStore, 'server')!;
+    for (let id = 1001; id <= 1005; id++) assert.equal(view.createEntity('IfcMaterial', ['Retained']).expressId, id);
+    useViewerStore.getState().clearAllModels();
+    useViewerStore.getState().addModel({ ...fixtureModel('server'), sourceFile: file, ifcDataStore: null,
+      maxExpressId: 300, idOffset: federationRegistry.registerModel('server', 300), loadState: 'complete' });
+    const hydrated = serverStoreAt(990);
+    await act(async () => {
+      useServerModelProperties().start('server', undefined, async () => hydrated);
+      await new Promise(resolve => setTimeout(resolve, 30));
+    });
+    assert.equal(useViewerStore.getState().models.get('server')?.ifcDataStore, hydrated);
+    assert.deepEqual(dataMutationPermission(useViewerStore.getState(), 'server'), { allowed: true });
+    for (let id = 1001; id <= 1005; id++) assert.equal(useViewerStore.getState().toGlobalId('server', id), id);
+    assert.equal(view.createEntity('IfcMaterial', ['Next']).expressId, 1006, 'reserved unused IDs cannot be allocated again');
+    assert.equal(useViewerStore.getState().toGlobalId('server', 1006), 1006);
+  } finally { useViewerStore.getState().mutationViews.get('server')?.clear(); federationRegistry.clear(); }
+});
+
+it('batched view clear returns only touched state keys (#10139)', () => {
+  let patch: Partial<ReturnType<typeof useViewerStore.getState>> = {};
+  const capture: Parameters<typeof createMutationSlice>[0] = update => {
+    patch = typeof update === 'function' ? update(useViewerStore.getState()) : update;
+  };
+  const slice = createMutationSlice(capture, useViewerStore.getState, useViewerStore);
+  slice.clearMutationView(['server', 'other']);
+  assert.deepEqual(Object.keys(patch).sort(), ['dirtyModels', 'mutationBatchTags', 'mutationMeshTranslations',
+    'mutationViews', 'redoStacks', 'removedMeshes', 'removedNewEntities', 'storeEditors', 'undoStacks'].sort());
 });

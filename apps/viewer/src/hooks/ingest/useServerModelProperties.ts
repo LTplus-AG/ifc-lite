@@ -35,8 +35,9 @@ function extendModelIdRange(modelId: string, dataStore: IfcDataStore): { maxExpr
   if (!federationRegistry.hasModel(modelId)) return { maxExpressId };
   // Source-derived allocator floors do not mean any authored IDs exist.
   // Refusal leaves both the existing source and authored overlay untouched.
-  const authoredMax = useViewerStore.getState().mutationViews.get(modelId)?.highestAuthoredExpressId(maxExpressId) ?? 0;
-  const published = federationRegistry.extendModel(modelId, maxExpressId, authoredMax);
+  const view = useViewerStore.getState().mutationViews.get(modelId);
+  const created = view?.getCreatedExpressIdBounds(maxExpressId);
+  const published = federationRegistry.extendModel(modelId, maxExpressId, created?.highest ?? 0, created?.lowest ?? 0);
   if (published < maxExpressId) console.warn(`[Server properties] Ids ${published + 1}..${maxExpressId} of model ${modelId} lie past the ids a later model owns; those entities cannot be selected or resolved, and the model cannot be edited`);
   return { maxExpressId: published };
 
@@ -60,12 +61,14 @@ function start(modelId: string | null, isStale: (() => boolean) | undefined,
       current.sourceFile === owner.model.sourceFile && current.ifcDataStore === owner.model.ifcDataStore;
   };
   const write = (run: ServerPropertiesRun) => useViewerStore.getState().setServerPropertiesRun(modelId, run);
+  let refusalRun: ServerPropertiesRun | undefined;
   const slot = createRunSlot<void, never, ServerPropertiesOwner, string>({
     read: () => {
       const run = useViewerStore.getState().serverPropertiesRuns.get(modelId) ?? IDLE_RUN;
       return run.kind === 'running' && run.owner !== owner ? IDLE_RUN : run;
     },
-    write,
+    // Settle a refused refresh directly to the existing store's run; the tray still fails.
+    write: run => write(run.kind === 'failed' && refusalRun ? refusalRun : run),
     subscribe: listener => {
       const supersession = watchLoadSupersession('primary');
       const supersede = () => write(IDLE_RUN);
@@ -78,8 +81,6 @@ function start(modelId: string | null, isStale: (() => boolean) | undefined,
       return () => {
         stop(); supersession.stop();
         supersession.signal.removeEventListener('abort', supersede);
-        const run = useViewerStore.getState().serverPropertiesRuns.get(modelId);
-        if (run?.kind === 'running' && run.owner === owner) write(IDLE_RUN);
       };
     },
   }, { begin: () => ({ kind: 'load', title: 'activityTray.job.load', phase: 'Server properties (geometry remains available)' }) });
@@ -100,7 +101,9 @@ function start(modelId: string | null, isStale: (() => boolean) | undefined,
         if (!owner.model.ifcDataStore) throw error;
         console.warn('[Server properties] Re-hydration refused; previous properties remain available', error);
         const refusal = `Server properties re-hydration refused: ${error instanceof Error ? error.message : String(error)}`;
-        if (lease.fail(refusal) && (previousRun.kind === 'idle' || previousRun.kind === 'succeeded' || previousRun.kind === 'failed')) write(previousRun);
+        refusalRun = previousRun.kind === 'cancelled' || previousRun.kind === 'running'
+          ? { kind: 'succeeded', runId: lease.runId, result: undefined } : previousRun;
+        lease.fail(refusal);
         return;
       }
       // Ownership is permanent even if extension/warning supersedes the lease.

@@ -430,3 +430,36 @@ it('extends source ownership below retained unpublished authored IDs (#10139)', 
   reg.publishOverlayRange('retained', 501, 501);
   assert.equal(reg.toGlobalId('retained', 501), 501);
 });
+
+
+it('reserves an unused gap before retained creations without publishing them (#10139)', () => {
+  const reg = new FederationRegistry();
+  reg.registerModel('retained', 300);
+  const laterOffset = reg.registerModel('later', 10);
+  const notifications: string[] = [];
+  reg.subscribe(modelId => { if (modelId === 'retained') notifications.push(String(reg.getGlobalIdRange(modelId)?.end)); });
+  assert.equal(reg.extendModel('retained', 990, 0, 1001), 1000);
+  assert.deepEqual(notifications, ['1000'], 'source and reserved-unused ownership publish together');
+  assert.equal(reg.toGlobalId('retained', 1000), 1000);
+  assert.throws(() => reg.toGlobalId('retained', 1001), /not published/);
+  assert.equal(reg.canPublishOverlayFrom('retained', 1001, 5), true);
+  reg.publishOverlayRange('retained', 1001, 1005);
+  assert.equal(reg.toGlobalId('retained', 1005), 1005);
+  assert.equal(reg.toGlobalId('later', 0), laterOffset, 'the gap never aliases another model');
+});
+
+it('refuses a retained gap outside overlay capacity before changing ownership (#10139)', () => {
+  const reg = new FederationRegistry();
+  reg.registerModel('retained', 300);
+  reg.registerModel('later', 10);
+  assert.throws(() => reg.extendModel('retained', 990, 0, 1_000_302), /safe entity IDs/i);
+  assert.equal(reg.getGlobalIdRange('retained')?.end, 300);
+});
+
+
+it('reserves a retained gap even when the reloaded source does not grow (#10139)', () => {
+  const reg = new FederationRegistry();
+  reg.registerModel('retained', 300);
+  assert.equal(reg.extendModel('retained', 300, 0, 1001), 1000);
+  assert.equal(reg.canPublishOverlayFrom('retained', 1001, 5), true);
+});

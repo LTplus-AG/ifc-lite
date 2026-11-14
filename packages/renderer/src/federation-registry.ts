@@ -5,10 +5,6 @@
 /**
  * FederationRegistry - Bulletproof multi-model ID management
  *
- * Each model gets a unique ID offset, ensuring globally unique IDs across
- * all federated models. This eliminates ID collisions when multiple IFC
- * files have overlapping expressIds.
- *
  * Inspired by HOOPS Communicator's loadSubtree approach where node IDs
  * are automatically offset to avoid conflicts.
  */
@@ -128,23 +124,16 @@ export class FederationRegistry {
   }
 
   /**
-   * Grow a fully published model toward `maxExpressId` and publish the added
-   * IDs, for a model registered from part of its IDs (its meshes) whose other
-   * entities (storeys, spaces, types) arrive later with its data model.
-   * Returns the highest published local ID afterwards; the offset never moves.
-   *
-   * A no-op below the published end. The newest reservation grows freely, up
-   * to the safe ID limit (past it this throws). A model with a later
-   * neighbour grows to the end of its overlay headroom and stops there: the
-   * return value is then below `maxExpressId` and the IDs above it stay
-   * unresolvable. Throws, before anything else, for a range that is only
-   * partly published or already carries overlay IDs: extending across
-   * authored IDs would give two entities one global ID. Callers pass their
-   * highest claimed ID at or below the requested source maximum as
-   * `allocatedMaxExpressId` to protect live, deleted and undoable unpublished IDs.
-   * Claims above the requested maximum remain unpublished and do not block growth.
+   * Grow a fully published source without moving its offset. Later reservations
+   * clamp growth to overlay headroom; the newest can grow to the safe ID limit.
+   * Refuse partly published ranges, published overlays, or a creation claim
+   * in the growth interval (`allocatedMaxExpressId`: highest claim <= source max).
+   * `firstRetainedExpressId` includes deleted/undoable creations. When above the
+   * new source end, publish the intervening gap as reserved-unused ownership so
+   * retained creations can subsequently publish contiguously. No creation is
+   * published here. Return the ownership end, including any reserved-unused gap.
    */
-  extendModel(modelId: string, maxExpressId: number, allocatedMaxExpressId = 0): number {
+  extendModel(modelId: string, maxExpressId: number, allocatedMaxExpressId = 0, firstRetainedExpressId = 0): number {
     const range = this.modelRanges.get(modelId);
     if (!range) throw new Error(`[FederationRegistry] Cannot extend unknown model ${modelId}`);
     if (!Number.isInteger(maxExpressId) || maxExpressId < 0) {
@@ -153,12 +142,20 @@ export class FederationRegistry {
     if (range.publishedStart === null || range.maxExpressId !== range.reservedMaxExpressId) {
       throw new Error(`[FederationRegistry] Cannot extend ${modelId}: its range is partly published or already carries overlay IDs`);
     }
-    if (maxExpressId <= range.maxExpressId) return range.maxExpressId;
     if (allocatedMaxExpressId > range.reservedMaxExpressId && allocatedMaxExpressId <= maxExpressId) {
       throw new Error(`[FederationRegistry] Cannot extend ${modelId}: its allocator already carries unpublished overlay IDs`);
     }
-    let end = maxExpressId;
-    if (this.nextOffset === range.offset + range.overlayMaxExpressId + 1) { // the newest reservation
+    if (!Number.isSafeInteger(firstRetainedExpressId) || firstRetainedExpressId < 0) {
+      throw new Error(`[FederationRegistry] Invalid first retained ID: ${firstRetainedExpressId}`);
+    }
+    if (maxExpressId <= range.maxExpressId && firstRetainedExpressId <= range.maxExpressId + 1) return range.maxExpressId;
+    const sourceEnd = Math.max(maxExpressId, range.reservedMaxExpressId);
+    const newest = this.nextOffset === range.offset + range.overlayMaxExpressId + 1;
+    const gapEnd = firstRetainedExpressId > sourceEnd ? firstRetainedExpressId - 1 : 0;
+    const overlayEnd = Math.min(newest ? sourceEnd + OVERLAY_ID_HEADROOM : range.overlayMaxExpressId, MAX_SAFE_OFFSET - range.offset);
+    if (gapEnd > 0 && firstRetainedExpressId > overlayEnd) throw new OverlayIdSpaceExhaustedError();
+    let end = sourceEnd;
+    if (newest) {
       if (range.offset + maxExpressId > MAX_SAFE_OFFSET) {
         throw new Error(`[FederationRegistry] Cannot extend ${modelId} to ${maxExpressId}: would exceed safe ID limit`);
       }
@@ -168,9 +165,9 @@ export class FederationRegistry {
       end = Math.min(end, range.overlayMaxExpressId);
     }
     range.reservedMaxExpressId = end;
-    range.maxExpressId = end;
+    range.maxExpressId = Math.max(end, gapEnd);
     this.rangesChanged(modelId);
-    return end;
+    return range.maxExpressId;
   }
 
   /** Publish the next contiguous owned local range inside a reservation. */

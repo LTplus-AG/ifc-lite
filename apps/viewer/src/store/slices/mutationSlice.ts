@@ -1052,35 +1052,24 @@ export const createMutationSlice: StateCreator<
 
   clearMutationView: (modelIds) => {
     set((initial) => {
-      let state = initial;
+      const mutationViews = new Map(initial.mutationViews), storeEditors = new Map(initial.storeEditors);
+      const dirtyModels = new Set(initial.dirtyModels);
+      let removedNewEntities = initial.removedNewEntities, removedMeshes = initial.removedMeshes;
+      let history = { undoStacks: initial.undoStacks, redoStacks: initial.redoStacks,
+        mutationBatchTags: initial.mutationBatchTags, mutationMeshTranslations: initial.mutationMeshTranslations };
+      const discarded: Mutation[] = [];
       for (const modelId of typeof modelIds === 'string' ? [modelIds] : modelIds) {
-        const newViews = new Map(state.mutationViews);
-        newViews.delete(modelId);
-        const newEditors = new Map(state.storeEditors);
-        newEditors.delete(modelId);
-        const newDirty = new Set(state.dirtyModels);
-        newDirty.delete(modelId);
-        const newRemoved = pruneStashByModel(state.removedNewEntities, modelId);
-        const newRemovedMeshes = pruneStashByModel(state.removedMeshes, modelId);
-        const history = pruneMutationHistory(
-          modelId,
-          state.undoStacks,
-          state.redoStacks,
-          state.mutationBatchTags,
-          state.mutationMeshTranslations,
-        );
-        state = {
-          ...state,
-          ...dropFromChangeSets(state, state.undoStacks.get(modelId) ?? []),
-          mutationViews: newViews,
-          storeEditors: newEditors,
-          dirtyModels: newDirty,
-          removedNewEntities: newRemoved,
-          removedMeshes: newRemovedMeshes,
-          ...history,
-        };
+        mutationViews.delete(modelId);
+        storeEditors.delete(modelId);
+        dirtyModels.delete(modelId);
+        removedNewEntities = pruneStashByModel(removedNewEntities, modelId);
+        removedMeshes = pruneStashByModel(removedMeshes, modelId);
+        for (const mutation of history.undoStacks.get(modelId) ?? []) discarded.push(mutation);
+        history = pruneMutationHistory(modelId, history.undoStacks, history.redoStacks,
+          history.mutationBatchTags, history.mutationMeshTranslations);
       }
-      return state;
+      return { mutationViews, storeEditors, dirtyModels, removedNewEntities, removedMeshes, ...history,
+        ...dropFromChangeSets(initial, discarded) };
     });
   },
 

@@ -78,24 +78,24 @@ it('notifies createEntity observers after records, history and revision are cohe
 it('tracks every claimed ID without mistaking source floors for authorship (#10139)', () => {
   const view = new MutablePropertyView(null, 'model');
   view.setExpressIdWatermark(100);
-  expect(view.highestAuthoredExpressId()).toBe(0);
+  expect(view.getCreatedExpressIdBounds().highest).toBe(0);
   const first = view.createEntity('IfcMaterial', ['First']);
   view.setAttribute(first.expressId, 'Name', 'Edited');
   view.deleteEntity(first.expressId);
   view.restoreFromTombstone(first.expressId); // Forgotten/stashed claims survive without a tombstone.
-  expect(view.highestAuthoredExpressId()).toBe(101);
+  expect(view.getCreatedExpressIdBounds().highest).toBe(101);
   view.setExpressIdWatermark(500);
   const later = view.createEntity('IfcMaterial', ['Later']);
-  expect(view.highestAuthoredExpressId()).toBe(501);
-  expect(view.highestAuthoredExpressId(150)).toBe(101);
-  const prepared = view.prepareAtomic(draft => { draft.deleteEntity(later.expressId); return draft.highestAuthoredExpressId(); });
+  expect(view.getCreatedExpressIdBounds().highest).toBe(501);
+  expect(view.getCreatedExpressIdBounds(150).highest).toBe(101);
+  const prepared = view.prepareAtomic(draft => { draft.deleteEntity(later.expressId); return draft.getCreatedExpressIdBounds().highest; });
   expect(prepared.result).toBe(501);
   prepared.commit();
-  expect(view.highestAuthoredExpressId()).toBe(501);
+  expect(view.getCreatedExpressIdBounds().highest).toBe(501);
   prepared.rollback();
-  expect(view.highestAuthoredExpressId()).toBe(501);
+  expect(view.getCreatedExpressIdBounds().highest).toBe(501);
   view.clear();
-  expect(view.highestAuthoredExpressId()).toBe(0);
+  expect(view.getCreatedExpressIdBounds().highest).toBe(0);
 });
 
 it('restoreNewEntity observers see unstashed edits and attribute indexes (#10139)', () => {
@@ -115,4 +115,18 @@ it('restoreNewEntity observers see unstashed edits and attribute indexes (#10139
   }));
   view.restoreNewEntity(entity);
   expect(observed).toEqual([{ edits: [{ name: 'Name', value: 'Edited' }], ids: [entity.expressId] }]);
+});
+
+// #10139: deleting a source row never claims its ID for an overlay creation.
+it('excludes source tombstones from created ID claims', () => {
+  const view = new MutablePropertyView(null, 'model');
+  view.setExpressIdWatermark(500);
+  view.deleteEntity(500);
+  expect(view.getCreatedExpressIdBounds().highest).toBe(0);
+  expect(view.getCreatedExpressIdBounds().lowest).toBe(0);
+  const created = view.createEntity('IfcMaterial', ['Created']);
+  view.deleteEntity(created.expressId);
+  expect(view.getCreatedExpressIdBounds().highest).toBe(501);
+  expect(view.getCreatedExpressIdBounds(500).highest).toBe(0);
+  expect(view.getCreatedExpressIdBounds().lowest).toBe(501);
 });

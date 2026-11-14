@@ -58,6 +58,7 @@ export const viewportLightingEn = {
   // from `DROP_FORMAT_GROUPS` in services/supported-model-files.ts.
   'viewportLighting.container.emptyState.formats.ifc': 'IFC',
   'viewportLighting.container.emptyState.formats.gltf': 'glTF',
+  'viewportLighting.container.emptyState.formats.rhino': 'Rhino',
   'viewportLighting.container.emptyState.formats.pointClouds': 'Point clouds',
   'viewportLighting.container.emptyState.formats.terrain': 'Terrain',
   'viewportLighting.container.emptyState.formats.underlays': 'Underlays',

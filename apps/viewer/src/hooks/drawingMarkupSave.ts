@@ -96,7 +96,7 @@ import {
 } from '@/store/slices/drawing2DSlice.persistence.js';
 import { getCachedHash } from './drawingMarkupRestorePrecedence.js';
 import { isPristineSectionPlane } from '@/lib/section/section-plane-set';
-import { absorbedEmbeddedMarkupFor } from '@/lib/drawing2d-markup/drawing-markup-absorbed';
+import { absorbedEmbeddedMarkupFor, isAbsorbedEmbeddedMarkupDecided } from '@/lib/drawing2d-markup/drawing-markup-absorbed';
 import type { SectionPlane } from '@/store/types';
 
 /**
@@ -223,7 +223,8 @@ function persistFor(modelId: string): void {
     dimensions2D: s.dimensions2D,
     drawing2DDisplayOptions: s.drawing2DDisplayOptions,
     sectionConfig: lastSectionConfigModelId === modelId ? lastSectionConfig : null,
-    absorbedEmbeddedMarkup: [...absorbedEmbeddedMarkupFor(modelId)],
+    // Undecided (an old entry's set, store not readable yet): left absent for the next restore.
+    absorbedEmbeddedMarkup: isAbsorbedEmbeddedMarkupDecided(modelId) ? [...absorbedEmbeddedMarkupFor(modelId)] : undefined,
   });
 }
 

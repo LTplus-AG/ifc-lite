@@ -483,6 +483,7 @@
   ],
   "@ifc-lite/codegen/ifc2x3": [
     "AttributeMetadata: interface",
+    "CONCRETE_RELATIONSHIP_TYPES: const",
     "EntityMetadata: interface",
     "EntityRef: interface",
     "EnumValue: interface",
@@ -1494,6 +1495,7 @@
   ],
   "@ifc-lite/codegen/ifc4": [
     "AttributeMetadata: interface",
+    "CONCRETE_RELATIONSHIP_TYPES: const",
     "EntityMetadata: interface",
     "EntityRef: interface",
     "EnumValue: interface",
@@ -2698,6 +2700,7 @@
   ],
   "@ifc-lite/codegen/ifc4x3": [
     "AttributeMetadata: interface",
+    "CONCRETE_RELATIONSHIP_TYPES: const",
     "EntityMetadata: interface",
     "EntityRef: interface",
     "EnumValue: interface",
@@ -4677,6 +4680,10 @@
     "DRAWING_MARKUP_PSET_NAME: const",
     "DRAWING_MARKUP_QSET_NAME: const",
     "DetectedSpace: interface",
+    "DimensionMarkupOrientation: type",
+    "DimensionMarkupParams: interface",
+    "DimensionMarkupResult: interface",
+    "DimensionMarkupSegment: type",
     "DoorBuildResult: interface",
     "DoorInStoreParams: interface",
     "DoorParams: interface",
@@ -5043,6 +5050,7 @@
     "addCostScheduleToStore: function",
     "addCostValueToStore: function",
     "addCurtainWallToStore: function",
+    "addDimensionMarkupToStore: function",
     "addDoorToStore: function",
     "addDrawingMarkupToStore: function",
     "addElementTypeToStore: function",
@@ -5369,6 +5377,8 @@
     "comparePropertyValues: function",
     "countEffectiveEntityTypes: function",
     "createLogger: function",
+    "eagerSchemaTable: function",
+    "eagerSchemaTablesEvaluated: function",
     "edgeSurvives: function",
     "entityTableFromColumns: function",
     "entityTableToColumns: function",
@@ -5602,7 +5612,10 @@
     "DXFExportOptions: interface",
     "DXFExporter: class",
     "DXFPolylineLayer: interface",
+    "DXFText: interface",
+    "DXFTextLayer: interface",
     "DXFUnderlayOptions: interface",
+    "DXF_TEXT_LINE_HEIGHT_FACTOR: const",
     "DashPattern: interface",
     "DoorOperationType: type",
     "DoorSwingParameters: interface",
@@ -5790,6 +5803,7 @@
     "currentFloorBands: function",
     "cutMeshesStreaming: function",
     "deduplicateLines: function",
+    "dxfTextLineOffset: function",
     "encodeDxfCp1252: function",
     "ensureCCW: function",
     "ensureCW: function",
@@ -5824,6 +5838,7 @@
     "importDxf: function",
     "isCounterClockwise: function",
     "isDoorOrWindow: function",
+    "isDxfDimensionExportable: function",
     "isFeatureElementType: function",
     "isGPUComputeAvailable: function",
     "isIfcTypeVisible: function",
@@ -6664,6 +6679,7 @@
     "GEOMETRY_PERF_FLAG_BINDINGS: const",
     "GeometryBatch: interface",
     "GeometryDiagnostics: interface",
+    "GeometryMeshingSettings: interface",
     "GeometryProcessingResult: interface",
     "GeometryProcessor: class",
     "GeometryProcessorOptions: interface",
@@ -6732,6 +6748,7 @@
     "WorkerCountInputs: interface",
     "WorkerCountResult: interface",
     "applySpatialPlacement: function",
+    "compileSharedWasmModule: function",
     "computeWorkerCount: function",
     "createPlatformBridge: function",
     "decodeInstancedShard: function",
@@ -9369,7 +9386,11 @@
   ],
   "@ifc-lite/parser/browser": [
     "WorkerParser: class",
-    "WorkerParserOptions: interface"
+    "WorkerParserOptions: interface",
+    "hasSpareParserWorker: function",
+    "isSpareParserWorkerWarming: function",
+    "prepareSpareParser: function",
+    "releaseSpareParserWorker: function"
   ],
   "@ifc-lite/parser/structural-glyphs": [
     "StructuralGlyph: type",
@@ -10012,6 +10033,7 @@
   ],
   "@ifc-lite/rhino3dm": [
     "EncodedRhinoScene: interface",
+    "MAX_3DM_BYTES: const",
     "RHINO_3DM_VERSIONS: const",
     "ReadRhino3dmOptions: interface",
     "Rhino3dmVersion: type",
@@ -10049,6 +10071,7 @@
     "Write3dmResult: interface",
     "parseRhinoScene: function",
     "readRhino3dm: function",
+    "tooLarge3dmMessage: function",
     "writeRhino3dm: function"
   ],
   "@ifc-lite/rules": [

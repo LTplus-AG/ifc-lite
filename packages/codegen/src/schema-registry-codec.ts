@@ -318,3 +318,30 @@ function decodeSchemaRegistry(d: EncodedSchemaRegistry): SchemaRegistry {
   return { name: d.n, entities, types, enums, selects };
 }
 `;
+
+/**
+ * Every concrete (non-abstract) `IfcRelationship` subtype of a registry, as an
+ * upper-cased STEP keyword, in registry order: the walk the parser's
+ * relationship gate used to run over the decoded registry at load time
+ * (`packages/parser/src/relationship-schema-slots.ts`), done once at
+ * generation time instead. The parser's tests keep that walk as the oracle
+ * for the emitted list.
+ */
+export function concreteRelationshipTypes(reg: RegistryData): string[] {
+  const isRelationship = (name: string): boolean => {
+    let cursor: RegistryEntity | undefined = reg.entities[name];
+    const seen = new Set<string>();
+    while (cursor && !seen.has(cursor.name)) {
+      if (cursor.name === 'IfcRelationship') return true;
+      seen.add(cursor.name);
+      cursor = cursor.parent ? reg.entities[cursor.parent] : undefined;
+    }
+    return false;
+  };
+  const out: string[] = [];
+  for (const [name, meta] of Object.entries(reg.entities)) {
+    if (meta.isAbstract) continue;
+    if (isRelationship(name)) out.push(name.toUpperCase());
+  }
+  return out;
+}

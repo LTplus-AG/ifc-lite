@@ -19,9 +19,10 @@
  */
 
 import {
-  ENTITIES_IFC2X3,
-  ENTITIES_IFC4_EXPRESS,
-  ENTITIES_IFC4X3,
+  eagerSchemaTable,
+  getEntitiesIfc2x3,
+  getEntitiesIfc4Express,
+  getEntitiesIfc4x3,
 } from '@ifc-lite/data';
 import type { EffectiveEntityIndex } from './effective-index.js';
 import { INFRASTRUCTURE_TYPES, collectDescendantNames } from './reference-collector.js';
@@ -40,11 +41,22 @@ import { INFRASTRUCTURE_TYPES, collectDescendantNames } from './reference-collec
  * would either leak it (never excluded) or drop it (never includable) with
  * no error.
  */
-export const IFC_ROOT_TYPES: ReadonlySet<string> = buildRootTypes();
+// Declared before IFC_ROOT_TYPES: its initializer calls getIfcRootTypes(), which reads this.
+let ifcRootTypes: ReadonlySet<string> | undefined;
+
+export const IFC_ROOT_TYPES: ReadonlySet<string> = /* @__PURE__ */ eagerSchemaTable('ifc-lite-eager-table:IFC_ROOT_TYPES', getIfcRootTypes);
+
+/** The set {@link IFC_ROOT_TYPES} is, built on first call. Production code
+ *  reads this: the constant is built when its chunk loads wherever it is
+ *  referenced. */
+export function getIfcRootTypes(): ReadonlySet<string> {
+  if (ifcRootTypes === undefined) ifcRootTypes = buildRootTypes();
+  return ifcRootTypes;
+}
 
 function buildRootTypes(): Set<string> {
   const roots = new Set<string>();
-  for (const table of [ENTITIES_IFC2X3, ENTITIES_IFC4_EXPRESS, ENTITIES_IFC4X3]) {
+  for (const table of [getEntitiesIfc2x3(), getEntitiesIfc4Express(), getEntitiesIfc4x3()]) {
     collectDescendantNames(table, 'IfcRoot', roots);
   }
   return roots;
@@ -189,7 +201,7 @@ export function getSubsetEntityIds(
       continue;
     }
 
-    if (IFC_ROOT_TYPES.has(typeUpper) || identifying.has(typeUpper)) {
+    if (getIfcRootTypes().has(typeUpper) || identifying.has(typeUpper)) {
       excludedIds.add(expressId);
     }
     // Everything else (geometry, relationships, property atoms, materials,

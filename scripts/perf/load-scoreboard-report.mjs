@@ -6,7 +6,7 @@
  * spread, verdicts, noise floors, stage ranking and the markdown tables. Failed samples stay in the counts. */
 
 import { identityLaneFor, laneIdentityVerdict, reopenOutputVerdict } from './load-scoreboard-identity.mjs';
-import { thermalSection, watchdogRows, webglPickRows } from './load-scoreboard-report-sections.mjs';
+import { bothMarksCell, bothMarksSection, cpuTimeSection, thermalSection, watchdogRows, webglPickRows } from './load-scoreboard-report-sections.mjs';
 export { watchdogRows, webglPickRows } from './load-scoreboard-report-sections.mjs';
 import { aaNoiseFloor, expectedCacheTier, median, rankShares, relativeSpread, verdictFor } from './load-scoreboard-stats.mjs';
 
@@ -220,7 +220,7 @@ export function summarize(plan, samples, { floors = null } = {}) {
           for (const key of Object.keys(verdicts)) verdicts[key] = { ...verdicts[key], verdict: why, pass: false, regression: false };
         }
       }
-      lanes[lane] = { sides, verdicts, floors: laneFloors, output, outputSource: identity !== null && output !== timed ? 'identity pass' : 'timed samples', armProtocol, primary: verdicts.interactiveMs ?? null };
+      lanes[lane] = { sides, verdicts, floors: laneFloors, output, outputSource: identity !== null && output !== timed ? 'identity pass' : 'timed samples', armProtocol, primary: verdicts.interactiveMs ?? null, bothMarks: lane.startsWith('browser') ? bothMarksCell(rows) : null };
     }
     fixtures.push({ name: fx.name, set: fx.set ?? 'tuning', bytes: fx.bytes, expectedTier: Number.isFinite(fx.bytes) ? expectedCacheTier(fx.bytes) : null, lanes });
   }
@@ -379,12 +379,13 @@ export function renderMarkdown(summary, plan, host, samples = []) {
     out.push('', '## Readiness components (base side medians, n>=3; ms from the clock origin of each lane, as stated above; interactive = the last of geometry finalized, metadata ready, settled + frame)', '',
       `| fixture | set | lane | ${READINESS.map(([, l]) => l).join(' | ')} | binding (count) |`, `|---|---|---|${READINESS.map(() => '---:|').join('')}---|`, ...readinessRows);
   }
+  out.push(...bothMarksSection(summary.fixtures));
   const wdRows = watchdogRows(samples);
   if (wdRows.length) {
     out.push('', '## Host watchdog overlap (samples during a periodic host job pass; measurement only, cells not voided)', '',
       '| fixture | lane | side | samples | overlapping a pass | unknown | median foreign CPU ms of overlapping samples |', '|---|---|---|---:|---:|---:|---:|', ...wdRows);
   }
-  out.push(...thermalSection(samples));
+  out.push(...thermalSection(samples), ...cpuTimeSection(samples, summary));
   const glRows = webglPickRows(samples);
   if (glRows.length) {
     out.push('', '## WebGL at the pick (start-screen mark drawing in the 1 s before the pick or during the open) and canvas frames to interactive', '',

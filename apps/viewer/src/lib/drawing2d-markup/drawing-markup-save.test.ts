@@ -98,6 +98,7 @@ const ONE_MEASURE: SaveMarkupInput = {
   polygonArea2DResults: [],
   textAnnotations2D: [],
   cloudAnnotations2D: [],
+  dimensions2D: [],
 };
 
 /** A cloud restored from a hand-edited/malformed IFC file: `fill.rs`'s
@@ -114,6 +115,7 @@ const INVALID_CLOUD: SaveMarkupInput = {
     points: [{ x: 0, y: 0 }, { x: Infinity, y: 4 }],
     label: 'Note',
   }],
+  dimensions2D: [],
 };
 
 describe('saveDrawingMarkupToModel: what reaches the overlay', () => {
@@ -193,7 +195,7 @@ describe('saveDrawingMarkupToModel: what reaches the overlay', () => {
 
   it('refuses with nothing-to-save when there is nothing to write and nothing to clear', () => {
     const outcome = saveDrawingMarkupToModel('m1', {
-      measure2DResults: [], polygonArea2DResults: [], textAnnotations2D: [], cloudAnnotations2D: [],
+      measure2DResults: [], polygonArea2DResults: [], textAnnotations2D: [], cloudAnnotations2D: [], dimensions2D: [],
     });
     assert.equal(outcome.refusal, 'nothing-to-save');
     assert.equal(annotationEntities().length, 0);
@@ -227,7 +229,7 @@ describe('saveDrawingMarkupToModel: pressing Save twice', () => {
     assert.equal(annotationEntities().length, 1);
 
     const outcome = saveDrawingMarkupToModel('m1', {
-      measure2DResults: [], polygonArea2DResults: [], textAnnotations2D: [], cloudAnnotations2D: [],
+      measure2DResults: [], polygonArea2DResults: [], textAnnotations2D: [], cloudAnnotations2D: [], dimensions2D: [],
     });
     assert.equal(outcome.refusal, null);
     assert.equal(outcome.previousRemoved, 1);

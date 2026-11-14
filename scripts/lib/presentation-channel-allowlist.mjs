@@ -183,6 +183,14 @@ export const NO_MARKER_REQUIRED = new Map([
     'mesh. Nothing here originates from an entity a user or a host script named.',
   ],
   [
+    'apps/viewer/src/hooks/ingest/initialHiddenState.ts',
+    'Hides what a loaded source file itself marks hidden (a Rhino .3dm object, or a layer that ' +
+    'is off), once, right after the model is registered. The importer builds the list: every ' +
+    'hidden object by its own id, plus the hidden layer rows. No id comes from a user or a host ' +
+    'script, and each member of a hidden layer is already in the list, so there is nothing for ' +
+    'the resolver to expand.',
+  ],
+  [
     'apps/viewer/src/store/slices/mutation-mesh-stash.ts',
     'Hides the mesh of the ONE entity a delete-entity mutation just removed, by the express id ' +
     'that was deleted. Expanding it to an aggregated subtree would hide parts the mutation did ' +

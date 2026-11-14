@@ -11,6 +11,11 @@
  * writes its own entry that calls `mountViewer` with options, instead of
  * patching viewer source. This is build-time composition only: nothing here
  * loads code at runtime, and ordinary `.iflx` extensions gain no new reach.
+ *
+ * A host also chooses here which features its users see: `options.config`
+ * (a `ViewerRuntimeConfig`, see `lib/features`) is applied before anything
+ * renders. When the build sets `VITE_VIEWER_CONFIG_URL` the hosted entry
+ * (`main-hosted.tsx`) fetches it; a host with its own entry passes the object.
  */
 
 // MUST be the first import: disables React 19.2's dev-mode component-render
@@ -34,23 +39,27 @@ import { loadTracerReady } from './lib/perf/loadTrace';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './App';
-import './lib/analytics';
 import './index.css';
 import 'maplibre-gl/dist/maplibre-gl.css';
 // Wire the placement-edit helpers' parser-backed source reader. Pure
 // side-effect import; keeps `@ifc-lite/parser` out of placement-edit
 // itself so its overlay-path logic stays unit-testable.
 import './lib/placement-edit.boot';
-// Discover contributed `i18n/locales/<tag>.ts` catalogues and activate the
-// negotiated one (Settings → Language choice, browser languages; English default).
-import './i18n/locales.boot';
+// Discover contributed `i18n/locales/<tag>.ts` catalogues; `startLocales` activates the
+// negotiated one at mount (Settings choice, host locale, browser languages; English default).
+import { startLocales } from './i18n/locales.boot';
 import { installWasmVersionSkewRecovery } from './lib/wasm-version-skew';
 import { installChunkVersionSkewRecovery } from './lib/chunk-version-skew';
-import { scheduleWasmPrewarm } from './lib/wasm-prewarm';
+import { scheduleWasmPrewarm, scheduleFastPath } from './lib/wasm-prewarm';
 import { initializeUserContent } from './lib/storage/content-boot';
 import type { FileSourceProviderFactory } from './services/sources/source-host';
+// After the pairing-fragment strip, like every module that may report (pairing-fragment.boot.test.ts).
+import './lib/analytics';
+import { applyRuntimeConfig } from './lib/features/runtime-start';
+import type { ViewerRuntimeConfig } from './lib/features/runtime-config';
 
 export type { FileSourceProviderFactory } from './services/sources/source-host';
+export type { ViewerRuntimeConfig } from './lib/features/runtime-config';
 
 export interface ViewerBootstrapOptions {
   /**
@@ -65,10 +74,28 @@ export interface ViewerBootstrapOptions {
    * never stops any other provider from loading.
    */
   readonly sourceProviders?: readonly FileSourceProviderFactory[];
+  /**
+   * What this deployment shows its users: which catalogue features are on
+   * (`features.json` in the build lists them) and the preferred locale.
+   * Omitted, every feature is on. Fixed for the lifetime of the page.
+   *
+   * This is presentation, not protection: a feature that is off is not
+   * rendered, but its code still ships. Enforce on the server whatever must
+   * not happen.
+   */
+  readonly config?: ViewerRuntimeConfig;
 }
 
-/** Mounts the viewer into `container`. Call once, from the app entry. */
-export function mountViewer(container: HTMLElement, options: ViewerBootstrapOptions = {}): void {
+let prepared = false;
+
+/**
+ * Everything the start needs that does not depend on the host's
+ * configuration. The hosted entry runs it while the configuration is still
+ * on its way; `mountViewer` runs it too, so a stock start is unchanged.
+ */
+export function prepareViewer(): void {
+  if (prepared) return;
+  prepared = true;
   initializeUserContent();
   // WASM engine-binary recovery — the sibling of the chunk recovery below for the
   // `ifc-lite_bg.wasm` binary, which wasm-bindgen fetches inside a worker and so
@@ -86,6 +113,18 @@ export function mountViewer(container: HTMLElement, options: ViewerBootstrapOpti
   // chunk-version-skew.ts for why the reload must NOT suppress Vite's re-throw.
   installChunkVersionSkewRecovery();
 
+  // Pull the geometry engine binary down while the user is still deciding which
+  // file to open, instead of on the click that opens it. See wasm-prewarm.ts.
+  scheduleWasmPrewarm();
+}
+
+/** Mounts the viewer into `container`. Call once, from the app entry. */
+export function mountViewer(container: HTMLElement, options: ViewerBootstrapOptions = {}): void {
+  prepareViewer();
+  // The feature set and analytics, then the locale, before anything renders.
+  const config = applyRuntimeConfig(options.config);
+  void startLocales(config?.locale);
+
   const render = () => ReactDOM.createRoot(container).render(
     <React.StrictMode>
       <App sourceProviders={options.sourceProviders} />
@@ -96,7 +135,16 @@ export function mountViewer(container: HTMLElement, options: ViewerBootstrapOpti
   if (PERF_TRACE_ENABLED) void loadTracerReady.then(render);
   else render();
 
-  // Pull the geometry engine binary down while the user is still deciding which
-  // file to open, instead of on the click that opens it. See wasm-prewarm.ts.
-  scheduleWasmPrewarm();
+  // Spare parser + small-file geometry workers, prepared at idle (lib/fast-path).
+  // The runtime is its own chunk and applies its own gates (build env, URL kill
+  // switch). It stays here, not in prepareViewer, so a hosted start whose
+  // configuration fails never spawns workers.
+  scheduleFastPath();
+
+  // Decode the schema tables a first interaction reads once a load has
+  // settled and the page is idle (lib/schema-tables/warm-schema-tables.ts).
+  // Loaded on demand so it adds nothing to the startup graph; it does nothing
+  // until a model has loaded.
+  void import('./lib/schema-tables/warm-schema-tables').then(({ startSchemaTableWarm }) => { startSchemaTableWarm(); })
+    .catch((err: unknown) => { console.warn('[schema-table warm] not started:', err); });
 }

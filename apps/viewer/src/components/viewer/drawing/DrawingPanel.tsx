@@ -42,6 +42,7 @@ import { DrawingInspector } from './DrawingInspector';
 import { DrawingSectionCutMenu } from './DrawingSectionCutMenu';
 import { useBottomStripHeaderSlot } from '../bottom-strip-header-slot';
 import { constructionProjectionEnabled } from '@/lib/drawing/construction-projection';
+import { useOtherCutDimensionCount } from '@/hooks/useExportDimensions';
 
 /** Labels need ~1180px for one row; icons alone fit from ~640px; below that
  *  the rarest items overflow (see DrawingToolbar). */
@@ -95,6 +96,7 @@ export function DrawingPanel(): React.ReactElement {
   const setProjectionMode = useViewerStore((s) => s.setProjectionMode);
   const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
   const vm = useDrawingViewModel();
+  const otherCutDimensionCount = useOtherCutDimensionCount();
   const layers = useDrawingLayers(vm);
   const panelRef = useRef<HTMLDivElement>(null);
   const { tier, width: panelWidth } = usePanelMetrics(panelRef);
@@ -162,8 +164,10 @@ export function DrawingPanel(): React.ReactElement {
         onExportPdf={layers.handleExportPDF} onPrint={layers.handlePrint}
         displayedScale={displayOptions.scale || 100}
         sheetEnabled={vm.sheetEnabled} activeSheet={vm.activeSheet}
-        // Live tags export in every format; only ordinary text can be omitted.
+        // Live tags and current-cut dimensions export in every format; only ordinary text and other-cut dimensions can be omitted.
         markupCounts={{ ...vm.markupCounts, texts: vm.textAnnotations2D.length }}
+        otherCutDimensionCount={otherCutDimensionCount}
+        dimensionGraphicsAt={layers.getExportDimensionGraphics} drawingScale={displayOptions.scale}
         visibleRasterReferenceCount={vm.visibleRasterReferenceCount}
         visibleUnderlayCount={layers.dxfUnderlayData.filter((underlay) => underlay.opacity > 0).length}
       />

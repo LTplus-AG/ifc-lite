@@ -15,7 +15,7 @@ import { traceScanOutlineLayer, type ScanOutlineLayer } from './scan-outline';
 
 /** One point-cloud source with the transform it is drawn through. */
 export interface ScanOutlineSource extends ScanPointSample {
-  model?: Float32Array;
+  model?: Float32Array | Float64Array;
   modelOutputsRenderFrame?: boolean;
   /**
    * Content version of `positions` / `classifications` when their owner

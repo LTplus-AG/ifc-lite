@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import {
-  ENTITIES_IFC2X3, ENTITIES_IFC4_EXPRESS, ENTITIES_IFC4X3,
+  getEntitiesIfc2x3, getEntitiesIfc4Express, getEntitiesIfc4x3,
   IFC_ENTITY_NAMES, IfcTypeEnumToString, iterateEffectiveEntities, type IfcTypeEnum,
 } from '@ifc-lite/data';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
@@ -17,13 +17,21 @@ export interface WriterEntity {
   description: string;
 }
 
-const attributesByType = new Map<string, readonly string[]>();
-for (const schema of [ENTITIES_IFC4_EXPRESS, ENTITIES_IFC4X3, ENTITIES_IFC2X3]) {
-  for (const entity of schema) {
-    if (!attributesByType.has(entity.name.toUpperCase())) {
-      attributesByType.set(entity.name.toUpperCase(), entity.attributes);
+// Built on first use (the tables decode on first use too).
+let attributesByType: Map<string, readonly string[]> | undefined;
+function getAttributesByType(): Map<string, readonly string[]> {
+  if (attributesByType === undefined) {
+    const map = new Map<string, readonly string[]>();
+    for (const schema of [getEntitiesIfc4Express(), getEntitiesIfc4x3(), getEntitiesIfc2x3()]) {
+      for (const entity of schema) {
+        if (!map.has(entity.name.toUpperCase())) {
+          map.set(entity.name.toUpperCase(), entity.attributes);
+        }
+      }
     }
+    attributesByType = map;
   }
+  return attributesByType;
 }
 
 function textValue(value: unknown): string {
@@ -38,7 +46,7 @@ function createdText(
   attributes: readonly unknown[] | undefined,
   name: 'GlobalId' | 'Name' | 'Description',
 ): string {
-  const slot = attributesByType.get(type)?.indexOf(name) ?? -1;
+  const slot = getAttributesByType().get(type)?.indexOf(name) ?? -1;
   return slot < 0 ? '' : textValue(attributes?.[slot]);
 }
 

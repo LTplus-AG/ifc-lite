@@ -4,7 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { it } from 'node:test';
-import type { CoordinateInfo, GeometryResult, MeshData, ModelSpatialReference } from '@ifc-lite/geometry';
+import type { CoordinateInfo, GeometryResult, MeshData, ModelSpatialReference, PointCloudAsset } from '@ifc-lite/geometry';
 import { alignGeometryToReference, type ModelSpatialPlacement } from './federationAlign.js';
 import { alignLandXmlComponent } from './federationComponentAlignment.js';
 
@@ -95,4 +95,19 @@ it('never treats two declared, different vertical datums as one, whatever the po
   assert.equal((await alignLandXmlComponent(mesh(), coordinateInfo, source, reference, 'assume-compatible')).status, 'failed');
   const crossReference = withVertical(placement('EPSG:32633', 300_000), 'EPSG:5783');
   assert.equal((await alignLandXmlComponent(mesh(), coordinateInfo, source, crossReference, 'assume-compatible')).status, 'failed');
+});
+
+it('reprojects an inline cloud point onto the mesh vertex at the same world point (cross-CRS, #10029)', async () => {
+  const meshData = mesh();
+  const cloud: PointCloudAsset = { expressId: 9, chunk: { pointCount: 2, positions: new Float32Array([1, 0, 0, 0, 1, 0]),
+    bbox: { min: [0, 0, 0], max: [1, 1, 0] } } };
+  const geometry: GeometryResult = { ...geometryOf(meshData), pointClouds: [cloud] };
+  assert.equal(await alignGeometryToReference(geometry, placement('EPSG:32632', 500_000), placement('EPSG:32633', 300_000)), 'reprojected');
+  for (const [cloudIndex, meshIndex] of [[0, 1], [1, 2]]) {
+    for (let axis = 0; axis < 3; axis++) {
+      const cloudWorld = cloud.origin![axis] + cloud.chunk.positions[3 * cloudIndex + axis];
+      const meshWorld = meshData.origin![axis] + meshData.positions[3 * meshIndex + axis];
+      assert.ok(Math.abs(cloudWorld - meshWorld) < 1e-3, `point ${cloudIndex} axis ${axis}: cloud ${cloudWorld} vs mesh ${meshWorld}`);
+    }
+  }
 });

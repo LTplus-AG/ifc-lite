@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { createModelMutationView } from '@/utils/model-mutation-view';
 import type { ExportFormat, ExportSurface } from '@/lib/analytics-export-events';
 import { modelDisplayLabels } from '@/lib/model-labels.js';
 import { stepExportProgress } from '@/lib/export/step-progress.js';
@@ -39,11 +40,9 @@ import { useTranslation } from '@/i18n';
 import { resolveExportVisibility } from '@/store/exportVisibility';
 import { trackExportCompleted } from '@/lib/analytics';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
-import { configureMutationView } from '@/utils/configureMutationView';
 import { ensureModelExportReady } from '@/services/desktop-export';
 import { MergedExporter, Ifc5Exporter, type MergeModelInput, type ExportProgress } from '@ifc-lite/export';
 import { withInstancedMeshes } from '../../utils/instancedExport.js';
-import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { downloadFile, modelExportFilename } from '@/lib/export/download';
 import { landXmlDownloadInput, landXmlIfcExportOutcome } from '@/lib/export/landXmlIfcDownload.js';
@@ -186,9 +185,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
 
     // Create new mutation view with on-demand property extractor
     const dataStore = selectedModel.ifcDataStore;
-    mutationView = new MutablePropertyView(dataStore.properties || null, selectedModelId);
-
-    configureMutationView(mutationView, dataStore as IfcDataStore);
+    mutationView = createModelMutationView(dataStore, selectedModelId);
 
     // Register the mutation view
     registerMutationView(selectedModelId, mutationView);

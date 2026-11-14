@@ -100,11 +100,3 @@ export function mutationDenial(state: MutationPermissionState, modelId?: string)
   const permission = mutationPermission(state, modelId);
   return permission.allowed ? null : mutationDenialMessage(permission.reason);
 }
-
-/** A publication-time refusal, including batches larger than the remaining ID space. */
-export class MutationPermissionError extends Error {
-  constructor(readonly reason: MutationDenialReason) {
-    super(mutationDenialMessage(reason));
-    this.name = 'MutationPermissionError';
-  }
-}

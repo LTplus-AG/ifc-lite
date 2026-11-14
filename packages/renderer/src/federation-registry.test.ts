@@ -93,7 +93,7 @@ describe('FederationRegistry - toGlobalId / fromGlobalId round-trip', () => {
     reg.registerModel('later', 1);
     reg.publishOverlayRange('landxml', 3, 1_000_002);
     assert.deepEqual(reg.fromGlobalId(1_000_002), { modelId: 'landxml', expressId: 1_000_002 });
-    assert.throws(() => reg.publishOverlayRange('landxml', 1_000_003, 1_000_003), /Invalid overlay range/);
+    assert.throws(() => reg.publishOverlayRange('landxml', 1_000_003, 1_000_003), /not have enough safe entity IDs/);
     assert.throws(() => reg.publishRange('landxml', 3, 3), /Invalid published range/);
   });
 
@@ -266,7 +266,7 @@ describe('FederationRegistry - extending a model whose remaining ids arrive late
     assert.equal(reg.getOffset('b'), offsetB);
     assert.deepEqual(reg.fromGlobalId(offsetB + 20), { modelId: 'b', expressId: 20 });
     // The headroom shrank by the 40 ids taken from it; it still ends where it did.
-    assert.throws(() => reg.publishOverlayRange('a', 51, 1_000_011), /Invalid overlay range/);
+    assert.throws(() => reg.publishOverlayRange('a', 51, 1_000_011), /not have enough safe entity IDs/);
     assert.doesNotThrow(() => reg.publishOverlayRange('a', 51, 1_000_010));
 
     assert.throws(() => reg.extendModel('b', 20 + 2_000_000_000), /safe ID limit/);
@@ -280,7 +280,7 @@ describe('FederationRegistry - extending a model whose remaining ids arrive late
     assert.equal(reg.toGlobalId('a', 1_000_010), 1_000_010);
     assert.throws(() => reg.toGlobalId('a', 1_000_011), /not published/);
     assert.deepEqual(reg.fromGlobalId(offsetB), { modelId: 'b', expressId: 0 });
-    assert.throws(() => reg.publishOverlayRange('a', 1_000_011, 1_000_011), /Invalid overlay range/);
+    assert.throws(() => reg.publishOverlayRange('a', 1_000_011, 1_000_011), /not have enough safe entity IDs/);
   });
 
   it('refuses a range that already carries overlay ids: extending across them would alias', () => {
@@ -340,29 +340,26 @@ describe('FederationRegistry - overlay allocation query', () => {
     assert.equal(reg.canPublishOverlayFrom('a', 1_000_011), false);
   });
 
-  it('lets the newest reservation publish beyond initial headroom up to the global safe limit', () => {
+  it('bounds newest publication by its reserved headroom and the global safe limit', () => {
     const reg = new FederationRegistry();
     reg.registerModel('prior', 10);
     const offset = reg.registerModel('a', 10);
-    const end = 2_000_000_000 - offset;
+    const end = 1_000_010;
     assert.equal(reg.canPublishOverlayFrom('a', 11, end - 10), true);
     assert.equal(reg.canPublishOverlayFrom('a', 11, end - 9), false);
-    assert.equal(reg.previewOverlayGlobalId('a', 11, end, end), 2_000_000_000);
-    assert.equal(reg.getGlobalIdRange('a')?.end, offset + 10, 'query and preview do not publish');
+    assert.equal(reg.previewOverlayGlobalId('a', 11, end, end), offset + end);
+    assert.equal(reg.getGlobalIdRange('a')?.end, offset + 10, 'preview does not publish');
     reg.publishOverlayRange('a', 11, end);
-    assert.equal(reg.toGlobalId('a', end), 2_000_000_000);
+    assert.equal(reg.toGlobalId('a', end), offset + end);
     assert.equal(reg.canPublishOverlayFrom('a', end + 1), false);
-    assert.throws(() => reg.publishOverlayRange('a', end + 1, end + 1), /Invalid overlay range/);
-    assert.throws(() => reg.registerModel('later', 1), /safe ID limit/);
-  });
+    assert.throws(() => reg.publishOverlayRange('a', end + 1, end + 1), /not have enough safe entity IDs/);
+    const later = reg.registerModel('later', 1);
+    assert.equal(later, offset + end + 1);
 
-  it('advances the reservation before registering a neighbour after newest overlay growth', () => {
-    const reg = new FederationRegistry();
-    reg.registerModel('a', 10);
-    reg.publishOverlayRange('a', 11, 2_000_000);
-    const offset = reg.registerModel('later', 10);
-    assert.ok(offset > 2_000_000);
-    assert.equal(reg.canPublishOverlayFrom('a', 2_000_001), false, 'the grown envelope was fully consumed');
+    const nearLimit = new FederationRegistry();
+    nearLimit.registerModel('limit', 1_999_999_999);
+    assert.equal(nearLimit.canPublishOverlayFrom('limit', 2_000_000_000), true);
+    assert.equal(nearLimit.canPublishOverlayFrom('limit', 2_000_000_000, 2), false);
   });
 });
 
@@ -379,4 +376,31 @@ describe('overlay allocation capacity with lazy publication', () => {
     registry.publishOverlayRange('a', 11, 1_000_010);
     assert.equal(registry.hasOverlayCapacity('a', 1_000_011), false);
   });
+});
+
+// #10139: capacity cannot promise IDs that a subsequent reservation can take.
+it('caps newest allocator capacity at reserved headroom before a later model loads', () => {
+  const registry = new FederationRegistry();
+  registry.registerModel('A', 100);
+  assert.equal(registry.hasOverlayCapacity('A', 1_000_100), true);
+  assert.equal(registry.hasOverlayCapacity('A', 1_000_101), false);
+  registry.registerModel('B', 10);
+  assert.equal(registry.hasOverlayCapacity('A', 1_000_101), false);
+  registry.publishOverlayRange('A', 101, 1_000_100);
+  assert.equal(registry.toGlobalId('B', 0), 1_000_101);
+});
+
+it('registry publication and preview themselves report typed exhaustion, with contiguity first (#10139)', () => {
+  const registry = new FederationRegistry();
+  registry.registerModel('A', 100);
+  registry.registerModel('B', 10);
+  for (const action of [
+    () => registry.publishOverlayRange('A', 101, 1_000_101),
+    () => registry.previewOverlayGlobalId('A', 101, 1_000_101, 101),
+  ]) assert.throws(action, (error: unknown) => error instanceof Error && 'reason' in error
+    && error.reason === 'id-space-exhausted' && /not have enough safe entity IDs/i.test(error.message));
+  for (const action of [
+    () => registry.publishOverlayRange('A', 102, 1_000_101),
+    () => registry.previewOverlayGlobalId('A', 102, 1_000_101, 102),
+  ]) assert.throws(action, /contiguously/);
 });

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { createModelMutationView } from '@/utils/model-mutation-view';
 /**
  * Type objects, materials and layer sets written as ordinary undo history
  * (charter #6232, M2.5).
@@ -27,7 +28,6 @@ import { readRelatedLists } from '@ifc-lite/create';
 import { createModellingStoreBackendWithoutStoreys, resolveLiveOwnerHistoryId } from '@ifc-lite/sdk';
 import { roomSlotFor } from '@/lib/collab/room-model-target';
 import { mirrorStoreOverlayDelta, snapshotOverlay } from '@/sdk/adapters/store-adapter-cost';
-import { configureMutationView } from '@/utils/configureMutationView';
 import type { ViewerState } from '../index.js';
 
 // Without the storey methods (#9200): storey edits have their own history path
@@ -47,8 +47,7 @@ export interface ModelEditTarget {
 export function readModelEditTarget(state: ViewerState, modelId: string): ModelEditTarget | null {
   const dataStore = state.models.get(modelId)?.ifcDataStore;
   if (!dataStore) return null;
-  const view = state.mutationViews.get(modelId) ?? new MutablePropertyView(dataStore.properties || null, modelId);
-  if (!state.mutationViews.has(modelId)) configureMutationView(view, dataStore);
+  const view = state.mutationViews.get(modelId) ?? createModelMutationView(dataStore, modelId);
   const editor = state.storeEditors.get(modelId) ?? new StoreEditor(dataStore, view);
   return { modelId, dataStore, view, editor };
 }
@@ -59,8 +58,7 @@ export function modelEditTarget(state: ViewerState, modelId: string): ModelEditT
   if (!dataStore) return null;
   let view = state.mutationViews.get(modelId);
   if (!view) {
-    view = new MutablePropertyView(dataStore.properties || null, modelId);
-    configureMutationView(view, dataStore);
+    view = createModelMutationView(dataStore, modelId);
     state.registerMutationView(modelId, view);
   }
   let editor = state.storeEditors.get(modelId);

@@ -2,11 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { MutablePropertyView } from '@ifc-lite/mutations';
+import { createModelMutationView } from '@/utils/model-mutation-view';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { getAttributeNamesForSchema, normalizeIfcTypeName } from '@ifc-lite/parser';
 import type { EntityAttributeData, EntityData } from '@ifc-lite/sdk';
 import type { ViewerState } from '../../store/index.js';
-import { configureMutationView } from '../../utils/configureMutationView.js';
 import { getModelForRef, LEGACY_MODEL_ID, LEGACY_MUTATION_MODEL_ID } from './model-compat.js';
 import type { StoreApi } from './types.js';
 
@@ -39,11 +39,7 @@ export function getOrCreateMutationView(store: StoreApi, modelId: string): Mutab
   const dataStore = model?.ifcDataStore;
   if (!dataStore) return null;
 
-  const mutationView = new MutablePropertyView(dataStore.properties || null, normalizedModelId);
-  // The same configuration every other viewer view gets: a hand-rolled copy
-  // here had drifted (no type-entity branch), and only views configured this
-  // way are re-pointed when the model's store is swapped (#5672).
-  configureMutationView(mutationView, dataStore);
+  const mutationView = createModelMutationView(dataStore, normalizedModelId);
 
   state.registerMutationView?.(normalizedModelId, mutationView);
   return mutationView;

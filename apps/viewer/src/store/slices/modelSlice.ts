@@ -2,13 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { refreshModelOverlayCapacity } from '../overlay-capacity.js';
+
 /**
- * Model state slice for multi-model federation
- *
- * Uses FederationRegistry for bulletproof ID handling:
- * - Each model gets a unique ID offset at load time
- * - All meshes use globalIds (originalExpressId + offset)
- * - No ID collisions possible between models
+ * Model state slice: FederationRegistry offsets keep model global IDs unique.
  */
 
 import type { StateCreator } from 'zustand';
@@ -198,7 +195,9 @@ export const createModelSlice: StateCreator<ViewerState, [], [], ModelSlice> = (
     const model = state.models.get(modelId);
     if (!model) return {};
 
-    const updatedModel = { ...model, ...patch };
+    const merged = { ...model, ...patch };
+    const updatedModel = patch.ifcDataStore !== undefined || patch.maxExpressId !== undefined
+      ? refreshModelOverlayCapacity(merged, state.mutationViews.get(modelId)) : merged;
     const newModels = new Map(state.models);
     newModels.set(modelId, updatedModel);
 

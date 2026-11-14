@@ -119,3 +119,10 @@ it('includes deferred source IDs in the same watermark used by the authoring all
   store.deferredEntityIndex = new Map([[100, { expressId: 100, type: 'IFCPROPERTYSINGLEVALUE', byteOffset: 0, byteLength: 1, lineNumber: 1 }]]);
   assert.equal(getMaxExpressId(store, []), 100);
 });
+
+it('uses the compact maximum without enumerating source indexes (#10139)', () => {
+  const store = storeFor([10, 2, 5], true);
+  store.entityIndex.byId.keys = () => { throw new Error('compact index was scanned'); };
+  store.deferredEntityIndex = new Map([[40, { expressId: 40, type: 'IFCPROPERTYSINGLEVALUE', byteOffset: 0, byteLength: 1, lineNumber: 1 }]]);
+  assert.equal(getMaxExpressId(store, [mesh(20)]), 40);
+});

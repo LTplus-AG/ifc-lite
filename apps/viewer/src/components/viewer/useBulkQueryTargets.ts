@@ -2,9 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { createModelMutationView } from '@/utils/model-mutation-view';
 import { useEffect, useState } from 'react';
 import { evaluateFilterGroupsFederated, type EvaluatorModel, type FilterGroup } from '@ifc-lite/rules';
-import { BulkQueryEngine, MutablePropertyView } from '@ifc-lite/mutations';
+import { BulkQueryEngine } from '@ifc-lite/mutations';
 import { useViewerStore, type ViewerState } from '@/store';
 import { definedModelTagIdsOf, evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models';
 
@@ -28,7 +29,7 @@ export async function resolveBulkQueryIds(
   // created entities and tombstones.
   if (groups.every((group) => group.rules.length === 0)) {
     return new BulkQueryEngine(target.store.entities,
-      target.mutationView ?? new MutablePropertyView(target.store.properties, modelId)).select({});
+      target.mutationView ?? createModelMutationView(target.store, modelId)).select({});
   }
   const matched = await evaluateFilterGroupsFederated([target], groups, {
     limit: Number.MAX_SAFE_INTEGER,

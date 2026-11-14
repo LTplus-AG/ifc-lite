@@ -1,7 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-
 import type { LineVertices } from './section-2d-line-buffer.js';
 import { bindSectionExclusions, emptyBindGroup, sectionExclusions } from './section-exclusions.js';
 import { PickClipRevision } from './pick-clip-revision.js';
@@ -76,6 +75,7 @@ export { Raycaster } from './raycaster.js';
 export { SnapDetector, SnapType } from './snap-detector.js';
 export { BVH } from './bvh.js';
 export { hostsOtherEntities } from './mesh-entity-hosting.js';
+export { OverlayIdSpaceExhaustedError } from './overlay-id-space-exhausted-error.js';
 export { FederationRegistry, federationRegistry } from './federation-registry.js';
 export type { ModelRange, GlobalIdLookup } from './federation-registry.js';
 export * from './types.js';

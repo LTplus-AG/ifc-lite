@@ -1,11 +1,13 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import { createModelMutationView } from '@/utils/model-mutation-view';
 import { resolveLiveOwnerHistoryId } from '@ifc-lite/sdk';
 import { liveEntityConforms } from '@ifc-lite/create';
 import { effectiveMetadataRecord, getAttributeTypeForSchema, getSchemaRegistryForVersion } from '@ifc-lite/parser';
 import { isValidIfcGuid } from '@ifc-lite/encoding';
-import { MutablePropertyView, type StoreEditor } from '@ifc-lite/mutations';
+import { type StoreEditor } from '@ifc-lite/mutations';
 import type { ViewerState } from '@/store';
 import type { ModelEditTarget } from '@/store/slices/mutation-modelling-records';
 import { structuralClosure, type StructuralSnapshot } from './structural-graph-evidence';
@@ -33,7 +35,7 @@ export function writeStructuralOperations(_state: Pick<ViewerState, 'models' | '
   const storey = (ref: StructuralRef) => {
     const id = resolve(ref, 'IfcBuildingStorey');
     if (!nativeLengthUnitAvailable({ ...target, editor: draft, view })) throw new Error('The source geometry length unit is unavailable');
-    const sourceView = new MutablePropertyView(dataStore.properties ?? null, modelId), sourceTarget = { ...target, view: sourceView };
+    const sourceView = createModelMutationView(dataStore, modelId), sourceTarget = { ...target, view: sourceView };
     for (const record of snapshot.records) if (['IfcProject', 'IfcUnitAssignment'].includes(record.type) || liveEntityConforms(dataStore, record.expressId, 'IfcUnit', view)) {
       if (JSON.stringify(effectiveMetadataRecord(dataStore, record.expressId, sourceView)) !== JSON.stringify(effectiveMetadataRecord(dataStore, record.expressId, view))) throw new Error('The native source geometry unit declaration changed');
     }

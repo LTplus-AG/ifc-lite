@@ -90,7 +90,14 @@ export function getMaxExpressId(
   pointClouds: readonly Pick<PointCloudAsset, 'expressId'>[] = [],
 ): number {
   const maxExpressIdFromMeshes = meshes.reduce((max, mesh) => Math.max(max, mesh.expressId), 0);
-  const maxExpressIdFromEntities = dataStore ? highestExistingExpressId(dataStore) : 0;
+  const index = dataStore?.entityIndex.byId;
+  // Compact indexes already maintain the source maximum; only deferred atoms lie outside it.
+  const compactMax = index && 'maxExpressId' in index ? index.maxExpressId : undefined;
+  let maxExpressIdFromEntities = typeof compactMax === 'number' ? compactMax
+    : dataStore ? highestExistingExpressId(dataStore) : 0;
+  if (typeof compactMax === 'number' && dataStore?.deferredEntityIndex) {
+    for (const id of dataStore.deferredEntityIndex.keys()) maxExpressIdFromEntities = Math.max(maxExpressIdFromEntities, id);
+  }
   const maxExpressIdFromPoints = pointClouds.reduce((max, asset) => Math.max(max, asset.expressId), 0);
   return Math.max(maxExpressIdFromMeshes, maxExpressIdFromEntities, maxExpressIdFromPoints);
 }

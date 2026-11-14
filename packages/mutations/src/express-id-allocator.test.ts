@@ -45,3 +45,20 @@ it('a detached clear retains the source and external floor', () => {
   transaction.commit();
   expect(view.peekNextExpressId()).toBe(32);
 });
+
+// #10139: allocator subscribers may read the complete overlay during commit/rollback.
+it('notifies restored allocator observers only after history, indexes and revision are coherent', () => {
+  const view = new MutablePropertyView(null, 'model');
+  const before = view.getMutationRevision();
+  const observed: Array<{ history: number; revision: number; ids: number[] }> = [];
+  view.configureExpressIdAllocator(() => 1, () => {
+    observed.push({ history: view.getMutationCount(), revision: view.getMutationRevision(),
+      ids: [...view.getNewEntitiesOfType('IfcMaterial')].map(entity => entity.expressId) });
+  });
+  const prepared = view.prepareAtomic(draft => draft.createEntity('IfcMaterial', ['Draft']));
+  prepared.commit();
+  expect(observed).toEqual([{ history: 1, revision: before + 1, ids: [1] }]);
+  prepared.rollback();
+  expect(observed).toEqual([{ history: 1, revision: before + 1, ids: [1] },
+    { history: 0, revision: before + 2, ids: [] }]);
+});

@@ -159,7 +159,7 @@ for (const rehydrate of [false, true]) {
       await hydrate(rehydrate ? 2 : 1_000_001);
       assert.equal(useViewerStore.getState().models.get('server')?.maxExpressId, 1_000_001);
       assert.deepEqual(dataMutationPermission(useViewerStore.getState(), 'server'), { allowed: false, reason: 'id-space-exhausted' });
-      assert.throws(() => federationRegistry.publishOverlayRange('server', 1_000_002, 1_000_002), /Invalid overlay range/);
+      assert.throws(() => federationRegistry.publishOverlayRange('server', 1_000_002, 1_000_002), /not have enough safe entity IDs/);
     } finally { federationRegistry.clear(); }
   });
 }
@@ -227,7 +227,7 @@ it('reports no id left for edits when the hydrated store exactly fits its envelo
       useServerModelProperties().start('server', undefined, async () => serverStoreAt(1_000_001));
       await new Promise(resolve => setTimeout(resolve, 50));
     });
-    assert.ok(warnings.some(args => /no id is left for edits/.test(String(args[0]))));
+    assert.ok(warnings.some(args => /no id is left for edits/.test(String(args[0]))), JSON.stringify(warnings));
   } finally { federationRegistry.clear(); }
 });
 
@@ -473,4 +473,46 @@ it('hydration commits the ownership bound and store together once', async () => 
     assert.equal(useViewerStore.getState().models.get('server')?.maxExpressId, 100);
     assert.deepEqual(dataMutationPermission(useViewerStore.getState(), 'server'), { allowed: true });
   } finally { stop(); federationRegistry.clear(); }
+});
+
+it('re-hydration refuses source growth across unpublished authored IDs (#10139)', async () => {
+  try {
+    federationRegistry.registerModel('server', 100);
+    useViewerStore.getState().updateModel('server', { maxExpressId: 100, ifcDataStore: result() });
+    const view = getOrCreateMutationView(useViewerStore, 'server')!;
+    assert.equal(view.createEntity('IfcMaterial', ['Authored']).expressId, 101);
+    const previous = useViewerStore.getState().models.get('server')!.ifcDataStore;
+    await act(async () => {
+      useServerModelProperties().start('server', undefined, async () => serverStoreAt(101));
+      await new Promise(resolve => setTimeout(resolve, 50));
+    });
+    assert.equal(useViewerStore.getState().models.get('server')!.ifcDataStore, previous);
+    assert.equal(federationRegistry.getGlobalIdRange('server')!.end, 100);
+    assert.ok(view.getNewEntity(101));
+  } finally { federationRegistry.clear(); }
+});
+
+it('hydration never briefly republishes capacity computed without the allocator (#10139)', async () => {
+  try {
+    federationRegistry.registerModel('server', 100);
+    federationRegistry.registerModel('later', 10);
+    useViewerStore.getState().updateModel('server', { maxExpressId: 100, ifcDataStore: result() });
+    const view = getOrCreateMutationView(useViewerStore, 'server')!;
+    view.setExpressIdWatermark(1_000_100);
+    assert.equal(useViewerStore.getState().models.get('server')!.hasOverlayCapacity, false);
+    const hydrated = serverStoreAt(100);
+    const capacities: boolean[] = [];
+    const stop = useViewerStore.subscribe(state => {
+      const model = state.models.get('server');
+      if (model?.ifcDataStore === hydrated) capacities.push(model.hasOverlayCapacity!);
+    });
+    try {
+      await act(async () => {
+        useServerModelProperties().start('server', undefined, async () => hydrated);
+        await new Promise(resolve => setTimeout(resolve, 50));
+      });
+    } finally { stop(); }
+    assert.ok(capacities.length > 0);
+    assert.equal(capacities.includes(true), false);
+  } finally { federationRegistry.clear(); }
 });

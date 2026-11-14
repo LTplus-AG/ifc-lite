@@ -2,13 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { createModelMutationView } from '@/utils/model-mutation-view';
 /** Effective (base + pending edits) values a reviewed change is compared against. Read-only. */
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { extractEntityAttributesOnDemand } from '@ifc-lite/parser';
-import { MutablePropertyView } from '@ifc-lite/mutations';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { ViewerState } from '@/store';
-import { configureMutationView } from '@/utils/configureMutationView';
 import { effectiveListStringAttribute } from '@/lib/lists/effective-provider-entities';
 import type { ChangeScalar, ModelChange } from '@ifc-lite/ai/artifacts';
 
@@ -27,8 +27,7 @@ export function modelReader(state: ViewerState, modelId: string): ModelReader | 
   if (!dataStore) return null;
   const live = state.mutationViews.get(modelId);
   if (live) return { dataStore, view: live };
-  const view = new MutablePropertyView(dataStore.properties || null, modelId);
-  configureMutationView(view, dataStore);
+  const view = createModelMutationView(dataStore, modelId);
   return { dataStore, view };
 }
 

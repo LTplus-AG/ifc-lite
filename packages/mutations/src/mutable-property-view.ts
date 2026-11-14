@@ -46,6 +46,7 @@ export class MutablePropertyView extends MutableOverlayState {
   private quantityBaseRevisions: ((view: MutablePropertyView) => Iterable<QuantityBaseRevision>) | null = null;
   private attributeExtractor: AttributeExtractor | null = null;
   private modelId: string;
+  private expressIdFloor(): number { return Math.max(this.sourceWatermark + 1, this.minNextExpressId()); }
 
   constructor(baseTable: PropertyTable | null, modelId: string) {
     super();
@@ -56,7 +57,7 @@ export class MutablePropertyView extends MutableOverlayState {
       capture: () => this.overlayState(),
       rebuild: snapshot => {
         const draft = new MutablePropertyView(this.baseTable, this.modelId);
-        draft.configureExpressIdAllocator(() => Math.max(this.sourceWatermark + 1, this.minNextExpressId()));
+        draft.configureExpressIdAllocator(() => this.expressIdFloor());
         draft.restoreOverlayState(snapshot);
         for (const id of draft.getAttributeOverrideEntityIds()) draft.indexAttributeOverride(id);
         return draft.overlayState();
@@ -65,7 +66,7 @@ export class MutablePropertyView extends MutableOverlayState {
       publish: snapshot => this.restoreOverlayState(snapshot),
       draft: snapshot => {
         const draft = new MutablePropertyView(this.baseTable, this.modelId);
-        draft.configureExpressIdAllocator(() => Math.max(this.sourceWatermark + 1, this.minNextExpressId()));
+        draft.configureExpressIdAllocator(() => this.expressIdFloor());
         draft.onDemandExtractor = this.onDemandExtractor;
         draft.quantityExtractor = this.quantityExtractor;
         draft.quantityBaseRevisions = this.quantityBaseRevisions;
@@ -87,7 +88,6 @@ export class MutablePropertyView extends MutableOverlayState {
     return runSparseAtomic(this, edit, false).result;
   }
 
-
   /**
    * Prepare an overlay publication without changing live IFC state (#4243).
    * Use for commands that must validate other synchronous resources first.
@@ -97,7 +97,7 @@ export class MutablePropertyView extends MutableOverlayState {
   prepareAtomic<T>(edit: (draft: MutablePropertyView) => T): { result: T; validate(): void; commit(): void; rollback(): void } {
     const original = this.copyOverlayState();
     const draft = new MutablePropertyView(this.baseTable, this.modelId);
-    draft.configureExpressIdAllocator(() => Math.max(this.sourceWatermark + 1, this.minNextExpressId()));
+    draft.configureExpressIdAllocator(() => this.expressIdFloor());
     draft.onDemandExtractor = this.onDemandExtractor;
     draft.quantityExtractor = this.quantityExtractor;
     draft.quantityBaseRevisions = this.quantityBaseRevisions;

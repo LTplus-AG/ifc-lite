@@ -13,6 +13,8 @@
  * are automatically offset to avoid conflicts.
  */
 
+import { OverlayIdSpaceExhaustedError } from './overlay-id-space-exhausted-error.js';
+
 export interface ModelRange {
   modelId: string;
   offset: number;       // Start of this model's global ID range
@@ -47,15 +49,15 @@ export class FederationRegistry {
   private modelRanges: Map<string, RegisteredRange> = new Map();
   private sortedRanges: RegisteredRange[] = []; // Sorted by offset for binary search
   private nextOffset: number = 0;
-  private rangeListeners = new Set<() => void>();
+  private rangeListeners = new Set<(modelId?: string) => void>();
 
   /** Observe ownership and reservation changes (including overlay publication). */
-  subscribe(listener: () => void): () => void {
+  subscribe(listener: (modelId?: string) => void): () => void {
     this.rangeListeners.add(listener);
     return () => { this.rangeListeners.delete(listener); };
   }
 
-  private rangesChanged(): void { for (const listener of this.rangeListeners) listener(); }
+  private rangesChanged(modelId?: string): void { for (const listener of this.rangeListeners) listener(modelId); }
 
   /** Capacity at an allocator's next ID; earlier authored IDs may await lazy publication. */
   hasOverlayCapacity(modelId: string, nextLocalId: number, count = 1): boolean {
@@ -121,7 +123,7 @@ export class FederationRegistry {
     // own space after load (see OVERLAY_ID_HEADROOM above).
     this.nextOffset = offset + overlayMaxExpressId + 1;
 
-    this.rangesChanged();
+    this.rangesChanged(modelId);
     return offset;
   }
 
@@ -137,9 +139,10 @@ export class FederationRegistry {
    * return value is then below `maxExpressId` and the IDs above it stay
    * unresolvable. Throws, before anything else, for a range that is only
    * partly published or already carries overlay IDs: extending across
-   * authored IDs would give two entities one global ID.
+   * authored IDs would give two entities one global ID. Callers pass their
+   * allocator watermark as `allocatedMaxExpressId` to protect unpublished IDs too.
    */
-  extendModel(modelId: string, maxExpressId: number): number {
+  extendModel(modelId: string, maxExpressId: number, allocatedMaxExpressId = 0): number {
     const range = this.modelRanges.get(modelId);
     if (!range) throw new Error(`[FederationRegistry] Cannot extend unknown model ${modelId}`);
     if (!Number.isInteger(maxExpressId) || maxExpressId < 0) {
@@ -149,6 +152,9 @@ export class FederationRegistry {
       throw new Error(`[FederationRegistry] Cannot extend ${modelId}: its range is partly published or already carries overlay IDs`);
     }
     if (maxExpressId <= range.maxExpressId) return range.maxExpressId;
+    if (allocatedMaxExpressId > range.reservedMaxExpressId) {
+      throw new Error(`[FederationRegistry] Cannot extend ${modelId}: its allocator already carries unpublished overlay IDs`);
+    }
     let end = maxExpressId;
     if (this.nextOffset === range.offset + range.overlayMaxExpressId + 1) { // the newest reservation
       if (range.offset + maxExpressId > MAX_SAFE_OFFSET) {
@@ -161,7 +167,7 @@ export class FederationRegistry {
     }
     range.reservedMaxExpressId = end;
     range.maxExpressId = end;
-    this.rangesChanged();
+    this.rangesChanged(modelId);
     return end;
   }
 
@@ -178,42 +184,34 @@ export class FederationRegistry {
       throw new Error(`[FederationRegistry] Published IDs for ${modelId} must be contiguous and source ordered`);
     }
     range.maxExpressId = end;
-    this.rangesChanged();
+    this.rangesChanged(modelId);
   }
 
   /** Whether this exact next allocation batch can extend published overlay ownership. */
   canPublishOverlayFrom(modelId: string, firstLocalId: number, count = 1): boolean {
-    const range = this.modelRanges.get(modelId);
-    const end = firstLocalId + count - 1;
-    return range !== undefined && range.publishedStart !== null
-      && Number.isSafeInteger(firstLocalId) && Number.isSafeInteger(count) && count > 0
-      && firstLocalId > range.reservedMaxExpressId && firstLocalId === range.maxExpressId + 1
-      && Number.isSafeInteger(end) && end <= this.overlayEnd(range);
+    return this.hasOverlayCapacity(modelId, firstLocalId, count)
+      && firstLocalId === this.modelRanges.get(modelId)!.maxExpressId + 1;
   }
 
   private overlayEnd(range: RegisteredRange): number {
-    return this.nextOffset === range.offset + range.overlayMaxExpressId + 1
-      ? MAX_SAFE_OFFSET - range.offset : Math.min(range.overlayMaxExpressId, MAX_SAFE_OFFSET - range.offset);
+    return Math.min(range.overlayMaxExpressId, MAX_SAFE_OFFSET - range.offset);
   }
 
-  /** Publish derived/overlay IDs from the separately reserved headroom. */
-  publishOverlayRange(modelId: string, start: number, end: number): void {
+  private assertOverlayRange(modelId: string, start: number, end: number): RegisteredRange {
     const range = this.modelRanges.get(modelId);
     if (!range) throw new Error(`[FederationRegistry] Cannot publish unknown model ${modelId}`);
     if (Number.isSafeInteger(start) && start > range.reservedMaxExpressId && start !== range.maxExpressId + 1) {
       throw new Error(`[FederationRegistry] Overlay IDs for ${modelId} must extend published ownership contiguously`);
     }
-    if (!this.canPublishOverlayFrom(modelId, start, end - start + 1)) {
-      throw new Error(`[FederationRegistry] Invalid overlay range ${start}..${end} for ${modelId}`);
-    }
-    // Growing the newest envelope must also move the next reservation beyond
-    // the authored IDs; otherwise registering another model could alias them.
-    if (end > range.overlayMaxExpressId) {
-      range.overlayMaxExpressId = end;
-      this.nextOffset = range.offset + end + 1;
-    }
+    if (!this.canPublishOverlayFrom(modelId, start, end - start + 1)) throw new OverlayIdSpaceExhaustedError();
+    return range;
+  }
+
+  /** Publish derived/overlay IDs from the separately reserved headroom. */
+  publishOverlayRange(modelId: string, start: number, end: number): void {
+    const range = this.assertOverlayRange(modelId, start, end);
     range.maxExpressId = end;
-    this.rangesChanged();
+    this.rangesChanged(modelId);
   }
 
   /**
@@ -223,13 +221,8 @@ export class FederationRegistry {
    * Callers must publish it only after the backing records commit.
    */
   previewOverlayGlobalId(modelId: string, start: number, end: number, expressId: number): number {
-    const range = this.modelRanges.get(modelId);
-    if (!range) throw new Error(`[FederationRegistry] Cannot preview unknown model ${modelId}`);
-    if (Number.isSafeInteger(start) && start > range.reservedMaxExpressId && start !== range.maxExpressId + 1) {
-      throw new Error(`[FederationRegistry] Overlay preview for ${modelId} must extend published ownership contiguously`);
-    }
-    if (!this.canPublishOverlayFrom(modelId, start, end - start + 1)
-      || !Number.isSafeInteger(expressId) || expressId < start || expressId > end) {
+    const range = this.assertOverlayRange(modelId, start, end);
+    if (!Number.isSafeInteger(expressId) || expressId < start || expressId > end) {
       throw new Error(`[FederationRegistry] Invalid overlay preview ${start}..${end} for ${modelId}`);
     }
     return range.offset + expressId;
@@ -249,7 +242,7 @@ export class FederationRegistry {
 
     this.modelRanges.delete(modelId);
     this.sortedRanges = this.sortedRanges.filter(r => r.modelId !== modelId);
-    this.rangesChanged();
+    this.rangesChanged(modelId);
     // Note: nextOffset is NOT reduced - offset space is burned
   }
 

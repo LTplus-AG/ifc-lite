@@ -51,8 +51,10 @@ function patchFor(state: ViewerState, off: ReadonlySet<WorkspacePanelId>): Parti
 /**
  * Close what is open and unavailable now (a persisted layout predates the
  * host's configuration) and keep it closed. Call once, after the feature set
- * is fixed: the set of unavailable panels is read here and never again. With
- * nothing switched off this subscribes to nothing. Returns the unsubscribe.
+ * is fixed: the set of unavailable panels is read here and never again
+ * (`applyFeatureSelection` refuses a second configuration, so one rule is
+ * live per page). With nothing switched off this subscribes to nothing.
+ * Returns the unsubscribe.
  */
 export function enforcePanelAvailability(store: StoreApi<ViewerState>): () => void {
   const off: ReadonlySet<WorkspacePanelId> = new Set(WORKSPACE_PANELS.map((panel) => panel.id).filter((id) => !isPanelAvailable(id)));

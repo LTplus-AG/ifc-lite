@@ -10,18 +10,25 @@ const offsets = (lineCount: number, valign: 'baseline' | 'top' | 'middle' | 'bot
 
 describe('dxfTextLineOffset', () => {
   it('grows top and baseline blocks down from the insertion point', () => {
-    expect(offsets(3, 'top')).toEqual([0, 2.6, 5.2].map((v) => expect.closeTo(v, 12)));
-    expect(offsets(3, 'baseline')).toEqual([0, 2.6, 5.2].map((v) => expect.closeTo(v, 12)));
+    expect(offsets(3, 'top')).toEqual([0, 10 / 3, 20 / 3].map((v) => expect.closeTo(v, 12)));
+    expect(offsets(3, 'baseline')).toEqual([0, 10 / 3, 20 / 3].map((v) => expect.closeTo(v, 12)));
   });
 
   it('centres middle blocks and grows bottom blocks up to the point', () => {
-    expect(offsets(3, 'middle')).toEqual([-2.6, 0, 2.6].map((v) => expect.closeTo(v, 12)));
-    expect(offsets(3, 'bottom')).toEqual([-5.2, -2.6, 0].map((v) => expect.closeTo(v, 12)));
+    expect(offsets(3, 'middle')).toEqual([-10 / 3, 0, 10 / 3].map((v) => expect.closeTo(v, 12)));
+    expect(offsets(3, 'bottom')).toEqual([-20 / 3, -10 / 3, 0].map((v) => expect.closeTo(v, 12)));
   });
 
   it('never offsets single-line text', () => {
     for (const valign of ['baseline', 'top', 'middle', 'bottom'] as const) {
       expect(Math.abs(dxfTextLineOffset(0, 1, valign, 2))).toBe(0);
     }
+  });
+});
+
+describe('dxfTextLineOffset line spacing factor', () => {
+  it('scales the 5/3 pitch by the per-entity factor', () => {
+    expect(dxfTextLineOffset(1, 2, 'top', 3, 2)).toBeCloseTo(3 * (5 / 3) * 2, 12);
+    expect(dxfTextLineOffset(1, 2, 'top', 3, undefined)).toBeCloseTo(5, 12);
   });
 });

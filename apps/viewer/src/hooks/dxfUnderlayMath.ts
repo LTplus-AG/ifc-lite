@@ -43,6 +43,12 @@ export interface DxfUnderlayRenderText {
   color: string;
   align: 'left' | 'center' | 'right';
   valign: 'baseline' | 'bottom' | 'middle' | 'top';
+  lineSpacingFactor?: number;
+  widthScale?: number;
+  /** Aligned/fit span length in metres; measuring renderers stretch to exactly this. */
+  fitWidth?: number;
+  /** Aligned text: scale height with width to reach fitWidth. */
+  fitUniform?: boolean;
 }
 
 /** One underlay pre-mapped to drawing space, ready for canvas/SVG. */
@@ -251,6 +257,12 @@ export function dxfUnderlayToDrawing(
         color: text.color ?? layer.color,
         align: text.align,
         valign: text.valign,
+        lineSpacingFactor: text.lineSpacingFactor,
+        widthScale: text.widthScale,
+        // The span follows the same mapped baseline as dirX/dirY (exact under any linear map).
+        fitWidth: text.fitWidth === undefined ? undefined
+          : text.fitWidth * Math.hypot(tip.x - anchor.x, tip.y - anchor.y) / (Math.hypot(text.dirX, text.dirY) || 1),
+        fitUniform: text.fitUniform,
       });
     }
   }

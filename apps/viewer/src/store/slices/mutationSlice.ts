@@ -61,7 +61,7 @@ export type { AuthoredElement };
 import { createCostUndoMutations, type CostUndoMethods } from './mutation-cost-undo.js';
 import { completeEntityRemoval, pruneStashByModel, type RemovedMeshStash } from './mutation-mesh-stash.js';
 import { applyDuplicatePreAlignmentBaseline } from './mutation-duplicate-prealign.js';
-import { pruneMutationHistory } from './mutation-history-prune.js';
+import { isGeorefMutation, pruneMutationHistory } from './mutation-history-prune.js';
 import { invalidateHistoryPatch } from './mutation-redo-remote-guard.js';
 import {
   resolvePlacementChain,
@@ -282,7 +282,8 @@ export interface MutationSlice extends CostUndoMethods {
   /** Register a mutation view for a model */
   registerMutationView: (modelId: string, view: MutablePropertyView) => void;
   /** Clear one model or a batch of models in one store commit. */
-  clearMutationView: (modelId: string | readonly string[]) => void;
+  /** Drop the views and their history. `keepGeoref` keeps georeference edits (outside the view) unsaved and undoable. */
+  clearMutationView: (modelId: string | readonly string[], options?: { keepGeoref?: boolean }) => void;
 
   // Actions - Property Mutations
   /** Set a property value */
@@ -1050,7 +1051,7 @@ export const createMutationSlice: StateCreator<
     });
   },
 
-  clearMutationView: (modelIds) => {
+  clearMutationView: (modelIds, options) => {
     set((initial) => {
       const mutationViews = new Map(initial.mutationViews), storeEditors = new Map(initial.storeEditors);
       const dirtyModels = new Set(initial.dirtyModels);
@@ -1059,14 +1060,20 @@ export const createMutationSlice: StateCreator<
         mutationBatchTags: initial.mutationBatchTags, mutationMeshTranslations: initial.mutationMeshTranslations };
       const discarded: Mutation[] = [];
       for (const modelId of typeof modelIds === 'string' ? [modelIds] : modelIds) {
+        const keepGeoref = options?.keepGeoref === true && initial.georefMutations.has(modelId);
+        const undo = history.undoStacks.get(modelId) ?? [], redo = history.redoStacks.get(modelId) ?? [];
         mutationViews.delete(modelId);
         storeEditors.delete(modelId);
-        dirtyModels.delete(modelId);
+        if (!keepGeoref) dirtyModels.delete(modelId);
         removedNewEntities = pruneStashByModel(removedNewEntities, modelId);
         removedMeshes = pruneStashByModel(removedMeshes, modelId);
-        for (const mutation of history.undoStacks.get(modelId) ?? []) discarded.push(mutation);
+        for (const mutation of undo) if (!(keepGeoref && isGeorefMutation(mutation))) discarded.push(mutation);
         history = pruneMutationHistory(modelId, history.undoStacks, history.redoStacks,
           history.mutationBatchTags, history.mutationMeshTranslations);
+        if (keepGeoref) {
+          history.undoStacks.set(modelId, undo.filter(isGeorefMutation));
+          history.redoStacks.set(modelId, redo.filter(isGeorefMutation));
+        }
       }
       return { mutationViews, storeEditors, dirtyModels, removedNewEntities, removedMeshes, ...history,
         ...dropFromChangeSets(initial, discarded) };

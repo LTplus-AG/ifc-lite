@@ -34,7 +34,8 @@ export function discardOverlappingRetainedEdits(
   // Discard only on a proven overlap; an unknown (NaN) source end keeps the edits.
   if (lowest === 0 || !(lowest <= sourceEnd)) return lowest;
   console.warn(`[Model] Discarded kept edits of model ${modelId}: its new entities from #${lowest} overlap the loaded source, which ends at #${sourceEnd}`);
-  state.clearMutationView(modelId);
+  // Only the view's entity edits overlap; georeference edits live outside it and stay.
+  state.clearMutationView(modelId, { keepGeoref: true });
   return 0;
 }
 

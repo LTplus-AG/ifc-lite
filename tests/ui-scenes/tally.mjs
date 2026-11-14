@@ -21,6 +21,7 @@
  * @unwired-by-design council tooling, run by hand between rounds; not a CI gate.
  */
 
+import { isMainEntry } from '../../scripts/lib/is-main-entry.mjs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
@@ -57,13 +58,13 @@ function winRate(sides) {
   return decided.reduce((n, s) => n + (s === 'a' ? 1 : s === 'tie' ? 0.5 : 0), 0) / decided.length;
 }
 
-function vetoes(key) {
+export function vetoes(key) {
   const out = [];
   for (const [id, item] of Object.entries(key.items)) {
     if (item.control || !item.metrics?.a) continue;
     const { a, b } = item.metrics;
     const scene = id.split('.')[0];
-    if (MODEL_SCENES.has(scene) && a.modelVisibleFraction < b.modelVisibleFraction - 0.03) {
+    if ((MODEL_SCENES.has(scene) || /^F[1-6]-/.test(scene)) && a.modelVisibleFraction < b.modelVisibleFraction - 0.03) {
       out.push(`${id}: modelVisibleFraction ${a.modelVisibleFraction} < baseline ${b.modelVisibleFraction} - 0.03`);
     }
     if (a.minFontPx !== null && a.minFontPx < 10) out.push(`${id}: minFontPx ${a.minFontPx} < 10`);
@@ -205,7 +206,7 @@ async function main() {
   console.log(lines.slice(0, 20).join('\n'));
 }
 
-main().catch((error) => {
+if (isMainEntry(import.meta.url)) main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });

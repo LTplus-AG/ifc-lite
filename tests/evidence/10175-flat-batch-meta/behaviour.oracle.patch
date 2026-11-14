@@ -1,0 +1,20 @@
+diff --git a/packages/geometry/src/flat-batch-meta.ts b/packages/geometry/src/flat-batch-meta.ts
+--- a/packages/geometry/src/flat-batch-meta.ts
++++ b/packages/geometry/src/flat-batch-meta.ts
+@@ -154,14 +154,14 @@ export function unpackFlatMeta(meshes: (MeshData | 0)[], meta: PackedFlatMeta |
+     const bits = slots[k] >> 1, v = k * STRIDE;
+     const m = { expressId: expressIds[k], ifcType: types[typeIndex[k]], positions: undefined, normals: undefined, indices: undefined,
+       color: [values[v], values[v + 1], values[v + 2], values[v + 3]] } as unknown as Record<string, unknown>;
+-    if (bits & ORIGIN) m.origin = triple(values, v + 3);
++    if (bits & ORIGIN) m.origin = triple(values, v + 4);
+     if (bits & LOCAL_BOUNDS) m.localBounds = { min: triple(values, v + 7), max: triple(values, v + 10) };
+     if (bits & LOCAL_TO_WORLD) m.localToWorld = Array.prototype.slice.call(values, v + 13, v + 29);
+     m.geometryClass = values[v + 29];
+     if (bits & ITEM) m.geometryItemId = values[v + 30];
+     if (bits & MATERIAL) m.materialId = values[v + 31];
+     if (bits & FENCE) m.appearanceSource = undefined;
+-    void hashes;
++    if (bits & HASH) m.geometryHash = hashes[k];
+     if (bits & AABB) m.geometryAabb = { min: triple(values, v + 32), max: triple(values, v + 35) };
+     if (bits & VOLUME) m.geometryVolume = values[v + 38];
+     meshes[k] = m as unknown as MeshData;

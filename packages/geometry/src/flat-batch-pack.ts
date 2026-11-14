@@ -24,6 +24,7 @@
  */
 
 import type { MeshData } from './types.js';
+import { metaTransfers, packFlatMeta, unpackFlatMeta, type PackedFlatMeta } from './flat-batch-meta.js';
 
 export interface PackedFlatVertices {
   positions: Float32Array;
@@ -35,6 +36,8 @@ export interface PackedFlatVertices {
   packed: Uint8Array;
   /** 1 = rebuild mesh k's canonical `appearanceSource` fence on its index view. */
   fence: Uint8Array;
+  /** The metadata columns of the meshes that travel as slots (`flat-batch-meta.ts`); those meshes are posted as 0. */
+  meta?: PackedFlatMeta;
 }
 
 /** Whether a mesh's arrays can move into the packed streams without breaking a reference. */
@@ -91,12 +94,15 @@ export function packFlatBatch(
   for (let i = 0; i < transfers.length; i++) if (!moved.has(transfers[i])) transfers[w++] = transfers[i];
   transfers.length = w;
   transfers.push(positions.buffer, normals.buffer, indices.buffer, ends.buffer, packed.buffer, fence.buffer);
-  return { meshes, flatVertices: { positions, normals, indices, ends, packed, fence } };
+  const { meshes: posted, meta } = packFlatMeta(meshes, packed, fence);
+  if (meta) transfers.push(...metaTransfers(meta));
+  return { meshes: posted as MeshData[], flatVertices: { positions, normals, indices, ends, packed, fence, ...(meta ? { meta } : {}) } };
 }
 
 /** Main side. Gives the packed meshes their views back (in place) and returns the batch's meshes. */
 export function unpackFlatBatch(meshes: MeshData[], flat: PackedFlatVertices | undefined): MeshData[] {
   if (!flat) return meshes;
+  meshes = unpackFlatMeta(meshes as (MeshData | 0)[], flat.meta);
   const { ends, packed, fence } = flat;
   let p = 0, q = 0, r = 0;
   for (let k = 0; k < meshes.length; k++) {

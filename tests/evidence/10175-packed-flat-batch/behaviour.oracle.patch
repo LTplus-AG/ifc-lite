@@ -1,7 +1,7 @@
 diff --git a/packages/geometry/src/flat-batch-pack.ts b/packages/geometry/src/flat-batch-pack.ts
 --- a/packages/geometry/src/flat-batch-pack.ts
 +++ b/packages/geometry/src/flat-batch-pack.ts
-@@ -88,7 +88,7 @@ export function packFlatBatch(
+@@ -91,7 +91,7 @@ export function packFlatBatch(
      ends[3 * k] = p; ends[3 * k + 1] = q; ends[3 * k + 2] = r;
    }
    let w = 0;
@@ -9,8 +9,8 @@ diff --git a/packages/geometry/src/flat-batch-pack.ts b/packages/geometry/src/fl
 +  for (let i = 0; i < transfers.length; i++) if (!moved.has(transfers[i])) transfers[w++] = transfers[i];
    transfers.length = w;
    transfers.push(positions.buffer, normals.buffer, indices.buffer, ends.buffer, packed.buffer, fence.buffer);
-   return { meshes, flatVertices: { positions, normals, indices, ends, packed, fence } };
-@@ -107,7 +107,7 @@ export function unpackFlatBatch(meshes: MeshData[], flat: PackedFlatVertices | u
+   const { meshes: posted, meta } = packFlatMeta(meshes, packed, fence);
+@@ -113,7 +113,7 @@ export function unpackFlatBatch(meshes: MeshData[], flat: PackedFlatVertices | u
        m.positions = flat.positions.subarray(p, pe);
        m.normals = flat.normals.subarray(q, qe);
        m.indices = indices;

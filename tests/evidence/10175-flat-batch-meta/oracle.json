@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "packages/geometry/src/flat-batch-meta.ts",
+  "mutation": "tests/evidence/10175-flat-batch-meta/behaviour.oracle.patch",
+  "test": "packages/geometry/src/flat-batch-meta.test.ts",
+  "why": "Reverse application keeps every export but reads each mesh's origin one slot early and drops the geometry hash on rebuild, so column-packed meshes arrive with a shifted origin and without their geometry-diff hash."
+}

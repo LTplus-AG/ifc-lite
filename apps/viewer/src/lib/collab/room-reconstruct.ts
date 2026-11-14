@@ -222,6 +222,12 @@ export function createRoomReconstructor(deps: RoomReconstructDeps): RoomReconstr
       // through the bare active-model setter: the recipient may have their
       // own model active (see `applyRoomModelData`), and writing there would
       // replace their file's store with the room's.
+      // Every overlay map is keyed by the previous snapshot's dense numeric
+      // ids. The room document already contains both local and remote edits,
+      // so the replacement snapshot is the new base and retaining ANY old
+      // view state (properties, positional attrs, types, creates, tombstones)
+      // can apply it to an unrelated path after ids shift. Cleared before the swap.
+      deps.get().clearMutationView(modelId);
       applyRoomModelData(deps.get(), modelId, { ifcDataStore: payload.dataStore });
       // `applyRoomModelData`'s ifcDataStore write leaves `maxExpressId` at
       // whatever the FIRST reconstruct captured (#2719). The re-derive
@@ -233,12 +239,6 @@ export function createRoomReconstructor(deps: RoomReconstructDeps): RoomReconstr
       const model = deps.get().models.get(modelId);
       const raised = model ? raisedMaxExpressId(model.maxExpressId, payload.idToPath) : null;
       if (raised !== null) deps.get().updateModel(modelId, { maxExpressId: raised });
-      // Every overlay map is keyed by the previous snapshot's dense numeric
-      // ids. The room document already contains both local and remote edits,
-      // so the replacement snapshot is the new base and retaining ANY old
-      // view state (properties, positional attrs, types, creates, tombstones)
-      // can apply it to an unrelated path after ids shift.
-      deps.get().clearMutationView(modelId);
     }
 
     if (geometryChanged || firstBuild) {

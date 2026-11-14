@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { createModelMutationView } from '@/utils/model-mutation-view';
 /**
  * "Add Classification" and "Add Material" as real IFC entities (#5876).
  *
@@ -28,7 +29,6 @@ import { resolveLiveOwnerHistoryId } from '@ifc-lite/sdk';
 import type { TranslationKey } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { mutationDenialKey, mutationPermission } from '@/store/mutation-permission';
-import { configureMutationView } from '@/utils/configureMutationView';
 import { roomSlotFor } from '@/lib/collab/room-model-target';
 import { mirrorStoreOverlayDelta, snapshotOverlay } from '@/sdk/adapters/store-adapter-cost';
 
@@ -57,8 +57,7 @@ function resolveTarget(modelId: string): Target | AssociationResult {
   if (!store) return { ok: false, reasonKey: 'propertyEditor.association.noModel' };
   let view = state.getMutationView(storeModelId);
   if (!view) {
-    view = new MutablePropertyView(store.properties || null, storeModelId);
-    configureMutationView(view, store);
+    view = createModelMutationView(store, storeModelId);
     state.registerMutationView(storeModelId, view);
   }
   let editor = state.storeEditors.get(storeModelId);

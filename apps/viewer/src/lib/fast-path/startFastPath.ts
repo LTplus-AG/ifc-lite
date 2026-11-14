@@ -14,6 +14,7 @@ import { useViewerStore } from '@/store';
 import { getGeomWorkerOverride, resolveLoadTessellationTier } from '@/store/constants';
 import { USE_SERVER } from '@/utils/ifcConfig';
 import { getPerfFlagDefinition, readPerfFlag } from '@/lib/perf/flags';
+import { isFeatureEnabled } from '@/lib/features';
 import { mayWarmUp, scheduleWhenIdle } from '@/lib/warm-runtime-gate';
 import { registerPickStarter } from '@/hooks/ingest/pickStart';
 import { setFastGeometryClaimer } from '@/hooks/ingest/fastPath';
@@ -46,13 +47,23 @@ export function fastPathSwitch(): unknown {
   return readPerfFlag('fastPath') ?? getPerfFlagDefinition('fastPath').default;
 }
 
+/**
+ * Whether this page can open a model at all. A host can switch off every
+ * picker; then the warm-up's sample fetch and spare workers would serve no
+ * load. `?model=` still autoloads with the pickers off, so it counts.
+ */
+export function pageCanOpenModels(): boolean {
+  return isFeatureEnabled('files.local') || isFeatureEnabled('files.samples') || isFeatureEnabled('files.sources')
+    || new URLSearchParams(window.location.search).has('model');
+}
+
 /** Start the fast-path runtime once (idempotent). Returns whether it runs. */
 export function startFastPath(): boolean {
   if (runtime) return true;
   if (typeof Worker === 'undefined' || typeof document === 'undefined') return false;
   runtime = createFastPathRuntime({
     // A server-backed build meshes on the server; nothing to prepare here.
-    allowed: () => !USE_SERVER && mayWarmUp(fastPathSwitch()),
+    allowed: () => !USE_SERVER && pageCanOpenModels() && mayWarmUp(fastPathSwitch()),
     // Measurement only: `?perf.fastPath=parser` or `=geometry` prepares one spare alone.
     parts: { parser: fastPathSwitch() !== 'geometry', geometry: fastPathSwitch() !== 'parser' },
     whenIdle: scheduleWhenIdle,

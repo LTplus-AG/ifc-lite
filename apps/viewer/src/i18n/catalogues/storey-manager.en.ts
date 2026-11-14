@@ -10,6 +10,9 @@ import type { TranslationValue } from '../types';
  * the storey chip and the plan's storey picker. Unit symbols stay literal.
  */
 export const storeyManagerEn = {
+  "storeyManager.insert.after": "After insertion",
+  "storeyManager.insert.before": "Current",
+  "storeyManager.copy.back": "Back to storeys",
   'storeyManager.title': 'Storeys',
   'storeyManager.subtitle': '{model} · {count} storeys',
   'storeyManager.open': 'Manage storeys…',
@@ -69,7 +72,7 @@ export const storeyManagerEn = {
   'storeyManager.delete': 'Delete {storey}',
   'storeyManager.deleted': '{storey} deleted',
   'storeyManager.undo': 'Undo',
-  'storeyManager.undoStale': 'Not undone: later edits came after this deletion. Undo them first from the toolbar.',
+  "storeyManager.undoStale": "Not undone: later edits came after this edit. Undo them first from the toolbar.",
   'storeyManager.delete.title': { one: '{storey} holds {count} element', other: '{storey} holds {count} elements' },
   'storeyManager.delete.moveTo': 'Move them to',
   'storeyManager.delete.move': 'Move and delete',
@@ -114,5 +117,5 @@ export const storeyManagerEn = {
   "storeyManager.copy.newElements": {"one": "{count} new element", "other": "{count} new elements"},
   "storeyManager.copy.undoStale": "Not undone: later edits came after this copy. Undo them first from the toolbar.",
   "storeyManager.insert.move": "{storey} moves from {from} to {to} m",
-  "storeyManager.impact.wallTops": {"one": "Updates {count} wall top", "other": "Updates {count} wall tops"},
+  "storeyManager.impact.wallTops": {"one": "updates {count} wall top", "other": "updates {count} wall tops"},
 } as const satisfies Record<string, TranslationValue>;

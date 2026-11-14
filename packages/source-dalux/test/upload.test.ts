@@ -135,6 +135,35 @@ describe('Dalux write-back', () => {
     expect(await textOf(provider, ctx, { ...FILE_A, revisionId: result.revision.id })).toBe('A-TWO');
   });
 
+  // #9526 review: binary uploads and superseded revisions must round-trip.
+  it('preserves arbitrary binary bytes and the revision replaced by an upload (#9526)', async () => {
+    const { ctx, provider } = setup();
+    const bytes = new Uint8Array([0, 255, 128, 195, 40, 13, 10]);
+    const result = ok(await provider.uploadFile(ctx, { mode: 'new-version', ref: FILE_A }, bytes.buffer));
+    expect(new Uint8Array(await provider.download(ctx, { ...FILE_A, revisionId: result.revision.id }))).toEqual(bytes);
+    expect(new Uint8Array(await provider.download(ctx, { ...FILE_A, revisionId: undefined }))).toEqual(bytes);
+    expect(await textOf(provider, ctx, { ...FILE_A, revisionId: 'rev-1' })).toBe('A-ONE');
+    await provider.uploadFile(ctx, { mode: 'new-version', ref: FILE_A }, bytesOf('THIRD'));
+    expect(new Uint8Array(await provider.download(ctx, { ...FILE_A, revisionId: result.revision.id }))).toEqual(bytes);
+  });
+
+  it('keeps concurrent upload slots and their finalized identities distinct (#9526)', async () => {
+    const { ctx, provider, posts } = setup();
+    const target = (name: string) => ({ mode: 'new-file' as const, projectId: FILE_A.projectId, containerId: FILE_A.containerId, fileName: name });
+    const [one, two] = await Promise.all([
+      provider.uploadFile(ctx, target('one.ifc'), bytesOf('ONE')),
+      provider.uploadFile(ctx, target('two.ifc'), bytesOf('TWO')),
+    ]);
+    const a = ok(one), b = ok(two);
+    const requests = posts();
+    const firstFinalize = requests.findIndex(call => call.path.endsWith('/finalize'));
+    expect(requests.slice(0, firstFinalize).filter(call => call.path.endsWith('/upload'))).toHaveLength(2);
+    expect(a.file.id).not.toBe(b.file.id);
+    expect(a.revision.id).not.toBe(b.revision.id);
+    expect(await textOf(provider, ctx, { ...FILE_A, fileId: a.file.id, revisionId: a.revision.id })).toBe('ONE');
+    expect(await textOf(provider, ctx, { ...FILE_A, fileId: b.file.id, revisionId: b.revision.id })).toBe('TWO');
+  });
+
   it('new-version without a base revision skips the stale check', async () => {
     const { ctx, provider } = setup();
     ok(await provider.uploadFile(ctx, { mode: 'new-version', ref: FILE_A }, bytesOf('X')));

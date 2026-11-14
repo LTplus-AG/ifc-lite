@@ -53,7 +53,7 @@ export interface DaluxMockFile {
   /** Raw `properties` array, echoed on the single-file route. */
   readonly properties?: readonly unknown[];
   /** Body served by both the download-link and the by-revision content route. */
-  readonly content: string;
+  readonly content: string | Uint8Array;
   /**
    * Earlier revisions of this file, oldest first. Only version sets can
    * surface these — Dalux has no endpoint that lists a file's revisions —
@@ -65,7 +65,7 @@ export interface DaluxMockFile {
 /** One historical revision of a file, as a version set pins it. */
 export interface DaluxMockRevision {
   readonly fileRevisionId: string;
-  readonly content: string;
+  readonly content: string | Uint8Array;
   readonly contentHash?: string;
   /** Dalux's revision NUMBER (`File.version`), the strongest ordering signal. */
   readonly version?: string;
@@ -145,12 +145,16 @@ export interface DaluxMockOptions {
 interface MockResponseInit {
   readonly status?: number;
   readonly json?: unknown;
-  readonly body?: string;
+  readonly body?: string | Uint8Array;
+}
+
+function contentBytes(content: string | Uint8Array): Uint8Array<ArrayBuffer> {
+  return typeof content === 'string' ? new TextEncoder().encode(content) : new Uint8Array(content);
 }
 
 function mockResponse({ status = 200, json, body }: MockResponseInit): Response {
-  const text = body ?? (json === undefined ? '' : JSON.stringify(json));
-  const encoded = new TextEncoder().encode(text);
+  const encoded = contentBytes(body ?? (json === undefined ? '' : JSON.stringify(json)));
+  const text = new TextDecoder().decode(encoded);
   return {
     ok: status >= 200 && status < 300,
     status,
@@ -166,8 +170,8 @@ function mockResponse({ status = 200, json, body }: MockResponseInit): Response 
 /** Serves file bytes the way a real download does: a streamed body, split
  *  into a few chunks and with no `Content-Length`, so a download exercises
  *  `readWithProgress`'s stream path and its listing-size fallback (#6375). */
-function binaryResponse(content: string, headers: Record<string, string> = {}): Response {
-  const bytes = new TextEncoder().encode(content);
+function binaryResponse(content: string | Uint8Array, headers: Record<string, string> = {}): Response {
+  const bytes = contentBytes(content);
   const chunkSize = Math.max(1, Math.ceil(bytes.byteLength / 3));
   let offset = 0;
   const body = new ReadableStream<Uint8Array>({
@@ -236,7 +240,7 @@ function fileRow(area: DaluxMockFileArea, file: DaluxMockFile): Record<string, u
     fileRevisionId: file.fileRevisionId ?? null,
     contentHash: file.contentHash ?? null,
     fileType: file.fileType ?? null,
-    fileSize: new TextEncoder().encode(file.content).byteLength,
+    fileSize: contentBytes(file.content).byteLength,
     deleted: file.deleted ?? false,
     ...(file.properties ? { properties: file.properties } : {}),
     ...(current?.version !== undefined ? { version: current.version } : {}),
@@ -291,7 +295,7 @@ function versionSetRevisionUrl(
 }
 
 /** The bytes of one revision, current or historical. */
-function revisionBytes(file: DaluxMockFile, revisionId: string): string | undefined {
+function revisionBytes(file: DaluxMockFile, revisionId: string): string | Uint8Array | undefined {
   if (file.fileRevisionId === revisionId) return file.content;
   return (file.revisions ?? []).find((candidate) => candidate.fileRevisionId === revisionId)?.content;
 }
@@ -480,15 +484,22 @@ export function createDaluxApiMock(initialWorld: DaluxMockWorld, options: DaluxM
         bytes.set(part, offset);
         offset += part.byteLength;
       }
-      const content = new TextDecoder().decode(bytes);
+      const content = bytes;
       const files = area.files as DaluxMockFile[];
       let created: DaluxMockFile;
       if (meta.fileId) {
         const index = files.findIndex((candidate) => candidate.fileId === meta.fileId);
         if (index === -1) return Promise.resolve(mockResponse({ status: 404, body: 'no such file' }));
+        const previous = files[index];
+        const previousId = previous.fileRevisionId ?? previous.contentHash;
+        const revisions = [...(previous.revisions ?? [])];
+        if (previousId && !revisions.some(revision => revision.fileRevisionId === previousId)) {
+          revisions.push({ ...previous, fileRevisionId: previousId });
+        }
         created = {
-          ...files[index],
-          fileRevisionId: `rev-up-${uploadCounter}-${slot.received}`,
+          ...previous,
+          revisions,
+          fileRevisionId: `rev-${segments[6]}-${slot.received}`,
           contentHash: undefined,
           content,
           ...(meta.properties ? { properties: meta.properties } : {}),
@@ -500,10 +511,10 @@ export function createDaluxApiMock(initialWorld: DaluxMockWorld, options: DaluxM
           return Promise.resolve(mockResponse({ status: 400, body: 'no such folder' }));
         }
         created = {
-          fileId: `file-up-${uploadCounter}`,
+          fileId: `file-${segments[6]}`,
           fileName: meta.fileName,
           ...(isRoot ? {} : { folderId: meta.folderId }),
-          fileRevisionId: `rev-up-${uploadCounter}-${slot.received}`,
+          fileRevisionId: `rev-${segments[6]}-${slot.received}`,
           fileType: meta.fileType,
           content,
           ...(meta.properties ? { properties: meta.properties } : {}),

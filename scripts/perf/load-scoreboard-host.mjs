@@ -215,13 +215,15 @@ export function outsideOwnCgroup(pids) {
   let cpuMs = 0, pressureUs = 0;
   const scopes = new Set();
   for (const pid of pids) {
-    const info = procInfo(pid);
-    const cg = info?.cgroup?.slice(3);
-    if (!info || own === null || cg === own) continue;
-    cpuMs += info.cpuTicks * TICK_MS;
-    if (cg) scopes.add(cg);
+    const cg = procInfo(pid)?.cgroup?.slice(3);
+    if (own !== null && cg && cg !== own) scopes.add(cg);
   }
-  for (const cg of scopes) pressureUs += cgroupPressure(cg)?.totalUs ?? 0;
+  // The scope's own counters cover only the time after the move: CPU the browser used in the job cgroup before it
+  // moved is already outside host-minus-job and must not be subtracted again (review #10138).
+  for (const cg of scopes) {
+    cpuMs += cgroupUsageMs(cg) ?? 0;
+    pressureUs += cgroupPressure(cg)?.totalUs ?? 0;
+  }
   return { cpuMs, pressureUs, scopes: scopes.size };
 }
 

@@ -149,3 +149,24 @@ test('CPU is unavailable when only another process has thread time (renderer mai
   assert.equal(r.cpuMs.total, null);
   assert.equal(r.cpuMs.gpu, null);
 });
+
+test('stage intervals are clipped to the input-to-interactive window, like the total', () => {
+  // A span from 600 ms after the input (page 700) runs past the interactive mark (page 600): the main task at 700-750 is out.
+  const late = [{ attrs: {}, startMs: 0, endMs: 700, spans: [['late.stage', 'main', 600, 100, 0, 9, null]] }];
+  const r = traceCpuTime(trace, { spans: late });
+  assert.equal(r.stages['late.stage'], undefined);
+});
+
+test('a requested second measure that was unavailable is shown with its count and reason; verdicts use complete rounds only', async () => {
+  const { cpuTimeSummary, cpuTimeSection } = await import('./load-scoreboard-report-cpu.mjs');
+  const rows = [0, 1, 2].flatMap((n) => ['base', 'branch'].map((side) => ({ ok: true, fixture: 'FZK', lane: 'browser-cold', side, round: n, interactiveMs: 500,
+    cpuTime: { cpuMs: { total: null }, coverage: 'no thread time in the window' } })));
+  const line = cpuTimeSection(rows, { cpuTime: cpuTimeSummary({ kind: 'aa', lanes: ['browser-cold'] }, rows) }).find((l) => l.startsWith('| FZK |'));
+  assert.match(line, /CPU unavailable 6: no thread time in the window/);
+  // Base 100, 200, 10000 and branch 100, 200, unavailable: the shared rounds show no gain.
+  const instr = [[100, 100], [200, 200], [10000, null]].flatMap(([b, r], n) => [
+    { ok: true, fixture: 'FZK', lane: 'browser-cold', side: 'base', round: n, interactiveMs: 500, instructions: { total: b * 1e6 } },
+    { ok: true, fixture: 'FZK', lane: 'browser-cold', side: 'branch', round: n, interactiveMs: 500, instructions: r === null ? { total: null, unavailable: 'x' } : { total: r * 1e6 } }]);
+  const v = cpuTimeSummary({ kind: 'compare', lanes: ['browser-cold'] }, instr).cells[0].instructions.verdict;
+  assert.equal(v.gain, 0);
+});

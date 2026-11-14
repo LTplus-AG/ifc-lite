@@ -242,7 +242,10 @@ export function traceCpuTime(trace, { window = null, spans = null } = {}) {
     const stages = {};
     for (const [name, iv] of stageIntervals(spans)) {
       if (iv.main.length === 0) continue;
-      const u = union(iv.main);
+      // Clipped to the load window (span time = ms from the input event), as cpuMs.total is (review #10138).
+      const lo0 = w.startMs - w.spanOriginMs, hi0 = w.endMs - w.spanOriginMs;
+      const u = union(iv.main).map(([a, b]) => [Math.max(a, lo0), Math.min(b, hi0)]).filter(([a, b]) => b > a);
+      if (u.length === 0) continue;
       const stage = { wallMs: Math.round(u.reduce((a, [lo, hi]) => a + hi - lo, 0) * 100) / 100, mainCpuMs: ms(sumIn(mainTasks, u)) };
       if (WORKER_FRAME_SPANS.includes(name)) stage.workersCpuMs = ms(sumIn(workerTasks, u));
       stages[name] = stage;

@@ -43,7 +43,8 @@ export function cpuTimeSummary(plan, samples, { floors = null } = {}) {
   for (const fixture of [...new Set(samples.map((r) => r.fixture))]) {
     for (const lane of plan.lanes.filter((l) => l.startsWith('browser'))) {
       const rows = samples.filter((r) => r.fixture === fixture && r.lane === lane);
-      if (!rows.some((r) => r.ok && (Number.isFinite(r.cpuTime?.cpuMs?.total) || Number.isFinite(r.instructions?.total)))) continue;
+      // A cell where a second measure was requested is shown even when it was unavailable, with the count and reason (review #10138).
+      if (!rows.some((r) => r.ok && (r.cpuTime || r.instructions))) continue;
       const side = (s) => rows.filter((r) => r.side === s);
       const rounds = [...new Set(rows.map((r) => r.round))].sort((a, b) => a - b);
       const pairsOf = (get) => rounds.map((n) => ['base', 'branch'].map((s) => {
@@ -53,13 +54,19 @@ export function cpuTimeSummary(plan, samples, { floors = null } = {}) {
       }));
       const medians = Object.fromEntries([['wall interactive', (r) => r.interactiveMs], ...CPU_COLUMNS, INSTR_COLUMN].map(([label, get]) =>
         [label, ['base', 'branch'].map((s) => median(side(s).filter((r) => r.ok).map(get).filter(Number.isFinite)))]));
-      const pairs = pairsOf(CPU_COLUMNS[0][1]);
+      // Second measures compare the rounds where both sides have the value (unavailable is not a failed load; review #10138).
+      const complete = (ps) => ps.filter(([a, b]) => a !== null && b !== null);
+      const pairs = complete(pairsOf(CPU_COLUMNS[0][1]));
       const underLoad = { base: side('base').filter((r) => r.host?.underLoad).length, branch: side('branch').filter((r) => r.host?.underLoad).length };
       const failures = { base: side('base').filter((r) => !r.ok).length, branch: side('branch').filter((r) => !r.ok).length };
-      const cell = { fixture, lane, n: [side('base').length, side('branch').length], medians };
+      const okRows = rows.filter((r) => r.ok);
+      const unavailable = (has, value, why) => { const u = okRows.filter((r) => has(r) && !Number.isFinite(value(r))); return u.length ? { n: u.length, reason: why(u[0]) } : null; };
+      const cell = { fixture, lane, n: [side('base').length, side('branch').length], medians,
+        cpuUnavailable: unavailable((r) => r.cpuTime, (r) => r.cpuTime?.cpuMs?.total, (r) => r.cpuTime?.coverage ?? r.cpuTime?.error ?? 'no CPU figure'),
+        instructionsUnavailable: unavailable((r) => r.instructions, (r) => r.instructions?.total, (r) => r.instructions?.unavailable ?? 'no count') };
       // Instructions: the THIRD verdict column, by the same rule against the recorded instruction A/A floor (promoted by the
       // capped A/A of 2026-11-14: floors 1.00% FZK, 1.20% Holter, under the < 2% bar fixed before the run). Wall stays primary.
-      const ipairs = pairsOf(INSTR_COLUMN[1]);
+      const ipairs = complete(pairsOf(INSTR_COLUMN[1]));
       if (ipairs.some(([a, b]) => a !== null && b !== null)) {
         cell.instructions = { aaFloor: kind === 'aa' && underLoad.base + underLoad.branch === 0 ? aaNoiseFloor(ipairs, { seed: 0x5eed }) : null, ownFloor: ownNoiseFloor(ipairs) };
         if (kind !== 'aa') cell.instructions.verdict = verdictWithFloor(ipairs, { failures, underLoad, floors, fixture, lane, key: INSTR_FLOOR_KEY, label: 'instruction' });
@@ -110,7 +117,8 @@ export function cpuTimeSection(samples, summary) {
     const floors3 = (v) => (v ? `${pct(v.gain)} / ${pct(v.ownFloor)} / ${pct(v.aaFloor)}` : '—');
     const tail = aa ? `${pct(c.aaFloor)} (${pct(c.aaFloorFlagged)}) | ${pct(c.instructions?.aaFloor)}`
       : `${floors3(c.verdict)} | ${mark(c.verdict)} | ${floors3(c.instructions?.verdict)} | ${mark(c.instructions?.verdict)}`;
-    lines.push(`| ${c.fixture} | ${c.lane} | ${c.n.join('/')} | ${med} | ${tail} |`);
+    const gaps = [c.cpuUnavailable && `CPU unavailable ${c.cpuUnavailable.n}: ${c.cpuUnavailable.reason}`, c.instructionsUnavailable && `instructions unavailable ${c.instructionsUnavailable.n}: ${c.instructionsUnavailable.reason}`].filter(Boolean);
+    lines.push(`| ${c.fixture} | ${c.lane} | ${c.n.join('/')}${gaps.length ? ` (${gaps.join('; ')})` : ''} | ${med} | ${tail} |`);
   }
   return lines;
 }

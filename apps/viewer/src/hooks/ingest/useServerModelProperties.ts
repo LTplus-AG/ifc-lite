@@ -135,12 +135,12 @@ function start(modelId: string | null, isStale: (() => boolean) | undefined,
         // Ownership is permanent even if extension/warning supersedes the lease.
         // Commit the hydrated store only if settlement still owns this model.
         const accepted = lease.isCurrent() && ownsModel();
+        // An unaccepted run moves only a registered model's bound. An unregistered primary owns no
+        // range, and the capacity refresher discards kept edits against the committed bound only.
         if (accepted) {
           committing = dataStore;
           useViewerStore.getState().updateModel(modelId, { ifcDataStore: dataStore, ...idRange });
         } else if (federationRegistry.hasModel(modelId)) {
-          // An unregistered primary owns no range, so an uncommitted source must not move its bound:
-          // the capacity refresher discards kept edits against the committed source and bound only.
           useViewerStore.getState().updateModel(modelId, idRange);
         }
         if (accepted && useViewerStore.getState().models.get(modelId)?.hasOverlayCapacity === false) {

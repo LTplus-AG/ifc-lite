@@ -1001,7 +1001,7 @@ it('an unregistered primary drops kept edits only together with a committed sour
   } finally { stop(); }
   assert.equal(federationRegistry.hasModel('server'), false);
   const state = useViewerStore.getState();
-  assert.equal(state.models.get('server')?.ifcDataStore, source, 'no discard lands before the commit, so the run is not superseded');
+  assert.equal(state.models.get('server')?.ifcDataStore, source, 'no discard lands before the acceptance check, so the source commits');
   assert.equal(state.mutationViews.has('server'), false, 'the committed source drops the overlapped edits');
 });
 

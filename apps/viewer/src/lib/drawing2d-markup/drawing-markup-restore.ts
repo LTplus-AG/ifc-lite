@@ -187,7 +187,10 @@ export function restoreDrawingMarkupFromModel(modelId: string): DrawingMarkupRea
     if (!parseResult) return null;
 
     const meta = buildDrawingMarkupMetaLookup(view, dataStore);
-    return readDrawingMarkupFromParseResult(parseResult, meta, { lengthUnitScale: lengthUnitScaleFor(dataStore) });
+    // `store` lets the reader undo the symbolic parser's plan-Y negation and
+    // the annotation's placement chain (`drawing-markup-read-placement.ts`);
+    // without it every restored item comes back mirrored and shifted.
+    return readDrawingMarkupFromParseResult(parseResult, meta, { lengthUnitScale: lengthUnitScaleFor(dataStore), store: dataStore });
   } catch (error) {
     // eslint-disable-next-line no-console
     console.warn('[drawing-markup-restore] failed to resolve markup for', modelId, error);
@@ -204,7 +207,10 @@ export function restoreDrawingMarkupFromModel(modelId: string): DrawingMarkupRea
 export function restoredEmbeddedMarkupIdentities(modelId: string, result: DrawingMarkupReadResult): string[] {
   const context = getDrawingMarkupReadContext(modelId);
   if (!context) return [];
-  const items = [...result.measure2DResults, ...result.polygonArea2DResults, ...result.textAnnotations2D, ...result.cloudAnnotations2D];
+  const items = [
+    ...result.measure2DResults, ...result.polygonArea2DResults, ...result.textAnnotations2D, ...result.cloudAnnotations2D,
+    ...result.dimensions2D,
+  ];
   const ids = items.map((item) => drawingMarkupItemExpressId(item.id)).filter((id): id is number => id !== null);
   return ids.map((id) => embeddedMarkupIdentity(id, sourceMarkupGlobalId(context.dataStore, id)));
 }

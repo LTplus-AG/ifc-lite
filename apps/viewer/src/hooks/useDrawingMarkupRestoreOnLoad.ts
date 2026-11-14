@@ -204,7 +204,8 @@ export function tryRestoreDrawingMarkup(modelId: string, requestParse = false): 
     result.measure2DResults.length +
     result.polygonArea2DResults.length +
     result.textAnnotations2D.length +
-    result.cloudAnnotations2D.length;
+    result.cloudAnnotations2D.length +
+    result.dimensions2D.length;
   if (total === 0) return;
 
   // Re-check immediately before writing: resolving `result` above is
@@ -219,6 +220,7 @@ export function tryRestoreDrawingMarkup(modelId: string, requestParse = false): 
     polygonArea2DResults: result.polygonArea2DResults,
     textAnnotations2D: result.textAnnotations2D,
     cloudAnnotations2D: result.cloudAnnotations2D,
+    dimensions2D: result.dimensions2D,
   });
 }
 

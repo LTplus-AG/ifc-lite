@@ -6312,3 +6312,25 @@ the actual default path. A conditional restore does not imply that another
 visible overlay stops parsing. Operation-count attribution and digest-equivalence
 tests establish this mechanism; the exclusive load scoreboard remains the
 acceptance source for end-to-end timing.
+
+### Lazy hydration indexes and CSR target reads (#8450, #9467)
+
+Defer StringTable lookup-map construction until lookup or interning is needed,
+keep only two full-key maps while building relationship CSR, and read target
+columns directly instead of materializing Edge objects. Hydrated string indices,
+first-occurrence lookup, relationship ordering and shadowed-edge semantics stay
+unchanged. Credit to @ionuting for the original report and profiling.
+
+Verdict: the exclusive cold browser comparison on the public FZK, Holter and
+O-S1 models found no end-to-end gain or regression beyond the measured noise
+floor. Paired A/A calibration passed first under the same bounded CPU-cap
+conditions, then complete interleaved base/branch units passed the original
+noise, output-identity, GPU-health and process-retirement gates. Limits were
+restored and verified between every short unit. The earlier uncapped/noisy and
+thermally refused attempts remain unqualified; their successful subsets were
+not promoted into a verdict.
+
+Lesson: removing eager indexing work need not move whole-load readiness when
+other metadata and renderer stages dominate. Keep the mechanism claim separate
+from a speedup claim, and qualify browser hydration with complete worker-pool
+loads and reconstructed output, rather than a native kernel microbenchmark.

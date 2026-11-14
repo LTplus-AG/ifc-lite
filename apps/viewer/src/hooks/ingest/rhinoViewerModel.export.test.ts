@@ -96,11 +96,14 @@ describe(`the .3dm of an ifc-lite export, against its IFC${missing ? ` (skipped:
     // Floor-to-floor heights follow from the elevations, as on the IFC path.
     // The IFC's own hierarchy carries none here: the parser leaves them to the
     // loader, which fills them from the same elevations (useIfcLoader.ts).
+    const importedHeights = [...importedStoreys].flatMap(([name, node]) => {
+      const height = imported.storeyHeights.get(node.expressId);
+      return height === undefined ? [] : [[name, height] as const];
+    });
+    // At least one, or two empty lists would agree and prove nothing.
+    assert.ok(importedHeights.length >= 1, 'the imported storeys carry no floor-to-floor height');
     assert.deepEqual(
-      [...importedStoreys].flatMap(([name, node]) => {
-        const height = imported.storeyHeights.get(node.expressId);
-        return height === undefined ? [] : [[name, height] as const];
-      }),
+      importedHeights,
       [...calculateStoreyHeights(new Map([...sourceStoreys].map(([, node]) => [node.expressId, node.elevation!])))]
         .map(([expressId, height]) => [source.entities.getName(expressId), height] as const),
     );

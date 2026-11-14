@@ -8,6 +8,25 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
+## Reopen interactive mark with a geometry-restore gate (#10218, merged)
+
+**Accepted: a reopened model counts as interactive when its stored scene is shown and metadata is published, while geometry-dependent input waits for geometry restore.**
+- Picking, hover highlight, measure/snap, command placement and section caps stay held until geometry restore finishes. User decisions on 2026-11-14: use the earlier mark with gating; ignore input during the hold and show a progress cursor after one frame. The click queue and replay were removed after three review rounds found 17 bugs in them. Cold loads are unchanged.
+- Capped timed A/B on Pop, shared drain, 2026-11-14 15:47-16:02, Holter; main `f64111d981` vs #10218 `d7a4380f94` (timed commit), 5 rounds, own A/A in the same admission, 0 flagged samples:
+
+| Holter cell | Main -> #10218 | Change / 2x A/A floor |
+|---|---:|---:|
+| First reopen, new mark | 1,252 -> 856 ms | +31.6%, 7.4% |
+| Snapshot reopen, new mark | 1,249 -> 810 ms | +35.1%, 3.8% |
+| First reopen, old mark | 1,252 -> 1,337 ms | -6.7%, 7.9%, n.s. |
+| Snapshot reopen, old mark | 1,249 -> 1,295 ms | -3.7%, 3.7%, n.s. |
+| Cold | 3,172 -> 3,248 ms | -2.4%, 4.4%, n.s. |
+
+  Main publishes metadata at load end, so its new mark equals its old mark. Both reopen goals were met: first reopen <= 1,000 ms and snapshot reopen <= 900 ms.
+- The Holter hold was 453-501 ms per sample (median about 480), against an estimate of 150-300 ms. The old mark (“everything usable”) is 46-85 ms later than main, a trade accepted by the user. Snapshot-reopen UI quiet was 1,808 -> 1,878 ms (-3.9%), flagged against a 3.2% 2x floor. FZK is under the cache size tier, so its reopens are fresh loads and the gate never engages.
+
+Lesson: Size a gated hold from the real chain, not from stage arithmetic: publishing metadata earlier moved the panel commit in front of the chunk decode, so the hold was ~480 ms instead of the estimated 150-300 ms and the old mark moved later. Input replay during a short hold costs more than it saves: every input path needs its own replay semantics, and three review rounds found 17 bugs before the user chose to ignore held input.
+
 ## One store notification for a primary load's reset (#10196, closed)
 
 **Rejected before timing: holding store notifications through the synchronous reset at a primary load's pick saves about 5 ms, not the 25-35 ms the profile suggested.**

@@ -100,6 +100,24 @@ describe('a double-tap is a double-click (#9092)', () => {
     assert.equal(wallGesture().chain.length, 1, 'the same tap works after release');
   });
 
+  it('#10218 a command touch that begins during restore and lifts after release places nothing', async () => {
+    useViewerStore.getState().startCommand('wall.place');
+    const { canvas } = commandRig();
+    const setPending = (pending: boolean) => {
+      const models = new Map(useViewerStore.getState().models);
+      const [id, model] = [...models][0]!;
+      models.set(id, { ...model, geometryRestorePending: pending });
+      act(() => useViewerStore.setState({ models }));
+    };
+    setPending(true);
+    press(canvas, ...at(10, 10));
+    setPending(false); // the hold ends while the finger is still down
+    await lift(canvas);
+    assert.equal(wallGesture().chain.length, 0, 'a touch begun during the hold must not place on its lift');
+    await tap(canvas, ...at(10, 10));
+    assert.equal(wallGesture().chain.length, 1, 'a tap after release places');
+  });
+
   it('ends a wall chain where its first tap placed the point', async (t) => {
     clock(t);
     useViewerStore.getState().startCommand('wall.place');

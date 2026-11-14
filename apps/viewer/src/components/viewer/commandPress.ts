@@ -71,7 +71,8 @@ export function createCommandPressController(ctx: MouseHandlerContext) {
       const current = sameRuntime(owner);
       cancelCommandPointer(ctx);
       ctx.mouseState.didDrag = owner.held || owner.onPress || !current;
-      if (owner.onPress && current && !owner.held) feed('up', event);
+      // A press taken before a restore hold and released during it: its 'up' would be held back, leaving the drag grabbed.
+      if (owner.onPress && current && !owner.held) { if (isGeometryHeld(useViewerStore.getState())) commandPointerCancel(); else feed('up', event); }
       return true;
     },
     cancel,

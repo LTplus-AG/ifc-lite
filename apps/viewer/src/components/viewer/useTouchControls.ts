@@ -36,7 +36,7 @@ export interface TouchState {
   lastDistance: number;
   lastCenter: { x: number; y: number };
   tapStartTime: number;
-  tapStartPos: { x: number; y: number };
+  tapStartPos: { x: number; y: number }; tapStartedHeld?: boolean; // began during a reopen restore hold: the tap does nothing (#10218)
   didMove: boolean;
   multiTouch: boolean;
   /** Locked 2-finger gesture mode (reset on finger lift) */
@@ -169,7 +169,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
         };
         // Record tap start for tap-to-select detection
         touchState.tapStartTime = Date.now();
-        touchState.tapStartPos = { ...touchState.lastCenter };
+        touchState.tapStartPos = { ...touchState.lastCenter }; touchState.tapStartedHeld = isGeometryRestoreHeld(useViewerStore.getState());
         touchState.didMove = false;
         beginMeasurePress(touchState);
         // A press that grabs for the command has no long press: its drag is the command's (#9092).
@@ -321,7 +321,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
           const x = touchState.tapStartPos.x - rect.left;
           const y = touchState.tapStartPos.y - rect.top;
 
-          if (isGeometryRestoreHeld(useViewerStore.getState())) { /* consumed during reopen restore */ }
+          if (touchState.tapStartedHeld || isGeometryRestoreHeld(useViewerStore.getState())) { /* consumed: begun or ended during a reopen restore */ }
           else if (refuseCaptureHeldPick(renderer)) markTouchSelection(canvas, x, y); // not through a capture's frame, nor its compatibility click (#9137)
           else if (tool === 'measure') {
             // The measure logic lives with the mouse controls; touchstart's

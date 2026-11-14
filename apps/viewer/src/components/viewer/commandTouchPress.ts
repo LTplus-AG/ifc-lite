@@ -61,6 +61,8 @@ interface Press {
   /** The press's finger (`Touch.identifier`), and where it last was (canvas CSS px). */
   finger: number;
   at: { x: number; y: number };
+  /** The press began during a reopen's restore hold: its lift places nothing, even after the hold ends. */
+  held: boolean;
 }
 
 type Modifiers = Pick<TouchEvent, 'shiftKey' | 'altKey'>;
@@ -123,6 +125,7 @@ export function createCommandTouchPress(canvas: HTMLCanvasElement, getTool: () =
       press = {
         ctx, runtime, onPress: runtime.command.pointerDownOnPress?.(runtime.gesture) === true,
         pressed: false, dragging: false, finger: touch.identifier, at: { x: landed.x, y: landed.y },
+        held: isGeometryRestoreHeld(useViewerStore.getState()),
       };
       if (!press.onPress) return false;
       if (isGeometryHeld(useViewerStore.getState())) return false;
@@ -162,7 +165,9 @@ export function createCommandTouchPress(canvas: HTMLCanvasElement, getTool: () =
         return owned;
       }
       const { ctx } = p;
-      if (tap && isGeometryRestoreHeld(useViewerStore.getState())) return true;
+      if (tap && (p.held || isGeometryRestoreHeld(useViewerStore.getState()))) return true;
+      // A drag the command took before the hold and released during it: its 'up' is held back, so end the drag here.
+      if (p.dragging && isGeometryRestoreHeld(useViewerStore.getState())) { commandPointerCancel(); clearMarker(); return true; }
       if (p.dragging) {
         // The release lands where the finger lifted, which a last move need not have reported
         const lifted = Array.from(e.changedTouches ?? []).find((t) => t.identifier === p.finger);

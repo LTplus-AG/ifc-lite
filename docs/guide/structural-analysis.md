@@ -119,9 +119,10 @@ IFC2X3's `IfcStructuralLinearActionVarying` and
 `PredefinedType` `NOTDEFINED` and an `IfcStructuralLoadConfiguration` holding
 the loads without `Locations`. The `IfcShapeAspect` that places them stays on
 the action's representation, so the downgrade writes the varying action back.
-An IFC4 action whose representation has no single `IfcShapeAspect` has no
-IFC2X3 location for its values and is not converted this way. Both need an
-unedited full export.
+Both directions convert an action only when the other one can convert it back:
+its representation has exactly one `IfcShapeAspect`, and its loads share one
+type the IFC2X3 action admits. Other actions keep their previous handling.
+Both need an unedited full export.
 
 The viewer's read and review surfaces do not provide a structural schema
 conversion editor. Conversion is not lossless for all records. The ledger

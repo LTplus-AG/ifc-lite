@@ -7,6 +7,7 @@ import { StructuralAxes } from './schema-converter-structural-axes.js';
 import { StructuralLinks } from './schema-converter-structural-links.js';
 import { StructuralVarying } from './schema-converter-structural-varying.js';
 import { readStepSlots } from './step-argument-parser.js';
+import { referencesAnyExpressId } from './step-ref-scan.js';
 
 const LINK = 'IfcRelAssignsToProduct linking one structural member to its element is written as IfcRelConnectsStructuralElement, the IFC2X3 physical-to-analytical link';
 
@@ -64,13 +65,13 @@ export class StructuralDiagnostics {
   /**
    * A record written as another entity from source-derived facts (`StructuralLinks`,
    * `StructuralVarying`, each armed only for its schema pair): the target record body,
-   * reported because the class changes. `accept` can refuse the body (one naming a
-   * withheld id), and then nothing is reported.
+   * reported because the class changes. A body still naming a `withheld` id is
+   * refused, and then nothing is reported.
    */
-  rewrite(entity: string, args: readonly string[], accept: (body: string) => boolean): string | undefined {
+  rewrite(entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): string | undefined {
     const attrs = this.links.link(entity, args);
     const rewrite = attrs ? { body: `IFCRELCONNECTSSTRUCTURALELEMENT(${attrs})`, losses: [LINK] } : this.varying.rewrite(entity, args);
-    if (!rewrite || !accept(rewrite.body)) return undefined;
+    if (!rewrite || (withheld && referencesAnyExpressId(rewrite.body, withheld))) return undefined;
     rewrite.losses.forEach((loss) => this.record(loss));
     return rewrite.body;
   }

@@ -94,6 +94,13 @@ describe('varying structural actions IFC2X3 <-> IFC4 #9668', () => {
     expect(result.stats.warnings.join('\n')).toContain('1 structural conversion record(s): an IFC4 curve or surface action');
   });
 
+  it('converts only what converts back: a location aspect elsewhere leaves the action as before', async () => {
+    // #13 places #12, not #10, so a downgrade could not find the locations again.
+    const out = exportToStep(await parse(IFC2X3.replace(',#11,(#21));', ',#13,(#21));')), { schema: 'IFC4' });
+    expect(line(out, 30)).toMatch(/^#30=IFCSTRUCTURALLINEARACTIONVARYING\(/);
+    expect(records(out, 'IFCSTRUCTURALLOADCONFIGURATION')).toEqual(['#32=IFCSTRUCTURALLOADCONFIGURATION($,(#22,#23,#24),$);']);
+  });
+
   it('needs the source store, so a subset export keeps the varying action unconverted', async () => {
     const result = new StepExporter(await parse(IFC2X3)).export({ schema: 'IFC4', subsetEntityIds: new Set([1, 10, 11, 20, 21, 30]) });
     expect(line(new TextDecoder().decode(result.content), 30)).toMatch(/^#30=IFCSTRUCTURALLINEARACTIONVARYING\(/);

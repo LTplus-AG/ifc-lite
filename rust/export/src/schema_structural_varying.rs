@@ -8,10 +8,10 @@
 //! IFC2X3 -> IFC4 writes the action with PredefinedType NOTDEFINED and a new
 //! configuration holding AppliedLoad then SubsequentAppliedLoads, without
 //! Locations: IFC2X3 places the values with an IfcShapeAspect, which stays in
-//! the file as an aspect of the action's representation. IFC4 -> IFC2X3 is the
-//! inverse for an action whose representation has exactly one IfcShapeAspect;
-//! the configuration it consumed is dropped. Both read the source, so only an
-//! unedited full export arms them. Twin of
+//! the file as the aspect of the action's representation. IFC4 -> IFC2X3 is the
+//! inverse, and drops the configuration it consumed. Only actions that convert
+//! back are converted (`Source::convertible` decides both directions). Both
+//! read the source, so only an unedited full export arms them. Twin of
 //! `packages/export/src/schema-converter-structural-varying.ts`.
 use std::collections::{HashMap, HashSet};
 use crate::schema_ifc2x3_records::ref_id;
@@ -23,8 +23,8 @@ use crate::step_slot::split_top_level_args;
 struct Kind {
     ifc2x3: &'static str,
     ifc4: &'static str,
-    /// What the IFC2X3 supertype's WR61 admits as AppliedLoad; a downgrade
-    /// takes only a configuration whose values all share one of these types.
+    /// What the IFC2X3 supertype's WR61 admits as AppliedLoad; both
+    /// directions take only loads that all share one of these types.
     first: [&'static str; 2],
     /// The size of VaryingAppliedLoads: LIST [2:?] linear, [3:?] planar.
     min: usize,
@@ -35,17 +35,32 @@ const KINDS: [Kind; 2] = [
     Kind { ifc2x3: "IFCSTRUCTURALPLANARACTIONVARYING", ifc4: "IFCSTRUCTURALSURFACEACTION", first: ["IFCSTRUCTURALLOADPLANARFORCE", "IFCSTRUCTURALLOADTEMPERATURE"], min: 3 },
 ];
 
-const FROM_IFC2X3: &str = "an IFC2X3 varying action is written as an IFC4 curve or surface action with PredefinedType NOTDEFINED and an IfcStructuralLoadConfiguration holding its loads without Locations; the IfcShapeAspect named by VaryingAppliedLoadLocation stays in the file, and a downgrade finds it again only as the one aspect of the action representation";
+const FROM_IFC2X3: &str = "an IFC2X3 varying action is written as an IFC4 curve or surface action with PredefinedType NOTDEFINED and an IfcStructuralLoadConfiguration holding its loads without Locations; the IfcShapeAspect of its representation keeps the locations";
 const TO_IFC2X3: &str = "an IFC4 curve or surface action with an IfcStructuralLoadConfiguration is written as an IFC2X3 varying action, its locations taken from the one IfcShapeAspect of its representation; the configuration Name, Locations and the action PredefinedType have no slot in IFC2X3";
 
 #[derive(Default)]
 pub(crate) struct StructuralVarying {
-    /// IFC2X3 -> IFC4: varying action id -> the id allocated for its configuration.
-    config_ids: HashMap<u32, u32>,
+    /// IFC2X3 -> IFC4: varying action id -> (kind, loads, the id allocated for its configuration).
+    upgrades: HashMap<u32, (&'static Kind, Vec<u32>, u32)>,
     pending: Vec<String>,
-    /// IFC4 -> IFC2X3: action id -> (kind, load values, shape aspect).
-    actions: HashMap<u32, (&'static Kind, Vec<u32>, u32)>,
+    /// IFC4 -> IFC2X3: action id -> (kind, configuration values, shape aspect).
+    downgrades: HashMap<u32, (&'static Kind, Vec<u32>, u32)>,
     consumed: HashSet<u32>,
+}
+
+/// What one pass over the source collects for either direction.
+#[derive(Default)]
+struct Source {
+    /// IfcProductDefinitionShape id -> the IfcShapeAspects naming it as PartOfProductDefinitionShape.
+    aspects: HashMap<u32, Vec<u32>>,
+    /// Types of the loads IFC2X3 also has, the only values a varying action can hold.
+    loads: HashMap<u32, String>,
+    /// IFC4 IfcStructuralLoadConfiguration id -> its values.
+    configs: HashMap<u32, Vec<u32>>,
+    /// The actions this direction converts from, with their arguments.
+    actions: Vec<(u32, &'static Kind, Vec<String>)>,
+    /// Load id -> the activities naming it as AppliedLoad.
+    referrers: HashMap<u32, Vec<u32>>,
 }
 
 /// The record's top-level arguments, framed by the shared record reader.
@@ -67,30 +82,9 @@ fn refs(token: &str) -> Option<Vec<u32>> {
     list_items(token)?.iter().map(|item| ref_id(Some(item))).collect()
 }
 
-impl StructuralVarying {
-    /// IFC2X3 -> IFC4: one configuration id per varying action, from the writer's allocator.
-    pub(crate) fn scan_ifc2x3(content: &[u8], kept: impl Fn(u32, usize) -> bool, mut allocate: impl FnMut() -> Option<u32>) -> Self {
-        let mut result = Self::default();
-        let mut scanner = ifc_lite_core::EntityScanner::new(content);
-        while let Some((id, ty, start, end)) = scanner.next_entity() {
-            let Some(kind) = KINDS.iter().find(|k| ty.eq_ignore_ascii_case(k.ifc2x3)) else { continue };
-            // Only a record `rewrite` will convert takes an id, as the TypeScript twin allocates.
-            if !kept(id, start) || record(content, start, end).and_then(|args| varying_loads(kind, &args)).is_none() { continue; }
-            let Some(config) = allocate() else { break };
-            result.config_ids.insert(id, config);
-        }
-        result
-    }
-
-    /// IFC4 -> IFC2X3: the actions that become varying actions and the configurations they consume.
-    pub(crate) fn scan_ifc4(content: &[u8], kept: impl Fn(u32, usize) -> bool) -> Self {
-        let mut aspects: HashMap<u32, Vec<u32>> = HashMap::new();
-        let mut configs: HashMap<u32, Vec<u32>> = HashMap::new();
-        // Types of the loads IFC2X3 also has, the only values a varying action can hold.
-        let mut loads: HashMap<u32, String> = HashMap::new();
-        // (action id, kind, representation, applied load), and every activity's applied load.
-        let mut candidates = Vec::new();
-        let mut referrers: HashMap<u32, Vec<u32>> = HashMap::new();
+impl Source {
+    fn scan(content: &[u8], kept: impl Fn(u32, usize) -> bool, upgrade: bool) -> Self {
+        let mut source = Self::default();
         let mut activity: HashMap<String, bool> = HashMap::new();
         let mut scanner = ifc_lite_core::EntityScanner::new(content);
         while let Some((id, ty, start, end)) = scanner.next_entity() {
@@ -99,43 +93,81 @@ impl StructuralVarying {
             if !shape && !ty.get(..13).is_some_and(|p| p.eq_ignore_ascii_case("IFCSTRUCTURAL")) { continue; }
             if !kept(id, start) { continue; }
             let ty = ty.to_ascii_uppercase();
-            if ifc_lite_core::SchemaVersion::Ifc2x3.is_subtype_of(&ty, "IfcStructuralLoad") { loads.insert(id, ty); continue; }
-            let is_activity = *activity.entry(ty.clone()).or_insert_with_key(|t| ifc_lite_core::SchemaVersion::Ifc4.is_subtype_of(t, "IfcStructuralActivity"));
-            let config = ty == "IFCSTRUCTURALLOADCONFIGURATION";
-            if !(shape || config || is_activity) { continue; }
+            if ifc_lite_core::SchemaVersion::Ifc2x3.is_subtype_of(&ty, "IfcStructuralLoad") { source.loads.insert(id, ty); continue; }
+            let kind = KINDS.iter().find(|k| if upgrade { k.ifc2x3 == ty } else { k.ifc4 == ty });
+            let config = !upgrade && ty == "IFCSTRUCTURALLOADCONFIGURATION";
+            let is_activity = !upgrade && *activity.entry(ty).or_insert_with_key(|t| ifc_lite_core::SchemaVersion::Ifc4.is_subtype_of(t, "IfcStructuralActivity"));
+            if !(shape || kind.is_some() || config || is_activity) { continue; }
             let Some(args) = record(content, start, end) else { continue };
             if shape {
-                if let Some(of) = ref_id(args.get(4).map(String::as_str)) { aspects.entry(of).or_default().push(id); }
+                if let Some(of) = ref_id(args.get(4).map(String::as_str)) { source.aspects.entry(of).or_default().push(id); }
             } else if config {
-                if let Some(values) = args.get(1).and_then(|v| refs(v)).filter(|v| !v.is_empty()) { configs.insert(id, values); }
-            } else if let Some(load) = ref_id(args.get(7).map(String::as_str)) {
-                referrers.entry(load).or_default().push(id);
-                let kind = KINDS.iter().find(|k| k.ifc4 == ty);
-                if let Some(kind) = kind.filter(|_| args.len() == 12 && !args[11].trim().eq_ignore_ascii_case(".CONST.")) {
-                    candidates.push((id, kind, ref_id(Some(&args[6])), load));
-                }
+                if let Some(values) = args.get(1).and_then(|v| refs(v)).filter(|v| !v.is_empty()) { source.configs.insert(id, values); }
+            } else {
+                if let Some(load) = ref_id(args.get(7).map(String::as_str)).filter(|_| is_activity) { source.referrers.entry(load).or_default().push(id); }
+                if let Some(kind) = kind { source.actions.push((id, kind, args)); }
             }
         }
+        source
+    }
+
+    /// The shape aspect locating `loads` when both schemas hold the action: the
+    /// one aspect of its representation (and `location`, when IFC2X3 names
+    /// one), enough loads, all of one type that the IFC2X3 WR61 admits.
+    fn convertible(&self, kind: &Kind, representation: &str, loads: &[u32], location: Option<u32>) -> Option<u32> {
+        let aspect = match ref_id(Some(representation)).and_then(|r| self.aspects.get(&r)).map(Vec::as_slice) { Some([only]) => *only, _ => return None };
+        if location.is_some_and(|l| l != aspect) || loads.len() < kind.min { return None; }
+        let first = self.loads.get(&loads[0]).filter(|t| kind.first.contains(&t.as_str()))?;
+        loads.iter().all(|l| self.loads.get(l) == Some(first)).then_some(aspect)
+    }
+}
+
+impl StructuralVarying {
+    /// IFC2X3 -> IFC4: one configuration id per convertible varying action, in
+    /// id order (the TypeScript twin's write order), from the writer's allocator.
+    pub(crate) fn scan_ifc2x3(content: &[u8], kept: impl Fn(u32, usize) -> bool, mut allocate: impl FnMut() -> Option<u32>) -> Self {
+        let source = Source::scan(content, kept, true);
+        let mut convertible: Vec<_> = source.actions.iter().filter_map(|(id, kind, args)| {
+            let loads = varying_loads(kind, args)?;
+            source.convertible(kind, &args[6], &loads, Some(ref_id(Some(&args[12]))?))?;
+            Some((*id, *kind, loads))
+        }).collect();
+        convertible.sort_unstable_by_key(|c| c.0);
         let mut result = Self::default();
-        for (id, kind, representation, load) in candidates {
-            let Some(values) = configs.get(&load) else { continue };
-            let aspect = match representation.and_then(|r| aspects.get(&r)).map(Vec::as_slice) { Some([only]) => *only, _ => continue };
-            let Some(first) = loads.get(&values[0]).filter(|t| kind.first.contains(&t.as_str())) else { continue };
-            if values.len() >= kind.min && values.iter().all(|v| loads.get(v) == Some(first)) {
-                result.actions.insert(id, (kind, values.clone(), aspect));
+        for (id, kind, loads) in convertible {
+            let Some(config) = allocate() else { break };
+            result.upgrades.insert(id, (kind, loads, config));
+        }
+        result
+    }
+
+    /// IFC4 -> IFC2X3: the actions that become varying actions and the configurations they consume.
+    pub(crate) fn scan_ifc4(content: &[u8], kept: impl Fn(u32, usize) -> bool) -> Self {
+        let source = Source::scan(content, kept, false);
+        let names_config = |token: &String| {
+            let mut found = Vec::new();
+            crate::step_text::refs_in_line(token.as_bytes(), &mut found);
+            found.iter().any(|r| source.configs.contains_key(r))
+        };
+        let mut result = Self::default();
+        for (id, kind, args) in &source.actions {
+            if args.len() != 12 || args[11].trim().eq_ignore_ascii_case(".CONST.") { continue; }
+            let Some(values) = ref_id(Some(&args[7])).and_then(|c| source.configs.get(&c)) else { continue };
+            // A configuration named outside AppliedLoad would dangle once it is dropped.
+            if args.iter().enumerate().any(|(i, a)| i != 7 && names_config(a)) { continue; }
+            if let Some(aspect) = source.convertible(kind, &args[6], values, None) {
+                result.downgrades.insert(*id, (*kind, values.clone(), aspect));
             }
         }
-        result.consumed = referrers.into_iter()
-            .filter(|(config, by)| configs.contains_key(config) && by.iter().all(|a| result.actions.contains_key(a)))
+        result.consumed = source.referrers.into_iter()
+            .filter(|(config, by)| source.configs.contains_key(config) && by.iter().all(|a| result.downgrades.contains_key(a)))
             .map(|(config, _)| config).collect();
         result
     }
 
     /// The target record body for a varying action of either schema, and what the change loses.
     pub(crate) fn rewrite(&mut self, id: u32, entity: &str, args: &[String]) -> Option<(String, Vec<String>)> {
-        if let Some(&config) = self.config_ids.get(&id) {
-            let kind = KINDS.iter().find(|k| k.ifc2x3 == entity)?;
-            let loads = varying_loads(kind, args)?;
+        if let Some((kind, loads, config)) = self.upgrades.get(&id).filter(|(k, ..)| k.ifc2x3 == entity && args.len() == 14) {
             let values = loads.iter().map(|l| format!("#{l}")).collect::<Vec<_>>().join(",");
             self.pending.push(format!("#{config}=IFCSTRUCTURALLOADCONFIGURATION($,({values}),$);"));
             let mut losses = vec![FROM_IFC2X3.to_string()];
@@ -143,7 +175,7 @@ impl StructuralVarying {
             let body = [&args[..7], &[format!("#{config}"), args[8].clone(), args[9].clone(), args[11].clone(), ".NOTDEFINED.".into()]].concat();
             return Some((format!("{}({})", kind.ifc4, body.join(",")), losses));
         }
-        let (kind, values, aspect) = self.actions.get(&id).filter(|(k, ..)| k.ifc4 == entity && args.len() == 12)?;
+        let (kind, values, aspect) = self.downgrades.get(&id).filter(|(k, ..)| k.ifc4 == entity && args.len() == 12)?;
         let rest = values[1..].iter().map(|v| format!("#{v}")).collect::<Vec<_>>().join(",");
         let tail = [format!("#{}", values[0]), args[8].clone(), args[9].clone(), "$".into(), args[10].clone(), format!("#{aspect}"), format!("({rest})")];
         let mut losses = vec![TO_IFC2X3.to_string()];
@@ -240,6 +272,26 @@ mod tests {
         // A planar load among the values: not a varying linear action, so the configuration stays and has no IFC2X3 form.
         let mixed = source.replace("(#20,#21)", "(#20,#22)");
         assert!(export_step_with_stats(mixed.as_bytes(), &to("IFC2X3")).is_err());
+    }
+
+    #[test]
+    fn converts_only_what_converts_back_9668() {
+        // #13 places #12, not #10, so a downgrade could not find #30's locations again.
+        let source = model("IFC2X3", &format!("{}\n{AREA}", LINE.replace(",#11,(#21));", ",#13,(#21));")));
+        let (out, _) = export_step_with_stats(source.as_bytes(), &to("IFC4")).unwrap();
+        assert!(record(&out, "#30=").starts_with("#30=IFCSTRUCTURALLINEARACTIONVARYING("), "{out}");
+        assert_eq!(configs(&out), ["#32=IFCSTRUCTURALLOADCONFIGURATION($,(#22,#23,#24),$);"]);
+    }
+
+    #[test]
+    fn a_configuration_named_outside_applied_load_is_kept_9668() {
+        // An illegal ObjectPlacement naming the configuration: dropping it would leave #30 dangling.
+        let (ifc4, _) = export_step_with_stats(model("IFC2X3", LINE).as_bytes(), &to("IFC4")).unwrap();
+        assert!(ifc4.contains("'Line',$,$,$,#10,#31,"), "{ifc4}");
+        let ifc4 = ifc4.replace("'Line',$,$,$,#10,#31,", "'Line',$,$,#31,#10,#31,");
+        let result = export_step_with_stats(ifc4.as_bytes(), &to("IFC2X3"));
+        assert!(result.as_ref().map_or(true, |(out, _)| !record(out, "#30=").starts_with("#30=IFCSTRUCTURALLINEARACTIONVARYING(")));
+        assert!(result.is_err(), "the kept configuration has no IFC2X3 form");
     }
 
     #[test]

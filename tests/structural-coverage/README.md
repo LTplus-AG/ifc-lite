@@ -123,7 +123,6 @@ A new in-store builder needs no new probe: add a step to `SCENE` in
 
 [R4 support and load glyphs](baseline/r4-notes.md): 24 render cells measured (4 pass, 10 partial, 10 fail), 321.5/774 cells; rows remain 56/119.
 
-
 R5 adds 74 edit and 74 remove passes to R4, for 469.5/774 cells. R4 render coverage is retained.
 
 [R6 round-3 close](baseline/r6-notes.md): main after #9923 is 92.5/119 rows and 721/774 cells (from 56/119 and 469.5/774 at R5), with every changed cell listed.

@@ -30,6 +30,6 @@ it('clearing all models keeps a model with only georeference edits and drops unc
     assert.equal(after.georefMutations.get('georef'), edit, 'and still there to save');
     assert.equal(after.mutationViews.has('plain'), false, 'an unchanged view is dropped');
   } finally {
-    store.setState(before, true);
+    store.setState({ mutationViews: before.mutationViews, georefMutations: before.georefMutations, dirtyModels: before.dirtyModels });
   }
 });

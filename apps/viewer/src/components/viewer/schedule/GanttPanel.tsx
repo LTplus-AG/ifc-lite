@@ -255,6 +255,7 @@ export function GanttPanel() {
       className="h-full w-full flex flex-col overflow-hidden bg-background outline-none"
       tabIndex={-1}
       onKeyDown={onPanelKeyDown}
+      data-own-history=""
     >
       <input
         ref={importFileInputRef}

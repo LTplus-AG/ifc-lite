@@ -23,6 +23,8 @@ import type { Drawing2DSlice, DrawnSectionPlane, Point2D } from './drawing2DSlic
 import { isFiniteNumber, isPoint2D } from './drawing2DSlice.markupValidation.js';
 import { isDegenerateMeasurement } from './drawing2DDegenerateGuards';
 import { customPlaneCenter } from './section-plane-center';
+import { recordDimensionChange, replayDimensionChange, type Dimension2DCommand } from './drawing2DDimensionHistory';
+export type { Dimension2DCommand } from './drawing2DDimensionHistory';
 
 /** The IFC element a measured point was snapped to. */
 export interface Dimension2DElementRef {
@@ -60,7 +62,10 @@ export interface Dimension2DState {
   dimensions2D: Dimension2D[];
   /** Measured points placed so far for the in-progress dimension (0-2). */
   dimension2DPoints: Point2D[];
+  dimension2DUndo: Dimension2DCommand[];
+  dimension2DRedo: Dimension2DCommand[];
 }
+
 
 /** What the tool supplies when it places the dimension line; the points come from `dimension2DPoints`. */
 export type Dimension2DPlacement = Pick<Dimension2D, 'offset' | 'orientation' | 'text' | 'refs' | 'plane'>;
@@ -74,10 +79,15 @@ export interface Dimension2DActions {
   completeDimension2D: (placement: Dimension2DPlacement) => string | null;
   cancelDimension2D: () => void;
   clearDimensions2D: () => void;
+  /** Revert the newest dimension change; a no-op with nothing to undo. */
+  undoDimension2D: () => void;
+  redoDimension2D: () => void;
+  /** Record a finished drag as one `update`, from the list as it was when the drag began. */
+  commitDimension2DMove: (before: Dimension2D[]) => void;
 }
 
 export function getDefaultDimension2DState(): Dimension2DState {
-  return { dimensions2D: [], dimension2DPoints: [] };
+  return { dimensions2D: [], dimension2DPoints: [], dimension2DUndo: [], dimension2DRedo: [] };
 }
 
 /** The value a dimension measures, in metres: the a→b distance projected onto its orientation. */
@@ -185,22 +195,31 @@ export function createDimension2DActions(
   return {
     addDimension2D: (dimension) => {
       if (!isUsableDimension(dimension)) return;
-      set((state) => ({ dimensions2D: [...state.dimensions2D, dimension] }));
+      set((state) => recordDimensionChange(state, 'add', [...state.dimensions2D, structuredClone(dimension)]));
     },
 
-    updateDimension2D: (id, updates) => set((state) => ({
-      dimensions2D: state.dimensions2D.map((d) => {
+    updateDimension2D: (id, updates) => set((state) => {
+      // Each entry under the id is updated from its own geometry, as before history existed.
+      let changed = false;
+      const after = state.dimensions2D.map((d) => {
         if (d.id !== id) return d;
         const next = { ...d, ...updates };
-        return isUsableDimension(next) ? next : d;
-      }),
-    })),
+        if (!isUsableDimension(next) || JSON.stringify(next) === JSON.stringify(d)) return d;
+        changed = true;
+        return next;
+      });
+      return changed ? recordDimensionChange(state, 'update', after) : {};
+    }),
 
-    removeDimension2D: (id) => set((state) => ({
-      dimensions2D: state.dimensions2D.filter((d) => d.id !== id),
-      selectedAnnotation2D: state.selectedAnnotation2D?.type === 'dimension' && state.selectedAnnotation2D.id === id
-        ? null : state.selectedAnnotation2D,
-    })),
+    removeDimension2D: (id) => set((state) => {
+      const next = state.dimensions2D.filter((d) => d.id !== id);
+      if (next.length === state.dimensions2D.length) return {};
+      return {
+        ...recordDimensionChange(state, 'remove', next),
+        selectedAnnotation2D: state.selectedAnnotation2D?.type === 'dimension' && state.selectedAnnotation2D.id === id
+          ? null : state.selectedAnnotation2D,
+      };
+    }),
 
     addDimension2DPoint: (point) => set((state) => (
       state.dimension2DPoints.length >= 2 || !isPoint2D(point)
@@ -223,17 +242,24 @@ export function createDimension2DActions(
         ...(placement.plane ? { plane: dimensionPlaneStamp(placement.plane) } : {}),
       };
       if (!isUsableDimension(dimension)) return null;
-      set((state) => ({ dimensions2D: [...state.dimensions2D, dimension] }));
+      set((state) => recordDimensionChange(state, 'add', [...state.dimensions2D, structuredClone(dimension)]));
       return dimension.id;
     },
 
     cancelDimension2D: () => set({ dimension2DPoints: [], annotation2DCursorPos: null }),
 
     clearDimensions2D: () => set((state) => ({
-      dimensions2D: [],
+      ...(state.dimensions2D.length > 0 ? recordDimensionChange(state, 'clear', []) : {}),
       dimension2DPoints: [],
       selectedAnnotation2D: state.selectedAnnotation2D?.type === 'dimension' ? null : state.selectedAnnotation2D,
     })),
+
+    undoDimension2D: () => set((state) => replayDimensionChange(state, 'undo')),
+    redoDimension2D: () => set((state) => replayDimensionChange(state, 'redo')),
+
+    commitDimension2DMove: (before) => set((state) => (
+      JSON.stringify(before) === JSON.stringify(state.dimensions2D) ? {}
+        : recordDimensionChange(state, 'update', state.dimensions2D, before))),
   };
 }
 

@@ -37,7 +37,8 @@ import { formatDimensionValue } from '@/lib/drawing2d-markup/dimension-graphics'
 import { drawingViewMapping, type DrawingViewMapping } from '@/lib/drawing2d-markup/drawing-view-mapping';
 import { placementOffset, placementOrientation, previewDimension } from '@/lib/drawing2d-markup/dimension-placement';
 import { hitTestDimensions, insideScreenClip, sheetViewportScreenRect, type DimensionLayoutContext, type DimensionScene } from '@/components/viewer/drawing/drawDimensions2D';
-import { dimensionPlaneStamp, isDimensionOnPlane, type Dimension2DElementRef } from '@/store/slices/drawing2DDimensions';
+import { isTextEditingElement } from '@/lib/keyboard-event';
+import { dimensionPlaneStamp, isDimensionOnPlane, type Dimension2D, type Dimension2DElementRef } from '@/store/slices/drawing2DDimensions';
 import type { DrawnSectionPlane, Point2D } from '@/store/slices/drawing2DSlice';
 
 /** Radius around the cursor in which key points are marked while the tool is active. */
@@ -99,7 +100,9 @@ export function useDimension2D(p: UseDimension2DParams) {
   const [markers, setMarkers] = useState<Point2D[]>([]);
   const [hover, setHover] = useState<DimensionHover | null>(null);
   const refs = useRef<(Dimension2DElementRef | undefined)[]>([]);
-  const dragging = useRef<{ id: string; grab: Point2D } | null>(null);
+  // `live` is the dimension object this drag last wrote; any other object under the id means the
+  // markup was replaced mid-drag (restore, reset), which ends the drag without recording.
+  const dragging = useRef<{ id: string; grab: Point2D; from: Dimension2D[]; model: string | null; live: Dimension2D } | null>(null);
 
   const mapping = useMapping(p);
   const paperScale = p.sheet ? p.sheet.sheet.scale.factor : p.displayScale;
@@ -138,8 +141,49 @@ export function useDimension2D(p: UseDimension2DParams) {
     window.addEventListener('keyup', onKey);
     return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKey); };
   }, [toolActive]);
+  // Ctrl/Cmd+Z undoes, Ctrl/Cmd+Shift+Z and Ctrl+Y redo, only while this tool is active. Capture phase
+  // on window, so the dimension history is replayed instead of the global workspace history (whose
+  // dispatcher also listens on window) and never both. Text fields and panels with their own history
+  // (`data-own-history`: Gantt, IDS Studio) keep their keys, and so does the workspace history whenever
+  // the dimension stack in that direction is empty.
   useEffect(() => {
-    const release = () => { dragging.current = null; };
+    if (!toolActive) return;
+    const onHistoryKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.defaultPrevented) return;
+      const target = e.target;
+      if (isTextEditingElement(target) || (target instanceof Element && target.closest('[data-own-history]'))) return;
+      const key = e.key.toLowerCase();
+      const redo = (key === 'z' && e.shiftKey) || (key === 'y' && !e.shiftKey && e.ctrlKey);
+      if (!redo && !(key === 'z' && !e.shiftKey)) return;
+      // Nothing to replay: leave the key to the workspace history.
+      const state = useViewerStore.getState();
+      if ((redo ? state.dimension2DRedo : state.dimension2DUndo).length === 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (redo) state.redoDimension2D(); else state.undoDimension2D();
+    };
+    window.addEventListener('keydown', onHistoryKey, true);
+    return () => window.removeEventListener('keydown', onHistoryKey, true);
+  }, [toolActive]);
+  // Any model switch ends a drag for good (even A→B→A before the next move), so a drag
+  // never moves or records against markup it did not start on.
+  useEffect(() => useViewerStore.subscribe((s, prev) => {
+    if (s.activeModelId !== prev.activeModelId) dragging.current = null;
+  }), []);
+  useEffect(() => {
+    const release = () => {
+      const drag = dragging.current;
+      dragging.current = null;
+      // The whole drag is one history entry, taken against the list as it is now with only the
+      // dragged dimension back at its start: markup reconciled mid-drag is kept, while a dimension
+      // that is gone or was replaced, or a drag that crossed a model switch, records nothing.
+      const state = useViewerStore.getState();
+      if (drag && state.activeModelId === drag.model && state.dimensions2D.find((d) => d.id === drag.id) === drag.live) {
+        // A move translates every entry under the id, so each goes back to its own start.
+        let k = 0;
+        state.commitDimension2DMove(state.dimensions2D.map((d) => (d.id === drag.id ? (drag.from[k++] ?? d) : d)));
+      }
+    };
     window.addEventListener('mouseup', release);
     return () => window.removeEventListener('mouseup', release);
   }, []);
@@ -213,7 +257,8 @@ export function useDimension2D(p: UseDimension2DParams) {
     if (!hitDim) return false;
     state.setSelectedAnnotation2D({ type: 'dimension', id: hitDim.id });
     const at = mapping.toDrawing(screen);
-    dragging.current = { id: hitDim.id, grab: { x: at.x - hitDim.a.x, y: at.y - hitDim.a.y } };
+    dragging.current = { id: hitDim.id, grab: { x: at.x - hitDim.a.x, y: at.y - hitDim.a.y }, from: state.dimensions2D.filter((d) => d.id === hitDim.id), model: state.activeModelId,
+      live: state.dimensions2D.find((d) => d.id === hitDim.id) ?? hitDim };
     return true;
   }
 
@@ -221,10 +266,14 @@ export function useDimension2D(p: UseDimension2DParams) {
     const screen = screenPoint(e);
     if (!screen) return false;
     const state = useViewerStore.getState();
+    if (dragging.current && state.dimensions2D.find((d) => d.id === dragging.current!.id) !== dragging.current.live) {
+      dragging.current = null;
+    }
     const drag = dragging.current;
     if (drag) {
       const at = mapping.toDrawing(screen);
       state.moveAnnotation2D({ type: 'dimension', id: drag.id }, { x: at.x - drag.grab.x, y: at.y - drag.grab.y });
+      drag.live = useViewerStore.getState().dimensions2D.find((d) => d.id === drag.id) ?? drag.live;
       return true;
     }
     if (state.annotation2DActiveTool === 'dimension') {

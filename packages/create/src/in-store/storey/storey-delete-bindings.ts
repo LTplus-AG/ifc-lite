@@ -6,7 +6,7 @@ import type { StoreyRefusal } from './storey-validation.js';
 import { placementInAncestor } from '../host-geometry-frame.js';
 import type { EditTarget } from '../edit/target.js';
 import { heightRefusal } from '../edit/hosted-opening-refit.js';
-import { attachedKind, attachedTopWorldOrigin, levelTopFaceAbove, readAttachedTop, writeAttachedTop, MIN_ATTACHED_EXTENT, type AttachedKind } from './storey-attached.js';
+import { attachedKind, attachedTopWorldOrigin, levelTopFaceAbove, linearTopRefusal, readAttachedTop, writeAttachedTop, MIN_ATTACHED_EXTENT, type AttachedKind } from './storey-attached.js';
 import { NEXT_STOREY_ABOVE, readTopAttachment, writeTopAttachment } from './storey-attachment.js';
 import { storeyContents, storeyNeighbour, type StoreyInventory } from './storey-model.js';
 import type { StoreyDeleteMode } from './storey-delete.js';
@@ -64,14 +64,15 @@ function bindingTop(target: EditTarget, binding: DeletionBinding): { from: numbe
 
 /** Read-only checks shared with the top writer: vertical extent and hosted opening clearance. */
 export function deletionBindingRefusals(inventory: StoreyInventory, bindings: readonly DeletionBinding[]): StoreyRefusal[] {
-  if (!bindings.some(binding => binding.kind !== 'linear' && binding.targetWorldZ !== null)) return [];
+  if (!bindings.some(binding => binding.targetWorldZ !== null)) return [];
   const target = { dataStore: inventory.store, view: inventory.view, editor: new StoreEditor(inventory.store, inventory.view) };
   return bindings.flatMap(binding => {
-    if (binding.kind === 'linear') return [];
     const top = bindingTop(target, binding);
     if (!top) return [];
     let reason: string | null = null;
-    if (top.to < MIN_ATTACHED_EXTENT) {
+    if (binding.kind === 'linear') {
+      reason = linearTopRefusal(target, binding.elementId, top.from, top.to);
+    } else if (top.to < MIN_ATTACHED_EXTENT) {
       reason = `it would end ${top.to.toFixed(3)} m tall: the next storey after deletion is not above its base`;
     } else if (binding.kind === 'wall' && Math.abs(top.to - top.from) > 1e-9) {
       reason = heightRefusal(target, binding.elementId, top.to / inventory.scale, inventory.scale);

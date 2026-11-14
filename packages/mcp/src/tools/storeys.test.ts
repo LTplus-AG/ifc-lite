@@ -206,20 +206,26 @@ it('#9352 storey_delete rebinds relative elements and get_entity reads the new t
 });
 
 
-it.each([false, true])('#9352 storey_delete reports an impossible pending top without changing the model (opening=%s)', async withOpening => {
+it.each([
+  { kind: 'wall', withOpening: false }, { kind: 'wall', withOpening: true },
+  { kind: 'beam', withOpening: false }, { kind: 'member', withOpening: false },
+] as const)('#9352 storey_delete reports an impossible pending $kind top without changing the model (opening=$withOpening)', async ({ kind, withOpening }) => {
   const { registry, call } = await session();
   const model = registry.get('alpha')!, S = model.bim.store;
   const lower = S.listStoreyLevels('alpha')[0].expressId;
   S.addStorey('alpha', { Name: 'Middle', Elevation: 3 });
   const home = S.addStorey('alpha', { Name: 'Top', Elevation: 6 });
   const z = withOpening ? -6 : 0;
-  const wall = S.addWall('alpha', home.expressId, { Start: [0, 5, z], End: [4, 5, z], Thickness: .2, Height: withOpening ? 4 : 3,
-    TopConstraint: { kind: 'storeyAbove' } });
+  const wall = kind === 'wall'
+    ? S.addWall('alpha', home.expressId, { Start: [0, 5, z], End: [4, 5, z], Thickness: .2, Height: withOpening ? 4 : 3,
+      TopConstraint: { kind: 'storeyAbove' } })
+    : S[kind === 'beam' ? 'addBeam' : 'addMember']('alpha', home.expressId,
+      { Start: [0, 5, -3], End: [0, 5, -1], Width: .3, Height: .3, TopConstraint: { kind: 'storeyAbove' } });
   if (withOpening) S.addHostedDoor('alpha', wall.expressId, { Offset: 1, Width: .9, Height: 3.5 });
   const view = model.backend.getMutationView()!;
   const before = structuredClone(view.getMutations());
   const result = await call('storey_delete', { storey_express_id: home.expressId, mode: 'move', target_storey_express_id: lower });
   expect(result.isError).toBe(true);
-  expect(JSON.stringify(result.content)).toMatch(/top|height|tall/i);
+  expect(JSON.stringify(result.content)).toMatch(/top|height|tall|long/i);
   expect(view.getMutations()).toEqual(before);
 });

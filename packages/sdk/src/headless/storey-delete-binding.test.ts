@@ -32,7 +32,10 @@ it('#9352 SDK deletion readback records the new relative target, including after
 });
 
 
-it.each([false, true])('#9352 SDK deletion preview reports an impossible pending top before and after reopening (opening=%s)', async withOpening => {
+it.each([
+  { kind: 'wall', withOpening: false }, { kind: 'wall', withOpening: true },
+  { kind: 'beam', withOpening: false }, { kind: 'member', withOpening: false },
+] as const)('#9352 SDK deletion preview reports an impossible pending $kind top before and after reopening (opening=$withOpening)', async ({ kind, withOpening }) => {
   const sample = new URL('../../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url);
   const model = await openModel(readFileSync(sample), { modelId: 'm', disableWorkerScan: true });
   try {
@@ -41,8 +44,11 @@ it.each([false, true])('#9352 SDK deletion preview reports an impossible pending
     S.addStorey('m', { Name: 'Middle', Elevation: 3 });
     const home = S.addStorey('m', { Name: 'Top', Elevation: 6 });
     const z = withOpening ? -6 : 0;
-    const wall = S.addWall('m', home.expressId, { Start: [0, 5, z], End: [4, 5, z], Thickness: .2, Height: withOpening ? 4 : 3,
-      TopConstraint: { kind: 'storeyAbove' } });
+    const wall = kind === 'wall'
+      ? S.addWall('m', home.expressId, { Start: [0, 5, z], End: [4, 5, z], Thickness: .2, Height: withOpening ? 4 : 3,
+        TopConstraint: { kind: 'storeyAbove' } })
+      : S[kind === 'beam' ? 'addBeam' : 'addMember']('m', home.expressId,
+        { Start: [0, 5, -3], End: [0, 5, -1], Width: .3, Height: .3, TopConstraint: { kind: 'storeyAbove' } });
     if (withOpening) S.addHostedDoor('m', wall.expressId, { Offset: 1, Width: .9, Height: 3.5 });
     const check = (context: typeof model.bim) => {
       const snapshot = () => ({ levels: context.store.listStoreyLevels('m'), properties: context.properties(wall), quantities: context.quantities(wall) });

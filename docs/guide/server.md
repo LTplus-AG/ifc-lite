@@ -1100,7 +1100,8 @@ import { openProcessedModel } from '@/lib/processed-model';
 openProcessedModel({ sha256, bytes, name }, { serverUrl: '/ifc' });
 ```
 
-The call may come before the viewer mounts; the request waits for it.
+The call may come before the viewer mounts; the request waits for it, and a
+`?processed=` or `?model=` in the page URL is then ignored (each logged once), so the host's model wins.
 `setProcessingServerUrl(url)` sets the server alone. A runtime URL replaces
 `VITE_IFC_SERVER_URL` for every server request, so in a build with
 `VITE_USE_SERVER=true` it also receives the uploads of IFC files opened from

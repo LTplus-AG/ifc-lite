@@ -700,13 +700,13 @@ export class Renderer {
         // Provide a snapshot of pickable point nodes per pick. The
         // sizing must mirror the live splat shader so click hit-testing
         // matches what the user actually sees on screen.
-        this.pickingManager.setPointPickProvider(() => {
+        this.pickingManager.setPointPickProvider((filter) => {
             const pcr = this.pointCloudRenderer;
             if (!pcr || !pcr.hasAssets()) return null;
             const opts = pcr.getOptions();
             const sizeMode = opts.sizeMode === 'fixed-px' ? 0 : opts.sizeMode === 'adaptive-world' ? 1 : 2;
             return {
-                nodes: pcr.getPickNodes(),
+                nodes: pcr.getPickNodes(filter),
                 sizing: {
                     sizeMode: sizeMode as 0 | 1 | 2,
                     worldRadius: opts.worldRadius,
@@ -2893,6 +2893,7 @@ export class Renderer {
             // viewport size to convert pixel sizes into clip-space offsets.
             if (this.pointCloudRenderer && this.pointCloudRenderer.hasAssets()) {
                 this.pointCloudRenderer.draw(pass, {
+                    hiddenIds: options.hiddenIds, isolatedIds: options.isolatedIds,
                     viewProj: relativeToEyeFrame.getViewProjection().m,
                     relativeToEyeFrame,
                     sectionPlane: sectionPlaneData

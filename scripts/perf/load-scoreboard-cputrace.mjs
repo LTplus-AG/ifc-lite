@@ -20,13 +20,21 @@ import { TRACE_CATEGORIES, traceCpuTime } from './trace-cpu-time.mjs';
  */
 export async function startCpuTraceSafe(context, page) {
   const startTimeoutMs = 5000;
-  // Bounded like collection: a CDP that never answers Tracing.start must not hold the sample (review #10138).
-  let timer = null;
-  const started = startCpuTrace(context, page);
+  // Bounded like collection: a CDP that never answers Tracing.start must not hold the sample; the session is kept so it
+  // can be detached (fire and forget) when the start gives up, or when it arrives after that (review #10138).
+  let timer = null, cdp = null, gaveUp = false;
+  const started = (async () => {
+    cdp = await context.newCDPSession(page);
+    if (gaveUp) { cdp.detach().catch(() => {}); throw new Error('late session'); }
+    await cdp.send('Tracing.start', { transferMode: 'ReturnAsStream', traceConfig: { includedCategories: TRACE_CATEGORIES, excludedCategories: ['*'] } });
+    return cdp;
+  })();
   try {
     return { cdp: await Promise.race([started, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`no answer within ${startTimeoutMs} ms`)), startTimeoutMs); })]) };
   } catch (err) {
-    started.then((cdp) => cdp.detach().catch(() => {}), () => {}); // a late session is closed when it arrives
+    gaveUp = true;
+    started.catch(() => {});
+    if (cdp) cdp.detach().catch(() => {});
     return { error: `trace start failed: ${String(err?.message ?? err).slice(0, 200)}` };
   } finally { clearTimeout(timer); }
 }

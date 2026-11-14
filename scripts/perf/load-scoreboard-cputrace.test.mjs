@@ -102,5 +102,5 @@ test('a Tracing.start that is never answered gives up after 5 s and the sample g
   for (let i = 0; i < 3; i++) await Promise.resolve();
   t.mock.timers.tick(5000);
   assert.deepEqual(await pending, { error: 'trace start failed: no answer within 5000 ms' });
-  assert.equal(detached, false); // the session's start never settled, so nothing was handed back to close
+  assert.equal(detached, true); // the session whose start never answered is detached (fire and forget)
 });

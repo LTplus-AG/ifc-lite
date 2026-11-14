@@ -1,0 +1,78 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { readFileSync } from 'node:fs';
+import { expect, it } from 'vitest';
+import { openModel } from '../headless.js';
+
+it('#9352 SDK copy readback keeps a top on its physical target, including after reopen', async () => {
+  const sample = new URL('../../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url);
+  const model = await openModel(readFileSync(sample), { modelId: 'm', disableWorkerScan: true });
+  try {
+    const { bim } = model, S = bim.store;
+    const home = S.listStoreyLevels('m')[0].expressId;
+    const middle = S.addStorey('m', { Name: 'Middle', Elevation: 3 });
+    const upper = S.addStorey('m', { Name: 'Upper', Elevation: 6 });
+    S.setPositionalAttribute(middle, 9, { real: 2.75 });
+    const wall = S.addWall('m', home, { Start: [0, 5, 0], End: [4, 5, 0], Thickness: .2, Height: 6,
+      TopConstraint: { kind: 'storey', storeyId: upper.expressId } });
+    const [copy] = S.copyElements('m', [wall.expressId], [{ targetStoreyId: middle.expressId, offset: [0, 2, .5] }]);
+    const check = (context: typeof bim) => {
+      expect(context.properties(copy).find(p => p.name === 'IfcLite_StoreyAttachment')?.properties.find(p => p.name === 'TopConstraint')?.value).toBe(bim.entity(upper)!.globalId);
+      const height = (ref: typeof wall) => context.quantities(ref).find(q => q.name === 'Qto_WallBaseQuantities')?.quantities.find(q => q.name === 'Height')?.value;
+      expect(height(copy)).toBeCloseTo(2.5, 8);
+      expect(height(wall)).toBeCloseTo(6, 8);
+    };
+    check(bim);
+    const bytes = bim.export.ifc();
+    const reopened = await openModel(typeof bytes === 'string' ? new TextEncoder().encode(bytes) : bytes, { modelId: 'm', disableWorkerScan: true });
+    try { check(reopened.bim); } finally { reopened.close(); }
+  } finally { model.close(); }
+});
+
+it.each(['constraint', 'insert', 'relevel'] as const)('#9352 SDK %s refits wall quantities once and keeps them after reopen', async operation => {
+  const sample = new URL('../../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url);
+  const model = await openModel(readFileSync(sample), { modelId: 'm', disableWorkerScan: true });
+  try {
+    const { bim } = model, S = bim.store;
+    const home = S.listStoreyLevels('m')[0].expressId;
+    const above = operation === 'insert' ? null : S.addStorey('m', { Name: 'Above', Elevation: 6 });
+    const wall = S.addWall('m', home, { Start: [0, 20, 0], End: [4, 20, 0], Thickness: .2, Height: operation === 'constraint' ? 3 : 6,
+      TopConstraint: operation === 'constraint' ? { kind: 'fixed' } : { kind: 'storeyAbove' } });
+    if (operation === 'constraint') S.setTopConstraint(wall, { kind: 'storey', storeyId: above!.expressId });
+    else if (operation === 'insert') S.addStorey('m', { Name: 'First above', Elevation: 3 });
+    else S.editStorey('m', { kind: 'floorHeight', storeyId: home, Height: 3 });
+    const expected = operation === 'constraint' ? 6 : 3;
+    const check = (context: typeof bim) => {
+      const quantities = context.quantities(wall).find(q => q.name === 'Qto_WallBaseQuantities')!.quantities;
+      expect(quantities.find(q => q.name === 'Height')?.value).toBeCloseTo(expected, 8);
+      expect(quantities.find(q => q.name === 'GrossVolume')?.value).toBeCloseTo(4 * .2 * expected, 8);
+    };
+    check(bim);
+    const bytes = bim.export.ifc();
+    const reopened = await openModel(typeof bytes === 'string' ? new TextEncoder().encode(bytes) : bytes, { modelId: 'm', disableWorkerScan: true });
+    try { check(reopened.bim); } finally { reopened.close(); }
+  } finally { model.close(); }
+});
+
+it.each([false, true])('#9352 SDK roof quantity readback respects the final cut (pitched=%s)', async pitched => {
+  const sample = new URL('../../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url);
+  const model = await openModel(readFileSync(sample), { modelId: 'm', disableWorkerScan: true });
+  try {
+    const { bim } = model, S = bim.store;
+    const home = S.listStoreyLevels('m')[0].expressId;
+    const roof = S.addRoof('m', home, { Position: [0, 20, 4], Width: 10, Depth: 8, Thickness: .25,
+      ...(pitched ? { EdgeSlopes: [Math.PI / 6, 0, Math.PI / 6, 0], Overhang: .5 } : {}) });
+    const wall = S.addWall('m', home, { Start: [5, 20, 0], End: [5, 28, 0], Thickness: .2, Height: 3, TopConstraint: { kind: 'fixed' } });
+    S.setTopConstraint(wall, { kind: 'roof', roofId: roof.expressId });
+    const check = (context: typeof bim) => {
+      const quantities = context.quantities(wall).find(set => set.name === 'Qto_WallBaseQuantities')!.quantities;
+      if (pitched) expect(quantities.some(q => ['Height', 'GrossVolume', 'NetVolume'].includes(q.name))).toBe(false);
+      else expect(quantities.find(q => q.name === 'Height')?.value).toBeCloseTo(4, 8);
+    };
+    check(bim);
+    const bytes = bim.export.ifc();
+    const reopened = await openModel(typeof bytes === 'string' ? new TextEncoder().encode(bytes) : bytes, { modelId: 'm', disableWorkerScan: true });
+    try { check(reopened.bim); } finally { reopened.close(); }
+  } finally { model.close(); }
+});

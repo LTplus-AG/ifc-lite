@@ -77,7 +77,12 @@ export function afterSceneSettled(done: (settled: boolean) => void, isCurrent: (
       // A load that starts while the frame is awaited makes that frame (or its
       // backstop) no proof that the next scene was drawn: wait for it again.
       const cancelFrame = afterSettledFrame(drawn);
-      const unsubscribe = useViewerStore.subscribe((state) => { if (!isSceneSettled(state)) { cancelWait(); check(); } });
+      // Any store publication also re-asks `isCurrent`: a superseded caller ends
+      // at once instead of at the frame wait's backstop.
+      const unsubscribe = useViewerStore.subscribe((state) => {
+        if (!isCurrent()) finish(false);
+        else if (!isSceneSettled(state)) { cancelWait(); check(); }
+      });
       cancelWait = () => { cancelFrame(); unsubscribe(); };
       return;
     }

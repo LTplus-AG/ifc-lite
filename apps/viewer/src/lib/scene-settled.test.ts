@@ -163,3 +163,16 @@ it('a load that starts and ends while the frame is awaited is waited for again: 
   assert.deepEqual(calls, [true]);
   cancel();
 });
+
+it('a caller superseded during the frame wait ends at the next store publication, not at the backstop', async () => {
+  installRenderer();
+  draw.pending = true;
+  let current = true;
+  const calls: boolean[] = [];
+  const cancel = afterSceneSettled((settled) => calls.push(settled), () => current, Infinity);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  current = false; // e.g. the active model changed
+  useViewerStore.setState({ error: null }); // any publication
+  assert.deepEqual(calls, [false], 'superseded: reported at once');
+  cancel();
+});

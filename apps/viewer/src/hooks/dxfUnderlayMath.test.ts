@@ -76,6 +76,14 @@ describe('dxfUnderlayToDrawing', () => {
     },
   });
 
+  it('maps the aligned/fit span along the mapped baseline', () => {
+    const e = entry({ scale: 1 });
+    e.underlay.layers[0].texts = [{ position: { x: 0, y: 0 }, text: 'Fit', height: 1, dirX: 1, dirY: 0,
+      align: 'left', valign: 'baseline', fitWidth: 1 }];
+    const data = dxfUnderlayToDrawing(e, { x: 0, y: 0 }, false, undefined, false, (p) => ({ x: 2 * p.x, y: p.y }));
+    close(data.texts[0].fitWidth!, 2);
+  });
+
   it('subtracts the render shift and flips world Y to drawing Y', () => {
     const data = dxfUnderlayToDrawing(entry(), { x: 100, y: 200 }, false);
     const [a, b] = data.lines[0].points;

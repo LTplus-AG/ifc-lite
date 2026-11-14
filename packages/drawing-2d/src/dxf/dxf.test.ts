@@ -561,6 +561,15 @@ describe('consolidated additions (SPLINE, SOLID, lineweight, valign, unit heuris
     // An X-only scale stretches along the baseline and leaves the glyph height alone.
     const unscaled = layerByName(importDxf(block(1, 1)), 't').texts[0];
     expect(stretched.height).toBeCloseTo(unscaled.height, 9);
+    // Plain TEXT in the same INSERT is widened by the X stretch.
+    const plain = pairsToText(
+      [0, 'SECTION'], [2, 'BLOCKS'], [0, 'BLOCK'], [2, 'w'], [10, 0], [20, 0],
+      [0, 'TEXT'], [8, 'p'], [10, 0], [20, 0], [40, 1], [1, 'ab'], [41, 0.5],
+      [0, 'ENDBLK'], [0, 'ENDSEC'],
+    ) + entitiesSection([0, 'INSERT'], [8, 'p'], [2, 'w'], [10, 0], [20, 0], [41, 2], [42, 1]);
+    const widened = layerByName(importDxf(plain), 'p').texts[0];
+    expect(widened.widthScale).toBeCloseTo(1, 9);
+    expect(widened.height).toBeCloseTo(1, 9);
   });
 
   it('counts the fit end point in the extent and unit heuristic', () => {

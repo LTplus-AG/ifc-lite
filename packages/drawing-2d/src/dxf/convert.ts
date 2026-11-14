@@ -376,7 +376,7 @@ function emitEntities(entities: DxfEntity[], ctx: RenderCtx, state: ConvertState
           dirY,
           align: entity.hAlign,
           valign: entity.vAlign,
-          lineSpacingFactor: entity.lineSpacingFactor, widthScale: entity.widthScale, fitWidth: entity.fitWidth && entity.fitWidth * len, fitUniform: entity.fitUniform && keepsAspect, // non-uniform INSERT: fit horizontally; world length of the baseline span (exact under non-uniform scale)
+          lineSpacingFactor: entity.lineSpacingFactor, widthScale: keepsAspect || scaleEstimate <= 0 ? entity.widthScale : (entity.widthScale ?? 1) * (len / state.unitScale) ** 2 / scaleEstimate ** 2, fitWidth: entity.fitWidth && entity.fitWidth * len, fitUniform: entity.fitUniform && keepsAspect, // non-uniform INSERT: fit horizontally; world length of the baseline span (exact under non-uniform scale)
           color: colorOverride,
         };
         bucket.texts.push(text);

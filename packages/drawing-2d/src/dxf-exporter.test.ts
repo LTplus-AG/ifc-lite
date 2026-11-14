@@ -205,6 +205,16 @@ describe('DXFExporter', () => {
       underlays: [{ underlay: aligned, placement: { offsetX: 0, offsetY: 0, rotationDeg: 0, scale: 1 } }],
     })).entities.filter((e): e is DxfTextEntity => e.kind === 'text');
     expect(tall[0].height).toBeCloseTo(2, 6);
+    // Plain text through a stretching transform is widened (group 41) by the stretch.
+    const plain = underlay();
+    plain.layers[0].texts = [
+      { position: { x: 1, y: 2 }, text: 'W', height: 1, dirX: 1, dirY: 0, align: 'left', valign: 'baseline', widthScale: 0.25 },
+    ];
+    const [wide] = parseDxf(exportToDXF(emptyDrawing(), {
+      coordinateTransform: (p) => ({ x: 2 * p.x, y: p.y }),
+      underlays: [{ underlay: plain, placement: { offsetX: 0, offsetY: 0, rotationDeg: 0, scale: 1 } }],
+    })).entities.filter((e): e is DxfTextEntity => e.kind === 'text');
+    expect(wide.widthScale).toBeCloseTo(0.5, 6);
   });
 
   it('re-emits aligned/fit text as Fit (72=5) so CAD spans the exact fitWidth', () => {

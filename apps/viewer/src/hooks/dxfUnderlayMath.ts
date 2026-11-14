@@ -265,7 +265,8 @@ export function dxfUnderlayToDrawing(
         align: text.align,
         valign: text.valign,
         lineSpacingFactor: text.lineSpacingFactor,
-        widthScale: text.widthScale,
+        // A stretched axis widens glyphs by the baseline scale over the glyph-height scale.
+        widthScale: keepsAspect || area <= 0 ? text.widthScale : (text.widthScale ?? 1) * along * along / area,
         // The span follows the same mapped baseline as dirX/dirY (exact under any linear map).
         fitWidth: text.fitWidth === undefined ? undefined
           : text.fitWidth * Math.hypot(tip.x - anchor.x, tip.y - anchor.y) / (Math.hypot(text.dirX, text.dirY) || 1),

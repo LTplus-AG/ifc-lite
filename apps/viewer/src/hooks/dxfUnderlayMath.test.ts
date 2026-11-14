@@ -84,6 +84,15 @@ describe('dxfUnderlayToDrawing', () => {
     close(data.texts[0].fitWidth!, 2);
   });
 
+  it('widens plain text by the stretch of a non-uniform point map', () => {
+    const e = entry({ scale: 1 });
+    e.underlay.layers[0].texts = [{ position: { x: 0, y: 0 }, text: 'W', height: 1, dirX: 1, dirY: 0,
+      align: 'left', valign: 'baseline', widthScale: 0.5 }];
+    const out = dxfUnderlayToDrawing(e, { x: 0, y: 0 }, false, undefined, false, (p) => ({ x: 2 * p.x, y: p.y }));
+    close(out.texts[0].widthScale!, 1);
+    close(out.texts[0].height, 1);
+  });
+
   it('fits aligned text horizontally and keeps its height under a non-uniform point map', () => {
     const e = entry({ scale: 1 });
     e.underlay.layers[0].texts = [{ position: { x: 0, y: 0 }, text: 'Al', height: 1, dirX: 1, dirY: 0,

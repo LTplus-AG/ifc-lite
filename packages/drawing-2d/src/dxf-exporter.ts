@@ -348,7 +348,8 @@ export class DXFExporter {
             keepsAspect ? height : text.height * area / along, // stretched axis: mapped glyph height
             layer,
             { rotationDeg: angle, hAlign: text.align, vAlign: text.valign, colorOverride: text.color,
-              widthScale: text.widthScale, fitTo, fitUniform: text.fitUniform && keepsAspect },
+              widthScale: keepsAspect || area <= 0 ? text.widthScale : (text.widthScale ?? 1) * along * along / area,
+              fitTo, fitUniform: text.fitUniform && keepsAspect },
           );
         }
       }

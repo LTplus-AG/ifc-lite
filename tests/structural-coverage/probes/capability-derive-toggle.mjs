@@ -69,15 +69,17 @@ function referenceGeometry(step, { mergeSupports = false } = {}) {
   // its incident authored members, even when the file omits direct node links.
   const memberRelations = [...step.of('IFCRELCONNECTSSTRUCTURALMEMBER'), ...step.of('IFCRELCONNECTSWITHECCENTRICITY')];
   const relationsByNode = new Map();
+  const nodesById = new Map(nodes.map((node) => [node.id,node]));
   for (const relation of memberRelations) {
     const nodeId = relation.args[5]?.ref;
+    const node = nodesById.get(nodeId);
+    if (node) node.memberConnected = true;
     if (!relationsByNode.has(nodeId)) relationsByNode.set(nodeId, []);
     relationsByNode.get(nodeId).push(relation);
   }
   for (const node of nodes) {
     const physical = new Set(links.get(node.id) ?? []);
     const incident = relationsByNode.get(node.id) ?? [];
-    node.memberConnected = incident.length > 0;
     for (const r of incident) {
       for (const id of links.get(r.args[4]?.ref) ?? []) physical.add(id);
     }

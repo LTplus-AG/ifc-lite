@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "packages/geometry/src/flat-batch-pack.ts",
+  "mutation": "tests/evidence/10175-packed-flat-batch/behaviour.oracle.patch",
+  "test": "packages/geometry/src/flat-batch-pack.test.ts",
+  "why": "Reverse application keeps both exports the witness imports but drops the rebuilt appearance fence on the index view and keeps every packed mesh's own buffers on the transfer list, so delivered meshes lose their appearanceSource and the copied buffers are still detached from the worker."
+}

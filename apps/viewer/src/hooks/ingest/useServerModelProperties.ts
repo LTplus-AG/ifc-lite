@@ -8,7 +8,7 @@ import { isAbortError } from '@/lib/runs/abort';
 import { createRunSlot, IDLE_RUN } from '@/lib/runs/run-slot';
 import type { ServerPropertiesOwner, ServerPropertiesRun } from '@/store/slices/serverPropertiesSlice';
 import { watchLoadSupersession } from '../modelLoadCanceller.js';
-import { federationRegistry } from '@ifc-lite/renderer';
+import { federationRegistry, ModelRangeExtensionRefusedError } from '@ifc-lite/renderer';
 import { withDeferredOverlayCapacity } from '@/store/overlay-capacity';
 import { getMaxExpressId } from './viewerModelIngest.js';
 
@@ -37,8 +37,8 @@ function extendModelIdRange(modelId: string, dataStore: IfcDataStore): { maxExpr
   // Source-derived allocator floors do not mean any authored IDs exist.
   // Refusal leaves both the existing source and authored overlay untouched.
   const view = useViewerStore.getState().mutationViews.get(modelId);
-  const created = view?.getCreatedExpressIdBounds(maxExpressId);
-  const published = federationRegistry.extendModel(modelId, maxExpressId, created?.highest ?? 0, created?.lowest ?? 0);
+  const created = view?.getCreatedExpressIdBounds();
+  const published = federationRegistry.extendModel(modelId, maxExpressId, created?.lowest ?? 0);
   if (published < maxExpressId) console.warn(`[Server properties] Ids ${published + 1}..${maxExpressId} of model ${modelId} lie past the ids a later model owns; those entities cannot be selected or resolved, and the model cannot be edited`);
   return { maxExpressId: published };
 
@@ -54,12 +54,13 @@ function start(modelId: string | null, isStale: (() => boolean) | undefined,
   }
   const previousRun = state.serverPropertiesRuns.get(modelId) ?? IDLE_RUN;
   const owner: ServerPropertiesOwner = { model, isStale };
+  let expectedStore = owner.model.ifcDataStore;
   const ownsModel = () => {
     const current = useViewerStore.getState().models.get(modelId);
     // The finalizer preserves these identities. Another properties/source writer
     // means replacement: its store must not be overwritten by this older poll.
     return !owner.isStale?.() && current !== undefined && current.loadState !== 'error' &&
-      current.sourceFile === owner.model.sourceFile && current.ifcDataStore === owner.model.ifcDataStore;
+      current.sourceFile === owner.model.sourceFile && current.ifcDataStore === expectedStore;
   };
   const write = (run: ServerPropertiesRun) => useViewerStore.getState().setServerPropertiesRun(modelId, run);
   const slot = createRunSlot<void, never, ServerPropertiesOwner, string>({
@@ -84,6 +85,7 @@ function start(modelId: string | null, isStale: (() => boolean) | undefined,
     },
   }, { begin: () => ({ kind: 'load', title: 'activityTray.job.load', phase: 'Server properties (geometry remains available)' }) });
   void slot.run(owner, async lease => {
+    let ownershipMayHaveChanged = false;
     try {
       const dataStore = await hydrate(lease.signal);
       if (!dataStore) return;
@@ -95,13 +97,18 @@ function start(modelId: string | null, isStale: (() => boolean) | undefined,
       withDeferredOverlayCapacity(() => {
         if (!lease.isCurrent() || !ownsModel()) return;
         let idRange: { maxExpressId: number };
+        ownershipMayHaveChanged = true;
         try { idRange = extendModelIdRange(modelId, dataStore); }
         catch (error) {
-          throw new Error(`Server properties re-hydration refused: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+          if (!(error instanceof ModelRangeExtensionRefusedError)) throw error;
+          ownershipMayHaveChanged = false;
+          const phase = owner.model.ifcDataStore ? 're-hydration' : 'hydration';
+          throw new Error(`Server properties ${phase} refused: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
         }
         // Ownership is permanent even if extension/warning supersedes the lease.
         // Commit the hydrated store only if settlement still owns this model.
-        const accepted = lease.succeed();
+        const accepted = lease.isCurrent() && ownsModel();
+        if (accepted) expectedStore = dataStore;
         useViewerStore.getState().updateModel(modelId, accepted
           ? { ifcDataStore: dataStore, ...idRange }
           : idRange);
@@ -109,8 +116,11 @@ function start(modelId: string | null, isStale: (() => boolean) | undefined,
           console.warn(`[Server properties] Model ${modelId}: no id is left for edits in its safe range`);
         }
       });
+      // Settlement follows deferred refreshers too: any post-extension error
+      // must fail this run, rather than restore permission against stale data.
+      lease.succeed();
     } catch (error) {
-      if (!owner.model.ifcDataStore || isAbortError(error)) throw error;
+      if (ownershipMayHaveChanged || !owner.model.ifcDataStore || isAbortError(error)) throw error;
       console.warn('[Server properties] Refresh failed; previous properties remain available', error);
       // A running record cannot be restored: that older lease has been superseded.
       // Idle preserves loaded-store permission without forging a successful run.

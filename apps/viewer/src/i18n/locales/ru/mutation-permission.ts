@@ -12,4 +12,5 @@ export const mutationPermissionRu = {
   "mutationPermission.propertiesLoading": "Свойства модели ещё загружаются",
   "mutationPermission.propertiesFailed": "Не удалось загрузить свойства модели, поэтому её нельзя редактировать",
   "mutationPermission.idSpaceExhausted": "Для редактирования этой модели в текущем сеансе недостаточно безопасных идентификаторов сущностей",
+  "mutationPermission.retainedIdConflict": "Сохранённые изменения пересекаются с исходными идентификаторами модели. Отмените их перед редактированием",
 } satisfies Catalogue;

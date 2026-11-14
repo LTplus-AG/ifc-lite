@@ -8,9 +8,13 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { useViewerStore } from '@/store';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import { federationRegistry } from '@ifc-lite/renderer';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { discardUnchangedMutationViews } from '@/utils/model-mutation-view';
+import { LandXmlProvisionalTransaction } from './ingest/landXmlProvisionalTransaction.js';
+import { registerOverlayCapacity } from '@/store/overlay-capacity';
+import { createStore } from 'zustand/vanilla';
 import { dataMutationPermission } from '@/store/mutation-permission';
 import { fromGlobalIdFromModels } from '@/store/globalId';
 import { useServerModelProperties } from './ingest/useServerModelProperties.js';
@@ -748,23 +752,87 @@ it('batched view clear notifies once and preserves unrelated pending work (#1013
   kept.clear();
 });
 
-for (const sourceMax of [990, 2000]) it(`local reload with source max ${sourceMax} handles retained creations at registration (#10139)`, () => {
+for (const provisional of [false, true]) for (const sourceMax of [990, 1003, 2000]) it(`${provisional ? 'LandXML' : 'local'} reload with source max ${sourceMax} preserves loadability with retained creations (#10139)`, () => {
   try {
     const state = useViewerStore.getState();
     state.updateModel('server', { idOffset: state.registerModelOffset('server', 1000), maxExpressId: 1000, ifcDataStore: serverStoreAt(1000) });
     const view = getOrCreateMutationView(useViewerStore, 'server')!;
     for (let id = 1001; id <= 1005; id++) assert.equal(view.createEntity('IfcMaterial', ['Retained']).expressId, id);
     state.clearAllModels();
-    if (sourceMax === 2000) {
-      assert.throws(() => useViewerStore.getState().registerModelOffset('server', sourceMax), /unpublished overlay IDs/);
-      assert.equal(federationRegistry.hasModel('server'), false, 'refusal must precede registration');
+    if (provisional) {
+      const transaction = new LandXmlProvisionalTransaction('server', sourceMax, {
+        originShift: { x: 0, y: 0, z: 0 }, hasLargeCoordinates: false,
+      }, federationRegistry, { publish: () => {}, remove: () => {} });
+      for (let expressId = 1; expressId <= sourceMax; expressId++) transaction.skip({ expressId });
+      transaction.commit();
+    }
+    const idOffset = useViewerStore.getState().registerModelOffset('server', sourceMax);
+    const source = serverStoreAt(sourceMax);
+    useViewerStore.getState().addModel({ ...fixtureModel('server'), idOffset, maxExpressId: sourceMax, ifcDataStore: source });
+    assert.equal(useViewerStore.getState().models.get('server')!.ifcDataStore, source);
+    if (sourceMax >= 1001) {
+      assert.deepEqual(dataMutationPermission(useViewerStore.getState(), 'server'), { allowed: false, reason: 'retained-id-conflict' });
+      assert.equal(federationRegistry.getGlobalIdRange('server')!.end, idOffset + sourceMax, 'only source ownership is published');
+      if (sourceMax < 1005) assert.throws(() => useViewerStore.getState().toGlobalId('server', 1005));
+      useViewerStore.getState().clearMutationView('server');
+      assert.deepEqual(dataMutationPermission(useViewerStore.getState(), 'server'), { allowed: true });
     } else {
-      const idOffset = useViewerStore.getState().registerModelOffset('server', sourceMax);
-      useViewerStore.getState().addModel({ ...fixtureModel('server'), idOffset, maxExpressId: sourceMax, ifcDataStore: serverStoreAt(sourceMax) });
       for (let id = 1001; id <= 1005; id++) assert.equal(useViewerStore.getState().toGlobalId('server', id), idOffset + id);
       assert.deepEqual(dataMutationPermission(useViewerStore.getState(), 'server'), { allowed: true });
     }
   } finally { useViewerStore.getState().mutationViews.get('server')?.clear(); federationRegistry.clear(); }
+});
+
+it('first hydration refusal is labelled hydration, not re-hydration (#10139)', async () => {
+  try {
+  federationRegistry.registerModel('server', 100);
+  useViewerStore.getState().updateModel('server', { maxExpressId: 100 });
+  const retained = new MutablePropertyView(null, 'server');
+  retained.setExpressIdWatermark(100);
+  retained.createEntity('IfcMaterial', ['Retained']);
+  useViewerStore.setState({ mutationViews: new Map([['server', retained]]) });
+  await act(async () => {
+    useServerModelProperties().start('server', undefined, async () => serverStoreAt(150));
+    await new Promise(resolve => setTimeout(resolve, 30));
+  });
+  const run = useViewerStore.getState().serverPropertiesRuns.get('server');
+  assert.equal(run?.kind, 'failed');
+  assert.match(run?.kind === 'failed' ? run.error : '', /^Server properties hydration refused:/);
+  } finally { useViewerStore.getState().clearMutationView('server'); federationRegistry.clear(); }
+});
+
+for (const failure of ['update', 'refresher', 'listener'] as const) it(`a throwing ${failure} after ownership growth cannot restore the previous editable run (#10139)`, async () => {
+  federationRegistry.registerModel('server', 100, failure === 'listener' ? 501 : 0);
+  useViewerStore.getState().updateModel('server', { maxExpressId: 100, ifcDataStore: result() });
+  useViewerStore.getState().setServerPropertiesRun('server', { kind: 'succeeded', runId: 42, result: undefined });
+  const originalUpdate = useViewerStore.getState().updateModel;
+  if (failure === 'update') useViewerStore.setState({ updateModel: () => { throw new Error('Update failed'); } });
+  else if (failure === 'listener') {
+    const stop = federationRegistry.subscribe(() => { stop(); throw new Error('Range listener failed'); });
+  } else {
+    // A separately registered capacity observer throws in the deferred finally.
+    // Its model has no source swap, so hydration still owns the main model.
+    const view = new MutablePropertyView(null, 'server');
+    const observer = createStore(() => ({ ...useViewerStore.getState(), mutationViews: new Map([['server', view]]) }));
+    registerOverlayCapacity(observer);
+    const configure = view.configureExpressIdAllocator.bind(view);
+    let thrown = false;
+    mock.method(view, 'configureExpressIdAllocator', (...args: Parameters<typeof configure>) => {
+      if (!thrown) { thrown = true; throw new Error('Refresher failed'); }
+      configure(...args);
+    });
+  }
+  try {
+    await act(async () => {
+      useServerModelProperties().start('server', undefined, async () => serverStoreAt(500));
+      await new Promise(resolve => setTimeout(resolve, 30));
+    });
+  } finally { useViewerStore.setState({ updateModel: originalUpdate }); }
+  const model = useViewerStore.getState().models.get('server')!;
+  const run = useViewerStore.getState().serverPropertiesRuns.get('server');
+  assert.equal(run?.kind, 'failed', 'a post-extension error must not restore success');
+  assert.deepEqual(dataMutationPermission(useViewerStore.getState(), 'server'), { allowed: false, reason: 'properties-failed' });
+  assert.equal(federationRegistry.getGlobalIdRange('server')!.end - model.idOffset, 500, 'the failure follows actual ownership growth');
 });
 
 it('clamped hydration loads properties while retained creations stay unpublishable (#10139)', async () => {

@@ -10,4 +10,5 @@ export const mutationPermissionEn = {
   'mutationPermission.propertiesLoading': 'The model\'s properties are still loading',
   'mutationPermission.propertiesFailed': 'The model\'s properties could not be loaded, so it cannot be edited',
   'mutationPermission.idSpaceExhausted': 'This model does not have enough safe entity IDs for edits in this session',
+  "mutationPermission.retainedIdConflict": "Retained edits overlap this model’s source IDs. Discard the retained edits before editing",
 } as const;

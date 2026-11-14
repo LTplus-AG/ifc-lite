@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { retainedCreationEnd } from './retained-creation-range.js';
+import { retainedCreationEnd, ModelRangeExtensionRefusedError } from './retained-creation-range.js';
+export { ModelRangeExtensionRefusedError } from './retained-creation-range.js';
 import { OverlayIdSpaceExhaustedError } from './overlay-id-space-exhausted-error.js';
 
 export interface ModelRange {
@@ -17,8 +18,8 @@ export interface ModelRange {
 interface RegisteredRange extends ModelRange {
   /** Last local ID of the overlay headroom; the next model starts right after it. */
   overlayMaxExpressId: number;
-  /** Ownership reserved as unused IDs, distinct from published creations. */
-  reservedGapEnd: number;
+  /** Source ownership plus any unused gap before retained creations. */
+  ownedEnd: number;
 }
 
 export interface GlobalIdLookup {
@@ -68,23 +69,28 @@ export class FederationRegistry {
    * @returns The offset to add to all expressIds for this model
    */
   registerModel(modelId: string, maxExpressId: number, firstRetainedExpressId = 0): number {
+    const retained = firstRetainedExpressId > 0 && firstRetainedExpressId <= maxExpressId ? 0 : firstRetainedExpressId;
     const existing = this.modelRanges.get(modelId);
-    if (existing) return existing.offset;
-    const gapEnd = retainedCreationEnd(maxExpressId, maxExpressId,
-      Math.min(maxExpressId + OVERLAY_ID_HEADROOM, MAX_SAFE_OFFSET - this.nextOffset), firstRetainedExpressId);
-    const offset = this.reserveModel(modelId, maxExpressId);
-    this.modelRanges.get(modelId)!.reservedGapEnd = gapEnd;
-    this.publishRange(modelId, 0, maxExpressId);
-    return offset;
+    if (existing) {
+      // Progressive loaders already reserved and published the source. Finalize
+      // retained ownership through the same check as a fresh registration.
+      if (firstRetainedExpressId > 0) this.extendModel(modelId, maxExpressId, retained);
+      return existing.offset;
+    }
+    return this.createRange(modelId, maxExpressId, retained, true);
   }
 
   /** Reserve a fixed local-ID envelope before progressive publication. */
   reserveModel(modelId: string, reservedMaxExpressId: number): number {
+    return this.createRange(modelId, reservedMaxExpressId, 0, false);
+  }
+
+  private createRange(modelId: string, reservedMaxExpressId: number, firstRetainedExpressId: number, publish: boolean): number {
     // Validate inputs
     if (!modelId || typeof modelId !== 'string') {
       throw new Error(`[FederationRegistry] Invalid modelId: ${modelId}`);
     }
-    if (typeof reservedMaxExpressId !== 'number' || !Number.isFinite(reservedMaxExpressId) || reservedMaxExpressId < 0) {
+    if (!Number.isSafeInteger(reservedMaxExpressId) || reservedMaxExpressId < 0) {
       throw new Error(`[FederationRegistry] Invalid reservedMaxExpressId: ${reservedMaxExpressId} for model ${modelId}`);
     }
 
@@ -106,7 +112,13 @@ export class FederationRegistry {
 
     const offset = this.nextOffset;
     const overlayMaxExpressId = reservedMaxExpressId + OVERLAY_ID_HEADROOM;
-    const range: RegisteredRange = { modelId, offset, maxExpressId: -1, reservedMaxExpressId, overlayMaxExpressId, reservedGapEnd: 0, publishedStart: null };
+    // A conflicting retained overlay must not prevent source/geometry loading.
+    // The viewer keeps those edits quarantined until the user discards them.
+    const ownedEnd = retainedCreationEnd(reservedMaxExpressId, reservedMaxExpressId,
+      Math.min(overlayMaxExpressId, MAX_SAFE_OFFSET - offset),
+      firstRetainedExpressId);
+    const range: RegisteredRange = { modelId, offset, maxExpressId: publish ? ownedEnd : -1,
+      reservedMaxExpressId, overlayMaxExpressId, ownedEnd, publishedStart: publish ? 0 : null };
 
     this.modelRanges.set(modelId, range);
     this.sortedRanges.push(range);
@@ -125,27 +137,25 @@ export class FederationRegistry {
   /** Grow source ownership without moving its offset. Retained creations may
    * reserve an unused gap, but cannot overlap source IDs. Capacity clamps the
    * source and gap without refusing hydration. Published overlays still refuse. */
-  extendModel(modelId: string, maxExpressId: number, allocatedMaxExpressId = 0, firstRetainedExpressId = 0): number {
+  extendModel(modelId: string, maxExpressId: number, firstRetainedExpressId = 0): number {
     const range = this.modelRanges.get(modelId);
-    if (!range) throw new Error(`[FederationRegistry] Cannot extend unknown model ${modelId}`);
+    if (!range) throw new ModelRangeExtensionRefusedError(`[FederationRegistry] Cannot extend unknown model ${modelId}`);
     if (!Number.isInteger(maxExpressId) || maxExpressId < 0) {
-      throw new Error(`[FederationRegistry] Invalid maxExpressId: ${maxExpressId} for model ${modelId}`);
+      throw new ModelRangeExtensionRefusedError(`[FederationRegistry] Invalid maxExpressId: ${maxExpressId} for model ${modelId}`);
     }
-    if (range.publishedStart === null || range.maxExpressId !== Math.max(range.reservedMaxExpressId, range.reservedGapEnd)) {
-      throw new Error(`[FederationRegistry] Cannot extend ${modelId}: its range is partly published or already carries overlay IDs`);
-    }
-    if (allocatedMaxExpressId > range.reservedMaxExpressId && allocatedMaxExpressId <= maxExpressId) {
-      throw new Error(`[FederationRegistry] Cannot extend ${modelId}: its allocator already carries unpublished overlay IDs`);
+    if (range.publishedStart === null || range.maxExpressId !== range.ownedEnd) {
+      throw new ModelRangeExtensionRefusedError(`[FederationRegistry] Cannot extend ${modelId}: its range is partly published or already carries overlay IDs`);
     }
     const sourceEnd = Math.max(maxExpressId, range.reservedMaxExpressId);
     const newest = this.nextOffset === range.offset + range.overlayMaxExpressId + 1;
     const overlayEnd = Math.min(newest ? sourceEnd + OVERLAY_ID_HEADROOM : range.overlayMaxExpressId, MAX_SAFE_OFFSET - range.offset);
     const boundedSourceEnd = Math.min(sourceEnd, overlayEnd);
     const gapEnd = retainedCreationEnd(sourceEnd, boundedSourceEnd, overlayEnd, firstRetainedExpressId);
+    const previous = { ...range };
     let end = sourceEnd;
     if (newest) {
       if (range.offset + maxExpressId > MAX_SAFE_OFFSET) {
-        throw new Error(`[FederationRegistry] Cannot extend ${modelId} to ${maxExpressId}: would exceed safe ID limit`);
+        throw new ModelRangeExtensionRefusedError(`[FederationRegistry] Cannot extend ${modelId} to ${maxExpressId}: would exceed safe ID limit`);
       }
       range.overlayMaxExpressId = end + OVERLAY_ID_HEADROOM;
       this.nextOffset = range.offset + range.overlayMaxExpressId + 1;
@@ -153,9 +163,10 @@ export class FederationRegistry {
       end = Math.min(end, range.overlayMaxExpressId);
     }
     range.reservedMaxExpressId = end;
-    range.reservedGapEnd = Math.max(range.reservedGapEnd, gapEnd);
-    range.maxExpressId = Math.max(end, range.reservedGapEnd);
-    this.rangesChanged(modelId);
+    range.ownedEnd = Math.max(range.ownedEnd, gapEnd);
+    range.maxExpressId = range.ownedEnd;
+    if (range.reservedMaxExpressId !== previous.reservedMaxExpressId || range.ownedEnd !== previous.ownedEnd
+      || range.overlayMaxExpressId !== previous.overlayMaxExpressId) this.rangesChanged(modelId);
     return range.maxExpressId;
   }
 
@@ -171,7 +182,7 @@ export class FederationRegistry {
     } else if (start !== range.maxExpressId + 1) {
       throw new Error(`[FederationRegistry] Published IDs for ${modelId} must be contiguous and source ordered`);
     }
-    range.maxExpressId = end === range.reservedMaxExpressId ? Math.max(end, range.reservedGapEnd) : end;
+    range.maxExpressId = end === range.reservedMaxExpressId ? range.ownedEnd : end;
     this.rangesChanged(modelId);
   }
 

@@ -87,7 +87,6 @@ it('tracks every claimed ID without mistaking source floors for authorship (#101
   view.setExpressIdWatermark(500);
   const later = view.createEntity('IfcMaterial', ['Later']);
   expect(view.getCreatedExpressIdBounds().highest).toBe(501);
-  expect(view.getCreatedExpressIdBounds(150).highest).toBe(101);
   const prepared = view.prepareAtomic(draft => { draft.deleteEntity(later.expressId); return draft.getCreatedExpressIdBounds().highest; });
   expect(prepared.result).toBe(501);
   prepared.commit();
@@ -127,6 +126,5 @@ it('excludes source tombstones from created ID claims', () => {
   const created = view.createEntity('IfcMaterial', ['Created']);
   view.deleteEntity(created.expressId);
   expect(view.getCreatedExpressIdBounds().highest).toBe(501);
-  expect(view.getCreatedExpressIdBounds(500).highest).toBe(0);
   expect(view.getCreatedExpressIdBounds().lowest).toBe(501);
 });

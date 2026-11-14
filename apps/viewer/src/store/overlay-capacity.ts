@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { federationRegistry } from '@ifc-lite/renderer';
-import type { MutablePropertyView } from '@ifc-lite/mutations';
+import { highestExistingExpressId, type MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { StoreApi } from 'zustand';
 import type { ViewerState } from './index.js';
@@ -35,9 +35,12 @@ export function overlayCapacity(modelId: string, nextId: number): boolean {
 /** Also used before source updates commit, so subscribers never see stale capacity. */
 export function refreshModelOverlayCapacity(model: FederatedModel, view?: MutablePropertyView): FederatedModel {
   const nextId = Math.max(view?.peekNextExpressId() ?? 1, minNextOverlayExpressId(model.id, model.ifcDataStore));
-  const hasOverlayCapacity = overlayCapacity(model.id, nextId);
-  if (model.hasOverlayCapacity === hasOverlayCapacity) return model;
-  return { ...model, hasOverlayCapacity };
+  const firstRetained = view?.getCreatedExpressIdBounds().lowest ?? 0;
+  const sourceEnd = Math.max(model.maxExpressId, firstRetained > 0 && model.ifcDataStore?.entityIndex?.byId ? highestExistingExpressId(model.ifcDataStore) : 0);
+  const hasRetainedIdConflict = firstRetained > 0 && firstRetained <= sourceEnd ? true : undefined;
+  const hasOverlayCapacity = !hasRetainedIdConflict && overlayCapacity(model.id, nextId);
+  if (model.hasOverlayCapacity === hasOverlayCapacity && model.hasRetainedIdConflict === hasRetainedIdConflict) return model;
+  return { ...model, hasOverlayCapacity, hasRetainedIdConflict };
 }
 
 /** Keep selectors on reactive model data, including lazy and direct overlay clients. */

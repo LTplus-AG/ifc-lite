@@ -438,7 +438,7 @@ it('reserves an unused gap before retained creations without publishing them (#1
   const laterOffset = reg.registerModel('later', 10);
   const notifications: string[] = [];
   reg.subscribe(modelId => { if (modelId === 'retained') notifications.push(String(reg.getGlobalIdRange(modelId)?.end)); });
-  assert.equal(reg.extendModel('retained', 990, 0, 1001), 1000);
+  assert.equal(reg.extendModel('retained', 990, 1001), 1000);
   assert.deepEqual(notifications, ['1000'], 'source and reserved-unused ownership publish together');
   assert.equal(reg.toGlobalId('retained', 1000), 1000);
   assert.throws(() => reg.toGlobalId('retained', 1001), /not published/);
@@ -452,7 +452,7 @@ it('loads the source when a retained gap exceeds overlay capacity (#10139)', () 
   const reg = new FederationRegistry();
   reg.registerModel('retained', 300);
   reg.registerModel('later', 10);
-  assert.equal(reg.extendModel('retained', 990, 0, 1_000_302), 990);
+  assert.equal(reg.extendModel('retained', 990, 1_000_302), 990);
   assert.equal(reg.hasOverlayCapacity('retained', 1_000_303), false);
   assert.throws(() => reg.toGlobalId('retained', 1_000_302), /not published/);
 });
@@ -461,7 +461,7 @@ for (const first of [2_000_001, 2_100_001]) it(`clamps hydration with retained c
   const reg = new FederationRegistry();
   reg.registerModel('x', 300);
   const later = reg.registerModel('later', 10);
-  assert.equal(reg.extendModel('x', 2_000_000, 0, first), 1_000_300);
+  assert.equal(reg.extendModel('x', 2_000_000, first), 1_000_300);
   assert.equal(reg.hasOverlayCapacity('x', first + 1), false);
   assert.throws(() => reg.toGlobalId('x', first), /not published/);
   assert.equal(reg.toGlobalId('later', 0), later);
@@ -470,19 +470,19 @@ for (const first of [2_000_001, 2_100_001]) it(`clamps hydration with retained c
 it('refreshes a reserved gap idempotently and grows only below retained creations (#10139)', () => {
   const reg = new FederationRegistry();
   reg.registerModel('x', 300);
-  assert.equal(reg.extendModel('x', 990, 0, 1001), 1000);
-  assert.equal(reg.extendModel('x', 990, 0, 1001), 1000);
-  assert.equal(reg.extendModel('x', 1000, 0, 1001), 1000);
-  assert.throws(() => reg.extendModel('x', 1005, 1005, 1001), /unpublished overlay IDs/);
+  assert.equal(reg.extendModel('x', 990, 1001), 1000);
+  assert.equal(reg.extendModel('x', 990, 1001), 1000);
+  assert.equal(reg.extendModel('x', 1000, 1001), 1000);
+  assert.throws(() => reg.extendModel('x', 1005, 1001), /unpublished overlay IDs/);
   assert.equal(reg.canPublishOverlayFrom('x', 1001, 5), true);
   reg.publishOverlayRange('x', 1001, 1005);
-  assert.throws(() => reg.extendModel('x', 1000, 0, 1001), /overlay IDs/);
+  assert.throws(() => reg.extendModel('x', 1000, 1001), /overlay IDs/);
 });
 
 it('refuses retained creations already inside the registered source (#10139)', () => {
   const reg = new FederationRegistry();
   reg.registerModel('x', 2000);
-  assert.throws(() => reg.extendModel('x', 2500, 1005, 1001), /unpublished overlay IDs/);
+  assert.throws(() => reg.extendModel('x', 2500, 1001), /unpublished overlay IDs/);
   assert.equal(reg.getGlobalIdRange('x')?.end, 2000);
 });
 
@@ -490,6 +490,28 @@ it('refuses retained creations already inside the registered source (#10139)', (
 it('reserves a retained gap even when the reloaded source does not grow (#10139)', () => {
   const reg = new FederationRegistry();
   reg.registerModel('retained', 300);
-  assert.equal(reg.extendModel('retained', 300, 0, 1001), 1000);
+  assert.equal(reg.extendModel('retained', 300, 1001), 1000);
   assert.equal(reg.canPublishOverlayFrom('retained', 1001, 5), true);
+});
+
+
+it('no-op ownership refresh emits no notification (#10139)', () => {
+  const reg = new FederationRegistry();
+  reg.registerModel('x', 300);
+  reg.extendModel('x', 990, 1001);
+  let changes = 0;
+  reg.subscribe(() => { changes++; });
+  reg.extendModel('x', 990, 1001);
+  assert.equal(changes, 0);
+  reg.extendModel('x', 1000, 1001);
+  assert.equal(changes, 1, 'the source watermark still changes within the owned gap');
+});
+
+it('registration listeners see the final retained-gap ownership once (#10139)', () => {
+  const reg = new FederationRegistry();
+  assert.throws(() => reg.registerModel('fractional', 1.5), /Invalid/, 'atomic registration still validates the source publication bound');
+  const observed: unknown[] = [];
+  reg.subscribe(id => { if (id) observed.push(reg.getGlobalIdRange(id)); });
+  reg.registerModel('x', 990, 1001);
+  assert.deepEqual(observed, [{ start: 0, end: 1000 }]);
 });

@@ -530,6 +530,7 @@ export interface PreAlignmentSnapshot {
   instancedGeometryAabbs: Map<number, EntityWorldAabb> | undefined;
 }
 export interface FederatedModel extends ModelLoadReportFields {
+  hasRetainedIdConflict?: boolean; // Retained creations overlap the source; discard them before editing.
   hasOverlayCapacity?: boolean; // Reactive authoring capacity, maintained at ownership/allocator changes.
   id: string; // UUID generated on load.
   name: string; // Display name (filename by default, user can rename)
@@ -578,8 +579,7 @@ export interface FederatedModel extends ModelLoadReportFields {
    * layers. Held in memory only; never serialized to cache.
    */
   sourceHandle?: FileSystemFileHandle;
-  /**
-   * ID offset for this model (from FederationRegistry)
+  /** ID offset for this model (from FederationRegistry).
    * All mesh expressIds are globalIds = originalExpressId + idOffset
    * Use this to convert back to original IDs for property lookup
    */

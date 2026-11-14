@@ -76,7 +76,7 @@ export { SnapDetector, SnapType } from './snap-detector.js';
 export { BVH } from './bvh.js';
 export { hostsOtherEntities } from './mesh-entity-hosting.js';
 export { OverlayIdSpaceExhaustedError } from './overlay-id-space-exhausted-error.js';
-export { FederationRegistry, federationRegistry } from './federation-registry.js';
+export { FederationRegistry, federationRegistry, ModelRangeExtensionRefusedError } from './federation-registry.js';
 export type { ModelRange, GlobalIdLookup } from './federation-registry.js';
 export * from './types.js';
 export { MAX_EXTRA_CLIP_PLANES } from './extra-clip-planes.js';

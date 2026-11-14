@@ -69,7 +69,7 @@ export function ReceiptSummary({ receipt }: { receipt: ModelChangeReceipt }) {
   const live = useModelChangeReceipts((s) => s.entries.find((entry) => entry.id === receipt.id)) ?? receipt;
   const undo = () => {
     const outcome = undoModelChanges(useViewerStore, live);
-    if (!outcome.ok) { setError(t(`modelChanges.undoRefused.${outcome.reason}`)); return; }
+    if (!outcome.ok) { setError(t(outcome.reason === 'retained-id-conflict' ? 'mutationPermission.retainedIdConflict' : `modelChanges.undoRefused.${outcome.reason}`)); return; }
     setError(null);
     // The stored copy may carry a later validation rerun; keep it.
     void modelChangeLibrary.put(live.id, { ...live, status: 'undone', undoneAt: new Date().toISOString() });

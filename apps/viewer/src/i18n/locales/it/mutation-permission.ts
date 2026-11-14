@@ -12,4 +12,5 @@ export const mutationPermissionIt = {
   "mutationPermission.propertiesLoading": "Le proprietà del modello sono ancora in caricamento",
   "mutationPermission.propertiesFailed": "Impossibile caricare le proprietà del modello, quindi non è modificabile",
   "mutationPermission.idSpaceExhausted": "Questo modello non dispone di un numero sufficiente di ID entità sicuri per le modifiche in questa sessione",
+  "mutationPermission.retainedIdConflict": "Le modifiche conservate si sovrappongono agli ID sorgente di questo modello. Scartale prima di modificarlo",
 } satisfies Catalogue;

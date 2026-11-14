@@ -1254,13 +1254,13 @@ export class MutablePropertyView extends MutableOverlayState {
     for (const row of type === undefined ? this.newEntities.peekValues() : this.newEntities.peekOfType(type)) yield { expressId: row.expressId, type: row.type };
   }
   /** Bounds of IDs this overlay created (live, forgotten, or stashed/undoable).
-   * `lowest` covers all creations; `highest` only those <= ceiling (zero if absent).
+   * Both bounds cover all retained creations (zero if absent).
    * Source tombstones and source-only allocator floors are never creation claims. */
-  getCreatedExpressIdBounds(ceiling = Infinity): { lowest: number; highest: number } {
+  getCreatedExpressIdBounds(): { lowest: number; highest: number } {
     let lowest = Infinity, highest = 0;
     for (const ids of [this.newEntities.keys(), this.forgottenCreatedEntities]) for (const id of ids) {
       lowest = Math.min(lowest, id);
-      if (id <= ceiling) highest = Math.max(highest, id);
+      highest = Math.max(highest, id);
     }
     return { lowest: lowest === Infinity ? 0 : lowest, highest };
   }

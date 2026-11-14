@@ -19,6 +19,7 @@ import { resolveViewHiddenEntities } from '../lib/visibility/structural-view';
 import { isTypeVisible } from './typeVisibilityFilter.js';
 import { collectAggregatedDescendants, type AggregationRelationships } from '../utils/aggregation.js';
 import { effectiveSpatialMembers } from '../lib/effective-spatial-members.js';
+import { objectIdentity } from '../utils/objectIdentity.js';
 
 type ViewerStateSnapshot = ReturnType<typeof useViewerStore.getState>;
 
@@ -55,11 +56,11 @@ function digestNumberSet(values: Iterable<number>): string {
 }
 
 export function visibilityFingerprint(state: ViewerStateSnapshot): string {
-  // Include per-model visible flag and geometry mesh count so the cache
-  // invalidates when model visibility is toggled or geometry finishes loading.
+  // Per model: visible flag, mesh count (streaming growth), and geometry and
+  // store identity (both are replaced, e.g. by a collab reconstruct).
   const modelParts: string[] = [];
   for (const [modelId, model] of state.models) {
-    modelParts.push(`${modelId}:${model.visible ? 1 : 0}:${model.geometryResult?.meshes?.length ?? 0}`);
+    modelParts.push(`${modelId}:${model.visible ? 1 : 0}:${model.geometryResult?.meshes?.length ?? 0}:${objectIdentity(model.geometryResult)}:${objectIdentity(model.ifcDataStore)}`);
   }
   modelParts.sort();
 
@@ -71,6 +72,11 @@ export function visibilityFingerprint(state: ViewerStateSnapshot): string {
     digestNumberSet(state.selectedStoreys),
     JSON.stringify(state.typeVisibility), state.structuralViewMode,
     state.mutationVersion,
+    // The structural mask, storey isolation and candidates read these objects
+    // themselves; a collab reconstruct replaces them without a version bump.
+    // The top-level store and geometry are read only in single-model mode.
+    objectIdentity(state.mutationViews),
+    state.models.size === 0 ? `${objectIdentity(state.ifcDataStore)}.${objectIdentity(state.geometryResult)}` : '-',
     state.models.size,
     modelParts.join(';'),
     state.geometryResult?.meshes?.length ?? 0,

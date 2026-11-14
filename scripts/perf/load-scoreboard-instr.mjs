@@ -3,7 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Retired user-space instructions of one browser open (opt-in `instructions` on a plan or side; Linux only).
+ * Retired user-space instructions of one browser open (opt-in `instructions` on a plan or side; x86 Linux only: PMUs
+ * `cpu`, or `cpu_core` + `cpu_atom` on hybrid Intel. Other hosts, e.g. aarch64 `armv8_pmuv3_*` or macOS, report unavailable).
  *
  * `instr-chrome.py` wraps Chrome: one `instructions:u` counter per CPU PMU (cpu_core and cpu_atom on hybrid Intel),
  * inherited over the whole Chrome tree from exec on (including the browser process that moves itself into its own

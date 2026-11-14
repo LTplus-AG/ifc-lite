@@ -143,7 +143,7 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
   const consoleLogs = [];
   const meta = { pass, query, executablePath, chromeArgs: CHROME_ARGS, pageErrors: [], crashed: false, identityOpens: [] };
   // Declared here, after meta (review #10138): a non-Linux host records why instead of throwing.
-  if (instructions && pass === 'timing' && !instrOut) meta.instructionsUnavailable = `instruction counting is Linux only (${process.platform})`;
+  if (instructions && pass === 'timing' && !instrOut) meta.instructionsUnavailable = `instruction counting supports x86 Linux PMUs cpu / cpu_core+cpu_atom; this host: ${process.platform}`;
   const lanes = { [coldLane]: { lane: coldLane, ok: false } };
   if (warmOpens > 1) lanes[warm1Lane] = { lane: warm1Lane, ok: false };
   if (warmOpens > 0) lanes[warmLane] = { lane: warmLane, ok: false };

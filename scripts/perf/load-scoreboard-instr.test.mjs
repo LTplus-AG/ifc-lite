@@ -56,11 +56,11 @@ test('the wrapper runs the real program with its arguments and exit status, and 
 test('an unavailable counter (e.g. macOS) is carried on every lane and shown in the report with its reason', async () => {
   const { laneInstructions } = await import('./load-scoreboard-instr.mjs');
   const { cpuTimeSummary, cpuTimeSection } = await import('./load-scoreboard-report-cpu.mjs');
-  const lanes = laneInstructions({ 'browser-cold': { ok: true }, 'browser-warm': { ok: true } }, { unavailable: 'instruction counting is Linux only (darwin)' });
-  assert.deepEqual(Object.values(lanes).map((l) => l.instructions.unavailable), ['instruction counting is Linux only (darwin)', 'instruction counting is Linux only (darwin)']);
+  const lanes = laneInstructions({ 'browser-cold': { ok: true }, 'browser-warm': { ok: true } }, { unavailable: 'instruction counting supports x86 Linux PMUs cpu / cpu_core+cpu_atom; this host: darwin' });
+  assert.deepEqual(Object.values(lanes).map((l) => l.instructions.unavailable), ['instruction counting supports x86 Linux PMUs cpu / cpu_core+cpu_atom; this host: darwin', 'instruction counting supports x86 Linux PMUs cpu / cpu_core+cpu_atom; this host: darwin']);
   const rows = [0, 1].flatMap((n) => ['base', 'branch'].map((side) => ({ fixture: 'FZK', lane: 'browser-cold', side, round: n, interactiveMs: 500, ...lanes['browser-cold'] })));
   const line = cpuTimeSection(rows, { cpuTime: cpuTimeSummary({ kind: 'aa', lanes: ['browser-cold'] }, rows) }).find((l) => l.startsWith('| FZK |'));
-  assert.match(line, /instructions unavailable 4: instruction counting is Linux only \(darwin\)/);
+  assert.match(line, /instructions unavailable 4: instruction counting supports x86 Linux PMUs cpu \/ cpu_core\+cpu_atom; this host: darwin/);
   // A lane without a measured window (its open failed) says so instead of reading zero.
   const p = parseInstrSamples(samples);
   const two = laneInstructions({ a: {}, b: {} }, { parsed: p, windows: [{ lane: 'a', window: [1005, 1025] }] });
@@ -167,4 +167,18 @@ test('browserSample puts an instruction figure or its reason on every lane when 
   // The fake never runs the wrapper, so there is no counter output: the lane must carry that reason.
   const { result } = await fakeBrowserSample(browserSample, { instructions: true });
   assert.equal(result.lanes['browser-cold'].instructions.unavailable, 'no counter output (wrapper did not run)');
+});
+
+test('a host with only a non-x86 PMU (aarch64 armv8_pmuv3_0) reports the supported PMUs and what it found', { skip: process.platform !== 'linux' }, () => {
+  const root = mkdtempSync(join(tmpdir(), 'pmu-arm-'));
+  mkdirSync(join(root, 'armv8_pmuv3_0', 'events'), { recursive: true });
+  writeFileSync(join(root, 'armv8_pmuv3_0', 'type'), '8\n');
+  mkdirSync(join(root, 'software'), { recursive: true });
+  const out = join(root, 'i.ndjson');
+  const python = spawnSync('sh', ['-c', 'command -v python3'], { encoding: 'utf8' }).stdout.trim();
+  const run = spawnSync('python3', [INSTR_WRAPPER, '-c', 'raise SystemExit(0)'],
+    { env: { ...process.env, LOAD_SCOREBOARD_INSTR_CHROME: python, LOAD_SCOREBOARD_INSTR_OUT: out, LOAD_SCOREBOARD_INSTR_PMU_ROOT: root }, encoding: 'utf8' });
+  assert.equal(run.status, 0, run.stderr);
+  assert.equal(JSON.parse(readFileSync(out, 'utf8').split('\n')[0]).unavailable,
+    'instruction counting supports x86 Linux PMUs cpu / cpu_core+cpu_atom; found: armv8_pmuv3_0, software');
 });

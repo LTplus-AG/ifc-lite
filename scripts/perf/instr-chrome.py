@@ -12,13 +12,15 @@ scope (counters follow tasks, not cgroups). Kernel work is excluded (:u); nothin
 
 While Chrome runs, the parent writes running totals every 10 ms to LOAD_SCOREBOARD_INSTR_OUT as NDJSON lines
 `{"t": epoch_ms, "c": {pmu: count}}`; the harness interpolates them at the input event and the interactive mark.
-No root and no `perf` binary: needs Linux, kernel.perf_event_paranoid <= 2. When counting is unavailable the first
+No root and no `perf` binary: needs x86 Linux (PMUs `cpu`, or `cpu_core` + `cpu_atom` on hybrid Intel; other PMUs such as
+aarch64 `armv8_pmuv3_*` are not supported and report unavailable), kernel.perf_event_paranoid <= 2. When counting is unavailable the first
 line is `{"unavailable": reason}` and Chrome still runs normally. The wrapper exits with Chrome's exit status.
 """
 import ctypes, json, os, signal, struct, sys, threading, time
 
 PERIOD_S = float(os.environ.get('LOAD_SCOREBOARD_INSTR_PERIOD_MS', '10')) / 1000
-SYS_PERF_EVENT_OPEN = {'x86_64': 298, 'aarch64': 241}.get(os.uname().machine)
+SYS_PERF_EVENT_OPEN = {'x86_64': 298}.get(os.uname().machine)  # x86 Linux only (no other host to test on)
+SUPPORTED = 'instruction counting supports x86 Linux PMUs cpu / cpu_core+cpu_atom'
 PMU_ROOT = os.environ.get('LOAD_SCOREBOARD_INSTR_PMU_ROOT', '/sys/bus/event_source/devices')  # override for tests
 
 
@@ -45,7 +47,8 @@ def pmus():
         return [], f'cannot list {PMU_ROOT}: {err}'
     hybrid = [n for n in names if n in ('cpu_core', 'cpu_atom')]
     if not hybrid:
-        return ([('cpu', 0, 1)], None) if 'cpu' in names else ([], f'no core PMU under {PMU_ROOT}')  # PERF_TYPE_HARDWARE, HW_INSTRUCTIONS
+        # PERF_TYPE_HARDWARE, HW_INSTRUCTIONS on a non-hybrid x86 host; anything else (e.g. armv8_pmuv3_0) is not supported.
+        return ([('cpu', 0, 1)], None) if 'cpu' in names else ([], f'{SUPPORTED}; found: {", ".join(names) or "none"}')
     out = []
     for name in hybrid:
         try:
@@ -61,7 +64,7 @@ def pmus():
 
 def open_counters(pid):
     if SYS_PERF_EVENT_OPEN is None or not os.path.isdir(PMU_ROOT):
-        return {}, 'perf_event_open unavailable on this platform'
+        return {}, f'{SUPPORTED}; this host: {os.uname().sysname} {os.uname().machine}'
     found, why = pmus()
     if why:
         return {}, why

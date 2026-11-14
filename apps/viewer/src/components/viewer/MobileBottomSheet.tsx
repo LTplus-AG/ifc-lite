@@ -196,6 +196,7 @@ export function MobileBottomSheet({
       ref={sheetRef}
       data-mobile-sheet={pane ? undefined : ''}
       data-mobile-pane={pane}
+      role={pane ? 'region' : undefined}
       aria-label={pane && typeof title === 'string' ? title : undefined}
       className={pane ? 'flex min-h-0 flex-1 flex-col bg-background' : 'pointer-events-auto absolute inset-x-0 bottom-0 flex flex-col bg-background border-t rounded-t-2xl shadow-2xl z-40 animate-in slide-in-from-bottom duration-300'}
       style={pane ? undefined : {

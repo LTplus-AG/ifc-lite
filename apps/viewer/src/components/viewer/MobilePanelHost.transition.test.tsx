@@ -49,5 +49,6 @@ it('#9718 keeps child-local draft state and the scroll node across sheet, pane a
     assert.equal(scroll.scrollTop, 127);
     const parent = ui.querySelector(width > height || folded ? '[data-slot]' : '[data-view]');
     assert.equal(parent?.contains(draft), true);
+    if (width > height || folded) assert.equal(ui.querySelector('[role="region"]')?.getAttribute('aria-label'), 'Properties');
   }
 });

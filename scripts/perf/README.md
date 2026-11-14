@@ -8,6 +8,19 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
+## Load scoreboard verdicts use the frame mark
+
+Browser-lane verdicts in `load-scoreboard.mjs` judge the frame mark: the first frame the
+renderer started at or after the scene finished, never before the settled mark
+(`load-scoreboard-frame-mark.mjs`, `frameMarkOf`). The settled mark stays in the report as
+its own verdict row and as a column in the both-marks table. The baseline table shows the
+verdict mark (browser frame, native batch). A browser sample without frame times leaves its
+frame-mark cell inconclusive (unverifiable); it is never judged on the settled mark
+instead. Native and boot lanes keep `interactiveMs`. A/A runs record `frameMs` floors
+beside the settled ones. An A/A reference without them gives "no A/A floor" for the
+frame-mark row, so re-render an older A/A with this report before using it as a
+reference. Its samples already carry frame times since #9857.
+
 ## Presentation layer attribute reads (#9928)
 
 Resolve schema positions once per type during each index build and read only

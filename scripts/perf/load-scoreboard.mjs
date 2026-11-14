@@ -173,6 +173,13 @@ export function buildOrder(plan) {
   return order;
 }
 
+/** Settle a row's host load; a boot row carries its browser's CPU outside the job cgroup (browser rows are already settled). */
+export function settleRowHost(row) {
+  settleHostLoad(row.host, { ownOutside: row.browserOutside });
+  delete row.browserOutside;
+  return row;
+}
+
 async function run(opt) {
   const plan = loadPlan(opt.plan);
   const out = resolve(opt.out);
@@ -199,9 +206,7 @@ async function run(opt) {
   let browser = null;
   if (order.browser || order.boot) browser = await startBrowserLane(plan, out);
   const record = (row, trace) => {
-    // A boot row carries its browser's CPU outside the job cgroup; browser rows' hosts are already settled.
-    settleHostLoad(row.host, { ownOutside: row.browserOutside });
-    delete row.browserOutside;
+    settleRowHost(row);
     done.add(laneKey(row));
     if (trace) { writeFileSync(join(out, 'traces', `${row.fixture}-${row.lane}-${row.side}-r${row.round}.json`), JSON.stringify(trace)); }
     appendFileSync(samplesPath, JSON.stringify(row) + '\n');

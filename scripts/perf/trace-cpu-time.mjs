@@ -245,7 +245,12 @@ export function traceCpuTime(trace, { window = null, spans = null } = {}) {
   // CPU is measured only when the renderer's main thread has thread time in the window and at most MAX_UNTIMED_SHARE of
   // task wall time lacks it; otherwise every figure is unavailable, never a partial or zero total (review #10138).
   const mainTimed = threads.some((t) => t.role === 'rendererMain' && t.cpuMs > 0);
+  // A dedicated worker hosted in another renderer process would fall outside the worker figure and the total. It does
+  // not happen with this viewer (208 stored traces: one renderer, every DedicatedWorker in the page's renderer), so it is
+  // detected, not attributed: CPU is unavailable with the reason (review #10138).
+  const strayWorkers = threads.filter((t) => t.role === 'otherRenderers' && /^DedicatedWorker/.test(t.thread));
   result.coverage = !result.threadTime ? 'no thread time in the window' : !mainTimed ? 'renderer main thread has no thread time in the window'
+    : strayWorkers.length ? `dedicated worker thread(s) in another renderer (pid ${[...new Set(strayWorkers.map((t) => t.pid))].join(', ')}) are not attributed`
     : TOTAL_ROLES.some((k) => byRole[k] > MAX_UNTIMED_SHARE) ? `${TOTAL_ROLES.filter((k) => byRole[k] > MAX_UNTIMED_SHARE).map((k) => `${k} ${(byRole[k] * 100).toFixed(1)}%`).join(', ')} of task wall time has no thread time` : 'ok';
   if (result.coverage !== 'ok') {
     for (const k of Object.keys(result.cpuMs)) result.cpuMs[k] = null;

@@ -160,3 +160,11 @@ test('a window where the counters never ran (no enabled time) is unavailable, ne
   const never = rows.map((x) => ({ ...x, e: 0, r: { cpu: 0 }, c: { cpu: 0 } }));
   assert.equal(parseInstrSamples(never.map((x) => JSON.stringify(x)).join('\n')).unavailable, 'counters never ran (no enabled time)');
 });
+
+test('browserSample puts an instruction figure or its reason on every lane when counting is requested', { skip: process.platform !== 'linux' }, async () => {
+  const { browserSample } = await import('./load-scoreboard-browser.mjs');
+  const { fakeBrowserSample } = await import('./load-scoreboard-fake-browser.mjs');
+  // The fake never runs the wrapper, so there is no counter output: the lane must carry that reason.
+  const { result } = await fakeBrowserSample(browserSample, { instructions: true });
+  assert.equal(result.lanes['browser-cold'].instructions.unavailable, 'no counter output (wrapper did not run)');
+});

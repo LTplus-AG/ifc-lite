@@ -232,3 +232,13 @@ test('untimed coverage is judged over the roles the total sums, so other process
   assert.equal(Math.round(r.uncountedWallShareByRole.rendererMain * 100) / 100, 0.99);
   assert.ok(r.coverage.startsWith('rendererMain 99.0%'), r.coverage);
 });
+
+test('a dedicated worker in a renderer other than the page\'s is detected: CPU unavailable, never silently dropped', () => {
+  const ev = traceEventsOf(trace).concat([
+    { ph: 'M', name: 'thread_name', pid: 40, tid: 7, args: { name: 'DedicatedWorker thread' } },
+    { ph: 'X', cat: 'toplevel', name: 'T', pid: 40, tid: 7, ts: 1200000, dur: 100000, tdur: 100000 },
+  ]);
+  const r = traceCpuTime(ev);
+  assert.equal(r.cpuMs.total, null);
+  assert.equal(r.coverage, 'dedicated worker thread(s) in another renderer (pid 40) are not attributed');
+});

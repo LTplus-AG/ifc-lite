@@ -174,12 +174,19 @@ test('the stall share uses the interval between its two counter reads (sample st
   process.env.LOAD_SCOREBOARD_CAP_STATE = file;
   try {
     const { hostQuiet, settleHostLoad } = await import('./load-scoreboard-host.mjs');
-    const h = await hostQuiet({ maxWaitMs: 0 });
-    const t0 = Date.now(); while (Date.now() - t0 < 20) { /* the sample */ }
-    settleHostLoad(h, { ownOutside: { cpuMs: 0, pressureUs: 0, scopes: 0 } });
+    // Injected boundary reads: start (stall 1,000 us at t0), end (stall 5,000 us at t0 + 100 ms). Any read taken
+    // elsewhere (before or after the diagnostics) would not see these values: 4 ms of stall in 100 ms is 4.0 %.
+    const t0 = Date.now();
+    const reads = [[1000, t0], [5000, t0 + 100]];
+    let i = 0, last = null;
+    const io = { ownStallUs: () => (last = reads[Math.min(i++, 1)])[0], now: () => last[1] };
+    const h = await hostQuiet({ maxWaitMs: 0, io });
+    settleHostLoad(h, { ownOutside: { cpuMs: 0, pressureUs: 0, scopes: 0 }, io });
     assert.equal(h.cap.window, 'inside');
-    assert.equal(h.cap.stallWindowMs, h.sampleMs);
-    assert.ok(h.sampleMs >= 20 && h.sampleMs < 1000, `sample ${h.sampleMs} ms excludes the diagnostic reads before and after`);
+    assert.equal(h.sampleMs, 100);
+    assert.equal(h.cap.jobStallUs, 4000);
+    assert.equal(h.cap.ownStallPct, 4);
+    assert.equal(h.cap.stallWindowMs, 100);
   } finally { delete process.env.LOAD_SCOREBOARD_CAP_STATE; }
 });
 
@@ -195,4 +202,14 @@ test('an unreadable cap state leaves the sample to the ordinary host rule and re
     assert.equal(typeof h.cap.error, 'string');
     assert.notEqual(h.reason, 'sample only partly inside the cap window');
   } finally { delete process.env.LOAD_SCOREBOARD_CAP_STATE; }
+});
+
+test('a boot row is settled with its own browser outside the job cgroup (settleRowHost)', async () => {
+  const { settleRowHost } = await import('./load-scoreboard.mjs');
+  const { hostQuiet } = await import('./load-scoreboard-host.mjs');
+  const host = await hostQuiet({ maxWaitMs: 0 });
+  if (!Number.isFinite(host.hostBusyBefore) || !Number.isFinite(host.ownCgroupBefore)) return;
+  const row = settleRowHost({ host, browserOutside: { cpuMs: 200, pressureUs: 0, scopes: 1, hostBusyMs: host.hostBusyBefore + 1000, ownCgroupMs: host.ownCgroupBefore + 300 } });
+  assert.equal(row.host.foreignCpuMs, 500);
+  assert.equal('browserOutside' in row, false);
 });

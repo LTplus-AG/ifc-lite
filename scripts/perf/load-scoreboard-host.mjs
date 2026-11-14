@@ -181,7 +181,10 @@ export function thermalDelta(before, after) {
  * H9: before each sample, wait (at most 20 s) for CPU pressure avg10 < 5, and note builder-named processes.
  * LOAD_SCOREBOARD_QUIET_WAIT_MS overrides the wait (0 = none) for runs that measure under load on purpose.
  */
-export async function hostQuiet({ limit = 5, maxWaitMs = quietWaitMs() } = {}) {
+/** The two boundary reads of a sample: the benchmark cgroup's stall counter (µs) and the clock. Injectable for tests. */
+const BOUNDARY_IO = { now: () => Date.now(), ownStallUs: () => cgroupPressure(ownCgroupPath())?.totalUs };
+
+export async function hostQuiet({ limit = 5, maxWaitMs = quietWaitMs(), io = BOUNDARY_IO } = {}) {
   const started = Date.now();
   // In a cap window host-wide pressure counts the capped groups' waiting: wait on the benchmark's own pressure instead.
   // The cap state is re-read on every poll; a wait that crosses a cap boundary restarts under the rule of the new state,
@@ -210,8 +213,8 @@ export async function hostQuiet({ limit = 5, maxWaitMs = quietWaitMs() } = {}) {
     ...classifyHostLoad({ psi, limit, builders: procs.map((p) => p.name) }) };
   // The benchmark's stall counter and the sample start are read together, after the diagnostic reads above, so the
   // stall share's numerator and denominator cover the same interval (review #10138).
-  host.ownPressureBefore = cgroupPressure(own)?.totalUs ?? null;
-  host.startedAt = Date.now();
+  host.ownPressureBefore = io.ownStallUs() ?? null;
+  host.startedAt = io.now();
   return host;
 }
 
@@ -252,12 +255,12 @@ export function outsideOwnCgroup(pids, { own = ownCgroupPath(), cgroupOf = (pid)
  * `ownOutside`: the benchmark's own CPU and stall time outside its cgroup (outsideOwnCgroup), not foreign.
  * In a cap window (load-scoreboard-cap.mjs) the flag means the benchmark itself was starved.
  */
-export function settleHostLoad(host, { ownOutside = null } = {}) {
+export function settleHostLoad(host, { ownOutside = null, io = BOUNDARY_IO } = {}) {
   const ownOutsideCpuMs = ownOutside?.cpuMs ?? null;
   if (!host || host.settled || !Array.isArray(host.builderProcs)) return host;
   // First, before the slower reads below (systemctl, date): the sample's end, so later throttling or stalls are not
   // charged to it. The stall counter and the end time are read together (same interval as at the start).
-  const ownPressureAfter = cgroupPressure(ownCgroupPath())?.totalUs, endedAt = Date.now();
+  const ownPressureAfter = io.ownStallUs(), endedAt = io.now();
   const thermalAfter = thermalState();
   const after = groupTicks(Object.keys(host.groupTicksBefore ?? {}).map(Number));
   const groupCpuMs = {};

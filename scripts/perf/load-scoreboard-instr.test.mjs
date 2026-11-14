@@ -87,3 +87,37 @@ test('counter samples whose PMU sets differ are unavailable, never a partial sum
   const rows = [{ t: 1, c: { cpu_core: 0, cpu_atom: 0 } }, { t: 2, c: { cpu_core: 10 } }, { t: 3, c: { cpu_core: 20, cpu_atom: 5 } }];
   assert.match(parseInstrSamples(rows.map((r) => JSON.stringify(r)).join('\n')).unavailable, /differing/);
 });
+
+test('a periodic read includes LIVE inherited children (kernel __perf_event_read_value walks child_list), not only exited ones', { skip: process.platform !== 'linux' }, () => {
+  // The wrapped "browser" forks a child that spins a fixed loop, stamps the time, then sleeps 1 s WITHOUT exiting;
+  // the parent only waits. A sample taken while the child still sleeps must already hold (nearly) the child's whole count.
+  const dir = mkdtempSync(join(tmpdir(), 'live-'));
+  const out = join(dir, 'i.ndjson'), stamps = join(dir, 'stamps.json');
+  const script = [
+    'import os, time, json, sys',
+    `stamps = ${JSON.stringify(stamps)}`,
+    'time.sleep(0.2)', 'fork_at = time.time() * 1000',
+    'pid = os.fork()',
+    'if pid == 0:',
+    '    i = 0',
+    '    for _ in range(3000000): i += 1',
+    '    json.dump({"fork": fork_at, "done": time.time() * 1000}, open(stamps, "w"))',
+    '    time.sleep(1.0)', '    os._exit(0)',
+    'os.waitpid(pid, 0)',
+  ].join('\n');
+  const python = spawnSync('sh', ['-c', 'command -v python3'], { encoding: 'utf8' }).stdout.trim();
+  const run = spawnSync('python3', [INSTR_WRAPPER, '-c', script], { env: { ...process.env, LOAD_SCOREBOARD_INSTR_CHROME: python, LOAD_SCOREBOARD_INSTR_OUT: out }, encoding: 'utf8' });
+  assert.equal(run.status, 0, run.stderr);
+  const lines = readFileSync(out, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  if (lines[0].unavailable) return; // counting not permitted on this host (e.g. perf_event_paranoid on CI)
+  const { fork, done } = JSON.parse(readFileSync(stamps, 'utf8'));
+  const sum = (r) => Object.values(r.c).reduce((a, b) => a + b, 0);
+  const samples = lines.filter((r) => !r.final);
+  const before = samples.filter((r) => r.t <= fork).at(-1);
+  const live = samples.find((r) => r.t >= done + 100 && r.t <= done + 800); // child alive and sleeping
+  const final = lines.find((r) => r.final);
+  assert.ok(before && live && final, 'samples around the fork, during the child\'s sleep, and the final totals');
+  const childTotal = sum(final) - sum(before);
+  assert.ok(childTotal > 3e6, `the child's loop retired instructions (${childTotal})`);
+  assert.ok(sum(live) - sum(before) >= 0.9 * childTotal, `live read ${sum(live) - sum(before)} vs total after exit ${childTotal}`);
+});

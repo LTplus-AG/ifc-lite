@@ -12,6 +12,9 @@
  * metric. Instructions do not change with clock speed or thermal throttling; work that moves between P- and E-cores
  * keeps its count, so the per-PMU split is reported but the verdict figure is the sum.
  * Not counted: kernel work (:u), anything outside the Chrome tree (the harness, Xvfb, other processes).
+ * Live children are in every sample: read() on an inherited event returns the parent's count plus exited children's
+ * (child_total_count) plus every live child event (the kernel's __perf_event_read_value walks event->child_list).
+ * Proven on Pop (kernel 6.17.9) by the "LIVE inherited children" test: a child still alive held 99.65% of its final count.
  */
 
 import { fileURLToPath } from 'node:url';

@@ -140,7 +140,8 @@ def main():
     done.set()
     if fds:
         th.join()
-        # Final totals after Chrome and all its descendants exited (their counts are folded into these events).
+        # Final totals after Chrome and all its descendants exited. (Periodic reads already include live descendants:
+        # read() on an inherited event sums the live child events too, __perf_event_read_value walking child_list.)
         try:
             counts = {name: struct.unpack('QQQ', os.read(fd, 24))[0] for name, fd in fds.items()}
             if out:

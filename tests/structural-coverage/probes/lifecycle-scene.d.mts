@@ -12,5 +12,7 @@ export function lifecycleScene(pkgs: { create: typeof create; parser: typeof par
   anchor: create.SpatialAnchor;
   id: number;
   exportText(): string;
+  /** Runs the step's `appliedBy` hook, if any. */
+  applyLoad(): void;
   before: { entities: Map<number, unknown> };
 }>;

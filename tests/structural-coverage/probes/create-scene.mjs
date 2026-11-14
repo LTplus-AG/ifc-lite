@@ -11,7 +11,12 @@
  * carry, or a function of the schema returning that. An entity's `unchecked` lists
  * attributes with no expected value yet; it caps the cell at partial. `needs` names earlier steps
  * whose results it uses; `schemas` limits a step to the schemas that have its
- * entities (omit it to run everywhere).
+ * entities (omit it to run everywhere). A step that authors a load alone names
+ * `appliedBy(ctx, loadId)`, returning the activity that applies it, and
+ * optionally `appliedTo`, the step whose item it acts on (default a curve
+ * member): the extractor reads a load through the activity whose AppliedLoad
+ * names it, as every corpus file does, so the edit probe applies the load
+ * before reading the edit back.
  *
  * To register a new builder: append a step. Nothing else changes.
  */
@@ -20,6 +25,8 @@
 const FIXED = { type: 'IFCBOOLEAN', value: true };
 const FREE = { type: 'IFCBOOLEAN', value: false };
 const guid = (tag) => `0SC${tag}`.padEnd(22, '0').slice(0, 22);
+/** The curve action that applies the load configuration, as portal_01.ifc #317 does. */
+const configuredCurve = ({ create, editor, anchor }, load) => create.addStructuralCurveActionToStore(editor, anchor, { Name: 'Configured curve', AppliedLoad: load, PredefinedType: 'LINEAR' });
 const G = {
   member: guid('Member'), connection: guid('Connection'), point: guid('PointAction'),
   linear: guid('LinearAction'), group: guid('LoadGroup'), loadCase: guid('LoadCase'), model: guid('AnalysisModel'),
@@ -261,9 +268,13 @@ export const SCENE = [
     build: ({ create, editor, anchor }) => create.addStructuralPointReactionToStore(editor, anchor, { AppliedLoad: { Type, Name: Type, ...(i ? { DisplacementZ: 0.02, Distortion: 0.03 } : { ForceZ: 10, WarpingMoment: 20 }) } }).activityId,
   })),
   {
-    id: 'reinforcement', builder: 'addStructuralLoadToStore', schemas: ['IFC4','IFC4X3'],
+    id: 'reinforcement', builder: 'addStructuralLoadToStore', schemas: ['IFC4','IFC4X3'], appliedTo: 'surface-member',
     emits: { IfcSurfaceReinforcementArea: { Name: 'Reinforcement', SurfaceReinforcement1: [0.01,0.02], SurfaceReinforcement2: [0.03,0.04,0.05], ShearReinforcement: 0.006 } },
     build: ({ create, editor, anchor }) => create.addStructuralLoadToStore(editor, anchor, { Type: 'IfcSurfaceReinforcementArea', Name: 'Reinforcement', SurfaceReinforcement1: [0.01,0.02], SurfaceReinforcement2: [0.03,0.04,0.05], ShearReinforcement: 0.006 }),
+    // A reinforcement area is a result, reported by a surface reaction. The
+    // reaction builder authors its own planar force, so write the record directly.
+    appliedBy: ({ editor, anchor }, load) => editor.addEntity('IfcStructuralSurfaceReaction', [guid('ReinforcementResult'), `#${anchor.ownerHistoryId}`,
+      'Reinforcement result', null, null, null, null, `#${load}`, '.GLOBAL_COORDS.', '.CONST.']).expressId,
   },
   {
     id: 'configuration-second-load', builder: 'addStructuralLinearActionToStore', schemas: ['IFC4','IFC4X3'], emits: {},
@@ -273,11 +284,12 @@ export const SCENE = [
     id: 'load-configuration', builder: 'addStructuralLoadToStore', schemas: ['IFC4','IFC4X3'], needs: ['linear-action', 'configuration-second-load'],
     emits: { IfcStructuralLoadConfiguration: { Name: 'Configuration', Locations: [[0],[1]] } },
     build: ({ create, editor, anchor, done }) => create.addStructuralLoadToStore(editor, anchor, { Type: 'IfcStructuralLoadConfiguration', Name: 'Configuration', Values: [Number(editor.getNewEntity(done.get('linear-action')).attributes[7].slice(1)), done.get('configuration-second-load')], Locations: [[0],[1]] }),
+    appliedBy: configuredCurve,
   },
   {
     id: 'curve-action', builder: 'addStructuralCurveActionToStore', schemas: ['IFC4','IFC4X3'], needs: ['load-configuration'],
     emits: { IfcStructuralCurveAction: { Name: 'Configured curve', PredefinedType: 'LINEAR' } },
-    build: ({ create, editor, anchor, done }) => create.addStructuralCurveActionToStore(editor, anchor, { Name: 'Configured curve', AppliedLoad: done.get('load-configuration'), PredefinedType: 'LINEAR' }),
+    build: (ctx) => configuredCurve(ctx, ctx.done.get('load-configuration')),
   },
   ...['Linear', 'Planar'].flatMap(kind => {
     const planar = kind === 'Planar';

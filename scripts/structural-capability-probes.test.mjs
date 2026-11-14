@@ -54,6 +54,43 @@ test('#9668: perturbing real derived axes, endpoints, links or connections canno
   }
 });
 
+
+test('#9668: coincident support-only reference points merge into their joint', () => {
+  const joint = { id:204, position:[0,0,0], links:[10], support:false, memberConnected:true };
+  const support = { id:481, position:[0.0002,0,0], links:[], support:true, memberConnected:false };
+  const member = { id:7, ends:[[0,0,0],[1,0,0]], links:[10] };
+  const actual = { members:[member], nodes:[{id:900,position:[0,0,0],links:[10],support:true}] };
+  const expected = { members:[member], nodes:[joint,support] };
+  const result = compareDerived(actual,expected);
+  assert.equal(result.status,'pass');
+  assert.equal(result.counts.referenceNodes,1);
+  assert.equal(result.counts.supportReferenceNodes,1);
+  assert.equal(result.mismatches.length,0);
+});
+
+test('#9668: support mismatch keeps the derive row partial and names its position', () => {
+  const position = [1,2,3];
+  const member = { id:7, ends:[[0,0,0],[1,0,0]], links:[] };
+  const result = compareDerived(
+    { members:[member], nodes:[{id:1,position,links:[],support:true}] },
+    { members:[member], nodes:[{id:2,position,links:[],support:false}] },
+  );
+  assert.equal(result.status,'partial');
+  assert.ok(result.mismatches.some((problem)=>problem.includes('[1,2,3]') && problem.includes('support')));
+});
+
+test('#9668: unmatched support-only reference points remain missing', () => {
+  const position = [4,5,6];
+  const member = { id:7, ends:[[0,0,0],[1,0,0]], links:[] };
+  const result = compareDerived(
+    { members:[member], nodes:[] },
+    { members:[member], nodes:[{id:3,position,links:[],support:true,memberConnected:false}] },
+  );
+  assert.equal(result.status,'partial');
+  assert.ok(result.mismatches.some((problem)=>problem.includes('[4,5,6]') && problem.includes('support')));
+  assert.equal(result.counts.referenceNodes,1);
+});
+
 test('#9923: plain Node loads the class-toggle table without the viewer loader', () => {
   const target = new URL('../apps/viewer/src/store/typeVisibilityFilter.ts',import.meta.url).href;
   const result = spawnSync(process.execPath,['--input-type=module','-e',`

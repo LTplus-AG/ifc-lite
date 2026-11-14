@@ -56,10 +56,14 @@ function referenceGeometry(step) {
     return { id: e.id, ends: edge.args.slice(0,2).map((v) => transform(vertex(v), e.args[5])), links: [...(links.get(e.id) ?? [])].sort((a,b)=>a-b) };
   });
   const nodes = step.of('IFCSTRUCTURALPOINTCONNECTION').map((e) => {
-    if (!e.args[6]) return { id:e.id, position:transform([0,0,0],e.args[5]) };
-    const t = topology(e);
-    const p = t.type === 'IFCVERTEXPOINT' ? vertex({ref:t.id}) : point({ref:t.id});
-    return { id:e.id, position:transform(p,e.args[5]) };
+    const position = !e.args[6] ? transform([0,0,0],e.args[5]) : (() => {
+      const t = topology(e);
+      const p = t.type === 'IFCVERTEXPOINT' ? vertex({ref:t.id}) : point({ref:t.id});
+      return transform(p,e.args[5]);
+    })();
+    const condition = e.args[7]?.ref ? step.get(e.args[7].ref) : undefined;
+    const support = Boolean(condition?.args.slice(1).some((value) => typeof value === 'number' && value !== 0));
+    return { id:e.id, position, support };
   });
   // A reference node's physical counterparts are the physical products of
   // its incident authored members, even when the file omits direct node links.
@@ -70,13 +74,30 @@ function referenceGeometry(step) {
       for (const id of links.get(r.args[4]?.ref) ?? []) physical.add(id);
     }
     node.links = [...physical].sort((a,b)=>a-b);
+    node.memberConnected = [...step.of('IFCRELCONNECTSSTRUCTURALMEMBER'), ...step.of('IFCRELCONNECTSWITHECCENTRICITY')]
+      .some((r) => r.args[5]?.ref === node.id);
   }
-  return { members, nodes };
+  return { members, nodes:mergeSupportOnlyNodes(nodes) };
+}
+
+/** AxisVM exports some conditioned support points separately from their member joint. */
+export function mergeSupportOnlyNodes(nodes) {
+  const kept = nodes.map((node) => ({ ...node }));
+  return kept.filter((node) => {
+    const supportOnly = node.support && !node.memberConnected && !(node.links?.length);
+    const joint = supportOnly && kept.find((other) => other !== node &&
+      (other.memberConnected || other.links?.length || !other.support) &&
+      distance(other.position,node.position) <= TOLERANCE);
+    if (!joint) return true;
+    joint.support = true;
+    return false;
+  });
 }
 
 /** Both directions matter: missing or extra members/nodes must fail too. */
 export function compareDerived(actual, expected) {
   const problems = [];
+  expected = { ...expected, nodes:mergeSupportOnlyNodes(expected.nodes) };
   if (!expected.members.length || !expected.nodes.length) problems.push('reference has no members or connections');
   const matches = (a,b) => {
     const endError = Math.min(Math.max(distance(a.ends[0],b.ends[0]),distance(a.ends[1],b.ends[1])), Math.max(distance(a.ends[0],b.ends[1]),distance(a.ends[1],b.ends[0])));
@@ -97,10 +118,25 @@ export function compareDerived(actual, expected) {
     if (hit) nodes.delete(hit); else problems.push(`reference connection #${ref.id}: no derived point with links ${JSON.stringify(ref.links)} within ${TOLERANCE} m at ${JSON.stringify(ref.position)}`);
   }
   for (const extra of nodes) problems.push(`extra derived connection #${extra.id} at ${JSON.stringify(extra.position)}`);
+  const referenceSupports = expected.nodes.filter((node) => node.support);
+  const derivedSupports = actual.nodes.filter((node) => node.support);
+  for (const ref of referenceSupports) {
+    if (!derivedSupports.some((node) => distance(node.position,ref.position) <= TOLERANCE)) {
+      problems.push(`reference support at ${JSON.stringify(ref.position)}: no derived support within ${TOLERANCE} m`);
+    }
+  }
+  for (const node of derivedSupports) {
+    if (!referenceSupports.some((ref) => distance(ref.position,node.position) <= TOLERANCE)) {
+      problems.push(`extra derived support at ${JSON.stringify(node.position)}: no reference joint support within ${TOLERANCE} m`);
+    }
+  }
+  if (derivedSupports.length !== referenceSupports.length) {
+    problems.push(`support count mismatch: derived has ${derivedSupports.length} at ${JSON.stringify(derivedSupports.map((node) => node.position))}; reference has ${referenceSupports.length} at ${JSON.stringify(referenceSupports.map((node) => node.position))}`);
+  }
   const memberMatchRatio = matchedMembers / Math.max(1, expected.members.length, actual.members.length);
   const status = !expected.members.length || !expected.nodes.length || memberMatchRatio < MIN_MEMBER_MATCH_RATIO
     ? 'fail' : problems.length ? 'partial' : 'pass';
-  return { status, reason: problems.join('; '), mismatches: problems, toleranceMetres: TOLERANCE, axisSineTolerance: TOLERANCE, counts: { matchedMembers, memberMatchRatio, referenceMembers: expected.members.length, derivedMembers: actual.members.length, referenceNodes: expected.nodes.length, derivedNodes: actual.nodes.length } };
+  return { status, reason: problems.join('; '), mismatches: problems, toleranceMetres: TOLERANCE, axisSineTolerance: TOLERANCE, counts: { matchedMembers, memberMatchRatio, referenceMembers: expected.members.length, derivedMembers: actual.members.length, referenceNodes: expected.nodes.length, derivedNodes: actual.nodes.length, supportReferenceNodes: referenceSupports.length, supportDerivedNodes: derivedSupports.length } };
 }
 
 /** The file without its authored analytical graph: physical geometry, ids and properties kept. */

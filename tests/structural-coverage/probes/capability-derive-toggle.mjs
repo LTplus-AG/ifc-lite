@@ -94,7 +94,7 @@ export function mergeSupportOnlyNodes(nodes) {
   return kept.filter((node) => {
     const supportOnly = node.support && !node.memberConnected && !(node.links?.length);
     const joint = supportOnly && kept.find((other) => other !== node &&
-      (other.memberConnected || other.links?.length) &&
+      other.memberConnected &&
       distance(other.position,node.position) <= TOLERANCE);
     if (!joint) return true;
     joint.support = true;
@@ -102,9 +102,11 @@ export function mergeSupportOnlyNodes(nodes) {
   });
 }
 
+/** readStep gives raw numbers, typed selects as {type, value}, and enums as {enum}. */
 export function isRestraintValue(value) {
-  const actual = value && typeof value === 'object' && 'value' in value ? value.value : value;
-  return actual === true || actual === '.T.' || (typeof actual === 'number' && actual !== 0);
+  let actual = value && typeof value === 'object' && 'value' in value ? value.value : value;
+  if (actual && typeof actual === 'object' && 'enum' in actual) actual = actual.enum;
+  return actual === true || actual === 'T' || actual === '.T.' || (typeof actual === 'number' && actual !== 0);
 }
 
 /** Both directions matter: missing or extra members/nodes must fail too. */

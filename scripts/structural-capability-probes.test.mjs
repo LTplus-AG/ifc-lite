@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadCorpus } from '../tests/structural-coverage/lib/corpus.mjs';
+import { readStep } from '../tests/structural-coverage/lib/step.mjs';
 import { loadPackages } from '../tests/structural-coverage/lib/packages.mjs';
 import { compareDerived, measureDerivation, FRAME, mergeSupportOnlyNodes, isRestraintValue } from '../tests/structural-coverage/probes/capability-derive-toggle.mjs';
 
@@ -87,12 +88,21 @@ test('#9668: coincident orphan reference points stay separate', () => {
     {id:21,position:[0,0,0],links:[],support:false,memberConnected:false},
   ];
   assert.equal(mergeSupportOnlyNodes(orphans).length,2);
+  // A node tied only to a physical product, not to a member, is not a joint to merge into.
+  const linkedOnly = [
+    {id:30,position:[0,0,0],links:[10],support:false,memberConnected:false},
+    {id:31,position:[0,0,0],links:[],support:true,memberConnected:false},
+  ];
+  assert.equal(mergeSupportOnlyNodes(linkedOnly).length,2);
   const result = compareDerived({members:[member],nodes:[orphans[0]]},{members:[member],nodes:orphans});
   assert.notEqual(result.status,'pass');
   assert.ok(result.mismatches.some((problem)=>problem.includes('reference connection #21')));
 });
 
 test('#9668: IFC4 typed restraint values count as supports', () => {
+  // The shape readStep really produces for IFC4 boundary conditions.
+  const [condition] = readStep("ISO-10303-21;\nDATA;\n#1=IFCBOUNDARYNODECONDITION($,IFCBOOLEAN(.T.),IFCBOOLEAN(.F.),IFCLINEARSTIFFNESSMEASURE(5.),$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n").entities.values();
+  assert.deepEqual(condition.args.slice(1).map(isRestraintValue),[true,false,true,false,false,false]);
   assert.equal(isRestraintValue({type:'IFCBOOLEAN',value:'.T.'}),true);
   assert.equal(isRestraintValue({type:'IFCLINEARSTIFFNESSMEASURE',value:12}),true);
   assert.equal(isRestraintValue({type:'IFCBOOLEAN',value:'.F.'}),false);

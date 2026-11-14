@@ -44,6 +44,7 @@ import { fitInstanceOnlyBounds } from './streamingInstancedBounds.js';
 import { usePlacementMutationDrain } from './usePlacementMutationDrain.js';
 import { useInstancedShardDrain } from './useInstancedShardDrain.js';
 import { useFinalizationRecoveryWake } from './useFinalizationRecoveryWake.js';
+import { registerFinalizePending } from '@/lib/scene-settled';
 import type { UseGeometryStreamingParams } from './geometry-streaming-params.js';
 export type { UseGeometryStreamingParams } from './geometry-streaming-params.js';
 
@@ -120,8 +121,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     renderer: NonNullable<typeof rendererRef.current>; geometry: typeof geometry; replacement: number; scene: ReturnType<NonNullable<typeof rendererRef.current>['getScene']>;
     trace: ReturnType<typeof activeLoadTrace>; running: boolean; attempts: number;
   } | null>(null);
-  // A scheduled drain is not a completed finalization. Keep its same-load
-  // ownership across recovery cleanup, but never finalize a replacement load.
+  // A scheduled drain is not a completed finalization: keep same-load ownership across recovery cleanup, never finalize a replacement.
   useEffect(() => {
     const pending = pendingFinalizeRef.current;
     if (!geometry || (geometry.length === 0 && (pending?.geometry?.length ?? 0) > 0)) {
@@ -139,7 +139,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       pending.geometry = geometry;
     }
   }, [geometry, geometryReplacementVersion, isStreaming, rendererRef.current, isInitialized, gpuRecoveryEpoch]);
-  useEffect(() => () => { pendingFinalizeRef.current = null; }, []);
+  useEffect(() => { const off = registerFinalizePending(() => pendingFinalizeRef.current !== null || (prevIsStreamingRef.current && Boolean(rendererRef.current?.getGPUDevice()))); return () => { off(); pendingFinalizeRef.current = null; }; }, []); // a seen stream is not settled until it is finalized
   const lastContentVersionRef = useRef(geometryContentVersion ?? 0);
   const prevModelCountRef = useRef(modelCount);
   const queuePumpTimerRef = useRef<ReturnType<typeof globalThis.setTimeout> | null>(null);

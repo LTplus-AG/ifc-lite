@@ -50,7 +50,7 @@ import './lib/placement-edit.boot';
 import { startLocales } from './i18n/locales.boot';
 import { installWasmVersionSkewRecovery } from './lib/wasm-version-skew';
 import { installChunkVersionSkewRecovery } from './lib/chunk-version-skew';
-import { scheduleWasmPrewarm } from './lib/wasm-prewarm';
+import { scheduleWasmPrewarm, scheduleFastPath } from './lib/wasm-prewarm';
 import { initializeUserContent } from './lib/storage/content-boot';
 import type { FileSourceProviderFactory } from './services/sources/source-host';
 // After the pairing-fragment strip, like every module that may report (pairing-fragment.boot.test.ts).
@@ -134,4 +134,10 @@ export function mountViewer(container: HTMLElement, options: ViewerBootstrapOpti
   // start on the no-op tracer and lose its spans. A normal boot renders at once.
   if (PERF_TRACE_ENABLED) void loadTracerReady.then(render);
   else render();
+
+  // Spare parser + small-file geometry workers, prepared at idle (lib/fast-path).
+  // The runtime is its own chunk and applies its own gates (build env, URL kill
+  // switch). It stays here, not in prepareViewer, so a hosted start whose
+  // configuration fails never spawns workers.
+  scheduleFastPath();
 }

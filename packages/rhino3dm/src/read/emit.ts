@@ -13,8 +13,18 @@ import { determinant3, hasLinearPart, keepsF32, reach, transformNormals, transfo
 
 export type DrawnPart = Exclude<Part, { kind: 'instance' }>;
 
-/** A block's own meshes, as the output definition, their triangle count, and per axis how far any vertex is from the block's origin. */
-export interface BlockMeshes { name: string; meshes: RhinoImportDefinition['meshes']; triangles: number; reach: RhinoVector3 }
+/** A block's own meshes, as the output definition, their `cost`, and per axis how far any vertex is from the block's origin. */
+export interface BlockMeshes { name: string; meshes: RhinoImportDefinition['meshes']; cost: number; reach: RhinoVector3 }
+
+/**
+ * What a part costs the triangle budget, in thirds of a triangle: one per vertex, since memory
+ * follows the vertex buffers, and for a mesh at least its triangles. Counted in thirds so every
+ * charge is a whole number and the budget never drifts by rounding.
+ */
+export function cost(part: Exclude<DrawnPart, { kind: 'dot' }>): number {
+  const vertices = part.positions.length / 3;
+  return part.kind === 'mesh' ? Math.max(part.indices.length, vertices) : vertices;
+}
 
 /** Reverse each triangle, for geometry placed by a mirroring transform. */
 function flipWinding(indices: Uint32Array): Uint32Array {
@@ -31,7 +41,8 @@ export const MAX_TEXT_DOTS = 100_000;
 
 /**
  * Collects the output geometry and enforces the drawing budget. `entity`
- * holds the index of the source object until the reader maps it to an entity.
+ * holds the index of the source object until the reader maps it to an entity,
+ * and `hidden` is false until the reader sets that object's flag.
  */
 export class Emitter {
   readonly meshes: RhinoImportMesh[] = [];
@@ -49,7 +60,13 @@ export class Emitter {
   /** Parts left out as `transform:invalid` so far. They cost no triangles, so the block walk charges them itself. */
   outOfRange = 0;
 
-  constructor(private readonly bake: boolean, private trianglesLeft: number, private readonly report: Report) {}
+  /** `budgetLeft` in thirds of a triangle, as `cost` charges. */
+  private budgetLeft: number;
+
+  constructor(private readonly bake: boolean, maxTriangles: number, private readonly report: Report) {
+    // Capped so the thirds stay exact integers; no read gets near 3e15 triangles.
+    this.budgetLeft = Math.min(maxTriangles, Math.floor(Number.MAX_SAFE_INTEGER / 3)) * 3;
+  }
 
   /** How many records have been drawn so far. */
   size(): number {
@@ -65,16 +82,16 @@ export class Emitter {
     this.report.warn('dots', () => `Stopped after ${MAX_TEXT_DOTS.toLocaleString('en-US')} text dots: ${plural(this.report.skipped['TextDot:limit'], 'text dot')} left out.`);
   }
 
-  /** Whether `triangles` still fit; when they do not, drawing stops for the rest of the file. */
-  private fits(triangles: number): boolean {
-    if (this.exhausted || triangles > this.trianglesLeft) { this.exhausted = true; return false; }
+  /** Whether `amount` still fits; when it does not, drawing stops for the rest of the file. */
+  private fits(amount: number): boolean {
+    if (this.exhausted || amount > this.budgetLeft) { this.exhausted = true; return false; }
     return true;
   }
 
   /** Charge the budget, or stop drawing for the rest of the file. */
-  private take(triangles: number): boolean {
-    if (!this.fits(triangles)) return false;
-    this.trianglesLeft -= triangles;
+  private take(amount: number): boolean {
+    if (!this.fits(amount)) return false;
+    this.budgetLeft -= amount;
     return true;
   }
 
@@ -110,22 +127,21 @@ export class Emitter {
     if (part.kind === 'dot') {
       this.dotVisits++;
       if (!origin.every(Number.isFinite)) this.report.skip('TextDot:invalid');
-      else this.textDots.push({ entity: object, position: origin, text: part.text, color: [...color] });
+      else this.textDots.push({ entity: object, position: origin, text: part.text, color: [...color], hidden: false });
       return true;
     }
     if (this.exhausted) return false;
     if (!this.inRange(xform, origin, part.positions)) { this.outOfRange++; this.report.skip('transform:invalid'); return true; }
-    // A curve or point cloud vertex is charged a third of a triangle, so blocks cannot multiply them without bound.
-    if (!this.take(part.kind === 'mesh' ? part.indices.length / 3 : part.positions.length / 9)) return false;
+    if (!this.take(cost(part))) return false;
     const linear = xform !== null && hasLinearPart(xform) ? xform : null;
     const positions = linear ? transformVectors(linear, part.positions) : this.own(part.positions);
-    if (part.kind === 'curve') this.curves.push({ entity: object, origin, positions, closed: part.closed, color: [...color] });
-    else if (part.kind === 'points') this.pointClouds.push({ entity: object, origin, positions, colors: part.colors && this.own(part.colors), color: [...color] });
+    if (part.kind === 'curve') this.curves.push({ entity: object, origin, positions, closed: part.closed, color: [...color], hidden: false });
+    else if (part.kind === 'points') this.pointClouds.push({ entity: object, origin, positions, colors: part.colors && this.own(part.colors), color: [...color], hidden: false });
     else {
       // A mirroring placement turns each triangle inside out, so its winding is reversed.
       const mirrored = linear !== null && determinant3(linear) < 0;
       this.meshes.push({
-        entity: object, origin, positions, color: [...color],
+        entity: object, origin, positions, color: [...color], hidden: false,
         normals: linear ? transformNormals(linear, part.normals) : this.own(part.normals),
         indices: mirrored ? flipWinding(part.indices) : this.own(part.indices),
       });
@@ -136,7 +152,7 @@ export class Emitter {
   /**
    * Place a block's own meshes for `object`: one instance record, or baked
    * copies under `bakeInstances`. Either way the budget is charged the block's
-   * triangles once per placement. False when the budget refused it.
+   * `cost` once per placement. False when the budget refused it.
    *
    * What the budget does no longer depends on `bakeInstances`: both modes
    * admit and charge a placement alike. A placement whose block reach keeps
@@ -164,17 +180,17 @@ export class Emitter {
     if (this.bake || !whole) {
       // A whole block is admitted before any of its meshes is drawn; the per-mesh charges below
       // come to the same total, so none of them can refuse what this admitted.
-      if (whole && !this.fits(block.triangles)) return false;
+      if (whole && !this.fits(block.cost)) return false;
       return block.meshes.every(mesh => this.draw(object, { kind: 'mesh', ...mesh }, xform, mesh.color ?? color));
     }
-    if (!this.take(block.triangles)) return false;
+    if (!this.take(block.cost)) return false;
     let definition = this.definitionIndex.get(id);
     if (definition === undefined) {
       definition = this.definitions.length;
       this.definitionIndex.set(id, definition);
       this.definitions.push({ name: block.name, meshes: block.meshes.map(m => ({ ...m, positions: this.own(m.positions), normals: this.own(m.normals), indices: this.own(m.indices) })) });
     }
-    this.instances.push({ entity: object, definition, transform: xform, color: [...color] });
+    this.instances.push({ entity: object, definition, transform: xform, color: [...color], hidden: false });
     return true;
   }
 }

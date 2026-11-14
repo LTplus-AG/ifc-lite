@@ -18,11 +18,14 @@ export function snapshotWallQuantities(store: IfcDataStore, view: MutablePropert
   // unchanged saved unit through the parser again, never by guessing its label.
   let saved: ReturnType<typeof extractQuantitiesOnDemand> | undefined;
   return qto ? { ...qto, quantities: qto.quantities.map(quantity => {
-    if (quantity.unit === undefined || explicitScale(quantity) !== undefined) return { ...quantity };
+    if (explicitScale(quantity) !== undefined) return { ...quantity };
+    const override = view.getQuantityMutation(wallId, WALL_QTO, quantity.name);
+    if (override?.unitRemoved) return { ...quantity };
     saved ??= extractQuantitiesOnDemand(store, view.resolveBaseEntityId(wallId));
-    const original = saved.find(set => set.name === WALL_QTO)?.quantities.find(q => q.name === quantity.name && q.unit === quantity.unit);
-    return original && explicitScale(original) !== undefined
-      ? { ...quantity, explicitUnitSiScale: explicitScale(original) } : { ...quantity };
+    const original = saved.find(set => set.name === WALL_QTO)?.quantities.find(q => q.name === quantity.name);
+    return original && (override?.unit === undefined || override.unit === original.explicitUnit)
+      ? { ...original, ...quantity, explicitUnitSiScale: original.explicitUnitSiScale,
+        explicitUnitUnresolved: original.explicitUnitUnresolved } : { ...quantity };
   }) } : null;
 }
 
@@ -56,8 +59,7 @@ export function scaleWallQuantities(
   const scaleOf = (q: { name: string; type: QuantityType; value: number } | undefined): number | undefined => {
     if (!q) return undefined;
     units ??= extractProjectUnits(store.source, store.entityIndex);
-    const explicit = 'explicitUnitSiScale' in q && typeof q.explicitUnitSiScale === 'number' ? { explicitUnitSiScale: q.explicitUnitSiScale } : {};
-    const scale = quantitySiScale({ name: q.name, type: q.type, value: q.value, ...explicit }, units);
+    const scale = quantitySiScale(q, units);
     return Number.isFinite(scale) && scale > 0 ? scale : undefined;
   };
   const si = (q: { name: string; type: QuantityType; value: number } | undefined): number | undefined => {
@@ -106,7 +108,7 @@ export function wallQuantityBaseline(store: IfcDataStore, view: MutablePropertyV
   const height = before?.quantities.find(q => q.name === 'Height');
   if (!height) return from;
   const units = extractProjectUnits(store.source, store.entityIndex);
-  const baseline = height.value * quantitySiScale({ ...height, explicitUnitSiScale: explicitScale(height) }, units);
+  const baseline = height.value * quantitySiScale(height, units);
   return Number.isFinite(baseline) && baseline > 0 ? baseline : from;
 }
 

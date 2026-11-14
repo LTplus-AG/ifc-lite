@@ -72,7 +72,7 @@ export function setTopConstraintInStore(store: IfcDataStore, editor: StoreEditor
     const homeId = homeStoreyOf(inventory, elementId);
     const home = inventory.storeys.find((storey) => storey.expressId === homeId);
     if (!home) throw new Error(`#${elementId} is on no storey, so its top cannot follow one`);
-    if (kind === 'wall' && constraint.kind !== 'roof') clearWallRoofClip({ dataStore: store, view, editor: draft }, elementId);
+    const wasClipped = kind === 'wall' && view.getPropertyValue(elementId, ROOF_ATTACHMENT, 'Clipped') === true;
     let reach: number;
     if (constraint.kind === 'slab' || constraint.kind === 'roof') {
       const id = constraint.kind === 'slab' ? constraint.slabId : constraint.roofId;
@@ -104,12 +104,13 @@ export function setTopConstraintInStore(store: IfcDataStore, editor: StoreEditor
     if (!top) throw new Error(`#${elementId} has a body this editor cannot resize, so its top cannot be fitted`);
     const to = top.from + reach - top.world;
     if (kind !== 'linear' && to < MIN_ATTACHED_EXTENT) throw new Error(`#${elementId} would end ${to.toFixed(3)} m tall: what it is attached to is not above its base`);
-    if (Math.abs(to - top.from) < 1e-9 && constraint.kind !== 'roof' && view.getPropertyValue(elementId, ROOF_ATTACHMENT, 'Clipped') !== true) return { remesh: [] };
+    if (Math.abs(to - top.from) < 1e-9 && constraint.kind !== 'roof' && !wasClipped) return { remesh: [] };
     const target = { dataStore: store, view, editor: draft };
-    const roofQuantities = constraint.kind === 'roof' ? {
+    const roofQuantities = kind === 'wall' && (constraint.kind === 'roof' || wasClipped) ? {
       geometry: wallGeometry(store, view, draft, elementId), quantities: snapshotWallQuantities(store, view, elementId),
     } : null;
     const quantityFrom = roofQuantities ? wallQuantityBaseline(store, view, elementId, top.from, roofQuantities.quantities) : top.from;
+    if (wasClipped && constraint.kind !== 'roof') clearWallRoofClip(target, elementId);
     const outcome = writeAttachedTop(target, elementId, kind, top.from, to, roofQuantities ? { deferWallQuantities: true } : undefined);
     if (!outcome.ok) throw new Error(`#${elementId} cannot reach what it is attached to: ${outcome.reason}`);
     if (constraint.kind === 'roof' && roofQuantities) {
@@ -117,9 +118,9 @@ export function setTopConstraintInStore(store: IfcDataStore, editor: StoreEditor
       if (view.getPropertyValue(elementId, ROOF_ATTACHMENT, 'Clipped') === true) {
         view.setProperty(elementId, ROOF_ATTACHMENT, 'PrismQuantityHeight', quantityFrom, PropertyValueType.Real);
       }
-      scaleWallQuantities(store, view, elementId, to / quantityFrom, roofQuantities.geometry, roofQuantities.quantities);
     }
-    return { remesh: constraint.kind === 'roof' ? [...new Set([elementId, ...outcome.remesh])] : outcome.remesh };
+    if (roofQuantities) scaleWallQuantities(store, view, elementId, to / quantityFrom, roofQuantities.geometry, roofQuantities.quantities);
+    return { remesh: constraint.kind === 'roof' || wasClipped ? [...new Set([elementId, ...outcome.remesh])] : outcome.remesh };
   });
 }
 

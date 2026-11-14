@@ -513,6 +513,9 @@ it('a drag that crosses a model switch records nothing, even onto a same-id dime
   mouseMove(canvas, { clientX: 250, clientY: -50 });
   // Model B carries a dimension with the same id but other geometry.
   act(() => useViewerStore.setState({ activeModelId: 'B', dimensions2D: [{ ...d1, a: { x: 7, y: 7 }, b: { x: 9, y: 7 } }], dimension2DUndo: [], dimension2DRedo: [] }));
+  // Moving after the switch must not drag model B's same-id dimension.
+  mouseMove(canvas, { clientX: 300, clientY: 0 });
+  assert.deepEqual(useViewerStore.getState().dimensions2D[0].a, { x: 7, y: 7 }, 'model B markup is untouched');
   act(() => { window.dispatchEvent(new window.MouseEvent('mouseup')); });
   assert.equal(useViewerStore.getState().dimension2DUndo.length, 0);
 });

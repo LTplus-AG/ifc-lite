@@ -256,6 +256,8 @@ export function useDimension2D(p: UseDimension2DParams) {
     const screen = screenPoint(e);
     if (!screen) return false;
     const state = useViewerStore.getState();
+    // A drag ends at a model switch: it never moves the next model's markup.
+    if (dragging.current && dragging.current.model !== state.activeModelId) dragging.current = null;
     const drag = dragging.current;
     if (drag) {
       const at = mapping.toDrawing(screen);

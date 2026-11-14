@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { addStoreyInStore, applyStoreyLevelEdit, planStoreyLevelEdit, readStoreyInventory, readTopAttachment } from '@ifc-lite/create';
+import { addStoreyInStore, applyStoreyLevelEdit, planStoreyLevelEdit, planAttachmentBindings, readStoreyInventory } from '@ifc-lite/create';
 import { resolve } from '@/i18n/registry';
 import { useViewerStore } from '@/store';
 import { modelEditTarget, recordModellingCommit } from '@/store/slices/mutation-modelling-records';
@@ -17,7 +17,8 @@ export function reviewStoreyInsertion(modelId: string, referenceId: number, fall
   if (!target) return null;
   const inventory = readStoreyInventory(target.dataStore, target.view);
   const home = inventory.storeys.find(storey => storey.expressId === referenceId);
-  const siblings = !home ? [] : home.parentId === null ? [home] : inventory.storeys.filter(storey => storey.parentId === home.parentId);
+  if (!home) return null;
+  const siblings = home.parentId === null ? [home] : inventory.storeys.filter(storey => storey.parentId === home.parentId);
   const lowerRef = side === 'above' ? referenceId : siblings[siblings.findIndex(storey => storey.expressId === referenceId) - 1]?.expressId;
   const lower = storeyRows(s, modelId).find(row => row.expressId === lowerRef);
   if (!lower?.height) return null;
@@ -44,8 +45,12 @@ export function reviewStoreyInsertion(modelId: string, referenceId: number, fall
     }
   }
   const plan = planStoreyLevelEdit(inventory, { kind: 'floorHeight', storeyId: lowerId, Height: lower.height * 2 });
-  const reboundWallIds = plan.walls.filter(wall => wall.storeyId === lowerId && readTopAttachment(inventory, wall.wallId)?.binding === 'relative').map(wall => wall.wallId);
-  return { plan, renames, reboundWallIds, height: lower.height, params: { Name, Elevation: lower.elevation + lower.height, referenceStoreyId: lowerId }, version: s.mutationVersion, entry: s.session?.entry };
+  const params = { Name, Elevation: lower.elevation + lower.height, referenceStoreyId: lowerId };
+  const bindings = plan.refusals.length ? [] : planAttachmentBindings(inventory, params.Elevation, home.parentId).bindings;
+  // Relative tops can still resize when physical floor frames differ from Elevation.
+  const unchanged = new Set(bindings.filter(binding => binding.kind === 'wall' && Math.abs(binding.to - binding.from) < 1e-9).map(binding => binding.elementId));
+  const reboundWallIds = plan.walls.filter(wall => wall.storeyId === lowerId && unchanged.has(wall.wallId)).map(wall => wall.wallId);
+  return { plan, renames, reboundWallIds, height: lower.height, params, version: s.mutationVersion, entry: s.session?.entry };
 }
 
 export type StoreyInsertion = NonNullable<ReturnType<typeof reviewStoreyInsertion>>;

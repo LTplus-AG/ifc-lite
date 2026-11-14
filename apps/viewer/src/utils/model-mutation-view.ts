@@ -2,15 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { highestExistingExpressId, MutablePropertyView } from '@ifc-lite/mutations';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { federationRegistry } from '@ifc-lite/renderer';
 import { configureMutationView } from './configureMutationView.js';
+import { sourceWatermark } from './source-watermark.js';
 
-/** Highest source ID the store holds (0 without an index). */
-export function sourceWatermark(source: IfcDataStore | null): number {
-  return source?.entityIndex?.byId ? highestExistingExpressId(source) : 0;
-}
+export { sourceWatermark };
 
 /** Same ownership floor for live overlays and allocating cold planners. */
 export function modelExpressIdFloor(modelId: string, source: IfcDataStore | null, watermark = sourceWatermark(source)): () => number {

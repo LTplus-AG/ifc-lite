@@ -49,21 +49,18 @@ function publishIdRange(modelId: string, target: IdRangeTarget, firstHydration: 
   let published = maxExpressId;
   // An unregistered primary keeps the single-model `globalId === expressId` fallback.
   if (federationRegistry.hasModel(modelId)) {
-    let refused = false;
     try {
       published = federationRegistry.extendModel(modelId, maxExpressId, discard ? 0 : firstCreated);
     } catch (error) {
-      refused = error instanceof ModelRangeExtensionRefusedError;
+      // A refusal changes no ownership; a later failure (a listener) may already have granted the IDs.
+      if (discard && !(error instanceof ModelRangeExtensionRefusedError)) discardOverlappingRetainedEdits(useViewerStore.getState(), modelId, maxExpressId);
       throw error;
-    } finally {
-      // Unless refused (no ownership change), the registry owns the overlapped IDs, even if a
-      // listener then threw or this run never commits its store.
-      if (discard && !refused) discardOverlappingRetainedEdits(useViewerStore.getState(), modelId, maxExpressId);
     }
+    // The registry owns the overlapped IDs now, whether or not this run commits its store.
+    if (discard) discardOverlappingRetainedEdits(useViewerStore.getState(), modelId, maxExpressId);
   } else if (overlaps && !firstHydration) {
     throw new ModelRangeExtensionRefusedError(`Source of ${modelId} grows across unpublished authored IDs from ${firstCreated}`);
   }
-  // An unregistered primary owns no range: the capacity refresher discards once the store commits.
   if (published < maxExpressId) console.warn(`[Server properties] Ids ${published + 1}..${maxExpressId} of model ${modelId} lie past the ids a later model owns; those entities cannot be selected or resolved, and the model cannot be edited`);
   return { maxExpressId: published };
 }
@@ -134,10 +131,15 @@ function start(modelId: string | null, isStale: (() => boolean) | undefined,
         // Ownership is permanent even if extension/warning supersedes the lease.
         // Commit the hydrated store only if settlement still owns this model.
         const accepted = lease.isCurrent() && ownsModel();
-        if (accepted) committing = dataStore;
-        useViewerStore.getState().updateModel(modelId, accepted
-          ? { ifcDataStore: dataStore, ...idRange }
-          : idRange);
+        const registered = federationRegistry.hasModel(modelId);
+        if (accepted) {
+          committing = dataStore;
+          // An unregistered primary owns no range: its overlapped kept edits go with the commit, never apart from it.
+          if (!registered && target.overlaps && firstHydration) discardOverlappingRetainedEdits(useViewerStore.getState(), modelId, target.maxExpressId);
+          useViewerStore.getState().updateModel(modelId, { ifcDataStore: dataStore, ...idRange });
+        } else if (registered) {
+          useViewerStore.getState().updateModel(modelId, idRange);
+        }
         if (accepted && useViewerStore.getState().models.get(modelId)?.hasOverlayCapacity === false) {
           console.warn(`[Server properties] Model ${modelId}: no id is left for edits in its safe range`);
         }

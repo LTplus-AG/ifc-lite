@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { sourceWatermark } from '../../utils/model-mutation-view.js';
+import { sourceWatermark } from '../../utils/source-watermark.js';
 import type { parseIfcx as ParseIfcx } from '@ifc-lite/ifcx';
 import { IFCX_LENGTH_UNIT_SCALE, createSyntheticDataStore, type IfcDataStore, type PointCloudExtraction } from '@ifc-lite/parser';
 import { type GeometryResult, type MeshData, type PointCloudAsset } from '@ifc-lite/geometry';

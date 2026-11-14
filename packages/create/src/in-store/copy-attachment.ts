@@ -24,7 +24,7 @@
  * listed in the result's `unattachedTops` with the reason. (Deep-copying
  * file shapes is #8447.) A level beam or member is not affected: it follows
  * by moving its own placement. A copy whose body cannot be read is listed
- * the same way, unless its re-bound record needs no new height, and so is
+ * the same way, unless the placements prove that no refit is needed, and so is
  * one whose placement cannot be read where its height must be fitted.
  *
  * Elements with no record are fixed and are copied as they are.
@@ -35,19 +35,34 @@ import {
   clearTopAttachment, homeStoreyOf, readTopAttachment, writeTopAttachment, NEXT_STOREY_ABOVE, STOREY_ATTACHMENT_PSET, TOP_CONSTRAINT, type TopAttachment,
 } from './storey/storey-attachment.js';
 import {
-  attachedKind, attachedTopEditsBody, attachedTopWorldOrigin, readAttachedTop, writeAttachedTop, MIN_ATTACHED_EXTENT,
+  attachedKind, attachedTopEditsBody, attachedTopWorldOrigin, levelTopFaceAbove, readAttachedTop, writeAttachedTop, MIN_ATTACHED_EXTENT,
 } from './storey/storey-attached.js';
 import { slabUndersideWorld } from './storey/storey-attachment-target.js';
-import { scaleWallQuantities, wallGeometry } from './storey/storey-level-write.js';
-import { placementInAncestor, refId } from './host-geometry-frame.js';
+import { refId } from './host-geometry-frame.js';
+import { storeyFloorWorld } from './storey/storey-floor-frame.js';
+import { placementWorldZ } from './storey/storey-grid.js';
 import type { CopyContext, CopyProductResult } from './copy-product.js';
+
+interface CopyAttachmentSource {
+  readonly attachment: TopAttachment;
+  readonly top: number | null;
+  readonly origin: number | null;
+  readonly placementZ: number | null;
+}
+
+/** A rigid copy's vertical shift is readable even when its body is unsupported. */
+function productPlacementZ(inventory: StoreyInventory, id: number): number | null {
+  const placement = refId(inventory.reader.entity(id)?.attributes[5]);
+  const z = placement === null ? null : placementWorldZ(inventory.reader, placement);
+  return z === null || !Number.isFinite(z) ? null : z * inventory.scale;
+}
 
 /** What the copies of one batch read from the model as it stood before the batch. */
 export interface CopyAttachmentContext {
   /** Null when nothing the batch copies records a top attachment (most pastes and arrays). */
   readonly inventory: StoreyInventory | null;
-  /** Source id → its attachment and home storey, for sources that record one. */
-  readonly sources: ReadonlyMap<number, { attachment: TopAttachment; homeId: number }>;
+  /** Source id → its attachment and original vertical measures. */
+  readonly sources: ReadonlyMap<number, CopyAttachmentSource>;
 }
 
 /** Read the attachments of every product a batch may copy (roots and what they carry). */
@@ -56,14 +71,16 @@ export function readCopyAttachments(ctx: CopyContext, ids: Iterable<number>): Co
   // Only read the storey inventory when a copy records an attachment.
   const recorded = [...ids].filter((id) => attachedKind(ctx.read(id)?.type)
     && (view.getPropertyValue(id, STOREY_ATTACHMENT_PSET, TOP_CONSTRAINT) !== null || view.getPropertyValue(id, 'Constraints', 'Top Constraint') !== null));
-  const sources = new Map<number, { attachment: TopAttachment; homeId: number }>();
+  const sources = new Map<number, CopyAttachmentSource>();
   if (recorded.length === 0) return { inventory: null, sources };
   // Only these sources' home storeys are asked for: no whole relationship graph.
   const inventory = readStoreyInventory(ctx.store, view, { lazyRelationships: true });
+  const target = { dataStore: ctx.store, view, editor: ctx.editor };
   for (const id of recorded) {
+    const kind = attachedKind(ctx.read(id)?.type)!;
     const attachment = readTopAttachment(inventory, id);
     const homeId = homeStoreyOf(inventory, id);
-    if (attachment && homeId !== null) sources.set(id, { attachment, homeId });
+    if (attachment && homeId !== null) sources.set(id, { attachment, top: readAttachedTop(target, id, kind), origin: attachedTopWorldOrigin(target, id, kind), placementZ: productPlacementZ(inventory, id) });
   }
   return { inventory, sources };
 }
@@ -103,11 +120,8 @@ export function rebindCopiedAttachments(
       const source = attachments.sources.get(sourceId);
       const kind = attachedKind(ctx.read(copyId)?.type);
       if (!source || !kind) continue;
-      const { attachment, homeId } = source;
-      // Only a copy whose target changes needs a new record: a slab copied with it, or another storey.
+      const { attachment } = source;
       const slabCopy = attachment.targetElementId === undefined ? undefined : copyOf.get(attachment.targetElementId);
-      if (storeyId === homeId && slabCopy === undefined) continue;
-      const home = inventory.storeys.find((storey) => storey.expressId === homeId)!;
       const here = inventory.storeys.find((storey) => storey.expressId === storeyId);
       if (!here) continue;
       const next = storeyNeighbour(inventory, storeyId, 1);
@@ -118,15 +132,25 @@ export function rebindCopiedAttachments(
         writeTopAttachment(view, copyId, next ? next.GlobalId : NEXT_STOREY_ABOVE, 'relative');
       } else {
         const reached = inventory.storeys.find((storey) => storey.expressId === attachment.targetStoreyId)!;
-        if (here.elevation >= reached.elevation) throw fail(copyId, `it is attached to ${reached.Name}, which is not above its new storey ${here.Name}`);
+        if (storeyFloorWorld(inventory, here) >= storeyFloorWorld(inventory, reached)) throw fail(copyId, `it is attached to ${reached.Name}, which is not above its new storey ${here.Name}`);
       }
       const from = readAttachedTop(target, copyId, kind);
       if (from === null) {
-        // Only a relative top with the same spacing above (or no storey above yet) is right without a refit.
-        const reached = attachment.targetStoreyId === null ? null : inventory.storeys.find((storey) => storey.expressId === attachment.targetStoreyId);
-        const sameGap = attachment.kind === 'storey' && attachment.binding === 'relative'
-          && (!next || (reached !== null && reached !== undefined && Math.abs((next.elevation - here.elevation) - (reached.elevation - home.elevation)) < 1e-9));
-        if (!sameGap) {
+        const reached = inventory.storeys.find(storey => storey.expressId === attachment.targetStoreyId);
+        const copyZ = productPlacementZ(inventory, copyId);
+        const shift = copyZ !== null && source.placementZ !== null ? copyZ - source.placementZ : null;
+        let noRefit: boolean;
+        if (attachment.kind === 'storey') {
+          noRefit = attachment.binding === 'relative'
+            ? !next || (reached !== undefined && shift !== null
+              && Math.abs(shift - (storeyFloorWorld(inventory, next) - storeyFloorWorld(inventory, reached))) < 1e-9)
+            : shift !== null && Math.abs(shift) < 1e-9;
+        } else {
+          const original = slabUndersideWorld(target, attachment.targetElementId!);
+          const copied = slabCopy === undefined ? original : slabUndersideWorld(target, slabCopy);
+          noRefit = original !== null && copied !== null && shift !== null && Math.abs(shift - (copied - original)) < 1e-9;
+        }
+        if (!noRefit) {
           clearTopAttachment(view, copyId);
           unattached.push({ copyId, reason: UNREADABLE_BODY });
         }
@@ -139,26 +163,30 @@ export function rebindCopiedAttachments(
         const origin = attachedTopWorldOrigin(target, copyId, kind);
         if (underside === null || origin === null || !Number.isFinite(origin)) throw fail(copyId, `the slab #${slabId} or the copy cannot be read`);
         to = underside - origin;
-      } else if (attachment.binding === 'explicit') {
-        // The top stays on the storey it names; the base moved with the copy.
-        to = from - (here.elevation - home.elevation);
-      } else if (!next) {
+      } else if (attachment.binding === 'relative' && !next) {
         continue;
-      } else if (attachment.targetStoreyId !== null) {
-        const reached = inventory.storeys.find((storey) => storey.expressId === attachment.targetStoreyId)!;
-        // The same offset from the floor above: the height follows the new floor-to-floor.
-        to = from + (next.elevation - here.elevation) - (reached.elevation - home.elevation);
       } else {
-        // Drawn unbound: the copy reaches the storey above its new one.
         const origin = attachedTopWorldOrigin(target, copyId, kind);
-        const floor = here.placementId === null ? null : placementInAncestor(inventory.reader, here.placementId, null);
-        if (origin === null || !Number.isFinite(origin)) {
-          // Re-bound above, but its height cannot be fitted: never leave it attached at the wrong one.
+        const sourceOrigin = source.origin;
+        const sourceTop = source.top;
+        if (origin === null || !Number.isFinite(origin) || sourceOrigin === null || !Number.isFinite(sourceOrigin)) {
           clearTopAttachment(view, copyId);
           unattached.push({ copyId, reason: UNREADABLE_PLACEMENT });
           continue;
         }
-        to = from + (next.elevation - here.elevation) - (origin + from - (floor ? floor.o[2] * inventory.scale : here.elevation));
+        if (sourceTop === null) {
+          clearTopAttachment(view, copyId);
+          unattached.push({ copyId, reason: UNREADABLE_BODY });
+          continue;
+        }
+        // Preserve the source's offset from its reached floor in WORLD Z,
+        // including any extra vertical copy offset on the same home storey.
+        const sourceWorldTop = sourceOrigin + sourceTop;
+        const reached = inventory.storeys.find(storey => storey.expressId === attachment.targetStoreyId);
+        const worldTop = attachment.binding === 'explicit' ? sourceWorldTop
+          : reached ? storeyFloorWorld(inventory, next!) + sourceWorldTop - storeyFloorWorld(inventory, reached)
+            : storeyFloorWorld(inventory, next!) - levelTopFaceAbove(target, copyId, kind);
+        to = worldTop - origin;
       }
       if (Math.abs(to - from) < 1e-9) continue;
       if (kind !== 'linear' && to < MIN_ATTACHED_EXTENT) throw fail(copyId, `it would end ${to.toFixed(3)} m tall`);
@@ -169,10 +197,8 @@ export function rebindCopiedAttachments(
         unattached.push({ copyId, reason: SHARED_BODY });
         continue;
       }
-      const geometry = kind === 'wall' ? wallGeometry(ctx.store, view, ctx.editor, copyId) : undefined;
       const outcome = writeAttachedTop(target, copyId, kind, from, to);
       if (!outcome.ok) throw fail(copyId, outcome.reason);
-      if (kind === 'wall') scaleWallQuantities(ctx.store, view, copyId, to / from, geometry);
       reshaped.push(...outcome.remesh);
     }
   }

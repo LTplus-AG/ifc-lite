@@ -18,7 +18,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import { act } from 'react';
 import { useViewerStore } from '@/store';
 import { advance, cleanup, click, press, render, type, waitFor } from '@/test/render.js';
-import { MODEL_ID, STOREY, UPPER_STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
+import { MODEL_ID, STOREY, UPPER_STOREY, seedModelingSession, fixtureStep } from '@/test/modeling-session-fixture';
 import { setRequestRemesh } from '@/lib/commands/modeling/transaction';
 import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
 import { requiredModule } from '@/i18n/__tests__/required-module';
@@ -356,7 +356,11 @@ describe('storey manager (#9013)', () => {
   });
 });
 
-it('#9334 insertion distinguishes explicit wall resizes from relative top updates and undoes as one step', async () => {
+for (const upperFloorZ of [0, 3]) it(`#9334/#9352 insertion reports physical resizes and undoes as one step (floor Z=${upperFloorZ})`, async () => {
+  // This review must describe the actual floor frame, including an Elevation/placement mismatch.
+  await seedModelingSession({ step: fixtureStep({}).replace('#51=IFCLOCALPLACEMENT($,#42);',
+    `#51=IFCLOCALPLACEMENT($,#52);\n#52=IFCAXIS2PLACEMENT3D(#53,$,$);\n#53=IFCCARTESIANPOINT((0.,0.,${upperFloorZ}.));`) });
+  useViewerStore.getState().enterModelWorkspace({ modelId: MODEL_ID, storeyId: STOREY });
   const s = useViewerStore.getState();
   const wall = s.addWall(MODEL_ID, STOREY, { Start: [0, 0, 0], End: [4, 0, 0], Height: 3, Thickness: 0.2 });
   assert.ok('expressId' in wall);
@@ -376,18 +380,20 @@ it('#9334 insertion distinguishes explicit wall resizes from relative top update
   await waitFor(() => !!ui.querySelector('[data-storey-insertion]'), 'the first-click insertion review loads');
   assert.match(ui.querySelector('[data-storey-insertion]')?.textContent ?? '', /Floor-to-floor stays 3.00 m. Storeys shifted: 1/);
   const impact = ui.querySelector('[data-storey-impact-summary]')?.textContent ?? '';
-  assert.match(impact, /resizes 1 wall(?: ·|$)/, 'the explicit GUID-bound wall really stretches');
-  assert.match(impact, /updates 1 wall top(?: ·|$)/, 'only the relative top rebinds without a final resize');
+  assert.match(impact, new RegExp(`resizes ${upperFloorZ === 3 ? 1 : 2} walls?(?: ·|$)`), 'the review counts actual final resizes');
+  if (upperFloorZ === 3) assert.match(impact, /updates 1 wall top(?: ·|$)/, 'the aligned relative top rebinds without a final resize');
+  else assert.doesNotMatch(impact, /updates \d+ wall top/, 'the offset relative wall also resizes');
   const confirm = [...ui.querySelectorAll('button')].find(b => b.textContent === 'Insert storey')!;
   click(confirm);
   await waitFor(() => rows(ui).length === 3, 'inserted floor appears');
   assert.deepEqual(elevations(), [0, 3, 6]);
   assert.equal(useViewerStore.getState().readWallEndpoints(MODEL_ID, wall.expressId)?.height, 6, 'the explicitly bound wall follows its shifted target');
-  assert.equal(useViewerStore.getState().readWallEndpoints(MODEL_ID, relative.expressId)?.height, 3, 'the relative top rebinds at its original height');
+  assert.equal(useViewerStore.getState().readWallEndpoints(MODEL_ID, relative.expressId)?.height, 6 - upperFloorZ, 'the relative top preserves its physical offset from the followed floor');
   assert.equal(useViewerStore.getState().session?.storeyId, STOREY, 'drawing plane stays on L0');
   act(() => useViewerStore.getState().undo(MODEL_ID));
   assert.deepEqual(elevations(), [0, 3], 'one Undo restores both the shifted storey and the insertion');
   assert.equal(useViewerStore.getState().readWallEndpoints(MODEL_ID, wall.expressId)?.height, 3, 'Undo also restores the resized wall');
+  assert.equal(useViewerStore.getState().readWallEndpoints(MODEL_ID, relative.expressId)?.height, 3, 'Undo restores the relative wall too');
 });
 
 it('#9334 a first-click insertion that finishes loading after session replacement does nothing', async () => {

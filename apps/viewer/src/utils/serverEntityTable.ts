@@ -190,6 +190,7 @@ export function buildEntityTable(
       // them. All three EntityTable implementations must agree here.
       else typeOverrides.set(id, IFC_ENTITY_NAMES[typeName.toUpperCase()] ?? typeName.toUpperCase());
     },
+    clearTypeOverrides: () => { if (typeOverrides.size > 0) { typeRevision++; typeOverrides.clear(); } },
     getExpressIdByGlobalId: (gid) => {
       return globalIdToExpressId.get(gid) ?? -1;
     },

@@ -96,7 +96,8 @@
  * footing.
  *
  * Provenance. Every curve member carries an `IfcLite_StructuralDerivation`
- * property set naming its element's GlobalId and the element's line (the
+ * property set (when the plan has `physicalAxis` and the element a GlobalId)
+ * naming its element's GlobalId and the element's line (the
  * rule above, before joints moved its ends) in metres in the axes of its
  * storey, which the member's placement is relative to. The
  * `structural-stale-item` check in `@ifc-lite/parser` compares it with the
@@ -207,8 +208,11 @@ export interface PlannedCurveMember {
   end: Vec3;
   /** Where the line came from. */
   axisSource: 'axis' | 'extrusion' | 'profile';
-  /** The element's line, before joints moved its ends; apply records it on the member. */
-  physicalAxis: [Vec3, Vec3];
+  /**
+   * The element's line, before joints moved its ends; apply records it on the
+   * member. The planner always sets it; a plan without it writes no record.
+   */
+  physicalAxis?: [Vec3, Vec3];
   startNode: number;
   endNode: number;
   loadBearing: MemberLoadBearing;

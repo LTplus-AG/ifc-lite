@@ -14,6 +14,7 @@ import { StepExporter } from '@ifc-lite/export';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { addColumnToStore, applyStructuralDerivation, planStructuralDerivation, readStructuralDerivationFacts, resolveSpatialAnchor, structuralPhysicalAxes, transformElementsInStore } from '../index.js';
 import { liveStructuralExtraction } from './structural-derive-facts.js';
+import type { Vec3 } from './structural-derive-types.js';
 
 type Schema = 'IFC2X3' | 'IFC4' | 'IFC4X3';
 
@@ -428,13 +429,29 @@ describe.each(['IFC2X3', 'IFC4', 'IFC4X3'] as const)('derive provenance and the 
 });
 
 describe('derive provenance: apply checks the recorded axis (#9668)', () => {
-  it('refuses a plan whose curve member has no finite physical axis, writing nothing', async () => {
+  it('refuses a plan whose physical axis is not two finite points, writing nothing', async () => {
     const store = await parse(model('IFC4'));
     const editor = session(store);
-    const bad = structuredClone(planStructuralDerivation(readStructuralDerivationFacts(store, editor)));
-    bad.curveMembers[0].physicalAxis = [[0, 0, Number.NaN], [1, 0, 0]];
+    const plan = planStructuralDerivation(readStructuralDerivationFacts(store, editor));
     const before = editor.getNewEntities().length;
-    expect(() => applyStructuralDerivation(editor, store, bad)).toThrow(/no finite physical axis/);
+    for (const axis of [[[0, 0, Number.NaN], [1, 0, 0]], [[0, 0], [1, 0]]]) {
+      const bad = structuredClone(plan);
+      bad.curveMembers[0].physicalAxis = axis as [Vec3, Vec3];
+      expect(() => applyStructuralDerivation(editor, store, bad)).toThrow(/physical axis that is not two finite points/);
+    }
     expect(editor.getNewEntities().length).toBe(before);
+  });
+
+  it('applies a plan without physical axes, as an earlier version made them, and records nothing', async () => {
+    const store = await parse(model('IFC4'));
+    const editor = session(store);
+    const plan = structuredClone(planStructuralDerivation(readStructuralDerivationFacts(store, editor)));
+    for (const member of plan.curveMembers) delete member.physicalAxis;
+    applyStructuralDerivation(editor, store, plan, seeded());
+    const { content } = new StepExporter(store, editor.getMutationView()).export({ schema: 'IFC4', applyMutations: true });
+    const reread = await parse(typeof content === 'string' ? content : new TextDecoder().decode(content));
+    const members = extractStructuralOnDemand(reread).members;
+    expect(members.length).toBe(plan.curveMembers.length + plan.surfaceMembers.length);
+    expect(members.filter((m) => reread.getProperties(m.expressId).some((set) => set.name === STRUCTURAL_DERIVATION_PSET))).toEqual([]);
   });
 });

@@ -91,8 +91,8 @@ Run `ifc-lite derive-structural --help` for tolerance and support options.
 
 Each derived curve member carries an `IfcLite_StructuralDerivation` property
 set with its element's GlobalId and that element's analytical line at derive
-time, in metres in the storey's axes, so moving a storey or site is not a
-change. `structuralConsistencyIssues(store, { physicalAxes })`
+time, in metres in the storey's axes, so moving a storey or site that
+carries both the element and the member is not a change. `structuralConsistencyIssues(store, { physicalAxes })`
 compares it with the element's line now and reports `structural-stale-item`
 when the element moved more than `staleTolerance` (default 1 mm), including a
 move along its own axis. Members derived before this record existed, and

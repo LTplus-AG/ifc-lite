@@ -249,7 +249,7 @@ function staleItems(
     issues.push({
       severity: 'warning', rule: 'structural-stale-item', entityId: member.expressId, globalId: member.globalId,
       target: fact.expressId, targetGlobalId: fact.globalId, distance,
-      message: `${label(member.expressId, member.type, member.globalId)} is stale: ${label(fact.expressId, fact.type, fact.globalId)} moved ${distance.toFixed(3)} m since it was derived (tolerance ${tolerance} m)`,
+      message: `${label(member.expressId, member.type, member.globalId)} is stale: the line of ${label(fact.expressId, fact.type, fact.globalId)} lies ${distance.toFixed(3)} m from where it was when the member was derived, relative to the member's storey (tolerance ${tolerance} m)`,
     });
   }
   return issues;

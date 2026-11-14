@@ -47,7 +47,7 @@ it('#9875 A: an error raised during a modal is visible and unobscured inside its
   await withThemedPage('light', document.body.innerHTML, async page => {
     await settle(page);
     await page.locator('[data-dialog-notices]').evaluate(positionDialogNotices);
-    const notice = page.getByRole('dialog').locator('[aria-live="assertive"]');
+    const notice = page.locator('[data-dialog-notices] [aria-live="assertive"]');
     assert.match(await notice.innerText(), /could not be saved/);
     assert.equal(await notice.isVisible(), true);
     assert.equal(await receivesPointer(notice), true, 'the scrim must not cover the notice');
@@ -69,7 +69,7 @@ for (const width of [1600, 320]) {
       await withThemedPage(theme, document.body.innerHTML, async page => {
         await settle(page, width, width === 320 ? 640 : 900);
         const dialog = page.getByRole('dialog');
-        const shelf = dialog.locator('[data-dialog-notices]');
+        const shelf = dialog.locator('..').locator('[data-dialog-notices]');
         const field = dialog.getByRole('textbox', { name: 'File name' });
         const exportButton = dialog.getByRole('button', { name: 'Export', exact: true });
         await shelf.evaluate(positionDialogNotices);
@@ -93,9 +93,9 @@ it('#9875 C: a pre-existing persistent storey notice stays beneath a newly opene
   await withThemedPage('light', document.body.innerHTML, async page => {
     await settle(page);
     const dialog = page.getByRole('dialog');
-    await dialog.locator('[data-dialog-notices]').evaluate(positionDialogNotices);
+    await dialog.locator('..').locator('[data-dialog-notices]').evaluate(positionDialogNotices);
     assert.equal(await dialog.getByText('Level 3 added').count(), 0);
-    assert.equal(await dialog.getByText('A new review failure').isVisible(), true);
+    assert.equal(await dialog.locator('..').getByText('A new review failure').isVisible(), true);
     const button = dialog.getByRole('button', { name: 'Export', exact: true });
     const bounds = await button.boundingBox();
     assert.ok(bounds);
@@ -128,11 +128,11 @@ for (const layout of ['grid', 'below', 'gridTall', 'scrollBody', 'viewportBounds
       toast.info('IFClite stores an action log in this browser.');
     });
     const panel = document.querySelector<HTMLElement>('[role="dialog"]')!;
-    const update = { className: panel.className, shelf: panel.firstElementChild!.outerHTML };
+    const update = { className: panel.className, shelf: panel.parentElement!.querySelector('[data-notice-shelf]')!.outerHTML };
     act(() => {
       for (const button of panel.querySelectorAll<HTMLButtonElement>('button[aria-label="Dismiss notification"]')) button.click();
     });
-    const dismissed = { shelf: panel.firstElementChild!.outerHTML, overflow: panel.style.overflow };
+    const dismissed = { shelf: panel.parentElement!.querySelector('[data-notice-shelf]')!.outerHTML };
     await withThemedPage('light', before, async page => {
       const height = layout === 'phoneCap' ? 640 : 900;
       await settle(page, layout === 'phoneCap' ? 320 : 1600, height);
@@ -148,12 +148,12 @@ for (const layout of ['grid', 'below', 'gridTall', 'scrollBody', 'viewportBounds
       assert.ok(bounds && panelBounds);
       await dialog.evaluate((element, next) => {
         element.setAttribute('class', next.className);
-        element.firstElementChild!.outerHTML = next.shelf;
+        element.parentElement!.querySelector('[data-notice-shelf]')!.outerHTML = next.shelf;
       }, update);
       assert.deepEqual(await field.boundingBox(), fieldBounds, 'inserting the shelf must not move the input');
       assert.equal(await receivesPointer(field), true, 'the initial shelf must not cover the input');
-      await dialog.locator('[data-dialog-notices]').evaluate(positionDialogNotices);
-      const placement = await dialog.locator('[data-dialog-notices]').getAttribute('data-notice-placement');
+      await dialog.locator('..').locator('[data-dialog-notices]').evaluate(positionDialogNotices);
+      const placement = await dialog.locator('..').locator('[data-dialog-notices]').getAttribute('data-notice-placement');
       if (layout === 'below') assert.equal(placement, 'below');
       if (layout === 'phoneCap') assert.equal(placement, 'flow');
       if (placement !== 'flow') {
@@ -165,10 +165,10 @@ for (const layout of ['grid', 'below', 'gridTall', 'scrollBody', 'viewportBounds
       assert.equal(await receivesPointer(field), true, 'notices must not intercept the input');
       assert.deepEqual(await dialog.boundingBox(), panelBounds, 'an arriving notice must not resize or recenter the dialog');
       assert.ok(panelBounds.height <= (layout === 'viewportBounds' ? height * 0.85 : height - 32) + 1);
-      assert.equal(await receivesPointer(dialog.locator('[data-dialog-notices] button').first()), true);
+      assert.equal(await receivesPointer(dialog.locator('..').locator('[data-dialog-notices] button').first()), true);
       await dialog.evaluate((element, cleared) => {
-        (element as HTMLElement).style.overflow = cleared.overflow;
-        element.firstElementChild!.outerHTML = cleared.shelf;
+        element.parentElement!.querySelector('[data-notice-shelf]')!.outerHTML = cleared.shelf;
+        (element.querySelector('[data-dialog-notice-slot]') as HTMLElement).style.display = 'none';
       }, dismissed);
       assert.deepEqual(await field.boundingBox(), fieldBounds, 'dismissal restores the original content layout');
       assert.equal(await receivesPointer(field), true);
@@ -187,9 +187,13 @@ it('#9879 an overflowing non-scrollBody dialog retains clipping and scrolling wh
   await withThemedPage('light', document.body.innerHTML, async page => {
     await settle(page, 1600, 1200);
     const panel = page.getByRole('dialog');
-    const shelf = panel.locator('[data-dialog-notices]');
+    const shelf = panel.locator('..').locator('[data-dialog-notices]');
     const room = await panel.evaluate(element => element.getBoundingClientRect().top - 24);
-    const needed = await shelf.evaluate(element => element.scrollHeight);
+    const needed = await shelf.evaluate(element => {
+      const panel = element.parentElement!.querySelector('[data-dialog-panel]')!;
+      (element as HTMLElement).style.width = `${panel.getBoundingClientRect().width}px`;
+      return element.scrollHeight;
+    });
     assert.ok(room >= needed, 'the short notice fits above the 85dvh panel');
     await shelf.evaluate(positionDialogNotices);
     const metrics = await panel.evaluate(element => ({
@@ -213,5 +217,54 @@ it('#9879 an overflowing non-scrollBody dialog retains clipping and scrolling wh
     assert.ok(await panel.evaluate(element => element.scrollTop > 0));
     assert.equal(await receivesPointer(panel.getByRole('button', { name: 'Last field' })), true,
       'scrolling reveals the previously clipped control');
+  });
+});
+
+it('#9879 content growth after a notice preserves panel overflow and clipping', async () => {
+  render(<Toaster />);
+  render(<Dialog open><DialogContent viewportBounds="height" style={{ height: '85dvh' }}>
+    <DialogHeader><DialogTitle>Growing form</DialogTitle><DialogDescription>Edit fields</DialogDescription></DialogHeader>
+    <div data-growing-content style={{ height: 100 }}>Form rows</div>
+    <button>Save fields</button>
+  </DialogContent></Dialog>);
+  act(() => toast.info('Saved'));
+  await withThemedPage('light', document.body.innerHTML, async page => {
+    await settle(page, 1600, 1200);
+    const panel = page.getByRole('dialog');
+    const before = await panel.evaluate(element => {
+      (element as HTMLElement).style.overflow = '';
+      return getComputedStyle(element).overflowY;
+    });
+    await page.locator('[data-dialog-notices]').evaluate(positionDialogNotices);
+    await panel.locator('[data-growing-content]').evaluate(element => { (element as HTMLElement).style.height = '1800px'; });
+    assert.equal(await panel.evaluate(element => getComputedStyle(element).overflowY), before,
+      'notice placement must never change the panel overflow, including after content growth');
+    assert.equal(await panel.evaluate(element => element.scrollHeight > element.clientHeight), true);
+    const spills = await panel.locator('[data-growing-content]').evaluate(element => {
+      const bounds = element.closest('[role="dialog"]')!.getBoundingClientRect();
+      return element.contains(document.elementFromPoint(bounds.x + bounds.width / 2, bounds.bottom + 8));
+    });
+    assert.equal(spills, false);
+    await panel.evaluate(element => { element.scrollTop = element.scrollHeight; });
+    assert.ok(await panel.evaluate(element => element.scrollTop > 0));
+  });
+});
+
+it('#9879 remeasuring the capped fallback preserves the panel scroll position', async () => {
+  render(<Toaster />);
+  render(<Dialog open><DialogContent><DialogTitle>Long form</DialogTitle><DialogDescription>Edit rows</DialogDescription>
+    <div style={{ height: 1800 }}>Many rows</div><button>Last row</button>
+  </DialogContent></Dialog>);
+  act(() => toast.info('Saved'));
+  await withThemedPage('light', document.body.innerHTML, async page => {
+    await settle(page);
+    const panel = page.getByRole('dialog');
+    const shelf = page.locator('[data-dialog-notices]');
+    await shelf.evaluate(positionDialogNotices);
+    assert.equal(await shelf.getAttribute('data-notice-placement'), 'flow');
+    const before = await panel.evaluate(element => { element.scrollTop = element.scrollHeight; return element.scrollTop; });
+    assert.ok(before > 0);
+    await shelf.evaluate(positionDialogNotices);
+    assert.equal(await panel.evaluate(element => element.scrollTop), before);
   });
 });

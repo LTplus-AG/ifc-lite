@@ -1,64 +1,71 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 import { useLayoutEffect, type RefObject } from 'react';
 
-/** Keep the shelf in the modal DOM, but outside its interactive content box. */
+/** Fixed viewport placement in an untransformed Radix scope, beside the panel. */
 export function positionDialogNotices(shelf: HTMLElement): void {
-  const panel = shelf.parentElement;
-  if (!panel) return;
-  // Measure the original content box even after a previous capped fallback.
-  shelf.style.position = 'absolute';
-  // Exclude the shelf itself from scrollHeight, including a prior bottom placement.
-  const display = shelf.style.display;
-  shelf.style.display = 'none';
-  const contentOverflows = panel.scrollHeight > panel.clientHeight;
-  const bounds = panel.getBoundingClientRect();
-  shelf.style.display = display;
+  const scope = shelf.parentElement;
+  const panel = scope?.querySelector<HTMLElement>('[data-dialog-panel]');
+  const slot = panel?.querySelector<HTMLElement>('[data-dialog-notice-slot]');
+  if (!panel || !slot) return;
+  // The fallback reserves space; it never changes the panel's overflow rules.
+  slot.style.display = 'none';
+  let bounds = panel.getBoundingClientRect();
+  shelf.style.width = `${bounds.width}px`;
   const gap = 8;
   const margin = 16;
   const above = Math.max(0, bounds.top - gap - margin);
   const below = Math.max(0, window.innerHeight - bounds.bottom - gap - margin);
   const needed = Math.min(shelf.scrollHeight, window.innerHeight * 0.3);
-  const cap = Number.parseFloat(getComputedStyle(panel).maxHeight);
-  // Only a panel already at its cap may trade body space for an in-flow shelf.
-  const atCap = Number.isFinite(cap) && bounds.height >= cap - 1;
-  // Never expose overflowing form content just because a notice fits outside.
-  const inFlow = contentOverflows || (above < needed && below < needed && atCap);
-  const onTop = above >= needed || (below < needed && above >= below);
+  const inFlow = above < needed && below < needed;
+  const onTop = above >= needed;
+  let left = bounds.left;
+  let top = onTop ? bounds.top - gap - needed : bounds.bottom + gap;
+  let width = bounds.width;
+  let clipPath = 'none';
+  if (inFlow) {
+    Object.assign(slot.style, { display: 'block', height: `${needed}px` });
+    bounds = panel.getBoundingClientRect();
+    const reserved = slot.getBoundingClientRect();
+    left = reserved.left;
+    top = reserved.top;
+    width = reserved.width;
+    // The shelf remains a scope sibling. Clip its reserved row while the panel scrolls.
+    clipPath = `inset(${Math.max(0, bounds.top - top)}px 0 ${Math.max(0, top + needed - bounds.bottom)}px 0)`;
+  }
   shelf.dataset.noticePlacement = inFlow ? 'flow' : onTop ? 'above' : 'below';
   Object.assign(shelf.style, {
-    position: inFlow ? 'relative' : 'absolute',
-    top: inFlow ? 'auto' : onTop ? 'auto' : '100%',
-    bottom: inFlow ? 'auto' : onTop ? '100%' : 'auto',
-    marginTop: !inFlow && !onTop ? `${gap}px` : '0',
-    marginBottom: !inFlow && onTop ? `${gap}px` : '0',
-    maxHeight: `${inFlow ? window.innerHeight * 0.3 : Math.min(needed, onTop ? above : below)}px`,
+    position: 'fixed', left: `${left}px`, top: `${top}px`, width: `${width}px`,
+    maxHeight: `${needed}px`, clipPath, paddingRight: inFlow ? '2rem' : '0',
   });
-  // An out-of-box shelf must escape both scrollBody clipping and default scrolling.
-  // The body remains the scroller in scrollBody dialogs. Restore clipping at the cap.
-  panel.style.overflow = inFlow ? '' : 'visible';
 }
 
 export function useDialogNoticeLayout(shelf: RefObject<HTMLDivElement | null>, visible: boolean): void {
   useLayoutEffect(() => {
     const element = shelf.current;
-    const panel = element?.parentElement;
-    if (!visible || !element || !panel) return;
-    const overflow = panel.style.overflow;
-    const update = () => {
-      positionDialogNotices(element);
-      if (element.dataset.noticePlacement === 'flow') panel.style.overflow = overflow;
+    const panel = element?.parentElement?.querySelector<HTMLElement>('[data-dialog-panel]');
+    const slot = panel?.querySelector<HTMLElement>('[data-dialog-notice-slot]');
+    if (!visible || !element || !panel || !slot) return;
+    const update = () => positionDialogNotices(element);
+    const reveal = () => {
+      if (element.dataset.noticePlacement === 'flow') slot.scrollIntoView({ block: 'nearest' });
+      update();
     };
     update();
     const observer = new ResizeObserver(update);
     observer.observe(element);
     observer.observe(panel);
+    for (const region of element.children) observer.observe(region);
     window.addEventListener('resize', update);
     panel.addEventListener('animationend', update);
+    panel.addEventListener('scroll', update, true);
+    element.addEventListener('focusin', reveal);
     return () => {
       observer.disconnect();
       window.removeEventListener('resize', update);
       panel.removeEventListener('animationend', update);
-      panel.style.overflow = overflow;
+      panel.removeEventListener('scroll', update, true);
+      element.removeEventListener('focusin', reveal);
+      slot.style.display = 'none';
       element.removeAttribute('style');
       delete element.dataset.noticePlacement;
     };

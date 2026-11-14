@@ -10,6 +10,7 @@ import { useTranslation } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { usePortalContainer } from './portal-container';
 import { Dialog, useToastDialog } from './dialog-root';
+import { DialogFrame } from './dialog-frame';
 import { useDialogNoticeLayout } from './dialog-notice-layout';
 import { ToastMessages, useToastItems } from './toast';
 import { refreshToastDialogs, registerToastDialog } from './toast-store';
@@ -71,7 +72,10 @@ const DialogContent = React.forwardRef<
   <DialogPortal container={usePortalContainer()}>
     <DialogOverlay className={overlayClassName} />
     <DialogPrimitive.Content
-      ref={ref}
+      {...props}
+      asChild
+    >
+    <DialogFrame panelRef={ref}
       className={cn(
         'fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg',
         // Apply the default cap before any notice arrives, so it cannot recenter the panel.
@@ -80,16 +84,14 @@ const DialogContent = React.forwardRef<
         viewportBounds === 'both' && 'w-[calc(100%-2rem)]',
         className
       )}
-      {...props}
-    >
-      {/* Overlay notices without changing the panel height, scroll position or control coordinates. */}
-      {owner.modal && (
-        <div ref={noticeShelf} data-dialog-notices={notices.length > 0 ? '' : undefined} className={cn(
-          notices.length > 0 ? 'absolute inset-x-0 bottom-full z-10 col-span-full min-w-0 shrink-0 max-h-[30dvh] overflow-y-auto' : 'sr-only pointer-events-none',
+      notices={owner.modal && (
+        <div ref={noticeShelf} data-notice-shelf data-dialog-notices={notices.length > 0 ? '' : undefined} className={cn(
+          notices.length > 0 ? 'fixed z-50 pointer-events-auto min-w-0 max-h-[30dvh] overflow-y-auto' : 'sr-only pointer-events-none',
         )}>
           <ToastMessages items={notices} insideDialog />
         </div>
       )}
+    >
       {children}
       {!hideCloseButton && (
         <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
@@ -97,6 +99,7 @@ const DialogContent = React.forwardRef<
           <span className="sr-only">{t('viewerShell.dialog.close')}</span>
         </DialogPrimitive.Close>
       )}
+    </DialogFrame>
     </DialogPrimitive.Content>
   </DialogPortal>
   );

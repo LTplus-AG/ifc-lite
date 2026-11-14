@@ -68,8 +68,9 @@ for (const variant of ['fixed', 'absolute'] as const) {
       assert.equal(await actionIsCovered(), true, 'modal scrim must cover toast actions');
       // Radix portals overlay then content into the same portal wrapper.
       await page.getByRole('dialog').evaluate((dialog) => {
-        dialog.previousElementSibling?.remove();
-        dialog.remove();
+        const scope = dialog.closest('[data-dialog-scope]') ?? dialog;
+        scope.previousElementSibling?.remove();
+        scope.remove();
       });
       assert.equal(await actionIsCovered(), false, 'toast actions remain available after the modal closes');
       await action.click({ timeout: 2000 });

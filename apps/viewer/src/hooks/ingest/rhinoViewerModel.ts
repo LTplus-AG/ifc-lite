@@ -27,7 +27,7 @@ import {
 import { countCopy } from '@ifc-lite/load-trace';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MeshData, PointCloudAsset } from '@ifc-lite/geometry';
-import type { RhinoImport, RhinoImportPropertySet } from '@ifc-lite/rhino3dm';
+import type { RhinoImport, RhinoImportPropertySet, RhinoImportVisibility } from '@ifc-lite/rhino3dm';
 
 import { RhinoImportError, readRhino3dmInWorker, rhino3dmSizeRefusal } from '@/lib/import/rhino-import-client';
 import { calculateMeshBounds, createCoordinateInfo, expandBoundsForPointClouds } from '../../utils/localParsingUtils.js';
@@ -54,20 +54,42 @@ const expressIdOf = (entityIndex: number): number => entityIndex + 1;
 const UNSCALED_UNIT_SYSTEMS = new Set(['None', 'CustomUnits', 'Unset']);
 
 /**
- * Whether the viewer draws a geometry record. A part Rhino hides inside an
- * entity it shows is left out, as Rhino leaves it out; a wholly hidden entity
- * keeps all its parts, so it loads hidden and the tree can show it again
- * (spec, "Layers, visibility, hierarchy").
+ * Why Rhino hides a record, as bits: its own object flag, which Show Objects
+ * clears, and a layer on its path off, which turning those layers on clears.
+ * Every off layer counts as the one layer cause.
  */
-function drawsPart(result: RhinoImport, part: { entity: number; hidden: boolean }): boolean {
-  return !part.hidden || result.entities[part.entity].hidden;
+const BY_OBJECT = 1, BY_LAYER = 2;
+const hidingCauses = (part: RhinoImportVisibility): number =>
+  (part.hiddenByObject ? BY_OBJECT : 0) | (part.hiddenByLayer ? BY_LAYER : 0);
+const causeCount = (part: RhinoImportVisibility): number => Number(part.hiddenByObject) + Number(part.hiddenByLayer);
+
+/**
+ * Which geometry records the viewer draws (spec, "Layers, visibility,
+ * hierarchy"). A shown entity draws only what Rhino shows. A wholly hidden
+ * entity loads hidden so the tree can show it again. It keeps what the one
+ * Rhino state that shows its least hidden parts would show: the causes those
+ * parts carry are the ones that state clears, and a part with any other cause
+ * is left out (#10214). Only meshes and point clouds count, because only they
+ * are drawn.
+ */
+function partFilter(result: RhinoImport): (part: { entity: number } & RhinoImportVisibility) => boolean {
+  const fewest = result.entities.map((entity) => (entity.hidden ? Infinity : 0));
+  const cleared = result.entities.map(() => 0);
+  for (const parts of [result.meshes, result.pointClouds]) {
+    for (const part of parts) {
+      const causes = hidingCauses(part), count = causeCount(part), at = part.entity;
+      if (count < fewest[at]) { fewest[at] = count; cleared[at] = causes; }
+      else if (count === fewest[at]) cleared[at] |= causes;
+    }
+  }
+  return (part) => (hidingCauses(part) & ~cleared[part.entity]) === 0;
 }
 
 /** Entity indices the viewer has geometry for in this payload. */
 function drawnEntities(result: RhinoImport): Set<number> {
-  const drawn = new Set<number>();
-  for (const mesh of result.meshes) if (drawsPart(result, mesh)) drawn.add(mesh.entity);
-  for (const cloud of result.pointClouds) if (drawsPart(result, cloud)) drawn.add(cloud.entity);
+  const drawn = new Set<number>(), draws = partFilter(result);
+  for (const mesh of result.meshes) if (draws(mesh)) drawn.add(mesh.entity);
+  for (const cloud of result.pointClouds) if (draws(cloud)) drawn.add(cloud.entity);
   return drawn;
 }
 
@@ -217,7 +239,7 @@ function buildRhinoDataStore(result: RhinoImport, tree: RhinoTreePlan, buffer: A
  * rewritten per vertex on the main thread.
  */
 function convertRhinoMeshes(result: RhinoImport): MeshData[] {
-  return result.meshes.filter((mesh) => drawsPart(result, mesh)).map((mesh) => ({
+  return result.meshes.filter(partFilter(result)).map((mesh) => ({
     expressId: expressIdOf(mesh.entity),
     ifcType: result.entities[mesh.entity].ifcClass,
     positions: mesh.positions,
@@ -237,7 +259,7 @@ function convertRhinoMeshes(result: RhinoImport): MeshData[] {
  * colours change: the renderer takes 0..1 floats per point.
  */
 function convertRhinoPointClouds(result: RhinoImport): PointCloudAsset[] {
-  return result.pointClouds.filter((cloud) => drawsPart(result, cloud)).map((cloud) => {
+  return result.pointClouds.filter(partFilter(result)).map((cloud) => {
     const pointCount = Math.floor(cloud.positions.length / 3);
     const bytes = cloud.colors;
     // A cloud with no per-point colours still has the colour its object or

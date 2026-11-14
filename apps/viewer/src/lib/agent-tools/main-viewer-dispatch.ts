@@ -3,12 +3,14 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The read-only tool surface the main viewer serves to a local agent (#9523).
+ * The tool surface the main viewer serves to a local agent (#9523).
  *
- * Only {@link MAIN_VIEWER_TOOL_ALLOWLIST} is reachable. Every other name is
- * refused even where the playground implements it: mutations, the inline
- * viewer, BCF, clash, exports and model load/save are not part of this
- * surface. Each call is routed to exactly one model (see `resolveModel`), so a
+ * Only {@link MAIN_VIEWER_TOOL_ALLOWLIST} (reads) and
+ * {@link MAIN_VIEWER_EDIT_TOOLS} (property and attribute edits, refused unless
+ * the call's `canEdit` says the user allows them) are reachable. Every other
+ * name is refused even where the playground implements it: creating or
+ * deleting entities, the inline viewer, BCF, clash, exports and model
+ * load/save are not part of this surface. Each call is routed to exactly one model (see `resolveModel`), so a
  * federated session never mixes models in one answer.
  *
  * This module is meant to be imported lazily, by the bridge client that hands
@@ -25,7 +27,8 @@ import { measureTools } from './measure-tools.js';
 import { bsddTools } from './bsdd-tools.js';
 import { costTools } from './cost-tools.js';
 import { mainViewerIdsTools } from './main-viewer-ids.js';
-import type { AgentTool, ModelHandle, ReadyModel, ToolHost, ToolNeeds } from './types.js';
+import { EDIT_TOOL_NAMES, editNotAllowed, editTools, isEditTool } from './edit-tools.js';
+import type { AgentEdit, AgentTool, ModelHandle, ReadyModel, ToolHost, ToolNeeds } from './types.js';
 
 /** Every tool the main viewer serves. Each must be a `read`-scope catalog tool (enforced by test). */
 export const MAIN_VIEWER_TOOL_ALLOWLIST = [
@@ -39,14 +42,18 @@ export const MAIN_VIEWER_TOOL_ALLOWLIST = [
   'cost_data', 'cost_evaluate',
 ] as const;
 
-export type MainViewerToolName = (typeof MAIN_VIEWER_TOOL_ALLOWLIST)[number];
+/** The edit tools, served only while the user allows the agent to edit. Each is a `mutate`-scope catalog tool. */
+export const MAIN_VIEWER_EDIT_TOOLS = EDIT_TOOL_NAMES;
+
+export type MainViewerToolName = (typeof MAIN_VIEWER_TOOL_ALLOWLIST)[number] | (typeof MAIN_VIEWER_EDIT_TOOLS)[number];
 
 const SHARED_TOOLS: Record<string, AgentTool> = {
   ...readTools, ...measureTools, ...bsddTools, ...costTools, ...mainViewerIdsTools,
 };
 
-/** The tool behind each allowlisted name, and nothing else. */
+/** The tool behind each allowlisted or edit tool name, and nothing else. */
 export function mainViewerTool(name: string): AgentTool | undefined {
+  if (isEditTool(name)) return editTools[name];
   return (MAIN_VIEWER_TOOL_ALLOWLIST as readonly string[]).includes(name) ? SHARED_TOOLS[name] : undefined;
 }
 
@@ -57,6 +64,8 @@ export interface AgentToolResult {
   isError: boolean;
   errorCode?: string;
   hint?: string;
+  /** What an edit tool changed. Tab-side only: the result frame carries `structured`, not this. */
+  edit?: AgentEdit;
 }
 
 const LEGACY_ALIASES = new Set(['legacy', LEGACY_MUTATION_MODEL_ID]);
@@ -146,7 +155,7 @@ function refusal(toolName: string): AgentToolResult {
   }
   if (entry.scope === 'mutate') {
     return {
-      text: `${toolName} changes the model, and the viewer serves agents read-only.`,
+      text: `${toolName} changes the model in a way the viewer does not offer to agents; it serves reads and, when the user allows it, property and attribute edits.`,
       structured: { tool: toolName, scope: entry.scope },
       isError: true,
       errorCode: ToolErrorCode.READ_ONLY,
@@ -187,6 +196,16 @@ function untilAborted<T>(work: Promise<T>, signal: AbortSignal | undefined): Pro
   });
 }
 
+export interface DispatchContext {
+  signal?: AbortSignal;
+  /**
+   * Whether the user allows the agent to edit right now. Edit tools are
+   * refused with READ_ONLY unless it returns true, checked before the call
+   * starts and again at the write. Absent means read-only.
+   */
+  canEdit?: () => boolean;
+}
+
 /**
  * Run one tool call against the main viewer. Never throws: every failure,
  * including a refused tool name, comes back as an error result.
@@ -195,11 +214,13 @@ export async function dispatchMainViewerTool(
   host: ToolHost,
   toolName: string,
   args: unknown,
-  ctx: { signal?: AbortSignal } = {},
+  ctx: DispatchContext = {},
 ): Promise<AgentToolResult> {
   const tool = mainViewerTool(toolName);
   if (!tool) return refusal(toolName);
   try {
+    // Read-only is enforced here, not only by the bridge: it trusts the labels this tab sent.
+    if (isEditTool(toolName) && !ctx.canEdit?.()) throw editNotAllowed();
     if (args != null && (typeof args !== 'object' || Array.isArray(args))) {
       throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: 'Tool arguments must be a JSON object.' });
     }
@@ -211,7 +232,10 @@ export async function dispatchMainViewerTool(
     }
     const model = usableModel(resolveModel(host, input), tool.needs, toolName);
     const stillCurrent = () => assertModelCurrent(host, model);
-    const out = await untilAborted(tool.run(host, model, input, { signal: ctx.signal, checkpoint: stillCurrent }), ctx.signal);
+    const out = await untilAborted(
+      tool.run(host, model, input, { signal: ctx.signal, checkpoint: stillCurrent, canEdit: ctx.canEdit }), ctx.signal);
+    // An edit is written synchronously and is in the undo history: report it as done.
+    if (out.edit) return { text: out.text, structured: out.structured, isError: false, edit: out.edit };
     // The work read whatever the store held; answer only if that is still this model.
     stillCurrent();
     return { text: out.text, structured: out.structured, isError: false };

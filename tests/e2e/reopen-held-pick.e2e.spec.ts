@@ -72,14 +72,15 @@ test('#10218 reopen ignores a viewport click until restored geometry can be pick
   }, null, { timeout: deadline, polling: 50 });
 
   // Tree-style selection remains usable during restore; the viewport click is ignored.
-  const heldSelection = await page.evaluate(() => {
+  // Geometry is not published during the hold (only metadata is): select a known element by id, as the tree does.
+  const heldSelection = await page.evaluate((expressId) => {
     const state = (globalThis as E2EWindow).__ifc_lite_viewer_store__!.getState();
-    const [modelId, model] = [...state.models][0]!;
-    const expressId = model.geometryResult.meshes[0]?.expressId;
-    if (expressId === undefined) throw new Error('restored model has no selectable mesh');
+    const [modelId] = [...state.models][0]!;
     state.setSelectedEntityId(state.toGlobalId(modelId, expressId));
-    return { id: state.selectedEntityId, ids: [...state.selectedEntityIds] };
-  });
+    const after = (globalThis as E2EWindow).__ifc_lite_viewer_store__!.getState(); // a set makes a new state object: re-read
+    return { id: after.selectedEntityId, ids: [...after.selectedEntityIds] };
+  }, expected);
+  expect(heldSelection.id, 'the tree-style selection took effect during the hold').not.toBeNull();
   expect(await page.evaluate(() => [...(globalThis as E2EWindow).__ifc_lite_viewer_store__!.getState().models.values()].some((m) => m.geometryRestorePending)),
     'the click lands while the geometry restore still holds').toBe(true);
   await page.mouse.click(point.x, point.y);

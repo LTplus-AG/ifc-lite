@@ -1328,3 +1328,14 @@ to the parser's property extractor to read raw property-set records in the same
 atomic draft; use the occurrence id when resolving a copied entity's live
 relationships. This keeps raw STEP authoring and high-level property edits
 readable before export.
+Hosted door and window types are reused only when their resolved IFC operation
+or partitioning and user-defined text match. An enumeration and free text with
+the same display label remain distinct types. Low-level `duplicateInStore`
+callers supplying an association `relId` must also supply its `relatedIds`;
+incomplete associations are refused before any records are written.
+
+Attachment notices identify the element kind so a column, beam, member or
+curtain wall is described in its own terms. Raw authored doors or windows with
+nonpositive or nonfinite numeric `OverallWidth` or `OverallHeight` report a quantity diagnostic and keep
+an empty derived quantity result; existing third-party quantity sets are
+preserved.

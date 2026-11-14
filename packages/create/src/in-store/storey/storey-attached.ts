@@ -121,7 +121,7 @@ export function levelTopFaceAbove(target: EditTarget, id: number, kind: Attached
   const ref = leaf?.refDirection ? pointOf(reader, leaf.refDirection, 'IFCDIRECTION') : null;
   const z = ends.chain.axisDirection;
   // The section's X is the RefDirection made square to the axis; its Y is Axis × X.
-  const raw: Vec3 = ref ?? [1, 0, 0];
+  const raw: Vec3 = ref ?? (Math.abs(z[0]) > 1 - 1e-9 ? [0, 1, 0] : [1, 0, 0]);
   const along = raw[0] * z[0] + raw[1] * z[1] + raw[2] * z[2];
   const xr: Vec3 = [raw[0] - along * z[0], raw[1] - along * z[1], raw[2] - along * z[2]];
   const length = Math.hypot(...xr);

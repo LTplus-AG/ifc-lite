@@ -19,6 +19,7 @@
  * Everything else keeps its shape and only moves (`storey-level-plan.ts`).
  */
 
+import { attachmentNotices } from './storey-attachment-notices.js';
 import { StoreEditor } from '@ifc-lite/mutations';
 import { getInheritanceChainAcrossSchemas } from '@ifc-lite/parser';
 import { placementInAncestor, refId } from '../host-geometry-frame.js';
@@ -171,11 +172,7 @@ export function planStoreyDependents(inventory: StoreyInventory, deltas: Readonl
     });
   }
   const railings = planStairRailings(inventory, stairs, byStorey);
-  for (const [kind, ids] of unreadable) {
-    notices.push(kind === 'wall'
-      ? { code: 'wallNotResized', elementIds: ids, message: `${ids.length} attached wall(s) are not simple extrusions, so they move but keep their height` }
-      : { code: 'attachedNotResized', elementIds: ids, message: `${ids.length} attached ${KIND_NAMES[kind].toLowerCase()}(s) have a body or attachment this editor cannot follow, so they move but keep their height` });
-  }
+  notices.push(...attachmentNotices(inventory, [...unreadable.values()].flatMap(ids => ids.map(id => ({ id }))), false));
   // The overlay keeps one same-named quantity set per wall true; a second instance would keep old values.
   const partial = walls.filter((wall) => wallQuantitySetCount(inventory.store, inventory.view, wall.wallId) > 1).map((wall) => wall.wallId);
   if (partial.length) {
@@ -184,12 +181,7 @@ export function planStoreyDependents(inventory: StoreyInventory, deltas: Readonl
       message: `${partial.length} resized wall(s) carry more than one Qto_WallBaseQuantities set; only the first is updated, the others keep their old values`,
     });
   }
-  if (unresolved.length) {
-    notices.push({
-      code: 'wallAttachmentUnresolved', elementIds: unresolved.map(({ id }) => id),
-      message: `${unresolved.length} element(s) record a top attachment that names nothing they can follow, so they keep their height: ${unresolved.map(({ id, problem }) => `#${id} ${problem}`).join('; ')}`,
-    });
-  }
+  notices.push(...attachmentNotices(inventory, unresolved, true));
   if (unrefittable.length) {
     notices.push({ code: 'stairNotRefit', elementIds: unrefittable, message: `${unrefittable.length} stair(s) may reach a moved storey but are not a single stepped flight this editor can rebuild; they move but are not refit` });
   }

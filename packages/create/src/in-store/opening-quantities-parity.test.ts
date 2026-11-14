@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { IfcCreator } from '../index.js';
 import { parseModel } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
@@ -78,4 +78,29 @@ it('intentionally derives no quantity set for a zero-width door (#9423 round 3)'
   const view = new MutablePropertyView(null, 'm'), editor = new StoreEditor(store, view);
   const id = editor.addEntity('IfcDoor', ['0Door_A_00000000000001', null, 'Degenerate door', null, null, null, null, 'D-0', 2.1, 0]).expressId;
   expect(deriveAuthoredBaseQuantities(store, view, id)).toEqual([]);
+});
+
+
+it('#9352 invalid raw opening dimensions produce a diagnostic without fabricated quantities', async () => {
+  const { store } = await parseModel(new TextEncoder().encode(new IfcCreator().toIfc().content), { disableWorkerScan: true });
+  const view = new MutablePropertyView(null, 'm'), editor = new StoreEditor(store, view);
+  const id = editor.addEntity('IfcDoor', ['0000000000000000000001', null, 'Invalid raw opening', null, null, null, null, null, 2.1, 0]).expressId;
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  try {
+    expect(deriveAuthoredBaseQuantities(store, view, id)).toEqual([]);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(`#${id}`));
+    expect(warn.mock.calls.flat().join(' ')).toMatch(/OverallWidth.*OverallHeight.*positive.*finite/);
+  } finally { warn.mockRestore(); }
+});
+
+
+it('#9352 absent optional opening dimensions stay unsupported without an invalid-number diagnostic', async () => {
+  const { store } = await parseModel(new TextEncoder().encode(new IfcCreator().toIfc().content), { disableWorkerScan: true });
+  const view = new MutablePropertyView(null, 'm'), editor = new StoreEditor(store, view);
+  const id = editor.addEntity('IfcDoor', ['0000000000000000000001', null, 'Undimensioned opening', null, null, null, null, null, null, null]).expressId;
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  try {
+    expect(deriveAuthoredBaseQuantities(store, view, id)).toEqual([]);
+    expect(warn).not.toHaveBeenCalled();
+  } finally { warn.mockRestore(); }
 });

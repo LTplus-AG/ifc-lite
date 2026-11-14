@@ -186,6 +186,15 @@ export function duplicateInStore(
     );
   }
 
+  for (const association of source.associations ?? []) {
+    // Only a shared IfcRelDefinesByType is extended in place, so only it needs
+    // the collected RelatedObjects; other associations are replayed fresh.
+    if (association.relId !== undefined && !association.relatedIds?.length
+      && association.relType.toUpperCase() === 'IFCRELDEFINESBYTYPE') {
+      throw new Error('duplicateInStore: an IfcRelDefinesByType association with relId must include non-empty relatedIds before it can be extended');
+    }
+  }
+
   // Offset is metres; the source location is in the file's native
   // length unit — convert before adding (a mm file would otherwise get
   // a duplicate sitting ~1000× too close, visually on top of the source).

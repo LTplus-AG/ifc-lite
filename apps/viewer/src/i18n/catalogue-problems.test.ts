@@ -129,3 +129,33 @@ it('#9523 startup metadata matches every lazy agent bridge key and placeholder',
   }
   assert.equal(lazyMessageParameters('agentBridge.notAKey'), null);
 });
+
+it('#9352 attachment notices cover each shipped locale plural category', async () => {
+  const { storeyManagerEn } = await import('./catalogues/storey-manager.en');
+  const locales = [
+    ['de', (await import('./locales/de/storey-manager')).storeyManagerDe],
+    ['fr', (await import('./locales/fr/storey-manager')).storeyManagerFr],
+    ['it', (await import('./locales/it/storey-manager')).storeyManagerIt],
+    ['ru', (await import('./locales/ru/storey-manager')).storeyManagerRu],
+  ] as const;
+  const keys = [
+    'storeyManager.notice.columnNotResized', 'storeyManager.notice.columnAttachmentUnresolved',
+    'storeyManager.notice.beamNotResized', 'storeyManager.notice.beamAttachmentUnresolved',
+    'storeyManager.notice.memberNotResized', 'storeyManager.notice.memberAttachmentUnresolved',
+    'storeyManager.notice.curtainWallNotResized', 'storeyManager.notice.curtainWallAttachmentUnresolved',
+    'storeyManager.notice.elementNotResized',
+  ] as const;
+  registerEnglish(storeyManagerEn);
+  for (const [locale, catalogue] of locales) {
+    for (const key of keys) {
+      const forms = catalogue[key];
+      for (const category of new Intl.PluralRules(locale).resolvedOptions().pluralCategories) {
+        assert.ok(category in forms, `${locale} ${key}: missing ${category}`);
+      }
+      assert.deepEqual(checkCatalogue({ [key]: forms }).problems, []);
+    }
+  }
+  const ru = locales[3][1];
+  assert.match(ru['storeyManager.notice.columnNotResized'].many, /\{count\} колонн:/);
+  assert.match(ru['storeyManager.notice.memberNotResized'].few, /\{count\} стержня:/);
+});

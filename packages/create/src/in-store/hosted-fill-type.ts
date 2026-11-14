@@ -80,11 +80,12 @@ export function typeHostedFillInStore(
   }
   const name = hostedFillTypeName(kind, params);
   const predefined = typePredefined(kind, params);
-  const typeId = params.TypeId ?? findType(store, view, typeClass, name, predefined) ?? addElementTypeToStore(draft, host, kind === 'door'
-    ? { Type: typeClass, Name: name, PredefinedType: predefined,
-      ...enumOrUserDefined(params.OperationType ?? DEFAULT_OPERATION, params.UserDefinedOperationType, DOOR_OPERATION_ENUM, 'OperationType') }
-    : { Type: typeClass, Name: name, PredefinedType: predefined,
-      ...enumOrUserDefined(params.PartitioningType ?? 'NOTDEFINED', params.UserDefinedPartitioningType, WINDOW_PARTITIONING_ENUM, 'PartitioningType') }).typeId;
+  const key = kind === 'door' ? 'OperationType' : 'PartitioningType';
+  const variant = enumOrUserDefined(kind === 'door' ? params.OperationType ?? DEFAULT_OPERATION : params.PartitioningType ?? 'NOTDEFINED',
+    kind === 'door' ? params.UserDefinedOperationType : params.UserDefinedPartitioningType,
+    kind === 'door' ? DOOR_OPERATION_ENUM : WINDOW_PARTITIONING_ENUM, key);
+  const typeId = params.TypeId ?? findType(store, view, typeClass, name, predefined, key, variant[key], variant[`UserDefined${key}`])
+    ?? addElementTypeToStore(draft, host, { Type: typeClass, Name: name, PredefinedType: predefined, ...variant }).typeId;
   assignTypeInStore(draft, host, typeId, [fillId], readRelatedLists(store, 'IfcRelDefinesByType', view));
   return typeId;
 }
@@ -103,13 +104,18 @@ function enumOrUserDefined<K extends 'OperationType' | 'PartitioningType'>(
 }
 
 /** A live type of that name whose PredefinedType is the fill's: a renamed GATE type never types a door. */
-function findType(store: IfcDataStore, view: MutablePropertyView, typeClass: string, name: string, predefined: string): number | null {
+function findType(store: IfcDataStore, view: MutablePropertyView, typeClass: string, name: string, predefined: string,
+  key: 'OperationType' | 'PartitioningType', expected: string | undefined, description: string | undefined): number | null {
   const reader = new AnchorEntityReader(store, view);
   for (const id of reader.ids(typeClass.toUpperCase())) {
     const entity = reader.entity(id);
     if (!entity || text(entity.attributes[entity.names.indexOf('Name')]) !== name) continue;
     const kind = entity.attributes[entity.names.indexOf('PredefinedType')];
-    if (typeof kind === 'string' && kind.replace(/\./g, '').trim().toUpperCase() === predefined) return id;
+    if (typeof kind !== 'string' || kind.replace(/\./g, '').trim().toUpperCase() !== predefined) continue;
+    const operation = text(entity.attributes[entity.names.indexOf(key)])?.replace(/\./g, '').toUpperCase();
+    if (operation !== expected) continue;
+    const authored = label(entity.attributes[entity.names.indexOf(`UserDefined${key}`)]);
+    if (operation !== 'USERDEFINED' || authored === (description ?? null)) return id;
   }
   return null;
 }
@@ -119,4 +125,11 @@ function text(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   return trimmed.length >= 2 && trimmed.startsWith("'") && trimmed.endsWith("'") ? trimmed.slice(1, -1).replace(/''/g, "'") : trimmed;
+}
+
+/** User-defined text is the written value, including empty text and whitespace. */
+function label(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const token = value.trim();
+  return token.startsWith("'") && token.endsWith("'") ? token.slice(1, -1).replace(/''/g, "'") : value;
 }

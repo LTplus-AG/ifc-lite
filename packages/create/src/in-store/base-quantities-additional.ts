@@ -19,7 +19,10 @@ export function additionalQuantityRows(target: EditTarget, id: number, type: str
   const { dataStore: store, view, editor } = target, scale = getModelLengthUnitScale(store);
   if (['IFCDOOR', 'IFCDOORSTANDARDCASE', 'IFCWINDOW', 'IFCWINDOWSTANDARDCASE'].includes(type)) {
     const attrs = readAttributes(store, view, editor, id), h = attrs?.[8], w = attrs?.[9];
-    if (typeof w !== 'number' || typeof h !== 'number' || !Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return null;
+    if (typeof w !== 'number' || typeof h !== 'number' || !Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) {
+      if (view.getNewEntity(id) && [w, h].some(value => typeof value === 'number' && (!Number.isFinite(value) || value <= 0))) console.warn(`[quantities] #${id}: OverallWidth and OverallHeight must be positive finite numbers; no base quantities are derived`);
+      return null;
+    }
     return [['Width', QuantityType.Length, w * scale], ['Height', QuantityType.Length, h * scale], ['Area', QuantityType.Area, w * h * scale ** 2]];
   }
   if (type === 'IFCSTAIR') {

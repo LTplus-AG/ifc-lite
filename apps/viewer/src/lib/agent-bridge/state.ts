@@ -8,12 +8,14 @@
  *
  * This module is on the viewer's eager path (the status-bar chip slot, the
  * dialog host and the pairing-link check read it), so it imports nothing but
- * React, which the entry already holds.
+ * React, which the entry already holds (and types, which compile away).
  * The client, the tool host and every dialog load with `import()` after the
  * user acts.
  */
 
 import { useSyncExternalStore } from 'react';
+import type { BridgePermission } from '@ifc-lite/mcp/bridge-protocol';
+import type { AgentEdit } from '@/lib/agent-tools/types';
 
 /** Why a paired connection ended without the user disconnecting. */
 export type AgentBridgeDisconnectReason =
@@ -49,11 +51,18 @@ export type AgentBridgeErrorCode =
   /** The viewer is inside a frame, where it never connects. */
   | 'framed';
 
+/** What the tab grants the agent: `read-only` (the default at every pairing) or `read-write` once the user allows edits. */
+export type AgentBridgePermission = BridgePermission;
+
 export type AgentBridgeStatus =
   | { kind: 'idle' }
   /** `opened`: the socket is open and the hello sent; until then the browser may be asking for permission. */
   | { kind: 'connecting'; port: number; opened?: boolean }
-  | { kind: 'connected'; port: number; permission: 'read-only'; since: number }
+  | {
+    kind: 'connected'; port: number; permission: AgentBridgePermission; since: number;
+    /** The bridge was started `--read-only`: the tab cannot grant edits. */
+    readOnlyCeiling: boolean;
+  }
   | { kind: 'disconnected'; reason: AgentBridgeDisconnectReason }
   /**
    * `permission: 'prompt'`: a socket that never opened while the browser's
@@ -61,9 +70,13 @@ export type AgentBridgeStatus =
    */
   | { kind: 'error'; code: AgentBridgeErrorCode; port?: number; permission?: 'prompt' };
 
+/** What an applied agent edit changed, for its activity row. */
+export type AgentBridgeEdit = AgentEdit;
+
 /**
- * One served call. Deliberately carries no arguments and no results: the log
- * shows WHAT the agent asked for and how it went, never the model's content.
+ * One served call. Carries no arguments and no results: the log shows WHAT
+ * the agent asked for and how it went. The one exception is an edit, whose
+ * row says what it changed (the user must be able to see that).
  */
 export interface AgentBridgeActivity {
   seq: number;
@@ -75,6 +88,10 @@ export interface AgentBridgeActivity {
   outcome: 'ok' | 'error' | 'cancelled';
   /** The tool's error code (`MODEL_NOT_FOUND`, `CANCELLED`, ...), never its message. */
   errorCode?: string;
+  /** The tool changes the model (the tab listed it `readOnly: false`), whether or not this call did. */
+  mutating?: boolean;
+  /** Set when an edit was applied (or found the value already there). */
+  edit?: AgentBridgeEdit;
 }
 
 /** What opened the connect dialog. */
@@ -130,6 +147,8 @@ export function useAgentBridgeState(): AgentBridgeState {
 export interface AgentBridgeControls {
   disconnect(): void;
   dismiss(): void;
+  /** Grant or revoke edits on the live connection; ignored when there is none. */
+  setPermission(permission: AgentBridgePermission): void;
 }
 
 let controls: AgentBridgeControls | null = null;
@@ -142,6 +161,11 @@ export function registerAgentBridgeControls(next: AgentBridgeControls): void {
 export function disconnectLiveAgentBridge(): void {
   if (controls) controls.disconnect();
   else updateAgentBridgeState({ status: { kind: 'idle' } });
+}
+
+/** Allow (`read-write`) or stop (`read-only`) agent edits on the live connection. */
+export function setLiveAgentBridgePermission(permission: AgentBridgePermission): void {
+  controls?.setPermission(permission);
 }
 
 /** Forget a finished connection's outcome. */

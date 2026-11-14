@@ -201,6 +201,24 @@ describe('drawing persistence is keyed by the placement identity (#7035)', () =>
     assert.deepEqual(liveMeasures(), ['drawn-meanwhile']);
     assert.deepEqual(storedMeasures(identityOf(bytes)), ['drawn-meanwhile'], 'saved without a further change');
   });
+
+  it('a dimension drawn while a stored entry resolves stays undoable, and undo keeps the restored ones (#10286 review)', async () => {
+    const bytes = bytesOf(6);
+    const file = sourceFile(bytes);
+    const dimension = (id: string) => ({ id, a: { x: 0, y: 0 }, b: { x: 4, y: 0 }, offset: 0.5, orientation: 'aligned' as const });
+    saveDrawing2DEntry(identityOf(bytes), { ...entryWith([]), dimensions2D: [dimension('saved')] });
+    await open(loadedModel('m1', file, bytes, { sourceContentHash: undefined, loadState: 'streaming-geometry' }), false);
+    await settle();
+    assert.equal(hasPersistedMarkupEntryFor('m1'), 'pending', 'setup: the restore is still in flight');
+    await act(async () => { useViewerStore.getState().addDimension2D(dimension('drawn-meanwhile')); });
+    await act(async () => { useViewerStore.getState().updateModel('m1', { sourceContentHash: identityOf(bytes) }); });
+    await waitFor(() => hasPersistedMarkupEntryFor('m1') !== 'pending', 'the restore to settle on the identity');
+    await settle();
+    const liveDims = () => useViewerStore.getState().dimensions2D.map((d) => d.id).sort();
+    assert.deepEqual(liveDims(), ['drawn-meanwhile', 'saved']);
+    await act(async () => { useViewerStore.getState().undoDimension2D(); });
+    assert.deepEqual(liveDims(), ['saved'], 'undo removes only what was drawn meanwhile');
+  });
 });
 
 describe('markup saved under the legacy key is moved to the identity key (#7035)', () => {

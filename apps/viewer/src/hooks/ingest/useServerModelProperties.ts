@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { highestExistingExpressId } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { createRunSlot, IDLE_RUN } from '@/lib/runs/run-slot';
@@ -27,16 +28,22 @@ function waitForCompletion(modelId: string, signal: AbortSignal): Promise<void> 
 
 /** Publishes the hydrated store's ids and returns the model's ownership bound for the reverse
  *  resolvers: the store's highest id, or the published end when a later model clamps the range. */
-function extendModelIdRange(modelId: string, dataStore: IfcDataStore): { maxExpressId: number; idSpaceExhausted: boolean } {
+function extendModelIdRange(modelId: string, dataStore: IfcDataStore): { maxExpressId: number } {
   const registered = useViewerStore.getState().models.get(modelId)?.maxExpressId ?? 0;
   const maxExpressId = Math.max(registered, getMaxExpressId(dataStore, []));
   // An unregistered primary keeps the single-model `globalId === expressId` fallback.
-  if (!federationRegistry.hasModel(modelId)) return { maxExpressId, idSpaceExhausted: false };
+  if (!federationRegistry.hasModel(modelId)) return { maxExpressId };
   // Throws only for a range carrying authored ids, which `dataMutationPermission` rules out while
   // properties load; the run then fails like any optional hydration and nothing is aliased.
   const published = federationRegistry.extendModel(modelId, maxExpressId);
+  // The registry has no rollback. Synchronize ownership even if a synchronous
+  // subscriber or warning supersedes the lease before it accepts the store.
+  useViewerStore.getState().updateModel(modelId, { maxExpressId: published });
   if (published < maxExpressId) console.warn(`[Server properties] Ids ${published + 1}..${maxExpressId} of model ${modelId} lie past the ids a later model owns; those entities cannot be selected or resolved, and the model cannot be edited`);
-  return { maxExpressId: published, idSpaceExhausted: !federationRegistry.hasOverlayHeadroom(modelId) };
+  else if (!federationRegistry.canPublishOverlayFrom(modelId, highestExistingExpressId(dataStore) + 1)) {
+    console.warn(`[Server properties] Model ${modelId} fits its published range, but no id is left for edits`);
+  }
+  return { maxExpressId: published };
 }
 
 function start(modelId: string | null, isStale: (() => boolean) | undefined,
@@ -86,7 +93,7 @@ function start(modelId: string | null, isStale: (() => boolean) | undefined,
     // The loader registered this model from its meshes. The data model also holds entities
     // without geometry (storeys, spaces, types) whose ids can lie above every meshed one, so
     // the model's id range grows with the store that brings them. The registry has no
-    // transaction: grow it only for a result that publishes in this same turn.
+    // transaction: immediately synchronize the ownership bound even if settlement is rejected.
     const idRange = lease.isCurrent() && ownsModel() ? extendModelIdRange(modelId, dataStore) : undefined;
     // A rejected settlement must never publish, including after cancellation.
     if (lease.succeed()) {

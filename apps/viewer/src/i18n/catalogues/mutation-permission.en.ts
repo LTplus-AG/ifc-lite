@@ -9,5 +9,5 @@ export const mutationPermissionEn = {
   'mutationPermission.modelUnavailable': 'This model has no editable IFC data',
   'mutationPermission.propertiesLoading': 'The model\'s properties are still loading',
   'mutationPermission.propertiesFailed': 'The model\'s properties could not be loaded, so it cannot be edited',
-  'mutationPermission.idSpaceExhausted': 'This model has more entities than the space reserved for it, so it cannot be edited in this session',
+  'mutationPermission.idSpaceExhausted': 'This model does not have enough safe entity IDs for edits in this session',
 } as const;

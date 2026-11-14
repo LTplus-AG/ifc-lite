@@ -12,6 +12,14 @@ Model B: expressIds 1-3000    -> globalIds 5001-8000    (offset: 5000)
 Model C: expressIds 1-2000    -> globalIds 8001-10000   (offset: 8000)
 ```
 
+### Server properties and authored IDs
+
+Server-loaded geometry can arrive before its properties. `FederationRegistry.extendModel(modelId, maxExpressId)` publishes the additional source IDs without moving the model's offset and returns the published ownership bound. When another reservation follows, growth stops at the model's overlay headroom; source IDs beyond that bound remain unresolvable.
+
+Before allocating authored entities, use `canPublishOverlayFrom(modelId, firstLocalId, count = 1)` with the editor's actual next local ID and batch size. It requires a fully published base and the next contiguous ID above all published source and overlay IDs. Earlier reservations are bounded by their overlay headroom; the newest can publish up to global ID 2,000,000,000. The query and `previewOverlayGlobalId` do not publish IDs. Unknown models return `false`; callers handle the unregistered single-model fallback themselves.
+
+The source allocation floor is `highestExistingExpressId(store) + 1` from `@ifc-lite/mutations`. An existing mutation view may have a higher `peekNextExpressId()` after authored entities, including deleted entities. The viewer checks the larger value live and reports exhausted ID space for an unsafe allocation or a batch that outgrows the remaining capacity. Properties loading or failure also blocks authoring to prevent collisions with incoming source entities.
+
 ## Coordinates in a Federation
 
 Federated models share one **RTC frame** so their meshes align pixel-for-pixel

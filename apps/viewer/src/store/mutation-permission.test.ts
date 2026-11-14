@@ -5,13 +5,14 @@
 import { beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { federationRegistry } from '@ifc-lite/renderer';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { PropertyValueType } from '@ifc-lite/data';
 import { IfcParser } from '@ifc-lite/parser';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { useViewerStore } from './index.js';
-import { canMutate, mutationPermission } from './mutation-permission.js';
+import { canMutate, dataMutationPermission, mutationPermission } from './mutation-permission.js';
 import { startWorkflowRun } from '@/lib/flow/run-session';
 
 const first = fixtureModel('first', { entities: [{ expressId: 11, type: 'IfcWall', name: 'A' }] });
@@ -144,4 +145,23 @@ describe('explicit property declarations reject before local history (#6643, Q9X
     assert.equal(mirror.mock.callCount(), 1); assert.equal(mirror.mock.calls[0]?.arguments[5], PropertyValueType.Real);
     assert.equal(useViewerStore.getState().undoStacks.get(first.id)?.length, 1);
   });
+});
+
+it('refuses live when authored overlay ids consume the remaining headroom', () => {
+  const model = fixtureModel('headroom', { entities: [{ expressId: 11, type: 'IfcWall' }] });
+  model.ifcDataStore!.entityIndex.byId = new Map(); // The fixture's entity table supplies the source watermark.
+  const view = new MutablePropertyView(null, model.id);
+  federationRegistry.clear();
+  try {
+    federationRegistry.registerModel(model.id, 11);
+    federationRegistry.registerModel('later', 10);
+    useViewerStore.setState({ ...fixtureModels(model), mutationViews: new Map([[model.id, view]]), collabRole: null });
+    assert.deepEqual(dataMutationPermission(useViewerStore.getState(), model.id), { allowed: true });
+    view.setExpressIdWatermark(1_000_010);
+    federationRegistry.publishOverlayRange(model.id, 12, 1_000_010);
+    assert.deepEqual(dataMutationPermission(useViewerStore.getState(), model.id), { allowed: true }, 'last id remains publishable');
+    assert.equal(view.createEntity('IfcWall', []).expressId, 1_000_011);
+    federationRegistry.publishOverlayRange(model.id, 1_000_011, 1_000_011);
+    assert.deepEqual(dataMutationPermission(useViewerStore.getState(), model.id), { allowed: false, reason: 'id-space-exhausted' });
+  } finally { federationRegistry.clear(); }
 });

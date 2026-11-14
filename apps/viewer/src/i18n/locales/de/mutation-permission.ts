@@ -11,5 +11,5 @@ export const mutationPermissionDe = {
   'mutationPermission.modelUnavailable': 'Dieses Modell enthält keine bearbeitbaren IFC-Daten',
   'mutationPermission.propertiesLoading': 'Die Eigenschaften des Modells werden noch geladen',
   'mutationPermission.propertiesFailed': 'Die Eigenschaften des Modells konnten nicht geladen werden, daher ist es nicht bearbeitbar',
-  'mutationPermission.idSpaceExhausted': 'Dieses Modell hat mehr Entitäten als der dafür reservierte Bereich und kann in dieser Sitzung nicht bearbeitet werden',
+  'mutationPermission.idSpaceExhausted': 'Für dieses Modell sind in dieser Sitzung nicht genügend sichere Entitäts-IDs für Bearbeitungen verfügbar',
 } satisfies Catalogue;

@@ -586,8 +586,6 @@ export interface FederatedModel extends ModelLoadReportFields {
   idOffset: number;
   /** Highest local expressId this model owns (reverse resolvers bound its global ids at `idOffset + maxExpressId`); after a later model's clamp, the published end, which can sit below the store's highest id. */
   maxExpressId: number;
-  /** True when the registry has no overlay headroom above the published end for authoring; editing is refused. A smaller re-hydration does not reclaim offset space. */
-  idSpaceExhausted?: boolean;
   /** Unified ingest lifecycle state. */
   loadState?: 'pending' | 'streaming-geometry' | 'hydrating-metadata' | 'complete' | 'error';
   /** Present only on a retained-kernel load (#7955 M2): shape-only, with every unpublished product listed. */

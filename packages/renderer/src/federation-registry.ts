@@ -174,23 +174,36 @@ export class FederationRegistry {
     range.maxExpressId = end;
   }
 
-  /** Whether the next contiguous ID can be published from this model's overlay headroom. */
-  hasOverlayHeadroom(modelId: string): boolean {
+  /** Whether this exact next allocation batch can extend published overlay ownership. */
+  canPublishOverlayFrom(modelId: string, firstLocalId: number, count = 1): boolean {
     const range = this.modelRanges.get(modelId);
-    return range !== undefined && range.maxExpressId >= range.reservedMaxExpressId
-      && range.maxExpressId < range.overlayMaxExpressId;
+    const end = firstLocalId + count - 1;
+    return range !== undefined && range.publishedStart !== null
+      && Number.isSafeInteger(firstLocalId) && Number.isSafeInteger(count) && count > 0
+      && firstLocalId > range.reservedMaxExpressId && firstLocalId === range.maxExpressId + 1
+      && Number.isSafeInteger(end) && end <= this.overlayEnd(range);
+  }
+
+  private overlayEnd(range: RegisteredRange): number {
+    return this.nextOffset === range.offset + range.overlayMaxExpressId + 1
+      ? MAX_SAFE_OFFSET - range.offset : Math.min(range.overlayMaxExpressId, MAX_SAFE_OFFSET - range.offset);
   }
 
   /** Publish derived/overlay IDs from the separately reserved headroom. */
   publishOverlayRange(modelId: string, start: number, end: number): void {
     const range = this.modelRanges.get(modelId);
     if (!range) throw new Error(`[FederationRegistry] Cannot publish unknown model ${modelId}`);
-    const overlayEnd = range.overlayMaxExpressId;
-    if (!Number.isInteger(start) || !Number.isInteger(end) || start < range.reservedMaxExpressId + 1 || end < start || end > overlayEnd) {
+    if (Number.isSafeInteger(start) && start > range.reservedMaxExpressId && start !== range.maxExpressId + 1) {
+      throw new Error(`[FederationRegistry] Overlay IDs for ${modelId} must extend published ownership contiguously`);
+    }
+    if (!this.canPublishOverlayFrom(modelId, start, end - start + 1)) {
       throw new Error(`[FederationRegistry] Invalid overlay range ${start}..${end} for ${modelId}`);
     }
-    if (start !== range.maxExpressId + 1) {
-      throw new Error(`[FederationRegistry] Overlay IDs for ${modelId} must extend published ownership contiguously`);
+    // Growing the newest envelope must also move the next reservation beyond
+    // the authored IDs; otherwise registering another model could alias them.
+    if (end > range.overlayMaxExpressId) {
+      range.overlayMaxExpressId = end;
+      this.nextOffset = range.offset + end + 1;
     }
     range.maxExpressId = end;
   }
@@ -204,14 +217,12 @@ export class FederationRegistry {
   previewOverlayGlobalId(modelId: string, start: number, end: number, expressId: number): number {
     const range = this.modelRanges.get(modelId);
     if (!range) throw new Error(`[FederationRegistry] Cannot preview unknown model ${modelId}`);
-    const overlayEnd = range.overlayMaxExpressId;
-    if (!Number.isInteger(start) || !Number.isInteger(end) || !Number.isInteger(expressId)
-      || start < range.reservedMaxExpressId + 1 || end < start || end > overlayEnd
-      || expressId < start || expressId > end) {
-      throw new Error(`[FederationRegistry] Invalid overlay preview ${start}..${end} for ${modelId}`);
-    }
-    if (start !== range.maxExpressId + 1) {
+    if (Number.isSafeInteger(start) && start > range.reservedMaxExpressId && start !== range.maxExpressId + 1) {
       throw new Error(`[FederationRegistry] Overlay preview for ${modelId} must extend published ownership contiguously`);
+    }
+    if (!this.canPublishOverlayFrom(modelId, start, end - start + 1)
+      || !Number.isSafeInteger(expressId) || expressId < start || expressId > end) {
+      throw new Error(`[FederationRegistry] Invalid overlay preview ${start}..${end} for ${modelId}`);
     }
     return range.offset + expressId;
   }

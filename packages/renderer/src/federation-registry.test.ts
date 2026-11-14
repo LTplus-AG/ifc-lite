@@ -90,6 +90,7 @@ describe('FederationRegistry - toGlobalId / fromGlobalId round-trip', () => {
     const reg = new FederationRegistry();
     reg.reserveModel('landxml', 2);
     reg.publishRange('landxml', 1, 2);
+    reg.registerModel('later', 1);
     reg.publishOverlayRange('landxml', 3, 1_000_002);
     assert.deepEqual(reg.fromGlobalId(1_000_002), { modelId: 'landxml', expressId: 1_000_002 });
     assert.throws(() => reg.publishOverlayRange('landxml', 1_000_003, 1_000_003), /Invalid overlay range/);
@@ -308,44 +309,59 @@ describe('FederationRegistry - extending a model whose remaining ids arrive late
 });
 
 
-describe('FederationRegistry - overlay headroom query', () => {
-  it('reports whether the next overlay id can actually be published', () => {
+describe('FederationRegistry - overlay allocation query', () => {
+  it('requires a registered, fully published base and the next contiguous allocation', () => {
     const reg = new FederationRegistry();
-    assert.equal(reg.hasOverlayHeadroom('unknown'), false);
-    reg.reserveModel('progressive', 10);
-    assert.equal(reg.hasOverlayHeadroom('progressive'), false);
-    reg.publishRange('progressive', 0, 5);
-    assert.equal(reg.hasOverlayHeadroom('progressive'), false);
-    reg.publishRange('progressive', 6, 10);
-    assert.equal(reg.hasOverlayHeadroom('progressive'), true);
-    reg.publishOverlayRange('progressive', 11, 1_000_009);
-    assert.equal(reg.hasOverlayHeadroom('progressive'), true);
-    reg.publishOverlayRange('progressive', 1_000_010, 1_000_010);
-    assert.equal(reg.hasOverlayHeadroom('progressive'), false);
-    assert.throws(() => reg.publishOverlayRange('progressive', 1_000_011, 1_000_011), /Invalid overlay range/);
-    reg.unregisterModel('progressive');
-    assert.equal(reg.hasOverlayHeadroom('progressive'), false);
+    assert.equal(reg.canPublishOverlayFrom('unknown', 1), false);
+    reg.reserveModel('a', 10);
+    assert.equal(reg.canPublishOverlayFrom('a', 11), false);
+    reg.publishRange('a', 0, 5);
+    assert.equal(reg.canPublishOverlayFrom('a', 6), false);
+    reg.publishRange('a', 6, 10);
+    assert.equal(reg.canPublishOverlayFrom('a', 6), false, 'a smaller re-hydrated store cannot reuse published ids');
+    assert.equal(reg.canPublishOverlayFrom('a', 12), false, 'publication cannot leave a hole');
+    assert.equal(reg.canPublishOverlayFrom('a', 11), true);
+    for (const [first, count] of [[11, 0], [11, -1], [11, 1.5], [NaN, 1], [11.5, 1], [11, Infinity]]) {
+      assert.equal(reg.canPublishOverlayFrom('a', first, count), false);
+    }
+    reg.unregisterModel('a');
+    assert.equal(reg.canPublishOverlayFrom('a', 11), false);
   });
 
-  for (const highestId of [1_000_010, 2_000_000]) {
-    it(`reports exhaustion after extending to ${highestId} with a later neighbour, including smaller re-hydration`, () => {
-      const reg = new FederationRegistry();
-      reg.registerModel('a', 10);
-      reg.registerModel('b', 20);
-      assert.equal(reg.hasOverlayHeadroom('a'), true);
-      assert.equal(reg.extendModel('a', highestId), 1_000_010);
-      assert.equal(reg.hasOverlayHeadroom('a'), false);
-      assert.equal(reg.extendModel('a', 5), 1_000_010);
-      assert.equal(reg.hasOverlayHeadroom('a'), false);
-      assert.equal(reg.hasOverlayHeadroom('b'), true);
-    });
-  }
-
-  it('preserves overlay headroom when extending the newest reservation', () => {
+  it('checks the entire batch at the exact non-newest headroom boundary, including authored ids', () => {
     const reg = new FederationRegistry();
     reg.registerModel('a', 10);
-    assert.equal(reg.extendModel('a', 2_000_000), 2_000_000);
-    assert.equal(reg.hasOverlayHeadroom('a'), true);
-    assert.doesNotThrow(() => reg.publishOverlayRange('a', 2_000_001, 2_000_001));
+    reg.registerModel('later', 20);
+    reg.publishOverlayRange('a', 11, 1_000_009);
+    assert.equal(reg.canPublishOverlayFrom('a', 1_000_010), true);
+    assert.equal(reg.canPublishOverlayFrom('a', 1_000_010, 2), false);
+    assert.equal(reg.canPublishOverlayFrom('a', 11), false, 'published overlay ids cannot be reused');
+    reg.publishOverlayRange('a', 1_000_010, 1_000_010);
+    assert.equal(reg.canPublishOverlayFrom('a', 1_000_011), false);
+  });
+
+  it('lets the newest reservation publish beyond initial headroom up to the global safe limit', () => {
+    const reg = new FederationRegistry();
+    reg.registerModel('prior', 10);
+    const offset = reg.registerModel('a', 10);
+    const end = 2_000_000_000 - offset;
+    assert.equal(reg.canPublishOverlayFrom('a', 11, end - 10), true);
+    assert.equal(reg.canPublishOverlayFrom('a', 11, end - 9), false);
+    assert.equal(reg.previewOverlayGlobalId('a', 11, end, end), 2_000_000_000);
+    assert.equal(reg.getGlobalIdRange('a')?.end, offset + 10, 'query and preview do not publish');
+    reg.publishOverlayRange('a', 11, end);
+    assert.equal(reg.toGlobalId('a', end), 2_000_000_000);
+    assert.equal(reg.canPublishOverlayFrom('a', end + 1), false);
+    assert.throws(() => reg.publishOverlayRange('a', end + 1, end + 1), /Invalid overlay range/);
+    assert.throws(() => reg.registerModel('later', 1), /safe ID limit/);
+  });
+
+  it('advances the reservation before registering a neighbour after newest overlay growth', () => {
+    const reg = new FederationRegistry();
+    reg.registerModel('a', 10);
+    reg.publishOverlayRange('a', 11, 2_000_000);
+    const offset = reg.registerModel('later', 10);
+    assert.ok(offset > 2_000_000);
+    assert.equal(reg.canPublishOverlayFrom('a', 2_000_001), false, 'the grown envelope was fully consumed');
   });
 });

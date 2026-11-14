@@ -2,9 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { MutationPermissionError } from './mutation-permission.js';
+
 /** Publish mutation-owned IDs before resolving them through federation. */
 
 interface OverlayPublicationRegistry {
+  canPublishOverlayFrom(modelId: string, firstLocalId: number, count?: number): boolean;
   toGlobalId(modelId: string, expressId: number): number;
   getGlobalIdRange(modelId: string): { start: number; end: number } | null;
   getOffset(modelId: string): number | null;
@@ -69,6 +72,7 @@ export function toPublishedGlobalId(
       // An entity a session created and then removed (a join rewrites a wall's profile) keeps its id.
       if (view.getNewEntity(localId) === null && view.isDeleted?.(localId) !== true) throw error;
     }
+    assertOverlayCapacity(registry, modelId, nextLocalId, expressId);
     registry.publishOverlayRange(modelId, nextLocalId, expressId);
     return registry.toGlobalId(modelId, expressId);
   }
@@ -90,6 +94,7 @@ export function previewPreparedOverlayGlobalId(
   if (!Number.isSafeInteger(expressId) || expressId < start || expressId > end) {
     throw new Error('Invalid detached overlay range.');
   }
+  assertOverlayCapacity(registry, modelId, start, end);
   return registry.previewOverlayGlobalId(modelId, start, end, expressId);
 }
 
@@ -115,6 +120,7 @@ export function toPreparedOverlayGlobalId(
     // Earlier committed overlays must become owned before a later detached
     // batch can be previewed. A missing committed row remains a hard error.
     toPublishedGlobalId(registry, state.models, state.mutationViews, modelId, start - 1);
+    assertOverlayCapacity(registry, modelId, start, end);
     return registry.previewOverlayGlobalId(modelId, start, end, expressId);
   }
 }
@@ -133,6 +139,7 @@ export function publishPreparedOverlayRange(
   for (let localId = start; localId <= end; localId++) {
     if (view.getNewEntity(localId) === null) throw new Error('Committed overlay IDs must remain contiguous and owned.');
   }
+  assertOverlayCapacity(registry, modelId, start, end);
   registry.publishOverlayRange(modelId, start, end);
 }
 
@@ -171,8 +178,12 @@ export function preparePreparedOverlayPublication(
   }
   // Validate the exact headroom reservation now. `publishOverlayRange` would
   // reject it too, but only after GPU tokens have been consumed.
+  assertOverlayCapacity(registry, modelId, start, end);
   registry.previewOverlayGlobalId(modelId, start, end, start);
-  return () => registry.publishOverlayRange(modelId, start, end);
+  return () => {
+    assertOverlayCapacity(registry, modelId, start, end);
+    registry.publishOverlayRange(modelId, start, end);
+  };
 }
 
 function preparedOverlayRange(
@@ -192,4 +203,11 @@ function preparedOverlayRange(
     if (created[index].expressId !== start + index) throw new Error('Detached overlay IDs must be contiguous and source ordered.');
   }
   return { start, end };
+}
+
+/** All authoring previews and publications report the same capacity refusal. */
+function assertOverlayCapacity(registry: OverlayPublicationRegistry, modelId: string, start: number, end: number): void {
+  if (registry.getOffset(modelId) !== null && !registry.canPublishOverlayFrom(modelId, start, end - start + 1)) {
+    throw new MutationPermissionError('id-space-exhausted');
+  }
 }

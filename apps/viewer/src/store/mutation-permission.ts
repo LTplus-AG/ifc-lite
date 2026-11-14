@@ -2,11 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { federationRegistry } from '@ifc-lite/renderer';
+import { highestExistingExpressId } from '@ifc-lite/mutations';
 import { areWorkflowModelsReadLocked } from '../lib/flow/run-session.js';
 import type { ViewerState } from './index.js';
 import { getModelForRef } from '../sdk/adapters/model-compat.js';
 
-type MutationPermissionState = Pick<ViewerState, 'editEnabled' | 'canCollabEdit' | 'models' | 'ifcDataStore'> & Partial<Pick<ViewerState, 'serverPropertiesRuns'>>;
+type MutationPermissionState = Pick<ViewerState, 'editEnabled' | 'canCollabEdit' | 'models' | 'ifcDataStore'> & Partial<Pick<ViewerState, 'serverPropertiesRuns' | 'mutationViews'>>;
 
 export type MutationDenialReason = 'edit-mode' | 'collab-role' | 'model-unavailable' | 'workflow-running' | 'properties-loading' | 'properties-failed' | 'id-space-exhausted';
 
@@ -43,10 +45,17 @@ export function dataMutationPermission(state: MutationPermissionState, modelId?:
   const properties = modelId === undefined ? undefined : state.serverPropertiesRuns?.get(modelId)?.kind;
   if (properties === 'running') return { allowed: false, reason: 'properties-loading' };
   if (properties === 'failed') return { allowed: false, reason: 'properties-failed' };
-  // Authored ids start above the store's highest id, where a later model already owns the ids.
-  if (modelId !== undefined && state.models.get(modelId)?.idSpaceExhausted) return { allowed: false, reason: 'id-space-exhausted' };
-  if (modelId !== undefined && !getModelForRef(state, modelId)?.ifcDataStore) {
-    return { allowed: false, reason: 'model-unavailable' };
+  if (modelId !== undefined) {
+    const store = getModelForRef(state, modelId)?.ifcDataStore;
+    if (!store) return { allowed: false, reason: 'model-unavailable' };
+    // StoreEditor seeds the view from the source watermark; authored (even
+    // deleted) IDs keep the view's allocator above that floor.
+    if (!federationRegistry.hasModel(modelId)) return { allowed: true };
+    const firstLocalId = Math.max(highestExistingExpressId(store) + 1,
+      state.mutationViews?.get(modelId)?.peekNextExpressId() ?? 1);
+    if (!federationRegistry.canPublishOverlayFrom(modelId, firstLocalId)) {
+      return { allowed: false, reason: 'id-space-exhausted' };
+    }
   }
   return { allowed: true };
 }
@@ -90,11 +99,19 @@ export function mutationDenialMessage(reason: MutationDenialReason): string {
     case 'model-unavailable': return 'This model has no editable IFC data';
     case 'properties-loading': return 'The model\'s properties are still loading';
     case 'properties-failed': return 'The model\'s properties could not be loaded, so it cannot be edited';
-    case 'id-space-exhausted': return 'This model has more entities than the space reserved for it, so it cannot be edited in this session';
+    case 'id-space-exhausted': return 'This model does not have enough safe entity IDs for edits in this session';
   }
 }
 
 export function mutationDenial(state: MutationPermissionState, modelId?: string): string | null {
   const permission = mutationPermission(state, modelId);
   return permission.allowed ? null : mutationDenialMessage(permission.reason);
+}
+
+/** A publication-time refusal, including batches larger than the remaining ID space. */
+export class MutationPermissionError extends Error {
+  constructor(readonly reason: MutationDenialReason) {
+    super(mutationDenialMessage(reason));
+    this.name = 'MutationPermissionError';
+  }
 }

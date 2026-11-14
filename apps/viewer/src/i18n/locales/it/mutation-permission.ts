@@ -11,5 +11,5 @@ export const mutationPermissionIt = {
   "mutationPermission.modelUnavailable": "Questo modello non contiene dati IFC modificabili",
   "mutationPermission.propertiesLoading": "Le proprietà del modello sono ancora in caricamento",
   "mutationPermission.propertiesFailed": "Impossibile caricare le proprietà del modello, quindi non è modificabile",
-  "mutationPermission.idSpaceExhausted": "Questo modello ha più entità dello spazio riservato, quindi non può essere modificato in questa sessione",
+  "mutationPermission.idSpaceExhausted": "Questo modello non dispone di un numero sufficiente di ID entità sicuri per le modifiche in questa sessione",
 } satisfies Catalogue;

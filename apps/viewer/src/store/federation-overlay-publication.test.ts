@@ -148,6 +148,7 @@ describe('mutation overlay federation publication', () => {
   it('rejects an overlay beyond reserved federation headroom before GPU commit (#5050)', () => {
     const registry = new FederationRegistry();
     registry.registerModel('editable', 100);
+    registry.registerModel('later', 10);
     registry.publishOverlayRange('editable', 101, 1_000_100);
     const models = new Map([['editable', { maxExpressId: 100 }]]);
     const created = [{ expressId: 1_000_101 }];
@@ -155,7 +156,7 @@ describe('mutation overlay federation publication', () => {
 
     assert.throws(
       () => preparePreparedOverlayPublication(registry, { models, mutationViews: views }, 'editable', created),
-      /Invalid overlay preview/,
+      /not have enough safe entity IDs/i,
     );
     assert.throws(() => registry.toGlobalId('editable', 1_000_101), /not published/);
   });
@@ -172,4 +173,27 @@ describe('mutation overlay federation publication', () => {
       /published federation base range/,
     );
   });
+});
+
+it('a two-id action with one id left reports id-space-exhausted on every authoring publication path', () => {
+  const registry = new FederationRegistry();
+  registry.registerModel('editable', 100);
+  registry.registerModel('later', 10);
+  registry.publishOverlayRange('editable', 101, 1_000_099);
+  const models = new Map([['editable', { maxExpressId: 100 }]]);
+  const created = [{ expressId: 1_000_100 }, { expressId: 1_000_101 }];
+  const views = new Map([['editable', { getNewEntity: () => ({}) }]]);
+  const state = { models, mutationViews: views };
+  for (const action of [
+    () => preparePreparedOverlayPublication(registry, state, 'editable', created),
+    () => previewPreparedOverlayGlobalId(registry, models, 'editable', created, 1_000_100),
+    () => toPreparedOverlayGlobalId(registry, { models, mutationViews: new Map([['editable', { getNewEntity: () => null }]]) }, 'editable', created, 1_000_100),
+    () => publishPreparedOverlayRange(registry, models, views, 'editable', created),
+    () => toPublishedGlobalId(registry, models, views, 'editable', 1_000_101),
+  ]) {
+    assert.throws(action, (error: unknown) => error instanceof Error
+      && 'reason' in error && error.reason === 'id-space-exhausted'
+      && /not have enough safe entity IDs/i.test(error.message));
+    assert.equal(registry.getGlobalIdRange('editable')?.end, 1_000_099, 'failed batches publish no prefix');
+  }
 });

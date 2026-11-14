@@ -83,89 +83,146 @@ it('#9538 late properties publish into their still-current model', async () => {
 });
 for (const federated of [false, true]) {
   it(`late properties publish the unmeshed entities they bring${federated ? ' behind an earlier model' : ''}`, async () => {
-    // The loader registers a server model from its meshes alone (the wire's wall, #1) and the
-    // data model lands afterwards. Its project (#2) has no mesh, and looking it up used to throw
-    // "[FederationRegistry] Local ID 2 is not published for model server".
-    const { registerModelOffset, updateModel } = useViewerStore.getState();
-    if (federated) registerModelOffset('earlier', 100);
-    const idOffset = registerModelOffset('server', 1);
-    updateModel('server', { idOffset, maxExpressId: 1 });
-    await start();
-    await act(async () => { release(wire); await new Promise(resolve => setTimeout(resolve, 200)); });
-    const model = useViewerStore.getState().models.get('server');
-    assert.equal(model?.ifcDataStore?.entities.getName(2), 'Project');
-    assert.equal(useViewerStore.getState().toGlobalId('server', 2), idOffset + 2);
-    assert.deepEqual(useViewerStore.getState().fromGlobalId(idOffset + 2), { modelId: 'server', expressId: 2 });
-    assert.equal(model?.maxExpressId, 2, 'overlay ids start after the hydrated entities, not inside them');
+    try {
+      // The loader registers a server model from its meshes alone (the wire's wall, #1) and the
+      // data model lands afterwards. Its project (#2) has no mesh, and looking it up used to throw
+      // "[FederationRegistry] Local ID 2 is not published for model server".
+      const { registerModelOffset, updateModel } = useViewerStore.getState();
+      if (federated) registerModelOffset('earlier', 100);
+      const idOffset = registerModelOffset('server', 1);
+      updateModel('server', { idOffset, maxExpressId: 1 });
+      await start();
+      await act(async () => { release(wire); await new Promise(resolve => setTimeout(resolve, 200)); });
+      const model = useViewerStore.getState().models.get('server');
+      assert.equal(model?.ifcDataStore?.entities.getName(2), 'Project');
+      assert.equal(useViewerStore.getState().toGlobalId('server', 2), idOffset + 2);
+      assert.deepEqual(useViewerStore.getState().fromGlobalId(idOffset + 2), { modelId: 'server', expressId: 2 });
+      assert.equal(model?.maxExpressId, 2, 'overlay ids start after the hydrated entities, not inside them');
+    } finally { federationRegistry.clear(); }
   });
 }
 it('properties whose ids run past a later model are published as far as the headroom allows', async () => {
-  // The id range cannot move once a later model sits behind it; it grows to the end of its own
-  // overlay headroom. The properties are kept; only the ids beyond that end stay unresolvable.
-  const { registerModelOffset, updateModel } = useViewerStore.getState();
-  updateModel('server', { idOffset: registerModelOffset('server', 1), maxExpressId: 1 });
-  const laterOffset = registerModelOffset('later', 10);
-  useViewerStore.getState().addModel({ ...fixtureModel('later', { idOffset: laterOffset }), maxExpressId: 10 });
-  const warnings: unknown[][] = [];
-  mock.method(console, 'warn', (...args: unknown[]) => { warnings.push(args); });
-  // A converted server store, whose compact id index sets the store's highest id.
-  const tooFar = serverStoreAt(2_000_000);
-  await act(async () => {
-    useServerModelProperties().start('server', undefined, async () => tooFar);
-    await new Promise(resolve => setTimeout(resolve, 50));
-  });
-  assert.equal(useViewerStore.getState().models.get('server')?.ifcDataStore, tooFar, 'the properties are not dropped');
-  // maxExpressId is the ownership bound the reverse resolvers read: the published end, not the store
-  // max, or this model would claim the later model's global ids.
-  assert.equal(useViewerStore.getState().models.get('server')?.maxExpressId, 1_000_001, 'the published end');
-  for (const local of [0, 5, 10]) {
-    const ref = { modelId: 'later', expressId: local };
-    assert.deepEqual(useViewerStore.getState().resolveGlobalIdFromModels(laterOffset + local), ref, `the later model's local ${local} resolves to it`);
-    assert.deepEqual(fromGlobalIdFromModels(useViewerStore.getState().models, laterOffset + local), ref);
-  }
-  // The later model owns the ids past the published end, so this model has none to author with.
-  assert.deepEqual(dataMutationPermission(useViewerStore.getState(), 'server'), { allowed: false, reason: 'id-space-exhausted' });
-  assert.equal(useViewerStore.getState().toGlobalId('server', 1_000_001), 1_000_001, 'published to the end of the headroom');
-  assert.throws(() => useViewerStore.getState().toGlobalId('server', 2_000_000), /not published/);
-  assert.equal(warnings.some(args => /later model owns/.test(String(args[0]))), true, 'the unresolvable ids are reported');
-  assert.deepEqual(useViewerStore.getState().fromGlobalId(laterOffset + 10), { modelId: 'later', expressId: 10 });
+  try {
+    // The id range cannot move once a later model sits behind it; it grows to the end of its own
+    // overlay headroom. The properties are kept; only the ids beyond that end stay unresolvable.
+    const { registerModelOffset, updateModel } = useViewerStore.getState();
+    updateModel('server', { idOffset: registerModelOffset('server', 1), maxExpressId: 1 });
+    const laterOffset = registerModelOffset('later', 10);
+    useViewerStore.getState().addModel({ ...fixtureModel('later', { idOffset: laterOffset }), maxExpressId: 10 });
+    const warnings: unknown[][] = [];
+    mock.method(console, 'warn', (...args: unknown[]) => { warnings.push(args); });
+    // A converted server store, whose compact id index sets the store's highest id.
+    const tooFar = serverStoreAt(2_000_000);
+    await act(async () => {
+      useServerModelProperties().start('server', undefined, async () => tooFar);
+      await new Promise(resolve => setTimeout(resolve, 50));
+    });
+    assert.equal(useViewerStore.getState().models.get('server')?.ifcDataStore, tooFar, 'the properties are not dropped');
+    // maxExpressId is the ownership bound the reverse resolvers read: the published end, not the store
+    // max, or this model would claim the later model's global ids.
+    assert.equal(useViewerStore.getState().models.get('server')?.maxExpressId, 1_000_001, 'the published end');
+    for (const local of [0, 5, 10]) {
+      const ref = { modelId: 'later', expressId: local };
+      assert.deepEqual(useViewerStore.getState().resolveGlobalIdFromModels(laterOffset + local), ref, `the later model's local ${local} resolves to it`);
+      assert.deepEqual(fromGlobalIdFromModels(useViewerStore.getState().models, laterOffset + local), ref);
+    }
+    // The later model owns the ids past the published end, so this model has none to author with.
+    assert.deepEqual(dataMutationPermission(useViewerStore.getState(), 'server'), { allowed: false, reason: 'id-space-exhausted' });
+    assert.equal(useViewerStore.getState().toGlobalId('server', 1_000_001), 1_000_001, 'published to the end of the headroom');
+    assert.throws(() => useViewerStore.getState().toGlobalId('server', 2_000_000), /not published/);
+    assert.equal(warnings.some(args => /later model owns/.test(String(args[0]))), true, 'the unresolvable ids are reported');
+    assert.deepEqual(useViewerStore.getState().fromGlobalId(laterOffset + 10), { modelId: 'later', expressId: 10 });
+  } finally { federationRegistry.clear(); }
 });
 
 for (const rehydrate of [false, true]) {
   it(rehydrate
     ? 'smaller re-hydration after a clamp keeps id space exhausted and editing refused'
     : 'hydration exactly at overlay headroom end exhausts id space and refuses editing', async () => {
+    try {
+      const { registerModelOffset, updateModel } = useViewerStore.getState();
+      updateModel('server', { idOffset: registerModelOffset('server', 1), maxExpressId: 1 });
+      registerModelOffset('later', 10);
+      mock.method(console, 'warn', () => {});
+      const hydrate = async (expressId: number) => {
+        const store = serverStoreAt(expressId);
+        await act(async () => {
+          useServerModelProperties().start('server', undefined, async () => store);
+          await new Promise(resolve => setTimeout(resolve, 50));
+        });
+        assert.equal(useViewerStore.getState().models.get('server')?.ifcDataStore, store);
+      };
+      if (rehydrate) {
+        await hydrate(2_000_000);
+      }
+      await hydrate(rehydrate ? 2 : 1_000_001);
+      assert.equal(useViewerStore.getState().models.get('server')?.maxExpressId, 1_000_001);
+      assert.deepEqual(dataMutationPermission(useViewerStore.getState(), 'server'), { allowed: false, reason: 'id-space-exhausted' });
+      assert.throws(() => federationRegistry.publishOverlayRange('server', 1_000_002, 1_000_002), /Invalid overlay range/);
+    } finally { federationRegistry.clear(); }
+  });
+}
+
+it('a hydration whose next allocator id is publishable permits edits', async () => {
+  try {
     const { registerModelOffset, updateModel } = useViewerStore.getState();
     updateModel('server', { idOffset: registerModelOffset('server', 1), maxExpressId: 1 });
-    registerModelOffset('later', 10);
-    mock.method(console, 'warn', () => {});
-    const hydrate = async (expressId: number) => {
-      const store = serverStoreAt(expressId);
+    await start();
+    await act(async () => { release(wire); await new Promise(resolve => setTimeout(resolve, 200)); });
+    assert.deepEqual(dataMutationPermission(useViewerStore.getState(), 'server'), { allowed: true });
+  } finally { federationRegistry.clear(); }
+});
+
+it('newest reservation refuses reuse after big then small hydration', async () => {
+  const { registerModelOffset, updateModel } = useViewerStore.getState();
+  updateModel('server', { idOffset: registerModelOffset('server', 1), maxExpressId: 1 });
+  try {
+    for (const id of [2_000_000, 5]) {
+      const store = serverStoreAt(id);
       await act(async () => {
         useServerModelProperties().start('server', undefined, async () => store);
         await new Promise(resolve => setTimeout(resolve, 50));
       });
       assert.equal(useViewerStore.getState().models.get('server')?.ifcDataStore, store);
-    };
-    if (rehydrate) {
-      await hydrate(2_000_000);
-      assert.equal(useViewerStore.getState().models.get('server')?.idSpaceExhausted, true);
     }
-    await hydrate(rehydrate ? 2 : 1_000_001);
-    assert.equal(useViewerStore.getState().models.get('server')?.maxExpressId, 1_000_001);
-    assert.equal(useViewerStore.getState().models.get('server')?.idSpaceExhausted, true);
+    assert.equal(useViewerStore.getState().models.get('server')?.maxExpressId, 2_000_000);
     assert.deepEqual(dataMutationPermission(useViewerStore.getState(), 'server'), { allowed: false, reason: 'id-space-exhausted' });
-    assert.throws(() => federationRegistry.publishOverlayRange('server', 1_000_002, 1_000_002), /Invalid overlay range/);
-  });
-}
+  } finally { federationRegistry.clear(); }
+});
 
-it('a hydration that fits clears an earlier id-space flag on the model record', async () => {
+it('supersession during range extension keeps registry and model ownership consistent', async () => {
   const { registerModelOffset, updateModel } = useViewerStore.getState();
-  updateModel('server', { idOffset: registerModelOffset('server', 1), maxExpressId: 1, idSpaceExhausted: true });
-  await start();
-  await act(async () => { release(wire); await new Promise(resolve => setTimeout(resolve, 200)); });
-  assert.equal(useViewerStore.getState().models.get('server')?.idSpaceExhausted, false);
-  assert.deepEqual(dataMutationPermission(useViewerStore.getState(), 'server'), { allowed: true });
+  updateModel('server', { idOffset: registerModelOffset('server', 1), maxExpressId: 1 });
+  const extend = federationRegistry.extendModel.bind(federationRegistry);
+  mock.method(federationRegistry, 'extendModel', (id: string, max: number) => {
+    const published = extend(id, max);
+    useServerModelProperties().cancel(id);
+    return published;
+  });
+  try {
+    await act(async () => {
+      useServerModelProperties().start('server', undefined, async () => serverStoreAt(2_000_000));
+      await new Promise(resolve => setTimeout(resolve, 50));
+    });
+    const model = useViewerStore.getState().models.get('server')!;
+    assert.equal(model.ifcDataStore, null, 'superseded hydration is discarded');
+    assert.equal(model.maxExpressId, federationRegistry.getGlobalIdRange('server')!.end - model.idOffset);
+  } finally { federationRegistry.clear(); }
+});
+
+it('reports no id left for edits when the hydrated store exactly fits its envelope', async () => {
+  const { registerModelOffset, updateModel } = useViewerStore.getState();
+  updateModel('server', { idOffset: registerModelOffset('server', 1), maxExpressId: 1 });
+  registerModelOffset('later', 10);
+  const warnings: unknown[][] = [];
+  mock.method(console, 'warn', (...args: unknown[]) => { warnings.push(args); });
+  try {
+    await act(async () => {
+      useServerModelProperties().start('server', undefined, async () => serverStoreAt(1_000_001));
+      await new Promise(resolve => setTimeout(resolve, 50));
+    });
+    assert.ok(warnings.some(args => /no id is left for edits/.test(String(args[0]))));
+  } finally { federationRegistry.clear(); }
 });
 
 it('no id is authored on a server model while its properties load or after they failed', async () => {
@@ -179,15 +236,17 @@ it('no id is authored on a server model while its properties load or after they 
 });
 
 it('a range that already carries authored ids is a hard error, never an alias', async () => {
-  const { registerModelOffset, updateModel } = useViewerStore.getState();
-  updateModel('server', { idOffset: registerModelOffset('server', 1), maxExpressId: 1 });
-  federationRegistry.publishOverlayRange('server', 2, 3);
-  const warnings: unknown[][] = [];
-  mock.method(console, 'warn', (...args: unknown[]) => { warnings.push(args); });
-  await start();
-  await act(async () => { release(wire); await new Promise(resolve => setTimeout(resolve, 200)); });
-  assert.equal(useViewerStore.getState().models.get('server')?.ifcDataStore, null, 'hydrated entity 2 would share a global id with authored id 2');
-  assert.equal(warnings.some(args => /Optional hydration failed/.test(String(args[0]))), true);
+  try {
+    const { registerModelOffset, updateModel } = useViewerStore.getState();
+    updateModel('server', { idOffset: registerModelOffset('server', 1), maxExpressId: 1 });
+    federationRegistry.publishOverlayRange('server', 2, 3);
+    const warnings: unknown[][] = [];
+    mock.method(console, 'warn', (...args: unknown[]) => { warnings.push(args); });
+    await start();
+    await act(async () => { release(wire); await new Promise(resolve => setTimeout(resolve, 200)); });
+    assert.equal(useViewerStore.getState().models.get('server')?.ifcDataStore, null, 'hydrated entity 2 would share a global id with authored id 2');
+    assert.equal(warnings.some(args => /Optional hydration failed/.test(String(args[0]))), true);
+  } finally { federationRegistry.clear(); }
 });
 
 for (const remount of [false, true]) {

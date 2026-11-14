@@ -11,5 +11,5 @@ export const mutationPermissionRu = {
   "mutationPermission.modelUnavailable": "Данная модель не содержит редактируемых данных IFC",
   "mutationPermission.propertiesLoading": "Свойства модели ещё загружаются",
   "mutationPermission.propertiesFailed": "Не удалось загрузить свойства модели, поэтому её нельзя редактировать",
-  "mutationPermission.idSpaceExhausted": "В этой модели больше сущностей, чем зарезервировано для неё места, поэтому в этом сеансе её нельзя редактировать",
+  "mutationPermission.idSpaceExhausted": "Для редактирования этой модели в текущем сеансе недостаточно безопасных идентификаторов сущностей",
 } satisfies Catalogue;

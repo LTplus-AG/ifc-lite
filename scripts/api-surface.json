@@ -7950,6 +7950,7 @@
     "deriveEntityIdentity: function",
     "generateChangeSetId: function",
     "generateMutationId: function",
+    "highestExistingExpressId: function",
     "iterateEffectiveEntityIds: function",
     "matchRowAgainstContext: function",
     "parseValue: function",

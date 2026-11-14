@@ -22,8 +22,8 @@ const watermarks = new WeakMap<object, WatermarkKey>();
 
 function watermarkKey(store: MutationStoreShape, max: number): WatermarkKey {
   // @raw-entity-enumeration-ok index identities and sizes only; no ids are read
-  const byId = store.entityIndex.byId, deferred = store.deferredEntityIndex, table = store.entities?.expressId;
-  return { byId, byIdSize: byId.size, deferred, deferredSize: deferred?.size ?? 0, table, tableLength: table?.length ?? 0, max };
+  const byId = store.entityIndex?.byId, deferred = store.deferredEntityIndex, table = store.entities?.expressId;
+  return { byId, byIdSize: byId?.size ?? 0, deferred, deferredSize: deferred?.size ?? 0, table, tableLength: table?.length ?? 0, max };
 }
 
 /**
@@ -55,11 +55,12 @@ export function rescanHighestExpressId(store: MutationStoreShape): number {
 
 function scanHighestExpressId(store: MutationStoreShape): number {
   let max = 0;
+  // Indexless stores (IFCX, collab tables) own their table rows, read below.
   // @raw-entity-enumeration-ok allocator watermark must include tombstoned source IDs so a new entity never reuses one
-  const index = store.entityIndex.byId;
-  const compactMax = 'maxExpressId' in index ? index.maxExpressId : undefined;
+  const index = store.entityIndex?.byId;
+  const compactMax = index && 'maxExpressId' in index ? index.maxExpressId : undefined;
   if (typeof compactMax === 'number') max = compactMax;
-  else for (const id of index.keys()) {
+  else if (index) for (const id of index.keys()) {
     if (id > max) max = id;
   }
   const deferred = store.deferredEntityIndex;

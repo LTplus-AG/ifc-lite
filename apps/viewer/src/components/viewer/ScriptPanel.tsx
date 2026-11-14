@@ -10,7 +10,7 @@
  * in a log console. AI chat is integrated as a collapsible side panel.
  */
 
-import { isFeatureEnabled } from '@/lib/features';
+import { isAiChatAvailable } from './surface-command-features';
 import { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react';
 import { useTranslation } from '@/i18n';
 import { ScriptFileControls } from './ScriptFileControls';
@@ -100,7 +100,7 @@ export function ScriptPanel() {
   const [outputCollapsed, setOutputCollapsed] = useState(false);
   const chatPanelVisible = useViewerStore((s) => s.chatPanelVisible);
   // The chat pane and "Fix with LLM" are AI; a host can switch it off (`lib/features`).
-  const ai = isFeatureEnabled('ai.assistant');
+  const ai = isAiChatAvailable();
   const setChatPanelVisible = useViewerStore((s) => s.setChatPanelVisible);
 
   // Chat panel width (px) — resizable via drag handle

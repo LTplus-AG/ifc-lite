@@ -51,7 +51,9 @@ function withInlineIds(schema: AnthropicInputSchema): AnthropicInputSchema {
 /** Name, description, argument schema and read-only flag of every tool the main viewer serves. */
 export function mainViewerToolDefinitions(): AgentToolDefinition[] {
   const scopes = new Map(CATALOG.tools.map((tool) => [tool.name, tool.scope]));
-  return createAnthropicToolDefinitions(MAIN_VIEWER_TOOL_ALLOWLIST).map((definition) => {
+  // A tool this page does not serve (`mainViewerTool`, e.g. bSDD with outside services off) is not offered.
+  const served = MAIN_VIEWER_TOOL_ALLOWLIST.filter((name) => mainViewerTool(name) !== undefined);
+  return createAnthropicToolDefinitions(served).map((definition) => {
     const tool = mainViewerTool(definition.name);
     let schema = definition.input_schema;
     if (tool && tool.needs !== 'none') schema = withModelId(schema);

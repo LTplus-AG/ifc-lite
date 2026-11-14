@@ -156,6 +156,7 @@ function NoModelPanelState({ id, onClose }: { id: WorkspacePanelId; onClose: () 
               {t('viewportLighting.container.emptyState.openButton.open')}
             </Button>}
             {local && <p className="max-w-[240px] text-2xs text-muted-foreground">{t('panelNoModel.dropHint')}</p>}
+            {!samples && !local && <p className="max-w-[240px] text-2xs text-muted-foreground">{t('viewportLighting.container.emptyState.hostOpens.lead')}</p>}
           </div>
         }
       />
@@ -178,6 +179,7 @@ function NoModelBanner({ id }: { id: WorkspacePanelId }) {
       {local && <button type="button" className={link} onClick={openFile}>
         {t('viewportLighting.container.emptyState.openButton.open')}
       </button>}
+      {!samples && !local && t('viewportLighting.container.emptyState.hostOpens.lead')}
     </p>
   );
 }

@@ -57,7 +57,8 @@ export const COMMAND_FEATURE: Readonly<Partial<Record<SurfaceCommandId, FeatureI
   'context:export-anonymized': 'export.files',
   // 3D world context streams imagery and terrain from an outside service.
   'view:world': 'privacy.third-party',
-  'learn:hub': 'help.tours',
+  // Tours load the sample project (`isTourAvailable`).
+  'learn:hub': ['help.tours', 'files.samples'],
 };
 
 /** Families of command ids (`measure:<mode>`, every `model:` command) belong to one feature; an exact row above wins. */

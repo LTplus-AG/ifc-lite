@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { isFeatureEnabled } from '@/lib/features';
+import { isSurfaceCommandAvailable } from './surface-command-features';
 import { useState, useEffect, useLayoutEffect, useCallback, lazy, Suspense } from 'react';
 import { X, Sparkles, Info, Keyboard, ExternalLink, GraduationCap } from 'lucide-react';
 import { IconButton } from '@/components/ui/icon-button';
@@ -58,7 +58,7 @@ interface InfoDialogProps {
  */
 export function KeyboardShortcutsDialog({ open, onClose, initialTab }: InfoDialogProps) {
   const { t } = useTranslation();
-  const learn = isFeatureEnabled('help.tours');
+  const learn = isSurfaceCommandAvailable({ id: 'learn:hub' });
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>

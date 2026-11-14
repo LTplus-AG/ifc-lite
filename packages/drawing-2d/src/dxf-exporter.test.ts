@@ -199,6 +199,12 @@ describe('DXFExporter', () => {
     });
     expect(stretched).toContain('72\n5\n');
     expect(stretched).not.toContain('72\n3\n');
+    // Stretching the axis across the baseline scales the glyph height with it.
+    const tall = parseDxf(exportToDXF(emptyDrawing(), {
+      coordinateTransform: (p) => ({ x: p.x, y: 2 * p.y }),
+      underlays: [{ underlay: aligned, placement: { offsetX: 0, offsetY: 0, rotationDeg: 0, scale: 1 } }],
+    })).entities.filter((e): e is DxfTextEntity => e.kind === 'text');
+    expect(tall[0].height).toBeCloseTo(2, 6);
   });
 
   it('re-emits aligned/fit text as Fit (72=5) so CAD spans the exact fitWidth', () => {

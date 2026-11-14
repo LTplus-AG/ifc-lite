@@ -271,8 +271,11 @@ for (const persistentFirst of [true, false]) {
     assert.match(anchor.textContent ?? '', /×2/);
     act(() => t.mock.timers.tick(1000));
     assert.ok(anchor.textContent?.includes('Export still failed'), 'a transient expiry cannot dismiss the persistent error');
-    act(() => toast.transientError('Export still failed', 1000));
+    let stop = () => {};
+    act(() => { stop = toast.transientError('Export still failed', 1000); });
     assert.match(anchor.textContent ?? '', /×3/);
+    act(stop);
+    assert.ok(anchor.textContent?.includes('Export still failed'), 'gesture exit after convergence cannot dismiss the persistent error');
     act(() => t.mock.timers.tick(1000));
     assert.ok(anchor.textContent?.includes('Export still failed'), 'a new transient duplicate after convergence cannot add an expiry');
     act(() => anchor.querySelector<HTMLButtonElement>('button[aria-label="Dismiss notification"]')?.click());

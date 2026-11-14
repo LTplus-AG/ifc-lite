@@ -14,7 +14,7 @@
 
 import { isFeatureEnabled, type FeatureId } from '@/lib/features';
 import { toolFeatureRows } from '@/lib/features/tools';
-import { isPanelAvailable } from '@/lib/panels/availability';
+import { isPanelAvailable, PANEL_FEATURE } from '@/lib/panels/availability';
 import type { SurfaceCommandDefinition } from './surface-command-types';
 import { surfaceCommand, type SurfaceCommandId } from './surface-command-registry';
 
@@ -22,13 +22,14 @@ export const COMMAND_FEATURE: Readonly<Partial<Record<SurfaceCommandId, FeatureI
   // `tool:<name>` rows come from TOOL_FEATURE, the one tool table.
   ...toolFeatureRows('tool:'),
 
-  'view:lighting': 'view.environment',
-  'vis:save-view': 'view.presentation',
-  'vis:toggle-presentation': 'view.presentation',
+  // Panel commands without a `panelId` take their panel's feature from PANEL_FEATURE.
+  'view:lighting': PANEL_FEATURE.environment,
+  'vis:save-view': PANEL_FEATURE.presentation,
+  'vis:toggle-presentation': PANEL_FEATURE.presentation,
 
-  'schedule:generate': 'data.schedule',
-  'schedule:toggle-animation': 'data.schedule',
-  'schedule:reset': 'data.schedule',
+  'schedule:generate': PANEL_FEATURE.gantt,
+  'schedule:toggle-animation': PANEL_FEATURE.gantt,
+  'schedule:reset': PANEL_FEATURE.gantt,
 };
 
 /** Families of generated command ids (`measure:<mode>`, `section-add:<kind>`) belong to one feature. */
@@ -38,10 +39,12 @@ export const COMMAND_PREFIX_FEATURE: Readonly<Record<string, FeatureId>> = {
   'section-add:': 'tools.section',
 };
 
+const PREFIXES = Object.keys(COMMAND_PREFIX_FEATURE);
+
 function commandFeature(id: string): FeatureId | undefined {
   const exact = (COMMAND_FEATURE as Partial<Record<string, FeatureId>>)[id];
   if (exact) return exact;
-  const prefix = Object.keys(COMMAND_PREFIX_FEATURE).find((candidate) => id.startsWith(candidate));
+  const prefix = PREFIXES.find((candidate) => id.startsWith(candidate));
   return prefix ? COMMAND_PREFIX_FEATURE[prefix] : undefined;
 }
 

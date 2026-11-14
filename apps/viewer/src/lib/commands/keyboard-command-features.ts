@@ -13,6 +13,7 @@
 
 import { isFeatureEnabled, type FeatureId } from '@/lib/features';
 import { toolFeatureRows } from '@/lib/features/tools';
+import { PANEL_FEATURE } from '@/lib/panels/availability';
 import type { KeyCommandDefinition, KeyCommandId, KeyContext } from './keyboard-commands';
 
 /** `tool.<name>` names both a tool's shortcut and the key context it opens (Annotate has none, so its context row matches nothing). */
@@ -21,17 +22,17 @@ const TOOL_ROWS = toolFeatureRows('tool.');
 export const KEY_COMMAND_FEATURE: Readonly<Partial<Record<KeyCommandId, FeatureId>>> = {
   // `tool.<name>` rows come from TOOL_FEATURE, the one tool table.
   ...TOOL_ROWS,
-  'basket.toggleDock': 'view.presentation',
-  'basket.saveView': 'view.presentation',
+  'basket.toggleDock': PANEL_FEATURE.presentation,
+  'basket.saveView': PANEL_FEATURE.presentation,
 };
 
 /** Contexts owned by one feature. A `command.<id>` context counts as `command`. */
 export const KEY_CONTEXT_FEATURE: Readonly<Partial<Record<KeyContext, FeatureId>>> = {
   // A tool's own key context belongs to the tool (TOOL_FEATURE).
   ...TOOL_ROWS,
-  'panel.schedule': 'data.schedule',
-  'schedule.drag': 'data.schedule',
-  'panel.script': 'automate.scripting',
+  'panel.schedule': PANEL_FEATURE.gantt,
+  'schedule.drag': PANEL_FEATURE.gantt,
+  'panel.script': PANEL_FEATURE.script,
   drawing2d: 'view.drawings',
 };
 

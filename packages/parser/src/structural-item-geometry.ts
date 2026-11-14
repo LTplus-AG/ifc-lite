@@ -178,11 +178,16 @@ export class ItemGeometryReader {
     return frame;
   }
 
+  /** The product's `ObjectPlacement` id: undefined when it has none (`$`), null when the product is unreadable. */
+  private placementIdOf(productId: number): number | undefined | null {
+    const product = this.entity(productId);
+    return product ? asRef(product.attributes[OBJECT_PLACEMENT]) : null;
+  }
+
   /** A product's placement frame in file units; identity when it has none (`$`). */
   productFrame(productId: number): Frame | null {
-    const product = this.entity(productId);
-    if (!product) return null;
-    const placementId = asRef(product.attributes[OBJECT_PLACEMENT]);
+    const placementId = this.placementIdOf(productId);
+    if (placementId === null) return null;
     return placementId === undefined ? IDENTITY : this.placement(placementId);
   }
 
@@ -193,14 +198,16 @@ export class ItemGeometryReader {
    * from world. Null when the placement chain is unreadable or not local.
    */
   fromPlacementParent(productId: number): ((p: Vec3) => Vec3) | null {
-    const product = this.entity(productId);
-    if (!product) return null;
-    const placementId = asRef(product.attributes[OBJECT_PLACEMENT]);
+    const placementId = this.placementIdOf(productId);
+    if (placementId === null) return null;
     const placement = placementId === undefined ? null : this.entity(placementId);
     if (placementId !== undefined && placement?.type !== 'IFCLOCALPLACEMENT') return null;
     const parentId = placement ? asRef(placement.attributes[0]) : undefined;
     const frame = parentId === undefined ? IDENTITY : this.placement(parentId);
-    return frame && ((p) => add(scale(frame.origin, this.unitScale), rotate(frame, p)));
+    if (!frame) return null;
+    // Frames are in file units; points arrive in metres.
+    const metric = { ...frame, origin: scale(frame.origin, this.unitScale) };
+    return (p) => apply(metric, p);
   }
 
   /**

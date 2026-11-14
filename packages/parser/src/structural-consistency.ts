@@ -59,7 +59,7 @@ export interface StructuralGeometryFacts {
   derivationRecords?: ReadonlyMap<number, StructuralDerivationRecord>;
 }
 
-/** The physical element a curve member was derived from, and that element's line at the time. */
+/** The physical element a curve member was derived from, and that element's line at the time in IFC world metres. */
 export interface StructuralDerivationRecord {
   elementGlobalId: string;
   axis: StructuralLine;

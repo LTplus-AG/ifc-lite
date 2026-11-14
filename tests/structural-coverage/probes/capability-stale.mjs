@@ -31,13 +31,12 @@ const MOVE = 0.3;
 /** `text` with its IfcSite placed 1, 2, 0.5 file units away and turned 90 degrees about Z, in new records. */
 function moveSite(text) {
   const step = readStep(text);
-  const placement = step.of('IFCSITE')[0]?.args[5]?.ref;
-  if (placement === undefined) throw new Error('the derived file has no placed IfcSite');
+  const placement = step.get(step.of('IFCSITE')[0]?.args[5]);
+  if (placement?.type !== 'IFCLOCALPLACEMENT') throw new Error('the derived file has no IfcSite placed by an IfcLocalPlacement');
+  const parent = placement.args[0]?.ref;
   const next = Math.max(...step.entities.keys()) + 1;
-  const record = new RegExp(`#${placement}\\s*=\\s*IFCLOCALPLACEMENT\\s*\\(([^,]*),[^)]*\\);`);
-  if (!record.test(text)) throw new Error(`IfcSite placement #${placement} is not an IfcLocalPlacement record`);
-  return text.replace(record, (_, parent) => [
-    `#${placement}=IFCLOCALPLACEMENT(${parent.trim()},#${next});`,
+  return text.replace(/#(\d+)\s*=\s*[^;]*;/g, (record, id) => Number(id) !== placement.id ? record : [
+    `#${placement.id}=IFCLOCALPLACEMENT(${parent === undefined ? '$' : `#${parent}`},#${next});`,
     `#${next}=IFCAXIS2PLACEMENT3D(#${next + 1},#${next + 2},#${next + 3});`,
     `#${next + 1}=IFCCARTESIANPOINT((1.,2.,0.5));`,
     `#${next + 2}=IFCDIRECTION((0.,0.,1.));`,

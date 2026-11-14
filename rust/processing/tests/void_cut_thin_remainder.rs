@@ -24,8 +24,10 @@
 //! thin_skin_recess_rvt01_14638.ifc` is wall #14638 of `tests/models/various/
 //! rvt01.ifc` with its three openings, cut out by `scripts/
 //! ifc-extract-hosts.py --anonymise` with the site placement set to identity.
-//! Its second finish layer is 12 mm with an 11 mm recess, 20 mm wide, at one
-//! end.
+//! Its second finish layer is 12 mm thick. The exporter wrote the recess twice:
+//! as a notch in the layer's own profile, 11 mm deep and 19.2 mm wide at one
+//! end, and as an `IfcOpeningElement` over the same place. The opening was
+//! pushed through the 1 mm the notch leaves.
 
 use ifc_lite_processing::{process, MeshData, ProcessingRequest};
 use ifc_lite_testkit::mesh::signed_volume;

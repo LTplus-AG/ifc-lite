@@ -4,7 +4,30 @@
 
 //! Finite contact needed before pulling a coincident jamb cap into a void.
 
+use super::super::super::flush::flush_band_at;
 use super::{CutterFrame, Point3, BAND_FRACTION};
+
+/// How a host facet in a cap's band meets the cap, weakest first.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(super) enum Contact {
+    /// Not over the cutter's footprint.
+    None,
+    /// Over the footprint, within the cap band (a millimetre) of its plane.
+    Band,
+    /// Over the footprint and within the flush band: the cap rests on it.
+    On,
+}
+
+/// The contact of a host facet `off` along the axis from a cap. An offset that
+/// is not a number reads as `On`, which keeps the pull-in.
+pub(super) fn contact(f: &CutterFrame, triangle: [Point3<f64>; 3], off: f64) -> Contact {
+    let mag = triangle.iter().map(|p| p.coords.amax()).fold(0.0, f64::max);
+    match (overlaps(f, triangle), off.abs() > flush_band_at(mag)) {
+        (false, _) => Contact::None,
+        (true, true) => Contact::Band,
+        (true, false) => Contact::On,
+    }
+}
 
 /// Conservative triangle/footprint intersection by the separating-axis test.
 /// The frame box contains the whole cutter profile; admitting extra contact

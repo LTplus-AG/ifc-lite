@@ -10,7 +10,7 @@
 //! Occupancy beyond a cap still separates an exit from a jamb, independent of
 //! host winding. Uncertain finite-contact arithmetic retains the old verdict.
 
-use super::super::flush::FLUSH_BAND;
+use super::super::flush::flush_band_at;
 use super::super::geom::{mesh_point, point_inside_mesh_agreed, project_aabb_in_frame};
 use super::super::{OpeningFrame, NORMALIZE_EPSILON};
 // Re-exported (not just imported) so `exit_cap::any_vertex_is_large` and
@@ -281,7 +281,7 @@ pub(super) fn detect(host: &Mesh, f: &CutterFrame, pad: f64) -> ExitCaps {
     let (d, band) = (f.depth(), f.cap_band());
     let (mut min_has_surface, mut max_has_surface) = (false, false);
     let (mut host_at_min, mut host_at_max) = (omn, omx);
-    let (mut min_local, mut max_local) = (false, false);
+    let (mut min_local, mut max_local) = (local::Contact::None, local::Contact::None);
     // Keep global qualification and exit offsets: remote coplanar facets can
     // still require exit clearance. Only a jamb pull-in needs finite contact;
     // otherwise an unrelated floor shortens a new authored blind recess.
@@ -305,12 +305,12 @@ pub(super) fn detect(host: &Mesh, f: &CutterFrame, pad: f64) -> ExitCaps {
         let s = a.coords.dot(&d);
         if (s - omn).abs() <= band {
             min_has_surface = true;
-            min_local |= local::overlaps(f, [a, b, c]);
+            min_local = min_local.max(local::contact(f, [a, b, c], s - omn));
             host_at_min = host_at_min.min(s);
         }
         if (s - omx).abs() <= band {
             max_has_surface = true;
-            max_local |= local::overlaps(f, [a, b, c]);
+            max_local = max_local.max(local::contact(f, [a, b, c], s - omx));
             host_at_max = host_at_max.max(s);
         }
     }
@@ -357,9 +357,10 @@ pub(super) fn detect(host: &Mesh, f: &CutterFrame, pad: f64) -> ExitCaps {
     let probe = (qualified && !far_field)
         .then(|| f.probe_uv(host))
         .flatten();
-    let occupied_along = |from: f64, dir: f64| -> bool {
+    // `(deep, any)`: host material at the depths main samples, and at any depth.
+    let occupied_along = |from: f64, dir: f64| -> (bool, bool) {
         let Some((cu, cv)) = probe else {
-            return false;
+            return (false, false);
         };
         // Sample ACROSS the swept interval, not at one offset. A pier thinner
         // than a single probe offset reads empty at that one depth and then
@@ -368,27 +369,26 @@ pub(super) fn detect(host: &Mesh, f: &CutterFrame, pad: f64) -> ExitCaps {
         // A depth whose parity does not AGREE between two ray directions is not
         // evidence and is skipped rather than counted either way: the surface
         // there is not closed to a ray, and a coin flip must not remove a push.
-        // `FLUSH_BAND` first: a skin thinner than `probe_offset` (4 mm or
-        // more) behind the cap is host all the same.
-        [FLUSH_BAND, f.probe_offset(), pad * 0.5, pad].into_iter().any(|t| {
-            point_inside_mesh_agreed(host, f.point_at(cu, cv, from + dir * t)).unwrap_or(false)
-        })
+        let at = |t: f64| point_inside_mesh_agreed(host, f.point_at(cu, cv, from + dir * t)).unwrap_or(false);
+        let deep = [f.probe_offset(), pad * 0.5, pad].into_iter().any(at);
+        // Then just past the flush band: a skin thinner than `probe_offset`
+        // (4 mm or more) behind the cap is host all the same.
+        (deep, deep || at(flush_band_at(f.point_at(cu, cv, from).coords.amax())))
     };
     // Probe ONLY a cap that qualified: `occupied_along` casts up to four points
     // and two rays each, and for a cap that is already `Free` every one of
     // those traversals is discarded.
-    let classify = |has_surface: bool, local: bool, from: f64, dir: f64, host_at: f64| {
+    // Behind a skin only, the cap is a jamb where it rests ON a host facet (a
+    // void the host already carries); with the facet farther off it is a blind
+    // end, and pulling it in would cut the recess a millimetre short.
+    let classify = |has_surface: bool, local: local::Contact, from: f64, dir: f64, host_at: f64| {
         if !has_surface {
             return Cap::Free;
         }
-        if occupied_along(from, dir) {
-            if local {
-                Cap::Jamb
-            } else {
-                Cap::Free
-            }
-        } else {
-            Cap::Exit(host_at)
+        match occupied_along(from, dir) {
+            (_, false) => Cap::Exit(host_at),
+            (deep, true) if local == local::Contact::On || (deep && local == local::Contact::Band) => Cap::Jamb,
+            _ => Cap::Free,
         }
     };
     ExitCaps {

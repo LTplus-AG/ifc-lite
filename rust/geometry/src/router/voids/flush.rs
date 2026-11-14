@@ -11,8 +11,8 @@
 //!
 //! The two bounds here are steps of the kernel grid: what rounding to the
 //! grid can move a face, and no more. The extension and the probe use
-//! [`FLUSH_BAND`], the widest gap that is still flush; wider, and they take a
-//! skin the author left. The recess test uses the smaller
+//! [`flush_band_at`], the widest gap that is still flush; wider, and they take
+//! a skin the author left. The recess test uses the smaller
 //! [`recess_face_tol`], because the same tolerance decides that an opening
 //! starts inside the host, and wider there turns an interior opening into a
 //! recess.
@@ -23,7 +23,14 @@ use crate::{Point3, Vector3};
 
 /// A host face up to this far beyond a cap lies on the cap. Four grid steps,
 /// 61 um in metres: two roundings (host and cutter) with a step to spare.
-pub(super) const FLUSH_BAND: f64 = 4.0 * SNAP_GRID;
+const FLUSH_BAND: f64 = 4.0 * SNAP_GRID;
+
+/// [`FLUSH_BAND`] where coordinates reach `mag`: never narrower than f32
+/// storage resolves there. The floor passes the band beyond about 150 m, so
+/// far from the origin a thinner skin is again read as flush.
+pub(super) fn flush_band_at(mag: f64) -> f64 {
+    FLUSH_BAND.max(mag * 4.0e-7)
+}
 
 /// The most that rounding a vertex to the kernel grid moves it along the unit
 /// `dir`: half a step on each axis.
@@ -46,7 +53,8 @@ fn grid_rounding_along(dir: &Vector3<f64>) -> f64 {
 /// 12 mm sheet's face read 5.8 um off the recess that starts on it, past a
 /// 4 um tolerance, so the recess was taken for an opening floating inside the
 /// sheet and extended through its far face. Half a step, not a whole one: an
-/// opening 11 um inside a 1 m wall is still interior (`reveal_tests`).
+/// opening 11 um inside an axis-aligned 1 m wall is still interior
+/// (`reveal_tests`). Off the axes the bound grows to 13 um.
 pub(super) fn recess_face_tol(bounds: &[Point3<f64>], dir: &Vector3<f64>, wall_proj_extent: f64) -> f64 {
     PlaneEps::from_points(bounds, wall_proj_extent * 1e-5)
         .for_normal(dir)

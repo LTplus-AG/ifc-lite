@@ -31,6 +31,7 @@ import { KIND_LABEL } from './inspector-fields';
 import { TypeSection } from './TypeSection';
 import { renameElement } from './inspector-edits';
 import { useInspectorTarget, type InspectorSelection, type InspectorTarget } from './useInspectorTarget';
+import { MultiSelectionInspector } from './MultiSelectionInspector';
 import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
 import { Spinner } from '@/components/ui/spinner';
 
@@ -71,6 +72,7 @@ export function ModelInspectorPanel({ onClose }: { onClose?: () => void }) {
 function ModelInspectorBody({ onClose, forceDefaults = false }: { onClose?: () => void; forceDefaults?: boolean }) {
   const { t } = useTranslation();
   const hasModel = useViewerStore((s) => s.models.size > 0);
+  const multiple = useViewerStore(s => s.session !== null && s.selectedEntityIds.size > 1);
   const canEdit = useViewerStore((s) => s.canCollabEdit());
   const enter = useViewerStore((s) => s.enterModelWorkspace);
   const originalTarget = useInspectorTarget();
@@ -78,6 +80,8 @@ function ModelInspectorBody({ onClose, forceDefaults = false }: { onClose?: () =
   const defaultKind = originalTarget.defaultsKind ?? (originalTarget.kindlessCommand ? null : lastKind);
   const target = forceDefaults && defaultKind ? { ...originalTarget, defaultsKind: defaultKind, mode: 'defaults' as const } : originalTarget;
   const { mode, selection, defaultsKind, kindlessCommand } = target;
+
+  if (multiple && !forceDefaults) return <MultiSelectionInspector onClose={onClose} />;
 
   const title = mode === 'selection' && selection
     ? selection.storeyName

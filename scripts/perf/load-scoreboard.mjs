@@ -29,6 +29,7 @@ import { fileURLToPath } from 'node:url';
 import { roundOrder, seededRand } from './ab-order.mjs';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { hostQuiet, settleHostLoad } from './load-scoreboard-host.mjs';
+import { addCpuFloors, applyArmProtocolGate, cpuTimeSummary } from './load-scoreboard-report-cpu.mjs';
 export { classifyHostLoad, hostQuiet, settleHostLoad } from './load-scoreboard-host.mjs';
 import { nativeSample } from './load-scoreboard-native.mjs';
 import { BOOT_FIXTURE, BROWSER_LANES, DEFAULT_LANES, LANES, elementDiffVerdict, elementsFileFor, renderMarkdown, summarize } from './load-scoreboard-report.mjs';
@@ -144,8 +145,8 @@ export async function recordArmLanes({ sample, plan, side, fixture, cell, missin
     const armTag = sampleTagFor(tag, armLanes, armPlan, Date.now().toString(36));
     // Each browser sample gets its own host interval, settled as soon as it ends (review #9857).
     const host = await hostQuiet();
-    const e = await sample({ side: plan.sides[side], fixture, tag: `${armTag}${suffix}`, warmOpens: reopens, pass: 'timing', arm });
-    settleHostLoad(host);
+    const e = await sample({ side: plan.sides[side], fixture, tag: `${armTag}${suffix}`, warmOpens: reopens, pass: 'timing', arm, cpuTrace: plan.sides[side].cpuTrace ?? plan.cpuTrace ?? false });
+    settleHostLoad(host, { ownOutside: e.meta?.browserOutside });
     for (const lane of armLanes) {
       const { trace, ...row } = e.lanes[lane] ?? { ok: false, error: `${lane}: not produced by the ${arm} sample` };
       const warmOpens = lane === `browser-warm${suffix}` ? e.warmOpens : undefined;
@@ -170,6 +171,13 @@ export function buildOrder(plan) {
   // The boot lane opens no file: one pair per round, under its pseudo-fixture.
   if (plan.lanes.includes('boot')) order.boot = { [BOOT_FIXTURE]: roundOrder(plan.rounds, rand) };
   return order;
+}
+
+/** Settle a row's host load; a boot row carries its browser's CPU outside the job cgroup (browser rows are already settled). */
+export function settleRowHost(row) {
+  settleHostLoad(row.host, { ownOutside: row.browserOutside });
+  delete row.browserOutside;
+  return row;
 }
 
 async function run(opt) {
@@ -198,7 +206,7 @@ async function run(opt) {
   let browser = null;
   if (order.browser || order.boot) browser = await startBrowserLane(plan, out);
   const record = (row, trace) => {
-    settleHostLoad(row.host);
+    settleRowHost(row);
     done.add(laneKey(row));
     if (trace) { writeFileSync(join(out, 'traces', `${row.fixture}-${row.lane}-${row.side}-r${row.round}.json`), JSON.stringify(trace)); }
     appendFileSync(samplesPath, JSON.stringify(row) + '\n');
@@ -247,8 +255,8 @@ async function run(opt) {
               if (missingDefault.length === 0) continue;
               const sampleTag = sampleTagFor(tag, missingDefault, groupLanes.filter((l) => DEFAULT_BROWSER.includes(l)), Date.now().toString(36));
               const host = await hostQuiet();
-              const s = await browser.sample({ side: plan.sides[side], fixture, tag: sampleTag, warmOpens: plan.warmOpens, pass: 'timing' });
-              settleHostLoad(host); // the timed opens only, not the memory pass that follows
+              const s = await browser.sample({ side: plan.sides[side], fixture, tag: sampleTag, warmOpens: plan.warmOpens, pass: 'timing', cpuTrace: plan.sides[side].cpuTrace ?? plan.cpuTrace ?? false });
+              settleHostLoad(host, { ownOutside: s.meta.browserOutside }); // the timed opens only, not the memory pass that follows
               // H3: peak memory comes from a separate pass with the sampler on, never from the timed opens.
               const m = plan.memoryPass === false ? null : await browser.sample({ side: plan.sides[side], fixture, tag: `${sampleTag}-mem`, warmOpens: plan.warmOpens, pass: 'memory' });
               const adapter = s.meta.adapter ? JSON.stringify(s.meta.adapter) : null;
@@ -353,6 +361,11 @@ function report(opt) {
   const floors = aaPath ? JSON.parse(readFileSync(aaPath, 'utf8')).floors : null;
   const host = existsSync(join(out, 'host.json')) ? JSON.parse(readFileSync(join(out, 'host.json'), 'utf8')) : null;
   const summary = summarize(plan, samples, { floors });
+  // Second and third measures never cost the wall report: their failure only makes them unavailable (review #10138).
+  try {
+    summary.cpuTime = applyArmProtocolGate(cpuTimeSummary(plan, samples, { floors }), summary);
+    addCpuFloors(summary, summary.cpuTime);
+  } catch (err) { summary.cpuTime = { kind: summary.kind, cells: [], error: String(err?.message ?? err).slice(0, 300) }; }
   attachElementDiffs(summary, samples, plan, out);
   summary.aaReference = aaPath;
   summary.host = host;

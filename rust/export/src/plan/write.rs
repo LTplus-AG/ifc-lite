@@ -88,7 +88,7 @@ pub(crate) fn write_output<W: Write>(
         written += 1;
         validator.record(*id, &appended_type(text), text, |r| defined.contains(r));
     }
-    written = written.saturating_add_signed(body.finish()?);
+    written = written.saturating_add_signed(body.finish(Vec::new())?);
     out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;
     out.flush()?;
 

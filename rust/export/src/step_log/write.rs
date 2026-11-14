@@ -258,13 +258,13 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     let mut body = crate::schema_ifc2x3_placements::Body::new(&mut *out, target_is_ifc2x3);
 
     let mut slot_fill = crate::schema_ifc2x3_slots::Ifc2x3SlotFill::new(pass.fallback_owner_history());
-    let mut checks = crate::schema_enum::ConversionChecks::for_source(content, &source_label, &target, opts, log.mutations.is_empty() && log.new_entities.is_empty() && log.georef_mutations.is_none(), |id, start| src.span(id).is_some_and(|(kept, _)| kept == start));
+    let mut checks = crate::schema_enum::ConversionChecks::for_source(content, &source_label, &target, opts, log.mutations.is_empty() && log.new_entities.is_empty() && log.georef_mutations.is_none(), |id, start| src.span(id).is_some_and(|(kept, _)| kept == start), || pass.allocate().ok());
     let mut flatten = crate::schema_style_flatten::StyleFlatten::for_export(content, &source_label, &target); flatten.note_all(content, pass.mutated_lines.iter().filter_map(|(id, (t, _))| Some((*id, t.as_deref()?)))
         .chain(pass.generated.iter().chain(&pass.rewritten_lines).chain(&pass.georef_lines).chain(&pass.created_lines).map(|(id, l)| (*id, l.as_str()))));
     flatten.retain_grids(|id| !pass.skip.contains(&id) && !pass.is_deleted(id));
     let mut written = 0usize;
     for &id in &src.order {
-        if pass.skip.contains(&id) || pass.rewritten.contains(&id) || pass.is_deleted(id) || flatten.drops(id) {
+        if pass.skip.contains(&id) || pass.rewritten.contains(&id) || pass.is_deleted(id) || flatten.drops(id) || checks.structural.varying.drops(id) {
             continue;
         }
         let owned;
@@ -314,7 +314,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     for (id, line) in appended.filter(|(id, _)| !flatten.drops(*id)) {
         written += usize::from(write_line(&mut body, line, *id, converting, &source_label, &target, &mut slot_fill, &mut checks, &flatten)?);
     }
-    written = written.checked_add_signed(body.finish()?).unwrap_or(written);
+    written = written.checked_add_signed(body.finish(checks.structural.varying.added())?).unwrap_or(written);
     out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;
 
     let mut warnings = std::mem::take(&mut pass.warnings);

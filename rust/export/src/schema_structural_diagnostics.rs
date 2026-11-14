@@ -8,6 +8,7 @@ pub(crate) struct StructuralDiagnostics {
     losses: BTreeMap<String, usize>,
     pub(crate) axes: crate::schema_structural_axes::StructuralAxes,
     pub(crate) links: crate::schema_structural_links::StructuralLinks,
+    pub(crate) varying: crate::schema_structural_varying::StructuralVarying,
 }
 
 impl StructuralDiagnostics {
@@ -47,11 +48,17 @@ impl StructuralDiagnostics {
 
     fn record(&mut self, message: String) { *self.losses.entry(message).or_default() += 1; }
 
-    /// IFC4 -> IFC2X3 link restoration (`StructuralLinks`), reported because the relationship class changes.
-    pub(crate) fn restored_link(&mut self, entity: &str, args: &[String]) -> Option<String> {
-        let attrs = self.links.link(entity, args)?;
-        self.record("IfcRelAssignsToProduct linking one structural member to its element is written as IfcRelConnectsStructuralElement, the IFC2X3 physical-to-analytical link".into());
-        Some(attrs)
+    /// A record written as another entity from source-derived facts
+    /// (`StructuralLinks`, `StructuralVarying`, each armed only for its schema
+    /// pair): the target record body, reported because the class changes.
+    pub(crate) fn rewrite(&mut self, id: u32, entity: &str, args: &[String]) -> Option<String> {
+        if let Some(attrs) = self.links.link(entity, args) {
+            self.record("IfcRelAssignsToProduct linking one structural member to its element is written as IfcRelConnectsStructuralElement, the IFC2X3 physical-to-analytical link".into());
+            return Some(format!("IFCRELCONNECTSSTRUCTURALELEMENT({attrs})"));
+        }
+        let (body, losses) = self.varying.rewrite(id, entity, args)?;
+        losses.into_iter().for_each(|loss| self.record(loss));
+        Some(body)
     }
 
     pub(crate) fn warnings(&self) -> Vec<String> {

@@ -114,6 +114,15 @@ Downgrading to IFC2X3 refuses resource types that it cannot represent, such as
 `IfcStructuralLoadConfiguration` and `IfcMaterialProfileSet`. Inspect the loss
 report before relying on a conversion.
 
+IFC2X3's `IfcStructuralLinearActionVarying` and
+`IfcStructuralPlanarActionVarying` become an IFC4 curve or surface action with
+`PredefinedType` `NOTDEFINED` and an `IfcStructuralLoadConfiguration` holding
+the loads without `Locations`. The `IfcShapeAspect` that places them stays on
+the action's representation, so the downgrade writes the varying action back.
+An IFC4 action whose representation has no single `IfcShapeAspect` has no
+IFC2X3 location for its values and is not converted this way. Both need an
+unedited full export.
+
 The viewer's read and review surfaces do not provide a structural schema
 conversion editor. Conversion is not lossless for all records. The ledger
 checks IFC2X3 to IFC4 and back, and IFC4 to IFC2X3 and back, separately.

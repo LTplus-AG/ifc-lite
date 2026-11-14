@@ -173,16 +173,23 @@ impl ConversionChecks {
         Self::default()
     }
 
-    /// Source-derived orientations and link types are safe only for an unedited full export.
-    pub(crate) fn for_source(content: &[u8], from: &str, to: &str, opts: &crate::step_api::StepOptions, unchanged: bool, kept: impl Fn(u32, usize) -> bool) -> Self {
+    /// Source-derived orientations, link types and varying actions are safe only
+    /// for an unedited full export. `allocate` is the writer's express-id allocator.
+    pub(crate) fn for_source(content: &[u8], from: &str, to: &str, opts: &crate::step_api::StepOptions, unchanged: bool, kept: impl Fn(u32, usize) -> bool, allocate: impl FnMut() -> Option<u32>) -> Self {
         let (from, to) = (crate::schema_convert::canon(from), crate::schema_convert::canon(to));
         let mut checks = Self::new();
         if !(unchanged && opts.included.is_none() && opts.attribute_mutations.is_empty() && opts.copy_on_write.is_empty()) {
             return checks;
         }
         match (from, to) {
-            ("IFC2X3", "IFC4") => checks.structural.axes = crate::schema_structural_axes::StructuralAxes::scan(content, kept),
-            ("IFC4", "IFC2X3") => checks.structural.links = crate::schema_structural_links::StructuralLinks::scan(content, kept),
+            ("IFC2X3", "IFC4") => {
+                checks.structural.axes = crate::schema_structural_axes::StructuralAxes::scan(content, &kept);
+                checks.structural.varying = crate::schema_structural_varying::StructuralVarying::scan_ifc2x3(content, &kept, allocate);
+            }
+            ("IFC4", "IFC2X3") => {
+                checks.structural.links = crate::schema_structural_links::StructuralLinks::scan(content, &kept);
+                checks.structural.varying = crate::schema_structural_varying::StructuralVarying::scan_ifc4(content, &kept);
+            }
             _ => {}
         }
         checks

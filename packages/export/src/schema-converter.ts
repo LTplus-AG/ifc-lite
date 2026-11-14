@@ -323,6 +323,9 @@ function convertRecord(
 
   const newType = convertEntityType(entityType, fromSchema, toSchema);
 
+  // A structural rewrite replaces any withheld reference (an IFC4 load configuration).
+  const rewritten = structuralDiagnostics?.rewrite(entityType, args);
+  if (rewritten) return `${prefix}${rewritten};`;
   // A record whose attribute list references an id this export is OMITTING
   // (`withheldRefIds`, #4206) cannot carry that reference forward, no matter
   // how cleanly this record's OWN type would otherwise convert — a renamed
@@ -333,8 +336,7 @@ function convertRecord(
     return resolveUnrepresentedEntity(prefix, entityType, attrsRaw, toSchema, random, withheldRefIds !== undefined);
   }
   structuralDiagnostics?.inspect(line, fromSchema, toSchema);
-  const rewritten = structuralDiagnostics?.restoredLink(entityType, args) ?? (structuralAxis && `${newType}(${args.join(',')},${structuralAxis})`);
-  if (rewritten) return `${prefix}${rewritten};`;
+  if (structuralAxis) return `${prefix}${newType}(${args.join(',')},${structuralAxis});`;
   const structural = structuralAttributes(entityType, args, fromSchema, toSchema);
   if (structural !== null) return `${prefix}${newType}(${structural});`;
   // No representation in the target schema: an IFCPROXY keeping their
@@ -466,33 +468,3 @@ export function needsConversion(
 ): boolean {
   return fromSchema !== toSchema;
 }
-
-/**
- * Get human-readable description of what a conversion entails.
- */
-export function describeConversion(
-  fromSchema: IfcSchemaVersion,
-  toSchema: IfcSchemaVersion,
-): string {
-  if (fromSchema === toSchema) return 'No conversion needed';
-
-  const warnings: string[] = [];
-
-  if (toSchema === 'IFC2X3') {
-    warnings.push('Entities not in IFC2X3 will be mapped to IfcBuildingElementProxy');
-    warnings.push('Extra attributes (e.g., PredefinedType) will be trimmed');
-  }
-
-  if (toSchema === 'IFC5') {
-    warnings.push('IFC5 is alpha/incomplete — exported files may not validate against final spec');
-  }
-
-  if (fromSchema === 'IFC4X3' && (toSchema === 'IFC4' || toSchema === 'IFC2X3')) {
-    warnings.push('IFC4X3 facility types (Bridge, Road, Railway) will be mapped to Building/Storey');
-  }
-
-  return warnings.length > 0
-    ? `Converting ${fromSchema} → ${toSchema}: ${warnings.join('; ')}`
-    : `Converting ${fromSchema} → ${toSchema}`;
-}
-

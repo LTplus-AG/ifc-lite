@@ -102,6 +102,12 @@ fn seam_faces(mesh: &MeshData, y: f64, x: [f64; 2]) -> usize {
         .count()
 }
 
+fn tri_area([a, b, c]: [[f64; 3]; 3]) -> f64 {
+    let (u, v) = ([b[0] - a[0], b[1] - a[1], b[2] - a[2]], [c[0] - a[0], c[1] - a[1], c[2] - a[2]]);
+    let n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+    (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt() / 2.0
+}
+
 /// Area of the triangles lying on the plane y = `y` (same 100 um band as
 /// [`seam_faces`]) within `x`.
 fn plane_area(mesh: &MeshData, y: f64, x: [f64; 2]) -> f64 {
@@ -109,11 +115,7 @@ fn plane_area(mesh: &MeshData, y: f64, x: [f64; 2]) -> f64 {
         .chunks_exact(3)
         .map(|t| [t[0], t[1], t[2]].map(|i| world(mesh, i)))
         .filter(|p| p.iter().all(|q| (q[1] - y).abs() < 1e-4 && q[0] > x[0] && q[0] < x[1]))
-        .map(|[a, b, c]| {
-            let (u, v) = ([b[0] - a[0], b[1] - a[1], b[2] - a[2]], [c[0] - a[0], c[1] - a[1], c[2] - a[2]]);
-            let n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
-            (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt() / 2.0
-        })
+        .map(tri_area)
         .sum()
 }
 
@@ -147,11 +149,7 @@ fn area(mesh: &MeshData) -> f64 {
     mesh.indices
         .chunks_exact(3)
         .map(|t| [t[0], t[1], t[2]].map(|i| world(mesh, i)))
-        .map(|[a, b, c]| {
-            let (u, v) = ([b[0] - a[0], b[1] - a[1], b[2] - a[2]], [c[0] - a[0], c[1] - a[1], c[2] - a[2]]);
-            let n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
-            (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt() / 2.0
-        })
+        .map(tri_area)
         .sum()
 }
 

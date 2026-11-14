@@ -22,6 +22,32 @@ const RIM_NOISE_OF_SIZE: f64 = 1.0 / 8192.0;
 /// uses this numeric value as a cap in caller units; its behavior is unchanged.
 const RIM_NOISE_CAP: f64 = 1.0 / 4096.0;
 
+/// Test shorthand for [`weld_near_coincident_2d_tracked`]: the welded ring only.
+#[cfg(test)]
+pub(super) fn weld_near_coincident_2d(
+    ring: &[nalgebra::Point2<f64>],
+) -> Vec<nalgebra::Point2<f64>> {
+    weld_near_coincident_2d_tracked(ring).0
+}
+
+/// Whether `p` and `q` are within the cross-bucket conform's reach of each
+/// other, on both axes.
+pub(super) fn within_conform_tol(p: nalgebra::Point2<f64>, q: nalgebra::Point2<f64>) -> bool {
+    let tol = super::conform::CONFORM_TOL;
+    (p.x - q.x).abs() <= tol && (p.y - q.y).abs() <= tol
+}
+
+/// A ring vertex [`weld_near_coincident_2d_tracked`] merged onto a kept neighbour
+/// from farther away than the cross-bucket conform reconciles.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct Welded {
+    pub(super) kept: nalgebra::Point2<f64>,
+    pub(super) dropped: nalgebra::Point2<f64>,
+    /// `dropped` came before `kept` in ring order (the last vertex merged
+    /// onto the first); otherwise it came after it.
+    pub(super) before: bool,
+}
+
 /// Merge consecutive near-coincident 2D contour vertices BEFORE the union/earcut.
 ///
 /// The exact mesh-arrangement kernel correctly preserves two distinct rim points
@@ -47,31 +73,9 @@ const RIM_NOISE_CAP: f64 = 1.0 / 4096.0;
 /// genuine 1 mm chamfer on a long steel member. This runs in the already-
 /// non-exact consolidation post-pass; it does NOT touch the exact kernel's
 /// interner/predicates (no float weld in the determinism path).
-#[cfg(test)]
-pub(super) fn weld_near_coincident_2d(
-    ring: &[nalgebra::Point2<f64>],
-) -> Vec<nalgebra::Point2<f64>> {
-    weld_near_coincident_2d_tracked(ring).0
-}
-
-/// A ring vertex [`weld_near_coincident_2d`] merged onto a kept neighbour
-/// from farther away than the cross-bucket conform reconciles.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct Welded {
-    pub(super) kept: nalgebra::Point2<f64>,
-    pub(super) dropped: nalgebra::Point2<f64>,
-    /// `dropped` came before `kept` in ring order (the last vertex merged
-    /// onto the first); otherwise it came after it.
-    pub(super) before: bool,
-}
-
-/// [`weld_near_coincident_2d`], also reporting each vertex it merged away
-/// from more than `CONFORM_TOL` off its kept neighbour, in ring order.
 ///
-/// The weld reaches 244 um and keeps whichever vertex of a pair the ring walk
-/// meets first, so two buckets walking the same rim in opposite directions
-/// keep different ones. The conform snaps and inserts within 100 um only, and
-/// uses this record to put back a vertex from the band between.
+/// Also returns each vertex merged away from more than `CONFORM_TOL` off its
+/// kept neighbour, in ring order, for `conform::restore` to put back.
 pub(super) fn weld_near_coincident_2d_tracked(
     ring: &[nalgebra::Point2<f64>],
 ) -> (Vec<nalgebra::Point2<f64>>, Vec<Welded>) {
@@ -94,10 +98,6 @@ pub(super) fn weld_near_coincident_2d_tracked(
     // 2⁻¹² m so big rings can't swallow mm-scale features ⇒ exact, deterministic.
     let eps = (floor_pow2(extent) * RIM_NOISE_OF_SIZE).min(RIM_NOISE_CAP);
     let eps2 = eps * eps;
-    let tol = super::conform::CONFORM_TOL;
-    let far = |p: nalgebra::Point2<f64>, q: nalgebra::Point2<f64>| {
-        (p.x - q.x).abs() > tol || (p.y - q.y).abs() > tol
-    };
     let mut welded: Vec<Welded> = Vec::new();
     let mut kept: Vec<nalgebra::Point2<f64>> = Vec::with_capacity(n);
     for &p in ring {
@@ -108,7 +108,7 @@ pub(super) fn weld_near_coincident_2d_tracked(
         });
         if !dup {
             kept.push(p);
-        } else if let Some(&q) = kept.last().filter(|&&q| far(p, q)) {
+        } else if let Some(&q) = kept.last().filter(|&&q| !within_conform_tol(p, q)) {
             welded.push(Welded { kept: q, dropped: p, before: false });
         }
     }
@@ -119,7 +119,7 @@ pub(super) fn weld_near_coincident_2d_tracked(
         let dy = last.y - first.y;
         if dx * dx + dy * dy < eps2 {
             kept.pop();
-            if far(last, first) {
+            if !within_conform_tol(last, first) {
                 welded.push(Welded { kept: first, dropped: last, before: true });
             }
         }

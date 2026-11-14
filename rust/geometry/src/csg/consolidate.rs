@@ -324,15 +324,14 @@ impl ClippingProcessor {
 /// otherwise paired seam; they are not geometry and must not make a closed
 /// candidate look open at the acceptance bar.
 ///
-/// The index-only cleanup is tried first and its result kept wherever it
-/// passes. It opens the candidate when a sliver's apex is a vertex the
-/// abutting bucket keeps: three consecutive rim vertices of a faceted arc
-/// that are collinear to under the sub-grid height, where the side facets end
-/// at the middle one (#8190 slab: six cap slivers, 18 open edges). The
-/// candidate is then cleaned the way void output is, splitting the triangle
-/// across each dropped sliver at its apex, and judged again.
+/// The index-only cleanup is tried first and kept wherever it passes. It opens
+/// the candidate when a sliver's apex is a vertex the abutting bucket keeps:
+/// three rim vertices of a faceted arc collinear to under the sub-grid height,
+/// the side facets ending at the middle one (#8190 slab: six cap slivers, 18
+/// open edges). The candidate is then cleaned the way void output is, splitting
+/// the triangle across each dropped sliver at its apex, and judged again.
 fn complete_conformed_candidate(
-    candidate: Mesh,
+    mut candidate: Mesh,
     complete: bool,
     require_exact: bool,
 ) -> Option<Mesh> {
@@ -344,17 +343,17 @@ fn complete_conformed_candidate(
             && count_open_boundary_edges_at(mesh, 1.0e4) == 0
             && (!require_exact || count_open_boundary_edges_exact(mesh) == 0)
     };
-    let mut cleaned = candidate.clone();
-    cleaned.clean_degenerate();
-    if closed(&cleaned) {
-        return Some(cleaned);
+    let original = candidate.indices.clone(); // the index-only cleanup moves nothing else
+    candidate.clean_degenerate();
+    if closed(&candidate) {
+        return Some(candidate);
     }
-    if cleaned.indices.len() == candidate.indices.len() {
+    if candidate.indices.len() == original.len() {
         return None; // nothing was dropped, so there is nothing to repair
     }
-    let mut repaired = candidate;
-    repaired.clean_degenerate_watertight();
-    closed(&repaired).then_some(repaired)
+    candidate.indices = original;
+    candidate.clean_degenerate_watertight();
+    closed(&candidate).then_some(candidate)
 }
 
 fn count_open_boundary_edges_exact(mesh: &Mesh) -> usize {

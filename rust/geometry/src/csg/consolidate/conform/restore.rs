@@ -15,13 +15,8 @@
 //! `conform_ring` cannot insert it and `snap_near_duplicates` cannot reach it,
 //! and the cap stays open across a triangle 218 um wide.
 
-use super::CONFORM_TOL;
-use crate::csg::consolidate::ring_ops::Welded;
+use crate::csg::consolidate::ring_ops::{within_conform_tol as near, Welded};
 use nalgebra::Point2;
-
-fn near(p: Point2<f64>, q: Point2<f64>) -> bool {
-    (p.x - q.x).abs() <= CONFORM_TOL && (p.y - q.y).abs() <= CONFORM_TOL
-}
 
 /// Reinsert each vertex of `welded` that some candidate still marks, next to
 /// the vertex it was merged onto and on the side it came from, at the
@@ -35,26 +30,20 @@ pub(super) fn restore_welded(
     welded: &[Welded],
     cands: &[Point2<f64>],
 ) -> bool {
-    let mut inserted = false;
+    let len = ring.len();
     // In reverse, so several vertices merged onto one kept vertex come back in
     // their ring order: each lands directly after it, ahead of the later ones.
     for gone in welded.iter().rev() {
-        let mut best: Option<(f64, Point2<f64>)> = None;
-        for &q in cands.iter().filter(|&&q| near(q, gone.dropped)) {
-            let d2 = (q - gone.dropped).norm_squared();
-            if best.is_none_or(|(b, _)| d2 < b) {
-                best = Some((d2, q));
-            }
-        }
-        let Some((_, q)) = best else { continue };
+        let off = |q: &Point2<f64>| (q - gone.dropped).norm_squared();
+        let nearest = cands.iter().filter(|&&q| near(q, gone.dropped));
+        let Some(&q) = nearest.min_by(|a, b| off(a).total_cmp(&off(b))) else { continue };
         if ring.iter().any(|&p| near(p, q)) {
             continue;
         }
         let Some(at) = ring.iter().position(|&p| p == gone.kept) else { continue };
         ring.insert(if gone.before { at } else { at + 1 }, q);
-        inserted = true;
     }
-    inserted
+    ring.len() != len
 }
 
 #[cfg(test)]

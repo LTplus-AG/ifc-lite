@@ -82,13 +82,11 @@ export function applyStructuralDerivation(
   // Resolve every anchor and run every builder check before the first write.
   const [first] = [...plan.curveMembers, ...plan.surfaceMembers, ...plan.nodes].map((item) => placementOf(item.storeyId).anchor);
   checkPlan(plan, (storeyId, p) => placementOf(storeyId).toLocal(p));
-  // A curve member with a physical axis records it with its element's GlobalId; read them before the first write.
-  const globalIds = new Map<number, string>();
-  for (const { elementId, physicalAxis } of plan.curveMembers) {
-    const globalId = physicalAxis && reader.entity(elementId)?.attributes[0];
-    if (typeof globalId === 'string' && globalId) globalIds.set(elementId, globalId);
-  }
-  return editor.runAtomic((draft) => writePlan(draft, plan, first, placementOf, globalIds, random));
+  const globalIdOf = (id: number) => {
+    const globalId = reader.entity(id)?.attributes[0];
+    return typeof globalId === 'string' && globalId ? globalId : null;
+  };
+  return editor.runAtomic((draft) => writePlan(draft, plan, first, placementOf, globalIdOf, random));
 }
 
 /** Same point; NaN matches NaN, since a non-finite point is the builder's refusal, not the plan check's. */
@@ -129,7 +127,7 @@ function writePlan(
   plan: StructuralDerivationPlan,
   first: SpatialAnchor,
   placementOf: (storeyId: number | null) => StoreyPlacement,
-  globalIds: ReadonlyMap<number, string>,
+  globalIdOf: (elementId: number) => string | null,
   random?: RandomSource,
 ): StructuralDerivationApplied {
   const ownerHistoryId = first.ownerHistoryId;
@@ -164,7 +162,8 @@ function writePlan(
     });
     connectStructuralMemberToConnectionInStore(editor, ownerHistoryId, memberId, connectionIds[member.startNode], random);
     connectStructuralMemberToConnectionInStore(editor, ownerHistoryId, memberId, connectionIds[member.endNode], random);
-    const globalId = globalIds.get(member.elementId);
+    // A member records its element's line only with the element's GlobalId to name it by.
+    const globalId = member.physicalAxis && globalIdOf(member.elementId);
     if (member.physicalAxis && globalId) {
       editor.addPropertySet(memberId, STRUCTURAL_DERIVATION_PSET, [
         { name: DERIVATION_ELEMENT_PROPERTY, value: globalId, type: 'LABEL' },

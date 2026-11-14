@@ -95,9 +95,9 @@
  * to its element, a node to the elements whose ends meet there and to its
  * footing.
  *
- * Provenance. Every curve member carries an `IfcLite_StructuralDerivation`
- * property set (when the plan has `physicalAxis` and the element a GlobalId)
- * naming its element's GlobalId and the element's line (the
+ * Provenance. A curve member carries an `IfcLite_StructuralDerivation`
+ * property set, when the plan has its `physicalAxis` (the planner always sets
+ * it) and its element has a GlobalId, naming that GlobalId and the element's line (the
  * rule above, before joints moved its ends) in metres in the axes of its
  * storey, which the member's placement is relative to. The
  * `structural-stale-item` check in `@ifc-lite/parser` compares it with the

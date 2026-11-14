@@ -445,7 +445,7 @@ describe('derive provenance: apply checks the recorded axis (#9668)', () => {
   it('applies a plan without physical axes, as an earlier version made them, and records nothing', async () => {
     const store = await parse(model('IFC4'));
     const editor = session(store);
-    const plan = structuredClone(planStructuralDerivation(readStructuralDerivationFacts(store, editor)));
+    const plan = planStructuralDerivation(readStructuralDerivationFacts(store, editor));
     for (const member of plan.curveMembers) delete member.physicalAxis;
     applyStructuralDerivation(editor, store, plan, seeded());
     const { content } = new StepExporter(store, editor.getMutationView()).export({ schema: 'IFC4', applyMutations: true });

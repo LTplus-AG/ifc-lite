@@ -174,6 +174,13 @@ export class FederationRegistry {
     range.maxExpressId = end;
   }
 
+  /** Whether the next contiguous ID can be published from this model's overlay headroom. */
+  hasOverlayHeadroom(modelId: string): boolean {
+    const range = this.modelRanges.get(modelId);
+    return range !== undefined && range.maxExpressId >= range.reservedMaxExpressId
+      && range.maxExpressId < range.overlayMaxExpressId;
+  }
+
   /** Publish derived/overlay IDs from the separately reserved headroom. */
   publishOverlayRange(modelId: string, start: number, end: number): void {
     const range = this.modelRanges.get(modelId);

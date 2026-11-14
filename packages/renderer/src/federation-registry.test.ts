@@ -306,3 +306,46 @@ describe('FederationRegistry - extending a model whose remaining ids arrive late
     assert.equal(reg.registerModel('b', 1), 1_000_011);
   });
 });
+
+
+describe('FederationRegistry - overlay headroom query', () => {
+  it('reports whether the next overlay id can actually be published', () => {
+    const reg = new FederationRegistry();
+    assert.equal(reg.hasOverlayHeadroom('unknown'), false);
+    reg.reserveModel('progressive', 10);
+    assert.equal(reg.hasOverlayHeadroom('progressive'), false);
+    reg.publishRange('progressive', 0, 5);
+    assert.equal(reg.hasOverlayHeadroom('progressive'), false);
+    reg.publishRange('progressive', 6, 10);
+    assert.equal(reg.hasOverlayHeadroom('progressive'), true);
+    reg.publishOverlayRange('progressive', 11, 1_000_009);
+    assert.equal(reg.hasOverlayHeadroom('progressive'), true);
+    reg.publishOverlayRange('progressive', 1_000_010, 1_000_010);
+    assert.equal(reg.hasOverlayHeadroom('progressive'), false);
+    assert.throws(() => reg.publishOverlayRange('progressive', 1_000_011, 1_000_011), /Invalid overlay range/);
+    reg.unregisterModel('progressive');
+    assert.equal(reg.hasOverlayHeadroom('progressive'), false);
+  });
+
+  for (const highestId of [1_000_010, 2_000_000]) {
+    it(`reports exhaustion after extending to ${highestId} with a later neighbour, including smaller re-hydration`, () => {
+      const reg = new FederationRegistry();
+      reg.registerModel('a', 10);
+      reg.registerModel('b', 20);
+      assert.equal(reg.hasOverlayHeadroom('a'), true);
+      assert.equal(reg.extendModel('a', highestId), 1_000_010);
+      assert.equal(reg.hasOverlayHeadroom('a'), false);
+      assert.equal(reg.extendModel('a', 5), 1_000_010);
+      assert.equal(reg.hasOverlayHeadroom('a'), false);
+      assert.equal(reg.hasOverlayHeadroom('b'), true);
+    });
+  }
+
+  it('preserves overlay headroom when extending the newest reservation', () => {
+    const reg = new FederationRegistry();
+    reg.registerModel('a', 10);
+    assert.equal(reg.extendModel('a', 2_000_000), 2_000_000);
+    assert.equal(reg.hasOverlayHeadroom('a'), true);
+    assert.doesNotThrow(() => reg.publishOverlayRange('a', 2_000_001, 2_000_001));
+  });
+});

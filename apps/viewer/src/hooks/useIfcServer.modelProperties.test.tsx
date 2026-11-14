@@ -29,6 +29,16 @@ let releaseLoad: (() => void) | undefined;
 const file = new File(['IFC'], 'server.ifc');
 let signal: AbortSignal, stale: boolean;
 const result = () => fixtureDataStore([{ expressId: 1, type: 'IfcWall', name: 'Server properties' }]);
+function serverStoreAt(expressId: number) {
+  return convertServerDataModel({
+    entities: ServerEntityIndex.fromRows([{ entity_id: expressId, type_name: 'IFCPROJECT', global_id: 'far', name: 'Past the headroom', has_geometry: false }]),
+    propertySets: new Map(), quantitySets: new Map(), relationships: [], classifications: [], materials: [], documents: [],
+    spatialHierarchy: {
+      nodes: [{ entity_id: expressId, parent_id: 0, level: 0, path: 'P', type_name: 'IFCPROJECT', name: 'P', children_ids: [], element_ids: [] }],
+      project_id: expressId, element_to_storey: new Map(), element_to_building: new Map(), element_to_site: new Map(), element_to_space: new Map(),
+    },
+  }, { cache_key: 'far', metadata: { schema_version: 'IFC4' }, stats: { total_time_ms: 1, parse_time_ms: 1, geometry_time_ms: 0, total_vertices: 0, total_triangles: 0 } }, { size: 1 }, []);
+}
 function Probe() { api = useIfcServer(); return null; }
 async function start() {
   let entered!: () => void;
@@ -99,14 +109,7 @@ it('properties whose ids run past a later model are published as far as the head
   const warnings: unknown[][] = [];
   mock.method(console, 'warn', (...args: unknown[]) => { warnings.push(args); });
   // A converted server store, whose compact id index sets the store's highest id.
-  const tooFar = convertServerDataModel({
-    entities: ServerEntityIndex.fromRows([{ entity_id: 2_000_000, type_name: 'IFCPROJECT', global_id: 'far', name: 'Past the headroom', has_geometry: false }]),
-    propertySets: new Map(), quantitySets: new Map(), relationships: [], classifications: [], materials: [], documents: [],
-    spatialHierarchy: {
-      nodes: [{ entity_id: 2_000_000, parent_id: 0, level: 0, path: 'P', type_name: 'IFCPROJECT', name: 'P', children_ids: [], element_ids: [] }],
-      project_id: 2_000_000, element_to_storey: new Map(), element_to_building: new Map(), element_to_site: new Map(), element_to_space: new Map(),
-    },
-  }, { cache_key: 'far', metadata: { schema_version: 'IFC4' }, stats: { total_time_ms: 1, parse_time_ms: 1, geometry_time_ms: 0, total_vertices: 0, total_triangles: 0 } }, { size: 1 }, []);
+  const tooFar = serverStoreAt(2_000_000);
   await act(async () => {
     useServerModelProperties().start('server', undefined, async () => tooFar);
     await new Promise(resolve => setTimeout(resolve, 50));
@@ -127,6 +130,34 @@ it('properties whose ids run past a later model are published as far as the head
   assert.equal(warnings.some(args => /later model owns/.test(String(args[0]))), true, 'the unresolvable ids are reported');
   assert.deepEqual(useViewerStore.getState().fromGlobalId(laterOffset + 10), { modelId: 'later', expressId: 10 });
 });
+
+for (const rehydrate of [false, true]) {
+  it(rehydrate
+    ? 'smaller re-hydration after a clamp keeps id space exhausted and editing refused'
+    : 'hydration exactly at overlay headroom end exhausts id space and refuses editing', async () => {
+    const { registerModelOffset, updateModel } = useViewerStore.getState();
+    updateModel('server', { idOffset: registerModelOffset('server', 1), maxExpressId: 1 });
+    registerModelOffset('later', 10);
+    mock.method(console, 'warn', () => {});
+    const hydrate = async (expressId: number) => {
+      const store = serverStoreAt(expressId);
+      await act(async () => {
+        useServerModelProperties().start('server', undefined, async () => store);
+        await new Promise(resolve => setTimeout(resolve, 50));
+      });
+      assert.equal(useViewerStore.getState().models.get('server')?.ifcDataStore, store);
+    };
+    if (rehydrate) {
+      await hydrate(2_000_000);
+      assert.equal(useViewerStore.getState().models.get('server')?.idSpaceExhausted, true);
+    }
+    await hydrate(rehydrate ? 2 : 1_000_001);
+    assert.equal(useViewerStore.getState().models.get('server')?.maxExpressId, 1_000_001);
+    assert.equal(useViewerStore.getState().models.get('server')?.idSpaceExhausted, true);
+    assert.deepEqual(dataMutationPermission(useViewerStore.getState(), 'server'), { allowed: false, reason: 'id-space-exhausted' });
+    assert.throws(() => federationRegistry.publishOverlayRange('server', 1_000_002, 1_000_002), /Invalid overlay range/);
+  });
+}
 
 it('a hydration that fits clears an earlier id-space flag on the model record', async () => {
   const { registerModelOffset, updateModel } = useViewerStore.getState();

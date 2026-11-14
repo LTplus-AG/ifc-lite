@@ -35,9 +35,8 @@ function extendModelIdRange(modelId: string, dataStore: IfcDataStore): { maxExpr
   // Throws only for a range carrying authored ids, which `dataMutationPermission` rules out while
   // properties load; the run then fails like any optional hydration and nothing is aliased.
   const published = federationRegistry.extendModel(modelId, maxExpressId);
-  if (published >= maxExpressId) return { maxExpressId, idSpaceExhausted: false }; // clears an earlier flag
-  console.warn(`[Server properties] Ids ${published + 1}..${maxExpressId} of model ${modelId} lie past the ids a later model owns; those entities cannot be selected or resolved, and the model cannot be edited`);
-  return { maxExpressId: published, idSpaceExhausted: true };
+  if (published < maxExpressId) console.warn(`[Server properties] Ids ${published + 1}..${maxExpressId} of model ${modelId} lie past the ids a later model owns; those entities cannot be selected or resolved, and the model cannot be edited`);
+  return { maxExpressId: published, idSpaceExhausted: !federationRegistry.hasOverlayHeadroom(modelId) };
 }
 
 function start(modelId: string | null, isStale: (() => boolean) | undefined,

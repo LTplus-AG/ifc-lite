@@ -130,7 +130,10 @@ function readModels(): ModelSnapshot[] {
       const own = perVertex ? null : boxFor(mesh.expressId);
       // An ordinary mesh whose entity carries no GlobalId has nothing to widen.
       if (!perVertex && !own) continue;
-      for (let i = 0, vertex = 0; i < positions.length; i += 3, vertex++) {
+      // Walk the indices, not the vertex buffer: a vertex no triangle uses is
+      // not drawn, so it must not widen the box the overlay compares.
+      for (const vertex of mesh.indices) {
+        const i = vertex * 3;
         let box = own;
         if (perVertex) {
           const id = perVertex[vertex];

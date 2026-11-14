@@ -8,6 +8,7 @@ import { act, useState } from 'react';
 import { cleanup, click, render } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { classifyFormFactor } from '@/lib/layout/form-factor';
+import { moveMobilePanel } from './move-mobile-panel';
 import { MobilePanelHost, MobilePaneSlotProvider } from './MobilePanelHost';
 
 const original = useViewerStore.getState().formFactor;
@@ -50,5 +51,36 @@ it('#9718 keeps child-local draft state and the scroll node across sheet, pane a
     const parent = ui.querySelector(width > height || folded ? '[data-slot]' : '[data-view]');
     assert.equal(parent?.contains(draft), true);
     if (width > height || folded) assert.equal(ui.querySelector('[role="region"]')?.getAttribute('aria-label'), 'Properties');
+  }
+});
+
+// Model the browser's native blur on ordinary removal: happy-dom does not blur
+// on appendChild, so an uninstrumented focus assertion would miss this defect.
+it('#9718 restores input focus and selection on the appendChild fallback', () => {
+  const source = document.createElement('div');
+  const target = document.createElement('div');
+  const container = document.createElement('div');
+  const input = document.createElement('input');
+  input.value = 'panel draft';
+  container.appendChild(input);
+  source.appendChild(container);
+  document.body.append(source, target);
+  const append = target.appendChild.bind(target);
+  Object.defineProperty(target, 'moveBefore', { value: undefined, configurable: true });
+  target.appendChild = <T extends Node>(child: T): T => {
+    input.blur();
+    input.setSelectionRange(0, 0);
+    return append(child);
+  };
+  try {
+    input.focus();
+    input.setSelectionRange(2, 7, 'backward');
+    moveMobilePanel(target, container);
+    assert.equal(document.activeElement === input, true);
+    assert.deepEqual([input.selectionStart, input.selectionEnd, input.selectionDirection], [2, 7, 'backward']);
+    assert.equal(target.contains(input), true);
+  } finally {
+    source.remove();
+    target.remove();
   }
 });

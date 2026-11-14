@@ -22,6 +22,7 @@ import { createPortal } from 'react-dom';
 import { useViewerStore } from '@/store';
 import { mobilePanelHost } from '@/lib/layout/form-factor';
 import { MobileBottomSheet } from './MobileBottomSheet';
+import { moveMobilePanel } from './move-mobile-panel';
 
 /**
  * The docked pane's slot, provided by the mobile shell. `undefined` outside a
@@ -48,10 +49,7 @@ export function MobilePanelHost({ title, onClose, children }: {
     container.className = host === 'sheet'
       ? 'absolute inset-0 pointer-events-none'
       : 'flex min-h-0 flex-1 flex-col';
-    const scroll = container.querySelector<HTMLElement>('[data-mobile-panel-scroll]');
-    const scrollTop = scroll?.scrollTop ?? 0;
-    parent?.appendChild(container);
-    if (scroll) scroll.scrollTop = scrollTop;
+    if (parent) moveMobilePanel(parent, container);
   }, [container, host, slot]);
   useLayoutEffect(() => () => container.remove(), [container]);
   return <>

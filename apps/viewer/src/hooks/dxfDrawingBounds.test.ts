@@ -65,3 +65,12 @@ test('aligned/fit DXF text bounds use the exact fitWidth span', async () => {
   assert.equal(result.bounds.max.x, 6);
   assert.equal(result.bounds.min.x, 0);
 });
+
+test('aligned DXF text bounds leave room for narrow measured glyphs', async () => {
+  const { drawingWithDxfBounds } = await loadDrawingBounds();
+  const text = { x: 0, y: 0, dirX: 1, dirY: 0, height: 2.5, text: 'iiii', color: '#000', align: 'left' as const,
+    valign: 'baseline' as const, fitWidth: 6, fitUniform: true };
+  const result = drawingWithDxfBounds(drawing, [{ id: 'cad', opacity: 1, lines: [], fills: [], texts: [text] }])!;
+  // 6 / (4 × 0.2 em) = 7.5 high, beyond the 2.5 estimate.
+  assert.equal(result.bounds.max.y, 7.5);
+});

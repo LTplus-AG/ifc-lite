@@ -180,6 +180,8 @@ export function buildDxfUnderlaySvg(
       // Aligned/fit text carries its exact span: the browser measures the glyphs (textLength).
       const fitLength = text.fitWidth !== undefined && Number.isFinite(text.fitWidth) && text.fitWidth > 0 && lines.length === 1
         ? text.fitWidth * fontScale : 0;
+      // SVG cannot measure here: textLength makes the span exact, but Aligned text keeps
+      // its estimated height rather than scaling both axes like the canvas and PDF.
       const fitAttr = fitLength ? ` textLength="${fitLength.toFixed(4)}" lengthAdjust="spacingAndGlyphs"` : '';
       const stretch = fitLength ? '' : text.widthScale && text.widthScale !== 1
         ? ` translate(${anchor.x.toFixed(4)} ${anchor.y.toFixed(4)}) scale(${text.widthScale.toFixed(4)} 1) translate(${(-anchor.x).toFixed(4)} ${(-anchor.y).toFixed(4)})` : '';

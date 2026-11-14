@@ -508,7 +508,9 @@ it('hydration never briefly republishes capacity computed without the allocator 
     federationRegistry.registerModel('later', 10);
     useViewerStore.getState().updateModel('server', { maxExpressId: 100, ifcDataStore: result() });
     const view = getOrCreateMutationView(useViewerStore, 'server')!;
-    view.setExpressIdWatermark(1_000_100);
+    // The allocator sits at the headroom end through a created entity; a source watermark would be rebased by the new store.
+    view.setExpressIdWatermark(1_000_099);
+    view.createEntity('IfcMaterial', ['At the end']);
     assert.equal(useViewerStore.getState().models.get('server')!.hasOverlayCapacity, false);
     const hydrated = serverStoreAt(100);
     const capacities: boolean[] = [];

@@ -1264,6 +1264,12 @@ export class MutablePropertyView extends MutableOverlayState {
     }
     return { lowest: lowest === Infinity ? 0 : lowest, highest };
   }
+  /** A replacement source re-seeds the allocator: the previous source's watermark no
+   *  longer applies. Created IDs (including forgotten ones) and the ownership floor still bound it. */
+  rebaseExpressIdWatermark(maxExistingId: number): void {
+    this.sourceWatermark = maxExistingId;
+    this.nextAllocatedId = Math.max(maxExistingId, this.getCreatedExpressIdBounds().highest, this.minNextExpressId() - 1);
+  }
   /** Whether the overlay created `id` and still holds it; reads no payload. */
   hasNewEntity(id: number): boolean { return this.newEntities.has(id); }
   /** Number of overlay-created entities; reads no payload. */
@@ -1799,8 +1805,9 @@ export class MutablePropertyView extends MutableOverlayState {
     this.forgottenCreatedEntities.clear();
     this.forgottenEntityOverlay.clear();
     this.entityAliases.clear();
-    this.resetExpressIdAllocator();
     this.mutationHistory = [];
+    // Last, so an allocator observer sees the cleared history and records.
+    this.resetExpressIdAllocator();
   }
 
   /**

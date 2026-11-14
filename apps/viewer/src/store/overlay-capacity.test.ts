@@ -76,3 +76,21 @@ it('cold planner and read lease predict the bound live allocator ID (#10139)', (
     assert.equal(lease.target.editor.addEntity('IfcMaterial', ['Planned']).expressId, live.peekNextExpressId());
   } finally { federationRegistry.clear(); }
 });
+
+it('a kept view drops the previous source watermark when a smaller source loads (#10139)', () => {
+  federationRegistry.clear();
+  try {
+    federationRegistry.registerModel('A', 10);
+    const view = new MutablePropertyView(null, 'A');
+    view.setExpressIdWatermark(2_000_000); // seeded by the previous, larger source
+    const model = fixtureModel('A');
+    Object.assign(model.ifcDataStore!.entityIndex, { byId: new Map([[10, {}]]) });
+    const store = createStore<ViewerState>(() => ({ ...useViewerStore.getState(), ...fixtureModels(model), mutationViews: new Map([['A', view]]) }));
+    observers.push(registerOverlayCapacity(store));
+    const reloaded = fixtureModel('A');
+    Object.assign(reloaded.ifcDataStore!.entityIndex, { byId: new Map([[10, {}]]) });
+    store.setState({ models: new Map([['A', { ...reloaded, maxExpressId: 10 }]]) });
+    assert.equal(view.peekNextExpressId(), 11);
+    assert.notEqual(store.getState().models.get('A')!.hasOverlayCapacity, false, 'editing stays allowed');
+  } finally { federationRegistry.clear(); }
+});

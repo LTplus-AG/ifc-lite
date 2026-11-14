@@ -71,6 +71,8 @@ export function registerOverlayCapacity(store: Pick<StoreApi<ViewerState>, 'getS
             discardOverlappingRetainedEdits(state, modelId, Math.max(model.maxExpressId, watermark));
             // A discarded view re-marks this model through the store subscription.
             if (store.getState().mutationViews.get(modelId) !== view) continue;
+            // A kept view must not carry the previous source's watermark into a smaller one.
+            if (binding?.view === view && model.ifcDataStore !== binding.source) view.rebaseExpressIdWatermark(watermark);
             bound.set(modelId, { view, source: model.ifcDataStore, maxExpressId: model.maxExpressId,
               floor: modelExpressIdFloor(modelId, model.ifcDataStore, watermark) });
           }

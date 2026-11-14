@@ -128,3 +128,26 @@ it('excludes source tombstones from created ID claims', () => {
   expect(view.getCreatedExpressIdBounds().highest).toBe(501);
   expect(view.getCreatedExpressIdBounds().lowest).toBe(501);
 });
+
+it('clear() resets history before it notifies allocator observers (#10139)', () => {
+  const view = new MutablePropertyView(null, 'm');
+  view.setExpressIdWatermark(10);
+  view.createEntity('IfcMaterial', ['A']);
+  const seen: number[] = [];
+  view.configureExpressIdAllocator(() => 1, () => seen.push(view.getMutationCount()));
+  view.clear();
+  expect(seen).toEqual([0]);
+});
+
+it('a replacement source rebases the watermark but stays above created IDs and the floor (#10139)', () => {
+  const view = new MutablePropertyView(null, 'm');
+  view.setExpressIdWatermark(2_000_000);
+  view.rebaseExpressIdWatermark(10);
+  expect(view.peekNextExpressId()).toBe(11);
+  const created = view.createEntity('IfcMaterial', ['A']).expressId;
+  view.rebaseExpressIdWatermark(5);
+  expect(view.peekNextExpressId()).toBe(created + 1);
+  view.configureExpressIdAllocator(() => 500);
+  view.rebaseExpressIdWatermark(5);
+  expect(view.peekNextExpressId()).toBe(500);
+});

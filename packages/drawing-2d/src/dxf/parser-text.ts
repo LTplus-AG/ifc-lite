@@ -143,7 +143,7 @@ export function parseMtext(body: DxfPair[]): DxfTextEntity {
         e.height = num(value);
         break;
       case 44: {
-        const factor = Number.parseFloat(value);
+        const factor = value.trim() === '' ? NaN : Number(value); // strict: '2oops' is invalid, not 2
         lineSpacingFactor = Number.isFinite(factor) ? Math.max(0.25, Math.min(4, factor)) : 1;
         break;
       }

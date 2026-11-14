@@ -192,6 +192,13 @@ describe('DXFExporter', () => {
     });
     expect(dxf).toContain('72\n3\n');
     expect(dxf).not.toContain('72\n5\n');
+    // A transform that stretches one axis changes the aspect: re-emit as Fit, not Aligned.
+    const stretched = exportToDXF(emptyDrawing(), {
+      coordinateTransform: (p) => ({ x: 2 * p.x, y: p.y }),
+      underlays: [{ underlay: aligned, placement: { offsetX: 0, offsetY: 0, rotationDeg: 0, scale: 1 } }],
+    });
+    expect(stretched).toContain('72\n5\n');
+    expect(stretched).not.toContain('72\n3\n');
   });
 
   it('re-emits aligned/fit text as Fit (72=5) so CAD spans the exact fitWidth', () => {

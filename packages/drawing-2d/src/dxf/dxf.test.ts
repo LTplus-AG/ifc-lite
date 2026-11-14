@@ -499,9 +499,9 @@ describe('consolidated additions (SPLINE, SOLID, lineweight, valign, unit heuris
     const mtext = (...extra: Array<[number, number | string]>) =>
       [[0, 'MTEXT'], [8, 'n'], [10, 0], [20, 0], [40, 1], [1, 'a\\Pb'], ...extra] as Array<[number | string, number | string]>;
     const underlay = importDxf(entitiesSection(
-      ...mtext([44, 2]), ...mtext(), ...mtext([44, 10]), ...mtext([44, 0.01]), ...mtext([44, 'x']),
+      ...mtext([44, 2]), ...mtext(), ...mtext([44, 10]), ...mtext([44, 0.01]), ...mtext([44, 'x']), ...mtext([44, '2oops']),
     ));
-    expect(layerByName(underlay, 'n').texts.map((t) => t.lineSpacingFactor)).toEqual([2, 1, 4, 0.25, 1]);
+    expect(layerByName(underlay, 'n').texts.map((t) => t.lineSpacingFactor)).toEqual([2, 1, 4, 0.25, 1, 1]);
   });
 
   it('stretches aligned (72=3) and fit (72=5) TEXT between points 10 and 11', () => {

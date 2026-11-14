@@ -94,6 +94,8 @@ describe('dxfUnderlayToDrawing', () => {
     assert.equal(stretched.texts[0].fitUniform, false);
     const uniform = dxfUnderlayToDrawing(e, { x: 0, y: 0 }, false, undefined, false, (p) => ({ x: 2 * p.x, y: 2 * p.y }));
     assert.equal(uniform.texts[0].fitUniform, true, 'a uniform map keeps aligned fitting');
+    close(uniform.texts[0].height, 2); // and scales the height with the span
+    close(uniform.texts[0].fitWidth!, 2.4);
   });
 
   it('subtracts the render shift and flips world Y to drawing Y', () => {

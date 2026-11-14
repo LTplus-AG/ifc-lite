@@ -247,8 +247,8 @@ export function dxfUnderlayToDrawing(
         { x: text.position.x + text.dirX, y: text.position.y + text.dirY },
         t,
       );
-      // A map that changes the text's aspect (non-uniform scale) keeps the glyph height at the
-      // mapped area over the baseline scale and fits aligned text horizontally, like convert.ts.
+      // Glyph height follows the mapped area over the baseline scale (the local scale for a
+      // uniform map); a map that changes the aspect also fits aligned text horizontally, like convert.ts.
       const d2 = text.dirX ** 2 + text.dirY ** 2 || 1;
       const normal = worldToDrawing({ x: text.position.x - text.dirY, y: text.position.y + text.dirX }, t);
       const along = Math.hypot(tip.x - anchor.x, tip.y - anchor.y) / Math.sqrt(d2);
@@ -259,7 +259,7 @@ export function dxfUnderlayToDrawing(
         y: anchor.y,
         dirX: tip.x - anchor.x,
         dirY: tip.y - anchor.y,
-        height: keepsAspect ? text.height * entry.placement.scale * textMapScale : text.height * area / along,
+        height: along > 1e-12 ? text.height * area / along : text.height * entry.placement.scale * textMapScale,
         text: text.text,
         color: text.color ?? layer.color,
         align: text.align,

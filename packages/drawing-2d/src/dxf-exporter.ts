@@ -314,6 +314,12 @@ export class DXFExporter {
         const height = text.height * placement.scale;
         const lines = text.text.split('\n');
         const dirLength = Math.hypot(text.dirX, text.dirY) || 1;
+        // Aligned stays uniform only while the output map keeps the text's aspect; a stretched
+        // axis re-emits it as Fit so CAD does not scale the height with the span.
+        const normal = mapPoint({ x: text.position.x - text.dirY, y: text.position.y + text.dirX });
+        const along = Math.hypot(tip.x - anchor.x, tip.y - anchor.y) / dirLength;
+        const area = Math.abs((tip.x - anchor.x) * (normal.y - anchor.y) - (tip.y - anchor.y) * (normal.x - anchor.x)) / dirLength ** 2;
+        const keepsAspect = along <= 1e-12 || Math.abs(along * along - area) <= 1e-9 * Math.max(1, area);
         // Aligned/fit text: re-emit as Fit (72=5) with its second point so the CAD
         // reader (which measures real glyphs) spans the two points exactly.
         const fitTo = lines.length === 1 && text.align === 'left' && text.valign === 'baseline'
@@ -342,7 +348,7 @@ export class DXFExporter {
             height,
             layer,
             { rotationDeg: angle, hAlign: text.align, vAlign: text.valign, colorOverride: text.color,
-              widthScale: text.widthScale, fitTo, fitUniform: text.fitUniform },
+              widthScale: text.widthScale, fitTo, fitUniform: text.fitUniform && keepsAspect },
           );
         }
       }

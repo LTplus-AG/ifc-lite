@@ -259,10 +259,11 @@ describe('structural-stale-item', () => {
     expect(stale(issues)[0].message).toContain('0.300 m');
   });
 
-  it('reports a sideways move by its farther end, and reads the ends either way round', () => {
-    const [issue] = stale(checkStructuralConsistency(linked, elements, {}, geometry([[6, 0.4, 3], [0, 0.1, 3]])));
+  it('reports a sideways move by its farther end, and a line reversed in place', () => {
+    const [issue] = stale(checkStructuralConsistency(linked, elements, {}, geometry([[0, 0.1, 3], [6, 0.4, 3]])));
     expect(issue.distance).toBeCloseTo(0.4, 9);
-    expect(stale(checkStructuralConsistency(linked, elements, {}, geometry([[6, 0, 3], [0, 0, 3]])))).toEqual([]);
+    const [reversed] = stale(checkStructuralConsistency(linked, elements, {}, geometry([[6, 0, 3], [0, 0, 3]])));
+    expect(reversed.distance).toBeCloseTo(6, 9);
   });
 
   it('reports only past the tolerance, default 1 mm', () => {

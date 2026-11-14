@@ -195,7 +195,7 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
     return {
       elementId: piece.element.expressId, storeyId: piece.element.storeyId,
       start: [...nodes[startNode].position], end: [...nodes[endNode].position],
-      axisSource: piece.source, physicalAxis: piece.axis, startNode, endNode, loadBearing: piece.loadBearing,
+      axisSource: piece.source, physicalAxis: [[...piece.axis[0]], [...piece.axis[1]]], startNode, endNode, loadBearing: piece.loadBearing,
     };
   });
 

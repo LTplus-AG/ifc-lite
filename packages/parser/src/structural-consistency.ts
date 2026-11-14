@@ -104,8 +104,8 @@ export interface StructuralConsistencyOptions {
   /**
    * Metres either end of a physical element's line may move from where derive
    * recorded it before `structural-stale-item` reports its member. Default
-   * `DEFAULT_STALE_TOLERANCE` (0.001): the record and the export keep full
-   * precision, so only a real move exceeds it.
+   * 0.001: the record and the export keep full precision, so only a real move
+   * exceeds it.
    */
   staleTolerance?: number;
 }
@@ -218,10 +218,14 @@ function axisDrift(
   return issues;
 }
 
-/** How far the farther end of `now` lies from where it was in `then`, matching ends either way round. */
+/**
+ * How far the farther end of `now` lies from the same end in `then`. Both come
+ * from one rule, so the ends keep their order: a line reversed in place (a beam
+ * turned end for end) has moved.
+ */
 function moved(now: StructuralLine, then: StructuralLine): number {
   const gap = (p: Point, q: Point) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
-  return Math.min(Math.max(gap(now[0], then[0]), gap(now[1], then[1])), Math.max(gap(now[0], then[1]), gap(now[1], then[0])));
+  return Math.max(gap(now[0], then[0]), gap(now[1], then[1]));
 }
 
 /** The stale rule: each derived member whose recorded element is still linked, against that element's line now. */

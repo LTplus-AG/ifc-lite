@@ -49,7 +49,7 @@ const permissions = (page) => page.evaluate(async () => {
 });
 
 async function openLinkAndDialog(page, phase, shot) {
-  await waitFile('pairing-url.txt');
+  if (!await waitFile('pairing-url.txt')) throw new Error('the driver never wrote pairing-url.txt');
   const link = readFileSync(`${dir}/pairing-url.txt`, 'utf8').trim();
   await page.goto(link);
   await page.locator('[data-agent-bridge-dialog]').waitFor({ timeout: 20_000 });
@@ -82,7 +82,8 @@ async function connect(page, phase, shotPending) {
 }
 
 async function servePairedCalls(page, phase, shot) {
-  await waitFile('calls-done', 180_000);
+  // The driver writes calls-done after its paired calls; without it nothing was observed while paired.
+  if (!await waitFile('calls-done', 180_000)) throw new Error('the driver never finished its paired calls (no calls-done)');
   await sleep(500);
   await page.locator('[data-agent-bridge-chip]').click();
   await page.locator('[data-agent-bridge-disconnect]').first().waitFor({ timeout: 5000 });

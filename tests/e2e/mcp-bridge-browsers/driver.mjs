@@ -52,7 +52,10 @@ const read = async (name, args, check) => {
 };
 let failure = null;
 if (existsSync(`${dir}/stop`)) {
+  // Every browser run reaches a granted Phase B, so stopping before any tab paired is a failure.
   summary.paired = false;
+  failure = 'the browser finished before any tab paired';
+  summary.failure = failure;
 } else {
   summary.paired = true;
   try {

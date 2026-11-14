@@ -44,10 +44,12 @@ test.use({ locale: 'en-US' });
 const OVERLAY_TOLERANCE_M = 1e-3;
 /**
  * The FZK export draws 90 of the model's elements (spec, "Our own exports read
- * back"). A floor keeps the two set assertions below from being satisfied by a
- * degenerate run where neither model drew anything worth matching.
+ * back"). The count is exact, not a floor: the two set assertions below compare
+ * the models with each other, so a load that dropped the same elements from
+ * both would pass them. This is an element count, so tessellation does not
+ * move it.
  */
-const MIN_MATCHED_ENTITIES = 80;
+const FZK_MATCHED_ENTITIES = 90;
 /**
  * What the IFC draws and the export leaves out by design: an opening is a void
  * rather than a product, and a `*Type` carries the type map's template
@@ -146,7 +148,7 @@ test.describe('Rhino .3dm import in the built viewer', () => {
       const extra = tally(overlay.onlySecond, rhino.classes);
       note('unmatched', `only in the IFC: ${JSON.stringify(tally(overlay.onlyFirst, ifc.classes))}; ` +
         `only in the .3dm: ${JSON.stringify(extra)}`);
-      expect(overlay.matched.length).toBeGreaterThanOrEqual(MIN_MATCHED_ENTITIES);
+      expect(overlay.matched.length).toBe(FZK_MATCHED_ENTITIES);
       // Nothing the `.3dm` drew is geometry the IFC has not got: an element
       // placed somewhere the IFC never placed it would land here, not in the
       // gap figure below.

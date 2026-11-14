@@ -448,12 +448,42 @@ it('reserves an unused gap before retained creations without publishing them (#1
   assert.equal(reg.toGlobalId('later', 0), laterOffset, 'the gap never aliases another model');
 });
 
-it('refuses a retained gap outside overlay capacity before changing ownership (#10139)', () => {
+it('loads the source when a retained gap exceeds overlay capacity (#10139)', () => {
   const reg = new FederationRegistry();
   reg.registerModel('retained', 300);
   reg.registerModel('later', 10);
-  assert.throws(() => reg.extendModel('retained', 990, 0, 1_000_302), /safe entity IDs/i);
-  assert.equal(reg.getGlobalIdRange('retained')?.end, 300);
+  assert.equal(reg.extendModel('retained', 990, 0, 1_000_302), 990);
+  assert.equal(reg.hasOverlayCapacity('retained', 1_000_303), false);
+  assert.throws(() => reg.toGlobalId('retained', 1_000_302), /not published/);
+});
+
+for (const first of [2_000_001, 2_100_001]) it(`clamps hydration with retained creations at ${first} (#10139)`, () => {
+  const reg = new FederationRegistry();
+  reg.registerModel('x', 300);
+  const later = reg.registerModel('later', 10);
+  assert.equal(reg.extendModel('x', 2_000_000, 0, first), 1_000_300);
+  assert.equal(reg.hasOverlayCapacity('x', first + 1), false);
+  assert.throws(() => reg.toGlobalId('x', first), /not published/);
+  assert.equal(reg.toGlobalId('later', 0), later);
+});
+
+it('refreshes a reserved gap idempotently and grows only below retained creations (#10139)', () => {
+  const reg = new FederationRegistry();
+  reg.registerModel('x', 300);
+  assert.equal(reg.extendModel('x', 990, 0, 1001), 1000);
+  assert.equal(reg.extendModel('x', 990, 0, 1001), 1000);
+  assert.equal(reg.extendModel('x', 1000, 0, 1001), 1000);
+  assert.throws(() => reg.extendModel('x', 1005, 1005, 1001), /unpublished overlay IDs/);
+  assert.equal(reg.canPublishOverlayFrom('x', 1001, 5), true);
+  reg.publishOverlayRange('x', 1001, 1005);
+  assert.throws(() => reg.extendModel('x', 1000, 0, 1001), /overlay IDs/);
+});
+
+it('refuses retained creations already inside the registered source (#10139)', () => {
+  const reg = new FederationRegistry();
+  reg.registerModel('x', 2000);
+  assert.throws(() => reg.extendModel('x', 2500, 1005, 1001), /unpublished overlay IDs/);
+  assert.equal(reg.getGlobalIdRange('x')?.end, 2000);
 });
 
 

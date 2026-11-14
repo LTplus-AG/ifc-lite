@@ -8,7 +8,6 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { useViewerStore } from '@/store';
-import { createMutationSlice } from '@/store/slices/mutationSlice';
 import { federationRegistry } from '@ifc-lite/renderer';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { discardUnchangedMutationViews } from '@/utils/model-mutation-view';
@@ -631,7 +630,7 @@ for (const previousKind of ['cancelled', 'running'] as const) it(`a refused refr
     assert.ok(job);
     await act(async () => { deliver(); await new Promise(resolve => setTimeout(resolve, 30)); });
     assert.equal(useViewerStore.getState().models.get('server')!.ifcDataStore, previous);
-    assert.equal(useViewerStore.getState().serverPropertiesRuns.get('server')?.kind, 'succeeded');
+    assert.equal(useViewerStore.getState().serverPropertiesRuns.get('server')?.kind ?? 'idle', previousKind === 'running' ? 'idle' : previousKind);
     const row = useActivityJournal.getState().jobs.find(row => row.id === job.id)!;
     assert.equal(row.outcome, 'failed');
     assert.match(row.detail!, /refused/i);
@@ -731,13 +730,78 @@ it('retained 1001..1005 stay publishable after reload with source max 990 (#1013
   } finally { useViewerStore.getState().mutationViews.get('server')?.clear(); federationRegistry.clear(); }
 });
 
-it('batched view clear returns only touched state keys (#10139)', () => {
-  let patch: Partial<ReturnType<typeof useViewerStore.getState>> = {};
-  const capture: Parameters<typeof createMutationSlice>[0] = update => {
-    patch = typeof update === 'function' ? update(useViewerStore.getState()) : update;
-  };
-  const slice = createMutationSlice(capture, useViewerStore.getState, useViewerStore);
-  slice.clearMutationView(['server', 'other']);
-  assert.deepEqual(Object.keys(patch).sort(), ['dirtyModels', 'mutationBatchTags', 'mutationMeshTranslations',
-    'mutationViews', 'redoStacks', 'removedMeshes', 'removedNewEntities', 'storeEditors', 'undoStacks'].sort());
+it('batched view clear notifies once and preserves unrelated pending work (#10139)', () => {
+  for (const id of ['server', 'other', 'keep']) {
+    useViewerStore.getState().addModel({ ...fixtureModel(id), ifcDataStore: result() });
+    getOrCreateMutationView(useViewerStore, id)!.createEntity('IfcMaterial', [id]);
+  }
+  const kept = useViewerStore.getState().mutationViews.get('keep')!;
+  let notifications = 0;
+  const stop = useViewerStore.subscribe(() => { notifications++; });
+  try { useViewerStore.getState().clearMutationView(['server', 'other']); }
+  finally { stop(); }
+  assert.equal(notifications, 1);
+  assert.equal(useViewerStore.getState().mutationViews.has('server'), false);
+  assert.equal(useViewerStore.getState().mutationViews.has('other'), false);
+  assert.equal(kept.getNewEntityCount(), 1);
+  assert.equal(useViewerStore.getState().toGlobalId('keep', kept.readNewEntities()[0].expressId), kept.readNewEntities()[0].expressId);
+  kept.clear();
+});
+
+for (const sourceMax of [990, 2000]) it(`local reload with source max ${sourceMax} handles retained creations at registration (#10139)`, () => {
+  try {
+    const state = useViewerStore.getState();
+    state.updateModel('server', { idOffset: state.registerModelOffset('server', 1000), maxExpressId: 1000, ifcDataStore: serverStoreAt(1000) });
+    const view = getOrCreateMutationView(useViewerStore, 'server')!;
+    for (let id = 1001; id <= 1005; id++) assert.equal(view.createEntity('IfcMaterial', ['Retained']).expressId, id);
+    state.clearAllModels();
+    if (sourceMax === 2000) {
+      assert.throws(() => useViewerStore.getState().registerModelOffset('server', sourceMax), /unpublished overlay IDs/);
+      assert.equal(federationRegistry.hasModel('server'), false, 'refusal must precede registration');
+    } else {
+      const idOffset = useViewerStore.getState().registerModelOffset('server', sourceMax);
+      useViewerStore.getState().addModel({ ...fixtureModel('server'), idOffset, maxExpressId: sourceMax, ifcDataStore: serverStoreAt(sourceMax) });
+      for (let id = 1001; id <= 1005; id++) assert.equal(useViewerStore.getState().toGlobalId('server', id), idOffset + id);
+      assert.deepEqual(dataMutationPermission(useViewerStore.getState(), 'server'), { allowed: true });
+    }
+  } finally { useViewerStore.getState().mutationViews.get('server')?.clear(); federationRegistry.clear(); }
+});
+
+it('clamped hydration loads properties while retained creations stay unpublishable (#10139)', async () => {
+  try {
+    federationRegistry.registerModel('server', 300);
+    useViewerStore.getState().updateModel('server', { maxExpressId: 300, ifcDataStore: serverStoreAt(2_000_000) });
+    const view = getOrCreateMutationView(useViewerStore, 'server')!;
+    assert.equal(view.createEntity('IfcMaterial', ['Retained']).expressId, 2_000_001);
+    useViewerStore.getState().updateModel('server', { ifcDataStore: null });
+    federationRegistry.registerModel('later', 10);
+    const hydrated = serverStoreAt(2_000_000);
+    await act(async () => {
+      useServerModelProperties().start('server', undefined, async () => hydrated);
+      await new Promise(resolve => setTimeout(resolve, 30));
+    });
+    assert.equal(useViewerStore.getState().models.get('server')?.ifcDataStore, hydrated);
+    assert.equal(useViewerStore.getState().models.get('server')?.maxExpressId, 1_000_300);
+    assert.deepEqual(dataMutationPermission(useViewerStore.getState(), 'server'), { allowed: false, reason: 'id-space-exhausted' });
+    assert.throws(() => useViewerStore.getState().toGlobalId('server', 2_000_001));
+  } finally { useViewerStore.getState().mutationViews.get('server')?.clear(); federationRegistry.clear(); }
+});
+
+for (const detail of ['Network unavailable', 'Decode failed']) it(`failed refresh preserves the loaded store and permission: ${detail} (#10139)`, async () => {
+  const previous = { kind: 'succeeded' as const, runId: 42, result: undefined };
+  const store = result();
+  useViewerStore.getState().updateModel('server', { ifcDataStore: store });
+  useViewerStore.getState().setServerPropertiesRun('server', previous);
+  let jobId: string;
+  await act(async () => {
+    useServerModelProperties().start('server', undefined, async () => { throw new Error(detail); });
+    jobId = useActivityJournal.getState().jobs.find(row => row.outcome === 'running' && row.phase?.startsWith('Server properties'))!.id;
+    await new Promise(resolve => setTimeout(resolve, 30));
+  });
+  assert.equal(useViewerStore.getState().models.get('server')?.ifcDataStore, store);
+  assert.deepEqual(useViewerStore.getState().serverPropertiesRuns.get('server'), previous);
+  assert.deepEqual(dataMutationPermission(useViewerStore.getState(), 'server'), { allowed: true });
+  const row = useActivityJournal.getState().jobs.find(row => row.id === jobId)!;
+  assert.equal(row.outcome, 'failed');
+  assert.equal(row.detail, detail);
 });

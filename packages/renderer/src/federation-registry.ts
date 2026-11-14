@@ -2,13 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * FederationRegistry - Bulletproof multi-model ID management
- *
- * Inspired by HOOPS Communicator's loadSubtree approach where node IDs
- * are automatically offset to avoid conflicts.
- */
-
+import { retainedCreationEnd } from './retained-creation-range.js';
 import { OverlayIdSpaceExhaustedError } from './overlay-id-space-exhausted-error.js';
 
 export interface ModelRange {
@@ -23,6 +17,8 @@ export interface ModelRange {
 interface RegisteredRange extends ModelRange {
   /** Last local ID of the overlay headroom; the next model starts right after it. */
   overlayMaxExpressId: number;
+  /** Ownership reserved as unused IDs, distinct from published creations. */
+  reservedGapEnd: number;
 }
 
 export interface GlobalIdLookup {
@@ -71,10 +67,13 @@ export class FederationRegistry {
    * @param maxExpressId Highest expressId in this model (scan meshes first)
    * @returns The offset to add to all expressIds for this model
    */
-  registerModel(modelId: string, maxExpressId: number): number {
+  registerModel(modelId: string, maxExpressId: number, firstRetainedExpressId = 0): number {
     const existing = this.modelRanges.get(modelId);
     if (existing) return existing.offset;
+    const gapEnd = retainedCreationEnd(maxExpressId, maxExpressId,
+      Math.min(maxExpressId + OVERLAY_ID_HEADROOM, MAX_SAFE_OFFSET - this.nextOffset), firstRetainedExpressId);
     const offset = this.reserveModel(modelId, maxExpressId);
+    this.modelRanges.get(modelId)!.reservedGapEnd = gapEnd;
     this.publishRange(modelId, 0, maxExpressId);
     return offset;
   }
@@ -107,7 +106,7 @@ export class FederationRegistry {
 
     const offset = this.nextOffset;
     const overlayMaxExpressId = reservedMaxExpressId + OVERLAY_ID_HEADROOM;
-    const range: RegisteredRange = { modelId, offset, maxExpressId: -1, reservedMaxExpressId, overlayMaxExpressId, publishedStart: null };
+    const range: RegisteredRange = { modelId, offset, maxExpressId: -1, reservedMaxExpressId, overlayMaxExpressId, reservedGapEnd: 0, publishedStart: null };
 
     this.modelRanges.set(modelId, range);
     this.sortedRanges.push(range);
@@ -123,37 +122,26 @@ export class FederationRegistry {
     return offset;
   }
 
-  /**
-   * Grow a fully published source without moving its offset. Later reservations
-   * clamp growth to overlay headroom; the newest can grow to the safe ID limit.
-   * Refuse partly published ranges, published overlays, or a creation claim
-   * in the growth interval (`allocatedMaxExpressId`: highest claim <= source max).
-   * `firstRetainedExpressId` includes deleted/undoable creations. When above the
-   * new source end, publish the intervening gap as reserved-unused ownership so
-   * retained creations can subsequently publish contiguously. No creation is
-   * published here. Return the ownership end, including any reserved-unused gap.
-   */
+  /** Grow source ownership without moving its offset. Retained creations may
+   * reserve an unused gap, but cannot overlap source IDs. Capacity clamps the
+   * source and gap without refusing hydration. Published overlays still refuse. */
   extendModel(modelId: string, maxExpressId: number, allocatedMaxExpressId = 0, firstRetainedExpressId = 0): number {
     const range = this.modelRanges.get(modelId);
     if (!range) throw new Error(`[FederationRegistry] Cannot extend unknown model ${modelId}`);
     if (!Number.isInteger(maxExpressId) || maxExpressId < 0) {
       throw new Error(`[FederationRegistry] Invalid maxExpressId: ${maxExpressId} for model ${modelId}`);
     }
-    if (range.publishedStart === null || range.maxExpressId !== range.reservedMaxExpressId) {
+    if (range.publishedStart === null || range.maxExpressId !== Math.max(range.reservedMaxExpressId, range.reservedGapEnd)) {
       throw new Error(`[FederationRegistry] Cannot extend ${modelId}: its range is partly published or already carries overlay IDs`);
     }
     if (allocatedMaxExpressId > range.reservedMaxExpressId && allocatedMaxExpressId <= maxExpressId) {
       throw new Error(`[FederationRegistry] Cannot extend ${modelId}: its allocator already carries unpublished overlay IDs`);
     }
-    if (!Number.isSafeInteger(firstRetainedExpressId) || firstRetainedExpressId < 0) {
-      throw new Error(`[FederationRegistry] Invalid first retained ID: ${firstRetainedExpressId}`);
-    }
-    if (maxExpressId <= range.maxExpressId && firstRetainedExpressId <= range.maxExpressId + 1) return range.maxExpressId;
     const sourceEnd = Math.max(maxExpressId, range.reservedMaxExpressId);
     const newest = this.nextOffset === range.offset + range.overlayMaxExpressId + 1;
-    const gapEnd = firstRetainedExpressId > sourceEnd ? firstRetainedExpressId - 1 : 0;
     const overlayEnd = Math.min(newest ? sourceEnd + OVERLAY_ID_HEADROOM : range.overlayMaxExpressId, MAX_SAFE_OFFSET - range.offset);
-    if (gapEnd > 0 && firstRetainedExpressId > overlayEnd) throw new OverlayIdSpaceExhaustedError();
+    const boundedSourceEnd = Math.min(sourceEnd, overlayEnd);
+    const gapEnd = retainedCreationEnd(sourceEnd, boundedSourceEnd, overlayEnd, firstRetainedExpressId);
     let end = sourceEnd;
     if (newest) {
       if (range.offset + maxExpressId > MAX_SAFE_OFFSET) {
@@ -165,7 +153,8 @@ export class FederationRegistry {
       end = Math.min(end, range.overlayMaxExpressId);
     }
     range.reservedMaxExpressId = end;
-    range.maxExpressId = Math.max(end, gapEnd);
+    range.reservedGapEnd = Math.max(range.reservedGapEnd, gapEnd);
+    range.maxExpressId = Math.max(end, range.reservedGapEnd);
     this.rangesChanged(modelId);
     return range.maxExpressId;
   }
@@ -182,7 +171,7 @@ export class FederationRegistry {
     } else if (start !== range.maxExpressId + 1) {
       throw new Error(`[FederationRegistry] Published IDs for ${modelId} must be contiguous and source ordered`);
     }
-    range.maxExpressId = end;
+    range.maxExpressId = end === range.reservedMaxExpressId ? Math.max(end, range.reservedGapEnd) : end;
     this.rangesChanged(modelId);
   }
 

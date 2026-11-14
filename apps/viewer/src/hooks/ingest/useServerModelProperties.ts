@@ -4,6 +4,7 @@
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
+import { isAbortError } from '@/lib/runs/abort';
 import { createRunSlot, IDLE_RUN } from '@/lib/runs/run-slot';
 import type { ServerPropertiesOwner, ServerPropertiesRun } from '@/store/slices/serverPropertiesSlice';
 import { watchLoadSupersession } from '../modelLoadCanceller.js';
@@ -61,14 +62,12 @@ function start(modelId: string | null, isStale: (() => boolean) | undefined,
       current.sourceFile === owner.model.sourceFile && current.ifcDataStore === owner.model.ifcDataStore;
   };
   const write = (run: ServerPropertiesRun) => useViewerStore.getState().setServerPropertiesRun(modelId, run);
-  let refusalRun: ServerPropertiesRun | undefined;
   const slot = createRunSlot<void, never, ServerPropertiesOwner, string>({
     read: () => {
       const run = useViewerStore.getState().serverPropertiesRuns.get(modelId) ?? IDLE_RUN;
       return run.kind === 'running' && run.owner !== owner ? IDLE_RUN : run;
     },
-    // Settle a refused refresh directly to the existing store's run; the tray still fails.
-    write: run => write(run.kind === 'failed' && refusalRun ? refusalRun : run),
+    write,
     subscribe: listener => {
       const supersession = watchLoadSupersession('primary');
       const supersede = () => write(IDLE_RUN);
@@ -85,37 +84,40 @@ function start(modelId: string | null, isStale: (() => boolean) | undefined,
     },
   }, { begin: () => ({ kind: 'load', title: 'activityTray.job.load', phase: 'Server properties (geometry remains available)' }) });
   void slot.run(owner, async lease => {
-    const dataStore = await hydrate(lease.signal);
-    if (!dataStore) return;
-    await waitForCompletion(modelId, lease.signal);
-    // The loader registered this model from its meshes. The data model also holds entities
-    // without geometry (storeys, spaces, types) whose ids can lie above every meshed one, so
-    // the model's id range grows with the store that brings them. The registry has no
-    // transaction: immediately synchronize the ownership bound even if settlement is rejected.
-    withDeferredOverlayCapacity(() => {
-      if (!lease.isCurrent() || !ownsModel()) return;
-      let idRange: { maxExpressId: number };
-      try { idRange = extendModelIdRange(modelId, dataStore); }
-      catch (error) {
-        // A refused replacement does not invalidate properties and edits we already own.
-        if (!owner.model.ifcDataStore) throw error;
-        console.warn('[Server properties] Re-hydration refused; previous properties remain available', error);
-        const refusal = `Server properties re-hydration refused: ${error instanceof Error ? error.message : String(error)}`;
-        refusalRun = previousRun.kind === 'cancelled' || previousRun.kind === 'running'
-          ? { kind: 'succeeded', runId: lease.runId, result: undefined } : previousRun;
-        lease.fail(refusal);
-        return;
-      }
-      // Ownership is permanent even if extension/warning supersedes the lease.
-      // Commit the hydrated store only if settlement still owns this model.
-      const accepted = lease.succeed();
-      useViewerStore.getState().updateModel(modelId, accepted
-        ? { ifcDataStore: dataStore, ...idRange }
-        : idRange);
-      if (accepted && !useViewerStore.getState().models.get(modelId)?.hasOverlayCapacity) {
-        console.warn(`[Server properties] Model ${modelId}: no id is left for edits in its safe range`);
-      }
-    });
+    try {
+      const dataStore = await hydrate(lease.signal);
+      if (!dataStore) return;
+      await waitForCompletion(modelId, lease.signal);
+      // The loader registered this model from its meshes. The data model also holds entities
+      // without geometry (storeys, spaces, types) whose ids can lie above every meshed one, so
+      // the model's id range grows with the store that brings them. The registry has no
+      // transaction: immediately synchronize the ownership bound even if settlement is rejected.
+      withDeferredOverlayCapacity(() => {
+        if (!lease.isCurrent() || !ownsModel()) return;
+        let idRange: { maxExpressId: number };
+        try { idRange = extendModelIdRange(modelId, dataStore); }
+        catch (error) {
+          throw new Error(`Server properties re-hydration refused: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+        }
+        // Ownership is permanent even if extension/warning supersedes the lease.
+        // Commit the hydrated store only if settlement still owns this model.
+        const accepted = lease.succeed();
+        useViewerStore.getState().updateModel(modelId, accepted
+          ? { ifcDataStore: dataStore, ...idRange }
+          : idRange);
+        if (accepted && !useViewerStore.getState().models.get(modelId)?.hasOverlayCapacity) {
+          console.warn(`[Server properties] Model ${modelId}: no id is left for edits in its safe range`);
+        }
+      });
+    } catch (error) {
+      if (!owner.model.ifcDataStore || isAbortError(error)) throw error;
+      console.warn('[Server properties] Refresh failed; previous properties remain available', error);
+      // A running record cannot be restored: that older lease has been superseded.
+      // Idle preserves loaded-store permission without forging a successful run.
+      lease.fail(error instanceof Error ? error.message : String(error), {
+        record: previousRun.kind === 'running' ? IDLE_RUN : previousRun,
+      });
+    }
   }, { scopeIsCurrent: ownsModel, toError: error => {
     console.warn('[Server properties] Optional hydration failed; geometry remains available', error);
     return error instanceof Error ? error.message : String(error);

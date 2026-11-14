@@ -563,7 +563,7 @@ export const createModelSlice: StateCreator<ViewerState, [], [], ModelSlice> = (
 
   // Federation Registry helpers
   registerModelOffset: (modelId: string, maxExpressId: number) => {
-    return federationRegistry.registerModel(modelId, maxExpressId);
+    return federationRegistry.registerModel(modelId, maxExpressId, get().mutationViews.get(modelId)?.getCreatedExpressIdBounds().lowest ?? 0);
   },
 
   toGlobalId: (modelId: string, expressId: number) => toPublishedGlobalIdFromState(federationRegistry, get(), modelId, expressId),

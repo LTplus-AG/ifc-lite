@@ -4,7 +4,6 @@
 
 /** Mutable overlay over immutable or on-demand properties; changes apply on reads. */
 
-import { createdExpressIdBounds } from './created-express-id-bounds.js';
 import { runSparseAtomic } from './sparse-atomic.js';
 import { readEntitySnapshot } from './entity-read-barrier.js';
 import { registerCooperativeOverlay } from './cooperative-overlay-access.js';
@@ -1239,7 +1238,6 @@ export class MutablePropertyView extends MutableOverlayState {
     return Array.from(this.newEntities.values());
   }
 
-  /** Look up a single overlay-created entity. */
   /** Created entities authored as `type`, in creation order, from an index (#5413). */
   getNewEntitiesOfType(type: string): IterableIterator<NewEntity> { return this.newEntities.ofType(type); }
   /** Authored reference candidates, before named/positional overrides. */
@@ -1259,7 +1257,12 @@ export class MutablePropertyView extends MutableOverlayState {
    * `lowest` covers all creations; `highest` only those <= ceiling (zero if absent).
    * Source tombstones and source-only allocator floors are never creation claims. */
   getCreatedExpressIdBounds(ceiling = Infinity): { lowest: number; highest: number } {
-    return createdExpressIdBounds([this.newEntities.keys(), this.forgottenCreatedEntities, this.forgottenEntityOverlay.keys()], ceiling);
+    let lowest = Infinity, highest = 0;
+    for (const ids of [this.newEntities.keys(), this.forgottenCreatedEntities]) for (const id of ids) {
+      lowest = Math.min(lowest, id);
+      if (id <= ceiling) highest = Math.max(highest, id);
+    }
+    return { lowest: lowest === Infinity ? 0 : lowest, highest };
   }
   /** Whether the overlay created `id` and still holds it; reads no payload. */
   hasNewEntity(id: number): boolean { return this.newEntities.has(id); }

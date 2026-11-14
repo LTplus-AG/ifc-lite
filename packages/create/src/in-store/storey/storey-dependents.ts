@@ -24,11 +24,12 @@ import { getInheritanceChainAcrossSchemas } from '@ifc-lite/parser';
 import { placementInAncestor, refId } from '../host-geometry-frame.js';
 import { railingsOnStair, type RailingRefit } from '../railing-stair-refit.js';
 import { readStairDimensions } from '../stair-edit.js';
-import { attachedKind, attachedTopWorldOrigin, readAttachedTop, MIN_ATTACHED_EXTENT, type AttachedKind } from './storey-attached.js';
+import { attachedKind, attachedTopWorldOrigin, levelTopFaceAbove, readAttachedTop, MIN_ATTACHED_EXTENT, type AttachedKind } from './storey-attached.js';
 import { readTopAttachment, topAttachmentProblem } from './storey-attachment.js';
 import { attachedTopTarget } from './storey-attachment-target.js';
 import { wallQuantitySetCount } from './storey-level-write.js';
 import { siblingStoreys, storeyContents, storeyNeighbour, type StoreyInventory } from './storey-model.js';
+import { storeyFloorWorld } from './storey-floor-frame.js';
 import { describeLength, type StoreyNotice, type StoreyRefusal } from './storey-validation.js';
 
 /** A storey's top tread lands on a storey when the two agree to this, metres. */
@@ -299,7 +300,7 @@ export interface StoreyBinding {
  * X") stay where they are. Pure read.
  */
 export function planAttachmentBindings(
-  inventory: StoreyInventory, elevation: number, parentId: number | null,
+  inventory: StoreyInventory, elevation: number, parentId: number | null, floorWorldZ?: number,
 ): { walls: WallHeightChange[]; bindings: StoreyBinding[]; unreadable: number[] } {
   // Only storeys of the building the new storey joins.
   const storeys = inventory.storeys.filter((storey) => storey.parentId === parentId);
@@ -307,12 +308,13 @@ export function planAttachmentBindings(
   if (!below) return { walls: [], bindings: [], unreadable: [] };
   const above = storeys.find((storey) => storey.elevation > below.elevation) ?? null;
   const target = editTarget(inventory);
-  const floor = below.placementId === null ? null : placementInAncestor(inventory.reader, below.placementId, null);
-  const floorWorld = floor ? floor.o[2] * inventory.scale : below.elevation;
+  const newFloor = floorWorldZ ?? storeyFloorWorld(inventory, below) + elevation - below.elevation;
+  if (!Number.isFinite(newFloor)) throw new Error('The new storey floor cannot be read');
   const bindings: StoreyBinding[] = [];
   const unreadable: number[] = [];
   // A read of the storey below; only its relatively attached elements are written.
-  for (const id of storeyContents(inventory, below.expressId, Infinity)) {
+  for (const lower of storeys.filter(storey => storey.elevation === below.elevation)) {
+  for (const id of storeyContents(inventory, lower.expressId, Infinity)) {
     const kind = attachedKind(inventory.reader.entity(id)?.type);
     const attachment = kind ? readTopAttachment(inventory, id) : null;
     if (!kind || !attachment || attachment.kind !== 'storey' || attachment.binding !== 'relative') continue;
@@ -323,12 +325,13 @@ export function planAttachmentBindings(
     // so later edits report it as not resized) but cannot be resized now.
     if (from === null) { unreadable.push(id); continue; }
     if (attachment.targetStoreyId !== null) {
-      bindings.push({ elementId: id, kind, storeyId: below.expressId, previousTargetId: attachment.targetStoreyId, from, to: from + elevation - above!.elevation });
+      bindings.push({ elementId: id, kind, storeyId: lower.expressId, previousTargetId: attachment.targetStoreyId, from, to: from + newFloor - storeyFloorWorld(inventory, above!) });
       continue;
     }
     if (origin === null || !Number.isFinite(origin)) { unreadable.push(id); continue; }
     // The top reaches the new floor: from + (new floor above this storey's) − (where the top is above it now).
-    bindings.push({ elementId: id, kind, storeyId: below.expressId, previousTargetId: null, from, to: from + (elevation - below.elevation) - (origin + from - floorWorld) });
+    bindings.push({ elementId: id, kind, storeyId: lower.expressId, previousTargetId: null, from, to: newFloor - origin - levelTopFaceAbove(target, id, kind) });
+  }
   }
   // targetStoreyId is filled in by the add, which knows the new storey's id.
   const walls = bindings.filter((binding) => binding.kind === 'wall')

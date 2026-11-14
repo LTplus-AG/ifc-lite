@@ -97,8 +97,12 @@ function readRules(text, topKey) {
     // A quote, bracket or block scalar could run on into the lines after it,
     // and any other indent is not this map, so those are unread like anything
     // else.
-    if (section === 'commit_message_format') {
-      if (!/^( {6}[\w-]+:(\s+[\w-]+)?| {8}- [\w-]+)\s*(#.*)?$/.test(line)) unread(line);
+    // An item belongs to the empty key right above it, so one with no such
+    // key open is unread too (`.list` marks that a key is open).
+    if (section.startsWith('commit_message_format')) {
+      const key = /^ {6}[\w-]+:(\s+[\w-]+)?\s*(#.*)?$/.exec(line);
+      if (key) section = key[1] ? 'commit_message_format' : 'commit_message_format.list';
+      else if (!(section.endsWith('.list') && /^ {8}- [\w-]+\s*(#.*)?$/.test(line))) unread(line);
       continue;
     }
     if (section.startsWith('actions')) {

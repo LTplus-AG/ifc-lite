@@ -162,6 +162,16 @@ test('READ (#10274): a queue rule\'s commit_message_format is skipped, and only 
   const uneven = MERGIFY.replace('      body: pr-body', '       body: pr-body');
   assert.notEqual(uneven, MERGIFY, 'the fixture edit applied');
   assert.match(releaseQueueRoute(uneven, { labels: ['mergify-trial'], draft: false }).reason, /has lines this script cannot read/);
+  // A list item needs an empty key right above it: one before any key, or
+  // after a key that already has a value, refuses.
+  for (const [from, to] of [
+    ['      title: pr-title\n', '        - co-authored-by\n      title: pr-title\n'],
+    ['      body: pr-body\n', '      body: pr-body\n        - stray\n'],
+  ]) {
+    const orphan = MERGIFY.replace(from, to);
+    assert.notEqual(orphan, MERGIFY, 'the fixture edit applied');
+    assert.match(releaseQueueRoute(orphan, { labels: ['mergify-trial'], draft: false }).reason, /has lines this script cannot read/, to);
+  }
   // Only plain words are skipped: an open quote or a block scalar could run on
   // into the conditions after it, so either one refuses.
   for (const value of ['"pr-title', '|', '{{ title }}', '[a, b]']) {

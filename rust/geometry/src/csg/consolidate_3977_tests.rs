@@ -209,3 +209,111 @@ fn raw_candidate_requires_exact_closure_3977() {
     assert!(complete_conformed_candidate(candidate.clone(), true, false).is_some());
     assert!(complete_conformed_candidate(candidate, true, true).is_none());
 }
+
+/// #8190: a sliver whose apex is a vertex the neighbouring face ends at. The
+/// candidate is closed with the sliver in it, index-only cleanup opens it
+/// along the sliver's long edge, and the bar must not reject it for that.
+#[test]
+fn a_candidate_torn_only_by_index_only_cleanup_is_repaired_and_accepted_8190() {
+    let (a, b, c, d) = (
+        Point3::new(0.0, 0.0, 0.0),
+        Point3::new(2.0, 0.0, 0.0),
+        Point3::new(0.0, 2.0, 0.0),
+        Point3::new(0.0, 0.0, 2.0),
+    );
+    // On the rim of the bottom face, 5 um proud of the edge a-b. The side
+    // face ends at it; the bottom face spans a-b and carries the sliver.
+    let m = Point3::new(1.0, -5.0e-6, 0.0);
+    let mut candidate = Mesh::new();
+    for face in [[a, c, b], [a, b, m], [a, m, d], [m, b, d], [a, d, c], [b, c, d]] {
+        add_face(&mut candidate, face);
+    }
+    assert_eq!(count_open_boundary_edges_exact(&candidate), 0, "closed with its sliver");
+    let mut index_only = candidate.clone();
+    index_only.clean_degenerate();
+    assert_eq!(index_only.triangle_count(), 5);
+    assert_eq!(count_open_boundary_edges_exact(&index_only), 3, "a-b against a-m and m-b");
+
+    let accepted = complete_conformed_candidate(candidate, true, true)
+        .expect("the bottom face is split at the sliver's apex instead");
+    assert_eq!(count_open_boundary_edges_at(&accepted, 1.0e4), 0);
+    assert_eq!(count_open_boundary_edges_exact(&accepted), 0);
+    assert_eq!(accepted.triangle_count(), 6, "the sliver goes, the bottom face becomes two");
+}
+
+/// #8190, from emission to the bar instead of handing the bar a prebuilt mesh
+/// (the slab fixture test in `ifc-lite-processing` covers the whole pipeline).
+/// A prism whose caps carry three near-collinear rim vertices `a`, `m`, `b`
+/// (`m` 10 um proud of a-b), with the side faces ending at `m`. Emission
+/// triangulates each cap with the sub-grid sliver a-m-b. Its only drop is the
+/// needle backstop, a short-edge rule the sliver's 3 mm legs are clear of; it
+/// has no thin-triangle cleanup. So the bar receives a closed candidate, sees
+/// its own index-only cleanup open it, and repairs it.
+#[test]
+fn an_emitted_candidate_reaches_the_bar_with_its_sub_grid_sliver_8190() {
+    use nalgebra::Point2;
+    // Counter-clockwise from +z. The other corners lie outside the circle
+    // through a, m and b, so the Delaunay triangle on a-m is a-m-b.
+    let ring = [[-0.003, 0.0], [0.0, -1.0e-5], [0.003, 0.0], [3.0, 0.2], [3.0, 1.2]];
+    let cap = |bid: u32, up: f64| {
+        // The bottom cap is seen from below: v runs along -y, the ring reverses.
+        let mut outer: Vec<Point2<f64>> = ring.iter().map(|p| Point2::new(p[0], p[1] * up)).collect();
+        if up < 0.0 {
+            outer.reverse();
+        }
+        PlanBucket {
+            bid,
+            normal: Vector3::new(0.0, 0.0, up),
+            origin: Point3::new(0.0, 0.0, up.max(0.0)),
+            u_axis: Vector3::x(),
+            v_axis: Vector3::new(0.0, up, 0.0),
+            raw: Vec::new(),
+            raw_conformed: None,
+            retry: None,
+            regions: vec![conform::PlanRegion {
+                outer: outer.clone(),
+                holes: Vec::new(),
+                outer_conformed: outer,
+                holes_conformed: Vec::new(),
+                outer_welded: Vec::new(),
+                holes_welded: Vec::new(),
+                changed: false,
+                cached: None,
+            }],
+        }
+    };
+    let mut plans = vec![cap(0, 1.0), cap(1, -1.0)];
+    let at = |p: [f64; 2], z: f64| Point3::new(p[0], p[1], z);
+    for (i, p) in ring.iter().enumerate() {
+        let q = ring[(i + 1) % ring.len()];
+        let (p0, q0, q1, p1) = (at(*p, 0.0), at(q, 0.0), at(q, 1.0), at(*p, 1.0));
+        plans.push(PlanBucket {
+            bid: 2 + i as u32,
+            normal: (q0 - p0).cross(&Vector3::z()).normalize(),
+            origin: p0,
+            u_axis: (q0 - p0).normalize(),
+            v_axis: Vector3::z(),
+            raw: vec![[p0, q0, q1], [p0, q1, p1]],
+            raw_conformed: None,
+            retry: None,
+            regions: Vec::new(),
+        });
+    }
+
+    // As in `candidates::emit`: the baseline pass fills the CDT cache, and the
+    // conformed pass reuses it for a region phase B left alone.
+    conform::emit_plans(&mut plans, false);
+    let (candidate, complete) = conform::emit_plans(&mut plans, true);
+    assert!(complete);
+    assert_eq!(count_open_boundary_edges_exact(&candidate), 0, "emitted closed");
+    let mut index_only = candidate.clone();
+    index_only.clean_degenerate();
+    assert!(candidate.needs_degenerate_cleanup(), "emission kept the slivers");
+    assert!(count_open_boundary_edges_exact(&index_only) > 0, "a-b against a-m and m-b");
+
+    let accepted = complete_conformed_candidate(candidate, complete, true)
+        .expect("the caps are split at the sliver's apex");
+    assert_eq!(count_open_boundary_edges_at(&accepted, 1.0e4), 0);
+    assert_eq!(count_open_boundary_edges_exact(&accepted), 0);
+    assert!(!accepted.needs_degenerate_cleanup(), "the slivers are gone");
+}

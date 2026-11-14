@@ -39,7 +39,7 @@ function raw(meshes: TestMesh[], over: Partial<CoordinateInfo> = {}) {
     coordinateInfo: CoordinateInfo;
     meshes: TestMesh[];
     instancedGeometryAabbs?: Map<number, unknown>;
-    pointClouds?: unknown[];
+    pointClouds?: Array<{ expressId?: number; origin?: Origin; chunk?: { pointCount: number } }>;
   };
 }
 
@@ -185,9 +185,60 @@ describe('convergeGeometryOntoRtcAnchor', () => {
     expect(convergeGeometryOntoRtcAnchor([g], ANCHOR).moved).toEqual([g]);
   });
 
-  it('never moves or refuses a point cloud: it is raw in every load order', () => {
+  it('moves an inline cloud with its meshes, through its f64 origin (#10029)', () => {
+    const withOrigin = { expressId: 1, origin: [LV95.x, LV95.z, -LV95.y] as Origin };
+    const absolute = { expressId: 2 };
+    const g = raw([{ positions: new Float32Array([0, 0, 0]) }]);
+    g.pointClouds = [withOrigin, absolute, withOrigin];
+    convergeGeometryOntoRtcAnchor([g], LV95);
+    const delta = ifcToViewerAxes(LV95);
+    expect(g.meshes[0].origin).toEqual([-delta.x, -delta.y, -delta.z]);
+    // Listed twice, moved once; the anchor cancels in f64, exactly.
+    expect(withOrigin.origin).toEqual([0, 0, 0]);
+    expect(absolute).toEqual({ expressId: 2, origin: [-delta.x, -delta.y, -delta.z] });
+  });
+
+  it('leaves an inline cloud alone when its geometry is refused (#10029)', () => {
+    const g = raw([{ positions: new Float32Array([0, 1.5, 0]), origin: [1, 1, 1], geometryClass: 2 }]);
+    g.pointClouds = [{ expressId: 1, origin: [5, 6, 7] }];
+    convergeGeometryOntoRtcAnchor([g], ANCHOR);
+    expect(g.pointClouds[0].origin).toEqual([5, 6, 7]);
+  });
+
+  it('moves a geometry holding only inline clouds: it carries points, unlike a streamed descriptor (#10029)', () => {
+    const g = raw([]);
+    g.pointClouds = [{ expressId: 1, chunk: { pointCount: 3 } }];
+    expect(convergeGeometryOntoRtcAnchor([g], LV95).moved).toEqual([g]);
+    const d = ifcToViewerAxes(LV95);
+    expect(g.pointClouds[0].origin).toEqual([-d.x, -d.y, -d.z]);
+    expect(g.coordinateInfo.wasmRtcOffset).toEqual(LV95);
+  });
+
+  it('moves the inline cloud but not a streamed descriptor listed next to it (#10029)', () => {
+    const g = raw([{ positions: new Float32Array([0, 0, 0]) }]);
+    const inline = { expressId: 1, chunk: { pointCount: 2 } };
+    const descriptor = { expressId: 2, chunk: { pointCount: 0 } };
+    g.pointClouds = [inline, descriptor];
+    convergeGeometryOntoRtcAnchor([g], LV95);
+    const d = ifcToViewerAxes(LV95);
+    expect(inline).toEqual({ ...inline, origin: [-d.x, -d.y, -d.z] });
+    expect(descriptor).toEqual({ expressId: 2, chunk: { pointCount: 0 } });
+  });
+
+  it('still accepts a geometry typed with pointClouds: unknown[] (public input type unchanged)', () => {
+    // Compile-time half: checked by the repo typecheck. Runtime half: entries
+    // that are not objects are ignored rather than crashing the re-base.
+    const g: { coordinateInfo: CoordinateInfo; meshes: TestMesh[]; pointClouds?: unknown[] } = raw([{ positions: new Float32Array([0, 0, 0]) }]);
+    const inline = { expressId: 1 };
+    g.pointClouds = [null, 42, inline];
+    expect(convergeGeometryOntoRtcAnchor([g], LV95).moved).toEqual([g]);
+    const d = ifcToViewerAxes(LV95);
+    expect(inline).toEqual({ expressId: 1, origin: [-d.x, -d.y, -d.z] });
+  });
+
+  it('never moves or refuses a streamed scan (zero-point descriptor): it is raw in every load order', () => {
     const cloud = raw([]);
-    cloud.pointClouds = [{ expressId: 1 }];
+    cloud.pointClouds = [{ expressId: 1, chunk: { pointCount: 0 } }];
     const info = cloud.coordinateInfo;
     expect(convergeGeometryOntoRtcAnchor([cloud], ANCHOR)).toEqual({ moved: [], refused: [] });
     expect(cloud.coordinateInfo).toBe(info);

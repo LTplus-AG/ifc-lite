@@ -439,18 +439,19 @@ it('builds ordered CSR using only its published key maps (#8450)', () => {
   let graph: ReturnType<typeof buildCSR>;
   let maps: number;
   try {
-    graph = buildCSR(4, [30, 10, 30, 10], [3, 1, 4, 2], [2, 3, 2, 3], [80, 81, 82, 83], shadowed);
+    graph = buildCSR(5, [30, 10, 30, 10, 30], [3, 1, 4, 2, 5], [2, 3, 2, 3, 2], [80, 81, 82, 83, 84], shadowed);
     maps = new Set(set.mock.contexts).size;
   } finally {
     set.mockRestore();
   }
   expect(maps).toBeLessThanOrEqual(2);
   expect([...graph.offsets]).toEqual([[10, 0], [30, 2]]);
-  expect([...graph.counts]).toEqual([[10, 2], [30, 2]]);
-  expect([...graph.edgeTargets]).toEqual([1, 2, 3, 4]);
-  expect([...graph.edgeRelIds]).toEqual([81, 83, 80, 82]);
+  expect([...graph.counts]).toEqual([[10, 2], [30, 3]]);
+  expect([...graph.edgeTargets]).toEqual([1, 2, 3, 4, 5]);
+  expect([...graph.edgeRelIds]).toEqual([81, 83, 80, 82, 84]);
   expect(graph.getEdges(10)[0].shadowedRelationshipIds).toEqual([91, 92]);
-  expect(graph.getTargets(30)).toEqual([3, 4]);
+  expect(graph.getTargets(30)).toEqual([3, 4, 5]);
+  expect(graph.getTargets(10)).toEqual([1, 2]);
   expect(graph.getTargets(10, 2)).toEqual([]);
   expect(graph.getTargets(999)).toEqual([]);
 });

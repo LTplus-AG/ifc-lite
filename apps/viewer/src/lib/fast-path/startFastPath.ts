@@ -47,8 +47,8 @@ export function fastPathSwitch(): unknown {
   return readPerfFlag('fastPath') ?? getPerfFlagDefinition('fastPath').default;
 }
 
-/** The features that each open a model in the browser. */
-export const MODEL_SOURCES = ['files.local', 'files.samples', 'files.sources'] as const satisfies readonly FeatureId[];
+/** The features that each open a model in the browser (a federation setup has its own file picker). */
+export const MODEL_SOURCES = ['files.local', 'files.samples', 'files.sources', 'files.federation-setup'] as const satisfies readonly FeatureId[];
 
 /**
  * Whether this page can open a model at all. A host can switch off every

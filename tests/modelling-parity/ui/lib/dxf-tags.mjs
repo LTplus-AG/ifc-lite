@@ -7,14 +7,19 @@ function dxfLabels(download) {
   // The real R12 download declares ANSI_1252. Walk group-code/value pairs;
   // a numeric value of zero is not an entity boundary.
   const lines = new TextDecoder('windows-1252').decode(download.bytes).replace(/^\uFEFF/,'').trimEnd().split(/\r?\n/);
-  const labels = []; let current = null;
+  // Only drawn entities count: TEXT inside BLOCKS (or any other section) is
+  // not on the sheet unless inserted, so it must not certify a tag.
+  const labels = []; let current = null, section = null, sectionOpen = false;
   for (let i=0; i+1<lines.length; i+=2) {
     const code = Number(lines[i].trim()), value = lines[i+1];
     if (!Number.isInteger(code)) return [];
     if (code === 0) {
       if (current) labels.push(current);
-      current = value === 'TEXT' || value === 'MTEXT' ? { type: value, layer: '', text: '' } : null;
-    } else if (current && code === 8) current.layer = value;
+      sectionOpen = value === 'SECTION';
+      if (value === 'ENDSEC') section = null;
+      current = section === 'ENTITIES' && (value === 'TEXT' || value === 'MTEXT') ? { type: value, layer: '', text: '' } : null;
+    } else if (sectionOpen && code === 2) { section = value.trim(); sectionOpen = false; }
+    else if (current && code === 8) current.layer = value;
     else if (current && (code === 1 || code === 3)) current.text += value;
   }
   if (current) labels.push(current);

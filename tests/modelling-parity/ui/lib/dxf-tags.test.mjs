@@ -27,3 +27,8 @@ test('#9328 DXF tags require their exact content and tag layer', () => {
   ]) assert.equal(check([door,replacement,dimension]),false);
   assert.equal(dxfTagTextsMatch(null,'Parity entry 01','Room 1',18.24),false);
 });
+test('#9328 tag TEXT outside the ENTITIES section does not count', () => {
+  const block = rows => rows.map(([text,layer])=>`0\nTEXT\n8\n${layer}\n10\n0\n1\n${text}\n`).join('');
+  const bytes = Buffer.from('0\nSECTION\n2\nBLOCKS\n0\nBLOCK\n2\nUNUSED\n'+block([door,room])+'0\nENDBLK\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n'+block([dimension])+'0\nENDSEC\n0\nEOF\n','latin1');
+  assert.equal(dxfTagTextsMatch({ bytes },'Parity entry 01','Room 1',18.24),false);
+});

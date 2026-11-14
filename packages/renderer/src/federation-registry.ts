@@ -18,9 +18,13 @@ export interface ModelRange {
   offset: number;       // Start of this model's global ID range
   maxExpressId: number; // Highest expressId in this model
   reservedMaxExpressId: number;
+  publishedStart: number | null;
+}
+
+/** The registry's own record: the public range plus where its overlay headroom ends. */
+interface RegisteredRange extends ModelRange {
   /** Last local ID of the overlay headroom; the next model starts right after it. */
   overlayMaxExpressId: number;
-  publishedStart: number | null;
 }
 
 export interface GlobalIdLookup {
@@ -53,8 +57,8 @@ const OVERLAY_ID_HEADROOM = 1_000_000;
  * Manages ID offsets and provides O(1) to-global / O(log N) from-global transformations
  */
 export class FederationRegistry {
-  private modelRanges: Map<string, ModelRange> = new Map();
-  private sortedRanges: ModelRange[] = []; // Sorted by offset for binary search
+  private modelRanges: Map<string, RegisteredRange> = new Map();
+  private sortedRanges: RegisteredRange[] = []; // Sorted by offset for binary search
   private nextOffset: number = 0;
 
   /**
@@ -101,7 +105,7 @@ export class FederationRegistry {
 
     const offset = this.nextOffset;
     const overlayMaxExpressId = reservedMaxExpressId + OVERLAY_ID_HEADROOM;
-    const range: ModelRange = { modelId, offset, maxExpressId: -1, reservedMaxExpressId, overlayMaxExpressId, publishedStart: null };
+    const range: RegisteredRange = { modelId, offset, maxExpressId: -1, reservedMaxExpressId, overlayMaxExpressId, publishedStart: null };
 
     this.modelRanges.set(modelId, range);
     this.sortedRanges.push(range);
@@ -336,7 +340,7 @@ export class FederationRegistry {
     this.nextOffset = 0;
   }
 
-  private isPublished(range: ModelRange, localId: number): boolean {
+  private isPublished(range: RegisteredRange, localId: number): boolean {
     return range.publishedStart !== null
       && Number.isInteger(localId)
       && localId >= range.publishedStart
@@ -347,7 +351,7 @@ export class FederationRegistry {
    * Binary search to find the range that could contain a globalId
    * Returns the range with the largest offset that is <= globalId
    */
-  private binarySearchRange(globalId: number): ModelRange | null {
+  private binarySearchRange(globalId: number): RegisteredRange | null {
     const ranges = this.sortedRanges;
     if (ranges.length === 0) return null;
 

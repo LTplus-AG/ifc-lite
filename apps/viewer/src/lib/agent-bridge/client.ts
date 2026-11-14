@@ -6,9 +6,10 @@
  * The tab's end of `ifc-lite-mcp --bridge` (#9523): one WebSocket to the
  * bridge on this computer, serving the tools it announced at pairing.
  *
- *   tab -> hello { read-only, tools }      bridge -> welcome { sessionId }
+ *   tab -> hello { read-only, tools }      bridge -> welcome { sessionId, readOnlyCeiling }
  *   bridge -> call { id, name, arguments }  tab -> result { id, result }
  *   bridge -> cancel { id }                 (the call's AbortSignal fires; no result is sent)
+ *   tab -> update { permission, tools }     (the user allowed or stopped edits)
  *
  * Rules this class owns:
  *   - It connects only when `connect()` is called, and only to 127.0.0.1.
@@ -25,7 +26,12 @@
  *   - Calls are admitted by `CallAdmission`: a few run at once, each with a
  *     tab-side time limit; a peer that floods is disconnected.
  *   - The activity log records tool, model, duration and outcome per call,
- *     never arguments or results.
+ *     never arguments or results (an applied edit's row says what changed).
+ *   - Every pairing starts read-only. `setPermission` is the only way to
+ *     grant edits; `canEditNow()` is what the tab's own dispatcher asks
+ *     before it writes, so the grant is enforced here, not only by the
+ *     bridge. A revoke takes effect at once for every call not yet written:
+ *     each edit checks the grant synchronously with its write.
  */
 
 import {
@@ -33,11 +39,13 @@ import {
   BRIDGE_PROTOCOL_VERSION,
   normalizePairingCode,
   parseServerMessage,
+  parseTabMessage,
   type BridgeHelloMessage,
   type BridgeToolDescriptor,
+  type BridgeUpdateMessage,
 } from '@ifc-lite/mcp/bridge-protocol';
 import type {
-  AgentBridgeActivity, AgentBridgeStatus,
+  AgentBridgeActivity, AgentBridgePermission, AgentBridgeStatus,
 } from './state';
 import type { ToolOutcome } from './result-frame';
 import { CALL_LIMITS, type CallLimits } from './call-admission';
@@ -73,7 +81,11 @@ export type LocalNetworkPermission = 'granted' | 'denied' | 'prompt' | 'unknown'
 export interface BridgeClientOptions {
   port: number;
   pairingCode: string;
-  /** The tools announced in `hello`. Read-only tools only: this client grants `read-only`. */
+  /**
+   * The tools announced in `hello` and in every `update`. Tools labelled
+   * `readOnly: false` are refused by the bridge (and by `dispatch`, which
+   * must ask `canEditNow()`) until the user grants `read-write`.
+   */
   tools: readonly BridgeToolDescriptor[];
   /** Runs one call. Must not throw (a throw is still caught and reported as INTERNAL_ERROR). */
   dispatch(name: string, args: Record<string, unknown>, signal: AbortSignal): Promise<ToolOutcome>;
@@ -111,6 +123,7 @@ export class BridgeClient {
   private readonly limits: CallLimits;
   private runner: CallRunner | null = null;
   private current: AgentBridgeStatus = { kind: 'idle' };
+  private readonly mutating: ReadonlySet<string>;
   private readonly now: () => number;
   private readonly lifecycle: BridgeClientOptions['lifecycle'];
   private readonly onPageHide = (): void => this.end({ kind: 'disconnected', reason: 'page-hidden' }, 1001, 'page hidden');
@@ -119,10 +132,52 @@ export class BridgeClient {
     this.now = opts.now ?? (() => Date.now());
     this.limits = { ...CALL_LIMITS, ...opts.limits };
     this.lifecycle = opts.lifecycle !== undefined ? opts.lifecycle : (typeof window === 'undefined' ? null : window);
+    this.mutating = new Set(opts.tools.filter((tool) => !tool.readOnly).map((tool) => tool.name));
   }
 
   get status(): AgentBridgeStatus {
     return this.current;
+  }
+
+  /** True only while paired and the user has allowed edits (and the bridge allows them). */
+  canEditNow(): boolean {
+    return this.current.kind === 'connected' && this.current.permission === 'read-write' && !this.current.readOnlyCeiling;
+  }
+
+  /**
+   * Grant (`read-write`) or revoke (`read-only`) edits on the live session,
+   * and tell the bridge with an `update` carrying the permission and the tool
+   * list. The tab's own grant changes first and synchronously, so a revoke
+   * refuses every edit not yet written even if the update is lost. Returns
+   * false when nothing changed (not paired, already so, or a grant the
+   * bridge's `--read-only` ceiling forbids).
+   */
+  setPermission(permission: AgentBridgePermission): boolean {
+    const status = this.current;
+    // `connected` holds only between welcome and the end, so the socket and session id are set.
+    if (status.kind !== 'connected' || !this.ws || !this.sessionId) return false;
+    if (permission === status.permission || (permission === 'read-write' && status.readOnlyCeiling)) return false;
+    const ws = this.ws;
+    const update: BridgeUpdateMessage = { type: 'update', sessionId: this.sessionId, permission, tools: [...this.opts.tools] };
+    const json = JSON.stringify(update);
+    // The bridge refuses an invalid update with an error frame that does not
+    // say which frame it was, so the tab would show a grant the bridge never
+    // applied. Check with the bridge's own validator first: an update it
+    // would refuse grants nothing (a revoke still applies in the tab).
+    const valid = parseTabMessage(json);
+    if (!valid.ok) {
+      warn(`the permission update would be refused by the bridge: ${valid.error}`);
+      if (permission === 'read-write') return false;
+    }
+    // The tab's grant changes first: canEditNow() follows the status.
+    this.setStatus({ ...status, permission });
+    try {
+      if (valid.ok) ws.send(json);
+    } catch (err) {
+      // Read-only still holds in the tab; a lost grant only means the bridge keeps refusing edits.
+      warn('could not tell the bridge about the permission change', err);
+    }
+    return true;
   }
 
   /** Open the socket and pair. Call once per client: a used pairing code is never resent. */
@@ -207,13 +262,16 @@ export class BridgeClient {
           now: this.now,
           dispatch: this.opts.dispatch,
           modelIdFor: this.opts.modelIdFor,
+          mutates: (name) => this.mutating.has(name),
           onActivity: this.opts.onActivity,
           send: (json) => ws.send(json),
           isLive: () => ws === this.ws && !this.ended && ws.readyState === OPEN,
           onFlood: () => this.end({ kind: 'disconnected', reason: 'flooded' }, 1008, 'too many calls'),
         });
-        // This client only ever grants read-only, whatever the welcome says.
-        this.setStatus({ kind: 'connected', port: this.opts.port, permission: 'read-only', since: this.now() });
+        // Every pairing starts read-only, whatever the welcome says; only the user grants edits.
+        this.setStatus({
+          kind: 'connected', port: this.opts.port, permission: 'read-only', since: this.now(), readOnlyCeiling: msg.readOnlyCeiling,
+        });
         return;
       }
       case 'call':
@@ -226,7 +284,10 @@ export class BridgeClient {
       case 'error':
         if (this.sessionId) {
           // During a session an error frame is the bridge refusing one frame
-          // of ours; it does not decide how a later close is reported.
+          // of ours; it does not decide how a later close is reported. It does
+          // not name the frame, so it cannot be tied to a grant; an `update` is
+          // checked with the bridge's own validator before it is sent instead
+          // (see setPermission).
           warn(`the bridge refused a frame: ${msg.code}: ${msg.message}`);
           return;
         }

@@ -11,9 +11,9 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   BRIDGE_LIMITS, BRIDGE_PROTOCOL_VERSION, BridgeCloseCode, parseTabMessage, validateToolDescriptors,
-  type BridgeHelloMessage, type BridgeResultMessage,
+  type BridgeHelloMessage, type BridgeResultMessage, type BridgeToolDescriptor, type BridgeUpdateMessage,
 } from '@ifc-lite/mcp/bridge-protocol';
-import { MAIN_VIEWER_TOOL_ALLOWLIST } from '@/lib/agent-tools/main-viewer';
+import { MAIN_VIEWER_EDIT_TOOLS, MAIN_VIEWER_TOOL_ALLOWLIST } from '@/lib/agent-tools/main-viewer';
 import { BridgeClient, type BridgeClientOptions, type WebSocketLike } from './client';
 import type { AgentBridgeActivity, AgentBridgeStatus } from './state';
 import type { ToolOutcome } from './result-frame';
@@ -120,7 +120,7 @@ function blockingDispatch() {
 afterEach(() => { FakeSocket.last = null; });
 
 describe('local agent bridge client: handshake (#9523)', () => {
-  it('connects to 127.0.0.1 only when asked, and its hello is read-only with the 27 main-viewer tools', () => {
+  it('connects to 127.0.0.1 only when asked, and its hello is read-only with the 27 read tools and 3 edit tools', () => {
     const h = harness();
     assert.equal(FakeSocket.count, 0, 'constructing a client opens nothing');
     h.client.connect();
@@ -132,9 +132,10 @@ describe('local agent bridge client: handshake (#9523)', () => {
     assert.equal(hello.protocol, BRIDGE_PROTOCOL_VERSION);
     assert.equal(hello.permission, 'read-only');
     assert.equal(hello.pairingCode, 'ABCDEFGHJKMNPQRSTVWX', 'the code is sent in canonical form');
-    assert.deepEqual(hello.tools.map((tool) => tool.name).sort(), [...MAIN_VIEWER_TOOL_ALLOWLIST].sort());
-    assert.equal(hello.tools.length, 27);
-    assert.ok(hello.tools.every((tool) => tool.readOnly), 'every announced tool is read-only');
+    assert.deepEqual(hello.tools.map((tool) => tool.name).sort(), [...MAIN_VIEWER_TOOL_ALLOWLIST, ...MAIN_VIEWER_EDIT_TOOLS].sort());
+    assert.equal(hello.tools.length, 30);
+    assert.deepEqual(hello.tools.filter((tool) => !tool.readOnly).map((tool) => tool.name), [...MAIN_VIEWER_EDIT_TOOLS],
+      'only the edit tools are labelled as changing the model');
     const checked = validateToolDescriptors(hello.tools);
     assert.ok(checked.ok, `the bridge accepts the tool list as sent: ${checked.ok ? '' : checked.error}`);
     // The limits validateToolDescriptors applies, stated so a limit change shows up here by name.
@@ -150,7 +151,7 @@ describe('local agent bridge client: handshake (#9523)', () => {
     h.client.connect();
     h.socket().open();
     h.socket().frame({ type: 'welcome', protocol: BRIDGE_PROTOCOL_VERSION, sessionId: 's', permission: 'read-write', readOnlyCeiling: false, bridge: { name: 'b', version: '1' } });
-    assert.deepEqual(h.client.status, { kind: 'connected', port: 21517, permission: 'read-only', since: 1234 });
+    assert.deepEqual(h.client.status, { kind: 'connected', port: 21517, permission: 'read-only', since: 1234, readOnlyCeiling: false });
   });
 
   it('gives up with handshake-timeout when no welcome arrives', async () => {
@@ -177,7 +178,7 @@ describe('the real tool definitions pass the bridge\'s own hello validator (#952
     const hello = JSON.stringify({ type: 'hello', protocol: BRIDGE_PROTOCOL_VERSION, pairingCode: 'ABCDEFGHJKMNPQRSTVWX', permission: 'read-only', tools, client: { name: 'ifc-lite viewer', version: 'test' } });
     const parsed = parseTabMessage(hello);
     assert.ok(parsed.ok, `the bridge would refuse the hello: ${parsed.ok ? '' : parsed.error}`);
-    assert.equal(parsed.value.type === 'hello' && parsed.value.tools.length, 27);
+    assert.equal(parsed.value.type === 'hello' && parsed.value.tools.length, 30);
     assert.ok(new TextEncoder().encode(hello).byteLength < BRIDGE_LIMITS.maxUnpairedBytes / 4);
   });
 });
@@ -579,5 +580,116 @@ describe('local agent bridge client: endings (#9523)', () => {
     h.socket().welcome();
     h.socket().drop(1006);
     assert.equal(h.client.status.kind, 'disconnected');
+  });
+});
+
+describe('local agent bridge client: allowing edits (#9523)', () => {
+  const frames = (socket: FakeSocket) => socket.sent.map((text) => {
+    const parsed = parseTabMessage(text);
+    assert.ok(parsed.ok, `the bridge accepts every frame the tab sends: ${parsed.ok ? '' : parsed.error}`);
+    return parsed.value;
+  });
+  const updates = (socket: FakeSocket) => frames(socket).filter((f): f is BridgeUpdateMessage => f.type === 'update');
+  const welcomeWithCeiling = (socket: FakeSocket) => socket.frame({
+    type: 'welcome', protocol: BRIDGE_PROTOCOL_VERSION, sessionId: 'session-1', permission: 'read-only', readOnlyCeiling: true,
+    bridge: { name: 'ifc-lite-mcp', version: 't' },
+  });
+
+  it('starts read-only; a grant and a revoke each send one update with the permission and the full tool list', () => {
+    const h = paired();
+    assert.equal(h.client.canEditNow(), false, 'read-only at pairing');
+    assert.equal(h.client.status.kind === 'connected' && h.client.status.permission, 'read-only');
+
+    assert.equal(h.client.setPermission('read-write'), true);
+    assert.equal(h.client.canEditNow(), true);
+    assert.equal(h.client.status.kind === 'connected' && h.client.status.permission, 'read-write');
+    assert.equal(h.client.setPermission('read-write'), false, 'no-op');
+
+    assert.equal(h.client.setPermission('read-only'), true);
+    assert.equal(h.client.canEditNow(), false, 'revoked at once, before any reply');
+    const sent = updates(h.socket());
+    assert.deepEqual(sent.map((u) => [u.sessionId, u.permission]), [['session-1', 'read-write'], ['session-1', 'read-only']]);
+    const hello = h.socket().hello();
+    for (const update of sent) assert.deepEqual(update.tools, hello.tools, 'the update carries the tool list');
+  });
+
+  it('a grant whose update the bridge would refuse grants nothing; an error frame alone changes no grant', () => {
+    const bad = { name: 'bad_edit', description: 'd', inputSchema: { type: 'object', additionalProperties: { type: 'string' } }, readOnly: false };
+    const h = paired({ tools: [...mainViewerBridgeTools(), bad as unknown as BridgeToolDescriptor] });
+    assert.equal(h.client.setPermission('read-write'), false, 'refused before sending');
+    assert.equal(h.client.canEditNow(), false);
+    assert.equal(h.socket().sent.filter((text) => text.includes('"update"')).length, 0, 'nothing sent');
+
+    const good = paired();
+    good.client.setPermission('read-write');
+    good.socket().frame({ type: 'error', code: 'INVALID_MESSAGE', message: 'a refused result' });
+    assert.equal(good.client.canEditNow(), true, 'an unnamed refusal is logged, not treated as a revoke');
+  });
+
+  it('every new pairing is read-only again', () => {
+    const first = paired();
+    first.client.setPermission('read-write');
+    first.client.disconnect();
+    assert.equal(first.client.canEditNow(), false, 'a disconnected client grants nothing');
+    const second = paired();
+    assert.equal(second.socket().hello().permission, 'read-only');
+    assert.equal(second.client.canEditNow(), false);
+  });
+
+  it('cannot grant before pairing, after the end, or under the bridge\'s --read-only ceiling', () => {
+    const h = harness();
+    h.client.connect();
+    h.socket().open();
+    assert.equal(h.client.setPermission('read-write'), false, 'not paired yet');
+    welcomeWithCeiling(h.socket());
+    assert.equal(h.client.status.kind === 'connected' && h.client.status.readOnlyCeiling, true);
+    assert.equal(h.client.setPermission('read-write'), false);
+    assert.equal(h.client.canEditNow(), false);
+    assert.equal(updates(h.socket()).length, 0, 'nothing sent');
+    h.socket().drop(1006);
+    assert.equal(h.client.setPermission('read-write'), false, 'ended');
+  });
+
+  it('a revoke refuses an edit that was queued behind other calls: the grant is read when the edit starts', async () => {
+    const { seen, dispatch } = blockingDispatch();
+    const grants: boolean[] = [];
+    let client: BridgeClient | null = null;
+    const h = paired({
+      limits: { maxRunning: 1 },
+      dispatch: (name, args, signal) => {
+        if (name !== 'entity_set_property') return dispatch(name, args, signal);
+        grants.push(client!.canEditNow());
+        return Promise.resolve({ text: 'refused', structured: null, isError: true, errorCode: 'READ_ONLY' });
+      },
+    });
+    client = h.client;
+    h.client.setPermission('read-write');
+    call(h.socket(), 'read', 'count_entities');
+    call(h.socket(), 'edit', 'entity_set_property', { global_id: 'x', pset: 'P', name: 'N', value: 1 });
+    await flush();
+    h.client.setPermission('read-only');
+    seen[0].resolve({ text: 'ok', structured: null, isError: false });
+    await flush();
+    await flush();
+    assert.deepEqual(grants, [false], 'the queued edit saw the revoke');
+  });
+
+  it('marks edit-tool rows and carries what an applied edit changed', async () => {
+    const change = { modelId: 'm', expressId: 7, globalId: '2JUHrTM_j3UxZiBnyBfByx', entityType: 'IfcWall', field: 'Name', before: 'a', after: 'b', changed: true };
+    const h = paired({
+      dispatch: async (name) => (name === 'entity_set_attribute'
+        ? { text: 'set', structured: { edit: change }, isError: false, edit: change }
+        : { text: 'ok', structured: null, isError: false }),
+    });
+    call(h.socket(), 'r', 'count_entities');
+    call(h.socket(), 'e', 'entity_set_attribute', { global_id: 'x', attribute: 'Name', value: 'b' });
+    await flush();
+    const read = h.activity.find((row) => row.tool === 'count_entities');
+    const edit = h.activity.find((row) => row.tool === 'entity_set_attribute');
+    assert.equal(read?.mutating, undefined);
+    assert.equal(edit?.mutating, true);
+    assert.deepEqual(edit?.edit, change);
+    const result = frames(h.socket()).find((f): f is BridgeResultMessage => f.type === 'result' && f.id === 'e');
+    assert.ok(result && !JSON.stringify(result).includes('"mutating"'), 'the activity marker never goes over the wire');
   });
 });

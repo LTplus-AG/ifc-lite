@@ -20,7 +20,10 @@ import { useViewerStore } from '@/store';
 import { LocalBackend } from '@/sdk/local-backend';
 import { BimReactContext } from '@/sdk/BimProvider';
 import { installPairingFragmentStrip } from '@/lib/agent-bridge/pairing-fragment';
-import { getAgentBridgeState, resetAgentBridgeStateForTests, updateAgentBridgeState, type AgentBridgeStatus } from '@/lib/agent-bridge/state';
+import {
+  getAgentBridgeState, registerAgentBridgeControls, resetAgentBridgeStateForTests, updateAgentBridgeState,
+  type AgentBridgePermission, type AgentBridgeStatus,
+} from '@/lib/agent-bridge/state';
 import { AgentBridgeHost, AgentBridgeStatusSlot } from './AgentBridgeHost';
 import { AgentBridgeDialog, PERMISSION_HINT_DELAY_MS, type AgentBridgeSessionModule } from './AgentBridgeDialog';
 import type { SurfaceCommandDefinition, SurfaceCommandState } from '@/components/viewer/surface-command-types';
@@ -106,7 +109,7 @@ describe('pairing link (#9523)', () => {
     assert.match(text, /cannot check what that program is\. Connect only if you started ifc-lite-mcp --bridge yourself/);
     assert.match(text, /the agent may send what it reads to its AI provider/);
     assert.match(text, /bSDD tools also send IFC class names to bSDD/);
-    assert.match(text, /Read-only: the agent cannot change the model/);
+    assert.match(text, /Read-only at first: the agent cannot change the model/);
     assert.doesNotMatch(text, /not sent to ifclite\.com or any other server|from the ifc-lite agent bridge/, 'no over-claim');
     assert.equal(dialog()?.querySelector('[data-agent-bridge-target]')?.textContent?.trim(), 'Connects to 127.0.0.1:21518');
     const inputs = [...document.body.querySelectorAll('input')];
@@ -171,7 +174,7 @@ describe('pairing link (#9523)', () => {
   });
 
   it('a link arriving while a connection is live says Connect replaces it, and does nothing until Connect', async () => {
-    updateAgentBridgeState({ status: { kind: 'connected', port: 21517, permission: 'read-only', since: Date.now() } });
+    updateAgentBridgeState({ status: { kind: 'connected', port: 21517, permission: 'read-only', since: Date.now(), readOnlyCeiling: false } });
     render(withBim(<AgentBridgeHost />));
     openLink(21650);
     await waitFor(() => dialog() !== null, 'the dialog opened');
@@ -278,7 +281,7 @@ describe('connect dialog outcomes (#9523)', () => {
   it('closes itself once connected', async () => {
     let closed = 0;
     const load = async (): Promise<AgentBridgeSessionModule> => ({
-      connectAgentBridge: ({ port }) => updateAgentBridgeState({ status: { kind: 'connected', port, permission: 'read-only', since: Date.now() } }),
+      connectAgentBridge: ({ port }) => updateAgentBridgeState({ status: { kind: 'connected', port, permission: 'read-only', since: Date.now(), readOnlyCeiling: false } }),
       disconnectAgentBridge: () => {},
     });
     render(withBim(<AgentBridgeDialog request={{ source: 'manual' }} onClose={() => { closed++; }} load={load} />));
@@ -299,7 +302,7 @@ describe('status-bar chip (#9523)', () => {
 
   it('says connected and read-only, lists activity without arguments, and disconnects', async () => {
     updateAgentBridgeState({
-      status: { kind: 'connected', port: 21517, permission: 'read-only', since: Date.now() },
+      status: { kind: 'connected', port: 21517, permission: 'read-only', since: Date.now(), readOnlyCeiling: false },
       activity: [
         { seq: 2, tool: 'get_entity', modelId: 'model-a', startedAt: 0, durationMs: 12.4, outcome: 'error', errorCode: 'ENTITY_NOT_FOUND' },
         { seq: 1, tool: 'count_entities', modelId: null, startedAt: 0, durationMs: 3, outcome: 'ok' },
@@ -312,7 +315,7 @@ describe('status-bar chip (#9523)', () => {
     await waitFor(() => document.body.querySelector('[data-agent-bridge-disconnect]') !== null, 'the chip opened');
     const rows = [...document.body.querySelectorAll('[data-agent-bridge-activity]')].map((row) => row.textContent);
     assert.deepEqual(rows, ['get_entitymodel-a12 mserror ENTITY_NOT_FOUND', 'count_entitiesno model3 msok']);
-    assert.match(document.body.textContent ?? '', /Arguments and results are not kept/);
+    assert.match(document.body.textContent ?? '', /arguments and results are not kept/i);
 
     click(document.body.querySelector('[data-agent-bridge-disconnect]') as HTMLElement);
     assert.equal(getAgentBridgeState().status.kind, 'idle');
@@ -331,7 +334,7 @@ describe('status-bar chip (#9523)', () => {
   });
 });
 
-const CONNECTED = { kind: 'connected', port: 21517, permission: 'read-only', since: Date.now() } as const;
+const CONNECTED = { kind: 'connected', port: 21517, permission: 'read-only', since: Date.now(), readOnlyCeiling: false } as const;
 
 describe('a live connection is visible with Disconnect in every layout (#9523 review)', () => {
   afterEach(() => useViewerStore.setState({ isMobile: false }));
@@ -350,7 +353,7 @@ describe('a live connection is visible with Disconnect in every layout (#9523 re
     assert.match(pill.textContent ?? '', /Local agent connected · read-only/);
     click(pill);
     await waitFor(() => document.body.querySelector('[data-agent-bridge-disconnect]') !== null, 'the pill opens Disconnect');
-    assert.match(document.body.textContent ?? '', /Arguments and results are not kept/, 'and the activity log');
+    assert.match(document.body.textContent ?? '', /arguments and results are not kept/i, 'and the activity log');
     click(document.body.querySelector('[data-agent-bridge-disconnect]') as HTMLElement);
     assert.equal(getAgentBridgeState().status.kind, 'idle');
     await waitFor(() => document.body.querySelector('[data-agent-bridge-mobile]') === null, 'the pill is gone');
@@ -433,5 +436,55 @@ describe('a framed viewer never connects (#9523 review)', () => {
     assert.match(dialog()?.textContent ?? '', /embedded in another page/);
     assert.equal((document.body.querySelector('[data-agent-bridge-connect]') as HTMLButtonElement).disabled, true);
     assert.deepEqual(SpySocket.urls, []);
+  });
+});
+
+describe('allowing the agent to edit (#9523)', () => {
+  beforeEach(() => resetAgentBridgeStateForTests());
+  afterEach(() => cleanup());
+
+  it('the switch is off on a fresh connection, and toggling it asks the session to grant or revoke', async () => {
+    const { AgentBridgeConnectionPanel } = await import('./AgentBridgeConnectionPanel');
+    const asked: AgentBridgePermission[] = [];
+    registerAgentBridgeControls({ disconnect: () => {}, dismiss: () => {}, setPermission: (p) => { asked.push(p); } });
+    updateAgentBridgeState({ status: CONNECTED });
+    const ui = render(<AgentBridgeConnectionPanel />);
+    const toggle = () => ui.querySelector('[data-agent-bridge-allow-edits]') as HTMLButtonElement;
+    assert.equal(toggle().getAttribute('aria-checked'), 'false', 'off by default');
+    assert.match(ui.textContent ?? '', /Allow the agent to edit this model/);
+    click(toggle());
+    assert.deepEqual(asked, ['read-write']);
+
+    updateAgentBridgeState({ status: { ...CONNECTED, permission: 'read-write' } });
+    await waitFor(() => toggle().getAttribute('aria-checked') === 'true', 'the switch follows the grant');
+    assert.match(ui.textContent ?? '', /Local agent connected · can edit/);
+    click(toggle());
+    assert.deepEqual(asked, ['read-write', 'read-only']);
+  });
+
+  it('is disabled, with the reason, when the bridge runs --read-only', async () => {
+    const { AgentBridgeConnectionPanel } = await import('./AgentBridgeConnectionPanel');
+    updateAgentBridgeState({ status: { ...CONNECTED, readOnlyCeiling: true } });
+    const ui = render(<AgentBridgeConnectionPanel />);
+    assert.equal((ui.querySelector('[data-agent-bridge-allow-edits]') as HTMLButtonElement).disabled, true);
+    assert.match(ui.textContent ?? '', /started with --read-only/);
+  });
+
+  it('marks edit rows in the activity log and says what an applied edit changed', async () => {
+    const { AgentBridgeActivityLog } = await import('./AgentBridgeConnectionPanel');
+    updateAgentBridgeState({
+      status: { ...CONNECTED, permission: 'read-write' },
+      activity: [
+        { seq: 3, tool: 'entity_set_property', modelId: 'm', startedAt: 0, durationMs: 2, outcome: 'error', errorCode: 'READ_ONLY', mutating: true },
+        { seq: 2, tool: 'entity_set_property', modelId: 'm', startedAt: 0, durationMs: 2, outcome: 'ok', mutating: true,
+          edit: { modelId: 'm', expressId: 7, globalId: '2JUHrTM_j3UxZiBnyBfByx', entityType: 'IfcWall', field: 'Pset_WallCommon.FireRating', before: null, after: 'EI60', changed: true } },
+        { seq: 1, tool: 'count_entities', modelId: 'm', startedAt: 0, durationMs: 4, outcome: 'ok' },
+      ],
+    });
+    const ui = render(<AgentBridgeActivityLog />);
+    const rows = [...ui.querySelectorAll('[data-agent-bridge-activity]')];
+    assert.deepEqual(rows.map((row) => row.getAttribute('data-agent-bridge-edit')), ['not-applied', 'applied', null]);
+    assert.match(rows[1].textContent ?? '', /IfcWall #7 · Pset_WallCommon\.FireRating: — → “EI60”/);
+    assert.doesNotMatch(rows[2].textContent ?? '', /→/);
   });
 });

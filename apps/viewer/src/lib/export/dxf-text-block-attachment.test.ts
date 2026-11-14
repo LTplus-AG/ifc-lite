@@ -75,18 +75,29 @@ describe('multi-line DXF text block attachment', () => {
     }
   });
 
-  it('SVG shifts the first tspan by the block offset and rotates the stack with the text', () => {
+  it('SVG places every tspan at its block offset in the rotated text frame', () => {
     for (const { valign, label, offsets } of ATTACHMENTS) {
       for (const dir of DIRECTIONS) {
         const svg = buildDxfUnderlaySvg(underlay(text(valign, dir.dirX, dir.dirY)), mapPoint, mm => mm, 10, s => s);
-        const dys = [...svg.matchAll(/<tspan[^>]* dy="([-\d.]+)"/g)].map(m => Number(m[1]));
-        assert.equal(dys.length, 3);
-        // tspan dy accumulates: line i sits at the running sum.
-        let running = 0;
-        dys.forEach((dy, i) => { running += dy; near(running, offsets[i], `${label} ${dir.name} line ${i}`); });
+        const lines = [...svg.matchAll(/<tspan x="([-\d.]+)" y="([-\d.]+)">/g)].map(m => [Number(m[1]), Number(m[2])]);
+        assert.equal(lines.length, 3);
+        // Absolute x/y sit inside the text's rotate() about the anchor (70, 20).
+        lines.forEach(([x, y], i) => { near(x, 70, `${label} ${dir.name} line ${i} along`); near(y, 20 + offsets[i], `${label} ${dir.name} line ${i}`); });
         assert.match(svg, new RegExp(`rotate\\(${dir.deg.toFixed(2)} 70\\.0000 20\\.0000\\)`));
       }
     }
+  });
+
+  it('SVG keeps the block offset when a line is empty (PR #10195 review)', () => {
+    const ys = (body: string) => [...buildDxfUnderlaySvg(underlay({ ...text('bottom', 1, 0), text: body }), mapPoint, mm => mm, 10, s => s)
+      .matchAll(/<tspan x="[-\d.]+" y="([-\d.]+)">([^<]*)</g)].map(m => [Number(m[1]), m[2]] as const);
+    // Leading empty line: "B" sits on the insertion point, not a line below it.
+    const leading = ys('\nB');
+    assert.deepEqual(leading.map(l => l[1]), ['', 'B']);
+    near(leading[0][0], 20 - GAP, 'leading empty line');
+    near(leading[1][0], 20, 'B on the point');
+    const middle = ys('A\n\nC');
+    [-2 * GAP, -GAP, 0].forEach((o, i) => near(middle[i][0], 20 + o, `empty middle line ${i}`));
   });
 
   it('PDF places every line of the block across the rotated baseline', () => {

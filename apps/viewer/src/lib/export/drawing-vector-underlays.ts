@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { DXF_TEXT_LINE_HEIGHT_FACTOR, dxfTextLineOffset } from '@/lib/drawing/dxf-text-layout';
+import { dxfTextLineOffset } from '@/lib/drawing/dxf-text-layout';
 import type { DxfUnderlayRenderData } from '@/hooks/useDxfUnderlay';
 import type { DXFUnderlayOptions } from '@ifc-lite/drawing-2d';
 import type { jsPDF } from 'jspdf';
@@ -154,13 +154,12 @@ export function buildDxfUnderlaySvg(
       const fontSize = text.height * fontScale;
       if (fontSize <= 0) continue;
       const anchorAttr = text.align === 'center' ? 'middle' : text.align === 'right' ? 'end' : 'start';
-      // Multiline MTEXT stacks with tspans, matching the canvas layout; the
-      // first one carries the block's attachment offset.
+      // Multiline MTEXT stacks with absolutely placed tspans (in the rotated
+      // frame), matching the canvas layout; `dy` would skip empty lines.
       const lines = text.text.split('\n');
       const content = lines
-        .map((line, i) => `<tspan x="${anchor.x.toFixed(4)}" dy="${(i === 0
-          ? dxfTextLineOffset(0, lines.length, text.valign, fontSize)
-          : fontSize * DXF_TEXT_LINE_HEIGHT_FACTOR).toFixed(4)}">${escapeXml(line)}</tspan>`)
+        .map((line, i) => `<tspan x="${anchor.x.toFixed(4)}" y="${(anchor.y
+          + dxfTextLineOffset(i, lines.length, text.valign, fontSize)).toFixed(4)}">${escapeXml(line)}</tspan>`)
         .join('');
       svg += `      <text x="${anchor.x.toFixed(4)}" y="${anchor.y.toFixed(4)}" font-family="Arial, sans-serif" font-size="${fontSize.toFixed(4)}" fill="${text.color}" text-anchor="${anchorAttr}" dominant-baseline="${dxfValignToBaseline(text.valign)}" transform="rotate(${angle.toFixed(2)} ${anchor.x.toFixed(4)} ${anchor.y.toFixed(4)})">${content}</text>\n`;
     }

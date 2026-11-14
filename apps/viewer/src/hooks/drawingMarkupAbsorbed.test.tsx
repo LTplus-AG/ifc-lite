@@ -33,6 +33,7 @@ import { loadDrawing2DEntry, saveDrawing2DEntry, clearAllDrawing2DEntries } from
 import { getDefaultDrawing2DState } from '@/store/slices/drawing2DSlice.js';
 import { placementSourceIdentity } from '@/lib/model-placement/source-identity';
 import { saveDrawingMarkupToModel } from '@/lib/drawing2d-markup/drawing-markup-save';
+import { dimensionSaveParams } from '@/lib/drawing2d-markup/dimension-markup-save';
 import { __resetAbsorbedEmbeddedMarkupForTests, absorbedEmbeddedMarkupFor } from '@/lib/drawing2d-markup/drawing-markup-absorbed';
 
 const DEFAULTS = getDefaultDrawing2DState().drawing2DDisplayOptions;
@@ -67,6 +68,11 @@ END-ISO-10303-21;
 const UNTAGGED_GUID = '0Annot000000000000060d';
 /** {@link FIXTURE} plus an annotation another tool wrote, without an IfcLite markup tag. */
 const UNTAGGED_FIXTURE = FIXTURE.replace('ENDSEC;\nEND-ISO', `#60=IFCANNOTATION('${UNTAGGED_GUID}',#4,'Note',$,'Other:Note',$,$);\nENDSEC;\nEND-ISO`);
+
+const DIMENSION_ID = 70;
+const DIMENSION_GUID = '0Annot000000000000070d';
+/** {@link FIXTURE} plus a markup dimension annotation (the tag #10080 writes). */
+const DIMENSION_FIXTURE = FIXTURE.replace('ENDSEC;\nEND-ISO', `#${DIMENSION_ID}=IFCANNOTATION('${DIMENSION_GUID}',#4,'Dimension',$,'IfcLite:Markup:Dimension',$,$);\nENDSEC;\nEND-ISO`);
 
 const USER_MEASURE = { id: 'user-1', start: { x: 1, y: 1 }, end: { x: 1, y: 3 }, distance: 2 };
 
@@ -157,7 +163,8 @@ function saveAndExport(modelId: string, store: IfcDataStore): string {
   const s = useViewerStore.getState();
   const outcome = saveDrawingMarkupToModel(modelId, {
     measure2DResults: s.measure2DResults, polygonArea2DResults: s.polygonArea2DResults,
-    textAnnotations2D: s.textAnnotations2D, cloudAnnotations2D: s.cloudAnnotations2D, dimensions2D: [],
+    textAnnotations2D: s.textAnnotations2D, cloudAnnotations2D: s.cloudAnnotations2D,
+    dimensions2D: s.dimensions2D.map((d) => dimensionSaveParams(d, { paperScale: 100 })),
   });
   assert.equal(outcome.refusal, null);
   const view = useViewerStore.getState().getMutationView(modelId);
@@ -167,10 +174,14 @@ function saveAndExport(modelId: string, store: IfcDataStore): string {
 /** A measurement the embedded reader would have restored from annotation `expressId`. */
 const embeddedOriginMeasure = (expressId: number) => ({ id: `ifc-measure-${expressId}`, start: { x: 0, y: 0 }, end: { x: 3, y: 4 }, distance: 5 });
 
+/** A dimension the embedded reader would have restored from annotation `expressId`. */
+const embeddedOriginDimension = (expressId: number) => ({ id: `ifc-dimension-${expressId}`, a: { x: 0, y: 0 }, b: { x: 4, y: 0 }, offset: 0.5, orientation: 'aligned' });
+
 /** Write an entry the way a viewer before #10083 did; `absorbed` adds the field a newer viewer writes. */
-function writeOldEntry(hash: string, measures: unknown[], texts: unknown[] = [], absorbed?: string[]): void {
+function writeOldEntry(hash: string, measures: unknown[], texts: unknown[] = [], absorbed?: string[], dimensions?: unknown[]): void {
   localStorage.setItem(`ifc-lite:drawing2d-markup:v1:${hash}`, JSON.stringify({
     measure2DResults: measures, polygonArea2DResults: [], textAnnotations2D: texts, cloudAnnotations2D: [],
+    ...(dimensions ? { dimensions2D: dimensions } : {}),
     drawing2DDisplayOptions: DEFAULTS, sectionConfig: null, savedAt: 1,
     ...(absorbed ? { absorbedEmbeddedMarkup: absorbed } : {}),
   }));
@@ -532,6 +543,49 @@ describe('reopening a file whose localStorage entry was seeded from its own embe
     const saved = saveAndExport('old-entry-other', store);
     assert.match(saved, new RegExp(`'${EMBEDDED_GUID}'`), 'the embedded measurement is kept');
     assert.match(saved, new RegExp(`'${UNTAGGED_GUID}'`), 'the untagged annotation is kept');
+    assert.deepEqual(danglingRefs(saved), []);
+  });
+
+  it('an entry written before the absorbed set existed absorbs its embedded-origin dimension: the save replaces, not duplicates', async () => {
+    const file = fileWithBytes(65, 'old-entry-dimension.ifc');
+    const hash = (await placementSourceIdentity(file))!;
+    writeOldEntry(hash, [], [], undefined, [embeddedOriginDimension(DIMENSION_ID)]);
+    assert.equal(loadDrawing2DEntry(hash, DEFAULTS)?.absorbedEmbeddedMarkup, undefined, 'setup: the field is absent, not empty');
+
+    heldWasmReply();
+    await mount();
+    const store = await open('old-entry-dimension', file, DIMENSION_FIXTURE);
+    await decided('old-entry-dimension');
+    await waitFor(() => useViewerStore.getState().dimensions2D.length === 1, 'the old entry restores');
+    assert.deepEqual([...absorbedEmbeddedMarkupFor('old-entry-dimension')], [DIMENSION_GUID]);
+    await waitFor(() => loadDrawing2DEntry(hash, DEFAULTS)?.absorbedEmbeddedMarkup !== undefined, 'the entry is saved again');
+    assert.deepEqual(loadDrawing2DEntry(hash, DEFAULTS)?.absorbedEmbeddedMarkup, [DIMENSION_GUID], 'the set is persisted as usual');
+
+    const saved = saveAndExport('old-entry-dimension', store);
+    assert.equal((saved.match(/'IfcLite:Markup:Dimension'/g) ?? []).length, 1, 'the re-saved dimension; the embedded copy is replaced');
+    assert.doesNotMatch(saved, new RegExp(`'${DIMENSION_GUID}'`));
+    assert.match(saved, new RegExp(`'${EMBEDDED_GUID}'`), 'the embedded measurement no item came from is kept');
+    assert.deepEqual(danglingRefs(saved), []);
+  });
+
+  it('an ifc-dimension id naming a measurement annotation absorbs nothing', async () => {
+    const file = fileWithBytes(67, 'old-entry-dimension-other.ifc');
+    const hash = (await placementSourceIdentity(file))!;
+    // #50 is tagged as a measurement, not the dimension the `ifc-dimension-50` id names.
+    writeOldEntry(hash, [], [], undefined, [embeddedOriginDimension(ANNOTATION_ID)]);
+
+    heldWasmReply();
+    await mount();
+    const store = await open('old-entry-dimension-other', file, DIMENSION_FIXTURE);
+    await decided('old-entry-dimension-other');
+    await waitFor(() => useViewerStore.getState().dimensions2D.length === 1, 'the old entry restores');
+    assert.equal(absorbedEmbeddedMarkupFor('old-entry-dimension-other').size, 0);
+    await waitFor(() => loadDrawing2DEntry(hash, DEFAULTS)?.absorbedEmbeddedMarkup !== undefined, 'the entry is saved again');
+    assert.deepEqual(loadDrawing2DEntry(hash, DEFAULTS)?.absorbedEmbeddedMarkup, []);
+
+    const saved = saveAndExport('old-entry-dimension-other', store);
+    assert.match(saved, new RegExp(`'${EMBEDDED_GUID}'`), 'the embedded measurement is kept');
+    assert.match(saved, new RegExp(`'${DIMENSION_GUID}'`), 'the embedded dimension is kept');
     assert.deepEqual(danglingRefs(saved), []);
   });
 

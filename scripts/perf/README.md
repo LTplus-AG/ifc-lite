@@ -7123,9 +7123,9 @@ acceptance source for end-to-end timing.
 ## Parser store publish gate after the geometry tail (#9830, closed)
 
 **Rejected: holding the parser worker's store publications until the geometry
-tail (upload drain and renderer finalize) ends. With #9855 on main, the gate adds
-about 3% to Holter cold interactive time, under the 6.3% bar, and the hierarchy
-panel's first rows appear about 380 ms later. No variant keeps the panel's
+tail (upload drain and renderer finalize) ends. With #9855 on main, the gate reduces
+Holter cold interactive time by about 4.2% (3,605 to 3,452 ms), under the 6.3%
+bar, and the hierarchy panel's first rows appear about 380 ms later. No variant keeps the panel's
 timing and still gains.** The same lane's #9855 (whole-model UI values computed
 after the load settles) carries the reopen gain on its own and landed.
 

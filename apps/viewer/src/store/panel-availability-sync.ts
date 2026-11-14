@@ -18,7 +18,7 @@ import { isPanelAvailable } from '../lib/panels/availability.js';
 import { BOTTOM_PANEL_FLAG, BOTTOM_PANEL_IDS } from '../lib/panels/bottom-panels.js';
 import { WORKSPACE_PANELS, type WorkspacePanelId } from '../lib/panels/registry.js';
 import type { ViewerState } from './index.js';
-import { SIDEBAR_PANEL_FLAGS } from './store-sync.js';
+import { nextOpenSidebarPanel, SIDEBAR_PANEL_FLAGS } from './store-sync.js';
 import { setEnforcedOffPanels } from './panel-enforced-off.js';
 
 function patchFor(state: ViewerState, off: ReadonlySet<WorkspacePanelId>): Partial<ViewerState> | null {
@@ -29,11 +29,7 @@ function patchFor(state: ViewerState, off: ReadonlySet<WorkspacePanelId>): Parti
   for (const id of BOTTOM_PANEL_IDS) {
     if (state[BOTTOM_PANEL_FLAG[id]] && off.has(id)) patch[BOTTOM_PANEL_FLAG[id]] = false;
   }
-  if (off.has(state.sidebarActivePanel)) {
-    // Like the exclusivity listener's close branch: the next docked panel still open, else Information.
-    const next = SIDEBAR_PANEL_FLAGS.find(([flag, id]) => state[flag] && !off.has(id));
-    patch.sidebarActivePanel = next ? next[1] : 'properties';
-  }
+  if (off.has(state.sidebarActivePanel)) patch.sidebarActivePanel = nextOpenSidebarPanel(state, (id) => off.has(id));
   // The top half cannot also be the bottom half (setSidebarActivePanel's rule).
   const secondary = state.sidebarSecondaryPanel;
   if (secondary && (off.has(secondary) || secondary === patch.sidebarActivePanel)) patch.sidebarSecondaryPanel = null;

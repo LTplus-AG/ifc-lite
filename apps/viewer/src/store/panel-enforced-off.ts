@@ -7,7 +7,8 @@ import type { WorkspacePanelId } from '@/lib/panels/registry';
 /**
  * The panels `enforcePanelAvailability` keeps closed, shared with the sidebar
  * exclusivity listener so both read one snapshot and neither asks a feature
- * gate before the viewer configuration is applied.
+ * gate before the viewer configuration is applied. Production sets it once,
+ * when `applyRuntimeConfig` installs the rule.
  */
 let off: ReadonlySet<WorkspacePanelId> = new Set();
 

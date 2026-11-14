@@ -21,6 +21,11 @@ export const SIDEBAR_PANEL_FLAGS: ReadonlyArray<readonly [keyof ViewerState, Wor
 ];
 
 /** Keep the unified sidebar to one docked panel when flags change (#1208). */
+/** The docked panel that takes the sidebar when the active one goes: the next one still open, else Information. */
+export function nextOpenSidebarPanel(state: ViewerState, isOff: (id: WorkspacePanelId) => boolean): WorkspacePanelId {
+  return SIDEBAR_PANEL_FLAGS.find(([flag, id]) => state[flag] && !isOff(id))?.[1] ?? 'properties';
+}
+
 export function registerSidebarExclusivity(store: StoreApi<ViewerState>): void {
   store.subscribe((state, prev) => {
     let opened: WorkspacePanelId | null = null;
@@ -43,8 +48,7 @@ export function registerSidebarExclusivity(store: StoreApi<ViewerState>): void {
     if (active !== 'properties') {
       const flag = SIDEBAR_PANEL_FLAGS.find(([, id]) => id === active)?.[0];
       if (flag && !state[flag] && prev[flag]) {
-        const next = SIDEBAR_PANEL_FLAGS.find(([f, id]) => state[f] && !isPanelEnforcedOff(id));
-        state.setSidebarActivePanel(next ? next[1] : 'properties');
+        state.setSidebarActivePanel(nextOpenSidebarPanel(state, isPanelEnforcedOff));
       }
     }
   });

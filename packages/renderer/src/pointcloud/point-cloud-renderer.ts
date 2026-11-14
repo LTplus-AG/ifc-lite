@@ -18,7 +18,8 @@ import { assertModelTranslation } from '../model-translation.js';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
 import { PointCloudHandleIds } from './point-cloud-handle-ids.js';
 import { exactPlacement, originMatrix, PointCloudPlacements, skipUnrenderableOrigin, unionPointCloudBounds } from './point-cloud-placement.js';
-import { entityShown, PointCloudVisibility, type PointCloudEntityFilter } from './point-cloud-visibility.js';
+import { PointCloudVisibility, type PointCloudEntityFilter } from './point-cloud-visibility.js';
+import { isEntityVisible } from '../entity-visibility.js';
 import { PointRenderPipeline, POINT_QUAD_VERTS, POINT_UNIFORM_SIZE } from './point-pipeline.js';
 import {
   appendChunkToNode,
@@ -458,8 +459,6 @@ export class PointCloudRenderer {
   }
 
   private *visibleNodes(filter?: PointCloudEntityFilter): IterableIterator<PointCloudNode> {
-    for (const [id, node] of this.nodes) {
-      if (this.visibility.visible(id) && (this.nodeOwners.get(id) !== 'ifcx' || entityShown(filter, node.meta.expressId))) yield node;
-    }
+    for (const [id, node] of this.nodes) if (this.visibility.visible(id) && (this.nodeOwners.get(id) !== 'ifcx' || isEntityVisible(node.meta.expressId, filter?.hiddenIds, filter?.isolatedIds))) yield node;
   }
 }

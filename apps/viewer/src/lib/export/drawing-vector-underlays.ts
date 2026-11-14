@@ -59,6 +59,9 @@ export function drawDxfUnderlaysPdf(doc: jsPDF, underlays: readonly DxfUnderlayR
   for (const data of underlays) {
     if (data.opacity <= 0) continue;
     doc.saveGraphicsState();
+    // PDF Tz persists across text objects until the graphics state is restored,
+    // so track it and reset it before an unstretched label follows a stretched one.
+    let tz = 1;
     try {
       doc.setGState(doc.GState({ opacity: data.opacity, 'stroke-opacity': data.opacity }));
       for (const fill of data.fills) {
@@ -101,7 +104,8 @@ export function drawDxfUnderlaysPdf(doc: jsPDF, underlays: readonly DxfUnderlayR
           const stretch = fitMm ? fitMm / measured : text.widthScale && text.widthScale > 0 ? text.widthScale : 1;
           const start = pdfRotatedTextStart(anchor, rad, fitMm || measured * stretch, sizeMm, text.align, text.valign,
             dxfTextLineOffset(i, lines.length, text.valign, sizeMm, text.lineSpacingFactor));
-          doc.text(line, start.x, start.y, { angle: -rad * 180 / Math.PI, ...(stretch !== 1 && { horizontalScale: stretch }) });
+          doc.text(line, start.x, start.y, { angle: -rad * 180 / Math.PI, ...(stretch !== tz && { horizontalScale: stretch }) });
+          tz = stretch;
         });
       }
     } finally { doc.restoreGraphicsState(); }

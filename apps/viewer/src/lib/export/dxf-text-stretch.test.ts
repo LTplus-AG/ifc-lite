@@ -43,6 +43,13 @@ describe('stretched DXF text', () => {
     assert.doesNotMatch(plain.output(), / Tz/);
   });
 
+  it('PDF resets Tz before a plain label that follows a stretched one', () => {
+    const doc = new jsPDF({ unit: 'mm', format: [100, 100] });
+    drawDxfUnderlaysPdf(doc, wrap(stretched, { ...stretched, text: 'Plain', widthScale: undefined }), mapPoint, 10);
+    const tz = [...doc.output().matchAll(/([\d.]+) Tz/g)].map(m => Number(m[1]));
+    assert.deepEqual(tz, [250, 100]);
+  });
+
   describe('measured fit span (fitWidth)', () => {
     // Estimate says 2.5×, but the real font is narrower/wider than 0.6 em.
     const fit: Text = { ...stretched, fitWidth: 3 };

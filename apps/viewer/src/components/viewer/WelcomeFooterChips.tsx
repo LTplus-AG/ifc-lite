@@ -41,12 +41,12 @@ export function WelcomeFooterChips({ tourAvailable }: {
   return (
     <div className="mt-12 flex w-full flex-wrap items-center justify-between gap-x-6 gap-y-2 text-xs text-muted-foreground">
       {links || tour ? <p data-welcome-learn-line="" className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
-        <span>{t('viewportLighting.container.emptyState.footer.discoverPrompt')}</span>
+        {links && <span>{t('viewportLighting.container.emptyState.footer.discoverPrompt')}</span>}
         {links && <a href="https://ifclite.dev" target="_blank" rel="noopener noreferrer" className={`font-medium text-primary hover:underline underline-offset-2 ${FOCUS}`}>
           {t('viewportLighting.container.emptyState.footer.discoverLink')}
         </a>}
         {/* Last, so its dismiss X ends the line and plainly belongs to it. */}
-        {tour && <TourInvite leading={links ? <span aria-hidden="true">·</span> : undefined} />}
+        {tour && <TourInvite prompt={!links ? <span>{t('viewportLighting.container.emptyState.footer.discoverPrompt')}</span> : undefined} leading={links ? <span aria-hidden="true">·</span> : undefined} />}
       </p> : <span />}
       <div className="flex items-center gap-5">
         {/* Works without WebGPU: the MCP route drives the toolkit headless. */}

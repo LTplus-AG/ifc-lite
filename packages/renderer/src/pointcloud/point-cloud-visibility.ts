@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import type { PickOptions } from '../pick-types.js';
 
 /** Tracks resident-asset visibility independently of GPU resource lifetime. */
 export class PointCloudVisibility {
@@ -15,3 +16,6 @@ export class PointCloudVisibility {
     return true;
   }
 }
+
+/** Per-entity hide/isolate sets (federated ids). They apply to inline clouds, never to streamed scans (#10215). */
+export type PointCloudEntityFilter = Pick<PickOptions, 'hiddenIds' | 'isolatedIds'>;

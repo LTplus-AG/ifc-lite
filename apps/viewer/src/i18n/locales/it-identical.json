@@ -1726,5 +1726,9 @@
   "zonesPanel.zoneRow.baseYLabel": {
     "value": "Base (Y)",
     "reason": "zonesPanel.zoneRow.baseYLabel: Base is also the Italian noun for the base position or comparison baseline; any axis notation is unchanged."
+  },
+  "viewportLighting.container.emptyState.formats.rhino": {
+    "value": "Rhino",
+    "reason": "Format family name on the welcome card: Rhino is the product name of the authoring tool behind .3dm and is not localized in any language."
   }
 }

@@ -30,6 +30,7 @@ export const viewportLightingDe = {
   "viewportLighting.container.emptyState.dragDropHint": "Oder legen Sie Dateien an einer beliebigen Stelle im Ansichtsfenster ab:",
   "viewportLighting.container.emptyState.formats.ifc": "IFC",
   "viewportLighting.container.emptyState.formats.gltf": "glTF",
+  "viewportLighting.container.emptyState.formats.rhino": "Rhino",
   "viewportLighting.container.emptyState.formats.pointClouds": "Punktwolken",
   "viewportLighting.container.emptyState.formats.terrain": "Gelände",
   "viewportLighting.container.emptyState.formats.underlays": "Unterlagen",

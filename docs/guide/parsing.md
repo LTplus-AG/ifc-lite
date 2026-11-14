@@ -336,7 +336,7 @@ if (result.format === 'ifcx') {
 }
 
 // Or detect format manually
-const format = detectFormat(buffer);  // 'ifc', 'ifcx', 'glb', or 'unknown'
+const format = detectFormat(buffer);  // 'ifc', 'ifcx', 'glb', '3dm', or 'unknown'
 ```
 
 ### `.ifcZIP` Containers

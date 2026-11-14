@@ -34,6 +34,9 @@ import { isTourAvailable } from '@/lib/tours/tour-availability';
 import { WELCOME_TOUR } from '@/lib/tours/tours/welcome';
 import { loadDemoProject } from '@/lib/tours/demo-kit';
 import { mainViewerTool } from '@/lib/agent-tools/main-viewer-dispatch';
+import { mainViewerToolDefinitions } from '@/lib/agent-tools/main-viewer-tool-definitions';
+import { openIfcFilesWithHandles } from '@/services/file-system-access';
+import { KeyboardShortcutsDialog } from '@/components/viewer/KeyboardShortcutsDialog';
 import { queryTerrainElevation, resolveProjection } from '@/lib/geo/reproject';
 import { DEFAULT_PROFILE } from '@ifc-lite/semantic';
 
@@ -125,11 +128,33 @@ describe('files and samples off have no other door', () => {
     await assert.rejects(loadDemoProject(), /Sample models are switched off/);
   });
 
+  it('the learning hub goes with the tours it lists', () => {
+    resetFeaturesForTest({ default: 'all', disable: ['files.samples'] });
+    assert.equal(isSurfaceCommandAvailable({ id: 'learn:hub' }), false);
+    render(<KeyboardShortcutsDialog open onClose={() => {}} initialTab="about" />);
+    assert.equal([...document.querySelectorAll('[role="tab"]')].filter((tab) => tab.textContent?.includes('Learn')).length, 0);
+  });
+
+  it('no File System Access picker opens with local files off, whoever asks', async () => {
+    resetFeaturesForTest({ default: 'all', disable: ['files.local'] });
+    let pickers = 0;
+    const win = window as unknown as { showOpenFilePicker?: () => Promise<never[]> };
+    const saved = win.showOpenFilePicker;
+    win.showOpenFilePicker = async () => { pickers++; return []; };
+    try {
+      assert.equal(await openIfcFilesWithHandles(), null);
+      assert.equal(pickers, 0);
+    } finally {
+      win.showOpenFilePicker = saved;
+    }
+  });
+
   it('an empty panel offers neither the demo nor the file picker when both are off', () => {
     resetFeaturesForTest({ default: 'all', disable: ['files.samples', 'files.local'] });
     render(<PanelModelGate id="lens" mode="takeover" onClose={() => {}}><span /></PanelModelGate>);
     assert.equal(buttonsNamed('Load demo project'), 0);
     assert.equal(buttonsNamed('Open'), 0);
+    assert.match(document.body.textContent ?? '', /from the page that brought you here/, 'says where the model comes from');
   });
 
   it('the open and add-model handlers do not show a picker with local files off', async () => {
@@ -191,6 +216,7 @@ describe('product links and outside services off have no other door', () => {
     render(<SemanticProfileControls profile={DEFAULT_PROFILE} onProfile={() => {}} onError={() => {}} />);
     assert.equal(buttonsNamed('Search bSDD'), 0);
     assert.equal(mainViewerTool('bsdd_search'), undefined);
+    assert.equal(mainViewerToolDefinitions().filter((definition) => definition.name.startsWith('bsdd_')).length, 0, 'not offered to the model either');
     resetFeaturesForTest();
     assert.ok(mainViewerTool('bsdd_search'));
   });

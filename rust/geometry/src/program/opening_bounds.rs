@@ -1,71 +1,41 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Source-free per-frame AABB calculation; preserves world/RTC corner arithmetic.
+//! Source-free per-frame AABB calculation; preserves world/RTC arithmetic.
 use crate::{Mesh, Point3};
 use nalgebra::Matrix4;
 
+/// The bounds of `mesh` once placed by `placement_transform`, less `rtc`.
+///
+/// Every vertex is placed and the box taken of the result. Placing the eight
+/// corners of the item-frame box instead gives a box of a box: for an item
+/// turned in its own frame and turned back by its placement (a solid whose
+/// Position undoes its wall's rotation) that box is larger than the opening,
+/// and an axis-aligned opening is cut by its bounds.
 pub(crate) fn evaluate(
     mesh: &Mesh,
     placement_transform: &Matrix4<f64>,
     rtc: (f64, f64, f64),
 ) -> (Point3<f64>, Point3<f64>) {
-    // Mesh::bounds is local to mesh.positions. Mapped items can
-    // carry a large f64 origin that must be folded in before the
-    // element placement, or the cutter box lands near zero.
-    let (mesh_min, mesh_max) = mesh.bounds();
-
-    // Transform corner points to world coordinates
-    let corners = [
-        Point3::new(mesh_min.x as f64, mesh_min.y as f64, mesh_min.z as f64),
-        Point3::new(mesh_max.x as f64, mesh_min.y as f64, mesh_min.z as f64),
-        Point3::new(mesh_min.x as f64, mesh_max.y as f64, mesh_min.z as f64),
-        Point3::new(mesh_max.x as f64, mesh_max.y as f64, mesh_min.z as f64),
-        Point3::new(mesh_min.x as f64, mesh_min.y as f64, mesh_max.z as f64),
-        Point3::new(mesh_max.x as f64, mesh_min.y as f64, mesh_max.z as f64),
-        Point3::new(mesh_min.x as f64, mesh_max.y as f64, mesh_max.z as f64),
-        Point3::new(mesh_max.x as f64, mesh_max.y as f64, mesh_max.z as f64),
-    ];
-
-    // Transform all corners and compute new AABB
-    let transformed: Vec<Point3<f64>> = corners
-        .iter()
-        .map(|p| {
-            let source = Point3::new(
-                p.x + mesh.origin[0],
-                p.y + mesh.origin[1],
-                p.z + mesh.origin[2],
-            );
-            placement_transform.transform_point(&source)
-        })
-        .collect();
-
-    let world_min = Point3::new(
-        transformed
-            .iter()
-            .map(|p| p.x)
-            .fold(f64::INFINITY, f64::min),
-        transformed
-            .iter()
-            .map(|p| p.y)
-            .fold(f64::INFINITY, f64::min),
-        transformed
-            .iter()
-            .map(|p| p.z)
-            .fold(f64::INFINITY, f64::min),
-    );
-    let world_max = Point3::new(
-        transformed
-            .iter()
-            .map(|p| p.x)
-            .fold(f64::NEG_INFINITY, f64::max),
-        transformed
-            .iter()
-            .map(|p| p.y)
-            .fold(f64::NEG_INFINITY, f64::max),
-        transformed
-            .iter()
-            .map(|p| p.z)
-            .fold(f64::NEG_INFINITY, f64::max),
-    );
+    // Mapped items can carry a large f64 origin that must be folded in before
+    // the element placement, or the cutter box lands near zero.
+    let place = |local: &[f32]| {
+        placement_transform.transform_point(&Point3::new(
+            local[0] as f64 + mesh.origin[0],
+            local[1] as f64 + mesh.origin[1],
+            local[2] as f64 + mesh.origin[2],
+        ))
+    };
+    let mut world_min = Point3::new(f64::INFINITY, f64::INFINITY, f64::INFINITY);
+    let mut world_max = Point3::new(f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
+    // An empty mesh keeps its historical bounds: the placed item origin.
+    let origin = [0.0f32; 3];
+    let vertices = if mesh.is_empty() { &origin[..] } else { &mesh.positions[..] };
+    for vertex in vertices.chunks_exact(3) {
+        let point = place(vertex);
+        for axis in 0..3 {
+            world_min[axis] = world_min[axis].min(point[axis]);
+            world_max[axis] = world_max[axis].max(point[axis]);
+        }
+    }
 
     // Apply RTC offset to opening bounds so they match wall mesh coordinate system
     // Wall mesh positions have RTC subtracted during transform_mesh, so opening bounds must match
@@ -81,4 +51,53 @@ pub(crate) fn evaluate(
     );
 
     (rtc_min, rtc_max)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::evaluate;
+    use crate::{Mesh, Point3};
+    use nalgebra::{Matrix4, Vector3};
+
+    /// A 2 x 0.4 x 1 box turned 30 degrees about Z in its item frame.
+    fn turned_box(angle: f64) -> Mesh {
+        let (sin, cos) = angle.sin_cos();
+        let mut mesh = Mesh::new();
+        for corner in 0..8u32 {
+            let (x, y, z) = (
+                if corner & 1 == 0 { 0.0 } else { 2.0 },
+                if corner & 2 == 0 { 0.0 } else { 0.4 },
+                if corner & 4 == 0 { 0.0 } else { 1.0 },
+            );
+            mesh.add_vertex(Point3::new(x * cos - y * sin, x * sin + y * cos, z), Vector3::z());
+        }
+        for quad in [[0, 2, 3, 1], [4, 5, 7, 6], [0, 1, 5, 4], [2, 6, 7, 3], [0, 4, 6, 2], [1, 3, 7, 5]] {
+            mesh.add_triangle(quad[0], quad[1], quad[2]);
+            mesh.add_triangle(quad[0], quad[2], quad[3]);
+        }
+        mesh
+    }
+
+    #[test]
+    fn a_box_turned_back_by_its_placement_keeps_its_own_bounds() {
+        let angle = 30.0_f64.to_radians();
+        let mesh = turned_box(angle);
+        let back = Matrix4::new_rotation(Vector3::z() * -angle);
+        let (min, max) = evaluate(&mesh, &back, (0.0, 0.0, 0.0));
+        // Placed, the box is axis-aligned again: 2 x 0.4 x 1 at the origin.
+        // The eight corners of its item-frame box gave 2.27 x 1.87.
+        for (got, want) in [(min.x, 0.0), (min.y, 0.0), (min.z, 0.0), (max.x, 2.0), (max.y, 0.4), (max.z, 1.0)] {
+            assert!((got - want).abs() < 1.0e-6, "bounds {min:?} .. {max:?}");
+        }
+    }
+
+    #[test]
+    fn the_rtc_offset_and_the_item_origin_are_folded() {
+        let mut mesh = turned_box(0.0);
+        mesh.origin = [100.0, 200.0, 300.0];
+        let moved = Matrix4::new_translation(&Vector3::new(1.0, 2.0, 3.0));
+        let (min, max) = evaluate(&mesh, &moved, (0.5, 0.5, 0.5));
+        assert_eq!((min.x, min.y, min.z), (100.5, 201.5, 302.5));
+        assert!((max.x - 102.5).abs() < 1.0e-6 && (max.y - 201.9).abs() < 1.0e-6 && (max.z - 303.5).abs() < 1.0e-6);
+    }
 }

@@ -13,6 +13,7 @@
  */
 
 import { useState, useCallback, useMemo } from 'react';
+import { isFeatureEnabled } from '@/lib/features';
 import { Globe, MapPin, Search, ChevronRight, AlertTriangle, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { TEXT_LINK_CLASS } from '@/components/ui/text-link';
@@ -334,7 +335,9 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
   }, [modelId, setGeorefFields, mergedCRS, mergedConversion, mutations, initializeMapConversionDefaults, requestAlignmentReload]);
 
   const hasData = mergedCRS || mergedConversion;
-  const editable = enableEditing && !!modelId && canUseStandardGeoreferencing && !isReadOnlyCoordinateOperation(georef);
+  // Georeferencing is model data placed by the Placement feature; a host can switch either off (`lib/features`).
+  const editable = enableEditing && isFeatureEnabled('edit.placement') && isFeatureEnabled('edit.model')
+    && !!modelId && canUseStandardGeoreferencing && !isReadOnlyCoordinateOperation(georef);
 
   // When no georef data exists, show "Add Georeferencing" in edit mode
   if (!hasData && !georef?.hasGeoreference) {

@@ -23,6 +23,7 @@ import { assertDispatchActive, cancelledDispatch } from './cancellation.js';
 import { readTools } from './read-tools.js';
 import { measureTools } from './measure-tools.js';
 import { bsddTools } from './bsdd-tools.js';
+import { isFeatureEnabled } from '../features/index.js';
 import { costTools } from './cost-tools.js';
 import { mainViewerIdsTools } from './main-viewer-ids.js';
 import type { AgentTool, ModelHandle, ReadyModel, ToolHost, ToolNeeds } from './types.js';
@@ -47,6 +48,8 @@ const SHARED_TOOLS: Record<string, AgentTool> = {
 
 /** The tool behind each allowlisted name, and nothing else. */
 export function mainViewerTool(name: string): AgentTool | undefined {
+  // bSDD is an outside service; a host can switch those off (`lib/features`).
+  if (name in bsddTools && !isFeatureEnabled('privacy.third-party')) return undefined;
   return (MAIN_VIEWER_TOOL_ALLOWLIST as readonly string[]).includes(name) ? SHARED_TOOLS[name] : undefined;
 }
 

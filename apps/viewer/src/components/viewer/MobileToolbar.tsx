@@ -277,10 +277,11 @@ export function MobileToolbar({ placement = 'bottom-bar' }: { placement?: Mobile
           {/* Export: the registry's rows, same as the command palette. Inline
               rather than a submenu: a nested Radix submenu closes as a touch
               leaves its trigger, so its rows could not be tapped on a phone. */}
-          {exportRows.length > 0 && <DropdownMenuLabel data-mobile-export-menu className="flex items-center text-xs text-muted-foreground">
+          {exportRows.length > 0 && <>
+          <DropdownMenuLabel data-mobile-export-menu className="flex items-center text-xs text-muted-foreground">
             <Download className="h-3.5 w-3.5 mr-2" />
             {t('shellChrome.mobileToolbar.export')}
-          </DropdownMenuLabel>}
+          </DropdownMenuLabel>
           {exportRows.map((row) => (
             <DropdownMenuItem key={row.id} data-export-row={row.id}
               data-extension-exporter-id={!row.registryOwned ? row.id : undefined}
@@ -294,6 +295,7 @@ export function MobileToolbar({ placement = 'bottom-bar' }: { placement?: Mobile
           ))}
 
           <DropdownMenuSeparator />
+          </>}
 
           {/* The activity tray lives in the status bar, which phones do not show (#6925). */}
           <DropdownMenuItem data-command-id={activity.id} onClick={() => runSurfaceCommand(activity, { surface: 'mobile', openActivity: () => setActivityOpen(true) })}>

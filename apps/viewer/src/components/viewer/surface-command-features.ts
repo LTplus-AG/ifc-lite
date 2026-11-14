@@ -38,7 +38,8 @@ export const COMMAND_FEATURE: Readonly<Partial<Record<SurfaceCommandId, FeatureI
   'file:open-federation-setup': 'files.federation-setup',
 
   'model:reposition': 'edit.placement',
-  'view:move-georef': 'edit.placement',
+  // Georeferencing is written into the model, so it needs editing too.
+  'view:move-georef': ['edit.placement', 'edit.model'],
 
   'file:new-blank': 'edit.model',
   'tool:edit-mode': 'edit.model',
@@ -88,4 +89,9 @@ export function isSurfaceCommandAvailable(command: Pick<SurfaceCommandDefinition
  */
 export function anyRibbonCommandAvailable(commands: readonly SurfaceCommandId[]): boolean {
   return commands.some((id) => isSurfaceCommandAvailable(surfaceCommand(id, 'ribbon')));
+}
+
+/** The AI chat is a pane of the Script panel, so it needs both `ai.assistant` and scripting. */
+export function isAiChatAvailable(): boolean {
+  return isSurfaceCommandAvailable(surfaceCommand('panel:chat', 'palette'));
 }

@@ -18,7 +18,8 @@ import { getTour } from './registry';
 import type { TourDefinition, TourId } from './types';
 
 export function isTourAvailable(tour: TourDefinition): boolean {
-  if (!isFeatureEnabled('help.tours')) return false;
+  // Tours fall back to the sample project when no model is open (`demo-kit`).
+  if (!isFeatureEnabled('help.tours') || !isFeatureEnabled('files.samples')) return false;
   const panels = [tour.panel, ...tour.steps.map((step) => step.panel)];
   if (!panels.every((panel) => panel === undefined || isPanelAvailable(panel))) return false;
   return tour.steps.every((step) => {

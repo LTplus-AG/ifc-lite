@@ -99,6 +99,8 @@ export function ScriptPanel() {
   const extensionHost = useOptionalExtensionHost();
   const [outputCollapsed, setOutputCollapsed] = useState(false);
   const chatPanelVisible = useViewerStore((s) => s.chatPanelVisible);
+  // The chat pane and "Fix with LLM" are AI; a host can switch it off (`lib/features`).
+  const ai = isFeatureEnabled('ai.assistant');
   const setChatPanelVisible = useViewerStore((s) => s.setChatPanelVisible);
 
   // Chat panel width (px) — resizable via drag handle
@@ -260,7 +262,7 @@ export function ScriptPanel() {
           )}
 
           {/* AI Chat toggle */}
-          {isFeatureEnabled('ai.assistant') && <IconButton
+          {ai && <IconButton
             label={chatPanelVisible ? t('scriptPanel.header.hideAiChat') : t('scriptPanel.header.showAiChat')}
             variant="toggle"
             size="icon-xs"
@@ -489,7 +491,7 @@ export function ScriptPanel() {
                           {t('scriptPanel.output.sandboxHintSuffix')}
                         </div>
                       )}
-                      <div className="mt-1">
+                      {ai && <div className="mt-1">
                         <Button
                           variant="outline"
                           size="sm"
@@ -498,7 +500,7 @@ export function ScriptPanel() {
                         >
                           {t('scriptPanel.output.fixWithLlmButton')}
                         </Button>
-                      </div>
+                      </div>}
                     </div>
                   </div>
                 )}

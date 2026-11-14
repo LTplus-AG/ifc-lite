@@ -6290,32 +6290,3 @@ the actual default path. A conditional restore does not imply that another
 visible overlay stops parsing. Operation-count attribution and digest-equivalence
 tests establish this mechanism; the exclusive load scoreboard remains the
 acceptance source for end-to-end timing.
-
-## Camera-fit bounds folded as streamed meshes commit (#9948, closed)
-
-**Rejected: no gain.** The stream-end camera refit scanned every streamed vertex
-in one task (~40-66 ms of main-thread time on Holter and BWK in traced cold
-loads). #9948 folded each commit's meshes into the robust-fit accumulator as they
-arrived, so the refit only sorted and trimmed. The corpus refit was identical,
-and per-element output matched in every timed sample. The work moved, but it
-moved inside the streaming window, where Pop's main thread is already saturated
-from ~1.75 s to interactive. The total main-thread work did not shrink, so
-interactive did not move.
-
-Capped timed unit (SLOT-RULES "Capped timing"), Pop, 14 Nov 2026 03:5x-04:36
-CET, harness #10138 dcbb5ee797, one exclusive admission. Interleaved n=10 per side,
-browser-cold, CPU trace on, every sample inside its cap window, none flagged.
-Base main@65083544b0; branch 811cf0aeac (main merged). An A/A of main against
-itself ran in the same admission.
-
-| fixture | metric | base | branch | gain | own floor | same-admission A/A floor | verdict |
-|---|---|---:|---:|---:|---:|---:|---|
-| Holter | interactive ms | 3,336 | 3,344 | -0.3% | 2.4% | 2.6% | n.s. |
-| BWK | interactive ms | 3,267 | 3,255 | +0.4% | 2.9% | 3.7% | n.s. |
-| Holter | CPU total ms | 19,647 | 19,610 | +0.2% | 1.1% | | n.s. |
-| BWK | CPU total ms | 17,981 | 17,833 | +0.8% | 1.9% | | n.s. |
-
-**Lesson:** on a saturated main thread, moving work from the tail into the
-streaming window is not a saving. Only work removed from the main thread
-altogether moves interactive: for example, the pool's batch deserialization
-(#10175) and the main-thread merge and quantize (#10164).

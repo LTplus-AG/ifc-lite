@@ -1090,7 +1090,24 @@ URL, or a same-origin path such as `/ifc` behind a reverse proxy), it opens
 ```
 
 from the server alone: no IFC is requested, and there is no local fallback.
-Embedders call `loadFile(new File([], name), { kind: 'primary' }, { processedModel })`.
+A host that builds its own entry does the same without a URL, and can name the
+server at runtime instead of at build time:
+
+<!-- docs-check: skip -->
+```typescript
+import { openProcessedModel } from '@/lib/processed-model';
+
+openProcessedModel({ sha256, bytes, name }, { serverUrl: '/ifc' });
+```
+
+The call may come before the viewer mounts; the request waits for it, and a
+`?processed=` or `?model=` in the page URL is then ignored (each logged once), so the host's model wins.
+A collaboration link (`?room=`) is refused the same way, when the call comes before the viewer
+mounts: the viewer does not join the room. A call after mount does not leave a room already joined.
+`setProcessingServerUrl(url)` sets the server alone. A runtime URL replaces
+`VITE_IFC_SERVER_URL` for every server request, so in a build with
+`VITE_USE_SERVER=true` it also receives the uploads of IFC files opened from
+disk. `VITE_USE_SERVER` still decides whether such uploads happen at all.
 The hash selects a result; it is not a credential. Decide who may read a result
 where the server is served, with its token or the proxy in front of it.
 

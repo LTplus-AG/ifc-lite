@@ -37,9 +37,8 @@ import { useModelUrlAutoload } from '@/hooks/useModelUrlAutoload';
 import { useProcessedModelAutoload } from '@/hooks/useProcessedModelAutoload';
 import { useArtifactDeepLink } from '@/hooks/useArtifactDeepLink';
 import { useViewerStore } from '@/store';
-import { isCollabEnabled } from '@/lib/collab/config';
+import { joinRoomFromPageUrl } from '@/lib/collab/deep-link-join';
 import { toast } from '@/components/ui/toast';
-import { parseRoleFromToken } from '@/lib/collab/share-link';
 import { EntityContextMenu } from './EntityContextMenu';
 import { AnonymizedExportDialog } from './anonymized-export/AnonymizedExportDialog';
 import { useDuplicateShortcut } from './useDuplicateShortcut';
@@ -101,22 +100,14 @@ export function ViewerLayout() {
   useProcessedModelAutoload(); // ?processed=<sha256>: a result the processing server already holds
   useArtifactDeepLink();
 
-  // Deep-link collaboration join: a share link is `?room=…&t=…`. The recipient
-  // joins the room; with seed-into-room the model hydrates from the Y.Doc, so
-  // no `?model=` is needed. Guarded so StrictMode's double-invoke can't join twice,
-  // and wrapped so a throw can't tear down the layout (uncaught throws unmount the canvas).
+  // Deep-link collaboration join (`?room=…&t=…`). Guarded so StrictMode's double-invoke
+  // can't join twice, and wrapped so a throw can't tear down the layout (uncaught throws unmount the canvas).
   const collabJoinDoneRef = useRef(false);
   useEffect(() => {
     if (collabJoinDoneRef.current) return;
-    if (!isCollabEnabled()) return;
+    collabJoinDoneRef.current = true;
     try {
-      const params = new URLSearchParams(window.location.search);
-      const roomId = params.get('room');
-      if (!roomId) return;
-      const token = params.get('t') ?? undefined;
-      collabJoinDoneRef.current = true;
-      const role = (token && parseRoleFromToken(token)) || 'viewer';
-      void useViewerStore.getState().startCollab({ roomId, role, token });
+      joinRoomFromPageUrl(window.location.search, useViewerStore.getState().startCollab);
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('[collab] deep-link join failed:', err);

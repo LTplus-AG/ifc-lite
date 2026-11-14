@@ -7,7 +7,7 @@
 import type { IfcServerClient } from '@ifc-lite/server-client';
 
 // Module-level cache: avoids repeated failed connection attempts.
-let serverAvailabilityCache: { available: boolean; checkedAt: number } | null = null;
+let serverAvailabilityCache: { serverUrl: string; available: boolean; checkedAt: number } | null = null;
 const SERVER_CHECK_CACHE_MS = 30000; // Re-check server availability every 30 seconds
 
 /**
@@ -44,17 +44,18 @@ export async function isServerAvailable(serverUrl: string, client: IfcServerClie
   }
 
   const now = Date.now();
-  if (serverAvailabilityCache && (now - serverAvailabilityCache.checkedAt) < SERVER_CHECK_CACHE_MS) {
+  // The answer belongs to one server: a URL set at runtime is asked afresh.
+  if (serverAvailabilityCache?.serverUrl === serverUrl && (now - serverAvailabilityCache.checkedAt) < SERVER_CHECK_CACHE_MS) {
     return serverAvailabilityCache.available;
   }
 
   try {
     await client.health();
-    serverAvailabilityCache = { available: true, checkedAt: now };
+    serverAvailabilityCache = { serverUrl, available: true, checkedAt: now };
     return true;
   } catch {
     // Silent failure - don't log network errors for unavailable server
-    serverAvailabilityCache = { available: false, checkedAt: now };
+    serverAvailabilityCache = { serverUrl, available: false, checkedAt: now };
     return false;
   }
 }

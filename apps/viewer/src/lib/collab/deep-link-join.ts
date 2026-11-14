@@ -3,12 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Deep-link collaboration join: a share link is `?room=…&t=…`, and the
- * recipient joins that room. With seed-into-room the model hydrates from the
- * Y.Doc, so no `?model=` is needed. Joining loads the room's model, so the
- * link is refused once a host has asked for its own model, like `?processed=`
- * and `?model=` (`pageUrlModelAllowed`): no join, and the viewer stays on the
- * host's model.
+ * Join the room of a `?room=…&t=…` share link (the model hydrates from the
+ * room), unless `pageUrlModelAllowed('room')` refuses it for a host's model.
  */
 
 import type { StartCollabOptions } from '@/store/slices/collabSlice';

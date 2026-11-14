@@ -2,11 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * A share link (`?room=…&t=…`) joins its room, unless a host has asked for its
- * own model: joining would load the room's model over the host's, so the room
- * is refused like `?processed=` and `?model=`, and logged once.
- */
+/** `?room=` joins its room, unless a host asked for its own model (then refused, logged once). */
 
 import { afterEach, beforeEach, it } from 'node:test';
 import assert from 'node:assert/strict';

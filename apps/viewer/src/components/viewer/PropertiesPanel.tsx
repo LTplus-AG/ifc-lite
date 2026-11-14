@@ -143,6 +143,8 @@ export function PropertiesPanel() {
 
   const multiSelectionCount = useViewerStore((s) => s.selectedEntitiesSet.size);
   const [find, setFind] = useState('');
+  // The bSDD tab queries buildingSMART's service, a third party (`lib/features`).
+  const bsdd = isFeatureEnabled('privacy.third-party');
 
   // Data editing is available in place, independent of the Model workspace (#9296).
   const collabRole = useViewerStore((s) => s.collabRole);
@@ -1278,7 +1280,7 @@ export function PropertiesPanel() {
         </output>
       )}
       <Tabs
-        value={propertiesActiveTab === 'bsdd' && !isFeatureEnabled('privacy.third-party') ? 'properties' : propertiesActiveTab}
+        value={propertiesActiveTab === 'bsdd' && !bsdd ? 'properties' : propertiesActiveTab}
         onValueChange={(v) => setPropertiesActiveTab(v as 'properties' | 'quantities' | 'bsdd' | 'raw-step')}
         className="flex-1 flex flex-col overflow-hidden"
       >
@@ -1299,7 +1301,7 @@ export function PropertiesPanel() {
             <Calculator className="h-3 w-3 shrink-0 panel-compact-icon" />
             <span className="panel-compact-text">{t('properties.panel.tab.quantities')}</span>
           </TabsTrigger>
-          {isFeatureEnabled('privacy.third-party') && <TabsTrigger
+          {bsdd && <TabsTrigger
             value="bsdd"
             title={t('properties.panel.tab.bsdd')}
             className="properties-tab-trigger flex-1 min-w-0 text-xs"
@@ -1535,7 +1537,7 @@ export function PropertiesPanel() {
             )}
           </TabsContent>
           <TabsContent value="bsdd" className="m-0 p-3 overflow-hidden">
-            {selectedEntity && isFeatureEnabled('privacy.third-party') && (
+            {selectedEntity && (
               <BsddCard
                 entityType={entityType}
                 modelId={selectedEntity.modelId}

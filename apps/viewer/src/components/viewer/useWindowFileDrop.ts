@@ -47,7 +47,7 @@ export function useWindowFileDrop(onDrop: (dataTransfer: DataTransfer) => void, 
   // A host can switch local files off (`lib/features`): the window then takes
   // a dropped file only to stop the browser navigating to it, and opens nothing.
   const local = isFeatureEnabled('files.local');
-  accept = accept && local;
+  const canAccept = accept && local;
 
   useEffect(() => {
     let state = initialDragOverlayState;
@@ -60,7 +60,7 @@ export function useWindowFileDrop(onDrop: (dataTransfer: DataTransfer) => void, 
     let inPage = false;
     const sync = () => setOverlay(state.dragging && !claimed);
     const step = (event: DragOverlayEvent) => {
-      state = reduceDragOverlay(state, event, accept);
+      state = reduceDragOverlay(state, event, canAccept);
       if (!state.dragging) claimed = false;
       sync();
     };
@@ -84,7 +84,7 @@ export function useWindowFileDrop(onDrop: (dataTransfer: DataTransfer) => void, 
       claimed = e.defaultPrevented;
       if (!claimed) {
         e.preventDefault(); // makes the window a drop target, so no navigation
-        if (e.dataTransfer) e.dataTransfer.dropEffect = accept ? 'copy' : 'none';
+        if (e.dataTransfer) e.dataTransfer.dropEffect = canAccept ? 'copy' : 'none';
       }
       sync();
     };
@@ -121,7 +121,7 @@ export function useWindowFileDrop(onDrop: (dataTransfer: DataTransfer) => void, 
       for (const [type, fn, capture] of listeners) window.removeEventListener(type, fn as EventListener, capture);
       setOverlay(false);
     };
-  }, [accept, local, onDropRef]);
+  }, [canAccept, local, onDropRef]);
 
   return overlay;
 }

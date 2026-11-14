@@ -25,7 +25,7 @@
  */
 
 import { getViewerStoreApi, type ViewerState } from '@/store';
-import { isFeatureEnabled } from '@/lib/features';
+import { isTourAvailable } from './tour-availability';
 import { resolveAnchor } from './anchor-resolver';
 import { loadDemoProject, waitForModelSettled } from './demo-kit';
 import { getTour } from './registry';
@@ -75,9 +75,9 @@ function prereqsMet(def: TourDefinition, s: ViewerState): boolean {
 export function startTour(id: TourId, source: TourSource): void {
   const store = getViewerStoreApi();
   if (run || useTourStore.getState().status !== 'idle') return;
-  if (store.getState().isMobile || !isFeatureEnabled('help.tours')) return;
+  if (store.getState().isMobile) return;
   const def = getTour(id);
-  if (!def) return;
+  if (!def || !isTourAvailable(def)) return;
   if (!prereqsMet(def, store.getState())) {
     prereqPending = { def, source };
     patchTourState({ status: 'prereq', tourId: id, source });

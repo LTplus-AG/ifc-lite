@@ -19,7 +19,7 @@ import { useCallback, useState } from 'react';
 import { Save } from 'lucide-react';
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu';
 import { useViewerStore } from '@/store';
-import { mutationDenialKey, type MutationDenialReason } from '@/store/mutation-permission';
+import { isMutationDenialReason, mutationDenialKey, type MutationDenialReason } from '@/store/mutation-permission';
 import { useMutationDenialReason } from '@/hooks/useMutationDenialReason';
 import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
@@ -71,7 +71,7 @@ function useSaveDrawingMarkupHandler() {
       );
       if (outcome.refusal) {
         const refusal = outcome.refusal;
-        toast.error(refusal === 'switched-off' || refusal === 'edit-mode' || refusal === 'collab-role' || refusal === 'model-unavailable' || refusal === 'workflow-running'
+        toast.error(isMutationDenialReason(refusal)
           ? t(mutationDenialKey(refusal)) : refusalText(refusal));
         return;
       }

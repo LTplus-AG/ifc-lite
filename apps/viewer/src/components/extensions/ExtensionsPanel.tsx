@@ -18,7 +18,8 @@
  * separate components landing later.
  */
 
-import { isFeatureEnabled } from '@/lib/features';
+import { isSurfaceCommandAvailable } from '@/components/viewer/surface-command-features';
+import { surfaceCommand } from '@/components/viewer/surface-command-registry';
 import { useBundleReview } from './useBundleReview';
 import { useEffect, useRef, useState } from 'react';
 import { Beaker, FilePlus, FileText, GitFork, Lightbulb, Puzzle, Sparkles, Trash2, Upload, Wrench, X } from 'lucide-react';
@@ -66,8 +67,8 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
   const { pending, setPending, handleFiles, handleApprove, busy } = useBundleReview(host);
   const [dragOver, setDragOver] = useState(false);
   const [view, setView] = useState<'installed' | 'ideas' | 'audit' | 'repair'>('installed');
-  // Ideas and chat authoring are AI; a host can switch AI off (`lib/features`).
-  const ai = isFeatureEnabled('ai.assistant');
+  // Ideas and chat authoring land in the AI chat; a host can switch it off (`lib/features`).
+  const ai = isSurfaceCommandAvailable(surfaceCommand('panel:chat', 'palette'));
   /** Deep-link entry point (Command Palette "Author an extension…"). */
   const extensionsRequestedView = useViewerStore((s) => s.extensionsRequestedView);
   const setExtensionsRequestedView = useViewerStore((s) => s.setExtensionsRequestedView);

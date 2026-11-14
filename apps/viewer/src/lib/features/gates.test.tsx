@@ -36,7 +36,7 @@ import { isCollabEnabled } from '@/lib/collab/config';
 import { ViewportWelcomeCard } from '@/components/viewer/ViewportWelcomeCard';
 import { WelcomeFooterChips } from '@/components/viewer/WelcomeFooterChips';
 import { buildExportCommands } from '@/components/viewer/commandPaletteExports';
-import { RIBBON_TABS, availableRibbonTabs } from '@/components/viewer/ribbon/ribbon-tabs';
+import { availableRibbonTabs } from '@/components/viewer/ribbon/ribbon-tabs';
 import { FEATURE_CATALOGUE, type FeatureId } from './catalogue';
 import { linkIconFont } from './icon-font';
 import { featuresAskedForTest, resetFeaturesForTest } from './index';
@@ -74,7 +74,6 @@ const GATE_TABLES: readonly FeatureId[] = [
   ...named(KEY_COMMAND_FEATURE),
   ...named(KEY_CONTEXT_FEATURE),
   ...named(TOOL_FEATURE),
-  ...RIBBON_TABS.flatMap((tab) => tab.features ?? []),
 ];
 
 function welcomeCard() {

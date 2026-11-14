@@ -20,7 +20,7 @@ import { surfaceCommand, type SurfaceCommandId } from './surface-command-registr
 
 /** A command with several features needs all of them on. */
 export const COMMAND_FEATURE: Readonly<Partial<Record<SurfaceCommandId, FeatureId | readonly FeatureId[]>>> = {
-  // `tool:<name>` rows come from TOOL_FEATURE, the one tool table.
+  // `tool:<name>` rows, the authoring tools included, come from `lib/features/tools`.
   ...toolFeatureRows('tool:'),
 
   'view:lighting': 'view.environment',
@@ -42,48 +42,6 @@ export const COMMAND_FEATURE: Readonly<Partial<Record<SurfaceCommandId, FeatureI
 
   'file:new-blank': 'edit.model',
   'tool:edit-mode': 'edit.model',
-  'tool:wall': 'edit.model',
-  'tool:slab': 'edit.model',
-  'tool:roof': 'edit.model',
-  'tool:column': 'edit.model',
-  'tool:beam': 'edit.model',
-  'tool:room': 'edit.model',
-  'tool:space-envelope': 'edit.model',
-  'tool:curtain-wall': 'edit.model',
-  'tool:grid': 'edit.model',
-  'model:derive-structural': 'edit.model',
-  'tool:opening': 'edit.model',
-  'tool:door': 'edit.model',
-  'tool:window': 'edit.model',
-  'tool:split': 'edit.model',
-  'tool:stair': 'edit.model',
-  'tool:railing': 'edit.model',
-  'tool:split-multi': 'edit.model',
-  'tool:push-pull': 'edit.model',
-  'tool:align': 'edit.model',
-  'tool:trim-extend': 'edit.model',
-  'tool:array': 'edit.model',
-  'tool:move': 'edit.model',
-  'tool:rotate': 'edit.model',
-  'model:copy': 'edit.model',
-  'model:paste': 'edit.model',
-  'model:paste-in-place': 'edit.model',
-  'model:storey-up': 'edit.model',
-  'model:storey-down': 'edit.model',
-  'model:exit': 'edit.model',
-  'model:copy-to-storeys': 'edit.model',
-  'model:plan': 'edit.model',
-  'author:undo': 'edit.model',
-  'author:redo': 'edit.model',
-  'author:bulk-properties': 'edit.model',
-  'author:import-data': 'edit.model',
-  'context:duplicate': 'edit.model',
-  'context:duplicate-x-plus': 'edit.model',
-  'context:duplicate-x-minus': 'edit.model',
-  'context:duplicate-y-plus': 'edit.model',
-  'context:duplicate-y-minus': 'edit.model',
-  'context:duplicate-z-plus': 'edit.model',
-  'context:duplicate-z-minus': 'edit.model',
   'context:delete': 'edit.model',
 
   // Authoring an extension is done by the AI in chat.
@@ -101,11 +59,14 @@ export const COMMAND_FEATURE: Readonly<Partial<Record<SurfaceCommandId, FeatureI
   'learn:hub': 'help.tours',
 };
 
-/** Families of generated command ids (`measure:<mode>`, `section-add:<kind>`) belong to one feature. */
+/** Families of command ids (`measure:<mode>`, every `model:` command) belong to one feature; an exact row above wins. */
 export const COMMAND_PREFIX_FEATURE: Readonly<Record<string, FeatureId>> = {
   'measure:': 'tools.measure',
   'measure-panel:': 'tools.measure',
   'section-add:': 'tools.section',
+  'model:': 'edit.model',
+  'author:': 'edit.model',
+  'context:duplicate': 'edit.model',
 };
 
 function commandFeatures(id: string): readonly FeatureId[] {

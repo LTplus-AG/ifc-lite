@@ -101,7 +101,6 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
         ))}
       </RibbonGroup>
 
-      {/* A host can switch export off (`lib/features`). */}
       {isFeatureEnabled('export.files') && (
         <>
           <RibbonGroupDivider />

@@ -10,7 +10,12 @@ import { getModelForRef } from '../sdk/adapters/model-compat.js';
 type MutationPermissionState = Pick<ViewerState, 'editEnabled' | 'canCollabEdit' | 'models' | 'ifcDataStore'>;
 
 /** `switched-off`: the deploying host switched editing off (`edit.model`, see `lib/features`). */
-export type MutationDenialReason = 'switched-off' | 'edit-mode' | 'collab-role' | 'model-unavailable' | 'workflow-running';
+const MUTATION_DENIAL_REASONS = ['switched-off', 'edit-mode', 'collab-role', 'model-unavailable', 'workflow-running'] as const;
+export type MutationDenialReason = typeof MUTATION_DENIAL_REASONS[number];
+
+export function isMutationDenialReason(value: string): value is MutationDenialReason {
+  return (MUTATION_DENIAL_REASONS as readonly string[]).includes(value);
+}
 
 export function mutationDenialKey(reason: MutationDenialReason) {
   switch (reason) {

@@ -21,6 +21,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useViewerStore } from '@/store';
+import { isFeatureEnabled } from '@/lib/features';
 import { useChangedModels } from '@/hooks/useUnexportedChanges';
 import { useReplaceableTimeout } from '@/hooks/useReplaceableTimeout';
 import { useTranslation } from '@/i18n';
@@ -325,6 +326,9 @@ export function ExportChangesButton({ surface, className, trigger }: ExportChang
     setReviewOpen(false);
     void handleExport(freshGroups);
   }, [groups, handleExport]);
+
+  // A host can switch export off (`lib/features`); every surface mounting this goes with it.
+  if (!isFeatureEnabled('export.files')) return null;
 
   const review = (
     <ExportChangesReviewDialog

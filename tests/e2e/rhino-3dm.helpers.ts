@@ -66,7 +66,7 @@ export interface ModelSnapshot {
   triangles: number;
   /** How many boxes came from `instancedGeometryAabbs` rather than from `meshes`. */
   instancedBoxes: number;
-  /** World AABB per IFC GlobalId, unioned over every mesh that entity drew. */
+  /** AABB per IFC GlobalId in the render frame the model draws in, unioned over every mesh that entity drew. */
   boxes: Record<string, WorldBox>;
   /** The class each boxed GlobalId carries in this model's entity table. */
   classes: Record<string, string>;
@@ -151,9 +151,17 @@ function readModels(): ModelSnapshot[] {
       }
     }
     // An entity whose whole mesh set went to the GPU-instanced shard is absent
-    // from `meshes` and carries its world box here instead (`MeshData.origin`
-    // and the RTC offset already folded in). Without these, FZK's 42 instanced
-    // balustrade members would read as geometry the IFC does not have.
+    // from `meshes` and carries its box here instead. Without these, FZK's 42
+    // instanced balustrade members would read as geometry the IFC does not
+    // have. These boxes have the render-frame offset folded back in (absolute
+    // Y-up world), while the mesh boxes above are in the render frame the model
+    // draws in, so subtract the model's own offset (`totalYupOffset`, inlined:
+    // this function cannot import) to put both in the frame it draws in. Zero
+    // for a model at the origin; a far model's RTC anchor otherwise.
+    const info = model.geometryResult?.coordinateInfo;
+    const shift = info?.originShift ?? { x: 0, y: 0, z: 0 };
+    const rtc = info?.wasmRtcOffset ?? { x: 0, y: 0, z: 0 };
+    const drawOffset = [shift.x + rtc.x, shift.y + rtc.z, shift.z - rtc.y];
     let instancedBoxes = 0;
     for (const [globalExpressId, aabb] of model.geometryResult?.instancedGeometryAabbs ?? []) {
       if (![...aabb.min, ...aabb.max].every((value) => Number.isFinite(value))) continue;
@@ -164,8 +172,8 @@ function readModels(): ModelSnapshot[] {
       // WHOLE mesh set went to the instanced shard, but a partly instanced
       // entity would otherwise come back with only the half that drew meshes.
       for (let axis = 0; axis < 3; axis++) {
-        box[axis] = Math.min(box[axis], aabb.min[axis]);
-        box[axis + 3] = Math.max(box[axis + 3], aabb.max[axis]);
+        box[axis] = Math.min(box[axis], aabb.min[axis] - drawOffset[axis]);
+        box[axis + 3] = Math.max(box[axis + 3], aabb.max[axis] - drawOffset[axis]);
       }
     }
     // A box nothing ever widened is not a comparison, it is an absence: both

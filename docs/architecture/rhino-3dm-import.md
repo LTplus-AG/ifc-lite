@@ -1,11 +1,11 @@
 # Rhino .3dm import, level 1: read-only
 
 Status: **partly implemented**. The reader, `readRhino3dm` in
-`@ifc-lite/rhino3dm` (delivery step 1), and the viewer load (step 2: format
+`@ifc-lite/rhino3dm` (delivery step 1), the viewer load (step 2: format
 detection, the import worker and its client, the adapter and the `loadFile`
-branch) are implemented with their tests. The tree and hidden state (step 3)
-and the e2e overlay test (step 4) are not, and the exporter's spatial layer
-stamps (step 0) are a separate change.
+branch) and the tree, hidden state and model metadata (step 3) are implemented
+with their tests. The e2e overlay test (step 4) is not, and the exporter's
+spatial layer stamps (step 0) shipped separately.
 Decisions D1 to D8 are made. This page is the contract for opening a Rhino
 `.3dm` in the viewer, or adding one to a federation, as a read-only model:
 meshes, layers, colours, Attribute User Text and, for files ifc-lite exported,
@@ -727,11 +727,52 @@ transparency rule [test].
   file]. The unit of the stamp is the exporter's to define [unproven until the
   exporter change lands].
   The adapter loads hidden entities and applies the viewer's normal hide state
-  after `finalizeModel`, so the user can show them. Our `IfcSpace` layers are
+  after `finalizeModel` (`ingest/initialHiddenState.ts`, through
+  `toGlobalId`), so the user can show them from the tree. A layer that is off
+  is hidden as a row too, so it reads as off and one click shows it again.
+  Our `IfcSpace` layers are
   hidden [ran], which matches the viewer's own space default.
-- **Tree:** see decision D3. Recommended: for `provenance: ifc-lite` files
-  with spatial layer stamps, a real `SpatialHierarchy`, so the model joins the
-  unified storey list; otherwise a layer tree under the model header.
+- **Tree:** decision D3, in `apps/viewer/src/hooks/ingest/rhinoLayerTree.ts`.
+  The containers are rows of the entity table and the containment is edges of
+  the relationship graph (`IfcRelAggregates` between containers,
+  `IfcRelContainedInSpatialStructure` to an object), and the hierarchy itself
+  is the shared `SpatialHierarchyBuilder.buildFromCache`'s, off those two
+  tables: the same source-less path the viewer rebuilds a cached IFC model's
+  hierarchy from, so a `.3dm` tree cannot drift from the IFC one. It reads
+  elevations from STEP bytes a `.3dm` store has none of, so the stamped
+  elevations are written into the built hierarchy afterwards.
+  - **Stamped** (any layer carries a placeable stamp, whatever the
+    provenance): the stamped layers are the spatial structure they name, with
+    the GlobalId the source IFC gave them, and every other layer is
+    transparent: an object rolls up to the nearest stamped layer above it. An
+    ifc-lite export therefore comes back as project / site / building / storey
+    rather than as its class sublayers, and the model joins the unified storey
+    list. A spatial element that has geometry sits on a class sublayer of its
+    own layer, so the layer stamp and that object are the same IFC entity
+    (FZK's site carries the terrain): the object's own row is the node, and
+    nothing appears twice. The object stands for the layer only when its class
+    is the stamped one too; otherwise the node stays and the object keeps the
+    identity, because a stamp another class claims would leave the file
+    without the node it names.
+  - **Layers** (a layer outside every stamped structure, which is every layer
+    of a file with no stamps): the layer is an `IfcSpatialZone` under its
+    parent, and an object sits under its own layer. A layer somebody added to
+    an export keeps its own row this way instead of its objects rolling up to
+    the project. A layer that holds no object anywhere under it gets no row.
+    `IfcSpatialZone` is IFC's class for a named decomposition that is not a
+    storey, which is what a Rhino layer is, and it keeps the layers out of the
+    storey tools, which a file with no stamps has no storeys for.
+  - Exactly one `IfcProject` node exists: a stamped `IfcProject` layer with no
+    stamped layer above it, else a root standing for the file and labelled
+    with the file name, since a `.3dm` states no project name. A second
+    `IfcProject` stamp, a stamp whose identity another container already took,
+    and a stamp naming a spatial class the tree cannot place (the reader
+    accepts a wider set, `IfcExternalSpatialElement` among it) are transparent.
+  - What the file says about itself (application, provenance, unit system,
+    archive version, frame, layer count, earth anchor, skip counts, and the
+    document user text under the keys it is written with) rides the root
+    entity's property sets, which is where the model metadata panel shows an
+    `IfcProject`'s own data.
 - Locked layers and objects are ignored: the viewer is read-only.
 
 ### Properties
@@ -1014,9 +1055,23 @@ Level 1 has no dialog. The defaults live in the reader.
   answer, driven with real `RhinoImport` data: a crafted `.3dm` whose
   coordinate and user text are known exactly, and the Rhino 8 authored
   fixtures (`apps/viewer/src/hooks/ingest/rhinoViewerModel.test.ts`).
+- The tree and the hidden state, on real `RhinoImport` data
+  (`rhinoViewerModel.test.ts`): the layer tree of a Rhino-authored file (nested
+  layers, objects under their own layer, no storeys), the hidden object, the
+  layer that is off and its objects starting hidden, and the stamped tree with
+  its storey elevation, `byStorey` membership and `getStoreyByElevation`.
+- Visibility per part (`rhinoViewerModel.test.ts`): a hidden mesh and a hidden
+  point cloud merged into a shown entity are left out of the payload, and a
+  wholly hidden entity keeps its triangle and starts hidden.
+- The spatial tree of an ifc-lite export against the IFC it came from
+  (`rhinoViewerModel.export.test.ts`): FZK through the Rust scene builder,
+  `writeRhino3dm` and the reader, compared with the same IFC through
+  `IfcParser`: the project identity, the site and building, the storey names
+  and elevations, and the storey each of the 83 drawn elements sits on.
+- The whole `loadFile` route hides what Rhino hides, through the loaded model's
+  own express id range (`useIfcLoader.rhino3dm.test.tsx`).
 - Selecting a mesh resolves through `resolveEntityRef` at `models.size` 1 and N
-  (AGENTS.md). **Not written:** it belongs with the tree and hidden state
-  (step 3), which is what a user selects through.
+  (AGENTS.md). **Not written:** the federated case is the e2e's (step 4).
 - The worker client uses an in-process fake worker, as
   `rhino-export-client.test.ts` does
   (`apps/viewer/src/lib/import/rhino-import-client.test.ts`): abort, a reader
@@ -1064,7 +1119,14 @@ One issue, stacked PRs, each under about 1,500 lines:
    drawable objects are curves is refused with the reader's
    `no-renderable-geometry` code.
 3. **Tree and visibility:** the layer or spatial tree, hidden state, and model
-   metadata.
+   metadata. **Done.** Deviations: the tree follows the stamps whatever the
+   file's provenance (above); an `IfcSpace` of an ifc-lite export comes back as
+   a node under its storey, but the elements the IFC contained in that space
+   come back on the storey, because the export puts them on the storey's class
+   layer and the space is not a layer; and a container row's eye toggle acts on
+   the objects it holds directly, as every other container row in the viewer
+   does, so turning off a parent layer does not turn off a child layer's
+   objects.
 4. **E2E and acceptance:** the overlay spec, screenshots, and a guide section.
 
 ## Open decisions
@@ -1073,7 +1135,7 @@ One issue, stacked PRs, each under about 1,500 lines:
 |---|---|---|---|
 | D1 | `IFC::WorldFromModel` under `world` | **Resolved:** the exporter now writes it only under `local` (`space.rs::world_from_model`, asserted in `rhino_scene.rs`); the reader still gates on `IFC::Coordinates` for older files. | Done before the export shipped. |
 | D2 | IFC class for Rhino objects without `IFC::Class` | **Decided (maintainer, 2026-11-08):** `IfcBuildingElementProxy`, and a Rhino user can choose the class by setting the `IFC::Class` user text (Attribute User Text) on the object, which the import honours when it names a valid IFC product class. | Document the key in the user guide; invalid names fall back to the proxy with a warning. |
-| D3 | Tree for a `.3dm` | **Decided:** layer tree for any `.3dm`, plus a real `SpatialHierarchy` for ifc-lite files whose spatial layers carry `IFC::GlobalId` / `IFC::Class`. | Needs the exporter change in PR 0 (layer stamps). |
+| D3 | Tree for a `.3dm` | **Decided, and shipped:** layer tree for any `.3dm`, plus a real `SpatialHierarchy` for files whose spatial layers carry `IFC::GlobalId` / `IFC::Class`. Both are one `SpatialHierarchy` off the store's own tables, so the hierarchy panel reads a `.3dm` as it reads an IFC. | The stamps are honoured whatever the provenance: the reader validates them, and D2 already lets a Rhino user choose a class by user text, so this is one rule rather than two. |
 | D4 | Blocks | **Decided: GPU instancing.** | The reader returns `definitions` and `instances`, and bakes on request. `MeshData` has no transform field today, so the viewer needs an instance path through the federated mesh pipeline; measure against baking on a large-block file. |
 | D5 | Earth anchor alignment | **Decided: align through the projection used by `reprojected` alignment.** | Treat Rhino's unset default anchor (0/0) as absent; ifc-lite's own exports keep aligning exactly through `IFC::WorldFromModel`. |
 | D6 | Point clouds, curves, text dots | **Decided: render them.** | The reader returns all three as data. Point clouds go through the payload's `pointClouds` (as IFCX does); curves and text dots need a line/label primitive for federated models, which is viewer work. |

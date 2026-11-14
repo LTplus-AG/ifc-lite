@@ -85,11 +85,14 @@ describe('a loaded .3dm store, and the gates that read it', () => {
   it('enumerates its entities under the IFC4 label', async () => {
     const { dataStore } = await rhinoPayload();
 
+    // The two objects, then the containers the tree stands on: the root
+    // standing for the file and its one layer (see rhinoLayerTree.ts).
     const rows = [...iterateEffectiveEntities(dataStore, null)];
-    assert.deepEqual(rows.map((row) => row.expressId), [1, 2]);
-    assert.deepEqual(rows.map((row) => row.type), ['IFCWALL', 'IFCBUILDINGELEMENTPROXY']);
+    assert.deepEqual(rows.map((row) => row.expressId), [1, 2, 3, 4]);
+    assert.deepEqual(rows.map((row) => row.type),
+      ['IFCWALL', 'IFCBUILDINGELEMENTPROXY', 'IFCPROJECT', 'IFCSPATIALZONE']);
     assert.deepEqual([...countEffectiveEntityTypes(dataStore, null)].sort(),
-      [['IFCBUILDINGELEMENTPROXY', 1], ['IFCWALL', 1]]);
+      [['IFCBUILDINGELEMENTPROXY', 1], ['IFCPROJECT', 1], ['IFCSPATIALZONE', 1], ['IFCWALL', 1]]);
   });
 
   it('is refused by the STEP export paths, single and merged', async () => {

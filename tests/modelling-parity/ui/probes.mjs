@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { task } from './lib/driver.mjs';
 import { PLAN_CAM } from './lib/probe-helpers.mjs';
 export { PROBES } from './rows/index.mjs';
 /** Run one probe in a fresh page. Returns a contract result plus the export text when the probe has one. */
@@ -12,7 +13,9 @@ export async function runProbe(probe, openFresh, base, { saveArtifact } = {}) {
   let error = null;
   try {
     const { startBlank } = await import('./lib/model-ui.mjs');
-    await startBlank(s, { count: false });
+    const setup = await task(s, 'setup: Start blank', () => startBlank(s));
+    setup.setup = true;
+    if (!setup.ok) throw new Error(`Start blank failed: ${setup.error}`);
     await s.harness.aim(PLAN_CAM.pos, PLAN_CAM.target);
     out = await probe.run(s);
   } catch (e) {
@@ -21,6 +24,7 @@ export async function runProbe(probe, openFresh, base, { saveArtifact } = {}) {
   } finally {
     await s.close();
   }
+  if (s.completedTasks?.length) out.tasks = [...new Set([...s.completedTasks, ...out.tasks])];
   const wall = Date.now() - t0;
   const counted = out.tasks.filter((t) => !t.setup);
   const setup = out.tasks.filter((t) => t.setup);

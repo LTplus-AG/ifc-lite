@@ -19,7 +19,7 @@ import ctypes, json, os, signal, struct, sys, threading, time
 
 PERIOD_S = float(os.environ.get('LOAD_SCOREBOARD_INSTR_PERIOD_MS', '10')) / 1000
 SYS_PERF_EVENT_OPEN = {'x86_64': 298, 'aarch64': 241}.get(os.uname().machine)
-PMU_ROOT = '/sys/bus/event_source/devices'
+PMU_ROOT = os.environ.get('LOAD_SCOREBOARD_INSTR_PMU_ROOT', '/sys/bus/event_source/devices')  # override for tests
 
 
 class Attr(ctypes.Structure):
@@ -33,26 +33,41 @@ DISABLED, INHERIT, EXCLUDE_KERNEL, EXCLUDE_HV, ENABLE_ON_EXEC = 1 << 0, 1 << 1, 
 
 
 def pmus():
-    """[(name, type, config)] for instructions on every core PMU (hybrid) or the generic hardware event."""
+    """([(name, type, config)], error) for instructions on EVERY core-type PMU the host has.
+
+    Hybrid Intel exposes cpu_core and cpu_atom; a non-hybrid host exposes `cpu` (generic hardware event). A core PMU
+    that exists but whose type or `instructions` event cannot be read or parsed makes the whole count unavailable: a
+    P-core-only count must never pass as complete (review #10138).
+    """
+    try:
+        names = sorted(os.listdir(PMU_ROOT))
+    except OSError as err:
+        return [], f'cannot list {PMU_ROOT}: {err}'
+    hybrid = [n for n in names if n in ('cpu_core', 'cpu_atom')]
+    if not hybrid:
+        return ([('cpu', 0, 1)], None) if 'cpu' in names else ([], f'no core PMU under {PMU_ROOT}')  # PERF_TYPE_HARDWARE, HW_INSTRUCTIONS
     out = []
-    for name in ('cpu_core', 'cpu_atom'):
+    for name in hybrid:
         try:
             typ = int(open(f'{PMU_ROOT}/{name}/type').read())
             ev = open(f'{PMU_ROOT}/{name}/events/instructions').read().strip()
             fields = dict(kv.split('=') for kv in ev.split(','))
-            config = int(fields.get('event', '0'), 16) | (int(fields.get('umask', '0'), 16) << 8)
-            out.append((name, typ, config))
-        except (OSError, ValueError):
-            pass
-    return out or [('cpu', 0, 1)]  # PERF_TYPE_HARDWARE, PERF_COUNT_HW_INSTRUCTIONS
+            config = int(fields['event'], 16) | (int(fields.get('umask', '0'), 16) << 8)
+        except (OSError, ValueError, KeyError) as err:
+            return [], f'{name}: instructions event cannot be resolved ({type(err).__name__}: {err}); counting all-or-nothing'
+        out.append((name, typ, config))
+    return out, None
 
 
 def open_counters(pid):
     if SYS_PERF_EVENT_OPEN is None or not os.path.isdir(PMU_ROOT):
         return {}, 'perf_event_open unavailable on this platform'
+    found, why = pmus()
+    if why:
+        return {}, why
     libc = ctypes.CDLL(None, use_errno=True)
     fds, errors = {}, []
-    for name, typ, config in pmus():
+    for name, typ, config in found:
         a = Attr(type=typ, size=ctypes.sizeof(Attr) if ctypes.sizeof(Attr) <= 128 else 128, config=config,
                  read_format=1 | 2, flags=DISABLED | INHERIT | EXCLUDE_KERNEL | EXCLUDE_HV | ENABLE_ON_EXEC)
         fd = libc.syscall(SYS_PERF_EVENT_OPEN, ctypes.byref(a), pid, -1, -1, 0)
@@ -106,8 +121,9 @@ def main():
             for name, fd in fds.items():
                 try:
                     counts[name] = struct.unpack('QQQ', os.read(fd, 24))[0]
-                except OSError:
-                    pass
+                except (OSError, struct.error):
+                    counts = None  # a sample missing a PMU would read as "no change" there: write none (review #10138)
+                    break
             if out and counts:
                 out.write(json.dumps({'t': round(time.time() * 1000, 2), 'c': counts, 'readUs': round((time.perf_counter() - r0) * 1e6)}) + '\n')
             done.wait(PERIOD_S)
@@ -125,9 +141,12 @@ def main():
     if fds:
         th.join()
         # Final totals after Chrome and all its descendants exited (their counts are folded into these events).
-        counts = {name: struct.unpack('QQQ', os.read(fd, 24))[0] for name, fd in fds.items()}
-        if out:
-            out.write(json.dumps({'t': round(time.time() * 1000, 2), 'c': counts, 'final': True}) + '\n')
+        try:
+            counts = {name: struct.unpack('QQQ', os.read(fd, 24))[0] for name, fd in fds.items()}
+            if out:
+                out.write(json.dumps({'t': round(time.time() * 1000, 2), 'c': counts, 'final': True}) + '\n')
+        except (OSError, struct.error):
+            pass  # the final totals are informational; Chrome's exit status is still returned
     if out:
         out.close()
     return os.waitstatus_to_exitcode(status) if hasattr(os, 'waitstatus_to_exitcode') else (status >> 8)

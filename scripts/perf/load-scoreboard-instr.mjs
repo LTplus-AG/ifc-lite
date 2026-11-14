@@ -29,6 +29,9 @@ export function parseInstrSamples(text) {
     if (Number.isFinite(r.t) && r.c && !r.final) rows.push(r);
   }
   if (rows.length < 2) return { unavailable: lines.length ? 'fewer than two counter samples' : 'no counter output (wrapper did not run)' };
+  // Every sample must carry the same PMUs: a missing one would read as "no change" there (review #10138).
+  const keys = (r) => Object.keys(r.c).sort().join(',');
+  if (rows.some((r) => keys(r) !== keys(rows[0]) || Object.values(r.c).some((v) => !Number.isFinite(v)))) return { unavailable: 'counter samples with differing or non-numeric PMU sets' };
   rows.sort((a, b) => a.t - b.t);
   return { samples: rows };
 }

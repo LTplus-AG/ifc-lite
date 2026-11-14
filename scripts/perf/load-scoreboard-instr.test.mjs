@@ -8,7 +8,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { INSTR_WRAPPER, instructionsIn, parseInstrSamples } from './load-scoreboard-instr.mjs';
@@ -64,4 +64,26 @@ test('an unavailable counter (e.g. macOS) is carried on every lane and shown in 
   const two = laneInstructions({ a: {}, b: {} }, { parsed: p, windows: [{ lane: 'a', window: [1005, 1025] }] });
   assert.equal(two.a.instructions.total, 525);
   assert.match(two.b.instructions.unavailable, /no measured window/);
+});
+
+test('a core PMU that exists but whose instructions event cannot be resolved makes the whole count unavailable', { skip: process.platform !== 'linux' }, () => {
+  // Fake PMU tree: cpu_core complete, cpu_atom present without events/instructions.
+  const root = mkdtempSync(join(tmpdir(), 'pmu-'));
+  mkdirSync(join(root, 'cpu_core', 'events'), { recursive: true });
+  writeFileSync(join(root, 'cpu_core', 'type'), '4\n');
+  writeFileSync(join(root, 'cpu_core', 'events', 'instructions'), 'event=0xc0\n');
+  mkdirSync(join(root, 'cpu_atom'), { recursive: true });
+  writeFileSync(join(root, 'cpu_atom', 'type'), '10\n');
+  const out = join(root, 'i.ndjson');
+  const python = spawnSync('sh', ['-c', 'command -v python3'], { encoding: 'utf8' }).stdout.trim();
+  const run = spawnSync('python3', [INSTR_WRAPPER, '-c', 'raise SystemExit(0)'],
+    { env: { ...process.env, LOAD_SCOREBOARD_INSTR_CHROME: python, LOAD_SCOREBOARD_INSTR_OUT: out, LOAD_SCOREBOARD_INSTR_PMU_ROOT: root }, encoding: 'utf8' });
+  assert.equal(run.status, 0, run.stderr);
+  const first = JSON.parse(readFileSync(out, 'utf8').split('\n')[0]);
+  assert.match(first.unavailable ?? '', /cpu_atom: instructions event cannot be resolved/);
+});
+
+test('counter samples whose PMU sets differ are unavailable, never a partial sum', () => {
+  const rows = [{ t: 1, c: { cpu_core: 0, cpu_atom: 0 } }, { t: 2, c: { cpu_core: 10 } }, { t: 3, c: { cpu_core: 20, cpu_atom: 5 } }];
+  assert.match(parseInstrSamples(rows.map((r) => JSON.stringify(r)).join('\n')).unavailable, /differing/);
 });

@@ -37,6 +37,8 @@ let pending: ProcessedModelRequest | null = null;
 const listeners = new Set<() => void>();
 /** A host asked for a model (`openProcessedModel`, or the configuration's start model); a model named in the page URL then yields. */
 let hostRequested = false;
+/** Any processed model was requested (host, configuration or page URL); the browser-side fast path then stays off. */
+let anyRequested = false;
 const ignoredLogged = new Set<'processed' | 'model'>();
 
 /** The processing server the viewer asks: the runtime value, else the build's `VITE_IFC_SERVER_URL`. */
@@ -99,6 +101,7 @@ export function pageUrlModelAllowed(parameter: 'processed' | 'model'): boolean {
 /** Tests only: forget host requests, the waiting request and the ignored-parameter log. */
 export function resetProcessedModelRequestsForTests(): void {
   hostRequested = false;
+  anyRequested = false;
   ignoredLogged.clear();
   pending = null;
 }
@@ -109,7 +112,13 @@ function normalizedRequest(model: ProcessedModelRequest): ProcessedModelRequest 
   return { sha256, bytes, name: model.name || 'model.ifc' };
 }
 
+/** A processed model was asked for on this page: it is meshed on the server, so nothing needs warming in the browser. */
+export function processedModelRequested(): boolean {
+  return anyRequested;
+}
+
 function fileRequest(request: ProcessedModelRequest): void {
+  anyRequested = true;
   pending = request;
   for (const listener of [...listeners]) listener();
 }

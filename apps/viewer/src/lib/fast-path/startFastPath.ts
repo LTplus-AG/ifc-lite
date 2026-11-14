@@ -13,6 +13,7 @@ import { hasSpareParserWorker, isSpareParserWorkerWarming, prepareSpareParser, r
 import { useViewerStore } from '@/store';
 import { getGeomWorkerOverride, resolveLoadTessellationTier } from '@/store/constants';
 import { USE_SERVER } from '@/utils/ifcConfig';
+import { processedModelRequested } from '@/lib/processed-model';
 import { getPerfFlagDefinition, readPerfFlag } from '@/lib/perf/flags';
 import { mayWarmUp, scheduleWhenIdle } from '@/lib/warm-runtime-gate';
 import { registerPickStarter } from '@/hooks/ingest/pickStart';
@@ -51,8 +52,9 @@ export function startFastPath(): boolean {
   if (runtime) return true;
   if (typeof Worker === 'undefined' || typeof document === 'undefined') return false;
   runtime = createFastPathRuntime({
-    // A server-backed build meshes on the server; nothing to prepare here.
-    allowed: () => !USE_SERVER && mayWarmUp(fastPathSwitch()),
+    // A server-backed build, or a page opening a processed model, meshes on the
+    // server; nothing to prepare here (and no bundled samples to fetch).
+    allowed: () => !USE_SERVER && !processedModelRequested() && mayWarmUp(fastPathSwitch()),
     // Measurement only: `?perf.fastPath=parser` or `=geometry` prepares one spare alone.
     parts: { parser: fastPathSwitch() !== 'geometry', geometry: fastPathSwitch() !== 'parser' },
     whenIdle: scheduleWhenIdle,

@@ -5,7 +5,7 @@
 import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { applyProcessingConfig, getProcessingServerUrl, setProcessingServerUrl, takeProcessedModelRequest } from './processed-model';
+import { applyProcessingConfig, getProcessingServerUrl, openProcessedModelFromUrl, processedModelRequested, resetProcessedModelRequestsForTests, setProcessingServerUrl, takeProcessedModelRequest } from './processed-model';
 import { isServerReachable } from '@/hooks/ingest/serverAvailability';
 
 const initial = getProcessingServerUrl();
@@ -38,5 +38,18 @@ describe('applyProcessingConfig', () => {
     applyProcessingConfig(undefined);
     assert.equal(getProcessingServerUrl(), '/ifc');
     assert.equal(takeProcessedModelRequest(), null);
+  });
+});
+
+describe('processedModelRequested', () => {
+  afterEach(() => resetProcessedModelRequestsForTests());
+
+  it('turns on with any processed-model request, so the browser fast path stays off', () => {
+    resetProcessedModelRequestsForTests();
+    assert.equal(processedModelRequested(), false);
+    openProcessedModelFromUrl({ sha256: 'a'.repeat(64), bytes: 0, name: 'page.ifc' });
+    assert.equal(processedModelRequested(), true);
+    takeProcessedModelRequest();
+    assert.equal(processedModelRequested(), true, 'stays on after the viewer took the request');
   });
 });

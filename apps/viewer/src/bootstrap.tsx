@@ -141,8 +141,6 @@ export function mountViewer(container: HTMLElement, options: ViewerBootstrapOpti
   // Spare parser + small-file geometry workers, prepared at idle (lib/fast-path).
   // The runtime is its own chunk and applies its own gates (build env, URL kill
   // switch). It stays here, not in prepareViewer, so a hosted start whose
-  // configuration fails never spawns workers. A host that opens a processed
-  // model skips it: that load never parses in the browser, and the warm-up
-  // would fetch the bundled sample IFC files for nothing.
-  if (!config?.open) scheduleFastPath();
+  // configuration fails never spawns workers.
+  scheduleFastPath();
 }

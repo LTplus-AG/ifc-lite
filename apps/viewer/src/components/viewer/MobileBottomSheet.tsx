@@ -55,10 +55,13 @@ export function MobileBottomSheet({
   title,
   onClose,
   children,
+  pane,
 }: {
   title: ReactNode;
-  onClose: () => void;
+  onClose?: () => void;
   children: ReactNode;
+  /** Restyle the same mounted frame and scroll container when docked. */
+  pane?: 'side-pane' | 'segment';
 }) {
   const { t } = useTranslation();
   const placement = useViewerStore((s) => mobileCommandPlacement(s.formFactor));
@@ -145,7 +148,7 @@ export function MobileBottomSheet({
         snapTo(defaultH);
       } else {
         snapTo(collapsed);
-        window.setTimeout(onClose, 200);
+        window.setTimeout(() => onClose?.(), 200);
       }
       return;
     }
@@ -161,7 +164,7 @@ export function MobileBottomSheet({
       if (Math.abs(currentHeight - t.h) < Math.abs(currentHeight - closest.h)) closest = t;
     }
     snapTo(closest.h);
-    if (closest.state === 'collapsed') window.setTimeout(onClose, 200);
+    if (closest.state === 'collapsed') window.setTimeout(() => onClose?.(), 200);
     else snapRef.current = closest.state;
   }, [getSnapPoints, onClose]);
 
@@ -170,6 +173,11 @@ export function MobileBottomSheet({
   useEffect(() => {
     const sheet = sheetRef.current;
     if (!sheet) return;
+    if (pane) {
+      sheet.style.height = '';
+      dragRef.current.active = false;
+      return;
+    }
     const apply = () => {
       if (dragRef.current.active) return;
       const { defaultH, expanded } = getSnapPoints();
@@ -181,14 +189,16 @@ export function MobileBottomSheet({
     const observer = new ResizeObserver(apply);
     observer.observe(area);
     return () => observer.disconnect();
-  }, [getSnapPoints]);
+  }, [getSnapPoints, pane]);
 
   return (
     <div
       ref={sheetRef}
-      data-mobile-sheet
-      className="absolute inset-x-0 bottom-0 flex flex-col bg-background border-t rounded-t-2xl shadow-2xl z-40 animate-in slide-in-from-bottom duration-300"
-      style={{
+      data-mobile-sheet={pane ? undefined : ''}
+      data-mobile-pane={pane}
+      aria-label={pane && typeof title === 'string' ? title : undefined}
+      className={pane ? 'flex min-h-0 flex-1 flex-col bg-background' : 'pointer-events-auto absolute inset-x-0 bottom-0 flex flex-col bg-background border-t rounded-t-2xl shadow-2xl z-40 animate-in slide-in-from-bottom duration-300'}
+      style={pane ? undefined : {
         paddingLeft: 'env(safe-area-inset-left)',
         paddingRight: placement === 'side-rail' ? undefined : 'env(safe-area-inset-right)',
         paddingBottom: placement === 'side-rail' ? 'env(safe-area-inset-bottom)' : undefined,
@@ -196,7 +206,7 @@ export function MobileBottomSheet({
     >
       {/* Drag affordance — generously sized for touch */}
       <div
-        className="grid place-items-center pt-3 pb-2 cursor-grab active:cursor-grabbing touch-none select-none"
+        className={pane ? 'hidden' : 'grid place-items-center pt-3 pb-2 cursor-grab active:cursor-grabbing touch-none select-none'}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -206,8 +216,8 @@ export function MobileBottomSheet({
       >
         <div className="w-10 h-1.5 rounded-full bg-muted-foreground/40" />
       </div>
-      <MobilePanelHeader title={title} onClose={onClose} />
-      <div className="flex-1 min-h-0 overflow-auto overscroll-contain border-t">
+      <MobilePanelHeader title={title} onClose={onClose} className={pane ? 'pt-2 border-b' : undefined} />
+      <div data-mobile-panel-scroll className="flex-1 min-h-0 overflow-auto overscroll-contain border-t">
         {children}
       </div>
     </div>

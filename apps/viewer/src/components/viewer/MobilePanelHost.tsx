@@ -17,11 +17,11 @@
  * open: which panel is open is store state; only the frame is swapped.
  */
 
-import { createContext, useContext, type ReactNode } from 'react';
+import { createContext, useContext, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useViewerStore } from '@/store';
 import { mobilePanelHost } from '@/lib/layout/form-factor';
-import { MobileBottomSheet, MobilePanelHeader } from './MobileBottomSheet';
+import { MobileBottomSheet } from './MobileBottomSheet';
 
 /**
  * The docked pane's slot, provided by the mobile shell. `undefined` outside a
@@ -39,17 +39,26 @@ export function MobilePanelHost({ title, onClose, children }: {
 }) {
   const host = useViewerStore((s) => mobilePanelHost(s.formFactor));
   const slot = useContext(MobilePaneSlot);
-  if (host === 'sheet') {
-    return <MobileBottomSheet title={title} onClose={onClose ?? noop}>{children}</MobileBottomSheet>;
-  }
-  const pane = (
-    <section data-mobile-pane={host} aria-label={typeof title === 'string' ? title : undefined} className="flex min-h-0 flex-1 flex-col bg-background">
-      <MobilePanelHeader title={title} onClose={onClose} className="pt-2 border-b" />
-      <div className="flex-1 min-h-0 overflow-auto overscroll-contain">{children}</div>
-    </section>
-  );
-  if (slot === undefined) return pane;
-  return slot ? createPortal(pane, slot) : null;
+  const anchor = useRef<HTMLDivElement>(null);
+  // React always portals into this same node. Only its DOM placement changes,
+  // preserving child-local state and the frame's scroll container (#9718).
+  const [container] = useState(() => document.createElement('div'));
+  useLayoutEffect(() => {
+    const parent = host === 'sheet' ? anchor.current : slot ?? anchor.current;
+    container.className = host === 'sheet'
+      ? 'absolute inset-0 pointer-events-none'
+      : 'flex min-h-0 flex-1 flex-col';
+    const scroll = container.querySelector<HTMLElement>('[data-mobile-panel-scroll]');
+    const scrollTop = scroll?.scrollTop ?? 0;
+    parent?.appendChild(container);
+    if (scroll) scroll.scrollTop = scrollTop;
+  }, [container, host, slot]);
+  useLayoutEffect(() => () => container.remove(), [container]);
+  return <>
+    <div ref={anchor} className="contents" />
+    {createPortal(
+      <MobileBottomSheet title={title} onClose={onClose} pane={host === 'sheet' ? undefined : host}>
+        {children}
+      </MobileBottomSheet>, container)}
+  </>;
 }
-
-function noop(): void {}

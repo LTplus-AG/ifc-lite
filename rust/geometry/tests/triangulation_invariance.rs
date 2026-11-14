@@ -1483,7 +1483,13 @@ fn issue_129_mixed_bool2d_residual_preserves_established_topology() {
         // #7292: retaining supported finite source cells removes ten signed
         // and strict boundary defects in both triangulators (25/26 -> 15/16).
         // DEFAULT retains six additional triangles; the #32810 cut is unchanged.
-        [(12381, 0, 0, 0, 7552), (32810, 3, 3, 3, 3207)]
+        //
+        // #8190, consolidation: #12381's 7552 triangles were the kernel's raw
+        // output, kept because the conformed consolidation stayed open. It now
+        // closes and is the result: 7552 -> 5884 triangles, closed both ways,
+        // volume 1437.0998 m3 and area 2905.754 m2 unchanged, triangles past
+        // 50:1 down from 2339 to 849.
+        [(12381, 0, 0, 0, 5884), (32810, 3, 3, 3, 3207)]
     };
     for &alt in triangulators {
         set_alt(alt);

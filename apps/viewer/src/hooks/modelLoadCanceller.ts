@@ -21,6 +21,7 @@
  */
 
 import { markModelLoadEnded } from './modelLoadEnd.js';
+import { endGeometryRestore } from '@/lib/geometry-restore-gate.js';
 import { getViewerStoreApi } from '@/store';
 import { selectActiveLoadProgress, selectLoadCanceller } from '@/store/slices/loadingSlice';
 import { beginActivity, discardActivity, finishActivity, updateActivity } from '@/lib/activity/activity-journal';
@@ -116,7 +117,7 @@ export function settleUnownedLoadUi(progress: LoadProgress = null): void {
 export function settleOwnedLoadUi(release: () => void, progress: LoadProgress = null, modelId?: string): void {
   release();
   settleUnownedLoadUi(progress);
-  if (modelId !== undefined) markModelLoadEnded(modelId);
+  if (modelId !== undefined) { endGeometryRestore(modelId); markModelLoadEnded(modelId); } // every end releases the model's restore hold
 }
 
 // Hook instances are independent; a replacement primary invalidates every

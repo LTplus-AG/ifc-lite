@@ -9,7 +9,7 @@
 //! `serde_json::from_value`, rather than through the derived adjacently-tagged
 //! `Deserialize` impl: that impl buffers the payload for content-first input
 //! and compiles every record type's deserializer twice, which cost ~200 KB of
-//! raw wasm (engine-wasm-brotli ratchet).
+//! raw wasm (engine-wasm-bytes ratchet).
 
 use super::LandXmlMetadataRecord;
 

@@ -603,6 +603,8 @@ export interface FederatedModel extends ModelLoadReportFields {
   metadataLoadState?: MetadataLoadState;
   /** True once the model is visibly interactive in the viewport. */
   interactiveReady?: boolean;
+  /** Cache hit that published its metadata at the reopen mark; geometry restore not yet finished (lib/geometry-restore-gate.ts). */
+  geometryRestorePending?: boolean;
   /** Cache state for the current load session. */
   cacheState?: 'none' | 'hit' | 'miss' | 'writing';
   /** Optional load error for this model. */

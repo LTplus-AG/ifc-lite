@@ -14,10 +14,12 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { getPerfFlagDefinition, readPerfFlag } from '@/lib/perf/flags';
 import { mayWarmUp } from '@/lib/warm-runtime-gate';
+import { resetFeaturesForTest } from '@/lib/features';
 
 const desktop = { deviceMemory: 8, connection: { saveData: false } } as unknown as Navigator;
 const setSearch = (search: string) => window.history.replaceState(null, '', `/${search}`);
-afterEach(() => setSearch(''));
+afterEach(() => { setSearch(''); resetFeaturesForTest(); });
+const NO_OPEN_SOURCE = ['files.local', 'files.samples', 'files.sources'];
 
 describe('fast path kill switch', () => {
   it('is a registered kill switch, on by default; flipping the registry default is the one-line off switch', async () => {
@@ -58,5 +60,33 @@ describe('fast path kill switch', () => {
     } finally {
       globalThis.Worker = priorWorker;
     }
+  });
+
+  it('a page that can open no model warms nothing: no sample fetch, no worker', async () => {
+    resetFeaturesForTest({ default: 'all', disable: NO_OPEN_SOURCE });
+    let spawned = 0;
+    const priorWorker = globalThis.Worker;
+    globalThis.Worker = class { constructor() { spawned++; } } as unknown as typeof Worker;
+    try {
+      const { startFastPath } = await import('./startFastPath');
+      assert.equal(startFastPath(), false);
+      assert.equal(spawned, 0);
+    } finally {
+      globalThis.Worker = priorWorker;
+    }
+  });
+
+  it('any one model source left on keeps the warm-up: local files, samples, cloud sources or ?model=', async () => {
+    const { pageCanOpenModels } = await import('./startFastPath');
+    assert.equal(pageCanOpenModels(), true, 'no host configuration');
+    resetFeaturesForTest({ default: 'all', disable: NO_OPEN_SOURCE });
+    assert.equal(pageCanOpenModels(), false);
+    for (const kept of NO_OPEN_SOURCE) {
+      resetFeaturesForTest({ default: 'all', disable: NO_OPEN_SOURCE.filter((id) => id !== kept) });
+      assert.equal(pageCanOpenModels(), true, `${kept} on`);
+    }
+    resetFeaturesForTest({ default: 'all', disable: NO_OPEN_SOURCE });
+    setSearch('?model=samples/hello-wall.ifc');
+    assert.equal(pageCanOpenModels(), true, '?model= autoloads a model with every picker off');
   });
 });

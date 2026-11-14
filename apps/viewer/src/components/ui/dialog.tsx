@@ -75,7 +75,8 @@ const DialogContent = React.forwardRef<
         viewportBounds && 'max-h-[85dvh]',
         viewportBounds === 'both' && 'w-[calc(100%-2rem)]',
         className,
-        notices.length > 0 && 'max-h-[calc(100dvh-2rem)] overflow-y-auto'
+        // A notice shelf may lift the default cap, but never loosens viewportBounds' stricter 85dvh.
+        notices.length > 0 && (viewportBounds ? 'overflow-y-auto' : 'max-h-[calc(100dvh-2rem)] overflow-y-auto')
       )}
       {...props}
     >

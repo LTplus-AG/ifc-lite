@@ -128,7 +128,9 @@ export function compareDerived(actual, expected) {
   for (const extra of remaining) problems.push(`extra derived member #${extra.id}: ${JSON.stringify(extra)}`);
   const nodes = new Set(actual.nodes);
   for (const ref of expected.nodes) {
-    const hit = [...nodes].find((a) => distance(a.position,ref.position) <= TOLERANCE && JSON.stringify(a.links) === JSON.stringify(ref.links));
+    const candidates = [...nodes].filter((a) => distance(a.position,ref.position) <= TOLERANCE && JSON.stringify(a.links) === JSON.stringify(ref.links));
+    // Prefer the candidate with the same support state, so coincident nodes match whatever their order.
+    const hit = candidates.find((a) => Boolean(a.support) === Boolean(ref.support)) ?? candidates[0];
     if (!hit) { problems.push(`reference connection #${ref.id}: no derived point with links ${JSON.stringify(ref.links)} within ${TOLERANCE} m at ${JSON.stringify(ref.position)}`); continue; }
     nodes.delete(hit);
     // Support is compared on the matched pair, so a support elsewhere cannot stand in for it.

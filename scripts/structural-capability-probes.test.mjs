@@ -170,3 +170,14 @@ test('#9668: a support on a derived orphan cannot stand in for one the matched j
   assert.notEqual(result.status,'pass');
   assert.ok(result.mismatches.some((problem)=>problem.includes('connection #20')));
 });
+
+test('#9668: coincident orphan nodes match by support state, not by order', () => {
+  const member = { id:7, ends:[[0,0,0],[1,0,0]], links:[10] };
+  const withSupport = {id:20,position:[0,0,0],links:[],support:true,memberConnected:false};
+  const without = {id:21,position:[0,0,0],links:[],support:false,memberConnected:false};
+  const joint = {id:19,position:[0,0,0],links:[10],support:false,memberConnected:true};
+  for (const derived of [[withSupport,without],[without,withSupport]]) {
+    const result = compareDerived({members:[member],nodes:[joint,...derived]},{members:[member],nodes:[joint,withSupport,without]});
+    assert.equal(result.status,'pass',`order ${derived.map((n)=>n.id)}: ${result.reason}`);
+  }
+});

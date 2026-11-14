@@ -88,10 +88,20 @@ export function drawDxfUnderlaysScreenSpace(
       ctx.textBaseline = dxfValignToBaseline(text.valign);
       ctx.translate(anchor.x, anchor.y);
       ctx.rotate(angle);
-      if (text.widthScale && text.widthScale > 0 && text.widthScale !== 1) ctx.scale(text.widthScale, 1);
       const lines = text.text.split('\n');
+      const fitPx = text.fitWidth !== undefined && Number.isFinite(text.fitWidth) && text.fitWidth > 0 && lines.length === 1
+        ? worldHeightToScreenPx(text.fitWidth) : 0;
       for (let i = 0; i < lines.length; i++) {
+        // Exact span: stretch by the measured width; otherwise the width estimate.
+        let stretch = text.widthScale && text.widthScale > 0 ? text.widthScale : 1;
+        if (fitPx) {
+          const measured = ctx.measureText(lines[i]).width;
+          if (Number.isFinite(measured) && measured > 0) stretch = fitPx / measured;
+        }
+        ctx.save();
+        if (stretch !== 1) ctx.scale(stretch, 1);
         ctx.fillText(lines[i], 0, dxfTextLineOffset(i, lines.length, text.valign, fontPx, text.lineSpacingFactor));
+        ctx.restore();
       }
       ctx.restore();
     }

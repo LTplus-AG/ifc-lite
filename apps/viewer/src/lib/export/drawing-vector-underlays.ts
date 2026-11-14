@@ -44,7 +44,9 @@ export function mappedDxfUnderlayOptions(data: readonly DxfUnderlayRenderData[],
           const offset = stackDirection * dxfTextLineOffset(i, lines.length, text.valign, text.height, text.lineSpacingFactor);
           return { position: { x: text.x - dirY * offset, y: text.y + dirX * offset },
           text: line, height: text.height, dirX, dirY,
-          color: text.color, align: text.align, valign: text.valign, widthScale: text.widthScale };
+          color: text.color, align: text.align, valign: text.valign, widthScale: text.widthScale,
+          // Only single-line text carries a span; the line keeps the same mapped length.
+          fitWidth: lines.length === 1 ? text.fitWidth : undefined };
         });
       }),
     }],
@@ -92,8 +94,12 @@ export function drawDxfUnderlaysPdf(doc: jsPDF, underlays: readonly DxfUnderlayR
         lines.forEach((line, i) => {
           if (!line) return;
           // Aligned/fit text stretches horizontally (PDF Tz); justification uses the stretched width.
-          const stretch = text.widthScale && text.widthScale > 0 ? text.widthScale : 1;
-          const start = pdfRotatedTextStart(anchor, rad, doc.getTextWidth(line) * stretch, sizeMm, text.align, text.valign,
+          // With an exact span (fitWidth), stretch by the measured width so the line spans it exactly.
+          const measured = doc.getTextWidth(line);
+          const fitMm = text.fitWidth !== undefined && Number.isFinite(text.fitWidth) && text.fitWidth > 0 && Number.isFinite(measured) && measured > 0
+            ? text.fitWidth * metresToMm : 0;
+          const stretch = fitMm ? fitMm / measured : text.widthScale && text.widthScale > 0 ? text.widthScale : 1;
+          const start = pdfRotatedTextStart(anchor, rad, fitMm || measured * stretch, sizeMm, text.align, text.valign,
             dxfTextLineOffset(i, lines.length, text.valign, sizeMm, text.lineSpacingFactor));
           doc.text(line, start.x, start.y, { angle: -rad * 180 / Math.PI, ...(stretch !== 1 && { horizontalScale: stretch }) });
         });
@@ -164,9 +170,13 @@ export function buildDxfUnderlaySvg(
           + dxfTextLineOffset(i, lines.length, text.valign, fontSize, text.lineSpacingFactor)).toFixed(4)}">${escapeXml(line)}</tspan>`)
         .join('');
       // Aligned/fit/width-factor text stretches along the baseline about the anchor.
-      const stretch = text.widthScale && text.widthScale !== 1
+      // Aligned/fit text carries its exact span: the browser measures the glyphs (textLength).
+      const fitLength = text.fitWidth !== undefined && Number.isFinite(text.fitWidth) && text.fitWidth > 0 && lines.length === 1
+        ? text.fitWidth * fontScale : 0;
+      const fitAttr = fitLength ? ` textLength="${fitLength.toFixed(4)}" lengthAdjust="spacingAndGlyphs"` : '';
+      const stretch = fitLength ? '' : text.widthScale && text.widthScale !== 1
         ? ` translate(${anchor.x.toFixed(4)} ${anchor.y.toFixed(4)}) scale(${text.widthScale.toFixed(4)} 1) translate(${(-anchor.x).toFixed(4)} ${(-anchor.y).toFixed(4)})` : '';
-      svg += `      <text x="${anchor.x.toFixed(4)}" y="${anchor.y.toFixed(4)}" font-family="Arial, sans-serif" font-size="${fontSize.toFixed(4)}" fill="${text.color}" text-anchor="${anchorAttr}" dominant-baseline="${dxfValignToBaseline(text.valign)}" transform="rotate(${angle.toFixed(2)} ${anchor.x.toFixed(4)} ${anchor.y.toFixed(4)})${stretch}">${content}</text>\n`;
+      svg += `      <text x="${anchor.x.toFixed(4)}" y="${anchor.y.toFixed(4)}" font-family="Arial, sans-serif" font-size="${fontSize.toFixed(4)}" fill="${text.color}" text-anchor="${anchorAttr}" dominant-baseline="${dxfValignToBaseline(text.valign)}"${fitAttr} transform="rotate(${angle.toFixed(2)} ${anchor.x.toFixed(4)} ${anchor.y.toFixed(4)})${stretch}">${content}</text>\n`;
     }
 
     svg += '    </g>\n';

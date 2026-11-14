@@ -380,7 +380,7 @@ function emitEntities(entities: DxfEntity[], ctx: RenderCtx, state: ConvertState
           dirY,
           align: entity.hAlign,
           valign: entity.vAlign,
-          lineSpacingFactor: entity.lineSpacingFactor, widthScale: entity.widthScale,
+          lineSpacingFactor: entity.lineSpacingFactor, widthScale: entity.widthScale, fitWidth: entity.fitWidth && entity.fitWidth * scaleEstimate * state.unitScale,
           color: colorOverride,
         };
         bucket.texts.push(text);

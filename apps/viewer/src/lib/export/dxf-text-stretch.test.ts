@@ -43,6 +43,66 @@ describe('stretched DXF text', () => {
     assert.doesNotMatch(plain.output(), / Tz/);
   });
 
+  describe('measured fit span (fitWidth)', () => {
+    // Estimate says 2.5×, but the real font is narrower/wider than 0.6 em.
+    const fit: Text = { ...stretched, fitWidth: 3 };
+
+    it('canvas stretches by fitWidth / measured width, not the estimate', () => {
+      const calls: string[] = [];
+      const ctx = {
+        save() {}, restore() {}, beginPath() {}, moveTo() {}, lineTo() {}, closePath() {}, fill() {}, stroke() {},
+        setLineDash() {}, translate() {}, rotate() {}, scale(x: number, y: number) { calls.push(`scale ${x} ${y}`); },
+        measureText: () => ({ width: 15 }), fillText() {}, textBaseline: 'alphabetic',
+      } as unknown as CanvasRenderingContext2D;
+      // 3 m at 10 px/m = 30 px over a measured 15 px line → 2 (the 0.6 em estimate would give 2.5).
+      drawDxfUnderlaysScreenSpace(ctx, wrap({ ...fit, fitWidth: 3 }), mapPoint, w => w, h => h * 10);
+      assert.deepEqual(calls, [`scale ${30 / 15} 1`]);
+      calls.length = 0;
+      drawDxfUnderlaysScreenSpace(ctx, wrap({ ...fit, fitWidth: 3.6 }), mapPoint, w => w, h => h * 10);
+      assert.deepEqual(calls, [`scale ${36 / 15} 1`]);
+    });
+
+    it('canvas falls back to widthScale for a zero or non-finite measured width', () => {
+      for (const width of [0, NaN, Infinity]) {
+        const calls: string[] = [];
+        const ctx = {
+          save() {}, restore() {}, beginPath() {}, moveTo() {}, lineTo() {}, closePath() {}, fill() {}, stroke() {},
+          setLineDash() {}, translate() {}, rotate() {}, scale(x: number) { calls.push(`scale ${x}`); },
+          measureText: () => ({ width }), fillText() {}, textBaseline: 'alphabetic',
+        } as unknown as CanvasRenderingContext2D;
+        drawDxfUnderlaysScreenSpace(ctx, wrap(fit), mapPoint, w => w, h => h * 10);
+        assert.deepEqual(calls, ['scale 2.5']);
+      }
+    });
+
+    it('PDF stretches by fitWidth / getTextWidth', () => {
+      const doc = new jsPDF({ unit: 'mm', format: [100, 100] });
+      // fitWidth 3 m × 10 mm/m = 30 mm over a measured 24 mm → 125% (the estimate would give 250%).
+      doc.getTextWidth = () => 24;
+      drawDxfUnderlaysPdf(doc, wrap(fit), mapPoint, 10);
+      assert.match(doc.output(), /125\.? Tz/);
+      assert.doesNotMatch(doc.output(), /250\.? Tz/);
+    });
+
+    it('PDF falls back to widthScale when the measured width is unusable', () => {
+      const doc = new jsPDF({ unit: 'mm', format: [100, 100] });
+      doc.getTextWidth = () => 0;
+      drawDxfUnderlaysPdf(doc, wrap(fit), mapPoint, 10);
+      assert.match(doc.output(), /250\.? Tz/);
+    });
+
+    it('SVG uses textLength instead of the scale transform', () => {
+      const svg = buildDxfUnderlaySvg(wrap(fit), mapPoint, mm => mm, 10, s => s);
+      assert.match(svg, /textLength="30\.0000" lengthAdjust="spacingAndGlyphs"/);
+      assert.doesNotMatch(svg, /scale\(/);
+    });
+
+    it('carries fitWidth into the package facade', () => {
+      const [{ underlay }] = mappedDxfUnderlayOptions(wrap(fit));
+      assert.equal(underlay.layers[0].texts[0].fitWidth, 3);
+    });
+  });
+
   it('carries widthScale and line spacing into the package facade', () => {
     const [{ underlay }] = mappedDxfUnderlayOptions(wrap({ ...stretched, text: 'a\nb', lineSpacingFactor: 2 }));
     const [a, b] = underlay.layers[0].texts;

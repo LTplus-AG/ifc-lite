@@ -516,8 +516,23 @@ describe('consolidated additions (SPLINE, SOLID, lineweight, valign, unit heuris
     expect(aligned.widthScale).toBeUndefined();
     expect(fit.height).toBe(1);
     expect(fit.widthScale).toBeCloseTo(2.5, 9);
+    // Both carry the exact span so measuring renderers need not trust the estimate.
+    expect(aligned.fitWidth).toBeCloseTo(6, 9);
+    expect(fit.fitWidth).toBeCloseTo(6, 9);
     expect(aligned.position).toEqual({ x: 0, y: 0 });
     expect(fit.position).toEqual({ x: 0, y: 0 });
+  });
+
+  it('scales fitWidth through the same transform as the text height', () => {
+    // Large extents make the importer assume millimetres (unitScale 0.001).
+    const underlay = importDxf(entitiesSection(
+      [0, 'LINE'], [8, '0'], [10, 0], [20, 0], [11, 25000], [21, 12000],
+      [0, 'TEXT'], [8, 't'], [10, 0], [20, 0], [11, 6], [21, 0], [40, 1], [1, 'abcd'], [72, 5], [73, 0],
+    ));
+    const [fit] = layerByName(underlay, 't').texts;
+    expect(underlay.unitScale).toBe(0.001);
+    expect(fit.height).toBeCloseTo(0.001, 12);
+    expect(fit.fitWidth).toBeCloseTo(0.006, 12);
   });
 
   it('honours the relative X scale (41) on plain TEXT', () => {

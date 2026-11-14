@@ -182,6 +182,22 @@ describe('DXFExporter', () => {
     expect(polylines[0].vertices[1].x).toBeCloseTo(10);
   });
 
+  it('re-emits aligned/fit text as Fit (72=5) so CAD spans the exact fitWidth', () => {
+    const fit = underlay();
+    fit.layers[0].texts = [
+      { position: { x: 1, y: 2 }, text: 'Fit', height: 1, dirX: 0, dirY: 1, align: 'left', valign: 'baseline', widthScale: 3, fitWidth: 4 },
+    ];
+    const dxf = exportToDXF(emptyDrawing(), {
+      underlays: [{ underlay: fit, placement: { offsetX: 0, offsetY: 0, rotationDeg: 0, scale: 2 } }],
+    });
+    expect(dxf).toContain('72\n5\n');
+    // The estimated width factor (group 41) is replaced by the second point.
+    expect(dxf.slice(dxf.indexOf('\n0\nTEXT\n'))).not.toMatch(/\n41\n/);
+    const [text] = parseDxf(dxf).entities.filter((e): e is DxfTextEntity => e.kind === 'text');
+    // Span 4 scaled by the placement (2) along the baseline.
+    expect(text.fitWidth).toBeCloseTo(8, 6);
+  });
+
   it('stacks multi-line underlay text along the rotated text direction, with placement-scaled height (PR #1871 review)', () => {
     // Under a rotated placement the second line must follow the text's own
     // "down" direction (local -Y mapped through the placement), not shift

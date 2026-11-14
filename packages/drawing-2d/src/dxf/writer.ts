@@ -284,7 +284,7 @@ export class DxfWriter {
       hAlign?: DxfTextHAlign;
       vAlign?: DxfTextVAlign;
       colorOverride?: string;
-      widthScale?: number; // group 41, omitted at 1
+      widthScale?: number; fitTo?: Point2D; // group 41 (omitted at 1); Fit (72=5) second point replaces it
     } = {},
   ): void {
     const clean = sanitizeDxfText(text);
@@ -295,10 +295,10 @@ export class DxfWriter {
     if (!clean.trim() || !Number.isFinite(height) || height <= 0) return;
     this.extend(position);
     const rotationDeg = options.rotationDeg ?? 0;
-    const [hCode, vCode] = [H_ALIGN_CODE[options.hAlign ?? 'left'], V_ALIGN_CODE[options.vAlign ?? 'baseline']];
+    const [hCode, vCode] = options.fitTo ? [5, 0] : [H_ALIGN_CODE[options.hAlign ?? 'left'], V_ALIGN_CODE[options.vAlign ?? 'baseline']];
     const needsAlignPoint = hCode !== 0 || vCode !== 0;
     const colorGroup = this.colorOverrideGroup(options.colorOverride);
-    const widthScale = dxfWidthFactor(options.widthScale);
+    const widthScale = options.fitTo ? undefined : dxfWidthFactor(options.widthScale);
     this.entities.push(() => {
       let s =
         '0\nTEXT\n8\n' + layer + '\n' + colorGroup +
@@ -308,7 +308,7 @@ export class DxfWriter {
         '72\n' + hCode + '\n' +
         '73\n' + vCode + '\n';
       if (needsAlignPoint) {
-        s += '11\n' + fmt(position.x) + '\n21\n' + fmt(position.y) + '\n31\n0.0\n';
+        s += '11\n' + fmt((options.fitTo ?? position).x) + '\n21\n' + fmt((options.fitTo ?? position).y) + '\n31\n0.0\n';
       }
       return s;
     });

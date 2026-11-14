@@ -96,6 +96,7 @@ export function parseText(body: DxfPair[]): DxfTextEntity {
     const naturalWidth = dxfEstimatedTextWidth(e.text, e.height);
     if (span > 0 && naturalWidth > 0) {
       e.rotationDeg = Math.atan2(alignY - e.y, alignX - e.x) * 180 / Math.PI;
+      e.fitWidth = span;
       const fit = span / naturalWidth;
       // Aligned scales height and width together; fit keeps the height and
       // stretches only along the baseline. Both start at point 10.

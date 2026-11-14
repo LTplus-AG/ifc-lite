@@ -117,6 +117,8 @@ export interface DxfTextEntity extends DxfEntityCommon {
   lineSpacingFactor?: number;
   /** Horizontal glyph stretch (aligned/fit span, or group 41); absent means 1. */
   widthScale?: number;
+  /** Aligned/fit span length (points 10→11); renderers that can measure stretch to exactly this. */
+  fitWidth?: number;
 }
 
 /** SPLINE entity: clamped B-spline control net (or fit points). */
@@ -257,6 +259,8 @@ export interface DxfUnderlayText {
   lineSpacingFactor?: number;
   /** Horizontal scale for aligned/fit or width-factor TEXT. */
   widthScale?: number;
+  /** Aligned/fit span length in underlay units; measuring renderers stretch the line to exactly this. */
+  fitWidth?: number;
   color?: string;
 }
 

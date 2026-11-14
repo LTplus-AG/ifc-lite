@@ -94,6 +94,15 @@ describe('SVGExporter underlays', () => {
     expect(lineOffsets(svg).map((v) => Math.round(v * 1000) / 1000)).toEqual([-33.333, 33.333]);
   });
 
+  it('uses textLength for aligned/fit text so the browser measures the exact span', () => {
+    const u = underlay();
+    // 1:100 → 10 mm per metre; a 3 m span is 30 mm.
+    u.layers[0].texts[0] = { ...u.layers[0].texts[0], text: 'Fit', widthScale: 2, fitWidth: 3 };
+    const svg = exportToSVG(emptyDrawing(), { underlays: [{ underlay: u }] });
+    expect(svg).toContain('textLength="30.000" lengthAdjust="spacingAndGlyphs"');
+    expect(svg).not.toMatch(/scale\(2\.0000 1\)/);
+  });
+
   it('lifts a bottom-attached multi-line block so its last line sits on the point', () => {
     // 1:100 → 2 m height is a 20 mm font, 33.333 mm line spacing (5/3 of the font).
     expect(lineOffsets(withText('A\nB\nC', 'bottom'))).toEqual([-66.667, -33.333, 0]);

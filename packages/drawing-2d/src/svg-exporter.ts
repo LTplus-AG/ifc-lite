@@ -500,10 +500,11 @@ export class SVGExporter {
           .map((line, i) => `<tspan x="${svgNum(anchor.x)}" y="${svgNum(anchor.y
             + dxfTextLineOffset(i, lines.length, text.valign, heightMm, text.lineSpacingFactor))}">${this.escapeXml(line)}</tspan>`)
           .join('');
-        // Aligned/fit/width-factor text stretches along the baseline about the anchor.
-        const stretch = text.widthScale && text.widthScale !== 1
+        // Aligned/fit text carries its exact span (the browser measures via textLength); else the width factor stretches about the anchor.
+        const fitLength = lines.length === 1 && text.fitWidth && text.fitWidth > 0 ? text.fitWidth * placement.scale * transform.scale : 0;
+        const stretch = fitLength ? '' : text.widthScale && text.widthScale !== 1
           ? ` translate(${svgNum(anchor.x)} ${svgNum(anchor.y)}) scale(${svgNum(text.widthScale, 4)} 1) translate(${svgNum(-anchor.x)} ${svgNum(-anchor.y)})` : '';
-        layer += `      <text x="${svgNum(anchor.x)}" y="${svgNum(anchor.y)}" font-family="Arial, sans-serif" font-size="${svgNum(heightMm)}" fill="${text.color ?? dxfLayer.color}" text-anchor="${anchorAttr}" dominant-baseline="${baseline}" transform="rotate(${svgNum(angle, 2)} ${svgNum(anchor.x)} ${svgNum(anchor.y)})${stretch}">${content}</text>\n`;
+        layer += `      <text x="${svgNum(anchor.x)}" y="${svgNum(anchor.y)}" font-family="Arial, sans-serif" font-size="${svgNum(heightMm)}" fill="${text.color ?? dxfLayer.color}" text-anchor="${anchorAttr}" dominant-baseline="${baseline}"${fitLength ? ` textLength="${svgNum(fitLength)}" lengthAdjust="spacingAndGlyphs"` : ''} transform="rotate(${svgNum(angle, 2)} ${svgNum(anchor.x)} ${svgNum(anchor.y)})${stretch}">${content}</text>\n`;
       }
 
       layer += '    </g>\n';

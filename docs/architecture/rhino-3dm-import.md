@@ -1060,6 +1060,9 @@ Level 1 has no dialog. The defaults live in the reader.
   layers, objects under their own layer, no storeys), the hidden object, the
   layer that is off and its objects starting hidden, and the stamped tree with
   its storey elevation, `byStorey` membership and `getStoreyByElevation`.
+- Visibility per part (`rhinoViewerModel.test.ts`): a hidden mesh and a hidden
+  point cloud merged into a shown entity are left out of the payload, and a
+  wholly hidden entity keeps its triangle and starts hidden.
 - The spatial tree of an ifc-lite export against the IFC it came from
   (`rhinoViewerModel.export.test.ts`): FZK through the Rust scene builder,
   `writeRhino3dm` and the reader, compared with the same IFC through

@@ -30,6 +30,19 @@ export const CRAFTED_VERTEX_MM: readonly [number, number, number] = [1000, 2000,
 /** The same point in the viewer's Y-up metres: `x, z, -y` of `[1, 2, 3]`. */
 export const CRAFTED_VERTEX_VIEWER: readonly [number, number, number] = [1, 3, -2];
 
+type Rhino = Awaited<ReturnType<typeof rhino3dm>>;
+
+/** An axis-aligned triangle with its right angle at `origin`, so an assertion reads one vertex. */
+function triangle(rhino: Rhino, origin: readonly [number, number, number], size: number) {
+  const mesh = new rhino.Mesh();
+  const vertices = mesh.vertices();
+  vertices.addPoint3d(origin[0], origin[1], origin[2]);
+  vertices.addPoint3d(origin[0] + size, origin[1], origin[2]);
+  vertices.addPoint3d(origin[0] + size, origin[1] + size, origin[2]);
+  mesh.faces().addTriFace(0, 1, 2);
+  return mesh;
+}
+
 /**
  * A wall with user text and its own blue colour, plus a proxy that takes its
  * red layer's colour. Both are axis-aligned triangles, so a colour or
@@ -45,16 +58,6 @@ export async function craftRhino3dm(): Promise<Uint8Array> {
   layer.color = { r: 255, g: 0, b: 0, a: 255 };
   const layerIndex = file.layers().add(layer);
 
-  const triangle = (origin: readonly [number, number, number]) => {
-    const mesh = new rhino.Mesh();
-    const vertices = mesh.vertices();
-    vertices.addPoint3d(origin[0], origin[1], origin[2]);
-    vertices.addPoint3d(origin[0] + 100, origin[1], origin[2]);
-    vertices.addPoint3d(origin[0] + 100, origin[1] + 100, origin[2]);
-    mesh.faces().addTriFace(0, 1, 2);
-    return mesh;
-  };
-
   const wall = new rhino.ObjectAttributes();
   wall.layerIndex = layerIndex;
   wall.objectColor = { r: 0, g: 0, b: 255, a: 255 };
@@ -67,13 +70,13 @@ export async function craftRhino3dm(): Promise<Uint8Array> {
     ['Pset_WallCommon::IsExternal', 'TRUE'],
     ['Comment', 'left as written'],
   ]) wall.setUserString(key, value);
-  file.objects().addMesh(triangle(CRAFTED_VERTEX_MM), wall);
+  file.objects().addMesh(triangle(rhino, CRAFTED_VERTEX_MM, 100), wall);
 
   const byLayer = new rhino.ObjectAttributes();
   byLayer.layerIndex = layerIndex;
   byLayer.name = 'Bracket';
   byLayer.colorSource = rhino.ObjectColorSource.ColorFromLayer;
-  file.objects().addMesh(triangle([0, 0, 0]), byLayer);
+  file.objects().addMesh(triangle(rhino, [0, 0, 0], 100), byLayer);
 
   return file.toByteArray();
 }
@@ -123,18 +126,12 @@ async function craftLayeredRhino3dm(
   }
 
   for (const [at, spec] of objects.entries()) {
-    const mesh = new rhino.Mesh();
-    const vertices = mesh.vertices();
-    vertices.addPoint3d(at, 0, 0);
-    vertices.addPoint3d(at + 1, 0, 0);
-    vertices.addPoint3d(at + 1, 1, 0);
-    mesh.faces().addTriFace(0, 1, 2);
     const attributes = new rhino.ObjectAttributes();
     attributes.layerIndex = indexOf.get(spec.layer)!;
     attributes.name = spec.name;
     if (spec.hidden) attributes.visible = false;
     for (const [key, value] of spec.userStrings ?? []) attributes.setUserString(key, value);
-    file.objects().addMesh(mesh, attributes);
+    file.objects().addMesh(triangle(rhino, [at, 0, 0], 1), attributes);
   }
 
   return file.toByteArray();
@@ -239,20 +236,12 @@ export async function craftRhinoPartlyHidden(): Promise<Uint8Array> {
     }
     return a;
   };
-  const triangle = (x: number) => {
-    const mesh = new rhino.Mesh();
-    mesh.vertices().addPoint3d(x, 0, 0);
-    mesh.vertices().addPoint3d(x + 1, 0, 0);
-    mesh.vertices().addPoint3d(x + 1, 1, 0);
-    mesh.faces().addTriFace(0, 1, 2);
-    return mesh;
-  };
-  file.objects().addMesh(triangle(0), attributes('Shown part', false, true));
-  file.objects().addMesh(triangle(2), attributes('Hidden part', true, true));
+  file.objects().addMesh(triangle(rhino, [0, 0, 0], 1), attributes('Shown part', false, true));
+  file.objects().addMesh(triangle(rhino, [2, 0, 0], 1), attributes('Hidden part', true, true));
   const cloud = new rhino.PointCloud();
   cloud.add([5, 0, 0]);
   file.objects().addPointCloud(cloud, attributes('Hidden cloud', true, true));
-  file.objects().addMesh(triangle(8), attributes('Hidden alone', true, false));
+  file.objects().addMesh(triangle(rhino, [8, 0, 0], 1), attributes('Hidden alone', true, false));
   return file.toByteArray();
 }
 

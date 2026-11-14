@@ -66,7 +66,8 @@ function drawsPart(result: RhinoImport, part: { entity: number; hidden: boolean 
 /** Entity indices the viewer has geometry for in this payload. */
 function drawnEntities(result: RhinoImport): Set<number> {
   const drawn = new Set<number>();
-  for (const part of [...result.meshes, ...result.pointClouds]) if (drawsPart(result, part)) drawn.add(part.entity);
+  for (const mesh of result.meshes) if (drawsPart(result, mesh)) drawn.add(mesh.entity);
+  for (const cloud of result.pointClouds) if (drawsPart(result, cloud)) drawn.add(cloud.entity);
   return drawn;
 }
 

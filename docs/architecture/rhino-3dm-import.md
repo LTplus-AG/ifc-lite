@@ -1,9 +1,11 @@
 # Rhino .3dm import, level 1: read-only
 
 Status: **partly implemented**. The reader, `readRhino3dm` in
-`@ifc-lite/rhino3dm` (delivery step 1), is implemented with its package tests.
-The viewer side (steps 2 to 4: format detection, worker, adapter, tree, e2e)
-is not, and the exporter's spatial layer stamps (step 0) are a separate change.
+`@ifc-lite/rhino3dm` (delivery step 1), and the viewer load (step 2: format
+detection, the import worker and its client, the adapter and the `loadFile`
+branch) are implemented with their tests. The tree and hidden state (step 3)
+and the e2e overlay test (step 4) are not, and the exporter's spatial layer
+stamps (step 0) are a separate change.
 Decisions D1 to D8 are made. This page is the contract for opening a Rhino
 `.3dm` in the viewer, or adding one to a federation, as a read-only model:
 meshes, layers, colours, Attribute User Text and, for files ifc-lite exported,
@@ -146,6 +148,45 @@ format-agnostic body into `buildTabularDataStore(tables, meta)`. IFCX keeps its
 current behaviour, pinned by its existing tests, and Rhino calls the same
 function. This is a lift, not a fork.
 
+### What the store says about itself
+
+Two separate answers, since #9976 split them.
+
+- **The schema label is `IFC4`.** It names the schema the entity table's type
+  names belong to. `IFC::Class` must name an instantiable `IfcProduct` subtype
+  of IFC2X3, IFC4 or IFC4X3, the fallback is `IfcBuildingElementProxy`, and
+  IFC4 is the schema covering every class the reader can emit as well as the
+  house default when a source states none.
+- **What backs it is `sourceKind: 'tabular'`**, which `buildTabularDataStore`
+  sets for every caller. Every gate meaning "no STEP records behind this
+  store" reads that marker, so it keeps refusing a `.3dm` whatever the label
+  says: the STEP export, the STEP re-serialization for the energy export, the
+  ion upload, the IDS worker, remeshing, registry publishing, the schedule
+  splice target and the native authoring commands. Each of those gates is
+  pinned by #9976's own tests over a tabular store [src]; a real `.3dm` store
+  is driven through the STEP export gate here [test].
+
+The label was `IFC5` while that was how a store with no STEP bytes was
+recognised. `IFC5` is not a true statement about a `.3dm`, and it handed one
+IFCX behaviour it has no business with: `isIfcxDataStore` answered yes, the
+changes export routed to the IFCX exporter, federation re-composed the model
+as IFCX overlays, and a room seeded it by re-parsing its bytes as IFCX.
+
+Four sites decided by the label alone and are now gated on the marker in
+this PR, because the honest label makes each reachable:
+
+| Site | What it would have done |
+|---|---|
+| `ExportDialog.tsx`, the merged and STEP branches | written an empty or garbage IFC through `exportModelStep` or the merged exporter. A single-model export stays offered, the description names the model it cannot write, and `exportModelStep` refuses it by name (#10099); a merged one with no writable store is refused up front by `canWriteIfcFromStores`, and the dialog says why (`exportDialog.noStepRecords.error`). Choosing IFC5 in the picker still exports the model as IFCX [ran]. The merged branch asks for ONE writable store rather than all of them, and skips a tabular model the way it skips one with no store, so a `.3dm` or `.ifcx` in the federation does not refuse the merge of the IFC models beside it. |
+| `share-scope.ts` `buildShareSeed` | seeded a room slot from STEP records it has none of. `isSeedableModel` leaves the model out, and the Share dialog's seedable count reads the same predicate, so its "{seedable} of {loaded}" notice says what the seed will do. When every model in the share scope is refused (a lone `.3dm`, say), `shareRefusesEveryModel` declines the mint: Create link is disabled and the dialog names the models it cannot share. A `.3dm` beside a GLB or a point cloud still mints the empty owner room those workspaces always got. |
+| `useAppearancePanel.ts` | offered appearance authoring, which serializes `IfcSurfaceStyle` records into a STEP source the store has not got. Its own sentence, `appearance.controller.requiresStepRecords`, after the schema branch so IFCX keeps its existing message: the schema refusal would name the schema this store is now labelled. |
+| `scan-to-bim/run-detection.ts` `isIfcModel` | made a `.3dm` a proposal target, taking it from a real STEP model in the same workspace. Creation would then refuse on "no storey to place the elements on", but only after the target was already lost. |
+
+One site widens without reaching an export and is left as it is: the
+schema-registry readers (`charts/element-field-reader.ts`,
+`query/entity-node.ts`, `collab/schema-attribute-names.ts`) now get an IFC4
+registry instead of none, which is what the entity table's classes are.
+
 ### Where parsing runs
 
 Parsing runs in a one-shot module worker, `apps/viewer/src/workers/rhinoImport.worker.ts`,
@@ -278,24 +319,37 @@ is counted in `skipped` and has no entity.
 ### Worker wire format
 
 ```ts
-type RhinoImportRequest  = { type: 'import'; id: number; bytes: Uint8Array; options: { subdLevel; maxTriangles } };
+type RhinoImportRequest  = { type: 'import'; id: number; bytes: Uint8Array };
 type RhinoImportResponse =
   | { type: 'progress'; id: number; done: number; total: number }
   | { type: 'complete'; id: number; result: RhinoImport }   // positions/normals already viewer Y-up
   | { type: 'error'; id: number; code: RhinoImportErrorCode; message: string };
 ```
 
-- The request transfers `bytes`. They are a fresh read of the `File`, never
-  the store's source view. The export client cannot transfer, for that reason
-  [src `rhino-export-client.ts`].
-- `complete` transfers the buffer behind every typed array: mesh, definition,
-  curve and point cloud buffers. Plain objects and typed arrays only, so
-  structured clone needs no codec.
+- The request transfers `bytes`, so they are a copy of the load's own source
+  buffer, never the store's source view (the export client cannot transfer,
+  for that reason [src `rhino-export-client.ts`]). A copy rather than a second
+  read of the `File`: a re-read halves nothing and lets a file saved again
+  mid-load put different bytes behind the geometry and the store.
+- `complete` transfers every typed array: mesh, definition, curve and point
+  cloud buffers. Plain objects and typed arrays only, so structured clone needs
+  no codec.
+- The request carries no options: level 1 has no dialog, so the defaults stay
+  in the reader. The worker asks for `bakeInstances` until the viewer has a
+  GPU instance path (decision D4).
 - The axis swap (`x, y, z → x, z, −y`, `ifcToViewerAxes` in
   `packages/geometry/src/world-frame.ts`) runs in the worker, on `origin` and
-  on the f32 positions and normals, and on instance transforms by conjugation.
-  The package stays Z-up and viewer-agnostic. The main thread does no
-  per-vertex work.
+  on the f32 positions and normals. The package stays Z-up and
+  viewer-agnostic, and the main thread does no per-vertex work on meshes.
+  Under `bakeInstances` there are no instance transforms to conjugate; that
+  arrives with the instance path, and until then an unbaked result reaching
+  the swap is an error rather than a silent loss of geometry.
+- Point clouds are the exception to "no per-vertex work": `PointCloudAsset`
+  takes the reader's f64 origin and f32 offsets as they are (#10029), but it
+  wants 0..1 float colours and a bounding box, so the adapter widens the
+  colours and takes the bounds in one pass per point. Stating float colours
+  and a bounding box in `RhinoImport` would move that into the reader, and is
+  a change to this contract.
 
 ## Mapping
 
@@ -763,7 +817,8 @@ count].
 ### Size ceiling
 
 Decision D7: measured, then fixed in code as `MAX_3DM_BYTES` = 400 MB
-(`packages/rhino3dm/src/read/read.ts`).
+(`packages/rhino3dm/src/read/size.ts`), exported with the refusal sentence
+so the viewer checks the same cap before it copies the file.
 
 Measured with `readRhino3dm` itself (cap lifted for the run), each file in a
 fresh Node 22.14 process on an Apple M5 Pro with 48 GB, rhino3dm 8.35.0. The
@@ -953,15 +1008,20 @@ Level 1 has no dialog. The defaults live in the reader.
   deadline so its hang fails that test alone.
 - Each guard above was checked by removing it and watching a test fail.
 
-**Viewer (vitest):**
+**Viewer (node:test).** Implemented, except the selection test:
 
 - The adapter builds a store whose `getEntity`, properties and quantities
-  answer.
+  answer, driven with real `RhinoImport` data: a crafted `.3dm` whose
+  coordinate and user text are known exactly, and the Rhino 8 authored
+  fixtures (`apps/viewer/src/hooks/ingest/rhinoViewerModel.test.ts`).
 - Selecting a mesh resolves through `resolveEntityRef` at `models.size` 1 and N
-  (AGENTS.md).
+  (AGENTS.md). **Not written:** it belongs with the tree and hidden state
+  (step 3), which is what a user selects through.
 - The worker client uses an in-process fake worker, as
-  `rhino-export-client.test.ts` does.
-- `detectFormat` returns `'3dm'`.
+  `rhino-export-client.test.ts` does
+  (`apps/viewer/src/lib/import/rhino-import-client.test.ts`): abort, a reader
+  error with its code, a crash, an unreadable message, and the axis swap.
+- `detectFormat` returns `'3dm'` (`packages/ifcx/src/detect-format.test.ts`).
 - Bundle check: rhino3dm stays out of the startup graph.
   `apps/viewer/scripts/check-rhino3dm-lazy.mjs` already scans every startup
   chunk for rhino3dm, so it covers a second worker unchanged. Only its remedy
@@ -997,7 +1057,12 @@ One issue, stacked PRs, each under about 1,500 lines:
    measured size ceiling, a changeset and the API surface update. **Done.**
 2. **Viewer load:** `detectFormat` `'3dm'`, accept lists, worker and client,
    `rhinoViewerModel.ts`, the `buildTabularDataStore` lift, and the `loadFile`
-   branch.
+   branch. **Done.** Deviations: the worker request carries no options (level 1
+   has no dialog, so the defaults stay in the reader), it reads with
+   `bakeInstances` until the GPU instance path exists (D4), and curves and text
+   dots come across the wire but are not drawn (D6), so a file whose only
+   drawable objects are curves is refused with the reader's
+   `no-renderable-geometry` code.
 3. **Tree and visibility:** the layer or spatial tree, hidden state, and model
    metadata.
 4. **E2E and acceptance:** the overlay spec, screenshots, and a guide section.

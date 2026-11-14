@@ -95,6 +95,7 @@ export const appearanceWorkflowsIt = {
   'appearance.controller.adjustMapping': 'Regola la mappatura per vedere in anteprima un altro aspetto.',
   'appearance.controller.leaveRoom': 'Esci dalla sessione condivisa per modificare l’aspetto, poi condividi il modello completato.',
   'appearance.controller.openIfc': 'Apri un modello IFC per applicare l’aspetto.',
+  'appearance.controller.requiresStepRecords': 'La creazione dell’aspetto richiede un modello con record IFC. Questo è stato letto sotto forma di tabelle.',
   'appearance.controller.requiresIfc4': 'La creazione dell’aspetto richiede attualmente un modello IFC4 o IFC4X3.',
   'appearance.controller.waitForModel': 'Attendi il completamento del caricamento del modello.',
   'appearance.controller.preparingPreview': 'Preparazione dell’anteprima dell’aspetto…',

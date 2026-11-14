@@ -82,6 +82,7 @@ export const section2dFr = {
   "section2d.export.omission.dxfTitle": "Exporter le dessin en DXF ?",
   "section2d.export.omission.dxfDescription": "Ce DXF n’inclura pas {items}. Exporter quand même ?",
   "section2d.export.omission.continue": "Exporter quand même",
+  "section2d.export.otherCutDimensionsLeftOut": {"one":"{count} cote dessinée sur une autre coupe a été omise.","other":"{count} cotes dessinées sur une autre coupe ont été omises.","many":"{count} cotes dessinées sur une autre coupe ont été omises."},
   "section2d.regenerate": "Régénérer",
   "section2d.matchView.button": "Aligner la 3D",
   "section2d.matchView.title": "Aligner la vue 3D sur cette coupe",

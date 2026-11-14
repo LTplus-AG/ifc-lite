@@ -13,6 +13,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { INSTR_WRAPPER, instructionsIn, parseInstrSamples } from './load-scoreboard-instr.mjs';
 
+const linuxX64 = process.platform === 'linux' && process.arch === 'x64';
+
 const ndjson = (rows) => rows.map((r) => JSON.stringify(r)).join('\n');
 const samples = ndjson([
   { t: 1000, c: { cpu_core: 0, cpu_atom: 0 }, e: 0, r: { cpu_core: 0, cpu_atom: 0 } },
@@ -45,7 +47,7 @@ test('the wrapper runs the real program with its arguments and exit status, and 
     { env: { ...process.env, LOAD_SCOREBOARD_INSTR_CHROME: spawnSync('sh', ['-c', 'command -v python3'], { encoding: 'utf8' }).stdout.trim(), LOAD_SCOREBOARD_INSTR_OUT: out }, encoding: 'utf8' });
   assert.equal(run.status, 3, run.stderr);
   const p = parseInstrSamples(readFileSync(out, 'utf8'));
-  if (p.unavailable) assert.match(p.unavailable, /perf_event|platform|samples/);
+  if (p.unavailable) assert.match(p.unavailable, /perf_event|platform|samples|supports x86 Linux PMUs/);
   else {
     const last = readFileSync(out, 'utf8').trim().split('\n').map((l) => JSON.parse(l)).at(-1);
     assert.equal(last.final, true);
@@ -68,7 +70,7 @@ test('an unavailable counter (e.g. macOS) is carried on every lane and shown in 
   assert.match(two.b.instructions.unavailable, /no measured window/);
 });
 
-test('a core PMU that exists but whose instructions event cannot be resolved makes the whole count unavailable', { skip: process.platform !== 'linux' }, () => {
+test('a core PMU that exists but whose instructions event cannot be resolved makes the whole count unavailable', { skip: !linuxX64 }, () => {
   // Fake PMU tree: cpu_core complete, cpu_atom present without events/instructions.
   const root = mkdtempSync(join(tmpdir(), 'pmu-'));
   mkdirSync(join(root, 'cpu_core', 'events'), { recursive: true });
@@ -90,7 +92,7 @@ test('counter samples whose PMU sets differ are unavailable, never a partial sum
   assert.match(parseInstrSamples(rows.map((r) => JSON.stringify(r)).join('\n')).unavailable, /differing/);
 });
 
-test('a periodic read includes LIVE inherited children (kernel __perf_event_read_value walks child_list), not only exited ones', { skip: process.platform !== 'linux' }, () => {
+test('a periodic read includes LIVE inherited children (kernel __perf_event_read_value walks child_list), not only exited ones', { skip: !linuxX64 }, () => {
   // The wrapped "browser" forks a child that spins a fixed loop, stamps the time, then sleeps 1 s WITHOUT exiting;
   // the parent only waits. A sample taken while the child still sleeps must already hold (nearly) the child's whole count.
   const dir = mkdtempSync(join(tmpdir(), 'live-'));
@@ -142,6 +144,18 @@ test('lifetime PMU coverage decides: 0.99996 is accepted and reported unrounded,
   assert.match(parseInstrSamples(noFinal).unavailable, /no final counter totals/);
 });
 
+test('a low-coverage window whose bounded instruction loss exceeds the 2% verdict floor is unavailable', () => {
+  const rows = [
+    { t: 1000, c: { cpu: 0 }, e: 0, r: { cpu: 0 } },
+    { t: 1010, c: { cpu: 100000 }, e: 10e6, r: { cpu: 10e6 } },
+    { t: 1020, c: { cpu: 200000 }, e: 20e6, r: { cpu: 20e6 } },
+    { t: 1100, c: { cpu: 1000000 }, e: 100e9, r: { cpu: 99.995e9 }, final: true },
+  ];
+  const result = instructionsIn(parseInstrSamples(ndjson(rows)), 1005, 1015);
+  assert.equal(result.total, null);
+  assert.match(result.unavailable, /window.*uncertainty|bounded.*loss/i);
+});
+
 test('a very long sample history does not overflow the argument limit', () => {
   const n = 250000, rows = [];
   for (let i = 0; i < n; i++) rows.push(JSON.stringify({ t: i, c: { cpu: i * 10 }, e: i * 1e6, r: { cpu: i * 1e6 } }));
@@ -169,7 +183,7 @@ test('browserSample puts an instruction figure or its reason on every lane when 
   assert.equal(result.lanes['browser-cold'].instructions.unavailable, 'no counter output (wrapper did not run)');
 });
 
-test('a host with only a non-x86 PMU (aarch64 armv8_pmuv3_0) reports the supported PMUs and what it found', { skip: process.platform !== 'linux' }, () => {
+test('a host with only a non-x86 PMU (aarch64 armv8_pmuv3_0) reports the supported PMUs and what it found', { skip: !linuxX64 }, () => {
   const root = mkdtempSync(join(tmpdir(), 'pmu-arm-'));
   mkdirSync(join(root, 'armv8_pmuv3_0', 'events'), { recursive: true });
   writeFileSync(join(root, 'armv8_pmuv3_0', 'type'), '8\n');

@@ -28,6 +28,8 @@ export const CPU_COLUMNS = [
 export const INSTR_COLUMN = ['instructions (M)', (r) => (Number.isFinite(r.instructions?.total) ? r.instructions.total / 1e6 : null)];
 export const INSTR_FLOOR_KEY = 'instructionsM';
 export const CPU_FLOOR_KEY = 'cpuTotalMs';
+// Instruction counts are reported in millions: one instruction is 0.000001 M; the A/A floor sets useful significance.
+const INSTR_MIN_ABS = 0.000001;
 
 const pct = (x) => (Number.isFinite(x) ? `${(x * 100).toFixed(1)}%` : '—');
 const n0 = (x) => (Number.isFinite(x) ? Math.round(x).toLocaleString('en-US') : '—');
@@ -72,7 +74,7 @@ export function cpuTimeSummary(plan, samples, { floors = null } = {}) {
       // capped A/A of 2026-11-14: floors 1.00% FZK, 1.20% Holter, under the < 2% bar fixed before the run). Wall stays primary.
       if (ipairs.some(([a, b]) => a !== null && b !== null)) {
         cell.instructions = { aaFloor: kind === 'aa' && underLoad.base + underLoad.branch === 0 ? aaNoiseFloor(ipairs, { seed: 0x5eed }) : null, ownFloor: ownNoiseFloor(ipairs) };
-        if (kind !== 'aa') cell.instructions.verdict = verdictWithFloor(ipairs, { failures, underLoad, floors, fixture, lane, key: INSTR_FLOOR_KEY, label: 'instruction' });
+        if (kind !== 'aa') cell.instructions.verdict = verdictWithFloor(ipairs, { failures, underLoad, floors, fixture, lane, key: INSTR_FLOOR_KEY, label: 'instruction', minAbs: INSTR_MIN_ABS });
       } else cell.instructions = null;
       if (kind === 'aa') {
         cell.aaFloor = underLoad.base + underLoad.branch > 0 ? null : aaNoiseFloor(pairs, { seed: 0x5eed });
@@ -87,9 +89,9 @@ export function cpuTimeSummary(plan, samples, { floors = null } = {}) {
 }
 
 /** verdictFor against the recorded A/A floor of `key`; with an A/A reference lacking that floor: inconclusive. */
-function verdictWithFloor(pairs, { failures, underLoad, floors, fixture, lane, key, label }) {
+function verdictWithFloor(pairs, { failures, underLoad, floors, fixture, lane, key, label, minAbs = 1 }) {
   const aaFloor = floors?.[fixture]?.[lane]?.[key] ?? null;
-  const v = verdictFor(pairs, { failures, underLoad, aaFloor, minAbs: 1, seed: 0x5eed });
+  const v = verdictFor(pairs, { failures, underLoad, aaFloor, minAbs, seed: 0x5eed });
   if (floors && !Number.isFinite(aaFloor) && !v.verdict.startsWith('inconclusive') && v.verdict !== 'regression: more failed loads') {
     return { ...v, verdict: `inconclusive: no ${label} A/A floor for this cell (own floor alone: ${v.verdict})`, pass: false, regression: false };
   }

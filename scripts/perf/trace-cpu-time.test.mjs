@@ -121,6 +121,8 @@ test('instructions are the third verdict column: A/A floor recorded, compare jud
   const plan = { kind: 'compare', lanes: ['browser-cold'] };
   assert.equal(cpuTimeSummary(plan, ab(0.9), { floors }).cells[0].instructions.verdict.verdict, 'gain');
   assert.equal(cpuTimeSummary(plan, ab(0.995), { floors }).cells[0].instructions.verdict.verdict, 'no significant difference');
+  const smallCounts = rounds.flatMap((n) => [row('base', n, 2 + n * 0.001), row('branch', n, 1.8 + n * 0.001)]);
+  assert.equal(cpuTimeSummary(plan, smallCounts, { floors }).cells[0].instructions.verdict.verdict, 'gain');
   assert.match(cpuTimeSummary(plan, ab(0.9), { floors: { FZK: { 'browser-cold': {} } } }).cells[0].instructions.verdict.verdict, /^inconclusive: no instruction A\/A floor/);
   const line = cpuTimeSection(ab(0.9), { cpuTime: cpuTimeSummary(plan, ab(0.9), { floors }) }).find((l) => l.startsWith('| FZK |'));
   assert.match(line, /PASS gain \|$/);

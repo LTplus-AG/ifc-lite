@@ -34,6 +34,8 @@ export const INSTR_WRAPPER = fileURLToPath(new URL('./instr-chrome.py', import.m
  * order of magnitude below the smallest decidable effect.
  */
 export const MIN_PMU_COVERAGE = 0.9999;
+// Instruction verdicts require a >= 2% gain, so any window uncertainty at that scale cannot support a verdict.
+const MAX_WINDOW_UNCERTAINTY = 0.02;
 
 /** Parse the wrapper's NDJSON: { unavailable } or { samples: [{ t, c: { pmu: count } }] } (time-ordered). */
 export function parseInstrSamples(text) {
@@ -59,7 +61,7 @@ export function parseInstrSamples(text) {
   const dE = final.e - rows[0].e, dR = Object.keys(final.r).reduce((a, k) => a + (final.r[k] - (rows[0].r[k] ?? 0)), 0);
   const lifetimeCoverage = dE > 0 ? dR / dE : null;
   if (!(lifetimeCoverage >= MIN_PMU_COVERAGE)) return { unavailable: lifetimeCoverage === null ? 'counters never ran (no enabled time)' : `PMU multiplexed: counters ran ${(lifetimeCoverage * 100).toFixed(4)}% of their enabled time over the sample (>= ${MIN_PMU_COVERAGE * 100}% required)` };
-  return { samples: rows, lifetimeCoverage };
+  return { samples: rows, lifetimeCoverage, lifetimeEnabled: dE };
 }
 
 function at(samples, t) {
@@ -68,6 +70,14 @@ function at(samples, t) {
   const a = samples[i], b = samples[i + 1];
   const f = b.t === a.t ? 0 : Math.min(1, Math.max(0, (t - a.t) / (b.t - a.t)));
   return Object.fromEntries(Object.keys(a.c).map((k) => [k, a.c[k] + f * ((b.c[k] ?? a.c[k]) - a.c[k])]));
+}
+
+function enabledAt(samples, t) {
+  let i = 0;
+  while (i < samples.length - 2 && samples[i + 1].t <= t) i++;
+  const a = samples[i], b = samples[i + 1];
+  const f = b.t === a.t ? 0 : Math.min(1, Math.max(0, (t - a.t) / (b.t - a.t)));
+  return a.e + f * (b.e - a.e);
 }
 
 /**
@@ -82,6 +92,12 @@ export function instructionsIn(parsed, startMs, endMs) {
     return { total: null, pmu: null, unavailable: `window ${Math.round(startMs)}..${Math.round(endMs)} not covered by counter samples ${Math.round(s[0].t)}..${Math.round(s.at(-1).t)}` };
   }
   const a = at(s, startMs), b = at(s, endMs);
+  const windowEnabled = enabledAt(s, endMs) - enabledAt(s, startMs);
+  if (!(windowEnabled > 0)) return { total: null, pmu: null, unavailable: 'counters not running in this window (no enabled time)' };
+  if (!(parsed.lifetimeEnabled > 0) || !Number.isFinite(parsed.lifetimeCoverage)) return { total: null, pmu: null, unavailable: 'window instruction uncertainty bound unavailable' };
+  const uncertaintyBound = parsed.lifetimeEnabled * Math.max(0, 1 - parsed.lifetimeCoverage) / windowEnabled;
+  if (!Number.isFinite(uncertaintyBound)) return { total: null, pmu: null, unavailable: 'window instruction uncertainty bound unavailable' };
+  if (uncertaintyBound >= MAX_WINDOW_UNCERTAINTY) return { total: null, pmu: null, uncertaintyBound, unavailable: `window bounded instruction loss ${(uncertaintyBound * 100).toFixed(3)}% reaches the 2% verdict floor` };
   const pmu = Object.fromEntries(Object.keys(b).map((k) => [k, Math.max(0, Math.round(b[k] - (a[k] ?? 0)))]));
   // A loop, not Math.min(...spread): a long run can hold more samples than a call takes arguments (review #10138).
   const gap = (t) => { let m = Infinity; for (const r of s) m = Math.min(m, Math.abs(r.t - t)); return m; };
@@ -95,7 +111,7 @@ export function instructionsIn(parsed, startMs, endMs) {
   // No enabled time between the bracketing samples: the counters did not run, so nothing was measured (review #10138).
   if (!(dE > 0)) return { total: null, pmu: null, coverage: null, unavailable: 'counters not running in this window (no enabled time)' };
   // Information only (see MIN_PMU_COVERAGE): the window ratio, unrounded, and the lifetime ratio that decided.
-  return { total: Object.values(pmu).reduce((x, y) => x + y, 0), pmu, coverage: dR / dE, lifetimeCoverage: parsed.lifetimeCoverage, edgeGapMs: Math.round(Math.max(gap(startMs), gap(endMs)) * 10) / 10 };
+  return { total: Object.values(pmu).reduce((x, y) => x + y, 0), pmu, coverage: dR / dE, lifetimeCoverage: parsed.lifetimeCoverage, uncertaintyBound, edgeGapMs: Math.round(Math.max(gap(startMs), gap(endMs)) * 10) / 10 };
 }
 
 /**

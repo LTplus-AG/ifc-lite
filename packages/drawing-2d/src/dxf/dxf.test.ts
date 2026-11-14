@@ -159,6 +159,38 @@ describe('DXF parser', () => {
     expect(t.height).toBeCloseTo(0.25);
   });
 
+  it('keeps Aligned (72=3) and Fit (72=5) TEXT at its start point 10, left-aligned', () => {
+    for (const hJust of [3, 5]) {
+      const text =
+        pairsToText(...HEADER_MM) +
+        entitiesSection(
+          [0, 'TEXT'], [8, 'notes'], [10, 1000], [20, 2000], [40, 250], [1, 'Fitted'],
+          [72, hJust], [11, 5000], [21, 2000],
+        );
+      const t = layerByName(importDxf(text), 'notes').texts[0];
+      // Point 11 is where the stretched text ends; anchoring there left-aligned
+      // would start the label where it should finish.
+      expect(t.position.x).toBeCloseTo(1);
+      expect(t.position.y).toBeCloseTo(2);
+      expect(t.align).toBe('left');
+      expect(t.valign).toBe('baseline');
+    }
+  });
+
+  it('centres Middle (72=4, 73=0) TEXT both ways on its alignment point', () => {
+    const text =
+      pairsToText(...HEADER_MM) +
+      entitiesSection(
+        [0, 'TEXT'], [8, 'notes'], [10, 1000], [20, 2000], [40, 250], [1, 'Middle'],
+        [72, 4], [73, 0], [11, 3000], [21, 4000],
+      );
+    const t = layerByName(importDxf(text), 'notes').texts[0];
+    expect(t.position.x).toBeCloseTo(3);
+    expect(t.position.y).toBeCloseTo(4);
+    expect(t.align).toBe('center');
+    expect(t.valign).toBe('middle');
+  });
+
   it('parses MTEXT chunks and strips inline formatting', () => {
     const text = entitiesSection(
       [0, 'MTEXT'],

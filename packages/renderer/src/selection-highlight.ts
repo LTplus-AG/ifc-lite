@@ -16,6 +16,8 @@
  * none did, the highlight meshes of the last frame are the answer.
  */
 
+import { TexturedSelection, isTexturedPiece, type TexturedSelectionResources } from './textured-selection.js';
+import { selectionHydrationOrder } from './selection-hydration-order.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import { hydrateSelectedEntities, retireStaleSelectionHydration, type MergedSelectionCoverage } from './selection-hydration.js';
 import type { Scene } from './scene.js';
@@ -180,6 +182,8 @@ export class SelectionHighlight {
   private drawn: readonly Mesh[] = [];
   /** The copies were retired for a change and have not been rebuilt, or a rebuild failed and is owed. */
   private pending = false;
+  private readonly textured = new TexturedSelection();
+  clear(): void { this.textured.clear(); this.pending = true; this.drawn = []; }
 
   /**
    * The scene meshes that draw this frame's highlight. While every input is
@@ -194,16 +198,29 @@ export class SelectionHighlight {
     frame: SelectionHighlightInputs,
     createPiece: (piece: MeshData) => boolean,
     createMerged: (pieces: readonly MeshData[], merged: MergedSelectionCoverage) => boolean,
+    resources?: TexturedSelectionResources,
   ): readonly Mesh[] {
     if (this.changed(scene, frame)) this.retire(scene, frame);
     if (!this.pending) return this.drawn;
     const { visible, modelIndex, itemFilterExpressId, itemFilterItemId } = this;
-    const complete = hydrateSelectedEntities(scene, visible, modelIndex, itemFilterExpressId, itemFilterItemId, createPiece, createMerged, this.pool);
+    const owner = scene as Scene;
+    const borrowed = resources ? this.textured.sync(owner, visible, resources, modelIndex, itemFilterExpressId, itemFilterItemId, frame.selected) : [];
+    const merge: typeof createMerged = resources ? (pieces, coverage) => {
+      let complete = true;
+      for (const run of this.textured.runs(owner, pieces)) complete = createMerged(run, coverage) && complete;
+      return complete;
+    } : createMerged;
+    const complete = hydrateSelectedEntities(scene, visible, modelIndex, itemFilterExpressId, itemFilterItemId, createPiece, merge, this.pool, resources ? isTexturedPiece : undefined);
     this.drawn = visible.size > 0
       ? scene.getMeshes().filter((mesh) => visible.has(mesh.expressId)
         && (modelIndex === undefined || mesh.modelIndex === modelIndex)
         && (mesh.expressId !== itemFilterExpressId || mesh.geometryItemId === itemFilterItemId)) // #4382
       : [];
+    if (borrowed.length > 0) {
+      const order = selectionHydrationOrder(scene);
+      order.retain(scene, frame.selected, modelIndex, itemFilterExpressId, itemFilterItemId);
+      this.drawn = order.sortDraws([...this.drawn, ...borrowed]);
+    }
     this.pending = !complete;
     this.sceneMeshes = scene.getMeshes();
     this.sceneMeshCount = this.sceneMeshes.length;

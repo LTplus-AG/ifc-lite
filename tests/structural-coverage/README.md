@@ -5,19 +5,20 @@ analysis domain ifc-lite reads, shows, authors and converts. The generated
 ledger is `docs/architecture/structural-coverage-ledger.md`.
 
 ```bash
-node tests/structural-coverage/score.mjs --check tests/structural-coverage/baseline/r5.json
+node tests/structural-coverage/score.mjs --check tests/structural-coverage/baseline/r6.json
 ```
 
 This writes `tests/structural-coverage/.out/summary.json` and exits 1 if
 anything dropped below the baseline. It needs the corpus on disk. Before
 importing packages, the scorer runs
 `pnpm turbo build --filter=@ifc-lite/parser... --filter=@ifc-lite/create... --filter=@ifc-lite/export...`
-so Turbo rebuilds or restores outputs that match the source. A failed build is
-a harness error, never a product score. Without wasm-pack, `build-wasm.sh`
+plus the viewer’s workspace dependencies (`--filter=@ifc-lite/viewer^...`) for the
+state-module probe, so Turbo rebuilds or restores outputs that match the source.
+A failed build is a harness error, never a product score. Without wasm-pack, `build-wasm.sh`
 keeps the wasm runtime already on disk, so scoring a Rust change needs the
-wasm toolchain. The probes run in about two seconds after building.
+wasm toolchain. The toggle probe also loads the viewer’s Node test adapter.
 
-CI runs the ratchet against the newest frozen `r<N>.json` (now `r5.json`) in the shared **Build packages +
+CI runs the ratchet against the newest frozen `r<N>.json` (now `r6.json`) in the shared **Build packages +
 WASM** job, after fixture verification and the package build. This job runs in
 both fast and full PR lanes for package, harness and manifest changes, and in
 merge-queue batches. The ledger check alone does not run the product probes.
@@ -45,7 +46,7 @@ model, four checks, the CLI command, the docs page).
 | create | `probes/create.mjs` + `create-scene.mjs` | an in-store builder authors it in a blank model of the row's schema, and the STEP export declares that schema, re-parses and carries the given values |
 | edit, remove | `probes/edit.mjs`, `probes/remove.mjs` | edit/export/reparse structural values; remove exclusive subgraphs, preserve shared resources and validate references |
 | convert | `probes/convert.mjs` | it survives IFC4 -> IFC2X3 -> IFC4 (or IFC2X3 -> IFC4 -> IFC2X3) with the same values |
-| capability | `probes/capabilities.mjs` | per capability row; the link read and the docs page have probes, the rest are not written yet |
+| capability | `probes/capabilities.mjs` | per capability row; the link read, derive, analytical/physical toggle and docs page have probes |
 
 Not-applicable cells come only from `notApplicable()` in `catalogue.mjs`, by
 family or schema: only items and activities render, relationships have no card
@@ -65,6 +66,11 @@ outside derived slots, which select member a typed value is, enum values, and
 records of other entities. The registry is
 generated from the same EXPRESS as the product uses, so a codegen error there
 would be shared by the oracle and the converter.
+
+The derive probe compares the AxisVM roof truss against its authored analytical
+model within 1 mm (axis sine tolerance 0.001). Partial credit requires at least
+90% of reference/derived members to match axes, endpoints and physical links;
+below that floor it fails. Missing or extra connection records prevent a pass.
 
 ## Scoring and the ratchet
 
@@ -118,3 +124,5 @@ A new in-store builder needs no new probe: add a step to `SCENE` in
 [R4 support and load glyphs](baseline/r4-notes.md): 24 render cells measured (4 pass, 10 partial, 10 fail), 321.5/774 cells; rows remain 56/119.
 
 R5 adds 74 edit and 74 remove passes to R4, for 469.5/774 cells. R4 render coverage is retained.
+
+[R6 round-3 close](baseline/r6-notes.md): main after #9923 is 92.5/119 rows and 721/774 cells (from 56/119 and 469.5/774 at R5), with every changed cell listed.

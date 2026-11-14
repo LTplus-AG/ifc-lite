@@ -4,16 +4,18 @@ import { getSchemaRegistryForVersion, getCanonicalEntityName } from '@ifc-lite/p
 import { convertEntityType } from './schema-converter.js';
 import { isStructuralAssignmentConversion } from './schema-converter-structural.js';
 import { StructuralAxes } from './schema-converter-structural-axes.js';
+import { StructuralLinks } from './schema-converter-structural-links.js';
 import { readStepSlots } from './step-argument-parser.js';
 
 export class StructuralDiagnostics {
   readonly axes = new StructuralAxes();
+  readonly links = new StructuralLinks();
   private readonly losses = new Map<string, number>();
 
   inspect(line: string, from: string, to: string): void {
     const assignment = /^\s*#\d+\s*=\s*IFCRELCONNECTSSTRUCTURALELEMENT\s*\(/i.test(line) ? readStepSlots(line) : null;
     if (assignment && isStructuralAssignmentConversion(assignment.type, from, to)) {
-      this.record('IfcRelConnectsStructuralElement is mapped to IfcRelAssignsToProduct; the original relationship kind cannot round trip');
+      this.record('IfcRelConnectsStructuralElement is mapped to IfcRelAssignsToProduct; the relationship kind is not kept in the target file');
       return;
     }
     if (!((from === 'IFC2X3' && to === 'IFC4') || (from === 'IFC4' && to === 'IFC2X3'))) return;
@@ -46,6 +48,14 @@ export class StructuralDiagnostics {
     // A tangent does not determine the local section z-axis. Do not invent one.
     if (to === 'IFC4' && tgt.includes('Axis') && !src.some(a => a.name === 'Axis') && !this.axes.axis(line))
       this.record(`${rec.type}.Axis is required by IFC4 but unknown; output does not conform until the model's section orientation is resolved`);
+  }
+
+  /** IFC4 -> IFC2X3 link restoration (`StructuralLinks`, armed only for that pair): the record body, reported because the class changes. */
+  restoredLink(entity: string, args: readonly string[]): string | undefined {
+    const attrs = this.links.link(entity, args);
+    if (!attrs) return undefined;
+    this.record('IfcRelAssignsToProduct linking one structural member to its element is written as IfcRelConnectsStructuralElement, the IFC2X3 physical-to-analytical link');
+    return `IFCRELCONNECTSSTRUCTURALELEMENT(${attrs})`;
   }
 
   private record(message: string): void { this.losses.set(message, (this.losses.get(message) ?? 0) + 1); }

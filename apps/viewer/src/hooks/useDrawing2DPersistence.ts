@@ -40,6 +40,8 @@ import { identifyLoadedPlacementSource } from '@/lib/model-placement/loaded-sour
 import { placementSourceIdentity } from '@/lib/model-placement/source-identity';
 import { loadDrawing2DEntry, defaultMarkupPatch, suppressNextSaveFor, type PersistedDrawing2DEntry } from '@/store/slices/drawing2DSlice.persistence.js';
 import { setCachedHash, notifyDecided } from './drawingMarkupRestorePrecedence.js';
+import { absorbEmbeddedMarkup, absorbEmbeddedMarkupOnceReadable, forgetAbsorbedEmbeddedMarkup } from '@/lib/drawing2d-markup/drawing-markup-absorbed';
+import { legacyEntryEmbeddedMarkupIdentities } from '@/lib/drawing2d-markup/drawing-markup-legacy-absorbed';
 import {
   resetSaveState, beginRestore, endRestore, setRestoredSectionConfig, ensureSaveSubscription,
   subscribeModelActivations, modelActivationEpoch,
@@ -154,12 +156,18 @@ export function useDrawing2DPersistence(): void {
     beginRestore(activeModelId);
     suppressNextSaveFor(activeModelId);
     useViewerStore.setState(defaultMarkupPatch());
+    // The cleared fields no longer hold any absorbed embedded markup; the
+    // restores below add back what they put on screen.
+    forgetAbsorbedEmbeddedMarkup(activeModelId);
 
     // `drawnMeanwhile` unites a stored list with the live one. The fields were
     // cleared when this model became active, so what the live lists hold at
     // restore time was drawn while the key was resolving (#7035: that can
     // last until the load ends when a legacy entry is being moved). The resolver
     // runs on every activation so late legacy writes are included too.
+    // The same union keeps an entry with no markup decision (empty lists, no
+    // absorbed set; `drawingMarkupRestorePrecedence.ts`) from erasing what the
+    // embedded restore applied on a return with the hash already cached.
     const applyHash = (hash: string | null, skipDxfRestore = false, drawnMeanwhile: UnionById = (stored) => stored, fallback?: PersistedDrawing2DEntry) => {
       if (!stillCurrent()) return;
       endRestore(activeModelId);
@@ -198,6 +206,14 @@ export function useDrawing2DPersistence(): void {
       }
 
       setRestoredSectionConfig(activeModelId, entry.sectionConfig);
+      // Before the write below, which the save subscription persists: this
+      // entry's markup includes (or deliberately dropped) these embedded
+      // annotations, so a save to the model may replace them. An entry written
+      // before it recorded them absorbs what its embedded-origin items name.
+      if (entry.absorbedEmbeddedMarkup) absorbEmbeddedMarkup(activeModelId, entry.absorbedEmbeddedMarkup);
+      else absorbEmbeddedMarkupOnceReadable(activeModelId, () => legacyEntryEmbeddedMarkupIdentities(activeModelId, [
+        entry.measure2DResults, entry.polygonArea2DResults, entry.textAnnotations2D, entry.cloudAnnotations2D, entry.dimensions2D,
+      ]));
       const live = useViewerStore.getState();
       useViewerStore.setState({
         measure2DResults: drawnMeanwhile(entry.measure2DResults, live.measure2DResults),

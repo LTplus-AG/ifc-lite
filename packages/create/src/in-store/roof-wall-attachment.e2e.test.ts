@@ -2,13 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { existsSync, readFileSync } from 'node:fs';
-import { beforeAll, it, expect, describe } from 'vitest';
+import { afterAll, beforeAll, it, expect, describe } from 'vitest';
 import { QuantityType } from '@ifc-lite/data';
 import { scaleWallQuantities, wallQuantitySetCount } from './storey/storey-level-write.js';
 import { recordCompoundMutation, StoreEditor, undoRecordedMutationOperations } from '@ifc-lite/mutations';
 import { IfcAPI, initSync } from '@ifc-lite/wasm';
 import { addWallToStore } from './wall.js';
 import { addRoofToStore } from './roof.js';
+import { getFootprintRoofPlaneParts } from './roof-plane-parts.js';
 import { addSlabToStore } from './slab.js';
 import { deriveBaseQuantitySet } from './base-quantities.js';
 import { setTopConstraintInStore } from './storey/storey-top-constraint.js';
@@ -22,6 +23,7 @@ const wasm = new URL('../../../wasm/pkg/ifc-lite_bg.wasm', import.meta.url);
 describe.skipIf(!existsSync(wasm))('roof attachments through the mesh kernel (build WASM to run)', () => {
 let api: IfcAPI;
 beforeAll(() => { initSync({ module: readFileSync(wasm) }); api = new IfcAPI(); });
+afterAll(() => api.free());
 it.each(['IFC4', 'IFC2X3', 'IFC4X3'] as const)('%s: a wall top meets both slopes of a gable underside and follows a roof lift (#9296)', async (schema) => {
   const s = await newStorey(schema);
   const roof = addRoofToStore(s.editor, s.anchor, { Position: [0, 0, 4], Width: 10, Depth: 8, Thickness: .25, EdgeSlopes: [Math.PI / 6, 0, Math.PI / 6, 0], Overhang: .5 }).roofId;
@@ -60,6 +62,9 @@ it.each(['roof-first', 'wall-first'] as const)('moving a roof and attached wall 
     selected: order === 'roof-first' ? [roof,wall] : [wall,roof], op: {kind: 'move',delta: [20,0]},
   });
   expect(moved.remesh).toEqual(expect.arrayContaining([roof,wall]));
+  const planes = getFootprintRoofPlaneParts(s.store, s.view, roof);
+  expect(planes).toHaveLength(2);
+  expect(moved.remesh).toEqual(expect.arrayContaining([roof,wall,...planes]));
   const parts = meshWalls(api, exportText(s)).get(wall) ?? [];
   for (const y of [1,4,7]) {
     const z = 4 + Math.min(y,8-y) * Math.tan(Math.PI / 6);
@@ -177,4 +182,17 @@ it('a resize the roof cannot cover is refused without writing, and the four-writ
   expect(s.view.getPropertyValue(wall, ROOF_ATTACHMENT, 'Signature')).toBe(before);
   expect(resizeRectangleWall(s.store, s.view, s.editor, wall, [3, 0, 0], [3, 8, 0])).toMatchObject({ ok: false });
   expect(s.view.getMutationCount()).toBe(count);
+});
+
+
+it('a carried roof plane does not permit moving an unrelated occurrence sharing the roof placement (#9357)', async () => {
+  const s = await newStorey();
+  const roof = addRoofToStore(s.editor, s.anchor, { Position: [0,0,4], Width: 10, Depth: 8, Thickness: .25,
+    EdgeSlopes: [Math.PI/6,0,Math.PI/6,0] });
+  const peer = addSlabToStore(s.editor, s.anchor, { Position: [40,40,4], Width: 2, Depth: 2, Thickness: .2 });
+  s.editor.setPositionalAttribute(peer.slabId, 5, `#${roof.placementId}`);
+  const before = structuredClone({ records: s.view.getNewEntities(), journal: s.view.getMutations(), next: s.view.peekNextExpressId() });
+  expect(() => transformElementsInStore({ dataStore: s.store, view: s.view, editor: s.editor,
+    selected: [roof.roofId], op: { kind: 'move', delta: [20,0] } })).toThrow(new RegExp(`#${peer.slabId}; shared occurrences`));
+  expect({ records: s.view.getNewEntities(), journal: s.view.getMutations(), next: s.view.peekNextExpressId() }).toEqual(before);
 });

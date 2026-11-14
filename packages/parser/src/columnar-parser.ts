@@ -9,6 +9,7 @@
  * Instead of multiple passes through entities, we extract everything in ONE loop.
  */
 
+import { readPropertySets } from './current-property-sets.js';
 import { newSelectionRelationshipIndex, indexTypeRelationship } from './selection-relationship-index.js';
 import { indexExceptionalTypeCoverage, indexExceptionalSubjects } from './index-exceptional-relationships.js';
 import { indexPropertyRelationships } from './index-property-relationships.js';
@@ -17,7 +18,7 @@ import type { EntityRef } from './types.js';
 import { SpatialHierarchyBuilder } from './spatial-hierarchy-builder.js';
 import { EntityExtractor } from './entity-extractor.js';
 import { resolveLengthUnit, type LengthUnitSource } from './unit-extractor.js';
-import { extractPsetsFromIds } from './on-demand-extractors.js'; import type { ExtractedProperty } from './property-value-parser.js';
+import type { ExtractedProperty } from './property-value-parser.js';
 import type { CollectedQuantity } from './quantity-collect.js';
 import { readOccurrenceQuantities } from './current-occurrence-quantities.js';
 import type { MetadataReadView } from './effective-metadata-record.js';
@@ -712,22 +713,8 @@ export class ColumnarParser {
      * Extract properties for a single entity ON-DEMAND
      * Parses only what's needed from the source buffer - instant results.
      */
-    extractPropertiesOnDemand(
-        store: IfcDataStore,
-        entityId: number
-    ): Array<{ name: string; globalId?: string; properties: Array<ExtractedProperty> }> {
-        // Use on-demand extraction if map is available (preferred for single-entity access)
-        if (!store.onDemandPropertyMap || !store.source?.length) {
-            // Fallback to pre-computed property table (e.g., server-parsed data)
-            return store.properties.getForEntity(entityId);
-        }
-
-        const psetIds = store.onDemandPropertyMap.get(entityId);
-        if (!psetIds || psetIds.length === 0) {
-            return [];
-        }
-
-        return extractPsetsFromIds(store, new EntityExtractor(store.source), psetIds);
+    extractPropertiesOnDemand(store: IfcDataStore, entityId: number, view?: MetadataReadView, occurrenceId = entityId): Array<{ name: string; globalId?: string; properties: Array<ExtractedProperty> }> {
+        return readPropertySets(store, entityId, view, occurrenceId);
     }
 
     /**
@@ -760,10 +747,9 @@ export class ColumnarParser {
  */
 export function extractPropertiesOnDemand(
     store: IfcDataStore,
-    entityId: number
+    entityId: number, view?: MetadataReadView, occurrenceId = entityId
 ): Array<{ name: string; globalId?: string; properties: Array<ExtractedProperty> }> {
-    const parser = new ColumnarParser();
-    return parser.extractPropertiesOnDemand(store, entityId);
+    return readPropertySets(store, entityId, view, occurrenceId);
 }
 
 /** Standalone on-demand quantity extractor, usable outside the ColumnarParser class. */

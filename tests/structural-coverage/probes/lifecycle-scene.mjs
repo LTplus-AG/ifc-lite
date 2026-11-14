@@ -29,7 +29,10 @@ export async function lifecycleScene(pkgs, schema, stepId) {
     }
     return done.get('$activity');
   };
-  const needsHelper = step => needsGroup(step) || Object.keys(step.emits).some(t => /Connection$|Action$|Reaction$/.test(t));
+  // build() links a returned connection, action or reaction to the helper, so
+  // a step that emits one or whose builder authors one needs it first.
+  const needsHelper = step => needsGroup(step)
+    || [...Object.keys(step.emits), step.builder].some(t => /(Connection|Action|Reaction)(ToStore)?$/.test(t));
   const build = step => {
     if (done.has(step.id)) return done.get(step.id);
     for (const need of step.needs ?? []) build(steps.find(s => s.id === need));
@@ -55,7 +58,10 @@ export async function lifecycleScene(pkgs, schema, stepId) {
     }
   }
   const before = readStep(exportText());
+  const helperReady = done.has('$helper');
   const id = build(step);
+  // A helper first built here would be counted as owned by the occurrence.
+  if (!helperReady && done.has('$helper')) throw new Error(`lifecycle scene: step ${step.id} built the helper after the snapshot`);
   return { store, view, editor, anchor, id, step, before, exportText };
 }
 

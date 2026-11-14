@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
-import { createCollabSession, createEntity, deleteEntity, setAttribute, setPropertyValue, getPropertyValue, deletePropertyValue } from '@ifc-lite/collab';
+import { createCollabSession, createEntity, deleteEntity, setAttribute, setPropertyValue, getPropertyValue, deletePropertyValue, getQuantityValue, setQuantityValue, deleteQuantityValue } from '@ifc-lite/collab';
 import { useViewerStore } from '@/store';
 import { bindRoomPropertyApi } from '@/lib/collab/room-property-api';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
@@ -132,7 +132,7 @@ it('the real create mirror resolves a new entity path when its creation publishe
 });
 
 async function roofRoom() {
-  bindRoomPropertyApi({ getPropertyValue, setPropertyValue, deletePropertyValue });
+  bindRoomPropertyApi({ getPropertyValue, setPropertyValue, deletePropertyValue, getQuantityValue, setQuantityValue, deleteQuantityValue });
   const { data, view, adapter } = await seed();
   const session = await createCollabSession({ roomId: 'roof-publication', user: { id: 'test', name: 'Test' }, provider: 'memory' });
   const slot = { slotId: 'm0', pathPrefix: '/m0' };
@@ -246,7 +246,7 @@ it('one throwing restore does not stop the rest of a refused roof edit rollback 
     original(...args);
     if (++writes === 3) throw new Error('Injected roof property publication failure');
   } });
-  bindRoomPropertyApi({ getPropertyValue, deletePropertyValue: (...args: Parameters<typeof deletePropertyValue>) => {
+  bindRoomPropertyApi({ getPropertyValue, getQuantityValue, setQuantityValue, deleteQuantityValue, deletePropertyValue: (...args: Parameters<typeof deletePropertyValue>) => {
     if (++restores === 1) throw new Error('Injected restore failure');
     return deletePropertyValue(...args);
   }, setPropertyValue: (...args: Parameters<typeof setPropertyValue>) => {
@@ -260,7 +260,7 @@ it('one throwing restore does not stop the rest of a refused roof edit rollback 
     assert.match(String(useViewerStore.getState().collabGeometryNotice), /could not be shared/);
   } finally {
     useViewerStore.setState({ mirrorPropertyEdit: original, collabGeometryNotice: null });
-    bindRoomPropertyApi({ getPropertyValue, setPropertyValue, deletePropertyValue });
+    bindRoomPropertyApi({ getPropertyValue, setPropertyValue, deletePropertyValue, getQuantityValue, setQuantityValue, deleteQuantityValue });
     session.dispose();
   }
 });

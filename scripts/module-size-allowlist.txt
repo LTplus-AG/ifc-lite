@@ -65,7 +65,7 @@
   1429 apps/viewer/src/components/viewer/ChatPanel.tsx
   1243 apps/viewer/src/components/viewer/ClashPanel.tsx
    939 apps/viewer/src/components/viewer/DataConnector.tsx
-  1698 apps/viewer/src/components/viewer/Drawing2DCanvas.tsx
+  1578 apps/viewer/src/components/viewer/Drawing2DCanvas.tsx
    535 apps/viewer/src/components/viewer/DrawingSettingsPanel.tsx
    640 apps/viewer/src/components/viewer/ExportDialog.tsx
    451 apps/viewer/src/components/viewer/GLBExportDialog.tsx
@@ -97,7 +97,6 @@
    813 apps/viewer/src/components/viewer/tools/MeasurementVisuals.tsx
    701 apps/viewer/src/components/viewer/useGeometryStreaming.ts
    880 apps/viewer/src/components/viewer/useMouseControls.ts
-   461 apps/viewer/src/components/viewer/ViewerLayout.tsx
   1491 apps/viewer/src/components/viewer/Viewport.tsx
    846 apps/viewer/src/components/viewer/ViewportContainer.tsx
    500 apps/viewer/src/components/viewer/ZonesPanel.tsx

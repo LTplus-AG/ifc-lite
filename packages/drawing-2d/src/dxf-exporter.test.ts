@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { exportToDXF } from './dxf-exporter.js';
+import { exportToDXF, isDxfDimensionExportable } from './dxf-exporter.js';
 import { parseDxf } from './dxf/parser.js';
 import {
   DEFAULT_SECTION_CONFIG,
@@ -219,6 +219,29 @@ describe('DXFExporter', () => {
     expect(texts[1].height).toBeCloseTo(4);
   });
 
+  it('anchors a multi-line underlay text block by its vertical attachment, along rotated text', () => {
+    // DXF anchors the whole block: bottom grows up from the point (last line
+    // on it), middle centres on it, top grows down. Lines stack across the
+    // text's own direction, so a 90° label stacks along world X.
+    const at = (valign: 'top' | 'middle' | 'bottom', dirX: number, dirY: number) => {
+      const multi = underlay();
+      multi.layers[0].texts = [
+        { position: { x: 10, y: 20 }, text: 'A\nB\nC', height: 1, dirX, dirY, align: 'left', valign },
+      ];
+      return parseDxf(exportToDXF(emptyDrawing(), { underlays: [{ underlay: multi }] })).entities
+        .filter((e): e is DxfTextEntity => e.kind === 'text');
+    };
+    const bottom = at('bottom', 1, 0);
+    expect(bottom.map((t) => t.text)).toEqual(['A', 'B', 'C']);
+    expect(bottom.map((t) => t.y)).toEqual([22.6, 21.3, 20].map((y) => expect.closeTo(y, 9)));
+    expect(at('middle', 1, 0).map((t) => t.y)).toEqual([21.3, 20, 18.7].map((y) => expect.closeTo(y, 9)));
+    expect(at('top', 1, 0).map((t) => t.y)).toEqual([20, 18.7, 17.4].map((y) => expect.closeTo(y, 9)));
+    // Rotated 90° (reading up): "down" across the baseline is world +X.
+    const rotated = at('bottom', 0, 1);
+    expect(rotated.map((t) => t.x)).toEqual([7.4, 8.7, 10].map((x) => expect.closeTo(x, 9)));
+    expect(rotated.map((t) => t.y)).toEqual([20, 20, 20].map((y) => expect.closeTo(y, 9)));
+  });
+
   it('applies underlay placement offset/rotation in the same sense as every other DxfPlacement consumer (world Y-up, not mirrored)', () => {
     // `DxfPlacement` is documented as drawing space (+Y down): "Offset in
     // metres (drawing space)" / "counter-clockwise as seen on a plan view".
@@ -304,4 +327,59 @@ describe('DXFExporter', () => {
     expect(polys[0].vertices.map((v) => [v.x, v.y])).toEqual([[100, 50], [104, 50], [104, 53]]);
     expect(dxf).toContain('2\nSCAN-OUTLINE\n');
   });
+});
+
+describe('DXFExporter textLayers', () => {
+  it('writes TEXT on its own layer, through coordinateTransform, with the angle measured after it', () => {
+    // A y-mirroring transform, as the plan export's toWorld applies.
+    const dxf = exportToDXF(emptyDrawing(), {
+      coordinateTransform: (p) => ({ x: p.x + 100, y: -p.y }),
+      textLayers: [{
+        name: 'DIMENSIONS-TEXT',
+        color: '#000000',
+        texts: [
+          { position: { x: 1, y: 2 }, text: '4262', height: 0.25, direction: { x: 1, y: 1 }, hAlign: 'center', vAlign: 'middle' },
+          { position: { x: 0, y: 0 }, text: 'flat', height: 0.125 },
+        ],
+      }],
+    });
+    const texts = parseDxf(dxf).entities.filter((e): e is DxfTextEntity => e.kind === 'text');
+    expect(texts).toHaveLength(2);
+    expect(texts.every((t) => t.layer === 'DIMENSIONS-TEXT')).toBe(true);
+    expect([texts[0].x, texts[0].y, texts[0].height, texts[0].text]).toEqual([101, -2, 0.25, '4262']);
+    expect([texts[0].hAlign, texts[0].vAlign]).toEqual(['center', 'middle']);
+    // (1, 1) in drawing space is (1, -1) after the mirror: -45°.
+    expect(texts[0].rotationDeg).toBeCloseTo(-45, 9);
+    expect([texts[1].rotationDeg, texts[1].hAlign, texts[1].vAlign]).toEqual([0, 'left', 'baseline']);
+  });
+
+  it('keepUpright turns text that would read upside down or top to bottom in the output frame', () => {
+    const angle = (direction: { x: number; y: number }, keepUpright: boolean) => {
+      const dxf = exportToDXF(emptyDrawing(), {
+        textLayers: [{ name: 'T', color: '#000000', texts: [{ position: { x: 0, y: 0 }, text: 'x', height: 1, direction, keepUpright }] }],
+      });
+      return parseDxf(dxf).entities.filter((e): e is DxfTextEntity => e.kind === 'text')[0].rotationDeg;
+    };
+    expect(angle({ x: -1, y: 0 }, false)).toBeCloseTo(180, 9);
+    expect(angle({ x: -1, y: 0 }, true)).toBeCloseTo(0, 9);
+    expect(angle({ x: 0, y: -1 }, true)).toBeCloseTo(90, 9);
+    expect(angle({ x: 0, y: 1 }, true)).toBeCloseTo(90, 9);
+    expect(angle({ x: 1, y: -1 }, true)).toBeCloseTo(-45, 9);
+  });
+});
+
+it('rejects invalid shared dimension graphics with the preflight predicate (#10020)', () => {
+  const point = { x: 0, y: 0 };
+  const valid = { lines: [[{ x: 0, y: 0 }, { x: 5, y: 0 }]] as [typeof point, typeof point][],
+    ticks: [], text: { at: { x: 2.5, y: 0.2 }, angle: 0, heightM: 0.3, value: 'valid' } };
+  const rejected = [
+    { ...valid, lines: [[point, point]] as [typeof point, typeof point][] },
+    ...[0, -1, NaN, Infinity].map(heightM => ({ ...valid, text: { ...valid.text, heightM } })),
+    { ...valid, text: { ...valid.text, at: { x: NaN, y: 0 } } },
+  ];
+  expect(isDxfDimensionExportable(valid)).toBe(true);
+  for (const dim of rejected) expect(isDxfDimensionExportable(dim)).toBe(false);
+  const entities = parseDxf(exportToDXF(emptyDrawing(), { dimensions: [...rejected, valid] })).entities;
+  expect(entities.filter(e => e.kind === 'text')).toHaveLength(1);
+  expect(entities.filter(e => e.kind === 'line')).toHaveLength(1);
 });

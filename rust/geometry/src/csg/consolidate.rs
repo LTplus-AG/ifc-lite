@@ -39,7 +39,9 @@ use ring_ops::{ring_is_noise, weld_near_coincident_2d};
 /// that scale (e.g. a 0.2 m × 2 m face, min 0.2 m ≫ 2·10⁻⁴). Dropping such a
 /// needle cannot open a gap: the hole/seam is already framed by the neighbouring
 /// non-degenerate triangles, exactly as Manifold (which welds the near-duplicate)
-/// produces.
+/// produces. That holds for a short edge on a region's ring only: a needle whose
+/// short edge is shared inside a triangulated region spans a real neck, and
+/// `conform::emit`'s region path keeps it (#8156).
 ///
 /// The cost of scale-relativity, documented behaviour rather than a defect
 /// (#4698): a REAL face thinner than `floor_pow2(max_edge) / 8192` is dropped

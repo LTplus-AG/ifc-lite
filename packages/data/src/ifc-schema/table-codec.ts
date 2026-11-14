@@ -111,3 +111,27 @@ export function encodeSchemaTable(value: unknown): string {
   }
   return text;
 }
+
+const eagerTablesEvaluated: string[] = [];
+
+/**
+ * The exported-constant form of a table (or of a value derived from one):
+ * `export const X = /* @__PURE__ *\/ eagerSchemaTable('ifc-lite-eager-table:X', getX)`.
+ * Returns `get()`, so the constant is the same object the getter returns.
+ *
+ * A bundler drops the constant when nothing references it; any reference
+ * keeps it, and it is then decoded when its chunk loads. The marker is what
+ * makes that visible in a built bundle: it survives exactly where the
+ * constant does, and `apps/viewer/scripts/check-schema-tables-lazy.mjs` fails
+ * the viewer build if a startup chunk carries one. Code that may not need a
+ * table at load time calls the getter instead.
+ */
+export function eagerSchemaTable<T>(marker: string, get: () => T): T {
+  eagerTablesEvaluated.push(marker);
+  return get();
+}
+
+/** Markers of the eager constants evaluated so far in this realm, in order. */
+export function eagerSchemaTablesEvaluated(): readonly string[] {
+  return [...eagerTablesEvaluated];
+}

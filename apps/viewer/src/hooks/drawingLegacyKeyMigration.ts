@@ -49,6 +49,8 @@ import { keyFor, loadDrawing2DEntry, saveDrawing2DEntry, type PersistedDrawing2D
 import { hasSavedSheetChoice, loadSheet, saveSheet, sheetStorageKey } from '@/store/slices/sheetSlice.persistence';
 import type { DrawingSheet } from '@ifc-lite/drawing-2d';
 import type { LegacyMoveContext } from './drawingPersistenceKey.js';
+import { legacyEntryEmbeddedMarkupIdentities } from '@/lib/drawing2d-markup/drawing-markup-legacy-absorbed';
+import { drawingMarkupItemExpressId } from '@/lib/overlay-parse/drawing-markup-read';
 
 export interface LegacyLocalRestore {
   retry: boolean;
@@ -154,7 +156,30 @@ const holdsAll = (stored: { id: string }[], moved: { id: string }[]) => {
 };
 
 /** Keeps readable merged markup as a restore fallback until the write is confirmed; incomplete moves retry on activation. */
-function moveLegacyMarkup(key: string, legacy: string, unionById: LegacyMoveContext['unionById']): LocalMove<PersistedDrawing2DEntry> {
+/**
+ * The absorbed set of two merged entries. One that records none (written
+ * before the set existed) contributes what its embedded-origin items name
+ * (`drawing-markup-legacy-absorbed.ts`; the model has loaded by now), so an
+ * explicit set on the other entry, even an empty one, does not hide it.
+ * Neither recording one keeps the field absent, for the restore to derive.
+ */
+function mergeAbsorbed(modelId: string, ...entries: PersistedDrawing2DEntry[]): string[] | undefined | null {
+  if (entries.every((entry) => !entry.absorbedEmbeddedMarkup)) return undefined;
+  const sets: string[][] = [];
+  for (const entry of entries) {
+    const lists = [entry.measure2DResults, entry.polygonArea2DResults, entry.textAnnotations2D, entry.cloudAnnotations2D, entry.dimensions2D];
+    // Only items read from the file can be absorbed; an entry without any needs no readable file.
+    const fromFile = lists.some((list) => (list ?? []).some((item) => drawingMarkupItemExpressId(item.id) !== null));
+    const set = entry.absorbedEmbeddedMarkup ?? (fromFile ? legacyEntryEmbeddedMarkupIdentities(modelId, lists) : []);
+    // The file closed or is not readable yet: writing `[]` would lose this
+    // entry's share for good (the explicit set stops a later derivation).
+    if (!set) return null;
+    sets.push(set);
+  }
+  return [...new Set(sets.flat())];
+}
+
+function moveLegacyMarkup(key: string, legacy: string, modelId: string, unionById: LegacyMoveContext['unionById']): LocalMove<PersistedDrawing2DEntry> {
   const defaults = getDefaultDrawing2DState().drawing2DDisplayOptions;
   const raw = localStorage.getItem(keyFor(legacy));
   const old = loadDrawing2DEntry(legacy, defaults);
@@ -172,16 +197,30 @@ function moveLegacyMarkup(key: string, legacy: string, unionById: LegacyMoveCont
     cloudAnnotations2D: unionById(earlier.cloudAnnotations2D, later.cloudAnnotations2D),
     dimensions2D: unionById(earlier.dimensions2D ?? [], later.dimensions2D ?? []),
     sectionConfig: later.sectionConfig ?? earlier.sectionConfig,
+    absorbedEmbeddedMarkup: undefined as string[] | undefined,
   } : later;
+  if (earlier) {
+    const absorbed = mergeAbsorbed(modelId, earlier, later);
+    // Not derivable now: keep both entries and retry on the next activation.
+    if (absorbed === null) {
+      // Keep the sets already recorded (a deliberate deletion must survive);
+      // the unreadable entry's items stay unabsorbed until the retry, which can
+      // only duplicate, never delete.
+      const recorded = [earlier, later].flatMap((entry) => entry.absorbedEmbeddedMarkup ?? []);
+      return { complete: false, fallback: { ...merged, absorbedEmbeddedMarkup: [...new Set(recorded)] } };
+    }
+    merged.absorbedEmbeddedMarkup = absorbed;
+  }
   saveDrawing2DEntry(key, merged);
   // The entry read back must BE the merged one, value for value. Comparing
   // ids is not enough: an entry whose write failed still holds every id when
-  // the legacy entry only contributed a newer version of an item, or the
-  // section plane.
+  // the legacy entry only contributed a newer version of an item, the
+  // section plane, or the absorbed embedded markup a deletion depends on.
   const written = loadDrawing2DEntry(key, defaults);
   const same = (pick: (entry: typeof merged) => unknown) => !!written && JSON.stringify(pick(written)) === JSON.stringify(pick(merged));
   if (!MARKUP_LISTS.every((list) => same((entry) => entry[list]))
-    || !same((entry) => entry.sectionConfig) || !same((entry) => entry.drawing2DDisplayOptions)) return { complete: false, fallback: merged };
+    || !same((entry) => entry.sectionConfig) || !same((entry) => entry.drawing2DDisplayOptions)
+    || !same((entry) => entry.absorbedEmbeddedMarkup ?? [])) return { complete: false, fallback: merged };
   return { complete: removeLocal(keyFor(legacy), raw) };
 }
 
@@ -205,7 +244,7 @@ function moveLegacySheet(key: string, legacy: string): LocalMove<DrawingSheet> {
 export async function migrateLegacyLocalEntries(key: string, present: string[], ctx: LegacyMoveContext): Promise<LegacyLocalRestore> {
   const legacy = await legacyKeyToMove('local', key, present, ctx);
   if (!legacy) return { retry: false };
-  const markup = moveLegacyMarkup(key, legacy, ctx.unionById);
+  const markup = moveLegacyMarkup(key, legacy, ctx.modelId, ctx.unionById);
   const sheet = moveLegacySheet(key, legacy);
   // Checked against what is left: an entry that reappears under a removed key is new.
   const removed = [keyFor(legacy), sheetStorageKey(legacy)].filter((moved) => localStorage.getItem(moved) === null);

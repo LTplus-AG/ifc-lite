@@ -21,7 +21,7 @@
 //! The reason this file exists at all: `ifc-lite-wasm` is excluded from the
 //! required CI lane (`cargo test --workspace --exclude ifc-lite-wasm`,
 //! `.github/workflows/test.yml:472`) and the only wasm-pack lane
-//! (`determinism.yml`, `wide-arithmetic.yml`) runs solely
+//! (`determinism.yml`) runs solely
 //! `--test mesh_determinism`. Neither of the two tests above is ever
 //! compiled or executed by any CI job -- they only ever ran locally. This
 //! test exercises `classify_type_name_with_content` through the SAME

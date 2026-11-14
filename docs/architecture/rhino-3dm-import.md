@@ -1,9 +1,11 @@
 # Rhino .3dm import, level 1: read-only
 
 Status: **partly implemented**. The reader, `readRhino3dm` in
-`@ifc-lite/rhino3dm` (delivery step 1), is implemented with its package tests.
-The viewer side (steps 2 to 4: format detection, worker, adapter, tree, e2e)
-is not, and the exporter's spatial layer stamps (step 0) are a separate change.
+`@ifc-lite/rhino3dm` (delivery step 1), the viewer load (step 2: format
+detection, the import worker and its client, the adapter and the `loadFile`
+branch) and the tree, hidden state and model metadata (step 3) are implemented
+with their tests. The e2e overlay test (step 4) is not, and the exporter's
+spatial layer stamps (step 0) shipped separately.
 Decisions D1 to D8 are made. This page is the contract for opening a Rhino
 `.3dm` in the viewer, or adding one to a federation, as a read-only model:
 meshes, layers, colours, Attribute User Text and, for files ifc-lite exported,
@@ -146,6 +148,45 @@ format-agnostic body into `buildTabularDataStore(tables, meta)`. IFCX keeps its
 current behaviour, pinned by its existing tests, and Rhino calls the same
 function. This is a lift, not a fork.
 
+### What the store says about itself
+
+Two separate answers, since #9976 split them.
+
+- **The schema label is `IFC4`.** It names the schema the entity table's type
+  names belong to. `IFC::Class` must name an instantiable `IfcProduct` subtype
+  of IFC2X3, IFC4 or IFC4X3, the fallback is `IfcBuildingElementProxy`, and
+  IFC4 is the schema covering every class the reader can emit as well as the
+  house default when a source states none.
+- **What backs it is `sourceKind: 'tabular'`**, which `buildTabularDataStore`
+  sets for every caller. Every gate meaning "no STEP records behind this
+  store" reads that marker, so it keeps refusing a `.3dm` whatever the label
+  says: the STEP export, the STEP re-serialization for the energy export, the
+  ion upload, the IDS worker, remeshing, registry publishing, the schedule
+  splice target and the native authoring commands. Each of those gates is
+  pinned by #9976's own tests over a tabular store [src]; a real `.3dm` store
+  is driven through the STEP export gate here [test].
+
+The label was `IFC5` while that was how a store with no STEP bytes was
+recognised. `IFC5` is not a true statement about a `.3dm`, and it handed one
+IFCX behaviour it has no business with: `isIfcxDataStore` answered yes, the
+changes export routed to the IFCX exporter, federation re-composed the model
+as IFCX overlays, and a room seeded it by re-parsing its bytes as IFCX.
+
+Four sites decided by the label alone and are now gated on the marker in
+this PR, because the honest label makes each reachable:
+
+| Site | What it would have done |
+|---|---|
+| `ExportDialog.tsx`, the merged and STEP branches | written an empty or garbage IFC through `exportModelStep` or the merged exporter. A single-model export stays offered, the description names the model it cannot write, and `exportModelStep` refuses it by name (#10099); a merged one with no writable store is refused up front by `canWriteIfcFromStores`, and the dialog says why (`exportDialog.noStepRecords.error`). Choosing IFC5 in the picker still exports the model as IFCX [ran]. The merged branch asks for ONE writable store rather than all of them, and skips a tabular model the way it skips one with no store, so a `.3dm` or `.ifcx` in the federation does not refuse the merge of the IFC models beside it. |
+| `share-scope.ts` `buildShareSeed` | seeded a room slot from STEP records it has none of. `isSeedableModel` leaves the model out, and the Share dialog's seedable count reads the same predicate, so its "{seedable} of {loaded}" notice says what the seed will do. When every model in the share scope is refused (a lone `.3dm`, say), `shareRefusesEveryModel` declines the mint: Create link is disabled and the dialog names the models it cannot share. A `.3dm` beside a GLB or a point cloud still mints the empty owner room those workspaces always got. |
+| `useAppearancePanel.ts` | offered appearance authoring, which serializes `IfcSurfaceStyle` records into a STEP source the store has not got. Its own sentence, `appearance.controller.requiresStepRecords`, after the schema branch so IFCX keeps its existing message: the schema refusal would name the schema this store is now labelled. |
+| `scan-to-bim/run-detection.ts` `isIfcModel` | made a `.3dm` a proposal target, taking it from a real STEP model in the same workspace. Creation would then refuse on "no storey to place the elements on", but only after the target was already lost. |
+
+One site widens without reaching an export and is left as it is: the
+schema-registry readers (`charts/element-field-reader.ts`,
+`query/entity-node.ts`, `collab/schema-attribute-names.ts`) now get an IFC4
+registry instead of none, which is what the entity table's classes are.
+
 ### Where parsing runs
 
 Parsing runs in a one-shot module worker, `apps/viewer/src/workers/rhinoImport.worker.ts`,
@@ -167,7 +208,8 @@ export interface ReadRhino3dmOptions {
   locateFile?: (path: string, prefix: string) => string;
   subdLevel?: 0 | 1 | 2 | 3;        // default 2
   maxTriangles?: number;            // default 30_000_000 drawn, instances counted per placement;
-                                    // a curve or point cloud vertex counts a third of a triangle;
+                                    // a vertex costs a third of a triangle, a mesh at least
+                                    // its triangles (see Size ceiling);
                                     // a whole count, 0 or more: RangeError otherwise
   bakeInstances?: boolean;          // default false: blocks come back as definitions + instances
   onProgress?: (done: number, total: number) => void;
@@ -200,18 +242,18 @@ export interface RhinoImport {
     ifcClass: string;                       // IFC::Class when valid, else IfcBuildingElementProxy
     name: string; description: string; objectType: string;
     layer: number;
-    hidden: boolean;                        // object hidden or any layer on its path off
+    hidden: boolean;                        // object hidden or any layer on its path off; merged: all parts hidden
     objectIds: string[];                    // Rhino UUIDs merged into this entity
     geometryType: string;                   // Rhino class: "Mesh", "Brep", "InstanceReference", "NurbsCurve", ...
     userStrings: RhinoUserStrings;          // the first object's, verbatim and in file order, then what merged objects add
     propertySets: { name: string; properties: [string, string][] }[];
   }[];
-  meshes: (RhinoImportGeometry & { entity: number; color: RhinoRgba })[];
+  meshes: (RhinoImportGeometry & { entity: number; color: RhinoRgba; hidden: boolean })[];
   definitions: { name: string; meshes: (RhinoImportGeometry & { color: RhinoRgba | null })[] }[];
-  instances: { entity: number; definition: number; transform: number[]; color: RhinoRgba }[];
-  pointClouds: { entity: number; origin: RhinoVector3; positions: Float32Array; colors: Uint8Array | null; color: RhinoRgba }[];
-  curves: { entity: number; origin: RhinoVector3; positions: Float32Array; closed: boolean; color: RhinoRgba }[];
-  textDots: { entity: number; position: RhinoVector3; text: string; color: RhinoRgba }[];
+  instances: { entity: number; definition: number; transform: number[]; color: RhinoRgba; hidden: boolean }[];
+  pointClouds: { entity: number; origin: RhinoVector3; positions: Float32Array; colors: Uint8Array | null; color: RhinoRgba; hidden: boolean }[];
+  curves: { entity: number; origin: RhinoVector3; positions: Float32Array; closed: boolean; color: RhinoRgba; hidden: boolean }[];
+  textDots: { entity: number; position: RhinoVector3; text: string; color: RhinoRgba; hidden: boolean }[];
   skipped: Record<string, number>;          // by reason/type: "Point": 8, "Brep:no-render-mesh": 3
   warnings: string[];                       // one line per distinct condition
 }
@@ -255,6 +297,11 @@ interface RhinoImportGeometry {
 - `curves[i].positions` is a polyline. A curve that is not a polyline is
   sampled at 32 points per span, at most 8,192 per curve.
 - `pointClouds[i].colors` is RGBA bytes per point, or null.
+- `hidden` on a mesh, instance, point cloud, curve or text dot is the flag of
+  the object that drew it, computed as `entities[i].hidden` is. It equals the
+  entity's flag except in an entity that merges parts that differ (see Layers,
+  visibility, hierarchy). Added after v1 shipped, in v1: a reader that ignores
+  it sees the same result as before.
 
 Guarantees, so the adapter never checks them: every index is in range; layers
 come parent first; every number is finite, after unit scaling and after every
@@ -272,24 +319,37 @@ is counted in `skipped` and has no entity.
 ### Worker wire format
 
 ```ts
-type RhinoImportRequest  = { type: 'import'; id: number; bytes: Uint8Array; options: { subdLevel; maxTriangles } };
+type RhinoImportRequest  = { type: 'import'; id: number; bytes: Uint8Array };
 type RhinoImportResponse =
   | { type: 'progress'; id: number; done: number; total: number }
   | { type: 'complete'; id: number; result: RhinoImport }   // positions/normals already viewer Y-up
   | { type: 'error'; id: number; code: RhinoImportErrorCode; message: string };
 ```
 
-- The request transfers `bytes`. They are a fresh read of the `File`, never
-  the store's source view. The export client cannot transfer, for that reason
-  [src `rhino-export-client.ts`].
-- `complete` transfers the buffer behind every typed array: mesh, definition,
-  curve and point cloud buffers. Plain objects and typed arrays only, so
-  structured clone needs no codec.
+- The request transfers `bytes`, so they are a copy of the load's own source
+  buffer, never the store's source view (the export client cannot transfer,
+  for that reason [src `rhino-export-client.ts`]). A copy rather than a second
+  read of the `File`: a re-read halves nothing and lets a file saved again
+  mid-load put different bytes behind the geometry and the store.
+- `complete` transfers every typed array: mesh, definition, curve and point
+  cloud buffers. Plain objects and typed arrays only, so structured clone needs
+  no codec.
+- The request carries no options: level 1 has no dialog, so the defaults stay
+  in the reader. The worker asks for `bakeInstances` until the viewer has a
+  GPU instance path (decision D4).
 - The axis swap (`x, y, z → x, z, −y`, `ifcToViewerAxes` in
   `packages/geometry/src/world-frame.ts`) runs in the worker, on `origin` and
-  on the f32 positions and normals, and on instance transforms by conjugation.
-  The package stays Z-up and viewer-agnostic. The main thread does no
-  per-vertex work.
+  on the f32 positions and normals. The package stays Z-up and
+  viewer-agnostic, and the main thread does no per-vertex work on meshes.
+  Under `bakeInstances` there are no instance transforms to conjugate; that
+  arrives with the instance path, and until then an unbaked result reaching
+  the swap is an error rather than a silent loss of geometry.
+- Point clouds are the exception to "no per-vertex work": `PointCloudAsset`
+  takes the reader's f64 origin and f32 offsets as they are (#10029), but it
+  wants 0..1 float colours and a bounding box, so the adapter widens the
+  colours and takes the bounds in one pass per point. Stating float colours
+  and a bounding box in `RhinoImport` would move that into the reader, and is
+  a change to this contract.
 
 ## Mapping
 
@@ -434,9 +494,10 @@ its winding flipped and its normals transformed by the inverse transpose
   `InstanceReference:cycle` and reported [test: a crafted self-referencing
   definition].
 - A **drawing budget** caps drawn triangles at `maxTriangles`, a block's
-  triangles counted once per placement in both modes, and a placement's block
-  meshes admitted whole or left out whole (see Size ceiling). A curve or point cloud
-  vertex is charged a third of a triangle, at top level and per placement:
+  cost counted once per placement in both modes, and a placement's block
+  meshes admitted whole or left out whole (see Size ceiling). A vertex is
+  charged a third of a triangle when that is more than a part's triangles, at
+  top level and per placement:
   without that a 20,000-point cloud in a block placed 500 times came back as
   120 MB with nothing reported [ran, then fixed]. Reaching the budget stops
   drawing for the rest of the file (text dots excepted) and reports how many
@@ -634,6 +695,15 @@ transparency rule [test].
 - `layers[i].visible` holds the layer's own flag. `entities[i].hidden` is
   `object.visible === false || mode === Hidden || any ancestor layer off`
   [test]. A merged entity is hidden when all its objects are.
+- Visibility stays per part. Parts that share a GlobalId and its group merge
+  into one entity (D8) whatever their visibility, so a group can hold a hidden
+  part, or one on a layer that is off, next to a visible one. One entity flag
+  cannot say which, so every geometry record carries `hidden`, its own
+  object's flag. A consumer hides exactly what Rhino hides by leaving out a
+  record whose `hidden` is set while its entity's is not, and keeps the entity
+  flag for the user's show and hide [test: a crafted group of a visible box, a
+  hidden box and a curve on an off layer, and one hidden object of its own].
+  Not splitting the entity keeps D8: the parts are one IFC element.
 - Layers are reordered parent first, keeping file order among siblings. A
   layer whose parent is missing becomes a root; so does a layer in a parent
   cycle, with a warning. An object whose layer index is outside the table
@@ -657,11 +727,52 @@ transparency rule [test].
   file]. The unit of the stamp is the exporter's to define [unproven until the
   exporter change lands].
   The adapter loads hidden entities and applies the viewer's normal hide state
-  after `finalizeModel`, so the user can show them. Our `IfcSpace` layers are
+  after `finalizeModel` (`ingest/initialHiddenState.ts`, through
+  `toGlobalId`), so the user can show them from the tree. A layer that is off
+  is hidden as a row too, so it reads as off and one click shows it again.
+  Our `IfcSpace` layers are
   hidden [ran], which matches the viewer's own space default.
-- **Tree:** see decision D3. Recommended: for `provenance: ifc-lite` files
-  with spatial layer stamps, a real `SpatialHierarchy`, so the model joins the
-  unified storey list; otherwise a layer tree under the model header.
+- **Tree:** decision D3, in `apps/viewer/src/hooks/ingest/rhinoLayerTree.ts`.
+  The containers are rows of the entity table and the containment is edges of
+  the relationship graph (`IfcRelAggregates` between containers,
+  `IfcRelContainedInSpatialStructure` to an object), and the hierarchy itself
+  is the shared `SpatialHierarchyBuilder.buildFromCache`'s, off those two
+  tables: the same source-less path the viewer rebuilds a cached IFC model's
+  hierarchy from, so a `.3dm` tree cannot drift from the IFC one. It reads
+  elevations from STEP bytes a `.3dm` store has none of, so the stamped
+  elevations are written into the built hierarchy afterwards.
+  - **Stamped** (any layer carries a placeable stamp, whatever the
+    provenance): the stamped layers are the spatial structure they name, with
+    the GlobalId the source IFC gave them, and every other layer is
+    transparent: an object rolls up to the nearest stamped layer above it. An
+    ifc-lite export therefore comes back as project / site / building / storey
+    rather than as its class sublayers, and the model joins the unified storey
+    list. A spatial element that has geometry sits on a class sublayer of its
+    own layer, so the layer stamp and that object are the same IFC entity
+    (FZK's site carries the terrain): the object's own row is the node, and
+    nothing appears twice. The object stands for the layer only when its class
+    is the stamped one too; otherwise the node stays and the object keeps the
+    identity, because a stamp another class claims would leave the file
+    without the node it names.
+  - **Layers** (a layer outside every stamped structure, which is every layer
+    of a file with no stamps): the layer is an `IfcSpatialZone` under its
+    parent, and an object sits under its own layer. A layer somebody added to
+    an export keeps its own row this way instead of its objects rolling up to
+    the project. A layer that holds no object anywhere under it gets no row.
+    `IfcSpatialZone` is IFC's class for a named decomposition that is not a
+    storey, which is what a Rhino layer is, and it keeps the layers out of the
+    storey tools, which a file with no stamps has no storeys for.
+  - Exactly one `IfcProject` node exists: a stamped `IfcProject` layer with no
+    stamped layer above it, else a root standing for the file and labelled
+    with the file name, since a `.3dm` states no project name. A second
+    `IfcProject` stamp, a stamp whose identity another container already took,
+    and a stamp naming a spatial class the tree cannot place (the reader
+    accepts a wider set, `IfcExternalSpatialElement` among it) are transparent.
+  - What the file says about itself (application, provenance, unit system,
+    archive version, frame, layer count, earth anchor, skip counts, and the
+    document user text under the keys it is written with) rides the root
+    entity's property sets, which is where the model metadata panel shows an
+    `IfcProject`'s own data.
 - Locked layers and objects are ignored: the viewer is read-only.
 
 ### Properties
@@ -747,7 +858,8 @@ count].
 ### Size ceiling
 
 Decision D7: measured, then fixed in code as `MAX_3DM_BYTES` = 400 MB
-(`packages/rhino3dm/src/read/read.ts`).
+(`packages/rhino3dm/src/read/size.ts`), exported with the refusal sentence
+so the viewer checks the same cap before it copies the file.
 
 Measured with `readRhino3dm` itself (cap lifted for the run), each file in a
 fresh Node 22.14 process on an Apple M5 Pro with 48 GB, rhino3dm 8.35.0. The
@@ -799,8 +911,30 @@ What that says:
   in the worker. Whether a tab survives that is [unproven]; the one-shot
   worker contains a crash either way.
 
+**What the budget charges.** Every drawn part costs a third of a triangle per
+vertex, and a mesh at least its triangles: a mesh costs whichever is more.
+That one rule covers meshes, curves (polyline points or samples) and point
+clouds, at top level and per placement, in both instance modes; text dots
+stay on their own limit. The reader counts the budget in thirds of a
+triangle, so every charge is a whole number: a block's cost is exactly the
+sum of its meshes', and parts that fill the budget fit. Counted in doubles,
+the remainder drifted: three 5-point curves at `maxTriangles: 5` drew two,
+because 5 - 5/3 - 5/3 is 1.6666666666666663 there [measured, then fixed;
+test]. Memory follows the vertex buffers as much as the triangles: before the
+vertex charge, a mesh of 1 triangle over 100,000 vertices came back with
+2.4 MB of buffers at `maxTriangles: 10`, and 50 baked placements of it with
+120 MB at `maxTriangles: 100` [measured, then fixed; test]. It costs
+33,333 1/3 triangles now, so it needs `maxTriangles: 33,334` and is refused
+at 10. A mesh whose every vertex is in some triangle has at most three per triangle, so it costs its triangles alone and
+normal files are charged as before [test: the box block at 120; ran: none of
+the 73 meshes of our FZK export, the 271 of duplex, or the 4 in the five
+readable Rhino samples has more than three vertices per triangle]. Curves
+and clouds keep the charge they had: 100,000 points need `maxTriangles:
+33,334` and are refused at 33,333 [measured]. One budget, no second option:
+the triangle is the unit, and a vertex is priced in it.
+
 **The triangle budget admits a placement's block meshes whole, in both modes.**
-`maxTriangles` is charged a block's triangles once per placement, and a
+`maxTriangles` is charged a block's cost once per placement, and a
 placement that would draw them all and does not fit is left out entirely, so
 neither mode draws part of that set. Before that rule the option decided
 whether a file read at all, because baking charged mesh by mesh: a block of two
@@ -915,15 +1049,34 @@ Level 1 has no dialog. The defaults live in the reader.
   deadline so its hang fails that test alone.
 - Each guard above was checked by removing it and watching a test fail.
 
-**Viewer (vitest):**
+**Viewer (node:test).** Implemented, except the selection test:
 
 - The adapter builds a store whose `getEntity`, properties and quantities
-  answer.
+  answer, driven with real `RhinoImport` data: a crafted `.3dm` whose
+  coordinate and user text are known exactly, and the Rhino 8 authored
+  fixtures (`apps/viewer/src/hooks/ingest/rhinoViewerModel.test.ts`).
+- The tree and the hidden state, on real `RhinoImport` data
+  (`rhinoViewerModel.test.ts`): the layer tree of a Rhino-authored file (nested
+  layers, objects under their own layer, no storeys), the hidden object, the
+  layer that is off and its objects starting hidden, and the stamped tree with
+  its storey elevation, `byStorey` membership and `getStoreyByElevation`.
+- Visibility per part (`rhinoViewerModel.test.ts`): a hidden mesh and a hidden
+  point cloud merged into a shown entity are left out of the payload, and a
+  wholly hidden entity keeps its triangle and starts hidden.
+- The spatial tree of an ifc-lite export against the IFC it came from
+  (`rhinoViewerModel.export.test.ts`): FZK through the Rust scene builder,
+  `writeRhino3dm` and the reader, compared with the same IFC through
+  `IfcParser`: the project identity, the site and building, the storey names
+  and elevations, and the storey each of the 83 drawn elements sits on.
+- The whole `loadFile` route hides what Rhino hides, through the loaded model's
+  own express id range (`useIfcLoader.rhino3dm.test.tsx`).
 - Selecting a mesh resolves through `resolveEntityRef` at `models.size` 1 and N
-  (AGENTS.md).
+  (AGENTS.md). **Not written:** the federated case is the e2e's (step 4).
 - The worker client uses an in-process fake worker, as
-  `rhino-export-client.test.ts` does.
-- `detectFormat` returns `'3dm'`.
+  `rhino-export-client.test.ts` does
+  (`apps/viewer/src/lib/import/rhino-import-client.test.ts`): abort, a reader
+  error with its code, a crash, an unreadable message, and the axis swap.
+- `detectFormat` returns `'3dm'` (`packages/ifcx/src/detect-format.test.ts`).
 - Bundle check: rhino3dm stays out of the startup graph.
   `apps/viewer/scripts/check-rhino3dm-lazy.mjs` already scans every startup
   chunk for rhino3dm, so it covers a second worker unchanged. Only its remedy
@@ -959,9 +1112,21 @@ One issue, stacked PRs, each under about 1,500 lines:
    measured size ceiling, a changeset and the API surface update. **Done.**
 2. **Viewer load:** `detectFormat` `'3dm'`, accept lists, worker and client,
    `rhinoViewerModel.ts`, the `buildTabularDataStore` lift, and the `loadFile`
-   branch.
+   branch. **Done.** Deviations: the worker request carries no options (level 1
+   has no dialog, so the defaults stay in the reader), it reads with
+   `bakeInstances` until the GPU instance path exists (D4), and curves and text
+   dots come across the wire but are not drawn (D6), so a file whose only
+   drawable objects are curves is refused with the reader's
+   `no-renderable-geometry` code.
 3. **Tree and visibility:** the layer or spatial tree, hidden state, and model
-   metadata.
+   metadata. **Done.** Deviations: the tree follows the stamps whatever the
+   file's provenance (above); an `IfcSpace` of an ifc-lite export comes back as
+   a node under its storey, but the elements the IFC contained in that space
+   come back on the storey, because the export puts them on the storey's class
+   layer and the space is not a layer; and a container row's eye toggle acts on
+   the objects it holds directly, as every other container row in the viewer
+   does, so turning off a parent layer does not turn off a child layer's
+   objects.
 4. **E2E and acceptance:** the overlay spec, screenshots, and a guide section.
 
 ## Open decisions
@@ -970,7 +1135,7 @@ One issue, stacked PRs, each under about 1,500 lines:
 |---|---|---|---|
 | D1 | `IFC::WorldFromModel` under `world` | **Resolved:** the exporter now writes it only under `local` (`space.rs::world_from_model`, asserted in `rhino_scene.rs`); the reader still gates on `IFC::Coordinates` for older files. | Done before the export shipped. |
 | D2 | IFC class for Rhino objects without `IFC::Class` | **Decided (maintainer, 2026-11-08):** `IfcBuildingElementProxy`, and a Rhino user can choose the class by setting the `IFC::Class` user text (Attribute User Text) on the object, which the import honours when it names a valid IFC product class. | Document the key in the user guide; invalid names fall back to the proxy with a warning. |
-| D3 | Tree for a `.3dm` | **Decided:** layer tree for any `.3dm`, plus a real `SpatialHierarchy` for ifc-lite files whose spatial layers carry `IFC::GlobalId` / `IFC::Class`. | Needs the exporter change in PR 0 (layer stamps). |
+| D3 | Tree for a `.3dm` | **Decided, and shipped:** layer tree for any `.3dm`, plus a real `SpatialHierarchy` for files whose spatial layers carry `IFC::GlobalId` / `IFC::Class`. Both are one `SpatialHierarchy` off the store's own tables, so the hierarchy panel reads a `.3dm` as it reads an IFC. | The stamps are honoured whatever the provenance: the reader validates them, and D2 already lets a Rhino user choose a class by user text, so this is one rule rather than two. |
 | D4 | Blocks | **Decided: GPU instancing.** | The reader returns `definitions` and `instances`, and bakes on request. `MeshData` has no transform field today, so the viewer needs an instance path through the federated mesh pipeline; measure against baking on a large-block file. |
 | D5 | Earth anchor alignment | **Decided: align through the projection used by `reprojected` alignment.** | Treat Rhino's unset default anchor (0/0) as absent; ifc-lite's own exports keep aligning exactly through `IFC::WorldFromModel`. |
 | D6 | Point clouds, curves, text dots | **Decided: render them.** | The reader returns all three as data. Point clouds go through the payload's `pointClouds` (as IFCX does); curves and text dots need a line/label primitive for federated models, which is viewer work. |

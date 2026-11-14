@@ -14,7 +14,7 @@ import assert from 'node:assert/strict';
 import { IfcParser } from '@ifc-lite/parser';
 import { EntityNode } from '@ifc-lite/query';
 import { createExportAdapter } from './export-adapter.js';
-import { MutablePropertyView } from '@ifc-lite/mutations';
+import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { createBimContext } from '@ifc-lite/sdk';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
@@ -107,4 +107,25 @@ describe('typed SDK viewer writes (#6643)', () => {
     assert.equal(mutate.undo(MODEL_ID), true);
     assert.ok(!createQueryAdapter(useViewerStore).properties(ref).some(pset => pset.name === 'Pset_WallCommon' && pset.properties.some(property => property.name === 'ThermalTransmittance')));
   });
+});
+
+
+it('#9352 viewer query reads current raw sets on an occurrence and its type', async () => {
+  await seed();
+  const state = useViewerStore.getState(), store = state.models.get(MODEL_ID)!.ifcDataStore!;
+  const view = state.mutationViews.get(MODEL_ID)!, editor = new StoreEditor(store, view);
+  const type = editor.addEntity('IfcWallType', ['0000000000000000000001', null, '', null, null, [], null, null, null, '.STANDARD.']);
+  editor.addEntity('IfcRelDefinesByType', ['0000000000000000000002', null, null, null, ['#50'], `#${type.expressId}`]);
+  const property = editor.addEntity('IfcPropertySingleValue', ['FireRating', null, { typed: { type: 'IfcLabel', value: 'EI60' } }, null]);
+  const set = editor.addEntity('IfcPropertySet', ['0000000000000000000003', null, 'Pset_RawAuthoring', null, [`#${property.expressId}`]]);
+  editor.setPositionalAttribute(type.expressId, 5, [`#${set.expressId}`]);
+  editor.addEntity('IfcRelDefinesByProperties', ['0000000000000000000004', null, null, null, ['#50'], `#${set.expressId}`]);
+  const query = createQueryAdapter(useViewerStore);
+  const rating = () => query.properties(ref).find(s => s.name === 'Pset_RawAuthoring')?.properties[0].value;
+  assert.equal(rating(), 'EI60');
+  editor.setPositionalAttribute(property.expressId, 2, { typed: { type: 'IfcLabel', value: 'EI90' } });
+  assert.equal(rating(), 'EI90');
+  const inherited = query.typeProperties(ref);
+  assert.equal(inherited?.typeName, '');
+  assert.equal(inherited?.properties[0].properties[0].value, 'EI90');
 });

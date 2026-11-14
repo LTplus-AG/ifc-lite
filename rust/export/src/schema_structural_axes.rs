@@ -14,7 +14,7 @@ pub(crate) struct StructuralAxes {
 
 fn reference(token: &str) -> Option<u32> { token.trim().strip_prefix('#')?.trim().parse().ok() }
 
-fn list_items(token: &str) -> Option<Vec<String>> {
+pub(crate) fn list_items(token: &str) -> Option<Vec<String>> {
     let start = ifc_lite_core::parser::skip_step_trivia(token.as_bytes(), 0)?;
     if token.as_bytes().get(start) != Some(&b'(') { return None; }
     // Reuse the shared frame's trailing-comment handling; this parsing

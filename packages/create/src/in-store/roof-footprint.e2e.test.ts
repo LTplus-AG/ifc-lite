@@ -10,13 +10,18 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { extractPropertiesOnDemand, extractQuantitiesOnDemand } from '@ifc-lite/parser';
 import { IfcAPI, initSync } from '@ifc-lite/wasm';
+import { StepExporter } from '@ifc-lite/export';
 import { deriveAuthoredBaseQuantities } from './base-quantities.js';
 import { resolveSlabEditChain } from './edit/slab-edit.js';
 import { AnchorEntityReader } from './resolve-anchor.js';
+import { refId } from './host-geometry-frame.js';
+import { parseStepAttributeList } from './step-record-attrs.js';
+import { getFootprintRoofPlaneParts } from './roof-plane-parts.js';
 import { addRoofToStore } from './roof.js';
+import { mirrorElementsInStore } from './element-mirror.js';
 import { requiredModule } from './__test__/required-module.js';
 import { exportText, newStorey, parse, type Schema } from './wall-join-mesh.oracle.js';
 
@@ -89,9 +94,9 @@ describe('a roof by footprint in a loaded model (#9296 round 3)', () => {
     // @source-text-assertion-ok Checks generated IFC export output, never implementation source text.
     expect(roofRecord(text)).toMatch(/\.GABLE_ROOF\.\s*$/);
     expect(s.editor.getNewEntity(roofId)?.attributes[5]).toBe(placement);
-    // The replaced representation is gone, not orphaned: one product shape for one roof.
+    // The replaced representations are gone: one product shape per gable plane (#9357).
     // @source-text-assertion-ok Checks generated IFC export output, never implementation source text.
-    expect(text.match(/IFCPRODUCTDEFINITIONSHAPE\(/g)).toHaveLength(1);
+    expect(text.match(/IFCPRODUCTDEFINITIONSHAPE\(/g)).toHaveLength(2);
     definition = f.readFootprintRoofInStore(s.store, roofId, s.view)!;
     expect(definition.Overhang).toBe(0.5);
   });
@@ -143,6 +148,7 @@ describe('a roof by footprint in a loaded model (#9296 round 3)', () => {
     const s = await storey();
     const { roofId } = addRoofToStore(s.editor, s.anchor, HIP);
     expect(resolveSlabEditChain(s.store, s.view, s.editor, roofId, 1)).toBeNull();
+    for (const part of getFootprintRoofPlaneParts(s.store, s.view, roofId)) expect(resolveSlabEditChain(s.store, s.view, s.editor, part, 1)).toBeNull();
     const flat = addRoofToStore(s.editor, s.anchor, { Position: [0, 0, 0], Width: 6, Depth: 4, Thickness: 0.3 });
     expect(resolveSlabEditChain(s.store, s.view, s.editor, flat.roofId, 1)).not.toBeNull();
   });
@@ -156,7 +162,7 @@ describe('a roof by footprint in a loaded model (#9296 round 3)', () => {
     // @source-text-assertion-ok Checks generated IFC export output, never implementation source text.
     expect(text.match(/IFCEXTRUDEDAREASOLID\(/g)).toHaveLength(2);
     // @source-text-assertion-ok Checks generated IFC export output, never implementation source text.
-    expect(text.match(/IFCSHAPEREPRESENTATION\('?#?\d*'?[^;]*'Body'/g)).toHaveLength(1);
+    expect(text.match(/IFCSHAPEREPRESENTATION\('?#?\d*'?[^;]*'Body'/g)).toHaveLength(2);
   });
 
   it('an edit keeps a styled roof styled: each new plane takes the old planes\' style (#9356 review)', async () => {
@@ -220,7 +226,7 @@ describe('a roof by footprint in a loaded model (#9296 round 3)', () => {
     const s = await storey();
     const before = s.view.getNewEntities().length;
     expect(() => s.editor.runAtomic((draft) => addRoofToStore(draft, s.anchor, {
-      Profile: 'polygon', OuterCurve: [[0, 0], [10, 0], [10, 8], [5, 3], [0, 8]], Thickness: 0.2, EdgeSlopes: [0.5, 0.5, 0.5, 0.5, 0.5],
+      Profile: 'polygon', OuterCurve: [[0, 0], [10, 0], [10, 8], [5, 3], [0, 8]], Thickness: 0.2, EdgeSlopes: [0.5, 0.5, 0.3, 0.5, 0.5],
     }))).toThrow(/convex and rectilinear/);
     expect(s.view.getNewEntities()).toHaveLength(before);
   });
@@ -242,9 +248,17 @@ describe.skipIf(!existsSync(WASM_PATH))('roof by footprint against the mesh kern
     initSync({ module: readFileSync(WASM_PATH) });
     api = new IfcAPI();
   });
+  afterAll(() => api.free());
 
   /** Z-up bounds and the upward faces (area by tilt) of every mesh of `expressId`. */
   function measure(text: string, expressId: number) {
+    const children = new Map<number, number[]>();
+    for (const record of text.matchAll(/#\d+=IFCRELAGGREGATES\(([^;]*)\);/g)) {
+      const attrs = parseStepAttributeList(record[1]), parent = refId(attrs[4]);
+      if (parent !== null && Array.isArray(attrs[5])) children.set(parent, attrs[5].map(refId).filter((id): id is number => id !== null));
+    }
+    const ids = new Set<number>(), pending = [expressId];
+    while (pending.length) { const id = pending.pop()!; if (ids.has(id)) continue; ids.add(id); pending.push(...(children.get(id) ?? [])); }
     const bytes = new TextEncoder().encode(text);
     const pre = api.buildPrePassOnce(bytes);
     const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
@@ -257,7 +271,7 @@ describe.skipIf(!existsSync(WASM_PATH))('roof by footprint against the mesh kern
           const mesh = collection.get(i);
           if (!mesh) continue;
           try {
-            if (mesh.expressId !== expressId) continue;
+            if (!ids.has(mesh.expressId)) continue;
             // Mesh positions are Y-up; IFC Z is mesh Y.
             const o = Array.from(mesh.origin), p = mesh.positions, idx = mesh.indices;
             const v = (k: number) => [p[3 * k] + o[0], p[3 * k + 1] + o[1], p[3 * k + 2] + o[2]];
@@ -270,14 +284,29 @@ describe.skipIf(!existsSync(WASM_PATH))('roof by footprint against the mesh kern
               const u = b.map((x, k) => x - a[k]), w = c.map((x, k) => x - a[k]);
               const n = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]];
               const length = Math.hypot(...n);
-              if (n[1] > 1e-9 * length) tilts.push({ tilt: Math.acos(n[1] / length) / D, area: length / 2 });
+              // f32 positions can give a plumb side a small upward normal. Roof
+              // pitches stop at 85°, well away from this vertical-face tolerance.
+              if (n[1] > 1e-5 * length) tilts.push({ tilt: Math.acos(n[1] / length) / D, area: length / 2 });
             }
           } finally { mesh.free(); }
         }
       } finally { collection.free(); }
     } finally { api.clearPrePassCache(); }
-    return { minZ: min[1], maxZ: max[1], tilts };
+    return { minX: min[0], maxX: max[0], minZ: min[1], maxZ: max[1], tilts };
   }
+
+  it.each([false, true])('mirroring a footprint roof carries and reflects every slab plane, copy=%s (#9357)', async (copy) => {
+    const s = await storey();
+    const { roofId } = addRoofToStore(s.editor, s.anchor, { ...HIP, Position: [2,1,3], EdgeSlopes: [30*D,0,30*D,0] });
+    const before = measure(exportText(s), roofId);
+    const [mirrored] = mirrorElementsInStore(s.store, s.editor, [roofId], { axis: [[0,0],[0,10]], copy });
+    const after = measure(exportText(s), mirrored);
+    expect(after.minX).toBeCloseTo(-before.maxX, 4);
+    expect(after.maxX).toBeCloseTo(-before.minX, 4);
+    expect(after.minZ).toBeCloseTo(before.minZ, 4);
+    expect(after.maxZ).toBeCloseTo(before.maxZ, 4);
+    expect(after.tilts.reduce((sum, f) => sum + f.area, 0)).toBeCloseTo(before.tilts.reduce((sum, f) => sum + f.area, 0), 4);
+  });
 
   it.each([
     ['hip', [30, 30, 30, 30], 4 * Math.tan(30 * D), 30],
@@ -312,4 +341,42 @@ describe.skipIf(!existsSync(WASM_PATH))('roof by footprint against the mesh kern
     expect(m.tilts.reduce((sum, f) => sum + f.area, 0)).toBeCloseTo(76 / Math.cos(35 * D), 3);
     expect(m.maxZ).toBeCloseTo(3 * Math.tan(35 * D) + 0.2 / Math.cos(35 * D), 4);
   });
+
+  const reflexOutlines: Array<Array<[number, number]>> = [
+    [[0, 0], [10, 0], [10, 8], [5, 3], [0, 8]],
+    [[0, 0], [10, 0], [10, 4], [6, 4], [4, 10], [0, 10]],
+    [[0, 0], [10, 0], [10, 10], [7, 10], [6, 4], [3, 5], [2, 10], [0, 10]],
+  ];
+  it.each(reflexOutlines.map(outline => ({ outline })))(
+    'reflex footprint %# retains area through export and reopen (#9357)', async ({ outline }) => {
+    // Independent miter-offset area: A + perimeter*d + sum(tan(turn/2))*d².
+    // This uses the input boundary alone, without the skeleton's roof faces.
+    let area = 0, perimeter = 0, turns = 0;
+    for (let i = 0; i < outline.length; i++) {
+      const a = outline[(i + outline.length - 1) % outline.length], b = outline[i], c = outline[(i + 1) % outline.length];
+      const u = [b[0] - a[0], b[1] - a[1]], v = [c[0] - b[0], c[1] - b[1]];
+      const product = Math.hypot(...u) * Math.hypot(...v);
+      area += b[0] * c[1] - c[0] * b[1];
+      perimeter += Math.hypot(...v);
+      turns += (u[0] * v[1] - u[1] * v[0]) / (product + u[0] * v[0] + u[1] * v[1]);
+    }
+    for (const schema of ['IFC4', 'IFC2X3', 'IFC4X3'] as const) for (const Overhang of [0, .2]) for (const slope of [0, Math.PI / 6]) {
+      const s = await storey(schema);
+      const built = addRoofToStore(s.editor, s.anchor, { Profile: 'polygon', OuterCurve: outline,
+        Thickness: .2, EdgeSlopes: outline.map(() => slope), Overhang });
+      const expectedArea = (area / 2 + perimeter * Overhang + turns * Overhang ** 2) / Math.cos(slope);
+      const exported = exportText(s);
+      const reopened = await parse(exported);
+      const saved = new TextDecoder().decode(new StepExporter(reopened).export({ schema }).content);
+      for (const text of [exported, saved]) {
+        const measured = measure(text, built.roofId);
+        expect(measured.tilts.length).toBeGreaterThan(0);
+        expect(measured.tilts.reduce((sum, face) => sum + face.area, 0)).toBeCloseTo(expectedArea, 3);
+        expect(measured.tilts.every(face => Math.abs(face.tilt - slope / D) < 1e-3)).toBe(true);
+      }
+      expect(extractPropertiesOnDemand(reopened, built.roofId).find(set => set.name === f.ROOF_FOOTPRINT_PSET)
+        ?.properties.find(property => property.name === 'Footprint')?.value).toBe(JSON.stringify(outline));
+    }
+  });
+
 });

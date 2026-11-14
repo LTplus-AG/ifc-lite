@@ -179,6 +179,8 @@ document.getElementById('drawing').innerHTML = svg;
 
 ### DXF Export
 
+Distance measurements and explicit linear dimensions share the same dimension graphics in SVG, DXF and PDF. DXF writes their segments and labels once on `IFC-DIMENSIONS`. Invalid or zero-length graphics are omitted using `isDxfDimensionExportable`, the same rule the download warning uses. Dimensions from another cut are reported separately and counted only once.
+
 For DWG delivery, export DXF and convert it with the free [ODA File Converter](https://www.opendesign.com/guestfiles/oda_file_converter) on your computer. The viewer exports DXF directly; the converter is a separate application.
 
 

@@ -43,6 +43,29 @@ fn fixture() -> Vec<u8> {
     std::fs::read(&path).unwrap_or_else(|e| panic!("read {path}: {e}"))
 }
 
+/// The fixture with its `IfcSite` placement replaced by the identity. The
+/// wall is then cut aligned to the world axes and 200 m from the origin, where
+/// both faces consolidate into one region each. Two pairs of opening corners
+/// sit 150 to 190 um apart on those faces, and the needle backstop dropped the
+/// triangles across each neck: 32 open edges at 760 triangles on `main`.
+fn fixture_at_origin() -> Vec<u8> {
+    let mut moved = String::from_utf8(fixture()).expect("the fixture is UTF-8");
+    for (from, to) in [
+        (
+            "#1617861=IFCCARTESIANPOINT((-32721.2956888364,-37273.5144546682,131200.));",
+            "#1617861=IFCCARTESIANPOINT((0.,0.,0.));",
+        ),
+        (
+            "#1617865=IFCAXIS2PLACEMENT3D(#1617861,#19,#1617863);",
+            "#1617865=IFCAXIS2PLACEMENT3D(#1617861,$,$);",
+        ),
+    ] {
+        assert!(moved.contains(from), "the fixture's site placement line: {from}");
+        moved = moved.replace(from, to);
+    }
+    moved.into_bytes()
+}
+
 /// World position of a vertex: the per-mesh origin folded in, in f64.
 fn world(mesh: &MeshData, i: u32) -> [f64; 3] {
     let b = i as usize * 3;
@@ -116,14 +139,26 @@ fn wall_defects(meshes: &[MeshData], frame: &str) -> Option<String> {
         .then(|| format!("{frame} ({tris} triangles): {}", defects.join("; ")))
 }
 
-#[test]
-fn issue_8156_wall_43810_is_closed_through_the_native_pipeline() {
-    let result = process_geometry(&fixture());
+/// The wall through `process_geometry`, which must find no defect in it.
+fn assert_closed_through_process_geometry(bytes: &[u8], frame: &str) {
+    let result = process_geometry(bytes);
     let meshes: Vec<MeshData> =
         result.meshes.into_iter().filter(|m| m.express_id == WALL).collect();
-    if let Some(defect) = wall_defects(&meshes, "process_geometry (native default)") {
+    if let Some(defect) = wall_defects(&meshes, frame) {
         panic!("wall #{WALL} (#8156): {defect}");
     }
+}
+
+#[test]
+fn issue_8156_wall_43810_is_closed_through_the_native_pipeline() {
+    assert_closed_through_process_geometry(&fixture(), "process_geometry (native default)");
+}
+
+/// The same wall with the site at the origin: it must be as closed, and keep
+/// the same area, as where the file puts it.
+#[test]
+fn issue_8156_wall_43810_is_closed_with_the_site_at_the_origin() {
+    assert_closed_through_process_geometry(&fixture_at_origin(), "site at the origin");
 }
 
 /// The `IfcSite` placement's translation in metres: the offset the native

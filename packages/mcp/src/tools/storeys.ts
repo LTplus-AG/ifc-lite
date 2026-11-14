@@ -16,6 +16,7 @@ import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import type { ToolContext } from '../context.js';
 import type { Tool } from './types.js';
 import { okResult, resolveModel } from './util.js';
+import { storeyAddInput } from './storey-add-input.js';
 
 const modelId: JsonSchema = { type: 'string', description: 'Required when multiple models are loaded.' };
 const storeyId: JsonSchema = { type: 'integer', minimum: 1, description: 'IfcBuildingStorey express id.' };
@@ -69,16 +70,9 @@ const storeyAdd: Tool = {
   handler(input, ctx) {
     const { model, store: s } = store(ctx, input);
     try {
-      const reference = input.reference_storey_express_id as number | undefined;
-      let Name = input.Name as string | undefined;
-      let Elevation = input.Elevation as number | undefined;
-      if (Name === undefined || Elevation === undefined) {
-        if (reference === undefined) throw new Error('Give Name and Elevation, or reference_storey_express_id and side');
-        const suggestion = s.suggestStorey(model.id, reference, (input.side as 'above' | 'below' | undefined) ?? 'above');
-        Name ??= suggestion.Name;
-        Elevation ??= suggestion.Elevation;
-      }
-      const ref = s.addStorey(model.id, { Name, Elevation, ...(reference === undefined ? {} : { referenceStoreyId: reference }) });
+      const params = storeyAddInput(input, (reference, side) => s.suggestStorey(model.id, reference, side));
+      const ref = s.addStorey(model.id, params);
+      const { Name, Elevation } = params;
       return okResult(`Added ${Name} at ${Elevation.toFixed(3)} m as #${ref.expressId}.`, { ...ref, Name, Elevation });
     } catch (error) { return fail(error); }
   },

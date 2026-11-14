@@ -64,10 +64,14 @@ by structured clone. A typed array is not itself transferable, so transfer
   a member that is hidden or on a layer that is off is not drawn.
 - **Budget:** `maxTriangles` bounds what is drawn, and has to be a whole
   number of triangles, 0 or more: a budget that cannot be exhausted is not a
-  budget. A block's triangles count once per placement, and a curve or point
-  cloud vertex counts a third of a triangle, so blocks cannot multiply
-  geometry without bound. Text dots have their own limit of 100,000 per file;
-  `skipped` and `warnings` say what was left out.
+  budget. A block counts once per placement. A vertex counts a third of a
+  triangle and a mesh at least its triangles, so neither blocks nor large
+  vertex arrays can grow memory without bound. Text dots have their own limit
+  of 100,000 per file. `skipped` and `warnings` say what was left out.
+- **Visibility:** `entities[i].hidden` is true when the object is hidden or a
+  layer on its path is off; for a merged entity, when every part is. Each
+  mesh, instance, point cloud, curve and text dot carries `hidden` for its own
+  object, so a consumer can hide exactly what Rhino hides.
 - **Layers** come parent first with colour, visibility, user text and, when a
   layer carries `IFC::GlobalId` and `IFC::Class` stamps, its `spatial` element.
 

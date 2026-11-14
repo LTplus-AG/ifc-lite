@@ -141,7 +141,11 @@ function snapshotView(
   return view;
 }
 
-/** True only while the portable source covers every root in the live room. */
+/**
+ * True only while the portable source covers every root in the live room.
+ * The strong question; `stepSkipReason` asks only whether a source is
+ * registered, and says there why.
+ */
 export function canExportRoomAsStep(
   roomStore: IfcDataStore,
   roomView?: MutablePropertyView,

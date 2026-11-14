@@ -6,7 +6,7 @@ import { createModelMutationView } from '@/utils/model-mutation-view';
 import type { ExportFormat, ExportSurface } from '@/lib/analytics-export-events';
 import { modelDisplayLabels } from '@/lib/model-labels.js';
 import { stepExportProgress } from '@/lib/export/step-progress.js';
-import { exportModelStep } from '@/lib/export/model-step-export';
+import { exportModelStep, exportFailureMessage } from '@/lib/export/model-step-export';
 import { useSectionExport, sectionMergeInputs } from '@/lib/export/section-export';
 import { packagePortableIfcAsync, assertPortableMergeSupported } from '@/lib/export/portable-ifc';
 import { lostPropertyCollisionsNote, unrepresentedPsetsNote } from '@/lib/export/changed-model-export';
@@ -41,7 +41,7 @@ import { resolveExportVisibility } from '@/store/exportVisibility';
 import { trackExportCompleted } from '@/lib/analytics';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { ensureModelExportReady } from '@/services/desktop-export';
-import { MergedExporter, Ifc5Exporter, type MergeModelInput, type ExportProgress } from '@ifc-lite/export';
+import { MergedExporter, Ifc5Exporter, type ExportProgress } from '@ifc-lite/export';
 import { withInstancedMeshes } from '../../utils/instancedExport.js';
 import { downloadFile, modelExportFilename } from '@/lib/export/download';
 import { landXmlDownloadInput, landXmlIfcExportOutcome } from '@/lib/export/landXmlIfcDownload.js';
@@ -49,10 +49,11 @@ import { landXmlExportPlan } from '@/lib/export/landXmlIfcPlan.js';
 import { landXmlExportExtension } from '@/lib/export/landXmlIfcImagery.js';
 import { roomExportPathPrefix } from '@/lib/collab/room-export-paths';
 import { preferredExportModelId } from './export-model-default';
-import { canExportRoomAsStep, type roomStepExportSource } from '@/lib/collab/room-step-export';
-import { roomMergeInput, roomMergeVisibility } from '@/lib/collab/room-merged-export';
+import { canExportRoomAsStep } from '@/lib/collab/room-step-export';
+import { roomMergeVisibility } from '@/lib/collab/room-merged-export';
 import { roomSymbolicSource } from '@/lib/collab/room-symbolic-source';
-import { listExportModels, resolveExportModel } from './export-model-selection';
+import { canWriteIfcFromStores, listExportModels, resolveExportModel, stepSkipReason } from './export-model-selection';
+import { buildMergeInputs, emptyMergeRefusal, mergeSkipNotice, statedMergeSkips } from './export-merge-inputs';
 import { exportOutputInfo } from './export-output-format.js';
 import { activeChangesJsonMutations, exportChangesJson } from './export-changes-json.js';
 import { hasFilterableIfc5Properties } from '@/lib/export/ifc5-filterable-properties.js';
@@ -91,6 +92,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
   const classFilter = useViewerStore((s) => s.classFilter);
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
   const typeVisibility = useViewerStore((s) => s.typeVisibility);
+  const structuralViewMode = useViewerStore((s) => s.structuralViewMode);
   const lensHiddenIds = useViewerStore((s) => s.lensHiddenIds);
   // Also get legacy single-model state for backward compatibility
   const legacyIfcDataStore = useViewerStore((s) => s.ifcDataStore);
@@ -168,7 +170,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
     [models, selectedModel, exportScope]);
   const canExportIfc = landXmlPlan === null || (landXmlPlan.covered && schema === 'IFC4X3');
   // Mutation deltas are source-independent JSON; only full IFC synthesis is refused.
-  const exportAllowed = canExportIfc || (changesOnly && !isIfc5);
+  const exportAllowed = (canExportIfc && canWriteIfcFromStores(models, exportScope, isIfc5)) || (changesOnly && !isIfc5);
   const portableRoomStore = selectedModel?.ifcDataStore
     && canExportRoomAsStep(selectedModel.ifcDataStore, selectedRoomView)
     ? roomSymbolicSource(selectedModel.ifcDataStore)?.dataStore
@@ -257,15 +259,13 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
    * EVERY active visibility channel — hidden/isolated entities, the Class
    * tab filter, storey selection, and type-visibility toggles — through the
    * single shared resolver (`resolveExportVisibility`) every export path
-   * routes through, not a per-dialog restatement of a subset of them
-   * (#4328: the class filter and storey isolation used to be invisible to
-   * every exporter). Reads `useViewerStore.getState()` directly so the
-   * export always sees the state at click time, not a stale render.
+   * routes through (#4328). Reading the live store at click time also
+   * includes the structural mode and avoids stale dialog state.
    */
   const getExportVisibility = useCallback(
     (modelId: string) => resolveExportVisibility(useViewerStore.getState(), modelId),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [models, hiddenEntities, isolatedEntities, classFilter, selectedStoreys, typeVisibility, lensHiddenIds],
+    [models, hiddenEntities, isolatedEntities, classFilter, selectedStoreys, typeVisibility, structuralViewMode, lensHiddenIds],
   );
 
   const getLocalHiddenIds = useCallback(
@@ -283,6 +283,13 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
     return hasFilterableIfc5Properties(selectedModel.ifcDataStore, getMutationView(selectedModelId));
   }, [isIfc5, selectedModel, selectedModelId, getMutationView, mutationVersion]);
   const landXmlSource = useMemo(() => landXmlDownloadInput(landXmlPlan, schema, selectedModel), [landXmlPlan, schema, selectedModel]);
+  // Merged scope has no per-model list, so the description is where the dialog
+  // says which models the merge will leave out, before the file is written.
+  // A LandXML source takes its own single-file branch, so nothing is merged.
+  const mergeSkipNote = !isIfc5 && !changesOnly && exportScope === 'merged' && !landXmlSource
+    ? mergeSkipNotice(statedMergeSkips(models), t) : '';
+  // Still offered (`exportModelStep` refuses it by name, #10099); said before the click.
+  const noRecordsNote = !isIfc5 && !changesOnly && exportScope === 'single' && !landXmlSource && selectedModel && stepSkipReason(selectedModel.ifcDataStore) === 'noRecords' ? t('exportDialog.stepRecords.noRecords', { model: selectedModel.name }) : '';
   const stepContainer = landXmlSource ? landXmlExportExtension(landXmlSource.document, landXmlSource.imagery)
     : exportScope === 'single' && modelAppearanceAssets.hasResources(selectedModelId) ? '.ifczip' : '.ifc';
   const outputInfo = useMemo(() => exportOutputInfo(isIfc5, changesOnly, stepContainer), [isIfc5, changesOnly, stepContainer]);
@@ -295,7 +302,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
       return { success: false, message: t('exportDialog.notReadyError') };
     }
     if (!exportAllowed) {
-      const message = t('exportDialog.landXml.error');
+      const message = t(canExportIfc ? 'exportDialog.noStepRecords.error' : 'exportDialog.landXml.error');
       toast.error(message);
       return { success: false, message };
     }
@@ -328,19 +335,9 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
           model,
           dataStore: await ensureModelExportReady(model.id),
         })));
-        const mergeInputs: MergeModelInput[] = [];
-        const portableByModel = new Map<string, NonNullable<ReturnType<typeof roomStepExportSource>>>();
-        for (const entry of hydratedModels) {
-          if (!entry.dataStore) {
-            continue;
-          }
-          const roomView = applyMutations ? (getMutationView(entry.model.id) ?? undefined) : undefined;
-          const { input, portable } = roomMergeInput({
-            id: entry.model.id, name: entry.model.name, store: entry.dataStore, roomView, applyMutations,
-          });
-          if (portable) portableByModel.set(entry.model.id, portable);
-          mergeInputs.push(input);
-        }
+        const { inputs: mergeInputs, portableByModel, skipped } = buildMergeInputs(hydratedModels, { applyMutations, getMutationView });
+        const refusal = emptyMergeRefusal(mergeInputs, t);
+        if (refusal) { toast.error(refusal); return { success: false, message: refusal }; }
 
         const visibility = visibleOnly
           ? roomMergeVisibility(mergeModelIds, portableByModel, getLocalHiddenIds, getLocalIsolatedIds)
@@ -375,10 +372,12 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
         // Named for the first model: `keep-first` makes its IfcProject the merged file's.
         downloadFile(result.content, modelExportFilename(mergeInputs[0]?.name ?? '', 'ifc', '_merged'), 'text/plain');
 
+        const skipNotice = mergeSkipNotice(skipped, t);
         const msg = `Merged ${result.stats.modelCount} models, ${result.stats.totalEntityCount.toLocaleString()} entities`
           + (result.stats.normalizedModelCount > 0
             ? ` (${result.stats.normalizedModelCount} rescaled into the first model's unit)`
-            : '');
+            : '')
+          + (skipNotice ? `. ${skipNotice}` : '');
         exportedFormat = 'ifc';
         toast.success(msg);
         return { success: true, message: msg };
@@ -531,7 +530,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
       }
     } catch (error) {
       console.error('Export failed:', error);
-      const errMsg = `Export failed: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      const errMsg = exportFailureMessage(error, t, selectedModel?.name);
       toast.error(errMsg);
       return { success: false, message: errMsg };
     } finally {
@@ -546,7 +545,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
         });
       }
     }
-  }, [selectedModel, selectedModelId, schema, isIfc5, exportScope, includeGeometry, applyMutations, changesOnly, visibleOnly, unitReconciliation, onlyKnownProperties, getMutationView, getLocalHiddenIds, getLocalIsolatedIds, modifiedCount, models, extensionHost, outputInfo, exportAllowed, landXmlSource, t, surface, sectionExport]);
+  }, [selectedModel, selectedModelId, schema, isIfc5, exportScope, includeGeometry, applyMutations, changesOnly, visibleOnly, unitReconciliation, onlyKnownProperties, getMutationView, getLocalHiddenIds, getLocalIsolatedIds, modifiedCount, models, extensionHost, outputInfo, exportAllowed, canExportIfc, landXmlSource, t, surface, sectionExport]);
 
   return (
     <ExportDialogShell
@@ -560,7 +559,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
       }
       icon={<Download className="h-5 w-5" />}
       title={t('exportDialog.title')}
-      description={isIfc5 && !changesOnly ? t('exportDialog.description.ifc5') : t('exportDialog.description.default')}
+      description={!exportAllowed && canExportIfc && !changesOnly ? t('exportDialog.noStepRecords.error') : noRecordsNote || mergeSkipNote || (isIfc5 && !changesOnly ? t('exportDialog.description.ifc5') : t('exportDialog.description.default'))}
       cancelLabel={t('exportDialog.cancelButton')}
       exportLabel={t('exportDialog.exportButton')}
       exportingLabel={t('exportDialog.exportingLabel')}

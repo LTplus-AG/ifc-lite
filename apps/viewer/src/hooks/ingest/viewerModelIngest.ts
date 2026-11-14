@@ -8,7 +8,7 @@ import { IFCX_LENGTH_UNIT_SCALE, createSyntheticDataStore, type IfcDataStore, ty
 import { type GeometryResult, type MeshData, type PointCloudAsset } from '@ifc-lite/geometry';
 import { parseGLB, parseGLBToMeshData, parseGLBImageResources } from '@ifc-lite/cache';
 import type { SchemaVersion } from '../../store/types.js';
-import { calculateMeshBounds, createCoordinateInfo, normalizeColor } from '../../utils/localParsingUtils.js';
+import { calculateMeshBounds, createCoordinateInfo, expandBoundsForPointClouds, normalizeColor } from '../../utils/localParsingUtils.js';
 import { buildTabularDataStore } from './tabularDataStore.js';
 
 interface RawIfcxMesh {
@@ -34,6 +34,15 @@ export interface ViewerModelPayload {
   /** IFCX path ↔ expressId maps (only present for IFCX-parsed models). */
   pathToId?: Map<string, number>;
   idToPath?: Map<number, string>;
+  /**
+   * Model-local express ids the source file states are hidden. Nothing here
+   * applies them: the format's own `loadFile` branch does, through
+   * `applyInitialHiddenState`, once `finalizeModel` has registered the model
+   * and its express id range. A format whose file says nothing about
+   * visibility leaves this out. Only the `.3dm` branch sets it today; a second
+   * format setting it would have to call the same helper.
+   */
+  hiddenExpressIds?: number[];
 }
 
 export interface ParseIfcxOptions {
@@ -179,17 +188,7 @@ export async function parseIfcxViewerModel(
     bounds.min = { x: 0, y: 0, z: 0 };
     bounds.max = { x: 0, y: 0, z: 0 };
   }
-  // Expand bounds to include point cloud asset extents so fit-to-view, the
-  // section-plane slider, and camera near/far all see the points too.
-  for (const pc of pointClouds) {
-    const { min, max } = pc.chunk.bbox;
-    bounds.min.x = Math.min(bounds.min.x, min[0]);
-    bounds.min.y = Math.min(bounds.min.y, min[1]);
-    bounds.min.z = Math.min(bounds.min.z, min[2]);
-    bounds.max.x = Math.max(bounds.max.x, max[0]);
-    bounds.max.y = Math.max(bounds.max.y, max[1]);
-    bounds.max.z = Math.max(bounds.max.z, max[2]);
-  }
+  expandBoundsForPointClouds(bounds, pointClouds);
   return {
     dataStore: buildIfcxDataStore(ifcxResult, buffer),
     geometryResult: {

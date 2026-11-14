@@ -94,6 +94,36 @@ function linearEnds(target: EditTarget, id: number) {
   return { chain, start, end, scale };
 }
 
+type LinearTopFit = { kind: 'level' }
+  | { kind: 'vertical'; length: number; fixed: 'start' | 'end' }
+  | { kind: 'sloped'; length: number; from: Vec3; axis: Vec3 };
+
+/** Geometry shared by read-only deletion previews and the top writer. */
+function linearTopFit({ chain, start, end }: NonNullable<ReturnType<typeof linearEnds>>, change: number): LinearTopFit | string {
+  const a = chain.axisDirection;
+  if (Math.abs(a[2]) > 1 - 1e-9) {
+    const length = chain.depth + change;
+    return length >= MIN_ATTACHED_EXTENT ? { kind: 'vertical', length, fixed: a[2] > 0 ? 'start' : 'end' }
+      : `It would end ${length.toFixed(3)} m long`;
+  }
+  if (Math.abs(a[2]) < 1e-9) return { kind: 'level' };
+  const startIsTop = start[2] > end[2];
+  const top: Vec3 = startIsTop ? [start[0], start[1], start[2] + change] : [end[0], end[1], end[2] + change];
+  const from = startIsTop ? top : start, to = startIsTop ? end : top;
+  const delta: Vec3 = [to[0] - from[0], to[1] - from[1], to[2] - from[2]];
+  const length = Math.hypot(...delta);
+  if (!(length >= MIN_ATTACHED_EXTENT) || Math.sign(delta[2]) !== Math.sign(end[2] - start[2])) return 'Its top would pass its foot';
+  return { kind: 'sloped', length, from, axis: delta.map(v => v / length) as Vec3 };
+}
+
+export function linearTopRefusal(target: EditTarget, id: number, from: number, to: number): string | null {
+  if (Math.abs(to - from) < 1e-12) return null;
+  const ends = linearEnds(target, id);
+  if (!ends) return null; // Unreadable bodies keep the existing reporting path.
+  const fit = linearTopFit(ends, to - from);
+  return typeof fit === 'string' ? fit : null;
+}
+
 /** The element's `top` (see the module comment), metres; null when its body cannot be read. */
 export function readAttachedTop(target: EditTarget, id: number, kind: AttachedKind): number | null {
   if (kind === 'wall') {
@@ -192,25 +222,24 @@ function setColumnHeight(target: EditTarget, id: number, height: number): Attach
 function liftLinearTop(target: EditTarget, id: number, change: number): AttachedOutcome {
   const ends = linearEnds(target, id);
   if (!ends) return { ok: false, reason: 'This element is not a straight extrusion, so its top cannot follow' };
-  const { chain, start, end, scale } = ends;
-  const a = chain.axisDirection;
+  const { chain, scale } = ends;
   if (Math.abs(change) < 1e-12) return { ok: true, remesh: [] };
-  if (Math.abs(a[2]) > 1 - 1e-9) {
+  const fit = linearTopFit(ends, change);
+  if (typeof fit === 'string') return { ok: false, reason: fit };
+  if (fit.kind === 'vertical') {
     // Vertical: the upper end moves, the lower stays.
-    const length = chain.depth + change;
-    if (!(length >= MIN_ATTACHED_EXTENT)) return { ok: false, reason: `It would end ${length.toFixed(3)} m long` };
-    return setElementSizeInStore(target, id, { kind: 'linear', length, fixed: a[2] > 0 ? 'start' : 'end' });
+    return setElementSizeInStore(target, id, { kind: 'linear', length: fit.length, fixed: fit.fixed });
   }
   const reader = new AnchorEntityReader(target.dataStore, target.view);
   const placementId = refId(reader.entity(id)?.attributes[5]);
   const leaf = placementId === null ? null : readPlacementLeaf(reader, placementId);
   if (!leaf) return { ok: false, reason: 'Its placement cannot be read' };
-  const level = Math.abs(a[2]) < 1e-9;
+  const level = fit.kind === 'level';
   // A level lift writes only the placement; a turn writes the solid's depth too.
   const ownership = editOwnershipRefusal(target.dataStore, target.view, level ? [leaf.placementId] : [leaf.placementId, chain.extrudedSolidId],
     expandAffectedSet(target.dataStore, target.view, [id], 'hostsChanged'));
   if (ownership) return { ok: false, reason: ownership };
-  if (level) {
+  if (fit.kind === 'level') {
     // Level: the whole element follows, so it stays at the same depth under the storey.
     const lift = worldLiftInParent(reader, leaf.parentId, change / scale);
     if (!lift) return { ok: false, reason: 'Its placement cannot be read' };
@@ -218,15 +247,7 @@ function liftLinearTop(target: EditTarget, id: number, change: number): Attached
     return { ok: true, remesh: [id] };
   }
   // Sloped: the foot stays, the top end rises; the profile's X (horizontal, across the run) is unchanged.
-  const startIsTop = start[2] > end[2];
-  const top: Vec3 = startIsTop ? [start[0], start[1], start[2] + change] : [end[0], end[1], end[2] + change];
-  const from = startIsTop ? top : start, to = startIsTop ? end : top;
-  const delta: Vec3 = [to[0] - from[0], to[1] - from[1], to[2] - from[2]];
-  const length = Math.hypot(...delta);
-  if (!(length >= MIN_ATTACHED_EXTENT) || Math.sign(delta[2]) !== Math.sign(end[2] - start[2])) {
-    return { ok: false, reason: 'Its top would pass its foot' };
-  }
-  const axis = delta.map((v) => v / length) as Vec3;
+  const { from, axis, length } = fit;
   const ref = leaf.refDirection === null ? null : pointOf(reader, leaf.refDirection, 'IFCDIRECTION');
   if (ref && Math.abs(ref[0] * axis[0] + ref[1] * axis[1] + ref[2] * axis[2]) > 1e-6 * Math.hypot(...ref)) {
     return { ok: false, reason: 'Its section is not set square to the slope, so it cannot be turned' };

@@ -12,11 +12,11 @@ export function moveAttachedTargetIn(store: ModellingStore, modelId: string, id:
   const target = modelEditTarget(store.getState(), modelId);
   if (!target) return null;
   const type = target.editor.getEntityType(id)?.toUpperCase() ?? '';
-  // Only a wall whose top ends on a slab or roof is refit by its own move; a storey-attached wall keeps the plain move.
-  const wall = /^IFCWALL/.test(type) && typeof target.view.getPropertyValue(id, 'IfcLite_StoreyAttachment', 'TopConstraint') === 'string'
+  // A slab-bound element refits its own top; a storey-bound one keeps the plain move.
+  const attached = typeof target.view.getPropertyValue(id, 'IfcLite_StoreyAttachment', 'TopConstraint') === 'string'
     && readTopAttachment(readStoreyInventory(target.dataStore, target.view), id)?.targetElementId !== undefined;
-  if (!/^(IFCROOF|IFCSLAB|IFCSLABSTANDARDCASE|IFCSLABELEMENTEDCASE)$/.test(type) && !wall) return null;
-  const rooms = wall ? prepareWallRoomUpdate(store, modelId, id) : null;
+  if (!/^(IFCROOF|IFCSLAB|IFCSLABSTANDARDCASE|IFCSLABELEMENTEDCASE)$/.test(type) && !attached) return null;
+  const rooms = type.startsWith('IFCWALL') && attached ? prepareWallRoomUpdate(store, modelId, id) : null;
   try {
     const result = recordModellingEdit(store, modelId, (_methods, draft) => {
       const update = rooms?.(draft);

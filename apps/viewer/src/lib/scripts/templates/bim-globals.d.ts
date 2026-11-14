@@ -203,6 +203,7 @@ declare namespace BimGroup {
 //   packages/create/src/in-store/storey/storey-dependents.ts
 //   packages/create/src/in-store/storey/storey-delete.ts
 //   packages/create/src/in-store/storey/storey-suggest.ts
+//   packages/create/src/in-store/storey/storey-delete-bindings.ts
 //   packages/create/src/in-store/host-geometry-frame.ts
 //   packages/create/src/in-store/storey/storey-attached.ts
 //   packages/create/src/in-store/railing-stair-refit.ts
@@ -419,6 +420,11 @@ declare namespace BimCreate {
     /** The reviewed state of the storey and its contents (records and placement chains); a later edit to any of them makes the plan stale. */
     readonly fingerprint: string;
     readonly refusals: readonly StoreyRefusal[];
+    /** Relative tops that follow a different floor after deletion. */
+    readonly bindings?: readonly DeletionBinding[];
+    /** Products whose shapes changed while rebinding, filled by applyStoreyDelete. */
+    readonly reshaped?: readonly number[];
+    readonly unresizedAttachments?: readonly number[];
   }
 
   /** A parameterised cross-section for a beam, column or member. Metres. */
@@ -510,6 +516,17 @@ declare namespace BimCreate {
     readonly code: string;
     readonly message: string;
     readonly elementIds: readonly number[];
+  }
+
+  export interface DeletionBinding {
+    readonly elementId: number;
+    readonly kind: AttachedKind;
+    readonly targetStoreyId: number | null;
+    readonly targetGlobalId: string;
+    /** Change in the followed floor's world Z, metres; null when there is no floor above. */
+    readonly floorDelta: number | null;
+    /** Physical target floor for a previously pending relative top. */
+    readonly targetWorldZ: number | null;
   }
 
   /** Centred rectangle, XDim along profile X, YDim along profile Y. */

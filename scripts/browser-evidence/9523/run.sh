@@ -35,6 +35,7 @@ FIXTURE="$B/apps/viewer/public/samples/building-architecture.ifc"
 (sleep 400 | node "$CLI" --bridge --bridge-port 0 --bridge-viewer-url "https://$HOST:$HPORT" > /dev/null 2> "$OUT/probe-bridge.log") & PIDS+=($!)
 for i in $(seq 100); do grep -q "listening on ws://127.0.0.1:" "$OUT/probe-bridge.log" 2>/dev/null && break; sleep 0.1; done
 BPORT=$(sed -n 's/.*listening on ws:\/\/127\.0\.0\.1:\([0-9]*\).*/\1/p' "$OUT/probe-bridge.log" | head -1)
+[ -n "$BPORT" ] || { echo "probe bridge did not report its port; see $OUT/probe-bridge.log" >&2; exit 1; }
 rc=0
 timeout 200 node "$HERE/lna-socket-probe.mjs" "$B" "$HOST" "$HPORT" "$BPORT" "$OUT" > "$OUT/lna-socket-probe.log" 2>&1 || rc=$?
 timeout 300 node "$HERE/ff-socket-probe.mjs" "$B" "$HOST" "$HPORT" "$BPORT" "$OUT" > "$OUT/ff-socket-probe.log" 2>&1 || rc=$?

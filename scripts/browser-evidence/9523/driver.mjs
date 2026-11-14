@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 // MCP client over `ifc-lite-mcp --bridge` stdio for the #9523 browser evidence. Every JSON-RPC line goes to
 // <dir>/transcript.jsonl (pairing codes redacted). Writes <dir>/pairing-url.txt, waits until a tab pairs,
-// runs the read calls (exit 1 if the write is not refused), writes <dir>/driver-summary.json and <dir>/calls-done, then waits for <dir>/stop.
+// runs the read calls (exit 1 if a read fails or the write is not refused), writes <dir>/driver-summary.json and <dir>/calls-done, then waits for <dir>/stop.
 // Usage: node driver.mjs <cli.js> <viewerUrl> <dir>
 import { spawn } from 'node:child_process';
 import { appendFileSync, writeFileSync, existsSync } from 'node:fs';
@@ -43,25 +43,38 @@ const status = await call('bridge_status', {});
 writeFileSync(`${dir}/pairing-url.txt`, status.structuredContent.pairingUrl);
 const summary = { statusBeforePairing: redact(status.content?.[0]?.text ?? '').slice(0, 300) };
 await until(() => lines.some((l) => l.method === 'notifications/tools/list_changed') || existsSync(`${dir}/stop`), 'a tab pairs');
+// Every read must succeed with the content it is meant to show, and the write must be refused; anything else
+// is recorded in summary.failure and fails the run (after calls-done, so the browser side still finishes).
+const read = async (name, args, check) => {
+  const r = await call(name, args);
+  if (!r || r.isError || !check(r)) throw new Error(`${name} failed: ${redact(JSON.stringify(r ?? null)).slice(0, 300)}`);
+  return r;
+};
+let failure = null;
 if (existsSync(`${dir}/stop`)) {
   summary.paired = false;
 } else {
   summary.paired = true;
-  await sleep(500);
-  summary.toolCount = (await req('tools/list')).result.tools.length;
-  summary.model_list = (await call('model_list', {})).content[0].text.slice(0, 300);
-  const walls = await call('query_entities', { type: 'IfcWall', limit: 2 });
-  summary.query_entities = walls.content[0].text.slice(0, 300);
-  const wall = walls.structuredContent.entities[0];
-  summary.get_entity_name = (await call('get_entity', { global_id: wall.globalId })).structuredContent?.name;
-  summary.count_entities = (await call('count_entities', { group_by: 'type' })).content[0].text.slice(0, 200);
-  const refused = await call('entity_set_attribute', { global_id: wall.globalId, attribute: 'Name', value: 'x' });
-  summary.refusedMutation = { isError: refused.isError, code: refused.structuredContent?.code };
+  try {
+    await sleep(500);
+    const tools = (await req('tools/list')).result?.tools;
+    if (!tools?.length) throw new Error('tools/list returned no tools');
+    summary.toolCount = tools.length;
+    summary.model_list = (await read('model_list', {}, (r) => r.content?.[0]?.text)).content[0].text.slice(0, 300);
+    const walls = await read('query_entities', { type: 'IfcWall', limit: 2 }, (r) => r.structuredContent?.entities?.[0]?.globalId);
+    summary.query_entities = walls.content?.[0]?.text?.slice(0, 300);
+    const wall = walls.structuredContent.entities[0];
+    summary.get_entity_name = (await read('get_entity', { global_id: wall.globalId }, (r) => typeof r.structuredContent?.name === 'string')).structuredContent.name;
+    summary.count_entities = (await read('count_entities', { group_by: 'type' }, (r) => r.content?.[0]?.text)).content[0].text.slice(0, 200);
+    // The paired tab serves read tools only: a write that is not refused fails the run.
+    const refused = await call('entity_set_attribute', { global_id: wall.globalId, attribute: 'Name', value: 'x' });
+    summary.refusedMutation = { isError: refused?.isError, code: refused?.structuredContent?.code };
+    if (refused?.isError !== true) throw new Error(`entity_set_attribute was not refused: ${JSON.stringify(summary.refusedMutation)}`);
+  } catch (err) {
+    failure = String(err?.message ?? err);
+    summary.failure = failure;
+  }
 }
-// The paired tab serves read tools only: a write that is not refused fails the run.
-const failure = summary.paired && summary.refusedMutation.isError !== true
-  ? `entity_set_attribute was not refused: ${JSON.stringify(summary.refusedMutation)}` : null;
-if (failure) summary.failure = failure;
 writeFileSync(`${dir}/driver-summary.json`, JSON.stringify(summary, null, 2));
 writeFileSync(`${dir}/calls-done`, '1');
 await until(() => existsSync(`${dir}/stop`), 'the browser finishes');

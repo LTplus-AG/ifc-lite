@@ -105,7 +105,7 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
         <>
           <RibbonGroupDivider />
 
-      <RibbonExportGroup icons={RIBBON_EXPORT_ICONS} />
+          <RibbonExportGroup icons={RIBBON_EXPORT_ICONS} />
         </>
       )}
 

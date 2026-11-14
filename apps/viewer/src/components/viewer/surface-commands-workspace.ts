@@ -23,7 +23,14 @@ export const WORKSPACE_SURFACE_COMMANDS = [
     keywords: 'copy levels storeys floors repeat selection',
     category: 'Tools', icon: LayoutTemplate, surfaces: paletteOnly,
     enabled: (state: SurfaceCommandState) => state.canEditInSession,
-    run: () => { void import('@/lib/actions/copy-to-storeys-open').then(m => m.openCopyToStoreys()); },
+    run: () => {
+      const session = useViewerStore.getState().session;
+      if (!session) return;
+      void import('@/lib/actions/copy-to-storeys-open').then(m => {
+        const now = useViewerStore.getState().session;
+        if (now?.entry === session.entry && now.modelId === session.modelId) m.openCopyToStoreys();
+      });
+    },
   },
   {
     id: 'learn:about', labelKey: 'keyboardShortcuts.tabs.about',

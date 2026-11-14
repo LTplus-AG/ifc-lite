@@ -10,7 +10,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { extractPropertiesOnDemand, extractQuantitiesOnDemand } from '@ifc-lite/parser';
 import { IfcAPI, initSync } from '@ifc-lite/wasm';
 import { StepExporter } from '@ifc-lite/export';
@@ -21,6 +21,7 @@ import { refId } from './host-geometry-frame.js';
 import { parseStepAttributeList } from './step-record-attrs.js';
 import { getFootprintRoofPlaneParts } from './roof-plane-parts.js';
 import { addRoofToStore } from './roof.js';
+import { mirrorElementsInStore } from './element-mirror.js';
 import { requiredModule } from './__test__/required-module.js';
 import { exportText, newStorey, parse, type Schema } from './wall-join-mesh.oracle.js';
 
@@ -93,9 +94,9 @@ describe('a roof by footprint in a loaded model (#9296 round 3)', () => {
     // @source-text-assertion-ok Checks generated IFC export output, never implementation source text.
     expect(roofRecord(text)).toMatch(/\.GABLE_ROOF\.\s*$/);
     expect(s.editor.getNewEntity(roofId)?.attributes[5]).toBe(placement);
-    // The replaced representation is gone, not orphaned: one product shape for one roof.
+    // The replaced representations are gone: one product shape per gable plane (#9357).
     // @source-text-assertion-ok Checks generated IFC export output, never implementation source text.
-    expect(text.match(/IFCPRODUCTDEFINITIONSHAPE\(/g)).toHaveLength(1);
+    expect(text.match(/IFCPRODUCTDEFINITIONSHAPE\(/g)).toHaveLength(2);
     definition = f.readFootprintRoofInStore(s.store, roofId, s.view)!;
     expect(definition.Overhang).toBe(0.5);
   });
@@ -247,6 +248,7 @@ describe.skipIf(!existsSync(WASM_PATH))('roof by footprint against the mesh kern
     initSync({ module: readFileSync(WASM_PATH) });
     api = new IfcAPI();
   });
+  afterAll(() => api.free());
 
   /** Z-up bounds and the upward faces (area by tilt) of every mesh of `expressId`. */
   function measure(text: string, expressId: number) {
@@ -290,8 +292,21 @@ describe.skipIf(!existsSync(WASM_PATH))('roof by footprint against the mesh kern
         }
       } finally { collection.free(); }
     } finally { api.clearPrePassCache(); }
-    return { minZ: min[1], maxZ: max[1], tilts };
+    return { minX: min[0], maxX: max[0], minZ: min[1], maxZ: max[1], tilts };
   }
+
+  it.each([false, true])('mirroring a footprint roof carries and reflects every slab plane, copy=%s (#9357)', async (copy) => {
+    const s = await storey();
+    const { roofId } = addRoofToStore(s.editor, s.anchor, { ...HIP, Position: [2,1,3], EdgeSlopes: [30*D,0,30*D,0] });
+    const before = measure(exportText(s), roofId);
+    const [mirrored] = mirrorElementsInStore(s.store, s.editor, [roofId], { axis: [[0,0],[0,10]], copy });
+    const after = measure(exportText(s), mirrored);
+    expect(after.minX).toBeCloseTo(-before.maxX, 4);
+    expect(after.maxX).toBeCloseTo(-before.minX, 4);
+    expect(after.minZ).toBeCloseTo(before.minZ, 4);
+    expect(after.maxZ).toBeCloseTo(before.maxZ, 4);
+    expect(after.tilts.reduce((sum, f) => sum + f.area, 0)).toBeCloseTo(before.tilts.reduce((sum, f) => sum + f.area, 0), 4);
+  });
 
   it.each([
     ['hip', [30, 30, 30, 30], 4 * Math.tan(30 * D), 30],

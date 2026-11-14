@@ -121,7 +121,7 @@ export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentF
   const blank = isSurfaceCommandAvailable(surfaceCommand('file:new-blank', 'palette'));
   const hasRecent = local && recentFiles.length > 0;
   // No way to pick a model here: the page that embeds the viewer opens one.
-  const hostOpens = !local && !sources;
+  const hostOpens = !local && !sources && !samples && !blank;
 
   return (
     <div {...tourAnchor(TOUR_ANCHORS.emptyStateCard)} className="flex w-full max-w-[500px] flex-col">
